@@ -49,7 +49,8 @@ func TestSearchRelevantWithHybridShadowKeepsV1Authority(t *testing.T) {
 			{Index: 2, RelevanceScore: 0.9},
 		},
 	}
-	service := NewService(repository, WithHybridShadowProvider(provider))
+	service := NewService(repository, WithHybridShadowProvider(provider),
+		WithHybridShadowRelevancePolicy(HybridShadowCalibrationPolicy()))
 
 	query := "Please keep this concise"
 	items, summary, err := service.SearchRelevantWithHybridShadow(
@@ -97,7 +98,178 @@ func TestSearchRelevantWithHybridShadowKeepsV1Authority(t *testing.T) {
 	}
 }
 
-func TestSearchRelevantWithHybridShadowProviderFailuresDegradeToLexicalRRF(t *testing.T) {
+func TestSearchRelevantWithHybridShadowRequiresExplicitRelevancePolicy(t *testing.T) {
+	repository := &hybridTestRepository{fakeRepository: hybridV1Repository()}
+	provider := &hybridTestProvider{embedding: validHybridTestEmbedding()}
+	items, summary, err := NewService(
+		repository,
+		WithHybridShadowProvider(provider),
+	).SearchRelevantWithHybridShadow(
+		context.Background(), "keep answers concise", hybridTestConversation,
+		hybridTestAssistant, MaxSearchResults,
+	)
+	if err != nil || len(items) != 1 || summary.ResultCode != "POLICY_UNAVAILABLE" ||
+		repository.prepareCalls != 0 || repository.admissionCalls != 0 ||
+		provider.embedCalls != 0 || provider.rerankCalls != 0 {
+		t.Fatalf("missing policy authority = items:%#v summary:%#v repo:%#v provider:%#v err:%v",
+			items, summary, repository, provider, err)
+	}
+}
+
+func TestSearchRelevantWithHybridShadowAppliesBothRelevanceGates(t *testing.T) {
+	newRepository := func(similarity float64, fallback string) *hybridTestRepository {
+		admission := HybridShadowAdmission{
+			CandidateCount: 1, VectorCandidateCount: 1,
+			MaximumVectorSimilarity: similarity,
+		}
+		return &hybridTestRepository{
+			fakeRepository: hybridV1Repository(),
+			preparation: HybridShadowPreparation{
+				Summary: HybridShadowSummary{
+					ProfileID: HybridShadowProfileID, Status: "pending",
+					ResultCode: "CANDIDATES_READY", FallbackCode: "NONE", RRFCount: 1,
+				},
+				Candidates: []HybridShadowCandidate{hybridCandidate(
+					"44444444-4444-4444-8444-444444444444", "Relevant only when admitted",
+				)},
+			},
+			admission: &admission,
+			recordSummary: HybridShadowSummary{
+				ProfileID: HybridShadowProfileID, Status: "completed", ResultCode: "OK",
+				FallbackCode: fallback, RRFCount: 1,
+			},
+		}
+	}
+	t.Run("pre-rerank admission blocks document egress", func(t *testing.T) {
+		repository := newRepository(0.2, "RELEVANCE_ABSTAINED")
+		provider := &hybridTestProvider{
+			embedding: validHybridTestEmbedding(),
+			rerank:    []ragproviders.RerankResult{{Index: 0, RelevanceScore: 0.99}},
+		}
+		policy := HybridShadowRelevancePolicy{
+			ID: HybridRelevanceFrozenPolicyID, Mode: hybridPolicyModeFrozen,
+			MemoryIntentRequired: true, MinimumMemoryIntentMargin: -1,
+			MinimumProviderSimilarity: 0.5, MinimumFinalRelevanceScore: 0.5,
+		}
+		_, _, err := NewService(
+			repository,
+			WithHybridShadowProvider(provider),
+			WithHybridShadowRelevancePolicy(policy),
+		).SearchRelevantWithHybridShadow(
+			context.Background(), "safe query", hybridTestConversation,
+			hybridTestAssistant, MaxSearchResults,
+		)
+		if err != nil || provider.embedCalls != 1 || provider.rerankCalls != 0 ||
+			repository.admissionCalls != 1 || len(repository.recordInput.Reranked) != 0 ||
+			len(repository.recordInput.Final) != 0 ||
+			repository.recordInput.FallbackCode != "RELEVANCE_ABSTAINED" {
+			t.Fatalf("pre-rerank gate = repo:%#v provider:%#v err:%v", repository, provider, err)
+		}
+	})
+	t.Run("post-rerank threshold emits explicit abstention", func(t *testing.T) {
+		repository := newRepository(0.8, "RELEVANCE_FINAL_ABSTAINED")
+		provider := &hybridTestProvider{
+			embedding: validHybridTestEmbedding(),
+			rerank:    []ragproviders.RerankResult{{Index: 0, RelevanceScore: 0.8}},
+		}
+		policy := HybridShadowRelevancePolicy{
+			ID: HybridRelevanceFrozenPolicyID, Mode: hybridPolicyModeFrozen,
+			MemoryIntentRequired: true, MinimumMemoryIntentMargin: -1,
+			MinimumProviderSimilarity: 0.5, MinimumFinalRelevanceScore: 0.9,
+		}
+		_, _, err := NewService(
+			repository,
+			WithHybridShadowProvider(provider),
+			WithHybridShadowRelevancePolicy(policy),
+		).SearchRelevantWithHybridShadow(
+			context.Background(), "safe query", hybridTestConversation,
+			hybridTestAssistant, MaxSearchResults,
+		)
+		if err != nil || provider.rerankCalls != 1 ||
+			len(repository.recordInput.Reranked) != 1 ||
+			len(repository.recordInput.Final) != 0 ||
+			repository.recordInput.EstimatedTokens != 0 ||
+			repository.recordInput.FallbackCode != "RELEVANCE_FINAL_ABSTAINED" {
+			t.Fatalf("post-rerank gate = repo:%#v provider:%#v err:%v", repository, provider, err)
+		}
+	})
+}
+
+func TestSearchRelevantWithHybridShadowMemoryIntentGatePrecedesMemoryEgress(t *testing.T) {
+	newRepository := func(fallback string) *hybridTestRepository {
+		return &hybridTestRepository{
+			fakeRepository: hybridV1Repository(),
+			preparation: HybridShadowPreparation{
+				Summary: HybridShadowSummary{
+					ProfileID: HybridShadowProfileID, Status: "pending",
+					ResultCode: "CANDIDATES_READY", FallbackCode: "NONE", RRFCount: 1,
+				},
+				Candidates: []HybridShadowCandidate{hybridCandidate(
+					"44444444-4444-4444-8444-444444444444",
+					"Memory plaintext must not leave on an unrelated query",
+				)},
+			},
+			recordSummary: HybridShadowSummary{
+				ProfileID: HybridShadowProfileID, Status: "completed", ResultCode: "OK",
+				FallbackCode: fallback, RRFCount: 1,
+			},
+		}
+	}
+	policy := HybridShadowRelevancePolicy{
+		ID: HybridRelevanceFrozenPolicyID, Mode: hybridPolicyModeFrozen,
+		MemoryIntentRequired: true, MinimumMemoryIntentMargin: 0,
+		MinimumProviderSimilarity: -1, MinimumFinalRelevanceScore: 0,
+	}
+	t.Run("low margin", func(t *testing.T) {
+		repository := newRepository("MEMORY_INTENT_ABSTAINED")
+		provider := &hybridTestProvider{
+			embedding: validHybridTestEmbedding(),
+			memoryIntent: ragproviders.MemoryIntentSignal{
+				AnchorVersion: ragproviders.MemoryIntentAnchorVersion,
+				AnchorSHA256:  ragproviders.MemoryIntentAnchorSHA256,
+				PositiveScore: 0.2, NegativeScore: 0.8, Margin: -0.6,
+			},
+		}
+		_, _, err := NewService(
+			repository,
+			WithHybridShadowProvider(provider),
+			WithHybridShadowRelevancePolicy(policy),
+		).SearchRelevantWithHybridShadow(
+			context.Background(), "public fact", hybridTestConversation,
+			hybridTestAssistant, MaxSearchResults,
+		)
+		if err != nil || provider.memoryIntentCalls != 1 || provider.rerankCalls != 0 ||
+			repository.admissionCalls != 0 || len(repository.recordInput.Final) != 0 ||
+			repository.recordInput.FallbackCode != "MEMORY_INTENT_ABSTAINED" {
+			t.Fatalf("intent abstention = repo:%#v provider:%#v err:%v", repository, provider, err)
+		}
+	})
+	t.Run("invalid signal", func(t *testing.T) {
+		repository := newRepository("MEMORY_INTENT_FAILED")
+		provider := &hybridTestProvider{
+			embedding: validHybridTestEmbedding(),
+			memoryIntent: ragproviders.MemoryIntentSignal{
+				AnchorVersion: "drifted", AnchorSHA256: ragproviders.MemoryIntentAnchorSHA256,
+				PositiveScore: 0.8, NegativeScore: 0.2, Margin: 0.6,
+			},
+		}
+		_, _, err := NewService(
+			repository,
+			WithHybridShadowProvider(provider),
+			WithHybridShadowRelevancePolicy(policy),
+		).SearchRelevantWithHybridShadow(
+			context.Background(), "personal query", hybridTestConversation,
+			hybridTestAssistant, MaxSearchResults,
+		)
+		if err != nil || provider.memoryIntentCalls != 1 || provider.rerankCalls != 0 ||
+			repository.admissionCalls != 0 ||
+			repository.recordInput.FallbackCode != "MEMORY_INTENT_FAILED" {
+			t.Fatalf("intent failure = repo:%#v provider:%#v err:%v", repository, provider, err)
+		}
+	})
+}
+
+func TestSearchRelevantWithHybridShadowProviderFailuresAbstain(t *testing.T) {
 	base := hybridV1Repository()
 	repository := &hybridTestRepository{
 		fakeRepository: base,
@@ -113,7 +285,7 @@ func TestSearchRelevantWithHybridShadowProviderFailuresDegradeToLexicalRRF(t *te
 		},
 		recordSummary: HybridShadowSummary{
 			ProfileID: HybridShadowProfileID, Status: "completed", ResultCode: "OK",
-			FallbackCode: "QUERY_EMBEDDING_FAILED", RRFCount: 1, FinalCount: 1,
+			FallbackCode: "RELEVANCE_ADMISSION_UNAVAILABLE", RRFCount: 1,
 		},
 	}
 	provider := &hybridTestProvider{
@@ -123,6 +295,7 @@ func TestSearchRelevantWithHybridShadowProviderFailuresDegradeToLexicalRRF(t *te
 	items, summary, err := NewService(
 		repository,
 		WithHybridShadowProvider(provider),
+		WithHybridShadowRelevancePolicy(HybridShadowCalibrationPolicy()),
 	).SearchRelevantWithHybridShadow(
 		context.Background(), "Please keep this concise",
 		hybridTestConversation, hybridTestAssistant, MaxSearchResults,
@@ -133,10 +306,10 @@ func TestSearchRelevantWithHybridShadowProviderFailuresDegradeToLexicalRRF(t *te
 	if repository.prepareInput.QueryEmbeddingState != "failed" ||
 		len(repository.prepareInput.QueryEmbedding) != 0 ||
 		repository.recordInput.RerankStatus != "fallback" ||
-		repository.recordInput.FallbackCode != "QUERY_EMBEDDING_FAILED" ||
+		repository.recordInput.FallbackCode != "RELEVANCE_ADMISSION_UNAVAILABLE" ||
 		len(repository.recordInput.Reranked) != 0 ||
-		len(repository.recordInput.Final) != 1 ||
-		summary.FallbackCode != "QUERY_EMBEDDING_FAILED" {
+		len(repository.recordInput.Final) != 0 ||
+		summary.FallbackCode != "RELEVANCE_ADMISSION_UNAVAILABLE" {
 		t.Fatalf("fallback = prepare:%#v record:%#v summary:%#v",
 			repository.prepareInput, repository.recordInput, summary)
 	}
@@ -169,6 +342,7 @@ func TestSearchRelevantWithHybridShadowRedactsProviderQueryAndDocuments(t *testi
 	_, _, err := NewService(
 		repository,
 		WithHybridShadowProvider(provider),
+		WithHybridShadowRelevancePolicy(HybridShadowCalibrationPolicy()),
 	).SearchRelevantWithHybridShadow(
 		context.Background(), rawQuery, hybridTestConversation,
 		hybridTestAssistant, MaxSearchResults,
@@ -210,7 +384,7 @@ func TestSearchRelevantWithHybridShadowSecretOnlyQueryMakesZeroProviderCalls(t *
 		},
 		recordSummary: HybridShadowSummary{
 			ProfileID: HybridShadowProfileID, Status: "completed", ResultCode: "OK",
-			FallbackCode: "SECRET_REDACTED", RRFCount: 1, FinalCount: 1,
+			FallbackCode: "RELEVANCE_ADMISSION_UNAVAILABLE", RRFCount: 1,
 		},
 	}
 	provider := &hybridTestProvider{
@@ -221,6 +395,7 @@ func TestSearchRelevantWithHybridShadowSecretOnlyQueryMakesZeroProviderCalls(t *
 	_, _, err := NewService(
 		repository,
 		WithHybridShadowProvider(provider),
+		WithHybridShadowRelevancePolicy(HybridShadowCalibrationPolicy()),
 	).SearchRelevantWithHybridShadow(
 		context.Background(), rawQuery, hybridTestConversation,
 		hybridTestAssistant, MaxSearchResults,
@@ -231,7 +406,8 @@ func TestSearchRelevantWithHybridShadowSecretOnlyQueryMakesZeroProviderCalls(t *
 	if provider.embedCalls != 0 || provider.rerankCalls != 0 ||
 		repository.prepareInput.QueryText != rawQuery ||
 		repository.prepareInput.QueryEmbeddingState != "redacted" ||
-		repository.recordInput.FallbackCode != "SECRET_REDACTED" {
+		repository.recordInput.FallbackCode != "RELEVANCE_ADMISSION_UNAVAILABLE" ||
+		len(repository.recordInput.Final) != 0 {
 		t.Fatalf("secret query egress = provider:%#v prepare:%#v record:%#v",
 			provider, repository.prepareInput, repository.recordInput)
 	}
@@ -260,6 +436,7 @@ func TestSearchRelevantWithHybridShadowSecretOnlyDocumentSkipsRerank(t *testing.
 	_, _, err := NewService(
 		repository,
 		WithHybridShadowProvider(provider),
+		WithHybridShadowRelevancePolicy(HybridShadowCalibrationPolicy()),
 	).SearchRelevantWithHybridShadow(
 		context.Background(), "safe query", hybridTestConversation,
 		hybridTestAssistant, MaxSearchResults,
@@ -275,7 +452,7 @@ func TestSearchRelevantWithHybridShadowSecretOnlyDocumentSkipsRerank(t *testing.
 	}
 }
 
-func TestSearchRelevantWithHybridShadowRerankCutoffStillRecordsRRF(t *testing.T) {
+func TestSearchRelevantWithHybridShadowRerankCutoffAbstains(t *testing.T) {
 	base := hybridV1Repository()
 	repository := &hybridTestRepository{
 		fakeRepository: base,
@@ -290,7 +467,7 @@ func TestSearchRelevantWithHybridShadowRerankCutoffStillRecordsRRF(t *testing.T)
 		},
 		recordSummary: HybridShadowSummary{
 			ProfileID: HybridShadowProfileID, Status: "completed", ResultCode: "OK",
-			FallbackCode: "HARD_CUTOFF", RRFCount: 1, FinalCount: 1,
+			FallbackCode: "HARD_CUTOFF", RRFCount: 1,
 		},
 	}
 	provider := &hybridTestProvider{
@@ -303,6 +480,7 @@ func TestSearchRelevantWithHybridShadowRerankCutoffStillRecordsRRF(t *testing.T)
 	items, summary, err := NewService(
 		repository,
 		WithHybridShadowProvider(provider),
+		WithHybridShadowRelevancePolicy(HybridShadowCalibrationPolicy()),
 	).SearchRelevantWithHybridShadow(
 		ctx, "Please keep this concise", hybridTestConversation,
 		hybridTestAssistant, MaxSearchResults,
@@ -313,7 +491,7 @@ func TestSearchRelevantWithHybridShadowRerankCutoffStillRecordsRRF(t *testing.T)
 	}
 	if repository.recordCalls != 1 || repository.recordInput.RerankStatus != "fallback" ||
 		repository.recordInput.FallbackCode != "HARD_CUTOFF" ||
-		len(repository.recordInput.Final) != 1 {
+		len(repository.recordInput.Final) != 0 {
 		t.Fatalf("cutoff was not recorded = %#v", repository.recordInput)
 	}
 }
@@ -343,7 +521,11 @@ func TestSelectHybridShadowFinalEnforcesFiveAndHardTokenBudget(t *testing.T) {
 		hybridCandidate("55555555-5555-4555-8555-555555555555", strings.Repeat("中", 100)),
 		hybridCandidate("66666666-6666-4666-8666-666666666666", "small fallback"),
 	}
-	selected, tokens := selectHybridShadowFinal(candidates)
+	scored := make([]hybridShadowScoredCandidate, len(candidates))
+	for index, candidate := range candidates {
+		scored[index] = hybridShadowScoredCandidate{Candidate: candidate, RelevanceScore: 1}
+	}
+	selected, tokens := selectHybridShadowFinal(scored, 0)
 	if len(selected) != 4 || tokens <= hybridShadowTargetTokens ||
 		tokens > hybridShadowMaximumTokens ||
 		selected[0].MemoryID != candidates[1].MemoryID {
@@ -357,7 +539,10 @@ func TestSearchRelevantWithHybridShadowFailureNeverReturnsPrivateError(t *testin
 		fakeRepository: base,
 		prepareErr:     errors.New("query and memory content leaked"),
 	}
-	items, summary, err := NewService(repository).SearchRelevantWithHybridShadow(
+	items, summary, err := NewService(
+		repository,
+		WithHybridShadowRelevancePolicy(HybridShadowCalibrationPolicy()),
+	).SearchRelevantWithHybridShadow(
 		context.Background(), "Please keep this concise",
 		hybridTestConversation, hybridTestAssistant, MaxSearchResults,
 	)
@@ -430,14 +615,17 @@ func sha256String(value string) string {
 
 type hybridTestRepository struct {
 	*fakeRepository
-	prepareInput  HybridShadowPrepareInput
-	recordInput   HybridShadowRecordInput
-	preparation   HybridShadowPreparation
-	recordSummary HybridShadowSummary
-	prepareErr    error
-	recordErr     error
-	prepareCalls  int
-	recordCalls   int
+	prepareInput   HybridShadowPrepareInput
+	recordInput    HybridShadowRecordInput
+	preparation    HybridShadowPreparation
+	recordSummary  HybridShadowSummary
+	admission      *HybridShadowAdmission
+	admissionErr   error
+	prepareErr     error
+	recordErr      error
+	prepareCalls   int
+	admissionCalls int
+	recordCalls    int
 }
 
 func (repository *hybridTestRepository) PrepareHybridShadow(
@@ -446,7 +634,28 @@ func (repository *hybridTestRepository) PrepareHybridShadow(
 ) (HybridShadowPreparation, error) {
 	repository.prepareCalls++
 	repository.prepareInput = input
+	if repository.preparation.ObservationID == "" {
+		repository.preparation.ObservationID = input.ObservationID
+	}
 	return repository.preparation, repository.prepareErr
+}
+
+func (repository *hybridTestRepository) AuthorizeHybridRerank(
+	_ context.Context,
+	_ HybridShadowAdmissionInput,
+) (HybridShadowAdmission, error) {
+	repository.admissionCalls++
+	if repository.admissionErr != nil {
+		return HybridShadowAdmission{}, repository.admissionErr
+	}
+	if repository.admission != nil {
+		return *repository.admission, nil
+	}
+	return HybridShadowAdmission{
+		CandidateCount:          len(repository.preparation.Candidates),
+		VectorCandidateCount:    len(repository.preparation.Candidates),
+		MaximumVectorSimilarity: 1,
+	}, nil
 }
 
 func (repository *hybridTestRepository) RecordHybridShadow(
@@ -463,6 +672,8 @@ type hybridTestProvider struct {
 	embedErr                  error
 	rerank                    []ragproviders.RerankResult
 	rerankErr                 error
+	memoryIntent              ragproviders.MemoryIntentSignal
+	memoryIntentErr           error
 	blockRerankUntilCanceled  bool
 	returnEmbedAfterDeadline  bool
 	returnRerankAfterDeadline bool
@@ -471,6 +682,7 @@ type hybridTestProvider struct {
 	rerankDocuments           []string
 	embedCalls                int
 	rerankCalls               int
+	memoryIntentCalls         int
 }
 
 func (provider *hybridTestProvider) EmbedQuery(
@@ -504,7 +716,23 @@ func (provider *hybridTestProvider) Rerank(
 	return append([]ragproviders.RerankResult(nil), provider.rerank...), provider.rerankErr
 }
 
+func (provider *hybridTestProvider) ClassifyMemoryIntent(
+	_ context.Context,
+	_ string,
+) (ragproviders.MemoryIntentSignal, error) {
+	provider.memoryIntentCalls++
+	if provider.memoryIntent.AnchorVersion == "" && provider.memoryIntentErr == nil {
+		return ragproviders.MemoryIntentSignal{
+			AnchorVersion: ragproviders.MemoryIntentAnchorVersion,
+			AnchorSHA256:  ragproviders.MemoryIntentAnchorSHA256,
+			PositiveScore: 1, NegativeScore: 0, Margin: 1,
+		}, nil
+	}
+	return provider.memoryIntent, provider.memoryIntentErr
+}
+
 var (
-	_ HybridShadowRepository = (*hybridTestRepository)(nil)
-	_ HybridShadowProvider   = (*hybridTestProvider)(nil)
+	_ HybridShadowRepository          = (*hybridTestRepository)(nil)
+	_ HybridShadowAdmissionRepository = (*hybridTestRepository)(nil)
+	_ HybridShadowProvider            = (*hybridTestProvider)(nil)
 )

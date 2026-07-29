@@ -51,6 +51,9 @@ type ProviderRequest struct {
 	Messages           []ProviderMessage
 	Attachments        []ProviderAttachment
 	UseReasoning       bool
+	DisableThinking    bool
+	MaxOutputTokens    int
+	Temperature        *float64
 	ReasoningEffort    ReasoningEffort
 	ModelRef           ModelRef
 	Metadata           map[string]any
@@ -74,9 +77,12 @@ type ProviderAttachment struct {
 }
 
 type ToolPlanRequest struct {
-	Prompt   string
-	ModelRef ModelRef
-	Tools    []ToolDefinition
+	Prompt          string
+	ModelRef        ModelRef
+	Tools           []ToolDefinition
+	DisableThinking bool
+	MaxOutputTokens int
+	Temperature     *float64
 }
 
 type ToolDefinition struct {

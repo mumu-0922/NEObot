@@ -14,16 +14,28 @@ import (
 )
 
 const (
-	hybridShadowHardCutoff    = 2 * time.Second
-	hybridShadowEmbedCutoff   = 750 * time.Millisecond
-	hybridShadowRecordReserve = 150 * time.Millisecond
-	HybridShadowTargetTokens  = 600
-	HybridShadowMaximumTokens = 900
-	HybridShadowFinalLimit    = 5
-	hybridShadowTargetTokens  = HybridShadowTargetTokens
-	hybridShadowMaximumTokens = HybridShadowMaximumTokens
-	hybridShadowFinalLimit    = HybridShadowFinalLimit
-	hybridShadowTokenOverhead = 24
+	hybridShadowHardCutoff                = 2 * time.Second
+	hybridShadowEmbedCutoff               = 750 * time.Millisecond
+	hybridShadowIntentCutoff              = 500 * time.Millisecond
+	hybridShadowRecordReserve             = 150 * time.Millisecond
+	HybridShadowTargetTokens              = 600
+	HybridShadowMaximumTokens             = 900
+	HybridShadowFinalLimit                = 5
+	hybridShadowTargetTokens              = HybridShadowTargetTokens
+	hybridShadowMaximumTokens             = HybridShadowMaximumTokens
+	hybridShadowFinalLimit                = HybridShadowFinalLimit
+	hybridShadowTokenOverhead             = 24
+	hybridPolicyModeCalibration           = "calibration"
+	hybridPolicyModeIntentCalibration     = "intent_calibration"
+	hybridPolicyModeCloudJudgeCalibration = "cloud_judge_calibration"
+	hybridPolicyModeMemoryToolRoute       = "main_model_tool_route_calibration"
+	hybridPolicyModeFrozen                = "frozen"
+	// These values are changed only after a successful Development calibration
+	// artifact has been reviewed. Validation refuses to run while ready=false.
+	hybridFrozenPolicyReady          = false
+	hybridFrozenProviderSimilarityBP = 0
+	hybridFrozenFinalRelevanceBP     = 0
+	hybridFrozenMemoryIntentMarginBP = 0
 )
 
 var errHybridProviderTextRedacted = errors.New("memory hybrid provider text redacted")
@@ -49,6 +61,10 @@ func (s *Service) SearchRelevantWithHybridShadow(
 	items, err := s.SearchRelevant(ctx, query, limit)
 	if err != nil {
 		return nil, HybridShadowSummary{}, err
+	}
+	policy, ok := validHybridShadowRelevancePolicy(s.hybridPolicy)
+	if !ok {
+		return items, hybridShadowFailure("POLICY_UNAVAILABLE", "POLICY_UNAVAILABLE"), nil
 	}
 	failure := hybridShadowFailure("PREPARE_UNAVAILABLE", "PROVIDER_UNAVAILABLE")
 	repository, ok := s.repo.(HybridShadowRepository)
@@ -78,6 +94,12 @@ func (s *Service) SearchRelevantWithHybridShadow(
 	startedAt := time.Now()
 	shadowCtx, cancel := context.WithTimeout(ctx, hybridShadowHardCutoff)
 	defer cancel()
+	memoryToolRoute := startHybridMemoryToolRoute(
+		shadowCtx,
+		s.hybridRouter,
+		policy,
+		query,
+	)
 
 	embedCtx, embedCancel := context.WithTimeout(shadowCtx, hybridShadowEmbedCutoff)
 	queryEmbedding, embeddingState := s.hybridQueryEmbedding(embedCtx, query)
@@ -98,43 +120,118 @@ func (s *Service) SearchRelevantWithHybridShadow(
 	if prepared.Replayed || prepared.Summary.Status != "pending" {
 		return items, sanitizeHybridShadowSummary(prepared.Summary), nil
 	}
+	if uuidRE.MatchString(prepared.ObservationID) {
+		observationID = prepared.ObservationID
+	}
 
 	rerankStatus := "skipped"
 	fallbackCode := prepared.Summary.FallbackCode
-	ordered := append([]HybridShadowCandidate(nil), prepared.Candidates...)
 	reranked := []HybridShadowRankedItem{}
-	if len(ordered) > 0 {
+	scored := []hybridShadowScoredCandidate{}
+	if len(prepared.Candidates) > 0 {
 		var rerankErr error
-		rerankCtx, rerankCancel := hybridProviderStageContext(
-			shadowCtx,
-			hybridShadowRecordReserve,
-		)
-		if s.hybridProvider == nil {
-			rerankErr = ragproviders.ErrRerankUnavailable
-		} else {
-			ordered, reranked, rerankErr = rerankHybridCandidates(
-				rerankCtx, s.hybridProvider, query, ordered,
+		intentAdmitted := true
+		if policy.MemoryIntentRequired {
+			intentCtx, intentCancel := context.WithTimeout(shadowCtx, hybridShadowIntentCutoff)
+			intent, intentErr := classifyHybridMemoryIntent(
+				intentCtx,
+				s.hybridProvider,
+				query,
 			)
+			intentCutoff := errors.Is(intentCtx.Err(), context.DeadlineExceeded)
+			intentCancel()
+			if intentErr != nil || intentCutoff {
+				rerankErr = ragproviders.ErrMemoryIntentUnavailable
+				fallbackCode = "MEMORY_INTENT_FAILED"
+				intentAdmitted = false
+			} else if intent.Margin < policy.MinimumMemoryIntentMargin {
+				fallbackCode = "MEMORY_INTENT_ABSTAINED"
+				intentAdmitted = false
+			}
 		}
-		rerankCutoff := errors.Is(rerankCtx.Err(), context.DeadlineExceeded)
-		rerankCancel()
-		if rerankErr != nil || rerankCutoff ||
-			errors.Is(shadowCtx.Err(), context.DeadlineExceeded) {
+		admissionRepository, admissionOK := s.repo.(HybridShadowAdmissionRepository)
+		if !intentAdmitted {
+			// Query-only intent classification sends no Memory document. Every
+			// failure or low-margin result remains a fail-closed no-memory path.
+		} else if !admissionOK || admissionRepository == nil || len(queryEmbedding) == 0 {
+			rerankErr = ragproviders.ErrRerankUnavailable
+			fallbackCode = "RELEVANCE_ADMISSION_UNAVAILABLE"
+		} else {
+			admission, admissionErr := admissionRepository.AuthorizeHybridRerank(
+				shadowCtx,
+				HybridShadowAdmissionInput{
+					ObservationID: observationID, AssistantMessageID: assistantMessageID,
+					QueryHash: hex.EncodeToString(digest[:]), QueryEmbedding: queryEmbedding,
+				},
+			)
+			if admissionErr != nil || !validHybridShadowAdmission(admission, len(prepared.Candidates)) {
+				rerankErr = ragproviders.ErrRerankUnavailable
+				fallbackCode = "RELEVANCE_ADMISSION_FAILED"
+			} else if admission.MaximumVectorSimilarity < policy.MinimumProviderSimilarity {
+				fallbackCode = "RELEVANCE_ABSTAINED"
+			} else {
+				rerankCtx, rerankCancel := hybridProviderStageContext(
+					shadowCtx,
+					hybridShadowRecordReserve,
+				)
+				if s.hybridProvider == nil {
+					rerankErr = ragproviders.ErrRerankUnavailable
+				} else {
+					var stageFallback string
+					scored, reranked, stageFallback, rerankErr = executeHybridCandidateStages(
+						rerankCtx,
+						s.hybridProvider,
+						s.hybridJudge,
+						memoryToolRoute,
+						policy,
+						query,
+						prepared.Candidates,
+					)
+					if stageFallback != "" {
+						fallbackCode = stageFallback
+					}
+				}
+				rerankCutoff := errors.Is(rerankCtx.Err(), context.DeadlineExceeded)
+				rerankCancel()
+				if rerankCutoff || errors.Is(shadowCtx.Err(), context.DeadlineExceeded) {
+					rerankErr = context.DeadlineExceeded
+				}
+			}
+		}
+		if rerankErr != nil || errors.Is(shadowCtx.Err(), context.DeadlineExceeded) {
 			rerankStatus = "fallback"
-			if rerankCutoff || errors.Is(shadowCtx.Err(), context.DeadlineExceeded) {
+			if errors.Is(rerankErr, context.DeadlineExceeded) ||
+				errors.Is(shadowCtx.Err(), context.DeadlineExceeded) {
 				fallbackCode = "HARD_CUTOFF"
 			} else if errors.Is(rerankErr, errHybridProviderTextRedacted) {
 				fallbackCode = "SECRET_REDACTED"
 			} else if fallbackCode == "NONE" {
 				fallbackCode = "RERANK_FAILED"
 			}
-			ordered = append([]HybridShadowCandidate(nil), prepared.Candidates...)
+			scored = []hybridShadowScoredCandidate{}
 			reranked = []HybridShadowRankedItem{}
-		} else {
+		} else if len(reranked) > 0 {
 			rerankStatus = "applied"
 		}
+	} else if policy.MemoryToolRouteRequired {
+		routed, routeErr := awaitHybridMemoryToolRoute(shadowCtx, memoryToolRoute)
+		switch {
+		case routeErr != nil:
+			fallbackCode = "MEMORY_TOOL_ROUTE_FAILED"
+		case routed:
+			fallbackCode = "MEMORY_TOOL_ROUTE_EMPTY"
+		default:
+			fallbackCode = "MEMORY_TOOL_ROUTE_ABSTAINED"
+		}
 	}
-	final, estimatedTokens := selectHybridShadowFinal(ordered)
+	final, estimatedTokens := selectHybridShadowFinal(
+		scored,
+		policy.MinimumFinalRelevanceScore,
+	)
+	if rerankStatus == "applied" && len(reranked) > 0 && len(final) == 0 &&
+		fallbackCode == "NONE" {
+		fallbackCode = "RELEVANCE_FINAL_ABSTAINED"
+	}
 	targetExceeded := estimatedTokens > HybridShadowTargetTokens
 	durationMillis := boundedHybridDuration(time.Since(startedAt))
 	summary, err := repository.RecordHybridShadow(shadowCtx, HybridShadowRecordInput{
@@ -195,26 +292,36 @@ func rerankHybridCandidates(
 	provider HybridShadowProvider,
 	query string,
 	candidates []HybridShadowCandidate,
-) ([]HybridShadowCandidate, []HybridShadowRankedItem, error) {
-	query = RedactMemoryProviderText(query, true)
-	if strings.TrimSpace(query) == "" {
-		return nil, nil, errHybridProviderTextRedacted
+) ([]hybridShadowScoredCandidate, []HybridShadowRankedItem, error) {
+	redactedQuery, documents, err := redactHybridProviderPayload(query, candidates)
+	if err != nil {
+		return nil, nil, err
 	}
-	documents := make([]string, len(candidates))
-	for index, candidate := range candidates {
-		documents[index] = RedactMemoryProviderText(candidate.Content, true)
-		if strings.TrimSpace(documents[index]) == "" {
-			return nil, nil, errHybridProviderTextRedacted
-		}
-	}
+	return rerankHybridCandidatesWithPayload(
+		ctx,
+		provider,
+		redactedQuery,
+		documents,
+		candidates,
+	)
+}
+
+func rerankHybridCandidatesWithPayload(
+	ctx context.Context,
+	provider HybridShadowProvider,
+	query string,
+	documents []string,
+	candidates []HybridShadowCandidate,
+) ([]hybridShadowScoredCandidate, []HybridShadowRankedItem, error) {
 	results, err := provider.Rerank(ctx, query, documents)
-	if err != nil || len(results) != len(candidates) {
+	if err != nil || ctx.Err() != nil || len(results) != len(candidates) {
 		return nil, nil, ragproviders.ErrRerankUnavailable
 	}
 	seen := make(map[int]struct{}, len(results))
 	for _, result := range results {
 		if result.Index < 0 || result.Index >= len(candidates) ||
-			math.IsNaN(result.RelevanceScore) || math.IsInf(result.RelevanceScore, 0) {
+			math.IsNaN(result.RelevanceScore) || math.IsInf(result.RelevanceScore, 0) ||
+			result.RelevanceScore < 0 || result.RelevanceScore > 1 {
 			return nil, nil, ragproviders.ErrRerankInvalid
 		}
 		if _, duplicate := seen[result.Index]; duplicate {
@@ -228,23 +335,295 @@ func rerankHybridCandidates(
 		}
 		return results[i].RelevanceScore > results[j].RelevanceScore
 	})
-	ordered := make([]HybridShadowCandidate, 0, len(results))
+	ordered := make([]hybridShadowScoredCandidate, 0, len(results))
 	reranked := make([]HybridShadowRankedItem, 0, len(results))
 	for _, result := range results {
 		candidate := candidates[result.Index]
-		ordered = append(ordered, candidate)
+		ordered = append(ordered, hybridShadowScoredCandidate{
+			Candidate:        candidate,
+			CandidateOrdinal: result.Index,
+			RelevanceScore:   result.RelevanceScore,
+		})
 		reranked = append(reranked, hybridRankedItem(candidate))
 	}
 	return ordered, reranked, nil
 }
 
-func selectHybridShadowFinal(candidates []HybridShadowCandidate) ([]HybridShadowRankedItem, int) {
+type hybridShadowScoredCandidate struct {
+	Candidate        HybridShadowCandidate
+	CandidateOrdinal int
+	RelevanceScore   float64
+}
+
+type hybridRerankStageResult struct {
+	scored   []hybridShadowScoredCandidate
+	reranked []HybridShadowRankedItem
+	err      error
+}
+
+type hybridJudgeStageResult struct {
+	selected []int
+	err      error
+}
+
+type hybridMemoryToolRouteStageResult struct {
+	useMemory bool
+	err       error
+}
+
+func executeHybridCandidateStages(
+	ctx context.Context,
+	provider HybridShadowProvider,
+	judge HybridCandidateJudge,
+	memoryToolRoute <-chan hybridMemoryToolRouteStageResult,
+	policy HybridShadowRelevancePolicy,
+	query string,
+	candidates []HybridShadowCandidate,
+) ([]hybridShadowScoredCandidate, []HybridShadowRankedItem, string, error) {
+	redactedQuery, documents, err := redactHybridProviderPayload(query, candidates)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	if !policy.CloudCandidateJudgeRequired && !policy.MemoryToolRouteRequired {
+		scored, reranked, rerankErr := rerankHybridCandidatesWithPayload(
+			ctx,
+			provider,
+			redactedQuery,
+			documents,
+			candidates,
+		)
+		return scored, reranked, "", rerankErr
+	}
+	if policy.MemoryToolRouteRequired {
+		rerankResult := make(chan hybridRerankStageResult, 1)
+		go func() {
+			scored, reranked, stageErr := rerankHybridCandidatesWithPayload(
+				ctx,
+				provider,
+				redactedQuery,
+				documents,
+				candidates,
+			)
+			rerankResult <- hybridRerankStageResult{
+				scored: scored, reranked: reranked, err: stageErr,
+			}
+		}()
+		var reranked hybridRerankStageResult
+		var routed hybridMemoryToolRouteStageResult
+		for completed := 0; completed < 2; completed++ {
+			select {
+			case reranked = <-rerankResult:
+			case routed = <-memoryToolRoute:
+			case <-ctx.Done():
+				return nil, nil, "MEMORY_TOOL_ROUTE_FAILED", context.DeadlineExceeded
+			}
+		}
+		if ctx.Err() != nil {
+			return nil, nil, "MEMORY_TOOL_ROUTE_FAILED", context.DeadlineExceeded
+		}
+		if reranked.err != nil {
+			return nil, nil, "RERANK_FAILED", reranked.err
+		}
+		if routed.err != nil {
+			return nil, nil, "MEMORY_TOOL_ROUTE_FAILED", routed.err
+		}
+		if !routed.useMemory {
+			return []hybridShadowScoredCandidate{}, reranked.reranked,
+				"MEMORY_TOOL_ROUTE_ABSTAINED", nil
+		}
+		return reranked.scored, reranked.reranked, "", nil
+	}
+	if judge == nil {
+		return nil, nil, "CANDIDATE_JUDGE_FAILED", errors.New("hybrid candidate judge is unavailable")
+	}
+
+	rerankResult := make(chan hybridRerankStageResult, 1)
+	judgeResult := make(chan hybridJudgeStageResult, 1)
+	go func() {
+		scored, reranked, stageErr := rerankHybridCandidatesWithPayload(
+			ctx,
+			provider,
+			redactedQuery,
+			documents,
+			candidates,
+		)
+		rerankResult <- hybridRerankStageResult{
+			scored: scored, reranked: reranked, err: stageErr,
+		}
+	}()
+	go func() {
+		selected, stageErr := judgeHybridCandidates(
+			ctx,
+			judge,
+			policy.CloudCandidateJudgeModelID,
+			redactedQuery,
+			documents,
+		)
+		judgeResult <- hybridJudgeStageResult{selected: selected, err: stageErr}
+	}()
+
+	var reranked hybridRerankStageResult
+	var judged hybridJudgeStageResult
+	for completed := 0; completed < 2; completed++ {
+		select {
+		case reranked = <-rerankResult:
+		case judged = <-judgeResult:
+		case <-ctx.Done():
+			return nil, nil, "CANDIDATE_JUDGE_FAILED", context.DeadlineExceeded
+		}
+	}
+	if ctx.Err() != nil {
+		return nil, nil, "CANDIDATE_JUDGE_FAILED", context.DeadlineExceeded
+	}
+	if reranked.err != nil {
+		return nil, nil, "RERANK_FAILED", reranked.err
+	}
+	if judged.err != nil {
+		return nil, nil, "CANDIDATE_JUDGE_FAILED", judged.err
+	}
+	selected := intersectHybridJudgeSelection(reranked.scored, judged.selected)
+	if len(selected) == 0 {
+		return selected, reranked.reranked, "CANDIDATE_JUDGE_ABSTAINED", nil
+	}
+	return selected, reranked.reranked, "", nil
+}
+
+func startHybridMemoryToolRoute(
+	ctx context.Context,
+	router HybridMemoryToolRouter,
+	policy HybridShadowRelevancePolicy,
+	query string,
+) <-chan hybridMemoryToolRouteStageResult {
+	if !policy.MemoryToolRouteRequired {
+		return nil
+	}
+	result := make(chan hybridMemoryToolRouteStageResult, 1)
+	go func() {
+		useMemory, err := routeHybridMemory(
+			ctx,
+			router,
+			policy.MemoryToolRouteModelID,
+			query,
+		)
+		result <- hybridMemoryToolRouteStageResult{useMemory: useMemory, err: err}
+	}()
+	return result
+}
+
+func awaitHybridMemoryToolRoute(
+	ctx context.Context,
+	result <-chan hybridMemoryToolRouteStageResult,
+) (bool, error) {
+	if result == nil {
+		return false, errors.New("hybrid Memory Tool route is unavailable")
+	}
+	select {
+	case routed := <-result:
+		return routed.useMemory, routed.err
+	case <-ctx.Done():
+		return false, context.DeadlineExceeded
+	}
+}
+
+func routeHybridMemory(
+	ctx context.Context,
+	router HybridMemoryToolRouter,
+	expectedModelID string,
+	query string,
+) (bool, error) {
+	query = RedactMemoryProviderText(query, true)
+	if router == nil || strings.TrimSpace(query) == "" {
+		return false, errors.New("hybrid Memory Tool route is unavailable")
+	}
+	result, err := router.RouteHybridMemory(ctx, HybridMemoryToolRouteInput{Query: query})
+	if err != nil || ctx.Err() != nil {
+		return false, errors.New("hybrid Memory Tool route request failed")
+	}
+	if result.ModelID != expectedModelID ||
+		result.ContractVersion != HybridMemoryToolContractVersion ||
+		result.ContractSHA256 != HybridMemoryToolContractSHA256 {
+		return false, errors.New("hybrid Memory Tool route provenance drifted")
+	}
+	return result.UseMemory, nil
+}
+
+func redactHybridProviderPayload(
+	query string,
+	candidates []HybridShadowCandidate,
+) (string, []string, error) {
+	query = RedactMemoryProviderText(query, true)
+	if strings.TrimSpace(query) == "" {
+		return "", nil, errHybridProviderTextRedacted
+	}
+	documents := make([]string, len(candidates))
+	for index, candidate := range candidates {
+		documents[index] = RedactMemoryProviderText(candidate.Content, true)
+		if strings.TrimSpace(documents[index]) == "" {
+			return "", nil, errHybridProviderTextRedacted
+		}
+	}
+	return query, documents, nil
+}
+
+func judgeHybridCandidates(
+	ctx context.Context,
+	judge HybridCandidateJudge,
+	expectedModelID string,
+	query string,
+	documents []string,
+) ([]int, error) {
+	candidates := make([]HybridCandidateJudgeCandidate, len(documents))
+	for ordinal, content := range documents {
+		candidates[ordinal] = HybridCandidateJudgeCandidate{
+			Ordinal: ordinal,
+			Content: content,
+		}
+	}
+	result, err := judge.JudgeHybridCandidates(ctx, HybridCandidateJudgeInput{
+		Query: query, Candidates: candidates,
+	})
+	if err != nil || ctx.Err() != nil {
+		return nil, errors.New("hybrid candidate judge request failed")
+	}
+	if result.ModelID != expectedModelID ||
+		result.PromptVersion != HybridCandidateJudgePromptVersion ||
+		result.PromptSHA256 != HybridCandidateJudgePromptSHA256 {
+		return nil, errors.New("hybrid candidate judge provenance drifted")
+	}
+	return DecodeHybridCandidateJudgeOutput(result.RawOutput, len(documents))
+}
+
+func intersectHybridJudgeSelection(
+	ordered []hybridShadowScoredCandidate,
+	selectedOrdinals []int,
+) []hybridShadowScoredCandidate {
+	selected := make(map[int]struct{}, len(selectedOrdinals))
+	for _, ordinal := range selectedOrdinals {
+		selected[ordinal] = struct{}{}
+	}
+	result := make([]hybridShadowScoredCandidate, 0, len(selected))
+	for _, candidate := range ordered {
+		if _, ok := selected[candidate.CandidateOrdinal]; ok {
+			result = append(result, candidate)
+		}
+	}
+	return result
+}
+
+func selectHybridShadowFinal(
+	candidates []hybridShadowScoredCandidate,
+	minimumRelevanceScore float64,
+) ([]HybridShadowRankedItem, int) {
 	selected := make([]HybridShadowRankedItem, 0, min(len(candidates), HybridShadowFinalLimit))
 	tokens := 0
-	for _, candidate := range candidates {
+	for _, scored := range candidates {
 		if len(selected) == HybridShadowFinalLimit {
 			break
 		}
+		if scored.RelevanceScore < minimumRelevanceScore {
+			continue
+		}
+		candidate := scored.Candidate
 		cost := estimateHybridMemoryTokens(candidate.Content)
 		if cost <= 0 || cost > HybridShadowMaximumTokens || tokens+cost > HybridShadowMaximumTokens {
 			continue
@@ -253,6 +632,266 @@ func selectHybridShadowFinal(candidates []HybridShadowCandidate) ([]HybridShadow
 		tokens += cost
 	}
 	return selected, tokens
+}
+
+func HybridShadowCalibrationPolicy() HybridShadowRelevancePolicy {
+	return HybridShadowRelevancePolicy{
+		ID: HybridRelevanceCalibrationPolicyID, Mode: hybridPolicyModeCalibration,
+		MinimumProviderSimilarity: -1, MinimumFinalRelevanceScore: 0,
+	}
+}
+
+func HybridShadowIntentCalibrationPolicy() HybridShadowRelevancePolicy {
+	return HybridShadowRelevancePolicy{
+		ID:                         HybridRelevanceIntentCalibrationPolicyID,
+		Mode:                       hybridPolicyModeIntentCalibration,
+		MemoryIntentRequired:       true,
+		MinimumMemoryIntentMargin:  -1,
+		MinimumProviderSimilarity:  -1,
+		MinimumFinalRelevanceScore: 0,
+	}
+}
+
+func HybridShadowCloudJudgeCalibrationPolicy(
+	modelID string,
+) HybridShadowRelevancePolicy {
+	return HybridShadowRelevancePolicy{
+		ID:                          HybridRelevanceCloudJudgeCalibrationPolicyID,
+		Mode:                        hybridPolicyModeCloudJudgeCalibration,
+		CloudCandidateJudgeRequired: true,
+		CloudCandidateJudgeModelID:  strings.TrimSpace(modelID),
+		MinimumProviderSimilarity:   -1,
+		MinimumFinalRelevanceScore:  0,
+	}
+}
+
+func HybridShadowMemoryToolRouteCalibrationPolicy(
+	modelID string,
+) HybridShadowRelevancePolicy {
+	return HybridShadowRelevancePolicy{
+		ID:                         HybridRelevanceMemoryToolRoutePolicyID,
+		Mode:                       hybridPolicyModeMemoryToolRoute,
+		MemoryToolRouteRequired:    true,
+		MemoryToolRouteModelID:     strings.TrimSpace(modelID),
+		MinimumProviderSimilarity:  -1,
+		MinimumFinalRelevanceScore: 0,
+	}
+}
+
+func HybridShadowFrozenPolicy() (HybridShadowRelevancePolicy, bool) {
+	if !hybridFrozenPolicyReady {
+		return HybridShadowRelevancePolicy{}, false
+	}
+	return HybridShadowRelevancePolicy{
+		ID: HybridRelevanceFrozenPolicyID, Mode: hybridPolicyModeFrozen,
+		MemoryIntentRequired:       true,
+		MinimumMemoryIntentMargin:  float64(hybridFrozenMemoryIntentMarginBP) / 100,
+		MinimumProviderSimilarity:  float64(hybridFrozenProviderSimilarityBP) / 100,
+		MinimumFinalRelevanceScore: float64(hybridFrozenFinalRelevanceBP) / 100,
+	}, true
+}
+
+func DescribeHybridShadowRelevancePolicy(
+	policy HybridShadowRelevancePolicy,
+) (HybridShadowRelevancePolicyDescriptor, bool) {
+	policy, ok := validHybridShadowRelevancePolicy(policy)
+	if !ok {
+		return HybridShadowRelevancePolicyDescriptor{}, false
+	}
+	providerBasisPoints := int(math.Round(policy.MinimumProviderSimilarity * 100))
+	finalBasisPoints := int(math.Round(policy.MinimumFinalRelevanceScore * 100))
+	intentBasisPoints := int(math.Round(policy.MinimumMemoryIntentMargin * 100))
+	if math.Abs(float64(providerBasisPoints)/100-policy.MinimumProviderSimilarity) > 1e-9 ||
+		math.Abs(float64(finalBasisPoints)/100-policy.MinimumFinalRelevanceScore) > 1e-9 ||
+		math.Abs(float64(intentBasisPoints)/100-policy.MinimumMemoryIntentMargin) > 1e-9 {
+		return HybridShadowRelevancePolicyDescriptor{}, false
+	}
+	return HybridShadowRelevancePolicyDescriptor{
+		ID: policy.ID, Mode: policy.Mode,
+		MemoryIntentRequired:        policy.MemoryIntentRequired,
+		CloudCandidateJudgeRequired: policy.CloudCandidateJudgeRequired,
+		CloudCandidateJudgeModelID:  policy.CloudCandidateJudgeModelID,
+		CloudCandidateJudgePromptVersion: func() string {
+			if policy.CloudCandidateJudgeRequired {
+				return HybridCandidateJudgePromptVersion
+			}
+			return "none"
+		}(),
+		CloudCandidateJudgePromptSHA256: func() string {
+			if policy.CloudCandidateJudgeRequired {
+				return HybridCandidateJudgePromptSHA256
+			}
+			return "none"
+		}(),
+		CloudCandidateJudgeDecodingProfile: func() string {
+			if policy.CloudCandidateJudgeRequired {
+				return HybridCandidateJudgeDecodingProfile
+			}
+			return "none"
+		}(),
+		MemoryToolRouteRequired: policy.MemoryToolRouteRequired,
+		MemoryToolRouteModelID:  policy.MemoryToolRouteModelID,
+		MemoryToolRouteContractVersion: func() string {
+			if policy.MemoryToolRouteRequired {
+				return HybridMemoryToolContractVersion
+			}
+			return "none"
+		}(),
+		MemoryToolRouteContractSHA256: func() string {
+			if policy.MemoryToolRouteRequired {
+				return HybridMemoryToolContractSHA256
+			}
+			return "none"
+		}(),
+		MemoryToolRouteDecodingProfile: func() string {
+			if policy.MemoryToolRouteRequired {
+				return HybridMemoryToolDecodingProfile
+			}
+			return "none"
+		}(),
+		MemoryToolRouteMaximumOutputTokens: func() int {
+			if policy.MemoryToolRouteRequired {
+				return HybridMemoryToolMaximumOutputTokens
+			}
+			return 0
+		}(),
+		MemoryToolRouteTemperature: func() float64 {
+			if policy.MemoryToolRouteRequired {
+				return HybridMemoryToolTemperature
+			}
+			return 0
+		}(),
+		MemoryToolRouteDisableThinking: policy.MemoryToolRouteRequired &&
+			HybridMemoryToolDisableThinking,
+		MemoryIntentAnchorVersion: func() string {
+			if policy.MemoryIntentRequired {
+				return ragproviders.MemoryIntentAnchorVersion
+			}
+			return "none"
+		}(),
+		MemoryIntentAnchorSHA256: func() string {
+			if policy.MemoryIntentRequired {
+				return ragproviders.MemoryIntentAnchorSHA256
+			}
+			return "none"
+		}(),
+		MinimumMemoryIntentMarginBasisPoints: intentBasisPoints,
+		MinimumProviderSimilarityBasisPoints: providerBasisPoints,
+		MinimumFinalRelevanceBasisPoints:     finalBasisPoints,
+	}, true
+}
+
+func validHybridShadowRelevancePolicy(
+	policy HybridShadowRelevancePolicy,
+) (HybridShadowRelevancePolicy, bool) {
+	if !lexicalShadowResultCodeRE.MatchString(strings.ToUpper(policy.ID)) ||
+		math.IsNaN(policy.MinimumMemoryIntentMargin) ||
+		math.IsInf(policy.MinimumMemoryIntentMargin, 0) ||
+		policy.MinimumMemoryIntentMargin < -1 || policy.MinimumMemoryIntentMargin > 1 ||
+		math.IsNaN(policy.MinimumProviderSimilarity) ||
+		math.IsInf(policy.MinimumProviderSimilarity, 0) ||
+		policy.MinimumProviderSimilarity < -1 || policy.MinimumProviderSimilarity > 1 ||
+		math.IsNaN(policy.MinimumFinalRelevanceScore) ||
+		math.IsInf(policy.MinimumFinalRelevanceScore, 0) ||
+		policy.MinimumFinalRelevanceScore < 0 || policy.MinimumFinalRelevanceScore > 1 {
+		return HybridShadowRelevancePolicy{}, false
+	}
+	switch policy.Mode {
+	case hybridPolicyModeCalibration:
+		if policy.ID != HybridRelevanceCalibrationPolicyID ||
+			policy.MemoryIntentRequired || policy.CloudCandidateJudgeRequired ||
+			policy.CloudCandidateJudgeModelID != "" || policy.MemoryToolRouteRequired ||
+			policy.MemoryToolRouteModelID != "" || policy.MinimumMemoryIntentMargin != 0 ||
+			policy.MinimumProviderSimilarity != -1 || policy.MinimumFinalRelevanceScore != 0 {
+			return HybridShadowRelevancePolicy{}, false
+		}
+	case hybridPolicyModeIntentCalibration:
+		if policy.ID != HybridRelevanceIntentCalibrationPolicyID ||
+			!policy.MemoryIntentRequired || policy.CloudCandidateJudgeRequired ||
+			policy.CloudCandidateJudgeModelID != "" || policy.MemoryToolRouteRequired ||
+			policy.MemoryToolRouteModelID != "" || policy.MinimumMemoryIntentMargin != -1 ||
+			policy.MinimumProviderSimilarity != -1 || policy.MinimumFinalRelevanceScore != 0 {
+			return HybridShadowRelevancePolicy{}, false
+		}
+	case hybridPolicyModeCloudJudgeCalibration:
+		if policy.ID != HybridRelevanceCloudJudgeCalibrationPolicyID ||
+			policy.MemoryIntentRequired || !policy.CloudCandidateJudgeRequired ||
+			!validHybridCandidateJudgeModelID(policy.CloudCandidateJudgeModelID) ||
+			policy.MemoryToolRouteRequired || policy.MemoryToolRouteModelID != "" ||
+			policy.MinimumMemoryIntentMargin != 0 ||
+			policy.MinimumProviderSimilarity != -1 ||
+			policy.MinimumFinalRelevanceScore != 0 {
+			return HybridShadowRelevancePolicy{}, false
+		}
+	case hybridPolicyModeMemoryToolRoute:
+		if policy.ID != HybridRelevanceMemoryToolRoutePolicyID ||
+			policy.MemoryIntentRequired || policy.CloudCandidateJudgeRequired ||
+			policy.CloudCandidateJudgeModelID != "" || !policy.MemoryToolRouteRequired ||
+			!validHybridCandidateJudgeModelID(policy.MemoryToolRouteModelID) ||
+			policy.MinimumMemoryIntentMargin != 0 ||
+			policy.MinimumProviderSimilarity != -1 ||
+			policy.MinimumFinalRelevanceScore != 0 {
+			return HybridShadowRelevancePolicy{}, false
+		}
+	case hybridPolicyModeFrozen:
+		if policy.ID != HybridRelevanceFrozenPolicyID || !policy.MemoryIntentRequired ||
+			policy.CloudCandidateJudgeRequired || policy.CloudCandidateJudgeModelID != "" ||
+			policy.MemoryToolRouteRequired || policy.MemoryToolRouteModelID != "" {
+			return HybridShadowRelevancePolicy{}, false
+		}
+	default:
+		return HybridShadowRelevancePolicy{}, false
+	}
+	return policy, true
+}
+
+func validHybridCandidateJudgeModelID(value string) bool {
+	if value == "" || value != strings.TrimSpace(value) || len(value) > 128 {
+		return false
+	}
+	for _, character := range value {
+		if character < 0x20 || character == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+func classifyHybridMemoryIntent(
+	ctx context.Context,
+	provider HybridShadowProvider,
+	query string,
+) (ragproviders.MemoryIntentSignal, error) {
+	query = RedactMemoryProviderText(query, true)
+	if strings.TrimSpace(query) == "" || provider == nil {
+		return ragproviders.MemoryIntentSignal{}, ragproviders.ErrMemoryIntentUnavailable
+	}
+	classifier, ok := provider.(ragproviders.MemoryIntentClassifier)
+	if !ok || classifier == nil {
+		return ragproviders.MemoryIntentSignal{}, ragproviders.ErrMemoryIntentUnavailable
+	}
+	signal, err := classifier.ClassifyMemoryIntent(ctx, query)
+	if err != nil || ctx.Err() != nil ||
+		signal.AnchorVersion != ragproviders.MemoryIntentAnchorVersion ||
+		signal.AnchorSHA256 != ragproviders.MemoryIntentAnchorSHA256 ||
+		math.IsNaN(signal.PositiveScore) || math.IsInf(signal.PositiveScore, 0) ||
+		signal.PositiveScore < 0 || signal.PositiveScore > 1 ||
+		math.IsNaN(signal.NegativeScore) || math.IsInf(signal.NegativeScore, 0) ||
+		signal.NegativeScore < 0 || signal.NegativeScore > 1 ||
+		math.IsNaN(signal.Margin) || math.IsInf(signal.Margin, 0) ||
+		signal.Margin < -1 || signal.Margin > 1 ||
+		math.Abs(signal.Margin-(signal.PositiveScore-signal.NegativeScore)) > 1e-9 {
+		return ragproviders.MemoryIntentSignal{}, ragproviders.ErrMemoryIntentInvalid
+	}
+	return signal, nil
+}
+
+func validHybridShadowAdmission(value HybridShadowAdmission, expected int) bool {
+	return expected > 0 && value.CandidateCount == expected &&
+		value.VectorCandidateCount == expected &&
+		!math.IsNaN(value.MaximumVectorSimilarity) &&
+		!math.IsInf(value.MaximumVectorSimilarity, 0) &&
+		value.MaximumVectorSimilarity >= -1 && value.MaximumVectorSimilarity <= 1
 }
 
 func estimateHybridMemoryTokens(value string) int {

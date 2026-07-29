@@ -7,20 +7,25 @@ import (
 )
 
 const (
-	MaxMemories             = 500
-	MaxContentChars         = 2000
-	MaxTags                 = 12
-	MaxTagChars             = 40
-	MaxSearchResults        = 5
-	MaxExtractedItems       = 5
-	MaxActionTargets        = 5
-	MaxActivityPage         = 100
-	MaxLexicalShadowResults = 20
-	MaxHybridShadowResults  = 20
-	DirectActionSchemaMajor = 1
-	LexicalShadowProfileID  = "memory_lexical_cjk_bm25_v1"
-	HybridShadowProfileID   = "memory_hybrid_bge_m3_rrf60_v1"
-	HybridEmbeddingProfile  = "siliconflow_bge_m3_v1"
+	MaxMemories                                  = 500
+	MaxContentChars                              = 2000
+	MaxTags                                      = 12
+	MaxTagChars                                  = 40
+	MaxSearchResults                             = 5
+	MaxExtractedItems                            = 5
+	MaxActionTargets                             = 5
+	MaxActivityPage                              = 100
+	MaxLexicalShadowResults                      = 20
+	MaxHybridShadowResults                       = 20
+	DirectActionSchemaMajor                      = 1
+	LexicalShadowProfileID                       = "memory_lexical_cjk_bm25_v1"
+	HybridShadowProfileID                        = "memory_hybrid_bge_m3_rrf60_v1"
+	HybridEmbeddingProfile                       = "siliconflow_bge_m3_v1"
+	HybridRelevanceCalibrationPolicyID           = "memory_hybrid_relevance_calibration_v1"
+	HybridRelevanceIntentCalibrationPolicyID     = "memory_hybrid_relevance_intent_calibration_v1"
+	HybridRelevanceCloudJudgeCalibrationPolicyID = "memory_hybrid_cloud_candidate_judge_calibration_v1"
+	HybridRelevanceMemoryToolRoutePolicyID       = "memory_hybrid_main_model_tool_route_calibration_v1"
+	HybridRelevanceFrozenPolicyID                = "memory_hybrid_relevance_intent_abstention_v1"
 )
 
 var (
@@ -72,6 +77,14 @@ type LexicalShadowRepository interface {
 type HybridShadowRepository interface {
 	PrepareHybridShadow(context.Context, HybridShadowPrepareInput) (HybridShadowPreparation, error)
 	RecordHybridShadow(context.Context, HybridShadowRecordInput) (HybridShadowSummary, error)
+}
+
+// HybridShadowAdmissionRepository reauthorizes the prepared RRF surface and
+// derives one request-local vector signal before any Memory plaintext reaches
+// the hosted reranker. Implementations must not persist the query vector or
+// raw similarity.
+type HybridShadowAdmissionRepository interface {
+	AuthorizeHybridRerank(context.Context, HybridShadowAdmissionInput) (HybridShadowAdmission, error)
 }
 
 // L2SceneRepository exposes only authenticated Scene search capabilities.
@@ -353,9 +366,63 @@ type HybridShadowRankedItem struct {
 }
 
 type HybridShadowPreparation struct {
-	Summary    HybridShadowSummary
-	Replayed   bool
-	Candidates []HybridShadowCandidate
+	ObservationID string
+	Summary       HybridShadowSummary
+	Replayed      bool
+	Candidates    []HybridShadowCandidate
+}
+
+type HybridShadowAdmissionInput struct {
+	ObservationID      string
+	AssistantMessageID string
+	QueryHash          string
+	QueryEmbedding     []float32
+}
+
+type HybridShadowAdmission struct {
+	CandidateCount          int
+	VectorCandidateCount    int
+	MaximumVectorSimilarity float64
+}
+
+// HybridShadowRelevancePolicy is immutable request-selection authority. A
+// calibration policy is allowed only by the isolated regression runner; the
+// Server composition root installs no policy until frozen thresholds exist.
+type HybridShadowRelevancePolicy struct {
+	ID                          string
+	Mode                        string
+	MemoryIntentRequired        bool
+	CloudCandidateJudgeRequired bool
+	CloudCandidateJudgeModelID  string
+	MemoryToolRouteRequired     bool
+	MemoryToolRouteModelID      string
+	MinimumMemoryIntentMargin   float64
+	MinimumProviderSimilarity   float64
+	MinimumFinalRelevanceScore  float64
+}
+
+type HybridShadowRelevancePolicyDescriptor struct {
+	ID                                   string
+	Mode                                 string
+	MemoryIntentRequired                 bool
+	MemoryIntentAnchorVersion            string
+	MemoryIntentAnchorSHA256             string
+	CloudCandidateJudgeRequired          bool
+	CloudCandidateJudgeModelID           string
+	CloudCandidateJudgePromptVersion     string
+	CloudCandidateJudgePromptSHA256      string
+	CloudCandidateJudgeDecodingProfile   string
+	MemoryToolRouteRequired              bool
+	MemoryToolRouteModelID               string
+	MemoryToolRouteContractVersion       string
+	MemoryToolRouteContractSHA256        string
+	MemoryToolRouteDecodingProfile       string
+	MemoryToolRouteMaximumOutputTokens   int
+	MemoryToolRouteTemperature           float64
+	MemoryToolRouteDisableThinking       bool
+	MinimumMemoryIntentMarginBasisPoints int
+	MinimumProviderSimilarityBasisPoints int
+	MinimumFinalRelevanceBasisPoints     int
 }
 
 type HybridShadowRecordInput struct {

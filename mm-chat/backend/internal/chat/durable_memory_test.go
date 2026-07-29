@@ -182,6 +182,43 @@ func TestPrepareDurableMemoryInjectsOnlyRelevantEntries(t *testing.T) {
 	}
 }
 
+func TestPrepareDurableMemoryHybridPolicyUnavailableMakesZeroHybridCalls(t *testing.T) {
+	repo := &chatMemoryRepository{
+		settings: usermemory.Settings{Enabled: true, SearchEnabled: true},
+		memories: []usermemory.Memory{chatMemoryFixture(
+			"11111111-1111-4111-8111-111111111111",
+			"preference",
+			"Keep answers concise",
+			5,
+		)},
+	}
+	handler := NewHandler(
+		NewService(&fakeRepository{}),
+		WithUserMemoryService(usermemory.NewService(repo)),
+		WithMemoryLexicalShadowEnabled(true),
+		WithMemoryHybridShadowEnabled(true),
+	)
+	systemPrompt, preparation := handler.prepareDurableMemory(
+		context.Background(), "Please keep this concise",
+		"33333333-3333-4333-8333-333333333333",
+		"44444444-4444-4444-8444-444444444444",
+		"Base instruction",
+	)
+	if repo.hybridCalls != 0 || repo.shadowCalls != 0 ||
+		!strings.Contains(systemPrompt, "Keep answers concise") {
+		t.Fatalf("unavailable policy changed v1 = prompt:%q repo:%#v", systemPrompt, repo)
+	}
+	payload, err := json.Marshal(withDurableMemoryMetadata(nil, preparation))
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded := string(payload)
+	if !strings.Contains(encoded, `"resultCode":"POLICY_UNAVAILABLE"`) ||
+		strings.Contains(encoded, "Keep answers concise") {
+		t.Fatalf("unavailable policy metadata = %s", encoded)
+	}
+}
+
 func TestPrepareDurableMemoryShadowFailureDoesNotChangePromptOrV1Usage(t *testing.T) {
 	repo := &chatMemoryRepository{
 		settings: usermemory.Settings{Enabled: true, SearchEnabled: true},
@@ -256,7 +293,14 @@ func TestPrepareDurableMemoryHybridShadowNeverChangesPromptUsageAndWinsFlagPrece
 	}
 	handler := NewHandler(
 		NewService(&fakeRepository{}),
-		WithUserMemoryService(usermemory.NewService(repo)),
+		WithUserMemoryService(usermemory.NewService(
+			repo,
+			usermemory.WithHybridShadowRelevancePolicy(usermemory.HybridShadowRelevancePolicy{
+				ID: usermemory.HybridRelevanceFrozenPolicyID, Mode: "frozen",
+				MemoryIntentRequired: true, MinimumMemoryIntentMargin: 0,
+				MinimumProviderSimilarity: 0.5, MinimumFinalRelevanceScore: 0.5,
+			}),
+		)),
 		WithMemoryLexicalShadowEnabled(true),
 		WithMemoryHybridShadowEnabled(true),
 	)

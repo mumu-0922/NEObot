@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"testing"
@@ -118,6 +119,9 @@ func TestProviderGatewayMinerUAllocateAndPollUseClosedUpstreamRequests(t *testin
 }
 
 func TestProviderGatewaySiliconFlowUsesFrozenProBGEProfile(t *testing.T) {
+	if MemoryIntentAnchorSHA256 != "fecd3beadb4e3895ebc8b05a4c62fb3a0bb35fb8e88110db7c960164ed6a9fed" {
+		t.Fatalf("Memory intent anchor hash drift = %s", MemoryIntentAnchorSHA256)
+	}
 	resolver := &gatewayCredentialResolver{credential: providerGatewayTestCredential}
 	var embeddingCalls int
 	gateway := NewProviderGateway(
@@ -225,9 +229,7 @@ func TestProviderGatewaySiliconFlowUsesFrozenProBGEProfile(t *testing.T) {
 		[]string{"first source", "second source"},
 	)
 	if err != nil || len(reranked) != 2 || reranked[0].Index != 1 ||
-		reranked[1].Index != 0 || embeddingCalls != 2 ||
-		strings.Join(resolver.providers, ",") !=
-			"siliconflow,siliconflow,siliconflow" {
+		reranked[1].Index != 0 || embeddingCalls != 2 {
 		t.Fatalf(
 			"reranked=%#v err=%v embeddingCalls=%d providers=%v",
 			reranked,
@@ -235,6 +237,15 @@ func TestProviderGatewaySiliconFlowUsesFrozenProBGEProfile(t *testing.T) {
 			embeddingCalls,
 			resolver.providers,
 		)
+	}
+	intent, err := profile.ClassifyMemoryIntent(context.Background(), " semantic query ")
+	if err != nil || intent.AnchorVersion != MemoryIntentAnchorVersion ||
+		intent.AnchorSHA256 != MemoryIntentAnchorSHA256 ||
+		intent.PositiveScore != 0.1 || intent.NegativeScore != 0.9 ||
+		math.Abs(intent.Margin-(-0.8)) > 1e-9 ||
+		strings.Join(resolver.providers, ",") !=
+			"siliconflow,siliconflow,siliconflow,siliconflow" {
+		t.Fatalf("intent=%#v err=%v providers=%v", intent, err, resolver.providers)
 	}
 }
 

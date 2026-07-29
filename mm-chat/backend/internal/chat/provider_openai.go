@@ -52,6 +52,20 @@ func (p *OpenAIProvider) ModelBuiltInSearchID() websearch.ModelBuiltInProviderID
 	return websearch.ModelBuiltInOpenAI
 }
 
+// PlanTools uses the official Chat Completions surface without the
+// OpenAI-compatible enable_thinking extension. The route contract still asks
+// for thinking to be disabled; official OpenAI models are bounded through the
+// exact model, temperature, and output-token fields they support.
+func (p *OpenAIProvider) PlanTools(
+	ctx context.Context,
+	input ToolPlanRequest,
+) ([]ToolCall, error) {
+	if p == nil || p.OpenAICompatibleProvider == nil {
+		return nil, errors.New("openai provider is unavailable")
+	}
+	return p.OpenAICompatibleProvider.planTools(ctx, input, false)
+}
+
 func (p *OpenAIProvider) StreamChatWithModelBuiltInSearch(
 	ctx context.Context,
 	input ProviderRequest,

@@ -103,6 +103,50 @@ func TestOpenAICompatibleProviderStreamsDeltasAndUsage(t *testing.T) {
 	}
 }
 
+func TestOpenAICompatibleProviderSendsDeterministicJudgeControls(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload openAICompatibleChatCompletionRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode provider payload: %v", err)
+		}
+		if payload.EnableThinking == nil || *payload.EnableThinking ||
+			payload.MaxTokens != 128 || payload.Temperature == nil ||
+			*payload.Temperature != 0 {
+			t.Fatalf("deterministic controls = %#v", payload)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"{}\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+		BaseURL: server.URL, APIKey: "fixture-judge-credential", DefaultModel: "judge-model",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	temperature := 0.0
+	events, err := provider.StreamChat(context.Background(), ProviderRequest{
+		Prompt:          "judge",
+		DisableThinking: true,
+		MaxOutputTokens: 128,
+		Temperature:     &temperature,
+		ModelRef: ModelRef{
+			ProviderID: OpenAICompatibleProviderID,
+			ModelID:    "judge-model",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+	}
+}
+
 func TestOpenAICompatibleProviderStreamsFragmentedToolCallAndNativeContinuation(t *testing.T) {
 	requestCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -421,7 +465,10 @@ func TestOpenAICompatibleProviderPlansFunctionCalls(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode provider payload: %v", err)
 		}
-		if payload.Stream || payload.ToolChoice != "auto" || len(payload.Tools) != 1 {
+		if payload.Stream || payload.ToolChoice != "auto" || len(payload.Tools) != 1 ||
+			payload.EnableThinking == nil || *payload.EnableThinking ||
+			payload.MaxTokens != 128 || payload.Temperature == nil ||
+			*payload.Temperature != 0 {
 			t.Fatalf("tool plan payload = %#v", payload)
 		}
 		if payload.Tools[0].Function.Name != "lookup_weather" {
@@ -440,9 +487,13 @@ func TestOpenAICompatibleProviderPlansFunctionCalls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewOpenAICompatibleProvider() error = %v", err)
 	}
+	temperature := 0.0
 	calls, err := provider.PlanTools(context.Background(), ToolPlanRequest{
-		Prompt:   "weather in Shanghai",
-		ModelRef: ModelRef{ProviderID: "openai_compatible"},
+		Prompt:          "weather in Shanghai",
+		ModelRef:        ModelRef{ProviderID: "openai_compatible"},
+		DisableThinking: true,
+		MaxOutputTokens: 128,
+		Temperature:     &temperature,
 		Tools: []ToolDefinition{{
 			Type: "function",
 			Function: ToolFunctionDefinition{
@@ -487,6 +538,91 @@ func TestOpenAICompatibleProviderRejectsInvalidToolArguments(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "invalid arguments") {
 		t.Fatalf("PlanTools() error = %v, want invalid arguments", err)
+	}
+}
+
+func TestOpenAICompatibleProviderRejectsAmbiguousToolPlanResponses(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "zero choices",
+			body: `{"choices":[]}`,
+			want: "choice count",
+		},
+		{
+			name: "multiple choices",
+			body: `{"choices":[{"message":{}},{"message":{}}]}`,
+			want: "choice count",
+		},
+		{
+			name: "missing arguments",
+			body: `{"choices":[{"message":{"tool_calls":[{"id":"call-1","type":"function","function":{"name":"lookup_weather"}}]}}]}`,
+			want: "missing arguments",
+		},
+		{
+			name: "null arguments",
+			body: `{"choices":[{"message":{"tool_calls":[{"id":"call-1","type":"function","function":{"name":"lookup_weather","arguments":"null"}}]}}]}`,
+			want: "invalid arguments",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(test.body))
+			}))
+			defer server.Close()
+
+			provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+				BaseURL: server.URL, APIKey: "test-secret-token",
+				DefaultModel: "gpt-default",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = provider.PlanTools(context.Background(), ToolPlanRequest{
+				Prompt: "weather", ModelRef: ModelRef{ProviderID: "openai_compatible"},
+				Tools: []ToolDefinition{{
+					Type: "function",
+					Function: ToolFunctionDefinition{
+						Name: "lookup_weather", Parameters: map[string]any{"type": "object"},
+					},
+				}},
+			})
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("PlanTools() error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestOpenAICompatibleProviderAcceptsOneNoCallToolPlan(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{}}]}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+		BaseURL: server.URL, APIKey: "test-secret-token", DefaultModel: "gpt-default",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls, err := provider.PlanTools(context.Background(), ToolPlanRequest{
+		Prompt: "hello", ModelRef: ModelRef{ProviderID: "openai_compatible"},
+		Tools: []ToolDefinition{{
+			Type: "function",
+			Function: ToolFunctionDefinition{
+				Name: "lookup_weather", Parameters: map[string]any{"type": "object"},
+			},
+		}},
+	})
+	if err != nil || len(calls) != 0 {
+		t.Fatalf("PlanTools() = %#v/%v", calls, err)
 	}
 }
 

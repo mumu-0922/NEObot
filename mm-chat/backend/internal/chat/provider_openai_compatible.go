@@ -117,6 +117,9 @@ func (p *OpenAICompatibleProvider) StreamToolRound(
 			input.UseReasoning,
 			effectiveReasoningEffort(input.ProviderRequest),
 		),
+		EnableThinking: disabledThinkingValue(input.DisableThinking),
+		MaxTokens:      input.MaxOutputTokens,
+		Temperature:    input.Temperature,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("openai-compatible provider request encode failed: %w", err)
@@ -231,8 +234,19 @@ type openAICompatibleChatCompletionRequest struct {
 	Stream          bool                      `json:"stream"`
 	Messages        []openAICompatibleMessage `json:"messages"`
 	ReasoningEffort string                    `json:"reasoning_effort,omitempty"`
+	EnableThinking  *bool                     `json:"enable_thinking,omitempty"`
+	MaxTokens       int                       `json:"max_tokens,omitempty"`
+	Temperature     *float64                  `json:"temperature,omitempty"`
 	Tools           []ToolDefinition          `json:"tools,omitempty"`
 	ToolChoice      any                       `json:"tool_choice,omitempty"`
+}
+
+func disabledThinkingValue(disabled bool) *bool {
+	if !disabled {
+		return nil
+	}
+	value := false
+	return &value
 }
 
 type openAICompatibleMessage struct {
@@ -299,6 +313,14 @@ func (p *OpenAICompatibleProvider) PlanTools(
 	ctx context.Context,
 	input ToolPlanRequest,
 ) ([]ToolCall, error) {
+	return p.planTools(ctx, input, true)
+}
+
+func (p *OpenAICompatibleProvider) planTools(
+	ctx context.Context,
+	input ToolPlanRequest,
+	includeEnableThinking bool,
+) ([]ToolCall, error) {
 	modelRef, err := p.ResolveModelRef(input.ModelRef)
 	if err != nil {
 		return nil, err
@@ -310,9 +332,16 @@ func (p *OpenAICompatibleProvider) PlanTools(
 		return []ToolCall{}, nil
 	}
 
+	var enableThinking *bool
+	if includeEnableThinking {
+		enableThinking = disabledThinkingValue(input.DisableThinking)
+	}
 	payload, err := json.Marshal(openAICompatibleChatCompletionRequest{
-		Model:  modelRef.ModelID,
-		Stream: false,
+		Model:          modelRef.ModelID,
+		Stream:         false,
+		EnableThinking: enableThinking,
+		MaxTokens:      input.MaxOutputTokens,
+		Temperature:    input.Temperature,
 		Messages: openAICompatibleMessages("", []ProviderMessage{{
 			Role: "user", Content: input.Prompt,
 		}}),
@@ -364,6 +393,9 @@ func (p *OpenAICompatibleProvider) PlanTools(
 	if err := json.Unmarshal(body, &planned); err != nil {
 		return nil, fmt.Errorf("openai-compatible tool plan decode failed: %w", err)
 	}
+	if len(planned.Choices) != 1 {
+		return nil, errors.New("openai-compatible tool plan returned an invalid choice count")
+	}
 
 	calls := make([]ToolCall, 0)
 	for _, choice := range planned.Choices {
@@ -375,11 +407,13 @@ func (p *OpenAICompatibleProvider) PlanTools(
 			if name == "" {
 				return nil, errors.New("openai-compatible tool plan returned an empty function name")
 			}
-			args := map[string]any{}
-			if strings.TrimSpace(rawCall.Function.Arguments) != "" {
-				if err := json.Unmarshal([]byte(rawCall.Function.Arguments), &args); err != nil {
-					return nil, errors.New("openai-compatible tool plan returned invalid arguments")
-				}
+			rawArguments := strings.TrimSpace(rawCall.Function.Arguments)
+			if rawArguments == "" {
+				return nil, errors.New("openai-compatible tool plan returned missing arguments")
+			}
+			var args map[string]any
+			if err := json.Unmarshal([]byte(rawArguments), &args); err != nil || args == nil {
+				return nil, errors.New("openai-compatible tool plan returned invalid arguments")
 			}
 			calls = append(calls, ToolCall{
 				ID:   strings.TrimSpace(rawCall.ID),

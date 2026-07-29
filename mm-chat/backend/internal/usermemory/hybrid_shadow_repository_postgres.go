@@ -81,6 +81,7 @@ FROM memory_prepare_hybrid_shadow(
 		prepared.Summary.ProfileID != HybridShadowProfileID {
 		return HybridShadowPreparation{}, fmt.Errorf("prepare hybrid memory shadow: invalid response authority")
 	}
+	prepared.ObservationID = observationID
 	if err := json.Unmarshal(candidates, &prepared.Candidates); err != nil {
 		return HybridShadowPreparation{}, fmt.Errorf("decode hybrid memory candidates: %w", err)
 	}

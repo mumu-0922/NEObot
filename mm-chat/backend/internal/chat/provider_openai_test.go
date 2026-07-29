@@ -13,6 +13,52 @@ import (
 	"neo-chat/mm-chat/backend/internal/websearch"
 )
 
+func TestOpenAIProviderPlansToolsWithoutCompatibleThinkingExtension(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if _, exists := payload["enable_thinking"]; exists {
+			t.Fatal("official OpenAI Tool plan included enable_thinking")
+		}
+		if string(payload["max_tokens"]) != "128" ||
+			string(payload["temperature"]) != "0" {
+			t.Fatalf(
+				"official OpenAI Tool plan bounds = %s/%s",
+				payload["max_tokens"],
+				payload["temperature"],
+			)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{}}]}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAIProvider(OpenAICompatibleProviderConfig{
+		BaseURL: server.URL, APIKey: "fixture-openai-tool-key",
+		DefaultModel: "gpt-test", ProviderID: "configured-openai",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	temperature := 0.0
+	calls, err := provider.PlanTools(context.Background(), ToolPlanRequest{
+		Prompt: "memory?", DisableThinking: true, MaxOutputTokens: 128,
+		Temperature: &temperature,
+		ModelRef:    ModelRef{ProviderID: "configured-openai", ModelID: "gpt-test"},
+		Tools: []ToolDefinition{{
+			Type: "function",
+			Function: ToolFunctionDefinition{
+				Name: "search_memory", Parameters: map[string]any{"type": "object"},
+			},
+		}},
+	})
+	if err != nil || len(calls) != 0 {
+		t.Fatalf("PlanTools() = %#v/%v", calls, err)
+	}
+}
+
 func TestOpenAIProviderStreamsResponsesWebSearch(t *testing.T) {
 	const apiKey = "fixture-openai-responses-key"
 	const imageBytes = "\x89PNG\r\n"
