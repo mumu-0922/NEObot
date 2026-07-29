@@ -12,7 +12,7 @@
 | [Direct chat attachments](./chat-attachments.md)    | Attachment-only messages, native images, bounded document extraction, provider context, and explicit failures       |
 | [Hosted media provider smoke](./provider-live-smoke.md) | Exact live-provider authorization, one-off credentials, explicit TTS voices, artifacts, and sanitized evidence    |
 | [Hosted TTS production](./hosted-tts-production.md) | Dedicated SiliconFlow Voice authority, exact activation, server-mode playback, per-user cache, and cleanup |
-| [Memory v2 benchmark](./memory-v2-benchmark.md) | Synthetic-only 500-case Golden lifecycle, strict observation/evaluation contracts, immutable reports, and non-promotional boundaries |
+| [Memory v2 benchmark](./memory-v2-benchmark.md) | Deterministic 650-case authoring, human review ledger, synthetic-only 500-case Golden lifecycle, one-shot Holdout, strict evaluation, and non-promotional boundaries |
 | [Memory v2 storage](./memory-v2-storage.md) | Project/scope/settings foundation, Global v1 repository compatibility, ownership constraints, and guarded rollback |
 | [Memory v2 worker](./memory-v2-worker.md) | ID-only completed-turn capture, leased PostgreSQL jobs, private Go worker, Redis wake, least privilege, replay, and rollback |
 | [Memory v2 provenance/delete](./memory-v2-provenance-deletion.md) | Canonical revisions, ID/hash evidence, visibility epochs, tombstones, manifests, and provider-free purge |
@@ -245,10 +245,13 @@ or teardown changes:
 - For production TTS changes, also run migration `051` replay/cache integration,
   frontend server-route regressions, Compose rendering, and the standalone full
   gate. Live activation requires a fresh separately authorized Key.
-- For Memory benchmark changes, run focused race tests for `internal/memoryeval`
-  and `cmd/memory-eval`, all backend tests, and `go vet ./...`. Reader/runtime
-  changes additionally require their owning migration, shadow, and rollback
-  gates; PR1 alone does not require Docker or a Live Provider.
+- For Memory benchmark changes, run focused race tests for
+  `internal/memoryauthor`, `cmd/memory-benchmark-author`, `internal/memoryeval`,
+  and `cmd/memory-eval`, all backend tests, and `go vet ./...`. Authoring changes
+  must also replay the protected content-free status and prove `data/` remains
+  absent from Git/standalone copies. Reader/runtime changes additionally
+  require their owning migration, shadow, and rollback gates; offline
+  authoring/evaluation alone does not require a Live Provider.
 - For Memory storage changes, run focused race tests for `internal/usermemory`,
   `internal/migration`, and `cmd/migrate`; prove the exact migration against a
   disposable PostgreSQL database before all backend tests and vet.

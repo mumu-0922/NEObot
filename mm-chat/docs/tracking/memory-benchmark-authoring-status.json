@@ -1,0 +1,117 @@
+{
+  "schemaVersion": "neo-chat.memory-benchmark-author-status.v1",
+  "profile": "memory-benchmark-zh-mixed-v1",
+  "generatorVersion": "neo-chat.memory-benchmark-generator.v1",
+  "candidateManifestId": "memory-benchmark-v1-candidate-pool",
+  "candidateManifestSha256": "bfca1b829ab4f886c558cad1be3c5f1e7c218492621405ac6d9fd8033113559c",
+  "fixtureContentSha256": "642015e9baea206366112874cc50d0fb73c001a62424ed86d805c023abe5aee5",
+  "candidateCount": 650,
+  "accepted": 0,
+  "rejected": 0,
+  "pending": 650,
+  "frozen": false,
+  "holdoutState": "not_frozen",
+  "splitCounts": {
+    "development": 390,
+    "validation": 130,
+    "holdout": 130
+  },
+  "languageCounts": {
+    "zh": 455,
+    "mixed": 130,
+    "en": 65
+  },
+  "sliceCounts": [
+    {
+      "name": "stable_fact",
+      "total": 65,
+      "development": 39,
+      "validation": 13,
+      "holdout": 13
+    },
+    {
+      "name": "preference_instruction",
+      "total": 65,
+      "development": 39,
+      "validation": 13,
+      "holdout": 13
+    },
+    {
+      "name": "project_decision",
+      "total": 65,
+      "development": 39,
+      "validation": 13,
+      "holdout": 13
+    },
+    {
+      "name": "chinese_paraphrase",
+      "total": 70,
+      "development": 42,
+      "validation": 14,
+      "holdout": 14
+    },
+    {
+      "name": "mixed_language_entity",
+      "total": 65,
+      "development": 39,
+      "validation": 13,
+      "holdout": 13
+    },
+    {
+      "name": "temporal_correction",
+      "total": 65,
+      "development": 39,
+      "validation": 13,
+      "holdout": 13
+    },
+    {
+      "name": "unrelated_negative",
+      "total": 65,
+      "development": 39,
+      "validation": 13,
+      "holdout": 13
+    },
+    {
+      "name": "untrusted_source",
+      "total": 65,
+      "development": 39,
+      "validation": 13,
+      "holdout": 13
+    },
+    {
+      "name": "secret_rejection",
+      "total": 65,
+      "development": 39,
+      "validation": 13,
+      "holdout": 13
+    },
+    {
+      "name": "scope_isolation",
+      "total": 65,
+      "development": 39,
+      "validation": 13,
+      "holdout": 13
+    },
+    {
+      "name": "deletion",
+      "total": 65,
+      "development": 39,
+      "validation": 13,
+      "holdout": 13
+    },
+    {
+      "name": "failure_fallback",
+      "total": 65,
+      "development": 39,
+      "validation": 13,
+      "holdout": 13
+    },
+    {
+      "name": "multi_hop",
+      "total": 65,
+      "development": 39,
+      "validation": 13,
+      "holdout": 13
+    }
+  ]
+}

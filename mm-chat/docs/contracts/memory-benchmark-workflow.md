@@ -110,6 +110,41 @@ Expected relevant IDs are limited to five so Final Recall@5 remains achievable.
 `expectedCurrentMemoryIds` must be a subset of the relevant IDs. A Memory ID
 cannot be both relevant and excluded in the same case.
 
+### 3.1 Generate the protected candidate pool
+
+The supported authoring command creates a deterministic 650-case pool before
+human review:
+
+```bash
+cd mm-chat/backend
+go run ./cmd/memory-benchmark-author generate
+```
+
+Its default root is the gitignored, standalone-excluded directory
+`mm-chat/data/memory-benchmark/v1/`. The command creates a new root only and
+never reads, merges, or overwrites an existing authoring root. Inside this
+repository it rejects every output outside
+`mm-chat/data/memory-benchmark/<version>/`; it also rejects another Git
+repository, `secrets/`, `backup/`, symlink components, loose permissions, and
+non-regular artifacts.
+
+The v1 candidate profile is fixed and reproducible:
+
+```text
+Candidate cases:                  650
+Development/Validation/Holdout:   390 / 130 / 130
+Chinese/mixed/English:            455 / 130 / 65
+Per critical slice:               >=65 total and >=39 / 13 / 13 by split
+Generator/profile/seed:           versioned constants
+Model, Provider, DB, live Memory:  none
+```
+
+The pool includes a hashed diagnostic witness proving that an exact
+`300/100/100`, `350/100/50`, and per-slice `30/10/10` selection exists. The
+witness is not accepted automatically and is not human review authority.
+Candidate fixture/Golden content and review events remain outside Git. A
+committed status may contain only versions, counts, states, and hashes.
+
 ## 4. Review and freeze
 
 New cases begin with:
@@ -130,22 +165,74 @@ relevant IDs, exclusions, language, and slice labels, record:
 ```
 
 Do not copy reviewer identities or timestamps onto machine-generated cases.
-When all 500 cases are reviewed, set `lifecycle.state=frozen`, set
-`lifecycle.frozenAt`, precommit a new `lifecycle.holdoutRunId`, and leave
-`lifecycle.frozenContentSha256` empty while calculating the canonical hash:
+Start the loopback-only review workflow with the actual human reviewer's UUID:
+
+```bash
+cd mm-chat/backend
+go run ./cmd/memory-benchmark-author review \
+  -reviewer '<reviewer-uuid>'
+```
+
+The printed URL contains a random bootstrap token in its fragment. The server
+listens only on `127.0.0.1` with an OS-selected port and is not part of the
+production frontend, API, or Compose deployment. It has no bulk approval
+endpoint. Each accept/reject records one explicit case-bound action and its
+server timestamp. Saving an edit is a separate action: it changes the content
+hash, invalidates the previous effective decision, and requires another
+accept/reject.
+
+Review events are private immutable files with an exact sequence and previous
+event hash. The ledger, not its replaceable checkpoint, is authority. Restart
+replays complete events; unknown/partial published entries, a gap, fork,
+tamper, stale request, invalid edit, symlink, or loose permission fails closed.
+
+Every edit is also checked against the materialized 650-case current draft
+before its event is published. Resume repeats that global validation, including
+case/Memory ID uniqueness, fixture binding, normalized query duplicates, and
+slice semantics. `status` reports split/language/slice counts from current
+review snapshots while preserving the immutable candidate-manifest hash.
+
+Inspect only content-free progress with:
+
+```bash
+go run ./cmd/memory-benchmark-author status
+go run ./cmd/memory-benchmark-author verify
+```
+
+`verify` regenerates the fixed source profile in memory and requires the
+fixture, Golden, and candidate-manifest bytes to match the protected pool
+exactly before it emits the content-free status.
+
+Freeze requires all 650 candidates to have a current decision, exactly 500
+accepted and 150 rejected, exact split/language counts, every evaluator gate,
+and a new precommitted Holdout UUID:
+
+```bash
+go run ./cmd/memory-benchmark-author freeze \
+  -holdout-run-id '<new-precommitted-holdout-uuid>'
+```
+
+The command derives review records from the ledger, writes the accepted
+fixture/Golden/freeze manifest privately and exclusively, calculates the
+canonical hash, and calls `memoryeval.ValidateGoldenAdmission`. It never fills
+missing decisions, reallocates a split, widens a threshold, or overwrites an
+existing/partial freeze. The review server refuses to expose cases after a
+frozen directory exists.
+
+Independently replay the resulting canonical hash when required:
 
 ```bash
 cd mm-chat/backend
 go run ./cmd/memory-eval \
-  -golden /secure/eval/memory-golden.json \
+  -golden ../data/memory-benchmark/v1/frozen/golden.json \
   -print-freeze-hash \
   -pretty
 ```
 
-Copy the returned hash into `lifecycle.frozenContentSha256`. The hash clears
-only its own field before canonical Go JSON encoding; it binds every other
-field, including review records, freeze time, Holdout UUID, criteria, and case
-order. The hash report always says `promotionEligible=false`.
+The hash clears only its own field before canonical Go JSON encoding; it binds
+every other field, including review records, freeze time, Holdout UUID,
+criteria, and case order. The hash report always says
+`promotionEligible=false`.
 
 ## 5. Produce observations
 
@@ -186,6 +273,26 @@ exclusions and these observed surfaces; a producer cannot self-attest
 Development and Validation may be inspected repeatedly by future capture
 tools. Holdout is run only after those profiles are fixed. The one ordered
 formal observation is then assembled without changing prior observations.
+
+Immediately before the future Native observation producer receives Holdout
+input, consume the exact precommitted run once:
+
+```bash
+go run ./cmd/memory-benchmark-author holdout-begin \
+  -holdout-run-id '<same-precommitted-holdout-uuid>' \
+  -output ../data/memory-benchmark/v1/holdout/run-input.json
+```
+
+All output-path and frozen-artifact preflights finish first. The command then
+publishes an exclusive `consumed.json` marker with ordinal one before it
+publishes the bounded 100-case bundle. Marker existence permanently refuses a
+second attempt. A crash or downstream failure after marker creation taints the
+Holdout and requires a new corpus version and new review/freeze evidence; do
+not delete or roll back the marker to retry.
+
+This read-once property is an operational toolchain contract backed by
+`0700`/`0600` storage. It does not claim to prevent the local machine owner
+from bypassing the tool and copying files directly.
 
 ## 6. Evaluate once into a new path
 
