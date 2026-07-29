@@ -1145,3 +1145,39 @@ Rebuilt the compromised Memory review corpus as an isolated 500-case machine-rev
 ### Next Steps
 
 - None - task complete
+
+
+## Session 24: Native Memory regression runner
+
+**Date**: 2026-07-29
+**Task**: Native Memory regression runner
+**Branch**: `main`
+
+### Summary
+
+Implemented and verified the isolated production-reader Memory regression capture lane, deterministic fake protocol, strict live/cost gates, exclusive evidence publication, Compose teardown, and non-promotional documentation; live SiliconFlow comparison remains separately authorized.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ce1544f` | (see git log) |
+| `52af80e` | (see git log) |
+| `9ca627b` | (see git log) |
+| `78c9249` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

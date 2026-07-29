@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 23
+- **Total Sessions**: 24
 - **Last Active**: 2026-07-29
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1147 | Active |
+| `journal-1.md` | ~1183 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 24 | 2026-07-29 | Native Memory regression runner | `ce1544f`, `52af80e`, `9ca627b`, `78c9249` | `main` |
 | 23 | 2026-07-29 | Memory v2 regression benchmark delivery | `59c11e7`, `7e41f27`, `5a7471f` | `main` |
 | 22 | 2026-07-29 | Memory benchmark authoring foundation | `5436bf6`, `a7e53f3`, `ba7d509` | `main` |
 | 21 | 2026-07-29 | Complete Memory v2 PR13 Hindsight fixture evaluation | `33a0a35`, `5b0c6c2` | `main` |
