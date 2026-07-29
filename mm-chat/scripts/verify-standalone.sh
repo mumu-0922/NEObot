@@ -76,6 +76,7 @@ required_paths=(
   compose.yml
   compose.single-server.yml
   compose.hindsight-fixture.yml
+  compose.memory-regression.yml
   compose.production.yml
   frontend/package.json
   frontend/pnpm-lock.yaml
@@ -87,6 +88,8 @@ required_paths=(
   backend/Dockerfile
   scripts/run-memory-hindsight-fixture.sh
   scripts/test-memory-hindsight-fixture.sh
+  scripts/run-memory-regression.sh
+  scripts/test-memory-regression.sh
   rag/pyproject.toml
   rag/Dockerfile
 )
@@ -211,6 +214,7 @@ if "MEMORY_L3_PERSONA_READER_ENABLED" in memory_worker["environment"]:
 PY
 
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-hindsight-fixture.sh"
+DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-regression.sh"
 
 if [[ "${full}" == true ]]; then
   rag_python="${RAG_PYTHON:-python3.13}"

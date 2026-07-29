@@ -1,0 +1,186 @@
+services:
+  memory-regression-postgres:
+    image: mm-chat/postgres:17.10-pg_textsearch1.3.1-pgvector0.8.5
+    build:
+      context: ./postgres
+      dockerfile: Dockerfile
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 192
+    environment:
+      POSTGRES_DB: mm_chat_memory_regression_runtime
+      POSTGRES_USER: memory_regression_admin
+      POSTGRES_PASSWORD: ${MEMORY_REGRESSION_DB_PASSWORD:?ephemeral database password is required}
+    volumes:
+      - memory-regression-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U memory_regression_admin -d mm_chat_memory_regression_runtime
+      interval: 3s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+    networks:
+      - memory-regression-private
+
+  memory-regression-migrate:
+    image: mm-chat/memory-regression-capture:local
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: memory-regression-capture
+    restart: "no"
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    cpus: 1.0
+    pids_limit: 48
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+    environment:
+      MIGRATION_DATABASE_URL: postgresql://memory_regression_admin:${MEMORY_REGRESSION_DB_PASSWORD:?ephemeral database password is required}@memory-regression-postgres:5432/mm_chat_memory_regression_runtime?sslmode=disable
+    entrypoint:
+      - /usr/local/bin/mm-chat-migrate
+    command:
+      - up
+    depends_on:
+      memory-regression-postgres:
+        condition: service_healthy
+    networks:
+      - memory-regression-private
+
+  memory-regression-fake-runner:
+    image: mm-chat/memory-regression-capture:local
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: memory-regression-capture
+    profiles: ["memory-regression-fake"]
+    restart: "no"
+    init: true
+    user: "1000:1000"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 64
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    environment: &capture-environment
+      MM_CHAT_MEMORY_REGRESSION_ADMIN_DATABASE_URL: postgresql://memory_regression_admin:${MEMORY_REGRESSION_DB_PASSWORD:?ephemeral database password is required}@memory-regression-postgres:5432/mm_chat_memory_regression_runtime?sslmode=disable
+      MM_CHAT_MEMORY_REGRESSION_RUNTIME_DATABASE_URL: postgresql://memory_regression_admin:${MEMORY_REGRESSION_DB_PASSWORD:?ephemeral database password is required}@memory-regression-postgres:5432/mm_chat_memory_regression_runtime?sslmode=disable&role=go_api_runtime
+    volumes:
+      - type: bind
+        source: ${MEMORY_REGRESSION_ROOT_PATH:?protected regression root is required}
+        target: /fixtures/regression
+        read_only: true
+      - type: bind
+        source: ${MEMORY_REGRESSION_COST_BASIS_PATH:?cost basis path is required}
+        target: /inputs/cost-basis.json
+        read_only: true
+      - type: bind
+        source: ${MEMORY_REGRESSION_OUTPUT_PATH:?private output path is required}
+        target: /output
+    entrypoint:
+      - /usr/local/bin/mm-chat-memory-regression-capture
+    command:
+      - -root
+      - /fixtures/regression
+      - -output-dir
+      - /output
+      - -cost-basis
+      - /inputs/cost-basis.json
+      - -provider-mode
+      - fake_protocol
+      - -run-id
+      - ${MEMORY_REGRESSION_RUN_ID:?run ID is required}
+    depends_on:
+      memory-regression-postgres:
+        condition: service_healthy
+    networks:
+      - memory-regression-private
+
+  memory-regression-live-runner:
+    image: mm-chat/memory-regression-capture:local
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: memory-regression-capture
+    profiles: ["memory-regression-live"]
+    restart: "no"
+    init: true
+    user: "1000:1000"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 64
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    environment:
+      <<: *capture-environment
+      MM_CHAT_MEMORY_REGRESSION_LIVE_ENABLED: "true"
+      MM_CHAT_MEMORY_REGRESSION_LIVE_APPROVAL: ${MEMORY_REGRESSION_LIVE_APPROVAL:?live approval is required}
+      MM_CHAT_MEMORY_REGRESSION_LIVE_RUN_ID: ${MEMORY_REGRESSION_RUN_ID:?run ID is required}
+      MM_CHAT_MEMORY_REGRESSION_LIVE_PROVIDER_ID: siliconflow
+      MM_CHAT_MEMORY_REGRESSION_LIVE_EMBEDDING_MODEL_ID: Pro/BAAI/bge-m3
+      MM_CHAT_MEMORY_REGRESSION_LIVE_RERANK_MODEL_ID: Pro/BAAI/bge-reranker-v2-m3
+    volumes:
+      - type: bind
+        source: ${MEMORY_REGRESSION_ROOT_PATH:?protected regression root is required}
+        target: /fixtures/regression
+        read_only: true
+      - type: bind
+        source: ${MEMORY_REGRESSION_COST_BASIS_PATH:?cost basis path is required}
+        target: /inputs/cost-basis.json
+        read_only: true
+      - type: bind
+        source: ${MEMORY_REGRESSION_CREDENTIAL_PATH:?credential path is required}
+        target: /run/mm-chat-memory-regression/provider.key
+        read_only: true
+      - type: bind
+        source: ${MEMORY_REGRESSION_OUTPUT_PATH:?private output path is required}
+        target: /output
+    entrypoint:
+      - /usr/local/bin/mm-chat-memory-regression-capture
+    command:
+      - -root
+      - /fixtures/regression
+      - -output-dir
+      - /output
+      - -cost-basis
+      - /inputs/cost-basis.json
+      - -provider-mode
+      - live_siliconflow
+      - -run-id
+      - ${MEMORY_REGRESSION_RUN_ID:?run ID is required}
+      - -credential-file
+      - /run/mm-chat-memory-regression/provider.key
+    depends_on:
+      memory-regression-postgres:
+        condition: service_healthy
+    networks:
+      - memory-regression-private
+      - memory-regression-egress
+
+networks:
+  memory-regression-private:
+    internal: true
+  memory-regression-egress: {}
+
+volumes:
+  memory-regression-postgres-data:
