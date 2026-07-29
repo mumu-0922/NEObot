@@ -31,22 +31,24 @@ const (
 )
 
 type Worker struct {
-	repository          Repository
-	providerResolver    ProviderResolver
-	embeddingRepository EmbeddingRepository
-	embeddingProvider   MemoryEmbeddingProvider
-	embeddingEnabled    bool
-	sceneRepository     SceneRepository
-	sceneShadowEnabled  bool
-	workerID            string
-	leaseDuration       time.Duration
-	providerTimeout     time.Duration
-	pollInterval        time.Duration
-	baseBackoff         time.Duration
-	maximumBackoff      time.Duration
-	concurrency         int
-	now                 func() time.Time
-	logger              *slog.Logger
+	repository           Repository
+	providerResolver     ProviderResolver
+	embeddingRepository  EmbeddingRepository
+	embeddingProvider    MemoryEmbeddingProvider
+	embeddingEnabled     bool
+	sceneRepository      SceneRepository
+	sceneShadowEnabled   bool
+	personaRepository    PersonaRepository
+	personaShadowEnabled bool
+	workerID             string
+	leaseDuration        time.Duration
+	providerTimeout      time.Duration
+	pollInterval         time.Duration
+	baseBackoff          time.Duration
+	maximumBackoff       time.Duration
+	concurrency          int
+	now                  func() time.Time
+	logger               *slog.Logger
 }
 
 type Option func(*Worker)
@@ -106,6 +108,10 @@ func WithSceneShadowEnabled(enabled bool) Option {
 	return func(worker *Worker) { worker.sceneShadowEnabled = enabled }
 }
 
+func WithPersonaShadowEnabled(enabled bool) Option {
+	return func(worker *Worker) { worker.personaShadowEnabled = enabled }
+}
+
 func New(
 	repository Repository,
 	providerResolver ProviderResolver,
@@ -150,6 +156,14 @@ func New(
 	}
 	if worker.sceneShadowEnabled && worker.embeddingProvider == nil {
 		return nil, errors.New("L2 Scene embedding provider is required")
+	}
+	if personaRepository, ok := worker.repository.(PersonaRepository); ok {
+		worker.personaRepository = personaRepository
+	} else if worker.personaShadowEnabled {
+		return nil, errors.New("L3 Persona repository is required")
+	}
+	if worker.personaShadowEnabled && worker.embeddingProvider == nil {
+		return nil, errors.New("L3 Persona embedding provider is required")
 	}
 	if strings.TrimSpace(worker.workerID) == "" || worker.leaseDuration < 5*time.Second ||
 		worker.leaseDuration > 15*time.Minute || worker.providerTimeout <= 0 ||
@@ -202,6 +216,14 @@ func (w *Worker) runLane(ctx context.Context, wake <-chan struct{}) {
 }
 
 func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
+	// Provider-free stale Persona purge has deletion priority and remains active
+	// even when all L3 Provider work is disabled.
+	if w.personaRepository != nil {
+		processed, err := w.processPersonaOne(ctx, false)
+		if err != nil || processed {
+			return processed, err
+		}
+	}
 	// Provider-free stale Scene purge has deletion priority and remains active
 	// even when all L2 Provider work is disabled.
 	if w.sceneRepository != nil {
@@ -231,7 +253,19 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 				return processed, sceneErr
 			}
 			if w.sceneShadowEnabled {
-				return w.processSceneEmbeddingOne(ctx)
+				processed, sceneEmbeddingErr := w.processSceneEmbeddingOne(ctx)
+				if sceneEmbeddingErr != nil || processed {
+					return processed, sceneEmbeddingErr
+				}
+			}
+		}
+		if w.personaRepository != nil {
+			processed, personaErr := w.processPersonaOne(ctx, w.personaShadowEnabled)
+			if personaErr != nil || processed {
+				return processed, personaErr
+			}
+			if w.personaShadowEnabled {
+				return w.processPersonaEmbeddingOne(ctx)
 			}
 		}
 		return false, nil

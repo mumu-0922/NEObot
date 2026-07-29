@@ -10,41 +10,43 @@ import (
 )
 
 const (
-	DefaultAddr                       = ":8080"
-	DefaultVersion                    = "dev"
-	DefaultDBMaxOpenConns             = 10
-	DefaultDBMaxIdleConns             = 5
-	DefaultDBConnMaxLifetime          = 30 * time.Minute
-	DefaultRedisKeyPrefix             = "mm-chat"
-	DefaultRedisRunCancelTTL          = 10 * time.Minute
-	DefaultRedisSessionCacheTTL       = 5 * time.Minute
-	DefaultRedisRateLimitEnabled      = false
-	DefaultRedisRateLimitRequests     = 120
-	DefaultRedisRateLimitWindow       = time.Minute
-	DefaultMemoryLexicalShadowEnabled = false
-	DefaultMemoryHybridShadowEnabled  = false
-	DefaultMemoryL2SceneShadowEnabled = false
-	DefaultMemoryL2SceneReaderEnabled = false
-	DefaultProviderTimeout            = 2 * time.Minute
-	DefaultProviderName               = "Server Default"
-	DefaultStorageBackend             = "local"
-	DefaultLocalStorageDir            = "./data/files"
-	DefaultS3Region                   = "us-east-1"
-	DefaultMaxUploadBytes             = int64(25 << 20)
-	AuthModeDevelopment               = "development"
-	AuthModeRequired                  = "required"
-	DefaultAuthMode                   = AuthModeDevelopment
-	DefaultAuthBootstrapUserID        = "00000000-0000-0000-0000-000000000001"
-	DefaultAuthBootstrapUserName      = "Owner"
-	DefaultAuthSessionTTL             = 7 * 24 * time.Hour
-	DefaultAuthRecoveryTTL            = 30 * time.Minute
-	DefaultAuthSMTPQueueSize          = 100
-	DefaultAuthSMTPTimeout            = 10 * time.Second
-	DefaultTeamMailWorkerLease        = 30 * time.Second
-	DefaultTeamMailWorkerPoll         = 500 * time.Millisecond
-	DefaultTeamMailBackoffBase        = 5 * time.Second
-	DefaultTeamMailBackoffMax         = 15 * time.Minute
-	maximumAuthSMTPQueueSize          = 10_000
+	DefaultAddr                         = ":8080"
+	DefaultVersion                      = "dev"
+	DefaultDBMaxOpenConns               = 10
+	DefaultDBMaxIdleConns               = 5
+	DefaultDBConnMaxLifetime            = 30 * time.Minute
+	DefaultRedisKeyPrefix               = "mm-chat"
+	DefaultRedisRunCancelTTL            = 10 * time.Minute
+	DefaultRedisSessionCacheTTL         = 5 * time.Minute
+	DefaultRedisRateLimitEnabled        = false
+	DefaultRedisRateLimitRequests       = 120
+	DefaultRedisRateLimitWindow         = time.Minute
+	DefaultMemoryLexicalShadowEnabled   = false
+	DefaultMemoryHybridShadowEnabled    = false
+	DefaultMemoryL2SceneShadowEnabled   = false
+	DefaultMemoryL2SceneReaderEnabled   = false
+	DefaultMemoryL3PersonaShadowEnabled = false
+	DefaultMemoryL3PersonaReaderEnabled = false
+	DefaultProviderTimeout              = 2 * time.Minute
+	DefaultProviderName                 = "Server Default"
+	DefaultStorageBackend               = "local"
+	DefaultLocalStorageDir              = "./data/files"
+	DefaultS3Region                     = "us-east-1"
+	DefaultMaxUploadBytes               = int64(25 << 20)
+	AuthModeDevelopment                 = "development"
+	AuthModeRequired                    = "required"
+	DefaultAuthMode                     = AuthModeDevelopment
+	DefaultAuthBootstrapUserID          = "00000000-0000-0000-0000-000000000001"
+	DefaultAuthBootstrapUserName        = "Owner"
+	DefaultAuthSessionTTL               = 7 * 24 * time.Hour
+	DefaultAuthRecoveryTTL              = 30 * time.Minute
+	DefaultAuthSMTPQueueSize            = 100
+	DefaultAuthSMTPTimeout              = 10 * time.Second
+	DefaultTeamMailWorkerLease          = 30 * time.Second
+	DefaultTeamMailWorkerPoll           = 500 * time.Millisecond
+	DefaultTeamMailBackoffBase          = 5 * time.Second
+	DefaultTeamMailBackoffMax           = 15 * time.Minute
+	maximumAuthSMTPQueueSize            = 10_000
 
 	EnvAddr                   = "MM_CHAT_ADDR"
 	EnvVersion                = "MM_CHAT_VERSION"
@@ -100,6 +102,8 @@ const (
 	EnvMemoryHybridShadow     = "MEMORY_HYBRID_SHADOW_ENABLED"
 	EnvMemoryL2SceneShadow    = "MEMORY_L2_SCENE_SHADOW_ENABLED"
 	EnvMemoryL2SceneReader    = "MEMORY_L2_SCENE_READER_ENABLED"
+	EnvMemoryL3PersonaShadow  = "MEMORY_L3_PERSONA_SHADOW_ENABLED"
+	EnvMemoryL3PersonaReader  = "MEMORY_L3_PERSONA_READER_ENABLED"
 )
 
 // Config contains the process-level settings required to start the API.
@@ -174,10 +178,12 @@ type RAGConfig struct {
 
 // MemoryConfig contains default-off Memory reader rollout switches.
 type MemoryConfig struct {
-	LexicalShadowEnabled bool
-	HybridShadowEnabled  bool
-	L2SceneShadowEnabled bool
-	L2SceneReaderEnabled bool
+	LexicalShadowEnabled   bool
+	HybridShadowEnabled    bool
+	L2SceneShadowEnabled   bool
+	L2SceneReaderEnabled   bool
+	L3PersonaShadowEnabled bool
+	L3PersonaReaderEnabled bool
 }
 
 // S3Config contains MinIO/S3-compatible object storage settings.
@@ -399,6 +405,16 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 				lookup,
 				EnvMemoryL2SceneReader,
 				DefaultMemoryL2SceneReaderEnabled,
+			),
+			L3PersonaShadowEnabled: boolEnvOrDefault(
+				lookup,
+				EnvMemoryL3PersonaShadow,
+				DefaultMemoryL3PersonaShadowEnabled,
+			),
+			L3PersonaReaderEnabled: boolEnvOrDefault(
+				lookup,
+				EnvMemoryL3PersonaReader,
+				DefaultMemoryL3PersonaReaderEnabled,
 			),
 		},
 

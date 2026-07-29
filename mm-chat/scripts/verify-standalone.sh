@@ -196,6 +196,15 @@ if backend["environment"]["MEMORY_L2_SCENE_READER_ENABLED"] != "false":
     raise SystemExit("standalone verification: Memory L2 Scene reader must default false")
 if "MEMORY_L2_SCENE_READER_ENABLED" in memory_worker["environment"]:
     raise SystemExit("standalone verification: Memory Worker received the L2 reader flag")
+if (
+    backend["environment"]["MEMORY_L3_PERSONA_SHADOW_ENABLED"]
+    != memory_worker["environment"]["MEMORY_L3_PERSONA_SHADOW_ENABLED"]
+):
+    raise SystemExit("standalone verification: Memory L3 Persona shadow flags disagree")
+if backend["environment"]["MEMORY_L3_PERSONA_READER_ENABLED"] != "false":
+    raise SystemExit("standalone verification: Memory L3 Persona reader must default false")
+if "MEMORY_L3_PERSONA_READER_ENABLED" in memory_worker["environment"]:
+    raise SystemExit("standalone verification: Memory Worker received the L3 reader flag")
 PY
 
 if [[ "${full}" == true ]]; then

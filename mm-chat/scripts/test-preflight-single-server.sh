@@ -295,6 +295,18 @@ for memory_l2_flag in \
     "${memory_l2_flag} must be true or false"
 done
 
+for memory_l3_flag in \
+  MEMORY_L3_PERSONA_SHADOW_ENABLED \
+  MEMORY_L3_PERSONA_READER_ENABLED; do
+  invalid_memory_l3_flag="${temp_dir}/invalid-${memory_l3_flag}.env"
+  sed "s|^${memory_l3_flag}=false$|${memory_l3_flag}=maybe|" \
+    "${valid}" >"${invalid_memory_l3_flag}"
+  chmod 600 "${invalid_memory_l3_flag}"
+  assert_rejected \
+    "${invalid_memory_l3_flag}" \
+    "${memory_l3_flag} must be true or false"
+done
+
 migration_password_mismatch="${temp_dir}/migration-password-mismatch.env"
 sed 's|test-migrator-password@postgres|different-password@postgres|' \
   "${valid}" >"${migration_password_mismatch}"
@@ -619,6 +631,8 @@ assert backend_environment["MEMORY_LEXICAL_SHADOW_ENABLED"] == "false"
 assert backend_environment["MEMORY_HYBRID_SHADOW_ENABLED"] == "false"
 assert backend_environment["MEMORY_L2_SCENE_SHADOW_ENABLED"] == "false"
 assert backend_environment["MEMORY_L2_SCENE_READER_ENABLED"] == "false"
+assert backend_environment["MEMORY_L3_PERSONA_SHADOW_ENABLED"] == "false"
+assert backend_environment["MEMORY_L3_PERSONA_READER_ENABLED"] == "false"
 
 memory = services["memory-worker"]
 assert memory["profiles"] == ["memory-worker"]
@@ -639,6 +653,8 @@ assert "memory_worker:test-memory-worker-password@postgres" in memory_environmen
 assert memory_environment["MEMORY_HYBRID_SHADOW_ENABLED"] == "false"
 assert memory_environment["MEMORY_L2_SCENE_SHADOW_ENABLED"] == "false"
 assert "MEMORY_L2_SCENE_READER_ENABLED" not in memory_environment
+assert memory_environment["MEMORY_L3_PERSONA_SHADOW_ENABLED"] == "false"
+assert "MEMORY_L3_PERSONA_READER_ENABLED" not in memory_environment
 assert memory_environment["PROVIDER_TIMEOUT"] == "45s"
 assert memory_environment["REDIS_URL"].startswith("redis://")
 assert "DATABASE_URL" not in memory_environment

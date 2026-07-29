@@ -102,6 +102,14 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 		t.Fatalf("Memory.L2SceneReaderEnabled = %v, want %v",
 			cfg.Memory.L2SceneReaderEnabled, DefaultMemoryL2SceneReaderEnabled)
 	}
+	if cfg.Memory.L3PersonaShadowEnabled != DefaultMemoryL3PersonaShadowEnabled {
+		t.Fatalf("Memory.L3PersonaShadowEnabled = %v, want %v",
+			cfg.Memory.L3PersonaShadowEnabled, DefaultMemoryL3PersonaShadowEnabled)
+	}
+	if cfg.Memory.L3PersonaReaderEnabled != DefaultMemoryL3PersonaReaderEnabled {
+		t.Fatalf("Memory.L3PersonaReaderEnabled = %v, want %v",
+			cfg.Memory.L3PersonaReaderEnabled, DefaultMemoryL3PersonaReaderEnabled)
+	}
 	if cfg.Auth.Mode != DefaultAuthMode {
 		t.Fatalf("Auth.Mode = %q, want %q", cfg.Auth.Mode, DefaultAuthMode)
 	}
@@ -175,6 +183,8 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvMemoryHybridShadow:     " true ",
 		EnvMemoryL2SceneShadow:    " true ",
 		EnvMemoryL2SceneReader:    " true ",
+		EnvMemoryL3PersonaShadow:  " true ",
+		EnvMemoryL3PersonaReader:  " true ",
 		EnvAuthMode:               " required ",
 		EnvAuthBootstrapUserID:    " 77777777-7777-4777-8777-777777777777 ",
 		EnvAuthBootstrapUserName:  " Server Owner ",
@@ -279,6 +289,12 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	}
 	if !cfg.Memory.L2SceneReaderEnabled {
 		t.Fatal("Memory.L2SceneReaderEnabled = false, want true")
+	}
+	if !cfg.Memory.L3PersonaShadowEnabled {
+		t.Fatal("Memory.L3PersonaShadowEnabled = false, want true")
+	}
+	if !cfg.Memory.L3PersonaReaderEnabled {
+		t.Fatal("Memory.L3PersonaReaderEnabled = false, want true")
 	}
 	if cfg.Auth.Mode != AuthModeRequired {
 		t.Fatalf("Auth.Mode = %q, want required", cfg.Auth.Mode)

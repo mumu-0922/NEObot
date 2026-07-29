@@ -24,8 +24,26 @@ func TestLoadWorkerConfigDefaults(t *testing.T) {
 		resolved.concurrency != 2 || resolved.leaseDuration != 2*time.Minute ||
 		resolved.providerTimeout != 45*time.Second ||
 		resolved.redisKeyPrefix != config.DefaultRedisKeyPrefix ||
-		resolved.hybridShadowEnabled || resolved.l2SceneShadowEnabled {
+		resolved.hybridShadowEnabled || resolved.l2SceneShadowEnabled ||
+		resolved.l3PersonaShadowEnabled {
 		t.Fatalf("config = %#v", resolved)
+	}
+}
+
+func TestLoadWorkerConfigL3PersonaShadowFlag(t *testing.T) {
+	values := map[string]string{
+		envDatabaseURL:     "postgres://worker:fixture@postgres/neo_chat",
+		envProviderKeyring: "/run/secrets/provider-keyring.json",
+		envL3PersonaShadow: " true ",
+	}
+	resolved, err := loadWorkerConfig(mapLookup(values))
+	if err != nil || !resolved.l3PersonaShadowEnabled {
+		t.Fatalf("L3 Persona worker config = %#v/%v", resolved, err)
+	}
+	values[envL3PersonaShadow] = "sometimes"
+	if _, err := loadWorkerConfig(mapLookup(values)); err == nil ||
+		!strings.Contains(err.Error(), envL3PersonaShadow) {
+		t.Fatalf("invalid L3 Persona flag error = %v", err)
 	}
 }
 

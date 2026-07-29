@@ -36,27 +36,29 @@ const (
 	envRedisKeyPrefix   = "REDIS_KEY_PREFIX"
 	envHybridShadow     = config.EnvMemoryHybridShadow
 	envL2SceneShadow    = config.EnvMemoryL2SceneShadow
+	envL3PersonaShadow  = config.EnvMemoryL3PersonaShadow
 	databaseOpenTimeout = 10 * time.Second
 	redisOpenTimeout    = 2 * time.Second
 	healthcheckTimeout  = 10 * time.Second
 )
 
 type workerConfig struct {
-	databaseURL          string
-	maxOpenConns         int
-	maxIdleConns         int
-	connMaxLifetime      time.Duration
-	concurrency          int
-	leaseDuration        time.Duration
-	pollInterval         time.Duration
-	backoffBase          time.Duration
-	backoffMax           time.Duration
-	providerTimeout      time.Duration
-	providerKeyring      string
-	redisURL             string
-	redisKeyPrefix       string
-	hybridShadowEnabled  bool
-	l2SceneShadowEnabled bool
+	databaseURL            string
+	maxOpenConns           int
+	maxIdleConns           int
+	connMaxLifetime        time.Duration
+	concurrency            int
+	leaseDuration          time.Duration
+	pollInterval           time.Duration
+	backoffBase            time.Duration
+	backoffMax             time.Duration
+	providerTimeout        time.Duration
+	providerKeyring        string
+	redisURL               string
+	redisKeyPrefix         string
+	hybridShadowEnabled    bool
+	l2SceneShadowEnabled   bool
+	l3PersonaShadowEnabled bool
 }
 
 func main() {
@@ -122,6 +124,7 @@ func run(
 		),
 		memoryworker.WithEmbeddingEnabled(resolved.hybridShadowEnabled),
 		memoryworker.WithSceneShadowEnabled(resolved.l2SceneShadowEnabled),
+		memoryworker.WithPersonaShadowEnabled(resolved.l3PersonaShadowEnabled),
 		memoryworker.WithLeaseDuration(resolved.leaseDuration),
 		memoryworker.WithProviderTimeout(resolved.providerTimeout),
 		memoryworker.WithPollInterval(resolved.pollInterval),
@@ -242,15 +245,20 @@ func loadWorkerConfig(lookup func(string) (string, bool)) (workerConfig, error) 
 	if err != nil {
 		return workerConfig{}, err
 	}
+	l3PersonaShadowEnabled, err := boolSetting(lookup, envL3PersonaShadow, false)
+	if err != nil {
+		return workerConfig{}, err
+	}
 	return workerConfig{
 		databaseURL: databaseURL, maxOpenConns: maxOpen, maxIdleConns: maxIdle,
 		connMaxLifetime: connLifetime, concurrency: concurrency,
 		leaseDuration: lease, pollInterval: poll, backoffBase: base,
 		backoffMax: maximum, providerTimeout: providerTimeout,
 		providerKeyring: keyring, redisURL: env(lookup, envRedisURL, ""),
-		redisKeyPrefix:       env(lookup, envRedisKeyPrefix, config.DefaultRedisKeyPrefix),
-		hybridShadowEnabled:  hybridShadowEnabled,
-		l2SceneShadowEnabled: l2SceneShadowEnabled,
+		redisKeyPrefix:         env(lookup, envRedisKeyPrefix, config.DefaultRedisKeyPrefix),
+		hybridShadowEnabled:    hybridShadowEnabled,
+		l2SceneShadowEnabled:   l2SceneShadowEnabled,
+		l3PersonaShadowEnabled: l3PersonaShadowEnabled,
 	}, nil
 }
 

@@ -189,6 +189,8 @@ if (
 for key in (
     "MEMORY_L2_SCENE_SHADOW_ENABLED",
     "MEMORY_L2_SCENE_READER_ENABLED",
+    "MEMORY_L3_PERSONA_SHADOW_ENABLED",
+    "MEMORY_L3_PERSONA_READER_ENABLED",
 ):
     if key in values and values[key] not in {"true", "false"}:
         fail(f"{key} must be true or false")
