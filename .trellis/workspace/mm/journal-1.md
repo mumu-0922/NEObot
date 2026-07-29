@@ -973,3 +973,71 @@ retaining v1 L1 as the default prompt and Usage authority.
 - After the approved batched commits, begin PR12 L3 Persona shadow/promotion as
   a separate generation and rollback domain without enabling it before formal
   evidence passes.
+
+
+## Session 25: Implement Memory v2 L3 Persona shadow and promotion
+
+**Date**: 2026-07-29
+**Task**: Implement Memory v2 PR12 L3 Persona shadow/promotion
+**Branch**: `main`
+
+### Summary
+
+Implemented default-off, Global stable-L1 L3 Persona as rebuildable PostgreSQL-
+derived data with independent generation, leased synthesis/embedding/purge,
+hybrid retrieval, Server governance, and migration-owner-only promotion/
+rollback while retaining v1 L1 as the default prompt and Usage authority.
+
+### Main Changes
+
+- Added migration `063` with Persona/member authority tuples, derived hybrid
+  projection, content-free observations, refresh/embedding/purge jobs,
+  immediate stale plus 24-hour provider-free purge, least-privilege runtime
+  capabilities, account-cascade safety, and guarded rollback/replay.
+- Added fake-testable Go synthesis and embedding orchestration with strict
+  single-Persona JSON, stable Global L1 filtering, secret/Sensitive zero-egress,
+  deadline/lease/profile/watermark fences, and token/member recomputation.
+- Added independent Exact/CJK BM25/vector RRF/rerank retrieval, lexical/RRF
+  fallback, a one-Persona/300-token bound, and a lower-priority active prompt
+  block that never contains Persona/member IDs.
+- Added typed Server-only governance API/UI for Persona profile, detail,
+  enable/disable, rebuild, current source/evidence hydration, and correction
+  through canonical L1; no derived plaintext PATCH was introduced.
+- Bound the fixed SiliconFlow hybrid provider whenever L3 shadow is enabled,
+  even when L1/L2 provider-backed flags remain disabled.
+
+### Testing
+
+- [OK] Disposable PostgreSQL 17 refresh/search/Sensitive fencing/lease reclaim/
+  token spoof/lexical fallback/disabled preservation/promotion denial/runtime
+  role denial/account cascade and guarded `062 -> 063 -> 062 -> 063`.
+- [OK] Focused race for Memory worker/user memory/chat/http/migration, full
+  backend tests, and `go vet ./...`.
+- [OK] Frontend format/lint/typecheck, 198 files / 961 tests, and production
+  build.
+- [OK] RAG Ruff/source-tree mypy/pytest: 1,906 passed / 7 skipped.
+- [OK] Example and active Compose rendering, preflight regression suite,
+  backend image/four-binary gate, and full standalone gate.
+- [OK] Diff check, released migration immutability, changed-file security scan,
+  and change/quality gates; no changed production-file security finding.
+- [OK] No Live Provider call and no Live Memory read or mutation.
+
+### Operational Note
+
+The protected live `.env.single-server` remains untouched. It renders with
+Compose but predates the current strict preflight contract and must be migrated
+separately before the next live deployment.
+
+### Git Commits
+
+Pending the required one-shot approval of the exact batched commit plan. No
+commit was created, amended, or pushed during verification.
+
+### Status
+
+[OK] **PR12 completed; parent Memory v2 task remains in progress**
+
+### Next Steps
+
+- After approved batched commits, begin PR13 as an isolated fixture-only
+  Hindsight adapter/profile. Any real trial remains separately authorized.

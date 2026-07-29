@@ -389,6 +389,51 @@ PR10 encrypted portability/retention 已完成。继续保留 v1 reader，不调
   exact/BM25/vector/RRF/rerank/budget、shadow zero injection、promotion denial/active/rollback、cross-user/role
   denial、governance detail/rebuild/a11y 与 guarded `061 -> 062 -> 061 -> 062`；不调用 Live Provider、不读取/
   修改 Live Memory，并通过 focused race、backend/frontend/RAG full、Compose/preflight/image/full gate。
+- [x] PR12 新增顺序 migration `063`，且不修改 migration `001`–`062` 已发布字节；新增独立 L3 Persona
+  profile/version/member、derived hybrid projection/embedding、leased refresh/purge、content-free search observation、
+  promotion event 与 reader authority。Persona 始终是可重建 derived data，不得覆写 L1、成为第二事实主库，
+  runtime roles 不获得 Persona/member/projection/job/promotion 表级 CRUD。
+- [x] Persona 只聚合同一 auth user 的 current active Global L1，且仅接受稳定 `fact|preference|instruction|
+  warning|decision`；Project/Conversation scope、`project|context`、disabled/superseded/expired/deleted 或当前
+  Sensitive policy 不允许的 L1 均不得进入 Provider input。每个 member 固定 revision/content hash/visibility
+  epoch/L3 generation，全量 source watermark 与 sensitivity/token count 均由 Go/SQL 重算，Provider 只能提议
+  content 与本次 hydrated authority 子集中的 member IDs。
+- [x] `MEMORY_L3_PERSONA_SHADOW_ENABLED=false` 默认关闭 Persona refresh、query embedding 与 shadow retrieval
+  Provider 调用；flag=false 时 provider-free stale/purge 仍可 claim。Worker 使用独立 lease lane，pin user/epoch/
+  L3 generation/profile/Provider record+updatedAt/watermark，strict versioned JSON 只允许一个 Persona、2–50 个
+  unique members，目标 200–300 tokens、hard `≤300` estimated tokens；unknown/duplicate/oversized/secret/forged
+  member 或 Provider deadline 后返回均 fail closed，旧响应不得覆盖新 generation。
+- [x] Sensitive 总开关同时约束 Persona L1 hydrate、Provider egress、derived content/projection 与最终注入；
+  secret/credential sentence 在 Provider 前本地删除，完全 redacted 或不足 2 个受权 member 时零调用。Persona
+  sensitivity 取所有 member 与本地 derived-content classifier 的更严格值；Sensitive 从 on→off 时旧 Persona
+  立即 stale/不可读，必须在新 generation 生成无敏感版本后才可再次 active。
+- [x] 任意参与资格相关的 Global L1 create/update/move/disable/supersede/delete/expiry、visibility epoch 或
+  Sensitive policy 变化，必须在数据库 authority 层推进 L3 generation、使旧 Persona 立即 stale、移除 reader
+  projection并 enqueue refresh；read/complete 再逐 member 检查 revision/hash/validity。Stale Persona plaintext/
+  member/projection 24 小时内 provider-free purge，account cascade 与既有 8-week backup retention 同样覆盖。
+- [x] Persona retrieval 使用独立 Exact/CJK BM25/BGE-M3/vector/RRF(60) relevance gate，只允许当前 user 的 current
+  generation/version；candidate/final 上限 5/1、L3 hard budget 300 estimated tokens、2s cutoff。Provider 后 final
+  重新验证 user/Sensitive/member/epoch/generation/profile authority；durable observation 只保留 IDs/hash/ordinal/
+  bounded telemetry，不保存 query/content/vector/raw score/Provider secret。query embedding失败降级 lexical，
+  Persona 失败不改变 L1/L2 或聊天结果。
+- [x] L3 profile 独立执行 `shadow -> active -> rollback`，不得依赖或改写 L2 pointer/generation。Promotion 只能
+  由 migration-owner 显式 capability 完成，并同时验证 passing 500-case report、persona consistency `≥0.95`、
+  false injection `≤0.02`、token saving ratio `≥0.20`、零 cross-user/secret/delete/provider leak、7 天且至少
+  100 个 eligible shadow turns、零 dead-letter，以及当前 L1 hybrid reader pointer。当前无正式 evidence，
+  migration 只 seed shadow profile，`MEMORY_L3_PERSONA_READER_ENABLED=false`，不得自动 promotion。
+- [x] Server governance API/UI 展示 L3 profile/status/generation、current Persona content/status/revision/token count/
+  sensitivity/source watermark/member count/更新时间；detail 只 hydrate current member L1 与 surviving evidence/
+  source-deleted marker。用户可独立 disable/enable/rebuild；“修改 Persona”只能进入既有 governed L1 correction
+  后重建，不提供 derived plaintext PATCH，refresh 不得静默重新启用 user-disabled Persona。
+- [x] Active Persona reader 即使 env flag 开启，也必须同时满足数据库 promotion、用户 `l3_mode!=off`、Memory
+  Use/Search、current L1 hybrid pointer、Persona active/current generation/member authority；任一失败、rollback 或
+  flag-off 都立即零 L3 注入且 fail-open 到原 L1/L2。Shadow 永不进入 prompt/Usage；active 使用独立低优先级
+  `<relevant-user-persona>` block，只发送 content、不发送 Persona/member IDs，L1 原子 Memory 始终优先。
+- [x] PR12 static/Go/PostgreSQL/frontend tests 覆盖 strict Persona JSON、scope/type/member/watermark spoof、secret/
+  Sensitive zero-egress、lease reclaim/old response、L1 write/delete/expiry stale、24h purge、disabled preserve、
+  exact/BM25/vector/RRF/budget、shadow zero injection、promotion denial/active/rollback与 L2 independence、cross-user/
+  role denial、governance detail/rebuild/a11y 与 guarded `062 -> 063 -> 062 -> 063`；不调用 Live Provider、不读取/
+  修改 Live Memory，并通过 focused race、backend/frontend/RAG full、Compose/preflight/image/full gate。
 
 ## Definition of Done
 

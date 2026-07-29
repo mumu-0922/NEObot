@@ -1,7 +1,7 @@
 # Neo Chat Server Memory v2 详细技术方案
 
-状态：完整 end-state 设计已冻结并获授权实施；PR1–PR11 已完成，当前仍保留 v1 reader，
-下一批进入 PR12 L3 Persona shadow/promotion。日期：2026-07-28。
+状态：完整 end-state 设计已冻结并获授权实施；PR1–PR12 已完成，当前仍保留 v1 reader，
+下一批进入 PR13 Hindsight fixture-only adapter/profile。日期：2026-07-29。
 
 > 本文覆盖最终生产形态，不把交付范围收缩为 Phase 0/1。后文 Phase 只是为了降低
 > 数据、隐私和回滚风险而安排的落地顺序，不代表 L2/L3、治理 UI、删除闭环、shadow
@@ -1427,7 +1427,11 @@ response 都带 version，消费者拒绝未知 major 而不是猜测字段。
     same-scope derived Scene、leased refresh/embedding/purge、Exact/BM25/vector RRF/rerank、
     500-token active reader、Server governance 与 evidence-gated promotion/rollback；两个 runtime
     flag 默认关闭，数据库 profile 保持 shadow，v1 L1 继续是唯一默认 prompt/Usage authority。
-12. **PR12：L3 Persona shadow/promotion** — 独立于 L2。
+12. **PR12：L3 Persona shadow/promotion** — 已于 2026-07-29 以 migration `063`
+    实现 Global stable-L1 Persona、leased refresh/embedding/purge、独立 Exact/BM25/vector
+    RRF/rerank、300-token reader、Server governance 与 evidence-gated promotion/rollback；
+    两个 runtime flag 默认关闭，数据库 profile 保持 shadow，v1 L1 继续是唯一默认
+    prompt/Usage authority。
 13. **PR13：Hindsight fixture-only adapter/profile** — 可独立取消；真实 trial 另行显式启用。
 
 每批必须有 migration replay/down 安全性、Go focused tests、PostgreSQL integration、
@@ -1507,7 +1511,8 @@ migration、backup/restore 和跨层安全完成后跑
 11. v1 fallback、feature flags、restore replay、rollback drill 和 full standalone gate 通过；
 12. Hindsight 无论成功或失败都不影响 canonical Memory 和正常聊天。
 
-实施已由魔尊于 2026-07-28 明确启动。PR1–PR11 已按第 17 章顺序完成；当前仍未默认切换
-v2 reader、未调用 Live provider 或回放 Live Memory。Project/Review/L2 Scene API/UI 已开放为治理面，
-Project/Conversation/L2 Scene 在默认 flags 下尚不进入 prompt/Usage。下一批为 PR12 L3 Persona
-shadow/promotion，后续批次继续按本章门槛推进。
+实施已由魔尊于 2026-07-28 明确启动。PR1–PR12 已按第 17 章顺序完成；当前仍未默认切换
+v2 reader、未调用 Live provider 或回放 Live Memory。Project/Review/L2 Scene/L3 Persona
+API/UI 已开放为治理面，Project/Conversation/L2 Scene/L3 Persona 在默认 flags 下尚不
+进入 prompt/Usage。下一批为 PR13 Hindsight fixture-only adapter/profile；真实 trial 仍需单独
+显式授权。
