@@ -28,6 +28,13 @@ neo-chat.memory-benchmark-candidates.v1
 neo-chat.memory-benchmark-review-event.v1
 neo-chat.memory-benchmark-freeze-manifest.v1
 neo-chat.memory-benchmark-holdout-use.v1
+neo-chat.memory-benchmark-regression-fixtures.v1
+neo-chat.memory-benchmark-regression-corpus.v1
+neo-chat.memory-benchmark-regression-audit.v1
+neo-chat.memory-benchmark-regression-manifest.v1
+neo-chat.memory-benchmark-regression-observations.v1
+neo-chat.memory-benchmark-regression-report.v1
+neo-chat.memory-benchmark-regression-evaluator.v1
 ```
 
 Authoring signatures:
@@ -54,6 +61,24 @@ memoryauthor.LoadReviewState(root string) (memoryauthor.ReviewState, error)
 memoryauthor.ApplyReview(root string, input memoryauthor.ReviewInput) (memoryauthor.ReviewResult, error)
 memoryauthor.Freeze(root string, input memoryauthor.FreezeInput) (memoryauthor.FrozenArtifacts, error)
 memoryauthor.BeginHoldout(root string, input memoryauthor.HoldoutInput) (memoryauthor.HoldoutUse, error)
+```
+
+Machine-reviewed regression authoring is a separate command/API family:
+
+```bash
+cd mm-chat/backend
+go run ./cmd/memory-benchmark-author regression-generate \
+  [-root <new-protected-regression-root>]
+go run ./cmd/memory-benchmark-author regression-status|regression-verify \
+  [-root <protected-regression-root>]
+```
+
+```go
+memoryauthor.GenerateRegression() (memoryauthor.RegressionPool, error)
+memoryauthor.AuditRegression(fixtures, corpus) (memoryeval.RegressionAudit, error)
+memoryauthor.PublishRegression(root string, pool memoryauthor.RegressionPool) error
+memoryauthor.LoadRegression(root string) (memoryauthor.RegressionPool, error)
+memoryauthor.VerifyRegression(root string) (memoryauthor.RegressionStatus, error)
 ```
 
 Draft/freeze validation:
@@ -85,6 +110,27 @@ memoryeval.DecodeObservationSet(io.Reader) (memoryeval.ObservationSet, error)
 memoryeval.GoldenContentSHA256(memoryeval.GoldenSet) (string, error)
 memoryeval.ValidateGoldenAdmission(memoryeval.GoldenSet) error
 memoryeval.Evaluate(memoryeval.EvaluationInput) (memoryeval.Report, error)
+```
+
+Regression evaluation uses explicit inputs and never accepts `-golden` in the
+same invocation:
+
+```bash
+cd mm-chat/backend
+go run ./cmd/memory-eval \
+  -regression-corpus <regression-corpus.json> \
+  -regression-audit <regression-audit.json> \
+  -observations <ordered-regression-observations.json> \
+  -output <new-exclusive-regression-report.json> \
+  [-pretty]
+```
+
+```go
+memoryeval.DecodeRegressionCorpus(io.Reader) (memoryeval.RegressionCorpus, error)
+memoryeval.DecodeRegressionAudit(io.Reader) (memoryeval.RegressionAudit, error)
+memoryeval.DecodeRegressionObservationSet(io.Reader) (memoryeval.RegressionObservationSet, error)
+memoryeval.ValidateRegressionAdmission(corpus, audit) error
+memoryeval.EvaluateRegression(memoryeval.RegressionEvaluationInput) (memoryeval.RegressionReport, error)
 ```
 
 ## 3. Contracts
@@ -153,6 +199,34 @@ memoryeval.Evaluate(memoryeval.EvaluationInput) (memoryeval.Report, error)
   still publishes its report before returning non-zero.
 - A passing report is evidence only. Evaluation never changes Memory Use/Learn,
   migration state, reader pointers, workers, or Hindsight.
+- Machine regression is a distinct corpus class with
+  `corpusClass=machine_reviewed_regression`,
+  `admissionMode=regression_only`, and `promotionEligible=false`. Its cases
+  remain `review.state=draft` with no reviewer/timestamp. Regression and Golden
+  strict decoders reject each other's artifacts, and
+  `ValidateGoldenAdmission` is never widened for machine review.
+- The regression profile is fixed at 500 cases, split `300/100/100`, language
+  `350/100/50`, and every critical slice at least 50 and `30/10/10`. The
+  `holdout` label is visible regression stratification only; no UUID, ordinal,
+  consumed marker, secrecy, or one-shot claim exists.
+- Regression generation uses opaque hash-derived IDs and forbids case order,
+  case/fixture/Memory IDs, or shared ordinals in query/Memory text. Its
+  deterministic audit traverses all cases and requires zero normalized
+  duplicates, ordinal/identifier shortcuts, binding failures, language/scope
+  mismatches, slice semantic failures, and preference/fallback/multi-hop
+  failures, plus at least 100 entity/topic-normalized query skeletons.
+- The default regression root is the gitignored
+  `mm-chat/data/memory-benchmark/v2-regression/`. Its final path component must
+  explicitly contain `regression`; publication is create-only with `0700/0600`
+  permissions. `regression-verify` regenerates and byte-compares fixtures,
+  corpus, audit, and manifest. Git receives content-free status/hashes only.
+- Regression observations bind corpus-content, audit-content, fixture, capture,
+  profile configuration, raw input hashes, and all 500 ordered IDs. They reuse
+  Candidate 20, Final 5, stage subsets, metrics, budgets, cost, and typed safety
+  scoring through the same internal scorer as formal evaluation.
+- A regression report repeats the class/mode and
+  `promotionEligible=false`; passing cannot satisfy formal admission or change
+  a reader.
 
 ## 4. Validation & Error Matrix
 
@@ -178,6 +252,12 @@ memoryeval.Evaluate(memoryeval.EvaluationInput) (memoryeval.Report, error)
 | Cross-user, deleted, secret, untrusted, or unauthorized Provider ID reaches a forbidden surface | Produce a failing zero-tolerance report. |
 | Quality/latency/token/cost criterion fails | Produce a failing report at the new path, then return non-zero. |
 | Output already exists | Refuse without changing existing bytes. |
+| Regression artifact is passed to the Golden decoder/evaluator, or vice versa | Reject strict decoding/admission before scoring. |
+| Regression omits explicit promotion denial, uses another class/mode, or contains human reviewer/timestamp fields | Reject admission. |
+| Regression count/split/language/slice or semantic-audit gate fails | Refuse publication/admission; never convert it into a formal review event. |
+| Regression corpus/audit/fixture/manifest hash or byte replay drifts | Refuse verify/admission and preserve the existing protected root unchanged. |
+| Regression observations contain a formal Holdout simulation, wrong audit/corpus/fixture binding, missing/reordered case, or bad stage subset | Reject before scoring. |
+| Regression metric gate fails | Publish the new exclusive regression report, return non-zero, and keep `promotionEligible=false`. |
 
 ## 5. Good / Base / Bad Cases
 
@@ -191,6 +271,15 @@ memoryeval.Evaluate(memoryeval.EvaluationInput) (memoryeval.Report, error)
   bulk approve, preserve approval after edit, delete a consumed marker to rerun
   Holdout, omit privacy flags, overwrite evidence, or let a passing evaluator
   change the active reader.
+- **Regression good**: generate the fixed private v2 artifacts, replay a passed
+  zero-shortcut semantic audit, bind ordered observations, and publish an
+  explicit non-promotional regression report through the shared scorer.
+- **Regression base**: the corpus and audit verify byte-for-byte, but no reader
+  observations exist yet; status can claim readiness only, not a passing
+  reader.
+- **Regression bad**: relabel machine output as `human_reviewed`, invent a
+  Holdout UUID, accept a weak/failed audit, use ordinal hints, or present a
+  passing fixture-oracle protocol smoke as reader evidence.
 
 ## 6. Tests Required
 
@@ -221,6 +310,15 @@ memoryeval.Evaluate(memoryeval.EvaluationInput) (memoryeval.Report, error)
 - Authoring freeze/Holdout tests: test-only explicit 500/150 decisions, exact
   evaluator admission, immutable binding replay, output preflight before
   marker, marker before bundle, and permanent second-run refusal.
+- Regression generator/audit tests: byte determinism; exact 500, split,
+  language, and slice counts; opaque/no-ordinal text; at least 100 normalized
+  skeletons; zero semantic counters; deliberate ordinal, weak fallback, and
+  weak multi-hop failures; private exclusive storage; byte replay; and v1
+  protected-profile non-regression.
+- Regression evaluator tests: cross-schema rejection; explicit promotion
+  denial; no human attestation; corpus/audit content binding; exact ordered
+  observations; absence of Holdout authority; shared metric/safety results;
+  failed-report publication; and exclusive output preservation.
 - Run `go test -race ./internal/memoryauthor ./cmd/memory-benchmark-author
   ./internal/memoryeval ./cmd/memory-eval`, `go test ./...`, and `go vet ./...`
   from `mm-chat/backend`.
@@ -255,3 +353,17 @@ deterministic 650-case private draft (promotionEligible=false)
 
 The evaluator proves the artifact chain and metrics while remaining unable to
 change production.
+
+### Correct machine regression
+
+```text
+fixed 500-case synthetic v2 profile
+-> deterministic zero-shortcut semantic audit
+-> private create-only corpus/audit/manifest
+-> ordered observations without Holdout authority
+-> shared scorer
+-> explicit regression_only, promotionEligible=false report
+```
+
+This lane makes automated regressions useful without laundering them into the
+formal human-review lifecycle.

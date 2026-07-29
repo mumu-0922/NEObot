@@ -3,7 +3,9 @@
 `memoryauthor` builds and protects the synthetic Memory v2 benchmark before it
 is admitted by `internal/memoryeval`. It generates a deterministic oversized
 candidate pool, records explicit human decisions, freezes exactly 500 accepted
-cases, and consumes the precommitted Holdout once.
+cases, and consumes the precommitted Holdout once. It also owns a separate
+500-case machine-reviewed regression corpus that has no human-review, freeze,
+Holdout, or promotion authority.
 
 The package is offline-only. It has no database, Provider, production API,
 reader, worker, or feature-flag dependency.
@@ -23,6 +25,8 @@ reader, worker, or feature-flag dependency.
 - Freeze only an exact reviewed `300/100/100` and `350/100/50` corpus, then
   reuse `memoryeval.ValidateGoldenAdmission` rather than copying its gates.
 - Publish a consumed marker before exposing the one allowed Holdout bundle.
+- Generate, semantically audit, publish, and byte-replay the independent v2
+  regression corpus without changing the v1 formal-authoring profile.
 
 ## Operator command
 
@@ -48,6 +52,12 @@ go run ./cmd/memory-benchmark-author freeze \
 go run ./cmd/memory-benchmark-author holdout-begin \
   -holdout-run-id '<precommitted-holdout-uuid>' \
   -output ../data/memory-benchmark/v1/holdout/run-input.json
+
+# Separate machine-reviewed regression lane. These commands never create
+# human review or formal Holdout authority.
+go run ./cmd/memory-benchmark-author regression-generate
+go run ./cmd/memory-benchmark-author regression-status
+go run ./cmd/memory-benchmark-author regression-verify
 ```
 
 The default protected root is `mm-chat/data/memory-benchmark/v1/`. A custom
@@ -55,6 +65,12 @@ root is accepted only outside a Git repository or under the repository's
 `mm-chat/data/memory-benchmark/<version>/` boundary. `secrets/`, `backup/`,
 symlinked paths, source paths, non-private files, and existing generation roots
 are rejected.
+
+The regression commands default to
+`mm-chat/data/memory-benchmark/v2-regression/`. The final path component must
+explicitly contain `regression`, generation is exclusive, and every artifact
+is bound to the fixed v2 profile. A `holdout` case label in this lane is only a
+visible regression stratum; it is not a secret or one-shot formal Holdout.
 
 ## Artifact layout
 
@@ -78,6 +94,23 @@ v1/
 
 Candidate and formal content remains Git-external. Only content-free hashes,
 counts, states, and documentation may be committed.
+
+The regression layout is intentionally simpler and cannot be consumed by the
+human-review/freeze commands:
+
+```text
+v2-regression/
+├── fixtures.json                 # 500 synthetic fixtures, mode 0600
+├── corpus.json                   # regression-only cases, mode 0600
+├── audit.json                    # content-free semantic audit, mode 0600
+└── manifest.json                 # exact raw/content hash bindings, mode 0600
+```
+
+Its audit rejects normalized duplicates, identifier/ordinal shortcuts,
+language or scope mismatch, weak preference/fallback/multi-hop semantics, and
+fixture/slice binding drift. Query skeletons replace known entities and topics
+before counting; the admitted profile currently contains 431 distinct
+skeletons, not ordinal-parameterized copies.
 
 ## Review invariants
 
@@ -106,6 +139,9 @@ counts, states, and documentation may be committed.
 | `Freeze` / `LoadFrozen` | Publish and independently replay the exact frozen corpus. |
 | `BeginHoldout` | Commit ordinal one, then publish the bounded Holdout bundle. |
 | `CurrentStatus` / `Verify` | Emit content-free state; `Verify` also regenerates and byte-compares the fixed candidate profile. |
+| `GenerateRegression` / `AuditRegression` / `ValidateRegressionPool` | Build and machine-audit the separate regression corpus. |
+| `ValidateRegressionRoot` / `PublishRegression` / `LoadRegression` | Enforce private, exclusive regression storage. |
+| `CurrentRegressionStatus` / `VerifyRegression` | Emit content-free regression status and byte-replay every fixed artifact. |
 
 ## Verification
 

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "neo-chat.memory-benchmark-review-disposition.v1",
+  "candidateManifestSha256": "bfca1b829ab4f886c558cad1be3c5f1e7c218492621405ac6d9fd8033113559c",
+  "fixtureContentSha256": "642015e9baea206366112874cc50d0fb73c001a62424ed86d805c023abe5aee5",
+  "initialStatusSha256": "1e69314f8bfd1053af9627a3b4be6ec3ec2fd9b0a2ddf30889f194984dddb517",
+  "ledgerSequence": 650,
+  "structuralDecisionCounts": {
+    "accepted": 650,
+    "rejected": 0,
+    "pending": 0
+  },
+  "reviewDisposition": "recanted_uninspected_actions",
+  "humanReviewAuthority": false,
+  "formalAdmissionEligible": false,
+  "frozen": false,
+  "holdoutState": "not_frozen",
+  "machineAudit": {
+    "reportSha256": "58ef912676a13e2f1c1e08617d575ff471e19a9754438913da5cf00c737ed927",
+    "caseCount": 650,
+    "verdict": "not_suitable_for_formal_freeze"
+  },
+  "successorRegression": {
+    "statusPath": "docs/tracking/memory-benchmark-regression-v2-status.json",
+    "statusSha256": "d874a685c9d146751a861e4bb64290bccab80cf64831aab8af3d5d781574f4c9",
+    "admissionMode": "regression_only",
+    "promotionEligible": false
+  }
+}

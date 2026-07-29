@@ -10,6 +10,8 @@
 - Keep formal corpus bytes outside Git and all authoring behavior outside the
   production Next.js/API/Compose/runtime boundary.
 - Fail closed before a Holdout retry can become a tuning signal.
+- Provide a useful machine-reviewed regression lane without fabricating human
+  review or weakening formal Golden admission.
 
 ## Non-goals
 
@@ -19,6 +21,7 @@
 - Prevent a malicious machine owner from copying files with direct filesystem
   access. The read-once guarantee belongs to the supported toolchain and
   private-file operational boundary, not to DRM.
+- Promote a reader from machine-reviewed regression results.
 
 ## Architecture
 
@@ -53,6 +56,30 @@ loopback browser --> explicit review event --> immutable hash chain
 `memoryeval` remains the single source of truth for Golden schema validation,
 canonical freeze hashing, formal admission, scoring, and report semantics.
 
+The recovery lane is independent:
+
+```text
+fixed regression profile/seed
+        |
+        v
+500 fixtures + regression corpus
+        |
+        v
+deterministic semantic audit
+        |
+        +-- zero shortcut/binding/semantic failures
+        +-- >=100 entity/topic-normalized query skeletons
+        v
+exclusive private publication --byte replay--> content-free status
+        |
+        v
+regression observations --> shared scorer --> regression-only report
+```
+
+The two lanes share case semantics and scoring primitives, not admission
+authority. Regression artifacts have distinct schemas and cannot be decoded as
+Golden artifacts.
+
 ## Core decisions
 
 | Decision | Reason | Consequence |
@@ -67,6 +94,10 @@ canonical freeze hashing, formal admission, scoring, and report semantics.
 | Loopback standard-library server | Keeps formal content out of production frontend/API/Compose. | The server exists only while the operator command is running. |
 | Holdout marker before output publication | A failed first run cannot be retried and tuned. | A crash after marker creation taints the corpus and requires a new version. |
 | Existing evaluator admission reused | Prevents authoring and evaluation gates from drifting. | Freeze fails whenever evaluator v1 rejects the assembled Golden. |
+| Separate regression corpus/audit schemas | A mode flag on Golden would make machine review too easy to confuse with formal admission. | Regression evaluation requires explicit corpus and audit inputs and always emits `regression_only`. |
+| Shared scoring implementation | Quality, latency, token, cost, and leakage calculations must not drift between lanes. | Admission and binding differ, while metric code remains single-source. |
+| Opaque hash-derived regression IDs and no ordinal text | v1's shared ordinal created a perfect retrieval shortcut. | Queries and Memory bodies cannot reveal case order or logical IDs. |
+| Deterministic content-free semantic audit | Structural validation alone admitted weak preference, fallback, multi-hop, language, and scope labels. | Any failed semantic counter blocks publication and regression admission. |
 
 ## Deterministic generation
 
@@ -174,8 +205,16 @@ second attempt even if the first publication or downstream reader failed.
 - A crash after the consumed marker is durable but before a complete formal
   observation intentionally burns the Holdout and requires a new corpus
   version plus new review/freeze evidence.
+- Machine semantic rules are deterministic lexical/structural gates. They are
+  deliberately stricter than v1's labels but are not a substitute for genuine
+  human judgment or a hidden formal Holdout.
+- All v2 regression splits are machine-visible. Their `holdout` label preserves
+  the common 300/100/100 scoring shape only and must never be described as
+  one-shot evidence.
 
 ## Change history
 
 - 2026-07-29: initial deterministic generator, protected artifacts,
   hash-chained human review, loopback UI, exact freeze, and one-shot Holdout.
+- 2026-07-29: added the separate 500-case v2 machine-reviewed regression
+  generator, semantic audit, protected replay, and non-promotional boundary.

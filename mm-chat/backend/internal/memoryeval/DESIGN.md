@@ -12,6 +12,8 @@
   token cost, Provider cost, and authority safety one deterministic scorer.
 - Keep committed draft material synthetic, non-sensitive, and visibly
   ineligible for promotion.
+- Reuse one scorer for formal and regression evidence while making it
+  impossible to admit machine review as a formal Golden.
 
 ## Non-goals
 
@@ -36,6 +38,19 @@ observations JSON --strict decode--> ordered/bound single Holdout -------+
                                                exclusive JSON gate report
 ```
 
+The regression path joins only below admission:
+
+```text
+regression corpus + passed deterministic audit --separate admission--+
+regression observations --no Holdout UUID, exact visible order--------+
+                                                                    |
+                                                                    v
+                                                    shared metric scorer
+                                                                    |
+                                                                    v
+                                      explicit regression-only report
+```
+
 `types.go` defines the versioned wire types. `load.go` owns the bounded strict
 decoder, case semantics, lifecycle validation, and canonical hash.
 `evaluate.go` owns artifact binding, aggregation, per-slice gates, and stable
@@ -54,6 +69,10 @@ failure ordering. `cmd/memory-eval` owns filesystem input/output only.
 | Final and injected IDs must be subsets of earlier ranking stages | Observation producers must expose the actual selection chain. | Direct readers must still materialize the equivalent candidate/final stages. |
 | Safety is derived from Golden exclusions and observed ID surfaces | Self-reported `leaked=false` flags are not evidence. | Producers must list persisted and Provider-sent Memory IDs. |
 | Reports use exclusive hard-link publication | A failed or consumed Holdout artifact must not be overwritten. | Operators choose a new path for every attempt. |
+| Regression types are not fields on `GoldenSet` | Machine review must not become a lifecycle value that formal admission might accidentally accept. | Strict decoders reject cross-lane artifacts before scoring. |
+| Corpus and audit use a two-way hash binding | A structurally valid corpus without its passed semantic audit is not admitted. | The corpus content hash clears only its own and the audit-hash field; raw corpus bytes still bind the final audit hash. |
+| Regression has no Holdout UUID or ordinal | Every machine-reviewed case is visible and tuneable. | The `holdout` split is diagnostic stratification only and reports cannot claim one-shot evidence. |
+| Both lanes call `scoreEvaluation` | Metric fixes and safety gates must apply identically. | Only admission, provenance, and report authority differ. |
 
 ## Metric Semantics
 
@@ -82,6 +101,7 @@ failure ordering. `cmd/memory-eval` owns filesystem input/output only.
 | Corpus is edited after review | Canonical frozen-content SHA-256 plus exact raw-file SHA-256 in the report. |
 | Fixture or profile drifts | Fixture-manifest and configuration hashes are mandatory. |
 | Holdout is tuned or replayed | Precommitted UUID, ordinal exactly one, ordered complete observations, and exclusive output. |
+| Machine regression is presented as formal evidence | Separate schema, decoder, admission, CLI flags, provenance, and `promotionEligible=false`; human attestations are rejected. |
 | A producer hides leakage behind booleans | The evaluator derives leakage from exclusion reasons and observed ID surfaces. |
 | Evaluation accidentally changes production | No database, network, Provider, `usermemory`, feature-flag, or migration dependency. |
 
@@ -95,8 +115,13 @@ failure ordering. `cmd/memory-eval` owns filesystem input/output only.
   the benchmark's same-window synthetic/provider cost ratio.
 - Human review quality remains an operational process; the validator proves
   attestations and timing, not reviewer judgment.
+- The deterministic regression audit detects the known v1 shortcut and slice
+  failures, but it is still machine judgment and cannot certify promotion.
 
 ## Change History
 
 - 2026-07-28: Added the v1 offline benchmark schema, validator, evaluator,
   immutable report command, and contract tests. No runtime behavior changed.
+- 2026-07-29: Added separate machine-reviewed regression corpus/audit/
+  observation/report schemas and evaluation using the shared scorer. Formal
+  Golden admission remains unchanged.

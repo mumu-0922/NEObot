@@ -12,7 +12,7 @@
 | [Direct chat attachments](./chat-attachments.md)    | Attachment-only messages, native images, bounded document extraction, provider context, and explicit failures       |
 | [Hosted media provider smoke](./provider-live-smoke.md) | Exact live-provider authorization, one-off credentials, explicit TTS voices, artifacts, and sanitized evidence    |
 | [Hosted TTS production](./hosted-tts-production.md) | Dedicated SiliconFlow Voice authority, exact activation, server-mode playback, per-user cache, and cleanup |
-| [Memory v2 benchmark](./memory-v2-benchmark.md) | Deterministic 650-case authoring, human review ledger, synthetic-only 500-case Golden lifecycle, one-shot Holdout, strict evaluation, and non-promotional boundaries |
+| [Memory v2 benchmark](./memory-v2-benchmark.md) | Deterministic 650-case human Golden authoring plus a schema-separated 500-case machine regression lane, strict shared scoring, protected replay, one-shot formal Holdout, and non-promotional boundaries |
 | [Memory v2 storage](./memory-v2-storage.md) | Project/scope/settings foundation, Global v1 repository compatibility, ownership constraints, and guarded rollback |
 | [Memory v2 worker](./memory-v2-worker.md) | ID-only completed-turn capture, leased PostgreSQL jobs, private Go worker, Redis wake, least privilege, replay, and rollback |
 | [Memory v2 provenance/delete](./memory-v2-provenance-deletion.md) | Canonical revisions, ID/hash evidence, visibility epochs, tombstones, manifests, and provider-free purge |

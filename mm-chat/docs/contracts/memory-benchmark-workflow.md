@@ -37,6 +37,35 @@ neo-chat.memory-benchmark-report.v1
 neo-chat.memory-benchmark-evaluator.v1
 ```
 
+Machine-reviewed regression is a second, non-promotional chain:
+
+```text
+fixed synthetic v2 profile
+  -> 500 bound fixtures/cases
+  -> deterministic semantic audit
+  -> private immutable manifest
+  -> ordered regression observations
+  -> exclusive regression-only report
+```
+
+Its schemas are deliberately not Golden lifecycle states:
+
+```text
+neo-chat.memory-benchmark-regression-fixtures.v1
+neo-chat.memory-benchmark-regression-corpus.v1
+neo-chat.memory-benchmark-regression-audit.v1
+neo-chat.memory-benchmark-regression-manifest.v1
+neo-chat.memory-benchmark-regression-observations.v1
+neo-chat.memory-benchmark-regression-report.v1
+neo-chat.memory-benchmark-regression-evaluator.v1
+```
+
+Regression declares `corpusClass=machine_reviewed_regression`,
+`admissionMode=regression_only`, and `promotionEligible=false`. Strict decoding
+rejects a regression artifact on the Golden path and rejects a Golden artifact
+on the regression path. Both paths share scoring code only after their
+different admission and binding checks pass.
+
 All Golden and observation JSON is decoded with a 64 MiB limit, duplicate-key
 rejection, unknown-field rejection, one-value enforcement, bounded identifiers,
 and exact enum validation.
@@ -145,7 +174,66 @@ witness is not accepted automatically and is not human review authority.
 Candidate fixture/Golden content and review events remain outside Git. A
 committed status may contain only versions, counts, states, and hashes.
 
+### 3.2 Generate the machine-reviewed v2 regression corpus
+
+Use this lane when deterministic regression coverage is useful but genuine
+human-review and hidden Holdout authority do not exist:
+
+```bash
+cd mm-chat/backend
+go run ./cmd/memory-benchmark-author regression-generate
+go run ./cmd/memory-benchmark-author regression-status
+go run ./cmd/memory-benchmark-author regression-verify
+```
+
+The default private root is
+`mm-chat/data/memory-benchmark/v2-regression/`. Generation creates it once with
+directory mode `0700` and file mode `0600`; it never overwrites or repairs an
+existing/partial root. `verify` regenerates all fixture, corpus, audit, and
+manifest bytes in memory and requires exact equality.
+
+The fixed profile is:
+
+```text
+Cases:                           500
+Development/Validation/Holdout: 300 / 100 / 100
+Chinese/mixed/English:           350 / 100 / 50
+Every critical slice:            >=50 and >=30 / 10 / 10 by split
+Entity/topic-normalized query skeletons: >=100 (current profile: 431)
+Model, Provider, DB, live Memory: none
+```
+
+Case, fixture, and Memory IDs are deterministic opaque hashes. Query and
+Memory text contains no case ordinal or logical ID. The content-free audit
+traverses all 500 cases and fails on any normalized duplicate, shared numeric
+or identifier shortcut, fixture/scope/state binding drift, language/scope-text
+mismatch, or weak slice semantics. In particular:
+
+- preference/instruction must appear in both the query and relevant Memory;
+- failure/fallback must express timeout/error/degradation and an authorized
+  saved fallback in both surfaces;
+- multi-hop must require at least two distinct active relevant Memories and
+  composition of a constraint with an action;
+- temporal correction requires current and superseded contradictory evidence;
+- negative slices require the matching rejected/deleted/cross-user evidence;
+- Global text says Global/account-wide, Project text names the Project, and
+  Conversation text names the current Project conversation;
+- English stays English, Chinese contains Chinese, and mixed-language cases
+  deliberately contain both instead of accidental query/content mismatch.
+
+The complete fixtures/corpus/audit remain Git-external. The committed
+[`memory-benchmark-regression-v2-status.json`](../tracking/memory-benchmark-regression-v2-status.json)
+contains only counts, verdict, and hashes.
+
 ## 4. Review and freeze
+
+The current protected v1 review attempt is not formal authority: its 650
+accept events were explicitly recanted because the cases were not inspected.
+Do not freeze, rewrite, truncate, or relabel that ledger. Its content-free
+disposition is recorded in
+[`memory-benchmark-v1-review-disposition.json`](../tracking/memory-benchmark-v1-review-disposition.json).
+Any future formal corpus requires a new clean human-review attempt; the v2
+regression lane cannot repair or replace this requirement.
 
 New cases begin with:
 
@@ -328,6 +416,30 @@ case's relevant allowlist makes that case false. nDCG@5 and MRR@5 are emitted as
 diagnostics so a later reranker must prove benefit against the same frozen
 baseline; v1 does not fabricate an absolute gain before baseline evidence
 exists.
+
+### 6.1 Evaluate machine regression without formal Holdout authority
+
+Regression evaluation requires the exact admitted corpus and its passed audit:
+
+```bash
+cd mm-chat/backend
+go run ./cmd/memory-eval \
+  -regression-corpus ../data/memory-benchmark/v2-regression/corpus.json \
+  -regression-audit ../data/memory-benchmark/v2-regression/audit.json \
+  -observations /secure/eval/memory-regression-observations.json \
+  -output /secure/eval/memory-regression-report.json \
+  -pretty
+```
+
+Regression observations bind the corpus-content, audit-content, fixture, raw
+input, profile configuration, capture, and exact ordered 500-case IDs. They use
+the same Candidate limit 20, Final limit 5, stage-subset rules, typed leakage
+surfaces, budgets, costs, and metric implementation as formal evaluation.
+
+They do not contain a Holdout UUID or ordinal. The visible `holdout` split is
+only regression stratification. A passing report always repeats the regression
+class/mode and `promotionEligible=false`; it cannot satisfy
+`ValidateGoldenAdmission` or authorize a reader change.
 
 ## 7. Keep promotion separate
 
