@@ -9,8 +9,9 @@ Agent Memory 方案，并在“单服务器、自托管、Go + PostgreSQL + Pyth
 Project/scope/settings foundation、PR3 durable capture worker、PR4 provenance/delete
 correctness、PR5 candidate/Review shadow、PR6 direct-user actions/Activity/Usage、PR7 L1
 exact/CJK BM25 projection shadow、PR8 BGE-M3/vector hybrid shadow、PR9 governance 与
-PR10 encrypted portability/retention 已完成。继续保留 v1 reader，不调用 Live provider 或
-回放 Live Memory；下一批为 PR11 L2 Scene shadow/promotion。
+PR10 encrypted portability/retention、PR11 L2 Scene 与 PR12 L3 Persona 已完成。继续保留
+v1 reader，不调用 Live provider 或回放 Live Memory；当前批次为 PR13 Hindsight
+fixture-only adapter/profile，并在对照结束后销毁 Hindsight 运行实例。
 
 ## What I Already Know
 
@@ -434,6 +435,44 @@ PR10 encrypted portability/retention 已完成。继续保留 v1 reader，不调
   exact/BM25/vector/RRF/budget、shadow zero injection、promotion denial/active/rollback与 L2 independence、cross-user/
   role denial、governance detail/rebuild/a11y 与 guarded `062 -> 063 -> 062 -> 063`；不调用 Live Provider、不读取/
   修改 Live Memory，并通过 focused race、backend/frontend/RAG full、Compose/preflight/image/full gate。
+- [x] PR13 固定 Hindsight `0.8.5`、upstream commit
+  `e5b4c52d7ea9bf8ed45ba910f3ad4f92a7bb824a`、官方 multi-arch image digest 与
+  PostgreSQL/pgvector image digest；adapter 只依赖已审计的 REST retain/recall/bank
+  config/delete contract，不 vendor 上游源码或依赖 generated SDK。
+- [x] PR13 提供严格版本化、bounded、duplicate-key/unknown-field/trailing-value 拒绝的
+  synthetic fixture manifest 与 content hash binding；输入必须显式声明 synthetic-only、
+  no real user data、no sensitive data、promotion ineligible，且任何 Live Memory、Live chat、
+  Live Provider credential、`.env.single-server` 或 provider vault 都不能成为输入。
+- [x] PR13 adapter 使用 server-generated stable opaque bank mapping；调用者只能提交受校验的
+  fixture alias/mode，不能提交 Hindsight `bank_id`、Neo Chat user ID、database URL、API URL、
+  credential 或任意 endpoint。Cross-bank fixture/result 混用必须 fail closed。
+- [x] PR13 同时实现 `end_to_end` 与 `retrieval_only` 两条独立 fixture profile：前者用 Hindsight
+  local mock extraction 验证 retain→recall 完整链，后者用 `chunks` 灌入等价冻结事实隔离检索
+  差异；两者都只使用容器内预载 local embedding/reranker，不调用任何 Live/remote Provider。
+- [x] Hindsight 只运行于独立 Compose project 的显式 optional profile；API、独立 PostgreSQL
+  database/role、runner 只连接 `internal: true` private network，不 publish host port，不接入
+  Neo Chat `private`/`rag-private` network，不挂载 Neo Chat database/data/secrets/backup，且使用
+  ephemeral API key/DB password、read-only runner、cap drop、no-new-privileges、CPU/RSS/PID 上限。
+- [x] PR13 不新增 frontend/HTTP route/migration/runtime flag，不进入 chat prompt、Usage、Activity、
+  canonical/projection/job，也不改变 v1/L1/L2/L3 reader 或 Native Memory；Hindsight timeout、5xx、
+  malformed response、unavailable 或 resource failure 只能使 benchmark fail，不能影响正常聊天。
+- [x] Adapter 只输出 content-free observation/report：允许 case/fixture alias、opaque logical Memory
+  ID、rank/count/status、bounded error code、latency/resource/hash/version；禁止输出 query、fixture
+  plaintext、Hindsight fact text/raw score/trace、bank ID、API key、DB URL、Provider request 或 raw error。
+- [x] 覆盖 end-to-end/retrieval-only、CJK/mixed、cross-bank、delete-after-recall、wrong API key、
+  timeout/cancel、oversized/malformed response、default-off/zero-network、resource/config topology 与
+  Native Memory unchanged tests；offline Go tests必须使用 `httptest`，不得访问网络或 Provider。
+- [x] 对照命令无论成功、失败或中断都执行 scoped teardown；只允许对 PR13 独立 Compose project
+  删除 exact containers/network/volume/secrets tempdir，并验证零 bank/audit/LLM request/file/
+  async-operation/graph-queue/DB/role/volume/container/network 残留，禁止对主 Compose project 使用
+  `down -v` 或删除 `mm-chat/data|secrets|backup|.env.single-server`。
+- [x] 对照完成后删除 Hindsight 运行实例；仅保留脱敏 content-free report、synthetic fixtures、
+  adapter/test harness 与 pinned provenance 以便复现。即使 Hindsight 胜出也只能触发新评审，
+  不能保留实例或自动进入生产；未来任何真实 30 天 trial 必须由魔尊重新显式授权并创建全新
+  隔离实例，禁止复用 PR13 key/database/role/volume/bank。
+- [x] PR13 focused race/full backend tests、Compose static/render、container/PostgreSQL purge drill、
+  failure/timeout/resource/teardown tests、backend image 与 `verify-standalone.sh --full` 全部通过；
+  运行门禁期间不得调用 Live Provider、读取/修改 Live Memory 或启动主应用 Hindsight 集成。
 
 ## Definition of Done
 
@@ -468,6 +507,10 @@ PR10 encrypted portability/retention 已完成。继续保留 v1 reader，不调
 - PR10 encrypted portability、off-host deletion replay 与 backup retention 均通过 tamper/authority/
   rollback/restore 实证；plaintext package/passphrase/secret 不落盘或持久化，受支持 restore 不复活
   deleted Memory，v1 Global Top 5 仍为唯一 prompt/Usage authority。
+- PR11 L2 Scene 与 PR12 L3 Persona 的 shadow/promotion/governance/rollback 均已通过各自门禁，
+  两层 reader flag 默认关闭且不改变 v1 L1 默认 prompt/Usage authority。
+- PR13 fixture-only adapter、双轨 profile、私网独立拓扑、content-free report 与 scoped teardown
+  均有自动化证明；对照结束后 Hindsight runtime state 为零，Native Memory/chat 行为始终不变。
 
 ## Technical Approach
 
@@ -503,16 +546,14 @@ PostgreSQL v2，外部引擎只能通过可替换 adapter 做 shadow；Hindsight
 
 ## Current Batch Out of Scope
 
-- PR11 不自动 promotion L1 或 L2，不伪造 500-case/7-day canary evidence；当前默认 flag 与数据库 profile
-  保持 shadow/off，因此 v1 Global Top 5 与既有 Usage 仍是唯一实际 prompt authority。
-- PR11 不让 Conversation-scoped L1 扩散到 Project/Global Scene，不每轮注入全量 Scene navigation，不导出
-  Scene 到 `.mm-memory`，也不让 imported external ID、topic key 或 Provider member ID 成为 authority。
-- PR11 不提供 Scene plaintext PATCH；用户 correction 只写 governed canonical L1，再走同一 stale/rebuild
-  链。Derived Scene/member/projection 不保留被删 L1 plaintext，不从 revision history 重建 current 内容。
-- PR11 不调用 Live Provider、不回放或修改 Live Memory；generation/retrieval/worker 测试只用离线 fake
-  Provider 与 disposable PostgreSQL。生产开启 shadow 或 promotion 仍需单独、可审计的 operator 动作。
-- PR12 L3 Persona 与 PR13 Hindsight adapter 继续冻结，后续严格按顺序实施；L2 promotion/rollback 不得
-  修改 `active_l3_generation` 或 L3 preference。
+- PR13 不实施真实用户 30 天 shadow trial，不复制、去标识或回放任何 Live Memory/chat，也不接入
+  Live Provider；历史上“全门槛后可 trial”的产品偏好不构成本批授权。
+- PR13 不把 Hindsight 做成生产 `MemoryEngine`、reader、worker、frontend/API 功能或长期运行服务，
+  不新增 migration，不修改 active profile/pointer/flag，不进入 prompt/Usage/Activity。
+- PR13 不为了第三方对照修改 Native Memory ranking、L2/L3、benchmark 门槛或 synthetic Golden
+  authority；对照报告只是 evidence，不能 promotion。
+- PR13 不保留 Hindsight container、database/role/key/network/volume/bank/audit/cache/file/queue/log
+  runtime state；未来 trial 必须单独评审、重新授权并新建隔离实例。
 - 不把 AGENTS/system/project 固定规则迁入概率性 Memory。
 - 不把供应商 benchmark 当作发布门槛；发布必须使用 Neo Chat 中文数据集复测。
 
@@ -694,6 +735,6 @@ PostgreSQL v2，外部引擎只能通过可替换 adapter 做 shadow；Hindsight
     exact NOOP、冲突 Review、secret pre-staging reject，外部 scope IDs 不可信。
 
 本轮两个参考项目已完成源码/运行链路对比；若魔尊还有项目则继续并入矩阵。实施已获
-授权，PR1–PR7 已按顺序完成；下一批为 PR8 BGE-M3/vector + RRF + rerank + budget
-fallback 的 0% prompt-injection shadow。任何 Live Memory 修改、provider 调用或后续真实
-shadow 仍受对应分期门槛与单独授权约束。
+授权，PR1–PR12 已按顺序完成；当前批次为 PR13 Hindsight fixture-only adapter/profile，
+并在对照结束后删除其运行实例。任何 Live Memory 修改、Provider 调用或后续真实 shadow
+仍受对应分期门槛与新的单独授权约束。

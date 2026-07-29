@@ -23,6 +23,7 @@ mm-chat/scripts/compose-single-server-production.sh # clean-env production entry
 mm-chat/scripts/init-provider-keyring.sh # one-time provider vault bootstrap
 mm-chat/scripts/rotate-provider-keyring.sh # retained-key prepare/prune candidates
 mm-chat/compose.production.yml          # removes all production build paths
+mm-chat/compose.hindsight-fixture.yml   # isolated synthetic benchmark only
 mm-chat/secrets/                        # provider vault Docker Secret source, gitignored
 mm-chat/data/                          # runtime volumes, gitignored
 mm-chat/backup/                        # backup output, gitignored
@@ -121,6 +122,23 @@ cache reuse.
 No database, Redis, or MinIO port is published. The backend binds to localhost
 only so a host-level reverse proxy can expose the same-origin `/mm-api` path
 without opening data services.
+
+### Optional Hindsight fixture project
+
+`compose.hindsight-fixture.yml` is deliberately not included by `compose.yml`,
+`compose.single-server.yml`, or `compose.production.yml`. It is not a production
+service/profile and must be invoked only through
+`scripts/run-memory-hindsight-fixture.sh`. The wrapper creates a random Compose
+project with its own PostgreSQL role/database/volume, API key, internal network,
+and resource limits; it mounts only the two checked-in synthetic contracts and
+publishes no port.
+
+The wrapper destroys the exact project and volume on success, failure, or
+signal, then verifies that no project-labeled container, network, or volume
+remains. Do not add this file to the main Compose include chain, give it a
+production restart policy, mount `.env.single-server`/`data`/`secrets`/`backup`,
+or reuse its runtime for a real-data trial. See
+[`../contracts/memory-hindsight-fixture.md`](../contracts/memory-hindsight-fixture.md).
 
 ### Phase 15.2B dark-run worker
 

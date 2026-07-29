@@ -1432,7 +1432,12 @@ response 都带 version，消费者拒绝未知 major 而不是猜测字段。
     RRF/rerank、300-token reader、Server governance 与 evidence-gated promotion/rollback；
     两个 runtime flag 默认关闭，数据库 profile 保持 shadow，v1 L1 继续是唯一默认
     prompt/Usage authority。
-13. **PR13：Hindsight fixture-only adapter/profile** — 可独立取消；真实 trial 另行显式启用。
+13. **PR13：Hindsight fixture-only adapter/profile** — 已于 2026-07-29 实现 digest-pinned
+    `net/http` adapter、hash-bound synthetic manifest、`end_to_end`/`retrieval_only` profiles、
+    isolated Compose、content-free report 与强制 teardown。两轨 draft 均为 8/10，temporal 与
+    negative case 被 `forbidden_memory_result` 阻断；结果不可 promotion，真实 trial 仍需另行
+    显式授权。对照后的 Hindsight container/network/volume/database/role/key/bank runtime state
+    已全部销毁。
 
 每批必须有 migration replay/down 安全性、Go focused tests、PostgreSQL integration、
 worker crash/reclaim、cross-user/delete tests；跨层完成后再跑 full standalone gate。
@@ -1511,8 +1516,9 @@ migration、backup/restore 和跨层安全完成后跑
 11. v1 fallback、feature flags、restore replay、rollback drill 和 full standalone gate 通过；
 12. Hindsight 无论成功或失败都不影响 canonical Memory 和正常聊天。
 
-实施已由魔尊于 2026-07-28 明确启动。PR1–PR12 已按第 17 章顺序完成；当前仍未默认切换
+实施已由魔尊于 2026-07-28 明确启动。PR1–PR13 已按第 17 章顺序完成；当前仍未默认切换
 v2 reader、未调用 Live provider 或回放 Live Memory。Project/Review/L2 Scene/L3 Persona
 API/UI 已开放为治理面，Project/Conversation/L2 Scene/L3 Persona 在默认 flags 下尚不
-进入 prompt/Usage。下一批为 PR13 Hindsight fixture-only adapter/profile；真实 trial 仍需单独
-显式授权。
+进入 prompt/Usage。Hindsight fixture 对照未达到晋升门槛，运行实例已销毁；真实 trial 仍需
+单独显式授权，formal 500-case benchmark、shadow/canary 与 reader promotion 仍是后续运营门禁，
+不属于本轮自动启用范围。

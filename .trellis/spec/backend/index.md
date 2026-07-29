@@ -24,6 +24,7 @@
 | [Memory v2 portability/retention](./memory-v2-portability-retention.md) | Authenticated age export/import, dry-run/confirm fencing, off-host deletion replay, and verified backup-set retention |
 | [Memory v2 L2 Scene](./memory-v2-l2-scene.md) | Same-scope derived Scenes, leased synthesis/embedding/purge, hybrid shadow retrieval, evidence-gated promotion, governance, and rollback |
 | [Memory v2 L3 Persona](./memory-v2-l3-persona.md) | Global stable-L1 Persona synthesis, leased refresh/embedding/purge, independent hybrid retrieval/promotion, governance, and rollback |
+| [Memory v2 Hindsight fixture](./memory-v2-hindsight-fixture.md) | Synthetic-only dual-profile Hindsight comparison, opaque bank mapping, content-free reports, isolated Compose, and mandatory teardown |
 
 ## Pre-Development Checklist
 
@@ -217,6 +218,17 @@ Persona governance changes:
    lexical fallback, token recomputation, runtime promotion denial, account
    cascade, least privilege, and clean guarded down/re-up.
 
+For Hindsight fixture manifests, adapter/profile, comparison topology, reports,
+or teardown changes:
+
+1. Read [`memory-v2-hindsight-fixture.md`](./memory-v2-hindsight-fixture.md).
+2. Keep inputs synthetic-only/hash-bound and keep the ten-case draft explicitly
+   ineligible for promotion.
+3. Preserve opaque server-derived bank authority, local-only dual profiles,
+   content-free evidence, and total separation from Native Memory/chat.
+4. Prove success/failure/signal teardown removes the exact isolated project,
+   credentials, database/role, volume, containers, and network.
+
 ## Quality Check
 
 - Run the disposable database drill for the changed storage group.
@@ -268,5 +280,8 @@ Persona governance changes:
 - For Memory L3 Persona changes, also run the PostgreSQL 17 refresh/member/
   derived-embedding/search/stale/purge/promotion/replay/account-cascade drill
   plus every gate in `memory-v2-l3-persona.md`.
+- For Hindsight fixture changes, also run focused race tests, the isolated
+  Compose render, both synthetic profiles, exact teardown proof, backend image
+  build, and every gate in `memory-v2-hindsight-fixture.md`.
 
 **Language**: All documentation should be written in English.

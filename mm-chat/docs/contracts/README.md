@@ -25,6 +25,7 @@ Contract documents define stable boundaries before implementation starts.
 - [`mineru-lifecycle-evidence-promotion-plan.md`](./mineru-lifecycle-evidence-promotion-plan.md) — successful Lifecycle Summary-to-Fixture mapping plan, redaction boundary, residual blockers, verification gates, and rollback.
 - [`browser-data-import.md`](./browser-data-import.md) — Phase 8 contract for explicit local-first browser data import, preview validation, ZIP package blobs, idempotency, and rollback.
 - [`memory-benchmark-workflow.md`](./memory-benchmark-workflow.md) — Memory v2 PR1 synthetic-only 500-case Golden lifecycle, strict observation schema, deterministic scorer, immutable report, and non-promotional boundary.
+- [`memory-hindsight-fixture.md`](./memory-hindsight-fixture.md) — Memory v2 PR13 digest-pinned synthetic Hindsight dual-profile comparison, content-free evidence, isolated Compose topology, and mandatory whole-instance teardown.
 - [`memory-governance-api.md`](./memory-governance-api.md) — Memory v2 PR9 authenticated Project/Conversation policy, scoped governance CRUD, Review/detail/Activity UI contracts, current-only plaintext hydration, and guarded rollout/rollback.
 
 Future contract docs may cover SSE wire examples and database migration contracts.

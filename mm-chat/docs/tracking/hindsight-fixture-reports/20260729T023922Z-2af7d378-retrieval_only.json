@@ -1,0 +1,257 @@
+{
+  "schemaVersion": "neo-chat.memory-hindsight-fixture-report.v1",
+  "adapterVersion": "neo-chat.memory-hindsight-fixture-adapter.v1",
+  "manifestId": "neo-chat-memory-hindsight-fixture-draft",
+  "manifestContentSha256": "f829b91807d412dff4a9eab5b823f6f0176f3d3937c6869aefcfa59ffe4e45ad",
+  "goldenSetId": "neo-chat-memory-benchmark-draft-template",
+  "goldenRawSha256": "d39bc7bf7a5238d42ecf17fe1f99da08293d023bbf91630e3c241242af6ce683",
+  "promotionEligible": false,
+  "passed": false,
+  "profile": {
+    "mode": "retrieval_only",
+    "upstreamVersion": "0.8.5",
+    "upstreamCommit": "e5b4c52d7ea9bf8ed45ba910f3ad4f92a7bb824a",
+    "upstreamImageDigest": "sha256:35d88f6fc2d63ba37e8118dc02945097bf34e4ad04d4f3299e3c426db72c04ba",
+    "configurationSha256": "a3ea2ab3ce10652239363f5c387123a1ed3e0838ebd11d20e32c245088d71892",
+    "remoteProviderCalls": 0,
+    "candidateLimit": 20,
+    "finalLimit": 5
+  },
+  "fixtures": [
+    {
+      "fixtureAlias": "draft-stable-zh-fixture",
+      "retainedMemoryIds": [
+        "memory-theme-current"
+      ],
+      "deletedMemoryIds": [],
+      "rejectedMemoryIds": []
+    },
+    {
+      "fixtureAlias": "draft-preference-mixed-fixture",
+      "retainedMemoryIds": [
+        "memory-test-runner"
+      ],
+      "deletedMemoryIds": [],
+      "rejectedMemoryIds": []
+    },
+    {
+      "fixtureAlias": "draft-project-multihop-fixture",
+      "retainedMemoryIds": [
+        "memory-release-decision",
+        "memory-queue-policy"
+      ],
+      "deletedMemoryIds": [],
+      "rejectedMemoryIds": []
+    },
+    {
+      "fixtureAlias": "draft-temporal-fixture",
+      "retainedMemoryIds": [
+        "memory-window-old",
+        "memory-window-current"
+      ],
+      "deletedMemoryIds": [],
+      "rejectedMemoryIds": []
+    },
+    {
+      "fixtureAlias": "draft-negative-fixture",
+      "retainedMemoryIds": [
+        "memory-unrelated-note"
+      ],
+      "deletedMemoryIds": [],
+      "rejectedMemoryIds": []
+    },
+    {
+      "fixtureAlias": "draft-untrusted-fixture",
+      "retainedMemoryIds": [],
+      "deletedMemoryIds": [],
+      "rejectedMemoryIds": [
+        "memory-quoted-claim"
+      ]
+    },
+    {
+      "fixtureAlias": "draft-secret-fixture",
+      "retainedMemoryIds": [],
+      "deletedMemoryIds": [],
+      "rejectedMemoryIds": [
+        "memory-credential-sentinel",
+        "memory-assistant-claim"
+      ]
+    },
+    {
+      "fixtureAlias": "draft-scope-fixture",
+      "retainedMemoryIds": [],
+      "deletedMemoryIds": [],
+      "rejectedMemoryIds": []
+    },
+    {
+      "fixtureAlias": "draft-scope-cross-bank-fixture",
+      "retainedMemoryIds": [
+        "memory-owned-by-user-b"
+      ],
+      "deletedMemoryIds": [],
+      "rejectedMemoryIds": []
+    },
+    {
+      "fixtureAlias": "draft-deletion-fixture",
+      "retainedMemoryIds": [],
+      "deletedMemoryIds": [
+        "memory-deleted-note"
+      ],
+      "rejectedMemoryIds": []
+    },
+    {
+      "fixtureAlias": "draft-fallback-fixture",
+      "retainedMemoryIds": [
+        "memory-fallback-policy"
+      ],
+      "deletedMemoryIds": [],
+      "rejectedMemoryIds": []
+    }
+  ],
+  "cases": [
+    {
+      "caseId": "draft-stable-zh",
+      "fixtureAlias": "draft-stable-zh-fixture",
+      "status": "passed",
+      "candidateMemoryIds": [
+        "memory-theme-current"
+      ],
+      "finalMemoryIds": [
+        "memory-theme-current"
+      ],
+      "persistedMemoryIds": [
+        "memory-theme-current"
+      ],
+      "providerSentMemoryIds": [],
+      "latencyMilliseconds": 598
+    },
+    {
+      "caseId": "draft-preference-mixed",
+      "fixtureAlias": "draft-preference-mixed-fixture",
+      "status": "passed",
+      "candidateMemoryIds": [
+        "memory-test-runner"
+      ],
+      "finalMemoryIds": [
+        "memory-test-runner"
+      ],
+      "persistedMemoryIds": [
+        "memory-test-runner"
+      ],
+      "providerSentMemoryIds": [],
+      "latencyMilliseconds": 599
+    },
+    {
+      "caseId": "draft-project-multihop",
+      "fixtureAlias": "draft-project-multihop-fixture",
+      "status": "passed",
+      "candidateMemoryIds": [
+        "memory-queue-policy",
+        "memory-release-decision"
+      ],
+      "finalMemoryIds": [
+        "memory-queue-policy",
+        "memory-release-decision"
+      ],
+      "persistedMemoryIds": [
+        "memory-release-decision",
+        "memory-queue-policy"
+      ],
+      "providerSentMemoryIds": [],
+      "latencyMilliseconds": 371
+    },
+    {
+      "caseId": "draft-temporal",
+      "fixtureAlias": "draft-temporal-fixture",
+      "status": "failed",
+      "errorCode": "forbidden_memory_result",
+      "candidateMemoryIds": [
+        "memory-window-current",
+        "memory-window-old"
+      ],
+      "finalMemoryIds": [
+        "memory-window-current",
+        "memory-window-old"
+      ],
+      "persistedMemoryIds": [
+        "memory-window-old",
+        "memory-window-current"
+      ],
+      "providerSentMemoryIds": [],
+      "latencyMilliseconds": 247
+    },
+    {
+      "caseId": "draft-negative",
+      "fixtureAlias": "draft-negative-fixture",
+      "status": "failed",
+      "errorCode": "forbidden_memory_result",
+      "candidateMemoryIds": [
+        "memory-unrelated-note"
+      ],
+      "finalMemoryIds": [
+        "memory-unrelated-note"
+      ],
+      "persistedMemoryIds": [
+        "memory-unrelated-note"
+      ],
+      "providerSentMemoryIds": [],
+      "latencyMilliseconds": 303
+    },
+    {
+      "caseId": "draft-untrusted",
+      "fixtureAlias": "draft-untrusted-fixture",
+      "status": "passed",
+      "candidateMemoryIds": [],
+      "finalMemoryIds": [],
+      "persistedMemoryIds": [],
+      "providerSentMemoryIds": [],
+      "latencyMilliseconds": 118
+    },
+    {
+      "caseId": "draft-secret",
+      "fixtureAlias": "draft-secret-fixture",
+      "status": "passed",
+      "candidateMemoryIds": [],
+      "finalMemoryIds": [],
+      "persistedMemoryIds": [],
+      "providerSentMemoryIds": [],
+      "latencyMilliseconds": 124
+    },
+    {
+      "caseId": "draft-scope",
+      "fixtureAlias": "draft-scope-fixture",
+      "status": "passed",
+      "candidateMemoryIds": [],
+      "finalMemoryIds": [],
+      "persistedMemoryIds": [],
+      "providerSentMemoryIds": [],
+      "latencyMilliseconds": 93
+    },
+    {
+      "caseId": "draft-deletion",
+      "fixtureAlias": "draft-deletion-fixture",
+      "status": "passed",
+      "candidateMemoryIds": [],
+      "finalMemoryIds": [],
+      "persistedMemoryIds": [],
+      "providerSentMemoryIds": [],
+      "latencyMilliseconds": 112
+    },
+    {
+      "caseId": "draft-fallback",
+      "fixtureAlias": "draft-fallback-fixture",
+      "status": "passed",
+      "candidateMemoryIds": [
+        "memory-fallback-policy"
+      ],
+      "finalMemoryIds": [
+        "memory-fallback-policy"
+      ],
+      "persistedMemoryIds": [
+        "memory-fallback-policy"
+      ],
+      "providerSentMemoryIds": [],
+      "latencyMilliseconds": 315
+    }
+  ]
+}
