@@ -75,6 +75,7 @@ required_paths=(
   README.md
   compose.yml
   compose.single-server.yml
+  compose.hindsight-fixture.yml
   compose.production.yml
   frontend/package.json
   frontend/pnpm-lock.yaml
@@ -84,6 +85,8 @@ required_paths=(
   frontend/public
   backend/go.mod
   backend/Dockerfile
+  scripts/run-memory-hindsight-fixture.sh
+  scripts/test-memory-hindsight-fixture.sh
   rag/pyproject.toml
   rag/Dockerfile
 )
@@ -206,6 +209,8 @@ if backend["environment"]["MEMORY_L3_PERSONA_READER_ENABLED"] != "false":
 if "MEMORY_L3_PERSONA_READER_ENABLED" in memory_worker["environment"]:
     raise SystemExit("standalone verification: Memory Worker received the L3 reader flag")
 PY
+
+DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-hindsight-fixture.sh"
 
 if [[ "${full}" == true ]]; then
   rag_python="${RAG_PYTHON:-python3.13}"

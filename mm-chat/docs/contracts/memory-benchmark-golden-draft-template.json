@@ -291,5 +291,6 @@
         "state": "draft"
       }
     }
-  ]
+  ],
+  "fixtureManifestSha256": "f829b91807d412dff4a9eab5b823f6f0176f3d3937c6869aefcfa59ffe4e45ad"
 }

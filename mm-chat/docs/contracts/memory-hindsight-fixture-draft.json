@@ -1,0 +1,186 @@
+{
+  "schemaVersion": "neo-chat.memory-hindsight-fixtures.v1",
+  "id": "neo-chat-memory-hindsight-fixture-draft",
+  "promotionEligible": false,
+  "dataPolicy": {
+    "syntheticOnly": true,
+    "containsRealUserData": false,
+    "containsSensitiveData": false
+  },
+  "contentSha256": "f829b91807d412dff4a9eab5b823f6f0176f3d3937c6869aefcfa59ffe4e45ad",
+  "fixtures": [
+    {
+      "alias": "draft-stable-zh-fixture",
+      "userAlias": "synthetic-user-a",
+      "memories": [
+        {
+          "id": "memory-theme-current",
+          "scope": {},
+          "canonicalContent": "用户偏好月白色的合成编辑器主题。",
+          "rawEventContent": "在这个合成测试里，我平时偏好月白色的编辑器主题。",
+          "occurredAt": "2026-01-10T08:00:00Z",
+          "state": "active"
+        }
+      ]
+    },
+    {
+      "alias": "draft-preference-mixed-fixture",
+      "userAlias": "synthetic-user-a",
+      "memories": [
+        {
+          "id": "memory-test-runner",
+          "scope": {},
+          "canonicalContent": "For the synthetic 星河 demo, the user prefers Vitest.",
+          "rawEventContent": "For the synthetic 星河 demo, I prefer Vitest as the test runner.",
+          "occurredAt": "2026-01-11T08:00:00Z",
+          "state": "active"
+        }
+      ]
+    },
+    {
+      "alias": "draft-project-multihop-fixture",
+      "userAlias": "synthetic-user-a",
+      "memories": [
+        {
+          "id": "memory-release-decision",
+          "scope": {
+            "projectAlias": "synthetic-project-a"
+          },
+          "canonicalContent": "The synthetic release proceeds only after the queue is drained.",
+          "rawEventContent": "For synthetic-project-a, I decided the release proceeds only after the queue is drained.",
+          "occurredAt": "2026-01-12T08:00:00Z",
+          "state": "active"
+        },
+        {
+          "id": "memory-queue-policy",
+          "scope": {
+            "projectAlias": "synthetic-project-a"
+          },
+          "canonicalContent": "The synthetic queue policy requires zero pending jobs before release.",
+          "rawEventContent": "The synthetic project queue policy requires zero pending jobs before any release.",
+          "occurredAt": "2026-01-12T09:00:00Z",
+          "state": "active"
+        }
+      ]
+    },
+    {
+      "alias": "draft-temporal-fixture",
+      "userAlias": "synthetic-user-a",
+      "memories": [
+        {
+          "id": "memory-window-old",
+          "scope": {},
+          "canonicalContent": "The old synthetic deployment window was Tuesday at 09:00 UTC.",
+          "rawEventContent": "I previously chose Tuesday at 09:00 UTC as the synthetic deployment window.",
+          "occurredAt": "2026-01-02T08:00:00Z",
+          "state": "active"
+        },
+        {
+          "id": "memory-window-current",
+          "scope": {},
+          "canonicalContent": "The current synthetic deployment window is Thursday at 16:00 UTC.",
+          "rawEventContent": "Correction: the current synthetic deployment window is Thursday at 16:00 UTC, not Tuesday.",
+          "occurredAt": "2026-01-20T08:00:00Z",
+          "state": "active"
+        }
+      ]
+    },
+    {
+      "alias": "draft-negative-fixture",
+      "userAlias": "synthetic-user-a",
+      "memories": [
+        {
+          "id": "memory-unrelated-note",
+          "scope": {},
+          "canonicalContent": "The synthetic archive label is cobalt-17.",
+          "rawEventContent": "Remember that the synthetic archive label is cobalt-17 for this fixture.",
+          "occurredAt": "2026-01-13T08:00:00Z",
+          "state": "active"
+        }
+      ]
+    },
+    {
+      "alias": "draft-untrusted-fixture",
+      "userAlias": "synthetic-user-a",
+      "memories": [
+        {
+          "id": "memory-quoted-claim",
+          "scope": {},
+          "canonicalContent": "A quoted synthetic document claims a permanent preference.",
+          "rawEventContent": "An untrusted quoted synthetic document claims that this is my permanent preference.",
+          "occurredAt": "2026-01-14T08:00:00Z",
+          "state": "untrusted_rejected"
+        }
+      ]
+    },
+    {
+      "alias": "draft-secret-fixture",
+      "userAlias": "synthetic-user-a",
+      "memories": [
+        {
+          "id": "memory-credential-sentinel",
+          "scope": {},
+          "canonicalContent": "The fixture contains a redacted credential sentinel with no credential value.",
+          "rawEventContent": "Reject the synthetic redacted credential sentinel; it contains no usable secret.",
+          "occurredAt": "2026-01-15T08:00:00Z",
+          "state": "secret_rejected"
+        },
+        {
+          "id": "memory-assistant-claim",
+          "scope": {},
+          "canonicalContent": "An unconfirmed assistant claim must not become Memory.",
+          "rawEventContent": "The assistant generated an unconfirmed synthetic claim without user authority.",
+          "occurredAt": "2026-01-15T09:00:00Z",
+          "state": "untrusted_rejected"
+        }
+      ]
+    },
+    {
+      "alias": "draft-scope-fixture",
+      "userAlias": "synthetic-user-a",
+      "memories": []
+    },
+    {
+      "alias": "draft-scope-cross-bank-fixture",
+      "userAlias": "synthetic-user-b",
+      "memories": [
+        {
+          "id": "memory-owned-by-user-b",
+          "scope": {},
+          "canonicalContent": "Synthetic user B privately prefers the amber account theme.",
+          "rawEventContent": "For this isolated fixture, synthetic user B privately prefers the amber account theme.",
+          "occurredAt": "2026-01-16T08:00:00Z",
+          "state": "active"
+        }
+      ]
+    },
+    {
+      "alias": "draft-deletion-fixture",
+      "userAlias": "synthetic-user-a",
+      "memories": [
+        {
+          "id": "memory-deleted-note",
+          "scope": {},
+          "canonicalContent": "The synthetic note must be deleted before recall.",
+          "rawEventContent": "Store this synthetic note only so the deletion fixture can remove it before recall.",
+          "occurredAt": "2026-01-17T08:00:00Z",
+          "state": "deleted"
+        }
+      ]
+    },
+    {
+      "alias": "draft-fallback-fixture",
+      "userAlias": "synthetic-user-a",
+      "memories": [
+        {
+          "id": "memory-fallback-policy",
+          "scope": {},
+          "canonicalContent": "The stable synthetic fallback policy is fail closed and preserve Native Memory.",
+          "rawEventContent": "I chose fail closed while preserving Native Memory as the stable synthetic fallback policy.",
+          "occurredAt": "2026-01-18T08:00:00Z",
+          "state": "active"
+        }
+      ]
+    }
+  ]
+}

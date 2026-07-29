@@ -1,0 +1,133 @@
+services:
+  hindsight-postgres:
+    image: pgvector/pgvector:pg17@sha256:d2ef61f42ef767baa5a1475393303cc235bcd92febd9d7014eddb48b41f3bad0
+    profiles: ["memory-hindsight-fixture"]
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+    environment:
+      POSTGRES_DB: hindsight_fixture
+      POSTGRES_USER: hindsight_fixture
+      POSTGRES_PASSWORD: ${HINDSIGHT_FIXTURE_DB_PASSWORD:?ephemeral fixture database password is required}
+    volumes:
+      - hindsight-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hindsight_fixture -d hindsight_fixture"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    networks:
+      - hindsight-private
+
+  hindsight-api:
+    image: ghcr.io/vectorize-io/hindsight-api:0.8.5@sha256:35d88f6fc2d63ba37e8118dc02945097bf34e4ad04d4f3299e3c426db72c04ba
+    profiles: ["memory-hindsight-fixture"]
+    restart: "no"
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 256
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    environment:
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      DO_NOT_TRACK: "1"
+      LITELLM_LOCAL_MODEL_COST_MAP: "True"
+      HINDSIGHT_API_HOST: 0.0.0.0
+      HINDSIGHT_API_PORT: "8888"
+      HINDSIGHT_API_LOG_LEVEL: warning
+      HINDSIGHT_API_DATABASE_URL: postgresql://hindsight_fixture:${HINDSIGHT_FIXTURE_DB_PASSWORD:?ephemeral fixture database password is required}@hindsight-postgres:5432/hindsight_fixture
+      HINDSIGHT_API_TENANT_EXTENSION: hindsight_api.extensions.builtin.tenant:ApiKeyTenantExtension
+      HINDSIGHT_API_TENANT_API_KEY: ${HINDSIGHT_FIXTURE_API_KEY:?ephemeral fixture API key is required}
+      HINDSIGHT_API_ENABLE_BANK_CONFIG_API: "true"
+      HINDSIGHT_API_LLM_PROVIDER: mock
+      HINDSIGHT_API_LLM_MODEL: mock
+      HINDSIGHT_API_LLM_API_KEY: ""
+      HINDSIGHT_API_EMBEDDINGS_PROVIDER: local
+      HINDSIGHT_API_EMBEDDINGS_LOCAL_MODEL: BAAI/bge-small-en-v1.5
+      HINDSIGHT_API_EMBEDDINGS_LOCAL_FORCE_CPU: "true"
+      HINDSIGHT_API_EMBEDDINGS_LOCAL_TRUST_REMOTE_CODE: "false"
+      HINDSIGHT_API_RERANKER_PROVIDER: local
+      HINDSIGHT_API_RERANKER_LOCAL_MODEL: cross-encoder/ms-marco-MiniLM-L-6-v2
+      HINDSIGHT_API_RERANKER_LOCAL_FORCE_CPU: "true"
+      HINDSIGHT_API_RERANKER_LOCAL_TRUST_REMOTE_CODE: "false"
+      HINDSIGHT_API_AUDIT_LOG_ENABLED: "false"
+      HINDSIGHT_API_LLM_TRACE_ENABLED: "false"
+      HINDSIGHT_API_OTEL_TRACES_ENABLED: "false"
+      HINDSIGHT_API_METRICS_BACKLOG_ENABLED: "false"
+      HINDSIGHT_API_CONSOLIDATION_RECONCILE_INTERVAL_SECONDS: "0"
+      HINDSIGHT_API_MENTAL_MODEL_REFRESH_TICK_SECONDS: "0"
+    depends_on:
+      hindsight-postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8888/health', timeout=2)
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 60s
+    networks:
+      - hindsight-private
+
+  hindsight-runner:
+    image: mm-chat/memory-hindsight-fixture-runner:local
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: hindsight-fixture
+    profiles: ["memory-hindsight-fixture"]
+    restart: "no"
+    init: true
+    user: "1000:1000"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 32
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+    environment:
+      HINDSIGHT_FIXTURE_API_KEY: ${HINDSIGHT_FIXTURE_API_KEY:?ephemeral fixture API key is required}
+    volumes:
+      - type: bind
+        source: ./docs/contracts/memory-hindsight-fixture-draft.json
+        target: /fixtures/manifest.json
+        read_only: true
+      - type: bind
+        source: ./docs/contracts/memory-benchmark-golden-draft-template.json
+        target: /fixtures/golden.json
+        read_only: true
+    depends_on:
+      hindsight-api:
+        condition: service_healthy
+    command:
+      - -manifest
+      - /fixtures/manifest.json
+      - -golden
+      - /fixtures/golden.json
+      - -mode
+      - retrieval_only
+    networks:
+      - hindsight-private
+
+networks:
+  hindsight-private:
+    internal: true
+
+volumes:
+  hindsight-postgres-data:

@@ -10,13 +10,20 @@ ARG TARGETARCH=amd64
 RUN CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-api ./cmd/api \
     && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-migrate ./cmd/migrate \
     && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-admin ./cmd/admin \
-    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-memory-worker ./cmd/memory-worker
+    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-memory-worker ./cmd/memory-worker \
+    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-memory-hindsight-fixture ./cmd/memory-hindsight-fixture
 
-FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc AS runtime-base
 RUN apk add --no-cache ca-certificates curl tzdata \
     && addgroup -S mmchat \
     && adduser -S -G mmchat -H -h /nonexistent -s /sbin/nologin mmchat
 
+FROM runtime-base AS hindsight-fixture
+COPY --from=build /out/mm-chat-memory-hindsight-fixture /usr/local/bin/mm-chat-memory-hindsight-fixture
+USER mmchat:mmchat
+ENTRYPOINT ["/usr/local/bin/mm-chat-memory-hindsight-fixture"]
+
+FROM runtime-base AS runtime
 COPY --from=build /out/mm-chat-api /usr/local/bin/mm-chat-api
 COPY --from=build /out/mm-chat-migrate /usr/local/bin/mm-chat-migrate
 COPY --from=build /out/mm-chat-admin /usr/local/bin/mm-chat-admin
