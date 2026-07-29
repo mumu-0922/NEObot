@@ -44,6 +44,10 @@ Canonical projection -> migration-059 leased BGE-M3 embedding job
 Current user message -> exact + BM25 + vector -> RRF(60) -> BGE rerank
   -> 600-target/900-hard token budget -> ID/revision/rank-only diagnostics
   -> unchanged v1 prompt/Usage; zero hybrid prompt injection
+Current stable Global L1 -> migration-063 leased L3 Persona refresh/embedding
+Current user message -> Persona exact + BM25 + vector -> RRF(60) -> BGE rerank
+  -> one-Persona/300-token bound -> content-free diagnostics
+  -> independent shadow or promoted lower-priority prompt block
 ```
 
 `usermemory` owns storage and deterministic relevance. `internal/chat` owns
@@ -89,6 +93,8 @@ cycle.
 | Import is dry-run then ADD-only confirm                  | NOOP/conflict/scope decisions must be reviewable and stable across concurrent governance      | Ten-minute HMAC binds package, mappings, plan, and current authority state; REVIEW never overwrites canonical |
 | Settings are suggestions only                            | Import must not silently enable Learn, Use, Sensitive, L2, or L3                              | The UI displays them but migration-061 has no settings-apply import capability |
 | Restore replays deletion before backend open             | An older valid backup can resurrect already deleted Memory                                   | Authenticated ID/hash replay wipes matching plaintext and rebuilds projections without a Provider call |
+| L3 Persona is rebuildable derived data                    | A compact identity summary must not become a second canonical fact store                      | Members pin current stable Global L1; correction edits L1 and rebuilds rather than patching Persona text |
+| L3 promotion is independent from L2                       | A failure or rollback in one derived layer must not corrupt another                            | Separate profile, generation, evidence gates, flags, and prompt block preserve L1/L2 fallback |
 
 ## Validation and limits
 
@@ -156,11 +162,15 @@ cycle.
 | Scene output becomes authority | Go/SQL recompute member, sensitivity, watermark, generation, and profile fences; Scene remains derived and has no plaintext PATCH. |
 | Stale Scene reaches an answer | Candidate lanes and final record independently reauthorize current members, scope, epoch, generation, Sensitive policy, and active lifecycle. |
 | Shadow flag disables deletion | Provider-free stale detection and 24-hour purge run before the refresh gate. |
+| Persona leaks Project/Conversation context | Migration `063` accepts only current stable Global L1; Go and SQL reject any outside-authority member. |
+| Old Persona survives source or Sensitive drift | Eligibility changes advance L3 generation, remove projection, and reauthorize members after every Provider boundary. |
+| Persona becomes editable authority | Governance exposes current content/members/evidence but correction writes governed L1 and rebuilds; there is no Persona plaintext PATCH. |
 
-Known limitation: migration `062` ships in shadow with both rollout flags
-default-off. No formal 500-case benchmark plus seven-day/100-turn canary
-evidence exists, so L2 cannot become active automatically. The v1 Global Top 5
-remains the only default prompt and Usage authority.
+Known limitation: migrations `062` and `063` ship in shadow with all derived
+reader rollout flags default-off. No formal 500-case benchmark plus seven-day/
+100-turn canary evidence exists, so neither L2 nor L3 can become active
+automatically. The v1 Global Top 5 remains the only default prompt and Usage
+authority.
 
 ## Verification
 
@@ -201,3 +211,6 @@ rebuild, runtime role denial, and a clean PostgreSQL 17
   (Memory v2 PR10).
 - 2026-07-28: migration-062 same-scope derived L2 Scene lifecycle, hybrid
   retrieval, governance, evidence-gated promotion, and rollback (Memory v2 PR11).
+- 2026-07-29: migration-063 stable Global-L1 derived L3 Persona lifecycle,
+  hybrid retrieval, governance, evidence-gated promotion, and rollback
+  (Memory v2 PR12).

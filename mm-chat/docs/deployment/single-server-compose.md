@@ -151,6 +151,8 @@ container-local `GET /health` on port `8081`; no port is published or proxied.
 | `MEMORY_HYBRID_SHADOW_ENABLED`                | Shared PR8 API/Memory Worker switch; defaults false, gates all Memory embedding/rerank calls, and never changes v1 prompt/Usage authority. |
 | `MEMORY_L2_SCENE_SHADOW_ENABLED`              | Shared PR11 API/Memory Worker switch; defaults false, gates Scene refresh/query embedding/rerank while provider-free stale purge remains active. |
 | `MEMORY_L2_SCENE_READER_ENABLED`              | API-only PR11 reader switch; defaults false and still requires database promotion/current authority. Never pass it to the Memory Worker. |
+| `MEMORY_L3_PERSONA_SHADOW_ENABLED`            | Shared PR12 API/Memory Worker switch; defaults false, gates Persona refresh/query embedding/rerank while provider-free stale purge remains active. |
+| `MEMORY_L3_PERSONA_READER_ENABLED`            | API-only PR12 reader switch; defaults false and still requires database promotion/current L1/Persona authority. Never pass it to the Memory Worker. |
 | `RAG_WORKER_DATABASE_URL`                     | Worker login inheriting only `rag_worker_executor`.                                             |
 | `RAG_REPLAY_DATABASE_URL`                     | Replay login inheriting only `rag_replay_operator`.                                             |
 | `RAG_MINERU_RESULT_PROXY_URL`                 | Optional internal ZIP download proxy for Docker Desktop/WSL CDN TLS workarounds; default empty. |
@@ -172,6 +174,10 @@ read-only with all Linux capabilities dropped, and uses a bounded private
 network/pool/concurrency/resource envelope. It depends only on PostgreSQL
 health. Redis failure removes low-latency wakeups but PostgreSQL polling
 continues; API finalize never waits for worker execution or Redis publication.
+The L2 Scene and L3 Persona shadow flags independently gate their Provider-
+backed refresh/embedding lanes. Their provider-free stale detection and purge
+remain enabled even when every shadow flag is false. Reader flags belong only
+to the API and must never enter the Memory Worker environment.
 
 The one-shot `admin provider-secrets-rewrite` command receives the stable BYOK
 ingress key, temporary Server Default env fallback, and provider vault Secret

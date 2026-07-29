@@ -43,6 +43,8 @@ status, fallback, counts, token estimate, duration, and time only—never query,
 Memory content copies, embedding, raw score, prompt, or Provider secret.
 Migration `062` extends this response with optional `l2Scene.profile` and
 `l2Scene.scenes` governance state.
+Migration `063` additionally exposes `l3Persona.profile` and the current
+`l3Persona.persona` governance state.
 
 ### L2 Scene governance
 
@@ -66,6 +68,35 @@ correction goes through the existing scoped L1 Memory create/update UI, which
 invalidates and rebuilds the derived Scene. Disable/enable and rebuild are
 revision/current-user fenced. Scene promotion remains migration-owner-only and
 cannot be invoked through HTTP.
+
+### L3 Persona governance
+
+```http
+GET  /v1/memory-governance/personas/{personaId}/details
+POST /v1/memory-governance/personas/{personaId}/enabled
+     {"expectedRevision":1,"enabled":false}
+POST /v1/memory-governance/personas/{personaId}/rebuild
+POST /v1/memory-governance/personas/rebuild
+```
+
+Persona is one rebuildable derived profile over current eligible Global L1
+Memory. Project/Conversation scope and unstable `project|context` types never
+become Persona members. The snapshot exposes the fixed profile, lifecycle,
+generation, L1-reader readiness, and current Persona content, token count,
+sensitivity, source watermark, member count, revision, and current-source
+status.
+
+Detail returns each pinned member revision/hash plus current L1 content and
+surviving evidence only while that exact Global member remains authorized.
+Changed, deleted, expired, or policy-disallowed members return a source-deleted
+marker and no reconstructed historical plaintext. All Persona IDs are rebound
+to the authenticated user in PostgreSQL.
+
+There is intentionally no Persona plaintext create or patch route. Correction
+uses existing governed L1 create/update, followed by the same generation-
+fenced rebuild chain. Disable/enable and rebuild are current-user/revision
+fenced; background refresh preserves an explicit disable. Persona promotion
+and rollback remain migration-owner-only and cannot be invoked through HTTP.
 
 ### Projects
 
@@ -243,10 +274,10 @@ retain `060` and use a forward fix; never delete user history to force down.
   Project/policy/scope/Review/Activity/detail/purge cases, and legacy wrapper
   normal/Sensitive/secret cases.
 - Focused race plus all backend tests/vet.
-- Frontend format/lint/typecheck/Vitest/build with server/local authority and
-  Activity tests.
+- Frontend format/lint/typecheck/Vitest/build with Server authority, legacy
+  local-adapter rejection, and Activity tests.
 - Compose validation, preflight regression, backend image binary check,
   security scan, and full isolated standalone verification.
 
-PR9–PR11 verification uses synthetic fixtures and disposable PostgreSQL only.
+PR9–PR12 verification uses synthetic fixtures and disposable PostgreSQL only.
 It makes no live Provider call and does not read or mutate live user Memory.

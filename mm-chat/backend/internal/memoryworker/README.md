@@ -19,6 +19,9 @@ latency.
   candidate/normalized/tag/key plaintext after the fixed 30-day window;
 - dispatch migration `062` L2 Scene purge, same-scope refresh, and derived
   BGE-M3 embedding lanes; purge remains provider-free when Scene shadow is off;
+- dispatch migration `063` L3 Persona purge, Global stable-L1 refresh, and
+  derived BGE-M3 embedding lanes; purge remains provider-free when Persona
+  shadow is off;
 - retry transient failures, dead-letter terminal drift, and resume expired
   leases after crashes or rolling restarts;
 - report readiness without exposing an HTTP port.
@@ -47,7 +50,7 @@ for the complete environment and role-provisioning contract.
 | `New(Repository, ProviderResolver, ...Option)` | Validate and construct the bounded worker. |
 | `Worker.Run(ctx, wake)` | Poll PostgreSQL continuously and consume optional wake hints. |
 | `Worker.ProcessOne(ctx)` | Claim and finish one lease-fenced job. |
-| `NewPostgresRepository(*sql.DB)` | Call only migration `054`–`062` worker capabilities. |
+| `NewPostgresRepository(*sql.DB)` | Call only migration `054`–`063` worker capabilities. |
 | `NewStoredProviderResolver(...)` | Reuse Server provider/vault activation rules. |
 
 ## Files
@@ -62,6 +65,10 @@ scene.go                 Scene lease, synthesis, member, and derived-embedding c
 scene_synthesis.go       strict bounded Scene Provider proposal validation
 scene_worker.go          provider-free purge plus default-off refresh/embedding dispatch
 scene_repository_postgres.go restricted migration-062 Scene capabilities
+persona.go               Persona lease, member, profile, and embedding contracts
+persona_synthesis.go     strict bounded Persona Provider proposal validation
+persona_worker.go        provider-free purge plus default-off refresh/embedding dispatch
+persona_repository_postgres.go restricted migration-063 Persona capabilities
 provider_privacy.go       pre-egress bounds plus shared usermemory redaction
 strict_json.go            adapter to the shared internal/strictjson decoder
 types.go                 job, capture, readiness, and interface contracts

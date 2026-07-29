@@ -13,7 +13,7 @@
 ## Non-goals
 
 - Switching the v1 Memory reader or HTTP CRUD contract.
-- L3 Persona, external Memory engines, or any automatic reader promotion.
+- External Memory engines or any automatic reader promotion.
 - Supporting request-only BYOK after the request ends; capture fails closed
   unless a current Server-owned provider profile can be hydrated.
 
@@ -35,6 +35,9 @@ memory-worker
   -> l2_scene_purge: no Provider hydration -> stale plaintext/member/projection wipe
   -> l2_scene_refresh: same-scope current L1 -> strict derived Scene proposal
   -> l2_scene_embedding: current Scene -> fixed SiliconFlow BGE-M3 projection
+  -> l3_persona_purge: no Provider hydration -> stale plaintext/member/projection wipe
+  -> l3_persona_refresh: current stable Global L1 -> strict derived Persona proposal
+  -> l3_persona_embedding: current Persona -> fixed SiliconFlow BGE-M3 projection
   -> complete or bounded retry/dead-letter
 ```
 
@@ -62,6 +65,8 @@ has no direct table access. Those functions execute as the restricted
 | Share strict JSON and privacy primitives | Worker and direct-action planners must not drift on duplicate keys or credential patterns | `internal/strictjson` and `usermemory` own the common fail-closed primitives. |
 | L2 is derived and same-scope only | Conversation facts and model output cannot become broader authority | Refresh accepts only current Global or one Project member set and SQL recomputes every fence. |
 | Scene purge ignores the rollout flag | Disabling Provider work must not weaken deletion | Stale Scene plaintext, members, and projections are still wiped within 24 hours. |
+| L3 is derived from stable Global L1 only | Project/Conversation context and unstable types must not become user-wide identity | Refresh accepts only current `fact|preference|instruction|warning|decision` members and SQL recomputes every fence. |
+| Persona purge ignores the rollout flag | Disabling Provider work must not weaken deletion or Sensitive-policy changes | Stale Persona plaintext, members, and projections are still wiped within 24 hours. |
 
 ## Failure and replay contract
 
@@ -75,6 +80,7 @@ has no direct table access. Those functions execute as the restricted
 | Stale worker applies/completes | SQL rejects the old worker/lease token. |
 | Duplicate event/job | Unique event/stage/idempotency keys return the first authority. |
 | Scene member/watermark/generation drift | Reject the entire refresh or embedding result; no partial Scene survives. |
+| Persona member/watermark/generation drift | Reject the entire refresh or embedding result; no partial Persona survives. |
 
 Candidate persistence is one transaction per extraction output. The batch hash,
 profile IDs, source/epoch/scope fences, normalized target revisions, and
@@ -89,6 +95,7 @@ outcome stays outside canonical Memory and active readers.
 | Stale response survives a deleted/changed source | Active source, generation, Learn policy, profile timestamp/hash, and live lease are rechecked before proposal commit. |
 | Purge sends deleted data to a Provider | Stage dispatch invokes the purge capability before any hydration or Provider resolution. |
 | Prompt injection in source text | Messages and current Memory are JSON data under separate Server-owned prompts; duplicate/unknown/trailing output is rejected. |
+| Persona widens authority | SQL hydrates only current stable Global L1 and Go accepts only a strict hydrated member subset; Provider output cannot add IDs or downgrade sensitivity. |
 | Credential retention/egress | Local sentence redaction precedes Provider calls; a secret proposal reaches SQL hash-only and logs remain code/ID-only. |
 | Model spoofs authority or scope | Go restricts IDs to hydrated messages/targets and binds current Project/Conversation; SQL rechecks ownership and revision. |
 | Review plaintext survives forever | A provider-free 128-attempt job expires/wipes shadow and pending proposals at day 30. |
@@ -116,3 +123,5 @@ outcome stays outside canonical Memory and active readers.
   records dead-letter outcomes as link-only assistant Activities.
 - 2026-07-28: Memory v2 PR11 adds default-off, same-scope L2 Scene synthesis,
   derived embedding, and provider-free 24-hour stale purge lanes.
+- 2026-07-29: Memory v2 PR12 adds default-off, stable Global-L1 L3 Persona
+  synthesis, derived embedding, and provider-free 24-hour stale purge lanes.

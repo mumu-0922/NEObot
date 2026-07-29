@@ -37,6 +37,10 @@ conversation summaries.
   additionally requires the reader flag and database promotion authority;
 - expose Scene profile/list/detail, enable/disable, and rebuild governance
   without any direct derived-plaintext mutation route;
+- optionally run migration `063` Global stable-L1 L3 Persona exact/BM25/vector
+  RRF/rerank retrieval under independent default-off shadow/reader flags;
+- expose Persona profile/detail, enable/disable, and rebuild governance without
+  any direct derived-plaintext mutation route;
 - prevent disabled Memory or disabled auto-record from reading/writing entries.
 
 Provider prompt injection remains in `internal/chat`. Durable extraction runs
@@ -70,6 +74,13 @@ matches, hybrid, err := service.SearchRelevantWithHybridShadow(
 // Scenes. Active results require MEMORY_L2_SCENE_READER_ENABLED plus current
 // database authority and are bounded to two Scenes / 500 estimated tokens.
 sceneResult, err := service.SearchRelevantL2Scenes(
+    ctx, rawUserText, conversationID, assistantMessageID, activeRequested,
+)
+
+// Called only when MEMORY_L3_PERSONA_SHADOW_ENABLED=true. Shadow returns no
+// Persona. Active results require MEMORY_L3_PERSONA_READER_ENABLED plus current
+// database authority and are bounded to one Persona / 300 estimated tokens.
+personaResult, err := service.SearchRelevantL3Persona(
     ctx, rawUserText, conversationID, assistantMessageID, activeRequested,
 )
 
@@ -166,6 +177,16 @@ prompt content. Active mode appends a separate untrusted
 `<relevant-user-scenes>` block; L1 remains the only Usage authority and every
 L2 failure falls back to the unchanged L1 prompt.
 
+Migration `063` adds one rebuildable L3 Persona per user generation from
+current stable Global L1 only, with exact/CJK BM25 and fixed BGE-M3 projection,
+content-free search observations, promotion events, and Persona governance.
+Every member pins its L1 revision/hash, visibility epoch, generation, and
+source watermark. Shadow mode returns no prompt content. Active mode requires
+the independent reader flag, database promotion, current L1 hybrid authority,
+current members, and Sensitive policy before appending a separate untrusted
+`<relevant-user-persona>` block. L1 remains the only Usage authority and every
+L3 failure falls back to unchanged L1/L2 behavior.
+
 ## Main API
 
 | Boundary                            | Purpose                                                     |
@@ -177,6 +198,7 @@ L2 failure falls back to the unchanged L1 prompt.
 | `SearchRelevantWithShadow(ctx, query, conversationID, assistantMessageID, limit)` | Unchanged v1 Top 5 plus sanitized comparison diagnostics |
 | `SearchRelevantWithHybridShadow(ctx, query, conversationID, assistantMessageID, limit)` | Unchanged v1 Top 5 plus default-off hybrid diagnostics |
 | `SearchRelevantL2Scenes(ctx, query, conversationID, assistantMessageID, activeRequested)` | Default-off Scene shadow or current authorized active results |
+| `SearchRelevantL3Persona(ctx, query, conversationID, assistantMessageID, activeRequested)` | Default-off Persona shadow or current authorized active result |
 | `HydrateDirectAction(ctx, input)`           | Bounded current context for the strict direct-user planner          |
 | `ExecuteDirectAction(ctx, input)`           | Local validation plus narrow SQL action capability                  |
 | `ListActivities` / `ListMessageUsages`      | User-scoped polling and answer provenance                           |
@@ -215,6 +237,8 @@ hybrid_shadow.go         fail-open PR8 embedding/RRF/rerank/budget orchestration
 hybrid_shadow_repository_postgres.go  narrow migration-059 prepare/record capabilities
 l2_scene.go              fail-open PR11 Scene embedding/RRF/rerank/budget orchestration
 l2_scene_repository_postgres.go  narrow migration-062 Scene search capabilities
+l3_persona.go            fail-open PR12 Persona embedding/RRF/rerank/budget orchestration
+l3_persona_repository_postgres.go narrow migration-063 Persona search capabilities
 ../memoryworker/embedding_worker.go  lease/source/redaction-fenced embedding orchestration
 action_service.go         direct action validation and application IDs
 privacy.go                shared secret/Sensitive classification and redaction
