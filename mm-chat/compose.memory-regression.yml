@@ -103,8 +103,20 @@ services:
       - /inputs/cost-basis.json
       - -provider-mode
       - fake_protocol
+      - -capture-mode
+      - ${MEMORY_REGRESSION_CAPTURE_MODE:?capture mode is required}
       - -run-id
       - ${MEMORY_REGRESSION_RUN_ID:?run ID is required}
+      - -cloud-judge-model
+      - ${MEMORY_REGRESSION_CLOUD_JUDGE_MODEL:-Qwen/Qwen3-8B}
+      - -memory-tool-route-provider-id
+      - "${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_PROVIDER_ID:-}"
+      - -memory-tool-route-provider-type
+      - "${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_PROVIDER_TYPE:-}"
+      - -memory-tool-route-base-url
+      - "${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_BASE_URL:-}"
+      - -memory-tool-route-model
+      - "${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_MODEL:-}"
     depends_on:
       memory-regression-postgres:
         condition: service_healthy
@@ -139,6 +151,12 @@ services:
       MM_CHAT_MEMORY_REGRESSION_LIVE_PROVIDER_ID: siliconflow
       MM_CHAT_MEMORY_REGRESSION_LIVE_EMBEDDING_MODEL_ID: Pro/BAAI/bge-m3
       MM_CHAT_MEMORY_REGRESSION_LIVE_RERANK_MODEL_ID: Pro/BAAI/bge-reranker-v2-m3
+      MM_CHAT_MEMORY_REGRESSION_LIVE_CLOUD_JUDGE_MODEL_ID: ${MEMORY_REGRESSION_CLOUD_JUDGE_MODEL:-Qwen/Qwen3-8B}
+      MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_APPROVAL: ${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_APPROVAL:-NOT_AUTHORIZED}
+      MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_PROVIDER_ID: ${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_PROVIDER_ID:-}
+      MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_PROVIDER_TYPE: ${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_PROVIDER_TYPE:-}
+      MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_BASE_URL_SHA256: ${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_BASE_URL_SHA256:-}
+      MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_MODEL_ID: ${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_MODEL:-}
     volumes:
       - type: bind
         source: ${MEMORY_REGRESSION_ROOT_PATH:?protected regression root is required}
@@ -151,6 +169,10 @@ services:
       - type: bind
         source: ${MEMORY_REGRESSION_CREDENTIAL_PATH:?credential path is required}
         target: /run/mm-chat-memory-regression/provider.key
+        read_only: true
+      - type: bind
+        source: ${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_CREDENTIAL_PATH:?Memory Tool-route credential path is required}
+        target: /run/mm-chat-memory-regression/memory-tool-route-provider.key
         read_only: true
       - type: bind
         source: ${MEMORY_REGRESSION_OUTPUT_PATH:?private output path is required}
@@ -166,10 +188,24 @@ services:
       - /inputs/cost-basis.json
       - -provider-mode
       - live_siliconflow
+      - -capture-mode
+      - ${MEMORY_REGRESSION_CAPTURE_MODE:?capture mode is required}
       - -run-id
       - ${MEMORY_REGRESSION_RUN_ID:?run ID is required}
       - -credential-file
       - /run/mm-chat-memory-regression/provider.key
+      - -cloud-judge-model
+      - ${MEMORY_REGRESSION_CLOUD_JUDGE_MODEL:-Qwen/Qwen3-8B}
+      - -memory-tool-route-credential-file
+      - "${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_CREDENTIAL_TARGET:-}"
+      - -memory-tool-route-provider-id
+      - "${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_PROVIDER_ID:-}"
+      - -memory-tool-route-provider-type
+      - "${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_PROVIDER_TYPE:-}"
+      - -memory-tool-route-base-url
+      - "${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_BASE_URL:-}"
+      - -memory-tool-route-model
+      - "${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_MODEL:-}"
     depends_on:
       memory-regression-postgres:
         condition: service_healthy

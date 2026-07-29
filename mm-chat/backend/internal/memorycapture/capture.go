@@ -62,11 +62,22 @@ func CaptureCandidate(
 	index FixtureIndex,
 	input RuntimeCase,
 ) (memoryeval.CaseObservation, error) {
+	observed, _, err := captureCandidateWithCalibration(ctx, service, recorder, index, input)
+	return observed, err
+}
+
+func captureCandidateWithCalibration(
+	ctx context.Context,
+	service *usermemory.Service,
+	recorder *Recorder,
+	index FixtureIndex,
+	input RuntimeCase,
+) (memoryeval.CaseObservation, CandidateCalibrationTrace, error) {
 	if service == nil || recorder == nil || !validRuntimeCase(input) {
-		return memoryeval.CaseObservation{}, ErrCaptureInvalid
+		return memoryeval.CaseObservation{}, CandidateCalibrationTrace{}, ErrCaptureInvalid
 	}
 	if err := recorder.Begin(input.AssistantMessageID); err != nil {
-		return memoryeval.CaseObservation{}, err
+		return memoryeval.CaseObservation{}, CandidateCalibrationTrace{}, err
 	}
 	finished := false
 	defer func() {
@@ -76,7 +87,7 @@ func CaptureCandidate(
 	}()
 	ctx = auth.WithUser(ctx, auth.User{ID: input.UserID})
 	started := time.Now()
-	baseline, summary, err := service.SearchRelevantWithHybridShadow(
+	_, summary, err := service.SearchRelevantWithHybridShadow(
 		ctx,
 		input.Query,
 		input.ConversationID,
@@ -85,11 +96,11 @@ func CaptureCandidate(
 	)
 	latency := time.Since(started).Milliseconds()
 	if err != nil {
-		return memoryeval.CaseObservation{}, errors.Join(ErrCaptureUnavailable, err)
+		return memoryeval.CaseObservation{}, CandidateCalibrationTrace{}, errors.Join(ErrCaptureUnavailable, err)
 	}
 	transient, err := recorder.Finish(input.AssistantMessageID)
 	if err != nil {
-		return memoryeval.CaseObservation{}, err
+		return memoryeval.CaseObservation{}, CandidateCalibrationTrace{}, err
 	}
 	finished = true
 
@@ -99,44 +110,69 @@ func CaptureCandidate(
 	promptTokens := summary.EstimatedTokens
 	if summary.Status != "completed" {
 		if transient.candidates == nil {
-			candidateIDs = make([]string, len(baseline))
-			for position, item := range baseline {
-				candidateIDs[position] = item.ID
-			}
-			finalIDs = append([]string(nil), candidateIDs...)
+			candidateIDs = []string{}
 		} else {
 			// Prepare already returned a SQL-authorized RRF surface, but an
 			// uncompleted Record means its attempted final set did not pass the
 			// production reauthorization boundary. Preserve candidates and
 			// Provider egress while exposing no unauthorized final/injection.
 			candidateIDs = append([]string(nil), transient.candidates...)
-			finalIDs = []string{}
 		}
-		fallback = "lexical_v1"
-		promptTokens = usermemory.EstimatePromptMemoryTokens(baseline)
+		// v1 remains the real production prompt authority, but it is a separate
+		// benchmark profile and must never be laundered into the v2 candidate.
+		finalIDs = []string{}
+		fallback = "no_memory"
+		promptTokens = 0
 	}
 	opaqueCandidate, err := index.OpaqueMemoryIDs(candidateIDs)
 	if err != nil {
-		return memoryeval.CaseObservation{}, err
+		return memoryeval.CaseObservation{}, CandidateCalibrationTrace{}, err
 	}
 	opaqueFinal, err := index.OpaqueMemoryIDs(finalIDs)
 	if err != nil {
-		return memoryeval.CaseObservation{}, err
+		return memoryeval.CaseObservation{}, CandidateCalibrationTrace{}, err
 	}
 	opaqueProvider, err := index.OpaqueMemoryIDs(transient.providerSent)
 	if err != nil {
-		return memoryeval.CaseObservation{}, err
+		return memoryeval.CaseObservation{}, CandidateCalibrationTrace{}, err
 	}
 	hardCutoff := latency >= 2000 || summary.ResultCode == "HARD_CUTOFF" ||
 		summary.FallbackCode == "HARD_CUTOFF"
-	return memoryeval.CaseObservation{
+	observed := memoryeval.CaseObservation{
 		CaseID: input.CaseID, CandidateMemoryIDs: opaqueCandidate,
 		FinalMemoryIDs:     opaqueFinal,
 		InjectedMemoryIDs:  append([]string(nil), opaqueFinal...),
 		PersistedMemoryIDs: []string{}, ProviderSentMemoryIDs: opaqueProvider,
 		LatencyMilliseconds: latency, PromptMemoryTokens: promptTokens,
 		HardCutoffApplied: hardCutoff, Fallback: fallback,
-	}, nil
+	}
+	trace := CandidateCalibrationTrace{
+		CaseID:                              input.CaseID,
+		PreparedReady:                       transient.candidates != nil,
+		MemoryIntentMargin:                  transient.memoryIntentMargin,
+		MemoryIntentReady:                   transient.memoryIntentReady,
+		AdmissionSimilarity:                 transient.admissionSimilarity,
+		AdmissionReady:                      transient.admissionReady,
+		RerankReady:                         transient.rerankReady,
+		CloudJudgeReady:                     transient.cloudJudgeReady,
+		CloudJudgeInputTokenUpperBound:      transient.cloudJudgeInputTokenUpperBound,
+		MemoryToolRouteReady:                transient.memoryToolRouteReady,
+		MemoryToolRouteUsed:                 transient.memoryToolRouteUsed,
+		MemoryToolRouteInputTokenUpperBound: transient.memoryToolRouteInputTokenUpperBound,
+		AbstentionCode:                      summary.FallbackCode,
+		ResultCode:                          summary.ResultCode,
+		FullObservation:                     observed,
+		FinalRelevanceScores:                make([]float64, len(transient.final)),
+	}
+	for position, memoryID := range transient.final {
+		score, ok := transient.rerankScores[memoryID]
+		if !ok {
+			trace.RerankReady = false
+			continue
+		}
+		trace.FinalRelevanceScores[position] = score
+	}
+	return observed, trace, nil
 }
 
 func hybridFallback(summary usermemory.HybridShadowSummary, finalCount int) string {

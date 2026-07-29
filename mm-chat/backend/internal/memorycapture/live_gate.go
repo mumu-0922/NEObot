@@ -9,23 +9,72 @@ import (
 )
 
 const (
-	LiveApproval = "I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA"
+	LiveApproval                = "I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA"
+	LiveMemoryToolRouteApproval = "I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA"
 
-	LiveAuthorizationDisabled       = "MEMORY_REGRESSION_LIVE_DISABLED"
-	LiveAuthorizationApproval       = "MEMORY_REGRESSION_LIVE_APPROVAL_REQUIRED"
-	LiveAuthorizationRunID          = "MEMORY_REGRESSION_LIVE_RUN_ID_MISMATCH"
-	LiveAuthorizationProviderTarget = "MEMORY_REGRESSION_LIVE_TARGET_DENIED"
+	LiveAuthorizationDisabled              = "MEMORY_REGRESSION_LIVE_DISABLED"
+	LiveAuthorizationApproval              = "MEMORY_REGRESSION_LIVE_APPROVAL_REQUIRED"
+	LiveAuthorizationRunID                 = "MEMORY_REGRESSION_LIVE_RUN_ID_MISMATCH"
+	LiveAuthorizationProviderTarget        = "MEMORY_REGRESSION_LIVE_TARGET_DENIED"
+	LiveAuthorizationCloudJudgeTarget      = "MEMORY_REGRESSION_LIVE_CLOUD_JUDGE_TARGET_DENIED"
+	LiveAuthorizationMemoryToolRouteTarget = "MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_TARGET_DENIED"
 )
 
 var ErrLiveNotAuthorized = errors.New("native Memory live capture is not authorized")
 
 type LiveAuthorization struct {
-	Enabled          bool
-	Approval         string
-	RunID            string
-	ProviderID       string
-	EmbeddingModelID string
-	RerankModelID    string
+	Enabled                      bool
+	Approval                     string
+	RunID                        string
+	ProviderID                   string
+	EmbeddingModelID             string
+	RerankModelID                string
+	CloudJudgeModelID            string
+	MemoryToolRouteApproval      string
+	MemoryToolRouteProviderID    string
+	MemoryToolRouteProviderType  string
+	MemoryToolRouteBaseURLSHA256 string
+	MemoryToolRouteModelID       string
+}
+
+func AuthorizeMemoryToolRouteTarget(
+	providerMode string,
+	authority MemoryToolRouteProfileAuthority,
+	authorization LiveAuthorization,
+) error {
+	if providerMode == ProviderModeFakeProtocol {
+		return nil
+	}
+	if providerMode != ProviderModeLiveSiliconFlow ||
+		strings.TrimSpace(authorization.MemoryToolRouteApproval) !=
+			LiveMemoryToolRouteApproval ||
+		strings.TrimSpace(authority.ProviderID) == "" ||
+		strings.TrimSpace(authority.ProviderType) == "" ||
+		len(authority.BaseURLSHA256) != 64 ||
+		strings.TrimSpace(authority.ModelID) == "" ||
+		strings.TrimSpace(authorization.MemoryToolRouteProviderID) != authority.ProviderID ||
+		strings.TrimSpace(authorization.MemoryToolRouteProviderType) != authority.ProviderType ||
+		strings.TrimSpace(authorization.MemoryToolRouteBaseURLSHA256) != authority.BaseURLSHA256 ||
+		strings.TrimSpace(authorization.MemoryToolRouteModelID) != authority.ModelID {
+		return LiveAuthorizationError{Code: LiveAuthorizationMemoryToolRouteTarget}
+	}
+	return nil
+}
+
+func AuthorizeCloudJudgeTarget(
+	providerMode string,
+	modelID string,
+	authorization LiveAuthorization,
+) error {
+	if providerMode == ProviderModeFakeProtocol {
+		return nil
+	}
+	if providerMode != ProviderModeLiveSiliconFlow ||
+		strings.TrimSpace(modelID) == "" ||
+		strings.TrimSpace(authorization.CloudJudgeModelID) != modelID {
+		return LiveAuthorizationError{Code: LiveAuthorizationCloudJudgeTarget}
+	}
+	return nil
 }
 
 type LiveAuthorizationError struct{ Code string }

@@ -18,6 +18,7 @@ chmod 700 "${temp_dir}"
 fixture_root="${temp_dir}/regression-fixtures"
 cost_file="${temp_dir}/cost.json"
 credential_file="${temp_dir}/credential"
+memory_tool_route_credential_file="${temp_dir}/memory-tool-route-credential"
 render_output="${temp_dir}/render-output"
 env_file="${temp_dir}/render.env"
 rendered="${temp_dir}/compose.json"
@@ -29,16 +30,27 @@ printf '{}\n' >"${fixture_root}/audit.json"
 printf '{}\n' >"${fixture_root}/manifest.json"
 printf '{"schemaVersion":"protocol-cost"}\n' >"${cost_file}"
 printf 'fixture-live-credential-not-used\n' >"${credential_file}"
-chmod 600 "${fixture_root}"/*.json "${cost_file}" "${credential_file}"
+printf 'fixture-route-credential-not-used\n' >"${memory_tool_route_credential_file}"
+chmod 600 "${fixture_root}"/*.json "${cost_file}" "${credential_file}" \
+  "${memory_tool_route_credential_file}"
 
 cat >"${env_file}" <<EOF
 MEMORY_REGRESSION_DB_PASSWORD=fixture-render-password
 MEMORY_REGRESSION_ROOT_PATH=${fixture_root}
 MEMORY_REGRESSION_COST_BASIS_PATH=${cost_file}
 MEMORY_REGRESSION_CREDENTIAL_PATH=${credential_file}
+MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_CREDENTIAL_PATH=${memory_tool_route_credential_file}
+MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_CREDENTIAL_TARGET=
 MEMORY_REGRESSION_OUTPUT_PATH=${render_output}
 MEMORY_REGRESSION_RUN_ID=memory-regression-static
+MEMORY_REGRESSION_CAPTURE_MODE=full_regression
 MEMORY_REGRESSION_LIVE_APPROVAL=I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA
+MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_PROVIDER_ID=
+MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_PROVIDER_TYPE=
+MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_BASE_URL=
+MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_BASE_URL_SHA256=
+MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_MODEL=
+MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_APPROVAL=NOT_AUTHORIZED
 EOF
 chmod 600 "${env_file}"
 
@@ -51,13 +63,16 @@ chmod 600 "${env_file}"
   --profile memory-regression-live \
   config --format json >"${rendered}"
 
-python3 - "${rendered}" "${fixture_root}" "${cost_file}" "${credential_file}" "${render_output}" <<'PY'
+python3 - "${rendered}" "${fixture_root}" "${cost_file}" "${credential_file}" \
+  "${memory_tool_route_credential_file}" "${render_output}" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 config = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-fixture_root, cost, credential, output = map(lambda value: Path(value).resolve(), sys.argv[2:6])
+fixture_root, cost, credential, route_credential, output = map(
+    lambda value: Path(value).resolve(), sys.argv[2:7]
+)
 services = config.get("services", {})
 expected = {
     "memory-regression-postgres",
@@ -113,6 +128,7 @@ for name in ("memory-regression-fake-runner", "memory-regression-live-runner"):
     }
     if name == "memory-regression-live-runner":
         expected_mounts["/run/mm-chat-memory-regression/provider.key"] = credential
+        expected_mounts["/run/mm-chat-memory-regression/memory-tool-route-provider.key"] = route_credential
     if set(mounts) != set(expected_mounts):
         raise SystemExit(f"Memory regression topology: {name} mount target drift")
     for target, source in expected_mounts.items():
@@ -137,11 +153,15 @@ if set(live.get("networks", {})) != {"memory-regression-private", "memory-regres
     raise SystemExit("Memory regression topology: live egress topology drift")
 if "/run/mm-chat-memory-regression/provider.key" not in live.get("command", []):
     raise SystemExit("Memory regression topology: live credential file boundary missing")
+if "-memory-tool-route-credential-file" not in live.get("command", []):
+    raise SystemExit("Memory regression topology: Memory Tool-route credential boundary missing")
 for key, value in live.get("environment", {}).items():
     if "KEY" in key or "TOKEN" in key or "SECRET" in key:
         raise SystemExit("Memory regression topology: Provider credential entered Docker environment")
     if "fixture-live-credential-not-used" in str(value):
         raise SystemExit("Memory regression topology: Provider credential leaked into Docker metadata")
+    if "fixture-route-credential-not-used" in str(value):
+        raise SystemExit("Memory regression topology: Memory Tool-route credential leaked into Docker metadata")
 PY
 
 if rg -n '\.env\.single-server|mm-chat/(data|secrets|backup)|\.\./(data|secrets|backup)' "${compose_file}"; then
@@ -196,6 +216,7 @@ if args and args[0] == "compose":
             values[key] = value
         output = Path(values["MEMORY_REGRESSION_OUTPUT_PATH"])
         mode = "live_siliconflow" if "live" in service else "fake_protocol"
+        capture_mode = values["MEMORY_REGRESSION_CAPTURE_MODE"]
         candidate_prefix = "native-v2-hybrid" if mode == "live_siliconflow" else "native-v2-hybrid-fake-protocol"
         candidate_profile = "native_v2_hybrid" if mode == "live_siliconflow" else "native_v2_hybrid_fake_protocol"
         publish = os.environ.get("FAKE_PUBLISH", "full")
@@ -210,12 +231,175 @@ if args and args[0] == "compose":
             "promotionEligible": False,
             "passed": True,
         }, separators=(",", ":")).encode() + b"\n"
-        bodies = {
-            "native-v1-lexical.observations.json": observation,
-            "native-v1-lexical.report.json": report,
-            f"{candidate_prefix}.observations.json": observation,
-            f"{candidate_prefix}.report.json": report,
-        }
+        if capture_mode == "full_regression":
+            bodies = {
+                "native-v1-lexical.observations.json": observation,
+                "native-v1-lexical.report.json": report,
+                f"{candidate_prefix}.observations.json": observation,
+                f"{candidate_prefix}.report.json": report,
+            }
+            manifest_schema = "neo-chat.memory-regression-native-run.v1"
+            admission_mode = "regression_only"
+        elif capture_mode == "development_calibration":
+            def threshold_curve(minimum, maximum):
+                count = maximum - minimum + 1
+                return {
+                    "minimumBasisPoints": minimum,
+                    "maximumBasisPoints": maximum,
+                    "stepBasisPoints": 1,
+                    "relevantEligibleCaseCount": 240,
+                    "relevantMissingCaseCount": 0,
+                    "unrelatedNegativeEligibleCaseCount": 30,
+                    "unrelatedNegativeMissingCaseCount": 0,
+                    "relevantPassingCaseCounts": [240] * count,
+                    "unrelatedNegativePassingCaseCounts": [0] * count,
+                }
+            calibration = json.dumps({
+                "schemaVersion": "neo-chat.memory-regression-relevance-calibration.v3",
+                "corpusClass": "machine_reviewed_regression",
+                "admissionMode": "development_calibration_only",
+                "promotionEligible": False,
+                "split": "development",
+                "caseCount": 300,
+                "selected": {"providerSimilarityBasisPoints": 20, "finalRelevanceBasisPoints": 30},
+                "intentSelectionAlgorithm": "zero-egress_max-recall_highest-intent-margin_v1",
+                "intentEvaluatedThresholdCount": 201,
+                "intentFeasibleThresholdCount": 1,
+                "intentSelected": {"minimumMemoryIntentMarginBasisPoints": 10, "evaluation": {"passed": True}},
+                "diagnostics": {
+                    "version": "aggregate-threshold-curves-intent-and-attempts-v2",
+                    "otherCaseCount": 30,
+                    "failurePairCounts": {},
+                    "intentFailureThresholdCounts": {},
+                    "bestSafetyAttempt": {
+                        "providerSimilarityBasisPoints": 20,
+                        "finalRelevanceBasisPoints": 30,
+                        "evaluation": {},
+                    },
+                    "bestRecallAttempt": {
+                        "providerSimilarityBasisPoints": 20,
+                        "finalRelevanceBasisPoints": 30,
+                        "evaluation": {},
+                    },
+                    "bestIntentSafetyAttempt": {
+                        "minimumMemoryIntentMarginBasisPoints": 10,
+                        "evaluation": {},
+                    },
+                    "bestIntentRecallAttempt": {
+                        "minimumMemoryIntentMarginBasisPoints": 10,
+                        "evaluation": {},
+                    },
+                    "memoryIntentMarginCurve": threshold_curve(-100, 100),
+                    "admissionSimilarityCurve": threshold_curve(-100, 100),
+                    "maximumRerankScoreCurve": threshold_curve(0, 100),
+                    "topTwoRerankMarginCurve": threshold_curve(0, 100),
+                },
+            }, separators=(",", ":")).encode() + b"\n"
+            bodies = {"relevance-calibration.json": calibration}
+            manifest_schema = "neo-chat.memory-regression-relevance-run.v1"
+            admission_mode = "development_calibration_only"
+        elif capture_mode == "development_cloud_judge":
+            cloud = json.dumps({
+                "schemaVersion": "neo-chat.memory-regression-relevance-calibration.v5",
+                "corpusClass": "machine_reviewed_regression",
+                "admissionMode": "development_cloud_judge_only",
+                "promotionEligible": False,
+                "split": "development",
+                "caseCount": 300,
+                "providerEgressPolicy": "owner_authorized_normal_candidates_v1",
+                "providerCostPolicy": "owner_authorized_absolute_cap_v1",
+                "providerCostAuthorized": True,
+                "judgeModelId": values["MEMORY_REGRESSION_CLOUD_JUDGE_MODEL"],
+                "passed": True,
+                "evaluation": {"passed": True, "providerCostRatio": 0.487716},
+                "diagnostics": {
+                    "emptyCandidateCaseCount": 105,
+                    "judgeCompletedCaseCount": 195,
+                    "judgeAbstainedCaseCount": 30,
+                    "failedCaseCount": 0,
+                    "failureCodeCounts": {},
+                },
+                "costAuthority": {
+                    "unit": "cny_microunits",
+                    "authorizedRequestCount": 300,
+                    "actualRequestCount": 195,
+                    "authorizedMaximumInputTokens": 300000,
+                    "actualInputTokenUpperBound": 258647,
+                    "authorizedMaximumOutputTokens": 38400,
+                    "actualOutputTokenUpperBound": 24960,
+                    "maximumJudgeCostMicrounits": 376800,
+                    "maximumMemoryProviderCostMicrounits": 487716,
+                },
+            }, separators=(",", ":")).encode() + b"\n"
+            bodies = {"cloud-judge-development.json": cloud}
+            manifest_schema = "neo-chat.memory-regression-relevance-run.v1"
+            admission_mode = "development_cloud_judge_only"
+        elif capture_mode == "development_memory_tool_route":
+            memory_tool_route = json.dumps({
+                "schemaVersion": "neo-chat.memory-regression-relevance-calibration.v6",
+                "corpusClass": "machine_reviewed_regression",
+                "admissionMode": "development_main_model_memory_tool_route_only",
+                "promotionEligible": False,
+                "split": "development",
+                "caseCount": 300,
+                "policyId": "memory_hybrid_main_model_tool_route_calibration_v1",
+                "profileId": candidate_profile,
+                "configurationSha256": "a" * 64,
+                "providerEgressPolicy": "owner_authorized_normal_candidates_v1",
+                "providerCostPolicy": "owner_authorized_absolute_cap_v1",
+                "providerCostAuthorized": True,
+                "routeProviderId": values["MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_PROVIDER_ID"],
+                "routeProviderType": values["MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_PROVIDER_TYPE"],
+                "routeBaseUrlSha256": values["MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_BASE_URL_SHA256"],
+                "routeModelId": values["MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_MODEL"],
+                "toolName": "search_memory",
+                "toolContractVersion": "memory-search-tool-v1",
+                "toolContractSha256": "f8f404df0ae3a3938081b813c8750d59ba252adbcb8dc755e075e5c738e20ca6",
+                "toolDecodingProfile": "memory-search-tool-decoding-v1",
+                "toolMaximumOutputTokens": 128,
+                "toolTemperature": 0,
+                "toolDisableThinking": True,
+                "selectionAlgorithm": "main-model-tool-call_then-bge-order_top5-token-budget_v1",
+                "passed": True,
+                "evaluation": {"passed": True, "providerCostRatio": 0.5},
+                "diagnostics": {
+                    "emptyCandidateCaseCount": 105,
+                    "routeCompletedCaseCount": 300,
+                    "routeUsedCaseCount": 165,
+                    "routeAbstainedCaseCount": 135,
+                    "failedCaseCount": 0,
+                    "failureCodeCounts": {},
+                },
+                "costAuthority": {
+                    "unit": "cny_microunits",
+                    "authorizedRequestCount": 300,
+                    "actualRequestCount": 300,
+                    "authorizedMaximumInputTokens": 300000,
+                    "actualInputTokenUpperBound": 280000,
+                    "authorizedMaximumOutputTokens": 38400,
+                    "actualOutputTokenUpperBound": 38400,
+                    "maximumRouteCostMicrounits": 400000,
+                    "maximumMemoryProviderCostMicrounits": 500000,
+                },
+            }, separators=(",", ":")).encode() + b"\n"
+            bodies = {"memory-tool-route-development.json": memory_tool_route}
+            manifest_schema = "neo-chat.memory-regression-relevance-run.v1"
+            admission_mode = "development_main_model_memory_tool_route_only"
+        elif capture_mode == "frozen_validation":
+            validation = json.dumps({
+                "schemaVersion": "neo-chat.memory-regression-relevance-validation.v1",
+                "corpusClass": "machine_reviewed_regression",
+                "admissionMode": "frozen_validation_only",
+                "promotionEligible": False,
+                "split": "validation",
+                "caseCount": 100,
+                "passed": True,
+            }, separators=(",", ":")).encode() + b"\n"
+            bodies = {"relevance-validation.json": validation}
+            manifest_schema = "neo-chat.memory-regression-relevance-run.v1"
+            admission_mode = "frozen_validation_only"
+        else:
+            raise SystemExit(2)
         if publish == "partial":
             name = "native-v1-lexical.observations.json"
             (output / name).write_bytes(bodies[name])
@@ -225,21 +409,34 @@ if args and args[0] == "compose":
                 (output / name).write_bytes(body)
                 (output / name).chmod(0o600)
             manifest = {
-                "schemaVersion": "neo-chat.memory-regression-native-run.v1",
+                "schemaVersion": manifest_schema,
                 "runId": values["MEMORY_REGRESSION_RUN_ID"],
                 "corpusClass": "machine_reviewed_regression",
-                "admissionMode": "regression_only",
+                "admissionMode": admission_mode,
                 "promotionEligible": False,
                 "providerMode": mode,
-                "profiles": [
-                    {"role": "baseline", "profileId": "native_v1_lexical", "passed": True},
-                    {"role": "candidate", "profileId": candidate_profile, "passed": True},
-                ],
                 "artifacts": [
                     {"name": name, "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
                     for name, body in sorted(bodies.items())
                 ],
             }
+            if capture_mode == "full_regression":
+                manifest["profiles"] = [
+                    {"role": "baseline", "profileId": "native_v1_lexical", "passed": True},
+                    {"role": "candidate", "profileId": candidate_profile, "passed": True},
+                ]
+            else:
+                manifest.update({
+                    "captureMode": capture_mode,
+                    "split": "development" if capture_mode in {
+                        "development_calibration",
+                        "development_cloud_judge",
+                        "development_memory_tool_route",
+                    } else "validation",
+                    "profileId": candidate_profile,
+                })
+                if capture_mode in {"development_cloud_judge", "development_memory_tool_route"}:
+                    manifest["providerCostPolicy"] = "owner_authorized_absolute_cap_v1"
             manifest_path = output / "run-manifest.json"
             manifest_path.write_text(json.dumps(manifest, separators=(",", ":")) + "\n", encoding="utf-8")
             manifest_path.chmod(0o600)
@@ -282,6 +479,113 @@ if [[ "$(find "${success_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 
   exit 1
 fi
 assert_cleanup "${success_log}"
+
+calibration_output="${temp_dir}/calibration-output"
+calibration_log="${temp_dir}/calibration-docker.log"
+mkdir "${calibration_output}"
+chmod 700 "${calibration_output}"
+FAKE_DOCKER_LOG="${calibration_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${calibration_output}" --provider-mode fake_protocol \
+  --capture-mode development_calibration \
+  >"${temp_dir}/calibration.stdout" 2>"${temp_dir}/calibration.stderr"
+if [[ "$(find "${calibration_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: calibration bundle was not retained" >&2
+  exit 1
+fi
+assert_cleanup "${calibration_log}"
+
+cloud_output="${temp_dir}/cloud-output"
+cloud_log="${temp_dir}/cloud-docker.log"
+mkdir "${cloud_output}"
+chmod 700 "${cloud_output}"
+FAKE_DOCKER_LOG="${cloud_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${cloud_output}" --provider-mode fake_protocol \
+  --capture-mode development_cloud_judge \
+  --cloud-judge-model deepseek-ai/DeepSeek-V4-Flash \
+  >"${temp_dir}/cloud.stdout" 2>"${temp_dir}/cloud.stderr"
+if [[ "$(find "${cloud_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: cloud-judge bundle was not retained" >&2
+  exit 1
+fi
+assert_cleanup "${cloud_log}"
+
+memory_tool_route_output="${temp_dir}/memory-tool-route-output"
+memory_tool_route_log="${temp_dir}/memory-tool-route-docker.log"
+mkdir "${memory_tool_route_output}"
+chmod 700 "${memory_tool_route_output}"
+FAKE_DOCKER_LOG="${memory_tool_route_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${memory_tool_route_output}" --provider-mode fake_protocol \
+  --capture-mode development_memory_tool_route \
+  --memory-tool-route-provider-id configured-deepseek \
+  --memory-tool-route-provider-type openai_compatible \
+  --memory-tool-route-base-url https://api.deepseek.example/ \
+  --memory-tool-route-model deepseek-chat \
+  >"${temp_dir}/memory-tool-route.stdout" \
+  2>"${temp_dir}/memory-tool-route.stderr"
+if [[ "$(find "${memory_tool_route_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: Memory Tool-route bundle was not retained" >&2
+  exit 1
+fi
+assert_cleanup "${memory_tool_route_log}"
+
+live_memory_tool_route_output="${temp_dir}/live-memory-tool-route-output"
+live_memory_tool_route_log="${temp_dir}/live-memory-tool-route-docker.log"
+mkdir "${live_memory_tool_route_output}"
+chmod 700 "${live_memory_tool_route_output}"
+FAKE_DOCKER_LOG="${live_memory_tool_route_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${live_memory_tool_route_output}" \
+  --provider-mode live_siliconflow \
+  --capture-mode development_memory_tool_route \
+  --credential-file "${credential_file}" \
+  --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --memory-tool-route-credential-file "${memory_tool_route_credential_file}" \
+  --memory-tool-route-provider-id configured-gpt \
+  --memory-tool-route-provider-type openai \
+  --memory-tool-route-base-url https://api.openai.example/v1 \
+  --memory-tool-route-model gpt-test \
+  --memory-tool-route-approval I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA \
+  >"${temp_dir}/live-memory-tool-route.stdout" \
+  2>"${temp_dir}/live-memory-tool-route.stderr"
+if [[ "$(find "${live_memory_tool_route_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: live Memory Tool-route bundle was not retained" >&2
+  exit 1
+fi
+assert_cleanup "${live_memory_tool_route_log}"
+
+same_credential_output="${temp_dir}/same-credential-output"
+mkdir "${same_credential_output}"
+chmod 700 "${same_credential_output}"
+set +e
+DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${same_credential_output}" \
+  --provider-mode live_siliconflow \
+  --capture-mode development_memory_tool_route \
+  --credential-file "${credential_file}" \
+  --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --memory-tool-route-credential-file "${credential_file}" \
+  --memory-tool-route-provider-id configured-gpt \
+  --memory-tool-route-provider-type openai \
+  --memory-tool-route-base-url https://api.openai.example/v1 \
+  --memory-tool-route-model gpt-test \
+  --memory-tool-route-approval I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA \
+  >"${temp_dir}/same-credential.stdout" \
+  2>"${temp_dir}/same-credential.stderr"
+same_credential_status=$?
+set -e
+if [[ ${same_credential_status} -eq 0 || \
+  -n "$(find "${same_credential_output}" -mindepth 1 -print -quit)" ]]; then
+  echo "Memory regression protocol: shared Provider credential did not fail closed" >&2
+  exit 1
+fi
 
 failure_output="${temp_dir}/failure-output"
 failure_log="${temp_dir}/failure-docker.log"

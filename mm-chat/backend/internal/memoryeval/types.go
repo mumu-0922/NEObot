@@ -123,12 +123,13 @@ type ObservationSet struct {
 }
 
 type Profile struct {
-	ID                  string `json:"id"`
-	Role                string `json:"role"`
-	ReaderVersion       string `json:"readerVersion"`
-	ConfigurationSHA256 string `json:"configurationSha256"`
-	CandidateLimit      int    `json:"candidateLimit"`
-	FinalLimit          int    `json:"finalLimit"`
+	ID                   string `json:"id"`
+	Role                 string `json:"role"`
+	ReaderVersion        string `json:"readerVersion"`
+	ConfigurationSHA256  string `json:"configurationSha256"`
+	CandidateLimit       int    `json:"candidateLimit"`
+	FinalLimit           int    `json:"finalLimit"`
+	ProviderEgressPolicy string `json:"providerEgressPolicy,omitempty"`
 }
 
 type HoldoutRun struct {
@@ -384,6 +385,25 @@ type SliceResult struct {
 	Safety             SafetyMetrics  `json:"safety"`
 	Passed             bool           `json:"passed"`
 	Failures           []string       `json:"failures"`
+}
+
+// CalibrationEvaluation reuses the production benchmark scorer for one
+// explicitly selected split. It carries no Provider-cost or promotion
+// authority and is safe to embed only in non-promotional calibration reports.
+type CalibrationEvaluation struct {
+	Passed             bool                   `json:"passed"`
+	Metrics            Metrics                `json:"metrics"`
+	RankingDiagnostics RankingMetrics         `json:"rankingDiagnostics"`
+	Budgets            Budgets                `json:"budgets"`
+	Safety             SafetyMetrics          `json:"safety"`
+	Slices             map[string]SliceResult `json:"slices"`
+	Failures           []string               `json:"failures"`
+}
+
+type ValidationEvaluation struct {
+	CalibrationEvaluation
+	ProviderCostRatio  float64 `json:"providerCostRatio"`
+	ProviderCostPassed bool    `json:"providerCostPassed"`
 }
 
 type FreezeHashReport struct {

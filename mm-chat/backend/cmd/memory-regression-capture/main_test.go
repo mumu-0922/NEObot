@@ -25,6 +25,7 @@ func TestParseCommandSeparatesFakeAndLiveCredentialBoundaries(t *testing.T) {
 	}
 	live := append(append([]string{}, base...),
 		"-provider-mode", memorycapture.ProviderModeLiveSiliconFlow,
+		"-capture-mode", memorycapture.CaptureModeCalibration,
 		"-credential-file", "/secret",
 	)
 	options, err = parseCommand(live)
@@ -32,8 +33,48 @@ func TestParseCommandSeparatesFakeAndLiveCredentialBoundaries(t *testing.T) {
 		t.Fatalf("parse live command = %#v/%v", options, err)
 	}
 	if _, err := parseCommand(append(append([]string{}, base...),
-		"-provider-mode", memorycapture.ProviderModeLiveSiliconFlow)); err == nil {
+		"-provider-mode", memorycapture.ProviderModeLiveSiliconFlow,
+		"-capture-mode", memorycapture.CaptureModeCalibration)); err == nil {
 		t.Fatal("live mode omitted credential file")
+	}
+	if _, err := parseCommand(append(append([]string{}, base...),
+		"-provider-mode", memorycapture.ProviderModeLiveSiliconFlow,
+		"-credential-file", "/secret")); err == nil {
+		t.Fatal("live mode accepted the split-unsafe full regression default")
+	}
+	cloud := append(append([]string{}, base...),
+		"-capture-mode", memorycapture.CaptureModeCloudJudgeDevelopment,
+		"-cloud-judge-model", "Pro/test/Memory-Judge",
+	)
+	options, err = parseCommand(cloud)
+	if err != nil || options.judgeModelID != "Pro/test/Memory-Judge" {
+		t.Fatalf("parse cloud-judge command = %#v/%v", options, err)
+	}
+	route := append(append([]string{}, base...),
+		"-capture-mode", memorycapture.CaptureModeMemoryToolRouteDevelopment,
+		"-memory-tool-route-provider-id", "configured-deepseek",
+		"-memory-tool-route-provider-type", "openai_compatible",
+		"-memory-tool-route-base-url", "https://api.deepseek.example/v1/",
+		"-memory-tool-route-model", "deepseek-chat",
+	)
+	options, err = parseCommand(route)
+	if err != nil || options.routeProviderID != "configured-deepseek" ||
+		options.routeCredentialPath != "" {
+		t.Fatalf("parse fake Memory Tool-route command = %#v/%v", options, err)
+	}
+	liveRoute := append(append([]string{}, route...),
+		"-provider-mode", memorycapture.ProviderModeLiveSiliconFlow,
+		"-credential-file", "/siliconflow-secret",
+		"-memory-tool-route-credential-file", "/deepseek-secret",
+	)
+	options, err = parseCommand(liveRoute)
+	if err != nil || options.routeCredentialPath != "/deepseek-secret" {
+		t.Fatalf("parse live Memory Tool-route command = %#v/%v", options, err)
+	}
+	if _, err := parseCommand(append(append([]string{}, route...),
+		"-provider-mode", memorycapture.ProviderModeLiveSiliconFlow,
+		"-credential-file", "/siliconflow-secret")); err == nil {
+		t.Fatal("live Memory Tool-route command omitted its independent credential")
 	}
 }
 
@@ -88,14 +129,82 @@ func TestBuildProvidersRequiresPrivateCredentialFileAndClearsBytes(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(bundle.secret) != "fixture-siliconflow-key" {
-		t.Fatalf("credential bytes = %q", bundle.secret)
+	if len(bundle.secrets) != 1 || string(bundle.secrets[0]) != "fixture-siliconflow-key" {
+		t.Fatalf("credential bytes = %q", bundle.secrets)
 	}
 	bundle.clear()
-	for _, current := range bundle.secret {
+	for _, current := range bundle.secrets[0] {
 		if current != 0 {
 			t.Fatal("credential bytes were not cleared")
 		}
+	}
+}
+
+func TestBuildProvidersBindsIndependentMemoryToolRouteCredential(t *testing.T) {
+	directory := t.TempDir()
+	retrievalPath := filepath.Join(directory, "retrieval.key")
+	routePath := filepath.Join(directory, "route.key")
+	if err := os.WriteFile(retrievalPath, []byte("fixture-siliconflow-key\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(routePath, []byte("fixture-deepseek-key\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	options := commandOptions{
+		providerMode:        memorycapture.ProviderModeLiveSiliconFlow,
+		captureMode:         memorycapture.CaptureModeMemoryToolRouteDevelopment,
+		credentialPath:      retrievalPath,
+		routeCredentialPath: routePath,
+		routeProviderID:     "configured-deepseek",
+		routeProviderType:   "openai_compatible",
+		routeBaseURL:        "https://api.deepseek.example/",
+		routeModelID:        "deepseek-chat",
+	}
+	bundle, err := buildProviders(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundle.router == nil || len(bundle.secrets) != 2 ||
+		string(bundle.secrets[0]) != "fixture-siliconflow-key" ||
+		string(bundle.secrets[1]) != "fixture-deepseek-key" {
+		t.Fatalf("Memory Tool-route Provider bundle = %#v", bundle)
+	}
+	bundle.clear()
+	for _, secret := range bundle.secrets {
+		for _, current := range secret {
+			if current != 0 {
+				t.Fatal("a Provider credential byte slice was not cleared")
+			}
+		}
+	}
+
+	options.routeCredentialPath = retrievalPath
+	if _, err := buildProviders(options); err == nil {
+		t.Fatal("Memory Tool-route accepted the retrieval credential file")
+	}
+}
+
+func TestBuildMemoryToolRouteAuthorityNormalizesExactEndpoint(t *testing.T) {
+	options := commandOptions{
+		routeProviderID:   "configured-gpt",
+		routeProviderType: "OpenAI-Compatible",
+		routeBaseURL:      "https://gateway.example/api/",
+		routeModelID:      "gpt-test",
+	}
+	authority, providerType, baseURL, err := resolveMemoryToolRoute(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if authority.ProviderID != "configured-gpt" ||
+		authority.ProviderType != "openai_compatible" ||
+		providerType != "OpenAI Compatible" ||
+		baseURL != "https://gateway.example/api/v1" ||
+		authority.BaseURLSHA256 != sha256Bytes([]byte(baseURL)) {
+		t.Fatalf("Memory Tool-route authority = %#v/%q/%q", authority, providerType, baseURL)
+	}
+	options.routeBaseURL = "https://user:secret@gateway.example/v1"
+	if _, _, _, err := resolveMemoryToolRoute(options); err == nil {
+		t.Fatal("Memory Tool-route accepted URL userinfo")
 	}
 }
 
@@ -103,13 +212,36 @@ func TestLoadLiveAuthorizationRequiresExactModelTargets(t *testing.T) {
 	values := map[string]string{
 		liveEnabledEnv: "true", liveApprovalEnv: memorycapture.LiveApproval,
 		liveRunIDEnv: "run-1", liveProviderIDEnv: "siliconflow",
-		liveEmbeddingModelEnv: ragproviders.SiliconFlowEmbeddingModel,
-		liveRerankModelEnv:    ragproviders.SiliconFlowRerankModel,
+		liveEmbeddingModelEnv:               ragproviders.SiliconFlowEmbeddingModel,
+		liveRerankModelEnv:                  ragproviders.SiliconFlowRerankModel,
+		liveCloudJudgeModelEnv:              memorycapture.DefaultSiliconFlowCloudJudgeModelID,
+		liveMemoryToolRouteApprovalEnv:      memorycapture.LiveMemoryToolRouteApproval,
+		liveMemoryToolRouteProviderIDEnv:    "configured-gpt",
+		liveMemoryToolRouteProviderTypeEnv:  "openai_compatible",
+		liveMemoryToolRouteBaseURLSHA256Env: strings.Repeat("b", 64),
+		liveMemoryToolRouteModelIDEnv:       "gpt-test",
 	}
 	authorization := loadLiveAuthorization(mapEnvironment(values))
 	if err := memorycapture.AuthorizeProviderMode(
 		memorycapture.ProviderModeLiveSiliconFlow,
 		"run-1",
+		authorization,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := memorycapture.AuthorizeCloudJudgeTarget(
+		memorycapture.ProviderModeLiveSiliconFlow,
+		memorycapture.DefaultSiliconFlowCloudJudgeModelID,
+		authorization,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := memorycapture.AuthorizeMemoryToolRouteTarget(
+		memorycapture.ProviderModeLiveSiliconFlow,
+		memorycapture.MemoryToolRouteProfileAuthority{
+			ProviderID: "configured-gpt", ProviderType: "openai_compatible",
+			BaseURLSHA256: strings.Repeat("b", 64), ModelID: "gpt-test",
+		},
 		authorization,
 	); err != nil {
 		t.Fatal(err)

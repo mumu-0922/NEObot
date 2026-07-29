@@ -189,7 +189,7 @@ SELECT current_database(), current_user, max(version) FROM schema_migrations
 		return "", fmt.Errorf("%w: inspect ephemeral database", ErrCaptureInvalid)
 	}
 	if !strings.HasPrefix(databaseName, ephemeralDatabasePrefix) ||
-		currentUser == "go_api_runtime" || !migrationVersion.Valid || migrationVersion.Int64 < 63 {
+		currentUser == "go_api_runtime" || !migrationVersion.Valid || migrationVersion.Int64 < 64 {
 		return "", fmt.Errorf("%w: database is not an eligible ephemeral migration target", ErrCaptureInvalid)
 	}
 	var users, projects, conversations, messages, memories, projections, providers, guards int

@@ -8,6 +8,19 @@ import (
 	"sort"
 )
 
+const (
+	// ProviderEgressPolicyLegacyRelevanceGated preserves the historical
+	// evaluator contract: every excluded Memory sent to a Provider is an
+	// unauthorized egress event. An omitted policy has the same meaning so old
+	// artifacts retain byte and scoring compatibility.
+	ProviderEgressPolicyLegacyRelevanceGated = "legacy_relevance_gated"
+	// ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1 permits only the
+	// ordinary irrelevant exclusion to cross the Provider boundary. Every
+	// authority/privacy exclusion remains forbidden and false-injection scoring
+	// is deliberately unaffected.
+	ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1 = "owner_authorized_normal_candidates_v1"
+)
+
 type metricAccumulator struct {
 	cases                 int
 	relevantCases         int
@@ -28,10 +41,11 @@ type metricAccumulator struct {
 }
 
 type evaluatedProfile struct {
-	metrics Metrics
-	ranking RankingMetrics
-	budgets Budgets
-	safety  SafetyMetrics
+	caseCount int
+	metrics   Metrics
+	ranking   RankingMetrics
+	budgets   Budgets
+	safety    SafetyMetrics
 }
 
 type scoredEvaluation struct {
@@ -101,11 +115,15 @@ func scoreEvaluation(
 	profile Profile,
 	costs ProviderCosts,
 ) (scoredEvaluation, error) {
-	evaluated, err := evaluateCases(cases, observations, criteria)
+	evaluated, slices, failures, err := scoreCasesAndSlices(
+		cases,
+		observations,
+		criteria,
+		profile.ProviderEgressPolicy,
+	)
 	if err != nil {
 		return scoredEvaluation{}, err
 	}
-	failures := profileFailures(evaluated, criteria)
 	costRatio := float64(costs.MemoryProviderCostMicrounits) /
 		float64(costs.ChatProviderCostMicrounits)
 	costPassed := providerCostWithinV1Limit(
@@ -115,30 +133,8 @@ func scoreEvaluation(
 	if !costPassed {
 		failures = append(failures, "Memory provider cost ratio exceeds criterion")
 	}
-
-	slices := make(map[string]SliceResult, len(criticalSlices))
-	for _, name := range criticalSlices {
-		selectedCases, selectedObservations := selectSlice(cases, observations, name)
-		sliceProfile, err := evaluateCases(selectedCases, selectedObservations, criteria)
-		if err != nil {
-			return scoredEvaluation{}, err
-		}
-		sliceFailures := profileFailures(sliceProfile, criteria)
-		sort.Strings(sliceFailures)
-		slices[name] = SliceResult{
-			Cases:              len(selectedCases),
-			Metrics:            sliceProfile.metrics,
-			RankingDiagnostics: sliceProfile.ranking,
-			Budgets:            sliceProfile.budgets,
-			Safety:             sliceProfile.safety,
-			Passed:             len(sliceFailures) == 0,
-			Failures:           sliceFailures,
-		}
-		for _, failure := range sliceFailures {
-			failures = append(failures, name+": "+failure)
-		}
-	}
 	sort.Strings(failures)
+
 	return scoredEvaluation{
 		profile: ProfileSummary{
 			ProfileID:          profile.ID,
@@ -153,6 +149,147 @@ func scoreEvaluation(
 		},
 		slices:   slices,
 		failures: failures,
+	}, nil
+}
+
+func scoreCasesAndSlices(
+	cases []GoldenCase,
+	observations []CaseObservation,
+	criteria Criteria,
+	providerEgressPolicy string,
+) (evaluatedProfile, map[string]SliceResult, []string, error) {
+	if !validProviderEgressPolicy(providerEgressPolicy) {
+		return evaluatedProfile{}, nil, nil, errors.New("Memory Provider-egress policy is invalid")
+	}
+	evaluated, evaluatedSlices, err := evaluateCasesWithSlices(
+		cases,
+		observations,
+		criteria,
+		providerEgressPolicy,
+	)
+	if err != nil {
+		return evaluatedProfile{}, nil, nil, err
+	}
+	failures := profileFailures(evaluated, criteria)
+	slices := make(map[string]SliceResult, len(criticalSlices))
+	for _, name := range criticalSlices {
+		sliceProfile, ok := evaluatedSlices[name]
+		if !ok {
+			continue
+		}
+		sliceFailures := profileFailures(sliceProfile, criteria)
+		sort.Strings(sliceFailures)
+		slices[name] = SliceResult{
+			Cases:              sliceProfile.caseCount,
+			Metrics:            sliceProfile.metrics,
+			RankingDiagnostics: sliceProfile.ranking,
+			Budgets:            sliceProfile.budgets,
+			Safety:             sliceProfile.safety,
+			Passed:             len(sliceFailures) == 0,
+			Failures:           sliceFailures,
+		}
+		for _, failure := range sliceFailures {
+			failures = append(failures, name+": "+failure)
+		}
+	}
+	sort.Strings(failures)
+	return evaluated, slices, failures, nil
+}
+
+// EvaluateCalibrationSelection scores one already-admitted split through the
+// exact benchmark metric/slice implementation without creating a report or
+// any promotion authority.
+func EvaluateCalibrationSelection(
+	cases []GoldenCase,
+	observations []CaseObservation,
+	criteria Criteria,
+) (CalibrationEvaluation, error) {
+	return EvaluateCalibrationSelectionWithProviderEgressPolicy(
+		cases,
+		observations,
+		criteria,
+		"",
+	)
+}
+
+// EvaluateCalibrationSelectionWithProviderEgressPolicy scores a calibration
+// split using one explicit, versioned Provider-egress authority profile. It is
+// additive so existing calibration callers and artifacts retain legacy safety
+// semantics.
+func EvaluateCalibrationSelectionWithProviderEgressPolicy(
+	cases []GoldenCase,
+	observations []CaseObservation,
+	criteria Criteria,
+	providerEgressPolicy string,
+) (CalibrationEvaluation, error) {
+	evaluated, slices, failures, err := scoreCasesAndSlices(
+		cases,
+		observations,
+		criteria,
+		providerEgressPolicy,
+	)
+	if err != nil {
+		return CalibrationEvaluation{}, err
+	}
+	return CalibrationEvaluation{
+		Passed:             len(failures) == 0,
+		Metrics:            evaluated.metrics,
+		RankingDiagnostics: evaluated.ranking,
+		Budgets:            evaluated.budgets,
+		Safety:             evaluated.safety,
+		Slices:             slices,
+		Failures:           failures,
+	}, nil
+}
+
+// EvaluateValidationSelection applies the same split metrics, slice gates,
+// safety checks, and exact v1 Provider-cost gate used by the full evaluator.
+func EvaluateValidationSelection(
+	cases []GoldenCase,
+	observations []CaseObservation,
+	criteria Criteria,
+	costs ProviderCosts,
+) (ValidationEvaluation, error) {
+	return EvaluateValidationSelectionWithProviderEgressPolicy(
+		cases,
+		observations,
+		criteria,
+		costs,
+		"",
+	)
+}
+
+// EvaluateValidationSelectionWithProviderEgressPolicy applies the exact
+// benchmark gates with an explicit Provider-egress authority profile.
+func EvaluateValidationSelectionWithProviderEgressPolicy(
+	cases []GoldenCase,
+	observations []CaseObservation,
+	criteria Criteria,
+	costs ProviderCosts,
+	providerEgressPolicy string,
+) (ValidationEvaluation, error) {
+	scored, err := scoreEvaluation(
+		cases,
+		observations,
+		criteria,
+		Profile{ProviderEgressPolicy: providerEgressPolicy},
+		costs,
+	)
+	if err != nil {
+		return ValidationEvaluation{}, err
+	}
+	return ValidationEvaluation{
+		CalibrationEvaluation: CalibrationEvaluation{
+			Passed:             len(scored.failures) == 0,
+			Metrics:            scored.profile.Metrics,
+			RankingDiagnostics: scored.profile.RankingDiagnostics,
+			Budgets:            scored.profile.Budgets,
+			Safety:             scored.profile.Safety,
+			Slices:             scored.slices,
+			Failures:           scored.failures,
+		},
+		ProviderCostRatio:  scored.profile.ProviderCostRatio,
+		ProviderCostPassed: scored.profile.ProviderCostPassed,
 	}, nil
 }
 
@@ -194,29 +331,72 @@ func evaluateCases(
 	observations []CaseObservation,
 	criteria Criteria,
 ) (evaluatedProfile, error) {
+	evaluated, _, err := evaluateCasesWithSlices(golden, observations, criteria, "")
+	return evaluated, err
+}
+
+func evaluateCasesWithSlices(
+	golden []GoldenCase,
+	observations []CaseObservation,
+	criteria Criteria,
+	providerEgressPolicy string,
+) (evaluatedProfile, map[string]evaluatedProfile, error) {
 	observedByCase := make(map[string]CaseObservation, len(observations))
 	for _, item := range observations {
 		if _, duplicate := observedByCase[item.CaseID]; duplicate {
-			return evaluatedProfile{}, fmt.Errorf("duplicate Memory observation case %q", item.CaseID)
+			return evaluatedProfile{}, nil, fmt.Errorf("duplicate Memory observation case %q", item.CaseID)
 		}
 		observedByCase[item.CaseID] = item
 	}
 	if len(observedByCase) != len(golden) {
-		return evaluatedProfile{}, errors.New("Memory observations do not exactly match selected Golden cases")
+		return evaluatedProfile{}, nil, errors.New("Memory observations do not exactly match selected Golden cases")
 	}
 	accumulator := metricAccumulator{}
+	sliceAccumulators := make(map[string]*metricAccumulator, len(criticalSlices))
 	for _, goldenCase := range golden {
 		observed, ok := observedByCase[goldenCase.ID]
 		if !ok {
-			return evaluatedProfile{}, fmt.Errorf("missing Memory observation case %q", goldenCase.ID)
+			return evaluatedProfile{}, nil, fmt.Errorf("missing Memory observation case %q", goldenCase.ID)
 		}
 		delete(observedByCase, goldenCase.ID)
-		accumulateCase(&accumulator, goldenCase, observed, criteria)
+		accumulateCase(
+			&accumulator,
+			goldenCase,
+			observed,
+			criteria,
+			providerEgressPolicy,
+		)
+		memberships := stringSet(goldenCase.Slices)
+		for _, name := range criticalSlices {
+			if _, selected := memberships[name]; !selected {
+				continue
+			}
+			sliceAccumulator := sliceAccumulators[name]
+			if sliceAccumulator == nil {
+				sliceAccumulator = &metricAccumulator{}
+				sliceAccumulators[name] = sliceAccumulator
+			}
+			accumulateCase(
+				sliceAccumulator,
+				goldenCase,
+				observed,
+				criteria,
+				providerEgressPolicy,
+			)
+		}
 	}
 	if len(observedByCase) != 0 {
-		return evaluatedProfile{}, errors.New("Memory observations contain unknown cases")
+		return evaluatedProfile{}, nil, errors.New("Memory observations contain unknown cases")
 	}
-	return accumulator.result(criteria), nil
+	evaluatedSlices := make(map[string]evaluatedProfile, len(sliceAccumulators))
+	for name, sliceAccumulator := range sliceAccumulators {
+		sliceResult := sliceAccumulator.result(criteria)
+		sliceResult.caseCount = sliceAccumulator.cases
+		evaluatedSlices[name] = sliceResult
+	}
+	result := accumulator.result(criteria)
+	result.caseCount = accumulator.cases
+	return result, evaluatedSlices, nil
 }
 
 func accumulateCase(
@@ -224,6 +404,7 @@ func accumulateCase(
 	golden GoldenCase,
 	observed CaseObservation,
 	criteria Criteria,
+	providerEgressPolicy string,
 ) {
 	accumulator.cases++
 	accumulator.latencies = append(accumulator.latencies, observed.LatencyMilliseconds)
@@ -259,7 +440,12 @@ func accumulateCase(
 			accumulator.currentFactCorrect++
 		}
 	}
-	accumulateSafety(&accumulator.safety, golden, observed)
+	accumulateSafety(
+		&accumulator.safety,
+		golden,
+		observed,
+		providerEgressPolicy,
+	)
 }
 
 func currentFactCorrect(golden GoldenCase, observed CaseObservation) bool {
@@ -283,6 +469,7 @@ func accumulateSafety(
 	safety *SafetyMetrics,
 	golden GoldenCase,
 	observed CaseObservation,
+	providerEgressPolicy string,
 ) {
 	allSurfaces := append([]string(nil), observed.CandidateMemoryIDs...)
 	allSurfaces = append(allSurfaces, observed.FinalMemoryIDs...)
@@ -298,7 +485,8 @@ func accumulateSafety(
 		if _, leaked := all[exclusion.MemoryID]; leaked {
 			leakedReasons[exclusion.Reason] = true
 		}
-		if _, leaked := providerSent[exclusion.MemoryID]; leaked {
+		if _, leaked := providerSent[exclusion.MemoryID]; leaked &&
+			!providerEgressAuthorized(providerEgressPolicy, exclusion.Reason) {
 			providerLeak = true
 		}
 	}
@@ -317,6 +505,17 @@ func accumulateSafety(
 	if providerLeak {
 		safety.UnauthorizedProviderEgressCount++
 	}
+}
+
+func validProviderEgressPolicy(value string) bool {
+	return value == "" ||
+		value == ProviderEgressPolicyLegacyRelevanceGated ||
+		value == ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1
+}
+
+func providerEgressAuthorized(policy string, exclusionReason string) bool {
+	return policy == ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1 &&
+		exclusionReason == "irrelevant"
 }
 
 func (value metricAccumulator) result(criteria Criteria) evaluatedProfile {
@@ -388,27 +587,6 @@ func profileFailures(value evaluatedProfile, criteria Criteria) []string {
 		failures = append(failures, "Memory safety or authority leakage was observed")
 	}
 	return failures
-}
-
-func selectSlice(
-	golden []GoldenCase,
-	observations []CaseObservation,
-	name string,
-) ([]GoldenCase, []CaseObservation) {
-	observedByCase := make(map[string]CaseObservation, len(observations))
-	for _, item := range observations {
-		observedByCase[item.CaseID] = item
-	}
-	selectedGolden := make([]GoldenCase, 0)
-	selectedObservations := make([]CaseObservation, 0)
-	for _, item := range golden {
-		if _, ok := stringSet(item.Slices)[name]; !ok {
-			continue
-		}
-		selectedGolden = append(selectedGolden, item)
-		selectedObservations = append(selectedObservations, observedByCase[item.ID])
-	}
-	return selectedGolden, selectedObservations
 }
 
 func countAllowed(values []string, allowed map[string]struct{}) int {

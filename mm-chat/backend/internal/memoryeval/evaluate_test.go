@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -55,6 +56,102 @@ func TestEvaluatePassingFrozenBenchmark(t *testing.T) {
 		if !ok || result.Cases < 50 || !result.Passed || len(result.Failures) != 0 {
 			t.Fatalf("slice %q = %#v", name, result)
 		}
+	}
+}
+
+func TestEvaluateCalibrationSelectionReusesBenchmarkScorer(t *testing.T) {
+	input := passingEvaluationInput(t)
+	cases := input.Golden.Cases[:300]
+	observations := input.Observations.Cases[:300]
+	calibration, err := EvaluateCalibrationSelection(
+		cases,
+		observations,
+		input.Golden.Criteria,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scored, err := scoreEvaluation(
+		cases,
+		observations,
+		input.Golden.Criteria,
+		input.Observations.Profile,
+		input.Observations.Costs,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !calibration.Passed ||
+		!reflect.DeepEqual(calibration.Metrics, scored.profile.Metrics) ||
+		!reflect.DeepEqual(calibration.RankingDiagnostics, scored.profile.RankingDiagnostics) ||
+		!reflect.DeepEqual(calibration.Budgets, scored.profile.Budgets) ||
+		!reflect.DeepEqual(calibration.Safety, scored.profile.Safety) ||
+		!reflect.DeepEqual(calibration.Slices, scored.slices) ||
+		!reflect.DeepEqual(calibration.Failures, scored.failures) {
+		t.Fatalf("calibration scorer drift = %#v vs %#v", calibration, scored)
+	}
+	validation, err := EvaluateValidationSelection(
+		cases,
+		observations,
+		input.Golden.Criteria,
+		input.Observations.Costs,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !validation.Passed || !validation.ProviderCostPassed ||
+		validation.ProviderCostRatio != scored.profile.ProviderCostRatio ||
+		!reflect.DeepEqual(validation.Metrics, scored.profile.Metrics) ||
+		!reflect.DeepEqual(validation.Failures, scored.failures) {
+		t.Fatalf("validation scorer drift = %#v vs %#v", validation, scored)
+	}
+}
+
+func TestEvaluateProviderEgressPolicyAuthorizesOnlyIrrelevantCandidates(t *testing.T) {
+	input := passingEvaluationInput(t)
+	cases := input.Golden.Cases[:300]
+	observations := input.Observations.Cases[:300]
+
+	irrelevantID := exclusionID(cases[4], "irrelevant")
+	observations[4].ProviderSentMemoryIDs = []string{irrelevantID}
+	observations[4].CandidateMemoryIDs = []string{irrelevantID}
+	observations[4].FinalMemoryIDs = []string{irrelevantID}
+	observations[4].InjectedMemoryIDs = []string{irrelevantID}
+	untrustedID := exclusionID(cases[5], "untrusted_source")
+	observations[5].ProviderSentMemoryIDs = []string{untrustedID}
+
+	legacy, err := EvaluateCalibrationSelection(
+		cases,
+		observations,
+		input.Golden.Criteria,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownerAuthorized, err := EvaluateCalibrationSelectionWithProviderEgressPolicy(
+		cases,
+		observations,
+		input.Golden.Criteria,
+		ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy.Safety.UnauthorizedProviderEgressCount != 2 {
+		t.Fatalf("legacy safety = %#v", legacy.Safety)
+	}
+	if ownerAuthorized.Safety.UnauthorizedProviderEgressCount != 1 ||
+		ownerAuthorized.Safety.UntrustedSourceLeakCount != 1 ||
+		ownerAuthorized.Metrics.FalseInjectionCases != 1 {
+		t.Fatalf("owner-authorized evaluation = %#v", ownerAuthorized)
+	}
+	if _, err := EvaluateCalibrationSelectionWithProviderEgressPolicy(
+		cases,
+		observations,
+		input.Golden.Criteria,
+		"owner_authorized_all_candidates",
+	); err == nil || !strings.Contains(err.Error(), "Provider-egress policy") {
+		t.Fatalf("invalid policy error = %v", err)
 	}
 }
 

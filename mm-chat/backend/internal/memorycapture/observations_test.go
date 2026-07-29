@@ -65,6 +65,98 @@ func TestCostBasisRequiresExplicitSameUnitAuthority(t *testing.T) {
 	}
 }
 
+func TestCloudJudgeCostBasisBindsThreeHundredRequestUpperBound(t *testing.T) {
+	valid := CostBasis{
+		SchemaVersion: "neo-chat.memory-regression-cost-basis.v2",
+		Baseline: memoryeval.ProviderCosts{
+			Unit: "cny_microunits", ChatProviderCostMicrounits: 100,
+		},
+		Candidate: memoryeval.ProviderCosts{
+			Unit: "cny_microunits", MemoryProviderCostMicrounits: 10,
+			ChatProviderCostMicrounits: 100,
+		},
+		Source: "provider-price-page", EffectiveAt: "2026-07-29T00:00:00Z",
+		CloudJudgeAuthority: &CloudJudgeCostAuthority{
+			ModelID: "Pro/test/Memory-Judge", RequestCount: 300,
+			MaximumInputTokens: 1_000_000, MaximumOutputTokens: 38_400,
+			InputMicrounitsPerMillionTokens:  2,
+			OutputMicrounitsPerMillionTokens: 3,
+			MaximumCostMicrounits:            3,
+		},
+	}
+	if err := ValidateCloudJudgeCostAuthority(valid, "Pro/test/Memory-Judge"); err != nil {
+		t.Fatal(err)
+	}
+	if digest, err := CostBasisSHA256(valid); err != nil || len(digest) != 64 {
+		t.Fatalf("cloud cost digest = %q err=%v", digest, err)
+	}
+	invalid := []CostBasis{valid, valid, valid, valid}
+	for index := range invalid {
+		authority := *valid.CloudJudgeAuthority
+		invalid[index].CloudJudgeAuthority = &authority
+	}
+	invalid[0].CloudJudgeAuthority.RequestCount = 299
+	invalid[1].CloudJudgeAuthority.MaximumCostMicrounits = 2
+	invalid[2].Candidate.MemoryProviderCostMicrounits = 2
+	invalid[3].CloudJudgeAuthority.ModelID = "drifted"
+	for index, value := range invalid {
+		modelID := "Pro/test/Memory-Judge"
+		if err := ValidateCloudJudgeCostAuthority(value, modelID); err == nil {
+			t.Fatalf("invalid cloud cost[%d] accepted", index)
+		}
+	}
+	free := valid
+	free.CloudJudgeAuthority = &CloudJudgeCostAuthority{
+		ModelID: "Qwen/Qwen3-8B", RequestCount: 300,
+		MaximumInputTokens: 80_000_000, MaximumOutputTokens: 38_400,
+		InputMicrounitsPerMillionTokens:  0,
+		OutputMicrounitsPerMillionTokens: 0,
+		MaximumCostMicrounits:            0,
+	}
+	if err := ValidateCloudJudgeCostAuthority(free, "Qwen/Qwen3-8B"); err != nil {
+		t.Fatalf("exact free-model authority was rejected: %v", err)
+	}
+	free.CloudJudgeAuthority.MaximumCostMicrounits = 1
+	if err := ValidateCloudJudgeCostAuthority(free, "Qwen/Qwen3-8B"); err == nil {
+		t.Fatal("fabricated non-zero free-model cost was accepted")
+	}
+}
+
+func TestOwnerAbsoluteCostBasisRequiresVersionedPolicy(t *testing.T) {
+	valid := CostBasis{
+		SchemaVersion:      "neo-chat.memory-regression-cost-basis.v3",
+		ProviderCostPolicy: ProviderCostPolicyOwnerAuthorizedAbsoluteV1,
+		Baseline: memoryeval.ProviderCosts{
+			Unit: "cny_microunits", ChatProviderCostMicrounits: 1_000_000,
+		},
+		Candidate: memoryeval.ProviderCosts{
+			Unit: "cny_microunits", MemoryProviderCostMicrounits: 487_716,
+			ChatProviderCostMicrounits: 1_000_000,
+		},
+		Source: "provider-price-page", EffectiveAt: "2026-07-29T00:00:00Z",
+		CloudJudgeAuthority: &CloudJudgeCostAuthority{
+			ModelID: "deepseek-ai/DeepSeek-V4-Flash", RequestCount: 300,
+			MaximumInputTokens: 300_000, MaximumOutputTokens: 38_400,
+			InputMicrounitsPerMillionTokens:  1_000_000,
+			OutputMicrounitsPerMillionTokens: 2_000_000,
+			MaximumCostMicrounits:            376_800,
+		},
+	}
+	if digest, err := CostBasisSHA256(valid); err != nil || len(digest) != 64 {
+		t.Fatalf("owner absolute cost digest = %q/%v", digest, err)
+	}
+	invalid := valid
+	invalid.ProviderCostPolicy = ""
+	if _, err := CostBasisSHA256(invalid); err == nil {
+		t.Fatal("schema-v3 cost basis without owner policy was accepted")
+	}
+	invalid = valid
+	invalid.SchemaVersion = "neo-chat.memory-regression-cost-basis.v2"
+	if _, err := CostBasisSHA256(invalid); err == nil {
+		t.Fatal("schema-v2 cost basis gained owner absolute semantics")
+	}
+}
+
 func TestDecodeCostBasisRejectsAmbiguousOrFabricatedCost(t *testing.T) {
 	valid := CostBasis{
 		SchemaVersion: "neo-chat.memory-regression-cost-basis.v1",

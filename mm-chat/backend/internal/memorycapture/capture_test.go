@@ -51,7 +51,8 @@ func TestCaptureCandidateRecordsProductionHybridSurfaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := usermemory.NewService(repository, usermemory.WithHybridShadowProvider(provider))
+	service := usermemory.NewService(repository, usermemory.WithHybridShadowProvider(provider),
+		usermemory.WithHybridShadowRelevancePolicy(usermemory.HybridShadowCalibrationPolicy()))
 	observed, err := CaptureCandidate(context.Background(), service, recorder, captureFixtureIndex(), RuntimeCase{
 		CaseID: "case-one", Query: "Please keep answers concise", UserID: captureUserID,
 		ConversationID: captureConversationID, AssistantMessageID: captureAssistantID,
@@ -72,7 +73,7 @@ func TestCaptureCandidateRecordsProductionHybridSurfaces(t *testing.T) {
 	}
 }
 
-func TestCaptureCandidateFallsBackToV1WhenPrepareFails(t *testing.T) {
+func TestCaptureCandidateAbstainsWhenPrepareFails(t *testing.T) {
 	base := &captureRepository{
 		memories: []usermemory.Memory{{
 			ID: captureMemoryOne, Type: "preference", Content: "Keep answers concise",
@@ -86,7 +87,8 @@ func TestCaptureCandidateFallsBackToV1WhenPrepareFails(t *testing.T) {
 	provider, _ := NewProviderDecorator(captureProvider{}, recorder)
 	observed, err := CaptureCandidate(
 		context.Background(),
-		usermemory.NewService(repository, usermemory.WithHybridShadowProvider(provider)),
+		usermemory.NewService(repository, usermemory.WithHybridShadowProvider(provider),
+			usermemory.WithHybridShadowRelevancePolicy(usermemory.HybridShadowCalibrationPolicy())),
 		recorder,
 		captureFixtureIndex(),
 		RuntimeCase{CaseID: "case-one", Query: "keep answers concise", UserID: captureUserID,
@@ -95,9 +97,9 @@ func TestCaptureCandidateFallsBackToV1WhenPrepareFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertObservationIDs(t, observed, []string{"memory-one"}, []string{"memory-one"}, nil)
-	if observed.Fallback != "lexical_v1" {
-		t.Fatalf("fallback = %q", observed.Fallback)
+	assertObservationIDs(t, observed, []string{}, []string{}, nil)
+	if observed.Fallback != "no_memory" || observed.PromptMemoryTokens != 0 {
+		t.Fatalf("fallback = %#v", observed)
 	}
 }
 
@@ -112,7 +114,8 @@ func TestCaptureCandidateRecordsRerankFailureWithoutHidingProviderSurface(t *tes
 	provider, _ := NewProviderDecorator(captureProvider{rerankErr: errors.New("fixture failure")}, recorder)
 	observed, err := CaptureCandidate(
 		context.Background(),
-		usermemory.NewService(repository, usermemory.WithHybridShadowProvider(provider)),
+		usermemory.NewService(repository, usermemory.WithHybridShadowProvider(provider),
+			usermemory.WithHybridShadowRelevancePolicy(usermemory.HybridShadowCalibrationPolicy())),
 		recorder,
 		captureFixtureIndex(),
 		RuntimeCase{CaseID: "case-one", Query: "keep answers concise", UserID: captureUserID,
@@ -124,10 +127,10 @@ func TestCaptureCandidateRecordsRerankFailureWithoutHidingProviderSurface(t *tes
 	assertObservationIDs(
 		t, observed,
 		[]string{"memory-one", "memory-two"},
-		[]string{"memory-one", "memory-two"},
+		[]string{},
 		[]string{"memory-one", "memory-two"},
 	)
-	if observed.Fallback != "exact_bm25" || observed.HardCutoffApplied {
+	if observed.Fallback != "no_memory" || observed.HardCutoffApplied {
 		t.Fatalf("rerank failure observation = %#v", observed)
 	}
 }
@@ -143,7 +146,8 @@ func TestCaptureCandidateRecordsHardCutoffAsBoundedFallback(t *testing.T) {
 	provider, _ := NewProviderDecorator(captureProvider{waitForCutoff: true}, recorder)
 	observed, err := CaptureCandidate(
 		context.Background(),
-		usermemory.NewService(repository, usermemory.WithHybridShadowProvider(provider)),
+		usermemory.NewService(repository, usermemory.WithHybridShadowProvider(provider),
+			usermemory.WithHybridShadowRelevancePolicy(usermemory.HybridShadowCalibrationPolicy())),
 		recorder,
 		captureFixtureIndex(),
 		RuntimeCase{CaseID: "case-one", Query: "keep answers concise", UserID: captureUserID,
@@ -152,7 +156,7 @@ func TestCaptureCandidateRecordsHardCutoffAsBoundedFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !observed.HardCutoffApplied || observed.Fallback != "exact_bm25" ||
+	if !observed.HardCutoffApplied || observed.Fallback != "no_memory" ||
 		len(observed.ProviderSentMemoryIDs) != 2 {
 		t.Fatalf("hard-cutoff observation = %#v", observed)
 	}
@@ -172,7 +176,8 @@ func TestCaptureCandidatePreservesAuthorizedCandidatesButDropsUnrecordedFinal(t 
 	provider, _ := NewProviderDecorator(captureProvider{}, recorder)
 	observed, err := CaptureCandidate(
 		context.Background(),
-		usermemory.NewService(repository, usermemory.WithHybridShadowProvider(provider)),
+		usermemory.NewService(repository, usermemory.WithHybridShadowProvider(provider),
+			usermemory.WithHybridShadowRelevancePolicy(usermemory.HybridShadowCalibrationPolicy())),
 		recorder,
 		captureFixtureIndex(),
 		RuntimeCase{CaseID: "case-one", Query: "keep answers concise", UserID: captureUserID,
@@ -187,7 +192,7 @@ func TestCaptureCandidatePreservesAuthorizedCandidatesButDropsUnrecordedFinal(t 
 		[]string{},
 		[]string{"memory-one", "memory-two"},
 	)
-	if observed.Fallback != "lexical_v1" {
+	if observed.Fallback != "no_memory" || observed.PromptMemoryTokens != 0 {
 		t.Fatalf("record-failure observation = %#v", observed)
 	}
 }
@@ -267,18 +272,28 @@ func (repository *captureRepository) MarkUsed(_ context.Context, ids []string, _
 }
 
 func (repository *captureRepository) PrepareHybridShadow(
-	context.Context,
-	usermemory.HybridShadowPrepareInput,
+	_ context.Context,
+	input usermemory.HybridShadowPrepareInput,
 ) (usermemory.HybridShadowPreparation, error) {
 	if repository.prepareErr != nil {
 		return usermemory.HybridShadowPreparation{}, repository.prepareErr
 	}
 	return usermemory.HybridShadowPreparation{
-		Summary: usermemory.HybridShadowSummary{ProfileID: usermemory.HybridShadowProfileID, Status: "pending", ResultCode: "CANDIDATES_READY", FallbackCode: "NONE"},
+		ObservationID: input.ObservationID,
+		Summary:       usermemory.HybridShadowSummary{ProfileID: usermemory.HybridShadowProfileID, Status: "pending", ResultCode: "CANDIDATES_READY", FallbackCode: "NONE"},
 		Candidates: []usermemory.HybridShadowCandidate{
 			{MemoryID: captureMemoryOne, Revision: 1, ScopeType: "global", Content: "Keep answers concise"},
 			{MemoryID: captureMemoryTwo, Revision: 1, ScopeType: "global", Content: "Keep output short"},
 		},
+	}, nil
+}
+
+func (repository *captureRepository) AuthorizeHybridRerank(
+	context.Context,
+	usermemory.HybridShadowAdmissionInput,
+) (usermemory.HybridShadowAdmission, error) {
+	return usermemory.HybridShadowAdmission{
+		CandidateCount: 2, VectorCandidateCount: 2, MaximumVectorSimilarity: 1,
 	}, nil
 }
 
@@ -318,7 +333,9 @@ func (provider captureProvider) Rerank(ctx context.Context, _ string, documents 
 	}
 	result := make([]ragproviders.RerankResult, len(documents))
 	for index := range documents {
-		result[index] = ragproviders.RerankResult{Index: index, RelevanceScore: float64(index + 1)}
+		result[index] = ragproviders.RerankResult{
+			Index: index, RelevanceScore: float64(index+1) / float64(len(documents)),
+		}
 	}
 	return result, nil
 }

@@ -13,9 +13,11 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 
+	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/memoryauthor"
 	"neo-chat/mm-chat/backend/internal/memoryeval"
 	"neo-chat/mm-chat/backend/internal/migration"
+	"neo-chat/mm-chat/backend/internal/usermemory"
 	migrationfiles "neo-chat/mm-chat/backend/migrations"
 )
 
@@ -65,6 +67,7 @@ func TestNativeMemoryRegressionLivePostgres(t *testing.T) {
 	if err := runtimeDB.PingContext(ctx); err != nil {
 		t.Fatalf("open runtime role connection: %v", err)
 	}
+	assertHybridAdmissionFailClosed(t, ctx, adminDB, runtimeDB, seed, fake)
 
 	protected := ProtectedRegression{
 		Pool:              pool,
@@ -111,6 +114,147 @@ func TestNativeMemoryRegressionLivePostgres(t *testing.T) {
 	}
 	assertNoForbiddenFixtureSurfaces(t, pool, baseline.Cases)
 	assertNoForbiddenFixtureSurfaces(t, pool, candidate.Cases)
+}
+
+func assertHybridAdmissionFailClosed(
+	t *testing.T,
+	ctx context.Context,
+	adminDB *sql.DB,
+	runtimeDB *sql.DB,
+	seed SeedResult,
+	provider *FakeProtocolProvider,
+) {
+	t.Helper()
+	if len(seed.Cases) == 0 {
+		t.Fatal("seeded regression has no cases")
+	}
+	item := seed.Cases[0]
+	embedding, err := provider.EmbedQuery(ctx, item.Query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := usermemory.NewPostgresRepository(runtimeDB)
+	userCtx := auth.WithUser(ctx, auth.User{ID: item.UserID})
+	observationID := "97000000-0000-4000-8000-000000000001"
+	prepared, err := repository.PrepareHybridShadow(userCtx, usermemory.HybridShadowPrepareInput{
+		ObservationID: observationID, ConversationID: item.ConversationID,
+		AssistantMessageID: item.AssistantMessageID, QueryHash: sha256String(item.Query),
+		QueryText: item.Query, Baseline: []usermemory.LexicalShadowBaseline{},
+		QueryEmbedding: embedding.Vector, QueryEmbeddingState: "ready",
+	})
+	if err != nil || prepared.Summary.Status != "pending" || len(prepared.Candidates) == 0 {
+		t.Fatalf("prepare admission fixture = %#v/%v", prepared, err)
+	}
+	t.Cleanup(func() {
+		_, _ = adminDB.Exec(`DELETE FROM message_memory_hybrid_shadow_results WHERE observation_id = $1`, observationID)
+		_, _ = adminDB.Exec(`DELETE FROM message_memory_hybrid_shadow_observations WHERE id = $1`, observationID)
+	})
+	input := usermemory.HybridShadowAdmissionInput{
+		ObservationID: observationID, AssistantMessageID: item.AssistantMessageID,
+		QueryHash: sha256String(item.Query), QueryEmbedding: embedding.Vector,
+	}
+	var observationCountBefore, resultCountBefore int
+	if err := adminDB.QueryRowContext(ctx, `
+SELECT
+  (SELECT count(*) FROM message_memory_hybrid_shadow_observations WHERE id = $1),
+  (SELECT count(*) FROM message_memory_hybrid_shadow_results WHERE observation_id = $1)
+`, observationID).Scan(&observationCountBefore, &resultCountBefore); err != nil {
+		t.Fatal(err)
+	}
+	admission, err := repository.AuthorizeHybridRerank(userCtx, input)
+	if err != nil || admission.CandidateCount != len(prepared.Candidates) ||
+		admission.VectorCandidateCount != admission.CandidateCount {
+		t.Fatalf("authorize prepared hybrid surface = %#v/%v", admission, err)
+	}
+	var observationCountAfter, resultCountAfter int
+	if err := adminDB.QueryRowContext(ctx, `
+SELECT
+  (SELECT count(*) FROM message_memory_hybrid_shadow_observations WHERE id = $1),
+  (SELECT count(*) FROM message_memory_hybrid_shadow_results WHERE observation_id = $1)
+`, observationID).Scan(&observationCountAfter, &resultCountAfter); err != nil {
+		t.Fatal(err)
+	}
+	if observationCountAfter != observationCountBefore || resultCountAfter != resultCountBefore {
+		t.Fatalf("admission persisted state: observations %d->%d results %d->%d",
+			observationCountBefore, observationCountAfter, resultCountBefore, resultCountAfter)
+	}
+
+	if _, err := adminDB.ExecContext(ctx, `
+UPDATE messages SET status = 'pending'
+WHERE id = (SELECT parent_message_id FROM messages WHERE id = $1)
+`, item.AssistantMessageID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.AuthorizeHybridRerank(userCtx, input); err == nil {
+		t.Fatal("stale source message authorized hybrid rerank")
+	}
+	if _, err := adminDB.ExecContext(ctx, `
+UPDATE messages SET status = 'completed'
+WHERE id = (SELECT parent_message_id FROM messages WHERE id = $1)
+`, item.AssistantMessageID); err != nil {
+		t.Fatal(err)
+	}
+
+	memoryID := prepared.Candidates[0].MemoryID
+	var vectorText string
+	var vectorUpdatedAt time.Time
+	if err := adminDB.QueryRowContext(ctx, `
+SELECT embedding_vector::text, embedding_updated_at
+FROM user_memory_search_projections
+WHERE memory_id = $1
+`, memoryID).Scan(&vectorText, &vectorUpdatedAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adminDB.ExecContext(ctx, `
+UPDATE user_memory_search_projections
+SET embedding_status = 'pending', embedding_vector = NULL,
+    embedding_error_code = NULL, embedding_updated_at = NULL
+WHERE memory_id = $1
+`, memoryID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.AuthorizeHybridRerank(userCtx, input); err == nil {
+		t.Fatal("stale vector authorized hybrid rerank")
+	}
+	if _, err := adminDB.ExecContext(ctx, `
+UPDATE user_memory_search_projections
+SET embedding_status = 'ready', embedding_vector = $2::vector(1024),
+    embedding_error_code = NULL, embedding_updated_at = $3
+WHERE memory_id = $1
+`, memoryID, vectorText, vectorUpdatedAt); err != nil {
+		t.Fatal(err)
+	}
+
+	var projectionGeneration int64
+	if err := adminDB.QueryRowContext(ctx, `
+SELECT active_projection_generation FROM user_memory_state WHERE user_id = $1
+`, item.UserID).Scan(&projectionGeneration); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adminDB.ExecContext(ctx, `
+UPDATE user_memory_state
+SET active_projection_generation = active_projection_generation + 1
+WHERE user_id = $1
+`, item.UserID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.AuthorizeHybridRerank(userCtx, input); err == nil {
+		t.Fatal("stale projection generation authorized hybrid rerank")
+	}
+	if _, err := adminDB.ExecContext(ctx, `
+UPDATE user_memory_state SET active_projection_generation = $2 WHERE user_id = $1
+`, item.UserID, projectionGeneration); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.AuthorizeHybridRerank(userCtx, input); err != nil {
+		t.Fatalf("restored admission authority = %v", err)
+	}
+	if _, err := adminDB.ExecContext(ctx, `
+DELETE FROM message_memory_hybrid_shadow_results WHERE observation_id = $1;
+DELETE FROM message_memory_hybrid_shadow_observations WHERE id = $1;
+`, observationID); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func openMemoryRegressionTestDatabase(t *testing.T) (*sql.DB, *pgx.ConnConfig, string) {

@@ -301,6 +301,7 @@ func validateObservationPayload(
 	if !validText(profile.ID, 128) ||
 		!validText(profile.ReaderVersion, 128) ||
 		!validSHA256(profile.ConfigurationSHA256) ||
+		!validProviderEgressPolicy(profile.ProviderEgressPolicy) ||
 		(profile.Role != "baseline" && profile.Role != "candidate" &&
 			profile.Role != "shadow") ||
 		profile.CandidateLimit != 20 || profile.FinalLimit != 5 {
