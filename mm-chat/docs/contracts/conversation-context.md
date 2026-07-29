@@ -274,9 +274,23 @@ secret redaction immediately before Provider egress. A fully removed input
 makes zero corresponding Provider calls and records only a bounded
 `SECRET_REDACTED` fallback/error code. Durable storage contains no query,
 Memory body, embedding, or raw exact/BM25/cosine/RRF/rerank score. Query
-embedding failure skips only the vector lane; rerank failure or the two-second
-cutoff records the completed RRF fallback. Hybrid final IDs remain 0% prompt
-injection: v1 Top 5 and migration-057 Usage links are unchanged.
+embedding failure preserves exact/BM25 diagnostics but cannot pass migration
+`064` admission. Migration `064` reauthorizes the exact pending RRF surface and
+returns only a transient maximum cosine signal before document egress. A
+missing/stale/low signal, invalid/failed/late rerank result, or a score below
+the frozen final threshold produces no hybrid final rather than an unscored
+RRF/v1 fallback. Hybrid final IDs remain 0% prompt injection: v1 Top 5 and
+migration-057 Usage links are unchanged.
+
+Schema-v6 regression Development can additionally install a main-model
+`search_memory` route seam. The exact configured GPT or DeepSeek model receives
+only the secret-redacted current query and the fixed no-argument Tool; it sees
+no Memory candidate body. No call means `no_memory`; one exact call with a
+non-empty ID and explicit `{}` permits only the existing BGE final surface.
+Ambiguous, failed, late, or provenance-drifted output fails closed. This seam is
+not installed by Server composition, does not yet perform same-model answer
+continuation, and has no prompt/Usage/promotion authority. The production v1
+behavior described above is unchanged.
 
 Automatic extraction is allowed only when both `enabled` and
 `auto_record_enabled` are true. It is a bounded background Provider request over
@@ -301,9 +315,12 @@ completed chat answer.
 | lexical shadow disabled                     | zero compare calls and no `lexicalShadow` metadata     |
 | lexical shadow comparison failure           | v1 prompt/Usage and answer remain unchanged; bounded failed summary only |
 | hybrid shadow disabled                      | zero Memory embedding/rerank calls and no `hybridShadow` metadata |
-| secret-only embedding/rerank input          | zero corresponding Provider calls; bounded `SECRET_REDACTED` fallback/error only |
-| query embedding or vector lane failure      | exact/BM25 continue; bounded lexical fallback summary only |
-| rerank failure or cutoff                    | RRF order and 600-target/900-hard budget; v1 prompt/Usage unchanged |
+| secret-only embedding/rerank input          | zero corresponding Provider calls; bounded `SECRET_REDACTED`, no hybrid final |
+| query embedding, admission, or vector-authority failure | exact/BM25 diagnostics continue; zero rerank document egress and no hybrid final |
+| local admission below frozen threshold      | `RELEVANCE_ABSTAINED`, zero rerank document egress/final/tokens |
+| rerank failure, invalid output, or cutoff   | bounded failure/cutoff, no hybrid final; v1 prompt/Usage unchanged |
+| all rerank scores below frozen threshold    | `RELEVANCE_FINAL_ABSTAINED`, zero hybrid final/tokens |
+| Development Tool route abstains or fails    | zero hybrid final/tokens; unchanged v1 prompt/Usage |
 | result becomes stale during rerank          | `RESULT_STALE`; no stale final link and answer continues |
 | extraction Provider/parse/write failure     | completed answer remains completed; no partial Memory  |
 | vague context or credential-like candidate  | reject candidate; never persist content or secret tags |

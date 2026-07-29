@@ -7,7 +7,9 @@ G19.6 server-authoritative Knowledge Tool migration were promoted on
 selected-Knowledge paths now execute after `message.started`; the Handler no
 longer invokes the old pre-answer Auto RAG authority. G19.10 query-aware
 Knowledge routing, unified compatibility planning, shared Tool-capability
-state, and query-free route visibility were promoted on 2026-07-23.
+state, and query-free route visibility were promoted on 2026-07-23. The
+`search_memory` adapter described below is implemented for schema-v6
+Development capture only; it is not a promoted production Tool or reader.
 
 ## 1. Scope / Trigger
 
@@ -185,6 +187,36 @@ type ProviderToolExchange struct {
     Results            []ProviderToolResult
     ProviderState      any
 }
+```
+
+The normalized one-round planning seam reused by Development Memory routing is:
+
+```go
+type ToolPlanner interface {
+    PlanTools(context.Context, ToolPlanRequest) ([]ToolCall, error)
+}
+
+type ToolPlanRequest struct {
+    Prompt          string
+    ModelRef        ModelRef
+    Tools           []ToolDefinition
+    DisableThinking bool
+    MaxOutputTokens int
+    Temperature     *float64
+}
+```
+
+Its fixed Memory Tool contract is:
+
+```text
+name             = search_memory
+contract version = memory-search-tool-v1
+contract SHA-256 = f8f404df0ae3a3938081b813c8750d59ba252adbcb8dc755e075e5c738e20ca6
+arguments        = explicit {}
+tool choice      = auto
+temperature      = 0
+maximum output   = 128
+thinking         = disabled
 ```
 
 OpenAI-compatible/Gemini continuation is an assistant message containing the
@@ -382,6 +414,27 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
   no Tool Call is returned.
 - Usage is accumulated across native provider rounds without double-counting
   repeated updates inside the current round.
+- `internal/memoryroute` is the single `search_memory` definition authority for
+  schema-v6 Development capture and future product integration. The Tool has
+  no query argument: the server already owns the current request text, so the
+  model decides only whether Memory is needed.
+- The Development adapter binds one exact configured Provider ID/model and
+  submits only the already-secret-redacted current query. Candidate bodies,
+  Memory IDs, scopes, revisions, retrieval scores, and database authority are
+  forbidden from this route request.
+- Zero calls is a valid `no_memory` decision. Use Memory requires exactly one
+  Provider choice and one call with a non-empty ID, exact `search_memory` name,
+  and a non-nil empty decoded argument object. Missing, `null`, malformed, or
+  non-empty arguments; unknown or duplicate calls; Provider failure; deadline;
+  and model/contract drift fail closed.
+- `OpenAICompatibleProvider.PlanTools` sends `enable_thinking=false` when the
+  fixed route requests it. Official `OpenAIProvider.PlanTools` deliberately
+  omits that non-standard extension while preserving the exact model,
+  `temperature=0`, and `max_tokens=128` fields.
+- This one-round planner currently returns only route evidence. It does not
+  execute Memory retrieval or same-model continuation. The isolated
+  `usermemory` Development policy controls BGE release, and Server composition
+  installs neither the route policy nor the adapter.
 
 ## 4. Validation & Error Matrix
 
@@ -430,6 +483,11 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 | Exact query or redacted Tool args in process detail | drop before SSE/persistence        |
 | Anthropic Thinking continuation  | retain block order/signature in memory only       |
 | Anthropic failed Tool Result     | matching `tool_use_id` plus `is_error=true`       |
+| Memory route returns zero calls  | valid `no_memory`; no hybrid final is released     |
+| Memory route returns one exact `search_memory({})` call | route evidence only; `usermemory` still reauthorizes retrieval |
+| Memory route omits arguments or returns `null` | reject; nil map is not an explicit empty object |
+| Memory route returns unknown/duplicate calls or multiple choices | reject the entire route response |
+| Memory route Provider/model/contract drifts or times out | fail closed; unchanged v1 chat authority |
 
 ## 5. Good / Base / Bad Cases
 
@@ -454,6 +512,11 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 - Good: a later native continuation stream fails before answer text; the same
   model answers once from the already-authorized `[K]`/`[W]` evidence without
   Tools and cumulative usage remains monotonic.
+- Good Development-only Memory route: an exact configured GPT/DeepSeek model
+  sees a redacted relevant query and the shared Tool, returns one explicit
+  `search_memory({})` call, and no candidate body crosses that route boundary.
+- Base Development-only Memory route: an unrelated request yields zero calls;
+  speculative BGE work is discarded by `usermemory`.
 - Base: a Tool-unsupported model uses the visible unified compatibility path
   and still answers Direct when planning fails without a strong signal.
 - Base: a catalog is unavailable or governance-denied; the turn proceeds
@@ -527,6 +590,13 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 18. Responses history tests must assert user `input_text` plus assistant
     `output_text`. The real Search replay must contain a completed assistant
     turn before the exact browser query and still persist URL Citations.
+19. Memory Tool-route tests must assert the exact definition/hash, one-choice
+    decoding, zero-call abstention, explicit empty-object acceptance, missing/
+    null/malformed/non-empty argument rejection, unknown/duplicate call
+    rejection, model/contract provenance, candidate-body absence, official
+    OpenAI `enable_thinking` omission, and OpenAI-compatible
+    `enable_thinking=false` encoding. These tests are offline and confer no
+    production activation authority.
 
 ## 7. Wrong vs Correct
 
@@ -558,6 +628,12 @@ create server conversation -> send first turn with pre-create composer mode
 ```json
 // Wrong: stale tool name plus optional execution.
 { "tools": [{ "type": "web_search_preview" }] }
+```
+
+```text
+// Wrong: the route model sees candidate bodies before deciding whether to use
+// Memory, or missing arguments are treated as an empty object.
+query + candidate Memories -> answer model -> inspect self-reported usage
 ```
 
 Correct after the owning G19 promotion:
@@ -610,6 +686,14 @@ if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 // added by this execution, then recover a pre-content continuation failure
 // through the same model with bounded evidence and no Tools.
 result := webSearchSuccessToolResult(previous, cumulative)
+```
+
+```text
+// Correct Development-only Memory route.
+secret-redacted query + exact search_memory Tool
+  -> zero calls: no_memory
+  -> one exact call with ID and explicit {}: provenance-bound use_memory
+  -> usermemory independently reauthorizes and releases bounded BGE results
 ```
 
 Operational rollback for catalog quality regressions is to omit

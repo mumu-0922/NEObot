@@ -58,6 +58,21 @@ neo-chat.memory-benchmark-regression-manifest.v1
 neo-chat.memory-benchmark-regression-observations.v1
 neo-chat.memory-benchmark-regression-report.v1
 neo-chat.memory-benchmark-regression-evaluator.v1
+neo-chat.memory-regression-profile-config.v3
+neo-chat.memory-regression-profile-config.v4
+neo-chat.memory-regression-profile-config.v5
+neo-chat.memory-regression-profile-config.v6
+neo-chat.memory-regression-relevance-calibration.v3
+neo-chat.memory-regression-relevance-calibration.v4
+neo-chat.memory-regression-relevance-calibration.v5
+neo-chat.memory-regression-relevance-calibration.v6
+neo-chat.memory-regression-relevance-validation.v1
+neo-chat.memory-regression-relevance-run.v1
+neo-chat.memory-regression-cost-basis.v2
+neo-chat.memory-regression-cost-basis.v3
+neo-chat.memory-regression-cost-basis.v4
+neo-chat.memory-cloud-candidate-judge-input.v1
+neo-chat.memory-cloud-candidate-judge-output.v1
 ```
 
 Regression declares `corpusClass=machine_reviewed_regression`,
@@ -447,8 +462,8 @@ class/mode and `promotionEligible=false`; it cannot satisfy
 executes the production `usermemory` v1 Global lexical reader and v2 hybrid
 shadow reader in a disposable PostgreSQL 17 database. Repository and Provider
 decorators capture the transient RRF Top 20, reranked/token-budgeted Top 5, and
-exact rerank Provider-egress Memory IDs; the benchmark package does not copy
-the ranking algorithm.
+exact union of BGE-rerank/cloud-judge Provider-egress Memory IDs; the benchmark
+package does not copy the ranking algorithm.
 
 Use the wrapper from the product root:
 
@@ -456,6 +471,7 @@ Use the wrapper from the product root:
 cd mm-chat
 bash scripts/run-memory-regression.sh \
   --provider-mode fake_protocol \
+  --capture-mode full_regression \
   --cost-basis /secure/eval/memory-regression-cost-basis.json \
   --output-dir /secure/eval/native-memory-runs
 ```
@@ -466,24 +482,200 @@ PostgreSQL seeding, production SQL/Go call order, capture mapping, evaluation,
 exclusive publication, leak checks, and teardown. Its ranking, latency, and
 cost results are protocol fixtures and are not native-reader quality evidence.
 
-A live reader-quality comparison is a separate, quota-consuming operator
-action:
+A live reader-quality comparison is split into separately authorized,
+quota-consuming Development and Validation actions. The historical
+`development_calibration` lane evaluated fixed scalar and query-intent policies
+on exactly 300 `development` cases and retained only
+`relevance-calibration.json` plus `run-manifest.json`.
+
+The first schema-v1 run completed all `20,301` scalar pairs with
+`providerCostRatio=0.033084` passing but found `feasiblePairCount=0`. The
+schema-v2 aggregate rerun ruled out admission similarity, maximum rerank score,
+and top-two candidate margin without retaining per-case scores. The schema-v3
+query-only bilingual intent run completed all `201` thresholds with
+`providerCostRatio=0.056284` passing but found no feasible threshold. Its first
+zero-egress threshold retained only `31/165` relevant current-fact cases; its
+recall-first threshold produced `26` false injections and unauthorized egress
+events. These are valid failed Development results. They selected no policy,
+did not use Validation/Holdout, and must not be weakened or retuned.
+
+The owner subsequently authorized ordinary current-user Memory candidates in
+this single-user Server-mode deployment to reach the configured cloud Provider.
+This authorized the schema-v4 candidate-aware Development experiment, not
+blanket egress or answer injection. Its first live run fixed
+`Qwen/Qwen3-8B` and completed all 300 cases, but failed the unchanged gates:
+
+```text
+Final Recall@5                 = 0.7589743589743589
+current-fact accuracy          = 0.7515151515151515
+false injection               = 14/300
+p95/p99 latency milliseconds  = 1853/1855
+hard-cutoff judge failures     = 31/195
+authority/privacy leak counts = 0
+```
+
+No policy was frozen, Validation remained blocked, and the source Key was
+destroyed. Do not increase the cutoff or lower relevance, safety, latency,
+token, split, privacy, or promotion gates.
+
+The owner explicitly removed relative Provider expense as a selection
+constraint for this single-owner deployment. The next precommitted hypothesis
+was `deepseek-ai/DeepSeek-V4-Flash` under schema v5 and
+`owner_authorized_absolute_cap_v1`. That run also failed: `164/195` judge
+requests hit `HARD_CUTOFF`, Final Recall@5/current-fact was
+`0.143590/0.145455`, and p95/p99 was `1856/1865 ms`. False injection and every
+authority/privacy leak count were zero. No policy was selected, and its Key
+and runtime were destroyed.
+
+The next named Development hypothesis was `Qwen/Qwen3.6-35B-A3B`. It also
+failed: Final Recall@5/current-fact was `0.733333/0.733333`, false injection
+was `15/300`, p95/p99 was `1854/1856 ms`, and `40/195` judge requests hit
+`HARD_CUTOFF`. Its Key/runtime were destroyed and no policy was selected.
+
+The planned `Qwen/Qwen3.5-4B` run was cancelled before Provider construction,
+credential creation, or quota use. Tracking records
+`cancelled_not_run_architecture_pivot`; there is no fabricated quality result.
+The owner stopped hidden-judge model hopping and selected the current configured
+GPT or DeepSeek model as a `search_memory` Tool router.
+
+Run each exact GPT or DeepSeek hypothesis separately. Use one fresh mode-`0600`
+SiliconFlow Key for fixed BGE work and a different fresh mode-`0600` Key for the
+route Provider:
 
 ```bash
-chmod 600 /secure/input/fresh-siliconflow.key
+chmod 600 /secure/input/fresh-siliconflow-bge.key
+chmod 600 /secure/input/fresh-gpt-route.key
 bash scripts/run-memory-regression.sh \
   --provider-mode live_siliconflow \
-  --credential-file /secure/input/fresh-siliconflow.key \
+  --capture-mode development_memory_tool_route \
+  --credential-file /secure/input/fresh-siliconflow-bge.key \
   --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
-  --cost-basis /secure/eval/memory-regression-cost-basis.json \
+  --memory-tool-route-credential-file /secure/input/fresh-gpt-route.key \
+  --memory-tool-route-provider-id configured-gpt \
+  --memory-tool-route-provider-type openai \
+  --memory-tool-route-base-url https://api.openai.com/v1 \
+  --memory-tool-route-model exact-configured-model \
+  --memory-tool-route-approval I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA \
+  --cost-basis /secure/eval/gpt-memory-tool-route-cost-v4.json \
   --output-dir /secure/eval/native-memory-runs
 ```
 
-The wrapper copies the Key into a temporary mode-`0600` file and mounts it
-read-only. The value never enters argv, environment variables, Compose config,
-Docker inspect, reports, or Git. The runner does not inspect or decrypt the
-production Provider vault. Live output alone uses profile
-`native_v2_hybrid`.
+For DeepSeek, use its independent fresh credential, exact configured Provider
+ID/Base URL/model, `--memory-tool-route-provider-type openai_compatible`, and a
+separate cost-basis v4. A GPT result cannot authorize DeepSeek and vice versa.
+The model is not trusted by name; exact live evidence determines whether the
+unchanged quality and latency gates pass.
+
+Before Provider construction, schema-v4/v5 `configurationSha256` binds the exact
+Development split, reader/policy/model tuple, judge prompt version/SHA-256,
+decoding profile, Top-20/Top-5 and 600/900 limits, hard cutoff, version-matched
+cost basis,
+and Provider-egress policy. The retained files are:
+
+```text
+cloud-judge-development.json
+run-manifest.json
+```
+
+The judge prompt treats query/candidates as untrusted data. Its payload contains
+only deterministic secret-redacted text and contiguous request-local ordinals,
+never Memory IDs, revisions, scopes, database authority, or RRF/BGE scores. The
+exact output contains only schema version plus at most five unique in-range
+ordinals; an empty array means `no_memory`. BGE rerank and the judge run
+concurrently under the existing hard cutoff. Both must succeed, then judge
+ordinals are intersected with BGE order before the unchanged token selector.
+
+The exact `owner_authorized_normal_candidates_v1` policy permits Provider
+egress only when a candidate's exclusion reason is `irrelevant`. Cross-user,
+out-of-scope, deleted, secret, superseded, Sensitive-disabled, and
+untrusted-source egress remains a zero-tolerance failure. False injection is
+scored exactly as before; owner egress authorization does not authorize prompt
+injection.
+
+The report retains only shared aggregate metrics, bounded failure-code counts,
+policy/model/prompt identities, and aggregate token/cost upper bounds. It
+contains no case ID, query, Memory plaintext, raw per-case score, raw judge
+output, credential, or observation file. A failed latency, quality, safety,
+token, or version-matched budget gate is valid evidence and must not be
+bypassed.
+
+Schema-v6 `development_memory_tool_route` binds reader
+`neo-chat.native-memory-reader-capture.v4`, policy
+`memory_hybrid_main_model_tool_route_calibration_v1`, exact route Provider ID/
+type/normalized Base URL SHA-256/model, and this Tool tuple:
+
+```text
+name             = search_memory
+contract version = memory-search-tool-v1
+contract SHA-256 = f8f404df0ae3a3938081b813c8750d59ba252adbcb8dc755e075e5c738e20ca6
+decoding profile = memory-search-tool-decoding-v1
+temperature      = 0
+maximum output   = 128
+thinking         = disabled
+```
+
+The route request contains only the deterministic secret-redacted current
+query plus that Tool. It contains no candidate body, Memory ID, revision,
+scope, score, or database authority. No call is `no_memory`. Use Memory requires
+one Provider choice and one exact call with a non-empty ID, name
+`search_memory`, and explicitly decoded `{}` arguments. Missing, `null`,
+malformed, non-empty, unknown, duplicate, late, failed, or drifted output fails
+closed.
+
+Tool routing starts concurrently with fixed BGE work. Candidate bodies may
+reach only the separately authorized BGE reranker and remain request-local;
+they never enter the route model. Route abstention/failure discards speculative
+BGE final rows. One valid call releases the unchanged BGE order, Top-5, and
+600/900-token selector. This capture does not yet execute the product same-model
+answer continuation.
+
+The retained schema-v6 files are:
+
+```text
+memory-tool-route-development.json
+run-manifest.json
+```
+
+They contain aggregate route completion/use/abstention/failure counts, shared
+metrics, exact profile authority, and aggregate token/cost ceilings. They
+contain no case ID, query, Memory plaintext, raw Tool output, raw score,
+credential, or observation file. The 300-case PostgreSQL 17 `fake_protocol`
+replay completed with 300 route requests, zero protocol failures, an actual
+input-token upper bound of `358533`, mode-`0600` artifacts, and zero remaining
+containers/networks/volumes. Its deterministic route fails quality gates by
+design and is not model-quality evidence. No live GPT/DeepSeek result exists;
+Validation remains blocked.
+
+Only after one exact current Development hypothesis passes may its policy,
+Provider/model, contract/decoding profile, and selection behavior be frozen in
+code. The current Validation CLI remains unavailable because no schema-v6
+policy is frozen and it does not yet accept the second route credential. The
+historical single-Provider Validation command shape remains:
+
+```bash
+chmod 600 /secure/input/fresh-validation-siliconflow.key
+bash scripts/run-memory-regression.sh \
+  --provider-mode live_siliconflow \
+  --capture-mode frozen_validation \
+  --credential-file /secure/input/fresh-validation-siliconflow.key \
+  --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --cost-basis /secure/eval/cloud-judge-validation-cost-v2.json \
+  --output-dir /secure/eval/native-memory-runs
+```
+
+Validation cannot run while the frozen policy is unavailable and never
+retunes. It retains only `relevance-validation.json` and `run-manifest.json`.
+The visible machine `holdout` is rejected by the split selector and is not a
+CLI mode. Passing Validation still has no promotion authority.
+
+For each live phase, the wrapper copies that phase's Key into a temporary
+mode-`0600` file and mounts it read-only. Tool-route Development does this for
+both independent credentials and rejects the same file, hard links, or equal
+Key bytes. Values never enter argv, environment variables, Compose config,
+Docker inspect, reports, or Git. Both in-process byte buffers are cleared, and
+retained artifacts, runner logs, and Docker metadata are scanned for both
+secrets. The runner does not inspect or decrypt the production Provider vault.
+Live output alone uses profile `native_v2_hybrid`.
 
 The cost basis is strict JSON and all values are run-total integer microunits
 in one named unit:
@@ -513,7 +705,77 @@ rate basis, and both profiles must use the same non-zero chat cost denominator.
 Unknown fields, duplicate keys, zero candidate cost, unit drift, denominator
 drift, or an invalid timestamp fail before Provider work.
 
-Each new run directory is mode `0700` and contains five mode-`0600` files:
+Historical schema-v4 `development_cloud_judge` requires
+`neo-chat.memory-regression-cost-basis.v2`. It extends the same object with one
+exact `cloudJudgeAuthority` object. Schema-v5 paid-model Development instead
+requires `neo-chat.memory-regression-cost-basis.v3` plus:
+
+```json
+"providerCostPolicy": "owner_authorized_absolute_cap_v1"
+```
+
+Both versions use the same authority shape:
+
+```text
+modelId                          = exact --cloud-judge-model value
+requestCount                     = 300
+maximumInputTokens               = preauthorized conservative aggregate bound
+maximumOutputTokens              = 300 * 128 = 38400
+inputMicrounitsPerMillionTokens  = exact versioned rate-card price
+outputMicrounitsPerMillionTokens = exact versioned rate-card price
+maximumCostMicrounits            = ceil(input bound * input price / 1e6)
+                                  + ceil(output bound * output price / 1e6)
+```
+
+The recorder conservatively counts one token per UTF-8 byte plus fixed chat
+framing for every actual judge request. Aggregate actual input/output upper
+bounds must fit the preauthorized values. The candidate's
+`memoryProviderCostMicrounits` must cover `maximumCostMicrounits`; a model,
+request-count, token, price, arithmetic, or coverage mismatch is rejected
+before Provider construction or before report publication as applicable.
+An exact zero input/output price and zero maximum judge cost are valid only when
+the versioned official rate card makes that fixed judge model free. The total
+candidate Memory cost must still be positive because BGE embedding/rerank work
+is priced. Never invent a non-zero judge rate to satisfy the schema.
+
+Schema-v4 preserves the historical relative Provider-cost gate. Schema-v5
+reports the truthful historical ratio but deliberately omits
+`evaluation.providerCostPassed`; it instead requires
+`providerCostAuthorized=true`, the exact owner policy ID, cost unit, maximum
+judge cost, and maximum total Memory Provider cost in both report and manifest
+authority. Exceeding any absolute request/token/cost ceiling invalidates the
+run. This changes only the explicitly owner-controlled economics criterion;
+every relevance, safety, latency, cutoff, token, split, privacy, and promotion
+gate remains identical.
+
+Schema-v6 Tool-route Development requires
+`neo-chat.memory-regression-cost-basis.v4`, the same explicit
+`owner_authorized_absolute_cap_v1` policy, no `cloudJudgeAuthority`, and one
+exact `memoryToolRouteAuthority`:
+
+```text
+providerId                       = exact configured Provider ID
+providerType                     = openai | openai_compatible
+baseUrlSha256                    = normalized exact Base URL SHA-256
+modelId                          = exact route model
+requestCount                     = 300
+maximumInputTokens               = conservative aggregate bound
+maximumOutputTokens              = 300 * 128 = 38400
+inputMicrounitsPerMillionTokens  = exact versioned route price
+outputMicrounitsPerMillionTokens = exact versioned route price
+maximumCostMicrounits            = exact ceiling arithmetic
+```
+
+The actual offline 300-case bound was `358533`, so a `300000` input ceiling is
+known to be insufficient for this fixture/profile. The operator must calculate
+and authorize a truthful bound before a live Provider is constructed; the
+verified offline replay used `600000`. The candidate's total Memory Provider
+cost must cover the fixed BGE cost plus the absolute route ceiling. Request,
+token, rate, arithmetic, Provider, Base URL, or model drift is rejected rather
+than inferred after quota use.
+
+Each full fake-protocol run directory is mode `0700` and contains five
+mode-`0600` files:
 
 ```text
 native-v1-lexical.observations.json
@@ -523,13 +785,16 @@ native-v2-hybrid[-fake-protocol].report.json
 run-manifest.json
 ```
 
-The four evidence files are exclusively linked first and the content-free run
-manifest is the final completion marker. Existing targets are refused before
-Provider work and are never overwritten. A metric failure retains both valid
-reports and returns non-zero. An input, capture, validation, publication, or
-signal failure removes partial output. Every exit destroys the random Compose
-project's database, role, container, internal network, egress network (live
-only), and volume, then removes temporary database and Provider credentials.
+Historical calibration, schema-v4/v5 cloud-judge Development, and Validation
+directories contain their named aggregate report plus `run-manifest.json`. In
+every mode, evidence is exclusively linked first and the content-free
+run manifest is the final completion marker. Existing targets are refused
+before Provider work and are never overwritten. A metric/no-feasible failure
+retains valid aggregate evidence and returns non-zero. An input, capture,
+validation, publication, or signal failure removes partial output. Every exit
+destroys the random Compose project's database, role, container, internal
+network, egress network (live only), and volume, then removes temporary
+database and Provider credentials.
 
 Neither profile writes prompt Memory or Usage. For scoring only, the v2 final
 IDs are copied into `injectedMemoryIds` as an offline counterfactual. Fake and

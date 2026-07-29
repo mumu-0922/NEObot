@@ -41,8 +41,14 @@ Canonical Memory transaction -> migration-058 exact/CJK BM25 projection
 Current user message -> unchanged v1 Top 5 -> optional migration-058 shadow
   -> ID/revision/rank-only diagnostics; zero prompt injection
 Canonical projection -> migration-059 leased BGE-M3 embedding job
-Current user message -> exact + BM25 + vector -> RRF(60) -> BGE rerank
-  -> 600-target/900-hard token budget -> ID/revision/rank-only diagnostics
+Current user message -> exact + BM25 + vector -> RRF(60)
+  -> migration-064 local maximum-cosine admission before document egress
+  -> optional strict cloud candidate judge || main-model search_memory route
+     concurrently with BGE rerank
+  -> judge ordinal intersection OR exact Tool-call release in BGE order
+  -> request-local score threshold
+  -> 600-target/900-hard token budget
+  -> ID/revision/rank-only diagnostics
   -> unchanged v1 prompt/Usage; zero hybrid prompt injection
 Current stable Global L1 -> migration-063 leased L3 Persona refresh/embedding
 Current user message -> Persona exact + BM25 + vector -> RRF(60) -> BGE rerank
@@ -83,6 +89,12 @@ cycle.
 | Hybrid remains a PR8 shadow, not a reader                | Benchmark and observation gates must precede prompt authority                            | v1 Top 5, prompt, Usage, and chat success remain byte-authoritative |
 | One default-off flag gates all PR8 Provider calls        | API rerank and Worker embedding must not drift operationally                             | Flag false makes zero Memory embedding/rerank calls while projection/jobs remain rebuildable |
 | Provider egress uses redacted transient copies           | SQL/source/hash authority must not be weakened to hide a credential leak                  | Raw query/content stays only at its current authority boundary; secret-only query/document/body skips its Provider lane |
+| Cloud judge receives ordinals, not authority             | Model output must never become an ownership, scope, revision, or score authority           | The fixed prompt carries only redacted query/candidate bodies and contiguous request-local ordinals; exact JSON is revalidated locally |
+| BGE and cloud judge run concurrently                     | Serial hosted stages cannot reliably fit the unchanged two-second shadow cutoff             | Both must finish under the same bounded context; either failure or provenance drift yields `no_memory` |
+| Main model routes before seeing candidates               | The owner selected GPT/DeepSeek and rejected another hidden relevance model                    | The route receives only a redacted query plus the exact no-argument `search_memory` Tool |
+| Route and BGE work may overlap                           | Serial model decision plus BGE stages would spend the unchanged two-second cutoff               | Candidate bodies stay inside the authorized BGE boundary and every result is discarded unless one exact Tool Call succeeds |
+| Missing Tool arguments are not `{}`                     | A nil Go map can otherwise pass a length-only empty check                                        | The adapter requires a non-nil empty object, non-empty call ID, exact name, and exactly one call |
+| Owner egress authority is narrower than injection       | Allowing ordinary personal candidates to reach the configured Provider must not weaken answer relevance or secret isolation | Only `irrelevant` exclusion is egress-authorized under the exact v1 policy; false injection and all forbidden reasons remain unchanged gates |
 | PR9 governance is not reader promotion                   | Users need control before scoped retrieval is allowed                                      | Project/Conversation Memory is manageable but v1 Global Top 5 remains the only prompt/Usage source |
 | Plaintext is hydrated from current authority only        | Revision/evidence history must not resurrect deleted, disabled, archived, or stale content | Detail and Activity return markers after any lifecycle/epoch/scope-generation fence fails |
 | Content classification is duplicated at Go and SQL       | A client label or alternate repository caller must not downgrade Sensitive/secret content  | Go fails fast; migration `060` wrappers/capabilities reclassify before canonical mutation |
@@ -115,6 +127,10 @@ cycle.
 - passphrases are 12–1,024 bytes; import mappings are at most 256 KiB and plan
   tokens at most 4 KiB. Unknown, duplicate, trailing, non-canonical, unordered,
   count/hash-mismatched, or over-limit input fails closed.
+- Development Memory routing accepts only model-bound results carrying
+  `memory-search-tool-v1` plus SHA-256
+  `f8f404df0ae3a3938081b813c8750d59ba252adbcb8dc755e075e5c738e20ca6`;
+  zero calls abstains, while use requires one exact `search_memory({})` call.
 
 ## Threat model and controls
 
@@ -143,8 +159,16 @@ cycle.
 | Old embedding response crosses an authority change | The job and completion capability recheck revision, hash, epoch, scope generation, projection generation, and Provider configuration timestamp |
 | Rerank output becomes stale during Provider work | Record reauthorizes every submitted RRF ID/revision against current user/scope/Sensitive/time/epoch/generation authority |
 | Hybrid diagnostics leak content or raw scores | Candidate content is transient only; durable observations contain hashes, IDs, ordinals, bounded counts/status/tokens/duration |
+| Irrelevant RRF rows reach the hosted reranker | Migration-064 reauthorizes the exact pending surface and gates document egress on a frozen local maximum-cosine threshold without persisting vector/score data |
+| Failed/invalid/late rerank output becomes an unscored fallback | Hybrid selection fails closed to no final/injection; only finite `[0,1]` request-local scores above the frozen threshold can reach the token selector |
+| Candidate text manipulates the cloud judge | The server prompt labels query/candidates as untrusted data; strict decoding rejects extra/duplicate keys, prose, scores, duplicate/out-of-range ordinals, oversized output, and trailing values |
+| Judge model/prompt changes after authorization | Each result must match the exact configured model ID, prompt version/SHA-256, and decoding profile; drift fails closed before selection |
+| Route model sees Memory before it decides to search | `HybridMemoryToolRouter` receives only the secret-redacted query; candidates never enter the Tool-planning request |
+| Ambiguous Tool output releases Memory | Exact choice/call/ID/name/non-nil-empty-argument validation rejects missing, null, unknown, duplicate, or non-empty calls |
+| Route result is replayed under another model/contract | `routeHybridMemory` rechecks exact model ID, contract version, and SHA-256 before any final row is released |
+| Owner authorization is mistaken for blanket egress | Policy-aware scoring permits only `irrelevant`; cross-user, out-of-scope, deleted, secret, superseded, Sensitive-disabled, and untrusted-source remain zero-tolerance failures |
 | Query or canonical Memory leaks a credential to retrieval Provider | Shared deterministic classification redacts query, rerank documents, and embedding bodies immediately before egress; fully redacted input makes zero corresponding Provider calls |
-| Runtime mutates derived/evidence tables | `go_api_runtime` receives only hybrid prepare/record; `memory_worker_runtime` receives only embedding lease capabilities; both lack table CRUD |
+| Runtime mutates derived/evidence tables | `go_api_runtime` receives only hybrid prepare/admission/record; `memory_worker_runtime` receives only embedding lease capabilities; both lack table CRUD |
 | Client downgrades Sensitive content to normal | Go classification and migration-060 SQL classification take the stricter result; Sensitive-off and secret-like writes fail |
 | Governance history leaks deleted plaintext | Detail/Activity join current enabled/lifecycle/epoch/scope authority; deleted sources and purged revisions return marker fields only |
 | Old Global writer bypasses PR9 policy | Migration `060` revokes its runtime EXECUTE and grants only classification-aware legacy wrappers |
@@ -169,8 +193,9 @@ cycle.
 Known limitation: migrations `062` and `063` ship in shadow with all derived
 reader rollout flags default-off. No formal 500-case benchmark plus seven-day/
 100-turn canary evidence exists, so neither L2 nor L3 can become active
-automatically. The v1 Global Top 5 remains the only default prompt and Usage
-authority.
+automatically. The schema-v6 Memory Tool route is also Development-only: no
+live GPT/DeepSeek result, frozen policy, or product same-model continuation
+exists. The v1 Global Top 5 remains the only default prompt and Usage authority.
 
 ## Verification
 
@@ -214,3 +239,12 @@ rebuild, runtime role denial, and a clean PostgreSQL 17
 - 2026-07-29: migration-063 stable Global-L1 derived L3 Persona lifecycle,
   hybrid retrieval, governance, evidence-gated promotion, and rollback
   (Memory v2 PR12).
+- 2026-07-29: migration-064 read-only pre-rerank admission and split-calibrated
+  request-local relevance abstention; v1 remains prompt/Usage authority and
+  hybrid promotion stays disabled (Memory v2 relevance hardening).
+- 2026-07-29: strict owner-authorized cloud candidate-judge Development profile,
+  ordinal-only contract, concurrent BGE intersection, and runtime Memory task-
+  model adapter; no production cloud policy or promotion authority installed.
+- 2026-07-29: Development-only main-model `search_memory` routing, exact
+  model/contract provenance, concurrent BGE release gate, strict empty-argument
+  call validation, and no production Tool/frozen policy or promotion authority.
