@@ -8941,3 +8941,30 @@ fixture cache rows stayed absent, the cleanup queue stayed empty, and startup lo
 remained free of TTS permission or cleanup failures. One later non-fixture live
 cache row was preserved as user data rather than being folded into test
 cleanup.
+
+## 2026-07-29 — Native Memory regression capture closure
+
+The protected 500-case machine regression corpus now has an isolated native
+reader runner. It seeds a fresh marked PostgreSQL 17 database, executes the
+production Global v1 lexical reader and native v2 hybrid shadow reader through
+the `go_api_runtime` capability boundary, evaluates both profiles with the
+shared regression scorer, publishes an exclusive private evidence bundle, and
+destroys the random Compose project and temporary credentials on every tested
+exit path. Deterministic fake Provider output is permanently identified as
+`native_v2_hybrid_fake_protocol`; it remains protocol-only,
+`regression_only`, and `promotionEligible=false`.
+
+A real Compose fake-protocol replay completed all 500 ordered cases and
+retained both truthful failed-metric reports while returning non-zero. Exact
+PostgreSQL `17` / `pg_textsearch 1.3.1` / `pgvector 0.8.5` integration,
+success/error/`SIGINT`/`SIGTERM`/`SIGHUP` lifecycle tests, focused race and vet
+gates, all Backend packages, and the full standalone gate passed. The final
+standalone replay passed 198 Frontend test files with 961 tests and RAG with
+1,906 passed / 7 skipped. Protected runtime state stayed unchanged and the
+retained artifacts, command output, and Docker metadata passed
+plaintext/credential leak checks.
+
+No live SiliconFlow comparison was executed. Native v2 reader-quality evidence
+remains pending a separately supplied mode-`0600` Key, exact quota approval,
+and a real versioned same-unit cost basis; fake-protocol metrics do not satisfy
+that gate and cannot authorize reader promotion.

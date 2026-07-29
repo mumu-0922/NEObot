@@ -133,6 +133,32 @@ memoryeval.ValidateRegressionAdmission(corpus, audit) error
 memoryeval.EvaluateRegression(memoryeval.RegressionEvaluationInput) (memoryeval.RegressionReport, error)
 ```
 
+Native production-reader regression capture is a separate isolated command:
+
+```bash
+cd mm-chat
+bash scripts/run-memory-regression.sh \
+  --provider-mode fake_protocol \
+  --cost-basis /secure/eval/memory-regression-cost-basis.json \
+  --output-dir /secure/eval/native-memory-runs
+
+bash scripts/run-memory-regression.sh \
+  --provider-mode live_siliconflow \
+  --credential-file /secure/input/fresh-siliconflow.key \
+  --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --cost-basis /secure/eval/memory-regression-cost-basis.json \
+  --output-dir /secure/eval/native-memory-runs
+```
+
+```go
+memorycapture.LoadProtectedRegression(root string) (memorycapture.ProtectedRegression, error)
+memorycapture.SeedEphemeralDatabase(ctx, adminDB, pool, index, runID) (memorycapture.SeedResult, error)
+memorycapture.PopulateProjectionVectors(ctx, adminDB, runID, embedder) (int, error)
+memorycapture.CaptureProfiles(ctx, adminDB, runtimeDB, runID, index, seed, provider, hashes, cost) (memorycapture.CapturedProfile, memorycapture.CapturedProfile, error)
+memorycapture.AssembleRegressionObservations(pool, capturedAt, captureID, profile) (memoryeval.RegressionObservationSet, []byte, error)
+memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string, error)
+```
+
 ## 3. Contracts
 
 - Input is synthetic-only and declares an explicit
@@ -227,6 +253,36 @@ memoryeval.EvaluateRegression(memoryeval.RegressionEvaluationInput) (memoryeval.
 - A regression report repeats the class/mode and
   `promotionEligible=false`; passing cannot satisfy formal admission or change
   a reader.
+- Native capture replays the exact protected four-file regression generator
+  bytes before database or Provider work, then executes production
+  `usermemory` v1 lexical and v2 hybrid Go/SQL paths in a fresh marked
+  PostgreSQL 17 database. The benchmark layer never reimplements ranking.
+- Query-time capture must use `current_user=go_api_runtime`; the privileged
+  seed/vector connection is allowed only after the database name, migration
+  head, empty state, and exact run marker pass. The two DSNs must name the same
+  `mm_chat_memory_regression_*` database before any connection is opened.
+- The baseline's candidate/final/injected surface is its actual v1 Top 5. The
+  candidate's candidate surface is the captured RRF Top 20; final is the
+  production rerank/token-budget Top 5; injected mirrors final offline only;
+  persisted remains empty; Provider-sent contains the exact rerank documents.
+- `fake_protocol` is deterministic and external-network-free. Its candidate
+  profile is `native_v2_hybrid_fake_protocol`, never
+  `native_v2_hybrid`, and its metrics cannot be used as reader-quality or
+  promotion evidence.
+- Live SiliconFlow capture requires exact run/provider/BGE/rerank/quota
+  authorization plus a regular non-symlink mode-`0600` Key file. The Key value
+  never enters argv, environment, Compose config, retained output, or the
+  production vault path.
+- Cost authority is a strict versioned same-unit document. Baseline Memory
+  cost is exactly zero, candidate Memory cost is positive, and both profiles
+  share the same non-zero chat denominator. Missing, duplicate, unknown,
+  zero-cost, unit-drift, or denominator-drift input fails before Provider work.
+- Native output uses a private new run directory and four exclusive evidence
+  links followed by `run-manifest.json` as the completion marker. Failed metric
+  gates retain valid reports and return non-zero; all other failures remove
+  partial output. Success/failure/`SIGINT`/`SIGTERM`/`SIGHUP` destroy the exact
+  random Compose database, role, containers, networks, volume, and temporary
+  credentials.
 
 ## 4. Validation & Error Matrix
 
@@ -258,6 +314,11 @@ memoryeval.EvaluateRegression(memoryeval.RegressionEvaluationInput) (memoryeval.
 | Regression corpus/audit/fixture/manifest hash or byte replay drifts | Refuse verify/admission and preserve the existing protected root unchanged. |
 | Regression observations contain a formal Holdout simulation, wrong audit/corpus/fixture binding, missing/reordered case, or bad stage subset | Reject before scoring. |
 | Regression metric gate fails | Publish the new exclusive regression report, return non-zero, and keep `promotionEligible=false`. |
+| Native capture DSN names a live/non-prefixed/different database or runtime lacks `role=go_api_runtime` | Reject before opening either database. |
+| Fake protocol is labelled `native_v2_hybrid` or receives a credential file/egress network | Reject; fake output is protocol-only. |
+| Live authorization/model target, mode-`0600` Key file, or cost authority is absent/invalid | Reject before network activity without echoing values. |
+| Native artifact target already exists or publication races | Preserve existing bytes, remove only new links, and refuse the run. |
+| Native run is interrupted before complete validation | Remove partial output and all project-scoped runtime/credential state. |
 
 ## 5. Good / Base / Bad Cases
 
@@ -319,9 +380,16 @@ memoryeval.EvaluateRegression(memoryeval.RegressionEvaluationInput) (memoryeval.
   denial; no human attestation; corpus/audit content binding; exact ordered
   observations; absence of Holdout authority; shared metric/safety results;
   failed-report publication; and exclusive output preservation.
+- Native capture tests: fixed generator byte admission; deterministic alias
+  mapping; all fixture-state exclusions; real v1/RRF/rerank/final/Provider ID
+  decorators; fallback/cutoff; strict cost/live authorization; private
+  exclusive publication; plaintext/credential scans; PostgreSQL 17 exact
+  extension profile and all 500 cases; fake internal-only network; and
+  success/failure/`SIGINT`/`SIGTERM`/`SIGHUP` teardown.
 - Run `go test -race ./internal/memoryauthor ./cmd/memory-benchmark-author
-  ./internal/memoryeval ./cmd/memory-eval`, `go test ./...`, and `go vet ./...`
-  from `mm-chat/backend`.
+  ./internal/memoryeval ./cmd/memory-eval ./internal/memorycapture
+  ./cmd/memory-regression-capture`, `bash scripts/test-memory-regression.sh`,
+  `go test ./...`, and `go vet ./...` from their owning product directories.
 
 ## 7. Wrong vs Correct
 

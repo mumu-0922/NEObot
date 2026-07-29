@@ -24,6 +24,7 @@ mm-chat/scripts/init-provider-keyring.sh # one-time provider vault bootstrap
 mm-chat/scripts/rotate-provider-keyring.sh # retained-key prepare/prune candidates
 mm-chat/compose.production.yml          # removes all production build paths
 mm-chat/compose.hindsight-fixture.yml   # isolated synthetic benchmark only
+mm-chat/compose.memory-regression.yml   # isolated native Memory reader capture only
 mm-chat/secrets/                        # provider vault Docker Secret source, gitignored
 mm-chat/data/                          # runtime volumes, gitignored
 mm-chat/backup/                        # backup output, gitignored
@@ -139,6 +140,28 @@ remains. Do not add this file to the main Compose include chain, give it a
 production restart policy, mount `.env.single-server`/`data`/`secrets`/`backup`,
 or reuse its runtime for a real-data trial. See
 [`../contracts/memory-hindsight-fixture.md`](../contracts/memory-hindsight-fixture.md).
+
+### Optional native Memory regression project
+
+`compose.memory-regression.yml` is also excluded from every production include
+chain. `scripts/run-memory-regression.sh` creates a random project containing
+only PostgreSQL 17, a one-shot migrator, and exactly one capture runner. No
+service publishes a port. The fake runner joins only an `internal: true`
+database network; the live runner alone receives a separate egress network for
+the explicitly authorized SiliconFlow embedding/rerank calls.
+
+The project mounts the protected synthetic regression root and versioned cost
+basis read-only plus one new private output directory. Live mode additionally
+mounts a temporary mode-`0600` Provider Key file read-only; the Key value is
+never a Compose environment variable. The runner refuses a non-ephemeral
+database name, missing run marker, non-`go_api_runtime` query connection,
+wrong Provider/model target, or existing output.
+
+Success, failed metrics, other errors, `SIGINT`, `SIGTERM`, and `SIGHUP` all
+run exact project-scoped `down --volumes`, verify that no labeled container,
+network, or volume remains, and remove temporary credentials. Valid failed-
+gate reports remain evidence; partial or invalid bundles do not. See
+[`../contracts/memory-benchmark-workflow.md`](../contracts/memory-benchmark-workflow.md#62-capture-the-production-native-readers-in-isolation).
 
 ### Phase 15.2B dark-run worker
 

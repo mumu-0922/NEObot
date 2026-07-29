@@ -111,6 +111,16 @@
   ],
   "querySkeletonCount": 431,
   "auditVerdict": "passed",
+  "nativeReaderCapture": {
+    "runnerVersion": "neo-chat.native-memory-reader-capture.v1",
+    "status": "offline_protocol_verified",
+    "baselineProfile": "native_v1_lexical",
+    "fakeCandidateProfile": "native_v2_hybrid_fake_protocol",
+    "liveCandidateProfile": "native_v2_hybrid",
+    "fakeProtocolQualityEvidence": false,
+    "liveComparisonStatus": "pending_separate_credential_and_cost_authorization",
+    "promotionEligible": false
+  },
   "fixtureContentSha256": "965072e0e5b36d687c1838aaa675beb8a81475e0794d7fdded34f99d7673c7af",
   "corpusContentSha256": "5ae712163fc7bf81efe754b877cd02b1d0de74450a04ea7e119402320e4ba144",
   "auditContentSha256": "c0f5b9406acc707f087afc7caf6f5f3e1dbc50aa6b1492b7ef1ec5479fe051f3",

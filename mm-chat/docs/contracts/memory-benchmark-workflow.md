@@ -441,6 +441,102 @@ only regression stratification. A passing report always repeats the regression
 class/mode and `promotionEligible=false`; it cannot satisfy
 `ValidateGoldenAdmission` or authorize a reader change.
 
+### 6.2 Capture the production native readers in isolation
+
+`cmd/memory-regression-capture` is the only native regression producer. It
+executes the production `usermemory` v1 Global lexical reader and v2 hybrid
+shadow reader in a disposable PostgreSQL 17 database. Repository and Provider
+decorators capture the transient RRF Top 20, reranked/token-budgeted Top 5, and
+exact rerank Provider-egress Memory IDs; the benchmark package does not copy
+the ranking algorithm.
+
+Use the wrapper from the product root:
+
+```bash
+cd mm-chat
+bash scripts/run-memory-regression.sh \
+  --provider-mode fake_protocol \
+  --cost-basis /secure/eval/memory-regression-cost-basis.json \
+  --output-dir /secure/eval/native-memory-runs
+```
+
+The deterministic fake Provider has no external network and is permanently
+reported as `native_v2_hybrid_fake_protocol`. It validates fixture replay,
+PostgreSQL seeding, production SQL/Go call order, capture mapping, evaluation,
+exclusive publication, leak checks, and teardown. Its ranking, latency, and
+cost results are protocol fixtures and are not native-reader quality evidence.
+
+A live reader-quality comparison is a separate, quota-consuming operator
+action:
+
+```bash
+chmod 600 /secure/input/fresh-siliconflow.key
+bash scripts/run-memory-regression.sh \
+  --provider-mode live_siliconflow \
+  --credential-file /secure/input/fresh-siliconflow.key \
+  --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --cost-basis /secure/eval/memory-regression-cost-basis.json \
+  --output-dir /secure/eval/native-memory-runs
+```
+
+The wrapper copies the Key into a temporary mode-`0600` file and mounts it
+read-only. The value never enters argv, environment variables, Compose config,
+Docker inspect, reports, or Git. The runner does not inspect or decrypt the
+production Provider vault. Live output alone uses profile
+`native_v2_hybrid`.
+
+The cost basis is strict JSON and all values are run-total integer microunits
+in one named unit:
+
+```json
+{
+  "schemaVersion": "neo-chat.memory-regression-cost-basis.v1",
+  "baseline": {
+    "unit": "cny_microunits",
+    "memoryProviderCostMicrounits": 0,
+    "chatProviderCostMicrounits": 1000000
+  },
+  "candidate": {
+    "unit": "cny_microunits",
+    "memoryProviderCostMicrounits": 100000,
+    "chatProviderCostMicrounits": 1000000
+  },
+  "source": "versioned operator rate card reference",
+  "effectiveAt": "2026-07-29T00:00:00Z"
+}
+```
+
+The example numbers are structural placeholders, not an approved rate card.
+For an actual run, the baseline Memory cost must be exactly zero, the candidate
+Memory cost must be positive and calculated from the versioned SiliconFlow
+rate basis, and both profiles must use the same non-zero chat cost denominator.
+Unknown fields, duplicate keys, zero candidate cost, unit drift, denominator
+drift, or an invalid timestamp fail before Provider work.
+
+Each new run directory is mode `0700` and contains five mode-`0600` files:
+
+```text
+native-v1-lexical.observations.json
+native-v1-lexical.report.json
+native-v2-hybrid[-fake-protocol].observations.json
+native-v2-hybrid[-fake-protocol].report.json
+run-manifest.json
+```
+
+The four evidence files are exclusively linked first and the content-free run
+manifest is the final completion marker. Existing targets are refused before
+Provider work and are never overwritten. A metric failure retains both valid
+reports and returns non-zero. An input, capture, validation, publication, or
+signal failure removes partial output. Every exit destroys the random Compose
+project's database, role, container, internal network, egress network (live
+only), and volume, then removes temporary database and Provider credentials.
+
+Neither profile writes prompt Memory or Usage. For scoring only, the v2 final
+IDs are copied into `injectedMemoryIds` as an offline counterfactual. Fake and
+live reports remain `machine_reviewed_regression`, `regression_only`, and
+`promotionEligible=false`; no run calls Golden freeze/Holdout or a promotion
+pointer.
+
 ## 7. Keep promotion separate
 
 A passing report is evidence, not authority. It does not toggle a feature flag,
