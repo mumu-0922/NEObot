@@ -1041,3 +1041,37 @@ commit was created, amended, or pushed during verification.
 
 - After approved batched commits, begin PR13 as an isolated fixture-only
   Hindsight adapter/profile. Any real trial remains separately authorized.
+
+
+## Session 21: Complete Memory v2 PR13 Hindsight fixture evaluation
+
+**Date**: 2026-07-29
+**Task**: Complete Memory v2 PR13 Hindsight fixture evaluation
+**Branch**: `main`
+
+### Summary
+
+Implemented and verified the isolated synthetic Hindsight dual-profile adapter, recorded 8/10 content-free results for both profiles, proved failure and signal teardown, removed all Hindsight runtime/image state, and completed the PR1-PR13 Memory v2 implementation plan without enabling a production reader or real-data trial.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `33a0a35` | (see git log) |
+| `5b0c6c2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
