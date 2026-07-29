@@ -492,6 +492,193 @@ func TestPrepareDurableMemoryL2ReaderFlagAloneMakesZeroSceneCalls(t *testing.T) 
 	}
 }
 
+func TestPrepareDurableMemoryL3ShadowNeverChangesPromptOrUsage(t *testing.T) {
+	repo := &chatMemoryRepository{
+		settings: usermemory.Settings{Enabled: true, SearchEnabled: true},
+		memories: []usermemory.Memory{chatMemoryFixture(
+			"11111111-1111-4111-8111-111111111111",
+			"preference", "Keep answers concise", 5,
+		)},
+		l3Preparation: usermemory.L3PersonaPreparation{
+			Summary: usermemory.L3PersonaSearchSummary{
+				ProfileID: usermemory.L3PersonaProfileID, Mode: "shadow",
+				Status: "pending", ResultCode: "CANDIDATES_READY",
+				FallbackCode: "PROVIDER_UNAVAILABLE", RRFCount: 1,
+			},
+			Candidates: []usermemory.L3PersonaCandidate{{
+				PersonaID: "22222222-2222-4222-8222-222222222222",
+				Revision:  1, Content: "Shadow-only Persona content",
+			}},
+		},
+		l3Result: usermemory.L3PersonaSearchResult{
+			Summary: usermemory.L3PersonaSearchSummary{
+				ProfileID: usermemory.L3PersonaProfileID, Mode: "shadow",
+				Status: "completed", ResultCode: "COMPLETED",
+				FallbackCode: "PROVIDER_UNAVAILABLE", FinalCount: 1,
+			},
+			Personas: []usermemory.L3PersonaCandidate{{
+				PersonaID: "22222222-2222-4222-8222-222222222222",
+				Revision:  1, Content: "Shadow-only Persona content",
+			}},
+		},
+	}
+	handler := NewHandler(
+		NewService(&fakeRepository{}),
+		WithUserMemoryService(usermemory.NewService(repo)),
+		WithMemoryL3PersonaShadowEnabled(true),
+	)
+	systemPrompt, preparation := handler.prepareDurableMemory(
+		context.Background(), "Please keep this concise",
+		"33333333-3333-4333-8333-333333333333",
+		"44444444-4444-4444-8444-444444444444", "Base instruction",
+	)
+	if repo.l3PrepareCalls != 1 || repo.l3Prepare.ActiveRequested ||
+		!strings.Contains(systemPrompt, "Keep answers concise") ||
+		strings.Contains(systemPrompt, "Shadow-only Persona content") ||
+		strings.Contains(systemPrompt, "22222222-2222-4222-8222-222222222222") {
+		t.Fatalf("L3 shadow changed prompt = %q repo=%#v", systemPrompt, repo)
+	}
+	usages := durableMemoryUsageInputs(preparation)
+	if len(usages) != 1 || usages[0].MemoryID != repo.memories[0].ID {
+		t.Fatalf("L3 shadow changed Usage = %#v", usages)
+	}
+	payload, err := json.Marshal(withDurableMemoryMetadata(nil, preparation))
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded := string(payload)
+	if !strings.Contains(encoded, `"l3Persona"`) ||
+		strings.Contains(encoded, "Shadow-only Persona content") ||
+		strings.Contains(encoded, "22222222-2222-4222-8222-222222222222") {
+		t.Fatalf("L3 shadow metadata leaked payload = %s", encoded)
+	}
+}
+
+func TestPrepareDurableMemoryL3ActiveUsesSeparateLowPriorityBlock(t *testing.T) {
+	repo := &chatMemoryRepository{
+		settings: usermemory.Settings{Enabled: true, SearchEnabled: true},
+		memories: []usermemory.Memory{chatMemoryFixture(
+			"11111111-1111-4111-8111-111111111111",
+			"preference", "Keep answers concise", 5,
+		)},
+		l3Preparation: usermemory.L3PersonaPreparation{
+			Summary: usermemory.L3PersonaSearchSummary{
+				ProfileID: usermemory.L3PersonaProfileID, Mode: "active",
+				Status: "pending", ResultCode: "CANDIDATES_READY",
+				FallbackCode: "PROVIDER_UNAVAILABLE", RRFCount: 1,
+			},
+			Candidates: []usermemory.L3PersonaCandidate{{
+				PersonaID: "22222222-2222-4222-8222-222222222222",
+				Revision:  1, Content: "The user prefers technical detail.",
+			}},
+		},
+		l3Result: usermemory.L3PersonaSearchResult{
+			Summary: usermemory.L3PersonaSearchSummary{
+				ProfileID: usermemory.L3PersonaProfileID, Mode: "active",
+				Status: "completed", ResultCode: "COMPLETED",
+				FallbackCode: "PROVIDER_UNAVAILABLE", FinalCount: 1,
+				InjectedCount: 1,
+			},
+			Personas: []usermemory.L3PersonaCandidate{{
+				PersonaID: "22222222-2222-4222-8222-222222222222",
+				Revision:  1, Content: "The user prefers technical detail.",
+			}},
+		},
+	}
+	handler := NewHandler(
+		NewService(&fakeRepository{}),
+		WithUserMemoryService(usermemory.NewService(repo)),
+		WithMemoryL3PersonaShadowEnabled(true),
+		WithMemoryL3PersonaReaderEnabled(true),
+	)
+	systemPrompt, preparation := handler.prepareDurableMemory(
+		context.Background(), "Please keep this concise and explain the implementation",
+		"33333333-3333-4333-8333-333333333333",
+		"44444444-4444-4444-8444-444444444444", "Base instruction",
+	)
+	if !repo.l3Prepare.ActiveRequested ||
+		!strings.Contains(systemPrompt, "<relevant-user-memory>") ||
+		!strings.Contains(systemPrompt, "<relevant-user-persona>") ||
+		!strings.Contains(systemPrompt, "The user prefers technical detail.") ||
+		strings.Contains(systemPrompt, "22222222-2222-4222-8222-222222222222") ||
+		strings.Index(systemPrompt, "<relevant-user-memory>") >
+			strings.Index(systemPrompt, "<relevant-user-persona>") {
+		t.Fatalf("L3 active prompt = %q prepare=%#v", systemPrompt, repo.l3Prepare)
+	}
+	if len(preparation.ActivePersonas) != 1 ||
+		len(durableMemoryUsageInputs(preparation)) != 1 {
+		t.Fatalf("L3 active preparation = %#v", preparation)
+	}
+}
+
+func TestPrepareDurableMemoryL2FailureDoesNotBlockL3(t *testing.T) {
+	repo := &chatMemoryRepository{
+		settings:     usermemory.Settings{Enabled: true, SearchEnabled: true},
+		memories:     []usermemory.Memory{chatMemoryFixture("11111111-1111-4111-8111-111111111111", "fact", "Atomic fact", 5)},
+		l2PrepareErr: errors.New("private Scene database error"),
+		l3Preparation: usermemory.L3PersonaPreparation{
+			Summary: usermemory.L3PersonaSearchSummary{
+				ProfileID: usermemory.L3PersonaProfileID, Mode: "active", Status: "pending",
+				ResultCode: "CANDIDATES_READY", FallbackCode: "PROVIDER_UNAVAILABLE", RRFCount: 1,
+			},
+			Candidates: []usermemory.L3PersonaCandidate{{
+				PersonaID: "22222222-2222-4222-8222-222222222222", Revision: 1,
+				Content: "Authorized Persona survives L2 failure.",
+			}},
+		},
+		l3Result: usermemory.L3PersonaSearchResult{
+			Summary: usermemory.L3PersonaSearchSummary{
+				ProfileID: usermemory.L3PersonaProfileID, Mode: "active", Status: "completed",
+				ResultCode: "COMPLETED", FallbackCode: "PROVIDER_UNAVAILABLE",
+				FinalCount: 1, InjectedCount: 1,
+			},
+			Personas: []usermemory.L3PersonaCandidate{{
+				PersonaID: "22222222-2222-4222-8222-222222222222", Revision: 1,
+				Content: "Authorized Persona survives L2 failure.",
+			}},
+		},
+	}
+	handler := NewHandler(
+		NewService(&fakeRepository{}), WithUserMemoryService(usermemory.NewService(repo)),
+		WithMemoryL2SceneShadowEnabled(true), WithMemoryL2SceneReaderEnabled(true),
+		WithMemoryL3PersonaShadowEnabled(true), WithMemoryL3PersonaReaderEnabled(true),
+	)
+	prompt, preparation := handler.prepareDurableMemory(
+		context.Background(), "current preference",
+		"33333333-3333-4333-8333-333333333333",
+		"44444444-4444-4444-8444-444444444444", "Base instruction",
+	)
+	if repo.l2PrepareCalls != 1 || repo.l3PrepareCalls != 1 ||
+		len(preparation.ActiveScenes) != 0 || len(preparation.ActivePersonas) != 1 ||
+		!strings.Contains(prompt, "Authorized Persona survives L2 failure.") ||
+		strings.Contains(prompt, "private Scene database error") {
+		t.Fatalf("independent derived readers = prompt:%q prep:%#v repo=%#v", prompt, preparation, repo)
+	}
+}
+
+func TestPrepareDurableMemoryL3ReaderFlagAloneMakesZeroPersonaCalls(t *testing.T) {
+	repo := &chatMemoryRepository{
+		settings: usermemory.Settings{Enabled: true, SearchEnabled: true},
+		memories: []usermemory.Memory{chatMemoryFixture(
+			"11111111-1111-4111-8111-111111111111", "fact", "Atomic fact", 5,
+		)},
+	}
+	handler := NewHandler(
+		NewService(&fakeRepository{}),
+		WithUserMemoryService(usermemory.NewService(repo)),
+		WithMemoryL3PersonaReaderEnabled(true),
+	)
+	_, preparation := handler.prepareDurableMemory(
+		context.Background(), "current preference",
+		"33333333-3333-4333-8333-333333333333",
+		"44444444-4444-4444-8444-444444444444", "Base instruction",
+	)
+	if repo.l3PrepareCalls != 0 || preparation.L3Persona != nil {
+		t.Fatalf("reader-only flag reached L3 = calls:%d prep:%#v",
+			repo.l3PrepareCalls, preparation)
+	}
+}
+
 func TestPrepareDurableMemoryDisabledDoesNotReadRows(t *testing.T) {
 	repo := &chatMemoryRepository{settings: usermemory.DefaultSettings()}
 	handler := NewHandler(
@@ -604,6 +791,14 @@ type chatMemoryRepository struct {
 	l2Result          usermemory.L2SceneSearchResult
 	l2PrepareErr      error
 	l2RecordErr       error
+	l3PrepareCalls    int
+	l3RecordCalls     int
+	l3Prepare         usermemory.L3PersonaPrepareInput
+	l3Record          usermemory.L3PersonaRecordInput
+	l3Preparation     usermemory.L3PersonaPreparation
+	l3Result          usermemory.L3PersonaSearchResult
+	l3PrepareErr      error
+	l3RecordErr       error
 }
 
 func (r *chatMemoryRepository) GetSettings(context.Context) (usermemory.Settings, bool, error) {
@@ -684,6 +879,24 @@ func (r *chatMemoryRepository) RecordL2SceneSearch(
 	return r.l2Result, r.l2RecordErr
 }
 
+func (r *chatMemoryRepository) PrepareL3PersonaSearch(
+	_ context.Context,
+	input usermemory.L3PersonaPrepareInput,
+) (usermemory.L3PersonaPreparation, error) {
+	r.l3PrepareCalls++
+	r.l3Prepare = input
+	return r.l3Preparation, r.l3PrepareErr
+}
+
+func (r *chatMemoryRepository) RecordL3PersonaSearch(
+	_ context.Context,
+	input usermemory.L3PersonaRecordInput,
+) (usermemory.L3PersonaSearchResult, error) {
+	r.l3RecordCalls++
+	r.l3Record = input
+	return r.l3Result, r.l3RecordErr
+}
+
 func chatMemoryFixture(id string, memoryType string, content string, importance int) usermemory.Memory {
 	now := time.Now().UTC()
 	return usermemory.Memory{
@@ -696,6 +909,7 @@ func chatMemoryFixture(id string, memoryType string, content string, importance 
 var _ usermemory.LexicalShadowRepository = (*chatMemoryRepository)(nil)
 var _ usermemory.HybridShadowRepository = (*chatMemoryRepository)(nil)
 var _ usermemory.L2SceneRepository = (*chatMemoryRepository)(nil)
+var _ usermemory.L3PersonaRepository = (*chatMemoryRepository)(nil)
 
 type chatGovernanceMemoryRepository struct {
 	*chatMemoryRepository

@@ -35,6 +35,7 @@ var (
 	ErrConversationPolicyNotFound    = errors.New("conversation memory policy not found")
 	ErrMemoryReviewNotFound          = errors.New("memory review not found")
 	ErrMemoryL2SceneNotFound         = errors.New("memory L2 Scene not found")
+	ErrMemoryL3PersonaNotFound       = errors.New("memory L3 Persona not found")
 	ErrPortabilityRepositoryRequired = errors.New("memory portability repository is required")
 	ErrPortabilityPlanCodecRequired  = errors.New("memory portability plan codec is required")
 )
@@ -79,6 +80,14 @@ type HybridShadowRepository interface {
 type L2SceneRepository interface {
 	PrepareL2SceneSearch(context.Context, L2ScenePrepareInput) (L2ScenePreparation, error)
 	RecordL2SceneSearch(context.Context, L2SceneRecordInput) (L2SceneSearchResult, error)
+}
+
+// L3PersonaRepository exposes only authenticated Persona search capabilities.
+// Persona plaintext remains derived and is returned transiently for rerank or
+// active prompt composition; durable observations remain content-free.
+type L3PersonaRepository interface {
+	PrepareL3PersonaSearch(context.Context, L3PersonaPrepareInput) (L3PersonaPreparation, error)
+	RecordL3PersonaSearch(context.Context, L3PersonaRecordInput) (L3PersonaSearchResult, error)
 }
 
 type Settings struct {
@@ -439,6 +448,67 @@ type L2SceneSearchSummary struct {
 type L2SceneSearchResult struct {
 	Summary L2SceneSearchSummary
 	Scenes  []L2SceneCandidate
+}
+
+type L3PersonaPrepareInput struct {
+	ObservationID       string
+	ConversationID      string
+	AssistantMessageID  string
+	QueryHash           string
+	QueryText           string
+	QueryEmbedding      []float32
+	QueryEmbeddingState string
+	ActiveRequested     bool
+}
+
+type L3PersonaCandidate struct {
+	PersonaID string `json:"personaId"`
+	Revision  int64  `json:"revision"`
+	Content   string `json:"content"`
+}
+
+type L3PersonaRankedItem struct {
+	PersonaID string `json:"personaId"`
+	Revision  int64  `json:"revision"`
+}
+
+type L3PersonaPreparation struct {
+	Summary    L3PersonaSearchSummary
+	Replayed   bool
+	Candidates []L3PersonaCandidate
+}
+
+type L3PersonaRecordInput struct {
+	ObservationID      string
+	AssistantMessageID string
+	RerankStatus       string
+	FallbackCode       string
+	Reranked           []L3PersonaRankedItem
+	Final              []L3PersonaRankedItem
+	EstimatedTokens    int
+	DurationMillis     int
+}
+
+type L3PersonaSearchSummary struct {
+	ProfileID       string `json:"profile"`
+	Mode            string `json:"mode"`
+	Status          string `json:"status"`
+	ResultCode      string `json:"resultCode"`
+	FallbackCode    string `json:"fallbackCode"`
+	ExactCount      int    `json:"exactCount"`
+	BM25Count       int    `json:"bm25Count"`
+	VectorCount     int    `json:"vectorCount"`
+	RRFCount        int    `json:"rrfCount"`
+	RerankCount     int    `json:"rerankCount"`
+	FinalCount      int    `json:"finalCount"`
+	InjectedCount   int    `json:"injectedCount"`
+	EstimatedTokens int    `json:"estimatedTokens"`
+	DurationMillis  int    `json:"durationMillis"`
+}
+
+type L3PersonaSearchResult struct {
+	Summary  L3PersonaSearchSummary
+	Personas []L3PersonaCandidate
 }
 
 type UndoActivityInput struct {

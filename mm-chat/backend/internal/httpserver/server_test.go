@@ -132,6 +132,44 @@ func TestResolveMemoryHybridProviderRejectsWrongFactoryProfile(t *testing.T) {
 	}
 }
 
+func TestMemoryHybridProviderRequiredForEveryProviderBackedReader(t *testing.T) {
+	tests := []struct {
+		name   string
+		memory config.MemoryConfig
+		want   bool
+	}{
+		{name: "all disabled"},
+		{
+			name: "L1 hybrid shadow",
+			memory: config.MemoryConfig{
+				HybridShadowEnabled: true,
+			},
+			want: true,
+		},
+		{
+			name: "L2 Scene shadow",
+			memory: config.MemoryConfig{
+				L2SceneShadowEnabled: true,
+			},
+			want: true,
+		},
+		{
+			name: "L3 Persona shadow",
+			memory: config.MemoryConfig{
+				L3PersonaShadowEnabled: true,
+			},
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := memoryHybridProviderRequired(tt.memory); got != tt.want {
+				t.Fatalf("memoryHybridProviderRequired() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRuntimeChatProviderResolutionUsesServerOwnedAnswerProcessor(t *testing.T) {
 	tests := []struct {
 		name      string
