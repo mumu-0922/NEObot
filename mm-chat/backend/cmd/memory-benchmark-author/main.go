@@ -28,14 +28,57 @@ func main() {
 
 func run(ctx context.Context, args []string, stdout io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("subcommand is required: generate, review, status, verify, freeze, or holdout-begin")
+		return errors.New("subcommand is required: generate, review, status, verify, freeze, holdout-begin, regression-generate, regression-status, or regression-verify")
 	}
 	repositoryRoot, err := findRepositoryRoot()
 	if err != nil {
 		return err
 	}
 	defaultRoot := filepath.Join(repositoryRoot, "mm-chat", "data", "memory-benchmark", "v1")
+	defaultRegressionRoot := filepath.Join(repositoryRoot, "mm-chat", "data", "memory-benchmark", "v2-regression")
 	switch args[0] {
+	case "regression-generate":
+		flags := newFlags("regression-generate")
+		root := flags.String("root", defaultRegressionRoot, "new protected regression root")
+		if err := parseFlags(flags, args[1:]); err != nil {
+			return err
+		}
+		validatedRoot, err := memoryauthor.ValidateRegressionRoot(*root, repositoryRoot)
+		if err != nil {
+			return err
+		}
+		pool, err := memoryauthor.GenerateRegression()
+		if err != nil {
+			return err
+		}
+		if err := memoryauthor.PublishRegression(validatedRoot, pool); err != nil {
+			return err
+		}
+		status, err := memoryauthor.VerifyRegression(validatedRoot)
+		if err != nil {
+			return err
+		}
+		return encodeJSON(stdout, status)
+	case "regression-status", "regression-verify":
+		flags := newFlags(args[0])
+		root := flags.String("root", defaultRegressionRoot, "protected regression root")
+		if err := parseFlags(flags, args[1:]); err != nil {
+			return err
+		}
+		validatedRoot, err := memoryauthor.ValidateRegressionRoot(*root, repositoryRoot)
+		if err != nil {
+			return err
+		}
+		var status memoryauthor.RegressionStatus
+		if args[0] == "regression-verify" {
+			status, err = memoryauthor.VerifyRegression(validatedRoot)
+		} else {
+			status, err = memoryauthor.CurrentRegressionStatus(validatedRoot)
+		}
+		if err != nil {
+			return err
+		}
+		return encodeJSON(stdout, status)
 	case "generate":
 		flags := newFlags("generate")
 		root := flags.String("root", defaultRoot, "new protected authoring root")

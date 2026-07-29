@@ -81,3 +81,39 @@ func TestCommandRejectsUnknownArgumentsAndSourceTreeOutput(t *testing.T) {
 		t.Fatalf("source-tree output error = %v", err)
 	}
 }
+
+func TestRegressionGenerateAndVerifyCommandsStayContentFree(t *testing.T) {
+	external, err := os.MkdirTemp("/var/tmp", "memory-regression-cli-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(external) })
+	root := filepath.Join(external, "v2-regression")
+	var output bytes.Buffer
+	if err := run(context.Background(), []string{"regression-generate", "-root", root}, &output); err != nil {
+		t.Fatal(err)
+	}
+	var status memoryauthor.RegressionStatus
+	if err := json.Unmarshal(output.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.CaseCount != 500 || status.AuditVerdict != "passed" ||
+		status.PromotionEligible || status.AdmissionMode != "regression_only" {
+		t.Fatalf("regression generate status = %+v", status)
+	}
+	if strings.Contains(output.String(), `"query":`) || strings.Contains(output.String(), "canonicalContent") {
+		t.Fatalf("regression status leaked corpus content: %s", output.String())
+	}
+	output.Reset()
+	if err := run(context.Background(), []string{"regression-verify", "-root", root}, &output); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output.String(), `"query":`) || strings.Contains(output.String(), "canonicalContent") {
+		t.Fatalf("regression verify leaked corpus content: %s", output.String())
+	}
+	if err := run(context.Background(), []string{
+		"regression-generate", "-root", filepath.Join(external, "v2"),
+	}, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "explicit regression") {
+		t.Fatalf("ambiguous regression root error = %v", err)
+	}
+}

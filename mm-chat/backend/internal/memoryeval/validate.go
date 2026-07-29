@@ -284,26 +284,33 @@ func validateObservationSet(value ObservationSet) error {
 	if _, err := parseTimestamp(value.CapturedAt); err != nil {
 		return errors.New("Memory observation capturedAt is invalid")
 	}
-	if !validText(value.Profile.ID, 128) ||
-		!validText(value.Profile.ReaderVersion, 128) ||
-		!validSHA256(value.Profile.ConfigurationSHA256) ||
-		(value.Profile.Role != "baseline" && value.Profile.Role != "candidate" &&
-			value.Profile.Role != "shadow") ||
-		value.Profile.CandidateLimit != 20 || value.Profile.FinalLimit != 5 {
-		return errors.New("Memory observation profile is invalid")
-	}
 	if !validUUID(value.HoldoutRun.ID) || value.HoldoutRun.Ordinal < 1 {
 		return errors.New("Memory observation Holdout run is invalid")
 	}
 	if _, err := parseTimestamp(value.HoldoutRun.ExecutedAt); err != nil {
 		return errors.New("Memory observation Holdout timestamp is invalid")
 	}
-	if !validText(value.Costs.Unit, 32) || value.Costs.ChatProviderCostMicrounits == 0 {
+	return validateObservationPayload(value.Profile, value.Costs, value.Cases)
+}
+
+func validateObservationPayload(
+	profile Profile,
+	costs ProviderCosts,
+	cases []CaseObservation,
+) error {
+	if !validText(profile.ID, 128) ||
+		!validText(profile.ReaderVersion, 128) ||
+		!validSHA256(profile.ConfigurationSHA256) ||
+		(profile.Role != "baseline" && profile.Role != "candidate" &&
+			profile.Role != "shadow") ||
+		profile.CandidateLimit != 20 || profile.FinalLimit != 5 {
+		return errors.New("Memory observation profile is invalid")
+	}
+	if !validText(costs.Unit, 32) || costs.ChatProviderCostMicrounits == 0 {
 		return errors.New("Memory observation provider costs are invalid")
 	}
-
-	seen := make(map[string]struct{}, len(value.Cases))
-	for _, item := range value.Cases {
+	seen := make(map[string]struct{}, len(cases))
+	for _, item := range cases {
 		if !validOpaqueID(item.CaseID) || item.LatencyMilliseconds < 0 ||
 			item.PromptMemoryTokens < 0 {
 			return fmt.Errorf("Memory observation case %q is invalid", item.CaseID)
@@ -312,9 +319,9 @@ func validateObservationSet(value ObservationSet) error {
 			return fmt.Errorf("duplicate Memory observation case %q", item.CaseID)
 		}
 		seen[item.CaseID] = struct{}{}
-		if len(item.CandidateMemoryIDs) > value.Profile.CandidateLimit ||
-			len(item.FinalMemoryIDs) > value.Profile.FinalLimit ||
-			len(item.InjectedMemoryIDs) > value.Profile.FinalLimit ||
+		if len(item.CandidateMemoryIDs) > profile.CandidateLimit ||
+			len(item.FinalMemoryIDs) > profile.FinalLimit ||
+			len(item.InjectedMemoryIDs) > profile.FinalLimit ||
 			len(item.PersistedMemoryIDs) > 100 || len(item.ProviderSentMemoryIDs) > 100 ||
 			hasInvalidOrDuplicateIDs(item.CandidateMemoryIDs) ||
 			hasInvalidOrDuplicateIDs(item.FinalMemoryIDs) ||

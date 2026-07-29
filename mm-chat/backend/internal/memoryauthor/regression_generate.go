@@ -1,0 +1,272 @@
+package memoryauthor
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"strings"
+
+	"neo-chat/mm-chat/backend/internal/memoryeval"
+)
+
+func GenerateRegression() (RegressionPool, error) {
+	drafts, err := buildRegressionPlan()
+	if err != nil {
+		return RegressionPool{}, err
+	}
+	fixtures := make([]Fixture, 0, len(drafts))
+	cases := make([]memoryeval.GoldenCase, 0, len(drafts))
+	for _, draft := range drafts {
+		fixture, item := generateRegressionCase(draft)
+		fixtures = append(fixtures, fixture)
+		cases = append(cases, item)
+	}
+	promotion := false
+	fixtureManifest := RegressionFixtureManifest{
+		SchemaVersion:     RegressionFixtureSchemaVersion,
+		ID:                "memory-regression-v2-fixtures",
+		Description:       "Deterministic synthetic fixtures for the machine-reviewed regression corpus.",
+		CorpusClass:       memoryeval.RegressionCorpusClass,
+		AdmissionMode:     memoryeval.RegressionAdmissionMode,
+		PromotionEligible: &promotion,
+		DataPolicy:        DataPolicy{SyntheticOnly: true},
+		Generator:         expectedRegressionGenerator(),
+		ContentSHA256:     strings.Repeat("0", 64),
+		Fixtures:          fixtures,
+	}
+	fixtureContentHash, err := RegressionFixtureContentSHA256(fixtureManifest)
+	if err != nil {
+		return RegressionPool{}, err
+	}
+	fixtureManifest.ContentSHA256 = fixtureContentHash
+	corpus := memoryeval.RegressionCorpus{
+		SchemaVersion:         memoryeval.RegressionCorpusSchemaVersion,
+		ID:                    "memory-regression-v2-corpus",
+		Description:           "Machine-reviewed synthetic regression corpus; never promotion evidence.",
+		CorpusClass:           memoryeval.RegressionCorpusClass,
+		AdmissionMode:         memoryeval.RegressionAdmissionMode,
+		PromotionEligible:     &promotion,
+		DataPolicy:            memoryeval.DataPolicy{SyntheticOnly: true},
+		FixtureManifestSHA256: fixtureContentHash,
+		MachineAudit: memoryeval.RegressionAuditBinding{
+			SchemaVersion: memoryeval.RegressionAuditSchemaVersion,
+			Verdict:       "passed",
+			Auditor:       RegressionAuditor,
+			AuditedAt:     RegressionAuditedAt,
+		},
+		Criteria: benchmarkCriteria(),
+		Cases:    cases,
+	}
+	corpusContentHash, err := memoryeval.RegressionCorpusContentSHA256(corpus)
+	if err != nil {
+		return RegressionPool{}, err
+	}
+	corpus.CorpusContentSHA256 = corpusContentHash
+	audit, err := AuditRegression(fixtureManifest, corpus)
+	if err != nil {
+		return RegressionPool{}, err
+	}
+	corpus.MachineAudit.ContentSHA256 = audit.ContentSHA256
+
+	fixtureJSON, err := marshalCanonical(fixtureManifest)
+	if err != nil {
+		return RegressionPool{}, err
+	}
+	corpusJSON, err := marshalCanonical(corpus)
+	if err != nil {
+		return RegressionPool{}, err
+	}
+	auditJSON, err := marshalCanonical(audit)
+	if err != nil {
+		return RegressionPool{}, err
+	}
+	manifest := RegressionManifest{
+		SchemaVersion:        RegressionManifestSchemaVersion,
+		ID:                   "memory-regression-v2-manifest",
+		CorpusClass:          memoryeval.RegressionCorpusClass,
+		AdmissionMode:        memoryeval.RegressionAdmissionMode,
+		PromotionEligible:    &promotion,
+		DataPolicy:           DataPolicy{SyntheticOnly: true},
+		Generator:            expectedRegressionGenerator(),
+		CaseCount:            audit.CaseCount,
+		SplitCounts:          authorSplitCounts(audit.SplitCounts),
+		LanguageCounts:       authorLanguageCounts(audit.LanguageCounts),
+		SliceCounts:          authorSliceCounts(audit.SliceCounts),
+		QuerySkeletonCount:   audit.Semantic.QuerySkeletonCount,
+		FixtureContentSHA256: fixtureContentHash,
+		FixtureRawSHA256:     sha256Hex(fixtureJSON),
+		CorpusContentSHA256:  corpusContentHash,
+		CorpusRawSHA256:      sha256Hex(corpusJSON),
+		AuditContentSHA256:   audit.ContentSHA256,
+		AuditRawSHA256:       sha256Hex(auditJSON),
+	}
+	manifestJSON, err := marshalCanonical(manifest)
+	if err != nil {
+		return RegressionPool{}, err
+	}
+	pool := RegressionPool{
+		Fixtures: fixtureManifest, Corpus: corpus, Audit: audit, Manifest: manifest,
+		FixtureJSON: fixtureJSON, CorpusJSON: corpusJSON, AuditJSON: auditJSON,
+		ManifestJSON: manifestJSON,
+	}
+	if err := ValidateRegressionPool(pool); err != nil {
+		return RegressionPool{}, fmt.Errorf("validate generated regression pool: %w", err)
+	}
+	return pool, nil
+}
+
+func buildRegressionPlan() ([]regressionDraft, error) {
+	drafts := make([]regressionDraft, 0, 500)
+	global := 0
+	for _, profile := range regressionSplits {
+		start := len(drafts)
+		for index := 0; index < profile.total; index++ {
+			drafts = append(drafts, regressionDraft{
+				index:   global,
+				split:   profile.name,
+				primary: regressionCoreSlices[index%len(regressionCoreSlices)],
+				slices: map[string]struct{}{
+					regressionCoreSlices[index%len(regressionCoreSlices)]: {},
+				},
+			})
+			global++
+		}
+		assignRegressionLanguages(drafts[start:], profile)
+		for index := start; index < len(drafts); index++ {
+			switch drafts[index].language {
+			case "zh":
+				drafts[index].slices["chinese_paraphrase"] = struct{}{}
+			case "mixed":
+				drafts[index].slices["mixed_language_entity"] = struct{}{}
+			}
+		}
+		for _, target := range regressionCoreSlices {
+			if err := addRegressionCoverage(drafts[start:], target, profile.poolSliceMin); err != nil {
+				return nil, fmt.Errorf("%s: %w", profile.name, err)
+			}
+		}
+	}
+	return drafts, nil
+}
+
+func assignRegressionLanguages(drafts []regressionDraft, profile splitProfile) {
+	remaining := map[string]int{"zh": profile.zh, "mixed": profile.mixed, "en": profile.en}
+	for _, language := range []string{"zh", "mixed", "en"} {
+		for index := range drafts {
+			if remaining[language] == 0 {
+				break
+			}
+			if drafts[index].language != "" {
+				continue
+			}
+			drafts[index].language = language
+			remaining[language]--
+		}
+	}
+}
+
+func addRegressionCoverage(drafts []regressionDraft, target string, minimum int) error {
+	count := 0
+	for _, draft := range drafts {
+		if _, ok := draft.slices[target]; ok {
+			count++
+		}
+	}
+	for index := range drafts {
+		if count >= minimum {
+			return nil
+		}
+		if _, exists := drafts[index].slices[target]; exists ||
+			!regressionSlicesCompatible(drafts[index].slices, target) {
+			continue
+		}
+		drafts[index].slices[target] = struct{}{}
+		count++
+	}
+	return fmt.Errorf("cannot satisfy slice %s coverage", target)
+}
+
+func regressionSlicesCompatible(actual map[string]struct{}, target string) bool {
+	targetNegative := isNegativeSlice(target)
+	targetPositive := isRegressionPositiveSlice(target)
+	for name := range actual {
+		if targetNegative && isRegressionPositiveSlice(name) {
+			return false
+		}
+		if targetPositive && isNegativeSlice(name) {
+			return false
+		}
+	}
+	return true
+}
+
+func isRegressionPositiveSlice(name string) bool {
+	switch name {
+	case "stable_fact", "preference_instruction", "project_decision",
+		"temporal_correction", "failure_fallback", "multi_hop":
+		return true
+	default:
+		return false
+	}
+}
+
+func regressionHasSlice(draft regressionDraft, name string) bool {
+	_, ok := draft.slices[name]
+	return ok
+}
+
+func hasRegressionNegative(draft regressionDraft) bool {
+	for name := range draft.slices {
+		if isNegativeSlice(name) {
+			return true
+		}
+	}
+	return false
+}
+
+func opaqueRegressionID(kind string, index int) string {
+	digest := sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%d", RegressionProfileSeed, kind, index)))
+	return kind + "-" + hex.EncodeToString(digest[:8])
+}
+
+func expectedRegressionGenerator() GeneratorProvenance {
+	return GeneratorProvenance{
+		Version: RegressionGeneratorVersion,
+		Profile: RegressionProfileID,
+		Seed:    RegressionProfileSeed,
+	}
+}
+
+func benchmarkCriteria() memoryeval.Criteria {
+	return memoryeval.Criteria{
+		MinimumCandidateRecallAt20:       0.95,
+		MinimumFinalRecallAt5:            0.90,
+		MinimumCurrentFactAccuracy:       0.95,
+		MaximumFalseInjectionRate:        0.02,
+		MaximumP95LatencyMilliseconds:    900,
+		MaximumP99LatencyMilliseconds:    1500,
+		HardCutoffMilliseconds:           2000,
+		MaximumAveragePromptMemoryTokens: 600,
+		MaximumPromptMemoryTokens:        900,
+		MaximumProviderCostRatio:         0.15,
+	}
+}
+
+func authorSplitCounts(value memoryeval.RegressionSplitCounts) CountBySplit {
+	return CountBySplit{Development: value.Development, Validation: value.Validation, Holdout: value.Holdout}
+}
+
+func authorLanguageCounts(value memoryeval.RegressionLanguageCounts) CountByLanguage {
+	return CountByLanguage{Chinese: value.Chinese, Mixed: value.Mixed, English: value.English}
+}
+
+func authorSliceCounts(values []memoryeval.RegressionSliceCount) []SliceCount {
+	result := make([]SliceCount, 0, len(values))
+	for _, value := range values {
+		result = append(result, SliceCount{
+			Name: value.Name, Total: value.Total, Development: value.Development,
+			Validation: value.Validation, Holdout: value.Holdout,
+		})
+	}
+	return result
+}

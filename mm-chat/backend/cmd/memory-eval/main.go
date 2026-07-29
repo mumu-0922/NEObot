@@ -27,6 +27,8 @@ func run(args []string, stdout io.Writer) error {
 	flags := flag.NewFlagSet("memory-eval", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	goldenPath := flags.String("golden", "", "path to a Memory Golden corpus")
+	regressionCorpusPath := flags.String("regression-corpus", "", "path to a machine-reviewed regression corpus")
+	regressionAuditPath := flags.String("regression-audit", "", "path to the bound regression audit")
 	observationsPath := flags.String("observations", "", "path to Memory benchmark observations")
 	outputPath := flags.String("output", "", "new exclusive report JSON path")
 	printFreezeHash := flags.Bool(
@@ -39,13 +41,30 @@ func run(args []string, stdout io.Writer) error {
 		return errors.New("invalid arguments")
 	}
 	*goldenPath = strings.TrimSpace(*goldenPath)
+	*regressionCorpusPath = strings.TrimSpace(*regressionCorpusPath)
+	*regressionAuditPath = strings.TrimSpace(*regressionAuditPath)
 	*observationsPath = strings.TrimSpace(*observationsPath)
 	*outputPath = strings.TrimSpace(*outputPath)
+	regressionMode := *regressionCorpusPath != "" || *regressionAuditPath != ""
 	if *printFreezeHash {
-		if *goldenPath == "" || *observationsPath != "" || *outputPath != "" {
+		if *goldenPath == "" || regressionMode || *observationsPath != "" || *outputPath != "" {
 			return errors.New("freeze-hash mode accepts only -golden")
 		}
 		return runFreezeHash(*goldenPath, *pretty, stdout)
+	}
+	if regressionMode {
+		if *goldenPath != "" || *regressionCorpusPath == "" || *regressionAuditPath == "" ||
+			*observationsPath == "" || *outputPath == "" {
+			return errors.New("regression mode requires -regression-corpus, -regression-audit, -observations, and -output only")
+		}
+		return runRegressionEvaluation(
+			*regressionCorpusPath,
+			*regressionAuditPath,
+			*observationsPath,
+			*outputPath,
+			*pretty,
+			stdout,
+		)
 	}
 	if *goldenPath == "" || *observationsPath == "" || *outputPath == "" {
 		return errors.New("-golden, -observations, and -output are required")
@@ -57,6 +76,74 @@ func run(args []string, stdout io.Writer) error {
 		*pretty,
 		stdout,
 	)
+}
+
+func runRegressionEvaluation(
+	corpusPath string,
+	auditPath string,
+	observationsPath string,
+	outputPath string,
+	pretty bool,
+	stdout io.Writer,
+) error {
+	corpusBody, corpusRawHash, err := readHashedFile(corpusPath)
+	if err != nil {
+		return fmt.Errorf("read Memory regression corpus: %w", err)
+	}
+	corpus, err := memoryeval.DecodeRegressionCorpus(bytes.NewReader(corpusBody))
+	if err != nil {
+		return err
+	}
+	auditBody, auditRawHash, err := readHashedFile(auditPath)
+	if err != nil {
+		return fmt.Errorf("read Memory regression audit: %w", err)
+	}
+	audit, err := memoryeval.DecodeRegressionAudit(bytes.NewReader(auditBody))
+	if err != nil {
+		return err
+	}
+	observationBody, observationRawHash, err := readHashedFile(observationsPath)
+	if err != nil {
+		return fmt.Errorf("read Memory regression observations: %w", err)
+	}
+	observations, err := memoryeval.DecodeRegressionObservationSet(bytes.NewReader(observationBody))
+	if err != nil {
+		return err
+	}
+	report, err := memoryeval.EvaluateRegression(memoryeval.RegressionEvaluationInput{
+		Corpus:             corpus,
+		CorpusRawSHA256:    corpusRawHash,
+		Audit:              audit,
+		AuditRawSHA256:     auditRawHash,
+		Observations:       observations,
+		ObservationsSHA256: observationRawHash,
+	})
+	if err != nil {
+		return err
+	}
+	reportHash, err := writeReportExclusive(outputPath, report, pretty)
+	if err != nil {
+		return err
+	}
+	if err := encodeJSON(stdout, struct {
+		SchemaVersion     string `json:"schemaVersion"`
+		OutputPath        string `json:"outputPath"`
+		ReportSHA256      string `json:"reportSha256"`
+		Passed            bool   `json:"passed"`
+		PromotionEligible bool   `json:"promotionEligible"`
+	}{
+		SchemaVersion:     "neo-chat.memory-benchmark-regression-report-output.v1",
+		OutputPath:        outputPath,
+		ReportSHA256:      reportHash,
+		Passed:            report.Passed,
+		PromotionEligible: false,
+	}, pretty); err != nil {
+		return err
+	}
+	if !report.Passed {
+		return errors.New("Memory regression benchmark gate failed")
+	}
+	return nil
 }
 
 func runFreezeHash(path string, pretty bool, stdout io.Writer) error {
@@ -150,7 +237,7 @@ func readHashedFile(path string) ([]byte, string, error) {
 
 func writeReportExclusive(
 	path string,
-	report memoryeval.Report,
+	report any,
 	pretty bool,
 ) (string, error) {
 	path = strings.TrimSpace(path)

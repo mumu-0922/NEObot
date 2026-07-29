@@ -34,6 +34,12 @@ type evaluatedProfile struct {
 	safety  SafetyMetrics
 }
 
+type scoredEvaluation struct {
+	profile  ProfileSummary
+	slices   map[string]SliceResult
+	failures []string
+}
+
 func Evaluate(input EvaluationInput) (Report, error) {
 	if err := validateGoldenSet(input.Golden); err != nil {
 		return Report{}, err
@@ -48,57 +54,21 @@ func Evaluate(input EvaluationInput) (Report, error) {
 		return Report{}, err
 	}
 
-	profile, err := evaluateCases(
+	scored, err := scoreEvaluation(
 		input.Golden.Cases,
 		input.Observations.Cases,
 		input.Golden.Criteria,
+		input.Observations.Profile,
+		input.Observations.Costs,
 	)
 	if err != nil {
 		return Report{}, err
 	}
-	failures := profileFailures(profile, input.Golden.Criteria)
-	costRatio := float64(input.Observations.Costs.MemoryProviderCostMicrounits) /
-		float64(input.Observations.Costs.ChatProviderCostMicrounits)
-	costPassed := providerCostWithinV1Limit(
-		input.Observations.Costs.MemoryProviderCostMicrounits,
-		input.Observations.Costs.ChatProviderCostMicrounits,
-	)
-	if !costPassed {
-		failures = append(failures, "Memory provider cost ratio exceeds criterion")
-	}
-
-	slices := make(map[string]SliceResult, len(criticalSlices))
-	for _, name := range criticalSlices {
-		goldenCases, observations := selectSlice(
-			input.Golden.Cases,
-			input.Observations.Cases,
-			name,
-		)
-		evaluated, err := evaluateCases(goldenCases, observations, input.Golden.Criteria)
-		if err != nil {
-			return Report{}, err
-		}
-		sliceFailures := profileFailures(evaluated, input.Golden.Criteria)
-		sort.Strings(sliceFailures)
-		slices[name] = SliceResult{
-			Cases:              len(goldenCases),
-			Metrics:            evaluated.metrics,
-			RankingDiagnostics: evaluated.ranking,
-			Budgets:            evaluated.budgets,
-			Safety:             evaluated.safety,
-			Passed:             len(sliceFailures) == 0,
-			Failures:           sliceFailures,
-		}
-		for _, failure := range sliceFailures {
-			failures = append(failures, name+": "+failure)
-		}
-	}
 
 	split := splitCounts(input.Golden.Cases)
-	sort.Strings(failures)
 	return Report{
 		SchemaVersion: ReportSchemaVersion,
-		Passed:        len(failures) == 0,
+		Passed:        len(scored.failures) == 0,
 		Evaluation: EvaluationProvenance{
 			EvaluatorVersion:          EvaluatorVersion,
 			GoldenCorpusRawSHA256:     input.GoldenRawSHA256,
@@ -118,19 +88,71 @@ func Evaluate(input EvaluationInput) (Report, error) {
 			HoldoutCount:     split["holdout"],
 			HoldoutRuns:      input.Observations.HoldoutRun.Ordinal,
 		},
-		Profile: ProfileSummary{
-			ProfileID:          input.Observations.Profile.ID,
-			ProfileRole:        input.Observations.Profile.Role,
-			ReaderVersion:      input.Observations.Profile.ReaderVersion,
-			Metrics:            profile.metrics,
-			RankingDiagnostics: profile.ranking,
-			Budgets:            profile.budgets,
-			Safety:             profile.safety,
+		Profile:  scored.profile,
+		Slices:   scored.slices,
+		Failures: scored.failures,
+	}, nil
+}
+
+func scoreEvaluation(
+	cases []GoldenCase,
+	observations []CaseObservation,
+	criteria Criteria,
+	profile Profile,
+	costs ProviderCosts,
+) (scoredEvaluation, error) {
+	evaluated, err := evaluateCases(cases, observations, criteria)
+	if err != nil {
+		return scoredEvaluation{}, err
+	}
+	failures := profileFailures(evaluated, criteria)
+	costRatio := float64(costs.MemoryProviderCostMicrounits) /
+		float64(costs.ChatProviderCostMicrounits)
+	costPassed := providerCostWithinV1Limit(
+		costs.MemoryProviderCostMicrounits,
+		costs.ChatProviderCostMicrounits,
+	)
+	if !costPassed {
+		failures = append(failures, "Memory provider cost ratio exceeds criterion")
+	}
+
+	slices := make(map[string]SliceResult, len(criticalSlices))
+	for _, name := range criticalSlices {
+		selectedCases, selectedObservations := selectSlice(cases, observations, name)
+		sliceProfile, err := evaluateCases(selectedCases, selectedObservations, criteria)
+		if err != nil {
+			return scoredEvaluation{}, err
+		}
+		sliceFailures := profileFailures(sliceProfile, criteria)
+		sort.Strings(sliceFailures)
+		slices[name] = SliceResult{
+			Cases:              len(selectedCases),
+			Metrics:            sliceProfile.metrics,
+			RankingDiagnostics: sliceProfile.ranking,
+			Budgets:            sliceProfile.budgets,
+			Safety:             sliceProfile.safety,
+			Passed:             len(sliceFailures) == 0,
+			Failures:           sliceFailures,
+		}
+		for _, failure := range sliceFailures {
+			failures = append(failures, name+": "+failure)
+		}
+	}
+	sort.Strings(failures)
+	return scoredEvaluation{
+		profile: ProfileSummary{
+			ProfileID:          profile.ID,
+			ProfileRole:        profile.Role,
+			ReaderVersion:      profile.ReaderVersion,
+			Metrics:            evaluated.metrics,
+			RankingDiagnostics: evaluated.ranking,
+			Budgets:            evaluated.budgets,
+			Safety:             evaluated.safety,
 			ProviderCostRatio:  costRatio,
 			ProviderCostPassed: costPassed,
 		},
-		Slices:   slices,
-		Failures: failures,
+		slices:   slices,
+		failures: failures,
 	}, nil
 }
 

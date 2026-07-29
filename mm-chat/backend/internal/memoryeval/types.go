@@ -4,11 +4,18 @@
 package memoryeval
 
 const (
-	GoldenSchemaVersion      = "neo-chat.memory-benchmark-golden.v1"
-	ObservationSchemaVersion = "neo-chat.memory-benchmark-observations.v1"
-	ReportSchemaVersion      = "neo-chat.memory-benchmark-report.v1"
-	EvaluatorVersion         = "neo-chat.memory-benchmark-evaluator.v1"
-	FreezeHashSchemaVersion  = "neo-chat.memory-benchmark-freeze-hash.v1"
+	GoldenSchemaVersion                = "neo-chat.memory-benchmark-golden.v1"
+	ObservationSchemaVersion           = "neo-chat.memory-benchmark-observations.v1"
+	ReportSchemaVersion                = "neo-chat.memory-benchmark-report.v1"
+	EvaluatorVersion                   = "neo-chat.memory-benchmark-evaluator.v1"
+	FreezeHashSchemaVersion            = "neo-chat.memory-benchmark-freeze-hash.v1"
+	RegressionCorpusSchemaVersion      = "neo-chat.memory-benchmark-regression-corpus.v1"
+	RegressionAuditSchemaVersion       = "neo-chat.memory-benchmark-regression-audit.v1"
+	RegressionObservationSchemaVersion = "neo-chat.memory-benchmark-regression-observations.v1"
+	RegressionReportSchemaVersion      = "neo-chat.memory-benchmark-regression-report.v1"
+	RegressionEvaluatorVersion         = "neo-chat.memory-benchmark-regression-evaluator.v1"
+	RegressionCorpusClass              = "machine_reviewed_regression"
+	RegressionAdmissionMode            = "regression_only"
 )
 
 var criticalSlices = [...]string{
@@ -154,6 +161,140 @@ type EvaluationInput struct {
 	GoldenRawSHA256    string
 	Observations       ObservationSet
 	ObservationsSHA256 string
+}
+
+// RegressionCorpus is deliberately separate from GoldenSet. It can exercise
+// the same scoring implementation, but it has no human-review, frozen, or
+// one-shot Holdout authority.
+type RegressionCorpus struct {
+	SchemaVersion         string                 `json:"schemaVersion"`
+	ID                    string                 `json:"id"`
+	Description           string                 `json:"description"`
+	CorpusClass           string                 `json:"corpusClass"`
+	AdmissionMode         string                 `json:"admissionMode"`
+	PromotionEligible     *bool                  `json:"promotionEligible"`
+	DataPolicy            DataPolicy             `json:"dataPolicy"`
+	FixtureManifestSHA256 string                 `json:"fixtureManifestSha256"`
+	CorpusContentSHA256   string                 `json:"corpusContentSha256"`
+	MachineAudit          RegressionAuditBinding `json:"machineAudit"`
+	Criteria              Criteria               `json:"criteria"`
+	Cases                 []GoldenCase           `json:"cases"`
+}
+
+type RegressionAuditBinding struct {
+	SchemaVersion string `json:"schemaVersion"`
+	Verdict       string `json:"verdict"`
+	Auditor       string `json:"auditor"`
+	AuditedAt     string `json:"auditedAt"`
+	ContentSHA256 string `json:"contentSha256"`
+}
+
+type RegressionAudit struct {
+	SchemaVersion         string                   `json:"schemaVersion"`
+	CorpusID              string                   `json:"corpusId"`
+	CorpusClass           string                   `json:"corpusClass"`
+	AdmissionMode         string                   `json:"admissionMode"`
+	PromotionEligible     *bool                    `json:"promotionEligible"`
+	CorpusContentSHA256   string                   `json:"corpusContentSha256"`
+	FixtureManifestSHA256 string                   `json:"fixtureManifestSha256"`
+	Auditor               string                   `json:"auditor"`
+	AuditedAt             string                   `json:"auditedAt"`
+	Verdict               string                   `json:"verdict"`
+	CaseCount             int                      `json:"caseCount"`
+	SplitCounts           RegressionSplitCounts    `json:"splitCounts"`
+	LanguageCounts        RegressionLanguageCounts `json:"languageCounts"`
+	SliceCounts           []RegressionSliceCount   `json:"sliceCounts"`
+	Semantic              RegressionSemanticAudit  `json:"semantic"`
+	ContentSHA256         string                   `json:"contentSha256"`
+}
+
+type RegressionSplitCounts struct {
+	Development int `json:"development"`
+	Validation  int `json:"validation"`
+	Holdout     int `json:"holdout"`
+}
+
+type RegressionLanguageCounts struct {
+	Chinese int `json:"zh"`
+	Mixed   int `json:"mixed"`
+	English int `json:"en"`
+}
+
+type RegressionSliceCount struct {
+	Name        string `json:"name"`
+	Total       int    `json:"total"`
+	Development int    `json:"development"`
+	Validation  int    `json:"validation"`
+	Holdout     int    `json:"holdout"`
+}
+
+type RegressionSemanticAudit struct {
+	QuerySkeletonCount             int `json:"querySkeletonCount"`
+	NormalizedDuplicateCount       int `json:"normalizedDuplicateCount"`
+	OrdinalShortcutCount           int `json:"ordinalShortcutCount"`
+	IdentifierShortcutCount        int `json:"identifierShortcutCount"`
+	FixtureBindingFailureCount     int `json:"fixtureBindingFailureCount"`
+	SliceSemanticFailureCount      int `json:"sliceSemanticFailureCount"`
+	LanguageMismatchCount          int `json:"languageMismatchCount"`
+	ScopeTextMismatchCount         int `json:"scopeTextMismatchCount"`
+	PreferenceSemanticFailureCount int `json:"preferenceSemanticFailureCount"`
+	FallbackSemanticFailureCount   int `json:"fallbackSemanticFailureCount"`
+	MultiHopSemanticFailureCount   int `json:"multiHopSemanticFailureCount"`
+}
+
+type RegressionObservationSet struct {
+	SchemaVersion         string            `json:"schemaVersion"`
+	CorpusID              string            `json:"corpusId"`
+	CorpusContentSHA256   string            `json:"corpusContentSha256"`
+	AuditContentSHA256    string            `json:"auditContentSha256"`
+	FixtureManifestSHA256 string            `json:"fixtureManifestSha256"`
+	CapturedAt            string            `json:"capturedAt"`
+	CaptureID             string            `json:"captureId"`
+	Profile               Profile           `json:"profile"`
+	Costs                 ProviderCosts     `json:"costs"`
+	Cases                 []CaseObservation `json:"cases"`
+}
+
+type RegressionEvaluationInput struct {
+	Corpus             RegressionCorpus
+	CorpusRawSHA256    string
+	Audit              RegressionAudit
+	AuditRawSHA256     string
+	Observations       RegressionObservationSet
+	ObservationsSHA256 string
+}
+
+type RegressionReport struct {
+	SchemaVersion     string                         `json:"schemaVersion"`
+	Passed            bool                           `json:"passed"`
+	PromotionEligible bool                           `json:"promotionEligible"`
+	CorpusClass       string                         `json:"corpusClass"`
+	AdmissionMode     string                         `json:"admissionMode"`
+	Evaluation        RegressionEvaluationProvenance `json:"evaluation"`
+	Corpus            RegressionCorpusSummary        `json:"corpus"`
+	Profile           ProfileSummary                 `json:"profile"`
+	Slices            map[string]SliceResult         `json:"slices"`
+	Failures          []string                       `json:"failures"`
+}
+
+type RegressionEvaluationProvenance struct {
+	EvaluatorVersion      string `json:"evaluatorVersion"`
+	CorpusRawSHA256       string `json:"corpusRawSha256"`
+	CorpusContentSHA256   string `json:"corpusContentSha256"`
+	AuditRawSHA256        string `json:"auditRawSha256"`
+	AuditContentSHA256    string `json:"auditContentSha256"`
+	ObservationsRawSHA256 string `json:"observationsRawSha256"`
+	CaptureID             string `json:"captureId"`
+	FixtureManifestSHA256 string `json:"fixtureManifestSha256"`
+}
+
+type RegressionCorpusSummary struct {
+	CorpusID         string `json:"corpusId"`
+	AuditVerdict     string `json:"auditVerdict"`
+	TotalCases       int    `json:"totalCases"`
+	DevelopmentCount int    `json:"developmentCount"`
+	ValidationCount  int    `json:"validationCount"`
+	HoldoutCount     int    `json:"holdoutCount"`
 }
 
 type Report struct {

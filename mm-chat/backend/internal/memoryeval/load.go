@@ -48,6 +48,39 @@ func DecodeObservationSet(reader io.Reader) (ObservationSet, error) {
 	return value, nil
 }
 
+func DecodeRegressionCorpus(reader io.Reader) (RegressionCorpus, error) {
+	var value RegressionCorpus
+	if err := decodeStrict(reader, &value); err != nil {
+		return RegressionCorpus{}, fmt.Errorf("decode Memory regression corpus: %w", err)
+	}
+	if err := validateRegressionCorpus(value); err != nil {
+		return RegressionCorpus{}, err
+	}
+	return value, nil
+}
+
+func DecodeRegressionAudit(reader io.Reader) (RegressionAudit, error) {
+	var value RegressionAudit
+	if err := decodeStrict(reader, &value); err != nil {
+		return RegressionAudit{}, fmt.Errorf("decode Memory regression audit: %w", err)
+	}
+	if err := validateRegressionAudit(value); err != nil {
+		return RegressionAudit{}, err
+	}
+	return value, nil
+}
+
+func DecodeRegressionObservationSet(reader io.Reader) (RegressionObservationSet, error) {
+	var value RegressionObservationSet
+	if err := decodeStrict(reader, &value); err != nil {
+		return RegressionObservationSet{}, fmt.Errorf("decode Memory regression observations: %w", err)
+	}
+	if err := validateRegressionObservationSet(value); err != nil {
+		return RegressionObservationSet{}, err
+	}
+	return value, nil
+}
+
 func decodeStrict(reader io.Reader, target any) error {
 	if reader == nil {
 		return errors.New("input is required")
@@ -147,6 +180,30 @@ func GoldenContentSHA256(value GoldenSet) (string, error) {
 	return hex.EncodeToString(digest[:]), nil
 }
 
+// RegressionCorpusContentSHA256 hashes the stable regression corpus while
+// clearing the self hash and audit content hash. The latter permits a
+// fail-closed two-way corpus/audit binding without a hash cycle.
+func RegressionCorpusContentSHA256(value RegressionCorpus) (string, error) {
+	value.CorpusContentSHA256 = ""
+	value.MachineAudit.ContentSHA256 = ""
+	body, err := json.Marshal(value)
+	if err != nil {
+		return "", fmt.Errorf("encode Memory regression corpus: %w", err)
+	}
+	digest := sha256.Sum256(body)
+	return hex.EncodeToString(digest[:]), nil
+}
+
+func RegressionAuditContentSHA256(value RegressionAudit) (string, error) {
+	value.ContentSHA256 = ""
+	body, err := json.Marshal(value)
+	if err != nil {
+		return "", fmt.Errorf("encode Memory regression audit: %w", err)
+	}
+	digest := sha256.Sum256(body)
+	return hex.EncodeToString(digest[:]), nil
+}
+
 func NewFreezeHashReport(value GoldenSet) (FreezeHashReport, error) {
 	if err := validateGoldenSet(value); err != nil {
 		return FreezeHashReport{}, err
@@ -170,4 +227,14 @@ func ValidateGoldenAdmission(value GoldenSet) error {
 		return err
 	}
 	return validateGoldenAdmission(value)
+}
+
+func ValidateRegressionAdmission(corpus RegressionCorpus, audit RegressionAudit) error {
+	if err := validateRegressionCorpus(corpus); err != nil {
+		return err
+	}
+	if err := validateRegressionAudit(audit); err != nil {
+		return err
+	}
+	return validateRegressionAdmission(corpus, audit)
 }

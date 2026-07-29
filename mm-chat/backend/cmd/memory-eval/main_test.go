@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"neo-chat/mm-chat/backend/internal/memoryauthor"
 	"neo-chat/mm-chat/backend/internal/memoryeval"
 )
 
@@ -42,10 +43,104 @@ func TestRunRequiresClosedEvaluationInputs(t *testing.T) {
 		{"-golden", "golden.json"},
 		{"-golden", "golden.json", "-observations", "observations.json"},
 		{"-golden", "golden.json", "-print-freeze-hash", "-output", "report.json"},
+		{"-regression-corpus", "corpus.json", "-observations", "observations.json", "-output", "report.json"},
+		{"-golden", "golden.json", "-regression-corpus", "corpus.json", "-regression-audit", "audit.json", "-observations", "observations.json", "-output", "report.json"},
 	} {
 		if err := run(args, &bytes.Buffer{}); err == nil {
 			t.Fatalf("run(%q) error = nil", args)
 		}
+	}
+}
+
+func TestRunRegressionEvaluationPublishesExplicitNonPromotionalReport(t *testing.T) {
+	pool, err := memoryauthor.GenerateRegression()
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := t.TempDir()
+	corpusPath := filepath.Join(directory, "corpus.json")
+	auditPath := filepath.Join(directory, "audit.json")
+	observationsPath := filepath.Join(directory, "observations.json")
+	outputPath := filepath.Join(directory, "report.json")
+	if err := os.WriteFile(corpusPath, pool.CorpusJSON, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(auditPath, pool.AuditJSON, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeJSON(t, observationsPath, commandRegressionObservations(pool))
+
+	var output bytes.Buffer
+	args := []string{
+		"-regression-corpus", corpusPath,
+		"-regression-audit", auditPath,
+		"-observations", observationsPath,
+		"-output", outputPath,
+	}
+	if err := run(args, &output); err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		SchemaVersion     string `json:"schemaVersion"`
+		Passed            bool   `json:"passed"`
+		PromotionEligible bool   `json:"promotionEligible"`
+	}
+	if err := json.Unmarshal(output.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if !result.Passed || result.PromotionEligible ||
+		result.SchemaVersion != "neo-chat.memory-benchmark-regression-report-output.v1" {
+		t.Fatalf("regression command output = %+v", result)
+	}
+	body, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report memoryeval.RegressionReport
+	if err := json.Unmarshal(body, &report); err != nil {
+		t.Fatal(err)
+	}
+	if !report.Passed || report.PromotionEligible ||
+		report.AdmissionMode != memoryeval.RegressionAdmissionMode {
+		t.Fatalf("regression report = %+v", report)
+	}
+	before := append([]byte(nil), body...)
+	if err := run(args, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("second regression evaluation error = %v", err)
+	}
+	after, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("existing regression report changed after refused overwrite")
+	}
+
+	failing := commandRegressionObservations(pool)
+	for index := range failing.Cases {
+		failing.Cases[index].FinalMemoryIDs = nil
+		failing.Cases[index].InjectedMemoryIDs = nil
+	}
+	failingObservationsPath := filepath.Join(directory, "failing-observations.json")
+	failingOutputPath := filepath.Join(directory, "failing-report.json")
+	writeJSON(t, failingObservationsPath, failing)
+	if err := run([]string{
+		"-regression-corpus", corpusPath,
+		"-regression-audit", auditPath,
+		"-observations", failingObservationsPath,
+		"-output", failingOutputPath,
+	}, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "gate failed") {
+		t.Fatalf("failing regression evaluation error = %v", err)
+	}
+	failingBody, err := os.ReadFile(failingOutputPath)
+	if err != nil {
+		t.Fatalf("failed gate did not publish report: %v", err)
+	}
+	if err := json.Unmarshal(failingBody, &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.Passed || len(report.Failures) == 0 || report.PromotionEligible {
+		t.Fatalf("failed regression report = %+v", report)
 	}
 }
 
@@ -126,6 +221,48 @@ func commandDraftGolden() memoryeval.GoldenSet {
 				Review:                    memoryeval.Review{State: "draft"},
 			},
 		},
+	}
+}
+
+func commandRegressionObservations(pool memoryauthor.RegressionPool) memoryeval.RegressionObservationSet {
+	cases := make([]memoryeval.CaseObservation, 0, len(pool.Corpus.Cases))
+	for _, item := range pool.Corpus.Cases {
+		fallback := "none"
+		if item.ExpectedNoMemory {
+			fallback = "no_memory"
+		}
+		cases = append(cases, memoryeval.CaseObservation{
+			CaseID:              item.ID,
+			CandidateMemoryIDs:  append([]string(nil), item.ExpectedRelevantMemoryIDs...),
+			FinalMemoryIDs:      append([]string(nil), item.ExpectedRelevantMemoryIDs...),
+			InjectedMemoryIDs:   append([]string(nil), item.ExpectedRelevantMemoryIDs...),
+			LatencyMilliseconds: 20,
+			PromptMemoryTokens:  20 * len(item.ExpectedRelevantMemoryIDs),
+			Fallback:            fallback,
+		})
+	}
+	return memoryeval.RegressionObservationSet{
+		SchemaVersion:         memoryeval.RegressionObservationSchemaVersion,
+		CorpusID:              pool.Corpus.ID,
+		CorpusContentSHA256:   pool.Corpus.CorpusContentSHA256,
+		AuditContentSHA256:    pool.Audit.ContentSHA256,
+		FixtureManifestSHA256: pool.Corpus.FixtureManifestSHA256,
+		CapturedAt:            "2026-07-29T13:00:00Z",
+		CaptureID:             "33333333-3333-4333-8333-333333333333",
+		Profile: memoryeval.Profile{
+			ID:                  "command-regression-profile",
+			Role:                "baseline",
+			ReaderVersion:       "fixture-reader-v1",
+			ConfigurationSHA256: strings.Repeat("e", 64),
+			CandidateLimit:      20,
+			FinalLimit:          5,
+		},
+		Costs: memoryeval.ProviderCosts{
+			Unit:                         "synthetic-microunit",
+			MemoryProviderCostMicrounits: 1,
+			ChatProviderCostMicrounits:   100,
+		},
+		Cases: cases,
 	}
 }
 
