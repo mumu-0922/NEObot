@@ -1110,3 +1110,38 @@ Delivered the deterministic 650-case Memory benchmark authoring toolchain, prote
 ### Next Steps
 
 - None - task complete
+
+
+## Session 23: Memory v2 regression benchmark delivery
+
+**Date**: 2026-07-29
+**Task**: Memory v2 regression benchmark delivery
+**Branch**: `main`
+
+### Summary
+
+Rebuilt the compromised Memory review corpus as an isolated 500-case machine-reviewed regression benchmark, preserved the v1 evidence chain, kept formal Golden admission unchanged, documented the non-promotion contract, and passed focused, backend, security, quality, replay, and full standalone verification.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `59c11e7` | (see git log) |
+| `7e41f27` | (see git log) |
+| `5a7471f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
