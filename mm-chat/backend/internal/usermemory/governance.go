@@ -41,15 +41,23 @@ type L2SceneGovernanceRepository interface {
 	RebuildGovernanceL2Scenes(context.Context) (L2SceneRebuildResult, error)
 }
 
+type L3PersonaGovernanceRepository interface {
+	GovernanceL3PersonaDetail(context.Context, string) (L3PersonaGovernanceDetail, error)
+	SetGovernanceL3PersonaEnabled(context.Context, L3PersonaEnabledInput) (L3PersonaGovernancePersona, error)
+	RebuildGovernanceL3Persona(context.Context, string) (L3PersonaRebuildResult, error)
+	RebuildGovernanceL3Personas(context.Context) (L3PersonaRebuildResult, error)
+}
+
 type GovernanceSnapshot struct {
-	Settings      Settings                   `json:"settings"`
-	Projects      []MemoryProject            `json:"projects"`
-	Conversations []ConversationMemoryPolicy `json:"conversations"`
-	Memories      []GovernanceMemory         `json:"memories"`
-	Reviews       []MemoryReviewSuggestion   `json:"reviews"`
-	Deletions     []MemoryDeletionProgress   `json:"deletions"`
-	Diagnostics   []MemorySearchDiagnostic   `json:"diagnostics"`
-	L2Scene       *L2SceneGovernanceSnapshot `json:"l2Scene,omitempty"`
+	Settings      Settings                     `json:"settings"`
+	Projects      []MemoryProject              `json:"projects"`
+	Conversations []ConversationMemoryPolicy   `json:"conversations"`
+	Memories      []GovernanceMemory           `json:"memories"`
+	Reviews       []MemoryReviewSuggestion     `json:"reviews"`
+	Deletions     []MemoryDeletionProgress     `json:"deletions"`
+	Diagnostics   []MemorySearchDiagnostic     `json:"diagnostics"`
+	L2Scene       *L2SceneGovernanceSnapshot   `json:"l2Scene,omitempty"`
+	L3Persona     *L3PersonaGovernanceSnapshot `json:"l3Persona,omitempty"`
 }
 
 type L2SceneGovernanceSnapshot struct {
@@ -115,6 +123,73 @@ type L2SceneEnabledInput struct {
 }
 
 type L2SceneRebuildResult struct {
+	JobID      string `json:"jobId,omitempty"`
+	Generation int64  `json:"generation"`
+	JobCount   int    `json:"jobCount,omitempty"`
+}
+
+type L3PersonaGovernanceSnapshot struct {
+	Profile L3PersonaGovernanceProfile  `json:"profile"`
+	Persona *L3PersonaGovernancePersona `json:"persona,omitempty"`
+}
+
+type L3PersonaGovernanceProfile struct {
+	ProfileID          string `json:"profileId"`
+	SynthesisProfileID string `json:"synthesisProfileId"`
+	RetrievalProfileID string `json:"retrievalProfileId"`
+	Status             string `json:"status"`
+	Generation         int64  `json:"generation"`
+	L1ReaderReady      bool   `json:"l1ReaderReady"`
+	Active             bool   `json:"active"`
+	ActivatedAt        *int64 `json:"activatedAt,omitempty"`
+	RolledBackAt       *int64 `json:"rolledBackAt,omitempty"`
+}
+
+type L3PersonaGovernancePersona struct {
+	ID                     string `json:"id"`
+	Content                string `json:"content"`
+	ContentHash            string `json:"contentHash"`
+	TokenCount             int    `json:"tokenCount"`
+	Sensitivity            string `json:"sensitivity"`
+	SensitiveInputIncluded bool   `json:"sensitiveInputIncluded"`
+	Status                 string `json:"status"`
+	UserDisabled           bool   `json:"userDisabled"`
+	ProfileID              string `json:"profileId"`
+	Generation             int64  `json:"generation"`
+	SourceWatermark        string `json:"sourceWatermark"`
+	Revision               int64  `json:"revision"`
+	MemberCount            int    `json:"memberCount"`
+	SourcesCurrent         bool   `json:"sourcesCurrent"`
+	CreatedAt              int64  `json:"createdAt"`
+	UpdatedAt              int64  `json:"updatedAt"`
+	ActivatedAt            *int64 `json:"activatedAt,omitempty"`
+	DisabledAt             *int64 `json:"disabledAt,omitempty"`
+	StaleAt                *int64 `json:"staleAt,omitempty"`
+	PurgeAfter             *int64 `json:"purgeAfter,omitempty"`
+}
+
+type L3PersonaGovernanceMember struct {
+	MemoryID      string            `json:"memoryId"`
+	Revision      int64             `json:"revision"`
+	ContentHash   string            `json:"contentHash"`
+	Current       bool              `json:"current"`
+	SourceDeleted bool              `json:"sourceDeleted"`
+	Memory        *GovernanceMemory `json:"memory,omitempty"`
+	Evidence      []MemoryEvidence  `json:"evidence"`
+}
+
+type L3PersonaGovernanceDetail struct {
+	Persona L3PersonaGovernancePersona  `json:"persona"`
+	Members []L3PersonaGovernanceMember `json:"members"`
+}
+
+type L3PersonaEnabledInput struct {
+	PersonaID        string
+	ExpectedRevision int64
+	Enabled          bool
+}
+
+type L3PersonaRebuildResult struct {
 	JobID      string `json:"jobId,omitempty"`
 	Generation int64  `json:"generation"`
 	JobCount   int    `json:"jobCount,omitempty"`
@@ -552,6 +627,70 @@ func (s *Service) RebuildGovernanceL2Scenes(
 	return repo.RebuildGovernanceL2Scenes(ctx)
 }
 
+func (s *Service) GovernanceL3PersonaDetail(
+	ctx context.Context,
+	personaID string,
+) (L3PersonaGovernanceDetail, error) {
+	repo, err := s.l3PersonaGovernanceRepository()
+	if err != nil {
+		return L3PersonaGovernanceDetail{}, err
+	}
+	personaID = strings.TrimSpace(personaID)
+	if !uuidRE.MatchString(personaID) {
+		return L3PersonaGovernanceDetail{}, validation(
+			"INVALID_MEMORY_L3_PERSONA_ID",
+			"memory L3 Persona id must be a UUID",
+		)
+	}
+	return repo.GovernanceL3PersonaDetail(ctx, personaID)
+}
+
+func (s *Service) SetGovernanceL3PersonaEnabled(
+	ctx context.Context,
+	input L3PersonaEnabledInput,
+) (L3PersonaGovernancePersona, error) {
+	repo, err := s.l3PersonaGovernanceRepository()
+	if err != nil {
+		return L3PersonaGovernancePersona{}, err
+	}
+	input.PersonaID = strings.TrimSpace(input.PersonaID)
+	if !uuidRE.MatchString(input.PersonaID) || input.ExpectedRevision < 1 {
+		return L3PersonaGovernancePersona{}, validation(
+			"INVALID_MEMORY_L3_PERSONA_REVISION",
+			"memory L3 Persona id or revision is invalid",
+		)
+	}
+	return repo.SetGovernanceL3PersonaEnabled(ctx, input)
+}
+
+func (s *Service) RebuildGovernanceL3Persona(
+	ctx context.Context,
+	personaID string,
+) (L3PersonaRebuildResult, error) {
+	repo, err := s.l3PersonaGovernanceRepository()
+	if err != nil {
+		return L3PersonaRebuildResult{}, err
+	}
+	personaID = strings.TrimSpace(personaID)
+	if !uuidRE.MatchString(personaID) {
+		return L3PersonaRebuildResult{}, validation(
+			"INVALID_MEMORY_L3_PERSONA_ID",
+			"memory L3 Persona id must be a UUID",
+		)
+	}
+	return repo.RebuildGovernanceL3Persona(ctx, personaID)
+}
+
+func (s *Service) RebuildGovernanceL3Personas(
+	ctx context.Context,
+) (L3PersonaRebuildResult, error) {
+	repo, err := s.l3PersonaGovernanceRepository()
+	if err != nil {
+		return L3PersonaRebuildResult{}, err
+	}
+	return repo.RebuildGovernanceL3Personas(ctx)
+}
+
 func (s *Service) DecideMemoryReview(ctx context.Context, input MemoryReviewDecisionInput) (MemoryReviewDecisionResult, error) {
 	repo, err := s.governanceRepository()
 	if err != nil {
@@ -622,6 +761,17 @@ func (s *Service) l2SceneGovernanceRepository() (L2SceneGovernanceRepository, er
 		return nil, err
 	}
 	repo, ok := s.repo.(L2SceneGovernanceRepository)
+	if !ok {
+		return nil, ErrGovernanceRepositoryRequired
+	}
+	return repo, nil
+}
+
+func (s *Service) l3PersonaGovernanceRepository() (L3PersonaGovernanceRepository, error) {
+	if err := s.requireRepository(); err != nil {
+		return nil, err
+	}
+	repo, ok := s.repo.(L3PersonaGovernanceRepository)
 	if !ok {
 		return nil, ErrGovernanceRepositoryRequired
 	}

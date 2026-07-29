@@ -64,6 +64,18 @@ export function createLocalMemoryApiShell(): MemoryApi {
     async rebuildL2Scenes() {
       throw unsupportedFeature("server memory governance");
     },
+    async getL3PersonaDetail() {
+      throw unsupportedFeature("server L3 Persona governance");
+    },
+    async setL3PersonaEnabled() {
+      throw unsupportedFeature("server L3 Persona governance");
+    },
+    async rebuildL3Persona() {
+      throw unsupportedFeature("server L3 Persona governance");
+    },
+    async rebuildL3Personas() {
+      throw unsupportedFeature("server L3 Persona governance");
+    },
     async listMemoryReviews() {
       throw unsupportedFeature("server memory governance");
     },

@@ -38,6 +38,11 @@ type l2SceneEnabledRequest struct {
 	Enabled          *bool `json:"enabled"`
 }
 
+type l3PersonaEnabledRequest struct {
+	ExpectedRevision int64 `json:"expectedRevision"`
+	Enabled          *bool `json:"enabled"`
+}
+
 func (h *Handler) handleGovernance(w http.ResponseWriter, r *http.Request) {
 	if h == nil || h.service == nil {
 		writeServiceError(w, ErrDatabaseRequired)
@@ -122,6 +127,77 @@ func (h *Handler) handleGovernance(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			result, err := h.service.RebuildGovernanceL2Scene(r.Context(), parts[1])
+			if err != nil {
+				writeServiceError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, result)
+			return
+		}
+	}
+	if len(parts) == 2 && parts[0] == "personas" && parts[1] == "rebuild" {
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w, http.MethodPost)
+			return
+		}
+		result, err := h.service.RebuildGovernanceL3Personas(r.Context())
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+		return
+	}
+	if len(parts) == 3 && parts[0] == "personas" && parts[1] != "" {
+		switch parts[2] {
+		case "details":
+			if r.Method != http.MethodGet {
+				methodNotAllowed(w, http.MethodGet)
+				return
+			}
+			detail, err := h.service.GovernanceL3PersonaDetail(r.Context(), parts[1])
+			if err != nil {
+				writeServiceError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, detail)
+			return
+		case "enabled":
+			if r.Method != http.MethodPost {
+				methodNotAllowed(w, http.MethodPost)
+				return
+			}
+			var request l3PersonaEnabledRequest
+			if err := decodeJSON(r, &request); err != nil {
+				writeDecodeError(w, err)
+				return
+			}
+			if request.Enabled == nil {
+				writeServiceError(w, validation(
+					"INVALID_MEMORY_L3_PERSONA_ENABLED",
+					"memory L3 Persona enabled value is required",
+				))
+				return
+			}
+			persona, err := h.service.SetGovernanceL3PersonaEnabled(
+				r.Context(),
+				L3PersonaEnabledInput{
+					PersonaID: parts[1], ExpectedRevision: request.ExpectedRevision,
+					Enabled: *request.Enabled,
+				},
+			)
+			if err != nil {
+				writeServiceError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, persona)
+			return
+		case "rebuild":
+			if r.Method != http.MethodPost {
+				methodNotAllowed(w, http.MethodPost)
+				return
+			}
+			result, err := h.service.RebuildGovernanceL3Persona(r.Context(), parts[1])
 			if err != nil {
 				writeServiceError(w, err)
 				return

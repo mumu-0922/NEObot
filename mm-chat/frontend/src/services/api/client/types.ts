@@ -7,6 +7,9 @@ import type {
   L2SceneGovernanceDetail,
   L2SceneGovernanceScene,
   L2SceneRebuildResult,
+  L3PersonaGovernanceDetail,
+  L3PersonaGovernancePersona,
+  L3PersonaRebuildResult,
   MemoryActivity,
   MemoryDeletionProgress,
   MemoryGovernanceSnapshot,
@@ -1247,6 +1250,13 @@ export interface SetL2SceneEnabledInput {
   signal?: AbortSignal;
 }
 
+export interface SetL3PersonaEnabledInput {
+  personaId: string;
+  expectedRevision: number;
+  enabled: boolean;
+  signal?: AbortSignal;
+}
+
 export type MemoryImportPlanResult =
   "NOOP" | "ADD" | "REVIEW" | "REJECT" | "SCOPE_REQUIRED";
 
@@ -1377,6 +1387,20 @@ export interface MemoryApi {
   rebuildL2Scenes(input?: {
     signal?: AbortSignal;
   }): Promise<L2SceneRebuildResult>;
+  getL3PersonaDetail(input: {
+    personaId: string;
+    signal?: AbortSignal;
+  }): Promise<L3PersonaGovernanceDetail>;
+  setL3PersonaEnabled(
+    input: SetL3PersonaEnabledInput,
+  ): Promise<L3PersonaGovernancePersona>;
+  rebuildL3Persona(input: {
+    personaId: string;
+    signal?: AbortSignal;
+  }): Promise<L3PersonaRebuildResult>;
+  rebuildL3Personas(input?: {
+    signal?: AbortSignal;
+  }): Promise<L3PersonaRebuildResult>;
   listMemoryReviews(input?: {
     signal?: AbortSignal;
   }): Promise<MemoryReviewSuggestion[]>;

@@ -191,6 +191,31 @@ describe("server durable memory API", () => {
         if (url.endsWith("/v1/memory-governance/scenes/rebuild")) {
           return jsonResponse({ generation: 3, jobCount: 1 });
         }
+        if (url.endsWith("/v1/memory-governance/personas/persona-1/details")) {
+          return jsonResponse({
+            persona: l3Persona(),
+            members: [
+              {
+                memoryId: "memory-1",
+                revision: 1,
+                contentHash: "a".repeat(64),
+                current: true,
+                sourceDeleted: false,
+                memory: governanceMemory(),
+                evidence: [],
+              },
+            ],
+          });
+        }
+        if (url.endsWith("/v1/memory-governance/personas/persona-1/enabled")) {
+          return jsonResponse({ ...l3Persona(), status: "disabled" });
+        }
+        if (url.endsWith("/v1/memory-governance/personas/persona-1/rebuild")) {
+          return jsonResponse({ jobId: "job-2", generation: 4 });
+        }
+        if (url.endsWith("/v1/memory-governance/personas/rebuild")) {
+          return jsonResponse({ generation: 5, jobCount: 1 });
+        }
         if (url.includes("/v1/memory-reviews/review-1/decision")) {
           return jsonResponse({
             suggestionId: "review-1",
@@ -269,6 +294,16 @@ describe("server durable memory API", () => {
     });
     await memories.rebuildL2Scene({ sceneId: "scene-1" });
     await memories.rebuildL2Scenes();
+    await expect(
+      memories.getL3PersonaDetail({ personaId: "persona-1" }),
+    ).resolves.toMatchObject({ persona: { id: "persona-1" } });
+    await memories.setL3PersonaEnabled({
+      personaId: "persona-1",
+      expectedRevision: 1,
+      enabled: false,
+    });
+    await memories.rebuildL3Persona({ personaId: "persona-1" });
+    await memories.rebuildL3Personas();
     await memories.decideMemoryReview({
       suggestionId: "review-1",
       decision: "reject",
@@ -295,6 +330,11 @@ describe("server durable memory API", () => {
     });
     expect(requests).toContainEqual({
       url: "/mm-api/v1/memory-governance/scenes/scene-1/enabled",
+      method: "POST",
+      body: { expectedRevision: 1, enabled: false },
+    });
+    expect(requests).toContainEqual({
+      url: "/mm-api/v1/memory-governance/personas/persona-1/enabled",
       method: "POST",
       body: { expectedRevision: 1, enabled: false },
     });
@@ -338,6 +378,9 @@ describe("server durable memory API", () => {
     });
     await expect(
       client.memories.getL2SceneDetail({ sceneId: "scene-1" }),
+    ).rejects.toMatchObject({ code: "FEATURE_NOT_IMPLEMENTED" });
+    await expect(
+      client.memories.getL3PersonaDetail({ personaId: "persona-1" }),
     ).rejects.toMatchObject({ code: "FEATURE_NOT_IMPLEMENTED" });
   });
 
@@ -559,6 +602,18 @@ function governanceSnapshot() {
       },
       scenes: [l2Scene()],
     },
+    l3Persona: {
+      profile: {
+        profileId: "memory_l3_persona_v1",
+        synthesisProfileId: "memory_l3_persona_synthesis_v1",
+        retrievalProfileId: "memory_l3_persona_hybrid_bge_m3_rrf60_v1",
+        status: "shadow",
+        generation: 1,
+        l1ReaderReady: false,
+        active: false,
+      },
+      persona: l3Persona(),
+    },
   };
 }
 
@@ -577,6 +632,27 @@ function l2Scene() {
     profileId: "memory_l2_scene_v1",
     generation: 1,
     sourceWatermark: "c".repeat(64),
+    revision: 1,
+    memberCount: 2,
+    sourcesCurrent: true,
+    createdAt: 1,
+    updatedAt: 1,
+  };
+}
+
+function l3Persona() {
+  return {
+    id: "persona-1",
+    content: "The user prefers concise technical answers.",
+    contentHash: "d".repeat(64),
+    tokenCount: 40,
+    sensitivity: "normal",
+    sensitiveInputIncluded: false,
+    status: "shadow",
+    userDisabled: false,
+    profileId: "memory_l3_persona_v1",
+    generation: 1,
+    sourceWatermark: "e".repeat(64),
     revision: 1,
     memberCount: 2,
     sourcesCurrent: true,

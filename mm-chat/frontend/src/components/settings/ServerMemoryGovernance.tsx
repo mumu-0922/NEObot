@@ -31,6 +31,8 @@ import type {
   GovernanceMemoryDetail,
   L2SceneGovernanceDetail,
   L2SceneGovernanceScene,
+  L3PersonaGovernanceDetail,
+  L3PersonaGovernancePersona,
   MemoryGovernanceSnapshot,
   MemoryPolicyMode,
   MemoryProject,
@@ -54,7 +56,8 @@ interface ServerMemoryGovernanceProps {
   apiClient: NeoChatApiClient;
 }
 
-type Section = "memories" | "projects" | "scenes" | "reviews" | "operations";
+type Section =
+  "memories" | "projects" | "scenes" | "persona" | "reviews" | "operations";
 
 interface MemoryDraft {
   id?: string;
@@ -141,11 +144,17 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
   const [sceneDetailLoadingId, setSceneDetailLoadingId] = useState<
     string | null
   >(null);
+  const [personaDetail, setPersonaDetail] =
+    useState<L3PersonaGovernanceDetail | null>(null);
+  const [personaDetailLoadingId, setPersonaDetailLoadingId] = useState<
+    string | null
+  >(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, string>>({});
   const loadVersionRef = useRef(0);
   const detailLoadVersionRef = useRef(0);
   const sceneDetailLoadVersionRef = useRef(0);
+  const personaDetailLoadVersionRef = useRef(0);
   const mutationInFlightRef = useRef(false);
 
   const load = useCallback(
@@ -349,6 +358,55 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
   const rebuildScenes = async () => {
     const ok = await mutate(() => apiClient.memories.rebuildL2Scenes());
     if (ok) closeSceneDetail();
+  };
+
+  const loadPersonaDetail = async (personaId: string) => {
+    const loadVersion = ++personaDetailLoadVersionRef.current;
+    setPersonaDetailLoadingId(personaId);
+    setError(null);
+    try {
+      const next = await apiClient.memories.getL3PersonaDetail({ personaId });
+      if (loadVersion === personaDetailLoadVersionRef.current) {
+        setPersonaDetail(next);
+      }
+    } catch (nextError) {
+      if (loadVersion === personaDetailLoadVersionRef.current) {
+        setError(errorMessage(nextError, t("requestFailed")));
+      }
+    } finally {
+      if (loadVersion === personaDetailLoadVersionRef.current) {
+        setPersonaDetailLoadingId(null);
+      }
+    }
+  };
+
+  const closePersonaDetail = () => {
+    personaDetailLoadVersionRef.current += 1;
+    setPersonaDetailLoadingId(null);
+    setPersonaDetail(null);
+  };
+
+  const togglePersona = async (persona: L3PersonaGovernancePersona) => {
+    const ok = await mutate(() =>
+      apiClient.memories.setL3PersonaEnabled({
+        personaId: persona.id,
+        expectedRevision: persona.revision,
+        enabled: persona.userDisabled,
+      }),
+    );
+    if (ok && personaDetail?.persona.id === persona.id) closePersonaDetail();
+  };
+
+  const rebuildPersona = async (personaId: string) => {
+    const ok = await mutate(() =>
+      apiClient.memories.rebuildL3Persona({ personaId }),
+    );
+    if (ok && personaDetail?.persona.id === personaId) closePersonaDetail();
+  };
+
+  const rebuildPersonas = async () => {
+    const ok = await mutate(() => apiClient.memories.rebuildL3Personas());
+    if (ok) closePersonaDetail();
   };
 
   const saveProject = async () => {
@@ -557,6 +615,7 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
             "memories",
             "projects",
             "scenes",
+            "persona",
             "reviews",
             "operations",
           ] as Section[]
@@ -1224,6 +1283,160 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
         </div>
       )}
 
+      {section === "persona" && (
+        <div className="space-y-4">
+          {!snapshot.l3Persona ? (
+            <EmptyState text={t("l3PersonaUnavailable")} />
+          ) : (
+            <>
+              <section
+                aria-label={t("l3PersonaProfile")}
+                className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 lg:flex-row lg:items-center lg:justify-between"
+              >
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="font-semibold text-foreground">
+                      {t("l3PersonaProfile")}
+                    </h4>
+                    <Badge>{snapshot.l3Persona.profile.status}</Badge>
+                    <Badge>
+                      {t("l3Generation", {
+                        generation: snapshot.l3Persona.profile.generation,
+                      })}
+                    </Badge>
+                    <Badge
+                      tone={
+                        snapshot.l3Persona.profile.l1ReaderReady
+                          ? "default"
+                          : "amber"
+                      }
+                    >
+                      {snapshot.l3Persona.profile.l1ReaderReady
+                        ? t("l1ReaderReady")
+                        : t("l1ReaderNotReady")}
+                    </Badge>
+                  </div>
+                  <p className="mt-2 max-w-3xl text-xs leading-relaxed text-muted-foreground">
+                    {t("l3PersonaDerivedNotice")}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void rebuildPersonas()}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                >
+                  <RefreshCw size={14} aria-hidden />
+                  {t("rebuildPersona")}
+                </button>
+              </section>
+
+              <section aria-label={t("l3Persona")} className="space-y-3">
+                {!snapshot.l3Persona.persona ? (
+                  <EmptyState text={t("noL3Persona")} />
+                ) : (
+                  <article className="rounded-xl border border-border bg-card p-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap gap-1.5 text-[11px]">
+                          <Badge
+                            tone={
+                              snapshot.l3Persona.persona.status === "stale"
+                                ? "amber"
+                                : "default"
+                            }
+                          >
+                            {snapshot.l3Persona.persona.status}
+                          </Badge>
+                          <Badge>
+                            {snapshot.l3Persona.persona.sensitivity}
+                          </Badge>
+                          <Badge>
+                            {t("personaTokens", {
+                              count: snapshot.l3Persona.persona.tokenCount,
+                            })}
+                          </Badge>
+                          {snapshot.l3Persona.persona
+                            .sensitiveInputIncluded && (
+                            <Badge tone="amber">
+                              {t("personaSensitiveInput")}
+                            </Badge>
+                          )}
+                          {!snapshot.l3Persona.persona.sourcesCurrent && (
+                            <Badge tone="amber">{t("sourcesChanged")}</Badge>
+                          )}
+                        </div>
+                        <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
+                          {snapshot.l3Persona.persona.content}
+                        </p>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {t("personaMembers", {
+                            count: snapshot.l3Persona.persona.memberCount,
+                          })}{" "}
+                          · r{snapshot.l3Persona.persona.revision} ·{" "}
+                          {formatDate(snapshot.l3Persona.persona.updatedAt)}
+                        </p>
+                        <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
+                          {t("sourceWatermark")}:{" "}
+                          {snapshot.l3Persona.persona.sourceWatermark}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={() =>
+                            void rebuildPersona(
+                              snapshot.l3Persona?.persona?.id ?? "",
+                            )
+                          }
+                          className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                        >
+                          <RefreshCw size={14} aria-hidden />
+                          {t("rebuildPersona")}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={() => {
+                            const persona = snapshot.l3Persona?.persona;
+                            if (persona) void togglePersona(persona);
+                          }}
+                          className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                        >
+                          {snapshot.l3Persona.persona.userDisabled
+                            ? t("enablePersona")
+                            : t("disablePersona")}
+                        </button>
+                        <IconButton
+                          label={t("personaDetails")}
+                          disabled={
+                            personaDetailLoadingId ===
+                            snapshot.l3Persona.persona.id
+                          }
+                          onClick={() =>
+                            void loadPersonaDetail(
+                              snapshot.l3Persona?.persona?.id ?? "",
+                            )
+                          }
+                        >
+                          {personaDetailLoadingId ===
+                          snapshot.l3Persona.persona.id ? (
+                            <Loader2 size={15} className="animate-spin" />
+                          ) : (
+                            <History size={15} />
+                          )}
+                        </IconButton>
+                      </div>
+                    </div>
+                  </article>
+                )}
+              </section>
+            </>
+          )}
+        </div>
+      )}
+
       {section === "operations" && (
         <div className="grid gap-4 lg:grid-cols-2">
           <MemoryPortabilityPanel
@@ -1315,6 +1528,18 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
           onCorrect={(memory) => {
             editMemory(memory);
             closeSceneDetail();
+          }}
+          t={t}
+        />
+      )}
+
+      {personaDetail && (
+        <L3PersonaDetailPanel
+          detail={personaDetail}
+          onClose={closePersonaDetail}
+          onCorrect={(memory) => {
+            editMemory(memory);
+            closePersonaDetail();
           }}
           t={t}
         />
@@ -2085,6 +2310,114 @@ function L2SceneDetailPanel({
                     <Badge tone={member.current ? "default" : "amber"}>
                       {member.current ? t("sourceCurrent") : t("sourceChanged")}
                     </Badge>
+                    <Badge>r{member.revision}</Badge>
+                  </div>
+                  <p className="mt-2 text-sm text-foreground">
+                    {member.current && member.memory
+                      ? member.memory.content
+                      : t("sourceUnavailable")}
+                  </p>
+                  <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
+                    {member.memoryId}
+                  </p>
+                </div>
+                {member.current && member.memory && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (member.memory) onCorrect(member.memory);
+                    }}
+                    className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <Pencil size={14} aria-hidden />
+                    {t("correctSourceMemory")}
+                  </button>
+                )}
+              </div>
+              <ul className="mt-3 space-y-2 border-t border-border pt-3 text-xs text-muted-foreground">
+                {member.evidence.length === 0 ? (
+                  <li>{t("noEvidence")}</li>
+                ) : (
+                  member.evidence.map((evidence) => (
+                    <li key={`${evidence.messageId}:${evidence.role}`}>
+                      <strong>{evidence.role}</strong> ·{" "}
+                      {evidence.conversationTitle || evidence.conversationId}
+                      <br />
+                      {evidence.sourceDeleted
+                        ? t("sourceDeleted")
+                        : evidence.sourceExcerpt || t("sourceUnavailable")}
+                    </li>
+                  ))
+                )}
+              </ul>
+            </article>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function L3PersonaDetailPanel({
+  detail,
+  onClose,
+  onCorrect,
+  t,
+}: {
+  detail: L3PersonaGovernanceDetail;
+  onClose: () => void;
+  onCorrect: (memory: GovernanceMemory) => void;
+  t: ReturnType<typeof useTranslations<"Memory">>;
+}) {
+  return (
+    <section
+      aria-label={t("personaDetails")}
+      className="rounded-xl border border-cyan-200 bg-cyan-50/40 p-4 dark:border-cyan-900/60 dark:bg-cyan-950/10"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap gap-1.5 text-[11px]">
+            <Badge>{detail.persona.status}</Badge>
+            <Badge>{detail.persona.sensitivity}</Badge>
+            <Badge>
+              {t("personaTokens", { count: detail.persona.tokenCount })}
+            </Badge>
+            <Badge>
+              {t("personaMembers", { count: detail.persona.memberCount })}
+            </Badge>
+          </div>
+          <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">
+            {detail.persona.content}
+          </p>
+        </div>
+        <IconButton label={t("closePersonaDetails")} onClick={onClose}>
+          <X size={16} />
+        </IconButton>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <h5 className="text-sm font-semibold text-foreground">
+          {t("personaSources")}
+        </h5>
+        {detail.members.length === 0 ? (
+          <p className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">
+            {t("noPersonaSources")}
+          </p>
+        ) : (
+          detail.members.map((member) => (
+            <article
+              key={`${member.memoryId}:${member.revision}`}
+              className="rounded-lg border border-border bg-background p-3"
+            >
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap gap-1.5 text-[11px]">
+                    <Badge tone={member.current ? "default" : "amber"}>
+                      {member.current ? t("sourceCurrent") : t("sourceChanged")}
+                    </Badge>
+                    {member.sourceDeleted && (
+                      <Badge tone="amber">{t("sourceDeleted")}</Badge>
+                    )}
                     <Badge>r{member.revision}</Badge>
                   </div>
                   <p className="mt-2 text-sm text-foreground">

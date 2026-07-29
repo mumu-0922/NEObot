@@ -173,6 +173,39 @@ func TestGovernanceHandlerRoutesAndErrors(t *testing.T) {
 		t.Fatalf("Scene enabled response = %d %s input=%#v",
 			response.Code, response.Body.String(), repo.l2Enabled)
 	}
+	response = serveMemoryRequest(t, handler, http.MethodGet,
+		memoryGovernancePath+"/personas/"+governanceMemoryID+"/details", "")
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), governanceMemoryID) {
+		t.Fatalf("Persona detail response = %d %s", response.Code, response.Body.String())
+	}
+	response = serveMemoryRequest(t, handler, http.MethodPost,
+		memoryGovernancePath+"/personas/"+governanceMemoryID+"/enabled",
+		`{"expectedRevision":3,"enabled":false}`)
+	if response.Code != http.StatusOK || repo.l3Enabled.PersonaID != governanceMemoryID ||
+		repo.l3Enabled.ExpectedRevision != 3 || repo.l3Enabled.Enabled {
+		t.Fatalf("Persona enabled response = %d %s input=%#v",
+			response.Code, response.Body.String(), repo.l3Enabled)
+	}
+	response = serveMemoryRequest(t, handler, http.MethodPost,
+		memoryGovernancePath+"/personas/"+governanceMemoryID+"/rebuild", "")
+	if response.Code != http.StatusOK || repo.l3RebuildID != governanceMemoryID {
+		t.Fatalf("Persona rebuild response = %d %s id=%q",
+			response.Code, response.Body.String(), repo.l3RebuildID)
+	}
+	response = serveMemoryRequest(t, handler, http.MethodPost,
+		memoryGovernancePath+"/personas/rebuild", "")
+	if response.Code != http.StatusOK || repo.l3RebuildAllCalls != 1 {
+		t.Fatalf("Persona rebuild-all response = %d %s calls=%d",
+			response.Code, response.Body.String(), repo.l3RebuildAllCalls)
+	}
+	response = serveMemoryRequest(t, handler, http.MethodPost,
+		memoryGovernancePath+"/personas/"+governanceMemoryID+"/enabled",
+		`{"expectedRevision":3}`)
+	if response.Code != http.StatusBadRequest ||
+		!strings.Contains(response.Body.String(), "INVALID_MEMORY_L3_PERSONA_ENABLED") {
+		t.Fatalf("missing Persona enabled response = %d %s",
+			response.Code, response.Body.String())
+	}
 	response = serveMemoryRequest(t, handler, http.MethodPost,
 		memoryGovernancePath+"/scenes/"+governanceMemoryID+"/rebuild", "")
 	if response.Code != http.StatusOK || repo.l2RebuildID != governanceMemoryID {
@@ -246,6 +279,9 @@ type governanceTestRepository struct {
 	l2Enabled          L2SceneEnabledInput
 	l2RebuildID        string
 	l2RebuildAllCalls  int
+	l3Enabled          L3PersonaEnabledInput
+	l3RebuildID        string
+	l3RebuildAllCalls  int
 }
 
 func (r *governanceTestRepository) GovernanceSnapshot(context.Context) (GovernanceSnapshot, error) {
@@ -333,5 +369,42 @@ func (r *governanceTestRepository) RebuildGovernanceL2Scenes(
 	return L2SceneRebuildResult{Generation: 3, JobCount: 1}, nil
 }
 
+func (r *governanceTestRepository) GovernanceL3PersonaDetail(
+	_ context.Context,
+	personaID string,
+) (L3PersonaGovernanceDetail, error) {
+	return L3PersonaGovernanceDetail{
+		Persona: L3PersonaGovernancePersona{ID: personaID, Revision: 3},
+		Members: []L3PersonaGovernanceMember{},
+	}, nil
+}
+
+func (r *governanceTestRepository) SetGovernanceL3PersonaEnabled(
+	_ context.Context,
+	input L3PersonaEnabledInput,
+) (L3PersonaGovernancePersona, error) {
+	r.l3Enabled = input
+	return L3PersonaGovernancePersona{
+		ID: input.PersonaID, Revision: input.ExpectedRevision + 1,
+		UserDisabled: !input.Enabled,
+	}, nil
+}
+
+func (r *governanceTestRepository) RebuildGovernanceL3Persona(
+	_ context.Context,
+	personaID string,
+) (L3PersonaRebuildResult, error) {
+	r.l3RebuildID = personaID
+	return L3PersonaRebuildResult{JobID: governanceReviewID, Generation: 4}, nil
+}
+
+func (r *governanceTestRepository) RebuildGovernanceL3Personas(
+	context.Context,
+) (L3PersonaRebuildResult, error) {
+	r.l3RebuildAllCalls++
+	return L3PersonaRebuildResult{Generation: 5, JobCount: 1}, nil
+}
+
 var _ GovernanceRepository = (*governanceTestRepository)(nil)
 var _ L2SceneGovernanceRepository = (*governanceTestRepository)(nil)
+var _ L3PersonaGovernanceRepository = (*governanceTestRepository)(nil)

@@ -31,6 +31,13 @@ SELECT memory_governance_l2_scene_snapshot($1::uuid)
 		l2Scene.Scenes = []L2SceneGovernanceScene{}
 	}
 	snapshot.L2Scene = &l2Scene
+	l3Persona, err := queryGovernanceJSON[L3PersonaGovernanceSnapshot](ctx, r, `
+SELECT memory_governance_l3_persona_snapshot($1::uuid)
+`, auth.UserOrDevelopment(ctx).ID)
+	if err != nil {
+		return GovernanceSnapshot{}, err
+	}
+	snapshot.L3Persona = &l3Persona
 	return snapshot, nil
 }
 
@@ -154,6 +161,56 @@ SELECT memory_governance_rebuild_l2_scenes($1::uuid)
 `, auth.UserOrDevelopment(ctx).ID)
 }
 
+func (r *PostgresRepository) GovernanceL3PersonaDetail(
+	ctx context.Context,
+	personaID string,
+) (L3PersonaGovernanceDetail, error) {
+	detail, err := queryGovernanceJSON[L3PersonaGovernanceDetail](ctx, r, `
+SELECT memory_governance_l3_persona_detail($1::uuid, $2::uuid)
+`, auth.UserOrDevelopment(ctx).ID, personaID)
+	if err != nil {
+		return L3PersonaGovernanceDetail{}, err
+	}
+	if detail.Members == nil {
+		detail.Members = []L3PersonaGovernanceMember{}
+	}
+	for index := range detail.Members {
+		if detail.Members[index].Evidence == nil {
+			detail.Members[index].Evidence = []MemoryEvidence{}
+		}
+	}
+	return detail, nil
+}
+
+func (r *PostgresRepository) SetGovernanceL3PersonaEnabled(
+	ctx context.Context,
+	input L3PersonaEnabledInput,
+) (L3PersonaGovernancePersona, error) {
+	return queryGovernanceJSON[L3PersonaGovernancePersona](ctx, r, `
+SELECT memory_governance_set_l3_persona_enabled(
+  $1::uuid, $2::uuid, $3::bigint, $4
+)
+`, auth.UserOrDevelopment(ctx).ID, input.PersonaID, input.ExpectedRevision,
+		input.Enabled)
+}
+
+func (r *PostgresRepository) RebuildGovernanceL3Persona(
+	ctx context.Context,
+	personaID string,
+) (L3PersonaRebuildResult, error) {
+	return queryGovernanceJSON[L3PersonaRebuildResult](ctx, r, `
+SELECT memory_governance_rebuild_l3_persona($1::uuid, $2::uuid)
+`, auth.UserOrDevelopment(ctx).ID, personaID)
+}
+
+func (r *PostgresRepository) RebuildGovernanceL3Personas(
+	ctx context.Context,
+) (L3PersonaRebuildResult, error) {
+	return queryGovernanceJSON[L3PersonaRebuildResult](ctx, r, `
+SELECT memory_governance_rebuild_l3_personas($1::uuid)
+`, auth.UserOrDevelopment(ctx).ID)
+}
+
 func (r *PostgresRepository) DecideMemoryReview(ctx context.Context, input MemoryReviewDecisionInput) (MemoryReviewDecisionResult, error) {
 	return queryGovernanceJSON[MemoryReviewDecisionResult](ctx, r, `
 SELECT memory_governance_decide_review(
@@ -248,6 +305,12 @@ func mapGovernancePostgresError(err error) error {
 		return fmt.Errorf("memory governance query: %w", err)
 	}
 	switch strings.TrimSpace(postgresError.Message) {
+	case "MEMORY_L3_PERSONA_NOT_FOUND":
+		return ErrMemoryL3PersonaNotFound
+	case "MEMORY_L3_PERSONA_REVISION_STALE":
+		return validation(postgresError.Message, "memory L3 Persona changed; reload and retry")
+	case "MEMORY_L3_PERSONA_MUTATION_INVALID":
+		return validation(postgresError.Message, "memory L3 Persona input is invalid")
 	case "MEMORY_L2_SCENE_NOT_FOUND":
 		return ErrMemoryL2SceneNotFound
 	case "MEMORY_L2_SCENE_REVISION_STALE":
@@ -281,3 +344,4 @@ func mapGovernancePostgresError(err error) error {
 
 var _ GovernanceRepository = (*PostgresRepository)(nil)
 var _ L2SceneGovernanceRepository = (*PostgresRepository)(nil)
+var _ L3PersonaGovernanceRepository = (*PostgresRepository)(nil)

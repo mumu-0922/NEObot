@@ -23,6 +23,9 @@ import type {
   L2SceneGovernanceDetail,
   L2SceneGovernanceScene,
   L2SceneRebuildResult,
+  L3PersonaGovernanceDetail,
+  L3PersonaGovernancePersona,
+  L3PersonaRebuildResult,
   MemoryActivity,
   MemoryDeletionProgress,
   MemoryGovernanceSnapshot,
@@ -220,6 +223,41 @@ export function createServerMemoryApiShell(httpClient: HttpClient): MemoryApi {
       );
     },
 
+    async getL3PersonaDetail(input): Promise<L3PersonaGovernanceDetail> {
+      return httpClient.requestJson<L3PersonaGovernanceDetail>(
+        `${governanceL3PersonaPath(input.personaId)}/details`,
+        { signal: input.signal },
+      );
+    },
+
+    async setL3PersonaEnabled(input): Promise<L3PersonaGovernancePersona> {
+      return httpClient.requestJson<L3PersonaGovernancePersona>(
+        `${governanceL3PersonaPath(input.personaId)}/enabled`,
+        {
+          method: "POST",
+          body: {
+            expectedRevision: input.expectedRevision,
+            enabled: input.enabled,
+          },
+          signal: input.signal,
+        },
+      );
+    },
+
+    async rebuildL3Persona(input): Promise<L3PersonaRebuildResult> {
+      return httpClient.requestJson<L3PersonaRebuildResult>(
+        `${governanceL3PersonaPath(input.personaId)}/rebuild`,
+        { method: "POST", signal: input.signal },
+      );
+    },
+
+    async rebuildL3Personas(input = {}): Promise<L3PersonaRebuildResult> {
+      return httpClient.requestJson<L3PersonaRebuildResult>(
+        `${memoryGovernancePath}/personas/rebuild`,
+        { method: "POST", signal: input.signal },
+      );
+    },
+
     async listMemoryReviews(input = {}): Promise<MemoryReviewSuggestion[]> {
       const page = await httpClient.requestJson<
         ApiPage<MemoryReviewSuggestion>
@@ -316,6 +354,10 @@ function governanceMemoryPath(memoryId: string): string {
 
 function governanceL2ScenePath(sceneId: string): string {
   return `${memoryGovernancePath}/scenes/${encodeURIComponent(sceneId)}`;
+}
+
+function governanceL3PersonaPath(personaId: string): string {
+  return `${memoryGovernancePath}/personas/${encodeURIComponent(personaId)}`;
 }
 
 function memoryReviewDecisionPath(suggestionId: string): string {

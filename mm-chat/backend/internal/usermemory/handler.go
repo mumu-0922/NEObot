@@ -450,6 +450,8 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "MEMORY_REVIEW_NOT_FOUND", "memory review not found")
 	case errors.Is(err, ErrMemoryL2SceneNotFound):
 		writeError(w, http.StatusNotFound, "MEMORY_L2_SCENE_NOT_FOUND", "memory L2 Scene not found")
+	case errors.Is(err, ErrMemoryL3PersonaNotFound):
+		writeError(w, http.StatusNotFound, "MEMORY_L3_PERSONA_NOT_FOUND", "memory L3 Persona not found")
 	case errors.Is(err, ErrPortabilityRepositoryRequired),
 		errors.Is(err, ErrPortabilityPlanCodecRequired):
 		writeError(w, http.StatusServiceUnavailable, "MEMORY_PORTABILITY_UNAVAILABLE", "memory portability is unavailable")

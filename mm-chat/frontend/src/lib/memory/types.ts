@@ -170,6 +170,7 @@ export interface MemoryGovernanceSnapshot {
   deletions: MemoryDeletionProgress[];
   diagnostics: MemorySearchDiagnostic[];
   l2Scene?: L2SceneGovernanceSnapshot;
+  l3Persona?: L3PersonaGovernanceSnapshot;
 }
 
 export interface L2SceneGovernanceSnapshot {
@@ -229,6 +230,67 @@ export interface L2SceneGovernanceDetail {
 }
 
 export interface L2SceneRebuildResult {
+  jobId?: string;
+  generation: number;
+  jobCount?: number;
+}
+
+export interface L3PersonaGovernanceSnapshot {
+  profile: L3PersonaGovernanceProfile;
+  persona?: L3PersonaGovernancePersona;
+}
+
+export interface L3PersonaGovernanceProfile {
+  profileId: string;
+  synthesisProfileId: string;
+  retrievalProfileId: string;
+  status: "shadow" | "active" | "rolled_back";
+  generation: number;
+  l1ReaderReady: boolean;
+  active: boolean;
+  activatedAt?: number;
+  rolledBackAt?: number;
+}
+
+export interface L3PersonaGovernancePersona {
+  id: string;
+  content: string;
+  contentHash: string;
+  tokenCount: number;
+  sensitivity: MemorySensitivity;
+  sensitiveInputIncluded: boolean;
+  status: "shadow" | "active" | "disabled" | "stale";
+  userDisabled: boolean;
+  profileId: string;
+  generation: number;
+  sourceWatermark: string;
+  revision: number;
+  memberCount: number;
+  sourcesCurrent: boolean;
+  createdAt: number;
+  updatedAt: number;
+  activatedAt?: number;
+  disabledAt?: number;
+  staleAt?: number;
+  purgeAfter?: number;
+}
+
+export interface L3PersonaGovernanceMember {
+  memoryId: string;
+  revision: number;
+  contentHash: string;
+  current: boolean;
+  sourceDeleted: boolean;
+  memory?: GovernanceMemory;
+  evidence: MemoryEvidence[];
+}
+
+export interface L3PersonaGovernanceDetail {
+  persona: L3PersonaGovernancePersona;
+  members: L3PersonaGovernanceMember[];
+}
+
+export interface L3PersonaRebuildResult {
   jobId?: string;
   generation: number;
   jobCount?: number;
