@@ -17,9 +17,12 @@ const (
 	hybridShadowHardCutoff    = 2 * time.Second
 	hybridShadowEmbedCutoff   = 750 * time.Millisecond
 	hybridShadowRecordReserve = 150 * time.Millisecond
-	hybridShadowTargetTokens  = 600
-	hybridShadowMaximumTokens = 900
-	hybridShadowFinalLimit    = 5
+	HybridShadowTargetTokens  = 600
+	HybridShadowMaximumTokens = 900
+	HybridShadowFinalLimit    = 5
+	hybridShadowTargetTokens  = HybridShadowTargetTokens
+	hybridShadowMaximumTokens = HybridShadowMaximumTokens
+	hybridShadowFinalLimit    = HybridShadowFinalLimit
 	hybridShadowTokenOverhead = 24
 )
 
@@ -132,7 +135,7 @@ func (s *Service) SearchRelevantWithHybridShadow(
 		}
 	}
 	final, estimatedTokens := selectHybridShadowFinal(ordered)
-	targetExceeded := estimatedTokens > hybridShadowTargetTokens
+	targetExceeded := estimatedTokens > HybridShadowTargetTokens
 	durationMillis := boundedHybridDuration(time.Since(startedAt))
 	summary, err := repository.RecordHybridShadow(shadowCtx, HybridShadowRecordInput{
 		ObservationID: observationID, AssistantMessageID: assistantMessageID,
@@ -236,14 +239,14 @@ func rerankHybridCandidates(
 }
 
 func selectHybridShadowFinal(candidates []HybridShadowCandidate) ([]HybridShadowRankedItem, int) {
-	selected := make([]HybridShadowRankedItem, 0, min(len(candidates), hybridShadowFinalLimit))
+	selected := make([]HybridShadowRankedItem, 0, min(len(candidates), HybridShadowFinalLimit))
 	tokens := 0
 	for _, candidate := range candidates {
-		if len(selected) == hybridShadowFinalLimit {
+		if len(selected) == HybridShadowFinalLimit {
 			break
 		}
 		cost := estimateHybridMemoryTokens(candidate.Content)
-		if cost <= 0 || cost > hybridShadowMaximumTokens || tokens+cost > hybridShadowMaximumTokens {
+		if cost <= 0 || cost > HybridShadowMaximumTokens || tokens+cost > HybridShadowMaximumTokens {
 			continue
 		}
 		selected = append(selected, hybridRankedItem(candidate))
@@ -265,6 +268,18 @@ func estimateHybridMemoryTokens(value string) int {
 		}
 	}
 	return (ascii+3)/4 + nonASCII*2 + hybridShadowTokenOverhead
+}
+
+// EstimatePromptMemoryTokens applies the exact conservative token estimator
+// used by the native hybrid final selector to an already-authorized Memory
+// list. Offline reader capture uses this to score the current v1 prompt surface
+// without copying the estimator into the benchmark package.
+func EstimatePromptMemoryTokens(memories []Memory) int {
+	total := 0
+	for _, memory := range memories {
+		total += estimateHybridMemoryTokens(memory.Content)
+	}
+	return total
 }
 
 func hybridRankedItem(candidate HybridShadowCandidate) HybridShadowRankedItem {
@@ -314,9 +329,9 @@ func sanitizeHybridShadowSummary(summary HybridShadowSummary) HybridShadowSummar
 	summary.VectorCount = clampLexicalShadowCount(summary.VectorCount, 30)
 	summary.RRFCount = clampLexicalShadowCount(summary.RRFCount, MaxHybridShadowResults)
 	summary.RerankCount = clampLexicalShadowCount(summary.RerankCount, MaxHybridShadowResults)
-	summary.FinalCount = clampLexicalShadowCount(summary.FinalCount, hybridShadowFinalLimit)
+	summary.FinalCount = clampLexicalShadowCount(summary.FinalCount, HybridShadowFinalLimit)
 	summary.OverlapCount = clampLexicalShadowCount(summary.OverlapCount, MaxSearchResults)
-	summary.EstimatedTokens = clampLexicalShadowCount(summary.EstimatedTokens, hybridShadowMaximumTokens)
+	summary.EstimatedTokens = clampLexicalShadowCount(summary.EstimatedTokens, HybridShadowMaximumTokens)
 	summary.DurationMillis = clampLexicalShadowCount(summary.DurationMillis, 120000)
 	return summary
 }
