@@ -9000,5 +9000,40 @@ Both transient Server Vault credential copies were overwritten and removed.
 The two retained aggregate artifacts remain mode `0600` in a mode-`0700`
 directory, and cleanup left zero transient credential directories, operator
 export directories, scoped containers, networks, or volumes. No private
-artifact or credential was committed. DeepSeek schema-v7 Development remains
-an independent, separately authorized hypothesis.
+artifact or credential was committed. At this checkpoint, DeepSeek schema-v7
+Development was still an independent, separately authorized hypothesis.
+
+## 2026-07-30 — Schema-v7 first ToolRound DeepSeek Development
+
+The separately owner-authorized DeepSeek hypothesis reused the active Server
+Vault without changing production configuration. A bounded operator helper
+created independent mode-`0600` copies of `RAG:SILICONFLOW` and `FOHWSU`, bound
+the route to `openai_compatible/deepseek-v4-flash` at the normalized official
+Base URL, and generated a distinct cost-basis v5. Two earlier local export
+attempts failed before cost or Provider construction because the helper first
+used the wrong RAG context and then the wrong row delimiter. They consumed zero
+Provider quota and left no credential or runtime object.
+
+The valid run issued exactly `300/300` authorized route requests and produced
+valid failed schema-v7 evidence. Only `33/300` first-round decisions completed,
+all calling `search_memory`; `267` failed closed, with `4` `HARD_CUTOFF` and
+`263` `MEMORY_TOOL_ROUTE_FAILED` outcomes. Candidate Recall@20 remained `1.0`,
+but Final Recall@5 was `0.128205`, current-fact accuracy was `0.127273`, false
+injection was `2/300`, and p95/p99 latency was `1622/1860 ms`. The evaluator
+recorded one hard-cutoff violation, and both false injections belonged to the
+30-case unrelated-negative slice. Cross-user, deleted-memory, secret,
+untrusted-source, and unauthorized-Provider-egress counts all remained zero.
+
+The measured conservative upper bounds were `358,533/600,000` input tokens and
+`2,197,328/2,457,600` output tokens. The owner-authorized maximum route and
+combined Memory Provider costs remained `3,057,600,000` and `3,057,710,916`
+CNY microunits. The run therefore passed request/token/cost and privacy
+authority but failed unchanged quality, unrelated-negative, hard-cutoff, and
+latency gates. It did not freeze a policy, alter a gate, enable
+`MEMORY_TOOL_LOOP_ENABLED`, or authorize Validation or Promotion.
+
+Only `memory-first-tool-round-development.json` and `run-manifest.json` were
+retained, both mode `0600` under a mode-`0700` directory. The operator copies
+were overwritten and removed, the runner destroyed its exact Compose project,
+and final checks found zero operator/temp credential directories, containers,
+networks, or volumes. No private artifact or credential was committed.

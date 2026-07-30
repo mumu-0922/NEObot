@@ -745,8 +745,18 @@ calling Memory, and failed closed on `272` (`266` `HARD_CUTOFF`, `6`
 and p95/p99 was `2002/2002 ms`. All authority/privacy leak counters were zero,
 but unchanged quality, unrelated-negative slice, cutoff, and latency gates
 failed. The two aggregate files remain mode `0600`; transient credentials and
-all scoped runtime objects were destroyed. No policy is frozen, DeepSeek
-schema-v7 remains unrun, and Validation/Promotion remain blocked.
+all scoped runtime objects were destroyed.
+
+The independent `FOHWSU/deepseek-v4-flash` schema-v7 hypothesis completed only
+`33/300` decisions, all calling Memory, and failed closed on `267` (`4`
+`HARD_CUTOFF`, `263` `MEMORY_TOOL_ROUTE_FAILED`). Final Recall@5/current-fact
+accuracy was `0.128205/0.127273`, false injection was `2/300`, p95/p99 was
+`1622/1860 ms`, and the evaluator recorded one hard-cutoff violation. Both
+false injections were in the unrelated-negative slice; all authority/privacy
+counters remained zero. The request/token/cost authority passed, both private
+credentials were destroyed, the two aggregate files remain mode `0600`, and
+the isolated runtime left no objects. No schema-v7 policy passed or froze;
+Validation/Promotion remain blocked.
 
 Only after a schema-v7 first-round Tool Loop Development hypothesis passes may
 its policy, Provider/model, Tool/adapter profile, and selection behavior be

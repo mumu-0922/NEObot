@@ -21,8 +21,8 @@ risk class and approval policy.
 
 `search_memory` is implemented but not promoted: it is absent unless
 `MEMORY_TOOL_LOOP_ENABLED=true`. The deployed default remains `false`: the
-first schema-v7 GPT Development profile failed unchanged gates, DeepSeek is
-unrun, and no Validation evidence exists.
+schema-v7 GPT and DeepSeek Flash Development profiles both failed unchanged
+gates, and no Validation evidence exists.
 
 ## 2. Search mode
 
@@ -476,8 +476,9 @@ compatibility path is visibly traced and never restores pre-SSE retrieval.
   original request without any Memory body. Partial content is never replayed.
 - Historical schema-v6 `PlanTools` results are immutable failed preflight
   evidence. Schema-v7 uses the real first-`ToolRoundProvider` shape. Its first
-  GPT Development result completed only `28/300` routes and failed unchanged
-  quality, cutoff, and latency gates; it grants no rollout authority.
+  GPT and DeepSeek Flash Development results completed only `28/300` and
+  `33/300` routes and failed unchanged quality, slice, cutoff, and latency
+  gates; they grant no rollout authority.
 
 Knowledge and Web may run in either order only when each authority is relevant.
 Current/public claims use Web; internal/private claims use Knowledge; a genuine

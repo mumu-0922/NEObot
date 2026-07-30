@@ -150,7 +150,9 @@ BGE work may overlap, but candidate bodies never reach the route model and final
 rows are released only after a valid call. Schema-v7 offline protocol/report/
 lifecycle tests pass. The first live `SERVER_DEFAULT/gpt-5.6-sol` profile
 completed only `28/300` routes and failed unchanged quality, cutoff, and latency
-gates. No policy was frozen and Validation remains blocked.
+gates. The independent `FOHWSU/deepseek-v4-flash` profile completed only
+`33/300` routes and failed the same gate classes. Both retained zero
+authority/privacy leaks; no policy was frozen and Validation remains blocked.
 
 The schema-v4 cost basis fixes a 300-request ceiling, a 128-token output ceiling
 per request, conservative UTF-8-plus-framing input token bounds, exact model

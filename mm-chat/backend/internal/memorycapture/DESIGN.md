@@ -164,12 +164,12 @@ provenance; it never carries free-form output or candidate authority.
   invalid, and corrected DeepSeek Flash failed. Its `PlanTools` preflight is
   rejected.
 - Schema-v7 first-ToolRound routing has offline protocol/report/lifecycle,
-  migration-065 PostgreSQL evidence, and one valid failed GPT Development
-  result: `28/300` routes completed, `272` failed closed, and unchanged quality,
-  cutoff, and latency gates failed. Capture still uses one synthetic current
-  query rather than full conversation replay and does not execute the product
-  answer continuation. DeepSeek remains unrun, Validation remains blocked, and
-  promotion remains disabled.
+  migration-065 PostgreSQL evidence, and valid failed GPT and DeepSeek Flash
+  Development results: only `28/300` and `33/300` routes completed, and both
+  failed unchanged quality, slice, cutoff, and latency gates. Capture still
+  uses one synthetic current query rather than full conversation replay and
+  does not execute the product answer continuation. Validation remains blocked
+  and promotion remains disabled.
 - Fake protocol relevance and latency metrics are intentionally meaningless;
   only lifecycle and authority invariants are evaluated.
 
@@ -211,3 +211,5 @@ provenance; it never carries free-form output or candidate authority.
 - **2026-07-30**: Recorded the first schema-v7 GPT Development failure without
   changing gates or rollout authority; transient credentials and isolated
   runtime state were destroyed after aggregate publication.
+- **2026-07-30**: Recorded the independent schema-v7 DeepSeek Flash failure
+  under the same unchanged gates and cleanup boundary; no profile was frozen.

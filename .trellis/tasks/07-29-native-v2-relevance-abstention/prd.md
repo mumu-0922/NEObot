@@ -149,6 +149,15 @@ evidence passes.
   was `2/300`, and p95/p99 was `2002/2002 ms`. Every authority/privacy leak
   count remained zero. The profile failed unchanged quality, slice, cutoff,
   and latency gates; no policy was frozen.
+- The independent schema-v7 `FOHWSU/deepseek-v4-flash` Development run
+  completed only `33/300` route decisions, all of which called Memory. The
+  remaining `267` failed closed: `4` reported `HARD_CUTOFF` and `263` reported
+  `MEMORY_TOOL_ROUTE_FAILED`. Final Recall@5/current-fact accuracy was
+  `0.128205/0.127273`, false injection was `2/300`, and p95/p99 was
+  `1622/1860 ms`; the evaluator recorded one hard-cutoff violation. Every
+  authority/privacy leak count remained zero. This profile also failed
+  unchanged quality, unrelated-negative, cutoff, and latency gates; no policy
+  was frozen.
 
 ## Assumptions (updated)
 
@@ -327,8 +336,8 @@ hydration, schema-v7 Development adapter/profile/report, focused tests,
 regression lifecycle tests, and PostgreSQL 17 final-hydration replay exist.
 Historical schema-v6 GPT failed; the first DeepSeek run is protocol-invalid;
 corrected DeepSeek Flash failed. The first schema-v7 GPT Development profile
-also failed, DeepSeek schema-v7 remains unrun, no policy is frozen, Validation
-is blocked, and the runtime flag remains default-off.
+and the independent DeepSeek Flash profile also failed. No policy is frozen,
+Validation is blocked, and the runtime flag remains default-off.
 
 Use the selected main-model Tool route from
 [`research/main-model-memory-tool-routing.md`](research/main-model-memory-tool-routing.md):
@@ -454,3 +463,7 @@ cannot inherit any schema-v6 result.
 - The schema-v7 GPT run retained only its two aggregate mode-`0600` artifacts.
   Both transient Server Vault copies were overwritten and removed, and cleanup
   left zero scoped containers, networks, volumes, or operator export files.
+- The schema-v7 DeepSeek Flash run retained the same two-file aggregate-only
+  shape at mode `0600`. Its independent transient Vault copies were overwritten
+  and removed, and cleanup again left zero scoped containers, networks,
+  volumes, temporary regression directories, or operator export files.

@@ -500,8 +500,10 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   pass. The first live `SERVER_DEFAULT/gpt-5.6-sol` Development run completed
   only `28/300` route decisions and failed unchanged recall, current-fact,
   unrelated-negative, hard-cutoff, and latency gates. It retained zero
-  authority/privacy leaks but selected no policy. DeepSeek schema-v7 remains
-  unrun; Validation/Promotion stay blocked.
+  authority/privacy leaks but selected no policy. The independent
+  `FOHWSU/deepseek-v4-flash` run then completed only `33/300` decisions and
+  failed the same gate classes with zero authority/privacy leaks. No schema-v7
+  policy passed; Validation/Promotion stay blocked.
 - The native stdout summary schema remains the command-envelope v4, but its
   `corpusClass`, `admissionMode`, and `split` must come from the validated
   schema-v7 report rather than historical schema-v6 constants. A failed fake

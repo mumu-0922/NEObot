@@ -87,7 +87,19 @@ schema-v6 preflight result. The conservative cost/token authority passed, the
 two retained files remained mode `0600`, both transient Server Vault copies
 were destroyed, and the isolated Compose project left zero containers,
 networks, or volumes. No GPT policy was frozen; Validation and Promotion remain
-blocked. A separately authorized DeepSeek schema-v7 hypothesis remains unrun.
+blocked.
+
+The separately authorized `FOHWSU/deepseek-v4-flash` schema-v7 run then used
+the same first-round adapter and completed `33/300` decisions, all choosing
+`search_memory`. It failed closed on `267`: `4` `HARD_CUTOFF` plus `263`
+`MEMORY_TOOL_ROUTE_FAILED`. Final Recall@5 was `0.128205`, current-fact
+accuracy was `0.127273`, false injection was `2/300`, and p95/p99 was
+`1622/1860 ms`. The evaluator recorded one hard-cutoff violation, and both
+false injections again came from the `30` unrelated-negative cases. All
+authority/privacy counters remained zero, but unchanged quality, slice,
+cutoff, and latency gates failed. Its independent credentials and isolated
+runtime were destroyed after retaining only the two mode-`0600` aggregate
+files. No schema-v7 profile passed or selected a policy.
 
 ## Architecture conclusion
 

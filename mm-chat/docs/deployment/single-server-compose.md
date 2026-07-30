@@ -231,8 +231,9 @@ rerank, Record, migration `065` current-authority final hydration, and
 same-model continuation; failure or empty retrieval continues without Memory.
 Direct `remember|correct|forget` turns and model-built-in Web Search do not
 expose the Memory Tool. The first live schema-v7 GPT Development profile failed
-unchanged quality, slice, cutoff, and latency gates; DeepSeek and Validation
-remain pending, so this release must retain the default `false` value.
+unchanged quality, slice, cutoff, and latency gates; the independent DeepSeek
+Flash profile failed the same gate classes. Validation remains blocked, so this
+release must retain the default `false` value.
 
 The one-shot `admin provider-secrets-rewrite` command receives the stable BYOK
 ingress key, temporary Server Default env fallback, and provider vault Secret

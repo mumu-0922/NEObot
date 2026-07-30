@@ -488,6 +488,6 @@ executeHybridShadow(query)
 
 The schema-v6 `PlanTools` preflight is retained only as failed Development
 evidence. Schema-v7 measures the implemented first-ToolRound shape. Its first
-live GPT Development profile failed unchanged quality, slice, cutoff, and
-latency gates; DeepSeek remains unrun. Production exposure stays default-off
-and cannot be promoted without a passing Development/Validation result.
+live GPT and DeepSeek Flash Development profiles both failed unchanged quality,
+slice, cutoff, and latency gates. Production exposure stays default-off and
+cannot be promoted without a passing Development/Validation result.
