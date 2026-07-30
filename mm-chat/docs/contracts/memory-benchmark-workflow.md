@@ -781,8 +781,23 @@ The report contains only aggregate fixed-enum counts and requires their sum to
 equal `failedCaseCount`. It forbids raw Provider errors/bodies, queries, Tool
 payloads, Memory content, scores, credentials, and case identity. It reuses the
 unchanged cost-basis v5 request/token/price ceilings but binds the taxonomy in
-the v8 configuration hash. No paid schema-v8 run has been authorized or
-executed; Validation remains blocked.
+the v8 configuration hash.
+
+The first paid schema-v8 attempt, run
+`memory-regression-20260730t043820z-dc26df80`, bound the configured
+`FOHWSU/deepseek-v4-flash` route and the fixed SiliconFlow BGE Provider. It
+completed Provider work but failed a post-capture integrity gate before report
+or manifest publication. The pre-fix command exposed only the generic bounded
+error `native Memory capture is invalid`, so the exact violated invariant is
+not recoverable and the run is not diagnostic or quality evidence. It retained
+zero artifacts. Both temporary mode-`0600` credentials were overwritten and
+unlinked, and all scoped containers, networks, and volumes were removed.
+
+Post-capture Memory Tool-route report and manifest gates now return only fixed,
+content-free integrity reason codes. They still expose no query, case ID,
+Memory content, Tool payload, Provider body/error text, or credential. This is
+observability only: it does not relax an invariant, add a retry, change the
+two-second cutoff, or authorize another paid run. Validation remains blocked.
 
 Only after a schema-v7 first-round Tool Loop Development hypothesis passes may
 its policy, Provider/model, Tool/adapter profile, and selection behavior be

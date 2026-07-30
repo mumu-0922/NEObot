@@ -557,6 +557,12 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   Schema-v8 diagnostics reuse the unchanged cost-basis v5 authority because
   they add no request, token, rate, or Provider capability; the v8 profile hash
   separately binds the failure taxonomy.
+- A post-capture Memory Tool-route report or manifest rejection emits only a
+  fixed content-free integrity reason class. It must preserve
+  `ErrCaptureInvalid`, publish no partial artifact, expose no case ID/query/
+  Memory/Tool/Provider body or error text, and never trigger an automatic paid
+  rerun. A generic error without a bounded reason is insufficient operator
+  evidence because the destroyed isolated state cannot be reconstructed.
 - Native output uses a private new run directory. Full fake regression links
   four evidence files; historical calibration, schema-v4/v5 cloud Development,
   schema-v6 historical Tool-route Development, schema-v7 first-ToolRound
@@ -743,8 +749,10 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   `candidatePassed=false`/`policySelected=false`; first-ToolRound two-file
   manifest; schema-v8 profile/report/reader separation, exact taxonomy hash,
   bounded Provider/Tool category propagation, category-sum invariant, v7 field
-  omission, plaintext/raw-body leak rejection, always-false `policySelected`,
-  frozen-policy-unavailable denial; and separate two-file manifests.
+  omission, plaintext/raw-body leak rejection, bounded content-free
+  post-capture integrity reasons with no partial publication, always-false
+  `policySelected`, frozen-policy-unavailable denial; and separate two-file
+  manifests.
 - Run `go test -race ./internal/memoryauthor ./cmd/memory-benchmark-author
   ./internal/memoryeval ./cmd/memory-eval ./internal/memorycapture
   ./cmd/memory-regression-capture`, `bash scripts/test-memory-regression.sh`,
