@@ -252,8 +252,8 @@ evidence passes.
 
 - [ ] An unrelated query produces no `search_memory` Tool Call and zero hybrid
   final/injected Memory; no candidate body reaches the answer model.
-- [ ] A rerank result with no score above the frozen final threshold produces
-  `no_memory` and zero estimated prompt Memory tokens.
+- [ ] Retrieval failure, empty final selection, stale final hydration, or full
+  post-hydration redaction produces no Memory body and normal chat continues.
 - [ ] Relevant multilingual/paraphrase cases retain Candidate Recall@20
   `>=0.95`, Final Recall@5 `>=0.90`, and current-fact accuracy `>=0.95` on the
   frozen validation split.
@@ -284,38 +284,41 @@ evidence passes.
 
 ## Technical Approach
 
-1. Keep `usermemory` independent from `chat` through the typed
-   `HybridMemoryToolRouter` interface and fixed Tool provenance constants.
-2. Own the exact no-argument `search_memory` definition in
-   `internal/memoryroute`; adapt `chat.ToolPlanner` results to only zero calls or
-   one non-empty-ID call with exact name and explicit `{}` arguments.
-3. Extend official OpenAI and OpenAI-compatible planners with exact
-   model/temperature/output bounds. Omit both compatible thinking controls for
-   official OpenAI, encode `enable_thinking=false` for generic compatible
-   gateways, and encode `thinking.type=disabled` only for the exact official
-   DeepSeek hostname.
-4. Start the redacted query-only route concurrently with fixed BGE work. Keep
-   candidate content inside the separately authorized BGE boundary and release
-   no hybrid final unless route model/contract provenance passes and the Tool
-   call is exact.
-5. Add schema-v6 Development capture, profile config v6, cost-basis v4, and a
-   two-file aggregate report/manifest. Bind Provider ID/type, normalized Base
-   URL SHA-256, model, Tool tuple, BGE tuple, evaluator gates, and absolute
-   request/token/cost authority before Provider construction.
-6. Require two independent mode-`0600` credential inputs for live capture,
+1. Keep hybrid retrieval and final authority in `usermemory`; keep the typed
+   `HybridMemoryToolRouter` only as a Development compatibility seam.
+2. Own the exact no-argument `search_memory` definition, JSON hash, and call
+   validation in `internal/chat`. `internal/memoryroute` delegates to that
+   authority instead of copying it.
+3. Add `search_memory` to the existing first `ToolRoundProvider` request behind
+   `MEMORY_TOOL_LOOP_ENABLED=false`. Buffer first-round text/reasoning, accept
+   only an exact first-round call, remove Memory from later rounds, and continue
+   on the same Provider/model.
+4. After a valid product call, execute the fixed BGE embedding/RRF/admission/
+   rerank/Top-5/token path without v1 or `MarkUsed`. Record first, then hydrate
+   the exact final lane through migration `065`, repeat current authority, and
+   redact bodies again before the Tool Result.
+5. On retrieval/continuation failure, preserve ordinary chat: empty/failure
+   results continue without Memory, and a pre-content continuation failure
+   recovers from the original request without any Memory body.
+6. Preserve schema-v6/profile-v6/cost-basis-v4 as immutable failed preflight
+   evidence. Add schema-v7/profile-v7/cost-basis-v5 with reader v5, adapter
+   `chat-first-tool-round-memory-decision-v1`, and artifact
+   `memory-first-tool-round-development.json`.
+7. Require two independent mode-`0600` credential inputs for live capture,
    scan both secrets from retained surfaces, and destroy all project-scoped
    Docker/runtime state on every exit path. Development may use explicitly
    authorized transient Server Vault copies; Validation may not.
-7. Use `fake_protocol` only for deterministic protocol/lifecycle proof. Run GPT
+8. Use `fake_protocol` only for deterministic protocol/lifecycle proof. Run GPT
    and DeepSeek as separate live Development hypotheses; freeze and add a
    matching Validation lane only after one exact profile passes all unchanged
    gates.
 
-Current checkpoint: implementation, tests, PostgreSQL 17 fake-protocol replay,
-and three real schema-v6 Development executions exist. GPT failed; the first
-DeepSeek run is protocol-invalid; corrected DeepSeek Flash failed. The
-independent preflight architecture is rejected. No schema-v6 Validation or
-frozen policy exists.
+Current checkpoint: product first-round Tool Loop, migration-065 final
+hydration, schema-v7 Development adapter/profile/report, focused tests,
+regression lifecycle tests, and PostgreSQL 17 final-hydration replay exist.
+Historical schema-v6 GPT failed; the first DeepSeek run is protocol-invalid;
+corrected DeepSeek Flash failed. No schema-v7 live Development or Validation
+run exists, no policy is frozen, and the runtime flag remains default-off.
 
 Use the selected main-model Tool route from
 [`research/main-model-memory-tool-routing.md`](research/main-model-memory-tool-routing.md):
@@ -328,8 +331,8 @@ Use the selected main-model Tool route from
    current-authority checks.
 4. Evaluate the exact route decision on Development with aggregate-only,
    split-safe evidence and unchanged gates.
-5. Keep v1 prompt/Usage byte-authoritative and fail closed to normal chat
-   without v2 Memory on every uncertain path.
+5. Keep the deployed default v1 prompt/Usage path byte-authoritative and fail
+   closed to normal chat without v2 Memory on every uncertain path.
 
 ## Implementation Plan
 
@@ -353,13 +356,15 @@ Use the selected main-model Tool route from
    for separately configured GPT and DeepSeek Providers.
 8. Record the failed GPT run, protocol-invalid DeepSeek Pro run, and corrected
    failed DeepSeek Flash run; keep Validation and Promotion blocked.
-9. Replace the separate `PlanTools` preflight with a future first-round chat
-   Tool Loop integration. Only after that exact Development profile passes may
-   offline/PostgreSQL/Compose/full gates and one fresh independently authorized
-   Validation capture run without retuning.
-10. Update benchmark/hybrid/Tool Loop contracts, operator workflow, and live
-    tracking; retain only sanitized mode-`0600` evidence and leave promotion
-    disabled.
+9. Replace the separate `PlanTools` preflight with the first-round chat Tool
+   Loop, add post-Record final hydration, and version the Development lane as
+   schema-v7 without rewriting schema-v6 evidence.
+10. Complete offline/PostgreSQL/Compose/full gates. Only after an exact live
+    schema-v7 Development profile passes may one fresh independently authorized
+    Validation capture run proceed without retuning.
+11. Update benchmark/hybrid/Tool Loop contracts, operator workflow, and live
+   tracking; retain only sanitized mode-`0600` evidence and leave promotion
+   disabled.
 
 ## Decision (ADR-lite)
 
@@ -384,6 +389,11 @@ as failed evidence, but do not promote that request shape. The intended
 architecture is one first chat Tool round containing Memory beside the other
 read-only tools, followed by same-model continuation only when called.
 
+**2026-07-30 implementation amendment:** That first-round architecture is now
+implemented behind a default-off flag with migration-065 final hydration.
+Schema-v7 measures the new request shape separately; it has offline evidence
+only and cannot inherit any schema-v6 result.
+
 ## Expansion Sweep
 
 - Future evolution: keep a local/private judge as an optional later profile if
@@ -396,8 +406,9 @@ read-only tools, followed by same-model continuation only when called.
 ## Out of Scope
 
 - Promoting v2 or changing the active reader/prompt/Usage pointer.
-- Injecting Memory Tool results into production before a Development profile
-  passes and a separate promotion decision is recorded.
+- Enabling `MEMORY_TOOL_LOOP_ENABLED` in a deployed environment before a
+  schema-v7 Development profile passes and a separate rollout decision is
+  recorded.
 - Treating forbidden exclusion reasons as cloud-authorized, or silently
   enabling cloud processing without the exact owner-policy profile.
 - Tuning on the machine-visible holdout or claiming formal human-reviewed
