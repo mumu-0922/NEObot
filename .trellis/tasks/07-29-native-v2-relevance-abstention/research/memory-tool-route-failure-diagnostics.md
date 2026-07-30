@@ -76,11 +76,11 @@ The owner-authorized run
 `memory-regression-20260730t043820z-dc26df80` used:
 
 ```text
-route Provider = FOHWSU
-route type     = openai_compatible
-route model    = deepseek-v4-flash
-route URL hash = 12b8deaccc34b32757dbb1497e029da0c2e7b26ffa86b9c926c08cb4692f4508
-cost hash      = 4d3fe6b0dbbc1ed80f717ae2488ce8d2a141db24dc1192a5f260f57410c3531b
+route Provider         = FOHWSU
+route type             = openai_compatible
+route model            = deepseek-v4-flash
+route URL hash         = 12b8deaccc34b32757dbb1497e029da0c2e7b26ffa86b9c926c08cb4692f4508
+private cost file hash = 4d3fe6b0dbbc1ed80f717ae2488ce8d2a141db24dc1192a5f260f57410c3531b
 ```
 
 The isolated database migrated through `065`, the live runner performed
@@ -154,6 +154,59 @@ free of all diagnostic fields; schema v9 explicitly emits empty route and
 retrieval maps when their counts are zero. The v9 lane still cannot select a
 policy, run Validation, enable production, or authorize Promotion. A third paid
 run requires a new, explicit quota authorization.
+
+## First live schema-v9 result
+
+The owner-authorized run
+`memory-regression-20260730t094556z-0f4878dd` used the same exact
+`FOHWSU/openai_compatible/deepseek-v4-flash` route, Base-URL hash, fixed BGE
+Provider, and unchanged cost authority as both v8 attempts. A local preflight
+first rejected the input before Provider construction because the operator
+helper incorrectly compared the raw private cost-file SHA-256 with
+`memorycapture.CostBasisSHA256`, which hashes the decoded canonical structure.
+That local attempt consumed no quota and left no credential/helper directory.
+The corrected preflight independently required both hashes:
+
+```text
+private cost file SHA-256 = 4d3fe6b0dbbc1ed80f717ae2488ce8d2a141db24dc1192a5f260f57410c3531b
+manifest cost content SHA = b54b6fcfb62a33b31ef17cfd9876d392a20ef21bd25d19f67902350f194b1742
+```
+
+The paid run published the expected private two-file artifact set. Its route
+aggregate reconciles exactly:
+
+```text
+route completed / used / abstained / failed = 12 / 12 / 0 / 288
+CONTEXT_DEADLINE                         = 31
+TOOL_CALL_INVALID                        = 83
+ROUTER_FAILURE_UNCLASSIFIED              = 174
+retrieval incomplete                     = 174
+RELEVANCE_ADMISSION_UNAVAILABLE          = 174
+```
+
+This current run proves that `83` failures reached the bounded invalid-Tool-
+Call category and `31` reached the context-deadline category. The remaining
+`174` route failures are still intentionally content-free and unclassified;
+the equal retrieval-incomplete total does not by itself prove a per-case
+intersection because the artifact retains no identity. It therefore narrows
+the current failure shape without retroactively reclassifying schema-v7 or
+inventing a more specific upstream cause.
+
+Candidate Recall@20 remained `1.0`, but Final Recall@5/current-fact accuracy
+was `0.010256/0.012121`, false injection was `0/300`, p95/p99 latency was
+`2001/2002 ms`, and the evaluator recorded `23` hard-cutoff violations. All
+cross-user, deleted-Memory, secret, untrusted-source, and unauthorized-
+Provider-egress counters were zero. Request/token/cost authority passed at
+`300/300` route requests with conservative input/output upper bounds
+`358533/2363529` under ceilings `600000/2457600`.
+
+The result is valid diagnostic and failed-metric evidence, but the diagnostic
+lane has no policy-selection authority. `policySelected=false`, Validation and
+Promotion were not run, and `MEMORY_TOOL_LOOP_ENABLED` remains default-off.
+The two retained artifacts are mode `0600` under a mode-`0700` external
+directory. Both temporary credentials, the operator helper/export, runner
+temporary directory, and the exact Compose containers/network/volume were
+destroyed. No further paid run is authorized.
 
 ## Debug retrospective
 

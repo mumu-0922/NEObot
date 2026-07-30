@@ -544,6 +544,14 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   Final/Injected/token surfaces and contributes one separate normalized
   retrieval failure aggregate. This lane can never set
   `policySelected=true`.
+- The first authorized live schema-v9 diagnostic published the expected
+  private report/manifest and failed unchanged gates. Its reconciled current-
+  run taxonomy was `31` `CONTEXT_DEADLINE`, `83` `TOOL_CALL_INVALID`, and
+  `174` `ROUTER_FAILURE_UNCLASSIFIED`; retrieval completeness separately
+  recorded `174` `RELEVANCE_ADMISSION_UNAVAILABLE` cases. Equal aggregate
+  counts never prove per-case intersection because the artifact retains no
+  identity. The result is valid diagnostic/failed-metric evidence only and
+  leaves Validation/Promotion blocked.
 - The native stdout summary schema remains the command-envelope v4, but its
   `corpusClass`, `admissionMode`, and `split` must come from the validated
   schema-v7 report rather than historical schema-v6 constants. A failed fake
@@ -563,6 +571,13 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   schema-v7 first-ToolRound Development requires v5. Every absolute-cap profile
   binds the exact policy ID and rejects request, model, token-ceiling, price,
   maximum-cost, or coverage drift before Provider construction.
+- Cost authority has two distinct hash surfaces. An operator may bind the
+  private source file's exact raw bytes with ordinary file SHA-256, while
+  `DecodeCostBasis` / `CostBasisSHA256` hashes the decoded struct re-encoded by
+  `encoding/json`; the run manifest uses this canonical content hash. Pretty
+  whitespace can therefore change the raw file hash without changing the
+  content hash. Never compare one surface with the expected value for the
+  other; verify both explicitly when a live operator plan pins both.
   Schema-v9 diagnostics reuse the unchanged cost-basis v5 authority because
   they add no request, token, rate, or Provider capability; the v9 profile hash
   separately binds the failure taxonomy and completeness policy.
@@ -766,7 +781,9 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   field omission, plaintext/raw-body leak rejection, bounded content-free
   post-capture integrity reasons with no partial publication, always-false
   `policySelected`, frozen-policy-unavailable denial; and separate two-file
-  manifests.
+  manifests. Cost-basis fixtures must also assert the raw private-file hash and
+  the decoded canonical manifest hash as different named surfaces rather than
+  assuming byte equality.
 - Run `go test -race ./internal/memoryauthor ./cmd/memory-benchmark-author
   ./internal/memoryeval ./cmd/memory-eval ./internal/memorycapture
   ./cmd/memory-regression-capture`, `bash scripts/test-memory-regression.sh`,
@@ -847,4 +864,11 @@ summary.PolicySelected = report.Passed &&
 Wrong: mutate schema v7/v8 or parse collapsed failure strings to invent causes.
 Correct: preserve historical bytes/attempts; bind schema v9 route taxonomy and
 retrieval completeness separately, with policySelected=false unconditionally.
+```
+
+```text
+Wrong: compare sha256sum(private-pretty-cost.json) directly with
+       memorycapture.CostBasisSHA256(decodedCost).
+Correct: pin raw file bytes with the file SHA and independently pin the
+         DecodeCostBasis content hash used by the manifest.
 ```

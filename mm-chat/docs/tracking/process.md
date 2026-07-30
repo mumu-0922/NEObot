@@ -9037,3 +9037,40 @@ retained, both mode `0600` under a mode-`0700` directory. The operator copies
 were overwritten and removed, the runner destroyed its exact Compose project,
 and final checks found zero operator/temp credential directories, containers,
 networks, or volumes. No private artifact or credential was committed.
+
+## 2026-07-30 — Schema-v9 Memory Tool-route diagnostic
+
+The separately owner-authorized schema-v9 diagnostic reused the exact
+`FOHWSU/openai_compatible/deepseek-v4-flash` route and fixed SiliconFlow BGE
+authority without changing production configuration, cutoffs, retry behavior,
+or the default-off Memory Tool flag. One local operator preflight failed before
+Provider construction because it confused the raw private cost-file SHA-256
+with the decoded canonical cost-content hash. It consumed zero quota and was
+fully cleaned. The corrected preflight bound both hash surfaces independently
+before exporting two distinct mode-`0600` Vault credentials.
+
+Run `memory-regression-20260730t094556z-0f4878dd` then issued exactly
+`300/300` authorized route requests and published the expected private
+schema-v9 report plus manifest. Only `12` routes completed, all calling
+`search_memory`; `288` failed closed. The route taxonomy reconciled to `31`
+`CONTEXT_DEADLINE`, `83` `TOOL_CALL_INVALID`, and `174`
+`ROUTER_FAILURE_UNCLASSIFIED`. Retrieval completeness separately recorded
+`174` `RELEVANCE_ADMISSION_UNAVAILABLE` cases. Because the artifact is
+identity-free, equal aggregate totals do not prove which individual route and
+retrieval failures intersect.
+
+Candidate Recall@20 remained `1.0`, while Final Recall@5/current-fact accuracy
+was `0.010256/0.012121`, false injection was zero, p95/p99 latency was
+`2001/2002 ms`, and `23` evaluation hard-cutoff violations remained. Every
+authority/privacy counter was zero. Conservative input/output token upper
+bounds were `358533/2363529` under `600000/2457600` ceilings, so request,
+token, and absolute cost authority passed even though the unchanged quality,
+latency, and cutoff gates failed.
+
+The valid diagnostic selected no policy and did not authorize or execute
+Validation/Promotion. The report and manifest remain mode `0600` under one
+mode-`0700` external evidence directory; the private source artifacts remain
+outside Git. Both temporary credential copies, the operator helper/export,
+runner temporary directory, and exact scoped containers/network/volume were
+destroyed, leaving every cleanup count at zero. Any further paid run requires
+fresh explicit authorization.

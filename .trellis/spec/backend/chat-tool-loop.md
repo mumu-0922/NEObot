@@ -20,7 +20,10 @@ changing the product Tool request or runtime flag, but two live attempts
 published no artifact; the second stopped at bounded `admission_state`. The
 schema-v9 route-only successor retains route categories independently from
 fail-closed retrieval-completeness aggregates. It is Development-only, retains
-no upstream body/error text, and has no policy-selection authority.
+no upstream body/error text, and has no policy-selection authority. Its first
+live report completed only `12/300` routes, classified the `288` failures into
+`31` context deadlines, `83` invalid Tool Calls, and `174` unclassified router
+failures, and kept Validation/Promotion blocked.
 
 ## 1. Scope / Trigger
 

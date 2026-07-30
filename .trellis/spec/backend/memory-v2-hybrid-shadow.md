@@ -273,6 +273,11 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   identity.
   Fail-closed admission/rerank incompleteness is counted separately and may
   never retain a non-empty Final/Injected/token surface.
+- The first live schema-v9 artifact classified the current run as `31`
+  context deadlines, `83` invalid Tool Calls, and `174` unclassified router
+  failures, with `174` separate admission-unavailable retrieval aggregates.
+  These totals are diagnostic evidence, not a case-level join: equal counts
+  cannot establish intersection or a more specific upstream cause.
 - Tool routing decides only whether saved Memory is needed. It cannot rewrite
   the query, select Memory IDs, authorize ownership/scope/revision, or authorize
   prompt injection. An empty candidate set still waits for the route decision

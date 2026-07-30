@@ -803,7 +803,7 @@ The separately authorized second schema-v8 attempt,
 `memory-regression-20260730t052917z-7b8c8bcf`, bound the same
 `FOHWSU/deepseek-v4-flash` Provider/model, Base-URL hash
 `12b8deaccc34b32757dbb1497e029da0c2e7b26ffa86b9c926c08cb4692f4508`,
-and cost-basis hash
+and private cost-basis file SHA-256
 `4d3fe6b0dbbc1ed80f717ae2488ce8d2a141db24dc1192a5f260f57410c3531b`.
 It consumed quota and failed with the bounded reason
 `Memory Tool-route report admission_state`. This proves at least one
@@ -840,6 +840,40 @@ change. Schema-v7 bytes remain free of diagnostic fields, while schema v9 emits
 explicit empty route/retrieval maps. The v9 lane cannot select a policy, unlock
 Validation/Promotion, or run against paid Providers without new explicit quota
 authorization.
+
+The owner-authorized schema-v9 run
+`memory-regression-20260730t094556z-0f4878dd` published the expected private
+report and manifest, then returned non-zero because unchanged metric gates
+failed. A preceding local operator preflight consumed no quota: it had compared
+the private source file's raw SHA-256 with the decoded canonical cost hash.
+The corrected gate binds those two different surfaces explicitly:
+
+```text
+private cost file SHA-256 = 4d3fe6b0dbbc1ed80f717ae2488ce8d2a141db24dc1192a5f260f57410c3531b
+manifest cost content SHA = b54b6fcfb62a33b31ef17cfd9876d392a20ef21bd25d19f67902350f194b1742
+configuration SHA-256    = 13cc65b47ff7c358935ebd3bb1080412784e353ebc72503963b2822d9990c14f
+```
+
+Only `12/300` routes completed, all calling `search_memory`; `288` failed
+closed. The reconciled route taxonomy contains `31` `CONTEXT_DEADLINE`, `83`
+`TOOL_CALL_INVALID`, and `174` `ROUTER_FAILURE_UNCLASSIFIED` cases. Retrieval
+completeness separately records `174` `RELEVANCE_ADMISSION_UNAVAILABLE`
+cases. Equal aggregate counts do not prove per-case intersection because the
+artifact intentionally retains no identity.
+
+Candidate Recall@20 remained `1.0`, Final Recall@5/current-fact accuracy was
+`0.010256/0.012121`, false injection was zero, p95/p99 latency was
+`2001/2002 ms`, and `23` evaluation hard-cutoff violations were recorded.
+Request/token/cost authority passed at `300/300` route requests and
+`358533/2363529` input/output token upper bounds under `600000/2457600`
+ceilings. Every authority/privacy leak counter remained zero. This is valid
+diagnostic and failed-metric evidence only: no policy was selected, Validation
+and Promotion were not run, and the product flag remains default-off.
+
+The retained two-file evidence set is mode `0600` under a mode-`0700` external
+directory. Temporary Vault copies, operator/helper files, runner temporary
+state, and the exact Compose containers/network/volume were destroyed. Any
+further paid diagnostic requires a new explicit authorization.
 
 Only after a schema-v7 first-round Tool Loop Development hypothesis passes may
 its policy, Provider/model, Tool/adapter profile, and selection behavior be

@@ -177,6 +177,17 @@ evidence passes.
   admission/rerank incompleteness only when Final/Injected/tokens are empty,
   and records separate aggregate retrieval-incomplete counts. It still has no
   policy-selection, Validation, production, or Promotion authority.
+- The owner-authorized schema-v9 run
+  `memory-regression-20260730t094556z-0f4878dd` published a valid private
+  report plus manifest and failed the unchanged gates. Only `12/300` routes
+  completed, all calling Memory; `288` failed closed as `31`
+  `CONTEXT_DEADLINE`, `83` `TOOL_CALL_INVALID`, and `174`
+  `ROUTER_FAILURE_UNCLASSIFIED`. The independent retrieval aggregate recorded
+  `174` `RELEVANCE_ADMISSION_UNAVAILABLE` cases. Final Recall@5/current-fact
+  accuracy was `0.010256/0.012121`, false injection was zero, and p95/p99 was
+  `2001/2002 ms`; every authority/privacy counter remained zero. This is valid
+  diagnostic and failed-metric evidence only. No policy was selected, and
+  Validation/Promotion remain blocked.
 
 ## Assumptions (updated)
 
@@ -364,16 +375,15 @@ corrected DeepSeek Flash failed. The first schema-v7 GPT Development profile
 and the independent DeepSeek Flash profile also failed. No policy is frozen,
 Validation is blocked, and the runtime flag remains default-off.
 
-The local schema-v9 route-only diagnostic successor is implemented and
-fake-protocol verified. It does not reinterpret either failed v7 run or either
-empty v8 attempt. The first authorized v8 attempt returned a pre-fix generic
-post-capture integrity error; the second returned bounded `admission_state`.
-Neither published a report or manifest, so neither is diagnostic or quality
-evidence. Credentials and isolated runtimes were fully destroyed. Schema v9
-keeps the production 750 ms embedding cutoff, two-second hard cutoff, and no
-retry; it records retrieval incompleteness separately so fail-closed BGE work
-cannot erase route taxonomy evidence. Any further paid run requires new
-explicit quota and credential authorization.
+The schema-v9 route-only diagnostic successor is implemented, fake-protocol
+verified, and live-executed once with separate owner authorization. It does not
+reinterpret either failed v7 run or either empty v8 attempt. The v9 artifact
+retained `31` context-deadline, `83` invalid-Tool-Call, and `174` unclassified
+router failure categories plus `174` independent retrieval-incomplete counts.
+It failed unchanged quality/latency/cutoff gates with zero authority/privacy
+leaks and selected no policy. Credentials and isolated runtimes were fully
+destroyed. The production 750 ms embedding cutoff, two-second hard cutoff, and
+no-retry behavior remain unchanged. No further paid run is authorized.
 
 Use the selected main-model Tool route from
 [`research/main-model-memory-tool-routing.md`](research/main-model-memory-tool-routing.md):
@@ -523,3 +533,12 @@ select a policy or unlock Validation/Promotion.
   shape at mode `0600`. Its independent transient Vault copies were overwritten
   and removed, and cleanup again left zero scoped containers, networks,
   volumes, temporary regression directories, or operator export files.
+- The schema-v9 DeepSeek Flash diagnostic retained its report and manifest as
+  mode-`0600` aggregate-only evidence in a mode-`0700` external directory. The
+  manifest binds configuration
+  `13cc65b47ff7c358935ebd3bb1080412784e353ebc72503963b2822d9990c14f`
+  and canonical cost content
+  `b54b6fcfb62a33b31ef17cfd9876d392a20ef21bd25d19f67902350f194b1742`;
+  the private source cost file remains separately bound by raw-file SHA-256
+  `4d3fe6b0dbbc1ed80f717ae2488ce8d2a141db24dc1192a5f260f57410c3531b`.
+  All transient credentials/helpers and scoped Compose objects were destroyed.
