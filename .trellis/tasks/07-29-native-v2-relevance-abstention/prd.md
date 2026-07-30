@@ -158,6 +158,12 @@ evidence passes.
   authority/privacy leak count remained zero. This profile also failed
   unchanged quality, unrelated-negative, cutoff, and latency gates; no policy
   was frozen.
+- Local source tracing proved that schema-v7 collapsed HTTP, transport, SSE,
+  context, Tool Call, provenance, and recorder failures into the same
+  `MEMORY_TOOL_ROUTE_FAILED` count. The retained aggregate evidence cannot
+  retroactively identify the `263` DeepSeek subtypes. A schema-v8,
+  Development-only diagnostic lane now binds a fixed category taxonomy and
+  emits aggregate subtype counts only; it has no policy-selection authority.
 
 ## Assumptions (updated)
 
@@ -231,6 +237,10 @@ evidence passes.
   Tool definition/version, adapter behavior, Provider type and identity,
   model, cost authority, BGE tuple, and unchanged evaluation criteria before
   Provider construction.
+- Preserve schema-v7 as immutable failed evidence. Any failure-subtype rerun
+  uses profile/report schema v8, reader v6, and the hash-bound
+  `memory-tool-route-failure-taxonomy-v1`; the sum of bounded subtype counts
+  must equal route failures and no raw Provider error/body may be retained.
 - Score a relevant case as final only when a valid Tool Call is followed by the
   unchanged BGE final set. Score a Tool Call whose non-empty BGE final set would
   enter an unrelated-negative continuation as false injection.
@@ -339,6 +349,11 @@ corrected DeepSeek Flash failed. The first schema-v7 GPT Development profile
 and the independent DeepSeek Flash profile also failed. No policy is frozen,
 Validation is blocked, and the runtime flag remains default-off.
 
+The local schema-v8 diagnostic implementation is now present and fake-protocol
+verified. It does not reinterpret either failed v7 run and has not been run
+against a paid Provider. A live diagnostic requires a new explicit quota and
+credential authorization.
+
 Use the selected main-model Tool route from
 [`research/main-model-memory-tool-routing.md`](research/main-model-memory-tool-routing.md):
 
@@ -384,6 +399,9 @@ Use the selected main-model Tool route from
 11. Update benchmark/hybrid/Tool Loop contracts, operator workflow, and live
    tracking; retain only sanitized mode-`0600` evidence and leave promotion
    disabled.
+12. Classify the collapsed first-round failures through a schema-v8,
+    aggregate-only diagnostic lane. Do not infer historical v7 subtypes and do
+    not run the paid lane without fresh explicit authorization.
 
 ## Decision (ADR-lite)
 
@@ -414,6 +432,11 @@ Schema-v7 measures the new request shape separately. Its offline evidence
 passes and its first GPT live Development profile failed unchanged gates; it
 cannot inherit any schema-v6 result.
 
+**2026-07-30 diagnostic amendment:** Both schema-v7 profiles failed and the
+DeepSeek report collapsed `263` route failures into one code. Keep those files
+immutable. A new v8 diagnostic taxonomy may measure only bounded aggregate
+failure categories and can never select a policy or unlock Validation.
+
 ## Expansion Sweep
 
 - Future evolution: keep a local/private judge as an optional later profile if
@@ -442,6 +465,7 @@ cannot inherit any schema-v6 result.
 - [`research/relevance-abstention-design.md`](research/relevance-abstention-design.md)
 - [`research/cloud-judge-model-followup.md`](research/cloud-judge-model-followup.md)
 - [`research/main-model-memory-tool-routing.md`](research/main-model-memory-tool-routing.md)
+- [`research/memory-tool-route-failure-diagnostics.md`](research/memory-tool-route-failure-diagnostics.md)
 - `.trellis/spec/backend/memory-v2-benchmark.md`
 - `.trellis/spec/backend/memory-v2-hybrid-shadow.md`
 - `mm-chat/docs/contracts/memory-benchmark-workflow.md`
