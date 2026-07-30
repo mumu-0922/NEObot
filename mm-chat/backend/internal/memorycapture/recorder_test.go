@@ -68,6 +68,103 @@ func TestMemoryToolRouterDecoratorRecordsProvenanceDrift(t *testing.T) {
 	}
 }
 
+func TestMemoryToolRouterDecoratorDoesNotWaitForCancellationIgnoringRouter(t *testing.T) {
+	recorder := &Recorder{}
+	if err := recorder.Begin(captureAssistantID); err != nil {
+		t.Fatal(err)
+	}
+	router := &cancellationIgnoringMemoryToolRouter{release: make(chan struct{})}
+	decorator, err := NewMemoryToolRouterDecorator(router, recorder, "route-model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+	completed := make(chan error, 1)
+	go func() {
+		_, routeErr := decorator.RouteHybridMemory(
+			ctx,
+			usermemory.HybridMemoryToolRouteInput{Query: "private query"},
+		)
+		completed <- routeErr
+	}()
+
+	var routeErr error
+	select {
+	case routeErr = <-completed:
+	case <-time.After(100 * time.Millisecond):
+		close(router.release)
+		<-completed
+		t.Fatal("decorator waited for a router that ignored cancellation")
+	}
+	if category := usermemory.HybridMemoryToolRouteFailureCategory(routeErr); category !=
+		usermemory.HybridMemoryToolRouteFailureContextDeadline {
+		t.Fatalf("route error category = %q (%v)", category, routeErr)
+	}
+	transient, err := recorder.Finish(captureAssistantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transient.memoryToolRouteFailureCategory !=
+		usermemory.HybridMemoryToolRouteFailureContextDeadline {
+		t.Fatalf("deadline transient = %#v", transient)
+	}
+	close(router.release)
+}
+
+func TestRecorderRejectsMemoryToolRouteResultFromPreviousGeneration(t *testing.T) {
+	recorder := &Recorder{}
+	if err := recorder.Begin(captureAssistantID); err != nil {
+		t.Fatal(err)
+	}
+	oldToken, err := recorder.recordMemoryToolRouteInput(
+		usermemory.HybridMemoryToolRouteInput{Query: "first private query"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := recorder.Finish(captureAssistantID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Reusing the same assistant identity must not let a late result from the
+	// previous sequential case attach to the new capture generation.
+	if err := recorder.Begin(captureAssistantID); err != nil {
+		t.Fatal(err)
+	}
+	currentToken, err := recorder.recordMemoryToolRouteInput(
+		usermemory.HybridMemoryToolRouteInput{Query: "second private query"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := recorder.recordMemoryToolRouteFailure(
+		oldToken,
+		usermemory.HybridMemoryToolRouteFailureRateLimited,
+	); err == nil {
+		t.Fatal("previous route generation mutated the current capture")
+	}
+	if err := recorder.recordMemoryToolRouteResult(
+		currentToken,
+		usermemory.HybridMemoryToolRouteResult{
+			UseMemory:             true,
+			ContractVersion:       usermemory.HybridMemoryToolContractVersion,
+			ContractSHA256:        usermemory.HybridMemoryToolContractSHA256,
+			OutputTokenUpperBound: 1,
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+	transient, err := recorder.Finish(captureAssistantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !transient.memoryToolRouteReady || !transient.memoryToolRouteUsed ||
+		transient.memoryToolRouteFailureCategory != "" {
+		t.Fatalf("current route generation = %#v", transient)
+	}
+}
+
 type failingMemoryToolRouter struct{}
 
 func (failingMemoryToolRouter) RouteHybridMemory(
@@ -88,6 +185,23 @@ func (driftedMemoryToolRouter) RouteHybridMemory(
 ) (usermemory.HybridMemoryToolRouteResult, error) {
 	return usermemory.HybridMemoryToolRouteResult{
 		ModelID:               "other-model",
+		ContractVersion:       usermemory.HybridMemoryToolContractVersion,
+		ContractSHA256:        usermemory.HybridMemoryToolContractSHA256,
+		OutputTokenUpperBound: 1,
+	}, nil
+}
+
+type cancellationIgnoringMemoryToolRouter struct {
+	release chan struct{}
+}
+
+func (router *cancellationIgnoringMemoryToolRouter) RouteHybridMemory(
+	context.Context,
+	usermemory.HybridMemoryToolRouteInput,
+) (usermemory.HybridMemoryToolRouteResult, error) {
+	<-router.release
+	return usermemory.HybridMemoryToolRouteResult{
+		ModelID:               "route-model",
 		ContractVersion:       usermemory.HybridMemoryToolContractVersion,
 		ContractSHA256:        usermemory.HybridMemoryToolContractSHA256,
 		OutputTokenUpperBound: 1,

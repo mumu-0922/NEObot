@@ -135,6 +135,75 @@ func TestCaptureCandidateRecordsRerankFailureWithoutHidingProviderSurface(t *tes
 	}
 }
 
+func TestCaptureCandidateCompletesRouteWhenAdmissionIsUnavailable(t *testing.T) {
+	base := &captureRepository{memories: []usermemory.Memory{{
+		ID: captureMemoryOne, Type: "preference", Content: "Keep answers concise",
+		NormalizedContent: "keep answers concise", Importance: 5, Enabled: true,
+		Revision: 1, ScopeType: "global",
+	}}}
+	recorder := &Recorder{}
+	repository, _ := NewRepositoryDecorator(base, base, recorder)
+	provider, _ := NewProviderDecorator(
+		captureProvider{embedErr: errors.New("fixture embedding failure")},
+		recorder,
+	)
+	rawRouter := &delayedCaptureMemoryToolRouter{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	router, _ := NewMemoryToolRouterDecorator(rawRouter, recorder, "route-model")
+	service := usermemory.NewService(
+		repository,
+		usermemory.WithHybridShadowProvider(provider),
+		usermemory.WithHybridMemoryToolRouter(router),
+		usermemory.WithHybridShadowRelevancePolicy(
+			usermemory.HybridShadowMemoryToolRouteCalibrationPolicy("route-model"),
+		),
+	)
+	type outcome struct {
+		observed memoryeval.CaseObservation
+		trace    CandidateCalibrationTrace
+		err      error
+	}
+	completed := make(chan outcome, 1)
+	go func() {
+		observed, trace, captureErr := captureCandidateWithCalibration(
+			context.Background(), service, recorder, captureFixtureIndex(),
+			RuntimeCase{
+				CaseID: "case-one", Query: "keep answers concise", UserID: captureUserID,
+				ConversationID: captureConversationID, AssistantMessageID: captureAssistantID,
+			},
+		)
+		completed <- outcome{observed: observed, trace: trace, err: captureErr}
+	}()
+
+	select {
+	case <-rawRouter.started:
+	case <-time.After(time.Second):
+		t.Fatal("capture route did not start")
+	}
+	select {
+	case result := <-completed:
+		t.Fatalf("capture closed before route result: %#v", result)
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(rawRouter.release)
+	select {
+	case result := <-completed:
+		if result.err != nil || !result.trace.MemoryToolRouteReady ||
+			!result.trace.MemoryToolRouteUsed ||
+			result.trace.MemoryToolRouteFailureCategory != "" ||
+			result.trace.AdmissionReady ||
+			result.trace.AbstentionCode != "RELEVANCE_ADMISSION_UNAVAILABLE" ||
+			len(result.observed.FinalMemoryIDs) != 0 ||
+			len(result.observed.InjectedMemoryIDs) != 0 {
+			t.Fatalf("route-complete retrieval failure = %#v", result)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("capture did not complete after route result")
+	}
+}
+
 func TestCaptureCandidateRecordsHardCutoffAsBoundedFallback(t *testing.T) {
 	base := &captureRepository{memories: []usermemory.Memory{{
 		ID: captureMemoryOne, Type: "preference", Content: "Keep answers concise",
@@ -313,14 +382,42 @@ func (repository *captureRepository) RecordHybridShadow(
 }
 
 type captureProvider struct {
+	embedErr      error
 	rerankErr     error
 	waitForCutoff bool
 }
 
-func (captureProvider) EmbedQuery(context.Context, string) (ragproviders.QueryEmbedding, error) {
+func (provider captureProvider) EmbedQuery(context.Context, string) (ragproviders.QueryEmbedding, error) {
+	if provider.embedErr != nil {
+		return ragproviders.QueryEmbedding{}, provider.embedErr
+	}
 	vector := make([]float32, ragproviders.SiliconFlowEmbeddingDimensions)
 	vector[0] = 1
 	return ragproviders.QueryEmbedding{ModelID: ragproviders.SiliconFlowEmbeddingModel, Dimensions: len(vector), Vector: vector}, nil
+}
+
+type delayedCaptureMemoryToolRouter struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (router *delayedCaptureMemoryToolRouter) RouteHybridMemory(
+	ctx context.Context,
+	_ usermemory.HybridMemoryToolRouteInput,
+) (usermemory.HybridMemoryToolRouteResult, error) {
+	close(router.started)
+	select {
+	case <-router.release:
+		return usermemory.HybridMemoryToolRouteResult{
+			UseMemory:             true,
+			ModelID:               "route-model",
+			ContractVersion:       usermemory.HybridMemoryToolContractVersion,
+			ContractSHA256:        usermemory.HybridMemoryToolContractSHA256,
+			OutputTokenUpperBound: 1,
+		}, nil
+	case <-ctx.Done():
+		return usermemory.HybridMemoryToolRouteResult{}, ctx.Err()
+	}
 }
 
 func (provider captureProvider) Rerank(ctx context.Context, _ string, documents []string) ([]ragproviders.RerankResult, error) {

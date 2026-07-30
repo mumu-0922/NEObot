@@ -45,6 +45,7 @@ Current user message -> exact + BM25 + vector -> RRF(60)
   -> migration-064 local maximum-cosine admission before document egress
   -> optional strict cloud candidate judge || main-model search_memory route
      concurrently with BGE rerank
+  -> close every started route stage before its capture case finishes
   -> judge ordinal intersection OR exact Tool-call release in BGE order
   -> request-local score threshold
   -> 600-target/900-hard token budget
@@ -98,6 +99,7 @@ cycle.
 | BGE and cloud judge run concurrently                     | Serial hosted stages cannot reliably fit the unchanged two-second shadow cutoff             | Both must finish under the same bounded context; either failure or provenance drift yields `no_memory` |
 | Main model routes before seeing candidates               | The owner selected GPT/DeepSeek and rejected another hidden relevance model                    | Product first ToolRound receives normal chat context plus the exact no-argument `search_memory` Tool, never Memory bodies |
 | Route and BGE work may overlap                           | Serial model decision plus BGE stages would spend the unchanged two-second cutoff               | Candidate bodies stay inside the authorized BGE boundary and every result is discarded unless one exact Tool Call succeeds |
+| A started route belongs to one capture generation       | Retrieval can fail closed before the concurrent route returns, and a late result must not reach a later case | One replayable route completion closes on every exit; capture rejects result/failure writes carrying an old generation |
 | Missing Tool arguments are not `{}`                     | A nil Go map can otherwise pass a length-only empty check                                        | The adapter requires a non-nil empty object, non-empty call ID, exact name, and exactly one call |
 | Final content is hydrated only after Record              | Provider work and final ranking can become stale before prompt use                                | Migration-065 repeats current source/settings/epoch/projection/revision/hash/scope/Sensitive authority for the exact final lane |
 | Product Tool read never falls back to v1                 | A valid Tool call must not launder an unrelated legacy result after hybrid failure                | Failure/empty/stale/redacted paths return no Memory and normal chat continues |
@@ -173,6 +175,7 @@ cycle.
 | Route model sees Memory before it decides to search | `HybridMemoryToolRouter` receives only the secret-redacted query; candidates never enter the Tool-planning request |
 | Ambiguous Tool output releases Memory | Exact choice/call/ID/name/non-nil-empty-argument validation rejects missing, null, unknown, duplicate, or non-empty calls |
 | Route result is replayed under another model/contract | `routeHybridMemory` rechecks exact model ID, contract version, and SHA-256 before any final row is released |
+| Retrieval finishes while its route can still write | Every started route stage is awaited on early exits up to the existing hard cutoff; a generation-fenced Recorder rejects any prior-case write |
 | Recorded hybrid final becomes stale before prompt use | Migration-065 rejects the whole set unless every exact ordinal remains current-authorized; Go rechecks identity and redacts content again |
 | Owner authorization is mistaken for blanket egress | Policy-aware scoring permits only `irrelevant`; cross-user, out-of-scope, deleted, secret, superseded, Sensitive-disabled, and untrusted-source remain zero-tolerance failures |
 | Query or canonical Memory leaks a credential to retrieval Provider | Shared deterministic classification redacts query, rerank documents, and embedding bodies immediately before egress; fully redacted input makes zero corresponding Provider calls |
@@ -202,9 +205,10 @@ Known limitation: migrations `062` and `063` ship in shadow with all derived
 reader rollout flags default-off. No formal 500-case benchmark plus seven-day/
 100-turn canary evidence exists, so neither L2 nor L3 can become active
 automatically. Schema-v6 live evidence failed and its preflight is rejected.
-Schema-v7 first-ToolRound implementation has no live Development or Validation
-result, and `MEMORY_TOOL_LOOP_ENABLED` remains false by default. The v1 Global
-Top 5 remains the deployed default prompt and Usage authority.
+Schema-v7 first-ToolRound GPT and DeepSeek Development profiles both failed,
+and the schema-v9 diagnostic selected no policy. Validation remains blocked and
+`MEMORY_TOOL_LOOP_ENABLED` remains false by default. The v1 Global Top 5 stays
+the deployed prompt and Usage authority.
 
 ## Verification
 
@@ -260,3 +264,6 @@ rebuild, runtime role denial, and clean PostgreSQL 17 portability plus
 - 2026-07-30: canonical first-round Tool execution moved into `internal/chat`;
   migration-065 added exact post-Record current-authority final hydration, and
   schema-v7 replaced the failed preflight adapter without enabling rollout.
+- 2026-07-30: route completion became replayable and mandatory on every
+  capture exit; cancellation-ignoring delegation is bounded and Recorder route
+  writes are generation-fenced after the schema-v9 offline lifecycle trace.

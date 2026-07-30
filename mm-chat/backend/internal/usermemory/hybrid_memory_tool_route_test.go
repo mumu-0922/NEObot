@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"neo-chat/mm-chat/backend/internal/ragproviders"
 )
@@ -160,6 +161,61 @@ func TestMemoryToolRouteStartsBeforeQueryEmbeddingCompletes(t *testing.T) {
 	}
 }
 
+func TestMemoryToolRouteCompletesWhenAdmissionIsUnavailable(t *testing.T) {
+	repository := cloudJudgeTestRepository()
+	repository.recordSummary.FallbackCode = "RELEVANCE_ADMISSION_UNAVAILABLE"
+	provider := &hybridTestProvider{embedErr: errors.New("fixture embedding failure")}
+	router := &delayedMemoryToolRouter{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	type outcome struct {
+		summary HybridShadowSummary
+		err     error
+	}
+	completed := make(chan outcome, 1)
+	go func() {
+		_, summary, err := NewService(
+			repository,
+			WithHybridShadowProvider(provider),
+			WithHybridMemoryToolRouter(router),
+			WithHybridShadowRelevancePolicy(
+				HybridShadowMemoryToolRouteCalibrationPolicy(
+					hybridMemoryToolRouteTestModel,
+				),
+			),
+		).SearchRelevantWithHybridShadow(
+			context.Background(), "saved preference", hybridTestConversation,
+			hybridTestAssistant, MaxSearchResults,
+		)
+		completed <- outcome{summary: summary, err: err}
+	}()
+
+	select {
+	case <-router.started:
+	case <-time.After(time.Second):
+		t.Fatal("Memory Tool route did not start")
+	}
+	select {
+	case result := <-completed:
+		t.Fatalf("retrieval returned before route completed: %#v", result)
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(router.release)
+	select {
+	case result := <-completed:
+		if result.err != nil ||
+			result.summary.FallbackCode != "RELEVANCE_ADMISSION_UNAVAILABLE" ||
+			repository.recordInput.FallbackCode != "RELEVANCE_ADMISSION_UNAVAILABLE" ||
+			provider.rerankCalls != 0 || len(repository.recordInput.Final) != 0 {
+			t.Fatalf("fail-closed route completion = result:%#v repo:%#v provider:%#v",
+				result, repository.recordInput, provider)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("retrieval did not complete after route result")
+	}
+}
+
 func validHybridMemoryToolRouteResult(useMemory bool) HybridMemoryToolRouteResult {
 	return HybridMemoryToolRouteResult{
 		UseMemory:       useMemory,
@@ -188,6 +244,24 @@ func (router *hybridTestMemoryToolRouter) RouteHybridMemory(
 type coordinatedMemoryToolRouter struct {
 	routeStarted chan struct{}
 	embedStarted chan struct{}
+}
+
+type delayedMemoryToolRouter struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (router *delayedMemoryToolRouter) RouteHybridMemory(
+	ctx context.Context,
+	_ HybridMemoryToolRouteInput,
+) (HybridMemoryToolRouteResult, error) {
+	close(router.started)
+	select {
+	case <-router.release:
+		return validHybridMemoryToolRouteResult(true), nil
+	case <-ctx.Done():
+		return HybridMemoryToolRouteResult{}, ctx.Err()
+	}
 }
 
 func (router *coordinatedMemoryToolRouter) RouteHybridMemory(
@@ -236,5 +310,6 @@ func (provider *coordinatedMemoryToolProvider) Rerank(
 var (
 	_ HybridMemoryToolRouter = (*hybridTestMemoryToolRouter)(nil)
 	_ HybridMemoryToolRouter = (*coordinatedMemoryToolRouter)(nil)
+	_ HybridMemoryToolRouter = (*delayedMemoryToolRouter)(nil)
 	_ HybridShadowProvider   = (*coordinatedMemoryToolProvider)(nil)
 )

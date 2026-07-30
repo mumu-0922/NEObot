@@ -37,6 +37,8 @@ protected synthetic artifacts
           call releases unchanged BGE order, before the token selector
        -> Provider decorator captures exact candidate-document IDs
        -> calibration-only recorder retains request-local rerank scores
+       -> route completion closes before Recorder.Finish; writes carry the
+          originating capture generation
   -> full observations, aggregate Development grid, or frozen Validation
   -> shared memoryeval scorer and exact Provider-cost gate
   -> plaintext/credential leak scan
@@ -69,6 +71,7 @@ run-bound marker in a database whose name starts with
 | Main-model Tool route | Three candidate-aware hosted judge models failed unchanged quality/latency gates, and the owner already selected GPT/DeepSeek for chat. | Schema v6 preserves the failed preflight; schema v7 sends the current synthetic query/message plus canonical `search_memory` through one real first `ToolRoundProvider` request. |
 | Exact empty-object call | Missing arguments and `{}` have different decoding provenance even though both can look empty in Go. | The adapter requires a non-nil empty map, one non-empty call ID, one exact name, and no duplicate calls. |
 | Speculative BGE overlap | A separate route round plus serial embedding/rerank would make the unchanged two-second gate harder to meet. | BGE work may overlap, but its candidates stay request-local and are discarded unless the exact route call succeeds. |
+| Route lifecycle is generation-bound | Admission can fail closed before a concurrent route returns; an identity-only Recorder can then misclassify or accept a late write. | One replayable route completion closes on every exit, delegated calls publish through a buffered context-selected result, and old-generation writes fail closed. |
 | Independent live credentials | BGE and the selected chat route are separate Provider authorities. | Cost-basis v5 and the wrapper reject the same file, hard links, or equal Key bytes and bind each exact target independently. |
 | Candidate failure means `no_memory` | v1 remains the real prompt authority but is a separate benchmark profile. | Prepare/Record/Provider/cutoff failures never launder v1 or unscored RRF rows into v2 final/injected surfaces. |
 
@@ -135,6 +138,12 @@ a non-nil empty object. Any other event/call/argument shape fails closed. The
 returned boolean carries exact model, contract-version, and contract-hash
 provenance; it never carries free-form output or candidate authority.
 
+The decorator, not the delegated router goroutine, owns Recorder publication.
+It selects one buffered result against route-context termination and returns a
+bounded context category when the delegate ignores cancellation. Route input
+returns a per-case generation token; only that token can record the matching
+result or failure, even when a later case reuses the same assistant identity.
+
 ## Known limitations
 
 - Live Development/Validation capture consumes real SiliconFlow quota and can
@@ -178,6 +187,11 @@ provenance; it never carries free-form output or candidate authority.
   Upstream error text, response bodies, queries, Tool payloads, Memory content,
   scores, and case identity do not survive. The diagnostic lane cannot select a
   policy even when unchanged metrics pass.
+- The first schema-v9 live artifact recorded `31` context deadlines, `83`
+  invalid Tool Calls, and `174` unclassified failures. Offline tracing proved
+  one concrete producer: admission-unavailable paths did not await their
+  already-started route. The lifecycle/generation repair prevents recurrence
+  but cannot relabel the immutable identity-free artifact.
 - Fake protocol relevance and latency metrics are intentionally meaningless;
   only lifecycle and authority invariants are evaluated.
 
@@ -228,3 +242,6 @@ provenance; it never carries free-form output or candidate authority.
 - **2026-07-30**: Added schema-v9 route-only diagnostic completeness so
   fail-closed admission/rerank results are aggregated separately without
   weakening cutoffs, retries, empty-final authority, or promotion denial.
+- **2026-07-30**: Closed every started route before capture completion, bounded
+  cancellation-ignoring delegates through a buffered context select, and
+  generation-fenced Recorder route writes after the offline schema-v9 trace.

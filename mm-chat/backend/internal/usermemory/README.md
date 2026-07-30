@@ -199,6 +199,13 @@ request-local and is discarded on route abstention/failure. Empty RRF candidates
 still await the decision long enough to record `MEMORY_TOOL_ROUTE_EMPTY`,
 `ABSTAINED`, or `FAILED` truthfully.
 
+Every started Development route now exposes one replayable completion and is
+closed before its capture case finishes, including prepare, embedding,
+admission, redaction, and empty-candidate exits. This does not add a retry or
+extend the two-second hard cutoff. Capture Recorder writes are separately bound
+to the generation that recorded the route input, so a delayed result cannot
+attach to the next sequential case.
+
 Schema-v6/profile-v6/cost-basis-v4 are immutable failed `PlanTools` evidence.
 Schema-v7 uses policy
 `memory_hybrid_main_model_first_tool_round_calibration_v1`; the Development

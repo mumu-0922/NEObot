@@ -213,6 +213,14 @@ func (s *Service) executeHybridShadow(
 		policy,
 		query,
 	)
+	// A route starts before retrieval so both Provider stages can overlap. It
+	// must still be observed on every early return; otherwise capture can close
+	// the current case while the route is still publishing its bounded result.
+	if memoryToolRoute != nil {
+		defer func() {
+			_, _ = awaitHybridMemoryToolRoute(shadowCtx, memoryToolRoute)
+		}()
+	}
 
 	embedCtx, embedCancel := context.WithTimeout(shadowCtx, hybridShadowEmbedCutoff)
 	queryEmbedding, embeddingState := s.hybridQueryEmbedding(embedCtx, query)
@@ -338,6 +346,18 @@ func (s *Service) executeHybridShadow(
 			fallbackCode = "MEMORY_TOOL_ROUTE_EMPTY"
 		default:
 			fallbackCode = "MEMORY_TOOL_ROUTE_ABSTAINED"
+		}
+	}
+	if policy.MemoryToolRouteRequired {
+		// Candidate-less and pre-rerank fail-closed paths still consume the route
+		// lifecycle. The cached stage result makes this an immediate read when
+		// executeHybridCandidateStages already observed it.
+		_, _ = awaitHybridMemoryToolRoute(shadowCtx, memoryToolRoute)
+		if errors.Is(shadowCtx.Err(), context.DeadlineExceeded) {
+			rerankStatus = "fallback"
+			fallbackCode = "HARD_CUTOFF"
+			scored = []hybridShadowScoredCandidate{}
+			reranked = []HybridShadowRankedItem{}
 		}
 	}
 	final, estimatedTokens := selectHybridShadowFinal(
@@ -493,11 +513,16 @@ type hybridMemoryToolRouteStageResult struct {
 	err       error
 }
 
+type hybridMemoryToolRouteStage struct {
+	done   chan struct{}
+	result hybridMemoryToolRouteStageResult
+}
+
 func executeHybridCandidateStages(
 	ctx context.Context,
 	provider HybridShadowProvider,
 	judge HybridCandidateJudge,
-	memoryToolRoute <-chan hybridMemoryToolRouteStageResult,
+	memoryToolRoute *hybridMemoryToolRouteStage,
 	policy HybridShadowRelevancePolicy,
 	query string,
 	candidates []HybridShadowCandidate,
@@ -532,10 +557,13 @@ func executeHybridCandidateStages(
 		}()
 		var reranked hybridRerankStageResult
 		var routed hybridMemoryToolRouteStageResult
+		routeDone := memoryToolRoute.done
 		for completed := 0; completed < 2; completed++ {
 			select {
 			case reranked = <-rerankResult:
-			case routed = <-memoryToolRoute:
+			case <-routeDone:
+				routed = memoryToolRoute.result
+				routeDone = nil
 			case <-ctx.Done():
 				return nil, nil, "MEMORY_TOOL_ROUTE_FAILED", context.DeadlineExceeded
 			}
@@ -615,11 +643,11 @@ func startHybridMemoryToolRoute(
 	router HybridMemoryToolRouter,
 	policy HybridShadowRelevancePolicy,
 	query string,
-) <-chan hybridMemoryToolRouteStageResult {
+) *hybridMemoryToolRouteStage {
 	if !policy.MemoryToolRouteRequired {
 		return nil
 	}
-	result := make(chan hybridMemoryToolRouteStageResult, 1)
+	stage := &hybridMemoryToolRouteStage{done: make(chan struct{})}
 	go func() {
 		useMemory, err := routeHybridMemory(
 			ctx,
@@ -627,20 +655,22 @@ func startHybridMemoryToolRoute(
 			policy.MemoryToolRouteModelID,
 			query,
 		)
-		result <- hybridMemoryToolRouteStageResult{useMemory: useMemory, err: err}
+		stage.result = hybridMemoryToolRouteStageResult{useMemory: useMemory, err: err}
+		close(stage.done)
 	}()
-	return result
+	return stage
 }
 
 func awaitHybridMemoryToolRoute(
 	ctx context.Context,
-	result <-chan hybridMemoryToolRouteStageResult,
+	stage *hybridMemoryToolRouteStage,
 ) (bool, error) {
-	if result == nil {
+	if stage == nil {
 		return false, errors.New("hybrid Memory Tool route is unavailable")
 	}
 	select {
-	case routed := <-result:
+	case <-stage.done:
+		routed := stage.result
 		return routed.useMemory, routed.err
 	case <-ctx.Done():
 		return false, context.DeadlineExceeded

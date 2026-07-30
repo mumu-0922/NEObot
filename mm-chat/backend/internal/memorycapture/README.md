@@ -23,6 +23,9 @@ without changing prompt, Usage, feature flags, or production data.
   current-model first-`ToolRoundProvider` `search_memory` decision concurrently
   with fixed BGE work for schema-v7 Development without sending candidate
   bodies to the route Provider;
+- close every started route before the sequential capture case finishes, bind
+  Recorder writes to that case generation, and prevent cancellation-ignoring
+  delegated routers from holding the reader;
 - enforce exact `development`/`validation` split lanes and reject the visible
   machine `holdout`;
 - assemble strict regression observations, content-free run manifests, and
@@ -176,6 +179,16 @@ emits explicit empty aggregate maps. Cutoffs, retries, selection authority, and
 the default-off runtime remain unchanged. A third paid run requires fresh
 explicit authorization.
 
+The first schema-v9 live diagnostic completed `12/300` routes and classified
+the failures as `31` context deadlines, `83` invalid Tool Calls, and `174`
+unclassified router failures, alongside `174` independent admission-
+unavailable retrieval aggregates. Offline tracing then found a concrete
+unclassified producer: admission failure returned before the already-started
+route was observed. Route completion is now replayable and mandatory on all
+exits; delegated cancellation is context-selected through a buffered result,
+and Recorder writes require the originating generation. The retained
+identity-free artifact is unchanged and no paid rerun is authorized.
+
 The schema-v4 cost basis fixes a 300-request ceiling, a 128-token output ceiling
 per request, conservative UTF-8-plus-framing input token bounds, exact model
 prices, and maximum judge cost before Provider construction. The candidate
@@ -203,6 +216,15 @@ MM_CHAT_TEST_DATABASE_URL=... \
 
 cd ..
 bash scripts/test-memory-regression.sh
+```
+
+## Files
+
+```text
+recorder.go                        Per-case capture state and generation tokens
+memory_tool_router_decorator.go    Bounded route delegation and Recorder publication
+capture.go                         Production-reader observation assembly
+memory_tool_route_development.go   Schema-v7/v9 aggregate report authority
 ```
 
 See [DESIGN.md](DESIGN.md) and

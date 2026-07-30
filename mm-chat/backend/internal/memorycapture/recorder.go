@@ -2,7 +2,6 @@ package memorycapture
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -33,6 +32,10 @@ type transientCapture struct {
 	rerankScores                         map[string]float64
 }
 
+type memoryToolRouteCaptureToken struct {
+	generation uint64
+}
+
 func (recorder *Recorder) recordMemoryIntent(value ragproviders.MemoryIntentSignal) error {
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
@@ -51,8 +54,10 @@ func (recorder *Recorder) recordMemoryIntent(value ragproviders.MemoryIntentSign
 // Recorder coordinates repository and Provider decorators for one sequential
 // case. It fails closed if calls overlap or identities drift.
 type Recorder struct {
-	mu      sync.Mutex
-	current *transientCapture
+	mu                sync.Mutex
+	current           *transientCapture
+	currentGeneration uint64
+	nextGeneration    uint64
 }
 
 func (recorder *Recorder) Begin(assistantMessageID string) error {
@@ -61,6 +66,11 @@ func (recorder *Recorder) Begin(assistantMessageID string) error {
 	if recorder.current != nil || assistantMessageID == "" {
 		return ErrCaptureStateConflict
 	}
+	recorder.nextGeneration++
+	if recorder.nextGeneration == 0 {
+		recorder.nextGeneration++
+	}
+	recorder.currentGeneration = recorder.nextGeneration
 	recorder.current = &transientCapture{assistantMessageID: assistantMessageID}
 	return nil
 }
@@ -73,12 +83,14 @@ func (recorder *Recorder) Finish(assistantMessageID string) (transientCapture, e
 	}
 	result := cloneTransientCapture(*recorder.current)
 	recorder.current = nil
+	recorder.currentGeneration = 0
 	return result, nil
 }
 
 func (recorder *Recorder) Abort() {
 	recorder.mu.Lock()
 	recorder.current = nil
+	recorder.currentGeneration = 0
 	recorder.mu.Unlock()
 }
 
@@ -180,7 +192,7 @@ func (recorder *Recorder) recordCloudJudgeInput(
 
 func (recorder *Recorder) recordMemoryToolRouteInput(
 	input usermemory.HybridMemoryToolRouteInput,
-) error {
+) (memoryToolRouteCaptureToken, error) {
 	// One UTF-8 byte per token plus the fixed Tool contract and chat framing is
 	// conservative while retaining no query plaintext.
 	upperBound := len(input.Query) + 1024
@@ -188,19 +200,22 @@ func (recorder *Recorder) recordMemoryToolRouteInput(
 	defer recorder.mu.Unlock()
 	if recorder.current == nil ||
 		recorder.current.memoryToolRouteInputTokenUpperBound != 0 ||
-		upperBound <= 0 {
-		return ErrCaptureStateConflict
+		recorder.currentGeneration == 0 || upperBound <= 0 {
+		return memoryToolRouteCaptureToken{}, ErrCaptureStateConflict
 	}
 	recorder.current.memoryToolRouteInputTokenUpperBound = upperBound
-	return nil
+	return memoryToolRouteCaptureToken{generation: recorder.currentGeneration}, nil
 }
 
 func (recorder *Recorder) recordMemoryToolRouteResult(
+	token memoryToolRouteCaptureToken,
 	result usermemory.HybridMemoryToolRouteResult,
 ) error {
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
-	if recorder.current == nil || recorder.current.memoryToolRouteReady ||
+	if recorder.current == nil || token.generation == 0 ||
+		token.generation != recorder.currentGeneration ||
+		recorder.current.memoryToolRouteReady ||
 		recorder.current.memoryToolRouteFailureCategory != "" ||
 		recorder.current.memoryToolRouteInputTokenUpperBound <= 0 ||
 		result.OutputTokenUpperBound <= 0 ||
@@ -214,10 +229,15 @@ func (recorder *Recorder) recordMemoryToolRouteResult(
 	return nil
 }
 
-func (recorder *Recorder) recordMemoryToolRouteFailure(category string) error {
+func (recorder *Recorder) recordMemoryToolRouteFailure(
+	token memoryToolRouteCaptureToken,
+	category string,
+) error {
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
-	if recorder.current == nil || recorder.current.memoryToolRouteReady ||
+	if recorder.current == nil || token.generation == 0 ||
+		token.generation != recorder.currentGeneration ||
+		recorder.current.memoryToolRouteReady ||
 		recorder.current.memoryToolRouteFailureCategory != "" ||
 		recorder.current.memoryToolRouteInputTokenUpperBound <= 0 ||
 		!usermemory.ValidHybridMemoryToolRouteFailureCategory(category) {
@@ -420,93 +440,6 @@ type CandidateJudgeDecorator struct {
 	judge           usermemory.HybridCandidateJudge
 	recorder        *Recorder
 	expectedModelID string
-}
-
-type MemoryToolRouterDecorator struct {
-	router          usermemory.HybridMemoryToolRouter
-	recorder        *Recorder
-	expectedModelID string
-}
-
-func NewMemoryToolRouterDecorator(
-	router usermemory.HybridMemoryToolRouter,
-	recorder *Recorder,
-	expectedModelID string,
-) (*MemoryToolRouterDecorator, error) {
-	if router == nil || recorder == nil || expectedModelID == "" {
-		return nil, ErrCaptureInvalid
-	}
-	return &MemoryToolRouterDecorator{
-		router: router, recorder: recorder, expectedModelID: expectedModelID,
-	}, nil
-}
-
-func (decorator *MemoryToolRouterDecorator) RouteHybridMemory(
-	ctx context.Context,
-	input usermemory.HybridMemoryToolRouteInput,
-) (usermemory.HybridMemoryToolRouteResult, error) {
-	if err := decorator.recorder.recordMemoryToolRouteInput(input); err != nil {
-		return usermemory.HybridMemoryToolRouteResult{},
-			usermemory.NewHybridMemoryToolRouteError(
-				usermemory.HybridMemoryToolRouteFailureRecorderStateConflict,
-			)
-	}
-	result, err := decorator.router.RouteHybridMemory(ctx, input)
-	if err != nil || ctx.Err() != nil {
-		category := memoryToolRouteFailureCategory(ctx, err)
-		if recordErr := decorator.recorder.recordMemoryToolRouteFailure(category); recordErr != nil {
-			return usermemory.HybridMemoryToolRouteResult{},
-				usermemory.NewHybridMemoryToolRouteError(
-					usermemory.HybridMemoryToolRouteFailureRecorderStateConflict,
-				)
-		}
-		return result, usermemory.NewHybridMemoryToolRouteError(category)
-	}
-	if result.ModelID != decorator.expectedModelID ||
-		result.ContractVersion != usermemory.HybridMemoryToolContractVersion ||
-		result.ContractSHA256 != usermemory.HybridMemoryToolContractSHA256 ||
-		result.OutputTokenUpperBound <= 0 {
-		if recordErr := decorator.recorder.recordMemoryToolRouteFailure(
-			usermemory.HybridMemoryToolRouteFailureProvenanceDrift,
-		); recordErr != nil {
-			return usermemory.HybridMemoryToolRouteResult{},
-				usermemory.NewHybridMemoryToolRouteError(
-					usermemory.HybridMemoryToolRouteFailureRecorderStateConflict,
-				)
-		}
-		return usermemory.HybridMemoryToolRouteResult{},
-			usermemory.NewHybridMemoryToolRouteError(
-				usermemory.HybridMemoryToolRouteFailureProvenanceDrift,
-			)
-	}
-	if err := decorator.recorder.recordMemoryToolRouteResult(result); err != nil {
-		if recordErr := decorator.recorder.recordMemoryToolRouteFailure(
-			usermemory.HybridMemoryToolRouteFailureRecorderStateConflict,
-		); recordErr != nil {
-			return usermemory.HybridMemoryToolRouteResult{},
-				usermemory.NewHybridMemoryToolRouteError(
-					usermemory.HybridMemoryToolRouteFailureRecorderStateConflict,
-				)
-		}
-		return usermemory.HybridMemoryToolRouteResult{},
-			usermemory.NewHybridMemoryToolRouteError(
-				usermemory.HybridMemoryToolRouteFailureRecorderStateConflict,
-			)
-	}
-	return result, nil
-}
-
-func memoryToolRouteFailureCategory(ctx context.Context, err error) string {
-	if ctx != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return usermemory.HybridMemoryToolRouteFailureContextDeadline
-	}
-	if ctx != nil && errors.Is(ctx.Err(), context.Canceled) {
-		return usermemory.HybridMemoryToolRouteFailureContextCanceled
-	}
-	if category := usermemory.HybridMemoryToolRouteFailureCategory(err); category != "" {
-		return category
-	}
-	return usermemory.HybridMemoryToolRouteFailureUnclassified
 }
 
 func NewCandidateJudgeDecorator(
