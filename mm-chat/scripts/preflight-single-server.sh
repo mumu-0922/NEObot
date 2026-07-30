@@ -186,6 +186,12 @@ if (
 ):
     fail("MEMORY_HYBRID_SHADOW_ENABLED must be true or false")
 
+if (
+    "MEMORY_TOOL_LOOP_ENABLED" in values
+    and values["MEMORY_TOOL_LOOP_ENABLED"] not in {"true", "false"}
+):
+    fail("MEMORY_TOOL_LOOP_ENABLED must be true or false")
+
 for key in (
     "MEMORY_L2_SCENE_SHADOW_ENABLED",
     "MEMORY_L2_SCENE_READER_ENABLED",

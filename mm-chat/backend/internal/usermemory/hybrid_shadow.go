@@ -29,6 +29,7 @@ const (
 	hybridPolicyModeIntentCalibration     = "intent_calibration"
 	hybridPolicyModeCloudJudgeCalibration = "cloud_judge_calibration"
 	hybridPolicyModeMemoryToolRoute       = "main_model_tool_route_calibration"
+	hybridPolicyModeMemoryFirstToolRound  = "main_model_first_tool_round_calibration"
 	hybridPolicyModeFrozen                = "frozen"
 	// These values are changed only after a successful Development calibration
 	// artifact has been reviewed. Validation refuses to run while ready=false.
@@ -66,20 +67,6 @@ func (s *Service) SearchRelevantWithHybridShadow(
 	if !ok {
 		return items, hybridShadowFailure("POLICY_UNAVAILABLE", "POLICY_UNAVAILABLE"), nil
 	}
-	failure := hybridShadowFailure("PREPARE_UNAVAILABLE", "PROVIDER_UNAVAILABLE")
-	repository, ok := s.repo.(HybridShadowRepository)
-	if !ok || repository == nil {
-		return items, failure, nil
-	}
-	conversationID = strings.TrimSpace(conversationID)
-	assistantMessageID = strings.TrimSpace(assistantMessageID)
-	if !uuidRE.MatchString(conversationID) || !uuidRE.MatchString(assistantMessageID) || query == "" {
-		return items, hybridShadowFailure("ARGUMENT_INVALID", "NONE"), nil
-	}
-	observationID, err := newUUID()
-	if err != nil {
-		return items, hybridShadowFailure("OBSERVATION_ID_FAILED", "NONE"), nil
-	}
 	baseline := make([]LexicalShadowBaseline, 0, len(items))
 	for _, item := range items {
 		scopeType := strings.TrimSpace(item.ScopeType)
@@ -89,6 +76,132 @@ func (s *Service) SearchRelevantWithHybridShadow(
 		baseline = append(baseline, LexicalShadowBaseline{
 			MemoryID: item.ID, Revision: item.Revision, ScopeType: scopeType,
 		})
+	}
+	execution := s.executeHybridShadow(
+		ctx,
+		query,
+		conversationID,
+		assistantMessageID,
+		baseline,
+		policy,
+	)
+	return items, execution.Summary, nil
+}
+
+type hybridShadowExecution struct {
+	ObservationID string
+	Final         []HybridShadowRankedItem
+	Summary       HybridShadowSummary
+}
+
+// SearchRelevantAfterMemoryToolCall executes the hybrid reader only after the
+// product's first Tool round has authorized relevance. It never calls the v1
+// reader and never falls back to v1 or unscored RRF candidates.
+func (s *Service) SearchRelevantAfterMemoryToolCall(
+	ctx context.Context,
+	input HybridMemoryToolSearchInput,
+) HybridMemoryToolSearchResult {
+	if s == nil || input.ContractVersion != HybridMemoryToolContractVersion ||
+		input.ContractSHA256 != HybridMemoryToolContractSHA256 {
+		return hybridMemoryToolFailure("contract_drift")
+	}
+	query := input.Query
+	conversationID := strings.TrimSpace(input.ConversationID)
+	assistantMessageID := strings.TrimSpace(input.AssistantMessageID)
+	if strings.TrimSpace(query) == "" || !uuidRE.MatchString(conversationID) ||
+		!uuidRE.MatchString(assistantMessageID) {
+		return hybridMemoryToolFailure("invalid_authority")
+	}
+	if s.hybridProvider == nil {
+		return hybridMemoryToolFailure("dependency_unavailable")
+	}
+	hydrator, ok := s.repo.(HybridFinalRepository)
+	if !ok || hydrator == nil {
+		return hybridMemoryToolFailure("dependency_unavailable")
+	}
+	execution := s.executeHybridShadow(
+		ctx,
+		query,
+		conversationID,
+		assistantMessageID,
+		[]LexicalShadowBaseline{},
+		HybridShadowCalibrationPolicy(),
+	)
+	result := HybridMemoryToolSearchResult{
+		Memories: []Memory{}, Summary: execution.Summary,
+	}
+	if execution.Summary.Status != "completed" ||
+		execution.Summary.ResultCode != "OK" ||
+		len(execution.Final) == 0 ||
+		execution.Summary.FinalCount != len(execution.Final) {
+		if execution.Summary.Status == "completed" &&
+			execution.Summary.ResultCode == "NO_CANDIDATES" {
+			result.Memories = []Memory{}
+			return result
+		}
+		result.FailureCategory = "retrieval_unavailable"
+		return result
+	}
+	memories, err := hydrator.HydrateHybridFinal(ctx, HybridFinalHydrationInput{
+		ObservationID:      execution.ObservationID,
+		AssistantMessageID: assistantMessageID,
+	})
+	if err != nil || len(memories) != len(execution.Final) {
+		result.FailureCategory = "authority_stale"
+		return result
+	}
+	for index := range memories {
+		expected := execution.Final[index]
+		memory := &memories[index]
+		scopeType := strings.TrimSpace(memory.ScopeType)
+		if scopeType == "" {
+			scopeType = "global"
+		}
+		if memory.ID != expected.MemoryID || memory.Revision != expected.Revision ||
+			scopeType != expected.ScopeType || strings.TrimSpace(memory.Type) == "" {
+			result.FailureCategory = "authority_stale"
+			return result
+		}
+		memory.ScopeType = scopeType
+		memory.Content = RedactMemoryProviderText(memory.Content, true)
+		if strings.TrimSpace(memory.Content) == "" {
+			result.FailureCategory = "secret_redacted"
+			return result
+		}
+	}
+	result.Memories = memories
+	return result
+}
+
+func hybridMemoryToolFailure(category string) HybridMemoryToolSearchResult {
+	return HybridMemoryToolSearchResult{
+		Memories:        []Memory{},
+		Summary:         hybridShadowFailure("HYBRID_FAILED", "NONE"),
+		FailureCategory: category,
+	}
+}
+
+func (s *Service) executeHybridShadow(
+	ctx context.Context,
+	query string,
+	conversationID string,
+	assistantMessageID string,
+	baseline []LexicalShadowBaseline,
+	policy HybridShadowRelevancePolicy,
+) hybridShadowExecution {
+	failure := hybridShadowFailure("PREPARE_UNAVAILABLE", "PROVIDER_UNAVAILABLE")
+	repository, ok := s.repo.(HybridShadowRepository)
+	if !ok || repository == nil {
+		return hybridShadowExecution{Summary: failure}
+	}
+	conversationID = strings.TrimSpace(conversationID)
+	assistantMessageID = strings.TrimSpace(assistantMessageID)
+	if !uuidRE.MatchString(conversationID) || !uuidRE.MatchString(assistantMessageID) || query == "" {
+		return hybridShadowExecution{Summary: hybridShadowFailure("ARGUMENT_INVALID", "NONE")}
+	}
+	observationID, err := newUUID()
+	if err != nil {
+		return hybridShadowExecution{Summary: hybridShadowFailure("OBSERVATION_ID_FAILED", "NONE")}
 	}
 	digest := sha256.Sum256([]byte(query))
 	startedAt := time.Now()
@@ -113,12 +226,15 @@ func (s *Service) SearchRelevantWithHybridShadow(
 	})
 	if err != nil {
 		if errors.Is(shadowCtx.Err(), context.DeadlineExceeded) {
-			return items, hybridShadowFailure("HARD_CUTOFF", "HARD_CUTOFF"), nil
+			return hybridShadowExecution{Summary: hybridShadowFailure("HARD_CUTOFF", "HARD_CUTOFF")}
 		}
-		return items, hybridShadowFailure("PREPARE_FAILED", "NONE"), nil
+		return hybridShadowExecution{Summary: hybridShadowFailure("PREPARE_FAILED", "NONE")}
 	}
 	if prepared.Replayed || prepared.Summary.Status != "pending" {
-		return items, sanitizeHybridShadowSummary(prepared.Summary), nil
+		return hybridShadowExecution{
+			ObservationID: prepared.ObservationID,
+			Summary:       sanitizeHybridShadowSummary(prepared.Summary),
+		}
 	}
 	if uuidRE.MatchString(prepared.ObservationID) {
 		observationID = prepared.ObservationID
@@ -242,11 +358,17 @@ func (s *Service) SearchRelevantWithHybridShadow(
 	})
 	if err != nil {
 		if errors.Is(shadowCtx.Err(), context.DeadlineExceeded) {
-			return items, hybridShadowFailure("HARD_CUTOFF", "HARD_CUTOFF"), nil
+			return hybridShadowExecution{Summary: hybridShadowFailure("HARD_CUTOFF", "HARD_CUTOFF")}
 		}
-		return items, hybridShadowFailure("RECORD_FAILED", normalizeHybridFallback(fallbackCode)), nil
+		return hybridShadowExecution{
+			Summary: hybridShadowFailure("RECORD_FAILED", normalizeHybridFallback(fallbackCode)),
+		}
 	}
-	return items, sanitizeHybridShadowSummary(summary), nil
+	return hybridShadowExecution{
+		ObservationID: observationID,
+		Final:         append([]HybridShadowRankedItem(nil), final...),
+		Summary:       sanitizeHybridShadowSummary(summary),
+	}
 }
 
 func hybridProviderStageContext(
@@ -678,6 +800,19 @@ func HybridShadowMemoryToolRouteCalibrationPolicy(
 	}
 }
 
+func HybridShadowMemoryFirstToolRoundCalibrationPolicy(
+	modelID string,
+) HybridShadowRelevancePolicy {
+	return HybridShadowRelevancePolicy{
+		ID:                         HybridRelevanceMemoryFirstToolRoundPolicyID,
+		Mode:                       hybridPolicyModeMemoryFirstToolRound,
+		MemoryToolRouteRequired:    true,
+		MemoryToolRouteModelID:     strings.TrimSpace(modelID),
+		MinimumProviderSimilarity:  -1,
+		MinimumFinalRelevanceScore: 0,
+	}
+}
+
 func HybridShadowFrozenPolicy() (HybridShadowRelevancePolicy, bool) {
 	if !hybridFrozenPolicyReady {
 		return HybridShadowRelevancePolicy{}, false
@@ -744,24 +879,24 @@ func DescribeHybridShadowRelevancePolicy(
 			return "none"
 		}(),
 		MemoryToolRouteDecodingProfile: func() string {
-			if policy.MemoryToolRouteRequired {
+			if policy.Mode == hybridPolicyModeMemoryToolRoute {
 				return HybridMemoryToolDecodingProfile
 			}
 			return "none"
 		}(),
 		MemoryToolRouteMaximumOutputTokens: func() int {
-			if policy.MemoryToolRouteRequired {
+			if policy.Mode == hybridPolicyModeMemoryToolRoute {
 				return HybridMemoryToolMaximumOutputTokens
 			}
 			return 0
 		}(),
 		MemoryToolRouteTemperature: func() float64 {
-			if policy.MemoryToolRouteRequired {
+			if policy.Mode == hybridPolicyModeMemoryToolRoute {
 				return HybridMemoryToolTemperature
 			}
 			return 0
 		}(),
-		MemoryToolRouteDisableThinking: policy.MemoryToolRouteRequired &&
+		MemoryToolRouteDisableThinking: policy.Mode == hybridPolicyModeMemoryToolRoute &&
 			HybridMemoryToolDisableThinking,
 		MemoryIntentAnchorVersion: func() string {
 			if policy.MemoryIntentRequired {
@@ -825,6 +960,16 @@ func validHybridShadowRelevancePolicy(
 		}
 	case hybridPolicyModeMemoryToolRoute:
 		if policy.ID != HybridRelevanceMemoryToolRoutePolicyID ||
+			policy.MemoryIntentRequired || policy.CloudCandidateJudgeRequired ||
+			policy.CloudCandidateJudgeModelID != "" || !policy.MemoryToolRouteRequired ||
+			!validHybridCandidateJudgeModelID(policy.MemoryToolRouteModelID) ||
+			policy.MinimumMemoryIntentMargin != 0 ||
+			policy.MinimumProviderSimilarity != -1 ||
+			policy.MinimumFinalRelevanceScore != 0 {
+			return HybridShadowRelevancePolicy{}, false
+		}
+	case hybridPolicyModeMemoryFirstToolRound:
+		if policy.ID != HybridRelevanceMemoryFirstToolRoundPolicyID ||
 			policy.MemoryIntentRequired || policy.CloudCandidateJudgeRequired ||
 			policy.CloudCandidateJudgeModelID != "" || !policy.MemoryToolRouteRequired ||
 			!validHybridCandidateJudgeModelID(policy.MemoryToolRouteModelID) ||

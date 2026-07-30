@@ -116,6 +116,108 @@ func TestSearchRelevantWithHybridShadowRequiresExplicitRelevancePolicy(t *testin
 	}
 }
 
+func TestSearchRelevantAfterMemoryToolCallReturnsOnlyReauthorizedFinal(t *testing.T) {
+	query := "  How should project answers be written?  "
+	repository := &hybridTestRepository{
+		fakeRepository: hybridV1Repository(),
+		preparation: HybridShadowPreparation{
+			Summary: HybridShadowSummary{
+				ProfileID: HybridShadowProfileID, Status: "pending",
+				ResultCode: "CANDIDATES_READY", FallbackCode: "NONE", RRFCount: 1,
+			},
+			Candidates: []HybridShadowCandidate{hybridCandidate(
+				"44444444-4444-4444-8444-444444444444",
+				"Keep project answers concise",
+			)},
+		},
+		recordSummary: HybridShadowSummary{
+			ProfileID: HybridShadowProfileID, Status: "completed", ResultCode: "OK",
+			FallbackCode: "NONE", RRFCount: 1, RerankCount: 1, FinalCount: 1,
+		},
+		hydrated: []Memory{{
+			ID: "44444444-4444-4444-8444-444444444444", Revision: 1,
+			ScopeType: "global", Type: "preference", Content: "Keep project answers concise",
+		}},
+	}
+	provider := &hybridTestProvider{
+		embedding: validHybridTestEmbedding(),
+		rerank:    []ragproviders.RerankResult{{Index: 0, RelevanceScore: 0.9}},
+	}
+	result := NewService(
+		repository,
+		WithHybridShadowProvider(provider),
+	).SearchRelevantAfterMemoryToolCall(context.Background(), HybridMemoryToolSearchInput{
+		ConversationID: hybridTestConversation, AssistantMessageID: hybridTestAssistant,
+		Query:           query,
+		ContractVersion: HybridMemoryToolContractVersion,
+		ContractSHA256:  HybridMemoryToolContractSHA256,
+	})
+	if result.FailureCategory != "" || len(result.Memories) != 1 ||
+		result.Memories[0].Content != "Keep project answers concise" ||
+		repository.hydrateCalls != 1 || repository.fakeRepository.listCalls != 0 ||
+		len(repository.fakeRepository.markedUsed) != 0 {
+		t.Fatalf("Memory Tool result = %#v repository=%#v", result, repository)
+	}
+	if len(repository.prepareInput.Baseline) != 0 ||
+		repository.prepareInput.QueryHash != sha256String(query) ||
+		repository.prepareInput.QueryText != query ||
+		repository.hydrateInput.ObservationID != repository.preparation.ObservationID ||
+		repository.hydrateInput.AssistantMessageID != hybridTestAssistant {
+		t.Fatalf("Memory Tool authority = prepare:%#v hydrate:%#v",
+			repository.prepareInput, repository.hydrateInput)
+	}
+}
+
+func TestSearchRelevantAfterMemoryToolCallFailsClosedOnStaleOrRedactedFinal(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		hydrated []Memory
+		hydrate  error
+		want     string
+	}{
+		{name: "stale final", hydrate: errors.New("private stale detail"), want: "authority_stale"},
+		{name: "secret only final", hydrated: []Memory{{
+			ID: "44444444-4444-4444-8444-444444444444", Revision: 1,
+			ScopeType: "global", Type: "fact", Content: "password: fixture-secret-value",
+		}}, want: "secret_redacted"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repository := &hybridTestRepository{
+				fakeRepository: hybridV1Repository(),
+				preparation: HybridShadowPreparation{
+					Summary: HybridShadowSummary{
+						ProfileID: HybridShadowProfileID, Status: "pending",
+						ResultCode: "CANDIDATES_READY", FallbackCode: "NONE", RRFCount: 1,
+					},
+					Candidates: []HybridShadowCandidate{hybridCandidate(
+						"44444444-4444-4444-8444-444444444444", "Safe rerank body",
+					)},
+				},
+				recordSummary: HybridShadowSummary{
+					ProfileID: HybridShadowProfileID, Status: "completed", ResultCode: "OK",
+					FallbackCode: "NONE", RRFCount: 1, RerankCount: 1, FinalCount: 1,
+				},
+				hydrated: test.hydrated, hydrateErr: test.hydrate,
+			}
+			provider := &hybridTestProvider{
+				embedding: validHybridTestEmbedding(),
+				rerank:    []ragproviders.RerankResult{{Index: 0, RelevanceScore: 1}},
+			}
+			result := NewService(
+				repository,
+				WithHybridShadowProvider(provider),
+			).SearchRelevantAfterMemoryToolCall(context.Background(), HybridMemoryToolSearchInput{
+				ConversationID: hybridTestConversation, AssistantMessageID: hybridTestAssistant,
+				Query: "safe query", ContractVersion: HybridMemoryToolContractVersion,
+				ContractSHA256: HybridMemoryToolContractSHA256,
+			})
+			if result.FailureCategory != test.want || len(result.Memories) != 0 {
+				t.Fatalf("fail-closed result = %#v", result)
+			}
+		})
+	}
+}
+
 func TestSearchRelevantWithHybridShadowAppliesBothRelevanceGates(t *testing.T) {
 	newRepository := func(similarity float64, fallback string) *hybridTestRepository {
 		admission := HybridShadowAdmission{
@@ -623,9 +725,22 @@ type hybridTestRepository struct {
 	admissionErr   error
 	prepareErr     error
 	recordErr      error
+	hydrated       []Memory
+	hydrateInput   HybridFinalHydrationInput
+	hydrateErr     error
 	prepareCalls   int
 	admissionCalls int
 	recordCalls    int
+	hydrateCalls   int
+}
+
+func (repository *hybridTestRepository) HydrateHybridFinal(
+	_ context.Context,
+	input HybridFinalHydrationInput,
+) ([]Memory, error) {
+	repository.hydrateCalls++
+	repository.hydrateInput = input
+	return append([]Memory(nil), repository.hydrated...), repository.hydrateErr
 }
 
 func (repository *hybridTestRepository) PrepareHybridShadow(
@@ -734,5 +849,6 @@ func (provider *hybridTestProvider) ClassifyMemoryIntent(
 var (
 	_ HybridShadowRepository          = (*hybridTestRepository)(nil)
 	_ HybridShadowAdmissionRepository = (*hybridTestRepository)(nil)
+	_ HybridFinalRepository           = (*hybridTestRepository)(nil)
 	_ HybridShadowProvider            = (*hybridTestProvider)(nil)
 )

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"neo-chat/mm-chat/backend/internal/usermemory"
 	"neo-chat/mm-chat/backend/internal/websearch"
 )
 
@@ -43,6 +44,7 @@ type externalWebToolLoopInput struct {
 	ForceSearch            bool
 	KnowledgeReady         bool
 	Knowledge              *knowledgeToolRuntime
+	Memory                 *memoryToolRuntime
 	CapabilityCache        ToolCapabilityCache
 	CapabilityConfigHash   string
 	DisableNativeToolRound bool
@@ -87,6 +89,7 @@ func startRetrievalToolLoop(
 			input.Request,
 			input.Knowledge.enabled(),
 			externalWebToolEnabled(input),
+			input.Memory.enabled(),
 		)
 	}
 	events := make(chan ProviderEvent, 1)
@@ -147,14 +150,16 @@ func runNativeExternalWebToolLoop(
 	knowledgeDecision := autoRAGDecision{}
 	completedUsage := TokenUsage{}
 	answerContentEmitted := false
+	memoryContinuationStarted := false
 	for round := 1; ; round++ {
+		roundTools := retrievalToolDefinitionsForRound(tools, round)
 		choice := ProviderToolChoiceAuto
 		if round == 1 && input.ForceSearch && externalWebToolEnabled(input) {
 			choice = ProviderToolChoiceRequired
 		}
 		roundEvents, err := provider.StreamToolRound(ctx, ProviderRoundRequest{
 			ProviderRequest: input.Request,
-			Tools:           tools,
+			Tools:           roundTools,
 			ToolChoice:      choice,
 			Continuation:    continuation,
 		})
@@ -176,6 +181,12 @@ func runNativeExternalWebToolLoop(
 			) {
 				return true
 			}
+			if !answerContentEmitted && memoryContinuationStarted {
+				streamBufferedPlainRecoveryAnswer(
+					ctx, events, input.Provider, input.Request, completedUsage,
+				)
+				return true
+			}
 			sendProviderEvent(ctx, events, ProviderEvent{Error: err})
 			return true
 		}
@@ -187,6 +198,8 @@ func runNativeExternalWebToolLoop(
 		var roundUsage *TokenUsage
 		bufferForcedRound := round == 1 && input.ForceSearch &&
 			externalWebToolEnabled(input)
+		bufferMemoryDecisionRound := round == 1 && input.Memory.enabled()
+		bufferFirstRound := bufferForcedRound || bufferMemoryDecisionRound
 		bufferedEvents := make([]ProviderEvent, 0)
 		for event := range roundEvents {
 			if event.Error != nil {
@@ -198,7 +211,7 @@ func runNativeExternalWebToolLoop(
 					recordRuntimeToolIncompatibility(input, event.Error)
 					return false
 				}
-				if bufferForcedRound && len(calls) == 0 {
+				if bufferFirstRound {
 					return false
 				}
 				fallbackUsage := completedUsage
@@ -215,13 +228,19 @@ func runNativeExternalWebToolLoop(
 				) {
 					return true
 				}
+				if !answerContentEmitted && memoryContinuationStarted {
+					streamBufferedPlainRecoveryAnswer(
+						ctx, events, input.Provider, input.Request, fallbackUsage,
+					)
+					return true
+				}
 				sendProviderEvent(ctx, events, event)
 				return true
 			}
 			switch event.Type {
 			case ProviderEventDelta:
 				assistantContent.WriteString(event.Delta)
-				if bufferForcedRound {
+				if bufferFirstRound {
 					bufferedEvents = append(bufferedEvents, event)
 				} else if !sendProviderEvent(ctx, events, event) {
 					return true
@@ -230,7 +249,7 @@ func runNativeExternalWebToolLoop(
 				}
 			case ProviderEventReasoningDelta:
 				assistantReasoning.WriteString(event.ReasoningDelta)
-				if bufferForcedRound {
+				if bufferFirstRound {
 					bufferedEvents = append(bufferedEvents, event)
 				} else if !sendProviderEvent(ctx, events, event) {
 					return true
@@ -250,13 +269,13 @@ func runNativeExternalWebToolLoop(
 				}
 				roundUsage = cloneTokenUsage(event.Usage)
 				event.Usage = addTokenUsage(completedUsage, *roundUsage)
-				if bufferForcedRound {
+				if bufferFirstRound {
 					bufferedEvents = append(bufferedEvents, event)
 				} else if !sendProviderEvent(ctx, events, event) {
 					return true
 				}
 			default:
-				if bufferForcedRound {
+				if bufferFirstRound {
 					bufferedEvents = append(bufferedEvents, event)
 				} else if !sendProviderEvent(ctx, events, event) {
 					return true
@@ -267,12 +286,24 @@ func runNativeExternalWebToolLoop(
 			if bufferForcedRound {
 				return false
 			}
+			for _, event := range bufferedEvents {
+				if !sendProviderEvent(ctx, events, event) {
+					return true
+				}
+			}
 			return true
 		}
 		if roundUsage != nil {
 			completedUsage = addTokenUsageValue(completedUsage, *roundUsage)
 		}
+		if bufferMemoryDecisionRound {
+			memoryContinuationStarted = true
+		}
 		for _, event := range bufferedEvents {
+			if bufferMemoryDecisionRound &&
+				(event.Type == ProviderEventDelta || event.Type == ProviderEventReasoningDelta) {
+				continue
+			}
 			if !sendProviderEvent(ctx, events, event) {
 				return true
 			}
@@ -288,10 +319,16 @@ func runNativeExternalWebToolLoop(
 			Results:            make([]ProviderToolResult, 0, len(calls)),
 			ProviderState:      roundState,
 		}
+		memoryBatchValid := memoryToolBatchValid(round, calls, input)
 		for callIndex, call := range calls {
 			executionID := fmt.Sprintf("native-%d-%d", round, callIndex+1)
 			name := normalizedToolName(call.Name)
-			query, args, failure := validateRetrievalToolCall(call, input)
+			query, args, failure := validateRetrievalToolCall(
+				call,
+				input,
+				round,
+				memoryBatchValid,
+			)
 			if failure != "" {
 				execution := ProviderToolExecutionEvent{
 					ExecutionID:     executionID,
@@ -311,6 +348,68 @@ func runNativeExternalWebToolLoop(
 					Name:    call.Name,
 					Content: retrievalToolFailureResult(name, failure),
 					IsError: true,
+				})
+				continue
+			}
+			if name == usermemory.HybridMemoryToolName {
+				running := ProviderToolExecutionEvent{
+					ExecutionID: executionID,
+					CallID:      call.ID,
+					Name:        usermemory.HybridMemoryToolName,
+					Status:      ProcessStepStatusRunning,
+					Round:       round,
+					Arguments:   args,
+					Mode:        "native",
+				}
+				if !sendToolExecutionEvent(ctx, events, running) {
+					return true
+				}
+				result := executeMemoryTool(ctx, input.Memory)
+				if toolLoopWasCancelled(ctx, nil) {
+					cancelled := running
+					cancelled.Status = ProcessStepStatusCancelled
+					sendToolExecutionEvent(ctx, events, cancelled)
+					return true
+				}
+				if result.FailureCategory != "" {
+					failed := running
+					failed.Status = ProcessStepStatusFailed
+					failed.FailureCategory = result.FailureCategory
+					if !sendToolExecutionEvent(ctx, events, failed) {
+						return true
+					}
+					exchange.Results = append(exchange.Results, ProviderToolResult{
+						CallID: call.ID, Name: call.Name,
+						Content: memoryToolFailureResult(result.FailureCategory), IsError: true,
+					})
+					continue
+				}
+				toolResult, _, usedTokens, fits := memoryToolSuccessResult(
+					result.Memories,
+					input.ContextBudget.remaining(retrievalEvidenceMemory),
+				)
+				if !fits {
+					failed := running
+					failed.Status = ProcessStepStatusFailed
+					failed.FailureCategory = "context_budget_exhausted"
+					if !sendToolExecutionEvent(ctx, events, failed) {
+						return true
+					}
+					exchange.Results = append(exchange.Results, ProviderToolResult{
+						CallID: call.ID, Name: call.Name,
+						Content: memoryToolFailureResult("context_budget_exhausted"), IsError: true,
+					})
+					continue
+				}
+				input.ContextBudget.consume(retrievalEvidenceMemory, usedTokens)
+				completed := running
+				completed.Status = ProcessStepStatusCompleted
+				if !sendToolExecutionEvent(ctx, events, completed) {
+					return true
+				}
+				exchange.Results = append(exchange.Results, ProviderToolResult{
+					CallID: call.ID, Name: call.Name,
+					Content: toolResult,
 				})
 				continue
 			}
@@ -507,6 +606,7 @@ func streamRetrievalEvidenceFallback(
 			input.Request,
 			knowledgeDecision.ReadyForAnswer(),
 			len(webResult.Sources) > 0,
+			false,
 		)
 	}
 	request := input.Request
@@ -600,6 +700,32 @@ func streamBufferedEvidenceRecoveryAnswer(
 	}
 }
 
+func streamBufferedPlainRecoveryAnswer(
+	ctx context.Context,
+	events chan<- ProviderEvent,
+	provider Provider,
+	request ProviderRequest,
+	completedUsage TokenUsage,
+) {
+	buffered, err := collectBufferedCompatibilityAnswer(
+		ctx,
+		provider,
+		request,
+		completedUsage,
+	)
+	if err != nil {
+		if !toolLoopWasCancelled(ctx, err) {
+			sendProviderEvent(ctx, events, ProviderEvent{Error: err})
+		}
+		return
+	}
+	for _, event := range buffered {
+		if !sendProviderEvent(ctx, events, event) {
+			return
+		}
+	}
+}
+
 func collectBufferedCompatibilityAnswer(
 	ctx context.Context,
 	provider Provider,
@@ -644,7 +770,7 @@ func collectBufferedCompatibilityAnswer(
 }
 
 func retrievalToolDefinitions(input externalWebToolLoopInput) []ToolDefinition {
-	tools := make([]ToolDefinition, 0, 2)
+	tools := make([]ToolDefinition, 0, 3)
 	if externalWebToolEnabled(input) {
 		// Keep Web first: ProviderToolChoiceRequired names the first offered tool,
 		// preserving the explicit-Search contract when Knowledge is also enabled.
@@ -653,7 +779,27 @@ func retrievalToolDefinitions(input externalWebToolLoopInput) []ToolDefinition {
 	if input.Knowledge.enabled() {
 		tools = append(tools, searchKnowledgeToolDefinition())
 	}
+	if input.Memory.enabled() {
+		tools = append(tools, SearchMemoryToolDefinition())
+	}
 	return tools
+}
+
+func retrievalToolDefinitionsForRound(
+	tools []ToolDefinition,
+	round int,
+) []ToolDefinition {
+	if round <= 1 {
+		return tools
+	}
+	filtered := make([]ToolDefinition, 0, len(tools))
+	for _, tool := range tools {
+		if strings.TrimSpace(tool.Function.Name) == usermemory.HybridMemoryToolName {
+			continue
+		}
+		filtered = append(filtered, tool)
+	}
+	return filtered
 }
 
 func externalWebToolEnabled(input externalWebToolLoopInput) bool {
@@ -693,6 +839,8 @@ func recordRuntimeToolIncompatibility(
 func validateRetrievalToolCall(
 	call ProviderToolCall,
 	input externalWebToolLoopInput,
+	round int,
+	memoryBatchValid bool,
 ) (string, map[string]any, string) {
 	switch normalizedToolName(call.Name) {
 	case searchWebToolName:
@@ -705,6 +853,12 @@ func validateRetrievalToolCall(
 			return "", nil, "tool_not_available"
 		}
 		return validateSearchKnowledgeToolCall(call)
+	case usermemory.HybridMemoryToolName:
+		if !input.Memory.enabled() {
+			return "", nil, "tool_not_available"
+		}
+		args, failure := validateSearchMemoryToolCall(call, round, memoryBatchValid)
+		return "", args, failure
 	default:
 		return "", nil, "unknown_tool"
 	}
@@ -713,6 +867,9 @@ func validateRetrievalToolCall(
 func retrievalToolFailureResult(name string, category string) string {
 	if name == searchKnowledgeToolName {
 		return knowledgeToolFailureResult(category)
+	}
+	if name == usermemory.HybridMemoryToolName {
+		return memoryToolFailureResult(category)
 	}
 	return webSearchFailureToolResult(category)
 }
@@ -792,6 +949,7 @@ func runCompatibilityExternalWebSearchPlan(
 			input.Request,
 			input.KnowledgeReady,
 			true,
+			false,
 		)
 	}
 	plan.Query = strings.Join(strings.Fields(plan.Query), " ")

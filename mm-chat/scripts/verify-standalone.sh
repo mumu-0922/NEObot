@@ -193,6 +193,10 @@ if (
     != memory_worker["environment"]["MEMORY_HYBRID_SHADOW_ENABLED"]
 ):
     raise SystemExit("standalone verification: Memory hybrid flags disagree")
+if backend["environment"]["MEMORY_TOOL_LOOP_ENABLED"] != "false":
+    raise SystemExit("standalone verification: Memory Tool Loop must default false")
+if "MEMORY_TOOL_LOOP_ENABLED" in memory_worker["environment"]:
+    raise SystemExit("standalone verification: Memory Worker received the Tool Loop flag")
 if (
     backend["environment"]["MEMORY_L2_SCENE_SHADOW_ENABLED"]
     != memory_worker["environment"]["MEMORY_L2_SCENE_SHADOW_ENABLED"]

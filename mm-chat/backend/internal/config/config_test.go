@@ -94,6 +94,10 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 		t.Fatalf("Memory.HybridShadowEnabled = %v, want %v",
 			cfg.Memory.HybridShadowEnabled, DefaultMemoryHybridShadowEnabled)
 	}
+	if cfg.Memory.ToolLoopEnabled != DefaultMemoryToolLoopEnabled {
+		t.Fatalf("Memory.ToolLoopEnabled = %v, want %v",
+			cfg.Memory.ToolLoopEnabled, DefaultMemoryToolLoopEnabled)
+	}
 	if cfg.Memory.L2SceneShadowEnabled != DefaultMemoryL2SceneShadowEnabled {
 		t.Fatalf("Memory.L2SceneShadowEnabled = %v, want %v",
 			cfg.Memory.L2SceneShadowEnabled, DefaultMemoryL2SceneShadowEnabled)
@@ -181,6 +185,7 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvRAGSourceGatewayToken:  " fake-source-gateway-token ",
 		EnvMemoryLexicalShadow:    " true ",
 		EnvMemoryHybridShadow:     " true ",
+		EnvMemoryToolLoop:         " true ",
 		EnvMemoryL2SceneShadow:    " true ",
 		EnvMemoryL2SceneReader:    " true ",
 		EnvMemoryL3PersonaShadow:  " true ",
@@ -283,6 +288,9 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	}
 	if !cfg.Memory.HybridShadowEnabled {
 		t.Fatal("Memory.HybridShadowEnabled = false, want true")
+	}
+	if !cfg.Memory.ToolLoopEnabled {
+		t.Fatal("Memory.ToolLoopEnabled = false, want true")
 	}
 	if !cfg.Memory.L2SceneShadowEnabled {
 		t.Fatal("Memory.L2SceneShadowEnabled = false, want true")

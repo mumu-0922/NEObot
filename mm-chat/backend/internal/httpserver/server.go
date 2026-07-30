@@ -128,7 +128,7 @@ func resolveMemoryHybridProvider(
 }
 
 func memoryHybridProviderRequired(memory config.MemoryConfig) bool {
-	return memory.HybridShadowEnabled || memory.L2SceneShadowEnabled ||
+	return memory.HybridShadowEnabled || memory.ToolLoopEnabled || memory.L2SceneShadowEnabled ||
 		memory.L3PersonaShadowEnabled
 }
 
@@ -1023,6 +1023,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		chat.WithUserMemoryService(userMemoryService),
 		chat.WithMemoryLexicalShadowEnabled(cfg.Memory.LexicalShadowEnabled),
 		chat.WithMemoryHybridShadowEnabled(cfg.Memory.HybridShadowEnabled),
+		chat.WithMemoryToolLoopEnabled(cfg.Memory.ToolLoopEnabled),
 		chat.WithMemoryL2SceneShadowEnabled(cfg.Memory.L2SceneShadowEnabled),
 		chat.WithMemoryL2SceneReaderEnabled(cfg.Memory.L2SceneReaderEnabled),
 		chat.WithMemoryL3PersonaShadowEnabled(cfg.Memory.L3PersonaShadowEnabled),

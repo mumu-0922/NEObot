@@ -283,6 +283,14 @@ assert_rejected \
   "${invalid_memory_hybrid_shadow}" \
   "MEMORY_HYBRID_SHADOW_ENABLED must be true or false"
 
+invalid_memory_tool_loop="${temp_dir}/invalid-memory-tool-loop.env"
+sed 's|^MEMORY_TOOL_LOOP_ENABLED=false$|MEMORY_TOOL_LOOP_ENABLED=maybe|' \
+  "${valid}" >"${invalid_memory_tool_loop}"
+chmod 600 "${invalid_memory_tool_loop}"
+assert_rejected \
+  "${invalid_memory_tool_loop}" \
+  "MEMORY_TOOL_LOOP_ENABLED must be true or false"
+
 for memory_l2_flag in \
   MEMORY_L2_SCENE_SHADOW_ENABLED \
   MEMORY_L2_SCENE_READER_ENABLED; do
@@ -629,6 +637,7 @@ assert "neo_chat_api:test-api-password@postgres" in backend_environment["DATABAS
 assert "MIGRATION_DATABASE_URL" not in backend_environment
 assert backend_environment["MEMORY_LEXICAL_SHADOW_ENABLED"] == "false"
 assert backend_environment["MEMORY_HYBRID_SHADOW_ENABLED"] == "false"
+assert backend_environment["MEMORY_TOOL_LOOP_ENABLED"] == "false"
 assert backend_environment["MEMORY_L2_SCENE_SHADOW_ENABLED"] == "false"
 assert backend_environment["MEMORY_L2_SCENE_READER_ENABLED"] == "false"
 assert backend_environment["MEMORY_L3_PERSONA_SHADOW_ENABLED"] == "false"
@@ -651,6 +660,7 @@ assert memory["depends_on"] == {
 memory_environment = memory["environment"]
 assert "memory_worker:test-memory-worker-password@postgres" in memory_environment["MEMORY_WORKER_DATABASE_URL"]
 assert memory_environment["MEMORY_HYBRID_SHADOW_ENABLED"] == "false"
+assert "MEMORY_TOOL_LOOP_ENABLED" not in memory_environment
 assert memory_environment["MEMORY_L2_SCENE_SHADOW_ENABLED"] == "false"
 assert "MEMORY_L2_SCENE_READER_ENABLED" not in memory_environment
 assert memory_environment["MEMORY_L3_PERSONA_SHADOW_ENABLED"] == "false"

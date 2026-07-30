@@ -17,7 +17,7 @@ func TestRetrievalContextBudgetSharesSelectedModelCapacity(t *testing.T) {
 		}},
 		ModelRef: ModelRef{ModelID: "unknown-32k-model"},
 	}
-	budget := newRetrievalContextBudget(request, true, true)
+	budget := newRetrievalContextBudget(request, true, true, false)
 	if budget.totalTokens <= 0 ||
 		budget.knowledgeTokens+budget.webTokens != budget.totalTokens ||
 		budget.knowledgeTokens != budget.totalTokens*retrievalKnowledgeSharePercent/100 {
@@ -41,7 +41,7 @@ func TestKnowledgeAndWebContextsStayInsideSharedBudget(t *testing.T) {
 		}},
 		ModelRef: ModelRef{ModelID: "unknown-32k-model"},
 	}
-	budget := newRetrievalContextBudget(request, true, true)
+	budget := newRetrievalContextBudget(request, true, true, false)
 	evidence := validHydratedEvidence()
 	evidence.SourceText = strings.Repeat("private child evidence ", 120)
 	evidence.ParentSourceText = strings.Repeat("private parent context ", 220)

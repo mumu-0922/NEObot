@@ -166,6 +166,55 @@ FROM memory_record_hybrid_shadow(
 	return summary, nil
 }
 
+func (r *PostgresRepository) HydrateHybridFinal(
+	ctx context.Context,
+	input HybridFinalHydrationInput,
+) ([]Memory, error) {
+	if err := r.requireDB(); err != nil {
+		return nil, err
+	}
+	user := auth.UserOrDevelopment(ctx)
+	rows, err := r.db.QueryContext(ctx, `
+SELECT ordinal, memory_id, memory_revision, scope_type, memory_type, content
+FROM memory_hydrate_hybrid_final($1::uuid, $2::uuid, $3::uuid)
+ORDER BY ordinal
+`, input.ObservationID, user.ID, input.AssistantMessageID)
+	if err != nil {
+		return nil, fmt.Errorf("hydrate hybrid memory final: %w", err)
+	}
+	defer rows.Close()
+	memories := make([]Memory, 0, HybridShadowFinalLimit)
+	for rows.Next() {
+		var ordinal int
+		var memory Memory
+		if err := rows.Scan(
+			&ordinal,
+			&memory.ID,
+			&memory.Revision,
+			&memory.ScopeType,
+			&memory.Type,
+			&memory.Content,
+		); err != nil {
+			return nil, fmt.Errorf("hydrate hybrid memory final: %w", err)
+		}
+		if ordinal != len(memories)+1 || !uuidRE.MatchString(memory.ID) ||
+			memory.Revision < 1 || !validHybridScope(memory.ScopeType) ||
+			strings.TrimSpace(memory.Type) == "" ||
+			strings.TrimSpace(memory.Content) == "" ||
+			len([]rune(memory.Content)) > MaxContentChars {
+			return nil, fmt.Errorf("hydrate hybrid memory final: invalid response authority")
+		}
+		memories = append(memories, memory)
+		if len(memories) > HybridShadowFinalLimit {
+			return nil, fmt.Errorf("hydrate hybrid memory final: count exceeded")
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("hydrate hybrid memory final: %w", err)
+	}
+	return memories, nil
+}
+
 func hybridRealArrayLiteral(values []float32) string {
 	var builder strings.Builder
 	builder.Grow(len(values) * 12)
@@ -190,3 +239,4 @@ func validHybridScope(value string) bool {
 }
 
 var _ HybridShadowRepository = (*PostgresRepository)(nil)
+var _ HybridFinalRepository = (*PostgresRepository)(nil)

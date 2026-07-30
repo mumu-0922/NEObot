@@ -10,6 +10,22 @@ import (
 
 const hybridMemoryToolRouteTestModel = "configured-main-model"
 
+func TestMemoryFirstToolRoundPolicyDoesNotReusePreflightDecoding(t *testing.T) {
+	policy, ok := DescribeHybridShadowRelevancePolicy(
+		HybridShadowMemoryFirstToolRoundCalibrationPolicy(
+			hybridMemoryToolRouteTestModel,
+		),
+	)
+	if !ok || policy.ID != HybridRelevanceMemoryFirstToolRoundPolicyID ||
+		!policy.MemoryToolRouteRequired ||
+		policy.MemoryToolRouteContractSHA256 != HybridMemoryToolContractSHA256 ||
+		policy.MemoryToolRouteDecodingProfile != "none" ||
+		policy.MemoryToolRouteMaximumOutputTokens != 0 ||
+		policy.MemoryToolRouteTemperature != 0 || policy.MemoryToolRouteDisableThinking {
+		t.Fatalf("first Tool-round policy = %#v", policy)
+	}
+}
+
 func TestSearchRelevantWithMemoryToolRouteGatesUnchangedBGEFinal(t *testing.T) {
 	for _, test := range []struct {
 		name       string

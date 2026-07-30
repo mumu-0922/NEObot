@@ -28,8 +28,9 @@ type HybridMemoryToolRouteInput struct {
 }
 
 type HybridMemoryToolRouteResult struct {
-	UseMemory       bool
-	ModelID         string
-	ContractVersion string
-	ContractSHA256  string
+	UseMemory             bool
+	ModelID               string
+	ContractVersion       string
+	ContractSHA256        string
+	OutputTokenUpperBound int
 }

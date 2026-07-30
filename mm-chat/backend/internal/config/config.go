@@ -23,6 +23,7 @@ const (
 	DefaultRedisRateLimitWindow         = time.Minute
 	DefaultMemoryLexicalShadowEnabled   = false
 	DefaultMemoryHybridShadowEnabled    = false
+	DefaultMemoryToolLoopEnabled        = false
 	DefaultMemoryL2SceneShadowEnabled   = false
 	DefaultMemoryL2SceneReaderEnabled   = false
 	DefaultMemoryL3PersonaShadowEnabled = false
@@ -100,6 +101,7 @@ const (
 	EnvTeamMailBackoffMax     = "TEAM_MAIL_WORKER_BACKOFF_MAX"
 	EnvMemoryLexicalShadow    = "MEMORY_LEXICAL_SHADOW_ENABLED"
 	EnvMemoryHybridShadow     = "MEMORY_HYBRID_SHADOW_ENABLED"
+	EnvMemoryToolLoop         = "MEMORY_TOOL_LOOP_ENABLED"
 	EnvMemoryL2SceneShadow    = "MEMORY_L2_SCENE_SHADOW_ENABLED"
 	EnvMemoryL2SceneReader    = "MEMORY_L2_SCENE_READER_ENABLED"
 	EnvMemoryL3PersonaShadow  = "MEMORY_L3_PERSONA_SHADOW_ENABLED"
@@ -180,6 +182,7 @@ type RAGConfig struct {
 type MemoryConfig struct {
 	LexicalShadowEnabled   bool
 	HybridShadowEnabled    bool
+	ToolLoopEnabled        bool
 	L2SceneShadowEnabled   bool
 	L2SceneReaderEnabled   bool
 	L3PersonaShadowEnabled bool
@@ -395,6 +398,11 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 				lookup,
 				EnvMemoryHybridShadow,
 				DefaultMemoryHybridShadowEnabled,
+			),
+			ToolLoopEnabled: boolEnvOrDefault(
+				lookup,
+				EnvMemoryToolLoop,
+				DefaultMemoryToolLoopEnabled,
 			),
 			L2SceneShadowEnabled: boolEnvOrDefault(
 				lookup,

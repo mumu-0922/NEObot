@@ -7,6 +7,7 @@ const (
 	retrievalContextEnvelopeReserve     = 512
 	retrievalKnowledgeSharePercent      = 60
 	minimumRetrievalContextBudgetTokens = 256
+	retrievalMemoryMaximumTokens        = 900
 )
 
 type retrievalEvidenceLane string
@@ -14,6 +15,7 @@ type retrievalEvidenceLane string
 const (
 	retrievalEvidenceKnowledge retrievalEvidenceLane = "knowledge"
 	retrievalEvidenceWeb       retrievalEvidenceLane = "web"
+	retrievalEvidenceMemory    retrievalEvidenceLane = "memory"
 )
 
 // retrievalContextBudget is turn-local. It bounds all server-authored
@@ -23,14 +25,17 @@ type retrievalContextBudget struct {
 	totalTokens       int
 	knowledgeTokens   int
 	webTokens         int
+	memoryTokens      int
 	knowledgeConsumed int
 	webConsumed       int
+	memoryConsumed    int
 }
 
 func newRetrievalContextBudget(
 	request ProviderRequest,
 	knowledgeAvailable bool,
 	webAvailable bool,
+	memoryAvailable bool,
 ) *retrievalContextBudget {
 	_, inputBudget := defaultContextBudgetPolicy().inputBudgetTokens(
 		request.ModelRef.ModelID,
@@ -51,14 +56,19 @@ func newRetrievalContextBudget(
 	}
 
 	budget := &retrievalContextBudget{totalTokens: total}
+	remaining := total
+	if memoryAvailable {
+		budget.memoryTokens = min(remaining, retrievalMemoryMaximumTokens)
+		remaining -= budget.memoryTokens
+	}
 	switch {
 	case knowledgeAvailable && webAvailable:
-		budget.knowledgeTokens = total * retrievalKnowledgeSharePercent / 100
-		budget.webTokens = total - budget.knowledgeTokens
+		budget.knowledgeTokens = remaining * retrievalKnowledgeSharePercent / 100
+		budget.webTokens = remaining - budget.knowledgeTokens
 	case knowledgeAvailable:
-		budget.knowledgeTokens = total
+		budget.knowledgeTokens = remaining
 	case webAvailable:
-		budget.webTokens = total
+		budget.webTokens = remaining
 	}
 	return budget
 }
@@ -84,6 +94,8 @@ func (budget *retrievalContextBudget) limit(
 		return budget.knowledgeTokens
 	case retrievalEvidenceWeb:
 		return budget.webTokens
+	case retrievalEvidenceMemory:
+		return budget.memoryTokens
 	default:
 		return 0
 	}
@@ -101,6 +113,8 @@ func (budget *retrievalContextBudget) remaining(
 		remaining = budget.knowledgeTokens - budget.knowledgeConsumed
 	case retrievalEvidenceWeb:
 		remaining = budget.webTokens - budget.webConsumed
+	case retrievalEvidenceMemory:
+		remaining = budget.memoryTokens - budget.memoryConsumed
 	}
 	return max(remaining, 0)
 }
@@ -118,5 +132,7 @@ func (budget *retrievalContextBudget) consume(
 		budget.knowledgeConsumed += tokens
 	case retrievalEvidenceWeb:
 		budget.webConsumed += tokens
+	case retrievalEvidenceMemory:
+		budget.memoryConsumed += tokens
 	}
 }

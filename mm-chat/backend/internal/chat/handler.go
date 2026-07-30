@@ -55,6 +55,7 @@ type Handler struct {
 	userMemoryService            *usermemory.Service
 	memoryLexicalShadowEnabled   bool
 	memoryHybridShadowEnabled    bool
+	memoryToolLoopEnabled        bool
 	memoryL2SceneShadowEnabled   bool
 	memoryL2SceneReaderEnabled   bool
 	memoryL3PersonaShadowEnabled bool
@@ -375,6 +376,12 @@ func WithMemoryLexicalShadowEnabled(enabled bool) HandlerOption {
 func WithMemoryHybridShadowEnabled(enabled bool) HandlerOption {
 	return func(handler *Handler) {
 		handler.memoryHybridShadowEnabled = enabled
+	}
+}
+
+func WithMemoryToolLoopEnabled(enabled bool) HandlerOption {
+	return func(handler *Handler) {
+		handler.memoryToolLoopEnabled = enabled
 	}
 }
 
@@ -1344,14 +1351,25 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeServiceError(w, err)
 		return
 	}
-	directMemoryAction := h.prepareDirectMemoryAction(
+	memoryToolRuntime := h.newMemoryToolRuntime(
 		r.Context(),
+		toolRoundCapable,
+		searchMode,
+		userMessage.Content,
 		conversationID,
-		userMessage,
-		assistantMessage,
-		streamProvider,
-		*modelRef,
+		assistantMessage.ID,
 	)
+	directMemoryAction := directMemoryActionPreparation{}
+	if !memoryToolRuntime.enabled() {
+		directMemoryAction = h.prepareDirectMemoryAction(
+			r.Context(),
+			conversationID,
+			userMessage,
+			assistantMessage,
+			streamProvider,
+			*modelRef,
+		)
+	}
 	trace := newProcessTrace(assistantMessage.ID)
 	addLegacyWebProcessStep(
 		trace,
@@ -1411,13 +1429,16 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		)
 	}
 
-	providerSystemPrompt, memoryPreparation := h.prepareDurableMemory(
-		r.Context(),
-		userMessage.Content,
-		conversationID,
-		assistantMessage.ID,
-		providerSystemPrompt,
-	)
+	memoryPreparation := durableMemoryPreparation{}
+	if !memoryToolRuntime.enabled() {
+		providerSystemPrompt, memoryPreparation = h.prepareDurableMemory(
+			r.Context(),
+			userMessage.Content,
+			conversationID,
+			assistantMessage.ID,
+			providerSystemPrompt,
+		)
+	}
 	providerSystemPromptWithoutFusion := providerSystemPrompt
 	providerSystemPrompt = applySourceFusionSystemInstruction(
 		providerSystemPrompt,
@@ -1506,7 +1527,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		generationStarted,
 		map[string]any{"outcome": "streaming"},
 	)
-	if useLiveKnowledgeTool ||
+	if memoryToolRuntime.enabled() || useLiveKnowledgeTool ||
 		(searchMode == chatSearchModeExternal && searchExecution != nil &&
 			searchExecution.Mode == websearch.ExecutionExternal &&
 			!useCompatibilityKnowledge) {
@@ -1525,6 +1546,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			ForceSearch:            forceExternalSearch,
 			KnowledgeReady:         autoDecision.ReadyForAnswer(),
 			Knowledge:              knowledgeRuntime,
+			Memory:                 memoryToolRuntime,
 			CapabilityCache:        h.toolCapabilityCache,
 			CapabilityConfigHash:   providerResolution.ToolCapabilityConfigHash,
 			DisableNativeToolRound: !toolRoundCapable,

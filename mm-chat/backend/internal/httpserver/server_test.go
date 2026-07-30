@@ -147,6 +147,13 @@ func TestMemoryHybridProviderRequiredForEveryProviderBackedReader(t *testing.T) 
 			want: true,
 		},
 		{
+			name: "L1 Memory Tool Loop",
+			memory: config.MemoryConfig{
+				ToolLoopEnabled: true,
+			},
+			want: true,
+		},
+		{
 			name: "L2 Scene shadow",
 			memory: config.MemoryConfig{
 				L2SceneShadowEnabled: true,

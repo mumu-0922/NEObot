@@ -74,6 +74,7 @@ func runCompatibilityKnowledgeLoop(
 			input.Request,
 			input.Runtime.enabled(),
 			webAvailable,
+			false,
 		)
 	}
 	plan, err := planCompatibilityRetrieval(ctx, input)

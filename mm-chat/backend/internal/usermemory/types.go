@@ -25,6 +25,7 @@ const (
 	HybridRelevanceIntentCalibrationPolicyID     = "memory_hybrid_relevance_intent_calibration_v1"
 	HybridRelevanceCloudJudgeCalibrationPolicyID = "memory_hybrid_cloud_candidate_judge_calibration_v1"
 	HybridRelevanceMemoryToolRoutePolicyID       = "memory_hybrid_main_model_tool_route_calibration_v1"
+	HybridRelevanceMemoryFirstToolRoundPolicyID  = "memory_hybrid_main_model_first_tool_round_calibration_v1"
 	HybridRelevanceFrozenPolicyID                = "memory_hybrid_relevance_intent_abstention_v1"
 )
 
@@ -85,6 +86,14 @@ type HybridShadowRepository interface {
 // raw similarity.
 type HybridShadowAdmissionRepository interface {
 	AuthorizeHybridRerank(context.Context, HybridShadowAdmissionInput) (HybridShadowAdmission, error)
+}
+
+// HybridFinalRepository performs the last current-authority hydration after a
+// hybrid final set has passed RecordHybridShadow. It is a separate optional
+// capability so the existing shadow repository contract stays source-
+// compatible and callers cannot hydrate arbitrary Memory IDs.
+type HybridFinalRepository interface {
+	HydrateHybridFinal(context.Context, HybridFinalHydrationInput) ([]Memory, error)
 }
 
 // L2SceneRepository exposes only authenticated Scene search capabilities.
@@ -453,6 +462,31 @@ type HybridShadowSummary struct {
 	EstimatedTokens      int    `json:"estimatedTokens"`
 	TargetTokensExceeded bool   `json:"targetTokensExceeded"`
 	DurationMillis       int    `json:"durationMillis"`
+}
+
+type HybridFinalHydrationInput struct {
+	ObservationID      string
+	AssistantMessageID string
+}
+
+// HybridMemoryToolSearchInput is issued only after the first chat Tool round
+// returns one exact search_memory({}) call. Contract provenance prevents a
+// caller from silently substituting another Tool shape.
+type HybridMemoryToolSearchInput struct {
+	ConversationID     string
+	AssistantMessageID string
+	Query              string
+	ContractVersion    string
+	ContractSHA256     string
+}
+
+// HybridMemoryToolSearchResult is fail-closed: Memories is empty on every
+// incomplete or stale path, while FailureCategory remains bounded and contains
+// no query, Memory plaintext, Provider error, or score.
+type HybridMemoryToolSearchResult struct {
+	Memories        []Memory
+	Summary         HybridShadowSummary
+	FailureCategory string
 }
 
 type L2ScenePrepareInput struct {
