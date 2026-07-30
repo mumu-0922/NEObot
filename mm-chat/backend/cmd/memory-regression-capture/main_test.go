@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"neo-chat/mm-chat/backend/internal/memorycapture"
+	"neo-chat/mm-chat/backend/internal/memoryeval"
 	"neo-chat/mm-chat/backend/internal/ragproviders"
 )
 
@@ -254,6 +255,36 @@ func TestLoadLiveAuthorizationRequiresExactModelTargets(t *testing.T) {
 	)
 	if !errors.Is(err, memorycapture.ErrLiveNotAuthorized) || strings.Contains(err.Error(), "other") {
 		t.Fatalf("target denial error = %v", err)
+	}
+}
+
+func TestNewMemoryToolRouteCommandSummaryUsesFirstRoundReportAuthority(t *testing.T) {
+	options := commandOptions{
+		runID:        "run-1",
+		providerMode: memorycapture.ProviderModeFakeProtocol,
+		outputDir:    "/private/output/../run-1",
+	}
+	report := memorycapture.MemoryToolRouteDevelopmentReport{
+		CorpusClass:       memoryeval.RegressionCorpusClass,
+		AdmissionMode:     memorycapture.MemoryToolFirstRoundDevelopmentAdmissionMode,
+		PromotionEligible: false,
+		Split:             memorycapture.DevelopmentCalibrationSplit,
+		Passed:            false,
+	}
+
+	summary := newMemoryToolRouteCommandSummary(options, "capture-1", report)
+	if summary.SchemaVersion != "neo-chat.memory-regression-native-summary.v4" ||
+		summary.AdmissionMode != memorycapture.MemoryToolFirstRoundDevelopmentAdmissionMode ||
+		summary.PromotionEligible || summary.CandidatePassed || summary.PolicySelected {
+		t.Fatalf("failed first-round summary = %#v", summary)
+	}
+	if summary.RunID != options.runID || summary.CaptureID != "capture-1" ||
+		summary.CorpusClass != memoryeval.RegressionCorpusClass ||
+		summary.ProviderMode != memorycapture.ProviderModeFakeProtocol ||
+		summary.CaptureMode != memorycapture.CaptureModeMemoryToolRouteDevelopment ||
+		summary.Split != memorycapture.DevelopmentCalibrationSplit ||
+		summary.OutputDirectory != filepath.Clean(options.outputDir) {
+		t.Fatalf("first-round summary authority = %#v", summary)
 	}
 }
 

@@ -499,6 +499,11 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   regression topology/lifecycle tests, and migration-065 PostgreSQL 17 replay
   pass. No schema-v7 live Development run has been executed, no policy is
   frozen, and Validation/Promotion remain blocked.
+- The native stdout summary schema remains the command-envelope v4, but its
+  `corpusClass`, `admissionMode`, and `split` must come from the validated
+  schema-v7 report rather than historical schema-v6 constants. A failed fake
+  protocol report sets both `candidatePassed=false` and
+  `policySelected=false`; protocol completion is not policy selection.
 - Frozen validation is unavailable until the selected Development policy,
   model, prompt, decoding profile, and immutable policy ID are committed in
   code. It never recalibrates, emits only the aggregate validation report plus
@@ -578,6 +583,7 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | Tool route returns a missing ID, unknown/duplicate call, or missing/null/malformed/non-empty arguments | Reject the route response and fail closed to `no_memory`. |
 | Route Provider/model/contract/adapter authority drifts or the decision is late | Record bounded route failure, discard the decision, and keep hybrid final empty. |
 | Schema-v7 emits preflight-only decoding/temperature/output/thinking fields | Reject the profile/report; first ToolRound must preserve ordinary chat-round decoding. |
+| First-ToolRound stdout summary differs from the validated report admission/split or marks a failed report selected | Reject the summary implementation in tests; never relabel historical schema-v6 authority or fake-protocol completion. |
 | Actual first-round request/input/output upper bound exceeds cost-basis v5 | Reject the report and bundle; never infer quota after the run. |
 | Frozen validation is requested before a Development-selected policy is committed | Reject before credential read or Provider work. |
 | Native artifact target already exists or publication races | Preserve existing bytes, remove only new links, and refuse the run. |
@@ -684,7 +690,8 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   concurrent Tool/BGE completion;
   no candidate body in the Tool prompt; two distinct mode-`0600` credentials;
   cost-basis v4 historical evidence plus cost-basis v5 request/token/absolute-
-  cost ceilings; first-ToolRound two-file
+  cost ceilings; schema-v7 stdout admission/split mirroring and failed-report
+  `candidatePassed=false`/`policySelected=false`; first-ToolRound two-file
   manifest; frozen-policy-unavailable denial; and separate two-file manifests.
 - Run `go test -race ./internal/memoryauthor ./cmd/memory-benchmark-author
   ./internal/memoryeval ./cmd/memory-eval ./internal/memorycapture
@@ -751,3 +758,12 @@ fresh SiliconFlow BGE credential + independent fresh GPT/DeepSeek credential
 This measures the user-selected model's retrieval intent without turning the
 model into ownership, query-rewrite, candidate-selection, or promotion
 authority.
+
+```go
+// Wrong: stale schema-v6 constant can contradict the retained v7 evidence.
+summary.AdmissionMode = memorycapture.MemoryToolRouteDevelopmentAdmissionMode
+
+// Correct: the validated report remains the command summary authority.
+summary.AdmissionMode = report.AdmissionMode
+summary.PolicySelected = report.Passed
+```

@@ -831,20 +831,7 @@ func runMemoryToolRouteDevelopment(
 	); err != nil {
 		return err
 	}
-	summary := commandSummary{
-		SchemaVersion:     "neo-chat.memory-regression-native-summary.v4",
-		RunID:             options.runID,
-		CaptureID:         captureID,
-		CorpusClass:       memoryeval.RegressionCorpusClass,
-		AdmissionMode:     memorycapture.MemoryToolRouteDevelopmentAdmissionMode,
-		PromotionEligible: false,
-		ProviderMode:      options.providerMode,
-		CaptureMode:       memorycapture.CaptureModeMemoryToolRouteDevelopment,
-		Split:             memorycapture.DevelopmentCalibrationSplit,
-		CandidatePassed:   report.Passed,
-		PolicySelected:    report.Passed,
-		OutputDirectory:   filepath.Clean(options.outputDir),
-	}
+	summary := newMemoryToolRouteCommandSummary(options, captureID, report)
 	if err := json.NewEncoder(stdout).Encode(summary); err != nil {
 		return errors.New("write Memory Tool-route summary failed")
 	}
@@ -852,6 +839,27 @@ func runMemoryToolRouteDevelopment(
 		return errMetricsFailed
 	}
 	return nil
+}
+
+func newMemoryToolRouteCommandSummary(
+	options commandOptions,
+	captureID string,
+	report memorycapture.MemoryToolRouteDevelopmentReport,
+) commandSummary {
+	return commandSummary{
+		SchemaVersion:     "neo-chat.memory-regression-native-summary.v4",
+		RunID:             options.runID,
+		CaptureID:         captureID,
+		CorpusClass:       report.CorpusClass,
+		AdmissionMode:     report.AdmissionMode,
+		PromotionEligible: false,
+		ProviderMode:      options.providerMode,
+		CaptureMode:       memorycapture.CaptureModeMemoryToolRouteDevelopment,
+		Split:             report.Split,
+		CandidatePassed:   report.Passed,
+		PolicySelected:    report.Passed,
+		OutputDirectory:   filepath.Clean(options.outputDir),
+	}
 }
 
 func runFrozenValidation(
