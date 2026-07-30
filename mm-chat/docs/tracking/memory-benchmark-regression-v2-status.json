@@ -113,7 +113,7 @@
   "auditVerdict": "passed",
   "nativeReaderCapture": {
     "runnerVersion": "neo-chat.native-memory-reader-capture.v4",
-    "status": "main_model_memory_tool_route_implemented_offline_live_development_pending",
+    "status": "main_model_memory_tool_route_development_completed_failed_architecture_pivot",
     "baselineProfile": "native_v1_lexical",
     "fakeCandidateProfile": "native_v2_hybrid_fake_protocol",
     "liveCandidateProfile": "native_v2_hybrid",
@@ -133,7 +133,7 @@
       "secretLeakCount": 0,
       "untrustedSourceLeakCount": 0
     },
-    "relevancePolicyStatus": "main_model_memory_tool_route_live_development_pending",
+    "relevancePolicyStatus": "main_model_memory_tool_route_preflight_failed_first_round_integration_pending",
     "developmentCalibration": {
       "schemaVersion": "neo-chat.memory-regression-relevance-calibration.v1",
       "caseCount": 300,
@@ -399,7 +399,7 @@
       "quotaUsed": false
     },
     "memoryToolRouteDevelopment": {
-      "status": "implemented_offline_protocol_proven_live_not_run",
+      "status": "live_development_completed_failed_preflight_architecture",
       "schemaVersion": "neo-chat.memory-regression-relevance-calibration.v6",
       "profileConfigSchemaVersion": "neo-chat.memory-regression-profile-config.v6",
       "costBasisSchemaVersion": "neo-chat.memory-regression-cost-basis.v4",
@@ -423,12 +423,13 @@
       "candidateBodiesSentToRouteProvider": 0,
       "retrievalProfile": "fixed_bge_m3_rrf_rerank_top5_token_budget",
       "providerHypotheses": [
-        "configured_gpt_exact_provider_and_model_pending_live_authority",
-        "configured_deepseek_exact_provider_and_model_pending_live_authority"
+        "configured_gpt_gpt-5.6-sol_completed_failed",
+        "configured_deepseek_deepseek-v4-pro_protocol_mismatch_invalid_quality_evidence",
+        "configured_deepseek_deepseek-v4-flash_completed_failed"
       ],
       "providerHypothesesIndependent": true,
       "independentCredentialFilesRequired": 2,
-      "liveDevelopmentStatus": "not_run_requires_fresh_unexposed_siliconflow_and_route_credentials",
+      "liveDevelopmentStatus": "completed_failed_no_profile_frozen",
       "offlineProtocolProof": {
         "providerMode": "fake_protocol",
         "database": "PostgreSQL 17",
@@ -446,10 +447,109 @@
         "qualityEvidence": false
       },
       "falseInjectionGateChanged": false,
-      "validationStatus": "blocked_pending_passing_live_development_and_frozen_policy",
+      "validationStatus": "blocked_failed_preflight_architecture_and_no_frozen_policy",
       "policyFrozen": false,
       "promotionEligible": false,
-      "research": ".trellis/tasks/07-29-native-v2-relevance-abstention/research/main-model-memory-tool-routing.md"
+      "research": ".trellis/tasks/07-29-native-v2-relevance-abstention/research/main-model-memory-tool-routing.md",
+      "developmentCredentialAuthority": "owner_authorized_server_vault_transient_mode_0600_copies_destroyed",
+      "validationCredentialAuthority": "fresh_independent_credentials_required",
+      "thinkingControlContract": {
+        "officialDeepSeekHostname": "api.deepseek.com",
+        "officialDeepSeekDisabledShape": "thinking.type=disabled",
+        "genericOpenAICompatibleDisabledShape": "enable_thinking=false",
+        "officialOpenAICompatibleControls": "omitted"
+      },
+      "liveDevelopmentRuns": [
+        {
+          "providerId": "SERVER_DEFAULT",
+          "providerType": "openai_compatible",
+          "modelId": "gpt-5.6-sol",
+          "status": "completed_failed",
+          "qualityEvidence": true,
+          "caseCount": 300,
+          "candidateRecallAt20": 1,
+          "finalRecallAt5": 0.08717948717948718,
+          "currentFactAccuracy": 0.09090909090909091,
+          "falseInjectionCases": 2,
+          "falseInjectionRate": 0.006666666666666667,
+          "p95LatencyMilliseconds": 2002,
+          "p99LatencyMilliseconds": 2003,
+          "evaluationHardCutoffViolationCount": 78,
+          "routeCompletedCaseCount": 41,
+          "routeUsedCaseCount": 40,
+          "routeAbstainedCaseCount": 1,
+          "routeFailedCaseCount": 259,
+          "routeFailureCodeCounts": {
+            "HARD_CUTOFF": 250,
+            "MEMORY_TOOL_ROUTE_FAILED": 9
+          },
+          "crossUserLeakCount": 0,
+          "deletedMemoryLeakCount": 0,
+          "secretLeakCount": 0,
+          "untrustedSourceLeakCount": 0,
+          "unauthorizedProviderEgressCount": 0,
+          "passed": false
+        },
+        {
+          "providerId": "FOHWSU",
+          "providerType": "openai_compatible",
+          "modelId": "deepseek-v4-pro",
+          "status": "protocol_mismatch_invalid_quality_evidence",
+          "qualityEvidence": false,
+          "caseCount": 300,
+          "sentThinkingControl": "enable_thinking=false",
+          "requiredThinkingControl": "thinking.type=disabled",
+          "routeCompletedCaseCount": 0,
+          "routeUsedCaseCount": 0,
+          "routeAbstainedCaseCount": 0,
+          "routeFailedCaseCount": 300,
+          "routeFailureCodeCounts": {
+            "HARD_CUTOFF": 135,
+            "MEMORY_TOOL_ROUTE_FAILED": 165
+          },
+          "crossUserLeakCount": 0,
+          "deletedMemoryLeakCount": 0,
+          "secretLeakCount": 0,
+          "untrustedSourceLeakCount": 0,
+          "unauthorizedProviderEgressCount": 0,
+          "passed": false
+        },
+        {
+          "providerId": "FOHWSU",
+          "providerType": "openai_compatible",
+          "modelId": "deepseek-v4-flash",
+          "status": "completed_failed",
+          "qualityEvidence": true,
+          "caseCount": 300,
+          "candidateRecallAt20": 1,
+          "finalRecallAt5": 0.2564102564102564,
+          "currentFactAccuracy": 0.2545454545454545,
+          "falseInjectionCases": 3,
+          "falseInjectionRate": 0.01,
+          "p95LatencyMilliseconds": 1377,
+          "p99LatencyMilliseconds": 1808,
+          "evaluationHardCutoffViolationCount": 0,
+          "routeCompletedCaseCount": 77,
+          "routeUsedCaseCount": 62,
+          "routeAbstainedCaseCount": 15,
+          "routeFailedCaseCount": 223,
+          "routeFailureCodeCounts": {
+            "HARD_CUTOFF": 2,
+            "MEMORY_TOOL_ROUTE_FAILED": 221
+          },
+          "providerFailureSubclassification": "not_available_in_schema_v6_report",
+          "crossUserLeakCount": 0,
+          "deletedMemoryLeakCount": 0,
+          "secretLeakCount": 0,
+          "untrustedSourceLeakCount": 0,
+          "unauthorizedProviderEgressCount": 0,
+          "passed": false
+        }
+      ],
+      "architectureDecision": "reject_separate_plan_tools_preflight",
+      "architectureReason": "extra_provider_request_amplifies_latency_quota_and_transient_failures",
+      "nextDevelopmentHypothesis": "search_memory_in_existing_first_tool_round_same_model_continuation",
+      "liveDevelopmentPassed": false
     }
   },
   "fixtureContentSha256": "965072e0e5b36d687c1838aaa675beb8a81475e0794d7fdded34f99d7673c7af",

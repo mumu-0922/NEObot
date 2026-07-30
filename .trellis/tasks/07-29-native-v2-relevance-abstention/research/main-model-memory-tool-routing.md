@@ -35,6 +35,54 @@ This evidence rejects further model-only hopping on that gateway. It does not
 prove that every hosted Provider or every main-model Tool decision is
 infeasible.
 
+## Live Development update
+
+The first implementation adapted `chat.ToolPlanner`. That produced one
+independent, non-streaming route request before the normal answer request; it
+did not reuse the first `ToolRoundProvider` round described below.
+
+The GPT profile bound `SERVER_DEFAULT/gpt-5.6-sol` and completed `41/300` route
+decisions (`40` use, `1` abstain). It failed `259` cases: `250` reported
+`HARD_CUTOFF` and `9` reported `MEMORY_TOOL_ROUTE_FAILED`. Final Recall@5 was
+`0.087179`, current-fact accuracy was `0.090909`, false injection was `2/300`,
+and p95/p99 was `2002/2003 ms`.
+
+The first `FOHWSU/deepseek-v4-pro` execution completed no route decisions, but
+it is not model-quality evidence. The adapter sent
+`{"enable_thinking":false}` to official `api.deepseek.com`; DeepSeek's official
+contract requires `{"thinking":{"type":"disabled"}}`. Retain the run only as
+`protocol_mismatch_invalid_quality_evidence`.
+
+Official protocol reference:
+<https://api-docs.deepseek.com/guides/thinking_mode>.
+
+After correcting the official DeepSeek wire shape, the
+`FOHWSU/deepseek-v4-flash` profile completed `77/300` routes (`62` use, `15`
+abstain) and failed `223` (`2` `HARD_CUTOFF`, `221`
+`MEMORY_TOOL_ROUTE_FAILED`). Final Recall@5 was `0.256410`, current-fact
+accuracy was `0.254545`, false injection was `3/300`, and p95/p99 was
+`1377/1808 ms`. Every authority/privacy leak counter remained zero, but the
+unchanged quality and latency gates failed.
+
+Schema v6 does not retain a stable subtype under
+`MEMORY_TOOL_ROUTE_FAILED`. Quota, rate limiting, overload, transport failure,
+and other Provider errors therefore remain unverified explanations for the
+Flash count.
+
+## Architecture conclusion
+
+No profile passed and no policy was frozen. The independent `PlanTools`
+preflight amplifies Provider requests, quota exposure, latency, and transient
+failure before answer generation. Increasing the two-second cutoff or retrying
+the preflight would not test the originally selected architecture.
+
+The next implementation should instead register `search_memory` beside
+`search_web` and `search_knowledge` in the existing first
+`ToolRoundProvider.StreamToolRound` request. A valid call then executes bounded
+current-authorized Memory retrieval and returns the result in same-model
+continuation. No call continues without v2 Memory. This is the actual reuse of
+the product Tool Loop.
+
 ## Existing product seam
 
 The chat runtime already has a provider-normalized Tool Loop:
@@ -48,7 +96,9 @@ The chat runtime already has a provider-normalized Tool Loop:
 - Tool-capability state is already bound to Provider configuration and model.
 
 This seam can host a read-only `search_memory` Tool without a second hidden
-model or a second chat Provider configuration.
+model or a second chat Provider configuration. It must also avoid a separate
+pre-answer `PlanTools` request; merely sharing Provider code and credentials is
+not the same as sharing the first model round.
 
 ## Selected Development hypothesis
 
@@ -105,8 +155,11 @@ main-model Tool decision fails unchanged Development gates.
   identity.
 - The exact Tool definition, Provider type/identity, model, decoding behavior,
   cost authority, and decision adapter are configuration-hashed.
-- The isolated runner must use fresh credential files for any live run; it
-  must not read or copy production vault secrets.
+- For the completed Development runs, the owner explicitly authorized
+  transient mode-`0600` decrypted copies from the existing Server Vault. They
+  were overwritten and removed after use, and the runner itself never opened
+  the Vault. A future Validation run still requires fresh independent
+  credentials.
 - GPT and DeepSeek are separate named hypotheses. A result from one cannot
   authorize the other.
 - v1 remains the only production prompt/Usage authority. v2 remains
@@ -119,6 +172,7 @@ main-model Tool decision fails unchanged Development gates.
 
 Memory-relevant turns may require a second main-model round for Tool
 continuation. That is explicit user-selected model work, not a hidden judge.
-The first-round Tool decision and BGE retrieval may be speculatively overlapped
-only if no candidate body is released before a valid Tool Call and the measured
-latency contract remains truthful.
+It must not require a preliminary third request: the first answer round itself
+makes the Tool decision. BGE retrieval may be speculatively overlapped only if
+no candidate body is released before a valid Tool Call and the measured latency
+contract remains truthful.

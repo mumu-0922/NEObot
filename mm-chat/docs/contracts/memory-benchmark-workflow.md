@@ -538,19 +538,23 @@ credential creation, or quota use. Tracking records
 The owner stopped hidden-judge model hopping and selected the current configured
 GPT or DeepSeek model as a `search_memory` Tool router.
 
-Run each exact GPT or DeepSeek hypothesis separately. Use one fresh mode-`0600`
-SiliconFlow Key for fixed BGE work and a different fresh mode-`0600` Key for the
-route Provider:
+Run each exact GPT or DeepSeek hypothesis separately. The runner requires one
+mode-`0600` SiliconFlow file for fixed BGE work and a distinct mode-`0600` file
+for the route Provider. For these Development runs, the owner explicitly
+authorized the operator to materialize short-lived decrypted copies from the
+existing Server Vault. The runner never opens the Vault; the copies are
+overwritten and removed after the run. A future Validation run does not inherit
+this exception and requires fresh independent credentials.
 
 ```bash
-chmod 600 /secure/input/fresh-siliconflow-bge.key
-chmod 600 /secure/input/fresh-gpt-route.key
+chmod 600 /secure/input/transient-siliconflow-bge.key
+chmod 600 /secure/input/transient-gpt-route.key
 bash scripts/run-memory-regression.sh \
   --provider-mode live_siliconflow \
   --capture-mode development_memory_tool_route \
-  --credential-file /secure/input/fresh-siliconflow-bge.key \
+  --credential-file /secure/input/transient-siliconflow-bge.key \
   --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
-  --memory-tool-route-credential-file /secure/input/fresh-gpt-route.key \
+  --memory-tool-route-credential-file /secure/input/transient-gpt-route.key \
   --memory-tool-route-provider-id configured-gpt \
   --memory-tool-route-provider-type openai \
   --memory-tool-route-base-url https://api.openai.com/v1 \
@@ -560,7 +564,7 @@ bash scripts/run-memory-regression.sh \
   --output-dir /secure/eval/native-memory-runs
 ```
 
-For DeepSeek, use its independent fresh credential, exact configured Provider
+For DeepSeek, use its independent credential file, exact configured Provider
 ID/Base URL/model, `--memory-tool-route-provider-type openai_compatible`, and a
 separate cost-basis v4. A GPT result cannot authorize DeepSeek and vice versa.
 The model is not trusted by name; exact live evidence determines whether the
@@ -614,6 +618,14 @@ maximum output   = 128
 thinking         = disabled
 ```
 
+Disabled thinking is a Provider wire contract, not a generic field:
+
+```text
+official DeepSeek api.deepseek.com -> {"thinking":{"type":"disabled"}}
+other OpenAI-compatible gateways   -> {"enable_thinking":false}
+official OpenAI                    -> omit both fields
+```
+
 The route request contains only the deterministic secret-redacted current
 query plus that Tool. It contains no candidate body, Memory ID, revision,
 scope, score, or database authority. No call is `no_memory`. Use Memory requires
@@ -643,14 +655,50 @@ credential, or observation file. The 300-case PostgreSQL 17 `fake_protocol`
 replay completed with 300 route requests, zero protocol failures, an actual
 input-token upper bound of `358533`, mode-`0600` artifacts, and zero remaining
 containers/networks/volumes. Its deterministic route fails quality gates by
-design and is not model-quality evidence. No live GPT/DeepSeek result exists;
+design and is not model-quality evidence.
+
+Three live Development executions followed:
+
+```text
+SERVER_DEFAULT / gpt-5.6-sol
+  completed/use/abstain/failed = 41/40/1/259
+  failure codes                = HARD_CUTOFF 250, MEMORY_TOOL_ROUTE_FAILED 9
+  Final Recall@5/current fact  = 0.087179/0.090909
+  false injection             = 2/300
+  p95/p99                      = 2002/2003 ms
+
+FOHWSU / deepseek-v4-pro
+  completed/failed             = 0/300
+  status                       = protocol_mismatch_invalid_quality_evidence
+  reason                       = official DeepSeek received enable_thinking=false
+
+FOHWSU / deepseek-v4-flash after protocol correction
+  completed/use/abstain/failed = 77/62/15/223
+  failure codes                = HARD_CUTOFF 2, MEMORY_TOOL_ROUTE_FAILED 221
+  Final Recall@5/current fact  = 0.256410/0.254545
+  false injection             = 3/300
+  p95/p99                      = 1377/1808 ms
+```
+
+All authority/privacy leak counts were zero. The Flash evaluation recorded zero
+hard-cutoff violations even though two route failures carried the bounded
+`HARD_CUTOFF` failure code. Schema v6 does not retain a stable subtype beneath
+`MEMORY_TOOL_ROUTE_FAILED`; do not relabel those `221` failures as quota, rate
+limit, overload, transport, or protocol errors without new evidence.
+
+No profile passed and no policy was frozen. The decisive architecture finding
+is that `ChatToolAdapter` performs a separate `PlanTools` Provider request
+before the normal answer request; it does not reuse the existing first chat
+Tool round. Do not raise the two-second cutoff or retry this preflight. The next
+hypothesis must expose `search_memory` beside the other read-only tools on the
+existing first `ToolRoundProvider` request and use same-model continuation.
 Validation remains blocked.
 
-Only after one exact current Development hypothesis passes may its policy,
-Provider/model, contract/decoding profile, and selection behavior be frozen in
-code. The current Validation CLI remains unavailable because no schema-v6
-policy is frozen and it does not yet accept the second route credential. The
-historical single-Provider Validation command shape remains:
+Only after a future first-round Tool Loop Development hypothesis passes may its
+policy, Provider/model, contract/decoding profile, and selection behavior be
+frozen in code. The current Validation CLI remains unavailable because no
+schema-v6 policy is frozen and it does not yet accept the second route
+credential. The historical single-Provider Validation command shape remains:
 
 ```bash
 chmod 600 /secure/input/fresh-validation-siliconflow.key
@@ -674,8 +722,10 @@ both independent credentials and rejects the same file, hard links, or equal
 Key bytes. Values never enter argv, environment variables, Compose config,
 Docker inspect, reports, or Git. Both in-process byte buffers are cleared, and
 retained artifacts, runner logs, and Docker metadata are scanned for both
-secrets. The runner does not inspect or decrypt the production Provider vault.
-Live output alone uses profile `native_v2_hybrid`.
+secrets. When the owner authorizes Server Vault reuse for Development, a
+separate operator step must first create the two mode-`0600` input files and
+must overwrite/remove them afterward; the runner itself never inspects or
+decrypts the Vault. Live output alone uses profile `native_v2_hybrid`.
 
 The cost basis is strict JSON and all values are run-total integer microunits
 in one named unit:

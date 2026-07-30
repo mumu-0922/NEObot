@@ -8,8 +8,11 @@ selected-Knowledge paths now execute after `message.started`; the Handler no
 longer invokes the old pre-answer Auto RAG authority. G19.10 query-aware
 Knowledge routing, unified compatibility planning, shared Tool-capability
 state, and query-free route visibility were promoted on 2026-07-23. The
-`search_memory` adapter described below is implemented for schema-v6
-Development capture only; it is not a promoted production Tool or reader.
+`search_memory` adapter described below completed schema-v6 live Development
+capture and failed the unchanged gates. It is not a promoted production Tool
+or reader. Its separate `PlanTools` preflight is rejected as the product
+integration shape; any successor must join the existing first
+`ToolRoundProvider` round instead of adding another Provider request.
 
 ## 1. Scope / Trigger
 
@@ -217,6 +220,19 @@ tool choice      = auto
 temperature      = 0
 maximum output   = 128
 thinking         = disabled
+```
+
+The disabled-thinking wire shape is Provider-specific:
+
+```json
+// Official DeepSeek host: api.deepseek.com
+{"thinking":{"type":"disabled"}}
+
+// Other OpenAI-compatible gateways
+{"enable_thinking":false}
+
+// Official OpenAI
+// Omit both non-standard fields.
 ```
 
 OpenAI-compatible/Gemini continuation is an assistant message containing the
@@ -427,14 +443,27 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
   and a non-nil empty decoded argument object. Missing, `null`, malformed, or
   non-empty arguments; unknown or duplicate calls; Provider failure; deadline;
   and model/contract drift fail closed.
-- `OpenAICompatibleProvider.PlanTools` sends `enable_thinking=false` when the
-  fixed route requests it. Official `OpenAIProvider.PlanTools` deliberately
-  omits that non-standard extension while preserving the exact model,
+- `OpenAICompatibleProvider` detects only the exact official
+  `api.deepseek.com` hostname and sends `thinking.type=disabled` from both
+  `PlanTools` and `StreamToolRound` when thinking is disabled. Other compatible
+  gateways receive `enable_thinking=false`. Official `OpenAIProvider.PlanTools`
+  omits both compatible controls while preserving the exact model,
   `temperature=0`, and `max_tokens=128` fields.
 - This one-round planner currently returns only route evidence. It does not
   execute Memory retrieval or same-model continuation. The isolated
   `usermemory` Development policy controls BGE release, and Server composition
   installs neither the route policy nor the adapter.
+- Schema-v6 live Development proved that this adapter is an additional
+  non-streaming Provider preflight before the normal answer request; it does
+  not reuse the existing first Tool Loop round. The GPT profile completed only
+  `41/300` routes and the corrected DeepSeek Flash profile completed `77/300`.
+  This request amplification is the primary architecture finding. Do not raise
+  the two-second cutoff or retry the preflight to mask it.
+- Future product work must register `search_memory` beside `search_web` and
+  `search_knowledge` on the existing first `StreamToolRound` request, execute
+  current-authorized retrieval after the call, and continue through the same
+  Provider/model. Do not run `PlanTools` first and then start a second answer
+  request.
 
 ## 4. Validation & Error Matrix
 
@@ -488,6 +517,9 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 | Memory route omits arguments or returns `null` | reject; nil map is not an explicit empty object |
 | Memory route returns unknown/duplicate calls or multiple choices | reject the entire route response |
 | Memory route Provider/model/contract drifts or times out | fail closed; unchanged v1 chat authority |
+| Official DeepSeek receives `enable_thinking=false` | protocol mismatch; the run is not model-quality evidence |
+| Generic compatible receives `thinking.type=disabled` | forbidden Provider-specific leakage; retain `enable_thinking=false` |
+| Product Memory route adds a separate `PlanTools` preflight | reject the architecture; use the existing first Tool round |
 
 ## 5. Good / Base / Bad Cases
 
@@ -594,9 +626,10 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
     decoding, zero-call abstention, explicit empty-object acceptance, missing/
     null/malformed/non-empty argument rejection, unknown/duplicate call
     rejection, model/contract provenance, candidate-body absence, official
-    OpenAI `enable_thinking` omission, and OpenAI-compatible
-    `enable_thinking=false` encoding. These tests are offline and confer no
-    production activation authority.
+    OpenAI omission of both compatible controls, generic OpenAI-compatible
+    `enable_thinking=false`, and exact-host DeepSeek
+    `thinking.type=disabled`. These tests are offline and confer no production
+    activation authority.
 
 ## 7. Wrong vs Correct
 
@@ -694,6 +727,17 @@ secret-redacted query + exact search_memory Tool
   -> zero calls: no_memory
   -> one exact call with ID and explicit {}: provenance-bound use_memory
   -> usermemory independently reauthorizes and releases bounded BGE results
+```
+
+```text
+// Wrong product integration after the failed schema-v6 Development preflight.
+PlanTools(search_memory) -> Provider request #1
+  -> StreamToolRound(answer) -> Provider request #2
+
+// Correct next product architecture.
+first StreamToolRound(search_web + search_knowledge + search_memory)
+  -> execute the exact called read-only tools
+  -> same-model continuation with bounded authorized results
 ```
 
 Operational rollback for catalog quality regressions is to omit

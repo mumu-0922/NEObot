@@ -240,6 +240,19 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   prompt injection. An empty candidate set still waits for the route decision
   to record `EMPTY`, `ABSTAINED`, or `FAILED` truthfully without inventing a
   final row.
+- The implemented schema-v6 adapter invokes an independent non-streaming
+  `PlanTools` preflight. It does not share the existing chat
+  `ToolRoundProvider` first answer round. Live Development rejected this
+  preflight shape: GPT completed `41/300` route decisions, while corrected
+  DeepSeek Flash completed `77/300`; neither profile passed.
+- The DeepSeek Pro run that sent `enable_thinking=false` to the official
+  `api.deepseek.com` host is `protocol_mismatch_invalid_quality_evidence`.
+  Official DeepSeek requires `thinking.type=disabled`; generic compatible
+  gateways retain `enable_thinking=false`, and official OpenAI omits both.
+- Do not compensate by increasing the hard cutoff, retrying the preflight, or
+  weakening gates. A successor must expose `search_memory` in the product's
+  existing first `StreamToolRound`, then execute and return bounded Memory in
+  same-model continuation.
 - The adapters in `internal/memoryjudge` and `internal/memoryroute` are not
   production activation authority. The Server composition installs no cloud-
   judge, Tool-route, or frozen policy, so normal operation remains default-off
@@ -307,6 +320,8 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 | Tool route returns a missing ID, wrong name, duplicate call, or nil/non-empty arguments | Reject the whole decision as `MEMORY_TOOL_ROUTE_FAILED`; never reinterpret it as an exact call. |
 | Tool route model/contract provenance drifts or the Provider fails/is late | Record `MEMORY_TOOL_ROUTE_FAILED`, empty final, and unchanged v1 chat. |
 | Tool route succeeds but the current-authorized BGE candidate set is empty | Record `MEMORY_TOOL_ROUTE_EMPTY`; do not fabricate a Memory result. |
+| Official DeepSeek is sent generic `enable_thinking=false` | Mark the run protocol-invalid; it cannot support a model-quality conclusion. |
+| The route is implemented as a separate pre-answer `PlanTools` request | Development-only failed hypothesis; never promote this request shape. |
 | Rerank fails, is invalid, or its reserved deadline expires | Record the bounded failure/cutoff and no hybrid final. |
 | Every valid rerank score is below the frozen final threshold | Record `RELEVANCE_FINAL_ABSTAINED`, zero final rows, and zero estimated prompt Memory tokens. |
 | Provider returns success after its context deadline | Discard the late output; never complete/rerank from it. |
@@ -347,7 +362,9 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   exact Tool definition/version/SHA-256, no-call/exact-empty-object decisions,
   nil/non-empty/unknown/duplicate call rejection, model/contract drift,
   query-only route input, concurrent route/embedding/BGE completion, route
-  failure/cutoff/empty-candidate handling, policy-aware Provider-egress scoring,
+  failure/cutoff/empty-candidate handling, official DeepSeek versus generic
+  compatible versus official OpenAI thinking-control encoding, policy-aware
+  Provider-egress scoring,
   post-threshold
   abstention, reserved cutoff recording, 600/900 token selection, bounded
   metadata, and byte-equivalent v1 prompt/Usage behavior.
@@ -395,3 +412,8 @@ shared default-off flag
   -> content-free observation
   -> unchanged v1 prompt and Usage
 ```
+
+The schema-v6 `PlanTools` preflight is retained only as failed Development
+evidence. It is not the correct product implementation of the optional
+main-model branch above; that branch must execute inside the existing first
+chat Tool round.

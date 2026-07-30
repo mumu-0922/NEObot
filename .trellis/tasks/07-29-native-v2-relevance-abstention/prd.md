@@ -120,6 +120,26 @@ evidence passes.
 - Passing all candidates to the answer model in one prompt is rejected because
   those candidates would already have entered the answer prompt before the
   relevance decision, silently weakening the unchanged false-injection gate.
+- The schema-v6 GPT Development run completed only `41/300` route decisions;
+  `250` cases reported `HARD_CUTOFF` and `9` reported
+  `MEMORY_TOOL_ROUTE_FAILED`. Final Recall@5/current-fact accuracy was
+  `0.087179/0.090909`, false injection was `2/300`, and p95/p99 was
+  `2002/2003 ms`. No policy was frozen.
+- The first DeepSeek Pro execution is retained as
+  `protocol_mismatch_invalid_quality_evidence`, not as a model failure. The
+  adapter sent generic `enable_thinking=false` to official
+  `api.deepseek.com`, whose contract requires
+  `thinking.type=disabled`.
+- After correcting that protocol, DeepSeek Flash completed `77/300` route
+  decisions and failed `223`; `221` carried `MEMORY_TOOL_ROUTE_FAILED` and `2`
+  carried `HARD_CUTOFF`. Final Recall@5/current-fact accuracy was
+  `0.256410/0.254545`, false injection was `3/300`, and p95/p99 was
+  `1377/1808 ms`. Every authority/privacy leak count remained zero, but quality
+  and latency gates failed and no policy was frozen.
+- The implementation used an extra non-streaming `PlanTools` preflight before
+  the normal answer request. It did not reuse the existing first chat Tool
+  round. This preflight hypothesis is rejected; raising the cutoff or retrying
+  it would only hide request amplification.
 
 ## Assumptions (updated)
 
@@ -127,9 +147,10 @@ evidence passes.
   and ordering stages.
 - Fixed two-stage scores, candidate margin, bilingual BGE intent, and three
   SiliconFlow candidate-aware judges are historical failed hypotheses.
-- The only active Development hypothesis is an exact `search_memory` Tool
-  decision by the current user-selected GPT or DeepSeek model. Each
-  Provider/model is evaluated as a separately versioned profile.
+- The query-only `PlanTools` preflight is a completed failed Development
+  hypothesis. The next hypothesis is an exact `search_memory` decision inside
+  the existing first `ToolRoundProvider` round, evaluated separately for each
+  Provider/model.
 - Every hybrid relevance policy remains default-off and non-promotional until
   it passes unchanged recall, injection, latency, and authority gates.
 
@@ -141,9 +162,11 @@ evidence passes.
 
 ### Runtime selection
 
-- Add a versioned main-model Memory Tool-routing policy. Before a valid Tool
-  Call, the Provider sees only the normal conversation context and the exact
-  read-only `search_memory` definition, never Memory candidates or bodies.
+- Add a versioned main-model Memory Tool-routing policy to the existing first
+  `ToolRoundProvider` request. Before a valid Tool Call, the Provider sees the
+  normal conversation context and exact read-only `search_memory` definition,
+  never Memory candidates or bodies. Do not prepend an independent
+  `PlanTools` request.
 - Accept either no Tool Call (`no_memory`) or one exact, bounded
   `search_memory` call. Unknown tools, duplicates, malformed arguments, model
   or contract drift, late output, and Provider failure fail closed.
@@ -219,9 +242,11 @@ evidence passes.
   scan, interruption, and total teardown tests.
 - Update the stale live-comparison tracking status with the completed run and
   its failed candidate outcome, without committing private evidence.
-- Require fresh, separately authorized, unexposed credentials for the fixed
-  SiliconFlow BGE profile and the named GPT or DeepSeek route Provider for each
-  live run. Never read or copy production-vault credentials.
+- Development may reuse transient mode-`0600` decrypted copies of the existing
+  Server Vault credentials only under the owner's explicit authorization. The
+  copies must be overwritten and removed after each run, and the runner must
+  never inspect/decrypt the Vault. Validation still requires fresh,
+  independently authorized credentials for BGE and the named route Provider.
 
 ## Acceptance Criteria (evolving)
 
@@ -265,8 +290,10 @@ evidence passes.
    `internal/memoryroute`; adapt `chat.ToolPlanner` results to only zero calls or
    one non-empty-ID call with exact name and explicit `{}` arguments.
 3. Extend official OpenAI and OpenAI-compatible planners with exact
-   model/temperature/output bounds. Omit non-standard `enable_thinking` for
-   official OpenAI and encode `false` for compatible gateways.
+   model/temperature/output bounds. Omit both compatible thinking controls for
+   official OpenAI, encode `enable_thinking=false` for generic compatible
+   gateways, and encode `thinking.type=disabled` only for the exact official
+   DeepSeek hostname.
 4. Start the redacted query-only route concurrently with fixed BGE work. Keep
    candidate content inside the separately authorized BGE boundary and release
    no hybrid final unless route model/contract provenance passes and the Tool
@@ -275,17 +302,20 @@ evidence passes.
    two-file aggregate report/manifest. Bind Provider ID/type, normalized Base
    URL SHA-256, model, Tool tuple, BGE tuple, evaluator gates, and absolute
    request/token/cost authority before Provider construction.
-6. Require two independent fresh mode-`0600` credentials for live capture,
+6. Require two independent mode-`0600` credential inputs for live capture,
    scan both secrets from retained surfaces, and destroy all project-scoped
-   Docker/runtime state on every exit path.
+   Docker/runtime state on every exit path. Development may use explicitly
+   authorized transient Server Vault copies; Validation may not.
 7. Use `fake_protocol` only for deterministic protocol/lifecycle proof. Run GPT
    and DeepSeek as separate live Development hypotheses; freeze and add a
    matching Validation lane only after one exact profile passes all unchanged
    gates.
 
 Current checkpoint: implementation, tests, PostgreSQL 17 fake-protocol replay,
-documentation, and full standalone verification pass. No real GPT/DeepSeek
-Development run or schema-v6 Validation/frozen policy exists yet.
+and three real schema-v6 Development executions exist. GPT failed; the first
+DeepSeek run is protocol-invalid; corrected DeepSeek Flash failed. The
+independent preflight architecture is rejected. No schema-v6 Validation or
+frozen policy exists.
 
 Use the selected main-model Tool route from
 [`research/main-model-memory-tool-routing.md`](research/main-model-memory-tool-routing.md):
@@ -321,11 +351,15 @@ Use the selected main-model Tool route from
 7. Record all three failed judge runs, cancel the unrun Qwen3.5 hypothesis, and
    implement the exact main-model `search_memory` Tool-route Development lane
    for separately configured GPT and DeepSeek Providers.
-8. Only after one Tool-route Development profile passes, run offline/
-   PostgreSQL/Compose/full gates and perform one fresh independently authorized
-   validation capture without retuning.
-9. Update benchmark/hybrid/Tool Loop contracts, operator workflow, and live tracking;
-   retain only sanitized mode-`0600` evidence and leave promotion disabled.
+8. Record the failed GPT run, protocol-invalid DeepSeek Pro run, and corrected
+   failed DeepSeek Flash run; keep Validation and Promotion blocked.
+9. Replace the separate `PlanTools` preflight with a future first-round chat
+   Tool Loop integration. Only after that exact Development profile passes may
+   offline/PostgreSQL/Compose/full gates and one fresh independently authorized
+   Validation capture run without retuning.
+10. Update benchmark/hybrid/Tool Loop contracts, operator workflow, and live
+    tracking; retain only sanitized mode-`0600` evidence and leave promotion
+    disabled.
 
 ## Decision (ADR-lite)
 
@@ -343,6 +377,12 @@ Qwen3.5 model-only hypothesis.
 continuation round, but no hidden chat model or judge Provider is added. The
 policy becomes Provider/model-specific and must be revalidated on model or
 Tool-contract drift. v1 remains production authority until every gate passes.
+
+**2026-07-30 amendment:** The first implementation used `PlanTools` as a
+separate Provider preflight and failed live Development. Preserve those results
+as failed evidence, but do not promote that request shape. The intended
+architecture is one first chat Tool round containing Memory beside the other
+read-only tools, followed by same-model continuation only when called.
 
 ## Expansion Sweep
 
@@ -383,5 +423,9 @@ Tool-contract drift. v1 remains production authority until every gate passes.
   `scripts/run-memory-regression.sh`.
 - The schema-v3 temporary Key was destroyed after the completed failed-gate
   run; retained evidence is aggregate-only and mode-`0600` outside Git.
-- No live credential exists locally now. The previous temporary Key file was
-  deleted after the completed run.
+- The owner authorized Server Vault credential reuse for schema-v6 Development.
+  All transient decrypted mode-`0600` input files were overwritten and removed;
+  retained evidence is aggregate-only and outside Git.
+- The three schema-v6 run directories are mode `0700`, their two retained files
+  are mode `0600`, and cleanup left zero temporary regression containers,
+  networks, volumes, or decrypted credential files.
