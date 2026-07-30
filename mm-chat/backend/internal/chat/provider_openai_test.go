@@ -22,6 +22,9 @@ func TestOpenAIProviderPlansToolsWithoutCompatibleThinkingExtension(t *testing.T
 		if _, exists := payload["enable_thinking"]; exists {
 			t.Fatal("official OpenAI Tool plan included enable_thinking")
 		}
+		if _, exists := payload["thinking"]; exists {
+			t.Fatal("official OpenAI Tool plan included compatible thinking control")
+		}
 		if string(payload["max_tokens"]) != "128" ||
 			string(payload["temperature"]) != "0" {
 			t.Fatalf(

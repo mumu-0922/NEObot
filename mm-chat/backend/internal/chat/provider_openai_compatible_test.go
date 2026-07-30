@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -508,6 +509,107 @@ func TestOpenAICompatibleProviderPlansFunctionCalls(t *testing.T) {
 	if len(calls) != 1 || calls[0].Name != "lookup_weather" || calls[0].Args["city"] != "Shanghai" {
 		t.Fatalf("calls = %#v", calls)
 	}
+}
+
+func TestDeepSeekCompatibleProviderUsesOfficialDisabledThinkingShape(t *testing.T) {
+	requestCount := 0
+	client := &http.Client{Transport: providerRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		requestCount++
+		if r.URL.String() != "https://api.deepseek.com/v1/chat/completions" {
+			t.Fatalf("request URL = %q", r.URL.String())
+		}
+		var payload openAICompatibleChatCompletionRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.EnableThinking != nil || payload.Thinking == nil ||
+			payload.Thinking.Type != "disabled" {
+			t.Fatalf(
+				"DeepSeek thinking controls = %#v/%#v",
+				payload.EnableThinking,
+				payload.Thinking,
+			)
+		}
+		if payload.Stream {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"text/event-stream"},
+				},
+				Body: io.NopCloser(strings.NewReader("data: [DONE]\n\n")),
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body: io.NopCloser(strings.NewReader(
+				`{"choices":[{"message":{"content":"","tool_calls":[]}}]}`,
+			)),
+		}, nil
+	})}
+	provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+		BaseURL: "https://api.deepseek.com/v1", APIKey: "fixture-deepseek-key",
+		DefaultModel: "deepseek-v4-flash", HTTPClient: client,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	temperature := 0.0
+	calls, err := provider.PlanTools(context.Background(), ToolPlanRequest{
+		Prompt: "memory?", DisableThinking: true, MaxOutputTokens: 128,
+		Temperature: &temperature,
+		ModelRef:    ModelRef{ProviderID: "openai_compatible", ModelID: "deepseek-v4-flash"},
+		Tools: []ToolDefinition{{
+			Type: "function",
+			Function: ToolFunctionDefinition{
+				Name: "search_memory", Parameters: map[string]any{"type": "object"},
+			},
+		}},
+	})
+	if err != nil || len(calls) != 0 {
+		t.Fatalf("PlanTools() = %#v/%v", calls, err)
+	}
+	events, err := provider.StreamChat(context.Background(), ProviderRequest{
+		Prompt: "memory?", DisableThinking: true,
+		ModelRef: ModelRef{
+			ProviderID: "openai_compatible", ModelID: "deepseek-v4-flash",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+	}
+	if requestCount != 2 {
+		t.Fatalf("request count = %d, want 2", requestCount)
+	}
+}
+
+func TestOfficialDeepSeekBaseURLDetection(t *testing.T) {
+	tests := []struct {
+		baseURL string
+		want    bool
+	}{
+		{baseURL: "https://api.deepseek.com/v1", want: true},
+		{baseURL: "https://API.DEEPSEEK.COM/v1", want: true},
+		{baseURL: "https://api.deepseek.com.evil.example/v1", want: false},
+		{baseURL: "https://deepseek.example/v1", want: false},
+		{baseURL: "://invalid", want: false},
+	}
+	for _, test := range tests {
+		if got := isOfficialDeepSeekBaseURL(test.baseURL); got != test.want {
+			t.Errorf("isOfficialDeepSeekBaseURL(%q) = %t, want %t", test.baseURL, got, test.want)
+		}
+	}
+}
+
+type providerRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn providerRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
 }
 
 func TestOpenAICompatibleProviderRejectsInvalidToolArguments(t *testing.T) {

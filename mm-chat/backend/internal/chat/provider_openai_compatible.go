@@ -43,6 +43,7 @@ type OpenAICompatibleProvider struct {
 	apiKey       string
 	defaultModel string
 	providerID   string
+	deepSeek     bool
 	timeout      time.Duration
 	client       *http.Client
 }
@@ -70,6 +71,7 @@ func NewOpenAICompatibleProvider(
 		apiKey:       apiKey,
 		defaultModel: strings.TrimSpace(cfg.DefaultModel),
 		providerID:   strings.TrimSpace(cfg.ProviderID),
+		deepSeek:     isOfficialDeepSeekBaseURL(baseURL),
 		timeout:      cfg.Timeout,
 		client:       client,
 	}, nil
@@ -103,6 +105,7 @@ func (p *OpenAICompatibleProvider) StreamToolRound(
 		providerMessagesOrPrompt(input.ProviderRequest),
 	)
 	messages = appendOpenAICompatibleContinuation(messages, input.Continuation)
+	enableThinking, thinking := p.thinkingControls(input.DisableThinking, true)
 	payload, err := json.Marshal(openAICompatibleChatCompletionRequest{
 		Model:    model,
 		Stream:   true,
@@ -117,7 +120,8 @@ func (p *OpenAICompatibleProvider) StreamToolRound(
 			input.UseReasoning,
 			effectiveReasoningEffort(input.ProviderRequest),
 		),
-		EnableThinking: disabledThinkingValue(input.DisableThinking),
+		EnableThinking: enableThinking,
+		Thinking:       thinking,
 		MaxTokens:      input.MaxOutputTokens,
 		Temperature:    input.Temperature,
 	})
@@ -235,10 +239,15 @@ type openAICompatibleChatCompletionRequest struct {
 	Messages        []openAICompatibleMessage `json:"messages"`
 	ReasoningEffort string                    `json:"reasoning_effort,omitempty"`
 	EnableThinking  *bool                     `json:"enable_thinking,omitempty"`
+	Thinking        *openAICompatibleThinking `json:"thinking,omitempty"`
 	MaxTokens       int                       `json:"max_tokens,omitempty"`
 	Temperature     *float64                  `json:"temperature,omitempty"`
 	Tools           []ToolDefinition          `json:"tools,omitempty"`
 	ToolChoice      any                       `json:"tool_choice,omitempty"`
+}
+
+type openAICompatibleThinking struct {
+	Type string `json:"type"`
 }
 
 func disabledThinkingValue(disabled bool) *bool {
@@ -247,6 +256,24 @@ func disabledThinkingValue(disabled bool) *bool {
 	}
 	value := false
 	return &value
+}
+
+func (p *OpenAICompatibleProvider) thinkingControls(
+	disabled bool,
+	includeCompatibleExtension bool,
+) (*bool, *openAICompatibleThinking) {
+	if !disabled || !includeCompatibleExtension {
+		return nil, nil
+	}
+	if p != nil && p.deepSeek {
+		return nil, &openAICompatibleThinking{Type: "disabled"}
+	}
+	return disabledThinkingValue(true), nil
+}
+
+func isOfficialDeepSeekBaseURL(baseURL string) bool {
+	parsed, err := url.Parse(baseURL)
+	return err == nil && strings.EqualFold(parsed.Hostname(), "api.deepseek.com")
 }
 
 type openAICompatibleMessage struct {
@@ -332,14 +359,15 @@ func (p *OpenAICompatibleProvider) planTools(
 		return []ToolCall{}, nil
 	}
 
-	var enableThinking *bool
-	if includeEnableThinking {
-		enableThinking = disabledThinkingValue(input.DisableThinking)
-	}
+	enableThinking, thinking := p.thinkingControls(
+		input.DisableThinking,
+		includeEnableThinking,
+	)
 	payload, err := json.Marshal(openAICompatibleChatCompletionRequest{
 		Model:          modelRef.ModelID,
 		Stream:         false,
 		EnableThinking: enableThinking,
+		Thinking:       thinking,
 		MaxTokens:      input.MaxOutputTokens,
 		Temperature:    input.Temperature,
 		Messages: openAICompatibleMessages("", []ProviderMessage{{
