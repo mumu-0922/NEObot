@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/chat"
 	"neo-chat/mm-chat/backend/internal/memoryauthor"
 	"neo-chat/mm-chat/backend/internal/memoryeval"
 	"neo-chat/mm-chat/backend/internal/usermemory"
@@ -27,13 +28,12 @@ func TestBuildMemoryToolRouteDevelopmentReportPassesExactRoutePolicy(t *testing.
 		t.Fatal(err)
 	}
 	if !report.Passed || !report.Evaluation.Passed ||
-		report.SchemaVersion != MemoryToolRouteDevelopmentReportSchemaVersion ||
-		report.PolicyID != usermemory.HybridRelevanceMemoryToolRoutePolicyID ||
+		report.SchemaVersion != MemoryToolFirstRoundDevelopmentReportSchemaVersion ||
+		report.PolicyID != usermemory.HybridRelevanceMemoryFirstToolRoundPolicyID ||
 		report.ToolName != usermemory.HybridMemoryToolName ||
-		report.ToolDecodingProfile != usermemory.HybridMemoryToolDecodingProfile ||
-		report.ToolMaximumOutputTokens != usermemory.HybridMemoryToolMaximumOutputTokens ||
-		report.ToolTemperature != usermemory.HybridMemoryToolTemperature ||
-		report.ToolDisableThinking != usermemory.HybridMemoryToolDisableThinking ||
+		report.ToolAdapterVersion != chat.MemoryToolFirstRoundAdapterVersion ||
+		report.ToolDecodingProfile != "" || report.ToolMaximumOutputTokens != 0 ||
+		report.ToolTemperature != 0 || report.ToolDisableThinking ||
 		report.Diagnostics.RouteCompletedCaseCount != 300 ||
 		report.Diagnostics.FailedCaseCount != 0 ||
 		report.CostAuthority.ActualRequestCount != 300 ||
@@ -73,15 +73,15 @@ func TestBuildMemoryToolRouteDevelopmentRunManifestBindsPolicy(t *testing.T) {
 		protected,
 		strings.Repeat("5", 64),
 		report,
-		[]Artifact{{Name: "memory-tool-route-development.json", Body: reportBody}},
+		[]Artifact{{Name: "memory-first-tool-round-development.json", Body: reportBody}},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !manifest.Passed || manifest.PromotionEligible ||
 		manifest.CaptureMode != CaptureModeMemoryToolRouteDevelopment ||
-		manifest.AdmissionMode != MemoryToolRouteDevelopmentAdmissionMode ||
-		manifest.PolicyID != usermemory.HybridRelevanceMemoryToolRoutePolicyID ||
+		manifest.AdmissionMode != MemoryToolFirstRoundDevelopmentAdmissionMode ||
+		manifest.PolicyID != usermemory.HybridRelevanceMemoryFirstToolRoundPolicyID ||
 		len(body) == 0 {
 		t.Fatalf("manifest=%#v", manifest)
 	}
@@ -132,32 +132,30 @@ func TestBuildMemoryToolRouteDevelopmentProfileConfigBindsProviderAndTool(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if config.SchemaVersion != "neo-chat.memory-regression-profile-config.v6" ||
-		config.ReaderVersion != MemoryToolRouteReaderVersion ||
+	if config.SchemaVersion != "neo-chat.memory-regression-profile-config.v7" ||
+		config.ReaderVersion != MemoryToolFirstRoundReaderVersion ||
 		config.CaptureMode != CaptureModeMemoryToolRouteDevelopment ||
 		!config.MemoryToolRouteRequired ||
 		config.MemoryToolRouteProviderID != "configured-gpt" ||
 		config.MemoryToolRouteModelID != "gpt-test" ||
 		config.MemoryToolRouteContractSHA256 != usermemory.HybridMemoryToolContractSHA256 ||
-		config.MemoryToolRouteDecodingProfile != usermemory.HybridMemoryToolDecodingProfile ||
-		config.MemoryToolRouteMaximumOutputTokens !=
-			usermemory.HybridMemoryToolMaximumOutputTokens ||
-		config.MemoryToolRouteTemperature == nil ||
-		*config.MemoryToolRouteTemperature != usermemory.HybridMemoryToolTemperature ||
-		config.MemoryToolRouteDisableThinking != usermemory.HybridMemoryToolDisableThinking {
+		config.MemoryToolRouteAdapterVersion != chat.MemoryToolFirstRoundAdapterVersion ||
+		config.MemoryToolRouteDecodingProfile != "" ||
+		config.MemoryToolRouteMaximumOutputTokens != 0 ||
+		config.MemoryToolRouteTemperature != nil || config.MemoryToolRouteDisableThinking {
 		t.Fatalf("config=%#v", config)
 	}
 	firstHash, err := ConfigurationSHA256(config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	config.MemoryToolRouteDecodingProfile = "drifted"
+	config.MemoryToolRouteAdapterVersion = "drifted"
 	secondHash, err := ConfigurationSHA256(config)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if firstHash == secondHash {
-		t.Fatal("Memory Tool-route decoding drift did not change configuration hash")
+		t.Fatal("Memory first Tool-round adapter drift did not change configuration hash")
 	}
 }
 
@@ -171,6 +169,7 @@ func passingMemoryToolRouteDevelopmentTraces(
 		trace.CloudJudgeInputTokenUpperBound = 0
 		trace.MemoryToolRouteReady = true
 		trace.MemoryToolRouteInputTokenUpperBound = 1000
+		trace.MemoryToolRouteOutputTokenUpperBound = 64
 		trace.MemoryToolRouteUsed = len(trace.FullObservation.FinalMemoryIDs) > 0
 	}
 	return traces
@@ -186,7 +185,7 @@ func memoryToolRouteDevelopmentProfile(
 	return CapturedProfile{
 		Profile: memoryeval.Profile{
 			ID: CandidateProfileID, Role: "candidate",
-			ReaderVersion:        MemoryToolRouteReaderVersion,
+			ReaderVersion:        MemoryToolFirstRoundReaderVersion,
 			ConfigurationSHA256:  strings.Repeat("a", 64),
 			CandidateLimit:       usermemory.MaxHybridShadowResults,
 			FinalLimit:           usermemory.HybridShadowFinalLimit,
@@ -210,7 +209,7 @@ func memoryToolRouteTestAuthority() MemoryToolRouteProfileAuthority {
 func memoryToolRouteTestCostBasis() CostBasis {
 	authority := memoryToolRouteTestAuthority()
 	return CostBasis{
-		SchemaVersion:      "neo-chat.memory-regression-cost-basis.v4",
+		SchemaVersion:      "neo-chat.memory-regression-cost-basis.v5",
 		ProviderCostPolicy: ProviderCostPolicyOwnerAuthorizedAbsoluteV1,
 		Baseline: memoryeval.ProviderCosts{
 			Unit: "cny_microunits", ChatProviderCostMicrounits: 100,
@@ -227,10 +226,10 @@ func memoryToolRouteTestCostBasis() CostBasis {
 			ModelID:                          authority.ModelID,
 			RequestCount:                     300,
 			MaximumInputTokens:               300_000,
-			MaximumOutputTokens:              300 * usermemory.HybridMemoryToolMaximumOutputTokens,
+			MaximumOutputTokens:              300 * 8192,
 			InputMicrounitsPerMillionTokens:  1,
 			OutputMicrounitsPerMillionTokens: 1,
-			MaximumCostMicrounits:            2,
+			MaximumCostMicrounits:            4,
 		},
 	}
 }

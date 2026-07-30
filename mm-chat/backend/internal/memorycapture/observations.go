@@ -69,6 +69,17 @@ func CostBasisSHA256(cost CostBasis) (string, error) {
 		); err != nil {
 			return "", err
 		}
+	case "neo-chat.memory-regression-cost-basis.v5":
+		if cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+			cost.CloudJudgeAuthority != nil {
+			return "", fmt.Errorf("%w: cost basis", ErrCaptureInvalid)
+		}
+		if err := validateMemoryToolFirstRoundCostAuthority(
+			cost,
+			MemoryToolRouteProfileAuthority{},
+		); err != nil {
+			return "", err
+		}
 	default:
 		return "", fmt.Errorf("%w: cost basis", ErrCaptureInvalid)
 	}
@@ -92,14 +103,52 @@ func ValidateMemoryToolRouteCostAuthority(
 		cost.CloudJudgeAuthority != nil {
 		return fmt.Errorf("%w: Memory Tool route cost policy", ErrCaptureInvalid)
 	}
-	return validateMemoryToolRouteCostAuthority(cost, authority)
+	return validateMemoryToolCostAuthority(cost, authority, false)
+}
+
+func ValidateMemoryToolFirstRoundCostAuthority(
+	cost CostBasis,
+	authority MemoryToolRouteProfileAuthority,
+) error {
+	if cost.SchemaVersion != "neo-chat.memory-regression-cost-basis.v5" ||
+		cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+		cost.CloudJudgeAuthority != nil {
+		return fmt.Errorf("%w: Memory first Tool-round cost policy", ErrCaptureInvalid)
+	}
+	return validateMemoryToolCostAuthority(cost, authority, true)
 }
 
 func validateMemoryToolRouteCostAuthority(
 	cost CostBasis,
 	expected MemoryToolRouteProfileAuthority,
 ) error {
+	return validateMemoryToolCostAuthority(cost, expected, false)
+}
+
+func validateMemoryToolFirstRoundCostAuthority(
+	cost CostBasis,
+	expected MemoryToolRouteProfileAuthority,
+) error {
+	return validateMemoryToolCostAuthority(cost, expected, true)
+}
+
+func validateMemoryToolCostAuthority(
+	cost CostBasis,
+	expected MemoryToolRouteProfileAuthority,
+	firstRound bool,
+) error {
 	authority := cost.MemoryToolRouteAuthority
+	validOutputAuthority := false
+	if authority != nil && authority.RequestCount > 0 {
+		if firstRound {
+			validOutputAuthority =
+				authority.MaximumOutputTokens >= uint64(authority.RequestCount) &&
+					authority.MaximumOutputTokens%uint64(authority.RequestCount) == 0
+		} else {
+			validOutputAuthority = authority.MaximumOutputTokens ==
+				uint64(authority.RequestCount)*usermemory.HybridMemoryToolMaximumOutputTokens
+		}
+	}
 	if authority == nil || strings.TrimSpace(authority.ProviderID) == "" ||
 		authority.ProviderID != strings.TrimSpace(authority.ProviderID) ||
 		strings.TrimSpace(authority.ProviderType) == "" ||
@@ -109,38 +158,37 @@ func validateMemoryToolRouteCostAuthority(
 		authority.ModelID != strings.TrimSpace(authority.ModelID) ||
 		authority.RequestCount != 300 ||
 		authority.MaximumInputTokens < uint64(authority.RequestCount) ||
-		authority.MaximumOutputTokens != uint64(authority.RequestCount)*
-			usermemory.HybridMemoryToolMaximumOutputTokens {
-		return fmt.Errorf("%w: Memory Tool route cost authority", ErrCaptureInvalid)
+		!validOutputAuthority {
+		return fmt.Errorf("%w: Memory Tool cost authority", ErrCaptureInvalid)
 	}
 	if _, err := hex.DecodeString(authority.BaseURLSHA256); err != nil {
-		return fmt.Errorf("%w: Memory Tool route base URL hash", ErrCaptureInvalid)
+		return fmt.Errorf("%w: Memory Tool base URL hash", ErrCaptureInvalid)
 	}
 	if expected.ProviderID != "" &&
 		(authority.ProviderID != expected.ProviderID ||
 			authority.ProviderType != expected.ProviderType ||
 			authority.BaseURLSHA256 != expected.BaseURLSHA256 ||
 			authority.ModelID != expected.ModelID) {
-		return fmt.Errorf("%w: Memory Tool route Provider authority", ErrCaptureInvalid)
+		return fmt.Errorf("%w: Memory Tool Provider authority", ErrCaptureInvalid)
 	}
 	inputCost, ok := tokenCostCeiling(
 		authority.MaximumInputTokens,
 		authority.InputMicrounitsPerMillionTokens,
 	)
 	if !ok {
-		return fmt.Errorf("%w: Memory Tool route input cost overflow", ErrCaptureInvalid)
+		return fmt.Errorf("%w: Memory Tool input cost overflow", ErrCaptureInvalid)
 	}
 	outputCost, ok := tokenCostCeiling(
 		authority.MaximumOutputTokens,
 		authority.OutputMicrounitsPerMillionTokens,
 	)
 	if !ok || inputCost > ^uint64(0)-outputCost {
-		return fmt.Errorf("%w: Memory Tool route output cost overflow", ErrCaptureInvalid)
+		return fmt.Errorf("%w: Memory Tool output cost overflow", ErrCaptureInvalid)
 	}
 	maximum := inputCost + outputCost
 	if authority.MaximumCostMicrounits != maximum ||
 		cost.Candidate.MemoryProviderCostMicrounits < maximum {
-		return fmt.Errorf("%w: Memory Tool route cost total", ErrCaptureInvalid)
+		return fmt.Errorf("%w: Memory Tool cost total", ErrCaptureInvalid)
 	}
 	return nil
 }

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/chat"
 	"neo-chat/mm-chat/backend/internal/memoryauthor"
 	"neo-chat/mm-chat/backend/internal/memoryeval"
 	"neo-chat/mm-chat/backend/internal/usermemory"
@@ -323,12 +324,12 @@ func BuildMemoryToolRouteDevelopmentRunManifest(
 	if !runIDPattern.MatchString(runID) || captureID == "" ||
 		startedAt.IsZero() || completedAt.Before(startedAt) ||
 		len(costBasisSHA256) != 64 || len(artifacts) != 1 ||
-		report.SchemaVersion != MemoryToolRouteDevelopmentReportSchemaVersion ||
+		report.SchemaVersion != MemoryToolFirstRoundDevelopmentReportSchemaVersion ||
 		report.CorpusClass != memoryeval.RegressionCorpusClass ||
-		report.AdmissionMode != MemoryToolRouteDevelopmentAdmissionMode ||
+		report.AdmissionMode != MemoryToolFirstRoundDevelopmentAdmissionMode ||
 		report.PromotionEligible || report.Split != DevelopmentCalibrationSplit ||
 		report.CaseCount != 300 ||
-		report.PolicyID != usermemory.HybridRelevanceMemoryToolRoutePolicyID ||
+		report.PolicyID != usermemory.HybridRelevanceMemoryFirstToolRoundPolicyID ||
 		report.ProviderEgressPolicy !=
 			memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1 ||
 		report.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
@@ -336,12 +337,10 @@ func BuildMemoryToolRouteDevelopmentRunManifest(
 		report.ToolName != usermemory.HybridMemoryToolName ||
 		report.ToolContractVersion != usermemory.HybridMemoryToolContractVersion ||
 		report.ToolContractSHA256 != usermemory.HybridMemoryToolContractSHA256 ||
-		report.ToolDecodingProfile != usermemory.HybridMemoryToolDecodingProfile ||
-		report.ToolMaximumOutputTokens !=
-			usermemory.HybridMemoryToolMaximumOutputTokens ||
-		report.ToolTemperature != usermemory.HybridMemoryToolTemperature ||
-		report.ToolDisableThinking != usermemory.HybridMemoryToolDisableThinking ||
-		report.SelectionAlgorithm != memoryToolRouteSelectionAlgorithm ||
+		report.ToolAdapterVersion != chat.MemoryToolFirstRoundAdapterVersion ||
+		report.ToolDecodingProfile != "" || report.ToolMaximumOutputTokens != 0 ||
+		report.ToolTemperature != 0 || report.ToolDisableThinking ||
+		report.SelectionAlgorithm != memoryToolFirstRoundSelectionAlgorithm ||
 		report.Passed != report.Evaluation.Passed ||
 		len(report.ConfigurationSHA256) != 64 ||
 		report.Diagnostics.FailureCodeCounts == nil ||
@@ -361,9 +360,7 @@ func BuildMemoryToolRouteDevelopmentRunManifest(
 			report.CostAuthority.AuthorizedRequestCount ||
 		report.CostAuthority.ActualInputTokenUpperBound >
 			report.CostAuthority.AuthorizedMaximumInputTokens ||
-		report.CostAuthority.ActualOutputTokenUpperBound !=
-			uint64(report.CostAuthority.ActualRequestCount)*
-				usermemory.HybridMemoryToolMaximumOutputTokens ||
+		report.CostAuthority.ActualOutputTokenUpperBound == 0 ||
 		report.CostAuthority.ActualOutputTokenUpperBound >
 			report.CostAuthority.AuthorizedMaximumOutputTokens ||
 		report.CostAuthority.MaximumMemoryProviderCostMicrounits <
@@ -381,14 +378,14 @@ func BuildMemoryToolRouteDevelopmentRunManifest(
 		return RelevanceRunManifest{}, nil, ErrCaptureInvalid
 	}
 	artifactManifest, err := buildRunArtifactManifest(artifacts)
-	if err != nil || artifactManifest[0].Name != "memory-tool-route-development.json" {
+	if err != nil || artifactManifest[0].Name != "memory-first-tool-round-development.json" {
 		return RelevanceRunManifest{}, nil, ErrCaptureInvalid
 	}
 	manifest := RelevanceRunManifest{
 		SchemaVersion: RelevanceRunManifestSchemaVersion,
 		RunID:         runID, CaptureID: captureID,
 		CorpusClass:         memoryeval.RegressionCorpusClass,
-		AdmissionMode:       MemoryToolRouteDevelopmentAdmissionMode,
+		AdmissionMode:       MemoryToolFirstRoundDevelopmentAdmissionMode,
 		PromotionEligible:   false,
 		CaptureMode:         CaptureModeMemoryToolRouteDevelopment,
 		Split:               DevelopmentCalibrationSplit,

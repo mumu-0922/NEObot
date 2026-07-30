@@ -604,7 +604,7 @@ elif capture_mode == "development_calibration":
 elif capture_mode == "development_cloud_judge":
     expected = {"cloud-judge-development.json", "run-manifest.json"}
 elif capture_mode == "development_memory_tool_route":
-    expected = {"memory-tool-route-development.json", "run-manifest.json"}
+    expected = {"memory-first-tool-round-development.json", "run-manifest.json"}
 elif capture_mode == "frozen_validation":
     expected = {"relevance-validation.json", "run-manifest.json"}
 else:
@@ -630,7 +630,7 @@ expected_admission = {
     "full_regression": "regression_only",
     "development_calibration": "development_calibration_only",
     "development_cloud_judge": "development_cloud_judge_only",
-    "development_memory_tool_route": "development_main_model_memory_tool_route_only",
+    "development_memory_tool_route": "development_main_model_first_tool_round_only",
     "frozen_validation": "frozen_validation_only",
 }[capture_mode]
 if manifest.get("admissionMode") != expected_admission or manifest.get("promotionEligible") is not False:
@@ -779,8 +779,8 @@ elif capture_mode == "development_cloud_judge":
     ):
         raise SystemExit("legacy cloud-judge Development gained owner budget authority")
 elif capture_mode == "development_memory_tool_route":
-    report = json.loads((output / "memory-tool-route-development.json").read_text(encoding="utf-8"))
-    if report.get("schemaVersion") != "neo-chat.memory-regression-relevance-calibration.v6":
+    report = json.loads((output / "memory-first-tool-round-development.json").read_text(encoding="utf-8"))
+    if report.get("schemaVersion") != "neo-chat.memory-regression-relevance-calibration.v7":
         raise SystemExit("invalid Memory Tool-route Development report schema")
     if report.get("split") != "development" or report.get("caseCount") != 300:
         raise SystemExit("Memory Tool-route Development split drift")
@@ -797,11 +797,12 @@ elif capture_mode == "development_memory_tool_route":
         report.get("toolName") != "search_memory"
         or report.get("toolContractVersion") != "memory-search-tool-v1"
         or report.get("toolContractSha256") != "f8f404df0ae3a3938081b813c8750d59ba252adbcb8dc755e075e5c738e20ca6"
-        or report.get("toolDecodingProfile") != "memory-search-tool-decoding-v1"
-        or report.get("toolMaximumOutputTokens") != 128
-        or report.get("toolTemperature") != 0
-        or report.get("toolDisableThinking") is not True
-        or report.get("selectionAlgorithm") != "main-model-tool-call_then-bge-order_top5-token-budget_v1"
+        or report.get("toolAdapterVersion") != "chat-first-tool-round-memory-decision-v1"
+        or "toolDecodingProfile" in report
+        or "toolMaximumOutputTokens" in report
+        or "toolTemperature" in report
+        or "toolDisableThinking" in report
+        or report.get("selectionAlgorithm") != "first-tool-round-call_then-bge-order_top5-token-budget_v1"
         or report.get("providerEgressPolicy") != "owner_authorized_normal_candidates_v1"
         or report.get("providerCostPolicy") != "owner_authorized_absolute_cap_v1"
         or report.get("providerCostAuthorized") is not True
@@ -835,7 +836,7 @@ elif capture_mode == "development_memory_tool_route":
         or actual_requests < 0
         or actual_requests > authority.get("authorizedRequestCount", -1)
         or authority.get("actualInputTokenUpperBound", -1) > authority.get("authorizedMaximumInputTokens", -1)
-        or authority.get("actualOutputTokenUpperBound") != actual_requests * 128
+        or authority.get("actualOutputTokenUpperBound", 0) <= 0
         or authority.get("actualOutputTokenUpperBound", -1) > authority.get("authorizedMaximumOutputTokens", -1)
         or authority.get("maximumMemoryProviderCostMicrounits", 0)
         < authority.get("maximumRouteCostMicrounits", 0)

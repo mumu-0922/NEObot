@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"neo-chat/mm-chat/backend/internal/chat"
 	"neo-chat/mm-chat/backend/internal/memoryauthor"
 	"neo-chat/mm-chat/backend/internal/memoryeval"
 	"neo-chat/mm-chat/backend/internal/ragproviders"
@@ -86,7 +87,7 @@ func BuildMemoryToolRouteDevelopmentProfileConfig(
 		providerMode,
 		CaptureModeMemoryToolRouteDevelopment,
 		DevelopmentCalibrationSplit,
-		usermemory.HybridShadowMemoryToolRouteCalibrationPolicy(authority.ModelID),
+		usermemory.HybridShadowMemoryFirstToolRoundCalibrationPolicy(authority.ModelID),
 		providerCostPolicy,
 		&authority,
 	)
@@ -146,22 +147,19 @@ func buildProfileConfigs(
 			return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
 		}
 	} else if captureMode == CaptureModeMemoryToolRouteDevelopment {
-		readerVersion = MemoryToolRouteReaderVersion
-		profileSchemaVersion = "neo-chat.memory-regression-profile-config.v6"
+		readerVersion = MemoryToolFirstRoundReaderVersion
+		profileSchemaVersion = "neo-chat.memory-regression-profile-config.v7"
 		if providerCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
 			memoryToolRouteAuthority == nil ||
 			memoryToolRouteAuthority.ProviderID == "" ||
 			memoryToolRouteAuthority.ProviderType == "" ||
 			len(memoryToolRouteAuthority.BaseURLSHA256) != 64 ||
 			memoryToolRouteAuthority.ModelID != policy.MemoryToolRouteModelID ||
-			policyDescriptor.MemoryToolRouteDecodingProfile !=
-				usermemory.HybridMemoryToolDecodingProfile ||
-			policyDescriptor.MemoryToolRouteMaximumOutputTokens !=
-				usermemory.HybridMemoryToolMaximumOutputTokens ||
-			policyDescriptor.MemoryToolRouteTemperature !=
-				usermemory.HybridMemoryToolTemperature ||
-			policyDescriptor.MemoryToolRouteDisableThinking !=
-				usermemory.HybridMemoryToolDisableThinking {
+			policy.ID != usermemory.HybridRelevanceMemoryFirstToolRoundPolicyID ||
+			policyDescriptor.MemoryToolRouteDecodingProfile != "none" ||
+			policyDescriptor.MemoryToolRouteMaximumOutputTokens != 0 ||
+			policyDescriptor.MemoryToolRouteTemperature != 0 ||
+			policyDescriptor.MemoryToolRouteDisableThinking {
 			return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
 		}
 	} else if providerCostPolicy != "" || memoryToolRouteAuthority != nil {
@@ -235,13 +233,16 @@ func buildProfileConfigs(
 		candidate.MemoryToolRouteProviderID = memoryToolRouteAuthority.ProviderID
 		candidate.MemoryToolRouteProviderType = memoryToolRouteAuthority.ProviderType
 		candidate.MemoryToolRouteBaseURLSHA256 = memoryToolRouteAuthority.BaseURLSHA256
-		candidate.MemoryToolRouteDecodingProfile =
-			policyDescriptor.MemoryToolRouteDecodingProfile
-		candidate.MemoryToolRouteMaximumOutputTokens =
-			policyDescriptor.MemoryToolRouteMaximumOutputTokens
-		candidate.MemoryToolRouteTemperature = &temperature
-		candidate.MemoryToolRouteDisableThinking =
-			policyDescriptor.MemoryToolRouteDisableThinking
+		candidate.MemoryToolRouteAdapterVersion = chat.MemoryToolFirstRoundAdapterVersion
+		if policyDescriptor.MemoryToolRouteDecodingProfile != "none" {
+			candidate.MemoryToolRouteDecodingProfile =
+				policyDescriptor.MemoryToolRouteDecodingProfile
+			candidate.MemoryToolRouteMaximumOutputTokens =
+				policyDescriptor.MemoryToolRouteMaximumOutputTokens
+			candidate.MemoryToolRouteTemperature = &temperature
+			candidate.MemoryToolRouteDisableThinking =
+				policyDescriptor.MemoryToolRouteDisableThinking
+		}
 		candidate.ProviderEgressPolicy =
 			memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1
 		candidate.ProviderCostPolicy = providerCostPolicy
@@ -435,7 +436,7 @@ func CaptureMemoryToolRouteDevelopment(
 		index,
 		seed.Cases,
 		provider,
-		usermemory.HybridShadowMemoryToolRouteCalibrationPolicy(routerModelID),
+		usermemory.HybridShadowMemoryFirstToolRoundCalibrationPolicy(routerModelID),
 		profileID,
 		configurationSHA256,
 		cost,
@@ -605,7 +606,7 @@ func captureCandidateProfile(
 		providerEgressPolicy =
 			memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1
 	} else if policy.MemoryToolRouteRequired {
-		readerVersion = MemoryToolRouteReaderVersion
+		readerVersion = MemoryToolFirstRoundReaderVersion
 		providerEgressPolicy =
 			memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1
 	}

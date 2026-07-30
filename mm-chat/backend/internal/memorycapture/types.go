@@ -17,6 +17,7 @@ const (
 	ReaderVersion                               = "neo-chat.native-memory-reader-capture.v2"
 	CloudJudgeReaderVersion                     = "neo-chat.native-memory-reader-capture.v3"
 	MemoryToolRouteReaderVersion                = "neo-chat.native-memory-reader-capture.v4"
+	MemoryToolFirstRoundReaderVersion           = "neo-chat.native-memory-reader-capture.v5"
 	ProviderCostPolicyOwnerAuthorizedAbsoluteV1 = "owner_authorized_absolute_cap_v1"
 	ProviderModeNone                            = "none"
 	ProviderModeFakeProtocol                    = "fake_protocol"
@@ -89,6 +90,7 @@ type ProfileConfig struct {
 	MemoryToolRouteModelID               string                 `json:"memoryToolRouteModelId,omitempty"`
 	MemoryToolRouteContractVersion       string                 `json:"memoryToolRouteContractVersion,omitempty"`
 	MemoryToolRouteContractSHA256        string                 `json:"memoryToolRouteContractSha256,omitempty"`
+	MemoryToolRouteAdapterVersion        string                 `json:"memoryToolRouteAdapterVersion,omitempty"`
 	MemoryToolRouteDecodingProfile       string                 `json:"memoryToolRouteDecodingProfile,omitempty"`
 	MemoryToolRouteMaximumOutputTokens   int                    `json:"memoryToolRouteMaximumOutputTokens,omitempty"`
 	MemoryToolRouteTemperature           *float64               `json:"memoryToolRouteTemperature,omitempty"`
@@ -153,22 +155,23 @@ type CapturedProfile struct {
 // CandidateCalibrationTrace exists only in process memory. It deliberately
 // has no JSON tags and is never accepted by retained observation schemas.
 type CandidateCalibrationTrace struct {
-	CaseID                              string
-	PreparedReady                       bool
-	MemoryIntentMargin                  float64
-	MemoryIntentReady                   bool
-	AdmissionSimilarity                 float64
-	AdmissionReady                      bool
-	RerankReady                         bool
-	CloudJudgeReady                     bool
-	CloudJudgeInputTokenUpperBound      int
-	MemoryToolRouteReady                bool
-	MemoryToolRouteUsed                 bool
-	MemoryToolRouteInputTokenUpperBound int
-	AbstentionCode                      string
-	ResultCode                          string
-	FullObservation                     memoryeval.CaseObservation
-	FinalRelevanceScores                []float64
+	CaseID                               string
+	PreparedReady                        bool
+	MemoryIntentMargin                   float64
+	MemoryIntentReady                    bool
+	AdmissionSimilarity                  float64
+	AdmissionReady                       bool
+	RerankReady                          bool
+	CloudJudgeReady                      bool
+	CloudJudgeInputTokenUpperBound       int
+	MemoryToolRouteReady                 bool
+	MemoryToolRouteUsed                  bool
+	MemoryToolRouteInputTokenUpperBound  int
+	MemoryToolRouteOutputTokenUpperBound int
+	AbstentionCode                       string
+	ResultCode                           string
+	FullObservation                      memoryeval.CaseObservation
+	FinalRelevanceScores                 []float64
 }
 
 type clock func() time.Time

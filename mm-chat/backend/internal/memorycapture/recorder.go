@@ -11,23 +11,24 @@ import (
 )
 
 type transientCapture struct {
-	assistantMessageID                  string
-	candidates                          []string
-	final                               []string
-	providerSent                        []string
-	rerankEgressReady                   bool
-	judgeEgressReady                    bool
-	cloudJudgeReady                     bool
-	cloudJudgeInputTokenUpperBound      int
-	memoryToolRouteReady                bool
-	memoryToolRouteUsed                 bool
-	memoryToolRouteInputTokenUpperBound int
-	memoryIntentMargin                  float64
-	memoryIntentReady                   bool
-	admissionSimilarity                 float64
-	admissionReady                      bool
-	rerankReady                         bool
-	rerankScores                        map[string]float64
+	assistantMessageID                   string
+	candidates                           []string
+	final                                []string
+	providerSent                         []string
+	rerankEgressReady                    bool
+	judgeEgressReady                     bool
+	cloudJudgeReady                      bool
+	cloudJudgeInputTokenUpperBound       int
+	memoryToolRouteReady                 bool
+	memoryToolRouteUsed                  bool
+	memoryToolRouteInputTokenUpperBound  int
+	memoryToolRouteOutputTokenUpperBound int
+	memoryIntentMargin                   float64
+	memoryIntentReady                    bool
+	admissionSimilarity                  float64
+	admissionReady                       bool
+	rerankReady                          bool
+	rerankScores                         map[string]float64
 }
 
 func (recorder *Recorder) recordMemoryIntent(value ragproviders.MemoryIntentSignal) error {
@@ -199,12 +200,14 @@ func (recorder *Recorder) recordMemoryToolRouteResult(
 	defer recorder.mu.Unlock()
 	if recorder.current == nil || recorder.current.memoryToolRouteReady ||
 		recorder.current.memoryToolRouteInputTokenUpperBound <= 0 ||
+		result.OutputTokenUpperBound <= 0 ||
 		result.ContractVersion != usermemory.HybridMemoryToolContractVersion ||
 		result.ContractSHA256 != usermemory.HybridMemoryToolContractSHA256 {
 		return ErrCaptureStateConflict
 	}
 	recorder.current.memoryToolRouteReady = true
 	recorder.current.memoryToolRouteUsed = result.UseMemory
+	recorder.current.memoryToolRouteOutputTokenUpperBound = result.OutputTokenUpperBound
 	return nil
 }
 

@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 
+	"neo-chat/mm-chat/backend/internal/chat"
 	"neo-chat/mm-chat/backend/internal/ragproviders"
 	"neo-chat/mm-chat/backend/internal/usermemory"
 )
@@ -118,31 +120,68 @@ func (judge *FakeProtocolCandidateJudge) JudgeHybridCandidates(
 	}, nil
 }
 
-// FakeProtocolMemoryToolRouter proves only the exact Tool-route protocol and
-// provenance plumbing. Its digest decision is deliberately content-agnostic
-// and must never be interpreted as relevance-quality evidence.
-type FakeProtocolMemoryToolRouter struct{ modelID string }
+// FakeProtocolMemoryToolRoundProvider proves the exact first ToolRound seam.
+// Its digest decision is deliberately content-agnostic and must never be
+// interpreted as relevance-quality evidence.
+type FakeProtocolMemoryToolRoundProvider struct{ modelID string }
 
-func NewFakeProtocolMemoryToolRouter(modelID string) *FakeProtocolMemoryToolRouter {
-	return &FakeProtocolMemoryToolRouter{modelID: modelID}
+func NewFakeProtocolMemoryToolRoundProvider(
+	modelID string,
+) *FakeProtocolMemoryToolRoundProvider {
+	return &FakeProtocolMemoryToolRoundProvider{modelID: modelID}
 }
 
-func (router *FakeProtocolMemoryToolRouter) RouteHybridMemory(
-	_ context.Context,
-	input usermemory.HybridMemoryToolRouteInput,
-) (usermemory.HybridMemoryToolRouteResult, error) {
-	digest := sha256.Sum256([]byte(input.Query))
-	return usermemory.HybridMemoryToolRouteResult{
-		UseMemory:       digest[0]&1 == 0,
-		ModelID:         router.modelID,
-		ContractVersion: usermemory.HybridMemoryToolContractVersion,
-		ContractSHA256:  usermemory.HybridMemoryToolContractSHA256,
-	}, nil
+func (provider *FakeProtocolMemoryToolRoundProvider) StreamToolRound(
+	ctx context.Context,
+	input chat.ProviderRoundRequest,
+) (<-chan chat.ProviderEvent, error) {
+	if provider == nil || input.ModelRef.ModelID != provider.modelID ||
+		len(input.Tools) != 1 ||
+		input.Tools[0].Function.Name != usermemory.HybridMemoryToolName ||
+		input.ToolChoice != chat.ProviderToolChoiceAuto ||
+		len(input.Continuation) != 0 {
+		return nil, errors.New("fake Memory first Tool round is invalid")
+	}
+	digest := sha256.Sum256([]byte(input.Prompt))
+	events := make(chan chat.ProviderEvent, 2)
+	if digest[0]&1 == 0 {
+		events <- chat.ProviderEvent{
+			Type: chat.ProviderEventToolCallCompleted,
+			ToolCall: &chat.ProviderToolCall{
+				ID: "fake-memory-call", Name: usermemory.HybridMemoryToolName,
+				Arguments: `{}`,
+			},
+		}
+	} else {
+		events <- chat.ProviderEvent{
+			Type: chat.ProviderEventDelta, Delta: "fake direct answer",
+		}
+	}
+	events <- chat.ProviderEvent{
+		Type: chat.ProviderEventUsage,
+		Usage: &chat.TokenUsage{
+			PromptTokens: len(input.Prompt) + 1024, CompletionTokens: 32,
+		},
+	}
+	close(events)
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+		return events, nil
+	}
+}
+
+func (*FakeProtocolMemoryToolRoundProvider) StreamChat(
+	context.Context,
+	chat.ProviderRequest,
+) (<-chan chat.ProviderEvent, error) {
+	return nil, errors.New("fake Memory ToolRound fixture does not answer chat")
 }
 
 var (
-	_ PassageEmbedder                   = (*FakeProtocolProvider)(nil)
-	_ usermemory.HybridShadowProvider   = (*FakeProtocolProvider)(nil)
-	_ usermemory.HybridCandidateJudge   = (*FakeProtocolCandidateJudge)(nil)
-	_ usermemory.HybridMemoryToolRouter = (*FakeProtocolMemoryToolRouter)(nil)
+	_ PassageEmbedder                 = (*FakeProtocolProvider)(nil)
+	_ usermemory.HybridShadowProvider = (*FakeProtocolProvider)(nil)
+	_ usermemory.HybridCandidateJudge = (*FakeProtocolCandidateJudge)(nil)
+	_ chat.ToolRoundProvider          = (*FakeProtocolMemoryToolRoundProvider)(nil)
 )

@@ -6,15 +6,19 @@ import (
 	"errors"
 	"fmt"
 
+	"neo-chat/mm-chat/backend/internal/chat"
 	"neo-chat/mm-chat/backend/internal/memoryauthor"
 	"neo-chat/mm-chat/backend/internal/memoryeval"
 	"neo-chat/mm-chat/backend/internal/usermemory"
 )
 
 const (
-	MemoryToolRouteDevelopmentReportSchemaVersion = "neo-chat.memory-regression-relevance-calibration.v6"
-	MemoryToolRouteDevelopmentAdmissionMode       = "development_main_model_memory_tool_route_only"
-	memoryToolRouteSelectionAlgorithm             = "main-model-tool-call_then-bge-order_top5-token-budget_v1"
+	MemoryToolRouteDevelopmentReportSchemaVersion      = "neo-chat.memory-regression-relevance-calibration.v6"
+	MemoryToolRouteDevelopmentAdmissionMode            = "development_main_model_memory_tool_route_only"
+	memoryToolRouteSelectionAlgorithm                  = "main-model-tool-call_then-bge-order_top5-token-budget_v1"
+	MemoryToolFirstRoundDevelopmentReportSchemaVersion = "neo-chat.memory-regression-relevance-calibration.v7"
+	MemoryToolFirstRoundDevelopmentAdmissionMode       = "development_main_model_first_tool_round_only"
+	memoryToolFirstRoundSelectionAlgorithm             = "first-tool-round-call_then-bge-order_top5-token-budget_v1"
 )
 
 type MemoryToolRouteDevelopmentDiagnostics struct {
@@ -63,10 +67,11 @@ type MemoryToolRouteDevelopmentReport struct {
 	ToolName                string                                  `json:"toolName"`
 	ToolContractVersion     string                                  `json:"toolContractVersion"`
 	ToolContractSHA256      string                                  `json:"toolContractSha256"`
-	ToolDecodingProfile     string                                  `json:"toolDecodingProfile"`
-	ToolMaximumOutputTokens int                                     `json:"toolMaximumOutputTokens"`
-	ToolTemperature         float64                                 `json:"toolTemperature"`
-	ToolDisableThinking     bool                                    `json:"toolDisableThinking"`
+	ToolAdapterVersion      string                                  `json:"toolAdapterVersion,omitempty"`
+	ToolDecodingProfile     string                                  `json:"toolDecodingProfile,omitempty"`
+	ToolMaximumOutputTokens int                                     `json:"toolMaximumOutputTokens,omitempty"`
+	ToolTemperature         float64                                 `json:"toolTemperature,omitempty"`
+	ToolDisableThinking     bool                                    `json:"toolDisableThinking,omitempty"`
 	SelectionAlgorithm      string                                  `json:"selectionAlgorithm"`
 	Passed                  bool                                    `json:"passed"`
 	Evaluation              MemoryToolRouteDevelopmentEvaluation    `json:"evaluation"`
@@ -88,7 +93,7 @@ func BuildMemoryToolRouteDevelopmentReport(
 		profile.Profile.ID != FakeCandidateProfileID {
 		return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
 	}
-	if profile.Profile.ReaderVersion != MemoryToolRouteReaderVersion ||
+	if profile.Profile.ReaderVersion != MemoryToolFirstRoundReaderVersion ||
 		len(profile.Profile.ConfigurationSHA256) != 64 ||
 		profile.Profile.ProviderEgressPolicy !=
 			memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1 ||
@@ -101,19 +106,18 @@ func BuildMemoryToolRouteDevelopmentReport(
 		return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
 	}
 	policy, ok := usermemory.DescribeHybridShadowRelevancePolicy(
-		usermemory.HybridShadowMemoryToolRouteCalibrationPolicy(authority.ModelID),
+		usermemory.HybridShadowMemoryFirstToolRoundCalibrationPolicy(authority.ModelID),
 	)
 	if !ok || !policy.MemoryToolRouteRequired ||
 		policy.MemoryToolRouteContractVersion != usermemory.HybridMemoryToolContractVersion ||
 		policy.MemoryToolRouteContractSHA256 != usermemory.HybridMemoryToolContractSHA256 ||
-		policy.MemoryToolRouteDecodingProfile != usermemory.HybridMemoryToolDecodingProfile ||
-		policy.MemoryToolRouteMaximumOutputTokens !=
-			usermemory.HybridMemoryToolMaximumOutputTokens ||
-		policy.MemoryToolRouteTemperature != usermemory.HybridMemoryToolTemperature ||
-		policy.MemoryToolRouteDisableThinking != usermemory.HybridMemoryToolDisableThinking {
+		policy.ID != usermemory.HybridRelevanceMemoryFirstToolRoundPolicyID ||
+		policy.MemoryToolRouteDecodingProfile != "none" ||
+		policy.MemoryToolRouteMaximumOutputTokens != 0 ||
+		policy.MemoryToolRouteTemperature != 0 || policy.MemoryToolRouteDisableThinking {
 		return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
 	}
-	if err := ValidateMemoryToolRouteCostAuthority(costBasis, authority); err != nil ||
+	if err := ValidateMemoryToolFirstRoundCostAuthority(costBasis, authority); err != nil ||
 		costBasis.Candidate != profile.Costs {
 		return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
 	}
@@ -159,6 +163,10 @@ func BuildMemoryToolRouteDevelopmentReport(
 	}
 	actualRequests := 0
 	actualInputTokenUpperBound := uint64(0)
+	actualOutputTokenUpperBound := uint64(0)
+	costAuthority := costBasis.MemoryToolRouteAuthority
+	authorizedOutputPerRequest := costAuthority.MaximumOutputTokens /
+		uint64(costAuthority.RequestCount)
 	for index, item := range development {
 		observed, observedOK := caseByID[item.ID]
 		trace, traceOK := traceByID[item.ID]
@@ -180,6 +188,16 @@ func BuildMemoryToolRouteDevelopmentReport(
 		if trace.MemoryToolRouteInputTokenUpperBound > 0 {
 			actualRequests++
 			actualInputTokenUpperBound += uint64(trace.MemoryToolRouteInputTokenUpperBound)
+			if trace.MemoryToolRouteReady {
+				if trace.MemoryToolRouteOutputTokenUpperBound <= 0 ||
+					uint64(trace.MemoryToolRouteOutputTokenUpperBound) > authorizedOutputPerRequest {
+					return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+				}
+				actualOutputTokenUpperBound +=
+					uint64(trace.MemoryToolRouteOutputTokenUpperBound)
+			} else {
+				actualOutputTokenUpperBound += authorizedOutputPerRequest
+			}
 		}
 		if trace.MemoryToolRouteReady {
 			diagnostics.RouteCompletedCaseCount++
@@ -212,9 +230,6 @@ func BuildMemoryToolRouteDevelopmentReport(
 		ordered[index] = observed
 	}
 
-	costAuthority := costBasis.MemoryToolRouteAuthority
-	actualOutputTokenUpperBound := uint64(actualRequests) *
-		usermemory.HybridMemoryToolMaximumOutputTokens
 	if actualRequests > costAuthority.RequestCount ||
 		actualInputTokenUpperBound > costAuthority.MaximumInputTokens ||
 		actualOutputTokenUpperBound > costAuthority.MaximumOutputTokens {
@@ -235,31 +250,28 @@ func BuildMemoryToolRouteDevelopmentReport(
 	providerCostRatio := float64(profile.Costs.MemoryProviderCostMicrounits) /
 		float64(profile.Costs.ChatProviderCostMicrounits)
 	report := MemoryToolRouteDevelopmentReport{
-		SchemaVersion:           MemoryToolRouteDevelopmentReportSchemaVersion,
-		CorpusClass:             memoryeval.RegressionCorpusClass,
-		AdmissionMode:           MemoryToolRouteDevelopmentAdmissionMode,
-		PromotionEligible:       false,
-		Split:                   DevelopmentCalibrationSplit,
-		CaseCount:               len(development),
-		PolicyID:                policy.ID,
-		ProfileID:               profile.Profile.ID,
-		ConfigurationSHA256:     profile.Profile.ConfigurationSHA256,
-		ProviderEgressPolicy:    memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1,
-		ProviderCostPolicy:      ProviderCostPolicyOwnerAuthorizedAbsoluteV1,
-		ProviderCostAuthorized:  true,
-		RouteProviderID:         authority.ProviderID,
-		RouteProviderType:       authority.ProviderType,
-		RouteBaseURLSHA256:      authority.BaseURLSHA256,
-		RouteModelID:            authority.ModelID,
-		ToolName:                usermemory.HybridMemoryToolName,
-		ToolContractVersion:     policy.MemoryToolRouteContractVersion,
-		ToolContractSHA256:      policy.MemoryToolRouteContractSHA256,
-		ToolDecodingProfile:     policy.MemoryToolRouteDecodingProfile,
-		ToolMaximumOutputTokens: policy.MemoryToolRouteMaximumOutputTokens,
-		ToolTemperature:         policy.MemoryToolRouteTemperature,
-		ToolDisableThinking:     policy.MemoryToolRouteDisableThinking,
-		SelectionAlgorithm:      memoryToolRouteSelectionAlgorithm,
-		Passed:                  evaluation.Passed,
+		SchemaVersion:          MemoryToolFirstRoundDevelopmentReportSchemaVersion,
+		CorpusClass:            memoryeval.RegressionCorpusClass,
+		AdmissionMode:          MemoryToolFirstRoundDevelopmentAdmissionMode,
+		PromotionEligible:      false,
+		Split:                  DevelopmentCalibrationSplit,
+		CaseCount:              len(development),
+		PolicyID:               policy.ID,
+		ProfileID:              profile.Profile.ID,
+		ConfigurationSHA256:    profile.Profile.ConfigurationSHA256,
+		ProviderEgressPolicy:   memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1,
+		ProviderCostPolicy:     ProviderCostPolicyOwnerAuthorizedAbsoluteV1,
+		ProviderCostAuthorized: true,
+		RouteProviderID:        authority.ProviderID,
+		RouteProviderType:      authority.ProviderType,
+		RouteBaseURLSHA256:     authority.BaseURLSHA256,
+		RouteModelID:           authority.ModelID,
+		ToolName:               usermemory.HybridMemoryToolName,
+		ToolContractVersion:    policy.MemoryToolRouteContractVersion,
+		ToolContractSHA256:     policy.MemoryToolRouteContractSHA256,
+		ToolAdapterVersion:     chat.MemoryToolFirstRoundAdapterVersion,
+		SelectionAlgorithm:     memoryToolFirstRoundSelectionAlgorithm,
+		Passed:                 evaluation.Passed,
 		Evaluation: MemoryToolRouteDevelopmentEvaluation{
 			CalibrationEvaluation: evaluation,
 			ProviderCostRatio:     providerCostRatio,

@@ -29,20 +29,25 @@ func TestSearchMemoryToolContractHash(t *testing.T) {
 	}
 }
 
-func TestChatToolAdapterAcceptsNoCallOrExactMemoryCall(t *testing.T) {
+func TestChatToolAdapterAcceptsNoCallOrExactFirstRoundMemoryCall(t *testing.T) {
 	for _, test := range []struct {
-		name  string
-		calls []chat.ToolCall
-		want  bool
+		name   string
+		events []chat.ProviderEvent
+		want   bool
 	}{
-		{name: "no memory"},
-		{name: "use memory", calls: []chat.ToolCall{{
-			ID: "call-1", Name: usermemory.HybridMemoryToolName, Args: map[string]any{},
+		{name: "no memory", events: []chat.ProviderEvent{{
+			Type: chat.ProviderEventDelta, Delta: "ordinary answer",
+		}}},
+		{name: "use memory", events: []chat.ProviderEvent{{
+			Type: chat.ProviderEventToolCallCompleted,
+			ToolCall: &chat.ProviderToolCall{
+				ID: "call-1", Name: usermemory.HybridMemoryToolName, Arguments: `{}`,
+			},
 		}}, want: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			planner := &routePlanner{calls: test.calls}
-			adapter, err := NewChatToolAdapter(planner, chat.ModelRef{
+			provider := &routeToolRoundProvider{events: test.events}
+			adapter, err := NewChatToolAdapter(provider, chat.ModelRef{
 				ProviderID: "configured", ModelID: "current-model",
 			})
 			if err != nil {
@@ -55,32 +60,63 @@ func TestChatToolAdapterAcceptsNoCallOrExactMemoryCall(t *testing.T) {
 			if err != nil || result.UseMemory != test.want ||
 				result.ModelID != "current-model" ||
 				result.ContractVersion != usermemory.HybridMemoryToolContractVersion ||
-				result.ContractSHA256 != usermemory.HybridMemoryToolContractSHA256 {
+				result.ContractSHA256 != usermemory.HybridMemoryToolContractSHA256 ||
+				result.OutputTokenUpperBound <= 0 {
 				t.Fatalf("result=%#v err=%v", result, err)
 			}
-			if planner.input.Prompt != "current request" || len(planner.input.Tools) != 1 ||
-				planner.input.Tools[0].Function.Name != usermemory.HybridMemoryToolName ||
-				!planner.input.DisableThinking ||
-				planner.input.MaxOutputTokens != usermemory.HybridMemoryToolMaximumOutputTokens ||
-				planner.input.Temperature == nil || *planner.input.Temperature != 0 {
-				t.Fatalf("planner input=%#v", planner.input)
+			input := provider.input
+			if input.Prompt != "current request" || len(input.Messages) != 1 ||
+				input.Messages[0].Role != "user" ||
+				input.Messages[0].Content != "current request" ||
+				len(input.Tools) != 1 ||
+				input.Tools[0].Function.Name != usermemory.HybridMemoryToolName ||
+				input.ToolChoice != chat.ProviderToolChoiceAuto ||
+				input.DisableThinking || input.MaxOutputTokens != 0 ||
+				input.Temperature != nil || len(input.Continuation) != 0 {
+				t.Fatalf("first-round input=%#v", input)
 			}
 		})
 	}
 }
 
-func TestChatToolAdapterFailsClosedOnInvalidOrFailedPlan(t *testing.T) {
-	tests := []routePlanner{
-		{calls: []chat.ToolCall{{ID: "", Name: usermemory.HybridMemoryToolName}}},
-		{calls: []chat.ToolCall{{ID: "call-1", Name: "other"}}},
-		{calls: []chat.ToolCall{{ID: "call-1", Name: usermemory.HybridMemoryToolName, Args: nil}}},
-		{calls: []chat.ToolCall{{ID: "call-1", Name: usermemory.HybridMemoryToolName, Args: map[string]any{"query": "leak"}}}},
-		{calls: []chat.ToolCall{{ID: "call-1", Name: usermemory.HybridMemoryToolName}, {ID: "call-2", Name: usermemory.HybridMemoryToolName}}},
-		{err: errors.New("private Provider failure")},
+func TestChatToolAdapterFailsClosedOnInvalidOrFailedFirstRound(t *testing.T) {
+	tests := []routeToolRoundProvider{
+		{events: []chat.ProviderEvent{{
+			Type:     chat.ProviderEventToolCallCompleted,
+			ToolCall: &chat.ProviderToolCall{ID: "", Name: usermemory.HybridMemoryToolName, Arguments: `{}`},
+		}}},
+		{events: []chat.ProviderEvent{{
+			Type:     chat.ProviderEventToolCallCompleted,
+			ToolCall: &chat.ProviderToolCall{ID: "call-1", Name: "other", Arguments: `{}`},
+		}}},
+		{events: []chat.ProviderEvent{{
+			Type: chat.ProviderEventToolCallCompleted,
+			ToolCall: &chat.ProviderToolCall{
+				ID: "call-1", Name: " search_memory ", Arguments: `{}`,
+			},
+		}}},
+		{events: []chat.ProviderEvent{{
+			Type:     chat.ProviderEventToolCallCompleted,
+			ToolCall: &chat.ProviderToolCall{ID: "call-1", Name: usermemory.HybridMemoryToolName, Arguments: `null`},
+		}}},
+		{events: []chat.ProviderEvent{{
+			Type:     chat.ProviderEventToolCallCompleted,
+			ToolCall: &chat.ProviderToolCall{ID: "call-1", Name: usermemory.HybridMemoryToolName, Arguments: `{"query":"leak"}`},
+		}}},
+		{events: []chat.ProviderEvent{
+			{Type: chat.ProviderEventToolCallCompleted, ToolCall: &chat.ProviderToolCall{
+				ID: "call-1", Name: usermemory.HybridMemoryToolName, Arguments: `{}`,
+			}},
+			{Type: chat.ProviderEventToolCallCompleted, ToolCall: &chat.ProviderToolCall{
+				ID: "call-2", Name: usermemory.HybridMemoryToolName, Arguments: `{}`,
+			}},
+		}},
+		{events: []chat.ProviderEvent{{Error: errors.New("private Provider failure")}}},
+		{err: errors.New("private Provider startup failure")},
 	}
 	for index := range tests {
-		planner := &tests[index]
-		adapter, err := NewChatToolAdapter(planner, chat.ModelRef{
+		provider := &tests[index]
+		adapter, err := NewChatToolAdapter(provider, chat.ModelRef{
 			ProviderID: "configured", ModelID: "current-model",
 		})
 		if err != nil {
@@ -90,23 +126,43 @@ func TestChatToolAdapterFailsClosedOnInvalidOrFailedPlan(t *testing.T) {
 			context.Background(),
 			usermemory.HybridMemoryToolRouteInput{Query: "query"},
 		); err == nil {
-			t.Fatalf("invalid plan %d accepted", index)
+			t.Fatalf("invalid first round %d accepted", index)
 		}
 	}
 }
 
-type routePlanner struct {
-	calls []chat.ToolCall
-	err   error
-	input chat.ToolPlanRequest
+type routeToolRoundProvider struct {
+	events []chat.ProviderEvent
+	err    error
+	input  chat.ProviderRoundRequest
 }
 
-func (planner *routePlanner) PlanTools(
-	_ context.Context,
-	input chat.ToolPlanRequest,
-) ([]chat.ToolCall, error) {
-	planner.input = input
-	return planner.calls, planner.err
+func (provider *routeToolRoundProvider) StreamToolRound(
+	ctx context.Context,
+	input chat.ProviderRoundRequest,
+) (<-chan chat.ProviderEvent, error) {
+	provider.input = input
+	if provider.err != nil {
+		return nil, provider.err
+	}
+	events := make(chan chat.ProviderEvent, len(provider.events))
+	for _, event := range provider.events {
+		select {
+		case <-ctx.Done():
+			close(events)
+			return events, nil
+		case events <- event:
+		}
+	}
+	close(events)
+	return events, nil
 }
 
-var _ chat.ToolPlanner = (*routePlanner)(nil)
+func (provider *routeToolRoundProvider) StreamChat(
+	context.Context,
+	chat.ProviderRequest,
+) (<-chan chat.ProviderEvent, error) {
+	return nil, errors.New("unexpected ordinary chat request")
+}
+
+var _ chat.ToolRoundProvider = (*routeToolRoundProvider)(nil)

@@ -4,11 +4,19 @@ import (
 	"context"
 	"testing"
 
+	"neo-chat/mm-chat/backend/internal/chat"
+	"neo-chat/mm-chat/backend/internal/memoryroute"
 	"neo-chat/mm-chat/backend/internal/usermemory"
 )
 
-func TestFakeProtocolMemoryToolRouterIsDeterministicAndProvenanceBound(t *testing.T) {
-	router := NewFakeProtocolMemoryToolRouter("fixture-model")
+func TestFakeProtocolMemoryToolRoundIsDeterministicAndProvenanceBound(t *testing.T) {
+	provider := NewFakeProtocolMemoryToolRoundProvider("fixture-model")
+	router, err := memoryroute.NewChatToolAdapter(provider, chat.ModelRef{
+		ProviderID: "fixture", ModelID: "fixture-model",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	first, err := router.RouteHybridMemory(
 		context.Background(),
 		usermemory.HybridMemoryToolRouteInput{Query: "fixture query"},
@@ -25,7 +33,8 @@ func TestFakeProtocolMemoryToolRouterIsDeterministicAndProvenanceBound(t *testin
 	}
 	if first != second || first.ModelID != "fixture-model" ||
 		first.ContractVersion != usermemory.HybridMemoryToolContractVersion ||
-		first.ContractSHA256 != usermemory.HybridMemoryToolContractSHA256 {
-		t.Fatalf("fake Memory Tool-route result = %#v / %#v", first, second)
+		first.ContractSHA256 != usermemory.HybridMemoryToolContractSHA256 ||
+		first.OutputTokenUpperBound <= 0 {
+		t.Fatalf("fake Memory first Tool-round result = %#v / %#v", first, second)
 	}
 }

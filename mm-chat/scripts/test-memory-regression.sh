@@ -336,13 +336,13 @@ if args and args[0] == "compose":
             admission_mode = "development_cloud_judge_only"
         elif capture_mode == "development_memory_tool_route":
             memory_tool_route = json.dumps({
-                "schemaVersion": "neo-chat.memory-regression-relevance-calibration.v6",
+                "schemaVersion": "neo-chat.memory-regression-relevance-calibration.v7",
                 "corpusClass": "machine_reviewed_regression",
-                "admissionMode": "development_main_model_memory_tool_route_only",
+                "admissionMode": "development_main_model_first_tool_round_only",
                 "promotionEligible": False,
                 "split": "development",
                 "caseCount": 300,
-                "policyId": "memory_hybrid_main_model_tool_route_calibration_v1",
+                "policyId": "memory_hybrid_main_model_first_tool_round_calibration_v1",
                 "profileId": candidate_profile,
                 "configurationSha256": "a" * 64,
                 "providerEgressPolicy": "owner_authorized_normal_candidates_v1",
@@ -355,11 +355,8 @@ if args and args[0] == "compose":
                 "toolName": "search_memory",
                 "toolContractVersion": "memory-search-tool-v1",
                 "toolContractSha256": "f8f404df0ae3a3938081b813c8750d59ba252adbcb8dc755e075e5c738e20ca6",
-                "toolDecodingProfile": "memory-search-tool-decoding-v1",
-                "toolMaximumOutputTokens": 128,
-                "toolTemperature": 0,
-                "toolDisableThinking": True,
-                "selectionAlgorithm": "main-model-tool-call_then-bge-order_top5-token-budget_v1",
+                "toolAdapterVersion": "chat-first-tool-round-memory-decision-v1",
+                "selectionAlgorithm": "first-tool-round-call_then-bge-order_top5-token-budget_v1",
                 "passed": True,
                 "evaluation": {"passed": True, "providerCostRatio": 0.5},
                 "diagnostics": {
@@ -376,15 +373,15 @@ if args and args[0] == "compose":
                     "actualRequestCount": 300,
                     "authorizedMaximumInputTokens": 300000,
                     "actualInputTokenUpperBound": 280000,
-                    "authorizedMaximumOutputTokens": 38400,
-                    "actualOutputTokenUpperBound": 38400,
+                    "authorizedMaximumOutputTokens": 2457600,
+                    "actualOutputTokenUpperBound": 19200,
                     "maximumRouteCostMicrounits": 400000,
                     "maximumMemoryProviderCostMicrounits": 500000,
                 },
             }, separators=(",", ":")).encode() + b"\n"
-            bodies = {"memory-tool-route-development.json": memory_tool_route}
+            bodies = {"memory-first-tool-round-development.json": memory_tool_route}
             manifest_schema = "neo-chat.memory-regression-relevance-run.v1"
-            admission_mode = "development_main_model_memory_tool_route_only"
+            admission_mode = "development_main_model_first_tool_round_only"
         elif capture_mode == "frozen_validation":
             validation = json.dumps({
                 "schemaVersion": "neo-chat.memory-regression-relevance-validation.v1",

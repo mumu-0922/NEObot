@@ -226,7 +226,7 @@ func run(
 		); err != nil {
 			return err
 		}
-		if err := memorycapture.ValidateMemoryToolRouteCostAuthority(
+		if err := memorycapture.ValidateMemoryToolFirstRoundCostAuthority(
 			cost,
 			memoryToolRouteAuthority,
 		); err != nil {
@@ -248,7 +248,7 @@ func run(
 		if err != nil {
 			return err
 		}
-		artifactNames = []string{"memory-tool-route-development.json", "run-manifest.json"}
+		artifactNames = []string{"memory-first-tool-round-development.json", "run-manifest.json"}
 	case memorycapture.CaptureModeFrozenValidation:
 		validationConfig, err = memorycapture.BuildFrozenValidationProfileConfig(
 			protected,
@@ -799,7 +799,7 @@ func runMemoryToolRouteDevelopment(
 		return errors.New("create Memory Tool-route capture ID failed")
 	}
 	artifacts := []memorycapture.Artifact{{
-		Name: "memory-tool-route-development.json",
+		Name: "memory-first-tool-round-development.json",
 		Body: reportBody,
 	}}
 	_, manifestBody, err := memorycapture.BuildMemoryToolRouteDevelopmentRunManifest(
@@ -1105,7 +1105,20 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 			bundle.judge = memorycapture.NewFakeProtocolCandidateJudge(options.judgeModelID)
 		}
 		if options.captureMode == memorycapture.CaptureModeMemoryToolRouteDevelopment {
-			bundle.router = memorycapture.NewFakeProtocolMemoryToolRouter(options.routeModelID)
+			toolProvider := memorycapture.NewFakeProtocolMemoryToolRoundProvider(
+				options.routeModelID,
+			)
+			router, adapterErr := memoryroute.NewChatToolAdapter(
+				toolProvider,
+				chat.ModelRef{
+					ProviderID: options.routeProviderID,
+					ModelID:    options.routeModelID,
+				},
+			)
+			if adapterErr != nil {
+				return providerBundle{}, errors.New("construct fake Memory first Tool-round adapter failed")
+			}
+			bundle.router = router
 		}
 		return bundle, nil
 	}
@@ -1188,13 +1201,13 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 			resolver.clear()
 			return providerBundle{}, errors.New("construct live Memory Tool-route Provider failed")
 		}
-		planner, ok := chatProvider.(chat.ToolPlanner)
+		toolRoundProvider, ok := chatProvider.(chat.ToolRoundProvider)
 		if !ok {
 			clearBytes(routeCredential)
 			resolver.clear()
-			return providerBundle{}, errors.New("live Memory Tool-route Provider has no Tool planner")
+			return providerBundle{}, errors.New("live Memory Tool-route Provider has no ToolRound support")
 		}
-		router, routerErr := memoryroute.NewChatToolAdapter(planner, chat.ModelRef{
+		router, routerErr := memoryroute.NewChatToolAdapter(toolRoundProvider, chat.ModelRef{
 			ProviderID: authority.ProviderID,
 			ModelID:    authority.ModelID,
 		})

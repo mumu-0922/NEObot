@@ -157,6 +157,29 @@ func TestOwnerAbsoluteCostBasisRequiresVersionedPolicy(t *testing.T) {
 	}
 }
 
+func TestMemoryFirstToolRoundCostBasisIsSchemaSeparatedFromPreflight(t *testing.T) {
+	valid := memoryToolRouteTestCostBasis()
+	authority := memoryToolRouteTestAuthority()
+	if err := ValidateMemoryToolFirstRoundCostAuthority(valid, authority); err != nil {
+		t.Fatal(err)
+	}
+	if digest, err := CostBasisSHA256(valid); err != nil || len(digest) != 64 {
+		t.Fatalf("first Tool-round cost digest = %q/%v", digest, err)
+	}
+	preflight := valid
+	preflight.SchemaVersion = "neo-chat.memory-regression-cost-basis.v4"
+	if err := ValidateMemoryToolFirstRoundCostAuthority(preflight, authority); err == nil {
+		t.Fatal("schema-v4 preflight cost authority was accepted for schema-v7")
+	}
+	invalid := valid
+	copyAuthority := *valid.MemoryToolRouteAuthority
+	invalid.MemoryToolRouteAuthority = &copyAuthority
+	invalid.MemoryToolRouteAuthority.MaximumOutputTokens++
+	if err := ValidateMemoryToolFirstRoundCostAuthority(invalid, authority); err == nil {
+		t.Fatal("non-divisible per-request output authority was accepted")
+	}
+}
+
 func TestDecodeCostBasisRejectsAmbiguousOrFabricatedCost(t *testing.T) {
 	valid := CostBasis{
 		SchemaVersion: "neo-chat.memory-regression-cost-basis.v1",
