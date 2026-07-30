@@ -208,6 +208,44 @@ directory. Both temporary credentials, the operator helper/export, runner
 temporary directory, and the exact Compose containers/network/volume were
 destroyed. No further paid run is authorized.
 
+## Offline lifecycle follow-up
+
+The post-run source trace proved one concrete producer of the `174`
+unclassified aggregate:
+
+```text
+executeHybridShadow
+  -> start route before query embedding
+  -> query embedding/admission becomes unavailable
+  -> record fail-closed retrieval and return without awaiting route
+  -> Recorder.Finish sees route input but no result/category
+  -> capture synthesizes ROUTER_FAILURE_UNCLASSIFIED
+```
+
+The route goroutine was canceled only during the service return. A delegated
+router could return after `Recorder.Finish`; because route writes were bound
+only to the Recorder's then-current case, that late result could conflict with
+or attach to the next sequential case. The immutable v9 artifact has no case
+identity, so this finding does not retroactively relabel all `174` cases or
+prove that its equal retrieval aggregate is the same per-case set.
+
+The offline repair keeps every production threshold and request shape intact:
+
+1. The route stage now publishes one immutable replayable completion and is
+   awaited on retrieval early exits up to the existing two-second hard cutoff.
+2. The capture decorator selects a buffered delegated result against
+   `ctx.Done()`, so an implementation that ignores cancellation cannot block
+   the reader or publish Recorder state later.
+3. Recorder route input/result/failure writes carry a per-case generation
+   token; an old token is rejected even if the assistant identity is reused.
+4. Retrieval failure remains fail-closed with empty Final/Injected/token
+   surfaces and keeps its own bounded fallback code.
+
+Focused deterministic tests reproduce the admission-unavailable early return,
+prove route completion before capture closure, exercise a cancellation-
+ignoring router, and reject previous-generation writes under the race detector.
+No Provider call or paid rerun was used or authorized for this follow-up.
+
 ## Debug retrospective
 
 ### Root cause category

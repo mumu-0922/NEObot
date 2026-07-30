@@ -875,6 +875,29 @@ directory. Temporary Vault copies, operator/helper files, runner temporary
 state, and the exact Compose containers/network/volume were destroyed. Any
 further paid diagnostic requires a new explicit authorization.
 
+Offline tracing after the run found one deterministic producer of the
+unclassified aggregate. The reader started Tool routing before query embedding
+but did not await the route when non-empty candidates later failed closed at
+admission. Capture could finish with a recorded route input but no result or
+category, synthesize `ROUTER_FAILURE_UNCLASSIFIED`, and leave the delayed route
+able to race the next sequential Recorder case. The repair does not change the
+route request, 750 ms embedding cutoff, two-second hard cutoff, retry policy,
+evaluation gates, or retained evidence:
+
+- every started route exposes one replayable completion and is closed on all
+  retrieval exits;
+- the capture decorator selects a buffered delegated result against context
+  termination, so a cancellation-ignoring router cannot hold the reader or
+  publish Recorder state later; and
+- route writes carry a per-case generation token, so an old result cannot
+  attach to the next case even when an assistant identity is reused.
+
+Focused offline/race regressions prove admission-unavailable closure,
+cancellation-ignoring behavior, and old-generation rejection. Because the v9
+artifact is identity-free, this finding records a concrete implementation
+cause without retroactively relabeling all `174` cases or establishing a
+case-level join. It grants no paid rerun, Validation, or Promotion authority.
+
 Only after a schema-v7 first-round Tool Loop Development hypothesis passes may
 its policy, Provider/model, Tool/adapter profile, and selection behavior be
 frozen in code. The current Validation CLI remains unavailable because no

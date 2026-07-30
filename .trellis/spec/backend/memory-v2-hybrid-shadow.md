@@ -256,6 +256,20 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   route decision under the owner-authorized Provider-egress policy. Candidate
   bodies remain request-local to the BGE boundary and never enter the route
   model. Both route and BGE work count toward the existing hard cutoff.
+- Once a route stage starts, it is part of the current capture-case lifecycle.
+  Prepare failure/replay, query-embedding failure, admission failure or
+  abstention, redaction, and empty candidates may not finish the case while the
+  route is still able to publish. The stage exposes one immutable, replayable
+  completion result so candidate execution and final lifecycle closure can
+  both observe it without consuming a one-shot channel twice.
+- The capture decorator is the only route-result writer. It runs the delegated
+  router behind a buffered one-result channel and selects that channel against
+  the route context. A delegated Provider that ignores cancellation cannot
+  hold the reader or write Recorder state after the decorator has returned.
+  Every route input returns a generation-bound Recorder token; result/failure
+  writes from an earlier sequential case fail with
+  `RECORDER_STATE_CONFLICT` instead of attaching to the current case, even if
+  the assistant identity is reused.
 - A route result is valid only when its exact model ID, contract version, and
   contract SHA-256 match policy authority. No call is a successful
   `MEMORY_TOOL_ROUTE_ABSTAINED`. Exactly one call with a non-empty ID, exact
@@ -278,6 +292,15 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   failures, with `174` separate admission-unavailable retrieval aggregates.
   These totals are diagnostic evidence, not a case-level join: equal counts
   cannot establish intersection or a more specific upstream cause.
+- Offline source tracing after that run found that the executed reader started
+  the route before query embedding but did not await it on non-empty-candidate
+  admission-unavailable paths. `Recorder.Finish` could therefore observe a
+  recorded route input with neither result nor category and synthesize
+  `ROUTER_FAILURE_UNCLASSIFIED`; a delayed route could then race a later case.
+  Deterministic regressions now close that lifecycle and generation-fence
+  Recorder writes. This explains a concrete producer of the aggregate but
+  does not rewrite the immutable identity-free v9 artifact or prove a
+  case-level intersection.
 - Tool routing decides only whether saved Memory is needed. It cannot rewrite
   the query, select Memory IDs, authorize ownership/scope/revision, or authorize
   prompt injection. An empty candidate set still waits for the route decision
@@ -388,6 +411,9 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 | Main-model Tool route returns no call | Record `MEMORY_TOOL_ROUTE_ABSTAINED`; discard speculative BGE final rows and record zero final/tokens. |
 | Tool route returns a missing ID, wrong name, duplicate call, or nil/non-empty arguments | Reject the whole decision as `MEMORY_TOOL_ROUTE_FAILED`; never reinterpret it as an exact call. |
 | Tool route model/contract provenance drifts or the Provider fails/is late | Record `MEMORY_TOOL_ROUTE_FAILED`, empty final, and unchanged v1 chat. |
+| Retrieval becomes unavailable after the Tool route has started | Await the replayable route stage up to the existing hard cutoff, preserve the retrieval fallback, and expose no Final/Injected/token surface. |
+| Delegated route Provider ignores cancellation | The decorator returns the bounded context category without waiting; any later delegated result can only enter its buffered channel and cannot mutate Recorder state. |
+| A route result/failure carries a previous capture generation | Reject it as a Recorder state conflict; do not mutate the current case even when the assistant identity matches. |
 | Diagnostic route failure category is empty, unknown, duplicated for one request, or conflicts with a successful route | Reject the capture state/report; each failed route contributes exactly one bounded category. |
 | Tool route succeeds but the current-authorized BGE candidate set is empty | Record `MEMORY_TOOL_ROUTE_EMPTY`; do not fabricate a Memory result. |
 | Official DeepSeek is sent generic `enable_thinking=false` | Mark the run protocol-invalid; it cannot support a model-quality conclusion. |
@@ -417,13 +443,15 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   source.
 - **Base**: the flag is false, the production policy is unavailable, or query
   embedding/admission is unavailable. Canonical projection/jobs stay correct,
-  chat uses v1, and no rerank Memory document is sent.
+  chat uses v1, no rerank Memory document is sent, and any already-started
+  diagnostic route is closed before the capture case finishes.
 - **Bad**: claim with an arbitrary RAG record, reuse an old vector response
   after epoch/scope drift, rank cross-user then filter in Go, persist query or
   raw scores, accept free-form judge prose/IDs, treat owner egress authorization
   as injection authority, accept missing Tool arguments as `{}`, send candidate
-  bodies to the route model, or inject Hybrid final IDs before a separate
-  promotion decision.
+  bodies to the route model, finish a capture while its route can still write,
+  attach a late route result to the next case, or inject Hybrid final IDs
+  before a separate promotion decision.
 
 ## 6. Tests Required
 
@@ -442,6 +470,9 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   rejection, multi-tool coexistence, exact query-byte/hash preservation,
   query-only Development adapter input, concurrent route/
   embedding/BGE completion, route failure/cutoff/empty-candidate handling,
+  route completion when query embedding/admission is unavailable, delegated
+  Router cancellation ignorance without reader delay, previous-generation
+  late-write rejection,
   exact 23-category ordering/hash, unknown-cause fallback, one-category-per-
   failure recorder semantics, raw-error exclusion,
   same-model continuation and body-free recovery, policy-aware
@@ -485,6 +516,15 @@ query := strings.TrimSpace(input.Query)
 executeHybridShadow(query)
 ```
 
+```go
+// Wrong: retrieval returned early, so the in-flight route can outlive the
+// capture and write through whichever Recorder case is current later.
+startRoute(caseContext)
+if admissionUnavailable {
+    return recordNoMemory()
+}
+```
+
 ### Correct
 
 ```text
@@ -510,6 +550,17 @@ if strings.TrimSpace(query) == "" {
     return noMemory
 }
 executeHybridShadow(query)
+```
+
+```go
+// Correct: one replayable stage closes on every exit, while Recorder writes
+// remain bound to the generation that recorded the route input.
+route := startRoute(caseContext)
+defer awaitRoute(caseContext, route)
+if admissionUnavailable {
+    awaitRoute(caseContext, route)
+    return recordNoMemory()
+}
 ```
 
 The schema-v6 `PlanTools` preflight is retained only as failed Development

@@ -188,6 +188,13 @@ evidence passes.
   `2001/2002 ms`; every authority/privacy counter remained zero. This is valid
   diagnostic and failed-metric evidence only. No policy was selected, and
   Validation/Promotion remain blocked.
+- Offline source tracing then proved a diagnostic lifecycle defect: when query
+  embedding/admission became unavailable after the route started, the reader
+  returned without awaiting the route, and capture synthesized an unclassified
+  category from incomplete Recorder state. The route stage is now replayable
+  and closed on all exits, delegated cancellation-ignoring routers cannot hold
+  the reader, and Recorder writes are generation-bound. This does not rewrite
+  the immutable identity-free v9 artifact or authorize another paid run.
 
 ## Assumptions (updated)
 
@@ -384,6 +391,12 @@ It failed unchanged quality/latency/cutoff gates with zero authority/privacy
 leaks and selected no policy. Credentials and isolated runtimes were fully
 destroyed. The production 750 ms embedding cutoff, two-second hard cutoff, and
 no-retry behavior remain unchanged. No further paid run is authorized.
+
+The offline lifecycle follow-up now closes every started route before the
+capture case finishes and rejects previous-generation Recorder writes. Focused
+route/admission/cancellation tests and the regression topology gate pass
+without Provider traffic. The retained v9 evidence and failed selection state
+remain unchanged.
 
 Use the selected main-model Tool route from
 [`research/main-model-memory-tool-routing.md`](research/main-model-memory-tool-routing.md):

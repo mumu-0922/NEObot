@@ -9074,3 +9074,13 @@ outside Git. Both temporary credential copies, the operator helper/export,
 runner temporary directory, and exact scoped containers/network/volume were
 destroyed, leaving every cleanup count at zero. Any further paid run requires
 fresh explicit authorization.
+
+The subsequent offline trace found that the executed reader did not await an
+already-started route when query embedding/admission failed closed. Capture
+could therefore finish with only the route input recorded, synthesize
+`ROUTER_FAILURE_UNCLASSIFIED`, and expose a late-write race against the next
+sequential Recorder case. The repair uses a replayable route completion,
+context-selected buffered delegation, and generation-bound Recorder writes.
+Focused race tests plus the offline regression topology pass; no Provider was
+called. The identity-free v9 artifact remains immutable, so this finding does
+not relabel its `174` cases or authorize another paid run.
