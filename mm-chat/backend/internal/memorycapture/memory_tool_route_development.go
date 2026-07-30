@@ -26,6 +26,32 @@ const (
 	MemoryToolRouteFailureTaxonomySHA256               = "66f11e91edc0cf5a6a9dbf5dd30336e58a52860adee968fb4658d6ccd70d52a0"
 )
 
+type memoryToolRouteReportInvalidReason string
+
+const (
+	memoryToolRouteInvalidProfileID             memoryToolRouteReportInvalidReason = "profile_id"
+	memoryToolRouteInvalidFailureTaxonomy       memoryToolRouteReportInvalidReason = "failure_taxonomy"
+	memoryToolRouteInvalidProfileAuthority      memoryToolRouteReportInvalidReason = "profile_authority"
+	memoryToolRouteInvalidConfigurationHash     memoryToolRouteReportInvalidReason = "configuration_hash"
+	memoryToolRouteInvalidPolicyAuthority       memoryToolRouteReportInvalidReason = "policy_authority"
+	memoryToolRouteInvalidCostAuthority         memoryToolRouteReportInvalidReason = "cost_authority"
+	memoryToolRouteInvalidDevelopmentSplit      memoryToolRouteReportInvalidReason = "development_split"
+	memoryToolRouteInvalidObservationID         memoryToolRouteReportInvalidReason = "observation_id"
+	memoryToolRouteInvalidObservationDuplicate  memoryToolRouteReportInvalidReason = "observation_duplicate"
+	memoryToolRouteInvalidTraceIdentity         memoryToolRouteReportInvalidReason = "trace_identity"
+	memoryToolRouteInvalidTraceDuplicate        memoryToolRouteReportInvalidReason = "trace_duplicate"
+	memoryToolRouteInvalidTraceObservation      memoryToolRouteReportInvalidReason = "trace_observation"
+	memoryToolRouteInvalidEmptyCandidateState   memoryToolRouteReportInvalidReason = "empty_candidate_state"
+	memoryToolRouteInvalidAdmissionState        memoryToolRouteReportInvalidReason = "admission_state"
+	memoryToolRouteInvalidOutputTokenAuthority  memoryToolRouteReportInvalidReason = "output_token_authority"
+	memoryToolRouteInvalidReadyFailureCategory  memoryToolRouteReportInvalidReason = "ready_failure_category"
+	memoryToolRouteInvalidAbstainedFinalState   memoryToolRouteReportInvalidReason = "abstained_final_state"
+	memoryToolRouteInvalidCompletedRerankState  memoryToolRouteReportInvalidReason = "completed_rerank_state"
+	memoryToolRouteInvalidFailureCategory       memoryToolRouteReportInvalidReason = "failure_category"
+	memoryToolRouteInvalidFailedFinalState      memoryToolRouteReportInvalidReason = "failed_final_state"
+	memoryToolRouteInvalidFailureCategoryTotals memoryToolRouteReportInvalidReason = "failure_category_totals"
+)
+
 type MemoryToolRouteDevelopmentDiagnostics struct {
 	EmptyCandidateCaseCount    int            `json:"emptyCandidateCaseCount"`
 	RouteCompletedCaseCount    int            `json:"routeCompletedCaseCount"`
@@ -142,12 +168,14 @@ func buildMemoryToolRouteDevelopmentReport(
 ) (MemoryToolRouteDevelopmentReport, []byte, error) {
 	if profile.Profile.ID != CandidateProfileID &&
 		profile.Profile.ID != FakeCandidateProfileID {
-		return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+		return MemoryToolRouteDevelopmentReport{}, nil,
+			invalidMemoryToolRouteReport(memoryToolRouteInvalidProfileID)
 	}
 	if failureTaxonomyVersion != "" &&
 		memoryToolRouteFailureTaxonomySHA256() !=
 			MemoryToolRouteFailureTaxonomySHA256 {
-		return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+		return MemoryToolRouteDevelopmentReport{}, nil,
+			invalidMemoryToolRouteReport(memoryToolRouteInvalidFailureTaxonomy)
 	}
 	if profile.Profile.ReaderVersion != readerVersion ||
 		len(profile.Profile.ConfigurationSHA256) != 64 ||
@@ -156,10 +184,12 @@ func buildMemoryToolRouteDevelopmentReport(
 		profile.Costs.Unit == "" ||
 		profile.Costs.MemoryProviderCostMicrounits == 0 ||
 		profile.Costs.ChatProviderCostMicrounits == 0 {
-		return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+		return MemoryToolRouteDevelopmentReport{}, nil,
+			invalidMemoryToolRouteReport(memoryToolRouteInvalidProfileAuthority)
 	}
 	if _, err := hex.DecodeString(profile.Profile.ConfigurationSHA256); err != nil {
-		return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+		return MemoryToolRouteDevelopmentReport{}, nil,
+			invalidMemoryToolRouteReport(memoryToolRouteInvalidConfigurationHash)
 	}
 	policy, ok := usermemory.DescribeHybridShadowRelevancePolicy(
 		usermemory.HybridShadowMemoryFirstToolRoundCalibrationPolicy(authority.ModelID),
@@ -171,11 +201,13 @@ func buildMemoryToolRouteDevelopmentReport(
 		policy.MemoryToolRouteDecodingProfile != "none" ||
 		policy.MemoryToolRouteMaximumOutputTokens != 0 ||
 		policy.MemoryToolRouteTemperature != 0 || policy.MemoryToolRouteDisableThinking {
-		return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+		return MemoryToolRouteDevelopmentReport{}, nil,
+			invalidMemoryToolRouteReport(memoryToolRouteInvalidPolicyAuthority)
 	}
 	if err := ValidateMemoryToolFirstRoundCostAuthority(costBasis, authority); err != nil ||
 		costBasis.Candidate != profile.Costs {
-		return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+		return MemoryToolRouteDevelopmentReport{}, nil,
+			invalidMemoryToolRouteReport(memoryToolRouteInvalidCostAuthority)
 	}
 
 	development := make([]memoryeval.GoldenCase, 0, 300)
@@ -187,28 +219,30 @@ func buildMemoryToolRouteDevelopmentReport(
 	if len(pool.Corpus.Cases) != 500 || len(development) != 300 ||
 		len(profile.Cases) != len(development) ||
 		len(profile.Calibration) != len(development) {
-		return MemoryToolRouteDevelopmentReport{}, nil, fmt.Errorf(
-			"%w: Memory Tool route Development split",
-			ErrCaptureInvalid,
-		)
+		return MemoryToolRouteDevelopmentReport{}, nil,
+			invalidMemoryToolRouteReport(memoryToolRouteInvalidDevelopmentSplit)
 	}
 	caseByID := make(map[string]memoryeval.CaseObservation, len(profile.Cases))
 	for _, observed := range profile.Cases {
 		if observed.CaseID == "" {
-			return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+			return MemoryToolRouteDevelopmentReport{}, nil,
+				invalidMemoryToolRouteReport(memoryToolRouteInvalidObservationID)
 		}
 		if _, duplicate := caseByID[observed.CaseID]; duplicate {
-			return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+			return MemoryToolRouteDevelopmentReport{}, nil,
+				invalidMemoryToolRouteReport(memoryToolRouteInvalidObservationDuplicate)
 		}
 		caseByID[observed.CaseID] = observed
 	}
 	traceByID := make(map[string]CandidateCalibrationTrace, len(profile.Calibration))
 	for _, trace := range profile.Calibration {
 		if trace.CaseID == "" || trace.FullObservation.CaseID != trace.CaseID {
-			return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+			return MemoryToolRouteDevelopmentReport{}, nil,
+				invalidMemoryToolRouteReport(memoryToolRouteInvalidTraceIdentity)
 		}
 		if _, duplicate := traceByID[trace.CaseID]; duplicate {
-			return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+			return MemoryToolRouteDevelopmentReport{}, nil,
+				invalidMemoryToolRouteReport(memoryToolRouteInvalidTraceDuplicate)
 		}
 		traceByID[trace.CaseID] = trace
 	}
@@ -231,7 +265,8 @@ func buildMemoryToolRouteDevelopmentReport(
 		trace, traceOK := traceByID[item.ID]
 		if !observedOK || !traceOK || !trace.PreparedReady ||
 			!equalCaseObservation(observed, trace.FullObservation) {
-			return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+			return MemoryToolRouteDevelopmentReport{}, nil,
+				invalidMemoryToolRouteReport(memoryToolRouteInvalidTraceObservation)
 		}
 		candidateCount := len(observed.CandidateMemoryIDs)
 		if candidateCount == 0 {
@@ -239,10 +274,12 @@ func buildMemoryToolRouteDevelopmentReport(
 			if trace.AdmissionReady || trace.RerankReady ||
 				len(observed.ProviderSentMemoryIDs) != 0 ||
 				len(observed.FinalMemoryIDs) != 0 {
-				return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+				return MemoryToolRouteDevelopmentReport{}, nil,
+					invalidMemoryToolRouteReport(memoryToolRouteInvalidEmptyCandidateState)
 			}
 		} else if !trace.AdmissionReady {
-			return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+			return MemoryToolRouteDevelopmentReport{}, nil,
+				invalidMemoryToolRouteReport(memoryToolRouteInvalidAdmissionState)
 		}
 		if trace.MemoryToolRouteInputTokenUpperBound > 0 {
 			actualRequests++
@@ -250,7 +287,8 @@ func buildMemoryToolRouteDevelopmentReport(
 			if trace.MemoryToolRouteReady {
 				if trace.MemoryToolRouteOutputTokenUpperBound <= 0 ||
 					uint64(trace.MemoryToolRouteOutputTokenUpperBound) > authorizedOutputPerRequest {
-					return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+					return MemoryToolRouteDevelopmentReport{}, nil,
+						invalidMemoryToolRouteReport(memoryToolRouteInvalidOutputTokenAuthority)
 				}
 				actualOutputTokenUpperBound +=
 					uint64(trace.MemoryToolRouteOutputTokenUpperBound)
@@ -260,7 +298,8 @@ func buildMemoryToolRouteDevelopmentReport(
 		}
 		if trace.MemoryToolRouteReady {
 			if failureTaxonomyVersion != "" && trace.MemoryToolRouteFailureCategory != "" {
-				return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+				return MemoryToolRouteDevelopmentReport{}, nil,
+					invalidMemoryToolRouteReport(memoryToolRouteInvalidReadyFailureCategory)
 			}
 			diagnostics.RouteCompletedCaseCount++
 			if trace.MemoryToolRouteUsed {
@@ -270,11 +309,13 @@ func buildMemoryToolRouteDevelopmentReport(
 				if len(observed.FinalMemoryIDs) != 0 ||
 					len(observed.InjectedMemoryIDs) != 0 ||
 					observed.PromptMemoryTokens != 0 {
-					return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+					return MemoryToolRouteDevelopmentReport{}, nil,
+						invalidMemoryToolRouteReport(memoryToolRouteInvalidAbstainedFinalState)
 				}
 			}
 			if candidateCount > 0 && !trace.RerankReady {
-				return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+				return MemoryToolRouteDevelopmentReport{}, nil,
+					invalidMemoryToolRouteReport(memoryToolRouteInvalidCompletedRerankState)
 			}
 		} else {
 			diagnostics.FailedCaseCount++
@@ -282,7 +323,8 @@ func buildMemoryToolRouteDevelopmentReport(
 				if !usermemory.ValidHybridMemoryToolRouteFailureCategory(
 					trace.MemoryToolRouteFailureCategory,
 				) {
-					return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+					return MemoryToolRouteDevelopmentReport{}, nil,
+						invalidMemoryToolRouteReport(memoryToolRouteInvalidFailureCategory)
 				}
 				diagnostics.RouteFailureCategoryCounts[trace.MemoryToolRouteFailureCategory]++
 			}
@@ -294,7 +336,8 @@ func buildMemoryToolRouteDevelopmentReport(
 			if len(observed.FinalMemoryIDs) != 0 ||
 				len(observed.InjectedMemoryIDs) != 0 ||
 				observed.PromptMemoryTokens != 0 {
-				return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+				return MemoryToolRouteDevelopmentReport{}, nil,
+					invalidMemoryToolRouteReport(memoryToolRouteInvalidFailedFinalState)
 			}
 		}
 		ordered[index] = observed
@@ -302,7 +345,8 @@ func buildMemoryToolRouteDevelopmentReport(
 	if failureTaxonomyVersion != "" &&
 		sumDiagnosticCounts(diagnostics.RouteFailureCategoryCounts) !=
 			diagnostics.FailedCaseCount {
-		return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+		return MemoryToolRouteDevelopmentReport{}, nil,
+			invalidMemoryToolRouteReport(memoryToolRouteInvalidFailureCategoryTotals)
 	}
 
 	if actualRequests > costAuthority.RequestCount ||
@@ -387,6 +431,10 @@ func sumDiagnosticCounts(counts map[string]int) int {
 		total += count
 	}
 	return total
+}
+
+func invalidMemoryToolRouteReport(reason memoryToolRouteReportInvalidReason) error {
+	return fmt.Errorf("%w: Memory Tool-route report %s", ErrCaptureInvalid, reason)
 }
 
 func memoryToolRouteFailureTaxonomySHA256() string {

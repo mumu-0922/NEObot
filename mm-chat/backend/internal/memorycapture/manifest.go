@@ -441,21 +441,33 @@ func buildMemoryToolRouteRunManifest(
 			report.CostAuthority.AuthorizedMaximumOutputTokens ||
 		report.CostAuthority.MaximumMemoryProviderCostMicrounits <
 			report.CostAuthority.MaximumRouteCostMicrounits {
-		return RelevanceRunManifest{}, nil, ErrCaptureInvalid
+		return RelevanceRunManifest{}, nil, fmt.Errorf(
+			"%w: Memory Tool-route manifest authority",
+			ErrCaptureInvalid,
+		)
 	}
 	if _, err := hex.DecodeString(report.ConfigurationSHA256); err != nil {
-		return RelevanceRunManifest{}, nil, ErrCaptureInvalid
+		return RelevanceRunManifest{}, nil, fmt.Errorf(
+			"%w: Memory Tool-route manifest configuration_hash",
+			ErrCaptureInvalid,
+		)
 	}
 	expectedProfileID, err := candidateProfileID(providerMode)
 	if err != nil {
 		return RelevanceRunManifest{}, nil, err
 	}
 	if report.ProfileID != expectedProfileID {
-		return RelevanceRunManifest{}, nil, ErrCaptureInvalid
+		return RelevanceRunManifest{}, nil, fmt.Errorf(
+			"%w: Memory Tool-route manifest profile_id",
+			ErrCaptureInvalid,
+		)
 	}
 	artifactManifest, err := buildRunArtifactManifest(artifacts)
 	if err != nil || artifactManifest[0].Name != artifactName {
-		return RelevanceRunManifest{}, nil, ErrCaptureInvalid
+		return RelevanceRunManifest{}, nil, fmt.Errorf(
+			"%w: Memory Tool-route manifest artifact",
+			ErrCaptureInvalid,
+		)
 	}
 	manifest := RelevanceRunManifest{
 		SchemaVersion: RelevanceRunManifestSchemaVersion,

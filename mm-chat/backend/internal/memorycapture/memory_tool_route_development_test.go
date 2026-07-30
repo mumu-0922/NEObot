@@ -1,6 +1,7 @@
 package memorycapture
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -86,6 +87,44 @@ func TestBuildMemoryToolRouteDevelopmentRunManifestBindsPolicy(t *testing.T) {
 		manifest.PolicyID != usermemory.HybridRelevanceMemoryFirstToolRoundPolicyID ||
 		len(body) == 0 {
 		t.Fatalf("manifest=%#v", manifest)
+	}
+}
+
+func TestBuildMemoryToolRouteRunManifestReturnsBoundedIntegrityReason(t *testing.T) {
+	pool, err := memoryauthor.GenerateRegression()
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, reportBody, err := BuildMemoryToolRouteDevelopmentReport(
+		pool,
+		memoryToolRouteDevelopmentProfile(passingMemoryToolRouteDevelopmentTraces(pool)),
+		memoryToolRouteTestAuthority(),
+		memoryToolRouteTestCostBasis(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report.CaseCount--
+	started := time.Date(2026, 7, 29, 16, 0, 0, 0, time.UTC)
+	_, _, err = BuildMemoryToolRouteDevelopmentRunManifest(
+		"run-memory-tool-route",
+		"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+		ProviderModeLiveSiliconFlow,
+		started,
+		started.Add(time.Minute),
+		ProtectedRegression{
+			FixtureRawSHA256:  strings.Repeat("1", 64),
+			CorpusRawSHA256:   strings.Repeat("2", 64),
+			AuditRawSHA256:    strings.Repeat("3", 64),
+			ManifestRawSHA256: strings.Repeat("4", 64),
+		},
+		strings.Repeat("5", 64),
+		report,
+		[]Artifact{{Name: "memory-first-tool-round-development.json", Body: reportBody}},
+	)
+	if err == nil || !errors.Is(err, ErrCaptureInvalid) ||
+		err.Error() != "native Memory capture is invalid: Memory Tool-route manifest authority" {
+		t.Fatalf("bounded manifest error = %v", err)
 	}
 }
 
@@ -199,8 +238,32 @@ func TestBuildMemoryToolRouteDiagnosticReportRejectsMissingFailureCategory(t *te
 		profile,
 		memoryToolRouteTestAuthority(),
 		memoryToolRouteTestCostBasis(),
-	); err == nil {
-		t.Fatal("diagnostic report accepted a missing failure category")
+	); err == nil || !errors.Is(err, ErrCaptureInvalid) ||
+		!strings.Contains(err.Error(), "report failure_category") {
+		t.Fatalf("missing failure category error = %v", err)
+	}
+}
+
+func TestBuildMemoryToolRouteDiagnosticReportReturnsBoundedIntegrityReason(t *testing.T) {
+	pool, err := memoryauthor.GenerateRegression()
+	if err != nil {
+		t.Fatal(err)
+	}
+	traces := passingMemoryToolRouteDevelopmentTraces(pool)
+	trace := &traces[0]
+	trace.RerankReady = false
+	profile := memoryToolRouteDevelopmentProfile(traces)
+	profile.Profile.ReaderVersion = MemoryToolFirstRoundDiagnosticReaderVersion
+	_, _, err = BuildMemoryToolRouteDiagnosticReport(
+		pool,
+		profile,
+		memoryToolRouteTestAuthority(),
+		memoryToolRouteTestCostBasis(),
+	)
+	if err == nil || !errors.Is(err, ErrCaptureInvalid) ||
+		err.Error() != "native Memory capture is invalid: Memory Tool-route report completed_rerank_state" ||
+		strings.Contains(err.Error(), trace.CaseID) {
+		t.Fatalf("bounded integrity error = %v", err)
 	}
 }
 
