@@ -48,6 +48,8 @@ injection, or active-reader authority.
 | `BuildCloudJudgeDevelopmentReport` | Apply version-matched Provider-egress/cost policy and return schema-v4/v5 aggregate evidence. |
 | `CaptureMemoryToolRouteDevelopment` | Execute one exact GPT/DeepSeek first-ToolRound profile and fixed BGE path for the 300 Development cases. |
 | `BuildMemoryToolRouteDevelopmentReport` | Apply cost-basis v5 and return schema-v7 aggregate first-ToolRound evidence. |
+| `CaptureMemoryToolRouteDiagnostic` | Execute the schema-v8 request-equivalent diagnostic profile with request-local bounded failure categories. |
+| `BuildMemoryToolRouteDiagnosticReport` | Return aggregate-only schema-v8 failure counts; never select a policy. |
 | `CaptureFrozenValidation` | Execute only the 100 Validation cases under the code-frozen policy. |
 | `BuildFrozenValidation` | Score the frozen Validation result without retuning. |
 | `AssembleRegressionObservations` | Bind ordered captures to the strict regression schema. |
@@ -153,6 +155,13 @@ completed only `28/300` routes and failed unchanged quality, cutoff, and latency
 gates. The independent `FOHWSU/deepseek-v4-flash` profile completed only
 `33/300` routes and failed the same gate classes. Both retained zero
 authority/privacy leaks; no policy was frozen and Validation remains blocked.
+
+Schema v7 cannot retroactively split its collapsed route failures. The separate
+`development_memory_tool_route_diagnostic` mode uses reader v6, profile/report
+schema v8, and `memory-tool-route-failure-taxonomy-v1` bound by SHA-256. It
+retains only aggregate `routeFailureCategoryCounts`, requires their sum to
+equal `failedCaseCount`, and never sets `policySelected=true`. No live schema-v8
+run has been authorized or executed.
 
 The schema-v4 cost basis fixes a 300-request ceiling, a 128-token output ceiling
 per request, conservative UTF-8-plus-framing input token bounds, exact model

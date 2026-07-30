@@ -15,6 +15,10 @@ Memory only after a valid call, and continues on the same Provider/model. It is
 still default-off and non-promotional under `MEMORY_TOOL_LOOP_ENABLED=false`;
 the schema-v7 GPT and DeepSeek Flash Development results both failed unchanged
 gates, and Validation remains blocked.
+The schema-v8 failure-diagnostic lane adds bounded typed Provider/Tool failure
+categories without changing the product Tool request or runtime flag. It is
+Development-only, retains no upstream body/error text, and has no policy-
+selection authority.
 
 ## 1. Scope / Trigger
 
@@ -192,7 +196,15 @@ type ProviderToolExchange struct {
     Results            []ProviderToolResult
     ProviderState      any
 }
+
+type ProviderFailureCategory string
+
+func ProviderFailureCategoryOf(error) (ProviderFailureCategory, bool)
 ```
+
+`ProviderFailureCategoryOf` exposes only the fixed request/transport/HTTP/SSE/
+context category. It never returns an upstream body or raw error string; the
+Development Memory adapter maps it into the hash-bound v8 taxonomy.
 
 The normalized one-round planning seam used by compatibility routing is:
 
@@ -477,6 +489,12 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
   live GPT and DeepSeek Flash schema-v7 runs completed only `28/300` and
   `33/300` routes respectively and failed quality, slice, cutoff, and latency
   gates; no policy is frozen.
+- The v7 aggregate cannot split `MEMORY_TOOL_ROUTE_FAILED`. OpenAI-compatible
+  request and SSE failures now carry fixed typed categories through the
+  Development adapter. Schema v8 publishes category counts only, binds the
+  taxonomy version/SHA in profile configuration, and always reports
+  `policySelected=false`; normal chat still exposes only its existing bounded
+  Provider failure behavior.
 
 ## 4. Validation & Error Matrix
 
@@ -538,6 +556,8 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 | Official DeepSeek receives `enable_thinking=false` | protocol mismatch; the run is not model-quality evidence |
 | Generic compatible receives `thinking.type=disabled` | forbidden Provider-specific leakage; retain `enable_thinking=false` |
 | Product Memory route adds a separate `PlanTools` preflight | reject the architecture; use the existing first Tool round |
+| Diagnostic Provider error carries an upstream body/raw message into a retained report | reject the artifact; only a fixed category may cross the capture boundary |
+| Unknown diagnostic cause reaches the capture recorder | map once to `ROUTER_FAILURE_UNCLASSIFIED`; never create a dynamic category |
 
 ## 5. Good / Base / Bad Cases
 
@@ -654,6 +674,10 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
     Development adapter delegation to the canonical contract. Historical
     schema-v6 thinking-control tests remain immutable protocol coverage but do
     not define schema-v7 decoding authority.
+20. Diagnostic tests must cover HTTP/transport/SSE/context classification,
+    malformed/remote stream events, bounded adapter mapping, unknown-cause
+    fallback, and absence of Provider response/error text from retained v8
+    artifacts while v7 bytes omit every diagnostic field.
 
 ## 7. Wrong vs Correct
 

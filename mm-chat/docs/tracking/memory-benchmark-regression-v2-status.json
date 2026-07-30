@@ -598,6 +598,22 @@
         "providerQuotaUsed": false,
         "qualityEvidence": false
       },
+      "failureDiagnostic": {
+        "historicalSchemaV7SubtypeRecoveryPossible": false,
+        "captureMode": "development_memory_tool_route_diagnostic",
+        "profileSchemaVersion": "neo-chat.memory-regression-profile-config.v8",
+        "readerVersion": "neo-chat.native-memory-reader-capture.v6",
+        "reportSchemaVersion": "neo-chat.memory-regression-relevance-calibration.v8",
+        "admissionMode": "development_main_model_first_tool_round_failure_diagnostic_only",
+        "taxonomyVersion": "memory-tool-route-failure-taxonomy-v1",
+        "taxonomySha256": "66f11e91edc0cf5a6a9dbf5dd30336e58a52860adee968fb4658d6ccd70d52a0",
+        "artifactName": "memory-first-tool-round-diagnostic-development.json",
+        "aggregateOnly": true,
+        "policySelectionAuthority": false,
+        "offlineProtocolLifecyclePassed": true,
+        "liveRunAuthorized": false,
+        "liveRunExecuted": false
+      },
       "providerHypotheses": [
         "configured_gpt_gpt-5.6-sol_completed_failed",
         "configured_deepseek_deepseek-v4-flash_completed_failed"

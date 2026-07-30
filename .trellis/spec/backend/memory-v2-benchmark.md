@@ -40,11 +40,13 @@ neo-chat.memory-regression-profile-config.v4
 neo-chat.memory-regression-profile-config.v5
 neo-chat.memory-regression-profile-config.v6
 neo-chat.memory-regression-profile-config.v7
+neo-chat.memory-regression-profile-config.v8
 neo-chat.memory-regression-relevance-calibration.v3
 neo-chat.memory-regression-relevance-calibration.v4
 neo-chat.memory-regression-relevance-calibration.v5
 neo-chat.memory-regression-relevance-calibration.v6
 neo-chat.memory-regression-relevance-calibration.v7
+neo-chat.memory-regression-relevance-calibration.v8
 neo-chat.memory-regression-relevance-validation.v1
 neo-chat.memory-regression-relevance-run.v1
 neo-chat.memory-regression-cost-basis.v2
@@ -187,6 +189,22 @@ bash scripts/run-memory-regression.sh \
   --cost-basis /secure/eval/memory-first-tool-round-cost-v5.json \
   --output-dir /secure/eval/native-memory-runs
 
+# Measurement-only successor with the identical Provider request/cost shape.
+# It requires fresh explicit quota authorization and can never select a policy.
+bash scripts/run-memory-regression.sh \
+  --provider-mode live_siliconflow \
+  --capture-mode development_memory_tool_route_diagnostic \
+  --credential-file /secure/input/fresh-siliconflow-bge.key \
+  --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --memory-tool-route-credential-file /secure/input/fresh-route.key \
+  --memory-tool-route-provider-id exact-configured-provider \
+  --memory-tool-route-provider-type openai_compatible \
+  --memory-tool-route-base-url https://provider.example/v1 \
+  --memory-tool-route-model exact-configured-model \
+  --memory-tool-route-approval I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA \
+  --cost-basis /secure/eval/memory-first-tool-round-cost-v5.json \
+  --output-dir /secure/eval/native-memory-runs
+
 # Only after the selected Development values are frozen in code; use a new,
 # separately authorized mode-0600 Key file.
 bash scripts/run-memory-regression.sh \
@@ -205,6 +223,8 @@ memorycapture.PopulateProjectionVectors(ctx, adminDB, runID, embedder) (int, err
 memorycapture.CaptureProfiles(ctx, adminDB, runtimeDB, runID, index, seed, provider, hashes, cost) (memorycapture.CapturedProfile, memorycapture.CapturedProfile, error)
 memorycapture.CaptureMemoryToolRouteDevelopment(ctx, adminDB, runtimeDB, runID, pool, index, seed, provider, router, modelID, profileID, configurationSHA256, cost) (memorycapture.CapturedProfile, error)
 memorycapture.BuildMemoryToolRouteDevelopmentReport(pool, profile, authority, costBasis) (memorycapture.MemoryToolRouteDevelopmentReport, []byte, error)
+memorycapture.CaptureMemoryToolRouteDiagnostic(ctx, adminDB, runtimeDB, runID, pool, index, seed, provider, router, modelID, profileID, configurationSHA256, cost) (memorycapture.CapturedProfile, error)
+memorycapture.BuildMemoryToolRouteDiagnosticReport(pool, profile, authority, costBasis) (memorycapture.MemoryToolRouteDevelopmentReport, []byte, error)
 memorycapture.AssembleRegressionObservations(pool, capturedAt, captureID, profile) (memoryeval.RegressionObservationSet, []byte, error)
 memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string, error)
 ```
@@ -504,6 +524,17 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   `FOHWSU/deepseek-v4-flash` run then completed only `33/300` decisions and
   failed the same gate classes with zero authority/privacy leaks. No schema-v7
   policy passed; Validation/Promotion stay blocked.
+- Schema-v7 intentionally remains immutable and cannot explain the DeepSeek
+  profile's `263` collapsed `MEMORY_TOOL_ROUTE_FAILED` cases. The separate
+  `development_memory_tool_route_diagnostic` lane uses profile/report schema
+  v8, reader v6, admission
+  `development_main_model_first_tool_round_failure_diagnostic_only`, and
+  aggregate artifact `memory-first-tool-round-diagnostic-development.json`.
+  It binds `memory-tool-route-failure-taxonomy-v1` plus SHA-256
+  `66f11e91edc0cf5a6a9dbf5dd30336e58a52860adee968fb4658d6ccd70d52a0`.
+  Every failed route contributes exactly one fixed HTTP/transport/stream/
+  context/Tool/provenance/recorder category; raw errors and Provider bodies
+  are forbidden. This lane can never set `policySelected=true`.
 - The native stdout summary schema remains the command-envelope v4, but its
   `corpusClass`, `admissionMode`, and `split` must come from the validated
   schema-v7 report rather than historical schema-v6 constants. A failed fake
@@ -523,6 +554,9 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   schema-v7 first-ToolRound Development requires v5. Every absolute-cap profile
   binds the exact policy ID and rejects request, model, token-ceiling, price,
   maximum-cost, or coverage drift before Provider construction.
+  Schema-v8 diagnostics reuse the unchanged cost-basis v5 authority because
+  they add no request, token, rate, or Provider capability; the v8 profile hash
+  separately binds the failure taxonomy.
 - Native output uses a private new run directory. Full fake regression links
   four evidence files; historical calibration, schema-v4/v5 cloud Development,
   schema-v6 historical Tool-route Development, schema-v7 first-ToolRound
@@ -590,6 +624,8 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | Schema-v7 emits preflight-only decoding/temperature/output/thinking fields | Reject the profile/report; first ToolRound must preserve ordinary chat-round decoding. |
 | First-ToolRound stdout summary differs from the validated report admission/split or marks a failed report selected | Reject the summary implementation in tests; never relabel historical schema-v6 authority or fake-protocol completion. |
 | Actual first-round request/input/output upper bound exceeds cost-basis v5 | Reject the report and bundle; never infer quota after the run. |
+| Schema-v8 taxonomy version/hash drifts, a failed route lacks one valid category, or category counts do not sum to `failedCaseCount` | Reject the report/manifest; do not fall back to plaintext errors or reinterpret schema v7. |
+| Schema-v8 summary sets `policySelected=true`, unlocks Validation, or mutates the default-off runtime flag | Reject regardless of metric outcome; diagnostics have measurement authority only. |
 | Frozen validation is requested before a Development-selected policy is committed | Reject before credential read or Provider work. |
 | Native artifact target already exists or publication races | Preserve existing bytes, remove only new links, and refuse the run. |
 | Native run is interrupted before complete validation | Remove partial output and all project-scoped runtime/credential state. |
@@ -624,6 +660,14 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 - **Tool-route bad**: reuse one chat credential for both Provider boundaries,
   accept `null` arguments as `{}`, send candidates in the route prompt, or use a
   GPT result to authorize DeepSeek Validation.
+- **Diagnostic good**: run a separately authorized schema-v8 Development lane,
+  bind the 23-category taxonomy hash, and publish only aggregate category
+  counts whose sum equals all failed routes.
+- **Diagnostic base**: all routes complete, so the category map is empty and
+  `policySelected=false` still holds even if unchanged quality metrics pass.
+- **Diagnostic bad**: add subtype fields to schema v7, retain upstream body or
+  error text, infer historical subtypes, or let a v8 result authorize
+  Validation/Promotion.
 
 ## 6. Tests Required
 
@@ -697,7 +741,10 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   cost-basis v4 historical evidence plus cost-basis v5 request/token/absolute-
   cost ceilings; schema-v7 stdout admission/split mirroring and failed-report
   `candidatePassed=false`/`policySelected=false`; first-ToolRound two-file
-  manifest; frozen-policy-unavailable denial; and separate two-file manifests.
+  manifest; schema-v8 profile/report/reader separation, exact taxonomy hash,
+  bounded Provider/Tool category propagation, category-sum invariant, v7 field
+  omission, plaintext/raw-body leak rejection, always-false `policySelected`,
+  frozen-policy-unavailable denial; and separate two-file manifests.
 - Run `go test -race ./internal/memoryauthor ./cmd/memory-benchmark-author
   ./internal/memoryeval ./cmd/memory-eval ./internal/memorycapture
   ./cmd/memory-regression-capture`, `bash scripts/test-memory-regression.sh`,
@@ -770,5 +817,12 @@ summary.AdmissionMode = memorycapture.MemoryToolRouteDevelopmentAdmissionMode
 
 // Correct: the validated report remains the command summary authority.
 summary.AdmissionMode = report.AdmissionMode
-summary.PolicySelected = report.Passed
+summary.PolicySelected = report.Passed &&
+    captureMode == memorycapture.CaptureModeMemoryToolRouteDevelopment
+```
+
+```text
+Wrong: mutate schema v7 or parse its collapsed failure string to invent causes.
+Correct: preserve v7 bytes; bind a separate schema-v8 taxonomy and retain only
+aggregate category counts, with policySelected=false unconditionally.
 ```

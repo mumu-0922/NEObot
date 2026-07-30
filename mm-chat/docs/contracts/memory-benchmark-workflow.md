@@ -758,6 +758,32 @@ credentials were destroyed, the two aggregate files remain mode `0600`, and
 the isolated runtime left no objects. No schema-v7 policy passed or froze;
 Validation/Promotion remain blocked.
 
+The v7 report did not retain a failure subtype, so the `263` DeepSeek
+`MEMORY_TOOL_ROUTE_FAILED` cases cannot be retroactively attributed to quota,
+rate limiting, HTTP rejection, transport, SSE, Tool Call, or provenance causes.
+Those explanations remain `[unverified]` for the completed run.
+
+Failure diagnosis therefore uses a new, non-selecting lane:
+
+```text
+capture mode          = development_memory_tool_route_diagnostic
+profile schema        = neo-chat.memory-regression-profile-config.v8
+reader                = neo-chat.native-memory-reader-capture.v6
+report schema         = neo-chat.memory-regression-relevance-calibration.v8
+admission mode        = development_main_model_first_tool_round_failure_diagnostic_only
+taxonomy              = memory-tool-route-failure-taxonomy-v1
+taxonomy SHA-256      = 66f11e91edc0cf5a6a9dbf5dd30336e58a52860adee968fb4658d6ccd70d52a0
+artifact              = memory-first-tool-round-diagnostic-development.json
+policySelected        = false
+```
+
+The report contains only aggregate fixed-enum counts and requires their sum to
+equal `failedCaseCount`. It forbids raw Provider errors/bodies, queries, Tool
+payloads, Memory content, scores, credentials, and case identity. It reuses the
+unchanged cost-basis v5 request/token/price ceilings but binds the taxonomy in
+the v8 configuration hash. No paid schema-v8 run has been authorized or
+executed; Validation remains blocked.
+
 Only after a schema-v7 first-round Tool Loop Development hypothesis passes may
 its policy, Provider/model, Tool/adapter profile, and selection behavior be
 frozen in code. The current Validation CLI remains unavailable because no

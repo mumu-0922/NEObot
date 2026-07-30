@@ -91,8 +91,13 @@ The successor is schema-v7/profile-v7/cost-basis-v5 with reader
 `neo-chat.native-memory-reader-capture.v5`, policy
 `memory_hybrid_main_model_first_tool_round_calibration_v1`, and artifact
 `memory-first-tool-round-development.json`. Its offline protocol/lifecycle
-tests pass, but no schema-v7 live Development run has been authorized or
-executed. No policy is frozen; Validation and Promotion remain blocked.
+tests pass, but both GPT and DeepSeek Flash live Development profiles failed
+unchanged gates. No policy is frozen; Validation and Promotion remain blocked.
+
+The schema-v8 diagnostic adapter preserves bounded typed request/stream/Tool
+failure categories for aggregate counting. It never returns Provider error
+text or response bodies, never changes the canonical Tool contract, and has no
+policy-selection authority.
 
 ## API overview
 

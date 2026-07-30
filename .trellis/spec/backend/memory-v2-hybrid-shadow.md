@@ -70,7 +70,15 @@ SearchRelevantWithHybridShadow(
 SearchRelevantAfterMemoryToolCall(
     context.Context, HybridMemoryToolSearchInput,
 ) HybridMemoryToolSearchResult
+
+NewHybridMemoryToolRouteError(category string) error
+HybridMemoryToolRouteFailureCategory(error) string
+HybridMemoryToolRouteFailureCategories() []string
 ```
+
+The failure-category list is sorted before hashing and contains exactly the
+fixed 23 taxonomy values. Unknown causes map to
+`ROUTER_FAILURE_UNCLASSIFIED`; callers must not synthesize dynamic values.
 
 The relevance-policy identities are:
 
@@ -255,6 +263,12 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   Top-5/token selection. Missing/null/malformed/non-empty arguments, unknown or
   duplicate calls, Provider failure, cancellation, cutoff, or provenance drift
   is `MEMORY_TOOL_ROUTE_FAILED` and yields no hybrid final.
+- Development diagnostics must preserve the request-local cause as one bounded
+  typed category before the public fallback is collapsed. The schema-v8 lane
+  aggregates HTTP authentication/quota/rate/request/upstream failures,
+  transport and SSE failures, context termination, invalid Tool/event shapes,
+  provenance drift, and recorder conflicts. It retains no Provider error text,
+  response body, query, Tool payload, Memory body, score, or case identity.
 - Tool routing decides only whether saved Memory is needed. It cannot rewrite
   the query, select Memory IDs, authorize ownership/scope/revision, or authorize
   prompt injection. An empty candidate set still waits for the route decision
@@ -365,6 +379,7 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 | Main-model Tool route returns no call | Record `MEMORY_TOOL_ROUTE_ABSTAINED`; discard speculative BGE final rows and record zero final/tokens. |
 | Tool route returns a missing ID, wrong name, duplicate call, or nil/non-empty arguments | Reject the whole decision as `MEMORY_TOOL_ROUTE_FAILED`; never reinterpret it as an exact call. |
 | Tool route model/contract provenance drifts or the Provider fails/is late | Record `MEMORY_TOOL_ROUTE_FAILED`, empty final, and unchanged v1 chat. |
+| Diagnostic route failure category is empty, unknown, duplicated for one request, or conflicts with a successful route | Reject the capture state/report; each failed route contributes exactly one bounded category. |
 | Tool route succeeds but the current-authorized BGE candidate set is empty | Record `MEMORY_TOOL_ROUTE_EMPTY`; do not fabricate a Memory result. |
 | Official DeepSeek is sent generic `enable_thinking=false` | Mark the run protocol-invalid; it cannot support a model-quality conclusion. |
 | The route is implemented as a separate pre-answer `PlanTools` request | Development-only failed hypothesis; never promote this request shape. |
@@ -418,6 +433,8 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   rejection, multi-tool coexistence, exact query-byte/hash preservation,
   query-only Development adapter input, concurrent route/
   embedding/BGE completion, route failure/cutoff/empty-candidate handling,
+  exact 23-category ordering/hash, unknown-cause fallback, one-category-per-
+  failure recorder semantics, raw-error exclusion,
   same-model continuation and body-free recovery, policy-aware
   Provider-egress scoring,
   post-threshold
@@ -491,3 +508,8 @@ evidence. Schema-v7 measures the implemented first-ToolRound shape. Its first
 live GPT and DeepSeek Flash Development profiles both failed unchanged quality,
 slice, cutoff, and latency gates. Production exposure stays default-off and
 cannot be promoted without a passing Development/Validation result.
+
+Schema-v7 does not contain route subtypes and remains immutable. The
+schema-v8 diagnostic successor is measurement-only: its hash-bound category
+counts must sum to all failed routes, but it cannot freeze a policy, authorize
+Validation, enable `MEMORY_TOOL_LOOP_ENABLED`, or reinterpret either v7 run.
