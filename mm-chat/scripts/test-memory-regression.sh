@@ -334,11 +334,23 @@ if args and args[0] == "compose":
             bodies = {"cloud-judge-development.json": cloud}
             manifest_schema = "neo-chat.memory-regression-relevance-run.v1"
             admission_mode = "development_cloud_judge_only"
-        elif capture_mode == "development_memory_tool_route":
+        elif capture_mode in {
+            "development_memory_tool_route",
+            "development_memory_tool_route_diagnostic",
+        }:
+            diagnostic = capture_mode == "development_memory_tool_route_diagnostic"
             memory_tool_route = json.dumps({
-                "schemaVersion": "neo-chat.memory-regression-relevance-calibration.v7",
+                "schemaVersion": (
+                    "neo-chat.memory-regression-relevance-calibration.v8"
+                    if diagnostic
+                    else "neo-chat.memory-regression-relevance-calibration.v7"
+                ),
                 "corpusClass": "machine_reviewed_regression",
-                "admissionMode": "development_main_model_first_tool_round_only",
+                "admissionMode": (
+                    "development_main_model_first_tool_round_failure_diagnostic_only"
+                    if diagnostic
+                    else "development_main_model_first_tool_round_only"
+                ),
                 "promotionEligible": False,
                 "split": "development",
                 "caseCount": 300,
@@ -366,6 +378,7 @@ if args and args[0] == "compose":
                     "routeAbstainedCaseCount": 135,
                     "failedCaseCount": 0,
                     "failureCodeCounts": {},
+                    **({"routeFailureCategoryCounts": {}} if diagnostic else {}),
                 },
                 "costAuthority": {
                     "unit": "cny_microunits",
@@ -378,10 +391,23 @@ if args and args[0] == "compose":
                     "maximumRouteCostMicrounits": 400000,
                     "maximumMemoryProviderCostMicrounits": 500000,
                 },
+                **({
+                    "failureTaxonomyVersion": "memory-tool-route-failure-taxonomy-v1",
+                    "failureTaxonomySha256": "66f11e91edc0cf5a6a9dbf5dd30336e58a52860adee968fb4658d6ccd70d52a0",
+                } if diagnostic else {}),
             }, separators=(",", ":")).encode() + b"\n"
-            bodies = {"memory-first-tool-round-development.json": memory_tool_route}
+            report_name = (
+                "memory-first-tool-round-diagnostic-development.json"
+                if diagnostic
+                else "memory-first-tool-round-development.json"
+            )
+            bodies = {report_name: memory_tool_route}
             manifest_schema = "neo-chat.memory-regression-relevance-run.v1"
-            admission_mode = "development_main_model_first_tool_round_only"
+            admission_mode = (
+                "development_main_model_first_tool_round_failure_diagnostic_only"
+                if diagnostic
+                else "development_main_model_first_tool_round_only"
+            )
         elif capture_mode == "frozen_validation":
             validation = json.dumps({
                 "schemaVersion": "neo-chat.memory-regression-relevance-validation.v1",
@@ -429,10 +455,15 @@ if args and args[0] == "compose":
                         "development_calibration",
                         "development_cloud_judge",
                         "development_memory_tool_route",
+                        "development_memory_tool_route_diagnostic",
                     } else "validation",
                     "profileId": candidate_profile,
                 })
-                if capture_mode in {"development_cloud_judge", "development_memory_tool_route"}:
+                if capture_mode in {
+                    "development_cloud_judge",
+                    "development_memory_tool_route",
+                    "development_memory_tool_route_diagnostic",
+                }:
                     manifest["providerCostPolicy"] = "owner_authorized_absolute_cap_v1"
             manifest_path = output / "run-manifest.json"
             manifest_path.write_text(json.dumps(manifest, separators=(",", ":")) + "\n", encoding="utf-8")
@@ -530,6 +561,27 @@ if [[ "$(find "${memory_tool_route_output}" -mindepth 2 -maxdepth 2 -type f | wc
   exit 1
 fi
 assert_cleanup "${memory_tool_route_log}"
+
+memory_tool_route_diagnostic_output="${temp_dir}/memory-tool-route-diagnostic-output"
+memory_tool_route_diagnostic_log="${temp_dir}/memory-tool-route-diagnostic-docker.log"
+mkdir "${memory_tool_route_diagnostic_output}"
+chmod 700 "${memory_tool_route_diagnostic_output}"
+FAKE_DOCKER_LOG="${memory_tool_route_diagnostic_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${memory_tool_route_diagnostic_output}" --provider-mode fake_protocol \
+  --capture-mode development_memory_tool_route_diagnostic \
+  --memory-tool-route-provider-id configured-deepseek \
+  --memory-tool-route-provider-type openai_compatible \
+  --memory-tool-route-base-url https://api.deepseek.example/ \
+  --memory-tool-route-model deepseek-chat \
+  >"${temp_dir}/memory-tool-route-diagnostic.stdout" \
+  2>"${temp_dir}/memory-tool-route-diagnostic.stderr"
+if [[ "$(find "${memory_tool_route_diagnostic_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: Memory Tool-route diagnostic bundle was not retained" >&2
+  exit 1
+fi
+assert_cleanup "${memory_tool_route_diagnostic_log}"
 
 live_memory_tool_route_output="${temp_dir}/live-memory-tool-route-output"
 live_memory_tool_route_log="${temp_dir}/live-memory-tool-route-docker.log"

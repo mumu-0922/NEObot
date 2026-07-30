@@ -297,6 +297,57 @@ func TestOpenAICompatibleProviderRejectsOversizedStreamedToolArguments(t *testin
 	}
 }
 
+func TestOpenAICompatibleStreamClassifiesParseRemoteAndIncompleteFailures(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want ProviderFailureCategory
+	}{
+		{name: "parse", body: "data: {invalid}\n\n", want: ProviderFailureStreamParseFailed},
+		{name: "remote", body: "data: {\"error\":{\"message\":\"private\"}}\n\n", want: ProviderFailureStreamRemoteError},
+		{name: "incomplete", body: "data: {\"choices\":[]}\n\n", want: ProviderFailureStreamIncomplete},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			events := make(chan ProviderEvent, 4)
+			streamOpenAICompatibleEvents(
+				context.Background(), strings.NewReader(test.body), events,
+			)
+			close(events)
+			var failure error
+			for event := range events {
+				if event.Error != nil {
+					failure = event.Error
+				}
+			}
+			category, ok := ProviderFailureCategoryOf(failure)
+			if !ok || category != test.want {
+				t.Fatalf("failure category = %q/%t (%v)", category, ok, failure)
+			}
+		})
+	}
+}
+
+func TestOpenAICompatibleStreamClassifiesReadFailure(t *testing.T) {
+	events := make(chan ProviderEvent, 2)
+	streamOpenAICompatibleEvents(context.Background(), failingSSEReader{}, events)
+	close(events)
+	var failure error
+	for event := range events {
+		failure = event.Error
+	}
+	category, ok := ProviderFailureCategoryOf(failure)
+	if !ok || category != ProviderFailureStreamReadFailed {
+		t.Fatalf("stream read category = %q/%t (%v)", category, ok, failure)
+	}
+}
+
+type failingSSEReader struct{}
+
+func (failingSSEReader) Read([]byte) (int, error) {
+	return 0, errors.New("private stream read failure")
+}
+
 func mustJSON(t *testing.T, value any) string {
 	t.Helper()
 	encoded, err := json.Marshal(value)

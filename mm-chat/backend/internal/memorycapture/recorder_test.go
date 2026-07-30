@@ -9,6 +9,91 @@ import (
 	"neo-chat/mm-chat/backend/internal/usermemory"
 )
 
+func TestMemoryToolRouterDecoratorRecordsBoundedFailureCategory(t *testing.T) {
+	recorder := &Recorder{}
+	if err := recorder.Begin(captureAssistantID); err != nil {
+		t.Fatal(err)
+	}
+	decorator, err := NewMemoryToolRouterDecorator(
+		failingMemoryToolRouter{}, recorder, "route-model",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = decorator.RouteHybridMemory(
+		context.Background(),
+		usermemory.HybridMemoryToolRouteInput{Query: "private query"},
+	)
+	if err == nil || usermemory.HybridMemoryToolRouteFailureCategory(err) !=
+		usermemory.HybridMemoryToolRouteFailureRateLimited {
+		t.Fatalf("route error = %v", err)
+	}
+	transient, err := recorder.Finish(captureAssistantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transient.memoryToolRouteFailureCategory !=
+		usermemory.HybridMemoryToolRouteFailureRateLimited ||
+		transient.memoryToolRouteReady {
+		t.Fatalf("transient route failure = %#v", transient)
+	}
+}
+
+func TestMemoryToolRouterDecoratorRecordsProvenanceDrift(t *testing.T) {
+	recorder := &Recorder{}
+	if err := recorder.Begin(captureAssistantID); err != nil {
+		t.Fatal(err)
+	}
+	decorator, err := NewMemoryToolRouterDecorator(
+		driftedMemoryToolRouter{}, recorder, "expected-model",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = decorator.RouteHybridMemory(
+		context.Background(),
+		usermemory.HybridMemoryToolRouteInput{Query: "private query"},
+	)
+	if usermemory.HybridMemoryToolRouteFailureCategory(err) !=
+		usermemory.HybridMemoryToolRouteFailureProvenanceDrift {
+		t.Fatalf("provenance error = %v", err)
+	}
+	transient, err := recorder.Finish(captureAssistantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transient.memoryToolRouteFailureCategory !=
+		usermemory.HybridMemoryToolRouteFailureProvenanceDrift {
+		t.Fatalf("provenance transient = %#v", transient)
+	}
+}
+
+type failingMemoryToolRouter struct{}
+
+func (failingMemoryToolRouter) RouteHybridMemory(
+	context.Context,
+	usermemory.HybridMemoryToolRouteInput,
+) (usermemory.HybridMemoryToolRouteResult, error) {
+	return usermemory.HybridMemoryToolRouteResult{},
+		usermemory.NewHybridMemoryToolRouteError(
+			usermemory.HybridMemoryToolRouteFailureRateLimited,
+		)
+}
+
+type driftedMemoryToolRouter struct{}
+
+func (driftedMemoryToolRouter) RouteHybridMemory(
+	context.Context,
+	usermemory.HybridMemoryToolRouteInput,
+) (usermemory.HybridMemoryToolRouteResult, error) {
+	return usermemory.HybridMemoryToolRouteResult{
+		ModelID:               "other-model",
+		ContractVersion:       usermemory.HybridMemoryToolContractVersion,
+		ContractSHA256:        usermemory.HybridMemoryToolContractSHA256,
+		OutputTokenUpperBound: 1,
+	}, nil
+}
+
 func TestCloneTransientCapturePreservesRerankScoresAndSlicePresence(t *testing.T) {
 	original := transientCapture{
 		candidates:   []string{"memory-one"},

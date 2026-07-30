@@ -18,6 +18,7 @@ const (
 	CloudJudgeReaderVersion                     = "neo-chat.native-memory-reader-capture.v3"
 	MemoryToolRouteReaderVersion                = "neo-chat.native-memory-reader-capture.v4"
 	MemoryToolFirstRoundReaderVersion           = "neo-chat.native-memory-reader-capture.v5"
+	MemoryToolFirstRoundDiagnosticReaderVersion = "neo-chat.native-memory-reader-capture.v6"
 	ProviderCostPolicyOwnerAuthorizedAbsoluteV1 = "owner_authorized_absolute_cap_v1"
 	ProviderModeNone                            = "none"
 	ProviderModeFakeProtocol                    = "fake_protocol"
@@ -26,6 +27,7 @@ const (
 	CaptureModeCalibration                      = "development_calibration"
 	CaptureModeCloudJudgeDevelopment            = "development_cloud_judge"
 	CaptureModeMemoryToolRouteDevelopment       = "development_memory_tool_route"
+	CaptureModeMemoryToolRouteDiagnostic        = "development_memory_tool_route_diagnostic"
 	CaptureModeFrozenValidation                 = "frozen_validation"
 )
 
@@ -48,56 +50,58 @@ type RuntimeCase struct {
 // ProfileConfig is the immutable, hashed description of one reader capture.
 // Input bytes and cost authority are represented by hashes rather than paths.
 type ProfileConfig struct {
-	SchemaVersion                        string                 `json:"schemaVersion"`
-	ProfileID                            string                 `json:"profileId"`
-	ReaderVersion                        string                 `json:"readerVersion"`
-	FixtureRawSHA256                     string                 `json:"fixtureRawSha256"`
-	CorpusRawSHA256                      string                 `json:"corpusRawSha256"`
-	AuditRawSHA256                       string                 `json:"auditRawSha256"`
-	ManifestRawSHA256                    string                 `json:"manifestRawSha256"`
-	CostBasisSHA256                      string                 `json:"costBasisSha256"`
-	ProviderMode                         string                 `json:"providerMode"`
-	EmbeddingProfileID                   string                 `json:"embeddingProfileId"`
-	EmbeddingModelID                     string                 `json:"embeddingModelId"`
-	EmbeddingDimensions                  int                    `json:"embeddingDimensions"`
-	RerankModelID                        string                 `json:"rerankModelId"`
-	CandidateLimit                       int                    `json:"candidateLimit"`
-	FinalLimit                           int                    `json:"finalLimit"`
-	TargetTokens                         int                    `json:"targetTokens"`
-	MaximumTokens                        int                    `json:"maximumTokens"`
-	HardCutoffMillis                     int                    `json:"hardCutoffMillis"`
-	FixtureMapping                       string                 `json:"fixtureMapping"`
-	CounterfactualInject                 bool                   `json:"counterfactualInject"`
-	CaptureMode                          string                 `json:"captureMode"`
-	EvaluationSplit                      string                 `json:"evaluationSplit"`
-	RelevancePolicyID                    string                 `json:"relevancePolicyId"`
-	RelevancePolicyMode                  string                 `json:"relevancePolicyMode"`
-	MemoryIntentRequired                 bool                   `json:"memoryIntentRequired"`
-	MemoryIntentAnchorVersion            string                 `json:"memoryIntentAnchorVersion"`
-	MemoryIntentAnchorSHA256             string                 `json:"memoryIntentAnchorSha256"`
-	MinimumMemoryIntentMarginBasisPoints int                    `json:"minimumMemoryIntentMarginBasisPoints"`
-	MinimumProviderSimilarityBasisPoints int                    `json:"minimumProviderSimilarityBasisPoints"`
-	MinimumFinalRelevanceBasisPoints     int                    `json:"minimumFinalRelevanceBasisPoints"`
-	CloudCandidateJudgeRequired          bool                   `json:"cloudCandidateJudgeRequired,omitempty"`
-	CloudCandidateJudgeModelID           string                 `json:"cloudCandidateJudgeModelId,omitempty"`
-	CloudCandidateJudgePromptVersion     string                 `json:"cloudCandidateJudgePromptVersion,omitempty"`
-	CloudCandidateJudgePromptSHA256      string                 `json:"cloudCandidateJudgePromptSha256,omitempty"`
-	CloudCandidateJudgeDecodingProfile   string                 `json:"cloudCandidateJudgeDecodingProfile,omitempty"`
-	MemoryToolRouteRequired              bool                   `json:"memoryToolRouteRequired,omitempty"`
-	MemoryToolRouteProviderID            string                 `json:"memoryToolRouteProviderId,omitempty"`
-	MemoryToolRouteProviderType          string                 `json:"memoryToolRouteProviderType,omitempty"`
-	MemoryToolRouteBaseURLSHA256         string                 `json:"memoryToolRouteBaseUrlSha256,omitempty"`
-	MemoryToolRouteModelID               string                 `json:"memoryToolRouteModelId,omitempty"`
-	MemoryToolRouteContractVersion       string                 `json:"memoryToolRouteContractVersion,omitempty"`
-	MemoryToolRouteContractSHA256        string                 `json:"memoryToolRouteContractSha256,omitempty"`
-	MemoryToolRouteAdapterVersion        string                 `json:"memoryToolRouteAdapterVersion,omitempty"`
-	MemoryToolRouteDecodingProfile       string                 `json:"memoryToolRouteDecodingProfile,omitempty"`
-	MemoryToolRouteMaximumOutputTokens   int                    `json:"memoryToolRouteMaximumOutputTokens,omitempty"`
-	MemoryToolRouteTemperature           *float64               `json:"memoryToolRouteTemperature,omitempty"`
-	MemoryToolRouteDisableThinking       bool                   `json:"memoryToolRouteDisableThinking,omitempty"`
-	ProviderEgressPolicy                 string                 `json:"providerEgressPolicy,omitempty"`
-	ProviderCostPolicy                   string                 `json:"providerCostPolicy,omitempty"`
-	CalibrationPlan                      *CalibrationPlanConfig `json:"calibrationPlan,omitempty"`
+	SchemaVersion                         string                 `json:"schemaVersion"`
+	ProfileID                             string                 `json:"profileId"`
+	ReaderVersion                         string                 `json:"readerVersion"`
+	FixtureRawSHA256                      string                 `json:"fixtureRawSha256"`
+	CorpusRawSHA256                       string                 `json:"corpusRawSha256"`
+	AuditRawSHA256                        string                 `json:"auditRawSha256"`
+	ManifestRawSHA256                     string                 `json:"manifestRawSha256"`
+	CostBasisSHA256                       string                 `json:"costBasisSha256"`
+	ProviderMode                          string                 `json:"providerMode"`
+	EmbeddingProfileID                    string                 `json:"embeddingProfileId"`
+	EmbeddingModelID                      string                 `json:"embeddingModelId"`
+	EmbeddingDimensions                   int                    `json:"embeddingDimensions"`
+	RerankModelID                         string                 `json:"rerankModelId"`
+	CandidateLimit                        int                    `json:"candidateLimit"`
+	FinalLimit                            int                    `json:"finalLimit"`
+	TargetTokens                          int                    `json:"targetTokens"`
+	MaximumTokens                         int                    `json:"maximumTokens"`
+	HardCutoffMillis                      int                    `json:"hardCutoffMillis"`
+	FixtureMapping                        string                 `json:"fixtureMapping"`
+	CounterfactualInject                  bool                   `json:"counterfactualInject"`
+	CaptureMode                           string                 `json:"captureMode"`
+	EvaluationSplit                       string                 `json:"evaluationSplit"`
+	RelevancePolicyID                     string                 `json:"relevancePolicyId"`
+	RelevancePolicyMode                   string                 `json:"relevancePolicyMode"`
+	MemoryIntentRequired                  bool                   `json:"memoryIntentRequired"`
+	MemoryIntentAnchorVersion             string                 `json:"memoryIntentAnchorVersion"`
+	MemoryIntentAnchorSHA256              string                 `json:"memoryIntentAnchorSha256"`
+	MinimumMemoryIntentMarginBasisPoints  int                    `json:"minimumMemoryIntentMarginBasisPoints"`
+	MinimumProviderSimilarityBasisPoints  int                    `json:"minimumProviderSimilarityBasisPoints"`
+	MinimumFinalRelevanceBasisPoints      int                    `json:"minimumFinalRelevanceBasisPoints"`
+	CloudCandidateJudgeRequired           bool                   `json:"cloudCandidateJudgeRequired,omitempty"`
+	CloudCandidateJudgeModelID            string                 `json:"cloudCandidateJudgeModelId,omitempty"`
+	CloudCandidateJudgePromptVersion      string                 `json:"cloudCandidateJudgePromptVersion,omitempty"`
+	CloudCandidateJudgePromptSHA256       string                 `json:"cloudCandidateJudgePromptSha256,omitempty"`
+	CloudCandidateJudgeDecodingProfile    string                 `json:"cloudCandidateJudgeDecodingProfile,omitempty"`
+	MemoryToolRouteRequired               bool                   `json:"memoryToolRouteRequired,omitempty"`
+	MemoryToolRouteProviderID             string                 `json:"memoryToolRouteProviderId,omitempty"`
+	MemoryToolRouteProviderType           string                 `json:"memoryToolRouteProviderType,omitempty"`
+	MemoryToolRouteBaseURLSHA256          string                 `json:"memoryToolRouteBaseUrlSha256,omitempty"`
+	MemoryToolRouteModelID                string                 `json:"memoryToolRouteModelId,omitempty"`
+	MemoryToolRouteContractVersion        string                 `json:"memoryToolRouteContractVersion,omitempty"`
+	MemoryToolRouteContractSHA256         string                 `json:"memoryToolRouteContractSha256,omitempty"`
+	MemoryToolRouteAdapterVersion         string                 `json:"memoryToolRouteAdapterVersion,omitempty"`
+	MemoryToolRouteDecodingProfile        string                 `json:"memoryToolRouteDecodingProfile,omitempty"`
+	MemoryToolRouteMaximumOutputTokens    int                    `json:"memoryToolRouteMaximumOutputTokens,omitempty"`
+	MemoryToolRouteTemperature            *float64               `json:"memoryToolRouteTemperature,omitempty"`
+	MemoryToolRouteDisableThinking        bool                   `json:"memoryToolRouteDisableThinking,omitempty"`
+	MemoryToolRouteFailureTaxonomyVersion string                 `json:"memoryToolRouteFailureTaxonomyVersion,omitempty"`
+	MemoryToolRouteFailureTaxonomySHA256  string                 `json:"memoryToolRouteFailureTaxonomySha256,omitempty"`
+	ProviderEgressPolicy                  string                 `json:"providerEgressPolicy,omitempty"`
+	ProviderCostPolicy                    string                 `json:"providerCostPolicy,omitempty"`
+	CalibrationPlan                       *CalibrationPlanConfig `json:"calibrationPlan,omitempty"`
 }
 
 // CostBasis is supplied by an operator and hash-bound to observations. The
@@ -166,6 +170,7 @@ type CandidateCalibrationTrace struct {
 	CloudJudgeInputTokenUpperBound       int
 	MemoryToolRouteReady                 bool
 	MemoryToolRouteUsed                  bool
+	MemoryToolRouteFailureCategory       string
 	MemoryToolRouteInputTokenUpperBound  int
 	MemoryToolRouteOutputTokenUpperBound int
 	AbstentionCode                       string

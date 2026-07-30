@@ -1,6 +1,7 @@
 package memorycapture
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -19,15 +20,20 @@ const (
 	MemoryToolFirstRoundDevelopmentReportSchemaVersion = "neo-chat.memory-regression-relevance-calibration.v7"
 	MemoryToolFirstRoundDevelopmentAdmissionMode       = "development_main_model_first_tool_round_only"
 	memoryToolFirstRoundSelectionAlgorithm             = "first-tool-round-call_then-bge-order_top5-token-budget_v1"
+	MemoryToolFirstRoundDiagnosticReportSchemaVersion  = "neo-chat.memory-regression-relevance-calibration.v8"
+	MemoryToolFirstRoundDiagnosticAdmissionMode        = "development_main_model_first_tool_round_failure_diagnostic_only"
+	MemoryToolRouteFailureTaxonomyVersion              = "memory-tool-route-failure-taxonomy-v1"
+	MemoryToolRouteFailureTaxonomySHA256               = "66f11e91edc0cf5a6a9dbf5dd30336e58a52860adee968fb4658d6ccd70d52a0"
 )
 
 type MemoryToolRouteDevelopmentDiagnostics struct {
-	EmptyCandidateCaseCount int            `json:"emptyCandidateCaseCount"`
-	RouteCompletedCaseCount int            `json:"routeCompletedCaseCount"`
-	RouteUsedCaseCount      int            `json:"routeUsedCaseCount"`
-	RouteAbstainedCaseCount int            `json:"routeAbstainedCaseCount"`
-	FailedCaseCount         int            `json:"failedCaseCount"`
-	FailureCodeCounts       map[string]int `json:"failureCodeCounts"`
+	EmptyCandidateCaseCount    int            `json:"emptyCandidateCaseCount"`
+	RouteCompletedCaseCount    int            `json:"routeCompletedCaseCount"`
+	RouteUsedCaseCount         int            `json:"routeUsedCaseCount"`
+	RouteAbstainedCaseCount    int            `json:"routeAbstainedCaseCount"`
+	FailedCaseCount            int            `json:"failedCaseCount"`
+	FailureCodeCounts          map[string]int `json:"failureCodeCounts"`
+	RouteFailureCategoryCounts map[string]int `json:"routeFailureCategoryCounts,omitempty"`
 }
 
 type MemoryToolRouteDevelopmentCostAuthority struct {
@@ -72,6 +78,8 @@ type MemoryToolRouteDevelopmentReport struct {
 	ToolMaximumOutputTokens int                                     `json:"toolMaximumOutputTokens,omitempty"`
 	ToolTemperature         float64                                 `json:"toolTemperature,omitempty"`
 	ToolDisableThinking     bool                                    `json:"toolDisableThinking,omitempty"`
+	FailureTaxonomyVersion  string                                  `json:"failureTaxonomyVersion,omitempty"`
+	FailureTaxonomySHA256   string                                  `json:"failureTaxonomySha256,omitempty"`
 	SelectionAlgorithm      string                                  `json:"selectionAlgorithm"`
 	Passed                  bool                                    `json:"passed"`
 	Evaluation              MemoryToolRouteDevelopmentEvaluation    `json:"evaluation"`
@@ -89,11 +97,59 @@ func BuildMemoryToolRouteDevelopmentReport(
 	authority MemoryToolRouteProfileAuthority,
 	costBasis CostBasis,
 ) (MemoryToolRouteDevelopmentReport, []byte, error) {
+	return buildMemoryToolRouteDevelopmentReport(
+		pool,
+		profile,
+		authority,
+		costBasis,
+		MemoryToolFirstRoundReaderVersion,
+		MemoryToolFirstRoundDevelopmentReportSchemaVersion,
+		MemoryToolFirstRoundDevelopmentAdmissionMode,
+		"",
+	)
+}
+
+// BuildMemoryToolRouteDiagnosticReport emits a schema-separated aggregate
+// report whose fixed failure taxonomy can explain route failures without
+// retaining Provider error text, queries, Tool payloads, or Memory content.
+func BuildMemoryToolRouteDiagnosticReport(
+	pool memoryauthor.RegressionPool,
+	profile CapturedProfile,
+	authority MemoryToolRouteProfileAuthority,
+	costBasis CostBasis,
+) (MemoryToolRouteDevelopmentReport, []byte, error) {
+	return buildMemoryToolRouteDevelopmentReport(
+		pool,
+		profile,
+		authority,
+		costBasis,
+		MemoryToolFirstRoundDiagnosticReaderVersion,
+		MemoryToolFirstRoundDiagnosticReportSchemaVersion,
+		MemoryToolFirstRoundDiagnosticAdmissionMode,
+		MemoryToolRouteFailureTaxonomyVersion,
+	)
+}
+
+func buildMemoryToolRouteDevelopmentReport(
+	pool memoryauthor.RegressionPool,
+	profile CapturedProfile,
+	authority MemoryToolRouteProfileAuthority,
+	costBasis CostBasis,
+	readerVersion string,
+	reportSchemaVersion string,
+	admissionMode string,
+	failureTaxonomyVersion string,
+) (MemoryToolRouteDevelopmentReport, []byte, error) {
 	if profile.Profile.ID != CandidateProfileID &&
 		profile.Profile.ID != FakeCandidateProfileID {
 		return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
 	}
-	if profile.Profile.ReaderVersion != MemoryToolFirstRoundReaderVersion ||
+	if failureTaxonomyVersion != "" &&
+		memoryToolRouteFailureTaxonomySHA256() !=
+			MemoryToolRouteFailureTaxonomySHA256 {
+		return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+	}
+	if profile.Profile.ReaderVersion != readerVersion ||
 		len(profile.Profile.ConfigurationSHA256) != 64 ||
 		profile.Profile.ProviderEgressPolicy !=
 			memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1 ||
@@ -161,6 +217,9 @@ func BuildMemoryToolRouteDevelopmentReport(
 	diagnostics := MemoryToolRouteDevelopmentDiagnostics{
 		FailureCodeCounts: make(map[string]int),
 	}
+	if failureTaxonomyVersion != "" {
+		diagnostics.RouteFailureCategoryCounts = make(map[string]int)
+	}
 	actualRequests := 0
 	actualInputTokenUpperBound := uint64(0)
 	actualOutputTokenUpperBound := uint64(0)
@@ -200,6 +259,9 @@ func BuildMemoryToolRouteDevelopmentReport(
 			}
 		}
 		if trace.MemoryToolRouteReady {
+			if failureTaxonomyVersion != "" && trace.MemoryToolRouteFailureCategory != "" {
+				return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+			}
 			diagnostics.RouteCompletedCaseCount++
 			if trace.MemoryToolRouteUsed {
 				diagnostics.RouteUsedCaseCount++
@@ -216,6 +278,14 @@ func BuildMemoryToolRouteDevelopmentReport(
 			}
 		} else {
 			diagnostics.FailedCaseCount++
+			if failureTaxonomyVersion != "" {
+				if !usermemory.ValidHybridMemoryToolRouteFailureCategory(
+					trace.MemoryToolRouteFailureCategory,
+				) {
+					return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
+				}
+				diagnostics.RouteFailureCategoryCounts[trace.MemoryToolRouteFailureCategory]++
+			}
 			code := normalizeCalibrationCode(trace.AbstentionCode)
 			if code == "NONE" {
 				code = normalizeCalibrationCode(trace.ResultCode)
@@ -228,6 +298,11 @@ func BuildMemoryToolRouteDevelopmentReport(
 			}
 		}
 		ordered[index] = observed
+	}
+	if failureTaxonomyVersion != "" &&
+		sumDiagnosticCounts(diagnostics.RouteFailureCategoryCounts) !=
+			diagnostics.FailedCaseCount {
+		return MemoryToolRouteDevelopmentReport{}, nil, ErrCaptureInvalid
 	}
 
 	if actualRequests > costAuthority.RequestCount ||
@@ -250,9 +325,9 @@ func BuildMemoryToolRouteDevelopmentReport(
 	providerCostRatio := float64(profile.Costs.MemoryProviderCostMicrounits) /
 		float64(profile.Costs.ChatProviderCostMicrounits)
 	report := MemoryToolRouteDevelopmentReport{
-		SchemaVersion:          MemoryToolFirstRoundDevelopmentReportSchemaVersion,
+		SchemaVersion:          reportSchemaVersion,
 		CorpusClass:            memoryeval.RegressionCorpusClass,
-		AdmissionMode:          MemoryToolFirstRoundDevelopmentAdmissionMode,
+		AdmissionMode:          admissionMode,
 		PromotionEligible:      false,
 		Split:                  DevelopmentCalibrationSplit,
 		CaseCount:              len(development),
@@ -270,8 +345,15 @@ func BuildMemoryToolRouteDevelopmentReport(
 		ToolContractVersion:    policy.MemoryToolRouteContractVersion,
 		ToolContractSHA256:     policy.MemoryToolRouteContractSHA256,
 		ToolAdapterVersion:     chat.MemoryToolFirstRoundAdapterVersion,
-		SelectionAlgorithm:     memoryToolFirstRoundSelectionAlgorithm,
-		Passed:                 evaluation.Passed,
+		FailureTaxonomyVersion: failureTaxonomyVersion,
+		FailureTaxonomySHA256: func() string {
+			if failureTaxonomyVersion == "" {
+				return ""
+			}
+			return MemoryToolRouteFailureTaxonomySHA256
+		}(),
+		SelectionAlgorithm: memoryToolFirstRoundSelectionAlgorithm,
+		Passed:             evaluation.Passed,
 		Evaluation: MemoryToolRouteDevelopmentEvaluation{
 			CalibrationEvaluation: evaluation,
 			ProviderCostRatio:     providerCostRatio,
@@ -294,4 +376,24 @@ func BuildMemoryToolRouteDevelopmentReport(
 		return MemoryToolRouteDevelopmentReport{}, nil, errors.Join(ErrCaptureInvalid, err)
 	}
 	return report, append(body, '\n'), nil
+}
+
+func sumDiagnosticCounts(counts map[string]int) int {
+	total := 0
+	for _, count := range counts {
+		if count < 0 {
+			return -1
+		}
+		total += count
+	}
+	return total
+}
+
+func memoryToolRouteFailureTaxonomySHA256() string {
+	body, err := json.Marshal(usermemory.HybridMemoryToolRouteFailureCategories())
+	if err != nil {
+		return ""
+	}
+	digest := sha256.Sum256(body)
+	return hex.EncodeToString(digest[:])
 }

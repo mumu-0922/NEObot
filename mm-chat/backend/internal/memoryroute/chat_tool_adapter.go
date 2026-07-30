@@ -62,14 +62,23 @@ func (adapter *ChatToolAdapter) RouteHybridMemory(
 		Tools:      []chat.ToolDefinition{SearchMemoryToolDefinition()},
 		ToolChoice: chat.ProviderToolChoiceAuto,
 	})
-	if err != nil || ctx.Err() != nil || roundEvents == nil {
-		return usermemory.HybridMemoryToolRouteResult{}, errors.New("Memory Tool route Provider failed")
+	if ctx.Err() != nil {
+		return usermemory.HybridMemoryToolRouteResult{}, routeContextError(ctx)
+	}
+	if err != nil {
+		return usermemory.HybridMemoryToolRouteResult{}, routeProviderError(err)
+	}
+	if roundEvents == nil {
+		return usermemory.HybridMemoryToolRouteResult{},
+			usermemory.NewHybridMemoryToolRouteError(
+				usermemory.HybridMemoryToolRouteFailureNilStream,
+			)
 	}
 	calls := make([]chat.ProviderToolCall, 0, 1)
 	outputTokenUpperBound := 32
 	for event := range roundEvents {
 		if event.Error != nil {
-			return usermemory.HybridMemoryToolRouteResult{}, errors.New("Memory Tool route Provider failed")
+			return usermemory.HybridMemoryToolRouteResult{}, routeProviderError(event.Error)
 		}
 		switch event.Type {
 		case chat.ProviderEventDelta:
@@ -79,7 +88,16 @@ func (adapter *ChatToolAdapter) RouteHybridMemory(
 		case chat.ProviderEventToolCallDelta, chat.ProviderEventRoundCompleted:
 		case chat.ProviderEventToolCallCompleted:
 			if event.ToolCall == nil {
-				return usermemory.HybridMemoryToolRouteResult{}, errors.New("Memory Tool route call is invalid")
+				return usermemory.HybridMemoryToolRouteResult{},
+					usermemory.NewHybridMemoryToolRouteError(
+						usermemory.HybridMemoryToolRouteFailureInvalidCall,
+					)
+			}
+			if event.ToolCall.FailureCategory != "" {
+				return usermemory.HybridMemoryToolRouteResult{},
+					usermemory.NewHybridMemoryToolRouteError(
+						usermemory.HybridMemoryToolRouteFailureRejectedCall,
+					)
 			}
 			calls = append(calls, *event.ToolCall)
 			outputTokenUpperBound += len(event.ToolCall.ID) +
@@ -89,15 +107,21 @@ func (adapter *ChatToolAdapter) RouteHybridMemory(
 				outputTokenUpperBound = event.Usage.CompletionTokens
 			}
 		default:
-			return usermemory.HybridMemoryToolRouteResult{}, errors.New("Memory Tool route Provider event is invalid")
+			return usermemory.HybridMemoryToolRouteResult{},
+				usermemory.NewHybridMemoryToolRouteError(
+					usermemory.HybridMemoryToolRouteFailureInvalidEvent,
+				)
 		}
 	}
 	if ctx.Err() != nil {
-		return usermemory.HybridMemoryToolRouteResult{}, errors.New("Memory Tool route Provider failed")
+		return usermemory.HybridMemoryToolRouteResult{}, routeContextError(ctx)
 	}
 	useMemory, err := chat.ValidateSearchMemoryOnlyFirstRound(calls)
 	if err != nil {
-		return usermemory.HybridMemoryToolRouteResult{}, errors.New("Memory Tool route call is invalid")
+		return usermemory.HybridMemoryToolRouteResult{},
+			usermemory.NewHybridMemoryToolRouteError(
+				usermemory.HybridMemoryToolRouteFailureInvalidCall,
+			)
 	}
 	return usermemory.HybridMemoryToolRouteResult{
 		UseMemory:             useMemory,
@@ -106,6 +130,35 @@ func (adapter *ChatToolAdapter) RouteHybridMemory(
 		ContractSHA256:        usermemory.HybridMemoryToolContractSHA256,
 		OutputTokenUpperBound: outputTokenUpperBound,
 	}, nil
+}
+
+func routeContextError(ctx context.Context) error {
+	category := usermemory.HybridMemoryToolRouteFailureContextCanceled
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		category = usermemory.HybridMemoryToolRouteFailureContextDeadline
+	}
+	return usermemory.NewHybridMemoryToolRouteError(category)
+}
+
+func routeProviderError(err error) error {
+	if category, ok := chat.ProviderFailureCategoryOf(err); ok {
+		if usermemory.ValidHybridMemoryToolRouteFailureCategory(string(category)) {
+			return usermemory.NewHybridMemoryToolRouteError(string(category))
+		}
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return usermemory.NewHybridMemoryToolRouteError(
+			usermemory.HybridMemoryToolRouteFailureContextDeadline,
+		)
+	}
+	if errors.Is(err, context.Canceled) {
+		return usermemory.NewHybridMemoryToolRouteError(
+			usermemory.HybridMemoryToolRouteFailureContextCanceled,
+		)
+	}
+	return usermemory.NewHybridMemoryToolRouteError(
+		usermemory.HybridMemoryToolRouteFailureEvent,
+	)
 }
 
 var _ usermemory.HybridMemoryToolRouter = (*ChatToolAdapter)(nil)

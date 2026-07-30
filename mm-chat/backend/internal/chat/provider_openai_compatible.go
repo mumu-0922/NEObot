@@ -24,11 +24,6 @@ const (
 	maxOpenAICompatibleToolArgumentsBytes   = 64 << 10
 )
 
-var (
-	errOpenAICompatibleFrame  = errors.New("openai-compatible provider stream parse failed")
-	errOpenAICompatibleStream = errors.New("openai-compatible provider stream failed")
-)
-
 type OpenAICompatibleProviderConfig struct {
 	BaseURL      string
 	APIKey       string
@@ -126,7 +121,10 @@ func (p *OpenAICompatibleProvider) StreamToolRound(
 		Temperature:    input.Temperature,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("openai-compatible provider request encode failed: %w", err)
+		return nil, newProviderFailure(
+			ProviderFailureRequestBuildFailed,
+			"openai-compatible provider request encode failed",
+		)
 	}
 
 	return p.streamChatCompletion(ctx, payload)
@@ -152,7 +150,10 @@ func (p *OpenAICompatibleProvider) streamChatCompletion(
 		if cancel != nil {
 			cancel()
 		}
-		return nil, fmt.Errorf("openai-compatible provider request build failed: %w", err)
+		return nil, newProviderFailure(
+			ProviderFailureRequestBuildFailed,
+			"openai-compatible provider request build failed",
+		)
 	}
 	req.Header.Set("Authorization", "Bearer "+p.apiKey)
 	req.Header.Set("Content-Type", "application/json")
@@ -163,7 +164,25 @@ func (p *OpenAICompatibleProvider) streamChatCompletion(
 		if cancel != nil {
 			cancel()
 		}
-		return nil, fmt.Errorf("openai-compatible provider request failed: %w", err)
+		if category, ok := ProviderFailureCategoryOf(err); ok {
+			return nil, newProviderFailure(
+				category,
+				"openai-compatible provider request failed",
+			)
+		}
+		return nil, newProviderFailure(
+			ProviderFailureTransportFailed,
+			"openai-compatible provider request failed",
+		)
+	}
+	if resp == nil || resp.Body == nil {
+		if cancel != nil {
+			cancel()
+		}
+		return nil, newProviderFailure(
+			ProviderFailureResponseInvalid,
+			"openai-compatible provider response is invalid",
+		)
 	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
@@ -172,7 +191,10 @@ func (p *OpenAICompatibleProvider) streamChatCompletion(
 		if cancel != nil {
 			cancel()
 		}
-		return nil, fmt.Errorf("openai-compatible provider returned status %d", resp.StatusCode)
+		return nil, newProviderFailure(
+			providerHTTPFailureCategory(resp.StatusCode),
+			fmt.Sprintf("openai-compatible provider returned status %d", resp.StatusCode),
+		)
 	}
 
 	events := make(chan ProviderEvent)
@@ -296,6 +318,7 @@ type openAICompatibleMessageToolFunction struct {
 }
 
 type openAICompatibleStreamChunk struct {
+	Error   json.RawMessage `json:"error"`
 	Choices []struct {
 		Index int `json:"index"`
 		Delta struct {
@@ -650,12 +673,18 @@ func streamOpenAICompatibleEvents(
 	}
 
 	if err := scanner.Err(); err != nil && ctx.Err() == nil {
-		sendProviderEvent(ctx, events, ProviderEvent{Error: errOpenAICompatibleStream})
+		sendProviderEvent(ctx, events, ProviderEvent{Error: newProviderFailure(
+			ProviderFailureStreamReadFailed,
+			"openai-compatible provider stream read failed",
+		)})
 		return
 	}
 
 	if ctx.Err() == nil && !completed {
-		sendProviderEvent(ctx, events, ProviderEvent{Error: errOpenAICompatibleStream})
+		sendProviderEvent(ctx, events, ProviderEvent{Error: newProviderFailure(
+			ProviderFailureStreamIncomplete,
+			"openai-compatible provider stream ended before completion",
+		)})
 	}
 }
 
@@ -678,7 +707,17 @@ func dispatchOpenAICompatibleData(
 
 	var chunk openAICompatibleStreamChunk
 	if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-		sendProviderEvent(ctx, events, ProviderEvent{Error: errOpenAICompatibleFrame})
+		sendProviderEvent(ctx, events, ProviderEvent{Error: newProviderFailure(
+			ProviderFailureStreamParseFailed,
+			"openai-compatible provider stream parse failed",
+		)})
+		return false, false
+	}
+	if len(chunk.Error) > 0 && string(chunk.Error) != "null" {
+		sendProviderEvent(ctx, events, ProviderEvent{Error: newProviderFailure(
+			ProviderFailureStreamRemoteError,
+			"openai-compatible provider stream returned an error",
+		)})
 		return false, false
 	}
 

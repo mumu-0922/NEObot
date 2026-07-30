@@ -138,6 +138,18 @@ func captureCandidateWithCalibration(
 	}
 	hardCutoff := latency >= 2000 || summary.ResultCode == "HARD_CUTOFF" ||
 		summary.FallbackCode == "HARD_CUTOFF"
+	routeFailureCategory := transient.memoryToolRouteFailureCategory
+	if !transient.memoryToolRouteReady &&
+		transient.memoryToolRouteInputTokenUpperBound > 0 &&
+		routeFailureCategory == "" {
+		if hardCutoff {
+			routeFailureCategory =
+				usermemory.HybridMemoryToolRouteFailureContextDeadline
+		} else {
+			routeFailureCategory =
+				usermemory.HybridMemoryToolRouteFailureUnclassified
+		}
+	}
 	observed := memoryeval.CaseObservation{
 		CaseID: input.CaseID, CandidateMemoryIDs: opaqueCandidate,
 		FinalMemoryIDs:     opaqueFinal,
@@ -158,6 +170,7 @@ func captureCandidateWithCalibration(
 		CloudJudgeInputTokenUpperBound:       transient.cloudJudgeInputTokenUpperBound,
 		MemoryToolRouteReady:                 transient.memoryToolRouteReady,
 		MemoryToolRouteUsed:                  transient.memoryToolRouteUsed,
+		MemoryToolRouteFailureCategory:       routeFailureCategory,
 		MemoryToolRouteInputTokenUpperBound:  transient.memoryToolRouteInputTokenUpperBound,
 		MemoryToolRouteOutputTokenUpperBound: transient.memoryToolRouteOutputTokenUpperBound,
 		AbstentionCode:                       summary.FallbackCode,

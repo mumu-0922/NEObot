@@ -37,6 +37,8 @@ func TestBuildMemoryToolRouteDevelopmentReportPassesExactRoutePolicy(t *testing.
 		report.Diagnostics.RouteCompletedCaseCount != 300 ||
 		report.Diagnostics.FailedCaseCount != 0 ||
 		report.CostAuthority.ActualRequestCount != 300 ||
+		strings.Contains(string(body), "failureTaxonomy") ||
+		strings.Contains(string(body), "routeFailureCategoryCounts") ||
 		strings.Contains(string(body), "query") ||
 		strings.Contains(string(body), "memoryContent") {
 		t.Fatalf("report=%#v body=%s", report, body)
@@ -110,6 +112,98 @@ func TestBuildMemoryToolRouteDevelopmentReportRejectsUnreadyInjectedCase(t *test
 	}
 }
 
+func TestBuildMemoryToolRouteDiagnosticReportAggregatesOnlyBoundedFailures(t *testing.T) {
+	pool, err := memoryauthor.GenerateRegression()
+	if err != nil {
+		t.Fatal(err)
+	}
+	traces := passingMemoryToolRouteDevelopmentTraces(pool)
+	trace := &traces[0]
+	trace.MemoryToolRouteReady = false
+	trace.MemoryToolRouteUsed = false
+	trace.MemoryToolRouteFailureCategory =
+		usermemory.HybridMemoryToolRouteFailureRateLimited
+	trace.MemoryToolRouteOutputTokenUpperBound = 0
+	trace.AbstentionCode = "MEMORY_TOOL_ROUTE_FAILED"
+	trace.FullObservation.FinalMemoryIDs = []string{}
+	trace.FullObservation.InjectedMemoryIDs = []string{}
+	trace.FullObservation.PromptMemoryTokens = 0
+	trace.FullObservation.Fallback = "no_memory"
+	profile := memoryToolRouteDevelopmentProfile(traces)
+	profile.Profile.ReaderVersion = MemoryToolFirstRoundDiagnosticReaderVersion
+	report, body, err := BuildMemoryToolRouteDiagnosticReport(
+		pool,
+		profile,
+		memoryToolRouteTestAuthority(),
+		memoryToolRouteTestCostBasis(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.SchemaVersion != MemoryToolFirstRoundDiagnosticReportSchemaVersion ||
+		report.AdmissionMode != MemoryToolFirstRoundDiagnosticAdmissionMode ||
+		report.FailureTaxonomyVersion != MemoryToolRouteFailureTaxonomyVersion ||
+		report.FailureTaxonomySHA256 != MemoryToolRouteFailureTaxonomySHA256 ||
+		report.Diagnostics.FailedCaseCount != 1 ||
+		report.Diagnostics.RouteFailureCategoryCounts[usermemory.HybridMemoryToolRouteFailureRateLimited] != 1 ||
+		sumDiagnosticCounts(report.Diagnostics.RouteFailureCategoryCounts) != 1 ||
+		strings.Contains(string(body), "private query") ||
+		strings.Contains(string(body), "private upstream") {
+		t.Fatalf("diagnostic report=%#v body=%s", report, body)
+	}
+
+	protected := ProtectedRegression{
+		FixtureRawSHA256:  strings.Repeat("1", 64),
+		CorpusRawSHA256:   strings.Repeat("2", 64),
+		AuditRawSHA256:    strings.Repeat("3", 64),
+		ManifestRawSHA256: strings.Repeat("4", 64),
+	}
+	started := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+	manifest, _, err := BuildMemoryToolRouteDiagnosticRunManifest(
+		"run-memory-tool-route-diagnostic",
+		"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+		ProviderModeLiveSiliconFlow,
+		started,
+		started.Add(time.Minute),
+		protected,
+		strings.Repeat("5", 64),
+		report,
+		[]Artifact{{
+			Name: "memory-first-tool-round-diagnostic-development.json",
+			Body: body,
+		}},
+	)
+	if err != nil || manifest.CaptureMode != CaptureModeMemoryToolRouteDiagnostic ||
+		manifest.AdmissionMode != MemoryToolFirstRoundDiagnosticAdmissionMode {
+		t.Fatalf("diagnostic manifest=%#v err=%v", manifest, err)
+	}
+}
+
+func TestBuildMemoryToolRouteDiagnosticReportRejectsMissingFailureCategory(t *testing.T) {
+	pool, err := memoryauthor.GenerateRegression()
+	if err != nil {
+		t.Fatal(err)
+	}
+	traces := passingMemoryToolRouteDevelopmentTraces(pool)
+	trace := &traces[0]
+	trace.MemoryToolRouteReady = false
+	trace.MemoryToolRouteOutputTokenUpperBound = 0
+	trace.AbstentionCode = "MEMORY_TOOL_ROUTE_FAILED"
+	trace.FullObservation.FinalMemoryIDs = []string{}
+	trace.FullObservation.InjectedMemoryIDs = []string{}
+	trace.FullObservation.PromptMemoryTokens = 0
+	profile := memoryToolRouteDevelopmentProfile(traces)
+	profile.Profile.ReaderVersion = MemoryToolFirstRoundDiagnosticReaderVersion
+	if _, _, err := BuildMemoryToolRouteDiagnosticReport(
+		pool,
+		profile,
+		memoryToolRouteTestAuthority(),
+		memoryToolRouteTestCostBasis(),
+	); err == nil {
+		t.Fatal("diagnostic report accepted a missing failure category")
+	}
+}
+
 func TestBuildMemoryToolRouteDevelopmentProfileConfigBindsProviderAndTool(t *testing.T) {
 	protected := ProtectedRegression{
 		FixtureRawSHA256:  strings.Repeat("1", 64),
@@ -156,6 +250,50 @@ func TestBuildMemoryToolRouteDevelopmentProfileConfigBindsProviderAndTool(t *tes
 	}
 	if firstHash == secondHash {
 		t.Fatal("Memory first Tool-round adapter drift did not change configuration hash")
+	}
+}
+
+func TestBuildMemoryToolRouteDiagnosticProfileConfigBindsFailureTaxonomy(t *testing.T) {
+	protected := ProtectedRegression{
+		FixtureRawSHA256:  strings.Repeat("1", 64),
+		CorpusRawSHA256:   strings.Repeat("2", 64),
+		AuditRawSHA256:    strings.Repeat("3", 64),
+		ManifestRawSHA256: strings.Repeat("4", 64),
+	}
+	costSHA256, err := CostBasisSHA256(memoryToolRouteTestCostBasis())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := BuildMemoryToolRouteDiagnosticProfileConfig(
+		protected,
+		costSHA256,
+		ProviderModeLiveSiliconFlow,
+		memoryToolRouteTestAuthority(),
+		ProviderCostPolicyOwnerAuthorizedAbsoluteV1,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.SchemaVersion != "neo-chat.memory-regression-profile-config.v8" ||
+		config.ReaderVersion != MemoryToolFirstRoundDiagnosticReaderVersion ||
+		config.CaptureMode != CaptureModeMemoryToolRouteDiagnostic ||
+		config.MemoryToolRouteFailureTaxonomyVersion !=
+			MemoryToolRouteFailureTaxonomyVersion ||
+		config.MemoryToolRouteFailureTaxonomySHA256 !=
+			MemoryToolRouteFailureTaxonomySHA256 {
+		t.Fatalf("diagnostic config=%#v", config)
+	}
+	firstHash, err := ConfigurationSHA256(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.MemoryToolRouteFailureTaxonomyVersion = "drifted"
+	secondHash, err := ConfigurationSHA256(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstHash == secondHash {
+		t.Fatal("failure taxonomy drift did not change configuration hash")
 	}
 }
 

@@ -80,42 +80,59 @@ func TestChatToolAdapterAcceptsNoCallOrExactFirstRoundMemoryCall(t *testing.T) {
 }
 
 func TestChatToolAdapterFailsClosedOnInvalidOrFailedFirstRound(t *testing.T) {
-	tests := []routeToolRoundProvider{
-		{events: []chat.ProviderEvent{{
+	tests := []struct {
+		provider routeToolRoundProvider
+		want     string
+	}{
+		{provider: routeToolRoundProvider{events: []chat.ProviderEvent{{
+			Type: chat.ProviderEventToolCallCompleted,
+		}}}, want: usermemory.HybridMemoryToolRouteFailureInvalidCall},
+		{provider: routeToolRoundProvider{events: []chat.ProviderEvent{{
 			Type:     chat.ProviderEventToolCallCompleted,
 			ToolCall: &chat.ProviderToolCall{ID: "", Name: usermemory.HybridMemoryToolName, Arguments: `{}`},
-		}}},
-		{events: []chat.ProviderEvent{{
+		}}}, want: usermemory.HybridMemoryToolRouteFailureInvalidCall},
+		{provider: routeToolRoundProvider{events: []chat.ProviderEvent{{
 			Type:     chat.ProviderEventToolCallCompleted,
 			ToolCall: &chat.ProviderToolCall{ID: "call-1", Name: "other", Arguments: `{}`},
-		}}},
-		{events: []chat.ProviderEvent{{
+		}}}, want: usermemory.HybridMemoryToolRouteFailureInvalidCall},
+		{provider: routeToolRoundProvider{events: []chat.ProviderEvent{{
 			Type: chat.ProviderEventToolCallCompleted,
 			ToolCall: &chat.ProviderToolCall{
 				ID: "call-1", Name: " search_memory ", Arguments: `{}`,
 			},
-		}}},
-		{events: []chat.ProviderEvent{{
+		}}}, want: usermemory.HybridMemoryToolRouteFailureInvalidCall},
+		{provider: routeToolRoundProvider{events: []chat.ProviderEvent{{
 			Type:     chat.ProviderEventToolCallCompleted,
 			ToolCall: &chat.ProviderToolCall{ID: "call-1", Name: usermemory.HybridMemoryToolName, Arguments: `null`},
-		}}},
-		{events: []chat.ProviderEvent{{
+		}}}, want: usermemory.HybridMemoryToolRouteFailureInvalidCall},
+		{provider: routeToolRoundProvider{events: []chat.ProviderEvent{{
 			Type:     chat.ProviderEventToolCallCompleted,
 			ToolCall: &chat.ProviderToolCall{ID: "call-1", Name: usermemory.HybridMemoryToolName, Arguments: `{"query":"leak"}`},
-		}}},
-		{events: []chat.ProviderEvent{
+		}}}, want: usermemory.HybridMemoryToolRouteFailureInvalidCall},
+		{provider: routeToolRoundProvider{events: []chat.ProviderEvent{
 			{Type: chat.ProviderEventToolCallCompleted, ToolCall: &chat.ProviderToolCall{
 				ID: "call-1", Name: usermemory.HybridMemoryToolName, Arguments: `{}`,
 			}},
 			{Type: chat.ProviderEventToolCallCompleted, ToolCall: &chat.ProviderToolCall{
 				ID: "call-2", Name: usermemory.HybridMemoryToolName, Arguments: `{}`,
 			}},
-		}},
-		{events: []chat.ProviderEvent{{Error: errors.New("private Provider failure")}}},
-		{err: errors.New("private Provider startup failure")},
+		}}, want: usermemory.HybridMemoryToolRouteFailureInvalidCall},
+		{provider: routeToolRoundProvider{events: []chat.ProviderEvent{{
+			Type: chat.ProviderEventToolCallCompleted,
+			ToolCall: &chat.ProviderToolCall{ID: "call-1", Name: usermemory.HybridMemoryToolName,
+				Arguments: `{}`, FailureCategory: "arguments_too_large"},
+		}}}, want: usermemory.HybridMemoryToolRouteFailureRejectedCall},
+		{provider: routeToolRoundProvider{events: []chat.ProviderEvent{{Error: errors.New("private Provider failure")}}},
+			want: usermemory.HybridMemoryToolRouteFailureEvent},
+		{provider: routeToolRoundProvider{events: []chat.ProviderEvent{{Type: "unexpected"}}},
+			want: usermemory.HybridMemoryToolRouteFailureInvalidEvent},
+		{provider: routeToolRoundProvider{nilStream: true},
+			want: usermemory.HybridMemoryToolRouteFailureNilStream},
+		{provider: routeToolRoundProvider{err: errors.New("private Provider startup failure")},
+			want: usermemory.HybridMemoryToolRouteFailureEvent},
 	}
 	for index := range tests {
-		provider := &tests[index]
+		provider := &tests[index].provider
 		adapter, err := NewChatToolAdapter(provider, chat.ModelRef{
 			ProviderID: "configured", ModelID: "current-model",
 		})
@@ -125,16 +142,37 @@ func TestChatToolAdapterFailsClosedOnInvalidOrFailedFirstRound(t *testing.T) {
 		if _, err := adapter.RouteHybridMemory(
 			context.Background(),
 			usermemory.HybridMemoryToolRouteInput{Query: "query"},
-		); err == nil {
+		); err == nil || usermemory.HybridMemoryToolRouteFailureCategory(err) != tests[index].want {
 			t.Fatalf("invalid first round %d accepted", index)
 		}
 	}
 }
 
+func TestChatToolAdapterClassifiesContextDeadline(t *testing.T) {
+	provider := &routeToolRoundProvider{}
+	adapter, err := NewChatToolAdapter(provider, chat.ModelRef{
+		ProviderID: "configured", ModelID: "current-model",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 0)
+	defer cancel()
+	_, err = adapter.RouteHybridMemory(
+		ctx,
+		usermemory.HybridMemoryToolRouteInput{Query: "query"},
+	)
+	if usermemory.HybridMemoryToolRouteFailureCategory(err) !=
+		usermemory.HybridMemoryToolRouteFailureContextDeadline {
+		t.Fatalf("deadline route error = %v", err)
+	}
+}
+
 type routeToolRoundProvider struct {
-	events []chat.ProviderEvent
-	err    error
-	input  chat.ProviderRoundRequest
+	events    []chat.ProviderEvent
+	err       error
+	nilStream bool
+	input     chat.ProviderRoundRequest
 }
 
 func (provider *routeToolRoundProvider) StreamToolRound(
@@ -144,6 +182,9 @@ func (provider *routeToolRoundProvider) StreamToolRound(
 	provider.input = input
 	if provider.err != nil {
 		return nil, provider.err
+	}
+	if provider.nilStream {
+		return nil, nil
 	}
 	events := make(chan chat.ProviderEvent, len(provider.events))
 	for _, event := range provider.events {

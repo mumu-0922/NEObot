@@ -214,7 +214,8 @@ func run(
 			return err
 		}
 		artifactNames = []string{"cloud-judge-development.json", "run-manifest.json"}
-	case memorycapture.CaptureModeMemoryToolRouteDevelopment:
+	case memorycapture.CaptureModeMemoryToolRouteDevelopment,
+		memorycapture.CaptureModeMemoryToolRouteDiagnostic:
 		memoryToolRouteAuthority, err = buildMemoryToolRouteAuthority(options)
 		if err != nil {
 			return err
@@ -232,14 +233,33 @@ func run(
 		); err != nil {
 			return err
 		}
-		memoryToolRouteConfig, err =
-			memorycapture.BuildMemoryToolRouteDevelopmentProfileConfig(
-				protected,
-				costHash,
-				options.providerMode,
-				memoryToolRouteAuthority,
-				cost.ProviderCostPolicy,
-			)
+		if options.captureMode == memorycapture.CaptureModeMemoryToolRouteDiagnostic {
+			memoryToolRouteConfig, err =
+				memorycapture.BuildMemoryToolRouteDiagnosticProfileConfig(
+					protected,
+					costHash,
+					options.providerMode,
+					memoryToolRouteAuthority,
+					cost.ProviderCostPolicy,
+				)
+			artifactNames = []string{
+				"memory-first-tool-round-diagnostic-development.json",
+				"run-manifest.json",
+			}
+		} else {
+			memoryToolRouteConfig, err =
+				memorycapture.BuildMemoryToolRouteDevelopmentProfileConfig(
+					protected,
+					costHash,
+					options.providerMode,
+					memoryToolRouteAuthority,
+					cost.ProviderCostPolicy,
+				)
+			artifactNames = []string{
+				"memory-first-tool-round-development.json",
+				"run-manifest.json",
+			}
+		}
 		if err != nil {
 			return err
 		}
@@ -248,7 +268,6 @@ func run(
 		if err != nil {
 			return err
 		}
-		artifactNames = []string{"memory-first-tool-round-development.json", "run-manifest.json"}
 	case memorycapture.CaptureModeFrozenValidation:
 		validationConfig, err = memorycapture.BuildFrozenValidationProfileConfig(
 			protected,
@@ -304,7 +323,8 @@ func run(
 			cloudJudgeConfig, relevanceConfigurationHash, providers, adminDB, runtimeDB,
 		)
 	}
-	if options.captureMode == memorycapture.CaptureModeMemoryToolRouteDevelopment {
+	if options.captureMode == memorycapture.CaptureModeMemoryToolRouteDevelopment ||
+		options.captureMode == memorycapture.CaptureModeMemoryToolRouteDiagnostic {
 		return runMemoryToolRouteDevelopment(
 			ctx, stdout, options, startedAt, protected, cost, costHash,
 			memoryToolRouteConfig, memoryToolRouteAuthority,
@@ -761,30 +781,34 @@ func runMemoryToolRouteDevelopment(
 	); err != nil {
 		return err
 	}
-	captured, err := memorycapture.CaptureMemoryToolRouteDevelopment(
-		ctx,
-		adminDB,
-		runtimeDB,
-		options.runID,
-		protected.Pool,
-		index,
-		seed,
-		providers.hybrid,
-		providers.router,
-		authority.ModelID,
-		config.ProfileID,
-		configurationHash,
-		cost.Candidate,
-	)
+	var captured memorycapture.CapturedProfile
+	if options.captureMode == memorycapture.CaptureModeMemoryToolRouteDiagnostic {
+		captured, err = memorycapture.CaptureMemoryToolRouteDiagnostic(
+			ctx, adminDB, runtimeDB, options.runID, protected.Pool, index, seed,
+			providers.hybrid, providers.router, authority.ModelID, config.ProfileID,
+			configurationHash, cost.Candidate,
+		)
+	} else {
+		captured, err = memorycapture.CaptureMemoryToolRouteDevelopment(
+			ctx, adminDB, runtimeDB, options.runID, protected.Pool, index, seed,
+			providers.hybrid, providers.router, authority.ModelID, config.ProfileID,
+			configurationHash, cost.Candidate,
+		)
+	}
 	if err != nil {
 		return err
 	}
-	report, reportBody, err := memorycapture.BuildMemoryToolRouteDevelopmentReport(
-		protected.Pool,
-		captured,
-		authority,
-		cost,
-	)
+	var report memorycapture.MemoryToolRouteDevelopmentReport
+	var reportBody []byte
+	if options.captureMode == memorycapture.CaptureModeMemoryToolRouteDiagnostic {
+		report, reportBody, err = memorycapture.BuildMemoryToolRouteDiagnosticReport(
+			protected.Pool, captured, authority, cost,
+		)
+	} else {
+		report, reportBody, err = memorycapture.BuildMemoryToolRouteDevelopmentReport(
+			protected.Pool, captured, authority, cost,
+		)
+	}
 	if err != nil {
 		return err
 	}
@@ -798,21 +822,23 @@ func runMemoryToolRouteDevelopment(
 	if err != nil {
 		return errors.New("create Memory Tool-route capture ID failed")
 	}
-	artifacts := []memorycapture.Artifact{{
-		Name: "memory-first-tool-round-development.json",
-		Body: reportBody,
-	}}
-	_, manifestBody, err := memorycapture.BuildMemoryToolRouteDevelopmentRunManifest(
-		options.runID,
-		captureID,
-		options.providerMode,
-		startedAt,
-		time.Now().UTC(),
-		protected,
-		costHash,
-		report,
-		artifacts,
-	)
+	artifactName := "memory-first-tool-round-development.json"
+	if options.captureMode == memorycapture.CaptureModeMemoryToolRouteDiagnostic {
+		artifactName = "memory-first-tool-round-diagnostic-development.json"
+	}
+	artifacts := []memorycapture.Artifact{{Name: artifactName, Body: reportBody}}
+	var manifestBody []byte
+	if options.captureMode == memorycapture.CaptureModeMemoryToolRouteDiagnostic {
+		_, manifestBody, err = memorycapture.BuildMemoryToolRouteDiagnosticRunManifest(
+			options.runID, captureID, options.providerMode, startedAt, time.Now().UTC(),
+			protected, costHash, report, artifacts,
+		)
+	} else {
+		_, manifestBody, err = memorycapture.BuildMemoryToolRouteDevelopmentRunManifest(
+			options.runID, captureID, options.providerMode, startedAt, time.Now().UTC(),
+			protected, costHash, report, artifacts,
+		)
+	}
 	if err != nil {
 		return err
 	}
@@ -846,6 +872,12 @@ func newMemoryToolRouteCommandSummary(
 	captureID string,
 	report memorycapture.MemoryToolRouteDevelopmentReport,
 ) commandSummary {
+	captureMode := options.captureMode
+	if captureMode == "" {
+		captureMode = memorycapture.CaptureModeMemoryToolRouteDevelopment
+	}
+	policySelected := report.Passed &&
+		captureMode == memorycapture.CaptureModeMemoryToolRouteDevelopment
 	return commandSummary{
 		SchemaVersion:     "neo-chat.memory-regression-native-summary.v4",
 		RunID:             options.runID,
@@ -854,10 +886,10 @@ func newMemoryToolRouteCommandSummary(
 		AdmissionMode:     report.AdmissionMode,
 		PromotionEligible: false,
 		ProviderMode:      options.providerMode,
-		CaptureMode:       memorycapture.CaptureModeMemoryToolRouteDevelopment,
+		CaptureMode:       captureMode,
 		Split:             report.Split,
 		CandidatePassed:   report.Passed,
-		PolicySelected:    report.Passed,
+		PolicySelected:    policySelected,
 		OutputDirectory:   filepath.Clean(options.outputDir),
 	}
 }
@@ -980,7 +1012,8 @@ func parseCommand(args []string) (commandOptions, error) {
 		"capture-mode",
 		memorycapture.CaptureModeFullRegression,
 		"full_regression, development_calibration, development_cloud_judge, "+
-			"development_memory_tool_route, or frozen_validation",
+			"development_memory_tool_route, development_memory_tool_route_diagnostic, "+
+			"or frozen_validation",
 	)
 	flags.StringVar(&options.runID, "run-id", "", "ephemeral run identifier")
 	flags.StringVar(&options.credentialPath, "credential-file", "", "mode-0600 live credential file")
@@ -1064,12 +1097,14 @@ func parseCommand(args []string) (commandOptions, error) {
 	case memorycapture.CaptureModeCalibration,
 		memorycapture.CaptureModeCloudJudgeDevelopment,
 		memorycapture.CaptureModeMemoryToolRouteDevelopment,
+		memorycapture.CaptureModeMemoryToolRouteDiagnostic,
 		memorycapture.CaptureModeFrozenValidation:
 		if options.captureMode == memorycapture.CaptureModeCloudJudgeDevelopment &&
 			options.judgeModelID == "" {
 			return commandOptions{}, usageError()
 		}
-		if options.captureMode == memorycapture.CaptureModeMemoryToolRouteDevelopment {
+		if options.captureMode == memorycapture.CaptureModeMemoryToolRouteDevelopment ||
+			options.captureMode == memorycapture.CaptureModeMemoryToolRouteDiagnostic {
 			if options.routeProviderID == "" || options.routeProviderType == "" ||
 				options.routeBaseURL == "" || options.routeModelID == "" {
 				return commandOptions{}, errors.New("Memory Tool-route capture requires exact Provider ID/type/base URL/model")
@@ -1081,7 +1116,9 @@ func parseCommand(args []string) (commandOptions, error) {
 		} else if options.routeCredentialPath != "" || options.routeProviderID != "" ||
 			options.routeProviderType != "" || options.routeBaseURL != "" ||
 			options.routeModelID != "" {
-			return commandOptions{}, errors.New("Memory Tool-route inputs require development_memory_tool_route mode")
+			return commandOptions{}, errors.New(
+				"Memory Tool-route inputs require a Development Memory Tool-route mode",
+			)
 		}
 	default:
 		return commandOptions{}, usageError()
@@ -1095,6 +1132,7 @@ func usageError() error {
 			"-cost-basis FILE -provider-mode fake_protocol|live_siliconflow " +
 			"-capture-mode full_regression|development_calibration|" +
 			"development_cloud_judge|development_memory_tool_route|" +
+			"development_memory_tool_route_diagnostic|" +
 			"frozen_validation -run-id ID [-credential-file FILE] " +
 			"[-cloud-judge-model MODEL] " +
 			"[-memory-tool-route-credential-file FILE " +
@@ -1112,7 +1150,8 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 		if options.captureMode == memorycapture.CaptureModeCloudJudgeDevelopment {
 			bundle.judge = memorycapture.NewFakeProtocolCandidateJudge(options.judgeModelID)
 		}
-		if options.captureMode == memorycapture.CaptureModeMemoryToolRouteDevelopment {
+		if options.captureMode == memorycapture.CaptureModeMemoryToolRouteDevelopment ||
+			options.captureMode == memorycapture.CaptureModeMemoryToolRouteDiagnostic {
 			toolProvider := memorycapture.NewFakeProtocolMemoryToolRoundProvider(
 				options.routeModelID,
 			)
@@ -1172,7 +1211,8 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 		}
 		bundle.judge = judge
 	}
-	if options.captureMode == memorycapture.CaptureModeMemoryToolRouteDevelopment {
+	if options.captureMode == memorycapture.CaptureModeMemoryToolRouteDevelopment ||
+		options.captureMode == memorycapture.CaptureModeMemoryToolRouteDiagnostic {
 		routeCredential, credentialErr := readRegularBoundedFile(
 			options.routeCredentialPath,
 			maximumCredentialSize,

@@ -94,6 +94,26 @@ func BuildMemoryToolRouteDevelopmentProfileConfig(
 	return candidate, err
 }
 
+func BuildMemoryToolRouteDiagnosticProfileConfig(
+	protected ProtectedRegression,
+	costBasisSHA256 string,
+	providerMode string,
+	authority MemoryToolRouteProfileAuthority,
+	providerCostPolicy string,
+) (ProfileConfig, error) {
+	_, candidate, err := buildProfileConfigs(
+		protected,
+		costBasisSHA256,
+		providerMode,
+		CaptureModeMemoryToolRouteDiagnostic,
+		DevelopmentCalibrationSplit,
+		usermemory.HybridShadowMemoryFirstToolRoundCalibrationPolicy(authority.ModelID),
+		providerCostPolicy,
+		&authority,
+	)
+	return candidate, err
+}
+
 func BuildFrozenValidationProfileConfig(
 	protected ProtectedRegression,
 	costBasisSHA256 string,
@@ -146,9 +166,19 @@ func buildProfileConfigs(
 		default:
 			return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
 		}
-	} else if captureMode == CaptureModeMemoryToolRouteDevelopment {
-		readerVersion = MemoryToolFirstRoundReaderVersion
-		profileSchemaVersion = "neo-chat.memory-regression-profile-config.v7"
+	} else if captureMode == CaptureModeMemoryToolRouteDevelopment ||
+		captureMode == CaptureModeMemoryToolRouteDiagnostic {
+		if captureMode == CaptureModeMemoryToolRouteDiagnostic {
+			if memoryToolRouteFailureTaxonomySHA256() !=
+				MemoryToolRouteFailureTaxonomySHA256 {
+				return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
+			}
+			readerVersion = MemoryToolFirstRoundDiagnosticReaderVersion
+			profileSchemaVersion = "neo-chat.memory-regression-profile-config.v8"
+		} else {
+			readerVersion = MemoryToolFirstRoundReaderVersion
+			profileSchemaVersion = "neo-chat.memory-regression-profile-config.v7"
+		}
 		if providerCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
 			memoryToolRouteAuthority == nil ||
 			memoryToolRouteAuthority.ProviderID == "" ||
@@ -181,6 +211,12 @@ func buildProfileConfigs(
 		FixtureMapping:    fixtureMappingVersion,
 		CaptureMode:       captureMode,
 		EvaluationSplit:   evaluationSplit,
+	}
+	if captureMode == CaptureModeMemoryToolRouteDiagnostic {
+		common.MemoryToolRouteFailureTaxonomyVersion =
+			MemoryToolRouteFailureTaxonomyVersion
+		common.MemoryToolRouteFailureTaxonomySHA256 =
+			MemoryToolRouteFailureTaxonomySHA256
 	}
 	if captureMode == CaptureModeCalibration {
 		common.CalibrationPlan = developmentCalibrationPlan()
@@ -443,6 +479,43 @@ func CaptureMemoryToolRouteDevelopment(
 		nil,
 		router,
 	)
+}
+
+func CaptureMemoryToolRouteDiagnostic(
+	ctx context.Context,
+	seedDB *sql.DB,
+	runtimeDB *sql.DB,
+	runID string,
+	fullPool memoryauthor.RegressionPool,
+	index FixtureIndex,
+	seed SeedResult,
+	provider usermemory.HybridShadowProvider,
+	router usermemory.HybridMemoryToolRouter,
+	routerModelID string,
+	profileID string,
+	configurationSHA256 string,
+	cost memoryeval.ProviderCosts,
+) (CapturedProfile, error) {
+	captured, err := CaptureMemoryToolRouteDevelopment(
+		ctx,
+		seedDB,
+		runtimeDB,
+		runID,
+		fullPool,
+		index,
+		seed,
+		provider,
+		router,
+		routerModelID,
+		profileID,
+		configurationSHA256,
+		cost,
+	)
+	if err != nil {
+		return CapturedProfile{}, err
+	}
+	captured.Profile.ReaderVersion = MemoryToolFirstRoundDiagnosticReaderVersion
+	return captured, nil
 }
 
 func CaptureFrozenValidation(

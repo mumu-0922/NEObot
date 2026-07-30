@@ -63,6 +63,17 @@ func TestParseCommandSeparatesFakeAndLiveCredentialBoundaries(t *testing.T) {
 		options.routeCredentialPath != "" {
 		t.Fatalf("parse fake Memory Tool-route command = %#v/%v", options, err)
 	}
+	diagnosticRoute := append([]string{}, route...)
+	for index := range diagnosticRoute {
+		if diagnosticRoute[index] == memorycapture.CaptureModeMemoryToolRouteDevelopment {
+			diagnosticRoute[index] = memorycapture.CaptureModeMemoryToolRouteDiagnostic
+			break
+		}
+	}
+	options, err = parseCommand(diagnosticRoute)
+	if err != nil || options.captureMode != memorycapture.CaptureModeMemoryToolRouteDiagnostic {
+		t.Fatalf("parse diagnostic Memory Tool-route command = %#v/%v", options, err)
+	}
 	liveRoute := append(append([]string{}, route...),
 		"-provider-mode", memorycapture.ProviderModeLiveSiliconFlow,
 		"-credential-file", "/siliconflow-secret",
@@ -285,6 +296,26 @@ func TestNewMemoryToolRouteCommandSummaryUsesFirstRoundReportAuthority(t *testin
 		summary.Split != memorycapture.DevelopmentCalibrationSplit ||
 		summary.OutputDirectory != filepath.Clean(options.outputDir) {
 		t.Fatalf("first-round summary authority = %#v", summary)
+	}
+}
+
+func TestNewMemoryToolRouteDiagnosticSummaryCannotSelectPolicy(t *testing.T) {
+	options := commandOptions{
+		runID:        "run-diagnostic",
+		providerMode: memorycapture.ProviderModeFakeProtocol,
+		captureMode:  memorycapture.CaptureModeMemoryToolRouteDiagnostic,
+		outputDir:    "/private/diagnostic",
+	}
+	report := memorycapture.MemoryToolRouteDevelopmentReport{
+		CorpusClass:   memoryeval.RegressionCorpusClass,
+		AdmissionMode: memorycapture.MemoryToolFirstRoundDiagnosticAdmissionMode,
+		Split:         memorycapture.DevelopmentCalibrationSplit,
+		Passed:        true,
+	}
+	summary := newMemoryToolRouteCommandSummary(options, "capture-diagnostic", report)
+	if !summary.CandidatePassed || summary.PolicySelected ||
+		summary.CaptureMode != memorycapture.CaptureModeMemoryToolRouteDiagnostic {
+		t.Fatalf("diagnostic summary gained policy authority: %#v", summary)
 	}
 }
 

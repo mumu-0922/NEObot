@@ -321,12 +321,75 @@ func BuildMemoryToolRouteDevelopmentRunManifest(
 	report MemoryToolRouteDevelopmentReport,
 	artifacts []Artifact,
 ) (RelevanceRunManifest, []byte, error) {
+	return buildMemoryToolRouteRunManifest(
+		runID,
+		captureID,
+		providerMode,
+		startedAt,
+		completedAt,
+		protected,
+		costBasisSHA256,
+		report,
+		artifacts,
+		MemoryToolFirstRoundDevelopmentReportSchemaVersion,
+		MemoryToolFirstRoundDevelopmentAdmissionMode,
+		CaptureModeMemoryToolRouteDevelopment,
+		"memory-first-tool-round-development.json",
+		"",
+	)
+}
+
+func BuildMemoryToolRouteDiagnosticRunManifest(
+	runID string,
+	captureID string,
+	providerMode string,
+	startedAt time.Time,
+	completedAt time.Time,
+	protected ProtectedRegression,
+	costBasisSHA256 string,
+	report MemoryToolRouteDevelopmentReport,
+	artifacts []Artifact,
+) (RelevanceRunManifest, []byte, error) {
+	return buildMemoryToolRouteRunManifest(
+		runID,
+		captureID,
+		providerMode,
+		startedAt,
+		completedAt,
+		protected,
+		costBasisSHA256,
+		report,
+		artifacts,
+		MemoryToolFirstRoundDiagnosticReportSchemaVersion,
+		MemoryToolFirstRoundDiagnosticAdmissionMode,
+		CaptureModeMemoryToolRouteDiagnostic,
+		"memory-first-tool-round-diagnostic-development.json",
+		MemoryToolRouteFailureTaxonomyVersion,
+	)
+}
+
+func buildMemoryToolRouteRunManifest(
+	runID string,
+	captureID string,
+	providerMode string,
+	startedAt time.Time,
+	completedAt time.Time,
+	protected ProtectedRegression,
+	costBasisSHA256 string,
+	report MemoryToolRouteDevelopmentReport,
+	artifacts []Artifact,
+	reportSchemaVersion string,
+	admissionMode string,
+	captureMode string,
+	artifactName string,
+	failureTaxonomyVersion string,
+) (RelevanceRunManifest, []byte, error) {
 	if !runIDPattern.MatchString(runID) || captureID == "" ||
 		startedAt.IsZero() || completedAt.Before(startedAt) ||
 		len(costBasisSHA256) != 64 || len(artifacts) != 1 ||
-		report.SchemaVersion != MemoryToolFirstRoundDevelopmentReportSchemaVersion ||
+		report.SchemaVersion != reportSchemaVersion ||
 		report.CorpusClass != memoryeval.RegressionCorpusClass ||
-		report.AdmissionMode != MemoryToolFirstRoundDevelopmentAdmissionMode ||
+		report.AdmissionMode != admissionMode ||
 		report.PromotionEligible || report.Split != DevelopmentCalibrationSplit ||
 		report.CaseCount != 300 ||
 		report.PolicyID != usermemory.HybridRelevanceMemoryFirstToolRoundPolicyID ||
@@ -340,10 +403,16 @@ func BuildMemoryToolRouteDevelopmentRunManifest(
 		report.ToolAdapterVersion != chat.MemoryToolFirstRoundAdapterVersion ||
 		report.ToolDecodingProfile != "" || report.ToolMaximumOutputTokens != 0 ||
 		report.ToolTemperature != 0 || report.ToolDisableThinking ||
+		report.FailureTaxonomyVersion != failureTaxonomyVersion ||
+		(failureTaxonomyVersion != "" &&
+			report.FailureTaxonomySHA256 != MemoryToolRouteFailureTaxonomySHA256) ||
+		(failureTaxonomyVersion == "" && report.FailureTaxonomySHA256 != "") ||
 		report.SelectionAlgorithm != memoryToolFirstRoundSelectionAlgorithm ||
 		report.Passed != report.Evaluation.Passed ||
 		len(report.ConfigurationSHA256) != 64 ||
 		report.Diagnostics.FailureCodeCounts == nil ||
+		(failureTaxonomyVersion != "" &&
+			report.Diagnostics.RouteFailureCategoryCounts == nil) ||
 		report.Diagnostics.EmptyCandidateCaseCount < 0 ||
 		report.Diagnostics.RouteCompletedCaseCount < 0 ||
 		report.Diagnostics.RouteUsedCaseCount < 0 ||
@@ -354,6 +423,13 @@ func BuildMemoryToolRouteDevelopmentRunManifest(
 			report.Diagnostics.RouteCompletedCaseCount ||
 		report.Diagnostics.RouteCompletedCaseCount+
 			report.Diagnostics.FailedCaseCount != report.CaseCount ||
+		(failureTaxonomyVersion != "" &&
+			sumDiagnosticCounts(report.Diagnostics.RouteFailureCategoryCounts) !=
+				report.Diagnostics.FailedCaseCount) ||
+		(failureTaxonomyVersion != "" &&
+			!validMemoryToolRouteFailureCounts(
+				report.Diagnostics.RouteFailureCategoryCounts,
+			)) ||
 		report.CostAuthority.AuthorizedRequestCount != 300 ||
 		report.CostAuthority.ActualRequestCount < 0 ||
 		report.CostAuthority.ActualRequestCount >
@@ -378,16 +454,16 @@ func BuildMemoryToolRouteDevelopmentRunManifest(
 		return RelevanceRunManifest{}, nil, ErrCaptureInvalid
 	}
 	artifactManifest, err := buildRunArtifactManifest(artifacts)
-	if err != nil || artifactManifest[0].Name != "memory-first-tool-round-development.json" {
+	if err != nil || artifactManifest[0].Name != artifactName {
 		return RelevanceRunManifest{}, nil, ErrCaptureInvalid
 	}
 	manifest := RelevanceRunManifest{
 		SchemaVersion: RelevanceRunManifestSchemaVersion,
 		RunID:         runID, CaptureID: captureID,
 		CorpusClass:         memoryeval.RegressionCorpusClass,
-		AdmissionMode:       MemoryToolFirstRoundDevelopmentAdmissionMode,
+		AdmissionMode:       admissionMode,
 		PromotionEligible:   false,
-		CaptureMode:         CaptureModeMemoryToolRouteDevelopment,
+		CaptureMode:         captureMode,
 		Split:               DevelopmentCalibrationSplit,
 		ProviderMode:        providerMode,
 		ProfileID:           report.ProfileID,
@@ -414,6 +490,16 @@ func BuildMemoryToolRouteDevelopmentRunManifest(
 		)
 	}
 	return manifest, append(body, '\n'), nil
+}
+
+func validMemoryToolRouteFailureCounts(counts map[string]int) bool {
+	for category, count := range counts {
+		if count < 0 ||
+			!usermemory.ValidHybridMemoryToolRouteFailureCategory(category) {
+			return false
+		}
+	}
+	return true
 }
 
 func validCloudJudgeDevelopmentCostPolicy(report CloudJudgeDevelopmentReport) bool {

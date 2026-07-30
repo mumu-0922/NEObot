@@ -8,7 +8,7 @@ usage: run-memory-regression.sh \
   --output-dir <new-run-parent> \
   [--regression-root <protected-root>] \
   [--provider-mode fake_protocol|live_siliconflow] \
-  [--capture-mode full_regression|development_calibration|development_cloud_judge|development_memory_tool_route|frozen_validation] \
+  [--capture-mode full_regression|development_calibration|development_cloud_judge|development_memory_tool_route|development_memory_tool_route_diagnostic|frozen_validation] \
   [--cloud-judge-model <fixed-model-id>] \
   [--credential-file <mode-0600-file>] \
   [--live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA] \
@@ -189,7 +189,7 @@ case "${capture_mode}" in
       exit 2
     fi
     ;;
-  development_memory_tool_route)
+  development_memory_tool_route | development_memory_tool_route_diagnostic)
     if [[ -z "${memory_tool_route_provider_id}" || \
       -z "${memory_tool_route_provider_type}" || \
       -z "${memory_tool_route_base_url}" || \
@@ -229,7 +229,8 @@ case "${capture_mode}" in
 esac
 
 memory_tool_route_base_url_sha256=""
-if [[ "${capture_mode}" == "development_memory_tool_route" ]]; then
+if [[ "${capture_mode}" == "development_memory_tool_route" ||
+  "${capture_mode}" == "development_memory_tool_route_diagnostic" ]]; then
   memory_tool_route_base_url="$(python3 - "${memory_tool_route_base_url}" <<'PY'
 import sys
 from urllib.parse import urlsplit
@@ -291,7 +292,8 @@ if [[ "${provider_mode}" == "live_siliconflow" ]]; then
     echo "Memory regression: credential file mode must be 0600" >&2
     exit 1
   fi
-  if [[ "${capture_mode}" == "development_memory_tool_route" ]]; then
+  if [[ "${capture_mode}" == "development_memory_tool_route" ||
+    "${capture_mode}" == "development_memory_tool_route_diagnostic" ]]; then
     if [[ ! -f "${memory_tool_route_credential_source}" || \
       -L "${memory_tool_route_credential_source}" ]]; then
       echo "Memory regression: Memory Tool-route credential must be a regular non-symlink file" >&2
@@ -416,7 +418,8 @@ else
 fi
 chmod 600 "${credential_copy}"
 if [[ "${provider_mode}" == "live_siliconflow" && \
-  "${capture_mode}" == "development_memory_tool_route" ]]; then
+  ("${capture_mode}" == "development_memory_tool_route" ||
+  "${capture_mode}" == "development_memory_tool_route_diagnostic") ]]; then
   cp --no-preserve=mode,ownership,timestamps \
     "${memory_tool_route_credential_source}" \
     "${memory_tool_route_credential_copy}"
@@ -428,7 +431,8 @@ chmod 600 "${memory_tool_route_credential_copy}"
 db_password="$(openssl rand -hex 32)"
 memory_tool_route_credential_target=""
 if [[ "${provider_mode}" == "live_siliconflow" && \
-  "${capture_mode}" == "development_memory_tool_route" ]]; then
+  ("${capture_mode}" == "development_memory_tool_route" ||
+  "${capture_mode}" == "development_memory_tool_route_diagnostic") ]]; then
   memory_tool_route_credential_target="/run/mm-chat-memory-regression/memory-tool-route-provider.key"
 fi
 cat >"${env_file}" <<EOF
@@ -605,6 +609,8 @@ elif capture_mode == "development_cloud_judge":
     expected = {"cloud-judge-development.json", "run-manifest.json"}
 elif capture_mode == "development_memory_tool_route":
     expected = {"memory-first-tool-round-development.json", "run-manifest.json"}
+elif capture_mode == "development_memory_tool_route_diagnostic":
+    expected = {"memory-first-tool-round-diagnostic-development.json", "run-manifest.json"}
 elif capture_mode == "frozen_validation":
     expected = {"relevance-validation.json", "run-manifest.json"}
 else:
@@ -631,6 +637,7 @@ expected_admission = {
     "development_calibration": "development_calibration_only",
     "development_cloud_judge": "development_cloud_judge_only",
     "development_memory_tool_route": "development_main_model_first_tool_round_only",
+    "development_memory_tool_route_diagnostic": "development_main_model_first_tool_round_failure_diagnostic_only",
     "frozen_validation": "frozen_validation_only",
 }[capture_mode]
 if manifest.get("admissionMode") != expected_admission or manifest.get("promotionEligible") is not False:
@@ -650,6 +657,7 @@ else:
         "development_calibration",
         "development_cloud_judge",
         "development_memory_tool_route",
+        "development_memory_tool_route_diagnostic",
     } else "validation"
     if manifest.get("captureMode") != capture_mode or manifest.get("split") != expected_split:
         raise SystemExit("relevance run split authority drift")
@@ -778,9 +786,20 @@ elif capture_mode == "development_cloud_judge":
         or not isinstance(evaluation.get("providerCostPassed"), bool)
     ):
         raise SystemExit("legacy cloud-judge Development gained owner budget authority")
-elif capture_mode == "development_memory_tool_route":
-    report = json.loads((output / "memory-first-tool-round-development.json").read_text(encoding="utf-8"))
-    if report.get("schemaVersion") != "neo-chat.memory-regression-relevance-calibration.v7":
+elif capture_mode in {"development_memory_tool_route", "development_memory_tool_route_diagnostic"}:
+    diagnostic = capture_mode == "development_memory_tool_route_diagnostic"
+    report_name = (
+        "memory-first-tool-round-diagnostic-development.json"
+        if diagnostic
+        else "memory-first-tool-round-development.json"
+    )
+    report = json.loads((output / report_name).read_text(encoding="utf-8"))
+    expected_schema = (
+        "neo-chat.memory-regression-relevance-calibration.v8"
+        if diagnostic
+        else "neo-chat.memory-regression-relevance-calibration.v7"
+    )
+    if report.get("schemaVersion") != expected_schema:
         raise SystemExit("invalid Memory Tool-route Development report schema")
     if report.get("split") != "development" or report.get("caseCount") != 300:
         raise SystemExit("Memory Tool-route Development split drift")
@@ -828,6 +847,22 @@ elif capture_mode == "development_memory_tool_route":
         for name in ("routeUsedCaseCount", "routeAbstainedCaseCount")
     ) != diagnostics.get("routeCompletedCaseCount"):
         raise SystemExit("Memory Tool-route Development diagnostic count drift")
+    route_failure_counts = diagnostics.get("routeFailureCategoryCounts")
+    if diagnostic:
+        if (
+            report.get("failureTaxonomyVersion") != "memory-tool-route-failure-taxonomy-v1"
+            or report.get("failureTaxonomySha256") != "66f11e91edc0cf5a6a9dbf5dd30336e58a52860adee968fb4658d6ccd70d52a0"
+            or not isinstance(route_failure_counts, dict)
+            or any(not isinstance(value, int) or value < 0 for value in route_failure_counts.values())
+            or sum(route_failure_counts.values()) != diagnostics.get("failedCaseCount")
+        ):
+            raise SystemExit("Memory Tool-route failure taxonomy drift")
+    elif (
+        "failureTaxonomyVersion" in report
+        or "failureTaxonomySha256" in report
+        or route_failure_counts is not None
+    ):
+        raise SystemExit("schema-v7 gained diagnostic fields")
     if not isinstance(authority, dict):
         raise SystemExit("Memory Tool-route Development cost authority missing")
     actual_requests = authority.get("actualRequestCount")
