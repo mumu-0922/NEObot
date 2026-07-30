@@ -243,7 +243,7 @@ func run(
 					cost.ProviderCostPolicy,
 				)
 			artifactNames = []string{
-				"memory-first-tool-round-diagnostic-development.json",
+				"memory-first-tool-round-route-diagnostic-development.json",
 				"run-manifest.json",
 			}
 		} else {
@@ -824,7 +824,7 @@ func runMemoryToolRouteDevelopment(
 	}
 	artifactName := "memory-first-tool-round-development.json"
 	if options.captureMode == memorycapture.CaptureModeMemoryToolRouteDiagnostic {
-		artifactName = "memory-first-tool-round-diagnostic-development.json"
+		artifactName = "memory-first-tool-round-route-diagnostic-development.json"
 	}
 	artifacts := []memorycapture.Artifact{{Name: artifactName, Body: reportBody}}
 	var manifestBody []byte

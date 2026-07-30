@@ -341,13 +341,13 @@ if args and args[0] == "compose":
             diagnostic = capture_mode == "development_memory_tool_route_diagnostic"
             memory_tool_route = json.dumps({
                 "schemaVersion": (
-                    "neo-chat.memory-regression-relevance-calibration.v8"
+                    "neo-chat.memory-regression-relevance-calibration.v9"
                     if diagnostic
                     else "neo-chat.memory-regression-relevance-calibration.v7"
                 ),
                 "corpusClass": "machine_reviewed_regression",
                 "admissionMode": (
-                    "development_main_model_first_tool_round_failure_diagnostic_only"
+                    "development_main_model_first_tool_round_route_failure_diagnostic_only"
                     if diagnostic
                     else "development_main_model_first_tool_round_only"
                 ),
@@ -379,6 +379,14 @@ if args and args[0] == "compose":
                     "failedCaseCount": 0,
                     "failureCodeCounts": {},
                     **({"routeFailureCategoryCounts": {}} if diagnostic else {}),
+                    **({
+                        "retrievalIncompleteCaseCount": 0,
+                        "retrievalFailureCodeCounts": (
+                            {"RELEVANCE_ADMISSION_UNAVAILABLE": "invalid"}
+                            if os.environ.get("FAKE_MALFORMED_RETRIEVAL_COUNTS") == "1"
+                            else {}
+                        ),
+                    } if diagnostic else {}),
                 },
                 "costAuthority": {
                     "unit": "cny_microunits",
@@ -394,17 +402,18 @@ if args and args[0] == "compose":
                 **({
                     "failureTaxonomyVersion": "memory-tool-route-failure-taxonomy-v1",
                     "failureTaxonomySha256": "66f11e91edc0cf5a6a9dbf5dd30336e58a52860adee968fb4658d6ccd70d52a0",
+                    "diagnosticCompleteness": "route_complete_retrieval_fail_closed_v1",
                 } if diagnostic else {}),
             }, separators=(",", ":")).encode() + b"\n"
             report_name = (
-                "memory-first-tool-round-diagnostic-development.json"
+                "memory-first-tool-round-route-diagnostic-development.json"
                 if diagnostic
                 else "memory-first-tool-round-development.json"
             )
             bodies = {report_name: memory_tool_route}
             manifest_schema = "neo-chat.memory-regression-relevance-run.v1"
             admission_mode = (
-                "development_main_model_first_tool_round_failure_diagnostic_only"
+                "development_main_model_first_tool_round_route_failure_diagnostic_only"
                 if diagnostic
                 else "development_main_model_first_tool_round_only"
             )
@@ -582,6 +591,34 @@ if [[ "$(find "${memory_tool_route_diagnostic_output}" -mindepth 2 -maxdepth 2 -
   exit 1
 fi
 assert_cleanup "${memory_tool_route_diagnostic_log}"
+
+malformed_diagnostic_output="${temp_dir}/malformed-memory-tool-route-diagnostic-output"
+malformed_diagnostic_log="${temp_dir}/malformed-memory-tool-route-diagnostic-docker.log"
+mkdir "${malformed_diagnostic_output}"
+chmod 700 "${malformed_diagnostic_output}"
+set +e
+FAKE_DOCKER_LOG="${malformed_diagnostic_log}" \
+  FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full FAKE_MALFORMED_RETRIEVAL_COUNTS=1 \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${malformed_diagnostic_output}" --provider-mode fake_protocol \
+  --capture-mode development_memory_tool_route_diagnostic \
+  --memory-tool-route-provider-id configured-deepseek \
+  --memory-tool-route-provider-type openai_compatible \
+  --memory-tool-route-base-url https://api.deepseek.example/ \
+  --memory-tool-route-model deepseek-chat \
+  >"${temp_dir}/malformed-memory-tool-route-diagnostic.stdout" \
+  2>"${temp_dir}/malformed-memory-tool-route-diagnostic.stderr"
+malformed_diagnostic_status=$?
+set -e
+if [[ ${malformed_diagnostic_status} -eq 0 || \
+  -n "$(find "${malformed_diagnostic_output}" -mindepth 1 -print -quit)" || \
+  ! -s "${temp_dir}/malformed-memory-tool-route-diagnostic.stderr" || \
+  "$(cat "${temp_dir}/malformed-memory-tool-route-diagnostic.stderr")" == *"TypeError"* ]]; then
+  echo "Memory regression protocol: malformed retrieval counts did not fail closed cleanly" >&2
+  exit 1
+fi
+assert_cleanup "${malformed_diagnostic_log}"
 
 live_memory_tool_route_output="${temp_dir}/live-memory-tool-route-output"
 live_memory_tool_route_log="${temp_dir}/live-memory-tool-route-docker.log"

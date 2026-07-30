@@ -20,10 +20,11 @@ const (
 	MemoryToolFirstRoundDevelopmentReportSchemaVersion = "neo-chat.memory-regression-relevance-calibration.v7"
 	MemoryToolFirstRoundDevelopmentAdmissionMode       = "development_main_model_first_tool_round_only"
 	memoryToolFirstRoundSelectionAlgorithm             = "first-tool-round-call_then-bge-order_top5-token-budget_v1"
-	MemoryToolFirstRoundDiagnosticReportSchemaVersion  = "neo-chat.memory-regression-relevance-calibration.v8"
-	MemoryToolFirstRoundDiagnosticAdmissionMode        = "development_main_model_first_tool_round_failure_diagnostic_only"
+	MemoryToolFirstRoundDiagnosticReportSchemaVersion  = "neo-chat.memory-regression-relevance-calibration.v9"
+	MemoryToolFirstRoundDiagnosticAdmissionMode        = "development_main_model_first_tool_round_route_failure_diagnostic_only"
 	MemoryToolRouteFailureTaxonomyVersion              = "memory-tool-route-failure-taxonomy-v1"
 	MemoryToolRouteFailureTaxonomySHA256               = "66f11e91edc0cf5a6a9dbf5dd30336e58a52860adee968fb4658d6ccd70d52a0"
+	MemoryToolRouteDiagnosticCompletenessPolicy        = "route_complete_retrieval_fail_closed_v1"
 )
 
 type memoryToolRouteReportInvalidReason string
@@ -43,6 +44,7 @@ const (
 	memoryToolRouteInvalidTraceObservation      memoryToolRouteReportInvalidReason = "trace_observation"
 	memoryToolRouteInvalidEmptyCandidateState   memoryToolRouteReportInvalidReason = "empty_candidate_state"
 	memoryToolRouteInvalidAdmissionState        memoryToolRouteReportInvalidReason = "admission_state"
+	memoryToolRouteInvalidIncompleteRetrieval   memoryToolRouteReportInvalidReason = "incomplete_retrieval_state"
 	memoryToolRouteInvalidOutputTokenAuthority  memoryToolRouteReportInvalidReason = "output_token_authority"
 	memoryToolRouteInvalidReadyFailureCategory  memoryToolRouteReportInvalidReason = "ready_failure_category"
 	memoryToolRouteInvalidAbstainedFinalState   memoryToolRouteReportInvalidReason = "abstained_final_state"
@@ -60,6 +62,8 @@ type MemoryToolRouteDevelopmentDiagnostics struct {
 	FailedCaseCount            int            `json:"failedCaseCount"`
 	FailureCodeCounts          map[string]int `json:"failureCodeCounts"`
 	RouteFailureCategoryCounts map[string]int `json:"routeFailureCategoryCounts,omitempty"`
+	RetrievalIncompleteCount   int            `json:"retrievalIncompleteCaseCount,omitempty"`
+	RetrievalFailureCodeCounts map[string]int `json:"retrievalFailureCodeCounts,omitempty"`
 }
 
 type MemoryToolRouteDevelopmentCostAuthority struct {
@@ -106,6 +110,7 @@ type MemoryToolRouteDevelopmentReport struct {
 	ToolDisableThinking     bool                                    `json:"toolDisableThinking,omitempty"`
 	FailureTaxonomyVersion  string                                  `json:"failureTaxonomyVersion,omitempty"`
 	FailureTaxonomySHA256   string                                  `json:"failureTaxonomySha256,omitempty"`
+	DiagnosticCompleteness  string                                  `json:"diagnosticCompleteness,omitempty"`
 	SelectionAlgorithm      string                                  `json:"selectionAlgorithm"`
 	Passed                  bool                                    `json:"passed"`
 	Evaluation              MemoryToolRouteDevelopmentEvaluation    `json:"evaluation"`
@@ -132,6 +137,7 @@ func BuildMemoryToolRouteDevelopmentReport(
 		MemoryToolFirstRoundDevelopmentReportSchemaVersion,
 		MemoryToolFirstRoundDevelopmentAdmissionMode,
 		"",
+		"",
 	)
 }
 
@@ -153,6 +159,7 @@ func BuildMemoryToolRouteDiagnosticReport(
 		MemoryToolFirstRoundDiagnosticReportSchemaVersion,
 		MemoryToolFirstRoundDiagnosticAdmissionMode,
 		MemoryToolRouteFailureTaxonomyVersion,
+		MemoryToolRouteDiagnosticCompletenessPolicy,
 	)
 }
 
@@ -165,6 +172,7 @@ func buildMemoryToolRouteDevelopmentReport(
 	reportSchemaVersion string,
 	admissionMode string,
 	failureTaxonomyVersion string,
+	diagnosticCompleteness string,
 ) (MemoryToolRouteDevelopmentReport, []byte, error) {
 	if profile.Profile.ID != CandidateProfileID &&
 		profile.Profile.ID != FakeCandidateProfileID {
@@ -174,6 +182,13 @@ func buildMemoryToolRouteDevelopmentReport(
 	if failureTaxonomyVersion != "" &&
 		memoryToolRouteFailureTaxonomySHA256() !=
 			MemoryToolRouteFailureTaxonomySHA256 {
+		return MemoryToolRouteDevelopmentReport{}, nil,
+			invalidMemoryToolRouteReport(memoryToolRouteInvalidFailureTaxonomy)
+	}
+	diagnosticRouteOnly := diagnosticCompleteness != ""
+	if diagnosticRouteOnly != (failureTaxonomyVersion != "") ||
+		(diagnosticRouteOnly &&
+			diagnosticCompleteness != MemoryToolRouteDiagnosticCompletenessPolicy) {
 		return MemoryToolRouteDevelopmentReport{}, nil,
 			invalidMemoryToolRouteReport(memoryToolRouteInvalidFailureTaxonomy)
 	}
@@ -253,6 +268,7 @@ func buildMemoryToolRouteDevelopmentReport(
 	}
 	if failureTaxonomyVersion != "" {
 		diagnostics.RouteFailureCategoryCounts = make(map[string]int)
+		diagnostics.RetrievalFailureCodeCounts = make(map[string]int)
 	}
 	actualRequests := 0
 	actualInputTokenUpperBound := uint64(0)
@@ -278,8 +294,28 @@ func buildMemoryToolRouteDevelopmentReport(
 					invalidMemoryToolRouteReport(memoryToolRouteInvalidEmptyCandidateState)
 			}
 		} else if !trace.AdmissionReady {
-			return MemoryToolRouteDevelopmentReport{}, nil,
-				invalidMemoryToolRouteReport(memoryToolRouteInvalidAdmissionState)
+			if !diagnosticRouteOnly {
+				return MemoryToolRouteDevelopmentReport{}, nil,
+					invalidMemoryToolRouteReport(memoryToolRouteInvalidAdmissionState)
+			}
+			if len(observed.ProviderSentMemoryIDs) != 0 ||
+				len(observed.FinalMemoryIDs) != 0 ||
+				len(observed.InjectedMemoryIDs) != 0 ||
+				observed.PromptMemoryTokens != 0 {
+				return MemoryToolRouteDevelopmentReport{}, nil,
+					invalidMemoryToolRouteReport(memoryToolRouteInvalidIncompleteRetrieval)
+			}
+			diagnostics.RetrievalIncompleteCount++
+			diagnostics.RetrievalFailureCodeCounts[memoryToolRouteRetrievalFailureCode(trace)]++
+		} else if diagnosticRouteOnly && !trace.RerankReady {
+			if len(observed.FinalMemoryIDs) != 0 ||
+				len(observed.InjectedMemoryIDs) != 0 ||
+				observed.PromptMemoryTokens != 0 {
+				return MemoryToolRouteDevelopmentReport{}, nil,
+					invalidMemoryToolRouteReport(memoryToolRouteInvalidIncompleteRetrieval)
+			}
+			diagnostics.RetrievalIncompleteCount++
+			diagnostics.RetrievalFailureCodeCounts[memoryToolRouteRetrievalFailureCode(trace)]++
 		}
 		if trace.MemoryToolRouteInputTokenUpperBound > 0 {
 			actualRequests++
@@ -313,7 +349,7 @@ func buildMemoryToolRouteDevelopmentReport(
 						invalidMemoryToolRouteReport(memoryToolRouteInvalidAbstainedFinalState)
 				}
 			}
-			if candidateCount > 0 && !trace.RerankReady {
+			if candidateCount > 0 && !trace.RerankReady && !diagnosticRouteOnly {
 				return MemoryToolRouteDevelopmentReport{}, nil,
 					invalidMemoryToolRouteReport(memoryToolRouteInvalidCompletedRerankState)
 			}
@@ -347,6 +383,12 @@ func buildMemoryToolRouteDevelopmentReport(
 			diagnostics.FailedCaseCount {
 		return MemoryToolRouteDevelopmentReport{}, nil,
 			invalidMemoryToolRouteReport(memoryToolRouteInvalidFailureCategoryTotals)
+	}
+	if diagnosticRouteOnly &&
+		sumDiagnosticCounts(diagnostics.RetrievalFailureCodeCounts) !=
+			diagnostics.RetrievalIncompleteCount {
+		return MemoryToolRouteDevelopmentReport{}, nil,
+			invalidMemoryToolRouteReport(memoryToolRouteInvalidIncompleteRetrieval)
 	}
 
 	if actualRequests > costAuthority.RequestCount ||
@@ -390,6 +432,7 @@ func buildMemoryToolRouteDevelopmentReport(
 		ToolContractSHA256:     policy.MemoryToolRouteContractSHA256,
 		ToolAdapterVersion:     chat.MemoryToolFirstRoundAdapterVersion,
 		FailureTaxonomyVersion: failureTaxonomyVersion,
+		DiagnosticCompleteness: diagnosticCompleteness,
 		FailureTaxonomySHA256: func() string {
 			if failureTaxonomyVersion == "" {
 				return ""
@@ -431,6 +474,17 @@ func sumDiagnosticCounts(counts map[string]int) int {
 		total += count
 	}
 	return total
+}
+
+func memoryToolRouteRetrievalFailureCode(trace CandidateCalibrationTrace) string {
+	code := normalizeCalibrationCode(trace.AbstentionCode)
+	if code == "NONE" {
+		code = normalizeCalibrationCode(trace.ResultCode)
+	}
+	if code == "NONE" || code == "INVALID" {
+		return "RETRIEVAL_FAILURE_UNCLASSIFIED"
+	}
+	return code
 }
 
 func invalidMemoryToolRouteReport(reason memoryToolRouteReportInvalidReason) error {

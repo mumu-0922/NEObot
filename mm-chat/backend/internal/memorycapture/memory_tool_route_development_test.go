@@ -40,6 +40,9 @@ func TestBuildMemoryToolRouteDevelopmentReportPassesExactRoutePolicy(t *testing.
 		report.CostAuthority.ActualRequestCount != 300 ||
 		strings.Contains(string(body), "failureTaxonomy") ||
 		strings.Contains(string(body), "routeFailureCategoryCounts") ||
+		strings.Contains(string(body), "retrievalIncompleteCaseCount") ||
+		strings.Contains(string(body), "retrievalFailureCodeCounts") ||
+		strings.Contains(string(body), "diagnosticCompleteness") ||
 		strings.Contains(string(body), "query") ||
 		strings.Contains(string(body), "memoryContent") {
 		t.Fatalf("report=%#v body=%s", report, body)
@@ -183,9 +186,14 @@ func TestBuildMemoryToolRouteDiagnosticReportAggregatesOnlyBoundedFailures(t *te
 		report.AdmissionMode != MemoryToolFirstRoundDiagnosticAdmissionMode ||
 		report.FailureTaxonomyVersion != MemoryToolRouteFailureTaxonomyVersion ||
 		report.FailureTaxonomySHA256 != MemoryToolRouteFailureTaxonomySHA256 ||
+		report.DiagnosticCompleteness != MemoryToolRouteDiagnosticCompletenessPolicy ||
 		report.Diagnostics.FailedCaseCount != 1 ||
 		report.Diagnostics.RouteFailureCategoryCounts[usermemory.HybridMemoryToolRouteFailureRateLimited] != 1 ||
 		sumDiagnosticCounts(report.Diagnostics.RouteFailureCategoryCounts) != 1 ||
+		report.Diagnostics.RetrievalIncompleteCount != 0 ||
+		report.Diagnostics.RetrievalFailureCodeCounts == nil ||
+		!strings.Contains(string(body), `"retrievalIncompleteCaseCount":0`) ||
+		!strings.Contains(string(body), `"retrievalFailureCodeCounts":{}`) ||
 		strings.Contains(string(body), "private query") ||
 		strings.Contains(string(body), "private upstream") {
 		t.Fatalf("diagnostic report=%#v body=%s", report, body)
@@ -208,7 +216,7 @@ func TestBuildMemoryToolRouteDiagnosticReportAggregatesOnlyBoundedFailures(t *te
 		strings.Repeat("5", 64),
 		report,
 		[]Artifact{{
-			Name: "memory-first-tool-round-diagnostic-development.json",
+			Name: "memory-first-tool-round-route-diagnostic-development.json",
 			Body: body,
 		}},
 	)
@@ -241,29 +249,6 @@ func TestBuildMemoryToolRouteDiagnosticReportRejectsMissingFailureCategory(t *te
 	); err == nil || !errors.Is(err, ErrCaptureInvalid) ||
 		!strings.Contains(err.Error(), "report failure_category") {
 		t.Fatalf("missing failure category error = %v", err)
-	}
-}
-
-func TestBuildMemoryToolRouteDiagnosticReportReturnsBoundedIntegrityReason(t *testing.T) {
-	pool, err := memoryauthor.GenerateRegression()
-	if err != nil {
-		t.Fatal(err)
-	}
-	traces := passingMemoryToolRouteDevelopmentTraces(pool)
-	trace := &traces[0]
-	trace.RerankReady = false
-	profile := memoryToolRouteDevelopmentProfile(traces)
-	profile.Profile.ReaderVersion = MemoryToolFirstRoundDiagnosticReaderVersion
-	_, _, err = BuildMemoryToolRouteDiagnosticReport(
-		pool,
-		profile,
-		memoryToolRouteTestAuthority(),
-		memoryToolRouteTestCostBasis(),
-	)
-	if err == nil || !errors.Is(err, ErrCaptureInvalid) ||
-		err.Error() != "native Memory capture is invalid: Memory Tool-route report completed_rerank_state" ||
-		strings.Contains(err.Error(), trace.CaseID) {
-		t.Fatalf("bounded integrity error = %v", err)
 	}
 }
 
@@ -337,13 +322,15 @@ func TestBuildMemoryToolRouteDiagnosticProfileConfigBindsFailureTaxonomy(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if config.SchemaVersion != "neo-chat.memory-regression-profile-config.v8" ||
+	if config.SchemaVersion != "neo-chat.memory-regression-profile-config.v9" ||
 		config.ReaderVersion != MemoryToolFirstRoundDiagnosticReaderVersion ||
 		config.CaptureMode != CaptureModeMemoryToolRouteDiagnostic ||
 		config.MemoryToolRouteFailureTaxonomyVersion !=
 			MemoryToolRouteFailureTaxonomyVersion ||
 		config.MemoryToolRouteFailureTaxonomySHA256 !=
-			MemoryToolRouteFailureTaxonomySHA256 {
+			MemoryToolRouteFailureTaxonomySHA256 ||
+		config.MemoryToolRouteDiagnosticCompleteness !=
+			MemoryToolRouteDiagnosticCompletenessPolicy {
 		t.Fatalf("diagnostic config=%#v", config)
 	}
 	firstHash, err := ConfigurationSHA256(config)

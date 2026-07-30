@@ -336,6 +336,7 @@ func BuildMemoryToolRouteDevelopmentRunManifest(
 		CaptureModeMemoryToolRouteDevelopment,
 		"memory-first-tool-round-development.json",
 		"",
+		"",
 	)
 }
 
@@ -363,8 +364,9 @@ func BuildMemoryToolRouteDiagnosticRunManifest(
 		MemoryToolFirstRoundDiagnosticReportSchemaVersion,
 		MemoryToolFirstRoundDiagnosticAdmissionMode,
 		CaptureModeMemoryToolRouteDiagnostic,
-		"memory-first-tool-round-diagnostic-development.json",
+		"memory-first-tool-round-route-diagnostic-development.json",
 		MemoryToolRouteFailureTaxonomyVersion,
+		MemoryToolRouteDiagnosticCompletenessPolicy,
 	)
 }
 
@@ -383,6 +385,7 @@ func buildMemoryToolRouteRunManifest(
 	captureMode string,
 	artifactName string,
 	failureTaxonomyVersion string,
+	diagnosticCompleteness string,
 ) (RelevanceRunManifest, []byte, error) {
 	if !runIDPattern.MatchString(runID) || captureID == "" ||
 		startedAt.IsZero() || completedAt.Before(startedAt) ||
@@ -404,6 +407,7 @@ func buildMemoryToolRouteRunManifest(
 		report.ToolDecodingProfile != "" || report.ToolMaximumOutputTokens != 0 ||
 		report.ToolTemperature != 0 || report.ToolDisableThinking ||
 		report.FailureTaxonomyVersion != failureTaxonomyVersion ||
+		report.DiagnosticCompleteness != diagnosticCompleteness ||
 		(failureTaxonomyVersion != "" &&
 			report.FailureTaxonomySHA256 != MemoryToolRouteFailureTaxonomySHA256) ||
 		(failureTaxonomyVersion == "" && report.FailureTaxonomySHA256 != "") ||
@@ -413,6 +417,11 @@ func buildMemoryToolRouteRunManifest(
 		report.Diagnostics.FailureCodeCounts == nil ||
 		(failureTaxonomyVersion != "" &&
 			report.Diagnostics.RouteFailureCategoryCounts == nil) ||
+		(diagnosticCompleteness != "" &&
+			report.Diagnostics.RetrievalFailureCodeCounts == nil) ||
+		(diagnosticCompleteness == "" &&
+			(report.Diagnostics.RetrievalIncompleteCount != 0 ||
+				report.Diagnostics.RetrievalFailureCodeCounts != nil)) ||
 		report.Diagnostics.EmptyCandidateCaseCount < 0 ||
 		report.Diagnostics.RouteCompletedCaseCount < 0 ||
 		report.Diagnostics.RouteUsedCaseCount < 0 ||
@@ -430,6 +439,14 @@ func buildMemoryToolRouteRunManifest(
 			!validMemoryToolRouteFailureCounts(
 				report.Diagnostics.RouteFailureCategoryCounts,
 			)) ||
+		(diagnosticCompleteness != "" &&
+			(report.Diagnostics.RetrievalIncompleteCount < 0 ||
+				report.Diagnostics.RetrievalIncompleteCount > report.CaseCount ||
+				sumDiagnosticCounts(report.Diagnostics.RetrievalFailureCodeCounts) !=
+					report.Diagnostics.RetrievalIncompleteCount ||
+				!validMemoryToolRouteRetrievalFailureCounts(
+					report.Diagnostics.RetrievalFailureCodeCounts,
+				))) ||
 		report.CostAuthority.AuthorizedRequestCount != 300 ||
 		report.CostAuthority.ActualRequestCount < 0 ||
 		report.CostAuthority.ActualRequestCount >
@@ -508,6 +525,16 @@ func validMemoryToolRouteFailureCounts(counts map[string]int) bool {
 	for category, count := range counts {
 		if count < 0 ||
 			!usermemory.ValidHybridMemoryToolRouteFailureCategory(category) {
+			return false
+		}
+	}
+	return true
+}
+
+func validMemoryToolRouteRetrievalFailureCounts(counts map[string]int) bool {
+	for code, count := range counts {
+		if count < 0 || code == "NONE" || code == "INVALID" ||
+			normalizeCalibrationCode(code) != code {
 			return false
 		}
 	}

@@ -18,7 +18,7 @@ const (
 	CloudJudgeReaderVersion                     = "neo-chat.native-memory-reader-capture.v3"
 	MemoryToolRouteReaderVersion                = "neo-chat.native-memory-reader-capture.v4"
 	MemoryToolFirstRoundReaderVersion           = "neo-chat.native-memory-reader-capture.v5"
-	MemoryToolFirstRoundDiagnosticReaderVersion = "neo-chat.native-memory-reader-capture.v6"
+	MemoryToolFirstRoundDiagnosticReaderVersion = "neo-chat.native-memory-reader-capture.v7"
 	ProviderCostPolicyOwnerAuthorizedAbsoluteV1 = "owner_authorized_absolute_cap_v1"
 	ProviderModeNone                            = "none"
 	ProviderModeFakeProtocol                    = "fake_protocol"
@@ -99,6 +99,7 @@ type ProfileConfig struct {
 	MemoryToolRouteDisableThinking        bool                   `json:"memoryToolRouteDisableThinking,omitempty"`
 	MemoryToolRouteFailureTaxonomyVersion string                 `json:"memoryToolRouteFailureTaxonomyVersion,omitempty"`
 	MemoryToolRouteFailureTaxonomySHA256  string                 `json:"memoryToolRouteFailureTaxonomySha256,omitempty"`
+	MemoryToolRouteDiagnosticCompleteness string                 `json:"memoryToolRouteDiagnosticCompleteness,omitempty"`
 	ProviderEgressPolicy                  string                 `json:"providerEgressPolicy,omitempty"`
 	ProviderCostPolicy                    string                 `json:"providerCostPolicy,omitempty"`
 	CalibrationPlan                       *CalibrationPlanConfig `json:"calibrationPlan,omitempty"`

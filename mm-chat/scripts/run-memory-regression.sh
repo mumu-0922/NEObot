@@ -610,7 +610,7 @@ elif capture_mode == "development_cloud_judge":
 elif capture_mode == "development_memory_tool_route":
     expected = {"memory-first-tool-round-development.json", "run-manifest.json"}
 elif capture_mode == "development_memory_tool_route_diagnostic":
-    expected = {"memory-first-tool-round-diagnostic-development.json", "run-manifest.json"}
+    expected = {"memory-first-tool-round-route-diagnostic-development.json", "run-manifest.json"}
 elif capture_mode == "frozen_validation":
     expected = {"relevance-validation.json", "run-manifest.json"}
 else:
@@ -637,7 +637,7 @@ expected_admission = {
     "development_calibration": "development_calibration_only",
     "development_cloud_judge": "development_cloud_judge_only",
     "development_memory_tool_route": "development_main_model_first_tool_round_only",
-    "development_memory_tool_route_diagnostic": "development_main_model_first_tool_round_failure_diagnostic_only",
+    "development_memory_tool_route_diagnostic": "development_main_model_first_tool_round_route_failure_diagnostic_only",
     "frozen_validation": "frozen_validation_only",
 }[capture_mode]
 if manifest.get("admissionMode") != expected_admission or manifest.get("promotionEligible") is not False:
@@ -789,13 +789,13 @@ elif capture_mode == "development_cloud_judge":
 elif capture_mode in {"development_memory_tool_route", "development_memory_tool_route_diagnostic"}:
     diagnostic = capture_mode == "development_memory_tool_route_diagnostic"
     report_name = (
-        "memory-first-tool-round-diagnostic-development.json"
+        "memory-first-tool-round-route-diagnostic-development.json"
         if diagnostic
         else "memory-first-tool-round-development.json"
     )
     report = json.loads((output / report_name).read_text(encoding="utf-8"))
     expected_schema = (
-        "neo-chat.memory-regression-relevance-calibration.v8"
+        "neo-chat.memory-regression-relevance-calibration.v9"
         if diagnostic
         else "neo-chat.memory-regression-relevance-calibration.v7"
     )
@@ -849,18 +849,30 @@ elif capture_mode in {"development_memory_tool_route", "development_memory_tool_
         raise SystemExit("Memory Tool-route Development diagnostic count drift")
     route_failure_counts = diagnostics.get("routeFailureCategoryCounts")
     if diagnostic:
+        retrieval_failure_counts = diagnostics.get("retrievalFailureCodeCounts")
+        retrieval_incomplete_count = diagnostics.get("retrievalIncompleteCaseCount")
         if (
             report.get("failureTaxonomyVersion") != "memory-tool-route-failure-taxonomy-v1"
             or report.get("failureTaxonomySha256") != "66f11e91edc0cf5a6a9dbf5dd30336e58a52860adee968fb4658d6ccd70d52a0"
+            or report.get("diagnosticCompleteness") != "route_complete_retrieval_fail_closed_v1"
             or not isinstance(route_failure_counts, dict)
-            or any(not isinstance(value, int) or value < 0 for value in route_failure_counts.values())
+            or any(type(value) is not int or value < 0 for value in route_failure_counts.values())
             or sum(route_failure_counts.values()) != diagnostics.get("failedCaseCount")
+            or not isinstance(retrieval_failure_counts, dict)
+            or any(type(value) is not int or value < 0 for value in retrieval_failure_counts.values())
+            or type(retrieval_incomplete_count) is not int
+            or retrieval_incomplete_count < 0
+            or retrieval_incomplete_count > report.get("caseCount", -1)
+            or sum(retrieval_failure_counts.values()) != retrieval_incomplete_count
         ):
             raise SystemExit("Memory Tool-route failure taxonomy drift")
     elif (
         "failureTaxonomyVersion" in report
         or "failureTaxonomySha256" in report
+        or "diagnosticCompleteness" in report
         or route_failure_counts is not None
+        or "retrievalFailureCodeCounts" in diagnostics
+        or "retrievalIncompleteCaseCount" in diagnostics
     ):
         raise SystemExit("schema-v7 gained diagnostic fields")
     if not isinstance(authority, dict):

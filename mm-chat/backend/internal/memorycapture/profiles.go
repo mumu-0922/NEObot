@@ -174,7 +174,7 @@ func buildProfileConfigs(
 				return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
 			}
 			readerVersion = MemoryToolFirstRoundDiagnosticReaderVersion
-			profileSchemaVersion = "neo-chat.memory-regression-profile-config.v8"
+			profileSchemaVersion = "neo-chat.memory-regression-profile-config.v9"
 		} else {
 			readerVersion = MemoryToolFirstRoundReaderVersion
 			profileSchemaVersion = "neo-chat.memory-regression-profile-config.v7"
@@ -217,6 +217,8 @@ func buildProfileConfigs(
 			MemoryToolRouteFailureTaxonomyVersion
 		common.MemoryToolRouteFailureTaxonomySHA256 =
 			MemoryToolRouteFailureTaxonomySHA256
+		common.MemoryToolRouteDiagnosticCompleteness =
+			MemoryToolRouteDiagnosticCompletenessPolicy
 	}
 	if captureMode == CaptureModeCalibration {
 		common.CalibrationPlan = developmentCalibrationPlan()
