@@ -1,4 +1,4 @@
-# Planned chat Tool Loop contracts
+# Chat Tool Loop contracts
 
 Status: G19.2 process trace, G19.3 OpenAI-compatible/Gemini external Web, G19.4
 Anthropic Tool Loop, G19.5 three-state/built-in Search administration, and
@@ -8,11 +8,12 @@ selected-Knowledge paths now execute after `message.started`; the Handler no
 longer invokes the old pre-answer Auto RAG authority. G19.10 query-aware
 Knowledge routing, unified compatibility planning, shared Tool-capability
 state, and query-free route visibility were promoted on 2026-07-23. The
-`search_memory` adapter described below completed schema-v6 live Development
-capture and failed the unchanged gates. It is not a promoted production Tool
-or reader. Its separate `PlanTools` preflight is rejected as the product
-integration shape; any successor must join the existing first
-`ToolRoundProvider` round instead of adding another Provider request.
+historical schema-v6 `search_memory` `PlanTools` preflight failed Development
+and remains immutable failed evidence. The successor now joins the existing
+first `ToolRoundProvider` round, executes bounded current-authorized hybrid
+Memory only after a valid call, and continues on the same Provider/model. It is
+still default-off and non-promotional under `MEMORY_TOOL_LOOP_ENABLED=false`;
+no schema-v7 live Development or Validation result exists.
 
 ## 1. Scope / Trigger
 
@@ -192,7 +193,7 @@ type ProviderToolExchange struct {
 }
 ```
 
-The normalized one-round planning seam reused by Development Memory routing is:
+The normalized one-round planning seam used by compatibility routing is:
 
 ```go
 type ToolPlanner interface {
@@ -209,7 +210,7 @@ type ToolPlanRequest struct {
 }
 ```
 
-Its fixed Memory Tool contract is:
+The canonical product Memory Tool contract is owned by `internal/chat`:
 
 ```text
 name             = search_memory
@@ -217,12 +218,14 @@ contract version = memory-search-tool-v1
 contract SHA-256 = f8f404df0ae3a3938081b813c8750d59ba252adbcb8dc755e075e5c738e20ca6
 arguments        = explicit {}
 tool choice      = auto
-temperature      = 0
-maximum output   = 128
-thinking         = disabled
+first round only = true
+adapter version  = chat-first-tool-round-memory-decision-v1
 ```
 
-The disabled-thinking wire shape is Provider-specific:
+The old schema-v6 preflight additionally forced `temperature=0`, maximum output
+`128`, and disabled thinking. Those fields remain historical schema-v6 evidence
+and are not part of the schema-v7 first-round contract. Its disabled-thinking
+wire shape was Provider-specific:
 
 ```json
 // Official DeepSeek host: api.deepseek.com
@@ -430,40 +433,47 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
   no Tool Call is returned.
 - Usage is accumulated across native provider rounds without double-counting
   repeated updates inside the current round.
-- `internal/memoryroute` is the single `search_memory` definition authority for
-  schema-v6 Development capture and future product integration. The Tool has
-  no query argument: the server already owns the current request text, so the
-  model decides only whether Memory is needed.
-- The Development adapter binds one exact configured Provider ID/model and
-  submits only the already-secret-redacted current query. Candidate bodies,
-  Memory IDs, scopes, revisions, retrieval scores, and database authority are
-  forbidden from this route request.
-- Zero calls is a valid `no_memory` decision. Use Memory requires exactly one
-  Provider choice and one call with a non-empty ID, exact `search_memory` name,
-  and a non-nil empty decoded argument object. Missing, `null`, malformed, or
-  non-empty arguments; unknown or duplicate calls; Provider failure; deadline;
-  and model/contract drift fail closed.
-- `OpenAICompatibleProvider` detects only the exact official
-  `api.deepseek.com` hostname and sends `thinking.type=disabled` from both
-  `PlanTools` and `StreamToolRound` when thinking is disabled. Other compatible
-  gateways receive `enable_thinking=false`. Official `OpenAIProvider.PlanTools`
-  omits both compatible controls while preserving the exact model,
-  `temperature=0`, and `max_tokens=128` fields.
-- This one-round planner currently returns only route evidence. It does not
-  execute Memory retrieval or same-model continuation. The isolated
-  `usermemory` Development policy controls BGE release, and Server composition
-  installs neither the route policy nor the adapter.
-- Schema-v6 live Development proved that this adapter is an additional
-  non-streaming Provider preflight before the normal answer request; it does
-  not reuse the existing first Tool Loop round. The GPT profile completed only
-  `41/300` routes and the corrected DeepSeek Flash profile completed `77/300`.
-  This request amplification is the primary architecture finding. Do not raise
-  the two-second cutoff or retry the preflight to mask it.
-- Future product work must register `search_memory` beside `search_web` and
-  `search_knowledge` on the existing first `StreamToolRound` request, execute
-  current-authorized retrieval after the call, and continue through the same
-  Provider/model. Do not run `PlanTools` first and then start a second answer
-  request.
+- `internal/chat` is the single Tool definition/hash/validation authority.
+  `internal/memoryroute` delegates to it only for Development capture. The Tool
+  has no query argument: the server already owns the current request text, so
+  the model decides only whether Memory is needed.
+- The product exposes `search_memory` only when the default-off flag is true,
+  the selected Provider implements `ToolRoundProvider`, current Conversation
+  Memory use is allowed, Search is not model-built-in, and the turn is not a
+  direct `remember|correct|forget` action.
+- The first round carries the normal chat request and may expose
+  `search_web`, `search_knowledge`, and `search_memory` together. Before any
+  Memory call, the Provider receives no Memory candidate body, ID, scope,
+  revision, retrieval score, or database authority.
+- First-round content and reasoning are buffered. With no Tool Call they are
+  released unchanged; with any Tool Call the partial draft is discarded before
+  execution and same-model continuation. A synchronous or in-stream failure
+  before that buffered round closes returns to the existing compatibility path
+  without executing an already assembled call; no partial draft or Memory body
+  has crossed the user boundary at that point.
+- Product Memory use requires exactly one first-round call with a non-empty ID,
+  exact raw `search_memory` name, and a non-nil empty decoded argument object.
+  Validation compares the raw name, not a trimmed/normalized substitute.
+  Missing, `null`, malformed, non-empty, duplicate, unknown, or later-round
+  Memory calls fail closed for the Memory lane. Valid Web/Knowledge calls in the
+  same batch retain their independent authority.
+- After a valid call, `usermemory.SearchRelevantAfterMemoryToolCall` runs fixed
+  BGE embedding, exact/BM25/vector RRF, admission, rerank, and Top-5/600/900
+  selection without calling the v1 reader or `MarkUsed`. Migration `065`
+  rehydrates the recorded final set through current user/source/settings/epoch/
+  projection/revision/hash/scope/Sensitive authority, then Go rechecks final
+  identity and redacts content again.
+- Empty retrieval and retrieval failure return bounded Tool Results and allow
+  ordinary same-model continuation. `search_memory` is removed from every later
+  round. A pre-content continuation failure recovers through the same Provider/
+  model from the original request without any Memory body, including the empty-
+  result path; partial answer content preserves the error and never duplicates
+  an answer.
+- Schema-v6/profile-v6/cost-basis-v4 remain immutable failed `PlanTools`
+  evidence. Schema-v7/profile-v7/cost-basis-v5 use Development adapter
+  `chat-first-tool-round-memory-decision-v1` and artifact
+  `memory-first-tool-round-development.json`. Offline gates pass, but no live
+  schema-v7 run exists and no policy is frozen.
 
 ## 4. Validation & Error Matrix
 
@@ -512,11 +522,16 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 | Exact query or redacted Tool args in process detail | drop before SSE/persistence        |
 | Anthropic Thinking continuation  | retain block order/signature in memory only       |
 | Anthropic failed Tool Result     | matching `tool_use_id` plus `is_error=true`       |
-| Memory route returns zero calls  | valid `no_memory`; no hybrid final is released     |
-| Memory route returns one exact `search_memory({})` call | route evidence only; `usermemory` still reauthorizes retrieval |
-| Memory route omits arguments or returns `null` | reject; nil map is not an explicit empty object |
-| Memory route returns unknown/duplicate calls or multiple choices | reject the entire route response |
-| Memory route Provider/model/contract drifts or times out | fail closed; unchanged v1 chat authority |
+| First product round returns no Memory call | flush buffered answer, perform zero hybrid retrieval, and keep ordinary chat |
+| First product round returns one exact `search_memory({})` call | run bounded hybrid retrieval, rehydrate through migration `065`, and continue on the same Provider/model |
+| Buffered first round fails after assembling a call but before closing | discard the draft/call, execute zero Memory retrieval, and use the original compatibility path |
+| Memory call name differs by whitespace or case | reject; normalized display names are not contract authority |
+| Memory call omits arguments or returns `null` | reject; nil map is not an explicit empty object |
+| Memory call is unknown/duplicate/later-round | fail closed for Memory; never retrieve or accept a second Memory call |
+| Memory retrieval fails or returns empty | bounded failed/empty Tool Result; ordinary continuation without Memory |
+| Continuation fails before content after a Memory call | recover from the original request with no Memory body |
+| Continuation fails after partial content | preserve the error; do not replay or duplicate the answer |
+| Runtime Tool contract hash drifts | fail closed before Memory retrieval |
 | Official DeepSeek receives `enable_thinking=false` | protocol mismatch; the run is not model-quality evidence |
 | Generic compatible receives `thinking.type=disabled` | forbidden Provider-specific leakage; retain `enable_thinking=false` |
 | Product Memory route adds a separate `PlanTools` preflight | reject the architecture; use the existing first Tool round |
@@ -544,11 +559,14 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 - Good: a later native continuation stream fails before answer text; the same
   model answers once from the already-authorized `[K]`/`[W]` evidence without
   Tools and cumulative usage remains monotonic.
-- Good Development-only Memory route: an exact configured GPT/DeepSeek model
-  sees a redacted relevant query and the shared Tool, returns one explicit
-  `search_memory({})` call, and no candidate body crosses that route boundary.
-- Base Development-only Memory route: an unrelated request yields zero calls;
-  speculative BGE work is discarded by `usermemory`.
+- Good default-off product route: ordinary Server chat exposes no Memory Tool,
+  makes no hybrid Provider call, and retains the current v1 prompt/Usage path.
+- Good enabled product route: the selected Tool-capable model sees the normal
+  first-round request and canonical Tool but no Memory body, calls
+  `search_memory({})`, receives a bounded current-authorized result, and
+  continues on the same Provider/model.
+- Base enabled product route: an unrelated request yields no Memory call and
+  its buffered first-round answer is released without hybrid retrieval.
 - Base: a Tool-unsupported model uses the visible unified compatibility path
   and still answers Direct when planning fails without a strong signal.
 - Base: a catalog is unavailable or governance-denied; the turn proceeds
@@ -622,14 +640,17 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 18. Responses history tests must assert user `input_text` plus assistant
     `output_text`. The real Search replay must contain a completed assistant
     turn before the exact browser query and still persist URL Citations.
-19. Memory Tool-route tests must assert the exact definition/hash, one-choice
-    decoding, zero-call abstention, explicit empty-object acceptance, missing/
-    null/malformed/non-empty argument rejection, unknown/duplicate call
-    rejection, model/contract provenance, candidate-body absence, official
-    OpenAI omission of both compatible controls, generic OpenAI-compatible
-    `enable_thinking=false`, and exact-host DeepSeek
-    `thinking.type=disabled`. These tests are offline and confer no production
-    activation authority.
+19. Memory Tool tests must assert the exact definition/hash, default-off/direct-
+    action/model-built-in exclusions, zero-call buffered answer release, exact
+    first-round empty-object acceptance, missing/null/malformed/non-empty/
+    non-exact-name/unknown/duplicate/later-round rejection, multi-tool
+    coexistence, removal from later rounds, failure after an assembled first-
+    round call but before execution, retrieval failure/empty continuation,
+    final hydration drift/redaction, original-request recovery without Memory
+    bodies, partial-content failure, same Provider/model continuation, and
+    Development adapter delegation to the canonical contract. Historical
+    schema-v6 thinking-control tests remain immutable protocol coverage but do
+    not define schema-v7 decoding authority.
 
 ## 7. Wrong vs Correct
 
@@ -667,6 +688,13 @@ create server conversation -> send first turn with pre-create composer mode
 // Wrong: the route model sees candidate bodies before deciding whether to use
 // Memory, or missing arguments are treated as an empty object.
 query + candidate Memories -> answer model -> inspect self-reported usage
+```
+
+```go
+// Wrong: normalization silently broadens the hash-bound Tool contract.
+if normalizedToolName(call.Name) == "search_memory" {
+    executeMemory()
+}
 ```
 
 Correct after the owning G19 promotion:
@@ -722,11 +750,13 @@ result := webSearchSuccessToolResult(previous, cumulative)
 ```
 
 ```text
-// Correct Development-only Memory route.
-secret-redacted query + exact search_memory Tool
-  -> zero calls: no_memory
-  -> one exact call with ID and explicit {}: provenance-bound use_memory
-  -> usermemory independently reauthorizes and releases bounded BGE results
+// Correct product Memory route behind the default-off flag.
+first StreamToolRound(normal request + allowed read-only tools + search_memory)
+  -> no Memory call: release buffered first-round answer
+  -> one exact first-round call with ID and explicit {}
+  -> fixed BGE retrieval + migration-065 current-authority final hydration
+  -> same-provider/same-model continuation without search_memory
+  -> pre-content continuation failure: original-request recovery without Memory
 ```
 
 ```text
@@ -734,10 +764,17 @@ secret-redacted query + exact search_memory Tool
 PlanTools(search_memory) -> Provider request #1
   -> StreamToolRound(answer) -> Provider request #2
 
-// Correct next product architecture.
+// Correct implemented product architecture.
 first StreamToolRound(search_web + search_knowledge + search_memory)
   -> execute the exact called read-only tools
   -> same-model continuation with bounded authorized results
+```
+
+```go
+// Correct: only the exact raw contract name can authorize Memory retrieval.
+if call.Name != usermemory.HybridMemoryToolName {
+    return "unknown_tool"
+}
 ```
 
 Operational rollback for catalog quality regressions is to omit

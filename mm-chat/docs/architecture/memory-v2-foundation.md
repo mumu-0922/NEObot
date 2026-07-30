@@ -90,6 +90,14 @@ secret redactor. SQL hashes and lease fences retain the raw authoritative value;
 if redaction removes the entire Provider input, that Provider lane makes zero
 network calls and records only a bounded `SECRET_REDACTED`/terminal code.
 
+`MEMORY_TOOL_LOOP_ENABLED=false` independently gates the API-only product
+`search_memory` Tool. When explicitly enabled on an eligible Tool-capable
+turn, no Memory body enters the first round. One exact call runs the fixed
+hybrid path without v1 fallback, records the final set, hydrates it through
+migration `065`, repeats current authority and secret redaction, then returns a
+bounded Tool Result for same-model continuation. The Worker never receives this
+flag; ready embeddings still depend on the shared hybrid Worker switch.
+
 ## Rollback
 
 Migration `053` down is allowed only before v2 authority is used. It fails atomically when any

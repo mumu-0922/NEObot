@@ -143,7 +143,7 @@ function signatures, owners, and grants while pinning lookup to the application
 schema, `pg_catalog`, and `pg_temp`. Its down path intentionally retains the
 safe search path rather than reopening object-shadowing risk.
 
-The current migration head is `061`; the latest RAG retrieval-specific migration
+The current migration head is `065`; the latest RAG retrieval-specific migration
 remains `050`. Migration `043` extends the existing final-authority evidence
 hydration boundary with complete matched-Child and containing-Parent source
 text plus their persisted token counts. Parent text is answer context only. Its
@@ -293,10 +293,12 @@ failed without a Provider call.
 The API receives only hybrid prepare/record capabilities. Exact Top 20, BM25
 Top 30, and vector Top 30 remain independent before deterministic RRF(60) Top
 20; BGE rerank and the final 600-target/900-hard token selection are transient.
-Durable observations contain no query, Memory body, embedding, or raw score,
-and hybrid results never enter the v1 prompt or Usage. Down requires a
-v1/NULL reader and empty hybrid observation history; clean re-up discards and
-rebuilds only derived vector/job state.
+Durable observations contain no query, Memory body, embedding, or raw score.
+The shadow path never changes the v1 prompt or Usage; the separately default-off
+product Tool path may hydrate only an exact recorded final through migration
+`065` and does not mutate v1 Usage. Down requires a v1/NULL reader and empty
+hybrid observation history; clean re-up discards and rebuilds only derived
+vector/job state.
 
 Migration `060` adds the Memory governance API capability boundary and Review
 decision audit. Authenticated users can create/archive/restore Projects, update
@@ -337,6 +339,40 @@ deletion replay history exists; the clean `060 -> 061 -> 060 -> 061` drill is
 required before release. Backup-set manifests and retention remain filesystem/
 operator behavior and intentionally add no database table.
 
+Migration `062` adds rebuildable same-scope L2 Scene authority, leased refresh/
+embedding/purge jobs, exact/CJK BM25/vector search, content-free observations,
+promotion evidence, and governance capabilities. Scene membership is derived
+only from current Global or one current Project L1 scope; Conversation L1 is
+excluded. Runtime roles receive only narrow capabilities, and the guarded down
+path refuses promoted or retained Scene authority.
+
+Migration `063` adds one rebuildable L3 Persona generation derived only from
+current stable Global L1, with exact member revision/hash/watermark authority,
+leased refresh/embedding/purge, hybrid search, content-free evidence, independent
+promotion, and governance. It is independent from L2 and its guarded down path
+refuses promoted or retained Persona authority.
+
+Migration `064` adds read-only
+`memory_authorize_hybrid_rerank(UUID,UUID,UUID,TEXT,REAL[])`. It reauthorizes an
+exact pending hybrid observation, source query, user/scope/Sensitive/epoch/
+generation/revision/hash surface before any candidate document reaches rerank,
+then returns only a request-local maximum cosine signal. It persists neither
+the supplied query vector nor raw similarity. Only `go_api_runtime` receives
+EXECUTE. Down removes the function and cleanly replays
+`063 -> 064 -> 063 -> 064`.
+
+Migration `065` adds read-only
+`memory_hydrate_hybrid_final(UUID,UUID,UUID)` for the default-off product
+`search_memory` Tool path. It accepts only a completed/OK/applied observation's
+exact final lane for the authenticated user and streaming assistant, then
+rechecks source hash, Conversation/Project lifecycle, Memory settings,
+visibility epoch, projection generation, revision/hash, scope generation,
+validity, and Sensitive policy. Any missing or stale final member rejects the
+whole hydration. The function is owned by `memory_runtime_owner`; only
+`go_api_runtime` receives EXECUTE and no runtime role gains table CRUD. Down
+removes only this capability; clean replay is
+`064 -> 065 -> 064 -> 065`.
+
 ## Storage boundaries
 
 Postgres is the source of truth for structured records:
@@ -355,6 +391,8 @@ Postgres is the source of truth for structured records:
   observations
 - rebuildable BGE-M3 vector projection/jobs plus hash/ID/rank/token-only
   hybrid observations
+- rebuildable same-scope L2 Scene and Global-L1 L3 Persona derived authority,
+  jobs, projections, content-free evidence, and promotion/governance state
 - ID/hash/result-only Memory Review decision audit and authenticated governance
   capabilities; governance responses hydrate plaintext only from current rows
 - versioned derived conversation-context summaries; original messages remain

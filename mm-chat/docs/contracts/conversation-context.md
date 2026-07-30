@@ -247,6 +247,12 @@ v1 items and prompt unchanged.
 shadow flags are true, Hybrid takes precedence and lexical comparison is not
 run twice. The summary is bounded and content-free:
 
+The separate default-off `MEMORY_TOOL_LOOP_ENABLED` product path does not add a
+`hybridShadow` response field. Its first-round call, bounded Tool Result, and
+same-model continuation stay inside chat Tool execution; migration `065`
+hydrates only the current recorded final, and no Memory body is persisted in
+this diagnostic summary.
+
 ```json
 {
   "profile": "memory_hybrid_bge_m3_rrf60_v1",

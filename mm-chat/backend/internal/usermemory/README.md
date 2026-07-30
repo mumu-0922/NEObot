@@ -36,9 +36,13 @@ conversation summaries.
 - under the explicit schema-v4 Development profile only, run the strict cloud
   candidate judge concurrently with BGE rerank and intersect ordinal selection
   with BGE order before the existing token selector;
-- under the schema-v6 Development profile only, run one exact current-model
-  `search_memory` Tool decision concurrently with fixed BGE work and discard all
-  hybrid final rows unless that decision is one valid empty-argument call;
+- preserve schema-v6 as failed Development preflight evidence and support the
+  schema-v7 first-ToolRound calibration policy through the compatibility route
+  interface;
+- after a valid product first-round `search_memory({})` call, run the fixed
+  hybrid reader without v1 fallback, record the final set, hydrate it through
+  migration `065`, recheck identity/redaction, and return at most five bounded
+  current-authorized Memory bodies to `internal/chat`;
 - optionally run migration `062` same-scope L2 Scene exact/BM25/vector
   RRF/rerank retrieval under a separate default-off shadow flag; active mode
   additionally requires the reader flag and database promotion authority;
@@ -77,6 +81,19 @@ matches, shadow, err := service.SearchRelevantWithShadow(
 // authority.
 matches, hybrid, err := service.SearchRelevantWithHybridShadow(
     ctx, rawUserText, conversationID, assistantMessageID, 5,
+)
+
+// Called only after internal/chat validates one exact first-round
+// search_memory({}) call. This seam does not invoke v1 or MarkUsed.
+toolResult := service.SearchRelevantAfterMemoryToolCall(
+    ctx,
+    usermemory.HybridMemoryToolSearchInput{
+        ConversationID: conversationID,
+        AssistantMessageID: assistantMessageID,
+        Query: rawUserText,
+        ContractVersion: usermemory.HybridMemoryToolContractVersion,
+        ContractSHA256: usermemory.HybridMemoryToolContractSHA256,
+    },
 )
 
 // Called only when MEMORY_L2_SCENE_SHADOW_ENABLED=true. Shadow returns no
@@ -165,7 +182,7 @@ rerank and the judge share one bounded concurrent stage, and either failure,
 timeout, malformed output, model/prompt drift, or stale authority produces an
 empty hybrid final.
 
-The schema-v6 alternative uses `HybridMemoryToolRouter` and
+The historical schema-v6 alternative uses `HybridMemoryToolRouter` and
 `memory_hybrid_main_model_tool_route_calibration_v1`. `routeHybridMemory`
 secret-redacts the current query before the route boundary and verifies the
 exact expected model ID, `memory-search-tool-v1` contract version, and contract
@@ -182,12 +199,30 @@ request-local and is discarded on route abstention/failure. Empty RRF candidates
 still await the decision long enough to record `MEMORY_TOOL_ROUTE_EMPTY`,
 `ABSTAINED`, or `FAILED` truthfully.
 
-The cloud-judge and Tool-route adapters exist for isolated Development capture,
-but Server composition installs neither adapter nor a production cloud/Tool/
-frozen policy. `HybridShadowFrozenPolicy()` remains unavailable, all hybrid
-behavior is default-off and non-promotional, and v1 remains the only
-prompt/Usage authority. Product same-model continuation is not implemented by
-this slice.
+Schema-v6/profile-v6/cost-basis-v4 are immutable failed `PlanTools` evidence.
+Schema-v7 uses policy
+`memory_hybrid_main_model_first_tool_round_calibration_v1`; the Development
+adapter emits a real first `ToolRoundProvider` request and delegates canonical
+Tool definition/hash/validation to `internal/chat`.
+
+Product chat does not install the Development adapter. With
+`MEMORY_TOOL_LOOP_ENABLED=true`, `internal/chat` validates the first-round call
+and invokes `SearchRelevantAfterMemoryToolCall`. That method never calls the v1
+reader or `MarkUsed`, never falls back to v1 or unscored RRF, and requires an
+optional `HybridFinalRepository`. After normal prepare/admission/rerank/record,
+migration `065` rehydrates only the exact final lane while repeating current
+source/settings/epoch/projection/revision/hash/scope/lifecycle/Sensitive
+authority. Go verifies ordinal identity and redacts every body again. Any drift,
+count mismatch, full redaction, Provider failure, or empty result returns no
+Memory. Same-model Tool continuation and recovery remain owned by
+`internal/chat`.
+
+The product flag and Worker hybrid flag both default false. Enabling the Tool
+Loop requires ready fixed-profile projections; keep
+`MEMORY_HYBRID_SHADOW_ENABLED` aligned on the Memory Worker when new or changed
+Memory must receive embeddings. No live schema-v7 Development/Validation policy
+has authorized rollout, so the deployed default remains the v1 prompt/Usage
+path.
 
 Migration `060` adds the authenticated governance snapshot; Project
 create/list/edit/archive/restore; Conversation Project membership and tri-state
@@ -250,8 +285,9 @@ L3 failure falls back to unchanged L1/L2 behavior.
 | `SearchRelevant(ctx, query, limit)`         | Relevant-only Top-5 retrieval                                      |
 | `SearchRelevantWithShadow(ctx, query, conversationID, assistantMessageID, limit)` | Unchanged v1 Top 5 plus sanitized comparison diagnostics |
 | `SearchRelevantWithHybridShadow(ctx, query, conversationID, assistantMessageID, limit)` | Unchanged v1 Top 5 plus default-off hybrid diagnostics |
-| `WithHybridMemoryToolRouter(router)` | Install a Development-only query route dependency for an explicit policy. |
-| `HybridShadowMemoryToolRouteCalibrationPolicy(modelID)` | Build the exact non-promotional schema-v6 route policy. |
+| `SearchRelevantAfterMemoryToolCall(ctx, input)` | Post-call fixed hybrid retrieval plus migration-065 final hydration; no v1 fallback or Usage mutation. |
+| `WithHybridMemoryToolRouter(router)` | Install a Development-only route dependency for an explicit calibration policy. |
+| `HybridShadowMemoryFirstToolRoundCalibrationPolicy(modelID)` | Build the exact non-promotional schema-v7 first-ToolRound policy. |
 | `SearchRelevantL2Scenes(ctx, query, conversationID, assistantMessageID, activeRequested)` | Default-off Scene shadow or current authorized active results |
 | `SearchRelevantL3Persona(ctx, query, conversationID, assistantMessageID, activeRequested)` | Default-off Persona shadow or current authorized active result |
 | `HydrateDirectAction(ctx, input)`           | Bounded current context for the strict direct-user planner          |
@@ -284,6 +320,7 @@ portability_plan.go       mapping normalization and short-lived HMAC plan tokens
 portability_service.go    deterministic dry-run and ADD-only confirm
 portability_handler.go    strict JSON/multipart HTTP portability routes
 portability_repository_postgres.go  migration-061 snapshot/apply/replay capabilities
+hybrid_shadow_repository_postgres.go  migration-059/064 prepare, admission, record, and migration-065 final hydration
 deletion_portability.go   deletion JSONL export/authenticate/replay orchestration
 action_repository_postgres.go  PR6 action, Activity, Usage, and undo capabilities
 lexical_shadow.go        fail-open PR7 orchestration and diagnostic sanitization

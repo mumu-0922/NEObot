@@ -112,8 +112,8 @@
   "querySkeletonCount": 431,
   "auditVerdict": "passed",
   "nativeReaderCapture": {
-    "runnerVersion": "neo-chat.native-memory-reader-capture.v4",
-    "status": "main_model_memory_tool_route_development_completed_failed_architecture_pivot",
+    "runnerVersion": "neo-chat.native-memory-reader-capture.v5",
+    "status": "main_model_first_tool_round_implemented_offline_validated_live_pending",
     "baselineProfile": "native_v1_lexical",
     "fakeCandidateProfile": "native_v2_hybrid_fake_protocol",
     "liveCandidateProfile": "native_v2_hybrid",
@@ -133,7 +133,7 @@
       "secretLeakCount": 0,
       "untrustedSourceLeakCount": 0
     },
-    "relevancePolicyStatus": "main_model_memory_tool_route_preflight_failed_first_round_integration_pending",
+    "relevancePolicyStatus": "first_tool_round_implemented_default_off_live_development_pending",
     "developmentCalibration": {
       "schemaVersion": "neo-chat.memory-regression-relevance-calibration.v1",
       "caseCount": 300,
@@ -550,6 +550,58 @@
       "architectureReason": "extra_provider_request_amplifies_latency_quota_and_transient_failures",
       "nextDevelopmentHypothesis": "search_memory_in_existing_first_tool_round_same_model_continuation",
       "liveDevelopmentPassed": false
+    },
+    "memoryFirstToolRoundDevelopment": {
+      "status": "implementation_complete_offline_gates_passed_live_not_run",
+      "schemaVersion": "neo-chat.memory-regression-relevance-calibration.v7",
+      "profileConfigSchemaVersion": "neo-chat.memory-regression-profile-config.v7",
+      "costBasisSchemaVersion": "neo-chat.memory-regression-cost-basis.v5",
+      "readerVersion": "neo-chat.native-memory-reader-capture.v5",
+      "captureMode": "development_memory_tool_route",
+      "admissionMode": "development_main_model_first_tool_round_only",
+      "policyId": "memory_hybrid_main_model_first_tool_round_calibration_v1",
+      "providerCostPolicy": "owner_authorized_absolute_cap_v1",
+      "providerEgressPolicy": "owner_authorized_normal_candidates_v1",
+      "toolName": "search_memory",
+      "toolContractVersion": "memory-search-tool-v1",
+      "toolContractSha256": "f8f404df0ae3a3938081b813c8750d59ba252adbcb8dc755e075e5c738e20ca6",
+      "toolContractAuthority": "internal_chat_single_definition_hash_validation_authority",
+      "toolAdapterVersion": "chat-first-tool-round-memory-decision-v1",
+      "artifactName": "memory-first-tool-round-development.json",
+      "usesPlanToolsPreflight": false,
+      "usesFirstToolRoundProviderRequest": true,
+      "forcedPreflightDecodingOverrides": false,
+      "candidateBodiesSentBeforeToolCall": 0,
+      "supportedProviderTypes": [
+        "openai",
+        "openai_compatible"
+      ],
+      "providerHypothesesIndependent": true,
+      "independentCredentialFilesRequiredForLiveRun": 2,
+      "productIntegration": {
+        "featureFlag": "MEMORY_TOOL_LOOP_ENABLED",
+        "defaultEnabled": false,
+        "firstRoundNormalConversationContext": true,
+        "sameProviderSameModelContinuation": true,
+        "searchMemoryRemovedAfterFirstRound": true,
+        "v1FallbackAfterToolCall": false,
+        "usageMutation": false,
+        "finalHydrationMigration": "065_memory_hybrid_final_hydration",
+        "directMemoryActionsExcluded": true,
+        "modelBuiltInWebSearchExcluded": true
+      },
+      "offlineVerification": {
+        "focusedGoTestsPassed": true,
+        "regressionTopologyLifecyclePassed": true,
+        "migration065PostgreSQL17ReplayPassed": true,
+        "liveProviderCalled": false,
+        "providerQuotaUsed": false,
+        "qualityEvidence": false
+      },
+      "liveDevelopmentStatus": "not_run",
+      "validationStatus": "blocked_no_passing_schema_v7_development",
+      "policyFrozen": false,
+      "promotionEligible": false
     }
   },
   "fixtureContentSha256": "965072e0e5b36d687c1838aaa675beb8a81475e0794d7fdded34f99d7673c7af",

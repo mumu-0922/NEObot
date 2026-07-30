@@ -40,6 +40,7 @@ Out of scope:
 | `DB_CONN_MAX_LIFETIME`    | Go API/admin | No       | Maximum connection lifetime as a Go duration such as `30m`. Backend default is code-defined when unset.          |
 | `MEMORY_LEXICAL_SHADOW_ENABLED` | Go API | No | Default `false`; enables provider-free migration-058 comparison/diagnostics only, never projection maintenance or prompt injection. |
 | `MEMORY_HYBRID_SHADOW_ENABLED` | API + Memory Worker | No | Default `false`; one switch gates migration-059 embedding claims and hybrid comparison Provider calls. It never changes the reader, prompt, or Usage. |
+| `MEMORY_TOOL_LOOP_ENABLED` | Go API | No | Default `false`; exposes first-round `search_memory` only on eligible Tool-capable turns, then uses migration-065 final hydration and same-model continuation. Never pass it to the Memory Worker. |
 | `MEMORY_L2_SCENE_SHADOW_ENABLED` | API + Memory Worker | No | Default `false`; gates migration-062 Scene refresh/query-embedding/rerank Provider work. Provider-free stale purge remains enabled. |
 | `MEMORY_L2_SCENE_READER_ENABLED` | Go API | No | Default `false`; requests active Scene injection, which still requires database promotion, current L1 reader authority, and user policy. Never pass this flag to the Worker. |
 | `MEMORY_L3_PERSONA_SHADOW_ENABLED` | API + Memory Worker | No | Default `false`; gates migration-063 Persona refresh/query-embedding/rerank Provider work. Provider-free stale purge remains enabled. |

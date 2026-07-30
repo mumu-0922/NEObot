@@ -62,15 +62,18 @@ neo-chat.memory-regression-profile-config.v3
 neo-chat.memory-regression-profile-config.v4
 neo-chat.memory-regression-profile-config.v5
 neo-chat.memory-regression-profile-config.v6
+neo-chat.memory-regression-profile-config.v7
 neo-chat.memory-regression-relevance-calibration.v3
 neo-chat.memory-regression-relevance-calibration.v4
 neo-chat.memory-regression-relevance-calibration.v5
 neo-chat.memory-regression-relevance-calibration.v6
+neo-chat.memory-regression-relevance-calibration.v7
 neo-chat.memory-regression-relevance-validation.v1
 neo-chat.memory-regression-relevance-run.v1
 neo-chat.memory-regression-cost-basis.v2
 neo-chat.memory-regression-cost-basis.v3
 neo-chat.memory-regression-cost-basis.v4
+neo-chat.memory-regression-cost-basis.v5
 neo-chat.memory-cloud-candidate-judge-input.v1
 neo-chat.memory-cloud-candidate-judge-output.v1
 ```
@@ -560,13 +563,13 @@ bash scripts/run-memory-regression.sh \
   --memory-tool-route-base-url https://api.openai.com/v1 \
   --memory-tool-route-model exact-configured-model \
   --memory-tool-route-approval I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA \
-  --cost-basis /secure/eval/gpt-memory-tool-route-cost-v4.json \
+  --cost-basis /secure/eval/gpt-memory-first-tool-round-cost-v5.json \
   --output-dir /secure/eval/native-memory-runs
 ```
 
 For DeepSeek, use its independent credential file, exact configured Provider
 ID/Base URL/model, `--memory-tool-route-provider-type openai_compatible`, and a
-separate cost-basis v4. A GPT result cannot authorize DeepSeek and vice versa.
+separate cost-basis v5. A GPT result cannot authorize DeepSeek and vice versa.
 The model is not trusted by name; exact live evidence determines whether the
 unchanged quality and latency gates pass.
 
@@ -603,7 +606,7 @@ output, credential, or observation file. A failed latency, quality, safety,
 token, or version-matched budget gate is valid evidence and must not be
 bypassed.
 
-Schema-v6 `development_memory_tool_route` binds reader
+Historical schema-v6 `development_memory_tool_route` bound reader
 `neo-chat.native-memory-reader-capture.v4`, policy
 `memory_hybrid_main_model_tool_route_calibration_v1`, exact route Provider ID/
 type/normalized Base URL SHA-256/model, and this Tool tuple:
@@ -686,18 +689,60 @@ hard-cutoff violations even though two route failures carried the bounded
 `MEMORY_TOOL_ROUTE_FAILED`; do not relabel those `221` failures as quota, rate
 limit, overload, transport, or protocol errors without new evidence.
 
-No profile passed and no policy was frozen. The decisive architecture finding
+No schema-v6 profile passed and no policy was frozen. The decisive architecture finding
 is that `ChatToolAdapter` performs a separate `PlanTools` Provider request
 before the normal answer request; it does not reuse the existing first chat
 Tool round. Do not raise the two-second cutoff or retry this preflight. The next
 hypothesis must expose `search_memory` beside the other read-only tools on the
 existing first `ToolRoundProvider` request and use same-model continuation.
-Validation remains blocked.
+Validation remains blocked. Schema-v6/profile-v6/cost-basis-v4 and
+`memory-tool-route-development.json` remain immutable failed evidence; do not
+rewrite them into first-round evidence.
 
-Only after a future first-round Tool Loop Development hypothesis passes may its
-policy, Provider/model, contract/decoding profile, and selection behavior be
+Schema-v7 is the successor under the same capture-mode CLI string. It binds:
+
+```text
+reader version        = neo-chat.native-memory-reader-capture.v5
+profile schema        = neo-chat.memory-regression-profile-config.v7
+report schema         = neo-chat.memory-regression-relevance-calibration.v7
+cost schema           = neo-chat.memory-regression-cost-basis.v5
+policy                = memory_hybrid_main_model_first_tool_round_calibration_v1
+admission mode        = development_main_model_first_tool_round_only
+Tool adapter          = chat-first-tool-round-memory-decision-v1
+artifact              = memory-first-tool-round-development.json
+```
+
+`internal/chat` is the single canonical Tool definition/hash/validation
+authority. The Development `memoryroute.ChatToolAdapter` accepts a
+`ToolRoundProvider` and emits one real first `ProviderRoundRequest` with the
+current synthetic query/message, exact `search_memory` definition,
+`tool_choice=auto`, and no continuation. It never calls `PlanTools`; it does not
+force temperature, maximum-output, or thinking-control fields. Zero calls
+abstains. One exact non-empty-ID `search_memory({})` call releases the unchanged
+BGE Development final set. Invalid events, missing/null/non-empty arguments,
+unknown/duplicate calls, Provider failure, cancellation, deadline, or
+provenance drift fail closed.
+
+The retained schema-v7 files are:
+
+```text
+memory-first-tool-round-development.json
+run-manifest.json
+```
+
+They remain aggregate-only and mode-`0600`. The report binds the exact
+Provider/model/Base-URL hash, canonical Tool tuple, adapter, BGE tuple,
+unchanged evaluator gates, owner egress policy, and cost-basis v5 before
+Provider construction. It omits the schema-v6 decoding/temperature/output/
+thinking fields. Offline units, fake-Provider protocol tests, report/manifest
+checks, lifecycle topology, and migration-065 PostgreSQL 17 replay pass. No
+schema-v7 live Development run has been executed, so no policy is frozen and
+Validation/Promotion remain blocked.
+
+Only after a schema-v7 first-round Tool Loop Development hypothesis passes may
+its policy, Provider/model, Tool/adapter profile, and selection behavior be
 frozen in code. The current Validation CLI remains unavailable because no
-schema-v6 policy is frozen and it does not yet accept the second route
+schema-v7 policy is frozen and it does not yet accept the second route
 credential. The historical single-Provider Validation command shape remains:
 
 ```bash
@@ -798,7 +843,7 @@ run. This changes only the explicitly owner-controlled economics criterion;
 every relevance, safety, latency, cutoff, token, split, privacy, and promotion
 gate remains identical.
 
-Schema-v6 Tool-route Development requires
+Historical schema-v6 Tool-route Development requires
 `neo-chat.memory-regression-cost-basis.v4`, the same explicit
 `owner_authorized_absolute_cap_v1` policy, no `cloudJudgeAuthority`, and one
 exact `memoryToolRouteAuthority`:
@@ -823,6 +868,16 @@ verified offline replay used `600000`. The candidate's total Memory Provider
 cost must cover the fixed BGE cost plus the absolute route ceiling. Request,
 token, rate, arithmetic, Provider, Base URL, or model drift is rejected rather
 than inferred after quota use.
+
+Schema-v7 first-ToolRound Development requires
+`neo-chat.memory-regression-cost-basis.v5` with the same explicit owner policy
+and Provider/model/Base-URL binding. It retains `requestCount=300`, but its
+maximum output is a conservative aggregate first-round event bound rather than
+the fabricated schema-v6 `300 * 128` preflight constant. The bound must be at
+least one token per request and evenly divisible by 300; actual aggregate input
+and output bounds must not exceed it. Exact rates and maximum cost use the same
+ceiling arithmetic, and candidate Memory cost must cover fixed BGE work plus
+the authorized first-round route ceiling.
 
 Each full fake-protocol run directory is mode `0700` and contains five
 mode-`0600` files:

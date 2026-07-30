@@ -4,18 +4,24 @@
 
 G19 replaces pre-answer forced Search with a server-owned, provider-normalized
 Tool Loop. It applies to chat generation, provider continuation, Search mode,
-selected Knowledge retrieval, live process visibility, persisted reasoning and
-trace data, tool approval, cancellation, and source reconciliation.
+selected Knowledge/Memory retrieval, live process visibility, persisted
+reasoning and trace data, tool approval, cancellation, and source
+reconciliation.
 
 The first admitted tools are read-only:
 
 ```text
 search_web(query)
 search_knowledge(query)
+search_memory()  # default-off; first round only
 ```
 
 The generic runtime may admit more tools later only after assigning an explicit
 risk class and approval policy.
+
+`search_memory` is implemented but not promoted: it is absent unless
+`MEMORY_TOOL_LOOP_ENABLED=true`. The deployed default remains `false` pending
+schema-v7 live Development/Validation evidence.
 
 ## 2. Search mode
 
@@ -437,6 +443,40 @@ compatibility path is visibly traced and never restores pre-SSE retrieval.
   evidence gate.
 - A normal miss is a successful empty Tool Result, not a user-visible error.
 
+### `search_memory`
+
+- `internal/chat` owns the canonical no-argument definition, JSON SHA-256, and
+  call validator. The contract is `memory-search-tool-v1` with SHA-256
+  `f8f404df0ae3a3938081b813c8750d59ba252adbcb8dc755e075e5c738e20ca6`.
+- The Tool is exposed only on the first native Tool round when the default-off
+  flag is true, Conversation Memory use is allowed, the selected Provider is
+  Tool-round capable, Search is not model-built-in, and the turn is not a
+  direct `remember|correct|forget` action.
+- Before a call, the Provider receives the normal chat request and Tool
+  definition but no Memory candidate body, ID, revision, scope, score, or
+  database authority. First-round content/reasoning is buffered; no Memory call
+  releases the ordinary answer without hybrid retrieval.
+- If that buffered first round fails before it closes, even after a call was
+  assembled, the call and draft are discarded before execution and the
+  original compatibility path continues with zero Memory retrieval.
+- Memory use requires exactly one first-round call with a non-empty ID, exact
+  raw name, and explicitly decoded `{}` arguments. Whitespace/case variants,
+  missing, `null`, malformed, non-empty, duplicate, unknown, or later-round
+  Memory calls fail closed for this lane. `search_memory` is removed from all
+  later rounds.
+- A valid call runs the fixed BGE embedding, exact/BM25/vector RRF, admission,
+  rerank, and Top-5/600/900 selector without invoking v1 or `MarkUsed`. After
+  Record, migration `065` hydrates the exact final lane through current source,
+  settings, epoch, projection, revision/hash, scope/lifecycle, time, and
+  Sensitive authority. Go rechecks identity and redacts each body again.
+- Empty, failed, stale, or fully redacted retrieval returns a bounded Tool
+  Result and ordinary same-model continuation without Memory. A pre-content
+  continuation failure recovers through the same Provider/model from the
+  original request without any Memory body. Partial content is never replayed.
+- Historical schema-v6 `PlanTools` results are immutable failed preflight
+  evidence. Schema-v7 uses the real first-`ToolRoundProvider` shape, but it has
+  no live result and grants no rollout authority.
+
 Knowledge and Web may run in either order only when each authority is relevant.
 Current/public claims use Web; internal/private claims use Knowledge; a genuine
 mixed request may cite both without treating extra material as automatically
@@ -481,6 +521,14 @@ more accurate.
 | Compatibility planner fails           | strong Knowledge, forced Web, else Direct; never Both |
 | Knowledge miss                        | empty successful result; continue Model/Web        |
 | Tool arguments malformed/unknown      | reject execution; redacted failed step             |
+| Memory Tool flag absent/false         | do not expose `search_memory`; preserve v1 default |
+| No first-round Memory call            | zero hybrid retrieval; release buffered answer     |
+| Exact first-round `search_memory({})`  | current-authorized hybrid retrieval and same-model continuation |
+| Buffered first round fails after a call is assembled | discard call/draft; compatibility path; zero Memory retrieval |
+| Memory call name is whitespace/case variant | reject; only the exact raw name authorizes retrieval |
+| Memory retrieval empty/failed/stale   | bounded Tool Result; continue without Memory       |
+| Memory continuation fails before text | recover from original request with no Memory body  |
+| Memory continuation fails after text  | preserve error; no duplicate recovery              |
 | Write/external Tool awaiting approval | pause loop until allow/reject/cancel               |
 | User cancels during Provider/Tool     | cancel both; one terminal cancelled event          |
 | User cancels compatibility planner    | Tool/Web/Generation cancelled; no `planner_failed` |
@@ -531,6 +579,12 @@ more accurate.
 15. Frontend provider round-trip and Inherit cleanup plus durable query-free
     Direct/Knowledge/Web/Both summaries, dual source counts, and reason
     allowlisting.
+16. Memory Tool exact definition/hash, default-off/direct-action/model-built-in
+    exclusions, first-round buffering, no-call release, exact `{}` acceptance,
+    malformed/null/non-empty/unknown/duplicate/later-round denial, multi-tool
+    coexistence, migration-065 final hydration drift, secret re-redaction,
+    same-model continuation, body-free recovery, and no v1 fallback/Usage
+    mutation.
 
 ## 11. Rollback
 
@@ -540,3 +594,7 @@ compatibility routing remains bounded; no Knowledge or chat data changes.
 Migration `042_model_tool_capability_cache` contains derived capability state
 only. Its down migration drops the cache table without removing provider
 configuration, credentials, conversations, Knowledge, or Citations.
+
+For a Memory Tool regression, set `MEMORY_TOOL_LOOP_ENABLED=false` and restart
+the API. This removes Tool exposure and restores the deployed v1 prompt/Usage
+path without deleting Memory, projections, observations, or migration `065`.

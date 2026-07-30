@@ -190,6 +190,7 @@ container-local `GET /health` on port `8081`; no port is published or proxied.
 | `MEMORY_WORKER_DATABASE_URL`                  | Memory Worker login inheriting only `memory_worker_runtime`.                                   |
 | `MEMORY_LEXICAL_SHADOW_ENABLED`               | API-only PR7 observation switch; defaults false and never controls projection maintenance or prompt authority. |
 | `MEMORY_HYBRID_SHADOW_ENABLED`                | Shared PR8 API/Memory Worker switch; defaults false, gates all Memory embedding/rerank calls, and never changes v1 prompt/Usage authority. |
+| `MEMORY_TOOL_LOOP_ENABLED`                    | API-only first-round `search_memory` switch; defaults false. When true, eligible Tool-capable chat turns use post-call hybrid retrieval and same-model continuation. Never pass it to the Memory Worker. |
 | `MEMORY_L2_SCENE_SHADOW_ENABLED`              | Shared PR11 API/Memory Worker switch; defaults false, gates Scene refresh/query embedding/rerank while provider-free stale purge remains active. |
 | `MEMORY_L2_SCENE_READER_ENABLED`              | API-only PR11 reader switch; defaults false and still requires database promotion/current authority. Never pass it to the Memory Worker. |
 | `MEMORY_L3_PERSONA_SHADOW_ENABLED`            | Shared PR12 API/Memory Worker switch; defaults false, gates Persona refresh/query embedding/rerank while provider-free stale purge remains active. |
@@ -219,6 +220,18 @@ The L2 Scene and L3 Persona shadow flags independently gate their Provider-
 backed refresh/embedding lanes. Their provider-free stale detection and purge
 remain enabled even when every shadow flag is false. Reader flags belong only
 to the API and must never enter the Memory Worker environment.
+
+`MEMORY_TOOL_LOOP_ENABLED` is independent from the legacy hybrid-shadow API
+switch but consumes the same fixed BGE projections. Keep it `false` unless a
+separate reviewed rollout explicitly authorizes the first-round Memory Tool.
+If it is ever enabled, `MEMORY_HYBRID_SHADOW_ENABLED=true` must also reach the
+Memory Worker so new and changed Memory can obtain ready embeddings. The Tool
+flag itself remains API-only. A valid call executes exact/BM25/vector RRF,
+rerank, Record, migration `065` current-authority final hydration, and
+same-model continuation; failure or empty retrieval continues without Memory.
+Direct `remember|correct|forget` turns and model-built-in Web Search do not
+expose the Memory Tool. Current schema-v7 evidence is offline-only, so this
+release must retain the default `false` value.
 
 The one-shot `admin provider-secrets-rewrite` command receives the stable BYOK
 ingress key, temporary Server Default env fallback, and provider vault Secret

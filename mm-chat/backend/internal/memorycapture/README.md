@@ -19,9 +19,10 @@ without changing prompt, Usage, feature flags, or production data.
 - run the owner-authorized strict cloud candidate judge concurrently with BGE
   rerank for schema-v4/v5 Development, while retaining only aggregate status,
   bounded cost authority, and shared evaluator metrics;
-- run the exact current-model `search_memory` Tool decision concurrently with
-  fixed BGE work for schema-v6 Development without sending candidate bodies to
-  the route Provider;
+- preserve schema-v6 as immutable failed `PlanTools` evidence and run the exact
+  current-model first-`ToolRoundProvider` `search_memory` decision concurrently
+  with fixed BGE work for schema-v7 Development without sending candidate
+  bodies to the route Provider;
 - enforce exact `development`/`validation` split lanes and reject the visible
   machine `holdout`;
 - assemble strict regression observations, content-free run manifests, and
@@ -45,8 +46,8 @@ injection, or active-reader authority.
 | `BuildDevelopmentCalibration` | Evaluate 20,301 scalar pairs plus 201 query-intent margins and return schema-v3 aggregate evidence. |
 | `CaptureCloudJudgeDevelopment` | Execute the fixed strict-ordinal cloud judge and BGE rerank concurrently for the 300 Development cases. |
 | `BuildCloudJudgeDevelopmentReport` | Apply version-matched Provider-egress/cost policy and return schema-v4/v5 aggregate evidence. |
-| `CaptureMemoryToolRouteDevelopment` | Execute one exact GPT/DeepSeek Tool-route profile and fixed BGE path for the 300 Development cases. |
-| `BuildMemoryToolRouteDevelopmentReport` | Apply cost-basis v4 and return schema-v6 aggregate Tool-route evidence. |
+| `CaptureMemoryToolRouteDevelopment` | Execute one exact GPT/DeepSeek first-ToolRound profile and fixed BGE path for the 300 Development cases. |
+| `BuildMemoryToolRouteDevelopmentReport` | Apply cost-basis v5 and return schema-v7 aggregate first-ToolRound evidence. |
 | `CaptureFrozenValidation` | Execute only the 100 Validation cases under the code-frozen policy. |
 | `BuildFrozenValidation` | Score the frozen Validation result without retuning. |
 | `AssembleRegressionObservations` | Bind ordered captures to the strict regression schema. |
@@ -126,24 +127,29 @@ and `40/195` judge requests hit `HARD_CUTOFF`. The planned
 `Qwen/Qwen3.5-4B` follow-up was cancelled before Provider construction or quota
 use as `cancelled_not_run_architecture_pivot`; it has no model result.
 
-Schema v6 implements that architecture pivot as
-`development_memory_tool_route`. One exact configured GPT or DeepSeek model
-receives only the deterministic secret-redacted query and the shared
-no-argument `search_memory` Tool. No call means `no_memory`; use Memory requires
-one call with a non-empty ID and explicit `{}`. Missing/null/non-empty
-arguments, unknown/duplicate calls, timeout, Provider failure, and
-model/contract drift fail closed. BGE work may overlap, but candidate bodies
-never reach the route model and final rows are released only after a valid
-call.
+Schema v6 implemented the first architecture pivot as an independent
+`PlanTools` preflight. Its profile-v6/cost-basis-v4 artifacts are immutable
+historical evidence. GPT completed only `41/300` route decisions, the first
+DeepSeek run is protocol-invalid, and corrected DeepSeek Flash completed
+`77/300`; no profile passed. The separate preflight request shape is rejected.
 
-The schema-v6 profile binds Provider ID/type, normalized Base URL SHA-256,
-model, Tool version/hash/decoding, fixed BGE tuple, owner egress policy, and
-cost-basis v4 before Provider construction. GPT and DeepSeek are separate
-Development hypotheses. The 300-case PostgreSQL 17 `fake_protocol` replay
-completed with 300 route decisions, zero protocol failures, a conservative
-input-token upper bound of `358533`, private two-file publication, and total
-teardown. Fake route quality is intentionally meaningless; no real route model
-has run and Validation remains blocked.
+The current `development_memory_tool_route` implementation emits schema v7. It
+uses reader `neo-chat.native-memory-reader-capture.v5`, profile config v7,
+policy `memory_hybrid_main_model_first_tool_round_calibration_v1`, adapter
+`chat-first-tool-round-memory-decision-v1`, cost-basis v5, and artifact
+`memory-first-tool-round-development.json`. `internal/chat` owns the canonical
+Tool definition/hash/validation; the `memoryroute` adapter submits one real
+first `ProviderRoundRequest` with the current synthetic query/message,
+`tool_choice=auto`, and no continuation. It does not call `PlanTools` or force
+the old temperature/output/thinking controls.
+
+No call means `no_memory`; use Memory requires one call with a non-empty ID and
+explicit `{}`. Missing/null/non-empty arguments, unknown/duplicate calls,
+invalid Provider events, timeout, failure, and model/contract drift fail closed.
+BGE work may overlap, but candidate bodies never reach the route model and final
+rows are released only after a valid call. Schema-v7 offline protocol/report/
+lifecycle tests pass; no live schema-v7 Development run exists and Validation
+remains blocked.
 
 The schema-v4 cost basis fixes a 300-request ceiling, a 128-token output ceiling
 per request, conservative UTF-8-plus-framing input token bounds, exact model
@@ -151,11 +157,13 @@ prices, and maximum judge cost before Provider construction. The candidate
 Memory cost must cover that maximum, and actual aggregate token bounds may not
 exceed the authorization.
 
-Tool-route cost-basis v4 independently binds the exact route Provider ID/type,
-Base URL SHA-256, model, 300 requests, `38,400` maximum output tokens,
-conservative aggregate input tokens, exact prices, and absolute route cost.
-The SiliconFlow and route credentials must not be the same file, hard links, or
-equal bytes. Both are cleared after use and included in leak scans.
+Historical Tool-route cost-basis v4 fixed `38,400` preflight output tokens.
+First-ToolRound cost-basis v5 instead binds the exact Provider ID/type, Base URL
+SHA-256, model, 300 requests, conservative aggregate input/output event bounds,
+exact prices, and absolute route cost without pretending product-round output
+is always 128 tokens. The SiliconFlow and route credentials must not be the
+same file, hard links, or equal bytes. Both are cleared after use and included
+in leak scans.
 
 ## Tests
 

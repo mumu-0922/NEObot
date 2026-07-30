@@ -211,9 +211,11 @@ rebuilt from current canonical Memory on re-up.
 
 ### Migration 059 / Memory vector and hybrid shadow rollback
 
-Set `MEMORY_HYBRID_SHADOW_ENABLED=false` in both the API and Memory Worker,
-then stop post-`059` processes. The switch stops new embedding claims and
-hybrid comparisons; it does not mutate the active reader pointer. Down fails
+Set `MEMORY_TOOL_LOOP_ENABLED=false` in the API and
+`MEMORY_HYBRID_SHADOW_ENABLED=false` in both the API and Memory Worker, then
+stop post-`059` processes. The switches stop first-round Memory Tool reads, new
+embedding claims, and hybrid comparisons; they do not mutate the active reader
+pointer. Down fails
 with `MEMORY_HYBRID_ROLLBACK_REQUIRES_V1_READER` for a non-v1 reader and with
 `MEMORY_HYBRID_ROLLBACK_REQUIRES_EMPTY_OBSERVATIONS` after any hybrid
 observation exists.
@@ -222,6 +224,13 @@ Never delete observation evidence to force rollback. After shadow collection
 begins, retain `059` and roll back behavior with the default-off flag. Only a
 clean pre-observation database may run `059 -> 058 -> 059`; its HNSW vectors
 and embedding jobs are derived and rebuild from current canonical projection.
+
+Migration `065` adds only the read-only exact-final hydration capability. After
+the Tool flag is false and backend processes are stopped, clean rollback may
+run `065 -> 064`; re-up must replay `064 -> 065`. Down removes the function
+only and does not delete observations or canonical Memory. Do not attempt to
+keep an enabled Tool Loop on a pre-`065` backend; final content authority would
+be unavailable and must fail closed.
 
 ### Migration 060 / Memory governance rollback
 

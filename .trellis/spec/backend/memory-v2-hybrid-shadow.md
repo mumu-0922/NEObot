@@ -4,14 +4,17 @@
 
 Apply this contract when changing migration
 `059_memory_hybrid_vector_shadow`, additive migration
-`064_memory_hybrid_relevance_admission`, Memory BGE-M3 projection/jobs,
-hybrid prepare/admission/record capabilities, RRF/rerank/cloud-judge/main-model
-Tool routing/relevance/token selection, hybrid diagnostics, or
-`MEMORY_HYBRID_SHADOW_ENABLED` wiring.
+`064_memory_hybrid_relevance_admission`, additive migration
+`065_memory_hybrid_final_hydration`, Memory BGE-M3 projection/jobs, hybrid
+prepare/admission/record/final-hydration capabilities, RRF/rerank/cloud-judge/
+main-model Tool routing/relevance/token selection, hybrid diagnostics,
+`MEMORY_HYBRID_SHADOW_ENABLED`, or `MEMORY_TOOL_LOOP_ENABLED` wiring.
 
-PR8 keeps the v1 in-process Top 5 as the only prompt and Usage authority. It
-adds no reader promotion API, governance frontend, L2/L3, Export/Import, or
-Hindsight execution.
+The deployed default keeps the v1 in-process Top 5 as prompt and Usage
+authority. The additive product Memory Tool path is separately default-off and
+has no Usage mutation or promotion authority. This slice adds no reader
+promotion API, governance frontend, L2/L3, Export/Import, or Hindsight
+execution.
 
 ## 2. Signatures
 
@@ -53,6 +56,7 @@ memory_record_hybrid_shadow(
 memory_authorize_hybrid_rerank(
   UUID, UUID, UUID, TEXT, REAL[]
 )
+memory_hydrate_hybrid_final(UUID, UUID, UUID)
 ```
 
 The Go reader seam is:
@@ -62,6 +66,10 @@ SearchRelevantWithHybridShadow(
     context.Context, query, conversationID, assistantMessageID string,
     limit int,
 ) ([]Memory, HybridShadowSummary, error)
+
+SearchRelevantAfterMemoryToolCall(
+    context.Context, HybridMemoryToolSearchInput,
+) HybridMemoryToolSearchResult
 ```
 
 The relevance-policy identities are:
@@ -71,6 +79,7 @@ memory_hybrid_relevance_calibration_v1  calibration-only -1.00 / 0.00
 memory_hybrid_relevance_intent_calibration_v1 query-intent -1.00 / scalar -1.00 / 0.00
 memory_hybrid_cloud_candidate_judge_calibration_v1 cloud judge / scalar -1.00 / 0.00
 memory_hybrid_main_model_tool_route_calibration_v1 main-model Tool route / scalar -1.00 / 0.00
+memory_hybrid_main_model_first_tool_round_calibration_v1 first ToolRound / scalar -1.00 / 0.00
 memory_hybrid_relevance_intent_abstention_v1 frozen Development-selected intent margin
 owner_authorized_normal_candidates_v1 exact schema-v4 Provider-egress policy
 owner_authorized_absolute_cap_v1 exact schema-v5 paid-model cost policy
@@ -82,7 +91,12 @@ memory-search-tool-v1
 f8f404df0ae3a3938081b813c8750d59ba252adbcb8dc755e075e5c738e20ca6
 memory-search-tool-decoding-v1
 temperature=0 / maximum output=128 / thinking disabled
+chat-first-tool-round-memory-decision-v1
 ```
+
+The decoding/temperature/output/thinking tuple applies only to immutable
+schema-v6 preflight evidence. The schema-v7 first-ToolRound profile binds the
+adapter version and omits those preflight-only fields.
 
 The strict judge output is exactly:
 
@@ -149,11 +163,17 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 
 ### Hybrid retrieval and recording
 
-- The shared flag is default-off and gates both embedding claims and API
-  hybrid comparisons. `false` means zero Memory embedding/rerank/judge/Tool-
-  route Provider calls. Projection correctness does not depend on the flag.
-- The v1 reader always runs first. Hybrid failure never changes its items,
-  prompt, Usage links, or chat success.
+- `MEMORY_HYBRID_SHADOW_ENABLED` is default-off and gates embedding claims plus
+  legacy API hybrid comparisons. `MEMORY_TOOL_LOOP_ENABLED` is a separate
+  default-off API flag for first-round product Tool exposure and execution.
+  Both false means zero Memory embedding/rerank/judge/Tool-route Provider calls.
+  Product activation requires ready fixed-profile projections; operators must
+  keep the Worker hybrid flag aligned when new/changed Memory must be embedded.
+  Projection correctness does not depend on API Tool exposure.
+- `SearchRelevantWithHybridShadow` always runs the v1 reader first; hybrid
+  failure never changes its items, prompt, Usage links, or chat success.
+  `SearchRelevantAfterMemoryToolCall` is a separate post-call product seam: it
+  never invokes v1 and never falls back to v1 or unscored RRF candidates.
 - Prepare accepts only the authenticated user's current streaming assistant,
   its exact completed user parent, and the current active Conversation/Project.
   Query text is transient and must match its SHA-256 and source message.
@@ -218,7 +238,7 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   blindly receive both stage channels. A Provider that ignores cancellation
   must not hold the reader past the cutoff; stage result channels remain
   buffered so late goroutines cannot block while publishing discarded output.
-- The schema-v6 Development alternative uses the current explicitly selected
+- The historical schema-v6 Development alternative uses the current explicitly selected
   GPT or DeepSeek model through `HybridMemoryToolRouter`. The router receives
   only the deterministic secret-redacted current query and the fixed
   `search_memory` definition. It receives no candidate body, Memory ID, scope,
@@ -240,7 +260,7 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   prompt injection. An empty candidate set still waits for the route decision
   to record `EMPTY`, `ABSTAINED`, or `FAILED` truthfully without inventing a
   final row.
-- The implemented schema-v6 adapter invokes an independent non-streaming
+- The schema-v6 adapter invoked an independent non-streaming
   `PlanTools` preflight. It does not share the existing chat
   `ToolRoundProvider` first answer round. Live Development rejected this
   preflight shape: GPT completed `41/300` route decisions, while corrected
@@ -250,14 +270,26 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   Official DeepSeek requires `thinking.type=disabled`; generic compatible
   gateways retain `enable_thinking=false`, and official OpenAI omits both.
 - Do not compensate by increasing the hard cutoff, retrying the preflight, or
-  weakening gates. A successor must expose `search_memory` in the product's
-  existing first `StreamToolRound`, then execute and return bounded Memory in
-  same-model continuation.
-- The adapters in `internal/memoryjudge` and `internal/memoryroute` are not
-  production activation authority. The Server composition installs no cloud-
-  judge, Tool-route, or frozen policy, so normal operation remains default-off
-  with v1 as the only prompt/Usage reader. Product same-model Tool continuation
-  is intentionally not wired by this Development capture.
+  weakening gates. Schema-v6/profile-v6/cost-basis-v4 remain immutable failed
+  evidence and cannot authorize another request shape.
+- Product chat now exposes the canonical `search_memory` definition inside the
+  existing first `StreamToolRound` only when `MEMORY_TOOL_LOOP_ENABLED=true`,
+  the selected Provider is Tool-round capable, current Conversation policy
+  allows Memory use, Search is not model-built-in, and the current turn is not
+  a direct `remember|correct|forget` action. The flag defaults false and no live
+  schema-v7 Development or promotion decision has enabled it.
+- `internal/chat` owns the canonical definition/hash/validation boundary.
+  `internal/memoryroute` is only a schema-v7 Development compatibility adapter
+  that emits one real first `ProviderRoundRequest`; it does not own product
+  continuation or Tool execution.
+- Before the call, the Provider sees the normal conversation request and exact
+  Tool but no Memory body. No Memory call performs zero hybrid retrieval. One
+  exact first-round `search_memory({})` call starts the fixed BGE/RRF/rerank/
+  Top-5/token path; the v1 reader and `MarkUsed` are not called.
+- Retrieval failure and empty results return bounded Tool Results and still
+  allow ordinary same-model continuation. `search_memory` is removed from all
+  later rounds. A continuation failure before answer content recovers from the
+  original request without any Memory body; partial content is never replayed.
 - Rerank results retain finite `[0,1]` scores only in request memory. Invalid,
   duplicate, missing, failed, redacted, or cutoff output yields no hybrid
   final. Valid rows below the active policy's final threshold are removed before the
@@ -274,6 +306,17 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   Sensitive switch, validity/expiry, canonical revision/hash, and projection
   for every submitted ID after Provider work. Drift produces `RESULT_STALE`
   and no stale final row.
+- After a successful non-empty Record, migration `065` hydrates only the exact
+  recorded final lane for the same authenticated user and streaming assistant.
+  `SearchRelevantAfterMemoryToolCall` must preserve the original query bytes
+  for `PrepareHybridShadow` and its SHA-256; `TrimSpace` may test emptiness but
+  must not replace the value, because `065` binds the observation hash back to
+  the exact source-message content.
+  It repeats source hash, Conversation/Project lifecycle, settings, visibility
+  epoch, projection generation, revision/hash, scope generation, time, and
+  Sensitive fences. Any stale member rejects the whole final set. Go then
+  verifies ordinal/ID/revision/scope/type equality and applies deterministic
+  secret redaction again; a fully removed body fails closed.
 - Exact assistant/query/ordered-v1/result replay is immutable. Same payload
   returns the first evidence; changed payload or result fails with
   `MEMORY_HYBRID_SHADOW_REPLAY_CONFLICT`.
@@ -284,13 +327,15 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 
 ### Privilege and rollback
 
-- `go_api_runtime` receives only hybrid prepare/admission/record EXECUTE.
+- `go_api_runtime` receives only hybrid prepare/admission/record/final-hydrate
+  EXECUTE.
   `memory_worker_runtime` receives only embedding lease EXECUTE. Neither gets
   direct projection/job/observation CRUD or the other role's functions.
 - All functions are `SECURITY DEFINER`, owned by `memory_runtime_owner`, and pin
   the application schema followed by `pg_catalog, pg_temp`.
-- Migration `064` is an additive, read-only capability and cleanly replays
-  `063 -> 064 -> 063 -> 064`. Down removes only that function. Migration `059`
+- Migrations `064` and `065` are additive read-only capabilities. `065` down
+  removes only final hydration; the clean `064 -> 065 -> 064 -> 065` replay
+  must pass. Migration `059`
   down still requires the v1/NULL reader and empty hybrid observation history;
   never delete observation evidence to force rollback.
 
@@ -299,7 +344,7 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 | Condition | Required result |
 | --- | --- |
 | PostgreSQL/pgvector/PR7 prerequisite differs | Migration aborts before adding PR8 objects. |
-| Shared flag absent/false | No embedding claim, query embedding, or rerank call. |
+| Hybrid Worker/shadow flag absent/false | No embedding claim or legacy shadow comparison Provider call. |
 | Provider missing, disabled, unattested, duplicated, or changed | No claim or bounded fallback/retry; never expose the credential. |
 | Provider fingerprint is built through PostgreSQL `TEXT` plus `chr(0)` | Forbidden; build the exact NUL-delimited `BYTEA` sequence instead. |
 | Job lease/revision/hash/epoch/scope/generation/profile drifts | Old response cannot complete; retry/dead-letter under bounded code. |
@@ -322,6 +367,13 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 | Tool route succeeds but the current-authorized BGE candidate set is empty | Record `MEMORY_TOOL_ROUTE_EMPTY`; do not fabricate a Memory result. |
 | Official DeepSeek is sent generic `enable_thinking=false` | Mark the run protocol-invalid; it cannot support a model-quality conclusion. |
 | The route is implemented as a separate pre-answer `PlanTools` request | Development-only failed hypothesis; never promote this request shape. |
+| Product Memory Tool flag is absent/false | Do not expose `search_memory`; preserve the normal v1 prompt/Usage path. |
+| Product first round returns no Memory call | Make zero hybrid retrieval calls and release the buffered ordinary answer. |
+| Product first round returns one exact call | Execute the hybrid reader, record, hydrate through `065`, and continue on the same Provider/model. |
+| Product query has leading/trailing whitespace | Preserve its exact bytes for prepare/hash/source identity; trim only for the empty-input check. |
+| Final hydration count/identity/current authority drifts | Reject the complete set as `authority_stale`; return no Memory body. |
+| Final body is fully secret-redacted after hydration | Fail closed; do not place it in a Tool Result. |
+| Product continuation fails before content | Recover from the original request without Memory body. |
 | Rerank fails, is invalid, or its reserved deadline expires | Record the bounded failure/cutoff and no hybrid final. |
 | Every valid rerank score is below the frozen final threshold | Record `RELEVANCE_FINAL_ABSTAINED`, zero final rows, and zero estimated prompt Memory tokens. |
 | Provider returns success after its context deadline | Discard the late output; never complete/rerank from it. |
@@ -359,24 +411,29 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   SHA-256/model/decoding provenance, query/candidate secret redaction,
   concurrent BGE/judge failure and cutoff, ordinal intersection, empty-judge
   abstention, a Provider that ignores context without extending the cutoff,
-  exact Tool definition/version/SHA-256, no-call/exact-empty-object decisions,
-  nil/non-empty/unknown/duplicate call rejection, model/contract drift,
-  query-only route input, concurrent route/embedding/BGE completion, route
-  failure/cutoff/empty-candidate handling, official DeepSeek versus generic
-  compatible versus official OpenAI thinking-control encoding, policy-aware
+  exact Tool definition/version/SHA-256, product default-off/direct-action/
+  model-built-in exclusions, first-round buffering, no-call/exact-empty-object
+  decisions, nil/non-empty/non-exact-name/unknown/duplicate/later-round
+  rejection, multi-tool coexistence, exact query-byte/hash preservation,
+  query-only Development adapter input, concurrent route/
+  embedding/BGE completion, route failure/cutoff/empty-candidate handling,
+  same-model continuation and body-free recovery, policy-aware
   Provider-egress scoring,
   post-threshold
   abstention, reserved cutoff recording, 600/900 token selection, bounded
   metadata, and byte-equivalent v1 prompt/Usage behavior.
-- Static migration: fixed BGE tuple/HNSW, full job authority shape, no durable
+- Static migration: fixed BGE tuple/HNSW, full job/final-hydration authority
+  shape, no durable
   private payload/raw scores, three independent lanes, RRF(60), current record
   reauthorization, exact grants, and both down guards.
 - PostgreSQL 17: full replay/backfill, fake 1024d claim/hydrate/complete/retry,
   final-lease projection failure, scope/epoch/provider old-response fences,
   duplicate-Provider fail-closed, exact/BM25/vector independence, RRF
   determinism, source/scope/vector admission drift denial, read-only admission,
-  result stale, replay conflict, worker/PUBLIC denial, guarded down, clean
-  `063 -> 064 -> 063 -> 064`, and re-up.
+  result stale, valid final hydration, logical-delete/revision/settings/
+  projection-generation drift denial, exact runtime grant, replay conflict,
+  worker/PUBLIC denial, guarded down, clean `064 -> 065 -> 064 -> 065`, and
+  re-up.
 - Run focused race, all backend tests, `go vet ./...`, Compose/preflight,
   backend image build, and the full standalone gate. No test calls a Live
   Provider or touches Live user Memory.
@@ -395,25 +452,40 @@ claim any configured embedding provider
   -> inject Hybrid Top 5
 ```
 
+```go
+// Wrong: migration 065 will compare this changed hash with the raw source row.
+query := strings.TrimSpace(input.Query)
+executeHybridShadow(query)
+```
+
 ### Correct
 
 ```text
-shared default-off flag
+default-off hybrid-worker/shadow flag + separate default-off product Tool flag
   -> exact attested BGE job lease + current authority completion
   -> post-return deadline rejection + terminal lease/projection closure
   -> independently authorized exact/BM25/vector lanes
   -> deterministic RRF(60)
   -> local maximum-cosine admission with no durable vector/score
-  -> optional strict cloud judge || main-model search_memory route
-     concurrent with fixed BGE work under one deadline
-     (route model sees query + Tool only; never candidate bodies)
-  -> judge ordinal intersection OR exact Tool-call release in BGE order
-  -> request-local score threshold + current-authority revalidation + 600/900 budget
+  -> historical strict cloud judge || Development route evidence
+  -> product first ToolRound sees normal request + search_memory, no Memory body
+  -> exact call: fixed BGE path + request-local score/token selection
+  -> Record final -> migration-065 current-authority final hydration
+  -> same-model continuation without search_memory
   -> content-free observation
   -> unchanged v1 prompt and Usage
 ```
 
+```go
+// Correct: validate normalized emptiness, but retain source identity bytes.
+query := input.Query
+if strings.TrimSpace(query) == "" {
+    return noMemory
+}
+executeHybridShadow(query)
+```
+
 The schema-v6 `PlanTools` preflight is retained only as failed Development
-evidence. It is not the correct product implementation of the optional
-main-model branch above; that branch must execute inside the existing first
-chat Tool round.
+evidence. Schema-v7 measures the implemented first-ToolRound shape but has only
+offline protocol evidence. Production exposure remains default-off and cannot
+be promoted without a separately reviewed live Development/Validation result.

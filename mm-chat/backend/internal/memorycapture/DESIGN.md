@@ -66,10 +66,10 @@ run-bound marker in a database whose name starts with
 | Strict judge contract | Free-form output could inject instructions, IDs, or unverifiable ranking data. | The fixed prompt accepts candidates as untrusted data and requires exactly `schemaVersion` plus at most five unique in-range ordinals; empty means `no_memory`. |
 | Explicit cloud-judge cost ceiling | Per-token judge quota cannot be inferred from the historical aggregate Memory cost. | Cost-basis v2 binds 300 requests, conservative input/output token ceilings, exact prices (including an official free rate), and maximum judge cost before Provider construction. |
 | Versioned owner absolute budget | A paid stronger judge is guaranteed to fail the historical relative-cost criterion even when the owner explicitly does not select on expense. | Cost-basis/profile/report schema v3/v5 binds `owner_authorized_absolute_cap_v1`; ratio stays truthful and informational while exact absolute ceilings remain mandatory. Historical schema-v4 semantics do not change. |
-| Main-model Tool route | Three candidate-aware hosted judge models failed unchanged quality/latency gates, and the owner already selected GPT/DeepSeek for chat. | Schema v6 sends only the redacted query plus the exact `search_memory` Tool to one bound current model; no candidate body reaches that route boundary. |
+| Main-model Tool route | Three candidate-aware hosted judge models failed unchanged quality/latency gates, and the owner already selected GPT/DeepSeek for chat. | Schema v6 preserves the failed preflight; schema v7 sends the current synthetic query/message plus canonical `search_memory` through one real first `ToolRoundProvider` request. |
 | Exact empty-object call | Missing arguments and `{}` have different decoding provenance even though both can look empty in Go. | The adapter requires a non-nil empty map, one non-empty call ID, one exact name, and no duplicate calls. |
 | Speculative BGE overlap | A separate route round plus serial embedding/rerank would make the unchanged two-second gate harder to meet. | BGE work may overlap, but its candidates stay request-local and are discarded unless the exact route call succeeds. |
-| Independent live credentials | BGE and the selected chat route are separate Provider authorities. | Cost-basis v4 and the wrapper reject the same file, hard links, or equal Key bytes and bind each exact target independently. |
+| Independent live credentials | BGE and the selected chat route are separate Provider authorities. | Cost-basis v5 and the wrapper reject the same file, hard links, or equal Key bytes and bind each exact target independently. |
 | Candidate failure means `no_memory` | v1 remains the real prompt authority but is a separate benchmark profile. | Prepare/Record/Provider/cutoff failures never launder v1 or unscored RRF rows into v2 final/injected surfaces. |
 
 ## Trust boundaries and threats
@@ -126,14 +126,14 @@ request-local ordinals. It contains no Memory ID, revision, scope, authority
 field, or retrieval score. Exact-key/duplicate-key/size/cardinality/range
 validation and post-call provenance checks fail closed.
 
-The main-model Tool definition is shared by capture and future product
-integration through `internal/memoryroute`. Its Provider request contains only
-the secret-redacted current query and the exact no-argument `search_memory`
-definition. The adapter accepts zero calls or exactly one non-empty-ID call
-whose decoded arguments are a non-nil empty object. Any other choice/call/
-argument shape fails closed. The returned boolean carries exact model,
-contract-version, and contract-hash provenance; it never carries free-form
-model output or candidate authority.
+The main-model Tool definition/hash/validation is owned by `internal/chat`.
+`internal/memoryroute` delegates to that authority for capture only. Its schema-
+v7 Provider request contains the current synthetic query/message and exact
+no-argument `search_memory` definition, with no candidate body. The adapter
+accepts zero calls or exactly one non-empty-ID call whose decoded arguments are
+a non-nil empty object. Any other event/call/argument shape fails closed. The
+returned boolean carries exact model, contract-version, and contract-hash
+provenance; it never carries free-form output or candidate authority.
 
 ## Known limitations
 
@@ -159,11 +159,15 @@ model output or candidate authority.
 - Qwen3.6 subsequently failed with 40/195 cutoff events plus recall and false-
   injection failures. Qwen3.5-4B was cancelled without Provider construction
   or quota use when the owner chose the main-model Tool architecture.
-- Schema-v6 Tool routing is implemented and proven through a 300-case
-  PostgreSQL 17 fake-protocol replay, but no live GPT or DeepSeek Development
-  result exists. The Development prompt is the current redacted query rather
-  than the full product conversation replay, product same-model continuation is
-  not wired, Validation remains blocked, and promotion remains disabled.
+- Schema-v6 Tool routing has a 300-case PostgreSQL 17 fake-protocol replay and
+  three immutable live outcomes: GPT failed, the first DeepSeek run is protocol-
+  invalid, and corrected DeepSeek Flash failed. Its `PlanTools` preflight is
+  rejected.
+- Schema-v7 first-ToolRound routing has offline protocol/report/lifecycle and
+  migration-065 PostgreSQL evidence, but no live Development result. Capture
+  still uses one synthetic current query rather than full conversation replay
+  and does not execute the product answer continuation. Validation remains
+  blocked and promotion remains disabled.
 - Fake protocol relevance and latency metrics are intentionally meaningless;
   only lifecycle and authority invariants are evaluated.
 
@@ -198,5 +202,7 @@ model output or candidate authority.
 - **2026-07-29**: Schema-v6 main-model `search_memory` Tool routing added with
   exact OpenAI/OpenAI-compatible decoding, Provider/model/Base-URL hash
   authority, independent dual credentials, cost-basis v4, aggregate-only
-  evidence, and a successful 300-case fake-protocol lifecycle replay. No live
-  route-model quality result or production activation was created.
+  evidence, and a successful 300-case fake-protocol lifecycle replay.
+- **2026-07-30**: Retained failed schema-v6 GPT/DeepSeek evidence, rejected the
+  separate `PlanTools` preflight, and added schema-v7 first-`ToolRoundProvider`
+  capture with canonical chat authority, cost-basis v5, and a distinct artifact.

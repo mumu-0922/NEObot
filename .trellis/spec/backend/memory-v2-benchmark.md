@@ -39,15 +39,18 @@ neo-chat.memory-regression-profile-config.v3
 neo-chat.memory-regression-profile-config.v4
 neo-chat.memory-regression-profile-config.v5
 neo-chat.memory-regression-profile-config.v6
+neo-chat.memory-regression-profile-config.v7
 neo-chat.memory-regression-relevance-calibration.v3
 neo-chat.memory-regression-relevance-calibration.v4
 neo-chat.memory-regression-relevance-calibration.v5
 neo-chat.memory-regression-relevance-calibration.v6
+neo-chat.memory-regression-relevance-calibration.v7
 neo-chat.memory-regression-relevance-validation.v1
 neo-chat.memory-regression-relevance-run.v1
 neo-chat.memory-regression-cost-basis.v2
 neo-chat.memory-regression-cost-basis.v3
 neo-chat.memory-regression-cost-basis.v4
+neo-chat.memory-regression-cost-basis.v5
 neo-chat.memory-cloud-candidate-judge-input.v1
 neo-chat.memory-cloud-candidate-judge-output.v1
 ```
@@ -181,7 +184,7 @@ bash scripts/run-memory-regression.sh \
   --memory-tool-route-base-url https://api.openai.com/v1 \
   --memory-tool-route-model exact-configured-model \
   --memory-tool-route-approval I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA \
-  --cost-basis /secure/eval/memory-tool-route-cost-v4.json \
+  --cost-basis /secure/eval/memory-first-tool-round-cost-v5.json \
   --output-dir /secure/eval/native-memory-runs
 
 # Only after the selected Development values are frozen in code; use a new,
@@ -422,7 +425,7 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   judge requests. The planned `Qwen/Qwen3.5-4B` run was cancelled before
   Provider construction, credential creation, or quota use as
   `cancelled_not_run_architecture_pivot`; it has no fabricated model result.
-- Schema-v6 replaces additional hidden-judge model hopping with
+- Historical schema-v6 replaced additional hidden-judge model hopping with
   `development_memory_tool_route`, reader
   `neo-chat.native-memory-reader-capture.v4`, policy
   `memory_hybrid_main_model_tool_route_calibration_v1`, and admission mode
@@ -431,7 +434,7 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   secret-redacted current query and the exact no-argument `search_memory` Tool.
   It receives no Memory candidate body, Memory ID, scope, revision, score, or
   database authority.
-- The Tool authority is fixed as `memory-search-tool-v1`, SHA-256
+- Its Tool authority was fixed as `memory-search-tool-v1`, SHA-256
   `f8f404df0ae3a3938081b813c8750d59ba252adbcb8dc755e075e5c738e20ca6`,
   `memory-search-tool-decoding-v1`, `temperature=0`, maximum output `128`, and
   disabled thinking. Official OpenAI omits the non-standard
@@ -442,7 +445,7 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   name `search_memory`, and an explicitly decoded empty JSON object `{}`.
   Missing/null/malformed/non-empty arguments, unknown names, duplicate calls,
   Provider failure, timeout, or model/contract drift fail closed.
-- The Tool route and fixed BGE work may overlap under the existing two-second
+- The schema-v6 Tool route and fixed BGE work may overlap under the existing two-second
   request boundary. BGE candidates remain request-local and never reach the
   route model. A valid Tool Call releases only the unchanged BGE rerank order,
   Top-5, and 600/900-token selection; abstention or failure yields empty final,
@@ -465,12 +468,37 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   completion/use/abstention/failure counts, token/cost ceilings, and exact
   profile authority. It contains no case ID, query, Memory plaintext, raw Tool
   response, raw score, credential, or observation file.
-- The 300-case `fake_protocol` PostgreSQL 17 replay completed with 300 route
+- The 300-case schema-v6 `fake_protocol` PostgreSQL 17 replay completed with 300 route
   requests, 300 completed decisions, zero protocol failures, a conservative
   input-token upper bound of `358533`, private artifacts, and total Compose
   teardown. Its deterministic routing intentionally fails quality gates and is
-  protocol evidence only. No real GPT or DeepSeek Development result exists
-  yet, so Validation remains blocked.
+  protocol evidence only. Subsequent GPT and corrected DeepSeek live
+  Development runs failed; the first DeepSeek run is protocol-invalid. The
+  independent `PlanTools` preflight architecture is rejected and schema-v6 is
+  immutable failed evidence.
+- Schema-v7 is the separate successor under the existing capture-mode string
+  `development_memory_tool_route`. It uses reader
+  `neo-chat.native-memory-reader-capture.v5`, profile config v7, policy
+  `memory_hybrid_main_model_first_tool_round_calibration_v1`, admission mode
+  `development_main_model_first_tool_round_only`, adapter
+  `chat-first-tool-round-memory-decision-v1`, report schema v7, cost-basis v5,
+  and artifact `memory-first-tool-round-development.json`.
+- The schema-v7 adapter receives a `chat.ToolRoundProvider` and emits one real
+  first `ProviderRoundRequest` with the current synthetic query/message,
+  canonical `search_memory` definition, `tool_choice=auto`, and no continuation.
+  It does not call `PlanTools` and does not force the historical preflight's
+  temperature, maximum-output, or thinking-control fields. Zero calls abstains;
+  one exact non-empty-ID `search_memory({})` call authorizes the unchanged BGE
+  Development final surface; every other call/event/failure shape fails closed.
+- `internal/chat` is the single definition/hash/validation authority.
+  `internal/memoryroute` delegates to that contract and is not production
+  activation authority. The product Tool Loop separately performs retrieval,
+  migration-065 final hydration, and same-model continuation behind the
+  default-off `MEMORY_TOOL_LOOP_ENABLED` flag.
+- Schema-v7 offline units, fake-Provider protocol tests, report/manifest checks,
+  regression topology/lifecycle tests, and migration-065 PostgreSQL 17 replay
+  pass. No schema-v7 live Development run has been executed, no policy is
+  frozen, and Validation/Promotion remain blocked.
 - Frozen validation is unavailable until the selected Development policy,
   model, prompt, decoding profile, and immutable policy ID are committed in
   code. It never recalibrates, emits only the aggregate validation report plus
@@ -480,13 +508,15 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   cost is exactly zero, candidate Memory cost is positive, and both profiles
   share the same non-zero chat denominator. Missing, duplicate, unknown,
   zero-cost, unit-drift, or denominator-drift input fails before Provider work.
-  Historical cloud-judge mode requires cost-basis v2. The owner absolute-cap
-  profile requires cost-basis v3 and the exact policy ID. Both reject request,
-  model, token-ceiling, price, maximum-cost, or coverage drift before Provider
-  construction.
+  Historical cloud-judge mode requires cost-basis v2; its owner absolute-cap
+  follow-up requires v3. Historical schema-v6 Tool preflight requires v4;
+  schema-v7 first-ToolRound Development requires v5. Every absolute-cap profile
+  binds the exact policy ID and rejects request, model, token-ceiling, price,
+  maximum-cost, or coverage drift before Provider construction.
 - Native output uses a private new run directory. Full fake regression links
   four evidence files; historical calibration, schema-v4/v5 cloud Development,
-  schema-v6 Tool-route Development, and frozen Validation each link one
+  schema-v6 historical Tool-route Development, schema-v7 first-ToolRound
+  Development, and frozen Validation each link one
   aggregate report. Every mode links
   `run-manifest.json` last as the completion marker. Failed metric/no-feasible
   gates retain valid reports and return non-zero; all other failures remove
@@ -542,12 +572,13 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | Owner policy sees cross-user, out-of-scope, deleted, secret, superseded, Sensitive-disabled, or untrusted-source egress | Fail the zero-tolerance Provider-egress gate; only `irrelevant` is authorized. |
 | Actual cloud-judge request/input/output upper bound exceeds cost authority | Reject the report and retained bundle; never infer quota after the run. |
 | Schema-v5 owner absolute-cap input carries a relative-cost pass field, omits absolute authority, or reuses schema-v4 identity | Reject the report/manifest; historical cost evidence is immutable and the new policy must be explicit. |
-| Tool-route mode lacks exact Provider ID/type/Base-URL hash/model approval or cost-basis v4 | Reject before route credential read or Provider construction. |
+| First-ToolRound mode lacks exact Provider ID/type/Base-URL hash/model approval or cost-basis v5 | Reject before route credential read or Provider construction. |
 | SiliconFlow and Tool-route credentials are the same file, hard links, or equal bytes | Reject; do not construct either live route Provider. |
 | Tool route returns no call | Record a completed abstention and empty final/injected/token surfaces. |
 | Tool route returns a missing ID, unknown/duplicate call, or missing/null/malformed/non-empty arguments | Reject the route response and fail closed to `no_memory`. |
-| Route Provider/model/contract/decoding authority drifts or the decision is late | Record bounded route failure, discard the decision, and keep hybrid final empty. |
-| Actual route request/input/output upper bound exceeds cost-basis v4 | Reject the report and bundle; never infer quota after the run. |
+| Route Provider/model/contract/adapter authority drifts or the decision is late | Record bounded route failure, discard the decision, and keep hybrid final empty. |
+| Schema-v7 emits preflight-only decoding/temperature/output/thinking fields | Reject the profile/report; first ToolRound must preserve ordinary chat-round decoding. |
+| Actual first-round request/input/output upper bound exceeds cost-basis v5 | Reject the report and bundle; never infer quota after the run. |
 | Frozen validation is requested before a Development-selected policy is committed | Reject before credential read or Provider work. |
 | Native artifact target already exists or publication races | Preserve existing bytes, remove only new links, and refuse the run. |
 | Native run is interrupted before complete validation | Remove partial output and all project-scoped runtime/credential state. |
@@ -643,12 +674,17 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   duplicate-key/ordinal/range/cardinality rejection; secret redaction;
   concurrent BGE/judge success/failure/cutoff; ordinal intersection; exact
   300-request and 38,400-output-token cost authority; cloud two-file manifest;
-  schema-v6 Tool definition/hash and Provider/model/Base-URL binding; exact
+  immutable schema-v6 Tool evidence; schema-v7 Tool definition/hash,
+  `chat-first-tool-round-memory-decision-v1`, and Provider/model/Base-URL
+  binding; exact
   zero-call versus one-empty-object call decoding; nil/malformed/unknown/
   duplicate fail-closed cases; official OpenAI extension omission;
-  OpenAI-compatible disabled-thinking encoding; concurrent Tool/BGE completion;
+  historical Provider-specific thinking-control encoding; schema-v7 absence of
+  preflight-only decoding fields; real `ToolRoundProvider` request shape;
+  concurrent Tool/BGE completion;
   no candidate body in the Tool prompt; two distinct mode-`0600` credentials;
-  cost-basis v4 request/token/absolute-cost ceilings; Tool-route two-file
+  cost-basis v4 historical evidence plus cost-basis v5 request/token/absolute-
+  cost ceilings; first-ToolRound two-file
   manifest; frozen-policy-unavailable denial; and separate two-file manifests.
 - Run `go test -race ./internal/memoryauthor ./cmd/memory-benchmark-author
   ./internal/memoryeval ./cmd/memory-eval ./internal/memorycapture
@@ -700,15 +736,15 @@ fixed 500-case synthetic v2 profile
 This lane makes automated regressions useful without laundering them into the
 formal human-review lifecycle.
 
-### Correct main-model Tool-route Development
+### Correct main-model first-ToolRound Development
 
 ```text
 fresh SiliconFlow BGE credential + independent fresh GPT/DeepSeek credential
--> hash exact Provider/type/Base URL/model + search_memory contract + cost caps
--> route model sees redacted query and Tool only
+-> hash exact Provider/type/Base URL/model + canonical Tool + adapter + cost caps
+-> one real first ToolRound request with current synthetic query/message
 -> no call: no_memory
 -> one exact search_memory({}) call: unchanged BGE Top 5/token selector
--> aggregate schema-v6 evidence, promotionEligible=false
+-> aggregate schema-v7 evidence, promotionEligible=false
 -> Validation remains blocked until one exact live Development profile passes
 ```
 

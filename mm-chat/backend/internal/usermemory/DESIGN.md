@@ -50,6 +50,11 @@ Current user message -> exact + BM25 + vector -> RRF(60)
   -> 600-target/900-hard token budget
   -> ID/revision/rank-only diagnostics
   -> unchanged v1 prompt/Usage; zero hybrid prompt injection
+Product first ToolRound -> exact search_memory({})
+  -> fixed hybrid prepare/admission/rerank/record without v1 or MarkUsed
+  -> migration-065 current-authority final hydration
+  -> Go identity recheck + secret redaction
+  -> bounded Tool Result returned to internal/chat same-model continuation
 Current stable Global L1 -> migration-063 leased L3 Persona refresh/embedding
 Current user message -> Persona exact + BM25 + vector -> RRF(60) -> BGE rerank
   -> one-Persona/300-token bound -> content-free diagnostics
@@ -91,9 +96,11 @@ cycle.
 | Provider egress uses redacted transient copies           | SQL/source/hash authority must not be weakened to hide a credential leak                  | Raw query/content stays only at its current authority boundary; secret-only query/document/body skips its Provider lane |
 | Cloud judge receives ordinals, not authority             | Model output must never become an ownership, scope, revision, or score authority           | The fixed prompt carries only redacted query/candidate bodies and contiguous request-local ordinals; exact JSON is revalidated locally |
 | BGE and cloud judge run concurrently                     | Serial hosted stages cannot reliably fit the unchanged two-second shadow cutoff             | Both must finish under the same bounded context; either failure or provenance drift yields `no_memory` |
-| Main model routes before seeing candidates               | The owner selected GPT/DeepSeek and rejected another hidden relevance model                    | The route receives only a redacted query plus the exact no-argument `search_memory` Tool |
+| Main model routes before seeing candidates               | The owner selected GPT/DeepSeek and rejected another hidden relevance model                    | Product first ToolRound receives normal chat context plus the exact no-argument `search_memory` Tool, never Memory bodies |
 | Route and BGE work may overlap                           | Serial model decision plus BGE stages would spend the unchanged two-second cutoff               | Candidate bodies stay inside the authorized BGE boundary and every result is discarded unless one exact Tool Call succeeds |
 | Missing Tool arguments are not `{}`                     | A nil Go map can otherwise pass a length-only empty check                                        | The adapter requires a non-nil empty object, non-empty call ID, exact name, and exactly one call |
+| Final content is hydrated only after Record              | Provider work and final ranking can become stale before prompt use                                | Migration-065 repeats current source/settings/epoch/projection/revision/hash/scope/Sensitive authority for the exact final lane |
+| Product Tool read never falls back to v1                 | A valid Tool call must not launder an unrelated legacy result after hybrid failure                | Failure/empty/stale/redacted paths return no Memory and normal chat continues |
 | Owner egress authority is narrower than injection       | Allowing ordinary personal candidates to reach the configured Provider must not weaken answer relevance or secret isolation | Only `irrelevant` exclusion is egress-authorized under the exact v1 policy; false injection and all forbidden reasons remain unchanged gates |
 | PR9 governance is not reader promotion                   | Users need control before scoped retrieval is allowed                                      | Project/Conversation Memory is manageable but v1 Global Top 5 remains the only prompt/Usage source |
 | Plaintext is hydrated from current authority only        | Revision/evidence history must not resurrect deleted, disabled, archived, or stale content | Detail and Activity return markers after any lifecycle/epoch/scope-generation fence fails |
@@ -166,9 +173,10 @@ cycle.
 | Route model sees Memory before it decides to search | `HybridMemoryToolRouter` receives only the secret-redacted query; candidates never enter the Tool-planning request |
 | Ambiguous Tool output releases Memory | Exact choice/call/ID/name/non-nil-empty-argument validation rejects missing, null, unknown, duplicate, or non-empty calls |
 | Route result is replayed under another model/contract | `routeHybridMemory` rechecks exact model ID, contract version, and SHA-256 before any final row is released |
+| Recorded hybrid final becomes stale before prompt use | Migration-065 rejects the whole set unless every exact ordinal remains current-authorized; Go rechecks identity and redacts content again |
 | Owner authorization is mistaken for blanket egress | Policy-aware scoring permits only `irrelevant`; cross-user, out-of-scope, deleted, secret, superseded, Sensitive-disabled, and untrusted-source remain zero-tolerance failures |
 | Query or canonical Memory leaks a credential to retrieval Provider | Shared deterministic classification redacts query, rerank documents, and embedding bodies immediately before egress; fully redacted input makes zero corresponding Provider calls |
-| Runtime mutates derived/evidence tables | `go_api_runtime` receives only hybrid prepare/admission/record; `memory_worker_runtime` receives only embedding lease capabilities; both lack table CRUD |
+| Runtime mutates derived/evidence tables | `go_api_runtime` receives only hybrid prepare/admission/record/final-hydrate; `memory_worker_runtime` receives only embedding lease capabilities; both lack table CRUD |
 | Client downgrades Sensitive content to normal | Go classification and migration-060 SQL classification take the stricter result; Sensitive-off and secret-like writes fail |
 | Governance history leaks deleted plaintext | Detail/Activity join current enabled/lifecycle/epoch/scope authority; deleted sources and purged revisions return marker fields only |
 | Old Global writer bypasses PR9 policy | Migration `060` revokes its runtime EXECUTE and grants only classification-aware legacy wrappers |
@@ -193,9 +201,10 @@ cycle.
 Known limitation: migrations `062` and `063` ship in shadow with all derived
 reader rollout flags default-off. No formal 500-case benchmark plus seven-day/
 100-turn canary evidence exists, so neither L2 nor L3 can become active
-automatically. The schema-v6 Memory Tool route is also Development-only: no
-live GPT/DeepSeek result, frozen policy, or product same-model continuation
-exists. The v1 Global Top 5 remains the only default prompt and Usage authority.
+automatically. Schema-v6 live evidence failed and its preflight is rejected.
+Schema-v7 first-ToolRound implementation has no live Development or Validation
+result, and `MEMORY_TOOL_LOOP_ENABLED` remains false by default. The v1 Global
+Top 5 remains the deployed default prompt and Usage authority.
 
 ## Verification
 
@@ -207,8 +216,8 @@ real Provider cross-conversation recall/delete proof. Portability additionally
 requires age wrong-passphrase/tamper/truncation tests, strict JSON/multipart and
 hard-cap tests, secret zero-persistence, cross-user mapping denial, plan/token/
 state drift, confirm replay, imported history chains, deletion replay/projection
-rebuild, runtime role denial, and a clean PostgreSQL 17
-`060 -> 061 -> 060 -> 061` drill.
+rebuild, runtime role denial, and clean PostgreSQL 17 portability plus
+`064 -> 065 -> 064 -> 065` final-hydration drills.
 
 ## Change history
 
@@ -248,3 +257,6 @@ rebuild, runtime role denial, and a clean PostgreSQL 17
 - 2026-07-29: Development-only main-model `search_memory` routing, exact
   model/contract provenance, concurrent BGE release gate, strict empty-argument
   call validation, and no production Tool/frozen policy or promotion authority.
+- 2026-07-30: canonical first-round Tool execution moved into `internal/chat`;
+  migration-065 added exact post-Record current-authority final hydration, and
+  schema-v7 replaced the failed preflight adapter without enabling rollout.
