@@ -264,11 +264,15 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   duplicate calls, Provider failure, cancellation, cutoff, or provenance drift
   is `MEMORY_TOOL_ROUTE_FAILED` and yields no hybrid final.
 - Development diagnostics must preserve the request-local cause as one bounded
-  typed category before the public fallback is collapsed. The schema-v8 lane
-  aggregates HTTP authentication/quota/rate/request/upstream failures,
-  transport and SSE failures, context termination, invalid Tool/event shapes,
-  provenance drift, and recorder conflicts. It retains no Provider error text,
-  response body, query, Tool payload, Memory body, score, or case identity.
+  typed category before the public fallback is collapsed. Schema v8 first
+  introduced the route taxonomy; schema v9 is its executable route-only
+  successor and aggregates HTTP authentication/quota/rate/request/upstream
+  failures, transport and SSE failures, context termination, invalid Tool/event
+  shapes, provenance drift, and recorder conflicts. It retains no Provider
+  error text, response body, query, Tool payload, Memory body, score, or case
+  identity.
+  Fail-closed admission/rerank incompleteness is counted separately and may
+  never retain a non-empty Final/Injected/token surface.
 - Tool routing decides only whether saved Memory is needed. It cannot rewrite
   the query, select Memory IDs, authorize ownership/scope/revision, or authorize
   prompt injection. An empty candidate set still waits for the route decision
@@ -509,7 +513,9 @@ live GPT and DeepSeek Flash Development profiles both failed unchanged quality,
 slice, cutoff, and latency gates. Production exposure stays default-off and
 cannot be promoted without a passing Development/Validation result.
 
-Schema-v7 does not contain route subtypes and remains immutable. The
-schema-v8 diagnostic successor is measurement-only: its hash-bound category
-counts must sum to all failed routes, but it cannot freeze a policy, authorize
-Validation, enable `MEMORY_TOOL_LOOP_ENABLED`, or reinterpret either v7 run.
+Schema-v7 does not contain route subtypes and remains immutable. Two schema-v8
+attempts produced no artifact; the second stopped at bounded `admission_state`.
+Schema v9 is the measurement-only successor: its hash-bound route categories
+must sum to all failed routes and its retrieval-incomplete aggregates must
+reconcile independently. It cannot freeze a policy, authorize Validation,
+enable `MEMORY_TOOL_LOOP_ENABLED`, or reinterpret any v7/v8 run.

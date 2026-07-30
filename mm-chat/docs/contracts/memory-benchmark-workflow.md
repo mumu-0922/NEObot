@@ -763,7 +763,7 @@ The v7 report did not retain a failure subtype, so the `263` DeepSeek
 rate limiting, HTTP rejection, transport, SSE, Tool Call, or provenance causes.
 Those explanations remain `[unverified]` for the completed run.
 
-Failure diagnosis therefore uses a new, non-selecting lane:
+The first failure-diagnosis contract used this non-selecting schema-v8 lane:
 
 ```text
 capture mode          = development_memory_tool_route_diagnostic
@@ -798,6 +798,48 @@ content-free integrity reason codes. They still expose no query, case ID,
 Memory content, Tool payload, Provider body/error text, or credential. This is
 observability only: it does not relax an invariant, add a retry, change the
 two-second cutoff, or authorize another paid run. Validation remains blocked.
+
+The separately authorized second schema-v8 attempt,
+`memory-regression-20260730t052917z-7b8c8bcf`, bound the same
+`FOHWSU/deepseek-v4-flash` Provider/model, Base-URL hash
+`12b8deaccc34b32757dbb1497e029da0c2e7b26ffa86b9c926c08cb4692f4508`,
+and cost-basis hash
+`4d3fe6b0dbbc1ed80f717ae2488ce8d2a141db24dc1192a5f260f57410c3531b`.
+It consumed quota and failed with the bounded reason
+`Memory Tool-route report admission_state`. This proves at least one
+non-empty candidate case had `AdmissionReady=false`; BGE query-embedding
+cutoff, invalid Provider response, and admission SQL failure remain
+`[unverified]` subcauses. It published zero artifacts and is neither route-
+diagnostic nor quality evidence. All transient credential/helper/export paths
+and scoped containers, networks, and volumes were destroyed; the empty external
+evidence directory was removed. Validation and Promotion were not run.
+
+Schema v9 replaces v8 only for future execution; it does not rewrite either
+empty v8 attempt:
+
+```text
+capture mode          = development_memory_tool_route_diagnostic
+profile schema        = neo-chat.memory-regression-profile-config.v9
+reader                = neo-chat.native-memory-reader-capture.v7
+report schema         = neo-chat.memory-regression-relevance-calibration.v9
+admission mode        = development_main_model_first_tool_round_route_failure_diagnostic_only
+completeness policy   = route_complete_retrieval_fail_closed_v1
+taxonomy              = memory-tool-route-failure-taxonomy-v1
+taxonomy SHA-256      = 66f11e91edc0cf5a6a9dbf5dd30336e58a52860adee968fb4658d6ccd70d52a0
+artifact              = memory-first-tool-round-route-diagnostic-development.json
+policySelected        = false
+```
+
+Route failures still require exactly one bounded category and aggregate to
+`failedCaseCount`. Admission/rerank incompleteness is retained only when Final,
+Injected, and prompt-token surfaces are empty; it aggregates separately as
+`retrievalIncompleteCaseCount` and `retrievalFailureCodeCounts`. The fixed
+750 ms query-embedding cutoff, two-second hard cutoff, no-retry behavior,
+Provider request/cost shape, route taxonomy, and v1 production authority do not
+change. Schema-v7 bytes remain free of diagnostic fields, while schema v9 emits
+explicit empty route/retrieval maps. The v9 lane cannot select a policy, unlock
+Validation/Promotion, or run against paid Providers without new explicit quota
+authorization.
 
 Only after a schema-v7 first-round Tool Loop Development hypothesis passes may
 its policy, Provider/model, Tool/adapter profile, and selection behavior be

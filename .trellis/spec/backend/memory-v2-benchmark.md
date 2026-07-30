@@ -41,12 +41,14 @@ neo-chat.memory-regression-profile-config.v5
 neo-chat.memory-regression-profile-config.v6
 neo-chat.memory-regression-profile-config.v7
 neo-chat.memory-regression-profile-config.v8
+neo-chat.memory-regression-profile-config.v9
 neo-chat.memory-regression-relevance-calibration.v3
 neo-chat.memory-regression-relevance-calibration.v4
 neo-chat.memory-regression-relevance-calibration.v5
 neo-chat.memory-regression-relevance-calibration.v6
 neo-chat.memory-regression-relevance-calibration.v7
 neo-chat.memory-regression-relevance-calibration.v8
+neo-chat.memory-regression-relevance-calibration.v9
 neo-chat.memory-regression-relevance-validation.v1
 neo-chat.memory-regression-relevance-run.v1
 neo-chat.memory-regression-cost-basis.v2
@@ -525,16 +527,23 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   failed the same gate classes with zero authority/privacy leaks. No schema-v7
   policy passed; Validation/Promotion stay blocked.
 - Schema-v7 intentionally remains immutable and cannot explain the DeepSeek
-  profile's `263` collapsed `MEMORY_TOOL_ROUTE_FAILED` cases. The separate
-  `development_memory_tool_route_diagnostic` lane uses profile/report schema
-  v8, reader v6, admission
-  `development_main_model_first_tool_round_failure_diagnostic_only`, and
-  aggregate artifact `memory-first-tool-round-diagnostic-development.json`.
-  It binds `memory-tool-route-failure-taxonomy-v1` plus SHA-256
+  profile's `263` collapsed `MEMORY_TOOL_ROUTE_FAILED` cases. Two schema-v8
+  attempts consumed quota but published no artifacts; the first exposed only a
+  generic integrity error and the second bounded it to `admission_state`.
+  Preserve both as non-evidence. The executable
+  `development_memory_tool_route_diagnostic` successor uses profile/report
+  schema v9, reader v7, admission
+  `development_main_model_first_tool_round_route_failure_diagnostic_only`,
+  completeness `route_complete_retrieval_fail_closed_v1`, and aggregate
+  artifact `memory-first-tool-round-route-diagnostic-development.json`. It
+  binds `memory-tool-route-failure-taxonomy-v1` plus SHA-256
   `66f11e91edc0cf5a6a9dbf5dd30336e58a52860adee968fb4658d6ccd70d52a0`.
   Every failed route contributes exactly one fixed HTTP/transport/stream/
   context/Tool/provenance/recorder category; raw errors and Provider bodies
-  are forbidden. This lane can never set `policySelected=true`.
+  are forbidden. Admission/rerank incompleteness is valid only with empty
+  Final/Injected/token surfaces and contributes one separate normalized
+  retrieval failure aggregate. This lane can never set
+  `policySelected=true`.
 - The native stdout summary schema remains the command-envelope v4, but its
   `corpusClass`, `admissionMode`, and `split` must come from the validated
   schema-v7 report rather than historical schema-v6 constants. A failed fake
@@ -554,9 +563,9 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   schema-v7 first-ToolRound Development requires v5. Every absolute-cap profile
   binds the exact policy ID and rejects request, model, token-ceiling, price,
   maximum-cost, or coverage drift before Provider construction.
-  Schema-v8 diagnostics reuse the unchanged cost-basis v5 authority because
-  they add no request, token, rate, or Provider capability; the v8 profile hash
-  separately binds the failure taxonomy.
+  Schema-v9 diagnostics reuse the unchanged cost-basis v5 authority because
+  they add no request, token, rate, or Provider capability; the v9 profile hash
+  separately binds the failure taxonomy and completeness policy.
 - A post-capture Memory Tool-route report or manifest rejection emits only a
   fixed content-free integrity reason class. It must preserve
   `ErrCaptureInvalid`, publish no partial artifact, expose no case ID/query/
@@ -630,8 +639,9 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | Schema-v7 emits preflight-only decoding/temperature/output/thinking fields | Reject the profile/report; first ToolRound must preserve ordinary chat-round decoding. |
 | First-ToolRound stdout summary differs from the validated report admission/split or marks a failed report selected | Reject the summary implementation in tests; never relabel historical schema-v6 authority or fake-protocol completion. |
 | Actual first-round request/input/output upper bound exceeds cost-basis v5 | Reject the report and bundle; never infer quota after the run. |
-| Schema-v8 taxonomy version/hash drifts, a failed route lacks one valid category, or category counts do not sum to `failedCaseCount` | Reject the report/manifest; do not fall back to plaintext errors or reinterpret schema v7. |
-| Schema-v8 summary sets `policySelected=true`, unlocks Validation, or mutates the default-off runtime flag | Reject regardless of metric outcome; diagnostics have measurement authority only. |
+| Schema-v9 taxonomy/completeness version drifts, a failed route lacks one valid category, route totals differ from `failedCaseCount`, or retrieval totals do not reconcile | Reject the report/manifest; do not fall back to plaintext errors or reinterpret schema v7/v8. |
+| Schema-v9 permits incomplete retrieval with non-empty Final/Injected/tokens | Reject; fail-closed retrieval may be measured but cannot release Memory. |
+| Schema-v9 summary sets `policySelected=true`, unlocks Validation, or mutates the default-off runtime flag | Reject regardless of metric outcome; diagnostics have measurement authority only. |
 | Frozen validation is requested before a Development-selected policy is committed | Reject before credential read or Provider work. |
 | Native artifact target already exists or publication races | Preserve existing bytes, remove only new links, and refuse the run. |
 | Native run is interrupted before complete validation | Remove partial output and all project-scoped runtime/credential state. |
@@ -666,13 +676,16 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 - **Tool-route bad**: reuse one chat credential for both Provider boundaries,
   accept `null` arguments as `{}`, send candidates in the route prompt, or use a
   GPT result to authorize DeepSeek Validation.
-- **Diagnostic good**: run a separately authorized schema-v8 Development lane,
-  bind the 23-category taxonomy hash, and publish only aggregate category
-  counts whose sum equals all failed routes.
+- **Diagnostic good**: run a separately authorized schema-v9 Development lane,
+  bind the route taxonomy/completeness hashes, publish route category counts
+  whose sum equals all failed routes, and reconcile separate fail-closed
+  retrieval aggregate counts.
 - **Diagnostic base**: all routes complete, so the category map is empty and
-  `policySelected=false` still holds even if unchanged quality metrics pass.
+  `policySelected=false` still holds even if retrieval is incomplete or
+  unchanged quality metrics pass.
 - **Diagnostic bad**: add subtype fields to schema v7, retain upstream body or
-  error text, infer historical subtypes, or let a v8 result authorize
+  error text, infer historical subtypes, treat either empty v8 attempt as
+  evidence, or let a v9 result authorize
   Validation/Promotion.
 
 ## 6. Tests Required
@@ -747,9 +760,10 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   cost-basis v4 historical evidence plus cost-basis v5 request/token/absolute-
   cost ceilings; schema-v7 stdout admission/split mirroring and failed-report
   `candidatePassed=false`/`policySelected=false`; first-ToolRound two-file
-  manifest; schema-v8 profile/report/reader separation, exact taxonomy hash,
-  bounded Provider/Tool category propagation, category-sum invariant, v7 field
-  omission, plaintext/raw-body leak rejection, bounded content-free
+  manifest; schema-v9 profile/report/reader separation, exact taxonomy and
+  completeness values, bounded Provider/Tool category propagation, route and
+  retrieval aggregate invariants, fail-closed empty final enforcement, v7
+  field omission, plaintext/raw-body leak rejection, bounded content-free
   post-capture integrity reasons with no partial publication, always-false
   `policySelected`, frozen-policy-unavailable denial; and separate two-file
   manifests.
@@ -830,7 +844,7 @@ summary.PolicySelected = report.Passed &&
 ```
 
 ```text
-Wrong: mutate schema v7 or parse its collapsed failure string to invent causes.
-Correct: preserve v7 bytes; bind a separate schema-v8 taxonomy and retain only
-aggregate category counts, with policySelected=false unconditionally.
+Wrong: mutate schema v7/v8 or parse collapsed failure strings to invent causes.
+Correct: preserve historical bytes/attempts; bind schema v9 route taxonomy and
+retrieval completeness separately, with policySelected=false unconditionally.
 ```

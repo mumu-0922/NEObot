@@ -15,10 +15,12 @@ Memory only after a valid call, and continues on the same Provider/model. It is
 still default-off and non-promotional under `MEMORY_TOOL_LOOP_ENABLED=false`;
 the schema-v7 GPT and DeepSeek Flash Development results both failed unchanged
 gates, and Validation remains blocked.
-The schema-v8 failure-diagnostic lane adds bounded typed Provider/Tool failure
-categories without changing the product Tool request or runtime flag. It is
-Development-only, retains no upstream body/error text, and has no policy-
-selection authority.
+Schema v8 introduced bounded typed Provider/Tool failure categories without
+changing the product Tool request or runtime flag, but two live attempts
+published no artifact; the second stopped at bounded `admission_state`. The
+schema-v9 route-only successor retains route categories independently from
+fail-closed retrieval-completeness aggregates. It is Development-only, retains
+no upstream body/error text, and has no policy-selection authority.
 
 ## 1. Scope / Trigger
 
@@ -558,6 +560,7 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 | Product Memory route adds a separate `PlanTools` preflight | reject the architecture; use the existing first Tool round |
 | Diagnostic Provider error carries an upstream body/raw message into a retained report | reject the artifact; only a fixed category may cross the capture boundary |
 | Unknown diagnostic cause reaches the capture recorder | map once to `ROUTER_FAILURE_UNCLASSIFIED`; never create a dynamic category |
+| Diagnostic retrieval is incomplete | retain only a normalized aggregate code and require empty Final/Injected/token surfaces; do not erase the route result |
 
 ## 5. Good / Base / Bad Cases
 
@@ -676,8 +679,10 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
     not define schema-v7 decoding authority.
 20. Diagnostic tests must cover HTTP/transport/SSE/context classification,
     malformed/remote stream events, bounded adapter mapping, unknown-cause
-    fallback, and absence of Provider response/error text from retained v8
-    artifacts while v7 bytes omit every diagnostic field.
+    fallback, absence of Provider response/error text, schema-v9 route and
+    retrieval aggregate reconciliation, incomplete-retrieval empty-final
+    enforcement, and explicit empty v9 maps while v7 bytes omit every
+    diagnostic field.
 
 ## 7. Wrong vs Correct
 

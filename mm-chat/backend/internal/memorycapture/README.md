@@ -48,8 +48,8 @@ injection, or active-reader authority.
 | `BuildCloudJudgeDevelopmentReport` | Apply version-matched Provider-egress/cost policy and return schema-v4/v5 aggregate evidence. |
 | `CaptureMemoryToolRouteDevelopment` | Execute one exact GPT/DeepSeek first-ToolRound profile and fixed BGE path for the 300 Development cases. |
 | `BuildMemoryToolRouteDevelopmentReport` | Apply cost-basis v5 and return schema-v7 aggregate first-ToolRound evidence. |
-| `CaptureMemoryToolRouteDiagnostic` | Execute the schema-v8 request-equivalent diagnostic profile with request-local bounded failure categories. |
-| `BuildMemoryToolRouteDiagnosticReport` | Return aggregate-only schema-v8 failure counts; never select a policy. |
+| `CaptureMemoryToolRouteDiagnostic` | Execute the schema-v9 request-equivalent route diagnostic with request-local bounded failure categories. |
+| `BuildMemoryToolRouteDiagnosticReport` | Return aggregate-only schema-v9 route and retrieval-completeness counts; never select a policy. |
 | `CaptureFrozenValidation` | Execute only the 100 Validation cases under the code-frozen policy. |
 | `BuildFrozenValidation` | Score the frozen Validation result without retuning. |
 | `AssembleRegressionObservations` | Bind ordered captures to the strict regression schema. |
@@ -156,12 +156,25 @@ gates. The independent `FOHWSU/deepseek-v4-flash` profile completed only
 `33/300` routes and failed the same gate classes. Both retained zero
 authority/privacy leaks; no policy was frozen and Validation remains blocked.
 
-Schema v7 cannot retroactively split its collapsed route failures. The separate
-`development_memory_tool_route_diagnostic` mode uses reader v6, profile/report
-schema v8, and `memory-tool-route-failure-taxonomy-v1` bound by SHA-256. It
-retains only aggregate `routeFailureCategoryCounts`, requires their sum to
-equal `failedCaseCount`, and never sets `policySelected=true`. No live schema-v8
-run has been authorized or executed.
+Schema v7 cannot retroactively split its collapsed route failures. Two
+separately authorized schema-v8 attempts consumed quota but published no
+artifact: the first returned the legacy generic post-capture integrity error;
+the second returned bounded `admission_state`. The latter proves at least one
+non-empty candidate case had incomplete admission, but its BGE/response/SQL
+subcause remains `[unverified]`. Both isolated runtimes and all transient
+credentials/helpers were destroyed.
+
+The current `development_memory_tool_route_diagnostic` mode is the schema-v9
+route-only successor. It uses reader v7, profile/report schema v9,
+`route_complete_retrieval_fail_closed_v1`, and the unchanged
+`memory-tool-route-failure-taxonomy-v1` SHA-256. It retains aggregate
+`routeFailureCategoryCounts` whose sum equals `failedCaseCount`. Admission or
+rerank incompleteness is accepted only with empty Final/Injected/token surfaces
+and is reported separately through `retrievalIncompleteCaseCount` and
+`retrievalFailureCodeCounts`. Schema-v7 bytes omit every diagnostic field; v9
+emits explicit empty aggregate maps. Cutoffs, retries, selection authority, and
+the default-off runtime remain unchanged. A third paid run requires fresh
+explicit authorization.
 
 The schema-v4 cost basis fixes a 300-request ceiling, a 128-token output ceiling
 per request, conservative UTF-8-plus-framing input token bounds, exact model

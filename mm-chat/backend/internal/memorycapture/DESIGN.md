@@ -170,11 +170,14 @@ provenance; it never carries free-form output or candidate authority.
   uses one synthetic current query rather than full conversation replay and
   does not execute the product answer continuation. Validation remains blocked
   and promotion remains disabled.
-- Schema-v8 route-failure diagnostics preserve the v7 request shape while
-  binding a fixed typed taxonomy into profile configuration. Only aggregate
-  category counts survive; upstream error text, response bodies, queries, Tool
-  payloads, Memory content, scores, and case identity do not. The diagnostic
-  lane cannot select a policy even when unchanged metrics pass.
+- Schema v8 introduced route-failure diagnostics with a fixed typed taxonomy,
+  but two paid attempts published no artifact; the second stopped at bounded
+  `admission_state`. Schema v9 preserves the same v7 request shape and route
+  taxonomy while separating fail-closed retrieval incompleteness into aggregate
+  counts. Incomplete retrieval must have empty Final/Injected/token surfaces.
+  Upstream error text, response bodies, queries, Tool payloads, Memory content,
+  scores, and case identity do not survive. The diagnostic lane cannot select a
+  policy even when unchanged metrics pass.
 - Fake protocol relevance and latency metrics are intentionally meaningless;
   only lifecycle and authority invariants are evaluated.
 
@@ -218,6 +221,10 @@ provenance; it never carries free-form output or candidate authority.
   runtime state were destroyed after aggregate publication.
 - **2026-07-30**: Recorded the independent schema-v7 DeepSeek Flash failure
   under the same unchanged gates and cleanup boundary; no profile was frozen.
-- **2026-07-30**: Added a schema-v8, Development-only failure diagnostic after
+- **2026-07-30**: Added schema-v8 Development-only failure diagnostics after
   proving that v7 collapsed HTTP, transport, SSE, Tool, provenance, and capture
-  failures into one code. No paid diagnostic run was performed.
+  failures into one code. Two paid attempts produced no artifact; the second
+  bounded the rejection to `admission_state`.
+- **2026-07-30**: Added schema-v9 route-only diagnostic completeness so
+  fail-closed admission/rerank results are aggregated separately without
+  weakening cutoffs, retries, empty-final authority, or promotion denial.

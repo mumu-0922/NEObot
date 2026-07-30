@@ -164,6 +164,19 @@ evidence passes.
   retroactively identify the `263` DeepSeek subtypes. A schema-v8,
   Development-only diagnostic lane now binds a fixed category taxonomy and
   emits aggregate subtype counts only; it has no policy-selection authority.
+- Two separately authorized schema-v8 attempts consumed quota but published no
+  artifacts. The first returned only the historical generic post-capture
+  integrity error. After bounded integrity reasons were added, the second run
+  `memory-regression-20260730t052917z-7b8c8bcf` returned
+  `Memory Tool-route report admission_state`, proving at least one non-empty
+  candidate case had incomplete admission without identifying whether BGE
+  timeout, invalid response, or SQL admission caused it. Both isolated runtimes
+  and all transient credentials/helpers were destroyed.
+- Schema v9 is the route-only diagnostic successor. It preserves the route
+  taxonomy and fixed Provider/cutoff/no-retry behavior, permits fail-closed
+  admission/rerank incompleteness only when Final/Injected/tokens are empty,
+  and records separate aggregate retrieval-incomplete counts. It still has no
+  policy-selection, Validation, production, or Promotion authority.
 
 ## Assumptions (updated)
 
@@ -237,10 +250,12 @@ evidence passes.
   Tool definition/version, adapter behavior, Provider type and identity,
   model, cost authority, BGE tuple, and unchanged evaluation criteria before
   Provider construction.
-- Preserve schema-v7 as immutable failed evidence. Any failure-subtype rerun
-  uses profile/report schema v8, reader v6, and the hash-bound
-  `memory-tool-route-failure-taxonomy-v1`; the sum of bounded subtype counts
-  must equal route failures and no raw Provider error/body may be retained.
+- Preserve schema-v7 and both empty schema-v8 attempts as immutable historical
+  evidence. A new failure-subtype run uses profile/report schema v9, reader v7,
+  `route_complete_retrieval_fail_closed_v1`, and the hash-bound
+  `memory-tool-route-failure-taxonomy-v1`; bounded route subtype counts must
+  equal route failures, retrieval-incomplete aggregate counts must reconcile,
+  and no raw Provider error/body may be retained.
 - Score a relevant case as final only when a valid Tool Call is followed by the
   unchanged BGE final set. Score a Tool Call whose non-empty BGE final set would
   enter an unrelated-negative continuation as false injection.
@@ -349,16 +364,16 @@ corrected DeepSeek Flash failed. The first schema-v7 GPT Development profile
 and the independent DeepSeek Flash profile also failed. No policy is frozen,
 Validation is blocked, and the runtime flag remains default-off.
 
-The local schema-v8 diagnostic implementation is present and fake-protocol
-verified. It does not reinterpret either failed v7 run. The first explicitly
-authorized paid DeepSeek diagnostic attempt completed Provider work but hit a
-post-capture integrity gate before publishing any report or manifest. Its
-pre-fix generic error does not identify which invariant failed, so the attempt
-is neither diagnostic nor quality evidence. Credentials and the isolated
-runtime were fully destroyed. Fixed content-free report/manifest integrity
-reason codes now close that observability gap without changing gates, cutoff,
-or retry behavior. Any further paid run requires new explicit quota and
-credential authorization.
+The local schema-v9 route-only diagnostic successor is implemented and
+fake-protocol verified. It does not reinterpret either failed v7 run or either
+empty v8 attempt. The first authorized v8 attempt returned a pre-fix generic
+post-capture integrity error; the second returned bounded `admission_state`.
+Neither published a report or manifest, so neither is diagnostic or quality
+evidence. Credentials and isolated runtimes were fully destroyed. Schema v9
+keeps the production 750 ms embedding cutoff, two-second hard cutoff, and no
+retry; it records retrieval incompleteness separately so fail-closed BGE work
+cannot erase route taxonomy evidence. Any further paid run requires new
+explicit quota and credential authorization.
 
 Use the selected main-model Tool route from
 [`research/main-model-memory-tool-routing.md`](research/main-model-memory-tool-routing.md):
@@ -408,6 +423,11 @@ Use the selected main-model Tool route from
 12. Classify the collapsed first-round failures through a schema-v8,
     aggregate-only diagnostic lane. Do not infer historical v7 subtypes and do
     not run the paid lane without fresh explicit authorization.
+13. Preserve both zero-artifact schema-v8 attempts, then version a schema-v9
+    route-only diagnostic that retains bounded route categories while counting
+    fail-closed retrieval incompleteness separately. Do not change cutoffs,
+    retry, or promotion authority, and require fresh authorization before any
+    third paid run.
 
 ## Decision (ADR-lite)
 
@@ -442,6 +462,12 @@ cannot inherit any schema-v6 result.
 DeepSeek report collapsed `263` route failures into one code. Keep those files
 immutable. A new v8 diagnostic taxonomy may measure only bounded aggregate
 failure categories and can never select a policy or unlock Validation.
+
+**2026-07-30 completeness amendment:** Two schema-v8 runs produced no artifact;
+the second bounded failure was `admission_state`. Preserve both attempts.
+Schema v9 measures route completeness independently from fail-closed retrieval
+completeness, retains no case identity/plaintext/raw error, and still cannot
+select a policy or unlock Validation/Promotion.
 
 ## Expansion Sweep
 
