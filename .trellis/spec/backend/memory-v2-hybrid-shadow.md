@@ -277,7 +277,8 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   the selected Provider is Tool-round capable, current Conversation policy
   allows Memory use, Search is not model-built-in, and the current turn is not
   a direct `remember|correct|forget` action. The flag defaults false and no live
-  schema-v7 Development or promotion decision has enabled it.
+  schema-v7 promotion decision has enabled it; the first GPT Development run
+  failed unchanged gates.
 - `internal/chat` owns the canonical definition/hash/validation boundary.
   `internal/memoryroute` is only a schema-v7 Development compatibility adapter
   that emits one real first `ProviderRoundRequest`; it does not own product
@@ -486,6 +487,7 @@ executeHybridShadow(query)
 ```
 
 The schema-v6 `PlanTools` preflight is retained only as failed Development
-evidence. Schema-v7 measures the implemented first-ToolRound shape but has only
-offline protocol evidence. Production exposure remains default-off and cannot
-be promoted without a separately reviewed live Development/Validation result.
+evidence. Schema-v7 measures the implemented first-ToolRound shape. Its first
+live GPT Development profile failed unchanged quality, slice, cutoff, and
+latency gates; DeepSeek remains unrun. Production exposure stays default-off
+and cannot be promoted without a passing Development/Validation result.

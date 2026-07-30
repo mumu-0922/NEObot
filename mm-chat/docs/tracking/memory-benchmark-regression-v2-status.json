@@ -113,7 +113,7 @@
   "auditVerdict": "passed",
   "nativeReaderCapture": {
     "runnerVersion": "neo-chat.native-memory-reader-capture.v5",
-    "status": "main_model_first_tool_round_implemented_offline_validated_live_pending",
+    "status": "main_model_first_tool_round_gpt_live_failed_deepseek_pending",
     "baselineProfile": "native_v1_lexical",
     "fakeCandidateProfile": "native_v2_hybrid_fake_protocol",
     "liveCandidateProfile": "native_v2_hybrid",
@@ -133,7 +133,7 @@
       "secretLeakCount": 0,
       "untrustedSourceLeakCount": 0
     },
-    "relevancePolicyStatus": "first_tool_round_implemented_default_off_live_development_pending",
+    "relevancePolicyStatus": "first_tool_round_gpt_development_failed_default_off",
     "developmentCalibration": {
       "schemaVersion": "neo-chat.memory-regression-relevance-calibration.v1",
       "caseCount": 300,
@@ -552,7 +552,7 @@
       "liveDevelopmentPassed": false
     },
     "memoryFirstToolRoundDevelopment": {
-      "status": "implementation_complete_offline_gates_passed_live_not_run",
+      "status": "gpt_live_development_completed_failed_deepseek_pending",
       "schemaVersion": "neo-chat.memory-regression-relevance-calibration.v7",
       "profileConfigSchemaVersion": "neo-chat.memory-regression-profile-config.v7",
       "costBasisSchemaVersion": "neo-chat.memory-regression-cost-basis.v5",
@@ -598,7 +598,63 @@
         "providerQuotaUsed": false,
         "qualityEvidence": false
       },
-      "liveDevelopmentStatus": "not_run",
+      "providerHypotheses": [
+        "configured_gpt_gpt-5.6-sol_completed_failed",
+        "configured_deepseek_not_run"
+      ],
+      "liveDevelopmentStatus": "gpt_completed_failed_deepseek_not_run",
+      "liveDevelopmentAggregate": {
+        "runId": "memory-regression-20260730t024705z-95f30772",
+        "configurationSha256": "99c414bd6b2a8ad94c032ea649e9b16bc6010c32f7974914bfec6a9e6c0a3d58",
+        "routeProviderId": "SERVER_DEFAULT",
+        "routeProviderType": "openai_compatible",
+        "routeBaseUrlSha256": "3bc0bbf28d9d817b4f6c8f6058c2c51dd644c541252ed6e2542a8c8a472ff671",
+        "routeModelId": "gpt-5.6-sol",
+        "caseCount": 300,
+        "candidateRecallAt20": 1,
+        "finalRecallAt5": 0.10256410256410256,
+        "currentFactAccuracy": 0.10909090909090909,
+        "falseInjectionCases": 2,
+        "falseInjectionRate": 0.006666666666666667,
+        "unrelatedNegativeFalseInjectionCases": 2,
+        "unrelatedNegativeCaseCount": 30,
+        "p95LatencyMilliseconds": 2002,
+        "p99LatencyMilliseconds": 2002,
+        "evaluationHardCutoffViolationCount": 93,
+        "routeCompletedCaseCount": 28,
+        "routeUsedCaseCount": 28,
+        "routeAbstainedCaseCount": 0,
+        "routeFailedCaseCount": 272,
+        "routeFailureCodeCounts": {
+          "HARD_CUTOFF": 266,
+          "MEMORY_TOOL_ROUTE_FAILED": 6
+        },
+        "crossUserLeakCount": 0,
+        "deletedMemoryLeakCount": 0,
+        "secretLeakCount": 0,
+        "untrustedSourceLeakCount": 0,
+        "unauthorizedProviderEgressCount": 0,
+        "authorizedRequestCount": 300,
+        "actualRequestCount": 300,
+        "authorizedMaximumInputTokens": 600000,
+        "actualInputTokenUpperBound": 358533,
+        "authorizedMaximumOutputTokens": 2457600,
+        "actualOutputTokenUpperBound": 2231248,
+        "maximumRouteCostMicrounits": 3057600000,
+        "maximumMemoryProviderCostMicrounits": 3057710916,
+        "providerCostRatio": 3057.710916,
+        "providerCostAuthorized": true,
+        "passed": false
+      },
+      "liveDevelopmentCleanup": {
+        "retainedAggregateArtifactCount": 2,
+        "retainedArtifactsMode0600": true,
+        "transientCredentialDirectoriesRemaining": 0,
+        "operatorExportDirectoriesRemaining": 0,
+        "scopedContainersRemaining": 0,
+        "scopedNetworksRemaining": 0,
+        "scopedVolumesRemaining": 0
+      },
       "validationStatus": "blocked_no_passing_schema_v7_development",
       "policyFrozen": false,
       "promotionEligible": false

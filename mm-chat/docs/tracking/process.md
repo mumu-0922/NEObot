@@ -8968,3 +8968,37 @@ No live SiliconFlow comparison was executed. Native v2 reader-quality evidence
 remains pending a separately supplied mode-`0600` Key, exact quota approval,
 and a real versioned same-unit cost basis; fake-protocol metrics do not satisfy
 that gate and cannot authorize reader promotion.
+
+## 2026-07-30 — Schema-v7 first ToolRound GPT Development
+
+The owner-authorized schema-v7 Development run exercised the implemented first
+`ToolRoundProvider` request instead of the rejected schema-v6 `PlanTools`
+preflight. It used the configured `SERVER_DEFAULT/gpt-5.6-sol` route with BGE
+retrieval, issued exactly `300/300` authorized route requests, and retained only
+the private aggregate report and manifest. An earlier export attempt referenced
+the stale default keyring and failed before Provider construction, consumed no
+quota, and left no credential copy or scoped runtime object.
+
+The valid run failed unchanged gates. Candidate Recall@20 remained `1.0`, but
+Final Recall@5 was `0.102564`, current-fact accuracy was `0.109091`, false
+injection was `2/300`, and p95/p99 latency was `2002/2002 ms`. Only `28/300`
+route decisions completed, all calling `search_memory`; `272` failed closed,
+with `266` `HARD_CUTOFF` and `6` `MEMORY_TOOL_ROUTE_FAILED` outcomes. The
+evaluator recorded `93` hard-cutoff violations, and the unrelated-negative
+slice contained both false injections. Cross-user, deleted-memory, secret,
+untrusted-source, and unauthorized-Provider-egress counts all remained zero.
+
+The run stayed within the approved `300` requests, `600,000` input-token upper
+bound, and `2,457,600` output-token upper bound. Its measured conservative
+upper bounds were `358,533` input and `2,231,248` output tokens; the authorized
+maximum route and combined Memory Provider costs were `3,057,600,000` and
+`3,057,710,916` CNY microunits. This failed result did not select a policy,
+alter a gate, enable `MEMORY_TOOL_LOOP_ENABLED`, or authorize Validation or
+Promotion.
+
+Both transient Server Vault credential copies were overwritten and removed.
+The two retained aggregate artifacts remain mode `0600` in a mode-`0700`
+directory, and cleanup left zero transient credential directories, operator
+export directories, scoped containers, networks, or volumes. No private
+artifact or credential was committed. DeepSeek schema-v7 Development remains
+an independent, separately authorized hypothesis.

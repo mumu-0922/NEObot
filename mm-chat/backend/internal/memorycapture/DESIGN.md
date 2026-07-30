@@ -163,11 +163,13 @@ provenance; it never carries free-form output or candidate authority.
   three immutable live outcomes: GPT failed, the first DeepSeek run is protocol-
   invalid, and corrected DeepSeek Flash failed. Its `PlanTools` preflight is
   rejected.
-- Schema-v7 first-ToolRound routing has offline protocol/report/lifecycle and
-  migration-065 PostgreSQL evidence, but no live Development result. Capture
-  still uses one synthetic current query rather than full conversation replay
-  and does not execute the product answer continuation. Validation remains
-  blocked and promotion remains disabled.
+- Schema-v7 first-ToolRound routing has offline protocol/report/lifecycle,
+  migration-065 PostgreSQL evidence, and one valid failed GPT Development
+  result: `28/300` routes completed, `272` failed closed, and unchanged quality,
+  cutoff, and latency gates failed. Capture still uses one synthetic current
+  query rather than full conversation replay and does not execute the product
+  answer continuation. DeepSeek remains unrun, Validation remains blocked, and
+  promotion remains disabled.
 - Fake protocol relevance and latency metrics are intentionally meaningless;
   only lifecycle and authority invariants are evaluated.
 
@@ -206,3 +208,6 @@ provenance; it never carries free-form output or candidate authority.
 - **2026-07-30**: Retained failed schema-v6 GPT/DeepSeek evidence, rejected the
   separate `PlanTools` preflight, and added schema-v7 first-`ToolRoundProvider`
   capture with canonical chat authority, cost-basis v5, and a distinct artifact.
+- **2026-07-30**: Recorded the first schema-v7 GPT Development failure without
+  changing gates or rollout authority; transient credentials and isolated
+  runtime state were destroyed after aggregate publication.

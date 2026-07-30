@@ -497,8 +497,11 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   default-off `MEMORY_TOOL_LOOP_ENABLED` flag.
 - Schema-v7 offline units, fake-Provider protocol tests, report/manifest checks,
   regression topology/lifecycle tests, and migration-065 PostgreSQL 17 replay
-  pass. No schema-v7 live Development run has been executed, no policy is
-  frozen, and Validation/Promotion remain blocked.
+  pass. The first live `SERVER_DEFAULT/gpt-5.6-sol` Development run completed
+  only `28/300` route decisions and failed unchanged recall, current-fact,
+  unrelated-negative, hard-cutoff, and latency gates. It retained zero
+  authority/privacy leaks but selected no policy. DeepSeek schema-v7 remains
+  unrun; Validation/Promotion stay blocked.
 - The native stdout summary schema remains the command-envelope v4, but its
   `corpusClass`, `admissionMode`, and `split` must come from the validated
   schema-v7 report rather than historical schema-v6 constants. A failed fake

@@ -140,6 +140,15 @@ evidence passes.
   the normal answer request. It did not reuse the existing first chat Tool
   round. This preflight hypothesis is rejected; raising the cutoff or retrying
   it would only hide request amplification.
+- The first schema-v7 `SERVER_DEFAULT/gpt-5.6-sol` Development run used the
+  real first `ToolRoundProvider` request and completed only `28/300` route
+  decisions, all of which called Memory. The remaining `272` failed closed:
+  `266` reported `HARD_CUTOFF` and `6` reported
+  `MEMORY_TOOL_ROUTE_FAILED`. Candidate Recall@20 remained `1.0`, but Final
+  Recall@5/current-fact accuracy fell to `0.102564/0.109091`; false injection
+  was `2/300`, and p95/p99 was `2002/2002 ms`. Every authority/privacy leak
+  count remained zero. The profile failed unchanged quality, slice, cutoff,
+  and latency gates; no policy was frozen.
 
 ## Assumptions (updated)
 
@@ -317,8 +326,9 @@ Current checkpoint: product first-round Tool Loop, migration-065 final
 hydration, schema-v7 Development adapter/profile/report, focused tests,
 regression lifecycle tests, and PostgreSQL 17 final-hydration replay exist.
 Historical schema-v6 GPT failed; the first DeepSeek run is protocol-invalid;
-corrected DeepSeek Flash failed. No schema-v7 live Development or Validation
-run exists, no policy is frozen, and the runtime flag remains default-off.
+corrected DeepSeek Flash failed. The first schema-v7 GPT Development profile
+also failed, DeepSeek schema-v7 remains unrun, no policy is frozen, Validation
+is blocked, and the runtime flag remains default-off.
 
 Use the selected main-model Tool route from
 [`research/main-model-memory-tool-routing.md`](research/main-model-memory-tool-routing.md):
@@ -391,8 +401,9 @@ read-only tools, followed by same-model continuation only when called.
 
 **2026-07-30 implementation amendment:** That first-round architecture is now
 implemented behind a default-off flag with migration-065 final hydration.
-Schema-v7 measures the new request shape separately; it has offline evidence
-only and cannot inherit any schema-v6 result.
+Schema-v7 measures the new request shape separately. Its offline evidence
+passes and its first GPT live Development profile failed unchanged gates; it
+cannot inherit any schema-v6 result.
 
 ## Expansion Sweep
 
@@ -440,3 +451,6 @@ only and cannot inherit any schema-v6 result.
 - The three schema-v6 run directories are mode `0700`, their two retained files
   are mode `0600`, and cleanup left zero temporary regression containers,
   networks, volumes, or decrypted credential files.
+- The schema-v7 GPT run retained only its two aggregate mode-`0600` artifacts.
+  Both transient Server Vault copies were overwritten and removed, and cleanup
+  left zero scoped containers, networks, volumes, or operator export files.

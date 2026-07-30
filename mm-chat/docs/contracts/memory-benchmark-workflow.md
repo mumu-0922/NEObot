@@ -735,9 +735,18 @@ Provider/model/Base-URL hash, canonical Tool tuple, adapter, BGE tuple,
 unchanged evaluator gates, owner egress policy, and cost-basis v5 before
 Provider construction. It omits the schema-v6 decoding/temperature/output/
 thinking fields. Offline units, fake-Provider protocol tests, report/manifest
-checks, lifecycle topology, and migration-065 PostgreSQL 17 replay pass. No
-schema-v7 live Development run has been executed, so no policy is frozen and
-Validation/Promotion remain blocked.
+checks, lifecycle topology, and migration-065 PostgreSQL 17 replay pass.
+
+The first live schema-v7 hypothesis bound
+`SERVER_DEFAULT/gpt-5.6-sol`. It completed `28/300` first-round decisions, all
+calling Memory, and failed closed on `272` (`266` `HARD_CUTOFF`, `6`
+`MEMORY_TOOL_ROUTE_FAILED`). Candidate Recall@20 was `1.0`, Final Recall@5 was
+`0.102564`, current-fact accuracy was `0.109091`, false injection was `2/300`,
+and p95/p99 was `2002/2002 ms`. All authority/privacy leak counters were zero,
+but unchanged quality, unrelated-negative slice, cutoff, and latency gates
+failed. The two aggregate files remain mode `0600`; transient credentials and
+all scoped runtime objects were destroyed. No policy is frozen, DeepSeek
+schema-v7 remains unrun, and Validation/Promotion remain blocked.
 
 Only after a schema-v7 first-round Tool Loop Development hypothesis passes may
 its policy, Provider/model, Tool/adapter profile, and selection behavior be

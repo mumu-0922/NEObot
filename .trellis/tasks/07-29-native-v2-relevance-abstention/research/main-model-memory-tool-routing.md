@@ -69,6 +69,26 @@ Schema v6 does not retain a stable subtype under
 and other Provider errors therefore remain unverified explanations for the
 Flash count.
 
+## Schema-v7 first-round live result
+
+The first schema-v7 Development hypothesis bound
+`SERVER_DEFAULT/gpt-5.6-sol` to the real first `ToolRoundProvider` request. It
+completed `28/300` decisions, all `28` choosing `search_memory`, and failed
+closed on `272`: `266` `HARD_CUTOFF` plus `6`
+`MEMORY_TOOL_ROUTE_FAILED`. Candidate Recall@20 remained `1.0`, but Final
+Recall@5 was `0.102564`, current-fact accuracy was `0.109091`, false injection
+was `2/300`, and p95/p99 was `2002/2002 ms`. The unrelated-negative slice had
+`2/30` false injections, so both global quality/latency and slice safety gates
+failed even though all cross-user, deleted, secret, untrusted-source, and
+unauthorized Provider-egress counters remained zero.
+
+This is valid failed quality evidence for the intended request shape, not a
+schema-v6 preflight result. The conservative cost/token authority passed, the
+two retained files remained mode `0600`, both transient Server Vault copies
+were destroyed, and the isolated Compose project left zero containers,
+networks, or volumes. No GPT policy was frozen; Validation and Promotion remain
+blocked. A separately authorized DeepSeek schema-v7 hypothesis remains unrun.
+
 ## Architecture conclusion
 
 No profile passed and no policy was frozen. The independent `PlanTools`

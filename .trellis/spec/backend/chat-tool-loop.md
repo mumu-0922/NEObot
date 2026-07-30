@@ -13,7 +13,8 @@ and remains immutable failed evidence. The successor now joins the existing
 first `ToolRoundProvider` round, executes bounded current-authorized hybrid
 Memory only after a valid call, and continues on the same Provider/model. It is
 still default-off and non-promotional under `MEMORY_TOOL_LOOP_ENABLED=false`;
-no schema-v7 live Development or Validation result exists.
+the first schema-v7 GPT Development result failed unchanged gates, no DeepSeek
+schema-v7 result exists, and Validation remains blocked.
 
 ## 1. Scope / Trigger
 
@@ -472,8 +473,9 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 - Schema-v6/profile-v6/cost-basis-v4 remain immutable failed `PlanTools`
   evidence. Schema-v7/profile-v7/cost-basis-v5 use Development adapter
   `chat-first-tool-round-memory-decision-v1` and artifact
-  `memory-first-tool-round-development.json`. Offline gates pass, but no live
-  schema-v7 run exists and no policy is frozen.
+  `memory-first-tool-round-development.json`. Offline gates pass. The first
+  live GPT schema-v7 run completed only `28/300` routes and failed quality,
+  cutoff, and latency gates; no policy is frozen.
 
 ## 4. Validation & Error Matrix
 
