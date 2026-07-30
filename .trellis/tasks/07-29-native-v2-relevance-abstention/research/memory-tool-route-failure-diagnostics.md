@@ -69,3 +69,38 @@ passes, the command summary cannot set `policySelected=true`. Validation and
 Promotion remain blocked. Running the live lane still requires fresh explicit
 quota and private-credential authorization; local implementation and fake
 protocol tests do not grant that authorization.
+
+## First live schema-v8 attempt
+
+The owner-authorized run
+`memory-regression-20260730t043820z-dc26df80` used:
+
+```text
+route Provider = FOHWSU
+route type     = openai_compatible
+route model    = deepseek-v4-flash
+route URL hash = 12b8deaccc34b32757dbb1497e029da0c2e7b26ffa86b9c926c08cb4692f4508
+cost hash      = 4d3fe6b0dbbc1ed80f717ae2488ce8d2a141db24dc1192a5f260f57410c3531b
+```
+
+The isolated database migrated through `065`, the live runner performed
+Provider traffic, and then the capture command returned the legacy generic
+error `native Memory capture is invalid`. The wrapper observed an empty
+artifact set and destroyed the isolated project. No report or manifest was
+published, so no failure-category totals, quality metrics, or exact violated
+invariant may be inferred from this attempt.
+
+Post-run cleanup proved zero remaining temporary credential/helper paths and
+zero scoped Docker containers, networks, or volumes. The empty evidence run
+directory was removed. The run used quota but produced neither diagnostic nor
+quality evidence.
+
+The report builder previously mapped several distinct post-capture integrity
+checks to the same error. It now returns a fixed content-free reason from a
+closed set covering profile/config/policy/cost authority, observation/trace
+integrity, candidate/admission/rerank state, route failure-category state, and
+category totals. Manifest rejection similarly identifies only fixed authority,
+configuration-hash, profile, or artifact classes. Tests require the error to
+remain `ErrCaptureInvalid`, include no case ID, and preserve all report bytes
+and admission gates. This does not recover the failed attempt retroactively and
+does not authorize an automatic rerun.

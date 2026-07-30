@@ -349,9 +349,15 @@ corrected DeepSeek Flash failed. The first schema-v7 GPT Development profile
 and the independent DeepSeek Flash profile also failed. No policy is frozen,
 Validation is blocked, and the runtime flag remains default-off.
 
-The local schema-v8 diagnostic implementation is now present and fake-protocol
-verified. It does not reinterpret either failed v7 run and has not been run
-against a paid Provider. A live diagnostic requires a new explicit quota and
+The local schema-v8 diagnostic implementation is present and fake-protocol
+verified. It does not reinterpret either failed v7 run. The first explicitly
+authorized paid DeepSeek diagnostic attempt completed Provider work but hit a
+post-capture integrity gate before publishing any report or manifest. Its
+pre-fix generic error does not identify which invariant failed, so the attempt
+is neither diagnostic nor quality evidence. Credentials and the isolated
+runtime were fully destroyed. Fixed content-free report/manifest integrity
+reason codes now close that observability gap without changing gates, cutoff,
+or retry behavior. Any further paid run requires new explicit quota and
 credential authorization.
 
 Use the selected main-model Tool route from
