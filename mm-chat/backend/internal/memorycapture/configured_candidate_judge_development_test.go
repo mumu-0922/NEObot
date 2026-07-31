@@ -180,6 +180,53 @@ func TestBuildConfiguredCandidateJudgeDevelopmentReportAndManifest(t *testing.T)
 	}
 }
 
+func TestConfiguredCandidateJudgeReportRetainsPreJudgeRetrievalFailure(t *testing.T) {
+	pool, err := memoryauthor.GenerateRegression()
+	if err != nil {
+		t.Fatal(err)
+	}
+	traces := passingCloudJudgeDevelopmentTraces(pool)
+	trace := &traces[0]
+	trace.AdmissionReady = false
+	trace.RerankReady = false
+	trace.CloudJudgeReady = false
+	trace.CloudJudgeInputTokenUpperBound = 0
+	trace.AbstentionCode = "RELEVANCE_ADMISSION_UNAVAILABLE"
+	trace.FullObservation.ProviderSentMemoryIDs = []string{}
+	trace.FullObservation.FinalMemoryIDs = []string{}
+	trace.FullObservation.InjectedMemoryIDs = []string{}
+	trace.FullObservation.PromptMemoryTokens = 0
+	trace.FullObservation.Fallback = "no_memory"
+	trace.FinalRelevanceScores = []float64{}
+
+	profile := configuredCandidateJudgeDevelopmentProfile(traces)
+	report, _, err := BuildConfiguredCandidateJudgeDevelopmentReport(
+		pool,
+		profile,
+		configuredCandidateJudgeTestAuthority(),
+		configuredCandidateJudgeTestCostBasis(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Diagnostics.FailedCaseCount != 1 ||
+		report.Diagnostics.FailureCodeCounts["RELEVANCE_ADMISSION_UNAVAILABLE"] != 1 ||
+		report.CostAuthority.ActualRequestCount != 194 {
+		t.Fatalf("pre-judge retrieval failure report = %#v", report)
+	}
+
+	legacy := profile
+	legacy.Profile.ReaderVersion = CloudJudgeReaderVersion
+	if _, _, err := BuildCloudJudgeDevelopmentReport(
+		pool,
+		legacy,
+		configuredCandidateJudgeTestAuthority().ModelID,
+		configuredCandidateJudgeLegacyCostBasis(configuredCandidateJudgeTestCostBasis()),
+	); err == nil {
+		t.Fatal("historical cloud-judge report accepted a pre-judge retrieval failure")
+	}
+}
+
 func configuredCandidateJudgeDevelopmentProfile(
 	traces []CandidateCalibrationTrace,
 ) CapturedProfile {

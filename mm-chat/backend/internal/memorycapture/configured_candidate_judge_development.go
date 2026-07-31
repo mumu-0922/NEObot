@@ -129,11 +129,12 @@ func BuildConfiguredCandidateJudgeDevelopmentReport(
 	legacyProfile := profile
 	legacyProfile.Profile.ReaderVersion = CloudJudgeReaderVersion
 	mappedCost := configuredCandidateJudgeLegacyCostBasis(costBasis)
-	base, _, err := BuildCloudJudgeDevelopmentReport(
+	base, _, err := buildCloudJudgeDevelopmentReport(
 		pool,
 		legacyProfile,
 		authority.ModelID,
 		mappedCost,
+		true,
 	)
 	if err != nil {
 		return ConfiguredCandidateJudgeDevelopmentReport{}, nil, err

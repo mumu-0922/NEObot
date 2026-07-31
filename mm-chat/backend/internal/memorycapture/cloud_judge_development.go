@@ -78,6 +78,22 @@ func BuildCloudJudgeDevelopmentReport(
 	judgeModelID string,
 	costBasis CostBasis,
 ) (CloudJudgeDevelopmentReport, []byte, error) {
+	return buildCloudJudgeDevelopmentReport(
+		pool,
+		profile,
+		judgeModelID,
+		costBasis,
+		false,
+	)
+}
+
+func buildCloudJudgeDevelopmentReport(
+	pool memoryauthor.RegressionPool,
+	profile CapturedProfile,
+	judgeModelID string,
+	costBasis CostBasis,
+	allowPreJudgeRetrievalFailure bool,
+) (CloudJudgeDevelopmentReport, []byte, error) {
 	if profile.Profile.ID != CandidateProfileID &&
 		profile.Profile.ID != FakeCandidateProfileID {
 		return CloudJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
@@ -163,7 +179,21 @@ func BuildCloudJudgeDevelopmentReport(
 			diagnostics.EmptyCandidateCaseCount++
 		} else {
 			if !trace.AdmissionReady {
-				return CloudJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
+				if !allowPreJudgeRetrievalFailure || trace.RerankReady ||
+					trace.CloudJudgeReady || trace.CloudJudgeInputTokenUpperBound != 0 ||
+					len(observed.ProviderSentMemoryIDs) != 0 ||
+					len(observed.FinalMemoryIDs) != 0 ||
+					len(observed.InjectedMemoryIDs) != 0 || observed.PromptMemoryTokens != 0 {
+					return CloudJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
+				}
+				diagnostics.FailedCaseCount++
+				code := normalizeCalibrationCode(trace.AbstentionCode)
+				if code == "NONE" {
+					code = normalizeCalibrationCode(trace.ResultCode)
+				}
+				diagnostics.FailureCodeCounts[code]++
+				ordered[index] = observed
+				continue
 			}
 			if trace.RerankReady && trace.CloudJudgeReady {
 				if trace.CloudJudgeInputTokenUpperBound <= 0 {
