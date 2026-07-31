@@ -371,6 +371,15 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   a weather-board Memory that cannot answer the query. Its semantic audit
   requires those task/observation markers and forbids `unrelated`, `无关`,
   `no bearing`, and `没有关系` in both query and candidate.
+- The failed v3 live result exposes two successor-profile requirements without
+  rewriting v2/v3. A positive query/value pair must come from an explicit
+  per-subject compatible current/old table; an arbitrary modular permutation
+  across unrelated subject values is not semantically valid evidence. An
+  `expectedNoMemory` candidate may share owner/scope and an adjacent domain,
+  but deleting it must leave the correct answer and every necessary task
+  premise unchanged. It must not answer the task, validate a task premise, or
+  claim participation in the exact queried event. Keyword marker separation
+  alone does not prove this usefulness contract.
 - The default legacy and repaired roots are the gitignored
   `mm-chat/data/memory-benchmark/v2-regression/` and
   `mm-chat/data/memory-benchmark/v3-regression/`. Their final path component
@@ -808,6 +817,8 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | Regression generator tuple is unknown, or fixture/corpus/manifest IDs, auditor, or audit time do not match that exact tuple | Reject decoding/admission; do not guess a nearest profile. |
 | v2 and v3 fixture/corpus/audit/manifest artifacts are mixed | Reject admission and byte replay without changing either protected root. |
 | v3 `unrelated_negative` lacks agenda-heading/weather-board markers or contains `unrelated`, `无关`, `no bearing`, or `没有关系` | Fail the semantic audit and refuse publication/admission. |
+| A successor regression positive maps a queried subject to a value outside its explicit compatible current/old table | Fail semantic audit/admission; do not measure a Judge's tolerance for incoherent synthetic facts. |
+| A successor `expectedNoMemory` candidate answers the task, validates a required premise, or claims the exact queried task/event relationship | Fail semantic audit/admission even when task/observation keywords differ; owner/scope overlap alone is allowed. |
 | Regression corpus/audit/fixture/manifest hash or byte replay drifts | Refuse verify/admission and preserve the existing protected root unchanged. |
 | Regression observations contain a formal Holdout simulation, wrong audit/corpus/fixture binding, missing/reordered case, or bad stage subset | Reject before scoring. |
 | Regression metric gate fails | Publish the new exclusive regression report, return non-zero, and keep `promotionEligible=false`. |
@@ -888,6 +899,16 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   corpus/audit, restore self-referential negative wording, reuse v2
   observations, or invoke native capture/Validation without separate review
   and authorization.
+- **Regression successor good**: preserve v2/v3, use explicit compatible
+  subject/current/old tuples, and make every no-Memory candidate deletion-
+  invariant with no exact-task premise or event relationship.
+- **Regression successor base**: a separately versioned private bundle passes
+  deterministic tuple/usefulness audit and byte replay but has only offline
+  fake-protocol evidence; it inherits no v3 quality or quota authority.
+- **Regression successor bad**: permute values across unrelated subjects,
+  call a candidate irrelevant merely because it lacks the requested output,
+  or retain `meeting about <exact queried subject>` while expecting prompt v1
+  to treat the candidate as never directly useful.
 - **Tool-route good**: one exact configured model receives a redacted relevant
   query plus the fixed Tool, returns one exact `{}` call, and the unchanged BGE
   result becomes the offline final surface without exposing candidates to the
@@ -962,6 +983,11 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   self-description terms; inject a legacy negative to prove audit failure;
   reject each v2/v3 artifact-mixing permutation; and cover content-free
   `regression-v3-generate|status|verify` output plus `0700/0600` permissions.
+  Any successor profile additionally requires all-split/all-language tests for
+  explicit subject/current/old compatibility and negative candidate-deletion
+  invariance; mutation tests must swap a positive value across subjects and
+  add an exact queried-task relationship to a negative, with both mutations
+  rejected before publication/admission.
 - Regression evaluator tests: cross-schema rejection; explicit promotion
   denial; no human attestation; corpus/audit content binding; exact ordered
   observations; absence of Holdout authority; shared metric/safety results;

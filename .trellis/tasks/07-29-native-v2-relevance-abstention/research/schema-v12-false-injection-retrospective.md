@@ -205,3 +205,143 @@ containers, networks, and volumes were destroyed. Do not run Validation,
 activate production, promote this policy, or automatically repeat the paid
 Development run. Any successor hypothesis requires offline analysis followed
 by new explicit quota authorization.
+
+## Post-v3 break-loop analysis
+
+### 1. Root cause category
+
+- **Primary: B — cross-layer contract.** The evaluator labels a negative case
+  `expectedNoMemory` when the candidate cannot supply the requested output.
+  Prompt v1 instead selects stored information whenever it is *directly
+  useful*. Those predicates are not equivalent for a generative task.
+- **Secondary: E — implicit assumption.** The generator assumed any
+  deterministic subject/value permutation remained a semantically valid saved
+  fact, and the audit assumed task/observation marker presence proved a hard
+  negative. Neither assumption was encoded or tested.
+
+The aggregate v3 evidence is sufficient to account for every Judge decision
+without retaining case identity or raw output:
+
+```text
+candidate-bearing cases                         195
+  relevant positive cases                       165
+  current-authorized unrelated-negative cases    30
+
+valid empty decisions                            23
+  correct negative abstentions                    20
+  incorrect positive abstentions                   3
+
+valid non-empty decisions                        172
+  correct positive selections                    162
+  incorrect negative selections                   10
+```
+
+The arithmetic is exact: `195 - 23 = 172` non-empty decisions; subtracting the
+ten false injections leaves 162 positive selections, exactly
+`0.981818 * 165`. Thus the three current-fact misses are complete Judge
+abstentions, not retrieval loss, partial multi-hop selection, Provider error,
+or report corruption. Slice totals place two in `stable_fact` and one in
+`temporal_correction`; all three are Chinese, while mixed-language current-fact
+accuracy is `33/33`. Aggregate-only evidence intentionally cannot identify the
+three exact case ordinals.
+
+### 2. Generator defects exposed by the live result
+
+#### The repaired negative still asserts relevance to the exact task
+
+Every v3 unrelated-negative query asks for an agenda heading for the exact
+`entity + subject + scope`. Its only current-authorized candidate says that a
+meeting in the same scope was *about that same entity and subject*, then adds a
+weather-board observation. The weather fact cannot write the heading, but the
+meeting context can reasonably be treated as directly useful background for
+the heading. An offline traversal confirms that all `50/50` v3
+unrelated-negative candidates repeat the exact queried subject. This is why
+removing the v2 words `unrelated` and `no bearing` reduced false injection from
+29 to 10 without eliminating it.
+
+The language split reinforces that this is semantic, not an authority-path
+failure: false selections were five Chinese, four mixed-language, and one
+English case. The mixed candidate repeats its weather sentence bilingually,
+which increases salience but does not change ownership or egress authority.
+
+The v3 audit checks only that the query contains `agenda heading`/`议程标题`,
+the candidate contains `weather board`/`天气牌`, and neither surface contains
+the legacy self-description terms. The generator tests assert the same marker
+pair. They do not reject a candidate that claims participation in the exact
+task event or supplies a premise/context that prompt v1 may consider useful.
+
+#### Every positive subject/value tuple is deliberately misaligned
+
+The subject and value vocabularies are positionally compatible: for example,
+`interface theme -> low-contrast palette`, `reminder habit -> fifteen minutes
+early`, and `deployment region -> nearby region`. The generator does not use
+that mapping. For case index `i` it chooses:
+
+```text
+subject index       = i mod 20
+current value index = (7*i + 3) mod 20
+old value index     = (7*i + 9) mod 20
+```
+
+Current alignment would require `6*i + 3 = 0 (mod 20)`, which has no solution
+because the left multiple has even parity while 17 modulo 20 is odd. Old-value
+alignment has the same impossibility. Therefore **0/500 generated scenario
+assignments**, including **0/275 emitted positive cases**, use the positionally
+compatible subject/value pair. Examples include an interface theme set to an
+early-morning backup rule and a deployment region set to a two-stage release.
+Most Judge decisions still follow the exact entity/scope match, but prompt v1
+explicitly prefers no Memory when usefulness is uncertain. The three positive
+abstentions therefore occurred inside a pool where every positive tuple is
+semantically incoherent. Aggregate-only evidence cannot identify the exact
+tuples or prove a per-case causal mechanism, but it proves that generator
+incoherence remains a live confounder rather than a valid Judge-quality oracle.
+
+The semantic audit proves that stable facts have expected IDs and that
+temporal cases contain current/corrected markers. It never checks that the
+stored value is meaningful for the queried subject. The live failure is
+therefore a test-oracle gap, not evidence that the production Judge should be
+forced to select incoherent personal information.
+
+### 3. Why the earlier repair was incomplete
+
+1. **Surface fix:** v3 removed the v2 self-referential negative wording, but
+   retained the exact `meeting about <query subject>` relationship that still
+   satisfies prompt v1's broader usefulness predicate.
+2. **Incomplete scope:** the repair touched only `unrelated_negative`; it did
+   not audit the inherited positive subject/value semantics exposed by the
+   same live run.
+3. **Test coverage gap:** tests asserted marker presence and forbidden-term
+   absence, not candidate-deletion invariance or positive tuple coherence.
+4. **Wrong layer for repeated model work:** earlier model, timeout, and retry
+   changes could improve completion but cannot reconcile evaluator labels with
+   prompt semantics.
+
+### 4. Prevention mechanisms
+
+| Priority | Mechanism | Required action | Status |
+| --- | --- | --- | --- |
+| P0 | Evidence immutability | Preserve v2/v3 generators, protected bytes, configuration hashes, and reports exactly. | Done |
+| P0 | Negative oracle | A successor `expectedNoMemory` candidate may share owner/scope and an adjacent domain, but must not answer the task, validate a task premise, or claim participation in the exact queried event. Removing it must not change any correct answer or necessary context. | Specified |
+| P0 | Positive oracle | Generate current and superseded values from an explicit per-subject compatible table; forbid arbitrary modular cross-subject permutation. | Specified |
+| P1 | Semantic audit | Reconstruct the known profile and reject exact-task negative relationships or incompatible positive tuples across every split/language/slice. | Pending owner decision |
+| P1 | Mutation tests | Inject an exact-task negative, swap a positive value across subjects, and prove both mutations fail audit/admission. | Pending owner decision |
+| P1 | Offline lifecycle | Generate a new profile under a new seed/tuple, pin new hashes, then run fake-protocol capture only. | Pending owner decision |
+| P2 | Live evidence | Require a new explicit cost/quota authorization only after all offline gates pass; never treat the consumed v3 run as reusable authority. | Blocked |
+
+### 5. Systematic expansion and recommendation
+
+The defect affects the full machine-regression positive vocabulary, not only
+the three cases that exposed it. Other models or slices may tolerate different
+incoherent pairs, making model-to-model comparisons measure tolerance for
+synthetic nonsense rather than Memory relevance. The general rule is that a
+machine semantic label needs an executable oracle for the exact predicate the
+runtime prompt evaluates; keyword markers and structural IDs are insufficient.
+
+The recommended successor is a separately versioned **v4 corpus repair**, not
+a prompt-v2 retune. Keep prompt v1's product-friendly `directly useful`
+contract. Give every positive subject two compatible current/old values. For
+the hard negative, retain the same owner and scope but use a distinct adjacent
+subject/event and never state that the candidate concerns the exact requested
+agenda task. Preserve counts, criteria, draft/non-promotional state, and every
+v2/v3 artifact. This recommendation authorizes no code change, Provider call,
+Validation, production activation, or promotion until the owner selects it.
