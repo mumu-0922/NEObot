@@ -205,7 +205,7 @@ witness is not accepted automatically and is not human review authority.
 Candidate fixture/Golden content and review events remain outside Git. A
 committed status may contain only versions, counts, states, and hashes.
 
-### 3.2 Generate the machine-reviewed v2 regression corpus
+### 3.2 Generate the machine-reviewed v2 or repaired v3 regression corpus
 
 Use this lane when deterministic regression coverage is useful but genuine
 human-review and hidden Holdout authority do not exist:
@@ -215,13 +215,21 @@ cd mm-chat/backend
 go run ./cmd/memory-benchmark-author regression-generate
 go run ./cmd/memory-benchmark-author regression-status
 go run ./cmd/memory-benchmark-author regression-verify
+
+# Separately versioned repair; these commands never replace the v2 root.
+go run ./cmd/memory-benchmark-author regression-v3-generate
+go run ./cmd/memory-benchmark-author regression-v3-status
+go run ./cmd/memory-benchmark-author regression-v3-verify
 ```
 
-The default private root is
-`mm-chat/data/memory-benchmark/v2-regression/`. Generation creates it once with
-directory mode `0700` and file mode `0600`; it never overwrites or repairs an
-existing/partial root. `verify` regenerates all fixture, corpus, audit, and
-manifest bytes in memory and requires exact equality.
+The legacy commands default to the private
+`mm-chat/data/memory-benchmark/v2-regression/` root. The explicit v3 commands
+default to `mm-chat/data/memory-benchmark/v3-regression/`. Generation creates a
+root once with directory mode `0700` and file mode `0600`; it never overwrites
+or repairs an existing/partial root. `verify` selects the exact generator from
+the protected tuple, regenerates all fixture, corpus, audit, and manifest bytes
+in memory, and requires exact equality. Unknown tuples and v2/v3 artifact
+mixing fail closed.
 
 The fixed profile is:
 
@@ -252,9 +260,23 @@ mismatch, or weak slice semantics. In particular:
 - English stays English, Chinese contains Chinese, and mixed-language cases
   deliberately contain both instead of accidental query/content mismatch.
 
+The historical v2 `unrelated_negative` pair is frozen even though its query
+asks whether an unrelated record should influence the answer while its only
+candidate literally says that it has no bearing. The v3 repair changes only
+that contract: the query is a genuine agenda-heading task, while the candidate
+is a same-entity/same-scope weather-board observation that cannot answer it.
+The v3 semantic audit requires the task/observation markers and rejects
+`unrelated`, `无关`, `no bearing`, and `没有关系` from both query and candidate.
+All counts, criteria, draft state, and non-promotional boundaries stay fixed.
+
 The complete fixtures/corpus/audit remain Git-external. The committed
 [`memory-benchmark-regression-v2-status.json`](../tracking/memory-benchmark-regression-v2-status.json)
-contains only counts, verdict, and hashes.
+and
+[`memory-benchmark-regression-v3-status.json`](../tracking/memory-benchmark-regression-v3-status.json)
+contain only counts, verdicts, and hashes. Existing native-capture commands
+remain bound to v2 until a separately reviewed v3 capture integration and
+fresh run authorization exist; generating v3 performs no Provider call and
+does not authorize Validation or promotion.
 
 ## 4. Review and freeze
 
@@ -461,6 +483,11 @@ go run ./cmd/memory-eval \
   -output /secure/eval/memory-regression-report.json \
   -pretty
 ```
+
+The evaluator can admit either exact corpus/audit pair, but observations from
+v2 cannot be reused with v3 because every content and fixture binding changes.
+The current native-capture wrapper still defaults to v2; no v3 live capture or
+Provider use is implied by v3 authoring.
 
 Regression observations bind the corpus-content, audit-content, fixture, raw
 input, profile configuration, capture, and exact ordered 500-case IDs. They use

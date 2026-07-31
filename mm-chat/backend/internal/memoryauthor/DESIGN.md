@@ -59,7 +59,7 @@ canonical freeze hashing, formal admission, scoring, and report semantics.
 The recovery lane is independent:
 
 ```text
-fixed regression profile/seed
+exact known regression profile/seed (legacy v2 or repaired v3)
         |
         v
 500 fixtures + regression corpus
@@ -98,6 +98,7 @@ Golden artifacts.
 | Shared scoring implementation | Quality, latency, token, cost, and leakage calculations must not drift between lanes. | Admission and binding differ, while metric code remains single-source. |
 | Opaque hash-derived regression IDs and no ordinal text | v1's shared ordinal created a perfect retrieval shortcut. | Queries and Memory bodies cannot reveal case order or logical IDs. |
 | Deterministic content-free semantic audit | Structural validation alone admitted weak preference, fallback, multi-hop, language, and scope labels. | Any failed semantic counter blocks publication and regression admission. |
+| Separately seeded v3 hard-negative repair | The v2 unrelated-negative query and candidate answer each other's meta-question, so changing them in place would falsify historical evidence. | v2 bytes remain frozen; v3 uses a normal agenda task plus a same-entity/scope weather observation and rejects mixed-profile artifacts. |
 
 ## Deterministic generation
 
@@ -208,7 +209,7 @@ second attempt even if the first publication or downstream reader failed.
 - Machine semantic rules are deterministic lexical/structural gates. They are
   deliberately stricter than v1's labels but are not a substitute for genuine
   human judgment or a hidden formal Holdout.
-- All v2 regression splits are machine-visible. Their `holdout` label preserves
+- All v2 and v3 regression splits are machine-visible. Their `holdout` label preserves
   the common 300/100/100 scoring shape only and must never be described as
   one-shot evidence.
 
@@ -218,3 +219,6 @@ second attempt even if the first publication or downstream reader failed.
   hash-chained human review, loopback UI, exact freeze, and one-shot Holdout.
 - 2026-07-29: added the separate 500-case v2 machine-reviewed regression
   generator, semantic audit, protected replay, and non-promotional boundary.
+- 2026-07-31: preserved v2 byte-for-byte and added the separately seeded v3
+  unrelated-negative contract repair with exact profile dispatch and
+  anti-self-description audit checks.

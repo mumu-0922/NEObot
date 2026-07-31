@@ -26,7 +26,8 @@ reader, worker, or feature-flag dependency.
   reuse `memoryeval.ValidateGoldenAdmission` rather than copying its gates.
 - Publish a consumed marker before exposing the one allowed Holdout bundle.
 - Generate, semantically audit, publish, and byte-replay the independent v2
-  regression corpus without changing the v1 formal-authoring profile.
+  regression corpus and its separately versioned v3 hard-negative repair
+  without changing the v1 formal-authoring profile or historical v2 bytes.
 
 ## Operator command
 
@@ -58,6 +59,11 @@ go run ./cmd/memory-benchmark-author holdout-begin \
 go run ./cmd/memory-benchmark-author regression-generate
 go run ./cmd/memory-benchmark-author regression-status
 go run ./cmd/memory-benchmark-author regression-verify
+
+# Repaired hard-negative lane. This does not replace or rewrite v2.
+go run ./cmd/memory-benchmark-author regression-v3-generate
+go run ./cmd/memory-benchmark-author regression-v3-status
+go run ./cmd/memory-benchmark-author regression-v3-verify
 ```
 
 The default protected root is `mm-chat/data/memory-benchmark/v1/`. A custom
@@ -66,11 +72,14 @@ root is accepted only outside a Git repository or under the repository's
 symlinked paths, source paths, non-private files, and existing generation roots
 are rejected.
 
-The regression commands default to
-`mm-chat/data/memory-benchmark/v2-regression/`. The final path component must
-explicitly contain `regression`, generation is exclusive, and every artifact
-is bound to the fixed v2 profile. A `holdout` case label in this lane is only a
-visible regression stratum; it is not a secret or one-shot formal Holdout.
+The legacy regression commands default to
+`mm-chat/data/memory-benchmark/v2-regression/`; the explicit `regression-v3-*`
+commands default to `mm-chat/data/memory-benchmark/v3-regression/`. The final
+path component must explicitly contain `regression`, generation is exclusive,
+and every artifact is bound to exactly one fixed profile. Verification
+dispatches from the protected generator tuple and rejects unknown or mixed
+v2/v3 artifacts. A `holdout` case label in either lane is only a visible
+regression stratum; it is not a secret or one-shot formal Holdout.
 
 ## Artifact layout
 
@@ -99,7 +108,7 @@ The regression layout is intentionally simpler and cannot be consumed by the
 human-review/freeze commands:
 
 ```text
-v2-regression/
+v2-regression/ or v3-regression/
 ├── fixtures.json                 # 500 synthetic fixtures, mode 0600
 ├── corpus.json                   # regression-only cases, mode 0600
 ├── audit.json                    # content-free semantic audit, mode 0600
@@ -110,7 +119,12 @@ Its audit rejects normalized duplicates, identifier/ordinal shortcuts,
 language or scope mismatch, weak preference/fallback/multi-hop semantics, and
 fixture/slice binding drift. Query skeletons replace known entities and topics
 before counting; the admitted profile currently contains 431 distinct
-skeletons, not ordinal-parameterized copies.
+skeletons, not ordinal-parameterized copies. The v3 audit additionally
+requires every `unrelated_negative` query to be a real agenda-heading task and
+its same-entity/same-scope candidate to be a weather-board observation that
+cannot answer that task. It rejects self-descriptions such as `unrelated`,
+`无关`, `no bearing`, or `没有关系` from either surface. The v2 generator,
+hashes, and reports remain immutable historical evidence.
 
 ## Review invariants
 
@@ -139,9 +153,9 @@ skeletons, not ordinal-parameterized copies.
 | `Freeze` / `LoadFrozen` | Publish and independently replay the exact frozen corpus. |
 | `BeginHoldout` | Commit ordinal one, then publish the bounded Holdout bundle. |
 | `CurrentStatus` / `Verify` | Emit content-free state; `Verify` also regenerates and byte-compares the fixed candidate profile. |
-| `GenerateRegression` / `AuditRegression` / `ValidateRegressionPool` | Build and machine-audit the separate regression corpus. |
+| `GenerateRegression` / `GenerateRegressionV3` / `AuditRegression` / `ValidateRegressionPool` | Build and machine-audit either exact regression profile while preserving v2 bytes. |
 | `ValidateRegressionRoot` / `PublishRegression` / `LoadRegression` | Enforce private, exclusive regression storage. |
-| `CurrentRegressionStatus` / `VerifyRegression` | Emit content-free regression status and byte-replay every fixed artifact. |
+| `CurrentRegressionStatus` / `VerifyRegression` | Emit content-free regression status and byte-replay every artifact using its exact protected generator tuple. |
 
 ## Verification
 

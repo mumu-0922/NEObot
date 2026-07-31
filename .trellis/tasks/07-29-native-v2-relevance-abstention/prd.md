@@ -753,6 +753,32 @@ budgets passed. Report SHA-256 is
 The report selected no policy, all transient credentials/runtime objects were
 destroyed, and Validation/production/promotion remain blocked.
 
+**2026-07-31 regression-contract repair decision:** Offline review proved that
+the v2-regression `unrelated_negative` query asks whether an unrelated record
+should influence the answer while the only current-authorized candidate says
+that it has no bearing. That candidate is literally useful under prompt v1,
+although the evaluator requires no Memory. The owner approved repairing the
+machine regression corpus before changing the model or prompt. Preserve the
+existing v2 generator, protected bytes, hashes, and every report unchanged.
+Add a separately named v3 regression generator/root whose unrelated-negative
+query is a genuine user task and whose same-entity/same-scope hard-negative
+Memory is topically similar but cannot answer it. Keep the 500-case
+distribution, draft/non-promotional status, criteria, strict audit, and
+provider-free generation/verification boundaries unchanged. This decision
+authorizes only offline code/tests and a new disposable generated bundle; it
+does not authorize another live capture, Validation, or promotion.
+
+**2026-07-31 regression-contract repair implementation:** The separately
+seeded `memory-regression-zh-mixed-v3` generator now produces a normal
+agenda-heading query plus a same-entity/same-scope weather-board hard negative,
+while the historical v2 generator remains byte-identical under pinned raw and
+content hashes. Exact generator/auditor/ID dispatch rejects unknown or mixed
+v2/v3 artifacts, and the v3 semantic audit rejects a return to self-referential
+negative wording. The private disposable four-file bundle replayed exactly at
+`0700/0600`; focused race tests, all backend Go tests, and `go vet ./...`
+passed. The committed v3 status is aggregate/hash-only. No Docker, Provider,
+Validation, production, or promotion action was executed.
+
 ## Expansion Sweep
 
 - Future evolution: evaluate the fixed Luna candidate-aware profile under the

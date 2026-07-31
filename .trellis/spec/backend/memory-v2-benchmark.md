@@ -102,10 +102,15 @@ go run ./cmd/memory-benchmark-author regression-generate \
   [-root <new-protected-regression-root>]
 go run ./cmd/memory-benchmark-author regression-status|regression-verify \
   [-root <protected-regression-root>]
+go run ./cmd/memory-benchmark-author regression-v3-generate \
+  [-root <new-protected-v3-regression-root>]
+go run ./cmd/memory-benchmark-author regression-v3-status|regression-v3-verify \
+  [-root <protected-v3-regression-root>]
 ```
 
 ```go
 memoryauthor.GenerateRegression() (memoryauthor.RegressionPool, error)
+memoryauthor.GenerateRegressionV3() (memoryauthor.RegressionPool, error)
 memoryauthor.AuditRegression(fixtures, corpus) (memoryeval.RegressionAudit, error)
 memoryauthor.PublishRegression(root string, pool memoryauthor.RegressionPool) error
 memoryauthor.LoadRegression(root string) (memoryauthor.RegressionPool, error)
@@ -360,10 +365,18 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   duplicates, ordinal/identifier shortcuts, binding failures, language/scope
   mismatches, slice semantic failures, and preference/fallback/multi-hop
   failures, plus at least 100 entity/topic-normalized query skeletons.
-- The default regression root is the gitignored
-  `mm-chat/data/memory-benchmark/v2-regression/`. Its final path component must
-  explicitly contain `regression`; publication is create-only with `0700/0600`
-  permissions. `regression-verify` regenerates and byte-compares fixtures,
+- The legacy v2 generator and every historical artifact/hash remain immutable.
+  The separately named v3 generator changes only the `unrelated_negative`
+  contract: a normal agenda-heading query shares entity/topic/scope terms with
+  a weather-board Memory that cannot answer the query. Its semantic audit
+  requires those task/observation markers and forbids `unrelated`, `无关`,
+  `no bearing`, and `没有关系` in both query and candidate.
+- The default legacy and repaired roots are the gitignored
+  `mm-chat/data/memory-benchmark/v2-regression/` and
+  `mm-chat/data/memory-benchmark/v3-regression/`. Their final path component
+  must explicitly contain `regression`; publication is create-only with
+  `0700/0600` permissions. Verification dispatches only from an exact known
+  generator tuple, rejects mixed v2/v3 artifacts, and byte-compares fixtures,
   corpus, audit, and manifest. Git receives content-free status/hashes only.
 - Regression observations bind corpus-content, audit-content, fixture, capture,
   profile configuration, raw input hashes, and all 500 ordered IDs. They reuse
@@ -778,6 +791,9 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | Regression artifact is passed to the Golden decoder/evaluator, or vice versa | Reject strict decoding/admission before scoring. |
 | Regression omits explicit promotion denial, uses another class/mode, or contains human reviewer/timestamp fields | Reject admission. |
 | Regression count/split/language/slice or semantic-audit gate fails | Refuse publication/admission; never convert it into a formal review event. |
+| Regression generator tuple is unknown, or fixture/corpus/manifest IDs, auditor, or audit time do not match that exact tuple | Reject decoding/admission; do not guess a nearest profile. |
+| v2 and v3 fixture/corpus/audit/manifest artifacts are mixed | Reject admission and byte replay without changing either protected root. |
+| v3 `unrelated_negative` lacks agenda-heading/weather-board markers or contains `unrelated`, `无关`, `no bearing`, or `没有关系` | Fail the semantic audit and refuse publication/admission. |
 | Regression corpus/audit/fixture/manifest hash or byte replay drifts | Refuse verify/admission and preserve the existing protected root unchanged. |
 | Regression observations contain a formal Holdout simulation, wrong audit/corpus/fixture binding, missing/reordered case, or bad stage subset | Reject before scoring. |
 | Regression metric gate fails | Publish the new exclusive regression report, return non-zero, and keep `promotionEligible=false`. |
@@ -848,6 +864,16 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 - **Regression bad**: relabel machine output as `human_reviewed`, invent a
   Holdout UUID, accept a weak/failed audit, use ordinal hints, or present a
   passing fixture-oracle protocol smoke as reader evidence.
+- **Regression v3 good**: keep all v2 hashes fixed, generate the separately
+  seeded v3 query/weather hard negative, pass exact marker/forbidden-term
+  auditing, and publish only a content-free status.
+- **Regression v3 base**: the private v3 bundle byte-replays and has no
+  observations; it is offline authoring readiness only and cannot inherit any
+  v2 run result.
+- **Regression v3 bad**: edit v2 in place, combine a v3 fixture with a v2
+  corpus/audit, restore self-referential negative wording, reuse v2
+  observations, or invoke native capture/Validation without separate review
+  and authorization.
 - **Tool-route good**: one exact configured model receives a redacted relevant
   query plus the fixed Tool, returns one exact `{}` call, and the unchanged BGE
   result becomes the offline final surface without exposing candidates to the
@@ -916,7 +942,12 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   language, and slice counts; opaque/no-ordinal text; at least 100 normalized
   skeletons; zero semantic counters; deliberate ordinal, weak fallback, and
   weak multi-hop failures; private exclusive storage; byte replay; and v1
-  protected-profile non-regression.
+  protected-profile non-regression. Pin every legacy v2 raw/content hash; pin
+  the new v3 raw/content hashes; assert all v3 unrelated-negative language
+  variants contain required task/observation markers and none of the forbidden
+  self-description terms; inject a legacy negative to prove audit failure;
+  reject each v2/v3 artifact-mixing permutation; and cover content-free
+  `regression-v3-generate|status|verify` output plus `0700/0600` permissions.
 - Regression evaluator tests: cross-schema rejection; explicit promotion
   denial; no human attestation; corpus/audit content binding; exact ordered
   observations; absence of Holdout authority; shared metric/safety results;
@@ -1029,6 +1060,19 @@ fixed 500-case synthetic v2 profile
 
 This lane makes automated regressions useful without laundering them into the
 formal human-review lifecycle.
+
+```text
+immutable v2 bytes and failed historical evidence
+-> separately seeded v3 hard-negative repair
+-> real agenda task + same-entity/scope weather observation
+-> deterministic v2 semantic audit plus anti-self-description checks
+-> private create-only four-file bundle, regression_only
+-> no Provider, Validation, capture, or promotion authority
+```
+
+The current native-capture wrapper remains explicitly bound to v2. Moving a
+capture to v3 requires separate integration review, new observations, and fresh
+live authorization; v2 observations can never be rebound to the v3 hashes.
 
 ### Correct main-model first-ToolRound Development
 
