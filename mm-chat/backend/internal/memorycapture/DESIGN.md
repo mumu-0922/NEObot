@@ -31,8 +31,9 @@ protected synthetic artifacts
   -> go_api_runtime production hybrid reader
        -> repository decorator captures RRF Top 20/final Top 5
        -> migration-064 derives transient local admission similarity
-       -> fixed BGE rerank and either strict cloud judge or main-model Tool route
-          run concurrently under their versioned Development profile
+       -> fixed BGE rerank and either strict cloud/configured judge or
+          historical main-model Tool route run concurrently under its
+          versioned Development profile
        -> judge ordinals intersect BGE order, or one exact search_memory({})
           call releases unchanged BGE order, before the token selector
        -> Provider decorator captures exact candidate-document IDs
@@ -73,6 +74,7 @@ run-bound marker in a database whose name starts with
 | Speculative BGE overlap | A separate route round plus serial embedding/rerank would make the unchanged two-second gate harder to meet. | BGE work may overlap, but its candidates stay request-local and are discarded unless the exact route call succeeds. |
 | Route lifecycle is generation-bound | Admission can fail closed before a concurrent route returns; an identity-only Recorder can then misclassify or accept a late write. | One replayable route completion closes on every exit, delegated calls publish through a buffered context-selected result, and old-generation writes fail closed. |
 | Independent live credentials | BGE and the selected chat route are separate Provider authorities. | Cost-basis v5 and the wrapper reject the same file, hard links, or equal Key bytes and bind each exact target independently. |
+| Candidate-first configured judge | Candidate-blind routes cannot discover implicit personalization, while candidate recall itself is not prompt injection. | Schema v10 recalls and reauthorizes first, then reuses the strict ordinal judge with the exact configured GPT/DeepSeek Provider; only judge/BGE intersection may become a counterfactual final set. |
 | Candidate failure means `no_memory` | v1 remains the real prompt authority but is a separate benchmark profile. | Prepare/Record/Provider/cutoff failures never launder v1 or unscored RRF rows into v2 final/injected surfaces. |
 
 ## Trust boundaries and threats
@@ -94,6 +96,12 @@ runner rejects the same file, hard links, and equal byte content. Both byte
 buffers are cleared after use, retained artifacts/logs/Docker metadata are
 scanned, and wrapper teardown removes the temporary directory on success,
 error, `SIGINT`, `SIGTERM`, or `SIGHUP`.
+
+Configured candidate-judge mode uses the same independent-credential boundary
+with a distinct cost-basis-v6 Provider authority and mount. Candidate bodies
+may reach only that exact owner-authorized configured Provider after current
+authority and secret redaction; neither credential value enters argv,
+environment, retained output, or Docker metadata.
 
 ### Fixture plaintext leakage
 
@@ -192,6 +200,11 @@ result or failure, even when a later case reuses the same assistant identity.
   one concrete producer: admission-unavailable paths did not await their
   already-started route. The lifecycle/generation repair prevents recurrence
   but cannot relabel the immutable identity-free artifact.
+- Schema v9 ends candidate-blind routing. Schema v10 is a new Development-only
+  candidate-first hypothesis using the exact configured GPT or DeepSeek model
+  through the shared strict judge adapter. Offline/fake profile, report,
+  manifest, cost, authorization, CLI, Compose, and cleanup gates exist; no live
+  result, Validation, runtime installation, or promotion exists yet.
 - Fake protocol relevance and latency metrics are intentionally meaningless;
   only lifecycle and authority invariants are evaluated.
 
@@ -245,3 +258,7 @@ result or failure, even when a later case reuses the same assistant identity.
 - **2026-07-30**: Closed every started route before capture completion, bounded
   cancellation-ignoring delegates through a buffered context select, and
   generation-fenced Recorder route writes after the offline schema-v9 trace.
+- **2026-07-31**: Stopped candidate-blind routing and added the schema-v10
+  candidate-first configured GPT/DeepSeek judge Development lane with reader
+  v8, adapter provenance, cost-basis v6, independent credentials, aggregate-
+  only evidence, and no live or production activation.

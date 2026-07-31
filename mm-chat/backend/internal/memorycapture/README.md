@@ -26,6 +26,10 @@ without changing prompt, Usage, feature flags, or production data.
 - close every started route before the sequential capture case finishes, bind
   Recorder writes to that case generation, and prevent cancellation-ignoring
   delegated routers from holding the reader;
+- stop candidate-blind routing at schema v9 and run the schema-v10
+  configured-main-model candidate judge only after private current-authorized
+  recall, reusing the strict ordinal/BGE intersection path without production
+  injection authority;
 - enforce exact `development`/`validation` split lanes and reject the visible
   machine `holdout`;
 - assemble strict regression observations, content-free run manifests, and
@@ -53,6 +57,8 @@ injection, or active-reader authority.
 | `BuildMemoryToolRouteDevelopmentReport` | Apply cost-basis v5 and return schema-v7 aggregate first-ToolRound evidence. |
 | `CaptureMemoryToolRouteDiagnostic` | Execute the schema-v9 request-equivalent route diagnostic with request-local bounded failure categories. |
 | `BuildMemoryToolRouteDiagnosticReport` | Return aggregate-only schema-v9 route and retrieval-completeness counts; never select a policy. |
+| `CaptureConfiguredCandidateJudgeDevelopment` | Execute candidate-first strict judging through one exact configured GPT/DeepSeek model on Development. |
+| `BuildConfiguredCandidateJudgeDevelopmentReport` | Return schema-v10 aggregate evidence bound to Provider ID/type/Base-URL hash/model, adapter, and cost-basis v6. |
 | `CaptureFrozenValidation` | Execute only the 100 Validation cases under the code-frozen policy. |
 | `BuildFrozenValidation` | Score the frozen Validation result without retuning. |
 | `AssembleRegressionObservations` | Bind ordered captures to the strict regression schema. |
@@ -75,7 +81,8 @@ bash scripts/run-memory-regression.sh \
 `fake_protocol` validates SQL, capture, evaluation, publication, and teardown
 only. Live mode accepts `development_calibration`,
 `development_cloud_judge`, `development_memory_tool_route`, or
-`frozen_validation`. Each phase requires a fresh separately authorized
+`development_configured_candidate_judge`, or `frozen_validation`. Each phase
+requires a fresh separately authorized
 mode-`0600` SiliconFlow key file; Tool-route Development additionally requires
 a different fresh mode-`0600` GPT/DeepSeek credential. Live output is labelled
 `native_v2_hybrid` while fake output is labelled
@@ -189,6 +196,18 @@ exits; delegated cancellation is context-selected through a buffered result,
 and Recorder writes require the originating generation. The retained
 identity-free artifact is unchanged and no paid rerun is authorized.
 
+Candidate-blind routing is no longer the next hypothesis. The schema-v10
+`development_configured_candidate_judge` lane recalls and reauthorizes
+candidates first, then gives only the redacted query and ordinal candidate
+bodies to the exact configured GPT or DeepSeek model through
+`chat-configured-candidate-judge-v1`. Empty/invalid output fails closed;
+accepted ordinals still intersect fixed BGE order. Profile config v10, reader
+v8, report v10, cost-basis v6, and exact configured Provider authority keep
+this evidence separate from schema-v4/v5 SiliconFlow judges and schema-v6-v9
+Tool routes. Only fake/offline support has been verified in this batch; no
+live Provider call, Validation, production composition, or promotion is
+authorized.
+
 The schema-v4 cost basis fixes a 300-request ceiling, a 128-token output ceiling
 per request, conservative UTF-8-plus-framing input token bounds, exact model
 prices, and maximum judge cost before Provider construction. The candidate
@@ -202,6 +221,13 @@ exact prices, and absolute route cost without pretending product-round output
 is always 128 tokens. The SiliconFlow and route credentials must not be the
 same file, hard links, or equal bytes. Both are cleared after use and included
 in leak scans.
+
+Configured candidate-judge cost-basis v6 uses the same exact
+Provider/model/Base-URL and 300-request/token/cost ceilings in a distinct
+`configuredCandidateJudgeAuthority`. It rejects any cloud-judge or Tool-route
+authority in the same document. Live mode also requires a judge credential
+that is a different file and different bytes from the SiliconFlow retrieval
+credential; both are cleared and leak-scanned.
 
 ## Tests
 
@@ -225,6 +251,7 @@ recorder.go                        Per-case capture state and generation tokens
 memory_tool_router_decorator.go    Bounded route delegation and Recorder publication
 capture.go                         Production-reader observation assembly
 memory_tool_route_development.go   Schema-v7/v9 aggregate report authority
+configured_candidate_judge_development.go Schema-v10 aggregate report authority
 ```
 
 See [DESIGN.md](DESIGN.md) and

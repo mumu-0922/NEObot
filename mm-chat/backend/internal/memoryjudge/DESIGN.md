@@ -74,10 +74,15 @@ request-local and are never logged or persisted by this adapter.
   production authorization.
 - Server composition deliberately installs no candidate judge or frozen cloud
   policy.
-- Current active research moved to the main-model `search_memory` Tool route;
-  this package remains to replay and explain historical schema-v4/v5 evidence.
+- Candidate-blind `search_memory` Tool routing failed and is now historical.
+  The schema-v10 Development successor reuses this adapter with the exact
+  configured GPT or DeepSeek model after current-authorized candidate recall.
+  No live schema-v10 result or production installation exists yet.
 
 ## Change history
 
 - **2026-07-29**: Added the strict shared-prompt chat adapter for isolated
   owner-authorized cloud candidate-judge Development capture.
+- **2026-07-31**: Versioned the same transport as
+  `chat-configured-candidate-judge-v1` for the candidate-first configured-model
+  Development lane without changing the shared prompt or decoder.

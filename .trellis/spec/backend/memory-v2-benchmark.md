@@ -42,6 +42,7 @@ neo-chat.memory-regression-profile-config.v6
 neo-chat.memory-regression-profile-config.v7
 neo-chat.memory-regression-profile-config.v8
 neo-chat.memory-regression-profile-config.v9
+neo-chat.memory-regression-profile-config.v10
 neo-chat.memory-regression-relevance-calibration.v3
 neo-chat.memory-regression-relevance-calibration.v4
 neo-chat.memory-regression-relevance-calibration.v5
@@ -49,12 +50,14 @@ neo-chat.memory-regression-relevance-calibration.v6
 neo-chat.memory-regression-relevance-calibration.v7
 neo-chat.memory-regression-relevance-calibration.v8
 neo-chat.memory-regression-relevance-calibration.v9
+neo-chat.memory-regression-relevance-calibration.v10
 neo-chat.memory-regression-relevance-validation.v1
 neo-chat.memory-regression-relevance-run.v1
 neo-chat.memory-regression-cost-basis.v2
 neo-chat.memory-regression-cost-basis.v3
 neo-chat.memory-regression-cost-basis.v4
 neo-chat.memory-regression-cost-basis.v5
+neo-chat.memory-regression-cost-basis.v6
 neo-chat.memory-cloud-candidate-judge-input.v1
 neo-chat.memory-cloud-candidate-judge-output.v1
 ```
@@ -207,6 +210,18 @@ bash scripts/run-memory-regression.sh \
   --cost-basis /secure/eval/memory-first-tool-round-cost-v5.json \
   --output-dir /secure/eval/native-memory-runs
 
+# Candidate-first successor. Fake protocol proves only the isolated lifecycle
+# and exact configured-Provider bindings; it is not quality evidence.
+bash scripts/run-memory-regression.sh \
+  --provider-mode fake_protocol \
+  --capture-mode development_configured_candidate_judge \
+  --configured-candidate-judge-provider-id configured-gpt \
+  --configured-candidate-judge-provider-type openai \
+  --configured-candidate-judge-base-url https://api.openai.example/v1 \
+  --configured-candidate-judge-model exact-configured-model \
+  --cost-basis /secure/eval/configured-candidate-judge-cost-v6.json \
+  --output-dir /secure/eval/native-memory-runs
+
 # Only after the selected Development values are frozen in code; use a new,
 # separately authorized mode-0600 Key file.
 bash scripts/run-memory-regression.sh \
@@ -227,6 +242,8 @@ memorycapture.CaptureMemoryToolRouteDevelopment(ctx, adminDB, runtimeDB, runID, 
 memorycapture.BuildMemoryToolRouteDevelopmentReport(pool, profile, authority, costBasis) (memorycapture.MemoryToolRouteDevelopmentReport, []byte, error)
 memorycapture.CaptureMemoryToolRouteDiagnostic(ctx, adminDB, runtimeDB, runID, pool, index, seed, provider, router, modelID, profileID, configurationSHA256, cost) (memorycapture.CapturedProfile, error)
 memorycapture.BuildMemoryToolRouteDiagnosticReport(pool, profile, authority, costBasis) (memorycapture.MemoryToolRouteDevelopmentReport, []byte, error)
+memorycapture.CaptureConfiguredCandidateJudgeDevelopment(ctx, adminDB, runtimeDB, runID, pool, index, seed, provider, judge, authority, profileID, configurationSHA256, cost) (memorycapture.CapturedProfile, error)
+memorycapture.BuildConfiguredCandidateJudgeDevelopmentReport(pool, profile, authority, costBasis) (memorycapture.ConfiguredCandidateJudgeDevelopmentReport, []byte, error)
 memorycapture.AssembleRegressionObservations(pool, capturedAt, captureID, profile) (memoryeval.RegressionObservationSet, []byte, error)
 memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string, error)
 ```
@@ -552,6 +569,19 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   counts never prove per-case intersection because the artifact retains no
   identity. The result is valid diagnostic/failed-metric evidence only and
   leaves Validation/Promotion blocked.
+- Candidate-blind routing stops at schema v9. The schema-v10 successor uses
+  capture mode `development_configured_candidate_judge`, reader v8, profile
+  config v10, report v10, admission
+  `development_configured_candidate_judge_only`, adapter
+  `chat-configured-candidate-judge-v1`, cost-basis v6, and artifact
+  `configured-candidate-judge-development.json`.
+- Schema v10 runs current-authorized candidate recall before admission. It
+  reuses the shared strict query/candidate ordinal prompt and decoder, runs the
+  exact configured GPT or DeepSeek judge with fixed BGE rerank, intersects
+  selected ordinals with BGE order, and retains only aggregate evidence. It
+  has no production composition, prompt, Usage, Validation, or promotion
+  authority. The current implementation is fake/offline only; no paid run is
+  authorized.
 - The native stdout summary schema remains the command-envelope v4, but its
   `corpusClass`, `admissionMode`, and `split` must come from the validated
   schema-v7 report rather than historical schema-v6 constants. A failed fake
@@ -568,9 +598,11 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   zero-cost, unit-drift, or denominator-drift input fails before Provider work.
   Historical cloud-judge mode requires cost-basis v2; its owner absolute-cap
   follow-up requires v3. Historical schema-v6 Tool preflight requires v4;
-  schema-v7 first-ToolRound Development requires v5. Every absolute-cap profile
-  binds the exact policy ID and rejects request, model, token-ceiling, price,
-  maximum-cost, or coverage drift before Provider construction.
+  schema-v7 first-ToolRound Development requires v5; the configured candidate-
+  judge successor requires v6 with one exact
+  `configuredCandidateJudgeAuthority`. Every absolute-cap profile binds the
+  exact policy ID and rejects mixed authority, request, model, token-ceiling,
+  price, maximum-cost, or coverage drift before Provider construction.
 - Cost authority has two distinct hash surfaces. An operator may bind the
   private source file's exact raw bytes with ordinary file SHA-256, while
   `DecodeCostBasis` / `CostBasisSHA256` hashes the decoded struct re-encoded by
@@ -590,6 +622,7 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 - Native output uses a private new run directory. Full fake regression links
   four evidence files; historical calibration, schema-v4/v5 cloud Development,
   schema-v6 historical Tool-route Development, schema-v7 first-ToolRound
+  Development, schema-v9 diagnostics, schema-v10 configured-candidate-judge
   Development, and frozen Validation each link one
   aggregate report. Every mode links
   `run-manifest.json` last as the completion marker. Failed metric/no-feasible
@@ -657,6 +690,10 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | Schema-v9 taxonomy/completeness version drifts, a failed route lacks one valid category, route totals differ from `failedCaseCount`, or retrieval totals do not reconcile | Reject the report/manifest; do not fall back to plaintext errors or reinterpret schema v7/v8. |
 | Schema-v9 permits incomplete retrieval with non-empty Final/Injected/tokens | Reject; fail-closed retrieval may be measured but cannot release Memory. |
 | Schema-v9 summary sets `policySelected=true`, unlocks Validation, or mutates the default-off runtime flag | Reject regardless of metric outcome; diagnostics have measurement authority only. |
+| Configured candidate-judge mode lacks exact Provider ID/type/Base-URL hash/model approval or cost-basis v6 | Reject before the independent judge credential is read or either live Provider is constructed. |
+| SiliconFlow and configured-judge credentials are the same file, hard links, or equal bytes | Reject; retrieval and configured chat Provider authorities must remain independent. |
+| Configured judge output is empty | Record a valid abstention; recalled candidates remain private and final/injected/token surfaces are empty. |
+| Configured judge output, adapter, Provider/model, cost, or BGE intersection authority drifts | Fail closed to `no_memory`; never inherit a schema-v4/v5 judge or schema-v6-v9 Tool-route result. |
 | Frozen validation is requested before a Development-selected policy is committed | Reject before credential read or Provider work. |
 | Native artifact target already exists or publication races | Preserve existing bytes, remove only new links, and refuse the run. |
 | Native run is interrupted before complete validation | Remove partial output and all project-scoped runtime/credential state. |
@@ -702,6 +739,16 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   error text, infer historical subtypes, treat either empty v8 attempt as
   evidence, or let a v9 result authorize
   Validation/Promotion.
+- **Configured-judge good**: recall current-authorized candidates first, send
+  only redacted query/ordinal bodies to one exact configured Provider, accept
+  strict ordinals, intersect with BGE order, and publish the schema-v10
+  aggregate two-file Development bundle.
+- **Configured-judge base**: the strict judge returns an empty ordinal array
+  for unrelated candidates; no rejected body reaches an answer prompt or
+  Usage surface.
+- **Configured-judge bad**: route before recall, reuse a retrieval credential,
+  retain candidate plaintext, accept free-form IDs, or use a GPT result to
+  authorize a DeepSeek profile.
 
 ## 6. Tests Required
 
@@ -780,8 +827,11 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   retrieval aggregate invariants, fail-closed empty final enforcement, v7
   field omission, plaintext/raw-body leak rejection, bounded content-free
   post-capture integrity reasons with no partial publication, always-false
-  `policySelected`, frozen-policy-unavailable denial; and separate two-file
-  manifests. Cost-basis fixtures must also assert the raw private-file hash and
+  `policySelected`, frozen-policy-unavailable denial; schema-v10 profile/report/
+  reader/adapter separation, exact Provider and cost-basis-v6 drift denial,
+  fake configured-judge construction, independent credential cleanup,
+  flattened aggregate report fields, and two-file manifest validation.
+  Cost-basis fixtures must also assert the raw private-file hash and
   the decoded canonical manifest hash as different named surfaces rather than
   assuming byte equality.
 - Run `go test -race ./internal/memoryauthor ./cmd/memory-benchmark-author

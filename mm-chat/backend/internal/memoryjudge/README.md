@@ -2,8 +2,9 @@
 
 `memoryjudge` binds the shared strict hybrid Memory candidate-judge contract to
 one already authorized `chat.Provider` and exact model. It exists for the
-historical schema-v4/v5 Development experiments; Server composition does not
-install it as production reader authority.
+historical schema-v4/v5 Development experiments and the schema-v10
+candidate-first configured GPT/DeepSeek Development hypothesis. Server
+composition does not install it as production reader authority.
 
 ## Responsibilities
 
@@ -31,6 +32,7 @@ output schema   = neo-chat.memory-cloud-candidate-judge-output.v1
 prompt version  = memory-cloud-candidate-judge-prompt-v1
 prompt SHA-256  = c004e834f2db572fc8393f088f47750d420379664f972357f987a09d8647f9c8
 decoding        = temperature-0_max-output-128_no-thinking_v1
+adapter version = chat-configured-candidate-judge-v1
 maximum bytes   = 1024
 ```
 
@@ -42,8 +44,8 @@ the sole `no_memory` decision.
 
 ```go
 judge, err := memoryjudge.NewChatAdapter(provider, chat.ModelRef{
-    ProviderID: "siliconflow",
-    ModelID:    "fixed-development-model",
+    ProviderID: "configured-gpt",
+    ModelID:    "exact-configured-model",
 })
 if err != nil {
     return err
@@ -54,7 +56,7 @@ service := usermemory.NewService(
     usermemory.WithHybridCandidateJudge(judge),
     usermemory.WithHybridShadowRelevancePolicy(
         usermemory.HybridShadowCloudJudgeCalibrationPolicy(
-            "fixed-development-model",
+            "exact-configured-model",
         ),
     ),
 )

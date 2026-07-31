@@ -63,17 +63,24 @@ neo-chat.memory-regression-profile-config.v4
 neo-chat.memory-regression-profile-config.v5
 neo-chat.memory-regression-profile-config.v6
 neo-chat.memory-regression-profile-config.v7
+neo-chat.memory-regression-profile-config.v8
+neo-chat.memory-regression-profile-config.v9
+neo-chat.memory-regression-profile-config.v10
 neo-chat.memory-regression-relevance-calibration.v3
 neo-chat.memory-regression-relevance-calibration.v4
 neo-chat.memory-regression-relevance-calibration.v5
 neo-chat.memory-regression-relevance-calibration.v6
 neo-chat.memory-regression-relevance-calibration.v7
+neo-chat.memory-regression-relevance-calibration.v8
+neo-chat.memory-regression-relevance-calibration.v9
+neo-chat.memory-regression-relevance-calibration.v10
 neo-chat.memory-regression-relevance-validation.v1
 neo-chat.memory-regression-relevance-run.v1
 neo-chat.memory-regression-cost-basis.v2
 neo-chat.memory-regression-cost-basis.v3
 neo-chat.memory-regression-cost-basis.v4
 neo-chat.memory-regression-cost-basis.v5
+neo-chat.memory-regression-cost-basis.v6
 neo-chat.memory-cloud-candidate-judge-input.v1
 neo-chat.memory-cloud-candidate-judge-output.v1
 ```
@@ -898,6 +905,43 @@ artifact is identity-free, this finding records a concrete implementation
 cause without retroactively relabeling all `174` cases or establishing a
 case-level join. It grants no paid rerun, Validation, or Promotion authority.
 
+That result also ends the candidate-blind Tool-route hypothesis. Candidate
+recall is private retrieval, not prompt injection: a model that routes before
+recall cannot discover an implicit allergy, preference, or project fact behind
+an ordinary-looking query. The next schema-separated Development lane is:
+
+```text
+capture mode          = development_configured_candidate_judge
+profile schema        = neo-chat.memory-regression-profile-config.v10
+reader                = neo-chat.native-memory-reader-capture.v8
+report schema         = neo-chat.memory-regression-relevance-calibration.v10
+admission mode        = development_configured_candidate_judge_only
+adapter               = chat-configured-candidate-judge-v1
+cost schema           = neo-chat.memory-regression-cost-basis.v6
+artifact              = configured-candidate-judge-development.json
+```
+
+It recalls and reauthorizes candidates first, sends only the secret-redacted
+query plus contiguous request-local candidate ordinals/bodies to one exact
+configured GPT or DeepSeek Provider/model, accepts the existing strict ordinal
+JSON or an empty array, and intersects selected ordinals with fixed BGE order.
+Rejected candidates never enter the answer prompt or Usage. GPT and DeepSeek
+are separate hypotheses. The current batch proves only fake/offline protocol,
+report, cost, Compose, and teardown behavior; no paid call, Validation,
+production composition, or promotion is authorized.
+
+```bash
+bash scripts/run-memory-regression.sh \
+  --provider-mode fake_protocol \
+  --capture-mode development_configured_candidate_judge \
+  --configured-candidate-judge-provider-id configured-gpt \
+  --configured-candidate-judge-provider-type openai \
+  --configured-candidate-judge-base-url https://api.openai.example/v1 \
+  --configured-candidate-judge-model exact-configured-model \
+  --cost-basis /secure/eval/configured-candidate-judge-cost-v6.json \
+  --output-dir /secure/eval/native-memory-runs
+```
+
 Only after a schema-v7 first-round Tool Loop Development hypothesis passes may
 its policy, Provider/model, Tool/adapter profile, and selection behavior be
 frozen in code. The current Validation CLI remains unavailable because no
@@ -930,6 +974,13 @@ secrets. When the owner authorizes Server Vault reuse for Development, a
 separate operator step must first create the two mode-`0600` input files and
 must overwrite/remove them afterward; the runner itself never inspects or
 decrypts the Vault. Live output alone uses profile `native_v2_hybrid`.
+
+Configured candidate-judge Development follows the same rule with one fresh
+SiliconFlow retrieval credential and one different fresh configured-chat
+credential. The wrapper rejects the same file, hard links, or equal bytes,
+binds the exact Provider ID/type/Base-URL hash/model before Provider
+construction, scans both values from every retained surface, and destroys both
+temporary copies on every exit.
 
 The cost basis is strict JSON and all values are run-total integer microunits
 in one named unit:
@@ -1038,6 +1089,28 @@ and output bounds must not exceed it. Exact rates and maximum cost use the same
 ceiling arithmetic, and candidate Memory cost must cover fixed BGE work plus
 the authorized first-round route ceiling.
 
+Schema-v10 configured candidate-judge Development requires
+`neo-chat.memory-regression-cost-basis.v6`, the same explicit owner absolute-
+cap policy, no `cloudJudgeAuthority` or `memoryToolRouteAuthority`, and one
+exact `configuredCandidateJudgeAuthority`:
+
+```text
+providerId                       = exact configured Provider ID
+providerType                     = openai | openai_compatible
+baseUrlSha256                    = normalized exact Base URL SHA-256
+modelId                          = exact configured judge model
+requestCount                     = 300
+maximumInputTokens               = conservative aggregate bound
+maximumOutputTokens              = 300 * 128 = 38400
+inputMicrounitsPerMillionTokens  = exact versioned price
+outputMicrounitsPerMillionTokens = exact versioned price
+maximumCostMicrounits            = exact ceiling arithmetic
+```
+
+The candidate Memory cost must cover fixed BGE work plus this maximum. Any
+Provider/model/Base-URL, request/token/rate/arithmetic, mixed-authority, or
+coverage drift fails before Provider construction or bundle publication.
+
 Each full fake-protocol run directory is mode `0700` and contains five
 mode-`0600` files:
 
@@ -1049,8 +1122,10 @@ native-v2-hybrid[-fake-protocol].report.json
 run-manifest.json
 ```
 
-Historical calibration, schema-v4/v5 cloud-judge Development, and Validation
-directories contain their named aggregate report plus `run-manifest.json`. In
+Historical calibration, schema-v4/v5 cloud-judge Development, schema-v6-v9
+Tool-route evidence, schema-v10 configured-candidate-judge Development, and
+Validation directories contain their named aggregate report plus
+`run-manifest.json`. In
 every mode, evidence is exclusively linked first and the content-free
 run manifest is the final completion marker. Existing targets are refused
 before Provider work and are never overwritten. A metric/no-feasible failure

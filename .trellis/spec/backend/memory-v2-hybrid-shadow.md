@@ -7,7 +7,8 @@ Apply this contract when changing migration
 `064_memory_hybrid_relevance_admission`, additive migration
 `065_memory_hybrid_final_hydration`, Memory BGE-M3 projection/jobs, hybrid
 prepare/admission/record/final-hydration capabilities, RRF/rerank/cloud-judge/
-main-model Tool routing/relevance/token selection, hybrid diagnostics,
+configured-model candidate judging/main-model Tool routing/relevance/token
+selection, hybrid diagnostics,
 `MEMORY_HYBRID_SHADOW_ENABLED`, or `MEMORY_TOOL_LOOP_ENABLED` wiring.
 
 The deployed default keeps the v1 in-process Top 5 as prompt and Usage
@@ -100,6 +101,7 @@ f8f404df0ae3a3938081b813c8750d59ba252adbcb8dc755e075e5c738e20ca6
 memory-search-tool-decoding-v1
 temperature=0 / maximum output=128 / thinking disabled
 chat-first-tool-round-memory-decision-v1
+chat-configured-candidate-judge-v1
 ```
 
 The decoding/temperature/output/thinking tuple applies only to immutable
@@ -301,6 +303,25 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   Recorder writes. This explains a concrete producer of the aggregate but
   does not rewrite the immutable identity-free v9 artifact or prove a
   case-level intersection.
+- Schema v9 closes the candidate-blind Tool-route line. A route decision made
+  before candidate recall cannot discover implicit personalization, and more
+  route taxonomy cannot give it candidate knowledge. Preserve every v6-v9
+  artifact and runtime seam as historical default-off evidence; do not use
+  those results to select the successor policy.
+- The schema-v10 Development successor recalls and reauthorizes candidates
+  first, then reuses the strict ordinal judge with the exact configured GPT or
+  DeepSeek Provider/model through adapter
+  `chat-configured-candidate-judge-v1`. The Provider receives only the
+  secret-redacted query and contiguous request-local candidate bodies, never
+  IDs, scores, scope, revision, or database authority. Empty or invalid output
+  fails closed; selected ordinals must still intersect fixed BGE order and pass
+  post-Provider reauthorization before any future prompt injection.
+- Profile schema v10, report schema v10, reader v8, cost-basis v6, exact
+  Provider ID/type/Base-URL hash/model, and an independent mode-`0600`
+  credential separate this hypothesis from historical SiliconFlow judges and
+  Tool routes. GPT and DeepSeek are independent Development hypotheses. No
+  live run, Validation, production composition, flag activation, or promotion
+  is authorized by the offline implementation.
 - Tool routing decides only whether saved Memory is needed. It cannot rewrite
   the query, select Memory IDs, authorize ownership/scope/revision, or authorize
   prompt injection. An empty candidate set still waits for the route decision
@@ -445,13 +466,18 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   embedding/admission is unavailable. Canonical projection/jobs stay correct,
   chat uses v1, no rerank Memory document is sent, and any already-started
   diagnostic route is closed before the capture case finishes.
+- **Configured-judge base**: private recall finds candidates for an unrelated
+  request, but the exact configured judge returns an empty ordinal array; the
+  answer prompt, Usage, and durable chat state receive no candidate body.
 - **Bad**: claim with an arbitrary RAG record, reuse an old vector response
   after epoch/scope drift, rank cross-user then filter in Go, persist query or
   raw scores, accept free-form judge prose/IDs, treat owner egress authorization
   as injection authority, accept missing Tool arguments as `{}`, send candidate
   bodies to the route model, finish a capture while its route can still write,
   attach a late route result to the next case, or inject Hybrid final IDs
-  before a separate promotion decision.
+  before a separate promotion decision. It is also invalid to treat private
+  candidate recall as prompt injection or to reuse Tool-route evidence for the
+  configured candidate-aware judge.
 
 ## 6. Tests Required
 
@@ -477,6 +503,9 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   failure recorder semantics, raw-error exclusion,
   same-model continuation and body-free recovery, policy-aware
   Provider-egress scoring,
+  schema-v10 exact configured Provider/profile/cost binding, strict flattened
+  aggregate report shape, fake judge wiring, independent credential cleanup,
+  and separate two-file manifest,
   post-threshold
   abstention, reserved cutoff recording, 600/900 token selection, bounded
   metadata, and byte-equivalent v1 prompt/Usage behavior.
@@ -534,7 +563,10 @@ default-off hybrid-worker/shadow flag + separate default-off product Tool flag
   -> independently authorized exact/BM25/vector lanes
   -> deterministic RRF(60)
   -> local maximum-cosine admission with no durable vector/score
+  -> private candidate recall and current-authority filtering
   -> historical strict cloud judge || Development route evidence
+  -> schema-v10 exact configured-model ordinal judge || fixed BGE rerank
+  -> judge/BGE intersection; empty or uncertain result means no v2 Memory
   -> product first ToolRound sees normal request + search_memory, no Memory body
   -> exact call: fixed BGE path + request-local score/token selection
   -> Record final -> migration-065 current-authority final hydration

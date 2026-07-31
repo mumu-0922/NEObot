@@ -3,10 +3,11 @@
 ## Goal
 
 Add a versioned, split-calibrated abstention policy to the native v2 hybrid
-Memory reader so the user-selected GPT or DeepSeek chat model decides whether
-to call a read-only `search_memory` Tool before seeing Memory bodies. Preserve
-BGE-M3 retrieval/rerank and the current v1 prompt authority until independent
-evidence passes.
+Memory reader. Recall current-authorized candidates before admission, then let
+the exact configured GPT or DeepSeek model select directly useful candidate
+ordinals through the strict candidate-judge contract before any Memory enters
+the answer prompt. Preserve BGE-M3 retrieval/rerank and the current v1 prompt
+authority until independent evidence passes.
 
 ## What I already know
 
@@ -195,6 +196,16 @@ evidence passes.
   and closed on all exits, delegated cancellation-ignoring routers cannot hold
   the reader, and Recorder writes are generation-bound. This does not rewrite
   the immutable identity-free v9 artifact or authorize another paid run.
+- The owner then rejected candidate-blind routing as the next architecture.
+  Candidate recall and prompt injection are now separate authorities: private
+  recall may run first, but only a candidate-aware admission result may release
+  Memory to the answer model. The schema-v6/v7/v9 Tool-route line is historical
+  failed evidence and receives no further diagnostic work.
+- The next Development-only hypothesis reuses the strict candidate ordinal
+  judge with the exact configured GPT or DeepSeek Provider. This is distinct
+  from the failed SiliconFlow candidate judges and from the failed configured
+  main-model Tool routes. It preserves the existing two-second cutoff and all
+  unchanged quality, safety, latency, token, and authority gates.
 
 ## Assumptions (updated)
 
@@ -202,10 +213,12 @@ evidence passes.
   and ordering stages.
 - Fixed two-stage scores, candidate margin, bilingual BGE intent, and three
   SiliconFlow candidate-aware judges are historical failed hypotheses.
-- The query-only `PlanTools` preflight is a completed failed Development
-  hypothesis. The next hypothesis is an exact `search_memory` decision inside
-  the existing first `ToolRoundProvider` round, evaluated separately for each
-  Provider/model.
+- Candidate-blind `PlanTools`, first-ToolRound, and schema-v9 diagnostic routes
+  are completed failed Development hypotheses. They remain default-off and are
+  not the next selection authority.
+- The next hypothesis recalls candidates first and uses the exact configured
+  GPT or DeepSeek model as a strict candidate-aware ordinal judge. GPT and
+  DeepSeek remain separate Development profiles.
 - Every hybrid relevance policy remains default-off and non-promotional until
   it passes unchanged recall, injection, latency, and authority gates.
 
@@ -217,23 +230,28 @@ evidence passes.
 
 ### Runtime selection
 
-- Add a versioned main-model Memory Tool-routing policy to the existing first
-  `ToolRoundProvider` request. Before a valid Tool Call, the Provider sees the
-  normal conversation context and exact read-only `search_memory` definition,
-  never Memory candidates or bodies. Do not prepend an independent
-  `PlanTools` request.
-- Accept either no Tool Call (`no_memory`) or one exact, bounded
-  `search_memory` call. Unknown tools, duplicates, malformed arguments, model
-  or contract drift, late output, and Provider failure fail closed.
-- After a valid Tool Call, run the fixed BGE-M3 embedding/RRF/rerank path and
-  existing Top-5 plus 600/900-token selector. The bounded result is eligible
-  only for same-Provider/same-model continuation.
-- Permit speculative overlap of routing and BGE work only when candidates
-  remain request-local until the Tool Call succeeds and measured latency
-  includes the real decision boundary.
+- Run the fixed exact/CJK BM25/BGE vector/RRF candidate recall before relevance
+  admission. Candidate recall is request-local and has no prompt, Usage, or
+  reader-promotion authority.
+- Reauthorize the current user, scope, revision/hash, visibility epoch,
+  projection generation, validity, deletion, Sensitive policy, and source
+  trust before any candidate reaches a Provider.
+- Send only the deterministic secret-redacted query plus contiguous
+  request-local candidate ordinals/bodies to the exact configured GPT or
+  DeepSeek candidate judge. Never send Memory IDs, scores, scope, revisions,
+  database metadata, credentials, or authority fields.
+- Accept only the existing exact JSON schema with zero to five unique in-range
+  ordinals. An empty array is `no_memory`; malformed, duplicate, out-of-range,
+  late, drifted, or failed output fails closed.
+- Run the configured main-model judge and fixed BGE-M3 candidate rerank under
+  the same bounded stage context, intersect selected ordinals with BGE order,
+  then apply the existing Top-5 and 600/900-token selector.
+- The answer model receives only the post-judge, post-rerank, post-
+  reauthorization final set. Recalled but rejected candidates never enter its
+  prompt or durable chat state.
 - Preserve rerank scores only in request-local typed structures.
 - Keep SQL pre-egress reauthorization and repeat current authority checks after
-  every Provider boundary and before building the Tool result.
+  every Provider boundary and before final hydration/injection.
 - Return an explicit empty hybrid final set when nothing passes.
 - Fail closed to no hybrid Memory on every missing/invalid/low-confidence,
   redacted, timeout, stale, or Provider-failure path; never inject unscored RRF
@@ -264,19 +282,22 @@ evidence passes.
   decoding rules, and cost authority hashed before Provider construction.
 - Retain every cloud-judge report as immutable historical failed evidence, but
   do not use that lane as the next selection authority.
-- Add a schema-separated main-model Tool-route Development lane. Hash the exact
-  Tool definition/version, adapter behavior, Provider type and identity,
-  model, cost authority, BGE tuple, and unchanged evaluation criteria before
-  Provider construction.
+- Add a schema-separated configured-main-model candidate-judge Development
+  lane. Hash the exact Provider type/identity/base-URL hash/model, strict judge
+  prompt/schema/decoding and adapter versions, cost authority, BGE tuple, and
+  unchanged evaluation criteria before Provider construction.
 - Preserve schema-v7 and both empty schema-v8 attempts as immutable historical
   evidence. A new failure-subtype run uses profile/report schema v9, reader v7,
   `route_complete_retrieval_fail_closed_v1`, and the hash-bound
   `memory-tool-route-failure-taxonomy-v1`; bounded route subtype counts must
   equal route failures, retrieval-incomplete aggregate counts must reconcile,
   and no raw Provider error/body may be retained.
-- Score a relevant case as final only when a valid Tool Call is followed by the
-  unchanged BGE final set. Score a Tool Call whose non-empty BGE final set would
-  enter an unrelated-negative continuation as false injection.
+- Preserve schema-v9 as immutable historical evidence and perform no further
+  Tool-route paid diagnostics. It cannot select or influence the new policy.
+- Score a relevant case as final only when the strict candidate judge selects
+  an ordinal that survives unchanged BGE ordering and final authority. Score a
+  non-empty final set for an unrelated-negative continuation as false
+  injection.
 - GPT and DeepSeek are separate named Development hypotheses; one model's
   result cannot authorize the other.
 - Keep `unauthorizedProviderEgressCount=0`: under the explicit owner policy,
@@ -307,12 +328,13 @@ evidence passes.
   Server Vault credentials only under the owner's explicit authorization. The
   copies must be overwritten and removed after each run, and the runner must
   never inspect/decrypt the Vault. Validation still requires fresh,
-  independently authorized credentials for BGE and the named route Provider.
+  independently authorized credentials for BGE and the named judge Provider.
 
 ## Acceptance Criteria (evolving)
 
-- [ ] An unrelated query produces no `search_memory` Tool Call and zero hybrid
-  final/injected Memory; no candidate body reaches the answer model.
+- [ ] An unrelated query may produce private candidates, but the strict judge
+  returns an empty ordinal set and zero hybrid final/injected Memory; no
+  rejected candidate body reaches the answer model.
 - [ ] Retrieval failure, empty final selection, stale final hydration, or full
   post-hydration redaction produces no Memory body and normal chat continues.
 - [ ] Relevant multilingual/paraphrase cases retain Candidate Recall@20
@@ -333,8 +355,8 @@ evidence passes.
 
 ## Definition of Done
 
-- The exact Tool definition and route decision contract are shared with the
-  product Tool Loop rather than copied into the evaluator.
+- The exact candidate-judge prompt/schema/decoder are shared by capture and
+  runtime adapters rather than copied into the evaluator.
 - Policy selection is reproducible, versioned, split-safe, and contains no raw
   score/plaintext artifact.
 - One independently authorized validation run records truthful results; a
@@ -345,34 +367,33 @@ evidence passes.
 
 ## Technical Approach
 
-1. Keep hybrid retrieval and final authority in `usermemory`; keep the typed
-   `HybridMemoryToolRouter` only as a Development compatibility seam.
-2. Own the exact no-argument `search_memory` definition, JSON hash, and call
-   validation in `internal/chat`. `internal/memoryroute` delegates to that
-   authority instead of copying it.
-3. Add `search_memory` to the existing first `ToolRoundProvider` request behind
-   `MEMORY_TOOL_LOOP_ENABLED=false`. Buffer first-round text/reasoning, accept
-   only an exact first-round call, remove Memory from later rounds, and continue
-   on the same Provider/model.
-4. After a valid product call, execute the fixed BGE embedding/RRF/admission/
-   rerank/Top-5/token path without v1 or `MarkUsed`. Record first, then hydrate
-   the exact final lane through migration `065`, repeat current authority, and
-   redact bodies again before the Tool Result.
-5. On retrieval/continuation failure, preserve ordinary chat: empty/failure
-   results continue without Memory, and a pre-content continuation failure
-   recovers from the original request without any Memory body.
-6. Preserve schema-v6/profile-v6/cost-basis-v4 as immutable failed preflight
-   evidence. Add schema-v7/profile-v7/cost-basis-v5 with reader v5, adapter
-   `chat-first-tool-round-memory-decision-v1`, and artifact
-   `memory-first-tool-round-development.json`.
-7. Require two independent mode-`0600` credential inputs for live capture,
-   scan both secrets from retained surfaces, and destroy all project-scoped
-   Docker/runtime state on every exit path. Development may use explicitly
-   authorized transient Server Vault copies; Validation may not.
-8. Use `fake_protocol` only for deterministic protocol/lifecycle proof. Run GPT
-   and DeepSeek as separate live Development hypotheses; freeze and add a
-   matching Validation lane only after one exact profile passes all unchanged
-   gates.
+1. Keep candidate retrieval, judge/BGE intersection, final selection, and
+   current-authority recording in `usermemory`. Retain
+   `HybridMemoryToolRouter` only to replay historical failed route evidence.
+2. Reuse `BuildHybridCandidateJudgePrompt`, the exact JSON ordinal decoder,
+   and `memoryjudge.ChatAdapter`; do not create a second prompt or Provider
+   transport.
+3. Add a schema-separated configured-main-model candidate-judge Development
+   profile. Bind exact Provider ID/type/base-URL hash/model and the shared
+   judge/BGE/cost/egress contracts before constructing either Provider.
+4. Execute candidate recall before admission. Run the strict configured-model
+   judge and fixed BGE reranker concurrently only after current-authority
+   checks and redaction, intersect their results, and record no final set on
+   any incomplete path.
+5. Record first, then hydrate only the exact final lane through migration
+   `065`; repeat current authority and redaction before any future product
+   injection. The Development lane itself remains counterfactual and cannot
+   mutate prompt/Usage authority.
+6. Preserve schema-v4/v5 candidate-judge and schema-v6/v7/v8/v9 Tool-route
+   evidence byte-for-byte. The new profile receives new schema/reader/adapter
+   identities and cannot inherit their results.
+7. Require independent mode-`0600` BGE and configured-judge credentials for a
+   live run, scan both secrets from retained surfaces, and destroy all scoped
+   Docker/runtime state on every exit path. No live run is part of the current
+   implementation batch.
+8. Use `fake_protocol` only for deterministic protocol/lifecycle proof. Run
+   GPT and DeepSeek as separate future live Development hypotheses; freeze and
+   add Validation only after one exact profile passes every unchanged gate.
 
 Current checkpoint: product first-round Tool Loop, migration-065 final
 hydration, schema-v7 Development adapter/profile/report, focused tests,
@@ -398,16 +419,27 @@ route/admission/cancellation tests and the regression topology gate pass
 without Provider traffic. The retained v9 evidence and failed selection state
 remain unchanged.
 
-Use the selected main-model Tool route from
-[`research/main-model-memory-tool-routing.md`](research/main-model-memory-tool-routing.md):
+The schema-v10 configured candidate-judge Development lane is now implemented
+without a live Provider call. Profile config v10, reader v8, report v10,
+cost-basis v6, exact Provider/adapter authorization, independent credential
+handling, fake CLI/Compose topology, aggregate publication, and teardown are
+covered. A real PostgreSQL 17 `fake_protocol` replay executed all 300
+Development cases, retained only the expected private two-file failed-metric
+bundle, and destroyed every scoped runtime object. Focused race, all backend,
+`go vet`, and standalone full gates pass. Historical profile/cost JSON bytes
+for v4/v5/v6/v7/v9 match `HEAD`. GPT/DeepSeek live Development, policy freeze,
+Validation, production composition, and promotion remain unrun and blocked
+pending fresh explicit authorization.
 
-1. Expose an exact read-only `search_memory` Tool to the user-selected GPT or
-   DeepSeek model without sending Memory candidates.
-2. Treat no call as `no_memory`; validate one exact call before releasing any
-   bounded BGE result to same-model continuation.
-3. Reuse the unchanged BGE-M3 embedding/RRF/rerank/Top-5/token pipeline after
-   current-authority checks.
-4. Evaluate the exact route decision on Development with aggregate-only,
+The selected successor is the candidate-first policy in
+[`research/candidate-first-admission-reset.md`](research/candidate-first-admission-reset.md):
+
+1. Recall current-authorized candidates before admission.
+2. Give the exact configured GPT or DeepSeek judge only redacted query and
+   ordinal candidate bodies; accept an empty or strict bounded ordinal set.
+3. Intersect selected ordinals with the unchanged BGE-M3 rerank/Top-5/token
+   pipeline and reauthorize before final hydration.
+4. Evaluate each exact Provider/model on Development with aggregate-only,
    split-safe evidence and unchanged gates.
 5. Keep the deployed default v1 prompt/Usage path byte-authoritative and fail
    closed to normal chat without v2 Memory on every uncertain path.
@@ -451,6 +483,10 @@ Use the selected main-model Tool route from
     fail-closed retrieval incompleteness separately. Do not change cutoffs,
     retry, or promotion authority, and require fresh authorization before any
     third paid run.
+14. Stop the candidate-blind route line. Add a new configured-main-model
+    candidate-judge Development profile that reuses the existing strict judge
+    and hybrid execution, proves fake/offline/PostgreSQL behavior, and performs
+    no live Provider call without fresh authorization.
 
 ## Decision (ADR-lite)
 
@@ -459,10 +495,9 @@ fact accuracy, while every false injection is an unrelated-negative turn.
 Scalar/BGE intent gates and three independent candidate judges failed. Passing
 all candidates to the answer model before selection would redefine injection.
 
-**Decision:** Use the current selected GPT or DeepSeek model's exact
-`search_memory` Tool decision as the next Development abstention policy. Release
-the unchanged BGE Top-5 result only after a valid Tool Call. Cancel the unrun
-Qwen3.5 model-only hypothesis.
+**Historical decision:** Use the current selected GPT or DeepSeek model's exact
+`search_memory` Tool decision as the next Development abstention policy. That
+hypothesis was implemented and failed; it is retained only as history.
 
 **Consequences:** Memory-relevant turns may require a normal same-model Tool
 continuation round, but no hidden chat model or judge Provider is added. The
@@ -492,10 +527,22 @@ Schema v9 measures route completeness independently from fail-closed retrieval
 completeness, retains no case identity/plaintext/raw error, and still cannot
 select a policy or unlock Validation/Promotion.
 
+**2026-07-31 architecture reset:** Candidate-blind routing cannot discover
+implicit personalization and its live Tool/SSE decision path failed unchanged
+quality/reliability gates. Separate candidate recall from prompt injection.
+Recall current-authorized candidates first, then use the exact configured GPT
+or DeepSeek model through the existing strict candidate-aware ordinal judge.
+Only ordinals that also survive BGE ordering and post-Provider authority may
+enter a future answer prompt. Preserve every Tool-route artifact, keep all
+runtime flags default-off, and implement only Development/fake/offline support
+until a fresh live run is explicitly authorized.
+
 ## Expansion Sweep
 
-- Future evolution: keep a local/private judge as an optional later profile if
-  exact main-model Tool routing fails; do not add benchmark-tuned query rules.
+- Future evolution: keep a local/private candidate-aware judge as the fallback
+  if the configured model passes relevance but fails latency/reliability, or
+  fails relevance despite seeing candidates. Do not add benchmark-tuned query
+  rules.
 - Related scenarios: keep L2 Scene/L3 Persona and active-reader promotion out
   of this change; they may consume a passing L1 policy later.
 - Failure/edge cases: fail closed on score/model/policy drift, redaction,
@@ -504,9 +551,8 @@ select a policy or unlock Validation/Promotion.
 ## Out of Scope
 
 - Promoting v2 or changing the active reader/prompt/Usage pointer.
-- Enabling `MEMORY_TOOL_LOOP_ENABLED` in a deployed environment before a
-  schema-v7 Development profile passes and a separate rollout decision is
-  recorded.
+- Enabling `MEMORY_TOOL_LOOP_ENABLED` or any configured-model candidate judge
+  in a deployed environment from this Development-only work.
 - Treating forbidden exclusion reasons as cloud-authorized, or silently
   enabling cloud processing without the exact owner-policy profile.
 - Tuning on the machine-visible holdout or claiming formal human-reviewed
@@ -521,6 +567,7 @@ select a policy or unlock Validation/Promotion.
 - [`research/cloud-judge-model-followup.md`](research/cloud-judge-model-followup.md)
 - [`research/main-model-memory-tool-routing.md`](research/main-model-memory-tool-routing.md)
 - [`research/memory-tool-route-failure-diagnostics.md`](research/memory-tool-route-failure-diagnostics.md)
+- [`research/candidate-first-admission-reset.md`](research/candidate-first-admission-reset.md)
 - `.trellis/spec/backend/memory-v2-benchmark.md`
 - `.trellis/spec/backend/memory-v2-hybrid-shadow.md`
 - `mm-chat/docs/contracts/memory-benchmark-workflow.md`
