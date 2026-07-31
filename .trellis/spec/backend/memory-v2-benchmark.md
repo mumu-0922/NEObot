@@ -639,6 +639,12 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   model. The profile hash also binds criteria v2: complete-flow p95
   `<=1500 ms`, p99 `<=2500 ms`, and hard cutoff `<=3000 ms`; every non-latency
   v1 quality, safety, token, and cost criterion remains unchanged.
+- Operator code resolving the live Server Vault record must compare
+  `ResolvedProvider.Type` with
+  `runtimeconfig.ProviderTypeOpenAICompatible`. Its stored/runtime value is
+  `OpenAI Compatible`; `openai_compatible` is the normalized capture-command
+  authority token. Comparing the runtime enum's string value directly with
+  the CLI token falsely rejects an otherwise valid exact Provider.
 - A Luna timeout, transport failure, invalid JSON, protocol drift, or late
   result fails closed to an empty v2 final set. Normal chat continues under
   the v1 prompt/Usage authority; recalled, reranked, schema-v10, and other
@@ -680,6 +686,15 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   from attempt telemetry. Even a passing Development report emits
   `policySelected=false` and stops for owner review. It cannot enter
   Validation, production, or promotion automatically.
+- The retained schema-v12 live Development result is immutable failed
+  criteria-v3 evidence. It completed all `195` candidate-bearing decisions
+  with zero failed cases, `203` Judge attempts including `8` retries, and all
+  `299` cooldowns. Candidate Recall@20/Final Recall@5/current-fact accuracy was
+  `1.0/0.974359/0.969697`, but `29` negative cases produced false injection
+  `0.096667` against the unchanged `0.02` maximum, and the `stable_fact`
+  current-fact slice also failed. Zero authority/privacy leaks and passing
+  prompt budgets do not offset that failure. The report selected no policy and
+  cannot enter Validation or be rerun under the consumed authorization.
 - The native stdout summary schema remains the command-envelope v4, but its
   `corpusClass`, `admissionMode`, and `split` must come from the validated
   schema-v7 report rather than historical schema-v6 constants. A failed fake

@@ -737,7 +737,21 @@ private two-file failed-metric bundle with 300 query attempts, 195 serial
 rerank-plus-judge decisions, 299 virtual cooldowns, and complete teardown. Two
 monolithic full-standalone attempts passed their structure/topology stages but
 were interrupted by a Docker Desktop WSL integration proxy crash; no full-pass
-claim is made. No schema-v12 live Provider call is authorized or executed.
+claim is made. At this offline checkpoint no schema-v12 live Provider call had
+been authorized or executed.
+
+**2026-07-31 schema-v12 live outcome:** The owner separately authorized and
+the runner completed exactly one 300-case accuracy-first Development run.
+It completed all `195` candidate-bearing rerank-plus-judge decisions with zero
+failed cases, `203` Luna attempts including `8` bounded retries, and all `299`
+real cooldowns. Candidate Recall@20 was `1.0`, Final Recall@5 was `0.974359`,
+and current-fact accuracy was `0.969697`, but `29` false-injection cases raised
+the rate to `0.096667` against the unchanged `0.02` maximum; the `stable_fact`
+current-fact slice also failed. Safety/authority leaks stayed zero and prompt
+budgets passed. Report SHA-256 is
+`126536772d71a5815f1cb6029deb568d0655c8780924ac0428951807975c8011`.
+The report selected no policy, all transient credentials/runtime objects were
+destroyed, and Validation/production/promotion remain blocked.
 
 ## Expansion Sweep
 

@@ -121,6 +121,26 @@ live mode uses wall-clock sleep. Cost-basis v8 pre-authorizes at most 600 Judge
 attempts and 76800 output tokens and reconciles actual input/output authority
 from aggregate attempt telemetry.
 
+## Schema-v12 outcome
+
+The separately authorized live Development run
+`memory-regression-20260731t080147z-8649c8ae` completed all 300 cases and
+retained report SHA-256
+`126536772d71a5815f1cb6029deb568d0655c8780924ac0428951807975c8011`.
+It obtained all 195 candidate-bearing rerank-plus-judge decisions with no
+failed case: 203 Luna attempts included eight bounded retries, and all 299
+wall-clock cooldowns completed. Candidate Recall@20 was `1.0`, Final Recall@5
+was `0.974359`, and current-fact accuracy was `0.969697`, but 29 negative
+cases received Memory, producing false injection `0.096667` against the
+unchanged `0.02` maximum. The `stable_fact` current-fact slice also remained
+below its criterion. All authority/privacy leak counts were zero, prompt-token
+budgets passed, and diagnostic p95/p99 latency was `5366/12402 ms`.
+
+The result therefore rejects the fixed-Luna accuracy-first policy. It selected
+no policy and cannot authorize Validation, production, or promotion. The two
+operator credential sources were exact-secret scanned from the retained
+bundle, overwritten, and removed; the isolated Compose project was destroyed.
+
 ## Remaining work
 
 1. Schema-v12 focused race, all-backend, `go vet`, regression-topology,
@@ -132,10 +152,11 @@ from aggregate attempt telemetry.
    retained the expected private two-file failed-metric bundle, recorded 300
    query attempts, 195 serial rerank-plus-judge decisions, 299 virtual
    cooldowns, zero retries, and destroyed every isolated runtime object.
-2. Do not make a live schema-v12 Provider call without a fresh, separate
-   Development authorization and new temporary credentials.
-3. Even if Development passes, stop again. Validation and production remain
-   separate future authorizations.
+2. Preserve the failed schema-v12 bundle and its criteria-v3 bytes unchanged.
+   Do not retune or rerun this policy under the consumed authorization.
+3. Validation and production remain blocked. Any successor is a new
+   hypothesis requiring a separately versioned profile and fresh owner
+   authorization.
 
 Even when every Development gate passes, the runner must stop and present the
 aggregate report for owner review. It may not chain into the 100-case

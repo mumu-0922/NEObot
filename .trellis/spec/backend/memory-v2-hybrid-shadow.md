@@ -375,6 +375,14 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   and `JudgeAttempts * 128` output-token authority. Cost-basis v8 authorizes a
   maximum of 600 Judge attempts and 76800 output tokens. These execution and
   cost rules are Development evidence only and never install a runtime policy.
+- The retained schema-v12 live result completed all `195` candidate-bearing
+  rerank-plus-judge decisions with zero failed cases, but the accuracy-first
+  policy injected Memory into `29/135` negative cases. Its false-injection
+  rate `0.096667` failed the unchanged `0.02` maximum even though Candidate
+  Recall@20, Final Recall@5, and current-fact accuracy reached
+  `1.0/0.974359/0.969697` and every authority/privacy leak count stayed zero.
+  Preserve this as immutable failed criteria-v3 evidence; do not promote,
+  retune in place, enter Validation, or automatically rerun it.
 - All v2 flags remain default-off and v1 remains the only prompt/Usage reader.
   A Development result, passing or failing, must stop for owner review.
   Validation and production activation are separately authorized stages and

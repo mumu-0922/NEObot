@@ -1079,6 +1079,28 @@ authority. Cost-basis v8 authorizes at most 600 Judge attempts and exactly
 must stop for manual review; Validation, production, and promotion remain
 blocked.
 
+The separately authorized schema-v12 live Development run
+`memory-regression-20260731t080147z-8649c8ae` is retained failed evidence.
+Report SHA-256 is
+`126536772d71a5815f1cb6029deb568d0655c8780924ac0428951807975c8011`.
+All `195` candidate-bearing cases completed rerank plus Luna judging with zero
+failed cases; `203` Judge attempts included `8` bounded retries and all `299`
+wall-clock cooldowns completed. Candidate Recall@20, Final Recall@5, and
+current-fact accuracy were `1.0`, `0.974359`, and `0.969697`. The policy still
+failed because `29` negative cases produced false injection `0.096667` against
+the unchanged `0.02` maximum, and the `stable_fact` current-fact slice was
+below criterion. Authority/privacy leak counts remained zero, prompt budgets
+passed, and p95/p99 latency was diagnostic-only at `5366/12402 ms`.
+
+The manifest binds canonical cost content SHA-256
+`d75a6edf7fd5f050c3e30c4cae5960972a8e6065676f477321a5510ad7e5dd47`;
+the private raw cost source SHA-256 is
+`5d5c33e807185170fa52080349c8875f28c1313be2d64344f8dc3c31ec99e6c8`.
+The report emitted `policySelected=false`. Both operator credential sources
+were exact-secret scanned from retained files, overwritten, and removed, and
+the isolated Compose project was destroyed. This consumed Development result
+does not authorize a rerun, Validation, production, or promotion.
+
 ```bash
 bash scripts/run-memory-regression.sh \
   --provider-mode fake_protocol \
