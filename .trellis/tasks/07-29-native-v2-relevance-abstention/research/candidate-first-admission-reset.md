@@ -95,7 +95,7 @@ profile preserved safety but failed recall, current-fact accuracy, and latency.
 This branch is closed for the tested Provider/model identities; it cannot be
 rescued by increasing the cutoff or weakening a gate.
 
-### B. Local candidate-aware model (recommended successor)
+### B. Local candidate-aware model (rejected successor)
 
 Use a version-pinned multilingual reranker or small instruction model on the
 single server after candidate reauthorization. The current host has an RTX
@@ -107,11 +107,11 @@ health/warm-up handling, and benchmark work. Ordinary semantic reranking alone
 may repeat the already observed score-overlap failure; the local model must be
 trained or prompted for **answer usefulness**, not generic similarity.
 
-This is now the recommended successor because the configured models either
-failed to complete strict decisions or failed relevance despite seeing the
-candidates. It must be treated as a new version-pinned architecture with its
-own supply-chain, warm-up, resource, usefulness-classification, and unchanged-
-gate evidence—not as an in-place schema-v10 retune.
+This was initially recommended because the configured models either failed to
+complete strict decisions or failed relevance despite seeing the candidates.
+The owner rejected local-model operation and selected the fixed Luna cloud
+profile documented in `fixed-luna-candidate-judge.md`. No local runtime or
+fallback is part of the current plan.
 
 ### C. Always inject thresholded Top-K
 
@@ -160,15 +160,16 @@ The topology was executed for exact GPT and DeepSeek profiles; neither passed.
 - The authorized live GPT and DeepSeek runs are complete and immutable failed-
   gate evidence. No additional configured-model paid run, Validation, or
   Promotion follows from them.
-- A local candidate-aware model requires a new profile/model-manifest/resource
-  contract and fresh Development evidence before it can become a selection
-  candidate.
+- The fixed Luna successor requires new schema-v11 profile/report/criteria
+  identities and fresh Development evidence before it can become a selection
+  candidate. It must not rewrite schema v10.
 
 ## Selection rule
 
 Neither exact configured GPT nor DeepSeek profile passed, so no schema-v10
 policy may be frozen and Validation remains unavailable. Models remain
 separate hypotheses; one result never authorizes the other. No automatic
-retry, adaptive bakeoff, cutoff increase, or gate relaxation is allowed. A
-future local candidate-aware profile starts a new hypothesis with the same
-quality/safety/latency authority.
+retry, adaptive bakeoff, cutoff increase, or gate relaxation is allowed. The
+fixed Luna schema-v11 profile starts a new hypothesis with the same quality and
+safety authority plus the separately versioned owner-selected complete-flow
+latency budgets.

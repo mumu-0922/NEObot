@@ -43,6 +43,8 @@ neo-chat.memory-regression-profile-config.v7
 neo-chat.memory-regression-profile-config.v8
 neo-chat.memory-regression-profile-config.v9
 neo-chat.memory-regression-profile-config.v10
+neo-chat.memory-regression-profile-config.v11
+neo-chat.memory-regression-profile-config.v12
 neo-chat.memory-regression-relevance-calibration.v3
 neo-chat.memory-regression-relevance-calibration.v4
 neo-chat.memory-regression-relevance-calibration.v5
@@ -51,6 +53,8 @@ neo-chat.memory-regression-relevance-calibration.v7
 neo-chat.memory-regression-relevance-calibration.v8
 neo-chat.memory-regression-relevance-calibration.v9
 neo-chat.memory-regression-relevance-calibration.v10
+neo-chat.memory-regression-relevance-calibration.v11
+neo-chat.memory-regression-relevance-calibration.v12
 neo-chat.memory-regression-relevance-validation.v1
 neo-chat.memory-regression-relevance-run.v1
 neo-chat.memory-regression-cost-basis.v2
@@ -58,6 +62,8 @@ neo-chat.memory-regression-cost-basis.v3
 neo-chat.memory-regression-cost-basis.v4
 neo-chat.memory-regression-cost-basis.v5
 neo-chat.memory-regression-cost-basis.v6
+neo-chat.memory-regression-cost-basis.v7
+neo-chat.memory-regression-cost-basis.v8
 neo-chat.memory-cloud-candidate-judge-input.v1
 neo-chat.memory-cloud-candidate-judge-output.v1
 ```
@@ -166,6 +172,30 @@ bash scripts/run-memory-regression.sh \
   --provider-mode fake_protocol \
   --capture-mode full_regression \
   --cost-basis /secure/eval/memory-regression-cost-basis.json \
+  --output-dir /secure/eval/native-memory-runs
+
+# Fixed global Memory Judge successor. The tuple is immutable and independent
+# from the answer model. Fake protocol is lifecycle evidence only.
+bash scripts/run-memory-regression.sh \
+  --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --cost-basis /secure/eval/fixed-memory-judge-cost-v7.json \
+  --output-dir /secure/eval/native-memory-runs
+
+# Accuracy-first successor. Fake protocol uses a virtual cooldown clock and is
+# lifecycle evidence only; it never supplies quality or promotion evidence.
+bash scripts/run-memory-regression.sh \
+  --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge_accuracy \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --cost-basis /secure/eval/fixed-memory-judge-accuracy-cost-v8.json \
   --output-dir /secure/eval/native-memory-runs
 
 bash scripts/run-memory-regression.sh \
@@ -600,6 +630,56 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   incrementing `actualRequestCount`. Historical schema-v4/v5 report builders
   must continue rejecting this state rather than changing old evidence
   semantics.
+- Schema v11 is a separate Development-only successor with capture mode
+  `development_fixed_memory_judge`, reader v9, profile/report v11, admission
+  `development_fixed_memory_judge_only`, cost-basis v7, and artifact
+  `fixed-memory-judge-development.json`. It fixes the observable judge tuple
+  to `SERVER_DEFAULT` / `openai_compatible` /
+  `https://sub.mumubuku.top/v1` / `gpt-5.6-luna` regardless of the answer
+  model. The profile hash also binds criteria v2: complete-flow p95
+  `<=1500 ms`, p99 `<=2500 ms`, and hard cutoff `<=3000 ms`; every non-latency
+  v1 quality, safety, token, and cost criterion remains unchanged.
+- A Luna timeout, transport failure, invalid JSON, protocol drift, or late
+  result fails closed to an empty v2 final set. Normal chat continues under
+  the v1 prompt/Usage authority; recalled, reranked, schema-v10, and other
+  unjudged candidates are never fallback inputs. Development completion never
+  starts Validation, and Validation completion never enables production.
+- The retained schema-v11 result is immutable failed evidence: only `41` Luna
+  requests and `22` complete rerank-plus-judge decisions were obtained, while
+  `154` cases reported `RELEVANCE_ADMISSION_UNAVAILABLE` and `19` complete
+  stages reported `HARD_CUTOFF`. It cannot be relabelled under later criteria
+  or execution semantics.
+- Schema v12 is the accuracy-first Development successor with capture mode
+  `development_fixed_memory_judge_accuracy`, reader v10, profile/report v12,
+  admission `development_fixed_memory_judge_accuracy_only`, criteria v3,
+  cost-basis v8, policy
+  `memory_hybrid_fixed_cloud_candidate_judge_accuracy_development_v2`, and
+  artifact `fixed-memory-judge-accuracy-development.json`. The fixed Luna,
+  adapter, prompt/decoder, BGE, egress, and quality/safety/token/slice
+  authorities do not change.
+- Schema v12 executes `BGE query embedding -> local admission -> BGE rerank ->
+  Luna judge -> Record` serially under one global Provider-request gate. It has
+  no application stage/case deadline and uses HTTP clients with no elapsed
+  timeout; only caller cancellation can stop a request. Criteria v3 retains
+  aggregate p95/p99 timing as diagnostics but gives latency and hard-cutoff
+  fields no pass/fail authority. Any `HardCutoffApplied` or `HARD_CUTOFF` trace
+  is invalid schema-v12 evidence rather than a tolerated failure.
+- Between all 300 cases, live mode performs `299` real one-second wall-clock
+  cooldowns. Fake protocol records the same logical `299000 ms` through a
+  virtual/no-op clock and must report zero elapsed cooldown time. Each BGE or
+  Luna request may retry once only for `408`, `429`, `5xx`, or a retryable
+  transport/read interruption. A valid `Retry-After` is authoritative;
+  missing/invalid advice waits five seconds. Redirects, normal `4xx`, invalid
+  JSON, schema/protocol drift, and structured remote-error payloads do not
+  retry.
+- Schema-v12 aggregate telemetry reconciles every passage/query/rerank/judge
+  attempt and retry, per-stage p95/p99/max/total request latency, logical and
+  elapsed cooldowns, and total/retry Judge input-token upper bounds. The
+  cost-basis-v8 ceiling authorizes at most `600` Judge attempts and exactly
+  `600 * 128 = 76800` output tokens; actual input/output authority is derived
+  from attempt telemetry. Even a passing Development report emits
+  `policySelected=false` and stops for owner review. It cannot enter
+  Validation, production, or promotion automatically.
 - The native stdout summary schema remains the command-envelope v4, but its
   `corpusClass`, `admissionMode`, and `split` must come from the validated
   schema-v7 report rather than historical schema-v6 constants. A failed fake
@@ -621,6 +701,13 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   `configuredCandidateJudgeAuthority`. Every absolute-cap profile binds the
   exact policy ID and rejects mixed authority, request, model, token-ceiling,
   price, maximum-cost, or coverage drift before Provider construction.
+  The fixed Memory Judge successor requires v7 with the same bounded request/
+  token/cost shape and the exact Luna authority; Provider alias evidence does
+  not claim an upstream implementation or public rate card. The accuracy-first
+  successor requires v8 and expands only the Judge request/output ceilings to
+  `600`/`76800` so the single allowed retry for every logical request is
+  pre-authorized. Historical v6/v7 authorities remain exactly `300` requests
+  and cannot be reused or rewritten.
 - Cost authority has two distinct hash surfaces. An operator may bind the
   private source file's exact raw bytes with ordinary file SHA-256, while
   `DecodeCostBasis` / `CostBasisSHA256` hashes the decoded struct re-encoded by
@@ -713,6 +800,14 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | Configured judge output is empty | Record a valid abstention; recalled candidates remain private and final/injected/token surfaces are empty. |
 | Configured judge output, adapter, Provider/model, cost, or BGE intersection authority drifts | Fail closed to `no_memory`; never inherit a schema-v4/v5 judge or schema-v6-v9 Tool-route result. |
 | Schema-v10 retrieval fails before judge egress with candidates present | Aggregate one normalized failure only when rerank/judge readiness, judge token bound, Provider-sent IDs, Final/Injected, and prompt tokens prove strict `no_memory`; otherwise reject the report. Do not apply this exception to schema v4/v5. |
+| Schema-v11 Provider/Base-URL/model, criteria-v2, 3000-ms cutoff, adapter/prompt/decoder, or cost-basis-v7 authority drifts | Reject before live Provider construction or report publication; never reinterpret schema v10 or relax a failed gate. |
+| Luna times out, fails transport, emits invalid JSON, or returns after the shared cutoff | Return an empty v2 Memory set for that turn and continue normal chat through v1; never fall back to unjudged candidates. |
+| Schema-v12 execution order, global concurrency, no-deadline/no-timeout mode, cooldown clock, retry policy, or criteria-v3 identity drifts | Reject the profile/report; preserve schema-v11 bytes and never reinterpret its failed evidence. |
+| Schema-v12 receives a normal 4xx, redirect, invalid JSON/schema, or structured remote-error payload | Do not retry; fail closed for the case and continue only after the inter-case cooldown. |
+| Schema-v12 receives 408/429/5xx or a retryable transport/read interruption | Honor valid `Retry-After`, otherwise wait five seconds, retry exactly once, and include both attempts in telemetry and cost authority. |
+| Schema-v12 attempt counts, latency samples, cooldown totals, Judge input bounds, or `attempts * 128` output authority do not reconcile | Reject report/manifest publication; never repair aggregate evidence after the run. |
+| Schema-v12 contains `HardCutoffApplied` or a `HARD_CUTOFF` trace | Reject it as execution-policy drift; criteria v3 is diagnostic-only, not permission to retain historical cutoff semantics. |
+| Development passes | Retain aggregate evidence and stop for owner review; never enter Validation automatically. |
 | Frozen validation is requested before a Development-selected policy is committed | Reject before credential read or Provider work. |
 | Native artifact target already exists or publication races | Preserve existing bytes, remove only new links, and refuse the run. |
 | Native run is interrupted before complete validation | Remove partial output and all project-scoped runtime/credential state. |
@@ -856,6 +951,17 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   flattened aggregate report fields, strict pre-judge retrieval-failure
   aggregation with zero request/final/token surfaces, historical schema-v4/v5
   rejection of the same state, and two-file manifest validation.
+  Schema-v11 fixtures additionally cover the exact Luna tuple, criteria-v2
+  values, 3000-ms capture semantics, cost-basis-v7 drift denial, independent
+  credential cleanup, fixed artifact/admission identities, and the mandatory
+  Development-to-Validation stop.
+  Schema-v12 fixtures additionally cover serial rerank-before-judge execution,
+  global concurrency one, no application/HTTP elapsed deadline, diagnostic-
+  only latency output, hard-cutoff rejection, exact transient retry
+  classification and `Retry-After` handling, fake virtual versus live
+  wall-clock cooldown, attempt/latency/token reconciliation, cost-basis-v8
+  `600`-attempt authority, historical profile-field omission, and an always-
+  false `policySelected` summary.
   Cost-basis fixtures must also assert the raw private-file hash and
   the decoded canonical manifest hash as different named surfaces rather than
   assuming byte equality.

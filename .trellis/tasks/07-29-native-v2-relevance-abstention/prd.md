@@ -4,10 +4,12 @@
 
 Add a versioned, split-calibrated abstention policy to the native v2 hybrid
 Memory reader. Recall current-authorized candidates before admission, then let
-the exact configured GPT or DeepSeek model select directly useful candidate
+one exact, globally fixed Memory Judge select directly useful candidate
 ordinals through the strict candidate-judge contract before any Memory enters
 the answer prompt. Preserve BGE-M3 retrieval/rerank and the current v1 prompt
-authority until independent evidence passes.
+authority until independent evidence passes. Historical configured-main-model
+profiles remain immutable failed evidence; the current successor is the exact
+`sub.mumubuku.top` / `gpt-5.6-luna` cloud profile.
 
 ## What I already know
 
@@ -231,6 +233,31 @@ authority until independent evidence passes.
   v5 reporting remains strict. Both live bundles are aggregate-only, private,
   mode-`0600` evidence; transient credentials and scoped Compose state were
   destroyed. Validation and Promotion remain blocked.
+- The separately authorized schema-v11 Luna Development run
+  `memory-regression-20260731t034030z-07481931` completed all `300` cases and
+  retained report SHA-256
+  `0dfe7733005bd211664ebaa47a9a5325c0638288f90c736986756eda34a37205`.
+  Candidate Recall@20 remained `1.0`, but Final Recall@5/current-fact accuracy
+  fell to `0.107692/0.115152`; false injection was `1/300`, p95/p99 was
+  `2853/2855 ms`, `154` cases reported `RELEVANCE_ADMISSION_UNAVAILABLE`, and
+  `19` complete combination stages reported `HARD_CUTOFF`. Only `41` Luna
+  requests were attempted and only `22` complete rerank-plus-judge decisions
+  were obtained. The run failed unchanged gates, selected no policy, and did
+  not enter Validation.
+- Source tracing proved that schema v11 did not run 300 cases concurrently:
+  cases were sequential. However, each candidate-bearing case ran BGE rerank
+  and Luna concurrently, query embedding had a `750 ms` cutoff, the combined
+  stage stopped near `2850 ms`, and cases had no cooldown. Those execution
+  budgets made the failed Development result unsuitable for judging the
+  underlying relevance accuracy across Provider paths with different latency.
+- The owner now selects a separately versioned schema-v12 accuracy-first
+  Development successor. It preserves schema-v11 evidence unchanged, removes
+  application-level stage deadlines and latency pass/fail gates for this
+  Development hypothesis, and executes the full path strictly serially:
+  BGE query embedding -> admission -> BGE rerank -> Luna judge -> Record.
+  Latency remains aggregate diagnostic evidence only. The operator may abort a
+  genuinely stuck run manually; no automatic elapsed-time cutoff may convert a
+  slow valid response into an accuracy failure.
 
 ## Assumptions (updated)
 
@@ -244,11 +271,30 @@ authority until independent evidence passes.
 - The candidate-first configured GPT and DeepSeek hypotheses were executed as
   separate Development profiles and both failed unchanged gates. Neither may
   enter Validation.
-- The next architecture candidate is a version-pinned local candidate-aware
-  usefulness model. It requires a separate design/benchmark decision and has
-  no implementation or runtime authority yet.
+- The owner rejected the local-model successor. The next architecture
+  candidate is a globally fixed cloud Memory Judge at
+  `https://sub.mumubuku.top/v1`, type `openai_compatible`, model
+  `gpt-5.6-luna`, regardless of the active answer model.
+- The model alias does not prove the upstream parameter count or implementation.
+  Evidence binds only the exact Provider identity, Base-URL hash, alias,
+  adapter/prompt/decoding versions, and observed behavior.
+- The successor requires new schema-v11 profile/report/criteria identities.
+  It must not rewrite schema-v10 or its historical `900/1500/2000 ms` gates.
+- Schema-v11 measures the complete Memory flow against p95 `<=1500 ms`, p99
+  `<=2500 ms`, and a `<=3000 ms` hard cutoff. These are owner-selected product
+  budgets, not an industry-standard claim.
 - Every hybrid relevance policy remains default-off and non-promotional until
-  it passes unchanged recall, injection, latency, and authority gates.
+  it passes recall, injection, and authority gates plus a separately reviewed
+  performance phase. Schema-v12 Development cannot itself authorize
+  Validation or promotion because its latency evidence is diagnostic only.
+- Schema v11 is now immutable failed evidence. The accuracy-first successor
+  requires new schema-v12 profile/report/criteria/reader identities rather
+  than retuning or overwriting schema v11.
+- Schema-v12 Development prioritizes complete relevance decisions over
+  latency: no application-level embedding, rerank, judge, combined-stage, or
+  case deadline participates in execution or pass/fail. Provider calls and
+  cases are strictly serialized; measured latency is diagnostic only until a
+  later, separately reviewed performance phase.
 
 ## Open Questions
 
@@ -265,15 +311,16 @@ authority until independent evidence passes.
   projection generation, validity, deletion, Sensitive policy, and source
   trust before any candidate reaches a Provider.
 - Send only the deterministic secret-redacted query plus contiguous
-  request-local candidate ordinals/bodies to the exact configured GPT or
-  DeepSeek candidate judge. Never send Memory IDs, scores, scope, revisions,
-  database metadata, credentials, or authority fields.
+  request-local candidate ordinals/bodies to the globally fixed
+  `SERVER_DEFAULT` / `gpt-5.6-luna` Memory Judge. Never send Memory IDs,
+  scores, scope, revisions, database metadata, credentials, or authority
+  fields.
 - Accept only the existing exact JSON schema with zero to five unique in-range
   ordinals. An empty array is `no_memory`; malformed, duplicate, out-of-range,
   late, drifted, or failed output fails closed.
-- Run the configured main-model judge and fixed BGE-M3 candidate rerank under
-  the same bounded stage context, intersect selected ordinals with BGE order,
-  then apply the existing Top-5 and 600/900-token selector.
+- Run the globally fixed Luna judge and fixed BGE-M3 candidate rerank under the
+  same bounded stage context, intersect selected ordinals with BGE order, then
+  apply the existing Top-5 and 600/900-token selector.
 - The answer model receives only the post-judge, post-rerank, post-
   reauthorization final set. Recalled but rejected candidates never enter its
   prompt or durable chat state.
@@ -284,6 +331,11 @@ authority until independent evidence passes.
 - Fail closed to no hybrid Memory on every missing/invalid/low-confidence,
   redacted, timeout, stale, or Provider-failure path; never inject unscored RRF
   or v1 fallback candidates.
+- A Luna timeout, Provider error, invalid output, or protocol drift must not
+  fail the normal answer. Continue chat with an explicitly empty v2 Memory set
+  and never fall back to recalled, reranked, schema-v10, or other unjudged
+  candidates. The only accepted degradation is loss of personalization for
+  that turn.
 - Never persist raw vector/rerank scores, query text, Memory content, or
   credentials in diagnostics, reports, logs, or chat metadata.
 - Preserve current user/scope/revision/hash/epoch/generation reauthorization
@@ -322,12 +374,33 @@ authority until independent evidence passes.
   and no raw Provider error/body may be retained.
 - Preserve schema-v9 as immutable historical evidence and perform no further
   Tool-route paid diagnostics. It cannot select or influence the new policy.
+- Add a schema-v11 Development lane rather than mutating schema v10. Bind the
+  exact `SERVER_DEFAULT`, `openai_compatible`, Base-URL hash,
+  `gpt-5.6-luna`, strict judge adapter/prompt/decoding identities, BGE tuple,
+  owner-egress policy, criteria version, and cost authority before Provider
+  construction.
+- Measure p95/p99 and hard cutoff over the complete Memory flow for schema v11,
+  using exact budgets `1500/2500/3000 ms`. A single protocol smoke is not
+  percentile evidence and cannot unlock Validation.
+- Add schema v12 without changing schema v11. For schema-v12 Development,
+  execute BGE query embedding, local admission, BGE rerank, Luna judge, and
+  Record in strict sequence with at most one Provider request in flight. Do
+  not apply application-level stage or case deadlines; retain aggregate
+  complete-flow and per-stage latency only as diagnostics, never as an
+  accuracy-first pass/fail criterion. After each complete case, wait a fixed
+  `1s` cooldown before starting the next case; include that policy in the
+  configuration identity, but exclude cooldown from model-flow latency.
+- For an explicit `429`, `408`, `5xx`, or retryable transport interruption,
+  retry the failed Provider request once and strictly serially. Respect a valid
+  `Retry-After`; when it is absent, wait `5s`. Do not retry invalid judge JSON,
+  schema/protocol drift, deterministic `4xx`, or any other error. Bind the
+  retry policy/version into the schema-v12 configuration identity.
 - Score a relevant case as final only when the strict candidate judge selects
   an ordinal that survives unchanged BGE ordering and final authority. Score a
   non-empty final set for an unrelated-negative continuation as false
   injection.
-- GPT and DeepSeek are separate named Development hypotheses; one model's
-  result cannot authorize the other.
+- The schema-v10 GPT and DeepSeek runs remain separate historical Development
+  hypotheses; neither result authorizes the schema-v11 Luna profile.
 - Keep `unauthorizedProviderEgressCount=0`: under the explicit owner policy,
   ordinary irrelevant candidates are authorized processing, while every
   forbidden exclusion reason still counts as unauthorized. False injection
@@ -357,6 +430,29 @@ authority until independent evidence passes.
   copies must be overwritten and removed after each run, and the runner must
   never inspect/decrypt the Vault. Validation still requires fresh,
   independently authorized credentials for BGE and the named judge Provider.
+- The owner explicitly authorized this transient Server Vault export for the
+  schema-v11 Development run after offline gates pass. This grants no Vault
+  access to the runner and no credential or execution authority to Validation
+  or production composition.
+- The owner separately authorized the same operator-only transient export for
+  the existing `RAG:SILICONFLOW` credential needed by the fixed
+  `Pro/BAAI/bge-m3` and `Pro/BAAI/bge-reranker-v2-m3` stages. The BGE and Luna
+  input files must remain independent, mode `0600`, read-only in the runner,
+  rejected when linked or byte-equal, and overwritten/removed on every exit.
+- The owner conditionally authorized one real 300-case schema-v11 Development
+  run using Luna and SiliconFlow quota, but only after schema-v11 offline,
+  race, PostgreSQL, Compose, and secret-scan gates all pass. The run must stop
+  on failed metrics without changing criteria and grants no Validation,
+  production-composition, or promotion authority.
+- Even if every Development gate passes, execution must stop and present the
+  aggregate report for owner review. The 100-case Validation run requires a
+  later explicit authorization and can never start automatically from the
+  Development result.
+- Even a later passing Validation result grants no production authority. The
+  fixed Luna reader remains default-off until a separate deployment review
+  verifies the exact credential binding, default flags, rollback path,
+  monitoring, and operational readiness, followed by explicit owner promotion
+  authorization.
 
 ## Acceptance Criteria (evolving)
 
@@ -372,6 +468,21 @@ authority until independent evidence passes.
   untrusted-source, and policy-unauthorized Provider-egress events.
 - [ ] Missing, duplicate, NaN/Inf/out-of-range, stale, timeout, redacted, and
   Provider-failure signals fail closed without changing normal chat success.
+- [ ] Schema-v11 complete-flow latency is p95 `<=1500 ms`, p99 `<=2500 ms`,
+  and every case is `<=3000 ms`; judge-only timing is diagnostic, not the
+  acceptance metric.
+- [ ] Schema-v12 accuracy-first Development has at most one Provider request
+  in flight, no application-level stage/case cutoff, and no latency pass/fail
+  gate; every non-empty-candidate case reaches a complete rerank-plus-judge
+  decision unless the Provider returns an explicit error or the operator
+  manually interrupts the run.
+- [ ] Schema-v12 waits `1s` between cases, starts no next Provider request
+  during that cooldown, and reports cooldown separately from measured
+  complete-flow latency.
+- [ ] Schema-v12 retries only `429`, `408`, `5xx`, and retryable transport
+  interruptions, at most once, respecting `Retry-After` or otherwise waiting
+  `5s`; the retry remains serialized and all other errors fail closed without
+  retry.
 - [ ] Raw scores and plaintext are absent from PostgreSQL observations,
   retained artifacts, logs, Docker metadata, and Git.
 - [ ] Calibration rejects validation/holdout tuning and publishes only
@@ -475,9 +586,10 @@ The evaluated schema-v10 policy is the candidate-first contract in
 5. Keep the deployed default v1 prompt/Usage path byte-authoritative and fail
    closed to normal chat without v2 Memory on every uncertain path.
 
-Both exact configured-model profiles failed. Option B in that research record,
-a version-pinned local candidate-aware usefulness model, is the next design
-candidate and requires a separate implementation/evidence contract.
+Both exact configured-model profiles failed. The owner rejected the earlier
+Option B local-model recommendation. The fixed Luna schema-v11 profile is the
+next design candidate and requires a separate implementation/evidence
+contract.
 
 ## Implementation Plan
 
@@ -525,8 +637,21 @@ candidate and requires a separate implementation/evidence contract.
 15. Execute the separately authorized GPT and DeepSeek schema-v10 Development
     profiles, retain both failed-gate bundles, aggregate strictly empty pre-
     judge retrieval failures without weakening historical schemas, and keep
-    Validation/Promotion blocked. Evaluate a local candidate-aware model as a
-    new architecture rather than relaxing the existing gates.
+    Validation/Promotion blocked.
+16. Replace the rejected local-model successor with a separately versioned
+    schema-v11 fixed cloud Memory Judge profile for
+    `SERVER_DEFAULT/openai_compatible/sub.mumubuku.top/gpt-5.6-luna`. Keep the
+    strict prompt/decoder and BGE tuple, adopt the owner-selected complete-flow
+    `1500/2500/3000 ms` latency criteria without rewriting schema v10, pass a
+    one-request protocol smoke, then require separate authorization before the
+    300-case Development run.
+17. Preserve the failed schema-v11 bundle and implement schema-v12 as a new
+    accuracy-first Development profile: remove application stage/case
+    deadlines and latency gating, serialize BGE embedding, admission, BGE
+    rerank, Luna judge, and Record, add a fixed `1s` inter-case cooldown plus
+    one bounded transient retry (`Retry-After`, otherwise `5s`), and prohibit
+    any live paid execution until the revised offline gates pass and the owner
+    separately authorizes it.
 
 ## Decision (ADR-lite)
 
@@ -582,15 +707,43 @@ GPT and DeepSeek Development runs. GPT completed no strict judge decision;
 DeepSeek completed most decisions but reached only `0.558974` Final Recall@5
 and `0.581818` current-fact accuracy. Both exceeded the latency criterion while
 retaining zero false injection and zero authority/privacy leaks. Neither
-profile may enter Validation. The next candidate is Option B from the research
-record: a local candidate-aware usefulness model, not a gate relaxation.
+profile may enter Validation.
+
+**2026-07-31 successor amendment:** The owner rejected local inference and
+selected one globally fixed cloud Memory Judge independent of the answer
+model: `SERVER_DEFAULT`, `openai_compatible`,
+`https://sub.mumubuku.top/v1`, `gpt-5.6-luna`. This is schema v11, not a
+schema-v10 retune. The owner selected complete-flow latency budgets p95
+`1500 ms`, p99 `2500 ms`, and hard cutoff `3000 ms`. A one-request live smoke
+accepted the exact `temperature=0`, `enable_thinking=false`, max-output-128
+OpenAI-compatible request, returned strict schema-v1 ordinal JSON, selected
+only the directly useful candidate despite an injected candidate body, and
+completed in `2354 ms`. That proves protocol compatibility and the hard-cutoff
+path only; it is not percentile or Development quality evidence.
+
+**2026-07-31 accuracy-first amendment:** The authorized schema-v11 Development
+run completed but failed because only `22/195` candidate-bearing cases obtained
+a complete rerank-plus-judge decision under the short execution budgets. The
+owner rejects using cross-Provider latency as an accuracy verdict and rejects
+intra-case Provider concurrency for the successor. Schema v11 remains immutable
+failed evidence. Schema v12 will run the full Provider path strictly serially,
+without application-level elapsed-time cutoffs or a latency acceptance gate;
+latency is diagnostic only and Validation remains blocked.
+
+**2026-07-31 offline verification:** Schema v12 now passes focused race, all
+backend, `go vet`, regression-topology, PostgreSQL 17 `fake_protocol`, frontend,
+RAG, and changed-surface security checks. The fake run produced the expected
+private two-file failed-metric bundle with 300 query attempts, 195 serial
+rerank-plus-judge decisions, 299 virtual cooldowns, and complete teardown. Two
+monolithic full-standalone attempts passed their structure/topology stages but
+were interrupted by a Docker Desktop WSL integration proxy crash; no full-pass
+claim is made. No schema-v12 live Provider call is authorized or executed.
 
 ## Expansion Sweep
 
-- Future evolution: design a local/private candidate-aware usefulness model as
-  the successor now that configured GPT failed reliability and configured
-  DeepSeek failed relevance/latency despite seeing candidates. Do not add
-  benchmark-tuned query rules.
+- Future evolution: evaluate the fixed Luna candidate-aware profile under the
+  new schema-v12 accuracy-first identity. Do not add benchmark-tuned query
+  rules, local-model fallback, or answer-model-specific routing.
 - Related scenarios: keep L2 Scene/L3 Persona and active-reader promotion out
   of this change; they may consume a passing L1 policy later.
 - Failure/edge cases: fail closed on score/model/policy drift, redaction,
@@ -616,6 +769,7 @@ record: a local candidate-aware usefulness model, not a gate relaxation.
 - [`research/main-model-memory-tool-routing.md`](research/main-model-memory-tool-routing.md)
 - [`research/memory-tool-route-failure-diagnostics.md`](research/memory-tool-route-failure-diagnostics.md)
 - [`research/candidate-first-admission-reset.md`](research/candidate-first-admission-reset.md)
+- [`research/fixed-luna-candidate-judge.md`](research/fixed-luna-candidate-judge.md)
 - [`research/pre-judge-report-aggregation-retrospective.md`](research/pre-judge-report-aggregation-retrospective.md)
 - `.trellis/spec/backend/memory-v2-benchmark.md`
 - `.trellis/spec/backend/memory-v2-hybrid-shadow.md`
@@ -659,3 +813,7 @@ record: a local candidate-aware usefulness model, not a gate relaxation.
   aggregate artifacts. Separate transient Vault copies were overwritten and
   removed after each run, and no scoped container, network, volume, helper,
   export, or decrypted credential file remained.
+- The Luna protocol smoke used the actively configured Server Vault record,
+  never placed plaintext credentials in argv/environment/output, retained no
+  raw Provider response, and shredded its transient encrypted-envelope copy.
+  No helper, credential, or temporary smoke file remained after execution.

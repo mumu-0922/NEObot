@@ -332,6 +332,53 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   sent/Final/Injected/token surfaces prove exact `no_memory`. It counts as a
   normalized failed case and not as an actual judge request. Schema-v4/v5
   report semantics remain immutable and reject the same state.
+- The schema-v11 successor keeps the candidate-first topology but replaces
+  answer-model-specific judging with one globally fixed cloud Memory Judge:
+  `SERVER_DEFAULT`, `openai_compatible`, Base URL SHA-256
+  `3bc0bbf28d9d817b4f6c8f6058c2c51dd644c541252ed6e2542a8c8a472ff671`,
+  and model alias `gpt-5.6-luna`. The observable tuple, adapter v1, prompt/hash,
+  temperature-zero/no-thinking/max-output-128 decoding, fixed BGE tuple, and
+  owner egress/cost authority are immutable regardless of the answer model.
+- Schema v11 uses policy
+  `memory_hybrid_fixed_cloud_candidate_judge_development_v1`, reader v9,
+  profile/report v11, criteria v2, and cost-basis v7. The complete flow has
+  p95 `<=1500 ms`, p99 `<=2500 ms`, and a `3000 ms` hard cutoff. Every other
+  v1 quality, safety, token, and cost gate remains unchanged. Timeout,
+  Provider error, invalid JSON, protocol drift, or a late result yields an
+  empty v2 final set; recalled, reranked, schema-v10, and otherwise unjudged
+  candidates are never fallback authority.
+- The retained schema-v11 report is immutable failed evidence. Its short
+  application cutoffs yielded only `41` Luna attempts and `22` complete
+  rerank-plus-judge decisions, with `154` admission-unavailable cases and `19`
+  `HARD_CUTOFF` complete stages. Later execution or criteria versions must not
+  rescore, rewrite, or relabel that bundle.
+- Schema v12 uses policy
+  `memory_hybrid_fixed_cloud_candidate_judge_accuracy_development_v2`, reader
+  v10, profile/report v12, criteria v3, and cost-basis v8. Its exact path is
+  query embedding, local admission, BGE rerank, Luna judge, and Record in that
+  order. One controller serializes projection embedding and every per-case
+  BGE/Luna request globally; no two Provider requests may overlap.
+- Schema v12 adds no stage/case deadline and constructs both BGE and Luna HTTP
+  clients without elapsed-time timeouts. Manual caller cancellation remains
+  authoritative. Latency is aggregate diagnostic output only; any historical
+  hard-cutoff flag/code is rejected as schema drift. A missing/invalid Provider
+  result still fails closed to no v2 Memory for that case.
+- Each Provider request may retry once only after `408`, `429`, `5xx`, or a
+  retryable transport/read interruption. Valid `Retry-After` is honored;
+  otherwise the fixed delay is five seconds. Redirects, normal `4xx`, invalid
+  JSON/schema/protocol output, stream parse failures, and structured remote
+  errors are not retryable. Live cases wait one real second between cases;
+  fake protocol records the same 299 logical waits under a zero-elapsed virtual
+  clock.
+- Aggregate schema-v12 evidence reconciles attempts, retries, per-stage
+  request latency, cooldown counts, total and retry Judge input-token bounds,
+  and `JudgeAttempts * 128` output-token authority. Cost-basis v8 authorizes a
+  maximum of 600 Judge attempts and 76800 output tokens. These execution and
+  cost rules are Development evidence only and never install a runtime policy.
+- All v2 flags remain default-off and v1 remains the only prompt/Usage reader.
+  A Development result, passing or failing, must stop for owner review.
+  Validation and production activation are separately authorized stages and
+  cannot be entered automatically.
 - Tool routing decides only whether saved Memory is needed. It cannot rewrite
   the query, select Memory IDs, authorize ownership/scope/revision, or authorize
   prompt injection. An empty candidate set still waits for the route decision
@@ -439,6 +486,10 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 | Judge returns an empty ordinal array | Record `CANDIDATE_JUDGE_ABSTAINED`, zero final rows, and zero prompt Memory tokens. |
 | Schema-v10 retrieval fails before configured-judge egress | Retain one aggregate failure only with false admission/rerank/judge readiness, zero judge token authority, and empty Provider-sent/Final/Injected/prompt-token surfaces; do not increment judge requests and do not weaken historical schema-v4/v5 admission. |
 | BGE or judge finishes late or ignores cancellation | Context selection returns without waiting, discards both candidate-stage results, and yields `no_memory`; no serial retry. |
+| Schema-v12 fixed BGE or Luna request remains in flight without manual cancellation | Wait for the result; no application elapsed deadline may synthesize a cutoff. Global concurrency remains one. |
+| Schema-v12 request returns 408/429/5xx or a retryable transport/read interruption | Honor valid `Retry-After`, otherwise wait five seconds, retry once, and account for both attempts. |
+| Schema-v12 request returns a normal 4xx, redirect, invalid JSON/schema/protocol result, stream parse failure, or structured remote error | Do not retry; record the bounded fail-closed result and release no v2 Memory. |
+| Schema-v12 trace contains `HardCutoffApplied`/`HARD_CUTOFF`, or telemetry/cost/cooldown counts do not reconcile | Reject the report as execution-policy drift; do not reinterpret it as an ordinary failed case. |
 | Candidate has a forbidden egress reason under the owner policy | Evaluation fails the zero-tolerance Provider-egress gate; only `irrelevant` is newly authorized. |
 | Main-model Tool route returns no call | Record `MEMORY_TOOL_ROUTE_ABSTAINED`; discard speculative BGE final rows and record zero final/tokens. |
 | Tool route returns a missing ID, wrong name, duplicate call, or nil/non-empty arguments | Reject the whole decision as `MEMORY_TOOL_ROUTE_FAILED`; never reinterpret it as an exact call. |
@@ -483,6 +534,13 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 - **Configured-judge failure base**: recall finds candidates but admission
   fails before judge egress; schema v10 records a normalized failure with zero
   request/final/token surfaces while historical judge reports reject it.
+- **Fixed-judge base**: fixed Luna returns strict empty ordinals or fails its
+  bounded request; the complete v2 final set is empty, normal chat continues
+  through v1, and no recalled or reranked candidate reaches the prompt.
+- **Accuracy-first base**: the serial BGE stage completes but Luna returns a
+  strict empty ordinal set; Record persists an empty counterfactual final,
+  latency remains diagnostic, the next case starts only after its cooldown,
+  and v1 remains the sole prompt/Usage authority.
 - **Bad**: claim with an arbitrary RAG record, reuse an old vector response
   after epoch/scope drift, rank cross-user then filter in Go, persist query or
   raw scores, accept free-form judge prose/IDs, treat owner egress authorization
@@ -521,6 +579,14 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   aggregate report shape, pre-judge retrieval-failure aggregation plus
   historical-report rejection, fake judge wiring, independent credential
   cleanup, and separate two-file manifest,
+  schema-v11 exact Luna authority, criteria-v2 and 3000-ms cutoff binding,
+  cost-basis-v7 drift denial, no-fallback fail-closed behavior, and an explicit
+  Development-to-Validation stop,
+  schema-v12 serial stage order/global concurrency, no-deadline/no-timeout
+  behavior, diagnostic-only latency, hard-cutoff rejection, bounded transient
+  retry classification and wait behavior, virtual/wall-clock cooldown,
+  attempt/latency/input/output-token reconciliation, cost-basis-v8 ceilings,
+  historical profile omission, and mandatory manual review,
   post-threshold
   abstention, reserved cutoff recording, 600/900 token selection, bounded
   metadata, and byte-equivalent v1 prompt/Usage behavior.
@@ -580,7 +646,9 @@ default-off hybrid-worker/shadow flag + separate default-off product Tool flag
   -> local maximum-cosine admission with no durable vector/score
   -> private candidate recall and current-authority filtering
   -> historical strict cloud judge || Development route evidence
-  -> schema-v10 exact configured-model ordinal judge || fixed BGE rerank
+  -> schema-v10 configured-model/schema-v11 fixed Luna concurrent judge
+     || fixed BGE rerank
+  -> schema-v12 only: fixed BGE rerank -> fixed Luna judge, globally serial
   -> judge/BGE intersection; empty or uncertain result means no v2 Memory
   -> product first ToolRound sees normal request + search_memory, no Memory body
   -> exact call: fixed BGE path + request-local score/token selection

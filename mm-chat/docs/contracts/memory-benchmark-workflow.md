@@ -66,6 +66,8 @@ neo-chat.memory-regression-profile-config.v7
 neo-chat.memory-regression-profile-config.v8
 neo-chat.memory-regression-profile-config.v9
 neo-chat.memory-regression-profile-config.v10
+neo-chat.memory-regression-profile-config.v11
+neo-chat.memory-regression-profile-config.v12
 neo-chat.memory-regression-relevance-calibration.v3
 neo-chat.memory-regression-relevance-calibration.v4
 neo-chat.memory-regression-relevance-calibration.v5
@@ -74,6 +76,8 @@ neo-chat.memory-regression-relevance-calibration.v7
 neo-chat.memory-regression-relevance-calibration.v8
 neo-chat.memory-regression-relevance-calibration.v9
 neo-chat.memory-regression-relevance-calibration.v10
+neo-chat.memory-regression-relevance-calibration.v11
+neo-chat.memory-regression-relevance-calibration.v12
 neo-chat.memory-regression-relevance-validation.v1
 neo-chat.memory-regression-relevance-run.v1
 neo-chat.memory-regression-cost-basis.v2
@@ -81,6 +85,8 @@ neo-chat.memory-regression-cost-basis.v3
 neo-chat.memory-regression-cost-basis.v4
 neo-chat.memory-regression-cost-basis.v5
 neo-chat.memory-regression-cost-basis.v6
+neo-chat.memory-regression-cost-basis.v7
+neo-chat.memory-regression-cost-basis.v8
 neo-chat.memory-cloud-candidate-judge-input.v1
 neo-chat.memory-cloud-candidate-judge-output.v1
 ```
@@ -969,6 +975,122 @@ blocked. Each private run directory is mode `0700` with exactly two mode-
 overwritten and removed after each run, and all scoped Compose containers,
 networks, volumes, helpers, and export files were destroyed.
 
+The schema-v11 successor keeps candidate-first recall but fixes one global
+cloud Memory Judge independently from the answer model:
+
+```text
+capture mode          = development_fixed_memory_judge
+profile schema        = neo-chat.memory-regression-profile-config.v11
+reader                = neo-chat.native-memory-reader-capture.v9
+report schema         = neo-chat.memory-regression-relevance-calibration.v11
+admission mode        = development_fixed_memory_judge_only
+Provider ID           = SERVER_DEFAULT
+Provider type         = openai_compatible
+Base URL              = https://sub.mumubuku.top/v1
+Base URL SHA-256      = 3bc0bbf28d9d817b4f6c8f6058c2c51dd644c541252ed6e2542a8c8a472ff671
+model alias           = gpt-5.6-luna
+adapter               = chat-configured-candidate-judge-v1
+criteria              = neo-chat.memory-benchmark-criteria.v2
+cost schema           = neo-chat.memory-regression-cost-basis.v7
+artifact              = fixed-memory-judge-development.json
+```
+
+Criteria v2 changes only the complete-flow latency budget: p95 `<=1500 ms`,
+p99 `<=2500 ms`, and hard cutoff `<=3000 ms`. Quality, safety, token, and cost
+gates remain the v1 values. The observed intermediary tuple does not prove an
+upstream model implementation or public price. Timeout, transport error,
+invalid JSON, protocol drift, and late output all produce an empty v2 Memory
+set. Normal chat continues under v1 prompt/Usage authority and never falls
+back to recalled, reranked, schema-v10, or other unjudged candidates.
+
+```bash
+bash scripts/run-memory-regression.sh \
+  --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --cost-basis /secure/eval/fixed-memory-judge-cost-v7.json \
+  --output-dir /secure/eval/native-memory-runs
+```
+
+Fake protocol proves only lifecycle and authority binding. A real 300-case
+Development run requires separate fresh mode-`0600` SiliconFlow and Luna Key
+files plus both exact quota approvals. Even a passing Development run stops
+for owner review; it never starts Validation. Validation and production
+activation each require a later independent authorization.
+
+The retained schema-v11 Development bundle is immutable failed evidence. Run
+`memory-regression-20260731t034030z-07481931` retained report SHA-256
+`0dfe7733005bd211664ebaa47a9a5325c0638288f90c736986756eda34a37205`.
+It attempted only `41` Luna requests and completed only `22` rerank-plus-judge
+decisions; `154` cases recorded `RELEVANCE_ADMISSION_UNAVAILABLE` and `19`
+complete stages recorded `HARD_CUTOFF`. Its latency criteria and bytes are not
+rewritten by the successor.
+
+Schema v12 is the accuracy-first Development successor:
+
+```text
+capture mode          = development_fixed_memory_judge_accuracy
+profile schema        = neo-chat.memory-regression-profile-config.v12
+reader                = neo-chat.native-memory-reader-capture.v10
+report schema         = neo-chat.memory-regression-relevance-calibration.v12
+admission mode        = development_fixed_memory_judge_accuracy_only
+policy                = memory_hybrid_fixed_cloud_candidate_judge_accuracy_development_v2
+Provider ID           = SERVER_DEFAULT
+Provider type         = openai_compatible
+Base URL              = https://sub.mumubuku.top/v1
+Base URL SHA-256      = 3bc0bbf28d9d817b4f6c8f6058c2c51dd644c541252ed6e2542a8c8a472ff671
+model alias           = gpt-5.6-luna
+adapter               = chat-configured-candidate-judge-v1
+criteria              = neo-chat.memory-benchmark-criteria.v3
+cost schema           = neo-chat.memory-regression-cost-basis.v8
+artifact              = fixed-memory-judge-accuracy-development.json
+```
+
+Its exact Provider sequence is BGE query embedding, local admission, BGE
+rerank, Luna judge, then Record. One global gate holds Provider request
+concurrency at `1`, including the one passage-projection call. The command,
+per-case flow, BGE gateway, and Luna HTTP client have no application elapsed
+deadline. HTTP redirects and environment proxies remain disabled, TLS 1.2 or
+newer is required, and only caller cancellation may interrupt the run.
+
+Criteria v3 retains the v1 quality, safety, token, cost, and slice thresholds
+but makes latency diagnostic-only. The v12 report uses a separate evaluation
+shape with aggregate p95/p99 values and no `latencyPassed`,
+`hardCutoffPassed`, or hard-cutoff-violation verdict. Any
+`HardCutoffApplied=true` or `HARD_CUTOFF` trace rejects the report as execution
+drift.
+
+Each request may retry once only for HTTP `408`, `429`, `5xx`, or a retryable
+transport/read interruption. A valid `Retry-After` value controls the wait;
+missing or invalid advice waits five seconds. Redirects, ordinary `4xx`,
+invalid JSON/schema/protocol output, stream parse failures, and structured
+remote-error payloads do not retry. After every case except the last, live mode
+performs a real one-second cooldown. Fake protocol records 299 logical waits
+and 299000 ms through a virtual/no-op clock and requires zero elapsed cooldown.
+
+The report reconciles passage/query/rerank/judge attempts and retries,
+per-stage aggregate request latency, logical/elapsed cooldown totals, total and
+retry Judge input-token upper bounds, and `JudgeAttempts * 128` output-token
+authority. Cost-basis v8 authorizes at most 600 Judge attempts and exactly
+76800 output tokens. A passing report still emits `policySelected=false` and
+must stop for manual review; Validation, production, and promotion remain
+blocked.
+
+```bash
+bash scripts/run-memory-regression.sh \
+  --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge_accuracy \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --cost-basis /secure/eval/fixed-memory-judge-accuracy-cost-v8.json \
+  --output-dir /secure/eval/native-memory-runs
+```
+
 ```bash
 bash scripts/run-memory-regression.sh \
   --provider-mode fake_protocol \
@@ -981,11 +1103,12 @@ bash scripts/run-memory-regression.sh \
   --output-dir /secure/eval/native-memory-runs
 ```
 
-Only after a Development candidate-aware policy passes every unchanged gate may
+Only after a Development candidate-aware policy passes every applicable gate may
 its exact policy, Provider/model, adapter profile, and selection behavior be
-frozen in code. Neither schema-v10 profile passed, so the current Validation
-CLI remains unavailable. The historical single-Provider Validation command
-shape remains:
+frozen in code. Neither schema-v10 profile nor schema-v11 passed, and schema-v12
+has not received a new live authorization, so the current Validation CLI
+remains unavailable. The historical single-Provider Validation command shape
+remains:
 
 ```bash
 chmod 600 /secure/input/fresh-validation-siliconflow.key
@@ -1020,6 +1143,19 @@ credential. The wrapper rejects the same file, hard links, or equal bytes,
 binds the exact Provider ID/type/Base-URL hash/model before Provider
 construction, scans both values from every retained surface, and destroys both
 temporary copies on every exit.
+
+Fixed Memory Judge Development uses that same two-file isolation but rejects
+every Provider/Base-URL/model deviation from the schema-v11 tuple. The runner
+has no Vault decryption authority. Operator-created one-run copies are mounted
+read-only, rejected when hard-linked or byte-equal, overwritten and removed on
+success/failure/signal, and scanned out of artifacts, logs, and Docker
+metadata.
+
+Accuracy-first Development keeps the same exact two-file and fixed-Luna
+authority. Its v12 execution policy changes no credential boundary: operator
+copies remain mode `0600`, read-only in the runner, independent by file/inode/
+bytes, and destroyed on every exit. No existing schema-v11 authorization or
+credential copy authorizes a new schema-v12 live run.
 
 The cost basis is strict JSON and all values are run-total integer microunits
 in one named unit:
@@ -1150,6 +1286,22 @@ The candidate Memory cost must cover fixed BGE work plus this maximum. Any
 Provider/model/Base-URL, request/token/rate/arithmetic, mixed-authority, or
 coverage drift fails before Provider construction or bundle publication.
 
+Schema-v11 fixed Memory Judge Development requires
+`neo-chat.memory-regression-cost-basis.v7`. Its request count and maximum
+output remain `300` and `38400`; the exact input/output ceilings, unit rates,
+and absolute cost ceiling are hash-bound. The authority must equal the fixed
+Luna tuple above. Schema v7 never reinterprets schema-v6 evidence and never
+asserts an upstream model identity or unverified public rate.
+
+Schema-v12 accuracy-first Development requires
+`neo-chat.memory-regression-cost-basis.v8`. The exact fixed-Luna authority is
+unchanged, but `requestCount=600` and
+`maximumOutputTokens=600 * 128 = 76800` pre-authorize the single possible
+retry for every logical Judge request. Actual input authority equals aggregate
+total Judge-attempt input bounds, including retry input; actual output
+authority equals `JudgeAttempts * 128`. Schema-v6/v7 remain strict 300-request
+documents and cannot be widened or reused.
+
 Each full fake-protocol run directory is mode `0700` and contains five
 mode-`0600` files:
 
@@ -1163,7 +1315,9 @@ run-manifest.json
 
 Historical calibration, schema-v4/v5 cloud-judge Development, schema-v6-v9
 Tool-route evidence, schema-v10 configured-candidate-judge Development, and
-Validation directories contain their named aggregate report plus
+schema-v11 fixed-Memory-Judge Development, schema-v12 accuracy-first
+Development, and Validation directories contain their named aggregate report
+plus
 `run-manifest.json`. In
 every mode, evidence is exclusively linked first and the content-free
 run manifest is the final completion marker. Existing targets are refused
