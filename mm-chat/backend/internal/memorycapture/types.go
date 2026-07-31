@@ -19,6 +19,7 @@ const (
 	MemoryToolRouteReaderVersion                = "neo-chat.native-memory-reader-capture.v4"
 	MemoryToolFirstRoundReaderVersion           = "neo-chat.native-memory-reader-capture.v5"
 	MemoryToolFirstRoundDiagnosticReaderVersion = "neo-chat.native-memory-reader-capture.v7"
+	ConfiguredCandidateJudgeReaderVersion       = "neo-chat.native-memory-reader-capture.v8"
 	ProviderCostPolicyOwnerAuthorizedAbsoluteV1 = "owner_authorized_absolute_cap_v1"
 	ProviderModeNone                            = "none"
 	ProviderModeFakeProtocol                    = "fake_protocol"
@@ -28,6 +29,7 @@ const (
 	CaptureModeCloudJudgeDevelopment            = "development_cloud_judge"
 	CaptureModeMemoryToolRouteDevelopment       = "development_memory_tool_route"
 	CaptureModeMemoryToolRouteDiagnostic        = "development_memory_tool_route_diagnostic"
+	CaptureModeConfiguredCandidateJudge         = "development_configured_candidate_judge"
 	CaptureModeFrozenValidation                 = "frozen_validation"
 )
 
@@ -85,6 +87,10 @@ type ProfileConfig struct {
 	CloudCandidateJudgePromptVersion      string                 `json:"cloudCandidateJudgePromptVersion,omitempty"`
 	CloudCandidateJudgePromptSHA256       string                 `json:"cloudCandidateJudgePromptSha256,omitempty"`
 	CloudCandidateJudgeDecodingProfile    string                 `json:"cloudCandidateJudgeDecodingProfile,omitempty"`
+	ConfiguredCandidateJudgeProviderID    string                 `json:"configuredCandidateJudgeProviderId,omitempty"`
+	ConfiguredCandidateJudgeProviderType  string                 `json:"configuredCandidateJudgeProviderType,omitempty"`
+	ConfiguredCandidateJudgeBaseURLSHA256 string                 `json:"configuredCandidateJudgeBaseUrlSha256,omitempty"`
+	ConfiguredCandidateJudgeAdapter       string                 `json:"configuredCandidateJudgeAdapter,omitempty"`
 	MemoryToolRouteRequired               bool                   `json:"memoryToolRouteRequired,omitempty"`
 	MemoryToolRouteProviderID             string                 `json:"memoryToolRouteProviderId,omitempty"`
 	MemoryToolRouteProviderType           string                 `json:"memoryToolRouteProviderType,omitempty"`
@@ -108,14 +114,15 @@ type ProfileConfig struct {
 // CostBasis is supplied by an operator and hash-bound to observations. The
 // capture never invents a nominal cost to satisfy the evaluator.
 type CostBasis struct {
-	SchemaVersion            string                        `json:"schemaVersion"`
-	Baseline                 memoryeval.ProviderCosts      `json:"baseline"`
-	Candidate                memoryeval.ProviderCosts      `json:"candidate"`
-	Source                   string                        `json:"source"`
-	EffectiveAt              string                        `json:"effectiveAt"`
-	CloudJudgeAuthority      *CloudJudgeCostAuthority      `json:"cloudJudgeAuthority,omitempty"`
-	MemoryToolRouteAuthority *MemoryToolRouteCostAuthority `json:"memoryToolRouteAuthority,omitempty"`
-	ProviderCostPolicy       string                        `json:"providerCostPolicy,omitempty"`
+	SchemaVersion                     string                                 `json:"schemaVersion"`
+	Baseline                          memoryeval.ProviderCosts               `json:"baseline"`
+	Candidate                         memoryeval.ProviderCosts               `json:"candidate"`
+	Source                            string                                 `json:"source"`
+	EffectiveAt                       string                                 `json:"effectiveAt"`
+	CloudJudgeAuthority               *CloudJudgeCostAuthority               `json:"cloudJudgeAuthority,omitempty"`
+	MemoryToolRouteAuthority          *MemoryToolRouteCostAuthority          `json:"memoryToolRouteAuthority,omitempty"`
+	ConfiguredCandidateJudgeAuthority *ConfiguredCandidateJudgeCostAuthority `json:"configuredCandidateJudgeAuthority,omitempty"`
+	ProviderCostPolicy                string                                 `json:"providerCostPolicy,omitempty"`
 }
 
 type CloudJudgeCostAuthority struct {
@@ -136,6 +143,28 @@ type MemoryToolRouteProfileAuthority struct {
 }
 
 type MemoryToolRouteCostAuthority struct {
+	ProviderID                       string `json:"providerId"`
+	ProviderType                     string `json:"providerType"`
+	BaseURLSHA256                    string `json:"baseUrlSha256"`
+	ModelID                          string `json:"modelId"`
+	RequestCount                     int    `json:"requestCount"`
+	MaximumInputTokens               uint64 `json:"maximumInputTokens"`
+	MaximumOutputTokens              uint64 `json:"maximumOutputTokens"`
+	InputMicrounitsPerMillionTokens  uint64 `json:"inputMicrounitsPerMillionTokens"`
+	OutputMicrounitsPerMillionTokens uint64 `json:"outputMicrounitsPerMillionTokens"`
+	MaximumCostMicrounits            uint64 `json:"maximumCostMicrounits"`
+}
+
+type ConfiguredCandidateJudgeProfileAuthority struct {
+	ProviderID    string
+	ProviderType  string
+	BaseURLSHA256 string
+	ModelID       string
+}
+
+// ConfiguredCandidateJudgeCostAuthority binds the exact configured chat
+// Provider independently from the fixed SiliconFlow retrieval Provider.
+type ConfiguredCandidateJudgeCostAuthority struct {
 	ProviderID                       string `json:"providerId"`
 	ProviderType                     string `json:"providerType"`
 	BaseURLSHA256                    string `json:"baseUrlSha256"`

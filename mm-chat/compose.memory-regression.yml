@@ -117,6 +117,14 @@ services:
       - "${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_BASE_URL:-}"
       - -memory-tool-route-model
       - "${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_MODEL:-}"
+      - -configured-candidate-judge-provider-id
+      - "${MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_ID:-}"
+      - -configured-candidate-judge-provider-type
+      - "${MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_TYPE:-}"
+      - -configured-candidate-judge-base-url
+      - "${MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_BASE_URL:-}"
+      - -configured-candidate-judge-model
+      - "${MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_MODEL:-}"
     depends_on:
       memory-regression-postgres:
         condition: service_healthy
@@ -157,6 +165,11 @@ services:
       MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_PROVIDER_TYPE: ${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_PROVIDER_TYPE:-}
       MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_BASE_URL_SHA256: ${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_BASE_URL_SHA256:-}
       MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_MODEL_ID: ${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_MODEL:-}
+      MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_APPROVAL: ${MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_APPROVAL:-NOT_AUTHORIZED}
+      MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_ID: ${MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_ID:-}
+      MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_TYPE: ${MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_TYPE:-}
+      MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_BASE_URL_SHA256: ${MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_BASE_URL_SHA256:-}
+      MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_MODEL_ID: ${MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_MODEL:-}
     volumes:
       - type: bind
         source: ${MEMORY_REGRESSION_ROOT_PATH:?protected regression root is required}
@@ -173,6 +186,10 @@ services:
       - type: bind
         source: ${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_CREDENTIAL_PATH:?Memory Tool-route credential path is required}
         target: /run/mm-chat-memory-regression/memory-tool-route-provider.key
+        read_only: true
+      - type: bind
+        source: ${MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_CREDENTIAL_PATH:?configured candidate-judge credential path is required}
+        target: /run/mm-chat-memory-regression/configured-candidate-judge-provider.key
         read_only: true
       - type: bind
         source: ${MEMORY_REGRESSION_OUTPUT_PATH:?private output path is required}
@@ -206,6 +223,16 @@ services:
       - "${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_BASE_URL:-}"
       - -memory-tool-route-model
       - "${MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_MODEL:-}"
+      - -configured-candidate-judge-credential-file
+      - "${MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_CREDENTIAL_TARGET:-}"
+      - -configured-candidate-judge-provider-id
+      - "${MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_ID:-}"
+      - -configured-candidate-judge-provider-type
+      - "${MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_TYPE:-}"
+      - -configured-candidate-judge-base-url
+      - "${MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_BASE_URL:-}"
+      - -configured-candidate-judge-model
+      - "${MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_MODEL:-}"
     depends_on:
       memory-regression-postgres:
         condition: service_healthy

@@ -9,6 +9,8 @@ import (
 	"neo-chat/mm-chat/backend/internal/usermemory"
 )
 
+const ChatAdapterVersion = "chat-configured-candidate-judge-v1"
+
 // ChatAdapter binds the shared strict Memory judge contract to one already
 // authorized chat Provider/model. Query, candidate content, and raw output
 // remain request-local and are never logged by this adapter.

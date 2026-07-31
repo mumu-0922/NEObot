@@ -35,20 +35,25 @@ import (
 )
 
 const (
-	adminDatabaseURLEnv                 = "MM_CHAT_MEMORY_REGRESSION_ADMIN_DATABASE_URL"
-	runtimeDatabaseURLEnv               = "MM_CHAT_MEMORY_REGRESSION_RUNTIME_DATABASE_URL"
-	liveEnabledEnv                      = "MM_CHAT_MEMORY_REGRESSION_LIVE_ENABLED"
-	liveApprovalEnv                     = "MM_CHAT_MEMORY_REGRESSION_LIVE_APPROVAL"
-	liveRunIDEnv                        = "MM_CHAT_MEMORY_REGRESSION_LIVE_RUN_ID"
-	liveProviderIDEnv                   = "MM_CHAT_MEMORY_REGRESSION_LIVE_PROVIDER_ID"
-	liveEmbeddingModelEnv               = "MM_CHAT_MEMORY_REGRESSION_LIVE_EMBEDDING_MODEL_ID"
-	liveRerankModelEnv                  = "MM_CHAT_MEMORY_REGRESSION_LIVE_RERANK_MODEL_ID"
-	liveCloudJudgeModelEnv              = "MM_CHAT_MEMORY_REGRESSION_LIVE_CLOUD_JUDGE_MODEL_ID"
-	liveMemoryToolRouteApprovalEnv      = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_APPROVAL"
-	liveMemoryToolRouteProviderIDEnv    = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_PROVIDER_ID"
-	liveMemoryToolRouteProviderTypeEnv  = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_PROVIDER_TYPE"
-	liveMemoryToolRouteBaseURLSHA256Env = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_BASE_URL_SHA256"
-	liveMemoryToolRouteModelIDEnv       = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_MODEL_ID"
+	adminDatabaseURLEnv                          = "MM_CHAT_MEMORY_REGRESSION_ADMIN_DATABASE_URL"
+	runtimeDatabaseURLEnv                        = "MM_CHAT_MEMORY_REGRESSION_RUNTIME_DATABASE_URL"
+	liveEnabledEnv                               = "MM_CHAT_MEMORY_REGRESSION_LIVE_ENABLED"
+	liveApprovalEnv                              = "MM_CHAT_MEMORY_REGRESSION_LIVE_APPROVAL"
+	liveRunIDEnv                                 = "MM_CHAT_MEMORY_REGRESSION_LIVE_RUN_ID"
+	liveProviderIDEnv                            = "MM_CHAT_MEMORY_REGRESSION_LIVE_PROVIDER_ID"
+	liveEmbeddingModelEnv                        = "MM_CHAT_MEMORY_REGRESSION_LIVE_EMBEDDING_MODEL_ID"
+	liveRerankModelEnv                           = "MM_CHAT_MEMORY_REGRESSION_LIVE_RERANK_MODEL_ID"
+	liveCloudJudgeModelEnv                       = "MM_CHAT_MEMORY_REGRESSION_LIVE_CLOUD_JUDGE_MODEL_ID"
+	liveMemoryToolRouteApprovalEnv               = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_APPROVAL"
+	liveMemoryToolRouteProviderIDEnv             = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_PROVIDER_ID"
+	liveMemoryToolRouteProviderTypeEnv           = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_PROVIDER_TYPE"
+	liveMemoryToolRouteBaseURLSHA256Env          = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_BASE_URL_SHA256"
+	liveMemoryToolRouteModelIDEnv                = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_MODEL_ID"
+	liveConfiguredCandidateJudgeApprovalEnv      = "MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_APPROVAL"
+	liveConfiguredCandidateJudgeProviderIDEnv    = "MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_ID"
+	liveConfiguredCandidateJudgeProviderTypeEnv  = "MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_TYPE"
+	liveConfiguredCandidateJudgeBaseURLSHA256Env = "MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_BASE_URL_SHA256"
+	liveConfiguredCandidateJudgeModelIDEnv       = "MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_MODEL_ID"
 
 	defaultCaptureTimeout = 45 * time.Minute
 	maximumCredentialSize = 4096
@@ -60,20 +65,25 @@ var (
 )
 
 type commandOptions struct {
-	root                string
-	outputDir           string
-	costBasisPath       string
-	providerMode        string
-	captureMode         string
-	runID               string
-	credentialPath      string
-	pretty              bool
-	judgeModelID        string
-	routeCredentialPath string
-	routeProviderID     string
-	routeProviderType   string
-	routeBaseURL        string
-	routeModelID        string
+	root                   string
+	outputDir              string
+	costBasisPath          string
+	providerMode           string
+	captureMode            string
+	runID                  string
+	credentialPath         string
+	pretty                 bool
+	judgeModelID           string
+	routeCredentialPath    string
+	routeProviderID        string
+	routeProviderType      string
+	routeBaseURL           string
+	routeModelID           string
+	judgeCredentialPath    string
+	judgeProviderID        string
+	judgeProviderType      string
+	judgeBaseURL           string
+	judgeConfiguredModelID string
 }
 
 type environmentLookup func(string) (string, bool)
@@ -146,6 +156,8 @@ func run(
 	var cloudJudgeConfig memorycapture.ProfileConfig
 	var memoryToolRouteConfig memorycapture.ProfileConfig
 	var memoryToolRouteAuthority memorycapture.MemoryToolRouteProfileAuthority
+	var configuredJudgeConfig memorycapture.ProfileConfig
+	var configuredJudgeAuthority memorycapture.ConfiguredCandidateJudgeProfileAuthority
 	var relevanceConfigurationHash string
 	var artifactNames []string
 	var artifactPrefix string
@@ -268,6 +280,44 @@ func run(
 		if err != nil {
 			return err
 		}
+	case memorycapture.CaptureModeConfiguredCandidateJudge:
+		configuredJudgeAuthority, err = buildConfiguredCandidateJudgeAuthority(options)
+		if err != nil {
+			return err
+		}
+		if err := memorycapture.AuthorizeConfiguredCandidateJudgeTarget(
+			options.providerMode,
+			configuredJudgeAuthority,
+			authorization,
+		); err != nil {
+			return err
+		}
+		if err := memorycapture.ValidateConfiguredCandidateJudgeCostAuthority(
+			cost,
+			configuredJudgeAuthority,
+		); err != nil {
+			return err
+		}
+		configuredJudgeConfig, err =
+			memorycapture.BuildConfiguredCandidateJudgeDevelopmentProfileConfig(
+				protected,
+				costHash,
+				options.providerMode,
+				configuredJudgeAuthority,
+				cost.ProviderCostPolicy,
+			)
+		if err != nil {
+			return err
+		}
+		relevanceConfigurationHash, err =
+			memorycapture.ConfigurationSHA256(configuredJudgeConfig)
+		if err != nil {
+			return err
+		}
+		artifactNames = []string{
+			memorycapture.ConfiguredCandidateJudgeArtifactName,
+			"run-manifest.json",
+		}
 	case memorycapture.CaptureModeFrozenValidation:
 		validationConfig, err = memorycapture.BuildFrozenValidationProfileConfig(
 			protected,
@@ -320,7 +370,7 @@ func run(
 	if options.captureMode == memorycapture.CaptureModeCloudJudgeDevelopment {
 		return runCloudJudgeDevelopment(
 			ctx, stdout, options, startedAt, protected, cost, costHash,
-			cloudJudgeConfig, relevanceConfigurationHash, providers, adminDB, runtimeDB,
+			cloudJudgeConfig, nil, relevanceConfigurationHash, providers, adminDB, runtimeDB,
 		)
 	}
 	if options.captureMode == memorycapture.CaptureModeMemoryToolRouteDevelopment ||
@@ -328,6 +378,13 @@ func run(
 		return runMemoryToolRouteDevelopment(
 			ctx, stdout, options, startedAt, protected, cost, costHash,
 			memoryToolRouteConfig, memoryToolRouteAuthority,
+			relevanceConfigurationHash, providers, adminDB, runtimeDB,
+		)
+	}
+	if options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge {
+		return runCloudJudgeDevelopment(
+			ctx, stdout, options, startedAt, protected, cost, costHash,
+			configuredJudgeConfig, &configuredJudgeAuthority,
 			relevanceConfigurationHash, providers, adminDB, runtimeDB,
 		)
 	}
@@ -604,6 +661,7 @@ func runCloudJudgeDevelopment(
 	cost memorycapture.CostBasis,
 	costHash string,
 	config memorycapture.ProfileConfig,
+	configuredAuthority *memorycapture.ConfiguredCandidateJudgeProfileAuthority,
 	configurationHash string,
 	providers providerBundle,
 	adminDB *sql.DB,
@@ -641,61 +699,83 @@ func runCloudJudgeDevelopment(
 	); err != nil {
 		return err
 	}
-	captured, err := memorycapture.CaptureCloudJudgeDevelopment(
-		ctx,
-		adminDB,
-		runtimeDB,
-		options.runID,
-		protected.Pool,
-		index,
-		seed,
-		providers.hybrid,
-		providers.judge,
-		options.judgeModelID,
-		config.ProfileID,
-		configurationHash,
-		cost.Candidate,
-	)
+	var captured memorycapture.CapturedProfile
+	if configuredAuthority == nil {
+		captured, err = memorycapture.CaptureCloudJudgeDevelopment(
+			ctx, adminDB, runtimeDB, options.runID, protected.Pool, index, seed,
+			providers.hybrid, providers.judge, options.judgeModelID, config.ProfileID,
+			configurationHash, cost.Candidate,
+		)
+	} else {
+		captured, err = memorycapture.CaptureConfiguredCandidateJudgeDevelopment(
+			ctx, adminDB, runtimeDB, options.runID, protected.Pool, index, seed,
+			providers.hybrid, providers.judge, *configuredAuthority, config.ProfileID,
+			configurationHash, cost.Candidate,
+		)
+	}
 	if err != nil {
 		return err
-	}
-	report, reportBody, err := memorycapture.BuildCloudJudgeDevelopmentReport(
-		protected.Pool,
-		captured,
-		options.judgeModelID,
-		cost,
-	)
-	if err != nil {
-		return err
-	}
-	if options.pretty {
-		reportBody, err = marshalJSON(report, true)
-		if err != nil {
-			return err
-		}
 	}
 	captureID, err := newCaptureID()
 	if err != nil {
 		return errors.New("create Memory cloud-judge capture ID failed")
 	}
-	artifacts := []memorycapture.Artifact{{
-		Name: "cloud-judge-development.json",
-		Body: reportBody,
-	}}
-	_, manifestBody, err := memorycapture.BuildCloudJudgeDevelopmentRunManifest(
-		options.runID,
-		captureID,
-		options.providerMode,
-		startedAt,
-		time.Now().UTC(),
-		protected,
-		costHash,
-		report,
-		artifacts,
-	)
+	var reportBody []byte
+	var manifestBody []byte
+	var passed bool
+	admissionMode := memorycapture.CloudJudgeDevelopmentAdmissionMode
+	captureMode := memorycapture.CaptureModeCloudJudgeDevelopment
+	artifactName := "cloud-judge-development.json"
+	if configuredAuthority == nil {
+		report, body, reportErr := memorycapture.BuildCloudJudgeDevelopmentReport(
+			protected.Pool, captured, options.judgeModelID, cost,
+		)
+		if reportErr != nil {
+			return reportErr
+		}
+		if options.pretty {
+			body, reportErr = marshalJSON(report, true)
+			if reportErr != nil {
+				return reportErr
+			}
+		}
+		reportBody = body
+		passed = report.Passed
+		artifacts := []memorycapture.Artifact{{Name: artifactName, Body: reportBody}}
+		_, manifestBody, err = memorycapture.BuildCloudJudgeDevelopmentRunManifest(
+			options.runID, captureID, options.providerMode, startedAt, time.Now().UTC(),
+			protected, costHash, report, artifacts,
+		)
+	} else {
+		report, body, reportErr :=
+			memorycapture.BuildConfiguredCandidateJudgeDevelopmentReport(
+				protected.Pool, captured, *configuredAuthority, cost,
+			)
+		if reportErr != nil {
+			return reportErr
+		}
+		if options.pretty {
+			body, reportErr = marshalJSON(report, true)
+			if reportErr != nil {
+				return reportErr
+			}
+		}
+		reportBody = body
+		passed = report.Passed
+		admissionMode = memorycapture.ConfiguredCandidateJudgeAdmissionMode
+		captureMode = memorycapture.CaptureModeConfiguredCandidateJudge
+		artifactName = memorycapture.ConfiguredCandidateJudgeArtifactName
+		artifacts := []memorycapture.Artifact{{Name: artifactName, Body: reportBody}}
+		_, manifestBody, err =
+			memorycapture.BuildConfiguredCandidateJudgeDevelopmentRunManifest(
+				options.runID, captureID, options.providerMode, startedAt, time.Now().UTC(),
+				protected, costHash, report, artifacts,
+			)
+	}
 	if err != nil {
 		return err
 	}
+	artifacts := []memorycapture.Artifact{{Name: artifactName, Body: reportBody}}
 	artifacts = append(artifacts, memorycapture.Artifact{
 		Name: "run-manifest.json",
 		Body: manifestBody,
@@ -716,19 +796,19 @@ func runCloudJudgeDevelopment(
 		RunID:             options.runID,
 		CaptureID:         captureID,
 		CorpusClass:       memoryeval.RegressionCorpusClass,
-		AdmissionMode:     memorycapture.CloudJudgeDevelopmentAdmissionMode,
+		AdmissionMode:     admissionMode,
 		PromotionEligible: false,
 		ProviderMode:      options.providerMode,
-		CaptureMode:       memorycapture.CaptureModeCloudJudgeDevelopment,
+		CaptureMode:       captureMode,
 		Split:             memorycapture.DevelopmentCalibrationSplit,
-		CandidatePassed:   report.Passed,
-		PolicySelected:    report.Passed,
+		CandidatePassed:   passed,
+		PolicySelected:    passed,
 		OutputDirectory:   filepath.Clean(options.outputDir),
 	}
 	if err := json.NewEncoder(stdout).Encode(summary); err != nil {
 		return errors.New("write Memory cloud-judge summary failed")
 	}
-	if !report.Passed {
+	if !passed {
 		return errMetricsFailed
 	}
 	return nil
@@ -1013,6 +1093,7 @@ func parseCommand(args []string) (commandOptions, error) {
 		memorycapture.CaptureModeFullRegression,
 		"full_regression, development_calibration, development_cloud_judge, "+
 			"development_memory_tool_route, development_memory_tool_route_diagnostic, "+
+			"development_configured_candidate_judge, "+
 			"or frozen_validation",
 	)
 	flags.StringVar(&options.runID, "run-id", "", "ephemeral run identifier")
@@ -1053,6 +1134,36 @@ func parseCommand(args []string) (commandOptions, error) {
 		memorycapture.DefaultSiliconFlowCloudJudgeModelID,
 		"fixed cloud candidate-judge model ID",
 	)
+	flags.StringVar(
+		&options.judgeCredentialPath,
+		"configured-candidate-judge-credential-file",
+		"",
+		"independent mode-0600 configured candidate-judge credential file",
+	)
+	flags.StringVar(
+		&options.judgeProviderID,
+		"configured-candidate-judge-provider-id",
+		"",
+		"exact configured candidate-judge Provider ID",
+	)
+	flags.StringVar(
+		&options.judgeProviderType,
+		"configured-candidate-judge-provider-type",
+		"",
+		"openai or openai_compatible",
+	)
+	flags.StringVar(
+		&options.judgeBaseURL,
+		"configured-candidate-judge-base-url",
+		"",
+		"exact configured candidate-judge Provider base URL",
+	)
+	flags.StringVar(
+		&options.judgeConfiguredModelID,
+		"configured-candidate-judge-model",
+		"",
+		"exact configured candidate-judge model ID",
+	)
 	flags.BoolVar(&options.pretty, "pretty", false, "pretty-print report JSON")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
 		return commandOptions{}, usageError()
@@ -1070,13 +1181,19 @@ func parseCommand(args []string) (commandOptions, error) {
 	options.routeProviderType = strings.TrimSpace(options.routeProviderType)
 	options.routeBaseURL = strings.TrimSpace(options.routeBaseURL)
 	options.routeModelID = strings.TrimSpace(options.routeModelID)
+	options.judgeCredentialPath = strings.TrimSpace(options.judgeCredentialPath)
+	options.judgeProviderID = strings.TrimSpace(options.judgeProviderID)
+	options.judgeProviderType = strings.TrimSpace(options.judgeProviderType)
+	options.judgeBaseURL = strings.TrimSpace(options.judgeBaseURL)
+	options.judgeConfiguredModelID = strings.TrimSpace(options.judgeConfiguredModelID)
 	if options.root == "" || options.outputDir == "" || options.costBasisPath == "" ||
 		!commandRunIDRE.MatchString(options.runID) {
 		return commandOptions{}, usageError()
 	}
 	switch options.providerMode {
 	case memorycapture.ProviderModeFakeProtocol:
-		if options.credentialPath != "" || options.routeCredentialPath != "" {
+		if options.credentialPath != "" || options.routeCredentialPath != "" ||
+			options.judgeCredentialPath != "" {
 			return commandOptions{}, errors.New("fake protocol does not accept credential files")
 		}
 	case memorycapture.ProviderModeLiveSiliconFlow:
@@ -1096,6 +1213,7 @@ func parseCommand(args []string) (commandOptions, error) {
 		}
 	case memorycapture.CaptureModeCalibration,
 		memorycapture.CaptureModeCloudJudgeDevelopment,
+		memorycapture.CaptureModeConfiguredCandidateJudge,
 		memorycapture.CaptureModeMemoryToolRouteDevelopment,
 		memorycapture.CaptureModeMemoryToolRouteDiagnostic,
 		memorycapture.CaptureModeFrozenValidation:
@@ -1120,8 +1238,36 @@ func parseCommand(args []string) (commandOptions, error) {
 				"Memory Tool-route inputs require a Development Memory Tool-route mode",
 			)
 		}
+		if options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge {
+			if options.judgeProviderID == "" || options.judgeProviderType == "" ||
+				options.judgeBaseURL == "" || options.judgeConfiguredModelID == "" {
+				return commandOptions{}, errors.New(
+					"configured candidate-judge capture requires exact Provider ID/type/base URL/model",
+				)
+			}
+			if options.providerMode == memorycapture.ProviderModeLiveSiliconFlow &&
+				options.judgeCredentialPath == "" {
+				return commandOptions{}, errors.New(
+					"live configured candidate-judge capture requires an independent credential file",
+				)
+			}
+		} else if options.judgeCredentialPath != "" || options.judgeProviderID != "" ||
+			options.judgeProviderType != "" || options.judgeBaseURL != "" ||
+			options.judgeConfiguredModelID != "" {
+			return commandOptions{}, errors.New(
+				"configured candidate-judge inputs require its Development mode",
+			)
+		}
 	default:
 		return commandOptions{}, usageError()
+	}
+	if options.captureMode != memorycapture.CaptureModeConfiguredCandidateJudge &&
+		(options.judgeCredentialPath != "" || options.judgeProviderID != "" ||
+			options.judgeProviderType != "" || options.judgeBaseURL != "" ||
+			options.judgeConfiguredModelID != "") {
+		return commandOptions{}, errors.New(
+			"configured candidate-judge inputs require its Development mode",
+		)
 	}
 	return options, nil
 }
@@ -1133,13 +1279,19 @@ func usageError() error {
 			"-capture-mode full_regression|development_calibration|" +
 			"development_cloud_judge|development_memory_tool_route|" +
 			"development_memory_tool_route_diagnostic|" +
+			"development_configured_candidate_judge|" +
 			"frozen_validation -run-id ID [-credential-file FILE] " +
 			"[-cloud-judge-model MODEL] " +
 			"[-memory-tool-route-credential-file FILE " +
 			"-memory-tool-route-provider-id ID " +
 			"-memory-tool-route-provider-type openai|openai_compatible " +
 			"-memory-tool-route-base-url URL " +
-			"-memory-tool-route-model MODEL] [-pretty]",
+			"-memory-tool-route-model MODEL] " +
+			"[-configured-candidate-judge-credential-file FILE " +
+			"-configured-candidate-judge-provider-id ID " +
+			"-configured-candidate-judge-provider-type openai|openai_compatible " +
+			"-configured-candidate-judge-base-url URL " +
+			"-configured-candidate-judge-model MODEL] [-pretty]",
 	)
 }
 
@@ -1147,8 +1299,13 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 	if options.providerMode == memorycapture.ProviderModeFakeProtocol {
 		provider := memorycapture.NewFakeProtocolProvider()
 		bundle := providerBundle{passage: provider, hybrid: provider, clear: func() {}}
-		if options.captureMode == memorycapture.CaptureModeCloudJudgeDevelopment {
-			bundle.judge = memorycapture.NewFakeProtocolCandidateJudge(options.judgeModelID)
+		if options.captureMode == memorycapture.CaptureModeCloudJudgeDevelopment ||
+			options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge {
+			modelID := options.judgeModelID
+			if options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge {
+				modelID = options.judgeConfiguredModelID
+			}
+			bundle.judge = memorycapture.NewFakeProtocolCandidateJudge(modelID)
 		}
 		if options.captureMode == memorycapture.CaptureModeMemoryToolRouteDevelopment ||
 			options.captureMode == memorycapture.CaptureModeMemoryToolRouteDiagnostic {
@@ -1210,6 +1367,66 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 			return providerBundle{}, errors.New("construct live SiliconFlow cloud judge failed")
 		}
 		bundle.judge = judge
+	}
+	if options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge {
+		judgeCredential, credentialErr := readRegularBoundedFile(
+			options.judgeCredentialPath,
+			maximumCredentialSize,
+			true,
+		)
+		if credentialErr != nil {
+			resolver.clear()
+			return providerBundle{}, errors.New("read configured candidate-judge credential failed")
+		}
+		judgeCredential = trimSingleLineEnding(judgeCredential)
+		if !validCredential(judgeCredential) ||
+			sameRegularFile(options.credentialPath, options.judgeCredentialPath) ||
+			bytes.Equal(credential, judgeCredential) {
+			clearBytes(judgeCredential)
+			resolver.clear()
+			return providerBundle{}, errors.New(
+				"configured candidate-judge credential is invalid or not independent",
+			)
+		}
+		authority, providerType, baseURL, providerErr := resolveConfiguredChatProvider(
+			options.judgeProviderID,
+			options.judgeProviderType,
+			options.judgeBaseURL,
+			options.judgeConfiguredModelID,
+			"configured candidate judge",
+		)
+		if providerErr != nil {
+			clearBytes(judgeCredential)
+			resolver.clear()
+			return providerBundle{}, providerErr
+		}
+		chatProvider, providerErr := providerfactory.NewChatProvider(providerfactory.ChatConfig{
+			ProviderID: authority.ProviderID,
+			Type:       providerType,
+			BaseURL:    baseURL,
+			APIKey:     string(judgeCredential),
+			Timeout:    2 * time.Second,
+		})
+		if providerErr != nil {
+			clearBytes(judgeCredential)
+			resolver.clear()
+			return providerBundle{}, errors.New("construct configured candidate judge failed")
+		}
+		judge, judgeErr := memoryjudge.NewChatAdapter(chatProvider, chat.ModelRef{
+			ProviderID: authority.ProviderID,
+			ModelID:    authority.ModelID,
+		})
+		if judgeErr != nil {
+			clearBytes(judgeCredential)
+			resolver.clear()
+			return providerBundle{}, errors.New("construct configured candidate judge failed")
+		}
+		bundle.judge = judge
+		bundle.secrets = append(bundle.secrets, judgeCredential)
+		bundle.clear = func() {
+			clearBytes(judgeCredential)
+			resolver.clear()
+		}
 	}
 	if options.captureMode == memorycapture.CaptureModeMemoryToolRouteDevelopment ||
 		options.captureMode == memorycapture.CaptureModeMemoryToolRouteDiagnostic {
@@ -1281,6 +1498,24 @@ func buildMemoryToolRouteAuthority(
 	return authority, err
 }
 
+func buildConfiguredCandidateJudgeAuthority(
+	options commandOptions,
+) (memorycapture.ConfiguredCandidateJudgeProfileAuthority, error) {
+	authority, _, _, err := resolveConfiguredChatProvider(
+		options.judgeProviderID,
+		options.judgeProviderType,
+		options.judgeBaseURL,
+		options.judgeConfiguredModelID,
+		"configured candidate judge",
+	)
+	return memorycapture.ConfiguredCandidateJudgeProfileAuthority{
+		ProviderID:    authority.ProviderID,
+		ProviderType:  authority.ProviderType,
+		BaseURLSHA256: authority.BaseURLSHA256,
+		ModelID:       authority.ModelID,
+	}, err
+}
+
 func resolveMemoryToolRoute(
 	options commandOptions,
 ) (
@@ -1289,15 +1524,36 @@ func resolveMemoryToolRoute(
 	string,
 	error,
 ) {
-	providerID := strings.TrimSpace(options.routeProviderID)
-	modelID := strings.TrimSpace(options.routeModelID)
+	return resolveConfiguredChatProvider(
+		options.routeProviderID,
+		options.routeProviderType,
+		options.routeBaseURL,
+		options.routeModelID,
+		"Memory Tool-route",
+	)
+}
+
+func resolveConfiguredChatProvider(
+	rawProviderID string,
+	rawProviderType string,
+	rawBaseURL string,
+	rawModelID string,
+	subject string,
+) (
+	memorycapture.MemoryToolRouteProfileAuthority,
+	runtimeconfig.ProviderType,
+	string,
+	error,
+) {
+	providerID := strings.TrimSpace(rawProviderID)
+	modelID := strings.TrimSpace(rawModelID)
 	if !commandRunIDRE.MatchString(providerID) || !validRouteLabel(modelID, 512) {
 		return memorycapture.MemoryToolRouteProfileAuthority{}, "", "",
-			errors.New("Memory Tool-route Provider/model authority is invalid")
+			errors.New(subject + " Provider/model authority is invalid")
 	}
 	var providerType runtimeconfig.ProviderType
 	var authorityType string
-	switch strings.ToLower(strings.TrimSpace(options.routeProviderType)) {
+	switch strings.ToLower(strings.TrimSpace(rawProviderType)) {
 	case "openai":
 		providerType = runtimeconfig.ProviderTypeOpenAI
 		authorityType = "openai"
@@ -1306,9 +1562,9 @@ func resolveMemoryToolRoute(
 		authorityType = "openai_compatible"
 	default:
 		return memorycapture.MemoryToolRouteProfileAuthority{}, "", "",
-			errors.New("Memory Tool-route Provider type is unsupported")
+			errors.New(subject + " Provider type is unsupported")
 	}
-	normalizedBaseURL, err := normalizeMemoryToolRouteBaseURL(options.routeBaseURL)
+	normalizedBaseURL, err := normalizeConfiguredChatBaseURL(rawBaseURL, subject)
 	if err != nil {
 		return memorycapture.MemoryToolRouteProfileAuthority{}, "", "", err
 	}
@@ -1321,10 +1577,14 @@ func resolveMemoryToolRoute(
 }
 
 func normalizeMemoryToolRouteBaseURL(raw string) (string, error) {
+	return normalizeConfiguredChatBaseURL(raw, "Memory Tool-route")
+}
+
+func normalizeConfiguredChatBaseURL(raw string, subject string) (string, error) {
 	value := strings.TrimSuffix(strings.TrimSpace(raw), "#")
 	value = strings.TrimRight(value, "/")
 	if value == "" || value == "default" || len(value) > 2048 {
-		return "", errors.New("Memory Tool-route base URL is invalid")
+		return "", errors.New(subject + " base URL is invalid")
 	}
 	if !strings.HasSuffix(value, "/v1") {
 		value += "/v1"
@@ -1332,7 +1592,7 @@ func normalizeMemoryToolRouteBaseURL(raw string) (string, error) {
 	parsed, err := url.Parse(value)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
 		parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return "", errors.New("Memory Tool-route base URL is invalid")
+		return "", errors.New(subject + " base URL is invalid")
 	}
 	return value, nil
 }
@@ -1387,12 +1647,17 @@ func loadLiveAuthorization(getenv environmentLookup) memorycapture.LiveAuthoriza
 		Enabled: parseBool(value(liveEnabledEnv)), Approval: value(liveApprovalEnv),
 		RunID: value(liveRunIDEnv), ProviderID: value(liveProviderIDEnv),
 		EmbeddingModelID: value(liveEmbeddingModelEnv), RerankModelID: value(liveRerankModelEnv),
-		CloudJudgeModelID:            value(liveCloudJudgeModelEnv),
-		MemoryToolRouteApproval:      value(liveMemoryToolRouteApprovalEnv),
-		MemoryToolRouteProviderID:    value(liveMemoryToolRouteProviderIDEnv),
-		MemoryToolRouteProviderType:  value(liveMemoryToolRouteProviderTypeEnv),
-		MemoryToolRouteBaseURLSHA256: value(liveMemoryToolRouteBaseURLSHA256Env),
-		MemoryToolRouteModelID:       value(liveMemoryToolRouteModelIDEnv),
+		CloudJudgeModelID:                     value(liveCloudJudgeModelEnv),
+		MemoryToolRouteApproval:               value(liveMemoryToolRouteApprovalEnv),
+		MemoryToolRouteProviderID:             value(liveMemoryToolRouteProviderIDEnv),
+		MemoryToolRouteProviderType:           value(liveMemoryToolRouteProviderTypeEnv),
+		MemoryToolRouteBaseURLSHA256:          value(liveMemoryToolRouteBaseURLSHA256Env),
+		MemoryToolRouteModelID:                value(liveMemoryToolRouteModelIDEnv),
+		ConfiguredCandidateJudgeApproval:      value(liveConfiguredCandidateJudgeApprovalEnv),
+		ConfiguredCandidateJudgeProviderID:    value(liveConfiguredCandidateJudgeProviderIDEnv),
+		ConfiguredCandidateJudgeProviderType:  value(liveConfiguredCandidateJudgeProviderTypeEnv),
+		ConfiguredCandidateJudgeBaseURLSHA256: value(liveConfiguredCandidateJudgeBaseURLSHA256Env),
+		ConfiguredCandidateJudgeModelID:       value(liveConfiguredCandidateJudgeModelIDEnv),
 	}
 }
 

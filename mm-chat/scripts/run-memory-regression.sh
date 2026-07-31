@@ -8,7 +8,7 @@ usage: run-memory-regression.sh \
   --output-dir <new-run-parent> \
   [--regression-root <protected-root>] \
   [--provider-mode fake_protocol|live_siliconflow] \
-  [--capture-mode full_regression|development_calibration|development_cloud_judge|development_memory_tool_route|development_memory_tool_route_diagnostic|frozen_validation] \
+  [--capture-mode full_regression|development_calibration|development_cloud_judge|development_memory_tool_route|development_memory_tool_route_diagnostic|development_configured_candidate_judge|frozen_validation] \
   [--cloud-judge-model <fixed-model-id>] \
   [--credential-file <mode-0600-file>] \
   [--live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA] \
@@ -17,7 +17,13 @@ usage: run-memory-regression.sh \
   [--memory-tool-route-provider-type openai|openai_compatible] \
   [--memory-tool-route-base-url <configured-base-url>] \
   [--memory-tool-route-model <exact-model-id>] \
-  [--memory-tool-route-approval I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA]
+  [--memory-tool-route-approval I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA] \
+  [--configured-candidate-judge-credential-file <independent-mode-0600-file>] \
+  [--configured-candidate-judge-provider-id <configured-provider-id>] \
+  [--configured-candidate-judge-provider-type openai|openai_compatible] \
+  [--configured-candidate-judge-base-url <configured-base-url>] \
+  [--configured-candidate-judge-model <exact-model-id>] \
+  [--configured-candidate-judge-approval I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA]
 
 Run the production v1 lexical and native v2 hybrid Memory readers against the
 protected machine regression corpus in a random isolated Compose project.
@@ -45,6 +51,12 @@ memory_tool_route_provider_type=""
 memory_tool_route_base_url=""
 memory_tool_route_model=""
 memory_tool_route_approval=""
+configured_judge_credential_source=""
+configured_judge_provider_id=""
+configured_judge_provider_type=""
+configured_judge_base_url=""
+configured_judge_model=""
+configured_judge_approval=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -118,6 +130,36 @@ while [[ $# -gt 0 ]]; do
       memory_tool_route_approval="$2"
       shift 2
       ;;
+    --configured-candidate-judge-credential-file)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      configured_judge_credential_source="$2"
+      shift 2
+      ;;
+    --configured-candidate-judge-provider-id)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      configured_judge_provider_id="$2"
+      shift 2
+      ;;
+    --configured-candidate-judge-provider-type)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      configured_judge_provider_type="$2"
+      shift 2
+      ;;
+    --configured-candidate-judge-base-url)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      configured_judge_base_url="$2"
+      shift 2
+      ;;
+    --configured-candidate-judge-model)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      configured_judge_model="$2"
+      shift 2
+      ;;
+    --configured-candidate-judge-approval)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      configured_judge_approval="$2"
+      shift 2
+      ;;
     -h | --help)
       usage
       exit 0
@@ -173,6 +215,15 @@ case "${capture_mode}" in
       echo "Memory regression: Memory Tool-route inputs require development_memory_tool_route mode" >&2
       exit 2
     fi
+    if [[ -n "${configured_judge_credential_source}" || \
+      -n "${configured_judge_provider_id}" || \
+      -n "${configured_judge_provider_type}" || \
+      -n "${configured_judge_base_url}" || \
+      -n "${configured_judge_model}" || \
+      -n "${configured_judge_approval}" ]]; then
+      echo "Memory regression: configured candidate-judge inputs require its Development mode" >&2
+      exit 2
+    fi
     ;;
   development_calibration | development_cloud_judge | frozen_validation)
     if [[ "${capture_mode}" == "development_cloud_judge" && -z "${cloud_judge_model}" ]]; then
@@ -186,6 +237,15 @@ case "${capture_mode}" in
       -n "${memory_tool_route_model}" || \
       -n "${memory_tool_route_approval}" ]]; then
       echo "Memory regression: Memory Tool-route inputs require development_memory_tool_route mode" >&2
+      exit 2
+    fi
+    if [[ -n "${configured_judge_credential_source}" || \
+      -n "${configured_judge_provider_id}" || \
+      -n "${configured_judge_provider_type}" || \
+      -n "${configured_judge_base_url}" || \
+      -n "${configured_judge_model}" || \
+      -n "${configured_judge_approval}" ]]; then
+      echo "Memory regression: configured candidate-judge inputs require its Development mode" >&2
       exit 2
     fi
     ;;
@@ -219,6 +279,57 @@ case "${capture_mode}" in
     elif [[ -n "${memory_tool_route_credential_source}" || \
       -n "${memory_tool_route_approval}" ]]; then
       echo "Memory regression: fake Memory Tool-route mode rejects live credential/approval inputs" >&2
+      exit 2
+    fi
+    if [[ -n "${configured_judge_credential_source}" || \
+      -n "${configured_judge_provider_id}" || \
+      -n "${configured_judge_provider_type}" || \
+      -n "${configured_judge_base_url}" || \
+      -n "${configured_judge_model}" || \
+      -n "${configured_judge_approval}" ]]; then
+      echo "Memory regression: configured candidate-judge inputs require its Development mode" >&2
+      exit 2
+    fi
+    ;;
+  development_configured_candidate_judge)
+    if [[ -z "${configured_judge_provider_id}" || \
+      -z "${configured_judge_provider_type}" || \
+      -z "${configured_judge_base_url}" || \
+      -z "${configured_judge_model}" ]]; then
+      echo "Memory regression: configured candidate-judge mode requires exact Provider ID/type/base URL/model" >&2
+      exit 2
+    fi
+    case "${configured_judge_provider_type}" in
+      openai | openai_compatible) ;;
+      *)
+        echo "Memory regression: configured candidate-judge Provider type must be openai or openai_compatible" >&2
+        exit 2
+        ;;
+    esac
+    if [[ ! "${configured_judge_provider_id}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ||
+      ! "${configured_judge_model}" =~ ^[!-~]{1,512}$ ||
+      ! "${configured_judge_base_url}" =~ ^[!-~]{1,2048}$ ]]; then
+      echo "Memory regression: configured candidate-judge Provider/model identifier is invalid" >&2
+      exit 2
+    fi
+    if [[ "${provider_mode}" == "live_siliconflow" ]]; then
+      if [[ -z "${configured_judge_credential_source}" || \
+        "${configured_judge_approval}" != "I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA" ]]; then
+        echo "Memory regression: live configured candidate-judge mode requires an independent credential and exact quota approval" >&2
+        exit 2
+      fi
+    elif [[ -n "${configured_judge_credential_source}" || \
+      -n "${configured_judge_approval}" ]]; then
+      echo "Memory regression: fake configured candidate-judge mode rejects live credential/approval inputs" >&2
+      exit 2
+    fi
+    if [[ -n "${memory_tool_route_credential_source}" || \
+      -n "${memory_tool_route_provider_id}" || \
+      -n "${memory_tool_route_provider_type}" || \
+      -n "${memory_tool_route_base_url}" || \
+      -n "${memory_tool_route_model}" || \
+      -n "${memory_tool_route_approval}" ]]; then
+      echo "Memory regression: Memory Tool-route inputs require its Development mode" >&2
       exit 2
     fi
     ;;
@@ -257,6 +368,36 @@ print(value)
 PY
 )"
   memory_tool_route_base_url_sha256="$(printf '%s' "${memory_tool_route_base_url}" | sha256sum | awk '{print $1}')"
+fi
+
+configured_judge_base_url_sha256=""
+if [[ "${capture_mode}" == "development_configured_candidate_judge" ]]; then
+  configured_judge_base_url="$(python3 - "${configured_judge_base_url}" <<'PY'
+import sys
+from urllib.parse import urlsplit
+
+value = sys.argv[1].strip()
+if value.endswith("#"):
+    value = value[:-1]
+value = value.rstrip("/")
+if not value or value == "default" or len(value) > 2048:
+    raise SystemExit("Memory regression: configured candidate-judge base URL is invalid")
+if not value.endswith("/v1"):
+    value += "/v1"
+parsed = urlsplit(value)
+if (
+    parsed.scheme not in {"http", "https"}
+    or not parsed.netloc
+    or parsed.username is not None
+    or parsed.password is not None
+    or parsed.query
+    or parsed.fragment
+):
+    raise SystemExit("Memory regression: configured candidate-judge base URL is invalid")
+print(value)
+PY
+)"
+  configured_judge_base_url_sha256="$(printf '%s' "${configured_judge_base_url}" | sha256sum | awk '{print $1}')"
 fi
 
 if [[ ! -d "${regression_root}" || -L "${regression_root}" ]]; then
@@ -308,6 +449,24 @@ if [[ "${provider_mode}" == "live_siliconflow" ]]; then
     if [[ "${credential_source}" -ef "${memory_tool_route_credential_source}" ]] || \
       cmp -s "${credential_source}" "${memory_tool_route_credential_source}"; then
       echo "Memory regression: retrieval and Memory Tool-route credentials must be independent" >&2
+      exit 1
+    fi
+  fi
+  if [[ "${capture_mode}" == "development_configured_candidate_judge" ]]; then
+    if [[ ! -f "${configured_judge_credential_source}" || \
+      -L "${configured_judge_credential_source}" ]]; then
+      echo "Memory regression: configured candidate-judge credential must be a regular non-symlink file" >&2
+      exit 1
+    fi
+    configured_judge_credential_source="$(realpath "${configured_judge_credential_source}")"
+    configured_judge_credential_mode="$(stat -c '%a' "${configured_judge_credential_source}")"
+    if [[ "${configured_judge_credential_mode}" != "600" ]]; then
+      echo "Memory regression: configured candidate-judge credential file mode must be 0600" >&2
+      exit 1
+    fi
+    if [[ "${credential_source}" -ef "${configured_judge_credential_source}" ]] || \
+      cmp -s "${credential_source}" "${configured_judge_credential_source}"; then
+      echo "Memory regression: retrieval and configured candidate-judge credentials must be independent" >&2
       exit 1
     fi
   fi
@@ -374,6 +533,7 @@ env_file="${temp_dir}/runner.env"
 cost_copy="${temp_dir}/cost-basis.json"
 credential_copy="${temp_dir}/provider.key"
 memory_tool_route_credential_copy="${temp_dir}/memory-tool-route-provider.key"
+configured_judge_credential_copy="${temp_dir}/configured-candidate-judge-provider.key"
 capture_stdout="${temp_dir}/capture.stdout"
 capture_stderr="${temp_dir}/capture.stderr"
 metadata_snapshot="${temp_dir}/docker-metadata.json"
@@ -427,13 +587,27 @@ else
   : >"${memory_tool_route_credential_copy}"
 fi
 chmod 600 "${memory_tool_route_credential_copy}"
+if [[ "${provider_mode}" == "live_siliconflow" && \
+  "${capture_mode}" == "development_configured_candidate_judge" ]]; then
+  cp --no-preserve=mode,ownership,timestamps \
+    "${configured_judge_credential_source}" \
+    "${configured_judge_credential_copy}"
+else
+  : >"${configured_judge_credential_copy}"
+fi
+chmod 600 "${configured_judge_credential_copy}"
 
 db_password="$(openssl rand -hex 32)"
 memory_tool_route_credential_target=""
+configured_judge_credential_target=""
 if [[ "${provider_mode}" == "live_siliconflow" && \
   ("${capture_mode}" == "development_memory_tool_route" ||
   "${capture_mode}" == "development_memory_tool_route_diagnostic") ]]; then
   memory_tool_route_credential_target="/run/mm-chat-memory-regression/memory-tool-route-provider.key"
+fi
+if [[ "${provider_mode}" == "live_siliconflow" && \
+  "${capture_mode}" == "development_configured_candidate_judge" ]]; then
+  configured_judge_credential_target="/run/mm-chat-memory-regression/configured-candidate-judge-provider.key"
 fi
 cat >"${env_file}" <<EOF
 MEMORY_REGRESSION_DB_PASSWORD=${db_password}
@@ -442,6 +616,8 @@ MEMORY_REGRESSION_COST_BASIS_PATH=$(docker_path "${cost_copy}")
 MEMORY_REGRESSION_CREDENTIAL_PATH=$(docker_path "${credential_copy}")
 MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_CREDENTIAL_PATH=$(docker_path "${memory_tool_route_credential_copy}")
 MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_CREDENTIAL_TARGET=${memory_tool_route_credential_target}
+MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_CREDENTIAL_PATH=$(docker_path "${configured_judge_credential_copy}")
+MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_CREDENTIAL_TARGET=${configured_judge_credential_target}
 MEMORY_REGRESSION_OUTPUT_PATH=$(docker_path "${run_output}")
 MEMORY_REGRESSION_RUN_ID=${run_id}
 MEMORY_REGRESSION_CAPTURE_MODE=${capture_mode}
@@ -453,6 +629,12 @@ MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_BASE_URL=${memory_tool_route_base_url}
 MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_BASE_URL_SHA256=${memory_tool_route_base_url_sha256}
 MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_MODEL=${memory_tool_route_model}
 MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_APPROVAL=${memory_tool_route_approval:-NOT_AUTHORIZED}
+MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_ID=${configured_judge_provider_id}
+MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_TYPE=${configured_judge_provider_type}
+MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_BASE_URL=${configured_judge_base_url}
+MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_BASE_URL_SHA256=${configured_judge_base_url_sha256}
+MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_MODEL=${configured_judge_model}
+MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_APPROVAL=${configured_judge_approval:-NOT_AUTHORIZED}
 EOF
 chmod 600 "${env_file}"
 unset db_password
@@ -534,6 +716,7 @@ python3 - \
   "${regression_root}" \
   "${credential_copy}" \
   "${memory_tool_route_credential_copy}" \
+  "${configured_judge_credential_copy}" \
   "${capture_stdout}" \
   "${capture_stderr}" \
   "${metadata_snapshot}" \
@@ -545,7 +728,11 @@ python3 - \
   "${memory_tool_route_provider_id}" \
   "${memory_tool_route_provider_type}" \
   "${memory_tool_route_base_url_sha256}" \
-  "${memory_tool_route_model}" <<'PY'
+  "${memory_tool_route_model}" \
+  "${configured_judge_provider_id}" \
+  "${configured_judge_provider_type}" \
+  "${configured_judge_base_url_sha256}" \
+  "${configured_judge_model}" <<'PY'
 import json
 import hashlib
 import sys
@@ -555,18 +742,23 @@ output = Path(sys.argv[1])
 root = Path(sys.argv[2])
 credential_path = Path(sys.argv[3])
 memory_tool_route_credential_path = Path(sys.argv[4])
-stdout_path = Path(sys.argv[5])
-stderr_path = Path(sys.argv[6])
-metadata_path = Path(sys.argv[7])
-mode = sys.argv[8]
-candidate_prefix = sys.argv[9]
-capture_mode = sys.argv[10]
-leak_free_marker = Path(sys.argv[11])
-cloud_judge_model = sys.argv[12]
-memory_tool_route_provider_id = sys.argv[13]
-memory_tool_route_provider_type = sys.argv[14]
-memory_tool_route_base_url_sha256 = sys.argv[15]
-memory_tool_route_model = sys.argv[16]
+configured_judge_credential_path = Path(sys.argv[5])
+stdout_path = Path(sys.argv[6])
+stderr_path = Path(sys.argv[7])
+metadata_path = Path(sys.argv[8])
+mode = sys.argv[9]
+candidate_prefix = sys.argv[10]
+capture_mode = sys.argv[11]
+leak_free_marker = Path(sys.argv[12])
+cloud_judge_model = sys.argv[13]
+memory_tool_route_provider_id = sys.argv[14]
+memory_tool_route_provider_type = sys.argv[15]
+memory_tool_route_base_url_sha256 = sys.argv[16]
+memory_tool_route_model = sys.argv[17]
+configured_judge_provider_id = sys.argv[18]
+configured_judge_provider_type = sys.argv[19]
+configured_judge_base_url_sha256 = sys.argv[20]
+configured_judge_model = sys.argv[21]
 
 fixtures = json.loads((root / "fixtures.json").read_text(encoding="utf-8"))
 corpus = json.loads((root / "corpus.json").read_text(encoding="utf-8"))
@@ -586,6 +778,9 @@ if credential:
 memory_tool_route_credential = memory_tool_route_credential_path.read_bytes().rstrip(b"\r\n")
 if memory_tool_route_credential:
     forbidden.append(memory_tool_route_credential)
+configured_judge_credential = configured_judge_credential_path.read_bytes().rstrip(b"\r\n")
+if configured_judge_credential:
+    forbidden.append(configured_judge_credential)
 
 retained_and_logs = [path.read_bytes() for path in output.iterdir() if path.is_file()]
 retained_and_logs += [stdout_path.read_bytes(), stderr_path.read_bytes(), metadata_path.read_bytes()]
@@ -611,6 +806,8 @@ elif capture_mode == "development_memory_tool_route":
     expected = {"memory-first-tool-round-development.json", "run-manifest.json"}
 elif capture_mode == "development_memory_tool_route_diagnostic":
     expected = {"memory-first-tool-round-route-diagnostic-development.json", "run-manifest.json"}
+elif capture_mode == "development_configured_candidate_judge":
+    expected = {"configured-candidate-judge-development.json", "run-manifest.json"}
 elif capture_mode == "frozen_validation":
     expected = {"relevance-validation.json", "run-manifest.json"}
 else:
@@ -638,6 +835,7 @@ expected_admission = {
     "development_cloud_judge": "development_cloud_judge_only",
     "development_memory_tool_route": "development_main_model_first_tool_round_only",
     "development_memory_tool_route_diagnostic": "development_main_model_first_tool_round_route_failure_diagnostic_only",
+    "development_configured_candidate_judge": "development_configured_candidate_judge_only",
     "frozen_validation": "frozen_validation_only",
 }[capture_mode]
 if manifest.get("admissionMode") != expected_admission or manifest.get("promotionEligible") is not False:
@@ -658,6 +856,7 @@ else:
         "development_cloud_judge",
         "development_memory_tool_route",
         "development_memory_tool_route_diagnostic",
+        "development_configured_candidate_judge",
     } else "validation"
     if manifest.get("captureMode") != capture_mode or manifest.get("split") != expected_split:
         raise SystemExit("relevance run split authority drift")
@@ -786,6 +985,52 @@ elif capture_mode == "development_cloud_judge":
         or not isinstance(evaluation.get("providerCostPassed"), bool)
     ):
         raise SystemExit("legacy cloud-judge Development gained owner budget authority")
+elif capture_mode == "development_configured_candidate_judge":
+    report = json.loads((output / "configured-candidate-judge-development.json").read_text(encoding="utf-8"))
+    if (
+        report.get("schemaVersion") != "neo-chat.memory-regression-relevance-calibration.v10"
+        or report.get("split") != "development"
+        or report.get("caseCount") != 300
+        or report.get("admissionMode") != expected_admission
+        or report.get("promotionEligible") is not False
+        or report.get("providerEgressPolicy") != "owner_authorized_normal_candidates_v1"
+        or report.get("providerCostPolicy") != "owner_authorized_absolute_cap_v1"
+        or report.get("providerCostAuthorized") is not True
+        or report.get("judgeProviderId") != configured_judge_provider_id
+        or report.get("judgeProviderType") != configured_judge_provider_type
+        or report.get("judgeBaseUrlSha256") != configured_judge_base_url_sha256
+        or report.get("judgeModelId") != configured_judge_model
+        or report.get("judgeAdapter") != "chat-configured-candidate-judge-v1"
+    ):
+        raise SystemExit("configured candidate-judge Development authority drift")
+    evaluation = report.get("evaluation")
+    diagnostics = report.get("diagnostics")
+    authority = report.get("costAuthority")
+    if (
+        not isinstance(evaluation, dict)
+        or not isinstance(report.get("passed"), bool)
+        or report.get("passed") != evaluation.get("passed")
+        or not isinstance(diagnostics, dict)
+        or not isinstance(diagnostics.get("failureCodeCounts"), dict)
+        or sum(
+            diagnostics.get(name, -1)
+            for name in ("emptyCandidateCaseCount", "judgeCompletedCaseCount", "failedCaseCount")
+        ) != 300
+        or not isinstance(authority, dict)
+    ):
+        raise SystemExit("configured candidate-judge Development result drift")
+    actual_requests = authority.get("actualRequestCount")
+    if (
+        not isinstance(actual_requests, int)
+        or actual_requests < 0
+        or actual_requests > authority.get("authorizedRequestCount", -1)
+        or authority.get("actualInputTokenUpperBound", -1) > authority.get("authorizedMaximumInputTokens", -1)
+        or authority.get("actualOutputTokenUpperBound") != actual_requests * 128
+        or authority.get("actualOutputTokenUpperBound", -1) > authority.get("authorizedMaximumOutputTokens", -1)
+        or authority.get("maximumMemoryProviderCostMicrounits", 0)
+        < authority.get("maximumJudgeCostMicrounits", 0)
+    ):
+        raise SystemExit("configured candidate-judge Development cost authority drift")
 elif capture_mode in {"development_memory_tool_route", "development_memory_tool_route_diagnostic"}:
     diagnostic = capture_mode == "development_memory_tool_route_diagnostic"
     report_name = (

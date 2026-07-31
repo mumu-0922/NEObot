@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -177,6 +178,47 @@ func TestMemoryFirstToolRoundCostBasisIsSchemaSeparatedFromPreflight(t *testing.
 	invalid.MemoryToolRouteAuthority.MaximumOutputTokens++
 	if err := ValidateMemoryToolFirstRoundCostAuthority(invalid, authority); err == nil {
 		t.Fatal("non-divisible per-request output authority was accepted")
+	}
+}
+
+func TestConfiguredCandidateJudgeCostBasisBindsExactProvider(t *testing.T) {
+	valid := configuredCandidateJudgeTestCostBasis()
+	authority := configuredCandidateJudgeTestAuthority()
+	if err := ValidateConfiguredCandidateJudgeCostAuthority(valid, authority); err != nil {
+		t.Fatal(err)
+	}
+	if digest, err := CostBasisSHA256(valid); err != nil || len(digest) != 64 {
+		t.Fatalf("configured candidate-judge cost digest = %q/%v", digest, err)
+	}
+
+	mutations := []func(*ConfiguredCandidateJudgeCostAuthority){
+		func(value *ConfiguredCandidateJudgeCostAuthority) { value.ProviderID = "other" },
+		func(value *ConfiguredCandidateJudgeCostAuthority) { value.ProviderType = "openai" },
+		func(value *ConfiguredCandidateJudgeCostAuthority) { value.BaseURLSHA256 = strings.Repeat("c", 64) },
+		func(value *ConfiguredCandidateJudgeCostAuthority) { value.ModelID = "other" },
+		func(value *ConfiguredCandidateJudgeCostAuthority) { value.RequestCount = 299 },
+		func(value *ConfiguredCandidateJudgeCostAuthority) { value.MaximumOutputTokens++ },
+		func(value *ConfiguredCandidateJudgeCostAuthority) { value.MaximumCostMicrounits-- },
+	}
+	for index, mutate := range mutations {
+		candidate := valid
+		copyAuthority := *valid.ConfiguredCandidateJudgeAuthority
+		candidate.ConfiguredCandidateJudgeAuthority = &copyAuthority
+		mutate(candidate.ConfiguredCandidateJudgeAuthority)
+		if err := ValidateConfiguredCandidateJudgeCostAuthority(candidate, authority); err == nil {
+			t.Fatalf("configured candidate-judge cost drift %d was accepted", index)
+		}
+	}
+
+	mixed := valid
+	mixed.CloudJudgeAuthority = &CloudJudgeCostAuthority{}
+	if _, err := CostBasisSHA256(mixed); err == nil {
+		t.Fatal("configured candidate-judge cost accepted mixed cloud authority")
+	}
+	legacy := cloudJudgeTestCostBasis()
+	legacy.ConfiguredCandidateJudgeAuthority = valid.ConfiguredCandidateJudgeAuthority
+	if err := ValidateCloudJudgeCostAuthority(legacy, hybridJudgeTestModelID); err == nil {
+		t.Fatal("legacy cloud cost validator accepted configured-judge authority")
 	}
 }
 

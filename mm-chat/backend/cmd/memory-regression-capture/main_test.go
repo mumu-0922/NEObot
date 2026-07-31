@@ -88,6 +88,27 @@ func TestParseCommandSeparatesFakeAndLiveCredentialBoundaries(t *testing.T) {
 		"-credential-file", "/siliconflow-secret")); err == nil {
 		t.Fatal("live Memory Tool-route command omitted its independent credential")
 	}
+	configuredJudge := append(append([]string{}, base...),
+		"-capture-mode", memorycapture.CaptureModeConfiguredCandidateJudge,
+		"-configured-candidate-judge-provider-id", "configured-gpt",
+		"-configured-candidate-judge-provider-type", "openai",
+		"-configured-candidate-judge-base-url", "https://api.openai.example/v1",
+		"-configured-candidate-judge-model", "gpt-test",
+	)
+	options, err = parseCommand(configuredJudge)
+	if err != nil || options.judgeProviderID != "configured-gpt" ||
+		options.judgeConfiguredModelID != "gpt-test" || options.judgeCredentialPath != "" {
+		t.Fatalf("parse fake configured candidate-judge command = %#v/%v", options, err)
+	}
+	if _, err := parseCommand(append(append([]string{}, configuredJudge...),
+		"-configured-candidate-judge-credential-file", "/judge-secret")); err == nil {
+		t.Fatal("fake configured candidate-judge accepted a credential file")
+	}
+	if _, err := parseCommand(append(append([]string{}, configuredJudge...),
+		"-provider-mode", memorycapture.ProviderModeLiveSiliconFlow,
+		"-credential-file", "/siliconflow-secret")); err == nil {
+		t.Fatal("live configured candidate-judge omitted its independent credential")
+	}
 }
 
 func TestLoadDatabaseConfigsRejectsLiveOrUnprivilegedTopologyBeforeConnect(t *testing.T) {
@@ -196,6 +217,59 @@ func TestBuildProvidersBindsIndependentMemoryToolRouteCredential(t *testing.T) {
 	}
 }
 
+func TestBuildProvidersBindsConfiguredCandidateJudge(t *testing.T) {
+	fake, err := buildProviders(commandOptions{
+		providerMode:           memorycapture.ProviderModeFakeProtocol,
+		captureMode:            memorycapture.CaptureModeConfiguredCandidateJudge,
+		judgeConfiguredModelID: "gpt-test",
+	})
+	if err != nil || fake.judge == nil || fake.router != nil || len(fake.secrets) != 0 {
+		t.Fatalf("fake configured candidate-judge bundle = %#v/%v", fake, err)
+	}
+
+	directory := t.TempDir()
+	retrievalPath := filepath.Join(directory, "retrieval.key")
+	judgePath := filepath.Join(directory, "judge.key")
+	if err := os.WriteFile(retrievalPath, []byte("fixture-siliconflow-key\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(judgePath, []byte("fixture-configured-gpt-key\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	options := commandOptions{
+		providerMode:           memorycapture.ProviderModeLiveSiliconFlow,
+		captureMode:            memorycapture.CaptureModeConfiguredCandidateJudge,
+		credentialPath:         retrievalPath,
+		judgeCredentialPath:    judgePath,
+		judgeProviderID:        "configured-gpt",
+		judgeProviderType:      "openai",
+		judgeBaseURL:           "https://api.openai.example/v1",
+		judgeConfiguredModelID: "gpt-test",
+	}
+	bundle, err := buildProviders(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundle.judge == nil || bundle.router != nil || len(bundle.secrets) != 2 ||
+		string(bundle.secrets[0]) != "fixture-siliconflow-key" ||
+		string(bundle.secrets[1]) != "fixture-configured-gpt-key" {
+		t.Fatalf("configured candidate-judge Provider bundle = %#v", bundle)
+	}
+	bundle.clear()
+	for _, secret := range bundle.secrets {
+		for _, current := range secret {
+			if current != 0 {
+				t.Fatal("a configured candidate-judge credential byte slice was not cleared")
+			}
+		}
+	}
+
+	options.judgeCredentialPath = retrievalPath
+	if _, err := buildProviders(options); err == nil {
+		t.Fatal("configured candidate judge accepted the retrieval credential file")
+	}
+}
+
 func TestBuildMemoryToolRouteAuthorityNormalizesExactEndpoint(t *testing.T) {
 	options := commandOptions{
 		routeProviderID:   "configured-gpt",
@@ -224,14 +298,19 @@ func TestLoadLiveAuthorizationRequiresExactModelTargets(t *testing.T) {
 	values := map[string]string{
 		liveEnabledEnv: "true", liveApprovalEnv: memorycapture.LiveApproval,
 		liveRunIDEnv: "run-1", liveProviderIDEnv: "siliconflow",
-		liveEmbeddingModelEnv:               ragproviders.SiliconFlowEmbeddingModel,
-		liveRerankModelEnv:                  ragproviders.SiliconFlowRerankModel,
-		liveCloudJudgeModelEnv:              memorycapture.DefaultSiliconFlowCloudJudgeModelID,
-		liveMemoryToolRouteApprovalEnv:      memorycapture.LiveMemoryToolRouteApproval,
-		liveMemoryToolRouteProviderIDEnv:    "configured-gpt",
-		liveMemoryToolRouteProviderTypeEnv:  "openai_compatible",
-		liveMemoryToolRouteBaseURLSHA256Env: strings.Repeat("b", 64),
-		liveMemoryToolRouteModelIDEnv:       "gpt-test",
+		liveEmbeddingModelEnv:                        ragproviders.SiliconFlowEmbeddingModel,
+		liveRerankModelEnv:                           ragproviders.SiliconFlowRerankModel,
+		liveCloudJudgeModelEnv:                       memorycapture.DefaultSiliconFlowCloudJudgeModelID,
+		liveMemoryToolRouteApprovalEnv:               memorycapture.LiveMemoryToolRouteApproval,
+		liveMemoryToolRouteProviderIDEnv:             "configured-gpt",
+		liveMemoryToolRouteProviderTypeEnv:           "openai_compatible",
+		liveMemoryToolRouteBaseURLSHA256Env:          strings.Repeat("b", 64),
+		liveMemoryToolRouteModelIDEnv:                "gpt-test",
+		liveConfiguredCandidateJudgeApprovalEnv:      memorycapture.LiveMemoryToolRouteApproval,
+		liveConfiguredCandidateJudgeProviderIDEnv:    "configured-gpt",
+		liveConfiguredCandidateJudgeProviderTypeEnv:  "openai_compatible",
+		liveConfiguredCandidateJudgeBaseURLSHA256Env: strings.Repeat("c", 64),
+		liveConfiguredCandidateJudgeModelIDEnv:       "gpt-judge",
 	}
 	authorization := loadLiveAuthorization(mapEnvironment(values))
 	if err := memorycapture.AuthorizeProviderMode(
@@ -253,6 +332,16 @@ func TestLoadLiveAuthorizationRequiresExactModelTargets(t *testing.T) {
 		memorycapture.MemoryToolRouteProfileAuthority{
 			ProviderID: "configured-gpt", ProviderType: "openai_compatible",
 			BaseURLSHA256: strings.Repeat("b", 64), ModelID: "gpt-test",
+		},
+		authorization,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := memorycapture.AuthorizeConfiguredCandidateJudgeTarget(
+		memorycapture.ProviderModeLiveSiliconFlow,
+		memorycapture.ConfiguredCandidateJudgeProfileAuthority{
+			ProviderID: "configured-gpt", ProviderType: "openai_compatible",
+			BaseURLSHA256: strings.Repeat("c", 64), ModelID: "gpt-judge",
 		},
 		authorization,
 	); err != nil {

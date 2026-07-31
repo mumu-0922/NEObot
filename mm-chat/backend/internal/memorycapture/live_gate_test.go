@@ -106,6 +106,52 @@ func TestAuthorizeMemoryToolRouteTargetRequiresExactIndependentAuthority(t *test
 	}
 }
 
+func TestAuthorizeConfiguredCandidateJudgeTargetRequiresExactAuthority(t *testing.T) {
+	authority := configuredCandidateJudgeTestAuthority()
+	valid := LiveAuthorization{
+		ConfiguredCandidateJudgeApproval:      LiveMemoryToolRouteApproval,
+		ConfiguredCandidateJudgeProviderID:    authority.ProviderID,
+		ConfiguredCandidateJudgeProviderType:  authority.ProviderType,
+		ConfiguredCandidateJudgeBaseURLSHA256: authority.BaseURLSHA256,
+		ConfiguredCandidateJudgeModelID:       authority.ModelID,
+	}
+	if err := AuthorizeConfiguredCandidateJudgeTarget(
+		ProviderModeLiveSiliconFlow,
+		authority,
+		valid,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := AuthorizeConfiguredCandidateJudgeTarget(
+		ProviderModeFakeProtocol,
+		ConfiguredCandidateJudgeProfileAuthority{},
+		LiveAuthorization{},
+	); err != nil {
+		t.Fatalf("fake configured candidate judge required live authority: %v", err)
+	}
+	mutations := []func(*LiveAuthorization){
+		func(value *LiveAuthorization) { value.ConfiguredCandidateJudgeApproval = "yes" },
+		func(value *LiveAuthorization) { value.ConfiguredCandidateJudgeProviderID = "other" },
+		func(value *LiveAuthorization) { value.ConfiguredCandidateJudgeProviderType = "openai" },
+		func(value *LiveAuthorization) { value.ConfiguredCandidateJudgeBaseURLSHA256 = strings.Repeat("c", 64) },
+		func(value *LiveAuthorization) { value.ConfiguredCandidateJudgeModelID = "other" },
+	}
+	for index, mutate := range mutations {
+		candidate := valid
+		mutate(&candidate)
+		assertLiveAuthorizationError(
+			t,
+			AuthorizeConfiguredCandidateJudgeTarget(
+				ProviderModeLiveSiliconFlow,
+				authority,
+				candidate,
+			),
+			LiveAuthorizationConfiguredCandidateJudgeTarget,
+		)
+		_ = index
+	}
+}
+
 func TestBuildProfileConfigsCannotMislabelFakeProtocol(t *testing.T) {
 	protected := ProtectedRegression{
 		FixtureRawSHA256: "fixture", CorpusRawSHA256: "corpus",

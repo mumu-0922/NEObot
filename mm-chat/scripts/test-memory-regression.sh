@@ -19,6 +19,7 @@ fixture_root="${temp_dir}/regression-fixtures"
 cost_file="${temp_dir}/cost.json"
 credential_file="${temp_dir}/credential"
 memory_tool_route_credential_file="${temp_dir}/memory-tool-route-credential"
+configured_judge_credential_file="${temp_dir}/configured-judge-credential"
 render_output="${temp_dir}/render-output"
 env_file="${temp_dir}/render.env"
 rendered="${temp_dir}/compose.json"
@@ -31,8 +32,9 @@ printf '{}\n' >"${fixture_root}/manifest.json"
 printf '{"schemaVersion":"protocol-cost"}\n' >"${cost_file}"
 printf 'fixture-live-credential-not-used\n' >"${credential_file}"
 printf 'fixture-route-credential-not-used\n' >"${memory_tool_route_credential_file}"
+printf 'fixture-judge-credential-not-used\n' >"${configured_judge_credential_file}"
 chmod 600 "${fixture_root}"/*.json "${cost_file}" "${credential_file}" \
-  "${memory_tool_route_credential_file}"
+  "${memory_tool_route_credential_file}" "${configured_judge_credential_file}"
 
 cat >"${env_file}" <<EOF
 MEMORY_REGRESSION_DB_PASSWORD=fixture-render-password
@@ -41,6 +43,8 @@ MEMORY_REGRESSION_COST_BASIS_PATH=${cost_file}
 MEMORY_REGRESSION_CREDENTIAL_PATH=${credential_file}
 MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_CREDENTIAL_PATH=${memory_tool_route_credential_file}
 MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_CREDENTIAL_TARGET=
+MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_CREDENTIAL_PATH=${configured_judge_credential_file}
+MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_CREDENTIAL_TARGET=
 MEMORY_REGRESSION_OUTPUT_PATH=${render_output}
 MEMORY_REGRESSION_RUN_ID=memory-regression-static
 MEMORY_REGRESSION_CAPTURE_MODE=full_regression
@@ -51,6 +55,12 @@ MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_BASE_URL=
 MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_BASE_URL_SHA256=
 MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_MODEL=
 MEMORY_REGRESSION_MEMORY_TOOL_ROUTE_APPROVAL=NOT_AUTHORIZED
+MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_ID=
+MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_TYPE=
+MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_BASE_URL=
+MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_BASE_URL_SHA256=
+MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_MODEL=
+MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_APPROVAL=NOT_AUTHORIZED
 EOF
 chmod 600 "${env_file}"
 
@@ -64,14 +74,15 @@ chmod 600 "${env_file}"
   config --format json >"${rendered}"
 
 python3 - "${rendered}" "${fixture_root}" "${cost_file}" "${credential_file}" \
-  "${memory_tool_route_credential_file}" "${render_output}" <<'PY'
+  "${memory_tool_route_credential_file}" "${configured_judge_credential_file}" \
+  "${render_output}" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 config = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-fixture_root, cost, credential, route_credential, output = map(
-    lambda value: Path(value).resolve(), sys.argv[2:7]
+fixture_root, cost, credential, route_credential, judge_credential, output = map(
+    lambda value: Path(value).resolve(), sys.argv[2:8]
 )
 services = config.get("services", {})
 expected = {
@@ -129,6 +140,7 @@ for name in ("memory-regression-fake-runner", "memory-regression-live-runner"):
     if name == "memory-regression-live-runner":
         expected_mounts["/run/mm-chat-memory-regression/provider.key"] = credential
         expected_mounts["/run/mm-chat-memory-regression/memory-tool-route-provider.key"] = route_credential
+        expected_mounts["/run/mm-chat-memory-regression/configured-candidate-judge-provider.key"] = judge_credential
     if set(mounts) != set(expected_mounts):
         raise SystemExit(f"Memory regression topology: {name} mount target drift")
     for target, source in expected_mounts.items():
@@ -155,6 +167,8 @@ if "/run/mm-chat-memory-regression/provider.key" not in live.get("command", []):
     raise SystemExit("Memory regression topology: live credential file boundary missing")
 if "-memory-tool-route-credential-file" not in live.get("command", []):
     raise SystemExit("Memory regression topology: Memory Tool-route credential boundary missing")
+if "-configured-candidate-judge-credential-file" not in live.get("command", []):
+    raise SystemExit("Memory regression topology: configured candidate-judge credential boundary missing")
 for key, value in live.get("environment", {}).items():
     if "KEY" in key or "TOKEN" in key or "SECRET" in key:
         raise SystemExit("Memory regression topology: Provider credential entered Docker environment")
@@ -162,6 +176,8 @@ for key, value in live.get("environment", {}).items():
         raise SystemExit("Memory regression topology: Provider credential leaked into Docker metadata")
     if "fixture-route-credential-not-used" in str(value):
         raise SystemExit("Memory regression topology: Memory Tool-route credential leaked into Docker metadata")
+    if "fixture-judge-credential-not-used" in str(value):
+        raise SystemExit("Memory regression topology: configured candidate-judge credential leaked into Docker metadata")
 PY
 
 if rg -n '\.env\.single-server|mm-chat/(data|secrets|backup)|\.\./(data|secrets|backup)' "${compose_file}"; then
@@ -334,6 +350,46 @@ if args and args[0] == "compose":
             bodies = {"cloud-judge-development.json": cloud}
             manifest_schema = "neo-chat.memory-regression-relevance-run.v1"
             admission_mode = "development_cloud_judge_only"
+        elif capture_mode == "development_configured_candidate_judge":
+            configured_judge = json.dumps({
+                "schemaVersion": "neo-chat.memory-regression-relevance-calibration.v10",
+                "corpusClass": "machine_reviewed_regression",
+                "admissionMode": "development_configured_candidate_judge_only",
+                "promotionEligible": False,
+                "split": "development",
+                "caseCount": 300,
+                "providerEgressPolicy": "owner_authorized_normal_candidates_v1",
+                "providerCostPolicy": "owner_authorized_absolute_cap_v1",
+                "providerCostAuthorized": True,
+                "judgeProviderId": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_ID"],
+                "judgeProviderType": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_TYPE"],
+                "judgeBaseUrlSha256": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_BASE_URL_SHA256"],
+                "judgeModelId": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_MODEL"],
+                "judgeAdapter": "chat-configured-candidate-judge-v1",
+                "passed": True,
+                "evaluation": {"passed": True, "providerCostRatio": 0.5},
+                "diagnostics": {
+                    "emptyCandidateCaseCount": 105,
+                    "judgeCompletedCaseCount": 195,
+                    "judgeAbstainedCaseCount": 30,
+                    "failedCaseCount": 0,
+                    "failureCodeCounts": {},
+                },
+                "costAuthority": {
+                    "unit": "cny_microunits",
+                    "authorizedRequestCount": 300,
+                    "actualRequestCount": 195,
+                    "authorizedMaximumInputTokens": 300000,
+                    "actualInputTokenUpperBound": 258647,
+                    "authorizedMaximumOutputTokens": 38400,
+                    "actualOutputTokenUpperBound": 24960,
+                    "maximumJudgeCostMicrounits": 376800,
+                    "maximumMemoryProviderCostMicrounits": 487716,
+                },
+            }, separators=(",", ":")).encode() + b"\n"
+            bodies = {"configured-candidate-judge-development.json": configured_judge}
+            manifest_schema = "neo-chat.memory-regression-relevance-run.v1"
+            admission_mode = "development_configured_candidate_judge_only"
         elif capture_mode in {
             "development_memory_tool_route",
             "development_memory_tool_route_diagnostic",
@@ -465,6 +521,7 @@ if args and args[0] == "compose":
                         "development_cloud_judge",
                         "development_memory_tool_route",
                         "development_memory_tool_route_diagnostic",
+                        "development_configured_candidate_judge",
                     } else "validation",
                     "profileId": candidate_profile,
                 })
@@ -472,6 +529,7 @@ if args and args[0] == "compose":
                     "development_cloud_judge",
                     "development_memory_tool_route",
                     "development_memory_tool_route_diagnostic",
+                    "development_configured_candidate_judge",
                 }:
                     manifest["providerCostPolicy"] = "owner_authorized_absolute_cap_v1"
             manifest_path = output / "run-manifest.json"
@@ -549,6 +607,27 @@ if [[ "$(find "${cloud_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 
   exit 1
 fi
 assert_cleanup "${cloud_log}"
+
+configured_judge_output="${temp_dir}/configured-judge-output"
+configured_judge_log="${temp_dir}/configured-judge-docker.log"
+mkdir "${configured_judge_output}"
+chmod 700 "${configured_judge_output}"
+FAKE_DOCKER_LOG="${configured_judge_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${configured_judge_output}" --provider-mode fake_protocol \
+  --capture-mode development_configured_candidate_judge \
+  --configured-candidate-judge-provider-id configured-gpt \
+  --configured-candidate-judge-provider-type openai \
+  --configured-candidate-judge-base-url https://api.openai.example/v1 \
+  --configured-candidate-judge-model gpt-test \
+  >"${temp_dir}/configured-judge.stdout" \
+  2>"${temp_dir}/configured-judge.stderr"
+if [[ "$(find "${configured_judge_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: configured candidate-judge bundle was not retained" >&2
+  exit 1
+fi
+assert_cleanup "${configured_judge_log}"
 
 memory_tool_route_output="${temp_dir}/memory-tool-route-output"
 memory_tool_route_log="${temp_dir}/memory-tool-route-docker.log"
@@ -645,6 +724,32 @@ if [[ "$(find "${live_memory_tool_route_output}" -mindepth 2 -maxdepth 2 -type f
   exit 1
 fi
 assert_cleanup "${live_memory_tool_route_log}"
+
+live_configured_judge_output="${temp_dir}/live-configured-judge-output"
+live_configured_judge_log="${temp_dir}/live-configured-judge-docker.log"
+mkdir "${live_configured_judge_output}"
+chmod 700 "${live_configured_judge_output}"
+FAKE_DOCKER_LOG="${live_configured_judge_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${live_configured_judge_output}" \
+  --provider-mode live_siliconflow \
+  --capture-mode development_configured_candidate_judge \
+  --credential-file "${credential_file}" \
+  --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --configured-candidate-judge-credential-file "${configured_judge_credential_file}" \
+  --configured-candidate-judge-provider-id configured-gpt \
+  --configured-candidate-judge-provider-type openai \
+  --configured-candidate-judge-base-url https://api.openai.example/v1 \
+  --configured-candidate-judge-model gpt-test \
+  --configured-candidate-judge-approval I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA \
+  >"${temp_dir}/live-configured-judge.stdout" \
+  2>"${temp_dir}/live-configured-judge.stderr"
+if [[ "$(find "${live_configured_judge_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: live configured candidate-judge bundle was not retained" >&2
+  exit 1
+fi
+assert_cleanup "${live_configured_judge_log}"
 
 same_credential_output="${temp_dir}/same-credential-output"
 mkdir "${same_credential_output}"
