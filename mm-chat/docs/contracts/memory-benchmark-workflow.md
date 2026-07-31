@@ -274,9 +274,9 @@ The complete fixtures/corpus/audit remain Git-external. The committed
 and
 [`memory-benchmark-regression-v3-status.json`](../tracking/memory-benchmark-regression-v3-status.json)
 contain only counts, verdicts, and hashes. Existing native-capture commands
-remain bound to v2 until a separately reviewed v3 capture integration and
-fresh run authorization exist; generating v3 performs no Provider call and
-does not authorize Validation or promotion.
+default to v2 for compatibility; v3 requires an explicit protected root and
+its own exact configuration identity. Generating v3 performs no Provider call
+and does not itself authorize a live run, Validation, or promotion.
 
 ## 4. Review and freeze
 
@@ -486,8 +486,27 @@ go run ./cmd/memory-eval \
 
 The evaluator can admit either exact corpus/audit pair, but observations from
 v2 cannot be reused with v3 because every content and fixture binding changes.
-The current native-capture wrapper still defaults to v2; no v3 live capture or
-Provider use is implied by v3 authoring.
+The native-capture wrapper keeps v2 as its compatibility default. To select v3,
+pass its protected root explicitly:
+
+```bash
+bash scripts/run-memory-regression.sh \
+  --regression-root /secure/eval/v3-regression \
+  --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge_accuracy \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --cost-basis /secure/eval/fixed-memory-judge-accuracy-cost-v8.json \
+  --output-dir /secure/eval/native-memory-runs
+```
+
+The loader accepts only a known exact generator tuple and verifies all raw
+artifact bytes. Those raw hashes enter the capture configuration, so v2 and v3
+produce different configuration SHA-256 values and cannot share observations.
+The `fake_protocol` example proves lifecycle only. V3 authoring or offline
+capture does not imply live Provider authorization.
 
 Regression observations bind the corpus-content, audit-content, fixture, raw
 input, profile configuration, capture, and exact ordered 500-case IDs. They use
@@ -1128,6 +1147,28 @@ were exact-secret scanned from retained files, overwritten, and removed, and
 the isolated Compose project was destroyed. This consumed Development result
 does not authorize a rerun, Validation, production, or promotion.
 
+The separately authorized repaired-v3 run
+`memory-regression-20260731t093606z-89719a18` is another immutable failed
+schema-v12 Development bundle. It used configuration SHA-256
+`72940f138ba53dda01e5eddad5e82bf05e2740fd671549e2310adea61a1bf49f`;
+report SHA-256 is
+`f35cfea03c98de4ecfff8ea9c774fbcef706f895da9db3a72d606e99efee2eb7`
+and manifest SHA-256 is
+`5be7db8903c5e26cd2dcadae12cde1a3c52f3421bb46862db481e8105e955176`.
+All 300 cases completed with zero failed cases, 195 rerank attempts, 202 Luna
+attempts including seven retries, and all 299 wall-clock cooldowns. Candidate
+Recall@20/Final Recall@5/current-fact accuracy was
+`1.0/0.984615/0.981818`. The corpus repair reduced false injection from the v2
+run's `29/300` to `10/300`, but `0.033333` remained above the unchanged `0.02`
+maximum; `stable_fact` current-fact accuracy also failed at `0.933333`.
+Safety/authority counters remained zero, prompt budgets passed, and complete-
+flow p95/p99 latency was diagnostic-only at `5382/10623 ms`. The manifest
+binds the same canonical cost SHA-256
+`d75a6edf7fd5f050c3e30c4cae5960972a8e6065676f477321a5510ad7e5dd47`.
+Temporary credentials and every isolated runtime object were destroyed, and
+the base PostgreSQL container remained stopped. This v3 result also selects no
+policy and grants no rerun, Validation, production, or promotion authority.
+
 ```bash
 bash scripts/run-memory-regression.sh \
   --provider-mode fake_protocol \
@@ -1154,8 +1195,8 @@ bash scripts/run-memory-regression.sh \
 
 Only after a Development candidate-aware policy passes every applicable gate may
 its exact policy, Provider/model, adapter profile, and selection behavior be
-frozen in code. Neither schema-v10 profile nor schema-v11 passed, and schema-v12
-has not received a new live authorization, so the current Validation CLI
+frozen in code. Neither schema-v10 profile nor schema-v11 passed, and both the
+v2 and repaired-v3 schema-v12 runs failed. The current Validation CLI therefore
 remains unavailable. The historical single-Provider Validation command shape
 remains:
 
@@ -1204,7 +1245,9 @@ Accuracy-first Development keeps the same exact two-file and fixed-Luna
 authority. Its v12 execution policy changes no credential boundary: operator
 copies remain mode `0600`, read-only in the runner, independent by file/inode/
 bytes, and destroyed on every exit. No existing schema-v11 authorization or
-credential copy authorizes a new schema-v12 live run.
+credential copy authorizes a new schema-v12 live run, and the consumed v2
+schema-v12 authorization does not authorize the separately hashed v3 run or a
+retry of either result.
 
 The cost basis is strict JSON and all values are run-total integer microunits
 in one named unit:

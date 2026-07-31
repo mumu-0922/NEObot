@@ -1,7 +1,7 @@
 # Native Memory regression capture
 
-`memorycapture` executes either the protected 500-case machine regression
-corpus or its exact 300-case Development / 100-case Validation views through
+`memorycapture` executes a known-version protected 500-case machine regression
+corpus, or its exact 300-case Development / 100-case Validation views, through
 Neo Chat's production v1 lexical and v2 hybrid reader seams. It turns transient
 ranking surfaces into strict, non-promotional full or aggregate artifacts
 without changing prompt, Usage, feature flags, or production data.
@@ -50,7 +50,7 @@ injection, or active-reader authority.
 
 | API | Purpose |
 | --- | --- |
-| `LoadProtectedRegression` | Regenerate and byte-verify all protected inputs. |
+| `LoadProtectedRegression` | Dispatch from a known generator tuple, then regenerate and byte-verify all protected inputs. |
 | `BuildFixtureIndex` | Create deterministic alias/UUID authority maps. |
 | `SeedEphemeralDatabase` | Materialize synthetic users, scopes, messages, Memories, and lexical projections. |
 | `PopulateProjectionVectors` | Populate fixed 1024-dimensional BGE projection vectors through the Provider interface. |
@@ -87,6 +87,28 @@ bash scripts/run-memory-regression.sh \
   --cost-basis /secure/memory-regression-cost-basis.json \
   --output-dir /secure/memory-regression-runs
 ```
+
+The wrapper defaults to the immutable v2 root for compatibility. Select the
+repaired v3 corpus only with an explicit protected root:
+
+```bash
+bash scripts/run-memory-regression.sh \
+  --regression-root /secure/memory-benchmark/v3-regression \
+  --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge_accuracy \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --cost-basis /secure/fixed-memory-judge-accuracy-cost-v8.json \
+  --output-dir /secure/memory-regression-runs
+```
+
+Exact generator dispatch and raw input hashes reject mixed/unknown pools. The
+raw hashes are part of the profile configuration, so v2 and v3 produce distinct
+configuration SHA-256 values. Historical v2 observations cannot be reused for
+v3. `fake_protocol` remains lifecycle-only evidence and grants no live quota
+authority.
 
 `fake_protocol` validates SQL, capture, evaluation, publication, and teardown
 only. Live mode accepts `development_calibration`,
@@ -311,6 +333,19 @@ counts, total/retry Judge input-token upper bounds, and the exact
 `JudgeAttempts * 128` output upper bound. Historical v6/v7 cost documents remain
 300-request authorities and cannot be widened. A passing v12 Development
 summary still sets `policySelected=false` and stops before Validation.
+
+Two separately authorized live v12 Development bundles are retained as failed
+evidence. The historical v2 run produced false injection `29/300`. Repaired v3
+run `memory-regression-20260731t093606z-89719a18` used configuration SHA-256
+`72940f138ba53dda01e5eddad5e82bf05e2740fd671549e2310adea61a1bf49f`,
+completed all 300 cases with zero failed cases, and recorded `195` rerank
+attempts, `202` Judge attempts with `7` retries, and `299` wall-clock
+cooldowns. Candidate Recall@20/Final Recall@5/current-fact accuracy improved to
+`1.0/0.984615/0.981818`, but false injection `10/300 = 0.033333` and
+`stable_fact` accuracy `0.933333` still failed. Report SHA-256 is
+`f35cfea03c98de4ecfff8ea9c774fbcef706f895da9db3a72d606e99efee2eb7`.
+It selected no policy; Validation, production, promotion, and an automatic
+paid rerun remain blocked.
 
 ## Tests
 

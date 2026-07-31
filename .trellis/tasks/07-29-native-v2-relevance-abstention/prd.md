@@ -779,6 +779,46 @@ negative wording. The private disposable four-file bundle replayed exactly at
 passed. The committed v3 status is aggregate/hash-only. No Docker, Provider,
 Validation, production, or promotion action was executed.
 
+**2026-07-31 v3 capture integration preflight:** Source tracing confirmed that
+the existing wrapper already accepts an explicit
+`--regression-root <protected-root>` while retaining v2 as its compatibility
+default. The protected loader now has direct v2/v3 replay coverage, both pools
+have Development/Validation split-selection coverage with machine Holdout
+rejection, and schema-v12 profile construction proves distinct v2/v3
+configuration SHA-256 values. Focused race tests, all backend Go tests,
+`go vet ./...`, and wrapper shell syntax passed. This is offline preflight only;
+no v3 model request or quality result exists yet. The retained exact v8 cost
+basis replayed with raw SHA-256
+`5d5c33e807185170fa52080349c8875f28c1313be2d64344f8dc3c31ec99e6c8`
+and canonical SHA-256
+`d75a6edf7fd5f050c3e30c4cae5960972a8e6065676f477321a5510ad7e5dd47`.
+Under that same live Provider/cost authority, historical v2 configuration
+`bd0fa42e0b612da39d974a06027945e831cfce48cabd9226a1bc06b76aad2b16`
+separates from the proposed v3 configuration
+`72940f138ba53dda01e5eddad5e82bf05e2740fd671549e2310adea61a1bf49f`.
+
+**2026-07-31 v3 live Development outcome:** The owner separately authorized
+exactly one v3 300-case accuracy-first Development run. Run
+`memory-regression-20260731t093606z-89719a18` used configuration SHA-256
+`72940f138ba53dda01e5eddad5e82bf05e2740fd671549e2310adea61a1bf49f`
+and completed with zero failed cases, all `195` candidate-bearing reranks,
+`202` Luna attempts including `7` bounded retries, and all `299` real
+cooldowns. Candidate Recall@20/Final Recall@5/current-fact accuracy was
+`1.0/0.984615/0.981818`. The repaired corpus reduced false injection from the
+historical v2 result's `29/300` to `10/300`, but `0.033333` still exceeded the
+unchanged `0.02` maximum; the `stable_fact` current-fact slice also failed at
+`0.933333`. Every safety/authority counter remained zero and prompt budgets
+passed. Report SHA-256 is
+`f35cfea03c98de4ecfff8ea9c774fbcef706f895da9db3a72d606e99efee2eb7`;
+manifest SHA-256 is
+`5be7db8903c5e26cd2dcadae12cde1a3c52f3421bb46862db481e8105e955176`,
+binding canonical cost SHA-256
+`d75a6edf7fd5f050c3e30c4cae5960972a8e6065676f477321a5510ad7e5dd47`.
+No policy was selected. Temporary credentials, the supervisor, and every
+isolated Compose object were destroyed; the base PostgreSQL container remained
+stopped. Validation, production, promotion, and an automatic rerun remain
+blocked.
+
 ## Expansion Sweep
 
 - Future evolution: evaluate the fixed Luna candidate-aware profile under the

@@ -56,6 +56,7 @@ run-bound marker in a database whose name starts with
 | Decision | Reason | Consequence |
 | --- | --- | --- |
 | Isolated PostgreSQL plus production decorators | Live chat would pollute state; an offline reimplementation would measure a copy. | The runner is operationally heavier but exercises deployed ranking and authorization. |
+| Explicit known-version regression root | V2 evidence must remain immutable while the repaired v3 hard-negative corpus needs the same production capture path. | The wrapper defaults to v2 for compatibility, `--regression-root` may select exact v3, generator replay rejects unknown/mixed pools, and raw input hashes force distinct v2/v3 configuration SHA-256 values. |
 | Separate `fake_protocol` profile ID | Deterministic fake vectors and reranking prove protocol only. | Fake reports can never be mistaken for `native_v2_hybrid` reader quality. |
 | Counterfactual `injectedMemoryIds` | The shared current-fact/false-injection scorer needs an injection surface. | Final IDs are mirrored offline only; no prompt is changed. |
 | Explicit same-unit cost basis | A zero total candidate cost or invented Provider price could create a false pass. | Baseline Memory cost must be zero, total candidate Memory cost positive, exact component prices may be zero when the official fixed-model rate is free, and both chat denominators remain identical. |
@@ -243,6 +244,12 @@ result or failure, even when a later case reuses the same assistant identity.
   records 299 virtual cooldowns with zero elapsed time; live mode performs 299
   wall-clock one-second cooldowns. All attempts, retries, per-stage timings,
   cooldowns, and Judge token upper bounds are aggregate-only.
+- The first v12 v2 run and the separately authorized repaired-v3 run are both
+  immutable failed Development evidence. V3 improved false injection from
+  `29/300` to `10/300` and improved Final Recall@5/current-fact accuracy to
+  `0.984615/0.981818`, but false injection `0.033333` and `stable_fact`
+  accuracy `0.933333` still failed. Neither result selects a policy or opens
+  Validation, production, promotion, or an automatic paid rerun.
 - Fake protocol relevance and latency metrics are intentionally meaningless;
   only lifecycle and authority invariants are evaluated.
 
@@ -313,3 +320,7 @@ result or failure, even when a later case reuses the same assistant identity.
   global serial Provider execution, no elapsed deadlines, diagnostic-only
   latency, bounded transient retry, virtual/live cooldown clocks, reconciled
   attempt/token telemetry, and an unconditional stop before Validation.
+- **2026-07-31**: Recorded the separately authorized repaired-v3 schema-v12
+  Development failure: all 300 cases completed, false injection fell to
+  `10/300` but remained above criterion, `stable_fact` also failed, and all
+  credentials/runtime objects were destroyed without Validation or promotion.

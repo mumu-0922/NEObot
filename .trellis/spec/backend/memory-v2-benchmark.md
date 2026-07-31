@@ -708,6 +708,20 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   current-fact slice also failed. Zero authority/privacy leaks and passing
   prompt budgets do not offset that failure. The report selected no policy and
   cannot enter Validation or be rerun under the consumed authorization.
+- The repaired-v3 schema-v12 result is separate immutable failed evidence, not
+  a relabel of the preceding v2 run. Configuration SHA-256
+  `72940f138ba53dda01e5eddad5e82bf05e2740fd671549e2310adea61a1bf49f`
+  completed all `300` cases with zero failed cases, `195` rerank attempts,
+  `202` Judge attempts including `7` retries, and `299` real cooldowns.
+  Candidate Recall@20/Final Recall@5/current-fact accuracy was
+  `1.0/0.984615/0.981818`. False injection improved from `29/300` to `10/300`
+  but still failed at `0.033333`; `stable_fact` also failed current-fact
+  accuracy at `0.933333`. Report SHA-256
+  `f35cfea03c98de4ecfff8ea9c774fbcef706f895da9db3a72d606e99efee2eb7`
+  and manifest SHA-256
+  `5be7db8903c5e26cd2dcadae12cde1a3c52f3421bb46862db481e8105e955176`
+  bind this outcome. It selects no policy and grants no rerun, Validation,
+  production, or promotion authority.
 - The native stdout summary schema remains the command-envelope v4, but its
   `corpusClass`, `admissionMode`, and `split` must come from the validated
   schema-v7 report rather than historical schema-v6 constants. A failed fake
@@ -1067,12 +1081,16 @@ immutable v2 bytes and failed historical evidence
 -> real agenda task + same-entity/scope weather observation
 -> deterministic v2 semantic audit plus anti-self-description checks
 -> private create-only four-file bundle, regression_only
--> no Provider, Validation, capture, or promotion authority
+-> no Provider, Validation, or promotion authority from authoring alone
 ```
 
-The current native-capture wrapper remains explicitly bound to v2. Moving a
-capture to v3 requires separate integration review, new observations, and fresh
-live authorization; v2 observations can never be rebound to the v3 hashes.
+The native-capture wrapper keeps v2 as its compatibility default, but an
+operator can select an exact verified v3 bundle with
+`--regression-root <protected-v3-root>`. Loader admission dispatches only from
+the known generator tuple, raw input hashes enter the capture configuration,
+and the resulting configuration SHA-256 separates v2 from v3. A v3 capture
+therefore requires new observations and fresh live authorization; v2
+observations can never be rebound to the v3 hashes.
 
 ### Correct main-model first-ToolRound Development
 
