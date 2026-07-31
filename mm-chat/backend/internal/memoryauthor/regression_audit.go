@@ -1,6 +1,7 @@
 package memoryauthor
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"unicode"
@@ -12,6 +13,10 @@ func AuditRegression(
 	fixtures RegressionFixtureManifest,
 	corpus memoryeval.RegressionCorpus,
 ) (memoryeval.RegressionAudit, error) {
+	profile, ok := regressionProfileForGenerator(fixtures.Generator)
+	if !ok {
+		return memoryeval.RegressionAudit{}, errors.New("regression fixture generator is unsupported")
+	}
 	promotion := false
 	audit := memoryeval.RegressionAudit{
 		SchemaVersion:         memoryeval.RegressionAuditSchemaVersion,
@@ -21,8 +26,8 @@ func AuditRegression(
 		PromotionEligible:     &promotion,
 		CorpusContentSHA256:   corpus.CorpusContentSHA256,
 		FixtureManifestSHA256: corpus.FixtureManifestSHA256,
-		Auditor:               RegressionAuditor,
-		AuditedAt:             RegressionAuditedAt,
+		Auditor:               profile.auditor,
+		AuditedAt:             profile.auditedAt,
 		Verdict:               "passed",
 		CaseCount:             len(corpus.Cases),
 	}
@@ -60,7 +65,7 @@ func AuditRegression(
 			audit.Semantic.ScopeTextMismatchCount++
 		}
 		semanticFailures, preferenceFailures, fallbackFailures, multiHopFailures :=
-			regressionSemanticFailures(item, fixture)
+			regressionSemanticFailures(item, fixture, profile)
 		audit.Semantic.SliceSemanticFailureCount += semanticFailures
 		audit.Semantic.PreferenceSemanticFailureCount += preferenceFailures
 		audit.Semantic.FallbackSemanticFailureCount += fallbackFailures
@@ -164,7 +169,11 @@ func regressionFixtureCaseBindingError(fixture Fixture, item memoryeval.GoldenCa
 	return nil
 }
 
-func regressionSemanticFailures(item memoryeval.GoldenCase, fixture Fixture) (int, int, int, int) {
+func regressionSemanticFailures(
+	item memoryeval.GoldenCase,
+	fixture Fixture,
+	profile regressionGenerationProfile,
+) (int, int, int, int) {
 	failures, preferenceFailures, fallbackFailures, multiHopFailures := 0, 0, 0, 0
 	relevantText := regressionRelevantText(item, fixture)
 	query := strings.ToLower(item.Query)
@@ -202,6 +211,10 @@ func regressionSemanticFailures(item memoryeval.GoldenCase, fixture Fixture) (in
 	if hasSlice("unrelated_negative") && (!item.ExpectedNoMemory || !hasExclusionReason(item, "irrelevant")) {
 		failures++
 	}
+	if profile.repairedUnrelated && hasSlice("unrelated_negative") &&
+		!repairedUnrelatedSemanticsMatch(item, fixture) {
+		failures++
+	}
 	for slice, reason := range map[string]string{
 		"untrusted_source": "untrusted_source",
 		"secret_rejection": "secret",
@@ -231,6 +244,41 @@ func regressionSemanticFailures(item memoryeval.GoldenCase, fixture Fixture) (in
 		failures++
 	}
 	return failures, preferenceFailures, fallbackFailures, multiHopFailures
+}
+
+func repairedUnrelatedSemanticsMatch(item memoryeval.GoldenCase, fixture Fixture) bool {
+	query := strings.ToLower(item.Query)
+	candidate := strings.ToLower(regressionExcludedText(item, fixture, "irrelevant"))
+	if candidate == "" || containsAny(
+		query+" "+candidate,
+		"unrelated",
+		"无关",
+		"no bearing",
+		"没有关系",
+	) {
+		return false
+	}
+	if item.Language == "en" {
+		return strings.Contains(query, "agenda heading") &&
+			strings.Contains(candidate, "weather board")
+	}
+	return strings.Contains(query, "议程标题") && strings.Contains(candidate, "天气牌")
+}
+
+func regressionExcludedText(item memoryeval.GoldenCase, fixture Fixture, reason string) string {
+	excluded := make(map[string]struct{})
+	for _, exclusion := range item.Exclusions {
+		if exclusion.Reason == reason {
+			excluded[exclusion.MemoryID] = struct{}{}
+		}
+	}
+	parts := make([]string, 0, len(excluded))
+	for _, memory := range fixture.Memories {
+		if _, ok := excluded[memory.ID]; ok {
+			parts = append(parts, memory.CanonicalContent, memory.RawEventContent)
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 func regressionRelevantText(item memoryeval.GoldenCase, fixture Fixture) string {

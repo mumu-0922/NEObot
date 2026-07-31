@@ -9,7 +9,30 @@ import (
 	"neo-chat/mm-chat/backend/internal/memoryeval"
 )
 
+type regressionGenerationProfile struct {
+	fixtureID          string
+	corpusID           string
+	manifestID         string
+	fixtureDescription string
+	corpusDescription  string
+	generator          GeneratorProvenance
+	auditor            string
+	auditedAt          string
+	repairedUnrelated  bool
+}
+
 func GenerateRegression() (RegressionPool, error) {
+	return generateRegression(legacyRegressionProfile())
+}
+
+// GenerateRegressionV3 creates the separately versioned corpus whose
+// unrelated-negative cases are genuine hard negatives rather than
+// self-referential Memory-governance questions.
+func GenerateRegressionV3() (RegressionPool, error) {
+	return generateRegression(repairedRegressionProfile())
+}
+
+func generateRegression(profile regressionGenerationProfile) (RegressionPool, error) {
 	drafts, err := buildRegressionPlan()
 	if err != nil {
 		return RegressionPool{}, err
@@ -17,20 +40,20 @@ func GenerateRegression() (RegressionPool, error) {
 	fixtures := make([]Fixture, 0, len(drafts))
 	cases := make([]memoryeval.GoldenCase, 0, len(drafts))
 	for _, draft := range drafts {
-		fixture, item := generateRegressionCase(draft)
+		fixture, item := generateRegressionCase(draft, profile)
 		fixtures = append(fixtures, fixture)
 		cases = append(cases, item)
 	}
 	promotion := false
 	fixtureManifest := RegressionFixtureManifest{
 		SchemaVersion:     RegressionFixtureSchemaVersion,
-		ID:                "memory-regression-v2-fixtures",
-		Description:       "Deterministic synthetic fixtures for the machine-reviewed regression corpus.",
+		ID:                profile.fixtureID,
+		Description:       profile.fixtureDescription,
 		CorpusClass:       memoryeval.RegressionCorpusClass,
 		AdmissionMode:     memoryeval.RegressionAdmissionMode,
 		PromotionEligible: &promotion,
 		DataPolicy:        DataPolicy{SyntheticOnly: true},
-		Generator:         expectedRegressionGenerator(),
+		Generator:         profile.generator,
 		ContentSHA256:     strings.Repeat("0", 64),
 		Fixtures:          fixtures,
 	}
@@ -41,8 +64,8 @@ func GenerateRegression() (RegressionPool, error) {
 	fixtureManifest.ContentSHA256 = fixtureContentHash
 	corpus := memoryeval.RegressionCorpus{
 		SchemaVersion:         memoryeval.RegressionCorpusSchemaVersion,
-		ID:                    "memory-regression-v2-corpus",
-		Description:           "Machine-reviewed synthetic regression corpus; never promotion evidence.",
+		ID:                    profile.corpusID,
+		Description:           profile.corpusDescription,
 		CorpusClass:           memoryeval.RegressionCorpusClass,
 		AdmissionMode:         memoryeval.RegressionAdmissionMode,
 		PromotionEligible:     &promotion,
@@ -51,8 +74,8 @@ func GenerateRegression() (RegressionPool, error) {
 		MachineAudit: memoryeval.RegressionAuditBinding{
 			SchemaVersion: memoryeval.RegressionAuditSchemaVersion,
 			Verdict:       "passed",
-			Auditor:       RegressionAuditor,
-			AuditedAt:     RegressionAuditedAt,
+			Auditor:       profile.auditor,
+			AuditedAt:     profile.auditedAt,
 		},
 		Criteria: benchmarkCriteria(),
 		Cases:    cases,
@@ -82,12 +105,12 @@ func GenerateRegression() (RegressionPool, error) {
 	}
 	manifest := RegressionManifest{
 		SchemaVersion:        RegressionManifestSchemaVersion,
-		ID:                   "memory-regression-v2-manifest",
+		ID:                   profile.manifestID,
 		CorpusClass:          memoryeval.RegressionCorpusClass,
 		AdmissionMode:        memoryeval.RegressionAdmissionMode,
 		PromotionEligible:    &promotion,
 		DataPolicy:           DataPolicy{SyntheticOnly: true},
-		Generator:            expectedRegressionGenerator(),
+		Generator:            profile.generator,
 		CaseCount:            audit.CaseCount,
 		SplitCounts:          authorSplitCounts(audit.SplitCounts),
 		LanguageCounts:       authorLanguageCounts(audit.LanguageCounts),
@@ -224,17 +247,59 @@ func hasRegressionNegative(draft regressionDraft) bool {
 	return false
 }
 
-func opaqueRegressionID(kind string, index int) string {
-	digest := sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%d", RegressionProfileSeed, kind, index)))
+func opaqueRegressionIDForSeed(seed string, kind string, index int) string {
+	digest := sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%d", seed, kind, index)))
 	return kind + "-" + hex.EncodeToString(digest[:8])
 }
 
-func expectedRegressionGenerator() GeneratorProvenance {
-	return GeneratorProvenance{
-		Version: RegressionGeneratorVersion,
-		Profile: RegressionProfileID,
-		Seed:    RegressionProfileSeed,
+func legacyRegressionProfile() regressionGenerationProfile {
+	return regressionGenerationProfile{
+		fixtureID:          "memory-regression-v2-fixtures",
+		corpusID:           "memory-regression-v2-corpus",
+		manifestID:         "memory-regression-v2-manifest",
+		fixtureDescription: "Deterministic synthetic fixtures for the machine-reviewed regression corpus.",
+		corpusDescription:  "Machine-reviewed synthetic regression corpus; never promotion evidence.",
+		generator: GeneratorProvenance{
+			Version: RegressionGeneratorVersion,
+			Profile: RegressionProfileID,
+			Seed:    RegressionProfileSeed,
+		},
+		auditor:   RegressionAuditor,
+		auditedAt: RegressionAuditedAt,
 	}
+}
+
+func repairedRegressionProfile() regressionGenerationProfile {
+	return regressionGenerationProfile{
+		fixtureID:          "memory-regression-v3-fixtures",
+		corpusID:           "memory-regression-v3-corpus",
+		manifestID:         "memory-regression-v3-manifest",
+		fixtureDescription: "Deterministic synthetic fixtures for the repaired machine-reviewed regression corpus.",
+		corpusDescription: "Machine-reviewed synthetic regression corpus with non-self-referential " +
+			"hard negatives; never promotion evidence.",
+		generator: GeneratorProvenance{
+			Version: RegressionRepairedGeneratorVersion,
+			Profile: RegressionRepairedProfileID,
+			Seed:    RegressionRepairedProfileSeed,
+		},
+		auditor:           RegressionRepairedAuditor,
+		auditedAt:         RegressionRepairedAuditedAt,
+		repairedUnrelated: true,
+	}
+}
+
+func regressionProfileForGenerator(
+	generator GeneratorProvenance,
+) (regressionGenerationProfile, bool) {
+	for _, profile := range []regressionGenerationProfile{
+		legacyRegressionProfile(),
+		repairedRegressionProfile(),
+	} {
+		if generator == profile.generator {
+			return profile, true
+		}
+	}
+	return regressionGenerationProfile{}, false
 }
 
 func benchmarkCriteria() memoryeval.Criteria {

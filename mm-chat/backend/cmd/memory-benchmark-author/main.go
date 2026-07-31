@@ -28,7 +28,11 @@ func main() {
 
 func run(ctx context.Context, args []string, stdout io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("subcommand is required: generate, review, status, verify, freeze, holdout-begin, regression-generate, regression-status, or regression-verify")
+		return errors.New(
+			"subcommand is required: generate, review, status, verify, freeze, holdout-begin, " +
+				"regression-generate, regression-status, regression-verify, regression-v3-generate, " +
+				"regression-v3-status, or regression-v3-verify",
+		)
 	}
 	repositoryRoot, err := findRepositoryRoot()
 	if err != nil {
@@ -36,49 +40,27 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 	}
 	defaultRoot := filepath.Join(repositoryRoot, "mm-chat", "data", "memory-benchmark", "v1")
 	defaultRegressionRoot := filepath.Join(repositoryRoot, "mm-chat", "data", "memory-benchmark", "v2-regression")
+	defaultRegressionV3Root := filepath.Join(repositoryRoot, "mm-chat", "data", "memory-benchmark", "v3-regression")
 	switch args[0] {
 	case "regression-generate":
-		flags := newFlags("regression-generate")
-		root := flags.String("root", defaultRegressionRoot, "new protected regression root")
-		if err := parseFlags(flags, args[1:]); err != nil {
-			return err
-		}
-		validatedRoot, err := memoryauthor.ValidateRegressionRoot(*root, repositoryRoot)
-		if err != nil {
-			return err
-		}
-		pool, err := memoryauthor.GenerateRegression()
-		if err != nil {
-			return err
-		}
-		if err := memoryauthor.PublishRegression(validatedRoot, pool); err != nil {
-			return err
-		}
-		status, err := memoryauthor.VerifyRegression(validatedRoot)
-		if err != nil {
-			return err
-		}
-		return encodeJSON(stdout, status)
+		return runRegressionGenerate(
+			args[0], args[1:], repositoryRoot, defaultRegressionRoot, "",
+			memoryauthor.GenerateRegression, stdout,
+		)
+	case "regression-v3-generate":
+		return runRegressionGenerate(
+			args[0], args[1:], repositoryRoot, defaultRegressionV3Root,
+			memoryauthor.RegressionRepairedProfileID, memoryauthor.GenerateRegressionV3, stdout,
+		)
 	case "regression-status", "regression-verify":
-		flags := newFlags(args[0])
-		root := flags.String("root", defaultRegressionRoot, "protected regression root")
-		if err := parseFlags(flags, args[1:]); err != nil {
-			return err
-		}
-		validatedRoot, err := memoryauthor.ValidateRegressionRoot(*root, repositoryRoot)
-		if err != nil {
-			return err
-		}
-		var status memoryauthor.RegressionStatus
-		if args[0] == "regression-verify" {
-			status, err = memoryauthor.VerifyRegression(validatedRoot)
-		} else {
-			status, err = memoryauthor.CurrentRegressionStatus(validatedRoot)
-		}
-		if err != nil {
-			return err
-		}
-		return encodeJSON(stdout, status)
+		return runRegressionInspect(
+			args[0], args[1:], repositoryRoot, defaultRegressionRoot, "", stdout,
+		)
+	case "regression-v3-status", "regression-v3-verify":
+		return runRegressionInspect(
+			args[0], args[1:], repositoryRoot, defaultRegressionV3Root,
+			memoryauthor.RegressionRepairedProfileID, stdout,
+		)
 	case "generate":
 		flags := newFlags("generate")
 		root := flags.String("root", defaultRoot, "new protected authoring root")
@@ -207,6 +189,80 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 	default:
 		return fmt.Errorf("unknown subcommand %q", args[0])
 	}
+}
+
+func runRegressionGenerate(
+	command string,
+	args []string,
+	repositoryRoot string,
+	defaultRoot string,
+	expectedProfile string,
+	generate func() (memoryauthor.RegressionPool, error),
+	stdout io.Writer,
+) error {
+	flags := newFlags(command)
+	root := flags.String("root", defaultRoot, "new protected regression root")
+	if err := parseFlags(flags, args); err != nil {
+		return err
+	}
+	validatedRoot, err := memoryauthor.ValidateRegressionRoot(*root, repositoryRoot)
+	if err != nil {
+		return err
+	}
+	pool, err := generate()
+	if err != nil {
+		return err
+	}
+	if err := memoryauthor.PublishRegression(validatedRoot, pool); err != nil {
+		return err
+	}
+	status, err := memoryauthor.VerifyRegression(validatedRoot)
+	if err != nil {
+		return err
+	}
+	if err := requireRegressionProfile(status, expectedProfile); err != nil {
+		return err
+	}
+	return encodeJSON(stdout, status)
+}
+
+func runRegressionInspect(
+	command string,
+	args []string,
+	repositoryRoot string,
+	defaultRoot string,
+	expectedProfile string,
+	stdout io.Writer,
+) error {
+	flags := newFlags(command)
+	root := flags.String("root", defaultRoot, "protected regression root")
+	if err := parseFlags(flags, args); err != nil {
+		return err
+	}
+	validatedRoot, err := memoryauthor.ValidateRegressionRoot(*root, repositoryRoot)
+	if err != nil {
+		return err
+	}
+	var status memoryauthor.RegressionStatus
+	if strings.HasSuffix(command, "-verify") {
+		status, err = memoryauthor.VerifyRegression(validatedRoot)
+	} else {
+		status, err = memoryauthor.CurrentRegressionStatus(validatedRoot)
+	}
+	if err != nil {
+		return err
+	}
+	if err := requireRegressionProfile(status, expectedProfile); err != nil {
+		return err
+	}
+	return encodeJSON(stdout, status)
+}
+
+func requireRegressionProfile(status memoryauthor.RegressionStatus, expected string) error {
+	if expected != "" && status.Profile != expected {
+		return fmt.Errorf("regression profile %q does not match command profile %q", status.Profile, expected)
+	}
+	return nil
 }
 
 func newFlags(name string) *flag.FlagSet {

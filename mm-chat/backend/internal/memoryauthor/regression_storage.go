@@ -137,7 +137,11 @@ func VerifyRegression(root string) (RegressionStatus, error) {
 	if err != nil {
 		return RegressionStatus{}, err
 	}
-	expected, err := GenerateRegression()
+	profile, ok := regressionProfileForGenerator(actual.Fixtures.Generator)
+	if !ok {
+		return RegressionStatus{}, errors.New("regression fixture generator is unsupported")
+	}
+	expected, err := generateRegression(profile)
 	if err != nil {
 		return RegressionStatus{}, err
 	}

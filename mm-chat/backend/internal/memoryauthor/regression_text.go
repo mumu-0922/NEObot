@@ -5,6 +5,16 @@ import (
 	"strings"
 )
 
+func regressionQueryForProfile(
+	s regressionScenario,
+	profile regressionGenerationProfile,
+) string {
+	if !profile.repairedUnrelated || !regressionHasSlice(s.draft, "unrelated_negative") {
+		return regressionQuery(s)
+	}
+	return repairedRegressionQuery(s)
+}
+
 func regressionQuery(s regressionScenario) string {
 	scope := regressionScopeText(s)
 	clauses := make([]string, 0, len(s.draft.slices))
@@ -61,6 +71,66 @@ func regressionQuery(s regressionScenario) string {
 		"只返回授权范围内的答案。",
 	}
 	return prefixes[variant/5] + body + suffixes[variant%5]
+}
+
+func repairedRegressionQuery(s regressionScenario) string {
+	scope := regressionScopeText(s)
+	clauses := make([]string, 0, len(s.draft.slices))
+	for _, slice := range regressionCoreSlices {
+		if !regressionHasSlice(s.draft, slice) {
+			continue
+		}
+		if slice == "unrelated_negative" {
+			clauses = append(clauses, repairedUnrelatedQueryClause(s, scope))
+			continue
+		}
+		clauses = append(clauses, regressionQueryClause(s, scope, slice))
+	}
+	separator := "；"
+	if s.draft.language == "en" {
+		separator = "; "
+	}
+	body := strings.Join(clauses, separator)
+	variant := s.draft.index % 25
+	if s.draft.language == "en" {
+		prefixes := []string{
+			"", "Answer directly: ", "For the current task, ",
+			"Use a concise response: ", "In this context, ",
+		}
+		suffixes := []string{
+			"", " Give the conclusion first.", " Use one sentence.",
+			" Do not speculate.", " Keep the answer scoped.",
+		}
+		return prefixes[variant/5] + body + suffixes[variant%5]
+	}
+	prefixes := []string{"", "请直接回答：", "针对当前任务，", "请简洁回答：", "在当前语境中，"}
+	if s.draft.language == "mixed" {
+		prefixes = []string{"", "请direct answer：", "针对current task，", "请用concise response：", "在current context中，"}
+	}
+	suffixes := []string{"", "请先给结论。", "请用一句话。", "不要猜测。", "只回答当前范围。"}
+	return prefixes[variant/5] + body + suffixes[variant%5]
+}
+
+func repairedUnrelatedQueryClause(s regressionScenario, scope string) string {
+	if s.draft.language == "en" {
+		return fmt.Sprintf(
+			"Write a neutral one-line agenda heading for %s's %s work in %s.",
+			s.entity,
+			s.subjectEN,
+			scope,
+		)
+	}
+	prefix := ""
+	if s.draft.language == "mixed" {
+		prefix = "请按 bilingual context 处理："
+	}
+	return fmt.Sprintf(
+		"%s请为%s在%s中的%s事项写一个中性的单行议程标题。",
+		prefix,
+		s.entity,
+		scope,
+		s.subjectZH,
+	)
 }
 
 func regressionQueryClause(s regressionScenario, scope, slice string) string {
@@ -210,6 +280,35 @@ func regressionNegativeContent(s regressionScenario, slice string) string {
 	}
 	if s.draft.language == "mixed" {
 		content += " This rejected bilingual record has no authority."
+	}
+	return content
+}
+
+func regressionNegativeContentForProfile(
+	s regressionScenario,
+	slice string,
+	profile regressionGenerationProfile,
+) string {
+	if !profile.repairedUnrelated || slice != "unrelated_negative" {
+		return regressionNegativeContent(s, slice)
+	}
+	scope := regressionScopeText(s)
+	if s.draft.language == "en" {
+		return fmt.Sprintf(
+			"During a meeting in %s about %s's %s, the lobby weather board showed sunshine.",
+			scope,
+			s.entity,
+			s.subjectEN,
+		)
+	}
+	content := fmt.Sprintf(
+		"在%s讨论%s的%s时，大厅天气牌显示晴天。",
+		scope,
+		s.entity,
+		s.subjectZH,
+	)
+	if s.draft.language == "mixed" {
+		content += " The lobby weather board showed sunshine during the meeting."
 	}
 	return content
 }

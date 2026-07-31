@@ -9,13 +9,13 @@ import (
 )
 
 func validateRegressionFixtureManifest(manifest RegressionFixtureManifest) error {
+	profile, ok := regressionProfileForGenerator(manifest.Generator)
 	if manifest.SchemaVersion != RegressionFixtureSchemaVersion ||
-		!validIdentifier(manifest.ID) || !validText(manifest.Description, 4096) ||
+		!ok || manifest.ID != profile.fixtureID || manifest.Description != profile.fixtureDescription ||
 		manifest.CorpusClass != memoryeval.RegressionCorpusClass ||
 		manifest.AdmissionMode != memoryeval.RegressionAdmissionMode ||
 		manifest.PromotionEligible == nil || *manifest.PromotionEligible ||
 		!validDataPolicy(manifest.DataPolicy) ||
-		manifest.Generator != expectedRegressionGenerator() ||
 		!validSHA256(manifest.ContentSHA256) || len(manifest.Fixtures) != 500 {
 		return errors.New("regression fixture manifest header is invalid")
 	}
@@ -44,13 +44,13 @@ func validateRegressionFixtureManifest(manifest RegressionFixtureManifest) error
 }
 
 func validateRegressionManifest(manifest RegressionManifest) error {
+	profile, ok := regressionProfileForGenerator(manifest.Generator)
 	if manifest.SchemaVersion != RegressionManifestSchemaVersion ||
-		!validIdentifier(manifest.ID) ||
+		!ok || manifest.ID != profile.manifestID ||
 		manifest.CorpusClass != memoryeval.RegressionCorpusClass ||
 		manifest.AdmissionMode != memoryeval.RegressionAdmissionMode ||
 		manifest.PromotionEligible == nil || *manifest.PromotionEligible ||
 		!validDataPolicy(manifest.DataPolicy) ||
-		manifest.Generator != expectedRegressionGenerator() ||
 		manifest.CaseCount != 500 ||
 		manifest.SplitCounts != (CountBySplit{Development: 300, Validation: 100, Holdout: 100}) ||
 		manifest.LanguageCounts != (CountByLanguage{Chinese: 350, Mixed: 100, English: 50}) ||
@@ -81,6 +81,7 @@ func ValidateRegressionPool(pool RegressionPool) error {
 	if err := validateRegressionFixtureManifest(pool.Fixtures); err != nil {
 		return err
 	}
+	profile, _ := regressionProfileForGenerator(pool.Fixtures.Generator)
 	fixtureContentHash, err := RegressionFixtureContentSHA256(pool.Fixtures)
 	if err != nil || fixtureContentHash != pool.Fixtures.ContentSHA256 {
 		return errors.New("regression fixture content hash does not match")
@@ -114,6 +115,12 @@ func ValidateRegressionPool(pool RegressionPool) error {
 	if err := memoryeval.ValidateRegressionAdmission(pool.Corpus, pool.Audit); err != nil {
 		return fmt.Errorf("admit regression corpus: %w", err)
 	}
+	if pool.Corpus.ID != profile.corpusID || pool.Corpus.Description != profile.corpusDescription ||
+		pool.Corpus.MachineAudit.Auditor != profile.auditor ||
+		pool.Corpus.MachineAudit.AuditedAt != profile.auditedAt ||
+		pool.Audit.Auditor != profile.auditor || pool.Audit.AuditedAt != profile.auditedAt {
+		return errors.New("regression corpus profile binding is invalid")
+	}
 	if pool.Corpus.FixtureManifestSHA256 != fixtureContentHash {
 		return errors.New("regression corpus fixture binding does not match")
 	}
@@ -143,6 +150,9 @@ func ValidateRegressionPool(pool RegressionPool) error {
 	}
 	if err := validateRegressionManifest(pool.Manifest); err != nil {
 		return err
+	}
+	if pool.Manifest.Generator != pool.Fixtures.Generator || pool.Manifest.ID != profile.manifestID {
+		return errors.New("regression artifact profiles do not match")
 	}
 	manifest := pool.Manifest
 	if manifest.CaseCount != pool.Audit.CaseCount ||
