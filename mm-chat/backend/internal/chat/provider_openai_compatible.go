@@ -191,9 +191,10 @@ func (p *OpenAICompatibleProvider) streamChatCompletion(
 		if cancel != nil {
 			cancel()
 		}
-		return nil, newProviderFailure(
+		return nil, newProviderHTTPFailure(
 			providerHTTPFailureCategory(resp.StatusCode),
 			fmt.Sprintf("openai-compatible provider returned status %d", resp.StatusCode),
+			resp.Header.Get("Retry-After"),
 		)
 	}
 

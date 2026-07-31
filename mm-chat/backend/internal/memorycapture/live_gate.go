@@ -19,6 +19,7 @@ const (
 	LiveAuthorizationCloudJudgeTarget               = "MEMORY_REGRESSION_LIVE_CLOUD_JUDGE_TARGET_DENIED"
 	LiveAuthorizationMemoryToolRouteTarget          = "MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_TARGET_DENIED"
 	LiveAuthorizationConfiguredCandidateJudgeTarget = "MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_TARGET_DENIED"
+	LiveAuthorizationFixedMemoryJudgeTarget         = "MEMORY_REGRESSION_LIVE_FIXED_MEMORY_JUDGE_TARGET_DENIED"
 )
 
 var ErrLiveNotAuthorized = errors.New("native Memory live capture is not authorized")
@@ -41,6 +42,29 @@ type LiveAuthorization struct {
 	ConfiguredCandidateJudgeProviderType  string
 	ConfiguredCandidateJudgeBaseURLSHA256 string
 	ConfiguredCandidateJudgeModelID       string
+}
+
+func AuthorizeFixedMemoryJudgeTarget(
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	authorization LiveAuthorization,
+) error {
+	if !validFixedMemoryJudgeAuthority(authority) {
+		return LiveAuthorizationError{Code: LiveAuthorizationFixedMemoryJudgeTarget}
+	}
+	if providerMode == ProviderModeFakeProtocol {
+		return nil
+	}
+	if providerMode != ProviderModeLiveSiliconFlow ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeApproval) !=
+			LiveMemoryToolRouteApproval ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeProviderID) != authority.ProviderID ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeProviderType) != authority.ProviderType ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeBaseURLSHA256) != authority.BaseURLSHA256 ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeModelID) != authority.ModelID {
+		return LiveAuthorizationError{Code: LiveAuthorizationFixedMemoryJudgeTarget}
+	}
+	return nil
 }
 
 func AuthorizeConfiguredCandidateJudgeTarget(

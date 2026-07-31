@@ -52,12 +52,18 @@ func (adapter *ChatAdapter) JudgeHybridCandidates(
 		ModelRef:        adapter.modelRef,
 	})
 	if err != nil {
-		return usermemory.HybridCandidateJudgeResult{}, errors.New("Memory candidate judge Provider failed")
+		return usermemory.HybridCandidateJudgeResult{}, errors.Join(
+			errors.New("Memory candidate judge Provider failed"),
+			err,
+		)
 	}
 	output := make([]byte, 0, 256)
 	for event := range events {
 		if event.Error != nil {
-			return usermemory.HybridCandidateJudgeResult{}, errors.New("Memory candidate judge Provider failed")
+			return usermemory.HybridCandidateJudgeResult{}, errors.Join(
+				errors.New("Memory candidate judge Provider failed"),
+				event.Error,
+			)
 		}
 		switch event.Type {
 		case chat.ProviderEventDelta:

@@ -76,6 +76,10 @@ run-bound marker in a database whose name starts with
 | Independent live credentials | BGE and the selected chat route are separate Provider authorities. | Cost-basis v5 and the wrapper reject the same file, hard links, or equal Key bytes and bind each exact target independently. |
 | Candidate-first configured judge | Candidate-blind routes cannot discover implicit personalization, while candidate recall itself is not prompt injection. | Schema v10 recalls and reauthorizes first, then reuses the strict ordinal judge with the exact configured GPT/DeepSeek Provider; only judge/BGE intersection may become a counterfactual final set. |
 | Stage-local failure aggregation | A runtime may correctly fail closed before configured-judge egress even though candidate recall was non-empty; treating that as whole-bundle corruption destroys valid failed-gate evidence. | Schema v10 aggregates the normalized failure only when every judge/request/final/token surface proves `no_memory`; schema v4/v5 preserve their historical strict rejection. |
+| Fixed global Memory Judge | Answer-model-specific judges failed schema-v10 gates and the owner rejected local inference. | Schema v11 fixes `SERVER_DEFAULT/openai_compatible/gpt-5.6-luna`, criteria v2, cost-basis v7, and a 3000-ms complete-flow cutoff; failure releases no v2 Memory and never falls back to unjudged candidates. |
+| Accuracy-first execution | Schema-v11 short cutoffs converted Provider latency into missing decisions, and intra-case concurrency overloaded the shared route without improving correctness. | Schema v12 fixes query-embedding/admission/rerank/judge/Record order, global Provider concurrency one, no application/HTTP elapsed timeout, diagnostic-only latency, a one-second inter-case cooldown, and one bounded transient retry. |
+| Attempt-derived cost | Retrying without aggregate authority would hide quota and token amplification. | Cost-basis v8 pre-authorizes at most 600 Judge attempts/76800 output tokens; report validation reconciles attempt counts, total/retry Judge input bounds, and `attempts * 128` output authority. |
+| Manual stage isolation | Development evidence is not Validation or production authority. | Every schema-v11/v12 Development run stops for owner review; Validation and production activation require separate authorization. |
 | Candidate failure means `no_memory` | v1 remains the real prompt authority but is a separate benchmark profile. | Prepare/Record/Provider/cutoff failures never launder v1 or unscored RRF rows into v2 final/injected surfaces. |
 
 ## Trust boundaries and threats
@@ -103,6 +107,18 @@ with a distinct cost-basis-v6 Provider authority and mount. Candidate bodies
 may reach only that exact owner-authorized configured Provider after current
 authority and secret redaction; neither credential value enters argv,
 environment, retained output, or Docker metadata.
+
+Fixed Memory Judge mode further requires the exact schema-v11 Luna tuple and
+cost-basis v7. The wrapper overwrites and removes both temporary Key copies on
+success, error, and signal; the runner receives read-only files and no Vault
+decryption authority.
+
+Accuracy-first mode retains the same two-credential boundary under schema v12
+and cost-basis v8. Its BGE and Luna HTTP clients reject redirects and
+environment proxies, require TLS 1.2 or newer, and impose no elapsed timeout.
+Manual cancellation is the only interruption authority. Only 408/429/5xx and
+retryable transport/read interruptions may retry once; deterministic protocol
+failures do not gain extra egress.
 
 ### Fixture plaintext leakage
 
@@ -211,6 +227,22 @@ result or failure, even when a later case reuses the same assistant identity.
   latency. Both retained zero false injection and zero authority/privacy leaks,
   but neither selected a policy. Validation, runtime installation, and
   promotion remain unavailable.
+- Schema v11 is the separately versioned fixed-Luna successor. It binds reader
+  v9, profile/report v11, criteria v2 (`1500/2500/3000 ms`), cost-basis v7,
+  exact Provider/Base-URL/model authority, and the unchanged strict ordinal/
+  BGE intersection contract. Timeout, invalid output, Provider failure, and
+  protocol drift return empty v2 Memory while v1 chat continues. Development
+  cannot chain into Validation or production.
+- The retained schema-v11 Development run failed with only `41` Luna attempts,
+  `22` complete rerank-plus-judge decisions, `154` admission-unavailable cases,
+  and `19` `HARD_CUTOFF` complete stages. Its report bytes and v2 criteria stay
+  immutable.
+- Schema v12 is the accuracy-first successor: reader v10, profile/report v12,
+  criteria v3, cost-basis v8, serial BGE-before-Luna execution, global Provider
+  concurrency one, no elapsed cutoff, and diagnostic-only latency. Fake mode
+  records 299 virtual cooldowns with zero elapsed time; live mode performs 299
+  wall-clock one-second cooldowns. All attempts, retries, per-stage timings,
+  cooldowns, and Judge token upper bounds are aggregate-only.
 - Fake protocol relevance and latency metrics are intentionally meaningless;
   only lifecycle and authority invariants are evaluated.
 
@@ -272,3 +304,12 @@ result or failure, even when a later case reuses the same assistant identity.
   profiles, retained zero false injection/authority leaks, and kept Validation
   blocked. Allowed strictly empty pre-judge retrieval failures to aggregate in
   schema v10 without changing schema-v4/v5 report semantics.
+- **2026-07-31**: Added the schema-v11 fixed global Luna Development lane with
+  criteria-v2 latency budgets, reader v9, cost-basis v7, exact two-credential
+  isolation, fail-closed no-fallback semantics, and mandatory manual stops
+  before Validation and production.
+- **2026-07-31**: Preserved the failed schema-v11 bundle and added schema-v12
+  accuracy-first Development with reader v10, criteria v3, cost-basis v8,
+  global serial Provider execution, no elapsed deadlines, diagnostic-only
+  latency, bounded transient retry, virtual/live cooldown clocks, reconciled
+  attempt/token telemetry, and an unconditional stop before Validation.

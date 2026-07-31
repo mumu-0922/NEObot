@@ -73,7 +73,28 @@ func captureCandidateWithCalibration(
 	index FixtureIndex,
 	input RuntimeCase,
 ) (memoryeval.CaseObservation, CandidateCalibrationTrace, error) {
+	return captureCandidateWithCalibrationCutoff(
+		ctx,
+		service,
+		recorder,
+		index,
+		input,
+		2000,
+	)
+}
+
+func captureCandidateWithCalibrationCutoff(
+	ctx context.Context,
+	service *usermemory.Service,
+	recorder *Recorder,
+	index FixtureIndex,
+	input RuntimeCase,
+	hardCutoffMilliseconds int,
+) (memoryeval.CaseObservation, CandidateCalibrationTrace, error) {
 	if service == nil || recorder == nil || !validRuntimeCase(input) {
+		return memoryeval.CaseObservation{}, CandidateCalibrationTrace{}, ErrCaptureInvalid
+	}
+	if hardCutoffMilliseconds < 0 {
 		return memoryeval.CaseObservation{}, CandidateCalibrationTrace{}, ErrCaptureInvalid
 	}
 	if err := recorder.Begin(input.AssistantMessageID); err != nil {
@@ -136,8 +157,7 @@ func captureCandidateWithCalibration(
 	if err != nil {
 		return memoryeval.CaseObservation{}, CandidateCalibrationTrace{}, err
 	}
-	hardCutoff := latency >= 2000 || summary.ResultCode == "HARD_CUTOFF" ||
-		summary.FallbackCode == "HARD_CUTOFF"
+	hardCutoff := captureHardCutoffApplied(latency, hardCutoffMilliseconds, summary)
 	routeFailureCategory := transient.memoryToolRouteFailureCategory
 	if !transient.memoryToolRouteReady &&
 		transient.memoryToolRouteInputTokenUpperBound > 0 &&
@@ -187,6 +207,17 @@ func captureCandidateWithCalibration(
 		trace.FinalRelevanceScores[position] = score
 	}
 	return observed, trace, nil
+}
+
+func captureHardCutoffApplied(
+	latencyMilliseconds int64,
+	hardCutoffMilliseconds int,
+	summary usermemory.HybridShadowSummary,
+) bool {
+	return (hardCutoffMilliseconds > 0 &&
+		latencyMilliseconds >= int64(hardCutoffMilliseconds)) ||
+		summary.ResultCode == "HARD_CUTOFF" ||
+		summary.FallbackCode == "HARD_CUTOFF"
 }
 
 func hybridFallback(summary usermemory.HybridShadowSummary, finalCount int) string {

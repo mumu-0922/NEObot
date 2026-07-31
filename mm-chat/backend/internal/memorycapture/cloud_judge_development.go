@@ -94,6 +94,25 @@ func buildCloudJudgeDevelopmentReport(
 	costBasis CostBasis,
 	allowPreJudgeRetrievalFailure bool,
 ) (CloudJudgeDevelopmentReport, []byte, error) {
+	policy := usermemory.HybridShadowCloudJudgeCalibrationPolicy(judgeModelID)
+	return buildCloudJudgeDevelopmentReportForPolicy(
+		pool,
+		profile,
+		policy,
+		pool.Corpus.Criteria,
+		costBasis,
+		allowPreJudgeRetrievalFailure,
+	)
+}
+
+func buildCloudJudgeDevelopmentReportForPolicy(
+	pool memoryauthor.RegressionPool,
+	profile CapturedProfile,
+	policyValue usermemory.HybridShadowRelevancePolicy,
+	criteria memoryeval.Criteria,
+	costBasis CostBasis,
+	allowPreJudgeRetrievalFailure bool,
+) (CloudJudgeDevelopmentReport, []byte, error) {
 	if profile.Profile.ID != CandidateProfileID &&
 		profile.Profile.ID != FakeCandidateProfileID {
 		return CloudJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
@@ -111,118 +130,31 @@ func buildCloudJudgeDevelopmentReport(
 		return CloudJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
 	}
 	policy, ok := usermemory.DescribeHybridShadowRelevancePolicy(
-		usermemory.HybridShadowCloudJudgeCalibrationPolicy(judgeModelID),
+		policyValue,
 	)
 	if !ok {
 		return CloudJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
 	}
-	if err := ValidateCloudJudgeCostAuthority(costBasis, judgeModelID); err != nil ||
+	if err := ValidateCloudJudgeCostAuthority(
+		costBasis,
+		policy.CloudCandidateJudgeModelID,
+	); err != nil ||
 		costBasis.Candidate != profile.Costs {
 		return CloudJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
 	}
-	development := make([]memoryeval.GoldenCase, 0, 300)
-	for _, item := range pool.Corpus.Cases {
-		if item.Split == DevelopmentCalibrationSplit {
-			development = append(development, item)
-		}
+	aggregate, err := aggregateCloudJudgeDevelopment(
+		pool,
+		profile,
+		allowPreJudgeRetrievalFailure,
+	)
+	if err != nil {
+		return CloudJudgeDevelopmentReport{}, nil, err
 	}
-	if len(pool.Corpus.Cases) != 500 || len(development) != 300 ||
-		len(profile.Cases) != len(development) ||
-		len(profile.Calibration) != len(development) {
-		return CloudJudgeDevelopmentReport{}, nil, fmt.Errorf(
-			"%w: cloud-judge Development split",
-			ErrCaptureInvalid,
-		)
-	}
-	caseByID := make(map[string]memoryeval.CaseObservation, len(profile.Cases))
-	for _, observed := range profile.Cases {
-		if observed.CaseID == "" {
-			return CloudJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
-		}
-		if _, duplicate := caseByID[observed.CaseID]; duplicate {
-			return CloudJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
-		}
-		caseByID[observed.CaseID] = observed
-	}
-	traceByID := make(map[string]CandidateCalibrationTrace, len(profile.Calibration))
-	for _, trace := range profile.Calibration {
-		if trace.CaseID == "" || trace.FullObservation.CaseID != trace.CaseID {
-			return CloudJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
-		}
-		if _, duplicate := traceByID[trace.CaseID]; duplicate {
-			return CloudJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
-		}
-		traceByID[trace.CaseID] = trace
-	}
-
-	ordered := make([]memoryeval.CaseObservation, len(development))
-	diagnostics := CloudJudgeDevelopmentDiagnostics{
-		FailureCodeCounts: make(map[string]int),
-	}
-	actualJudgeRequests := 0
-	actualInputTokenUpperBound := uint64(0)
-	for index, item := range development {
-		observed, observedOK := caseByID[item.ID]
-		trace, traceOK := traceByID[item.ID]
-		if !observedOK || !traceOK || !trace.PreparedReady ||
-			!equalCaseObservation(observed, trace.FullObservation) {
-			return CloudJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
-		}
-		candidateCount := len(observed.CandidateMemoryIDs)
-		if candidateCount == 0 {
-			if trace.AdmissionReady || trace.RerankReady || trace.CloudJudgeReady ||
-				trace.CloudJudgeInputTokenUpperBound != 0 ||
-				len(observed.ProviderSentMemoryIDs) != 0 ||
-				len(observed.FinalMemoryIDs) != 0 {
-				return CloudJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
-			}
-			diagnostics.EmptyCandidateCaseCount++
-		} else {
-			if !trace.AdmissionReady {
-				if !allowPreJudgeRetrievalFailure || trace.RerankReady ||
-					trace.CloudJudgeReady || trace.CloudJudgeInputTokenUpperBound != 0 ||
-					len(observed.ProviderSentMemoryIDs) != 0 ||
-					len(observed.FinalMemoryIDs) != 0 ||
-					len(observed.InjectedMemoryIDs) != 0 || observed.PromptMemoryTokens != 0 {
-					return CloudJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
-				}
-				diagnostics.FailedCaseCount++
-				code := normalizeCalibrationCode(trace.AbstentionCode)
-				if code == "NONE" {
-					code = normalizeCalibrationCode(trace.ResultCode)
-				}
-				diagnostics.FailureCodeCounts[code]++
-				ordered[index] = observed
-				continue
-			}
-			if trace.RerankReady && trace.CloudJudgeReady {
-				if trace.CloudJudgeInputTokenUpperBound <= 0 {
-					return CloudJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
-				}
-				diagnostics.JudgeCompletedCaseCount++
-				if len(observed.FinalMemoryIDs) == 0 {
-					diagnostics.JudgeAbstainedCaseCount++
-				}
-			} else {
-				diagnostics.FailedCaseCount++
-				code := normalizeCalibrationCode(trace.AbstentionCode)
-				if code == "NONE" {
-					code = normalizeCalibrationCode(trace.ResultCode)
-				}
-				diagnostics.FailureCodeCounts[code]++
-				if len(observed.FinalMemoryIDs) != 0 ||
-					len(observed.InjectedMemoryIDs) != 0 ||
-					observed.PromptMemoryTokens != 0 {
-					return CloudJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
-				}
-			}
-			if trace.CloudJudgeInputTokenUpperBound > 0 {
-				actualJudgeRequests++
-				actualInputTokenUpperBound += uint64(trace.CloudJudgeInputTokenUpperBound)
-			}
-		}
-		ordered[index] = observed
-	}
+	development := aggregate.development
+	ordered := aggregate.ordered
+	diagnostics := aggregate.diagnostics
+	actualJudgeRequests := aggregate.logicalJudgeRequests
+	actualInputTokenUpperBound := aggregate.logicalInputTokenUpperBound
 	authority := costBasis.CloudJudgeAuthority
 	actualOutputTokenUpperBound := uint64(actualJudgeRequests) *
 		usermemory.HybridCandidateJudgeMaximumOutputTokens
@@ -235,7 +167,7 @@ func buildCloudJudgeDevelopmentReport(
 		)
 	}
 	evaluation, schemaVersion, costAuthorized, err := evaluateCloudJudgeDevelopment(
-		development, ordered, pool.Corpus.Criteria, profile.Costs,
+		development, ordered, criteria, profile.Costs,
 		costBasis.ProviderCostPolicy,
 	)
 	if err != nil {
@@ -279,6 +211,127 @@ func buildCloudJudgeDevelopmentReport(
 		return CloudJudgeDevelopmentReport{}, nil, errors.Join(ErrCaptureInvalid, err)
 	}
 	return report, append(body, '\n'), nil
+}
+
+type cloudJudgeDevelopmentAggregate struct {
+	development                 []memoryeval.GoldenCase
+	ordered                     []memoryeval.CaseObservation
+	diagnostics                 CloudJudgeDevelopmentDiagnostics
+	logicalJudgeRequests        int
+	logicalInputTokenUpperBound uint64
+}
+
+func aggregateCloudJudgeDevelopment(
+	pool memoryauthor.RegressionPool,
+	profile CapturedProfile,
+	allowPreJudgeRetrievalFailure bool,
+) (cloudJudgeDevelopmentAggregate, error) {
+	development := make([]memoryeval.GoldenCase, 0, 300)
+	for _, item := range pool.Corpus.Cases {
+		if item.Split == DevelopmentCalibrationSplit {
+			development = append(development, item)
+		}
+	}
+	if len(pool.Corpus.Cases) != 500 || len(development) != 300 ||
+		len(profile.Cases) != len(development) ||
+		len(profile.Calibration) != len(development) {
+		return cloudJudgeDevelopmentAggregate{}, fmt.Errorf(
+			"%w: cloud-judge Development split",
+			ErrCaptureInvalid,
+		)
+	}
+	caseByID := make(map[string]memoryeval.CaseObservation, len(profile.Cases))
+	for _, observed := range profile.Cases {
+		if observed.CaseID == "" {
+			return cloudJudgeDevelopmentAggregate{}, ErrCaptureInvalid
+		}
+		if _, duplicate := caseByID[observed.CaseID]; duplicate {
+			return cloudJudgeDevelopmentAggregate{}, ErrCaptureInvalid
+		}
+		caseByID[observed.CaseID] = observed
+	}
+	traceByID := make(map[string]CandidateCalibrationTrace, len(profile.Calibration))
+	for _, trace := range profile.Calibration {
+		if trace.CaseID == "" || trace.FullObservation.CaseID != trace.CaseID {
+			return cloudJudgeDevelopmentAggregate{}, ErrCaptureInvalid
+		}
+		if _, duplicate := traceByID[trace.CaseID]; duplicate {
+			return cloudJudgeDevelopmentAggregate{}, ErrCaptureInvalid
+		}
+		traceByID[trace.CaseID] = trace
+	}
+
+	aggregate := cloudJudgeDevelopmentAggregate{
+		development: development,
+		ordered:     make([]memoryeval.CaseObservation, len(development)),
+		diagnostics: CloudJudgeDevelopmentDiagnostics{
+			FailureCodeCounts: make(map[string]int),
+		},
+	}
+	for index, item := range development {
+		observed, observedOK := caseByID[item.ID]
+		trace, traceOK := traceByID[item.ID]
+		if !observedOK || !traceOK || !trace.PreparedReady ||
+			!equalCaseObservation(observed, trace.FullObservation) {
+			return cloudJudgeDevelopmentAggregate{}, ErrCaptureInvalid
+		}
+		candidateCount := len(observed.CandidateMemoryIDs)
+		if candidateCount == 0 {
+			if trace.AdmissionReady || trace.RerankReady || trace.CloudJudgeReady ||
+				trace.CloudJudgeInputTokenUpperBound != 0 ||
+				len(observed.ProviderSentMemoryIDs) != 0 ||
+				len(observed.FinalMemoryIDs) != 0 {
+				return cloudJudgeDevelopmentAggregate{}, ErrCaptureInvalid
+			}
+			aggregate.diagnostics.EmptyCandidateCaseCount++
+		} else {
+			if !trace.AdmissionReady {
+				if !allowPreJudgeRetrievalFailure || trace.RerankReady ||
+					trace.CloudJudgeReady || trace.CloudJudgeInputTokenUpperBound != 0 ||
+					len(observed.ProviderSentMemoryIDs) != 0 ||
+					len(observed.FinalMemoryIDs) != 0 ||
+					len(observed.InjectedMemoryIDs) != 0 || observed.PromptMemoryTokens != 0 {
+					return cloudJudgeDevelopmentAggregate{}, ErrCaptureInvalid
+				}
+				aggregate.diagnostics.FailedCaseCount++
+				code := normalizeCalibrationCode(trace.AbstentionCode)
+				if code == "NONE" {
+					code = normalizeCalibrationCode(trace.ResultCode)
+				}
+				aggregate.diagnostics.FailureCodeCounts[code]++
+				aggregate.ordered[index] = observed
+				continue
+			}
+			if trace.RerankReady && trace.CloudJudgeReady {
+				if trace.CloudJudgeInputTokenUpperBound <= 0 {
+					return cloudJudgeDevelopmentAggregate{}, ErrCaptureInvalid
+				}
+				aggregate.diagnostics.JudgeCompletedCaseCount++
+				if len(observed.FinalMemoryIDs) == 0 {
+					aggregate.diagnostics.JudgeAbstainedCaseCount++
+				}
+			} else {
+				aggregate.diagnostics.FailedCaseCount++
+				code := normalizeCalibrationCode(trace.AbstentionCode)
+				if code == "NONE" {
+					code = normalizeCalibrationCode(trace.ResultCode)
+				}
+				aggregate.diagnostics.FailureCodeCounts[code]++
+				if len(observed.FinalMemoryIDs) != 0 ||
+					len(observed.InjectedMemoryIDs) != 0 ||
+					observed.PromptMemoryTokens != 0 {
+					return cloudJudgeDevelopmentAggregate{}, ErrCaptureInvalid
+				}
+			}
+			if trace.CloudJudgeInputTokenUpperBound > 0 {
+				aggregate.logicalJudgeRequests++
+				aggregate.logicalInputTokenUpperBound +=
+					uint64(trace.CloudJudgeInputTokenUpperBound)
+			}
+		}
+		aggregate.ordered[index] = observed
+	}
+	return aggregate, nil
 }
 
 func evaluateCloudJudgeDevelopment(

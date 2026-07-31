@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"mime"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -28,6 +29,30 @@ func newProviderGatewayHTTPClient() *http.Client {
 			IdleConnTimeout:       30 * time.Second,
 		},
 		Timeout: providerGatewayTimeout,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+}
+
+func newAccuracyFirstDevelopmentProviderGatewayHTTPClient() *http.Client {
+	return NewAccuracyFirstDevelopmentHTTPClient()
+}
+
+// NewAccuracyFirstDevelopmentHTTPClient returns the schema-v12 transport
+// shared by fixed BGE and Luna. It has no elapsed-time deadline, rejects
+// redirects and environment proxies, and leaves cancellation to the caller.
+func NewAccuracyFirstDevelopmentHTTPClient() *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			Proxy:               nil,
+			ForceAttemptHTTP2:   true,
+			TLSClientConfig:     &tls.Config{MinVersion: tls.VersionTLS12},
+			DialContext:         (&net.Dialer{KeepAlive: 30 * time.Second}).DialContext,
+			IdleConnTimeout:     30 * time.Second,
+			TLSHandshakeTimeout: 0,
+		},
+		Timeout: 0,
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
@@ -63,11 +88,19 @@ func (gateway *ProviderGateway) providerJSON(
 
 	response, err := gateway.httpClient.Do(request)
 	if err != nil {
-		return nil, ErrProviderGatewayUpstream
+		if ctx.Err() != nil {
+			return nil, ErrProviderGatewayUpstream
+		}
+		return nil, newProviderRetryError("")
 	}
 	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK ||
-		!providerGatewayJSONContentType(response.Header.Get("Content-Type")) {
+	if response.StatusCode != http.StatusOK {
+		if providerGatewayRetryableStatus(response.StatusCode) {
+			return nil, newProviderRetryError(response.Header.Get("Retry-After"))
+		}
+		return nil, ErrProviderGatewayUpstream
+	}
+	if !providerGatewayJSONContentType(response.Header.Get("Content-Type")) {
 		return nil, ErrProviderGatewayUpstream
 	}
 	contentEncoding := strings.TrimSpace(response.Header.Get("Content-Encoding"))
@@ -78,7 +111,13 @@ func (gateway *ProviderGateway) providerJSON(
 		return nil, ErrProviderGatewayUpstream
 	}
 	raw, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
-	if err != nil || len(raw) == 0 || int64(len(raw)) > maxResponseBytes {
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ErrProviderGatewayUpstream
+		}
+		return nil, newProviderRetryError("")
+	}
+	if len(raw) == 0 || int64(len(raw)) > maxResponseBytes {
 		return nil, ErrProviderGatewayUpstream
 	}
 	return raw, nil

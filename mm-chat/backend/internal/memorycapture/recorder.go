@@ -172,13 +172,10 @@ func (recorder *Recorder) recordCloudJudgeResult(
 func (recorder *Recorder) recordCloudJudgeInput(
 	input usermemory.HybridCandidateJudgeInput,
 ) error {
-	systemPrompt, userPrompt, err := usermemory.BuildHybridCandidateJudgePrompt(input)
+	upperBound, err := cloudJudgeInputTokenUpperBound(input)
 	if err != nil {
 		return ErrCaptureStateConflict
 	}
-	// One UTF-8 byte per token plus fixed chat framing is conservative for the
-	// Provider tokenizer while retaining no query or candidate plaintext.
-	upperBound := len(systemPrompt) + len(userPrompt) + 32
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
 	if recorder.current == nil || !recorder.current.judgeEgressReady ||
@@ -188,6 +185,16 @@ func (recorder *Recorder) recordCloudJudgeInput(
 	}
 	recorder.current.cloudJudgeInputTokenUpperBound = upperBound
 	return nil
+}
+
+func cloudJudgeInputTokenUpperBound(input usermemory.HybridCandidateJudgeInput) (int, error) {
+	systemPrompt, userPrompt, err := usermemory.BuildHybridCandidateJudgePrompt(input)
+	if err != nil {
+		return 0, err
+	}
+	// One UTF-8 byte per token plus fixed chat framing is conservative for the
+	// Provider tokenizer while retaining no query or candidate plaintext.
+	return len(systemPrompt) + len(userPrompt) + 32, nil
 }
 
 func (recorder *Recorder) recordMemoryToolRouteInput(

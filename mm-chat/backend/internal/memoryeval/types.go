@@ -400,6 +400,49 @@ type CalibrationEvaluation struct {
 	Failures           []string               `json:"failures"`
 }
 
+// AccuracyFirstCriteria retains every v1 quality, safety, token, and cost
+// threshold while making the absence of latency/deadline acceptance authority
+// explicit for one separately versioned Development report.
+type AccuracyFirstCriteria struct {
+	MinimumCandidateRecallAt20       float64 `json:"minimumCandidateRecallAt20"`
+	MinimumFinalRecallAt5            float64 `json:"minimumFinalRecallAt5"`
+	MinimumCurrentFactAccuracy       float64 `json:"minimumCurrentFactAccuracy"`
+	MaximumFalseInjectionRate        float64 `json:"maximumFalseInjectionRate"`
+	MaximumAveragePromptMemoryTokens float64 `json:"maximumAveragePromptMemoryTokens"`
+	MaximumPromptMemoryTokens        int     `json:"maximumPromptMemoryTokens"`
+	MaximumProviderCostRatio         float64 `json:"maximumProviderCostRatio"`
+	LatencyEvaluationMode            string  `json:"latencyEvaluationMode"`
+	ApplicationDeadlineMode          string  `json:"applicationDeadlineMode"`
+}
+
+type AccuracyFirstBudgets struct {
+	P95LatencyMilliseconds    int64   `json:"p95LatencyMilliseconds"`
+	P99LatencyMilliseconds    int64   `json:"p99LatencyMilliseconds"`
+	AveragePromptMemoryTokens float64 `json:"averagePromptMemoryTokens"`
+	MaximumPromptMemoryTokens int     `json:"maximumPromptMemoryTokens"`
+	PromptTokenPassed         bool    `json:"promptTokenPassed"`
+}
+
+type AccuracyFirstSliceResult struct {
+	Cases              int                  `json:"cases"`
+	Metrics            Metrics              `json:"metrics"`
+	RankingDiagnostics RankingMetrics       `json:"rankingDiagnostics"`
+	Budgets            AccuracyFirstBudgets `json:"budgets"`
+	Safety             SafetyMetrics        `json:"safety"`
+	Passed             bool                 `json:"passed"`
+	Failures           []string             `json:"failures"`
+}
+
+type AccuracyFirstCalibrationEvaluation struct {
+	Passed             bool                                `json:"passed"`
+	Metrics            Metrics                             `json:"metrics"`
+	RankingDiagnostics RankingMetrics                      `json:"rankingDiagnostics"`
+	Budgets            AccuracyFirstBudgets                `json:"budgets"`
+	Safety             SafetyMetrics                       `json:"safety"`
+	Slices             map[string]AccuracyFirstSliceResult `json:"slices"`
+	Failures           []string                            `json:"failures"`
+}
+
 type ValidationEvaluation struct {
 	CalibrationEvaluation
 	ProviderCostRatio  float64 `json:"providerCostRatio"`

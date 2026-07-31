@@ -12,6 +12,7 @@ import (
 	"flag"
 	"io"
 	"log"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -131,7 +132,7 @@ func run(
 		return err
 	}
 	startedAt := time.Now().UTC()
-	ctx, cancel := context.WithTimeout(parent, defaultCaptureTimeout)
+	ctx, cancel := captureContext(parent, options.captureMode)
 	defer cancel()
 
 	costBody, err := readRegularBoundedFile(options.costBasisPath, 64<<10, false)
@@ -158,6 +159,8 @@ func run(
 	var memoryToolRouteAuthority memorycapture.MemoryToolRouteProfileAuthority
 	var configuredJudgeConfig memorycapture.ProfileConfig
 	var configuredJudgeAuthority memorycapture.ConfiguredCandidateJudgeProfileAuthority
+	var fixedMemoryJudgeConfig memorycapture.ProfileConfig
+	var accuracyFirstMemoryJudgeConfig memorycapture.ProfileConfig
 	var relevanceConfigurationHash string
 	var artifactNames []string
 	var artifactPrefix string
@@ -318,6 +321,82 @@ func run(
 			memorycapture.ConfiguredCandidateJudgeArtifactName,
 			"run-manifest.json",
 		}
+	case memorycapture.CaptureModeFixedMemoryJudge:
+		configuredJudgeAuthority, err = buildConfiguredCandidateJudgeAuthority(options)
+		if err != nil {
+			return err
+		}
+		if err := memorycapture.AuthorizeFixedMemoryJudgeTarget(
+			options.providerMode,
+			configuredJudgeAuthority,
+			authorization,
+		); err != nil {
+			return err
+		}
+		if err := memorycapture.ValidateFixedMemoryJudgeCostAuthority(
+			cost,
+			configuredJudgeAuthority,
+		); err != nil {
+			return err
+		}
+		fixedMemoryJudgeConfig, err =
+			memorycapture.BuildFixedMemoryJudgeDevelopmentProfileConfig(
+				protected,
+				costHash,
+				options.providerMode,
+				configuredJudgeAuthority,
+				cost.ProviderCostPolicy,
+			)
+		if err != nil {
+			return err
+		}
+		relevanceConfigurationHash, err =
+			memorycapture.ConfigurationSHA256(fixedMemoryJudgeConfig)
+		if err != nil {
+			return err
+		}
+		artifactNames = []string{
+			memorycapture.FixedMemoryJudgeArtifactName,
+			"run-manifest.json",
+		}
+	case memorycapture.CaptureModeAccuracyFirstMemoryJudge:
+		configuredJudgeAuthority, err = buildConfiguredCandidateJudgeAuthority(options)
+		if err != nil {
+			return err
+		}
+		if err := memorycapture.AuthorizeFixedMemoryJudgeTarget(
+			options.providerMode,
+			configuredJudgeAuthority,
+			authorization,
+		); err != nil {
+			return err
+		}
+		if err := memorycapture.ValidateAccuracyFirstMemoryJudgeCostAuthority(
+			cost,
+			configuredJudgeAuthority,
+		); err != nil {
+			return err
+		}
+		accuracyFirstMemoryJudgeConfig, err =
+			memorycapture.BuildAccuracyFirstMemoryJudgeDevelopmentProfileConfig(
+				protected,
+				costHash,
+				options.providerMode,
+				configuredJudgeAuthority,
+				cost.ProviderCostPolicy,
+			)
+		if err != nil {
+			return err
+		}
+		relevanceConfigurationHash, err =
+			memorycapture.ConfigurationSHA256(accuracyFirstMemoryJudgeConfig)
+		if err != nil {
+			return err
+		}
+		artifactNames = []string{
+			memorycapture.AccuracyFirstMemoryJudgeArtifactName,
+			"run-manifest.json",
+		}
 	case memorycapture.CaptureModeFrozenValidation:
 		validationConfig, err = memorycapture.BuildFrozenValidationProfileConfig(
 			protected,
@@ -385,6 +464,20 @@ func run(
 		return runCloudJudgeDevelopment(
 			ctx, stdout, options, startedAt, protected, cost, costHash,
 			configuredJudgeConfig, &configuredJudgeAuthority,
+			relevanceConfigurationHash, providers, adminDB, runtimeDB,
+		)
+	}
+	if options.captureMode == memorycapture.CaptureModeFixedMemoryJudge {
+		return runCloudJudgeDevelopment(
+			ctx, stdout, options, startedAt, protected, cost, costHash,
+			fixedMemoryJudgeConfig, &configuredJudgeAuthority,
+			relevanceConfigurationHash, providers, adminDB, runtimeDB,
+		)
+	}
+	if options.captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge {
+		return runAccuracyFirstMemoryJudgeDevelopment(
+			ctx, stdout, options, startedAt, protected, cost, costHash,
+			accuracyFirstMemoryJudgeConfig, configuredJudgeAuthority,
 			relevanceConfigurationHash, providers, adminDB, runtimeDB,
 		)
 	}
@@ -523,6 +616,16 @@ func run(
 		return errMetricsFailed
 	}
 	return nil
+}
+
+func captureContext(
+	parent context.Context,
+	captureMode string,
+) (context.Context, context.CancelFunc) {
+	if captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge {
+		return context.WithCancel(parent)
+	}
+	return context.WithTimeout(parent, defaultCaptureTimeout)
 }
 
 func runDevelopmentCalibration(
@@ -706,6 +809,12 @@ func runCloudJudgeDevelopment(
 			providers.hybrid, providers.judge, options.judgeModelID, config.ProfileID,
 			configurationHash, cost.Candidate,
 		)
+	} else if options.captureMode == memorycapture.CaptureModeFixedMemoryJudge {
+		captured, err = memorycapture.CaptureFixedMemoryJudgeDevelopment(
+			ctx, adminDB, runtimeDB, options.runID, protected.Pool, index, seed,
+			providers.hybrid, providers.judge, *configuredAuthority, config.ProfileID,
+			configurationHash, cost.Candidate,
+		)
 	} else {
 		captured, err = memorycapture.CaptureConfiguredCandidateJudgeDevelopment(
 			ctx, adminDB, runtimeDB, options.runID, protected.Pool, index, seed,
@@ -746,6 +855,31 @@ func runCloudJudgeDevelopment(
 			options.runID, captureID, options.providerMode, startedAt, time.Now().UTC(),
 			protected, costHash, report, artifacts,
 		)
+	} else if options.captureMode == memorycapture.CaptureModeFixedMemoryJudge {
+		report, body, reportErr :=
+			memorycapture.BuildFixedMemoryJudgeDevelopmentReport(
+				protected.Pool, captured, *configuredAuthority, cost,
+			)
+		if reportErr != nil {
+			return reportErr
+		}
+		if options.pretty {
+			body, reportErr = marshalJSON(report, true)
+			if reportErr != nil {
+				return reportErr
+			}
+		}
+		reportBody = body
+		passed = report.Passed
+		admissionMode = memorycapture.FixedMemoryJudgeAdmissionMode
+		captureMode = memorycapture.CaptureModeFixedMemoryJudge
+		artifactName = memorycapture.FixedMemoryJudgeArtifactName
+		artifacts := []memorycapture.Artifact{{Name: artifactName, Body: reportBody}}
+		_, manifestBody, err =
+			memorycapture.BuildFixedMemoryJudgeDevelopmentRunManifest(
+				options.runID, captureID, options.providerMode, startedAt, time.Now().UTC(),
+				protected, costHash, report, artifacts,
+			)
 	} else {
 		report, body, reportErr :=
 			memorycapture.BuildConfiguredCandidateJudgeDevelopmentReport(
@@ -809,6 +943,150 @@ func runCloudJudgeDevelopment(
 		return errors.New("write Memory cloud-judge summary failed")
 	}
 	if !passed {
+		return errMetricsFailed
+	}
+	return nil
+}
+
+func runAccuracyFirstMemoryJudgeDevelopment(
+	ctx context.Context,
+	stdout io.Writer,
+	options commandOptions,
+	startedAt time.Time,
+	protected memorycapture.ProtectedRegression,
+	cost memorycapture.CostBasis,
+	costHash string,
+	config memorycapture.ProfileConfig,
+	authority memorycapture.ConfiguredCandidateJudgeProfileAuthority,
+	configurationHash string,
+	providers providerBundle,
+	adminDB *sql.DB,
+	runtimeDB *sql.DB,
+) error {
+	selectedPool, err := memorycapture.SelectRegressionCaptureSplit(
+		protected.Pool,
+		memorycapture.DevelopmentCalibrationSplit,
+	)
+	if err != nil {
+		return err
+	}
+	index, err := memorycapture.BuildFixtureIndex(selectedPool)
+	if err != nil {
+		return err
+	}
+	seed, err := memorycapture.SeedEphemeralDatabase(
+		ctx,
+		adminDB,
+		selectedPool,
+		index,
+		options.runID,
+	)
+	if err != nil {
+		return err
+	}
+	if len(seed.Cases) != 300 || providers.judge == nil {
+		return memorycapture.ErrCaptureInvalid
+	}
+	if _, err := memorycapture.PopulateProjectionVectors(
+		ctx,
+		adminDB,
+		options.runID,
+		providers.passage,
+	); err != nil {
+		return err
+	}
+	captured, err := memorycapture.CaptureAccuracyFirstMemoryJudgeDevelopment(
+		ctx,
+		adminDB,
+		runtimeDB,
+		options.runID,
+		protected.Pool,
+		index,
+		seed,
+		providers.hybrid,
+		providers.judge,
+		authority,
+		config.ProfileID,
+		configurationHash,
+		cost.Candidate,
+	)
+	if err != nil {
+		return err
+	}
+	report, reportBody, err :=
+		memorycapture.BuildAccuracyFirstMemoryJudgeDevelopmentReport(
+			protected.Pool,
+			captured,
+			authority,
+			cost,
+		)
+	if err != nil {
+		return err
+	}
+	if options.pretty {
+		reportBody, err = marshalJSON(report, true)
+		if err != nil {
+			return err
+		}
+	}
+	captureID, err := newCaptureID()
+	if err != nil {
+		return errors.New("create accuracy-first Memory Judge capture ID failed")
+	}
+	artifacts := []memorycapture.Artifact{{
+		Name: memorycapture.AccuracyFirstMemoryJudgeArtifactName,
+		Body: reportBody,
+	}}
+	_, manifestBody, err :=
+		memorycapture.BuildAccuracyFirstMemoryJudgeDevelopmentRunManifest(
+			options.runID,
+			captureID,
+			options.providerMode,
+			startedAt,
+			time.Now().UTC(),
+			protected,
+			costHash,
+			report,
+			artifacts,
+		)
+	if err != nil {
+		return err
+	}
+	artifacts = append(artifacts, memorycapture.Artifact{
+		Name: "run-manifest.json",
+		Body: manifestBody,
+	})
+	if err := verifyRetainedArtifactsLeakFree(
+		protected.Pool,
+		artifacts,
+		providers.secrets,
+	); err != nil {
+		return err
+	}
+	if _, err := memorycapture.PublishArtifactsExclusive(
+		options.outputDir,
+		artifacts,
+	); err != nil {
+		return err
+	}
+	summary := commandSummary{
+		SchemaVersion:     "neo-chat.memory-regression-native-summary.v5",
+		RunID:             options.runID,
+		CaptureID:         captureID,
+		CorpusClass:       report.CorpusClass,
+		AdmissionMode:     report.AdmissionMode,
+		PromotionEligible: false,
+		ProviderMode:      options.providerMode,
+		CaptureMode:       memorycapture.CaptureModeAccuracyFirstMemoryJudge,
+		Split:             report.Split,
+		CandidatePassed:   report.Passed,
+		PolicySelected:    false,
+		OutputDirectory:   filepath.Clean(options.outputDir),
+	}
+	if err := json.NewEncoder(stdout).Encode(summary); err != nil {
+		return errors.New("write accuracy-first Memory Judge summary failed")
+	}
+	if !report.Passed {
 		return errMetricsFailed
 	}
 	return nil
@@ -1093,7 +1371,8 @@ func parseCommand(args []string) (commandOptions, error) {
 		memorycapture.CaptureModeFullRegression,
 		"full_regression, development_calibration, development_cloud_judge, "+
 			"development_memory_tool_route, development_memory_tool_route_diagnostic, "+
-			"development_configured_candidate_judge, "+
+			"development_configured_candidate_judge, development_fixed_memory_judge, "+
+			"development_fixed_memory_judge_accuracy, "+
 			"or frozen_validation",
 	)
 	flags.StringVar(&options.runID, "run-id", "", "ephemeral run identifier")
@@ -1214,6 +1493,8 @@ func parseCommand(args []string) (commandOptions, error) {
 	case memorycapture.CaptureModeCalibration,
 		memorycapture.CaptureModeCloudJudgeDevelopment,
 		memorycapture.CaptureModeConfiguredCandidateJudge,
+		memorycapture.CaptureModeFixedMemoryJudge,
+		memorycapture.CaptureModeAccuracyFirstMemoryJudge,
 		memorycapture.CaptureModeMemoryToolRouteDevelopment,
 		memorycapture.CaptureModeMemoryToolRouteDiagnostic,
 		memorycapture.CaptureModeFrozenValidation:
@@ -1238,7 +1519,9 @@ func parseCommand(args []string) (commandOptions, error) {
 				"Memory Tool-route inputs require a Development Memory Tool-route mode",
 			)
 		}
-		if options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge {
+		if options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge ||
+			options.captureMode == memorycapture.CaptureModeFixedMemoryJudge ||
+			options.captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge {
 			if options.judgeProviderID == "" || options.judgeProviderType == "" ||
 				options.judgeBaseURL == "" || options.judgeConfiguredModelID == "" {
 				return commandOptions{}, errors.New(
@@ -1262,6 +1545,8 @@ func parseCommand(args []string) (commandOptions, error) {
 		return commandOptions{}, usageError()
 	}
 	if options.captureMode != memorycapture.CaptureModeConfiguredCandidateJudge &&
+		options.captureMode != memorycapture.CaptureModeFixedMemoryJudge &&
+		options.captureMode != memorycapture.CaptureModeAccuracyFirstMemoryJudge &&
 		(options.judgeCredentialPath != "" || options.judgeProviderID != "" ||
 			options.judgeProviderType != "" || options.judgeBaseURL != "" ||
 			options.judgeConfiguredModelID != "") {
@@ -1279,7 +1564,8 @@ func usageError() error {
 			"-capture-mode full_regression|development_calibration|" +
 			"development_cloud_judge|development_memory_tool_route|" +
 			"development_memory_tool_route_diagnostic|" +
-			"development_configured_candidate_judge|" +
+			"development_configured_candidate_judge|development_fixed_memory_judge|" +
+			"development_fixed_memory_judge_accuracy|" +
 			"frozen_validation -run-id ID [-credential-file FILE] " +
 			"[-cloud-judge-model MODEL] " +
 			"[-memory-tool-route-credential-file FILE " +
@@ -1300,9 +1586,13 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 		provider := memorycapture.NewFakeProtocolProvider()
 		bundle := providerBundle{passage: provider, hybrid: provider, clear: func() {}}
 		if options.captureMode == memorycapture.CaptureModeCloudJudgeDevelopment ||
-			options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge {
+			options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge ||
+			options.captureMode == memorycapture.CaptureModeFixedMemoryJudge ||
+			options.captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge {
 			modelID := options.judgeModelID
-			if options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge {
+			if options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge ||
+				options.captureMode == memorycapture.CaptureModeFixedMemoryJudge ||
+				options.captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge {
 				modelID = options.judgeConfiguredModelID
 			}
 			bundle.judge = memorycapture.NewFakeProtocolCandidateJudge(modelID)
@@ -1324,7 +1614,7 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 			}
 			bundle.router = router
 		}
-		return bundle, nil
+		return wrapAccuracyFirstProviderBundle(options, bundle)
 	}
 	credential, err := readRegularBoundedFile(options.credentialPath, maximumCredentialSize, true)
 	if err != nil {
@@ -1336,7 +1626,14 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 		return providerBundle{}, errors.New("live SiliconFlow credential is invalid")
 	}
 	resolver := &ephemeralCredentialResolver{credential: credential}
-	gateway := ragproviders.NewProviderGateway(resolver)
+	gatewayOptions := []ragproviders.ProviderGatewayOption{}
+	if options.captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge {
+		gatewayOptions = append(
+			gatewayOptions,
+			ragproviders.WithProviderGatewayAccuracyFirstDevelopmentNoTimeouts(),
+		)
+	}
+	gateway := ragproviders.NewProviderGateway(resolver, gatewayOptions...)
 	profile, err := gateway.ForRetrievalProfile(ragproviders.RetrievalProfileSiliconFlow)
 	if err != nil {
 		resolver.clear()
@@ -1368,7 +1665,9 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 		}
 		bundle.judge = judge
 	}
-	if options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge {
+	if options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge ||
+		options.captureMode == memorycapture.CaptureModeFixedMemoryJudge ||
+		options.captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge {
 		judgeCredential, credentialErr := readRegularBoundedFile(
 			options.judgeCredentialPath,
 			maximumCredentialSize,
@@ -1400,12 +1699,22 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 			resolver.clear()
 			return providerBundle{}, providerErr
 		}
+		judgeTimeout := 2 * time.Second
+		if options.captureMode == memorycapture.CaptureModeFixedMemoryJudge {
+			judgeTimeout = 3 * time.Second
+		}
+		var judgeHTTPClient *http.Client
+		if options.captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge {
+			judgeTimeout = 0
+			judgeHTTPClient = ragproviders.NewAccuracyFirstDevelopmentHTTPClient()
+		}
 		chatProvider, providerErr := providerfactory.NewChatProvider(providerfactory.ChatConfig{
 			ProviderID: authority.ProviderID,
 			Type:       providerType,
 			BaseURL:    baseURL,
 			APIKey:     string(judgeCredential),
-			Timeout:    2 * time.Second,
+			Timeout:    judgeTimeout,
+			HTTPClient: judgeHTTPClient,
 		})
 		if providerErr != nil {
 			clearBytes(judgeCredential)
@@ -1488,6 +1797,31 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 			resolver.clear()
 		}
 	}
+	return wrapAccuracyFirstProviderBundle(options, bundle)
+}
+
+func wrapAccuracyFirstProviderBundle(
+	options commandOptions,
+	bundle providerBundle,
+) (providerBundle, error) {
+	if options.captureMode != memorycapture.CaptureModeAccuracyFirstMemoryJudge {
+		return bundle, nil
+	}
+	passage, hybrid, judge, _, err := memorycapture.WrapAccuracyFirstDevelopmentProviders(
+		options.providerMode,
+		bundle.passage,
+		bundle.hybrid,
+		bundle.judge,
+	)
+	if err != nil {
+		if bundle.clear != nil {
+			bundle.clear()
+		}
+		return providerBundle{}, errors.New("construct accuracy-first Provider controller failed")
+	}
+	bundle.passage = passage
+	bundle.hybrid = hybrid
+	bundle.judge = judge
 	return bundle, nil
 }
 

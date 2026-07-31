@@ -2,13 +2,16 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestProviderHTTPFailureCategoriesAreBounded(t *testing.T) {
 	tests := map[int]ProviderFailureCategory{
+		http.StatusFound:               ProviderFailureRequestRejected,
 		http.StatusUnauthorized:        ProviderFailureAuthentication,
 		http.StatusForbidden:           ProviderFailureAuthentication,
 		http.StatusPaymentRequired:     ProviderFailureQuotaExhausted,
@@ -22,6 +25,43 @@ func TestProviderHTTPFailureCategoriesAreBounded(t *testing.T) {
 		if got := providerHTTPFailureCategory(status); got != want {
 			t.Errorf("status %d category = %q, want %q", status, got, want)
 		}
+	}
+}
+
+func TestProviderRetryDelayAcceptsOnlyTransientCategories(t *testing.T) {
+	retryable := []ProviderFailureCategory{
+		ProviderFailureRequestTimeout,
+		ProviderFailureRateLimited,
+		ProviderFailureUpstreamFailed,
+		ProviderFailureTransportFailed,
+		ProviderFailureStreamReadFailed,
+		ProviderFailureStreamIncomplete,
+	}
+	for _, category := range retryable {
+		delay, ok := ProviderRetryDelay(newProviderFailure(category, "bounded"))
+		if !ok || delay != 5*time.Second {
+			t.Fatalf("category %q retry = %s/%t", category, delay, ok)
+		}
+	}
+	for _, category := range []ProviderFailureCategory{
+		ProviderFailureAuthentication,
+		ProviderFailureQuotaExhausted,
+		ProviderFailureRequestRejected,
+		ProviderFailureResponseInvalid,
+		ProviderFailureStreamParseFailed,
+		ProviderFailureStreamRemoteError,
+		ProviderFailureContextCanceled,
+	} {
+		if _, ok := ProviderRetryDelay(newProviderFailure(category, "bounded")); ok {
+			t.Fatalf("category %q became retryable", category)
+		}
+	}
+	err := errors.Join(
+		errors.New("adapter boundary"),
+		newProviderHTTPFailure(ProviderFailureRateLimited, "bounded", "7"),
+	)
+	if delay, ok := ProviderRetryDelay(err); !ok || delay != 7*time.Second {
+		t.Fatalf("Retry-After chain = %s/%t", delay, ok)
 	}
 }
 

@@ -24,6 +24,10 @@ const (
 	HybridRelevanceCalibrationPolicyID           = "memory_hybrid_relevance_calibration_v1"
 	HybridRelevanceIntentCalibrationPolicyID     = "memory_hybrid_relevance_intent_calibration_v1"
 	HybridRelevanceCloudJudgeCalibrationPolicyID = "memory_hybrid_cloud_candidate_judge_calibration_v1"
+	HybridRelevanceFixedMemoryJudgePolicyID      = "memory_hybrid_fixed_cloud_candidate_judge_development_v1"
+	HybridRelevanceAccuracyFirstJudgePolicyID    = "memory_hybrid_fixed_cloud_candidate_judge_accuracy_development_v2"
+	HybridFixedMemoryJudgeModelID                = "gpt-5.6-luna"
+	HybridFixedMemoryJudgeHardCutoffMilliseconds = 3000
 	HybridRelevanceMemoryToolRoutePolicyID       = "memory_hybrid_main_model_tool_route_calibration_v1"
 	HybridRelevanceMemoryFirstToolRoundPolicyID  = "memory_hybrid_main_model_first_tool_round_calibration_v1"
 	HybridRelevanceFrozenPolicyID                = "memory_hybrid_relevance_intent_abstention_v1"
@@ -413,6 +417,7 @@ type HybridShadowRelevancePolicy struct {
 type HybridShadowRelevancePolicyDescriptor struct {
 	ID                                   string
 	Mode                                 string
+	HardCutoffMilliseconds               int
 	MemoryIntentRequired                 bool
 	MemoryIntentAnchorVersion            string
 	MemoryIntentAnchorSHA256             string

@@ -107,6 +107,46 @@ func TestEvaluateCalibrationSelectionReusesBenchmarkScorer(t *testing.T) {
 	}
 }
 
+func TestEvaluateAccuracyFirstCalibrationTreatsLatencyAsDiagnostic(t *testing.T) {
+	input := passingEvaluationInput(t)
+	cases := input.Golden.Cases[:300]
+	observations := input.Observations.Cases[:300]
+	for index := range observations {
+		observations[index].LatencyMilliseconds = 120_000
+		observations[index].HardCutoffApplied = false
+	}
+	evaluation, err := EvaluateAccuracyFirstCalibrationSelectionWithProviderEgressPolicy(
+		cases,
+		observations,
+		input.Golden.Criteria,
+		ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !evaluation.Passed || evaluation.Budgets.P95LatencyMilliseconds != 120_000 ||
+		evaluation.Budgets.P99LatencyMilliseconds != 120_000 ||
+		!evaluation.Budgets.PromptTokenPassed || len(evaluation.Failures) != 0 {
+		t.Fatalf("accuracy-first evaluation = %#v", evaluation)
+	}
+	for index := range observations {
+		observations[index].FinalMemoryIDs = []string{}
+		observations[index].InjectedMemoryIDs = []string{}
+	}
+	evaluation, err = EvaluateAccuracyFirstCalibrationSelectionWithProviderEgressPolicy(
+		cases,
+		observations,
+		input.Golden.Criteria,
+		ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if evaluation.Passed {
+		t.Fatal("accuracy-first evaluation ignored quality drift")
+	}
+}
+
 func TestEvaluateProviderEgressPolicyAuthorizesOnlyIrrelevantCandidates(t *testing.T) {
 	input := passingEvaluationInput(t)
 	cases := input.Golden.Cases[:300]

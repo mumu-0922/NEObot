@@ -86,7 +86,7 @@ func (gateway *ProviderGateway) embedSiliconFlowQuery(
 		if errors.Is(err, ErrProviderGatewayInvalid) {
 			return QueryEmbedding{}, ErrQueryEmbeddingInvalid
 		}
-		return QueryEmbedding{}, ErrQueryEmbeddingUnavailable
+		return QueryEmbedding{}, errors.Join(ErrQueryEmbeddingUnavailable, err)
 	}
 	return QueryEmbedding{
 		ModelID:    SiliconFlowEmbeddingModel,
@@ -138,7 +138,7 @@ func (gateway *ProviderGateway) rerankSiliconFlow(
 	)
 	credential = ""
 	if err != nil {
-		return nil, ErrRerankUnavailable
+		return nil, errors.Join(ErrRerankUnavailable, err)
 	}
 	results, err := normalizeSiliconFlowRerankResponse(raw, len(documents))
 	if err != nil {

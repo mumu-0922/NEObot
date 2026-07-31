@@ -43,9 +43,20 @@ func WithProviderGatewayHTTPClient(client ProviderHTTPDoer) ProviderGatewayOptio
 	}
 }
 
+// WithProviderGatewayAccuracyFirstDevelopmentNoTimeouts disables only this
+// gateway's HTTP/TLS elapsed-time cutoffs. The caller's context remains manual
+// cancellation authority. It is intended solely for the isolated accuracy-
+// first regression runner and does not change production gateway defaults.
+func WithProviderGatewayAccuracyFirstDevelopmentNoTimeouts() ProviderGatewayOption {
+	return func(gateway *ProviderGateway) {
+		gateway.accuracyFirstDevelopmentNoTimeouts = true
+	}
+}
+
 type ProviderGateway struct {
-	credentials ProviderCredentialResolver
-	httpClient  ProviderHTTPDoer
+	credentials                        ProviderCredentialResolver
+	httpClient                         ProviderHTTPDoer
+	accuracyFirstDevelopmentNoTimeouts bool
 }
 
 func NewProviderGateway(
@@ -59,7 +70,11 @@ func NewProviderGateway(
 		}
 	}
 	if gateway.httpClient == nil {
-		gateway.httpClient = newProviderGatewayHTTPClient()
+		if gateway.accuracyFirstDevelopmentNoTimeouts {
+			gateway.httpClient = newAccuracyFirstDevelopmentProviderGatewayHTTPClient()
+		} else {
+			gateway.httpClient = newProviderGatewayHTTPClient()
+		}
 	}
 	return gateway
 }

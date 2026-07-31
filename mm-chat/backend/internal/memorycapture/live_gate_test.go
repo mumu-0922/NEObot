@@ -152,6 +152,63 @@ func TestAuthorizeConfiguredCandidateJudgeTargetRequiresExactAuthority(t *testin
 	}
 }
 
+func TestAuthorizeFixedMemoryJudgeTargetRejectsEveryAuthorityDrift(t *testing.T) {
+	authority := FixedMemoryJudgeAuthority()
+	valid := LiveAuthorization{
+		ConfiguredCandidateJudgeApproval:      LiveMemoryToolRouteApproval,
+		ConfiguredCandidateJudgeProviderID:    authority.ProviderID,
+		ConfiguredCandidateJudgeProviderType:  authority.ProviderType,
+		ConfiguredCandidateJudgeBaseURLSHA256: authority.BaseURLSHA256,
+		ConfiguredCandidateJudgeModelID:       authority.ModelID,
+	}
+	if err := AuthorizeFixedMemoryJudgeTarget(
+		ProviderModeLiveSiliconFlow,
+		authority,
+		valid,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := AuthorizeFixedMemoryJudgeTarget(
+		ProviderModeFakeProtocol,
+		authority,
+		LiveAuthorization{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	drifted := authority
+	drifted.ModelID = "other"
+	assertLiveAuthorizationError(
+		t,
+		AuthorizeFixedMemoryJudgeTarget(
+			ProviderModeFakeProtocol,
+			drifted,
+			LiveAuthorization{},
+		),
+		LiveAuthorizationFixedMemoryJudgeTarget,
+	)
+
+	mutations := []func(*LiveAuthorization){
+		func(value *LiveAuthorization) { value.ConfiguredCandidateJudgeApproval = "yes" },
+		func(value *LiveAuthorization) { value.ConfiguredCandidateJudgeProviderID = "other" },
+		func(value *LiveAuthorization) { value.ConfiguredCandidateJudgeProviderType = "openai" },
+		func(value *LiveAuthorization) { value.ConfiguredCandidateJudgeBaseURLSHA256 = strings.Repeat("c", 64) },
+		func(value *LiveAuthorization) { value.ConfiguredCandidateJudgeModelID = "other" },
+	}
+	for _, mutate := range mutations {
+		candidate := valid
+		mutate(&candidate)
+		assertLiveAuthorizationError(
+			t,
+			AuthorizeFixedMemoryJudgeTarget(
+				ProviderModeLiveSiliconFlow,
+				authority,
+				candidate,
+			),
+			LiveAuthorizationFixedMemoryJudgeTarget,
+		)
+	}
+}
+
 func TestBuildProfileConfigsCannotMislabelFakeProtocol(t *testing.T) {
 	protected := ProtectedRegression{
 		FixtureRawSHA256: "fixture", CorpusRawSHA256: "corpus",

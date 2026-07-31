@@ -8,7 +8,7 @@ usage: run-memory-regression.sh \
   --output-dir <new-run-parent> \
   [--regression-root <protected-root>] \
   [--provider-mode fake_protocol|live_siliconflow] \
-  [--capture-mode full_regression|development_calibration|development_cloud_judge|development_memory_tool_route|development_memory_tool_route_diagnostic|development_configured_candidate_judge|frozen_validation] \
+  [--capture-mode full_regression|development_calibration|development_cloud_judge|development_memory_tool_route|development_memory_tool_route_diagnostic|development_configured_candidate_judge|development_fixed_memory_judge|development_fixed_memory_judge_accuracy|frozen_validation] \
   [--cloud-judge-model <fixed-model-id>] \
   [--credential-file <mode-0600-file>] \
   [--live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA] \
@@ -291,7 +291,7 @@ case "${capture_mode}" in
       exit 2
     fi
     ;;
-  development_configured_candidate_judge)
+  development_configured_candidate_judge | development_fixed_memory_judge | development_fixed_memory_judge_accuracy)
     if [[ -z "${configured_judge_provider_id}" || \
       -z "${configured_judge_provider_type}" || \
       -z "${configured_judge_base_url}" || \
@@ -310,6 +310,13 @@ case "${capture_mode}" in
       ! "${configured_judge_model}" =~ ^[!-~]{1,512}$ ||
       ! "${configured_judge_base_url}" =~ ^[!-~]{1,2048}$ ]]; then
       echo "Memory regression: configured candidate-judge Provider/model identifier is invalid" >&2
+      exit 2
+    fi
+    if [[ "${capture_mode}" != "development_configured_candidate_judge" && \
+      ("${configured_judge_provider_id}" != "SERVER_DEFAULT" || \
+      "${configured_judge_provider_type}" != "openai_compatible" || \
+      "${configured_judge_model}" != "gpt-5.6-luna") ]]; then
+      echo "Memory regression: fixed Memory Judge authority drifted from SERVER_DEFAULT/openai_compatible/gpt-5.6-luna" >&2
       exit 2
     fi
     if [[ "${provider_mode}" == "live_siliconflow" ]]; then
@@ -371,7 +378,9 @@ PY
 fi
 
 configured_judge_base_url_sha256=""
-if [[ "${capture_mode}" == "development_configured_candidate_judge" ]]; then
+if [[ "${capture_mode}" == "development_configured_candidate_judge" ||
+  "${capture_mode}" == "development_fixed_memory_judge" ||
+  "${capture_mode}" == "development_fixed_memory_judge_accuracy" ]]; then
   configured_judge_base_url="$(python3 - "${configured_judge_base_url}" <<'PY'
 import sys
 from urllib.parse import urlsplit
@@ -398,6 +407,12 @@ print(value)
 PY
 )"
   configured_judge_base_url_sha256="$(printf '%s' "${configured_judge_base_url}" | sha256sum | awk '{print $1}')"
+  if [[ "${capture_mode}" != "development_configured_candidate_judge" && \
+    ("${configured_judge_base_url}" != "https://sub.mumubuku.top/v1" || \
+    "${configured_judge_base_url_sha256}" != "3bc0bbf28d9d817b4f6c8f6058c2c51dd644c541252ed6e2542a8c8a472ff671") ]]; then
+    echo "Memory regression: fixed Memory Judge base URL authority drifted" >&2
+    exit 2
+  fi
 fi
 
 if [[ ! -d "${regression_root}" || -L "${regression_root}" ]]; then
@@ -452,7 +467,9 @@ if [[ "${provider_mode}" == "live_siliconflow" ]]; then
       exit 1
     fi
   fi
-  if [[ "${capture_mode}" == "development_configured_candidate_judge" ]]; then
+  if [[ "${capture_mode}" == "development_configured_candidate_judge" ||
+    "${capture_mode}" == "development_fixed_memory_judge" ||
+    "${capture_mode}" == "development_fixed_memory_judge_accuracy" ]]; then
     if [[ ! -f "${configured_judge_credential_source}" || \
       -L "${configured_judge_credential_source}" ]]; then
       echo "Memory regression: configured candidate-judge credential must be a regular non-symlink file" >&2
@@ -545,6 +562,38 @@ run_output="${output_parent}/${run_suffix}"
 retain_output=false
 cleanup_failed=false
 
+wipe_regular_file() {
+  local path="$1"
+  if [[ ! -f "${path}" || -L "${path}" ]]; then
+    return
+  fi
+  python3 - "${path}" <<'PY'
+import os
+import sys
+
+path = sys.argv[1]
+size = os.path.getsize(path)
+with open(path, "r+b", buffering=0) as handle:
+    remaining = size
+    block = b"\0" * min(65536, max(size, 1))
+    while remaining:
+        chunk = block[: min(len(block), remaining)]
+        handle.write(chunk)
+        remaining -= len(chunk)
+    handle.flush()
+    os.fsync(handle.fileno())
+os.remove(path)
+PY
+}
+
+wipe_temporary_credentials() {
+  local failed=false
+  wipe_regular_file "${credential_copy}" || failed=true
+  wipe_regular_file "${memory_tool_route_credential_copy}" || failed=true
+  wipe_regular_file "${configured_judge_credential_copy}" || failed=true
+  [[ "${failed}" == false ]]
+}
+
 early_cleanup() {
   local status=$?
   trap - EXIT INT TERM HUP
@@ -552,6 +601,7 @@ early_cleanup() {
   if [[ "${retain_output}" != true && -d "${run_output}" ]]; then
     find "${run_output}" -depth -delete
   fi
+  wipe_temporary_credentials || true
   if [[ -d "${temp_dir}" ]]; then
     find "${temp_dir}" -depth -delete
   fi
@@ -588,7 +638,9 @@ else
 fi
 chmod 600 "${memory_tool_route_credential_copy}"
 if [[ "${provider_mode}" == "live_siliconflow" && \
-  "${capture_mode}" == "development_configured_candidate_judge" ]]; then
+  ("${capture_mode}" == "development_configured_candidate_judge" ||
+  "${capture_mode}" == "development_fixed_memory_judge" ||
+  "${capture_mode}" == "development_fixed_memory_judge_accuracy") ]]; then
   cp --no-preserve=mode,ownership,timestamps \
     "${configured_judge_credential_source}" \
     "${configured_judge_credential_copy}"
@@ -606,7 +658,9 @@ if [[ "${provider_mode}" == "live_siliconflow" && \
   memory_tool_route_credential_target="/run/mm-chat-memory-regression/memory-tool-route-provider.key"
 fi
 if [[ "${provider_mode}" == "live_siliconflow" && \
-  "${capture_mode}" == "development_configured_candidate_judge" ]]; then
+  ("${capture_mode}" == "development_configured_candidate_judge" ||
+  "${capture_mode}" == "development_fixed_memory_judge" ||
+  "${capture_mode}" == "development_fixed_memory_judge_accuracy") ]]; then
   configured_judge_credential_target="/run/mm-chat-memory-regression/configured-candidate-judge-provider.key"
 fi
 cat >"${env_file}" <<EOF
@@ -668,6 +722,10 @@ cleanup() {
 
   if [[ "${retain_output}" != true && -d "${run_output}" ]]; then
     find "${run_output}" -depth -delete
+  fi
+  if ! wipe_temporary_credentials; then
+    echo "Memory regression: temporary credential overwrite failed" >&2
+    cleanup_failed=true
   fi
   if [[ -d "${temp_dir}" ]]; then
     find "${temp_dir}" -depth -delete
@@ -808,6 +866,10 @@ elif capture_mode == "development_memory_tool_route_diagnostic":
     expected = {"memory-first-tool-round-route-diagnostic-development.json", "run-manifest.json"}
 elif capture_mode == "development_configured_candidate_judge":
     expected = {"configured-candidate-judge-development.json", "run-manifest.json"}
+elif capture_mode == "development_fixed_memory_judge":
+    expected = {"fixed-memory-judge-development.json", "run-manifest.json"}
+elif capture_mode == "development_fixed_memory_judge_accuracy":
+    expected = {"fixed-memory-judge-accuracy-development.json", "run-manifest.json"}
 elif capture_mode == "frozen_validation":
     expected = {"relevance-validation.json", "run-manifest.json"}
 else:
@@ -836,6 +898,8 @@ expected_admission = {
     "development_memory_tool_route": "development_main_model_first_tool_round_only",
     "development_memory_tool_route_diagnostic": "development_main_model_first_tool_round_route_failure_diagnostic_only",
     "development_configured_candidate_judge": "development_configured_candidate_judge_only",
+    "development_fixed_memory_judge": "development_fixed_memory_judge_only",
+    "development_fixed_memory_judge_accuracy": "development_fixed_memory_judge_accuracy_only",
     "frozen_validation": "frozen_validation_only",
 }[capture_mode]
 if manifest.get("admissionMode") != expected_admission or manifest.get("promotionEligible") is not False:
@@ -857,6 +921,8 @@ else:
         "development_memory_tool_route",
         "development_memory_tool_route_diagnostic",
         "development_configured_candidate_judge",
+        "development_fixed_memory_judge",
+        "development_fixed_memory_judge_accuracy",
     } else "validation"
     if manifest.get("captureMode") != capture_mode or manifest.get("split") != expected_split:
         raise SystemExit("relevance run split authority drift")
@@ -985,10 +1051,154 @@ elif capture_mode == "development_cloud_judge":
         or not isinstance(evaluation.get("providerCostPassed"), bool)
     ):
         raise SystemExit("legacy cloud-judge Development gained owner budget authority")
-elif capture_mode == "development_configured_candidate_judge":
-    report = json.loads((output / "configured-candidate-judge-development.json").read_text(encoding="utf-8"))
+elif capture_mode == "development_fixed_memory_judge_accuracy":
+    report = json.loads(
+        (output / "fixed-memory-judge-accuracy-development.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    criteria = report.get("evaluationCriteria")
+    execution = report.get("executionPolicy")
+    evaluation = report.get("evaluation")
+    diagnostics = report.get("diagnostics")
+    attempts = report.get("providerAttempts")
+    authority = report.get("costAuthority")
+    expected_clock = "wall_clock_v1" if mode == "live_siliconflow" else "virtual_protocol_v1"
     if (
-        report.get("schemaVersion") != "neo-chat.memory-regression-relevance-calibration.v10"
+        report.get("schemaVersion") != "neo-chat.memory-regression-relevance-calibration.v12"
+        or report.get("split") != "development"
+        or report.get("caseCount") != 300
+        or report.get("admissionMode") != expected_admission
+        or report.get("promotionEligible") is not False
+        or report.get("providerEgressPolicy") != "owner_authorized_normal_candidates_v1"
+        or report.get("providerCostPolicy") != "owner_authorized_absolute_cap_v1"
+        or report.get("providerCostAuthorized") is not True
+        or report.get("judgeProviderId") != "SERVER_DEFAULT"
+        or report.get("judgeProviderType") != "openai_compatible"
+        or report.get("judgeBaseUrlSha256") != "3bc0bbf28d9d817b4f6c8f6058c2c51dd644c541252ed6e2542a8c8a472ff671"
+        or report.get("judgeModelId") != "gpt-5.6-luna"
+        or report.get("judgeAdapter") != "chat-configured-candidate-judge-v1"
+        or report.get("policyId") != "memory_hybrid_fixed_cloud_candidate_judge_accuracy_development_v2"
+        or report.get("evaluationCriteriaVersion") != "neo-chat.memory-benchmark-criteria.v3"
+        or not isinstance(criteria, dict)
+        or criteria.get("latencyEvaluationMode") != "diagnostic_only_v1"
+        or criteria.get("applicationDeadlineMode") != "none_v1"
+        or any(
+            name in criteria
+            for name in (
+                "maximumP95LatencyMilliseconds",
+                "maximumP99LatencyMilliseconds",
+                "hardCutoffMilliseconds",
+            )
+        )
+    ):
+        raise SystemExit("accuracy-first Memory Judge authority/criteria drift")
+    if (
+        not isinstance(execution, dict)
+        or execution.get("sequenceVersion") != "bge_query_admission_bge_rerank_luna_judge_record_serial_v1"
+        or execution.get("globalProviderRequestConcurrency") != 1
+        or execution.get("applicationDeadlineMode") != "none_v1"
+        or execution.get("providerElapsedTimeoutMode") != "none_v1"
+        or execution.get("latencyEvaluationMode") != "diagnostic_only_v1"
+        or execution.get("interCaseCooldownMilliseconds") != 1000
+        or execution.get("interCaseCooldownClock") != expected_clock
+        or execution.get("retryPolicyVersion") != "transient_408_429_5xx_transport_read_once_v1"
+        or execution.get("maximumRetriesPerProviderRequest") != 1
+        or execution.get("retryFallbackDelayMilliseconds") != 5000
+    ):
+        raise SystemExit("accuracy-first Memory Judge execution policy drift")
+    if (
+        not isinstance(evaluation, dict)
+        or not isinstance(report.get("passed"), bool)
+        or report.get("passed") != evaluation.get("passed")
+        or any(
+            name in json.dumps(evaluation, sort_keys=True)
+            for name in (
+                "latencyPassed",
+                "hardCutoffPassed",
+                "hardCutoffViolationCount",
+            )
+        )
+        or not isinstance(diagnostics, dict)
+        or not isinstance(diagnostics.get("failureCodeCounts"), dict)
+        or diagnostics.get("failureCodeCounts", {}).get("HARD_CUTOFF", 0) != 0
+        or sum(
+            diagnostics.get(name, -1)
+            for name in ("emptyCandidateCaseCount", "judgeCompletedCaseCount", "failedCaseCount")
+        ) != 300
+        or not isinstance(attempts, dict)
+        or not isinstance(authority, dict)
+    ):
+        raise SystemExit("accuracy-first Memory Judge result drift")
+    count_pairs = (
+        ("passageEmbeddingAttempts", "passageEmbeddingRetries", "passageEmbeddingLatency"),
+        ("queryEmbeddingAttempts", "queryEmbeddingRetries", "queryEmbeddingLatency"),
+        ("rerankAttempts", "rerankRetries", "rerankLatency"),
+        ("judgeAttempts", "judgeRetries", "judgeLatency"),
+    )
+    for attempt_name, retry_name, latency_name in count_pairs:
+        attempt_count = attempts.get(attempt_name)
+        retry_count = attempts.get(retry_name)
+        latency = attempts.get(latency_name)
+        if (
+            type(attempt_count) is not int
+            or type(retry_count) is not int
+            or attempt_count < 0
+            or retry_count < 0
+            or retry_count > attempt_count
+            or not isinstance(latency, dict)
+            or latency.get("sampleCount") != attempt_count
+            or type(latency.get("totalMilliseconds")) is not int
+            or type(latency.get("p95LatencyMilliseconds")) is not int
+            or type(latency.get("p99LatencyMilliseconds")) is not int
+            or type(latency.get("maximumLatencyMilliseconds")) is not int
+            or latency.get("totalMilliseconds") < latency.get("maximumLatencyMilliseconds")
+            or latency.get("p95LatencyMilliseconds") > latency.get("p99LatencyMilliseconds")
+            or latency.get("p99LatencyMilliseconds") > latency.get("maximumLatencyMilliseconds")
+        ):
+            raise SystemExit("accuracy-first Provider attempt telemetry drift")
+    if (
+        attempts.get("passageEmbeddingAttempts", 0) <= 0
+        or attempts.get("queryEmbeddingAttempts") != 300 + attempts.get("queryEmbeddingRetries")
+        or attempts.get("interCaseCooldownCount") != 299
+        or attempts.get("interCaseCooldownMilliseconds") != 299000
+        or type(attempts.get("interCaseCooldownElapsedMilliseconds")) is not int
+        or attempts.get("interCaseCooldownElapsedMilliseconds") < 0
+        or (mode == "fake_protocol" and attempts.get("interCaseCooldownElapsedMilliseconds") != 0)
+        or type(attempts.get("judgeInputTokenUpperBound")) is not int
+        or attempts.get("judgeInputTokenUpperBound") <= 0
+        or type(attempts.get("judgeRetryInputTokenUpperBound")) is not int
+        or attempts.get("judgeRetryInputTokenUpperBound") < 0
+        or attempts.get("judgeRetryInputTokenUpperBound")
+        > attempts.get("judgeInputTokenUpperBound")
+        or authority.get("authorizedRequestCount") != 600
+        or authority.get("actualRequestCount") != attempts.get("judgeAttempts")
+        or authority.get("actualRequestCount", -1) > 600
+        or authority.get("actualInputTokenUpperBound")
+        != attempts.get("judgeInputTokenUpperBound")
+        or authority.get("actualInputTokenUpperBound", -1) > authority.get("authorizedMaximumInputTokens", -1)
+        or authority.get("actualOutputTokenUpperBound") != authority.get("actualRequestCount") * 128
+        or authority.get("actualOutputTokenUpperBound", -1) > authority.get("authorizedMaximumOutputTokens", -1)
+        or authority.get("maximumMemoryProviderCostMicrounits", 0)
+        < authority.get("maximumJudgeCostMicrounits", 0)
+        or manifest.get("providerCostPolicy") != report.get("providerCostPolicy")
+    ):
+        raise SystemExit("accuracy-first Memory Judge retry/cost authority drift")
+elif capture_mode in {"development_configured_candidate_judge", "development_fixed_memory_judge"}:
+    fixed_memory_judge = capture_mode == "development_fixed_memory_judge"
+    report_name = (
+        "fixed-memory-judge-development.json"
+        if fixed_memory_judge
+        else "configured-candidate-judge-development.json"
+    )
+    report = json.loads((output / report_name).read_text(encoding="utf-8"))
+    expected_schema = (
+        "neo-chat.memory-regression-relevance-calibration.v11"
+        if fixed_memory_judge
+        else "neo-chat.memory-regression-relevance-calibration.v10"
+    )
+    if (
+        report.get("schemaVersion") != expected_schema
         or report.get("split") != "development"
         or report.get("caseCount") != 300
         or report.get("admissionMode") != expected_admission
@@ -1003,6 +1213,21 @@ elif capture_mode == "development_configured_candidate_judge":
         or report.get("judgeAdapter") != "chat-configured-candidate-judge-v1"
     ):
         raise SystemExit("configured candidate-judge Development authority drift")
+    if fixed_memory_judge:
+        criteria = report.get("evaluationCriteria")
+        if (
+            configured_judge_provider_id != "SERVER_DEFAULT"
+            or configured_judge_provider_type != "openai_compatible"
+            or configured_judge_base_url_sha256 != "3bc0bbf28d9d817b4f6c8f6058c2c51dd644c541252ed6e2542a8c8a472ff671"
+            or configured_judge_model != "gpt-5.6-luna"
+            or report.get("policyId") != "memory_hybrid_fixed_cloud_candidate_judge_development_v1"
+            or report.get("evaluationCriteriaVersion") != "neo-chat.memory-benchmark-criteria.v2"
+            or not isinstance(criteria, dict)
+            or criteria.get("maximumP95LatencyMilliseconds") != 1500
+            or criteria.get("maximumP99LatencyMilliseconds") != 2500
+            or criteria.get("hardCutoffMilliseconds") != 3000
+        ):
+            raise SystemExit("fixed Memory Judge schema-v11 criteria/authority drift")
     evaluation = report.get("evaluation")
     diagnostics = report.get("diagnostics")
     authority = report.get("costAuthority")

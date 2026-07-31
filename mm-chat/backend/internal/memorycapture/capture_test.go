@@ -231,6 +231,20 @@ func TestCaptureCandidateRecordsHardCutoffAsBoundedFallback(t *testing.T) {
 	}
 }
 
+func TestCaptureHardCutoffUsesVersionedPolicyBudget(t *testing.T) {
+	summary := usermemory.HybridShadowSummary{}
+	if !captureHardCutoffApplied(2500, 2000, summary) {
+		t.Fatal("historical 2000-ms budget did not classify a 2500-ms capture")
+	}
+	if captureHardCutoffApplied(2500, 3000, summary) {
+		t.Fatal("schema-v11 3000-ms budget misclassified a 2500-ms capture")
+	}
+	summary.ResultCode = "HARD_CUTOFF"
+	if !captureHardCutoffApplied(2500, 3000, summary) {
+		t.Fatal("runtime hard-cutoff result was ignored")
+	}
+}
+
 func TestCaptureCandidatePreservesAuthorizedCandidatesButDropsUnrecordedFinal(t *testing.T) {
 	base := &captureRepository{
 		memories: []usermemory.Memory{{

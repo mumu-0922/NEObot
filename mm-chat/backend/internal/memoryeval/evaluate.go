@@ -242,6 +242,97 @@ func EvaluateCalibrationSelectionWithProviderEgressPolicy(
 	}, nil
 }
 
+// EvaluateAccuracyFirstCalibrationSelectionWithProviderEgressPolicy reuses
+// the exact metric, slice, safety, and token accumulators while excluding
+// latency and hard-cutoff verdicts. P95/P99 remain diagnostic output.
+func EvaluateAccuracyFirstCalibrationSelectionWithProviderEgressPolicy(
+	cases []GoldenCase,
+	observations []CaseObservation,
+	criteria Criteria,
+	providerEgressPolicy string,
+) (AccuracyFirstCalibrationEvaluation, error) {
+	if _, err := MemoryJudgeAccuracyFirstCriteriaV3(criteria); err != nil {
+		return AccuracyFirstCalibrationEvaluation{}, err
+	}
+	if !validProviderEgressPolicy(providerEgressPolicy) {
+		return AccuracyFirstCalibrationEvaluation{}, errors.New("Memory Provider-egress policy is invalid")
+	}
+	evaluated, evaluatedSlices, err := evaluateCasesWithSlices(
+		cases,
+		observations,
+		criteria,
+		providerEgressPolicy,
+	)
+	if err != nil {
+		return AccuracyFirstCalibrationEvaluation{}, err
+	}
+	failures := accuracyFirstProfileFailures(evaluated, criteria)
+	slices := make(map[string]AccuracyFirstSliceResult, len(criticalSlices))
+	for _, name := range criticalSlices {
+		sliceProfile, ok := evaluatedSlices[name]
+		if !ok {
+			continue
+		}
+		sliceFailures := accuracyFirstProfileFailures(sliceProfile, criteria)
+		sort.Strings(sliceFailures)
+		slices[name] = AccuracyFirstSliceResult{
+			Cases:              sliceProfile.caseCount,
+			Metrics:            sliceProfile.metrics,
+			RankingDiagnostics: sliceProfile.ranking,
+			Budgets:            accuracyFirstBudgets(sliceProfile.budgets),
+			Safety:             sliceProfile.safety,
+			Passed:             len(sliceFailures) == 0,
+			Failures:           sliceFailures,
+		}
+		for _, failure := range sliceFailures {
+			failures = append(failures, name+": "+failure)
+		}
+	}
+	sort.Strings(failures)
+	return AccuracyFirstCalibrationEvaluation{
+		Passed:             len(failures) == 0,
+		Metrics:            evaluated.metrics,
+		RankingDiagnostics: evaluated.ranking,
+		Budgets:            accuracyFirstBudgets(evaluated.budgets),
+		Safety:             evaluated.safety,
+		Slices:             slices,
+		Failures:           failures,
+	}, nil
+}
+
+func accuracyFirstBudgets(value Budgets) AccuracyFirstBudgets {
+	return AccuracyFirstBudgets{
+		P95LatencyMilliseconds:    value.P95LatencyMilliseconds,
+		P99LatencyMilliseconds:    value.P99LatencyMilliseconds,
+		AveragePromptMemoryTokens: value.AveragePromptMemoryTokens,
+		MaximumPromptMemoryTokens: value.MaximumPromptMemoryTokens,
+		PromptTokenPassed:         value.PromptTokenPassed,
+	}
+}
+
+func accuracyFirstProfileFailures(value evaluatedProfile, criteria Criteria) []string {
+	failures := make([]string, 0)
+	if value.metrics.CandidateRecallAt20 < criteria.MinimumCandidateRecallAt20 {
+		failures = append(failures, "candidate recall@20 below criterion")
+	}
+	if value.metrics.FinalRecallAt5 < criteria.MinimumFinalRecallAt5 {
+		failures = append(failures, "final recall@5 below criterion")
+	}
+	if value.metrics.CurrentFactAccuracy < criteria.MinimumCurrentFactAccuracy {
+		failures = append(failures, "current-fact accuracy below criterion")
+	}
+	if value.metrics.FalseInjectionRate > criteria.MaximumFalseInjectionRate {
+		failures = append(failures, "false-injection rate above criterion")
+	}
+	if !value.budgets.PromptTokenPassed {
+		failures = append(failures, "prompt Memory token budget exceeds criterion")
+	}
+	if !value.safety.Passed {
+		failures = append(failures, "Memory safety or authority leakage was observed")
+	}
+	return failures
+}
+
 // EvaluateValidationSelection applies the same split metrics, slice gates,
 // safety checks, and exact v1 Provider-cost gate used by the full evaluator.
 func EvaluateValidationSelection(

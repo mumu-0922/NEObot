@@ -96,6 +96,30 @@ func CostBasisSHA256(cost CostBasis) (string, error) {
 		); err != nil {
 			return "", err
 		}
+	case "neo-chat.memory-regression-cost-basis.v7":
+		if cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+			cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil {
+			return "", fmt.Errorf("%w: cost basis", ErrCaptureInvalid)
+		}
+		if err := validateConfiguredCandidateJudgeCostAuthority(
+			cost,
+			FixedMemoryJudgeAuthority(),
+			300,
+		); err != nil {
+			return "", err
+		}
+	case "neo-chat.memory-regression-cost-basis.v8":
+		if cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+			cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil {
+			return "", fmt.Errorf("%w: cost basis", ErrCaptureInvalid)
+		}
+		if err := validateConfiguredCandidateJudgeCostAuthority(
+			cost,
+			FixedMemoryJudgeAuthority(),
+			600,
+		); err != nil {
+			return "", err
+		}
 	default:
 		return "", fmt.Errorf("%w: cost basis", ErrCaptureInvalid)
 	}
@@ -243,10 +267,44 @@ func ValidateConfiguredCandidateJudgeCostAuthority(
 	return validateConfiguredCandidateJudgeCostAuthority(cost, authority)
 }
 
+func ValidateFixedMemoryJudgeCostAuthority(
+	cost CostBasis,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+) error {
+	if cost.SchemaVersion != "neo-chat.memory-regression-cost-basis.v7" ||
+		cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+		cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil ||
+		!validFixedMemoryJudgeAuthority(authority) {
+		return fmt.Errorf("%w: fixed Memory Judge cost policy", ErrCaptureInvalid)
+	}
+	return validateConfiguredCandidateJudgeCostAuthority(cost, authority, 300)
+}
+
+func ValidateAccuracyFirstMemoryJudgeCostAuthority(
+	cost CostBasis,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+) error {
+	if cost.SchemaVersion != "neo-chat.memory-regression-cost-basis.v8" ||
+		cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+		cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil ||
+		!validFixedMemoryJudgeAuthority(authority) {
+		return fmt.Errorf("%w: accuracy-first Memory Judge cost policy", ErrCaptureInvalid)
+	}
+	return validateConfiguredCandidateJudgeCostAuthority(cost, authority, 600)
+}
+
 func validateConfiguredCandidateJudgeCostAuthority(
 	cost CostBasis,
 	expected ConfiguredCandidateJudgeProfileAuthority,
+	expectedRequestCount ...int,
 ) error {
+	requestCount := 300
+	if len(expectedRequestCount) > 1 {
+		return fmt.Errorf("%w: configured candidate-judge cost authority", ErrCaptureInvalid)
+	}
+	if len(expectedRequestCount) == 1 {
+		requestCount = expectedRequestCount[0]
+	}
 	authority := cost.ConfiguredCandidateJudgeAuthority
 	if authority == nil || strings.TrimSpace(authority.ProviderID) == "" ||
 		authority.ProviderID != strings.TrimSpace(authority.ProviderID) ||
@@ -255,7 +313,7 @@ func validateConfiguredCandidateJudgeCostAuthority(
 		len(authority.BaseURLSHA256) != 64 ||
 		strings.TrimSpace(authority.ModelID) == "" ||
 		authority.ModelID != strings.TrimSpace(authority.ModelID) ||
-		authority.RequestCount != 300 ||
+		authority.RequestCount != requestCount ||
 		authority.MaximumInputTokens < uint64(authority.RequestCount) ||
 		authority.MaximumOutputTokens != uint64(authority.RequestCount)*
 			usermemory.HybridCandidateJudgeMaximumOutputTokens {

@@ -30,6 +30,12 @@ without changing prompt, Usage, feature flags, or production data.
   configured-main-model candidate judge only after private current-authorized
   recall, reusing the strict ordinal/BGE intersection path without production
   injection authority;
+- run the schema-v11 fixed Luna successor under its own profile/report/reader/
+  criteria/cost identities, with a 3000-ms complete-flow cutoff and no
+  unjudged-candidate fallback;
+- run the schema-v12 accuracy-first successor through one globally serialized
+  BGE/Luna request controller with no application/HTTP elapsed deadline,
+  diagnostic-only latency, bounded transient retry, and an inter-case cooldown;
 - enforce exact `development`/`validation` split lanes and reject the visible
   machine `holdout`;
 - assemble strict regression observations, content-free run manifests, and
@@ -59,6 +65,10 @@ injection, or active-reader authority.
 | `BuildMemoryToolRouteDiagnosticReport` | Return aggregate-only schema-v9 route and retrieval-completeness counts; never select a policy. |
 | `CaptureConfiguredCandidateJudgeDevelopment` | Execute candidate-first strict judging through one exact configured GPT/DeepSeek model on Development. |
 | `BuildConfiguredCandidateJudgeDevelopmentReport` | Return schema-v10 aggregate evidence bound to Provider ID/type/Base-URL hash/model, adapter, and cost-basis v6. |
+| `CaptureFixedMemoryJudgeDevelopment` | Execute the exact global `SERVER_DEFAULT/gpt-5.6-luna` candidate-aware policy on Development. |
+| `BuildFixedMemoryJudgeDevelopmentReport` | Return schema-v11 aggregate evidence under criteria v2 and cost-basis v7. |
+| `CaptureAccuracyFirstMemoryJudgeDevelopment` | Execute query embedding, admission, BGE rerank, fixed Luna judge, and Record serially on Development. |
+| `BuildAccuracyFirstMemoryJudgeDevelopmentReport` | Return schema-v12 quality/safety/token evidence plus diagnostic latency and reconciled attempt/cost telemetry under criteria v3/cost-basis v8. |
 | `CaptureFrozenValidation` | Execute only the 100 Validation cases under the code-frozen policy. |
 | `BuildFrozenValidation` | Score the frozen Validation result without retuning. |
 | `AssembleRegressionObservations` | Bind ordered captures to the strict regression schema. |
@@ -81,10 +91,13 @@ bash scripts/run-memory-regression.sh \
 `fake_protocol` validates SQL, capture, evaluation, publication, and teardown
 only. Live mode accepts `development_calibration`,
 `development_cloud_judge`, `development_memory_tool_route`, or
-`development_configured_candidate_judge`, or `frozen_validation`. Each phase
+`development_configured_candidate_judge`,
+`development_fixed_memory_judge`,
+`development_fixed_memory_judge_accuracy`, or `frozen_validation`. Each phase
 requires a fresh separately authorized
-mode-`0600` SiliconFlow key file; Tool-route Development additionally requires
-a different fresh mode-`0600` GPT/DeepSeek credential. Live output is labelled
+mode-`0600` SiliconFlow key file. Tool-route and configured/fixed/accuracy-first
+judge Development additionally require a different fresh mode-`0600` chat
+Provider credential. Live output is labelled
 `native_v2_hybrid` while fake output is labelled
 `native_v2_hybrid_fake_protocol`. Frozen Validation is rejected before Key
 reading while no Development-selected policy is committed.
@@ -230,6 +243,40 @@ retains its stricter rejection behavior. This distinction prevents a correct
 runtime `no_memory` result from destroying the entire schema-v10 evidence
 bundle without rewriting old report semantics.
 
+Schema v11 fixes one global cloud Memory Judge independent of the answer
+model: `SERVER_DEFAULT`, `openai_compatible`, normalized Base URL
+`https://sub.mumubuku.top/v1`, and model alias `gpt-5.6-luna`. Profile v11,
+reader v9, report v11, criteria v2, cost-basis v7, and policy
+`memory_hybrid_fixed_cloud_candidate_judge_development_v1` are separate from
+all schema-v10 evidence. Criteria v2 changes only complete-flow latency to
+p95 `1500 ms`, p99 `2500 ms`, and hard cutoff `3000 ms`. Any timeout, Provider
+error, invalid JSON, protocol drift, or late response yields empty v2 Memory;
+normal chat continues through v1 without recalled/reranked fallback. A passing
+Development bundle still stops before separately authorized Validation.
+
+Schema v12 preserves that exact Luna/BGE/prompt/decoder/egress authority but
+uses new identities: profile/report v12, reader v10, criteria v3, cost-basis
+v8, policy `memory_hybrid_fixed_cloud_candidate_judge_accuracy_development_v2`,
+admission `development_fixed_memory_judge_accuracy_only`, and artifact
+`fixed-memory-judge-accuracy-development.json`. It does not reinterpret the
+failed schema-v11 bundle.
+
+The v12 execution sequence is fixed as BGE query embedding, local admission,
+BGE rerank, Luna judge, then Record. One controller enforces Provider
+concurrency `1` across passage/query embedding, rerank, and judge calls. The
+capture context and both HTTP clients have no elapsed deadline; only caller
+cancellation can interrupt them. Criteria v3 omits latency/hard-cutoff verdicts
+while retaining aggregate p95/p99 diagnostics. A hard-cutoff trace is rejected
+as schema drift rather than scored.
+
+Live mode sleeps one real second between the 300 cases. Fake protocol uses a
+virtual/no-op clock but records the same 299 logical waits and 299000 ms, with
+zero elapsed cooldown. A Provider request retries at most once and only for
+408/429/5xx or a retryable transport/read interruption. Valid `Retry-After` is
+honored; missing or invalid advice waits five seconds. Redirects, normal 4xx,
+invalid JSON/schema/protocol output, stream parse failures, and structured
+remote errors do not retry. Failure still releases no v2 Memory.
+
 The schema-v4 cost basis fixes a 300-request ceiling, a 128-token output ceiling
 per request, conservative UTF-8-plus-framing input token bounds, exact model
 prices, and maximum judge cost before Provider construction. The candidate
@@ -250,6 +297,20 @@ Provider/model/Base-URL and 300-request/token/cost ceilings in a distinct
 authority in the same document. Live mode also requires a judge credential
 that is a different file and different bytes from the SiliconFlow retrieval
 credential; both are cleared and leak-scanned.
+
+Fixed Memory Judge cost-basis v7 preserves the 300-request/38,400-output-token
+ceiling shape but requires the exact Luna tuple. The wrapper mounts independent
+mode-`0600` retrieval and judge copies read-only, rejects hard links or equal
+bytes, and overwrites/removes temporary copies on every exit. The runner has no
+Vault decryption authority.
+
+Accuracy-first cost-basis v8 is a distinct authority with a maximum of 600
+Judge attempts and exactly 76800 maximum output tokens. Report telemetry binds
+all BGE/Luna attempts and retries, per-stage aggregate request latency, cooldown
+counts, total/retry Judge input-token upper bounds, and the exact
+`JudgeAttempts * 128` output upper bound. Historical v6/v7 cost documents remain
+300-request authorities and cannot be widened. A passing v12 Development
+summary still sets `policySelected=false` and stops before Validation.
 
 ## Tests
 
@@ -274,6 +335,9 @@ memory_tool_router_decorator.go    Bounded route delegation and Recorder publica
 capture.go                         Production-reader observation assembly
 memory_tool_route_development.go   Schema-v7/v9 aggregate report authority
 configured_candidate_judge_development.go Schema-v10 aggregate report authority
+fixed_memory_judge_development.go      Schema-v11 fixed-Luna report authority
+accuracy_first_memory_judge_development.go Schema-v12 accuracy-first report/manifest authority
+accuracy_first_providers.go            Global serial gate, retry, cooldown, and aggregate telemetry
 ```
 
 See [DESIGN.md](DESIGN.md) and

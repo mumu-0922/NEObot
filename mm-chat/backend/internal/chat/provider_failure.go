@@ -4,7 +4,12 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 )
+
+const providerRetryFallbackDelay = 5 * time.Second
 
 // ProviderFailureCategory is a bounded, plaintext-free classification for
 // Provider request and stream failures. It is safe to aggregate, but it is not
@@ -30,8 +35,10 @@ const (
 )
 
 type providerFailureError struct {
-	category ProviderFailureCategory
-	message  string
+	category      ProviderFailureCategory
+	message       string
+	retryAfter    time.Duration
+	hasRetryAfter bool
 }
 
 func (failure *providerFailureError) Error() string {
@@ -46,6 +53,19 @@ func newProviderFailure(
 	message string,
 ) error {
 	return &providerFailureError{category: category, message: message}
+}
+
+func newProviderHTTPFailure(
+	category ProviderFailureCategory,
+	message string,
+	retryAfter string,
+) error {
+	failure := &providerFailureError{category: category, message: message}
+	if delay, ok := parseProviderRetryAfter(retryAfter, time.Now()); ok {
+		failure.retryAfter = delay
+		failure.hasRetryAfter = true
+	}
+	return failure
 }
 
 // ProviderFailureCategoryOf returns only a fixed category. It deliberately
@@ -67,6 +87,51 @@ func ProviderFailureCategoryOf(err error) (ProviderFailureCategory, bool) {
 	return failure.category, true
 }
 
+// ProviderRetryDelay exposes only a duration and retryability decision. It
+// accepts explicit 408/429/5xx classes plus transport/stream interruptions;
+// invalid response/schema/stream syntax and deterministic 4xx classes remain
+// non-retryable.
+func ProviderRetryDelay(err error) (time.Duration, bool) {
+	category, ok := ProviderFailureCategoryOf(err)
+	if !ok {
+		return 0, false
+	}
+	switch category {
+	case ProviderFailureRequestTimeout,
+		ProviderFailureRateLimited,
+		ProviderFailureUpstreamFailed,
+		ProviderFailureTransportFailed,
+		ProviderFailureStreamReadFailed,
+		ProviderFailureStreamIncomplete:
+	default:
+		return 0, false
+	}
+	var failure *providerFailureError
+	if errors.As(err, &failure) && failure != nil && failure.hasRetryAfter {
+		return failure.retryAfter, true
+	}
+	return providerRetryFallbackDelay, true
+}
+
+func parseProviderRetryAfter(value string, now time.Time) (time.Duration, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, false
+	}
+	if seconds, err := strconv.ParseUint(value, 10, 63); err == nil {
+		maximumSeconds := uint64((time.Duration(1<<63 - 1)) / time.Second)
+		if seconds > maximumSeconds {
+			return 0, false
+		}
+		return time.Duration(seconds) * time.Second, true
+	}
+	parsed, err := http.ParseTime(value)
+	if err != nil || parsed.Before(now) {
+		return 0, false
+	}
+	return parsed.Sub(now), true
+}
+
 func providerHTTPFailureCategory(statusCode int) ProviderFailureCategory {
 	switch {
 	case statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden:
@@ -77,9 +142,11 @@ func providerHTTPFailureCategory(statusCode int) ProviderFailureCategory {
 		return ProviderFailureRequestTimeout
 	case statusCode == http.StatusTooManyRequests:
 		return ProviderFailureRateLimited
+	case statusCode >= http.StatusInternalServerError:
+		return ProviderFailureUpstreamFailed
 	case statusCode >= http.StatusBadRequest && statusCode < http.StatusInternalServerError:
 		return ProviderFailureRequestRejected
 	default:
-		return ProviderFailureUpstreamFailed
+		return ProviderFailureRequestRejected
 	}
 }

@@ -343,18 +343,135 @@ if args and args[0] == "compose":
                     "actualInputTokenUpperBound": 258647,
                     "authorizedMaximumOutputTokens": 38400,
                     "actualOutputTokenUpperBound": 24960,
-                    "maximumJudgeCostMicrounits": 376800,
-                    "maximumMemoryProviderCostMicrounits": 487716,
+                    "maximumJudgeCostMicrounits": 753600,
+                    "maximumMemoryProviderCostMicrounits": 864516,
                 },
             }, separators=(",", ":")).encode() + b"\n"
             bodies = {"cloud-judge-development.json": cloud}
             manifest_schema = "neo-chat.memory-regression-relevance-run.v1"
             admission_mode = "development_cloud_judge_only"
-        elif capture_mode == "development_configured_candidate_judge":
-            configured_judge = json.dumps({
-                "schemaVersion": "neo-chat.memory-regression-relevance-calibration.v10",
+        elif capture_mode == "development_fixed_memory_judge_accuracy":
+            cooldown_elapsed = 299000 if mode == "live_siliconflow" else 0
+            cooldown_clock = "wall_clock_v1" if mode == "live_siliconflow" else "virtual_protocol_v1"
+            def latency(count):
+                return {
+                    "sampleCount": count,
+                    "totalMilliseconds": count,
+                    "p95LatencyMilliseconds": 1 if count else 0,
+                    "p99LatencyMilliseconds": 1 if count else 0,
+                    "maximumLatencyMilliseconds": 1 if count else 0,
+                }
+            accuracy = json.dumps({
+                "schemaVersion": "neo-chat.memory-regression-relevance-calibration.v12",
                 "corpusClass": "machine_reviewed_regression",
-                "admissionMode": "development_configured_candidate_judge_only",
+                "admissionMode": "development_fixed_memory_judge_accuracy_only",
+                "promotionEligible": False,
+                "split": "development",
+                "caseCount": 300,
+                "policyId": "memory_hybrid_fixed_cloud_candidate_judge_accuracy_development_v2",
+                "providerEgressPolicy": "owner_authorized_normal_candidates_v1",
+                "providerCostPolicy": "owner_authorized_absolute_cap_v1",
+                "providerCostAuthorized": True,
+                "judgeProviderId": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_ID"],
+                "judgeProviderType": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_TYPE"],
+                "judgeBaseUrlSha256": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_BASE_URL_SHA256"],
+                "judgeModelId": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_MODEL"],
+                "judgeAdapter": "chat-configured-candidate-judge-v1",
+                "evaluationCriteriaVersion": "neo-chat.memory-benchmark-criteria.v3",
+                "evaluationCriteria": {
+                    "minimumCandidateRecallAt20": 0.95,
+                    "minimumFinalRecallAt5": 0.90,
+                    "minimumCurrentFactAccuracy": 0.95,
+                    "maximumFalseInjectionRate": 0.02,
+                    "maximumAveragePromptMemoryTokens": 600,
+                    "maximumPromptMemoryTokens": 900,
+                    "maximumProviderCostRatio": 0.15,
+                    "latencyEvaluationMode": "diagnostic_only_v1",
+                    "applicationDeadlineMode": "none_v1",
+                },
+                "executionPolicy": {
+                    "sequenceVersion": "bge_query_admission_bge_rerank_luna_judge_record_serial_v1",
+                    "globalProviderRequestConcurrency": 1,
+                    "applicationDeadlineMode": "none_v1",
+                    "providerElapsedTimeoutMode": "none_v1",
+                    "latencyEvaluationMode": "diagnostic_only_v1",
+                    "interCaseCooldownMilliseconds": 1000,
+                    "interCaseCooldownClock": cooldown_clock,
+                    "retryPolicyVersion": "transient_408_429_5xx_transport_read_once_v1",
+                    "maximumRetriesPerProviderRequest": 1,
+                    "retryFallbackDelayMilliseconds": 5000,
+                },
+                "passed": True,
+                "evaluation": {
+                    "passed": True,
+                    "budgets": {
+                        "p95LatencyMilliseconds": 120000,
+                        "p99LatencyMilliseconds": 150000,
+                        "averagePromptMemoryTokens": 100,
+                        "maximumPromptMemoryTokens": 200,
+                        "promptTokenPassed": True,
+                    },
+                    "slices": {},
+                    "failures": [],
+                },
+                "diagnostics": {
+                    "emptyCandidateCaseCount": 105,
+                    "judgeCompletedCaseCount": 195,
+                    "judgeAbstainedCaseCount": 30,
+                    "failedCaseCount": 0,
+                    "failureCodeCounts": {},
+                },
+                "providerAttempts": {
+                    "passageEmbeddingAttempts": 1,
+                    "passageEmbeddingRetries": 0,
+                    "queryEmbeddingAttempts": 300,
+                    "queryEmbeddingRetries": 0,
+                    "rerankAttempts": 195,
+                    "rerankRetries": 0,
+                    "judgeAttempts": 196,
+                    "judgeRetries": 1,
+                    "judgeInputTokenUpperBound": 258770,
+                    "judgeRetryInputTokenUpperBound": 123,
+                    "interCaseCooldownCount": 299,
+                    "interCaseCooldownMilliseconds": 299000,
+                    "interCaseCooldownElapsedMilliseconds": cooldown_elapsed,
+                    "passageEmbeddingLatency": latency(1),
+                    "queryEmbeddingLatency": latency(300),
+                    "rerankLatency": latency(195),
+                    "judgeLatency": latency(196),
+                },
+                "costAuthority": {
+                    "unit": "cny_microunits",
+                    "authorizedRequestCount": 600,
+                    "actualRequestCount": 196,
+                    "authorizedMaximumInputTokens": 600000,
+                    "actualInputTokenUpperBound": 258770,
+                    "authorizedMaximumOutputTokens": 76800,
+                    "actualOutputTokenUpperBound": 25088,
+                    "maximumJudgeCostMicrounits": 376800,
+                    "maximumMemoryProviderCostMicrounits": 487716,
+                },
+            }, separators=(",", ":")).encode() + b"\n"
+            bodies = {"fixed-memory-judge-accuracy-development.json": accuracy}
+            manifest_schema = "neo-chat.memory-regression-relevance-run.v1"
+            admission_mode = "development_fixed_memory_judge_accuracy_only"
+        elif capture_mode in {
+            "development_configured_candidate_judge",
+            "development_fixed_memory_judge",
+        }:
+            fixed_memory_judge = capture_mode == "development_fixed_memory_judge"
+            configured_judge = json.dumps({
+                "schemaVersion": (
+                    "neo-chat.memory-regression-relevance-calibration.v11"
+                    if fixed_memory_judge
+                    else "neo-chat.memory-regression-relevance-calibration.v10"
+                ),
+                "corpusClass": "machine_reviewed_regression",
+                "admissionMode": (
+                    "development_fixed_memory_judge_only"
+                    if fixed_memory_judge
+                    else "development_configured_candidate_judge_only"
+                ),
                 "promotionEligible": False,
                 "split": "development",
                 "caseCount": 300,
@@ -366,6 +483,15 @@ if args and args[0] == "compose":
                 "judgeBaseUrlSha256": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_BASE_URL_SHA256"],
                 "judgeModelId": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_MODEL"],
                 "judgeAdapter": "chat-configured-candidate-judge-v1",
+                **({
+                    "policyId": "memory_hybrid_fixed_cloud_candidate_judge_development_v1",
+                    "evaluationCriteriaVersion": "neo-chat.memory-benchmark-criteria.v2",
+                    "evaluationCriteria": {
+                        "maximumP95LatencyMilliseconds": 1500,
+                        "maximumP99LatencyMilliseconds": 2500,
+                        "hardCutoffMilliseconds": 3000,
+                    },
+                } if fixed_memory_judge else {}),
                 "passed": True,
                 "evaluation": {"passed": True, "providerCostRatio": 0.5},
                 "diagnostics": {
@@ -387,9 +513,18 @@ if args and args[0] == "compose":
                     "maximumMemoryProviderCostMicrounits": 487716,
                 },
             }, separators=(",", ":")).encode() + b"\n"
-            bodies = {"configured-candidate-judge-development.json": configured_judge}
+            report_name = (
+                "fixed-memory-judge-development.json"
+                if fixed_memory_judge
+                else "configured-candidate-judge-development.json"
+            )
+            bodies = {report_name: configured_judge}
             manifest_schema = "neo-chat.memory-regression-relevance-run.v1"
-            admission_mode = "development_configured_candidate_judge_only"
+            admission_mode = (
+                "development_fixed_memory_judge_only"
+                if fixed_memory_judge
+                else "development_configured_candidate_judge_only"
+            )
         elif capture_mode in {
             "development_memory_tool_route",
             "development_memory_tool_route_diagnostic",
@@ -522,6 +657,8 @@ if args and args[0] == "compose":
                         "development_memory_tool_route",
                         "development_memory_tool_route_diagnostic",
                         "development_configured_candidate_judge",
+                        "development_fixed_memory_judge",
+                        "development_fixed_memory_judge_accuracy",
                     } else "validation",
                     "profileId": candidate_profile,
                 })
@@ -530,6 +667,8 @@ if args and args[0] == "compose":
                     "development_memory_tool_route",
                     "development_memory_tool_route_diagnostic",
                     "development_configured_candidate_judge",
+                    "development_fixed_memory_judge",
+                    "development_fixed_memory_judge_accuracy",
                 }:
                     manifest["providerCostPolicy"] = "owner_authorized_absolute_cap_v1"
             manifest_path = output / "run-manifest.json"
@@ -628,6 +767,70 @@ if [[ "$(find "${configured_judge_output}" -mindepth 2 -maxdepth 2 -type f | wc 
   exit 1
 fi
 assert_cleanup "${configured_judge_log}"
+
+fixed_judge_output="${temp_dir}/fixed-judge-output"
+fixed_judge_log="${temp_dir}/fixed-judge-docker.log"
+mkdir "${fixed_judge_output}"
+chmod 700 "${fixed_judge_output}"
+FAKE_DOCKER_LOG="${fixed_judge_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${fixed_judge_output}" --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  >"${temp_dir}/fixed-judge.stdout" \
+  2>"${temp_dir}/fixed-judge.stderr"
+if [[ "$(find "${fixed_judge_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: fixed Memory Judge bundle was not retained" >&2
+  exit 1
+fi
+assert_cleanup "${fixed_judge_log}"
+
+accuracy_first_output="${temp_dir}/accuracy-first-output"
+accuracy_first_log="${temp_dir}/accuracy-first-docker.log"
+mkdir "${accuracy_first_output}"
+chmod 700 "${accuracy_first_output}"
+FAKE_DOCKER_LOG="${accuracy_first_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${accuracy_first_output}" --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge_accuracy \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  >"${temp_dir}/accuracy-first.stdout" \
+  2>"${temp_dir}/accuracy-first.stderr"
+if [[ "$(find "${accuracy_first_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: accuracy-first Memory Judge bundle was not retained" >&2
+  exit 1
+fi
+assert_cleanup "${accuracy_first_log}"
+
+fixed_drift_output="${temp_dir}/fixed-drift-output"
+mkdir "${fixed_drift_output}"
+chmod 700 "${fixed_drift_output}"
+set +e
+DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${fixed_drift_output}" --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model other \
+  >"${temp_dir}/fixed-drift.stdout" \
+  2>"${temp_dir}/fixed-drift.stderr"
+fixed_drift_status=$?
+set -e
+if [[ ${fixed_drift_status} -eq 0 || \
+  -n "$(find "${fixed_drift_output}" -mindepth 1 -print -quit)" ]]; then
+  echo "Memory regression protocol: fixed Memory Judge authority drift did not fail closed" >&2
+  exit 1
+fi
 
 memory_tool_route_output="${temp_dir}/memory-tool-route-output"
 memory_tool_route_log="${temp_dir}/memory-tool-route-docker.log"
@@ -750,6 +953,58 @@ if [[ "$(find "${live_configured_judge_output}" -mindepth 2 -maxdepth 2 -type f 
   exit 1
 fi
 assert_cleanup "${live_configured_judge_log}"
+
+live_fixed_judge_output="${temp_dir}/live-fixed-judge-output"
+live_fixed_judge_log="${temp_dir}/live-fixed-judge-docker.log"
+mkdir "${live_fixed_judge_output}"
+chmod 700 "${live_fixed_judge_output}"
+FAKE_DOCKER_LOG="${live_fixed_judge_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${live_fixed_judge_output}" \
+  --provider-mode live_siliconflow \
+  --capture-mode development_fixed_memory_judge \
+  --credential-file "${credential_file}" \
+  --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --configured-candidate-judge-credential-file "${configured_judge_credential_file}" \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --configured-candidate-judge-approval I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA \
+  >"${temp_dir}/live-fixed-judge.stdout" \
+  2>"${temp_dir}/live-fixed-judge.stderr"
+if [[ "$(find "${live_fixed_judge_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: live fixed Memory Judge bundle was not retained" >&2
+  exit 1
+fi
+assert_cleanup "${live_fixed_judge_log}"
+
+live_accuracy_first_output="${temp_dir}/live-accuracy-first-output"
+live_accuracy_first_log="${temp_dir}/live-accuracy-first-docker.log"
+mkdir "${live_accuracy_first_output}"
+chmod 700 "${live_accuracy_first_output}"
+FAKE_DOCKER_LOG="${live_accuracy_first_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${live_accuracy_first_output}" \
+  --provider-mode live_siliconflow \
+  --capture-mode development_fixed_memory_judge_accuracy \
+  --credential-file "${credential_file}" \
+  --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --configured-candidate-judge-credential-file "${configured_judge_credential_file}" \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --configured-candidate-judge-approval I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA \
+  >"${temp_dir}/live-accuracy-first.stdout" \
+  2>"${temp_dir}/live-accuracy-first.stderr"
+if [[ "$(find "${live_accuracy_first_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: live accuracy-first bundle was not retained" >&2
+  exit 1
+fi
+assert_cleanup "${live_accuracy_first_log}"
 
 same_credential_output="${temp_dir}/same-credential-output"
 mkdir "${same_credential_output}"

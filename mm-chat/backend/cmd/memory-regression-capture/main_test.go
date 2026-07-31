@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -108,6 +109,48 @@ func TestParseCommandSeparatesFakeAndLiveCredentialBoundaries(t *testing.T) {
 		"-provider-mode", memorycapture.ProviderModeLiveSiliconFlow,
 		"-credential-file", "/siliconflow-secret")); err == nil {
 		t.Fatal("live configured candidate-judge omitted its independent credential")
+	}
+	fixedJudge := append(append([]string{}, base...),
+		"-capture-mode", memorycapture.CaptureModeFixedMemoryJudge,
+		"-configured-candidate-judge-provider-id", memorycapture.FixedMemoryJudgeProviderID,
+		"-configured-candidate-judge-provider-type", memorycapture.FixedMemoryJudgeProviderType,
+		"-configured-candidate-judge-base-url", memorycapture.FixedMemoryJudgeBaseURL,
+		"-configured-candidate-judge-model", memorycapture.FixedMemoryJudgeModelID,
+	)
+	options, err = parseCommand(fixedJudge)
+	if err != nil || options.captureMode != memorycapture.CaptureModeFixedMemoryJudge ||
+		options.judgeConfiguredModelID != memorycapture.FixedMemoryJudgeModelID {
+		t.Fatalf("parse fixed Memory Judge command = %#v/%v", options, err)
+	}
+	accuracyFirst := append([]string(nil), fixedJudge...)
+	for index := range accuracyFirst {
+		if accuracyFirst[index] == memorycapture.CaptureModeFixedMemoryJudge {
+			accuracyFirst[index] = memorycapture.CaptureModeAccuracyFirstMemoryJudge
+			break
+		}
+	}
+	options, err = parseCommand(accuracyFirst)
+	if err != nil || options.captureMode != memorycapture.CaptureModeAccuracyFirstMemoryJudge {
+		t.Fatalf("parse accuracy-first Memory Judge command = %#v/%v", options, err)
+	}
+}
+
+func TestAccuracyFirstCaptureContextHasNoElapsedDeadline(t *testing.T) {
+	accuracyContext, cancel := captureContext(
+		context.Background(),
+		memorycapture.CaptureModeAccuracyFirstMemoryJudge,
+	)
+	defer cancel()
+	if _, ok := accuracyContext.Deadline(); ok {
+		t.Fatal("accuracy-first capture inherited the legacy 45-minute deadline")
+	}
+	legacyContext, legacyCancel := captureContext(
+		context.Background(),
+		memorycapture.CaptureModeFixedMemoryJudge,
+	)
+	defer legacyCancel()
+	if _, ok := legacyContext.Deadline(); !ok {
+		t.Fatal("historical capture lost its bounded command deadline")
 	}
 }
 
@@ -267,6 +310,48 @@ func TestBuildProvidersBindsConfiguredCandidateJudge(t *testing.T) {
 	options.judgeCredentialPath = retrievalPath
 	if _, err := buildProviders(options); err == nil {
 		t.Fatal("configured candidate judge accepted the retrieval credential file")
+	}
+}
+
+func TestBuildProvidersWrapsAccuracyFirstFakeProviderSet(t *testing.T) {
+	bundle, err := buildProviders(commandOptions{
+		providerMode:           memorycapture.ProviderModeFakeProtocol,
+		captureMode:            memorycapture.CaptureModeAccuracyFirstMemoryJudge,
+		judgeConfiguredModelID: memorycapture.FixedMemoryJudgeModelID,
+	})
+	if err != nil || bundle.passage == nil || bundle.hybrid == nil || bundle.judge == nil ||
+		bundle.router != nil || len(bundle.secrets) != 0 {
+		t.Fatalf("accuracy-first fake Provider bundle = %#v/%v", bundle, err)
+	}
+}
+
+func TestBuildFixedMemoryJudgeAuthorityBindsExactEndpoint(t *testing.T) {
+	options := commandOptions{
+		judgeProviderID:        memorycapture.FixedMemoryJudgeProviderID,
+		judgeProviderType:      memorycapture.FixedMemoryJudgeProviderType,
+		judgeBaseURL:           memorycapture.FixedMemoryJudgeBaseURL,
+		judgeConfiguredModelID: memorycapture.FixedMemoryJudgeModelID,
+	}
+	authority, err := buildConfiguredCandidateJudgeAuthority(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if authority != memorycapture.FixedMemoryJudgeAuthority() {
+		t.Fatalf("fixed Memory Judge authority = %#v", authority)
+	}
+
+	options.judgeBaseURL = "https://sub.mumubuku.top"
+	authority, err = buildConfiguredCandidateJudgeAuthority(options)
+	if err != nil || authority != memorycapture.FixedMemoryJudgeAuthority() {
+		t.Fatalf("normalized fixed Memory Judge authority = %#v/%v", authority, err)
+	}
+	options.judgeConfiguredModelID = "other"
+	drifted, err := buildConfiguredCandidateJudgeAuthority(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if drifted == memorycapture.FixedMemoryJudgeAuthority() {
+		t.Fatal("fixed Memory Judge model drift retained exact authority")
 	}
 }
 

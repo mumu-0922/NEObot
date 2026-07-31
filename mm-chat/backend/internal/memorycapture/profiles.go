@@ -8,6 +8,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/chat"
 	"neo-chat/mm-chat/backend/internal/memoryauthor"
 	"neo-chat/mm-chat/backend/internal/memoryeval"
+	"neo-chat/mm-chat/backend/internal/memoryjudge"
 	"neo-chat/mm-chat/backend/internal/ragproviders"
 	"neo-chat/mm-chat/backend/internal/usermemory"
 )
@@ -136,6 +137,43 @@ func BuildFrozenValidationProfileConfig(
 	return candidate, err
 }
 
+func BuildAccuracyFirstMemoryJudgeDevelopmentProfileConfig(
+	protected ProtectedRegression,
+	costBasisSHA256 string,
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	providerCostPolicy string,
+) (ProfileConfig, error) {
+	if !validFixedMemoryJudgeAuthority(authority) ||
+		providerCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 {
+		return ProfileConfig{}, ErrCaptureInvalid
+	}
+	_, config, err := buildProfileConfigs(
+		protected,
+		costBasisSHA256,
+		providerMode,
+		CaptureModeAccuracyFirstMemoryJudge,
+		DevelopmentCalibrationSplit,
+		usermemory.HybridShadowAccuracyFirstMemoryJudgeDevelopmentPolicy(),
+		providerCostPolicy,
+		nil,
+	)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	config.ConfiguredCandidateJudgeProviderID = authority.ProviderID
+	config.ConfiguredCandidateJudgeProviderType = authority.ProviderType
+	config.ConfiguredCandidateJudgeBaseURLSHA256 = authority.BaseURLSHA256
+	config.ConfiguredCandidateJudgeAdapter = memoryjudge.ChatAdapterVersion
+	config.EvaluationCriteriaVersion = memoryeval.MemoryJudgeAccuracyFirstCriteriaVersionV3
+	executionPolicy, err := AccuracyFirstDevelopmentExecutionPolicy(providerMode)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	config.AccuracyFirstExecutionPolicy = &executionPolicy
+	return config, nil
+}
+
 func buildProfileConfigs(
 	protected ProtectedRegression,
 	costBasisSHA256 string,
@@ -164,6 +202,23 @@ func buildProfileConfigs(
 		case ProviderCostPolicyOwnerAuthorizedAbsoluteV1:
 			profileSchemaVersion = "neo-chat.memory-regression-profile-config.v5"
 		default:
+			return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
+		}
+	} else if captureMode == CaptureModeFixedMemoryJudge {
+		readerVersion = FixedMemoryJudgeReaderVersion
+		profileSchemaVersion = "neo-chat.memory-regression-profile-config.v11"
+		if providerCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+			policy.ID != usermemory.HybridRelevanceFixedMemoryJudgePolicyID ||
+			policyDescriptor.HardCutoffMilliseconds !=
+				int(memoryeval.MemoryJudgeDevelopmentHardCutoffMillisV2) {
+			return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
+		}
+	} else if captureMode == CaptureModeAccuracyFirstMemoryJudge {
+		readerVersion = AccuracyFirstMemoryJudgeReaderVersion
+		profileSchemaVersion = "neo-chat.memory-regression-profile-config.v12"
+		if providerCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+			policy.ID != usermemory.HybridRelevanceAccuracyFirstJudgePolicyID ||
+			policyDescriptor.HardCutoffMilliseconds != 0 {
 			return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
 		}
 	} else if captureMode == CaptureModeMemoryToolRouteDevelopment ||
@@ -207,7 +262,7 @@ func buildProfileConfigs(
 		FinalLimit:        usermemory.HybridShadowFinalLimit,
 		TargetTokens:      usermemory.HybridShadowTargetTokens,
 		MaximumTokens:     usermemory.HybridShadowMaximumTokens,
-		HardCutoffMillis:  2000,
+		HardCutoffMillis:  policyDescriptor.HardCutoffMilliseconds,
 		FixtureMapping:    fixtureMappingVersion,
 		CaptureMode:       captureMode,
 		EvaluationSplit:   evaluationSplit,
@@ -615,6 +670,12 @@ func captureCandidateProfile(
 		len(configurationSHA256) != 64 {
 		return CapturedProfile{}, ErrCaptureInvalid
 	}
+	policyDescriptor, ok := usermemory.DescribeHybridShadowRelevancePolicy(policy)
+	if !ok || policyDescriptor.HardCutoffMilliseconds < 0 ||
+		(policyDescriptor.HardCutoffMilliseconds == 0 &&
+			policy.ID != usermemory.HybridRelevanceAccuracyFirstJudgePolicyID) {
+		return CapturedProfile{}, ErrCaptureInvalid
+	}
 	repository := usermemory.NewPostgresRepository(runtimeDB)
 	recorder := &Recorder{}
 	decoratedRepository, err := NewRepositoryDecorator(repository, repository, recorder)
@@ -664,20 +725,40 @@ func captureCandidateProfile(
 	candidateService := usermemory.NewService(decoratedRepository, serviceOptions...)
 	candidateCases := make([]memoryeval.CaseObservation, 0, len(cases))
 	calibrationCases := make([]CandidateCalibrationTrace, 0, len(cases))
-	for _, item := range cases {
-		observed, calibration, err := captureCandidateWithCalibration(
-			ctx, candidateService, recorder, index, item,
+	for caseIndex, item := range cases {
+		observed, calibration, err := captureCandidateWithCalibrationCutoff(
+			ctx,
+			candidateService,
+			recorder,
+			index,
+			item,
+			policyDescriptor.HardCutoffMilliseconds,
 		)
 		if err != nil {
 			return CapturedProfile{}, fmt.Errorf("capture candidate case: %w", err)
 		}
 		candidateCases = append(candidateCases, observed)
 		calibrationCases = append(calibrationCases, calibration)
+		if policy.ID == usermemory.HybridRelevanceAccuracyFirstJudgePolicyID &&
+			caseIndex+1 < len(cases) {
+			accuracyProvider, ok := provider.(*accuracyFirstHybridProvider)
+			if !ok || accuracyProvider.controller == nil {
+				return CapturedProfile{}, ErrCaptureInvalid
+			}
+			if err := accuracyProvider.controller.waitInterCaseCooldown(ctx); err != nil {
+				return CapturedProfile{}, fmt.Errorf("accuracy-first inter-case cooldown: %w", err)
+			}
+		}
 	}
 	readerVersion := ReaderVersion
 	providerEgressPolicy := ""
 	if policy.CloudCandidateJudgeRequired {
 		readerVersion = CloudJudgeReaderVersion
+		if policy.ID == usermemory.HybridRelevanceFixedMemoryJudgePolicyID {
+			readerVersion = FixedMemoryJudgeReaderVersion
+		} else if policy.ID == usermemory.HybridRelevanceAccuracyFirstJudgePolicyID {
+			readerVersion = AccuracyFirstMemoryJudgeReaderVersion
+		}
 		providerEgressPolicy =
 			memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1
 	} else if policy.MemoryToolRouteRequired {
@@ -694,6 +775,12 @@ func captureCandidateProfile(
 			ProviderEgressPolicy: providerEgressPolicy,
 		},
 		Costs: cost, Cases: candidateCases, Calibration: calibrationCases,
+		ProviderAttempts: func() AccuracyFirstProviderTelemetry {
+			if accuracyProvider, ok := provider.(*accuracyFirstHybridProvider); ok {
+				return accuracyProvider.controller.Snapshot()
+			}
+			return AccuracyFirstProviderTelemetry{}
+		}(),
 	}, nil
 }
 

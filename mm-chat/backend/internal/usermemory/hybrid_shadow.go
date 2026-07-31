@@ -28,6 +28,8 @@ const (
 	hybridPolicyModeCalibration           = "calibration"
 	hybridPolicyModeIntentCalibration     = "intent_calibration"
 	hybridPolicyModeCloudJudgeCalibration = "cloud_judge_calibration"
+	hybridPolicyModeFixedMemoryJudge      = "fixed_cloud_candidate_judge_development"
+	hybridPolicyModeAccuracyFirstJudge    = "fixed_cloud_candidate_judge_accuracy_development"
 	hybridPolicyModeMemoryToolRoute       = "main_model_tool_route_calibration"
 	hybridPolicyModeMemoryFirstToolRound  = "main_model_first_tool_round_calibration"
 	hybridPolicyModeFrozen                = "frozen"
@@ -205,7 +207,20 @@ func (s *Service) executeHybridShadow(
 	}
 	digest := sha256.Sum256([]byte(query))
 	startedAt := time.Now()
-	shadowCtx, cancel := context.WithTimeout(ctx, hybridShadowHardCutoff)
+	hardCutoffMilliseconds, ok := HybridShadowHardCutoffMilliseconds(policy)
+	if !ok {
+		return hybridShadowExecution{Summary: hybridShadowFailure("POLICY_UNAVAILABLE", "POLICY_UNAVAILABLE")}
+	}
+	var shadowCtx context.Context
+	var cancel context.CancelFunc
+	if hardCutoffMilliseconds == 0 {
+		shadowCtx, cancel = context.WithCancel(ctx)
+	} else {
+		shadowCtx, cancel = context.WithTimeout(
+			ctx,
+			time.Duration(hardCutoffMilliseconds)*time.Millisecond,
+		)
+	}
 	defer cancel()
 	memoryToolRoute := startHybridMemoryToolRoute(
 		shadowCtx,
@@ -222,7 +237,11 @@ func (s *Service) executeHybridShadow(
 		}()
 	}
 
-	embedCtx, embedCancel := context.WithTimeout(shadowCtx, hybridShadowEmbedCutoff)
+	embedCtx := shadowCtx
+	embedCancel := func() {}
+	if policy.Mode != hybridPolicyModeAccuracyFirstJudge {
+		embedCtx, embedCancel = context.WithTimeout(shadowCtx, hybridShadowEmbedCutoff)
+	}
 	queryEmbedding, embeddingState := s.hybridQueryEmbedding(embedCtx, query)
 	embedCancel()
 	prepared, err := repository.PrepareHybridShadow(shadowCtx, HybridShadowPrepareInput{
@@ -294,10 +313,14 @@ func (s *Service) executeHybridShadow(
 			} else if admission.MaximumVectorSimilarity < policy.MinimumProviderSimilarity {
 				fallbackCode = "RELEVANCE_ABSTAINED"
 			} else {
-				rerankCtx, rerankCancel := hybridProviderStageContext(
-					shadowCtx,
-					hybridShadowRecordReserve,
-				)
+				rerankCtx := shadowCtx
+				rerankCancel := func() {}
+				if policy.Mode != hybridPolicyModeAccuracyFirstJudge {
+					rerankCtx, rerankCancel = hybridProviderStageContext(
+						shadowCtx,
+						hybridShadowRecordReserve,
+					)
+				}
 				if s.hybridProvider == nil {
 					rerankErr = ragproviders.ErrRerankUnavailable
 				} else {
@@ -586,6 +609,33 @@ func executeHybridCandidateStages(
 	if judge == nil {
 		return nil, nil, "CANDIDATE_JUDGE_FAILED", errors.New("hybrid candidate judge is unavailable")
 	}
+	if policy.Mode == hybridPolicyModeAccuracyFirstJudge {
+		scored, reranked, rerankErr := rerankHybridCandidatesWithPayload(
+			ctx,
+			provider,
+			redactedQuery,
+			documents,
+			candidates,
+		)
+		if rerankErr != nil {
+			return nil, nil, "RERANK_FAILED", rerankErr
+		}
+		selectedOrdinals, judgeErr := judgeHybridCandidates(
+			ctx,
+			judge,
+			policy.CloudCandidateJudgeModelID,
+			redactedQuery,
+			documents,
+		)
+		if judgeErr != nil {
+			return nil, nil, "CANDIDATE_JUDGE_FAILED", judgeErr
+		}
+		selected := intersectHybridJudgeSelection(scored, selectedOrdinals)
+		if len(selected) == 0 {
+			return selected, reranked, "CANDIDATE_JUDGE_ABSTAINED", nil
+		}
+		return selected, reranked, "", nil
+	}
 
 	rerankResult := make(chan hybridRerankStageResult, 1)
 	judgeResult := make(chan hybridJudgeStageResult, 1)
@@ -817,6 +867,35 @@ func HybridShadowCloudJudgeCalibrationPolicy(
 	}
 }
 
+// HybridShadowFixedMemoryJudgeDevelopmentPolicy is the separately versioned
+// schema-v11 candidate-aware policy. It changes only the policy identity and
+// complete-flow hard cutoff; the strict prompt/decoder and BGE selection
+// contract remain shared with the historical cloud-judge policies.
+func HybridShadowFixedMemoryJudgeDevelopmentPolicy() HybridShadowRelevancePolicy {
+	return HybridShadowRelevancePolicy{
+		ID:                          HybridRelevanceFixedMemoryJudgePolicyID,
+		Mode:                        hybridPolicyModeFixedMemoryJudge,
+		CloudCandidateJudgeRequired: true,
+		CloudCandidateJudgeModelID:  HybridFixedMemoryJudgeModelID,
+		MinimumProviderSimilarity:   -1,
+		MinimumFinalRelevanceScore:  0,
+	}
+}
+
+// HybridShadowAccuracyFirstMemoryJudgeDevelopmentPolicy is a Development-only
+// successor that removes application deadlines and executes BGE rerank before
+// the fixed judge. It is never installed by the Server composition root.
+func HybridShadowAccuracyFirstMemoryJudgeDevelopmentPolicy() HybridShadowRelevancePolicy {
+	return HybridShadowRelevancePolicy{
+		ID:                          HybridRelevanceAccuracyFirstJudgePolicyID,
+		Mode:                        hybridPolicyModeAccuracyFirstJudge,
+		CloudCandidateJudgeRequired: true,
+		CloudCandidateJudgeModelID:  HybridFixedMemoryJudgeModelID,
+		MinimumProviderSimilarity:   -1,
+		MinimumFinalRelevanceScore:  0,
+	}
+}
+
 func HybridShadowMemoryToolRouteCalibrationPolicy(
 	modelID string,
 ) HybridShadowRelevancePolicy {
@@ -873,6 +952,7 @@ func DescribeHybridShadowRelevancePolicy(
 	}
 	return HybridShadowRelevancePolicyDescriptor{
 		ID: policy.ID, Mode: policy.Mode,
+		HardCutoffMilliseconds:      hybridShadowHardCutoffMillisecondsForMode(policy.Mode),
 		MemoryIntentRequired:        policy.MemoryIntentRequired,
 		CloudCandidateJudgeRequired: policy.CloudCandidateJudgeRequired,
 		CloudCandidateJudgeModelID:  policy.CloudCandidateJudgeModelID,
@@ -988,6 +1068,26 @@ func validHybridShadowRelevancePolicy(
 			policy.MinimumFinalRelevanceScore != 0 {
 			return HybridShadowRelevancePolicy{}, false
 		}
+	case hybridPolicyModeFixedMemoryJudge:
+		if policy.ID != HybridRelevanceFixedMemoryJudgePolicyID ||
+			policy.MemoryIntentRequired || !policy.CloudCandidateJudgeRequired ||
+			policy.CloudCandidateJudgeModelID != HybridFixedMemoryJudgeModelID ||
+			policy.MemoryToolRouteRequired || policy.MemoryToolRouteModelID != "" ||
+			policy.MinimumMemoryIntentMargin != 0 ||
+			policy.MinimumProviderSimilarity != -1 ||
+			policy.MinimumFinalRelevanceScore != 0 {
+			return HybridShadowRelevancePolicy{}, false
+		}
+	case hybridPolicyModeAccuracyFirstJudge:
+		if policy.ID != HybridRelevanceAccuracyFirstJudgePolicyID ||
+			policy.MemoryIntentRequired || !policy.CloudCandidateJudgeRequired ||
+			policy.CloudCandidateJudgeModelID != HybridFixedMemoryJudgeModelID ||
+			policy.MemoryToolRouteRequired || policy.MemoryToolRouteModelID != "" ||
+			policy.MinimumMemoryIntentMargin != 0 ||
+			policy.MinimumProviderSimilarity != -1 ||
+			policy.MinimumFinalRelevanceScore != 0 {
+			return HybridShadowRelevancePolicy{}, false
+		}
 	case hybridPolicyModeMemoryToolRoute:
 		if policy.ID != HybridRelevanceMemoryToolRoutePolicyID ||
 			policy.MemoryIntentRequired || policy.CloudCandidateJudgeRequired ||
@@ -1018,6 +1118,28 @@ func validHybridShadowRelevancePolicy(
 		return HybridShadowRelevancePolicy{}, false
 	}
 	return policy, true
+}
+
+// HybridShadowHardCutoffMilliseconds exposes the exact complete-flow cutoff
+// bound to an admitted policy. Historical policies retain 2000 ms, schema v11
+// receives 3000 ms, and the Development-only accuracy-first successor returns
+// zero to mean that it adds no application deadline.
+func HybridShadowHardCutoffMilliseconds(policy HybridShadowRelevancePolicy) (int, bool) {
+	policy, ok := validHybridShadowRelevancePolicy(policy)
+	if !ok {
+		return 0, false
+	}
+	return hybridShadowHardCutoffMillisecondsForMode(policy.Mode), true
+}
+
+func hybridShadowHardCutoffMillisecondsForMode(mode string) int {
+	if mode == hybridPolicyModeAccuracyFirstJudge {
+		return 0
+	}
+	if mode == hybridPolicyModeFixedMemoryJudge {
+		return HybridFixedMemoryJudgeHardCutoffMilliseconds
+	}
+	return int(hybridShadowHardCutoff / time.Millisecond)
 }
 
 func validHybridCandidateJudgeModelID(value string) bool {

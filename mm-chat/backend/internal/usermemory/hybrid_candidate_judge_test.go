@@ -69,6 +69,74 @@ func TestHybridCandidateJudgePromptAndStrictOutputContract(t *testing.T) {
 	}
 }
 
+func TestFixedMemoryJudgeDevelopmentPolicyVersionsOnlyCutoffAndIdentity(t *testing.T) {
+	const modelID = HybridFixedMemoryJudgeModelID
+	legacyDescriptor, legacyOK := DescribeHybridShadowRelevancePolicy(
+		HybridShadowCloudJudgeCalibrationPolicy(modelID),
+	)
+	fixedDescriptor, fixedOK := DescribeHybridShadowRelevancePolicy(
+		HybridShadowFixedMemoryJudgeDevelopmentPolicy(),
+	)
+	if !legacyOK || !fixedOK {
+		t.Fatal("candidate-judge policy description failed")
+	}
+	if legacyDescriptor.ID != HybridRelevanceCloudJudgeCalibrationPolicyID ||
+		legacyDescriptor.HardCutoffMilliseconds != 2000 ||
+		fixedDescriptor.ID != HybridRelevanceFixedMemoryJudgePolicyID ||
+		fixedDescriptor.HardCutoffMilliseconds != 3000 {
+		t.Fatalf("policy identities/cutoffs = %#v / %#v", legacyDescriptor, fixedDescriptor)
+	}
+	legacyDescriptor.ID = fixedDescriptor.ID
+	legacyDescriptor.Mode = fixedDescriptor.Mode
+	legacyDescriptor.HardCutoffMilliseconds = fixedDescriptor.HardCutoffMilliseconds
+	if legacyDescriptor != fixedDescriptor {
+		t.Fatalf("fixed policy drifted beyond identity/cutoff: %#v / %#v", legacyDescriptor, fixedDescriptor)
+	}
+}
+
+func TestAccuracyFirstMemoryJudgePolicyHasNoApplicationCutoff(t *testing.T) {
+	descriptor, ok := DescribeHybridShadowRelevancePolicy(
+		HybridShadowAccuracyFirstMemoryJudgeDevelopmentPolicy(),
+	)
+	if !ok || descriptor.ID != HybridRelevanceAccuracyFirstJudgePolicyID ||
+		descriptor.Mode != hybridPolicyModeAccuracyFirstJudge ||
+		descriptor.HardCutoffMilliseconds != 0 ||
+		descriptor.CloudCandidateJudgeModelID != HybridFixedMemoryJudgeModelID {
+		t.Fatalf("accuracy-first policy = %#v, %v", descriptor, ok)
+	}
+}
+
+func TestAccuracyFirstMemoryJudgeRunsRerankThenJudgeWithoutDeadlines(t *testing.T) {
+	repository := cloudJudgeTestRepository()
+	order := make([]string, 0, 2)
+	provider := &serialHybridProvider{order: &order}
+	judge := &serialHybridJudge{order: &order}
+	_, _, err := NewService(
+		repository,
+		WithHybridShadowProvider(provider),
+		WithHybridCandidateJudge(judge),
+		WithHybridShadowRelevancePolicy(
+			HybridShadowAccuracyFirstMemoryJudgeDevelopmentPolicy(),
+		),
+	).SearchRelevantWithHybridShadow(
+		context.Background(), "saved preference", hybridTestConversation,
+		hybridTestAssistant, MaxSearchResults,
+	)
+	if err != nil || !equalStrings(order, []string{"rerank", "judge"}) ||
+		provider.sawDeadline || judge.sawDeadline ||
+		len(repository.recordInput.Final) != 1 ||
+		repository.recordInput.FallbackCode != "NONE" {
+		t.Fatalf(
+			"accuracy-first order=%v providerDeadline=%v judgeDeadline=%v record=%#v err=%v",
+			order,
+			provider.sawDeadline,
+			judge.sawDeadline,
+			repository.recordInput,
+			err,
+		)
+	}
+}
+
 func TestSearchRelevantWithCloudJudgeIntersectsBGEOrder(t *testing.T) {
 	repository := cloudJudgeTestRepository()
 	provider := &hybridTestProvider{
@@ -291,6 +359,18 @@ func equalInts(left []int, right []int) bool {
 	return true
 }
 
+func equalStrings(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
 type hybridTestCandidateJudge struct {
 	input  HybridCandidateJudgeInput
 	result HybridCandidateJudgeResult
@@ -346,6 +426,48 @@ type blockingHybridJudge struct {
 	release <-chan struct{}
 }
 
+type serialHybridProvider struct {
+	order       *[]string
+	sawDeadline bool
+}
+
+func (provider *serialHybridProvider) EmbedQuery(
+	ctx context.Context,
+	_ string,
+) (ragproviders.QueryEmbedding, error) {
+	_, provider.sawDeadline = ctx.Deadline()
+	return validHybridTestEmbedding(), nil
+}
+
+func (provider *serialHybridProvider) Rerank(
+	ctx context.Context,
+	_ string,
+	documents []string,
+) ([]ragproviders.RerankResult, error) {
+	_, hasDeadline := ctx.Deadline()
+	provider.sawDeadline = provider.sawDeadline || hasDeadline
+	*provider.order = append(*provider.order, "rerank")
+	results := make([]ragproviders.RerankResult, len(documents))
+	for index := range documents {
+		results[index] = ragproviders.RerankResult{Index: index, RelevanceScore: 1}
+	}
+	return results, nil
+}
+
+type serialHybridJudge struct {
+	order       *[]string
+	sawDeadline bool
+}
+
+func (judge *serialHybridJudge) JudgeHybridCandidates(
+	ctx context.Context,
+	_ HybridCandidateJudgeInput,
+) (HybridCandidateJudgeResult, error) {
+	_, judge.sawDeadline = ctx.Deadline()
+	*judge.order = append(*judge.order, "judge")
+	return validHybridJudgeResult(HybridFixedMemoryJudgeModelID, 0), nil
+}
+
 func (judge *blockingHybridJudge) JudgeHybridCandidates(
 	_ context.Context,
 	_ HybridCandidateJudgeInput,
@@ -372,4 +494,6 @@ var (
 	_ HybridShadowProvider = (*coordinatedHybridProvider)(nil)
 	_ HybridCandidateJudge = (*coordinatedHybridJudge)(nil)
 	_ HybridCandidateJudge = (*blockingHybridJudge)(nil)
+	_ HybridShadowProvider = (*serialHybridProvider)(nil)
+	_ HybridCandidateJudge = (*serialHybridJudge)(nil)
 )
