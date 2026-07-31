@@ -3,6 +3,7 @@ package memorycapture
 import (
 	"bytes"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +12,48 @@ import (
 	"neo-chat/mm-chat/backend/internal/memoryeval"
 	"neo-chat/mm-chat/backend/internal/usermemory"
 )
+
+func TestAccuracyFirstProfileSeparatesRegressionV2AndV3(t *testing.T) {
+	tests := []struct {
+		name     string
+		generate func() (memoryauthor.RegressionPool, error)
+	}{
+		{name: "v2", generate: memoryauthor.GenerateRegression},
+		{name: "v3", generate: memoryauthor.GenerateRegressionV3},
+	}
+	hashes := make(map[string]string, len(tests))
+	for _, test := range tests {
+		pool, err := test.generate()
+		if err != nil {
+			t.Fatal(err)
+		}
+		root := filepath.Join(t.TempDir(), test.name+"-regression")
+		if err := memoryauthor.PublishRegression(root, pool); err != nil {
+			t.Fatal(err)
+		}
+		protected, err := LoadProtectedRegression(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		config, err := BuildAccuracyFirstMemoryJudgeDevelopmentProfileConfig(
+			protected,
+			strings.Repeat("5", 64),
+			ProviderModeFakeProtocol,
+			FixedMemoryJudgeAuthority(),
+			ProviderCostPolicyOwnerAuthorizedAbsoluteV1,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		hashes[test.name], err = ConfigurationSHA256(config)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if hashes["v2"] == hashes["v3"] {
+		t.Fatal("v2 and v3 regression pools produced the same capture configuration hash")
+	}
+}
 
 func TestBuildAccuracyFirstMemoryJudgeProfileBindsSchemaV12Execution(t *testing.T) {
 	protected := ProtectedRegression{

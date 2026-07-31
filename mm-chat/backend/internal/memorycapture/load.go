@@ -11,8 +11,8 @@ import (
 	"neo-chat/mm-chat/backend/internal/memoryauthor"
 )
 
-// ProtectedRegression is the byte-verified fixed machine-reviewed pool plus
-// the raw hashes used by capture configuration provenance.
+// ProtectedRegression is one byte-verified, known-version machine-reviewed
+// pool plus the raw hashes used by capture configuration provenance.
 type ProtectedRegression struct {
 	Pool              memoryauthor.RegressionPool
 	FixtureRawSHA256  string
@@ -21,9 +21,9 @@ type ProtectedRegression struct {
 	ManifestRawSHA256 string
 }
 
-// LoadProtectedRegression requires the fixed generator replay in addition to
-// strict schema/hash admission. A structurally valid alternate regression
-// corpus is not accepted by the native v2 capture lane.
+// LoadProtectedRegression requires exact generator replay in addition to
+// strict schema/hash admission. Unknown generators and mixed-version artifacts
+// are never accepted by the native capture lane.
 func LoadProtectedRegression(root string) (ProtectedRegression, error) {
 	if _, err := memoryauthor.VerifyRegression(root); err != nil {
 		return ProtectedRegression{}, fmt.Errorf("%w: verify protected regression: %v", ErrCaptureInvalid, err)
