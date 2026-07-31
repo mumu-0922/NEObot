@@ -926,9 +926,48 @@ query plus contiguous request-local candidate ordinals/bodies to one exact
 configured GPT or DeepSeek Provider/model, accepts the existing strict ordinal
 JSON or an empty array, and intersects selected ordinals with fixed BGE order.
 Rejected candidates never enter the answer prompt or Usage. GPT and DeepSeek
-are separate hypotheses. The current batch proves only fake/offline protocol,
-report, cost, Compose, and teardown behavior; no paid call, Validation,
-production composition, or promotion is authorized.
+are separate hypotheses. Fake/offline protocol, report, cost, Compose, and
+teardown behavior passed before the separately authorized live executions.
+
+The schema-v10 GPT run
+`memory-regression-20260731t012841z-bebeac67` bound
+`SERVER_DEFAULT/gpt-5.6-sol` and published a valid private failed-gate bundle.
+Candidate Recall@20 was `1.0`, but no candidate-bearing strict judge decision
+completed: `146` attempted requests hit `HARD_CUTOFF`, while `49` cases failed
+closed before judge egress as `RELEVANCE_ADMISSION_UNAVAILABLE`. Final
+Recall@5/current-fact accuracy was `0/0`, false injection and every authority/
+privacy leak counter were zero, and p95/p99 was `1856/1862 ms`. The report
+SHA-256 is
+`931228006b5f48b500cfdb56ac4a72ef8e8fa08f25d9d2c6c841ace8e34e2c7f`.
+
+The independent DeepSeek run
+`memory-regression-20260731t013610z-b91342e0` bound
+`FOHWSU/deepseek-v4-flash` and also published a valid private failed-gate
+bundle. Candidate Recall@20 was `1.0`; `157/195` candidate-bearing judge
+decisions completed, including `60` valid abstentions. The `38` failures were
+`36` `HARD_CUTOFF` plus `2` pre-judge
+`RELEVANCE_ADMISSION_UNAVAILABLE` cases. Final Recall@5/current-fact accuracy
+was `0.558974/0.581818`, false injection and every authority/privacy leak
+counter were zero, and p95/p99 was `1854/1858 ms`. The report SHA-256 is
+`c72874e9d0e11c34a88aa9a22b3c02924b8ec9fde9c0bcb0461d5c53fdc9d95a`.
+
+The first GPT execution originally retained no bundle because schema v10
+reused the historical cloud-judge reporter, which rejected every non-empty-
+candidate case with `AdmissionReady=false`. Runtime behavior was correct:
+retrieval had failed closed before judge egress and released no Memory. The
+schema-v10 report path now accepts that state only when `RerankReady` and
+`CloudJudgeReady` are false, the judge input-token bound is zero, and Provider-
+sent IDs, Final, Injected, and prompt Memory tokens are empty/zero. It counts
+one normalized failed case without incrementing `actualRequestCount`.
+`BuildCloudJudgeDevelopmentReport` keeps the schema-v4/v5 strict behavior, so
+historical report semantics do not drift.
+
+Both exact configured profiles failed unchanged quality and latency gates and
+selected no policy. Validation, production composition, and promotion remain
+blocked. Each private run directory is mode `0700` with exactly two mode-
+`0600` aggregate artifacts. The separate transient credentials were
+overwritten and removed after each run, and all scoped Compose containers,
+networks, volumes, helpers, and export files were destroyed.
 
 ```bash
 bash scripts/run-memory-regression.sh \
@@ -942,11 +981,11 @@ bash scripts/run-memory-regression.sh \
   --output-dir /secure/eval/native-memory-runs
 ```
 
-Only after a schema-v7 first-round Tool Loop Development hypothesis passes may
-its policy, Provider/model, Tool/adapter profile, and selection behavior be
-frozen in code. The current Validation CLI remains unavailable because no
-schema-v7 policy is frozen and it does not yet accept the second route
-credential. The historical single-Provider Validation command shape remains:
+Only after a Development candidate-aware policy passes every unchanged gate may
+its exact policy, Provider/model, adapter profile, and selection behavior be
+frozen in code. Neither schema-v10 profile passed, so the current Validation
+CLI remains unavailable. The historical single-Provider Validation command
+shape remains:
 
 ```bash
 chmod 600 /secure/input/fresh-validation-siliconflow.key

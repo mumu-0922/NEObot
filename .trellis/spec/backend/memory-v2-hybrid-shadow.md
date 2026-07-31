@@ -319,9 +319,19 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 - Profile schema v10, report schema v10, reader v8, cost-basis v6, exact
   Provider ID/type/Base-URL hash/model, and an independent mode-`0600`
   credential separate this hypothesis from historical SiliconFlow judges and
-  Tool routes. GPT and DeepSeek are independent Development hypotheses. No
-  live run, Validation, production composition, flag activation, or promotion
-  is authorized by the offline implementation.
+  Tool routes. GPT and DeepSeek are independent Development hypotheses. The
+  authorized GPT run completed no candidate-bearing judge decision and failed
+  recall/latency; the independent DeepSeek run completed `157/195` decisions
+  but reached only `0.558974/0.581818` Final Recall@5/current-fact and also
+  failed latency. Both retained zero false injection and zero authority/privacy
+  leaks, but neither selected a policy. Validation, production composition,
+  flag activation, and promotion remain unavailable.
+- Schema-v10 report aggregation may retain a candidate-bearing pre-judge
+  retrieval failure only when `AdmissionReady`, `RerankReady`, and
+  `CloudJudgeReady` are false, judge token authority is zero, and Provider-
+  sent/Final/Injected/token surfaces prove exact `no_memory`. It counts as a
+  normalized failed case and not as an actual judge request. Schema-v4/v5
+  report semantics remain immutable and reject the same state.
 - Tool routing decides only whether saved Memory is needed. It cannot rewrite
   the query, select Memory IDs, authorize ownership/scope/revision, or authorize
   prompt injection. An empty candidate set still waits for the route decision
@@ -427,6 +437,7 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 | Cloud policy/model/prompt/decoding profile is absent or drifted | Record `POLICY_UNAVAILABLE` or `CANDIDATE_JUDGE_FAILED`; no hybrid final and no change to v1 chat. |
 | Judge output has malformed JSON, extra/duplicate keys, prose, invalid cardinality, or invalid ordinals | Reject the entire result as `CANDIDATE_JUDGE_FAILED`; never partially accept it. |
 | Judge returns an empty ordinal array | Record `CANDIDATE_JUDGE_ABSTAINED`, zero final rows, and zero prompt Memory tokens. |
+| Schema-v10 retrieval fails before configured-judge egress | Retain one aggregate failure only with false admission/rerank/judge readiness, zero judge token authority, and empty Provider-sent/Final/Injected/prompt-token surfaces; do not increment judge requests and do not weaken historical schema-v4/v5 admission. |
 | BGE or judge finishes late or ignores cancellation | Context selection returns without waiting, discards both candidate-stage results, and yields `no_memory`; no serial retry. |
 | Candidate has a forbidden egress reason under the owner policy | Evaluation fails the zero-tolerance Provider-egress gate; only `irrelevant` is newly authorized. |
 | Main-model Tool route returns no call | Record `MEMORY_TOOL_ROUTE_ABSTAINED`; discard speculative BGE final rows and record zero final/tokens. |
@@ -469,6 +480,9 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 - **Configured-judge base**: private recall finds candidates for an unrelated
   request, but the exact configured judge returns an empty ordinal array; the
   answer prompt, Usage, and durable chat state receive no candidate body.
+- **Configured-judge failure base**: recall finds candidates but admission
+  fails before judge egress; schema v10 records a normalized failure with zero
+  request/final/token surfaces while historical judge reports reject it.
 - **Bad**: claim with an arbitrary RAG record, reuse an old vector response
   after epoch/scope drift, rank cross-user then filter in Go, persist query or
   raw scores, accept free-form judge prose/IDs, treat owner egress authorization
@@ -504,8 +518,9 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   same-model continuation and body-free recovery, policy-aware
   Provider-egress scoring,
   schema-v10 exact configured Provider/profile/cost binding, strict flattened
-  aggregate report shape, fake judge wiring, independent credential cleanup,
-  and separate two-file manifest,
+  aggregate report shape, pre-judge retrieval-failure aggregation plus
+  historical-report rejection, fake judge wiring, independent credential
+  cleanup, and separate two-file manifest,
   post-threshold
   abstention, reserved cutoff recording, 600/900 token selection, bounded
   metadata, and byte-equivalent v1 prompt/Usage behavior.

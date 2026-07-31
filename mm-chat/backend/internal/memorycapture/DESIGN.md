@@ -75,6 +75,7 @@ run-bound marker in a database whose name starts with
 | Route lifecycle is generation-bound | Admission can fail closed before a concurrent route returns; an identity-only Recorder can then misclassify or accept a late write. | One replayable route completion closes on every exit, delegated calls publish through a buffered context-selected result, and old-generation writes fail closed. |
 | Independent live credentials | BGE and the selected chat route are separate Provider authorities. | Cost-basis v5 and the wrapper reject the same file, hard links, or equal Key bytes and bind each exact target independently. |
 | Candidate-first configured judge | Candidate-blind routes cannot discover implicit personalization, while candidate recall itself is not prompt injection. | Schema v10 recalls and reauthorizes first, then reuses the strict ordinal judge with the exact configured GPT/DeepSeek Provider; only judge/BGE intersection may become a counterfactual final set. |
+| Stage-local failure aggregation | A runtime may correctly fail closed before configured-judge egress even though candidate recall was non-empty; treating that as whole-bundle corruption destroys valid failed-gate evidence. | Schema v10 aggregates the normalized failure only when every judge/request/final/token surface proves `no_memory`; schema v4/v5 preserve their historical strict rejection. |
 | Candidate failure means `no_memory` | v1 remains the real prompt authority but is a separate benchmark profile. | Prepare/Record/Provider/cutoff failures never launder v1 or unscored RRF rows into v2 final/injected surfaces. |
 
 ## Trust boundaries and threats
@@ -203,8 +204,13 @@ result or failure, even when a later case reuses the same assistant identity.
 - Schema v9 ends candidate-blind routing. Schema v10 is a new Development-only
   candidate-first hypothesis using the exact configured GPT or DeepSeek model
   through the shared strict judge adapter. Offline/fake profile, report,
-  manifest, cost, authorization, CLI, Compose, and cleanup gates exist; no live
-  result, Validation, runtime installation, or promotion exists yet.
+  manifest, cost, authorization, CLI, Compose, and cleanup gates exist. The
+  authorized GPT profile completed no strict judge decision and failed recall/
+  latency. The independent DeepSeek profile completed `157/195` decisions but
+  reached only `0.558974/0.581818` Final Recall@5/current-fact and also failed
+  latency. Both retained zero false injection and zero authority/privacy leaks,
+  but neither selected a policy. Validation, runtime installation, and
+  promotion remain unavailable.
 - Fake protocol relevance and latency metrics are intentionally meaningless;
   only lifecycle and authority invariants are evaluated.
 
@@ -262,3 +268,7 @@ result or failure, even when a later case reuses the same assistant identity.
   candidate-first configured GPT/DeepSeek judge Development lane with reader
   v8, adapter provenance, cost-basis v6, independent credentials, aggregate-
   only evidence, and no live or production activation.
+- **2026-07-31**: Recorded separate failed-gate GPT and DeepSeek schema-v10 live
+  profiles, retained zero false injection/authority leaks, and kept Validation
+  blocked. Allowed strictly empty pre-judge retrieval failures to aggregate in
+  schema v10 without changing schema-v4/v5 report semantics.

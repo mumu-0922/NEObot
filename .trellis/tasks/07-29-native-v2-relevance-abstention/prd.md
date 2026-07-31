@@ -206,6 +206,31 @@ authority until independent evidence passes.
   from the failed SiliconFlow candidate judges and from the failed configured
   main-model Tool routes. It preserves the existing two-second cutoff and all
   unchanged quality, safety, latency, token, and authority gates.
+- The separately authorized schema-v10 `SERVER_DEFAULT/gpt-5.6-sol` run
+  `memory-regression-20260731t012841z-bebeac67` recalled every candidate but
+  completed zero strict judge decisions. Its `146` attempted judge requests
+  hit `HARD_CUTOFF`, while `49` candidate-bearing cases failed closed before
+  judge egress as `RELEVANCE_ADMISSION_UNAVAILABLE`. Final Recall@5/current-
+  fact accuracy was `0/0`, false injection and every authority/privacy leak
+  counter were zero, and p95/p99 latency was `1856/1862 ms`. The profile failed
+  unchanged gates and selected no policy.
+- The independent schema-v10 `FOHWSU/deepseek-v4-flash` run
+  `memory-regression-20260731t013610z-b91342e0` completed `157/195` candidate-
+  bearing judge decisions, including `60` valid abstentions. Its `38` failures
+  were `36` `HARD_CUTOFF` plus `2` pre-judge
+  `RELEVANCE_ADMISSION_UNAVAILABLE` cases. Candidate Recall@20 remained `1.0`,
+  Final Recall@5/current-fact accuracy was `0.558974/0.581818`, false injection
+  and every authority/privacy leak counter were zero, and p95/p99 latency was
+  `1854/1858 ms`. Quality and latency gates failed, so no policy was frozen.
+- The first GPT execution initially produced no bundle because the schema-v10
+  reporter inherited schema-v4/v5's rule that every candidate-bearing case
+  must have `AdmissionReady=true`. The runtime had correctly failed closed
+  before judge egress. Schema v10 now aggregates that bounded state only when
+  rerank/judge readiness, judge token authority, Provider-sent IDs, Final,
+  Injected, and prompt Memory tokens are all empty/zero. Historical schema-v4/
+  v5 reporting remains strict. Both live bundles are aggregate-only, private,
+  mode-`0600` evidence; transient credentials and scoped Compose state were
+  destroyed. Validation and Promotion remain blocked.
 
 ## Assumptions (updated)
 
@@ -216,9 +241,12 @@ authority until independent evidence passes.
 - Candidate-blind `PlanTools`, first-ToolRound, and schema-v9 diagnostic routes
   are completed failed Development hypotheses. They remain default-off and are
   not the next selection authority.
-- The next hypothesis recalls candidates first and uses the exact configured
-  GPT or DeepSeek model as a strict candidate-aware ordinal judge. GPT and
-  DeepSeek remain separate Development profiles.
+- The candidate-first configured GPT and DeepSeek hypotheses were executed as
+  separate Development profiles and both failed unchanged gates. Neither may
+  enter Validation.
+- The next architecture candidate is a version-pinned local candidate-aware
+  usefulness model. It requires a separate design/benchmark decision and has
+  no implementation or runtime authority yet.
 - Every hybrid relevance policy remains default-off and non-promotional until
   it passes unchanged recall, injection, latency, and authority gates.
 
@@ -389,11 +417,12 @@ authority until independent evidence passes.
    identities and cannot inherit their results.
 7. Require independent mode-`0600` BGE and configured-judge credentials for a
    live run, scan both secrets from retained surfaces, and destroy all scoped
-   Docker/runtime state on every exit path. No live run is part of the current
-   implementation batch.
-8. Use `fake_protocol` only for deterministic protocol/lifecycle proof. Run
-   GPT and DeepSeek as separate future live Development hypotheses; freeze and
-   add Validation only after one exact profile passes every unchanged gate.
+   Docker/runtime state on every exit path. The authorized GPT and DeepSeek
+   executions followed this boundary and retained only private aggregate
+   evidence.
+8. Use `fake_protocol` only for deterministic protocol/lifecycle proof. Treat
+   GPT and DeepSeek as separate live Development hypotheses; both failed, so
+   freeze and Validation remain unavailable.
 
 Current checkpoint: product first-round Tool Loop, migration-065 final
 hydration, schema-v7 Development adapter/profile/report, focused tests,
@@ -419,19 +448,21 @@ route/admission/cancellation tests and the regression topology gate pass
 without Provider traffic. The retained v9 evidence and failed selection state
 remain unchanged.
 
-The schema-v10 configured candidate-judge Development lane is now implemented
-without a live Provider call. Profile config v10, reader v8, report v10,
+The schema-v10 configured candidate-judge Development lane is implemented and
+has now been executed against both authorized configured Provider profiles.
+Profile config v10, reader v8, report v10,
 cost-basis v6, exact Provider/adapter authorization, independent credential
 handling, fake CLI/Compose topology, aggregate publication, and teardown are
-covered. A real PostgreSQL 17 `fake_protocol` replay executed all 300
+covered. A PostgreSQL 17 `fake_protocol` replay executed all 300
 Development cases, retained only the expected private two-file failed-metric
 bundle, and destroyed every scoped runtime object. Focused race, all backend,
-`go vet`, and standalone full gates pass. Historical profile/cost JSON bytes
-for v4/v5/v6/v7/v9 match `HEAD`. GPT/DeepSeek live Development, policy freeze,
-Validation, production composition, and promotion remain unrun and blocked
-pending fresh explicit authorization.
+`go vet`, and standalone full gates passed before live execution. Historical
+profile/cost JSON bytes for v4/v5/v6/v7/v9 match `HEAD`. The real GPT and
+DeepSeek Development profiles both retained valid failed-gate evidence and
+selected no policy. Validation, production composition, and promotion remain
+unrun and blocked.
 
-The selected successor is the candidate-first policy in
+The evaluated schema-v10 policy is the candidate-first contract in
 [`research/candidate-first-admission-reset.md`](research/candidate-first-admission-reset.md):
 
 1. Recall current-authorized candidates before admission.
@@ -443,6 +474,10 @@ The selected successor is the candidate-first policy in
    split-safe evidence and unchanged gates.
 5. Keep the deployed default v1 prompt/Usage path byte-authoritative and fail
    closed to normal chat without v2 Memory on every uncertain path.
+
+Both exact configured-model profiles failed. Option B in that research record,
+a version-pinned local candidate-aware usefulness model, is the next design
+candidate and requires a separate implementation/evidence contract.
 
 ## Implementation Plan
 
@@ -487,6 +522,11 @@ The selected successor is the candidate-first policy in
     candidate-judge Development profile that reuses the existing strict judge
     and hybrid execution, proves fake/offline/PostgreSQL behavior, and performs
     no live Provider call without fresh authorization.
+15. Execute the separately authorized GPT and DeepSeek schema-v10 Development
+    profiles, retain both failed-gate bundles, aggregate strictly empty pre-
+    judge retrieval failures without weakening historical schemas, and keep
+    Validation/Promotion blocked. Evaluate a local candidate-aware model as a
+    new architecture rather than relaxing the existing gates.
 
 ## Decision (ADR-lite)
 
@@ -537,12 +577,20 @@ enter a future answer prompt. Preserve every Tool-route artifact, keep all
 runtime flags default-off, and implement only Development/fake/offline support
 until a fresh live run is explicitly authorized.
 
+**2026-07-31 live outcome:** The owner separately authorized exact schema-v10
+GPT and DeepSeek Development runs. GPT completed no strict judge decision;
+DeepSeek completed most decisions but reached only `0.558974` Final Recall@5
+and `0.581818` current-fact accuracy. Both exceeded the latency criterion while
+retaining zero false injection and zero authority/privacy leaks. Neither
+profile may enter Validation. The next candidate is Option B from the research
+record: a local candidate-aware usefulness model, not a gate relaxation.
+
 ## Expansion Sweep
 
-- Future evolution: keep a local/private candidate-aware judge as the fallback
-  if the configured model passes relevance but fails latency/reliability, or
-  fails relevance despite seeing candidates. Do not add benchmark-tuned query
-  rules.
+- Future evolution: design a local/private candidate-aware usefulness model as
+  the successor now that configured GPT failed reliability and configured
+  DeepSeek failed relevance/latency despite seeing candidates. Do not add
+  benchmark-tuned query rules.
 - Related scenarios: keep L2 Scene/L3 Persona and active-reader promotion out
   of this change; they may consume a passing L1 policy later.
 - Failure/edge cases: fail closed on score/model/policy drift, redaction,
@@ -568,6 +616,7 @@ until a fresh live run is explicitly authorized.
 - [`research/main-model-memory-tool-routing.md`](research/main-model-memory-tool-routing.md)
 - [`research/memory-tool-route-failure-diagnostics.md`](research/memory-tool-route-failure-diagnostics.md)
 - [`research/candidate-first-admission-reset.md`](research/candidate-first-admission-reset.md)
+- [`research/pre-judge-report-aggregation-retrospective.md`](research/pre-judge-report-aggregation-retrospective.md)
 - `.trellis/spec/backend/memory-v2-benchmark.md`
 - `.trellis/spec/backend/memory-v2-hybrid-shadow.md`
 - `mm-chat/docs/contracts/memory-benchmark-workflow.md`
@@ -602,3 +651,11 @@ until a fresh live run is explicitly authorized.
   the private source cost file remains separately bound by raw-file SHA-256
   `4d3fe6b0dbbc1ed80f717ae2488ce8d2a141db24dc1192a5f260f57410c3531b`.
   All transient credentials/helpers and scoped Compose objects were destroyed.
+- The schema-v10 GPT report SHA-256 is
+  `931228006b5f48b500cfdb56ac4a72ef8e8fa08f25d9d2c6c841ace8e34e2c7f`;
+  the DeepSeek report SHA-256 is
+  `c72874e9d0e11c34a88aa9a22b3c02924b8ec9fde9c0bcb0461d5c53fdc9d95a`.
+  Each private run directory is mode `0700` with exactly two mode-`0600`
+  aggregate artifacts. Separate transient Vault copies were overwritten and
+  removed after each run, and no scoped container, network, volume, helper,
+  export, or decrypted credential file remained.

@@ -204,9 +204,31 @@ bodies to the exact configured GPT or DeepSeek model through
 accepted ordinals still intersect fixed BGE order. Profile config v10, reader
 v8, report v10, cost-basis v6, and exact configured Provider authority keep
 this evidence separate from schema-v4/v5 SiliconFlow judges and schema-v6-v9
-Tool routes. Only fake/offline support has been verified in this batch; no
-live Provider call, Validation, production composition, or promotion is
-authorized.
+Tool routes. Fake/offline protocol proof and two separately authorized live
+Development profiles now exist; the lane still has no Validation, production
+composition, or promotion authority.
+
+The owner then separately authorized exact schema-v10 GPT and DeepSeek
+Development runs. `SERVER_DEFAULT/gpt-5.6-sol` completed `0/195` candidate-
+bearing judge decisions: `146` requests hit `HARD_CUTOFF` and `49` cases failed
+before judge egress as `RELEVANCE_ADMISSION_UNAVAILABLE`. Final Recall@5/
+current-fact was `0/0`, false injection and every authority/privacy leak
+counter were zero, and p95/p99 was `1856/1862 ms`.
+`FOHWSU/deepseek-v4-flash` completed `157/195` decisions with `60` valid
+abstentions; its `38` failures were `36` hard cutoffs plus `2` pre-judge
+retrieval failures. Final Recall@5/current-fact was `0.558974/0.581818`, false
+injection and every authority/privacy leak counter were zero, and p95/p99 was
+`1854/1858 ms`. Both profiles failed unchanged gates. Neither selected a
+policy or unlocked Validation, production composition, or promotion.
+
+Schema v10 treats a candidate-bearing pre-judge retrieval failure as valid
+aggregate failed-gate evidence only when admission, rerank, and judge readiness
+are false, the judge token bound is zero, and Provider-sent, Final, Injected,
+and prompt-token surfaces are empty/zero. Such a case does not increment the
+actual judge-request count. The historical schema-v4/v5 report entry point
+retains its stricter rejection behavior. This distinction prevents a correct
+runtime `no_memory` result from destroying the entire schema-v10 evidence
+bundle without rewriting old report semantics.
 
 The schema-v4 cost basis fixes a 300-request ceiling, a 128-token output ceiling
 per request, conservative UTF-8-plus-framing input token bounds, exact model

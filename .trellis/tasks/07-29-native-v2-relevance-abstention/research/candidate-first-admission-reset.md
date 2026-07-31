@@ -39,6 +39,13 @@ relevant stored fact.
   Tool decision was unreliable and its Tool/SSE protocol surface was fragile.
 - Schema-v9 completed only `12/300` route decisions and achieved Final
   Recall@5 `0.010256`; it selected no policy.
+- Schema-v10 then tested the previously unmeasured configured-model candidate-
+  aware topology. GPT completed `0/195` candidate-bearing judge decisions;
+  DeepSeek completed `157/195`, but reached only `0.558974` Final Recall@5 and
+  `0.581818` current-fact accuracy. Both exceeded the latency criterion. Both
+  kept false injection and every authority/privacy leak counter at zero, so
+  the topology is safe under the fixture but neither exact profile is eligible
+  for Validation.
 
 ## Comparable system behavior
 
@@ -53,7 +60,7 @@ relevant stored fact.
 
 ## Feasible approaches
 
-### A. Configured main-model candidate judge (recommended next experiment)
+### A. Configured main-model candidate judge (evaluated; failed gates)
 
 Run current-authorized candidate recall first. Send the secret-redacted query
 and request-local candidate ordinals/bodies to the exact configured GPT or
@@ -82,11 +89,13 @@ Costs and risks:
 - it may still fail the existing p95/p99 and two-second cutoff;
 - model/provider/request-shape drift requires separate validation.
 
-The Development profile must keep the existing latency and quality gates. A
-quality pass with a latency-only failure is evidence for a later latency
-decision, not permission to silently relax the gate.
+The Development profile kept the existing latency and quality gates. The exact
+GPT profile failed reliability, quality, and latency. The exact DeepSeek
+profile preserved safety but failed recall, current-fact accuracy, and latency.
+This branch is closed for the tested Provider/model identities; it cannot be
+rescued by increasing the cutoff or weakening a gate.
 
-### B. Local candidate-aware model
+### B. Local candidate-aware model (recommended successor)
 
 Use a version-pinned multilingual reranker or small instruction model on the
 single server after candidate reauthorization. The current host has an RTX
@@ -98,9 +107,11 @@ health/warm-up handling, and benchmark work. Ordinary semantic reranking alone
 may repeat the already observed score-overlap failure; the local model must be
 trained or prompted for **answer usefulness**, not generic similarity.
 
-This is the fallback if the exact configured main model passes relevance but
-cannot satisfy latency/reliability, or fails relevance despite receiving the
-candidates.
+This is now the recommended successor because the configured models either
+failed to complete strict decisions or failed relevance despite seeing the
+candidates. It must be treated as a new version-pinned architecture with its
+own supply-chain, warm-up, resource, usefulness-classification, and unchanged-
+gate evidence—not as an in-place schema-v10 retune.
 
 ### C. Always inject thresholded Top-K
 
@@ -115,7 +126,7 @@ Rejected. More taxonomy does not make the candidate-blind decision informed,
 and the failed schema-v6/v7/v9 artifacts already establish that the request
 shape cannot satisfy the unchanged gates.
 
-## Selected Development topology
+## Evaluated schema-v10 topology
 
 ```text
 current user query
@@ -132,6 +143,7 @@ current user query
 
 No candidate-blind route is part of admission. Speculative candidate recall is
 allowed because it remains request-local and has no prompt or Usage authority.
+The topology was executed for exact GPT and DeepSeek profiles; neither passed.
 
 ## Implementation boundary
 
@@ -145,13 +157,18 @@ allowed because it remains request-local and has no prompt or Usage authority.
   before Provider construction.
 - Keep `MEMORY_TOOL_LOOP_ENABLED=false`, v1 as prompt/Usage authority, and all
   promotion/Validation paths blocked until Development passes.
-- Implement and verify only fake/offline/PostgreSQL behavior now. Any live GPT
-  or DeepSeek Development run requires fresh explicit quota authorization.
+- The authorized live GPT and DeepSeek runs are complete and immutable failed-
+  gate evidence. No additional configured-model paid run, Validation, or
+  Promotion follows from them.
+- A local candidate-aware model requires a new profile/model-manifest/resource
+  contract and fresh Development evidence before it can become a selection
+  candidate.
 
 ## Selection rule
 
-The first exact configured GPT or DeepSeek profile that passes every unchanged
-Development gate may be frozen for a separately authorized Validation run.
-Models are separate hypotheses; one result never authorizes the other. No
-automatic retry, adaptive bakeoff, cutoff increase, or gate relaxation is
-allowed in the Development implementation.
+Neither exact configured GPT nor DeepSeek profile passed, so no schema-v10
+policy may be frozen and Validation remains unavailable. Models remain
+separate hypotheses; one result never authorizes the other. No automatic
+retry, adaptive bakeoff, cutoff increase, or gate relaxation is allowed. A
+future local candidate-aware profile starts a new hypothesis with the same
+quality/safety/latency authority.

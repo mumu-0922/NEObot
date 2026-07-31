@@ -580,8 +580,26 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   exact configured GPT or DeepSeek judge with fixed BGE rerank, intersects
   selected ordinals with BGE order, and retains only aggregate evidence. It
   has no production composition, prompt, Usage, Validation, or promotion
-  authority. The current implementation is fake/offline only; no paid run is
-  authorized.
+  authority.
+- The authorized GPT schema-v10 Development run completed `0/195` candidate-
+  bearing judge decisions: `146` requests hit `HARD_CUTOFF` and `49` cases
+  failed before judge egress as `RELEVANCE_ADMISSION_UNAVAILABLE`. Final
+  Recall@5/current-fact was `0/0`, false injection and all authority/privacy
+  leaks were zero, and p95/p99 was `1856/1862 ms`. The independent DeepSeek
+  run completed `157/195` decisions with `60` valid abstentions; its `38`
+  failures were `36` hard cutoffs and `2` pre-judge retrieval failures. Final
+  Recall@5/current-fact was `0.558974/0.581818`, false injection and all
+  authority/privacy leaks were zero, and p95/p99 was `1854/1858 ms`. Both
+  exact profiles failed unchanged gates, selected no policy, and cannot enter
+  Validation.
+- A schema-v10 pre-judge retrieval failure is valid aggregate evidence only
+  when the case had candidates but `AdmissionReady`, `RerankReady`, and
+  `CloudJudgeReady` are false, the judge input-token bound is zero, and
+  Provider-sent, Final, Injected, and prompt-token surfaces are empty/zero.
+  Count it under `failedCaseCount` and its normalized failure code without
+  incrementing `actualRequestCount`. Historical schema-v4/v5 report builders
+  must continue rejecting this state rather than changing old evidence
+  semantics.
 - The native stdout summary schema remains the command-envelope v4, but its
   `corpusClass`, `admissionMode`, and `split` must come from the validated
   schema-v7 report rather than historical schema-v6 constants. A failed fake
@@ -694,6 +712,7 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | SiliconFlow and configured-judge credentials are the same file, hard links, or equal bytes | Reject; retrieval and configured chat Provider authorities must remain independent. |
 | Configured judge output is empty | Record a valid abstention; recalled candidates remain private and final/injected/token surfaces are empty. |
 | Configured judge output, adapter, Provider/model, cost, or BGE intersection authority drifts | Fail closed to `no_memory`; never inherit a schema-v4/v5 judge or schema-v6-v9 Tool-route result. |
+| Schema-v10 retrieval fails before judge egress with candidates present | Aggregate one normalized failure only when rerank/judge readiness, judge token bound, Provider-sent IDs, Final/Injected, and prompt tokens prove strict `no_memory`; otherwise reject the report. Do not apply this exception to schema v4/v5. |
 | Frozen validation is requested before a Development-selected policy is committed | Reject before credential read or Provider work. |
 | Native artifact target already exists or publication races | Preserve existing bytes, remove only new links, and refuse the run. |
 | Native run is interrupted before complete validation | Remove partial output and all project-scoped runtime/credential state. |
@@ -746,6 +765,10 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 - **Configured-judge base**: the strict judge returns an empty ordinal array
   for unrelated candidates; no rejected body reaches an answer prompt or
   Usage surface.
+- **Configured-judge failure base**: candidate recall succeeds but admission
+  becomes unavailable before judge egress; the schema-v10 report counts one
+  retrieval failure, zero judge requests for that case, and empty Final/
+  Injected/token surfaces while historical reports still reject the state.
 - **Configured-judge bad**: route before recall, reuse a retrieval credential,
   retain candidate plaintext, accept free-form IDs, or use a GPT result to
   authorize a DeepSeek profile.
@@ -830,7 +853,9 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   `policySelected`, frozen-policy-unavailable denial; schema-v10 profile/report/
   reader/adapter separation, exact Provider and cost-basis-v6 drift denial,
   fake configured-judge construction, independent credential cleanup,
-  flattened aggregate report fields, and two-file manifest validation.
+  flattened aggregate report fields, strict pre-judge retrieval-failure
+  aggregation with zero request/final/token surfaces, historical schema-v4/v5
+  rejection of the same state, and two-file manifest validation.
   Cost-basis fixtures must also assert the raw private-file hash and
   the decoded canonical manifest hash as different named surfaces rather than
   assuming byte equality.
