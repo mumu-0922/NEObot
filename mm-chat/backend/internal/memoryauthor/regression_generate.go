@@ -20,6 +20,7 @@ type regressionGenerationProfile struct {
 	auditedAt          string
 	repairedUnrelated  bool
 	strictSemantics    bool
+	universalUnrelated bool
 }
 
 func GenerateRegression() (RegressionPool, error) {
@@ -38,6 +39,13 @@ func GenerateRegressionV3() (RegressionPool, error) {
 // deletion-invariant under the fixed prompt-v1 usefulness contract.
 func GenerateRegressionV4() (RegressionPool, error) {
 	return generateRegression(semanticRegressionProfile())
+}
+
+// GenerateRegressionV5 creates the separately versioned corpus whose hard
+// negative is semantically disjoint from every benchmark Subject, not merely
+// from the Subject selected by the current case.
+func GenerateRegressionV5() (RegressionPool, error) {
+	return generateRegression(universalRegressionProfile())
 }
 
 func generateRegression(profile regressionGenerationProfile) (RegressionPool, error) {
@@ -315,6 +323,26 @@ func semanticRegressionProfile() regressionGenerationProfile {
 	}
 }
 
+func universalRegressionProfile() regressionGenerationProfile {
+	return regressionGenerationProfile{
+		fixtureID:          "memory-regression-v5-fixtures",
+		corpusID:           "memory-regression-v5-corpus",
+		manifestID:         "memory-regression-v5-manifest",
+		fixtureDescription: "Deterministic synthetic fixtures for the universally unrelated machine-reviewed regression corpus.",
+		corpusDescription:  "Machine-reviewed synthetic regression corpus with compatible positive facts and universally unrelated hard negatives; never promotion evidence.",
+		generator: GeneratorProvenance{
+			Version: RegressionUniversalGeneratorVersion,
+			Profile: RegressionUniversalProfileID,
+			Seed:    RegressionUniversalProfileSeed,
+		},
+		auditor:            RegressionUniversalAuditor,
+		auditedAt:          RegressionUniversalAuditedAt,
+		repairedUnrelated:  true,
+		strictSemantics:    true,
+		universalUnrelated: true,
+	}
+}
+
 func regressionProfileForGenerator(
 	generator GeneratorProvenance,
 ) (regressionGenerationProfile, bool) {
@@ -322,6 +350,7 @@ func regressionProfileForGenerator(
 		legacyRegressionProfile(),
 		repairedRegressionProfile(),
 		semanticRegressionProfile(),
+		universalRegressionProfile(),
 	} {
 		if generator == profile.generator {
 			return profile, true

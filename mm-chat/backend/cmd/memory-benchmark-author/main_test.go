@@ -120,6 +120,14 @@ func TestRegressionGenerateAndVerifyCommandsStayContentFree(t *testing.T) {
 			verifyCommand:   "regression-v4-verify",
 			profile:         memoryauthor.RegressionSemanticProfileID,
 		},
+		{
+			name:            "universal",
+			rootName:        "v5-regression",
+			generateCommand: "regression-v5-generate",
+			statusCommand:   "regression-v5-status",
+			verifyCommand:   "regression-v5-verify",
+			profile:         memoryauthor.RegressionUniversalProfileID,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -170,5 +178,10 @@ func TestRegressionGenerateAndVerifyCommandsStayContentFree(t *testing.T) {
 		"regression-v4-status", "-root", filepath.Join(external, "v3-regression"),
 	}, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "does not match command profile") {
 		t.Fatalf("v4 command accepted the v3 regression profile: %v", err)
+	}
+	if err := run(context.Background(), []string{
+		"regression-v5-status", "-root", filepath.Join(external, "v4-regression"),
+	}, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "does not match command profile") {
+		t.Fatalf("v5 command accepted the v4 regression profile: %v", err)
 	}
 }

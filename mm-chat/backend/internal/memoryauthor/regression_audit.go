@@ -211,14 +211,20 @@ func regressionSemanticFailures(
 	if hasSlice("unrelated_negative") && (!item.ExpectedNoMemory || !hasExclusionReason(item, "irrelevant")) {
 		failures++
 	}
-	if profile.repairedUnrelated && hasSlice("unrelated_negative") &&
+	if profile.repairedUnrelated && !profile.universalUnrelated && hasSlice("unrelated_negative") &&
 		!repairedUnrelatedSemanticsMatch(item, fixture) {
 		failures++
 	}
 	if profile.strictSemantics {
 		if item.ExpectedNoMemory {
-			if hasSlice("unrelated_negative") && !semanticUnrelatedSemanticsMatch(item, fixture) {
-				failures++
+			if hasSlice("unrelated_negative") {
+				matches := semanticUnrelatedSemanticsMatch(item, fixture)
+				if profile.universalUnrelated {
+					matches = universalUnrelatedSemanticsMatch(item, fixture)
+				}
+				if !matches {
+					failures++
+				}
 			}
 		} else if !semanticPositiveSemanticsMatch(item, fixture) {
 			failures++
@@ -253,6 +259,55 @@ func regressionSemanticFailures(
 		failures++
 	}
 	return failures, preferenceFailures, fallbackFailures, multiHopFailures
+}
+
+func universalUnrelatedSemanticsMatch(item memoryeval.GoldenCase, fixture Fixture) bool {
+	if _, ok := regressionSubjectIndex(item.Query); !ok {
+		return false
+	}
+	query := strings.ToLower(item.Query)
+	candidate := strings.ToLower(regressionExcludedText(item, fixture, "irrelevant"))
+	if candidate == "" ||
+		regressionContainsAnyTerm(candidate,
+			regressionSubjectsZH,
+			regressionSubjectsEN,
+			regressionSemanticCurrentValuesZH,
+			regressionSemanticCurrentValuesEN,
+			regressionSemanticOldValuesZH,
+			regressionSemanticOldValuesEN,
+		) ||
+		containsAny(
+			candidate,
+			"meeting", "discussion", "discuss", "agenda",
+			"facilities inspection", "weather board", "weather", "sunshine",
+			"会议", "讨论", "议程", "设施巡检", "天气牌", "天气", "晴天",
+		) ||
+		!regressionEntityMatches(query, candidate) ||
+		!semanticCandidateScopeMatches(item, candidate) {
+		return false
+	}
+	if item.Language == "en" {
+		return strings.Contains(query, "agenda heading") &&
+			strings.Contains(candidate, "commemorative mug") &&
+			strings.Contains(candidate, "lounge") &&
+			strings.Contains(candidate, "third shelf")
+	}
+	return strings.Contains(query, "议程标题") &&
+		strings.Contains(candidate, "纪念马克杯") &&
+		strings.Contains(candidate, "休息室") &&
+		strings.Contains(candidate, "第三层")
+}
+
+func regressionContainsAnyTerm(value string, groups ...[]string) bool {
+	value = strings.ToLower(value)
+	for _, group := range groups {
+		for _, term := range group {
+			if strings.Contains(value, strings.ToLower(term)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func repairedUnrelatedSemanticsMatch(item memoryeval.GoldenCase, fixture Fixture) bool {

@@ -14,6 +14,7 @@ func TestSelectRegressionCaptureSplitCannotConsumeMachineHoldout(t *testing.T) {
 		{name: "v2", generate: memoryauthor.GenerateRegression},
 		{name: "v3", generate: memoryauthor.GenerateRegressionV3},
 		{name: "v4", generate: memoryauthor.GenerateRegressionV4},
+		{name: "v5", generate: memoryauthor.GenerateRegressionV5},
 	}
 	for _, profile := range profiles {
 		t.Run(profile.name, func(t *testing.T) {

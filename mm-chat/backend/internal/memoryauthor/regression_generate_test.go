@@ -255,6 +255,117 @@ func TestGenerateRegressionV4IsDeterministicAndSemanticallyAligned(t *testing.T)
 	}
 }
 
+func TestGenerateRegressionV5IsDeterministicAndUniversallyUnrelated(t *testing.T) {
+	first, err := GenerateRegressionV5()
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := GenerateRegressionV5()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first.FixtureJSON, second.FixtureJSON) ||
+		!bytes.Equal(first.CorpusJSON, second.CorpusJSON) ||
+		!bytes.Equal(first.AuditJSON, second.AuditJSON) ||
+		!bytes.Equal(first.ManifestJSON, second.ManifestJSON) {
+		t.Fatal("GenerateRegressionV5() is not byte deterministic")
+	}
+	v5Hashes := map[string][2]string{
+		"fixture content": {first.Fixtures.ContentSHA256, "f845b0a34fe6a516f1ded96fac8008374b7b42abdab76af4e0ce9f9bc0c9dbfb"},
+		"corpus content":  {first.Corpus.CorpusContentSHA256, "8f9e7a74d2266ee0e43cc6013c08d601850058a167acdd8e6e1f3257e0d571a9"},
+		"audit content":   {first.Audit.ContentSHA256, "e8ba377777bfdb3e0222f60f70e827a2fa2879f3cc9e88c10fc4364c99e402eb"},
+		"fixture raw":     {sha256Hex(first.FixtureJSON), "c4ec1857d74f40a36f6add24d259e24b5eabb47e901b7ecaf2cdff04d8dfd82e"},
+		"corpus raw":      {sha256Hex(first.CorpusJSON), "51a58bea62370be5ac7b9396313c33a102e088beaf3a1245a473bf89528db597"},
+		"audit raw":       {sha256Hex(first.AuditJSON), "123a2e05328dd76ef421d435a3a9f2832e8a7f8a5b36e857dc954c8f33912323"},
+		"manifest raw":    {sha256Hex(first.ManifestJSON), "2d5ff98663acbd5c75b20990db70fa39fa11d8e714b09f5172a68687bb3f519d"},
+	}
+	for name, pair := range v5Hashes {
+		if pair[0] != pair[1] {
+			t.Fatalf("v5 %s SHA-256 = %s, want %s", name, pair[0], pair[1])
+		}
+	}
+	if first.Manifest.Generator != universalRegressionProfile().generator ||
+		first.Audit.Auditor != RegressionUniversalAuditor ||
+		first.Audit.AuditedAt != RegressionUniversalAuditedAt ||
+		first.Manifest.CaseCount != 500 ||
+		first.Manifest.SplitCounts != (CountBySplit{Development: 300, Validation: 100, Holdout: 100}) ||
+		first.Manifest.LanguageCounts != (CountByLanguage{Chinese: 350, Mixed: 100, English: 50}) ||
+		first.Audit.Verdict != "passed" || !regressionAuditPasses(first.Audit) {
+		t.Fatalf("v5 regression profile = %+v audit = %+v", first.Manifest, first.Audit)
+	}
+
+	fixtureByAlias := make(map[string]Fixture, len(first.Fixtures.Fixtures))
+	for _, fixture := range first.Fixtures.Fixtures {
+		fixtureByAlias[fixture.Alias] = fixture
+	}
+	unrelatedBySplit := map[string]int{}
+	unrelatedByLanguage := map[string]int{}
+	for _, item := range first.Corpus.Cases {
+		fixture := fixtureByAlias[item.FixtureAlias]
+		if !item.ExpectedNoMemory && !semanticPositiveSemanticsMatch(item, fixture) {
+			t.Fatalf("v5 positive is not subject/value compatible: case=%s", item.ID)
+		}
+		if !contains(item.Slices, "unrelated_negative") {
+			continue
+		}
+		unrelatedBySplit[item.Split]++
+		unrelatedByLanguage[item.Language]++
+		if !universalUnrelatedSemanticsMatch(item, fixture) {
+			t.Fatalf("v5 unrelated negative is not universally unrelated: case=%s", item.ID)
+		}
+		candidate := strings.ToLower(regressionExcludedText(item, fixture, "irrelevant"))
+		if regressionContainsAnyTerm(
+			candidate,
+			regressionSubjectsZH,
+			regressionSubjectsEN,
+			regressionSemanticCurrentValuesZH,
+			regressionSemanticCurrentValuesEN,
+			regressionSemanticOldValuesZH,
+			regressionSemanticOldValuesEN,
+		) {
+			t.Fatalf("v5 unrelated candidate overlaps a Subject/value: case=%s", item.ID)
+		}
+	}
+	if unrelatedBySplit["development"] != 30 || unrelatedBySplit["validation"] != 10 ||
+		unrelatedBySplit["holdout"] != 10 || unrelatedByLanguage["zh"] == 0 ||
+		unrelatedByLanguage["mixed"] == 0 || unrelatedByLanguage["en"] == 0 ||
+		unrelatedByLanguage["zh"]+unrelatedByLanguage["mixed"]+unrelatedByLanguage["en"] != 50 {
+		t.Fatalf("v5 unrelated-negative distribution: splits=%v languages=%v", unrelatedBySplit, unrelatedByLanguage)
+	}
+}
+
+func TestRegressionV5AuditRejectsEverySemanticOverlapFamily(t *testing.T) {
+	mutations := map[string]string{
+		"subject":                 " 这条记录用于通知渠道。",
+		"current value":           " 这条记录采用站内通知。",
+		"old value":               " 这条记录采用邮件通知。",
+		"legacy weather event":    " 设施巡检记录显示大厅天气牌为晴天。",
+		"exact task relationship": " 该会议讨论了通知渠道议程。",
+	}
+	for name, suffix := range mutations {
+		t.Run(name, func(t *testing.T) {
+			pool, err := GenerateRegressionV5()
+			if err != nil {
+				t.Fatal(err)
+			}
+			for caseIndex, item := range pool.Corpus.Cases {
+				if !contains(item.Slices, "unrelated_negative") {
+					continue
+				}
+				for memoryIndex := range pool.Fixtures.Fixtures[caseIndex].Memories {
+					memory := &pool.Fixtures.Fixtures[caseIndex].Memories[memoryIndex]
+					if memory.State == StateIrrelevant {
+						memory.CanonicalContent += suffix
+						break
+					}
+				}
+				break
+			}
+			assertRegressionV4SemanticAuditFails(t, pool)
+		})
+	}
+}
+
 func TestRegressionV4AuditRejectsSemanticMutations(t *testing.T) {
 	t.Run("current value from another subject", func(t *testing.T) {
 		pool, err := GenerateRegressionV4()
@@ -407,6 +518,10 @@ func TestValidateRegressionPoolRejectsMixedGeneratorArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	universal, err := GenerateRegressionV5()
+	if err != nil {
+		t.Fatal(err)
+	}
 	versions := []struct {
 		name string
 		pool RegressionPool
@@ -414,6 +529,7 @@ func TestValidateRegressionPoolRejectsMixedGeneratorArtifacts(t *testing.T) {
 		{name: "v2", pool: legacy},
 		{name: "v3", pool: repaired},
 		{name: "v4", pool: semantic},
+		{name: "v5", pool: universal},
 	}
 	for _, base := range versions {
 		for _, donor := range versions {
@@ -523,6 +639,7 @@ func TestPublishAndVerifyRegressionUsesPrivateImmutableFiles(t *testing.T) {
 		{name: "legacy", rootName: "v2-regression", profile: RegressionProfileID, generate: GenerateRegression},
 		{name: "repaired", rootName: "v3-regression", profile: RegressionRepairedProfileID, generate: GenerateRegressionV3},
 		{name: "semantic", rootName: "v4-regression", profile: RegressionSemanticProfileID, generate: GenerateRegressionV4},
+		{name: "universal", rootName: "v5-regression", profile: RegressionUniversalProfileID, generate: GenerateRegressionV5},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

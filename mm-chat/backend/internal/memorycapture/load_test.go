@@ -17,6 +17,7 @@ func TestLoadProtectedRegressionRequiresExactGeneratorBytes(t *testing.T) {
 		{name: "v2", profile: memoryauthor.RegressionProfileID, generate: memoryauthor.GenerateRegression},
 		{name: "v3", profile: memoryauthor.RegressionRepairedProfileID, generate: memoryauthor.GenerateRegressionV3},
 		{name: "v4", profile: memoryauthor.RegressionSemanticProfileID, generate: memoryauthor.GenerateRegressionV4},
+		{name: "v5", profile: memoryauthor.RegressionUniversalProfileID, generate: memoryauthor.GenerateRegressionV5},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

@@ -32,7 +32,8 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 			"subcommand is required: generate, review, status, verify, freeze, holdout-begin, " +
 				"regression-generate, regression-status, regression-verify, regression-v3-generate, " +
 				"regression-v3-status, regression-v3-verify, regression-v4-generate, " +
-				"regression-v4-status, or regression-v4-verify",
+				"regression-v4-status, regression-v4-verify, regression-v5-generate, " +
+				"regression-v5-status, or regression-v5-verify",
 		)
 	}
 	repositoryRoot, err := findRepositoryRoot()
@@ -43,6 +44,7 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 	defaultRegressionRoot := filepath.Join(repositoryRoot, "mm-chat", "data", "memory-benchmark", "v2-regression")
 	defaultRegressionV3Root := filepath.Join(repositoryRoot, "mm-chat", "data", "memory-benchmark", "v3-regression")
 	defaultRegressionV4Root := filepath.Join(repositoryRoot, "mm-chat", "data", "memory-benchmark", "v4-regression")
+	defaultRegressionV5Root := filepath.Join(repositoryRoot, "mm-chat", "data", "memory-benchmark", "v5-regression")
 	switch args[0] {
 	case "regression-generate":
 		return runRegressionGenerate(
@@ -59,6 +61,11 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 			args[0], args[1:], repositoryRoot, defaultRegressionV4Root,
 			memoryauthor.RegressionSemanticProfileID, memoryauthor.GenerateRegressionV4, stdout,
 		)
+	case "regression-v5-generate":
+		return runRegressionGenerate(
+			args[0], args[1:], repositoryRoot, defaultRegressionV5Root,
+			memoryauthor.RegressionUniversalProfileID, memoryauthor.GenerateRegressionV5, stdout,
+		)
 	case "regression-status", "regression-verify":
 		return runRegressionInspect(
 			args[0], args[1:], repositoryRoot, defaultRegressionRoot, "", stdout,
@@ -72,6 +79,11 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 		return runRegressionInspect(
 			args[0], args[1:], repositoryRoot, defaultRegressionV4Root,
 			memoryauthor.RegressionSemanticProfileID, stdout,
+		)
+	case "regression-v5-status", "regression-v5-verify":
+		return runRegressionInspect(
+			args[0], args[1:], repositoryRoot, defaultRegressionV5Root,
+			memoryauthor.RegressionUniversalProfileID, stdout,
 		)
 	case "generate":
 		flags := newFlags("generate")
