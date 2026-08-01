@@ -89,12 +89,12 @@ bash scripts/run-memory-regression.sh \
 ```
 
 The wrapper defaults to the immutable v2 root for compatibility. Select a
-repaired v3 or v4 corpus only with its explicit protected root; the current
-semantic profile uses `v4-regression`:
+repaired v3, v4, or v5 corpus only with its explicit protected root; the
+current universal-negative profile uses `v5-regression`:
 
 ```bash
 bash scripts/run-memory-regression.sh \
-  --regression-root /secure/memory-benchmark/v4-regression \
+  --regression-root /secure/memory-benchmark/v5-regression \
   --provider-mode fake_protocol \
   --capture-mode development_fixed_memory_judge_accuracy \
   --configured-candidate-judge-provider-id SERVER_DEFAULT \
@@ -106,7 +106,7 @@ bash scripts/run-memory-regression.sh \
 ```
 
 Exact generator dispatch and raw input hashes reject mixed/unknown pools. The
-raw hashes are part of the profile configuration, so v2, v3, and v4 produce
+raw hashes are part of the profile configuration, so v2, v3, v4, and v5 produce
 distinct configuration SHA-256 values. Historical observations cannot be
 rebound across versions. `fake_protocol` remains lifecycle-only evidence and
 grants no live quota authority.
@@ -335,7 +335,7 @@ counts, total/retry Judge input-token upper bounds, and the exact
 300-request authorities and cannot be widened. A passing v12 Development
 summary still sets `policySelected=false` and stops before Validation.
 
-Two separately authorized live v12 Development bundles are retained as failed
+Four separately authorized live v12 Development bundles are retained as failed
 evidence. The historical v2 run produced false injection `29/300`. Repaired v3
 run `memory-regression-20260731t093606z-89719a18` used configuration SHA-256
 `72940f138ba53dda01e5eddad5e82bf05e2740fd671549e2310adea61a1bf49f`,
@@ -348,12 +348,32 @@ cooldowns. Candidate Recall@20/Final Recall@5/current-fact accuracy improved to
 It selected no policy; Validation, production, promotion, and an automatic
 paid rerun remain blocked.
 
-The separately authored v4 corpus has only offline lifecycle evidence. Its
-schema-v12 fake-protocol run loaded all protected bytes, completed all 300
-Development cases, published the exact two-file private bundle, and removed
-every scoped runtime object. The deterministic fake judge intentionally failed
-the false-injection gate and is not reader-quality evidence. No credential,
-Provider, Validation, production, or promotion authority was used.
+The separately authored v4 corpus first produced only offline lifecycle
+evidence: its schema-v12 fake-protocol run loaded all protected bytes,
+completed all 300 Development cases, published the exact two-file private
+bundle, and removed every scoped runtime object. Its later authorized live run
+`memory-regression-20260801t075451z-050d5f7c` completed all 300 cases with
+Candidate Recall@20/Final Recall@5/current-fact accuracy all `1.0`, `201` Judge
+attempts including `6` retries, and zero safety/authority leaks. It still
+failed because one of 30 `unrelated_negative` cases injected its weather-board
+Memory (`0.033333 > 0.02`). Its report/manifest SHA-256 values are
+`04539bd899b22cea8cd3d17a4ee9e5b2b28adb6b10942e6be5b563eb230efc24` and
+`1904c41aff06839afdba642bf36101ccff3ef65526fe3577249b9c1f7be5d6af`.
+
+V5 preserved the aligned positives and replaced that event family with a
+same-entity/same-scope commemorative-mug location excluded from every known
+Subject/current/old value and v3/v4 event family. Its authorized run
+`memory-regression-20260801t084301z-aabb31a2` retained Candidate Recall@20
+`1.0`, Final Recall@5 `0.907692`, current-fact accuracy `0.909091`, and
+aggregate false injection `1/300`, but `unrelated_negative` again failed at
+`1/30 = 0.033333`. It also recorded `17` `CANDIDATE_JUDGE_FAILED` cases and
+`217` Judge attempts with `22` retries, so the positive-quality decline cannot
+be attributed to the corpus from aggregate-only evidence. Its report/manifest
+SHA-256 values are
+`dc4e1ca7036c5dcd5fde73d06c0404ae66539c3477493e3105590155df1923f5` and
+`43ba6e02e1b22322c56a088c5772ea769606a4acdc37d809f0fa239ca07b94e1`.
+Both versions are immutable failed evidence. Neither selects a policy or
+authorizes a rerun, Validation, production, or promotion.
 
 ## Tests
 

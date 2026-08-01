@@ -110,12 +110,17 @@ go run ./cmd/memory-benchmark-author regression-v4-generate \
   [-root <new-protected-v4-regression-root>]
 go run ./cmd/memory-benchmark-author regression-v4-status|regression-v4-verify \
   [-root <protected-v4-regression-root>]
+go run ./cmd/memory-benchmark-author regression-v5-generate \
+  [-root <new-protected-v5-regression-root>]
+go run ./cmd/memory-benchmark-author regression-v5-status|regression-v5-verify \
+  [-root <protected-v5-regression-root>]
 ```
 
 ```go
 memoryauthor.GenerateRegression() (memoryauthor.RegressionPool, error)
 memoryauthor.GenerateRegressionV3() (memoryauthor.RegressionPool, error)
 memoryauthor.GenerateRegressionV4() (memoryauthor.RegressionPool, error)
+memoryauthor.GenerateRegressionV5() (memoryauthor.RegressionPool, error)
 memoryauthor.AuditRegression(fixtures, corpus) (memoryeval.RegressionAudit, error)
 memoryauthor.PublishRegression(root string, pool memoryauthor.RegressionPool) error
 memoryauthor.LoadRegression(root string) (memoryauthor.RegressionPool, error)
@@ -392,12 +397,23 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   not contain agenda, meeting, discussion, or exact-task-event claims. Deleting
   it therefore leaves the requested agenda heading and every task premise
   unchanged; keyword-family separation alone is insufficient.
-- The default known roots are the gitignored v2/v3/v4 paths under
+- V5 is the exact tuple generator
+  `neo-chat.memory-benchmark-regression-generator.v4`, profile
+  `memory-regression-zh-mixed-v5`, seed `2026080102`, auditor
+  `deterministic-semantic-audit.v4`, and audit time
+  `2026-08-01T08:30:00Z`. It preserves v2/v3/v4 and all v4 positive
+  Subject/current/old semantics. Its `unrelated_negative` is a same-entity and
+  same-scope physical observation: the commemorative mug is on the lounge's
+  left third shelf. The audit requires those location markers and rejects all
+  20 Subjects, every current/old value in both languages, and every v3/v4
+  meeting, agenda, discussion, facilities, weather, and sunshine event marker
+  from the hard-negative candidate.
+- The default known roots are the gitignored v2/v3/v4/v5 paths under
   `mm-chat/data/memory-benchmark/`. Their final path component must explicitly
   contain `regression`; publication is create-only with `0700/0600`
   permissions. Verification dispatches only from an exact known generator
-  tuple, rejects mixed v2/v3/v4 artifacts, and byte-compares fixtures, corpus,
-  audit, and manifest. Git receives content-free status/hashes only.
+  tuple, rejects mixed v2/v3/v4/v5 artifacts, and byte-compares fixtures,
+  corpus, audit, and manifest. Git receives content-free status/hashes only.
 - Regression observations bind corpus-content, audit-content, fixture, capture,
   profile configuration, raw input hashes, and all 500 ordered IDs. They reuse
   Candidate 20, Final 5, stage subsets, metrics, budgets, cost, and typed safety
@@ -742,6 +758,41 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   `5be7db8903c5e26cd2dcadae12cde1a3c52f3421bb46862db481e8105e955176`
   bind this outcome. It selects no policy and grants no rerun, Validation,
   production, or promotion authority.
+- The separately authorized v4 schema-v12 result is immutable failed evidence.
+  Run `memory-regression-20260801t075451z-050d5f7c`, configuration SHA-256
+  `c4505385b7103788c3006bf705865b2dda7c3dc5c803063d6a3bb5f09fa59d6c`,
+  completed all `300` cases with Candidate Recall@20, Final Recall@5, and
+  current-fact accuracy all `1.0`, `201` Judge attempts including `6` retries,
+  and zero safety/authority leaks. One of 30 `unrelated_negative` cases still
+  produced false injection `0.033333`, so the unchanged per-slice `0.02` gate
+  failed even though aggregate false injection was `1/300`. Report SHA-256 is
+  `04539bd899b22cea8cd3d17a4ee9e5b2b28adb6b10942e6be5b563eb230efc24`;
+  manifest SHA-256 is
+  `1904c41aff06839afdba642bf36101ccff3ef65526fe3577249b9c1f7be5d6af`.
+- The separately authorized v5 schema-v12 result is also immutable failed
+  evidence, not a retry or reinterpretation of v4. Run
+  `memory-regression-20260801t084301z-aabb31a2`, configuration SHA-256
+  `5f871f68fc0d4fed8f5822895ccc537254c843c6957362f7c8b6459ee7f6342f`,
+  retained Candidate Recall@20 `1.0`, Final Recall@5 `0.907692`, current-fact
+  accuracy `0.909091`, and aggregate false injection `1/300`. The
+  `unrelated_negative` slice again failed at `1/30 = 0.033333`. The run also
+  recorded `17` `CANDIDATE_JUDGE_FAILED` cases, `217` Judge attempts including
+  `22` retries, and all `299` live cooldowns. Therefore the positive-quality
+  decline cannot be attributed to the corpus from this aggregate-only bundle;
+  the exact negative false-positive case and response are intentionally
+  unavailable. Report SHA-256 is
+  `dc4e1ca7036c5dcd5fde73d06c0404ae66539c3477493e3105590155df1923f5`;
+  manifest SHA-256 is
+  `43ba6e02e1b22322c56a088c5772ea769606a4acdc37d809f0fa239ca07b94e1`.
+  Both v4/v5 runs select no policy and grant no automatic rerun, Validation,
+  production, or promotion authority.
+- Aggregate-only Development evidence authorizes metric comparison, not case-
+  level or causal attribution. After disjoint v4 and v5 hard-negative families
+  each retained one `unrelated_negative` false injection, do not author another
+  corpus repair from a guessed case or response. A new corpus, prompt, Judge,
+  or local relation gate requires separate versioning and evidence; non-zero
+  Judge failures make cross-run positive-quality attribution `[unverified]`.
+  Never relax the `0.02` gate to make either retained bundle pass.
 - The native stdout summary schema remains the command-envelope v4, but its
   `corpusClass`, `admissionMode`, and `split` must come from the validated
   schema-v7 report rather than historical schema-v6 constants. A failed fake
@@ -826,10 +877,11 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | Regression omits explicit promotion denial, uses another class/mode, or contains human reviewer/timestamp fields | Reject admission. |
 | Regression count/split/language/slice or semantic-audit gate fails | Refuse publication/admission; never convert it into a formal review event. |
 | Regression generator tuple is unknown, or fixture/corpus/manifest IDs, auditor, or audit time do not match that exact tuple | Reject decoding/admission; do not guess a nearest profile. |
-| v2, v3, and v4 fixture/corpus/audit/manifest artifacts are mixed | Reject admission and byte replay without changing any protected root. |
+| v2, v3, v4, and v5 fixture/corpus/audit/manifest artifacts are mixed | Reject admission and byte replay without changing any protected root. |
 | v3 `unrelated_negative` lacks agenda-heading/weather-board markers or contains `unrelated`, `无关`, `no bearing`, or `没有关系` | Fail the semantic audit and refuse publication/admission. |
 | A v4 query does not identify exactly one Subject, or any relevant/current/superseded Memory uses another Subject's value | Fail semantic audit/admission per Memory; do not let another correct multi-hop Memory mask the mutation. |
 | A v4 `expectedNoMemory` candidate repeats the queried Subject, omits facilities/weather markers, or adds agenda/meeting/discussion/task-event claims | Fail semantic audit/admission; same entity/scope remains required but cannot establish task usefulness. |
+| A v5 `expectedNoMemory` candidate lacks the mug/lounge/third-shelf observation, contains any known Subject/current/old value, or contains any v3/v4 meeting/weather/facilities event marker | Fail semantic audit/admission; do not weaken universal separation after one live v4 false positive. |
 | Regression corpus/audit/fixture/manifest hash or byte replay drifts | Refuse verify/admission and preserve the existing protected root unchanged. |
 | Regression observations contain a formal Holdout simulation, wrong audit/corpus/fixture binding, missing/reordered case, or bad stage subset | Reject before scoring. |
 | Regression metric gate fails | Publish the new exclusive regression report, return non-zero, and keep `promotionEligible=false`. |
@@ -874,6 +926,7 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | Schema-v12 receives 408/429/5xx or a retryable transport/read interruption | Honor valid `Retry-After`, otherwise wait five seconds, retry exactly once, and include both attempts in telemetry and cost authority. |
 | Schema-v12 attempt counts, latency samples, cooldown totals, Judge input bounds, or `attempts * 128` output authority do not reconcile | Reject report/manifest publication; never repair aggregate evidence after the run. |
 | Schema-v12 contains `HardCutoffApplied` or a `HARD_CUTOFF` trace | Reject it as execution-policy drift; criteria v3 is diagnostic-only, not permission to retain historical cutoff semantics. |
+| Aggregate-only evidence shows a false injection but no case identity/response, or one run has Judge failures | Preserve the failed bundle; do not infer a causal case, mutate another corpus, relax `0.02`, or compare positive quality as if execution were stable. Require separately versioned diagnostic or policy evidence. |
 | Development passes | Retain aggregate evidence and stop for owner review; never enter Validation automatically. |
 | Frozen validation is requested before a Development-selected policy is committed | Reject before credential read or Provider work. |
 | Native artifact target already exists or publication races | Preserve existing bytes, remove only new links, and refuse the run. |
@@ -916,11 +969,22 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 - **Regression v4 base**: the separately versioned private bundle passes
   deterministic tuple/usefulness audit and byte replay. Its one fake-protocol
   run proves loading/publication/leak checks/teardown only; the fake Judge's
-  expected metric failure is not live v4 quality or quota authority.
+  expected metric failure is not live v4 quality or quota authority. Its
+  separate authorized live run is immutable failed evidence because one of 30
+  `unrelated_negative` cases exceeded the unchanged per-slice gate.
 - **Regression v4 bad**: permute values across unrelated subjects,
   call a candidate irrelevant merely because it lacks the requested output,
   or retain `meeting about <exact queried subject>` while expecting prompt v1
   to treat the candidate as never directly useful.
+- **Regression v5 good**: preserve v2/v3/v4, keep compatible positives, and use
+  the same-entity/same-scope mug-location hard negative only after proving it
+  contains no known Subject/current/old value or historical event family.
+- **Regression v5 base**: the separately seeded private bundle passes exact
+  tuple audit and byte replay at `0700/0600`; its content-free status grants no
+  Provider, Validation, production, or promotion authority.
+- **Regression v5 bad**: rewrite v4, reuse a v4 fixture/corpus/audit/manifest,
+  admit a partial Subject/value substring, or claim the live result identifies
+  a specific false-positive case when retained evidence is aggregate-only.
 - **Tool-route good**: one exact configured model receives a redacted relevant
   query plus the fixed Tool, returns one exact `{}` call, and the unchanged BGE
   result becomes the offline final surface without exposing candidates to the
@@ -1003,6 +1067,13 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   audit before publication/admission. Reject every v2/v3/v4 artifact-mixing
   permutation and cover content-free `regression-v4-generate|status|verify`,
   protected loading/split selection, and distinct capture configuration Hashes.
+  Pin the v5 raw/content hashes, assert all 50 hard negatives retain exact
+  entity/scope and mug/lounge/third-shelf markers while excluding every known
+  Subject/current/old value and v3/v4 event family, and mutation-test each
+  forbidden family. Reject every mixed v2/v3/v4/v5 permutation; cover
+  content-free `regression-v5-generate|status|verify`, `0700/0600` publication,
+  protected loading/split selection, and pairwise-distinct capture
+  configuration Hashes.
 - Regression evaluator tests: cross-schema rejection; explicit promotion
   denial; no human attestation; corpus/audit content binding; exact ordered
   observations; absence of Holdout authority; shared metric/safety results;
@@ -1126,10 +1197,10 @@ immutable v2 bytes and failed historical evidence
 ```
 
 The native-capture wrapper keeps v2 as its compatibility default, but an
-operator can select an exact verified v3 or v4 bundle with
+operator can select an exact verified v3, v4, or v5 bundle with
 `--regression-root <protected-version-root>`. Loader admission dispatches only
 from the known generator tuple, raw input hashes enter the capture
-configuration, and the resulting configuration SHA-256 separates all three
+configuration, and the resulting configuration SHA-256 separates all four
 versions. A live capture therefore requires new observations and fresh
 authorization; historical observations can never be rebound to new hashes.
 
@@ -1140,6 +1211,16 @@ immutable v2/v3 bytes and failed historical evidence
 -> private create-only four-file bundle, regression_only
 -> explicit --regression-root selects v4 and creates a distinct config Hash
 -> fake protocol may prove lifecycle only; no live/Validation/promotion reuse
+```
+
+```text
+immutable v2/v3/v4 bytes and failed historical evidence
+-> separately seeded v5 universal-negative repair
+-> compatible positives + same-entity/scope physical mug-location observation
+-> reject every known Subject/current/old value and v3/v4 event family
+-> private create-only four-file bundle, regression_only
+-> explicit --regression-root selects v5 and creates a distinct config Hash
+-> one failed live Development bundle is immutable aggregate-only evidence
 ```
 
 ### Correct main-model first-ToolRound Development

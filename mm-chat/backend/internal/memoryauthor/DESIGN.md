@@ -59,7 +59,7 @@ canonical freeze hashing, formal admission, scoring, and report semantics.
 The recovery lane is independent:
 
 ```text
-exact known regression profile/seed (legacy v2 or repaired v3/v4)
+exact known regression profile/seed (legacy v2 or repaired v3/v4/v5)
         |
         v
 500 fixtures + regression corpus
@@ -100,6 +100,7 @@ Golden artifacts.
 | Deterministic content-free semantic audit | Structural validation alone admitted weak preference, fallback, multi-hop, language, and scope labels. | Any failed semantic counter blocks publication and regression admission. |
 | Separately seeded v3 hard-negative repair | The v2 unrelated-negative query and candidate answer each other's meta-question, so changing them in place would falsify historical evidence. | v2 bytes remain frozen; v3 uses a normal agenda task plus a same-entity/scope weather observation and rejects mixed-profile artifacts. |
 | Separately seeded v4 semantic repair | V3 positives permuted values across Subjects, while its hard negative still claimed the exact queried task event. | V2/v3 bytes remain frozen; v4 uses explicit Subject/current/old pairs plus a distinct same-entity/scope facilities-weather event and mutation-resistant audit. |
+| Separately seeded v5 universal-negative repair | V4's hard negative omitted the selected Subject but still drew from a facilities/weather event family that one live Judge admitted once. | V2/v3/v4 bytes remain frozen; v5 keeps aligned positives, uses a same-entity/scope physical mug-location observation, rejects every known Subject/value and v3/v4 event family, and rejects all mixed-version artifacts. |
 
 ## Deterministic generation
 
@@ -210,7 +211,7 @@ second attempt even if the first publication or downstream reader failed.
 - Machine semantic rules are deterministic lexical/structural gates. They are
   deliberately stricter than v1's labels but are not a substitute for genuine
   human judgment or a hidden formal Holdout.
-- All v2, v3, and v4 regression splits are machine-visible. Their `holdout`
+- All v2, v3, v4, and v5 regression splits are machine-visible. Their `holdout`
   label preserves the common 300/100/100 scoring shape only and must never be
   described as one-shot evidence.
 
@@ -225,3 +226,5 @@ second attempt even if the first publication or downstream reader failed.
   anti-self-description audit checks.
 - 2026-08-01: preserved v2/v3 byte-for-byte and added the separately seeded v4
   Subject/value and unrelated-task repair with exact mutation rejection.
+- 2026-08-01: preserved v2/v3/v4 byte-for-byte and added the separately seeded
+  v5 universal-negative repair with exact Subject/value/event-family exclusion.

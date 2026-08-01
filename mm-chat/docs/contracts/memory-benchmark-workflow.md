@@ -205,7 +205,7 @@ witness is not accepted automatically and is not human review authority.
 Candidate fixture/Golden content and review events remain outside Git. A
 committed status may contain only versions, counts, states, and hashes.
 
-### 3.2 Generate the machine-reviewed v2, v3, or v4 regression corpus
+### 3.2 Generate the machine-reviewed v2, v3, v4, or v5 regression corpus
 
 Use this lane when deterministic regression coverage is useful but genuine
 human-review and hidden Holdout authority do not exist:
@@ -225,16 +225,21 @@ go run ./cmd/memory-benchmark-author regression-v3-verify
 go run ./cmd/memory-benchmark-author regression-v4-generate
 go run ./cmd/memory-benchmark-author regression-v4-status
 go run ./cmd/memory-benchmark-author regression-v4-verify
+
+# Universal-negative repair; these commands preserve v2/v3/v4.
+go run ./cmd/memory-benchmark-author regression-v5-generate
+go run ./cmd/memory-benchmark-author regression-v5-status
+go run ./cmd/memory-benchmark-author regression-v5-verify
 ```
 
 The legacy commands default to the private
-`mm-chat/data/memory-benchmark/v2-regression/` root. Explicit v3/v4 commands
+`mm-chat/data/memory-benchmark/v2-regression/` root. Explicit v3/v4/v5 commands
 default to their matching versioned roots. Generation creates a root once with
 directory mode `0700` and file mode `0600`; it never overwrites or repairs an
 existing/partial root. `verify` selects the exact generator from the protected
 tuple, regenerates all fixture, corpus, audit, and manifest bytes in memory,
-and requires exact equality. Unknown tuples and v2/v3/v4 artifact mixing fail
-closed.
+and requires exact equality. Unknown tuples and v2/v3/v4/v5 artifact mixing
+fail closed.
 
 The fixed profile is:
 
@@ -277,8 +282,13 @@ explicit compatible Subject/current/old value pair. Its same-entity/same-scope
 negative is instead a facilities/weather inspection that omits the queried
 Subject and any agenda/meeting/task-event claim. The v4 audit rejects missing
 or ambiguous Subjects, cross-Subject current/superseded values, repeated query
-Subjects, and task-event mutation in the negative. All counts, criteria, draft
-state, and non-promotional boundaries stay fixed.
+Subjects, and task-event mutation in the negative. V5 preserves those aligned
+positives but replaces the hard negative with a same-entity/same-scope physical
+observation: a commemorative mug on the lounge's left third shelf. Its audit
+rejects every known Subject/current/old value in both languages and every v3/v4
+meeting, agenda, discussion, facilities, weather, and sunshine event marker
+from that candidate.
+All counts, criteria, draft state, and non-promotional boundaries stay fixed.
 
 The complete fixtures/corpus/audit remain Git-external. The committed
 [`memory-benchmark-regression-v2-status.json`](../tracking/memory-benchmark-regression-v2-status.json)
@@ -286,8 +296,10 @@ and
 [`memory-benchmark-regression-v3-status.json`](../tracking/memory-benchmark-regression-v3-status.json)
 and
 [`memory-benchmark-regression-v4-status.json`](../tracking/memory-benchmark-regression-v4-status.json)
+and
+[`memory-benchmark-regression-v5-status.json`](../tracking/memory-benchmark-regression-v5-status.json)
 contain only counts, verdicts, and hashes. Existing native-capture commands
-default to v2 for compatibility; v3/v4 require an explicit protected root and
+default to v2 for compatibility; v3/v4/v5 require an explicit protected root and
 their own exact configuration identity. Authoring performs no Provider call
 and does not itself authorize a live run, Validation, or promotion.
 
@@ -498,13 +510,13 @@ go run ./cmd/memory-eval \
 ```
 
 The evaluator can admit any exact known corpus/audit pair, but observations
-cannot be reused across v2/v3/v4 because every content and fixture binding
+cannot be reused across v2/v3/v4/v5 because every content and fixture binding
 changes. The native-capture wrapper keeps v2 as its compatibility default. To
-select the current v4 corpus, pass its protected root explicitly:
+select the current v5 corpus, pass its protected root explicitly:
 
 ```bash
 bash scripts/run-memory-regression.sh \
-  --regression-root /secure/eval/v4-regression \
+  --regression-root /secure/eval/v5-regression \
   --provider-mode fake_protocol \
   --capture-mode development_fixed_memory_judge_accuracy \
   --configured-candidate-judge-provider-id SERVER_DEFAULT \
@@ -517,11 +529,14 @@ bash scripts/run-memory-regression.sh \
 
 The loader accepts only a known exact generator tuple and verifies all raw
 artifact bytes. Those raw hashes enter the capture configuration, so v2, v3,
-and v4 produce different configuration SHA-256 values and cannot share
+v4, and v5 produce different configuration SHA-256 values and cannot share
 observations. The `fake_protocol` example proves lifecycle only. V4's executed
 fake gate completed all 300 Development cases and clean teardown but failed the
 expected non-quality fake-judge false-injection metric; it is not a live v4
 quality result and grants no Provider, Validation, or promotion authority.
+The later v4 and v5 live Development runs are separate immutable failed
+aggregate-only evidence; neither can be rebound to another corpus version or
+used to infer a case ID or Judge response body.
 
 Regression observations bind the corpus-content, audit-content, fixture, raw
 input, profile configuration, capture, and exact ordered 500-case IDs. They use
@@ -1184,6 +1199,51 @@ Temporary credentials and every isolated runtime object were destroyed, and
 the base PostgreSQL container remained stopped. This v3 result also selects no
 policy and grants no rerun, Validation, production, or promotion authority.
 
+The separately authorized v4 schema-v12 Development run
+`memory-regression-20260801t075451z-050d5f7c` is immutable failed evidence. It
+used configuration SHA-256
+`c4505385b7103788c3006bf705865b2dda7c3dc5c803063d6a3bb5f09fa59d6c`,
+completed all 300 cases, and reached `1.0` Candidate Recall@20, Final Recall@5,
+and current-fact accuracy with zero safety/authority leaks. It recorded `201`
+Judge attempts with `6` retries and all `299` cooldowns. One of 30
+`unrelated_negative` cases still injected its weather-board Memory, so that
+slice failed at `0.033333` against the unchanged `0.02` maximum even though
+aggregate false injection was `1/300`. Report SHA-256 is
+`04539bd899b22cea8cd3d17a4ee9e5b2b28adb6b10942e6be5b563eb230efc24`;
+manifest SHA-256 is
+`1904c41aff06839afdba642bf36101ccff3ef65526fe3577249b9c1f7be5d6af`.
+Aggregate-only retention does not prove which case or wording caused the false
+positive.
+
+The separately authorized v5 schema-v12 Development run
+`memory-regression-20260801t084301z-aabb31a2` is another immutable failed
+bundle, not a v4 retry. Configuration SHA-256 is
+`5f871f68fc0d4fed8f5822895ccc537254c843c6957362f7c8b6459ee7f6342f`;
+report SHA-256 is
+`dc4e1ca7036c5dcd5fde73d06c0404ae66539c3477493e3105590155df1923f5`
+and manifest SHA-256 is
+`43ba6e02e1b22322c56a088c5772ea769606a4acdc37d809f0fa239ca07b94e1`.
+Candidate Recall@20 remained `1.0`, while Final Recall@5/current-fact accuracy
+was `0.907692/0.909091`. Aggregate false injection remained `1/300`, and the
+universally separated mug-location `unrelated_negative` still failed at
+`1/30 = 0.033333`. This run also recorded `17`
+`CANDIDATE_JUDGE_FAILED` cases, `217` Judge attempts with `22` retries, and all
+`299` wall-clock cooldowns. The retained aggregate cannot identify the sole
+negative response and does not establish whether the positive-quality decline
+came from corpus semantics; the observed Judge failures make that attribution
+unverified. Every safety/authority counter remained zero, prompt and absolute
+cost authority passed, all transient credentials/runtime objects were
+destroyed, and no policy was selected. It grants no automatic rerun,
+Validation, production, or promotion authority.
+
+These two disjoint hard-negative families each retaining exactly one false
+injection breaks the corpus-only repair loop. Aggregate-only evidence supports
+version-wide metrics but cannot identify or causally explain the selected
+case. Do not create v6 from a guessed response, weaken the `0.02` criterion, or
+attribute v5's positive-quality drop to corpus text while Judge failures are
+non-zero. Any next corpus, Judge/prompt, bounded diagnostic, or local relation
+gate must have a new explicit identity and separate owner authorization.
+
 ```bash
 bash scripts/run-memory-regression.sh \
   --provider-mode fake_protocol \
@@ -1210,10 +1270,10 @@ bash scripts/run-memory-regression.sh \
 
 Only after a Development candidate-aware policy passes every applicable gate may
 its exact policy, Provider/model, adapter profile, and selection behavior be
-frozen in code. Neither schema-v10 profile nor schema-v11 passed, and both the
-v2 and repaired-v3 schema-v12 runs failed. The current Validation CLI therefore
-remains unavailable. The historical single-Provider Validation command shape
-remains:
+frozen in code. Neither schema-v10 profile nor schema-v11 passed, and all v2,
+repaired-v3, v4, and v5 schema-v12 runs failed. The current Validation CLI
+therefore remains unavailable. The historical single-Provider Validation
+command shape remains:
 
 ```bash
 chmod 600 /secure/input/fresh-validation-siliconflow.key
@@ -1260,9 +1320,9 @@ Accuracy-first Development keeps the same exact two-file and fixed-Luna
 authority. Its v12 execution policy changes no credential boundary: operator
 copies remain mode `0600`, read-only in the runner, independent by file/inode/
 bytes, and destroyed on every exit. No existing schema-v11 authorization or
-credential copy authorizes a new schema-v12 live run, and the consumed v2
-schema-v12 authorization does not authorize the separately hashed v3 run or a
-retry of either result.
+credential copy authorizes a new schema-v12 live run. Each v2/v3/v4/v5 result
+consumed only its exact authorization; none authorizes another corpus version
+or a retry of any failed result.
 
 The cost basis is strict JSON and all values are run-total integer microunits
 in one named unit:

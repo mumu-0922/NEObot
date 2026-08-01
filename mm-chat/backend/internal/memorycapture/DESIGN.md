@@ -56,7 +56,7 @@ run-bound marker in a database whose name starts with
 | Decision | Reason | Consequence |
 | --- | --- | --- |
 | Isolated PostgreSQL plus production decorators | Live chat would pollute state; an offline reimplementation would measure a copy. | The runner is operationally heavier but exercises deployed ranking and authorization. |
-| Explicit known-version regression root | V2 evidence must remain immutable while the repaired v3 hard-negative corpus needs the same production capture path. | The wrapper defaults to v2 for compatibility, `--regression-root` may select exact v3, generator replay rejects unknown/mixed pools, and raw input hashes force distinct v2/v3 configuration SHA-256 values. |
+| Explicit known-version regression root | V2/v3/v4 evidence must remain immutable while each repaired corpus needs the same production capture path. | The wrapper defaults to v2 for compatibility, `--regression-root` may select exact v3/v4/v5, generator replay rejects unknown/mixed pools, and raw input hashes force distinct configuration SHA-256 values for all versions. |
 | Separate `fake_protocol` profile ID | Deterministic fake vectors and reranking prove protocol only. | Fake reports can never be mistaken for `native_v2_hybrid` reader quality. |
 | Counterfactual `injectedMemoryIds` | The shared current-fact/false-injection scorer needs an injection surface. | Final IDs are mirrored offline only; no prompt is changed. |
 | Explicit same-unit cost basis | A zero total candidate cost or invented Provider price could create a false pass. | Baseline Memory cost must be zero, total candidate Memory cost positive, exact component prices may be zero when the official fixed-model rate is free, and both chat denominators remain identical. |
@@ -250,6 +250,18 @@ result or failure, even when a later case reuses the same assistant identity.
   `0.984615/0.981818`, but false injection `0.033333` and `stable_fact`
   accuracy `0.933333` still failed. Neither result selects a policy or opens
   Validation, production, promotion, or an automatic paid rerun.
+- The separately authorized v4 run reached `1.0` Candidate Recall@20, Final
+  Recall@5, and current-fact accuracy with zero safety/authority leaks, but one
+  of 30 weather-board `unrelated_negative` cases still exceeded the slice
+  false-injection gate. V4 evidence is immutable and aggregate-only; its exact
+  false-positive case is not recoverable.
+- V5 replaced the weather/facilities family with a universally separated
+  physical mug-location hard negative. Its run still produced one of 30
+  unrelated false injections and also recorded `17` `CANDIDATE_JUDGE_FAILED`
+  cases (`217` attempts, `22` retries), reducing Final Recall@5/current-fact to
+  `0.907692/0.909091`. Aggregate-only evidence cannot assign that positive
+  decline to corpus semantics. V5 is immutable failed evidence and grants no
+  rerun, Validation, production, or promotion authority.
 - Fake protocol relevance and latency metrics are intentionally meaningless;
   only lifecycle and authority invariants are evaluated.
 
@@ -329,3 +341,10 @@ result or failure, even when a later case reuses the same assistant identity.
   publication/leak/teardown checks passed, and the non-quality fake judge
   failed the false-injection gate without credentials, Provider egress,
   Validation, or promotion.
+- **2026-08-01**: Recorded the separately authorized v4 schema-v12 live
+  Development failure: the three recall/accuracy metrics were `1.0` but one of
+  30 hard negatives exceeded the unchanged per-slice false-injection gate.
+- **2026-08-01**: Added the immutable v5 universal-negative corpus identity and
+  recorded its separately authorized failed live bundle. One hard negative
+  still injected, while 17 bounded Judge failures prevented attribution of the
+  positive-quality decline; teardown completed and Validation stayed blocked.

@@ -858,6 +858,72 @@ judge intentionally failed quality with `30/30` unrelated-negative injections;
 this is lifecycle evidence, not a live v4 result. No credential, Provider,
 Validation, production, promotion, or automatic rerun authority was used.
 
+**2026-08-01 v4 live Development outcome and v5 repair decision:** The owner
+separately authorized one low-concurrency v4 schema-v12 Development run.
+`memory-regression-20260801t075451z-050d5f7c` completed all 300 cases with
+configuration SHA-256
+`c4505385b7103788c3006bf705865b2dda7c3dc5c803063d6a3bb5f09fa59d6c`.
+Candidate Recall@20, Final Recall@5, and current-fact accuracy were all `1.0`;
+every safety/authority counter was zero and prompt/cost gates passed. The
+`unrelated_negative` slice still failed because one of 30 cases injected the
+weather-board Memory (`0.033333` versus the unchanged `0.02` maximum), even
+though the aggregate false-injection rate was `1/300`. The strongest offline
+hypothesis is semantic overlap between the sole `notification channel` query
+and the weather board, but aggregate-only evidence intentionally cannot reveal
+the exact failed case. Report SHA-256 is
+`04539bd899b22cea8cd3d17a4ee9e5b2b28adb6b10942e6be5b563eb230efc24`;
+manifest SHA-256 is
+`1904c41aff06839afdba642bf36101ccff3ef65526fe3577249b9c1f7be5d6af`.
+The isolated runtime and temporary credentials were destroyed. Preserve v4
+bytes and failed evidence. The owner approved a separately seeded v5 corpus
+whose same-entity/scope hard negative is a physical mug-location observation
+with no semantic relationship to any of the 20 Subjects. Its deterministic
+audit must reject every Subject/current/old value marker, the v3/v4 meeting or
+weather event families, and every mixed v2/v3/v4/v5 artifact combination.
+After offline low-concurrency verification, execute at most one v5 300-case
+Development run with global Provider and Compose concurrency `1`; do not run
+Validation, Holdout, production activation, or promotion.
+
+**2026-08-01 v5 offline implementation:** The separately seeded
+`memory-regression-zh-mixed-v5` profile uses generator
+`neo-chat.memory-benchmark-regression-generator.v4`, seed `2026080102`,
+auditor `deterministic-semantic-audit.v4`, and fixed audit time
+`2026-08-01T08:30:00Z`. It preserves v2/v3/v4 and every aligned v4 positive,
+but replaces the hard negative with a same-entity/same-scope physical
+observation: the commemorative mug on the lounge's left third shelf. The audit
+rejects all 20 Subjects, every current/old value in both languages, and every
+v3/v4 meeting, agenda, discussion, facilities, weather, and sunshine event
+marker from that candidate. Exact dispatch rejects all mixed v2/v3/v4/v5
+artifact permutations.
+The private four-file bundle replayed exactly at `0700/0600`; fixture/corpus/
+audit content SHA-256 values are `f845b0a3...`, `8f9e7a74...`, and
+`e8ba3777...`, while fixture/corpus/audit/manifest raw SHA-256 values are
+`c4ec1857...`, `51a58bea...`, `123a2e05...`, and `2d5ff986...`. Focused
+author/capture tests, the six-package race gate, `go test ./...`, and
+`go vet ./...` passed with `GOMAXPROCS=2` and `GOFLAGS=-p=1`. No full
+standalone gate or v5 fake-protocol run was performed.
+
+**2026-08-01 v5 live Development outcome:** The single authorized
+low-concurrency run `memory-regression-20260801t084301z-aabb31a2` used
+configuration SHA-256
+`5f871f68fc0d4fed8f5822895ccc537254c843c6957362f7c8b6459ee7f6342f`.
+Candidate Recall@20 remained `1.0`; Final Recall@5/current-fact accuracy was
+`0.907692/0.909091`. Aggregate false injection was `1/300`, but
+`unrelated_negative` again failed at `1/30 = 0.033333` against the unchanged
+`0.02` maximum. The run recorded `17` `CANDIDATE_JUDGE_FAILED` cases, `217`
+Judge attempts with `22` retries, and all `299` real cooldowns. Thus the
+positive-quality decline cannot be assigned to the v5 corpus from this
+aggregate-only evidence, and neither the sole negative case nor the Judge
+response body is retained. Every safety/authority counter was zero; prompt and
+absolute cost authority passed. Report SHA-256 is
+`dc4e1ca7036c5dcd5fde73d06c0404ae66539c3477493e3105590155df1923f5`;
+manifest SHA-256 is
+`43ba6e02e1b22322c56a088c5772ea769606a4acdc37d809f0fa239ca07b94e1`.
+Temporary credentials/helpers and every scoped Compose object were destroyed,
+and the base PostgreSQL container remained stopped. Preserve v5 bytes and
+failed evidence. Its one-run authorization is consumed; no automatic rerun,
+Validation, Holdout, production activation, or promotion is authorized.
+
 ## Expansion Sweep
 
 - Future evolution: evaluate the fixed Luna candidate-aware profile under the
