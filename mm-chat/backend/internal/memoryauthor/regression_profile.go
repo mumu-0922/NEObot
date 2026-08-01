@@ -58,6 +58,38 @@ var regressionValuesEN = []string{
 	"return an explicit reason on failure", "search only the authorized scope", "prefer a nearby region", "state the conclusion before evidence", "archive monthly",
 }
 
+// The v4 semantic profile uses an explicit positionally aligned current/old
+// value pair for every subject. Historical v2/v3 keep the modular value
+// permutation in newRegressionScenario so their bytes and evidence remain
+// immutable.
+var regressionSemanticCurrentValuesZH = []string{
+	"增量构建", "低对比度配色", "两阶段发布", "东部测试区", "先精确匹配再语义召回",
+	"简洁的 Markdown", "提前一刻钟提醒", "短横线命名", "先安全评审再性能评审", "警告日志级别",
+	"清晨备份窗口", "站内通知", "短期缓存", "JSON", "避开夜间的工作时段",
+	"失败时返回明确原因", "当前授权范围", "邻近部署区域", "先结论后依据", "按月归档",
+}
+
+var regressionSemanticOldValuesZH = []string{
+	"全量构建", "高对比度配色", "一次性发布", "西部测试区", "仅语义召回",
+	"纯文本", "提前半小时提醒", "下划线命名", "先性能评审再安全评审", "信息日志级别",
+	"深夜备份窗口", "邮件通知", "长期缓存", "CSV", "允许夜间的工作时段",
+	"失败时返回通用错误", "全部可见范围", "远端部署区域", "先依据后结论", "按季度归档",
+}
+
+var regressionSemanticCurrentValuesEN = []string{
+	"use incremental builds", "use a low-contrast palette", "release in two stages", "prefer the eastern test region", "try exact matching before semantic recall",
+	"produce concise Markdown", "send a reminder fifteen minutes early", "use hyphenated names", "review security before performance", "record warnings by default",
+	"finish backups in the early morning", "use in-app notifications only", "keep a short-lived cache", "export as JSON", "avoid night-time work",
+	"return an explicit reason on failure", "search only the authorized scope", "prefer a nearby region", "state the conclusion before evidence", "archive monthly",
+}
+
+var regressionSemanticOldValuesEN = []string{
+	"use full rebuilds", "use a high-contrast palette", "release in one stage", "prefer the western test region", "use semantic recall only",
+	"produce plain text", "send a reminder thirty minutes early", "use underscored names", "review performance before security", "record informational events by default",
+	"finish backups late at night", "use email notifications only", "keep a long-lived cache", "export as CSV", "allow night-time work",
+	"return a generic error on failure", "search every visible scope", "prefer a remote region", "state the evidence before the conclusion", "archive quarterly",
+}
+
 type regressionDraft struct {
 	index    int
 	split    string

@@ -215,6 +215,15 @@ func regressionSemanticFailures(
 		!repairedUnrelatedSemanticsMatch(item, fixture) {
 		failures++
 	}
+	if profile.strictSemantics {
+		if item.ExpectedNoMemory {
+			if hasSlice("unrelated_negative") && !semanticUnrelatedSemanticsMatch(item, fixture) {
+				failures++
+			}
+		} else if !semanticPositiveSemanticsMatch(item, fixture) {
+			failures++
+		}
+	}
 	for slice, reason := range map[string]string{
 		"untrusted_source": "untrusted_source",
 		"secret_rejection": "secret",
@@ -263,6 +272,139 @@ func repairedUnrelatedSemanticsMatch(item memoryeval.GoldenCase, fixture Fixture
 			strings.Contains(candidate, "weather board")
 	}
 	return strings.Contains(query, "议程标题") && strings.Contains(candidate, "天气牌")
+}
+
+func semanticPositiveSemanticsMatch(item memoryeval.GoldenCase, fixture Fixture) bool {
+	subjectIndex, ok := regressionSubjectIndex(item.Query)
+	if !ok {
+		return false
+	}
+	subjects := regressionSubjectsZH
+	currentValues := regressionSemanticCurrentValuesZH
+	oldValues := regressionSemanticOldValuesZH
+	if item.Language == "en" {
+		subjects = regressionSubjectsEN
+		currentValues = regressionSemanticCurrentValuesEN
+		oldValues = regressionSemanticOldValuesEN
+	}
+	if !regressionMemoriesContainSemantics(
+		fixture,
+		item.ExpectedRelevantMemoryIDs,
+		subjects[subjectIndex],
+		currentValues[subjectIndex],
+	) {
+		return false
+	}
+	if !contains(item.Slices, "temporal_correction") {
+		return true
+	}
+	supersededIDs := make([]string, 0, 1)
+	for _, exclusion := range item.Exclusions {
+		if exclusion.Reason == "superseded" {
+			supersededIDs = append(supersededIDs, exclusion.MemoryID)
+		}
+	}
+	return regressionMemoriesContainSemantics(
+		fixture,
+		supersededIDs,
+		subjects[subjectIndex],
+		oldValues[subjectIndex],
+	)
+}
+
+func regressionMemoriesContainSemantics(
+	fixture Fixture,
+	ids []string,
+	subject string,
+	value string,
+) bool {
+	if len(ids) == 0 {
+		return false
+	}
+	byID := make(map[string]FixtureMemory, len(fixture.Memories))
+	for _, memory := range fixture.Memories {
+		byID[memory.ID] = memory
+	}
+	for _, id := range ids {
+		memory, ok := byID[id]
+		content := strings.ToLower(memory.CanonicalContent)
+		if !ok || !strings.Contains(content, strings.ToLower(subject)) ||
+			!strings.Contains(content, strings.ToLower(value)) {
+			return false
+		}
+	}
+	return true
+}
+
+func semanticUnrelatedSemanticsMatch(item memoryeval.GoldenCase, fixture Fixture) bool {
+	subjectIndex, ok := regressionSubjectIndex(item.Query)
+	if !ok {
+		return false
+	}
+	query := strings.ToLower(item.Query)
+	candidate := strings.ToLower(regressionExcludedText(item, fixture, "irrelevant"))
+	if candidate == "" ||
+		strings.Contains(candidate, strings.ToLower(regressionSubjectsZH[subjectIndex])) ||
+		strings.Contains(candidate, strings.ToLower(regressionSubjectsEN[subjectIndex])) ||
+		containsAny(candidate, "meeting", "discussion", "discuss", "agenda", "会议", "讨论", "议程") ||
+		!regressionEntityMatches(query, candidate) ||
+		!semanticCandidateScopeMatches(item, candidate) {
+		return false
+	}
+	if item.Language == "en" {
+		return strings.Contains(query, "agenda heading") &&
+			strings.Contains(candidate, "facilities inspection") &&
+			strings.Contains(candidate, "weather board") &&
+			strings.Contains(candidate, "sunshine")
+	}
+	return strings.Contains(query, "议程标题") &&
+		strings.Contains(candidate, "设施巡检") &&
+		strings.Contains(candidate, "天气牌") &&
+		strings.Contains(candidate, "晴天")
+}
+
+func regressionSubjectIndex(query string) (int, bool) {
+	query = strings.ToLower(query)
+	found := -1
+	for index := range regressionSubjectsZH {
+		if !strings.Contains(query, strings.ToLower(regressionSubjectsZH[index])) &&
+			!strings.Contains(query, strings.ToLower(regressionSubjectsEN[index])) {
+			continue
+		}
+		if found != -1 {
+			return 0, false
+		}
+		found = index
+	}
+	return found, found >= 0
+}
+
+func regressionEntityMatches(query, candidate string) bool {
+	found := ""
+	for _, entity := range regressionEntities {
+		entity = strings.ToLower(entity)
+		if !strings.Contains(query, entity) {
+			continue
+		}
+		if found != "" {
+			return false
+		}
+		found = entity
+	}
+	return found != "" && strings.Contains(candidate, found)
+}
+
+func semanticCandidateScopeMatches(item memoryeval.GoldenCase, candidate string) bool {
+	if item.Scope.ConversationAlias != "" {
+		return containsAny(candidate, "当前对话", "current conversation") &&
+			containsAny(candidate, "project", "项目")
+	}
+	if item.Scope.ProjectAlias != "" {
+		return containsAny(candidate, "project", "项目") &&
+			!containsAny(candidate, "当前对话", "current conversation")
+	}
+	return containsAny(candidate, "全局", "account-wide") &&
+		!containsAny(candidate, "project", "项目", "当前对话", "current conversation")
 }
 
 func regressionExcludedText(item memoryeval.GoldenCase, fixture Fixture, reason string) string {

@@ -13,13 +13,14 @@ import (
 	"neo-chat/mm-chat/backend/internal/usermemory"
 )
 
-func TestAccuracyFirstProfileSeparatesRegressionV2AndV3(t *testing.T) {
+func TestAccuracyFirstProfileSeparatesRegressionV2V3AndV4(t *testing.T) {
 	tests := []struct {
 		name     string
 		generate func() (memoryauthor.RegressionPool, error)
 	}{
 		{name: "v2", generate: memoryauthor.GenerateRegression},
 		{name: "v3", generate: memoryauthor.GenerateRegressionV3},
+		{name: "v4", generate: memoryauthor.GenerateRegressionV4},
 	}
 	hashes := make(map[string]string, len(tests))
 	for _, test := range tests {
@@ -50,8 +51,10 @@ func TestAccuracyFirstProfileSeparatesRegressionV2AndV3(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if hashes["v2"] == hashes["v3"] {
-		t.Fatal("v2 and v3 regression pools produced the same capture configuration hash")
+	for _, pair := range [][2]string{{"v2", "v3"}, {"v2", "v4"}, {"v3", "v4"}} {
+		if hashes[pair[0]] == hashes[pair[1]] {
+			t.Fatalf("%s and %s regression pools produced the same capture configuration hash", pair[0], pair[1])
+		}
 	}
 }
 

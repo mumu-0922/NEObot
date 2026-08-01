@@ -19,6 +19,7 @@ type regressionGenerationProfile struct {
 	auditor            string
 	auditedAt          string
 	repairedUnrelated  bool
+	strictSemantics    bool
 }
 
 func GenerateRegression() (RegressionPool, error) {
@@ -30,6 +31,13 @@ func GenerateRegression() (RegressionPool, error) {
 // self-referential Memory-governance questions.
 func GenerateRegressionV3() (RegressionPool, error) {
 	return generateRegression(repairedRegressionProfile())
+}
+
+// GenerateRegressionV4 creates the separately versioned corpus whose
+// positive values are subject-compatible and whose unrelated candidates are
+// deletion-invariant under the fixed prompt-v1 usefulness contract.
+func GenerateRegressionV4() (RegressionPool, error) {
+	return generateRegression(semanticRegressionProfile())
 }
 
 func generateRegression(profile regressionGenerationProfile) (RegressionPool, error) {
@@ -288,12 +296,32 @@ func repairedRegressionProfile() regressionGenerationProfile {
 	}
 }
 
+func semanticRegressionProfile() regressionGenerationProfile {
+	return regressionGenerationProfile{
+		fixtureID:          "memory-regression-v4-fixtures",
+		corpusID:           "memory-regression-v4-corpus",
+		manifestID:         "memory-regression-v4-manifest",
+		fixtureDescription: "Deterministic synthetic fixtures for the semantically aligned machine-reviewed regression corpus.",
+		corpusDescription:  "Machine-reviewed synthetic regression corpus with compatible positive facts and deletion-invariant hard negatives; never promotion evidence.",
+		generator: GeneratorProvenance{
+			Version: RegressionSemanticGeneratorVersion,
+			Profile: RegressionSemanticProfileID,
+			Seed:    RegressionSemanticProfileSeed,
+		},
+		auditor:           RegressionSemanticAuditor,
+		auditedAt:         RegressionSemanticAuditedAt,
+		repairedUnrelated: true,
+		strictSemantics:   true,
+	}
+}
+
 func regressionProfileForGenerator(
 	generator GeneratorProvenance,
 ) (regressionGenerationProfile, bool) {
 	for _, profile := range []regressionGenerationProfile{
 		legacyRegressionProfile(),
 		repairedRegressionProfile(),
+		semanticRegressionProfile(),
 	} {
 		if generator == profile.generator {
 			return profile, true

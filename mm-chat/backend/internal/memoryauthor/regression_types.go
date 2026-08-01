@@ -16,6 +16,11 @@ const (
 	RegressionRepairedProfileSeed      = "2026073101"
 	RegressionRepairedAuditor          = "deterministic-semantic-audit.v2"
 	RegressionRepairedAuditedAt        = "2026-07-31T08:30:00Z"
+	RegressionSemanticGeneratorVersion = "neo-chat.memory-benchmark-regression-generator.v3"
+	RegressionSemanticProfileID        = "memory-regression-zh-mixed-v4"
+	RegressionSemanticProfileSeed      = "2026080101"
+	RegressionSemanticAuditor          = "deterministic-semantic-audit.v3"
+	RegressionSemanticAuditedAt        = "2026-08-01T00:00:00Z"
 
 	RegressionFixtureFile  = "fixtures.json"
 	RegressionCorpusFile   = "corpus.json"

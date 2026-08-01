@@ -289,6 +289,9 @@ func regressionNegativeContentForProfile(
 	slice string,
 	profile regressionGenerationProfile,
 ) string {
+	if profile.strictSemantics && slice == "unrelated_negative" {
+		return semanticUnrelatedNegativeContent(s)
+	}
 	if !profile.repairedUnrelated || slice != "unrelated_negative" {
 		return regressionNegativeContent(s, slice)
 	}
@@ -309,6 +312,26 @@ func regressionNegativeContentForProfile(
 	)
 	if s.draft.language == "mixed" {
 		content += " The lobby weather board showed sunshine during the meeting."
+	}
+	return content
+}
+
+func semanticUnrelatedNegativeContent(s regressionScenario) string {
+	scope := regressionScopeText(s)
+	if s.draft.language == "en" {
+		return fmt.Sprintf(
+			"In %s, a facilities inspection for %s recorded sunshine on the lobby weather board.",
+			scope,
+			s.entity,
+		)
+	}
+	content := fmt.Sprintf(
+		"在%s，%s的设施巡检记录显示大厅天气牌为晴天。",
+		scope,
+		s.entity,
+	)
+	if s.draft.language == "mixed" {
+		content += " The facilities inspection recorded sunshine on the lobby weather board."
 	}
 	return content
 }

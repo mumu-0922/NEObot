@@ -10,7 +10,7 @@ func generateRegressionCase(
 	draft regressionDraft,
 	profile regressionGenerationProfile,
 ) (Fixture, memoryeval.GoldenCase) {
-	scenario := newRegressionScenario(draft, profile.generator.Seed)
+	scenario := newRegressionScenario(draft, profile)
 	fixtureAlias := opaqueRegressionIDForSeed(profile.generator.Seed, "fixture", draft.index)
 	item := memoryeval.GoldenCase{
 		ID:           opaqueRegressionIDForSeed(profile.generator.Seed, "case", draft.index),
@@ -116,8 +116,12 @@ func generateRegressionCase(
 	return fixture, item
 }
 
-func newRegressionScenario(draft regressionDraft, seed string) regressionScenario {
+func newRegressionScenario(
+	draft regressionDraft,
+	profile regressionGenerationProfile,
+) regressionScenario {
 	index := draft.index
+	seed := profile.generator.Seed
 	entity := regressionEntities[index/len(regressionSubjectsZH)]
 	project := ""
 	conversation := ""
@@ -127,15 +131,26 @@ func newRegressionScenario(draft regressionDraft, seed string) regressionScenari
 	if project != "" && index%3 == 2 {
 		conversation = opaqueRegressionIDForSeed(seed, "conversation", index%61)
 	}
+	valueZH := regressionValuesZH[(index*7+3)%len(regressionValuesZH)]
+	valueEN := regressionValuesEN[(index*7+3)%len(regressionValuesEN)]
+	oldValueZH := regressionValuesZH[(index*7+9)%len(regressionValuesZH)]
+	oldValueEN := regressionValuesEN[(index*7+9)%len(regressionValuesEN)]
+	if profile.strictSemantics {
+		subjectIndex := index % len(regressionSubjectsZH)
+		valueZH = regressionSemanticCurrentValuesZH[subjectIndex]
+		valueEN = regressionSemanticCurrentValuesEN[subjectIndex]
+		oldValueZH = regressionSemanticOldValuesZH[subjectIndex]
+		oldValueEN = regressionSemanticOldValuesEN[subjectIndex]
+	}
 	return regressionScenario{
 		draft:      draft,
 		entity:     entity,
 		subjectZH:  regressionSubjectsZH[index%len(regressionSubjectsZH)],
 		subjectEN:  regressionSubjectsEN[index%len(regressionSubjectsEN)],
-		valueZH:    regressionValuesZH[(index*7+3)%len(regressionValuesZH)],
-		valueEN:    regressionValuesEN[(index*7+3)%len(regressionValuesEN)],
-		oldValueZH: regressionValuesZH[(index*7+9)%len(regressionValuesZH)],
-		oldValueEN: regressionValuesEN[(index*7+9)%len(regressionValuesEN)],
+		valueZH:    valueZH,
+		valueEN:    valueEN,
+		oldValueZH: oldValueZH,
+		oldValueEN: oldValueEN,
 		scope: memoryeval.Scope{
 			UserAlias:         opaqueRegressionIDForSeed(seed, "user", index),
 			ProjectAlias:      project,
