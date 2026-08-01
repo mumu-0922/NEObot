@@ -819,6 +819,45 @@ isolated Compose object were destroyed; the base PostgreSQL container remained
 stopped. Validation, production, promotion, and an automatic rerun remain
 blocked.
 
+**2026-08-01 v4 offline repair decision:** Post-v3 aggregate accounting and
+generator replay proved that v3 still lets every `unrelated_negative`
+candidate claim the exact queried subject/event relationship, while the shared
+positive generator emits zero semantically aligned subject/value pairs. The
+owner approved a separately versioned v4 corpus repair before any further
+Judge or prompt change. Preserve every v2/v3 generator, protected byte, hash,
+configuration identity, and report. V4 must use explicit compatible
+subject/current/old value tables; its no-Memory candidate may retain the same
+synthetic owner and scope but must use a distinct facilities/weather event,
+must omit the exact queried subject, and must not answer or validate the query
+task. Add exact known-profile dispatch, semantic mutation rejection,
+all-split/all-language coverage, private create-only generation, content-free
+status, native capture loading, and distinct configuration-hash proof. Execute
+pure Go/race/vet and offline fake-protocol gates only. This decision authorizes
+no live Provider call, Validation, production activation, promotion, or reuse
+of the consumed v3 quota authority.
+
+**2026-08-01 v4 offline repair implementation:** The separately seeded
+`memory-regression-zh-mixed-v4` generator now binds every positive Subject to
+explicit compatible current/old values and replaces the v3 exact-task meeting
+claim with a same-entity/same-scope facilities/weather event that omits the
+queried Subject. Exact profile dispatch rejects unknown and every mixed
+v2/v3/v4 artifact combination. Semantic mutations of current values,
+superseded values, negative Subjects, or agenda/meeting claims fail audit.
+Pinned tests preserve every v2/v3 content/raw Hash and bind v4 fixture/corpus/
+audit/manifest raw Hashes to `46927aaf...`, `6500aaa2...`, `718567aa...`, and
+`5817c875...`. The private four-file bundle replayed exactly at `0700/0600`,
+and its committed status is content-free. Focused race, all backend Go tests,
+`go vet ./...`, and the low-concurrency full standalone gate passed; the latter
+included 961 frontend tests and 1,906 passed/7 skipped RAG tests. The single
+schema-v12 fake-protocol run
+`memory-regression-20260801t064653z-e02f78d7` used configuration
+`12aa95eaa75e27e955aee7a4686e29b8355e759d51ae632921228dcccf67c3c8`,
+completed all 300 Development cases, passed publication/leak/teardown checks,
+and retained only two mode-`0600` aggregate artifacts. Its deterministic fake
+judge intentionally failed quality with `30/30` unrelated-negative injections;
+this is lifecycle evidence, not a live v4 result. No credential, Provider,
+Validation, production, promotion, or automatic rerun authority was used.
+
 ## Expansion Sweep
 
 - Future evolution: evaluate the fixed Luna candidate-aware profile under the

@@ -106,11 +106,16 @@ go run ./cmd/memory-benchmark-author regression-v3-generate \
   [-root <new-protected-v3-regression-root>]
 go run ./cmd/memory-benchmark-author regression-v3-status|regression-v3-verify \
   [-root <protected-v3-regression-root>]
+go run ./cmd/memory-benchmark-author regression-v4-generate \
+  [-root <new-protected-v4-regression-root>]
+go run ./cmd/memory-benchmark-author regression-v4-status|regression-v4-verify \
+  [-root <protected-v4-regression-root>]
 ```
 
 ```go
 memoryauthor.GenerateRegression() (memoryauthor.RegressionPool, error)
 memoryauthor.GenerateRegressionV3() (memoryauthor.RegressionPool, error)
+memoryauthor.GenerateRegressionV4() (memoryauthor.RegressionPool, error)
 memoryauthor.AuditRegression(fixtures, corpus) (memoryeval.RegressionAudit, error)
 memoryauthor.PublishRegression(root string, pool memoryauthor.RegressionPool) error
 memoryauthor.LoadRegression(root string) (memoryauthor.RegressionPool, error)
@@ -371,22 +376,28 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   a weather-board Memory that cannot answer the query. Its semantic audit
   requires those task/observation markers and forbids `unrelated`, `无关`,
   `no bearing`, and `没有关系` in both query and candidate.
-- The failed v3 live result exposes two successor-profile requirements without
-  rewriting v2/v3. A positive query/value pair must come from an explicit
-  per-subject compatible current/old table; an arbitrary modular permutation
-  across unrelated subject values is not semantically valid evidence. An
-  `expectedNoMemory` candidate may share owner/scope and an adjacent domain,
-  but deleting it must leave the correct answer and every necessary task
-  premise unchanged. It must not answer the task, validate a task premise, or
-  claim participation in the exact queried event. Keyword marker separation
-  alone does not prove this usefulness contract.
-- The default legacy and repaired roots are the gitignored
-  `mm-chat/data/memory-benchmark/v2-regression/` and
-  `mm-chat/data/memory-benchmark/v3-regression/`. Their final path component
-  must explicitly contain `regression`; publication is create-only with
-  `0700/0600` permissions. Verification dispatches only from an exact known
-  generator tuple, rejects mixed v2/v3 artifacts, and byte-compares fixtures,
-  corpus, audit, and manifest. Git receives content-free status/hashes only.
+- V4 is the exact tuple generator
+  `neo-chat.memory-benchmark-regression-generator.v3`, profile
+  `memory-regression-zh-mixed-v4`, seed `2026080101`, auditor
+  `deterministic-semantic-audit.v3`, and audit time
+  `2026-08-01T00:00:00Z`. It does not rewrite v2/v3. Every one of its 275
+  positive cases maps the uniquely queried Subject to the positionally aligned
+  current value; each relevant Memory must contain that Subject/value pair,
+  and every temporal superseded Memory must contain the aligned old pair.
+  Aggregating multiple relevant Memories before this check is forbidden
+  because one valid multi-hop record could mask another mutated record.
+- Every v4 `unrelated_negative` keeps the exact synthetic entity/scope but
+  omits both language forms of the queried Subject. Its candidate must contain
+  `facilities inspection`/`设施巡检` plus weather-board/sunshine markers and must
+  not contain agenda, meeting, discussion, or exact-task-event claims. Deleting
+  it therefore leaves the requested agenda heading and every task premise
+  unchanged; keyword-family separation alone is insufficient.
+- The default known roots are the gitignored v2/v3/v4 paths under
+  `mm-chat/data/memory-benchmark/`. Their final path component must explicitly
+  contain `regression`; publication is create-only with `0700/0600`
+  permissions. Verification dispatches only from an exact known generator
+  tuple, rejects mixed v2/v3/v4 artifacts, and byte-compares fixtures, corpus,
+  audit, and manifest. Git receives content-free status/hashes only.
 - Regression observations bind corpus-content, audit-content, fixture, capture,
   profile configuration, raw input hashes, and all 500 ordered IDs. They reuse
   Candidate 20, Final 5, stage subsets, metrics, budgets, cost, and typed safety
@@ -815,10 +826,10 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | Regression omits explicit promotion denial, uses another class/mode, or contains human reviewer/timestamp fields | Reject admission. |
 | Regression count/split/language/slice or semantic-audit gate fails | Refuse publication/admission; never convert it into a formal review event. |
 | Regression generator tuple is unknown, or fixture/corpus/manifest IDs, auditor, or audit time do not match that exact tuple | Reject decoding/admission; do not guess a nearest profile. |
-| v2 and v3 fixture/corpus/audit/manifest artifacts are mixed | Reject admission and byte replay without changing either protected root. |
+| v2, v3, and v4 fixture/corpus/audit/manifest artifacts are mixed | Reject admission and byte replay without changing any protected root. |
 | v3 `unrelated_negative` lacks agenda-heading/weather-board markers or contains `unrelated`, `无关`, `no bearing`, or `没有关系` | Fail the semantic audit and refuse publication/admission. |
-| A successor regression positive maps a queried subject to a value outside its explicit compatible current/old table | Fail semantic audit/admission; do not measure a Judge's tolerance for incoherent synthetic facts. |
-| A successor `expectedNoMemory` candidate answers the task, validates a required premise, or claims the exact queried task/event relationship | Fail semantic audit/admission even when task/observation keywords differ; owner/scope overlap alone is allowed. |
+| A v4 query does not identify exactly one Subject, or any relevant/current/superseded Memory uses another Subject's value | Fail semantic audit/admission per Memory; do not let another correct multi-hop Memory mask the mutation. |
+| A v4 `expectedNoMemory` candidate repeats the queried Subject, omits facilities/weather markers, or adds agenda/meeting/discussion/task-event claims | Fail semantic audit/admission; same entity/scope remains required but cannot establish task usefulness. |
 | Regression corpus/audit/fixture/manifest hash or byte replay drifts | Refuse verify/admission and preserve the existing protected root unchanged. |
 | Regression observations contain a formal Holdout simulation, wrong audit/corpus/fixture binding, missing/reordered case, or bad stage subset | Reject before scoring. |
 | Regression metric gate fails | Publish the new exclusive regression report, return non-zero, and keep `promotionEligible=false`. |
@@ -899,13 +910,14 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   corpus/audit, restore self-referential negative wording, reuse v2
   observations, or invoke native capture/Validation without separate review
   and authorization.
-- **Regression successor good**: preserve v2/v3, use explicit compatible
+- **Regression v4 good**: preserve v2/v3, use explicit compatible
   subject/current/old tuples, and make every no-Memory candidate deletion-
   invariant with no exact-task premise or event relationship.
-- **Regression successor base**: a separately versioned private bundle passes
-  deterministic tuple/usefulness audit and byte replay but has only offline
-  fake-protocol evidence; it inherits no v3 quality or quota authority.
-- **Regression successor bad**: permute values across unrelated subjects,
+- **Regression v4 base**: the separately versioned private bundle passes
+  deterministic tuple/usefulness audit and byte replay. Its one fake-protocol
+  run proves loading/publication/leak checks/teardown only; the fake Judge's
+  expected metric failure is not live v4 quality or quota authority.
+- **Regression v4 bad**: permute values across unrelated subjects,
   call a candidate irrelevant merely because it lacks the requested output,
   or retain `meeting about <exact queried subject>` while expecting prompt v1
   to treat the candidate as never directly useful.
@@ -983,11 +995,14 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   self-description terms; inject a legacy negative to prove audit failure;
   reject each v2/v3 artifact-mixing permutation; and cover content-free
   `regression-v3-generate|status|verify` output plus `0700/0600` permissions.
-  Any successor profile additionally requires all-split/all-language tests for
-  explicit subject/current/old compatibility and negative candidate-deletion
-  invariance; mutation tests must swap a positive value across subjects and
-  add an exact queried-task relationship to a negative, with both mutations
-  rejected before publication/admission.
+  Pin the v4 raw/content hashes, cover all splits/languages and all 275
+  positives for explicit Subject/current/old compatibility, and prove all 50
+  unrelated candidates omit the queried Subject. Mutation tests must change
+  only one multi-hop relevant Memory, change only a superseded canonical value,
+  and add an exact queried-task relationship to a negative; each must fail
+  audit before publication/admission. Reject every v2/v3/v4 artifact-mixing
+  permutation and cover content-free `regression-v4-generate|status|verify`,
+  protected loading/split selection, and distinct capture configuration Hashes.
 - Regression evaluator tests: cross-schema rejection; explicit promotion
   denial; no human attestation; corpus/audit content binding; exact ordered
   observations; absence of Holdout authority; shared metric/safety results;
@@ -1111,12 +1126,21 @@ immutable v2 bytes and failed historical evidence
 ```
 
 The native-capture wrapper keeps v2 as its compatibility default, but an
-operator can select an exact verified v3 bundle with
-`--regression-root <protected-v3-root>`. Loader admission dispatches only from
-the known generator tuple, raw input hashes enter the capture configuration,
-and the resulting configuration SHA-256 separates v2 from v3. A v3 capture
-therefore requires new observations and fresh live authorization; v2
-observations can never be rebound to the v3 hashes.
+operator can select an exact verified v3 or v4 bundle with
+`--regression-root <protected-version-root>`. Loader admission dispatches only
+from the known generator tuple, raw input hashes enter the capture
+configuration, and the resulting configuration SHA-256 separates all three
+versions. A live capture therefore requires new observations and fresh
+authorization; historical observations can never be rebound to new hashes.
+
+```text
+immutable v2/v3 bytes and failed historical evidence
+-> separately seeded v4 Subject/value and task-event repair
+-> per-Memory current/old semantic audit + facilities/weather hard negative
+-> private create-only four-file bundle, regression_only
+-> explicit --regression-root selects v4 and creates a distinct config Hash
+-> fake protocol may prove lifecycle only; no live/Validation/promotion reuse
+```
 
 ### Correct main-model first-ToolRound Development
 

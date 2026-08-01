@@ -88,12 +88,13 @@ bash scripts/run-memory-regression.sh \
   --output-dir /secure/memory-regression-runs
 ```
 
-The wrapper defaults to the immutable v2 root for compatibility. Select the
-repaired v3 corpus only with an explicit protected root:
+The wrapper defaults to the immutable v2 root for compatibility. Select a
+repaired v3 or v4 corpus only with its explicit protected root; the current
+semantic profile uses `v4-regression`:
 
 ```bash
 bash scripts/run-memory-regression.sh \
-  --regression-root /secure/memory-benchmark/v3-regression \
+  --regression-root /secure/memory-benchmark/v4-regression \
   --provider-mode fake_protocol \
   --capture-mode development_fixed_memory_judge_accuracy \
   --configured-candidate-judge-provider-id SERVER_DEFAULT \
@@ -105,10 +106,10 @@ bash scripts/run-memory-regression.sh \
 ```
 
 Exact generator dispatch and raw input hashes reject mixed/unknown pools. The
-raw hashes are part of the profile configuration, so v2 and v3 produce distinct
-configuration SHA-256 values. Historical v2 observations cannot be reused for
-v3. `fake_protocol` remains lifecycle-only evidence and grants no live quota
-authority.
+raw hashes are part of the profile configuration, so v2, v3, and v4 produce
+distinct configuration SHA-256 values. Historical observations cannot be
+rebound across versions. `fake_protocol` remains lifecycle-only evidence and
+grants no live quota authority.
 
 `fake_protocol` validates SQL, capture, evaluation, publication, and teardown
 only. Live mode accepts `development_calibration`,
@@ -346,6 +347,13 @@ cooldowns. Candidate Recall@20/Final Recall@5/current-fact accuracy improved to
 `f35cfea03c98de4ecfff8ea9c774fbcef706f895da9db3a72d606e99efee2eb7`.
 It selected no policy; Validation, production, promotion, and an automatic
 paid rerun remain blocked.
+
+The separately authored v4 corpus has only offline lifecycle evidence. Its
+schema-v12 fake-protocol run loaded all protected bytes, completed all 300
+Development cases, published the exact two-file private bundle, and removed
+every scoped runtime object. The deterministic fake judge intentionally failed
+the false-injection gate and is not reader-quality evidence. No credential,
+Provider, Validation, production, or promotion authority was used.
 
 ## Tests
 

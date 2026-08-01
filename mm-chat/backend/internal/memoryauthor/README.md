@@ -26,8 +26,8 @@ reader, worker, or feature-flag dependency.
   reuse `memoryeval.ValidateGoldenAdmission` rather than copying its gates.
 - Publish a consumed marker before exposing the one allowed Holdout bundle.
 - Generate, semantically audit, publish, and byte-replay the independent v2
-  regression corpus and its separately versioned v3 hard-negative repair
-  without changing the v1 formal-authoring profile or historical v2 bytes.
+  regression corpus plus separately versioned v3/v4 repairs without changing
+  the v1 formal-authoring profile or historical v2/v3 bytes.
 
 ## Operator command
 
@@ -64,6 +64,11 @@ go run ./cmd/memory-benchmark-author regression-verify
 go run ./cmd/memory-benchmark-author regression-v3-generate
 go run ./cmd/memory-benchmark-author regression-v3-status
 go run ./cmd/memory-benchmark-author regression-v3-verify
+
+# Semantically aligned corpus. This does not replace or reinterpret v2/v3.
+go run ./cmd/memory-benchmark-author regression-v4-generate
+go run ./cmd/memory-benchmark-author regression-v4-status
+go run ./cmd/memory-benchmark-author regression-v4-verify
 ```
 
 The default protected root is `mm-chat/data/memory-benchmark/v1/`. A custom
@@ -74,11 +79,11 @@ are rejected.
 
 The legacy regression commands default to
 `mm-chat/data/memory-benchmark/v2-regression/`; the explicit `regression-v3-*`
-commands default to `mm-chat/data/memory-benchmark/v3-regression/`. The final
+and `regression-v4-*` commands default to matching versioned roots. The final
 path component must explicitly contain `regression`, generation is exclusive,
 and every artifact is bound to exactly one fixed profile. Verification
 dispatches from the protected generator tuple and rejects unknown or mixed
-v2/v3 artifacts. A `holdout` case label in either lane is only a visible
+v2/v3/v4 artifacts. A `holdout` case label in any lane is only a visible
 regression stratum; it is not a secret or one-shot formal Holdout.
 
 ## Artifact layout
@@ -108,7 +113,7 @@ The regression layout is intentionally simpler and cannot be consumed by the
 human-review/freeze commands:
 
 ```text
-v2-regression/ or v3-regression/
+v2-regression/, v3-regression/, or v4-regression/
 ├── fixtures.json                 # 500 synthetic fixtures, mode 0600
 ├── corpus.json                   # regression-only cases, mode 0600
 ├── audit.json                    # content-free semantic audit, mode 0600
@@ -124,7 +129,12 @@ requires every `unrelated_negative` query to be a real agenda-heading task and
 its same-entity/same-scope candidate to be a weather-board observation that
 cannot answer that task. It rejects self-descriptions such as `unrelated`,
 `无关`, `no bearing`, or `没有关系` from either surface. The v2 generator,
-hashes, and reports remain immutable historical evidence.
+hashes, and reports remain immutable historical evidence. V4 additionally
+uses explicit Subject/current/old value pairs for every positive and requires
+the unrelated candidate to remain in the same synthetic entity/scope while
+describing a separate facilities/weather event. It rejects cross-Subject value
+substitution, repetition of the queried Subject, and agenda/meeting/task-event
+claims in that candidate. Historical v2/v3 bytes and reports remain immutable.
 
 ## Review invariants
 
@@ -153,7 +163,7 @@ hashes, and reports remain immutable historical evidence.
 | `Freeze` / `LoadFrozen` | Publish and independently replay the exact frozen corpus. |
 | `BeginHoldout` | Commit ordinal one, then publish the bounded Holdout bundle. |
 | `CurrentStatus` / `Verify` | Emit content-free state; `Verify` also regenerates and byte-compares the fixed candidate profile. |
-| `GenerateRegression` / `GenerateRegressionV3` / `AuditRegression` / `ValidateRegressionPool` | Build and machine-audit either exact regression profile while preserving v2 bytes. |
+| `GenerateRegression` / `GenerateRegressionV3` / `GenerateRegressionV4` / `AuditRegression` / `ValidateRegressionPool` | Build and machine-audit an exact known regression profile while preserving historical bytes. |
 | `ValidateRegressionRoot` / `PublishRegression` / `LoadRegression` | Enforce private, exclusive regression storage. |
 | `CurrentRegressionStatus` / `VerifyRegression` | Emit content-free regression status and byte-replay every artifact using its exact protected generator tuple. |
 

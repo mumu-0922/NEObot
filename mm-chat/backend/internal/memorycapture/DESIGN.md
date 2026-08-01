@@ -324,3 +324,8 @@ result or failure, even when a later case reuses the same assistant identity.
   Development failure: all 300 cases completed, false injection fell to
   `10/300` but remained above criterion, `stable_fact` also failed, and all
   credentials/runtime objects were destroyed without Validation or promotion.
+- **2026-08-01**: Admitted the separately authored v4 corpus through one
+  schema-v12 fake-protocol Development lifecycle. All 300 cases completed,
+  publication/leak/teardown checks passed, and the non-quality fake judge
+  failed the false-injection gate without credentials, Provider egress,
+  Validation, or promotion.

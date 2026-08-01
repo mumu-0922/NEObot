@@ -1,0 +1,118 @@
+{
+  "schemaVersion": "neo-chat.memory-benchmark-regression-status.v1",
+  "corpusClass": "machine_reviewed_regression",
+  "admissionMode": "regression_only",
+  "promotionEligible": false,
+  "profile": "memory-regression-zh-mixed-v4",
+  "generatorVersion": "neo-chat.memory-benchmark-regression-generator.v3",
+  "caseCount": 500,
+  "splitCounts": {
+    "development": 300,
+    "validation": 100,
+    "holdout": 100
+  },
+  "languageCounts": {
+    "zh": 350,
+    "mixed": 100,
+    "en": 50
+  },
+  "sliceCounts": [
+    {
+      "name": "stable_fact",
+      "total": 50,
+      "development": 30,
+      "validation": 10,
+      "holdout": 10
+    },
+    {
+      "name": "preference_instruction",
+      "total": 50,
+      "development": 30,
+      "validation": 10,
+      "holdout": 10
+    },
+    {
+      "name": "project_decision",
+      "total": 50,
+      "development": 30,
+      "validation": 10,
+      "holdout": 10
+    },
+    {
+      "name": "chinese_paraphrase",
+      "total": 350,
+      "development": 210,
+      "validation": 70,
+      "holdout": 70
+    },
+    {
+      "name": "mixed_language_entity",
+      "total": 100,
+      "development": 60,
+      "validation": 20,
+      "holdout": 20
+    },
+    {
+      "name": "temporal_correction",
+      "total": 50,
+      "development": 30,
+      "validation": 10,
+      "holdout": 10
+    },
+    {
+      "name": "unrelated_negative",
+      "total": 50,
+      "development": 30,
+      "validation": 10,
+      "holdout": 10
+    },
+    {
+      "name": "untrusted_source",
+      "total": 50,
+      "development": 30,
+      "validation": 10,
+      "holdout": 10
+    },
+    {
+      "name": "secret_rejection",
+      "total": 50,
+      "development": 30,
+      "validation": 10,
+      "holdout": 10
+    },
+    {
+      "name": "scope_isolation",
+      "total": 50,
+      "development": 30,
+      "validation": 10,
+      "holdout": 10
+    },
+    {
+      "name": "deletion",
+      "total": 50,
+      "development": 30,
+      "validation": 10,
+      "holdout": 10
+    },
+    {
+      "name": "failure_fallback",
+      "total": 50,
+      "development": 30,
+      "validation": 10,
+      "holdout": 10
+    },
+    {
+      "name": "multi_hop",
+      "total": 50,
+      "development": 30,
+      "validation": 10,
+      "holdout": 10
+    }
+  ],
+  "querySkeletonCount": 431,
+  "auditVerdict": "passed",
+  "fixtureContentSha256": "579a9c18b63c80841da4165ed2e463168f5916d9a2dced8445a5ae0fd549bb82",
+  "corpusContentSha256": "04afb09eedb09d3a12b55d25b8e5f6e81635951d0b13b768a9998ba1b5894918",
+  "auditContentSha256": "1a0541248fe0adef53371b25fa1c1e8e93b75400b88792812263301422ef8377",
+  "manifestSha256": "5817c8752ee25f0d52fabb4d2163245236e84253078071c79786d5843fc6322e"
+}
