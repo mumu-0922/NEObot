@@ -80,7 +80,8 @@ run-bound marker in a database whose name starts with
 | Fixed global Memory Judge | Answer-model-specific judges failed schema-v10 gates and the owner rejected local inference. | Schema v11 fixes `SERVER_DEFAULT/openai_compatible/gpt-5.6-luna`, criteria v2, cost-basis v7, and a 3000-ms complete-flow cutoff; failure releases no v2 Memory and never falls back to unjudged candidates. |
 | Accuracy-first execution | Schema-v11 short cutoffs converted Provider latency into missing decisions, and intra-case concurrency overloaded the shared route without improving correctness. | Schema v12 fixes query-embedding/admission/rerank/judge/Record order, global Provider concurrency one, no application/HTTP elapsed timeout, diagnostic-only latency, a one-second inter-case cooldown, and one bounded transient retry. |
 | Attempt-derived cost | Retrying without aggregate authority would hide quota and token amplification. | Cost-basis v8 pre-authorizes at most 600 Judge attempts/76800 output tokens; report validation reconciles attempt counts, total/retry Judge input bounds, and `attempts * 128` output authority. |
-| Manual stage isolation | Development evidence is not Validation or production authority. | Every schema-v11/v12 Development run stops for owner review; Validation and production activation require separate authorization. |
+| Typed Judge failure measurement | The v5 aggregate collapses 17 failed cases and 22 retries into one public code, so changing corpus, prompt, or threshold would be causal guesswork. | Schema v13 reuses the unchanged v12 flow and cost authority, derives 24 plaintext-free categories from typed Provider/decoder/capture boundaries, reconciles attempt and terminal counts, and is permanently non-passing/non-selecting. |
+| Manual stage isolation | Development evidence is not Validation or production authority. | Every schema-v11/v12/v13 Development run stops for owner review; Validation and production activation require separate authorization. |
 | Candidate failure means `no_memory` | v1 remains the real prompt authority but is a separate benchmark profile. | Prepare/Record/Provider/cutoff failures never launder v1 or unscored RRF rows into v2 final/injected surfaces. |
 
 ## Trust boundaries and threats
@@ -120,6 +121,13 @@ environment proxies, require TLS 1.2 or newer, and impose no elapsed timeout.
 Manual cancellation is the only interruption authority. Only 408/429/5xx and
 retryable transport/read interruptions may retry once; deterministic protocol
 failures do not gain extra egress.
+
+Schema-v13 diagnostic mode does not add a Provider boundary or widen quota. It
+retains only hash-bound category/count maps. Provider categories come from the
+canonical `internal/chat` taxonomy; JSON/schema/ordinal categories come from
+typed decoder stages, never error-string matching. Unknown text collapses to a
+fixed unclassified value and remains outside retained artifacts. A fake replay
+does not authorize a live request.
 
 ### Fixture plaintext leakage
 
@@ -262,6 +270,9 @@ result or failure, even when a later case reuses the same assistant identity.
   `0.907692/0.909091`. Aggregate-only evidence cannot assign that positive
   decline to corpus semantics. V5 is immutable failed evidence and grants no
   rerun, Validation, production, or promotion authority.
+- Schema v13 currently has offline fake/unit evidence only. It preserves v12
+  policy, corpus, prompt, threshold, Provider concurrency, and cost authority;
+  no live diagnostic is authorized or claimed.
 - Fake protocol relevance and latency metrics are intentionally meaningless;
   only lifecycle and authority invariants are evaluated.
 
@@ -348,3 +359,7 @@ result or failure, even when a later case reuses the same assistant identity.
   recorded its separately authorized failed live bundle. One hard negative
   still injected, while 17 bounded Judge failures prevented attribution of the
   positive-quality decline; teardown completed and Validation stayed blocked.
+- **2026-08-02**: Added the offline schema-v13 Judge failure diagnostic with a
+  hash-bound 24-category taxonomy, typed output-stage causes, attempt/terminal
+  reconciliation, deterministic 300-case fake evidence, v12 field isolation,
+  and no live, Validation, prompt, threshold, corpus, or promotion change.

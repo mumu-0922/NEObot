@@ -36,6 +36,9 @@ without changing prompt, Usage, feature flags, or production data.
 - run the schema-v12 accuracy-first successor through one globally serialized
   BGE/Luna request controller with no application/HTTP elapsed deadline,
   diagnostic-only latency, bounded transient retry, and an inter-case cooldown;
+- run the schema-v13 measurement-only successor without changing schema-v12
+  execution, classifying every failed Judge attempt and terminal failed case
+  through one hash-bound plaintext-free taxonomy;
 - enforce exact `development`/`validation` split lanes and reject the visible
   machine `holdout`;
 - assemble strict regression observations, content-free run manifests, and
@@ -69,6 +72,8 @@ injection, or active-reader authority.
 | `BuildFixedMemoryJudgeDevelopmentReport` | Return schema-v11 aggregate evidence under criteria v2 and cost-basis v7. |
 | `CaptureAccuracyFirstMemoryJudgeDevelopment` | Execute query embedding, admission, BGE rerank, fixed Luna judge, and Record serially on Development. |
 | `BuildAccuracyFirstMemoryJudgeDevelopmentReport` | Return schema-v12 quality/safety/token evidence plus diagnostic latency and reconciled attempt/cost telemetry under criteria v3/cost-basis v8. |
+| `CaptureJudgeFailureDiagnosticDevelopment` | Replay the schema-v12 serial flow while capturing typed Judge attempt and terminal failure categories. |
+| `BuildJudgeFailureDiagnosticDevelopmentReport` | Return the always-failed/non-selecting schema-v13 aggregate after taxonomy, attempt, terminal, retry, cost, and privacy reconciliation. |
 | `CaptureFrozenValidation` | Execute only the 100 Validation cases under the code-frozen policy. |
 | `BuildFrozenValidation` | Score the frozen Validation result without retuning. |
 | `AssembleRegressionObservations` | Bind ordered captures to the strict regression schema. |
@@ -116,11 +121,14 @@ only. Live mode accepts `development_calibration`,
 `development_cloud_judge`, `development_memory_tool_route`, or
 `development_configured_candidate_judge`,
 `development_fixed_memory_judge`,
-`development_fixed_memory_judge_accuracy`, or `frozen_validation`. Each phase
+`development_fixed_memory_judge_accuracy`,
+`development_fixed_memory_judge_failure_diagnostic`, or `frozen_validation`.
+Each phase
 requires a fresh separately authorized
 mode-`0600` SiliconFlow key file. Tool-route and configured/fixed/accuracy-first
-judge Development additionally require a different fresh mode-`0600` chat
-Provider credential. Live output is labelled
+Judge Development, including the failure diagnostic, additionally requires a
+different fresh mode-`0600` chat Provider credential. Merely implementing or
+running the fake diagnostic grants no live quota authority. Live output is labelled
 `native_v2_hybrid` while fake output is labelled
 `native_v2_hybrid_fake_protocol`. Frozen Validation is rejected before Key
 reading while no Development-selected policy is committed.
@@ -335,6 +343,40 @@ counts, total/retry Judge input-token upper bounds, and the exact
 300-request authorities and cannot be widened. A passing v12 Development
 summary still sets `policySelected=false` and stops before Validation.
 
+Schema v13 keeps that exact v12 policy, criteria, BGE/Luna sequence, retry,
+cooldown, and cost-basis v8 authority. Its distinct identities are reader v11,
+profile/report v13, admission
+`development_fixed_memory_judge_failure_diagnostic_only`, and artifact
+`fixed-memory-judge-failure-diagnostic-development.json`. It does not change
+the prompt, threshold, corpus, runtime reader, or Provider concurrency.
+
+The fixed taxonomy `memory-candidate-judge-failure-taxonomy-v1` is the sorted
+24-value union of the 15 canonical `internal/chat` Provider categories and
+nine Judge-local input/event/output/provenance/Recorder categories. Its JSON
+array SHA-256 is
+`c22cb137da8b5fda87526237446519dd9abe2c8d221ad703c5445358d9059f8d`.
+JSON, schema, and ordinal failures are typed at decoder stages; unknown causes
+collapse to `CANDIDATE_JUDGE_FAILURE_UNCLASSIFIED`. Error strings and raw
+Provider output never become taxonomy keys or retained evidence.
+
+`judgeAttemptFailureCategoryCounts` counts every failed Provider/adapter
+attempt, including a recovered retry. `judgeTerminalFailureCategoryCounts`
+counts exactly one category for every `CANDIDATE_JUDGE_FAILED` case.
+Provenance drift and Recorder conflicts are capture-local terminals, not
+failed Judge attempts. Publication requires:
+
+```text
+sum(terminal categories) = CANDIDATE_JUDGE_FAILED
+sum(attempt categories) = judgeRetries + terminal attempt-category failures
+judgeAttempts = logical judge requests + judgeRetries
+```
+
+The report always emits `diagnosticComplete=true`, `passed=false`,
+`policySelected=false`, and `promotionEligible=false`. Schema-v12 config and
+report JSON omit all v13-only fields. This offline implementation authorizes
+no paid diagnostic, rerun, Validation, corpus/prompt tuning, production, or
+promotion.
+
 Four separately authorized live v12 Development bundles are retained as failed
 evidence. The historical v2 run produced false injection `29/300`. Repaired v3
 run `memory-regression-20260731t093606z-89719a18` used configuration SHA-256
@@ -394,12 +436,15 @@ bash scripts/test-memory-regression.sh
 
 ```text
 recorder.go                        Per-case capture state and generation tokens
+candidate_judge_decorator.go      Typed Judge capture/provenance/failure publication
 memory_tool_router_decorator.go    Bounded route delegation and Recorder publication
 capture.go                         Production-reader observation assembly
 memory_tool_route_development.go   Schema-v7/v9 aggregate report authority
 configured_candidate_judge_development.go Schema-v10 aggregate report authority
 fixed_memory_judge_development.go      Schema-v11 fixed-Luna report authority
 accuracy_first_memory_judge_development.go Schema-v12 accuracy-first report/manifest authority
+judge_failure_diagnostic_development.go Schema-v13 Judge failure taxonomy/reconciliation authority
+judge_failure_diagnostic_manifest.go    Schema-v13 non-promotional manifest authority
 accuracy_first_providers.go            Global serial gate, retry, cooldown, and aggregate telemetry
 ```
 

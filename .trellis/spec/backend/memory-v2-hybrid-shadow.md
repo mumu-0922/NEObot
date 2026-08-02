@@ -117,6 +117,25 @@ The strict judge output is exactly:
 `selectedOrdinals` contains at most five unique in-range request-local
 ordinals. An empty array is the only `no_memory` representation.
 
+The measurement-only Judge failure diagnostic identities are:
+
+```text
+capture mode = development_fixed_memory_judge_failure_diagnostic
+reader       = neo-chat.native-memory-reader-capture.v11
+profile      = neo-chat.memory-regression-profile-config.v13
+report       = neo-chat.memory-regression-relevance-calibration.v13
+admission    = development_fixed_memory_judge_failure_diagnostic_only
+artifact     = fixed-memory-judge-failure-diagnostic-development.json
+taxonomy     = memory-candidate-judge-failure-taxonomy-v1
+SHA-256      = c22cb137da8b5fda87526237446519dd9abe2c8d221ad703c5445358d9059f8d
+```
+
+The taxonomy is the sorted JSON array of the canonical 15 Provider categories
+plus nine Judge-local categories. Provider categories come only from
+`internal/chat`; Judge JSON/schema/ordinal categories come from typed decoder
+stages. Unknown errors map to `CANDIDATE_JUDGE_FAILURE_UNCLASSIFIED`; callers
+must never classify by matching error text.
+
 The main-model Tool definition has no arguments beyond an explicit empty
 object:
 
@@ -375,6 +394,25 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   and `JudgeAttempts * 128` output-token authority. Cost-basis v8 authorizes a
   maximum of 600 Judge attempts and 76800 output tokens. These execution and
   cost rules are Development evidence only and never install a runtime policy.
+- Schema v13 replays the unchanged schema-v12 execution, policy, criteria, BGE,
+  Luna, prompt, decoder, cost, and cooldown authorities only to classify Judge
+  failures. It records one bounded category for every failed Judge attempt,
+  including a recovered retry, and one terminal category for every
+  `CANDIDATE_JUDGE_FAILED` case. Provenance drift and Recorder conflict are
+  capture-local terminal failures and therefore are not Judge attempts.
+- The schema-v13 aggregate must satisfy all three equations:
+  `sum(terminal categories) = CANDIDATE_JUDGE_FAILED`,
+  `sum(attempt categories) = JudgeRetries + terminal attempt-category failures`,
+  and `JudgeAttempts = logical Judge requests + JudgeRetries`. Empty maps are
+  valid when no Judge failure occurred; zero-valued or unknown map entries are
+  forbidden. No category may retain error text, response bytes, query/Memory
+  content, case identity, or selected ordinals.
+- A schema-v13 report is measurement-only even when all 300 cases and every
+  reconciliation complete: `diagnosticComplete=true` while
+  `promotionEligible=false`, `policySelected=false`, and `passed=false`.
+  Schema-v12 JSON/configuration omits every v13 field and remains immutable.
+  This lane cannot change the prompt, corpus, threshold, policy, or reader and
+  cannot authorize Validation, a paid run, or production activation.
 - The retained schema-v12 live result completed all `195` candidate-bearing
   rerank-plus-judge decisions with zero failed cases, but the accuracy-first
   policy injected Memory into `29/135` negative cases. Its false-injection
@@ -498,6 +536,12 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 | Schema-v12 request returns 408/429/5xx or a retryable transport/read interruption | Honor valid `Retry-After`, otherwise wait five seconds, retry once, and account for both attempts. |
 | Schema-v12 request returns a normal 4xx, redirect, invalid JSON/schema/protocol result, stream parse failure, or structured remote error | Do not retry; record the bounded fail-closed result and release no v2 Memory. |
 | Schema-v12 trace contains `HardCutoffApplied`/`HARD_CUTOFF`, or telemetry/cost/cooldown counts do not reconcile | Reject the report as execution-policy drift; do not reinterpret it as an ordinary failed case. |
+| Judge error has a typed Provider or JSON/schema/ordinal cause | Preserve only its fixed schema-v13 category; never parse or retain the error string. |
+| A schema-v13 Judge retry recovers | Count the failed first attempt and the retry, but emit no terminal failure for the successful logical request. |
+| A schema-v13 Judge request exhausts its retry or fails deterministically | Count every failed attempt and exactly one terminal category; release no v2 Memory. |
+| Provenance drift or Recorder conflict occurs after a successful Judge attempt | Count one capture-local terminal category and no failed Judge attempt. |
+| Schema-v13 terminal/attempt maps contain an unknown/zero value or fail any reconciliation equation | Reject the report and publish no bundle; never synthesize a dynamic category. |
+| Schema-v13 completes with passing quality metrics | Keep `passed=false`, `policySelected=false`, and `promotionEligible=false`; diagnostic completion is not selection authority. |
 | Candidate has a forbidden egress reason under the owner policy | Evaluation fails the zero-tolerance Provider-egress gate; only `irrelevant` is newly authorized. |
 | Main-model Tool route returns no call | Record `MEMORY_TOOL_ROUTE_ABSTAINED`; discard speculative BGE final rows and record zero final/tokens. |
 | Tool route returns a missing ID, wrong name, duplicate call, or nil/non-empty arguments | Reject the whole decision as `MEMORY_TOOL_ROUTE_FAILED`; never reinterpret it as an exact call. |
@@ -549,6 +593,13 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   strict empty ordinal set; Record persists an empty counterfactual final,
   latency remains diagnostic, the next case starts only after its cooldown,
   and v1 remains the sole prompt/Usage authority.
+- **Judge-diagnostic base**: the same serial request fails once with a typed
+  `PROVIDER_RATE_LIMITED`, retries, and succeeds. Schema v13 increments the
+  attempt map once, emits no terminal category, and still reports
+  `passed=false` because diagnostic completion is not a quality gate.
+- **Judge-diagnostic bad**: a terminal `CANDIDATE_JUDGE_FAILED` has no category,
+  a retry failure is omitted from the attempt map, or a private Provider string
+  becomes a map key. The report and bundle must be rejected.
 - **Bad**: claim with an arbitrary RAG record, reuse an old vector response
   after epoch/scope drift, rank cross-user then filter in Go, persist query or
   raw scores, accept free-form judge prose/IDs, treat owner egress authorization
@@ -595,6 +646,13 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   retry classification and wait behavior, virtual/wall-clock cooldown,
   attempt/latency/input/output-token reconciliation, cost-basis-v8 ceilings,
   historical profile omission, and mandatory manual review,
+  schema-v13 exact 24-category ordering/hash, Provider single-source reuse,
+  typed JSON/schema/ordinal/event/oversize/context/unknown classification,
+  recovered retry and retry-exhaustion attempt counts, terminal provenance and
+  Recorder-conflict handling, all three reconciliation equations, 300-case
+  fake report/manifest deterministic replay, v12 field omission, aggregate
+  privacy scans, shell admission/credential/artifact validation, and permanent
+  non-promotional/non-passing status,
   post-threshold
   abstention, reserved cutoff recording, 600/900 token selection, bounded
   metadata, and byte-equivalent v1 prompt/Usage behavior.
@@ -643,6 +701,13 @@ if admissionUnavailable {
 }
 ```
 
+```go
+// Wrong: private and unstable error text becomes durable taxonomy authority.
+if strings.Contains(err.Error(), "rate limit") {
+    counts[err.Error()]++
+}
+```
+
 ### Correct
 
 ```text
@@ -657,6 +722,8 @@ default-off hybrid-worker/shadow flag + separate default-off product Tool flag
   -> schema-v10 configured-model/schema-v11 fixed Luna concurrent judge
      || fixed BGE rerank
   -> schema-v12 only: fixed BGE rerank -> fixed Luna judge, globally serial
+  -> schema-v13 only: same serial flow + typed attempt/terminal aggregates,
+     always non-selecting and non-passing
   -> judge/BGE intersection; empty or uncertain result means no v2 Memory
   -> product first ToolRound sees normal request + search_memory, no Memory body
   -> exact call: fixed BGE path + request-local score/token selection
@@ -683,6 +750,15 @@ defer awaitRoute(caseContext, route)
 if admissionUnavailable {
     awaitRoute(caseContext, route)
     return recordNoMemory()
+}
+```
+
+```go
+// Correct: classify only typed causes and reject an unreconciled aggregate.
+category := memoryjudge.FailureCategory(err)
+attemptCounts[category]++
+if sum(attemptCounts) != judgeRetries+terminalAttemptFailures {
+    return ErrCaptureInvalid
 }
 ```
 

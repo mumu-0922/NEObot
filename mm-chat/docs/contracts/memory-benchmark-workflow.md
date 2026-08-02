@@ -1244,6 +1244,90 @@ attribute v5's positive-quality drop to corpus text while Judge failures are
 non-zero. Any next corpus, Judge/prompt, bounded diagnostic, or local relation
 gate must have a new explicit identity and separate owner authorization.
 
+Schema v13 is the bounded failure diagnostic successor. It does not change or
+rerun the v5 hypothesis; it adds only offline code and fake-protocol evidence
+until a separately authorized live run exists:
+
+```text
+capture mode          = development_fixed_memory_judge_failure_diagnostic
+profile schema        = neo-chat.memory-regression-profile-config.v13
+reader                = neo-chat.native-memory-reader-capture.v11
+report schema         = neo-chat.memory-regression-relevance-calibration.v13
+admission mode        = development_fixed_memory_judge_failure_diagnostic_only
+policy                = memory_hybrid_fixed_cloud_candidate_judge_accuracy_development_v2
+criteria              = neo-chat.memory-benchmark-criteria.v3
+cost schema           = neo-chat.memory-regression-cost-basis.v8
+artifact              = fixed-memory-judge-failure-diagnostic-development.json
+taxonomy version      = memory-candidate-judge-failure-taxonomy-v1
+taxonomy SHA-256      = c22cb137da8b5fda87526237446519dd9abe2c8d221ad703c5445358d9059f8d
+diagnosticComplete    = true
+promotionEligible     = false
+policySelected        = false
+passed                = false
+```
+
+The execution remains authority-equivalent to schema v12: fixed BGE and Luna
+identities, query/admission/rerank/judge/Record sequence, global Provider
+concurrency `1`, no elapsed deadline, one bounded transient retry, one-second
+inter-case cooldown, and unchanged cost-basis v8. Schema v13 cannot change the
+prompt, decoder, threshold, corpus, or active reader and cannot authorize
+Validation or production even if every quality metric would otherwise pass.
+
+The taxonomy is the sorted union of 15 canonical typed Provider categories
+from `internal/chat` and nine Judge-local categories. The strict decoder types
+JSON syntax, exact-schema, and ordinal failures by stage; adapter/capture code
+types invalid input, oversized output, unexpected events, provenance drift,
+and Recorder conflict. Context cancellation/deadline uses the Provider
+taxonomy. Any unknown cause collapses to
+`CANDIDATE_JUDGE_FAILURE_UNCLASSIFIED`; matching or persisting error text is
+forbidden.
+
+The aggregate report retains two content-free maps:
+
+- `providerAttempts.judgeAttemptFailureCategoryCounts`: every failed
+  Provider/adapter attempt, including the first failure of a recovered retry;
+- `diagnostics.judgeTerminalFailureCategoryCounts`: exactly one final category
+  per `CANDIDATE_JUDGE_FAILED` case.
+
+Provenance drift and Recorder conflict happen outside a failed Judge attempt,
+so they contribute only to terminal counts. Publication fails closed unless:
+
+```text
+sum(judgeTerminalFailureCategoryCounts)
+  = diagnostics.failureCodeCounts["CANDIDATE_JUDGE_FAILED"]
+
+sum(judgeAttemptFailureCategoryCounts)
+  = providerAttempts.judgeRetries
+    + terminal failures whose category can originate in a Judge attempt
+
+providerAttempts.judgeAttempts
+  = logical Judge requests + providerAttempts.judgeRetries
+```
+
+Both maps may be empty after a failure-free fake replay, but unknown categories
+and zero-valued entries are invalid. Reports retain no case ID, query, Memory
+body/ID, Provider error/response, selected ordinal, raw score, or credential.
+Schema-v12 JSON and configuration hashing omit all v13 fields.
+
+Offline lifecycle command only:
+
+```bash
+bash scripts/run-memory-regression.sh \
+  --regression-root /secure/memory-benchmark/v5-regression \
+  --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge_failure_diagnostic \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --cost-basis /secure/eval/fixed-memory-judge-accuracy-cost-v8.json \
+  --output-dir /secure/eval/native-memory-runs
+```
+
+This command uses deterministic fake Providers and grants no live quota. A
+live schema-v13 run requires fresh independent retrieval/Judge credentials and
+explicit approvals not implied by this implementation.
+
 ```bash
 bash scripts/run-memory-regression.sh \
   --provider-mode fake_protocol \
@@ -1469,6 +1553,11 @@ total Judge-attempt input bounds, including retry input; actual output
 authority equals `JudgeAttempts * 128`. Schema-v6/v7 remain strict 300-request
 documents and cannot be widened or reused.
 
+Schema-v13 Judge failure diagnostics reuse that exact v8 ceiling without
+widening it. Failed attempts must additionally reconcile through the fixed
+taxonomy; the report remains permanently non-passing and non-selecting
+regardless of cost headroom or evaluation metrics.
+
 Each full fake-protocol run directory is mode `0700` and contains five
 mode-`0600` files:
 
@@ -1483,8 +1572,8 @@ run-manifest.json
 Historical calibration, schema-v4/v5 cloud-judge Development, schema-v6-v9
 Tool-route evidence, schema-v10 configured-candidate-judge Development, and
 schema-v11 fixed-Memory-Judge Development, schema-v12 accuracy-first
-Development, and Validation directories contain their named aggregate report
-plus
+Development, schema-v13 Judge-failure-diagnostic Development, and Validation
+directories contain their named aggregate report plus
 `run-manifest.json`. In
 every mode, evidence is exclusively linked first and the content-free
 run manifest is the final completion marker. Existing targets are refused

@@ -924,6 +924,38 @@ and the base PostgreSQL container remained stopped. Preserve v5 bytes and
 failed evidence. Its one-run authorization is consumed; no automatic rerun,
 Validation, Holdout, production activation, or promotion is authorized.
 
+**2026-08-02 schema-v13 offline diagnostic decision and implementation:** The
+v5 aggregate proves 17 terminal Judge failures, 217 attempts, and 22 retries,
+but intentionally retains no case join, response body, or failure subtype.
+Changing the corpus, prompt, threshold, BGE model, or policy from that evidence
+would be blind. Following the pinned open-source review in
+`research/open-source-memory-relevance-gates.md`, preserve the fail-closed
+bounded-batch topology and measure protocol integrity before semantic repair.
+Add only a separately versioned measurement lane:
+`development_fixed_memory_judge_failure_diagnostic`, reader v11,
+profile/report v13, fixed taxonomy
+`memory-candidate-judge-failure-taxonomy-v1`, and taxonomy SHA-256
+`c22cb137da8b5fda87526237446519dd9abe2c8d221ad703c5445358d9059f8d`.
+The 24 sorted categories reuse all 15 canonical Provider categories and add
+nine typed Judge-local input/event/output/provenance/Recorder categories.
+Classify JSON/schema/ordinal by decoder stage, never by error text. Retain only
+aggregate attempt and terminal maps and require terminal-to-public-failure,
+attempt-to-retry/terminal, and attempts-to-logical-request reconciliation.
+Provenance and Recorder conflicts are terminal capture-local events, not
+failed Provider attempts. The report must always set
+`diagnosticComplete=true`, `promotionEligible=false`,
+`policySelected=false`, and `passed=false`; v12 bytes omit every v13 field.
+The CLI and isolated runner accept the new mode with unchanged v12 serial
+execution, no elapsed deadline, cost-basis v8, credential isolation, and an
+exact two-file artifact set. Unit/fake tests cover typed classification,
+retry recovery/exhaustion, reconciliation drift, 300-case deterministic
+report/manifest replay, privacy exclusion, v12 omission, CLI wiring, and shell
+schema fixtures. Low-concurrency focused race, all backend tests, `go vet`,
+`gofmt`, `git diff --check`, and shell syntax checks passed. No Docker/full
+gate or live Provider call was made. This implementation authorizes no paid
+diagnostic, v5 rerun, Validation, Holdout, prompt/corpus/threshold change,
+production activation, or promotion.
+
 ## Expansion Sweep
 
 - Future evolution: evaluate the fixed Luna candidate-aware profile under the
