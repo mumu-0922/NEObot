@@ -6,6 +6,7 @@ import (
 	"math"
 	"sync"
 
+	"neo-chat/mm-chat/backend/internal/memoryjudge"
 	"neo-chat/mm-chat/backend/internal/ragproviders"
 	"neo-chat/mm-chat/backend/internal/usermemory"
 )
@@ -19,6 +20,7 @@ type transientCapture struct {
 	judgeEgressReady                     bool
 	cloudJudgeReady                      bool
 	cloudJudgeInputTokenUpperBound       int
+	cloudJudgeFailureCategory            string
 	memoryToolRouteReady                 bool
 	memoryToolRouteUsed                  bool
 	memoryToolRouteFailureCategory       string
@@ -153,6 +155,7 @@ func (recorder *Recorder) recordCloudJudgeResult(
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
 	if recorder.current == nil || recorder.current.cloudJudgeReady ||
+		recorder.current.cloudJudgeFailureCategory != "" ||
 		!recorder.current.judgeEgressReady ||
 		candidateCount != len(recorder.current.candidates) ||
 		result.PromptVersion != usermemory.HybridCandidateJudgePromptVersion ||
@@ -166,6 +169,20 @@ func (recorder *Recorder) recordCloudJudgeResult(
 		return ErrCaptureStateConflict
 	}
 	recorder.current.cloudJudgeReady = true
+	return nil
+}
+
+func (recorder *Recorder) recordCloudJudgeFailure(category string) error {
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	if recorder.current == nil || recorder.current.cloudJudgeReady ||
+		recorder.current.cloudJudgeFailureCategory != "" ||
+		!recorder.current.judgeEgressReady ||
+		recorder.current.cloudJudgeInputTokenUpperBound <= 0 ||
+		!memoryjudge.ValidFailureCategory(category) {
+		return ErrCaptureStateConflict
+	}
+	recorder.current.cloudJudgeFailureCategory = category
 	return nil
 }
 
@@ -441,66 +458,6 @@ func (decorator *ProviderDecorator) Rerank(ctx context.Context, query string, do
 		return nil, fmt.Errorf("capture hybrid rerank scores: %w", err)
 	}
 	return results, nil
-}
-
-type CandidateJudgeDecorator struct {
-	judge           usermemory.HybridCandidateJudge
-	recorder        *Recorder
-	expectedModelID string
-}
-
-func NewCandidateJudgeDecorator(
-	judge usermemory.HybridCandidateJudge,
-	recorder *Recorder,
-	expectedModelID string,
-) (*CandidateJudgeDecorator, error) {
-	if judge == nil || recorder == nil || expectedModelID == "" {
-		return nil, ErrCaptureInvalid
-	}
-	return &CandidateJudgeDecorator{
-		judge: judge, recorder: recorder, expectedModelID: expectedModelID,
-	}, nil
-}
-
-func (decorator *CandidateJudgeDecorator) JudgeHybridCandidates(
-	ctx context.Context,
-	input usermemory.HybridCandidateJudgeInput,
-) (usermemory.HybridCandidateJudgeResult, error) {
-	if err := decorator.recorder.recordProviderSent(
-		"cloud_judge",
-		len(input.Candidates),
-	); err != nil {
-		return usermemory.HybridCandidateJudgeResult{}, fmt.Errorf(
-			"capture hybrid cloud-judge egress: %w",
-			err,
-		)
-	}
-	if err := decorator.recorder.recordCloudJudgeInput(input); err != nil {
-		return usermemory.HybridCandidateJudgeResult{}, fmt.Errorf(
-			"capture hybrid cloud-judge input: %w",
-			err,
-		)
-	}
-	result, err := decorator.judge.JudgeHybridCandidates(ctx, input)
-	if err != nil || ctx.Err() != nil {
-		return result, err
-	}
-	if result.ModelID != decorator.expectedModelID {
-		return usermemory.HybridCandidateJudgeResult{}, fmt.Errorf(
-			"capture hybrid cloud-judge model drift: %w",
-			ErrCaptureStateConflict,
-		)
-	}
-	if err := decorator.recorder.recordCloudJudgeResult(
-		result,
-		len(input.Candidates),
-	); err != nil {
-		return usermemory.HybridCandidateJudgeResult{}, fmt.Errorf(
-			"capture hybrid cloud-judge result: %w",
-			err,
-		)
-	}
-	return result, nil
 }
 
 var (

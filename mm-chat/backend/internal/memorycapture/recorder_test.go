@@ -2,9 +2,11 @@ package memorycapture
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/memoryjudge"
 	"neo-chat/mm-chat/backend/internal/ragproviders"
 	"neo-chat/mm-chat/backend/internal/usermemory"
 )
@@ -37,6 +39,111 @@ func TestMemoryToolRouterDecoratorRecordsBoundedFailureCategory(t *testing.T) {
 		transient.memoryToolRouteReady {
 		t.Fatalf("transient route failure = %#v", transient)
 	}
+}
+
+func TestCandidateJudgeDecoratorRecordsTerminalFailureCategory(t *testing.T) {
+	tests := []struct {
+		name  string
+		judge usermemory.HybridCandidateJudge
+		want  string
+	}{
+		{
+			name:  "unknown",
+			judge: captureCandidateJudge{err: errors.New("private response body")},
+			want:  memoryjudge.FailureUnclassified,
+		},
+		{
+			name:  "provenance",
+			judge: captureCandidateJudge{result: captureJudgeResult("drifted-model")},
+			want:  memoryjudge.FailureProvenanceDrift,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := preparedJudgeRecorder(t)
+			decorator, err := NewCandidateJudgeDecorator(test.judge, recorder, "expected-model")
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = decorator.JudgeHybridCandidates(
+				context.Background(),
+				captureJudgeInput(),
+			)
+			if got := memoryjudge.FailureCategory(err); got != test.want {
+				t.Fatalf("category=%q want=%q err=%v", got, test.want, err)
+			}
+			transient, finishErr := recorder.Finish(captureAssistantID)
+			if finishErr != nil {
+				t.Fatal(finishErr)
+			}
+			if transient.cloudJudgeReady ||
+				transient.cloudJudgeFailureCategory != test.want {
+				t.Fatalf("transient=%#v", transient)
+			}
+		})
+	}
+}
+
+func TestCandidateJudgeDecoratorTypesRecorderConflict(t *testing.T) {
+	decorator, err := NewCandidateJudgeDecorator(
+		captureCandidateJudge{result: captureJudgeResult("expected-model")},
+		&Recorder{},
+		"expected-model",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = decorator.JudgeHybridCandidates(
+		context.Background(),
+		captureJudgeInput(),
+	)
+	if got := memoryjudge.FailureCategory(err); got != memoryjudge.FailureRecorderStateConflict {
+		t.Fatalf("category=%q err=%v", got, err)
+	}
+}
+
+func preparedJudgeRecorder(t *testing.T) *Recorder {
+	t.Helper()
+	recorder := &Recorder{}
+	if err := recorder.Begin(captureAssistantID); err != nil {
+		t.Fatal(err)
+	}
+	if err := recorder.recordPrepared(captureAssistantID, []usermemory.HybridShadowCandidate{
+		{MemoryID: captureMemoryOne},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return recorder
+}
+
+func captureJudgeInput() usermemory.HybridCandidateJudgeInput {
+	return usermemory.HybridCandidateJudgeInput{
+		Query: "private query",
+		Candidates: []usermemory.HybridCandidateJudgeCandidate{
+			{Ordinal: 0, Content: "private Memory"},
+		},
+	}
+}
+
+func captureJudgeResult(modelID string) usermemory.HybridCandidateJudgeResult {
+	return usermemory.HybridCandidateJudgeResult{
+		RawOutput:     []byte(`{"schemaVersion":"neo-chat.memory-cloud-candidate-judge-output.v1","selectedOrdinals":[]}`),
+		ModelID:       modelID,
+		PromptVersion: usermemory.HybridCandidateJudgePromptVersion,
+		PromptSHA256:  usermemory.HybridCandidateJudgePromptSHA256,
+	}
+}
+
+type captureCandidateJudge struct {
+	result usermemory.HybridCandidateJudgeResult
+	err    error
+}
+
+func (judge captureCandidateJudge) JudgeHybridCandidates(
+	context.Context,
+	usermemory.HybridCandidateJudgeInput,
+) (usermemory.HybridCandidateJudgeResult, error) {
+	return judge.result, judge.err
 }
 
 func TestMemoryToolRouterDecoratorRecordsProvenanceDrift(t *testing.T) {

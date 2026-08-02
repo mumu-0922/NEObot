@@ -188,6 +188,7 @@ func captureCandidateWithCalibrationCutoff(
 		RerankReady:                          transient.rerankReady,
 		CloudJudgeReady:                      transient.cloudJudgeReady,
 		CloudJudgeInputTokenUpperBound:       transient.cloudJudgeInputTokenUpperBound,
+		CloudJudgeFailureCategory:            transient.cloudJudgeFailureCategory,
 		MemoryToolRouteReady:                 transient.memoryToolRouteReady,
 		MemoryToolRouteUsed:                  transient.memoryToolRouteUsed,
 		MemoryToolRouteFailureCategory:       routeFailureCategory,

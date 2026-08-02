@@ -69,6 +69,34 @@ func TestHybridCandidateJudgePromptAndStrictOutputContract(t *testing.T) {
 	}
 }
 
+func TestHybridCandidateJudgeOutputErrorsAreStructurallyTyped(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		kind HybridCandidateJudgeOutputErrorKind
+	}{
+		{name: "empty", body: "", kind: HybridCandidateJudgeOutputJSONInvalid},
+		{name: "syntax", body: `{`, kind: HybridCandidateJudgeOutputJSONInvalid},
+		{name: "trailing", body: judgeOutputJSON() + `{}`, kind: HybridCandidateJudgeOutputJSONInvalid},
+		{name: "duplicate key", body: `{"schemaVersion":"neo-chat.memory-cloud-candidate-judge-output.v1","schemaVersion":"neo-chat.memory-cloud-candidate-judge-output.v1","selectedOrdinals":[]}`, kind: HybridCandidateJudgeOutputSchemaInvalid},
+		{name: "extra key", body: `{"schemaVersion":"neo-chat.memory-cloud-candidate-judge-output.v1","selectedOrdinals":[],"reason":"private"}`, kind: HybridCandidateJudgeOutputSchemaInvalid},
+		{name: "missing key", body: `{"schemaVersion":"neo-chat.memory-cloud-candidate-judge-output.v1"}`, kind: HybridCandidateJudgeOutputSchemaInvalid},
+		{name: "wrong type", body: `{"schemaVersion":"neo-chat.memory-cloud-candidate-judge-output.v1","selectedOrdinals":"zero"}`, kind: HybridCandidateJudgeOutputSchemaInvalid},
+		{name: "schema drift", body: `{"schemaVersion":"drifted","selectedOrdinals":[]}`, kind: HybridCandidateJudgeOutputSchemaInvalid},
+		{name: "duplicate ordinal", body: judgeOutputJSON(0, 0), kind: HybridCandidateJudgeOutputOrdinalInvalid},
+		{name: "ordinal out of range", body: judgeOutputJSON(2), kind: HybridCandidateJudgeOutputOrdinalInvalid},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := DecodeHybridCandidateJudgeOutput([]byte(test.body), 2)
+			kind, ok := HybridCandidateJudgeOutputErrorKindOf(err)
+			if !ok || kind != test.kind {
+				t.Fatalf("kind=%q/%t err=%v", kind, ok, err)
+			}
+		})
+	}
+}
+
 func TestFixedMemoryJudgeDevelopmentPolicyVersionsOnlyCutoffAndIdentity(t *testing.T) {
 	const modelID = HybridFixedMemoryJudgeModelID
 	legacyDescriptor, legacyOK := DescribeHybridShadowRelevancePolicy(

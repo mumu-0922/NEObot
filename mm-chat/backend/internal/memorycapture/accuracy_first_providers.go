@@ -9,6 +9,7 @@ import (
 
 	"neo-chat/mm-chat/backend/internal/chat"
 	"neo-chat/mm-chat/backend/internal/memoryeval"
+	"neo-chat/mm-chat/backend/internal/memoryjudge"
 	"neo-chat/mm-chat/backend/internal/ragproviders"
 	"neo-chat/mm-chat/backend/internal/usermemory"
 )
@@ -51,12 +52,13 @@ type accuracyFirstWait func(context.Context, time.Duration) error
 // therefore cannot place two Provider requests in flight even if a caller
 // accidentally reintroduces goroutines around one of the wrapped interfaces.
 type AccuracyFirstProviderController struct {
-	requestGate sync.Mutex
-	mu          sync.Mutex
-	wait        accuracyFirstWait
-	virtualTime bool
-	telemetry   AccuracyFirstProviderTelemetry
-	latencies   map[string][]int64
+	requestGate             sync.Mutex
+	mu                      sync.Mutex
+	wait                    accuracyFirstWait
+	virtualTime             bool
+	judgeFailureDiagnostics bool
+	telemetry               AccuracyFirstProviderTelemetry
+	latencies               map[string][]int64
 }
 
 type accuracyFirstPassageEmbedder struct {
@@ -102,6 +104,42 @@ func WrapAccuracyFirstDevelopmentProviders(
 		judge,
 		wait,
 		virtualTime,
+		false,
+	)
+}
+
+// WrapAccuracyFirstJudgeFailureDiagnosticDevelopmentProviders preserves the
+// schema-v12 serial execution behavior while enabling schema-v13-only bounded
+// Judge attempt failure aggregation.
+func WrapAccuracyFirstJudgeFailureDiagnosticDevelopmentProviders(
+	providerMode string,
+	passage PassageEmbedder,
+	hybrid usermemory.HybridShadowProvider,
+	judge usermemory.HybridCandidateJudge,
+) (
+	PassageEmbedder,
+	usermemory.HybridShadowProvider,
+	usermemory.HybridCandidateJudge,
+	*AccuracyFirstProviderController,
+	error,
+) {
+	wait := waitAccuracyFirst
+	virtualTime := false
+	switch providerMode {
+	case ProviderModeFakeProtocol:
+		virtualTime = true
+		wait = func(context.Context, time.Duration) error { return nil }
+	case ProviderModeLiveSiliconFlow:
+	default:
+		return nil, nil, nil, nil, ErrCaptureInvalid
+	}
+	return wrapAccuracyFirstDevelopmentProviders(
+		passage,
+		hybrid,
+		judge,
+		wait,
+		virtualTime,
+		true,
 	)
 }
 
@@ -110,7 +148,8 @@ func wrapAccuracyFirstDevelopmentProviders(
 	hybrid usermemory.HybridShadowProvider,
 	judge usermemory.HybridCandidateJudge,
 	wait accuracyFirstWait,
-	virtualTime ...bool,
+	virtualTime bool,
+	judgeFailureDiagnostics bool,
 ) (
 	PassageEmbedder,
 	usermemory.HybridShadowProvider,
@@ -122,14 +161,13 @@ func wrapAccuracyFirstDevelopmentProviders(
 		return nil, nil, nil, nil, ErrCaptureInvalid
 	}
 	controller := &AccuracyFirstProviderController{
-		wait:      wait,
-		latencies: make(map[string][]int64),
+		wait:                    wait,
+		virtualTime:             virtualTime,
+		judgeFailureDiagnostics: judgeFailureDiagnostics,
+		latencies:               make(map[string][]int64),
 	}
-	if len(virtualTime) > 1 {
-		return nil, nil, nil, nil, ErrCaptureInvalid
-	}
-	if len(virtualTime) == 1 {
-		controller.virtualTime = virtualTime[0]
+	if controller.judgeFailureDiagnostics {
+		controller.telemetry.JudgeAttemptFailureCategoryCounts = make(map[string]int)
 	}
 	return &accuracyFirstPassageEmbedder{controller: controller, delegate: passage},
 		&accuracyFirstHybridProvider{controller: controller, delegate: hybrid},
@@ -157,6 +195,13 @@ func (controller *AccuracyFirstProviderController) Snapshot() AccuracyFirstProvi
 	telemetry.JudgeLatency = accuracyFirstLatencyDiagnostics(
 		controller.latencies["judge"],
 	)
+	if controller.telemetry.JudgeAttemptFailureCategoryCounts != nil {
+		telemetry.JudgeAttemptFailureCategoryCounts = make(map[string]int,
+			len(controller.telemetry.JudgeAttemptFailureCategoryCounts))
+		for category, count := range controller.telemetry.JudgeAttemptFailureCategoryCounts {
+			telemetry.JudgeAttemptFailureCategoryCounts[category] = count
+		}
+	}
 	return telemetry
 }
 
@@ -293,6 +338,7 @@ func executeAccuracyFirstRequest[T any](
 		if err == nil {
 			return result, nil
 		}
+		controller.recordFailure(operation, err)
 		if attempt > 0 || ctx.Err() != nil {
 			return zero, err
 		}
@@ -308,6 +354,22 @@ func executeAccuracyFirstRequest[T any](
 		}
 	}
 	return zero, ErrCaptureUnavailable
+}
+
+func (controller *AccuracyFirstProviderController) recordFailure(
+	operation string,
+	err error,
+) {
+	if controller == nil || !controller.judgeFailureDiagnostics || operation != "judge" {
+		return
+	}
+	category := memoryjudge.FailureCategory(err)
+	controller.mu.Lock()
+	defer controller.mu.Unlock()
+	if controller.telemetry.JudgeAttemptFailureCategoryCounts == nil {
+		controller.telemetry.JudgeAttemptFailureCategoryCounts = make(map[string]int)
+	}
+	controller.telemetry.JudgeAttemptFailureCategoryCounts[category]++
 }
 
 func (controller *AccuracyFirstProviderController) recordRequestLatency(

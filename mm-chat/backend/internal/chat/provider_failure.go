@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -33,6 +34,24 @@ const (
 	ProviderFailureContextDeadline    ProviderFailureCategory = "CONTEXT_DEADLINE"
 	ProviderFailureContextCanceled    ProviderFailureCategory = "CONTEXT_CANCELED"
 )
+
+var providerFailureCategories = map[ProviderFailureCategory]struct{}{
+	ProviderFailureRequestBuildFailed: {},
+	ProviderFailureTransportFailed:    {},
+	ProviderFailureResponseInvalid:    {},
+	ProviderFailureAuthentication:     {},
+	ProviderFailureQuotaExhausted:     {},
+	ProviderFailureRequestTimeout:     {},
+	ProviderFailureRateLimited:        {},
+	ProviderFailureRequestRejected:    {},
+	ProviderFailureUpstreamFailed:     {},
+	ProviderFailureStreamParseFailed:  {},
+	ProviderFailureStreamReadFailed:   {},
+	ProviderFailureStreamIncomplete:   {},
+	ProviderFailureStreamRemoteError:  {},
+	ProviderFailureContextDeadline:    {},
+	ProviderFailureContextCanceled:    {},
+}
 
 type providerFailureError struct {
 	category      ProviderFailureCategory
@@ -85,6 +104,25 @@ func ProviderFailureCategoryOf(err error) (ProviderFailureCategory, bool) {
 		return "", false
 	}
 	return failure.category, true
+}
+
+// ValidProviderFailureCategory reports whether category belongs to the fixed,
+// plaintext-free Provider taxonomy.
+func ValidProviderFailureCategory(category ProviderFailureCategory) bool {
+	_, ok := providerFailureCategories[category]
+	return ok
+}
+
+// ProviderFailureCategories returns a sorted copy of the fixed Provider
+// taxonomy so higher-level diagnostic contracts can bind it by hash without
+// duplicating the HTTP/SSE category list.
+func ProviderFailureCategories() []ProviderFailureCategory {
+	categories := make([]ProviderFailureCategory, 0, len(providerFailureCategories))
+	for category := range providerFailureCategories {
+		categories = append(categories, category)
+	}
+	sort.Slice(categories, func(i, j int) bool { return categories[i] < categories[j] })
+	return categories
 }
 
 // ProviderRetryDelay exposes only a duration and retryability decision. It

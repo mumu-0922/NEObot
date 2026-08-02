@@ -2,6 +2,7 @@ package memoryjudge
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -76,8 +77,99 @@ func TestChatAdapterRejectsMalformedAndOversizeOutput(t *testing.T) {
 	}
 }
 
+func TestChatAdapterReturnsBoundedFailureCategories(t *testing.T) {
+	validInput := usermemory.HybridCandidateJudgeInput{
+		Query: "private query",
+		Candidates: []usermemory.HybridCandidateJudgeCandidate{
+			{Ordinal: 0, Content: "private Memory"},
+		},
+	}
+	tests := []struct {
+		name     string
+		provider *judgeChatProvider
+		input    usermemory.HybridCandidateJudgeInput
+		ctx      func() context.Context
+		want     string
+	}{
+		{
+			name: "input", provider: &judgeChatProvider{},
+			input: usermemory.HybridCandidateJudgeInput{}, want: FailureInputInvalid,
+		},
+		{
+			name: "too large",
+			provider: &judgeChatProvider{chunks: []string{
+				strings.Repeat("x", usermemory.HybridCandidateJudgeMaximumOutputBytes+1),
+			}},
+			input: validInput, want: FailureOutputTooLarge,
+		},
+		{
+			name: "event", provider: &judgeChatProvider{
+				events: []chat.ProviderEvent{{Type: "private-event"}},
+			},
+			input: validInput, want: FailureEventInvalid,
+		},
+		{
+			name: "json", provider: &judgeChatProvider{chunks: []string{"{"}},
+			input: validInput, want: FailureOutputJSONInvalid,
+		},
+		{
+			name: "schema", provider: &judgeChatProvider{chunks: []string{
+				`{"schemaVersion":"drifted","selectedOrdinals":[]}`,
+			}},
+			input: validInput, want: FailureOutputSchemaInvalid,
+		},
+		{
+			name: "ordinal", provider: &judgeChatProvider{chunks: []string{
+				`{"schemaVersion":"neo-chat.memory-cloud-candidate-judge-output.v1","selectedOrdinals":[1]}`,
+			}},
+			input: validInput, want: FailureOutputOrdinalInvalid,
+		},
+		{
+			name: "Provider cancellation", provider: &judgeChatProvider{err: context.Canceled},
+			input: validInput, want: string(chat.ProviderFailureContextCanceled),
+		},
+		{
+			name: "unknown", provider: &judgeChatProvider{
+				err: errors.New("private Provider response"),
+			},
+			input: validInput, want: FailureUnclassified,
+		},
+		{
+			name: "canceled context", provider: &judgeChatProvider{},
+			input: validInput, ctx: canceledJudgeContext,
+			want: string(chat.ProviderFailureContextCanceled),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			adapter, err := NewChatAdapter(test.provider, chat.ModelRef{
+				ProviderID: "fixture", ModelID: "fixture-model",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx := context.Background()
+			if test.ctx != nil {
+				ctx = test.ctx()
+			}
+			_, err = adapter.JudgeHybridCandidates(ctx, test.input)
+			if got := FailureCategory(err); got != test.want {
+				t.Fatalf("category=%q want=%q err=%v", got, test.want, err)
+			}
+		})
+	}
+}
+
+func canceledJudgeContext() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return ctx
+}
+
 type judgeChatProvider struct {
 	chunks  []string
+	events  []chat.ProviderEvent
+	err     error
 	request chat.ProviderRequest
 }
 
@@ -86,9 +178,15 @@ func (provider *judgeChatProvider) StreamChat(
 	request chat.ProviderRequest,
 ) (<-chan chat.ProviderEvent, error) {
 	provider.request = request
-	events := make(chan chat.ProviderEvent, len(provider.chunks))
+	if provider.err != nil {
+		return nil, provider.err
+	}
+	events := make(chan chat.ProviderEvent, len(provider.chunks)+len(provider.events))
 	for _, chunk := range provider.chunks {
 		events <- chat.ProviderEvent{Type: chat.ProviderEventDelta, Delta: chunk}
+	}
+	for _, event := range provider.events {
+		events <- event
 	}
 	close(events)
 	return events, nil

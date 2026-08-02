@@ -2,12 +2,12 @@ package memorycapture
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"neo-chat/mm-chat/backend/internal/memoryauthor"
 	"neo-chat/mm-chat/backend/internal/memoryeval"
@@ -16,20 +16,32 @@ import (
 )
 
 const (
-	AccuracyFirstMemoryJudgeReportSchemaVersion = "neo-chat.memory-regression-relevance-calibration.v12"
-	AccuracyFirstMemoryJudgeAdmissionMode       = "development_fixed_memory_judge_accuracy_only"
-	AccuracyFirstMemoryJudgeArtifactName        = "fixed-memory-judge-accuracy-development.json"
+	JudgeFailureDiagnosticReportSchemaVersion = "neo-chat.memory-regression-relevance-calibration.v13"
+	JudgeFailureDiagnosticAdmissionMode       = "development_fixed_memory_judge_failure_diagnostic_only"
+	JudgeFailureDiagnosticCompletenessPolicy  = "attempt_terminal_reconciled_fail_closed_v1"
+	JudgeFailureDiagnosticArtifactName        = "fixed-memory-judge-failure-diagnostic-development.json"
 )
 
-// AccuracyFirstMemoryJudgeDevelopmentReport deliberately does not embed the
-// historical latency-gated evaluation shape. Latency remains aggregate
-// diagnostics, while Passed is controlled only by quality, safety, token, and
-// slice gates under criteria-v3.
-type AccuracyFirstMemoryJudgeDevelopmentReport struct {
+type JudgeFailureDiagnosticProviderTelemetry struct {
+	AccuracyFirstProviderTelemetry
+	JudgeAttemptFailureCategoryCounts map[string]int `json:"judgeAttemptFailureCategoryCounts"`
+}
+
+type JudgeFailureDiagnosticDiagnostics struct {
+	CloudJudgeDevelopmentDiagnostics
+	JudgeTerminalFailureCategoryCounts map[string]int `json:"judgeTerminalFailureCategoryCounts"`
+}
+
+// JudgeFailureDiagnosticDevelopmentReport is measurement-only. Evaluation
+// remains visible as aggregate context, but this schema can never select a
+// policy, pass a promotion gate, or authorize Validation.
+type JudgeFailureDiagnosticDevelopmentReport struct {
 	SchemaVersion             string                                        `json:"schemaVersion"`
 	CorpusClass               string                                        `json:"corpusClass"`
 	AdmissionMode             string                                        `json:"admissionMode"`
 	PromotionEligible         bool                                          `json:"promotionEligible"`
+	PolicySelected            bool                                          `json:"policySelected"`
+	DiagnosticComplete        bool                                          `json:"diagnosticComplete"`
 	Split                     string                                        `json:"split"`
 	CaseCount                 int                                           `json:"caseCount"`
 	PolicyID                  string                                        `json:"policyId"`
@@ -46,18 +58,21 @@ type AccuracyFirstMemoryJudgeDevelopmentReport struct {
 	JudgePromptVersion        string                                        `json:"judgePromptVersion"`
 	JudgePromptSHA256         string                                        `json:"judgePromptSha256"`
 	JudgeDecodingProfile      string                                        `json:"judgeDecodingProfile"`
+	FailureTaxonomyVersion    string                                        `json:"failureTaxonomyVersion"`
+	FailureTaxonomySHA256     string                                        `json:"failureTaxonomySha256"`
+	DiagnosticCompleteness    string                                        `json:"diagnosticCompleteness"`
 	SelectionAlgorithm        string                                        `json:"selectionAlgorithm"`
 	EvaluationCriteriaVersion string                                        `json:"evaluationCriteriaVersion"`
 	EvaluationCriteria        memoryeval.AccuracyFirstCriteria              `json:"evaluationCriteria"`
 	ExecutionPolicy           AccuracyFirstExecutionPolicy                  `json:"executionPolicy"`
 	Passed                    bool                                          `json:"passed"`
 	Evaluation                memoryeval.AccuracyFirstCalibrationEvaluation `json:"evaluation"`
-	Diagnostics               CloudJudgeDevelopmentDiagnostics              `json:"diagnostics"`
-	ProviderAttempts          AccuracyFirstProviderTelemetry                `json:"providerAttempts"`
+	Diagnostics               JudgeFailureDiagnosticDiagnostics             `json:"diagnostics"`
+	ProviderAttempts          JudgeFailureDiagnosticProviderTelemetry       `json:"providerAttempts"`
 	CostAuthority             CloudJudgeDevelopmentCostAuthority            `json:"costAuthority"`
 }
 
-func CaptureAccuracyFirstMemoryJudgeDevelopment(
+func CaptureJudgeFailureDiagnosticDevelopment(
 	ctx context.Context,
 	seedDB *sql.DB,
 	runtimeDB *sql.DB,
@@ -76,7 +91,7 @@ func CaptureAccuracyFirstMemoryJudgeDevelopment(
 	candidateJudge, judgeOK := judge.(*accuracyFirstCandidateJudge)
 	if !validFixedMemoryJudgeAuthority(authority) || !hybridOK || !judgeOK ||
 		hybrid.controller == nil || hybrid.controller != candidateJudge.controller ||
-		hybrid.controller.judgeFailureDiagnostics {
+		!hybrid.controller.judgeFailureDiagnostics {
 		return CapturedProfile{}, ErrCaptureInvalid
 	}
 	if err := validateCaptureDatabases(ctx, seedDB, runtimeDB, runID, seed); err != nil {
@@ -85,7 +100,7 @@ func CaptureAccuracyFirstMemoryJudgeDevelopment(
 	if err := validateSeedSplit(fullPool, seed.Cases, DevelopmentCalibrationSplit); err != nil {
 		return CapturedProfile{}, err
 	}
-	return captureCandidateProfile(
+	profile, err := captureCandidateProfile(
 		ctx,
 		runtimeDB,
 		index,
@@ -98,51 +113,71 @@ func CaptureAccuracyFirstMemoryJudgeDevelopment(
 		judge,
 		nil,
 	)
+	if err != nil {
+		return CapturedProfile{}, err
+	}
+	profile.Profile.ReaderVersion = JudgeFailureDiagnosticReaderVersion
+	return profile, nil
 }
 
-func BuildAccuracyFirstMemoryJudgeDevelopmentReport(
+func BuildJudgeFailureDiagnosticDevelopmentReport(
 	pool memoryauthor.RegressionPool,
 	profile CapturedProfile,
 	authority ConfiguredCandidateJudgeProfileAuthority,
 	costBasis CostBasis,
-) (AccuracyFirstMemoryJudgeDevelopmentReport, []byte, error) {
-	if profile.Profile.ReaderVersion != AccuracyFirstMemoryJudgeReaderVersion ||
+) (JudgeFailureDiagnosticDevelopmentReport, []byte, error) {
+	if profile.Profile.ReaderVersion != JudgeFailureDiagnosticReaderVersion ||
 		!validFixedMemoryJudgeAuthority(authority) ||
 		ValidateAccuracyFirstMemoryJudgeCostAuthority(costBasis, authority) != nil ||
 		profile.Profile.ProviderEgressPolicy !=
 			memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1 ||
 		profile.Costs != costBasis.Candidate ||
-		len(profile.Profile.ConfigurationSHA256) != 64 {
-		return AccuracyFirstMemoryJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
+		len(profile.Profile.ConfigurationSHA256) != 64 ||
+		judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, ErrCaptureInvalid
 	}
 	if _, err := hex.DecodeString(profile.Profile.ConfigurationSHA256); err != nil {
-		return AccuracyFirstMemoryJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, ErrCaptureInvalid
 	}
 	providerMode, err := providerModeForProfileID(profile.Profile.ID)
 	if err != nil {
-		return AccuracyFirstMemoryJudgeDevelopmentReport{}, nil, err
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, err
 	}
 	executionPolicy, err := AccuracyFirstDevelopmentExecutionPolicy(providerMode)
 	if err != nil {
-		return AccuracyFirstMemoryJudgeDevelopmentReport{}, nil, err
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, err
 	}
 	criteria, err := memoryeval.MemoryJudgeAccuracyFirstCriteriaV3(pool.Corpus.Criteria)
 	if err != nil {
-		return AccuracyFirstMemoryJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, ErrCaptureInvalid
 	}
 	for _, trace := range profile.Calibration {
 		if trace.FullObservation.HardCutoffApplied ||
 			normalizeCalibrationCode(trace.AbstentionCode) == "HARD_CUTOFF" ||
 			normalizeCalibrationCode(trace.ResultCode) == "HARD_CUTOFF" {
-			return AccuracyFirstMemoryJudgeDevelopmentReport{}, nil, fmt.Errorf(
-				"%w: accuracy-first trace contains a hard cutoff",
+			return JudgeFailureDiagnosticDevelopmentReport{}, nil, fmt.Errorf(
+				"%w: Judge failure diagnostic trace contains a hard cutoff",
 				ErrCaptureInvalid,
 			)
 		}
 	}
 	aggregate, err := aggregateCloudJudgeDevelopment(pool, profile, true)
 	if err != nil {
-		return AccuracyFirstMemoryJudgeDevelopmentReport{}, nil, err
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, err
+	}
+	terminalCounts, terminalAttemptFailures, err :=
+		aggregateJudgeTerminalFailureCategories(profile.Calibration, aggregate.diagnostics)
+	if err != nil {
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, err
+	}
+	telemetry := profile.ProviderAttempts
+	if err := validateJudgeFailureDiagnosticTelemetry(
+		telemetry,
+		len(aggregate.development),
+		aggregate.logicalJudgeRequests,
+		terminalAttemptFailures,
+	); err != nil {
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, err
 	}
 	evaluation, err := memoryeval.EvaluateAccuracyFirstCalibrationSelectionWithProviderEgressPolicy(
 		aggregate.development,
@@ -151,41 +186,35 @@ func BuildAccuracyFirstMemoryJudgeDevelopmentReport(
 		memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1,
 	)
 	if err != nil {
-		return AccuracyFirstMemoryJudgeDevelopmentReport{}, nil, err
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, err
 	}
-	telemetry := profile.ProviderAttempts
-	if err := validateAccuracyFirstProviderTelemetry(
-		telemetry,
-		len(aggregate.development),
-		aggregate.logicalJudgeRequests,
-	); err != nil {
-		return AccuracyFirstMemoryJudgeDevelopmentReport{}, nil, err
-	}
-	authorityCost := costBasis.ConfiguredCandidateJudgeAuthority
 	expectedInputTokenUpperBound := aggregate.logicalInputTokenUpperBound +
 		uint64(telemetry.JudgeRetryInputTokenUpperBound)
 	if uint64(telemetry.JudgeInputTokenUpperBound) != expectedInputTokenUpperBound {
-		return AccuracyFirstMemoryJudgeDevelopmentReport{}, nil, fmt.Errorf(
-			"%w: accuracy-first Memory Judge input telemetry drifted",
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, fmt.Errorf(
+			"%w: Judge failure diagnostic input telemetry drifted",
 			ErrCaptureInvalid,
 		)
 	}
+	authorityCost := costBasis.ConfiguredCandidateJudgeAuthority
 	actualInputTokenUpperBound := uint64(telemetry.JudgeInputTokenUpperBound)
 	actualOutputTokenUpperBound := uint64(telemetry.JudgeAttempts) *
 		usermemory.HybridCandidateJudgeMaximumOutputTokens
 	if telemetry.JudgeAttempts > authorityCost.RequestCount ||
 		actualInputTokenUpperBound > authorityCost.MaximumInputTokens ||
 		actualOutputTokenUpperBound > authorityCost.MaximumOutputTokens {
-		return AccuracyFirstMemoryJudgeDevelopmentReport{}, nil, fmt.Errorf(
-			"%w: accuracy-first Memory Judge cost authority exceeded",
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, fmt.Errorf(
+			"%w: Judge failure diagnostic cost authority exceeded",
 			ErrCaptureInvalid,
 		)
 	}
-	report := AccuracyFirstMemoryJudgeDevelopmentReport{
-		SchemaVersion:             AccuracyFirstMemoryJudgeReportSchemaVersion,
+	report := JudgeFailureDiagnosticDevelopmentReport{
+		SchemaVersion:             JudgeFailureDiagnosticReportSchemaVersion,
 		CorpusClass:               memoryeval.RegressionCorpusClass,
-		AdmissionMode:             AccuracyFirstMemoryJudgeAdmissionMode,
+		AdmissionMode:             JudgeFailureDiagnosticAdmissionMode,
 		PromotionEligible:         false,
+		PolicySelected:            false,
+		DiagnosticComplete:        true,
 		Split:                     DevelopmentCalibrationSplit,
 		CaseCount:                 len(aggregate.development),
 		PolicyID:                  usermemory.HybridRelevanceAccuracyFirstJudgePolicyID,
@@ -202,14 +231,25 @@ func BuildAccuracyFirstMemoryJudgeDevelopmentReport(
 		JudgePromptVersion:        usermemory.HybridCandidateJudgePromptVersion,
 		JudgePromptSHA256:         usermemory.HybridCandidateJudgePromptSHA256,
 		JudgeDecodingProfile:      usermemory.HybridCandidateJudgeDecodingProfile,
+		FailureTaxonomyVersion:    memoryjudge.FailureTaxonomyVersion,
+		FailureTaxonomySHA256:     memoryjudge.FailureTaxonomySHA256,
+		DiagnosticCompleteness:    JudgeFailureDiagnosticCompletenessPolicy,
 		SelectionAlgorithm:        cloudJudgeSelectionAlgorithm,
 		EvaluationCriteriaVersion: memoryeval.MemoryJudgeAccuracyFirstCriteriaVersionV3,
 		EvaluationCriteria:        criteria,
 		ExecutionPolicy:           executionPolicy,
-		Passed:                    evaluation.Passed,
+		Passed:                    false,
 		Evaluation:                evaluation,
-		Diagnostics:               aggregate.diagnostics,
-		ProviderAttempts:          telemetry,
+		Diagnostics: JudgeFailureDiagnosticDiagnostics{
+			CloudJudgeDevelopmentDiagnostics:   aggregate.diagnostics,
+			JudgeTerminalFailureCategoryCounts: terminalCounts,
+		},
+		ProviderAttempts: JudgeFailureDiagnosticProviderTelemetry{
+			AccuracyFirstProviderTelemetry: telemetry,
+			JudgeAttemptFailureCategoryCounts: cloneDiagnosticCounts(
+				telemetry.JudgeAttemptFailureCategoryCounts,
+			),
+		},
 		CostAuthority: CloudJudgeDevelopmentCostAuthority{
 			Unit:                                costBasis.Candidate.Unit,
 			AuthorizedRequestCount:              authorityCost.RequestCount,
@@ -222,169 +262,121 @@ func BuildAccuracyFirstMemoryJudgeDevelopmentReport(
 			MaximumMemoryProviderCostMicrounits: costBasis.Candidate.MemoryProviderCostMicrounits,
 		},
 	}
-	if !validAccuracyFirstMemoryJudgeDevelopmentReport(report) {
-		return AccuracyFirstMemoryJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
+	if !validJudgeFailureDiagnosticDevelopmentReport(report) {
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, ErrCaptureInvalid
 	}
 	body, err := json.Marshal(report)
 	if err != nil {
-		return AccuracyFirstMemoryJudgeDevelopmentReport{}, nil, errors.Join(ErrCaptureInvalid, err)
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, errors.Join(ErrCaptureInvalid, err)
 	}
 	return report, append(body, '\n'), nil
 }
 
-func validateAccuracyFirstProviderTelemetry(
+func aggregateJudgeTerminalFailureCategories(
+	traces []CandidateCalibrationTrace,
+	diagnostics CloudJudgeDevelopmentDiagnostics,
+) (map[string]int, int, error) {
+	counts := make(map[string]int)
+	attemptFailures := 0
+	for _, trace := range traces {
+		code := normalizeCalibrationCode(trace.AbstentionCode)
+		if code == "NONE" {
+			code = normalizeCalibrationCode(trace.ResultCode)
+		}
+		if code != "CANDIDATE_JUDGE_FAILED" {
+			if trace.CloudJudgeFailureCategory != "" {
+				return nil, 0, ErrCaptureInvalid
+			}
+			continue
+		}
+		category := trace.CloudJudgeFailureCategory
+		if !memoryjudge.ValidFailureCategory(category) {
+			return nil, 0, ErrCaptureInvalid
+		}
+		counts[category]++
+		if memoryjudge.AttemptFailureCategory(category) {
+			attemptFailures++
+		}
+	}
+	if sumDiagnosticCounts(counts) != diagnostics.FailureCodeCounts["CANDIDATE_JUDGE_FAILED"] {
+		return nil, 0, ErrCaptureInvalid
+	}
+	return counts, attemptFailures, nil
+}
+
+func validateJudgeFailureDiagnosticTelemetry(
 	value AccuracyFirstProviderTelemetry,
 	caseCount int,
 	logicalJudgeRequests int,
+	terminalAttemptFailures int,
 ) error {
-	if value.JudgeAttemptFailureCategoryCounts != nil {
-		return fmt.Errorf("%w: accuracy-first Provider telemetry schema drift", ErrCaptureInvalid)
-	}
-	return validateAccuracyFirstProviderTelemetryBase(
+	if err := validateAccuracyFirstProviderTelemetryBase(
 		value,
 		caseCount,
 		logicalJudgeRequests,
-	)
-}
-
-func validateAccuracyFirstProviderTelemetryBase(
-	value AccuracyFirstProviderTelemetry,
-	caseCount int,
-	logicalJudgeRequests int,
-) error {
-	if caseCount != 300 || logicalJudgeRequests < 0 || logicalJudgeRequests > caseCount ||
-		value.PassageEmbeddingAttempts <= 0 ||
-		value.PassageEmbeddingRetries < 0 ||
-		value.PassageEmbeddingRetries*2 > value.PassageEmbeddingAttempts ||
-		value.QueryEmbeddingAttempts != caseCount+value.QueryEmbeddingRetries ||
-		value.QueryEmbeddingRetries < 0 || value.QueryEmbeddingRetries > caseCount ||
-		value.RerankAttempts < value.RerankRetries || value.RerankRetries < 0 ||
-		value.RerankRetries*2 > value.RerankAttempts ||
-		value.RerankAttempts-value.RerankRetries > caseCount ||
-		value.RerankAttempts-value.RerankRetries < logicalJudgeRequests ||
-		value.JudgeAttempts != logicalJudgeRequests+value.JudgeRetries ||
-		value.JudgeRetries < 0 || value.JudgeRetries > logicalJudgeRequests ||
-		value.JudgeInputTokenUpperBound < 0 ||
-		(value.JudgeAttempts == 0 && value.JudgeInputTokenUpperBound != 0) ||
-		(value.JudgeAttempts > 0 && value.JudgeInputTokenUpperBound == 0) ||
-		value.JudgeRetryInputTokenUpperBound < 0 ||
-		value.JudgeRetryInputTokenUpperBound > value.JudgeInputTokenUpperBound ||
-		(value.JudgeRetries == 0 && value.JudgeRetryInputTokenUpperBound != 0) ||
-		(value.JudgeRetries > 0 && value.JudgeRetryInputTokenUpperBound == 0) ||
-		value.InterCaseCooldownCount != caseCount-1 ||
-		value.InterCaseCooldownMilliseconds !=
-			(caseCount-1)*int(AccuracyFirstInterCaseCooldown/time.Millisecond) ||
-		value.InterCaseCooldownElapsedMillis < 0 ||
-		value.PassageEmbeddingLatency.SampleCount != value.PassageEmbeddingAttempts ||
-		value.QueryEmbeddingLatency.SampleCount != value.QueryEmbeddingAttempts ||
-		value.RerankLatency.SampleCount != value.RerankAttempts ||
-		value.JudgeLatency.SampleCount != value.JudgeAttempts ||
-		!validAccuracyFirstLatencyDiagnostics(value.PassageEmbeddingLatency) ||
-		!validAccuracyFirstLatencyDiagnostics(value.QueryEmbeddingLatency) ||
-		!validAccuracyFirstLatencyDiagnostics(value.RerankLatency) ||
-		!validAccuracyFirstLatencyDiagnostics(value.JudgeLatency) {
-		return fmt.Errorf("%w: accuracy-first Provider telemetry", ErrCaptureInvalid)
+	); err != nil || value.JudgeAttemptFailureCategoryCounts == nil ||
+		terminalAttemptFailures < 0 {
+		return fmt.Errorf("%w: Judge failure diagnostic Provider telemetry", ErrCaptureInvalid)
+	}
+	if !validJudgeAttemptFailureCategoryCounts(
+		value.JudgeAttemptFailureCategoryCounts,
+	) ||
+		sumDiagnosticCounts(value.JudgeAttemptFailureCategoryCounts) !=
+			value.JudgeRetries+terminalAttemptFailures {
+		return fmt.Errorf("%w: Judge failure diagnostic attempt reconciliation", ErrCaptureInvalid)
 	}
 	return nil
 }
 
-func validAccuracyFirstLatencyDiagnostics(value AccuracyFirstLatencyDiagnostics) bool {
-	if value.SampleCount == 0 {
-		return value == (AccuracyFirstLatencyDiagnostics{})
+func validJudgeAttemptFailureCategoryCounts(counts map[string]int) bool {
+	if counts == nil {
+		return false
 	}
-	return value.SampleCount > 0 && value.TotalMilliseconds >= 0 &&
-		value.P95LatencyMilliseconds >= 0 && value.P99LatencyMilliseconds >= 0 &&
-		value.MaximumLatencyMilliseconds >= 0 &&
-		value.P95LatencyMilliseconds <= value.P99LatencyMilliseconds &&
-		value.P99LatencyMilliseconds <= value.MaximumLatencyMilliseconds &&
-		value.TotalMilliseconds >= value.MaximumLatencyMilliseconds
+	for category, count := range counts {
+		if count <= 0 || !memoryjudge.AttemptFailureCategory(category) {
+			return false
+		}
+	}
+	return true
 }
 
-func providerModeForProfileID(profileID string) (string, error) {
-	switch profileID {
-	case FakeCandidateProfileID:
-		return ProviderModeFakeProtocol, nil
-	case CandidateProfileID:
-		return ProviderModeLiveSiliconFlow, nil
-	default:
-		return "", ErrCaptureInvalid
+func validJudgeFailureCategoryCounts(counts map[string]int) bool {
+	if counts == nil {
+		return false
 	}
+	for category, count := range counts {
+		if count <= 0 || !memoryjudge.ValidFailureCategory(category) {
+			return false
+		}
+	}
+	return true
 }
 
-func BuildAccuracyFirstMemoryJudgeDevelopmentRunManifest(
-	runID string,
-	captureID string,
-	providerMode string,
-	startedAt time.Time,
-	completedAt time.Time,
-	protected ProtectedRegression,
-	costBasisSHA256 string,
-	report AccuracyFirstMemoryJudgeDevelopmentReport,
-	artifacts []Artifact,
-) (RelevanceRunManifest, []byte, error) {
-	if !validAccuracyFirstMemoryJudgeDevelopmentReport(report) ||
-		!runIDPattern.MatchString(runID) || captureID == "" ||
-		startedAt.IsZero() || completedAt.Before(startedAt) ||
-		len(costBasisSHA256) != 64 || len(artifacts) != 1 {
-		return RelevanceRunManifest{}, nil, ErrCaptureInvalid
+func cloneDiagnosticCounts(counts map[string]int) map[string]int {
+	if counts == nil {
+		return nil
 	}
-	if _, err := hex.DecodeString(costBasisSHA256); err != nil {
-		return RelevanceRunManifest{}, nil, ErrCaptureInvalid
+	cloned := make(map[string]int, len(counts))
+	for category, count := range counts {
+		cloned[category] = count
 	}
-	expectedPolicy, err := AccuracyFirstDevelopmentExecutionPolicy(providerMode)
-	if err != nil || report.ExecutionPolicy != expectedPolicy {
-		return RelevanceRunManifest{}, nil, ErrCaptureInvalid
-	}
-	expectedProfileID, err := candidateProfileID(providerMode)
-	if err != nil || report.ProfileID != expectedProfileID {
-		return RelevanceRunManifest{}, nil, ErrCaptureInvalid
-	}
-	artifactManifest, err := buildRunArtifactManifest(artifacts)
-	if err != nil || artifactManifest[0].Name != AccuracyFirstMemoryJudgeArtifactName {
-		return RelevanceRunManifest{}, nil, ErrCaptureInvalid
-	}
-	manifest := RelevanceRunManifest{
-		SchemaVersion:       RelevanceRunManifestSchemaVersion,
-		RunID:               runID,
-		CaptureID:           captureID,
-		CorpusClass:         memoryeval.RegressionCorpusClass,
-		AdmissionMode:       AccuracyFirstMemoryJudgeAdmissionMode,
-		PromotionEligible:   false,
-		CaptureMode:         CaptureModeAccuracyFirstMemoryJudge,
-		Split:               DevelopmentCalibrationSplit,
-		ProviderMode:        providerMode,
-		ProfileID:           report.ProfileID,
-		PolicyID:            report.PolicyID,
-		ConfigurationSHA256: report.ConfigurationSHA256,
-		Passed:              report.Passed,
-		StartedAt:           startedAt.UTC().Format(time.RFC3339),
-		CompletedAt:         completedAt.UTC().Format(time.RFC3339),
-		CostBasisSHA256:     costBasisSHA256,
-		ProviderCostPolicy:  report.ProviderCostPolicy,
-		Inputs: RunInputHashes{
-			FixtureRawSHA256:  protected.FixtureRawSHA256,
-			CorpusRawSHA256:   protected.CorpusRawSHA256,
-			AuditRawSHA256:    protected.AuditRawSHA256,
-			ManifestRawSHA256: protected.ManifestRawSHA256,
-		},
-		Artifacts: artifactManifest,
-	}
-	body, err := json.Marshal(manifest)
+	return cloned
+}
+
+func judgeFailureTaxonomySHA256() string {
+	body, err := json.Marshal(memoryjudge.FailureCategories())
 	if err != nil {
-		return RelevanceRunManifest{}, nil, fmt.Errorf(
-			"%w: encode accuracy-first Memory Judge run manifest",
-			ErrCaptureInvalid,
-		)
+		return ""
 	}
-	return manifest, append(body, '\n'), nil
+	digest := sha256.Sum256(body)
+	return hex.EncodeToString(digest[:])
 }
 
-func validAccuracyFirstMemoryJudgeDevelopmentReport(
-	report AccuracyFirstMemoryJudgeDevelopmentReport,
+func validJudgeFailureDiagnosticDevelopmentReport(
+	report JudgeFailureDiagnosticDevelopmentReport,
 ) bool {
-	if err := memoryeval.ValidateMemoryJudgeAccuracyFirstCriteriaV3(
-		report.EvaluationCriteria,
-	); err != nil {
+	if judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 ||
+		memoryeval.ValidateMemoryJudgeAccuracyFirstCriteriaV3(report.EvaluationCriteria) != nil {
 		return false
 	}
 	providerMode, err := providerModeForProfileID(report.ProfileID)
@@ -392,34 +384,49 @@ func validAccuracyFirstMemoryJudgeDevelopmentReport(
 		return false
 	}
 	expectedExecution, err := AccuracyFirstDevelopmentExecutionPolicy(providerMode)
-	if err != nil || report.ExecutionPolicy != expectedExecution {
-		return false
-	}
-	if providerMode == ProviderModeFakeProtocol &&
-		report.ProviderAttempts.InterCaseCooldownElapsedMillis != 0 {
+	if err != nil || report.ExecutionPolicy != expectedExecution ||
+		(providerMode == ProviderModeFakeProtocol &&
+			report.ProviderAttempts.InterCaseCooldownElapsedMillis != 0) {
 		return false
 	}
 	authority := ConfiguredCandidateJudgeProfileAuthority{
-		ProviderID:    report.JudgeProviderID,
-		ProviderType:  report.JudgeProviderType,
-		BaseURLSHA256: report.JudgeBaseURLSHA256,
-		ModelID:       report.JudgeModelID,
+		ProviderID: report.JudgeProviderID, ProviderType: report.JudgeProviderType,
+		BaseURLSHA256: report.JudgeBaseURLSHA256, ModelID: report.JudgeModelID,
 	}
-	return report.SchemaVersion == AccuracyFirstMemoryJudgeReportSchemaVersion &&
+	terminalAttemptFailures := 0
+	if !validJudgeFailureCategoryCounts(
+		report.Diagnostics.JudgeTerminalFailureCategoryCounts,
+	) {
+		return false
+	}
+	for category, count := range report.Diagnostics.JudgeTerminalFailureCategoryCounts {
+		if memoryjudge.AttemptFailureCategory(category) {
+			terminalAttemptFailures += count
+		}
+	}
+	telemetry := report.ProviderAttempts.AccuracyFirstProviderTelemetry
+	telemetry.JudgeAttemptFailureCategoryCounts =
+		report.ProviderAttempts.JudgeAttemptFailureCategoryCounts
+	logicalJudgeRequests := report.Diagnostics.JudgeCompletedCaseCount +
+		report.Diagnostics.FailureCodeCounts["CANDIDATE_JUDGE_FAILED"]
+	return report.SchemaVersion == JudgeFailureDiagnosticReportSchemaVersion &&
 		report.CorpusClass == memoryeval.RegressionCorpusClass &&
-		report.AdmissionMode == AccuracyFirstMemoryJudgeAdmissionMode &&
-		!report.PromotionEligible && report.Split == DevelopmentCalibrationSplit &&
-		report.CaseCount == 300 &&
+		report.AdmissionMode == JudgeFailureDiagnosticAdmissionMode &&
+		!report.PromotionEligible && !report.PolicySelected &&
+		report.DiagnosticComplete && !report.Passed &&
+		report.Split == DevelopmentCalibrationSplit && report.CaseCount == 300 &&
 		report.PolicyID == usermemory.HybridRelevanceAccuracyFirstJudgePolicyID &&
 		report.ProviderEgressPolicy ==
 			memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1 &&
 		report.ProviderCostPolicy == ProviderCostPolicyOwnerAuthorizedAbsoluteV1 &&
-		report.ProviderCostAuthorized && report.Passed == report.Evaluation.Passed &&
-		validFixedMemoryJudgeAuthority(authority) &&
+		report.ProviderCostAuthorized && validFixedMemoryJudgeAuthority(authority) &&
 		report.JudgeAdapter == memoryjudge.ChatAdapterVersion &&
 		report.JudgePromptVersion == usermemory.HybridCandidateJudgePromptVersion &&
 		report.JudgePromptSHA256 == usermemory.HybridCandidateJudgePromptSHA256 &&
 		report.JudgeDecodingProfile == usermemory.HybridCandidateJudgeDecodingProfile &&
+		report.FailureTaxonomyVersion == memoryjudge.FailureTaxonomyVersion &&
+		report.FailureTaxonomySHA256 == memoryjudge.FailureTaxonomySHA256 &&
+		report.DiagnosticCompleteness == JudgeFailureDiagnosticCompletenessPolicy &&
 		report.SelectionAlgorithm == cloudJudgeSelectionAlgorithm &&
 		report.EvaluationCriteriaVersion ==
 			memoryeval.MemoryJudgeAccuracyFirstCriteriaVersionV3 &&
@@ -428,17 +435,19 @@ func validAccuracyFirstMemoryJudgeDevelopmentReport(
 		report.Diagnostics.EmptyCandidateCaseCount+
 			report.Diagnostics.JudgeCompletedCaseCount+
 			report.Diagnostics.FailedCaseCount == report.CaseCount &&
-		validateAccuracyFirstProviderTelemetry(
-			report.ProviderAttempts,
+		sumDiagnosticCounts(report.Diagnostics.JudgeTerminalFailureCategoryCounts) ==
+			report.Diagnostics.FailureCodeCounts["CANDIDATE_JUDGE_FAILED"] &&
+		validateJudgeFailureDiagnosticTelemetry(
+			telemetry,
 			report.CaseCount,
-			report.CostAuthority.ActualRequestCount-report.ProviderAttempts.JudgeRetries,
+			logicalJudgeRequests,
+			terminalAttemptFailures,
 		) == nil &&
 		report.CostAuthority.AuthorizedRequestCount == 600 &&
 		report.CostAuthority.ActualRequestCount == report.ProviderAttempts.JudgeAttempts &&
 		report.CostAuthority.ActualInputTokenUpperBound ==
 			uint64(report.ProviderAttempts.JudgeInputTokenUpperBound) &&
-		report.CostAuthority.ActualRequestCount <=
-			report.CostAuthority.AuthorizedRequestCount &&
+		report.CostAuthority.ActualRequestCount <= report.CostAuthority.AuthorizedRequestCount &&
 		report.CostAuthority.ActualInputTokenUpperBound <=
 			report.CostAuthority.AuthorizedMaximumInputTokens &&
 		report.CostAuthority.ActualOutputTokenUpperBound ==

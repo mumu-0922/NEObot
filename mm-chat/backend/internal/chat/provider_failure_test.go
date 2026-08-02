@@ -101,3 +101,18 @@ func TestProviderFailureCategoryOfDoesNotRequireErrorText(t *testing.T) {
 		t.Fatalf("deadline category = %q/%t", category, ok)
 	}
 }
+
+func TestProviderFailureCategoryCatalogueIsCompleteAndSorted(t *testing.T) {
+	categories := ProviderFailureCategories()
+	if len(categories) != 15 {
+		t.Fatalf("category count=%d categories=%v", len(categories), categories)
+	}
+	for index, category := range categories {
+		if !ValidProviderFailureCategory(category) {
+			t.Fatalf("invalid category %q", category)
+		}
+		if index > 0 && categories[index-1] >= category {
+			t.Fatalf("categories not strictly sorted: %v", categories)
+		}
+	}
+}

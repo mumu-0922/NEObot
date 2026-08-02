@@ -6,6 +6,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"neo-chat/mm-chat/backend/internal/chat"
+	"neo-chat/mm-chat/backend/internal/memoryjudge"
 )
 
 func TestExecuteAccuracyFirstRequestRetriesOnceAndRecordsWait(t *testing.T) {
@@ -46,6 +49,74 @@ func TestExecuteAccuracyFirstRequestRetriesOnceAndRecordsWait(t *testing.T) {
 			delays,
 			telemetry,
 		)
+	}
+}
+
+func TestJudgeFailureDiagnosticControllerCountsRecoveredAndExhaustedAttempts(t *testing.T) {
+	tests := []struct {
+		name      string
+		succeed   bool
+		wantCount int
+	}{
+		{name: "retry recovered", succeed: true, wantCount: 1},
+		{name: "retry exhausted", succeed: false, wantCount: 2},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			controller := &AccuracyFirstProviderController{
+				wait:                    func(context.Context, time.Duration) error { return nil },
+				judgeFailureDiagnostics: true,
+				telemetry: AccuracyFirstProviderTelemetry{
+					JudgeAttemptFailureCategoryCounts: make(map[string]int),
+				},
+			}
+			attempts := 0
+			result, err := executeAccuracyFirstRequest(
+				context.Background(),
+				controller,
+				"judge",
+				func() (string, error) {
+					attempts++
+					if test.succeed && attempts == 2 {
+						return "ok", nil
+					}
+					return "", memoryjudge.NewFailure(
+						string(chat.ProviderFailureRateLimited),
+						errors.New("private upstream body"),
+					)
+				},
+				func(error) (time.Duration, bool) { return 0, true },
+				100,
+			)
+			if test.succeed && (err != nil || result != "ok") {
+				t.Fatalf("recovered result=%q err=%v", result, err)
+			}
+			if !test.succeed && err == nil {
+				t.Fatal("exhausted retry succeeded")
+			}
+			telemetry := controller.Snapshot()
+			category := string(chat.ProviderFailureRateLimited)
+			failureCount := telemetry.JudgeAttemptFailureCategoryCounts[category]
+			if failureCount != test.wantCount || telemetry.JudgeAttempts != 2 ||
+				telemetry.JudgeRetries != 1 {
+				t.Fatalf("telemetry=%#v", telemetry)
+			}
+		})
+	}
+}
+
+func TestAccuracyFirstV12ControllerOmitsJudgeFailureDiagnostics(t *testing.T) {
+	controller := &AccuracyFirstProviderController{
+		wait: func(context.Context, time.Duration) error { return nil },
+	}
+	_, _ = executeAccuracyFirstRequest(
+		context.Background(), controller, "judge",
+		func() (struct{}, error) { return struct{}{}, errors.New("private") },
+		func(error) (time.Duration, bool) { return 0, false },
+		100,
+	)
+	if controller.Snapshot().JudgeAttemptFailureCategoryCounts != nil {
+		t.Fatal("schema-v12 controller recorded schema-v13 diagnostics")
 	}
 }
 

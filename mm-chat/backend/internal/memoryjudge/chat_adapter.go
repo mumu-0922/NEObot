@@ -33,11 +33,14 @@ func (adapter *ChatAdapter) JudgeHybridCandidates(
 	input usermemory.HybridCandidateJudgeInput,
 ) (usermemory.HybridCandidateJudgeResult, error) {
 	if adapter == nil || adapter.provider == nil {
-		return usermemory.HybridCandidateJudgeResult{}, errors.New("Memory candidate judge is unavailable")
+		return usermemory.HybridCandidateJudgeResult{}, NewFailure(
+			FailureInputInvalid,
+			errors.New("Memory candidate judge is unavailable"),
+		)
 	}
 	systemPrompt, prompt, err := usermemory.BuildHybridCandidateJudgePrompt(input)
 	if err != nil {
-		return usermemory.HybridCandidateJudgeResult{}, err
+		return usermemory.HybridCandidateJudgeResult{}, NewFailure(FailureInputInvalid, err)
 	}
 	requestCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -69,21 +72,33 @@ func (adapter *ChatAdapter) JudgeHybridCandidates(
 		case chat.ProviderEventDelta:
 			if len(output)+len(event.Delta) > usermemory.HybridCandidateJudgeMaximumOutputBytes {
 				cancel()
-				return usermemory.HybridCandidateJudgeResult{}, errors.New("Memory candidate judge output is too large")
+				return usermemory.HybridCandidateJudgeResult{}, NewFailure(
+					FailureOutputTooLarge,
+					errors.New("Memory candidate judge output is too large"),
+				)
 			}
 			output = append(output, event.Delta...)
 		case chat.ProviderEventReasoningDelta, chat.ProviderEventUsage:
 			// Reasoning is never accepted as contract output. Usage is not
 			// retained; isolated capture uses a conservative token upper bound.
 		default:
-			return usermemory.HybridCandidateJudgeResult{}, errors.New("Memory candidate judge Provider event is invalid")
+			return usermemory.HybridCandidateJudgeResult{}, NewFailure(
+				FailureEventInvalid,
+				errors.New("Memory candidate judge Provider event is invalid"),
+			)
 		}
 	}
 	if requestCtx.Err() != nil {
-		return usermemory.HybridCandidateJudgeResult{}, errors.New("Memory candidate judge Provider was late")
+		return usermemory.HybridCandidateJudgeResult{}, NewFailure(
+			FailureCategory(requestCtx.Err()),
+			requestCtx.Err(),
+		)
 	}
 	if _, err := usermemory.DecodeHybridCandidateJudgeOutput(output, len(input.Candidates)); err != nil {
-		return usermemory.HybridCandidateJudgeResult{}, err
+		return usermemory.HybridCandidateJudgeResult{}, NewFailure(
+			FailureCategory(err),
+			err,
+		)
 	}
 	return usermemory.HybridCandidateJudgeResult{
 		RawOutput:     append([]byte(nil), output...),

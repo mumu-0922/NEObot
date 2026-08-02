@@ -66,6 +66,58 @@ type hybridCandidateJudgeOutput struct {
 	SelectedOrdinals []int  `json:"selectedOrdinals"`
 }
 
+// HybridCandidateJudgeOutputErrorKind classifies the exact structural stage
+// that rejected Judge output. It carries no output bytes or Provider text.
+type HybridCandidateJudgeOutputErrorKind string
+
+const (
+	HybridCandidateJudgeOutputJSONInvalid    HybridCandidateJudgeOutputErrorKind = "json_invalid"
+	HybridCandidateJudgeOutputSchemaInvalid  HybridCandidateJudgeOutputErrorKind = "schema_invalid"
+	HybridCandidateJudgeOutputOrdinalInvalid HybridCandidateJudgeOutputErrorKind = "ordinal_invalid"
+)
+
+type HybridCandidateJudgeOutputError struct {
+	kind  HybridCandidateJudgeOutputErrorKind
+	cause error
+}
+
+func (failure *HybridCandidateJudgeOutputError) Error() string {
+	return "hybrid candidate judge output is invalid"
+}
+
+func (failure *HybridCandidateJudgeOutputError) Unwrap() error {
+	if failure == nil {
+		return nil
+	}
+	return failure.cause
+}
+
+func newHybridCandidateJudgeOutputError(
+	kind HybridCandidateJudgeOutputErrorKind,
+	cause error,
+) error {
+	return &HybridCandidateJudgeOutputError{kind: kind, cause: cause}
+}
+
+// HybridCandidateJudgeOutputErrorKindOf extracts only the bounded structural
+// kind. Callers must not classify failures by parsing error text.
+func HybridCandidateJudgeOutputErrorKindOf(
+	err error,
+) (HybridCandidateJudgeOutputErrorKind, bool) {
+	var failure *HybridCandidateJudgeOutputError
+	if !errors.As(err, &failure) || failure == nil {
+		return "", false
+	}
+	switch failure.kind {
+	case HybridCandidateJudgeOutputJSONInvalid,
+		HybridCandidateJudgeOutputSchemaInvalid,
+		HybridCandidateJudgeOutputOrdinalInvalid:
+		return failure.kind, true
+	default:
+		return "", false
+	}
+}
+
 // BuildHybridCandidateJudgePrompt is the single prompt authority shared by
 // production and isolated capture adapters. It never accepts Memory IDs,
 // revisions, scopes, scores, or other database authority fields.
@@ -105,28 +157,50 @@ func DecodeHybridCandidateJudgeOutput(
 	if candidateCount <= 0 || candidateCount > MaxHybridShadowResults {
 		return nil, errors.New("hybrid candidate judge candidate count is invalid")
 	}
+	if len(body) == 0 || len(body) > HybridCandidateJudgeMaximumOutputBytes ||
+		!json.Valid(body) {
+		return nil, newHybridCandidateJudgeOutputError(
+			HybridCandidateJudgeOutputJSONInvalid,
+			errors.New("hybrid candidate judge JSON is invalid"),
+		)
+	}
 	if err := strictjson.RequireExactKeys(
 		body,
 		[]string{"schemaVersion", "selectedOrdinals"},
 	); err != nil {
-		return nil, fmt.Errorf("hybrid candidate judge output shape is invalid: %w", err)
+		return nil, newHybridCandidateJudgeOutputError(
+			HybridCandidateJudgeOutputSchemaInvalid,
+			fmt.Errorf("hybrid candidate judge output shape is invalid: %w", err),
+		)
 	}
 	var output hybridCandidateJudgeOutput
 	if err := strictjson.Decode(body, HybridCandidateJudgeMaximumOutputBytes, &output); err != nil {
-		return nil, fmt.Errorf("hybrid candidate judge output is invalid: %w", err)
+		return nil, newHybridCandidateJudgeOutputError(
+			HybridCandidateJudgeOutputSchemaInvalid,
+			err,
+		)
 	}
 	if output.SchemaVersion != HybridCandidateJudgeOutputSchemaVersion ||
 		output.SelectedOrdinals == nil || len(output.SelectedOrdinals) > HybridShadowFinalLimit {
-		return nil, errors.New("hybrid candidate judge output contract drifted")
+		return nil, newHybridCandidateJudgeOutputError(
+			HybridCandidateJudgeOutputSchemaInvalid,
+			errors.New("hybrid candidate judge output contract drifted"),
+		)
 	}
 	seen := make(map[int]struct{}, len(output.SelectedOrdinals))
 	selected := make([]int, len(output.SelectedOrdinals))
 	for index, ordinal := range output.SelectedOrdinals {
 		if ordinal < 0 || ordinal >= candidateCount {
-			return nil, errors.New("hybrid candidate judge ordinal is out of range")
+			return nil, newHybridCandidateJudgeOutputError(
+				HybridCandidateJudgeOutputOrdinalInvalid,
+				errors.New("hybrid candidate judge ordinal is out of range"),
+			)
 		}
 		if _, duplicate := seen[ordinal]; duplicate {
-			return nil, errors.New("hybrid candidate judge ordinal is duplicated")
+			return nil, newHybridCandidateJudgeOutputError(
+				HybridCandidateJudgeOutputOrdinalInvalid,
+				errors.New("hybrid candidate judge ordinal is duplicated"),
+			)
 		}
 		seen[ordinal] = struct{}{}
 		selected[index] = ordinal

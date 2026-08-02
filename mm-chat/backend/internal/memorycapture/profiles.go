@@ -174,6 +174,44 @@ func BuildAccuracyFirstMemoryJudgeDevelopmentProfileConfig(
 	return config, nil
 }
 
+func BuildJudgeFailureDiagnosticDevelopmentProfileConfig(
+	protected ProtectedRegression,
+	costBasisSHA256 string,
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	providerCostPolicy string,
+) (ProfileConfig, error) {
+	if !validFixedMemoryJudgeAuthority(authority) ||
+		providerCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+		judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
+		return ProfileConfig{}, ErrCaptureInvalid
+	}
+	_, config, err := buildProfileConfigs(
+		protected,
+		costBasisSHA256,
+		providerMode,
+		CaptureModeJudgeFailureDiagnostic,
+		DevelopmentCalibrationSplit,
+		usermemory.HybridShadowAccuracyFirstMemoryJudgeDevelopmentPolicy(),
+		providerCostPolicy,
+		nil,
+	)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	config.ConfiguredCandidateJudgeProviderID = authority.ProviderID
+	config.ConfiguredCandidateJudgeProviderType = authority.ProviderType
+	config.ConfiguredCandidateJudgeBaseURLSHA256 = authority.BaseURLSHA256
+	config.ConfiguredCandidateJudgeAdapter = memoryjudge.ChatAdapterVersion
+	config.EvaluationCriteriaVersion = memoryeval.MemoryJudgeAccuracyFirstCriteriaVersionV3
+	executionPolicy, err := AccuracyFirstDevelopmentExecutionPolicy(providerMode)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	config.AccuracyFirstExecutionPolicy = &executionPolicy
+	return config, nil
+}
+
 func buildProfileConfigs(
 	protected ProtectedRegression,
 	costBasisSHA256 string,
@@ -213,9 +251,18 @@ func buildProfileConfigs(
 				int(memoryeval.MemoryJudgeDevelopmentHardCutoffMillisV2) {
 			return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
 		}
-	} else if captureMode == CaptureModeAccuracyFirstMemoryJudge {
-		readerVersion = AccuracyFirstMemoryJudgeReaderVersion
-		profileSchemaVersion = "neo-chat.memory-regression-profile-config.v12"
+	} else if captureMode == CaptureModeAccuracyFirstMemoryJudge ||
+		captureMode == CaptureModeJudgeFailureDiagnostic {
+		if captureMode == CaptureModeJudgeFailureDiagnostic {
+			readerVersion = JudgeFailureDiagnosticReaderVersion
+			profileSchemaVersion = "neo-chat.memory-regression-profile-config.v13"
+			if judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
+				return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
+			}
+		} else {
+			readerVersion = AccuracyFirstMemoryJudgeReaderVersion
+			profileSchemaVersion = "neo-chat.memory-regression-profile-config.v12"
+		}
 		if providerCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
 			policy.ID != usermemory.HybridRelevanceAccuracyFirstJudgePolicyID ||
 			policyDescriptor.HardCutoffMilliseconds != 0 {
@@ -274,6 +321,12 @@ func buildProfileConfigs(
 			MemoryToolRouteFailureTaxonomySHA256
 		common.MemoryToolRouteDiagnosticCompleteness =
 			MemoryToolRouteDiagnosticCompletenessPolicy
+	}
+	if captureMode == CaptureModeJudgeFailureDiagnostic {
+		common.CandidateJudgeFailureTaxonomyVersion = memoryjudge.FailureTaxonomyVersion
+		common.CandidateJudgeFailureTaxonomySHA256 = memoryjudge.FailureTaxonomySHA256
+		common.CandidateJudgeDiagnosticCompleteness =
+			JudgeFailureDiagnosticCompletenessPolicy
 	}
 	if captureMode == CaptureModeCalibration {
 		common.CalibrationPlan = developmentCalibrationPlan()

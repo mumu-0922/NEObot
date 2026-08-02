@@ -350,7 +350,11 @@ if args and args[0] == "compose":
             bodies = {"cloud-judge-development.json": cloud}
             manifest_schema = "neo-chat.memory-regression-relevance-run.v1"
             admission_mode = "development_cloud_judge_only"
-        elif capture_mode == "development_fixed_memory_judge_accuracy":
+        elif capture_mode in {
+            "development_fixed_memory_judge_accuracy",
+            "development_fixed_memory_judge_failure_diagnostic",
+        }:
+            diagnostic = capture_mode == "development_fixed_memory_judge_failure_diagnostic"
             cooldown_elapsed = 299000 if mode == "live_siliconflow" else 0
             cooldown_clock = "wall_clock_v1" if mode == "live_siliconflow" else "virtual_protocol_v1"
             def latency(count):
@@ -362,10 +366,25 @@ if args and args[0] == "compose":
                     "maximumLatencyMilliseconds": 1 if count else 0,
                 }
             accuracy = json.dumps({
-                "schemaVersion": "neo-chat.memory-regression-relevance-calibration.v12",
+                "schemaVersion": (
+                    "neo-chat.memory-regression-relevance-calibration.v13"
+                    if diagnostic
+                    else "neo-chat.memory-regression-relevance-calibration.v12"
+                ),
                 "corpusClass": "machine_reviewed_regression",
-                "admissionMode": "development_fixed_memory_judge_accuracy_only",
+                "admissionMode": (
+                    "development_fixed_memory_judge_failure_diagnostic_only"
+                    if diagnostic
+                    else "development_fixed_memory_judge_accuracy_only"
+                ),
                 "promotionEligible": False,
+                **({
+                    "policySelected": False,
+                    "diagnosticComplete": True,
+                    "failureTaxonomyVersion": "memory-candidate-judge-failure-taxonomy-v1",
+                    "failureTaxonomySha256": "c22cb137da8b5fda87526237446519dd9abe2c8d221ad703c5445358d9059f8d",
+                    "diagnosticCompleteness": "attempt_terminal_reconciled_fail_closed_v1",
+                } if diagnostic else {}),
                 "split": "development",
                 "caseCount": 300,
                 "policyId": "memory_hybrid_fixed_cloud_candidate_judge_accuracy_development_v2",
@@ -401,9 +420,9 @@ if args and args[0] == "compose":
                     "maximumRetriesPerProviderRequest": 1,
                     "retryFallbackDelayMilliseconds": 5000,
                 },
-                "passed": True,
+                "passed": not diagnostic,
                 "evaluation": {
-                    "passed": True,
+                    "passed": not diagnostic,
                     "budgets": {
                         "p95LatencyMilliseconds": 120000,
                         "p99LatencyMilliseconds": 150000,
@@ -416,10 +435,20 @@ if args and args[0] == "compose":
                 },
                 "diagnostics": {
                     "emptyCandidateCaseCount": 105,
-                    "judgeCompletedCaseCount": 195,
+                    "judgeCompletedCaseCount": 193 if diagnostic else 195,
                     "judgeAbstainedCaseCount": 30,
-                    "failedCaseCount": 0,
-                    "failureCodeCounts": {},
+                    "failedCaseCount": 2 if diagnostic else 0,
+                    "failureCodeCounts": (
+                        {"CANDIDATE_JUDGE_FAILED": 2}
+                        if diagnostic
+                        else {}
+                    ),
+                    **({
+                        "judgeTerminalFailureCategoryCounts": {
+                            "CANDIDATE_JUDGE_OUTPUT_JSON_INVALID": 1,
+                            "PROVIDER_RATE_LIMITED": 1,
+                        },
+                    } if diagnostic else {}),
                 },
                 "providerAttempts": {
                     "passageEmbeddingAttempts": 1,
@@ -439,6 +468,12 @@ if args and args[0] == "compose":
                     "queryEmbeddingLatency": latency(300),
                     "rerankLatency": latency(195),
                     "judgeLatency": latency(196),
+                    **({
+                        "judgeAttemptFailureCategoryCounts": {
+                            "CANDIDATE_JUDGE_OUTPUT_JSON_INVALID": 1,
+                            "PROVIDER_RATE_LIMITED": 2,
+                        },
+                    } if diagnostic else {}),
                 },
                 "costAuthority": {
                     "unit": "cny_microunits",
@@ -452,9 +487,18 @@ if args and args[0] == "compose":
                     "maximumMemoryProviderCostMicrounits": 487716,
                 },
             }, separators=(",", ":")).encode() + b"\n"
-            bodies = {"fixed-memory-judge-accuracy-development.json": accuracy}
+            report_name = (
+                "fixed-memory-judge-failure-diagnostic-development.json"
+                if diagnostic
+                else "fixed-memory-judge-accuracy-development.json"
+            )
+            bodies = {report_name: accuracy}
             manifest_schema = "neo-chat.memory-regression-relevance-run.v1"
-            admission_mode = "development_fixed_memory_judge_accuracy_only"
+            admission_mode = (
+                "development_fixed_memory_judge_failure_diagnostic_only"
+                if diagnostic
+                else "development_fixed_memory_judge_accuracy_only"
+            )
         elif capture_mode in {
             "development_configured_candidate_judge",
             "development_fixed_memory_judge",
@@ -659,6 +703,7 @@ if args and args[0] == "compose":
                         "development_configured_candidate_judge",
                         "development_fixed_memory_judge",
                         "development_fixed_memory_judge_accuracy",
+                        "development_fixed_memory_judge_failure_diagnostic",
                     } else "validation",
                     "profileId": candidate_profile,
                 })
@@ -669,8 +714,11 @@ if args and args[0] == "compose":
                     "development_configured_candidate_judge",
                     "development_fixed_memory_judge",
                     "development_fixed_memory_judge_accuracy",
+                    "development_fixed_memory_judge_failure_diagnostic",
                 }:
                     manifest["providerCostPolicy"] = "owner_authorized_absolute_cap_v1"
+                if capture_mode == "development_fixed_memory_judge_failure_diagnostic":
+                    manifest["passed"] = False
             manifest_path = output / "run-manifest.json"
             manifest_path.write_text(json.dumps(manifest, separators=(",", ":")) + "\n", encoding="utf-8")
             manifest_path.chmod(0o600)
@@ -809,6 +857,27 @@ if [[ "$(find "${accuracy_first_output}" -mindepth 2 -maxdepth 2 -type f | wc -l
   exit 1
 fi
 assert_cleanup "${accuracy_first_log}"
+
+judge_failure_diagnostic_output="${temp_dir}/judge-failure-diagnostic-output"
+judge_failure_diagnostic_log="${temp_dir}/judge-failure-diagnostic-docker.log"
+mkdir "${judge_failure_diagnostic_output}"
+chmod 700 "${judge_failure_diagnostic_output}"
+FAKE_DOCKER_LOG="${judge_failure_diagnostic_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${judge_failure_diagnostic_output}" --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge_failure_diagnostic \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  >"${temp_dir}/judge-failure-diagnostic.stdout" \
+  2>"${temp_dir}/judge-failure-diagnostic.stderr"
+if [[ "$(find "${judge_failure_diagnostic_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: Judge failure diagnostic bundle was not retained" >&2
+  exit 1
+fi
+assert_cleanup "${judge_failure_diagnostic_log}"
 
 fixed_drift_output="${temp_dir}/fixed-drift-output"
 mkdir "${fixed_drift_output}"

@@ -22,6 +22,7 @@ const (
 	ConfiguredCandidateJudgeReaderVersion       = "neo-chat.native-memory-reader-capture.v8"
 	FixedMemoryJudgeReaderVersion               = "neo-chat.native-memory-reader-capture.v9"
 	AccuracyFirstMemoryJudgeReaderVersion       = "neo-chat.native-memory-reader-capture.v10"
+	JudgeFailureDiagnosticReaderVersion         = "neo-chat.native-memory-reader-capture.v11"
 	ProviderCostPolicyOwnerAuthorizedAbsoluteV1 = "owner_authorized_absolute_cap_v1"
 	AccuracyFirstExecutionSequenceV1            = "bge_query_admission_bge_rerank_luna_judge_record_serial_v1"
 	AccuracyFirstRetryPolicyV1                  = "transient_408_429_5xx_transport_read_once_v1"
@@ -38,6 +39,7 @@ const (
 	CaptureModeConfiguredCandidateJudge         = "development_configured_candidate_judge"
 	CaptureModeFixedMemoryJudge                 = "development_fixed_memory_judge"
 	CaptureModeAccuracyFirstMemoryJudge         = "development_fixed_memory_judge_accuracy"
+	CaptureModeJudgeFailureDiagnostic           = "development_fixed_memory_judge_failure_diagnostic"
 	CaptureModeFrozenValidation                 = "frozen_validation"
 )
 
@@ -117,6 +119,9 @@ type ProfileConfig struct {
 	MemoryToolRouteFailureTaxonomyVersion string                        `json:"memoryToolRouteFailureTaxonomyVersion,omitempty"`
 	MemoryToolRouteFailureTaxonomySHA256  string                        `json:"memoryToolRouteFailureTaxonomySha256,omitempty"`
 	MemoryToolRouteDiagnosticCompleteness string                        `json:"memoryToolRouteDiagnosticCompleteness,omitempty"`
+	CandidateJudgeFailureTaxonomyVersion  string                        `json:"candidateJudgeFailureTaxonomyVersion,omitempty"`
+	CandidateJudgeFailureTaxonomySHA256   string                        `json:"candidateJudgeFailureTaxonomySha256,omitempty"`
+	CandidateJudgeDiagnosticCompleteness  string                        `json:"candidateJudgeDiagnosticCompleteness,omitempty"`
 	ProviderEgressPolicy                  string                        `json:"providerEgressPolicy,omitempty"`
 	ProviderCostPolicy                    string                        `json:"providerCostPolicy,omitempty"`
 	CalibrationPlan                       *CalibrationPlanConfig        `json:"calibrationPlan,omitempty"`
@@ -218,23 +223,27 @@ type CapturedProfile struct {
 // AccuracyFirstProviderTelemetry contains aggregate request counts only. It
 // never retains request/response bodies, URLs, credentials, or case identity.
 type AccuracyFirstProviderTelemetry struct {
-	PassageEmbeddingAttempts       int                             `json:"passageEmbeddingAttempts"`
-	PassageEmbeddingRetries        int                             `json:"passageEmbeddingRetries"`
-	QueryEmbeddingAttempts         int                             `json:"queryEmbeddingAttempts"`
-	QueryEmbeddingRetries          int                             `json:"queryEmbeddingRetries"`
-	RerankAttempts                 int                             `json:"rerankAttempts"`
-	RerankRetries                  int                             `json:"rerankRetries"`
-	JudgeAttempts                  int                             `json:"judgeAttempts"`
-	JudgeRetries                   int                             `json:"judgeRetries"`
-	JudgeInputTokenUpperBound      int                             `json:"judgeInputTokenUpperBound"`
-	JudgeRetryInputTokenUpperBound int                             `json:"judgeRetryInputTokenUpperBound"`
-	InterCaseCooldownCount         int                             `json:"interCaseCooldownCount"`
-	InterCaseCooldownMilliseconds  int                             `json:"interCaseCooldownMilliseconds"`
-	InterCaseCooldownElapsedMillis int64                           `json:"interCaseCooldownElapsedMilliseconds"`
-	PassageEmbeddingLatency        AccuracyFirstLatencyDiagnostics `json:"passageEmbeddingLatency"`
-	QueryEmbeddingLatency          AccuracyFirstLatencyDiagnostics `json:"queryEmbeddingLatency"`
-	RerankLatency                  AccuracyFirstLatencyDiagnostics `json:"rerankLatency"`
-	JudgeLatency                   AccuracyFirstLatencyDiagnostics `json:"judgeLatency"`
+	PassageEmbeddingAttempts       int `json:"passageEmbeddingAttempts"`
+	PassageEmbeddingRetries        int `json:"passageEmbeddingRetries"`
+	QueryEmbeddingAttempts         int `json:"queryEmbeddingAttempts"`
+	QueryEmbeddingRetries          int `json:"queryEmbeddingRetries"`
+	RerankAttempts                 int `json:"rerankAttempts"`
+	RerankRetries                  int `json:"rerankRetries"`
+	JudgeAttempts                  int `json:"judgeAttempts"`
+	JudgeRetries                   int `json:"judgeRetries"`
+	JudgeInputTokenUpperBound      int `json:"judgeInputTokenUpperBound"`
+	JudgeRetryInputTokenUpperBound int `json:"judgeRetryInputTokenUpperBound"`
+	// JudgeAttemptFailureCategoryCounts is process-local for historical
+	// schema-v12 reports. The schema-v13 diagnostic report copies it into an
+	// explicitly required JSON field without changing v12 bytes.
+	JudgeAttemptFailureCategoryCounts map[string]int                  `json:"-"`
+	InterCaseCooldownCount            int                             `json:"interCaseCooldownCount"`
+	InterCaseCooldownMilliseconds     int                             `json:"interCaseCooldownMilliseconds"`
+	InterCaseCooldownElapsedMillis    int64                           `json:"interCaseCooldownElapsedMilliseconds"`
+	PassageEmbeddingLatency           AccuracyFirstLatencyDiagnostics `json:"passageEmbeddingLatency"`
+	QueryEmbeddingLatency             AccuracyFirstLatencyDiagnostics `json:"queryEmbeddingLatency"`
+	RerankLatency                     AccuracyFirstLatencyDiagnostics `json:"rerankLatency"`
+	JudgeLatency                      AccuracyFirstLatencyDiagnostics `json:"judgeLatency"`
 }
 
 // AccuracyFirstLatencyDiagnostics retains aggregate request timing only.
@@ -259,6 +268,7 @@ type CandidateCalibrationTrace struct {
 	RerankReady                          bool
 	CloudJudgeReady                      bool
 	CloudJudgeInputTokenUpperBound       int
+	CloudJudgeFailureCategory            string
 	MemoryToolRouteReady                 bool
 	MemoryToolRouteUsed                  bool
 	MemoryToolRouteFailureCategory       string

@@ -133,6 +133,17 @@ func TestParseCommandSeparatesFakeAndLiveCredentialBoundaries(t *testing.T) {
 	if err != nil || options.captureMode != memorycapture.CaptureModeAccuracyFirstMemoryJudge {
 		t.Fatalf("parse accuracy-first Memory Judge command = %#v/%v", options, err)
 	}
+	diagnosticJudge := append([]string(nil), accuracyFirst...)
+	for index := range diagnosticJudge {
+		if diagnosticJudge[index] == memorycapture.CaptureModeAccuracyFirstMemoryJudge {
+			diagnosticJudge[index] = memorycapture.CaptureModeJudgeFailureDiagnostic
+			break
+		}
+	}
+	options, err = parseCommand(diagnosticJudge)
+	if err != nil || options.captureMode != memorycapture.CaptureModeJudgeFailureDiagnostic {
+		t.Fatalf("parse Judge failure diagnostic command = %#v/%v", options, err)
+	}
 }
 
 func TestAccuracyFirstCaptureContextHasNoElapsedDeadline(t *testing.T) {
@@ -143,6 +154,14 @@ func TestAccuracyFirstCaptureContextHasNoElapsedDeadline(t *testing.T) {
 	defer cancel()
 	if _, ok := accuracyContext.Deadline(); ok {
 		t.Fatal("accuracy-first capture inherited the legacy 45-minute deadline")
+	}
+	diagnosticContext, diagnosticCancel := captureContext(
+		context.Background(),
+		memorycapture.CaptureModeJudgeFailureDiagnostic,
+	)
+	defer diagnosticCancel()
+	if _, ok := diagnosticContext.Deadline(); ok {
+		t.Fatal("Judge failure diagnostic inherited the legacy 45-minute deadline")
 	}
 	legacyContext, legacyCancel := captureContext(
 		context.Background(),
@@ -314,14 +333,19 @@ func TestBuildProvidersBindsConfiguredCandidateJudge(t *testing.T) {
 }
 
 func TestBuildProvidersWrapsAccuracyFirstFakeProviderSet(t *testing.T) {
-	bundle, err := buildProviders(commandOptions{
-		providerMode:           memorycapture.ProviderModeFakeProtocol,
-		captureMode:            memorycapture.CaptureModeAccuracyFirstMemoryJudge,
-		judgeConfiguredModelID: memorycapture.FixedMemoryJudgeModelID,
-	})
-	if err != nil || bundle.passage == nil || bundle.hybrid == nil || bundle.judge == nil ||
-		bundle.router != nil || len(bundle.secrets) != 0 {
-		t.Fatalf("accuracy-first fake Provider bundle = %#v/%v", bundle, err)
+	for _, captureMode := range []string{
+		memorycapture.CaptureModeAccuracyFirstMemoryJudge,
+		memorycapture.CaptureModeJudgeFailureDiagnostic,
+	} {
+		bundle, err := buildProviders(commandOptions{
+			providerMode:           memorycapture.ProviderModeFakeProtocol,
+			captureMode:            captureMode,
+			judgeConfiguredModelID: memorycapture.FixedMemoryJudgeModelID,
+		})
+		if err != nil || bundle.passage == nil || bundle.hybrid == nil || bundle.judge == nil ||
+			bundle.router != nil || len(bundle.secrets) != 0 {
+			t.Fatalf("capture %q fake Provider bundle = %#v/%v", captureMode, bundle, err)
+		}
 	}
 }
 
