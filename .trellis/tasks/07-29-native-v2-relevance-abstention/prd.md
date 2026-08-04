@@ -1003,8 +1003,34 @@ Focused race tests for both packages, the complete backend `go test ./...`,
 and `go vet ./...` also pass under the same low-concurrency limits; the full
 test needed sandbox-external execution only because `httptest` socket creation
 is blocked inside the managed sandbox.
-No real Provider/Docker/full-standalone run was made, no private cost-basis-v9
-document was created, and no schema-v14 live authority exists.
+At that offline checkpoint no real Provider/Docker/full-standalone run had
+been made, no private cost-basis-v9 document had been created, and no
+schema-v14 live authority existed.
+
+**2026-08-04 schema-v14 live outcome:** The owner then explicitly authorized
+one real 300-case Development run. Cost-basis v9 was mechanically derived from
+the immutable v8 owner authority by retaining its units/rates and scaling the
+worst-case ceilings to `900` Judge requests, `1500000` input tokens, and
+`115200` output tokens; canonical SHA-256 was
+`7df7d9139f7f882fe090a0c43558ab45823f7e00d72e8d314b0268dbb4f2e7d2`.
+Run `memory-regression-20260804t022413z-cc2afbf6`, capture
+`eb5e29b6-3cdd-447e-9a8d-0cb51aaf2f70`, completed all `300` cases as `105`
+empty-candidate plus `195` Judge-completed and zero failed. Judge telemetry was
+`195` attempts, zero retries, zero failed-attempt categories, and zero terminal
+categories. Candidate Recall@20, Final Recall@5, current-fact accuracy, MRR@5,
+and NDCG@5 were all `1.0`; false injection and every safety counter were zero.
+Diagnostic latency was p95 `4414 ms` and p99 `6799 ms`, with latency remaining
+non-gating. The report passed while correctly retaining
+`policySelected=false` and `promotionEligible=false`. Configuration SHA-256
+was `d9397bc5f0d33a8f3779263da3bbef78a41e0b174b32f4bf27aa328136613caf`;
+report/manifest SHA-256 values were
+`d05b991120b6878d3937f2dfdd13a899badd66e0a77f44f0f76fe8190c363ed8`
+and `5c3923aa21fc65ec3f80c963e38e642a40d8d1471d9de7272bea529202704762`.
+Only those two aggregate mode-`0600` artifacts remain. The v9 source,
+credentials, keyring/helper copies, synthetic root, temporary directories, and
+all scoped Compose objects were destroyed; the base PostgreSQL container is
+stopped. The one-run authority is consumed and grants no automatic rerun,
+Validation, production activation, or promotion.
 
 ## Expansion Sweep
 

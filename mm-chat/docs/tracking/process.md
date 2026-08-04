@@ -9146,6 +9146,41 @@ topology/lifecycle shell gate. Focused race tests for those two packages, the
 complete backend `go test ./...`, and `go vet ./...` pass with `GOMAXPROCS=2`
 and single-package build parallelism; the full test ran outside the managed
 sandbox only to permit `httptest` local sockets. No live Provider call, Docker
-execution, or full standalone gate was made for schema v14. No private cost-
-basis-v9 document was created, so there is no live run, automatic rerun,
-Validation, production, or promotion authority.
+execution, or full standalone gate had been made for schema v14 at that
+offline checkpoint. No private cost-basis-v9 document existed yet.
+
+## 2026-08-04 — Schema-v14 transport-stable live Development result
+
+The owner explicitly authorized one real 300-case Development execution after
+the offline gates passed. The private v9 authority retained the immutable v8
+units and coefficients while scaling worst-case Judge ceilings to `900`
+requests, `1500000` input tokens, and `115200` output tokens. Its canonical
+SHA-256 was
+`7df7d9139f7f882fe090a0c43558ab45823f7e00d72e8d314b0268dbb4f2e7d2`.
+Compose and Provider concurrency remained one.
+
+Run `memory-regression-20260804t022413z-cc2afbf6`, capture
+`eb5e29b6-3cdd-447e-9a8d-0cb51aaf2f70`, completed all cases as `105` empty-
+candidate plus `195` Judge-completed with zero failed cases. Judge telemetry
+was `195` attempts, zero retries, zero failed-attempt categories, and zero
+terminal categories. Candidate Recall@20, Final Recall@5, current-fact
+accuracy, MRR@5, and NDCG@5 were all `1.0`; false injection and all cross-user,
+deleted-memory, secret, untrusted-source, and unauthorized-egress counters were
+zero. Diagnostic latency was p95 `4414 ms` and p99 `6799 ms`. Actual Judge
+authority was `195` requests, `257701` input-token upper bound, and `24960`
+output-token upper bound. The report passed but correctly kept
+`policySelected=false` and `promotionEligible=false`.
+
+Configuration SHA-256 is
+`d9397bc5f0d33a8f3779263da3bbef78a41e0b174b32f4bf27aa328136613caf`.
+Report SHA-256 is
+`d05b991120b6878d3937f2dfdd13a899badd66e0a77f44f0f76fe8190c363ed8`;
+manifest SHA-256 is
+`5c3923aa21fc65ec3f80c963e38e642a40d8d1471d9de7272bea529202704762`.
+Only those two aggregate mode-`0600` artifacts remain under
+`/var/tmp/neo-chat-schema-v14-live-20260804T021328Z/runs/20260804T022413Z-cc2afbf6`.
+Credential bytes were absent from both artifacts. The operator credentials,
+cost source, keyring/helper copies, synthetic root, runner temporary dirs, and
+all scoped containers/networks/volumes were destroyed; base PostgreSQL remains
+stopped. This consumes the one-run authority and does not authorize an
+automatic rerun, Validation, production activation, or promotion.

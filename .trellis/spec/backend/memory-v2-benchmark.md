@@ -807,9 +807,15 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   with exact five/ten-second fallback waits and valid `Retry-After`
   precedence. Cost-basis v9 requires authority for at most `900` Judge
   attempts and `115200` output tokens. The fake lifecycle and focused Go gates
-  pass, but no private v9 cost document or live schema-v14 authority exists.
-  Do not amplify BGE retries, change SSE/HTTP2/keepalive/corpus/threshold, or
-  rerun automatically from this aggregate.
+  pass. The single separately authorized live run
+  `memory-regression-20260804t022413z-cc2afbf6` then completed all `300` cases
+  with zero retries and zero failures; Candidate Recall@20, Final Recall@5,
+  current-fact accuracy, MRR@5, and NDCG@5 were all `1.0`, false injection was
+  zero, and every safety counter was zero. Report/manifest SHA-256 values are
+  `d05b991120b6878d3937f2dfdd13a899badd66e0a77f44f0f76fe8190c363ed8`
+  and `5c3923aa21fc65ec3f80c963e38e642a40d8d1471d9de7272bea529202704762`.
+  The one-run authority is consumed. Do not amplify BGE retries, change SSE/
+  HTTP2/keepalive/corpus/threshold, or rerun automatically from this result.
 - Aggregate-only Development evidence authorizes metric comparison, not case-
   level or causal attribution. After disjoint v4 and v5 hard-negative families
   each retained one `unrelated_negative` false injection, do not author another

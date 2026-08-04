@@ -1356,13 +1356,26 @@ worst-case `900` Judge requests and `115200` output tokens. A terminal failed
 case forces `passed=false`; a zero-terminal passing report still keeps
 `policySelected=false` and `promotionEligible=false`.
 
-Focused Go tests and the deterministic topology/lifecycle gate pass. No live
-Provider or Docker execution was made for schema v14, no private v9 cost
-document was created, and no live run is authorized. Do not mutate schema
-v12/v13, amplify retrieval retries, switch SSE/HTTP2/keepalive, or rerun
-automatically from this identity-free aggregate. A future live run requires a
-new owner-authored v9 cost document, fresh credentials, and explicit one-run
-approval.
+Focused Go tests and the deterministic topology/lifecycle gate pass. At that
+offline checkpoint no live Provider/Docker execution had been made and no
+private v9 cost document or live authority existed.
+
+The owner subsequently authorized exactly one live schema-v14 Development
+run. `memory-regression-20260804t022413z-cc2afbf6` completed `105` empty-
+candidate and `195` Judge-completed cases with zero failures and zero retries.
+Candidate Recall@20, Final Recall@5, current-fact accuracy, MRR@5, and NDCG@5
+were all `1.0`; false injection and every safety counter were zero. Actual
+Judge authority was `195` requests, `257701` input-token upper bound, and
+`24960` output-token upper bound under the v9 `900/1500000/115200` ceilings.
+The report passed while remaining `policySelected=false` and
+`promotionEligible=false`. Configuration SHA-256 was
+`d9397bc5f0d33a8f3779263da3bbef78a41e0b174b32f4bf27aa328136613caf`;
+report/manifest SHA-256 values were
+`d05b991120b6878d3937f2dfdd13a899badd66e0a77f44f0f76fe8190c363ed8`
+and `5c3923aa21fc65ec3f80c963e38e642a40d8d1471d9de7272bea529202704762`.
+The authority is consumed. Do not mutate schema v12/v13, amplify retrieval
+retries, switch SSE/HTTP2/keepalive, or rerun automatically. Validation and
+production remain separately authorized stages.
 
 The offline command shape is:
 

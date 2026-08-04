@@ -283,8 +283,9 @@ result or failure, even when a later case reuses the same assistant identity.
   stream-read and two transport failures. Independent evaluation passed at
   `1.0/0.994872/0.993939` recall/current-fact metrics with zero false injection
   and zero safety failures, but diagnostic semantics remained non-passing and
-  non-selecting. Schema v14 is the offline transport-only successor; no live
-  v14 run is authorized or claimed.
+  non-selecting. Schema v14 is the transport-only successor. Its consumed live
+  run completed all 300 cases with zero retries/failures and all quality/
+  safety gates passing, while remaining non-selecting and non-promotional.
 - Fake protocol relevance and latency metrics are intentionally meaningless;
   only lifecycle and authority invariants are evaluated.
 
@@ -379,3 +380,7 @@ result or failure, even when a later case reuses the same assistant identity.
   the offline schema-v14 Judge-only two-retry successor with cost-basis v9,
   exact fallback waits, retained failure reconciliation, zero-terminal pass
   authority, and no automatic live rerun.
+- **2026-08-04**: Recorded the single consumed schema-v14 live Development
+  result: 300/300 complete, zero retries/failures, all quality/safety gates
+  passing, aggregate artifacts only, and no automatic rerun/Validation/
+  promotion authority.

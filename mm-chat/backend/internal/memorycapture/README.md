@@ -364,6 +364,13 @@ aggregate maps and can pass only when evaluation passes and `failedCaseCount`
 is zero. A passing summary still sets `policySelected=false` and stops for
 owner review.
 
+The consumed live run `memory-regression-20260804t022413z-cc2afbf6` completed
+all 300 Development cases with `195` Judge attempts, zero retries, and zero
+failed cases. Recall/current-fact/MRR/NDCG were all `1.0`, false injection and
+all safety counters were zero, and the report passed while remaining non-
+selecting/non-promotional. It grants no automatic rerun or later-stage
+authority.
+
 The fixed taxonomy `memory-candidate-judge-failure-taxonomy-v1` is the sorted
 24-value union of the 15 canonical `internal/chat` Provider categories and
 nine Judge-local input/event/output/provenance/Recorder categories. Its JSON

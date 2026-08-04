@@ -458,10 +458,12 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   five/ten-second fallback waits and valid `Retry-After` precedence, keeps
   global Provider concurrency one, and requires cost-basis v9 authority for at
   most `900` Judge attempts and `115200` output tokens. Retrieval Provider
-  retry ceilings remain unchanged. Focused Go and fake lifecycle gates pass;
-  no live schema-v14 authority or private v9 cost document exists. Do not
-  mutate v12/v13, change SSE/HTTP2/connection reuse, alter prompt/BGE/corpus/
-  criteria, or rerun automatically from this identity-free aggregate.
+  retry ceilings remain unchanged. Focused Go and fake lifecycle gates pass.
+  The consumed schema-v14 live run completed `105` empty-candidate plus `195`
+  Judge-completed cases with zero failed cases/retries and passed every quality
+  and safety gate. Its passing Development report remains non-selecting and
+  non-promotional. Do not mutate v12/v13, change SSE/HTTP2/connection reuse,
+  alter prompt/BGE/corpus/criteria, or rerun automatically from this result.
 - The retained schema-v12 live result completed all `195` candidate-bearing
   rerank-plus-judge decisions with zero failed cases, but the accuracy-first
   policy injected Memory into `29/135` negative cases. Its false-injection
