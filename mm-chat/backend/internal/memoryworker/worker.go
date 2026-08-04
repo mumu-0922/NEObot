@@ -20,6 +20,7 @@ const (
 	errorProviderFailed       = "PROVIDER_FAILED"
 	errorExtractionInvalid    = "EXTRACTION_INVALID"
 	errorProposalFailed       = "PROPOSAL_FAILED"
+	errorPromotionFailed      = "PROMOTION_FAILED"
 	errorPurgeFailed          = "PURGE_FAILED"
 	errorReviewExpiryFailed   = "REVIEW_EXPIRY_FAILED"
 	errorEmbeddingSourceDrift = "EMBEDDING_SOURCE_DRIFT"
@@ -280,14 +281,23 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 			availableAt,
 			terminal,
 		)
-		w.logger.WarnContext(
-			ctx,
-			"memory_job_failed",
+		attributes := []any{
 			slog.String("job_id", job.JobID),
 			slog.String("event_id", job.EventID),
 			slog.String("error_code", errorCode),
 			slog.String("status", status),
-		)
+		}
+		if errorCode == errorExtractionInvalid {
+			attributes = append(attributes, slog.String(
+				"failure_category", extractionFailureCategory(processErr),
+			))
+		}
+		if category, ok := chat.ProviderFailureCategoryOf(processErr); ok {
+			attributes = append(attributes, slog.String(
+				"provider_failure_category", string(category),
+			))
+		}
+		w.logger.WarnContext(ctx, "memory_job_failed", attributes...)
 		return true, retryErr
 	}
 	if err := w.repository.Complete(ctx, job); err != nil {
@@ -333,7 +343,7 @@ func (w *Worker) process(ctx context.Context, job Job) (string, bool, error) {
 		return errorProfileDrift, true, ErrProviderProfileInvalid
 	}
 	if capture.ProposalCommitted {
-		return "", false, nil
+		return w.promoteCaptureCandidates(ctx, job)
 	}
 	provider, err := w.providerResolver.Resolve(ctx, capture)
 	if err != nil {
@@ -352,10 +362,11 @@ func (w *Worker) process(ctx context.Context, job Job) (string, bool, error) {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 			return errorProviderFailed, false, err
 		}
-		if strings.Contains(err.Error(), "decode memory extraction response") ||
+		if errors.Is(err, errExtractionInvalid) ||
+			strings.Contains(err.Error(), "decode memory extraction response") ||
 			strings.Contains(err.Error(), "candidate count is invalid") ||
 			strings.Contains(err.Error(), "output exceeded limit") {
-			return errorExtractionInvalid, false, err
+			return errorExtractionInvalid, extractionRetryExhausted(job), err
 		}
 		return errorProviderFailed, false, err
 	}
@@ -371,15 +382,18 @@ func (w *Worker) process(ctx context.Context, job Job) (string, bool, error) {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 			return errorProviderFailed, false, err
 		}
-		if strings.Contains(err.Error(), "decision") ||
+		if errors.Is(err, errExtractionInvalid) ||
+			strings.Contains(err.Error(), "decision") ||
 			strings.Contains(err.Error(), "provider JSON") {
-			return errorExtractionInvalid, false, err
+			return errorExtractionInvalid, extractionRetryExhausted(job), err
 		}
 		return errorProviderFailed, false, err
 	}
 	proposals, err := buildCaptureProposals(job, capture, candidates, decisions)
 	if err != nil {
-		return errorExtractionInvalid, false, err
+		return errorExtractionInvalid, extractionRetryExhausted(job), classifiedExtractionError{
+			category: proposalValidationFailureCategory(err),
+		}
 	}
 	expiryJobID, err := chat.NewUUID()
 	if err != nil {
@@ -408,7 +422,7 @@ func (w *Worker) process(ctx context.Context, job Job) (string, bool, error) {
 		slog.Int("review_count", summary.ReviewCount),
 		slog.Int("rejected_count", summary.RejectedCount),
 	)
-	return "", false, nil
+	return w.promoteCaptureCandidates(ctx, job)
 }
 
 func (w *Worker) retryDelay(attempt int) time.Duration {

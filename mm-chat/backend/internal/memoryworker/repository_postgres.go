@@ -173,6 +173,27 @@ FROM memory_worker_propose_capture_candidates(
 	return summary, nil
 }
 
+func (r *PostgresRepository) PromoteCandidates(
+	ctx context.Context,
+	job Job,
+) (PromotionSummary, error) {
+	if r == nil || r.db == nil {
+		return PromotionSummary{}, ErrDatabaseRequired
+	}
+	var summary PromotionSummary
+	if err := r.db.QueryRowContext(ctx, `
+SELECT promoted_count, review_count, rejected_count
+FROM memory_worker_promote_capture_candidates($1::uuid, $2::uuid, $3::uuid)
+`, job.JobID, job.WorkerID, job.LeaseToken).Scan(
+		&summary.PromotedCount,
+		&summary.ReviewCount,
+		&summary.RejectedCount,
+	); err != nil {
+		return PromotionSummary{}, fmt.Errorf("promote memory capture candidates: %w", err)
+	}
+	return summary, nil
+}
+
 func (r *PostgresRepository) Purge(ctx context.Context, job Job) error {
 	if r == nil || r.db == nil {
 		return ErrDatabaseRequired

@@ -335,6 +335,50 @@ func confidenceBand(value float64) string {
 	return "high"
 }
 
+func proposalValidationFailureCategory(err error) string {
+	if err == nil {
+		return "PROPOSAL_VALIDATION_INVALID"
+	}
+	value := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(value, "source context"):
+		return "PROPOSAL_SOURCE_CONTEXT_INVALID"
+	case strings.Contains(value, "required field"):
+		return "PROPOSAL_REQUIRED_FIELD_INVALID"
+	case strings.Contains(value, "importance"):
+		return "PROPOSAL_IMPORTANCE_INVALID"
+	case strings.Contains(value, "tag"):
+		return "PROPOSAL_TAG_INVALID"
+	case strings.Contains(value, "content") || strings.Contains(value, "memory type"):
+		return "PROPOSAL_CONTENT_INVALID"
+	case strings.Contains(value, "confidence"):
+		return "PROPOSAL_CONFIDENCE_INVALID"
+	case strings.Contains(value, "sensitivity"):
+		return "PROPOSAL_SENSITIVITY_INVALID"
+	case strings.Contains(value, "user authority"):
+		return "PROPOSAL_USER_AUTHORITY_INVALID"
+	case strings.Contains(value, "assistant context"):
+		return "PROPOSAL_ASSISTANT_CONTEXT_INVALID"
+	case strings.Contains(value, "confirmation") ||
+		strings.Contains(value, "confirmed assistant"):
+		return "PROPOSAL_CONFIRMATION_INVALID"
+	case strings.Contains(value, "scope"):
+		return "PROPOSAL_SCOPE_INVALID"
+	case strings.Contains(value, "temporal") || strings.Contains(value, "timestamp") ||
+		strings.Contains(value, "absolute time") || strings.Contains(value, "validity") ||
+		strings.Contains(value, "expiry") || strings.Contains(value, "timeless"):
+		return "PROPOSAL_TEMPORAL_INVALID"
+	case strings.Contains(value, "decision"):
+		return "PROPOSAL_DECISION_INVALID"
+	case strings.Contains(value, "key"):
+		return "PROPOSAL_KEY_INVALID"
+	case strings.Contains(value, "evidence"):
+		return "PROPOSAL_EVIDENCE_INVALID"
+	default:
+		return "PROPOSAL_VALIDATION_INVALID"
+	}
+}
+
 func contains(values []string, expected string) bool {
 	for _, value := range values {
 		if value == expected {

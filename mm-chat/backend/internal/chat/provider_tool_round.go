@@ -52,6 +52,7 @@ type ProviderToolCall struct {
 	ChoiceIndex     int
 	CallIndex       int
 	ID              string
+	SyntheticID     bool
 	Name            string
 	Arguments       string
 	FailureCategory string

@@ -118,6 +118,12 @@ type ProposalSummary struct {
 	RejectedCount int
 }
 
+type PromotionSummary struct {
+	PromotedCount int
+	ReviewCount   int
+	RejectedCount int
+}
+
 type Readiness struct {
 	ConsumerReady   bool
 	PendingCount    int64
@@ -177,6 +183,7 @@ type Repository interface {
 	Claim(context.Context, string, string, time.Duration) (Job, bool, error)
 	Hydrate(context.Context, Job) (Capture, error)
 	ProposeCandidates(context.Context, Job, ProposalBatch) (ProposalSummary, error)
+	PromoteCandidates(context.Context, Job) (PromotionSummary, error)
 	Purge(context.Context, Job) error
 	ExpireReviews(context.Context, Job) (int, error)
 	Complete(context.Context, Job) error

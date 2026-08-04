@@ -143,7 +143,7 @@ function signatures, owners, and grants while pinning lookup to the application
 schema, `pg_catalog`, and `pg_temp`. Its down path intentionally retains the
 safe search path rather than reopening object-shadowing risk.
 
-The current migration head is `065`; the latest RAG retrieval-specific migration
+The current migration head is `069`; the latest RAG retrieval-specific migration
 remains `050`. Migration `043` extends the existing final-authority evidence
 hydration boundary with complete matched-Child and containing-Parent source
 text plus their persisted token counts. Parent text is answer context only. Its
@@ -372,6 +372,42 @@ whole hydration. The function is owned by `memory_runtime_owner`; only
 `go_api_runtime` receives EXECUTE and no runtime role gains table CRUD. Down
 removes only this capability; clean replay is
 `064 -> 065 -> 064 -> 065`.
+
+Migration `066` adds the lease-fenced
+`memory_worker_promote_capture_candidates(UUID,UUID,UUID)` capability. It
+rechecks the live lease, source, settings, Provider profile, scope/epoch,
+primary evidence, tombstones, targets, and exact/fact conflicts. Only a normal
+confirmed conflict-free `SHADOW_ADD` suggestion may reuse
+`memory_governance_decide_review(...)` to create canonical Memory, evidence,
+automatic decision audit, and completed assistant Activity in one transaction.
+`memory_worker_runtime` receives function execution only; API/PUBLIC retain no
+access and no runtime role gains table CRUD. Down is allowed only before any
+`auto_accept`/`AUTO_CAPTURED` history exists.
+
+Migration `067` is the forward authority hardening for the already-applied,
+byte-immutable `066`. It replaces only the promotion function and additionally
+requires the exact candidate/decision Tool profile hashes, a complete committed
+batch, matching candidate bytes/hash, and current hashes, roles, completion,
+timestamps, and Conversation ownership for every retained evidence row. Its
+down path restores the `066` function only while no automatic promotion history
+exists. Runtime rollback disables automatic recording and the worker while
+retaining canonical rows; it never deletes created Memory. Clean replay is
+`066 -> 067 -> 066 -> 067`.
+
+Migration `068` is the forward profile correction for the already-applied,
+byte-immutable `067`. Extraction profile v4 constrains Tool evidence IDs to the
+exact hydrated user-role and assistant-role Message sets; promotion authorizes
+only batches carrying that v4 hash while retaining every `067` SQL fence. Down
+restores the v3-authorizing `067` function only before automatic promotion
+history exists. Clean replay is `067 -> 068 -> 067 -> 068`.
+
+Migration `069` is the forward OpenAI-compatible profile correction for the
+already-applied, byte-immutable `068`. Extraction profile v5 keeps the exact
+per-role evidence enums and bounded arrays while removing the Provider-rejected
+`uniqueItems` schema keyword; local semantic validation still rejects duplicate
+or forged IDs. Promotion authorizes only v5 batches. Down restores the v4-
+authorizing `068` function only before automatic promotion history exists.
+Clean replay is `068 -> 069 -> 068 -> 069`.
 
 ## Storage boundaries
 

@@ -94,6 +94,7 @@ type ToolFunctionDefinition struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description,omitempty"`
 	Parameters  map[string]any `json:"parameters"`
+	Strict      bool           `json:"strict,omitempty"`
 }
 
 type ToolCall struct {

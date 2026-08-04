@@ -11,6 +11,10 @@ PR5 is proposal-only. It keeps the v1 Global reader and HTTP CRUD payloads,
 adds no Review API/UI, and gives no automatic candidate authority to create,
 merge, supersede, or otherwise mutate canonical `user_memories`.
 
+The production L1 successor preserves that PR5 history but adds a deliberately
+narrow safe-add authority in migrations `066`–`069`. It does not activate a
+reader, change prompt authority, or authorize merge/supersede.
+
 ## 2. Signatures
 
 The PR5 worker capabilities are:
@@ -41,6 +45,17 @@ validFrom, validTo, factExpiresAt, proposedAction, targetMemoryIds
 
 `memory_worker_runtime` loses execute permission on the PR4
 `memory_worker_apply_capture_candidate(...)` capability after `056` is up.
+
+The production successor adds:
+
+```text
+chat.ToolRoundProvider.CompleteToolRound(...)
+  required call: propose_memory_candidates
+  conditional required call: propose_memory_candidate_decisions
+
+memory_worker_promote_capture_candidates(UUID, UUID, UUID)
+  RETURNS (promoted_count, review_count, rejected_count)
+```
 
 ## 3. Contracts
 
@@ -85,6 +100,40 @@ validFrom, validTo, factExpiresAt, proposedAction, targetMemoryIds
 - Review target and evidence tables use composite ownership FKs and current
   canonical revisions. UUID arrays never substitute for database ownership.
 
+### Production L1 successor authority
+
+- Extraction and conditional decision are required Tool Calls, not free-text
+  JSON. Each round accepts exactly one completed call with the exact name, a
+  non-empty Provider-issued/non-synthetic call ID, no failure category, no
+  prose fallback, and strict exact-key arguments. Missing, duplicate, wrong-
+  name, failed, oversized, malformed, or unsupported Tool Round responses fail
+  as sanitized `EXTRACTION_INVALID` after at most three total protocol attempts.
+- Extraction profile v5 enumerates only the hydrated user-role IDs for
+  `authorityUserMessageIds` and assistant-role IDs for `contextMessageIds` in
+  each request's Tool schema. Provider output remains semantically revalidated.
+- The batch keeps the existing exact candidate/decision JSON object contract.
+  Tool transport changes framing, not the SQL payload schema.
+- Migration `066` establishes lease-fenced safe-add promotion through
+  `memory_governance_decide_review(...)`. Its applied bytes/checksum are
+  immutable. Migration `067` is the forward authority fix for required Tool
+  profile hashes, complete batch count/profile agreement, candidate hash, and
+  currentness of every evidence message.
+- Migration `068` preserves applied `067` bytes and binds promotion to the v4
+  evidence-enumerated extraction profile; v3 batches are no longer authority.
+- Migration `069` preserves applied `068` bytes and removes the unsupported
+  `uniqueItems` keyword while keeping bounded role enums plus local duplicate/
+  forgery rejection; promotion authorizes only profile v5.
+- Promotion requires a current `shadow`/`SHADOW_ADD`/`ADD`, normal sensitivity,
+  `explicit_user` or `confirmed_assistant`, no expiry/temporary inference,
+  enabled Memory plus automatic recording, and current lease/outbox/source/
+  assistant/Provider/scope/Project/epoch/evidence authority.
+- Tombstone, existing exact/fact conflict, any related target, candidate drift,
+  or stale evidence never creates canonical Memory. Eligible acceptance reuses
+  the governance transaction and records `auto_accept`/`AUTO_CAPTURED` without
+  exposing table CRUD to the worker.
+- Crash replay returns the committed summary and creates no duplicate canonical
+  row. Down migrations never delete canonical Memory or audit history.
+
 ## 4. Validation & Error Matrix
 
 | Condition | Required result |
@@ -102,6 +151,14 @@ validFrom, validTo, factExpiresAt, proposedAction, targetMemoryIds
 | Proposal transaction replays different JSON/profile | `MEMORY_CAPTURE_PROPOSAL_CONFLICT`. |
 | Review expiry runs before its batch due time or against another user/event | `MEMORY_REVIEW_EXPIRY_TARGET_DRIFT`; retry without Provider. |
 | Down sees proposal/Review/expiry history or non-default canonical metadata | `MEMORY_REVIEW_ROLLBACK_*`; preserve state. |
+| Tool Round missing/duplicate/wrong-name/failed/oversized/malformed/synthetic | `EXTRACTION_INVALID` within three total protocol attempts; no prose fallback. |
+| Batch Tool profile, count, or suggestion profile differs | `MEMORY_PROFILE_DRIFT`; rollback the promotion call. |
+| Candidate content no longer hashes to `candidate_hash` | `AUTO_PROMOTION_CANDIDATE_DRIFT`; pending Review, no canonical write. |
+| Any evidence role/content/completion/deletion/timestamp/Conversation is stale | `AUTO_PROMOTION_EVIDENCE_STALE` or primary source drift; no stale canonical write. |
+| Tombstone, related target, exact row, or same-scope fact exists | `AUTO_PROMOTION_TOMBSTONED` / `AUTO_PROMOTION_CONFLICT`; pending Review, no resurrection/overwrite. |
+| `067` down sees automatic promotion history | `MEMORY_AUTO_CAPTURE_AUTHORITY_ROLLBACK_REQUIRES_NO_PROMOTIONS`. |
+| `068` down sees automatic promotion history | `MEMORY_AUTO_CAPTURE_TOOL_PROFILE_ROLLBACK_REQUIRES_NO_PROMOTIONS`. |
+| `069` down sees automatic promotion history | `MEMORY_AUTO_CAPTURE_COMPATIBLE_PROFILE_ROLLBACK_REQUIRES_NO_PROMOTIONS`. |
 
 ## 5. Good / Base / Bad Cases
 
@@ -114,6 +171,15 @@ validFrom, validTo, factExpiresAt, proposedAction, targetMemoryIds
 - **Bad**: let an N-1 worker call the old apply function, store candidate text
   in logs, trust model-supplied Project/target IDs, apply candidates one by one,
   resolve relative time using replay day, or hydrate a Provider for expiry.
+- **Production successor Good**: one exact Tool-framed batch contains a current
+  normal confirmed school fact; `069` retains the full `067` authority and governance
+  atomically writes one canonical row, evidence, audit, and Activity.
+- **Production successor Base**: empty batch completes without writes; temporary,
+  conflicting, tombstoned, or Sensitive-disabled candidates remain Review or
+  rejection exactly as routed.
+- **Production successor Bad**: mutate deployed `066`–`069`, accept a synthesized Tool
+  Call ID, promote a partial/profile-drifted batch, or duplicate governance SQL
+  in Go.
 
 ## 6. Tests Required
 
@@ -132,6 +198,12 @@ validFrom, validTo, factExpiresAt, proposedAction, targetMemoryIds
 - Run focused race tests, all backend tests, `go vet ./...`, preflight/Compose,
   backend image build, and the full standalone gate. No test calls a Live
   Provider.
+- Pin the live-applied `066`–`069` checksums and use disposable PostgreSQL 17
+  to replay each forward fix through `068 -> 069 -> 068 -> 069`; assert
+  profile/count/candidate/evidence fences,
+  automatic acceptance atomicity, crash replay idempotency, tombstone/conflict/
+  temporary/Sensitive outcomes, function-only denial, projection enqueue, and
+  both promotion rollback guards.
 
 ## 7. Wrong vs Correct
 
@@ -155,4 +227,13 @@ strict extraction + bounded decision proposal
   -> canonical unchanged
   -> crash resumes from proposal_committed
   -> provider-free expiry clears plaintext at day 30
+```
+
+Production L1 successor:
+
+```text
+exact Provider-issued Tool Call framing
+  -> unchanged strict candidate object contract + complete atomic batch
+  -> migration-069 compatible profile + authority recheck
+  -> governance safe-add only, otherwise Review/reject/fail closed
 ```

@@ -10,9 +10,10 @@ latency.
 - hydrate at most eight current Conversation messages, ten bounded current
   Memory context rows, and the Server-owned provider profile;
 - redact concrete secrets and disabled Sensitive segments before Provider
-  egress, then strictly decode versioned extraction/decision JSON;
+  egress, then require one exact versioned extraction/decision Tool Call;
 - atomically persist at most five hash-pinned shadow/Review/rejected proposals
-  without changing canonical Memory;
+  and auto-promote only current normal, confirmed, conflict-free `SHADOW_ADD`
+  suggestions through the existing governance acceptance transaction;
 - dispatch `purge` jobs before Provider hydration and idempotently wipe deleted
   canonical/revision/evidence plaintext through migration `055`;
 - dispatch `review_expire` before Provider hydration and idempotently wipe
@@ -50,7 +51,7 @@ for the complete environment and role-provisioning contract.
 | `New(Repository, ProviderResolver, ...Option)` | Validate and construct the bounded worker. |
 | `Worker.Run(ctx, wake)` | Poll PostgreSQL continuously and consume optional wake hints. |
 | `Worker.ProcessOne(ctx)` | Claim and finish one lease-fenced job. |
-| `NewPostgresRepository(*sql.DB)` | Call only migration `054`–`063` worker capabilities. |
+| `NewPostgresRepository(*sql.DB)` | Call only migration `054`–`069` worker capabilities. |
 | `NewStoredProviderResolver(...)` | Reuse Server provider/vault activation rules. |
 
 ## Files
@@ -60,6 +61,8 @@ worker.go                polling, retry, schema/stage dispatch, and proposal flo
 repository_postgres.go   restricted migration-054/055/056 function calls
 provider.go              hydrated Server provider resolution
 extraction.go            bounded versioned extraction/decision Provider calls
+extraction_tool_round.go  exact required Tool schemas and call validation
+promotion.go              auto-promotion dispatch and drift classification
 proposal.go              proposal normalization and scope/time/evidence validation
 scene.go                 Scene lease, synthesis, member, and derived-embedding contracts
 scene_synthesis.go       strict bounded Scene Provider proposal validation

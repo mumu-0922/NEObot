@@ -875,6 +875,7 @@ func (accumulator *openAICompatibleToolCallAccumulator) complete(
 		call.Arguments = strings.TrimSpace(call.Arguments)
 		if call.ID == "" {
 			call.ID = fmt.Sprintf("call_%d_%d", call.ChoiceIndex, call.CallIndex)
+			call.SyntheticID = true
 		}
 		if call.Name == "" && call.FailureCategory == "" {
 			call.FailureCategory = "invalid_tool_name"

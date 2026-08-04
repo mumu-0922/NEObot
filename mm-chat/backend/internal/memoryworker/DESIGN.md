@@ -8,12 +8,15 @@
   rolling restarts.
 - Reuse existing Server provider/vault and canonical `usermemory` validation
   semantics without giving model output canonical write authority.
-- Restrict the worker to one leased user's source and atomic proposal path.
+- Restrict the worker to one leased user's source, atomic proposal path, and
+  narrow governance-backed safe-add promotion capability.
 
 ## Non-goals
 
 - Switching the v1 Memory reader or HTTP CRUD contract.
-- External Memory engines or any automatic reader promotion.
+- External Memory engines or any automatic reader promotion. Candidate
+  auto-promotion in migrations `066`–`069` changes canonical storage only; it does
+  not activate a reader or bypass prompt-injection gates.
 - Supporting request-only BYOK after the request ends; capture fails closed
   unless a current Server-owned provider profile can be hydrated.
 
@@ -28,8 +31,9 @@ memory-worker
   -> PostgreSQL claim + lease token
   -> extract: source/profile/generation/epoch-fenced v2 hydration
        -> local secret/Sensitive redaction
-       -> strict bounded extraction + conflict proposal
+       -> exact required candidate + decision Tool Calls
        -> one atomic shadow/Review/rejected candidate batch
+       -> migration-069 compatible-profile current-authority safe-add promotion
   -> purge: no Provider hydration -> tombstone/epoch-fenced plaintext wipe
   -> review_expire: no Provider hydration -> day-30 proposal plaintext wipe
   -> l2_scene_purge: no Provider hydration -> stale plaintext/member/projection wipe
@@ -41,11 +45,11 @@ memory-worker
   -> complete or bounded retry/dead-letter
 ```
 
-Migration `054` owns the capability boundary. The runtime login inherits only
-`memory_worker_runtime`, which can execute the hardened worker functions but
-has no direct table access. Those functions execute as the restricted
-`memory_runtime_owner` and pin `search_path` to the application schema,
-`pg_catalog`, and `pg_temp`.
+Migrations `054` and `066`–`069` own the capture capability boundary. The
+runtime login inherits only `memory_worker_runtime`, which can execute the
+hardened worker functions but has no direct table access. Those functions
+execute as the restricted `memory_runtime_owner` and pin `search_path` to the
+application schema, `pg_catalog`, and `pg_temp`.
 
 ## Key decisions
 
@@ -58,7 +62,8 @@ has no direct table access. Those functions execute as the restricted
 | Profile/source/generation hashes are pinned | Provider, message, scope, and policy drift must fail closed | Changed state requires a new authoritative event, not stale replay. |
 | Reuse `NormalizeCandidateForStorage` only | Keep canonical normalization/limits without calling the legacy write path | PR5 cannot create or update canonical Memory. |
 | Candidate-wide hash-pinned proposal | Partial Provider output and nondeterministic replay must not become authority | A committed batch resumes without another Provider call. |
-| Separate versioned extraction and decision prompts | Extraction and relation classification have different duties | Both profile hashes are retained on every proposal. |
+| Separate required Tool Calls for extraction and decision | Free-text JSON and synthesized call identity cannot become write authority | One exact Provider-issued call, strict arguments, and both Tool profile hashes are required. |
+| Reuse governance acceptance for safe adds | Canonical/evidence/audit logic must have one owner | Only current normal confirmed `SHADOW_ADD` candidates without tombstone, target, exact, or fact conflict become canonical. |
 | Dispatch purge/review expiry before hydration | Cleanup must not load or call a Provider | Both lanes remain available during Provider outages. |
 | Recheck epoch and targeted tombstones at proposal | A response returned after deletion has no proposal authority | Stale source work dead-letters; content/fact tombstones become hash-only rejection. |
 | Log IDs and error codes only | Source text, secrets, and raw Provider errors are private | Operators diagnose by bounded codes and queue state. |
@@ -79,13 +84,18 @@ has no direct table access. Those functions execute as the restricted
 | Crash on final attempt | PostgreSQL marks `LEASE_EXPIRED` dead-letter. |
 | Stale worker applies/completes | SQL rejects the old worker/lease token. |
 | Duplicate event/job | Unique event/stage/idempotency keys return the first authority. |
+| Crash after proposal or promotion | Replay skips Provider work and the accepted suggestion/decision audit prevents a second canonical row. |
+| Candidate/evidence/Tool profile drift | Reject or retain Review; never auto-write stale content. |
 | Scene member/watermark/generation drift | Reject the entire refresh or embedding result; no partial Scene survives. |
 | Persona member/watermark/generation drift | Reject the entire refresh or embedding result; no partial Persona survives. |
 
-Candidate persistence is one transaction per extraction output. The batch hash,
+Candidate persistence is one transaction per extraction output. Eligible
+promotion is a second single SQL transaction that reuses governance acceptance.
+The batch hash,
 profile IDs, source/epoch/scope fences, normalized target revisions, and
-`proposal_committed` resume flag prevent partial or divergent replay. Every PR5
-outcome stays outside canonical Memory and active readers.
+`proposal_committed` resume flag prevent partial or divergent replay. Review,
+conflict, tombstone, temporary, Sensitive-disabled, and secret outcomes stay
+outside canonical Memory and every active reader.
 
 ## Threat model and controls
 
@@ -95,9 +105,11 @@ outcome stays outside canonical Memory and active readers.
 | Stale response survives a deleted/changed source | Active source, generation, Learn policy, profile timestamp/hash, and live lease are rechecked before proposal commit. |
 | Purge sends deleted data to a Provider | Stage dispatch invokes the purge capability before any hydration or Provider resolution. |
 | Prompt injection in source text | Messages and current Memory are JSON data under separate Server-owned prompts; duplicate/unknown/trailing output is rejected. |
+| Provider prose or adapter-generated Tool identity becomes authority | Extraction accepts only one exact required Tool Call and rejects missing, duplicate, failed, wrong-name, oversized, malformed, or synthetic-ID calls. |
 | Persona widens authority | SQL hydrates only current stable Global L1 and Go accepts only a strict hydrated member subset; Provider output cannot add IDs or downgrade sensitivity. |
 | Credential retention/egress | Local sentence redaction precedes Provider calls; a secret proposal reaches SQL hash-only and logs remain code/ID-only. |
 | Model spoofs authority or scope | Go restricts IDs to hydrated messages/targets and binds current Project/Conversation; SQL rechecks ownership and revision. |
+| Stale evidence or old free-text profile is promoted | Migrations `067`–`069` rehash every evidence message, enumerate evidence IDs by role in compatible extraction profile v5, and bind the batch to the exact Tool profiles before governance acceptance. |
 | Review plaintext survives forever | A provider-free 128-attempt job expires/wipes shadow and pending proposals at day 30. |
 | Compromised worker reads arbitrary tables | Runtime role has function execution only; owner membership and schema creation are forbidden. |
 | Queue loss during Redis/worker outage | PostgreSQL rows remain pending and reclaimable. |
@@ -109,7 +121,8 @@ outcome stays outside canonical Memory and active readers.
 - full backend tests and `go vet ./...`;
 - disposable PostgreSQL migration up/down/re-up with atomicity, duplicate,
   stale lease, crash reclaim, cross-user denial, final-attempt dead-letter,
-  candidate apply, and direct-table denial proofs;
+  candidate promotion/replay, evidence/profile drift, tombstone/conflict/
+  temporary/Sensitive denial, projection enqueue, and direct-table denial proofs;
 - preflight/Compose rendering and backend-image build.
 
 ## Change history
@@ -125,3 +138,15 @@ outcome stays outside canonical Memory and active readers.
   derived embedding, and provider-free 24-hour stale purge lanes.
 - 2026-07-29: Memory v2 PR12 adds default-off, stable Global-L1 L3 Persona
   synthesis, derived embedding, and provider-free 24-hour stale purge lanes.
+- 2026-08-04: Migration `066` replaces L1 free-text extraction/decision with
+  required Tool Calls and adds governance-backed, lease-fenced safe-add
+  auto-capture promotion without changing reader authority.
+- 2026-08-04: Migration `067` preserves the applied `066` bytes and hardens
+  promotion with exact Tool-profile, batch-completeness, candidate-hash, and
+  all-evidence currentness fences.
+- 2026-08-04: Migration `068` preserves the applied `067` bytes and binds
+  promotion to extraction profile v4, whose Tool schema enumerates hydrated
+  user/assistant evidence IDs by role.
+- 2026-08-04: Migration `069` preserves the applied `068` bytes and advances
+  to compatible profile v5 by removing unsupported `uniqueItems`; bounded enums
+  plus local duplicate/forgery rejection remain authoritative.

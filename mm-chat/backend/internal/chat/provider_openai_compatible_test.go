@@ -297,6 +297,36 @@ func TestOpenAICompatibleProviderRejectsOversizedStreamedToolArguments(t *testin
 	}
 }
 
+func TestOpenAICompatibleStreamMarksSyntheticToolCallID(t *testing.T) {
+	reader := strings.NewReader("data: " + mustJSON(t, map[string]any{
+		"choices": []any{map[string]any{
+			"index": 0,
+			"delta": map[string]any{"tool_calls": []any{map[string]any{
+				"index": 0,
+				"type":  "function",
+				"function": map[string]any{
+					"name":      searchWebToolName,
+					"arguments": `{}`,
+				},
+			}}},
+			"finish_reason": "tool_calls",
+		}},
+	}) + "\n\ndata: [DONE]\n\n")
+	events := make(chan ProviderEvent, 8)
+	streamOpenAICompatibleEvents(context.Background(), reader, events)
+	close(events)
+	var completed *ProviderToolCall
+	for event := range events {
+		if event.ToolCall != nil {
+			completed = event.ToolCall
+		}
+	}
+	if completed == nil || completed.ID != "call_0_0" ||
+		!completed.SyntheticID || completed.FailureCategory != "" {
+		t.Fatalf("completed tool call = %#v", completed)
+	}
+}
+
 func TestOpenAICompatibleStreamClassifiesParseRemoteAndIncompleteFailures(t *testing.T) {
 	tests := []struct {
 		name string
@@ -523,8 +553,9 @@ func TestOpenAICompatibleProviderPlansFunctionCalls(t *testing.T) {
 			*payload.Temperature != 0 {
 			t.Fatalf("tool plan payload = %#v", payload)
 		}
-		if payload.Tools[0].Function.Name != "lookup_weather" {
-			t.Fatalf("tool name = %q", payload.Tools[0].Function.Name)
+		if payload.Tools[0].Function.Name != "lookup_weather" ||
+			!payload.Tools[0].Function.Strict {
+			t.Fatalf("tool definition = %#v", payload.Tools[0].Function)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"id":"call-1","type":"function","function":{"name":"lookup_weather","arguments":"{\"city\":\"Shanghai\"}"}}]}}]}`))
@@ -551,6 +582,7 @@ func TestOpenAICompatibleProviderPlansFunctionCalls(t *testing.T) {
 			Function: ToolFunctionDefinition{
 				Name:       "lookup_weather",
 				Parameters: map[string]any{"type": "object"},
+				Strict:     true,
 			},
 		}},
 	})

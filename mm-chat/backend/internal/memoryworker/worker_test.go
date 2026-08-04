@@ -1,8 +1,10 @@
 package memoryworker
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -24,7 +26,7 @@ const (
 	testProviderRecord = "77777777-7777-4777-8777-777777777777"
 )
 
-func TestWorkerProposesLeasedCaptureWithoutCanonicalApply(t *testing.T) {
+func TestWorkerProposesAndPromotesLeasedCapture(t *testing.T) {
 	repository := newWorkerTestRepository()
 	provider := &workerTestProvider{output: validCandidateOutput()}
 	worker := newWorkerTestInstance(t, repository, provider)
@@ -34,9 +36,10 @@ func TestWorkerProposesLeasedCaptureWithoutCanonicalApply(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !processed || repository.completed != 1 || repository.retried != 0 ||
-		len(repository.proposed) != 1 {
-		t.Fatalf("processed=%t completed=%d retried=%d proposed=%#v",
-			processed, repository.completed, repository.retried, repository.proposed)
+		len(repository.proposed) != 1 || repository.promoted != 1 {
+		t.Fatalf("processed=%t completed=%d retried=%d proposed=%#v promoted=%d",
+			processed, repository.completed, repository.retried,
+			repository.proposed, repository.promoted)
 	}
 	if repository.proposed[0].Content == nil ||
 		*repository.proposed[0].Content != "Use concise answers" ||
@@ -44,9 +47,14 @@ func TestWorkerProposesLeasedCaptureWithoutCanonicalApply(t *testing.T) {
 		repository.proposed[0].ProposedAction != "ADD" {
 		t.Fatalf("proposal = %#v", repository.proposed[0])
 	}
-	if provider.request.Metadata["purpose"] != "durable-memory-candidate-shadow" ||
+	if provider.request.Metadata["purpose"] != "durable-memory-candidate-extraction" ||
 		provider.request.ModelRef.ModelID != "fixture-model" {
 		t.Fatalf("provider request = %#v", provider.request)
+	}
+	if provider.roundRequest.ToolChoice != chat.ProviderToolChoiceRequired ||
+		len(provider.roundRequest.Tools) != 1 ||
+		provider.roundRequest.Tools[0].Function.Name != memoryExtractionToolName {
+		t.Fatalf("tool round request = %#v", provider.roundRequest)
 	}
 }
 
@@ -58,9 +66,53 @@ func TestWorkerResumesCommittedProposalWithoutProvider(t *testing.T) {
 
 	processed, err := worker.ProcessOne(context.Background())
 	if err != nil || !processed || repository.completed != 1 ||
-		len(repository.proposed) != 0 || provider.calls != 0 {
+		len(repository.proposed) != 0 || repository.promoted != 1 || provider.calls != 0 {
 		t.Fatalf("processed=%t repository=%#v calls=%d error=%v",
 			processed, repository, provider.calls, err)
+	}
+}
+
+func TestWorkerDeadLettersCommittedPromotionAuthorityDrift(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		wantCode string
+	}{
+		{name: "source", err: errors.New("MEMORY_CAPTURE_SOURCE_DRIFT"), wantCode: errorSourceDrift},
+		{name: "profile", err: errors.New("MEMORY_PROFILE_DRIFT"), wantCode: errorProfileDrift},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repository := newWorkerTestRepository()
+			repository.capture.ProposalCommitted = true
+			repository.promotionErr = test.err
+			worker := newWorkerTestInstance(t, repository, &workerTestProvider{})
+
+			processed, err := worker.ProcessOne(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !processed || repository.retryCode != test.wantCode ||
+				!repository.retryTerminal || repository.completed != 0 {
+				t.Fatalf("repository = %#v", repository)
+			}
+		})
+	}
+}
+
+func TestWorkerRetriesTransientCommittedPromotionFailure(t *testing.T) {
+	repository := newWorkerTestRepository()
+	repository.capture.ProposalCommitted = true
+	repository.promotionErr = errors.New("temporary database failure")
+	worker := newWorkerTestInstance(t, repository, &workerTestProvider{})
+
+	processed, err := worker.ProcessOne(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !processed || repository.retryCode != errorPromotionFailed ||
+		repository.retryTerminal || repository.completed != 0 {
+		t.Fatalf("repository = %#v", repository)
 	}
 }
 
@@ -87,6 +139,12 @@ func TestWorkerUsesBoundedDecisionProposalForCurrentMemory(t *testing.T) {
 	if proposal.ProposedAction != "SUPERSEDE" || len(proposal.TargetMemoryIDs) != 1 ||
 		proposal.TargetMemoryIDs[0] != repository.capture.CurrentMemories[0].ID {
 		t.Fatalf("decision proposal = %#v", proposal)
+	}
+	if provider.roundRequest.ToolChoice != chat.ProviderToolChoiceRequired ||
+		len(provider.roundRequest.Tools) != 1 ||
+		provider.roundRequest.Tools[0].Function.Name != memoryDecisionToolName ||
+		provider.roundRequest.Metadata["purpose"] != "durable-memory-conflict-decision" {
+		t.Fatalf("decision Tool request = %#v", provider.roundRequest)
 	}
 }
 
@@ -127,6 +185,88 @@ func TestWorkerRetriesProviderFailureWithoutProposal(t *testing.T) {
 		repository.retryCode != errorProviderFailed || len(repository.proposed) != 0 ||
 		repository.completed != 0 {
 		t.Fatalf("repository = %#v", repository)
+	}
+}
+
+func TestWorkerLogsOnlyBoundedProviderFailureCategory(t *testing.T) {
+	repository := newWorkerTestRepository()
+	providerErr := fmt.Errorf("sensitive upstream body: %w", context.DeadlineExceeded)
+	provider := &workerTestProvider{err: providerErr}
+	var logs bytes.Buffer
+	worker, err := New(
+		repository,
+		workerTestProviderResolver{provider: provider},
+		WithWorkerID("88888888-8888-4888-8888-888888888888"),
+		WithLeaseDuration(time.Minute),
+		WithProviderTimeout(10*time.Second),
+		WithClock(func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }),
+		WithLogger(slog.New(slog.NewJSONHandler(&logs, nil))),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	processed, err := worker.ProcessOne(context.Background())
+	if err != nil || !processed || repository.retryCode != errorProviderFailed {
+		t.Fatalf("processed=%t retry=%q error=%v", processed, repository.retryCode, err)
+	}
+	output := logs.String()
+	if !strings.Contains(output, `"provider_failure_category":"CONTEXT_DEADLINE"`) {
+		t.Fatalf("provider failure category log = %q", output)
+	}
+	if strings.Contains(output, "sensitive upstream body") {
+		t.Fatalf("provider failure log exposed raw error: %q", output)
+	}
+}
+
+func TestWorkerFailsClosedWhenExtractionToolRoundIsUnsupported(t *testing.T) {
+	repository := newWorkerTestRepository()
+	worker := newWorkerTestInstance(t, repository, providerWithoutToolRound{})
+
+	processed, err := worker.ProcessOne(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !processed || repository.retryCode != errorExtractionInvalid ||
+		repository.retryTerminal || repository.promoted != 0 {
+		t.Fatalf("repository = %#v", repository)
+	}
+}
+
+func TestWorkerDeadLettersThirdExtractionProtocolFailure(t *testing.T) {
+	repository := newWorkerTestRepository()
+	repository.job.AttemptCount = 3
+	provider := &workerTestProvider{rounds: [][]chat.ProviderEvent{{
+		{Type: chat.ProviderEventDelta, Delta: "not a tool call"},
+	}}}
+	worker := newWorkerTestInstance(t, repository, provider)
+
+	processed, err := worker.ProcessOne(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !processed || repository.retryCode != errorExtractionInvalid ||
+		!repository.retryTerminal || repository.promoted != 0 {
+		t.Fatalf("repository = %#v", repository)
+	}
+}
+
+func TestExtractionFailureCategoryIsContentFree(t *testing.T) {
+	tests := []struct {
+		err  error
+		want string
+	}{
+		{fmt.Errorf("%w: decode Tool arguments", errExtractionInvalid), "CANDIDATE_ARGUMENTS_INVALID"},
+		{fmt.Errorf("%w: decode decision Tool arguments", errExtractionInvalid), "DECISION_ARGUMENTS_INVALID"},
+		{fmt.Errorf("%w: Tool Call count", errExtractionInvalid), "TOOL_CALL_COUNT_INVALID"},
+		{fmt.Errorf("%w: proposal validation", errExtractionInvalid), "PROPOSAL_VALIDATION_INVALID"},
+		{classifiedExtractionError{category: "PROPOSAL_USER_AUTHORITY_INVALID"},
+			"PROPOSAL_USER_AUTHORITY_INVALID"},
+	}
+	for _, test := range tests {
+		if got := extractionFailureCategory(test.err); got != test.want {
+			t.Fatalf("category = %q, want %q", got, test.want)
+		}
 	}
 }
 
@@ -468,11 +608,13 @@ func (r workerTestProviderResolver) Resolve(context.Context, Capture) (chat.Prov
 }
 
 type workerTestProvider struct {
-	output  string
-	outputs []string
-	err     error
-	request chat.ProviderRequest
-	calls   int
+	output       string
+	outputs      []string
+	rounds       [][]chat.ProviderEvent
+	err          error
+	request      chat.ProviderRequest
+	roundRequest chat.ProviderRoundRequest
+	calls        int
 }
 
 func (p *workerTestProvider) StreamChat(
@@ -485,13 +627,60 @@ func (p *workerTestProvider) StreamChat(
 		return nil, p.err
 	}
 	events := make(chan chat.ProviderEvent, 1)
-	output := p.output
-	if len(p.outputs) >= p.calls {
-		output = p.outputs[p.calls-1]
-	}
+	output := p.nextOutput()
 	events <- chat.ProviderEvent{Type: chat.ProviderEventDelta, Delta: output}
 	close(events)
 	return events, nil
+}
+
+func (p *workerTestProvider) StreamToolRound(
+	_ context.Context,
+	request chat.ProviderRoundRequest,
+) (<-chan chat.ProviderEvent, error) {
+	p.calls++
+	p.request = request.ProviderRequest
+	p.roundRequest = request
+	if p.err != nil {
+		return nil, p.err
+	}
+	var fixture []chat.ProviderEvent
+	if len(p.rounds) >= p.calls {
+		fixture = p.rounds[p.calls-1]
+	} else {
+		toolName := memoryExtractionToolName
+		if len(request.Tools) == 1 && request.Tools[0].Function.Name != "" {
+			toolName = request.Tools[0].Function.Name
+		}
+		fixture = []chat.ProviderEvent{{
+			Type: chat.ProviderEventToolCallCompleted,
+			ToolCall: &chat.ProviderToolCall{
+				ID: "call-memory-candidates", Name: toolName,
+				Arguments: p.nextOutput(),
+			},
+		}}
+	}
+	events := make(chan chat.ProviderEvent, len(fixture))
+	for _, event := range fixture {
+		events <- event
+	}
+	close(events)
+	return events, nil
+}
+
+func (p *workerTestProvider) nextOutput() string {
+	if len(p.outputs) >= p.calls {
+		return p.outputs[p.calls-1]
+	}
+	return p.output
+}
+
+type providerWithoutToolRound struct{}
+
+func (providerWithoutToolRound) StreamChat(
+	context.Context,
+	chat.ProviderRequest,
+) (<-chan chat.ProviderEvent, error) {
+	return nil, errors.New("compatibility stream must not be called")
 }
 
 type workerTestRepository struct {
@@ -500,8 +689,10 @@ type workerTestRepository struct {
 	found                  bool
 	hydrateErr             error
 	proposalErr            error
+	promotionErr           error
 	hydrated               int
 	proposed               []CaptureProposal
+	promoted               int
 	purged                 int
 	expired                int
 	completed              int
@@ -604,6 +795,17 @@ func (r *workerTestRepository) ProposeCandidates(
 		return ProposalSummary{}, r.proposalErr
 	}
 	return ProposalSummary{ProposalCount: len(batch.Candidates), ShadowCount: len(batch.Candidates)}, nil
+}
+
+func (r *workerTestRepository) PromoteCandidates(
+	context.Context,
+	Job,
+) (PromotionSummary, error) {
+	if r.promotionErr != nil {
+		return PromotionSummary{}, r.promotionErr
+	}
+	r.promoted++
+	return PromotionSummary{PromotedCount: len(r.proposed)}, nil
 }
 
 func (r *workerTestRepository) Purge(context.Context, Job) error {

@@ -5,7 +5,11 @@
 Apply this contract when changing completed-turn Memory capture, migration
 `054_memory_outbox_jobs_worker`, the private Go Memory Worker, Redis Memory
 wake signals, Server provider hydration for Memory, or the worker's Compose
-and database-role wiring.
+and database-role wiring. The production L1 successor additionally covers
+`066_memory_auto_capture_promotion`,
+`067_memory_auto_capture_authority_hardening`, and
+`068_memory_auto_capture_tool_evidence_profile` plus
+`069_memory_auto_capture_compatible_tool_profile`.
 
 PR3 retains the Global-only v1 Memory reader and HTTP CRUD contract. Project
 routing, evidence/revision/tombstone, review/conflict handling, embeddings,
@@ -59,6 +63,16 @@ memory_worker_complete_job(UUID, UUID, UUID) RETURNS VOID
 memory_worker_retry_job(UUID, UUID, UUID, TEXT, TIMESTAMPTZ, BOOLEAN)
   RETURNS TEXT
 memory_worker_readiness() RETURNS TABLE (...)
+memory_worker_promote_capture_candidates(UUID, UUID, UUID)
+  RETURNS TABLE (promoted_count, review_count, rejected_count)
+```
+
+Production extraction uses `chat.ToolRoundProvider.CompleteToolRound(...)`
+with exactly one required call per round:
+
+```text
+propose_memory_candidates
+propose_memory_candidate_decisions
 ```
 
 ### Command and environment
@@ -122,6 +136,44 @@ REDIS_KEY_PREFIX=mm-chat
   Worker failure or backlog never blocks chat or v1 Recall.
 - Rollback never deletes queued work: down `054` requires both tables empty.
 
+### Production L1 successor (`066`–`069`)
+
+- Free-text Provider JSON is no longer write authority. Each extraction or
+  decision round requires exactly one completed Provider-issued Tool Call with
+  the exact name, non-empty non-synthetic call ID, no failure category, no
+  prose fallback, and strict bounded arguments. Protocol-invalid responses use
+  at most three total attempts and end as sanitized `EXTRACTION_INVALID`.
+  Extraction profile v5 enumerates the exact hydrated user-role IDs for
+  authority and assistant-role IDs for optional context in the Tool schema;
+  semantic validation still rejects any drift.
+- One exact committed candidate batch is promoted only through
+  `memory_worker_promote_capture_candidates(...)`; Go never duplicates the
+  canonical insert/evidence/audit transaction.
+- Migration `066` establishes governance-backed safe-add promotion. Because
+  its bytes are already applied authority, they are immutable. Migration `067`
+  is the forward fix that additionally binds exact Tool profile hashes, batch
+  completeness, candidate content/hash, and every evidence row's current
+  message role, content hash, completion timestamp, deletion state, and source
+  Conversation.
+- Migration `068` preserves the applied `067` bytes and advances only the
+  extraction authority to profile v4 so evidence-role enums and SQL promotion
+  profile hashes agree.
+- Migration `069` preserves applied `068` bytes and removes the Provider-
+  rejected `uniqueItems` keyword. Bounded per-role enums remain in the v5
+  schema; local validation retains duplicate/forgery rejection.
+- Only current normal, non-temporary, explicitly confirmed, conflict-free
+  `SHADOW_ADD` may auto-promote. Tombstones, exact/fact conflicts, related
+  targets, Sensitive-disabled candidates, temporary facts, stale
+  lease/source/profile/scope/epoch/evidence, and disabled settings fail closed
+  or remain Review as classified.
+- The function reuses `memory_governance_decide_review(...)` so canonical
+  Memory, evidence, `auto_accept`/`AUTO_CAPTURED` audit, and completed assistant
+  Activity commit atomically. Replay cannot create a second canonical row.
+- `memory_worker_runtime` remains function-only. Migrations `066`–`069` grant
+  no table CRUD or reader/prompt promotion authority.
+- Logs persist only fixed extraction/provider failure categories; they never
+  include Provider response bodies, Tool arguments, chat text, or raw errors.
+
 ## 4. Validation & Error Matrix
 
 | Condition | Required result |
@@ -140,6 +192,13 @@ REDIS_KEY_PREFIX=mm-chat
 | Unknown schema or stage | Terminal dead-letter before source hydration. |
 | Worker attempts direct table read/write | PostgreSQL permission denied. |
 | Down migration sees any event/job history | `MEMORY_WORKER_ROLLBACK_REQUIRES_EMPTY_QUEUE`. |
+| Missing/duplicate/wrong-name/failed/oversized/malformed/synthetic Tool Call | Retry within three total protocol attempts, then `EXTRACTION_INVALID`; persist no Provider output. |
+| Committed batch profile/count differs from the required Tool authority | `MEMORY_PROFILE_DRIFT`; no canonical write. |
+| Candidate bytes differ from `candidate_hash` | Retain as Review with `AUTO_PROMOTION_CANDIDATE_DRIFT`. |
+| Any retained evidence row is missing, changed, deleted, incomplete, wrong-role, wrong-Conversation, or timestamp-stale | Retain as Review with `AUTO_PROMOTION_EVIDENCE_STALE`, except primary source authority drift that fails the lease transaction. |
+| `067` down sees `auto_accept` or `AUTO_CAPTURED` history | `MEMORY_AUTO_CAPTURE_AUTHORITY_ROLLBACK_REQUIRES_NO_PROMOTIONS`; preserve history. |
+| `068` down sees `auto_accept` or `AUTO_CAPTURED` history | `MEMORY_AUTO_CAPTURE_TOOL_PROFILE_ROLLBACK_REQUIRES_NO_PROMOTIONS`; preserve history. |
+| `069` down sees `auto_accept` or `AUTO_CAPTURED` history | `MEMORY_AUTO_CAPTURE_COMPATIBLE_PROFILE_ROLLBACK_REQUIRES_NO_PROMOTIONS`; preserve history. |
 
 ## 5. Good / Base / Bad Cases
 
@@ -151,6 +210,15 @@ REDIS_KEY_PREFIX=mm-chat
 - **Bad**: enqueue body text in Redis, run an API-local consumer goroutine,
   grant the worker table CRUD/owner membership, log Provider errors/source
   text, accept a stale lease, or delete rows to force rollback.
+- **Production successor Good**: exact candidate and decision Tool Calls commit
+  one complete v5 batch; `069` retains every `067` fence and atomically promotes one
+  safe school fact with evidence/audit/Activity.
+- **Production successor Base**: an exact empty Tool batch completes the job
+  without canonical writes; an ineligible temporary/conflicting candidate
+  remains Review.
+- **Production successor Bad**: edit applied `066`–`069` bytes or checksums, trust adapter-
+  synthesized Tool IDs, promote a partial batch, or write canonical Memory
+  directly from Go.
 
 ## 6. Tests Required
 
@@ -170,6 +238,12 @@ REDIS_KEY_PREFIX=mm-chat
 - Build the backend image and prove it contains
   `/usr/local/bin/mm-chat-memory-worker`.
 - Offline tests use fake Providers and never call a Live Provider.
+- Pin the applied `066`–`069` checksums; replay
+  `066 -> 067 -> 066 -> 067` and `067 -> 068 -> 067 -> 068` on disposable
+  PostgreSQL 17 plus `068 -> 069 -> 068 -> 069`, and assert Tool-profile/batch/candidate/all-evidence
+  fences, tombstone/conflict/temporary/Sensitive behavior, atomic promotion,
+  idempotent replay, projection enqueue, function-only denial, and all promotion-
+  history rollback guards.
 
 ## 7. Wrong vs Correct
 
@@ -190,4 +264,13 @@ assistant finalize + ID-only event/job in one PostgreSQL transaction
   -> publish returned event_id best-effort
   -> claim/hydrate/apply/complete through lease-fenced SQL functions
   -> PostgreSQL polling recovers when Redis or the process fails
+```
+
+Production L1 successor:
+
+```text
+exact Provider-issued Tool Calls -> atomic hash-pinned candidate batch
+  -> migration-069 compatible profile + authority recheck
+  -> existing governance decision transaction
+  -> canonical + evidence + audit + Activity, or fail closed / Review
 ```
