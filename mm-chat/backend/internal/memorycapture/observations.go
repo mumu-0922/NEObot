@@ -120,6 +120,18 @@ func CostBasisSHA256(cost CostBasis) (string, error) {
 		); err != nil {
 			return "", err
 		}
+	case "neo-chat.memory-regression-cost-basis.v9":
+		if cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+			cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil {
+			return "", fmt.Errorf("%w: cost basis", ErrCaptureInvalid)
+		}
+		if err := validateConfiguredCandidateJudgeCostAuthority(
+			cost,
+			FixedMemoryJudgeAuthority(),
+			900,
+		); err != nil {
+			return "", err
+		}
 	default:
 		return "", fmt.Errorf("%w: cost basis", ErrCaptureInvalid)
 	}
@@ -291,6 +303,19 @@ func ValidateAccuracyFirstMemoryJudgeCostAuthority(
 		return fmt.Errorf("%w: accuracy-first Memory Judge cost policy", ErrCaptureInvalid)
 	}
 	return validateConfiguredCandidateJudgeCostAuthority(cost, authority, 600)
+}
+
+func ValidateTransportStableMemoryJudgeCostAuthority(
+	cost CostBasis,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+) error {
+	if cost.SchemaVersion != "neo-chat.memory-regression-cost-basis.v9" ||
+		cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+		cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil ||
+		!validFixedMemoryJudgeAuthority(authority) {
+		return fmt.Errorf("%w: transport-stable Memory Judge cost policy", ErrCaptureInvalid)
+	}
+	return validateConfiguredCandidateJudgeCostAuthority(cost, authority, 900)
 }
 
 func validateConfiguredCandidateJudgeCostAuthority(

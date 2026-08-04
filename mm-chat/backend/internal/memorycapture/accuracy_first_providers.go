@@ -16,6 +16,7 @@ import (
 
 const (
 	AccuracyFirstRetryFallbackDelay = 5 * time.Second
+	TransportStableSecondRetryDelay = 10 * time.Second
 	AccuracyFirstInterCaseCooldown  = 1 * time.Second
 )
 
@@ -45,6 +46,25 @@ func AccuracyFirstDevelopmentExecutionPolicy(
 	}, nil
 }
 
+// TransportStableDevelopmentExecutionPolicy preserves every schema-v12
+// execution boundary except the Judge-specific retry ceiling. Retrieval
+// Provider calls remain limited to one retry.
+func TransportStableDevelopmentExecutionPolicy(
+	providerMode string,
+) (AccuracyFirstExecutionPolicy, error) {
+	policy, err := AccuracyFirstDevelopmentExecutionPolicy(providerMode)
+	if err != nil {
+		return AccuracyFirstExecutionPolicy{}, err
+	}
+	policy.SequenceVersion = TransportStableExecutionSequenceV2
+	policy.RetryPolicyVersion = TransportStableRetryPolicyV2
+	policy.MaximumJudgeRetriesPerRequest = 2
+	policy.SecondJudgeRetryDelayMilliseconds = int(
+		TransportStableSecondRetryDelay / time.Millisecond,
+	)
+	return policy, nil
+}
+
 type accuracyFirstWait func(context.Context, time.Duration) error
 
 // AccuracyFirstProviderController owns one global request gate for projection
@@ -57,6 +77,7 @@ type AccuracyFirstProviderController struct {
 	wait                    accuracyFirstWait
 	virtualTime             bool
 	judgeFailureDiagnostics bool
+	maximumJudgeRetries     int
 	telemetry               AccuracyFirstProviderTelemetry
 	latencies               map[string][]int64
 }
@@ -141,6 +162,47 @@ func WrapAccuracyFirstJudgeFailureDiagnosticDevelopmentProviders(
 		virtualTime,
 		true,
 	)
+}
+
+// WrapTransportStableMemoryJudgeDevelopmentProviders keeps the schema-v13
+// aggregate failure diagnostics and serial gate while permitting one extra
+// Judge-only transient retry. BGE retry behavior remains unchanged.
+func WrapTransportStableMemoryJudgeDevelopmentProviders(
+	providerMode string,
+	passage PassageEmbedder,
+	hybrid usermemory.HybridShadowProvider,
+	judge usermemory.HybridCandidateJudge,
+) (
+	PassageEmbedder,
+	usermemory.HybridShadowProvider,
+	usermemory.HybridCandidateJudge,
+	*AccuracyFirstProviderController,
+	error,
+) {
+	wait := waitAccuracyFirst
+	virtualTime := false
+	switch providerMode {
+	case ProviderModeFakeProtocol:
+		virtualTime = true
+		wait = func(context.Context, time.Duration) error { return nil }
+	case ProviderModeLiveSiliconFlow:
+	default:
+		return nil, nil, nil, nil, ErrCaptureInvalid
+	}
+	passageProvider, hybridProvider, candidateJudge, controller, err :=
+		wrapAccuracyFirstDevelopmentProviders(
+			passage,
+			hybrid,
+			judge,
+			wait,
+			virtualTime,
+			true,
+		)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	controller.maximumJudgeRetries = 2
+	return passageProvider, hybridProvider, candidateJudge, controller, nil
 }
 
 func wrapAccuracyFirstDevelopmentProviders(
@@ -330,7 +392,11 @@ func executeAccuracyFirstRequest[T any](
 	if controller == nil || request == nil || retryAdvice == nil {
 		return zero, ErrCaptureInvalid
 	}
-	for attempt := 0; attempt < 2; attempt++ {
+	maximumRetries := 1
+	if operation == "judge" && controller.maximumJudgeRetries > 0 {
+		maximumRetries = controller.maximumJudgeRetries
+	}
+	for attempt := 0; attempt <= maximumRetries; attempt++ {
 		controller.recordAttempt(operation, attempt > 0, judgeInputTokenUpperBound)
 		started := time.Now()
 		result, err := request()
@@ -339,21 +405,34 @@ func executeAccuracyFirstRequest[T any](
 			return result, nil
 		}
 		controller.recordFailure(operation, err)
-		if attempt > 0 || ctx.Err() != nil {
+		if attempt >= maximumRetries || ctx.Err() != nil {
 			return zero, err
 		}
 		delay, retryable := retryAdvice(err)
 		if !retryable {
 			return zero, err
 		}
-		if delay < 0 {
-			delay = AccuracyFirstRetryFallbackDelay
+		if operation == "judge" && maximumRetries > 1 {
+			if explicit, ok := chat.ProviderExplicitRetryDelay(err); ok {
+				delay = explicit
+			} else {
+				delay = accuracyFirstFallbackDelay(operation, attempt+1)
+			}
+		} else if delay < 0 {
+			delay = accuracyFirstFallbackDelay(operation, attempt+1)
 		}
 		if err := controller.wait(ctx, delay); err != nil {
 			return zero, errors.Join(err, ctx.Err())
 		}
 	}
 	return zero, ErrCaptureUnavailable
+}
+
+func accuracyFirstFallbackDelay(operation string, retryNumber int) time.Duration {
+	if operation == "judge" && retryNumber == 2 {
+		return TransportStableSecondRetryDelay
+	}
+	return AccuracyFirstRetryFallbackDelay
 }
 
 func (controller *AccuracyFirstProviderController) recordFailure(

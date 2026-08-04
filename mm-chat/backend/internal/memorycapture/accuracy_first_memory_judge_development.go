@@ -252,7 +252,22 @@ func validateAccuracyFirstProviderTelemetryBase(
 	caseCount int,
 	logicalJudgeRequests int,
 ) error {
+	return validateAccuracyFirstProviderTelemetryWithJudgeRetryLimit(
+		value,
+		caseCount,
+		logicalJudgeRequests,
+		1,
+	)
+}
+
+func validateAccuracyFirstProviderTelemetryWithJudgeRetryLimit(
+	value AccuracyFirstProviderTelemetry,
+	caseCount int,
+	logicalJudgeRequests int,
+	maximumJudgeRetries int,
+) error {
 	if caseCount != 300 || logicalJudgeRequests < 0 || logicalJudgeRequests > caseCount ||
+		maximumJudgeRetries < 1 || maximumJudgeRetries > 2 ||
 		value.PassageEmbeddingAttempts <= 0 ||
 		value.PassageEmbeddingRetries < 0 ||
 		value.PassageEmbeddingRetries*2 > value.PassageEmbeddingAttempts ||
@@ -263,7 +278,8 @@ func validateAccuracyFirstProviderTelemetryBase(
 		value.RerankAttempts-value.RerankRetries > caseCount ||
 		value.RerankAttempts-value.RerankRetries < logicalJudgeRequests ||
 		value.JudgeAttempts != logicalJudgeRequests+value.JudgeRetries ||
-		value.JudgeRetries < 0 || value.JudgeRetries > logicalJudgeRequests ||
+		value.JudgeRetries < 0 ||
+		value.JudgeRetries > logicalJudgeRequests*maximumJudgeRetries ||
 		value.JudgeInputTokenUpperBound < 0 ||
 		(value.JudgeAttempts == 0 && value.JudgeInputTokenUpperBound != 0) ||
 		(value.JudgeAttempts > 0 && value.JudgeInputTokenUpperBound == 0) ||

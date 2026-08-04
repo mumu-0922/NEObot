@@ -8,7 +8,7 @@ usage: run-memory-regression.sh \
   --output-dir <new-run-parent> \
   [--regression-root <protected-root>] \
   [--provider-mode fake_protocol|live_siliconflow] \
-  [--capture-mode full_regression|development_calibration|development_cloud_judge|development_memory_tool_route|development_memory_tool_route_diagnostic|development_configured_candidate_judge|development_fixed_memory_judge|development_fixed_memory_judge_accuracy|development_fixed_memory_judge_failure_diagnostic|frozen_validation] \
+  [--capture-mode full_regression|development_calibration|development_cloud_judge|development_memory_tool_route|development_memory_tool_route_diagnostic|development_configured_candidate_judge|development_fixed_memory_judge|development_fixed_memory_judge_accuracy|development_fixed_memory_judge_failure_diagnostic|development_fixed_memory_judge_transport_stable|frozen_validation] \
   [--cloud-judge-model <fixed-model-id>] \
   [--credential-file <mode-0600-file>] \
   [--live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA] \
@@ -291,7 +291,7 @@ case "${capture_mode}" in
       exit 2
     fi
     ;;
-  development_configured_candidate_judge | development_fixed_memory_judge | development_fixed_memory_judge_accuracy | development_fixed_memory_judge_failure_diagnostic)
+  development_configured_candidate_judge | development_fixed_memory_judge | development_fixed_memory_judge_accuracy | development_fixed_memory_judge_failure_diagnostic | development_fixed_memory_judge_transport_stable)
     if [[ -z "${configured_judge_provider_id}" || \
       -z "${configured_judge_provider_type}" || \
       -z "${configured_judge_base_url}" || \
@@ -381,7 +381,8 @@ configured_judge_base_url_sha256=""
 if [[ "${capture_mode}" == "development_configured_candidate_judge" ||
   "${capture_mode}" == "development_fixed_memory_judge" ||
   "${capture_mode}" == "development_fixed_memory_judge_accuracy" ||
-  "${capture_mode}" == "development_fixed_memory_judge_failure_diagnostic" ]]; then
+  "${capture_mode}" == "development_fixed_memory_judge_failure_diagnostic" ||
+  "${capture_mode}" == "development_fixed_memory_judge_transport_stable" ]]; then
   configured_judge_base_url="$(python3 - "${configured_judge_base_url}" <<'PY'
 import sys
 from urllib.parse import urlsplit
@@ -471,7 +472,8 @@ if [[ "${provider_mode}" == "live_siliconflow" ]]; then
   if [[ "${capture_mode}" == "development_configured_candidate_judge" ||
     "${capture_mode}" == "development_fixed_memory_judge" ||
     "${capture_mode}" == "development_fixed_memory_judge_accuracy" ||
-    "${capture_mode}" == "development_fixed_memory_judge_failure_diagnostic" ]]; then
+    "${capture_mode}" == "development_fixed_memory_judge_failure_diagnostic" ||
+    "${capture_mode}" == "development_fixed_memory_judge_transport_stable" ]]; then
     if [[ ! -f "${configured_judge_credential_source}" || \
       -L "${configured_judge_credential_source}" ]]; then
       echo "Memory regression: configured candidate-judge credential must be a regular non-symlink file" >&2
@@ -643,7 +645,8 @@ if [[ "${provider_mode}" == "live_siliconflow" && \
   ("${capture_mode}" == "development_configured_candidate_judge" ||
   "${capture_mode}" == "development_fixed_memory_judge" ||
   "${capture_mode}" == "development_fixed_memory_judge_accuracy" ||
-  "${capture_mode}" == "development_fixed_memory_judge_failure_diagnostic") ]]; then
+  "${capture_mode}" == "development_fixed_memory_judge_failure_diagnostic" ||
+  "${capture_mode}" == "development_fixed_memory_judge_transport_stable") ]]; then
   cp --no-preserve=mode,ownership,timestamps \
     "${configured_judge_credential_source}" \
     "${configured_judge_credential_copy}"
@@ -664,7 +667,8 @@ if [[ "${provider_mode}" == "live_siliconflow" && \
   ("${capture_mode}" == "development_configured_candidate_judge" ||
   "${capture_mode}" == "development_fixed_memory_judge" ||
   "${capture_mode}" == "development_fixed_memory_judge_accuracy" ||
-  "${capture_mode}" == "development_fixed_memory_judge_failure_diagnostic") ]]; then
+  "${capture_mode}" == "development_fixed_memory_judge_failure_diagnostic" ||
+  "${capture_mode}" == "development_fixed_memory_judge_transport_stable") ]]; then
   configured_judge_credential_target="/run/mm-chat-memory-regression/configured-candidate-judge-provider.key"
 fi
 cat >"${env_file}" <<EOF
@@ -876,6 +880,8 @@ elif capture_mode == "development_fixed_memory_judge_accuracy":
     expected = {"fixed-memory-judge-accuracy-development.json", "run-manifest.json"}
 elif capture_mode == "development_fixed_memory_judge_failure_diagnostic":
     expected = {"fixed-memory-judge-failure-diagnostic-development.json", "run-manifest.json"}
+elif capture_mode == "development_fixed_memory_judge_transport_stable":
+    expected = {"fixed-memory-judge-transport-stable-development.json", "run-manifest.json"}
 elif capture_mode == "frozen_validation":
     expected = {"relevance-validation.json", "run-manifest.json"}
 else:
@@ -907,6 +913,7 @@ expected_admission = {
     "development_fixed_memory_judge": "development_fixed_memory_judge_only",
     "development_fixed_memory_judge_accuracy": "development_fixed_memory_judge_accuracy_only",
     "development_fixed_memory_judge_failure_diagnostic": "development_fixed_memory_judge_failure_diagnostic_only",
+    "development_fixed_memory_judge_transport_stable": "development_fixed_memory_judge_transport_stable_only",
     "frozen_validation": "frozen_validation_only",
 }[capture_mode]
 if manifest.get("admissionMode") != expected_admission or manifest.get("promotionEligible") is not False:
@@ -931,6 +938,7 @@ else:
         "development_fixed_memory_judge",
         "development_fixed_memory_judge_accuracy",
         "development_fixed_memory_judge_failure_diagnostic",
+        "development_fixed_memory_judge_transport_stable",
     } else "validation"
     if manifest.get("captureMode") != capture_mode or manifest.get("split") != expected_split:
         raise SystemExit("relevance run split authority drift")
@@ -1192,11 +1200,18 @@ elif capture_mode == "development_fixed_memory_judge_accuracy":
         or manifest.get("providerCostPolicy") != report.get("providerCostPolicy")
     ):
         raise SystemExit("accuracy-first Memory Judge retry/cost authority drift")
-elif capture_mode == "development_fixed_memory_judge_failure_diagnostic":
+elif capture_mode in {
+    "development_fixed_memory_judge_failure_diagnostic",
+    "development_fixed_memory_judge_transport_stable",
+}:
+    transport_stable = capture_mode == "development_fixed_memory_judge_transport_stable"
+    report_name = (
+        "fixed-memory-judge-transport-stable-development.json"
+        if transport_stable
+        else "fixed-memory-judge-failure-diagnostic-development.json"
+    )
     report = json.loads(
-        (output / "fixed-memory-judge-failure-diagnostic-development.json").read_text(
-            encoding="utf-8"
-        )
+        (output / report_name).read_text(encoding="utf-8")
     )
     criteria = report.get("evaluationCriteria")
     execution = report.get("executionPolicy")
@@ -1205,16 +1220,23 @@ elif capture_mode == "development_fixed_memory_judge_failure_diagnostic":
     attempts = report.get("providerAttempts")
     authority = report.get("costAuthority")
     expected_clock = "wall_clock_v1" if mode == "live_siliconflow" else "virtual_protocol_v1"
+    expected_schema = (
+        "neo-chat.memory-regression-relevance-calibration.v14"
+        if transport_stable
+        else "neo-chat.memory-regression-relevance-calibration.v13"
+    )
+    expected_passed = bool(evaluation.get("passed")) and diagnostics.get("failedCaseCount") == 0
     if (
-        report.get("schemaVersion") != "neo-chat.memory-regression-relevance-calibration.v13"
+        report.get("schemaVersion") != expected_schema
         or report.get("split") != "development"
         or report.get("caseCount") != 300
         or report.get("admissionMode") != expected_admission
         or report.get("promotionEligible") is not False
         or report.get("policySelected") is not False
         or report.get("diagnosticComplete") is not True
-        or report.get("passed") is not False
-        or manifest.get("passed") is not False
+        or (not transport_stable and report.get("passed") is not False)
+        or (transport_stable and report.get("passed") is not expected_passed)
+        or manifest.get("passed") is not report.get("passed")
         or report.get("providerEgressPolicy") != "owner_authorized_normal_candidates_v1"
         or report.get("providerCostPolicy") != "owner_authorized_absolute_cap_v1"
         or report.get("providerCostAuthorized") is not True
@@ -1236,21 +1258,33 @@ elif capture_mode == "development_fixed_memory_judge_failure_diagnostic":
         or not isinstance(attempts, dict)
         or not isinstance(authority, dict)
     ):
-        raise SystemExit("Memory Judge failure diagnostic authority drift")
+        raise SystemExit("Memory Judge typed transport authority drift")
+    expected_sequence = (
+        "bge_query_admission_bge_rerank_luna_judge_record_serial_judge_retry_v2"
+        if transport_stable
+        else "bge_query_admission_bge_rerank_luna_judge_record_serial_v1"
+    )
+    expected_retry_policy = (
+        "transient_408_429_5xx_transport_read_judge_twice_v2"
+        if transport_stable
+        else "transient_408_429_5xx_transport_read_once_v1"
+    )
     if (
         not isinstance(execution, dict)
-        or execution.get("sequenceVersion") != "bge_query_admission_bge_rerank_luna_judge_record_serial_v1"
+        or execution.get("sequenceVersion") != expected_sequence
         or execution.get("globalProviderRequestConcurrency") != 1
         or execution.get("applicationDeadlineMode") != "none_v1"
         or execution.get("providerElapsedTimeoutMode") != "none_v1"
         or execution.get("latencyEvaluationMode") != "diagnostic_only_v1"
         or execution.get("interCaseCooldownMilliseconds") != 1000
         or execution.get("interCaseCooldownClock") != expected_clock
-        or execution.get("retryPolicyVersion") != "transient_408_429_5xx_transport_read_once_v1"
+        or execution.get("retryPolicyVersion") != expected_retry_policy
         or execution.get("maximumRetriesPerProviderRequest") != 1
         or execution.get("retryFallbackDelayMilliseconds") != 5000
+        or execution.get("maximumJudgeRetriesPerRequest") != (2 if transport_stable else None)
+        or execution.get("secondJudgeRetryDelayMilliseconds") != (10000 if transport_stable else None)
     ):
-        raise SystemExit("Memory Judge failure diagnostic execution policy drift")
+        raise SystemExit("Memory Judge typed transport execution policy drift")
     failure_codes = diagnostics.get("failureCodeCounts")
     attempt_counts = attempts.get("judgeAttemptFailureCategoryCounts")
     terminal_counts = diagnostics.get("judgeTerminalFailureCategoryCounts")
@@ -1305,7 +1339,7 @@ elif capture_mode == "development_fixed_memory_judge_failure_diagnostic":
         ) != 300
         or failure_codes.get("HARD_CUTOFF", 0) != 0
     ):
-        raise SystemExit("Memory Judge failure diagnostic category reconciliation drift")
+        raise SystemExit("Memory Judge typed transport category reconciliation drift")
     count_pairs = (
         ("passageEmbeddingAttempts", "passageEmbeddingRetries", "passageEmbeddingLatency"),
         ("queryEmbeddingAttempts", "queryEmbeddingRetries", "queryEmbeddingLatency"),
@@ -1325,26 +1359,31 @@ elif capture_mode == "development_fixed_memory_judge_failure_diagnostic":
             or not isinstance(latency, dict)
             or latency.get("sampleCount") != attempt_count
         ):
-            raise SystemExit("Memory Judge failure diagnostic Provider telemetry drift")
+            raise SystemExit("Memory Judge typed transport Provider telemetry drift")
     logical_judges = diagnostics.get("judgeCompletedCaseCount", -1) + failure_codes.get(
         "CANDIDATE_JUDGE_FAILED", 0
     )
+    authorized_requests = 900 if transport_stable else 600
+    maximum_judge_retries = 2 if transport_stable else 1
     if (
         attempts.get("judgeAttempts") != logical_judges + attempts.get("judgeRetries", -1)
+        or attempts.get("judgeRetries", -1) > logical_judges * maximum_judge_retries
         or attempts.get("queryEmbeddingAttempts") != 300 + attempts.get("queryEmbeddingRetries", -1)
         or attempts.get("interCaseCooldownCount") != 299
         or attempts.get("interCaseCooldownMilliseconds") != 299000
         or type(attempts.get("interCaseCooldownElapsedMilliseconds")) is not int
         or (mode == "fake_protocol" and attempts.get("interCaseCooldownElapsedMilliseconds") != 0)
-        or authority.get("authorizedRequestCount") != 600
+        or authority.get("authorizedRequestCount") != authorized_requests
         or authority.get("actualRequestCount") != attempts.get("judgeAttempts")
         or authority.get("actualInputTokenUpperBound") != attempts.get("judgeInputTokenUpperBound")
         or authority.get("actualOutputTokenUpperBound") != attempts.get("judgeAttempts") * 128
         or authority.get("actualInputTokenUpperBound", -1) > authority.get("authorizedMaximumInputTokens", -1)
         or authority.get("actualOutputTokenUpperBound", -1) > authority.get("authorizedMaximumOutputTokens", -1)
+        or authority.get("maximumMemoryProviderCostMicrounits", 0)
+        < authority.get("maximumJudgeCostMicrounits", 0)
         or manifest.get("providerCostPolicy") != report.get("providerCostPolicy")
     ):
-        raise SystemExit("Memory Judge failure diagnostic cost/attempt drift")
+        raise SystemExit("Memory Judge typed transport cost/attempt drift")
 elif capture_mode in {"development_configured_candidate_judge", "development_fixed_memory_judge"}:
     fixed_memory_judge = capture_mode == "development_fixed_memory_judge"
     report_name = (

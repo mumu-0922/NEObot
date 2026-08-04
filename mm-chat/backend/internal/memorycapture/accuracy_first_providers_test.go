@@ -105,6 +105,54 @@ func TestJudgeFailureDiagnosticControllerCountsRecoveredAndExhaustedAttempts(t *
 	}
 }
 
+func TestTransportStableJudgeRetriesTwiceWithVersionedFallbacks(t *testing.T) {
+	delays := make([]time.Duration, 0, 2)
+	controller := &AccuracyFirstProviderController{
+		wait: func(_ context.Context, delay time.Duration) error {
+			delays = append(delays, delay)
+			return nil
+		},
+		judgeFailureDiagnostics: true,
+		maximumJudgeRetries:     2,
+		telemetry: AccuracyFirstProviderTelemetry{
+			JudgeAttemptFailureCategoryCounts: make(map[string]int),
+		},
+	}
+	attempts := 0
+	result, err := executeAccuracyFirstRequest(
+		context.Background(),
+		controller,
+		"judge",
+		func() (string, error) {
+			attempts++
+			if attempts == 3 {
+				return "ok", nil
+			}
+			return "", memoryjudge.NewFailure(
+				string(chat.ProviderFailureTransportFailed),
+				errors.New("private transport error"),
+			)
+		},
+		func(error) (time.Duration, bool) { return 5 * time.Second, true },
+		100,
+	)
+	telemetry := controller.Snapshot()
+	if err != nil || result != "ok" || attempts != 3 ||
+		len(delays) != 2 || delays[0] != 5*time.Second ||
+		delays[1] != 10*time.Second || telemetry.JudgeAttempts != 3 ||
+		telemetry.JudgeRetries != 2 || telemetry.JudgeRetryInputTokenUpperBound != 200 ||
+		telemetry.JudgeAttemptFailureCategoryCounts[string(chat.ProviderFailureTransportFailed)] != 2 {
+		t.Fatalf(
+			"result=%q err=%v attempts=%d delays=%v telemetry=%#v",
+			result,
+			err,
+			attempts,
+			delays,
+			telemetry,
+		)
+	}
+}
+
 func TestAccuracyFirstV12ControllerOmitsJudgeFailureDiagnostics(t *testing.T) {
 	controller := &AccuracyFirstProviderController{
 		wait: func(context.Context, time.Duration) error { return nil },

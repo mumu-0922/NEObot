@@ -23,9 +23,12 @@ const (
 	FixedMemoryJudgeReaderVersion               = "neo-chat.native-memory-reader-capture.v9"
 	AccuracyFirstMemoryJudgeReaderVersion       = "neo-chat.native-memory-reader-capture.v10"
 	JudgeFailureDiagnosticReaderVersion         = "neo-chat.native-memory-reader-capture.v11"
+	TransportStableMemoryJudgeReaderVersion     = "neo-chat.native-memory-reader-capture.v12"
 	ProviderCostPolicyOwnerAuthorizedAbsoluteV1 = "owner_authorized_absolute_cap_v1"
 	AccuracyFirstExecutionSequenceV1            = "bge_query_admission_bge_rerank_luna_judge_record_serial_v1"
 	AccuracyFirstRetryPolicyV1                  = "transient_408_429_5xx_transport_read_once_v1"
+	TransportStableExecutionSequenceV2          = "bge_query_admission_bge_rerank_luna_judge_record_serial_judge_retry_v2"
+	TransportStableRetryPolicyV2                = "transient_408_429_5xx_transport_read_judge_twice_v2"
 	AccuracyFirstCooldownWallClockV1            = "wall_clock_v1"
 	AccuracyFirstCooldownVirtualProtocolV1      = "virtual_protocol_v1"
 	ProviderModeNone                            = "none"
@@ -40,6 +43,7 @@ const (
 	CaptureModeFixedMemoryJudge                 = "development_fixed_memory_judge"
 	CaptureModeAccuracyFirstMemoryJudge         = "development_fixed_memory_judge_accuracy"
 	CaptureModeJudgeFailureDiagnostic           = "development_fixed_memory_judge_failure_diagnostic"
+	CaptureModeTransportStableMemoryJudge       = "development_fixed_memory_judge_transport_stable"
 	CaptureModeFrozenValidation                 = "frozen_validation"
 )
 
@@ -128,20 +132,23 @@ type ProfileConfig struct {
 	AccuracyFirstExecutionPolicy          *AccuracyFirstExecutionPolicy `json:"accuracyFirstExecutionPolicy,omitempty"`
 }
 
-// AccuracyFirstExecutionPolicy is hash-bound only by schema-v12. It makes the
-// absence of elapsed-time cutoffs, strict Provider serialization, cooldown,
-// and bounded retry behavior reviewable without changing historical profiles.
+// AccuracyFirstExecutionPolicy is hash-bound by each accuracy-first schema. It
+// makes the absence of elapsed-time cutoffs, strict Provider serialization,
+// cooldown, and bounded retry behavior reviewable without changing historical
+// profiles.
 type AccuracyFirstExecutionPolicy struct {
-	SequenceVersion                  string `json:"sequenceVersion"`
-	GlobalProviderRequestConcurrency int    `json:"globalProviderRequestConcurrency"`
-	ApplicationDeadlineMode          string `json:"applicationDeadlineMode"`
-	ProviderElapsedTimeoutMode       string `json:"providerElapsedTimeoutMode"`
-	LatencyEvaluationMode            string `json:"latencyEvaluationMode"`
-	InterCaseCooldownMilliseconds    int    `json:"interCaseCooldownMilliseconds"`
-	InterCaseCooldownClock           string `json:"interCaseCooldownClock"`
-	RetryPolicyVersion               string `json:"retryPolicyVersion"`
-	MaximumRetriesPerProviderRequest int    `json:"maximumRetriesPerProviderRequest"`
-	RetryFallbackDelayMilliseconds   int    `json:"retryFallbackDelayMilliseconds"`
+	SequenceVersion                   string `json:"sequenceVersion"`
+	GlobalProviderRequestConcurrency  int    `json:"globalProviderRequestConcurrency"`
+	ApplicationDeadlineMode           string `json:"applicationDeadlineMode"`
+	ProviderElapsedTimeoutMode        string `json:"providerElapsedTimeoutMode"`
+	LatencyEvaluationMode             string `json:"latencyEvaluationMode"`
+	InterCaseCooldownMilliseconds     int    `json:"interCaseCooldownMilliseconds"`
+	InterCaseCooldownClock            string `json:"interCaseCooldownClock"`
+	RetryPolicyVersion                string `json:"retryPolicyVersion"`
+	MaximumRetriesPerProviderRequest  int    `json:"maximumRetriesPerProviderRequest"`
+	RetryFallbackDelayMilliseconds    int    `json:"retryFallbackDelayMilliseconds"`
+	MaximumJudgeRetriesPerRequest     int    `json:"maximumJudgeRetriesPerRequest,omitempty"`
+	SecondJudgeRetryDelayMilliseconds int    `json:"secondJudgeRetryDelayMilliseconds,omitempty"`
 }
 
 // CostBasis is supplied by an operator and hash-bound to observations. The

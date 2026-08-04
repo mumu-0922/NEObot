@@ -63,6 +63,14 @@ func TestProviderRetryDelayAcceptsOnlyTransientCategories(t *testing.T) {
 	if delay, ok := ProviderRetryDelay(err); !ok || delay != 7*time.Second {
 		t.Fatalf("Retry-After chain = %s/%t", delay, ok)
 	}
+	if delay, ok := ProviderExplicitRetryDelay(err); !ok || delay != 7*time.Second {
+		t.Fatalf("explicit Retry-After chain = %s/%t", delay, ok)
+	}
+	if _, ok := ProviderExplicitRetryDelay(
+		newProviderFailure(ProviderFailureTransportFailed, "bounded"),
+	); ok {
+		t.Fatal("fallback-only transport failure exposed an explicit delay")
+	}
 }
 
 func TestOpenAICompatibleProviderReturnsTypedHTTPFailure(t *testing.T) {

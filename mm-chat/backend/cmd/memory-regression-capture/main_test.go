@@ -144,6 +144,17 @@ func TestParseCommandSeparatesFakeAndLiveCredentialBoundaries(t *testing.T) {
 	if err != nil || options.captureMode != memorycapture.CaptureModeJudgeFailureDiagnostic {
 		t.Fatalf("parse Judge failure diagnostic command = %#v/%v", options, err)
 	}
+	transportStableJudge := append([]string(nil), diagnosticJudge...)
+	for index := range transportStableJudge {
+		if transportStableJudge[index] == memorycapture.CaptureModeJudgeFailureDiagnostic {
+			transportStableJudge[index] = memorycapture.CaptureModeTransportStableMemoryJudge
+			break
+		}
+	}
+	options, err = parseCommand(transportStableJudge)
+	if err != nil || options.captureMode != memorycapture.CaptureModeTransportStableMemoryJudge {
+		t.Fatalf("parse transport-stable Memory Judge command = %#v/%v", options, err)
+	}
 }
 
 func TestAccuracyFirstCaptureContextHasNoElapsedDeadline(t *testing.T) {
@@ -162,6 +173,14 @@ func TestAccuracyFirstCaptureContextHasNoElapsedDeadline(t *testing.T) {
 	defer diagnosticCancel()
 	if _, ok := diagnosticContext.Deadline(); ok {
 		t.Fatal("Judge failure diagnostic inherited the legacy 45-minute deadline")
+	}
+	transportContext, transportCancel := captureContext(
+		context.Background(),
+		memorycapture.CaptureModeTransportStableMemoryJudge,
+	)
+	defer transportCancel()
+	if _, ok := transportContext.Deadline(); ok {
+		t.Fatal("transport-stable Judge inherited the legacy 45-minute deadline")
 	}
 	legacyContext, legacyCancel := captureContext(
 		context.Background(),
@@ -336,6 +355,7 @@ func TestBuildProvidersWrapsAccuracyFirstFakeProviderSet(t *testing.T) {
 	for _, captureMode := range []string{
 		memorycapture.CaptureModeAccuracyFirstMemoryJudge,
 		memorycapture.CaptureModeJudgeFailureDiagnostic,
+		memorycapture.CaptureModeTransportStableMemoryJudge,
 	} {
 		bundle, err := buildProviders(commandOptions{
 			providerMode:           memorycapture.ProviderModeFakeProtocol,

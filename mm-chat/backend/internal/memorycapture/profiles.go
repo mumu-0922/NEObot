@@ -212,6 +212,44 @@ func BuildJudgeFailureDiagnosticDevelopmentProfileConfig(
 	return config, nil
 }
 
+func BuildTransportStableMemoryJudgeDevelopmentProfileConfig(
+	protected ProtectedRegression,
+	costBasisSHA256 string,
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	providerCostPolicy string,
+) (ProfileConfig, error) {
+	if !validFixedMemoryJudgeAuthority(authority) ||
+		providerCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+		judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
+		return ProfileConfig{}, ErrCaptureInvalid
+	}
+	_, config, err := buildProfileConfigs(
+		protected,
+		costBasisSHA256,
+		providerMode,
+		CaptureModeTransportStableMemoryJudge,
+		DevelopmentCalibrationSplit,
+		usermemory.HybridShadowAccuracyFirstMemoryJudgeDevelopmentPolicy(),
+		providerCostPolicy,
+		nil,
+	)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	config.ConfiguredCandidateJudgeProviderID = authority.ProviderID
+	config.ConfiguredCandidateJudgeProviderType = authority.ProviderType
+	config.ConfiguredCandidateJudgeBaseURLSHA256 = authority.BaseURLSHA256
+	config.ConfiguredCandidateJudgeAdapter = memoryjudge.ChatAdapterVersion
+	config.EvaluationCriteriaVersion = memoryeval.MemoryJudgeAccuracyFirstCriteriaVersionV3
+	executionPolicy, err := TransportStableDevelopmentExecutionPolicy(providerMode)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	config.AccuracyFirstExecutionPolicy = &executionPolicy
+	return config, nil
+}
+
 func buildProfileConfigs(
 	protected ProtectedRegression,
 	costBasisSHA256 string,
@@ -252,10 +290,17 @@ func buildProfileConfigs(
 			return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
 		}
 	} else if captureMode == CaptureModeAccuracyFirstMemoryJudge ||
-		captureMode == CaptureModeJudgeFailureDiagnostic {
+		captureMode == CaptureModeJudgeFailureDiagnostic ||
+		captureMode == CaptureModeTransportStableMemoryJudge {
 		if captureMode == CaptureModeJudgeFailureDiagnostic {
 			readerVersion = JudgeFailureDiagnosticReaderVersion
 			profileSchemaVersion = "neo-chat.memory-regression-profile-config.v13"
+			if judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
+				return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
+			}
+		} else if captureMode == CaptureModeTransportStableMemoryJudge {
+			readerVersion = TransportStableMemoryJudgeReaderVersion
+			profileSchemaVersion = "neo-chat.memory-regression-profile-config.v14"
 			if judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
 				return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
 			}
@@ -323,6 +368,12 @@ func buildProfileConfigs(
 			MemoryToolRouteDiagnosticCompletenessPolicy
 	}
 	if captureMode == CaptureModeJudgeFailureDiagnostic {
+		common.CandidateJudgeFailureTaxonomyVersion = memoryjudge.FailureTaxonomyVersion
+		common.CandidateJudgeFailureTaxonomySHA256 = memoryjudge.FailureTaxonomySHA256
+		common.CandidateJudgeDiagnosticCompleteness =
+			JudgeFailureDiagnosticCompletenessPolicy
+	}
+	if captureMode == CaptureModeTransportStableMemoryJudge {
 		common.CandidateJudgeFailureTaxonomyVersion = memoryjudge.FailureTaxonomyVersion
 		common.CandidateJudgeFailureTaxonomySHA256 = memoryjudge.FailureTaxonomySHA256
 		common.CandidateJudgeDiagnosticCompleteness =

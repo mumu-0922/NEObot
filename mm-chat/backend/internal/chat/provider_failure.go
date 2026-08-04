@@ -151,6 +151,21 @@ func ProviderRetryDelay(err error) (time.Duration, bool) {
 	return providerRetryFallbackDelay, true
 }
 
+// ProviderExplicitRetryDelay returns only an upstream-supplied Retry-After
+// value from an otherwise retryable typed failure. Callers that version their
+// own fallback backoff can therefore preserve Retry-After precedence without
+// parsing error text or confusing it with the shared five-second fallback.
+func ProviderExplicitRetryDelay(err error) (time.Duration, bool) {
+	if _, retryable := ProviderRetryDelay(err); !retryable {
+		return 0, false
+	}
+	var failure *providerFailureError
+	if !errors.As(err, &failure) || failure == nil || !failure.hasRetryAfter {
+		return 0, false
+	}
+	return failure.retryAfter, true
+}
+
 func parseProviderRetryAfter(value string, now time.Time) (time.Duration, bool) {
 	value = strings.TrimSpace(value)
 	if value == "" {

@@ -353,8 +353,13 @@ if args and args[0] == "compose":
         elif capture_mode in {
             "development_fixed_memory_judge_accuracy",
             "development_fixed_memory_judge_failure_diagnostic",
+            "development_fixed_memory_judge_transport_stable",
         }:
-            diagnostic = capture_mode == "development_fixed_memory_judge_failure_diagnostic"
+            diagnostic = capture_mode in {
+                "development_fixed_memory_judge_failure_diagnostic",
+                "development_fixed_memory_judge_transport_stable",
+            }
+            transport_stable = capture_mode == "development_fixed_memory_judge_transport_stable"
             cooldown_elapsed = 299000 if mode == "live_siliconflow" else 0
             cooldown_clock = "wall_clock_v1" if mode == "live_siliconflow" else "virtual_protocol_v1"
             def latency(count):
@@ -367,13 +372,17 @@ if args and args[0] == "compose":
                 }
             accuracy = json.dumps({
                 "schemaVersion": (
-                    "neo-chat.memory-regression-relevance-calibration.v13"
+                    "neo-chat.memory-regression-relevance-calibration.v14"
+                    if transport_stable
+                    else "neo-chat.memory-regression-relevance-calibration.v13"
                     if diagnostic
                     else "neo-chat.memory-regression-relevance-calibration.v12"
                 ),
                 "corpusClass": "machine_reviewed_regression",
                 "admissionMode": (
-                    "development_fixed_memory_judge_failure_diagnostic_only"
+                    "development_fixed_memory_judge_transport_stable_only"
+                    if transport_stable
+                    else "development_fixed_memory_judge_failure_diagnostic_only"
                     if diagnostic
                     else "development_fixed_memory_judge_accuracy_only"
                 ),
@@ -409,20 +418,32 @@ if args and args[0] == "compose":
                     "applicationDeadlineMode": "none_v1",
                 },
                 "executionPolicy": {
-                    "sequenceVersion": "bge_query_admission_bge_rerank_luna_judge_record_serial_v1",
+                    "sequenceVersion": (
+                        "bge_query_admission_bge_rerank_luna_judge_record_serial_judge_retry_v2"
+                        if transport_stable
+                        else "bge_query_admission_bge_rerank_luna_judge_record_serial_v1"
+                    ),
                     "globalProviderRequestConcurrency": 1,
                     "applicationDeadlineMode": "none_v1",
                     "providerElapsedTimeoutMode": "none_v1",
                     "latencyEvaluationMode": "diagnostic_only_v1",
                     "interCaseCooldownMilliseconds": 1000,
                     "interCaseCooldownClock": cooldown_clock,
-                    "retryPolicyVersion": "transient_408_429_5xx_transport_read_once_v1",
+                    "retryPolicyVersion": (
+                        "transient_408_429_5xx_transport_read_judge_twice_v2"
+                        if transport_stable
+                        else "transient_408_429_5xx_transport_read_once_v1"
+                    ),
                     "maximumRetriesPerProviderRequest": 1,
                     "retryFallbackDelayMilliseconds": 5000,
+                    **({
+                        "maximumJudgeRetriesPerRequest": 2,
+                        "secondJudgeRetryDelayMilliseconds": 10000,
+                    } if transport_stable else {}),
                 },
-                "passed": not diagnostic,
+                "passed": (not diagnostic) or transport_stable,
                 "evaluation": {
-                    "passed": not diagnostic,
+                    "passed": (not diagnostic) or transport_stable,
                     "budgets": {
                         "p95LatencyMilliseconds": 120000,
                         "p99LatencyMilliseconds": 150000,
@@ -435,16 +456,16 @@ if args and args[0] == "compose":
                 },
                 "diagnostics": {
                     "emptyCandidateCaseCount": 105,
-                    "judgeCompletedCaseCount": 193 if diagnostic else 195,
+                    "judgeCompletedCaseCount": 193 if diagnostic and not transport_stable else 195,
                     "judgeAbstainedCaseCount": 30,
-                    "failedCaseCount": 2 if diagnostic else 0,
+                    "failedCaseCount": 2 if diagnostic and not transport_stable else 0,
                     "failureCodeCounts": (
                         {"CANDIDATE_JUDGE_FAILED": 2}
-                        if diagnostic
+                        if diagnostic and not transport_stable
                         else {}
                     ),
                     **({
-                        "judgeTerminalFailureCategoryCounts": {
+                        "judgeTerminalFailureCategoryCounts": {} if transport_stable else {
                             "CANDIDATE_JUDGE_OUTPUT_JSON_INVALID": 1,
                             "PROVIDER_RATE_LIMITED": 1,
                         },
@@ -457,19 +478,21 @@ if args and args[0] == "compose":
                     "queryEmbeddingRetries": 0,
                     "rerankAttempts": 195,
                     "rerankRetries": 0,
-                    "judgeAttempts": 196,
-                    "judgeRetries": 1,
-                    "judgeInputTokenUpperBound": 258770,
-                    "judgeRetryInputTokenUpperBound": 123,
+                    "judgeAttempts": 197 if transport_stable else 196,
+                    "judgeRetries": 2 if transport_stable else 1,
+                    "judgeInputTokenUpperBound": 258893 if transport_stable else 258770,
+                    "judgeRetryInputTokenUpperBound": 246 if transport_stable else 123,
                     "interCaseCooldownCount": 299,
                     "interCaseCooldownMilliseconds": 299000,
                     "interCaseCooldownElapsedMilliseconds": cooldown_elapsed,
                     "passageEmbeddingLatency": latency(1),
                     "queryEmbeddingLatency": latency(300),
                     "rerankLatency": latency(195),
-                    "judgeLatency": latency(196),
+                    "judgeLatency": latency(197 if transport_stable else 196),
                     **({
                         "judgeAttemptFailureCategoryCounts": {
+                            "PROVIDER_TRANSPORT_FAILED": 2,
+                        } if transport_stable else {
                             "CANDIDATE_JUDGE_OUTPUT_JSON_INVALID": 1,
                             "PROVIDER_RATE_LIMITED": 2,
                         },
@@ -477,25 +500,29 @@ if args and args[0] == "compose":
                 },
                 "costAuthority": {
                     "unit": "cny_microunits",
-                    "authorizedRequestCount": 600,
-                    "actualRequestCount": 196,
-                    "authorizedMaximumInputTokens": 600000,
-                    "actualInputTokenUpperBound": 258770,
-                    "authorizedMaximumOutputTokens": 76800,
-                    "actualOutputTokenUpperBound": 25088,
-                    "maximumJudgeCostMicrounits": 376800,
-                    "maximumMemoryProviderCostMicrounits": 487716,
+                    "authorizedRequestCount": 900 if transport_stable else 600,
+                    "actualRequestCount": 197 if transport_stable else 196,
+                    "authorizedMaximumInputTokens": 1500000 if transport_stable else 600000,
+                    "actualInputTokenUpperBound": 258893 if transport_stable else 258770,
+                    "authorizedMaximumOutputTokens": 115200 if transport_stable else 76800,
+                    "actualOutputTokenUpperBound": 25216 if transport_stable else 25088,
+                    "maximumJudgeCostMicrounits": 565200 if transport_stable else 376800,
+                    "maximumMemoryProviderCostMicrounits": 565200 if transport_stable else 487716,
                 },
             }, separators=(",", ":")).encode() + b"\n"
             report_name = (
-                "fixed-memory-judge-failure-diagnostic-development.json"
+                "fixed-memory-judge-transport-stable-development.json"
+                if transport_stable
+                else "fixed-memory-judge-failure-diagnostic-development.json"
                 if diagnostic
                 else "fixed-memory-judge-accuracy-development.json"
             )
             bodies = {report_name: accuracy}
             manifest_schema = "neo-chat.memory-regression-relevance-run.v1"
             admission_mode = (
-                "development_fixed_memory_judge_failure_diagnostic_only"
+                "development_fixed_memory_judge_transport_stable_only"
+                if transport_stable
+                else "development_fixed_memory_judge_failure_diagnostic_only"
                 if diagnostic
                 else "development_fixed_memory_judge_accuracy_only"
             )
@@ -704,6 +731,7 @@ if args and args[0] == "compose":
                         "development_fixed_memory_judge",
                         "development_fixed_memory_judge_accuracy",
                         "development_fixed_memory_judge_failure_diagnostic",
+                        "development_fixed_memory_judge_transport_stable",
                     } else "validation",
                     "profileId": candidate_profile,
                 })
@@ -715,10 +743,13 @@ if args and args[0] == "compose":
                     "development_fixed_memory_judge",
                     "development_fixed_memory_judge_accuracy",
                     "development_fixed_memory_judge_failure_diagnostic",
+                    "development_fixed_memory_judge_transport_stable",
                 }:
                     manifest["providerCostPolicy"] = "owner_authorized_absolute_cap_v1"
                 if capture_mode == "development_fixed_memory_judge_failure_diagnostic":
                     manifest["passed"] = False
+                elif capture_mode == "development_fixed_memory_judge_transport_stable":
+                    manifest["passed"] = True
             manifest_path = output / "run-manifest.json"
             manifest_path.write_text(json.dumps(manifest, separators=(",", ":")) + "\n", encoding="utf-8")
             manifest_path.chmod(0o600)
@@ -878,6 +909,27 @@ if [[ "$(find "${judge_failure_diagnostic_output}" -mindepth 2 -maxdepth 2 -type
   exit 1
 fi
 assert_cleanup "${judge_failure_diagnostic_log}"
+
+transport_stable_output="${temp_dir}/transport-stable-output"
+transport_stable_log="${temp_dir}/transport-stable-docker.log"
+mkdir "${transport_stable_output}"
+chmod 700 "${transport_stable_output}"
+FAKE_DOCKER_LOG="${transport_stable_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${transport_stable_output}" --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge_transport_stable \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  >"${temp_dir}/transport-stable.stdout" \
+  2>"${temp_dir}/transport-stable.stderr"
+if [[ "$(find "${transport_stable_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: transport-stable Memory Judge bundle was not retained" >&2
+  exit 1
+fi
+assert_cleanup "${transport_stable_log}"
 
 fixed_drift_output="${temp_dir}/fixed-drift-output"
 mkdir "${fixed_drift_output}"

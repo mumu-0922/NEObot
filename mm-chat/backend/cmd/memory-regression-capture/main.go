@@ -162,6 +162,7 @@ func run(
 	var fixedMemoryJudgeConfig memorycapture.ProfileConfig
 	var accuracyFirstMemoryJudgeConfig memorycapture.ProfileConfig
 	var judgeFailureDiagnosticConfig memorycapture.ProfileConfig
+	var transportStableMemoryJudgeConfig memorycapture.ProfileConfig
 	var relevanceConfigurationHash string
 	var artifactNames []string
 	var artifactPrefix string
@@ -436,6 +437,44 @@ func run(
 			memorycapture.JudgeFailureDiagnosticArtifactName,
 			"run-manifest.json",
 		}
+	case memorycapture.CaptureModeTransportStableMemoryJudge:
+		configuredJudgeAuthority, err = buildConfiguredCandidateJudgeAuthority(options)
+		if err != nil {
+			return err
+		}
+		if err := memorycapture.AuthorizeFixedMemoryJudgeTarget(
+			options.providerMode,
+			configuredJudgeAuthority,
+			authorization,
+		); err != nil {
+			return err
+		}
+		if err := memorycapture.ValidateTransportStableMemoryJudgeCostAuthority(
+			cost,
+			configuredJudgeAuthority,
+		); err != nil {
+			return err
+		}
+		transportStableMemoryJudgeConfig, err =
+			memorycapture.BuildTransportStableMemoryJudgeDevelopmentProfileConfig(
+				protected,
+				costHash,
+				options.providerMode,
+				configuredJudgeAuthority,
+				cost.ProviderCostPolicy,
+			)
+		if err != nil {
+			return err
+		}
+		relevanceConfigurationHash, err =
+			memorycapture.ConfigurationSHA256(transportStableMemoryJudgeConfig)
+		if err != nil {
+			return err
+		}
+		artifactNames = []string{
+			memorycapture.TransportStableMemoryJudgeArtifactName,
+			"run-manifest.json",
+		}
 	case memorycapture.CaptureModeFrozenValidation:
 		validationConfig, err = memorycapture.BuildFrozenValidationProfileConfig(
 			protected,
@@ -524,6 +563,13 @@ func run(
 		return runJudgeFailureDiagnosticDevelopment(
 			ctx, stdout, options, startedAt, protected, cost, costHash,
 			judgeFailureDiagnosticConfig, configuredJudgeAuthority,
+			relevanceConfigurationHash, providers, adminDB, runtimeDB,
+		)
+	}
+	if options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge {
+		return runTransportStableMemoryJudgeDevelopment(
+			ctx, stdout, options, startedAt, protected, cost, costHash,
+			transportStableMemoryJudgeConfig, configuredJudgeAuthority,
 			relevanceConfigurationHash, providers, adminDB, runtimeDB,
 		)
 	}
@@ -669,7 +715,8 @@ func captureContext(
 	captureMode string,
 ) (context.Context, context.CancelFunc) {
 	if captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge ||
-		captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic {
+		captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic ||
+		captureMode == memorycapture.CaptureModeTransportStableMemoryJudge {
 		return context.WithCancel(parent)
 	}
 	return context.WithTimeout(parent, defaultCaptureTimeout)
@@ -1279,6 +1326,149 @@ func runJudgeFailureDiagnosticDevelopment(
 	return nil
 }
 
+func runTransportStableMemoryJudgeDevelopment(
+	ctx context.Context,
+	stdout io.Writer,
+	options commandOptions,
+	startedAt time.Time,
+	protected memorycapture.ProtectedRegression,
+	cost memorycapture.CostBasis,
+	costHash string,
+	config memorycapture.ProfileConfig,
+	authority memorycapture.ConfiguredCandidateJudgeProfileAuthority,
+	configurationHash string,
+	providers providerBundle,
+	adminDB *sql.DB,
+	runtimeDB *sql.DB,
+) error {
+	selectedPool, err := memorycapture.SelectRegressionCaptureSplit(
+		protected.Pool,
+		memorycapture.DevelopmentCalibrationSplit,
+	)
+	if err != nil {
+		return err
+	}
+	index, err := memorycapture.BuildFixtureIndex(selectedPool)
+	if err != nil {
+		return err
+	}
+	seed, err := memorycapture.SeedEphemeralDatabase(
+		ctx,
+		adminDB,
+		selectedPool,
+		index,
+		options.runID,
+	)
+	if err != nil {
+		return err
+	}
+	if len(seed.Cases) != 300 || providers.judge == nil {
+		return memorycapture.ErrCaptureInvalid
+	}
+	if _, err := memorycapture.PopulateProjectionVectors(
+		ctx,
+		adminDB,
+		options.runID,
+		providers.passage,
+	); err != nil {
+		return err
+	}
+	captured, err := memorycapture.CaptureTransportStableMemoryJudgeDevelopment(
+		ctx,
+		adminDB,
+		runtimeDB,
+		options.runID,
+		protected.Pool,
+		index,
+		seed,
+		providers.hybrid,
+		providers.judge,
+		authority,
+		config.ProfileID,
+		configurationHash,
+		cost.Candidate,
+	)
+	if err != nil {
+		return err
+	}
+	report, reportBody, err :=
+		memorycapture.BuildTransportStableMemoryJudgeDevelopmentReport(
+			protected.Pool,
+			captured,
+			authority,
+			cost,
+		)
+	if err != nil {
+		return err
+	}
+	if options.pretty {
+		reportBody, err = marshalJSON(report, true)
+		if err != nil {
+			return err
+		}
+	}
+	captureID, err := newCaptureID()
+	if err != nil {
+		return errors.New("create transport-stable Memory Judge capture ID failed")
+	}
+	artifacts := []memorycapture.Artifact{{
+		Name: memorycapture.TransportStableMemoryJudgeArtifactName,
+		Body: reportBody,
+	}}
+	_, manifestBody, err := memorycapture.BuildTransportStableMemoryJudgeRunManifest(
+		options.runID,
+		captureID,
+		options.providerMode,
+		startedAt,
+		time.Now().UTC(),
+		protected,
+		costHash,
+		report,
+		artifacts,
+	)
+	if err != nil {
+		return err
+	}
+	artifacts = append(artifacts, memorycapture.Artifact{
+		Name: "run-manifest.json",
+		Body: manifestBody,
+	})
+	if err := verifyRetainedArtifactsLeakFree(
+		protected.Pool,
+		artifacts,
+		providers.secrets,
+	); err != nil {
+		return err
+	}
+	if _, err := memorycapture.PublishArtifactsExclusive(
+		options.outputDir,
+		artifacts,
+	); err != nil {
+		return err
+	}
+	summary := commandSummary{
+		SchemaVersion:     "neo-chat.memory-regression-native-summary.v7",
+		RunID:             options.runID,
+		CaptureID:         captureID,
+		CorpusClass:       report.CorpusClass,
+		AdmissionMode:     report.AdmissionMode,
+		PromotionEligible: false,
+		ProviderMode:      options.providerMode,
+		CaptureMode:       memorycapture.CaptureModeTransportStableMemoryJudge,
+		Split:             report.Split,
+		CandidatePassed:   report.Passed,
+		PolicySelected:    false,
+		OutputDirectory:   filepath.Clean(options.outputDir),
+	}
+	if err := json.NewEncoder(stdout).Encode(summary); err != nil {
+		return errors.New("write transport-stable Memory Judge summary failed")
+	}
+	if !report.Passed {
+		return errMetricsFailed
+	}
+	return nil
+}
+
 func runMemoryToolRouteDevelopment(
 	ctx context.Context,
 	stdout io.Writer,
@@ -1561,6 +1751,7 @@ func parseCommand(args []string) (commandOptions, error) {
 			"development_configured_candidate_judge, development_fixed_memory_judge, "+
 			"development_fixed_memory_judge_accuracy, "+
 			"development_fixed_memory_judge_failure_diagnostic, "+
+			"development_fixed_memory_judge_transport_stable, "+
 			"or frozen_validation",
 	)
 	flags.StringVar(&options.runID, "run-id", "", "ephemeral run identifier")
@@ -1684,6 +1875,7 @@ func parseCommand(args []string) (commandOptions, error) {
 		memorycapture.CaptureModeFixedMemoryJudge,
 		memorycapture.CaptureModeAccuracyFirstMemoryJudge,
 		memorycapture.CaptureModeJudgeFailureDiagnostic,
+		memorycapture.CaptureModeTransportStableMemoryJudge,
 		memorycapture.CaptureModeMemoryToolRouteDevelopment,
 		memorycapture.CaptureModeMemoryToolRouteDiagnostic,
 		memorycapture.CaptureModeFrozenValidation:
@@ -1711,7 +1903,8 @@ func parseCommand(args []string) (commandOptions, error) {
 		if options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge ||
 			options.captureMode == memorycapture.CaptureModeFixedMemoryJudge ||
 			options.captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge ||
-			options.captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic {
+			options.captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic ||
+			options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge {
 			if options.judgeProviderID == "" || options.judgeProviderType == "" ||
 				options.judgeBaseURL == "" || options.judgeConfiguredModelID == "" {
 				return commandOptions{}, errors.New(
@@ -1738,6 +1931,7 @@ func parseCommand(args []string) (commandOptions, error) {
 		options.captureMode != memorycapture.CaptureModeFixedMemoryJudge &&
 		options.captureMode != memorycapture.CaptureModeAccuracyFirstMemoryJudge &&
 		options.captureMode != memorycapture.CaptureModeJudgeFailureDiagnostic &&
+		options.captureMode != memorycapture.CaptureModeTransportStableMemoryJudge &&
 		(options.judgeCredentialPath != "" || options.judgeProviderID != "" ||
 			options.judgeProviderType != "" || options.judgeBaseURL != "" ||
 			options.judgeConfiguredModelID != "") {
@@ -1758,6 +1952,7 @@ func usageError() error {
 			"development_configured_candidate_judge|development_fixed_memory_judge|" +
 			"development_fixed_memory_judge_accuracy|" +
 			"development_fixed_memory_judge_failure_diagnostic|" +
+			"development_fixed_memory_judge_transport_stable|" +
 			"frozen_validation -run-id ID [-credential-file FILE] " +
 			"[-cloud-judge-model MODEL] " +
 			"[-memory-tool-route-credential-file FILE " +
@@ -1781,12 +1976,14 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 			options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge ||
 			options.captureMode == memorycapture.CaptureModeFixedMemoryJudge ||
 			options.captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge ||
-			options.captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic {
+			options.captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic ||
+			options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge {
 			modelID := options.judgeModelID
 			if options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge ||
 				options.captureMode == memorycapture.CaptureModeFixedMemoryJudge ||
 				options.captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge ||
-				options.captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic {
+				options.captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic ||
+				options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge {
 				modelID = options.judgeConfiguredModelID
 			}
 			bundle.judge = memorycapture.NewFakeProtocolCandidateJudge(modelID)
@@ -1822,7 +2019,8 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 	resolver := &ephemeralCredentialResolver{credential: credential}
 	gatewayOptions := []ragproviders.ProviderGatewayOption{}
 	if options.captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge ||
-		options.captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic {
+		options.captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic ||
+		options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge {
 		gatewayOptions = append(
 			gatewayOptions,
 			ragproviders.WithProviderGatewayAccuracyFirstDevelopmentNoTimeouts(),
@@ -1863,7 +2061,8 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 	if options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge ||
 		options.captureMode == memorycapture.CaptureModeFixedMemoryJudge ||
 		options.captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge ||
-		options.captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic {
+		options.captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic ||
+		options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge {
 		judgeCredential, credentialErr := readRegularBoundedFile(
 			options.judgeCredentialPath,
 			maximumCredentialSize,
@@ -1901,7 +2100,8 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 		}
 		var judgeHTTPClient *http.Client
 		if options.captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge ||
-			options.captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic {
+			options.captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic ||
+			options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge {
 			judgeTimeout = 0
 			judgeHTTPClient = ragproviders.NewAccuracyFirstDevelopmentHTTPClient()
 		}
@@ -2002,14 +2202,23 @@ func wrapAccuracyFirstProviderBundle(
 	bundle providerBundle,
 ) (providerBundle, error) {
 	if options.captureMode != memorycapture.CaptureModeAccuracyFirstMemoryJudge &&
-		options.captureMode != memorycapture.CaptureModeJudgeFailureDiagnostic {
+		options.captureMode != memorycapture.CaptureModeJudgeFailureDiagnostic &&
+		options.captureMode != memorycapture.CaptureModeTransportStableMemoryJudge {
 		return bundle, nil
 	}
 	var passage memorycapture.PassageEmbedder
 	var hybrid usermemory.HybridShadowProvider
 	var judge usermemory.HybridCandidateJudge
 	var err error
-	if options.captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic {
+	if options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge {
+		passage, hybrid, judge, _, err =
+			memorycapture.WrapTransportStableMemoryJudgeDevelopmentProviders(
+				options.providerMode,
+				bundle.passage,
+				bundle.hybrid,
+				bundle.judge,
+			)
+	} else if options.captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic {
 		passage, hybrid, judge, _, err =
 			memorycapture.WrapAccuracyFirstJudgeFailureDiagnosticDevelopmentProviders(
 				options.providerMode,
