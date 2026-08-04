@@ -2,11 +2,14 @@ package httpserver
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -21,6 +24,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/imagejobs"
 	"neo-chat/mm-chat/backend/internal/jobcontrol"
 	"neo-chat/mm-chat/backend/internal/knowledge"
+	"neo-chat/mm-chat/backend/internal/memoryjudge"
 	"neo-chat/mm-chat/backend/internal/plugins"
 	"neo-chat/mm-chat/backend/internal/providerfactory"
 	"neo-chat/mm-chat/backend/internal/providersecrets"
@@ -196,6 +200,121 @@ type runtimeChatProviderResolver struct {
 type runtimeMemoryActionProviderResolver struct {
 	service *runtimeconfig.Service
 	timeout time.Duration
+}
+
+const (
+	fixedMemoryJudgeProviderID    = "SERVER_DEFAULT"
+	fixedMemoryJudgeBaseURLSHA256 = "3bc0bbf28d9d817b4f6c8f6058c2c51dd644c541252ed6e2542a8c8a472ff671"
+)
+
+type fixedMemoryJudgeProviderResolver interface {
+	ResolveServerDefaultProvider(
+		context.Context,
+	) (runtimeconfig.ResolvedProvider, error)
+}
+
+type runtimeMemoryCandidateJudge struct {
+	service fixedMemoryJudgeProviderResolver
+	timeout time.Duration
+}
+
+func (judge runtimeMemoryCandidateJudge) JudgeHybridCandidates(
+	ctx context.Context,
+	input usermemory.HybridCandidateJudgeInput,
+) (usermemory.HybridCandidateJudgeResult, error) {
+	if judge.service == nil {
+		return usermemory.HybridCandidateJudgeResult{}, memoryjudge.NewFailure(
+			memoryjudge.FailureInputInvalid,
+			errors.New("fixed Memory candidate judge resolver is unavailable"),
+		)
+	}
+	resolved, err := judge.service.ResolveServerDefaultProvider(ctx)
+	if err != nil {
+		return usermemory.HybridCandidateJudgeResult{}, memoryjudge.NewFailure(
+			memoryjudge.FailureUnclassified,
+			errors.New("fixed Memory candidate judge Provider is unavailable"),
+		)
+	}
+	if !fixedMemoryJudgeAuthorityValid(resolved) {
+		return usermemory.HybridCandidateJudgeResult{}, memoryjudge.NewFailure(
+			memoryjudge.FailureProvenanceDrift,
+			errors.New("fixed Memory candidate judge authority drifted"),
+		)
+	}
+	provider, err := providerfactory.NewChatProvider(providerfactory.ChatConfig{
+		ProviderID: resolved.ID,
+		Type:       resolved.Type,
+		BaseURL:    resolved.BaseURL,
+		APIKey:     resolved.APIKey,
+		Timeout:    judge.timeout,
+	})
+	if err != nil {
+		return usermemory.HybridCandidateJudgeResult{}, memoryjudge.NewFailure(
+			memoryjudge.FailureProvenanceDrift,
+			errors.New("fixed Memory candidate judge Provider is invalid"),
+		)
+	}
+	adapter, err := memoryjudge.NewChatAdapter(provider, chat.ModelRef{
+		ProviderID: fixedMemoryJudgeProviderID,
+		ModelID:    usermemory.HybridFixedMemoryJudgeModelID,
+	})
+	if err != nil {
+		return usermemory.HybridCandidateJudgeResult{}, memoryjudge.NewFailure(
+			memoryjudge.FailureProvenanceDrift,
+			errors.New("fixed Memory candidate judge adapter is invalid"),
+		)
+	}
+	return adapter.JudgeHybridCandidates(ctx, input)
+}
+
+func fixedMemoryJudgeAuthorityValid(provider runtimeconfig.ResolvedProvider) bool {
+	if strings.TrimSpace(provider.ID) != fixedMemoryJudgeProviderID ||
+		provider.Type != runtimeconfig.ProviderTypeOpenAICompatible ||
+		strings.TrimSpace(provider.APIKey) == "" {
+		return false
+	}
+	baseURL, ok := normalizeFixedMemoryJudgeBaseURL(provider.BaseURL)
+	if !ok || fmt.Sprintf("%x", sha256.Sum256([]byte(baseURL))) !=
+		fixedMemoryJudgeBaseURLSHA256 {
+		return false
+	}
+	for _, modelID := range provider.Models {
+		if strings.TrimSpace(modelID) == usermemory.HybridFixedMemoryJudgeModelID {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeFixedMemoryJudgeBaseURL(raw string) (string, bool) {
+	value := strings.TrimSuffix(strings.TrimSpace(raw), "#")
+	value = strings.TrimRight(value, "/")
+	if value == "" || value == "default" || len(value) > 2048 {
+		return "", false
+	}
+	if !strings.HasSuffix(value, "/v1") {
+		value += "/v1"
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
+		parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" ||
+		parsed.Fragment != "" {
+		return "", false
+	}
+	return value, true
+}
+
+func newRuntimeMemoryCandidateJudge(
+	service fixedMemoryJudgeProviderResolver,
+	timeout time.Duration,
+) usermemory.HybridCandidateJudge {
+	judge, err := memoryjudge.NewTransportStableCandidateJudge(
+		runtimeMemoryCandidateJudge{service: service, timeout: timeout},
+	)
+	if err != nil {
+		return nil
+	}
+	return judge
 }
 
 func (r runtimeMemoryActionProviderResolver) ResolveMemoryActionProvider(
@@ -996,6 +1115,21 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 			memoryServiceOptions = append(
 				memoryServiceOptions,
 				usermemory.WithHybridShadowProvider(provider),
+			)
+		}
+	}
+	if cfg.Memory.ToolLoopEnabled {
+		judge := newRuntimeMemoryCandidateJudge(
+			runtimeConfigService,
+			cfg.Provider.Timeout,
+		)
+		if judge != nil {
+			memoryServiceOptions = append(
+				memoryServiceOptions,
+				usermemory.WithHybridCandidateJudge(judge),
+				usermemory.WithHybridMemoryToolRelevancePolicy(
+					usermemory.HybridShadowFixedMemoryJudgeProductionPolicy(),
+				),
 			)
 		}
 	}

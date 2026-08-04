@@ -220,6 +220,14 @@ with `MEMORY_HYBRID_ROLLBACK_REQUIRES_V1_READER` for a non-v1 reader and with
 `MEMORY_HYBRID_ROLLBACK_REQUIRES_EMPTY_OBSERVATIONS` after any hybrid
 observation exists.
 
+The Tool switch is also the production fixed-Judge rollback boundary. Turning
+it false removes `search_memory` exposure and stops fixed BGE/Luna reader/Judge
+requests on the next backend composition; it does not delete canonical Memory,
+hybrid observations, or immutable answer Usage. Do not substitute v1 results
+for a failed product Tool read. If the current stored `SERVER_DEFAULT` /
+OpenAI-Compatible / attested Base-URL hash / `gpt-5.6-luna` tuple drifts, leave
+the Tool switch false until the exact authority is restored and reviewed.
+
 Never delete observation evidence to force rollback. After shadow collection
 begins, retain `059` and roll back behavior with the default-off flag. Only a
 clean pre-observation database may run `059 -> 058 -> 059`; its HNSW vectors
@@ -231,6 +239,46 @@ run `065 -> 064`; re-up must replay `064 -> 065`. Down removes the function
 only and does not delete observations or canonical Memory. Do not attempt to
 keep an enabled Tool Loop on a pre-`065` backend; final content authority would
 be unavailable and must fail closed.
+
+### Migration 069 / Memory compatible Tool-profile rollback
+
+Disable automatic recording and stop every Memory Worker before rolling back
+application behavior. This prevents new extraction, proposal, promotion, and
+embedding claims while retaining existing canonical Memory and audit history.
+Migration `069` is a forward compatibility correction over byte-immutable
+`068`. Its down path restores extraction profile v4 authority and is a pre-
+promotion drill only: it fails with
+`MEMORY_AUTO_CAPTURE_COMPATIBLE_PROFILE_ROLLBACK_REQUIRES_NO_PROMOTIONS` once
+any `auto_accept`/`AUTO_CAPTURED` audit exists. Clean disposable replay is
+`068 -> 069 -> 068 -> 069`.
+
+### Migration 068 / Memory Tool evidence-profile rollback
+
+Migration `068` is a forward profile correction over byte-immutable `067`. Its
+down path restores extraction profile v3 authority and is a pre-promotion drill
+only: it fails with
+`MEMORY_AUTO_CAPTURE_TOOL_PROFILE_ROLLBACK_REQUIRES_NO_PROMOTIONS` once any
+`auto_accept`/`AUTO_CAPTURED` audit exists. Clean disposable replay is
+`067 -> 068 -> 067 -> 068`.
+
+### Migration 067 / Memory auto-capture authority rollback
+
+Migration `067` is a forward fix over the already-applied, byte-immutable
+`066`; never edit `066` or rewrite its recorded checksum. Its down path restores
+the original `066` promotion function and is a pre-promotion schema drill only:
+it fails with
+`MEMORY_AUTO_CAPTURE_AUTHORITY_ROLLBACK_REQUIRES_NO_PROMOTIONS` once any
+`auto_accept`/`AUTO_CAPTURED` audit exists. Clean disposable replay is
+`066 -> 067 -> 066 -> 067`.
+
+### Migration 066 / Memory auto-capture promotion rollback
+
+Migration `066` down is likewise a pre-promotion schema drill only: it fails with
+`MEMORY_AUTO_CAPTURE_ROLLBACK_REQUIRES_NO_PROMOTIONS` once any
+`auto_accept`/`AUTO_CAPTURED` audit exists. Never delete a canonical row,
+suggestion, or decision audit to bypass that guard. After the first promotion,
+keep `066`–`069` applied and use another forward-compatible fix. Clean disposable
+replay for the initial capability is `065 -> 066 -> 065 -> 066`.
 
 ### Migration 060 / Memory governance rollback
 

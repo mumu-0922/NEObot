@@ -33,16 +33,20 @@ conversation summaries.
   RRF(60), migration `064` local pre-rerank admission, request-local BGE score
   abstention, and a 600-target/900-hard token budget as a second default-off,
   zero-injection comparison;
-- under the explicit schema-v4 Development profile only, run the strict cloud
-  candidate judge concurrently with BGE rerank and intersect ordinal selection
-  with BGE order before the existing token selector;
+- under versioned Development profiles, run a strict cloud candidate judge and
+  intersect ordinal selection with BGE order before the existing token
+  selector; the separately promoted product path runs fixed BGE rerank first,
+  then the exact fixed Luna judge under the schema-v14 transport boundary;
 - preserve schema-v6 as failed Development preflight evidence and support the
   schema-v7 first-ToolRound calibration policy through the compatibility route
   interface;
 - after a valid product first-round `search_memory({})` call, run the fixed
   hybrid reader without v1 fallback, record the final set, hydrate it through
   migration `065`, recheck identity/redaction, and return at most five bounded
-  current-authorized Memory bodies to `internal/chat`;
+  current-authorized Memory bodies to `internal/chat`; after a successful
+  continuation, chat finalization records immutable Usage for exactly the
+  projected Tool-result rows, while no-call, empty, failed, cancelled, and
+  plain-recovery paths record none;
 - optionally run migration `062` same-scope L2 Scene exact/BM25/vector
   RRF/rerank retrieval under a separate default-off shadow flag; active mode
   additionally requires the reader flag and database promotion authority;
@@ -212,24 +216,39 @@ Schema-v7 uses policy
 adapter emits a real first `ToolRoundProvider` request and delegates canonical
 Tool definition/hash/validation to `internal/chat`.
 
-Product chat does not install the Development adapter. With
-`MEMORY_TOOL_LOOP_ENABLED=true`, `internal/chat` validates the first-round call
-and invokes `SearchRelevantAfterMemoryToolCall`. That method never calls the v1
-reader or `MarkUsed`, never falls back to v1 or unscored RRF, and requires an
-optional `HybridFinalRepository`. After normal prepare/admission/rerank/record,
-migration `065` rehydrates only the exact final lane while repeating current
-source/settings/epoch/projection/revision/hash/scope/lifecycle/Sensitive
-authority. Go verifies ordinal identity and redacts every body again. Any drift,
-count mismatch, full redaction, Provider failure, or empty result returns no
-Memory. Same-model Tool continuation and recovery remain owned by
-`internal/chat`.
+Product chat does not install a Development adapter. With
+`MEMORY_TOOL_LOOP_ENABLED=true`, Server composition installs only
+`memory_hybrid_fixed_cloud_candidate_judge_production_v1` and re-resolves the
+stored fixed Judge tuple on every logical request: `SERVER_DEFAULT`, OpenAI
+Compatible, normalized Base-URL SHA-256
+`3bc0bbf28d9d817b4f6c8f6058c2c51dd644c541252ed6e2542a8c8a472ff671`,
+and `gpt-5.6-luna`. Missing dependencies or tuple/model/secret drift fail
+closed before candidate release. `internal/chat` validates the first-round
+call and invokes `SearchRelevantAfterMemoryToolCall`. That method accepts only
+the production policy, never calls the v1 reader or `MarkUsed`, never falls
+back to v1 or unscored RRF, runs fixed BGE rerank before the strict Luna ordinal
+intersection, and requires an optional `HybridFinalRepository`. The Judge may
+retry only typed transient Provider failures twice, using valid `Retry-After`
+or fixed five/ten-second waits. After Record, migration `065` rehydrates only
+the exact final lane while repeating current source/settings/epoch/projection/
+revision/hash/scope/lifecycle/Sensitive authority. Go verifies ordinal identity
+and redacts every body again. Any drift, count mismatch, full redaction,
+Provider/Judge failure, or empty result returns no Memory. Same-model Tool
+continuation and recovery remain owned by `internal/chat`. The search method
+itself performs no Usage mutation;
+`internal/chat` carries the exact projected in-memory list into the existing
+atomic assistant-finalize Usage capability only after the final answer
+completes. A continuation recovery from the original request clears that list
+because the recovery request contains no Memory body.
 
-The product flag and Worker hybrid flag both default false. Enabling the Tool
-Loop requires ready fixed-profile projections; keep
-`MEMORY_HYBRID_SHADOW_ENABLED` aligned on the Memory Worker when new or changed
-Memory must receive embeddings. No live schema-v7 Development/Validation policy
-has authorized rollout, so the deployed default remains the v1 prompt/Usage
-path.
+The product flag and Worker hybrid flag both default false. The owner-promoted
+production reader is active only while the Tool flag is explicitly true;
+setting it false is the immediate rollback and restores ordinary chat without
+product Memory Tool reads or a v1 fallback. Ready fixed-profile projections are
+required. Keep `MEMORY_HYBRID_SHADOW_ENABLED` aligned on the Memory Worker when
+new or changed Memory must receive embeddings. The 2026-08-04 live acceptance
+kept the Worker stopped, selected only the school row from two reranked
+candidates, and persisted exactly that one Tool-result Usage link.
 
 Migration `060` adds the authenticated governance snapshot; Project
 create/list/edit/archive/restore; Conversation Project membership and tri-state
@@ -292,7 +311,9 @@ L3 failure falls back to unchanged L1/L2 behavior.
 | `SearchRelevant(ctx, query, limit)`         | Relevant-only Top-5 retrieval                                      |
 | `SearchRelevantWithShadow(ctx, query, conversationID, assistantMessageID, limit)` | Unchanged v1 Top 5 plus sanitized comparison diagnostics |
 | `SearchRelevantWithHybridShadow(ctx, query, conversationID, assistantMessageID, limit)` | Unchanged v1 Top 5 plus default-off hybrid diagnostics |
-| `SearchRelevantAfterMemoryToolCall(ctx, input)` | Post-call fixed hybrid retrieval plus migration-065 final hydration; no v1 fallback or Usage mutation. |
+| `SearchRelevantAfterMemoryToolCall(ctx, input)` | Post-call fixed hybrid retrieval plus migration-065 final hydration; no v1 fallback or direct Usage mutation. |
+| `WithHybridMemoryToolRelevancePolicy(policy)` | Install the separate product Tool reader policy; absent or non-production policies fail closed before Provider work. |
+| `HybridShadowFixedMemoryJudgeProductionPolicy()` | Build the owner-promoted fixed BGE then fixed Luna production selection identity. |
 | `WithHybridMemoryToolRouter(router)` | Install a Development-only route dependency for an explicit calibration policy. |
 | `HybridShadowMemoryFirstToolRoundCalibrationPolicy(modelID)` | Build the exact non-promotional schema-v7 first-ToolRound policy. |
 | `SearchRelevantL2Scenes(ctx, query, conversationID, assistantMessageID, activeRequested)` | Default-off Scene shadow or current authorized active results |

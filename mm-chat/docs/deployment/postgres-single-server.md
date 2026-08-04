@@ -86,7 +86,7 @@ The current Compose/runtime contract uses:
 | `DATABASE_URL`            | API placeholder URL       | `neo_chat_api` URL for the Go API and `admin`.                                          |
 | `MEMORY_WORKER_DATABASE_URL` | Memory Worker placeholder URL | Login inheriting only `memory_worker_runtime`.                                      |
 | `MEMORY_HYBRID_SHADOW_ENABLED` | `false` | Shared default-off API/Memory Worker gate for migration-059 embedding and hybrid comparison Provider calls. |
-| `MEMORY_TOOL_LOOP_ENABLED` | `false` | API-only default-off first-round `search_memory` gate; migration-065 final hydration requires no Worker copy of this flag. |
+| `MEMORY_TOOL_LOOP_ENABLED` | `false` | API-only default-off first-round `search_memory` gate. True installs the exact fixed BGE/Luna production policy and current Provider-tuple reauthorization; false disables reader/Judge work. Migration-065 final hydration requires no Worker copy of this flag. |
 | `DB_MAX_OPEN_CONNS`       | `10`                      | Maximum open DB connections.                                                            |
 | `DB_MAX_IDLE_CONNS`       | `5`                       | Maximum idle DB connections.                                                            |
 | `DB_CONN_MAX_LIFETIME`    | `30m`                     | Maximum connection lifetime.                                                            |
@@ -185,7 +185,7 @@ Readiness never mutates schema, creates buckets, or runs migrations.
 
 The Go migration runner owns transaction boundaries, takes a Postgres advisory
 lock, validates migration names/checksums, and records each applied migration
-in `schema_migrations`. The current schema head is `060`. Migration `038`
+in `schema_migrations`. The current schema head is `069`. Migration `038`
 requires PostgreSQL major `17`, the `pg_textsearch` preload, and exact pgvector
 `0.8.5` / pg_textsearch `1.3.1` extension versions. Migrations `039` and `040`
 retain the dedicated API role by exposing only hardened document-lifecycle and
@@ -205,8 +205,16 @@ polling, and revision-safe undo. Migration `058` adds transactional exact/CJK
 BM25 projection and lexical shadow; `059` adds lease-fenced BGE-M3 vector,
 RRF/rerank/budget hybrid shadow. Migration `060` adds Project/Conversation
 policy, scoped governance, Review decisions, current-only detail/Activity
-hydration, and classified legacy Global write wrappers. None of `058`–`060`
-promotes the v1 Global Top 5 reader.
+hydration, and classified legacy Global write wrappers. Migrations `061`–`065`
+add portability, derived Scene/Persona, hybrid admission, and final hydration.
+Migration `066` grants the Memory Worker only a lease-fenced,
+governance-backed safe-add promotion function. Migration `067` is the forward
+fix that binds that function to the exact L1 extraction/decision Tool profiles,
+complete committed batch, candidate hash, and all current evidence rows. It
+does not promote the v1 Global Top 5 reader. Migration `068` binds promotion to
+extraction profile v4, whose Tool schema enumerates only hydrated user-role and
+assistant-role evidence IDs. Migration `069` advances to the Provider-compatible
+v5 schema while retaining local duplicate/forgery rejection.
 
 Apply migrations from the same immutable `BACKEND_IMAGE` used by `backend` and
 `admin`:

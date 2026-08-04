@@ -1032,6 +1032,144 @@ all scoped Compose objects were destroyed; the base PostgreSQL container is
 stopped. The one-run authority is consumed and grants no automatic rerun,
 Validation, production activation, or promotion.
 
+**2026-08-04 production chat auto-capture correction:** The schema-v14 run
+proved only retrieval/ranking over pre-existing Memory. A real Server-mode
+chat then proved the read path by recalling the manually stored name `木木`,
+but the completed user statement `西北工业大学` produced no canonical Memory.
+The retained extract job failed repeatedly with sanitized code
+`EXTRACTION_INVALID`; the worker was stopped and automatic recording was
+disabled to preserve the job without burning the remaining attempts. The
+owner now requires the new Memory system to replace the old production chat
+write path, not a separate minimal environment.
+
+Replace extraction free-text JSON with one required Provider Tool Call named
+`propose_memory_candidates`, and replace the conditional conflict decision
+free-text JSON with a second required Tool Call named
+`propose_memory_candidate_decisions`. The Provider must implement the existing
+`chat.ToolRoundProvider` transport. Each round accepts exactly one completed
+call with the exact name, a non-empty call ID, no failure category, no prose
+fallback, and arguments that satisfy its existing exact candidate/decision
+object contract. Missing, duplicate, unknown, trailing, oversized, or malformed
+arguments fail closed as `EXTRACTION_INVALID`; an unsupported Tool Round also
+fails closed. Bound
+protocol-invalid retries to two retries (three total attempts) while retaining
+the existing bounded retry behavior for transient Provider/transport errors.
+Never log Provider output, Tool arguments, chat text, or credentials.
+
+Add migration `066_memory_auto_capture_promotion`. After the existing SQL
+router has atomically persisted a batch, the worker may auto-promote only a
+current `shadow` suggestion whose reason is exactly `SHADOW_ADD`, action is
+`ADD`, sensitivity is `normal`, confirmation is `explicit_user` or
+`confirmed_assistant`, and whose settings still have both Memory and automatic
+recording enabled. The lease, outbox, source hash, completed source/assistant,
+visibility epoch, scope generation, Project lifecycle, candidate evidence,
+Provider profile, tombstone, exact-content, fact-related, and target-set
+authorities must all be current. A tombstone, conflict, related target,
+non-normal sensitivity, or other non-eligible candidate must never auto-write;
+retain it for Review or rejection as appropriate. Reuse the existing
+governance acceptance capability rather than duplicating canonical insert and
+evidence logic. Canonical creation, evidence, accepted suggestion/audit, and
+assistant Activity completion must be one database transaction. The worker
+role remains function-only with no table CRUD, and replay after a crash must
+not create a second Memory. Existing projection triggers/jobs must enqueue the
+new canonical row for BGE-M3 embedding.
+
+Acceptance is one low-concurrency real replay, not another paid 300-case run:
+resume the preserved school extract job with worker concurrency `1`, verify a
+canonical school Memory plus evidence/Activity and `embedding_status=ready`,
+then open another conversation and ask `我是哪个学校的？`. The answer must use
+`search_memory`, return `西北工业大学`, and persist one
+`message_memory_usages` link. Negative coverage must prove temporary facts and
+secrets do not auto-save, Sensitive-disabled content is rejected, conflicts
+remain Review, tombstones do not resurrect, committed-job replay is
+idempotent, `model_builtin` does not impersonate Memory, and every stale
+source/generation/epoch/lease fence fails closed. Rollback disables automatic
+recording and the worker; it never deletes an already created canonical row.
+
+**2026-08-04 production auto-capture live outcome:** The deployed correction
+advanced through forward-only migrations `066`–`069`. Their live-applied
+checksums are respectively
+`7e37d06e2b1cf601ae33e02ecc5fdc817de7e8d76f09bc3fb15ed604c08ec663`,
+`4192deb1e6d0381239c2e1aa25633964968782dc61b6a3bbff963884bd42783c`,
+`31b3bd79cb7a59539cd808f897fe5b8afae07f7ee2a2e903d33ccebd0cc530ea`,
+and `e5174d69a647ddaa886e0b04030736113ea629e991a1d2bf70957283ff1a272b`;
+all four are now immutable test-pinned authority. Migration `067` added the
+complete batch/candidate/evidence authority rechecks, `068` enumerated evidence
+IDs by role in extraction profile v4, and `069` removed only the live
+Provider-rejected `uniqueItems` keyword while advancing promotion to compatible
+profile v5.
+
+Preserved extract job `3b384bee-87f5-41e2-9d28-72a8114c4459` first exposed a
+transient Provider failure, then an assistant-context authority failure, then
+the incompatible schema keyword. Its original eight attempts were exhausted.
+One exact operator transaction extended only `max_attempts` from `8` to `9`
+without changing attempt history; attempt `9/9` completed. The one committed
+batch produced one `auto_accept`/`AUTO_CAPTURED` suggestion, canonical Memory
+`a3028beb-443c-42f4-8183-57bae6185b9d` revision `1`, one current source
+evidence link, one completed Activity, and a ready embedding projection. This
+operator extension is part of the outcome and must not be hidden.
+
+The first post-restart recall used the exact required question in new
+Conversation `e9be3da4-65d0-4e09-8c63-c6167d12d402`; assistant
+`af2dd657-dce0-4f4d-98b5-d6dc7bb123ef` completed, semantically returned the
+school, and persisted a completed `search_memory` process step. Source review
+found that the Tool-result rows were not reaching assistant-finalize Usage, so
+the runtime now carries only the exact context-budgeted rows and clears them on
+original-request recovery. The replay then truthfully persisted two Usage
+links: the target school Memory plus pre-existing direct-user fixture Memory
+`39a5636f-4c42-467b-8a5e-1d9dfb2135ff`. A second, explicitly school-only
+question in Conversation `99c597f1-1055-495f-9cd3-2efb44605511` produced the
+same two-row final lane. Both answers and Tool executions passed, but the
+strict one-link criterion remains unmet. Do not retune the non-promotional
+reader, silently delete/disable the direct-user fixture, or claim this partial
+result as a pass. The live `.env.single-server` SHA-256 remained
+`7c8337307b20563fc6caabab4decdc772f9abfb602eaa31427670f4c24a106f1`.
+
+**2026-08-04 owner production-promotion decision:** The owner selected the
+separately offered reader/judge production-promotion path rather than deleting
+the direct-user fixture or weakening the one-link acceptance criterion. This
+authorizes the product `search_memory` reader to use the passing schema-v14
+accuracy-first selection semantics: fixed SiliconFlow BGE rerank followed by
+the strict fixed Luna candidate judge and their ordinal intersection. The
+Server composition must bind `SERVER_DEFAULT` / `openai_compatible` / the
+previously attested Base-URL SHA-256 / `gpt-5.6-luna`, reauthorize that tuple
+from the current stored Provider configuration for every request, and fail
+closed on dependency, model, endpoint, prompt, decoder, or authority drift.
+The existing `MEMORY_TOOL_LOOP_ENABLED` switch remains the rollback boundary;
+this decision adds no query-specific rule, threshold retune, fixture mutation,
+or v1 fallback. It also authorizes one low-concurrency production recall replay
+to verify that the school question persists exactly the school Usage link.
+Keep the Memory Worker stopped during that replay so its pending capture jobs
+do not change the corpus under test.
+
+**2026-08-04 production reader/judge live acceptance:** The promoted backend
+was rebuilt and started with the exact fixed production policy. The first
+operator request omitted the required runtime `provider.source=server-default`
+composition field and therefore returned the bounded local
+`PROVIDER_REQUIRED` response in `4 ms`; it created no assistant message, run,
+Usage link, Provider request, or Judge request. Replaying the same user message
+and idempotency key with only that existing runtime Provider field corrected
+completed in `6774 ms`. Assistant
+`bd1b8af7-bb43-40f8-9f6c-96d794724f32` used
+`SERVER_DEFAULT/gpt-5.6-sol`, completed one native `search_memory` Tool step,
+and returned an answer containing `西北工业大学`. The hybrid observation completed
+`OK` with ready query embedding, applied rerank, two RRF/rerank candidates, and
+one final row. The name fixture remained in the recalled/reranked lanes but the
+fixed Luna intersection removed it from the final lane. Assistant finalization
+persisted exactly one immutable Usage link: school Memory
+`a3028beb-443c-42f4-8183-57bae6185b9d` revision `1`; fixture
+`39a5636f-4c42-467b-8a5e-1d9dfb2135ff` was absent. No canonical Memory was
+created during the replay, the school projection remained `ready`, the Memory
+Worker remained stopped, and `.env.single-server` SHA-256 remained
+`7c8337307b20563fc6caabab4decdc772f9abfb602eaa31427670f4c24a106f1`.
+The exact-one production acceptance criterion is satisfied without fixture
+mutation, a query-specific rule, threshold retune, or v1 fallback.
+Post-replay `go test ./...`, `go vet ./...`, changed-scope security scanning,
+`git diff --check`, and `bash scripts/verify-standalone.sh --full` all passed.
+The standalone gate included 198 frontend files / 961 tests and 1906 passing
+RAG tests with seven integration skips; the live backend remained healthy and
+the Worker remained stopped afterward.
+
 ## Expansion Sweep
 
 - Future evolution: evaluate the fixed Luna candidate-aware profile under the
@@ -1044,15 +1182,16 @@ Validation, production activation, or promotion.
 
 ## Out of Scope
 
-- Promoting v2 or changing the active reader/prompt/Usage pointer.
-- Enabling `MEMORY_TOOL_LOOP_ENABLED` or any configured-model candidate judge
-  in a deployed environment from this Development-only work.
+- Any reader promotion beyond the separately authorized fixed schema-v14
+  production policy, or any query-specific/answer-model-specific successor.
+- Enabling a configured-answer-model candidate judge, changing the fixed Luna
+  tuple, or removing `MEMORY_TOOL_LOOP_ENABLED` as the rollback boundary.
 - Treating forbidden exclusion reasons as cloud-authorized, or silently
   enabling cloud processing without the exact owner-policy profile.
 - Tuning on the machine-visible holdout or claiming formal human-reviewed
   Holdout evidence.
 - Persisting raw scores for convenience.
-- Replacing BGE-M3, adopting Hindsight/Mem0/Graphiti, or changing extraction.
+- Replacing BGE-M3 or adopting Hindsight/Mem0/Graphiti.
 - L2 Scene/L3 Persona threshold tuning.
 
 ## Research References

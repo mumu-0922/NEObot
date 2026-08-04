@@ -11,7 +11,8 @@
 ## Non-goals
 
 - Replacing original messages or `conversation_context_summaries`.
-- Reader promotion, response caching, or browser-local server authority.
+- Additional reader promotion beyond the fixed owner-authorized production
+  policy, response caching, or browser-local server authority.
 - Persisting search results, Knowledge text, credentials, or vague one-off
   context as automatic Memory.
 
@@ -52,10 +53,13 @@ Current user message -> exact + BM25 + vector -> RRF(60)
   -> ID/revision/rank-only diagnostics
   -> unchanged v1 prompt/Usage; zero hybrid prompt injection
 Product first ToolRound -> exact search_memory({})
-  -> fixed hybrid prepare/admission/rerank/record without v1 or MarkUsed
+  -> exact stored SERVER_DEFAULT/Luna tuple reauthorized per Judge attempt
+  -> fixed hybrid prepare/admission -> BGE rerank -> Luna ordinal intersection
+  -> record without v1 or MarkUsed
   -> migration-065 current-authority final hydration
   -> Go identity recheck + secret redaction
   -> bounded Tool Result returned to internal/chat same-model continuation
+  -> completed answer atomically records exact projected L1 Usage links
 Current stable Global L1 -> migration-063 leased L3 Persona refresh/embedding
 Current user message -> Persona exact + BM25 + vector -> RRF(60) -> BGE rerank
   -> one-Persona/300-token bound -> content-free diagnostics
@@ -103,6 +107,9 @@ cycle.
 | Missing Tool arguments are not `{}`                     | A nil Go map can otherwise pass a length-only empty check                                        | The adapter requires a non-nil empty object, non-empty call ID, exact name, and exactly one call |
 | Final content is hydrated only after Record              | Provider work and final ranking can become stale before prompt use                                | Migration-065 repeats current source/settings/epoch/projection/revision/hash/scope/Sensitive authority for the exact final lane |
 | Product Tool read never falls back to v1                 | A valid Tool call must not launder an unrelated legacy result after hybrid failure                | Failure/empty/stale/redacted paths return no Memory and normal chat continues |
+| Product policy is separate and tuple-pinned              | A Development policy or drifted Server Provider must not become product injection authority       | Only the production policy runs; every Judge attempt re-resolves exact provider/type/Base-URL hash/model/secret authority and fails closed on drift |
+| Product selection preserves schema-v14 order             | The passing evidence ran BGE rerank before the fixed candidate judge                               | Product executes BGE then Luna serially, intersects exact ordinals, and retries only typed transient Judge failures with the fixed two-retry schedule |
+| Product Tool Usage matches released evidence             | Usage must describe the exact Memory bodies available to the completed answer, not every recalled candidate | Chat records only the projected Tool-result rows; no-call/failure/cancel/plain recovery records none |
 | Owner egress authority is narrower than injection       | Allowing ordinary personal candidates to reach the configured Provider must not weaken answer relevance or secret isolation | Only `irrelevant` exclusion is egress-authorized under the exact v1 policy; false injection and all forbidden reasons remain unchanged gates |
 | PR9 governance is not reader promotion                   | Users need control before scoped retrieval is allowed                                      | Project/Conversation Memory is manageable but v1 Global Top 5 remains the only prompt/Usage source |
 | Plaintext is hydrated from current authority only        | Revision/evidence history must not resurrect deleted, disabled, archived, or stale content | Detail and Activity return markers after any lifecycle/epoch/scope-generation fence fails |
@@ -204,11 +211,12 @@ cycle.
 Known limitation: migrations `062` and `063` ship in shadow with all derived
 reader rollout flags default-off. No formal 500-case benchmark plus seven-day/
 100-turn canary evidence exists, so neither L2 nor L3 can become active
-automatically. Schema-v6 live evidence failed and its preflight is rejected.
-Schema-v7 first-ToolRound GPT and DeepSeek Development profiles both failed,
-and the schema-v9 diagnostic selected no policy. Validation remains blocked and
-`MEMORY_TOOL_LOOP_ENABLED` remains false by default. The v1 Global Top 5 stays
-the deployed prompt and Usage authority.
+automatically. Schema-v6/v7 routing evidence failed and schema v9 remained
+diagnostic. The owner separately promoted the passing schema-v14 fixed BGE/Luna
+selection only for the product Memory Tool. `MEMORY_TOOL_LOOP_ENABLED` still
+defaults false and is the rollback boundary; when true, no v1 fallback is
+permitted. The 2026-08-04 live school replay produced one final/Usage row while
+an unrelated name fixture stayed rerank-only.
 
 ## Verification
 
@@ -267,3 +275,8 @@ rebuild, runtime role denial, and clean PostgreSQL 17 portability plus
 - 2026-07-30: route completion became replayable and mandatory on every
   capture exit; cancellation-ignoring delegation is bounded and Recorder route
   writes are generation-fenced after the schema-v9 offline lifecycle trace.
+- 2026-08-04: the owner separately promoted schema-v14 accuracy-first
+  selection for product `search_memory`: fixed BGE rerank, fixed Luna ordinal
+  intersection, per-attempt Server tuple reauthorization, typed two-retry
+  Judge transport, and default-off Tool-flag rollback. The production school
+  replay persisted one school Usage link and excluded the recalled name fixture.

@@ -36,6 +36,7 @@ type memoryToolRuntime struct {
 	ConversationID     string
 	AssistantMessageID string
 	Query              string
+	usedMemories       []usermemory.Memory
 }
 
 func (h *Handler) newMemoryToolRuntime(
@@ -73,6 +74,27 @@ func (runtime *memoryToolRuntime) enabled() bool {
 		strings.TrimSpace(runtime.ConversationID) != "" &&
 		strings.TrimSpace(runtime.AssistantMessageID) != "" &&
 		strings.TrimSpace(runtime.Query) != ""
+}
+
+func (runtime *memoryToolRuntime) setUsedMemories(memories []usermemory.Memory) {
+	if runtime == nil {
+		return
+	}
+	runtime.usedMemories = append([]usermemory.Memory(nil), memories...)
+}
+
+func (runtime *memoryToolRuntime) clearUsedMemories() {
+	if runtime == nil {
+		return
+	}
+	runtime.usedMemories = nil
+}
+
+func (runtime *memoryToolRuntime) getUsedMemories() []usermemory.Memory {
+	if runtime == nil {
+		return nil
+	}
+	return append([]usermemory.Memory(nil), runtime.usedMemories...)
 }
 
 // SearchMemoryToolDefinition is the canonical product and benchmark contract.

@@ -171,6 +171,9 @@ func runNativeExternalWebToolLoop(
 				recordRuntimeToolIncompatibility(input, err)
 				return false
 			}
+			if memoryContinuationStarted {
+				input.Memory.clearUsedMemories()
+			}
 			if !answerContentEmitted && streamRetrievalEvidenceFallback(
 				ctx,
 				events,
@@ -217,6 +220,9 @@ func runNativeExternalWebToolLoop(
 				fallbackUsage := completedUsage
 				if roundUsage != nil {
 					fallbackUsage = addTokenUsageValue(fallbackUsage, *roundUsage)
+				}
+				if memoryContinuationStarted {
+					input.Memory.clearUsedMemories()
 				}
 				if !answerContentEmitted && streamRetrievalEvidenceFallback(
 					ctx,
@@ -384,7 +390,7 @@ func runNativeExternalWebToolLoop(
 					})
 					continue
 				}
-				toolResult, _, usedTokens, fits := memoryToolSuccessResult(
+				toolResult, projected, usedTokens, fits := memoryToolSuccessResult(
 					result.Memories,
 					input.ContextBudget.remaining(retrievalEvidenceMemory),
 				)
@@ -402,6 +408,7 @@ func runNativeExternalWebToolLoop(
 					continue
 				}
 				input.ContextBudget.consume(retrievalEvidenceMemory, usedTokens)
+				input.Memory.setUsedMemories(projected)
 				completed := running
 				completed.Status = ProcessStepStatusCompleted
 				if !sendToolExecutionEvent(ctx, events, completed) {

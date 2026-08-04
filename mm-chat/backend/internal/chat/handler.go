@@ -2274,7 +2274,10 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				trace,
 			),
 			MemoryCapture: memoryCapture,
-			MemoryUsages:  durableMemoryUsageInputs(memoryPreparation),
+			MemoryUsages: durableMemoryUsageInputsForRun(
+				memoryPreparation,
+				memoryToolRuntime,
+			),
 		},
 	)
 	if err != nil {

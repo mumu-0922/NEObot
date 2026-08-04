@@ -190,7 +190,7 @@ container-local `GET /health` on port `8081`; no port is published or proxied.
 | `MEMORY_WORKER_DATABASE_URL`                  | Memory Worker login inheriting only `memory_worker_runtime`.                                   |
 | `MEMORY_LEXICAL_SHADOW_ENABLED`               | API-only PR7 observation switch; defaults false and never controls projection maintenance or prompt authority. |
 | `MEMORY_HYBRID_SHADOW_ENABLED`                | Shared PR8 API/Memory Worker switch; defaults false, gates all Memory embedding/rerank calls, and never changes v1 prompt/Usage authority. |
-| `MEMORY_TOOL_LOOP_ENABLED`                    | API-only first-round `search_memory` switch; defaults false. When true, eligible Tool-capable chat turns use post-call hybrid retrieval and same-model continuation. Never pass it to the Memory Worker. |
+| `MEMORY_TOOL_LOOP_ENABLED`                    | API-only first-round `search_memory` switch; defaults false. When true, eligible Tool-capable turns use the fixed production BGE/Luna policy, current tuple reauthorization, post-call hydration, and same-model continuation. False immediately disables the reader/Judge. Never pass it to the Memory Worker. |
 | `MEMORY_L2_SCENE_SHADOW_ENABLED`              | Shared PR11 API/Memory Worker switch; defaults false, gates Scene refresh/query embedding/rerank while provider-free stale purge remains active. |
 | `MEMORY_L2_SCENE_READER_ENABLED`              | API-only PR11 reader switch; defaults false and still requires database promotion/current authority. Never pass it to the Memory Worker. |
 | `MEMORY_L3_PERSONA_SHADOW_ENABLED`            | Shared PR12 API/Memory Worker switch; defaults false, gates Persona refresh/query embedding/rerank while provider-free stale purge remains active. |
@@ -216,24 +216,41 @@ read-only with all Linux capabilities dropped, and uses a bounded private
 network/pool/concurrency/resource envelope. It depends only on PostgreSQL
 health. Redis failure removes low-latency wakeups but PostgreSQL polling
 continues; API finalize never waits for worker execution or Redis publication.
+Migration `066` lets this function-only role promote only current normal,
+confirmed, conflict-free safe-add candidates through the existing governance
+transaction. Migration `067` additionally requires the exact Tool profiles,
+complete batch, candidate hash, and all current evidence before that call can
+write. Migration `068` moves extraction to the evidence-enumerated v4 Tool
+profile without weakening those SQL fences; `069` removes only the unsupported
+Provider schema keyword and authorizes compatible profile v5. None gives the
+Worker direct table CRUD, general Review
+decision, or reader-promotion authority. Disable automatic recording and stop
+the Worker to roll back capture behavior; never delete a canonical row as
+rollback.
 The L2 Scene and L3 Persona shadow flags independently gate their Provider-
 backed refresh/embedding lanes. Their provider-free stale detection and purge
 remain enabled even when every shadow flag is false. Reader flags belong only
 to the API and must never enter the Memory Worker environment.
 
 `MEMORY_TOOL_LOOP_ENABLED` is independent from the legacy hybrid-shadow API
-switch but consumes the same fixed BGE projections. Keep it `false` unless a
-separate reviewed rollout explicitly authorizes the first-round Memory Tool.
-If it is ever enabled, `MEMORY_HYBRID_SHADOW_ENABLED=true` must also reach the
+switch but consumes the same fixed BGE projections. It defaults false and the
+owner-authorized rollout may set it true only with the fixed production policy.
+When enabled, `MEMORY_HYBRID_SHADOW_ENABLED=true` must also reach the
 Memory Worker so new and changed Memory can obtain ready embeddings. The Tool
 flag itself remains API-only. A valid call executes exact/BM25/vector RRF,
-rerank, Record, migration `065` current-authority final hydration, and
-same-model continuation; failure or empty retrieval continues without Memory.
+fixed BGE rerank, strict fixed Luna ordinal intersection, Record, migration
+`065` current-authority final hydration, and same-model continuation. Each
+Judge attempt re-resolves the stored `SERVER_DEFAULT` / OpenAI Compatible /
+attested Base-URL hash / `gpt-5.6-luna` tuple; any authority drift fails closed.
+Only typed transient Judge failures retry, at most twice with `Retry-After` or
+fixed five/ten-second waits. Failure or empty retrieval continues without
+Memory and without a v1 fallback.
 Direct `remember|correct|forget` turns and model-built-in Web Search do not
-expose the Memory Tool. The first live schema-v7 GPT Development profile failed
-unchanged quality, slice, cutoff, and latency gates; the independent DeepSeek
-Flash profile failed the same gate classes. Validation remains blocked, so this
-release must retain the default `false` value.
+expose the Memory Tool. Setting the flag false is the rollback; it does not
+delete canonical Memory or Usage. During the 2026-08-04 acceptance the Worker
+remained stopped, the school question returned the saved school, and only that
+school Memory was persisted as answer Usage while the recalled name fixture
+was rejected by the Judge.
 
 The one-shot `admin provider-secrets-rewrite` command receives the stable BYOK
 ingress key, temporary Server Default env fallback, and provider vault Secret

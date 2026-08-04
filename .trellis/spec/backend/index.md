@@ -14,12 +14,12 @@
 | [Hosted TTS production](./hosted-tts-production.md) | Dedicated SiliconFlow Voice authority, exact activation, server-mode playback, per-user cache, and cleanup |
 | [Memory v2 benchmark](./memory-v2-benchmark.md) | Deterministic 650-case human Golden authoring plus a schema-separated 500-case machine regression lane, strict shared scoring, protected replay, one-shot formal Holdout, and non-promotional boundaries |
 | [Memory v2 storage](./memory-v2-storage.md) | Project/scope/settings foundation, Global v1 repository compatibility, ownership constraints, and guarded rollback |
-| [Memory v2 worker](./memory-v2-worker.md) | ID-only completed-turn capture, leased PostgreSQL jobs, private Go worker, Redis wake, least privilege, replay, and rollback |
+| [Memory v2 worker](./memory-v2-worker.md) | ID-only completed-turn capture, required Provider Tool Calls, leased PostgreSQL jobs, governance-backed safe-add promotion, least privilege, replay, and rollback |
 | [Memory v2 provenance/delete](./memory-v2-provenance-deletion.md) | Canonical revisions, ID/hash evidence, visibility epochs, tombstones, manifests, and provider-free purge |
-| [Memory v2 candidate/Review](./memory-v2-candidate-review.md) | Strict candidate batches, proposal-only conflict/scope/temporal routing, Review shadow, and provider-free expiry |
+| [Memory v2 candidate/Review](./memory-v2-candidate-review.md) | Strict Tool-framed candidate batches, historical proposal-only routing, production safe-add successor authority, Review shadow, and provider-free expiry |
 | [Memory v2 actions/Activity/Usage](./memory-v2-actions-activity-usage.md) | Current-user typed actions, strict planner authority, immutable Usage, link-only Activity polling, and revision-safe undo |
 | [Memory v2 lexical shadow](./memory-v2-lexical-shadow.md) | Transactional L1 exact/CJK BM25 projection, current-authority shadow comparison, ID-only diagnostics, and v1 fail-open |
-| [Memory v2 hybrid shadow](./memory-v2-hybrid-shadow.md) | Fixed BGE-M3 vector jobs, Exact/BM25/vector RRF, historical Tool routes plus candidate-first configured-model judging, fail-closed abstention, old-response fences, and zero prompt injection |
+| [Memory v2 hybrid shadow](./memory-v2-hybrid-shadow.md) | Fixed BGE-M3 vector jobs, Exact/BM25/vector RRF, historical Tool/judge evidence plus the fixed BGE/Luna product policy, fail-closed abstention, old-response fences, and exact Tool-result Usage |
 | [Memory v2 governance](./memory-v2-governance.md) | Project/Conversation policy, scoped governance CRUD, Review decisions, current-only detail/Activity hydration, and governed v1 compatibility |
 | [Memory v2 portability/retention](./memory-v2-portability-retention.md) | Authenticated age export/import, dry-run/confirm fencing, off-host deletion replay, and verified backup-set retention |
 | [Memory v2 L2 Scene](./memory-v2-l2-scene.md) | Same-scope derived Scenes, leased synthesis/embedding/purge, hybrid shadow retrieval, evidence-gated promotion, governance, and rollback |
@@ -127,10 +127,12 @@ For Memory extraction candidates, Review suggestions, conflict/scope/temporal
 routing, or Review expiry changes:
 
 1. Read [`memory-v2-candidate-review.md`](./memory-v2-candidate-review.md).
-2. Preserve candidate-wide atomic proposal and keep every PR5 outcome out of
-   canonical Memory and every active reader.
-3. Trace redacted context -> strict extraction -> bounded decision -> SQL
-   proposal -> committed replay/30-day provider-free expiry.
+2. Preserve candidate-wide atomic proposal. Historical PR5 remains proposal-
+   only; the `066`/`067` successor may promote only its explicitly bounded
+   safe-add path and still changes no active reader.
+3. Trace redacted context -> exact required Tool extraction -> bounded Tool
+   decision -> SQL proposal -> `067` authority recheck -> governance promotion
+   or committed replay/30-day provider-free expiry.
 4. Prove secret zero-plaintext, evidence/scope/target ownership, exact/manual/
    temporal routing, old-apply denial, and guarded down/re-up.
 
@@ -166,8 +168,10 @@ shadow switch changes:
    Provider authority across claim, hydrate, Provider work, and complete.
 3. Keep all three candidate lanes independently authorized, keep query/content/
    raw scores out of durable diagnostics, and reauthorize after rerank.
-4. Prove the shared default-off flag makes zero Memory Provider calls, v1
-   prompt/Usage remains byte-authoritative, and guarded down/re-up is clean.
+4. Prove both default-off flags make zero Memory Provider calls, shadow mode
+   leaves v1 prompt/Usage byte-authoritative, the product Tool policy has no v1
+   fallback and records only exact released Usage, and guarded down/re-up is
+   clean.
 
 For Memory Project/Conversation governance, Review decisions, detail/history,
 assistant Activity UI, or post-`060` v1 CRUD changes:

@@ -31,6 +31,9 @@ func TestMemoryToolLoopNoCallStreamsFirstRoundWithoutSearch(t *testing.T) {
 	if len(events) != 0 {
 		t.Fatalf("unexpected Tool executions = %#v", events)
 	}
+	if len(searcher.usages) != 0 {
+		t.Fatalf("no-call path retained Memory usages = %#v", searcher.usages)
+	}
 }
 
 func TestMemoryToolLoopExactCallSearchesOnceAndContinuesSameModel(t *testing.T) {
@@ -81,6 +84,12 @@ func TestMemoryToolLoopExactCallSearchesOnceAndContinuesSameModel(t *testing.T) 
 	if len(events) != 2 || events[0].Status != ProcessStepStatusRunning ||
 		events[1].Status != ProcessStepStatusCompleted {
 		t.Fatalf("Tool executions = %#v", events)
+	}
+	if len(searcher.usages) != 1 ||
+		searcher.usages[0].MemoryID != searcher.result.Memories[0].ID ||
+		searcher.usages[0].Revision != searcher.result.Memories[0].Revision ||
+		searcher.usages[0].ScopeType != searcher.result.Memories[0].ScopeType {
+		t.Fatalf("Memory Tool usages = %#v", searcher.usages)
 	}
 }
 
@@ -207,6 +216,9 @@ func TestMemoryToolLoopInvalidCallsNeverReleaseMemory(t *testing.T) {
 				)
 			}
 			assertOnlyFirstRoundOffersMemoryTool(t, provider.inputs)
+			if len(searcher.usages) != 0 {
+				t.Fatalf("invalid call retained Memory usages = %#v", searcher.usages)
+			}
 		})
 	}
 }
@@ -245,6 +257,9 @@ func TestMemoryToolLoopRetrievalFailureOrEmptyResultContinuesNormally(t *testing
 			if result.IsError != test.wantIsError ||
 				strings.Contains(result.Content, memoryToolLoopTestContent) {
 				t.Fatalf("fail-closed Tool result = %#v", result)
+			}
+			if len(searcher.usages) != 0 {
+				t.Fatalf("empty/failure path retained Memory usages = %#v", searcher.usages)
 			}
 		})
 	}
@@ -314,6 +329,9 @@ func TestMemoryToolLoopFirstRoundStreamFailureAfterCallRecoversNormally(t *testi
 	if providerRequestContains(provider.chatInputs[0], memoryToolLoopTestContent) {
 		t.Fatalf("first-round recovery leaked Memory body = %#v", provider.chatInputs[0])
 	}
+	if len(searcher.usages) != 0 {
+		t.Fatalf("first-round recovery retained Memory usages = %#v", searcher.usages)
+	}
 }
 
 func TestMemoryToolLoopContinuationFailureRecoversWithoutMemoryBody(t *testing.T) {
@@ -346,6 +364,9 @@ func TestMemoryToolLoopContinuationFailureRecoversWithoutMemoryBody(t *testing.T
 	recovery := provider.chatInputs[0]
 	if providerRequestContains(recovery, memoryToolLoopTestContent) {
 		t.Fatalf("recovery leaked Memory body = %#v", recovery)
+	}
+	if len(searcher.usages) != 0 {
+		t.Fatalf("plain recovery retained unused Memory usages = %#v", searcher.usages)
 	}
 }
 
@@ -409,6 +430,7 @@ func TestMemoryToolRuntimePreservesExplicitDirectActionPath(t *testing.T) {
 type memoryToolTestSearcher struct {
 	result usermemory.HybridMemoryToolSearchResult
 	input  usermemory.HybridMemoryToolSearchInput
+	usages []MemoryUsageInput
 	calls  int
 }
 
@@ -427,6 +449,11 @@ func collectMemoryToolLoopEvents(
 	searcher *memoryToolTestSearcher,
 ) (string, string, []ProviderToolExecutionEvent) {
 	t.Helper()
+	memoryRuntime := &memoryToolRuntime{
+		Searcher: searcher, ConversationID: "22222222-2222-4222-8222-222222222222",
+		AssistantMessageID: "33333333-3333-4333-8333-333333333333",
+		Query:              "current request",
+	}
 	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
 		Provider: provider,
 		Request: ProviderRequest{
@@ -434,11 +461,7 @@ func collectMemoryToolLoopEvents(
 			Messages: []ProviderMessage{{Role: "user", Content: "current request"}},
 			ModelRef: ModelRef{ProviderID: "configured", ModelID: "selected-model"},
 		},
-		Memory: &memoryToolRuntime{
-			Searcher: searcher, ConversationID: "22222222-2222-4222-8222-222222222222",
-			AssistantMessageID: "33333333-3333-4333-8333-333333333333",
-			Query:              "current request",
-		},
+		Memory: memoryRuntime,
 	})
 	var content strings.Builder
 	var reasoning strings.Builder
@@ -458,6 +481,10 @@ func collectMemoryToolLoopEvents(
 			}
 		}
 	}
+	searcher.usages = durableMemoryUsageInputsForRun(
+		durableMemoryPreparation{},
+		memoryRuntime,
+	)
 	return content.String(), reasoning.String(), executions
 }
 

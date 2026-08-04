@@ -27,10 +27,12 @@ import (
 	"neo-chat/mm-chat/backend/internal/imagejobs"
 	"neo-chat/mm-chat/backend/internal/jobartifacts"
 	"neo-chat/mm-chat/backend/internal/jobaudit"
+	"neo-chat/mm-chat/backend/internal/memoryjudge"
 	"neo-chat/mm-chat/backend/internal/ragproviders"
 	"neo-chat/mm-chat/backend/internal/ragsource"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
+	"neo-chat/mm-chat/backend/internal/usermemory"
 	"neo-chat/mm-chat/backend/internal/voicejobs"
 	"neo-chat/mm-chat/backend/internal/websearch"
 )
@@ -175,6 +177,75 @@ func TestMemoryHybridProviderRequiredForEveryProviderBackedReader(t *testing.T) 
 			}
 		})
 	}
+}
+
+func TestFixedMemoryJudgeAuthorityPinsProductionTuple(t *testing.T) {
+	valid := runtimeconfig.ResolvedProvider{
+		ID:      fixedMemoryJudgeProviderID,
+		Type:    runtimeconfig.ProviderTypeOpenAICompatible,
+		BaseURL: "https://sub.mumubuku.top/v1/",
+		APIKey:  "example-fixture-provider-credential",
+		Models:  []string{"gpt-5.6-sol", usermemory.HybridFixedMemoryJudgeModelID},
+	}
+	if !fixedMemoryJudgeAuthorityValid(valid) {
+		t.Fatal("exact fixed Memory judge authority was rejected")
+	}
+	mutations := []struct {
+		name   string
+		mutate func(*runtimeconfig.ResolvedProvider)
+	}{
+		{name: "provider", mutate: func(value *runtimeconfig.ResolvedProvider) { value.ID = "CUSTOM" }},
+		{name: "type", mutate: func(value *runtimeconfig.ResolvedProvider) { value.Type = runtimeconfig.ProviderTypeOpenAI }},
+		{name: "endpoint", mutate: func(value *runtimeconfig.ResolvedProvider) { value.BaseURL = "https://other.example/v1" }},
+		{name: "secret", mutate: func(value *runtimeconfig.ResolvedProvider) { value.APIKey = "" }},
+		{name: "model", mutate: func(value *runtimeconfig.ResolvedProvider) { value.Models = []string{"gpt-5.6-sol"} }},
+	}
+	for _, mutation := range mutations {
+		t.Run(mutation.name, func(t *testing.T) {
+			candidate := valid
+			candidate.Models = append([]string(nil), valid.Models...)
+			mutation.mutate(&candidate)
+			if fixedMemoryJudgeAuthorityValid(candidate) {
+				t.Fatalf("drifted authority accepted: %#v", candidate)
+			}
+		})
+	}
+}
+
+func TestRuntimeMemoryCandidateJudgeFailsClosedOnAuthorityDrift(t *testing.T) {
+	judge := newRuntimeMemoryCandidateJudge(
+		fixedMemoryJudgeResolverFixture{provider: runtimeconfig.ResolvedProvider{
+			ID:      fixedMemoryJudgeProviderID,
+			Type:    runtimeconfig.ProviderTypeOpenAICompatible,
+			BaseURL: "https://other.example/v1",
+			APIKey:  "example-fixture-provider-credential",
+			Models:  []string{usermemory.HybridFixedMemoryJudgeModelID},
+		}},
+		time.Second,
+	)
+	if judge == nil {
+		t.Fatal("runtime fixed Memory judge was not constructed")
+	}
+	_, err := judge.JudgeHybridCandidates(context.Background(), usermemory.HybridCandidateJudgeInput{
+		Query: "Which school?",
+		Candidates: []usermemory.HybridCandidateJudgeCandidate{
+			{Ordinal: 0, Content: "Northwestern Polytechnical University"},
+		},
+	})
+	if category := memoryjudge.FailureCategory(err); category != memoryjudge.FailureProvenanceDrift {
+		t.Fatalf("failure category=%q err=%v", category, err)
+	}
+}
+
+type fixedMemoryJudgeResolverFixture struct {
+	provider runtimeconfig.ResolvedProvider
+	err      error
+}
+
+func (fixture fixedMemoryJudgeResolverFixture) ResolveServerDefaultProvider(
+	context.Context,
+) (runtimeconfig.ResolvedProvider, error) {
+	return fixture.provider, fixture.err
 }
 
 func TestRuntimeChatProviderResolutionUsesServerOwnedAnswerProcessor(t *testing.T) {

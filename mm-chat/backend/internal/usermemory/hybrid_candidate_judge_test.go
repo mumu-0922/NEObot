@@ -134,6 +134,19 @@ func TestAccuracyFirstMemoryJudgePolicyHasNoApplicationCutoff(t *testing.T) {
 	}
 }
 
+func TestFixedMemoryJudgeProductionPolicyHasSeparateAccuracyFirstIdentity(t *testing.T) {
+	descriptor, ok := DescribeHybridShadowRelevancePolicy(
+		HybridShadowFixedMemoryJudgeProductionPolicy(),
+	)
+	if !ok || descriptor.ID != HybridRelevanceProductionJudgePolicyID ||
+		descriptor.Mode != hybridPolicyModeProductionJudge ||
+		descriptor.HardCutoffMilliseconds != 0 ||
+		!descriptor.CloudCandidateJudgeRequired ||
+		descriptor.CloudCandidateJudgeModelID != HybridFixedMemoryJudgeModelID {
+		t.Fatalf("production policy = %#v, %v", descriptor, ok)
+	}
+}
+
 func TestAccuracyFirstMemoryJudgeRunsRerankThenJudgeWithoutDeadlines(t *testing.T) {
 	repository := cloudJudgeTestRepository()
 	order := make([]string, 0, 2)

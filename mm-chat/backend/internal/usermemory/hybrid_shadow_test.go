@@ -116,6 +116,25 @@ func TestSearchRelevantWithHybridShadowRequiresExplicitRelevancePolicy(t *testin
 	}
 }
 
+func TestSearchRelevantAfterMemoryToolCallRequiresPromotedProductionPolicy(t *testing.T) {
+	repository := &hybridTestRepository{fakeRepository: hybridV1Repository()}
+	provider := &hybridTestProvider{embedding: validHybridTestEmbedding()}
+	result := NewService(
+		repository,
+		WithHybridShadowProvider(provider),
+	).SearchRelevantAfterMemoryToolCall(context.Background(), HybridMemoryToolSearchInput{
+		ConversationID: hybridTestConversation, AssistantMessageID: hybridTestAssistant,
+		Query: "Which school?", ContractVersion: HybridMemoryToolContractVersion,
+		ContractSHA256: HybridMemoryToolContractSHA256,
+	})
+	if result.FailureCategory != "policy_unavailable" || len(result.Memories) != 0 ||
+		repository.prepareCalls != 0 || provider.embedCalls != 0 ||
+		provider.rerankCalls != 0 {
+		t.Fatalf("unpromoted Memory Tool result=%#v repo=%#v provider=%#v",
+			result, repository, provider)
+	}
+}
+
 func TestSearchRelevantAfterMemoryToolCallReturnsOnlyReauthorizedFinal(t *testing.T) {
 	query := "  How should project answers be written?  "
 	repository := &hybridTestRepository{
@@ -146,6 +165,12 @@ func TestSearchRelevantAfterMemoryToolCallReturnsOnlyReauthorizedFinal(t *testin
 	result := NewService(
 		repository,
 		WithHybridShadowProvider(provider),
+		WithHybridCandidateJudge(&hybridTestCandidateJudge{
+			result: validHybridJudgeResult(HybridFixedMemoryJudgeModelID, 0),
+		}),
+		WithHybridMemoryToolRelevancePolicy(
+			HybridShadowFixedMemoryJudgeProductionPolicy(),
+		),
 	).SearchRelevantAfterMemoryToolCall(context.Background(), HybridMemoryToolSearchInput{
 		ConversationID: hybridTestConversation, AssistantMessageID: hybridTestAssistant,
 		Query:           query,
@@ -206,6 +231,12 @@ func TestSearchRelevantAfterMemoryToolCallFailsClosedOnStaleOrRedactedFinal(t *t
 			result := NewService(
 				repository,
 				WithHybridShadowProvider(provider),
+				WithHybridCandidateJudge(&hybridTestCandidateJudge{
+					result: validHybridJudgeResult(HybridFixedMemoryJudgeModelID, 0),
+				}),
+				WithHybridMemoryToolRelevancePolicy(
+					HybridShadowFixedMemoryJudgeProductionPolicy(),
+				),
 			).SearchRelevantAfterMemoryToolCall(context.Background(), HybridMemoryToolSearchInput{
 				ConversationID: hybridTestConversation, AssistantMessageID: hybridTestAssistant,
 				Query: "safe query", ContractVersion: HybridMemoryToolContractVersion,

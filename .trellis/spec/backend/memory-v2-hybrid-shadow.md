@@ -165,6 +165,18 @@ ValidateTransportStableMemoryJudgeCostAuthority(
 ) error
 ```
 
+The separately owner-promoted product identity is:
+
+```text
+policy       = memory_hybrid_fixed_cloud_candidate_judge_production_v1
+mode         = fixed_cloud_candidate_judge_production
+reader order = fixed BGE rerank -> fixed Luna judge -> ordinal intersection
+provider     = SERVER_DEFAULT / OpenAI Compatible
+base URL SHA = 3bc0bbf28d9d817b4f6c8f6058c2c51dd644c541252ed6e2542a8c8a472ff671
+model        = gpt-5.6-luna
+rollback     = MEMORY_TOOL_LOOP_ENABLED=false
+```
+
 The main-model Tool definition has no arguments beyond an explicit empty
 object:
 
@@ -472,10 +484,10 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   `1.0/0.974359/0.969697` and every authority/privacy leak count stayed zero.
   Preserve this as immutable failed criteria-v3 evidence; do not promote,
   retune in place, enter Validation, or automatically rerun it.
-- All v2 flags remain default-off and v1 remains the only prompt/Usage reader.
-  A Development result, passing or failing, must stop for owner review.
-  Validation and production activation are separately authorized stages and
-  cannot be entered automatically.
+- All v2 flags remain default-off. Development artifacts cannot activate a
+  reader automatically. The owner separately promoted only the passing
+  schema-v14 selection semantics for product `search_memory`; the Tool flag is
+  still explicit rollback authority, and Tool failure never falls back to v1.
 - Tool routing decides only whether saved Memory is needed. It cannot rewrite
   the query, select Memory IDs, authorize ownership/scope/revision, or authorize
   prompt injection. An empty candidate set still waits for the route decision
@@ -497,21 +509,32 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   existing first `StreamToolRound` only when `MEMORY_TOOL_LOOP_ENABLED=true`,
   the selected Provider is Tool-round capable, current Conversation policy
   allows Memory use, Search is not model-built-in, and the current turn is not
-  a direct `remember|correct|forget` action. The flag defaults false and no live
-  schema-v7 promotion decision has enabled it; the first GPT Development run
-  failed unchanged gates.
+  a direct `remember|correct|forget` action. The flag defaults false. The owner
+  separately enabled the fixed schema-v14 production policy; schema-v7 remains
+  immutable failed routing evidence and grants no authority.
 - `internal/chat` owns the canonical definition/hash/validation boundary.
   `internal/memoryroute` is only a schema-v7 Development compatibility adapter
   that emits one real first `ProviderRoundRequest`; it does not own product
   continuation or Tool execution.
 - Before the call, the Provider sees the normal conversation request and exact
   Tool but no Memory body. No Memory call performs zero hybrid retrieval. One
-  exact first-round `search_memory({})` call starts the fixed BGE/RRF/rerank/
-  Top-5/token path; the v1 reader and `MarkUsed` are not called.
+  exact first-round `search_memory({})` call requires the production policy,
+  starts the fixed BGE/RRF/admission path, runs BGE rerank before fixed Luna
+  judging, intersects exact ordinals in BGE order, then applies the Top-5/token
+  path. The v1 reader and `MarkUsed` are not called.
+- Every product Judge attempt re-resolves current stored `SERVER_DEFAULT` /
+  OpenAI Compatible / attested Base-URL hash / `gpt-5.6-luna` authority. Missing
+  dependency/secret or endpoint/model/prompt/decoder/policy drift fails closed.
+  Only typed transient Provider failures receive at most two retries, with
+  valid `Retry-After` precedence over fixed five/ten-second waits.
 - Retrieval failure and empty results return bounded Tool Results and still
   allow ordinary same-model continuation. `search_memory` is removed from all
   later rounds. A continuation failure before answer content recovers from the
   original request without any Memory body; partial content is never replayed.
+  The runtime carries only the exact context-budgeted Tool-result rows to
+  assistant finalization. A completed continuation atomically records those
+  current L1 revisions as immutable Usage; no-call, empty, failed, cancelled,
+  or original-request recovery paths record no Tool Memory Usage.
 - Rerank results retain finite `[0,1]` scores only in request memory. Invalid,
   duplicate, missing, failed, redacted, or cutoff output yields no hybrid
   final. Valid rows below the active policy's final threshold are removed before the
@@ -608,12 +631,17 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 | Official DeepSeek is sent generic `enable_thinking=false` | Mark the run protocol-invalid; it cannot support a model-quality conclusion. |
 | The route is implemented as a separate pre-answer `PlanTools` request | Development-only failed hypothesis; never promote this request shape. |
 | Product Memory Tool flag is absent/false | Do not expose `search_memory`; preserve the normal v1 prompt/Usage path. |
+| Product Tool policy is absent or is any Development/shadow identity | Return `policy_unavailable`; perform zero hybrid Provider work and release no Memory. |
+| Current stored fixed Judge provider/type/Base-URL hash/model/secret drifts | Reject that Judge attempt as provenance drift; release no final Memory and never switch Provider/model. |
+| Product Judge returns a typed transient Provider failure | Retry at most twice; honor valid `Retry-After`, otherwise wait five then ten seconds. Deterministic/protocol/provenance failures do not retry. |
 | Product first round returns no Memory call | Make zero hybrid retrieval calls and release the buffered ordinary answer. |
 | Product first round returns one exact call | Execute the hybrid reader, record, hydrate through `065`, and continue on the same Provider/model. |
 | Product query has leading/trailing whitespace | Preserve its exact bytes for prepare/hash/source identity; trim only for the empty-input check. |
 | Final hydration count/identity/current authority drifts | Reject the complete set as `authority_stale`; return no Memory body. |
 | Final body is fully secret-redacted after hydration | Fail closed; do not place it in a Tool Result. |
 | Product continuation fails before content | Recover from the original request without Memory body. |
+| Product continuation completes after a non-empty Memory Tool result | Persist immutable Usage for exactly the ordered, context-budgeted Tool-result rows in the assistant-finalize transaction. |
+| Product Memory Tool is absent/empty/failed, or continuation uses original-request recovery | Persist zero Tool Memory Usage links. |
 | Rerank fails, is invalid, or its reserved deadline expires | Record the bounded failure/cutoff and no hybrid final. |
 | Every valid rerank score is below the frozen final threshold | Record `RELEVANCE_FINAL_ABSTAINED`, zero final rows, and zero estimated prompt Memory tokens. |
 | Provider returns success after its context deadline | Discard the late output; never complete/rerank from it. |
@@ -632,8 +660,9 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   source.
 - **Base**: the flag is false, the production policy is unavailable, or query
   embedding/admission is unavailable. Canonical projection/jobs stay correct,
-  chat uses v1, no rerank Memory document is sent, and any already-started
-  diagnostic route is closed before the capture case finishes.
+  product chat continues without Memory and without v1 fallback, no rerank
+  Memory document is released, and any already-started diagnostic route is
+  closed before the capture case finishes.
 - **Configured-judge base**: private recall finds candidates for an unrelated
   request, but the exact configured judge returns an empty ordinal array; the
   answer prompt, Usage, and durable chat state receive no candidate body.
@@ -641,8 +670,13 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   fails before judge egress; schema v10 records a normalized failure with zero
   request/final/token surfaces while historical judge reports reject it.
 - **Fixed-judge base**: fixed Luna returns strict empty ordinals or fails its
-  bounded request; the complete v2 final set is empty, normal chat continues
-  through v1, and no recalled or reranked candidate reaches the prompt.
+  bounded request; the complete v2 final set is empty, normal product chat
+  continues without Memory or v1 fallback, and no recalled or reranked
+  candidate reaches the prompt.
+- **Production good**: recall/rerank contains both the school and unrelated
+  name fixtures; fixed Luna selects only the school ordinal, final hydration
+  returns it, and assistant completion atomically persists exactly that one
+  Usage link while the name remains rerank-only.
 - **Accuracy-first base**: the serial BGE stage completes but Luna returns a
   strict empty ordinal set; Record persists an empty counterfactual final,
   latency remains diagnostic, the next case starts only after its cooldown,
@@ -688,7 +722,8 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   abstention, a Provider that ignores context without extending the cutoff,
   exact Tool definition/version/SHA-256, product default-off/direct-action/
   model-built-in exclusions, first-round buffering, no-call/exact-empty-object
-  decisions, nil/non-empty/non-exact-name/unknown/duplicate/later-round
+  decisions, exact projected Tool-result Usage, zero Usage on empty/failure/
+  cancellation/original-request recovery, nil/non-empty/non-exact-name/unknown/duplicate/later-round
   rejection, multi-tool coexistence, exact query-byte/hash preservation,
   query-only Development adapter input, concurrent route/
   embedding/BGE completion, route failure/cutoff/empty-candidate handling,
@@ -722,7 +757,9 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   fallback policy, explicit `Retry-After` precedence, unchanged one-retry BGE
   ceiling, historical v12/v13 field omission, 900-request/115200-output-token
   cost authority, zero-terminal pass semantics, fake bundle replay, and no
-  automatic live authority,
+  automatic live authority, separate production policy identity, rejection of
+  every non-production Tool policy, exact fixed Provider/type/Base-URL hash/
+  model/secret drift denial, and production Judge retry/non-retry behavior,
   post-threshold
   abstention, reserved cutoff recording, 600/900 token selection, bounded
   metadata, and byte-equivalent v1 prompt/Usage behavior.
@@ -783,6 +820,11 @@ Wrong: raise the shared Provider retry ceiling for BGE and Judge together,
 reuse cost-basis v8, then treat passing Development metrics as live authority.
 ```
 
+```text
+Wrong: install a Development policy in product chat, resolve Luna once at
+startup, or fall back to v1 after Judge/provenance failure.
+```
+
 ### Correct
 
 ```text
@@ -803,11 +845,13 @@ default-off hybrid-worker/shadow flag + separate default-off product Tool flag
      zero terminal failures required to pass and always non-selecting
   -> judge/BGE intersection; empty or uncertain result means no v2 Memory
   -> product first ToolRound sees normal request + search_memory, no Memory body
-  -> exact call: fixed BGE path + request-local score/token selection
+  -> exact call under production policy: current fixed Judge tuple reauthorized
+     per attempt -> fixed BGE rerank -> fixed Luna ordinal intersection
+  -> typed transient Judge failures only: Retry-After or fixed 5s/10s waits
   -> Record final -> migration-065 current-authority final hydration
   -> same-model continuation without search_memory
-  -> content-free observation
-  -> unchanged v1 prompt and Usage
+  -> content-free observation + exact Tool-result Usage on completed answer
+  -> empty/failure/recovery: no Memory and no v1 fallback
 ```
 
 ```go
@@ -842,8 +886,9 @@ if sum(attemptCounts) != judgeRetries+terminalAttemptFailures {
 The schema-v6 `PlanTools` preflight is retained only as failed Development
 evidence. Schema-v7 measures the implemented first-ToolRound shape. Its first
 live GPT and DeepSeek Flash Development profiles both failed unchanged quality,
-slice, cutoff, and latency gates. Production exposure stays default-off and
-cannot be promoted without a passing Development/Validation result.
+slice, cutoff, and latency gates. The later owner decision does not reinterpret
+those results: it promotes only the separately passing schema-v14 fixed
+BGE/Luna selection semantics, behind the default-off product Tool flag.
 
 Schema-v7 does not contain route subtypes and remains immutable. Two schema-v8
 attempts produced no artifact; the second stopped at bounded `admission_state`.

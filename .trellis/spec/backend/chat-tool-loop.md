@@ -11,10 +11,12 @@ state, and query-free route visibility were promoted on 2026-07-23. The
 historical schema-v6 `search_memory` `PlanTools` preflight failed Development
 and remains immutable failed evidence. The successor now joins the existing
 first `ToolRoundProvider` round, executes bounded current-authorized hybrid
-Memory only after a valid call, and continues on the same Provider/model. It is
-still default-off and non-promotional under `MEMORY_TOOL_LOOP_ENABLED=false`;
-the schema-v7 GPT and DeepSeek Flash Development results both failed unchanged
-gates, and Validation remains blocked.
+Memory only after a valid call, and continues on the same Provider/model.
+Historical schema-v7 GPT and DeepSeek Flash routing results failed unchanged
+gates. The owner later and separately promoted the passing schema-v14 fixed
+BGE-then-Luna candidate-selection semantics for this product Tool only.
+`MEMORY_TOOL_LOOP_ENABLED` remains default-off and is the rollback boundary;
+there is no v1 fallback.
 Schema v8 introduced bounded typed Provider/Tool failure categories without
 changing the product Tool request or runtime flag, but two live attempts
 published no artifact; the second stopped at bounded `admission_state`. The
@@ -476,17 +478,32 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
   Memory calls fail closed for the Memory lane. Valid Web/Knowledge calls in the
   same batch retain their independent authority.
 - After a valid call, `usermemory.SearchRelevantAfterMemoryToolCall` runs fixed
-  BGE embedding, exact/BM25/vector RRF, admission, rerank, and Top-5/600/900
-  selection without calling the v1 reader or `MarkUsed`. Migration `065`
-  rehydrates the recorded final set through current user/source/settings/epoch/
-  projection/revision/hash/scope/Sensitive authority, then Go rechecks final
-  identity and redacts content again.
+  BGE embedding, exact/BM25/vector RRF, admission, fixed BGE rerank, strict fixed
+  Luna candidate judging, ordinal intersection, and Top-5/600/900 selection
+  without calling the v1 reader or `MarkUsed`. Product composition accepts only
+  the production policy and re-resolves the stored `SERVER_DEFAULT` / OpenAI
+  Compatible / attested Base-URL hash / `gpt-5.6-luna` tuple for every Judge
+  attempt. Dependency, secret, endpoint, model, prompt, decoder, or policy drift
+  fails closed. Only typed transient Judge Provider failures retry, at most
+  twice, using valid `Retry-After` or fixed five/ten-second waits. Migration
+  `065` rehydrates the recorded final set through current user/source/settings/
+  epoch/projection/revision/hash/scope/Sensitive authority, then Go rechecks
+  final identity and redacts content again.
 - Empty retrieval and retrieval failure return bounded Tool Results and allow
   ordinary same-model continuation. `search_memory` is removed from every later
   round. A pre-content continuation failure recovers through the same Provider/
   model from the original request without any Memory body, including the empty-
   result path; partial answer content preserves the error and never duplicates
   an answer.
+- A successful non-empty Memory Tool execution retains only the exact
+  context-budgeted rows placed in its Tool Result. If the same-model
+  continuation completes, assistant finalization atomically persists immutable
+  L1 Usage links for those rows. No-call, empty, invalid, failed, cancelled, or
+  original-request recovery paths persist no Tool Memory Usage.
+- The 2026-08-04 production replay completed one native `search_memory` step,
+  returned the saved school, retained the unrelated name fixture only through
+  RRF/rerank, and persisted exactly the school Memory Usage link. The Memory
+  Worker stayed stopped and the corpus did not change during the proof.
 - Schema-v6/profile-v6/cost-basis-v4 remain immutable failed `PlanTools`
   evidence. Schema-v7/profile-v7/cost-basis-v5 use Development adapter
   `chat-first-tool-round-memory-decision-v1` and artifact
@@ -550,6 +567,10 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 | Anthropic failed Tool Result     | matching `tool_use_id` plus `is_error=true`       |
 | First product round returns no Memory call | flush buffered answer, perform zero hybrid retrieval, and keep ordinary chat |
 | First product round returns one exact `search_memory({})` call | run bounded hybrid retrieval, rehydrate through migration `065`, and continue on the same Provider/model |
+| Product Memory policy is absent/non-production or fixed Judge tuple drifts | fail closed to an empty/failed Memory Tool result; do not call v1 or switch Judge Provider/model |
+| Fixed Judge returns a typed transient Provider failure | retry at most twice with `Retry-After` precedence or five/ten-second waits; deterministic/protocol/provenance failures do not retry |
+| Memory Tool continuation completes with projected rows | record immutable Usage for exactly those ordered rows in assistant finalization |
+| Memory Tool is empty/failed or continuation recovers from the original request | record zero Tool Memory Usage links |
 | Buffered first round fails after assembling a call but before closing | discard the draft/call, execute zero Memory retrieval, and use the original compatibility path |
 | Memory call name differs by whitespace or case | reject; normalized display names are not contract authority |
 | Memory call omits arguments or returns `null` | reject; nil map is not an explicit empty object |
@@ -592,8 +613,9 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
   makes no hybrid Provider call, and retains the current v1 prompt/Usage path.
 - Good enabled product route: the selected Tool-capable model sees the normal
   first-round request and canonical Tool but no Memory body, calls
-  `search_memory({})`, receives a bounded current-authorized result, and
-  continues on the same Provider/model.
+  `search_memory({})`, fixed BGE reranks current candidates, the current exact
+  stored Luna tuple selects useful ordinals, and only their intersection enters
+  the bounded Tool Result and immutable completed-answer Usage.
 - Base enabled product route: an unrelated request yields no Memory call and
   its buffered first-round answer is released without hybrid retrieval.
 - Base: a Tool-unsupported model uses the visible unified compatibility path
@@ -679,7 +701,10 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
     bodies, partial-content failure, same Provider/model continuation, and
     Development adapter delegation to the canonical contract. Historical
     schema-v6 thinking-control tests remain immutable protocol coverage but do
-    not define schema-v7 decoding authority.
+    not define schema-v7 decoding authority. Product tests additionally pin the
+    separate production policy, exact Provider/type/Base-URL hash/model/secret
+    authority, tuple re-resolution, typed Judge two-retry schedule, deterministic
+    no-retry behavior, and zero v1 fallback.
 20. Diagnostic tests must cover HTTP/transport/SSE/context classification,
     malformed/remote stream events, bounded adapter mapping, unknown-cause
     fallback, absence of Provider response/error text, schema-v9 route and
@@ -789,8 +814,11 @@ result := webSearchSuccessToolResult(previous, cumulative)
 first StreamToolRound(normal request + allowed read-only tools + search_memory)
   -> no Memory call: release buffered first-round answer
   -> one exact first-round call with ID and explicit {}
-  -> fixed BGE retrieval + migration-065 current-authority final hydration
+  -> production policy + current fixed Luna tuple reauthorization
+  -> fixed BGE rerank -> fixed Luna ordinal intersection
+  -> migration-065 current-authority final hydration
   -> same-provider/same-model continuation without search_memory
+  -> completed answer: persist exact projected Tool-result Usage
   -> pre-content continuation failure: original-request recovery without Memory
 ```
 

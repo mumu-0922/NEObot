@@ -26,6 +26,7 @@ const (
 	HybridRelevanceCloudJudgeCalibrationPolicyID = "memory_hybrid_cloud_candidate_judge_calibration_v1"
 	HybridRelevanceFixedMemoryJudgePolicyID      = "memory_hybrid_fixed_cloud_candidate_judge_development_v1"
 	HybridRelevanceAccuracyFirstJudgePolicyID    = "memory_hybrid_fixed_cloud_candidate_judge_accuracy_development_v2"
+	HybridRelevanceProductionJudgePolicyID       = "memory_hybrid_fixed_cloud_candidate_judge_production_v1"
 	HybridFixedMemoryJudgeModelID                = "gpt-5.6-luna"
 	HybridFixedMemoryJudgeHardCutoffMilliseconds = 3000
 	HybridRelevanceMemoryToolRoutePolicyID       = "memory_hybrid_main_model_tool_route_calibration_v1"
@@ -398,9 +399,9 @@ type HybridShadowAdmission struct {
 	MaximumVectorSimilarity float64
 }
 
-// HybridShadowRelevancePolicy is immutable request-selection authority. A
-// calibration policy is allowed only by the isolated regression runner; the
-// Server composition root installs no policy until frozen thresholds exist.
+// HybridShadowRelevancePolicy is immutable request-selection authority.
+// Calibration policies remain isolated to regression/shadow flows; the
+// product Memory Tool reader accepts only its separately promoted policy.
 type HybridShadowRelevancePolicy struct {
 	ID                          string
 	Mode                        string

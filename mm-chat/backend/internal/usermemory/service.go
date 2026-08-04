@@ -37,6 +37,7 @@ type Service struct {
 	hybridJudge      HybridCandidateJudge
 	hybridRouter     HybridMemoryToolRouter
 	hybridPolicy     HybridShadowRelevancePolicy
+	hybridToolPolicy HybridShadowRelevancePolicy
 	portabilityCodec *PortabilityPlanCodec
 	release          string
 }
@@ -57,6 +58,10 @@ func WithHybridMemoryToolRouter(router HybridMemoryToolRouter) ServiceOption {
 
 func WithHybridShadowRelevancePolicy(policy HybridShadowRelevancePolicy) ServiceOption {
 	return func(service *Service) { service.hybridPolicy = policy }
+}
+
+func WithHybridMemoryToolRelevancePolicy(policy HybridShadowRelevancePolicy) ServiceOption {
+	return func(service *Service) { service.hybridToolPolicy = policy }
 }
 
 func WithPortabilityPlanCodec(codec *PortabilityPlanCodec) ServiceOption {

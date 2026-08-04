@@ -50,6 +50,16 @@ func durableMemoryUsageInputs(
 	return result
 }
 
+func durableMemoryUsageInputsForRun(
+	preparation durableMemoryPreparation,
+	memoryTool *memoryToolRuntime,
+) []MemoryUsageInput {
+	if memoryTool != nil && memoryTool.enabled() {
+		preparation.Items = memoryTool.getUsedMemories()
+	}
+	return durableMemoryUsageInputs(preparation)
+}
+
 func (h *Handler) prepareDurableMemory(
 	ctx context.Context,
 	query string,
