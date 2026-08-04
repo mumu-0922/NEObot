@@ -9084,3 +9084,68 @@ context-selected buffered delegation, and generation-bound Recorder writes.
 Focused race tests plus the offline regression topology pass; no Provider was
 called. The identity-free v9 artifact remains immutable, so this finding does
 not relabel its `174` cases or authorize another paid run.
+
+## 2026-08-04 — Schema-v13 fixed Memory Judge failure diagnostic
+
+After the immutable v4/v5 accuracy-first runs left Judge failures collapsed
+into `CANDIDATE_JUDGE_FAILED`, schema v13 added a measurement-only typed
+attempt/terminal taxonomy without changing the corpus, prompt, BGE, threshold,
+selection, retry ceiling, or production reader. The single separately
+authorized live run `memory-regression-20260804t005257z-8f43c5e7` used global
+Provider and Compose concurrency `1`, completed all 300 Development cases, and
+published a reconciled two-file aggregate bundle.
+
+The run contained `105` empty-candidate, `194` Judge-completed, and one failed
+case. Its `197` Judge attempts included two retries. Failed attempts classified
+as one `PROVIDER_STREAM_READ_FAILED` and two `PROVIDER_TRANSPORT_FAILED`; the
+only terminal category was `PROVIDER_TRANSPORT_FAILED`. All terminal, attempt,
+logical-request, and 300-case equations passed. Independent evaluation passed:
+Candidate Recall@20 was `1.0`, Final Recall@5 was `0.9948717949`, current-fact
+accuracy was `0.9939393939`, false injection was zero, and every safety counter
+was zero. The diagnostic report correctly remained permanently
+`passed=false`, `policySelected=false`, and `promotionEligible=false` rather
+than treating diagnostic completion as policy authority.
+
+Report SHA-256 is
+`381df1eb72c29bf4a6a478731797250998cdc58482becaa44bf0b9abfef58527` and
+manifest SHA-256 is
+`cff8b7408841939e530a53aacb98f1894c2c7cf797bf4124a52f6c64f86284a3`.
+Only those mode-`0600` aggregate files remain. The temporary BGE/Judge
+credentials were overwritten and removed; the cost copy, helper, and active
+path were removed; scoped containers, networks, and volumes were all zero; and
+the base PostgreSQL container remained stopped.
+
+Pinned OpenAI Go and Anthropic Go retry implementations support the next
+bounded hypothesis: a separately versioned lane with two Judge retries,
+five/ten-second fallback waits, valid `Retry-After` precedence, unchanged
+global concurrency one, and a new worst-case three-attempt cost authority.
+This evidence does not justify semantic, SSE, HTTP/2, keepalive, or retrieval-
+retry changes. The consumed diagnostic grants no automatic rerun, Validation,
+production activation, or promotion authority.
+
+## 2026-08-04 — Schema-v14 fixed Memory Judge transport-stable lane
+
+The schema-v13 aggregate isolated a bounded transport hypothesis without
+supporting any prompt, BGE, corpus, threshold, SSE, HTTP/2, keepalive, or
+concurrency change. The offline schema-v14 lane therefore preserves all
+semantic and privacy authorities while extending only Judge transient recovery
+from one retry to two. BGE remains at one retry, global Provider concurrency
+remains one, explicit `Retry-After` remains authoritative, and deterministic
+fallback waits are five then ten seconds.
+
+Schema v14 has separate profile/reader/report/admission/artifact identities and
+expects cost-basis v9 authority for at most `900` Judge requests and `115200`
+output tokens. It retains schema-v13 typed attempt/terminal maps. Any terminal
+failed case forces `passed=false`; a passing zero-terminal Development report
+still sets `policySelected=false` and `promotionEligible=false` and stops for
+owner review. Historical schema-v12/v13 JSON omits the new retry fields.
+
+Low-concurrency focused Go tests for `internal/memorycapture` and
+`cmd/memory-regression-capture` pass, as does the updated deterministic
+topology/lifecycle shell gate. Focused race tests for those two packages, the
+complete backend `go test ./...`, and `go vet ./...` pass with `GOMAXPROCS=2`
+and single-package build parallelism; the full test ran outside the managed
+sandbox only to permit `httptest` local sockets. No live Provider call, Docker
+execution, or full standalone gate was made for schema v14. No private cost-
+basis-v9 document was created, so there is no live run, automatic rerun,
+Validation, production, or promotion authority.

@@ -136,6 +136,35 @@ plus nine Judge-local categories. Provider categories come only from
 stages. Unknown errors map to `CANDIDATE_JUDGE_FAILURE_UNCLASSIFIED`; callers
 must never classify by matching error text.
 
+The transport-stable identities and Go seams are:
+
+```text
+capture mode = development_fixed_memory_judge_transport_stable
+reader       = neo-chat.native-memory-reader-capture.v12
+profile      = neo-chat.memory-regression-profile-config.v14
+report       = neo-chat.memory-regression-relevance-calibration.v14
+admission    = development_fixed_memory_judge_transport_stable_only
+artifact     = fixed-memory-judge-transport-stable-development.json
+cost basis   = neo-chat.memory-regression-cost-basis.v9
+```
+
+```go
+TransportStableDevelopmentExecutionPolicy(providerMode string) (
+    AccuracyFirstExecutionPolicy, error,
+)
+WrapTransportStableMemoryJudgeDevelopmentProviders(...) (..., error)
+CaptureTransportStableMemoryJudgeDevelopment(...) (CapturedProfile, error)
+BuildTransportStableMemoryJudgeDevelopmentReport(...) (
+    TransportStableMemoryJudgeDevelopmentReport, []byte, error,
+)
+BuildTransportStableMemoryJudgeRunManifest(...) (
+    RelevanceRunManifest, []byte, error,
+)
+ValidateTransportStableMemoryJudgeCostAuthority(
+    CostBasis, ConfiguredCandidateJudgeProfileAuthority,
+) error
+```
+
 The main-model Tool definition has no arguments beyond an explicit empty
 object:
 
@@ -413,6 +442,26 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   Schema-v12 JSON/configuration omits every v13 field and remains immutable.
   This lane cannot change the prompt, corpus, threshold, policy, or reader and
   cannot authorize Validation, a paid run, or production activation.
+- The retained schema-v13 live diagnostic run
+  `memory-regression-20260804t005257z-8f43c5e7` reconciled `105` empty-
+  candidate, `194` Judge-completed, and one failed case. Its `197` Judge
+  attempts included two retries; failed attempts were one
+  `PROVIDER_STREAM_READ_FAILED` and two `PROVIDER_TRANSPORT_FAILED`, and the
+  sole terminal category was `PROVIDER_TRANSPORT_FAILED`. The independent
+  evaluation passed at Candidate Recall@20 `1.0`, Final Recall@5
+  `0.9948717949`, current-fact accuracy `0.9939393939`, false injection `0`,
+  and zero safety violations. This does not override the mandatory schema-v13
+  top-level non-passing/non-selecting state.
+- Schema v14 implements that separately versioned Judge transport repair
+  offline as `development_fixed_memory_judge_transport_stable`. It preserves
+  the exact transient categories, permits two Judge retries with declared
+  five/ten-second fallback waits and valid `Retry-After` precedence, keeps
+  global Provider concurrency one, and requires cost-basis v9 authority for at
+  most `900` Judge attempts and `115200` output tokens. Retrieval Provider
+  retry ceilings remain unchanged. Focused Go and fake lifecycle gates pass;
+  no live schema-v14 authority or private v9 cost document exists. Do not
+  mutate v12/v13, change SSE/HTTP2/connection reuse, alter prompt/BGE/corpus/
+  criteria, or rerun automatically from this identity-free aggregate.
 - The retained schema-v12 live result completed all `195` candidate-bearing
   rerank-plus-judge decisions with zero failed cases, but the accuracy-first
   policy injected Memory into `29/135` negative cases. Its false-injection
@@ -542,6 +591,9 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 | Provenance drift or Recorder conflict occurs after a successful Judge attempt | Count one capture-local terminal category and no failed Judge attempt. |
 | Schema-v13 terminal/attempt maps contain an unknown/zero value or fail any reconciliation equation | Reject the report and publish no bundle; never synthesize a dynamic category. |
 | Schema-v13 completes with passing quality metrics | Keep `passed=false`, `policySelected=false`, and `promotionEligible=false`; diagnostic completion is not selection authority. |
+| Schema-v14 Judge request returns a retryable typed failure | Honor valid `Retry-After`; otherwise wait five seconds before retry one and ten seconds before retry two. Keep BGE at one retry and global Provider concurrency at one. |
+| Schema-v14 has any terminal failed case or fails attempt/terminal/cost reconciliation | Keep `passed=false`, release no v2 Memory, and reject drifted reports before publication. |
+| Schema-v14 completes with zero failed cases and passing evaluation | The report may pass, but keep `policySelected=false` and `promotionEligible=false`; stop for owner review and never enter live/Validation automatically. |
 | Candidate has a forbidden egress reason under the owner policy | Evaluation fails the zero-tolerance Provider-egress gate; only `irrelevant` is newly authorized. |
 | Main-model Tool route returns no call | Record `MEMORY_TOOL_ROUTE_ABSTAINED`; discard speculative BGE final rows and record zero final/tokens. |
 | Tool route returns a missing ID, wrong name, duplicate call, or nil/non-empty arguments | Reject the whole decision as `MEMORY_TOOL_ROUTE_FAILED`; never reinterpret it as an exact call. |
@@ -600,6 +652,17 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 - **Judge-diagnostic bad**: a terminal `CANDIDATE_JUDGE_FAILED` has no category,
   a retry failure is omitted from the attempt map, or a private Provider string
   becomes a map key. The report and bundle must be rejected.
+- **Transport-stable good**: the Judge returns two retryable typed failures and
+  succeeds on attempt three. Schema v14 records two failed attempts/two
+  retries, waits five then ten seconds when no explicit advice exists, emits no
+  terminal category, and may pass only if the independent evaluation passes.
+- **Transport-stable base**: Judge succeeds on the first attempt or supplies a
+  valid `Retry-After`; BGE still has at most one retry, the upstream delay wins,
+  and a passing Development report remains non-selecting/non-promotional.
+- **Transport-stable bad**: any logical Judge request remains terminal, the
+  attempt/terminal equations drift, BGE receives a second retry, or the v9
+  authority does not cover `900` requests and `115200` output tokens. Fail or
+  reject the report without automatic rerun.
 - **Bad**: claim with an arbitrary RAG record, reuse an old vector response
   after epoch/scope drift, rank cross-user then filter in Go, persist query or
   raw scores, accept free-form judge prose/IDs, treat owner egress authorization
@@ -653,6 +716,11 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   fake report/manifest deterministic replay, v12 field omission, aggregate
   privacy scans, shell admission/credential/artifact validation, and permanent
   non-promotional/non-passing status,
+  schema-v14 Judge-only two-retry recovery/exhaustion, exact five/ten-second
+  fallback policy, explicit `Retry-After` precedence, unchanged one-retry BGE
+  ceiling, historical v12/v13 field omission, 900-request/115200-output-token
+  cost authority, zero-terminal pass semantics, fake bundle replay, and no
+  automatic live authority,
   post-threshold
   abstention, reserved cutoff recording, 600/900 token selection, bounded
   metadata, and byte-equivalent v1 prompt/Usage behavior.
@@ -708,6 +776,11 @@ if strings.Contains(err.Error(), "rate limit") {
 }
 ```
 
+```text
+Wrong: raise the shared Provider retry ceiling for BGE and Judge together,
+reuse cost-basis v8, then treat passing Development metrics as live authority.
+```
+
 ### Correct
 
 ```text
@@ -724,6 +797,8 @@ default-off hybrid-worker/shadow flag + separate default-off product Tool flag
   -> schema-v12 only: fixed BGE rerank -> fixed Luna judge, globally serial
   -> schema-v13 only: same serial flow + typed attempt/terminal aggregates,
      always non-selecting and non-passing
+  -> schema-v14 only: same typed serial flow + Judge-only second retry,
+     zero terminal failures required to pass and always non-selecting
   -> judge/BGE intersection; empty or uncertain result means no v2 Memory
   -> product first ToolRound sees normal request + search_memory, no Memory body
   -> exact call: fixed BGE path + request-local score/token selection

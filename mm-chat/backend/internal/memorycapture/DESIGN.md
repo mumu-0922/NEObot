@@ -81,7 +81,8 @@ run-bound marker in a database whose name starts with
 | Accuracy-first execution | Schema-v11 short cutoffs converted Provider latency into missing decisions, and intra-case concurrency overloaded the shared route without improving correctness. | Schema v12 fixes query-embedding/admission/rerank/judge/Record order, global Provider concurrency one, no application/HTTP elapsed timeout, diagnostic-only latency, a one-second inter-case cooldown, and one bounded transient retry. |
 | Attempt-derived cost | Retrying without aggregate authority would hide quota and token amplification. | Cost-basis v8 pre-authorizes at most 600 Judge attempts/76800 output tokens; report validation reconciles attempt counts, total/retry Judge input bounds, and `attempts * 128` output authority. |
 | Typed Judge failure measurement | The v5 aggregate collapses 17 failed cases and 22 retries into one public code, so changing corpus, prompt, or threshold would be causal guesswork. | Schema v13 reuses the unchanged v12 flow and cost authority, derives 24 plaintext-free categories from typed Provider/decoder/capture boundaries, reconciles attempt and terminal counts, and is permanently non-passing/non-selecting. |
-| Manual stage isolation | Development evidence is not Validation or production authority. | Every schema-v11/v12/v13 Development run stops for owner review; Validation and production activation require separate authorization. |
+| Transport-stable Judge retry | Schema-v13 live evidence passed semantic gates but exhausted the single retry on one typed transport failure. | Schema v14 preserves semantic/BGE authority, keeps BGE at one retry, allows two Judge retries with five/ten-second fallback waits, and binds worst-case 900-attempt cost-basis v9. |
+| Manual stage isolation | Development evidence is not Validation or production authority. | Every schema-v11/v12/v13/v14 Development run stops for owner review; Validation and production activation require separate authorization. |
 | Candidate failure means `no_memory` | v1 remains the real prompt authority but is a separate benchmark profile. | Prepare/Record/Provider/cutoff failures never launder v1 or unscored RRF rows into v2 final/injected surfaces. |
 
 ## Trust boundaries and threats
@@ -128,6 +129,13 @@ canonical `internal/chat` taxonomy; JSON/schema/ordinal categories come from
 typed decoder stages, never error-string matching. Unknown text collapses to a
 fixed unclassified value and remains outside retained artifacts. A fake replay
 does not authorize a live request.
+
+Schema-v14 transport-stable mode keeps those two credentials and typed maps.
+Only Judge retries widen from one to two; retrieval requests stay at one.
+Valid `Retry-After` remains authoritative, otherwise retry waits are exactly
+five then ten seconds. Cost-basis v9 pre-authorizes at most 900 Judge attempts
+and 115200 output tokens. Any terminal Judge failure forces the report to fail
+even when the remaining evaluation metrics pass.
 
 ### Fixture plaintext leakage
 
@@ -270,9 +278,13 @@ result or failure, even when a later case reuses the same assistant identity.
   `0.907692/0.909091`. Aggregate-only evidence cannot assign that positive
   decline to corpus semantics. V5 is immutable failed evidence and grants no
   rerun, Validation, production, or promotion authority.
-- Schema v13 currently has offline fake/unit evidence only. It preserves v12
-  policy, corpus, prompt, threshold, Provider concurrency, and cost authority;
-  no live diagnostic is authorized or claimed.
+- The consumed schema-v13 live diagnostic completed all 300 cases with one
+  terminal `PROVIDER_TRANSPORT_FAILED` case. Its three failed attempts were one
+  stream-read and two transport failures. Independent evaluation passed at
+  `1.0/0.994872/0.993939` recall/current-fact metrics with zero false injection
+  and zero safety failures, but diagnostic semantics remained non-passing and
+  non-selecting. Schema v14 is the offline transport-only successor; no live
+  v14 run is authorized or claimed.
 - Fake protocol relevance and latency metrics are intentionally meaningless;
   only lifecycle and authority invariants are evaluated.
 
@@ -363,3 +375,7 @@ result or failure, even when a later case reuses the same assistant identity.
   hash-bound 24-category taxonomy, typed output-stage causes, attempt/terminal
   reconciliation, deterministic 300-case fake evidence, v12 field isolation,
   and no live, Validation, prompt, threshold, corpus, or promotion change.
+- **2026-08-04**: Recorded the consumed schema-v13 live aggregate, then added
+  the offline schema-v14 Judge-only two-retry successor with cost-basis v9,
+  exact fallback waits, retained failure reconciliation, zero-terminal pass
+  authority, and no automatic live rerun.

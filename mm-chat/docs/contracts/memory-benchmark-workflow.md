@@ -1245,8 +1245,8 @@ non-zero. Any next corpus, Judge/prompt, bounded diagnostic, or local relation
 gate must have a new explicit identity and separate owner authorization.
 
 Schema v13 is the bounded failure diagnostic successor. It does not change or
-rerun the v5 hypothesis; it adds only offline code and fake-protocol evidence
-until a separately authorized live run exists:
+rerun the v5 hypothesis; its implementation and live execution remain a
+separate non-selecting diagnostic identity:
 
 ```text
 capture mode          = development_fixed_memory_judge_failure_diagnostic
@@ -1324,9 +1324,59 @@ bash scripts/run-memory-regression.sh \
   --output-dir /secure/eval/native-memory-runs
 ```
 
-This command uses deterministic fake Providers and grants no live quota. A
+This command uses deterministic fake Providers and grants no live quota. Any
 live schema-v13 run requires fresh independent retrieval/Judge credentials and
 explicit approvals not implied by this implementation.
+
+The single authorized live diagnostic has already been consumed. Run
+`memory-regression-20260804t005257z-8f43c5e7` completed all 300 Development
+cases under global Provider/Compose concurrency `1` and configuration
+`f1971a3fabc93149170b216d440998b73e1d5c40f277b1b41c574bcd72016579`.
+It reconciled `105` empty-candidate, `194` Judge-completed, and one failed
+case. There were `197` Judge attempts and two retries. Attempt failures were
+one `PROVIDER_STREAM_READ_FAILED` plus two `PROVIDER_TRANSPORT_FAILED`; the
+sole terminal category was `PROVIDER_TRANSPORT_FAILED`. Evaluation passed at
+Candidate Recall@20 `1.0`, Final Recall@5 `0.9948717949`, current-fact accuracy
+`0.9939393939`, false injection `0`, and zero safety violations. The report
+correctly remained `passed=false`, `policySelected=false`, and
+`promotionEligible=false`. Report/manifest SHA-256 values are respectively
+`381df1eb72c29bf4a6a478731797250998cdc58482becaa44bf0b9abfef58527` and
+`cff8b7408841939e530a53aacb98f1894c2c7cf797bf4124a52f6c64f86284a3`.
+Cleanup retained only those two aggregate mode-`0600` files, removed both
+temporary credentials and helpers, left zero scoped Docker objects, and kept
+the base PostgreSQL container stopped.
+
+Schema v14 now implements that transport-only repair offline under
+`development_fixed_memory_judge_transport_stable`. It preserves global
+concurrency one, the one-second cooldown, prompt v1, strict decoding, BGE,
+corpus, criteria, typed failure maps, and fail-closed behavior. BGE remains at
+one retry; only Judge permits two retries, with exact five- then ten-second
+fallback waits and valid `Retry-After` precedence. Cost-basis v9 validates a
+worst-case `900` Judge requests and `115200` output tokens. A terminal failed
+case forces `passed=false`; a zero-terminal passing report still keeps
+`policySelected=false` and `promotionEligible=false`.
+
+Focused Go tests and the deterministic topology/lifecycle gate pass. No live
+Provider or Docker execution was made for schema v14, no private v9 cost
+document was created, and no live run is authorized. Do not mutate schema
+v12/v13, amplify retrieval retries, switch SSE/HTTP2/keepalive, or rerun
+automatically from this identity-free aggregate. A future live run requires a
+new owner-authored v9 cost document, fresh credentials, and explicit one-run
+approval.
+
+The offline command shape is:
+
+```bash
+bash scripts/run-memory-regression.sh \
+  --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge_transport_stable \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --cost-basis /secure/eval/fixed-memory-judge-transport-stable-cost-v9.json \
+  --output-dir /secure/eval/native-memory-runs
+```
 
 ```bash
 bash scripts/run-memory-regression.sh \

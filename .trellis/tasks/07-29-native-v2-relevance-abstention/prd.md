@@ -956,6 +956,56 @@ gate or live Provider call was made. This implementation authorizes no paid
 diagnostic, v5 rerun, Validation, Holdout, prompt/corpus/threshold change,
 production activation, or promotion.
 
+**2026-08-04 schema-v13 live diagnostic outcome and transport decision:** The
+single separately authorized low-concurrency run
+`memory-regression-20260804t005257z-8f43c5e7` completed all 300 Development
+cases with global Provider/Compose concurrency `1` and configuration SHA-256
+`f1971a3fabc93149170b216d440998b73e1d5c40f277b1b41c574bcd72016579`.
+The diagnostic reconciled `105` empty-candidate, `194` Judge-completed, and
+`1` failed case. Its `197` Judge attempts contained `2` retries; attempt
+categories were one `PROVIDER_STREAM_READ_FAILED` and two
+`PROVIDER_TRANSPORT_FAILED`, while the sole terminal category was
+`PROVIDER_TRANSPORT_FAILED`. All three attempt/terminal/logical-request
+equations and the `300/300` case equation passed. Evaluation independently
+passed with Candidate Recall@20 `1.0`, Final Recall@5 `0.9948717949`,
+current-fact accuracy `0.9939393939`, false injection `0`, and zero safety
+counters. Schema-v13 semantics still require top-level `passed=false`,
+`policySelected=false`, and `promotionEligible=false`; this is not a failed
+execution or a selected policy. Report SHA-256 is
+`381df1eb72c29bf4a6a478731797250998cdc58482becaa44bf0b9abfef58527` and
+manifest SHA-256 is
+`cff8b7408841939e530a53aacb98f1894c2c7cf797bf4124a52f6c64f86284a3`.
+Only those two mode-`0600` aggregate artifacts remain. Temporary credentials,
+cost copy, helper, active-path pointer, and every scoped container/network/
+volume were destroyed; the base PostgreSQL container remains stopped. The
+diagnostic authorizes no prompt, BGE, corpus, threshold, SSE, HTTP/2, or
+connection-reuse change. The pinned OpenAI Go and Anthropic Go review in
+`research/provider-transport-stability.md` supports a separately versioned
+transport-stable lane with Judge-only two-retry authority, exact five/ten-
+second fallback waits, unchanged typed retry categories, unchanged global
+concurrency one, and a new worst-case cost authority. Historical schema v12/
+v13 bytes remain immutable. No automatic rerun, Validation, production
+activation, or promotion is authorized.
+
+**2026-08-04 schema-v14 offline implementation:** The transport decision is
+implemented as capture mode
+`development_fixed_memory_judge_transport_stable`, profile schema v14, reader
+capture v12, report schema v14, cost-basis v9, and the dedicated
+`fixed-memory-judge-transport-stable-development.json` artifact. It preserves
+schema-v13 typed attempt/terminal reconciliation and every semantic authority.
+BGE stays at one retry; only Judge permits two retries, with exact `5s/10s`
+fallback waits and valid explicit `Retry-After` precedence. Global Provider
+concurrency remains `1`, the worst-case Judge ceilings are `900` requests and
+`115200` output tokens, and any terminal failed case forces top-level
+`passed=false`. Focused `internal/memorycapture` and capture-CLI tests plus the
+updated fake topology/lifecycle gate pass under `GOMAXPROCS=2` and `-p=1`.
+Focused race tests for both packages, the complete backend `go test ./...`,
+and `go vet ./...` also pass under the same low-concurrency limits; the full
+test needed sandbox-external execution only because `httptest` socket creation
+is blocked inside the managed sandbox.
+No real Provider/Docker/full-standalone run was made, no private cost-basis-v9
+document was created, and no schema-v14 live authority exists.
+
 ## Expansion Sweep
 
 - Future evolution: evaluate the fixed Luna candidate-aware profile under the

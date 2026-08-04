@@ -786,6 +786,30 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   `43ba6e02e1b22322c56a088c5772ea769606a4acdc37d809f0fa239ca07b94e1`.
   Both v4/v5 runs select no policy and grant no automatic rerun, Validation,
   production, or promotion authority.
+- The separately authorized schema-v13 diagnostic
+  `memory-regression-20260804t005257z-8f43c5e7` completed all `300` cases and
+  reconciled `105` empty-candidate, `194` Judge-completed, and one failed
+  case. Its `197` Judge attempts included two retries; the attempt map was
+  `PROVIDER_STREAM_READ_FAILED: 1` and `PROVIDER_TRANSPORT_FAILED: 2`, while
+  the terminal map was `PROVIDER_TRANSPORT_FAILED: 1`. Independent evaluation
+  passed at Candidate Recall@20 `1.0`, Final Recall@5 `0.9948717949`, current-
+  fact accuracy `0.9939393939`, false injection `0`, and zero safety leaks.
+  Diagnostic schema semantics still force `passed=false`,
+  `policySelected=false`, and `promotionEligible=false`. Report SHA-256 is
+  `381df1eb72c29bf4a6a478731797250998cdc58482becaa44bf0b9abfef58527`;
+  manifest SHA-256 is
+  `cff8b7408841939e530a53aacb98f1894c2c7cf797bf4124a52f6c64f86284a3`.
+  Preserve the two aggregate artifacts and do not rerun automatically.
+- Schema v14 implements that transport-only successor offline under capture
+  mode `development_fixed_memory_judge_transport_stable`. It keeps the exact
+  prompt, BGE tuple, corpus, criteria, fail-closed result, and global Provider
+  concurrency one; BGE remains at one retry while Judge permits two retries
+  with exact five/ten-second fallback waits and valid `Retry-After`
+  precedence. Cost-basis v9 requires authority for at most `900` Judge
+  attempts and `115200` output tokens. The fake lifecycle and focused Go gates
+  pass, but no private v9 cost document or live schema-v14 authority exists.
+  Do not amplify BGE retries, change SSE/HTTP2/keepalive/corpus/threshold, or
+  rerun automatically from this aggregate.
 - Aggregate-only Development evidence authorizes metric comparison, not case-
   level or causal attribution. After disjoint v4 and v5 hard-negative families
   each retained one `unrelated_negative` false injection, do not author another

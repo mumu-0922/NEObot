@@ -39,6 +39,9 @@ without changing prompt, Usage, feature flags, or production data.
 - run the schema-v13 measurement-only successor without changing schema-v12
   execution, classifying every failed Judge attempt and terminal failed case
   through one hash-bound plaintext-free taxonomy;
+- run the schema-v14 transport-stable successor with the same taxonomy and
+  semantic authorities, one additional Judge-only transient retry, exact
+  five/ten-second fallback waits, and unchanged single-retry BGE behavior;
 - enforce exact `development`/`validation` split lanes and reject the visible
   machine `holdout`;
 - assemble strict regression observations, content-free run manifests, and
@@ -74,6 +77,8 @@ injection, or active-reader authority.
 | `BuildAccuracyFirstMemoryJudgeDevelopmentReport` | Return schema-v12 quality/safety/token evidence plus diagnostic latency and reconciled attempt/cost telemetry under criteria v3/cost-basis v8. |
 | `CaptureJudgeFailureDiagnosticDevelopment` | Replay the schema-v12 serial flow while capturing typed Judge attempt and terminal failure categories. |
 | `BuildJudgeFailureDiagnosticDevelopmentReport` | Return the always-failed/non-selecting schema-v13 aggregate after taxonomy, attempt, terminal, retry, cost, and privacy reconciliation. |
+| `CaptureTransportStableMemoryJudgeDevelopment` | Execute the schema-v14 serial flow with at most two Judge retries and unchanged BGE retry ceilings. |
+| `BuildTransportStableMemoryJudgeDevelopmentReport` | Return schema-v14 quality evidence plus typed failure maps under cost-basis v9; any terminal Judge failure forces `passed=false`. |
 | `CaptureFrozenValidation` | Execute only the 100 Validation cases under the code-frozen policy. |
 | `BuildFrozenValidation` | Score the frozen Validation result without retuning. |
 | `AssembleRegressionObservations` | Bind ordered captures to the strict regression schema. |
@@ -350,6 +355,15 @@ profile/report v13, admission
 `fixed-memory-judge-failure-diagnostic-development.json`. It does not change
 the prompt, threshold, corpus, runtime reader, or Provider concurrency.
 
+Schema v14 is a separate transport-stability identity. Cost-basis v9
+authorizes at most 900 Judge attempts and exactly 115200 output tokens. BGE
+requests retain the historical one-retry ceiling; only Judge requests may
+retry twice. Missing explicit `Retry-After` advice waits five seconds before
+the first retry and ten seconds before the second. The report retains the v13
+aggregate maps and can pass only when evaluation passes and `failedCaseCount`
+is zero. A passing summary still sets `policySelected=false` and stops for
+owner review.
+
 The fixed taxonomy `memory-candidate-judge-failure-taxonomy-v1` is the sorted
 24-value union of the 15 canonical `internal/chat` Provider categories and
 nine Judge-local input/event/output/provenance/Recorder categories. Its JSON
@@ -445,6 +459,8 @@ fixed_memory_judge_development.go      Schema-v11 fixed-Luna report authority
 accuracy_first_memory_judge_development.go Schema-v12 accuracy-first report/manifest authority
 judge_failure_diagnostic_development.go Schema-v13 Judge failure taxonomy/reconciliation authority
 judge_failure_diagnostic_manifest.go    Schema-v13 non-promotional manifest authority
+transport_stable_memory_judge_development.go Schema-v14 report/reconciliation authority
+transport_stable_memory_judge_manifest.go Schema-v14 Development manifest authority
 accuracy_first_providers.go            Global serial gate, retry, cooldown, and aggregate telemetry
 ```
 
