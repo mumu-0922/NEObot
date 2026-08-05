@@ -240,6 +240,18 @@ only and does not delete observations or canonical Memory. Do not attempt to
 keep an enabled Tool Loop on a pre-`065` backend; final content authority would
 be unavailable and must fail closed.
 
+### Migration 070 / Memory health rollback
+
+Stop every Memory Worker before attempting schema rollback. Each clean Worker
+shutdown calls `memory_worker_retire`; an unclean shutdown becomes inactive
+after its bounded heartbeat TTL. Migration `070` down fails with
+`MEMORY_HEALTH_ROLLBACK_REQUIRES_STOPPED_WORKERS` while any heartbeat remains
+live. Runtime roles must not delete heartbeat rows directly. After the guard
+passes, down removes only derived heartbeat/user-health capabilities and
+restores the prior worker-readiness function; canonical Memory, projections,
+capture jobs, and Usage remain intact. Clean disposable replay is
+`069 -> 070 -> 069 -> 070`.
+
 ### Migration 069 / Memory compatible Tool-profile rollback
 
 Disable automatic recording and stop every Memory Worker before rolling back

@@ -29,6 +29,9 @@ const (
 	errorEmbeddingInvalid     = "EMBEDDING_VECTOR_INVALID"
 	errorEmbeddingComplete    = "EMBEDDING_COMPLETE_FAILED"
 	errorEmbeddingRedacted    = "EMBEDDING_SECRET_REDACTED"
+	defaultHeartbeatInterval  = 5 * time.Second
+	defaultHeartbeatTTL       = 20 * time.Second
+	heartbeatRetireTimeout    = 2 * time.Second
 )
 
 type Worker struct {
@@ -48,6 +51,8 @@ type Worker struct {
 	baseBackoff          time.Duration
 	maximumBackoff       time.Duration
 	concurrency          int
+	heartbeatInterval    time.Duration
+	heartbeatTTL         time.Duration
 	now                  func() time.Time
 	logger               *slog.Logger
 }
@@ -123,17 +128,19 @@ func New(
 		return nil, err
 	}
 	worker := &Worker{
-		repository:       repository,
-		providerResolver: providerResolver,
-		workerID:         workerID,
-		leaseDuration:    2 * time.Minute,
-		providerTimeout:  45 * time.Second,
-		pollInterval:     time.Second,
-		baseBackoff:      5 * time.Second,
-		maximumBackoff:   15 * time.Minute,
-		concurrency:      2,
-		now:              time.Now,
-		logger:           slog.Default(),
+		repository:        repository,
+		providerResolver:  providerResolver,
+		workerID:          workerID,
+		leaseDuration:     2 * time.Minute,
+		providerTimeout:   45 * time.Second,
+		pollInterval:      time.Second,
+		baseBackoff:       5 * time.Second,
+		maximumBackoff:    15 * time.Minute,
+		concurrency:       2,
+		heartbeatInterval: defaultHeartbeatInterval,
+		heartbeatTTL:      defaultHeartbeatTTL,
+		now:               time.Now,
+		logger:            slog.Default(),
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -171,24 +178,82 @@ func New(
 		worker.providerTimeout+5*time.Second >= worker.leaseDuration ||
 		worker.pollInterval <= 0 || worker.baseBackoff <= 0 ||
 		worker.maximumBackoff < worker.baseBackoff || worker.concurrency < 1 ||
-		worker.concurrency > 32 {
+		worker.concurrency > 32 || worker.heartbeatInterval <= 0 ||
+		worker.heartbeatTTL <= worker.heartbeatInterval ||
+		worker.heartbeatTTL > 120*time.Second {
 		return nil, errors.New("memory worker configuration is invalid")
 	}
 	return worker, nil
 }
 
 func (w *Worker) Run(ctx context.Context, wake <-chan struct{}) error {
+	if err := w.repository.Heartbeat(
+		ctx,
+		w.workerID,
+		w.heartbeatTTL,
+		w.embeddingEnabled,
+	); err != nil {
+		return err
+	}
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	heartbeatErrors := make(chan error, 1)
+	var heartbeatGroup sync.WaitGroup
+	heartbeatGroup.Add(1)
+	go func() {
+		defer heartbeatGroup.Done()
+		w.runHeartbeat(runCtx, heartbeatErrors)
+	}()
+
 	var group sync.WaitGroup
 	for lane := 0; lane < w.concurrency; lane++ {
 		group.Add(1)
 		go func() {
 			defer group.Done()
-			w.runLane(ctx, wake)
+			w.runLane(runCtx, wake)
 		}()
 	}
-	<-ctx.Done()
+	var runErr error
+	select {
+	case <-ctx.Done():
+	case runErr = <-heartbeatErrors:
+	}
+	cancel()
 	group.Wait()
-	return nil
+	heartbeatGroup.Wait()
+	retireCtx, retireCancel := context.WithTimeout(
+		context.Background(),
+		heartbeatRetireTimeout,
+	)
+	defer retireCancel()
+	if err := w.repository.Retire(retireCtx, w.workerID); err != nil {
+		w.logger.Warn("memory_worker_heartbeat_retire_failed")
+	}
+	return runErr
+}
+
+func (w *Worker) runHeartbeat(ctx context.Context, failures chan<- error) {
+	ticker := time.NewTicker(w.heartbeatInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := w.repository.Heartbeat(
+				ctx,
+				w.workerID,
+				w.heartbeatTTL,
+				w.embeddingEnabled,
+			); err != nil {
+				select {
+				case failures <- err:
+				default:
+				}
+				return
+			}
+		}
+	}
 }
 
 func (w *Worker) runLane(ctx context.Context, wake <-chan struct{}) {

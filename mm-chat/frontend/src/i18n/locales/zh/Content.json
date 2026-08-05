@@ -19,6 +19,8 @@
   "processReasonWebMiss": "Web 未找到可用来源",
   "processReasonPlannerFailed": "检索规划失败，已使用安全回退",
   "processReasonProviderDegraded": "检索供应商暂时不可用",
+  "processReasonMemoryIndexing": "记忆仍在索引，本轮未使用",
+  "processReasonMemoryUnavailable": "记忆服务暂不可用，本轮未使用",
   "processReasoning": "推理",
   "processKnowledge": "知识库检索",
   "processWeb": "联网搜索",

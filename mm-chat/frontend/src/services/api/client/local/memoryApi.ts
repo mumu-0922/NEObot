@@ -19,6 +19,9 @@ export function createLocalMemoryApiShell(): MemoryApi {
     async getSettings(): Promise<DurableMemorySettingsDTO> {
       throw unsupportedFeature("local memory adapter wiring");
     },
+    async getHealth() {
+      throw unsupportedFeature("server memory health");
+    },
     async updateSettings(): Promise<DurableMemorySettingsDTO> {
       throw unsupportedFeature("local memory adapter wiring");
     },

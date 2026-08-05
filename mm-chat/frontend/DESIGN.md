@@ -41,6 +41,14 @@ to the private Go backend.
   `ServerMemoryGovernance` owns Project/Conversation policy, scoped Memory,
   Review, detail, operation, and encrypted portability views; browser-local
   Memory/Dream is hidden but retained for rollback/import.
+- Server Memory health is a separate bounded API read. Governance and health
+  load independently, health refreshes every ten seconds while the settings
+  surface is mounted, and a health failure never falls back to local Memory or
+  destroys the last governance snapshot.
+- Default Models separates selectable Memory extraction/maintenance from the
+  read-only fixed recall judge identity returned by the server. The browser
+  requires `judgeFixed=true` and cannot edit or infer recall authority from the
+  active chat model.
 - Memory Export receives only an encrypted `.mm-memory` Blob. Import sends the
   selected encrypted File, passphrase, normalized mappings, and optional plan
   token through the typed server API client. Passphrases, package bytes, and
@@ -57,20 +65,21 @@ to the private Go backend.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                         | Required behavior                                                                    |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Server API unavailable                            | Surface the existing recoverable server error; never write silently to local storage |
-| Unsupported migrated capability                   | Fail closed and keep its UI disabled until the Go contract exists                    |
-| Browser receives object-store/private RAG address | Reject as a contract violation                                                       |
-| Server response shape is invalid                  | Normalize to the typed API-client error boundary                                     |
-| Legacy `/api/*` remains at final gate             | Standalone cutover fails                                                             |
-| Import/build/runtime reads original root          | Clean-copy gate fails                                                                |
-| Visual baseline changes during relocation         | Visual/interaction parity gate fails                                                 |
-| Server Memory governance request fails            | Keep the last snapshot, show a bounded error, and never fall back to local Memory    |
-| Activity is terminal or reaches 15 empty polls    | Stop polling; do not create background traffic for old answers                       |
-| Memory/Review state changed before mutation       | Surface the stale error and reload governance authority before another action        |
-| Import mapping or authority changes after dry-run | Reject confirm, preserve the encrypted File locally, and require a fresh dry-run     |
-| Export/Import request fails                       | Show a bounded error; never fall back to Local Memory or persist the passphrase      |
+| Condition                                         | Required behavior                                                                          |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Server API unavailable                            | Surface the existing recoverable server error; never write silently to local storage       |
+| Unsupported migrated capability                   | Fail closed and keep its UI disabled until the Go contract exists                          |
+| Browser receives object-store/private RAG address | Reject as a contract violation                                                             |
+| Server response shape is invalid                  | Normalize to the typed API-client error boundary                                           |
+| Legacy `/api/*` remains at final gate             | Standalone cutover fails                                                                   |
+| Import/build/runtime reads original root          | Clean-copy gate fails                                                                      |
+| Visual baseline changes during relocation         | Visual/interaction parity gate fails                                                       |
+| Server Memory governance request fails            | Keep the last snapshot, show a bounded error, and never fall back to local Memory          |
+| Server Memory health request fails                | Keep governance usable and show a bounded service-issue state; expose no raw backend error |
+| Activity is terminal or reaches 15 empty polls    | Stop polling; do not create background traffic for old answers                             |
+| Memory/Review state changed before mutation       | Surface the stale error and reload governance authority before another action              |
+| Import mapping or authority changes after dry-run | Reject confirm, preserve the encrypted File locally, and require a fresh dry-run           |
+| Export/Import request fails                       | Show a bounded error; never fall back to Local Memory or persist the passphrase            |
 
 ## 5. Good / Base / Bad Cases
 
@@ -100,6 +109,9 @@ to the private Go backend.
   additionally asserts encrypted Blob download, multipart dry-run/confirm,
   mapping normalization, transient passphrase handling, and settings
   suggestion-only rendering.
+- Memory health: assert strict DTO normalization, independent governance/health
+  loading, interval cleanup, fixed-judge rendering, and safe Process Activity
+  text for indexing/unavailable Tool failures.
 - UI preservation: capture agreed desktop/mobile visual baselines and critical
   interaction smoke paths.
 - Final closure: run the entire frontend suite once, then clean-copy Compose,

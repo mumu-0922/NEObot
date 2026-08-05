@@ -180,6 +180,8 @@ type EmbeddingCapture struct {
 }
 
 type Repository interface {
+	Heartbeat(context.Context, string, time.Duration, bool) error
+	Retire(context.Context, string) error
 	Claim(context.Context, string, string, time.Duration) (Job, bool, error)
 	Hydrate(context.Context, Job) (Capture, error)
 	ProposeCandidates(context.Context, Job, ProposalBatch) (ProposalSummary, error)

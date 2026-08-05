@@ -409,6 +409,17 @@ or forged IDs. Promotion authorizes only v5 batches. Down restores the v4-
 authorizing `068` function only before automatic promotion history exists.
 Clean replay is `068 -> 069 -> 068 -> 069`.
 
+Migration `070` adds a content-free, expiring PostgreSQL heartbeat for the
+private Memory Worker and the authenticated `memory_user_health(UUID)` summary.
+The Worker heartbeat records only worker identity, embedding capability, and
+timestamps. The API health summary combines live worker capability with the
+current user's capture queue and current-authority projection counts; it
+contains no query, Memory body, Provider response, model secret, or raw score.
+`memory_worker_runtime` may execute heartbeat/retire/readiness only, while
+`go_api_runtime` may execute only user health; neither role can read the
+heartbeat table. Down refuses while any heartbeat is live, then restores the
+pre-`070` readiness function. Clean replay is `069 -> 070 -> 069 -> 070`.
+
 ## Storage boundaries
 
 Postgres is the source of truth for structured records:

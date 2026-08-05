@@ -655,10 +655,10 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 | Tool route succeeds but the current-authorized BGE candidate set is empty | Record `MEMORY_TOOL_ROUTE_EMPTY`; do not fabricate a Memory result. |
 | Official DeepSeek is sent generic `enable_thinking=false` | Mark the run protocol-invalid; it cannot support a model-quality conclusion. |
 | The route is implemented as a separate pre-answer `PlanTools` request | Development-only failed hypothesis; never promote this request shape. |
-| Product Memory Tool flag is absent/false | Do not expose `search_memory`; preserve the normal v1 prompt/Usage path. |
+| Product Memory Tool flag is absent/false | Do not expose `search_memory`; continue without Memory and never invoke the retired reader. |
 | Current user explicitly requests saved Memory and capability is supported | Order `search_memory` first, select named `required`, and keep the fixed BGE/Luna selector as final release authority. |
 | Current user discusses memory generally or submits an ordinary task | Preserve Auto; do not force Memory retrieval. |
-| A known saved Memory still has `embedding_status=pending` because the private Worker is stopped | Product acceptance is not ready. The Tool may complete with an empty result and zero Usage; restore the correctly flagged Worker and wait for current projection readiness rather than bypassing BGE/Luna or adding a v1 fallback. |
+| A known saved Memory still has `embedding_status=pending` because the private Worker is stopped | Product acceptance is not ready. Classify a candidate-empty Tool result as `memory_service_unavailable` or `memory_indexing`, restore the correctly flagged Worker, and wait for current projection readiness rather than bypassing BGE/Luna or adding a v1 fallback. |
 | Explicit read sees unknown capability | Start the fixed background probe, release no Tool Memory for that turn, and never set an implicit override. |
 | Official DeepSeek returns a JSON object with forbidden fields for canonical `search_memory` | Drop every returned member at the zero-argument Provider adapter boundary, validate canonical `{}`, and retain the current server-owned request as the only retrieval query. |
 | Product Tool policy is absent or is any Development/shadow identity | Return `policy_unavailable`; perform zero hybrid Provider work and release no Memory. |
@@ -672,6 +672,9 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 | Product continuation fails before content | Recover from the original request without Memory body. |
 | Product continuation completes after a non-empty Memory Tool result | Persist immutable Usage for exactly the ordered, context-budgeted Tool-result rows in the assistant-finalize transaction. |
 | Product Memory Tool is absent/empty/failed, or continuation uses original-request recovery | Persist zero Tool Memory Usage links. |
+| Product retrieval returns `NO_CANDIDATES` and user health is `ready` | Return a successful empty Tool result; this is the only healthy miss. |
+| Product retrieval returns `NO_CANDIDATES` and health is `indexing` | Fail the Tool step as `memory_indexing`; continue on the same model without Memory. |
+| Product retrieval returns `NO_CANDIDATES` and health is `degraded`, `disabled`, or unreadable | Fail as `memory_service_unavailable`, `memory_disabled`, or `memory_status_unavailable`; never call v1. |
 | Rerank fails, is invalid, or its reserved deadline expires | Record the bounded failure/cutoff and no hybrid final. |
 | Every valid rerank score is below the frozen final threshold | Record `RELEVANCE_FINAL_ABSTAINED`, zero final rows, and zero estimated prompt Memory tokens. |
 | Provider returns success after its context deadline | Discard the late output; never complete/rerank from it. |
@@ -703,10 +706,16 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   bounded request; the complete v2 final set is empty, normal product chat
   continues without Memory or v1 fallback, and no recalled or reranked
   candidate reaches the prompt.
+- **Health base**: `NO_CANDIDATES` plus ready heartbeat/projections is a normal
+  empty result. The same retrieval surface with pending projection, missing
+  Worker, or unreadable health is an explicit bounded failure and never a v1
+  fallback.
 - **Production good**: recall/rerank contains both the school and unrelated
   name fixtures; fixed Luna selects only the school ordinal, final hydration
   returns it, and assistant completion atomically persists exactly that one
   Usage link while the name remains rerank-only.
+- **Production bad**: use `NO_CANDIDATES` alone as proof of a valid miss without
+  consulting migration-070 current-user health.
 - **Accuracy-first base**: the serial BGE stage completes but Luna returns a
   strict empty ordinal set; Record persists an empty counterfactual final,
   latency remains diagnostic, the next case starts only after its cooldown,

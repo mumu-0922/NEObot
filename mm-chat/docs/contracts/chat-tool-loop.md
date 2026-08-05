@@ -492,7 +492,10 @@ compatibility path is visibly traced and never restores pre-SSE retrieval.
   Record, migration `065` hydrates the exact final lane through current source,
   settings, epoch, projection, revision/hash, scope/lifecycle, time, and
   Sensitive authority. Go rechecks identity and redacts each body again.
-- Empty, failed, stale, or fully redacted retrieval returns a bounded Tool
+- Candidate-empty retrieval is successful only when user-scoped Memory health
+  is `ready`. Indexing, unavailable/failed workers or projections, disabled
+  Memory, and unreadable health become distinct bounded failed Tool steps.
+  Failed, stale, or fully redacted retrieval likewise returns a bounded Tool
   Result and ordinary same-model continuation without Memory. A pre-content
   continuation failure recovers through the same Provider/model from the
   original request without any Memory body. Partial content is never replayed.
@@ -546,7 +549,7 @@ more accurate.
 | Compatibility planner fails           | strong Knowledge, forced Web, else Direct; never Both |
 | Knowledge miss                        | empty successful result; continue Model/Web        |
 | Tool arguments malformed/unknown      | reject execution; redacted failed step             |
-| Memory Tool flag absent/false         | do not expose `search_memory`; preserve v1 default |
+| Memory Tool flag absent/false         | do not expose `search_memory`; continue without Memory and never invoke the old reader |
 | Explicit saved-Memory read on a supported model | order `search_memory` first; named `required`; no forced Web/Knowledge |
 | General memory discussion/ordinary task | preserve `tool_choice=auto`; no forced Memory retrieval |
 | Explicit read while capability is unknown | no Memory this turn; start the fixed background probe; never force-enable |
@@ -554,7 +557,9 @@ more accurate.
 | Exact first-round `search_memory({})`  | current-authorized hybrid retrieval and same-model continuation |
 | Buffered first round fails after a call is assembled | discard call/draft; compatibility path; zero Memory retrieval |
 | Memory call name is whitespace/case variant | reject; only the exact raw name authorizes retrieval |
-| Memory retrieval empty/failed/stale   | bounded Tool Result; continue without Memory       |
+| Memory retrieval empty with ready health | successful empty Tool Result; continue without Memory |
+| Memory indexing/unavailable/disabled/unknown health | bounded failed Tool Result with a safe visible reason; continue without Memory |
+| Memory retrieval failed/stale         | bounded failed Tool Result; continue without Memory |
 | Memory continuation fails before text | recover from original request with no Memory body  |
 | Memory continuation fails after text  | preserve error; no duplicate recovery              |
 | Official DeepSeek Tool round/continuation | `thinking.type=disabled`, no `reasoning_effort`; plain no-Tool chat unchanged |
@@ -632,5 +637,6 @@ only. Its down migration drops the cache table without removing provider
 configuration, credentials, conversations, Knowledge, or Citations.
 
 For a Memory Tool regression, set `MEMORY_TOOL_LOOP_ENABLED=false` and restart
-the API. This removes Tool exposure and restores the deployed v1 prompt/Usage
-path without deleting Memory, projections, observations, or migration `065`.
+the API. This removes Tool exposure and continues without Memory; it never
+restores the retired v1 prompt/Usage path and does not delete Memory,
+projections, observations, health state, or migration `065`.

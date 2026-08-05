@@ -15,6 +15,7 @@ const (
 	memoriesPath             = "/v1/memories"
 	memoriesPathBase         = memoriesPath + "/"
 	memorySettingsPath       = "/v1/memory-settings"
+	memoryHealthPath         = "/v1/memory-health"
 	memoryActivitiesPath     = "/v1/memory-activities"
 	memoryActivitiesPathBase = memoryActivitiesPath + "/"
 	memoryUsagesPath         = "/v1/memory-usages"
@@ -146,9 +147,28 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleMemory(w, r, memoryID)
 	case r.URL.Path == memorySettingsPath:
 		h.handleSettings(w, r)
+	case r.URL.Path == memoryHealthPath:
+		h.handleHealth(w, r)
 	default:
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
 	}
+}
+
+func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.service == nil {
+		writeServiceError(w, ErrDatabaseRequired)
+		return
+	}
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w, http.MethodGet)
+		return
+	}
+	health, err := h.service.GetMemoryHealth(r.Context())
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, health)
 }
 
 func (h *Handler) handleActivities(w http.ResponseWriter, r *http.Request) {
@@ -442,6 +462,8 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusServiceUnavailable, "MEMORY_ACTIONS_UNAVAILABLE", "memory actions are unavailable")
 	case errors.Is(err, ErrGovernanceRepositoryRequired):
 		writeError(w, http.StatusServiceUnavailable, "MEMORY_GOVERNANCE_UNAVAILABLE", "memory governance is unavailable")
+	case errors.Is(err, ErrMemoryHealthRepositoryRequired):
+		writeError(w, http.StatusServiceUnavailable, "MEMORY_HEALTH_UNAVAILABLE", "memory health is unavailable")
 	case errors.Is(err, ErrMemoryProjectNotFound):
 		writeError(w, http.StatusNotFound, "MEMORY_PROJECT_NOT_FOUND", "memory project not found")
 	case errors.Is(err, ErrConversationPolicyNotFound):

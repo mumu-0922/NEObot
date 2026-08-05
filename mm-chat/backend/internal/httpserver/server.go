@@ -1098,10 +1098,11 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 			return err == nil
 		}),
 	)
-	memoryServiceOptions := make([]usermemory.ServiceOption, 0, 3)
+	memoryServiceOptions := make([]usermemory.ServiceOption, 0, 4)
 	memoryServiceOptions = append(
 		memoryServiceOptions,
 		usermemory.WithPortabilityRelease(cfg.Version),
+		usermemory.WithMemoryToolEnabled(cfg.Memory.ToolLoopEnabled),
 	)
 	if resolvedOptions.memoryPortabilityPlanCodec != nil {
 		memoryServiceOptions = append(
@@ -1284,6 +1285,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/memories", userMemoryHandler)
 	mux.Handle("/v1/memories/", userMemoryHandler)
 	mux.Handle("/v1/memory-settings", userMemoryHandler)
+	mux.Handle("/v1/memory-health", userMemoryHandler)
 	mux.Handle("/v1/memory-activities", userMemoryHandler)
 	mux.Handle("/v1/memory-activities/", userMemoryHandler)
 	mux.Handle("/v1/memory-usages", userMemoryHandler)

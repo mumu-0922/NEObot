@@ -20,6 +20,36 @@ func NewPostgresRepository(db *sql.DB) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 
+func (r *PostgresRepository) GetMemoryHealth(
+	ctx context.Context,
+) (MemoryHealthSignals, error) {
+	if err := r.requireDB(); err != nil {
+		return MemoryHealthSignals{}, err
+	}
+	user := auth.UserOrDevelopment(ctx)
+	var signals MemoryHealthSignals
+	err := r.db.QueryRowContext(ctx, `
+SELECT worker_available, embedding_worker_available,
+       capture_pending_count, capture_processing_count,
+       capture_dead_letter_count, projection_ready_count,
+       projection_pending_count, projection_failed_count
+FROM memory_user_health($1::uuid)
+`, user.ID).Scan(
+		&signals.WorkerAvailable,
+		&signals.EmbeddingWorkerAvailable,
+		&signals.CapturePendingCount,
+		&signals.CaptureProcessingCount,
+		&signals.CaptureDeadLetterCount,
+		&signals.ProjectionReadyCount,
+		&signals.ProjectionPendingCount,
+		&signals.ProjectionFailedCount,
+	)
+	if err != nil {
+		return MemoryHealthSignals{}, fmt.Errorf("get user memory health: %w", err)
+	}
+	return signals, nil
+}
+
 func (r *PostgresRepository) GetSettings(ctx context.Context) (Settings, bool, error) {
 	if err := r.requireDB(); err != nil {
 		return Settings{}, false, err

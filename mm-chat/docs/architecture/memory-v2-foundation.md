@@ -1,10 +1,12 @@
 # Memory v2 schema foundation
 
-Memory v2 keeps Go and PostgreSQL authoritative. Migrations `053` through `059`
+Memory v2 keeps Go and PostgreSQL authoritative. Migrations `053` through `070`
 add the Project/scope foundation, durable worker, canonical provenance/delete,
-candidate/Review shadow, direct-user action/Activity/Usage authority, and the
-rebuildable lexical/vector shadow retrieval projection. The active reader and
-public Memory CRUD remain the v1 Global contract.
+candidate/Review and safe-add authority, direct-user action/Activity/Usage,
+rebuildable lexical/vector projections, fixed product Tool hydration, and
+content-free worker/user health. Public legacy Memory CRUD remains Global-only;
+the active product reader is the separately gated fixed BGE/Luna Memory Tool
+and has no v1 fallback.
 
 ## Authority model
 
@@ -135,6 +137,17 @@ Tool rounds/continuations use
 retains its selected reasoning behavior. This entry policy never replaces the
 fixed BGE/Luna candidate release boundary.
 
+Migration `070` makes deployment state explicit. The Worker must establish and
+refresh a PostgreSQL heartbeat before processing lanes and retires it on clean
+shutdown. `memory_user_health(UUID)` combines live extraction/embedding worker
+capability with only the authenticated user's capture and current-authority
+projection counts. Settings display this bounded state persistently. A
+candidate-less Memory Tool result is a normal miss only while health is
+`ready`; `indexing`, `degraded`, `disabled`, or unreadable health becomes an
+explicit failed Tool step and same-model continuation without Memory. Existing
+non-empty, fully reauthorized final results may still be released during a
+subsequent worker outage.
+
 Official DeepSeek may still synthesize a `query` field for that zero-argument
 Tool. The Provider adapter discards every member of a bounded valid JSON object
 only when the server declared the function zero-argument, then passes canonical
@@ -180,3 +193,8 @@ Migration `059` down also requires a v1/NULL reader and no hybrid observation
 history. The vector projection and embedding jobs are rebuildable, but
 observation evidence is not disposable. After shadow collection begins,
 disable the shared flag and retain the schema instead of forcing down.
+
+Migration `070` down additionally requires all live Worker heartbeats to be
+retired or expired. Stop the Worker first; never delete a heartbeat row through
+a runtime role. Clean rollback restores the prior readiness capability and
+re-up recreates only derived health state.

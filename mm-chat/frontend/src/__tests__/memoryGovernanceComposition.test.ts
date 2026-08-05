@@ -26,6 +26,10 @@ describe("server memory governance composition", () => {
     expect(governance).toContain("aria-expanded=");
     expect(governance).toContain('role="alert"');
     expect(governance).toContain('role="status"');
+    expect(governance).toContain("Promise.allSettled");
+    expect(governance).toContain("apiClient.memories.getHealth");
+    expect(governance).toContain("window.setInterval");
+    expect(governance).toContain('t("healthStatusUnavailable")');
     expect(governance).toContain("exportMemoryPackage");
     expect(governance).toContain("dryRunMemoryImport");
     expect(governance).toContain("confirmMemoryImport");

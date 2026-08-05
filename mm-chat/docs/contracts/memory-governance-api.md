@@ -7,11 +7,11 @@ surface for Memory v2 PR9. It lets one user manage Projects, Conversation
 Memory policy, scoped canonical Memory, pending Review suggestions,
 provenance/history/Usage, deletion progress, and per-answer Activity.
 
-This release does **not** promote the lexical or hybrid reader. The existing v1
-Global Top 5 is still the only Memory content injected into prompts and written
-to answer Usage. Project and Conversation Memory can be created and governed,
-but cannot reach an answer until a later reader-promotion release. An effective
-Conversation `Use Memory = off` may only remove the v1 Memory block.
+The current product reader is the separately promoted, default-off
+`search_memory` Tool path. It releases only the exact fixed BGE/Luna final set
+and never falls back to the legacy v1 Global reader. Project and Conversation
+Memory remain governed by their current scope and projection authority. An
+effective Conversation `Use Memory = off` prevents Memory Tool use.
 
 ## Authentication and authority
 
@@ -29,6 +29,35 @@ classification-aware legacy wrappers. This keeps `/v1/memories` compatible
 without leaving a Sensitive/secret bypass.
 
 ## HTTP surface
+
+### Runtime health
+
+```http
+GET /v1/memory-health
+```
+
+Migration `070` returns one content-free, current-user health summary:
+
+```json
+{
+  "status": "ready|indexing|degraded|disabled",
+  "reasonCode": "bounded_code",
+  "workerAvailable": true,
+  "embeddingWorkerAvailable": true,
+  "readyCount": 3,
+  "pendingCount": 0,
+  "failedCount": 0,
+  "judgeModelId": "gpt-5.6-luna",
+  "judgeFixed": true
+}
+```
+
+`disabled` is authoritative when the Tool flag or the user's Memory/Use switch
+is off. Otherwise live PostgreSQL Worker heartbeat, capture queue, and current
+projection state determine `ready`, `indexing`, or `degraded`. The response
+never exposes database errors, Provider/Base URL configuration, Memory/query
+plaintext, raw scores, or credentials. A health-read failure is not allowed to
+break the governance snapshot UI; the UI shows a bounded service-issue state.
 
 ### Snapshot
 

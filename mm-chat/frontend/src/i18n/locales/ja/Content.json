@@ -19,6 +19,8 @@
   "processReasonWebMiss": "利用可能な Web ソースがありませんでした",
   "processReasonPlannerFailed": "検索計画に失敗したため、安全なフォールバックを使用しました",
   "processReasonProviderDegraded": "検索プロバイダーは一時的に利用できません",
+  "processReasonMemoryIndexing": "メモリはインデックス作成中のため、この回答では使用されませんでした",
+  "processReasonMemoryUnavailable": "メモリサービスは一時的に利用できないため、この回答では使用されませんでした",
   "processReasoning": "推論",
   "processKnowledge": "ナレッジ検索",
   "processWeb": "Web 検索",

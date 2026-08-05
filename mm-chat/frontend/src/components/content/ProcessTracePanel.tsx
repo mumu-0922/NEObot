@@ -214,6 +214,10 @@ function processReasonLabel(
       return t("processReasonPlannerFailed");
     case "provider_degraded":
       return t("processReasonProviderDegraded");
+    case "memory_indexing":
+      return t("processReasonMemoryIndexing");
+    case "memory_unavailable":
+      return t("processReasonMemoryUnavailable");
   }
 }
 

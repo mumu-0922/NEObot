@@ -119,6 +119,42 @@ func TestHandlerRejectsUnknownFieldsAndInvalidIDs(t *testing.T) {
 	}
 }
 
+func TestHandlerReturnsBoundedMemoryHealth(t *testing.T) {
+	repository := &fakeMemoryHealthRepository{
+		fakeRepository: &fakeRepository{
+			settings: Settings{Enabled: true, SearchEnabled: true}, settingsFound: true,
+		},
+		signals: MemoryHealthSignals{
+			WorkerAvailable: true, EmbeddingWorkerAvailable: true,
+			ProjectionReadyCount: 2,
+		},
+	}
+	handler := NewHandler(NewService(repository, WithMemoryToolEnabled(true)))
+	response := serveMemoryRequest(t, handler, http.MethodGet, memoryHealthPath, "")
+	if response.Code != http.StatusOK ||
+		!strings.Contains(response.Body.String(), `"status":"ready"`) ||
+		!strings.Contains(response.Body.String(), `"judgeModelId":"gpt-5.6-luna"`) ||
+		strings.Contains(response.Body.String(), "provider") {
+		t.Fatalf("health response = %d %s", response.Code, response.Body.String())
+	}
+	response = serveMemoryRequest(t, handler, http.MethodPost, memoryHealthPath, "{}")
+	if response.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("health POST response = %d %s", response.Code, response.Body.String())
+	}
+
+	unavailable := NewHandler(NewService(
+		&fakeRepository{
+			settings: Settings{Enabled: true, SearchEnabled: true}, settingsFound: true,
+		},
+		WithMemoryToolEnabled(true),
+	))
+	response = serveMemoryRequest(t, unavailable, http.MethodGet, memoryHealthPath, "")
+	if response.Code != http.StatusServiceUnavailable ||
+		!strings.Contains(response.Body.String(), `"code":"MEMORY_HEALTH_UNAVAILABLE"`) {
+		t.Fatalf("unavailable health response = %d %s", response.Code, response.Body.String())
+	}
+}
+
 func TestHandlerMemoryActivityPollingUsageAndUndo(t *testing.T) {
 	now := time.Now().UTC()
 	repo := &handlerActionRepository{

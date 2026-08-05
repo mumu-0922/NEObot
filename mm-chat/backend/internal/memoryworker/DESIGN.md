@@ -57,6 +57,7 @@ application schema, `pg_catalog`, and `pg_temp`.
 | --- | --- | --- |
 | PostgreSQL polling is authoritative | Redis delivery and connectivity are not durable | Redis-down only increases claim latency. |
 | Same backend code/image, separate command | Reuse contracts without coupling worker failure to API availability | Worker gets its own login, pool, healthcheck, and resource limits. |
+| PostgreSQL heartbeat is runtime-readiness authority | Container health cannot prove that capture and embedding lanes are currently processing | `Worker.Run` registers before starting lanes, refreshes every five seconds with a twenty-second TTL, cancels all lanes on refresh failure, and best-effort retires on clean shutdown. |
 | Current and previous event schema majors only | Bound rolling-upgrade compatibility | Unknown majors dead-letter before hydration. |
 | Lease token on hydrate/propose/complete/retry | Stale processes must lose write authority | Expired or reclaimed attempts cannot finish a job. |
 | Profile/source/generation hashes are pinned | Provider, message, scope, and policy drift must fail closed | Changed state requires a new authoritative event, not stale replay. |
@@ -78,6 +79,9 @@ application schema, `pg_catalog`, and `pg_temp`.
 | Condition | Result |
 | --- | --- |
 | Redis unavailable | Continue PostgreSQL polling. |
+| Initial heartbeat fails | Start no lane and return the repository error so the supervisor can restart the process. |
+| Periodic heartbeat fails | Cancel every capture/embedding lane, wait for shutdown, return the failure, and let the TTL bound stale readiness. |
+| Clean shutdown | Wait for heartbeat and work lanes, then best-effort retire the worker identity with a bounded independent context. |
 | Provider timeout/failure | Retry with bounded exponential backoff. |
 | Unknown schema/stage or source/profile/epoch/tombstone drift | Dead-letter without candidate apply. |
 | Worker crash during a lease | Reclaim after expiry while attempts remain. |
@@ -105,6 +109,7 @@ outside canonical Memory and every active reader.
 | Stale response survives a deleted/changed source | Active source, generation, Learn policy, profile timestamp/hash, and live lease are rechecked before proposal commit. |
 | Purge sends deleted data to a Provider | Stage dispatch invokes the purge capability before any hydration or Provider resolution. |
 | Prompt injection in source text | Messages and current Memory are JSON data under separate Server-owned prompts; duplicate/unknown/trailing output is rejected. |
+| Runtime role forges or inventories worker health | Migration `070` exposes only heartbeat/retire/readiness functions to `memory_worker_runtime`; API/Worker roles have no heartbeat-table CRUD, and rows contain no user, query, Memory, Provider, or model data. |
 | Provider prose or adapter-generated Tool identity becomes authority | Extraction accepts only one exact required Tool Call and rejects missing, duplicate, failed, wrong-name, oversized, malformed, or synthetic-ID calls. |
 | Persona widens authority | SQL hydrates only current stable Global L1 and Go accepts only a strict hydrated member subset; Provider output cannot add IDs or downgrade sensitivity. |
 | Credential retention/egress | Local sentence redaction precedes Provider calls; a secret proposal reaches SQL hash-only and logs remain code/ID-only. |
@@ -150,3 +155,6 @@ outside canonical Memory and every active reader.
 - 2026-08-04: Migration `069` preserves the applied `068` bytes and advances
   to compatible profile v5 by removing unsupported `uniqueItems`; bounded enums
   plus local duplicate/forgery rejection remain authoritative.
+- 2026-08-05: Migration `070` makes PostgreSQL heartbeat state authoritative
+  for Worker readiness and forces lane cancellation on heartbeat loss; clean
+  shutdown retires the content-free worker record without granting table CRUD.

@@ -301,6 +301,7 @@ func TestMemoryToolLoopRetrievalFailureOrEmptyResultContinuesNormally(t *testing
 		name        string
 		result      usermemory.HybridMemoryToolSearchResult
 		wantIsError bool
+		wantFailure string
 	}{
 		{
 			name: "retrieval failure",
@@ -308,6 +309,15 @@ func TestMemoryToolLoopRetrievalFailureOrEmptyResultContinuesNormally(t *testing
 				Memories: []usermemory.Memory{}, FailureCategory: "authority_stale",
 			},
 			wantIsError: true,
+			wantFailure: "authority_stale",
+		},
+		{
+			name: "indexing is a visible fail-closed result",
+			result: usermemory.HybridMemoryToolSearchResult{
+				Memories: []usermemory.Memory{}, FailureCategory: "memory_indexing",
+			},
+			wantIsError: true,
+			wantFailure: "memory_indexing",
 		},
 		{
 			name:   "empty result",
@@ -318,7 +328,7 @@ func TestMemoryToolLoopRetrievalFailureOrEmptyResultContinuesNormally(t *testing
 		t.Run(test.name, func(t *testing.T) {
 			provider := memoryToolCallThenAnswerProvider("ordinary answer without Memory")
 			searcher := &memoryToolTestSearcher{result: test.result}
-			content, _, _ := collectMemoryToolLoopEvents(t, provider, searcher)
+			content, _, executions := collectMemoryToolLoopEvents(t, provider, searcher)
 			if content != "ordinary answer without Memory" || searcher.calls != 1 ||
 				len(provider.inputs) != 2 {
 				t.Fatalf(
@@ -330,6 +340,13 @@ func TestMemoryToolLoopRetrievalFailureOrEmptyResultContinuesNormally(t *testing
 			if result.IsError != test.wantIsError ||
 				strings.Contains(result.Content, memoryToolLoopTestContent) {
 				t.Fatalf("fail-closed Tool result = %#v", result)
+			}
+			if test.wantFailure != "" {
+				if !strings.Contains(result.Content, test.wantFailure) ||
+					len(executions) != 2 || executions[1].Status != ProcessStepStatusFailed ||
+					executions[1].FailureCategory != test.wantFailure {
+					t.Fatalf("visible failure result=%#v executions=%#v", result, executions)
+				}
 			}
 			if len(searcher.usages) != 0 {
 				t.Fatalf("empty/failure path retained Memory usages = %#v", searcher.usages)

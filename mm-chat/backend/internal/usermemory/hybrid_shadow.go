@@ -144,6 +144,7 @@ func (s *Service) SearchRelevantAfterMemoryToolCall(
 		if execution.Summary.Status == "completed" &&
 			execution.Summary.ResultCode == "NO_CANDIDATES" {
 			result.Memories = []Memory{}
+			result.FailureCategory = s.memoryEmptyResultFailure(ctx)
 			return result
 		}
 		result.FailureCategory = "retrieval_unavailable"
@@ -178,6 +179,25 @@ func (s *Service) SearchRelevantAfterMemoryToolCall(
 	}
 	result.Memories = memories
 	return result
+}
+
+func (s *Service) memoryEmptyResultFailure(ctx context.Context) string {
+	health, err := s.GetMemoryHealth(ctx)
+	if err != nil {
+		return "memory_status_unavailable"
+	}
+	switch health.Status {
+	case "ready":
+		return ""
+	case "indexing":
+		return "memory_indexing"
+	case "degraded":
+		return "memory_service_unavailable"
+	case "disabled":
+		return "memory_disabled"
+	default:
+		return "memory_status_unavailable"
+	}
 }
 
 func hybridMemoryToolFailure(category string) HybridMemoryToolSearchResult {

@@ -9,7 +9,8 @@ and database-role wiring. The production L1 successor additionally covers
 `066_memory_auto_capture_promotion`,
 `067_memory_auto_capture_authority_hardening`, and
 `068_memory_auto_capture_tool_evidence_profile` plus
-`069_memory_auto_capture_compatible_tool_profile`.
+`069_memory_auto_capture_compatible_tool_profile`. Runtime availability and
+settings UX additionally use `070_memory_worker_health`.
 
 PR3 retains the Global-only v1 Memory reader and HTTP CRUD contract. Project
 routing, evidence/revision/tombstone, review/conflict handling, embeddings,
@@ -65,7 +66,20 @@ memory_worker_retry_job(UUID, UUID, UUID, TEXT, TIMESTAMPTZ, BOOLEAN)
 memory_worker_readiness() RETURNS TABLE (...)
 memory_worker_promote_capture_candidates(UUID, UUID, UUID)
   RETURNS TABLE (promoted_count, review_count, rejected_count)
+memory_worker_heartbeat(UUID, INTEGER, BOOLEAN) RETURNS BOOLEAN
+memory_worker_retire(UUID) RETURNS BOOLEAN
+memory_user_health(UUID) RETURNS TABLE (
+  worker_available, embedding_worker_available,
+  capture_pending_count, capture_processing_count,
+  capture_dead_letter_count, projection_ready_count,
+  projection_pending_count, projection_failed_count
+)
 ```
+
+Authenticated HTTP health is `GET /v1/memory-health`. It returns only bounded
+`ready|indexing|degraded|disabled`, a fixed reason code, the two worker booleans,
+ready/pending/failed aggregate counts, and the fixed `gpt-5.6-luna` judge
+identity. It never returns a database/Provider/Base URL error or plaintext.
 
 Production extraction uses `chat.ToolRoundProvider.CompleteToolRound(...)`
 with exactly one required call per round:
@@ -133,8 +147,33 @@ REDIS_KEY_PREFIX=mm-chat
 - Apply reuses `usermemory.Service.StoreExtracted` and the v1 Global upsert.
   Candidate-wide atomic proposals and manual-precedence review are deferred.
 - Redis startup/subscription failure is warning-only; polling continues.
-  Worker failure or backlog never blocks chat or v1 Recall.
+  Worker failure or backlog never blocks chat generation. Existing non-empty,
+  fully authorized final Memory may still be released, but a candidate-empty
+  Tool result must consult user health and may not masquerade as a healthy miss.
 - Rollback never deletes queued work: down `054` requires both tables empty.
+
+### Runtime health (`070`)
+
+- `Worker.Run` must successfully register a heartbeat before starting any lane,
+  refresh it every five seconds with a 20-second TTL, cancel all lanes on a
+  refresh failure, and best-effort retire it within two seconds after stop.
+- A heartbeat stores only worker UUID, embedding-enabled capability, and
+  timestamps. PostgreSQL expiry—not a process-local bool—is liveness authority.
+- `memory_worker_runtime` may execute heartbeat, retire, and readiness only;
+  `go_api_runtime` may execute only `memory_user_health`. Neither can read or
+  mutate the heartbeat table directly.
+- User health counts only the requested user's current eligible canonical
+  Memory/projection authority. A missing current projection counts as pending;
+  stale generations, disabled/deleted/expired Memory, and other users do not.
+- Status precedence is Tool/User disabled -> `disabled`; missing extraction or
+  embedding worker -> `degraded`; failed projection/dead-letter -> `degraded`;
+  pending/processing capture or projection -> `indexing`; otherwise `ready`.
+- A globally disabled Tool flag returns bounded `disabled` without requiring a
+  settings or health repository read. Once the Tool flag and user Use settings
+  are enabled, a missing health repository is HTTP 503
+  `MEMORY_HEALTH_UNAVAILABLE`; raw repository errors remain hidden.
+- Down `070` refuses while any heartbeat is live. Stop/retire the Worker or wait
+  for TTL expiry; runtime roles must never delete rows to force rollback.
 
 ### Production L1 successor (`066`–`069`)
 
@@ -199,6 +238,14 @@ REDIS_KEY_PREFIX=mm-chat
 | `067` down sees `auto_accept` or `AUTO_CAPTURED` history | `MEMORY_AUTO_CAPTURE_AUTHORITY_ROLLBACK_REQUIRES_NO_PROMOTIONS`; preserve history. |
 | `068` down sees `auto_accept` or `AUTO_CAPTURED` history | `MEMORY_AUTO_CAPTURE_TOOL_PROFILE_ROLLBACK_REQUIRES_NO_PROMOTIONS`; preserve history. |
 | `069` down sees `auto_accept` or `AUTO_CAPTURED` history | `MEMORY_AUTO_CAPTURE_COMPATIBLE_PROFILE_ROLLBACK_REQUIRES_NO_PROMOTIONS`; preserve history. |
+| Initial or periodic heartbeat fails | Start no lane or cancel all active lanes; return failure so the process restarts. |
+| Heartbeat worker/capability is `NULL` or TTL is outside 5–120 seconds | `MEMORY_WORKER_HEARTBEAT_INVALID`; create or refresh no row. |
+| API or worker attempts direct heartbeat-table CRUD | PostgreSQL permission denied. |
+| Tool flag is disabled | HTTP health is bounded `disabled` without requiring repository health. |
+| Tool/User Use is enabled but health capability is unavailable | HTTP 503 `MEMORY_HEALTH_UNAVAILABLE`; candidate-empty Tool result is `memory_status_unavailable`. |
+| Health sees no live embedding-capable Worker | `degraded`; do not report a candidate-empty Tool read as a healthy miss. |
+| Current eligible Memory has no current projection | Count it as pending and report `indexing`. |
+| `070` down sees a live heartbeat | `MEMORY_HEALTH_ROLLBACK_REQUIRES_STOPPED_WORKERS`; preserve all state. |
 
 ## 5. Good / Base / Bad Cases
 
@@ -219,6 +266,15 @@ REDIS_KEY_PREFIX=mm-chat
 - **Production successor Bad**: edit applied `066`–`069` bytes or checksums, trust adapter-
   synthesized Tool IDs, promote a partial batch, or write canonical Memory
   directly from Go.
+- **Health Good**: one embedding-capable Worker heartbeats, the current user's
+  projections are ready, and settings show `ready`; another user's failed row
+  cannot affect the response.
+- **Health Base**: capture/projection work is pending, so settings show
+  `indexing` and an actually invoked empty Memory Tool exposes one safe indexing
+  reason while the answer continues without Memory.
+- **Health Bad**: infer liveness from Compose/container status, return a raw SQL
+  error to the browser, treat missing projections as ready, or fall back to the
+  retired reader when the Worker is absent.
 
 ## 6. Tests Required
 
@@ -244,6 +300,14 @@ REDIS_KEY_PREFIX=mm-chat
   fences, tombstone/conflict/temporary/Sensitive behavior, atomic promotion,
   idempotent replay, projection enqueue, function-only denial, and all promotion-
   history rollback guards.
+- Replay `069 -> 070 -> 069 -> 070` on disposable PostgreSQL 17. Prove worker
+  heartbeat/retire/readiness, API/worker cross-function denial, direct-table
+  denial, invalid heartbeat input rejection, active-heartbeat rollback refusal,
+  user isolation, missing/pending/ready/failed projection counts, bounded 503
+  health failure, Tool-disabled repository independence, and clean re-up.
+- Frontend tests must prove independent Governance/Health loading, a bounded
+  degraded badge on Health failure, periodic refresh, and fixed Sol/Luna model
+  responsibility labels without copying Provider configuration into the UI.
 
 ## 7. Wrong vs Correct
 
@@ -273,4 +337,12 @@ exact Provider-issued Tool Calls -> atomic hash-pinned candidate batch
   -> migration-069 compatible profile + authority recheck
   -> existing governance decision transaction
   -> canonical + evidence + audit + Activity, or fail closed / Review
+```
+
+Runtime health:
+
+```text
+Wrong: container-is-running -> assume Memory is ready -> treat empty as miss
+Correct: PostgreSQL heartbeat + current-user projection/capture state
+  -> bounded status -> healthy empty or explicit fail-closed Tool result
 ```

@@ -543,8 +543,11 @@ SSE socket own delivery only.
   `065` rehydrates the recorded final set through current user/source/settings/
   epoch/projection/revision/hash/scope/Sensitive authority, then Go rechecks
   final identity and redacts content again.
-- Empty retrieval and retrieval failure return bounded Tool Results and allow
-  ordinary same-model continuation. `search_memory` is removed from every later
+- Empty retrieval is successful only when migration-070 user health is
+  `ready`. Indexing, unavailable, disabled, or unreadable health produces one
+  bounded failed Tool step with a frontend-allowlisted reason. Other retrieval
+  failures also return bounded Tool Results and allow ordinary same-model
+  continuation. `search_memory` is removed from every later
   round. A pre-content continuation failure recovers through the same Provider/
   model from the original request without any Memory body, including the empty-
   result path; partial answer content preserves the error and never duplicates
@@ -630,12 +633,14 @@ SSE socket own delivery only.
 | Fixed Judge returns a typed transient Provider failure | retry at most twice with `Retry-After` precedence or five/ten-second waits; deterministic/protocol/provenance failures do not retry |
 | Memory Tool continuation completes with projected rows | record immutable Usage for exactly those ordered rows in assistant finalization |
 | Memory Tool is empty/failed or continuation recovers from the original request | record zero Tool Memory Usage links |
-| SSE shows `search_memory` completed but Usage is zero | Treat this as a valid empty Tool result, not successful recall. Inspect current projection readiness and Memory Worker health before changing routing or answer prompts. |
+| SSE shows `search_memory` completed but Usage is zero | Treat this as a valid empty Tool result only when user health was `ready`, not as successful recall. Inspect current projection readiness and Worker heartbeat before changing routing or prompts. |
 | Buffered first round fails after assembling a call but before closing | discard the draft/call, execute zero Memory retrieval, and use the original compatibility path |
 | Memory call name differs by whitespace or case | reject; normalized display names are not contract authority |
 | Memory call omits arguments or returns `null` | reject; nil map is not an explicit empty object |
 | Memory call is unknown/duplicate/later-round | fail closed for Memory; never retrieve or accept a second Memory call |
-| Memory retrieval fails or returns empty | bounded failed/empty Tool Result; ordinary continuation without Memory |
+| Memory retrieval returns empty with ready health | bounded successful empty Tool Result; ordinary continuation without Memory |
+| Memory retrieval returns empty while indexing/unavailable/disabled/health-unknown | one bounded failed Tool step using `memory_indexing`, `memory_service_unavailable`, `memory_disabled`, or `memory_status_unavailable`; ordinary continuation without Memory |
+| Memory retrieval otherwise fails | bounded failed Tool Result; ordinary continuation without Memory |
 | Continuation fails before content after a Memory call | recover from the original request with no Memory body |
 | Continuation fails after partial content | preserve the error; do not replay or duplicate the answer |
 | Runtime Tool contract hash drifts | fail closed before Memory retrieval |
@@ -672,7 +677,8 @@ SSE socket own delivery only.
   model answers once from the already-authorized `[K]`/`[W]` evidence without
   Tools and cumulative usage remains monotonic.
 - Good default-off product route: ordinary Server chat exposes no Memory Tool,
-  makes no hybrid Provider call, and retains the current v1 prompt/Usage path.
+  makes no hybrid Provider call, and continues without Memory; it never invokes
+  the retired reader.
 - Good enabled product route: the selected Tool-capable model sees the normal
   first-round request and canonical Tool but no Memory body, calls
   `search_memory({})`, fixed BGE reranks current candidates, the current exact

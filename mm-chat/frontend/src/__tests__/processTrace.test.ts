@@ -256,7 +256,27 @@ describe("durable process trace", () => {
       labelKey: "process.web",
       detail: { failureCategory: "raw upstream stack trace" },
     });
+    const memoryIndexing = normalizeProcessStep({
+      id: "memory-1",
+      kind: "tool",
+      status: "failed",
+      labelKey: "process.tool",
+      detail: { failureCategory: "memory_indexing" },
+    });
+    const memoryUnavailable = normalizeProcessStep({
+      id: "memory-2",
+      kind: "tool",
+      status: "failed",
+      labelKey: "process.tool",
+      detail: { failureCategory: "memory_status_unavailable" },
+    });
     expect(processReasonCategoryForDisplay(miss!)).toBe("knowledge_miss");
+    expect(processReasonCategoryForDisplay(memoryIndexing!)).toBe(
+      "memory_indexing",
+    );
+    expect(processReasonCategoryForDisplay(memoryUnavailable!)).toBe(
+      "memory_unavailable",
+    );
     expect(processReasonCategoryForDisplay(raw!)).toBeUndefined();
     expect(processOutcomeForDisplay(raw!)).toBe("");
   });

@@ -249,6 +249,65 @@ func TestSearchRelevantAfterMemoryToolCallFailsClosedOnStaleOrRedactedFinal(t *t
 	}
 }
 
+func TestSearchRelevantAfterMemoryToolCallClassifiesEmptyResultByHealth(t *testing.T) {
+	tests := []struct {
+		name       string
+		signals    MemoryHealthSignals
+		healthErr  error
+		toolEnable bool
+		want       string
+	}{
+		{
+			name: "ready is a legitimate miss", toolEnable: true,
+			signals: MemoryHealthSignals{WorkerAvailable: true, EmbeddingWorkerAvailable: true},
+		},
+		{
+			name: "indexing", toolEnable: true,
+			signals: MemoryHealthSignals{
+				WorkerAvailable: true, EmbeddingWorkerAvailable: true,
+				ProjectionPendingCount: 1,
+			},
+			want: "memory_indexing",
+		},
+		{name: "worker unavailable", toolEnable: true, want: "memory_service_unavailable"},
+		{name: "health unavailable", toolEnable: true, healthErr: errors.New("private database detail"), want: "memory_status_unavailable"},
+		{name: "disabled", want: "memory_disabled"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repository := &hybridTestRepository{
+				fakeRepository: hybridV1Repository(),
+				preparation: HybridShadowPreparation{
+					Summary: HybridShadowSummary{
+						ProfileID: HybridShadowProfileID, Status: "pending",
+						ResultCode: "CANDIDATES_READY", FallbackCode: "NONE",
+					},
+				},
+				recordSummary: HybridShadowSummary{
+					ProfileID: HybridShadowProfileID, Status: "completed",
+					ResultCode: "NO_CANDIDATES", FallbackCode: "NONE",
+				},
+				healthSignals: test.signals,
+				healthErr:     test.healthErr,
+			}
+			result := NewService(
+				repository,
+				WithHybridShadowProvider(&hybridTestProvider{embedding: validHybridTestEmbedding()}),
+				WithHybridCandidateJudge(&hybridTestCandidateJudge{}),
+				WithHybridMemoryToolRelevancePolicy(HybridShadowFixedMemoryJudgeProductionPolicy()),
+				WithMemoryToolEnabled(test.toolEnable),
+			).SearchRelevantAfterMemoryToolCall(context.Background(), HybridMemoryToolSearchInput{
+				ConversationID: hybridTestConversation, AssistantMessageID: hybridTestAssistant,
+				Query: "Which school?", ContractVersion: HybridMemoryToolContractVersion,
+				ContractSHA256: HybridMemoryToolContractSHA256,
+			})
+			if result.FailureCategory != test.want || len(result.Memories) != 0 {
+				t.Fatalf("result=%#v", result)
+			}
+		})
+	}
+}
+
 func TestSearchRelevantWithHybridShadowAppliesBothRelevanceGates(t *testing.T) {
 	newRepository := func(similarity float64, fallback string) *hybridTestRepository {
 		admission := HybridShadowAdmission{
@@ -763,6 +822,14 @@ type hybridTestRepository struct {
 	admissionCalls int
 	recordCalls    int
 	hydrateCalls   int
+	healthSignals  MemoryHealthSignals
+	healthErr      error
+}
+
+func (repository *hybridTestRepository) GetMemoryHealth(
+	context.Context,
+) (MemoryHealthSignals, error) {
+	return repository.healthSignals, repository.healthErr
 }
 
 func (repository *hybridTestRepository) HydrateHybridFinal(

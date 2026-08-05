@@ -4,6 +4,7 @@ import type {
   DurableMemorySettingsDTO,
   GovernanceMemoryMutationInput,
   MemoryApi,
+  MemoryHealthDTO,
   MemoryImportConfirmResult,
   MemoryImportDryRunResult,
   MemoryImportPackageInput,
@@ -38,6 +39,7 @@ import type { HttpClient } from "./httpClient";
 
 const memoriesPath = "/v1/memories";
 const memorySettingsPath = "/v1/memory-settings";
+const memoryHealthPath = "/v1/memory-health";
 const memoryGovernancePath = "/v1/memory-governance";
 const projectsPath = "/v1/projects";
 const memoryReviewsPath = "/v1/memory-reviews";
@@ -83,6 +85,14 @@ export function createServerMemoryApiShell(httpClient: HttpClient): MemoryApi {
       return httpClient.requestJson<DurableMemorySettingsDTO>(
         memorySettingsPath,
         { signal: input.signal },
+      );
+    },
+
+    async getHealth(input = {}): Promise<MemoryHealthDTO> {
+      return normalizeMemoryHealth(
+        await httpClient.requestJson<unknown>(memoryHealthPath, {
+          signal: input.signal,
+        }),
       );
     },
 
@@ -333,6 +343,35 @@ export function createServerMemoryApiShell(httpClient: HttpClient): MemoryApi {
         ),
       );
     },
+  };
+}
+
+function normalizeMemoryHealth(value: unknown): MemoryHealthDTO {
+  const object = recordValue(value, "memory health");
+  const statuses = ["ready", "indexing", "degraded", "disabled"] as const;
+  if (!statuses.includes(object.status as (typeof statuses)[number])) {
+    throw new Error("Server returned an invalid memory health status.");
+  }
+  if (
+    typeof object.workerAvailable !== "boolean" ||
+    typeof object.embeddingWorkerAvailable !== "boolean" ||
+    object.judgeFixed !== true
+  ) {
+    throw new Error("Server returned invalid memory health authority.");
+  }
+  return {
+    status: object.status as MemoryHealthDTO["status"],
+    reasonCode: stringValue(object.reasonCode, "memory health reason"),
+    workerAvailable: object.workerAvailable,
+    embeddingWorkerAvailable: object.embeddingWorkerAvailable,
+    readyCount: nonNegativeInteger(object.readyCount, "memory ready count"),
+    pendingCount: nonNegativeInteger(
+      object.pendingCount,
+      "memory pending count",
+    ),
+    failedCount: nonNegativeInteger(object.failedCount, "memory failed count"),
+    judgeModelId: stringValue(object.judgeModelId, "memory judge model"),
+    judgeFixed: object.judgeFixed,
   };
 }
 

@@ -245,6 +245,12 @@ attested Base-URL hash / `gpt-5.6-luna` tuple; any authority drift fails closed.
 Only typed transient Judge failures retry, at most twice with `Retry-After` or
 fixed five/ten-second waits. Failure or empty retrieval continues without
 Memory and without a v1 fallback.
+Migration `070` distinguishes a healthy empty result from deployment
+degradation. The private Worker publishes a content-free PostgreSQL heartbeat;
+the authenticated API combines it with current-user capture/projection state
+at `GET /v1/memory-health`. Settings show the bounded status continuously, and
+an actually invoked Memory Tool reports only safe `indexing` or `unavailable`
+reasons. No Provider/Base URL/database detail is returned to the browser.
 Direct `remember|correct|forget` turns and model-built-in Web Search do not
 expose the Memory Tool. Setting the flag false is the rollback; it does not
 delete canonical Memory or Usage. During the 2026-08-04 acceptance the Worker

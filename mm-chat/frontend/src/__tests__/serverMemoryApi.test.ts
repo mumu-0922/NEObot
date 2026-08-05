@@ -29,6 +29,19 @@ describe("server durable memory API", () => {
             l3Mode: "inherit",
           });
         }
+        if (url.endsWith("/v1/memory-health")) {
+          return jsonResponse({
+            status: "ready",
+            reasonCode: "memory_ready",
+            workerAvailable: true,
+            embeddingWorkerAvailable: true,
+            readyCount: 3,
+            pendingCount: 0,
+            failedCount: 0,
+            judgeModelId: "gpt-5.6-luna",
+            judgeFixed: true,
+          });
+        }
         if (url.endsWith("/v1/memories") && method === "GET") {
           return jsonResponse({ items: [memoryRecord("memory-1", "manual")] });
         }
@@ -61,6 +74,11 @@ describe("server durable memory API", () => {
     await expect(client.memories.getSettings()).resolves.toMatchObject({
       enabled: false,
     });
+    await expect(client.memories.getHealth()).resolves.toMatchObject({
+      status: "ready",
+      judgeModelId: "gpt-5.6-luna",
+      readyCount: 3,
+    });
     await expect(
       client.memories.updateSettings({
         enabled: true,
@@ -89,6 +107,7 @@ describe("server durable memory API", () => {
 
     expect(requests).toEqual([
       { url: "/mm-api/v1/memory-settings", method: "GET", body: undefined },
+      { url: "/mm-api/v1/memory-health", method: "GET", body: undefined },
       {
         url: "/mm-api/v1/memory-settings",
         method: "PATCH",
@@ -376,6 +395,9 @@ describe("server durable memory API", () => {
     await expect(client.memories.listMemories()).rejects.toMatchObject({
       code: "FEATURE_NOT_IMPLEMENTED",
     });
+    await expect(client.memories.getHealth()).rejects.toMatchObject({
+      code: "FEATURE_NOT_IMPLEMENTED",
+    });
     await expect(
       client.memories.getL2SceneDetail({ sceneId: "scene-1" }),
     ).rejects.toMatchObject({ code: "FEATURE_NOT_IMPLEMENTED" });
@@ -498,6 +520,34 @@ describe("server durable memory API", () => {
         mappings: { projects: {}, conversations: {} },
       }),
     ).rejects.toThrow("invalid memory import package hash");
+  });
+
+  it("rejects malformed memory health at the server boundary", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse({
+          status: "ready",
+          reasonCode: "memory_ready",
+          workerAvailable: true,
+          embeddingWorkerAvailable: true,
+          readyCount: -1,
+          pendingCount: 0,
+          failedCount: 0,
+          judgeModelId: "gpt-5.6-luna",
+          judgeFixed: true,
+        }),
+      ),
+    );
+    const memories = createNeoChatApiClient({
+      env: {
+        NEXT_PUBLIC_API_MODE: "server",
+        NEXT_PUBLIC_API_BASE_URL: "/mm-api",
+      },
+    }).memories;
+    await expect(memories.getHealth()).rejects.toThrow(
+      "invalid memory ready count",
+    );
   });
 });
 

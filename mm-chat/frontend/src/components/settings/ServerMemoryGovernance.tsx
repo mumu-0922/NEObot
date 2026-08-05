@@ -47,6 +47,7 @@ import type {
   MemoryImportMappings,
   MemoryImportProjectMapping,
   MemoryImportScopeRequirement,
+  MemoryHealthDTO,
   MemoryReviewDecision,
   NeoChatApiClient,
 } from "@/services/api/client";
@@ -124,6 +125,8 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
   const [snapshot, setSnapshot] = useState<MemoryGovernanceSnapshot | null>(
     null,
   );
+  const [health, setHealth] = useState<MemoryHealthDTO | null>(null);
+  const [healthUnavailable, setHealthUnavailable] = useState(false);
   const [section, setSection] = useState<Section>("memories");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -152,22 +155,51 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, string>>({});
   const loadVersionRef = useRef(0);
+  const healthLoadVersionRef = useRef(0);
   const detailLoadVersionRef = useRef(0);
   const sceneDetailLoadVersionRef = useRef(0);
   const personaDetailLoadVersionRef = useRef(0);
   const mutationInFlightRef = useRef(false);
 
+  const loadHealth = useCallback(
+    async (signal?: AbortSignal) => {
+      const loadVersion = ++healthLoadVersionRef.current;
+      try {
+        const next = await apiClient.memories.getHealth({ signal });
+        if (signal?.aborted || loadVersion !== healthLoadVersionRef.current)
+          return;
+        setHealth(next);
+        setHealthUnavailable(false);
+      } catch {
+        if (signal?.aborted || loadVersion !== healthLoadVersionRef.current)
+          return;
+        setHealth(null);
+        setHealthUnavailable(true);
+      }
+    },
+    [apiClient],
+  );
+
   const load = useCallback(
     async (signal?: AbortSignal) => {
       const loadVersion = ++loadVersionRef.current;
       setError(null);
-      try {
-        const next = await apiClient.memories.getGovernance({ signal });
-        if (signal?.aborted || loadVersion !== loadVersionRef.current) return;
-        setSnapshot(next);
-      } catch (nextError) {
-        if (signal?.aborted || loadVersion !== loadVersionRef.current) return;
-        setError(errorMessage(nextError, t("requestFailed")));
+      const [governanceResult, healthResult] = await Promise.allSettled([
+        apiClient.memories.getGovernance({ signal }),
+        apiClient.memories.getHealth({ signal }),
+      ]);
+      if (signal?.aborted || loadVersion !== loadVersionRef.current) return;
+      if (governanceResult.status === "fulfilled") {
+        setSnapshot(governanceResult.value);
+      } else {
+        setError(errorMessage(governanceResult.reason, t("requestFailed")));
+      }
+      if (healthResult.status === "fulfilled") {
+        setHealth(healthResult.value);
+        setHealthUnavailable(false);
+      } else {
+        setHealth(null);
+        setHealthUnavailable(true);
       }
     },
     [apiClient, t],
@@ -181,6 +213,18 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
     });
     return () => controller.abort();
   }, [load]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const interval = window.setInterval(
+      () => void loadHealth(controller.signal),
+      10_000,
+    );
+    return () => {
+      window.clearInterval(interval);
+      controller.abort();
+    };
+  }, [loadHealth]);
 
   const mutate = useCallback(
     async (operation: () => Promise<unknown>) => {
@@ -524,6 +568,19 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
   const activeProjects = snapshot.projects.filter(
     (project) => project.lifecycleStatus === "active",
   );
+  const healthStatus = health?.status ?? "degraded";
+  const healthLabel = healthUnavailable
+    ? t("healthStatusUnavailable")
+    : t(`healthStatus${healthStatus[0].toUpperCase()}${healthStatus.slice(1)}`);
+  const healthDescription = healthUnavailable
+    ? t("healthUnavailableDesc")
+    : healthStatus === "ready"
+      ? t("healthReadyDesc", { count: health?.readyCount ?? 0 })
+      : healthStatus === "indexing"
+        ? t("healthIndexingDesc", { count: health?.pendingCount ?? 0 })
+        : healthStatus === "disabled"
+          ? t("healthDisabledDesc")
+          : t("healthDegradedDesc");
 
   return (
     <div className="space-y-5" aria-busy={saving}>
@@ -537,15 +594,33 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
             {t("governanceSubtitle")}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={saving}
-          className="inline-flex items-center gap-2 self-start rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-        >
-          <RefreshCw size={14} aria-hidden="true" />
-          {t("refresh")}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div
+            role="status"
+            aria-label={t("healthTitle")}
+            className={`rounded-lg border px-3 py-2 text-xs ${
+              healthStatus === "ready"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-200"
+                : healthStatus === "indexing"
+                  ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200"
+                  : healthStatus === "disabled"
+                    ? "border-border bg-muted text-muted-foreground"
+                    : "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-200"
+            }`}
+          >
+            <span className="font-semibold">{healthLabel}</span>
+            <span className="ml-2 opacity-80">{healthDescription}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={saving}
+            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+          >
+            <RefreshCw size={14} aria-hidden="true" />
+            {t("refresh")}
+          </button>
+        </div>
       </header>
 
       <section

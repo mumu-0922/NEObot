@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,6 +26,51 @@ const (
 	testProviderID     = "fixture"
 	testProviderRecord = "77777777-7777-4777-8777-777777777777"
 )
+
+func TestWorkerRunMaintainsAndRetiresHeartbeat(t *testing.T) {
+	repository := newWorkerTestRepository()
+	repository.found = false
+	worker := newWorkerTestInstance(t, repository, &workerTestProvider{})
+	worker.heartbeatInterval = 5 * time.Millisecond
+	worker.heartbeatTTL = 20 * time.Millisecond
+	worker.pollInterval = 5 * time.Millisecond
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- worker.Run(ctx, nil) }()
+	deadline := time.Now().Add(time.Second)
+	for repository.heartbeatCalls.Load() < 2 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if repository.heartbeatCalls.Load() < 2 || repository.retireCalls.Load() != 1 {
+		t.Fatalf("heartbeat=%d retire=%d",
+			repository.heartbeatCalls.Load(), repository.retireCalls.Load())
+	}
+}
+
+func TestWorkerRunStopsAfterHeartbeatFailure(t *testing.T) {
+	repository := newWorkerTestRepository()
+	repository.found = false
+	repository.heartbeatFailAfter = 1
+	repository.heartbeatErr = errors.New("heartbeat unavailable")
+	worker := newWorkerTestInstance(t, repository, &workerTestProvider{})
+	worker.heartbeatInterval = 5 * time.Millisecond
+	worker.heartbeatTTL = 20 * time.Millisecond
+	worker.pollInterval = 5 * time.Millisecond
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := worker.Run(ctx, nil); !errors.Is(err, repository.heartbeatErr) {
+		t.Fatalf("Run error = %v", err)
+	}
+	if repository.retireCalls.Load() != 1 {
+		t.Fatalf("retire calls = %d", repository.retireCalls.Load())
+	}
+}
 
 func TestWorkerProposesAndPromotesLeasedCapture(t *testing.T) {
 	repository := newWorkerTestRepository()
@@ -713,6 +759,10 @@ type workerTestRepository struct {
 	embeddingRetryTerminal bool
 	embeddingRetryAt       time.Time
 	completedEmbedding     []float32
+	heartbeatCalls         atomic.Int32
+	retireCalls            atomic.Int32
+	heartbeatFailAfter     int32
+	heartbeatErr           error
 }
 
 func newWorkerTestRepository() *workerTestRepository {
@@ -766,6 +816,24 @@ func newWorkerTestRepository() *workerTestRepository {
 			ModelID: "fixture-model", ProcessingProfile: "fixture-profile",
 		},
 	}
+}
+
+func (r *workerTestRepository) Heartbeat(
+	context.Context,
+	string,
+	time.Duration,
+	bool,
+) error {
+	call := r.heartbeatCalls.Add(1)
+	if r.heartbeatErr != nil && call > r.heartbeatFailAfter {
+		return r.heartbeatErr
+	}
+	return nil
+}
+
+func (r *workerTestRepository) Retire(context.Context, string) error {
+	r.retireCalls.Add(1)
+	return nil
 }
 
 func (r *workerTestRepository) Claim(

@@ -1183,6 +1183,20 @@ export interface DurableMemorySettingsDTO {
   l3Mode: MemoryPolicyMode;
 }
 
+export type MemoryHealthStatus = "ready" | "indexing" | "degraded" | "disabled";
+
+export interface MemoryHealthDTO {
+  status: MemoryHealthStatus;
+  reasonCode: string;
+  workerAvailable: boolean;
+  embeddingWorkerAvailable: boolean;
+  readyCount: number;
+  pendingCount: number;
+  failedCount: number;
+  judgeModelId: string;
+  judgeFixed: boolean;
+}
+
 export interface MemoryMutationInput {
   type: MemoryType;
   content: string;
@@ -1342,6 +1356,7 @@ export interface MemoryApi {
   getSettings(input?: {
     signal?: AbortSignal;
   }): Promise<DurableMemorySettingsDTO>;
+  getHealth(input?: { signal?: AbortSignal }): Promise<MemoryHealthDTO>;
   updateSettings(
     input: UpdateDurableMemorySettingsInput,
   ): Promise<DurableMemorySettingsDTO>;

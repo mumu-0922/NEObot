@@ -107,6 +107,7 @@ cycle.
 | Missing Tool arguments are not `{}`                     | A nil Go map can otherwise pass a length-only empty check                                        | The adapter requires a non-nil empty object, non-empty call ID, exact name, and exactly one call |
 | Final content is hydrated only after Record              | Provider work and final ranking can become stale before prompt use                                | Migration-065 repeats current source/settings/epoch/projection/revision/hash/scope/Sensitive authority for the exact final lane |
 | Product Tool read never falls back to v1                 | A valid Tool call must not launder an unrelated legacy result after hybrid failure                | Failure/empty/stale/redacted paths return no Memory and normal chat continues |
+| Candidate-empty is healthy only with current runtime evidence | An empty candidate set is otherwise indistinguishable from a stopped Worker or incomplete projection | Migration `070` combines live Worker capability with the authenticated user's capture/current-projection counts; non-ready states become bounded fail-closed Tool failures |
 | Product policy is separate and tuple-pinned              | A Development policy or drifted Server Provider must not become product injection authority       | Only the production policy runs; every Judge attempt re-resolves exact provider/type/Base-URL hash/model/secret authority and fails closed on drift |
 | Product selection preserves schema-v14 order             | The passing evidence ran BGE rerank before the fixed candidate judge                               | Product executes BGE then Luna serially, intersects exact ordinals, and retries only typed transient Judge failures with the fixed two-retry schedule |
 | Product Tool Usage matches released evidence             | Usage must describe the exact Memory bodies available to the completed answer, not every recalled candidate | Chat records only the projected Tool-result rows; no-call/failure/cancel/plain recovery records none |
@@ -187,6 +188,7 @@ cycle.
 | Owner authorization is mistaken for blanket egress | Policy-aware scoring permits only `irrelevant`; cross-user, out-of-scope, deleted, secret, superseded, Sensitive-disabled, and untrusted-source remain zero-tolerance failures |
 | Query or canonical Memory leaks a credential to retrieval Provider | Shared deterministic classification redacts query, rerank documents, and embedding bodies immediately before egress; fully redacted input makes zero corresponding Provider calls |
 | Runtime mutates derived/evidence tables | `go_api_runtime` receives only hybrid prepare/admission/record/final-hydrate; `memory_worker_runtime` receives only embedding lease capabilities; both lack table CRUD |
+| Health endpoint leaks deployment or another user's state | `memory_user_health(UUID)` is called with authenticated identity, returns bounded counts/booleans only, filters capture/projection rows by current authority, and grants API function execution without heartbeat-table reads |
 | Client downgrades Sensitive content to normal | Go classification and migration-060 SQL classification take the stricter result; Sensitive-off and secret-like writes fail |
 | Governance history leaks deleted plaintext | Detail/Activity join current enabled/lifecycle/epoch/scope authority; deleted sources and purged revisions return marker fields only |
 | Old Global writer bypasses PR9 policy | Migration `060` revokes its runtime EXECUTE and grants only classification-aware legacy wrappers |
@@ -280,3 +282,7 @@ rebuild, runtime role denial, and clean PostgreSQL 17 portability plus
   intersection, per-attempt Server tuple reauthorization, typed two-retry
   Judge transport, and default-off Tool-flag rollback. The production school
   replay persisted one school Usage link and excluded the recalled name fixture.
+- 2026-08-05: Migration `070` adds authenticated, content-free Memory health.
+  Candidate-empty Tool execution succeeds only for `ready`; indexing,
+  unavailable, disabled, or unreadable health remains visible and fail-closed
+  without reviving the legacy reader.

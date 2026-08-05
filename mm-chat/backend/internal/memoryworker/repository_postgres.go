@@ -19,6 +19,41 @@ func NewPostgresRepository(db *sql.DB) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 
+func (r *PostgresRepository) Heartbeat(
+	ctx context.Context,
+	workerID string,
+	ttl time.Duration,
+	embeddingEnabled bool,
+) error {
+	if r == nil || r.db == nil {
+		return ErrDatabaseRequired
+	}
+	ttlSeconds := int(ttl / time.Second)
+	var accepted bool
+	if err := r.db.QueryRowContext(ctx, `
+SELECT memory_worker_heartbeat($1::uuid, $2, $3)
+`, workerID, ttlSeconds, embeddingEnabled).Scan(&accepted); err != nil {
+		return fmt.Errorf("record memory worker heartbeat: %w", err)
+	}
+	if !accepted {
+		return errors.New("memory worker heartbeat was not accepted")
+	}
+	return nil
+}
+
+func (r *PostgresRepository) Retire(ctx context.Context, workerID string) error {
+	if r == nil || r.db == nil {
+		return ErrDatabaseRequired
+	}
+	var retired bool
+	if err := r.db.QueryRowContext(ctx, `
+SELECT memory_worker_retire($1::uuid)
+`, workerID).Scan(&retired); err != nil {
+		return fmt.Errorf("retire memory worker heartbeat: %w", err)
+	}
+	return nil
+}
+
 func (r *PostgresRepository) Claim(
 	ctx context.Context,
 	workerID string,

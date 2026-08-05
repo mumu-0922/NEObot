@@ -32,14 +32,15 @@ var searchStopWords = map[string]struct{}{
 }
 
 type Service struct {
-	repo             Repository
-	hybridProvider   HybridShadowProvider
-	hybridJudge      HybridCandidateJudge
-	hybridRouter     HybridMemoryToolRouter
-	hybridPolicy     HybridShadowRelevancePolicy
-	hybridToolPolicy HybridShadowRelevancePolicy
-	portabilityCodec *PortabilityPlanCodec
-	release          string
+	repo              Repository
+	hybridProvider    HybridShadowProvider
+	hybridJudge       HybridCandidateJudge
+	hybridRouter      HybridMemoryToolRouter
+	hybridPolicy      HybridShadowRelevancePolicy
+	hybridToolPolicy  HybridShadowRelevancePolicy
+	portabilityCodec  *PortabilityPlanCodec
+	release           string
+	memoryToolEnabled bool
 }
 
 type ServiceOption func(*Service)
@@ -70,6 +71,10 @@ func WithPortabilityPlanCodec(codec *PortabilityPlanCodec) ServiceOption {
 
 func WithPortabilityRelease(release string) ServiceOption {
 	return func(service *Service) { service.release = strings.TrimSpace(release) }
+}
+
+func WithMemoryToolEnabled(enabled bool) ServiceOption {
+	return func(service *Service) { service.memoryToolEnabled = enabled }
 }
 
 func NewService(repo Repository, options ...ServiceOption) *Service {
@@ -108,6 +113,58 @@ func normalizeSettingsDefaults(settings Settings) Settings {
 		settings.L3Mode = "inherit"
 	}
 	return settings
+}
+
+func (s *Service) GetMemoryHealth(ctx context.Context) (MemoryHealth, error) {
+	health := MemoryHealth{
+		Status:       "disabled",
+		ReasonCode:   "memory_disabled",
+		JudgeModelID: HybridFixedMemoryJudgeModelID,
+		JudgeFixed:   true,
+	}
+	if !s.memoryToolEnabled {
+		return health, nil
+	}
+	settings, err := s.GetSettings(ctx)
+	if err != nil {
+		return MemoryHealth{}, err
+	}
+	if !settings.Enabled || !settings.SearchEnabled {
+		return health, nil
+	}
+	repository, ok := s.repo.(MemoryHealthRepository)
+	if !ok || repository == nil {
+		return MemoryHealth{}, ErrMemoryHealthRepositoryRequired
+	}
+	signals, err := repository.GetMemoryHealth(ctx)
+	if err != nil {
+		return MemoryHealth{}, err
+	}
+	health.WorkerAvailable = signals.WorkerAvailable
+	health.EmbeddingWorkerAvailable = signals.EmbeddingWorkerAvailable
+	health.ReadyCount = signals.ProjectionReadyCount
+	health.PendingCount = signals.CapturePendingCount +
+		signals.CaptureProcessingCount + signals.ProjectionPendingCount
+	health.FailedCount = signals.CaptureDeadLetterCount +
+		signals.ProjectionFailedCount
+	switch {
+	case !signals.WorkerAvailable:
+		health.Status = "degraded"
+		health.ReasonCode = "memory_worker_unavailable"
+	case !signals.EmbeddingWorkerAvailable:
+		health.Status = "degraded"
+		health.ReasonCode = "memory_embedding_worker_unavailable"
+	case health.FailedCount > 0:
+		health.Status = "degraded"
+		health.ReasonCode = "memory_index_failed"
+	case health.PendingCount > 0:
+		health.Status = "indexing"
+		health.ReasonCode = "memory_indexing"
+	default:
+		health.Status = "ready"
+		health.ReasonCode = "memory_ready"
+	}
+	return health, nil
 }
 
 func (s *Service) UpdateSettings(ctx context.Context, patch SettingsPatch) (Settings, error) {

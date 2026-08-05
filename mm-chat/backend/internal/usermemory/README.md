@@ -308,6 +308,7 @@ L3 failure falls back to unchanged L1/L2 behavior.
 | `NewPostgresRepository(*sql.DB)`    | Postgres persistence scoped to the current user             |
 | `NewService(Repository)`                    | Validation, settings, CRUD, relevance, and optional action authority |
 | `NewHandler(*Service)`                      | JSON HTTP routes and bounded error mapping                          |
+| `GetMemoryHealth(ctx)`                      | Tool/user settings plus migration-070 worker and projection health  |
 | `SearchRelevant(ctx, query, limit)`         | Relevant-only Top-5 retrieval                                      |
 | `SearchRelevantWithShadow(ctx, query, conversationID, assistantMessageID, limit)` | Unchanged v1 Top 5 plus sanitized comparison diagnostics |
 | `SearchRelevantWithHybridShadow(ctx, query, conversationID, assistantMessageID, limit)` | Unchanged v1 Top 5 plus default-off hybrid diagnostics |

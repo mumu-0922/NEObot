@@ -6,6 +6,7 @@ import {
   Sparkles,
   Search,
   Brain,
+  ShieldCheck,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useSettingsStore, formatModelName } from "@/store/core/settingsStore";
@@ -15,6 +16,7 @@ import { CustomSelect, GroupedSelectOption } from "./SettingsUI";
 import { DefaultModels } from "@/types";
 import { getDefaultModelSelectValue } from "@/lib/utils/defaultModels";
 import { createNeoChatApiClient } from "@/services/api/client";
+import type { MemoryHealthDTO } from "@/services/api/client";
 
 type SaveStatus = "idle" | "loading" | "saving" | "saved" | "error";
 
@@ -31,6 +33,9 @@ const DefaultModelSettings = () => {
   );
   const [savingKey, setSavingKey] = useState<keyof DefaultModels>();
   const [saveError, setSaveError] = useState("");
+  const [memoryHealth, setMemoryHealth] = useState<MemoryHealthDTO | null>(
+    null,
+  );
 
   const groupedOptions: GroupedSelectOption[] = useMemo(() => {
     return providers
@@ -78,6 +83,24 @@ const DefaultModelSettings = () => {
       controller.abort();
     };
   }, [apiClient, serverMode, t, updateDefaultModels]);
+
+  useEffect(() => {
+    if (!serverMode) return;
+    const controller = new AbortController();
+    let active = true;
+    apiClient.memories
+      .getHealth({ signal: controller.signal })
+      .then((health) => {
+        if (active) setMemoryHealth(health);
+      })
+      .catch(() => {
+        if (active && !controller.signal.aborted) setMemoryHealth(null);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [apiClient, serverMode]);
 
   useEffect(
     () => () => {
@@ -239,6 +262,36 @@ const DefaultModelSettings = () => {
           t("memoryDesc"),
           "memory",
           "bg-cyan-50 text-cyan-600 dark:bg-cyan-900/20 dark:text-cyan-400",
+        )}
+
+        {serverMode && (
+          <div className="flex flex-col justify-between gap-4 rounded-xl border border-gray-200 bg-gray-50/50 p-4 dark:border-border dark:bg-muted/30 md:flex-row md:items-center">
+            <div className="flex flex-1 items-start gap-3">
+              <div className="shrink-0 rounded-lg bg-teal-50 p-2 text-teal-600 dark:bg-teal-900/20 dark:text-teal-400">
+                <ShieldCheck size={18} aria-hidden="true" />
+              </div>
+              <div>
+                <div className="text-sm font-medium text-gray-800 dark:text-foreground">
+                  {t("recallFiltering")}
+                </div>
+                <div className="mt-0.5 text-xs leading-relaxed text-gray-500 dark:text-muted-foreground">
+                  {t("recallFilteringDesc")}
+                </div>
+              </div>
+            </div>
+            <div
+              aria-label={t("recallFiltering")}
+              className="w-full shrink-0 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-border dark:bg-background dark:text-foreground md:w-64"
+            >
+              {memoryHealth
+                ? `${formatModelName(
+                    memoryHealth.judgeModelId,
+                    modelMetadata,
+                    customModelMetadata,
+                  ).replace(/^Gpt /, "GPT-")} · ${t("systemFixed")}`
+                : t("fixedModelUnavailable")}
+            </div>
+          </div>
         )}
       </div>
     </div>

@@ -1383,6 +1383,52 @@ rollback image is
 `mm-chat/backend:rollback-20260805-pre-preference-recall` at
 `sha256:262217d38458c4a0edd9c6e62caa27763c6769b7a0fb668977bd427ff7bf0ec8`.
 
+**2026-08-05 L1 completion and schema-v15 Validation amendment:** The current
+Memory program closes L1 before any L2 Scene or L3 Persona expansion. L1 may
+not be declared complete until a separate frozen 100-case Validation run has
+passed. Until then, the deployed reader remains Beta: an authorization,
+cross-user, Deleted, Secret, or other privacy failure requires immediate
+rollback, while an ordinary availability or quality failure keeps Beta status
+without claiming Release. Runtime Memory failures stay visible and fail
+closed; the removed Global v1 reader is never an availability fallback.
+
+The settings UI must distinguish the selectable extraction/maintenance model
+from the fixed read authority. It presents `Memory extraction and maintenance`
+with the configured selectable model (currently GPT-5.6 Sol) and a separate
+read-only `Recall filtering` row backed by the server-reported fixed
+`gpt-5.6-luna` judge identity. The current direct-read intent rules are frozen
+for Validation: do not add benchmark-driven keywords. Memory health is
+authoritative only when both the PostgreSQL worker heartbeat and the current
+user's projection/capture state agree. Settings expose a persistent bounded
+`ready | indexing | degraded | disabled` status without infrastructure detail;
+chat reports one safe degradation reason only when a Memory Tool was actually
+required and could not release Memory. An empty result is legitimate only
+when health is ready; indexing, worker unavailability, disabled state, or
+unknown health must be classified distinctly and must never trigger the old
+reader.
+
+Ship this closure in three independently reversible gates: Gate 1 is the
+already completed lifecycle/direct-action checkpoint; Gate 2 adds worker
+heartbeat, user-scoped Memory health, empty-result failure classification,
+safe Process Activity messaging, and explicit Sol/Luna UI; Gate 3 adds the
+offline schema-v15 Validation capability. Schema-v15 is new and must not alter
+the historical `frozen_validation` path. It replays the frozen 100-case split
+through the exact production BGE-M3 retrieval/rerank, fixed GPT-5.6 Luna judge,
+retry, authority, redaction, and Top-5 release policy, using independent fresh
+BGE and Luna credentials only after separate live-run authorization. Terminal
+Provider failures do not short-circuit the batch or auto-retry the whole run,
+but they make Validation fail. Retained evidence remains aggregate-only: no
+query text, Memory plaintext, Provider response, or raw score may be persisted.
+
+Validation failure actions are fixed before the run. Any cross-user, Deleted,
+Secret, or authorization release is red and immediately disables the Memory
+Tool Loop. False Injection above `0.02` is orange and disables recall while
+preserving data. Recall/current-fact or Provider-stability failure is yellow
+and retains Beta status. Complete all Fake Provider, PostgreSQL 17, Compose,
+role-boundary, cleanup, and secret-handling engineering now, but stop before
+any real Provider request, new credential use, quota consumption, push, or
+Release claim.
+
 ## Expansion Sweep
 
 - Future evolution: evaluate the fixed Luna candidate-aware profile under the

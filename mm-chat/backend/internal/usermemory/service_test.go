@@ -208,6 +208,97 @@ func TestFirstMemoryEnableDefaultsUseAndLearnWithoutOverwritingExistingChoice(t 
 	}
 }
 
+func TestMemoryHealthUsesToolSettingsWorkerAndProjectionAuthority(t *testing.T) {
+	tests := []struct {
+		name        string
+		toolEnabled bool
+		settings    Settings
+		signals     MemoryHealthSignals
+		wantStatus  string
+		wantReason  string
+		wantPending int64
+		wantFailed  int64
+		wantCalls   int
+	}{
+		{
+			name: "tool loop disabled", settings: Settings{Enabled: true, SearchEnabled: true},
+			wantStatus: "disabled", wantReason: "memory_disabled",
+		},
+		{
+			name: "user disabled", toolEnabled: true, settings: Settings{SearchEnabled: true},
+			wantStatus: "disabled", wantReason: "memory_disabled",
+		},
+		{
+			name: "worker unavailable", toolEnabled: true,
+			settings:   Settings{Enabled: true, SearchEnabled: true},
+			wantStatus: "degraded", wantReason: "memory_worker_unavailable", wantCalls: 1,
+		},
+		{
+			name: "embedding unavailable", toolEnabled: true,
+			settings:   Settings{Enabled: true, SearchEnabled: true},
+			signals:    MemoryHealthSignals{WorkerAvailable: true},
+			wantStatus: "degraded", wantReason: "memory_embedding_worker_unavailable", wantCalls: 1,
+		},
+		{
+			name: "failed", toolEnabled: true,
+			settings: Settings{Enabled: true, SearchEnabled: true},
+			signals: MemoryHealthSignals{
+				WorkerAvailable: true, EmbeddingWorkerAvailable: true,
+				CaptureDeadLetterCount: 2, ProjectionFailedCount: 3,
+			},
+			wantStatus: "degraded", wantReason: "memory_index_failed", wantFailed: 5, wantCalls: 1,
+		},
+		{
+			name: "indexing", toolEnabled: true,
+			settings: Settings{Enabled: true, SearchEnabled: true},
+			signals: MemoryHealthSignals{
+				WorkerAvailable: true, EmbeddingWorkerAvailable: true,
+				CapturePendingCount: 2, CaptureProcessingCount: 3,
+				ProjectionPendingCount: 4, ProjectionReadyCount: 5,
+			},
+			wantStatus: "indexing", wantReason: "memory_indexing", wantPending: 9, wantCalls: 1,
+		},
+		{
+			name: "ready", toolEnabled: true,
+			settings: Settings{Enabled: true, SearchEnabled: true},
+			signals: MemoryHealthSignals{
+				WorkerAvailable: true, EmbeddingWorkerAvailable: true,
+				ProjectionReadyCount: 7,
+			},
+			wantStatus: "ready", wantReason: "memory_ready", wantCalls: 1,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repository := &fakeMemoryHealthRepository{
+				fakeRepository: &fakeRepository{settings: test.settings, settingsFound: true},
+				signals:        test.signals,
+			}
+			health, err := NewService(
+				repository,
+				WithMemoryToolEnabled(test.toolEnabled),
+			).GetMemoryHealth(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if health.Status != test.wantStatus || health.ReasonCode != test.wantReason ||
+				health.PendingCount != test.wantPending || health.FailedCount != test.wantFailed ||
+				repository.calls != test.wantCalls || health.JudgeModelID != HybridFixedMemoryJudgeModelID ||
+				!health.JudgeFixed {
+				t.Fatalf("health=%#v calls=%d", health, repository.calls)
+			}
+		})
+	}
+}
+
+func TestMemoryHealthDisabledToolDoesNotRequireRepository(t *testing.T) {
+	health, err := NewService(nil).GetMemoryHealth(context.Background())
+	if err != nil || health.Status != "disabled" ||
+		health.ReasonCode != "memory_disabled" || !health.JudgeFixed {
+		t.Fatalf("health=%#v err=%v", health, err)
+	}
+}
+
 func TestSensitiveLegacyWritesFailClosedWithoutGovernanceRepository(t *testing.T) {
 	service := NewService(&fakeRepository{})
 	if _, err := service.CreateManual(context.Background(), Candidate{
@@ -263,6 +354,20 @@ type fakeRepository struct {
 	listCalls     int
 	createCalls   int
 	markedUsed    []string
+}
+
+type fakeMemoryHealthRepository struct {
+	*fakeRepository
+	signals MemoryHealthSignals
+	err     error
+	calls   int
+}
+
+func (r *fakeMemoryHealthRepository) GetMemoryHealth(
+	context.Context,
+) (MemoryHealthSignals, error) {
+	r.calls++
+	return r.signals, r.err
 }
 
 func (r *fakeRepository) GetSettings(context.Context) (Settings, bool, error) {

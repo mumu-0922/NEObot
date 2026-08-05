@@ -57,7 +57,12 @@ const PROCESS_DETAIL_KEYS = new Set([
 export type ProcessRoute = "direct" | "knowledge" | "web" | "both";
 
 export type ProcessReasonCategory =
-  "knowledge_miss" | "web_miss" | "planner_failed" | "provider_degraded";
+  | "knowledge_miss"
+  | "web_miss"
+  | "planner_failed"
+  | "provider_degraded"
+  | "memory_indexing"
+  | "memory_unavailable";
 
 export interface ProcessRouteSummary {
   route: ProcessRoute;
@@ -218,6 +223,16 @@ export function processReasonCategoryForDisplay(
     return "web_miss";
   }
   const failure = processStepStringDetail(step, "failureCategory");
+  if (failure === "memory_indexing") {
+    return "memory_indexing";
+  }
+  if (
+    failure === "memory_service_unavailable" ||
+    failure === "memory_status_unavailable" ||
+    failure === "memory_disabled"
+  ) {
+    return "memory_unavailable";
+  }
   if (failure === "planner_failed") {
     return "planner_failed";
   }

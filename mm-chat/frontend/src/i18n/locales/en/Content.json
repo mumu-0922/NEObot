@@ -19,6 +19,8 @@
   "processReasonWebMiss": "No usable Web sources were found",
   "processReasonPlannerFailed": "Retrieval planning failed; a safe fallback was used",
   "processReasonProviderDegraded": "The retrieval provider is temporarily unavailable",
+  "processReasonMemoryIndexing": "Memory is still indexing and was not used for this answer",
+  "processReasonMemoryUnavailable": "Memory is temporarily unavailable and was not used for this answer",
   "processReasoning": "Reasoning",
   "processKnowledge": "Knowledge",
   "processWeb": "Web search",

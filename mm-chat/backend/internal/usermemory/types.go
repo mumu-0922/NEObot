@@ -35,20 +35,21 @@ const (
 )
 
 var (
-	ErrDatabaseRequired              = errors.New("memory database is required")
-	ErrMemoryNotFound                = errors.New("memory not found")
-	ErrMemoryConflict                = errors.New("memory content already exists")
-	ErrActionRepositoryRequired      = errors.New("memory action repository is required")
-	ErrActivityNotFound              = errors.New("memory activity not found")
-	ErrActivityUndoUnavailable       = errors.New("memory activity undo is unavailable")
-	ErrGovernanceRepositoryRequired  = errors.New("memory governance repository is required")
-	ErrMemoryProjectNotFound         = errors.New("memory project not found")
-	ErrConversationPolicyNotFound    = errors.New("conversation memory policy not found")
-	ErrMemoryReviewNotFound          = errors.New("memory review not found")
-	ErrMemoryL2SceneNotFound         = errors.New("memory L2 Scene not found")
-	ErrMemoryL3PersonaNotFound       = errors.New("memory L3 Persona not found")
-	ErrPortabilityRepositoryRequired = errors.New("memory portability repository is required")
-	ErrPortabilityPlanCodecRequired  = errors.New("memory portability plan codec is required")
+	ErrDatabaseRequired               = errors.New("memory database is required")
+	ErrMemoryNotFound                 = errors.New("memory not found")
+	ErrMemoryConflict                 = errors.New("memory content already exists")
+	ErrActionRepositoryRequired       = errors.New("memory action repository is required")
+	ErrActivityNotFound               = errors.New("memory activity not found")
+	ErrActivityUndoUnavailable        = errors.New("memory activity undo is unavailable")
+	ErrGovernanceRepositoryRequired   = errors.New("memory governance repository is required")
+	ErrMemoryProjectNotFound          = errors.New("memory project not found")
+	ErrConversationPolicyNotFound     = errors.New("conversation memory policy not found")
+	ErrMemoryReviewNotFound           = errors.New("memory review not found")
+	ErrMemoryL2SceneNotFound          = errors.New("memory L2 Scene not found")
+	ErrMemoryL3PersonaNotFound        = errors.New("memory L3 Persona not found")
+	ErrMemoryHealthRepositoryRequired = errors.New("memory health repository is required")
+	ErrPortabilityRepositoryRequired  = errors.New("memory portability repository is required")
+	ErrPortabilityPlanCodecRequired   = errors.New("memory portability plan codec is required")
 )
 
 type Repository interface {
@@ -59,6 +60,13 @@ type Repository interface {
 	Update(context.Context, string, UpdateInput) (Memory, error)
 	Delete(context.Context, string) error
 	MarkUsed(context.Context, []string, time.Time) error
+}
+
+// MemoryHealthRepository is optional so legacy v1 repository doubles remain
+// source-compatible. Implementations return content-free, user-scoped worker
+// and projection signals only.
+type MemoryHealthRepository interface {
+	GetMemoryHealth(context.Context) (MemoryHealthSignals, error)
 }
 
 // ActionRepository is optional so the v1 Repository contract and its test
@@ -133,6 +141,29 @@ type SettingsPatch struct {
 	SensitiveMemoryEnabled *bool   `json:"sensitiveMemoryEnabled"`
 	L2Mode                 *string `json:"l2Mode"`
 	L3Mode                 *string `json:"l3Mode"`
+}
+
+type MemoryHealthSignals struct {
+	WorkerAvailable          bool
+	EmbeddingWorkerAvailable bool
+	CapturePendingCount      int64
+	CaptureProcessingCount   int64
+	CaptureDeadLetterCount   int64
+	ProjectionReadyCount     int64
+	ProjectionPendingCount   int64
+	ProjectionFailedCount    int64
+}
+
+type MemoryHealth struct {
+	Status                   string `json:"status"`
+	ReasonCode               string `json:"reasonCode"`
+	WorkerAvailable          bool   `json:"workerAvailable"`
+	EmbeddingWorkerAvailable bool   `json:"embeddingWorkerAvailable"`
+	ReadyCount               int64  `json:"readyCount"`
+	PendingCount             int64  `json:"pendingCount"`
+	FailedCount              int64  `json:"failedCount"`
+	JudgeModelID             string `json:"judgeModelId"`
+	JudgeFixed               bool   `json:"judgeFixed"`
 }
 
 type Memory struct {

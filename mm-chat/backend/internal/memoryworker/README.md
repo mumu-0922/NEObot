@@ -25,7 +25,9 @@ latency.
   shadow is off;
 - retry transient failures, dead-letter terminal drift, and resume expired
   leases after crashes or rolling restarts;
-- report readiness without exposing an HTTP port.
+- establish and refresh a content-free PostgreSQL heartbeat before processing
+  lanes, retire it on clean shutdown, and report readiness without exposing an
+  HTTP port.
 
 The package never accepts browser identity, never reads queue/source tables
 directly, and never treats Redis as durable state.
@@ -49,16 +51,16 @@ for the complete environment and role-provisioning contract.
 | Boundary | Purpose |
 | --- | --- |
 | `New(Repository, ProviderResolver, ...Option)` | Validate and construct the bounded worker. |
-| `Worker.Run(ctx, wake)` | Poll PostgreSQL continuously and consume optional wake hints. |
+| `Worker.Run(ctx, wake)` | Maintain the required heartbeat, poll PostgreSQL, and consume optional wake hints. |
 | `Worker.ProcessOne(ctx)` | Claim and finish one lease-fenced job. |
-| `NewPostgresRepository(*sql.DB)` | Call only migration `054`–`069` worker capabilities. |
+| `NewPostgresRepository(*sql.DB)` | Call only migration `054`–`070` worker capabilities. |
 | `NewStoredProviderResolver(...)` | Reuse Server provider/vault activation rules. |
 
 ## Files
 
 ```text
 worker.go                polling, retry, schema/stage dispatch, and proposal flow
-repository_postgres.go   restricted migration-054/055/056 function calls
+repository_postgres.go   restricted worker function calls, including migration-070 heartbeat
 provider.go              hydrated Server provider resolution
 extraction.go            bounded versioned extraction/decision Provider calls
 extraction_tool_round.go  exact required Tool schemas and call validation
