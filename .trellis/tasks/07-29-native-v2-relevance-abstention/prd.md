@@ -1170,6 +1170,61 @@ The standalone gate included 198 frontend files / 961 tests and 1906 passing
 RAG tests with seven integration skips; the live backend remained healthy and
 the Worker remained stopped afterward.
 
+**2026-08-05 explicit-read and DeepSeek compatibility amendment:** Live
+browser replay proved that answer-model autonomy still makes the product
+Memory entry inconsistent even after the fixed Luna selector promotion.
+`gpt-5.6-sol` called `search_memory`, while a Tool-capable `gpt-5.6-luna`
+answered directly under `tool_choice=auto`; the official DeepSeek Provider's
+capability probe remained `unknown/transient_transport` and therefore exposed
+no Memory Tool. The owner now requires explicit user requests to read saved
+Memory to behave consistently without turning every ordinary chat turn into a
+forced retrieval.
+
+Add a bounded deterministic bilingual lexical gate over only the current user
+message. Explicit commands to read/use/search saved Memory and direct personal
+recall questions such as "你知道我的信息嘛" / "what do you know about me" force
+the exact first-round `search_memory` Tool. Direct remember/correct/forget
+actions retain their existing higher-priority path, while general questions
+about memory, writing tasks, and ordinary turns remain `auto`. When Memory is
+forced beside other read-only Tools, order it first so the existing normalized
+`required` choice names `search_memory`; disable optional reasoning only for
+that forced first decision round, then preserve the selected answer settings
+on ordinary continuations. Later rounds still remove Memory. This is a
+user-controlled product intent gate, not benchmark-tuned relevance or an
+answer-model-specific rule. The fixed BGE/Luna candidate judge remains the
+only release authority and every empty/failure/stale path still returns no
+Memory.
+
+Tool-capability probes must use a fixed thinking-disabled, bounded request so
+they test the same function-call protocol instead of a model's optional
+reasoning mode. The official `api.deepseek.com` adapter must disable thinking
+and suppress `reasoning_effort` for every native Tool round and Tool
+continuation, while leaving plain no-Tool chat reasoning unchanged. `auto`
+capability remains fail-closed and non-blocking: an unknown first turn starts a
+probe but receives no Memory until a later request observes `supported`; no
+database override or model substitution is implicit. Offline tests must prove
+positive/negative intent cases, exact forced Tool ordering, unchanged ordinary
+auto behavior, probe privacy/bounds, and the official DeepSeek wire shape. A
+real Provider replay remains separately authorized and is not implied by this
+code amendment.
+
+The owner subsequently authorized that real replay. The repaired fixed probe
+returned a valid structured Tool Call for `deepseek-v4-pro`, moving its cache
+from the expired `unknown/transient_transport` result to
+`supported/structured_tool_call`. The first explicit saved-Memory replay then
+exposed a second official-DeepSeek wire quirk: despite the server-declared
+zero-argument schema, the model synthesized a forbidden `query` member and the
+unchanged Memory validator correctly returned `invalid_arguments`. Normalize
+only official DeepSeek completed calls for a server-declared zero-argument
+function: when the returned arguments are a bounded valid JSON object, discard
+every model-generated member and emit canonical `{}` before validation and
+native continuation. Malformed/non-object/oversized arguments remain denied;
+generic compatible Providers and argument-bearing Tools remain byte-preserved.
+This adapter normalization grants no query authority and does not change the
+canonical `memory-search-tool-v1` definition or hash. The clean follow-up live
+replay completed `search_memory` from running to completed, then completed the
+same-model answer with HTTP 200 and zero stream errors.
+
 ## Expansion Sweep
 
 - Future evolution: evaluate the fixed Luna candidate-aware profile under the

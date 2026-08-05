@@ -36,6 +36,7 @@ type memoryToolRuntime struct {
 	ConversationID     string
 	AssistantMessageID string
 	Query              string
+	forceFirstCall     bool
 	usedMemories       []usermemory.Memory
 }
 
@@ -66,6 +67,7 @@ func (h *Handler) newMemoryToolRuntime(
 		ConversationID:     conversationID,
 		AssistantMessageID: assistantMessageID,
 		Query:              query,
+		forceFirstCall:     detectExplicitMemoryReadIntent(query),
 	}
 }
 
@@ -74,6 +76,10 @@ func (runtime *memoryToolRuntime) enabled() bool {
 		strings.TrimSpace(runtime.ConversationID) != "" &&
 		strings.TrimSpace(runtime.AssistantMessageID) != "" &&
 		strings.TrimSpace(runtime.Query) != ""
+}
+
+func (runtime *memoryToolRuntime) requiresFirstRoundCall() bool {
+	return runtime.enabled() && runtime.forceFirstCall
 }
 
 func (runtime *memoryToolRuntime) setUsedMemories(memories []usermemory.Memory) {

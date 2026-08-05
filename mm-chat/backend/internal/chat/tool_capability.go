@@ -182,11 +182,15 @@ func probeToolCapability(
 	provider ToolRoundProvider,
 	modelRef ModelRef,
 ) (ToolCapabilityStatus, string) {
+	temperature := 0.0
 	events, err := provider.StreamToolRound(ctx, ProviderRoundRequest{
 		ProviderRequest: ProviderRequest{
-			Prompt:       "Call the provided fictional capability probe tool exactly once.",
-			SystemPrompt: "This is a fixed protocol capability probe. Do not answer with prose.",
-			ModelRef:     modelRef,
+			Prompt:          "Call the provided fictional capability probe tool exactly once.",
+			SystemPrompt:    "This is a fixed protocol capability probe. Do not answer with prose.",
+			DisableThinking: true,
+			MaxOutputTokens: 128,
+			Temperature:     &temperature,
+			ModelRef:        modelRef,
 		},
 		Tools: []ToolDefinition{{
 			Type: "function",

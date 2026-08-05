@@ -104,7 +104,9 @@ func TestProbeToolCapabilityClassifiesOnlyStructuredCallsAsSupported(t *testing.
 			}
 			request := test.provider.requests[0]
 			if request.ToolChoice != ProviderToolChoiceRequired || len(request.Tools) != 1 ||
-				request.Tools[0].Function.Name != toolCapabilityProbeToolName {
+				request.Tools[0].Function.Name != toolCapabilityProbeToolName ||
+				!request.DisableThinking || request.MaxOutputTokens != 128 ||
+				request.Temperature == nil || *request.Temperature != 0 {
 				t.Fatalf("probe request = %#v", request)
 			}
 			serialized := request.Prompt + request.SystemPrompt

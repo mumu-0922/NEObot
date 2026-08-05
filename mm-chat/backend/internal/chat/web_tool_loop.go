@@ -153,12 +153,22 @@ func runNativeExternalWebToolLoop(
 	memoryContinuationStarted := false
 	for round := 1; ; round++ {
 		roundTools := retrievalToolDefinitionsForRound(tools, round)
+		roundRequest := input.Request
 		choice := ProviderToolChoiceAuto
-		if round == 1 && input.ForceSearch && externalWebToolEnabled(input) {
-			choice = ProviderToolChoiceRequired
+		if round == 1 {
+			switch {
+			case input.Memory.requiresFirstRoundCall():
+				choice = ProviderToolChoiceRequired
+				// Required Tool selection must not be weakened by Provider
+				// reasoning modes that forbid or ignore named function calls.
+				roundRequest.UseReasoning = false
+				roundRequest.DisableThinking = true
+			case input.ForceSearch && externalWebToolEnabled(input):
+				choice = ProviderToolChoiceRequired
+			}
 		}
 		roundEvents, err := provider.StreamToolRound(ctx, ProviderRoundRequest{
-			ProviderRequest: input.Request,
+			ProviderRequest: roundRequest,
 			Tools:           roundTools,
 			ToolChoice:      choice,
 			Continuation:    continuation,
@@ -778,15 +788,21 @@ func collectBufferedCompatibilityAnswer(
 
 func retrievalToolDefinitions(input externalWebToolLoopInput) []ToolDefinition {
 	tools := make([]ToolDefinition, 0, 3)
+	if input.Memory.requiresFirstRoundCall() {
+		// ProviderToolChoiceRequired names the first offered Tool. Explicit
+		// saved-Memory reads therefore bind required to search_memory even when
+		// Web or Knowledge is available in the same first round.
+		tools = append(tools, SearchMemoryToolDefinition())
+	}
 	if externalWebToolEnabled(input) {
-		// Keep Web first: ProviderToolChoiceRequired names the first offered tool,
-		// preserving the explicit-Search contract when Knowledge is also enabled.
+		// Keep Web first unless an explicit Memory read has higher current-message
+		// authority, preserving the explicit-Search contract with Knowledge.
 		tools = append(tools, searchWebToolDefinition())
 	}
 	if input.Knowledge.enabled() {
 		tools = append(tools, searchKnowledgeToolDefinition())
 	}
-	if input.Memory.enabled() {
+	if input.Memory.enabled() && !input.Memory.requiresFirstRoundCall() {
 		tools = append(tools, SearchMemoryToolDefinition())
 	}
 	return tools

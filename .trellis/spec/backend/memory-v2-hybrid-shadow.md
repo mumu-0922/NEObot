@@ -512,6 +512,28 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   a direct `remember|correct|forget` action. The flag defaults false. The owner
   separately enabled the fixed schema-v14 production policy; schema-v7 remains
   immutable failed routing evidence and grants no authority.
+- A bounded bilingual gate over only the current user message recognizes
+  explicit saved-Memory reads and direct personal recall questions. Those
+  turns order `search_memory` first, use the existing named `required` choice,
+  and disable optional reasoning only for the first decision round. General
+  questions about memory and ordinary tasks remain Auto; direct
+  remember/correct/forget actions retain their write path. This gate selects
+  whether to execute the Tool only. It does not select candidates or weaken
+  fixed BGE/Luna release authority.
+- Auto capability discovery remains fail-closed and non-blocking. Its fixed
+  fictional probe uses thinking-disabled, temperature-zero, output-128
+  settings and contains no user/Memory data. Official `api.deepseek.com` Tool
+  rounds and Tool continuations use `thinking.type=disabled` with no
+  `reasoning_effort`; plain no-Tool chat retains selected reasoning. An unknown
+  explicit-read turn receives no Tool Memory until a later request observes a
+  supported cache result.
+- Live official-DeepSeek replay proved that a supported model may synthesize a
+  forbidden `query` member even for the canonical zero-argument Memory Tool.
+  The Provider adapter canonicalizes only a bounded valid JSON object returned
+  for a server-declared zero-argument function to `{}` before validation and
+  continuation. It never adopts the generated query. Malformed/non-object/
+  oversized arguments remain denied, generic/argument-bearing Tools remain
+  unchanged, and the canonical Memory Tool hash remains fixed.
 - `internal/chat` owns the canonical definition/hash/validation boundary.
   `internal/memoryroute` is only a schema-v7 Development compatibility adapter
   that emits one real first `ProviderRoundRequest`; it does not own product
@@ -631,6 +653,10 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 | Official DeepSeek is sent generic `enable_thinking=false` | Mark the run protocol-invalid; it cannot support a model-quality conclusion. |
 | The route is implemented as a separate pre-answer `PlanTools` request | Development-only failed hypothesis; never promote this request shape. |
 | Product Memory Tool flag is absent/false | Do not expose `search_memory`; preserve the normal v1 prompt/Usage path. |
+| Current user explicitly requests saved Memory and capability is supported | Order `search_memory` first, select named `required`, and keep the fixed BGE/Luna selector as final release authority. |
+| Current user discusses memory generally or submits an ordinary task | Preserve Auto; do not force Memory retrieval. |
+| Explicit read sees unknown capability | Start the fixed background probe, release no Tool Memory for that turn, and never set an implicit override. |
+| Official DeepSeek returns a JSON object with forbidden fields for canonical `search_memory` | Drop every returned member at the zero-argument Provider adapter boundary, validate canonical `{}`, and retain the current server-owned request as the only retrieval query. |
 | Product Tool policy is absent or is any Development/shadow identity | Return `policy_unavailable`; perform zero hybrid Provider work and release no Memory. |
 | Current stored fixed Judge provider/type/Base-URL hash/model/secret drifts | Reject that Judge attempt as provenance drift; release no final Memory and never switch Provider/model. |
 | Product Judge returns a typed transient Provider failure | Retry at most twice; honor valid `Retry-After`, otherwise wait five then ten seconds. Deterministic/protocol/provenance failures do not retry. |
@@ -721,7 +747,11 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   concurrent BGE/judge failure and cutoff, ordinal intersection, empty-judge
   abstention, a Provider that ignores context without extending the cutoff,
   exact Tool definition/version/SHA-256, product default-off/direct-action/
-  model-built-in exclusions, first-round buffering, no-call/exact-empty-object
+  model-built-in exclusions, bilingual explicit-read positive/general-memory
+  negative intent cases, Memory-first named-required ordering, bounded fixed
+  capability probes, official DeepSeek Tool/continuation versus plain-chat
+  thinking shapes, zero-argument JSON-object canonicalization with malformed/
+  generic/argument-bearing negatives, first-round buffering, no-call/exact-empty-object
   decisions, exact projected Tool-result Usage, zero Usage on empty/failure/
   cancellation/original-request recovery, nil/non-empty/non-exact-name/unknown/duplicate/later-round
   rejection, multi-tool coexistence, exact query-byte/hash preservation,

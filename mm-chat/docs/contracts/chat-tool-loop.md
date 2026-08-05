@@ -19,10 +19,11 @@ search_memory()  # default-off; first round only
 The generic runtime may admit more tools later only after assigning an explicit
 risk class and approval policy.
 
-`search_memory` is implemented but not promoted: it is absent unless
-`MEMORY_TOOL_LOOP_ENABLED=true`. The deployed default remains `false`: the
-schema-v7 GPT and DeepSeek Flash Development profiles both failed unchanged
-gates, and no Validation evidence exists.
+`search_memory` is absent unless `MEMORY_TOOL_LOOP_ENABLED=true`. The schema-v7
+answer-model routing evidence remains failed and immutable, but the owner later
+promoted the separately passing fixed schema-v14 BGE/Luna selection semantics
+for this product Tool. The configuration default remains `false`; the flag is
+the immediate rollback boundary and no Tool failure falls back to v1.
 
 ## 2. Search mode
 
@@ -170,7 +171,10 @@ failure unless the run was separately cancelled.
   `toolCapabilityDefault` plus `toolCapabilityModelOverrides`. Per-model
   `Inherit` removes the map entry, and deselecting a model removes its override.
 - A known tool-capable current model receives native Tool definitions on the
-  initial chat request with automatic tool selection.
+  initial chat request with automatic tool selection. A bounded bilingual gate
+  over only the current user message makes one exception: explicit saved-
+  Memory read/use/search commands and direct personal recall questions order
+  `search_memory` first and require that exact Tool.
 - Explicit Search intent must force `search_web` or native Search within the
   selected mode even when automatic selection would skip it.
 - When selected Knowledge is in scope and capability is unsupported or unknown,
@@ -194,12 +198,24 @@ failure unless the run was separately cancelled.
   singleflight synthetic probe. Provider save/activation also prewarms the first
   model and matching task models. Neither chat nor provider-save waits for a
   probe/cache write.
-- The probe contains a fixed fictional Tool and fixed prompt only. It never
+- The probe contains a fixed fictional Tool and fixed prompt only, with
+  thinking disabled, temperature zero, and maximum output `128`. It never
   includes user text, conversation, catalog, source bodies, raw provider
   payloads, or credentials. A valid matching completed Tool Call records
   `supported`; explicit Tool incompatibility records `unsupported`; timeout,
   cancellation, 429, 5xx, transport/ordinary 400, and inconclusive output stay
   `unknown`.
+- Official `api.deepseek.com` native Tool rounds and Tool continuations send
+  `thinking.type=disabled` and omit `reasoning_effort`; plain no-Tool DeepSeek
+  chat retains the selected reasoning settings. Generic compatible gateways
+  retain their own wire shape and never receive the DeepSeek-only field.
+- Official DeepSeek may synthesize fields such as `query` despite a
+  server-declared zero-argument Tool schema. For only those zero-argument
+  functions, the adapter canonicalizes a bounded valid JSON object to `{}`
+  before validation and continuation and grants none of its members query
+  authority. Malformed/non-object/oversized arguments remain invalid; generic
+  compatible Providers and argument-bearing Tools remain byte-preserved. The
+  canonical Memory Tool definition and hash do not change.
 - Probe state is shared in
   `model_tool_capability_cache(provider_config_hash, model_id)` with seven-day
   supported, 24-hour unsupported, and five-minute unknown TTLs. The config hash
@@ -453,6 +469,12 @@ compatibility path is visibly traced and never restores pre-SSE retrieval.
   flag is true, Conversation Memory use is allowed, the selected Provider is
   Tool-round capable, Search is not model-built-in, and the turn is not a
   direct `remember|correct|forget` action.
+- Explicit saved-Memory read intent uses named `required` with `search_memory`
+  first and disables optional reasoning only for that first decision round.
+  General questions about memory and ordinary tasks remain `auto`. A normal
+  same-model continuation restores the selected answer settings; official
+  DeepSeek Tool continuations remain thinking-disabled for protocol
+  compatibility.
 - Before a call, the Provider receives the normal chat request and Tool
   definition but no Memory candidate body, ID, revision, scope, score, or
   database authority. First-round content/reasoning is buffered; no Memory call
@@ -525,6 +547,9 @@ more accurate.
 | Knowledge miss                        | empty successful result; continue Model/Web        |
 | Tool arguments malformed/unknown      | reject execution; redacted failed step             |
 | Memory Tool flag absent/false         | do not expose `search_memory`; preserve v1 default |
+| Explicit saved-Memory read on a supported model | order `search_memory` first; named `required`; no forced Web/Knowledge |
+| General memory discussion/ordinary task | preserve `tool_choice=auto`; no forced Memory retrieval |
+| Explicit read while capability is unknown | no Memory this turn; start the fixed background probe; never force-enable |
 | No first-round Memory call            | zero hybrid retrieval; release buffered answer     |
 | Exact first-round `search_memory({})`  | current-authorized hybrid retrieval and same-model continuation |
 | Buffered first round fails after a call is assembled | discard call/draft; compatibility path; zero Memory retrieval |
@@ -532,6 +557,8 @@ more accurate.
 | Memory retrieval empty/failed/stale   | bounded Tool Result; continue without Memory       |
 | Memory continuation fails before text | recover from original request with no Memory body  |
 | Memory continuation fails after text  | preserve error; no duplicate recovery              |
+| Official DeepSeek Tool round/continuation | `thinking.type=disabled`, no `reasoning_effort`; plain no-Tool chat unchanged |
+| Official DeepSeek adds fields to a server-declared zero-argument Tool | discard all members from the bounded JSON object and validate/continue with canonical `{}`; never adopt a model-generated query |
 | Write/external Tool awaiting approval | pause loop until allow/reject/cancel               |
 | User cancels during Provider/Tool     | cancel both; one terminal cancelled event          |
 | User cancels compatibility planner    | Tool/Web/Generation cancelled; no `planner_failed` |
@@ -576,9 +603,10 @@ more accurate.
     strong Knowledge, forced Web, and no-signal Direct fallbacks respectively;
     failure never defaults to Both.
 14. Capability override precedence, fixed user-data-free probe payload,
-    valid-call classification, transient unknown, TTL/config-hash isolation,
-    background warmup, singleflight, runtime downgrade, non-blocking cache
-    writes, and optional multi-instance PostgreSQL visibility.
+    thinking-disabled/temperature-zero/output-128 bounds, valid-call
+    classification, transient unknown, TTL/config-hash isolation, background
+    warmup, singleflight, runtime downgrade, non-blocking cache writes, and
+    optional multi-instance PostgreSQL visibility.
 15. Frontend provider round-trip and Inherit cleanup plus durable query-free
     Direct/Knowledge/Web/Both summaries, dual source counts, and reason
     allowlisting.
@@ -587,7 +615,12 @@ more accurate.
     malformed/null/non-empty/unknown/duplicate/later-round denial, multi-tool
     coexistence, migration-065 final hydration drift, secret re-redaction,
     same-model continuation, body-free recovery, and no v1 fallback/Usage
-    mutation.
+    mutation. Include bilingual explicit-read positive/general-memory negative
+    intent cases, Memory-first named-required ordering, first-decision
+    reasoning suppression, unchanged ordinary Auto behavior, and official
+    DeepSeek Tool/continuation versus plain-chat thinking wire shapes. Pin
+    zero-argument JSON-object canonicalization plus malformed, generic
+    compatible, and argument-bearing preservation negatives.
 
 ## 11. Rollback
 

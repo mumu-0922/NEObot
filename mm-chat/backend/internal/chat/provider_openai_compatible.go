@@ -100,7 +100,9 @@ func (p *OpenAICompatibleProvider) StreamToolRound(
 		providerMessagesOrPrompt(input.ProviderRequest),
 	)
 	messages = appendOpenAICompatibleContinuation(messages, input.Continuation)
-	enableThinking, thinking := p.thinkingControls(input.DisableThinking, true)
+	toolProtocolRound := len(input.Tools) > 0 || len(input.Continuation) > 0
+	disableThinking := input.DisableThinking || (p.deepSeek && toolProtocolRound)
+	enableThinking, thinking := p.thinkingControls(disableThinking, true)
 	payload, err := json.Marshal(openAICompatibleChatCompletionRequest{
 		Model:    model,
 		Stream:   true,
@@ -112,7 +114,7 @@ func (p *OpenAICompatibleProvider) StreamToolRound(
 		),
 		ReasoningEffort: openAIReasoningEffort(
 			model,
-			input.UseReasoning,
+			input.UseReasoning && !disableThinking,
 			effectiveReasoningEffort(input.ProviderRequest),
 		),
 		EnableThinking: enableThinking,
@@ -127,12 +129,17 @@ func (p *OpenAICompatibleProvider) StreamToolRound(
 		)
 	}
 
-	return p.streamChatCompletion(ctx, payload)
+	return p.streamChatCompletion(
+		ctx,
+		payload,
+		deepSeekZeroArgumentToolNames(p.deepSeek, input.Tools),
+	)
 }
 
 func (p *OpenAICompatibleProvider) streamChatCompletion(
 	ctx context.Context,
 	payload []byte,
+	zeroArgumentToolNames map[string]struct{},
 ) (<-chan ProviderEvent, error) {
 	requestCtx := ctx
 	var cancel context.CancelFunc
@@ -206,7 +213,7 @@ func (p *OpenAICompatibleProvider) streamChatCompletion(
 			defer cancel()
 		}
 
-		streamOpenAICompatibleEvents(ctx, resp.Body, events)
+		streamOpenAICompatibleEvents(ctx, resp.Body, events, zeroArgumentToolNames)
 	}()
 
 	return events, nil
@@ -630,12 +637,13 @@ func streamOpenAICompatibleEvents(
 	ctx context.Context,
 	reader io.Reader,
 	events chan<- ProviderEvent,
+	zeroArgumentToolNames map[string]struct{},
 ) {
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	dataLines := make([]string, 0, 1)
-	toolCalls := newOpenAICompatibleToolCallAccumulator()
+	toolCalls := newOpenAICompatibleToolCallAccumulator(zeroArgumentToolNames)
 	completed := false
 	for scanner.Scan() {
 		line := strings.TrimSuffix(scanner.Text(), "\r")
@@ -780,15 +788,19 @@ type openAICompatibleToolCallKey struct {
 }
 
 type openAICompatibleToolCallAccumulator struct {
-	order     []openAICompatibleToolCallKey
-	calls     map[openAICompatibleToolCallKey]*ProviderToolCall
-	completed bool
+	order                 []openAICompatibleToolCallKey
+	calls                 map[openAICompatibleToolCallKey]*ProviderToolCall
+	zeroArgumentToolNames map[string]struct{}
+	completed             bool
 }
 
-func newOpenAICompatibleToolCallAccumulator() *openAICompatibleToolCallAccumulator {
+func newOpenAICompatibleToolCallAccumulator(
+	zeroArgumentToolNames map[string]struct{},
+) *openAICompatibleToolCallAccumulator {
 	return &openAICompatibleToolCallAccumulator{
-		order: []openAICompatibleToolCallKey{},
-		calls: map[openAICompatibleToolCallKey]*ProviderToolCall{},
+		order:                 []openAICompatibleToolCallKey{},
+		calls:                 map[openAICompatibleToolCallKey]*ProviderToolCall{},
+		zeroArgumentToolNames: zeroArgumentToolNames,
 	}
 }
 
@@ -873,6 +885,14 @@ func (accumulator *openAICompatibleToolCallAccumulator) complete(
 		call.ID = strings.TrimSpace(call.ID)
 		call.Name = strings.TrimSpace(call.Name)
 		call.Arguments = strings.TrimSpace(call.Arguments)
+		if _, normalize := accumulator.zeroArgumentToolNames[call.Name]; normalize &&
+			call.FailureCategory == "" && openAICompatibleArgumentsAreJSONObject(call.Arguments) {
+			// Official DeepSeek may synthesize a query field even when the
+			// server-owned schema forbids every argument. Drop all returned
+			// fields at the adapter boundary so neither retrieval nor the native
+			// continuation can treat model-generated query text as authority.
+			call.Arguments = `{}`
+		}
 		if call.ID == "" {
 			call.ID = fmt.Sprintf("call_%d_%d", call.ChoiceIndex, call.CallIndex)
 			call.SyntheticID = true
@@ -889,6 +909,54 @@ func (accumulator *openAICompatibleToolCallAccumulator) complete(
 	}
 	accumulator.completed = true
 	return true
+}
+
+func openAICompatibleArgumentsAreJSONObject(value string) bool {
+	var arguments map[string]json.RawMessage
+	return json.Unmarshal([]byte(value), &arguments) == nil && arguments != nil
+}
+
+func deepSeekZeroArgumentToolNames(
+	deepSeek bool,
+	tools []ToolDefinition,
+) map[string]struct{} {
+	if !deepSeek || len(tools) == 0 {
+		return nil
+	}
+	names := make(map[string]struct{})
+	for _, tool := range tools {
+		name := strings.TrimSpace(tool.Function.Name)
+		parameters := tool.Function.Parameters
+		if name == "" || parameters["type"] != "object" ||
+			parameters["additionalProperties"] != false {
+			continue
+		}
+		if properties, exists := parameters["properties"]; exists {
+			typed, ok := properties.(map[string]any)
+			if !ok || len(typed) != 0 {
+				continue
+			}
+		}
+		if required, exists := parameters["required"]; exists {
+			switch typed := required.(type) {
+			case []any:
+				if len(typed) != 0 {
+					continue
+				}
+			case []string:
+				if len(typed) != 0 {
+					continue
+				}
+			default:
+				continue
+			}
+		}
+		names[name] = struct{}{}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	return names
 }
 
 func openAICompatibleReasoningDelta(values ...json.RawMessage) string {

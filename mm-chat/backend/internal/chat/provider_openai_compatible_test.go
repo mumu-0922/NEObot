@@ -5,11 +5,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"neo-chat/mm-chat/backend/internal/usermemory"
 )
 
 func TestOpenAICompatibleProviderStreamsDeltasAndUsage(t *testing.T) {
@@ -266,6 +269,91 @@ func TestOpenAICompatibleProviderStreamsFragmentedToolCallAndNativeContinuation(
 	}
 }
 
+func TestDeepSeekCompatibleProviderCanonicalizesOnlyDeclaredZeroArgumentToolCalls(t *testing.T) {
+	const returnedArguments = `{"query":"forbidden"}`
+	tests := []struct {
+		name         string
+		deepSeek     bool
+		tool         ToolDefinition
+		returnedArgs string
+		wantArgs     string
+		wantMemoryOK bool
+	}{
+		{
+			name:     "official DeepSeek zero-argument Tool",
+			deepSeek: true, tool: SearchMemoryToolDefinition(),
+			returnedArgs: returnedArguments, wantArgs: `{}`, wantMemoryOK: true,
+		},
+		{
+			name:     "generic compatible zero-argument Tool",
+			deepSeek: false, tool: SearchMemoryToolDefinition(),
+			returnedArgs: returnedArguments, wantArgs: returnedArguments,
+		},
+		{
+			name:     "official DeepSeek argument-bearing Tool",
+			deepSeek: true, tool: searchWebToolDefinition(),
+			returnedArgs: returnedArguments, wantArgs: returnedArguments,
+		},
+		{
+			name:     "official DeepSeek malformed zero-argument Tool",
+			deepSeek: true, tool: SearchMemoryToolDefinition(),
+			returnedArgs: `not-json`, wantArgs: `not-json`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = fmt.Fprintf(
+					w,
+					"data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-1\",\"type\":\"function\",\"function\":{\"name\":%q,\"arguments\":%q}}]},\"finish_reason\":\"tool_calls\"}]}\n\n",
+					test.tool.Function.Name,
+					test.returnedArgs,
+				)
+				_, _ = w.Write([]byte("data: [DONE]\n\n"))
+			}))
+			defer server.Close()
+
+			provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+				BaseURL: server.URL, APIKey: "fixture-token", DefaultModel: "fixture-model",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			provider.deepSeek = test.deepSeek
+			events, err := provider.StreamToolRound(context.Background(), ProviderRoundRequest{
+				ProviderRequest: ProviderRequest{
+					Prompt:   "call the Tool",
+					ModelRef: ModelRef{ProviderID: OpenAICompatibleProviderID, ModelID: "fixture-model"},
+				},
+				Tools: []ToolDefinition{test.tool}, ToolChoice: ProviderToolChoiceRequired,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var completed *ProviderToolCall
+			for event := range events {
+				if event.Error != nil {
+					t.Fatal(event.Error)
+				}
+				if event.Type == ProviderEventToolCallCompleted {
+					completed = event.ToolCall
+				}
+			}
+			if completed == nil || completed.Name != test.tool.Function.Name ||
+				completed.Arguments != test.wantArgs {
+				t.Fatalf("completed Tool Call = %#v, want arguments %q", completed, test.wantArgs)
+			}
+			if completed.Name == usermemory.HybridMemoryToolName {
+				_, failure := validateSearchMemoryToolCall(*completed, 1, true)
+				if got := failure == ""; got != test.wantMemoryOK {
+					t.Fatalf("Memory validation success = %t, want %t (%q)", got, test.wantMemoryOK, failure)
+				}
+			}
+		})
+	}
+}
+
 func TestOpenAICompatibleProviderRejectsOversizedStreamedToolArguments(t *testing.T) {
 	arguments := strings.Repeat("x", maxOpenAICompatibleToolArgumentsBytes+1)
 	reader := strings.NewReader("data: " + mustJSON(t, map[string]any{
@@ -283,7 +371,7 @@ func TestOpenAICompatibleProviderRejectsOversizedStreamedToolArguments(t *testin
 		}},
 	}) + "\n\ndata: [DONE]\n\n")
 	events := make(chan ProviderEvent, 8)
-	streamOpenAICompatibleEvents(context.Background(), reader, events)
+	streamOpenAICompatibleEvents(context.Background(), reader, events, nil)
 	close(events)
 	var completed *ProviderToolCall
 	for event := range events {
@@ -313,7 +401,7 @@ func TestOpenAICompatibleStreamMarksSyntheticToolCallID(t *testing.T) {
 		}},
 	}) + "\n\ndata: [DONE]\n\n")
 	events := make(chan ProviderEvent, 8)
-	streamOpenAICompatibleEvents(context.Background(), reader, events)
+	streamOpenAICompatibleEvents(context.Background(), reader, events, nil)
 	close(events)
 	var completed *ProviderToolCall
 	for event := range events {
@@ -341,7 +429,7 @@ func TestOpenAICompatibleStreamClassifiesParseRemoteAndIncompleteFailures(t *tes
 		t.Run(test.name, func(t *testing.T) {
 			events := make(chan ProviderEvent, 4)
 			streamOpenAICompatibleEvents(
-				context.Background(), strings.NewReader(test.body), events,
+				context.Background(), strings.NewReader(test.body), events, nil,
 			)
 			close(events)
 			var failure error
@@ -360,7 +448,7 @@ func TestOpenAICompatibleStreamClassifiesParseRemoteAndIncompleteFailures(t *tes
 
 func TestOpenAICompatibleStreamClassifiesReadFailure(t *testing.T) {
 	events := make(chan ProviderEvent, 2)
-	streamOpenAICompatibleEvents(context.Background(), failingSSEReader{}, events)
+	streamOpenAICompatibleEvents(context.Background(), failingSSEReader{}, events, nil)
 	close(events)
 	var failure error
 	for event := range events {
@@ -594,7 +682,7 @@ func TestOpenAICompatibleProviderPlansFunctionCalls(t *testing.T) {
 	}
 }
 
-func TestDeepSeekCompatibleProviderUsesOfficialDisabledThinkingShape(t *testing.T) {
+func TestDeepSeekCompatibleProviderDisablesThinkingForToolProtocolOnly(t *testing.T) {
 	requestCount := 0
 	client := &http.Client{Transport: providerRoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		requestCount++
@@ -605,13 +693,37 @@ func TestDeepSeekCompatibleProviderUsesOfficialDisabledThinkingShape(t *testing.
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatal(err)
 		}
-		if payload.EnableThinking != nil || payload.Thinking == nil ||
-			payload.Thinking.Type != "disabled" {
+		if requestCount <= 3 {
+			if payload.EnableThinking != nil || payload.Thinking == nil ||
+				payload.Thinking.Type != "disabled" || payload.ReasoningEffort != "" {
+				t.Fatalf(
+					"DeepSeek Tool thinking controls = %#v/%#v/%q",
+					payload.EnableThinking,
+					payload.Thinking,
+					payload.ReasoningEffort,
+				)
+			}
+		} else if payload.EnableThinking != nil || payload.Thinking != nil ||
+			payload.ReasoningEffort != string(ReasoningEffortHigh) {
 			t.Fatalf(
-				"DeepSeek thinking controls = %#v/%#v",
+				"DeepSeek plain-chat thinking controls = %#v/%#v/%q",
 				payload.EnableThinking,
 				payload.Thinking,
+				payload.ReasoningEffort,
 			)
+		}
+		switch requestCount {
+		case 2:
+			choice, ok := payload.ToolChoice.(map[string]any)
+			function, _ := choice["function"].(map[string]any)
+			if !ok || choice["type"] != "function" ||
+				function["name"] != "search_memory" || len(payload.Tools) != 1 {
+				t.Fatalf("DeepSeek forced Tool payload = %#v", payload)
+			}
+		case 3, 4:
+			if payload.ToolChoice != nil || len(payload.Tools) != 0 {
+				t.Fatalf("DeepSeek continuation/plain Tools = %#v", payload)
+			}
 		}
 		if payload.Stream {
 			return &http.Response{
@@ -652,8 +764,53 @@ func TestDeepSeekCompatibleProviderUsesOfficialDisabledThinkingShape(t *testing.
 	if err != nil || len(calls) != 0 {
 		t.Fatalf("PlanTools() = %#v/%v", calls, err)
 	}
-	events, err := provider.StreamChat(context.Background(), ProviderRequest{
-		Prompt: "memory?", DisableThinking: true,
+	tool := ToolDefinition{
+		Type: "function",
+		Function: ToolFunctionDefinition{
+			Name: "search_memory", Parameters: map[string]any{"type": "object"},
+		},
+	}
+	events, err := provider.StreamToolRound(context.Background(), ProviderRoundRequest{
+		ProviderRequest: ProviderRequest{
+			Prompt: "memory?", UseReasoning: true, ReasoningEffort: ReasoningEffortMax,
+			ModelRef: ModelRef{
+				ProviderID: "openai_compatible", ModelID: "deepseek-v4-flash",
+			},
+		},
+		Tools: []ToolDefinition{tool}, ToolChoice: ProviderToolChoiceRequired,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+	}
+	events, err = provider.StreamToolRound(context.Background(), ProviderRoundRequest{
+		ProviderRequest: ProviderRequest{
+			Prompt: "memory?", UseReasoning: true, ReasoningEffort: ReasoningEffortMax,
+			ModelRef: ModelRef{
+				ProviderID: "openai_compatible", ModelID: "deepseek-v4-flash",
+			},
+		},
+		Continuation: []ProviderToolExchange{{
+			Calls: []ProviderToolCall{{ID: "call-1", Name: "search_memory", Arguments: `{}`}},
+			Results: []ProviderToolResult{{
+				CallID: "call-1", Name: "search_memory", Content: `{"ok":true}`,
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+	}
+	events, err = provider.StreamChat(context.Background(), ProviderRequest{
+		Prompt: "plain reasoning", UseReasoning: true, ReasoningEffort: ReasoningEffortHigh,
 		ModelRef: ModelRef{
 			ProviderID: "openai_compatible", ModelID: "deepseek-v4-flash",
 		},
@@ -666,8 +823,8 @@ func TestDeepSeekCompatibleProviderUsesOfficialDisabledThinkingShape(t *testing.
 			t.Fatal(event.Error)
 		}
 	}
-	if requestCount != 2 {
-		t.Fatalf("request count = %d, want 2", requestCount)
+	if requestCount != 4 {
+		t.Fatalf("request count = %d, want 4", requestCount)
 	}
 }
 

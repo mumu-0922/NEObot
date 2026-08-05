@@ -237,10 +237,20 @@ name             = search_memory
 contract version = memory-search-tool-v1
 contract SHA-256 = f8f404df0ae3a3938081b813c8750d59ba252adbcb8dc755e075e5c738e20ca6
 arguments        = explicit {}
-tool choice      = auto
+tool choice      = auto; required search_memory for explicit saved-Memory reads
 first round only = true
 adapter version  = chat-first-tool-round-memory-decision-v1
 ```
+
+Only the current user message may force the product Tool. A bounded bilingual
+lexical gate recognizes explicit saved-Memory read/use/search commands and
+direct personal recall questions. It orders `search_memory` first, selects the
+existing normalized `required` choice, and disables optional reasoning for
+that first decision round. Direct remember/correct/forget actions keep their
+higher-priority write path; general questions about memory and ordinary turns
+remain `auto`. The same-model continuation restores the selected answer
+settings, except that the official DeepSeek Tool protocol stays
+thinking-disabled through its continuation.
 
 The old schema-v6 preflight additionally forced `temperature=0`, maximum output
 `128`, and disabled thinking. Those fields remain historical schema-v6 evidence
@@ -326,6 +336,9 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
   for the first message rather than a stale pre-create composer snapshot.
 - Native Tools are sent on the initial current-model request with automatic
   selection. Explicit current/Search intent must use the selected Search mode.
+  An explicit saved-Memory read is the sole product exception: order
+  `search_memory` first and require that exact Tool without forcing Web or
+  Knowledge.
 - Tool Calls are accumulated and validated before execution, then returned in
   the provider's native continuation format to the same model.
 - Do not add product-level Tool Round or Tool Call count limits for the current
@@ -364,13 +377,27 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 - Tool capability resolves in this order: model override, provider default,
   unexpired probe cache, then `unknown` compatibility planning. `enabled` and
   `disabled` are explicit operator assertions; `auto` is the normal default.
-- An Auto probe sends only a fixed fictional Tool definition and fixed prompt.
+- An Auto probe sends only a fixed fictional Tool definition and fixed prompt
+  with thinking disabled, temperature zero, and maximum output `128`.
   It contains no user query, conversation, catalog, source body, provider raw
   payload, or credential. Only a valid completed Tool Call with matching name,
   non-empty ID, and JSON-object arguments records `supported`. Explicit
   tools/function-call incompatibility records `unsupported`; cancellation,
   timeout, rate limit, 5xx, transport failure, ordinary 400, and inconclusive
   prose remain `unknown`.
+- Official `api.deepseek.com` native Tool rounds and Tool continuations send
+  `thinking.type=disabled` and omit `reasoning_effort`, even when the ordinary
+  chat request enabled reasoning. Plain no-Tool DeepSeek chat retains the
+  selected reasoning settings. Generic compatible gateways must not receive
+  the DeepSeek-only field.
+- Official DeepSeek may return a model-generated `query` member for a function
+  whose server-owned schema permits no arguments. For only a server-declared
+  zero-argument function, the adapter may canonicalize a bounded valid JSON
+  object to `{}` before validation and native continuation. It must not expose
+  any returned member as query authority. Malformed, non-object, and oversized
+  arguments remain invalid; generic compatible Providers and argument-bearing
+  Tools remain unchanged. This wire normalization does not change the
+  canonical Memory Tool definition or SHA-256.
 - Provider save/activation schedules detached background warmup for the first
   configured model and matching task models. An unknown first-use model uses
   Planner immediately and starts one singleflight probe; neither save nor chat
@@ -565,6 +592,9 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 | Exact query or redacted Tool args in process detail | drop before SSE/persistence        |
 | Anthropic Thinking continuation  | retain block order/signature in memory only       |
 | Anthropic failed Tool Result     | matching `tool_use_id` plus `is_error=true`       |
+| Current user explicitly requests saved Memory | order `search_memory` first, use named `required`, and disable optional reasoning only for the first decision round |
+| Current user discusses memory generally or submits an ordinary task | keep `tool_choice=auto`; do not force retrieval |
+| Capability is `unknown` on an explicit read | start the bounded background probe and release no Tool Memory on that turn; never force-enable the model |
 | First product round returns no Memory call | flush buffered answer, perform zero hybrid retrieval, and keep ordinary chat |
 | First product round returns one exact `search_memory({})` call | run bounded hybrid retrieval, rehydrate through migration `065`, and continue on the same Provider/model |
 | Product Memory policy is absent/non-production or fixed Judge tuple drifts | fail closed to an empty/failed Memory Tool result; do not call v1 or switch Judge Provider/model |
@@ -580,6 +610,8 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 | Continuation fails after partial content | preserve the error; do not replay or duplicate the answer |
 | Runtime Tool contract hash drifts | fail closed before Memory retrieval |
 | Official DeepSeek receives `enable_thinking=false` | protocol mismatch; the run is not model-quality evidence |
+| Official DeepSeek Tool round or continuation requests reasoning | adapter sends `thinking.type=disabled`, omits `reasoning_effort`, and leaves plain no-Tool chat unchanged |
+| Official DeepSeek synthesizes fields for a server-declared zero-argument Tool | discard all members from a bounded valid JSON object and continue with canonical `{}`; malformed/non-object/oversized input remains denied |
 | Generic compatible receives `thinking.type=disabled` | forbidden Provider-specific leakage; retain `enable_thinking=false` |
 | Product Memory route adds a separate `PlanTools` preflight | reject the architecture; use the existing first Tool round |
 | Diagnostic Provider error carries an upstream body/raw message into a retained report | reject the artifact; only a fixed category may cross the capture boundary |
@@ -616,8 +648,13 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
   `search_memory({})`, fixed BGE reranks current candidates, the current exact
   stored Luna tuple selects useful ordinals, and only their intersection enters
   the bounded Tool Result and immutable completed-answer Usage.
+- Good explicit-read route: `你知道我的信息嘛` forces only the canonical
+  `search_memory` first-round call; fixed BGE/Luna selection may still return
+  an empty result, and the answer continuation uses no rejected candidate.
 - Base enabled product route: an unrelated request yields no Memory call and
   its buffered first-round answer is released without hybrid retrieval.
+- Base intent route: “what is long-term memory?” remains Auto and performs no
+  forced personal retrieval.
 - Base: a Tool-unsupported model uses the visible unified compatibility path
   and still answers Direct when planning fails without a strong signal.
 - Base: a catalog is unavailable or governance-denied; the turn proceeds
@@ -704,7 +741,14 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
     not define schema-v7 decoding authority. Product tests additionally pin the
     separate production policy, exact Provider/type/Base-URL hash/model/secret
     authority, tuple re-resolution, typed Judge two-retry schedule, deterministic
-    no-retry behavior, and zero v1 fallback.
+    no-retry behavior, zero v1 fallback, bilingual explicit-read positive and
+    general-memory negative intent cases, Memory-first named-required ordering,
+    first-decision reasoning suppression, unchanged ordinary Auto choice,
+    bounded no-thinking capability probes, and official DeepSeek Tool/
+    continuation versus plain-chat wire shapes. Provider-adapter tests must
+    additionally pin zero-argument JSON-object canonicalization, generic
+    compatible byte preservation, argument-bearing Tool preservation, and
+    malformed argument denial.
 20. Diagnostic tests must cover HTTP/transport/SSE/context classification,
     malformed/remote stream events, bounded adapter mapping, unknown-cause
     fallback, absence of Provider response/error text, schema-v9 route and
@@ -727,6 +771,13 @@ Knowledge selected -> always retrieve Knowledge -> maybe search Web -> answer
 ```go
 // Wrong: blocks the user turn and derives a probe from user content.
 status := probeToolCapability(requestContext, provider, userPrompt)
+```
+
+```text
+// Wrong: rely on every answer model to interpret an explicit Memory command
+// under Auto, or force all ordinary turns through Memory.
+explicit read -> tool_choice=auto
+every turn    -> tool_choice=required
 ```
 
 ```go
@@ -776,6 +827,14 @@ if status == ToolCapabilityUnknown {
     startSingleflightBackgroundProbe(providerConfigHash, modelID)
     return compatibilityPlanner
 }
+```
+
+```text
+// Correct: current-user intent controls only Tool selection; the fixed Judge
+// still controls which current-authorized Memory bodies may be released.
+explicit saved-Memory read -> search_memory first + named required
+ordinary/general turn      -> auto
+unknown capability         -> no Memory this turn + background fixed probe
 ```
 
 ```go

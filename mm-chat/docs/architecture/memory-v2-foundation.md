@@ -98,6 +98,22 @@ migration `065`, repeats current authority and secret redaction, then returns a
 bounded Tool Result for same-model continuation. The Worker never receives this
 flag; ready embeddings still depend on the shared hybrid Worker switch.
 
+Only the current user message may force that first call. Explicit bilingual
+saved-Memory commands and direct personal recall questions order
+`search_memory` first and use named `required`; ordinary tasks and general
+questions about memory remain Auto. Capability discovery stays background and
+fail-closed. Official DeepSeek Tool rounds/continuations use
+`thinking.type=disabled` with no `reasoning_effort`, while plain no-Tool chat
+retains its selected reasoning behavior. This entry policy never replaces the
+fixed BGE/Luna candidate release boundary.
+
+Official DeepSeek may still synthesize a `query` field for that zero-argument
+Tool. The Provider adapter discards every member of a bounded valid JSON object
+only when the server declared the function zero-argument, then passes canonical
+`{}` to validation and continuation. It never uses model-generated query text;
+malformed/oversized input and non-zero-argument Tools retain their normal
+validation, and the canonical Memory Tool hash stays unchanged.
+
 ## Rollback
 
 Migration `053` down is allowed only before v2 authority is used. It fails atomically when any
