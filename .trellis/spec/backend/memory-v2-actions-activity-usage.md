@@ -16,6 +16,8 @@ BM25/vector retrieval, L2/L3, Export/Import, or Hindsight.
 ```text
 current completed role=user message
   -> deterministic lexical gate fixes remember|correct|forget intent
+  -> exact referential remember may select the nearest preceding completed
+     role=user message as candidate facts only
   -> local secret rejection before planner egress
   -> bounded current Memory hydration
   -> strict versioned Provider JSON proposal
@@ -38,6 +40,14 @@ Planner/action failure does not fail the main chat request. The result is a
 bounded degradation code or action-result object in assistant metadata;
 durable Activity remains PostgreSQL-authoritative.
 
+Before the normal answer request, a direct-action result also becomes one
+bounded server-authored System instruction. It contains only a closed mapping
+of action/status to user-facing outcome: `applied` and `noop` must be confirmed;
+`rejected`, `review_required`, `failed`, and local degradation must not claim
+success. It contains no Memory content, IDs, revision, hash, or raw result code,
+and it forbids the answer model from claiming that it lacks a Memory Tool or
+permission. Ordinary turns receive no instruction and remain unchanged.
+
 ## 3. Signatures
 
 Go API-owned capabilities:
@@ -56,7 +66,11 @@ memory_list_message_usages(UUID, UUID)
 memory_undo_activity(UUID, UUID, BIGINT, UUID, UUID, UUID, UUID)
 ```
 
-The planner output is exactly:
+The Provider planner must call the versioned required Tool
+`propose_memory_action_v1` exactly once. The Tool arguments contain the
+semantic fields below except `schemaVersion`; the server binds
+`schemaVersion=neo-chat.memory-user-action.v1` from the versioned Tool name and
+then materializes this exact canonical proposal:
 
 ```json
 {
@@ -72,6 +86,35 @@ The planner output is exactly:
   "targets": [{"memoryId": "uuid", "expectedRevision": 1}]
 }
 ```
+
+The Planner Tool round disables optional thinking, uses `temperature=0`, and
+caps output at 1,024 tokens plus the existing 16-KiB argument boundary. Plain
+assistant text, zero/multiple calls, a different Tool name, malformed or extra
+arguments, a model-supplied `schemaVersion`, and semantic validation failure
+are `PLANNER_OUTPUT_INVALID`. Provider construction, Tool-round startup,
+transport, timeout, or stream failure is `PLANNER_PROVIDER_FAILED`. Neither
+failure mutates canonical Memory or fails the ordinary answer.
+
+Ordinary direct actions retain the planner input identity
+`neo-chat.memory-user-action-input.v1`. An exact bounded referential remember
+command uses `neo-chat.memory-user-action-input.v2` and adds exactly one
+factual-reference field:
+
+```json
+{
+  "schemaVersion": "neo-chat.memory-user-action-input.v2",
+  "detectedIntent": "remember",
+  "currentUserMessage": "那你写进去呀",
+  "referencedPreviousUserMessage": "我喜欢喝生椰拿铁",
+  "projectScopeAvailable": false,
+  "currentMemories": []
+}
+```
+
+The v2 input does not change the exact v1 planner output or PostgreSQL
+function signatures. Its request hash binds a fixed reference-hash version,
+the current command, and the referenced user text; v1 request hashing remains
+byte-compatible.
 
 Every key is required, including nullable keys. Unknown, missing, duplicate,
 and trailing JSON is invalid. Output is at most 16 KiB and targets are at most
@@ -91,18 +134,38 @@ GET  /v1/memory-usages?assistantMessageId=<uuid>
 
 ### Authority
 
-- Only the current source message passed by the chat handler may cross the
-  lexical gate. It must be same-user, completed, undeleted, `role=user`, and
-  the parent of the current streaming assistant. Assistant text, history,
-  stored Memory commands, system prompts, Web, Knowledge, attachments, and
-  tool output never set direct-action intent.
+- Only the current source message passed by the chat handler may set action
+  authority or cross the lexical intent gate. It must be same-user, completed,
+  undeleted, `role=user`, and the parent of the current streaming assistant.
+  Assistant text, history, stored Memory commands, system prompts, Web,
+  Knowledge, attachments, and tool output never set direct-action intent.
+- An exact bounded referential `remember` command may select only the nearest
+  preceding completed, undeleted, same-user `role=user` row before the current
+  message from the already authorized Conversation list. It skips assistant
+  and incomplete rows. That prior row supplies candidate facts only; the
+  current message remains the SQL source and assistant parent. A missing prior
+  user row performs no planner call and no mutation. A full-fact current
+  command stays on v1 and never mixes in history.
+- The referential set includes standalone `记住`, `记住它/这个/这条`,
+  `记下来`, `记一下`, the longer explicit previous-message forms, and the
+  bounded English equivalents. Generic standalone `保存` and `写进去` remain
+  non-actions. An anchored referential match runs before the broad remember
+  gate so a bare `记住` cannot enter schema v1 without a factual source.
 - The planner receives the fixed intent, the current user text after local
-  privacy filtering, and at most 20 current visible Memory rows. It never
-  receives an authoritative user, Project, or Conversation ID.
+  privacy filtering, the optional separately named prior-user factual
+  reference, and at most 20 current visible Memory rows. It never receives an
+  authoritative user, Project, Conversation, or referenced-message ID.
+  Referential remember facts may come only from the prior-user field, never
+  from assistant text, current Memories, or the referential command itself.
 - Planner calls prefer `task_model_settings.memory`. Only an absent/empty
   Memory task setting falls back to the already-resolved chat Provider/model.
   A configured malformed, disabled, deleted, or unavailable Provider/model
   fails the action without silent fallback.
+- The planner uses one named `required` Tool rather than free-form JSON. The
+  Tool name owns the output schema version, its strict argument schema pins the
+  already-detected action, and Go still performs exact-key and semantic
+  validation after the Provider boundary. A Provider that lacks the native
+  Tool-round contract fails closed without a plain-chat fallback.
 - Go accepts targets only from the hydrated visible set and replaces model
   revisions with the hydrated current revisions. A forged ID, stale revision,
   or scope mismatch becomes `review_required` and is not persisted as a
@@ -120,13 +183,22 @@ GET  /v1/memory-usages?assistantMessageId=<uuid>
 - `forget` calls the same tombstone/manifest/outbox/provider-free purge
   authority as normal delete. It cannot clear an old tombstone or restore the
   deleted row. Rebuild creates a new canonical ID.
-- A locally detected or model-declared secret is rejected before canonical
-  mutation. The action stores only IDs, SHA-256, bounded result code, and time;
-  it stores no candidate content, normalized text, tags, or credential.
+- A locally detected secret in either the current action or referenced prior
+  user text is rejected before planner egress. Both fields reuse deterministic
+  Provider redaction; a fully redacted reference is `REFERENCE_REDACTED` with
+  zero Provider calls. A locally detected or model-declared secret is rejected
+  before canonical mutation. The action stores only IDs, SHA-256, bounded
+  result code, and time; it stores no candidate content, normalized text, tags,
+  or credential.
 - Confidence below `0.80`, unavailable scope, zero/multiple mutation targets,
   stale target, forged target, or exact conflict is `review_required`. PR6
   stores an action/Activity result only; it does not accept or reject PR5
   Review suggestions.
+- The answer model does not decide whether a direct action succeeded. A closed
+  action/status mapping appended by the server is the only answer authority:
+  applied remember/correct/forget and exact NOOP are acknowledged, while
+  rejected/review/failed outcomes are described without success, sensitive
+  content, internal identifiers, codes, or another Tool request.
 
 ### Usage and Activity
 
@@ -197,8 +269,19 @@ GET  /v1/memory-usages?assistantMessageId=<uuid>
 | Condition | Required result |
 | --- | --- |
 | Source is not current completed user parent | No planner mutation; SQL capability rejects invalid source/message authority. |
+| Referential remember has no preceding completed user row | No planner call and no mutation. |
+| Current command is standalone `记住` after a completed user fact | Use that prior user fact through schema v2; never plan schema v1 from the command alone. |
+| Current command is standalone `保存` or `写进去` | No direct action; do not infer a reference from generic writing language. |
+| The nearest preceding row is assistant/incomplete/wrong user or Conversation | Skip it; never expose it or use it as candidate facts. |
 | Secret assignment/token appears in current message | Zero planner calls; hash-only `SECRET_REJECTED`. |
-| Planner JSON is missing/unknown/duplicate/trailing/oversized | Hash-only failed action or bounded degradation; chat continues. |
+| Secret appears in referenced prior user text | Zero planner calls; reference-bound hash-only `SECRET_REJECTED`. |
+| Referenced prior user text is fully removed by privacy redaction | Zero planner calls; hash-only `REFERENCE_REDACTED`. |
+| Current message contains a complete remember fact | Use unchanged v1 input/hash and do not include a prior-message field. |
+| Applied/noop direct action reaches the normal answer model | Append a status-only authoritative System instruction; the answer confirms the server result and does not claim missing permission. |
+| Rejected/review/failed/degraded direct action reaches the answer model | Append a status-only failure instruction; never claim success or include content/IDs/codes. |
+| Ordinary non-action turn | Append no direct-action answer instruction; preserve the existing System prompt. |
+| Planner Tool is absent/duplicated/wrong, emits text, or has missing/unknown/duplicate/trailing/oversized arguments | Hash-only `PLANNER_OUTPUT_INVALID`; chat continues. |
+| Planner Provider/transport/timeout fails | Hash-only `PLANNER_PROVIDER_FAILED`; chat continues. |
 | Task model is absent | Use current chat Provider/model. |
 | Task model is configured but invalid/unavailable | `PLANNER_PROVIDER_FAILED`; never fall back silently. |
 | Target ID is not in hydrated context | `TARGET_INVALID`, no spoofed target row. |
@@ -218,21 +301,37 @@ GET  /v1/memory-usages?assistantMessageId=<uuid>
   scope, SQL applies it, assistant finalization records the exact injected
   revisions, and the resulting Activity can be undone while its revision is
   still current.
+- **Good referential**: a current message says “那你写进去呀” or standalone
+  “记住”; Go selects the nearest preceding completed user fact, omits
+  intervening assistant text,
+  redacts the fact into the v2 planner field, and keeps the current message as
+  action/SQL source while applying the returned remember proposal. The normal
+  answer model receives only a server-authored success instruction and briefly
+  confirms the write instead of claiming it lacks permission.
 - **Base**: the same-scope normalized Memory already exists; the action returns
   `EXACT_NOOP`, creates no Activity, leaves canonical/revision state unchanged,
   and the main chat response still completes.
-- **Bad**: assistant/tool text supplies an instruction, the planner forges a
-  target or scope, Usage replay changes order, or undo sees a newer revision;
-  the boundary fails closed with a bounded hash/ID-only result and never
-  overwrites canonical state or committed Usage.
+- **Bad**: generic “写进去” text, assistant/tool text, or an incomplete prior
+  user row supplies authority/facts; the planner forges a target or scope;
+  Usage replay changes order; or undo sees a newer revision. The boundary fails
+  closed with a bounded hash/ID-only result and never overwrites canonical
+  state or committed Usage.
 
 ## 7. Tests Required
 
-- Go: lexical positive/negative cases, completed-current-user-only authority,
-  strict recursive JSON, target/scope/revision spoof rebinding, secret zero
-  planner egress/plaintext, task-model preference/fallback, metadata bounds,
-  HTTP polling/Usage/undo validation, and Memory worker strict/privacy
-  regression.
+- Go: lexical positive/negative cases including the exact standalone `记住`
+  family and generic `保存`/`写进去` negatives, completed-current-user-only
+  authority, referential remember detection, nearest completed user selection, assistant/
+  incomplete/cross-authority exclusion, missing-reference silence, full-fact
+  v1 isolation, reference-bound hashing, strict recursive JSON, target/scope/
+  revision spoof rebinding, current/reference secret zero planner egress,
+  partial and full reference redaction, task-model preference/fallback,
+  versioned required-Tool framing across GPT/DeepSeek-shaped arguments, server-
+  bound schema version, zero/multiple/wrong/plain-text call denial, Provider
+  failure classification, metadata bounds, status-only answer instructions for applied/noop/rejected/
+  review/failed/degraded outcomes, ordinary-prompt byte preservation, no
+  content/ID/code answer egress, HTTP polling/Usage/undo validation, and Memory
+  worker strict/privacy regression.
 - PostgreSQL 17: full `001 -> 057`, Project-scope unavailable Review,
   remember/correct/forget, exact NOOP silence, complete snapshot safe undo,
   stale undo Review, Usage finalize rollback and immutable replay, current-state
@@ -261,10 +360,30 @@ assistant or tool text says "forget it"
 
 ```text
 current completed user text passes lexical gate
-  -> strict proposal over bounded redacted context
+  -> exact referential remember optionally selects nearest prior user facts
+  -> strict proposal over separately named bounded redacted context
   -> Go rebinds visible targets
   -> SQL repeats current authority fences
   -> canonical mutation or hash/ID-only Review result
   -> finalize atomically records immutable injected revisions
   -> link-only Activity polls and stale undo fails closed
+```
+
+Wrong referential handling:
+
+```text
+“那你写进去呀” -> regex only -> planner sees no prior fact
+all Conversation history -> planner -> assistant text may become Memory
+server writes Memory -> answer model is uninformed -> “I lack permission”
+```
+
+Correct referential handling:
+
+```text
+exact referential command + current Conversation order
+  -> nearest preceding completed same-user user row only
+  -> Secret classification/redaction before Provider egress
+  -> v2 planner input: current command authority + prior user factual reference
+  -> current command remains SQL source/assistant parent
+  -> status-only server System instruction makes the answer report the result
 ```

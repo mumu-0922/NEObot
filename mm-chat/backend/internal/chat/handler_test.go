@@ -802,6 +802,162 @@ func TestHandlerStreamsMockAssistantAndPersistsMessages(t *testing.T) {
 	}
 }
 
+func TestHandlerContinuesTextGenerationAfterClientDisconnect(t *testing.T) {
+	tests := []struct {
+		name          string
+		allowedWrites int
+	}{
+		{name: "before first event delivery", allowedWrites: 0},
+		{name: "during delta delivery", allowedWrites: 2},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repo := newFakeRepository()
+			repo.conversations = append(
+				repo.conversations,
+				fakeConversation(testConversationID, "Detached", 0),
+			)
+			repo.messages[testConversationID] = append(
+				repo.messages[testConversationID],
+				fakeMessage(testMessageID, testConversationID, 0, "user", "keep going"),
+			)
+			provider := &detachedCompletionProvider{
+				started:   make(chan context.Context, 1),
+				cancelled: make(chan struct{}),
+				release:   make(chan struct{}),
+			}
+			releaseProvider := sync.OnceFunc(func() { close(provider.release) })
+			defer releaseProvider()
+			handler := NewHandler(NewService(repo), WithProvider(provider))
+			writer := newDisconnectingResponseWriter(test.allowedWrites)
+			requestCtx, cancelRequest := context.WithCancel(context.Background())
+			request := httptest.NewRequest(
+				http.MethodPost,
+				conversationsPath+"/"+testConversationID+"/stream",
+				bytes.NewBufferString(
+					`{"userMessageId":"`+testMessageID+`",`+
+						`"modelRef":{"providerId":"mock","modelId":"detached"},`+
+						`"idempotencyKey":"detached-text-`+test.name+`"}`,
+				),
+			).WithContext(requestCtx)
+			request.Header.Set("Content-Type", "application/json")
+
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				handler.ServeHTTP(writer, request)
+			}()
+
+			var providerCtx context.Context
+			select {
+			case providerCtx = <-provider.started:
+			case <-time.After(2 * time.Second):
+				t.Fatal("provider did not start")
+			}
+			cancelRequest()
+			select {
+			case <-provider.cancelled:
+				t.Fatal("HTTP disconnect cancelled the Provider context")
+			case <-time.After(100 * time.Millisecond):
+			}
+			if err := providerCtx.Err(); err != nil {
+				t.Fatalf("detached Provider context error = %v", err)
+			}
+
+			releaseProvider()
+			select {
+			case <-done:
+			case <-time.After(2 * time.Second):
+				t.Fatal("detached stream did not finish")
+			}
+
+			messages := repo.messages[testConversationID]
+			if len(messages) != 2 || messages[1].Status != "completed" ||
+				messages[1].Content != "background complete" {
+				t.Fatalf("detached assistant = %#v", messages)
+			}
+			if messages[1].Metadata["errorCode"] == "SSE_WRITE_FAILED" {
+				t.Fatalf("disconnect was persisted as an SSE failure: %#v", messages[1].Metadata)
+			}
+		})
+	}
+}
+
+func TestHandlerContinuesImageGenerationAfterClientDisconnect(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(
+		repo.conversations,
+		fakeConversation(testConversationID, "Detached image", 0),
+	)
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "draw it"),
+	)
+	generator := &detachedImageGenerator{
+		started:   make(chan context.Context, 1),
+		cancelled: make(chan struct{}),
+		release:   make(chan struct{}),
+		result: ImageGenerationResult{Attachments: []GeneratedImageAttachment{{
+			FileID:  testFileID,
+			Purpose: "image",
+		}}},
+	}
+	releaseGenerator := sync.OnceFunc(func() { close(generator.release) })
+	defer releaseGenerator()
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(errorProvider{}),
+		WithImageGenerator(generator),
+	)
+	writer := newDisconnectingResponseWriter(0)
+	requestCtx, cancelRequest := context.WithCancel(context.Background())
+	request := httptest.NewRequest(
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		bytes.NewBufferString(
+			`{"userMessageId":"`+testMessageID+`",`+
+				`"modelRef":{"providerId":"openai_compatible","modelId":"gpt-image-2"},`+
+				`"idempotencyKey":"detached-image"}`,
+		),
+	).WithContext(requestCtx)
+	request.Header.Set("Content-Type", "application/json")
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		handler.ServeHTTP(writer, request)
+	}()
+
+	var generationCtx context.Context
+	select {
+	case generationCtx = <-generator.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("image generator did not start")
+	}
+	cancelRequest()
+	select {
+	case <-generator.cancelled:
+		t.Fatal("HTTP disconnect cancelled the image generation context")
+	case <-time.After(100 * time.Millisecond):
+	}
+	if err := generationCtx.Err(); err != nil {
+		t.Fatalf("detached image context error = %v", err)
+	}
+	releaseGenerator()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("detached image generation did not finish")
+	}
+
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 || messages[1].Status != "completed" ||
+		len(messages[1].Attachments) != 1 ||
+		messages[1].Attachments[0].FileID != testFileID {
+		t.Fatalf("detached image assistant = %#v", messages)
+	}
+}
+
 func TestHandlerStreamsAndReloadsSanitizedReasoningProcessTrace(t *testing.T) {
 	repo := newFakeRepository()
 	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "Reasoning", 0))
@@ -3962,6 +4118,57 @@ func performAuthenticatedRequest(handler http.Handler, method string, path strin
 	return rec
 }
 
+type disconnectingResponseWriter struct {
+	header        http.Header
+	status        int
+	writes        int
+	allowedWrites int
+	disconnected  bool
+	flushErr      error
+}
+
+func newDisconnectingResponseWriter(allowedWrites int) *disconnectingResponseWriter {
+	return &disconnectingResponseWriter{
+		header:        make(http.Header),
+		allowedWrites: allowedWrites,
+	}
+}
+
+func (w *disconnectingResponseWriter) Header() http.Header {
+	return w.header
+}
+
+func (w *disconnectingResponseWriter) WriteHeader(statusCode int) {
+	if w.status == 0 {
+		w.status = statusCode
+	}
+}
+
+func (w *disconnectingResponseWriter) Write(payload []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	if w.disconnected || w.writes >= w.allowedWrites {
+		w.disconnected = true
+		return 0, errors.New("client disconnected")
+	}
+	w.writes++
+	return len(payload), nil
+}
+
+func (w *disconnectingResponseWriter) Flush() {}
+
+func (w *disconnectingResponseWriter) FlushError() error {
+	if w.flushErr != nil {
+		w.disconnected = true
+		return w.flushErr
+	}
+	if w.disconnected {
+		return errors.New("client disconnected")
+	}
+	return nil
+}
+
 func assertStatus(t *testing.T, rec *httptest.ResponseRecorder, want int) {
 	t.Helper()
 	if rec.Code != want {
@@ -4827,6 +5034,27 @@ type fakeChatImageGenerator struct {
 	err     error
 }
 
+type detachedImageGenerator struct {
+	started   chan context.Context
+	cancelled chan struct{}
+	release   chan struct{}
+	result    ImageGenerationResult
+}
+
+func (g *detachedImageGenerator) GenerateImage(
+	ctx context.Context,
+	_ ImageGenerationRequest,
+) (ImageGenerationResult, error) {
+	g.started <- ctx
+	select {
+	case <-ctx.Done():
+		close(g.cancelled)
+		return ImageGenerationResult{}, ctx.Err()
+	case <-g.release:
+		return g.result, nil
+	}
+}
+
 func (g *fakeChatImageGenerator) GenerateImage(
 	_ context.Context,
 	request ImageGenerationRequest,
@@ -4987,6 +5215,38 @@ func (p *cancellationProbeProvider) StreamChat(ctx context.Context, input Provid
 			close(p.cancelled)
 			<-p.release
 		case <-p.release:
+		}
+	}()
+	return events, nil
+}
+
+type detachedCompletionProvider struct {
+	started   chan context.Context
+	cancelled chan struct{}
+	release   chan struct{}
+}
+
+func (p *detachedCompletionProvider) StreamChat(
+	ctx context.Context,
+	_ ProviderRequest,
+) (<-chan ProviderEvent, error) {
+	events := make(chan ProviderEvent)
+	p.started <- ctx
+	go func() {
+		defer close(events)
+		select {
+		case <-ctx.Done():
+			close(p.cancelled)
+			return
+		case <-p.release:
+		}
+		for _, delta := range []string{"background", " complete"} {
+			select {
+			case <-ctx.Done():
+				close(p.cancelled)
+				return
+			case events <- ProviderEvent{Type: ProviderEventDelta, Delta: delta}:
+			}
 		}
 	}()
 	return events, nil

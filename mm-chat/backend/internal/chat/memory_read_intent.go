@@ -24,6 +24,13 @@ var explicitMemoryReadPatterns = []*regexp.Regexp{
 			`我是哪(?:个|所)?学校的|我(?:在|就读于|来自)哪(?:个|所)?学校)`,
 	),
 	regexp.MustCompile(
+		`^我(?:最)?(?:喜欢|爱)(?:喝|吃|用|看|听|玩|穿|做)?(?:的)?(?:是)?什么` +
+			`(?:东西|饮料|食物)?(?:呢|呀|啊|吗|嘛)?[？?!！。]*$`,
+	),
+	regexp.MustCompile(
+		`^我(?:的)?(?:偏好|喜好)(?:是|有)?什么(?:呢|呀|啊|吗|嘛)?[？?!！。]*$`,
+	),
+	regexp.MustCompile(
 		`(?i)\b(?:read|load|search|query|check|use|access|retrieve|recall)\b.{0,32}` +
 			`\b(?:saved|long[- ]term|personal)?\s*(?:memory|memories)\b`,
 	),
@@ -38,6 +45,11 @@ var explicitMemoryReadPatterns = []*regexp.Regexp{
 	regexp.MustCompile(
 		`(?i)\b(?:who\s+am\s+i|what(?:'s|\s+is)\s+my\s+name|` +
 			`which\s+school\s+(?:do\s+i\s+(?:attend|go\s+to)|am\s+i\s+from))\b`,
+	),
+	regexp.MustCompile(
+		`(?i)^what\s+do\s+i\s+(?:like|prefer)(?:\s+(?:(?:to\s+)?` +
+			`(?:drink|eat|use|watch|play|wear|do)|listen\s+to|` +
+			`drinking|eating|using|watching|playing|wearing|doing))?\s*[?!.]*$`,
 	),
 }
 

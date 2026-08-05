@@ -97,40 +97,61 @@ func TestMemoryToolLoopExactCallSearchesOnceAndContinuesSameModel(t *testing.T) 
 }
 
 func TestExplicitMemoryReadForcesNamedMemoryToolBeforeWeb(t *testing.T) {
-	provider := memoryToolCallThenAnswerProvider("answer using explicit saved Memory")
+	provider := memoryToolCallThenAnswerProvider("你喜欢喝生椰拿铁。")
 	searcher := &memoryToolTestSearcher{result: usermemory.HybridMemoryToolSearchResult{
 		Memories: []usermemory.Memory{{
 			ID: "11111111-1111-4111-8111-111111111111", Revision: 3,
-			ScopeType: "global", Type: "preference", Content: memoryToolLoopTestContent,
+			ScopeType: "global", Type: "preference", Content: "用户喜欢喝生椰拿铁。",
 		}},
 	}}
 	web := &fakeWebSearchProvider{}
+	query := "我喜欢喝什么？"
+	memoryRuntime := &memoryToolRuntime{
+		Searcher: searcher, ConversationID: "22222222-2222-4222-8222-222222222222",
+		AssistantMessageID: "33333333-3333-4333-8333-333333333333",
+		Query:              query, forceFirstCall: detectExplicitMemoryReadIntent(query),
+	}
 	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
 		Provider: provider,
 		Request: ProviderRequest{
-			Prompt:          "读取记忆",
-			Messages:        []ProviderMessage{{Role: "user", Content: "读取记忆"}},
+			Prompt:          query,
+			Messages:        []ProviderMessage{{Role: "user", Content: query}},
 			UseReasoning:    true,
 			ReasoningEffort: ReasoningEffortHigh,
 			ModelRef:        ModelRef{ProviderID: "configured", ModelID: "selected-model"},
 		},
-		Memory: &memoryToolRuntime{
-			Searcher: searcher, ConversationID: "22222222-2222-4222-8222-222222222222",
-			AssistantMessageID: "33333333-3333-4333-8333-333333333333",
-			Query:              "读取记忆", forceFirstCall: true,
-		},
+		Memory:        memoryRuntime,
 		SearchService: websearch.NewService(&fakeWebSearchResolver{}),
 		Execution: websearch.ActiveExecution{
 			Mode: websearch.ExecutionExternal, External: web,
 		},
 	})
+	var content strings.Builder
+	executions := make([]ProviderToolExecutionEvent, 0, 2)
 	for event := range events {
 		if event.Error != nil {
 			t.Fatal(event.Error)
 		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+		if event.Type == ProviderEventToolExecution && event.ToolExecution != nil {
+			executions = append(executions, *event.ToolExecution)
+		}
 	}
 	if searcher.calls != 1 || web.calls != 0 || len(provider.inputs) != 2 {
 		t.Fatalf("memory/web/rounds = %d/%d/%d", searcher.calls, web.calls, len(provider.inputs))
+	}
+	if content.String() != "你喜欢喝生椰拿铁。" ||
+		len(executions) != 2 || executions[0].Status != ProcessStepStatusRunning ||
+		executions[1].Status != ProcessStepStatusCompleted {
+		t.Fatalf("answer/process = %q / %#v", content.String(), executions)
+	}
+	usages := durableMemoryUsageInputsForRun(durableMemoryPreparation{}, memoryRuntime)
+	if len(usages) != 1 || usages[0].MemoryID != searcher.result.Memories[0].ID ||
+		usages[0].Revision != searcher.result.Memories[0].Revision ||
+		usages[0].ScopeType != searcher.result.Memories[0].ScopeType {
+		t.Fatalf("explicit-read Memory Usage = %#v", usages)
 	}
 	first := provider.inputs[0]
 	if first.ToolChoice != ProviderToolChoiceRequired || len(first.Tools) < 2 ||
@@ -466,16 +487,21 @@ func TestMemoryToolRuntimePreservesExplicitDirectActionPath(t *testing.T) {
 		memoryToolLoopEnabled: true,
 		userMemoryService:     &usermemory.Service{},
 	}
-	runtime := handler.newMemoryToolRuntime(
-		context.Background(),
-		true,
-		chatSearchModeOff,
+	for _, query := range []string{
 		"记住我以后要简洁回答",
-		"22222222-2222-4222-8222-222222222222",
-		"33333333-3333-4333-8333-333333333333",
-	)
-	if runtime != nil {
-		t.Fatalf("explicit direct action was routed through read Tool: %#v", runtime)
+		"那你写进去呀",
+	} {
+		runtime := handler.newMemoryToolRuntime(
+			context.Background(),
+			true,
+			chatSearchModeOff,
+			query,
+			"22222222-2222-4222-8222-222222222222",
+			"33333333-3333-4333-8333-333333333333",
+		)
+		if runtime != nil {
+			t.Fatalf("explicit direct action %q was routed through read Tool: %#v", query, runtime)
+		}
 	}
 }
 
@@ -488,8 +514,9 @@ func TestMemoryToolRuntimeWiresExplicitReadIntentOnly(t *testing.T) {
 		query string
 		want  bool
 	}{
-		{query: "读取记忆", want: true},
+		{query: "我喜欢喝什么？", want: true},
 		{query: "写一篇关于记忆的文章", want: false},
+		{query: "帮我写“我喜欢喝什么”的文案", want: false},
 	} {
 		runtime := handler.newMemoryToolRuntime(
 			context.Background(), true, chatSearchModeOff, test.query,

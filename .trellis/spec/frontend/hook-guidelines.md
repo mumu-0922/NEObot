@@ -68,6 +68,11 @@ return useChatStore(
   global fetch abstraction.
 - Pass `AbortSignal` through service calls when supported. Guard async results
   with request/run identity when a newer request may supersede an older one.
+- In Server mode, an accepted chat generation is backend-owned. Conversation,
+  new-chat, and assistant-preset navigation must not abort its controller;
+  only the explicit Stop action (or deleting the owning active Conversation)
+  may abort it and trigger `POST /v1/chat/runs/{runId}/cancel`. Page close is
+  handled by detached backend execution, not a React cleanup cancellation.
 - For one-off imperative reads inside callbacks, established code uses
   `useChatStore.getState()`; normal render data still uses selector hooks.
 
@@ -85,6 +90,8 @@ return useChatStore(
   renders.
 - Omitting effect cleanup or dependency inputs.
 - Letting an aborted/stale generation update current UI state.
+- Treating an SSE subscription as ownership of the Server Run and aborting it
+  during navigation instead of only changing the visible Conversation.
 - Hiding domain validation inside a hook instead of a reusable normalizer or
   schema.
 - Calling a custom hook conditionally.

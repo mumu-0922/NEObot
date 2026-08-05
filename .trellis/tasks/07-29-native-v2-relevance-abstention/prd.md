@@ -1225,6 +1225,164 @@ canonical `memory-search-tool-v1` definition or hash. The clean follow-up live
 replay completed `search_memory` from running to completed, then completed the
 same-model answer with HTTP 200 and zero stream errors.
 
+**2026-08-05 referential direct-write amendment:** A subsequent real chat
+showed that the direct-write path still treated a bounded follow-up such as
+“那你写进去呀” as ordinary answer text. The lexical gate inspected only that
+current sentence and the strict planner received neither the preceding fact
+“我喜欢喝生椰拿铁” nor any separate factual-reference field. The model's
+statement that it lacked long-term Memory write permission was therefore an
+ordinary answer hallucination, not evidence that the server capability was
+absent.
+
+Recognize only an exact bounded bilingual set of referential remember commands,
+not generic writing language. For that lane, select the nearest preceding
+completed `role=user` message before the current message from the already
+authorized Conversation message list, skipping assistant and incomplete rows.
+The current message remains the sole action authority and current SQL source/
+assistant parent; the referenced user message supplies only candidate facts.
+Send it to the planner in a separately named schema-v2 field, forbid candidate
+facts from assistant text/current Memories/the command itself, and keep full-
+fact single-turn commands on the unchanged schema-v1 input. Missing references
+must perform no mutation. Classify both current and referenced text for Secret
+content before Provider egress, apply the existing deterministic redactor to
+the reference, and bind referential request hashes to a fixed version plus both
+texts while leaving ordinary request hashes byte-compatible. Offline coverage
+must prove intent positives/negatives, nearest completed user selection,
+assistant exclusion, no-reference silence, full-fact isolation, Secret zero
+egress, redaction, request-hash binding, canonical write input, and preservation
+of the direct-action path when the read Tool loop is enabled. After the server
+has processed a direct action, append a bounded status/action-only authoritative
+System instruction to the normal answer request so the answer model confirms
+`applied`/`noop` truthfully or reports rejected/review/failed without claiming
+that it lacks a Memory Tool or permission. That instruction must contain no
+Memory content, IDs, revision, hash, or raw result code, and ordinary turns must
+remain byte-unchanged.
+
+The first deployed replay exposed one remaining lexical gap: the exact command
+“记住” still matched the broad single-turn remember gate rather than the
+referential lane. The planner consequently received only
+`currentUserMessage="记住"` and had no factual source to save. Treat only the
+bounded standalone commands `记住`, `记住它/这个/这条`, `记下来`, `记一下`,
+and their already bounded English equivalents as referential remember. Do not
+promote generic standalone `保存` or `写进去`. The screenshot replay
+`我喜欢喝生椰拿铁 -> 记住` must use schema v2, persist the prior user
+fact, and give the answer model the status-only already-saved instruction so it
+cannot report a false temporary failure or missing permission.
+
+The deployed screenshot replay then proved a different downstream failure:
+the standalone `记住` did enter the direct-action lane and created one failed
+Activity, but the assistant metadata and PostgreSQL action row both recorded
+`PLANNER_OUTPUT_INVALID`. Free-form Planner text had no deterministic transport
+framing. A synthetic live replay showed that the configured `gpt-5.6-sol`
+could return valid plain JSON on another attempt, so this is not evidence that
+the lexical/reference lane or SQL writer failed and must not be papered over by
+a regex change or parser relaxation.
+
+Replace free-form Planner JSON with exactly one named required
+`propose_memory_action_v1` Tool round. Disable optional thinking, set
+temperature zero, cap output at 1,024 tokens/16 KiB, pin the detected action in
+the strict argument schema, and reject ordinary text, zero/multiple/wrong calls,
+or missing/unknown/duplicate/trailing/oversized arguments. The Tool name binds
+`neo-chat.memory-user-action.v1`; `schemaVersion` is not model-controlled and
+must be added only by Go before unchanged semantic validation. This is required
+because the live `gpt-5.6-sol` and `deepseek-v4-flash` required-Tool probes both
+returned complete semantic arguments, while DeepSeek omitted the otherwise
+required model-supplied `schemaVersion`. Provider construction/transport/
+timeout failures are `PLANNER_PROVIDER_FAILED`; well-framed but invalid Tool
+output is `PLANNER_OUTPUT_INVALID`. Both remain hash-only failed actions and
+the normal answer continues without canonical mutation.
+
+The deployed backend image
+`sha256:262217d38458c4a0edd9c6e62caa27763c6769b7a0fb668977bd427ff7bf0ec8`
+then passed a fresh live `我喜欢喝生椰拿铁 -> 记住` replay. Both user-message
+creates returned HTTP 201, both streams returned HTTP 200/completed, the final
+assistant truthfully confirmed the write, and metadata/SQL agreed on
+`status=applied`, `resultCode=DIRECT_CREATED`, one active Global
+`source=direct_user` Memory at revision one. Re-streaming the historical failed
+source correctly returned its original failed action because source-message
+idempotency is authoritative; live repair proof therefore requires a fresh
+source message rather than replaying the same one. Focused race, all backend
+tests/vet, and the full standalone gate passed; the pre-change backend rollback
+image is
+`sha256:b4e659b66c180b1a450c31622456c84474500e3657ef4d2723b8851c750634fc`.
+
+**2026-08-05 detached server-generation amendment:** In Server mode, changing
+the selected Conversation, creating another Conversation, choosing an
+assistant preset, or closing the browser is a delivery detachment only. It must
+not cancel an accepted text or image generation Run. After request validation,
+the backend generation context must preserve authenticated request values but
+must not inherit HTTP disconnect cancellation. SSE becomes best-effort: the
+first socket write/flush failure marks delivery detached and suppresses later
+network writes while Provider execution, Tool/Memory/Search continuation,
+assistant finalization, Usage, and Memory capture continue to their durable
+terminal state. A request-context cancellation or broken SSE writer alone may
+never finalize the assistant as `cancelled`.
+
+Only the explicit Stop action and the existing durable Run-cancel endpoint may
+cancel an active Run. The frontend must therefore stop aborting Server-mode
+generation during Conversation/assistant navigation while retaining the exact
+AbortController -> `POST /v1/chat/runs/{runId}/cancel` chain for Stop. A
+navigation that supersedes the active read snapshot after the user message was
+accepted must still dispatch the stream request; it may ignore stale live
+deltas because PostgreSQL is authoritative and a later Conversation reload
+must show the completed assistant. Deleting the Conversation that owns the
+active generation remains an explicit destructive action and may cancel it.
+
+Offline coverage must prove disconnect before the first SSE event and during a
+delta both leave the Provider context alive and persist one completed full
+assistant; image generation follows the same rule; explicit Run cancellation
+still stops promptly and persists `cancelled`; Server-mode Conversation/new-
+chat/assistant navigation contains no implicit abort; a superseded read request
+still launches the backend stream; and the Stop path still reaches the cancel
+endpoint without duplicate finalization.
+
+Post-deploy live HTTP-detach acceptance used a disposable Conversation and
+aborted the SSE client after `250 ms` (`curl` exit 28). PostgreSQL/API polling
+still reached `assistant.status=completed` with the exact requested final text,
+then the disposable Conversation was removed with HTTP 204. Together with the
+frontend navigation regressions, this proves that socket/browser delivery loss
+no longer cancels accepted server generation; explicit Stop remains the only
+user cancellation authority.
+
+**2026-08-05 direct preference-recall amendment:** A later screenshot replay
+asked `我喜欢喝什么？` after the active Global Memory already contained the
+user's saved drink preference. The assistant answered that it did not know and
+its Activity showed a direct answer. Live message metadata contained no Tool
+process, proving that the failure preceded hybrid retrieval: the bounded
+explicit-read lexical gate did not recognize this first-person preference
+question, so `search_memory` was never offered as named `required`.
+
+Extend only the current-message personal-recall gate with bounded bilingual
+first-person preference forms, including `我喜欢喝什么？`, `我喜欢吃什么？`,
+`我偏好什么？`, `what do I like?`, and `what do I like to drink?`. Keep
+second-/third-person subjects, recommendation requests, and quoted writing
+tasks Auto; required negatives include `你喜欢喝什么？`, `人们喜欢喝什么？`,
+`我应该喝什么？`, and `帮我写“我喜欢喝什么”的文案`. Direct Memory writes
+retain higher priority. A positive must order canonical zero-argument
+`search_memory` first, suppress optional reasoning only for that decision,
+complete the Tool process when the fixed BGE/Luna authority releases a result,
+continue on the same model, and record Usage only for the exact released
+Memory. Empty/failure/stale selection still releases no Memory.
+
+The rebuilt backend image
+`sha256:c3d74851905f14b1001c32a9f9fde2fe7b291b576a47576fc854360f6696c62d`
+then proved the lexical repair in live runtime. The first disposable replay
+showed `search_memory` running then completed, but returned the same unknown
+answer with zero Usage. PostgreSQL showed the target active Memory's lexical
+projection was ready while its vector projection remained `pending`; the
+required private Memory Worker was stopped, so this was a deployment-state
+failure after correct Tool routing rather than a lexical or Judge defect.
+
+The Memory Worker was recreated from the same backend image and left healthy.
+After it drained the accumulated capture queue, the target projection became
+`ready`. A second fresh disposable Conversation replay of `我喜欢喝什么？`
+then completed `search_memory` from running to completed, answered
+`你喜欢喝生椰拿铁。`, and persisted exactly one `global` revision-one Usage.
+The disposable Conversation was deleted with HTTP 204. The pre-change backend
+rollback image is
+`mm-chat/backend:rollback-20260805-pre-preference-recall` at
+`sha256:262217d38458c4a0edd9c6e62caa27763c6769b7a0fb668977bd427ff7bf0ec8`.
+
 ## Expansion Sweep
 
 - Future evolution: evaluate the fixed Luna candidate-aware profile under the

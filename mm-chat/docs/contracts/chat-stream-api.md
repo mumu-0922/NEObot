@@ -150,7 +150,11 @@ Repository flow:
 5. Finalize the assistant row:
    - success -> `status='completed'`, final `content`, `completed_at=now()`
    - provider error -> `status='failed'`
-   - request context cancellation -> `status='cancelled'`
+   - explicit Run cancellation -> `status='cancelled'`
+
+Browser request-context cancellation is not Run-cancellation authority. After
+request validation, navigation, tab close, and SSE delivery failure detach the
+client while generation continues to a durable terminal row.
 
 `message.completed` must include the persisted final `ChatMessageDto`.
 
@@ -336,7 +340,107 @@ Correct:
 Cache-Control: no-cache, no-transform
 ```
 
-## 10. Non-Goals
+## 10. Detached Generation Contract
+
+### 10.1 Scope / Trigger
+
+This contract applies to Server-mode text and image generation when the user
+switches Conversations, creates another Conversation, selects an assistant
+preset, closes the page, or otherwise loses the SSE connection.
+
+### 10.2 Signatures
+
+Backend ownership split:
+
+```go
+generationCtx := context.WithoutCancel(r.Context())
+streamCtx, cancelRun := context.WithCancel(generationCtx)
+delivery := newBestEffortStreamWriter(w)
+```
+
+Frontend cancellation authority remains:
+
+```text
+explicit Stop -> AbortController.abort()
+  -> POST /v1/chat/runs/{runId}/cancel
+  -> durable CancelRun + activeRuns.cancel(runId)
+```
+
+### 10.3 Contracts
+
+- `context.WithoutCancel` preserves authenticated/request-scoped values but
+  removes the browser connection deadline and cancellation signal.
+- `streamCtx` is the Provider/Tool/Image Run context. Only explicit active/durable
+  Run cancellation cancels it while work is in progress.
+- `bestEffortStreamWriter` delegates headers and healthy writes. The first
+  write, short-write, or `ResponseController.Flush` error marks delivery
+  detached; later writes return success without touching the socket.
+- Delivery detachment never invokes `cancelAssistantAfterWriteError`. Provider
+  consumption, Tool/Memory/Search continuation, final assistant persistence,
+  Usage, and Memory capture continue exactly once.
+- Server-mode Conversation/new-chat/assistant navigation does not abort the
+  active controller. Explicit Stop and deletion of the owning active
+  Conversation retain cancellation behavior.
+- After `appendUserMessage` succeeds, frontend read-request supersession may
+  suppress stale UI deltas but must not prevent `/stream` dispatch. A later
+  Conversation reload reads the durable terminal message.
+
+### 10.4 Validation and Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| HTTP request context is cancelled before the first SSE write | Provider/Run context remains live; assistant reaches its normal durable terminal state |
+| SSE write or flush fails during a delta | Mark delivery detached; consume remaining events and persist the full assistant |
+| Browser switches or creates a Conversation | Do not abort Server Run; stale visible state may ignore its deltas |
+| Browser closes after generation is accepted | Backend continues without an attached client |
+| User presses Stop after `message.started` | Client calls the Run cancel endpoint; Provider/Tool/Image context is cancelled and assistant is `cancelled` |
+| Provider fails independently | Persist/emit the existing bounded provider failure; do not misclassify it as delivery detach |
+| API process stops | In-process work may stop; this contract is not a durable external job queue |
+
+### 10.5 Good / Base / Bad Cases
+
+- Good: a long Tool-backed answer loses its socket halfway through, continues
+  every continuation, and reloads as one completed full assistant.
+- Base: an attached browser receives the unchanged ordered SSE sequence.
+- Bad: Sidebar navigation calls `AbortController.abort()`, the API client calls
+  `/cancel`, and a healthy Run is persisted as cancelled.
+
+### 10.6 Tests Required
+
+- Handler: cancel the HTTP request and fail the writer before `message.started`
+  delivery and during a delta; assert Provider context remains live and the
+  exact full content is persisted `completed` once.
+- Handler image: repeat with a blocked image generator and assert the generated
+  attachment is persisted after disconnect.
+- Handler cancel: preserve active-registry and durable-store cancellation tests
+  that assert prompt Provider cancellation and one `cancelled` terminal state.
+- Frontend store: supersede the read request after user-message acceptance and
+  assert `/stream` is still dispatched while the selected Conversation remains
+  unchanged.
+- Frontend composition/API: navigation has no implicit abort; explicit abort
+  after `message.started` still calls `/v1/chat/runs/{runId}/cancel`.
+
+### 10.7 Wrong vs Correct
+
+Wrong:
+
+```go
+streamCtx, cancel := context.WithCancel(r.Context())
+if writeSSEEvent(w, event, payload) != nil {
+    cancelAssistantAfterWriteError(...)
+}
+```
+
+Correct:
+
+```go
+generationCtx := context.WithoutCancel(r.Context())
+streamCtx, cancelRun := context.WithCancel(generationCtx)
+activeRuns.register(runID, cancelRun)
+w = newBestEffortStreamWriter(w)
+```
+
+## 11. Non-Goals
 
 - Gemini and native OpenAI Responses API adapters.
 - Stream endpoint auth enforcement through the new session-cache substrate.

@@ -1594,6 +1594,57 @@ describe("chat store server read path", () => {
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
   });
 
+  it("dispatches an accepted server message after navigation supersedes the read snapshot", async () => {
+    let resolveAppend!: (message: Message) => void;
+    mocks.serverService.appendUserMessage.mockReturnValue(
+      new Promise<Message>((resolve) => {
+        resolveAppend = resolve;
+      }),
+    );
+    useChatStore.setState({
+      selectedModel: "openai:gpt-5.5",
+      serverReadState: {
+        ...makeEmptyServerReadState(),
+        sessions: [
+          { ...makeServerSession("c1"), messageCount: 0 },
+          makeServerSession("c2"),
+        ],
+        currentSessionId: "c1",
+      },
+    });
+
+    const stream = useChatStore.getState().sendServerMessageAndStream({
+      sessionId: "c1",
+      content: "keep generating",
+      streamIdempotencyKey: "background-stream",
+    });
+    await vi.waitFor(() => {
+      expect(mocks.serverService.appendUserMessage).toHaveBeenCalledOnce();
+    });
+
+    await expect(
+      useChatStore.getState().selectServerSession("c2"),
+    ).resolves.toBe(true);
+    resolveAppend(makeMessage("m3", "user"));
+    await expect(stream).resolves.toMatchObject({ status: "completed" });
+
+    expect(mocks.streamService.streamAssistantMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "c1",
+        userMessageId: "m3",
+        idempotencyKey: "background-stream",
+      }),
+      expect.any(Object),
+    );
+    const state = useChatStore.getState().serverReadState;
+    expect(state.currentSessionId).toBe("c2");
+    expect(state.activeMessages.map((message) => message.id)).toEqual([
+      "m1",
+      "m2",
+    ]);
+    expect(state.generation).toEqual(makeEmptyServerReadState().generation);
+  });
+
   it("does not let stale server stream terminal results overwrite the latest snapshot", async () => {
     let resolveStream!: (result: {
       status: string;

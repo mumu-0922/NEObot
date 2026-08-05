@@ -64,6 +64,31 @@ is rejected before this planner call. Activity and Usage rows copy no Memory,
 query, prompt, embedding, or raw score. Authenticated reads hydrate only a
 current visible Memory, otherwise they return a deleted marker.
 
+An exact bounded referential remember follow-up such as “那你写进去呀” or
+standalone “记住” uses the nearest preceding completed user row as candidate
+facts. Standalone `记住它/这个/这条`, `记下来`, and `记一下` use the
+same lane; generic standalone `保存` and `写进去` do not. Intervening
+assistant and incomplete rows are never factual authority. The current message
+remains the sole action authority, SQL source, and assistant parent; the prior
+user text enters only a separately named v2 planner field after local Secret
+classification and deterministic redaction. Missing, Secret, or fully redacted
+references make zero planner calls/mutations, while a current message that
+already contains the complete fact stays on the unchanged v1 input and hash.
+The planner no longer relies on free-form JSON. It must issue exactly one named
+required `propose_memory_action_v1` Tool Call with strict semantic arguments,
+thinking disabled, temperature zero, and bounded output. The versioned Tool
+name—not a model-supplied field—binds the canonical output schema version;
+Go then repeats exact-key and semantic validation. Plain text, zero/multiple or
+wrong calls, and malformed arguments fail as `PLANNER_OUTPUT_INVALID`, while
+Provider/transport failure is classified separately as
+`PLANNER_PROVIDER_FAILED`. Both paths leave canonical Memory unchanged and let
+the normal answer continue.
+The server then maps only the bounded direct-action status/action into an
+authoritative answer System instruction. Applied/NOOP results are confirmed;
+rejected/review/failed results are not presented as success. The instruction
+contains no Memory content, ID, revision, hash, or raw result code and prevents
+the answer model from falsely claiming that it lacks Memory permission.
+
 PR7 and PR8 add retrieval evidence without promoting a reader:
 
 ```text
@@ -100,9 +125,12 @@ flag; ready embeddings still depend on the shared hybrid Worker switch.
 
 Only the current user message may force that first call. Explicit bilingual
 saved-Memory commands and direct personal recall questions order
-`search_memory` first and use named `required`; ordinary tasks and general
-questions about memory remain Auto. Capability discovery stays background and
-fail-closed. Official DeepSeek Tool rounds/continuations use
+`search_memory` first and use named `required`. This includes bounded
+first-person preference questions such as `我喜欢喝什么？` and
+`what do I like to drink?`, but excludes other-subject questions, advice, and
+quoted writing tasks. Ordinary tasks and general questions about memory remain
+Auto. Capability discovery stays background and fail-closed. Official DeepSeek
+Tool rounds/continuations use
 `thinking.type=disabled` with no `reasoning_effort`, while plain no-Tool chat
 retains its selected reasoning behavior. This entry policy never replaces the
 fixed BGE/Luna candidate release boundary.

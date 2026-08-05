@@ -1269,37 +1269,28 @@ export const useChatStore = create<ChatState>()(
           );
           options.onUserMessageAccepted?.(userMessage);
 
-          if (requestId !== serverReadRequestId) {
-            return {
-              status: "cancelled",
-              error: {
-                code: "STREAM_INTERRUPTED",
-                message: "Server stream request was superseded.",
-                recoverable: true,
-              },
-            };
-          }
-
-          set((state) => ({
-            serverReadState: {
-              ...applyServerMessageToReadState(
-                state.serverReadState,
-                options.sessionId,
-                userMessage,
-              ),
-              generation: {
-                ...state.serverReadState.generation,
-                status: "pending",
-                sessionId: options.sessionId,
-                userMessageId: userMessage.id,
-                assistantMessageId: null,
-                activeServerRunId: null,
+          if (requestId === serverReadRequestId) {
+            set((state) => ({
+              serverReadState: {
+                ...applyServerMessageToReadState(
+                  state.serverReadState,
+                  options.sessionId,
+                  userMessage,
+                ),
+                generation: {
+                  ...state.serverReadState.generation,
+                  status: "pending",
+                  sessionId: options.sessionId,
+                  userMessageId: userMessage.id,
+                  assistantMessageId: null,
+                  activeServerRunId: null,
+                  error: null,
+                },
+                isLoading: true,
                 error: null,
               },
-              isLoading: true,
-              error: null,
-            },
-          }));
+            }));
+          }
 
           let assistantContent = "";
           const setServerGeneration = (

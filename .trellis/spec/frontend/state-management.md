@@ -60,6 +60,11 @@ export const useUIStore = create<UIState>((set) => ({
 - Store async state includes loading/error/generation state where the UI needs
   it. Request IDs and serialized write queues in `chatStore.ts` prevent stale
   reads or writes from replacing newer snapshots.
+- Request identity gates presentation, not accepted Server work. Once
+  `appendUserMessage` succeeds, `sendServerMessageAndStream` must dispatch the
+  stream even if navigation has superseded the current read request. Its stale
+  deltas/terminal result may be ignored; PostgreSQL remains authoritative and
+  selecting/reloading that Conversation hydrates the completed assistant.
 - Errors must reach a typed error or explicit error field; do not silently
   convert a failed server operation into successful local state.
 
@@ -85,3 +90,5 @@ because many content components can open it.
   mode.
 - Broad store subscriptions that rerender on unrelated updates.
 - In-place array/object mutation or updates based on an old async closure.
+- Returning a synthetic cancelled result before dispatching an accepted Server
+  message merely because another Conversation became the active read snapshot.

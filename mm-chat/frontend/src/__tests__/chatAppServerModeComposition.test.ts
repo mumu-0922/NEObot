@@ -46,6 +46,14 @@ describe("ChatApp server mode composition", () => {
     expect(chatApp).toContain("activePlugins,");
     expect(chatApp).toContain("if (serverModeEnabled) return;");
     expect(chatApp).toContain("abortActiveGeneration");
+    expect(chatApp).toContain("if (isGenerating && !serverModeEnabled)");
+    expect(chatApp).not.toMatch(
+      /if \(serverModeEnabled\) \{\s+if \(isGenerating\) \{\s+abortActiveGeneration\(\);/,
+    );
+    expect(chatApp).toContain(
+      "if (serverModeEnabled) {\n      abortActiveGeneration();\n      return;",
+    );
+    expect(chatApp).toContain("shouldAbortActiveGenerationForSessionDelete({");
     expect(chatApp).toContain("localSessionToolsDisabled={serverModeEnabled}");
     expect(chatApp).toContain(
       "allowReasoningWhenSessionToolsDisabled={serverModeEnabled}",

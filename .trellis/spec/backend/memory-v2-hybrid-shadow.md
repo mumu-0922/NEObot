@@ -517,9 +517,12 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   turns order `search_memory` first, use the existing named `required` choice,
   and disable optional reasoning only for the first decision round. General
   questions about memory and ordinary tasks remain Auto; direct
-  remember/correct/forget actions retain their write path. This gate selects
-  whether to execute the Tool only. It does not select candidates or weaken
-  fixed BGE/Luna release authority.
+  remember/correct/forget actions retain their write path. Bounded first-person
+  preference questions such as `我喜欢喝什么？` and
+  `what do I like to drink?` are personal recall. Second-/third-person forms,
+  advice such as `我应该喝什么？`, and quoted writing tasks are not. This gate
+  selects whether to execute the Tool only. It does not select candidates or
+  weaken fixed BGE/Luna release authority.
 - Auto capability discovery remains fail-closed and non-blocking. Its fixed
   fictional probe uses thinking-disabled, temperature-zero, output-128
   settings and contains no user/Memory data. Official `api.deepseek.com` Tool
@@ -655,6 +658,7 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 | Product Memory Tool flag is absent/false | Do not expose `search_memory`; preserve the normal v1 prompt/Usage path. |
 | Current user explicitly requests saved Memory and capability is supported | Order `search_memory` first, select named `required`, and keep the fixed BGE/Luna selector as final release authority. |
 | Current user discusses memory generally or submits an ordinary task | Preserve Auto; do not force Memory retrieval. |
+| A known saved Memory still has `embedding_status=pending` because the private Worker is stopped | Product acceptance is not ready. The Tool may complete with an empty result and zero Usage; restore the correctly flagged Worker and wait for current projection readiness rather than bypassing BGE/Luna or adding a v1 fallback. |
 | Explicit read sees unknown capability | Start the fixed background probe, release no Tool Memory for that turn, and never set an implicit override. |
 | Official DeepSeek returns a JSON object with forbidden fields for canonical `search_memory` | Drop every returned member at the zero-argument Provider adapter boundary, validate canonical `{}`, and retain the current server-owned request as the only retrieval query. |
 | Product Tool policy is absent or is any Development/shadow identity | Return `policy_unavailable`; perform zero hybrid Provider work and release no Memory. |
@@ -747,8 +751,9 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   concurrent BGE/judge failure and cutoff, ordinal intersection, empty-judge
   abstention, a Provider that ignores context without extending the cutoff,
   exact Tool definition/version/SHA-256, product default-off/direct-action/
-  model-built-in exclusions, bilingual explicit-read positive/general-memory
-  negative intent cases, Memory-first named-required ordering, bounded fixed
+  model-built-in exclusions, bilingual explicit-read/direct-preference
+  positives and general-memory/other-subject/advice/quoted-task negatives,
+  Memory-first named-required ordering, bounded fixed
   capability probes, official DeepSeek Tool/continuation versus plain-chat
   thinking shapes, zero-argument JSON-object canonicalization with malformed/
   generic/argument-bearing negatives, first-round buffering, no-call/exact-empty-object

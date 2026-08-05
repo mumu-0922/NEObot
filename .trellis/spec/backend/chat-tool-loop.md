@@ -31,7 +31,8 @@ failures, and kept Validation/Promotion blocked.
 
 Use this spec when changing provider streaming to expose function tools,
 executing multi-round Tool Calls, adding Web/Knowledge tools, persisting process
-steps, or changing conversation Search authority.
+steps, changing conversation Search authority, or changing the ownership of a
+Run across browser navigation/SSE disconnect.
 
 ## 2. Signatures
 
@@ -244,13 +245,17 @@ adapter version  = chat-first-tool-round-memory-decision-v1
 
 Only the current user message may force the product Tool. A bounded bilingual
 lexical gate recognizes explicit saved-Memory read/use/search commands and
-direct personal recall questions. It orders `search_memory` first, selects the
-existing normalized `required` choice, and disables optional reasoning for
-that first decision round. Direct remember/correct/forget actions keep their
-higher-priority write path; general questions about memory and ordinary turns
-remain `auto`. The same-model continuation restores the selected answer
-settings, except that the official DeepSeek Tool protocol stays
-thinking-disabled through its continuation.
+direct personal recall questions, including bounded first-person preference
+forms such as `我喜欢喝什么？` and `what do I like to drink?`. It orders
+`search_memory` first, selects the existing normalized `required` choice, and
+disables optional reasoning for that first decision round. The personal form
+must describe the current user and occupy the request itself: second-/third-
+person questions, advice such as `我应该喝什么？`, and quoted writing tasks
+remain Auto. Direct remember/correct/forget actions keep their higher-priority
+write path; general questions about memory and ordinary turns remain `auto`.
+The same-model continuation restores the selected answer settings, except that
+the official DeepSeek Tool protocol stays thinking-disabled through its
+continuation.
 
 The old schema-v6 preflight additionally forced `temperature=0`, maximum output
 `128`, and disabled thinking. Those fields remain historical schema-v6 evidence
@@ -296,6 +301,19 @@ wrapper = runId + conversationId + messageId + sequence + createdAt
 The same monotonically increasing `sequence` covers all chat SSE event types.
 Singleton steps retain `<messageId>:<kind>:1`; G19.3 allocates each Tool/Web
 execution as the next stable `<messageId>:tool|web:<n>` pair.
+
+Detached Server-mode generation uses two distinct contexts and one best-effort
+delivery wrapper:
+
+```go
+generationCtx := context.WithoutCancel(r.Context()) // keep auth/request values
+streamCtx, cancelRun := context.WithCancel(generationCtx)
+delivery := newBestEffortStreamWriter(w)             // write/flush failure detaches
+```
+
+`activeRuns.register(runID, cancelRun)` plus the durable cancellation store are
+the only Run-cancellation seams after acceptance. The HTTP request context and
+SSE socket own delivery only.
 
 ## 3. Contracts
 
@@ -453,13 +471,22 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 - Live reasoning redaction must retain a bounded un-emitted suffix across
   provider chunks. Sanitizing each chunk independently is forbidden because a
   split `apiKey=`/value or `Bearer` token can bypass the regex boundary.
+- Server-mode text and image generation outlive browser navigation, tab close,
+  and SSE write/flush failure. `context.WithoutCancel` must preserve
+  authentication and request-scoped values without inheriting HTTP disconnect;
+  the Run receives a separate cancellable child. After the first delivery
+  failure, later SSE writes are successful no-ops while Provider consumption,
+  Tool/Memory/Search continuation, finalization, Usage, and capture continue.
+  Never call the Run-cancel/finalize-cancelled path merely because delivery
+  failed.
 - G19.3 external Web work and G19.6B Tool-capable selected-Knowledge work
   execute after SSE starts and are represented by live Tool/Web and
   Tool/Knowledge steps. `search_knowledge` accepts only a bounded Query;
   authenticated conversation selection remains collection authority. The
   non-Tool/model-built-in compatibility executor is also live after
   `message.started`; pre-SSE Knowledge retrieval is forbidden.
-- Context cancellation is a terminal control state, not Tool degradation. A
+- Run-context cancellation from explicit cancel authority is a terminal
+  control state, not Tool degradation. A
   compatibility planner, native/compatibility Web execution, or Knowledge
   execution that observes `errors.Is(err, context.Canceled)` or a cancelled
   operation context emits `ProcessStepStatusCancelled`, carries no
@@ -584,6 +611,8 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 | Config changes during real test  | `MODEL_BUILT_IN_SEARCH_CONFIG_CHANGED`; no attest |
 | Knowledge miss                   | successful empty result; continue                |
 | Approval rejected                | do not execute; continue or terminate truthfully |
+| Browser navigation/tab close cancels HTTP or breaks SSE | detach delivery; continue the Run to one durable terminal state |
+| SSE write or flush fails after `message.started` | suppress later delivery; keep Provider/Tool/finalize work alive |
 | Cancel during Provider/Tool      | cancel both; one terminal cancelled event        |
 | Cancel during compatibility plan | Tool/Web/Generation cancelled; no `planner_failed` |
 | Provider exposes no reasoning    | process only; no fabricated reasoning            |
@@ -601,6 +630,7 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
 | Fixed Judge returns a typed transient Provider failure | retry at most twice with `Retry-After` precedence or five/ten-second waits; deterministic/protocol/provenance failures do not retry |
 | Memory Tool continuation completes with projected rows | record immutable Usage for exactly those ordered rows in assistant finalization |
 | Memory Tool is empty/failed or continuation recovers from the original request | record zero Tool Memory Usage links |
+| SSE shows `search_memory` completed but Usage is zero | Treat this as a valid empty Tool result, not successful recall. Inspect current projection readiness and Memory Worker health before changing routing or answer prompts. |
 | Buffered first round fails after assembling a call but before closing | discard the draft/call, execute zero Memory retrieval, and use the original compatibility path |
 | Memory call name differs by whitespace or case | reject; normalized display names are not contract authority |
 | Memory call omits arguments or returns `null` | reject; nil map is not an explicit empty object |
@@ -648,9 +678,17 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
   `search_memory({})`, fixed BGE reranks current candidates, the current exact
   stored Luna tuple selects useful ordinals, and only their intersection enters
   the bounded Tool Result and immutable completed-answer Usage.
-- Good explicit-read route: `你知道我的信息嘛` forces only the canonical
-  `search_memory` first-round call; fixed BGE/Luna selection may still return
-  an empty result, and the answer continuation uses no rejected candidate.
+- Good explicit-read route: `你知道我的信息嘛` and `我喜欢喝什么？` force only
+  the canonical `search_memory` first-round call; fixed BGE/Luna selection may
+  still return an empty result, and the answer continuation uses no rejected
+  candidate. Live acceptance of a known saved fact additionally requires the
+  expected non-empty answer and exact Usage; a completed Tool step alone is not
+  sufficient evidence.
+- Base personal-question route: `你喜欢喝什么？`, `人们喜欢喝什么？`,
+  `我应该喝什么？`, and `帮我写“我喜欢喝什么”的文案` remain Auto.
+- Good detached route: the browser switches Conversations or closes after an
+  accepted turn, SSE delivery fails, and the Provider/Tool loop still persists
+  one complete assistant plus its exact Usage/capture state.
 - Base enabled product route: an unrelated request yields no Memory call and
   its buffered first-round answer is released without hybrid retrieval.
 - Base intent route: “what is long-term memory?” remains Auto and performs no
@@ -665,7 +703,8 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
   in every Tool Result, recovering after partial answer text, fabricating
   reasoning, rendering all retrieved sources as Citations, treating selection
   as mandatory RAG, defaulting to Both for “more context”, blocking chat on a
-  capability probe/cache write, or persisting query/catalog/provider payloads.
+  capability probe/cache write, persisting query/catalog/provider payloads, or
+  treating an HTTP/SSE disconnect as explicit Run cancellation.
 
 ## 6. Tests Required
 
@@ -676,7 +715,11 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
    cancellation.
    Cancellation fixtures must cover compatibility planning, native Web,
    Knowledge, Handler persistence, no failure category, zero Citation, and a
-   repeated run that detects event-delivery races.
+   repeated run that detects event-delivery races. Separate disconnect fixtures
+   must cancel the HTTP context and fail delivery before the first event and
+   during a delta, assert the Provider context remains live, and verify one
+   completed full assistant. Image generation and explicit Run cancellation
+   require independent regressions.
 4. Capability mismatch and compatibility-planner tests with no hidden model.
 5. Knowledge hit/miss/deletion plus mixed Knowledge/Web marker truth.
 6. Real selected provider/Search smoke must prove ordinary zero-Search,
@@ -741,9 +784,10 @@ execution as the next stable `<messageId>:tool|web:<n>` pair.
     not define schema-v7 decoding authority. Product tests additionally pin the
     separate production policy, exact Provider/type/Base-URL hash/model/secret
     authority, tuple re-resolution, typed Judge two-retry schedule, deterministic
-    no-retry behavior, zero v1 fallback, bilingual explicit-read positive and
-    general-memory negative intent cases, Memory-first named-required ordering,
-    first-decision reasoning suppression, unchanged ordinary Auto choice,
+    no-retry behavior, zero v1 fallback, bilingual explicit-read and direct
+    first-person preference positives, second-/third-person/advice/quoted-task
+    negatives, Memory-first named-required ordering, first-decision reasoning
+    suppression, unchanged ordinary Auto choice,
     bounded no-thinking capability probes, and official DeepSeek Tool/
     continuation versus plain-chat wire shapes. Provider-adapter tests must
     additionally pin zero-argument JSON-object canonicalization, generic
@@ -784,6 +828,14 @@ every turn    -> tool_choice=required
 // User cancellation becomes a false degraded Search failure.
 status := ProcessStepStatusFailed
 failureCategory := "planner_failed"
+```
+
+```go
+// Wrong: browser delivery owns Provider execution.
+streamCtx, cancel := context.WithCancel(r.Context())
+if writeSSEEvent(w, event, payload) != nil {
+    cancelAssistant()
+}
 ```
 
 ```text
@@ -835,6 +887,14 @@ if status == ToolCapabilityUnknown {
 explicit saved-Memory read -> search_memory first + named required
 ordinary/general turn      -> auto
 unknown capability         -> no Memory this turn + background fixed probe
+```
+
+```go
+// Correct: HTTP disconnect detaches delivery; explicit Run cancel owns work.
+generationCtx := context.WithoutCancel(r.Context())
+streamCtx, cancelRun := context.WithCancel(generationCtx)
+activeRuns.register(runID, cancelRun)
+delivery := newBestEffortStreamWriter(w)
 ```
 
 ```go

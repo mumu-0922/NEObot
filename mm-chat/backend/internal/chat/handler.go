@@ -1171,6 +1171,13 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusInternalServerError, "STREAMING_UNSUPPORTED", "streaming is not supported")
 		return
 	}
+	// Authentication and request-scoped values remain available, but browser
+	// navigation or a closed SSE socket is delivery state, not Run cancellation.
+	generationCtx := context.WithoutCancel(r.Context())
+	r = r.WithContext(generationCtx)
+	delivery := newBestEffortStreamWriter(w)
+	w = delivery
+	flusher = delivery
 
 	userMessage, err := h.service.GetMessage(r.Context(), conversationID, request.UserMessageID)
 	if err != nil {
@@ -1366,10 +1373,15 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			conversationID,
 			userMessage,
 			assistantMessage,
+			conversationMessages,
 			streamProvider,
 			*modelRef,
 		)
 	}
+	providerSystemPrompt = appendDirectMemoryActionAnswerInstruction(
+		providerSystemPrompt,
+		directMemoryAction,
+	)
 	trace := newProcessTrace(assistantMessage.ID)
 	addLegacyWebProcessStep(
 		trace,
@@ -1489,7 +1501,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return withDirectMemoryActionMetadata(metadata, directMemoryAction)
 	}
 
-	streamCtx, streamCancel := context.WithCancel(r.Context())
+	streamCtx, streamCancel := context.WithCancel(generationCtx)
 	unregisterRun := h.activeRuns.register(runID, streamCancel)
 	stopCancellationWatch := watchRunCancellation(streamCtx, h.cancellationRuns, runID, streamCancel)
 	defer unregisterRun()
@@ -1591,7 +1603,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			streamCtx,
 			providerRequest,
 		)
-		if err != nil && streamCtx.Err() == nil && r.Context().Err() == nil &&
+		if err != nil && streamCtx.Err() == nil &&
 			!errors.Is(err, context.Canceled) {
 			fusionDiagnostics.WebExecuteDurationMillis =
 				sourceFusionDurationMillis(builtInSearchStarted)
@@ -1619,7 +1631,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		events, err = streamProvider.StreamChat(streamCtx, providerRequest)
 	}
 	if err != nil {
-		if streamCtx.Err() != nil || r.Context().Err() != nil || errors.Is(err, context.Canceled) {
+		if streamCtx.Err() != nil || errors.Is(err, context.Canceled) {
 			finishProcessTrace(trace, "cancelled", time.Now(), webSearchResult)
 			h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 				Status: "cancelled",

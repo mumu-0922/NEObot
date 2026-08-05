@@ -2350,12 +2350,8 @@ const ChatApp = () => {
     const requestId = assistantSelectRequestRef.current + 1;
     assistantSelectRequestRef.current = requestId;
 
-    if (isGenerating) {
-      if (serverModeEnabled) {
-        abortActiveGeneration();
-      } else {
-        void stopActiveGenerationWithFeedback();
-      }
+    if (isGenerating && !serverModeEnabled) {
+      void stopActiveGenerationWithFeedback();
     }
 
     if (viewMode === "assistants") {
@@ -2989,9 +2985,6 @@ const ChatApp = () => {
 
   const handleNewChat = () => {
     if (serverModeEnabled) {
-      if (isGenerating) {
-        abortActiveGeneration();
-      }
       createServerSession()
         .then(() => navigateToPanel("chat"))
         .catch((error) => {
@@ -3037,9 +3030,6 @@ const ChatApp = () => {
         currentSessionId={visibleCurrentSessionId}
         onSelectSession={(id) => {
           if (serverModeEnabled) {
-            if (isGenerating) {
-              abortActiveGeneration();
-            }
             void selectServerSession(id);
           } else {
             if (isGenerating) {
