@@ -1469,37 +1469,52 @@ PostgreSQL 17/Compose replay processed exactly 100 Validation cases, recorded
 failed case, then removed every scoped runtime object. No Provider credential,
 network request, or quota was used.
 
-A future live run requires two new, mutually independent mode-`0600` files:
-one fixed SiliconFlow BGE credential and one fixed Luna credential. It also
-requires both the normal SiliconFlow quota approval and the schema-v15-only
-approval; the historical configured-judge Development approval is rejected:
+A live schema-v15 run requires two newly materialized, mutually independent
+mode-`0600` files: one fixed SiliconFlow BGE credential and one fixed Luna
+credential. Operational `fresh` means those new one-run files plus a new
+explicit export authorization and the schema-v15 quota authorization; it does
+not require or claim upstream Key reissuance. The preferred path reuses only
+the already active, connection-attested Server Vault records and wipes the
+operator copies on every exit:
 
 ```bash
-bash scripts/run-memory-regression.sh \
-  --provider-mode live_siliconflow \
-  --capture-mode production_fixed_memory_judge_validation \
-  --credential-file /secure/input/fresh-validation-bge.key \
-  --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
-  --configured-candidate-judge-credential-file /secure/input/fresh-validation-luna.key \
-  --configured-candidate-judge-provider-id SERVER_DEFAULT \
-  --configured-candidate-judge-provider-type openai_compatible \
-  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
-  --configured-candidate-judge-model gpt-5.6-luna \
-  --production-memory-judge-validation-approval \
-    I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_VALIDATION_QUOTA \
+bash scripts/run-memory-production-validation-from-vault.sh \
   --cost-basis /secure/eval/production-memory-judge-validation-cost-v10.json \
-  --output-dir /secure/eval/native-memory-runs
+  --output-dir /secure/eval/native-memory-runs \
+  --credential-export-approval \
+    I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_VALIDATION_CREDENTIALS \
+  --siliconflow-live-approval \
+    I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --production-validation-approval \
+    I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_VALIDATION_QUOTA
 ```
 
-This documentation does not authorize that live command. A terminal Provider
-failure records a fail-closed case and continues the remaining ordered cases,
-but makes the final Validation fail. Retained evidence is aggregate-only: no
-query, Memory plaintext, Provider response/error, raw score, or case-level
-identity. Any privacy/authorization release is Red and disables the Tool Loop;
-false injection above `0.02` is Orange and disables recall while preserving
-data; stability or remaining quality failure is Yellow and retains Beta. A
-passing result still has `releaseEligible=false`, selects no policy, changes no
-flag, and stops for owner review.
+The wrapper requires the active mode-`0600` single-server environment and
+cost-basis files and a private mode-`0700` output parent. It runs the existing
+Compose `admin` service as the configured non-root UID/GID. The bounded
+`memory-validation-credentials-export` subcommand has no arbitrary Provider,
+record, context, model, or cardinality input: it resolves only active attested
+`RAG:SILICONFLOW` and `SERVER_DEFAULT`, then verifies OpenAI Compatible,
+normalized Base URL SHA-256
+`3bc0bbf28d9d817b4f6c8f6058c2c51dd644c541252ed6e2542a8c8a472ff671`,
+and model `gpt-5.6-luna`. Existing paths, symlinks, insecure parents, equal
+paths/bytes, missing or copied Vault contexts, disabled/unattested records,
+and any tuple drift fail before Validation. Partial files are overwritten and
+removed. The wrapper repeats pair preflight, invokes the unchanged schema-v15
+runner, and overwrites/removes the exported pair on success, metric failure,
+ordinary failure, `INT`, `TERM`, and `HUP`.
+
+The report and manifest intentionally contain no credential value, Key hash,
+issuance date, Vault envelope, or rotation proof. They attest the fixed
+Provider tuple and aggregate execution only. A terminal Provider failure
+records a fail-closed case and continues the remaining ordered cases, but
+makes the final Validation fail. Retained evidence is aggregate-only: no query,
+Memory plaintext, Provider response/error, raw score, or case-level identity.
+Any privacy/authorization release is Red and disables the Tool Loop; false
+injection above `0.02` is Orange and disables recall while preserving data;
+stability or remaining quality failure is Yellow and retains Beta. A passing
+result still has `releaseEligible=false`, selects no policy, changes no flag,
+and stops for owner review.
 
 For each live phase, the wrapper copies that phase's Key into a temporary
 mode-`0600` file and mounts it read-only. Tool-route Development does this for
@@ -1507,10 +1522,10 @@ both independent credentials and rejects the same file, hard links, or equal
 Key bytes. Values never enter argv, environment variables, Compose config,
 Docker inspect, reports, or Git. Both in-process byte buffers are cleared, and
 retained artifacts, runner logs, and Docker metadata are scanned for both
-secrets. When the owner authorizes Server Vault reuse for Development, a
-separate operator step must first create the two mode-`0600` input files and
-must overwrite/remove them afterward; the runner itself never inspects or
-decrypts the Vault. Live output alone uses profile `native_v2_hybrid`.
+secrets. When the owner authorizes Server Vault reuse, the dedicated schema-v15
+wrapper is the only supported automated export path. The runner itself never
+inspects or decrypts the Vault. Live output alone uses profile
+`native_v2_hybrid`.
 
 Configured candidate-judge Development follows the same rule with one fresh
 SiliconFlow retrieval credential and one different fresh configured-chat
@@ -1529,10 +1544,27 @@ metadata.
 Schema-v15 production Validation keeps the same physical isolation but changes
 the authorization authority. It accepts only the dedicated frozen-Validation
 approval, rejects the historical configured-judge Development approval, and
-requires new independent BGE/Luna source files for that run. Missing approval,
-same-file/hard-link/equal-byte credentials, tuple drift, or artifact leak fails
-before retaining output. Wrapper success, failed metric, and signal paths all
-destroy the temporary copies and the isolated Compose project.
+requires newly materialized independent BGE/Luna source files for that run.
+The source values may be owner-authorized reuse of the exact active Vault
+records; this does not attest upstream Key age. Missing approval, same-file/
+hard-link/equal-byte credentials, tuple drift, or artifact leak fails before
+retaining output. Wrapper success, failed metric, and signal paths all destroy
+the temporary copies and the isolated Compose project.
+
+The single owner-authorized live run
+`memory-regression-20260806t013956z-31e67617` completed all 100 ordered cases
+with zero failed case and retained a valid aggregate-only report/manifest pair.
+Candidate Recall@20 was `1.0`, Final Recall@5 was `0.984615`, current-fact
+accuracy was `0.981818`, and every cross-user, deleted-memory, Secret,
+untrusted-source, and unauthorized-egress safety counter was zero. Nine
+false-injection cases produced rate `0.09`, above the frozen `0.02` criterion,
+so the result is immutable Orange failed evidence with required action
+`disable_memory_recall_preserve_data`. Report and manifest SHA-256 values are
+`6b2ec1a0cf26b2190302accac384f9fab4fce0898d1b1bad1eaacb5a2ce39c69`
+and `3ee114b2991ad2d0de954ad4a5998947567c66672e010dc079f17c73c18ae650`.
+Both one-run credential copies and every scoped runtime object were removed.
+The operator path deliberately changed no Memory flag; do not rerun, promote,
+run Holdout, or release from this consumed authorization.
 
 Accuracy-first Development keeps the same exact two-file and fixed-Luna
 authority. Its v12 execution policy changes no credential boundary: operator

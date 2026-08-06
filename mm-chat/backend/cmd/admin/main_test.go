@@ -82,6 +82,8 @@ func TestAdminRunRequiresExplicitCommandArguments(t *testing.T) {
 		{"provider-secrets-rewrite", "--execute"},
 		{"provider-secrets-rewrite", "--expected-plan-sha256", strings.Repeat("a", 64)},
 		{"provider-secrets-rewrite", "--confirmed-backup-sha256", strings.Repeat("b", 64)},
+		{"memory-validation-credentials-export"},
+		{"memory-validation-credentials-export", "--bge-output", "/tmp/bge.key"},
 		{"memory-deletions-export", "--output", "out.mm-memory-deletions"},
 		{"memory-deletions-replay", "--input", "in.mm-memory-deletions", "--passphrase-stdin"},
 		{"backup-retention"},

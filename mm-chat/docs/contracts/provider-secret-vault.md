@@ -27,6 +27,13 @@ func (s *Service) ActivateAdminProvider(context.Context, string) (AdminProviderC
 func ProviderConnectionTestValid(StoredProviderConfig) bool
 ```
 
+```text
+admin memory-validation-credentials-export \
+  --bge-output <new-private-file> \
+  --luna-output <different-new-private-file> \
+  --approval I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_VALIDATION_CREDENTIALS
+```
+
 Runtime/deployment fields:
 
 ```text
@@ -367,3 +374,48 @@ vault at rest:   provider:voice:<userId>:VOICE:SILICONFLOW
 
 The routes, fixed tuple, cache retention, and rollback procedure are defined in
 [`voice-provider-reservation.md`](voice-provider-reservation.md).
+
+## 15. Schema-v15 Memory Validation Exact-Pair Export
+
+The operator-only export is a deliberately closed capability for one formal
+Memory production-policy Validation. It is not a general Provider-secret dump
+facility and has no browser or HTTP route.
+
+- the existing non-root Compose `admin` service loads the normal database and
+  read-only Provider keyring and binds resolution to the configured bootstrap
+  owner;
+- BGE resolution is hard-coded to the exact active, connection-attested
+  `RAG:SILICONFLOW` record through `ResolveRAGProviderCredential`;
+- Luna resolution is hard-coded to active, connection-attested
+  `SERVER_DEFAULT` through `ResolveServerDefaultProvider`, then requires
+  `OpenAI Compatible`, normalized Base URL SHA-256
+  `3bc0bbf28d9d817b4f6c8f6058c2c51dd644c541252ed6e2542a8c8a472ff671`,
+  and model `gpt-5.6-luna`;
+- no Provider ID, record ID, secret context, Base URL, model, or output
+  cardinality selector is accepted;
+- both caller paths must be absolute new paths under private non-symlink
+  directories. Creation is exclusive, final files are regular mode `0600`,
+  and existing files or symlinks are never overwritten;
+- equal paths, same files, and equal Key bytes are rejected. Any failure after
+  one file is created overwrites and removes every file created by that
+  invocation;
+- stdout contains only a fixed content-free completion line. All resolver,
+  Vault, database, validation, output, and cleanup errors collapse to bounded
+  secret-free categories;
+- the paired `run-memory-production-validation-from-vault.sh` wrapper creates
+  the private one-run directory, invokes this command, repeats file/pair
+  preflight, runs the unchanged schema-v15 runner, and overwrites/removes both
+  copies on success, metric failure, ordinary failure, `INT`, `TERM`, or `HUP`.
+
+For this lane, operational `fresh` means a new explicit export authorization
+and newly created one-run files. Reusing the exact active Vault Key values is
+permitted when separately owner-authorized. Neither the export nor schema-v15
+aggregate evidence claims upstream issuance time, Key rotation, Key hashes, or
+credential provenance beyond the exact active attested Provider records.
+
+Required proof covers exact argument/approval gates, exact Provider selection,
+disabled/missing/drifted/copied-context and unavailable-Vault failure, existing
+path/symlink/same-path/equal-value rejection, partial-write cleanup, mode and
+regular-file checks, secret-free stdout/stderr, and wrapper cleanup across
+success, metric failure, ordinary failure, and all supported signals. These
+offline gates must pass before the single separately authorized live run.

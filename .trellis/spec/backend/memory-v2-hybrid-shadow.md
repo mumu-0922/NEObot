@@ -517,12 +517,16 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   Retrieval keeps one retry; Judge keeps schema-v14's two retries and `5s/10s`
   fallback; Provider concurrency remains one. A terminal case releases no
   Memory, is aggregated, and does not stop later cases, but the report fails.
-- Schema-v15 live authority requires a fresh fixed-BGE credential, a different
-  fresh fixed-Luna credential, and the dedicated frozen-Validation approval.
-  The old configured-judge Development approval cannot authorize it. Fake
-  protocol is always lifecycle-only, Yellow/`retain_beta`, and non-passing.
-  Both report and manifest are aggregate-only, `releaseEligible=false`, and
-  unable to change `MEMORY_TOOL_LOOP_ENABLED` or the active policy.
+- Schema-v15 live authority requires a new explicit one-run export approval,
+  a newly materialized mode-`0600` fixed-BGE file, a different newly
+  materialized mode-`0600` fixed-Luna file, and the dedicated frozen-
+  Validation quota approval. The values may reuse the exact already active
+  Vault-backed Provider Keys; this boundary does not attest upstream issuance
+  time or rotation. The old configured-judge Development approval cannot
+  authorize it. Fake protocol is always lifecycle-only,
+  Yellow/`retain_beta`, and non-passing. Both report and manifest are
+  aggregate-only, `releaseEligible=false`, and unable to change
+  `MEMORY_TOOL_LOOP_ENABLED` or the active policy.
 - Schema-v15 outcome precedence is immutable: any cross-user/Deleted/Secret/
   authorization release is Red/disable Tool Loop; false injection above
   `0.02` is Orange/disable recall while preserving data; Provider stability or

@@ -59,6 +59,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return runGovernanceDisable(args[1:], stdout)
 	case "provider-secrets-rewrite":
 		return runProviderSecretsRewrite(args[1:], stdout)
+	case "memory-validation-credentials-export":
+		return runMemoryValidationCredentialsExport(args[1:], stdout)
 	case "memory-deletions-export":
 		return runMemoryDeletionsExport(args[1:], stdin, stdout)
 	case "memory-deletions-replay":
@@ -395,6 +397,9 @@ func usageError() error {
 			"[--model-id <id>] | admin provider-secrets-rewrite " +
 			"[--execute --expected-plan-sha256 <sha256> " +
 			"--confirmed-backup-sha256 <sha256>] | " +
+			"admin memory-validation-credentials-export " +
+			"--bge-output <new-file> --luna-output <new-file> " +
+			"--approval <exact-approval> | " +
 			"admin memory-deletions-export --output <file> --passphrase-stdin | " +
 			"admin memory-deletions-replay --input <file> --passphrase-stdin " +
 			"--backend-stopped | admin backup-retention --backup-root <root> " +

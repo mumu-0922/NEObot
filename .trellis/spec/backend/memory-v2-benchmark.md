@@ -235,6 +235,19 @@ bash scripts/run-memory-regression.sh \
   --cost-basis /secure/eval/production-memory-judge-validation-cost-v10.json \
   --output-dir /secure/eval/native-memory-runs
 
+# Preferred live schema-v15 operator path. It resolves only the exact active
+# Vault-backed BGE/Luna pair, materializes two new one-run mode-0600 files,
+# invokes the unchanged live runner, and wipes both files on every exit.
+bash scripts/run-memory-production-validation-from-vault.sh \
+  --cost-basis /secure/eval/production-memory-judge-validation-cost-v10.json \
+  --output-dir /secure/eval/native-memory-runs \
+  --credential-export-approval \
+    I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_VALIDATION_CREDENTIALS \
+  --siliconflow-live-approval \
+    I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --production-validation-approval \
+    I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_VALIDATION_QUOTA
+
 bash scripts/run-memory-regression.sh \
   --provider-mode live_siliconflow \
   --capture-mode development_cloud_judge \
@@ -719,6 +732,17 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   `OpenAI Compatible`; `openai_compatible` is the normalized capture-command
   authority token. Comparing the runtime enum's string value directly with
   the CLI token falsely rejects an otherwise valid exact Provider.
+- Schema-v15 operational `fresh` means a new explicit one-run export approval
+  plus two newly created private mode-`0600` files. The Key values may be the
+  already active Vault-backed Provider values; neither report nor manifest
+  attests upstream issuance time, rotation, Key hashes, or Vault envelopes.
+  `mm-chat-admin memory-validation-credentials-export` has no Provider/model
+  selector and may resolve only active attested `RAG:SILICONFLOW` plus the
+  exact fixed `SERVER_DEFAULT`/OpenAI-Compatible/Base-URL-hash/Luna tuple.
+  Existing targets, symlinks, equal paths/bytes, copied contexts, disabled or
+  drifted records, and partial publication fail closed. Its paired operator
+  wrapper wipes both exported files on success, metric failure, ordinary
+  failure, `INT`, `TERM`, and `HUP` before returning the runner status.
 - A Luna timeout, transport failure, invalid JSON, protocol drift, or late
   result fails closed to an empty v2 final set. Normal chat continues under
   the v1 prompt/Usage authority; recalled, reranked, schema-v10, and other
@@ -852,9 +876,9 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   and global Provider concurrency one. A terminal case records fail-closed
   evidence and the batch continues; any terminal case makes the final report
   fail. Fake protocol is permanently `fake_protocol_lifecycle_only`, Yellow,
-  `retain_beta`, and non-passing. Live execution needs fresh distinct BGE/Luna
-  credentials plus the independent exact Validation approval; no live v15 run
-  is authorized by implementation or documentation.
+  `retain_beta`, and non-passing. Live execution needs newly materialized
+  distinct one-run BGE/Luna files plus the independent exact export and
+  Validation approvals. Documentation alone is never run authorization.
 - Schema-v15 retained evidence is exactly one aggregate report plus its run
   manifest. It may contain hashes, metric/slice counts, bounded latency/token/
   cost totals, and typed category totals, but no query, Memory plaintext,
@@ -864,6 +888,20 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   Provider stability or remaining quality failure is Yellow/retain Beta; a
   passing live result stops at owner review with `releaseEligible=false` and
   changes no runtime flag.
+- The single owner-authorized schema-v15 live run
+  `memory-regression-20260806t013956z-31e67617` completed all 100 ordered
+  Validation cases with zero terminal case failure and valid aggregate-only
+  artifacts. Candidate Recall@20 was `1.0`, Final Recall@5 was `0.984615`,
+  current-fact accuracy was `0.981818`, and every cross-user/deleted/Secret/
+  untrusted-source/unauthorized-egress safety counter was zero. However, nine
+  false-injection cases produced rate `0.09`, above the frozen `0.02` gate;
+  the immutable result is Orange with required action
+  `disable_memory_recall_preserve_data`, `passed=false`, and
+  `releaseEligible=false`. The report/run-manifest SHA-256 values are
+  `6b2ec1a0cf26b2190302accac384f9fab4fce0898d1b1bad1eaacb5a2ce39c69`
+  and `3ee114b2991ad2d0de954ad4a5998947567c66672e010dc079f17c73c18ae650`.
+  No runtime flag was changed automatically; do not rerun, promote, or start
+  Holdout from this consumed authorization.
 - Aggregate-only Development evidence authorizes metric comparison, not case-
   level or causal attribution. After disjoint v4 and v5 hard-negative families
   each retained one `unrelated_negative` false injection, do not author another
@@ -1013,6 +1051,8 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | Frozen validation is requested before a Development-selected policy is committed | Reject before credential read or Provider work. |
 | Schema-v15 mode selects Development/Holdout, seeds other fixtures, or changes the frozen case order/read-intent/policy/criteria hash | Reject before report publication; historical schemas and the visible machine Holdout remain untouched. |
 | Schema-v15 live mode lacks its exact independent Validation approval, carries only the old Development approval, or BGE/Luna credentials are same-file/hard-linked/equal-byte | Reject before output or Provider construction without echoing credentials. |
+| Exact-pair export approval is absent/wrong, an arbitrary Provider selector is supplied, or active RAG/Luna authority is missing/disabled/unattested/drifted/copied | Return only `MEMORY_VALIDATION_CREDENTIAL_EXPORT_NOT_AUTHORIZED` or `MEMORY_VALIDATION_CREDENTIAL_AUTHORITY_UNAVAILABLE`; create no output and make no Provider request. |
+| Exact-pair export target exists/is symlinked/is not under a private direct parent, paths or bytes are equal, publication is partial, or cleanup fails | Never overwrite an existing target; wipe/remove invocation-created files and return only `MEMORY_VALIDATION_CREDENTIAL_OUTPUT_REJECTED` or `MEMORY_VALIDATION_CREDENTIAL_CLEANUP_FAILED`. |
 | Schema-v15 Fake report claims pass/Release, omits Yellow `retain_beta`, or is treated as quality evidence | Reject the bundle; Fake remains `FAKE_PROTOCOL_NON_EVIDENCE` and the wrapper returns non-zero after valid retention. |
 | Schema-v15 terminal Provider failure occurs | Record one typed aggregate terminal, release no Memory for that case, continue later ordered cases, and force the final Validation to fail without whole-run retry. |
 | Schema-v15 report/manifest contains query, Memory plaintext, Provider response/error, raw score, or case-level identity | Reject and remove the bundle; aggregate slice `cases` counts are allowed but case arrays/IDs are not. |
@@ -1108,9 +1148,10 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   retain candidate plaintext, accept free-form IDs, or use a GPT result to
   authorize a DeepSeek profile.
 - **Production Validation good**: a separately authorized live schema-v15 run
-  uses fresh distinct BGE/Luna credentials, exact fixed hashes/tuple, all 100
-  ordered Validation cases, reconciled attempts/costs, zero terminal/privacy/
-  injection failure, and stops at owner review without Release.
+  uses newly materialized distinct one-run BGE/Luna files, exact fixed
+  hashes/tuple, all 100 ordered Validation cases, reconciled attempts/costs,
+  zero terminal/privacy/injection failure, and stops at owner review without
+  Release. Upstream Key reissuance is not claimed.
 - **Production Validation base**: Fake PostgreSQL 17 completes the same 100-
   case lifecycle, publishes exactly two private aggregate artifacts, returns
   non-zero, and records Yellow/`retain_beta`/
@@ -1119,6 +1160,15 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   old configured-judge approval, share credential bytes, seed Holdout, stop at
   the first terminal case, persist a query/case ID/raw score, accept Fake as a
   pass, or let a live pass flip a product flag.
+- **Exact-pair export good**: resolve only active attested `RAG:SILICONFLOW`
+  and the exact fixed Luna tuple, create two exclusive private mode-`0600`
+  files, run schema-v15, and wipe both source copies on every exit.
+- **Exact-pair export base**: an output already exists or Luna authority has
+  drifted; no file is overwritten, any invocation-created first file is wiped,
+  and only a fixed content-free error category is returned.
+- **Exact-pair export bad**: add a Provider/context selector, export through a
+  browser/API response, log a Key/hash/envelope, widen directory permissions,
+  or claim that a new one-run file proves upstream Key issuance.
 
 ## 6. Tests Required
 
@@ -1136,6 +1186,11 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   untrusted-source persistence, and forbidden Provider egress are all zero.
 - Command tests: freeze output remains non-promotional, argument modes are
   exclusive, report mode is `0600`, and an existing output remains byte-identical.
+- Exact-pair operator tests: exact approval and fixed selection, disabled/
+  missing/unattested/drifted/copied authority, existing/symlink/same/equal
+  outputs, exclusive mode-`0600` publication, partial cleanup, and secret-free
+  stdout/stderr. Wrapper tests must prove success, metric failure, ordinary
+  failure, `INT`, `TERM`, and `HUP` all remove the exported pair before exit.
 - Authoring generator tests: byte-identical fixture/Golden/manifest replay,
   exact pool counts, normalized duplicate rejection, semantic fixture binding,
   and exact 500-case feasibility witness.
@@ -1375,9 +1430,9 @@ Correct: pin raw file bytes with the file SHA and independently pin the
 ```
 
 ```text
-Wrong: reuse schema-v14 Development approval/cost/artifacts, seed all 500
-       cases, stop after one terminal Judge failure, and call Fake a pass.
-Correct: use schema-v15 + cost-basis v10 + independent live approval, select
-         only 100 Validation cases, continue fail-closed cases, retain only
-         aggregate report/manifest, and stop at owner review without Release.
+Wrong: add a general Provider-secret export or claim a reused Key was newly
+       issued; reuse schema-v14 approval, seed all 500 cases, or call Fake pass.
+Correct: exact-pair Vault resolution -> new private one-run mode-0600 files ->
+         schema-v15 + cost-basis v10 + exact approvals -> 100 Validation cases
+         -> aggregate report/manifest -> wipe copies -> owner review only.
 ```
