@@ -1255,3 +1255,36 @@ Added owner-authorized one-shot Vault credential export and cleanup-safe schema-
 ### Next Steps
 
 - None - task complete
+
+
+## Session 27: Disable Memory recall while preserving data
+
+**Date**: 2026-08-06
+**Task**: Disable Memory recall while preserving data
+**Branch**: `main`
+
+### Summary
+
+Applied the schema-v15 Orange containment action: disabled Memory Tool recall and hybrid shadow Provider work, preserved all Memory data with a protected logical dump, pinned a schema-069-compatible backend image after detecting mutable local-tag drift, verified both services healthy and 43 Memory relations unchanged, and documented immutable image pinning for live recreation.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `beb4cb74` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
