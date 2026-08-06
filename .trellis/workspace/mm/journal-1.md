@@ -1288,3 +1288,37 @@ Applied the schema-v15 Orange containment action: disabled Memory Tool recall an
 ### Next Steps
 
 - None - task complete
+
+
+## Session 28: Remediate Memory false injection
+
+**Date**: 2026-08-06
+**Task**: Remediate Memory false injection
+**Branch**: `main`
+
+### Summary
+
+Added a hash-bound Development-only bilingual negative meta-policy guard, preserved the production policy hash and disabled runtime, verified zero candidate Provider egress on abstention, recorded the consumed-Validation offline audit, and passed focused race, backend, and full standalone gates.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `022a1168` | (see git log) |
+| `6b755d3f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

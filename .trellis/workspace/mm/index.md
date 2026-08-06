@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 27
+- **Total Sessions**: 28
 - **Last Active**: 2026-08-06
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1290 | Active |
+| `journal-1.md` | ~1324 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 28 | 2026-08-06 | Remediate Memory false injection | `022a1168`, `6b755d3f` | `main` |
 | 27 | 2026-08-06 | Disable Memory recall while preserving data | `beb4cb74` | `main` |
 | 26 | 2026-08-06 | Vault-backed Memory production validation | `b4b6e05a` | `main` |
 | 25 | 2026-08-06 | Complete L1 Memory relevance and validation tooling | `3976f659`, `cb0f1c2e`, `7f4ecca3`, `0dbb24cc`, `59343b67`, `5d421e3b`, `c79d248b`, `20d5f57d`, `6ff18816` | `main` |
