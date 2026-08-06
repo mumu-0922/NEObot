@@ -1181,3 +1181,44 @@ Implemented and verified the isolated production-reader Memory regression captur
 ### Next Steps
 
 - None - task complete
+
+
+## Session 25: Complete L1 Memory relevance and validation tooling
+
+**Date**: 2026-08-06
+**Task**: Complete L1 Memory relevance and validation tooling
+**Branch**: `main`
+
+### Summary
+
+Completed the L1 Memory product path: transport-stable fixed-Luna recall, safe auto-capture, cross-model explicit-read routing, server-owned background lifecycle, fail-closed health, and isolated schema-v15 production-policy Validation tooling. Full standalone, focused race, shell lifecycle, security, and fake PostgreSQL/Compose checks passed. No live schema-v15 Provider request or Release claim was made; production remains Beta pending separately authorized live Validation.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3976f659` | (see git log) |
+| `cb0f1c2e` | (see git log) |
+| `7f4ecca3` | (see git log) |
+| `0dbb24cc` | (see git log) |
+| `59343b67` | (see git log) |
+| `5d421e3b` | (see git log) |
+| `c79d248b` | (see git log) |
+| `20d5f57d` | (see git log) |
+| `6ff18816` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
