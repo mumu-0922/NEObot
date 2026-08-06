@@ -1222,3 +1222,36 @@ Completed the L1 Memory product path: transport-stable fixed-Luna recall, safe a
 ### Next Steps
 
 - None - task complete
+
+
+## Session 26: Vault-backed Memory production validation
+
+**Date**: 2026-08-06
+**Task**: Vault-backed Memory production validation
+**Branch**: `main`
+
+### Summary
+
+Added owner-authorized one-shot Vault credential export and cleanup-safe schema-v15 Memory production validation workflow; completed the live run, which returned Orange due to false-injection rate 0.09 and requires disabling recall while preserving data, without changing runtime flags.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b4b6e05a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
