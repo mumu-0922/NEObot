@@ -36,6 +36,8 @@ type transportStableMemoryJudgeReportSpec struct {
 	negativeGuardVersion            string
 	negativeGuardSHA256             string
 	relevancePolicyDescriptorSHA256 string
+	judgeAdapter                    string
+	executionPolicy                 func(string) (AccuracyFirstExecutionPolicy, error)
 	validateCostAuthority           func(CostBasis, ConfiguredCandidateJudgeProfileAuthority) error
 }
 
@@ -45,6 +47,8 @@ func transportStableMemoryJudgeDevelopmentReportSpec() transportStableMemoryJudg
 		reportSchemaVersion:   TransportStableMemoryJudgeReportSchemaVersion,
 		admissionMode:         TransportStableMemoryJudgeAdmissionMode,
 		policyID:              usermemory.HybridRelevanceAccuracyFirstJudgePolicyID,
+		judgeAdapter:          memoryjudge.ChatAdapterVersion,
+		executionPolicy:       TransportStableDevelopmentExecutionPolicy,
 		validateCostAuthority: ValidateTransportStableMemoryJudgeCostAuthority,
 	}
 }
@@ -119,6 +123,7 @@ func buildTransportStableMemoryJudgeDevelopmentReport(
 ) (JudgeFailureDiagnosticDevelopmentReport, []byte, error) {
 	if profile.Profile.ReaderVersion != spec.readerVersion ||
 		!validFixedMemoryJudgeAuthority(authority) ||
+		spec.judgeAdapter == "" || spec.executionPolicy == nil ||
 		spec.validateCostAuthority == nil ||
 		spec.validateCostAuthority(costBasis, authority) != nil ||
 		profile.Profile.ProviderEgressPolicy !=
@@ -126,7 +131,10 @@ func buildTransportStableMemoryJudgeDevelopmentReport(
 		profile.Costs != costBasis.Candidate ||
 		len(profile.Profile.ConfigurationSHA256) != 64 ||
 		judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
-		return JudgeFailureDiagnosticDevelopmentReport{}, nil, ErrCaptureInvalid
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, fmt.Errorf(
+			"%w: transport-stable report preflight",
+			ErrCaptureInvalid,
+		)
 	}
 	if _, err := hex.DecodeString(profile.Profile.ConfigurationSHA256); err != nil {
 		return JudgeFailureDiagnosticDevelopmentReport{}, nil, ErrCaptureInvalid
@@ -135,7 +143,7 @@ func buildTransportStableMemoryJudgeDevelopmentReport(
 	if err != nil {
 		return JudgeFailureDiagnosticDevelopmentReport{}, nil, err
 	}
-	executionPolicy, err := TransportStableDevelopmentExecutionPolicy(providerMode)
+	executionPolicy, err := spec.executionPolicy(providerMode)
 	if err != nil {
 		return JudgeFailureDiagnosticDevelopmentReport{}, nil, err
 	}
@@ -226,7 +234,7 @@ func buildTransportStableMemoryJudgeDevelopmentReport(
 		JudgeProviderType:         authority.ProviderType,
 		JudgeBaseURLSHA256:        authority.BaseURLSHA256,
 		JudgeModelID:              authority.ModelID,
-		JudgeAdapter:              memoryjudge.ChatAdapterVersion,
+		JudgeAdapter:              spec.judgeAdapter,
 		JudgePromptVersion:        usermemory.HybridCandidateJudgePromptVersion,
 		JudgePromptSHA256:         usermemory.HybridCandidateJudgePromptSHA256,
 		JudgeDecodingProfile:      usermemory.HybridCandidateJudgeDecodingProfile,
@@ -266,7 +274,10 @@ func buildTransportStableMemoryJudgeDevelopmentReport(
 		RelevancePolicyDescriptorSHA256:  spec.relevancePolicyDescriptorSHA256,
 	}
 	if !validTransportStableMemoryJudgeDevelopmentReportForSpec(report, spec) {
-		return JudgeFailureDiagnosticDevelopmentReport{}, nil, ErrCaptureInvalid
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, fmt.Errorf(
+			"%w: transport-stable report final validation",
+			ErrCaptureInvalid,
+		)
 	}
 	body, err := json.Marshal(report)
 	if err != nil {
@@ -325,7 +336,10 @@ func validTransportStableMemoryJudgeDevelopmentReportForSpec(
 	if err != nil {
 		return false
 	}
-	expectedExecution, err := TransportStableDevelopmentExecutionPolicy(providerMode)
+	if spec.judgeAdapter == "" || spec.executionPolicy == nil {
+		return false
+	}
+	expectedExecution, err := spec.executionPolicy(providerMode)
 	if err != nil || report.ExecutionPolicy != expectedExecution ||
 		(providerMode == ProviderModeFakeProtocol &&
 			report.ProviderAttempts.InterCaseCooldownElapsedMillis != 0) {
@@ -377,7 +391,7 @@ func validTransportStableMemoryJudgeDevelopmentReportForSpec(
 			memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1 &&
 		report.ProviderCostPolicy == ProviderCostPolicyOwnerAuthorizedAbsoluteV1 &&
 		report.ProviderCostAuthorized && validFixedMemoryJudgeAuthority(authority) &&
-		report.JudgeAdapter == memoryjudge.ChatAdapterVersion &&
+		report.JudgeAdapter == spec.judgeAdapter &&
 		report.JudgePromptVersion == usermemory.HybridCandidateJudgePromptVersion &&
 		report.JudgePromptSHA256 == usermemory.HybridCandidateJudgePromptSHA256 &&
 		report.JudgeDecodingProfile == usermemory.HybridCandidateJudgeDecodingProfile &&

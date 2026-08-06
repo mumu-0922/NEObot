@@ -297,6 +297,53 @@ func BuildNegativePolicyGuardMemoryJudgeDevelopmentProfileConfig(
 	return config, nil
 }
 
+func BuildBufferedMemoryJudgeDevelopmentProfileConfig(
+	protected ProtectedRegression,
+	costBasisSHA256 string,
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	providerCostPolicy string,
+) (ProfileConfig, error) {
+	if !validFixedMemoryJudgeAuthority(authority) ||
+		providerCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+		judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
+		return ProfileConfig{}, ErrCaptureInvalid
+	}
+	policy := usermemory.HybridShadowNegativePolicyGuardDevelopmentPolicy()
+	_, config, err := buildProfileConfigs(
+		protected,
+		costBasisSHA256,
+		providerMode,
+		CaptureModeBufferedMemoryJudge,
+		DevelopmentCalibrationSplit,
+		policy,
+		providerCostPolicy,
+		nil,
+	)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	descriptorSHA256, err := relevancePolicyDescriptorSHA256(policy)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	config.ConfiguredCandidateJudgeProviderID = authority.ProviderID
+	config.ConfiguredCandidateJudgeProviderType = authority.ProviderType
+	config.ConfiguredCandidateJudgeBaseURLSHA256 = authority.BaseURLSHA256
+	config.ConfiguredCandidateJudgeAdapter = memoryjudge.BufferedChatAdapterVersion
+	config.EvaluationCriteriaVersion = memoryeval.MemoryJudgeAccuracyFirstCriteriaVersionV3
+	config.NegativePolicyQueryGuardRequired = true
+	config.NegativePolicyQueryGuardVersion = usermemory.NegativePolicyQueryGuardVersion
+	config.NegativePolicyQueryGuardSHA256 = usermemory.NegativePolicyQueryGuardSHA256
+	config.RelevancePolicyDescriptorSHA256 = descriptorSHA256
+	executionPolicy, err := BufferedMemoryJudgeDevelopmentExecutionPolicy(providerMode)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	config.AccuracyFirstExecutionPolicy = &executionPolicy
+	return config, nil
+}
+
 func BuildProductionMemoryJudgeValidationProfileConfig(
 	protected ProtectedRegression,
 	costBasisSHA256 string,
@@ -395,6 +442,7 @@ func buildProfileConfigs(
 		captureMode == CaptureModeJudgeFailureDiagnostic ||
 		captureMode == CaptureModeTransportStableMemoryJudge ||
 		captureMode == CaptureModeNegativePolicyGuardMemoryJudge ||
+		captureMode == CaptureModeBufferedMemoryJudge ||
 		captureMode == CaptureModeProductionMemoryJudgeValidation {
 		if captureMode == CaptureModeJudgeFailureDiagnostic {
 			readerVersion = JudgeFailureDiagnosticReaderVersion
@@ -420,6 +468,12 @@ func buildProfileConfigs(
 			if judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
 				return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
 			}
+		} else if captureMode == CaptureModeBufferedMemoryJudge {
+			readerVersion = BufferedMemoryJudgeReaderVersion
+			profileSchemaVersion = "neo-chat.memory-regression-profile-config.v17"
+			if judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
+				return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
+			}
 		} else {
 			readerVersion = AccuracyFirstMemoryJudgeReaderVersion
 			profileSchemaVersion = "neo-chat.memory-regression-profile-config.v12"
@@ -427,7 +481,8 @@ func buildProfileConfigs(
 		expectedPolicyID := usermemory.HybridRelevanceAccuracyFirstJudgePolicyID
 		if captureMode == CaptureModeProductionMemoryJudgeValidation {
 			expectedPolicyID = usermemory.HybridRelevanceProductionJudgePolicyID
-		} else if captureMode == CaptureModeNegativePolicyGuardMemoryJudge {
+		} else if captureMode == CaptureModeNegativePolicyGuardMemoryJudge ||
+			captureMode == CaptureModeBufferedMemoryJudge {
 			expectedPolicyID = usermemory.HybridRelevanceNegativePolicyGuardDevelopmentPolicyID
 		}
 		if providerCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
@@ -502,6 +557,12 @@ func buildProfileConfigs(
 			JudgeFailureDiagnosticCompletenessPolicy
 	}
 	if captureMode == CaptureModeNegativePolicyGuardMemoryJudge {
+		common.CandidateJudgeFailureTaxonomyVersion = memoryjudge.FailureTaxonomyVersion
+		common.CandidateJudgeFailureTaxonomySHA256 = memoryjudge.FailureTaxonomySHA256
+		common.CandidateJudgeDiagnosticCompleteness =
+			JudgeFailureDiagnosticCompletenessPolicy
+	}
+	if captureMode == CaptureModeBufferedMemoryJudge {
 		common.CandidateJudgeFailureTaxonomyVersion = memoryjudge.FailureTaxonomyVersion
 		common.CandidateJudgeFailureTaxonomySHA256 = memoryjudge.FailureTaxonomySHA256
 		common.CandidateJudgeDiagnosticCompleteness =

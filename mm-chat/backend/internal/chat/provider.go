@@ -20,6 +20,13 @@ type Provider interface {
 	StreamChat(ctx context.Context, input ProviderRequest) (<-chan ProviderEvent, error)
 }
 
+// BufferedChatProvider is an optional Provider capability for bounded
+// non-streaming completions. Ordinary chat remains on Provider.StreamChat;
+// callers must opt into this response framing explicitly.
+type BufferedChatProvider interface {
+	CompleteChat(context.Context, ProviderRequest) (BufferedChatCompletion, error)
+}
+
 type ModelBuiltInSearchProvider interface {
 	Provider
 	ModelBuiltInSearchID() websearch.ModelBuiltInProviderID
@@ -121,6 +128,11 @@ type TokenUsage struct {
 	PromptTokens     int `json:"promptTokens,omitempty"`
 	CompletionTokens int `json:"completionTokens,omitempty"`
 	TotalTokens      int `json:"totalTokens,omitempty"`
+}
+
+type BufferedChatCompletion struct {
+	Content string
+	Usage   *TokenUsage
 }
 
 type MockProvider struct{}

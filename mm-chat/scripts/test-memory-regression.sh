@@ -370,16 +370,23 @@ if args and args[0] == "compose":
             "development_fixed_memory_judge_failure_diagnostic",
             "development_fixed_memory_judge_transport_stable",
             "development_fixed_memory_judge_negative_guard",
+            "development_fixed_memory_judge_negative_guard_buffered",
         }:
-            negative_guard = capture_mode == "development_fixed_memory_judge_negative_guard"
+            negative_guard = capture_mode in {
+                "development_fixed_memory_judge_negative_guard",
+                "development_fixed_memory_judge_negative_guard_buffered",
+            }
+            buffered = capture_mode == "development_fixed_memory_judge_negative_guard_buffered"
             diagnostic = capture_mode in {
                 "development_fixed_memory_judge_failure_diagnostic",
                 "development_fixed_memory_judge_transport_stable",
                 "development_fixed_memory_judge_negative_guard",
+                "development_fixed_memory_judge_negative_guard_buffered",
             }
             transport_stable = capture_mode in {
                 "development_fixed_memory_judge_transport_stable",
                 "development_fixed_memory_judge_negative_guard",
+                "development_fixed_memory_judge_negative_guard_buffered",
             }
             guarded_case_count = 10 if negative_guard else 0
             judge_completed_case_count = (
@@ -410,7 +417,9 @@ if args and args[0] == "compose":
                 }
             accuracy = json.dumps({
                 "schemaVersion": (
-                    "neo-chat.memory-regression-relevance-calibration.v16"
+                    "neo-chat.memory-regression-relevance-calibration.v17"
+                    if buffered
+                    else "neo-chat.memory-regression-relevance-calibration.v16"
                     if negative_guard
                     else "neo-chat.memory-regression-relevance-calibration.v14"
                     if transport_stable
@@ -420,7 +429,9 @@ if args and args[0] == "compose":
                 ),
                 "corpusClass": "machine_reviewed_regression",
                 "admissionMode": (
-                    "development_fixed_memory_judge_negative_guard_only"
+                    "development_fixed_memory_judge_negative_guard_buffered_only"
+                    if buffered
+                    else "development_fixed_memory_judge_negative_guard_only"
                     if negative_guard
                     else "development_fixed_memory_judge_transport_stable_only"
                     if transport_stable
@@ -456,7 +467,11 @@ if args and args[0] == "compose":
                 "judgeProviderType": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_TYPE"],
                 "judgeBaseUrlSha256": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_BASE_URL_SHA256"],
                 "judgeModelId": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_MODEL"],
-                "judgeAdapter": "chat-configured-candidate-judge-v1",
+                "judgeAdapter": (
+                    "chat-configured-candidate-judge-buffered-v1"
+                    if buffered
+                    else "chat-configured-candidate-judge-v1"
+                ),
                 "evaluationCriteriaVersion": "neo-chat.memory-benchmark-criteria.v3",
                 "evaluationCriteria": {
                     "minimumCandidateRecallAt20": 0.95,
@@ -471,7 +486,9 @@ if args and args[0] == "compose":
                 },
                 "executionPolicy": {
                     "sequenceVersion": (
-                        "bge_query_admission_bge_rerank_luna_judge_record_serial_judge_retry_v2"
+                        "bge_query_admission_bge_rerank_luna_judge_buffered_json_record_serial_judge_retry_v1"
+                        if buffered
+                        else "bge_query_admission_bge_rerank_luna_judge_record_serial_judge_retry_v2"
                         if transport_stable
                         else "bge_query_admission_bge_rerank_luna_judge_record_serial_v1"
                     ),
@@ -566,7 +583,9 @@ if args and args[0] == "compose":
                 },
             }, separators=(",", ":")).encode() + b"\n"
             report_name = (
-                "fixed-memory-judge-negative-guard-development.json"
+                "fixed-memory-judge-negative-guard-buffered-development.json"
+                if buffered
+                else "fixed-memory-judge-negative-guard-development.json"
                 if negative_guard
                 else "fixed-memory-judge-transport-stable-development.json"
                 if transport_stable
@@ -577,7 +596,9 @@ if args and args[0] == "compose":
             bodies = {report_name: accuracy}
             manifest_schema = "neo-chat.memory-regression-relevance-run.v1"
             admission_mode = (
-                "development_fixed_memory_judge_negative_guard_only"
+                "development_fixed_memory_judge_negative_guard_buffered_only"
+                if buffered
+                else "development_fixed_memory_judge_negative_guard_only"
                 if negative_guard
                 else "development_fixed_memory_judge_transport_stable_only"
                 if transport_stable
@@ -969,6 +990,7 @@ if args and args[0] == "compose":
                         "development_fixed_memory_judge_failure_diagnostic",
                         "development_fixed_memory_judge_transport_stable",
                         "development_fixed_memory_judge_negative_guard",
+                        "development_fixed_memory_judge_negative_guard_buffered",
                     } else "validation",
                     "profileId": candidate_profile,
                 })
@@ -982,6 +1004,7 @@ if args and args[0] == "compose":
                     "development_fixed_memory_judge_failure_diagnostic",
                     "development_fixed_memory_judge_transport_stable",
                     "development_fixed_memory_judge_negative_guard",
+                    "development_fixed_memory_judge_negative_guard_buffered",
                     "production_fixed_memory_judge_validation",
                 }:
                     manifest["providerCostPolicy"] = "owner_authorized_absolute_cap_v1"
@@ -989,7 +1012,10 @@ if args and args[0] == "compose":
                     manifest["passed"] = False
                 elif capture_mode == "development_fixed_memory_judge_transport_stable":
                     manifest["passed"] = True
-                elif capture_mode == "development_fixed_memory_judge_negative_guard":
+                elif capture_mode in {
+                    "development_fixed_memory_judge_negative_guard",
+                    "development_fixed_memory_judge_negative_guard_buffered",
+                }:
                     manifest.update({
                         "passed": True,
                         "negativePolicyQueryGuardVersion": "memory-negative-policy-query-guard-v1",
@@ -1238,6 +1264,28 @@ if [[ "$(find "${negative_guard_output}" -mindepth 2 -maxdepth 2 -type f | wc -l
   exit 1
 fi
 assert_cleanup "${negative_guard_log}"
+
+buffered_output="${temp_dir}/buffered-output"
+buffered_log="${temp_dir}/buffered-docker.log"
+mkdir "${buffered_output}"
+chmod 700 "${buffered_output}"
+FAKE_DOCKER_LOG="${buffered_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${buffered_output}" --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge_negative_guard_buffered \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  >"${temp_dir}/buffered.stdout" \
+  2>"${temp_dir}/buffered.stderr"
+if [[ "$(find "${buffered_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 || \
+  "$(find "${buffered_output}" -mindepth 2 -maxdepth 2 -type f ! -perm 0600 | wc -l)" -ne 0 ]]; then
+  echo "Memory regression protocol: buffered Memory Judge bundle was not retained privately" >&2
+  exit 1
+fi
+assert_cleanup "${buffered_log}"
 
 production_validation_output="${temp_dir}/production-validation-output"
 production_validation_log="${temp_dir}/production-validation-docker.log"

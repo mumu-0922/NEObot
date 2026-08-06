@@ -166,6 +166,17 @@ func TestParseCommandSeparatesFakeAndLiveCredentialBoundaries(t *testing.T) {
 	if err != nil || options.captureMode != memorycapture.CaptureModeNegativePolicyGuardMemoryJudge {
 		t.Fatalf("parse negative-policy-guard Memory Judge command = %#v/%v", options, err)
 	}
+	bufferedJudge := append([]string(nil), negativeGuard...)
+	for index := range bufferedJudge {
+		if bufferedJudge[index] == memorycapture.CaptureModeNegativePolicyGuardMemoryJudge {
+			bufferedJudge[index] = memorycapture.CaptureModeBufferedMemoryJudge
+			break
+		}
+	}
+	options, err = parseCommand(bufferedJudge)
+	if err != nil || options.captureMode != memorycapture.CaptureModeBufferedMemoryJudge {
+		t.Fatalf("parse buffered Memory Judge command = %#v/%v", options, err)
+	}
 	productionValidation := append([]string(nil), transportStableJudge...)
 	for index := range productionValidation {
 		if productionValidation[index] == memorycapture.CaptureModeTransportStableMemoryJudge {
@@ -211,6 +222,14 @@ func TestAccuracyFirstCaptureContextHasNoElapsedDeadline(t *testing.T) {
 	defer negativeGuardCancel()
 	if _, ok := negativeGuardContext.Deadline(); ok {
 		t.Fatal("negative-policy-guard Judge inherited the legacy 45-minute deadline")
+	}
+	bufferedContext, bufferedCancel := captureContext(
+		context.Background(),
+		memorycapture.CaptureModeBufferedMemoryJudge,
+	)
+	defer bufferedCancel()
+	if _, ok := bufferedContext.Deadline(); ok {
+		t.Fatal("buffered Judge inherited the legacy 45-minute deadline")
 	}
 	productionContext, productionCancel := captureContext(
 		context.Background(),
@@ -447,6 +466,7 @@ func TestBuildProvidersWrapsAccuracyFirstFakeProviderSet(t *testing.T) {
 		memorycapture.CaptureModeJudgeFailureDiagnostic,
 		memorycapture.CaptureModeTransportStableMemoryJudge,
 		memorycapture.CaptureModeNegativePolicyGuardMemoryJudge,
+		memorycapture.CaptureModeBufferedMemoryJudge,
 		memorycapture.CaptureModeProductionMemoryJudgeValidation,
 	} {
 		bundle, err := buildProviders(commandOptions{

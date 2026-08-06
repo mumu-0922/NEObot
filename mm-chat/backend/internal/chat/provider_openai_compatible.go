@@ -21,6 +21,7 @@ const (
 	openAICompatibleProviderIDOpenAI        = "openai"
 	openAICompatibleProviderIDHyphenVariant = "openai-compatible"
 	maxOpenAICompatibleToolPlanBytes        = 2 << 20
+	maxOpenAICompatibleBufferedChatBytes    = 2 << 20
 	maxOpenAICompatibleToolArgumentsBytes   = 64 << 10
 )
 
@@ -367,12 +368,176 @@ type openAICompatibleToolPlanResponse struct {
 	} `json:"choices"`
 }
 
+type openAICompatibleBufferedChatResponse struct {
+	Error   json.RawMessage `json:"error"`
+	Choices []struct {
+		Message struct {
+			Content *string `json:"content"`
+		} `json:"message"`
+		FinishReason string `json:"finish_reason"`
+	} `json:"choices"`
+	Usage *struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+	} `json:"usage"`
+}
+
+// CompleteChat sends one bounded non-streaming Chat Completions request. It is
+// deliberately separate from StreamChat so ordinary product chat cannot
+// change response framing implicitly.
+func (p *OpenAICompatibleProvider) CompleteChat(
+	ctx context.Context,
+	input ProviderRequest,
+) (BufferedChatCompletion, error) {
+	modelRef, err := p.ResolveModelRef(input.ModelRef)
+	if err != nil {
+		return BufferedChatCompletion{}, err
+	}
+	model := strings.TrimSpace(modelRef.ModelID)
+	if model == "" {
+		return BufferedChatCompletion{}, errors.New(
+			"openai-compatible provider model is required",
+		)
+	}
+
+	disableThinking := input.DisableThinking
+	enableThinking, thinking := p.thinkingControls(disableThinking, true)
+	payload, err := json.Marshal(openAICompatibleChatCompletionRequest{
+		Model:  model,
+		Stream: false,
+		Messages: openAICompatibleMessages(
+			input.SystemPrompt,
+			providerMessagesOrPrompt(input),
+		),
+		ReasoningEffort: openAIReasoningEffort(
+			model,
+			input.UseReasoning && !disableThinking,
+			effectiveReasoningEffort(input),
+		),
+		EnableThinking: enableThinking,
+		Thinking:       thinking,
+		MaxTokens:      input.MaxOutputTokens,
+		Temperature:    input.Temperature,
+	})
+	if err != nil {
+		return BufferedChatCompletion{}, newProviderFailure(
+			ProviderFailureRequestBuildFailed,
+			"openai-compatible buffered request encode failed",
+		)
+	}
+
+	requestCtx := ctx
+	var cancel context.CancelFunc
+	if p.timeout > 0 {
+		requestCtx, cancel = context.WithTimeout(ctx, p.timeout)
+		defer cancel()
+	}
+	req, err := http.NewRequestWithContext(
+		requestCtx,
+		http.MethodPost,
+		p.endpoint,
+		bytes.NewReader(payload),
+	)
+	if err != nil {
+		return BufferedChatCompletion{}, newProviderFailure(
+			ProviderFailureRequestBuildFailed,
+			"openai-compatible buffered request build failed",
+		)
+	}
+	req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		category := ProviderFailureTransportFailed
+		if typed, ok := ProviderFailureCategoryOf(err); ok {
+			category = typed
+		}
+		return BufferedChatCompletion{}, newProviderFailure(
+			category,
+			"openai-compatible buffered request failed",
+		)
+	}
+	if resp == nil || resp.Body == nil {
+		return BufferedChatCompletion{}, newProviderFailure(
+			ProviderFailureResponseInvalid,
+			"openai-compatible buffered response is invalid",
+		)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return BufferedChatCompletion{}, newProviderHTTPFailure(
+			providerHTTPFailureCategory(resp.StatusCode),
+			fmt.Sprintf(
+				"openai-compatible provider returned status %d",
+				resp.StatusCode,
+			),
+			resp.Header.Get("Retry-After"),
+		)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(
+		resp.Body,
+		maxOpenAICompatibleBufferedChatBytes+1,
+	))
+	if err != nil {
+		category := ProviderFailureTransportFailed
+		if typed, ok := ProviderFailureCategoryOf(requestCtx.Err()); ok {
+			category = typed
+		}
+		return BufferedChatCompletion{}, newProviderFailure(
+			category,
+			"openai-compatible buffered response read failed",
+		)
+	}
+	if len(body) > maxOpenAICompatibleBufferedChatBytes || requestCtx.Err() != nil {
+		category := ProviderFailureResponseInvalid
+		if requestCtx.Err() != nil {
+			category, _ = ProviderFailureCategoryOf(requestCtx.Err())
+		}
+		return BufferedChatCompletion{}, newProviderFailure(
+			category,
+			"openai-compatible buffered response is invalid",
+		)
+	}
+
+	var completed openAICompatibleBufferedChatResponse
+	if err := json.Unmarshal(body, &completed); err != nil ||
+		(len(completed.Error) > 0 && string(completed.Error) != "null") ||
+		len(completed.Choices) != 1 ||
+		completed.Choices[0].Message.Content == nil ||
+		completed.Choices[0].FinishReason != "stop" {
+		return BufferedChatCompletion{}, newProviderFailure(
+			ProviderFailureResponseInvalid,
+			"openai-compatible buffered response is invalid",
+		)
+	}
+
+	completion := BufferedChatCompletion{
+		Content: *completed.Choices[0].Message.Content,
+	}
+	if completed.Usage != nil {
+		completion.Usage = &TokenUsage{
+			PromptTokens:     completed.Usage.PromptTokens,
+			CompletionTokens: completed.Usage.CompletionTokens,
+			TotalTokens:      completed.Usage.TotalTokens,
+		}
+	}
+	return completion, nil
+}
+
 func (p *OpenAICompatibleProvider) PlanTools(
 	ctx context.Context,
 	input ToolPlanRequest,
 ) ([]ToolCall, error) {
 	return p.planTools(ctx, input, true)
 }
+
+var _ BufferedChatProvider = (*OpenAICompatibleProvider)(nil)
 
 func (p *OpenAICompatibleProvider) planTools(
 	ctx context.Context,

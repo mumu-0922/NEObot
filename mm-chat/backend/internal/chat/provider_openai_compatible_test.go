@@ -9,8 +9,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"neo-chat/mm-chat/backend/internal/usermemory"
 )
@@ -149,6 +151,229 @@ func TestOpenAICompatibleProviderSendsDeterministicJudgeControls(t *testing.T) {
 			t.Fatal(event.Error)
 		}
 	}
+}
+
+func TestOpenAICompatibleProviderCompletesBufferedChatWithDeterministicControls(t *testing.T) {
+	const apiKey = "example-fixture-buffered-credential"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" ||
+			r.Header.Get("Authorization") != "Bearer "+apiKey ||
+			r.Header.Get("Accept") != "application/json" {
+			t.Fatalf("request path/auth/accept drifted")
+		}
+		var payload openAICompatibleChatCompletionRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.Stream || payload.Model != "gpt-5.6-luna" ||
+			payload.EnableThinking == nil || *payload.EnableThinking ||
+			payload.MaxTokens != usermemory.HybridCandidateJudgeMaximumOutputTokens ||
+			payload.Temperature == nil || *payload.Temperature != 0 ||
+			len(payload.Messages) != 2 || payload.Messages[0].Role != "system" ||
+			payload.Messages[1].Role != "user" {
+			t.Fatalf("buffered payload=%#v", payload)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"schemaVersion\":\"neo-chat.memory-cloud-candidate-judge-output.v1\",\"selectedOrdinals\":[0]}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":9,"completion_tokens":5,"total_tokens":14}}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+		BaseURL: server.URL + "/v1", APIKey: apiKey, ProviderID: "SERVER_DEFAULT",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	temperature := 0.0
+	completed, err := provider.CompleteChat(context.Background(), ProviderRequest{
+		Prompt: "candidate JSON", SystemPrompt: "strict judge",
+		DisableThinking: true,
+		MaxOutputTokens: usermemory.HybridCandidateJudgeMaximumOutputTokens,
+		Temperature:     &temperature,
+		ModelRef: ModelRef{
+			ProviderID: "SERVER_DEFAULT", ModelID: "gpt-5.6-luna",
+		},
+	})
+	if err != nil || completed.Content == "" || completed.Usage == nil ||
+		completed.Usage.PromptTokens != 9 || completed.Usage.CompletionTokens != 5 ||
+		completed.Usage.TotalTokens != 14 {
+		t.Fatalf("completion=%#v err=%v", completed, err)
+	}
+}
+
+func TestOpenAICompatibleBufferedAndStreamingJudgeRequestsDifferOnlyByTransport(t *testing.T) {
+	payloads := make(chan map[string]any, 2)
+	accepts := make(chan string, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		payloads <- payload
+		accepts <- r.Header.Get("Accept")
+		if stream, _ := payload["stream"].(bool); stream {
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"{}\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{}"},"finish_reason":"stop"}]}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+		BaseURL: server.URL + "/v1", APIKey: "fixture-buffered-wire-key",
+		ProviderID: "SERVER_DEFAULT",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	temperature := 0.0
+	request := ProviderRequest{
+		Prompt: "candidate JSON", SystemPrompt: "strict judge",
+		DisableThinking: true,
+		MaxOutputTokens: usermemory.HybridCandidateJudgeMaximumOutputTokens,
+		Temperature:     &temperature,
+		ModelRef: ModelRef{
+			ProviderID: "SERVER_DEFAULT", ModelID: "gpt-5.6-luna",
+		},
+	}
+	events, err := provider.StreamChat(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range events {
+	}
+	if _, err := provider.CompleteChat(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	streaming := <-payloads
+	buffered := <-payloads
+	if streaming["stream"] != true || buffered["stream"] != false {
+		t.Fatalf("streaming=%#v buffered=%#v", streaming, buffered)
+	}
+	delete(streaming, "stream")
+	delete(buffered, "stream")
+	if !reflect.DeepEqual(streaming, buffered) {
+		t.Fatalf("streaming=%#v buffered=%#v", streaming, buffered)
+	}
+	if streamingAccept, bufferedAccept := <-accepts, <-accepts; streamingAccept != "text/event-stream" || bufferedAccept != "application/json" {
+		t.Fatalf("accepts=%q/%q", streamingAccept, bufferedAccept)
+	}
+}
+
+func TestOpenAICompatibleProviderBufferedChatClassifiesBoundedFailures(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want ProviderFailureCategory
+	}{
+		{name: "malformed", body: `{`, want: ProviderFailureResponseInvalid},
+		{name: "multiple choices", body: `{"choices":[{"message":{"content":"{}"},"finish_reason":"stop"},{"message":{"content":"{}"},"finish_reason":"stop"}]}`, want: ProviderFailureResponseInvalid},
+		{name: "missing content", body: `{"choices":[{"message":{},"finish_reason":"stop"}]}`, want: ProviderFailureResponseInvalid},
+		{name: "missing finish", body: `{"choices":[{"message":{"content":"{}"}}]}`, want: ProviderFailureResponseInvalid},
+		{name: "nonexact finish", body: `{"choices":[{"message":{"content":"{}"},"finish_reason":" stop "}]}`, want: ProviderFailureResponseInvalid},
+		{name: "incomplete length finish", body: `{"choices":[{"message":{"content":"{}"},"finish_reason":"length"}]}`, want: ProviderFailureResponseInvalid},
+		{name: "oversize", body: strings.Repeat("x", maxOpenAICompatibleBufferedChatBytes+1), want: ProviderFailureResponseInvalid},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(test.body))
+			}))
+			defer server.Close()
+			provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+				BaseURL: server.URL, APIKey: "example-fixture-buffered-credential",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = provider.CompleteChat(context.Background(), ProviderRequest{
+				Prompt: "fixture", ModelRef: ModelRef{
+					ProviderID: OpenAICompatibleProviderID, ModelID: "fixture-model",
+				},
+			})
+			category, ok := ProviderFailureCategoryOf(err)
+			if !ok || category != test.want {
+				t.Fatalf("category=%q/%t want=%q err=%v", category, ok, test.want, err)
+			}
+		})
+	}
+
+	t.Run("read interruption", func(t *testing.T) {
+		client := &http.Client{Transport: providerRoundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(failingSSEReader{}),
+			}, nil
+		})}
+		provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+			BaseURL: "https://provider.example/v1",
+			APIKey:  "example-fixture-buffered-credential", HTTPClient: client,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = provider.CompleteChat(context.Background(), ProviderRequest{
+			Prompt: "fixture", ModelRef: ModelRef{
+				ProviderID: OpenAICompatibleProviderID, ModelID: "fixture-model",
+			},
+		})
+		category, ok := ProviderFailureCategoryOf(err)
+		if !ok || category != ProviderFailureTransportFailed ||
+			strings.Contains(err.Error(), "private stream read failure") {
+			t.Fatalf("category=%q/%t err=%v", category, ok, err)
+		}
+	})
+
+	t.Run("typed status", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Retry-After", "7")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"error":{"message":"private rate detail"}}`))
+		}))
+		defer server.Close()
+		provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+			BaseURL: server.URL, APIKey: "example-fixture-buffered-credential",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = provider.CompleteChat(context.Background(), ProviderRequest{
+			Prompt: "fixture", ModelRef: ModelRef{
+				ProviderID: OpenAICompatibleProviderID, ModelID: "fixture-model",
+			},
+		})
+		category, ok := ProviderFailureCategoryOf(err)
+		delay, retryable := ProviderRetryDelay(err)
+		if !ok || category != ProviderFailureRateLimited || !retryable ||
+			delay != 7*time.Second || strings.Contains(err.Error(), "private rate detail") {
+			t.Fatalf("category=%q/%t delay=%s/%t err=%v", category, ok, delay, retryable, err)
+		}
+	})
+
+	t.Run("cancelled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+			BaseURL: "https://provider.example/v1",
+			APIKey:  "example-fixture-buffered-credential",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = provider.CompleteChat(ctx, ProviderRequest{
+			Prompt: "fixture", ModelRef: ModelRef{
+				ProviderID: OpenAICompatibleProviderID, ModelID: "fixture-model",
+			},
+		})
+		category, ok := ProviderFailureCategoryOf(err)
+		if !ok || category != ProviderFailureContextCanceled {
+			t.Fatalf("category=%q/%t err=%v", category, ok, err)
+		}
+	})
 }
 
 func TestOpenAICompatibleProviderStreamsFragmentedToolCallAndNativeContinuation(t *testing.T) {

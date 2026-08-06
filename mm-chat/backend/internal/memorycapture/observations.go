@@ -156,6 +156,18 @@ func CostBasisSHA256(cost CostBasis) (string, error) {
 		); err != nil {
 			return "", err
 		}
+	case "neo-chat.memory-regression-cost-basis.v12":
+		if cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+			cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil {
+			return "", fmt.Errorf("%w: cost basis", ErrCaptureInvalid)
+		}
+		if err := validateConfiguredCandidateJudgeCostAuthority(
+			cost,
+			FixedMemoryJudgeAuthority(),
+			900,
+		); err != nil {
+			return "", err
+		}
 	default:
 		return "", fmt.Errorf("%w: cost basis", ErrCaptureInvalid)
 	}
@@ -364,6 +376,19 @@ func ValidateNegativePolicyGuardMemoryJudgeCostAuthority(
 		cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil ||
 		!validFixedMemoryJudgeAuthority(authority) {
 		return fmt.Errorf("%w: negative-policy-guard Memory Judge cost policy", ErrCaptureInvalid)
+	}
+	return validateConfiguredCandidateJudgeCostAuthority(cost, authority, 900)
+}
+
+func ValidateBufferedMemoryJudgeCostAuthority(
+	cost CostBasis,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+) error {
+	if cost.SchemaVersion != "neo-chat.memory-regression-cost-basis.v12" ||
+		cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+		cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil ||
+		!validFixedMemoryJudgeAuthority(authority) {
+		return fmt.Errorf("%w: buffered Memory Judge cost policy", ErrCaptureInvalid)
 	}
 	return validateConfiguredCandidateJudgeCostAuthority(cost, authority, 900)
 }

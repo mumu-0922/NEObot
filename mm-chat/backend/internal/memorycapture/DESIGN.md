@@ -31,9 +31,9 @@ protected synthetic artifacts
   -> go_api_runtime production hybrid reader
        -> repository decorator captures RRF Top 20/final Top 5
        -> migration-064 derives transient local admission similarity
-       -> fixed BGE rerank and either strict cloud/configured judge or
-          historical main-model Tool route run concurrently under its
-          versioned Development profile
+       -> fixed BGE rerank and either strict cloud/configured judge, buffered
+          JSON judge, or historical main-model Tool route under its versioned
+          Development profile
        -> judge ordinals intersect BGE order, or one exact search_memory({})
           call releases unchanged BGE order, before the token selector
        -> Provider decorator captures exact candidate-document IDs
@@ -83,7 +83,8 @@ run-bound marker in a database whose name starts with
 | Typed Judge failure measurement | The v5 aggregate collapses 17 failed cases and 22 retries into one public code, so changing corpus, prompt, or threshold would be causal guesswork. | Schema v13 reuses the unchanged v12 flow and cost authority, derives 24 plaintext-free categories from typed Provider/decoder/capture boundaries, reconciles attempt and terminal counts, and is permanently non-passing/non-selecting. |
 | Transport-stable Judge retry | Schema-v13 live evidence passed semantic gates but exhausted the single retry on one typed transport failure. | Schema v14 preserves semantic/BGE authority, keeps BGE at one retry, allows two Judge retries with five/ten-second fallback waits, and binds worst-case 900-attempt cost-basis v9. |
 | Negative-policy guard calibration | The consumed schema-v15 aggregate proves nine unrelated-negative false injections but cannot expose exact cases or authorize retuning production in place. | Schema v16 changes only a separately versioned Development policy, runs the frozen post-Prepare/pre-admission guard, binds guard/descriptor provenance, and accounts guarded cases without Judge egress under cost-basis v11. |
-| Manual stage isolation | Development evidence is not Validation or production authority. | Every schema-v11/v12/v13/v14/v16 Development run stops for owner review; Validation and production activation require separate authorization. |
+| Buffered Judge transport diagnostic | Schema v16 preserved semantics but its SSE lane ended with three terminal transport failures, so changing relevance policy would confound the next result. | Schema v17 preserves the v16 prompt/decoder/model/guard/BGE/retry/corpus/criteria authorities and changes only Luna response framing to the Provider-owned bounded JSON completion under new reader/profile/report/cost identities. |
+| Manual stage isolation | Development evidence is not Validation or production authority. | Every schema-v11/v12/v13/v14/v16/v17 Development run stops for owner review; Validation and production activation require separate authorization. |
 | Production-policy Validation isolation | A passing Development report and a deployed reader do not prove the frozen Validation split or authorize another paid run. | Schema v15 has independent profile/reader/report/manifest/cost identities, a distinct live approval, exact production-policy/read-intent hashes, and no automatic Release authority. |
 | Precommitted failure action | Interpreting a failed Validation after seeing its metrics could turn an evaluation into an unsafe release decision. | Schema v15 deterministically maps privacy/authorization release to Red/disable Tool Loop, false injection above `0.02` to Orange/disable recall, stability or remaining quality failure to Yellow/retain Beta, and pass to owner review only. |
 | Candidate failure means `no_memory` | v1 remains the real prompt authority but is a separate benchmark profile. | Prepare/Record/Provider/cutoff failures never launder v1 or unscored RRF rows into v2 final/injected surfaces. |
@@ -159,7 +160,17 @@ uses the same 100-case lifecycle with a virtual clock but is permanently
 `fake_protocol_lifecycle_only`, Yellow, and non-passing. The completed offline
 PostgreSQL 17/Compose replay retained exactly two private aggregate artifacts
 and tore down its database, role-scoped runner, network, volume, and
-containers. No live schema-v15 request has been authorized or executed.
+containers. Its later one-shot live authorization was consumed by the retained
+Orange failed result and cannot be reused.
+
+Schema-v17 uses the same independently exported BGE/Luna pair as schema v16 but
+binds adapter `chat-configured-candidate-judge-buffered-v1` and cost-basis v12.
+The Provider owns `stream:false`, `application/json`, the 2 MiB envelope cap,
+single-choice/content/`finish_reason=stop` validation, and typed interruption
+mapping. The Memory adapter still owns only the shared prompt, 1024-byte answer
+cap, strict decoder, and provenance. The Vault wrapper runs the already
+configured admin image with `--no-build --pull never`; credential export must
+never mutate or pull the active `BACKEND_IMAGE` tag.
 
 ### Fixture plaintext leakage
 
@@ -310,6 +321,12 @@ result or failure, even when a later case reuses the same assistant identity.
   non-selecting. Schema v14 is the transport-only successor. Its consumed live
   run completed all 300 cases with zero retries/failures and all quality/
   safety gates passing, while remaining non-selecting and non-promotional.
+- Schema v16 then removed false injection but failed two slices after three
+  terminal streaming transport failures. The sole schema-v17 buffered run
+  completed all 300 cases with nine recovered transport attempts, zero
+  terminals, and all unchanged quality/safety gates passing. It remains
+  non-selecting/non-promotional and does not authorize an automatic production
+  transport change, Validation, or recall re-enable.
 - Fake protocol relevance and latency metrics are intentionally meaningless;
   only lifecycle and authority invariants are evaluated.
 
@@ -422,3 +439,8 @@ result or failure, even when a later case reuses the same assistant identity.
   terminal Judge transport failures plus five Judge abstentions reduced two
   current-fact slices below criterion, and the aggregate report remained
   failed/non-selecting/non-promotional with no runtime-state change.
+- **2026-08-06**: Added and executed the isolated schema-v17 buffered-JSON
+  Judge lane. Fake and sole live runs completed 300/300; live recovered nine
+  typed transport attempts with zero terminals, passed all unchanged gates,
+  retained aggregate-only evidence, and left production Memory state and flags
+  unchanged.

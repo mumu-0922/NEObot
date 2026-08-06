@@ -8,7 +8,7 @@ usage: run-memory-regression.sh \
   --output-dir <new-run-parent> \
   [--regression-root <protected-root>] \
   [--provider-mode fake_protocol|live_siliconflow] \
-  [--capture-mode full_regression|development_calibration|development_cloud_judge|development_memory_tool_route|development_memory_tool_route_diagnostic|development_configured_candidate_judge|development_fixed_memory_judge|development_fixed_memory_judge_accuracy|development_fixed_memory_judge_failure_diagnostic|development_fixed_memory_judge_transport_stable|development_fixed_memory_judge_negative_guard|production_fixed_memory_judge_validation|frozen_validation] \
+  [--capture-mode full_regression|development_calibration|development_cloud_judge|development_memory_tool_route|development_memory_tool_route_diagnostic|development_configured_candidate_judge|development_fixed_memory_judge|development_fixed_memory_judge_accuracy|development_fixed_memory_judge_failure_diagnostic|development_fixed_memory_judge_transport_stable|development_fixed_memory_judge_negative_guard|development_fixed_memory_judge_negative_guard_buffered|production_fixed_memory_judge_validation|frozen_validation] \
   [--cloud-judge-model <fixed-model-id>] \
   [--credential-file <mode-0600-file>] \
   [--live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA] \
@@ -298,7 +298,7 @@ case "${capture_mode}" in
       exit 2
     fi
     ;;
-  development_configured_candidate_judge | development_fixed_memory_judge | development_fixed_memory_judge_accuracy | development_fixed_memory_judge_failure_diagnostic | development_fixed_memory_judge_transport_stable | development_fixed_memory_judge_negative_guard | production_fixed_memory_judge_validation)
+  development_configured_candidate_judge | development_fixed_memory_judge | development_fixed_memory_judge_accuracy | development_fixed_memory_judge_failure_diagnostic | development_fixed_memory_judge_transport_stable | development_fixed_memory_judge_negative_guard | development_fixed_memory_judge_negative_guard_buffered | production_fixed_memory_judge_validation)
     if [[ -z "${configured_judge_provider_id}" || \
       -z "${configured_judge_provider_type}" || \
       -z "${configured_judge_base_url}" || \
@@ -408,6 +408,7 @@ if [[ "${capture_mode}" == "development_configured_candidate_judge" ||
   "${capture_mode}" == "development_fixed_memory_judge_failure_diagnostic" ||
   "${capture_mode}" == "development_fixed_memory_judge_transport_stable" ||
   "${capture_mode}" == "development_fixed_memory_judge_negative_guard" ||
+  "${capture_mode}" == "development_fixed_memory_judge_negative_guard_buffered" ||
   "${capture_mode}" == "production_fixed_memory_judge_validation" ]]; then
   configured_judge_base_url="$(python3 - "${configured_judge_base_url}" <<'PY'
 import sys
@@ -501,6 +502,7 @@ if [[ "${provider_mode}" == "live_siliconflow" ]]; then
     "${capture_mode}" == "development_fixed_memory_judge_failure_diagnostic" ||
     "${capture_mode}" == "development_fixed_memory_judge_transport_stable" ||
     "${capture_mode}" == "development_fixed_memory_judge_negative_guard" ||
+    "${capture_mode}" == "development_fixed_memory_judge_negative_guard_buffered" ||
     "${capture_mode}" == "production_fixed_memory_judge_validation" ]]; then
     if [[ ! -f "${configured_judge_credential_source}" || \
       -L "${configured_judge_credential_source}" ]]; then
@@ -676,6 +678,7 @@ if [[ "${provider_mode}" == "live_siliconflow" && \
   "${capture_mode}" == "development_fixed_memory_judge_failure_diagnostic" ||
   "${capture_mode}" == "development_fixed_memory_judge_transport_stable" ||
   "${capture_mode}" == "development_fixed_memory_judge_negative_guard" ||
+  "${capture_mode}" == "development_fixed_memory_judge_negative_guard_buffered" ||
   "${capture_mode}" == "production_fixed_memory_judge_validation") ]]; then
   cp --no-preserve=mode,ownership,timestamps \
     "${configured_judge_credential_source}" \
@@ -700,6 +703,7 @@ if [[ "${provider_mode}" == "live_siliconflow" && \
     "${capture_mode}" == "development_fixed_memory_judge_failure_diagnostic" ||
     "${capture_mode}" == "development_fixed_memory_judge_transport_stable" ||
     "${capture_mode}" == "development_fixed_memory_judge_negative_guard" ||
+    "${capture_mode}" == "development_fixed_memory_judge_negative_guard_buffered" ||
     "${capture_mode}" == "production_fixed_memory_judge_validation") ]]; then
   configured_judge_credential_target="/run/mm-chat-memory-regression/configured-candidate-judge-provider.key"
 fi
@@ -918,6 +922,8 @@ elif capture_mode == "development_fixed_memory_judge_transport_stable":
     expected = {"fixed-memory-judge-transport-stable-development.json", "run-manifest.json"}
 elif capture_mode == "development_fixed_memory_judge_negative_guard":
     expected = {"fixed-memory-judge-negative-guard-development.json", "run-manifest.json"}
+elif capture_mode == "development_fixed_memory_judge_negative_guard_buffered":
+    expected = {"fixed-memory-judge-negative-guard-buffered-development.json", "run-manifest.json"}
 elif capture_mode == "production_fixed_memory_judge_validation":
     expected = {"fixed-memory-judge-production-validation.json", "run-manifest.json"}
 elif capture_mode == "frozen_validation":
@@ -952,6 +958,7 @@ expected_admission = {
     "development_fixed_memory_judge_failure_diagnostic": "development_fixed_memory_judge_failure_diagnostic_only",
     "development_fixed_memory_judge_transport_stable": "development_fixed_memory_judge_transport_stable_only",
     "development_fixed_memory_judge_negative_guard": "development_fixed_memory_judge_negative_guard_only",
+    "development_fixed_memory_judge_negative_guard_buffered": "development_fixed_memory_judge_negative_guard_buffered_only",
     "production_fixed_memory_judge_validation": "frozen_production_fixed_memory_judge_validation_only",
     "frozen_validation": "frozen_validation_only",
 }[capture_mode]
@@ -979,6 +986,7 @@ else:
         "development_fixed_memory_judge_failure_diagnostic",
         "development_fixed_memory_judge_transport_stable",
         "development_fixed_memory_judge_negative_guard",
+        "development_fixed_memory_judge_negative_guard_buffered",
     } else "validation"
     if manifest.get("captureMode") != capture_mode or manifest.get("split") != expected_split:
         raise SystemExit("relevance run split authority drift")
@@ -1499,19 +1507,29 @@ elif capture_mode in {
     "development_fixed_memory_judge_failure_diagnostic",
     "development_fixed_memory_judge_transport_stable",
     "development_fixed_memory_judge_negative_guard",
+    "development_fixed_memory_judge_negative_guard_buffered",
 }:
-    negative_guard = capture_mode == "development_fixed_memory_judge_negative_guard"
+    negative_guard = capture_mode in {
+        "development_fixed_memory_judge_negative_guard",
+        "development_fixed_memory_judge_negative_guard_buffered",
+    }
+    buffered = capture_mode == "development_fixed_memory_judge_negative_guard_buffered"
     transport_stable = capture_mode in {
         "development_fixed_memory_judge_transport_stable",
         "development_fixed_memory_judge_negative_guard",
+        "development_fixed_memory_judge_negative_guard_buffered",
     }
     report_name = (
-        "fixed-memory-judge-negative-guard-development.json"
-        if negative_guard
+        "fixed-memory-judge-negative-guard-buffered-development.json"
+        if buffered
         else (
-            "fixed-memory-judge-transport-stable-development.json"
-            if transport_stable
-            else "fixed-memory-judge-failure-diagnostic-development.json"
+            "fixed-memory-judge-negative-guard-development.json"
+            if negative_guard
+            else (
+                "fixed-memory-judge-transport-stable-development.json"
+                if transport_stable
+                else "fixed-memory-judge-failure-diagnostic-development.json"
+            )
         )
     )
     report = json.loads(
@@ -1525,12 +1543,16 @@ elif capture_mode in {
     authority = report.get("costAuthority")
     expected_clock = "wall_clock_v1" if mode == "live_siliconflow" else "virtual_protocol_v1"
     expected_schema = (
-        "neo-chat.memory-regression-relevance-calibration.v16"
-        if negative_guard
+        "neo-chat.memory-regression-relevance-calibration.v17"
+        if buffered
         else (
-            "neo-chat.memory-regression-relevance-calibration.v14"
-            if transport_stable
-            else "neo-chat.memory-regression-relevance-calibration.v13"
+            "neo-chat.memory-regression-relevance-calibration.v16"
+            if negative_guard
+            else (
+                "neo-chat.memory-regression-relevance-calibration.v14"
+                if transport_stable
+                else "neo-chat.memory-regression-relevance-calibration.v13"
+            )
         )
     )
     expected_passed = bool(evaluation.get("passed")) and diagnostics.get("failedCaseCount") == 0
@@ -1552,7 +1574,11 @@ elif capture_mode in {
         or report.get("judgeProviderType") != "openai_compatible"
         or report.get("judgeBaseUrlSha256") != "3bc0bbf28d9d817b4f6c8f6058c2c51dd644c541252ed6e2542a8c8a472ff671"
         or report.get("judgeModelId") != "gpt-5.6-luna"
-        or report.get("judgeAdapter") != "chat-configured-candidate-judge-v1"
+        or report.get("judgeAdapter") != (
+            "chat-configured-candidate-judge-buffered-v1"
+            if buffered
+            else "chat-configured-candidate-judge-v1"
+        )
         or report.get("policyId") != (
             "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_development_v1"
             if negative_guard
@@ -1600,9 +1626,13 @@ elif capture_mode in {
     ):
         raise SystemExit("historical transport report gained guard provenance")
     expected_sequence = (
-        "bge_query_admission_bge_rerank_luna_judge_record_serial_judge_retry_v2"
-        if transport_stable
-        else "bge_query_admission_bge_rerank_luna_judge_record_serial_v1"
+        "bge_query_admission_bge_rerank_luna_judge_buffered_json_record_serial_judge_retry_v1"
+        if buffered
+        else (
+            "bge_query_admission_bge_rerank_luna_judge_record_serial_judge_retry_v2"
+            if transport_stable
+            else "bge_query_admission_bge_rerank_luna_judge_record_serial_v1"
+        )
     )
     expected_retry_policy = (
         "transient_408_429_5xx_transport_read_judge_twice_v2"

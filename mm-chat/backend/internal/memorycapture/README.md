@@ -47,6 +47,9 @@ without changing prompt, Usage, feature flags, or production data.
   live approval, and aggregate-only Red/Orange/Yellow/Pass outcome contract;
 - run the schema-v16 negative-policy-guard Development successor with distinct
   profile/reader/report/cost identities and exact guard/policy provenance;
+- run the schema-v17 buffered-judge successor with the exact schema-v16
+  semantics and retry policy while changing only Luna response framing from
+  SSE streaming to a bounded JSON completion;
 - enforce exact `development`/`validation` split lanes and reject the visible
   machine `holdout`;
 - assemble strict regression observations, content-free run manifests, and
@@ -87,6 +90,9 @@ injection, or active-reader authority.
 | `CaptureNegativePolicyGuardMemoryJudgeDevelopment` | Execute only the 300-case Development split through the schema-v14 transport controller plus the post-Prepare/pre-admission negative-policy guard. |
 | `BuildNegativePolicyGuardMemoryJudgeDevelopmentReport` | Return schema-v16 aggregate evidence under cost-basis v11, including exact guard abstentions and unchanged typed failure reconciliation. |
 | `BuildNegativePolicyGuardMemoryJudgeRunManifest` | Bind the schema-v16 report artifact, v16 configuration, cost v11, and guard/policy descriptor provenance without granting Validation or promotion. |
+| `CaptureBufferedMemoryJudgeDevelopment` | Execute the schema-v17 300-case Development lane through the Provider-owned bounded JSON Judge adapter. |
+| `BuildBufferedMemoryJudgeDevelopmentReport` | Return schema-v17 aggregate evidence under cost-basis v12 while reusing the v16 guard, criteria, retry, and failure authorities. |
+| `BuildBufferedMemoryJudgeRunManifest` | Bind the schema-v17 report, configuration, cost v12, buffered adapter, guard, and policy descriptor without granting promotion. |
 | `CaptureProductionMemoryJudgeValidation` | Execute only the frozen 100-case Validation split through the production BGE-M3/rerank/fixed-Luna policy while continuing after terminal per-case Provider failures. |
 | `BuildProductionMemoryJudgeValidationReport` | Return schema-v15 aggregate-only Validation evidence under cost-basis v10; fake protocol is always Yellow/non-passing. |
 | `BuildProductionMemoryJudgeValidationRunManifest` | Bind the schema-v15 report, policy/read-intent/case-order hashes, evidence class, outcome, and one report artifact without granting Release. |
@@ -138,7 +144,11 @@ only. Live mode accepts `development_calibration`,
 `development_configured_candidate_judge`,
 `development_fixed_memory_judge`,
 `development_fixed_memory_judge_accuracy`,
-`development_fixed_memory_judge_failure_diagnostic`, or `frozen_validation`.
+`development_fixed_memory_judge_failure_diagnostic`,
+`development_fixed_memory_judge_transport_stable`,
+`development_fixed_memory_judge_negative_guard`,
+`development_fixed_memory_judge_negative_guard_buffered`,
+`production_fixed_memory_judge_validation`, or `frozen_validation`.
 Each phase
 requires a fresh separately authorized
 mode-`0600` SiliconFlow key file. Tool-route and configured/fixed/accuracy-first
@@ -470,6 +480,59 @@ bash scripts/run-memory-regression.sh \
   --configured-candidate-judge-model gpt-5.6-luna \
   --cost-basis /secure/fixed-memory-judge-negative-guard-cost-v11.json \
   --output-dir /secure/memory-regression-runs
+```
+
+Schema v17 is the transport-only successor to the immutable failed schema-v16
+run. Its separate identities are profile/report v17, reader capture v15,
+cost-basis v12, adapter `chat-configured-candidate-judge-buffered-v1`, capture
+mode `development_fixed_memory_judge_negative_guard_buffered`, admission
+`development_fixed_memory_judge_negative_guard_buffered_only`, and artifact
+`fixed-memory-judge-negative-guard-buffered-development.json`. Prompt,
+decoder, model, temperature, no-thinking control, 128-token cap, guard,
+criteria, corpus, BGE order, two Judge retries, 5s/10s waits, cooldown, privacy,
+and `900/1500000/115200` cost ceilings remain unchanged. Only Luna response
+transport becomes `stream:false` bounded JSON; ordinary chat streaming and all
+historical adapters remain unchanged.
+
+The accepted PostgreSQL 17 Fake run completed `105` empty-candidate, `30`
+guard-abstained, and `165` Judge-completed cases with zero network and zero
+scoped residue. The sole authorized live run
+`memory-regression-20260806t082407z-1ce1eba8` completed the same 300 outcomes
+with zero terminal failures. Its `174` Judge attempts contained nine retries
+and nine recovered `PROVIDER_TRANSPORT_FAILED` attempts; three valid Judge
+decisions abstained. Candidate Recall@20/Final Recall@5/current-fact accuracy
+were `1.0/0.984615/0.981818`, false injection was `0/135`, every slice and
+safety gate passed, and actual Judge authority reconciled at
+`174/900` requests, `231925/1500000` input tokens, and `22272/115200` output
+tokens. The report is `passed=true` but remains `policySelected=false` and
+`promotionEligible=false`; it authorizes no rerun, Validation, Holdout,
+promotion, Release, deployment, product-policy change, or recall re-enable.
+
+The live wrapper exports from the already configured backend image with
+`--no-build --pull never`; it must never mutate or pull `BACKEND_IMAGE` merely
+to read the Vault. The evaluated source builds only inside the isolated
+regression runner. Fake and live usage is:
+
+```bash
+bash scripts/run-memory-regression.sh \
+  --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge_negative_guard_buffered \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --cost-basis /secure/fixed-memory-judge-buffered-cost-v12.json \
+  --output-dir /secure/memory-regression-runs
+
+bash scripts/run-memory-buffered-judge-development-from-vault.sh \
+  --cost-basis /secure/fixed-memory-judge-buffered-cost-v12.json \
+  --output-dir /secure/memory-regression-runs \
+  --credential-export-approval \
+    I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_DEVELOPMENT_CREDENTIALS \
+  --siliconflow-live-approval \
+    I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --development-judge-approval \
+    I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA
 ```
 
 The fixed taxonomy `memory-candidate-judge-failure-taxonomy-v1` is the sorted

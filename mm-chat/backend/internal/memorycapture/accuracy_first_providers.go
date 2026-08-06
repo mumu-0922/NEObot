@@ -65,6 +65,20 @@ func TransportStableDevelopmentExecutionPolicy(
 	return policy, nil
 }
 
+// BufferedMemoryJudgeDevelopmentExecutionPolicy changes only the Luna Judge
+// response framing. Retry count, waits, cooldown, and Provider serialization
+// remain byte-equal to the schema-v16 transport-stable controller contract.
+func BufferedMemoryJudgeDevelopmentExecutionPolicy(
+	providerMode string,
+) (AccuracyFirstExecutionPolicy, error) {
+	policy, err := TransportStableDevelopmentExecutionPolicy(providerMode)
+	if err != nil {
+		return AccuracyFirstExecutionPolicy{}, err
+	}
+	policy.SequenceVersion = BufferedMemoryJudgeExecutionSequenceV1
+	return policy, nil
+}
+
 // ProductionMemoryJudgeValidationExecutionPolicy preserves the production
 // BGE/Luna retry and serialization behavior while giving the frozen Validation
 // lane an identity that cannot be confused with schema-v14 Development.
@@ -246,6 +260,28 @@ func WrapProductionMemoryJudgeValidationProviders(
 // schema-v14 serial/retry controller under the separately versioned guard
 // Development identity.
 func WrapNegativePolicyGuardMemoryJudgeDevelopmentProviders(
+	providerMode string,
+	passage PassageEmbedder,
+	hybrid usermemory.HybridShadowProvider,
+	judge usermemory.HybridCandidateJudge,
+) (
+	PassageEmbedder,
+	usermemory.HybridShadowProvider,
+	usermemory.HybridCandidateJudge,
+	*AccuracyFirstProviderController,
+	error,
+) {
+	return WrapTransportStableMemoryJudgeDevelopmentProviders(
+		providerMode,
+		passage,
+		hybrid,
+		judge,
+	)
+}
+
+// WrapBufferedMemoryJudgeDevelopmentProviders retains the schema-v16 serial
+// controller and two-retry ceiling under a distinct buffered-transport lane.
+func WrapBufferedMemoryJudgeDevelopmentProviders(
 	providerMode string,
 	passage PassageEmbedder,
 	hybrid usermemory.HybridShadowProvider,

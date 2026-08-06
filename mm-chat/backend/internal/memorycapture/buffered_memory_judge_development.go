@@ -15,14 +15,17 @@ import (
 )
 
 const (
-	NegativePolicyGuardMemoryJudgeReportSchemaVersion = "neo-chat.memory-regression-relevance-calibration.v16"
-	NegativePolicyGuardMemoryJudgeAdmissionMode       = "development_fixed_memory_judge_negative_guard_only"
-	NegativePolicyGuardMemoryJudgeArtifactName        = "fixed-memory-judge-negative-guard-development.json"
+	BufferedMemoryJudgeReportSchemaVersion = "neo-chat.memory-regression-relevance-calibration.v17"
+	BufferedMemoryJudgeAdmissionMode       = "development_fixed_memory_judge_negative_guard_buffered_only"
+	BufferedMemoryJudgeArtifactName        = "fixed-memory-judge-negative-guard-buffered-development.json"
 )
 
-type NegativePolicyGuardMemoryJudgeDevelopmentReport JudgeFailureDiagnosticDevelopmentReport
+// BufferedMemoryJudgeDevelopmentReport changes only the configured Luna
+// Judge's response framing from SSE to one bounded JSON completion. It remains
+// Development-only and carries no reader-promotion authority.
+type BufferedMemoryJudgeDevelopmentReport JudgeFailureDiagnosticDevelopmentReport
 
-func negativePolicyGuardMemoryJudgeDevelopmentReportSpec() (
+func bufferedMemoryJudgeDevelopmentReportSpec() (
 	transportStableMemoryJudgeReportSpec,
 	error,
 ) {
@@ -33,22 +36,22 @@ func negativePolicyGuardMemoryJudgeDevelopmentReportSpec() (
 		return transportStableMemoryJudgeReportSpec{}, err
 	}
 	return transportStableMemoryJudgeReportSpec{
-		readerVersion:                   NegativePolicyGuardMemoryJudgeReaderVersion,
-		reportSchemaVersion:             NegativePolicyGuardMemoryJudgeReportSchemaVersion,
-		admissionMode:                   NegativePolicyGuardMemoryJudgeAdmissionMode,
+		readerVersion:                   BufferedMemoryJudgeReaderVersion,
+		reportSchemaVersion:             BufferedMemoryJudgeReportSchemaVersion,
+		admissionMode:                   BufferedMemoryJudgeAdmissionMode,
 		policyID:                        usermemory.HybridRelevanceNegativePolicyGuardDevelopmentPolicyID,
 		allowNegativeGuardAbstention:    true,
 		negativeGuardRequired:           true,
 		negativeGuardVersion:            usermemory.NegativePolicyQueryGuardVersion,
 		negativeGuardSHA256:             usermemory.NegativePolicyQueryGuardSHA256,
 		relevancePolicyDescriptorSHA256: descriptorSHA256,
-		judgeAdapter:                    memoryjudge.ChatAdapterVersion,
-		executionPolicy:                 TransportStableDevelopmentExecutionPolicy,
-		validateCostAuthority:           ValidateNegativePolicyGuardMemoryJudgeCostAuthority,
+		judgeAdapter:                    memoryjudge.BufferedChatAdapterVersion,
+		executionPolicy:                 BufferedMemoryJudgeDevelopmentExecutionPolicy,
+		validateCostAuthority:           ValidateBufferedMemoryJudgeCostAuthority,
 	}, nil
 }
 
-func CaptureNegativePolicyGuardMemoryJudgeDevelopment(
+func CaptureBufferedMemoryJudgeDevelopment(
 	ctx context.Context,
 	seedDB *sql.DB,
 	runtimeDB *sql.DB,
@@ -94,19 +97,19 @@ func CaptureNegativePolicyGuardMemoryJudgeDevelopment(
 	if err != nil {
 		return CapturedProfile{}, err
 	}
-	profile.Profile.ReaderVersion = NegativePolicyGuardMemoryJudgeReaderVersion
+	profile.Profile.ReaderVersion = BufferedMemoryJudgeReaderVersion
 	return profile, nil
 }
 
-func BuildNegativePolicyGuardMemoryJudgeDevelopmentReport(
+func BuildBufferedMemoryJudgeDevelopmentReport(
 	pool memoryauthor.RegressionPool,
 	profile CapturedProfile,
 	authority ConfiguredCandidateJudgeProfileAuthority,
 	costBasis CostBasis,
-) (NegativePolicyGuardMemoryJudgeDevelopmentReport, []byte, error) {
-	spec, err := negativePolicyGuardMemoryJudgeDevelopmentReportSpec()
+) (BufferedMemoryJudgeDevelopmentReport, []byte, error) {
+	spec, err := bufferedMemoryJudgeDevelopmentReportSpec()
 	if err != nil {
-		return NegativePolicyGuardMemoryJudgeDevelopmentReport{}, nil, err
+		return BufferedMemoryJudgeDevelopmentReport{}, nil, err
 	}
 	report, body, err := buildTransportStableMemoryJudgeDevelopmentReport(
 		pool,
@@ -115,20 +118,20 @@ func BuildNegativePolicyGuardMemoryJudgeDevelopmentReport(
 		costBasis,
 		spec,
 	)
-	return NegativePolicyGuardMemoryJudgeDevelopmentReport(report), body, err
+	return BufferedMemoryJudgeDevelopmentReport(report), body, err
 }
 
-func validNegativePolicyGuardMemoryJudgeDevelopmentReport(
-	report NegativePolicyGuardMemoryJudgeDevelopmentReport,
+func validBufferedMemoryJudgeDevelopmentReport(
+	report BufferedMemoryJudgeDevelopmentReport,
 ) bool {
-	spec, err := negativePolicyGuardMemoryJudgeDevelopmentReportSpec()
+	spec, err := bufferedMemoryJudgeDevelopmentReportSpec()
 	return err == nil && validTransportStableMemoryJudgeDevelopmentReportForSpec(
 		JudgeFailureDiagnosticDevelopmentReport(report),
 		spec,
 	)
 }
 
-func BuildNegativePolicyGuardMemoryJudgeRunManifest(
+func BuildBufferedMemoryJudgeRunManifest(
 	runID string,
 	captureID string,
 	providerMode string,
@@ -136,10 +139,10 @@ func BuildNegativePolicyGuardMemoryJudgeRunManifest(
 	completedAt time.Time,
 	protected ProtectedRegression,
 	costBasisSHA256 string,
-	report NegativePolicyGuardMemoryJudgeDevelopmentReport,
+	report BufferedMemoryJudgeDevelopmentReport,
 	artifacts []Artifact,
 ) (RelevanceRunManifest, []byte, error) {
-	if !validNegativePolicyGuardMemoryJudgeDevelopmentReport(report) ||
+	if !validBufferedMemoryJudgeDevelopmentReport(report) ||
 		!runIDPattern.MatchString(runID) || captureID == "" ||
 		startedAt.IsZero() || completedAt.Before(startedAt) ||
 		len(costBasisSHA256) != 64 || len(artifacts) != 1 {
@@ -148,7 +151,7 @@ func BuildNegativePolicyGuardMemoryJudgeRunManifest(
 	if _, err := hex.DecodeString(costBasisSHA256); err != nil {
 		return RelevanceRunManifest{}, nil, ErrCaptureInvalid
 	}
-	expectedPolicy, err := TransportStableDevelopmentExecutionPolicy(providerMode)
+	expectedPolicy, err := BufferedMemoryJudgeDevelopmentExecutionPolicy(providerMode)
 	if err != nil || report.ExecutionPolicy != expectedPolicy {
 		return RelevanceRunManifest{}, nil, ErrCaptureInvalid
 	}
@@ -157,7 +160,7 @@ func BuildNegativePolicyGuardMemoryJudgeRunManifest(
 		return RelevanceRunManifest{}, nil, ErrCaptureInvalid
 	}
 	artifactManifest, err := buildRunArtifactManifest(artifacts)
-	if err != nil || artifactManifest[0].Name != NegativePolicyGuardMemoryJudgeArtifactName {
+	if err != nil || artifactManifest[0].Name != BufferedMemoryJudgeArtifactName {
 		return RelevanceRunManifest{}, nil, ErrCaptureInvalid
 	}
 	manifest := RelevanceRunManifest{
@@ -165,9 +168,9 @@ func BuildNegativePolicyGuardMemoryJudgeRunManifest(
 		RunID:                           runID,
 		CaptureID:                       captureID,
 		CorpusClass:                     memoryeval.RegressionCorpusClass,
-		AdmissionMode:                   NegativePolicyGuardMemoryJudgeAdmissionMode,
+		AdmissionMode:                   BufferedMemoryJudgeAdmissionMode,
 		PromotionEligible:               false,
-		CaptureMode:                     CaptureModeNegativePolicyGuardMemoryJudge,
+		CaptureMode:                     CaptureModeBufferedMemoryJudge,
 		Split:                           DevelopmentCalibrationSplit,
 		ProviderMode:                    providerMode,
 		ProfileID:                       report.ProfileID,
