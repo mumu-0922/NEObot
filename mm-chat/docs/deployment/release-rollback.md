@@ -228,6 +228,15 @@ for a failed product Tool read. If the current stored `SERVER_DEFAULT` /
 OpenAI-Compatible / attested Base-URL hash / `gpt-5.6-luna` tuple drifts, leave
 the Tool switch false until the exact authority is restored and reviewed.
 
+Before a flag-only `--force-recreate`, record each running container's exact
+image ID and pin `BACKEND_IMAGE` to an immutable digest or retained tag. The
+default `mm-chat/backend:local` tag is mutable and may no longer name the image
+used by the running container; recreating from a drifted tag is an implicit
+release and may select a binary that requires unapplied migrations. Render the
+same Compose topology shown by the live container labels, use `--no-build` plus
+`--no-deps`, and reject any image or schema drift. Never run a migration merely
+to accommodate an accidentally selected image.
+
 Never delete observation evidence to force rollback. After shadow collection
 begins, retain `059` and roll back behavior with the default-off flag. Only a
 clean pre-observation database may run `059 -> 058 -> 059`; its HNSW vectors
