@@ -21,8 +21,9 @@ import (
 )
 
 const (
-	memoryValidationCredentialExportApproval = "I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_VALIDATION_CREDENTIALS"
-	memoryValidationCredentialExportSuccess  = "memory validation credentials exported\n"
+	memoryValidationCredentialExportApproval  = "I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_VALIDATION_CREDENTIALS"
+	memoryDevelopmentCredentialExportApproval = "I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_DEVELOPMENT_CREDENTIALS"
+	memoryValidationCredentialExportSuccess   = "memory validation credentials exported\n"
 )
 
 var (
@@ -96,7 +97,8 @@ func parseMemoryValidationCredentialExportArgs(
 		flagCount(args, "approval") != 1 {
 		return memoryValidationCredentialExportOptions{}, usageError()
 	}
-	if approval != memoryValidationCredentialExportApproval {
+	if approval != memoryValidationCredentialExportApproval &&
+		approval != memoryDevelopmentCredentialExportApproval {
 		return memoryValidationCredentialExportOptions{}, errMemoryValidationCredentialExportNotAuthorized
 	}
 	options := memoryValidationCredentialExportOptions{

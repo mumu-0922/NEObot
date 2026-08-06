@@ -25,6 +25,7 @@ const (
 	JudgeFailureDiagnosticReaderVersion          = "neo-chat.native-memory-reader-capture.v11"
 	TransportStableMemoryJudgeReaderVersion      = "neo-chat.native-memory-reader-capture.v12"
 	ProductionMemoryJudgeValidationReaderVersion = "neo-chat.native-memory-reader-capture.v13"
+	NegativePolicyGuardMemoryJudgeReaderVersion  = "neo-chat.native-memory-reader-capture.v14"
 	ProviderCostPolicyOwnerAuthorizedAbsoluteV1  = "owner_authorized_absolute_cap_v1"
 	AccuracyFirstExecutionSequenceV1             = "bge_query_admission_bge_rerank_luna_judge_record_serial_v1"
 	AccuracyFirstRetryPolicyV1                   = "transient_408_429_5xx_transport_read_once_v1"
@@ -46,6 +47,7 @@ const (
 	CaptureModeAccuracyFirstMemoryJudge          = "development_fixed_memory_judge_accuracy"
 	CaptureModeJudgeFailureDiagnostic            = "development_fixed_memory_judge_failure_diagnostic"
 	CaptureModeTransportStableMemoryJudge        = "development_fixed_memory_judge_transport_stable"
+	CaptureModeNegativePolicyGuardMemoryJudge    = "development_fixed_memory_judge_negative_guard"
 	CaptureModeFrozenValidation                  = "frozen_validation"
 	CaptureModeProductionMemoryJudgeValidation   = "production_fixed_memory_judge_validation"
 )
@@ -138,6 +140,10 @@ type ProfileConfig struct {
 	ProductionRelevancePolicySHA256       string                        `json:"productionRelevancePolicySha256,omitempty"`
 	MemoryReadIntentPolicyVersion         string                        `json:"memoryReadIntentPolicyVersion,omitempty"`
 	MemoryReadIntentPolicySHA256          string                        `json:"memoryReadIntentPolicySha256,omitempty"`
+	NegativePolicyQueryGuardRequired      bool                          `json:"negativePolicyQueryGuardRequired,omitempty"`
+	NegativePolicyQueryGuardVersion       string                        `json:"negativePolicyQueryGuardVersion,omitempty"`
+	NegativePolicyQueryGuardSHA256        string                        `json:"negativePolicyQueryGuardSha256,omitempty"`
+	RelevancePolicyDescriptorSHA256       string                        `json:"relevancePolicyDescriptorSha256,omitempty"`
 }
 
 // AccuracyFirstExecutionPolicy is hash-bound by each accuracy-first schema. It

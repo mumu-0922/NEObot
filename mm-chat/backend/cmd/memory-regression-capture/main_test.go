@@ -155,6 +155,17 @@ func TestParseCommandSeparatesFakeAndLiveCredentialBoundaries(t *testing.T) {
 	if err != nil || options.captureMode != memorycapture.CaptureModeTransportStableMemoryJudge {
 		t.Fatalf("parse transport-stable Memory Judge command = %#v/%v", options, err)
 	}
+	negativeGuard := append([]string(nil), transportStableJudge...)
+	for index := range negativeGuard {
+		if negativeGuard[index] == memorycapture.CaptureModeTransportStableMemoryJudge {
+			negativeGuard[index] = memorycapture.CaptureModeNegativePolicyGuardMemoryJudge
+			break
+		}
+	}
+	options, err = parseCommand(negativeGuard)
+	if err != nil || options.captureMode != memorycapture.CaptureModeNegativePolicyGuardMemoryJudge {
+		t.Fatalf("parse negative-policy-guard Memory Judge command = %#v/%v", options, err)
+	}
 	productionValidation := append([]string(nil), transportStableJudge...)
 	for index := range productionValidation {
 		if productionValidation[index] == memorycapture.CaptureModeTransportStableMemoryJudge {
@@ -192,6 +203,14 @@ func TestAccuracyFirstCaptureContextHasNoElapsedDeadline(t *testing.T) {
 	defer transportCancel()
 	if _, ok := transportContext.Deadline(); ok {
 		t.Fatal("transport-stable Judge inherited the legacy 45-minute deadline")
+	}
+	negativeGuardContext, negativeGuardCancel := captureContext(
+		context.Background(),
+		memorycapture.CaptureModeNegativePolicyGuardMemoryJudge,
+	)
+	defer negativeGuardCancel()
+	if _, ok := negativeGuardContext.Deadline(); ok {
+		t.Fatal("negative-policy-guard Judge inherited the legacy 45-minute deadline")
 	}
 	productionContext, productionCancel := captureContext(
 		context.Background(),
@@ -427,6 +446,7 @@ func TestBuildProvidersWrapsAccuracyFirstFakeProviderSet(t *testing.T) {
 		memorycapture.CaptureModeAccuracyFirstMemoryJudge,
 		memorycapture.CaptureModeJudgeFailureDiagnostic,
 		memorycapture.CaptureModeTransportStableMemoryJudge,
+		memorycapture.CaptureModeNegativePolicyGuardMemoryJudge,
 		memorycapture.CaptureModeProductionMemoryJudgeValidation,
 	} {
 		bundle, err := buildProviders(commandOptions{

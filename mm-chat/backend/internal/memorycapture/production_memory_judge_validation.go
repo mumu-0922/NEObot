@@ -198,6 +198,7 @@ func BuildProductionMemoryJudgeValidationReport(
 		FrozenValidationSplit,
 		100,
 		true,
+		false,
 	)
 	if err != nil {
 		return ProductionMemoryJudgeValidationReport{}, nil, err
@@ -633,9 +634,15 @@ func productionValidationCriteriaSHA256(criteria memoryeval.Criteria) (string, e
 }
 
 func productionRelevancePolicySHA256() (string, error) {
-	descriptor, ok := usermemory.DescribeHybridShadowRelevancePolicy(
+	return relevancePolicyDescriptorSHA256(
 		usermemory.HybridShadowFixedMemoryJudgeProductionPolicy(),
 	)
+}
+
+func relevancePolicyDescriptorSHA256(
+	policy usermemory.HybridShadowRelevancePolicy,
+) (string, error) {
+	descriptor, ok := usermemory.DescribeHybridShadowRelevancePolicy(policy)
 	if !ok {
 		return "", ErrCaptureInvalid
 	}

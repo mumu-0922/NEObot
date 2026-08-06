@@ -58,25 +58,28 @@ type RunArtifactManifest struct {
 }
 
 type RelevanceRunManifest struct {
-	SchemaVersion       string                `json:"schemaVersion"`
-	RunID               string                `json:"runId"`
-	CaptureID           string                `json:"captureId"`
-	CorpusClass         string                `json:"corpusClass"`
-	AdmissionMode       string                `json:"admissionMode"`
-	PromotionEligible   bool                  `json:"promotionEligible"`
-	CaptureMode         string                `json:"captureMode"`
-	Split               string                `json:"split"`
-	ProviderMode        string                `json:"providerMode"`
-	ProfileID           string                `json:"profileId"`
-	PolicyID            string                `json:"policyId"`
-	ConfigurationSHA256 string                `json:"configurationSha256"`
-	Passed              bool                  `json:"passed"`
-	StartedAt           string                `json:"startedAt"`
-	CompletedAt         string                `json:"completedAt"`
-	CostBasisSHA256     string                `json:"costBasisSha256"`
-	ProviderCostPolicy  string                `json:"providerCostPolicy,omitempty"`
-	Inputs              RunInputHashes        `json:"inputs"`
-	Artifacts           []RunArtifactManifest `json:"artifacts"`
+	SchemaVersion                   string                `json:"schemaVersion"`
+	RunID                           string                `json:"runId"`
+	CaptureID                       string                `json:"captureId"`
+	CorpusClass                     string                `json:"corpusClass"`
+	AdmissionMode                   string                `json:"admissionMode"`
+	PromotionEligible               bool                  `json:"promotionEligible"`
+	CaptureMode                     string                `json:"captureMode"`
+	Split                           string                `json:"split"`
+	ProviderMode                    string                `json:"providerMode"`
+	ProfileID                       string                `json:"profileId"`
+	PolicyID                        string                `json:"policyId"`
+	ConfigurationSHA256             string                `json:"configurationSha256"`
+	Passed                          bool                  `json:"passed"`
+	StartedAt                       string                `json:"startedAt"`
+	CompletedAt                     string                `json:"completedAt"`
+	CostBasisSHA256                 string                `json:"costBasisSha256"`
+	ProviderCostPolicy              string                `json:"providerCostPolicy,omitempty"`
+	NegativePolicyQueryGuardVersion string                `json:"negativePolicyQueryGuardVersion,omitempty"`
+	NegativePolicyQueryGuardSHA256  string                `json:"negativePolicyQueryGuardSha256,omitempty"`
+	RelevancePolicyDescriptorSHA256 string                `json:"relevancePolicyDescriptorSha256,omitempty"`
+	Inputs                          RunInputHashes        `json:"inputs"`
+	Artifacts                       []RunArtifactManifest `json:"artifacts"`
 }
 
 func BuildRunManifest(

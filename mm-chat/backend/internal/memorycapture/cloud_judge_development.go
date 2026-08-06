@@ -19,11 +19,12 @@ const (
 )
 
 type CloudJudgeDevelopmentDiagnostics struct {
-	EmptyCandidateCaseCount int            `json:"emptyCandidateCaseCount"`
-	JudgeCompletedCaseCount int            `json:"judgeCompletedCaseCount"`
-	JudgeAbstainedCaseCount int            `json:"judgeAbstainedCaseCount"`
-	FailedCaseCount         int            `json:"failedCaseCount"`
-	FailureCodeCounts       map[string]int `json:"failureCodeCounts"`
+	EmptyCandidateCaseCount               int            `json:"emptyCandidateCaseCount"`
+	NegativePolicyQueryAbstainedCaseCount int            `json:"negativePolicyQueryAbstainedCaseCount,omitempty"`
+	JudgeCompletedCaseCount               int            `json:"judgeCompletedCaseCount"`
+	JudgeAbstainedCaseCount               int            `json:"judgeAbstainedCaseCount"`
+	FailedCaseCount                       int            `json:"failedCaseCount"`
+	FailureCodeCounts                     map[string]int `json:"failureCodeCounts"`
 }
 
 type CloudJudgeDevelopmentCostAuthority struct {
@@ -232,6 +233,7 @@ func aggregateCloudJudgeDevelopment(
 		DevelopmentCalibrationSplit,
 		300,
 		allowPreJudgeRetrievalFailure,
+		false,
 	)
 }
 
@@ -241,6 +243,7 @@ func aggregateCloudJudgeCaptureSplit(
 	split string,
 	expectedCaseCount int,
 	allowPreJudgeRetrievalFailure bool,
+	allowNegativePolicyGuardAbstention bool,
 ) (cloudJudgeDevelopmentAggregate, error) {
 	if (split != DevelopmentCalibrationSplit && split != FrozenValidationSplit) ||
 		expectedCaseCount < 1 {
@@ -306,6 +309,29 @@ func aggregateCloudJudgeCaptureSplit(
 			aggregate.diagnostics.EmptyCandidateCaseCount++
 		} else {
 			if !trace.AdmissionReady {
+				guardAbstained := allowNegativePolicyGuardAbstention &&
+					trace.AbstentionCode == "NEGATIVE_POLICY_QUERY_ABSTAINED" &&
+					trace.ResultCode == "NO_CANDIDATES"
+				if guardAbstained {
+					if trace.RerankReady || trace.CloudJudgeReady ||
+						trace.CloudJudgeInputTokenUpperBound != 0 ||
+						trace.CloudJudgeFailureCategory != "" ||
+						trace.MemoryToolRouteReady || trace.MemoryToolRouteUsed ||
+						trace.MemoryToolRouteFailureCategory != "" ||
+						trace.MemoryToolRouteInputTokenUpperBound != 0 ||
+						trace.MemoryToolRouteOutputTokenUpperBound != 0 ||
+						len(trace.FinalRelevanceScores) != 0 ||
+						len(observed.ProviderSentMemoryIDs) != 0 ||
+						len(observed.FinalMemoryIDs) != 0 ||
+						len(observed.InjectedMemoryIDs) != 0 ||
+						observed.PromptMemoryTokens != 0 ||
+						observed.HardCutoffApplied || observed.Fallback != "no_memory" {
+						return cloudJudgeDevelopmentAggregate{}, ErrCaptureInvalid
+					}
+					aggregate.diagnostics.NegativePolicyQueryAbstainedCaseCount++
+					aggregate.ordered[index] = observed
+					continue
+				}
 				if !allowPreJudgeRetrievalFailure || trace.RerankReady ||
 					trace.CloudJudgeReady || trace.CloudJudgeInputTokenUpperBound != 0 ||
 					len(observed.ProviderSentMemoryIDs) != 0 ||

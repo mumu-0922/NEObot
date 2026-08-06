@@ -81,6 +81,20 @@ func TestParseMemoryValidationCredentialExportArgsRequiresExactOneRunApproval(t 
 	}
 }
 
+func TestParseMemoryValidationCredentialExportArgsAcceptsSeparatedDevelopmentApproval(t *testing.T) {
+	private := t.TempDir()
+	bgePath := filepath.Join(private, "bge.key")
+	lunaPath := filepath.Join(private, "luna.key")
+	options, err := parseMemoryValidationCredentialExportArgs([]string{
+		"--bge-output", bgePath,
+		"--luna-output", lunaPath,
+		"--approval", memoryDevelopmentCredentialExportApproval,
+	})
+	if err != nil || options.bgeOutput != bgePath || options.lunaOutput != lunaPath {
+		t.Fatalf("parse Development export options = %#v, %v", options, err)
+	}
+}
+
 func TestValidateMemoryValidationCredentialOutputsRejectsUnsafeTargets(t *testing.T) {
 	private := t.TempDir()
 	if err := os.Chmod(private, 0o700); err != nil {

@@ -242,6 +242,29 @@ func WrapProductionMemoryJudgeValidationProviders(
 	)
 }
 
+// WrapNegativePolicyGuardMemoryJudgeDevelopmentProviders reuses the proven
+// schema-v14 serial/retry controller under the separately versioned guard
+// Development identity.
+func WrapNegativePolicyGuardMemoryJudgeDevelopmentProviders(
+	providerMode string,
+	passage PassageEmbedder,
+	hybrid usermemory.HybridShadowProvider,
+	judge usermemory.HybridCandidateJudge,
+) (
+	PassageEmbedder,
+	usermemory.HybridShadowProvider,
+	usermemory.HybridCandidateJudge,
+	*AccuracyFirstProviderController,
+	error,
+) {
+	return WrapTransportStableMemoryJudgeDevelopmentProviders(
+		providerMode,
+		passage,
+		hybrid,
+		judge,
+	)
+}
+
 func wrapAccuracyFirstDevelopmentProviders(
 	passage PassageEmbedder,
 	hybrid usermemory.HybridShadowProvider,

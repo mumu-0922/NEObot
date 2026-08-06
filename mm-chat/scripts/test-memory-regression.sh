@@ -369,12 +369,35 @@ if args and args[0] == "compose":
             "development_fixed_memory_judge_accuracy",
             "development_fixed_memory_judge_failure_diagnostic",
             "development_fixed_memory_judge_transport_stable",
+            "development_fixed_memory_judge_negative_guard",
         }:
+            negative_guard = capture_mode == "development_fixed_memory_judge_negative_guard"
             diagnostic = capture_mode in {
                 "development_fixed_memory_judge_failure_diagnostic",
                 "development_fixed_memory_judge_transport_stable",
+                "development_fixed_memory_judge_negative_guard",
             }
-            transport_stable = capture_mode == "development_fixed_memory_judge_transport_stable"
+            transport_stable = capture_mode in {
+                "development_fixed_memory_judge_transport_stable",
+                "development_fixed_memory_judge_negative_guard",
+            }
+            guarded_case_count = 10 if negative_guard else 0
+            judge_completed_case_count = (
+                185
+                if negative_guard
+                else 193
+                if diagnostic and not transport_stable
+                else 195
+            )
+            judge_attempt_count = (
+                judge_completed_case_count + 2
+                if transport_stable
+                else judge_completed_case_count + 3
+                if diagnostic
+                else judge_completed_case_count + 1
+            )
+            judge_retry_count = 2 if transport_stable else 1
+            judge_input_token_upper_bound = 245893 if negative_guard else 258893 if transport_stable else 258770
             cooldown_elapsed = 299000 if mode == "live_siliconflow" else 0
             cooldown_clock = "wall_clock_v1" if mode == "live_siliconflow" else "virtual_protocol_v1"
             def latency(count):
@@ -387,7 +410,9 @@ if args and args[0] == "compose":
                 }
             accuracy = json.dumps({
                 "schemaVersion": (
-                    "neo-chat.memory-regression-relevance-calibration.v14"
+                    "neo-chat.memory-regression-relevance-calibration.v16"
+                    if negative_guard
+                    else "neo-chat.memory-regression-relevance-calibration.v14"
                     if transport_stable
                     else "neo-chat.memory-regression-relevance-calibration.v13"
                     if diagnostic
@@ -395,7 +420,9 @@ if args and args[0] == "compose":
                 ),
                 "corpusClass": "machine_reviewed_regression",
                 "admissionMode": (
-                    "development_fixed_memory_judge_transport_stable_only"
+                    "development_fixed_memory_judge_negative_guard_only"
+                    if negative_guard
+                    else "development_fixed_memory_judge_transport_stable_only"
                     if transport_stable
                     else "development_fixed_memory_judge_failure_diagnostic_only"
                     if diagnostic
@@ -411,7 +438,17 @@ if args and args[0] == "compose":
                 } if diagnostic else {}),
                 "split": "development",
                 "caseCount": 300,
-                "policyId": "memory_hybrid_fixed_cloud_candidate_judge_accuracy_development_v2",
+                "policyId": (
+                    "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_development_v1"
+                    if negative_guard
+                    else "memory_hybrid_fixed_cloud_candidate_judge_accuracy_development_v2"
+                ),
+                **({
+                    "negativePolicyQueryGuardRequired": True,
+                    "negativePolicyQueryGuardVersion": "memory-negative-policy-query-guard-v1",
+                    "negativePolicyQueryGuardSha256": "8fe79b55a0f136392081a81e471abae98d0db7b8e3bece74adcc590b9d2c8f39",
+                    "relevancePolicyDescriptorSha256": "82341542e46b091521b9f4b8c4eb637d6e732683d9902e0d2e3832a14cb50f9b",
+                } if negative_guard else {}),
                 "providerEgressPolicy": "owner_authorized_normal_candidates_v1",
                 "providerCostPolicy": "owner_authorized_absolute_cap_v1",
                 "providerCostAuthorized": True,
@@ -471,8 +508,11 @@ if args and args[0] == "compose":
                 },
                 "diagnostics": {
                     "emptyCandidateCaseCount": 105,
-                    "judgeCompletedCaseCount": 193 if diagnostic and not transport_stable else 195,
+                    "judgeCompletedCaseCount": judge_completed_case_count,
                     "judgeAbstainedCaseCount": 30,
+                    **({
+                        "negativePolicyQueryAbstainedCaseCount": guarded_case_count,
+                    } if negative_guard else {}),
                     "failedCaseCount": 2 if diagnostic and not transport_stable else 0,
                     "failureCodeCounts": (
                         {"CANDIDATE_JUDGE_FAILED": 2}
@@ -491,19 +531,19 @@ if args and args[0] == "compose":
                     "passageEmbeddingRetries": 0,
                     "queryEmbeddingAttempts": 300,
                     "queryEmbeddingRetries": 0,
-                    "rerankAttempts": 195,
+                    "rerankAttempts": judge_completed_case_count,
                     "rerankRetries": 0,
-                    "judgeAttempts": 197 if transport_stable else 196,
-                    "judgeRetries": 2 if transport_stable else 1,
-                    "judgeInputTokenUpperBound": 258893 if transport_stable else 258770,
+                    "judgeAttempts": judge_attempt_count,
+                    "judgeRetries": judge_retry_count,
+                    "judgeInputTokenUpperBound": judge_input_token_upper_bound,
                     "judgeRetryInputTokenUpperBound": 246 if transport_stable else 123,
                     "interCaseCooldownCount": 299,
                     "interCaseCooldownMilliseconds": 299000,
                     "interCaseCooldownElapsedMilliseconds": cooldown_elapsed,
                     "passageEmbeddingLatency": latency(1),
                     "queryEmbeddingLatency": latency(300),
-                    "rerankLatency": latency(195),
-                    "judgeLatency": latency(197 if transport_stable else 196),
+                    "rerankLatency": latency(judge_completed_case_count),
+                    "judgeLatency": latency(judge_attempt_count),
                     **({
                         "judgeAttemptFailureCategoryCounts": {
                             "PROVIDER_TRANSPORT_FAILED": 2,
@@ -516,17 +556,19 @@ if args and args[0] == "compose":
                 "costAuthority": {
                     "unit": "cny_microunits",
                     "authorizedRequestCount": 900 if transport_stable else 600,
-                    "actualRequestCount": 197 if transport_stable else 196,
+                    "actualRequestCount": judge_attempt_count,
                     "authorizedMaximumInputTokens": 1500000 if transport_stable else 600000,
-                    "actualInputTokenUpperBound": 258893 if transport_stable else 258770,
+                    "actualInputTokenUpperBound": judge_input_token_upper_bound,
                     "authorizedMaximumOutputTokens": 115200 if transport_stable else 76800,
-                    "actualOutputTokenUpperBound": 25216 if transport_stable else 25088,
+                    "actualOutputTokenUpperBound": judge_attempt_count * 128,
                     "maximumJudgeCostMicrounits": 565200 if transport_stable else 376800,
                     "maximumMemoryProviderCostMicrounits": 565200 if transport_stable else 487716,
                 },
             }, separators=(",", ":")).encode() + b"\n"
             report_name = (
-                "fixed-memory-judge-transport-stable-development.json"
+                "fixed-memory-judge-negative-guard-development.json"
+                if negative_guard
+                else "fixed-memory-judge-transport-stable-development.json"
                 if transport_stable
                 else "fixed-memory-judge-failure-diagnostic-development.json"
                 if diagnostic
@@ -535,7 +577,9 @@ if args and args[0] == "compose":
             bodies = {report_name: accuracy}
             manifest_schema = "neo-chat.memory-regression-relevance-run.v1"
             admission_mode = (
-                "development_fixed_memory_judge_transport_stable_only"
+                "development_fixed_memory_judge_negative_guard_only"
+                if negative_guard
+                else "development_fixed_memory_judge_transport_stable_only"
                 if transport_stable
                 else "development_fixed_memory_judge_failure_diagnostic_only"
                 if diagnostic
@@ -924,6 +968,7 @@ if args and args[0] == "compose":
                         "development_fixed_memory_judge_accuracy",
                         "development_fixed_memory_judge_failure_diagnostic",
                         "development_fixed_memory_judge_transport_stable",
+                        "development_fixed_memory_judge_negative_guard",
                     } else "validation",
                     "profileId": candidate_profile,
                 })
@@ -936,6 +981,7 @@ if args and args[0] == "compose":
                     "development_fixed_memory_judge_accuracy",
                     "development_fixed_memory_judge_failure_diagnostic",
                     "development_fixed_memory_judge_transport_stable",
+                    "development_fixed_memory_judge_negative_guard",
                     "production_fixed_memory_judge_validation",
                 }:
                     manifest["providerCostPolicy"] = "owner_authorized_absolute_cap_v1"
@@ -943,6 +989,13 @@ if args and args[0] == "compose":
                     manifest["passed"] = False
                 elif capture_mode == "development_fixed_memory_judge_transport_stable":
                     manifest["passed"] = True
+                elif capture_mode == "development_fixed_memory_judge_negative_guard":
+                    manifest.update({
+                        "passed": True,
+                        "negativePolicyQueryGuardVersion": "memory-negative-policy-query-guard-v1",
+                        "negativePolicyQueryGuardSha256": "8fe79b55a0f136392081a81e471abae98d0db7b8e3bece74adcc590b9d2c8f39",
+                        "relevancePolicyDescriptorSha256": "82341542e46b091521b9f4b8c4eb637d6e732683d9902e0d2e3832a14cb50f9b",
+                    })
                 elif capture_mode == "production_fixed_memory_judge_validation":
                     validation_outcome = (
                         {
@@ -1163,6 +1216,28 @@ if [[ "$(find "${transport_stable_output}" -mindepth 2 -maxdepth 2 -type f | wc 
   exit 1
 fi
 assert_cleanup "${transport_stable_log}"
+
+negative_guard_output="${temp_dir}/negative-guard-output"
+negative_guard_log="${temp_dir}/negative-guard-docker.log"
+mkdir "${negative_guard_output}"
+chmod 700 "${negative_guard_output}"
+FAKE_DOCKER_LOG="${negative_guard_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${negative_guard_output}" --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge_negative_guard \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  >"${temp_dir}/negative-guard.stdout" \
+  2>"${temp_dir}/negative-guard.stderr"
+if [[ "$(find "${negative_guard_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 || \
+  "$(find "${negative_guard_output}" -mindepth 2 -maxdepth 2 -type f ! -perm 0600 | wc -l)" -ne 0 ]]; then
+  echo "Memory regression protocol: negative-guard Memory Judge bundle was not retained privately" >&2
+  exit 1
+fi
+assert_cleanup "${negative_guard_log}"
 
 production_validation_output="${temp_dir}/production-validation-output"
 production_validation_log="${temp_dir}/production-validation-docker.log"

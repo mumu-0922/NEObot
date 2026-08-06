@@ -92,6 +92,8 @@ required_paths=(
   scripts/test-memory-regression.sh
   scripts/run-memory-production-validation-from-vault.sh
   scripts/test-memory-production-validation-from-vault.sh
+  scripts/run-memory-negative-guard-development-from-vault.sh
+  scripts/test-memory-negative-guard-development-from-vault.sh
   rag/pyproject.toml
   rag/Dockerfile
 )
@@ -222,6 +224,7 @@ PY
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-hindsight-fixture.sh"
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-regression.sh"
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-production-validation-from-vault.sh"
+DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-negative-guard-development-from-vault.sh"
 
 if [[ "${full}" == true ]]; then
   rag_python="${RAG_PYTHON:-python3.13}"

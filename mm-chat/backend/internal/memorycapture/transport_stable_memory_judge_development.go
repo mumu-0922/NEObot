@@ -26,6 +26,29 @@ const (
 // cases independently satisfy the quality criteria.
 type TransportStableMemoryJudgeDevelopmentReport JudgeFailureDiagnosticDevelopmentReport
 
+type transportStableMemoryJudgeReportSpec struct {
+	readerVersion                   string
+	reportSchemaVersion             string
+	admissionMode                   string
+	policyID                        string
+	allowNegativeGuardAbstention    bool
+	negativeGuardRequired           bool
+	negativeGuardVersion            string
+	negativeGuardSHA256             string
+	relevancePolicyDescriptorSHA256 string
+	validateCostAuthority           func(CostBasis, ConfiguredCandidateJudgeProfileAuthority) error
+}
+
+func transportStableMemoryJudgeDevelopmentReportSpec() transportStableMemoryJudgeReportSpec {
+	return transportStableMemoryJudgeReportSpec{
+		readerVersion:         TransportStableMemoryJudgeReaderVersion,
+		reportSchemaVersion:   TransportStableMemoryJudgeReportSchemaVersion,
+		admissionMode:         TransportStableMemoryJudgeAdmissionMode,
+		policyID:              usermemory.HybridRelevanceAccuracyFirstJudgePolicyID,
+		validateCostAuthority: ValidateTransportStableMemoryJudgeCostAuthority,
+	}
+}
+
 func CaptureTransportStableMemoryJudgeDevelopment(
 	ctx context.Context,
 	seedDB *sql.DB,
@@ -77,49 +100,74 @@ func BuildTransportStableMemoryJudgeDevelopmentReport(
 	authority ConfiguredCandidateJudgeProfileAuthority,
 	costBasis CostBasis,
 ) (TransportStableMemoryJudgeDevelopmentReport, []byte, error) {
-	if profile.Profile.ReaderVersion != TransportStableMemoryJudgeReaderVersion ||
+	report, body, err := buildTransportStableMemoryJudgeDevelopmentReport(
+		pool,
+		profile,
+		authority,
+		costBasis,
+		transportStableMemoryJudgeDevelopmentReportSpec(),
+	)
+	return TransportStableMemoryJudgeDevelopmentReport(report), body, err
+}
+
+func buildTransportStableMemoryJudgeDevelopmentReport(
+	pool memoryauthor.RegressionPool,
+	profile CapturedProfile,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	costBasis CostBasis,
+	spec transportStableMemoryJudgeReportSpec,
+) (JudgeFailureDiagnosticDevelopmentReport, []byte, error) {
+	if profile.Profile.ReaderVersion != spec.readerVersion ||
 		!validFixedMemoryJudgeAuthority(authority) ||
-		ValidateTransportStableMemoryJudgeCostAuthority(costBasis, authority) != nil ||
+		spec.validateCostAuthority == nil ||
+		spec.validateCostAuthority(costBasis, authority) != nil ||
 		profile.Profile.ProviderEgressPolicy !=
 			memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1 ||
 		profile.Costs != costBasis.Candidate ||
 		len(profile.Profile.ConfigurationSHA256) != 64 ||
 		judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
-		return TransportStableMemoryJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, ErrCaptureInvalid
 	}
 	if _, err := hex.DecodeString(profile.Profile.ConfigurationSHA256); err != nil {
-		return TransportStableMemoryJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, ErrCaptureInvalid
 	}
 	providerMode, err := providerModeForProfileID(profile.Profile.ID)
 	if err != nil {
-		return TransportStableMemoryJudgeDevelopmentReport{}, nil, err
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, err
 	}
 	executionPolicy, err := TransportStableDevelopmentExecutionPolicy(providerMode)
 	if err != nil {
-		return TransportStableMemoryJudgeDevelopmentReport{}, nil, err
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, err
 	}
 	criteria, err := memoryeval.MemoryJudgeAccuracyFirstCriteriaV3(pool.Corpus.Criteria)
 	if err != nil {
-		return TransportStableMemoryJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, ErrCaptureInvalid
 	}
 	for _, trace := range profile.Calibration {
 		if trace.FullObservation.HardCutoffApplied ||
 			normalizeCalibrationCode(trace.AbstentionCode) == "HARD_CUTOFF" ||
 			normalizeCalibrationCode(trace.ResultCode) == "HARD_CUTOFF" {
-			return TransportStableMemoryJudgeDevelopmentReport{}, nil, fmt.Errorf(
+			return JudgeFailureDiagnosticDevelopmentReport{}, nil, fmt.Errorf(
 				"%w: transport-stable Memory Judge trace contains a hard cutoff",
 				ErrCaptureInvalid,
 			)
 		}
 	}
-	aggregate, err := aggregateCloudJudgeDevelopment(pool, profile, true)
+	aggregate, err := aggregateCloudJudgeCaptureSplit(
+		pool,
+		profile,
+		DevelopmentCalibrationSplit,
+		300,
+		true,
+		spec.allowNegativeGuardAbstention,
+	)
 	if err != nil {
-		return TransportStableMemoryJudgeDevelopmentReport{}, nil, err
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, err
 	}
 	terminalCounts, terminalAttemptFailures, err :=
 		aggregateJudgeTerminalFailureCategories(profile.Calibration, aggregate.diagnostics)
 	if err != nil {
-		return TransportStableMemoryJudgeDevelopmentReport{}, nil, err
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, err
 	}
 	telemetry := profile.ProviderAttempts
 	if err := validateTransportStableMemoryJudgeTelemetry(
@@ -128,7 +176,7 @@ func BuildTransportStableMemoryJudgeDevelopmentReport(
 		aggregate.logicalJudgeRequests,
 		terminalAttemptFailures,
 	); err != nil {
-		return TransportStableMemoryJudgeDevelopmentReport{}, nil, err
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, err
 	}
 	evaluation, err := memoryeval.EvaluateAccuracyFirstCalibrationSelectionWithProviderEgressPolicy(
 		aggregate.development,
@@ -137,12 +185,12 @@ func BuildTransportStableMemoryJudgeDevelopmentReport(
 		memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1,
 	)
 	if err != nil {
-		return TransportStableMemoryJudgeDevelopmentReport{}, nil, err
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, err
 	}
 	expectedInputTokenUpperBound := aggregate.logicalInputTokenUpperBound +
 		uint64(telemetry.JudgeRetryInputTokenUpperBound)
 	if uint64(telemetry.JudgeInputTokenUpperBound) != expectedInputTokenUpperBound {
-		return TransportStableMemoryJudgeDevelopmentReport{}, nil, fmt.Errorf(
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, fmt.Errorf(
 			"%w: transport-stable Memory Judge input telemetry drifted",
 			ErrCaptureInvalid,
 		)
@@ -154,21 +202,21 @@ func BuildTransportStableMemoryJudgeDevelopmentReport(
 	if telemetry.JudgeAttempts > authorityCost.RequestCount ||
 		actualInputTokenUpperBound > authorityCost.MaximumInputTokens ||
 		actualOutputTokenUpperBound > authorityCost.MaximumOutputTokens {
-		return TransportStableMemoryJudgeDevelopmentReport{}, nil, fmt.Errorf(
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, fmt.Errorf(
 			"%w: transport-stable Memory Judge cost authority exceeded",
 			ErrCaptureInvalid,
 		)
 	}
-	report := TransportStableMemoryJudgeDevelopmentReport{
-		SchemaVersion:             TransportStableMemoryJudgeReportSchemaVersion,
+	report := JudgeFailureDiagnosticDevelopmentReport{
+		SchemaVersion:             spec.reportSchemaVersion,
 		CorpusClass:               memoryeval.RegressionCorpusClass,
-		AdmissionMode:             TransportStableMemoryJudgeAdmissionMode,
+		AdmissionMode:             spec.admissionMode,
 		PromotionEligible:         false,
 		PolicySelected:            false,
 		DiagnosticComplete:        true,
 		Split:                     DevelopmentCalibrationSplit,
 		CaseCount:                 len(aggregate.development),
-		PolicyID:                  usermemory.HybridRelevanceAccuracyFirstJudgePolicyID,
+		PolicyID:                  spec.policyID,
 		ProfileID:                 profile.Profile.ID,
 		ConfigurationSHA256:       profile.Profile.ConfigurationSHA256,
 		ProviderEgressPolicy:      memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1,
@@ -212,13 +260,17 @@ func BuildTransportStableMemoryJudgeDevelopmentReport(
 			MaximumJudgeCostMicrounits:          authorityCost.MaximumCostMicrounits,
 			MaximumMemoryProviderCostMicrounits: costBasis.Candidate.MemoryProviderCostMicrounits,
 		},
+		NegativePolicyQueryGuardRequired: spec.negativeGuardRequired,
+		NegativePolicyQueryGuardVersion:  spec.negativeGuardVersion,
+		NegativePolicyQueryGuardSHA256:   spec.negativeGuardSHA256,
+		RelevancePolicyDescriptorSHA256:  spec.relevancePolicyDescriptorSHA256,
 	}
-	if !validTransportStableMemoryJudgeDevelopmentReport(report) {
-		return TransportStableMemoryJudgeDevelopmentReport{}, nil, ErrCaptureInvalid
+	if !validTransportStableMemoryJudgeDevelopmentReportForSpec(report, spec) {
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil, ErrCaptureInvalid
 	}
 	body, err := json.Marshal(report)
 	if err != nil {
-		return TransportStableMemoryJudgeDevelopmentReport{}, nil,
+		return JudgeFailureDiagnosticDevelopmentReport{}, nil,
 			errors.Join(ErrCaptureInvalid, err)
 	}
 	return report, append(body, '\n'), nil
@@ -252,6 +304,16 @@ func validateTransportStableMemoryJudgeTelemetry(
 
 func validTransportStableMemoryJudgeDevelopmentReport(
 	report TransportStableMemoryJudgeDevelopmentReport,
+) bool {
+	return validTransportStableMemoryJudgeDevelopmentReportForSpec(
+		JudgeFailureDiagnosticDevelopmentReport(report),
+		transportStableMemoryJudgeDevelopmentReportSpec(),
+	)
+}
+
+func validTransportStableMemoryJudgeDevelopmentReportForSpec(
+	report JudgeFailureDiagnosticDevelopmentReport,
+	spec transportStableMemoryJudgeReportSpec,
 ) bool {
 	if judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 ||
 		memoryeval.ValidateMemoryJudgeAccuracyFirstCriteriaV3(
@@ -289,14 +351,28 @@ func validTransportStableMemoryJudgeDevelopmentReport(
 		report.ProviderAttempts.JudgeAttemptFailureCategoryCounts
 	logicalJudgeRequests := report.Diagnostics.JudgeCompletedCaseCount +
 		report.Diagnostics.FailureCodeCounts["CANDIDATE_JUDGE_FAILED"]
-	return report.SchemaVersion == TransportStableMemoryJudgeReportSchemaVersion &&
+	guardProvenanceValid := report.Diagnostics.NegativePolicyQueryAbstainedCaseCount == 0 &&
+		!report.NegativePolicyQueryGuardRequired &&
+		report.NegativePolicyQueryGuardVersion == "" &&
+		report.NegativePolicyQueryGuardSHA256 == "" &&
+		report.RelevancePolicyDescriptorSHA256 == ""
+	if spec.negativeGuardRequired {
+		guardProvenanceValid = report.Diagnostics.NegativePolicyQueryAbstainedCaseCount > 0 &&
+			report.NegativePolicyQueryGuardRequired &&
+			report.NegativePolicyQueryGuardVersion == spec.negativeGuardVersion &&
+			report.NegativePolicyQueryGuardSHA256 == spec.negativeGuardSHA256 &&
+			report.RelevancePolicyDescriptorSHA256 == spec.relevancePolicyDescriptorSHA256 &&
+			validSHA256String(report.NegativePolicyQueryGuardSHA256) &&
+			validSHA256String(report.RelevancePolicyDescriptorSHA256)
+	}
+	return report.SchemaVersion == spec.reportSchemaVersion &&
 		report.CorpusClass == memoryeval.RegressionCorpusClass &&
-		report.AdmissionMode == TransportStableMemoryJudgeAdmissionMode &&
+		report.AdmissionMode == spec.admissionMode &&
 		!report.PromotionEligible && !report.PolicySelected && report.DiagnosticComplete &&
 		report.Passed == (report.Evaluation.Passed &&
 			report.Diagnostics.FailedCaseCount == 0) &&
 		report.Split == DevelopmentCalibrationSplit && report.CaseCount == 300 &&
-		report.PolicyID == usermemory.HybridRelevanceAccuracyFirstJudgePolicyID &&
+		report.PolicyID == spec.policyID && guardProvenanceValid &&
 		report.ProviderEgressPolicy ==
 			memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1 &&
 		report.ProviderCostPolicy == ProviderCostPolicyOwnerAuthorizedAbsoluteV1 &&
@@ -314,6 +390,7 @@ func validTransportStableMemoryJudgeDevelopmentReport(
 		len(report.ConfigurationSHA256) == 64 &&
 		report.Diagnostics.FailureCodeCounts != nil &&
 		report.Diagnostics.EmptyCandidateCaseCount+
+			report.Diagnostics.NegativePolicyQueryAbstainedCaseCount+
 			report.Diagnostics.JudgeCompletedCaseCount+
 			report.Diagnostics.FailedCaseCount == report.CaseCount &&
 		sumDiagnosticCounts(report.Diagnostics.JudgeTerminalFailureCategoryCounts) ==
