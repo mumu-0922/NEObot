@@ -68,6 +68,10 @@ neo-chat.memory-regression-profile-config.v9
 neo-chat.memory-regression-profile-config.v10
 neo-chat.memory-regression-profile-config.v11
 neo-chat.memory-regression-profile-config.v12
+neo-chat.memory-regression-profile-config.v13
+neo-chat.memory-regression-profile-config.v14
+neo-chat.memory-regression-profile-config.v15
+neo-chat.memory-regression-profile-config.v16
 neo-chat.memory-regression-relevance-calibration.v3
 neo-chat.memory-regression-relevance-calibration.v4
 neo-chat.memory-regression-relevance-calibration.v5
@@ -78,8 +82,13 @@ neo-chat.memory-regression-relevance-calibration.v9
 neo-chat.memory-regression-relevance-calibration.v10
 neo-chat.memory-regression-relevance-calibration.v11
 neo-chat.memory-regression-relevance-calibration.v12
+neo-chat.memory-regression-relevance-calibration.v13
+neo-chat.memory-regression-relevance-calibration.v14
+neo-chat.memory-regression-relevance-calibration.v16
 neo-chat.memory-regression-relevance-validation.v1
+neo-chat.memory-regression-relevance-validation.v15
 neo-chat.memory-regression-relevance-run.v1
+neo-chat.memory-regression-relevance-validation-run.v15
 neo-chat.memory-regression-cost-basis.v2
 neo-chat.memory-regression-cost-basis.v3
 neo-chat.memory-regression-cost-basis.v4
@@ -87,6 +96,9 @@ neo-chat.memory-regression-cost-basis.v5
 neo-chat.memory-regression-cost-basis.v6
 neo-chat.memory-regression-cost-basis.v7
 neo-chat.memory-regression-cost-basis.v8
+neo-chat.memory-regression-cost-basis.v9
+neo-chat.memory-regression-cost-basis.v10
+neo-chat.memory-regression-cost-basis.v11
 neo-chat.memory-cloud-candidate-judge-input.v1
 neo-chat.memory-cloud-candidate-judge-output.v1
 ```
@@ -1591,6 +1603,80 @@ Server composition, and runtime flags remain unchanged. This offline audit is
 not a live Development pass and authorizes no Validation, Holdout, promotion,
 Release, or recall re-enable.
 
+Schema v16 is the separately versioned online-calibration lane for that guard.
+It selects only the frozen 300-case Development split and binds reader capture
+v14, profile/report v16, cost-basis v11, the generic relevance-run v1 manifest,
+the exact fixed BGE/Luna tuple, guard version/SHA-256, and relevance-policy
+descriptor SHA-256. Cost-basis v11 preserves the v9 maximums of 900 Judge
+requests, 1,500,000 input tokens, and 115,200 output tokens. A guarded trace may
+retain authorized local candidates from Prepare, but admission, candidate
+rerank, Judge attempts/input tokens, Provider-sent/final/injected IDs, and
+prompt Memory tokens must all be empty. Only exact
+`NEGATIVE_POLICY_QUERY_ABSTAINED` with completed result `NO_CANDIDATES` is a
+normal guard result, and the fixed 300-case report requires at least one such
+guard abstention. Every other pre-admission code remains a failed case.
+
+Run the no-network PostgreSQL 17 lifecycle before any live request:
+
+```bash
+bash scripts/run-memory-regression.sh \
+  --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge_negative_guard \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --cost-basis /secure/eval/fixed-memory-judge-negative-guard-cost-v11.json \
+  --output-dir /secure/eval/native-memory-runs
+```
+
+The accepted Fake run completed `105` empty-candidate, `30` guard-abstained,
+and `165` Judge-completed cases. It used no credential or network, retained
+exactly one aggregate report plus its mode-`0600` manifest, and removed the
+scoped containers, networks, and volume.
+
+Live execution uses a distinct Development export approval and the ordinary
+Development Judge quota approval, never the consumed schema-v15 Validation
+approval:
+
+```bash
+bash scripts/run-memory-negative-guard-development-from-vault.sh \
+  --cost-basis /secure/eval/fixed-memory-judge-negative-guard-cost-v11.json \
+  --output-dir /secure/eval/native-memory-runs \
+  --credential-export-approval \
+    I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_DEVELOPMENT_CREDENTIALS \
+  --siliconflow-live-approval \
+    I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --development-judge-approval \
+    I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA
+```
+
+The consumed live run `memory-regression-20260806t064355z-65407a6a` completed
+all 300 cases as `105` empty-candidate, `30` guard-abstained, `162` Judge-
+completed, and three failed. The guard eliminated false injection (`0/135`),
+the `unrelated_negative` slice passed `30/30`, Candidate Recall@20 stayed
+`1.0`, and all privacy/authority safety counters were zero. Five Judge
+decisions abstained; 20 retries and 23 typed failed attempts ended with three
+terminal `PROVIDER_TRANSPORT_FAILED` cases. Final Recall@5 was `0.958974`,
+current-fact accuracy/MRR/NDCG were `0.951515`, and the
+`preference_instruction` and `stable_fact` current-fact slice gates failed.
+The immutable top level is therefore `passed=false`, `policySelected=false`,
+and `promotionEligible=false`.
+
+The v11 canonical cost SHA-256 is
+`2af792a5e999ea1018ab628924247dfbdf45b0f69c5b72f1ed97dbda52394c88`;
+actual Judge authority was `185/900` requests, `246555/1500000` input tokens,
+and `23680/115200` output tokens. Configuration/report/manifest SHA-256 values
+are `d50315f2b79b35530199550dbea1cabd75de264b285b886d164d561bfdaa058d`,
+`895a8f524177645a159b6e1e15bfe8c4d828813ff4472dad4cdbe442d1b73929`,
+and `495ec7b4a19021f600db0f2826dc2875cabfbd3f8bd51fe0ce5e94d10ce65a43`.
+The wrapper destroyed both one-run credentials and the consumed cost source;
+all scoped Docker objects were absent, all 43 sampled live Memory relation
+counts were byte-identical before/after, both Memory flags remained false, and
+the live services remained healthy. This result authorizes no automatic rerun,
+Validation, Holdout, promotion, Release, product policy change, deployment, or
+recall re-enable.
+
 Accuracy-first Development keeps the same exact two-file and fixed-Luna
 authority. Its v12 execution policy changes no credential boundary: operator
 copies remain mode `0600`, read-only in the runner, independent by file/inode/
@@ -1749,6 +1835,16 @@ widening it. Failed attempts must additionally reconcile through the fixed
 taxonomy; the report remains permanently non-passing and non-selecting
 regardless of cost headroom or evaluation metrics.
 
+Schema-v14 transport-stable Development uses cost-basis v9 with the same exact
+fixed-Luna tuple and expands only the Judge authority to 900 requests and
+115,200 output tokens for two possible retries. Schema-v15 production-policy
+Validation uses an independent cost-basis v10 with 300 requests and 38,400
+output tokens for its 100-case split; it cannot consume a Development cost
+document. Schema-v16 negative-guard Development uses cost-basis v11 and the
+same `900/1500000/115200` ceilings as v9. Unused authority is valid, but actual
+attempt/input/output totals must reconcile exactly and the v9/v10/v11 schema
+identities are never interchangeable.
+
 Each full fake-protocol run directory is mode `0700` and contains five
 mode-`0600` files:
 
@@ -1763,8 +1859,9 @@ run-manifest.json
 Historical calibration, schema-v4/v5 cloud-judge Development, schema-v6-v9
 Tool-route evidence, schema-v10 configured-candidate-judge Development, and
 schema-v11 fixed-Memory-Judge Development, schema-v12 accuracy-first
-Development, schema-v13 Judge-failure-diagnostic Development, and Validation
-directories contain their named aggregate report plus
+Development, schema-v13 Judge-failure-diagnostic Development, schema-v14
+transport-stable Development, schema-v15 production Validation, and schema-v16
+negative-guard Development directories contain their named aggregate report plus
 `run-manifest.json`. In
 every mode, evidence is exclusively linked first and the content-free
 run manifest is the final completion marker. Existing targets are refused

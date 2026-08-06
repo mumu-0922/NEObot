@@ -82,7 +82,8 @@ run-bound marker in a database whose name starts with
 | Attempt-derived cost | Retrying without aggregate authority would hide quota and token amplification. | Cost-basis v8 pre-authorizes at most 600 Judge attempts/76800 output tokens; report validation reconciles attempt counts, total/retry Judge input bounds, and `attempts * 128` output authority. |
 | Typed Judge failure measurement | The v5 aggregate collapses 17 failed cases and 22 retries into one public code, so changing corpus, prompt, or threshold would be causal guesswork. | Schema v13 reuses the unchanged v12 flow and cost authority, derives 24 plaintext-free categories from typed Provider/decoder/capture boundaries, reconciles attempt and terminal counts, and is permanently non-passing/non-selecting. |
 | Transport-stable Judge retry | Schema-v13 live evidence passed semantic gates but exhausted the single retry on one typed transport failure. | Schema v14 preserves semantic/BGE authority, keeps BGE at one retry, allows two Judge retries with five/ten-second fallback waits, and binds worst-case 900-attempt cost-basis v9. |
-| Manual stage isolation | Development evidence is not Validation or production authority. | Every schema-v11/v12/v13/v14 Development run stops for owner review; Validation and production activation require separate authorization. |
+| Negative-policy guard calibration | The consumed schema-v15 aggregate proves nine unrelated-negative false injections but cannot expose exact cases or authorize retuning production in place. | Schema v16 changes only a separately versioned Development policy, runs the frozen post-Prepare/pre-admission guard, binds guard/descriptor provenance, and accounts guarded cases without Judge egress under cost-basis v11. |
+| Manual stage isolation | Development evidence is not Validation or production authority. | Every schema-v11/v12/v13/v14/v16 Development run stops for owner review; Validation and production activation require separate authorization. |
 | Production-policy Validation isolation | A passing Development report and a deployed reader do not prove the frozen Validation split or authorize another paid run. | Schema v15 has independent profile/reader/report/manifest/cost identities, a distinct live approval, exact production-policy/read-intent hashes, and no automatic Release authority. |
 | Precommitted failure action | Interpreting a failed Validation after seeing its metrics could turn an evaluation into an unsafe release decision. | Schema v15 deterministically maps privacy/authorization release to Red/disable Tool Loop, false injection above `0.02` to Orange/disable recall, stability or remaining quality failure to Yellow/retain Beta, and pass to owner review only. |
 | Candidate failure means `no_memory` | v1 remains the real prompt authority but is a separate benchmark profile. | Prepare/Record/Provider/cutoff failures never launder v1 or unscored RRF rows into v2 final/injected surfaces. |
@@ -412,3 +413,12 @@ result or failure, even when a later case reuses the same assistant identity.
   read-intent/policy hashes, continue-after-terminal semantics, aggregate-only
   outcomes, Fake Yellow/non-evidence behavior, and PostgreSQL 17/Compose
   lifecycle proof. No real Provider request or Release action was made.
+- **2026-08-06**: Added schema-v16 negative-guard Development with profile/
+  reader/report/cost separation, exact guard and policy-descriptor provenance,
+  exact nonzero guard-abstention/`NO_CANDIDATES` reconciliation, Vault-backed
+  one-run credentials, and a zero-network PostgreSQL 17 Fake lifecycle.
+- **2026-08-06**: Recorded the consumed schema-v16 live Development result:
+  all 300 cases completed, 30 guard abstentions removed false injection, three
+  terminal Judge transport failures plus five Judge abstentions reduced two
+  current-fact slices below criterion, and the aggregate report remained
+  failed/non-selecting/non-promotional with no runtime-state change.

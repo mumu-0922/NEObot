@@ -45,6 +45,8 @@ without changing prompt, Usage, feature flags, or production data.
 - replay the frozen 100-case Validation split under schema v15 through the
   exact production BGE/Luna policy, frozen explicit-read-intent hash, separate
   live approval, and aggregate-only Red/Orange/Yellow/Pass outcome contract;
+- run the schema-v16 negative-policy-guard Development successor with distinct
+  profile/reader/report/cost identities and exact guard/policy provenance;
 - enforce exact `development`/`validation` split lanes and reject the visible
   machine `holdout`;
 - assemble strict regression observations, content-free run manifests, and
@@ -82,6 +84,9 @@ injection, or active-reader authority.
 | `BuildJudgeFailureDiagnosticDevelopmentReport` | Return the always-failed/non-selecting schema-v13 aggregate after taxonomy, attempt, terminal, retry, cost, and privacy reconciliation. |
 | `CaptureTransportStableMemoryJudgeDevelopment` | Execute the schema-v14 serial flow with at most two Judge retries and unchanged BGE retry ceilings. |
 | `BuildTransportStableMemoryJudgeDevelopmentReport` | Return schema-v14 quality evidence plus typed failure maps under cost-basis v9; any terminal Judge failure forces `passed=false`. |
+| `CaptureNegativePolicyGuardMemoryJudgeDevelopment` | Execute only the 300-case Development split through the schema-v14 transport controller plus the post-Prepare/pre-admission negative-policy guard. |
+| `BuildNegativePolicyGuardMemoryJudgeDevelopmentReport` | Return schema-v16 aggregate evidence under cost-basis v11, including exact guard abstentions and unchanged typed failure reconciliation. |
+| `BuildNegativePolicyGuardMemoryJudgeRunManifest` | Bind the schema-v16 report artifact, v16 configuration, cost v11, and guard/policy descriptor provenance without granting Validation or promotion. |
 | `CaptureProductionMemoryJudgeValidation` | Execute only the frozen 100-case Validation split through the production BGE-M3/rerank/fixed-Luna policy while continuing after terminal per-case Provider failures. |
 | `BuildProductionMemoryJudgeValidationReport` | Return schema-v15 aggregate-only Validation evidence under cost-basis v10; fake protocol is always Yellow/non-passing. |
 | `BuildProductionMemoryJudgeValidationRunManifest` | Bind the schema-v15 report, policy/read-intent/case-order hashes, evidence class, outcome, and one report artifact without granting Release. |
@@ -401,14 +406,13 @@ embedding and 65 Judge attempts, recorded 99 virtual cooldowns, and left no
 scoped Compose objects. No credential, network Provider request, or quota was
 used.
 
-Live schema-v15 Validation remains unexecuted and requires a fresh BGE
-credential, a different fresh Luna credential, the normal SiliconFlow quota
-approval, and the independent exact approval
-`I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_VALIDATION_QUOTA`. The historical
-configured-judge Development approval cannot authorize it. Same-file,
-hard-linked, or byte-identical credentials fail before output. A passing live
-report still sets `releaseEligible=false`, `policySelected=false`, and action
-`owner_review_no_automatic_release`; it never flips a runtime flag.
+The consumed schema-v15 live Validation completed all 100 cases without a
+terminal Provider failure but retained nine false injections in the 10-case
+`unrelated_negative` slice. Its immutable outcome is Orange,
+`disable_memory_recall_preserve_data`, `passed=false`, and
+`releaseEligible=false`. The authorization cannot be reused. Same-file,
+hard-linked, or byte-identical credentials remain invalid, and no result flips
+a runtime flag automatically.
 
 The offline schema-v15 command is:
 
@@ -421,6 +425,50 @@ bash scripts/run-memory-regression.sh \
   --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
   --configured-candidate-judge-model gpt-5.6-luna \
   --cost-basis /secure/production-memory-judge-validation-cost-v10.json \
+  --output-dir /secure/memory-regression-runs
+```
+
+Schema v16 is a separate full-Development calibration lane. It binds profile
+config v16, reader capture v14, report v16, the generic relevance-run v1
+manifest, cost-basis v11, policy
+`memory_hybrid_fixed_cloud_candidate_judge_negative_guard_development_v1`,
+guard `memory-negative-policy-query-guard-v1` SHA-256
+`8fe79b55a0f136392081a81e471abae98d0db7b8e3bece74adcc590b9d2c8f39`,
+and policy descriptor SHA-256
+`82341542e46b091521b9f4b8c4eb637d6e732683d9902e0d2e3832a14cb50f9b`.
+Cost-basis v11 preserves the v9 ceilings of 900 Judge requests, 1,500,000
+input tokens, and 115,200 output tokens. A guard match may retain candidate
+IDs locally after Prepare, but it must record
+`NEGATIVE_POLICY_QUERY_ABSTAINED` plus completed result `NO_CANDIDATES`, with
+zero admission/rerank/Judge/final/Provider-sent/token surfaces. The fixed
+300-case report must contain at least one such guard abstention. Every other
+pre-admission code remains a failed case.
+
+The real PostgreSQL 17 Fake lifecycle completed all 300 cases as 105 empty-
+candidate, 30 guard-abstained, and 165 Judge-completed cases with zero network
+and zero scoped residue. The separately authorized live run
+`memory-regression-20260806t064355z-65407a6a` also completed all 300 cases and
+removed both one-run credentials. It eliminated false injection (`0/135`) and
+kept every safety counter at zero, but 20 Judge retries still ended in three
+terminal `PROVIDER_TRANSPORT_FAILED` cases; five other Judge decisions
+abstained. Final Recall@5/current-fact accuracy/MRR/NDCG were
+`0.958974/0.951515/0.951515/0.951515`, with the `preference_instruction` and
+`stable_fact` current-fact slice gates failing. The report is immutable failed
+Development evidence: `passed=false`, `policySelected=false`, and
+`promotionEligible=false`. It authorizes no rerun, Validation, Holdout,
+Release, product-policy change, or recall re-enable.
+
+The Fake operator shape is:
+
+```bash
+bash scripts/run-memory-regression.sh \
+  --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge_negative_guard \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --cost-basis /secure/fixed-memory-judge-negative-guard-cost-v11.json \
   --output-dir /secure/memory-regression-runs
 ```
 

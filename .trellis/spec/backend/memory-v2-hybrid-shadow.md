@@ -558,6 +558,27 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   `1e8aa17ce6f8426ce9c91d3be7ffeef34be2bb8b14d0eaa9a8616b5426f0bc6f`.
   This offline diagnostic does not replace a separately authorized
   Development calibration or a future versioned Validation.
+- Schema v16 provides that separate full-Development calibration identity:
+  capture mode `development_fixed_memory_judge_negative_guard`, reader v14,
+  profile/report v16, cost-basis v11, and the generic aggregate relevance-run
+  manifest. It reuses schema-v14's serial controller and exact fixed BGE/Luna
+  tuple. Report admission accepts only exact post-Prepare
+  `NEGATIVE_POLICY_QUERY_ABSTAINED` plus completed `NO_CANDIDATES` traces whose
+  admission/rerank/Judge/input-token/Provider-sent/final/injected/prompt-token
+  surfaces are empty. The fixed report requires at least one guard abstention;
+  all other pre-admission failures remain failed cases. Guard/version/SHA and
+  policy-descriptor SHA must match in profile, report, and manifest.
+- The mandatory schema-v16 PostgreSQL 17 Fake lifecycle completed all 300
+  Development cases with 30 guard abstentions, zero network, and zero scoped
+  residue. The consumed live run
+  `memory-regression-20260806t064355z-65407a6a` also recorded exactly 30 guard
+  abstentions and reduced false injection to zero, including a passing 30-case
+  `unrelated_negative` slice. It still failed: five Judge abstentions plus
+  three terminal `PROVIDER_TRANSPORT_FAILED` cases left the
+  `preference_instruction` and `stable_fact` current-fact slices below
+  criterion. The aggregate remains non-selecting/non-promotional and grants no
+  rerun, Validation, or product-policy authority. Both runtime Memory flags
+  stayed false and all 43 sampled live Memory relation counts were unchanged.
 - The retained schema-v12 live result completed all `195` candidate-bearing
   rerank-plus-judge decisions with zero failed cases, but the accuracy-first
   policy injected Memory into `29/135` negative cases. Its false-injection
@@ -752,6 +773,7 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 | Product Tool policy is absent or is any Development/shadow identity | Return `policy_unavailable`; perform zero hybrid Provider work and release no Memory. |
 | Development negative-policy guard matches after authorized Prepare | Record completed empty final with `NEGATIVE_POLICY_QUERY_ABSTAINED`; do not call admission, candidate rerank, or Judge. The earlier query-only embed remains permitted. |
 | Guard fields appear on production-v1 or guard version/SHA/policy identity drifts | Reject the policy. Never alias Development to production or change historical descriptor JSON. |
+| Schema-v16 guard report has local candidates but any admission/rerank/Judge/input-token/Provider-sent/final/injected/prompt-token surface is non-empty | Reject aggregate publication; a guard label cannot hide candidate egress or scoring work. |
 | Current stored fixed Judge provider/type/Base-URL hash/model/secret drifts | Reject that Judge attempt as provenance drift; release no final Memory and never switch Provider/model. |
 | Product Judge returns a typed transient Provider failure | Retry at most twice; honor valid `Retry-After`, otherwise wait five then ten seconds. Deterministic/protocol/provenance failures do not retry. |
 | Product first round returns no Memory call | Make zero hybrid retrieval calls and release the buffered ordinary answer. |
@@ -871,6 +893,9 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   relevant-query negatives, post-Prepare pre-admission abstention with exactly
   one query embed and zero admission/rerank/Judge calls, unchanged production
   descriptor JSON/SHA, Development product-policy rejection,
+  schema-v16 profile/reader/report/cost/manifest separation, exact guard-
+  abstention and typed Judge failure reconciliation, historical JSON omission,
+  Fake zero-network Compose cleanup, Development Vault approval isolation,
   validation, strict exact-key/duplicate-key/ordinal judge decoding, prompt
   SHA-256/model/decoding provenance, query/candidate secret redaction,
   concurrent BGE/judge failure and cutoff, ordinal intersection, empty-judge

@@ -9184,3 +9184,78 @@ cost source, keyring/helper copies, synthetic root, runner temporary dirs, and
 all scoped containers/networks/volumes were destroyed; base PostgreSQL remains
 stopped. This consumes the one-run authority and does not authorize an
 automatic rerun, Validation, production activation, or promotion.
+
+## 2026-08-06 — Schema-v15 false-injection remediation boundary
+
+The consumed schema-v15 production-policy Validation completed all 100 cases
+without terminal Provider failure but recorded nine false injections in its
+10-case `unrelated_negative` slice. The immutable result is Orange,
+`disable_memory_recall_preserve_data`, `passed=false`, and
+`releaseEligible=false`; it did not expose exact failed case IDs and granted no
+rerun, Holdout, Release, or recall re-enable.
+
+The provider-free audit of that already-consumed split established a narrower
+Development-only hypothesis: bilingual guard
+`memory-negative-policy-query-guard-v1` SHA-256
+`8fe79b55a0f136392081a81e471abae98d0db7b8e3bece74adcc590b9d2c8f39`
+matched all 10 unrelated-negative cases, six other expected-no-Memory cases,
+and zero relevant cases. The production-v1 descriptor remained byte-identical;
+only policy `memory_hybrid_fixed_cloud_candidate_judge_negative_guard_development_v1`
+contains the guard.
+
+## 2026-08-06 — Schema-v16 negative-guard online Development result
+
+Schema v16 added a separate Development capture/profile/report/cost identity,
+reader capture v14, generic relevance-run manifest, and artifact
+`fixed-memory-judge-negative-guard-development.json`. It reused schema-v14's
+serial BGE/Luna controller and typed failures while binding guard SHA-256 and
+policy descriptor SHA-256
+`82341542e46b091521b9f4b8c4eb637d6e732683d9902e0d2e3832a14cb50f9b`.
+Cost-basis v11 retained the `900/1500000/115200` Judge request/input/output
+ceilings. Exact guard abstention was admitted only with zero admission,
+rerank, Judge, Provider-sent/final/injected, and prompt-token surfaces.
+
+Focused race tests for `internal/memorycapture`,
+`cmd/memory-regression-capture`, and `cmd/admin`, all backend tests/vet, the
+deterministic shell lifecycles, and `verify-standalone.sh --full` passed. The
+real PostgreSQL 17 Fake lifecycle completed `105` empty-candidate, `30` guard-
+abstained, and `165` Judge-completed cases, retained two private aggregate
+files, used zero network/credentials, and left zero scoped Docker objects.
+
+The owner then authorized one complete live 300-case Development run through
+the exact active attested `RAG:SILICONFLOW` BGE authority and fixed
+`SERVER_DEFAULT/openai_compatible/https://sub.mumubuku.top/v1/gpt-5.6-luna`
+Judge authority. Run `memory-regression-20260806t064355z-65407a6a`, capture
+`7fc7a7dd-eefb-47cb-a0c4-24d347aa2807`, completed as `105` empty-candidate,
+`30` guard-abstained, `162` Judge-completed, and three failed cases. Five Judge
+decisions abstained. The 185 Judge attempts contained 20 retries and 23 typed
+failed attempts (`8` stream-read, `13` transport, `2` upstream); the three
+terminal categories were all `PROVIDER_TRANSPORT_FAILED`.
+
+Candidate Recall@20 remained `1.0`; false injection was `0/135`, the 30-case
+`unrelated_negative` slice passed, and every cross-user/deleted/Secret/
+untrusted-source/unauthorized-egress counter was zero. Final Recall@5 was
+`0.958974`; current-fact accuracy, MRR, and NDCG were `0.951515`. Current-fact
+accuracy was `0.933333` for `preference_instruction` and `0.9` for
+`stable_fact`, so both slice gates failed. The immutable top level is
+`passed=false`, `policySelected=false`, and `promotionEligible=false` even
+though the guard removed false injection.
+
+The canonical v11 cost hash was
+`2af792a5e999ea1018ab628924247dfbdf45b0f69c5b72f1ed97dbda52394c88`;
+actual authority reconciled at `185/900` requests, `246555/1500000` input
+tokens, and `23680/115200` output tokens. Configuration/report/manifest SHA-256
+values are `d50315f2b79b35530199550dbea1cabd75de264b285b886d164d561bfdaa058d`,
+`895a8f524177645a159b6e1e15bfe8c4d828813ff4472dad4cdbe442d1b73929`,
+and `495ec7b4a19021f600db0f2826dc2875cabfbd3f8bd51fe0ce5e94d10ce65a43`.
+Only the Fake and live aggregate report/manifest pairs remain mode `0600` under
+`/var/tmp/neo-chat-negative-guard-development-20260806T064153Z/`.
+
+Both one-run credentials, the consumed cost source, comparison snapshots,
+runner temporary directories, export container, and all scoped capture
+containers/networks/volumes were destroyed. The 43 sampled live Memory relation
+counts and their aggregate hash were identical before/after; both
+`MEMORY_HYBRID_SHADOW_ENABLED` and `MEMORY_TOOL_LOOP_ENABLED` remained false,
+and the live services remained healthy. This consumed result grants no rerun,
+Validation, Holdout, promotion, Release, deployment, product-policy mutation,
+or recall re-enable.

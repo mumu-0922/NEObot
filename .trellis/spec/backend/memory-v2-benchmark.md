@@ -48,6 +48,7 @@ neo-chat.memory-regression-profile-config.v12
 neo-chat.memory-regression-profile-config.v13
 neo-chat.memory-regression-profile-config.v14
 neo-chat.memory-regression-profile-config.v15
+neo-chat.memory-regression-profile-config.v16
 neo-chat.memory-regression-relevance-calibration.v3
 neo-chat.memory-regression-relevance-calibration.v4
 neo-chat.memory-regression-relevance-calibration.v5
@@ -60,6 +61,7 @@ neo-chat.memory-regression-relevance-calibration.v11
 neo-chat.memory-regression-relevance-calibration.v12
 neo-chat.memory-regression-relevance-calibration.v13
 neo-chat.memory-regression-relevance-calibration.v14
+neo-chat.memory-regression-relevance-calibration.v16
 neo-chat.memory-regression-relevance-validation.v1
 neo-chat.memory-regression-relevance-validation.v15
 neo-chat.memory-regression-relevance-run.v1
@@ -73,6 +75,7 @@ neo-chat.memory-regression-cost-basis.v7
 neo-chat.memory-regression-cost-basis.v8
 neo-chat.memory-regression-cost-basis.v9
 neo-chat.memory-regression-cost-basis.v10
+neo-chat.memory-regression-cost-basis.v11
 neo-chat.memory-cloud-candidate-judge-input.v1
 neo-chat.memory-cloud-candidate-judge-output.v1
 ```
@@ -248,6 +251,28 @@ bash scripts/run-memory-production-validation-from-vault.sh \
   --production-validation-approval \
     I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_VALIDATION_QUOTA
 
+# Schema-v16 negative-guard calibration is a distinct full Development lane.
+# Fake must pass first; live Vault export uses Development approvals only.
+bash scripts/run-memory-regression.sh \
+  --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge_negative_guard \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --cost-basis /secure/eval/fixed-memory-judge-negative-guard-cost-v11.json \
+  --output-dir /secure/eval/native-memory-runs
+
+bash scripts/run-memory-negative-guard-development-from-vault.sh \
+  --cost-basis /secure/eval/fixed-memory-judge-negative-guard-cost-v11.json \
+  --output-dir /secure/eval/native-memory-runs \
+  --credential-export-approval \
+    I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_DEVELOPMENT_CREDENTIALS \
+  --siliconflow-live-approval \
+    I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --development-judge-approval \
+    I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA
+
 bash scripts/run-memory-regression.sh \
   --provider-mode live_siliconflow \
   --capture-mode development_cloud_judge \
@@ -324,6 +349,9 @@ memorycapture.CaptureMemoryToolRouteDiagnostic(ctx, adminDB, runtimeDB, runID, p
 memorycapture.BuildMemoryToolRouteDiagnosticReport(pool, profile, authority, costBasis) (memorycapture.MemoryToolRouteDevelopmentReport, []byte, error)
 memorycapture.CaptureConfiguredCandidateJudgeDevelopment(ctx, adminDB, runtimeDB, runID, pool, index, seed, provider, judge, authority, profileID, configurationSHA256, cost) (memorycapture.CapturedProfile, error)
 memorycapture.BuildConfiguredCandidateJudgeDevelopmentReport(pool, profile, authority, costBasis) (memorycapture.ConfiguredCandidateJudgeDevelopmentReport, []byte, error)
+memorycapture.CaptureNegativePolicyGuardMemoryJudgeDevelopment(ctx, adminDB, runtimeDB, runID, fullPool, index, seed, provider, judge, authority, profileID, configurationSHA256, cost) (memorycapture.CapturedProfile, error)
+memorycapture.BuildNegativePolicyGuardMemoryJudgeDevelopmentReport(pool, profile, authority, costBasis) (memorycapture.NegativePolicyGuardMemoryJudgeDevelopmentReport, []byte, error)
+memorycapture.BuildNegativePolicyGuardMemoryJudgeRunManifest(runID, captureID, providerMode, startedAt, completedAt, protected, costBasisSHA256, report, artifacts) (memorycapture.RelevanceRunManifest, []byte, error)
 memorycapture.CaptureProductionMemoryJudgeValidation(ctx, adminDB, runtimeDB, runID, fullPool, index, seed, provider, judge, authority, profileID, configurationSHA256, cost) (memorycapture.CapturedProfile, error)
 memorycapture.BuildProductionMemoryJudgeValidationReport(pool, profile, config, authority, costBasis) (memorycapture.ProductionMemoryJudgeValidationReport, []byte, error)
 memorycapture.BuildProductionMemoryJudgeValidationRunManifest(runID, captureID, providerMode, startedAt, completedAt, protected, costBasisSHA256, report, artifacts) (memorycapture.ProductionMemoryJudgeValidationRunManifest, []byte, error)
@@ -920,9 +948,29 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   relevant cases. Ordered case-set hashes are
   `1e8aa17ce6f8426ce9c91d3be7ffeef34be2bb8b14d0eaa9a8616b5426f0bc6f`
   and `a3c322d299a24c3443b92e9e7136b53bed8fd17e1d0a9bd71815937e41ba76c2`.
-  This is diagnostic Development evidence only: it changes neither
-  production-v1 nor the consumed Validation result and authorizes no live run,
-  Holdout, promotion, Release, or recall re-enable.
+  This provider-free diagnostic by itself changes neither production-v1 nor
+  the consumed Validation result and authorizes no live run, Holdout,
+  promotion, Release, or recall re-enable.
+- Schema v16 is the separately versioned full-Development capture lane for
+  that guard: reader capture v14, profile/report v16, relevance-run manifest
+  v1, cost-basis v11, and artifact
+  `fixed-memory-judge-negative-guard-development.json`. It reuses schema-v14
+  serialization, BGE retry, Judge two-retry, typed failure, cooldown, and
+  criteria-v3 authorities while adding only exact guard/policy provenance.
+  Its PostgreSQL 17 Fake lifecycle completed `105` empty-candidate, `30`
+  guard-abstained, and `165` Judge-completed cases with zero network and zero
+  scoped residue. The consumed live run
+  `memory-regression-20260806t064355z-65407a6a` completed all 300 cases as
+  `105/30/162/3` empty/guard/Judge-completed/failed. False injection fell to
+  zero and every safety counter stayed zero, but five Judge abstentions plus
+  three terminal `PROVIDER_TRANSPORT_FAILED` cases left Final Recall@5 at
+  `0.958974` and current-fact accuracy/MRR/NDCG at `0.951515`; the
+  `preference_instruction` and `stable_fact` current-fact slice gates failed.
+  Report/manifest SHA-256 values are
+  `895a8f524177645a159b6e1e15bfe8c4d828813ff4472dad4cdbe442d1b73929`
+  and `495ec7b4a19021f600db0f2826dc2875cabfbd3f8bd51fe0ce5e94d10ce65a43`.
+  The result is immutable failed, non-selecting, non-promotional Development
+  evidence and grants no rerun or later-stage authority.
 - Aggregate-only Development evidence authorizes metric comparison, not case-
   level or causal attribution. After disjoint v4 and v5 hard-negative families
   each retained one `unrelated_negative` false injection, do not author another
@@ -960,8 +1008,10 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   and cannot be reused or rewritten. Schema v14 requires v9 with at most `900`
   Judge attempts/`115200` output tokens. Schema-v15 Validation requires v10:
   exactly `300` maximum Judge attempts and `38400` output tokens for only the
-  100-case split. V9 cannot authorize Validation and v10 cannot reinterpret a
-  Development run.
+  100-case split. Schema-v16 negative-guard Development requires v11 and the
+  v9-equivalent `900`/`1500000`/`115200` request/input/output ceilings. V9
+  cannot authorize schema v16, v10 cannot reinterpret a Development run, and
+  v11 cannot authorize Validation.
 - Cost authority has two distinct hash surfaces. An operator may bind the
   private source file's exact raw bytes with ordinary file SHA-256, while
   `DecodeCostBasis` / `CostBasisSHA256` hashes the decoded struct re-encoded by
@@ -982,8 +1032,9 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   four evidence files; historical calibration, schema-v4/v5 cloud Development,
   schema-v6 historical Tool-route Development, schema-v7 first-ToolRound
   Development, schema-v9 diagnostics, schema-v10 configured-candidate-judge
-  Development, historical frozen Validation, and schema-v15 production-policy
-  Validation each link one aggregate report. Every mode links
+  Development, historical frozen Validation, schema-v15 production-policy
+  Validation, and schema-v16 negative-guard Development each link one aggregate
+  report. Every mode links
   `run-manifest.json` last as the completion marker. Failed metric/no-feasible
   gates retain valid reports and return non-zero; all other failures remove
   partial output. Success/failure/`SIGINT`/`SIGTERM`/`SIGHUP` destroy the exact
@@ -1070,6 +1121,9 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | Aggregate-only evidence shows a false injection but no case identity/response, or one run has Judge failures | Preserve the failed bundle; do not infer a causal case, mutate another corpus, relax `0.02`, or compare positive quality as if execution were stable. Require separately versioned diagnostic or policy evidence. |
 | The Development negative-policy guard matches after Prepare | Record `NEGATIVE_POLICY_QUERY_ABSTAINED` with empty rerank/final/token surfaces; skip admission, candidate rerank, and Judge egress. Query-only BGE embedding before Prepare is allowed. |
 | The Development guard/policy identity or descriptor provenance drifts, or the policy is installed as the product Tool policy | Reject the policy before Provider work. Production-v1 descriptor bytes/hash must remain unchanged and product Tool retrieval accepts only production-v1. |
+| Schema-v16 mode selects Validation/Holdout, accepts a non-v16 profile/reader/report/cost identity, or omits exact guard/descriptor provenance | Reject before Provider construction or report publication; never reinterpret v9/v10/v14/v15 evidence. |
+| Schema-v16 has zero guard abstentions, a guard trace does not end as completed `NO_CANDIDATES`, or it retains admission/rerank/Judge attempts or input tokens, Provider-sent/final/injected IDs, or prompt Memory tokens | Reject the report as inconsistent even when the aggregate quality metrics would otherwise pass. |
+| Schema-v16 Fake lifecycle has network/credentials, leaves scoped Compose state, or is presented as live quality evidence | Fail the lifecycle; Fake proves wiring and cleanup only. |
 | Development passes | Retain aggregate evidence and stop for owner review; never enter Validation automatically. |
 | Frozen validation is requested before a Development-selected policy is committed | Reject before credential read or Provider work. |
 | Schema-v15 mode selects Development/Holdout, seeds other fixtures, or changes the frozen case order/read-intent/policy/criteria hash | Reject before report publication; historical schemas and the visible machine Holdout remain untouched. |
@@ -1190,6 +1244,17 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 - **Negative-guard Development bad**: mutate production-v1, change the Judge
   prompt or thresholds in the same cycle, infer the exact nine failed case
   IDs, inspect Holdout, or treat the provider-free audit as promotion evidence.
+- **Schema-v16 good**: Fake completes first with zero network; live Development
+  binds cost v11 and the exact Vault-backed BGE/Luna tuple, counts all 300 cases
+  across empty/guard/Judge/failed outcomes, reconciles attempts/tokens/cost,
+  retains two private aggregate files, and remains non-promotional.
+- **Schema-v16 base**: the guard removes false injection but Provider terminals
+  or quality slices still fail. Preserve the aggregate bundle, destroy the
+  one-run credentials/cost source, keep both Memory flags false, and stop
+  without rerun or Validation.
+- **Schema-v16 bad**: call a failed full live result a guard pass, retry it from
+  broad quota consent, reuse v9/v10, omit pre/post live-state comparison, or
+  promote from zero false injection while stability/quality gates failed.
 - **Exact-pair export good**: resolve only active attested `RAG:SILICONFLOW`
   and the exact fixed Luna tuple, create two exclusive private mode-`0600`
   files, run schema-v15, and wipe both source copies on every exit.
@@ -1331,6 +1396,14 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   deterministic replay; two-file `0700/0600` publication; PostgreSQL 17
   `go_api_runtime`; and cleanup on success, failed metrics, leak rejection, and
   signals without any real Provider request.
+  Schema-v16 fixtures additionally cover exact Development-only selection;
+  profile v16/reader v14/report v16/cost v11 identities; immutable guard,
+  policy-descriptor, and historical JSON hashes; exact
+  `NEGATIVE_POLICY_QUERY_ABSTAINED` aggregation with local candidates but zero
+  admission/rerank/Judge/Provider-sent/final/token surfaces; other pre-
+  admission code failure; Judge attempt/terminal/token/cost reconciliation;
+  the Development-only Vault export approval; deterministic Fake two-file
+  lifecycle; and success/failure/signal credential plus Compose cleanup.
   Cost-basis fixtures must also assert the raw private-file hash and
   the decoded canonical manifest hash as different named surfaces rather than
   assuming byte equality.
@@ -1465,4 +1538,13 @@ Wrong: add a general Provider-secret export or claim a reused Key was newly
 Correct: exact-pair Vault resolution -> new private one-run mode-0600 files ->
          schema-v15 + cost-basis v10 + exact approvals -> 100 Validation cases
          -> aggregate report/manifest -> wipe copies -> owner review only.
+```
+
+```text
+Wrong: guard removed false injection, so ignore three terminal Judge failures,
+       call the failed schema-v16 report a pass, and rerun Validation.
+Correct: mandatory Fake -> exact Development-only Vault export -> schema-v16 +
+         cost-basis v11 -> reconcile all 300 outcomes/attempts/tokens/cost ->
+         retain failed aggregate evidence -> wipe credentials/cost source ->
+         verify live flags and 43 Memory relation counts unchanged -> stop.
 ```
