@@ -102,6 +102,7 @@ memory-search-tool-decoding-v1
 temperature=0 / maximum output=128 / thinking disabled
 chat-first-tool-round-memory-decision-v1
 chat-configured-candidate-judge-v1
+chat-configured-candidate-judge-buffered-v1
 ```
 
 The decoding/temperature/output/thinking tuple applies only to immutable
@@ -163,6 +164,41 @@ BuildTransportStableMemoryJudgeRunManifest(...) (
 ValidateTransportStableMemoryJudgeCostAuthority(
     CostBasis, ConfiguredCandidateJudgeProfileAuthority,
 ) error
+```
+
+The buffered negative-guard Development identities and Go seams are:
+
+```text
+capture mode = development_fixed_memory_judge_negative_guard_buffered
+reader       = neo-chat.native-memory-reader-capture.v15
+profile      = neo-chat.memory-regression-profile-config.v17
+report       = neo-chat.memory-regression-relevance-calibration.v17
+admission    = development_fixed_memory_judge_negative_guard_buffered_only
+artifact     = fixed-memory-judge-negative-guard-buffered-development.json
+cost basis   = neo-chat.memory-regression-cost-basis.v12
+adapter      = chat-configured-candidate-judge-buffered-v1
+sequence     = bge_query_admission_bge_rerank_luna_judge_buffered_json_record_serial_judge_retry_v1
+```
+
+```go
+type BufferedChatProvider interface {
+    CompleteChat(context.Context, ProviderRequest) (BufferedChatCompletion, error)
+}
+
+NewBufferedChatAdapter(BufferedChatProvider, chat.ModelRef) (
+    *BufferedChatAdapter, error,
+)
+BufferedMemoryJudgeDevelopmentExecutionPolicy(providerMode string) (
+    AccuracyFirstExecutionPolicy, error,
+)
+CaptureBufferedMemoryJudgeDevelopment(...) (CapturedProfile, error)
+BuildBufferedMemoryJudgeDevelopmentReport(...) (
+    BufferedMemoryJudgeDevelopmentReport, []byte, error,
+)
+BuildBufferedMemoryJudgeRunManifest(...) (
+    RelevanceRunManifest, []byte, error,
+)
+ValidateBufferedMemoryJudgeCostAuthority(...) error
 ```
 
 The production-policy Validation identities and Go seams are:
@@ -579,6 +615,33 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   criterion. The aggregate remains non-selecting/non-promotional and grants no
   rerun, Validation, or product-policy authority. Both runtime Memory flags
   stayed false and all 43 sampled live Memory relation counts were unchanged.
+- Schema v17 isolates response framing after the schema-v16 transport failures.
+  Ordinary chat remains on `Provider.StreamChat`; only the separately versioned
+  Memory Judge adapter opts into `BufferedChatProvider.CompleteChat`. The
+  request is wire-equivalent to the streaming Judge request except
+  `stream:false` and `Accept: application/json`. `internal/chat` owns the 2 MiB
+  response bound and requires exactly one choice, present content, and exact
+  `finish_reason == "stop"`; `internal/memoryjudge` continues to own the same
+  prompt and strict output decoder. This prevents response framing from
+  leaking into capture code or changing product chat behavior.
+- The consumed schema-v17 Fake lifecycle completed `105` empty-candidate, `30`
+  guard, and `165` Judge cases. The one authorized live run
+  `memory-regression-20260806t082407z-1ce1eba8` completed all 300 cases with
+  `174` Judge attempts, nine recovered `PROVIDER_TRANSPORT_FAILED` attempt
+  failures, zero terminal failures, and three valid Judge abstentions. Quality
+  passed at Candidate Recall@20 `1.0`, Final Recall@5 `0.9846153846`, current-
+  fact accuracy `0.9818181818`, and false injection `0/135`; all safety counts
+  were zero. Report/manifest SHA-256 values are
+  `d0a70c03eda7fbb1bee4107c057acc54870da56cb2041ebdb9fa4cac8955a6ce`
+  and `182bbcc4cf553f9e7eb893abbd0122e9536dca970d3b232c5c7f832b703bdf2a`.
+  The report remains non-selecting/non-promotional. Schema-v16 and
+  schema-v17 are both consumed and must not be rerun; no Validation, recall
+  activation, production-policy change, Release, or deployment follows.
+- The schema-v17 Vault wrapper resolves the already active BGE/Luna pair into
+  two temporary mode-`0600` files, but its Compose `admin` invocation must use
+  `--no-build --pull never`. A one-shot credential export is not permission to
+  rebuild a mutable backend tag: doing so can move the local tag even when no
+  running container restarts. No production service is recreated by this lane.
 - The retained schema-v12 live result completed all `195` candidate-bearing
   rerank-plus-judge decisions with zero failed cases, but the accuracy-first
   policy injected Memory into `29/135` negative cases. Its false-injection
@@ -774,6 +837,12 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 | Development negative-policy guard matches after authorized Prepare | Record completed empty final with `NEGATIVE_POLICY_QUERY_ABSTAINED`; do not call admission, candidate rerank, or Judge. The earlier query-only embed remains permitted. |
 | Guard fields appear on production-v1 or guard version/SHA/policy identity drifts | Reject the policy. Never alias Development to production or change historical descriptor JSON. |
 | Schema-v16 guard report has local candidates but any admission/rerank/Judge/input-token/Provider-sent/final/injected/prompt-token surface is non-empty | Reject aggregate publication; a guard label cannot hide candidate egress or scoring work. |
+| Buffered Judge request drifts from streaming request beyond `stream`/`Accept`, or ordinary chat starts using buffered completion implicitly | Reject the change; schema-v17 is transport-only and opt-in. |
+| Buffered response is malformed/oversized/incomplete, has multiple choices, missing content, or non-exact `finish_reason` | Return `PROVIDER_RESPONSE_INVALID`; persist no response and let only the unchanged typed retry controller decide whether to retry. |
+| Buffered successful-status body read fails before context termination | Return `PROVIDER_TRANSPORT_FAILED`; if cancellation/deadline is set, preserve that context category and never leak private error text. |
+| Schema-v17 profile/report/cost/adapter/sequence identity drifts or reuses v11 | Reject before Provider construction or aggregate publication; schema-v16 remains immutable. |
+| Schema-v17 Vault export invokes Compose build/pull or restarts production | Reject the run; require `run --no-build --pull never` and leave live containers untouched. |
+| Schema-v17 live is requested after the consumed complete run | Refuse without Provider calls. Retained aggregate evidence is final for this Development lane. |
 | Current stored fixed Judge provider/type/Base-URL hash/model/secret drifts | Reject that Judge attempt as provenance drift; release no final Memory and never switch Provider/model. |
 | Product Judge returns a typed transient Provider failure | Retry at most twice; honor valid `Retry-After`, otherwise wait five then ten seconds. Deterministic/protocol/provenance failures do not retry. |
 | Product first round returns no Memory call | Make zero hybrid retrieval calls and release the buffered ordinary answer. |
@@ -859,6 +928,17 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   attempt/terminal equations drift, BGE receives a second retry, or the v9
   authority does not cover `900` requests and `115200` output tokens. Fail or
   reject the report without automatic rerun.
+- **Buffered-transport good**: the bounded JSON body completes with one choice,
+  present content, and exact `stop`; the unchanged decoder selects ordinals,
+  and schema v17 reconciles all attempts/tokens/cost without changing any
+  production flag or Memory row.
+- **Buffered-transport base**: the Judge returns a strict empty ordinal array.
+  Record a valid abstention; do not reinterpret it as a framing failure or
+  release private candidates.
+- **Buffered-transport bad**: share the buffered path with ordinary chat by
+  default, duplicate Judge decoding in the Provider/capture layer, accept
+  partial/multi-choice/length-truncated JSON, rebuild the active admin tag, or
+  rerun consumed schema-v16/v17 evidence.
 - **Production Validation good**: all 100 ordered cases complete through the
   exact product BGE/Luna policy with zero terminal/privacy/injection failures;
   attempts and v10 cost reconcile, aggregate artifacts pass validation, and
@@ -896,6 +976,12 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   schema-v16 profile/reader/report/cost/manifest separation, exact guard-
   abstention and typed Judge failure reconciliation, historical JSON omission,
   Fake zero-network Compose cleanup, Development Vault approval isolation,
+  schema-v17 streaming/buffered wire equivalence, 2 MiB response bound, exact
+  choice/content/`stop` validation, status/read/cancellation typed failures,
+  adapter prompt/decoder/provenance equality, profile v17/reader v15/report
+  v17/cost v12 separation, Fake and aggregate privacy/equation replay, exact
+  `--no-build --pull never` Vault lifecycle, historical v14/v16 identity
+  preservation, and one-shot no-rerun authority,
   validation, strict exact-key/duplicate-key/ordinal judge decoding, prompt
   SHA-256/model/decoding provenance, query/candidate secret redaction,
   concurrent BGE/judge failure and cutoff, ordinal intersection, empty-judge
@@ -1022,6 +1108,11 @@ Wrong: reuse schema-v14 Development approval/cost, seed 500 cases, stop at the
 first terminal failure, persist case detail, or let Fake/live pass auto-release.
 ```
 
+```text
+Wrong: let memorycapture parse Provider JSON, accept `finish_reason=length`,
+or run `docker compose build admin` before exporting schema-v17 credentials.
+```
+
 ### Correct
 
 ```text
@@ -1044,6 +1135,11 @@ default-off hybrid-worker/shadow flag + separate default-off product Tool flag
      read-intent/policy hashes + v10 cost + independent live approval;
      terminal cases continue but force failure, aggregate-only output,
      Fake is Yellow/non-evidence, live pass stops at owner review
+  -> schema-v16 only: unchanged SSE Judge plus negative-policy guard,
+     aggregate-only full Development evidence
+  -> schema-v17 only: Provider-owned bounded JSON completion with unchanged
+     prompt/decoder/retry/policy, v12 cost, no-build/no-pull Vault export,
+     one consumed non-promotional live result
   -> judge/BGE intersection; empty or uncertain result means no v2 Memory
   -> product first ToolRound sees normal request + search_memory, no Memory body
   -> exact call under production policy: current fixed Judge tuple reauthorized

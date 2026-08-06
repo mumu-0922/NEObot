@@ -49,6 +49,7 @@ neo-chat.memory-regression-profile-config.v13
 neo-chat.memory-regression-profile-config.v14
 neo-chat.memory-regression-profile-config.v15
 neo-chat.memory-regression-profile-config.v16
+neo-chat.memory-regression-profile-config.v17
 neo-chat.memory-regression-relevance-calibration.v3
 neo-chat.memory-regression-relevance-calibration.v4
 neo-chat.memory-regression-relevance-calibration.v5
@@ -62,6 +63,7 @@ neo-chat.memory-regression-relevance-calibration.v12
 neo-chat.memory-regression-relevance-calibration.v13
 neo-chat.memory-regression-relevance-calibration.v14
 neo-chat.memory-regression-relevance-calibration.v16
+neo-chat.memory-regression-relevance-calibration.v17
 neo-chat.memory-regression-relevance-validation.v1
 neo-chat.memory-regression-relevance-validation.v15
 neo-chat.memory-regression-relevance-run.v1
@@ -76,6 +78,7 @@ neo-chat.memory-regression-cost-basis.v8
 neo-chat.memory-regression-cost-basis.v9
 neo-chat.memory-regression-cost-basis.v10
 neo-chat.memory-regression-cost-basis.v11
+neo-chat.memory-regression-cost-basis.v12
 neo-chat.memory-cloud-candidate-judge-input.v1
 neo-chat.memory-cloud-candidate-judge-output.v1
 ```
@@ -273,6 +276,20 @@ bash scripts/run-memory-negative-guard-development-from-vault.sh \
   --development-judge-approval \
     I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA
 
+# Schema-v17 changes only the fixed Luna Judge response framing from SSE to a
+# bounded non-streaming JSON completion. Schema-v16 is immutable and is not a
+# rerun target. The wrapper may export the active Vault-backed pair, but must
+# never build or pull the mutable admin image while doing so.
+bash scripts/run-memory-buffered-judge-development-from-vault.sh \
+  --cost-basis /secure/eval/fixed-memory-judge-buffered-cost-v12.json \
+  --output-dir /secure/eval/native-memory-runs \
+  --credential-export-approval \
+    I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_DEVELOPMENT_CREDENTIALS \
+  --siliconflow-live-approval \
+    I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --development-judge-approval \
+    I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA
+
 bash scripts/run-memory-regression.sh \
   --provider-mode live_siliconflow \
   --capture-mode development_cloud_judge \
@@ -352,6 +369,9 @@ memorycapture.BuildConfiguredCandidateJudgeDevelopmentReport(pool, profile, auth
 memorycapture.CaptureNegativePolicyGuardMemoryJudgeDevelopment(ctx, adminDB, runtimeDB, runID, fullPool, index, seed, provider, judge, authority, profileID, configurationSHA256, cost) (memorycapture.CapturedProfile, error)
 memorycapture.BuildNegativePolicyGuardMemoryJudgeDevelopmentReport(pool, profile, authority, costBasis) (memorycapture.NegativePolicyGuardMemoryJudgeDevelopmentReport, []byte, error)
 memorycapture.BuildNegativePolicyGuardMemoryJudgeRunManifest(runID, captureID, providerMode, startedAt, completedAt, protected, costBasisSHA256, report, artifacts) (memorycapture.RelevanceRunManifest, []byte, error)
+memorycapture.CaptureBufferedMemoryJudgeDevelopment(ctx, adminDB, runtimeDB, runID, fullPool, index, seed, provider, judge, authority, profileID, configurationSHA256, cost) (memorycapture.CapturedProfile, error)
+memorycapture.BuildBufferedMemoryJudgeDevelopmentReport(pool, profile, authority, costBasis) (memorycapture.BufferedMemoryJudgeDevelopmentReport, []byte, error)
+memorycapture.BuildBufferedMemoryJudgeRunManifest(runID, captureID, providerMode, startedAt, completedAt, protected, costBasisSHA256, report, artifacts) (memorycapture.RelevanceRunManifest, []byte, error)
 memorycapture.CaptureProductionMemoryJudgeValidation(ctx, adminDB, runtimeDB, runID, fullPool, index, seed, provider, judge, authority, profileID, configurationSHA256, cost) (memorycapture.CapturedProfile, error)
 memorycapture.BuildProductionMemoryJudgeValidationReport(pool, profile, config, authority, costBasis) (memorycapture.ProductionMemoryJudgeValidationReport, []byte, error)
 memorycapture.BuildProductionMemoryJudgeValidationRunManifest(runID, captureID, providerMode, startedAt, completedAt, protected, costBasisSHA256, report, artifacts) (memorycapture.ProductionMemoryJudgeValidationRunManifest, []byte, error)
@@ -971,6 +991,42 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   and `495ec7b4a19021f600db0f2826dc2875cabfbd3f8bd51fe0ce5e94d10ce65a43`.
   The result is immutable failed, non-selecting, non-promotional Development
   evidence and grants no rerun or later-stage authority.
+- Schema v17 is the transport-only successor to schema v16. Its identity is
+  reader capture v15, profile/report v17, cost-basis v12, capture mode
+  `development_fixed_memory_judge_negative_guard_buffered`, admission mode
+  `development_fixed_memory_judge_negative_guard_buffered_only`, artifact
+  `fixed-memory-judge-negative-guard-buffered-development.json`, adapter
+  `chat-configured-candidate-judge-buffered-v1`, and execution sequence
+  `bge_query_admission_bge_rerank_luna_judge_buffered_json_record_serial_judge_retry_v1`.
+  It changes only Luna response framing: the request remains wire-equivalent
+  except `stream:false` plus `Accept: application/json`, while the Provider
+  owns a 2 MiB body cap, exactly one choice, present content, and exact
+  `finish_reason == "stop"` validation. Prompt, decoder, model, no-thinking,
+  temperature zero, 128-token ceiling, BGE, guard, criteria, cooldown, and the
+  two-Judge-retry `5s/10s` policy remain unchanged. Read interruption without
+  context termination is typed `PROVIDER_TRANSPORT_FAILED`; malformed,
+  oversized, incomplete, or multi-choice JSON is
+  `PROVIDER_RESPONSE_INVALID`; cancellation/deadline keeps its context
+  category. Provider bodies and private error strings are never persisted.
+- The consumed schema-v17 Fake run completed `105` empty-candidate, `30` guard,
+  and `165` Judge cases with zero network/residue. The single authorized live
+  run `memory-regression-20260806t082407z-1ce1eba8` completed all 300 cases:
+  `174` Judge attempts, nine recovered
+  `PROVIDER_TRANSPORT_FAILED` attempts, zero terminal failures, three valid
+  Judge abstentions, Candidate Recall@20 `1.0`, Final Recall@5
+  `0.9846153846`, current-fact accuracy `0.9818181818`, and false injection
+  `0/135`. It passed every slice/safety/cost gate but remains
+  `policySelected=false`, `promotionEligible=false`, and grants no rerun,
+  Validation, recall activation, Release, deployment, or production-policy
+  authority. Its configuration/report/manifest SHA-256 values are
+  `83d61297ac9e0dd07a457af947642a6fb88505e2b70b701bc9e0681dd29e7359`,
+  `d0a70c03eda7fbb1bee4107c057acc54870da56cb2041ebdb9fa4cac8955a6ce`,
+  and `182bbcc4cf553f9e7eb893abbd0122e9536dca970d3b232c5c7f832b703bdf2a`.
+  The v12 raw-file and decoded-content cost hashes are respectively
+  `a8e339b0aff182773b886681ad125eb5dcc6205d705cf325309c698da9b44d6a`
+  and `339d419caa56ba7414ec993b2d059f004279315de65e05479b603536cbeb17f4`.
+  Pre/post hashes over 43 live Memory relations remained identical at
+  `d027b35dd8b667f21c84b2a38cd0b27fec94b684c0d4561c8677bb3b9885142b`.
 - Aggregate-only Development evidence authorizes metric comparison, not case-
   level or causal attribution. After disjoint v4 and v5 hard-negative families
   each retained one `unrelated_negative` false injection, do not author another
@@ -1011,7 +1067,9 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   100-case split. Schema-v16 negative-guard Development requires v11 and the
   v9-equivalent `900`/`1500000`/`115200` request/input/output ceilings. V9
   cannot authorize schema v16, v10 cannot reinterpret a Development run, and
-  v11 cannot authorize Validation.
+  v11 cannot authorize Validation. Schema-v17 requires a distinct v12 document
+  with the same `900`/`1500000`/`115200` ceilings; v11 cannot authorize v17,
+  and v12 cannot reinterpret schema-v16 or Validation evidence.
 - Cost authority has two distinct hash surfaces. An operator may bind the
   private source file's exact raw bytes with ordinary file SHA-256, while
   `DecodeCostBasis` / `CostBasisSHA256` hashes the decoded struct re-encoded by
@@ -1033,8 +1091,8 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   schema-v6 historical Tool-route Development, schema-v7 first-ToolRound
   Development, schema-v9 diagnostics, schema-v10 configured-candidate-judge
   Development, historical frozen Validation, schema-v15 production-policy
-  Validation, and schema-v16 negative-guard Development each link one aggregate
-  report. Every mode links
+  Validation, schema-v16 negative-guard Development, and schema-v17 buffered
+  Judge Development each link one aggregate report. Every mode links
   `run-manifest.json` last as the completion marker. Failed metric/no-feasible
   gates retain valid reports and return non-zero; all other failures remove
   partial output. Success/failure/`SIGINT`/`SIGTERM`/`SIGHUP` destroy the exact
@@ -1124,6 +1182,11 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | Schema-v16 mode selects Validation/Holdout, accepts a non-v16 profile/reader/report/cost identity, or omits exact guard/descriptor provenance | Reject before Provider construction or report publication; never reinterpret v9/v10/v14/v15 evidence. |
 | Schema-v16 has zero guard abstentions, a guard trace does not end as completed `NO_CANDIDATES`, or it retains admission/rerank/Judge attempts or input tokens, Provider-sent/final/injected IDs, or prompt Memory tokens | Reject the report as inconsistent even when the aggregate quality metrics would otherwise pass. |
 | Schema-v16 Fake lifecycle has network/credentials, leaves scoped Compose state, or is presented as live quality evidence | Fail the lifecycle; Fake proves wiring and cleanup only. |
+| Schema-v17 request differs from schema-v16 beyond `stream:false`/JSON response framing, or prompt/decoder/model/BGE/guard/criteria/retry changes | Reject the lane as confounded; preserve schema-v16 and create no evidence. |
+| Schema-v17 JSON body is malformed, over 2 MiB, has other than one choice, lacks content, or has non-exact `finish_reason != "stop"` | Return bounded `PROVIDER_RESPONSE_INVALID`; retry only under the unchanged typed Judge retry policy and persist no body. |
+| Schema-v17 successful-status body read is interrupted without context termination | Return `PROVIDER_TRANSPORT_FAILED`; if context ended, preserve the exact cancellation/deadline category. Never leak the private read error. |
+| The Vault wrapper builds or pulls `admin`, or uses a mutable local tag as evidence authority | Reject before credential export. Use Compose `run --no-build --pull never`; do not move the active backend tag or restart production services. |
+| The consumed schema-v17 live run is requested again, or its pass is used to enter Validation/enable recall/promote/deploy | Refuse. The one-shot Development evidence is complete and remains non-promotional. |
 | Development passes | Retain aggregate evidence and stop for owner review; never enter Validation automatically. |
 | Frozen validation is requested before a Development-selected policy is committed | Reject before credential read or Provider work. |
 | Schema-v15 mode selects Development/Holdout, seeds other fixtures, or changes the frozen case order/read-intent/policy/criteria hash | Reject before report publication; historical schemas and the visible machine Holdout remain untouched. |
@@ -1255,6 +1318,19 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 - **Schema-v16 bad**: call a failed full live result a guard pass, retry it from
   broad quota consent, reuse v9/v10, omit pre/post live-state comparison, or
   promote from zero false injection while stability/quality gates failed.
+- **Schema-v17 good**: Fake lifecycle passes, then one authorized live run uses
+  only the Provider-owned bounded JSON response path, reconciles 300 outcomes,
+  174 attempts, nine recovered transport failures, zero terminals, tokens and
+  v12 cost, retains two mode-`0600` aggregate files, and leaves Memory state and
+  flags unchanged.
+- **Schema-v17 base**: the Provider returns one complete JSON choice with exact
+  `finish_reason=stop`; the existing strict Judge decoder and unchanged
+  selection policy decide the result. A valid empty ordinal array remains a
+  Judge abstention rather than a transport failure.
+- **Schema-v17 bad**: duplicate the decoder in `memorycapture`, accept SSE
+  fragments in the buffered path, loosen finish semantics/body bounds, rebuild
+  the Vault export image, rerun the consumed lane, or treat its pass as
+  Validation/Release authority.
 - **Exact-pair export good**: resolve only active attested `RAG:SILICONFLOW`
   and the exact fixed Luna tuple, create two exclusive private mode-`0600`
   files, run schema-v15, and wipe both source copies on every exit.
@@ -1404,6 +1480,14 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   admission code failure; Judge attempt/terminal/token/cost reconciliation;
   the Development-only Vault export approval; deterministic Fake two-file
   lifecycle; and success/failure/signal credential plus Compose cleanup.
+  Schema-v17 fixtures additionally cover streaming/buffered request wire
+  equivalence except transport fields; exact status, cancellation, body-read,
+  malformed, oversized, missing-content, multi-choice, and non-`stop` finish
+  classification; adapter prompt/decoder/provenance equality; profile v17,
+  reader v15, report v17, cost v12, capture/admission/artifact/sequence
+  separation; historical v14/v16 identity preservation; Fake PostgreSQL 17
+  replay; aggregate privacy/equation validation; and Vault cleanup with an
+  assertion that Compose receives `--no-build --pull never`.
   Cost-basis fixtures must also assert the raw private-file hash and
   the decoded canonical manifest hash as different named surfaces rather than
   assuming byte equality.
@@ -1547,4 +1631,15 @@ Correct: mandatory Fake -> exact Development-only Vault export -> schema-v16 +
          cost-basis v11 -> reconcile all 300 outcomes/attempts/tokens/cost ->
          retain failed aggregate evidence -> wipe credentials/cost source ->
          verify live flags and 43 Memory relation counts unchanged -> stop.
+```
+
+```text
+Wrong: parse non-streaming Luna JSON inside memorycapture, accept any finish
+       reason, rebuild admin during Vault export, or rerun schema-v16/v17 after
+       the first complete live result.
+Correct: internal/chat bounded completion -> exact one-choice/content/stop
+         validation -> unchanged strict Memory Judge decoder -> schema-v17 +
+         cost-basis v12 aggregate evidence -> no-build/no-pull credential
+         export -> verify 43-relation hash and flags unchanged -> stop without
+         Validation, recall activation, promotion, deployment, or rerun.
 ```

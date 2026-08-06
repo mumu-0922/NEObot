@@ -1677,6 +1677,81 @@ the live services remained healthy. This result authorizes no automatic rerun,
 Validation, Holdout, promotion, Release, product policy change, deployment, or
 recall re-enable.
 
+Schema v17 is a transport-only successor to that immutable failed schema-v16
+evidence. It preserves the exact fixed BGE/Luna tuple, prompt/decoder/model
+controls, guard/policy descriptor, serial order, two Judge retries, five/ten-
+second fallback waits, criteria v3, 300-case Development split, and aggregate-
+only privacy contract. Only the response transport changes: adapter
+`chat-configured-candidate-judge-buffered-v1` calls the Provider-owned bounded
+JSON completion with `stream:false` and `Accept: application/json`. Profile and
+report are v17, reader capture is v15, cost-basis is v12, admission is
+`development_fixed_memory_judge_negative_guard_buffered_only`, and the artifact
+is `fixed-memory-judge-negative-guard-buffered-development.json`. Historical
+streaming adapters and ordinary chat remain unchanged.
+
+Run Fake before live:
+
+```bash
+bash scripts/run-memory-regression.sh \
+  --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge_negative_guard_buffered \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --cost-basis /secure/eval/fixed-memory-judge-buffered-cost-v12.json \
+  --output-dir /secure/eval/native-memory-runs
+```
+
+The accepted Fake PostgreSQL 17 run completed `105` empty-candidate, `30`
+guard-abstained, and `165` Judge-completed cases. It retained exactly the mode-
+`0600` aggregate report and manifest, used zero network/credentials, and left
+zero scoped containers, networks, or volumes.
+
+The one-run live path is:
+
+```bash
+bash scripts/run-memory-buffered-judge-development-from-vault.sh \
+  --cost-basis /secure/eval/fixed-memory-judge-buffered-cost-v12.json \
+  --output-dir /secure/eval/native-memory-runs \
+  --credential-export-approval \
+    I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_DEVELOPMENT_CREDENTIALS \
+  --siliconflow-live-approval \
+    I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --development-judge-approval \
+    I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA
+```
+
+Credential export must run the already configured admin image with
+`--no-build --pull never`. Building the admin service would mutate a local
+`BACKEND_IMAGE` tag and could change a later service recreation; the evaluated
+source belongs only in the isolated regression image.
+
+The sole live run `memory-regression-20260806t082407z-1ce1eba8` completed all
+300 cases as `105/30/165/0` empty/guard/Judge-completed/failed. Three Judge
+decisions abstained. Nine typed `PROVIDER_TRANSPORT_FAILED` attempts each
+recovered through one retry, leaving zero terminal categories and `174` total
+Judge attempts. Candidate Recall@20/Final Recall@5/current-fact accuracy were
+`1.0/0.984615/0.981818`; false injection was `0/135`; every slice and safety
+counter passed. Actual cost authority was `174/900` requests,
+`231925/1500000` input tokens, and `22272/115200` output tokens. The immutable
+top level is `passed=true`, `policySelected=false`, and
+`promotionEligible=false`.
+
+Cost-basis decoded-content/configuration/report/manifest SHA-256 values are
+`339d419caa56ba7414ec993b2d059f004279315de65e05479b603536cbeb17f4`,
+`83d61297ac9e0dd07a457af947642a6fb88505e2b70b701bc9e0681dd29e7359`,
+`d0a70c03eda7fbb1bee4107c057acc54870da56cb2041ebdb9fa4cac8955a6ce`,
+and `182bbcc4cf553f9e7eb893abbd0122e9536dca970d3b232c5c7f832b703bdf2a`.
+Both credential copies, the consumed cost source, comparison snapshots, and
+every scoped runtime object were removed. The 43 sampled live Memory relation
+counts remained byte-identical at aggregate hash
+`d027b35dd8b667f21c84b2a38cd0b27fec94b684c0d4561c8677bb3b9885142b`,
+both Memory flags remained false, and live services stayed healthy. This
+consumes the only schema-v17 live authority and grants no rerun, Validation,
+Holdout, promotion, Release, deployment, product-policy mutation, or recall
+re-enable.
+
 Accuracy-first Development keeps the same exact two-file and fixed-Luna
 authority. Its v12 execution policy changes no credential boundary: operator
 copies remain mode `0600`, read-only in the runner, independent by file/inode/
@@ -1841,9 +1916,10 @@ fixed-Luna tuple and expands only the Judge authority to 900 requests and
 Validation uses an independent cost-basis v10 with 300 requests and 38,400
 output tokens for its 100-case split; it cannot consume a Development cost
 document. Schema-v16 negative-guard Development uses cost-basis v11 and the
-same `900/1500000/115200` ceilings as v9. Unused authority is valid, but actual
-attempt/input/output totals must reconcile exactly and the v9/v10/v11 schema
-identities are never interchangeable.
+same `900/1500000/115200` ceilings as v9. Schema-v17 buffered Development uses
+cost-basis v12 with those same ceilings. Unused authority is valid, but actual
+attempt/input/output totals must reconcile exactly and the v9/v10/v11/v12
+schema identities are never interchangeable.
 
 Each full fake-protocol run directory is mode `0700` and contains five
 mode-`0600` files:
@@ -1861,8 +1937,8 @@ Tool-route evidence, schema-v10 configured-candidate-judge Development, and
 schema-v11 fixed-Memory-Judge Development, schema-v12 accuracy-first
 Development, schema-v13 Judge-failure-diagnostic Development, schema-v14
 transport-stable Development, schema-v15 production Validation, and schema-v16
-negative-guard Development directories contain their named aggregate report plus
-`run-manifest.json`. In
+negative-guard Development and schema-v17 buffered-judge Development
+directories contain their named aggregate report plus `run-manifest.json`. In
 every mode, evidence is exclusively linked first and the content-free
 run manifest is the final completion marker. Existing targets are refused
 before Provider work and are never overwritten. A metric/no-feasible failure

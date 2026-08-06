@@ -9259,3 +9259,62 @@ counts and their aggregate hash were identical before/after; both
 and the live services remained healthy. This consumed result grants no rerun,
 Validation, Holdout, promotion, Release, deployment, product-policy mutation,
 or recall re-enable.
+
+## 2026-08-06 — Schema-v17 buffered Memory Judge transport result
+
+Schema v17 changed only the fixed Luna response transport from SSE
+`stream:true` to Provider-owned bounded JSON `stream:false`. The separately
+versioned adapter `chat-configured-candidate-judge-buffered-v1` retained the
+schema-v16 prompt, strict ordinal decoder, model, temperature, no-thinking,
+128-token output limit, negative-policy guard, policy descriptor, BGE order,
+two Judge retries, five/ten-second waits, corpus, criteria, privacy, and cost
+ceilings. New identities are reader capture v15, profile/report v17,
+cost-basis v12, admission
+`development_fixed_memory_judge_negative_guard_buffered_only`, and artifact
+`fixed-memory-judge-negative-guard-buffered-development.json`.
+
+Focused race tests for `internal/chat`, `internal/memoryjudge`,
+`internal/memorycapture`, and `cmd/memory-regression-capture`, all backend
+tests/vet, the Vault lifecycle, and `verify-standalone.sh --full` passed. The
+real PostgreSQL 17 Fake lifecycle completed `105` empty-candidate, `30` guard-
+abstained, and `165` Judge-completed cases with zero network and zero scoped
+Docker residue. It retained exactly two mode-`0600` aggregate files.
+
+The owner-authorized one-shot live run
+`memory-regression-20260806t082407z-1ce1eba8`, capture
+`27246e20-e166-49a5-b83c-acec0065f331`, completed all 300 cases as
+`105/30/165/0` empty/guard/Judge-completed/failed. Three valid Judge decisions
+abstained. There were `174` Judge attempts, nine retries, nine recovered
+`PROVIDER_TRANSPORT_FAILED` attempts, and zero terminal categories. Candidate
+Recall@20, Final Recall@5, and current-fact accuracy were
+`1.0/0.984615/0.981818`; false injection was `0/135`; every slice, prompt-token,
+and cross-user/deleted/Secret/untrusted-source/unauthorized-egress gate passed.
+Actual Judge authority reconciled at `174/900` requests,
+`231925/1500000` input tokens, and `22272/115200` output tokens. The report is
+`passed=true` while remaining `policySelected=false` and
+`promotionEligible=false`.
+
+The raw private cost file SHA-256 was
+`a8e339b0aff182773b886681ad125eb5dcc6205d705cf325309c698da9b44d6a`; its
+decoded-content hash was
+`339d419caa56ba7414ec993b2d059f004279315de65e05479b603536cbeb17f4`.
+Configuration/report/manifest SHA-256 values are
+`83d61297ac9e0dd07a457af947642a6fb88505e2b70b701bc9e0681dd29e7359`,
+`d0a70c03eda7fbb1bee4107c057acc54870da56cb2041ebdb9fa4cac8955a6ce`,
+and `182bbcc4cf553f9e7eb893abbd0122e9536dca970d3b232c5c7f832b703bdf2a`.
+The aggregate pair remains mode `0600` under
+`/var/tmp/neo-chat-buffered-judge-development-20260806T080832Z/live-runs/20260806T082407Z-1ce1eba8`.
+
+The Vault wrapper initially exposed an operational hazard: `compose build
+admin` moved the mutable local `BACKEND_IMAGE` tag even though running
+containers stayed on the retained digest. The tag was restored from commit
+`5d421e3b` after all four backend binaries matched the live container byte-for-
+byte. The wrapper now uses `--no-build --pull never`, and its lifecycle test
+rejects image mutation or pull. Both credential copies, the consumed cost
+source, comparison snapshots, export/runner temporary directories, and all
+scoped containers/networks/volumes were removed. The 43
+sampled live Memory relation counts remained byte-identical at SHA-256
+`d027b35dd8b667f21c84b2a38cd0b27fec94b684c0d4561c8677bb3b9885142b`;
+both Memory flags stayed false, and live services remained healthy. This
+consumes the schema-v17 live authority and grants no rerun, Validation, Holdout,
+promotion, Release, deployment, product-policy mutation, or recall re-enable.
