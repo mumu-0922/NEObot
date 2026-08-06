@@ -117,21 +117,37 @@ func TestSearchRelevantWithHybridShadowRequiresExplicitRelevancePolicy(t *testin
 }
 
 func TestSearchRelevantAfterMemoryToolCallRequiresPromotedProductionPolicy(t *testing.T) {
-	repository := &hybridTestRepository{fakeRepository: hybridV1Repository()}
-	provider := &hybridTestProvider{embedding: validHybridTestEmbedding()}
-	result := NewService(
-		repository,
-		WithHybridShadowProvider(provider),
-	).SearchRelevantAfterMemoryToolCall(context.Background(), HybridMemoryToolSearchInput{
-		ConversationID: hybridTestConversation, AssistantMessageID: hybridTestAssistant,
-		Query: "Which school?", ContractVersion: HybridMemoryToolContractVersion,
-		ContractSHA256: HybridMemoryToolContractSHA256,
-	})
-	if result.FailureCategory != "policy_unavailable" || len(result.Memories) != 0 ||
-		repository.prepareCalls != 0 || provider.embedCalls != 0 ||
-		provider.rerankCalls != 0 {
-		t.Fatalf("unpromoted Memory Tool result=%#v repo=%#v provider=%#v",
-			result, repository, provider)
+	for _, test := range []struct {
+		name    string
+		options []ServiceOption
+	}{
+		{name: "missing policy"},
+		{
+			name: "negative guard Development policy",
+			options: []ServiceOption{WithHybridMemoryToolRelevancePolicy(
+				HybridShadowNegativePolicyGuardDevelopmentPolicy(),
+			)},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repository := &hybridTestRepository{fakeRepository: hybridV1Repository()}
+			provider := &hybridTestProvider{embedding: validHybridTestEmbedding()}
+			options := append([]ServiceOption{WithHybridShadowProvider(provider)}, test.options...)
+			result := NewService(repository, options...).SearchRelevantAfterMemoryToolCall(
+				context.Background(), HybridMemoryToolSearchInput{
+					ConversationID:     hybridTestConversation,
+					AssistantMessageID: hybridTestAssistant,
+					Query:              "Which school?", ContractVersion: HybridMemoryToolContractVersion,
+					ContractSHA256: HybridMemoryToolContractSHA256,
+				},
+			)
+			if result.FailureCategory != "policy_unavailable" || len(result.Memories) != 0 ||
+				repository.prepareCalls != 0 || provider.embedCalls != 0 ||
+				provider.rerankCalls != 0 {
+				t.Fatalf("unpromoted Memory Tool result=%#v repo=%#v provider=%#v",
+					result, repository, provider)
+			}
+		})
 	}
 }
 

@@ -30,6 +30,7 @@ const (
 	hybridPolicyModeCloudJudgeCalibration = "cloud_judge_calibration"
 	hybridPolicyModeFixedMemoryJudge      = "fixed_cloud_candidate_judge_development"
 	hybridPolicyModeAccuracyFirstJudge    = "fixed_cloud_candidate_judge_accuracy_development"
+	hybridPolicyModeNegativePolicyGuard   = "fixed_cloud_candidate_judge_negative_guard_development"
 	hybridPolicyModeProductionJudge       = "fixed_cloud_candidate_judge_production"
 	hybridPolicyModeMemoryToolRoute       = "main_model_tool_route_calibration"
 	hybridPolicyModeMemoryFirstToolRound  = "main_model_first_tool_round_calibration"
@@ -299,7 +300,10 @@ func (s *Service) executeHybridShadow(
 	if len(prepared.Candidates) > 0 {
 		var rerankErr error
 		intentAdmitted := true
-		if policy.MemoryIntentRequired {
+		if policy.NegativePolicyQueryGuardRequired && matchesNegativePolicyQuery(query) {
+			fallbackCode = "NEGATIVE_POLICY_QUERY_ABSTAINED"
+			intentAdmitted = false
+		} else if policy.MemoryIntentRequired {
 			intentCtx, intentCancel := context.WithTimeout(shadowCtx, hybridShadowIntentCutoff)
 			intent, intentErr := classifyHybridMemoryIntent(
 				intentCtx,
@@ -921,6 +925,22 @@ func HybridShadowAccuracyFirstMemoryJudgeDevelopmentPolicy() HybridShadowRelevan
 	}
 }
 
+// HybridShadowNegativePolicyGuardDevelopmentPolicy adds the frozen bilingual
+// negative meta-policy guard to the accuracy-first BGE/Luna flow. It remains a
+// distinct Development-only identity and is never installed by the Server
+// composition root.
+func HybridShadowNegativePolicyGuardDevelopmentPolicy() HybridShadowRelevancePolicy {
+	return HybridShadowRelevancePolicy{
+		ID:                               HybridRelevanceNegativePolicyGuardDevelopmentPolicyID,
+		Mode:                             hybridPolicyModeNegativePolicyGuard,
+		CloudCandidateJudgeRequired:      true,
+		CloudCandidateJudgeModelID:       HybridFixedMemoryJudgeModelID,
+		NegativePolicyQueryGuardRequired: true,
+		MinimumProviderSimilarity:        -1,
+		MinimumFinalRelevanceScore:       0,
+	}
+}
+
 // HybridShadowFixedMemoryJudgeProductionPolicy is the owner-promoted product
 // reader policy. It preserves the passing schema-v14 accuracy-first selection
 // order while giving product observations a production-only identity.
@@ -1047,6 +1067,19 @@ func DescribeHybridShadowRelevancePolicy(
 		}(),
 		MemoryToolRouteDisableThinking: policy.Mode == hybridPolicyModeMemoryToolRoute &&
 			HybridMemoryToolDisableThinking,
+		NegativePolicyQueryGuardRequired: policy.NegativePolicyQueryGuardRequired,
+		NegativePolicyQueryGuardVersion: func() string {
+			if policy.NegativePolicyQueryGuardRequired {
+				return NegativePolicyQueryGuardVersion
+			}
+			return ""
+		}(),
+		NegativePolicyQueryGuardSHA256: func() string {
+			if policy.NegativePolicyQueryGuardRequired {
+				return NegativePolicyQueryGuardSHA256
+			}
+			return ""
+		}(),
 		MemoryIntentAnchorVersion: func() string {
 			if policy.MemoryIntentRequired {
 				return ragproviders.MemoryIntentAnchorVersion
@@ -1069,6 +1102,8 @@ func validHybridShadowRelevancePolicy(
 	policy HybridShadowRelevancePolicy,
 ) (HybridShadowRelevancePolicy, bool) {
 	if !lexicalShadowResultCodeRE.MatchString(strings.ToUpper(policy.ID)) ||
+		policy.NegativePolicyQueryGuardRequired !=
+			(policy.Mode == hybridPolicyModeNegativePolicyGuard) ||
 		math.IsNaN(policy.MinimumMemoryIntentMargin) ||
 		math.IsInf(policy.MinimumMemoryIntentMargin, 0) ||
 		policy.MinimumMemoryIntentMargin < -1 || policy.MinimumMemoryIntentMargin > 1 ||
@@ -1122,6 +1157,18 @@ func validHybridShadowRelevancePolicy(
 			policy.MemoryIntentRequired || !policy.CloudCandidateJudgeRequired ||
 			policy.CloudCandidateJudgeModelID != HybridFixedMemoryJudgeModelID ||
 			policy.MemoryToolRouteRequired || policy.MemoryToolRouteModelID != "" ||
+			policy.NegativePolicyQueryGuardRequired ||
+			policy.MinimumMemoryIntentMargin != 0 ||
+			policy.MinimumProviderSimilarity != -1 ||
+			policy.MinimumFinalRelevanceScore != 0 {
+			return HybridShadowRelevancePolicy{}, false
+		}
+	case hybridPolicyModeNegativePolicyGuard:
+		if policy.ID != HybridRelevanceNegativePolicyGuardDevelopmentPolicyID ||
+			policy.MemoryIntentRequired || !policy.CloudCandidateJudgeRequired ||
+			policy.CloudCandidateJudgeModelID != HybridFixedMemoryJudgeModelID ||
+			policy.MemoryToolRouteRequired || policy.MemoryToolRouteModelID != "" ||
+			!policy.NegativePolicyQueryGuardRequired ||
 			policy.MinimumMemoryIntentMargin != 0 ||
 			policy.MinimumProviderSimilarity != -1 ||
 			policy.MinimumFinalRelevanceScore != 0 {
@@ -1132,6 +1179,7 @@ func validHybridShadowRelevancePolicy(
 			policy.MemoryIntentRequired || !policy.CloudCandidateJudgeRequired ||
 			policy.CloudCandidateJudgeModelID != HybridFixedMemoryJudgeModelID ||
 			policy.MemoryToolRouteRequired || policy.MemoryToolRouteModelID != "" ||
+			policy.NegativePolicyQueryGuardRequired ||
 			policy.MinimumMemoryIntentMargin != 0 ||
 			policy.MinimumProviderSimilarity != -1 ||
 			policy.MinimumFinalRelevanceScore != 0 {
@@ -1194,6 +1242,7 @@ func hybridShadowHardCutoffMillisecondsForMode(mode string) int {
 
 func hybridPolicyRunsAccuracyFirst(mode string) bool {
 	return mode == hybridPolicyModeAccuracyFirstJudge ||
+		mode == hybridPolicyModeNegativePolicyGuard ||
 		mode == hybridPolicyModeProductionJudge
 }
 

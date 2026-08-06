@@ -7,31 +7,32 @@ import (
 )
 
 const (
-	MaxMemories                                  = 500
-	MaxContentChars                              = 2000
-	MaxTags                                      = 12
-	MaxTagChars                                  = 40
-	MaxSearchResults                             = 5
-	MaxExtractedItems                            = 5
-	MaxActionTargets                             = 5
-	MaxActivityPage                              = 100
-	MaxLexicalShadowResults                      = 20
-	MaxHybridShadowResults                       = 20
-	DirectActionSchemaMajor                      = 1
-	LexicalShadowProfileID                       = "memory_lexical_cjk_bm25_v1"
-	HybridShadowProfileID                        = "memory_hybrid_bge_m3_rrf60_v1"
-	HybridEmbeddingProfile                       = "siliconflow_bge_m3_v1"
-	HybridRelevanceCalibrationPolicyID           = "memory_hybrid_relevance_calibration_v1"
-	HybridRelevanceIntentCalibrationPolicyID     = "memory_hybrid_relevance_intent_calibration_v1"
-	HybridRelevanceCloudJudgeCalibrationPolicyID = "memory_hybrid_cloud_candidate_judge_calibration_v1"
-	HybridRelevanceFixedMemoryJudgePolicyID      = "memory_hybrid_fixed_cloud_candidate_judge_development_v1"
-	HybridRelevanceAccuracyFirstJudgePolicyID    = "memory_hybrid_fixed_cloud_candidate_judge_accuracy_development_v2"
-	HybridRelevanceProductionJudgePolicyID       = "memory_hybrid_fixed_cloud_candidate_judge_production_v1"
-	HybridFixedMemoryJudgeModelID                = "gpt-5.6-luna"
-	HybridFixedMemoryJudgeHardCutoffMilliseconds = 3000
-	HybridRelevanceMemoryToolRoutePolicyID       = "memory_hybrid_main_model_tool_route_calibration_v1"
-	HybridRelevanceMemoryFirstToolRoundPolicyID  = "memory_hybrid_main_model_first_tool_round_calibration_v1"
-	HybridRelevanceFrozenPolicyID                = "memory_hybrid_relevance_intent_abstention_v1"
+	MaxMemories                                           = 500
+	MaxContentChars                                       = 2000
+	MaxTags                                               = 12
+	MaxTagChars                                           = 40
+	MaxSearchResults                                      = 5
+	MaxExtractedItems                                     = 5
+	MaxActionTargets                                      = 5
+	MaxActivityPage                                       = 100
+	MaxLexicalShadowResults                               = 20
+	MaxHybridShadowResults                                = 20
+	DirectActionSchemaMajor                               = 1
+	LexicalShadowProfileID                                = "memory_lexical_cjk_bm25_v1"
+	HybridShadowProfileID                                 = "memory_hybrid_bge_m3_rrf60_v1"
+	HybridEmbeddingProfile                                = "siliconflow_bge_m3_v1"
+	HybridRelevanceCalibrationPolicyID                    = "memory_hybrid_relevance_calibration_v1"
+	HybridRelevanceIntentCalibrationPolicyID              = "memory_hybrid_relevance_intent_calibration_v1"
+	HybridRelevanceCloudJudgeCalibrationPolicyID          = "memory_hybrid_cloud_candidate_judge_calibration_v1"
+	HybridRelevanceFixedMemoryJudgePolicyID               = "memory_hybrid_fixed_cloud_candidate_judge_development_v1"
+	HybridRelevanceAccuracyFirstJudgePolicyID             = "memory_hybrid_fixed_cloud_candidate_judge_accuracy_development_v2"
+	HybridRelevanceNegativePolicyGuardDevelopmentPolicyID = "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_development_v1"
+	HybridRelevanceProductionJudgePolicyID                = "memory_hybrid_fixed_cloud_candidate_judge_production_v1"
+	HybridFixedMemoryJudgeModelID                         = "gpt-5.6-luna"
+	HybridFixedMemoryJudgeHardCutoffMilliseconds          = 3000
+	HybridRelevanceMemoryToolRoutePolicyID                = "memory_hybrid_main_model_tool_route_calibration_v1"
+	HybridRelevanceMemoryFirstToolRoundPolicyID           = "memory_hybrid_main_model_first_tool_round_calibration_v1"
+	HybridRelevanceFrozenPolicyID                         = "memory_hybrid_relevance_intent_abstention_v1"
 )
 
 var (
@@ -434,16 +435,17 @@ type HybridShadowAdmission struct {
 // Calibration policies remain isolated to regression/shadow flows; the
 // product Memory Tool reader accepts only its separately promoted policy.
 type HybridShadowRelevancePolicy struct {
-	ID                          string
-	Mode                        string
-	MemoryIntentRequired        bool
-	CloudCandidateJudgeRequired bool
-	CloudCandidateJudgeModelID  string
-	MemoryToolRouteRequired     bool
-	MemoryToolRouteModelID      string
-	MinimumMemoryIntentMargin   float64
-	MinimumProviderSimilarity   float64
-	MinimumFinalRelevanceScore  float64
+	ID                               string
+	Mode                             string
+	MemoryIntentRequired             bool
+	CloudCandidateJudgeRequired      bool
+	CloudCandidateJudgeModelID       string
+	MemoryToolRouteRequired          bool
+	MemoryToolRouteModelID           string
+	NegativePolicyQueryGuardRequired bool
+	MinimumMemoryIntentMargin        float64
+	MinimumProviderSimilarity        float64
+	MinimumFinalRelevanceScore       float64
 }
 
 type HybridShadowRelevancePolicyDescriptor struct {
@@ -466,6 +468,9 @@ type HybridShadowRelevancePolicyDescriptor struct {
 	MemoryToolRouteMaximumOutputTokens   int
 	MemoryToolRouteTemperature           float64
 	MemoryToolRouteDisableThinking       bool
+	NegativePolicyQueryGuardRequired     bool   `json:",omitempty"`
+	NegativePolicyQueryGuardVersion      string `json:",omitempty"`
+	NegativePolicyQueryGuardSHA256       string `json:",omitempty"`
 	MinimumMemoryIntentMarginBasisPoints int
 	MinimumProviderSimilarityBasisPoints int
 	MinimumFinalRelevanceBasisPoints     int
