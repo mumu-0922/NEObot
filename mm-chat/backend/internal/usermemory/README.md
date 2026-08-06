@@ -217,13 +217,16 @@ adapter emits a real first `ToolRoundProvider` request and delegates canonical
 Tool definition/hash/validation to `internal/chat`.
 
 Product chat does not install a Development adapter. With
-`MEMORY_TOOL_LOOP_ENABLED=true`, Server composition installs only
-`memory_hybrid_fixed_cloud_candidate_judge_production_v1` and re-resolves the
+`MEMORY_TOOL_LOOP_ENABLED=true`, Server composition installs production-v2
+`memory_hybrid_fixed_cloud_candidate_judge_negative_guard_production_v2` and
+re-resolves the
 stored fixed Judge tuple on every logical request: `SERVER_DEFAULT`, OpenAI
 Compatible, normalized Base-URL SHA-256
 `3bc0bbf28d9d817b4f6c8f6058c2c51dd644c541252ed6e2542a8c8a472ff671`,
 and `gpt-5.6-luna`. Missing dependencies or tuple/model/secret drift fail
-closed before candidate release. `internal/chat` validates the first-round
+closed before candidate release. The Provider must implement the bounded
+buffered completion contract; ordinary chat streaming remains unchanged.
+`internal/chat` validates the first-round
 call and invokes `SearchRelevantAfterMemoryToolCall`. That method accepts only
 the production policy, never calls the v1 reader or `MarkUsed`, never falls
 back to v1 or unscored RRF, runs fixed BGE rerank before the strict Luna ordinal
@@ -241,8 +244,8 @@ atomic assistant-finalize Usage capability only after the final answer
 completes. A continuation recovery from the original request clears that list
 because the recovery request contains no Memory body.
 
-The post-schema-v15 false-injection remediation is a separate Development-only
-policy:
+The post-schema-v15 false-injection remediation began as a separate
+Development-only policy:
 `memory_hybrid_fixed_cloud_candidate_judge_negative_guard_development_v1`.
 It binds the bilingual `memory-negative-policy-query-guard-v1` pattern set and
 its SHA-256 into optional descriptor fields. Those fields are omitted for all
@@ -250,12 +253,17 @@ historical policies, preserving the production-v1 descriptor bytes/hash. The
 guard runs after `PrepareHybridShadow` and before admission, candidate BGE
 rerank, and Luna Judge. A match records an empty final set with
 `NEGATIVE_POLICY_QUERY_ABSTAINED`; query-only embedding can already have
-occurred, but no candidate plaintext crosses a Provider boundary. Server
-composition still installs only production-v1, so this Development policy
-cannot serve the product Memory Tool without a future explicit promotion.
+occurred, but no candidate plaintext crosses a Provider boundary. The
+independently versioned production-v2 successor preserves that exact guard
+under a production-only identity and uses the buffered Luna adapter. Its sole
+schema-v18 live Validation failed two current-fact slice gates, so it grants no
+runtime rollout authority despite remaining the frozen candidate in source.
 
-The product flag and Worker hybrid flag both default false. The owner-promoted
-production reader is active only while the Tool flag is explicitly true;
+The product flag and Worker hybrid flag both default false. The production
+reader is active only while the Tool flag is explicitly true and the
+authenticated user ID exactly matches `MEMORY_TOOL_LOOP_CANARY_USER_IDS`.
+Empty/invalid/duplicate allowlists and unauthenticated or non-matching users
+fail closed before retrieval/Judge work;
 setting it false is the immediate rollback and restores ordinary chat without
 product Memory Tool reads or a v1 fallback. Ready fixed-profile projections are
 required. Keep `MEMORY_HYBRID_SHADOW_ENABLED` aligned on the Memory Worker when
@@ -329,6 +337,7 @@ L3 failure falls back to unchanged L1/L2 behavior.
 | `WithHybridMemoryToolRelevancePolicy(policy)` | Install the separate product Tool reader policy; absent or non-production policies fail closed before Provider work. |
 | `HybridShadowFixedMemoryJudgeProductionPolicy()` | Build the owner-promoted fixed BGE then fixed Luna production selection identity. |
 | `HybridShadowNegativePolicyGuardDevelopmentPolicy()` | Build the non-promotional accuracy-first policy with the frozen bilingual negative meta-policy guard. |
+| `HybridShadowNegativePolicyGuardProductionPolicy()` | Build the production-v2 fixed BGE/buffered Luna policy requiring the frozen negative meta-policy guard. |
 | `WithHybridMemoryToolRouter(router)` | Install a Development-only route dependency for an explicit calibration policy. |
 | `HybridShadowMemoryFirstToolRoundCalibrationPolicy(modelID)` | Build the exact non-promotional schema-v7 first-ToolRound policy. |
 | `SearchRelevantL2Scenes(ctx, query, conversationID, assistantMessageID, activeRequested)` | Default-off Scene shadow or current authorized active results |

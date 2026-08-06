@@ -15,8 +15,11 @@ Memory only after a valid call, and continues on the same Provider/model.
 Historical schema-v7 GPT and DeepSeek Flash routing results failed unchanged
 gates. The owner later and separately promoted the passing schema-v14 fixed
 BGE-then-Luna candidate-selection semantics for this product Tool only.
-`MEMORY_TOOL_LOOP_ENABLED` remains default-off and is the rollback boundary;
-there is no v1 fallback.
+`MEMORY_TOOL_LOOP_ENABLED` remains default-off and is the global rollback
+boundary. `MEMORY_TOOL_LOOP_CANARY_USER_IDS` is an independent API-only exact
+UUID admission set and defaults empty; there is no v1 fallback. The frozen
+production-v2 guard/buffered candidate failed its sole schema-v18 Validation,
+so no live canary is authorized.
 Schema v8 introduced bounded typed Provider/Tool failure categories without
 changing the product Tool request or runtime flag, but two live attempts
 published no artifact; the second stopped at bounded `admission_state`. The
@@ -241,6 +244,8 @@ arguments        = explicit {}
 tool choice      = auto; required search_memory for explicit saved-Memory reads
 first round only = true
 adapter version  = chat-first-tool-round-memory-decision-v1
+global gate      = MEMORY_TOOL_LOOP_ENABLED=true
+user gate        = authenticated UUID exactly in MEMORY_TOOL_LOOP_CANARY_USER_IDS
 ```
 
 Only the current user message may force the product Tool. A bounded bilingual
@@ -511,10 +516,13 @@ SSE socket own delivery only.
   `internal/memoryroute` delegates to it only for Development capture. The Tool
   has no query argument: the server already owns the current request text, so
   the model decides only whether Memory is needed.
-- The product exposes `search_memory` only when the default-off flag is true,
+- The product exposes `search_memory` only when the default-off global flag is
+  true, the authenticated user UUID exactly matches the API-only canary set,
   the selected Provider implements `ToolRoundProvider`, current Conversation
   Memory use is allowed, Search is not model-built-in, and the turn is not a
-  direct `remember|correct|forget` action.
+  direct `remember|correct|forget` action. Empty/invalid/duplicate allowlists,
+  unauthenticated requests, and non-canary users fail closed before retrieval
+  or Judge work. The Memory Worker never receives the canary variable.
 - The first round carries the normal chat request and may expose
   `search_web`, `search_knowledge`, and `search_memory` together. Before any
   Memory call, the Provider receives no Memory candidate body, ID, scope,
@@ -532,8 +540,9 @@ SSE socket own delivery only.
   Memory calls fail closed for the Memory lane. Valid Web/Knowledge calls in the
   same batch retain their independent authority.
 - After a valid call, `usermemory.SearchRelevantAfterMemoryToolCall` runs fixed
-  BGE embedding, exact/BM25/vector RRF, admission, fixed BGE rerank, strict fixed
-  Luna candidate judging, ordinal intersection, and Top-5/600/900 selection
+  BGE embedding, exact/BM25/vector RRF, the frozen bilingual negative-policy
+  guard, admission, fixed BGE rerank, buffered fixed Luna
+  candidate judging, ordinal intersection, and Top-5/600/900 selection
   without calling the v1 reader or `MarkUsed`. Product composition accepts only
   the production policy and re-resolves the stored `SERVER_DEFAULT` / OpenAI
   Compatible / attested Base-URL hash / `gpt-5.6-luna` tuple for every Judge
@@ -630,6 +639,8 @@ SSE socket own delivery only.
 | First product round returns no Memory call | flush buffered answer, perform zero hybrid retrieval, and keep ordinary chat |
 | First product round returns one exact `search_memory({})` call | run bounded hybrid retrieval, rehydrate through migration `065`, and continue on the same Provider/model |
 | Product Memory policy is absent/non-production or fixed Judge tuple drifts | fail closed to an empty/failed Memory Tool result; do not call v1 or switch Judge Provider/model |
+| Global Memory Tool flag is true but canary allowlist is empty or user does not exactly match | do not expose `search_memory`; perform zero retrieval/Judge work |
+| Canary UUID configuration is malformed or duplicated | fail server configuration validation; never normalize it into broader admission |
 | Fixed Judge returns a typed transient Provider failure | retry at most twice with `Retry-After` precedence or five/ten-second waits; deterministic/protocol/provenance failures do not retry |
 | Memory Tool continuation completes with projected rows | record immutable Usage for exactly those ordered rows in assistant finalization |
 | Memory Tool is empty/failed or continuation recovers from the original request | record zero Tool Memory Usage links |
@@ -799,6 +810,9 @@ SSE socket own delivery only.
     additionally pin zero-argument JSON-object canonicalization, generic
     compatible byte preservation, argument-bearing Tool preservation, and
     malformed argument denial.
+    Product admission tests must additionally cover exact UUID match,
+    case-normalized canonical UUIDs, unauthenticated/non-canary/empty fail-
+    closed behavior, and zero retrieval/Judge calls outside the canary.
 20. Diagnostic tests must cover HTTP/transport/SSE/context classification,
     malformed/remote stream events, bounded adapter mapping, unknown-cause
     fallback, absence of Provider response/error text, schema-v9 route and
@@ -945,6 +959,16 @@ first StreamToolRound(normal request + allowed read-only tools + search_memory)
   -> same-provider/same-model continuation without search_memory
   -> completed answer: persist exact projected Tool-result Usage
   -> pre-content continuation failure: original-request recovery without Memory
+```
+
+```text
+// Wrong: the global switch admits every authenticated account.
+MEMORY_TOOL_LOOP_ENABLED=true -> expose search_memory to all users
+
+// Correct: infrastructure plus exact current-user admission.
+MEMORY_TOOL_LOOP_ENABLED=true
+  + authenticated UUID in MEMORY_TOOL_LOOP_CANARY_USER_IDS
+  -> expose search_memory only for that request
 ```
 
 ```text

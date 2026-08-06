@@ -84,6 +84,7 @@ run-bound marker in a database whose name starts with
 | Transport-stable Judge retry | Schema-v13 live evidence passed semantic gates but exhausted the single retry on one typed transport failure. | Schema v14 preserves semantic/BGE authority, keeps BGE at one retry, allows two Judge retries with five/ten-second fallback waits, and binds worst-case 900-attempt cost-basis v9. |
 | Negative-policy guard calibration | The consumed schema-v15 aggregate proves nine unrelated-negative false injections but cannot expose exact cases or authorize retuning production in place. | Schema v16 changes only a separately versioned Development policy, runs the frozen post-Prepare/pre-admission guard, binds guard/descriptor provenance, and accounts guarded cases without Judge egress under cost-basis v11. |
 | Buffered Judge transport diagnostic | Schema v16 preserved semantics but its SSE lane ended with three terminal transport failures, so changing relevance policy would confound the next result. | Schema v17 preserves the v16 prompt/decoder/model/guard/BGE/retry/corpus/criteria authorities and changes only Luna response framing to the Provider-owned bounded JSON completion under new reader/profile/report/cost identities. |
+| Production-v2 buffered Validation | Passing Development evidence does not authorize the frozen Validation split, and the old production-v1 policy omits the guard. | Schema v18 binds a new production-only guard policy, buffered adapter, 100-case Validation order, cost-basis v13, independent live approval, and aggregate-only pass/fail outcome without changing schemas v15-v17. |
 | Manual stage isolation | Development evidence is not Validation or production authority. | Every schema-v11/v12/v13/v14/v16/v17 Development run stops for owner review; Validation and production activation require separate authorization. |
 | Production-policy Validation isolation | A passing Development report and a deployed reader do not prove the frozen Validation split or authorize another paid run. | Schema v15 has independent profile/reader/report/manifest/cost identities, a distinct live approval, exact production-policy/read-intent hashes, and no automatic Release authority. |
 | Precommitted failure action | Interpreting a failed Validation after seeing its metrics could turn an evaluation into an unsafe release decision. | Schema v15 deterministically maps privacy/authorization release to Red/disable Tool Loop, false injection above `0.02` to Orange/disable recall, stability or remaining quality failure to Yellow/retain Beta, and pass to owner review only. |
@@ -171,6 +172,22 @@ mapping. The Memory adapter still owns only the shared prompt, 1024-byte answer
 cap, strict decoder, and provenance. The Vault wrapper runs the already
 configured admin image with `--no-build --pull never`; credential export must
 never mutate or pull the active `BACKEND_IMAGE` tag.
+
+Schema-v18 selects only the frozen 100-case Validation split and requires the
+production-v2 negative-guard policy plus the buffered adapter. Guard, empty,
+Judge-completed, and failed cases reconcile to exactly 100; guard abstention is
+a valid pre-Judge result only with zero candidate Provider egress. The report
+is the sole quality authority, while the manifest binds the v18 configuration,
+case order, criteria, cost-basis v13, production policy, and one report hash.
+Fake evidence is permanently non-passing. The consumed live report failed two
+current-fact slice gates despite zero terminal failures and zero false
+injection, so the exact-user canary remained closed.
+
+Credential export uses an explicitly reviewed candidate image rather than the
+running old admin image. Compose `run` always receives `--pull never`, never
+receives positive `--build`, and receives `--no-build` only when that CLI
+version supports the flag. This capability decision occurs before credential
+export or Provider work, and both branches are covered by the wrapper test.
 
 ### Fixture plaintext leakage
 
@@ -444,3 +461,8 @@ result or failure, even when a later case reuses the same assistant identity.
   typed transport attempts with zero terminals, passed all unchanged gates,
   retained aggregate-only evidence, and left production Memory state and flags
   unchanged.
+- **2026-08-06**: Added schema-v18 production-v2 buffered Validation and exact
+  UUID canary admission. Fake completed 100/100. The sole live run completed
+  with zero terminal/safety/false-injection failures but failed the
+  `mixed_language_entity` and `stable_fact` current-fact gates; no canary was
+  authorized and both Memory rollout gates remained off.

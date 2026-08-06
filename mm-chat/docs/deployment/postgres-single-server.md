@@ -86,7 +86,8 @@ The current Compose/runtime contract uses:
 | `DATABASE_URL`            | API placeholder URL       | `neo_chat_api` URL for the Go API and `admin`.                                          |
 | `MEMORY_WORKER_DATABASE_URL` | Memory Worker placeholder URL | Login inheriting only `memory_worker_runtime`.                                      |
 | `MEMORY_HYBRID_SHADOW_ENABLED` | `false` | Shared default-off API/Memory Worker gate for migration-059 embedding and hybrid comparison Provider calls. |
-| `MEMORY_TOOL_LOOP_ENABLED` | `false` | API-only default-off first-round `search_memory` gate. True installs the exact fixed BGE/Luna production policy and current Provider-tuple reauthorization; false disables reader/Judge work. Migration-065 final hydration requires no Worker copy of this flag. |
+| `MEMORY_TOOL_LOOP_ENABLED` | `false` | API-only default-off first-round `search_memory` global gate. True installs production-v2 negative-guard/fixed-BGE/buffered-Luna composition; false disables reader/Judge work. Migration-065 final hydration requires no Worker copy of this flag. |
+| `MEMORY_TOOL_LOOP_CANARY_USER_IDS` | empty | API-only exact UUID allowlist. Empty, malformed, duplicate, unauthenticated, or non-matching inputs fail closed before retrieval/Judge work. Never pass it to the Memory Worker. |
 | `DB_MAX_OPEN_CONNS`       | `10`                      | Maximum open DB connections.                                                            |
 | `DB_MAX_IDLE_CONNS`       | `5`                       | Maximum idle DB connections.                                                            |
 | `DB_CONN_MAX_LIFETIME`    | `30m`                     | Maximum connection lifetime.                                                            |

@@ -109,6 +109,8 @@ cycle.
 | Product Tool read never falls back to v1                 | A valid Tool call must not launder an unrelated legacy result after hybrid failure                | Failure/empty/stale/redacted paths return no Memory and normal chat continues |
 | Candidate-empty is healthy only with current runtime evidence | An empty candidate set is otherwise indistinguishable from a stopped Worker or incomplete projection | Migration `070` combines live Worker capability with the authenticated user's capture/current-projection counts; non-ready states become bounded fail-closed Tool failures |
 | Product policy is separate and tuple-pinned              | A Development policy or drifted Server Provider must not become product injection authority       | Only the production policy runs; every Judge attempt re-resolves exact provider/type/Base-URL hash/model/secret authority and fails closed on drift |
+| Product rollout is exact-user fail-closed                 | A process-global flag would expose every eligible account at once                                  | The global flag installs infrastructure, but only an authenticated UUID in the exact API-only canary set can construct the Memory Tool runtime; all other users perform zero retrieval/Judge work |
+| Production-v2 preserves guard plus buffered transport     | Mutating production-v1 would invalidate historical evidence, while streaming failures obscured relevance quality | A new production-only identity requires the frozen bilingual guard and Provider-owned bounded JSON adapter; schemas v15-v17 remain immutable |
 | Product selection preserves schema-v14 order             | The passing evidence ran BGE rerank before the fixed candidate judge                               | Product executes BGE then Luna serially, intersects exact ordinals, and retries only typed transient Judge failures with the fixed two-retry schedule |
 | Product Tool Usage matches released evidence             | Usage must describe the exact Memory bodies available to the completed answer, not every recalled candidate | Chat records only the projected Tool-result rows; no-call/failure/cancel/plain recovery records none |
 | Owner egress authority is narrower than injection       | Allowing ordinary personal candidates to reach the configured Provider must not weaken answer relevance or secret isolation | Only `irrelevant` exclusion is egress-authorized under the exact v1 policy; false injection and all forbidden reasons remain unchanged gates |
@@ -214,11 +216,11 @@ Known limitation: migrations `062` and `063` ship in shadow with all derived
 reader rollout flags default-off. No formal 500-case benchmark plus seven-day/
 100-turn canary evidence exists, so neither L2 nor L3 can become active
 automatically. Schema-v6/v7 routing evidence failed and schema v9 remained
-diagnostic. The owner separately promoted the passing schema-v14 fixed BGE/Luna
-selection only for the product Memory Tool. `MEMORY_TOOL_LOOP_ENABLED` still
-defaults false and is the rollback boundary; when true, no v1 fallback is
-permitted. The 2026-08-04 live school replay produced one final/Usage row while
-an unrelated name fixture stayed rerank-only.
+diagnostic. The production-v2 guard/buffered candidate is frozen in source,
+but its sole schema-v18 Validation failed two required current-fact slices.
+Therefore `MEMORY_TOOL_LOOP_ENABLED` still defaults false, the exact UUID
+canary remains empty, and no rollout is authorized. When a future separately
+authorized candidate is active, no v1 fallback is permitted.
 
 ## Verification
 

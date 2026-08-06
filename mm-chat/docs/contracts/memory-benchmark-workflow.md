@@ -1752,6 +1752,62 @@ consumes the only schema-v17 live authority and grants no rerun, Validation,
 Holdout, promotion, Release, deployment, product-policy mutation, or recall
 re-enable.
 
+Schema v18 is the separate production-v2 Validation successor. It selects only
+the frozen 100-case Validation split and binds profile config/report v18,
+reader capture v16, Validation run manifest v18, cost-basis v13, policy
+`memory_hybrid_fixed_cloud_candidate_judge_negative_guard_production_v2`,
+adapter `chat-configured-candidate-judge-buffered-v1`, the unchanged guard,
+criteria, case order, fixed BGE/Luna tuple, two-retry schedule, privacy rules,
+and aggregate-only outcome contract. It does not reinterpret schema v15, v16,
+or v17. Fake evidence is always non-passing; live failure retains the report
+and manifest and denies any rollout.
+
+The PostgreSQL 17 Fake run completed `35/10/55/0`
+empty/guard/Judge-completed/failed cases, used zero network or credentials,
+retained exactly two mode-`0600` aggregate files, and left zero scoped Docker
+objects. The sole complete live run
+`memory-regression-20260806t101512z-a057b161` repeated `35/10/55/0`; one Judge
+decision validly abstained. Its `58` Judge attempts included three recovered
+retries (`2` transport and `1` upstream) and no terminal failure. Candidate
+Recall@20/Final Recall@5/current-fact accuracy were
+`1.0/0.984615/0.981818`, false injection was `0/45`, all safety counters were
+zero, and prompt/token/cost ceilings passed. However,
+`mixed_language_entity` and `stable_fact` each had `0.9` current-fact accuracy,
+below their required slice criterion. The immutable outcome is Yellow
+`retain_beta`, `passed=false`, `policySelected=false`,
+`promotionEligible=false`, and `releaseEligible=false`; no UUID canary was
+selected and both Memory rollout gates remained off.
+
+Actual Judge authority reconciled at `58/300` requests,
+`77632/300000` input tokens, and `7424/38400` output tokens.
+Configuration/cost/report/manifest SHA-256 values are
+`14706c71ccf347ccdec63b879eb3e713bebf22274be17a326f17f0983001a272`,
+`2cf7661fa91c592abc239cd946e852b31208b25ff5387cd6693fb3923d345f65`,
+`dbc6219a5eb446e56460002e99ee763d13ff5f7b4ce417825da918f5e2d2c851`,
+and `b316549f730831988d1fc37d1d07965d7ec8417bf384e4a7dc72cfca21f94f36`.
+Both credential copies and the protected export env were destroyed; all live
+services and container IDs remained stable. This evidence is consumed and
+must not be rerun or treated as partial rollout authority.
+
+```bash
+bash scripts/run-memory-production-buffered-validation-from-vault.sh \
+  --cost-basis /secure/eval/production-buffered-validation-cost-v13.json \
+  --output-dir /secure/eval/native-memory-runs \
+  --credential-export-approval \
+    I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_VALIDATION_CREDENTIALS \
+  --siliconflow-live-approval \
+    I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --production-buffered-validation-approval \
+    I_UNDERSTAND_THIS_USES_REAL_FROZEN_BUFFERED_MEMORY_VALIDATION_QUOTA
+```
+
+The export helper pins an explicitly reviewed admin image, always uses
+`--pull never`, never supplies positive `--build`, and supplies `--no-build`
+only when the installed Compose `run` command supports that flag. Capability
+inspection occurs before credential export or Provider work. The exact UUID
+canary remains a separate success-only runtime action, not an evaluator side
+effect.
+
 Accuracy-first Development keeps the same exact two-file and fixed-Luna
 authority. Its v12 execution policy changes no credential boundary: operator
 copies remain mode `0600`, read-only in the runner, independent by file/inode/
@@ -1917,8 +1973,10 @@ Validation uses an independent cost-basis v10 with 300 requests and 38,400
 output tokens for its 100-case split; it cannot consume a Development cost
 document. Schema-v16 negative-guard Development uses cost-basis v11 and the
 same `900/1500000/115200` ceilings as v9. Schema-v17 buffered Development uses
-cost-basis v12 with those same ceilings. Unused authority is valid, but actual
-attempt/input/output totals must reconcile exactly and the v9/v10/v11/v12
+cost-basis v12 with those same ceilings. Schema-v18 production-v2 Validation
+uses independent cost-basis v13 with the schema-v15 `300/300000/38400`
+request/input/output ceilings. Unused authority is valid, but actual
+attempt/input/output totals must reconcile exactly and the v9/v10/v11/v12/v13
 schema identities are never interchangeable.
 
 Each full fake-protocol run directory is mode `0700` and contains five
@@ -1938,6 +1996,7 @@ schema-v11 fixed-Memory-Judge Development, schema-v12 accuracy-first
 Development, schema-v13 Judge-failure-diagnostic Development, schema-v14
 transport-stable Development, schema-v15 production Validation, and schema-v16
 negative-guard Development and schema-v17 buffered-judge Development
+and schema-v18 production-v2 buffered Validation
 directories contain their named aggregate report plus `run-manifest.json`. In
 every mode, evidence is exclusively linked first and the content-free
 run manifest is the final completion marker. Existing targets are refused

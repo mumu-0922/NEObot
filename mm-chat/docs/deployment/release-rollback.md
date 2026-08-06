@@ -227,6 +227,9 @@ hybrid observations, or immutable answer Usage. Do not substitute v1 results
 for a failed product Tool read. If the current stored `SERVER_DEFAULT` /
 OpenAI-Compatible / attested Base-URL hash / `gpt-5.6-luna` tuple drifts, leave
 the Tool switch false until the exact authority is restored and reviewed.
+Clearing `MEMORY_TOOL_LOOP_CANARY_USER_IDS` is the narrower immediate canary
+rollback. Keep the global switch false after any failed Validation; never add a
+UUID merely because aggregate metrics passed when a required slice failed.
 
 Before a flag-only `--force-recreate`, record each running container's exact
 image ID and pin `BACKEND_IMAGE` to an immutable digest or retained tag. The

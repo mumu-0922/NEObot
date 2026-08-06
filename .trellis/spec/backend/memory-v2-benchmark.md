@@ -290,6 +290,18 @@ bash scripts/run-memory-buffered-judge-development-from-vault.sh \
   --development-judge-approval \
     I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA
 
+# Schema-v18 is a distinct 100-case production-v2 Validation lane. Fake must
+# complete first; the sole live attempt uses independent approval and v13 cost.
+bash scripts/run-memory-production-buffered-validation-from-vault.sh \
+  --cost-basis /secure/eval/production-buffered-validation-cost-v13.json \
+  --output-dir /secure/eval/native-memory-runs \
+  --credential-export-approval \
+    I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_VALIDATION_CREDENTIALS \
+  --siliconflow-live-approval \
+    I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --production-buffered-validation-approval \
+    I_UNDERSTAND_THIS_USES_REAL_FROZEN_BUFFERED_MEMORY_VALIDATION_QUOTA
+
 bash scripts/run-memory-regression.sh \
   --provider-mode live_siliconflow \
   --capture-mode development_cloud_judge \
@@ -1026,6 +1038,22 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   `a8e339b0aff182773b886681ad125eb5dcc6205d705cf325309c698da9b44d6a`
   and `339d419caa56ba7414ec993b2d059f004279315de65e05479b603536cbeb17f4`.
   Pre/post hashes over 43 live Memory relations remained identical at
+  the recorded schema-v17 boundary.
+- Schema v18 is the separately versioned production-v2 buffered Validation:
+  reader capture v16, profile/report v18, Validation run manifest v18,
+  cost-basis v13, policy
+  `memory_hybrid_fixed_cloud_candidate_judge_negative_guard_production_v2`,
+  and adapter `chat-configured-candidate-judge-buffered-v1`. It seeds only the
+  frozen 100-case Validation split. Fake completed `35/10/55/0`
+  empty/guard/Judge/failed with zero network/residue. The sole complete live
+  run `memory-regression-20260806t101512z-a057b161` also completed
+  `35/10/55/0`, with `58` attempts, three recovered retries, zero terminal
+  failures, Recall@20/Final Recall@5/current-fact accuracy
+  `1.0/0.984615/0.981818`, false injection `0/45`, and all safety/cost gates
+  passing. `mixed_language_entity` and `stable_fact` each had only `0.9`
+  current-fact accuracy and failed their slice criteria. The Yellow
+  `retain_beta` report is final; no UUID canary, rollout, rerun, Holdout,
+  promotion, or Release is authorized.
   `d027b35dd8b667f21c84b2a38cd0b27fec94b684c0d4561c8677bb3b9885142b`.
 - Aggregate-only Development evidence authorizes metric comparison, not case-
   level or causal attribution. After disjoint v4 and v5 hard-negative families
@@ -1178,7 +1206,7 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | Schema-v12 contains `HardCutoffApplied` or a `HARD_CUTOFF` trace | Reject it as execution-policy drift; criteria v3 is diagnostic-only, not permission to retain historical cutoff semantics. |
 | Aggregate-only evidence shows a false injection but no case identity/response, or one run has Judge failures | Preserve the failed bundle; do not infer a causal case, mutate another corpus, relax `0.02`, or compare positive quality as if execution were stable. Require separately versioned diagnostic or policy evidence. |
 | The Development negative-policy guard matches after Prepare | Record `NEGATIVE_POLICY_QUERY_ABSTAINED` with empty rerank/final/token surfaces; skip admission, candidate rerank, and Judge egress. Query-only BGE embedding before Prepare is allowed. |
-| The Development guard/policy identity or descriptor provenance drifts, or the policy is installed as the product Tool policy | Reject the policy before Provider work. Production-v1 descriptor bytes/hash must remain unchanged and product Tool retrieval accepts only production-v1. |
+| The Development guard/policy identity or descriptor provenance drifts, or the Development identity is installed as the product Tool policy | Reject before Provider work. Production-v1 descriptor bytes/hash remain immutable; only the separate production-v2 identity may carry the guard, and its failed Validation leaves runtime gates off. |
 | Schema-v16 mode selects Validation/Holdout, accepts a non-v16 profile/reader/report/cost identity, or omits exact guard/descriptor provenance | Reject before Provider construction or report publication; never reinterpret v9/v10/v14/v15 evidence. |
 | Schema-v16 has zero guard abstentions, a guard trace does not end as completed `NO_CANDIDATES`, or it retains admission/rerank/Judge attempts or input tokens, Provider-sent/final/injected IDs, or prompt Memory tokens | Reject the report as inconsistent even when the aggregate quality metrics would otherwise pass. |
 | Schema-v16 Fake lifecycle has network/credentials, leaves scoped Compose state, or is presented as live quality evidence | Fail the lifecycle; Fake proves wiring and cleanup only. |
@@ -1187,6 +1215,9 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | Schema-v17 successful-status body read is interrupted without context termination | Return `PROVIDER_TRANSPORT_FAILED`; if context ended, preserve the exact cancellation/deadline category. Never leak the private read error. |
 | The Vault wrapper builds or pulls `admin`, or uses a mutable local tag as evidence authority | Reject before credential export. Use Compose `run --no-build --pull never`; do not move the active backend tag or restart production services. |
 | The consumed schema-v17 live run is requested again, or its pass is used to enter Validation/enable recall/promote/deploy | Refuse. The one-shot Development evidence is complete and remains non-promotional. |
+| Schema-v18 Fake is presented as quality or live authority | Reject; retain the two aggregate files and non-zero exit only as lifecycle evidence. |
+| Schema-v18 aggregate metrics/safety pass but any required slice fails | Retain Yellow `retain_beta`, keep the global Tool flag false and allowlist empty, and never rerun or partially authorize. |
+| Compose v5 lacks `run --no-build` | Capability-detect before credentials, require `--pull never`, omit positive `--build`, and pin the exact reviewed export image. |
 | Development passes | Retain aggregate evidence and stop for owner review; never enter Validation automatically. |
 | Frozen validation is requested before a Development-selected policy is committed | Reject before credential read or Provider work. |
 | Schema-v15 mode selects Development/Holdout, seeds other fixtures, or changes the frozen case order/read-intent/policy/criteria hash | Reject before report publication; historical schemas and the visible machine Holdout remain untouched. |
@@ -1300,6 +1331,14 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   old configured-judge approval, share credential bytes, seed Holdout, stop at
   the first terminal case, persist a query/case ID/raw score, accept Fake as a
   pass, or let a live pass flip a product flag.
+- **Production-v2 Validation good**: all v18 case, slice, safety, attempt,
+  token, cost, cleanup, source, and runtime gates pass before one exact UUID is
+  separately admitted on the reviewed image.
+- **Production-v2 Validation base**: Fake completes all 100 cases with a
+  positive guard count, returns non-zero, and leaves only two private aggregate
+  artifacts.
+- **Production-v2 Validation bad**: overall accuracy passes but a required
+  slice fails, yet the consumed result is rerun or used to populate the canary.
 - **Negative-guard Development base**: authorized Prepare returns candidates,
   the bilingual guard matches, Record completes with an empty final set and
   `NEGATIVE_POLICY_QUERY_ABSTAINED`, and admission/rerank/Judge call counts are
@@ -1488,6 +1527,10 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   separation; historical v14/v16 identity preservation; Fake PostgreSQL 17
   replay; aggregate privacy/equation validation; and Vault cleanup with an
   assertion that Compose receives `--no-build --pull never`.
+  Schema-v18 fixtures additionally cover profile/reader/report/run/cost/policy/
+  adapter isolation, exact `empty + guard + Judge-completed + failed = 100`,
+  failed-slice no-rollout semantics, exact UUID fail-closed admission, both
+  Compose-run capability branches, and cleanup of credentials/export state.
   Cost-basis fixtures must also assert the raw private-file hash and
   the decoded canonical manifest hash as different named surfaces rather than
   assuming byte equality.
@@ -1642,4 +1685,12 @@ Correct: internal/chat bounded completion -> exact one-choice/content/stop
          cost-basis v12 aggregate evidence -> no-build/no-pull credential
          export -> verify 43-relation hash and flags unchanged -> stop without
          Validation, recall activation, promotion, deployment, or rerun.
+```
+
+```text
+Wrong: schema-v18 overall metrics and safety look good, so ignore two failed
+       slices, choose the current account UUID, and recreate backend.
+Correct: retain the one complete aggregate pair -> verify attempts/tokens/cost
+         and cleanup -> keep MEMORY_TOOL_LOOP_ENABLED=false and the canary
+         empty -> record no-rollout -> never rerun the consumed live attempt.
 ```

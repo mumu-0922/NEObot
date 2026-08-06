@@ -190,7 +190,8 @@ container-local `GET /health` on port `8081`; no port is published or proxied.
 | `MEMORY_WORKER_DATABASE_URL`                  | Memory Worker login inheriting only `memory_worker_runtime`.                                   |
 | `MEMORY_LEXICAL_SHADOW_ENABLED`               | API-only PR7 observation switch; defaults false and never controls projection maintenance or prompt authority. |
 | `MEMORY_HYBRID_SHADOW_ENABLED`                | Shared PR8 API/Memory Worker switch; defaults false, gates all Memory embedding/rerank calls, and never changes v1 prompt/Usage authority. |
-| `MEMORY_TOOL_LOOP_ENABLED`                    | API-only first-round `search_memory` switch; defaults false. When true, eligible Tool-capable turns use the fixed production BGE/Luna policy, current tuple reauthorization, post-call hydration, and same-model continuation. False immediately disables the reader/Judge. Never pass it to the Memory Worker. |
+| `MEMORY_TOOL_LOOP_ENABLED`                    | API-only first-round `search_memory` switch; defaults false. When true, an exact canary match may use the production-v2 negative guard, fixed BGE rerank, buffered Luna Judge, current tuple reauthorization, post-call hydration, and same-model continuation. False immediately disables the reader/Judge. Never pass it to the Memory Worker. |
+| `MEMORY_TOOL_LOOP_CANARY_USER_IDS`            | API-only comma-separated exact UUID allowlist; defaults empty and therefore fail-closed. Invalid or duplicate UUIDs fail configuration validation. Never pass it to the Memory Worker. |
 | `MEMORY_L2_SCENE_SHADOW_ENABLED`              | Shared PR11 API/Memory Worker switch; defaults false, gates Scene refresh/query embedding/rerank while provider-free stale purge remains active. |
 | `MEMORY_L2_SCENE_READER_ENABLED`              | API-only PR11 reader switch; defaults false and still requires database promotion/current authority. Never pass it to the Memory Worker. |
 | `MEMORY_L3_PERSONA_SHADOW_ENABLED`            | Shared PR12 API/Memory Worker switch; defaults false, gates Persona refresh/query embedding/rerank while provider-free stale purge remains active. |
@@ -234,11 +235,17 @@ to the API and must never enter the Memory Worker environment.
 
 `MEMORY_TOOL_LOOP_ENABLED` is independent from the legacy hybrid-shadow API
 switch but consumes the same fixed BGE projections. It defaults false and the
-owner-authorized rollout may set it true only with the fixed production policy.
+reader remains unavailable unless the authenticated user ID exactly matches
+`MEMORY_TOOL_LOOP_CANARY_USER_IDS`. An empty allowlist, unauthenticated request,
+or non-matching user performs zero retrieval/Judge work. The allowlist is not a
+role, email, or display-name match and does not broaden the global kill switch.
+The owner-authorized rollout may set both gates only with a reviewed production
+candidate.
 When enabled, `MEMORY_HYBRID_SHADOW_ENABLED=true` must also reach the
 Memory Worker so new and changed Memory can obtain ready embeddings. The Tool
 flag itself remains API-only. A valid call executes exact/BM25/vector RRF,
-fixed BGE rerank, strict fixed Luna ordinal intersection, Record, migration
+the frozen bilingual negative-policy query guard, fixed BGE rerank, strict
+buffered fixed Luna ordinal intersection, Record, migration
 `065` current-authority final hydration, and same-model continuation. Each
 Judge attempt re-resolves the stored `SERVER_DEFAULT` / OpenAI Compatible /
 attested Base-URL hash / `gpt-5.6-luna` tuple; any authority drift fails closed.

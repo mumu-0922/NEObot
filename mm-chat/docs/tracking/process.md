@@ -9318,3 +9318,65 @@ sampled live Memory relation counts remained byte-identical at SHA-256
 both Memory flags stayed false, and live services remained healthy. This
 consumes the schema-v17 live authority and grants no rerun, Validation, Holdout,
 promotion, Release, deployment, product-policy mutation, or recall re-enable.
+
+## 2026-08-06 — Schema-v18 production-v2 buffered Validation result
+
+Schema v18 froze the passing Development semantics behind production-only
+policy `memory_hybrid_fixed_cloud_candidate_judge_negative_guard_production_v2`
+and adapter `chat-configured-candidate-judge-buffered-v1`. New identities are
+profile config/report v18, reader capture v16, Validation run manifest v18,
+cost-basis v13, admission
+`frozen_production_fixed_memory_judge_negative_guard_buffered_validation_only`,
+and artifact
+`fixed-memory-judge-negative-guard-buffered-production-validation.json`.
+The product composition also gained exact API-only UUID admission through
+`MEMORY_TOOL_LOOP_CANARY_USER_IDS`; an empty or non-matching allowlist performs
+zero retrieval/Judge work.
+
+Focused race tests, all backend tests/vet, shell lifecycle/preflight tests,
+frontend `964/964`, RAG `1906 passed / 7 skipped`, and full standalone
+verification passed. The PostgreSQL 17 Fake lifecycle completed all 100 cases
+as `35/10/55/0` empty/guard/Judge-completed/failed, used no credential or
+network, retained exactly two mode-`0600` aggregate files, and left zero scoped
+containers, networks, or volumes.
+
+Two operational preflights stopped before credentials or Provider work: the
+installed Compose v5 `run` command has no `--no-build` flag, and the running old
+admin image lacked the credential-export command. The wrapper now capability-
+detects the negative flag while always enforcing `--pull never` and never
+supplying positive `--build`. An explicitly reviewed candidate image provided
+the export binary; the running backend was not changed. Both preflights are
+recorded as zero-request failures and do not consume live evidence.
+
+The sole complete live run
+`memory-regression-20260806t101512z-a057b161`, capture
+`b2c2ec31-8000-4ccf-a01e-3a94c2c37f5e`, completed `35/10/55/0`. One Judge
+decision abstained. There were `58` Judge attempts and three recovered retries:
+two `PROVIDER_TRANSPORT_FAILED` and one `PROVIDER_UPSTREAM_FAILED`; there were
+zero terminal categories. Candidate Recall@20/Final Recall@5/current-fact
+accuracy were `1.0/0.984615/0.981818`; false injection was `0/45`, every
+authority/privacy safety counter was zero, and prompt/token/cost gates passed.
+The `mixed_language_entity` and `stable_fact` Validation slices each reached
+only `0.9` current-fact accuracy, so both failed their required criterion.
+The immutable top level is Yellow `retain_beta`, `passed=false`,
+`policySelected=false`, `promotionEligible=false`, and
+`releaseEligible=false`.
+
+Actual Judge authority reconciled at `58/300` requests,
+`77632/300000` input tokens, and `7424/38400` output tokens.
+Configuration/cost/report/manifest SHA-256 values are
+`14706c71ccf347ccdec63b879eb3e713bebf22274be17a326f17f0983001a272`,
+`2cf7661fa91c592abc239cd946e852b31208b25ff5387cd6693fb3923d345f65`,
+`dbc6219a5eb446e56460002e99ee763d13ff5f7b4ce417825da918f5e2d2c851`,
+and `b316549f730831988d1fc37d1d07965d7ec8417bf384e4a7dc72cfca21f94f36`.
+The aggregate pair remains mode `0600` under
+`/var/tmp/neo-chat-production-buffered-validation-20260806T095727Z/live-runs/20260806T101512Z-a057b161`.
+
+Both credential copies and the protected candidate export env were destroyed;
+all scoped Docker objects were absent. Live backend/frontend/worker/Postgres/
+Redis/MinIO container IDs and health remained stable. The live env still has
+`MEMORY_HYBRID_SHADOW_ENABLED=false`, `MEMORY_TOOL_LOOP_ENABLED=false`, and no
+canary allowlist. Because Validation failed, automatic single-account rollout
+was not authorized or attempted, all Memory data was preserved, and this
+consumed result grants no rerun, Holdout, promotion, Release, deployment, or
+recall re-enable.

@@ -50,6 +50,9 @@ without changing prompt, Usage, feature flags, or production data.
 - run the schema-v17 buffered-judge successor with the exact schema-v16
   semantics and retry policy while changing only Luna response framing from
   SSE streaming to a bounded JSON completion;
+- run the schema-v18 production-v2 Validation successor on the frozen 100-case
+  split with the negative guard, buffered Luna adapter, independent cost/live
+  approval identities, and success-independent aggregate retention;
 - enforce exact `development`/`validation` split lanes and reject the visible
   machine `holdout`;
 - assemble strict regression observations, content-free run manifests, and
@@ -93,6 +96,9 @@ injection, or active-reader authority.
 | `CaptureBufferedMemoryJudgeDevelopment` | Execute the schema-v17 300-case Development lane through the Provider-owned bounded JSON Judge adapter. |
 | `BuildBufferedMemoryJudgeDevelopmentReport` | Return schema-v17 aggregate evidence under cost-basis v12 while reusing the v16 guard, criteria, retry, and failure authorities. |
 | `BuildBufferedMemoryJudgeRunManifest` | Bind the schema-v17 report, configuration, cost v12, buffered adapter, guard, and policy descriptor without granting promotion. |
+| `CaptureProductionBufferedMemoryJudgeValidation` | Execute only the frozen 100-case Validation split through production-v2 negative guard, fixed BGE rerank, and buffered Luna Judge. |
+| `BuildProductionBufferedMemoryJudgeValidationReport` | Return schema-v18 aggregate Validation evidence under cost-basis v13; Fake is permanently non-evidence and a failed slice denies rollout. |
+| `BuildProductionBufferedMemoryJudgeValidationRunManifest` | Bind the v18 report, policy/read-intent/case-order/cost identities and exactly one report artifact without granting Release. |
 | `CaptureProductionMemoryJudgeValidation` | Execute only the frozen 100-case Validation split through the production BGE-M3/rerank/fixed-Luna policy while continuing after terminal per-case Provider failures. |
 | `BuildProductionMemoryJudgeValidationReport` | Return schema-v15 aggregate-only Validation evidence under cost-basis v10; fake protocol is always Yellow/non-passing. |
 | `BuildProductionMemoryJudgeValidationRunManifest` | Bind the schema-v15 report, policy/read-intent/case-order hashes, evidence class, outcome, and one report artifact without granting Release. |
@@ -148,7 +154,9 @@ only. Live mode accepts `development_calibration`,
 `development_fixed_memory_judge_transport_stable`,
 `development_fixed_memory_judge_negative_guard`,
 `development_fixed_memory_judge_negative_guard_buffered`,
-`production_fixed_memory_judge_validation`, or `frozen_validation`.
+`production_fixed_memory_judge_validation`,
+`production_fixed_memory_judge_negative_guard_buffered_validation`, or
+`frozen_validation`.
 Each phase
 requires a fresh separately authorized
 mode-`0600` SiliconFlow key file. Tool-route and configured/fixed/accuracy-first
@@ -535,6 +543,50 @@ bash scripts/run-memory-buffered-judge-development-from-vault.sh \
     I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA
 ```
 
+Schema v18 is the independently versioned production-v2 Validation successor.
+Its fixed identities are profile config/report v18, reader capture v16,
+Validation run manifest v18, cost-basis v13, policy
+`memory_hybrid_fixed_cloud_candidate_judge_negative_guard_production_v2`,
+adapter `chat-configured-candidate-judge-buffered-v1`, capture mode
+`production_fixed_memory_judge_negative_guard_buffered_validation`, and artifact
+`fixed-memory-judge-negative-guard-buffered-production-validation.json`.
+Historical schema-v15/v16/v17 bytes and execution paths remain unchanged.
+
+The PostgreSQL 17 Fake lifecycle completed all 100 cases as `35/10/55/0`
+empty/guard/Judge-completed/failed, retained exactly two private aggregate
+files, used zero credentials/network, and left zero scoped Docker residue.
+The sole complete live run `memory-regression-20260806t101512z-a057b161`
+repeated `35/10/55/0`; one valid Judge decision abstained. Three transient
+attempt failures (`2` transport, `1` upstream) recovered through three retries,
+leaving zero terminal cases and `58` total Judge attempts. Candidate Recall@20,
+Final Recall@5, and current-fact accuracy were
+`1.0/0.984615/0.981818`; false injection was `0/45`, every safety counter was
+zero, and token/cost ceilings reconciled. The `mixed_language_entity` and
+`stable_fact` Validation slices each reached only `0.9` current-fact accuracy,
+so the immutable outcome is Yellow `retain_beta`, `passed=false`, and no
+rollout authority. Memory recall and its canary allowlist remained disabled.
+
+Configuration/cost/report/manifest SHA-256 values are
+`14706c71ccf347ccdec63b879eb3e713bebf22274be17a326f17f0983001a272`,
+`2cf7661fa91c592abc239cd946e852b31208b25ff5387cd6693fb3923d345f65`,
+`dbc6219a5eb446e56460002e99ee763d13ff5f7b4ce417825da918f5e2d2c851`,
+and `b316549f730831988d1fc37d1d07965d7ec8417bf384e4a7dc72cfca21f94f36`.
+Both one-run credentials and the protected export env were destroyed; all
+scoped containers, networks, and volumes were absent. This consumed live
+evidence must never be rerun or converted into a partial canary authorization.
+
+```bash
+bash scripts/run-memory-production-buffered-validation-from-vault.sh \
+  --cost-basis /secure/production-buffered-validation-cost-v13.json \
+  --output-dir /secure/memory-regression-runs \
+  --credential-export-approval \
+    I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_VALIDATION_CREDENTIALS \
+  --siliconflow-live-approval \
+    I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --production-buffered-validation-approval \
+    I_UNDERSTAND_THIS_USES_REAL_FROZEN_BUFFERED_MEMORY_VALIDATION_QUOTA
+```
+
 The fixed taxonomy `memory-candidate-judge-failure-taxonomy-v1` is the sorted
 24-value union of the 15 canonical `internal/chat` Provider categories and
 nine Judge-local input/event/output/provenance/Recorder categories. Its JSON
@@ -633,6 +685,7 @@ judge_failure_diagnostic_manifest.go    Schema-v13 non-promotional manifest auth
 transport_stable_memory_judge_development.go Schema-v14 report/reconciliation authority
 transport_stable_memory_judge_manifest.go Schema-v14 Development manifest authority
 production_memory_judge_validation.go Schema-v15 production-policy Validation report/manifest authority
+production_buffered_memory_judge_validation.go Schema-v18 production-v2 buffered Validation authority
 accuracy_first_providers.go            Global serial gate, retry, cooldown, and aggregate telemetry
 ```
 

@@ -9,7 +9,8 @@ Apply this contract when changing migration
 prepare/admission/record/final-hydration capabilities, RRF/rerank/cloud-judge/
 configured-model candidate judging/main-model Tool routing/relevance/token
 selection, hybrid diagnostics,
-`MEMORY_HYBRID_SHADOW_ENABLED`, or `MEMORY_TOOL_LOOP_ENABLED` wiring.
+`MEMORY_HYBRID_SHADOW_ENABLED`, `MEMORY_TOOL_LOOP_ENABLED`, or exact-user
+`MEMORY_TOOL_LOOP_CANARY_USER_IDS` wiring.
 
 The deployed default keeps the v1 in-process Top 5 as prompt and Usage
 authority. The additive product Memory Tool path is separately default-off and
@@ -233,7 +234,37 @@ AuthorizeProductionMemoryJudgeValidationTarget(...) error
 ValidateProductionMemoryJudgeValidationCostAuthority(...) error
 ```
 
-The separately owner-promoted product identity is:
+The production-v2 buffered Validation identities and Go seams are:
+
+```text
+capture mode = production_fixed_memory_judge_negative_guard_buffered_validation
+reader       = neo-chat.native-memory-reader-capture.v16
+profile      = neo-chat.memory-regression-profile-config.v18
+report       = neo-chat.memory-regression-relevance-validation.v18
+manifest     = neo-chat.memory-regression-relevance-validation-run.v18
+admission    = frozen_production_fixed_memory_judge_negative_guard_buffered_validation_only
+artifact     = fixed-memory-judge-negative-guard-buffered-production-validation.json
+cost basis   = neo-chat.memory-regression-cost-basis.v13
+policy       = memory_hybrid_fixed_cloud_candidate_judge_negative_guard_production_v2
+adapter      = chat-configured-candidate-judge-buffered-v1
+approval     = I_UNDERSTAND_THIS_USES_REAL_FROZEN_BUFFERED_MEMORY_VALIDATION_QUOTA
+```
+
+```go
+HybridShadowNegativePolicyGuardProductionPolicy() HybridShadowRelevancePolicy
+ProductionBufferedMemoryJudgeValidationExecutionPolicy(string) (AccuracyFirstExecutionPolicy, error)
+CaptureProductionBufferedMemoryJudgeValidation(...) (CapturedProfile, error)
+BuildProductionBufferedMemoryJudgeValidationReport(...) (ProductionBufferedMemoryJudgeValidationReport, []byte, error)
+BuildProductionBufferedMemoryJudgeValidationRunManifest(...) (ProductionBufferedMemoryJudgeValidationRunManifest, []byte, error)
+```
+
+Runtime admission adds:
+
+```text
+MEMORY_TOOL_LOOP_CANARY_USER_IDS=<comma-separated canonical UUIDs>
+```
+
+The historical owner-promoted product-v1 identity remains immutable:
 
 ```text
 policy       = memory_hybrid_fixed_cloud_candidate_judge_production_v1
@@ -244,6 +275,12 @@ base URL SHA = 3bc0bbf28d9d817b4f6c8f6058c2c51dd644c541252ed6e2542a8c8a472ff671
 model        = gpt-5.6-luna
 rollback     = MEMORY_TOOL_LOOP_ENABLED=false
 ```
+
+Source composition now freezes production-v2 as the only prospective product
+identity: negative guard required, buffered fixed Luna adapter, and exact UUID
+admission. Its sole schema-v18 Validation failed two current-fact slices, so
+the live global flag and allowlist remain off/empty; source identity does not
+grant deployment authority.
 
 The main-model Tool definition has no arguments beyond an explicit empty
 object:
@@ -308,6 +345,11 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   Product activation requires ready fixed-profile projections; operators must
   keep the Worker hybrid flag aligned when new/changed Memory must be embedded.
   Projection correctness does not depend on API Tool exposure.
+- Product Tool construction additionally requires an authenticated user whose
+  canonical UUID exactly matches `MEMORY_TOOL_LOOP_CANARY_USER_IDS`. Empty,
+  malformed, duplicate, unauthenticated, and non-matching inputs fail closed
+  before retrieval or Judge work. The allowlist is API-only and never reaches
+  the Memory Worker.
 - `SearchRelevantWithHybridShadow` always runs the v1 reader first; hybrid
   failure never changes its items, prompt, Usage links, or chat success.
   `SearchRelevantAfterMemoryToolCall` is a separate post-call product seam: it
@@ -635,8 +677,14 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   `d0a70c03eda7fbb1bee4107c057acc54870da56cb2041ebdb9fa4cac8955a6ce`
   and `182bbcc4cf553f9e7eb893abbd0122e9536dca970d3b232c5c7f832b703bdf2a`.
   The report remains non-selecting/non-promotional. Schema-v16 and
-  schema-v17 are both consumed and must not be rerun; no Validation, recall
-  activation, production-policy change, Release, or deployment follows.
+  schema-v17 are both consumed and must not be rerun; only a new, separately
+  authorized Validation identity could proceed.
+- The later schema-v18 production-v2 Validation completed Fake and exactly one
+  live 100-case run. Live routed `35/10/55/0`, recovered all three transient
+  Judge attempt failures, and had zero false injection or safety failures, but
+  `mixed_language_entity` and `stable_fact` each had `0.9` current-fact
+  accuracy and failed. The Yellow `retain_beta` report is consumed; no UUID
+  canary, recall activation, Release, deployment, or rerun follows.
 - The schema-v17 Vault wrapper resolves the already active BGE/Luna pair into
   two temporary mode-`0600` files, but its Compose `admin` invocation must use
   `--no-build --pull never`. A one-shot credential export is not permission to
@@ -843,6 +891,10 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 | Schema-v17 profile/report/cost/adapter/sequence identity drifts or reuses v11 | Reject before Provider construction or aggregate publication; schema-v16 remains immutable. |
 | Schema-v17 Vault export invokes Compose build/pull or restarts production | Reject the run; require `run --no-build --pull never` and leave live containers untouched. |
 | Schema-v17 live is requested after the consumed complete run | Refuse without Provider calls. Retained aggregate evidence is final for this Development lane. |
+| Schema-v18 Fake is complete | Retain exactly the report/manifest pair and return non-zero; Fake cannot authorize canary admission. |
+| Schema-v18 live fails any required slice despite aggregate/safety pass | Retain Yellow `retain_beta` evidence, leave both rollout gates off, and never select a UUID or rerun. |
+| Global Tool flag is true but the canary set is empty or user does not match | Expose no `search_memory` Tool and perform zero retrieval/Judge work. |
+| Compose `run` does not support `--no-build` | Omit only that unsupported negative flag, require `--pull never`, never pass positive `--build`, and pin an explicitly reviewed export image before credentials. |
 | Current stored fixed Judge provider/type/Base-URL hash/model/secret drifts | Reject that Judge attempt as provenance drift; release no final Memory and never switch Provider/model. |
 | Product Judge returns a typed transient Provider failure | Retry at most twice; honor valid `Retry-After`, otherwise wait five then ten seconds. Deterministic/protocol/provenance failures do not retry. |
 | Product first round returns no Memory call | Make zero hybrid retrieval calls and release the buffered ordinary answer. |
@@ -952,6 +1004,14 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   Holdout, persist a case/query/raw Provider body, reuse v9 or old approval,
   accept identical credentials, call Fake a pass, or flip the Tool flag from a
   live pass.
+- **Production-v2 Validation good**: exact `35/10/55/0`-style routing
+  reconciles to 100, all quality/safety/cost/cleanup gates pass, and only then
+  a separately pinned backend recreation may admit one exact UUID.
+- **Production-v2 Validation base**: Fake completes with positive guard count,
+  returns non-zero, retains two aggregate files, and leaves zero residue.
+- **Production-v2 Validation bad**: overall accuracy passes but a required
+  slice fails, yet an operator fills the canary UUID or reruns the consumed
+  Provider attempt.
 - **Bad**: claim with an arbitrary RAG record, reuse an old vector response
   after epoch/scope drift, rank cross-user then filter in Go, persist query or
   raw scores, accept free-form judge prose/IDs, treat owner egress authorization
@@ -982,6 +1042,10 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   v17/cost v12 separation, Fake and aggregate privacy/equation replay, exact
   `--no-build --pull never` Vault lifecycle, historical v14/v16 identity
   preservation, and one-shot no-rerun authority,
+  schema-v18 profile/reader/report/manifest/cost/policy/adapter separation,
+  exact `empty + guard + Judge-completed + failed = 100` reconciliation,
+  exact UUID admission with empty/non-canary zero work, Compose-run capability
+  detection, failed-slice no-rollout behavior, and credential/export cleanup,
   validation, strict exact-key/duplicate-key/ordinal judge decoding, prompt
   SHA-256/model/decoding provenance, query/candidate secret redaction,
   concurrent BGE/judge failure and cutoff, ordinal intersection, empty-judge
@@ -1113,6 +1177,11 @@ Wrong: let memorycapture parse Provider JSON, accept `finish_reason=length`,
 or run `docker compose build admin` before exporting schema-v17 credentials.
 ```
 
+```text
+Wrong: treat a schema-v18 aggregate pass as sufficient when a required slice
+failed, or set the global Tool flag without one exact authenticated UUID.
+```
+
 ### Correct
 
 ```text
@@ -1140,6 +1209,9 @@ default-off hybrid-worker/shadow flag + separate default-off product Tool flag
   -> schema-v17 only: Provider-owned bounded JSON completion with unchanged
      prompt/decoder/retry/policy, v12 cost, no-build/no-pull Vault export,
      one consumed non-promotional live result
+  -> schema-v18 only: exact 100-case production-v2 guard/buffered Validation,
+     v13 cost and independent approval; any failed gate retains evidence and
+     leaves MEMORY_TOOL_LOOP_ENABLED=false plus an empty canary allowlist
   -> judge/BGE intersection; empty or uncertain result means no v2 Memory
   -> product first ToolRound sees normal request + search_memory, no Memory body
   -> exact call under production policy: current fixed Judge tuple reauthorized
