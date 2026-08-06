@@ -1390,3 +1390,38 @@ Added a Provider-owned bounded JSON completion and isolated schema-v17 Memory Ju
 ### Next Steps
 
 - None - task complete
+
+
+## Session 31: Production Memory Validation v18
+
+**Date**: 2026-08-06
+**Task**: Production Memory Validation v18
+**Branch**: `main`
+
+### Summary
+
+Added production-v2 guarded buffered Memory Validation and exact-UUID canary admission; completed one Fake and one live 100-case run; retained the failed-slice Yellow evidence, left runtime recall disabled, and verified cleanup plus full quality gates.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a098213b` | (see git log) |
+| `86b4bd52` | (see git log) |
+| `454b1d1c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
