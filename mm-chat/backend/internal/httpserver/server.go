@@ -254,7 +254,14 @@ func (judge runtimeMemoryCandidateJudge) JudgeHybridCandidates(
 			errors.New("fixed Memory candidate judge Provider is invalid"),
 		)
 	}
-	adapter, err := memoryjudge.NewChatAdapter(provider, chat.ModelRef{
+	bufferedProvider, ok := provider.(chat.BufferedChatProvider)
+	if !ok {
+		return usermemory.HybridCandidateJudgeResult{}, memoryjudge.NewFailure(
+			memoryjudge.FailureProvenanceDrift,
+			errors.New("fixed Memory candidate judge buffered Provider is unavailable"),
+		)
+	}
+	adapter, err := memoryjudge.NewBufferedChatAdapter(bufferedProvider, chat.ModelRef{
 		ProviderID: fixedMemoryJudgeProviderID,
 		ModelID:    usermemory.HybridFixedMemoryJudgeModelID,
 	})
@@ -1129,7 +1136,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 				memoryServiceOptions,
 				usermemory.WithHybridCandidateJudge(judge),
 				usermemory.WithHybridMemoryToolRelevancePolicy(
-					usermemory.HybridShadowFixedMemoryJudgeProductionPolicy(),
+					usermemory.HybridShadowNegativePolicyGuardProductionPolicy(),
 				),
 			)
 		}
@@ -1159,6 +1166,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		chat.WithMemoryLexicalShadowEnabled(cfg.Memory.LexicalShadowEnabled),
 		chat.WithMemoryHybridShadowEnabled(cfg.Memory.HybridShadowEnabled),
 		chat.WithMemoryToolLoopEnabled(cfg.Memory.ToolLoopEnabled),
+		chat.WithMemoryToolLoopCanaryUserIDs(cfg.Memory.ToolLoopCanaryUserIDs),
 		chat.WithMemoryL2SceneShadowEnabled(cfg.Memory.L2SceneShadowEnabled),
 		chat.WithMemoryL2SceneReaderEnabled(cfg.Memory.L2SceneReaderEnabled),
 		chat.WithMemoryL3PersonaShadowEnabled(cfg.Memory.L3PersonaShadowEnabled),

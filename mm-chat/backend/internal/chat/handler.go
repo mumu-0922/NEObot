@@ -56,6 +56,7 @@ type Handler struct {
 	memoryLexicalShadowEnabled   bool
 	memoryHybridShadowEnabled    bool
 	memoryToolLoopEnabled        bool
+	memoryToolLoopCanaryUserIDs  map[string]struct{}
 	memoryL2SceneShadowEnabled   bool
 	memoryL2SceneReaderEnabled   bool
 	memoryL3PersonaShadowEnabled bool
@@ -382,6 +383,18 @@ func WithMemoryHybridShadowEnabled(enabled bool) HandlerOption {
 func WithMemoryToolLoopEnabled(enabled bool) HandlerOption {
 	return func(handler *Handler) {
 		handler.memoryToolLoopEnabled = enabled
+	}
+}
+
+func WithMemoryToolLoopCanaryUserIDs(userIDs []string) HandlerOption {
+	return func(handler *Handler) {
+		handler.memoryToolLoopCanaryUserIDs = make(map[string]struct{}, len(userIDs))
+		for _, userID := range userIDs {
+			userID = strings.ToLower(strings.TrimSpace(userID))
+			if userID != "" {
+				handler.memoryToolLoopCanaryUserIDs[userID] = struct{}{}
+			}
+		}
 	}
 }
 

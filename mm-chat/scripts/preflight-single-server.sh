@@ -192,6 +192,19 @@ if (
 ):
     fail("MEMORY_TOOL_LOOP_ENABLED must be true or false")
 
+if values.get("MEMORY_TOOL_LOOP_CANARY_USER_IDS", ""):
+    uuid_pattern = re.compile(
+        r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-"
+        r"[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
+    )
+    canary_ids = [value.strip() for value in values["MEMORY_TOOL_LOOP_CANARY_USER_IDS"].split(",")]
+    normalized_canary_ids = [value.lower() for value in canary_ids]
+    if (
+        any(not uuid_pattern.fullmatch(value) for value in canary_ids)
+        or len(set(normalized_canary_ids)) != len(normalized_canary_ids)
+    ):
+        fail("MEMORY_TOOL_LOOP_CANARY_USER_IDS must be a unique comma-separated UUID list")
+
 for key in (
     "MEMORY_L2_SCENE_SHADOW_ENABLED",
     "MEMORY_L2_SCENE_READER_ENABLED",

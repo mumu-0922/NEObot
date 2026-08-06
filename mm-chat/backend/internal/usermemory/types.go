@@ -28,6 +28,7 @@ const (
 	HybridRelevanceAccuracyFirstJudgePolicyID             = "memory_hybrid_fixed_cloud_candidate_judge_accuracy_development_v2"
 	HybridRelevanceNegativePolicyGuardDevelopmentPolicyID = "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_development_v1"
 	HybridRelevanceProductionJudgePolicyID                = "memory_hybrid_fixed_cloud_candidate_judge_production_v1"
+	HybridRelevanceNegativePolicyGuardProductionPolicyID  = "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_production_v2"
 	HybridFixedMemoryJudgeModelID                         = "gpt-5.6-luna"
 	HybridFixedMemoryJudgeHardCutoffMilliseconds          = 3000
 	HybridRelevanceMemoryToolRoutePolicyID                = "memory_hybrid_main_model_tool_route_calibration_v1"

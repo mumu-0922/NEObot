@@ -8,6 +8,7 @@ import (
 	"errors"
 	"strings"
 
+	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/usermemory"
 )
 
@@ -50,6 +51,14 @@ func (h *Handler) newMemoryToolRuntime(
 ) *memoryToolRuntime {
 	if h == nil || !h.memoryToolLoopEnabled || h.userMemoryService == nil ||
 		!toolRoundCapable || searchMode == chatSearchModeModelBuiltIn {
+		return nil
+	}
+	user, authenticated := auth.UserFromContext(ctx)
+	if !authenticated {
+		return nil
+	}
+	userID := strings.ToLower(strings.TrimSpace(user.ID))
+	if _, allowed := h.memoryToolLoopCanaryUserIDs[userID]; !allowed {
 		return nil
 	}
 	if _, directAction := detectDirectMemoryActionIntent(query); directAction {

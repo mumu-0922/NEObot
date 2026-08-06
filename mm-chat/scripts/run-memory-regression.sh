@@ -8,7 +8,7 @@ usage: run-memory-regression.sh \
   --output-dir <new-run-parent> \
   [--regression-root <protected-root>] \
   [--provider-mode fake_protocol|live_siliconflow] \
-  [--capture-mode full_regression|development_calibration|development_cloud_judge|development_memory_tool_route|development_memory_tool_route_diagnostic|development_configured_candidate_judge|development_fixed_memory_judge|development_fixed_memory_judge_accuracy|development_fixed_memory_judge_failure_diagnostic|development_fixed_memory_judge_transport_stable|development_fixed_memory_judge_negative_guard|development_fixed_memory_judge_negative_guard_buffered|production_fixed_memory_judge_validation|frozen_validation] \
+  [--capture-mode full_regression|development_calibration|development_cloud_judge|development_memory_tool_route|development_memory_tool_route_diagnostic|development_configured_candidate_judge|development_fixed_memory_judge|development_fixed_memory_judge_accuracy|development_fixed_memory_judge_failure_diagnostic|development_fixed_memory_judge_transport_stable|development_fixed_memory_judge_negative_guard|development_fixed_memory_judge_negative_guard_buffered|production_fixed_memory_judge_validation|production_fixed_memory_judge_negative_guard_buffered_validation|frozen_validation] \
   [--cloud-judge-model <fixed-model-id>] \
   [--credential-file <mode-0600-file>] \
   [--live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA] \
@@ -25,6 +25,7 @@ usage: run-memory-regression.sh \
   [--configured-candidate-judge-model <exact-model-id>] \
   [--configured-candidate-judge-approval I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA] \
   [--production-memory-judge-validation-approval I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_VALIDATION_QUOTA]
+  [--production-buffered-memory-judge-validation-approval I_UNDERSTAND_THIS_USES_REAL_FROZEN_BUFFERED_MEMORY_VALIDATION_QUOTA]
 
 Run the production v1 lexical and native v2 hybrid Memory readers against the
 protected machine regression corpus in a random isolated Compose project.
@@ -59,6 +60,7 @@ configured_judge_base_url=""
 configured_judge_model=""
 configured_judge_approval=""
 production_validation_approval=""
+production_buffered_validation_approval=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -165,6 +167,11 @@ while [[ $# -gt 0 ]]; do
     --production-memory-judge-validation-approval)
       [[ $# -ge 2 ]] || { usage >&2; exit 2; }
       production_validation_approval="$2"
+      shift 2
+      ;;
+    --production-buffered-memory-judge-validation-approval)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      production_buffered_validation_approval="$2"
       shift 2
       ;;
     -h | --help)
@@ -298,7 +305,7 @@ case "${capture_mode}" in
       exit 2
     fi
     ;;
-  development_configured_candidate_judge | development_fixed_memory_judge | development_fixed_memory_judge_accuracy | development_fixed_memory_judge_failure_diagnostic | development_fixed_memory_judge_transport_stable | development_fixed_memory_judge_negative_guard | development_fixed_memory_judge_negative_guard_buffered | production_fixed_memory_judge_validation)
+  development_configured_candidate_judge | development_fixed_memory_judge | development_fixed_memory_judge_accuracy | development_fixed_memory_judge_failure_diagnostic | development_fixed_memory_judge_transport_stable | development_fixed_memory_judge_negative_guard | development_fixed_memory_judge_negative_guard_buffered | production_fixed_memory_judge_validation | production_fixed_memory_judge_negative_guard_buffered_validation)
     if [[ -z "${configured_judge_provider_id}" || \
       -z "${configured_judge_provider_type}" || \
       -z "${configured_judge_base_url}" || \
@@ -337,14 +344,21 @@ case "${capture_mode}" in
           echo "Memory regression: production Validation requires its independent exact quota approval" >&2
           exit 2
         fi
+      elif [[ "${capture_mode}" == "production_fixed_memory_judge_negative_guard_buffered_validation" ]]; then
+        if [[ "${production_buffered_validation_approval}" != "I_UNDERSTAND_THIS_USES_REAL_FROZEN_BUFFERED_MEMORY_VALIDATION_QUOTA" || \
+          -n "${configured_judge_approval}" || -n "${production_validation_approval}" ]]; then
+          echo "Memory regression: production buffered Validation requires its independent exact quota approval" >&2
+          exit 2
+        fi
       elif [[ "${configured_judge_approval}" != "I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA" || \
-        -n "${production_validation_approval}" ]]; then
+        -n "${production_validation_approval}" || -n "${production_buffered_validation_approval}" ]]; then
         echo "Memory regression: live configured candidate-judge mode requires its exact Development quota approval" >&2
         exit 2
       fi
     elif [[ -n "${configured_judge_credential_source}" || \
       -n "${configured_judge_approval}" || \
-      -n "${production_validation_approval}" ]]; then
+      -n "${production_validation_approval}" || \
+      -n "${production_buffered_validation_approval}" ]]; then
       echo "Memory regression: fake configured candidate-judge mode rejects live credential/approval inputs" >&2
       exit 2
     fi
@@ -400,6 +414,11 @@ if [[ "${capture_mode}" != "production_fixed_memory_judge_validation" && \
   echo "Memory regression: production Validation approval requires production_fixed_memory_judge_validation mode" >&2
   exit 2
 fi
+if [[ "${capture_mode}" != "production_fixed_memory_judge_negative_guard_buffered_validation" && \
+  -n "${production_buffered_validation_approval}" ]]; then
+  echo "Memory regression: production buffered Validation approval requires its exact mode" >&2
+  exit 2
+fi
 
 configured_judge_base_url_sha256=""
 if [[ "${capture_mode}" == "development_configured_candidate_judge" ||
@@ -409,7 +428,8 @@ if [[ "${capture_mode}" == "development_configured_candidate_judge" ||
   "${capture_mode}" == "development_fixed_memory_judge_transport_stable" ||
   "${capture_mode}" == "development_fixed_memory_judge_negative_guard" ||
   "${capture_mode}" == "development_fixed_memory_judge_negative_guard_buffered" ||
-  "${capture_mode}" == "production_fixed_memory_judge_validation" ]]; then
+  "${capture_mode}" == "production_fixed_memory_judge_validation" ||
+  "${capture_mode}" == "production_fixed_memory_judge_negative_guard_buffered_validation" ]]; then
   configured_judge_base_url="$(python3 - "${configured_judge_base_url}" <<'PY'
 import sys
 from urllib.parse import urlsplit
@@ -503,7 +523,8 @@ if [[ "${provider_mode}" == "live_siliconflow" ]]; then
     "${capture_mode}" == "development_fixed_memory_judge_transport_stable" ||
     "${capture_mode}" == "development_fixed_memory_judge_negative_guard" ||
     "${capture_mode}" == "development_fixed_memory_judge_negative_guard_buffered" ||
-    "${capture_mode}" == "production_fixed_memory_judge_validation" ]]; then
+    "${capture_mode}" == "production_fixed_memory_judge_validation" ||
+    "${capture_mode}" == "production_fixed_memory_judge_negative_guard_buffered_validation" ]]; then
     if [[ ! -f "${configured_judge_credential_source}" || \
       -L "${configured_judge_credential_source}" ]]; then
       echo "Memory regression: configured candidate-judge credential must be a regular non-symlink file" >&2
@@ -679,7 +700,8 @@ if [[ "${provider_mode}" == "live_siliconflow" && \
   "${capture_mode}" == "development_fixed_memory_judge_transport_stable" ||
   "${capture_mode}" == "development_fixed_memory_judge_negative_guard" ||
   "${capture_mode}" == "development_fixed_memory_judge_negative_guard_buffered" ||
-  "${capture_mode}" == "production_fixed_memory_judge_validation") ]]; then
+  "${capture_mode}" == "production_fixed_memory_judge_validation" ||
+  "${capture_mode}" == "production_fixed_memory_judge_negative_guard_buffered_validation") ]]; then
   cp --no-preserve=mode,ownership,timestamps \
     "${configured_judge_credential_source}" \
     "${configured_judge_credential_copy}"
@@ -704,7 +726,8 @@ if [[ "${provider_mode}" == "live_siliconflow" && \
     "${capture_mode}" == "development_fixed_memory_judge_transport_stable" ||
     "${capture_mode}" == "development_fixed_memory_judge_negative_guard" ||
     "${capture_mode}" == "development_fixed_memory_judge_negative_guard_buffered" ||
-    "${capture_mode}" == "production_fixed_memory_judge_validation") ]]; then
+    "${capture_mode}" == "production_fixed_memory_judge_validation" ||
+    "${capture_mode}" == "production_fixed_memory_judge_negative_guard_buffered_validation") ]]; then
   configured_judge_credential_target="/run/mm-chat-memory-regression/configured-candidate-judge-provider.key"
 fi
 cat >"${env_file}" <<EOF
@@ -734,6 +757,7 @@ MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_BASE_URL_SHA256=${configured_judge_
 MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_MODEL=${configured_judge_model}
 MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_APPROVAL=${configured_judge_approval:-NOT_AUTHORIZED}
 MEMORY_REGRESSION_PRODUCTION_MEMORY_JUDGE_VALIDATION_APPROVAL=${production_validation_approval:-NOT_AUTHORIZED}
+MEMORY_REGRESSION_PRODUCTION_BUFFERED_MEMORY_JUDGE_VALIDATION_APPROVAL=${production_buffered_validation_approval:-NOT_AUTHORIZED}
 EOF
 chmod 600 "${env_file}"
 unset db_password
@@ -926,6 +950,11 @@ elif capture_mode == "development_fixed_memory_judge_negative_guard_buffered":
     expected = {"fixed-memory-judge-negative-guard-buffered-development.json", "run-manifest.json"}
 elif capture_mode == "production_fixed_memory_judge_validation":
     expected = {"fixed-memory-judge-production-validation.json", "run-manifest.json"}
+elif capture_mode == "production_fixed_memory_judge_negative_guard_buffered_validation":
+    expected = {
+        "fixed-memory-judge-negative-guard-buffered-production-validation.json",
+        "run-manifest.json",
+    }
 elif capture_mode == "frozen_validation":
     expected = {"relevance-validation.json", "run-manifest.json"}
 else:
@@ -941,6 +970,7 @@ manifest = json.loads((output / "run-manifest.json").read_text(encoding="utf-8")
 expected_manifest_schema = {
     "full_regression": "neo-chat.memory-regression-native-run.v1",
     "production_fixed_memory_judge_validation": "neo-chat.memory-regression-relevance-validation-run.v15",
+    "production_fixed_memory_judge_negative_guard_buffered_validation": "neo-chat.memory-regression-relevance-validation-run.v18",
 }.get(capture_mode, "neo-chat.memory-regression-relevance-run.v1")
 if manifest.get("schemaVersion") != expected_manifest_schema:
     raise SystemExit("invalid run manifest schema")
@@ -960,6 +990,7 @@ expected_admission = {
     "development_fixed_memory_judge_negative_guard": "development_fixed_memory_judge_negative_guard_only",
     "development_fixed_memory_judge_negative_guard_buffered": "development_fixed_memory_judge_negative_guard_buffered_only",
     "production_fixed_memory_judge_validation": "frozen_production_fixed_memory_judge_validation_only",
+    "production_fixed_memory_judge_negative_guard_buffered_validation": "frozen_production_fixed_memory_judge_negative_guard_buffered_validation_only",
     "frozen_validation": "frozen_validation_only",
 }[capture_mode]
 if manifest.get("admissionMode") != expected_admission or manifest.get("promotionEligible") is not False:
@@ -1015,11 +1046,21 @@ if capture_mode == "full_regression":
             raise SystemExit("regression report corpus class drift")
         if report.get("admissionMode") != "regression_only" or report.get("promotionEligible") is not False:
             raise SystemExit("regression report gained promotion authority")
-elif capture_mode == "production_fixed_memory_judge_validation":
+elif capture_mode in {
+    "production_fixed_memory_judge_validation",
+    "production_fixed_memory_judge_negative_guard_buffered_validation",
+}:
+    production_buffered = (
+        capture_mode
+        == "production_fixed_memory_judge_negative_guard_buffered_validation"
+    )
+    report_name = (
+        "fixed-memory-judge-negative-guard-buffered-production-validation.json"
+        if production_buffered
+        else "fixed-memory-judge-production-validation.json"
+    )
     report = json.loads(
-        (output / "fixed-memory-judge-production-validation.json").read_text(
-            encoding="utf-8"
-        )
+        (output / report_name).read_text(encoding="utf-8")
     )
     criteria = report.get("evaluationCriteria")
     execution = report.get("executionPolicy")
@@ -1046,7 +1087,12 @@ elif capture_mode == "production_fixed_memory_judge_validation":
         "evaluationCriteriaSha256",
     )
     if (
-        report.get("schemaVersion") != "neo-chat.memory-regression-relevance-validation.v15"
+        report.get("schemaVersion")
+        != (
+            "neo-chat.memory-regression-relevance-validation.v18"
+            if production_buffered
+            else "neo-chat.memory-regression-relevance-validation.v15"
+        )
         or report.get("corpusClass") != "machine_reviewed_regression"
         or report.get("admissionMode") != expected_admission
         or report.get("promotionEligible") is not False
@@ -1057,7 +1103,12 @@ elif capture_mode == "production_fixed_memory_judge_validation":
         or report.get("split") != "validation"
         or report.get("caseCount") != 100
         or report.get("profileId") != candidate_profile
-        or report.get("policyId") != "memory_hybrid_fixed_cloud_candidate_judge_production_v1"
+        or report.get("policyId")
+        != (
+            "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_production_v2"
+            if production_buffered
+            else "memory_hybrid_fixed_cloud_candidate_judge_production_v1"
+        )
         or report.get("providerEgressPolicy") != "owner_authorized_normal_candidates_v1"
         or report.get("providerCostPolicy") != "owner_authorized_absolute_cap_v1"
         or report.get("providerCostAuthorized") is not True
@@ -1065,7 +1116,12 @@ elif capture_mode == "production_fixed_memory_judge_validation":
         or report.get("judgeProviderType") != "openai_compatible"
         or report.get("judgeBaseUrlSha256") != "3bc0bbf28d9d817b4f6c8f6058c2c51dd644c541252ed6e2542a8c8a472ff671"
         or report.get("judgeModelId") != "gpt-5.6-luna"
-        or report.get("judgeAdapter") != "chat-configured-candidate-judge-v1"
+        or report.get("judgeAdapter")
+        != (
+            "chat-configured-candidate-judge-buffered-v1"
+            if production_buffered
+            else "chat-configured-candidate-judge-v1"
+        )
         or report.get("judgePromptVersion") != "memory-cloud-candidate-judge-prompt-v1"
         or report.get("judgePromptSha256") != "c004e834f2db572fc8393f088f47750d420379664f972357f987a09d8647f9c8"
         or report.get("judgeDecodingProfile") != "temperature-0_max-output-128_no-thinking_v1"
@@ -1096,9 +1152,28 @@ elif capture_mode == "production_fixed_memory_judge_validation":
         or not isinstance(outcome, dict)
     ):
         raise SystemExit("production Memory Judge Validation authority drift")
+    expected_guard_version = "memory-negative-policy-query-guard-v1"
+    expected_guard_sha256 = "8fe79b55a0f136392081a81e471abae98d0db7b8e3bece74adcc590b9d2c8f39"
+    if production_buffered:
+        if (
+            report.get("negativePolicyQueryGuardVersion") != expected_guard_version
+            or report.get("negativePolicyQueryGuardSha256") != expected_guard_sha256
+            or diagnostics.get("negativePolicyQueryAbstainedCaseCount", 0) <= 0
+        ):
+            raise SystemExit("production negative-policy-guard provenance drift")
+    elif (
+        "negativePolicyQueryGuardVersion" in report
+        or "negativePolicyQueryGuardSha256" in report
+    ):
+        raise SystemExit("historical production Validation gained guard provenance")
     if (
         not isinstance(execution, dict)
-        or execution.get("sequenceVersion") != "production_bge_m3_rerank_fixed_luna_judge_record_serial_v1"
+        or execution.get("sequenceVersion")
+        != (
+            "production_bge_m3_rerank_fixed_luna_negative_guard_buffered_json_judge_record_serial_v1"
+            if production_buffered
+            else "production_bge_m3_rerank_fixed_luna_judge_record_serial_v1"
+        )
         or execution.get("globalProviderRequestConcurrency") != 1
         or execution.get("applicationDeadlineMode") != "none_v1"
         or execution.get("providerElapsedTimeoutMode") != "none_v1"
@@ -1121,6 +1196,11 @@ elif capture_mode == "production_fixed_memory_judge_validation":
     attempt_counts = attempts.get("judgeAttemptFailureCategoryCounts")
     aggregate_names = (
         "emptyCandidateCaseCount",
+        *(
+            ("negativePolicyQueryAbstainedCaseCount",)
+            if production_buffered
+            else ()
+        ),
         "judgeCompletedCaseCount",
         "failedCaseCount",
     )

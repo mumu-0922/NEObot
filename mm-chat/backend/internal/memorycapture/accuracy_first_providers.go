@@ -93,6 +93,20 @@ func ProductionMemoryJudgeValidationExecutionPolicy(
 	return policy, nil
 }
 
+// ProductionBufferedMemoryJudgeValidationExecutionPolicy binds the
+// production-v2 negative guard and buffered Luna framing while preserving the
+// schema-v15 Validation retry, cooldown, and serialization ceilings.
+func ProductionBufferedMemoryJudgeValidationExecutionPolicy(
+	providerMode string,
+) (AccuracyFirstExecutionPolicy, error) {
+	policy, err := TransportStableDevelopmentExecutionPolicy(providerMode)
+	if err != nil {
+		return AccuracyFirstExecutionPolicy{}, err
+	}
+	policy.SequenceVersion = ProductionBufferedValidationExecutionSequenceV1
+	return policy, nil
+}
+
 type accuracyFirstWait func(context.Context, time.Duration) error
 
 // AccuracyFirstProviderController owns one global request gate for projection
@@ -282,6 +296,28 @@ func WrapNegativePolicyGuardMemoryJudgeDevelopmentProviders(
 // WrapBufferedMemoryJudgeDevelopmentProviders retains the schema-v16 serial
 // controller and two-retry ceiling under a distinct buffered-transport lane.
 func WrapBufferedMemoryJudgeDevelopmentProviders(
+	providerMode string,
+	passage PassageEmbedder,
+	hybrid usermemory.HybridShadowProvider,
+	judge usermemory.HybridCandidateJudge,
+) (
+	PassageEmbedder,
+	usermemory.HybridShadowProvider,
+	usermemory.HybridCandidateJudge,
+	*AccuracyFirstProviderController,
+	error,
+) {
+	return WrapTransportStableMemoryJudgeDevelopmentProviders(
+		providerMode,
+		passage,
+		hybrid,
+		judge,
+	)
+}
+
+// WrapProductionBufferedMemoryJudgeValidationProviders reuses the frozen
+// serial two-retry controller under the production-v2 Validation identity.
+func WrapProductionBufferedMemoryJudgeValidationProviders(
 	providerMode string,
 	passage PassageEmbedder,
 	hybrid usermemory.HybridShadowProvider,

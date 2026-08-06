@@ -32,6 +32,7 @@ const (
 	hybridPolicyModeAccuracyFirstJudge    = "fixed_cloud_candidate_judge_accuracy_development"
 	hybridPolicyModeNegativePolicyGuard   = "fixed_cloud_candidate_judge_negative_guard_development"
 	hybridPolicyModeProductionJudge       = "fixed_cloud_candidate_judge_production"
+	hybridPolicyModeGuardProductionJudge  = "fixed_cloud_candidate_judge_negative_guard_production"
 	hybridPolicyModeMemoryToolRoute       = "main_model_tool_route_calibration"
 	hybridPolicyModeMemoryFirstToolRound  = "main_model_first_tool_round_calibration"
 	hybridPolicyModeFrozen                = "frozen"
@@ -120,7 +121,8 @@ func (s *Service) SearchRelevantAfterMemoryToolCall(
 		return hybridMemoryToolFailure("dependency_unavailable")
 	}
 	policy, ok := validHybridShadowRelevancePolicy(s.hybridToolPolicy)
-	if !ok || policy.Mode != hybridPolicyModeProductionJudge {
+	if !ok || (policy.Mode != hybridPolicyModeProductionJudge &&
+		policy.Mode != hybridPolicyModeGuardProductionJudge) {
 		return hybridMemoryToolFailure("policy_unavailable")
 	}
 	hydrator, ok := s.repo.(HybridFinalRepository)
@@ -955,6 +957,22 @@ func HybridShadowFixedMemoryJudgeProductionPolicy() HybridShadowRelevancePolicy 
 	}
 }
 
+// HybridShadowNegativePolicyGuardProductionPolicy is the production-v2 reader
+// selected only after the buffered negative-guard Validation lane passes. It
+// preserves the Development candidate's guard and accuracy-first behavior
+// under a production-only identity.
+func HybridShadowNegativePolicyGuardProductionPolicy() HybridShadowRelevancePolicy {
+	return HybridShadowRelevancePolicy{
+		ID:                               HybridRelevanceNegativePolicyGuardProductionPolicyID,
+		Mode:                             hybridPolicyModeGuardProductionJudge,
+		CloudCandidateJudgeRequired:      true,
+		CloudCandidateJudgeModelID:       HybridFixedMemoryJudgeModelID,
+		NegativePolicyQueryGuardRequired: true,
+		MinimumProviderSimilarity:        -1,
+		MinimumFinalRelevanceScore:       0,
+	}
+}
+
 func HybridShadowMemoryToolRouteCalibrationPolicy(
 	modelID string,
 ) HybridShadowRelevancePolicy {
@@ -1103,7 +1121,8 @@ func validHybridShadowRelevancePolicy(
 ) (HybridShadowRelevancePolicy, bool) {
 	if !lexicalShadowResultCodeRE.MatchString(strings.ToUpper(policy.ID)) ||
 		policy.NegativePolicyQueryGuardRequired !=
-			(policy.Mode == hybridPolicyModeNegativePolicyGuard) ||
+			(policy.Mode == hybridPolicyModeNegativePolicyGuard ||
+				policy.Mode == hybridPolicyModeGuardProductionJudge) ||
 		math.IsNaN(policy.MinimumMemoryIntentMargin) ||
 		math.IsInf(policy.MinimumMemoryIntentMargin, 0) ||
 		policy.MinimumMemoryIntentMargin < -1 || policy.MinimumMemoryIntentMargin > 1 ||
@@ -1185,6 +1204,17 @@ func validHybridShadowRelevancePolicy(
 			policy.MinimumFinalRelevanceScore != 0 {
 			return HybridShadowRelevancePolicy{}, false
 		}
+	case hybridPolicyModeGuardProductionJudge:
+		if policy.ID != HybridRelevanceNegativePolicyGuardProductionPolicyID ||
+			policy.MemoryIntentRequired || !policy.CloudCandidateJudgeRequired ||
+			policy.CloudCandidateJudgeModelID != HybridFixedMemoryJudgeModelID ||
+			policy.MemoryToolRouteRequired || policy.MemoryToolRouteModelID != "" ||
+			!policy.NegativePolicyQueryGuardRequired ||
+			policy.MinimumMemoryIntentMargin != 0 ||
+			policy.MinimumProviderSimilarity != -1 ||
+			policy.MinimumFinalRelevanceScore != 0 {
+			return HybridShadowRelevancePolicy{}, false
+		}
 	case hybridPolicyModeMemoryToolRoute:
 		if policy.ID != HybridRelevanceMemoryToolRoutePolicyID ||
 			policy.MemoryIntentRequired || policy.CloudCandidateJudgeRequired ||
@@ -1243,7 +1273,8 @@ func hybridShadowHardCutoffMillisecondsForMode(mode string) int {
 func hybridPolicyRunsAccuracyFirst(mode string) bool {
 	return mode == hybridPolicyModeAccuracyFirstJudge ||
 		mode == hybridPolicyModeNegativePolicyGuard ||
-		mode == hybridPolicyModeProductionJudge
+		mode == hybridPolicyModeProductionJudge ||
+		mode == hybridPolicyModeGuardProductionJudge
 }
 
 func validHybridCandidateJudgeModelID(value string) bool {

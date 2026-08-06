@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -102,6 +103,7 @@ const (
 	EnvMemoryLexicalShadow    = "MEMORY_LEXICAL_SHADOW_ENABLED"
 	EnvMemoryHybridShadow     = "MEMORY_HYBRID_SHADOW_ENABLED"
 	EnvMemoryToolLoop         = "MEMORY_TOOL_LOOP_ENABLED"
+	EnvMemoryToolLoopCanary   = "MEMORY_TOOL_LOOP_CANARY_USER_IDS"
 	EnvMemoryL2SceneShadow    = "MEMORY_L2_SCENE_SHADOW_ENABLED"
 	EnvMemoryL2SceneReader    = "MEMORY_L2_SCENE_READER_ENABLED"
 	EnvMemoryL3PersonaShadow  = "MEMORY_L3_PERSONA_SHADOW_ENABLED"
@@ -183,10 +185,12 @@ type MemoryConfig struct {
 	LexicalShadowEnabled   bool
 	HybridShadowEnabled    bool
 	ToolLoopEnabled        bool
+	ToolLoopCanaryUserIDs  []string
 	L2SceneShadowEnabled   bool
 	L2SceneReaderEnabled   bool
 	L3PersonaShadowEnabled bool
 	L3PersonaReaderEnabled bool
+	invalidCanaryUserIDs   bool
 }
 
 // S3Config contains MinIO/S3-compatible object storage settings.
@@ -256,6 +260,9 @@ func (cfg AuthConfig) RequireAuth() bool {
 // Validate rejects malformed Team settings without including encoded key
 // material in the returned error.
 func (cfg Config) Validate() error {
+	if cfg.Memory.invalidCanaryUserIDs {
+		return fmt.Errorf("%s must be a comma-separated list of UUIDs", EnvMemoryToolLoopCanary)
+	}
 	if len(cfg.Team.invalidFields) > 0 {
 		return fmt.Errorf("invalid configuration for %s", cfg.Team.invalidFields[0])
 	}
@@ -337,6 +344,8 @@ func Load() Config {
 // partially configured runtime.
 func LoadFromEnv(lookup func(string) (string, bool)) Config {
 	teamWorker, invalidTeamFields := loadTeamMailWorkerConfig(lookup)
+	memoryCanaryUserIDs, invalidMemoryCanaryUserIDs :=
+		loadMemoryToolLoopCanaryUserIDs(lookup)
 	return Config{
 		Addr:        envOrDefault(lookup, EnvAddr, DefaultAddr),
 		Version:     envOrDefault(lookup, EnvVersion, DefaultVersion),
@@ -404,6 +413,7 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 				EnvMemoryToolLoop,
 				DefaultMemoryToolLoopEnabled,
 			),
+			ToolLoopCanaryUserIDs: memoryCanaryUserIDs,
 			L2SceneShadowEnabled: boolEnvOrDefault(
 				lookup,
 				EnvMemoryL2SceneShadow,
@@ -424,6 +434,7 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 				EnvMemoryL3PersonaReader,
 				DefaultMemoryL3PersonaReaderEnabled,
 			),
+			invalidCanaryUserIDs: invalidMemoryCanaryUserIDs,
 		},
 
 		Auth: AuthConfig{
@@ -456,6 +467,34 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 			invalidFields:       invalidTeamFields,
 		},
 	}
+}
+
+var canonicalUUIDRE = regexp.MustCompile(
+	`^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`,
+)
+
+func loadMemoryToolLoopCanaryUserIDs(
+	lookup func(string) (string, bool),
+) ([]string, bool) {
+	value, configured := optionalLookup(lookup, EnvMemoryToolLoopCanary)
+	if !configured {
+		return nil, false
+	}
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		userID := strings.ToLower(strings.TrimSpace(part))
+		if !canonicalUUIDRE.MatchString(userID) {
+			return nil, true
+		}
+		if _, duplicate := seen[userID]; duplicate {
+			return nil, true
+		}
+		seen[userID] = struct{}{}
+		result = append(result, userID)
+	}
+	return result, false
 }
 
 // ParseBase64Keyring parses comma-separated key-id=base64 entries. Errors
