@@ -1322,3 +1322,37 @@ Added a hash-bound Development-only bilingual negative meta-policy guard, preser
 ### Next Steps
 
 - None - task complete
+
+
+## Session 29: Calibrate Memory negative-policy guard online
+
+**Date**: 2026-08-06
+**Task**: Calibrate Memory negative-policy guard online
+**Branch**: `main`
+
+### Summary
+
+Added the isolated schema-v16 negative-guard Development lane and Vault lifecycle, completed Fake and authorized live BGE/Luna evidence, retained the immutable failed quality/stability result, verified zero recall/data mutation, and passed focused race, backend, security, and standalone full gates.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1f2b4c02` | (see git log) |
+| `ebf05d03` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
