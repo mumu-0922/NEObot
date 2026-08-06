@@ -759,7 +759,14 @@ if args and args[0] == "compose":
                 if diagnostic
                 else "development_main_model_first_tool_round_only"
             )
-        elif capture_mode == "production_fixed_memory_judge_validation":
+        elif capture_mode in {
+            "production_fixed_memory_judge_validation",
+            "production_fixed_memory_judge_negative_guard_buffered_validation",
+        }:
+            production_buffered = (
+                capture_mode
+                == "production_fixed_memory_judge_negative_guard_buffered_validation"
+            )
             zero_safety = {
                 "crossUserLeakCount": 0,
                 "deletedMemoryLeakCount": 0,
@@ -785,9 +792,17 @@ if args and args[0] == "compose":
                     "maximumLatencyMilliseconds": 1 if count else 0,
                 }
             validation_payload = {
-                "schemaVersion": "neo-chat.memory-regression-relevance-validation.v15",
+                "schemaVersion": (
+                    "neo-chat.memory-regression-relevance-validation.v18"
+                    if production_buffered
+                    else "neo-chat.memory-regression-relevance-validation.v15"
+                ),
                 "corpusClass": "machine_reviewed_regression",
-                "admissionMode": "frozen_production_fixed_memory_judge_validation_only",
+                "admissionMode": (
+                    "frozen_production_fixed_memory_judge_negative_guard_buffered_validation_only"
+                    if production_buffered
+                    else "frozen_production_fixed_memory_judge_validation_only"
+                ),
                 "promotionEligible": False,
                 "releaseEligible": False,
                 "policySelected": False,
@@ -799,7 +814,11 @@ if args and args[0] == "compose":
                 ),
                 "split": "validation",
                 "caseCount": 100,
-                "policyId": "memory_hybrid_fixed_cloud_candidate_judge_production_v1",
+                "policyId": (
+                    "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_production_v2"
+                    if production_buffered
+                    else "memory_hybrid_fixed_cloud_candidate_judge_production_v1"
+                ),
                 "profileId": candidate_profile,
                 **validation_hashes,
                 "memoryReadIntentPolicyVersion": "memory-explicit-read-intent-v1",
@@ -810,7 +829,15 @@ if args and args[0] == "compose":
                 "judgeProviderType": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_TYPE"],
                 "judgeBaseUrlSha256": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_BASE_URL_SHA256"],
                 "judgeModelId": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_MODEL"],
-                "judgeAdapter": "chat-configured-candidate-judge-v1",
+                "judgeAdapter": (
+                    "chat-configured-candidate-judge-buffered-v1"
+                    if production_buffered
+                    else "chat-configured-candidate-judge-v1"
+                ),
+                **({
+                    "negativePolicyQueryGuardVersion": "memory-negative-policy-query-guard-v1",
+                    "negativePolicyQueryGuardSha256": "8fe79b55a0f136392081a81e471abae98d0db7b8e3bece74adcc590b9d2c8f39",
+                } if production_buffered else {}),
                 "judgePromptVersion": "memory-cloud-candidate-judge-prompt-v1",
                 "judgePromptSha256": "c004e834f2db572fc8393f088f47750d420379664f972357f987a09d8647f9c8",
                 "judgeDecodingProfile": "temperature-0_max-output-128_no-thinking_v1",
@@ -831,7 +858,11 @@ if args and args[0] == "compose":
                     "applicationDeadlineMode": "none_v1",
                 },
                 "executionPolicy": {
-                    "sequenceVersion": "production_bge_m3_rerank_fixed_luna_judge_record_serial_v1",
+                    "sequenceVersion": (
+                        "production_bge_m3_rerank_fixed_luna_negative_guard_buffered_json_judge_record_serial_v1"
+                        if production_buffered
+                        else "production_bge_m3_rerank_fixed_luna_judge_record_serial_v1"
+                    ),
                     "globalProviderRequestConcurrency": 1,
                     "applicationDeadlineMode": "none_v1",
                     "providerElapsedTimeoutMode": "none_v1",
@@ -888,7 +919,8 @@ if args and args[0] == "compose":
                 },
                 "diagnostics": {
                     "emptyCandidateCaseCount": 35,
-                    "judgeCompletedCaseCount": 65,
+                    "negativePolicyQueryAbstainedCaseCount": 10 if production_buffered else 0,
+                    "judgeCompletedCaseCount": 55 if production_buffered else 65,
                     "judgeAbstainedCaseCount": 10,
                     "failedCaseCount": 0,
                     "failureCodeCounts": {},
@@ -899,11 +931,11 @@ if args and args[0] == "compose":
                     "passageEmbeddingRetries": 0,
                     "queryEmbeddingAttempts": 100,
                     "queryEmbeddingRetries": 0,
-                    "rerankAttempts": 65,
+                    "rerankAttempts": 55 if production_buffered else 65,
                     "rerankRetries": 0,
-                    "judgeAttempts": 65,
+                    "judgeAttempts": 55 if production_buffered else 65,
                     "judgeRetries": 0,
-                    "judgeInputTokenUpperBound": 65000,
+                    "judgeInputTokenUpperBound": 55000 if production_buffered else 65000,
                     "judgeRetryInputTokenUpperBound": 0,
                     "interCaseCooldownCount": 99,
                     "interCaseCooldownMilliseconds": 99000,
@@ -912,18 +944,18 @@ if args and args[0] == "compose":
                     ),
                     "passageEmbeddingLatency": validation_latency(1),
                     "queryEmbeddingLatency": validation_latency(100),
-                    "rerankLatency": validation_latency(65),
-                    "judgeLatency": validation_latency(65),
+                    "rerankLatency": validation_latency(55 if production_buffered else 65),
+                    "judgeLatency": validation_latency(55 if production_buffered else 65),
                     "judgeAttemptFailureCategoryCounts": {},
                 },
                 "costAuthority": {
                     "unit": "cny_microunits",
                     "authorizedRequestCount": 300,
-                    "actualRequestCount": 65,
+                    "actualRequestCount": 55 if production_buffered else 65,
                     "authorizedMaximumInputTokens": 300000,
-                    "actualInputTokenUpperBound": 65000,
+                    "actualInputTokenUpperBound": 55000 if production_buffered else 65000,
                     "authorizedMaximumOutputTokens": 38400,
-                    "actualOutputTokenUpperBound": 8320,
+                    "actualOutputTokenUpperBound": (55 if production_buffered else 65) * 128,
                     "maximumJudgeCostMicrounits": 2,
                     "maximumMemoryProviderCostMicrounits": 50,
                 },
@@ -933,9 +965,18 @@ if args and args[0] == "compose":
             validation = json.dumps(
                 validation_payload, separators=(",", ":")
             ).encode() + b"\n"
-            bodies = {"fixed-memory-judge-production-validation.json": validation}
-            manifest_schema = "neo-chat.memory-regression-relevance-validation-run.v15"
-            admission_mode = "frozen_production_fixed_memory_judge_validation_only"
+            report_name = (
+                "fixed-memory-judge-negative-guard-buffered-production-validation.json"
+                if production_buffered
+                else "fixed-memory-judge-production-validation.json"
+            )
+            bodies = {report_name: validation}
+            manifest_schema = (
+                "neo-chat.memory-regression-relevance-validation-run.v18"
+                if production_buffered
+                else "neo-chat.memory-regression-relevance-validation-run.v15"
+            )
+            admission_mode = validation_payload["admissionMode"]
         elif capture_mode == "frozen_validation":
             validation = json.dumps({
                 "schemaVersion": "neo-chat.memory-regression-relevance-validation.v1",
@@ -1006,6 +1047,7 @@ if args and args[0] == "compose":
                     "development_fixed_memory_judge_negative_guard",
                     "development_fixed_memory_judge_negative_guard_buffered",
                     "production_fixed_memory_judge_validation",
+                    "production_fixed_memory_judge_negative_guard_buffered_validation",
                 }:
                     manifest["providerCostPolicy"] = "owner_authorized_absolute_cap_v1"
                 if capture_mode == "development_fixed_memory_judge_failure_diagnostic":
@@ -1022,7 +1064,10 @@ if args and args[0] == "compose":
                         "negativePolicyQueryGuardSha256": "8fe79b55a0f136392081a81e471abae98d0db7b8e3bece74adcc590b9d2c8f39",
                         "relevancePolicyDescriptorSha256": "82341542e46b091521b9f4b8c4eb637d6e732683d9902e0d2e3832a14cb50f9b",
                     })
-                elif capture_mode == "production_fixed_memory_judge_validation":
+                elif capture_mode in {
+                    "production_fixed_memory_judge_validation",
+                    "production_fixed_memory_judge_negative_guard_buffered_validation",
+                }:
                     validation_outcome = (
                         {
                             "severity": "none",
@@ -1044,7 +1089,11 @@ if args and args[0] == "compose":
                             if mode == "live_siliconflow"
                             else "fake_protocol_lifecycle_only"
                         ),
-                        "policyId": "memory_hybrid_fixed_cloud_candidate_judge_production_v1",
+                        "policyId": (
+                            "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_production_v2"
+                            if production_buffered
+                            else "memory_hybrid_fixed_cloud_candidate_judge_production_v1"
+                        ),
                         "configurationSha256": validation_hashes["configurationSha256"],
                         "validationCaseOrderSha256": validation_hashes["validationCaseOrderSha256"],
                         "productionRelevancePolicySha256": validation_hashes["productionRelevancePolicySha256"],
@@ -1312,6 +1361,32 @@ if [[ ${production_validation_status} -eq 0 || \
   exit 1
 fi
 assert_cleanup "${production_validation_log}"
+
+production_buffered_validation_output="${temp_dir}/production-buffered-validation-output"
+production_buffered_validation_log="${temp_dir}/production-buffered-validation-docker.log"
+mkdir "${production_buffered_validation_output}"
+chmod 700 "${production_buffered_validation_output}"
+set +e
+FAKE_DOCKER_LOG="${production_buffered_validation_log}" FAKE_RUNNER_STATUS=7 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${production_buffered_validation_output}" --provider-mode fake_protocol \
+  --capture-mode production_fixed_memory_judge_negative_guard_buffered_validation \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  >"${temp_dir}/production-buffered-validation.stdout" \
+  2>"${temp_dir}/production-buffered-validation.stderr"
+production_buffered_validation_status=$?
+set -e
+if [[ ${production_buffered_validation_status} -eq 0 || \
+  "$(find "${production_buffered_validation_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 || \
+  "$(find "${production_buffered_validation_output}" -mindepth 2 -maxdepth 2 -type f ! -perm 0600 | wc -l)" -ne 0 ]]; then
+  echo "Memory regression protocol: Fake production buffered Validation did not retain its failed aggregate bundle" >&2
+  exit 1
+fi
+assert_cleanup "${production_buffered_validation_log}"
 
 forbidden_validation_output="${temp_dir}/forbidden-production-validation-output"
 forbidden_validation_log="${temp_dir}/forbidden-production-validation-docker.log"

@@ -96,6 +96,8 @@ required_paths=(
   scripts/test-memory-negative-guard-development-from-vault.sh
   scripts/run-memory-buffered-judge-development-from-vault.sh
   scripts/test-memory-buffered-judge-development-from-vault.sh
+  scripts/run-memory-production-buffered-validation-from-vault.sh
+  scripts/test-memory-production-buffered-validation-from-vault.sh
   rag/pyproject.toml
   rag/Dockerfile
 )
@@ -203,6 +205,10 @@ if backend["environment"]["MEMORY_TOOL_LOOP_ENABLED"] != "false":
     raise SystemExit("standalone verification: Memory Tool Loop must default false")
 if "MEMORY_TOOL_LOOP_ENABLED" in memory_worker["environment"]:
     raise SystemExit("standalone verification: Memory Worker received the Tool Loop flag")
+if backend["environment"]["MEMORY_TOOL_LOOP_CANARY_USER_IDS"] != "":
+    raise SystemExit("standalone verification: Memory Tool canary must default empty")
+if "MEMORY_TOOL_LOOP_CANARY_USER_IDS" in memory_worker["environment"]:
+    raise SystemExit("standalone verification: Memory Worker received the Tool canary")
 if (
     backend["environment"]["MEMORY_L2_SCENE_SHADOW_ENABLED"]
     != memory_worker["environment"]["MEMORY_L2_SCENE_SHADOW_ENABLED"]
@@ -228,6 +234,7 @@ DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-regression.sh"
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-production-validation-from-vault.sh"
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-negative-guard-development-from-vault.sh"
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-buffered-judge-development-from-vault.sh"
+DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-production-buffered-validation-from-vault.sh"
 
 if [[ "${full}" == true ]]; then
   rag_python="${RAG_PYTHON:-python3.13}"

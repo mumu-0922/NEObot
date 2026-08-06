@@ -291,6 +291,14 @@ assert_rejected \
   "${invalid_memory_tool_loop}" \
   "MEMORY_TOOL_LOOP_ENABLED must be true or false"
 
+invalid_memory_tool_canary="${temp_dir}/invalid-memory-tool-canary.env"
+sed 's|^MEMORY_TOOL_LOOP_CANARY_USER_IDS=$|MEMORY_TOOL_LOOP_CANARY_USER_IDS=not-a-uuid|' \
+  "${valid}" >"${invalid_memory_tool_canary}"
+chmod 600 "${invalid_memory_tool_canary}"
+assert_rejected \
+  "${invalid_memory_tool_canary}" \
+  "MEMORY_TOOL_LOOP_CANARY_USER_IDS must be a unique comma-separated UUID list"
+
 for memory_l2_flag in \
   MEMORY_L2_SCENE_SHADOW_ENABLED \
   MEMORY_L2_SCENE_READER_ENABLED; do
@@ -638,6 +646,7 @@ assert "MIGRATION_DATABASE_URL" not in backend_environment
 assert backend_environment["MEMORY_LEXICAL_SHADOW_ENABLED"] == "false"
 assert backend_environment["MEMORY_HYBRID_SHADOW_ENABLED"] == "false"
 assert backend_environment["MEMORY_TOOL_LOOP_ENABLED"] == "false"
+assert backend_environment["MEMORY_TOOL_LOOP_CANARY_USER_IDS"] == ""
 assert backend_environment["MEMORY_L2_SCENE_SHADOW_ENABLED"] == "false"
 assert backend_environment["MEMORY_L2_SCENE_READER_ENABLED"] == "false"
 assert backend_environment["MEMORY_L3_PERSONA_SHADOW_ENABLED"] == "false"
@@ -661,6 +670,7 @@ memory_environment = memory["environment"]
 assert "memory_worker:test-memory-worker-password@postgres" in memory_environment["MEMORY_WORKER_DATABASE_URL"]
 assert memory_environment["MEMORY_HYBRID_SHADOW_ENABLED"] == "false"
 assert "MEMORY_TOOL_LOOP_ENABLED" not in memory_environment
+assert "MEMORY_TOOL_LOOP_CANARY_USER_IDS" not in memory_environment
 assert memory_environment["MEMORY_L2_SCENE_SHADOW_ENABLED"] == "false"
 assert "MEMORY_L2_SCENE_READER_ENABLED" not in memory_environment
 assert memory_environment["MEMORY_L3_PERSONA_SHADOW_ENABLED"] == "false"

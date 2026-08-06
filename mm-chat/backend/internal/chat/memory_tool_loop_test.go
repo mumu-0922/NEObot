@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/usermemory"
 	"neo-chat/mm-chat/backend/internal/websearch"
 )
@@ -500,16 +501,18 @@ func TestSearchMemoryToolCanonicalContractHash(t *testing.T) {
 }
 
 func TestMemoryToolRuntimePreservesExplicitDirectActionPath(t *testing.T) {
+	user := auth.DevelopmentUser()
 	handler := &Handler{
-		memoryToolLoopEnabled: true,
-		userMemoryService:     &usermemory.Service{},
+		memoryToolLoopEnabled:       true,
+		memoryToolLoopCanaryUserIDs: map[string]struct{}{user.ID: {}},
+		userMemoryService:           &usermemory.Service{},
 	}
 	for _, query := range []string{
 		"记住我以后要简洁回答",
 		"那你写进去呀",
 	} {
 		runtime := handler.newMemoryToolRuntime(
-			context.Background(),
+			auth.WithUser(context.Background(), user),
 			true,
 			chatSearchModeOff,
 			query,
@@ -523,9 +526,11 @@ func TestMemoryToolRuntimePreservesExplicitDirectActionPath(t *testing.T) {
 }
 
 func TestMemoryToolRuntimeWiresExplicitReadIntentOnly(t *testing.T) {
+	user := auth.DevelopmentUser()
 	handler := &Handler{
-		memoryToolLoopEnabled: true,
-		userMemoryService:     &usermemory.Service{},
+		memoryToolLoopEnabled:       true,
+		memoryToolLoopCanaryUserIDs: map[string]struct{}{user.ID: {}},
+		userMemoryService:           &usermemory.Service{},
 	}
 	for _, test := range []struct {
 		query string
@@ -536,13 +541,44 @@ func TestMemoryToolRuntimeWiresExplicitReadIntentOnly(t *testing.T) {
 		{query: "帮我写“我喜欢喝什么”的文案", want: false},
 	} {
 		runtime := handler.newMemoryToolRuntime(
-			context.Background(), true, chatSearchModeOff, test.query,
+			auth.WithUser(context.Background(), user), true, chatSearchModeOff, test.query,
 			"22222222-2222-4222-8222-222222222222",
 			"33333333-3333-4333-8333-333333333333",
 		)
 		if runtime == nil || runtime.requiresFirstRoundCall() != test.want {
 			t.Fatalf("runtime for %q = %#v, want forced=%t", test.query, runtime, test.want)
 		}
+	}
+}
+
+func TestMemoryToolRuntimeCanaryAdmissionIsExactAndFailClosed(t *testing.T) {
+	const canaryID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	handler := &Handler{
+		memoryToolLoopEnabled:       true,
+		memoryToolLoopCanaryUserIDs: map[string]struct{}{canaryID: {}},
+		userMemoryService:           &usermemory.Service{},
+	}
+	build := func(ctx context.Context) *memoryToolRuntime {
+		return handler.newMemoryToolRuntime(
+			ctx, true, chatSearchModeOff, "What do I prefer?",
+			"22222222-2222-4222-8222-222222222222",
+			"33333333-3333-4333-8333-333333333333",
+		)
+	}
+	if runtime := build(context.Background()); runtime != nil {
+		t.Fatalf("unauthenticated runtime = %#v, want nil", runtime)
+	}
+	if runtime := build(auth.WithUser(context.Background(), auth.User{
+		ID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+	})); runtime != nil {
+		t.Fatalf("non-canary runtime = %#v, want nil", runtime)
+	}
+	if runtime := build(auth.WithUser(context.Background(), auth.User{ID: canaryID})); runtime == nil {
+		t.Fatal("exact canary runtime = nil")
+	}
+	handler.memoryToolLoopCanaryUserIDs = nil
+	if runtime := build(auth.WithUser(context.Background(), auth.User{ID: canaryID})); runtime != nil {
+		t.Fatalf("empty allowlist runtime = %#v, want nil", runtime)
 	}
 }
 

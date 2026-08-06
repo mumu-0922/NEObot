@@ -69,6 +69,19 @@ func TestNegativePolicyGuardDevelopmentPolicyIsHashBoundAndAccuracyFirst(t *test
 	if _, ok := DescribeHybridShadowRelevancePolicy(production); ok {
 		t.Fatal("production policy admitted a Development guard")
 	}
+	guardedProduction := HybridShadowNegativePolicyGuardProductionPolicy()
+	descriptor, ok = DescribeHybridShadowRelevancePolicy(guardedProduction)
+	if !ok || descriptor.ID != HybridRelevanceNegativePolicyGuardProductionPolicyID ||
+		descriptor.Mode != hybridPolicyModeGuardProductionJudge ||
+		!descriptor.NegativePolicyQueryGuardRequired ||
+		descriptor.NegativePolicyQueryGuardSHA256 != NegativePolicyQueryGuardSHA256 ||
+		descriptor.HardCutoffMilliseconds != 0 {
+		t.Fatalf("negative guard production policy = %#v, %v", descriptor, ok)
+	}
+	guardedProduction.NegativePolicyQueryGuardRequired = false
+	if _, ok := DescribeHybridShadowRelevancePolicy(guardedProduction); ok {
+		t.Fatal("negative guard production policy admitted without guard")
+	}
 }
 
 func TestNegativePolicyGuardAbstainsBeforeCandidateProviderEgress(t *testing.T) {

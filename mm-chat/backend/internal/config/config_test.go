@@ -98,6 +98,9 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 		t.Fatalf("Memory.ToolLoopEnabled = %v, want %v",
 			cfg.Memory.ToolLoopEnabled, DefaultMemoryToolLoopEnabled)
 	}
+	if len(cfg.Memory.ToolLoopCanaryUserIDs) != 0 {
+		t.Fatalf("Memory.ToolLoopCanaryUserIDs = %#v, want empty", cfg.Memory.ToolLoopCanaryUserIDs)
+	}
 	if cfg.Memory.L2SceneShadowEnabled != DefaultMemoryL2SceneShadowEnabled {
 		t.Fatalf("Memory.L2SceneShadowEnabled = %v, want %v",
 			cfg.Memory.L2SceneShadowEnabled, DefaultMemoryL2SceneShadowEnabled)
@@ -186,6 +189,7 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvMemoryLexicalShadow:    " true ",
 		EnvMemoryHybridShadow:     " true ",
 		EnvMemoryToolLoop:         " true ",
+		EnvMemoryToolLoopCanary:   " 77777777-7777-4777-8777-777777777777,AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA ",
 		EnvMemoryL2SceneShadow:    " true ",
 		EnvMemoryL2SceneReader:    " true ",
 		EnvMemoryL3PersonaShadow:  " true ",
@@ -291,6 +295,11 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	}
 	if !cfg.Memory.ToolLoopEnabled {
 		t.Fatal("Memory.ToolLoopEnabled = false, want true")
+	}
+	if len(cfg.Memory.ToolLoopCanaryUserIDs) != 2 ||
+		cfg.Memory.ToolLoopCanaryUserIDs[0] != "77777777-7777-4777-8777-777777777777" ||
+		cfg.Memory.ToolLoopCanaryUserIDs[1] != "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" {
+		t.Fatalf("Memory.ToolLoopCanaryUserIDs = %#v", cfg.Memory.ToolLoopCanaryUserIDs)
 	}
 	if !cfg.Memory.L2SceneShadowEnabled {
 		t.Fatal("Memory.L2SceneShadowEnabled = false, want true")
@@ -559,6 +568,18 @@ func TestConfigValidateRejectsPartialAndInvalidTeamSettings(t *testing.T) {
 		values map[string]string
 		want   string
 	}{
+		{
+			name:   "invalid Memory canary UUID",
+			values: map[string]string{EnvMemoryToolLoopCanary: "not-a-uuid"},
+			want:   EnvMemoryToolLoopCanary,
+		},
+		{
+			name: "duplicate Memory canary UUID",
+			values: map[string]string{
+				EnvMemoryToolLoopCanary: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa,AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+			},
+			want: EnvMemoryToolLoopCanary,
+		},
 		{
 			name:   "cursor active without keyring",
 			values: map[string]string{EnvTeamCursorActiveKeyID: "cursor-v1"},

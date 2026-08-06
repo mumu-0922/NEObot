@@ -188,6 +188,19 @@ func TestParseCommandSeparatesFakeAndLiveCredentialBoundaries(t *testing.T) {
 	if err != nil || options.captureMode != memorycapture.CaptureModeProductionMemoryJudgeValidation {
 		t.Fatalf("parse production Memory Judge Validation command = %#v/%v", options, err)
 	}
+	productionBufferedValidation := append([]string(nil), bufferedJudge...)
+	for index := range productionBufferedValidation {
+		if productionBufferedValidation[index] == memorycapture.CaptureModeBufferedMemoryJudge {
+			productionBufferedValidation[index] =
+				memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation
+			break
+		}
+	}
+	options, err = parseCommand(productionBufferedValidation)
+	if err != nil ||
+		options.captureMode != memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation {
+		t.Fatalf("parse production buffered Memory Judge Validation command = %#v/%v", options, err)
+	}
 }
 
 func TestAccuracyFirstCaptureContextHasNoElapsedDeadline(t *testing.T) {
@@ -238,6 +251,14 @@ func TestAccuracyFirstCaptureContextHasNoElapsedDeadline(t *testing.T) {
 	defer productionCancel()
 	if _, ok := productionContext.Deadline(); ok {
 		t.Fatal("production Validation inherited the legacy 45-minute deadline")
+	}
+	productionBufferedContext, productionBufferedCancel := captureContext(
+		context.Background(),
+		memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation,
+	)
+	defer productionBufferedCancel()
+	if _, ok := productionBufferedContext.Deadline(); ok {
+		t.Fatal("production buffered Validation inherited the legacy 45-minute deadline")
 	}
 	legacyContext, legacyCancel := captureContext(
 		context.Background(),
@@ -468,6 +489,7 @@ func TestBuildProvidersWrapsAccuracyFirstFakeProviderSet(t *testing.T) {
 		memorycapture.CaptureModeNegativePolicyGuardMemoryJudge,
 		memorycapture.CaptureModeBufferedMemoryJudge,
 		memorycapture.CaptureModeProductionMemoryJudgeValidation,
+		memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation,
 	} {
 		bundle, err := buildProviders(commandOptions{
 			providerMode:           memorycapture.ProviderModeFakeProtocol,
@@ -539,20 +561,21 @@ func TestLoadLiveAuthorizationRequiresExactModelTargets(t *testing.T) {
 	values := map[string]string{
 		liveEnabledEnv: "true", liveApprovalEnv: memorycapture.LiveApproval,
 		liveRunIDEnv: "run-1", liveProviderIDEnv: "siliconflow",
-		liveEmbeddingModelEnv:                          ragproviders.SiliconFlowEmbeddingModel,
-		liveRerankModelEnv:                             ragproviders.SiliconFlowRerankModel,
-		liveCloudJudgeModelEnv:                         memorycapture.DefaultSiliconFlowCloudJudgeModelID,
-		liveMemoryToolRouteApprovalEnv:                 memorycapture.LiveMemoryToolRouteApproval,
-		liveMemoryToolRouteProviderIDEnv:               "configured-gpt",
-		liveMemoryToolRouteProviderTypeEnv:             "openai_compatible",
-		liveMemoryToolRouteBaseURLSHA256Env:            strings.Repeat("b", 64),
-		liveMemoryToolRouteModelIDEnv:                  "gpt-test",
-		liveConfiguredCandidateJudgeApprovalEnv:        memorycapture.LiveMemoryToolRouteApproval,
-		liveConfiguredCandidateJudgeProviderIDEnv:      "configured-gpt",
-		liveConfiguredCandidateJudgeProviderTypeEnv:    "openai_compatible",
-		liveConfiguredCandidateJudgeBaseURLSHA256Env:   strings.Repeat("c", 64),
-		liveConfiguredCandidateJudgeModelIDEnv:         "gpt-judge",
-		liveProductionMemoryJudgeValidationApprovalEnv: memorycapture.LiveProductionMemoryJudgeValidationApproval,
+		liveEmbeddingModelEnv:                                  ragproviders.SiliconFlowEmbeddingModel,
+		liveRerankModelEnv:                                     ragproviders.SiliconFlowRerankModel,
+		liveCloudJudgeModelEnv:                                 memorycapture.DefaultSiliconFlowCloudJudgeModelID,
+		liveMemoryToolRouteApprovalEnv:                         memorycapture.LiveMemoryToolRouteApproval,
+		liveMemoryToolRouteProviderIDEnv:                       "configured-gpt",
+		liveMemoryToolRouteProviderTypeEnv:                     "openai_compatible",
+		liveMemoryToolRouteBaseURLSHA256Env:                    strings.Repeat("b", 64),
+		liveMemoryToolRouteModelIDEnv:                          "gpt-test",
+		liveConfiguredCandidateJudgeApprovalEnv:                memorycapture.LiveMemoryToolRouteApproval,
+		liveConfiguredCandidateJudgeProviderIDEnv:              "configured-gpt",
+		liveConfiguredCandidateJudgeProviderTypeEnv:            "openai_compatible",
+		liveConfiguredCandidateJudgeBaseURLSHA256Env:           strings.Repeat("c", 64),
+		liveConfiguredCandidateJudgeModelIDEnv:                 "gpt-judge",
+		liveProductionMemoryJudgeValidationApprovalEnv:         memorycapture.LiveProductionMemoryJudgeValidationApproval,
+		liveProductionBufferedMemoryJudgeValidationApprovalEnv: memorycapture.LiveProductionBufferedMemoryJudgeValidationApproval,
 	}
 	authorization := loadLiveAuthorization(mapEnvironment(values))
 	if err := memorycapture.AuthorizeProviderMode(
@@ -598,6 +621,13 @@ func TestLoadLiveAuthorizationRequiresExactModelTargets(t *testing.T) {
 	productionValues[liveConfiguredCandidateJudgeBaseURLSHA256Env] = memorycapture.FixedMemoryJudgeBaseURLSHA256
 	productionValues[liveConfiguredCandidateJudgeModelIDEnv] = memorycapture.FixedMemoryJudgeModelID
 	if err := memorycapture.AuthorizeProductionMemoryJudgeValidationTarget(
+		memorycapture.ProviderModeLiveSiliconFlow,
+		memorycapture.FixedMemoryJudgeAuthority(),
+		loadLiveAuthorization(mapEnvironment(productionValues)),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := memorycapture.AuthorizeProductionBufferedMemoryJudgeValidationTarget(
 		memorycapture.ProviderModeLiveSiliconFlow,
 		memorycapture.FixedMemoryJudgeAuthority(),
 		loadLiveAuthorization(mapEnvironment(productionValues)),
