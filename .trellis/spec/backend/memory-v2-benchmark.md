@@ -902,6 +902,27 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   and `3ee114b2991ad2d0de954ad4a5998947567c66672e010dc079f17c73c18ae650`.
   No runtime flag was changed automatically; do not rerun, promote, or start
   Holdout from this consumed authorization.
+- The retained schema-v15 report cannot identify the exact nine failed cases:
+  its nine failure entries are aggregate criterion/slice messages, not case
+  IDs. All nine are contained in the 10-case `unrelated_negative` Validation
+  slice, but naming any exact nine is unsupported. The separately versioned
+  Development policy
+  `memory_hybrid_fixed_cloud_candidate_judge_negative_guard_development_v1`
+  adds only the hash-bound bilingual guard
+  `memory-negative-policy-query-guard-v1`/
+  `8fe79b55a0f136392081a81e471abae98d0db7b8e3bece74adcc590b9d2c8f39`.
+  After authorized Prepare and before candidate admission/rerank/Judge, a
+  match records an empty final set with
+  `NEGATIVE_POLICY_QUERY_ABSTAINED`. Query-only BGE embedding may already have
+  completed, but no candidate plaintext may cross a Provider boundary. A
+  provider-free audit of only the already-consumed Validation split matched
+  `10/10` `unrelated_negative`, `16/45` expected-no-Memory, and `0/55`
+  relevant cases. Ordered case-set hashes are
+  `1e8aa17ce6f8426ce9c91d3be7ffeef34be2bb8b14d0eaa9a8616b5426f0bc6f`
+  and `a3c322d299a24c3443b92e9e7136b53bed8fd17e1d0a9bd71815937e41ba76c2`.
+  This is diagnostic Development evidence only: it changes neither
+  production-v1 nor the consumed Validation result and authorizes no live run,
+  Holdout, promotion, Release, or recall re-enable.
 - Aggregate-only Development evidence authorizes metric comparison, not case-
   level or causal attribution. After disjoint v4 and v5 hard-negative families
   each retained one `unrelated_negative` false injection, do not author another
@@ -1047,6 +1068,8 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | Schema-v12 attempt counts, latency samples, cooldown totals, Judge input bounds, or `attempts * 128` output authority do not reconcile | Reject report/manifest publication; never repair aggregate evidence after the run. |
 | Schema-v12 contains `HardCutoffApplied` or a `HARD_CUTOFF` trace | Reject it as execution-policy drift; criteria v3 is diagnostic-only, not permission to retain historical cutoff semantics. |
 | Aggregate-only evidence shows a false injection but no case identity/response, or one run has Judge failures | Preserve the failed bundle; do not infer a causal case, mutate another corpus, relax `0.02`, or compare positive quality as if execution were stable. Require separately versioned diagnostic or policy evidence. |
+| The Development negative-policy guard matches after Prepare | Record `NEGATIVE_POLICY_QUERY_ABSTAINED` with empty rerank/final/token surfaces; skip admission, candidate rerank, and Judge egress. Query-only BGE embedding before Prepare is allowed. |
+| The Development guard/policy identity or descriptor provenance drifts, or the policy is installed as the product Tool policy | Reject the policy before Provider work. Production-v1 descriptor bytes/hash must remain unchanged and product Tool retrieval accepts only production-v1. |
 | Development passes | Retain aggregate evidence and stop for owner review; never enter Validation automatically. |
 | Frozen validation is requested before a Development-selected policy is committed | Reject before credential read or Provider work. |
 | Schema-v15 mode selects Development/Holdout, seeds other fixtures, or changes the frozen case order/read-intent/policy/criteria hash | Reject before report publication; historical schemas and the visible machine Holdout remain untouched. |
@@ -1160,6 +1183,13 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   old configured-judge approval, share credential bytes, seed Holdout, stop at
   the first terminal case, persist a query/case ID/raw score, accept Fake as a
   pass, or let a live pass flip a product flag.
+- **Negative-guard Development base**: authorized Prepare returns candidates,
+  the bilingual guard matches, Record completes with an empty final set and
+  `NEGATIVE_POLICY_QUERY_ABSTAINED`, and admission/rerank/Judge call counts are
+  zero. One earlier query-only embedding is not candidate plaintext egress.
+- **Negative-guard Development bad**: mutate production-v1, change the Judge
+  prompt or thresholds in the same cycle, infer the exact nine failed case
+  IDs, inspect Holdout, or treat the provider-free audit as promotion evidence.
 - **Exact-pair export good**: resolve only active attested `RAG:SILICONFLOW`
   and the exact fixed Luna tuple, create two exclusive private mode-`0600`
   files, run schema-v15, and wipe both source copies on every exit.

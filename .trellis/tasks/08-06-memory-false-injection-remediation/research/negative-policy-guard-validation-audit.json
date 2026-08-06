@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "neo-chat.memory-negative-policy-query-guard-audit.v1",
+  "scope": {
+    "split": "validation",
+    "caseCount": 100,
+    "holdoutInspected": false,
+    "providerCalls": 0
+  },
+  "evidence": {
+    "reportSha256": "6b2ec1a0cf26b2190302accac384f9fab4fce0898d1b1bad1eaacb5a2ce39c69",
+    "manifestSha256": "3ee114b2991ad2d0de954ad4a5998947567c66672e010dc079f17c73c18ae650",
+    "corpusSha256": "51401414b6f71f4052ddc7084185d62e39eeeb2fd47ab8826382b48893185be5"
+  },
+  "guard": {
+    "version": "memory-negative-policy-query-guard-v1",
+    "sha256": "8fe79b55a0f136392081a81e471abae98d0db7b8e3bece74adcc590b9d2c8f39"
+  },
+  "counts": {
+    "relevant": 55,
+    "expectedNoMemory": 45,
+    "flaggedExpectedNoMemory": 16,
+    "flaggedRelevant": 0,
+    "unrelatedNegative": 10,
+    "flaggedUnrelatedNegative": 10
+  },
+  "caseSetBindings": {
+    "unrelatedNegativeOrderedIdsSha256": "1e8aa17ce6f8426ce9c91d3be7ffeef34be2bb8b14d0eaa9a8616b5426f0bc6f",
+    "flaggedOrderedIdsSha256": "a3c322d299a24c3443b92e9e7136b53bed8fd17e1d0a9bd71815937e41ba76c2"
+  },
+  "evidenceLimit": "The aggregate-only retained report cannot identify the exact nine false-injection case IDs."
+}

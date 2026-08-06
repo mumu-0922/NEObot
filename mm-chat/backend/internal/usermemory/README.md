@@ -241,6 +241,19 @@ atomic assistant-finalize Usage capability only after the final answer
 completes. A continuation recovery from the original request clears that list
 because the recovery request contains no Memory body.
 
+The post-schema-v15 false-injection remediation is a separate Development-only
+policy:
+`memory_hybrid_fixed_cloud_candidate_judge_negative_guard_development_v1`.
+It binds the bilingual `memory-negative-policy-query-guard-v1` pattern set and
+its SHA-256 into optional descriptor fields. Those fields are omitted for all
+historical policies, preserving the production-v1 descriptor bytes/hash. The
+guard runs after `PrepareHybridShadow` and before admission, candidate BGE
+rerank, and Luna Judge. A match records an empty final set with
+`NEGATIVE_POLICY_QUERY_ABSTAINED`; query-only embedding can already have
+occurred, but no candidate plaintext crosses a Provider boundary. Server
+composition still installs only production-v1, so this Development policy
+cannot serve the product Memory Tool without a future explicit promotion.
+
 The product flag and Worker hybrid flag both default false. The owner-promoted
 production reader is active only while the Tool flag is explicitly true;
 setting it false is the immediate rollback and restores ordinary chat without
@@ -315,6 +328,7 @@ L3 failure falls back to unchanged L1/L2 behavior.
 | `SearchRelevantAfterMemoryToolCall(ctx, input)` | Post-call fixed hybrid retrieval plus migration-065 final hydration; no v1 fallback or direct Usage mutation. |
 | `WithHybridMemoryToolRelevancePolicy(policy)` | Install the separate product Tool reader policy; absent or non-production policies fail closed before Provider work. |
 | `HybridShadowFixedMemoryJudgeProductionPolicy()` | Build the owner-promoted fixed BGE then fixed Luna production selection identity. |
+| `HybridShadowNegativePolicyGuardDevelopmentPolicy()` | Build the non-promotional accuracy-first policy with the frozen bilingual negative meta-policy guard. |
 | `WithHybridMemoryToolRouter(router)` | Install a Development-only route dependency for an explicit calibration policy. |
 | `HybridShadowMemoryFirstToolRoundCalibrationPolicy(modelID)` | Build the exact non-promotional schema-v7 first-ToolRound policy. |
 | `SearchRelevantL2Scenes(ctx, query, conversationID, assistantMessageID, activeRequested)` | Default-off Scene shadow or current authorized active results |

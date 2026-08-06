@@ -532,6 +532,32 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   `0.02` is Orange/disable recall while preserving data; Provider stability or
   remaining quality failure is Yellow/retain Beta; a live pass means owner
   review only. No result automatically releases L1 or starts L2/L3.
+- The schema-v15 aggregate report proves only that all nine false injections
+  are inside its 10-case `unrelated_negative` slice; it cannot recover the
+  exact failed case IDs. The remediation is a separate Development-only
+  accuracy-first policy,
+  `memory_hybrid_fixed_cloud_candidate_judge_negative_guard_development_v1`.
+  It binds bilingual guard version `memory-negative-policy-query-guard-v1`
+  and SHA-256
+  `8fe79b55a0f136392081a81e471abae98d0db7b8e3bece74adcc590b9d2c8f39`
+  into the policy descriptor. The three new descriptor fields use
+  `omitempty`, so production-v1 JSON remains byte-identical with SHA-256
+  `c65c2b0bee2561ebbc8d97a65c4cc0c64db243b8a09334a8f1836250d799095c`.
+  The guard runs only after `PrepareHybridShadow` returns authorized
+  candidates and before `AuthorizeHybridRerank`, BGE candidate rerank, or Luna
+  Judge. A match records empty reranked/final surfaces and bounded fallback
+  `NEGATIVE_POLICY_QUERY_ABSTAINED`. Query embedding remains before Prepare,
+  so one secret-redacted query-only BGE call is allowed; candidate plaintext
+  egress is zero. The Server composition root continues to install only
+  production-v1, and product Tool retrieval rejects this Development identity.
+- The provider-free consumed-Validation audit matched all `10/10`
+  `unrelated_negative` cases plus six other expected-no-Memory cases and zero
+  of 55 relevant cases. Its 16 ordered flagged IDs hash to
+  `a3c322d299a24c3443b92e9e7136b53bed8fd17e1d0a9bd71815937e41ba76c2`;
+  the 10 ordered `unrelated_negative` IDs hash to
+  `1e8aa17ce6f8426ce9c91d3be7ffeef34be2bb8b14d0eaa9a8616b5426f0bc6f`.
+  This offline diagnostic does not replace a separately authorized
+  Development calibration or a future versioned Validation.
 - The retained schema-v12 live result completed all `195` candidate-bearing
   rerank-plus-judge decisions with zero failed cases, but the accuracy-first
   policy injected Memory into `29/135` negative cases. Its false-injection
@@ -724,6 +750,8 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 | Explicit read sees unknown capability | Start the fixed background probe, release no Tool Memory for that turn, and never set an implicit override. |
 | Official DeepSeek returns a JSON object with forbidden fields for canonical `search_memory` | Drop every returned member at the zero-argument Provider adapter boundary, validate canonical `{}`, and retain the current server-owned request as the only retrieval query. |
 | Product Tool policy is absent or is any Development/shadow identity | Return `policy_unavailable`; perform zero hybrid Provider work and release no Memory. |
+| Development negative-policy guard matches after authorized Prepare | Record completed empty final with `NEGATIVE_POLICY_QUERY_ABSTAINED`; do not call admission, candidate rerank, or Judge. The earlier query-only embed remains permitted. |
+| Guard fields appear on production-v1 or guard version/SHA/policy identity drifts | Reject the policy. Never alias Development to production or change historical descriptor JSON. |
 | Current stored fixed Judge provider/type/Base-URL hash/model/secret drifts | Reject that Judge attempt as provenance drift; release no final Memory and never switch Provider/model. |
 | Product Judge returns a typed transient Provider failure | Retry at most twice; honor valid `Retry-After`, otherwise wait five then ten seconds. Deterministic/protocol/provenance failures do not retry. |
 | Product first round returns no Memory call | Make zero hybrid retrieval calls and release the buffered ordinary answer. |
@@ -782,6 +810,15 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   strict empty ordinal set; Record persists an empty counterfactual final,
   latency remains diagnostic, the next case starts only after its cooldown,
   and v1 remains the sole prompt/Usage authority.
+- **Negative-guard base**: Prepare returns a candidate surface for a bilingual
+  unrelated-record policy question; the guard records
+  `NEGATIVE_POLICY_QUERY_ABSTAINED` with zero admission/rerank/Judge calls and
+  no final Memory. An ordinary personal-Memory read does not match and follows
+  the unchanged accuracy-first stages.
+- **Negative-guard bad**: run the guard before repository Prepare, send
+  candidate bodies before evaluating it, attach guard fields to production-v1,
+  change the Judge prompt/threshold concurrently, or infer exact failed case
+  IDs from aggregate evidence.
 - **Judge-diagnostic base**: the same serial request fails once with a typed
   `PROVIDER_RATE_LIMITED`, retries, and succeeds. Schema v13 increments the
   attempt map once, emits no terminal category, and still reports
@@ -830,6 +867,10 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   and secret-only zero-egress, admission unavailable/stale/low-similarity
   abstention, fixed intent-anchor hash, query-only intent egress,
   invalid/late/low-margin intent abstention, deterministic rerank-score
+  validation, frozen bilingual negative-policy guard version/SHA, positive and
+  relevant-query negatives, post-Prepare pre-admission abstention with exactly
+  one query embed and zero admission/rerank/Judge calls, unchanged production
+  descriptor JSON/SHA, Development product-policy rejection,
   validation, strict exact-key/duplicate-key/ordinal judge decoding, prompt
   SHA-256/model/decoding provenance, query/candidate secret redaction,
   concurrent BGE/judge failure and cutoff, ordinal intersection, empty-judge

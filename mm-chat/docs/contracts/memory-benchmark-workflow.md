@@ -1566,6 +1566,31 @@ Both one-run credential copies and every scoped runtime object were removed.
 The operator path deliberately changed no Memory flag; do not rerun, promote,
 run Holdout, or release from this consumed authorization.
 
+The retained aggregate report cannot name the exact nine failed cases. It
+proves only that all nine are contained in the 10-case `unrelated_negative`
+Validation slice. The provider-free remediation audit therefore used only the
+already-consumed Validation split and introduced no new evaluation or Provider
+authority. The frozen bilingual guard
+`memory-negative-policy-query-guard-v1` has SHA-256
+`8fe79b55a0f136392081a81e471abae98d0db7b8e3bece74adcc590b9d2c8f39`.
+It matched all `10/10` `unrelated_negative` cases, `16/45` expected-no-Memory
+cases overall, and `0/55` relevant cases. The ordered `unrelated_negative` and
+all-flagged case ID sets hash to
+`1e8aa17ce6f8426ce9c91d3be7ffeef34be2bb8b14d0eaa9a8616b5426f0bc6f`
+and `a3c322d299a24c3443b92e9e7136b53bed8fd17e1d0a9bd71815937e41ba76c2`.
+
+The guard is wired only into Development policy
+`memory_hybrid_fixed_cloud_candidate_judge_negative_guard_development_v1`.
+It runs after authorized repository Prepare and before candidate admission,
+BGE rerank, or Luna Judge. A match records a completed empty final set with
+`NEGATIVE_POLICY_QUERY_ABSTAINED`; the earlier query-only BGE embedding may
+still occur, but candidate plaintext Provider egress is zero. Production-v1,
+its descriptor hash
+`c65c2b0bee2561ebbc8d97a65c4cc0c64db243b8a09334a8f1836250d799095c`,
+Server composition, and runtime flags remain unchanged. This offline audit is
+not a live Development pass and authorizes no Validation, Holdout, promotion,
+Release, or recall re-enable.
+
 Accuracy-first Development keeps the same exact two-file and fixed-Luna
 authority. Its v12 execution policy changes no credential boundary: operator
 copies remain mode `0600`, read-only in the runner, independent by file/inode/
