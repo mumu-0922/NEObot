@@ -20,6 +20,7 @@ cost_file="${temp_dir}/cost.json"
 credential_file="${temp_dir}/credential"
 memory_tool_route_credential_file="${temp_dir}/memory-tool-route-credential"
 configured_judge_credential_file="${temp_dir}/configured-judge-credential"
+identical_judge_credential_file="${temp_dir}/identical-judge-credential"
 render_output="${temp_dir}/render-output"
 env_file="${temp_dir}/render.env"
 rendered="${temp_dir}/compose.json"
@@ -33,8 +34,10 @@ printf '{"schemaVersion":"protocol-cost"}\n' >"${cost_file}"
 printf 'fixture-live-credential-not-used\n' >"${credential_file}"
 printf 'fixture-route-credential-not-used\n' >"${memory_tool_route_credential_file}"
 printf 'fixture-judge-credential-not-used\n' >"${configured_judge_credential_file}"
+cp "${credential_file}" "${identical_judge_credential_file}"
 chmod 600 "${fixture_root}"/*.json "${cost_file}" "${credential_file}" \
-  "${memory_tool_route_credential_file}" "${configured_judge_credential_file}"
+  "${memory_tool_route_credential_file}" "${configured_judge_credential_file}" \
+  "${identical_judge_credential_file}"
 
 cat >"${env_file}" <<EOF
 MEMORY_REGRESSION_DB_PASSWORD=fixture-render-password
@@ -61,6 +64,7 @@ MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_BASE_URL=
 MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_BASE_URL_SHA256=
 MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_MODEL=
 MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_APPROVAL=NOT_AUTHORIZED
+MEMORY_REGRESSION_PRODUCTION_MEMORY_JUDGE_VALIDATION_APPROVAL=NOT_AUTHORIZED
 EOF
 chmod 600 "${env_file}"
 
@@ -131,6 +135,13 @@ for name in ("memory-regression-fake-runner", "memory-regression-live-runner"):
         raise SystemExit(f"Memory regression topology: {name} hardening drift")
     if runner.get("build", {}).get("target") != "memory-regression-capture":
         raise SystemExit(f"Memory regression topology: {name} build target drift")
+    environment = runner.get("environment", {})
+    if "role=go_api_runtime" not in environment.get(
+        "MM_CHAT_MEMORY_REGRESSION_RUNTIME_DATABASE_URL", ""
+    ) or "role=go_api_runtime" in environment.get(
+        "MM_CHAT_MEMORY_REGRESSION_ADMIN_DATABASE_URL", ""
+    ):
+        raise SystemExit(f"Memory regression topology: {name} runtime role boundary drift")
     mounts = {mount["target"]: mount for mount in runner.get("volumes", [])}
     expected_mounts = {
         "/fixtures/regression": fixture_root,
@@ -169,6 +180,10 @@ if "-memory-tool-route-credential-file" not in live.get("command", []):
     raise SystemExit("Memory regression topology: Memory Tool-route credential boundary missing")
 if "-configured-candidate-judge-credential-file" not in live.get("command", []):
     raise SystemExit("Memory regression topology: configured candidate-judge credential boundary missing")
+if live.get("environment", {}).get(
+    "MM_CHAT_MEMORY_REGRESSION_LIVE_PRODUCTION_MEMORY_JUDGE_VALIDATION_APPROVAL"
+) != "NOT_AUTHORIZED":
+    raise SystemExit("Memory regression topology: production Validation approval default drift")
 for key, value in live.get("environment", {}).items():
     if "KEY" in key or "TOKEN" in key or "SECRET" in key:
         raise SystemExit("Memory regression topology: Provider credential entered Docker environment")
@@ -679,6 +694,183 @@ if args and args[0] == "compose":
                 if diagnostic
                 else "development_main_model_first_tool_round_only"
             )
+        elif capture_mode == "production_fixed_memory_judge_validation":
+            zero_safety = {
+                "crossUserLeakCount": 0,
+                "deletedMemoryLeakCount": 0,
+                "secretLeakCount": 0,
+                "untrustedSourceLeakCount": 0,
+                "unauthorizedProviderEgressCount": 0,
+                "passed": True,
+            }
+            validation_hashes = {
+                "configurationSha256": "1" * 64,
+                "validationCaseOrderSha256": "2" * 64,
+                "corpusRawSha256": "3" * 64,
+                "productionRelevancePolicySha256": "4" * 64,
+                "memoryReadIntentPolicySha256": "538d9ccff34fb976cedfca0d9e153078cb3ce36f1baff0691f1d2124d182119c",
+                "evaluationCriteriaSha256": "5" * 64,
+            }
+            def validation_latency(count):
+                return {
+                    "sampleCount": count,
+                    "totalMilliseconds": count,
+                    "p95LatencyMilliseconds": 1 if count else 0,
+                    "p99LatencyMilliseconds": 1 if count else 0,
+                    "maximumLatencyMilliseconds": 1 if count else 0,
+                }
+            validation_payload = {
+                "schemaVersion": "neo-chat.memory-regression-relevance-validation.v15",
+                "corpusClass": "machine_reviewed_regression",
+                "admissionMode": "frozen_production_fixed_memory_judge_validation_only",
+                "promotionEligible": False,
+                "releaseEligible": False,
+                "policySelected": False,
+                "executionComplete": True,
+                "evidenceClass": (
+                    "live_validation"
+                    if mode == "live_siliconflow"
+                    else "fake_protocol_lifecycle_only"
+                ),
+                "split": "validation",
+                "caseCount": 100,
+                "policyId": "memory_hybrid_fixed_cloud_candidate_judge_production_v1",
+                "profileId": candidate_profile,
+                **validation_hashes,
+                "memoryReadIntentPolicyVersion": "memory-explicit-read-intent-v1",
+                "providerEgressPolicy": "owner_authorized_normal_candidates_v1",
+                "providerCostPolicy": "owner_authorized_absolute_cap_v1",
+                "providerCostAuthorized": True,
+                "judgeProviderId": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_ID"],
+                "judgeProviderType": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_TYPE"],
+                "judgeBaseUrlSha256": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_BASE_URL_SHA256"],
+                "judgeModelId": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_MODEL"],
+                "judgeAdapter": "chat-configured-candidate-judge-v1",
+                "judgePromptVersion": "memory-cloud-candidate-judge-prompt-v1",
+                "judgePromptSha256": "c004e834f2db572fc8393f088f47750d420379664f972357f987a09d8647f9c8",
+                "judgeDecodingProfile": "temperature-0_max-output-128_no-thinking_v1",
+                "failureTaxonomyVersion": "memory-candidate-judge-failure-taxonomy-v1",
+                "failureTaxonomySha256": "c22cb137da8b5fda87526237446519dd9abe2c8d221ad703c5445358d9059f8d",
+                "diagnosticCompleteness": "attempt_terminal_reconciled_fail_closed_v1",
+                "selectionAlgorithm": "strict-ordinal_intersect-bge-order_top5-token-budget_v1",
+                "evaluationCriteriaVersion": "neo-chat.memory-benchmark-criteria.v3",
+                "evaluationCriteria": {
+                    "minimumCandidateRecallAt20": 0.95,
+                    "minimumFinalRecallAt5": 0.90,
+                    "minimumCurrentFactAccuracy": 0.95,
+                    "maximumFalseInjectionRate": 0.02,
+                    "maximumAveragePromptMemoryTokens": 600,
+                    "maximumPromptMemoryTokens": 900,
+                    "maximumProviderCostRatio": 0.15,
+                    "latencyEvaluationMode": "diagnostic_only_v1",
+                    "applicationDeadlineMode": "none_v1",
+                },
+                "executionPolicy": {
+                    "sequenceVersion": "production_bge_m3_rerank_fixed_luna_judge_record_serial_v1",
+                    "globalProviderRequestConcurrency": 1,
+                    "applicationDeadlineMode": "none_v1",
+                    "providerElapsedTimeoutMode": "none_v1",
+                    "latencyEvaluationMode": "diagnostic_only_v1",
+                    "interCaseCooldownMilliseconds": 1000,
+                    "interCaseCooldownClock": (
+                        "wall_clock_v1"
+                        if mode == "live_siliconflow"
+                        else "virtual_protocol_v1"
+                    ),
+                    "retryPolicyVersion": "transient_408_429_5xx_transport_read_judge_twice_v2",
+                    "maximumRetriesPerProviderRequest": 1,
+                    "retryFallbackDelayMilliseconds": 5000,
+                    "maximumJudgeRetriesPerRequest": 2,
+                    "secondJudgeRetryDelayMilliseconds": 10000,
+                },
+                "passed": mode == "live_siliconflow",
+                "outcome": (
+                    {
+                        "severity": "none",
+                        "requiredAction": "owner_review_no_automatic_release",
+                        "reasons": [],
+                    }
+                    if mode == "live_siliconflow"
+                    else {
+                        "severity": "yellow",
+                        "requiredAction": "retain_beta",
+                        "reasons": ["FAKE_PROTOCOL_NON_EVIDENCE"],
+                    }
+                ),
+                "evaluation": {
+                    "passed": True,
+                    "metrics": {
+                        "candidateRecallAt20": 1.0,
+                        "finalRecallAt5": 1.0,
+                        "currentFactAccuracy": 1.0,
+                        "falseInjectionRate": 0.0,
+                        "relevantCaseCount": 65,
+                        "negativeCaseCount": 35,
+                        "currentFactCaseCount": 33,
+                        "falseInjectionCases": 0,
+                    },
+                    "rankingDiagnostics": {"ndcgAt5": 1.0, "mrrAt5": 1.0},
+                    "budgets": {
+                        "p95LatencyMilliseconds": 1,
+                        "p99LatencyMilliseconds": 1,
+                        "averagePromptMemoryTokens": 100,
+                        "maximumPromptMemoryTokens": 200,
+                        "promptTokenPassed": True,
+                    },
+                    "safety": zero_safety,
+                    "slices": {},
+                    "failures": [],
+                },
+                "diagnostics": {
+                    "emptyCandidateCaseCount": 35,
+                    "judgeCompletedCaseCount": 65,
+                    "judgeAbstainedCaseCount": 10,
+                    "failedCaseCount": 0,
+                    "failureCodeCounts": {},
+                    "judgeTerminalFailureCategoryCounts": {},
+                },
+                "providerAttempts": {
+                    "passageEmbeddingAttempts": 1,
+                    "passageEmbeddingRetries": 0,
+                    "queryEmbeddingAttempts": 100,
+                    "queryEmbeddingRetries": 0,
+                    "rerankAttempts": 65,
+                    "rerankRetries": 0,
+                    "judgeAttempts": 65,
+                    "judgeRetries": 0,
+                    "judgeInputTokenUpperBound": 65000,
+                    "judgeRetryInputTokenUpperBound": 0,
+                    "interCaseCooldownCount": 99,
+                    "interCaseCooldownMilliseconds": 99000,
+                    "interCaseCooldownElapsedMilliseconds": (
+                        99000 if mode == "live_siliconflow" else 0
+                    ),
+                    "passageEmbeddingLatency": validation_latency(1),
+                    "queryEmbeddingLatency": validation_latency(100),
+                    "rerankLatency": validation_latency(65),
+                    "judgeLatency": validation_latency(65),
+                    "judgeAttemptFailureCategoryCounts": {},
+                },
+                "costAuthority": {
+                    "unit": "cny_microunits",
+                    "authorizedRequestCount": 300,
+                    "actualRequestCount": 65,
+                    "authorizedMaximumInputTokens": 300000,
+                    "actualInputTokenUpperBound": 65000,
+                    "authorizedMaximumOutputTokens": 38400,
+                    "actualOutputTokenUpperBound": 8320,
+                    "maximumJudgeCostMicrounits": 2,
+                    "maximumMemoryProviderCostMicrounits": 50,
+                },
+            }
+            if os.environ.get("FAKE_PRODUCTION_FORBIDDEN") == "1":
+                validation_payload["query"] = "forbidden-case-level-payload"
+            validation = json.dumps(
+                validation_payload, separators=(",", ":")
+            ).encode() + b"\n"
+            bodies = {"fixed-memory-judge-production-validation.json": validation}
+            manifest_schema = "neo-chat.memory-regression-relevance-validation-run.v15"
+            admission_mode = "frozen_production_fixed_memory_judge_validation_only"
         elif capture_mode == "frozen_validation":
             validation = json.dumps({
                 "schemaVersion": "neo-chat.memory-regression-relevance-validation.v1",
@@ -744,12 +936,53 @@ if args and args[0] == "compose":
                     "development_fixed_memory_judge_accuracy",
                     "development_fixed_memory_judge_failure_diagnostic",
                     "development_fixed_memory_judge_transport_stable",
+                    "production_fixed_memory_judge_validation",
                 }:
                     manifest["providerCostPolicy"] = "owner_authorized_absolute_cap_v1"
                 if capture_mode == "development_fixed_memory_judge_failure_diagnostic":
                     manifest["passed"] = False
                 elif capture_mode == "development_fixed_memory_judge_transport_stable":
                     manifest["passed"] = True
+                elif capture_mode == "production_fixed_memory_judge_validation":
+                    validation_outcome = (
+                        {
+                            "severity": "none",
+                            "requiredAction": "owner_review_no_automatic_release",
+                            "reasons": [],
+                        }
+                        if mode == "live_siliconflow"
+                        else {
+                            "severity": "yellow",
+                            "requiredAction": "retain_beta",
+                            "reasons": ["FAKE_PROTOCOL_NON_EVIDENCE"],
+                        }
+                    )
+                    manifest.update({
+                        "captureId": "00000000-0000-4000-8000-000000000001",
+                        "releaseEligible": False,
+                        "evidenceClass": (
+                            "live_validation"
+                            if mode == "live_siliconflow"
+                            else "fake_protocol_lifecycle_only"
+                        ),
+                        "policyId": "memory_hybrid_fixed_cloud_candidate_judge_production_v1",
+                        "configurationSha256": validation_hashes["configurationSha256"],
+                        "validationCaseOrderSha256": validation_hashes["validationCaseOrderSha256"],
+                        "productionRelevancePolicySha256": validation_hashes["productionRelevancePolicySha256"],
+                        "memoryReadIntentPolicySha256": validation_hashes["memoryReadIntentPolicySha256"],
+                        "evaluationCriteriaSha256": validation_hashes["evaluationCriteriaSha256"],
+                        "passed": mode == "live_siliconflow",
+                        "outcome": validation_outcome,
+                        "startedAt": "2026-08-05T00:00:00Z",
+                        "completedAt": "2026-08-05T00:01:39Z",
+                        "costBasisSha256": "6" * 64,
+                        "inputs": {
+                            "fixtureRawSha256": "7" * 64,
+                            "corpusRawSha256": validation_hashes["corpusRawSha256"],
+                            "auditRawSha256": "8" * 64,
+                            "manifestRawSha256": "9" * 64,
+                        },
+                    })
             manifest_path = output / "run-manifest.json"
             manifest_path.write_text(json.dumps(manifest, separators=(",", ":")) + "\n", encoding="utf-8")
             manifest_path.chmod(0o600)
@@ -930,6 +1163,58 @@ if [[ "$(find "${transport_stable_output}" -mindepth 2 -maxdepth 2 -type f | wc 
   exit 1
 fi
 assert_cleanup "${transport_stable_log}"
+
+production_validation_output="${temp_dir}/production-validation-output"
+production_validation_log="${temp_dir}/production-validation-docker.log"
+mkdir "${production_validation_output}"
+chmod 700 "${production_validation_output}"
+set +e
+FAKE_DOCKER_LOG="${production_validation_log}" FAKE_RUNNER_STATUS=7 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${production_validation_output}" --provider-mode fake_protocol \
+  --capture-mode production_fixed_memory_judge_validation \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  >"${temp_dir}/production-validation.stdout" \
+  2>"${temp_dir}/production-validation.stderr"
+production_validation_status=$?
+set -e
+if [[ ${production_validation_status} -eq 0 || \
+  "$(find "${production_validation_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 || \
+  "$(find "${production_validation_output}" -mindepth 2 -maxdepth 2 -type f ! -perm 0600 | wc -l)" -ne 0 ]]; then
+  echo "Memory regression protocol: Fake production Validation did not retain its failed aggregate bundle" >&2
+  exit 1
+fi
+assert_cleanup "${production_validation_log}"
+
+forbidden_validation_output="${temp_dir}/forbidden-production-validation-output"
+forbidden_validation_log="${temp_dir}/forbidden-production-validation-docker.log"
+mkdir "${forbidden_validation_output}"
+chmod 700 "${forbidden_validation_output}"
+set +e
+FAKE_DOCKER_LOG="${forbidden_validation_log}" FAKE_RUNNER_STATUS=7 \
+  FAKE_PUBLISH=full FAKE_PRODUCTION_FORBIDDEN=1 \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${forbidden_validation_output}" --provider-mode fake_protocol \
+  --capture-mode production_fixed_memory_judge_validation \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  >"${temp_dir}/forbidden-production-validation.stdout" \
+  2>"${temp_dir}/forbidden-production-validation.stderr"
+forbidden_validation_status=$?
+set -e
+if [[ ${forbidden_validation_status} -eq 0 || \
+  -n "$(find "${forbidden_validation_output}" -mindepth 1 -print -quit)" ]]; then
+  echo "Memory regression protocol: production Validation retained forbidden payload" >&2
+  exit 1
+fi
+assert_cleanup "${forbidden_validation_log}"
 
 fixed_drift_output="${temp_dir}/fixed-drift-output"
 mkdir "${fixed_drift_output}"
@@ -1126,6 +1411,99 @@ if [[ "$(find "${live_accuracy_first_output}" -mindepth 2 -maxdepth 2 -type f | 
   exit 1
 fi
 assert_cleanup "${live_accuracy_first_log}"
+
+live_production_validation_output="${temp_dir}/live-production-validation-output"
+live_production_validation_log="${temp_dir}/live-production-validation-docker.log"
+mkdir "${live_production_validation_output}"
+chmod 700 "${live_production_validation_output}"
+FAKE_DOCKER_LOG="${live_production_validation_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${live_production_validation_output}" \
+  --provider-mode live_siliconflow \
+  --capture-mode production_fixed_memory_judge_validation \
+  --credential-file "${credential_file}" \
+  --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --configured-candidate-judge-credential-file "${configured_judge_credential_file}" \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --production-memory-judge-validation-approval I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_VALIDATION_QUOTA \
+  >"${temp_dir}/live-production-validation.stdout" \
+  2>"${temp_dir}/live-production-validation.stderr"
+if [[ "$(find "${live_production_validation_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: live production Validation wrapper bundle was not retained" >&2
+  exit 1
+fi
+assert_cleanup "${live_production_validation_log}"
+
+for denial in missing-production-approval legacy-development-approval; do
+  denial_output="${temp_dir}/${denial}-output"
+  mkdir "${denial_output}"
+  chmod 700 "${denial_output}"
+  denial_args=()
+  if [[ "${denial}" == "legacy-development-approval" ]]; then
+    denial_args=(
+      --configured-candidate-judge-approval
+      I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA
+    )
+  fi
+  set +e
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+    --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+    --output-dir "${denial_output}" \
+    --provider-mode live_siliconflow \
+    --capture-mode production_fixed_memory_judge_validation \
+    --credential-file "${credential_file}" \
+    --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+    --configured-candidate-judge-credential-file "${configured_judge_credential_file}" \
+    --configured-candidate-judge-provider-id SERVER_DEFAULT \
+    --configured-candidate-judge-provider-type openai_compatible \
+    --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+    --configured-candidate-judge-model gpt-5.6-luna \
+    "${denial_args[@]}" \
+    >"${temp_dir}/${denial}.stdout" 2>"${temp_dir}/${denial}.stderr"
+  denial_status=$?
+  set -e
+  if [[ ${denial_status} -eq 0 || -n "$(find "${denial_output}" -mindepth 1 -print -quit)" ]]; then
+    echo "Memory regression protocol: ${denial} did not fail closed before output" >&2
+    exit 1
+  fi
+done
+
+for credential_denial in shared-file byte-identical; do
+  credential_denial_output="${temp_dir}/production-${credential_denial}-output"
+  mkdir "${credential_denial_output}"
+  chmod 700 "${credential_denial_output}"
+  denied_judge_credential="${credential_file}"
+  if [[ "${credential_denial}" == "byte-identical" ]]; then
+    denied_judge_credential="${identical_judge_credential_file}"
+  fi
+  set +e
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+    --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+    --output-dir "${credential_denial_output}" \
+    --provider-mode live_siliconflow \
+    --capture-mode production_fixed_memory_judge_validation \
+    --credential-file "${credential_file}" \
+    --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+    --configured-candidate-judge-credential-file "${denied_judge_credential}" \
+    --configured-candidate-judge-provider-id SERVER_DEFAULT \
+    --configured-candidate-judge-provider-type openai_compatible \
+    --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+    --configured-candidate-judge-model gpt-5.6-luna \
+    --production-memory-judge-validation-approval I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_VALIDATION_QUOTA \
+    >"${temp_dir}/production-${credential_denial}.stdout" \
+    2>"${temp_dir}/production-${credential_denial}.stderr"
+  credential_denial_status=$?
+  set -e
+  if [[ ${credential_denial_status} -eq 0 || \
+    -n "$(find "${credential_denial_output}" -mindepth 1 -print -quit)" ]]; then
+    echo "Memory regression protocol: production ${credential_denial} credentials did not fail closed" >&2
+    exit 1
+  fi
+done
 
 same_credential_output="${temp_dir}/same-credential-output"
 mkdir "${same_credential_output}"

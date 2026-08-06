@@ -165,6 +165,38 @@ ValidateTransportStableMemoryJudgeCostAuthority(
 ) error
 ```
 
+The production-policy Validation identities and Go seams are:
+
+```text
+capture mode = production_fixed_memory_judge_validation
+reader       = neo-chat.native-memory-reader-capture.v13
+profile      = neo-chat.memory-regression-profile-config.v15
+report       = neo-chat.memory-regression-relevance-validation.v15
+manifest     = neo-chat.memory-regression-relevance-validation-run.v15
+admission    = frozen_production_fixed_memory_judge_validation_only
+artifact     = fixed-memory-judge-production-validation.json
+cost basis   = neo-chat.memory-regression-cost-basis.v10
+policy       = memory_hybrid_fixed_cloud_candidate_judge_production_v1
+approval     = I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_VALIDATION_QUOTA
+approval env = MM_CHAT_MEMORY_REGRESSION_LIVE_PRODUCTION_MEMORY_JUDGE_VALIDATION_APPROVAL
+```
+
+```go
+ProductionMemoryJudgeValidationExecutionPolicy(providerMode string) (
+    AccuracyFirstExecutionPolicy, error,
+)
+WrapProductionMemoryJudgeValidationProviders(...) (..., error)
+CaptureProductionMemoryJudgeValidation(...) (CapturedProfile, error)
+BuildProductionMemoryJudgeValidationReport(...) (
+    ProductionMemoryJudgeValidationReport, []byte, error,
+)
+BuildProductionMemoryJudgeValidationRunManifest(...) (
+    ProductionMemoryJudgeValidationRunManifest, []byte, error,
+)
+AuthorizeProductionMemoryJudgeValidationTarget(...) error
+ValidateProductionMemoryJudgeValidationCostAuthority(...) error
+```
+
 The separately owner-promoted product identity is:
 
 ```text
@@ -476,6 +508,26 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   and safety gate. Its passing Development report remains non-selecting and
   non-promotional. Do not mutate v12/v13, change SSE/HTTP2/connection reuse,
   alter prompt/BGE/corpus/criteria, or rerun automatically from this result.
+- Schema v15 evaluates the exact promoted production selection policy on only
+  the frozen 100-case Validation split. It is separate from historical
+  `frozen_validation` and every Development identity. The profile/report bind
+  exact case order, production policy, criteria, fixed Luna tuple, and frozen
+  read-intent policy `memory-explicit-read-intent-v1` SHA-256
+  `538d9ccff34fb976cedfca0d9e153078cb3ce36f1baff0691f1d2124d182119c`.
+  Retrieval keeps one retry; Judge keeps schema-v14's two retries and `5s/10s`
+  fallback; Provider concurrency remains one. A terminal case releases no
+  Memory, is aggregated, and does not stop later cases, but the report fails.
+- Schema-v15 live authority requires a fresh fixed-BGE credential, a different
+  fresh fixed-Luna credential, and the dedicated frozen-Validation approval.
+  The old configured-judge Development approval cannot authorize it. Fake
+  protocol is always lifecycle-only, Yellow/`retain_beta`, and non-passing.
+  Both report and manifest are aggregate-only, `releaseEligible=false`, and
+  unable to change `MEMORY_TOOL_LOOP_ENABLED` or the active policy.
+- Schema-v15 outcome precedence is immutable: any cross-user/Deleted/Secret/
+  authorization release is Red/disable Tool Loop; false injection above
+  `0.02` is Orange/disable recall while preserving data; Provider stability or
+  remaining quality failure is Yellow/retain Beta; a live pass means owner
+  review only. No result automatically releases L1 or starts L2/L3.
 - The retained schema-v12 live result completed all `195` candidate-bearing
   rerank-plus-judge decisions with zero failed cases, but the accuracy-first
   policy injected Memory into `29/135` negative cases. Its false-injection
@@ -644,6 +696,12 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 | Schema-v14 Judge request returns a retryable typed failure | Honor valid `Retry-After`; otherwise wait five seconds before retry one and ten seconds before retry two. Keep BGE at one retry and global Provider concurrency at one. |
 | Schema-v14 has any terminal failed case or fails attempt/terminal/cost reconciliation | Keep `passed=false`, release no v2 Memory, and reject drifted reports before publication. |
 | Schema-v14 completes with zero failed cases and passing evaluation | The report may pass, but keep `policySelected=false` and `promotionEligible=false`; stop for owner review and never enter live/Validation automatically. |
+| Schema-v15 uses a non-Validation case, changed order/policy/read-intent/criteria hash, or a non-production Judge tuple | Reject profile/report authority; do not reinterpret historical schemas or inspect Holdout. |
+| Schema-v15 has a terminal Provider failure | Record the typed empty-Memory case, continue later ordered cases and cooldowns, then fail Validation; never retry the whole run. |
+| Schema-v15 Fake report claims pass or any release authority | Reject; retain valid Fake evidence only as Yellow/`retain_beta`/`FAKE_PROTOCOL_NON_EVIDENCE` and return non-zero. |
+| Schema-v15 live approval is absent/old, or BGE/Luna credentials share inode/bytes | Reject before Provider construction and output; never expose values. |
+| Schema-v15 retained JSON contains query, Memory plaintext, Provider response/error, raw score, case ID, or case array | Reject and remove the bundle; aggregate slice counts remain allowed. |
+| Schema-v15 evaluation yields privacy release / false injection > `0.02` / stability or quality failure / pass | Emit Red/disable Tool Loop; Orange/disable recall preserving data; Yellow/retain Beta; or Pass/owner review respectively. Every branch keeps `releaseEligible=false` and mutates no flag. |
 | Candidate has a forbidden egress reason under the owner policy | Evaluation fails the zero-tolerance Provider-egress gate; only `irrelevant` is newly authorized. |
 | Main-model Tool route returns no call | Record `MEMORY_TOOL_ROUTE_ABSTAINED`; discard speculative BGE final rows and record zero final/tokens. |
 | Tool route returns a missing ID, wrong name, duplicate call, or nil/non-empty arguments | Reject the whole decision as `MEMORY_TOOL_ROUTE_FAILED`; never reinterpret it as an exact call. |
@@ -738,6 +796,19 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   attempt/terminal equations drift, BGE receives a second retry, or the v9
   authority does not cover `900` requests and `115200` output tokens. Fail or
   reject the report without automatic rerun.
+- **Production Validation good**: all 100 ordered cases complete through the
+  exact product BGE/Luna policy with zero terminal/privacy/injection failures;
+  attempts and v10 cost reconcile, aggregate artifacts pass validation, and
+  the result stops at owner review without Release.
+- **Production Validation base**: Fake PostgreSQL 17 completes `35` empty-
+  candidate and `65` Judge-completed cases with 100 query embeddings and 99
+  virtual cooldowns, retains exactly two private aggregate artifacts, returns
+  non-zero, and destroys its Compose project. This is no-network lifecycle
+  evidence only.
+- **Production Validation bad**: stop after one terminal case, seed all 500 or
+  Holdout, persist a case/query/raw Provider body, reuse v9 or old approval,
+  accept identical credentials, call Fake a pass, or flip the Tool flag from a
+  live pass.
 - **Bad**: claim with an arbitrary RAG record, reuse an old vector response
   after epoch/scope drift, rank cross-user then filter in Go, persist query or
   raw scores, accept free-form judge prose/IDs, treat owner egress authorization
@@ -801,7 +872,14 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   fallback policy, explicit `Retry-After` precedence, unchanged one-retry BGE
   ceiling, historical v12/v13 field omission, 900-request/115200-output-token
   cost authority, zero-terminal pass semantics, fake bundle replay, and no
-  automatic live authority, separate production policy identity, rejection of
+  automatic live authority,
+  schema-v15 exact 100-case/holdout denial, profile/reader/report/manifest/
+  cost/read-intent/policy hash identity, independent approval and distinct
+  credentials, fake Yellow/non-evidence, terminal continuation/final failure,
+  frozen outcome precedence, aggregate-only replay and leak rejection,
+  PostgreSQL 17 `go_api_runtime`, exact two-file permissions, and complete
+  Compose/credential cleanup without live requests,
+  separate production policy identity, rejection of
   every non-production Tool policy, exact fixed Provider/type/Base-URL hash/
   model/secret drift denial, and production Judge retry/non-retry behavior,
   post-threshold
@@ -869,6 +947,11 @@ Wrong: install a Development policy in product chat, resolve Luna once at
 startup, or fall back to v1 after Judge/provenance failure.
 ```
 
+```text
+Wrong: reuse schema-v14 Development approval/cost, seed 500 cases, stop at the
+first terminal failure, persist case detail, or let Fake/live pass auto-release.
+```
+
 ### Correct
 
 ```text
@@ -887,6 +970,10 @@ default-off hybrid-worker/shadow flag + separate default-off product Tool flag
      always non-selecting and non-passing
   -> schema-v14 only: same typed serial flow + Judge-only second retry,
      zero terminal failures required to pass and always non-selecting
+  -> schema-v15 only: exact 100-case production-policy Validation + frozen
+     read-intent/policy hashes + v10 cost + independent live approval;
+     terminal cases continue but force failure, aggregate-only output,
+     Fake is Yellow/non-evidence, live pass stops at owner review
   -> judge/BGE intersection; empty or uncertain result means no v2 Memory
   -> product first ToolRound sees normal request + search_memory, no Memory body
   -> exact call under production policy: current fixed Judge tuple reauthorized

@@ -11,40 +11,43 @@ import (
 )
 
 const (
-	BaselineProfileID                           = "native_v1_lexical"
-	CandidateProfileID                          = "native_v2_hybrid"
-	FakeCandidateProfileID                      = "native_v2_hybrid_fake_protocol"
-	ReaderVersion                               = "neo-chat.native-memory-reader-capture.v2"
-	CloudJudgeReaderVersion                     = "neo-chat.native-memory-reader-capture.v3"
-	MemoryToolRouteReaderVersion                = "neo-chat.native-memory-reader-capture.v4"
-	MemoryToolFirstRoundReaderVersion           = "neo-chat.native-memory-reader-capture.v5"
-	MemoryToolFirstRoundDiagnosticReaderVersion = "neo-chat.native-memory-reader-capture.v7"
-	ConfiguredCandidateJudgeReaderVersion       = "neo-chat.native-memory-reader-capture.v8"
-	FixedMemoryJudgeReaderVersion               = "neo-chat.native-memory-reader-capture.v9"
-	AccuracyFirstMemoryJudgeReaderVersion       = "neo-chat.native-memory-reader-capture.v10"
-	JudgeFailureDiagnosticReaderVersion         = "neo-chat.native-memory-reader-capture.v11"
-	TransportStableMemoryJudgeReaderVersion     = "neo-chat.native-memory-reader-capture.v12"
-	ProviderCostPolicyOwnerAuthorizedAbsoluteV1 = "owner_authorized_absolute_cap_v1"
-	AccuracyFirstExecutionSequenceV1            = "bge_query_admission_bge_rerank_luna_judge_record_serial_v1"
-	AccuracyFirstRetryPolicyV1                  = "transient_408_429_5xx_transport_read_once_v1"
-	TransportStableExecutionSequenceV2          = "bge_query_admission_bge_rerank_luna_judge_record_serial_judge_retry_v2"
-	TransportStableRetryPolicyV2                = "transient_408_429_5xx_transport_read_judge_twice_v2"
-	AccuracyFirstCooldownWallClockV1            = "wall_clock_v1"
-	AccuracyFirstCooldownVirtualProtocolV1      = "virtual_protocol_v1"
-	ProviderModeNone                            = "none"
-	ProviderModeFakeProtocol                    = "fake_protocol"
-	ProviderModeLiveSiliconFlow                 = "live_siliconflow"
-	CaptureModeFullRegression                   = "full_regression"
-	CaptureModeCalibration                      = "development_calibration"
-	CaptureModeCloudJudgeDevelopment            = "development_cloud_judge"
-	CaptureModeMemoryToolRouteDevelopment       = "development_memory_tool_route"
-	CaptureModeMemoryToolRouteDiagnostic        = "development_memory_tool_route_diagnostic"
-	CaptureModeConfiguredCandidateJudge         = "development_configured_candidate_judge"
-	CaptureModeFixedMemoryJudge                 = "development_fixed_memory_judge"
-	CaptureModeAccuracyFirstMemoryJudge         = "development_fixed_memory_judge_accuracy"
-	CaptureModeJudgeFailureDiagnostic           = "development_fixed_memory_judge_failure_diagnostic"
-	CaptureModeTransportStableMemoryJudge       = "development_fixed_memory_judge_transport_stable"
-	CaptureModeFrozenValidation                 = "frozen_validation"
+	BaselineProfileID                            = "native_v1_lexical"
+	CandidateProfileID                           = "native_v2_hybrid"
+	FakeCandidateProfileID                       = "native_v2_hybrid_fake_protocol"
+	ReaderVersion                                = "neo-chat.native-memory-reader-capture.v2"
+	CloudJudgeReaderVersion                      = "neo-chat.native-memory-reader-capture.v3"
+	MemoryToolRouteReaderVersion                 = "neo-chat.native-memory-reader-capture.v4"
+	MemoryToolFirstRoundReaderVersion            = "neo-chat.native-memory-reader-capture.v5"
+	MemoryToolFirstRoundDiagnosticReaderVersion  = "neo-chat.native-memory-reader-capture.v7"
+	ConfiguredCandidateJudgeReaderVersion        = "neo-chat.native-memory-reader-capture.v8"
+	FixedMemoryJudgeReaderVersion                = "neo-chat.native-memory-reader-capture.v9"
+	AccuracyFirstMemoryJudgeReaderVersion        = "neo-chat.native-memory-reader-capture.v10"
+	JudgeFailureDiagnosticReaderVersion          = "neo-chat.native-memory-reader-capture.v11"
+	TransportStableMemoryJudgeReaderVersion      = "neo-chat.native-memory-reader-capture.v12"
+	ProductionMemoryJudgeValidationReaderVersion = "neo-chat.native-memory-reader-capture.v13"
+	ProviderCostPolicyOwnerAuthorizedAbsoluteV1  = "owner_authorized_absolute_cap_v1"
+	AccuracyFirstExecutionSequenceV1             = "bge_query_admission_bge_rerank_luna_judge_record_serial_v1"
+	AccuracyFirstRetryPolicyV1                   = "transient_408_429_5xx_transport_read_once_v1"
+	TransportStableExecutionSequenceV2           = "bge_query_admission_bge_rerank_luna_judge_record_serial_judge_retry_v2"
+	TransportStableRetryPolicyV2                 = "transient_408_429_5xx_transport_read_judge_twice_v2"
+	ProductionValidationExecutionSequenceV1      = "production_bge_m3_rerank_fixed_luna_judge_record_serial_v1"
+	AccuracyFirstCooldownWallClockV1             = "wall_clock_v1"
+	AccuracyFirstCooldownVirtualProtocolV1       = "virtual_protocol_v1"
+	ProviderModeNone                             = "none"
+	ProviderModeFakeProtocol                     = "fake_protocol"
+	ProviderModeLiveSiliconFlow                  = "live_siliconflow"
+	CaptureModeFullRegression                    = "full_regression"
+	CaptureModeCalibration                       = "development_calibration"
+	CaptureModeCloudJudgeDevelopment             = "development_cloud_judge"
+	CaptureModeMemoryToolRouteDevelopment        = "development_memory_tool_route"
+	CaptureModeMemoryToolRouteDiagnostic         = "development_memory_tool_route_diagnostic"
+	CaptureModeConfiguredCandidateJudge          = "development_configured_candidate_judge"
+	CaptureModeFixedMemoryJudge                  = "development_fixed_memory_judge"
+	CaptureModeAccuracyFirstMemoryJudge          = "development_fixed_memory_judge_accuracy"
+	CaptureModeJudgeFailureDiagnostic            = "development_fixed_memory_judge_failure_diagnostic"
+	CaptureModeTransportStableMemoryJudge        = "development_fixed_memory_judge_transport_stable"
+	CaptureModeFrozenValidation                  = "frozen_validation"
+	CaptureModeProductionMemoryJudgeValidation   = "production_fixed_memory_judge_validation"
 )
 
 var (
@@ -130,6 +133,11 @@ type ProfileConfig struct {
 	ProviderCostPolicy                    string                        `json:"providerCostPolicy,omitempty"`
 	CalibrationPlan                       *CalibrationPlanConfig        `json:"calibrationPlan,omitempty"`
 	AccuracyFirstExecutionPolicy          *AccuracyFirstExecutionPolicy `json:"accuracyFirstExecutionPolicy,omitempty"`
+	ValidationCaseOrderSHA256             string                        `json:"validationCaseOrderSha256,omitempty"`
+	EvaluationCriteriaSHA256              string                        `json:"evaluationCriteriaSha256,omitempty"`
+	ProductionRelevancePolicySHA256       string                        `json:"productionRelevancePolicySha256,omitempty"`
+	MemoryReadIntentPolicyVersion         string                        `json:"memoryReadIntentPolicyVersion,omitempty"`
+	MemoryReadIntentPolicySHA256          string                        `json:"memoryReadIntentPolicySha256,omitempty"`
 }
 
 // AccuracyFirstExecutionPolicy is hash-bound by each accuracy-first schema. It

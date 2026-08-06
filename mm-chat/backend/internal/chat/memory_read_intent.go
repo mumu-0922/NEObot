@@ -1,8 +1,18 @@
 package chat
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"regexp"
 	"strings"
+)
+
+const (
+	// MemoryReadIntentPolicyVersion is hash-bound by the production Memory
+	// Validation profile. Adding a benchmark-driven keyword must therefore
+	// advance this contract instead of silently changing the admitted reader.
+	MemoryReadIntentPolicyVersion = "memory-explicit-read-intent-v1"
+	MemoryReadIntentPolicySHA256  = "538d9ccff34fb976cedfca0d9e153078cb3ce36f1baff0691f1d2124d182119c"
 )
 
 var explicitMemoryReadPatterns = []*regexp.Regexp{
@@ -68,4 +78,13 @@ func detectExplicitMemoryReadIntent(value string) bool {
 		}
 	}
 	return false
+}
+
+func memoryReadIntentPolicySHA256() string {
+	patterns := make([]string, len(explicitMemoryReadPatterns))
+	for index, pattern := range explicitMemoryReadPatterns {
+		patterns[index] = pattern.String()
+	}
+	digest := sha256.Sum256([]byte(strings.Join(patterns, "\n")))
+	return hex.EncodeToString(digest[:])
 }

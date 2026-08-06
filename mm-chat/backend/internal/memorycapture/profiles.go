@@ -250,6 +250,61 @@ func BuildTransportStableMemoryJudgeDevelopmentProfileConfig(
 	return config, nil
 }
 
+func BuildProductionMemoryJudgeValidationProfileConfig(
+	protected ProtectedRegression,
+	costBasisSHA256 string,
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	providerCostPolicy string,
+) (ProfileConfig, error) {
+	if !validFixedMemoryJudgeAuthority(authority) ||
+		providerCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+		judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
+		return ProfileConfig{}, ErrCaptureInvalid
+	}
+	_, config, err := buildProfileConfigs(
+		protected,
+		costBasisSHA256,
+		providerMode,
+		CaptureModeProductionMemoryJudgeValidation,
+		FrozenValidationSplit,
+		usermemory.HybridShadowFixedMemoryJudgeProductionPolicy(),
+		providerCostPolicy,
+		nil,
+	)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	caseOrderSHA256, err := validationCaseOrderSHA256(protected.Pool)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	criteriaSHA256, err := productionValidationCriteriaSHA256(protected.Pool.Corpus.Criteria)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	policySHA256, err := productionRelevancePolicySHA256()
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	config.ConfiguredCandidateJudgeProviderID = authority.ProviderID
+	config.ConfiguredCandidateJudgeProviderType = authority.ProviderType
+	config.ConfiguredCandidateJudgeBaseURLSHA256 = authority.BaseURLSHA256
+	config.ConfiguredCandidateJudgeAdapter = memoryjudge.ChatAdapterVersion
+	config.EvaluationCriteriaVersion = memoryeval.MemoryJudgeAccuracyFirstCriteriaVersionV3
+	config.ValidationCaseOrderSHA256 = caseOrderSHA256
+	config.EvaluationCriteriaSHA256 = criteriaSHA256
+	config.ProductionRelevancePolicySHA256 = policySHA256
+	config.MemoryReadIntentPolicyVersion = chat.MemoryReadIntentPolicyVersion
+	config.MemoryReadIntentPolicySHA256 = chat.MemoryReadIntentPolicySHA256
+	executionPolicy, err := ProductionMemoryJudgeValidationExecutionPolicy(providerMode)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	config.AccuracyFirstExecutionPolicy = &executionPolicy
+	return config, nil
+}
+
 func buildProfileConfigs(
 	protected ProtectedRegression,
 	costBasisSHA256 string,
@@ -291,7 +346,8 @@ func buildProfileConfigs(
 		}
 	} else if captureMode == CaptureModeAccuracyFirstMemoryJudge ||
 		captureMode == CaptureModeJudgeFailureDiagnostic ||
-		captureMode == CaptureModeTransportStableMemoryJudge {
+		captureMode == CaptureModeTransportStableMemoryJudge ||
+		captureMode == CaptureModeProductionMemoryJudgeValidation {
 		if captureMode == CaptureModeJudgeFailureDiagnostic {
 			readerVersion = JudgeFailureDiagnosticReaderVersion
 			profileSchemaVersion = "neo-chat.memory-regression-profile-config.v13"
@@ -304,12 +360,22 @@ func buildProfileConfigs(
 			if judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
 				return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
 			}
+		} else if captureMode == CaptureModeProductionMemoryJudgeValidation {
+			readerVersion = ProductionMemoryJudgeValidationReaderVersion
+			profileSchemaVersion = "neo-chat.memory-regression-profile-config.v15"
+			if judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
+				return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
+			}
 		} else {
 			readerVersion = AccuracyFirstMemoryJudgeReaderVersion
 			profileSchemaVersion = "neo-chat.memory-regression-profile-config.v12"
 		}
+		expectedPolicyID := usermemory.HybridRelevanceAccuracyFirstJudgePolicyID
+		if captureMode == CaptureModeProductionMemoryJudgeValidation {
+			expectedPolicyID = usermemory.HybridRelevanceProductionJudgePolicyID
+		}
 		if providerCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
-			policy.ID != usermemory.HybridRelevanceAccuracyFirstJudgePolicyID ||
+			policy.ID != expectedPolicyID ||
 			policyDescriptor.HardCutoffMilliseconds != 0 {
 			return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
 		}
@@ -374,6 +440,12 @@ func buildProfileConfigs(
 			JudgeFailureDiagnosticCompletenessPolicy
 	}
 	if captureMode == CaptureModeTransportStableMemoryJudge {
+		common.CandidateJudgeFailureTaxonomyVersion = memoryjudge.FailureTaxonomyVersion
+		common.CandidateJudgeFailureTaxonomySHA256 = memoryjudge.FailureTaxonomySHA256
+		common.CandidateJudgeDiagnosticCompleteness =
+			JudgeFailureDiagnosticCompletenessPolicy
+	}
+	if captureMode == CaptureModeProductionMemoryJudgeValidation {
 		common.CandidateJudgeFailureTaxonomyVersion = memoryjudge.FailureTaxonomyVersion
 		common.CandidateJudgeFailureTaxonomySHA256 = memoryjudge.FailureTaxonomySHA256
 		common.CandidateJudgeDiagnosticCompleteness =
@@ -708,6 +780,60 @@ func CaptureFrozenValidation(
 	)
 }
 
+// CaptureProductionMemoryJudgeValidation executes only the frozen 100-case
+// Validation split with the exact production BGE/Luna selection policy. A
+// terminal per-case Provider failure is recorded fail-closed and the remaining
+// ordered cases continue; only caller cancellation aborts the batch.
+func CaptureProductionMemoryJudgeValidation(
+	ctx context.Context,
+	seedDB *sql.DB,
+	runtimeDB *sql.DB,
+	runID string,
+	fullPool memoryauthor.RegressionPool,
+	index FixtureIndex,
+	seed SeedResult,
+	provider usermemory.HybridShadowProvider,
+	judge usermemory.HybridCandidateJudge,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	profileID string,
+	configurationSHA256 string,
+	cost memoryeval.ProviderCosts,
+) (CapturedProfile, error) {
+	if err := validateCaptureDatabases(ctx, seedDB, runtimeDB, runID, seed); err != nil {
+		return CapturedProfile{}, err
+	}
+	if err := validateSeedSplit(fullPool, seed.Cases, FrozenValidationSplit); err != nil {
+		return CapturedProfile{}, err
+	}
+	hybrid, hybridOK := provider.(*accuracyFirstHybridProvider)
+	candidateJudge, judgeOK := judge.(*accuracyFirstCandidateJudge)
+	if !hybridOK || !judgeOK || hybrid.controller == nil ||
+		hybrid.controller != candidateJudge.controller ||
+		hybrid.controller.maximumJudgeRetries != 2 ||
+		!hybrid.controller.judgeFailureDiagnostics ||
+		!validFixedMemoryJudgeAuthority(authority) {
+		return CapturedProfile{}, ErrCaptureInvalid
+	}
+	profile, err := captureCandidateProfile(
+		ctx,
+		runtimeDB,
+		index,
+		seed.Cases,
+		provider,
+		usermemory.HybridShadowFixedMemoryJudgeProductionPolicy(),
+		profileID,
+		configurationSHA256,
+		cost,
+		judge,
+		nil,
+	)
+	if err != nil {
+		return CapturedProfile{}, err
+	}
+	profile.Profile.ReaderVersion = ProductionMemoryJudgeValidationReaderVersion
+	return profile, nil
+}
+
 func validateCaptureDatabases(
 	ctx context.Context,
 	seedDB *sql.DB,
@@ -777,7 +903,8 @@ func captureCandidateProfile(
 	policyDescriptor, ok := usermemory.DescribeHybridShadowRelevancePolicy(policy)
 	if !ok || policyDescriptor.HardCutoffMilliseconds < 0 ||
 		(policyDescriptor.HardCutoffMilliseconds == 0 &&
-			policy.ID != usermemory.HybridRelevanceAccuracyFirstJudgePolicyID) {
+			policy.ID != usermemory.HybridRelevanceAccuracyFirstJudgePolicyID &&
+			policy.ID != usermemory.HybridRelevanceProductionJudgePolicyID) {
 		return CapturedProfile{}, ErrCaptureInvalid
 	}
 	repository := usermemory.NewPostgresRepository(runtimeDB)
@@ -843,7 +970,8 @@ func captureCandidateProfile(
 		}
 		candidateCases = append(candidateCases, observed)
 		calibrationCases = append(calibrationCases, calibration)
-		if policy.ID == usermemory.HybridRelevanceAccuracyFirstJudgePolicyID &&
+		if (policy.ID == usermemory.HybridRelevanceAccuracyFirstJudgePolicyID ||
+			policy.ID == usermemory.HybridRelevanceProductionJudgePolicyID) &&
 			caseIndex+1 < len(cases) {
 			accuracyProvider, ok := provider.(*accuracyFirstHybridProvider)
 			if !ok || accuracyProvider.controller == nil {
@@ -862,6 +990,8 @@ func captureCandidateProfile(
 			readerVersion = FixedMemoryJudgeReaderVersion
 		} else if policy.ID == usermemory.HybridRelevanceAccuracyFirstJudgePolicyID {
 			readerVersion = AccuracyFirstMemoryJudgeReaderVersion
+		} else if policy.ID == usermemory.HybridRelevanceProductionJudgePolicyID {
+			readerVersion = ProductionMemoryJudgeValidationReaderVersion
 		}
 		providerEgressPolicy =
 			memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1

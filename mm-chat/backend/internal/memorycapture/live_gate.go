@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	LiveApproval                = "I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA"
-	LiveMemoryToolRouteApproval = "I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA"
+	LiveApproval                                = "I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA"
+	LiveMemoryToolRouteApproval                 = "I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA"
+	LiveProductionMemoryJudgeValidationApproval = "I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_VALIDATION_QUOTA"
 
 	LiveAuthorizationDisabled                       = "MEMORY_REGRESSION_LIVE_DISABLED"
 	LiveAuthorizationApproval                       = "MEMORY_REGRESSION_LIVE_APPROVAL_REQUIRED"
@@ -20,28 +21,53 @@ const (
 	LiveAuthorizationMemoryToolRouteTarget          = "MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_TARGET_DENIED"
 	LiveAuthorizationConfiguredCandidateJudgeTarget = "MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_TARGET_DENIED"
 	LiveAuthorizationFixedMemoryJudgeTarget         = "MEMORY_REGRESSION_LIVE_FIXED_MEMORY_JUDGE_TARGET_DENIED"
+	LiveAuthorizationProductionValidationTarget     = "MEMORY_REGRESSION_LIVE_PRODUCTION_VALIDATION_TARGET_DENIED"
 )
 
 var ErrLiveNotAuthorized = errors.New("native Memory live capture is not authorized")
 
 type LiveAuthorization struct {
-	Enabled                               bool
-	Approval                              string
-	RunID                                 string
-	ProviderID                            string
-	EmbeddingModelID                      string
-	RerankModelID                         string
-	CloudJudgeModelID                     string
-	MemoryToolRouteApproval               string
-	MemoryToolRouteProviderID             string
-	MemoryToolRouteProviderType           string
-	MemoryToolRouteBaseURLSHA256          string
-	MemoryToolRouteModelID                string
-	ConfiguredCandidateJudgeApproval      string
-	ConfiguredCandidateJudgeProviderID    string
-	ConfiguredCandidateJudgeProviderType  string
-	ConfiguredCandidateJudgeBaseURLSHA256 string
-	ConfiguredCandidateJudgeModelID       string
+	Enabled                                 bool
+	Approval                                string
+	RunID                                   string
+	ProviderID                              string
+	EmbeddingModelID                        string
+	RerankModelID                           string
+	CloudJudgeModelID                       string
+	MemoryToolRouteApproval                 string
+	MemoryToolRouteProviderID               string
+	MemoryToolRouteProviderType             string
+	MemoryToolRouteBaseURLSHA256            string
+	MemoryToolRouteModelID                  string
+	ConfiguredCandidateJudgeApproval        string
+	ConfiguredCandidateJudgeProviderID      string
+	ConfiguredCandidateJudgeProviderType    string
+	ConfiguredCandidateJudgeBaseURLSHA256   string
+	ConfiguredCandidateJudgeModelID         string
+	ProductionMemoryJudgeValidationApproval string
+}
+
+func AuthorizeProductionMemoryJudgeValidationTarget(
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	authorization LiveAuthorization,
+) error {
+	if !validFixedMemoryJudgeAuthority(authority) {
+		return LiveAuthorizationError{Code: LiveAuthorizationProductionValidationTarget}
+	}
+	if providerMode == ProviderModeFakeProtocol {
+		return nil
+	}
+	if providerMode != ProviderModeLiveSiliconFlow ||
+		strings.TrimSpace(authorization.ProductionMemoryJudgeValidationApproval) !=
+			LiveProductionMemoryJudgeValidationApproval ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeProviderID) != authority.ProviderID ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeProviderType) != authority.ProviderType ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeBaseURLSHA256) != authority.BaseURLSHA256 ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeModelID) != authority.ModelID {
+		return LiveAuthorizationError{Code: LiveAuthorizationProductionValidationTarget}
+	}
+	return nil
 }
 
 func AuthorizeFixedMemoryJudgeTarget(

@@ -155,6 +155,17 @@ func TestParseCommandSeparatesFakeAndLiveCredentialBoundaries(t *testing.T) {
 	if err != nil || options.captureMode != memorycapture.CaptureModeTransportStableMemoryJudge {
 		t.Fatalf("parse transport-stable Memory Judge command = %#v/%v", options, err)
 	}
+	productionValidation := append([]string(nil), transportStableJudge...)
+	for index := range productionValidation {
+		if productionValidation[index] == memorycapture.CaptureModeTransportStableMemoryJudge {
+			productionValidation[index] = memorycapture.CaptureModeProductionMemoryJudgeValidation
+			break
+		}
+	}
+	options, err = parseCommand(productionValidation)
+	if err != nil || options.captureMode != memorycapture.CaptureModeProductionMemoryJudgeValidation {
+		t.Fatalf("parse production Memory Judge Validation command = %#v/%v", options, err)
+	}
 }
 
 func TestAccuracyFirstCaptureContextHasNoElapsedDeadline(t *testing.T) {
@@ -181,6 +192,14 @@ func TestAccuracyFirstCaptureContextHasNoElapsedDeadline(t *testing.T) {
 	defer transportCancel()
 	if _, ok := transportContext.Deadline(); ok {
 		t.Fatal("transport-stable Judge inherited the legacy 45-minute deadline")
+	}
+	productionContext, productionCancel := captureContext(
+		context.Background(),
+		memorycapture.CaptureModeProductionMemoryJudgeValidation,
+	)
+	defer productionCancel()
+	if _, ok := productionContext.Deadline(); ok {
+		t.Fatal("production Validation inherited the legacy 45-minute deadline")
 	}
 	legacyContext, legacyCancel := captureContext(
 		context.Background(),
@@ -351,11 +370,64 @@ func TestBuildProvidersBindsConfiguredCandidateJudge(t *testing.T) {
 	}
 }
 
+func TestBuildProvidersBindsIndependentProductionValidationCredentials(t *testing.T) {
+	directory := t.TempDir()
+	retrievalPath := filepath.Join(directory, "validation-bge.key")
+	judgePath := filepath.Join(directory, "validation-luna.key")
+	if err := os.WriteFile(retrievalPath, []byte("fresh-validation-bge-key\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(judgePath, []byte("fresh-validation-luna-key\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	options := commandOptions{
+		providerMode:           memorycapture.ProviderModeLiveSiliconFlow,
+		captureMode:            memorycapture.CaptureModeProductionMemoryJudgeValidation,
+		credentialPath:         retrievalPath,
+		judgeCredentialPath:    judgePath,
+		judgeProviderID:        memorycapture.FixedMemoryJudgeProviderID,
+		judgeProviderType:      memorycapture.FixedMemoryJudgeProviderType,
+		judgeBaseURL:           memorycapture.FixedMemoryJudgeBaseURL,
+		judgeConfiguredModelID: memorycapture.FixedMemoryJudgeModelID,
+	}
+	bundle, err := buildProviders(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundle.passage == nil || bundle.hybrid == nil || bundle.judge == nil ||
+		len(bundle.secrets) != 2 ||
+		string(bundle.secrets[0]) != "fresh-validation-bge-key" ||
+		string(bundle.secrets[1]) != "fresh-validation-luna-key" {
+		t.Fatalf("production Validation Provider bundle=%#v", bundle)
+	}
+	bundle.clear()
+	for _, secret := range bundle.secrets {
+		for _, current := range secret {
+			if current != 0 {
+				t.Fatal("production Validation credential bytes were not cleared")
+			}
+		}
+
+	}
+	options.judgeCredentialPath = retrievalPath
+	if _, err := buildProviders(options); err == nil {
+		t.Fatal("production Validation accepted one credential file for BGE and Luna")
+	}
+	if err := os.WriteFile(judgePath, []byte("fresh-validation-bge-key\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	options.judgeCredentialPath = judgePath
+	if _, err := buildProviders(options); err == nil {
+		t.Fatal("production Validation accepted byte-identical BGE and Luna credentials")
+	}
+}
+
 func TestBuildProvidersWrapsAccuracyFirstFakeProviderSet(t *testing.T) {
 	for _, captureMode := range []string{
 		memorycapture.CaptureModeAccuracyFirstMemoryJudge,
 		memorycapture.CaptureModeJudgeFailureDiagnostic,
 		memorycapture.CaptureModeTransportStableMemoryJudge,
+		memorycapture.CaptureModeProductionMemoryJudgeValidation,
 	} {
 		bundle, err := buildProviders(commandOptions{
 			providerMode:           memorycapture.ProviderModeFakeProtocol,
@@ -427,19 +499,20 @@ func TestLoadLiveAuthorizationRequiresExactModelTargets(t *testing.T) {
 	values := map[string]string{
 		liveEnabledEnv: "true", liveApprovalEnv: memorycapture.LiveApproval,
 		liveRunIDEnv: "run-1", liveProviderIDEnv: "siliconflow",
-		liveEmbeddingModelEnv:                        ragproviders.SiliconFlowEmbeddingModel,
-		liveRerankModelEnv:                           ragproviders.SiliconFlowRerankModel,
-		liveCloudJudgeModelEnv:                       memorycapture.DefaultSiliconFlowCloudJudgeModelID,
-		liveMemoryToolRouteApprovalEnv:               memorycapture.LiveMemoryToolRouteApproval,
-		liveMemoryToolRouteProviderIDEnv:             "configured-gpt",
-		liveMemoryToolRouteProviderTypeEnv:           "openai_compatible",
-		liveMemoryToolRouteBaseURLSHA256Env:          strings.Repeat("b", 64),
-		liveMemoryToolRouteModelIDEnv:                "gpt-test",
-		liveConfiguredCandidateJudgeApprovalEnv:      memorycapture.LiveMemoryToolRouteApproval,
-		liveConfiguredCandidateJudgeProviderIDEnv:    "configured-gpt",
-		liveConfiguredCandidateJudgeProviderTypeEnv:  "openai_compatible",
-		liveConfiguredCandidateJudgeBaseURLSHA256Env: strings.Repeat("c", 64),
-		liveConfiguredCandidateJudgeModelIDEnv:       "gpt-judge",
+		liveEmbeddingModelEnv:                          ragproviders.SiliconFlowEmbeddingModel,
+		liveRerankModelEnv:                             ragproviders.SiliconFlowRerankModel,
+		liveCloudJudgeModelEnv:                         memorycapture.DefaultSiliconFlowCloudJudgeModelID,
+		liveMemoryToolRouteApprovalEnv:                 memorycapture.LiveMemoryToolRouteApproval,
+		liveMemoryToolRouteProviderIDEnv:               "configured-gpt",
+		liveMemoryToolRouteProviderTypeEnv:             "openai_compatible",
+		liveMemoryToolRouteBaseURLSHA256Env:            strings.Repeat("b", 64),
+		liveMemoryToolRouteModelIDEnv:                  "gpt-test",
+		liveConfiguredCandidateJudgeApprovalEnv:        memorycapture.LiveMemoryToolRouteApproval,
+		liveConfiguredCandidateJudgeProviderIDEnv:      "configured-gpt",
+		liveConfiguredCandidateJudgeProviderTypeEnv:    "openai_compatible",
+		liveConfiguredCandidateJudgeBaseURLSHA256Env:   strings.Repeat("c", 64),
+		liveConfiguredCandidateJudgeModelIDEnv:         "gpt-judge",
+		liveProductionMemoryJudgeValidationApprovalEnv: memorycapture.LiveProductionMemoryJudgeValidationApproval,
 	}
 	authorization := loadLiveAuthorization(mapEnvironment(values))
 	if err := memorycapture.AuthorizeProviderMode(
@@ -473,6 +546,21 @@ func TestLoadLiveAuthorizationRequiresExactModelTargets(t *testing.T) {
 			BaseURLSHA256: strings.Repeat("c", 64), ModelID: "gpt-judge",
 		},
 		authorization,
+	); err != nil {
+		t.Fatal(err)
+	}
+	productionValues := map[string]string{}
+	for key, value := range values {
+		productionValues[key] = value
+	}
+	productionValues[liveConfiguredCandidateJudgeProviderIDEnv] = memorycapture.FixedMemoryJudgeProviderID
+	productionValues[liveConfiguredCandidateJudgeProviderTypeEnv] = memorycapture.FixedMemoryJudgeProviderType
+	productionValues[liveConfiguredCandidateJudgeBaseURLSHA256Env] = memorycapture.FixedMemoryJudgeBaseURLSHA256
+	productionValues[liveConfiguredCandidateJudgeModelIDEnv] = memorycapture.FixedMemoryJudgeModelID
+	if err := memorycapture.AuthorizeProductionMemoryJudgeValidationTarget(
+		memorycapture.ProviderModeLiveSiliconFlow,
+		memorycapture.FixedMemoryJudgeAuthority(),
+		loadLiveAuthorization(mapEnvironment(productionValues)),
 	); err != nil {
 		t.Fatal(err)
 	}

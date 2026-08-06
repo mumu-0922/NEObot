@@ -42,6 +42,9 @@ without changing prompt, Usage, feature flags, or production data.
 - run the schema-v14 transport-stable successor with the same taxonomy and
   semantic authorities, one additional Judge-only transient retry, exact
   five/ten-second fallback waits, and unchanged single-retry BGE behavior;
+- replay the frozen 100-case Validation split under schema v15 through the
+  exact production BGE/Luna policy, frozen explicit-read-intent hash, separate
+  live approval, and aggregate-only Red/Orange/Yellow/Pass outcome contract;
 - enforce exact `development`/`validation` split lanes and reject the visible
   machine `holdout`;
 - assemble strict regression observations, content-free run manifests, and
@@ -79,6 +82,9 @@ injection, or active-reader authority.
 | `BuildJudgeFailureDiagnosticDevelopmentReport` | Return the always-failed/non-selecting schema-v13 aggregate after taxonomy, attempt, terminal, retry, cost, and privacy reconciliation. |
 | `CaptureTransportStableMemoryJudgeDevelopment` | Execute the schema-v14 serial flow with at most two Judge retries and unchanged BGE retry ceilings. |
 | `BuildTransportStableMemoryJudgeDevelopmentReport` | Return schema-v14 quality evidence plus typed failure maps under cost-basis v9; any terminal Judge failure forces `passed=false`. |
+| `CaptureProductionMemoryJudgeValidation` | Execute only the frozen 100-case Validation split through the production BGE-M3/rerank/fixed-Luna policy while continuing after terminal per-case Provider failures. |
+| `BuildProductionMemoryJudgeValidationReport` | Return schema-v15 aggregate-only Validation evidence under cost-basis v10; fake protocol is always Yellow/non-passing. |
+| `BuildProductionMemoryJudgeValidationRunManifest` | Bind the schema-v15 report, policy/read-intent/case-order hashes, evidence class, outcome, and one report artifact without granting Release. |
 | `CaptureFrozenValidation` | Execute only the 100 Validation cases under the code-frozen policy. |
 | `BuildFrozenValidation` | Score the frozen Validation result without retuning. |
 | `AssembleRegressionObservations` | Bind ordered captures to the strict regression schema. |
@@ -371,6 +377,53 @@ all safety counters were zero, and the report passed while remaining non-
 selecting/non-promotional. It grants no automatic rerun or later-stage
 authority.
 
+Schema v15 is the independently versioned production-policy Validation lane.
+It does not change or reinterpret historical `frozen_validation`, schema v12,
+v13, or v14 artifacts. Its fixed identities are profile config v15, reader
+capture v13, report/run-manifest v15, artifact
+`fixed-memory-judge-production-validation.json`, production policy
+`memory_hybrid_fixed_cloud_candidate_judge_production_v1`, and cost-basis
+v10. It binds the frozen `memory-explicit-read-intent-v1` policy hash and the
+exact `SERVER_DEFAULT`, `openai_compatible`,
+`https://sub.mumubuku.top/v1`, `gpt-5.6-luna` authority. BGE requests keep one
+retry; Judge requests keep the
+schema-v14 two-retry `5s/10s` schedule; global Provider concurrency is one;
+only the Validation 100 cases are seeded. A terminal Provider failure records
+an empty Memory result, continues later cases, and forces the final report to
+fail.
+
+Fake protocol is lifecycle evidence only. It always publishes `passed=false`,
+severity `yellow`, action `retain_beta`, and reason
+`FAKE_PROTOCOL_NON_EVIDENCE`; the wrapper returns non-zero after retaining the
+validated two-file bundle. The PostgreSQL 17 Fake replay completed all 100
+cases as `35` empty-candidate and `65` Judge-completed cases, used 100 query-
+embedding and 65 Judge attempts, recorded 99 virtual cooldowns, and left no
+scoped Compose objects. No credential, network Provider request, or quota was
+used.
+
+Live schema-v15 Validation remains unexecuted and requires a fresh BGE
+credential, a different fresh Luna credential, the normal SiliconFlow quota
+approval, and the independent exact approval
+`I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_VALIDATION_QUOTA`. The historical
+configured-judge Development approval cannot authorize it. Same-file,
+hard-linked, or byte-identical credentials fail before output. A passing live
+report still sets `releaseEligible=false`, `policySelected=false`, and action
+`owner_review_no_automatic_release`; it never flips a runtime flag.
+
+The offline schema-v15 command is:
+
+```bash
+bash scripts/run-memory-regression.sh \
+  --provider-mode fake_protocol \
+  --capture-mode production_fixed_memory_judge_validation \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --cost-basis /secure/production-memory-judge-validation-cost-v10.json \
+  --output-dir /secure/memory-regression-runs
+```
+
 The fixed taxonomy `memory-candidate-judge-failure-taxonomy-v1` is the sorted
 24-value union of the 15 canonical `internal/chat` Provider categories and
 nine Judge-local input/event/output/provenance/Recorder categories. Its JSON
@@ -468,6 +521,7 @@ judge_failure_diagnostic_development.go Schema-v13 Judge failure taxonomy/reconc
 judge_failure_diagnostic_manifest.go    Schema-v13 non-promotional manifest authority
 transport_stable_memory_judge_development.go Schema-v14 report/reconciliation authority
 transport_stable_memory_judge_manifest.go Schema-v14 Development manifest authority
+production_memory_judge_validation.go Schema-v15 production-policy Validation report/manifest authority
 accuracy_first_providers.go            Global serial gate, retry, cooldown, and aggregate telemetry
 ```
 

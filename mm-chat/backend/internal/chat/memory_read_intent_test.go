@@ -43,3 +43,9 @@ func TestDetectExplicitMemoryReadIntentIsNarrowAndBilingual(t *testing.T) {
 		})
 	}
 }
+
+func TestMemoryReadIntentPolicyHashIsFrozen(t *testing.T) {
+	if got := memoryReadIntentPolicySHA256(); got != MemoryReadIntentPolicySHA256 {
+		t.Fatalf("Memory read-intent policy hash = %q, want %q", got, MemoryReadIntentPolicySHA256)
+	}
+}

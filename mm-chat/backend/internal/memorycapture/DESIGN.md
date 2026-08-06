@@ -83,6 +83,8 @@ run-bound marker in a database whose name starts with
 | Typed Judge failure measurement | The v5 aggregate collapses 17 failed cases and 22 retries into one public code, so changing corpus, prompt, or threshold would be causal guesswork. | Schema v13 reuses the unchanged v12 flow and cost authority, derives 24 plaintext-free categories from typed Provider/decoder/capture boundaries, reconciles attempt and terminal counts, and is permanently non-passing/non-selecting. |
 | Transport-stable Judge retry | Schema-v13 live evidence passed semantic gates but exhausted the single retry on one typed transport failure. | Schema v14 preserves semantic/BGE authority, keeps BGE at one retry, allows two Judge retries with five/ten-second fallback waits, and binds worst-case 900-attempt cost-basis v9. |
 | Manual stage isolation | Development evidence is not Validation or production authority. | Every schema-v11/v12/v13/v14 Development run stops for owner review; Validation and production activation require separate authorization. |
+| Production-policy Validation isolation | A passing Development report and a deployed reader do not prove the frozen Validation split or authorize another paid run. | Schema v15 has independent profile/reader/report/manifest/cost identities, a distinct live approval, exact production-policy/read-intent hashes, and no automatic Release authority. |
+| Precommitted failure action | Interpreting a failed Validation after seeing its metrics could turn an evaluation into an unsafe release decision. | Schema v15 deterministically maps privacy/authorization release to Red/disable Tool Loop, false injection above `0.02` to Orange/disable recall, stability or remaining quality failure to Yellow/retain Beta, and pass to owner review only. |
 | Candidate failure means `no_memory` | v1 remains the real prompt authority but is a separate benchmark profile. | Prepare/Record/Provider/cutoff failures never launder v1 or unscored RRF rows into v2 final/injected surfaces. |
 
 ## Trust boundaries and threats
@@ -136,6 +138,27 @@ Valid `Retry-After` remains authoritative, otherwise retry waits are exactly
 five then ten seconds. Cost-basis v9 pre-authorizes at most 900 Judge attempts
 and 115200 output tokens. Any terminal Judge failure forces the report to fail
 even when the remaining evaluation metrics pass.
+
+Schema-v15 production Validation reuses the proven schema-v14 transport
+controller only behind a new capture identity. It selects and seeds exactly
+the frozen 100-case `validation` split; the visible machine `holdout` remains
+unselectable. The config and report bind production policy
+`memory_hybrid_fixed_cloud_candidate_judge_production_v1`, reader capture v13,
+the frozen explicit-read-intent version/hash, exact case order, criteria hash,
+and fixed Luna tuple. Terminal per-case Provider failures are recorded and the
+ordered batch continues; caller cancellation remains the only batch abort.
+The report and manifest retain aggregate counts, hashes, budgets, and typed
+failure categories only—never queries, Memory plaintext, Provider responses or
+errors, raw scores, or case-level identities.
+
+Live schema-v15 authorization is intentionally not the configured-judge
+Development approval. It requires the exact independent Validation approval
+plus fresh, different mode-`0600` BGE and Luna credential files. Fake protocol
+uses the same 100-case lifecycle with a virtual clock but is permanently
+`fake_protocol_lifecycle_only`, Yellow, and non-passing. The completed offline
+PostgreSQL 17/Compose replay retained exactly two private aggregate artifacts
+and tore down its database, role-scoped runner, network, volume, and
+containers. No live schema-v15 request has been authorized or executed.
 
 ### Fixture plaintext leakage
 
@@ -384,3 +407,8 @@ result or failure, even when a later case reuses the same assistant identity.
   result: 300/300 complete, zero retries/failures, all quality/safety gates
   passing, aggregate artifacts only, and no automatic rerun/Validation/
   promotion authority.
+- **2026-08-05**: Added the isolated schema-v15 production-policy Validation
+  lane with a frozen 100-case split, cost-basis v10, independent live approval,
+  read-intent/policy hashes, continue-after-terminal semantics, aggregate-only
+  outcomes, Fake Yellow/non-evidence behavior, and PostgreSQL 17/Compose
+  lifecycle proof. No real Provider request or Release action was made.

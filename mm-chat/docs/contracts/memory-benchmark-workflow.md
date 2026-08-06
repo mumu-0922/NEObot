@@ -1418,9 +1418,11 @@ bash scripts/run-memory-regression.sh \
 Only after a Development candidate-aware policy passes every applicable gate may
 its exact policy, Provider/model, adapter profile, and selection behavior be
 frozen in code. Neither schema-v10 profile nor schema-v11 passed, and all v2,
-repaired-v3, v4, and v5 schema-v12 runs failed. The current Validation CLI
-therefore remains unavailable. The historical single-Provider Validation
-command shape remains:
+repaired-v3, v4, and v5 schema-v12 runs failed. Schema v14 later passed its
+separately authorized Development run and its exact selection semantics were
+installed behind the product Memory Tool Loop. That does not alter the
+historical single-Provider `frozen_validation` lane, whose command shape and
+artifacts remain:
 
 ```bash
 chmod 600 /secure/input/fresh-validation-siliconflow.key
@@ -1433,10 +1435,71 @@ bash scripts/run-memory-regression.sh \
   --output-dir /secure/eval/native-memory-runs
 ```
 
-Validation cannot run while the frozen policy is unavailable and never
-retunes. It retains only `relevance-validation.json` and `run-manifest.json`.
-The visible machine `holdout` is rejected by the split selector and is not a
-CLI mode. Passing Validation still has no promotion authority.
+The production-policy closure is a different schema-v15 lane. It runs only the
+frozen 100-case Validation split through the exact production BGE-M3 retrieval/
+rerank, fixed Luna judge, retry, reauthorization, redaction, intersection, and
+Top-5 release semantics. It binds profile config v15, reader capture v13,
+report/run-manifest v15, cost-basis v10, production policy
+`memory_hybrid_fixed_cloud_candidate_judge_production_v1`, and frozen read-
+intent policy `memory-explicit-read-intent-v1` with SHA-256
+`538d9ccff34fb976cedfca0d9e153078cb3ce36f1baff0691f1d2124d182119c`.
+It never retunes. The visible machine `holdout` is rejected by the split
+selector and is not a CLI mode.
+
+Run the zero-network lifecycle proof first:
+
+```bash
+bash scripts/run-memory-regression.sh \
+  --provider-mode fake_protocol \
+  --capture-mode production_fixed_memory_judge_validation \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --cost-basis /secure/eval/production-memory-judge-validation-cost-v10.json \
+  --output-dir /secure/eval/native-memory-runs
+```
+
+Fake protocol must exit non-zero after retaining exactly
+`fixed-memory-judge-production-validation.json` and `run-manifest.json`. Its
+report is always `fake_protocol_lifecycle_only`, `passed=false`, Yellow, and
+`retain_beta`; it is not quality or Release evidence. The completed offline
+PostgreSQL 17/Compose replay processed exactly 100 Validation cases, recorded
+100 query-embedding attempts, 65 Judge attempts, 99 virtual cooldowns, and no
+failed case, then removed every scoped runtime object. No Provider credential,
+network request, or quota was used.
+
+A future live run requires two new, mutually independent mode-`0600` files:
+one fixed SiliconFlow BGE credential and one fixed Luna credential. It also
+requires both the normal SiliconFlow quota approval and the schema-v15-only
+approval; the historical configured-judge Development approval is rejected:
+
+```bash
+bash scripts/run-memory-regression.sh \
+  --provider-mode live_siliconflow \
+  --capture-mode production_fixed_memory_judge_validation \
+  --credential-file /secure/input/fresh-validation-bge.key \
+  --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --configured-candidate-judge-credential-file /secure/input/fresh-validation-luna.key \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --production-memory-judge-validation-approval \
+    I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_VALIDATION_QUOTA \
+  --cost-basis /secure/eval/production-memory-judge-validation-cost-v10.json \
+  --output-dir /secure/eval/native-memory-runs
+```
+
+This documentation does not authorize that live command. A terminal Provider
+failure records a fail-closed case and continues the remaining ordered cases,
+but makes the final Validation fail. Retained evidence is aggregate-only: no
+query, Memory plaintext, Provider response/error, raw score, or case-level
+identity. Any privacy/authorization release is Red and disables the Tool Loop;
+false injection above `0.02` is Orange and disables recall while preserving
+data; stability or remaining quality failure is Yellow and retains Beta. A
+passing result still has `releaseEligible=false`, selects no policy, changes no
+flag, and stops for owner review.
 
 For each live phase, the wrapper copies that phase's Key into a temporary
 mode-`0600` file and mounts it read-only. Tool-route Development does this for
@@ -1462,6 +1525,14 @@ has no Vault decryption authority. Operator-created one-run copies are mounted
 read-only, rejected when hard-linked or byte-equal, overwritten and removed on
 success/failure/signal, and scanned out of artifacts, logs, and Docker
 metadata.
+
+Schema-v15 production Validation keeps the same physical isolation but changes
+the authorization authority. It accepts only the dedicated frozen-Validation
+approval, rejects the historical configured-judge Development approval, and
+requires new independent BGE/Luna source files for that run. Missing approval,
+same-file/hard-link/equal-byte credentials, tuple drift, or artifact leak fails
+before retaining output. Wrapper success, failed metric, and signal paths all
+destroy the temporary copies and the isolated Compose project.
 
 Accuracy-first Development keeps the same exact two-file and fixed-Luna
 authority. Its v12 execution policy changes no credential boundary: operator

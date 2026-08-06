@@ -45,6 +45,9 @@ neo-chat.memory-regression-profile-config.v9
 neo-chat.memory-regression-profile-config.v10
 neo-chat.memory-regression-profile-config.v11
 neo-chat.memory-regression-profile-config.v12
+neo-chat.memory-regression-profile-config.v13
+neo-chat.memory-regression-profile-config.v14
+neo-chat.memory-regression-profile-config.v15
 neo-chat.memory-regression-relevance-calibration.v3
 neo-chat.memory-regression-relevance-calibration.v4
 neo-chat.memory-regression-relevance-calibration.v5
@@ -55,8 +58,12 @@ neo-chat.memory-regression-relevance-calibration.v9
 neo-chat.memory-regression-relevance-calibration.v10
 neo-chat.memory-regression-relevance-calibration.v11
 neo-chat.memory-regression-relevance-calibration.v12
+neo-chat.memory-regression-relevance-calibration.v13
+neo-chat.memory-regression-relevance-calibration.v14
 neo-chat.memory-regression-relevance-validation.v1
+neo-chat.memory-regression-relevance-validation.v15
 neo-chat.memory-regression-relevance-run.v1
+neo-chat.memory-regression-relevance-validation-run.v15
 neo-chat.memory-regression-cost-basis.v2
 neo-chat.memory-regression-cost-basis.v3
 neo-chat.memory-regression-cost-basis.v4
@@ -64,6 +71,8 @@ neo-chat.memory-regression-cost-basis.v5
 neo-chat.memory-regression-cost-basis.v6
 neo-chat.memory-regression-cost-basis.v7
 neo-chat.memory-regression-cost-basis.v8
+neo-chat.memory-regression-cost-basis.v9
+neo-chat.memory-regression-cost-basis.v10
 neo-chat.memory-cloud-candidate-judge-input.v1
 neo-chat.memory-cloud-candidate-judge-output.v1
 ```
@@ -213,6 +222,19 @@ bash scripts/run-memory-regression.sh \
   --cost-basis /secure/eval/fixed-memory-judge-accuracy-cost-v8.json \
   --output-dir /secure/eval/native-memory-runs
 
+# Production-policy Validation is a distinct schema-v15 lane. Fake protocol
+# proves only the 100-case lifecycle and must return non-zero after retaining
+# its aggregate-only Yellow/non-evidence bundle.
+bash scripts/run-memory-regression.sh \
+  --provider-mode fake_protocol \
+  --capture-mode production_fixed_memory_judge_validation \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --cost-basis /secure/eval/production-memory-judge-validation-cost-v10.json \
+  --output-dir /secure/eval/native-memory-runs
+
 bash scripts/run-memory-regression.sh \
   --provider-mode live_siliconflow \
   --capture-mode development_cloud_judge \
@@ -289,6 +311,9 @@ memorycapture.CaptureMemoryToolRouteDiagnostic(ctx, adminDB, runtimeDB, runID, p
 memorycapture.BuildMemoryToolRouteDiagnosticReport(pool, profile, authority, costBasis) (memorycapture.MemoryToolRouteDevelopmentReport, []byte, error)
 memorycapture.CaptureConfiguredCandidateJudgeDevelopment(ctx, adminDB, runtimeDB, runID, pool, index, seed, provider, judge, authority, profileID, configurationSHA256, cost) (memorycapture.CapturedProfile, error)
 memorycapture.BuildConfiguredCandidateJudgeDevelopmentReport(pool, profile, authority, costBasis) (memorycapture.ConfiguredCandidateJudgeDevelopmentReport, []byte, error)
+memorycapture.CaptureProductionMemoryJudgeValidation(ctx, adminDB, runtimeDB, runID, fullPool, index, seed, provider, judge, authority, profileID, configurationSHA256, cost) (memorycapture.CapturedProfile, error)
+memorycapture.BuildProductionMemoryJudgeValidationReport(pool, profile, config, authority, costBasis) (memorycapture.ProductionMemoryJudgeValidationReport, []byte, error)
+memorycapture.BuildProductionMemoryJudgeValidationRunManifest(runID, captureID, providerMode, startedAt, completedAt, protected, costBasisSHA256, report, artifacts) (memorycapture.ProductionMemoryJudgeValidationRunManifest, []byte, error)
 memorycapture.AssembleRegressionObservations(pool, capturedAt, captureID, profile) (memoryeval.RegressionObservationSet, []byte, error)
 memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string, error)
 ```
@@ -816,6 +841,29 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   and `5c3923aa21fc65ec3f80c963e38e642a40d8d1471d9de7272bea529202704762`.
   The one-run authority is consumed. Do not amplify BGE retries, change SSE/
   HTTP2/keepalive/corpus/threshold, or rerun automatically from this result.
+- Schema v15 is the separate production-policy Validation lane, not a rename
+  or widening of historical `frozen_validation` or schema v12/v13/v14. It
+  seeds only the ordered 100-case `validation` split, binds profile v15,
+  reader capture v13, report/run-manifest v15, cost-basis v10, the exact
+  production BGE/Luna policy hash, and frozen read-intent policy
+  `memory-explicit-read-intent-v1`/
+  `538d9ccff34fb976cedfca0d9e153078cb3ce36f1baff0691f1d2124d182119c`.
+  It preserves one BGE retry, two Judge retries with exact `5s/10s` fallback,
+  and global Provider concurrency one. A terminal case records fail-closed
+  evidence and the batch continues; any terminal case makes the final report
+  fail. Fake protocol is permanently `fake_protocol_lifecycle_only`, Yellow,
+  `retain_beta`, and non-passing. Live execution needs fresh distinct BGE/Luna
+  credentials plus the independent exact Validation approval; no live v15 run
+  is authorized by implementation or documentation.
+- Schema-v15 retained evidence is exactly one aggregate report plus its run
+  manifest. It may contain hashes, metric/slice counts, bounded latency/token/
+  cost totals, and typed category totals, but no query, Memory plaintext,
+  Provider response/error, raw score, or case-level identity. Failure action
+  precedence is frozen: privacy/authorization is Red/disable Tool Loop; false
+  injection above `0.02` is Orange/disable recall while preserving data;
+  Provider stability or remaining quality failure is Yellow/retain Beta; a
+  passing live result stops at owner review with `releaseEligible=false` and
+  changes no runtime flag.
 - Aggregate-only Development evidence authorizes metric comparison, not case-
   level or causal attribution. After disjoint v4 and v5 hard-negative families
   each retained one `unrelated_negative` false injection, do not author another
@@ -850,7 +898,11 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   successor requires v8 and expands only the Judge request/output ceilings to
   `600`/`76800` so the single allowed retry for every logical request is
   pre-authorized. Historical v6/v7 authorities remain exactly `300` requests
-  and cannot be reused or rewritten.
+  and cannot be reused or rewritten. Schema v14 requires v9 with at most `900`
+  Judge attempts/`115200` output tokens. Schema-v15 Validation requires v10:
+  exactly `300` maximum Judge attempts and `38400` output tokens for only the
+  100-case split. V9 cannot authorize Validation and v10 cannot reinterpret a
+  Development run.
 - Cost authority has two distinct hash surfaces. An operator may bind the
   private source file's exact raw bytes with ordinary file SHA-256, while
   `DecodeCostBasis` / `CostBasisSHA256` hashes the decoded struct re-encoded by
@@ -871,8 +923,8 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   four evidence files; historical calibration, schema-v4/v5 cloud Development,
   schema-v6 historical Tool-route Development, schema-v7 first-ToolRound
   Development, schema-v9 diagnostics, schema-v10 configured-candidate-judge
-  Development, and frozen Validation each link one
-  aggregate report. Every mode links
+  Development, historical frozen Validation, and schema-v15 production-policy
+  Validation each link one aggregate report. Every mode links
   `run-manifest.json` last as the completion marker. Failed metric/no-feasible
   gates retain valid reports and return non-zero; all other failures remove
   partial output. Success/failure/`SIGINT`/`SIGTERM`/`SIGHUP` destroy the exact
@@ -959,6 +1011,12 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | Aggregate-only evidence shows a false injection but no case identity/response, or one run has Judge failures | Preserve the failed bundle; do not infer a causal case, mutate another corpus, relax `0.02`, or compare positive quality as if execution were stable. Require separately versioned diagnostic or policy evidence. |
 | Development passes | Retain aggregate evidence and stop for owner review; never enter Validation automatically. |
 | Frozen validation is requested before a Development-selected policy is committed | Reject before credential read or Provider work. |
+| Schema-v15 mode selects Development/Holdout, seeds other fixtures, or changes the frozen case order/read-intent/policy/criteria hash | Reject before report publication; historical schemas and the visible machine Holdout remain untouched. |
+| Schema-v15 live mode lacks its exact independent Validation approval, carries only the old Development approval, or BGE/Luna credentials are same-file/hard-linked/equal-byte | Reject before output or Provider construction without echoing credentials. |
+| Schema-v15 Fake report claims pass/Release, omits Yellow `retain_beta`, or is treated as quality evidence | Reject the bundle; Fake remains `FAKE_PROTOCOL_NON_EVIDENCE` and the wrapper returns non-zero after valid retention. |
+| Schema-v15 terminal Provider failure occurs | Record one typed aggregate terminal, release no Memory for that case, continue later ordered cases, and force the final Validation to fail without whole-run retry. |
+| Schema-v15 report/manifest contains query, Memory plaintext, Provider response/error, raw score, or case-level identity | Reject and remove the bundle; aggregate slice `cases` counts are allowed but case arrays/IDs are not. |
+| Schema-v15 live metrics show privacy/authorization, false injection above `0.02`, Provider/quality failure, or pass | Emit respectively Red/disable Tool Loop, Orange/disable recall preserving data, Yellow/retain Beta, or Pass/owner review; never auto-release or mutate flags. |
 | Native artifact target already exists or publication races | Preserve existing bytes, remove only new links, and refuse the run. |
 | Native run is interrupted before complete validation | Remove partial output and all project-scoped runtime/credential state. |
 
@@ -1049,6 +1107,18 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 - **Configured-judge bad**: route before recall, reuse a retrieval credential,
   retain candidate plaintext, accept free-form IDs, or use a GPT result to
   authorize a DeepSeek profile.
+- **Production Validation good**: a separately authorized live schema-v15 run
+  uses fresh distinct BGE/Luna credentials, exact fixed hashes/tuple, all 100
+  ordered Validation cases, reconciled attempts/costs, zero terminal/privacy/
+  injection failure, and stops at owner review without Release.
+- **Production Validation base**: Fake PostgreSQL 17 completes the same 100-
+  case lifecycle, publishes exactly two private aggregate artifacts, returns
+  non-zero, and records Yellow/`retain_beta`/
+  `FAKE_PROTOCOL_NON_EVIDENCE`; this proves engineering only.
+- **Production Validation bad**: reuse v9 Development authority, use only the
+  old configured-judge approval, share credential bytes, seed Holdout, stop at
+  the first terminal case, persist a query/case ID/raw score, accept Fake as a
+  pass, or let a live pass flip a product flag.
 
 ## 6. Tests Required
 
@@ -1164,6 +1234,18 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   wall-clock cooldown, attempt/latency/token reconciliation, cost-basis-v8
   `600`-attempt authority, historical profile-field omission, and an always-
   false `policySelected` summary.
+  Schema-v13/v14 fixtures additionally cover typed attempt/terminal category
+  reconciliation, diagnostic non-selection, Judge-only two-retry recovery and
+  exhaustion, exact `5s/10s` fallback/`Retry-After`, BGE one-retry preservation,
+  zero-terminal pass semantics, and cost-basis-v9 `900`-attempt authority.
+  Schema-v15 fixtures additionally cover exact 100-case selection and Holdout
+  denial; profile/reader/report/manifest/hash identity; frozen read-intent
+  hash; cost-basis-v10 `300`-attempt authority isolated from v9; independent
+  approval and credential rejection; fake Yellow/non-evidence; live action
+  precedence; terminal-failure continuation and final failure; aggregate-only
+  deterministic replay; two-file `0700/0600` publication; PostgreSQL 17
+  `go_api_runtime`; and cleanup on success, failed metrics, leak rejection, and
+  signals without any real Provider request.
   Cost-basis fixtures must also assert the raw private-file hash and
   the decoded canonical manifest hash as different named surfaces rather than
   assuming byte equality.
@@ -1290,4 +1372,12 @@ Wrong: compare sha256sum(private-pretty-cost.json) directly with
        memorycapture.CostBasisSHA256(decodedCost).
 Correct: pin raw file bytes with the file SHA and independently pin the
          DecodeCostBasis content hash used by the manifest.
+```
+
+```text
+Wrong: reuse schema-v14 Development approval/cost/artifacts, seed all 500
+       cases, stop after one terminal Judge failure, and call Fake a pass.
+Correct: use schema-v15 + cost-basis v10 + independent live approval, select
+         only 100 Validation cases, continue fail-closed cases, retain only
+         aggregate report/manifest, and stop at owner review without Release.
 ```

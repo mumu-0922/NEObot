@@ -266,7 +266,8 @@ func validateAccuracyFirstProviderTelemetryWithJudgeRetryLimit(
 	logicalJudgeRequests int,
 	maximumJudgeRetries int,
 ) error {
-	if caseCount != 300 || logicalJudgeRequests < 0 || logicalJudgeRequests > caseCount ||
+	if (caseCount != 300 && caseCount != 100) ||
+		logicalJudgeRequests < 0 || logicalJudgeRequests > caseCount ||
 		maximumJudgeRetries < 1 || maximumJudgeRetries > 2 ||
 		value.PassageEmbeddingAttempts <= 0 ||
 		value.PassageEmbeddingRetries < 0 ||

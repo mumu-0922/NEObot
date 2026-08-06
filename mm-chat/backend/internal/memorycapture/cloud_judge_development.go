@@ -226,17 +226,37 @@ func aggregateCloudJudgeDevelopment(
 	profile CapturedProfile,
 	allowPreJudgeRetrievalFailure bool,
 ) (cloudJudgeDevelopmentAggregate, error) {
-	development := make([]memoryeval.GoldenCase, 0, 300)
+	return aggregateCloudJudgeCaptureSplit(
+		pool,
+		profile,
+		DevelopmentCalibrationSplit,
+		300,
+		allowPreJudgeRetrievalFailure,
+	)
+}
+
+func aggregateCloudJudgeCaptureSplit(
+	pool memoryauthor.RegressionPool,
+	profile CapturedProfile,
+	split string,
+	expectedCaseCount int,
+	allowPreJudgeRetrievalFailure bool,
+) (cloudJudgeDevelopmentAggregate, error) {
+	if (split != DevelopmentCalibrationSplit && split != FrozenValidationSplit) ||
+		expectedCaseCount < 1 {
+		return cloudJudgeDevelopmentAggregate{}, ErrCaptureInvalid
+	}
+	selected := make([]memoryeval.GoldenCase, 0, expectedCaseCount)
 	for _, item := range pool.Corpus.Cases {
-		if item.Split == DevelopmentCalibrationSplit {
-			development = append(development, item)
+		if item.Split == split {
+			selected = append(selected, item)
 		}
 	}
-	if len(pool.Corpus.Cases) != 500 || len(development) != 300 ||
-		len(profile.Cases) != len(development) ||
-		len(profile.Calibration) != len(development) {
+	if len(pool.Corpus.Cases) != 500 || len(selected) != expectedCaseCount ||
+		len(profile.Cases) != len(selected) ||
+		len(profile.Calibration) != len(selected) {
 		return cloudJudgeDevelopmentAggregate{}, fmt.Errorf(
-			"%w: cloud-judge Development split",
+			"%w: cloud-judge capture split",
 			ErrCaptureInvalid,
 		)
 	}
@@ -262,13 +282,13 @@ func aggregateCloudJudgeDevelopment(
 	}
 
 	aggregate := cloudJudgeDevelopmentAggregate{
-		development: development,
-		ordered:     make([]memoryeval.CaseObservation, len(development)),
+		development: selected,
+		ordered:     make([]memoryeval.CaseObservation, len(selected)),
 		diagnostics: CloudJudgeDevelopmentDiagnostics{
 			FailureCodeCounts: make(map[string]int),
 		},
 	}
-	for index, item := range development {
+	for index, item := range selected {
 		observed, observedOK := caseByID[item.ID]
 		trace, traceOK := traceByID[item.ID]
 		if !observedOK || !traceOK || !trace.PreparedReady ||

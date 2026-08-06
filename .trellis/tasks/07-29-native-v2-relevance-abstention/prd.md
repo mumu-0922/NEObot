@@ -1429,6 +1429,38 @@ role-boundary, cleanup, and secret-handling engineering now, but stop before
 any real Provider request, new credential use, quota consumption, push, or
 Release claim.
 
+**2026-08-05 schema-v15 offline implementation outcome:** Gate 3 is now
+implemented as the independently versioned capture mode
+`production_fixed_memory_judge_validation`, profile config v15, reader capture
+v13, report/run-manifest v15, artifact
+`fixed-memory-judge-production-validation.json`, and cost-basis v10. It binds
+the exact production fixed-Luna tuple, production relevance-policy hash,
+frozen 100-case order, criteria hash, and
+`memory-explicit-read-intent-v1` SHA-256
+`538d9ccff34fb976cedfca0d9e153078cb3ce36f1baff0691f1d2124d182119c`.
+The batch continues after a terminal per-case Judge failure while the final
+report fails; BGE stays at one retry, Judge at two retries with `5s/10s`
+fallback waits, and global Provider concurrency stays one.
+
+The wrapper and Compose lane now enforce the dedicated approval
+`I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_VALIDATION_QUOTA`, reject the old
+Development approval, require different regular mode-`0600` BGE/Luna files in
+live mode, reject same-file/hard-link/equal-byte inputs, and validate the
+aggregate-only two-file bundle before retention. Shell topology/lifecycle
+coverage includes Fake non-evidence retention, live-wrapper authorization
+without network, artifact leak rejection, role-boundary rendering, credential
+cleanup, and signal cleanup. Focused Go tests and shell tests pass.
+
+One real PostgreSQL 17/Compose `fake_protocol` replay seeded only the 100
+Validation cases and completed with `35` empty-candidate plus `65` Judge-
+completed cases, 100 query-embedding attempts, 65 Judge attempts, 99 virtual
+cooldowns, zero failed cases, and a reconciled `300`-request cost ceiling. It
+returned non-zero as required while retaining exactly two mode-`0600`
+aggregate artifacts inside a mode-`0700` run directory, classified the result
+as Yellow/`retain_beta`/`FAKE_PROTOCOL_NON_EVIDENCE`, and removed every scoped
+container, network, and volume. No real Provider request, credential, quota,
+Holdout case, Release action, Push, or historical artifact mutation occurred.
+
 ## Expansion Sweep
 
 - Future evolution: evaluate the fixed Luna candidate-aware profile under the

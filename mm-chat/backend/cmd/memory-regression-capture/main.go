@@ -36,25 +36,26 @@ import (
 )
 
 const (
-	adminDatabaseURLEnv                          = "MM_CHAT_MEMORY_REGRESSION_ADMIN_DATABASE_URL"
-	runtimeDatabaseURLEnv                        = "MM_CHAT_MEMORY_REGRESSION_RUNTIME_DATABASE_URL"
-	liveEnabledEnv                               = "MM_CHAT_MEMORY_REGRESSION_LIVE_ENABLED"
-	liveApprovalEnv                              = "MM_CHAT_MEMORY_REGRESSION_LIVE_APPROVAL"
-	liveRunIDEnv                                 = "MM_CHAT_MEMORY_REGRESSION_LIVE_RUN_ID"
-	liveProviderIDEnv                            = "MM_CHAT_MEMORY_REGRESSION_LIVE_PROVIDER_ID"
-	liveEmbeddingModelEnv                        = "MM_CHAT_MEMORY_REGRESSION_LIVE_EMBEDDING_MODEL_ID"
-	liveRerankModelEnv                           = "MM_CHAT_MEMORY_REGRESSION_LIVE_RERANK_MODEL_ID"
-	liveCloudJudgeModelEnv                       = "MM_CHAT_MEMORY_REGRESSION_LIVE_CLOUD_JUDGE_MODEL_ID"
-	liveMemoryToolRouteApprovalEnv               = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_APPROVAL"
-	liveMemoryToolRouteProviderIDEnv             = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_PROVIDER_ID"
-	liveMemoryToolRouteProviderTypeEnv           = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_PROVIDER_TYPE"
-	liveMemoryToolRouteBaseURLSHA256Env          = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_BASE_URL_SHA256"
-	liveMemoryToolRouteModelIDEnv                = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_MODEL_ID"
-	liveConfiguredCandidateJudgeApprovalEnv      = "MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_APPROVAL"
-	liveConfiguredCandidateJudgeProviderIDEnv    = "MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_ID"
-	liveConfiguredCandidateJudgeProviderTypeEnv  = "MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_TYPE"
-	liveConfiguredCandidateJudgeBaseURLSHA256Env = "MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_BASE_URL_SHA256"
-	liveConfiguredCandidateJudgeModelIDEnv       = "MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_MODEL_ID"
+	adminDatabaseURLEnv                            = "MM_CHAT_MEMORY_REGRESSION_ADMIN_DATABASE_URL"
+	runtimeDatabaseURLEnv                          = "MM_CHAT_MEMORY_REGRESSION_RUNTIME_DATABASE_URL"
+	liveEnabledEnv                                 = "MM_CHAT_MEMORY_REGRESSION_LIVE_ENABLED"
+	liveApprovalEnv                                = "MM_CHAT_MEMORY_REGRESSION_LIVE_APPROVAL"
+	liveRunIDEnv                                   = "MM_CHAT_MEMORY_REGRESSION_LIVE_RUN_ID"
+	liveProviderIDEnv                              = "MM_CHAT_MEMORY_REGRESSION_LIVE_PROVIDER_ID"
+	liveEmbeddingModelEnv                          = "MM_CHAT_MEMORY_REGRESSION_LIVE_EMBEDDING_MODEL_ID"
+	liveRerankModelEnv                             = "MM_CHAT_MEMORY_REGRESSION_LIVE_RERANK_MODEL_ID"
+	liveCloudJudgeModelEnv                         = "MM_CHAT_MEMORY_REGRESSION_LIVE_CLOUD_JUDGE_MODEL_ID"
+	liveMemoryToolRouteApprovalEnv                 = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_APPROVAL"
+	liveMemoryToolRouteProviderIDEnv               = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_PROVIDER_ID"
+	liveMemoryToolRouteProviderTypeEnv             = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_PROVIDER_TYPE"
+	liveMemoryToolRouteBaseURLSHA256Env            = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_BASE_URL_SHA256"
+	liveMemoryToolRouteModelIDEnv                  = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_TOOL_ROUTE_MODEL_ID"
+	liveConfiguredCandidateJudgeApprovalEnv        = "MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_APPROVAL"
+	liveConfiguredCandidateJudgeProviderIDEnv      = "MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_ID"
+	liveConfiguredCandidateJudgeProviderTypeEnv    = "MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_PROVIDER_TYPE"
+	liveConfiguredCandidateJudgeBaseURLSHA256Env   = "MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_BASE_URL_SHA256"
+	liveConfiguredCandidateJudgeModelIDEnv         = "MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_MODEL_ID"
+	liveProductionMemoryJudgeValidationApprovalEnv = "MM_CHAT_MEMORY_REGRESSION_LIVE_PRODUCTION_MEMORY_JUDGE_VALIDATION_APPROVAL"
 
 	defaultCaptureTimeout = 45 * time.Minute
 	maximumCredentialSize = 4096
@@ -163,6 +164,7 @@ func run(
 	var accuracyFirstMemoryJudgeConfig memorycapture.ProfileConfig
 	var judgeFailureDiagnosticConfig memorycapture.ProfileConfig
 	var transportStableMemoryJudgeConfig memorycapture.ProfileConfig
+	var productionMemoryJudgeValidationConfig memorycapture.ProfileConfig
 	var relevanceConfigurationHash string
 	var artifactNames []string
 	var artifactPrefix string
@@ -475,6 +477,44 @@ func run(
 			memorycapture.TransportStableMemoryJudgeArtifactName,
 			"run-manifest.json",
 		}
+	case memorycapture.CaptureModeProductionMemoryJudgeValidation:
+		configuredJudgeAuthority, err = buildConfiguredCandidateJudgeAuthority(options)
+		if err != nil {
+			return err
+		}
+		if err := memorycapture.AuthorizeProductionMemoryJudgeValidationTarget(
+			options.providerMode,
+			configuredJudgeAuthority,
+			authorization,
+		); err != nil {
+			return err
+		}
+		if err := memorycapture.ValidateProductionMemoryJudgeValidationCostAuthority(
+			cost,
+			configuredJudgeAuthority,
+		); err != nil {
+			return err
+		}
+		productionMemoryJudgeValidationConfig, err =
+			memorycapture.BuildProductionMemoryJudgeValidationProfileConfig(
+				protected,
+				costHash,
+				options.providerMode,
+				configuredJudgeAuthority,
+				cost.ProviderCostPolicy,
+			)
+		if err != nil {
+			return err
+		}
+		relevanceConfigurationHash, err =
+			memorycapture.ConfigurationSHA256(productionMemoryJudgeValidationConfig)
+		if err != nil {
+			return err
+		}
+		artifactNames = []string{
+			memorycapture.ProductionMemoryJudgeValidationArtifactName,
+			"run-manifest.json",
+		}
 	case memorycapture.CaptureModeFrozenValidation:
 		validationConfig, err = memorycapture.BuildFrozenValidationProfileConfig(
 			protected,
@@ -570,6 +610,13 @@ func run(
 		return runTransportStableMemoryJudgeDevelopment(
 			ctx, stdout, options, startedAt, protected, cost, costHash,
 			transportStableMemoryJudgeConfig, configuredJudgeAuthority,
+			relevanceConfigurationHash, providers, adminDB, runtimeDB,
+		)
+	}
+	if options.captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation {
+		return runProductionMemoryJudgeValidation(
+			ctx, stdout, options, startedAt, protected, cost, costHash,
+			productionMemoryJudgeValidationConfig, configuredJudgeAuthority,
 			relevanceConfigurationHash, providers, adminDB, runtimeDB,
 		)
 	}
@@ -716,7 +763,8 @@ func captureContext(
 ) (context.Context, context.CancelFunc) {
 	if captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge ||
 		captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic ||
-		captureMode == memorycapture.CaptureModeTransportStableMemoryJudge {
+		captureMode == memorycapture.CaptureModeTransportStableMemoryJudge ||
+		captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation {
 		return context.WithCancel(parent)
 	}
 	return context.WithTimeout(parent, defaultCaptureTimeout)
@@ -1469,6 +1517,149 @@ func runTransportStableMemoryJudgeDevelopment(
 	return nil
 }
 
+func runProductionMemoryJudgeValidation(
+	ctx context.Context,
+	stdout io.Writer,
+	options commandOptions,
+	startedAt time.Time,
+	protected memorycapture.ProtectedRegression,
+	cost memorycapture.CostBasis,
+	costHash string,
+	config memorycapture.ProfileConfig,
+	authority memorycapture.ConfiguredCandidateJudgeProfileAuthority,
+	configurationHash string,
+	providers providerBundle,
+	adminDB *sql.DB,
+	runtimeDB *sql.DB,
+) error {
+	selectedPool, err := memorycapture.SelectRegressionCaptureSplit(
+		protected.Pool,
+		memorycapture.FrozenValidationSplit,
+	)
+	if err != nil {
+		return err
+	}
+	index, err := memorycapture.BuildFixtureIndex(selectedPool)
+	if err != nil {
+		return err
+	}
+	seed, err := memorycapture.SeedEphemeralDatabase(
+		ctx,
+		adminDB,
+		selectedPool,
+		index,
+		options.runID,
+	)
+	if err != nil {
+		return err
+	}
+	if len(seed.Cases) != 100 || providers.judge == nil {
+		return memorycapture.ErrCaptureInvalid
+	}
+	if _, err := memorycapture.PopulateProjectionVectors(
+		ctx,
+		adminDB,
+		options.runID,
+		providers.passage,
+	); err != nil {
+		return err
+	}
+	captured, err := memorycapture.CaptureProductionMemoryJudgeValidation(
+		ctx,
+		adminDB,
+		runtimeDB,
+		options.runID,
+		protected.Pool,
+		index,
+		seed,
+		providers.hybrid,
+		providers.judge,
+		authority,
+		config.ProfileID,
+		configurationHash,
+		cost.Candidate,
+	)
+	if err != nil {
+		return err
+	}
+	report, reportBody, err := memorycapture.BuildProductionMemoryJudgeValidationReport(
+		protected.Pool,
+		captured,
+		config,
+		authority,
+		cost,
+	)
+	if err != nil {
+		return err
+	}
+	if options.pretty {
+		reportBody, err = marshalJSON(report, true)
+		if err != nil {
+			return err
+		}
+	}
+	captureID, err := newCaptureID()
+	if err != nil {
+		return errors.New("create production Memory Judge Validation capture ID failed")
+	}
+	artifacts := []memorycapture.Artifact{{
+		Name: memorycapture.ProductionMemoryJudgeValidationArtifactName,
+		Body: reportBody,
+	}}
+	_, manifestBody, err := memorycapture.BuildProductionMemoryJudgeValidationRunManifest(
+		options.runID,
+		captureID,
+		options.providerMode,
+		startedAt,
+		time.Now().UTC(),
+		protected,
+		costHash,
+		report,
+		artifacts,
+	)
+	if err != nil {
+		return err
+	}
+	artifacts = append(artifacts, memorycapture.Artifact{
+		Name: "run-manifest.json",
+		Body: manifestBody,
+	})
+	if err := verifyRetainedArtifactsLeakFree(
+		protected.Pool,
+		artifacts,
+		providers.secrets,
+	); err != nil {
+		return err
+	}
+	if _, err := memorycapture.PublishArtifactsExclusive(
+		options.outputDir,
+		artifacts,
+	); err != nil {
+		return err
+	}
+	summary := commandSummary{
+		SchemaVersion:     "neo-chat.memory-regression-native-summary.v8",
+		RunID:             options.runID,
+		CaptureID:         captureID,
+		CorpusClass:       report.CorpusClass,
+		AdmissionMode:     report.AdmissionMode,
+		PromotionEligible: false,
+		ProviderMode:      options.providerMode,
+		CaptureMode:       memorycapture.CaptureModeProductionMemoryJudgeValidation,
+		Split:             report.Split,
+		CandidatePassed:   report.Passed,
+		PolicySelected:    false,
+		OutputDirectory:   filepath.Clean(options.outputDir),
+	}
+	if err := json.NewEncoder(stdout).Encode(summary); err != nil {
+		return errors.New("write production Memory Judge Validation summary failed")
+	}
+	if !report.Passed {
+		return errMetricsFailed
+	}
+	return nil
+}
+
 func runMemoryToolRouteDevelopment(
 	ctx context.Context,
 	stdout io.Writer,
@@ -1752,7 +1943,7 @@ func parseCommand(args []string) (commandOptions, error) {
 			"development_fixed_memory_judge_accuracy, "+
 			"development_fixed_memory_judge_failure_diagnostic, "+
 			"development_fixed_memory_judge_transport_stable, "+
-			"or frozen_validation",
+			"production_fixed_memory_judge_validation, or frozen_validation",
 	)
 	flags.StringVar(&options.runID, "run-id", "", "ephemeral run identifier")
 	flags.StringVar(&options.credentialPath, "credential-file", "", "mode-0600 live credential file")
@@ -1876,6 +2067,7 @@ func parseCommand(args []string) (commandOptions, error) {
 		memorycapture.CaptureModeAccuracyFirstMemoryJudge,
 		memorycapture.CaptureModeJudgeFailureDiagnostic,
 		memorycapture.CaptureModeTransportStableMemoryJudge,
+		memorycapture.CaptureModeProductionMemoryJudgeValidation,
 		memorycapture.CaptureModeMemoryToolRouteDevelopment,
 		memorycapture.CaptureModeMemoryToolRouteDiagnostic,
 		memorycapture.CaptureModeFrozenValidation:
@@ -1904,7 +2096,8 @@ func parseCommand(args []string) (commandOptions, error) {
 			options.captureMode == memorycapture.CaptureModeFixedMemoryJudge ||
 			options.captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge ||
 			options.captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic ||
-			options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge {
+			options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge ||
+			options.captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation {
 			if options.judgeProviderID == "" || options.judgeProviderType == "" ||
 				options.judgeBaseURL == "" || options.judgeConfiguredModelID == "" {
 				return commandOptions{}, errors.New(
@@ -1932,6 +2125,7 @@ func parseCommand(args []string) (commandOptions, error) {
 		options.captureMode != memorycapture.CaptureModeAccuracyFirstMemoryJudge &&
 		options.captureMode != memorycapture.CaptureModeJudgeFailureDiagnostic &&
 		options.captureMode != memorycapture.CaptureModeTransportStableMemoryJudge &&
+		options.captureMode != memorycapture.CaptureModeProductionMemoryJudgeValidation &&
 		(options.judgeCredentialPath != "" || options.judgeProviderID != "" ||
 			options.judgeProviderType != "" || options.judgeBaseURL != "" ||
 			options.judgeConfiguredModelID != "") {
@@ -1953,7 +2147,8 @@ func usageError() error {
 			"development_fixed_memory_judge_accuracy|" +
 			"development_fixed_memory_judge_failure_diagnostic|" +
 			"development_fixed_memory_judge_transport_stable|" +
-			"frozen_validation -run-id ID [-credential-file FILE] " +
+			"production_fixed_memory_judge_validation|frozen_validation " +
+			"-run-id ID [-credential-file FILE] " +
 			"[-cloud-judge-model MODEL] " +
 			"[-memory-tool-route-credential-file FILE " +
 			"-memory-tool-route-provider-id ID " +
@@ -1977,13 +2172,15 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 			options.captureMode == memorycapture.CaptureModeFixedMemoryJudge ||
 			options.captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge ||
 			options.captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic ||
-			options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge {
+			options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge ||
+			options.captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation {
 			modelID := options.judgeModelID
 			if options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge ||
 				options.captureMode == memorycapture.CaptureModeFixedMemoryJudge ||
 				options.captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge ||
 				options.captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic ||
-				options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge {
+				options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge ||
+				options.captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation {
 				modelID = options.judgeConfiguredModelID
 			}
 			bundle.judge = memorycapture.NewFakeProtocolCandidateJudge(modelID)
@@ -2020,7 +2217,8 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 	gatewayOptions := []ragproviders.ProviderGatewayOption{}
 	if options.captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge ||
 		options.captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic ||
-		options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge {
+		options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge ||
+		options.captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation {
 		gatewayOptions = append(
 			gatewayOptions,
 			ragproviders.WithProviderGatewayAccuracyFirstDevelopmentNoTimeouts(),
@@ -2062,7 +2260,8 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 		options.captureMode == memorycapture.CaptureModeFixedMemoryJudge ||
 		options.captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge ||
 		options.captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic ||
-		options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge {
+		options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge ||
+		options.captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation {
 		judgeCredential, credentialErr := readRegularBoundedFile(
 			options.judgeCredentialPath,
 			maximumCredentialSize,
@@ -2101,7 +2300,8 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 		var judgeHTTPClient *http.Client
 		if options.captureMode == memorycapture.CaptureModeAccuracyFirstMemoryJudge ||
 			options.captureMode == memorycapture.CaptureModeJudgeFailureDiagnostic ||
-			options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge {
+			options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge ||
+			options.captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation {
 			judgeTimeout = 0
 			judgeHTTPClient = ragproviders.NewAccuracyFirstDevelopmentHTTPClient()
 		}
@@ -2203,14 +2403,23 @@ func wrapAccuracyFirstProviderBundle(
 ) (providerBundle, error) {
 	if options.captureMode != memorycapture.CaptureModeAccuracyFirstMemoryJudge &&
 		options.captureMode != memorycapture.CaptureModeJudgeFailureDiagnostic &&
-		options.captureMode != memorycapture.CaptureModeTransportStableMemoryJudge {
+		options.captureMode != memorycapture.CaptureModeTransportStableMemoryJudge &&
+		options.captureMode != memorycapture.CaptureModeProductionMemoryJudgeValidation {
 		return bundle, nil
 	}
 	var passage memorycapture.PassageEmbedder
 	var hybrid usermemory.HybridShadowProvider
 	var judge usermemory.HybridCandidateJudge
 	var err error
-	if options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge {
+	if options.captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation {
+		passage, hybrid, judge, _, err =
+			memorycapture.WrapProductionMemoryJudgeValidationProviders(
+				options.providerMode,
+				bundle.passage,
+				bundle.hybrid,
+				bundle.judge,
+			)
+	} else if options.captureMode == memorycapture.CaptureModeTransportStableMemoryJudge {
 		passage, hybrid, judge, _, err =
 			memorycapture.WrapTransportStableMemoryJudgeDevelopmentProviders(
 				options.providerMode,
@@ -2403,17 +2612,18 @@ func loadLiveAuthorization(getenv environmentLookup) memorycapture.LiveAuthoriza
 		Enabled: parseBool(value(liveEnabledEnv)), Approval: value(liveApprovalEnv),
 		RunID: value(liveRunIDEnv), ProviderID: value(liveProviderIDEnv),
 		EmbeddingModelID: value(liveEmbeddingModelEnv), RerankModelID: value(liveRerankModelEnv),
-		CloudJudgeModelID:                     value(liveCloudJudgeModelEnv),
-		MemoryToolRouteApproval:               value(liveMemoryToolRouteApprovalEnv),
-		MemoryToolRouteProviderID:             value(liveMemoryToolRouteProviderIDEnv),
-		MemoryToolRouteProviderType:           value(liveMemoryToolRouteProviderTypeEnv),
-		MemoryToolRouteBaseURLSHA256:          value(liveMemoryToolRouteBaseURLSHA256Env),
-		MemoryToolRouteModelID:                value(liveMemoryToolRouteModelIDEnv),
-		ConfiguredCandidateJudgeApproval:      value(liveConfiguredCandidateJudgeApprovalEnv),
-		ConfiguredCandidateJudgeProviderID:    value(liveConfiguredCandidateJudgeProviderIDEnv),
-		ConfiguredCandidateJudgeProviderType:  value(liveConfiguredCandidateJudgeProviderTypeEnv),
-		ConfiguredCandidateJudgeBaseURLSHA256: value(liveConfiguredCandidateJudgeBaseURLSHA256Env),
-		ConfiguredCandidateJudgeModelID:       value(liveConfiguredCandidateJudgeModelIDEnv),
+		CloudJudgeModelID:                       value(liveCloudJudgeModelEnv),
+		MemoryToolRouteApproval:                 value(liveMemoryToolRouteApprovalEnv),
+		MemoryToolRouteProviderID:               value(liveMemoryToolRouteProviderIDEnv),
+		MemoryToolRouteProviderType:             value(liveMemoryToolRouteProviderTypeEnv),
+		MemoryToolRouteBaseURLSHA256:            value(liveMemoryToolRouteBaseURLSHA256Env),
+		MemoryToolRouteModelID:                  value(liveMemoryToolRouteModelIDEnv),
+		ConfiguredCandidateJudgeApproval:        value(liveConfiguredCandidateJudgeApprovalEnv),
+		ConfiguredCandidateJudgeProviderID:      value(liveConfiguredCandidateJudgeProviderIDEnv),
+		ConfiguredCandidateJudgeProviderType:    value(liveConfiguredCandidateJudgeProviderTypeEnv),
+		ConfiguredCandidateJudgeBaseURLSHA256:   value(liveConfiguredCandidateJudgeBaseURLSHA256Env),
+		ConfiguredCandidateJudgeModelID:         value(liveConfiguredCandidateJudgeModelIDEnv),
+		ProductionMemoryJudgeValidationApproval: value(liveProductionMemoryJudgeValidationApprovalEnv),
 	}
 }
 

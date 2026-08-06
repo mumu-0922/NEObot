@@ -65,6 +65,20 @@ func TransportStableDevelopmentExecutionPolicy(
 	return policy, nil
 }
 
+// ProductionMemoryJudgeValidationExecutionPolicy preserves the production
+// BGE/Luna retry and serialization behavior while giving the frozen Validation
+// lane an identity that cannot be confused with schema-v14 Development.
+func ProductionMemoryJudgeValidationExecutionPolicy(
+	providerMode string,
+) (AccuracyFirstExecutionPolicy, error) {
+	policy, err := TransportStableDevelopmentExecutionPolicy(providerMode)
+	if err != nil {
+		return AccuracyFirstExecutionPolicy{}, err
+	}
+	policy.SequenceVersion = ProductionValidationExecutionSequenceV1
+	return policy, nil
+}
+
 type accuracyFirstWait func(context.Context, time.Duration) error
 
 // AccuracyFirstProviderController owns one global request gate for projection
@@ -203,6 +217,29 @@ func WrapTransportStableMemoryJudgeDevelopmentProviders(
 	}
 	controller.maximumJudgeRetries = 2
 	return passageProvider, hybridProvider, candidateJudge, controller, nil
+}
+
+// WrapProductionMemoryJudgeValidationProviders reuses the schema-v14 proven
+// transport controller. The distinct entrypoint prevents callers from routing
+// Validation through a Development capture identity.
+func WrapProductionMemoryJudgeValidationProviders(
+	providerMode string,
+	passage PassageEmbedder,
+	hybrid usermemory.HybridShadowProvider,
+	judge usermemory.HybridCandidateJudge,
+) (
+	PassageEmbedder,
+	usermemory.HybridShadowProvider,
+	usermemory.HybridCandidateJudge,
+	*AccuracyFirstProviderController,
+	error,
+) {
+	return WrapTransportStableMemoryJudgeDevelopmentProviders(
+		providerMode,
+		passage,
+		hybrid,
+		judge,
+	)
 }
 
 func wrapAccuracyFirstDevelopmentProviders(

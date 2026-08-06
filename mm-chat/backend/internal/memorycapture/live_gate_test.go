@@ -209,6 +209,67 @@ func TestAuthorizeFixedMemoryJudgeTargetRejectsEveryAuthorityDrift(t *testing.T)
 	}
 }
 
+func TestAuthorizeProductionMemoryJudgeValidationRequiresIndependentApproval(t *testing.T) {
+	authority := FixedMemoryJudgeAuthority()
+	valid := LiveAuthorization{
+		ConfiguredCandidateJudgeProviderID:      authority.ProviderID,
+		ConfiguredCandidateJudgeProviderType:    authority.ProviderType,
+		ConfiguredCandidateJudgeBaseURLSHA256:   authority.BaseURLSHA256,
+		ConfiguredCandidateJudgeModelID:         authority.ModelID,
+		ProductionMemoryJudgeValidationApproval: LiveProductionMemoryJudgeValidationApproval,
+	}
+	if err := AuthorizeProductionMemoryJudgeValidationTarget(
+		ProviderModeLiveSiliconFlow,
+		authority,
+		valid,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := AuthorizeProductionMemoryJudgeValidationTarget(
+		ProviderModeFakeProtocol,
+		authority,
+		LiveAuthorization{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	developmentApproval := valid
+	developmentApproval.ProductionMemoryJudgeValidationApproval = ""
+	developmentApproval.ConfiguredCandidateJudgeApproval = LiveMemoryToolRouteApproval
+	assertLiveAuthorizationError(
+		t,
+		AuthorizeProductionMemoryJudgeValidationTarget(
+			ProviderModeLiveSiliconFlow,
+			authority,
+			developmentApproval,
+		),
+		LiveAuthorizationProductionValidationTarget,
+	)
+	mutations := []func(*LiveAuthorization){
+		func(value *LiveAuthorization) {
+			value.ProductionMemoryJudgeValidationApproval = "yes"
+		},
+		func(value *LiveAuthorization) { value.ConfiguredCandidateJudgeProviderID = "other" },
+		func(value *LiveAuthorization) { value.ConfiguredCandidateJudgeProviderType = "openai" },
+		func(value *LiveAuthorization) {
+			value.ConfiguredCandidateJudgeBaseURLSHA256 = strings.Repeat("c", 64)
+		},
+		func(value *LiveAuthorization) { value.ConfiguredCandidateJudgeModelID = "other" },
+	}
+	for _, mutate := range mutations {
+		candidate := valid
+		mutate(&candidate)
+		assertLiveAuthorizationError(
+			t,
+			AuthorizeProductionMemoryJudgeValidationTarget(
+				ProviderModeLiveSiliconFlow,
+				authority,
+				candidate,
+			),
+			LiveAuthorizationProductionValidationTarget,
+		)
+	}
+}
+
 func TestBuildProfileConfigsCannotMislabelFakeProtocol(t *testing.T) {
 	protected := ProtectedRegression{
 		FixtureRawSHA256: "fixture", CorpusRawSHA256: "corpus",
