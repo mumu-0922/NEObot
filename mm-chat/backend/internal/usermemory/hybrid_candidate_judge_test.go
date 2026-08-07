@@ -69,6 +69,58 @@ func TestHybridCandidateJudgePromptAndStrictOutputContract(t *testing.T) {
 	}
 }
 
+func TestHybridCandidateJudgeAccuracyPromptChangesOnlySystemPolicy(t *testing.T) {
+	input := HybridCandidateJudgeInput{
+		Query: "请读取我保存的 project fallback",
+		Candidates: []HybridCandidateJudgeCandidate{
+			{Ordinal: 0, Content: "Project fallback is queue-b."},
+			{Ordinal: 1, Content: "Unrelated note."},
+		},
+	}
+	legacySystem, legacyUser, err := BuildHybridCandidateJudgePrompt(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accuracySystem, accuracyUser, err := BuildHybridCandidateJudgeAccuracyPrompt(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacySystem == accuracySystem || legacyUser != accuracyUser ||
+		sha256String(legacySystem) != HybridCandidateJudgePromptSHA256 ||
+		sha256String(accuracySystem) != HybridCandidateJudgeAccuracyPromptSHA256 ||
+		!strings.Contains(accuracySystem, "saved fact, preference, decision, correction, fallback, or project context") ||
+		!strings.Contains(accuracySystem, "do not abstain") ||
+		!strings.Contains(accuracySystem, "does not make unrelated candidates relevant") {
+		t.Fatalf("accuracy prompt drifted: legacy=%q accuracy=%q user=%q", legacySystem, accuracySystem, accuracyUser)
+	}
+}
+
+func TestAccuracyRepairPolicyIsDevelopmentOnlyAndChangesOnlyPromptIdentity(t *testing.T) {
+	baseline, baselineOK := DescribeHybridShadowRelevancePolicy(
+		HybridShadowNegativePolicyGuardDevelopmentPolicy(),
+	)
+	repair, repairOK := DescribeHybridShadowRelevancePolicy(
+		HybridShadowAccuracyRepairDevelopmentPolicy(),
+	)
+	if !baselineOK || !repairOK ||
+		repair.ID != HybridRelevanceAccuracyRepairDevelopmentPolicyID ||
+		repair.CloudCandidateJudgePromptVersion != HybridCandidateJudgeAccuracyPromptVersion ||
+		repair.CloudCandidateJudgePromptSHA256 != HybridCandidateJudgeAccuracyPromptSHA256 {
+		t.Fatalf("accuracy-repair descriptor=%#v ok=%v", repair, repairOK)
+	}
+	baseline.ID = repair.ID
+	baseline.Mode = repair.Mode
+	baseline.CloudCandidateJudgePromptVersion = repair.CloudCandidateJudgePromptVersion
+	baseline.CloudCandidateJudgePromptSHA256 = repair.CloudCandidateJudgePromptSHA256
+	if baseline != repair {
+		t.Fatalf("accuracy repair drifted beyond identity/prompt: baseline=%#v repair=%#v", baseline, repair)
+	}
+	if repair.Mode == hybridPolicyModeProductionJudge ||
+		repair.Mode == hybridPolicyModeGuardProductionJudge {
+		t.Fatal("Development accuracy-repair policy gained a product mode")
+	}
+}
+
 func TestHybridCandidateJudgeOutputErrorsAreStructurallyTyped(t *testing.T) {
 	tests := []struct {
 		name string

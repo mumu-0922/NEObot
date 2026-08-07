@@ -472,6 +472,8 @@ if args and args[0] == "compose":
                     if buffered
                     else "chat-configured-candidate-judge-v1"
                 ),
+                "judgePromptVersion": "memory-cloud-candidate-judge-prompt-v1",
+                "judgePromptSha256": "c004e834f2db572fc8393f088f47750d420379664f972357f987a09d8647f9c8",
                 "evaluationCriteriaVersion": "neo-chat.memory-benchmark-criteria.v3",
                 "evaluationCriteria": {
                     "minimumCandidateRecallAt20": 0.95,

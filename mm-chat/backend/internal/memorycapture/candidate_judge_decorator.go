@@ -10,9 +10,12 @@ import (
 )
 
 type CandidateJudgeDecorator struct {
-	judge           usermemory.HybridCandidateJudge
-	recorder        *Recorder
-	expectedModelID string
+	judge                 usermemory.HybridCandidateJudge
+	recorder              *Recorder
+	expectedModelID       string
+	expectedPromptVersion string
+	expectedPromptSHA256  string
+	promptBuilder         candidateJudgeCapturePromptBuilder
 }
 
 func NewCandidateJudgeDecorator(
@@ -23,8 +26,48 @@ func NewCandidateJudgeDecorator(
 	if judge == nil || recorder == nil || expectedModelID == "" {
 		return nil, ErrCaptureInvalid
 	}
+	return newCandidateJudgeDecorator(
+		judge,
+		recorder,
+		expectedModelID,
+		usermemory.HybridCandidateJudgePromptVersion,
+		usermemory.HybridCandidateJudgePromptSHA256,
+		usermemory.BuildHybridCandidateJudgePrompt,
+	)
+}
+
+func NewAccuracyRepairCandidateJudgeDecorator(
+	judge usermemory.HybridCandidateJudge,
+	recorder *Recorder,
+	expectedModelID string,
+) (*CandidateJudgeDecorator, error) {
+	return newCandidateJudgeDecorator(
+		judge,
+		recorder,
+		expectedModelID,
+		usermemory.HybridCandidateJudgeAccuracyPromptVersion,
+		usermemory.HybridCandidateJudgeAccuracyPromptSHA256,
+		usermemory.BuildHybridCandidateJudgeAccuracyPrompt,
+	)
+}
+
+func newCandidateJudgeDecorator(
+	judge usermemory.HybridCandidateJudge,
+	recorder *Recorder,
+	expectedModelID string,
+	expectedPromptVersion string,
+	expectedPromptSHA256 string,
+	promptBuilder candidateJudgeCapturePromptBuilder,
+) (*CandidateJudgeDecorator, error) {
+	if judge == nil || recorder == nil || expectedModelID == "" ||
+		expectedPromptVersion == "" || expectedPromptSHA256 == "" || promptBuilder == nil {
+		return nil, ErrCaptureInvalid
+	}
 	return &CandidateJudgeDecorator{
 		judge: judge, recorder: recorder, expectedModelID: expectedModelID,
+		expectedPromptVersion: expectedPromptVersion,
+		expectedPromptSHA256:  expectedPromptSHA256,
+		promptBuilder:         promptBuilder,
 	}, nil
 }
 
@@ -41,7 +84,10 @@ func (decorator *CandidateJudgeDecorator) JudgeHybridCandidates(
 			fmt.Errorf("capture hybrid cloud-judge egress: %w", err),
 		)
 	}
-	if err := decorator.recorder.recordCloudJudgeInput(input); err != nil {
+	if err := decorator.recorder.recordCloudJudgeInputWithPrompt(
+		input,
+		decorator.promptBuilder,
+	); err != nil {
 		return usermemory.HybridCandidateJudgeResult{}, memoryjudge.NewFailure(
 			memoryjudge.FailureRecorderStateConflict,
 			fmt.Errorf("capture hybrid cloud-judge input: %w", err),
@@ -56,8 +102,8 @@ func (decorator *CandidateJudgeDecorator) JudgeHybridCandidates(
 			decorator.recordCloudJudgeFailure(ctx.Err())
 	}
 	if result.ModelID != decorator.expectedModelID ||
-		result.PromptVersion != usermemory.HybridCandidateJudgePromptVersion ||
-		result.PromptSHA256 != usermemory.HybridCandidateJudgePromptSHA256 {
+		result.PromptVersion != decorator.expectedPromptVersion ||
+		result.PromptSHA256 != decorator.expectedPromptSHA256 {
 		provenanceErr := memoryjudge.NewFailure(
 			memoryjudge.FailureProvenanceDrift,
 			ErrCaptureStateConflict,
@@ -72,9 +118,11 @@ func (decorator *CandidateJudgeDecorator) JudgeHybridCandidates(
 		return usermemory.HybridCandidateJudgeResult{},
 			decorator.recordCloudJudgeFailure(err)
 	}
-	if err := decorator.recorder.recordCloudJudgeResult(
+	if err := decorator.recorder.recordCloudJudgeResultWithPrompt(
 		result,
 		len(input.Candidates),
+		decorator.expectedPromptVersion,
+		decorator.expectedPromptSHA256,
 	); err != nil {
 		recorderErr := memoryjudge.NewFailure(
 			memoryjudge.FailureRecorderStateConflict,

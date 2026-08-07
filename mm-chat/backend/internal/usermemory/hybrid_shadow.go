@@ -33,6 +33,8 @@ const (
 	hybridPolicyModeNegativePolicyGuard   = "fixed_cloud_candidate_judge_negative_guard_development"
 	hybridPolicyModeProductionJudge       = "fixed_cloud_candidate_judge_production"
 	hybridPolicyModeGuardProductionJudge  = "fixed_cloud_candidate_judge_negative_guard_production"
+	hybridPolicyModeSliceDiagnostic       = "fixed_cloud_candidate_judge_negative_guard_slice_diagnostic"
+	hybridPolicyModeAccuracyRepair        = "fixed_cloud_candidate_judge_negative_guard_accuracy_repair_development"
 	hybridPolicyModeMemoryToolRoute       = "main_model_tool_route_calibration"
 	hybridPolicyModeMemoryFirstToolRound  = "main_model_first_tool_round_calibration"
 	hybridPolicyModeFrozen                = "frozen"
@@ -655,6 +657,8 @@ func executeHybridCandidateStages(
 			ctx,
 			judge,
 			policy.CloudCandidateJudgeModelID,
+			hybridCandidateJudgePromptVersion(policy),
+			hybridCandidateJudgePromptSHA256(policy),
 			redactedQuery,
 			documents,
 		)
@@ -687,6 +691,8 @@ func executeHybridCandidateStages(
 			ctx,
 			judge,
 			policy.CloudCandidateJudgeModelID,
+			hybridCandidateJudgePromptVersion(policy),
+			hybridCandidateJudgePromptSHA256(policy),
 			redactedQuery,
 			documents,
 		)
@@ -802,6 +808,8 @@ func judgeHybridCandidates(
 	ctx context.Context,
 	judge HybridCandidateJudge,
 	expectedModelID string,
+	expectedPromptVersion string,
+	expectedPromptSHA256 string,
 	query string,
 	documents []string,
 ) ([]int, error) {
@@ -819,8 +827,8 @@ func judgeHybridCandidates(
 		return nil, errors.New("hybrid candidate judge request failed")
 	}
 	if result.ModelID != expectedModelID ||
-		result.PromptVersion != HybridCandidateJudgePromptVersion ||
-		result.PromptSHA256 != HybridCandidateJudgePromptSHA256 {
+		result.PromptVersion != expectedPromptVersion ||
+		result.PromptSHA256 != expectedPromptSHA256 {
 		return nil, errors.New("hybrid candidate judge provenance drifted")
 	}
 	return DecodeHybridCandidateJudgeOutput(result.RawOutput, len(documents))
@@ -973,6 +981,36 @@ func HybridShadowNegativePolicyGuardProductionPolicy() HybridShadowRelevancePoli
 	}
 }
 
+// HybridShadowSliceDiagnosticPolicy preserves the production-v2 BGE/Luna
+// semantics under a Development-only identity. Product composition rejects
+// this mode, so the extra diagnostic trace can never become recall authority.
+func HybridShadowSliceDiagnosticPolicy() HybridShadowRelevancePolicy {
+	return HybridShadowRelevancePolicy{
+		ID:                               HybridRelevanceSliceDiagnosticPolicyID,
+		Mode:                             hybridPolicyModeSliceDiagnostic,
+		CloudCandidateJudgeRequired:      true,
+		CloudCandidateJudgeModelID:       HybridFixedMemoryJudgeModelID,
+		NegativePolicyQueryGuardRequired: true,
+		MinimumProviderSimilarity:        -1,
+		MinimumFinalRelevanceScore:       0,
+	}
+}
+
+// HybridShadowAccuracyRepairDevelopmentPolicy changes exactly one semantic
+// boundary after schema-v19: the fixed Luna relevance prompt. It remains
+// Development-only and cannot be installed by the product Tool reader.
+func HybridShadowAccuracyRepairDevelopmentPolicy() HybridShadowRelevancePolicy {
+	return HybridShadowRelevancePolicy{
+		ID:                               HybridRelevanceAccuracyRepairDevelopmentPolicyID,
+		Mode:                             hybridPolicyModeAccuracyRepair,
+		CloudCandidateJudgeRequired:      true,
+		CloudCandidateJudgeModelID:       HybridFixedMemoryJudgeModelID,
+		NegativePolicyQueryGuardRequired: true,
+		MinimumProviderSimilarity:        -1,
+		MinimumFinalRelevanceScore:       0,
+	}
+}
+
 func HybridShadowMemoryToolRouteCalibrationPolicy(
 	modelID string,
 ) HybridShadowRelevancePolicy {
@@ -1035,13 +1073,13 @@ func DescribeHybridShadowRelevancePolicy(
 		CloudCandidateJudgeModelID:  policy.CloudCandidateJudgeModelID,
 		CloudCandidateJudgePromptVersion: func() string {
 			if policy.CloudCandidateJudgeRequired {
-				return HybridCandidateJudgePromptVersion
+				return hybridCandidateJudgePromptVersion(policy)
 			}
 			return "none"
 		}(),
 		CloudCandidateJudgePromptSHA256: func() string {
 			if policy.CloudCandidateJudgeRequired {
-				return HybridCandidateJudgePromptSHA256
+				return hybridCandidateJudgePromptSHA256(policy)
 			}
 			return "none"
 		}(),
@@ -1122,7 +1160,9 @@ func validHybridShadowRelevancePolicy(
 	if !lexicalShadowResultCodeRE.MatchString(strings.ToUpper(policy.ID)) ||
 		policy.NegativePolicyQueryGuardRequired !=
 			(policy.Mode == hybridPolicyModeNegativePolicyGuard ||
-				policy.Mode == hybridPolicyModeGuardProductionJudge) ||
+				policy.Mode == hybridPolicyModeGuardProductionJudge ||
+				policy.Mode == hybridPolicyModeSliceDiagnostic ||
+				policy.Mode == hybridPolicyModeAccuracyRepair) ||
 		math.IsNaN(policy.MinimumMemoryIntentMargin) ||
 		math.IsInf(policy.MinimumMemoryIntentMargin, 0) ||
 		policy.MinimumMemoryIntentMargin < -1 || policy.MinimumMemoryIntentMargin > 1 ||
@@ -1215,6 +1255,28 @@ func validHybridShadowRelevancePolicy(
 			policy.MinimumFinalRelevanceScore != 0 {
 			return HybridShadowRelevancePolicy{}, false
 		}
+	case hybridPolicyModeSliceDiagnostic:
+		if policy.ID != HybridRelevanceSliceDiagnosticPolicyID ||
+			policy.MemoryIntentRequired || !policy.CloudCandidateJudgeRequired ||
+			policy.CloudCandidateJudgeModelID != HybridFixedMemoryJudgeModelID ||
+			policy.MemoryToolRouteRequired || policy.MemoryToolRouteModelID != "" ||
+			!policy.NegativePolicyQueryGuardRequired ||
+			policy.MinimumMemoryIntentMargin != 0 ||
+			policy.MinimumProviderSimilarity != -1 ||
+			policy.MinimumFinalRelevanceScore != 0 {
+			return HybridShadowRelevancePolicy{}, false
+		}
+	case hybridPolicyModeAccuracyRepair:
+		if policy.ID != HybridRelevanceAccuracyRepairDevelopmentPolicyID ||
+			policy.MemoryIntentRequired || !policy.CloudCandidateJudgeRequired ||
+			policy.CloudCandidateJudgeModelID != HybridFixedMemoryJudgeModelID ||
+			policy.MemoryToolRouteRequired || policy.MemoryToolRouteModelID != "" ||
+			!policy.NegativePolicyQueryGuardRequired ||
+			policy.MinimumMemoryIntentMargin != 0 ||
+			policy.MinimumProviderSimilarity != -1 ||
+			policy.MinimumFinalRelevanceScore != 0 {
+			return HybridShadowRelevancePolicy{}, false
+		}
 	case hybridPolicyModeMemoryToolRoute:
 		if policy.ID != HybridRelevanceMemoryToolRoutePolicyID ||
 			policy.MemoryIntentRequired || policy.CloudCandidateJudgeRequired ||
@@ -1274,7 +1336,23 @@ func hybridPolicyRunsAccuracyFirst(mode string) bool {
 	return mode == hybridPolicyModeAccuracyFirstJudge ||
 		mode == hybridPolicyModeNegativePolicyGuard ||
 		mode == hybridPolicyModeProductionJudge ||
-		mode == hybridPolicyModeGuardProductionJudge
+		mode == hybridPolicyModeGuardProductionJudge ||
+		mode == hybridPolicyModeSliceDiagnostic ||
+		mode == hybridPolicyModeAccuracyRepair
+}
+
+func hybridCandidateJudgePromptVersion(policy HybridShadowRelevancePolicy) string {
+	if policy.Mode == hybridPolicyModeAccuracyRepair {
+		return HybridCandidateJudgeAccuracyPromptVersion
+	}
+	return HybridCandidateJudgePromptVersion
+}
+
+func hybridCandidateJudgePromptSHA256(policy HybridShadowRelevancePolicy) string {
+	if policy.Mode == hybridPolicyModeAccuracyRepair {
+		return HybridCandidateJudgeAccuracyPromptSHA256
+	}
+	return HybridCandidateJudgePromptSHA256
 }
 
 func validHybridCandidateJudgeModelID(value string) bool {

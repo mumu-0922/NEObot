@@ -37,6 +37,8 @@ type transportStableMemoryJudgeReportSpec struct {
 	negativeGuardSHA256             string
 	relevancePolicyDescriptorSHA256 string
 	judgeAdapter                    string
+	judgePromptVersion              string
+	judgePromptSHA256               string
 	executionPolicy                 func(string) (AccuracyFirstExecutionPolicy, error)
 	validateCostAuthority           func(CostBasis, ConfiguredCandidateJudgeProfileAuthority) error
 }
@@ -121,6 +123,14 @@ func buildTransportStableMemoryJudgeDevelopmentReport(
 	costBasis CostBasis,
 	spec transportStableMemoryJudgeReportSpec,
 ) (JudgeFailureDiagnosticDevelopmentReport, []byte, error) {
+	judgePromptVersion := spec.judgePromptVersion
+	if judgePromptVersion == "" {
+		judgePromptVersion = usermemory.HybridCandidateJudgePromptVersion
+	}
+	judgePromptSHA256 := spec.judgePromptSHA256
+	if judgePromptSHA256 == "" {
+		judgePromptSHA256 = usermemory.HybridCandidateJudgePromptSHA256
+	}
 	if profile.Profile.ReaderVersion != spec.readerVersion ||
 		!validFixedMemoryJudgeAuthority(authority) ||
 		spec.judgeAdapter == "" || spec.executionPolicy == nil ||
@@ -235,8 +245,8 @@ func buildTransportStableMemoryJudgeDevelopmentReport(
 		JudgeBaseURLSHA256:        authority.BaseURLSHA256,
 		JudgeModelID:              authority.ModelID,
 		JudgeAdapter:              spec.judgeAdapter,
-		JudgePromptVersion:        usermemory.HybridCandidateJudgePromptVersion,
-		JudgePromptSHA256:         usermemory.HybridCandidateJudgePromptSHA256,
+		JudgePromptVersion:        judgePromptVersion,
+		JudgePromptSHA256:         judgePromptSHA256,
 		JudgeDecodingProfile:      usermemory.HybridCandidateJudgeDecodingProfile,
 		FailureTaxonomyVersion:    memoryjudge.FailureTaxonomyVersion,
 		FailureTaxonomySHA256:     memoryjudge.FailureTaxonomySHA256,
@@ -326,6 +336,14 @@ func validTransportStableMemoryJudgeDevelopmentReportForSpec(
 	report JudgeFailureDiagnosticDevelopmentReport,
 	spec transportStableMemoryJudgeReportSpec,
 ) bool {
+	judgePromptVersion := spec.judgePromptVersion
+	if judgePromptVersion == "" {
+		judgePromptVersion = usermemory.HybridCandidateJudgePromptVersion
+	}
+	judgePromptSHA256 := spec.judgePromptSHA256
+	if judgePromptSHA256 == "" {
+		judgePromptSHA256 = usermemory.HybridCandidateJudgePromptSHA256
+	}
 	if judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 ||
 		memoryeval.ValidateMemoryJudgeAccuracyFirstCriteriaV3(
 			report.EvaluationCriteria,
@@ -392,8 +410,8 @@ func validTransportStableMemoryJudgeDevelopmentReportForSpec(
 		report.ProviderCostPolicy == ProviderCostPolicyOwnerAuthorizedAbsoluteV1 &&
 		report.ProviderCostAuthorized && validFixedMemoryJudgeAuthority(authority) &&
 		report.JudgeAdapter == spec.judgeAdapter &&
-		report.JudgePromptVersion == usermemory.HybridCandidateJudgePromptVersion &&
-		report.JudgePromptSHA256 == usermemory.HybridCandidateJudgePromptSHA256 &&
+		report.JudgePromptVersion == judgePromptVersion &&
+		report.JudgePromptSHA256 == judgePromptSHA256 &&
 		report.JudgeDecodingProfile == usermemory.HybridCandidateJudgeDecodingProfile &&
 		report.FailureTaxonomyVersion == memoryjudge.FailureTaxonomyVersion &&
 		report.FailureTaxonomySHA256 == memoryjudge.FailureTaxonomySHA256 &&

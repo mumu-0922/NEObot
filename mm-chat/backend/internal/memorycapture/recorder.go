@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sort"
 	"sync"
 
 	"neo-chat/mm-chat/backend/internal/memoryjudge"
@@ -32,6 +33,8 @@ type transientCapture struct {
 	admissionReady                       bool
 	rerankReady                          bool
 	rerankScores                         map[string]float64
+	rerankOrder                          []string
+	cloudJudgeSelectedOrdinals           []int
 }
 
 type memoryToolRouteCaptureToken struct {
@@ -152,22 +155,38 @@ func (recorder *Recorder) recordCloudJudgeResult(
 	result usermemory.HybridCandidateJudgeResult,
 	candidateCount int,
 ) error {
+	return recorder.recordCloudJudgeResultWithPrompt(
+		result,
+		candidateCount,
+		usermemory.HybridCandidateJudgePromptVersion,
+		usermemory.HybridCandidateJudgePromptSHA256,
+	)
+}
+
+func (recorder *Recorder) recordCloudJudgeResultWithPrompt(
+	result usermemory.HybridCandidateJudgeResult,
+	candidateCount int,
+	expectedPromptVersion string,
+	expectedPromptSHA256 string,
+) error {
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
 	if recorder.current == nil || recorder.current.cloudJudgeReady ||
 		recorder.current.cloudJudgeFailureCategory != "" ||
 		!recorder.current.judgeEgressReady ||
 		candidateCount != len(recorder.current.candidates) ||
-		result.PromptVersion != usermemory.HybridCandidateJudgePromptVersion ||
-		result.PromptSHA256 != usermemory.HybridCandidateJudgePromptSHA256 {
+		result.PromptVersion != expectedPromptVersion ||
+		result.PromptSHA256 != expectedPromptSHA256 {
 		return ErrCaptureStateConflict
 	}
-	if _, err := usermemory.DecodeHybridCandidateJudgeOutput(
+	selected, err := usermemory.DecodeHybridCandidateJudgeOutput(
 		result.RawOutput,
 		candidateCount,
-	); err != nil {
+	)
+	if err != nil {
 		return ErrCaptureStateConflict
 	}
+	recorder.current.cloudJudgeSelectedOrdinals = append([]int(nil), selected...)
 	recorder.current.cloudJudgeReady = true
 	return nil
 }
@@ -189,7 +208,21 @@ func (recorder *Recorder) recordCloudJudgeFailure(category string) error {
 func (recorder *Recorder) recordCloudJudgeInput(
 	input usermemory.HybridCandidateJudgeInput,
 ) error {
-	upperBound, err := cloudJudgeInputTokenUpperBound(input)
+	return recorder.recordCloudJudgeInputWithPrompt(
+		input,
+		usermemory.BuildHybridCandidateJudgePrompt,
+	)
+}
+
+type candidateJudgeCapturePromptBuilder func(
+	usermemory.HybridCandidateJudgeInput,
+) (string, string, error)
+
+func (recorder *Recorder) recordCloudJudgeInputWithPrompt(
+	input usermemory.HybridCandidateJudgeInput,
+	promptBuilder candidateJudgeCapturePromptBuilder,
+) error {
+	upperBound, err := cloudJudgeInputTokenUpperBoundWithPrompt(input, promptBuilder)
 	if err != nil {
 		return ErrCaptureStateConflict
 	}
@@ -205,7 +238,20 @@ func (recorder *Recorder) recordCloudJudgeInput(
 }
 
 func cloudJudgeInputTokenUpperBound(input usermemory.HybridCandidateJudgeInput) (int, error) {
-	systemPrompt, userPrompt, err := usermemory.BuildHybridCandidateJudgePrompt(input)
+	return cloudJudgeInputTokenUpperBoundWithPrompt(
+		input,
+		usermemory.BuildHybridCandidateJudgePrompt,
+	)
+}
+
+func cloudJudgeInputTokenUpperBoundWithPrompt(
+	input usermemory.HybridCandidateJudgeInput,
+	promptBuilder candidateJudgeCapturePromptBuilder,
+) (int, error) {
+	if promptBuilder == nil {
+		return 0, ErrCaptureInvalid
+	}
+	systemPrompt, userPrompt, err := promptBuilder(input)
 	if err != nil {
 		return 0, err
 	}
@@ -291,6 +337,7 @@ func (recorder *Recorder) recordRerankResults(values []ragproviders.RerankResult
 		return ErrCaptureStateConflict
 	}
 	scores := make(map[string]float64, len(values))
+	ordered := append([]ragproviders.RerankResult(nil), values...)
 	for _, value := range values {
 		if value.Index < 0 || value.Index >= len(recorder.current.candidates) {
 			return ErrCaptureStateConflict
@@ -304,6 +351,16 @@ func (recorder *Recorder) recordRerankResults(values []ragproviders.RerankResult
 			return ErrCaptureStateConflict
 		}
 		scores[memoryID] = value.RelevanceScore
+	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if ordered[i].RelevanceScore == ordered[j].RelevanceScore {
+			return ordered[i].Index < ordered[j].Index
+		}
+		return ordered[i].RelevanceScore > ordered[j].RelevanceScore
+	})
+	recorder.current.rerankOrder = make([]string, len(ordered))
+	for index, value := range ordered {
+		recorder.current.rerankOrder[index] = recorder.current.candidates[value.Index]
 	}
 	recorder.current.rerankScores = scores
 	recorder.current.rerankReady = true
@@ -326,6 +383,15 @@ func cloneTransientCapture(value transientCapture) transientCapture {
 		for key, score := range scores {
 			value.rerankScores[key] = score
 		}
+	}
+	if value.rerankOrder != nil {
+		value.rerankOrder = append([]string{}, value.rerankOrder...)
+	}
+	if value.cloudJudgeSelectedOrdinals != nil {
+		value.cloudJudgeSelectedOrdinals = append(
+			[]int{},
+			value.cloudJudgeSelectedOrdinals...,
+		)
 	}
 	return value
 }

@@ -157,6 +157,21 @@ func captureCandidateWithCalibrationCutoff(
 	if err != nil {
 		return memoryeval.CaseObservation{}, CandidateCalibrationTrace{}, err
 	}
+	opaqueRerank, err := index.OpaqueMemoryIDs(transient.rerankOrder)
+	if err != nil {
+		return memoryeval.CaseObservation{}, CandidateCalibrationTrace{}, err
+	}
+	judgeSelectedIDs := make([]string, len(transient.cloudJudgeSelectedOrdinals))
+	for position, ordinal := range transient.cloudJudgeSelectedOrdinals {
+		if ordinal < 0 || ordinal >= len(transient.candidates) {
+			return memoryeval.CaseObservation{}, CandidateCalibrationTrace{}, ErrCaptureStateConflict
+		}
+		judgeSelectedIDs[position] = transient.candidates[ordinal]
+	}
+	opaqueJudgeSelected, err := index.OpaqueMemoryIDs(judgeSelectedIDs)
+	if err != nil {
+		return memoryeval.CaseObservation{}, CandidateCalibrationTrace{}, err
+	}
 	hardCutoff := captureHardCutoffApplied(latency, hardCutoffMilliseconds, summary)
 	routeFailureCategory := transient.memoryToolRouteFailureCategory
 	if !transient.memoryToolRouteReady &&
@@ -198,6 +213,17 @@ func captureCandidateWithCalibrationCutoff(
 		ResultCode:                           summary.ResultCode,
 		FullObservation:                      observed,
 		FinalRelevanceScores:                 make([]float64, len(transient.final)),
+		RerankMemoryIDs:                      opaqueRerank,
+		RerankRelevanceScores:                make([]float64, len(transient.rerankOrder)),
+		JudgeSelectedMemoryIDs:               opaqueJudgeSelected,
+	}
+	for position, memoryID := range transient.rerankOrder {
+		score, ok := transient.rerankScores[memoryID]
+		if !ok {
+			trace.RerankReady = false
+			continue
+		}
+		trace.RerankRelevanceScores[position] = score
 	}
 	for position, memoryID := range transient.final {
 		score, ok := transient.rerankScores[memoryID]

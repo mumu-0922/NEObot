@@ -91,10 +91,26 @@ func fakeProtocolVector(value string) []float32 {
 	return vector
 }
 
-type FakeProtocolCandidateJudge struct{ modelID string }
+type FakeProtocolCandidateJudge struct {
+	modelID       string
+	promptVersion string
+	promptSHA256  string
+}
 
 func NewFakeProtocolCandidateJudge(modelID string) *FakeProtocolCandidateJudge {
-	return &FakeProtocolCandidateJudge{modelID: modelID}
+	return &FakeProtocolCandidateJudge{
+		modelID:       modelID,
+		promptVersion: usermemory.HybridCandidateJudgePromptVersion,
+		promptSHA256:  usermemory.HybridCandidateJudgePromptSHA256,
+	}
+}
+
+func NewFakeProtocolAccuracyCandidateJudge(modelID string) *FakeProtocolCandidateJudge {
+	return &FakeProtocolCandidateJudge{
+		modelID:       modelID,
+		promptVersion: usermemory.HybridCandidateJudgeAccuracyPromptVersion,
+		promptSHA256:  usermemory.HybridCandidateJudgeAccuracyPromptSHA256,
+	}
 }
 
 func (judge *FakeProtocolCandidateJudge) JudgeHybridCandidates(
@@ -115,8 +131,8 @@ func (judge *FakeProtocolCandidateJudge) JudgeHybridCandidates(
 	return usermemory.HybridCandidateJudgeResult{
 		RawOutput:     body,
 		ModelID:       judge.modelID,
-		PromptVersion: usermemory.HybridCandidateJudgePromptVersion,
-		PromptSHA256:  usermemory.HybridCandidateJudgePromptSHA256,
+		PromptVersion: judge.promptVersion,
+		PromptSHA256:  judge.promptSHA256,
 	}, nil
 }
 

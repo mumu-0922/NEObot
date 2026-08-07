@@ -13,6 +13,8 @@ const (
 	LiveMemoryToolRouteApproval                         = "I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA"
 	LiveProductionMemoryJudgeValidationApproval         = "I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_VALIDATION_QUOTA"
 	LiveProductionBufferedMemoryJudgeValidationApproval = "I_UNDERSTAND_THIS_USES_REAL_FROZEN_BUFFERED_MEMORY_VALIDATION_QUOTA"
+	LiveMemoryJudgeSliceDiagnosticApproval              = "I_UNDERSTAND_THIS_USES_REAL_MEMORY_SLICE_DIAGNOSTIC_QUOTA"
+	LiveAccuracyRepairMemoryJudgeApproval               = "I_UNDERSTAND_THIS_USES_REAL_MEMORY_ACCURACY_REPAIR_QUOTA"
 
 	LiveAuthorizationDisabled                       = "MEMORY_REGRESSION_LIVE_DISABLED"
 	LiveAuthorizationApproval                       = "MEMORY_REGRESSION_LIVE_APPROVAL_REQUIRED"
@@ -47,6 +49,54 @@ type LiveAuthorization struct {
 	ConfiguredCandidateJudgeModelID                 string
 	ProductionMemoryJudgeValidationApproval         string
 	ProductionBufferedMemoryJudgeValidationApproval string
+	MemoryJudgeSliceDiagnosticApproval              string
+	AccuracyRepairMemoryJudgeApproval               string
+}
+
+func AuthorizeAccuracyRepairMemoryJudgeTarget(
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	authorization LiveAuthorization,
+) error {
+	if !validFixedMemoryJudgeAuthority(authority) {
+		return LiveAuthorizationError{Code: LiveAuthorizationFixedMemoryJudgeTarget}
+	}
+	if providerMode == ProviderModeFakeProtocol {
+		return nil
+	}
+	if providerMode != ProviderModeLiveSiliconFlow ||
+		strings.TrimSpace(authorization.AccuracyRepairMemoryJudgeApproval) !=
+			LiveAccuracyRepairMemoryJudgeApproval ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeProviderID) != authority.ProviderID ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeProviderType) != authority.ProviderType ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeBaseURLSHA256) != authority.BaseURLSHA256 ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeModelID) != authority.ModelID {
+		return LiveAuthorizationError{Code: LiveAuthorizationFixedMemoryJudgeTarget}
+	}
+	return nil
+}
+
+func AuthorizeMemoryJudgeSliceDiagnosticTarget(
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	authorization LiveAuthorization,
+) error {
+	if !validFixedMemoryJudgeAuthority(authority) {
+		return LiveAuthorizationError{Code: LiveAuthorizationFixedMemoryJudgeTarget}
+	}
+	if providerMode == ProviderModeFakeProtocol {
+		return nil
+	}
+	if providerMode != ProviderModeLiveSiliconFlow ||
+		strings.TrimSpace(authorization.MemoryJudgeSliceDiagnosticApproval) !=
+			LiveMemoryJudgeSliceDiagnosticApproval ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeProviderID) != authority.ProviderID ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeProviderType) != authority.ProviderType ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeBaseURLSHA256) != authority.BaseURLSHA256 ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeModelID) != authority.ModelID {
+		return LiveAuthorizationError{Code: LiveAuthorizationFixedMemoryJudgeTarget}
+	}
+	return nil
 }
 
 func AuthorizeProductionBufferedMemoryJudgeValidationTarget(

@@ -28,6 +28,8 @@ const (
 	NegativePolicyGuardMemoryJudgeReaderVersion          = "neo-chat.native-memory-reader-capture.v14"
 	BufferedMemoryJudgeReaderVersion                     = "neo-chat.native-memory-reader-capture.v15"
 	ProductionBufferedMemoryJudgeValidationReaderVersion = "neo-chat.native-memory-reader-capture.v16"
+	MemoryJudgeSliceDiagnosticReaderVersion              = "neo-chat.native-memory-reader-capture.v17"
+	AccuracyRepairMemoryJudgeReaderVersion               = "neo-chat.native-memory-reader-capture.v18"
 	ProviderCostPolicyOwnerAuthorizedAbsoluteV1          = "owner_authorized_absolute_cap_v1"
 	AccuracyFirstExecutionSequenceV1                     = "bge_query_admission_bge_rerank_luna_judge_record_serial_v1"
 	AccuracyFirstRetryPolicyV1                           = "transient_408_429_5xx_transport_read_once_v1"
@@ -36,6 +38,8 @@ const (
 	BufferedMemoryJudgeExecutionSequenceV1               = "bge_query_admission_bge_rerank_luna_judge_buffered_json_record_serial_judge_retry_v1"
 	ProductionValidationExecutionSequenceV1              = "production_bge_m3_rerank_fixed_luna_judge_record_serial_v1"
 	ProductionBufferedValidationExecutionSequenceV1      = "production_bge_m3_rerank_fixed_luna_negative_guard_buffered_json_judge_record_serial_v1"
+	MemoryJudgeSliceDiagnosticExecutionSequenceV1        = "development_slice_union_bge_m3_rerank_fixed_luna_negative_guard_buffered_json_judge_record_serial_v1"
+	AccuracyRepairMemoryJudgeExecutionSequenceV1         = "development_full_bge_m3_rerank_fixed_luna_negative_guard_buffered_accuracy_prompt_v2_record_serial_v1"
 	AccuracyFirstCooldownWallClockV1                     = "wall_clock_v1"
 	AccuracyFirstCooldownVirtualProtocolV1               = "virtual_protocol_v1"
 	ProviderModeNone                                     = "none"
@@ -56,6 +60,8 @@ const (
 	CaptureModeFrozenValidation                          = "frozen_validation"
 	CaptureModeProductionMemoryJudgeValidation           = "production_fixed_memory_judge_validation"
 	CaptureModeProductionBufferedMemoryJudgeValidation   = "production_fixed_memory_judge_negative_guard_buffered_validation"
+	CaptureModeMemoryJudgeSliceDiagnostic                = "development_fixed_memory_judge_negative_guard_buffered_slice_diagnostic"
+	CaptureModeAccuracyRepairMemoryJudge                 = "development_fixed_memory_judge_negative_guard_buffered_accuracy_repair"
 )
 
 var (
@@ -150,6 +156,9 @@ type ProfileConfig struct {
 	NegativePolicyQueryGuardVersion       string                        `json:"negativePolicyQueryGuardVersion,omitempty"`
 	NegativePolicyQueryGuardSHA256        string                        `json:"negativePolicyQueryGuardSha256,omitempty"`
 	RelevancePolicyDescriptorSHA256       string                        `json:"relevancePolicyDescriptorSha256,omitempty"`
+	DiagnosticCaseOrderSHA256             string                        `json:"diagnosticCaseOrderSha256,omitempty"`
+	DiagnosticSliceUnion                  []string                      `json:"diagnosticSliceUnion,omitempty"`
+	DiagnosticRepetitions                 int                           `json:"diagnosticRepetitions,omitempty"`
 }
 
 // AccuracyFirstExecutionPolicy is hash-bound by each accuracy-first schema. It
@@ -305,6 +314,9 @@ type CandidateCalibrationTrace struct {
 	ResultCode                           string
 	FullObservation                      memoryeval.CaseObservation
 	FinalRelevanceScores                 []float64
+	RerankMemoryIDs                      []string
+	RerankRelevanceScores                []float64
+	JudgeSelectedMemoryIDs               []string
 }
 
 type clock func() time.Time

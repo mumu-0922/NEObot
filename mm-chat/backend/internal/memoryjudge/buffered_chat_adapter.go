@@ -9,13 +9,23 @@ import (
 	"neo-chat/mm-chat/backend/internal/usermemory"
 )
 
-const BufferedChatAdapterVersion = "chat-configured-candidate-judge-buffered-v1"
+const (
+	BufferedChatAdapterVersion         = "chat-configured-candidate-judge-buffered-v1"
+	BufferedChatAccuracyAdapterVersion = "chat-configured-candidate-judge-buffered-accuracy-v2"
+)
+
+type candidateJudgePromptBuilder func(
+	usermemory.HybridCandidateJudgeInput,
+) (string, string, error)
 
 // BufferedChatAdapter preserves the shared strict candidate-Judge contract
 // while selecting the Provider's explicit non-streaming completion capability.
 type BufferedChatAdapter struct {
-	provider chat.BufferedChatProvider
-	modelRef chat.ModelRef
+	provider      chat.BufferedChatProvider
+	modelRef      chat.ModelRef
+	promptBuilder candidateJudgePromptBuilder
+	promptVersion string
+	promptSHA256  string
 }
 
 func NewBufferedChatAdapter(
@@ -27,7 +37,48 @@ func NewBufferedChatAdapter(
 	if provider == nil || modelRef.ProviderID == "" || modelRef.ModelID == "" {
 		return nil, errors.New("Memory buffered candidate judge Provider/model is required")
 	}
-	return &BufferedChatAdapter{provider: provider, modelRef: modelRef}, nil
+	return newBufferedChatAdapter(
+		provider,
+		modelRef,
+		usermemory.BuildHybridCandidateJudgePrompt,
+		usermemory.HybridCandidateJudgePromptVersion,
+		usermemory.HybridCandidateJudgePromptSHA256,
+	)
+}
+
+// NewBufferedChatAccuracyAdapter changes only the versioned system prompt.
+// Transport, model, decoder, retry ownership, and output bounds stay shared.
+func NewBufferedChatAccuracyAdapter(
+	provider chat.BufferedChatProvider,
+	modelRef chat.ModelRef,
+) (*BufferedChatAdapter, error) {
+	return newBufferedChatAdapter(
+		provider,
+		modelRef,
+		usermemory.BuildHybridCandidateJudgeAccuracyPrompt,
+		usermemory.HybridCandidateJudgeAccuracyPromptVersion,
+		usermemory.HybridCandidateJudgeAccuracyPromptSHA256,
+	)
+}
+
+func newBufferedChatAdapter(
+	provider chat.BufferedChatProvider,
+	modelRef chat.ModelRef,
+	promptBuilder candidateJudgePromptBuilder,
+	promptVersion string,
+	promptSHA256 string,
+) (*BufferedChatAdapter, error) {
+	modelRef.ProviderID = strings.TrimSpace(modelRef.ProviderID)
+	modelRef.ModelID = strings.TrimSpace(modelRef.ModelID)
+	if provider == nil || modelRef.ProviderID == "" || modelRef.ModelID == "" ||
+		promptBuilder == nil || strings.TrimSpace(promptVersion) == "" ||
+		strings.TrimSpace(promptSHA256) == "" {
+		return nil, errors.New("Memory buffered candidate judge Provider/model is required")
+	}
+	return &BufferedChatAdapter{
+		provider: provider, modelRef: modelRef, promptBuilder: promptBuilder,
+		promptVersion: promptVersion, promptSHA256: promptSHA256,
+	}, nil
 }
 
 func (adapter *BufferedChatAdapter) JudgeHybridCandidates(
@@ -40,7 +91,7 @@ func (adapter *BufferedChatAdapter) JudgeHybridCandidates(
 			errors.New("Memory buffered candidate judge is unavailable"),
 		)
 	}
-	systemPrompt, prompt, err := usermemory.BuildHybridCandidateJudgePrompt(input)
+	systemPrompt, prompt, err := adapter.promptBuilder(input)
 	if err != nil {
 		return usermemory.HybridCandidateJudgeResult{}, NewFailure(FailureInputInvalid, err)
 	}
@@ -82,8 +133,8 @@ func (adapter *BufferedChatAdapter) JudgeHybridCandidates(
 	return usermemory.HybridCandidateJudgeResult{
 		RawOutput:     append([]byte(nil), output...),
 		ModelID:       adapter.modelRef.ModelID,
-		PromptVersion: usermemory.HybridCandidateJudgePromptVersion,
-		PromptSHA256:  usermemory.HybridCandidateJudgePromptSHA256,
+		PromptVersion: adapter.promptVersion,
+		PromptSHA256:  adapter.promptSHA256,
 	}, nil
 }
 

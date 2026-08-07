@@ -49,6 +49,46 @@ func TestBufferedChatAdapterPreservesStrictStreamingRequestContract(t *testing.T
 	}
 }
 
+func TestBufferedChatAccuracyAdapterChangesOnlyPromptIdentity(t *testing.T) {
+	legacyProvider := &bufferedJudgeProvider{completion: chat.BufferedChatCompletion{
+		Content: validBufferedJudgeOutput(),
+	}}
+	accuracyProvider := &bufferedJudgeProvider{completion: chat.BufferedChatCompletion{
+		Content: validBufferedJudgeOutput(),
+	}}
+	modelRef := chat.ModelRef{ProviderID: "fixture", ModelID: "fixture-model"}
+	legacy, err := NewBufferedChatAdapter(legacyProvider, modelRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accuracy, err := NewBufferedChatAccuracyAdapter(accuracyProvider, modelRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := transportStableTestInput()
+	legacyResult, err := legacy.JudgeHybridCandidates(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accuracyResult, err := accuracy.JudgeHybridCandidates(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacySystem := legacyProvider.request.SystemPrompt
+	accuracySystem := accuracyProvider.request.SystemPrompt
+	legacyRequest := legacyProvider.request
+	accuracyRequest := accuracyProvider.request
+	legacyRequest.SystemPrompt = ""
+	accuracyRequest.SystemPrompt = ""
+	if legacySystem == accuracySystem || !reflect.DeepEqual(legacyRequest, accuracyRequest) ||
+		legacyResult.PromptVersion != usermemory.HybridCandidateJudgePromptVersion ||
+		accuracyResult.PromptVersion != usermemory.HybridCandidateJudgeAccuracyPromptVersion ||
+		accuracyResult.PromptSHA256 != usermemory.HybridCandidateJudgeAccuracyPromptSHA256 {
+		t.Fatalf("legacyRequest=%#v accuracyRequest=%#v legacyResult=%#v accuracyResult=%#v",
+			legacyProvider.request, accuracyProvider.request, legacyResult, accuracyResult)
+	}
+}
+
 func TestBufferedChatAdapterFailsClosedWithoutLeakingProviderDetails(t *testing.T) {
 	validInput := transportStableTestInput()
 	tests := []struct {

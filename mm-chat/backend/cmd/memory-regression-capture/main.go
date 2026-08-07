@@ -57,6 +57,8 @@ const (
 	liveConfiguredCandidateJudgeModelIDEnv                 = "MM_CHAT_MEMORY_REGRESSION_LIVE_CONFIGURED_CANDIDATE_JUDGE_MODEL_ID"
 	liveProductionMemoryJudgeValidationApprovalEnv         = "MM_CHAT_MEMORY_REGRESSION_LIVE_PRODUCTION_MEMORY_JUDGE_VALIDATION_APPROVAL"
 	liveProductionBufferedMemoryJudgeValidationApprovalEnv = "MM_CHAT_MEMORY_REGRESSION_LIVE_PRODUCTION_BUFFERED_MEMORY_JUDGE_VALIDATION_APPROVAL"
+	liveMemoryJudgeSliceDiagnosticApprovalEnv              = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_JUDGE_SLICE_DIAGNOSTIC_APPROVAL"
+	liveAccuracyRepairMemoryJudgeApprovalEnv               = "MM_CHAT_MEMORY_REGRESSION_LIVE_ACCURACY_REPAIR_MEMORY_JUDGE_APPROVAL"
 
 	defaultCaptureTimeout = 45 * time.Minute
 	maximumCredentialSize = 4096
@@ -169,6 +171,8 @@ func run(
 	var bufferedMemoryJudgeConfig memorycapture.ProfileConfig
 	var productionMemoryJudgeValidationConfig memorycapture.ProfileConfig
 	var productionBufferedMemoryJudgeValidationConfig memorycapture.ProfileConfig
+	var memoryJudgeSliceDiagnosticConfig memorycapture.ProfileConfig
+	var accuracyRepairMemoryJudgeConfig memorycapture.ProfileConfig
 	var relevanceConfigurationHash string
 	var artifactNames []string
 	var artifactPrefix string
@@ -633,6 +637,82 @@ func run(
 			memorycapture.ProductionBufferedMemoryJudgeValidationArtifactName,
 			"run-manifest.json",
 		}
+	case memorycapture.CaptureModeMemoryJudgeSliceDiagnostic:
+		configuredJudgeAuthority, err = buildConfiguredCandidateJudgeAuthority(options)
+		if err != nil {
+			return err
+		}
+		if err := memorycapture.AuthorizeMemoryJudgeSliceDiagnosticTarget(
+			options.providerMode,
+			configuredJudgeAuthority,
+			authorization,
+		); err != nil {
+			return err
+		}
+		if err := memorycapture.ValidateMemoryJudgeSliceDiagnosticCostAuthority(
+			cost,
+			configuredJudgeAuthority,
+		); err != nil {
+			return err
+		}
+		memoryJudgeSliceDiagnosticConfig, err =
+			memorycapture.BuildMemoryJudgeSliceDiagnosticProfileConfig(
+				protected,
+				costHash,
+				options.providerMode,
+				configuredJudgeAuthority,
+				cost.ProviderCostPolicy,
+			)
+		if err != nil {
+			return err
+		}
+		relevanceConfigurationHash, err =
+			memorycapture.ConfigurationSHA256(memoryJudgeSliceDiagnosticConfig)
+		if err != nil {
+			return err
+		}
+		artifactNames = []string{
+			memorycapture.MemoryJudgeSliceDiagnosticArtifactName,
+			"run-manifest.json",
+		}
+	case memorycapture.CaptureModeAccuracyRepairMemoryJudge:
+		configuredJudgeAuthority, err = buildConfiguredCandidateJudgeAuthority(options)
+		if err != nil {
+			return err
+		}
+		if err := memorycapture.AuthorizeAccuracyRepairMemoryJudgeTarget(
+			options.providerMode,
+			configuredJudgeAuthority,
+			authorization,
+		); err != nil {
+			return err
+		}
+		if err := memorycapture.ValidateAccuracyRepairMemoryJudgeCostAuthority(
+			cost,
+			configuredJudgeAuthority,
+		); err != nil {
+			return err
+		}
+		accuracyRepairMemoryJudgeConfig, err =
+			memorycapture.BuildAccuracyRepairMemoryJudgeDevelopmentProfileConfig(
+				protected,
+				costHash,
+				options.providerMode,
+				configuredJudgeAuthority,
+				cost.ProviderCostPolicy,
+			)
+		if err != nil {
+			return err
+		}
+		relevanceConfigurationHash, err =
+			memorycapture.ConfigurationSHA256(accuracyRepairMemoryJudgeConfig)
+		if err != nil {
+			return err
+		}
+		artifactNames = []string{
+			memorycapture.AccuracyRepairMemoryJudgeArtifactName,
+			"run-manifest.json",
+		}
 	case memorycapture.CaptureModeFrozenValidation:
 		validationConfig, err = memorycapture.BuildFrozenValidationProfileConfig(
 			protected,
@@ -756,6 +836,20 @@ func run(
 		return runProductionBufferedMemoryJudgeValidation(
 			ctx, stdout, options, startedAt, protected, cost, costHash,
 			productionBufferedMemoryJudgeValidationConfig, configuredJudgeAuthority,
+			relevanceConfigurationHash, providers, adminDB, runtimeDB,
+		)
+	}
+	if options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic {
+		return runMemoryJudgeSliceDiagnostic(
+			ctx, stdout, options, startedAt, protected, cost, costHash,
+			memoryJudgeSliceDiagnosticConfig, configuredJudgeAuthority,
+			relevanceConfigurationHash, providers, adminDB, runtimeDB,
+		)
+	}
+	if options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
+		return runAccuracyRepairMemoryJudgeDevelopment(
+			ctx, stdout, options, startedAt, protected, cost, costHash,
+			accuracyRepairMemoryJudgeConfig, configuredJudgeAuthority,
 			relevanceConfigurationHash, providers, adminDB, runtimeDB,
 		)
 	}
@@ -906,7 +1000,9 @@ func captureContext(
 		captureMode == memorycapture.CaptureModeNegativePolicyGuardMemoryJudge ||
 		captureMode == memorycapture.CaptureModeBufferedMemoryJudge ||
 		captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation ||
-		captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation {
+		captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
+		captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
+		captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
 		return context.WithCancel(parent)
 	}
 	return context.WithTimeout(parent, defaultCaptureTimeout)
@@ -1944,6 +2040,148 @@ func runBufferedMemoryJudgeDevelopment(
 	return nil
 }
 
+func runAccuracyRepairMemoryJudgeDevelopment(
+	ctx context.Context,
+	stdout io.Writer,
+	options commandOptions,
+	startedAt time.Time,
+	protected memorycapture.ProtectedRegression,
+	cost memorycapture.CostBasis,
+	costHash string,
+	config memorycapture.ProfileConfig,
+	authority memorycapture.ConfiguredCandidateJudgeProfileAuthority,
+	configurationHash string,
+	providers providerBundle,
+	adminDB *sql.DB,
+	runtimeDB *sql.DB,
+) error {
+	selectedPool, err := memorycapture.SelectRegressionCaptureSplit(
+		protected.Pool,
+		memorycapture.DevelopmentCalibrationSplit,
+	)
+	if err != nil {
+		return errors.Join(errors.New("select accuracy-repair Memory Judge split failed"), err)
+	}
+	index, err := memorycapture.BuildFixtureIndex(selectedPool)
+	if err != nil {
+		return errors.Join(errors.New("index accuracy-repair Memory Judge fixtures failed"), err)
+	}
+	seed, err := memorycapture.SeedEphemeralDatabase(
+		ctx,
+		adminDB,
+		selectedPool,
+		index,
+		options.runID,
+	)
+	if err != nil {
+		return errors.Join(errors.New("seed accuracy-repair Memory Judge database failed"), err)
+	}
+	if len(seed.Cases) != 300 || providers.judge == nil {
+		return memorycapture.ErrCaptureInvalid
+	}
+	if _, err := memorycapture.PopulateProjectionVectors(
+		ctx,
+		adminDB,
+		options.runID,
+		providers.passage,
+	); err != nil {
+		return errors.Join(errors.New("populate accuracy-repair Memory Judge projections failed"), err)
+	}
+	captured, err := memorycapture.CaptureAccuracyRepairMemoryJudgeDevelopment(
+		ctx,
+		adminDB,
+		runtimeDB,
+		options.runID,
+		protected.Pool,
+		index,
+		seed,
+		providers.hybrid,
+		providers.judge,
+		authority,
+		config.ProfileID,
+		configurationHash,
+		cost.Candidate,
+	)
+	if err != nil {
+		return errors.Join(errors.New("capture accuracy-repair Memory Judge Development failed"), err)
+	}
+	report, reportBody, err := memorycapture.BuildAccuracyRepairMemoryJudgeDevelopmentReport(
+		protected.Pool,
+		captured,
+		authority,
+		cost,
+	)
+	if err != nil {
+		return errors.Join(errors.New("build accuracy-repair Memory Judge report failed"), err)
+	}
+	if options.pretty {
+		reportBody, err = marshalJSON(report, true)
+		if err != nil {
+			return err
+		}
+	}
+	captureID, err := newCaptureID()
+	if err != nil {
+		return errors.New("create accuracy-repair Memory Judge capture ID failed")
+	}
+	artifacts := []memorycapture.Artifact{{
+		Name: memorycapture.AccuracyRepairMemoryJudgeArtifactName,
+		Body: reportBody,
+	}}
+	_, manifestBody, err := memorycapture.BuildAccuracyRepairMemoryJudgeRunManifest(
+		options.runID,
+		captureID,
+		options.providerMode,
+		startedAt,
+		time.Now().UTC(),
+		protected,
+		costHash,
+		report,
+		artifacts,
+	)
+	if err != nil {
+		return errors.Join(errors.New("build accuracy-repair Memory Judge manifest failed"), err)
+	}
+	artifacts = append(artifacts, memorycapture.Artifact{
+		Name: "run-manifest.json",
+		Body: manifestBody,
+	})
+	if err := verifyRetainedArtifactsLeakFree(
+		protected.Pool,
+		artifacts,
+		providers.secrets,
+	); err != nil {
+		return err
+	}
+	if _, err := memorycapture.PublishArtifactsExclusive(
+		options.outputDir,
+		artifacts,
+	); err != nil {
+		return err
+	}
+	summary := commandSummary{
+		SchemaVersion:     "neo-chat.memory-regression-native-summary.v12",
+		RunID:             options.runID,
+		CaptureID:         captureID,
+		CorpusClass:       report.CorpusClass,
+		AdmissionMode:     report.AdmissionMode,
+		PromotionEligible: false,
+		ProviderMode:      options.providerMode,
+		CaptureMode:       memorycapture.CaptureModeAccuracyRepairMemoryJudge,
+		Split:             report.Split,
+		CandidatePassed:   report.Passed,
+		PolicySelected:    false,
+		OutputDirectory:   filepath.Clean(options.outputDir),
+	}
+	if err := json.NewEncoder(stdout).Encode(summary); err != nil {
+		return errors.New("write accuracy-repair Memory Judge summary failed")
+	}
+	if !report.Passed {
+		return errMetricsFailed
+	}
+	return nil
+}
+
 func runProductionMemoryJudgeValidation(
 	ctx context.Context,
 	stdout io.Writer,
@@ -2226,6 +2464,115 @@ func runProductionBufferedMemoryJudgeValidation(
 	}
 	if !report.Passed {
 		return errMetricsFailed
+	}
+	return nil
+}
+
+func runMemoryJudgeSliceDiagnostic(
+	ctx context.Context,
+	stdout io.Writer,
+	options commandOptions,
+	startedAt time.Time,
+	protected memorycapture.ProtectedRegression,
+	cost memorycapture.CostBasis,
+	costHash string,
+	config memorycapture.ProfileConfig,
+	authority memorycapture.ConfiguredCandidateJudgeProfileAuthority,
+	configurationHash string,
+	providers providerBundle,
+	adminDB *sql.DB,
+	runtimeDB *sql.DB,
+) error {
+	selectedPool, err := memorycapture.SelectMemoryJudgeSliceDiagnosticDevelopment(
+		protected.Pool,
+	)
+	if err != nil {
+		return err
+	}
+	index, err := memorycapture.BuildFixtureIndex(selectedPool)
+	if err != nil {
+		return err
+	}
+	seed, err := memorycapture.SeedEphemeralDatabase(
+		ctx, adminDB, selectedPool, index, options.runID,
+	)
+	if err != nil {
+		return err
+	}
+	seed, err = memorycapture.ExpandMemoryJudgeSliceDiagnosticRuntimeCases(
+		ctx, adminDB, options.runID, seed,
+	)
+	if err != nil {
+		return err
+	}
+	if len(seed.Cases) != memorycapture.MemoryJudgeSliceDiagnosticExecutionCount ||
+		providers.judge == nil {
+		return memorycapture.ErrCaptureInvalid
+	}
+	if _, err := memorycapture.PopulateProjectionVectors(
+		ctx, adminDB, options.runID, providers.passage,
+	); err != nil {
+		return err
+	}
+	captured, err := memorycapture.CaptureMemoryJudgeSliceDiagnostic(
+		ctx, adminDB, runtimeDB, options.runID, selectedPool, index, seed,
+		providers.hybrid, providers.judge, authority, config.ProfileID,
+		configurationHash, cost.Candidate,
+	)
+	if err != nil {
+		return err
+	}
+	report, reportBody, err := memorycapture.BuildMemoryJudgeSliceDiagnosticReport(
+		selectedPool, captured, config, authority, cost,
+	)
+	if err != nil {
+		return err
+	}
+	if options.pretty {
+		reportBody, err = marshalJSON(report, true)
+		if err != nil {
+			return err
+		}
+	}
+	captureID, err := newCaptureID()
+	if err != nil {
+		return errors.New("create Memory Judge slice diagnostic capture ID failed")
+	}
+	artifacts := []memorycapture.Artifact{{
+		Name: memorycapture.MemoryJudgeSliceDiagnosticArtifactName,
+		Body: reportBody,
+	}}
+	_, manifestBody, err := memorycapture.BuildMemoryJudgeSliceDiagnosticRunManifest(
+		options.runID, captureID, options.providerMode, startedAt, time.Now().UTC(),
+		protected, costHash, report, artifacts,
+	)
+	if err != nil {
+		return err
+	}
+	artifacts = append(artifacts, memorycapture.Artifact{
+		Name: "run-manifest.json", Body: manifestBody,
+	})
+	if err := verifyRetainedArtifactsLeakFree(
+		protected.Pool, artifacts, providers.secrets,
+	); err != nil {
+		return err
+	}
+	if _, err := memorycapture.PublishArtifactsExclusive(
+		options.outputDir, artifacts,
+	); err != nil {
+		return err
+	}
+	summary := commandSummary{
+		SchemaVersion: "neo-chat.memory-regression-native-summary.v11",
+		RunID:         options.runID, CaptureID: captureID,
+		CorpusClass: report.CorpusClass, AdmissionMode: report.AdmissionMode,
+		PromotionEligible: false, ProviderMode: options.providerMode,
+		CaptureMode: memorycapture.CaptureModeMemoryJudgeSliceDiagnostic,
+		Split:       report.Split, CandidatePassed: report.ExecutionComplete,
+		PolicySelected: false, OutputDirectory: filepath.Clean(options.outputDir),
+	}
+	if err := json.NewEncoder(stdout).Encode(summary); err != nil {
+		return errors.New("write Memory Judge slice diagnostic summary failed")
 	}
 	return nil
 }
@@ -2643,6 +2990,8 @@ func parseCommand(args []string) (commandOptions, error) {
 		memorycapture.CaptureModeBufferedMemoryJudge,
 		memorycapture.CaptureModeProductionMemoryJudgeValidation,
 		memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation,
+		memorycapture.CaptureModeMemoryJudgeSliceDiagnostic,
+		memorycapture.CaptureModeAccuracyRepairMemoryJudge,
 		memorycapture.CaptureModeMemoryToolRouteDevelopment,
 		memorycapture.CaptureModeMemoryToolRouteDiagnostic,
 		memorycapture.CaptureModeFrozenValidation:
@@ -2675,7 +3024,9 @@ func parseCommand(args []string) (commandOptions, error) {
 			options.captureMode == memorycapture.CaptureModeNegativePolicyGuardMemoryJudge ||
 			options.captureMode == memorycapture.CaptureModeBufferedMemoryJudge ||
 			options.captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation ||
-			options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation {
+			options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
+			options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
+			options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
 			if options.judgeProviderID == "" || options.judgeProviderType == "" ||
 				options.judgeBaseURL == "" || options.judgeConfiguredModelID == "" {
 				return commandOptions{}, errors.New(
@@ -2707,6 +3058,8 @@ func parseCommand(args []string) (commandOptions, error) {
 		options.captureMode != memorycapture.CaptureModeBufferedMemoryJudge &&
 		options.captureMode != memorycapture.CaptureModeProductionMemoryJudgeValidation &&
 		options.captureMode != memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation &&
+		options.captureMode != memorycapture.CaptureModeMemoryJudgeSliceDiagnostic &&
+		options.captureMode != memorycapture.CaptureModeAccuracyRepairMemoryJudge &&
 		(options.judgeCredentialPath != "" || options.judgeProviderID != "" ||
 			options.judgeProviderType != "" || options.judgeBaseURL != "" ||
 			options.judgeConfiguredModelID != "") {
@@ -2732,6 +3085,8 @@ func usageError() error {
 			"development_fixed_memory_judge_negative_guard_buffered|" +
 			"production_fixed_memory_judge_validation|" +
 			"production_fixed_memory_judge_negative_guard_buffered_validation|" +
+			"development_fixed_memory_judge_negative_guard_buffered_slice_diagnostic|" +
+			"development_fixed_memory_judge_negative_guard_buffered_accuracy_repair|" +
 			"frozen_validation " +
 			"-run-id ID [-credential-file FILE] " +
 			"[-cloud-judge-model MODEL] " +
@@ -2761,7 +3116,9 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 			options.captureMode == memorycapture.CaptureModeNegativePolicyGuardMemoryJudge ||
 			options.captureMode == memorycapture.CaptureModeBufferedMemoryJudge ||
 			options.captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation ||
-			options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation {
+			options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
+			options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
+			options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
 			modelID := options.judgeModelID
 			if options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge ||
 				options.captureMode == memorycapture.CaptureModeFixedMemoryJudge ||
@@ -2771,10 +3128,16 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 				options.captureMode == memorycapture.CaptureModeNegativePolicyGuardMemoryJudge ||
 				options.captureMode == memorycapture.CaptureModeBufferedMemoryJudge ||
 				options.captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation ||
-				options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation {
+				options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
+				options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
+				options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
 				modelID = options.judgeConfiguredModelID
 			}
-			bundle.judge = memorycapture.NewFakeProtocolCandidateJudge(modelID)
+			if options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
+				bundle.judge = memorycapture.NewFakeProtocolAccuracyCandidateJudge(modelID)
+			} else {
+				bundle.judge = memorycapture.NewFakeProtocolCandidateJudge(modelID)
+			}
 		}
 		if options.captureMode == memorycapture.CaptureModeMemoryToolRouteDevelopment ||
 			options.captureMode == memorycapture.CaptureModeMemoryToolRouteDiagnostic {
@@ -2812,7 +3175,9 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 		options.captureMode == memorycapture.CaptureModeNegativePolicyGuardMemoryJudge ||
 		options.captureMode == memorycapture.CaptureModeBufferedMemoryJudge ||
 		options.captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation ||
-		options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation {
+		options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
+		options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
+		options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
 		gatewayOptions = append(
 			gatewayOptions,
 			ragproviders.WithProviderGatewayAccuracyFirstDevelopmentNoTimeouts(),
@@ -2858,7 +3223,9 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 		options.captureMode == memorycapture.CaptureModeNegativePolicyGuardMemoryJudge ||
 		options.captureMode == memorycapture.CaptureModeBufferedMemoryJudge ||
 		options.captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation ||
-		options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation {
+		options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
+		options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
+		options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
 		judgeCredential, credentialErr := readRegularBoundedFile(
 			options.judgeCredentialPath,
 			maximumCredentialSize,
@@ -2901,7 +3268,9 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 			options.captureMode == memorycapture.CaptureModeNegativePolicyGuardMemoryJudge ||
 			options.captureMode == memorycapture.CaptureModeBufferedMemoryJudge ||
 			options.captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation ||
-			options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation {
+			options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
+			options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
+			options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
 			judgeTimeout = 0
 			judgeHTTPClient = ragproviders.NewAccuracyFirstDevelopmentHTTPClient()
 		}
@@ -2925,7 +3294,9 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 		var judge usermemory.HybridCandidateJudge
 		var judgeErr error
 		if options.captureMode == memorycapture.CaptureModeBufferedMemoryJudge ||
-			options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation {
+			options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
+			options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
+			options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
 			bufferedProvider, ok := chatProvider.(chat.BufferedChatProvider)
 			if !ok {
 				clearBytes(judgeCredential)
@@ -2934,7 +3305,11 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 					"configured candidate judge has no buffered completion support",
 				)
 			}
-			judge, judgeErr = memoryjudge.NewBufferedChatAdapter(bufferedProvider, modelRef)
+			if options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
+				judge, judgeErr = memoryjudge.NewBufferedChatAccuracyAdapter(bufferedProvider, modelRef)
+			} else {
+				judge, judgeErr = memoryjudge.NewBufferedChatAdapter(bufferedProvider, modelRef)
+			}
 		} else {
 			judge, judgeErr = memoryjudge.NewChatAdapter(chatProvider, modelRef)
 		}
@@ -3023,14 +3398,32 @@ func wrapAccuracyFirstProviderBundle(
 		options.captureMode != memorycapture.CaptureModeNegativePolicyGuardMemoryJudge &&
 		options.captureMode != memorycapture.CaptureModeBufferedMemoryJudge &&
 		options.captureMode != memorycapture.CaptureModeProductionMemoryJudgeValidation &&
-		options.captureMode != memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation {
+		options.captureMode != memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation &&
+		options.captureMode != memorycapture.CaptureModeMemoryJudgeSliceDiagnostic &&
+		options.captureMode != memorycapture.CaptureModeAccuracyRepairMemoryJudge {
 		return bundle, nil
 	}
 	var passage memorycapture.PassageEmbedder
 	var hybrid usermemory.HybridShadowProvider
 	var judge usermemory.HybridCandidateJudge
 	var err error
-	if options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation {
+	if options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
+		passage, hybrid, judge, _, err =
+			memorycapture.WrapAccuracyRepairMemoryJudgeDevelopmentProviders(
+				options.providerMode,
+				bundle.passage,
+				bundle.hybrid,
+				bundle.judge,
+			)
+	} else if options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic {
+		passage, hybrid, judge, _, err =
+			memorycapture.WrapMemoryJudgeSliceDiagnosticProviders(
+				options.providerMode,
+				bundle.passage,
+				bundle.hybrid,
+				bundle.judge,
+			)
+	} else if options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation {
 		passage, hybrid, judge, _, err =
 			memorycapture.WrapProductionBufferedMemoryJudgeValidationProviders(
 				options.providerMode,
@@ -3269,6 +3662,12 @@ func loadLiveAuthorization(getenv environmentLookup) memorycapture.LiveAuthoriza
 		ProductionMemoryJudgeValidationApproval: value(liveProductionMemoryJudgeValidationApprovalEnv),
 		ProductionBufferedMemoryJudgeValidationApproval: value(
 			liveProductionBufferedMemoryJudgeValidationApprovalEnv,
+		),
+		MemoryJudgeSliceDiagnosticApproval: value(
+			liveMemoryJudgeSliceDiagnosticApprovalEnv,
+		),
+		AccuracyRepairMemoryJudgeApproval: value(
+			liveAccuracyRepairMemoryJudgeApprovalEnv,
 		),
 	}
 }

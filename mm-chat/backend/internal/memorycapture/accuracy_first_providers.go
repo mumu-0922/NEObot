@@ -107,6 +107,34 @@ func ProductionBufferedMemoryJudgeValidationExecutionPolicy(
 	return policy, nil
 }
 
+// MemoryJudgeSliceDiagnosticExecutionPolicy changes only the bounded plan
+// identity. Provider serialization, retry ceilings, waits, and framing remain
+// identical to the production-v2 Validation reader.
+func MemoryJudgeSliceDiagnosticExecutionPolicy(
+	providerMode string,
+) (AccuracyFirstExecutionPolicy, error) {
+	policy, err := TransportStableDevelopmentExecutionPolicy(providerMode)
+	if err != nil {
+		return AccuracyFirstExecutionPolicy{}, err
+	}
+	policy.SequenceVersion = MemoryJudgeSliceDiagnosticExecutionSequenceV1
+	return policy, nil
+}
+
+// AccuracyRepairMemoryJudgeDevelopmentExecutionPolicy changes only the
+// schema-v20 sequence identity; retry, cooldown, serialization, and transport
+// behavior remain equal to the buffered production-v2 reader.
+func AccuracyRepairMemoryJudgeDevelopmentExecutionPolicy(
+	providerMode string,
+) (AccuracyFirstExecutionPolicy, error) {
+	policy, err := TransportStableDevelopmentExecutionPolicy(providerMode)
+	if err != nil {
+		return AccuracyFirstExecutionPolicy{}, err
+	}
+	policy.SequenceVersion = AccuracyRepairMemoryJudgeExecutionSequenceV1
+	return policy, nil
+}
+
 type accuracyFirstWait func(context.Context, time.Duration) error
 
 // AccuracyFirstProviderController owns one global request gate for projection
@@ -135,8 +163,9 @@ type accuracyFirstHybridProvider struct {
 }
 
 type accuracyFirstCandidateJudge struct {
-	controller *AccuracyFirstProviderController
-	delegate   usermemory.HybridCandidateJudge
+	controller    *AccuracyFirstProviderController
+	delegate      usermemory.HybridCandidateJudge
+	promptBuilder candidateJudgeCapturePromptBuilder
 }
 
 func WrapAccuracyFirstDevelopmentProviders(
@@ -337,6 +366,60 @@ func WrapProductionBufferedMemoryJudgeValidationProviders(
 	)
 }
 
+// WrapMemoryJudgeSliceDiagnosticProviders reuses the production-v2 bounded
+// controller while keeping a distinct diagnostic call site.
+func WrapMemoryJudgeSliceDiagnosticProviders(
+	providerMode string,
+	passage PassageEmbedder,
+	hybrid usermemory.HybridShadowProvider,
+	judge usermemory.HybridCandidateJudge,
+) (
+	PassageEmbedder,
+	usermemory.HybridShadowProvider,
+	usermemory.HybridCandidateJudge,
+	*AccuracyFirstProviderController,
+	error,
+) {
+	return WrapTransportStableMemoryJudgeDevelopmentProviders(
+		providerMode,
+		passage,
+		hybrid,
+		judge,
+	)
+}
+
+// WrapAccuracyRepairMemoryJudgeDevelopmentProviders preserves the buffered
+// production-v2 controller and changes only the separately decorated prompt.
+func WrapAccuracyRepairMemoryJudgeDevelopmentProviders(
+	providerMode string,
+	passage PassageEmbedder,
+	hybrid usermemory.HybridShadowProvider,
+	judge usermemory.HybridCandidateJudge,
+) (
+	PassageEmbedder,
+	usermemory.HybridShadowProvider,
+	usermemory.HybridCandidateJudge,
+	*AccuracyFirstProviderController,
+	error,
+) {
+	wrappedPassage, wrappedHybrid, wrappedJudge, controller, err :=
+		WrapTransportStableMemoryJudgeDevelopmentProviders(
+			providerMode,
+			passage,
+			hybrid,
+			judge,
+		)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	accuracyJudge, ok := wrappedJudge.(*accuracyFirstCandidateJudge)
+	if !ok {
+		return nil, nil, nil, nil, ErrCaptureInvalid
+	}
+	accuracyJudge.promptBuilder = usermemory.BuildHybridCandidateJudgeAccuracyPrompt
+	return wrappedPassage, wrappedHybrid, wrappedJudge, controller, nil
+}
+
 func wrapAccuracyFirstDevelopmentProviders(
 	passage PassageEmbedder,
 	hybrid usermemory.HybridShadowProvider,
@@ -365,7 +448,11 @@ func wrapAccuracyFirstDevelopmentProviders(
 	}
 	return &accuracyFirstPassageEmbedder{controller: controller, delegate: passage},
 		&accuracyFirstHybridProvider{controller: controller, delegate: hybrid},
-		&accuracyFirstCandidateJudge{controller: controller, delegate: judge},
+		&accuracyFirstCandidateJudge{
+			controller:    controller,
+			delegate:      judge,
+			promptBuilder: usermemory.BuildHybridCandidateJudgePrompt,
+		},
 		controller,
 		nil
 }
@@ -494,7 +581,10 @@ func (judge *accuracyFirstCandidateJudge) JudgeHybridCandidates(
 	if judge == nil || judge.controller == nil || judge.delegate == nil {
 		return usermemory.HybridCandidateJudgeResult{}, ErrCaptureInvalid
 	}
-	inputTokenUpperBound, err := cloudJudgeInputTokenUpperBound(input)
+	inputTokenUpperBound, err := cloudJudgeInputTokenUpperBoundWithPrompt(
+		input,
+		judge.promptBuilder,
+	)
 	if err != nil {
 		return usermemory.HybridCandidateJudgeResult{}, ErrCaptureInvalid
 	}
