@@ -9380,3 +9380,21 @@ canary allowlist. Because Validation failed, automatic single-account rollout
 was not authorized or attempted, all Memory data was preserved, and this
 consumed result grants no rerun, Holdout, promotion, Release, deployment, or
 recall re-enable.
+
+## 2026-08-07 — Schema-v19 diagnosis and schema-v20 accuracy-repair stop
+
+The consumed schema-v19 Development-only slice diagnostic completed 255 fixed
+executions and identified a systematic Luna-selection boundary: Candidate and
+BGE loss were zero, while Luna omitted the expected current fact ten times.
+This authorized exactly one minimal prompt-only successor.
+
+Schema-v20 changed only the Luna system prompt under fresh profile/report/
+reader/run/cost/approval identities. PostgreSQL 17 Fake passed all 300 cases.
+The sole live full-Development run completed all 300 but failed unchanged
+`stable_fact` and `temporal_correction` current-fact gates at `0.933333` each;
+overall Candidate Recall@20/Final Recall@5/current-fact accuracy were
+`1.0/0.969231/0.963636`, false injection and every safety counter were zero,
+and all eleven transient Judge failures recovered. Evidence is retained as
+non-promotional. The chain stopped before schema-v21 Validation; both Memory
+flags remain false, the canary allowlist remains empty, and no live data was
+mutated.

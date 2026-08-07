@@ -1182,6 +1182,11 @@ Wrong: treat a schema-v18 aggregate pass as sufficient when a required slice
 failed, or set the global Tool flag without one exact authenticated UUID.
 ```
 
+```text
+Wrong: rerun consumed schema-v18 Validation, tune BGE and Luna together, or
+advance to a canary after a schema-v20 Development slice failure.
+```
+
 ### Correct
 
 ```text
@@ -1212,6 +1217,12 @@ default-off hybrid-worker/shadow flag + separate default-off product Tool flag
   -> schema-v18 only: exact 100-case production-v2 guard/buffered Validation,
      v13 cost and independent approval; any failed gate retains evidence and
      leaves MEMORY_TOOL_LOOP_ENABLED=false plus an empty canary allowlist
+  -> schema-v19 only: three fixed repetitions of the 85-case failed-slice
+     Development union, opaque Candidate/BGE/Luna/final root-cause evidence,
+     v14 cost, diagnostic-only authority
+  -> schema-v20 only: one Luna prompt-v2 semantic repair, full 300-case
+     Development, v15 cost; any failed global or slice gate stops before
+     schema-v21 Validation and leaves both Memory flags false
   -> judge/BGE intersection; empty or uncertain result means no v2 Memory
   -> product first ToolRound sees normal request + search_memory, no Memory body
   -> exact call under production policy: current fixed Judge tuple reauthorized

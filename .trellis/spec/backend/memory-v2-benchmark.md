@@ -50,6 +50,9 @@ neo-chat.memory-regression-profile-config.v14
 neo-chat.memory-regression-profile-config.v15
 neo-chat.memory-regression-profile-config.v16
 neo-chat.memory-regression-profile-config.v17
+neo-chat.memory-regression-profile-config.v18
+neo-chat.memory-regression-profile-config.v19
+neo-chat.memory-regression-profile-config.v20
 neo-chat.memory-regression-relevance-calibration.v3
 neo-chat.memory-regression-relevance-calibration.v4
 neo-chat.memory-regression-relevance-calibration.v5
@@ -64,10 +67,14 @@ neo-chat.memory-regression-relevance-calibration.v13
 neo-chat.memory-regression-relevance-calibration.v14
 neo-chat.memory-regression-relevance-calibration.v16
 neo-chat.memory-regression-relevance-calibration.v17
+neo-chat.memory-regression-relevance-calibration.v20
+neo-chat.memory-regression-slice-diagnostic.v19
 neo-chat.memory-regression-relevance-validation.v1
 neo-chat.memory-regression-relevance-validation.v15
 neo-chat.memory-regression-relevance-run.v1
 neo-chat.memory-regression-relevance-validation-run.v15
+neo-chat.memory-regression-slice-diagnostic-run.v19
+neo-chat.memory-regression-relevance-run.v20
 neo-chat.memory-regression-cost-basis.v2
 neo-chat.memory-regression-cost-basis.v3
 neo-chat.memory-regression-cost-basis.v4
@@ -79,6 +86,9 @@ neo-chat.memory-regression-cost-basis.v9
 neo-chat.memory-regression-cost-basis.v10
 neo-chat.memory-regression-cost-basis.v11
 neo-chat.memory-regression-cost-basis.v12
+neo-chat.memory-regression-cost-basis.v13
+neo-chat.memory-regression-cost-basis.v14
+neo-chat.memory-regression-cost-basis.v15
 neo-chat.memory-cloud-candidate-judge-input.v1
 neo-chat.memory-cloud-candidate-judge-output.v1
 ```
@@ -1217,6 +1227,7 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | The consumed schema-v17 live run is requested again, or its pass is used to enter Validation/enable recall/promote/deploy | Refuse. The one-shot Development evidence is complete and remains non-promotional. |
 | Schema-v18 Fake is presented as quality or live authority | Reject; retain the two aggregate files and non-zero exit only as lifecycle evidence. |
 | Schema-v18 aggregate metrics/safety pass but any required slice fails | Retain Yellow `retain_beta`, keep the global Tool flag false and allowlist empty, and never rerun or partially authorize. |
+| A versioned candidate-Judge prompt is built independently by the Provider adapter and capture cost controller, or their prompt version/SHA/token bound differs | Reject before evidence publication. Select one prompt builder for the lane and reuse it for both the outbound request and its input-token authority; duplicated prompt assumptions are not evidence. |
 | Compose v5 lacks `run --no-build` | Capability-detect before credentials, require `--pull never`, omit positive `--build`, and pin the exact reviewed export image. |
 | Development passes | Retain aggregate evidence and stop for owner review; never enter Validation automatically. |
 | Frozen validation is requested before a Development-selected policy is committed | Reject before credential read or Provider work. |
@@ -1531,6 +1542,9 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   adapter isolation, exact `empty + guard + Judge-completed + failed = 100`,
   failed-slice no-rollout semantics, exact UUID fail-closed admission, both
   Compose-run capability branches, and cleanup of credentials/export state.
+  Schema-v20 fixtures additionally prove that the buffered adapter and capture
+  controller share the same versioned prompt builder, so the request bytes,
+  prompt provenance, and pre-authorized input-token upper bound cannot drift.
   Cost-basis fixtures must also assert the raw private-file hash and
   the decoded canonical manifest hash as different named surfaces rather than
   assuming byte equality.
@@ -1693,4 +1707,13 @@ Wrong: schema-v18 overall metrics and safety look good, so ignore two failed
 Correct: retain the one complete aggregate pair -> verify attempts/tokens/cost
          and cleanup -> keep MEMORY_TOOL_LOOP_ENABLED=false and the canary
          empty -> record no-rollout -> never rerun the consumed live attempt.
+```
+
+```text
+Wrong: select prompt v2 in the Provider adapter but let the capture controller
+       estimate tokens from prompt v1, then repair the resulting ledger after
+       the run.
+Correct: inject the same versioned prompt builder into both boundaries -> build
+         the outbound request and token upper bound from that authority ->
+         reject any provenance or reconciliation drift before publication.
 ```

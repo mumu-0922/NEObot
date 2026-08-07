@@ -1789,6 +1789,55 @@ Both credential copies and the protected export env were destroyed; all live
 services and container IDs remained stable. This evidence is consumed and
 must not be rerun or treated as partial rollout authority.
 
+Schema v19 is a diagnostic-only Development successor. It selects the fixed
+85-case union of `mixed_language_entity` and `stable_fact`, repeats that order
+three times in one 255-execution authority, and retains only opaque Candidate,
+BGE, Luna, final-intersection, and Golden-current membership. It binds fresh
+profile/report/reader/run/cost identities and can never select a policy or
+grant release authority. The sole live run
+`memory-regression-20260807t034006z-837ea5cd` completed all 255 executions and
+classified the defect as systematic: Candidate and BGE lost zero expected
+facts, while Luna omitted the expected fact ten times. Three stable-fact cases
+failed in all repetitions and one mixed-language case failed once. Nine typed
+transport failures recovered; no terminal failure remained. This consumed the
+schema-v19 live authority and selected only the Luna prompt boundary for one
+minimal Development repair.
+
+Schema v20 changes exactly that boundary. Prompt
+`memory-cloud-candidate-judge-prompt-v2`
+(`90fac3f3c97a340e6ef1963dc1456c5f088ac083658a29e75aad747efba95d90`)
+adds explicit saved fact/preference/decision/correction/fallback/project
+context rules while retaining the same fixed model, input/output schema,
+decoder, BGE order, negative guard, buffered transport, retry schedule, and
+failure taxonomy. Profile/report/reader/run/cost identities advance to
+v20/v20/v18/v20/v15. The PostgreSQL 17 Fake run passed all 300 cases with zero
+network and zero scoped runtime residue.
+
+The sole schema-v20 live run
+`memory-regression-20260807t042823z-67950546` completed all 300 cases but
+failed unchanged quality gates. Candidate Recall@20 was `1.0`, Final Recall@5
+was `0.969231`, current-fact accuracy was `0.963636`, and false injection was
+zero. `stable_fact` and `temporal_correction` each reached only `0.933333`
+current-fact accuracy; Luna abstained six times. Eleven typed transport
+failures recovered, leaving zero terminal cases. Actual Judge authority was
+`176/900` requests, `316702/2000000` input tokens, and `22528/115200` output
+tokens. Safety, privacy, token, and cost gates passed, but the immutable top
+level is `passed=false`, `policySelected=false`, and
+`promotionEligible=false`. Therefore schema v21 Validation was not constructed,
+no canary UUID was selected, both Memory runtime flags stayed false, and all
+Memory data was preserved.
+
+The schema-v19 configuration/cost/report/manifest hashes are
+`44c8859909bd51b2f0d5dcf163f28d21db94829d8d24618b0389b2dc94b2e85f`,
+`b61949473b7a84a4548a32ab875544a6908d28f0b44defa3c455979a5e53f63c`,
+`8f8a3a992509b4742b7e9b0296be209efc206584e67d8adf27f1f0203ce25c71`,
+and `8725458d19c5e8c00acb6a6e33e1b4547715695891c8d46224c1393f5fb1f2a1`.
+The schema-v20 live values are
+`2f05171d7f7254a2e453fa1ab4a55a8ff00ff5ec1cc464db145bec101e0c4266`,
+`d13cd173e8c8d386154e6977bc1a0b960fb3b3e3255fafb0a24a411e8c3a1850`,
+`a7f270f2b822df3bdc218db6ca0baaff2a5f652a91416e50a4fa5e93b87a8463`,
+and `6e91dedeefab1f2a54d638fec96421242d6287f0ea61dfa9b695ac4df00d4c7b`.
+
 ```bash
 bash scripts/run-memory-production-buffered-validation-from-vault.sh \
   --cost-basis /secure/eval/production-buffered-validation-cost-v13.json \
@@ -1979,6 +2028,12 @@ request/input/output ceilings. Unused authority is valid, but actual
 attempt/input/output totals must reconcile exactly and the v9/v10/v11/v12/v13
 schema identities are never interchangeable.
 
+Schema-v19 slice diagnostics require cost-basis v14 with exactly 765 Judge
+requests and 97,920 output tokens for 255 logical executions with two retries.
+Schema-v20 full Development requires cost-basis v15 with exactly 900 requests
+and 115,200 output tokens. Neither document is valid for Validation or any
+historical lane.
+
 Each full fake-protocol run directory is mode `0700` and contains five
 mode-`0600` files:
 
@@ -1997,6 +2052,7 @@ Development, schema-v13 Judge-failure-diagnostic Development, schema-v14
 transport-stable Development, schema-v15 production Validation, and schema-v16
 negative-guard Development and schema-v17 buffered-judge Development
 and schema-v18 production-v2 buffered Validation
+and schema-v19 slice diagnostics and schema-v20 accuracy-repair Development
 directories contain their named aggregate report plus `run-manifest.json`. In
 every mode, evidence is exclusively linked first and the content-free
 run manifest is the final completion marker. Existing targets are refused
