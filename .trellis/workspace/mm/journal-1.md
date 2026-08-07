@@ -1459,3 +1459,37 @@ Added schema-v19 opaque slice diagnostics, applied the single schema-v20 Luna pr
 ### Next Steps
 
 - None - task complete
+
+
+## Session 33: Recover Memory runtime and diagnose v20 abstentions
+
+**Date**: 2026-08-07
+**Task**: Recover Memory runtime and diagnose v20 abstentions
+**Branch**: `main`
+
+### Summary
+
+Recovered backend and Memory Worker on the byte-verified retained image with PostgreSQL data preserved at migration 069; implemented and Fake/live-validated a separately versioned 171-execution v20 abstention diagnostic; classified six Luna omissions across four opaque cases as stochastic; kept Memory flags and canary disabled; added lifecycle, standalone, contract, tracking, and executable spec coverage with all quality gates passing.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8abde505` | (see git log) |
+| `8bd2aa86` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
