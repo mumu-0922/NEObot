@@ -14,30 +14,31 @@ import (
 )
 
 const (
-	hybridShadowHardCutoff                = 2 * time.Second
-	hybridShadowEmbedCutoff               = 750 * time.Millisecond
-	hybridShadowIntentCutoff              = 500 * time.Millisecond
-	hybridShadowRecordReserve             = 150 * time.Millisecond
-	HybridShadowTargetTokens              = 600
-	HybridShadowMaximumTokens             = 900
-	HybridShadowFinalLimit                = 5
-	hybridShadowTargetTokens              = HybridShadowTargetTokens
-	hybridShadowMaximumTokens             = HybridShadowMaximumTokens
-	hybridShadowFinalLimit                = HybridShadowFinalLimit
-	hybridShadowTokenOverhead             = 24
-	hybridPolicyModeCalibration           = "calibration"
-	hybridPolicyModeIntentCalibration     = "intent_calibration"
-	hybridPolicyModeCloudJudgeCalibration = "cloud_judge_calibration"
-	hybridPolicyModeFixedMemoryJudge      = "fixed_cloud_candidate_judge_development"
-	hybridPolicyModeAccuracyFirstJudge    = "fixed_cloud_candidate_judge_accuracy_development"
-	hybridPolicyModeNegativePolicyGuard   = "fixed_cloud_candidate_judge_negative_guard_development"
-	hybridPolicyModeProductionJudge       = "fixed_cloud_candidate_judge_production"
-	hybridPolicyModeGuardProductionJudge  = "fixed_cloud_candidate_judge_negative_guard_production"
-	hybridPolicyModeSliceDiagnostic       = "fixed_cloud_candidate_judge_negative_guard_slice_diagnostic"
-	hybridPolicyModeAccuracyRepair        = "fixed_cloud_candidate_judge_negative_guard_accuracy_repair_development"
-	hybridPolicyModeMemoryToolRoute       = "main_model_tool_route_calibration"
-	hybridPolicyModeMemoryFirstToolRound  = "main_model_first_tool_round_calibration"
-	hybridPolicyModeFrozen                = "frozen"
+	hybridShadowHardCutoff                  = 2 * time.Second
+	hybridShadowEmbedCutoff                 = 750 * time.Millisecond
+	hybridShadowIntentCutoff                = 500 * time.Millisecond
+	hybridShadowRecordReserve               = 150 * time.Millisecond
+	HybridShadowTargetTokens                = 600
+	HybridShadowMaximumTokens               = 900
+	HybridShadowFinalLimit                  = 5
+	hybridShadowTargetTokens                = HybridShadowTargetTokens
+	hybridShadowMaximumTokens               = HybridShadowMaximumTokens
+	hybridShadowFinalLimit                  = HybridShadowFinalLimit
+	hybridShadowTokenOverhead               = 24
+	hybridPolicyModeCalibration             = "calibration"
+	hybridPolicyModeIntentCalibration       = "intent_calibration"
+	hybridPolicyModeCloudJudgeCalibration   = "cloud_judge_calibration"
+	hybridPolicyModeFixedMemoryJudge        = "fixed_cloud_candidate_judge_development"
+	hybridPolicyModeAccuracyFirstJudge      = "fixed_cloud_candidate_judge_accuracy_development"
+	hybridPolicyModeNegativePolicyGuard     = "fixed_cloud_candidate_judge_negative_guard_development"
+	hybridPolicyModeProductionJudge         = "fixed_cloud_candidate_judge_production"
+	hybridPolicyModeGuardProductionJudge    = "fixed_cloud_candidate_judge_negative_guard_production"
+	hybridPolicyModeSliceDiagnostic         = "fixed_cloud_candidate_judge_negative_guard_slice_diagnostic"
+	hybridPolicyModeAccuracyRepair          = "fixed_cloud_candidate_judge_negative_guard_accuracy_repair_development"
+	hybridPolicyModeV20AbstentionDiagnostic = "fixed_cloud_candidate_judge_accuracy_v20_abstention_diagnostic"
+	hybridPolicyModeMemoryToolRoute         = "main_model_tool_route_calibration"
+	hybridPolicyModeMemoryFirstToolRound    = "main_model_first_tool_round_calibration"
+	hybridPolicyModeFrozen                  = "frozen"
 	// These values are changed only after a successful Development calibration
 	// artifact has been reviewed. Validation refuses to run while ready=false.
 	hybridFrozenPolicyReady          = false
@@ -1011,6 +1012,21 @@ func HybridShadowAccuracyRepairDevelopmentPolicy() HybridShadowRelevancePolicy {
 	}
 }
 
+// HybridShadowV20AbstentionDiagnosticPolicy preserves the schema-v20 prompt,
+// BGE, decoder, retry, and final-intersection semantics under an independent
+// Development-only diagnostic identity.
+func HybridShadowV20AbstentionDiagnosticPolicy() HybridShadowRelevancePolicy {
+	return HybridShadowRelevancePolicy{
+		ID:                               HybridRelevanceV20AbstentionDiagnosticPolicyID,
+		Mode:                             hybridPolicyModeV20AbstentionDiagnostic,
+		CloudCandidateJudgeRequired:      true,
+		CloudCandidateJudgeModelID:       HybridFixedMemoryJudgeModelID,
+		NegativePolicyQueryGuardRequired: true,
+		MinimumProviderSimilarity:        -1,
+		MinimumFinalRelevanceScore:       0,
+	}
+}
+
 func HybridShadowMemoryToolRouteCalibrationPolicy(
 	modelID string,
 ) HybridShadowRelevancePolicy {
@@ -1162,7 +1178,8 @@ func validHybridShadowRelevancePolicy(
 			(policy.Mode == hybridPolicyModeNegativePolicyGuard ||
 				policy.Mode == hybridPolicyModeGuardProductionJudge ||
 				policy.Mode == hybridPolicyModeSliceDiagnostic ||
-				policy.Mode == hybridPolicyModeAccuracyRepair) ||
+				policy.Mode == hybridPolicyModeAccuracyRepair ||
+				policy.Mode == hybridPolicyModeV20AbstentionDiagnostic) ||
 		math.IsNaN(policy.MinimumMemoryIntentMargin) ||
 		math.IsInf(policy.MinimumMemoryIntentMargin, 0) ||
 		policy.MinimumMemoryIntentMargin < -1 || policy.MinimumMemoryIntentMargin > 1 ||
@@ -1277,6 +1294,17 @@ func validHybridShadowRelevancePolicy(
 			policy.MinimumFinalRelevanceScore != 0 {
 			return HybridShadowRelevancePolicy{}, false
 		}
+	case hybridPolicyModeV20AbstentionDiagnostic:
+		if policy.ID != HybridRelevanceV20AbstentionDiagnosticPolicyID ||
+			policy.MemoryIntentRequired || !policy.CloudCandidateJudgeRequired ||
+			policy.CloudCandidateJudgeModelID != HybridFixedMemoryJudgeModelID ||
+			policy.MemoryToolRouteRequired || policy.MemoryToolRouteModelID != "" ||
+			!policy.NegativePolicyQueryGuardRequired ||
+			policy.MinimumMemoryIntentMargin != 0 ||
+			policy.MinimumProviderSimilarity != -1 ||
+			policy.MinimumFinalRelevanceScore != 0 {
+			return HybridShadowRelevancePolicy{}, false
+		}
 	case hybridPolicyModeMemoryToolRoute:
 		if policy.ID != HybridRelevanceMemoryToolRoutePolicyID ||
 			policy.MemoryIntentRequired || policy.CloudCandidateJudgeRequired ||
@@ -1338,18 +1366,21 @@ func hybridPolicyRunsAccuracyFirst(mode string) bool {
 		mode == hybridPolicyModeProductionJudge ||
 		mode == hybridPolicyModeGuardProductionJudge ||
 		mode == hybridPolicyModeSliceDiagnostic ||
-		mode == hybridPolicyModeAccuracyRepair
+		mode == hybridPolicyModeAccuracyRepair ||
+		mode == hybridPolicyModeV20AbstentionDiagnostic
 }
 
 func hybridCandidateJudgePromptVersion(policy HybridShadowRelevancePolicy) string {
-	if policy.Mode == hybridPolicyModeAccuracyRepair {
+	if policy.Mode == hybridPolicyModeAccuracyRepair ||
+		policy.Mode == hybridPolicyModeV20AbstentionDiagnostic {
 		return HybridCandidateJudgeAccuracyPromptVersion
 	}
 	return HybridCandidateJudgePromptVersion
 }
 
 func hybridCandidateJudgePromptSHA256(policy HybridShadowRelevancePolicy) string {
-	if policy.Mode == hybridPolicyModeAccuracyRepair {
+	if policy.Mode == hybridPolicyModeAccuracyRepair ||
+		policy.Mode == hybridPolicyModeV20AbstentionDiagnostic {
 		return HybridCandidateJudgeAccuracyPromptSHA256
 	}
 	return HybridCandidateJudgePromptSHA256

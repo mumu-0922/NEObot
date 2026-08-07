@@ -30,6 +30,7 @@ const (
 	ProductionBufferedMemoryJudgeValidationReaderVersion = "neo-chat.native-memory-reader-capture.v16"
 	MemoryJudgeSliceDiagnosticReaderVersion              = "neo-chat.native-memory-reader-capture.v17"
 	AccuracyRepairMemoryJudgeReaderVersion               = "neo-chat.native-memory-reader-capture.v18"
+	MemoryV20AbstentionDiagnosticReaderVersion           = "neo-chat.native-memory-reader-capture.v20-abstention-diagnostic.v1"
 	ProviderCostPolicyOwnerAuthorizedAbsoluteV1          = "owner_authorized_absolute_cap_v1"
 	AccuracyFirstExecutionSequenceV1                     = "bge_query_admission_bge_rerank_luna_judge_record_serial_v1"
 	AccuracyFirstRetryPolicyV1                           = "transient_408_429_5xx_transport_read_once_v1"
@@ -40,6 +41,7 @@ const (
 	ProductionBufferedValidationExecutionSequenceV1      = "production_bge_m3_rerank_fixed_luna_negative_guard_buffered_json_judge_record_serial_v1"
 	MemoryJudgeSliceDiagnosticExecutionSequenceV1        = "development_slice_union_bge_m3_rerank_fixed_luna_negative_guard_buffered_json_judge_record_serial_v1"
 	AccuracyRepairMemoryJudgeExecutionSequenceV1         = "development_full_bge_m3_rerank_fixed_luna_negative_guard_buffered_accuracy_prompt_v2_record_serial_v1"
+	MemoryV20AbstentionDiagnosticExecutionSequenceV1     = "development_v20_failed_slice_union_bge_m3_rerank_fixed_luna_accuracy_prompt_v2_record_serial_v1"
 	AccuracyFirstCooldownWallClockV1                     = "wall_clock_v1"
 	AccuracyFirstCooldownVirtualProtocolV1               = "virtual_protocol_v1"
 	ProviderModeNone                                     = "none"
@@ -62,6 +64,7 @@ const (
 	CaptureModeProductionBufferedMemoryJudgeValidation   = "production_fixed_memory_judge_negative_guard_buffered_validation"
 	CaptureModeMemoryJudgeSliceDiagnostic                = "development_fixed_memory_judge_negative_guard_buffered_slice_diagnostic"
 	CaptureModeAccuracyRepairMemoryJudge                 = "development_fixed_memory_judge_negative_guard_buffered_accuracy_repair"
+	CaptureModeMemoryV20AbstentionDiagnostic             = "development_fixed_memory_judge_accuracy_v20_abstention_diagnostic"
 )
 
 var (

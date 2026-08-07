@@ -204,6 +204,18 @@ func CostBasisSHA256(cost CostBasis) (string, error) {
 		); err != nil {
 			return "", err
 		}
+	case "neo-chat.memory-regression-cost-basis.v20-abstention-diagnostic.v1":
+		if cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+			cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil {
+			return "", fmt.Errorf("%w: cost basis", ErrCaptureInvalid)
+		}
+		if err := validateConfiguredCandidateJudgeCostAuthority(
+			cost,
+			FixedMemoryJudgeAuthority(),
+			MemoryV20AbstentionDiagnosticMaximumJudgeAttempts,
+		); err != nil {
+			return "", err
+		}
 	default:
 		return "", fmt.Errorf("%w: cost basis", ErrCaptureInvalid)
 	}

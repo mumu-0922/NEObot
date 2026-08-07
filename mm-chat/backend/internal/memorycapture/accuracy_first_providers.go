@@ -135,6 +135,20 @@ func AccuracyRepairMemoryJudgeDevelopmentExecutionPolicy(
 	return policy, nil
 }
 
+// MemoryV20AbstentionDiagnosticExecutionPolicy changes only the bounded plan
+// identity and case count. Provider serialization, retries, cooldown, and the
+// schema-v20 prompt adapter remain unchanged.
+func MemoryV20AbstentionDiagnosticExecutionPolicy(
+	providerMode string,
+) (AccuracyFirstExecutionPolicy, error) {
+	policy, err := TransportStableDevelopmentExecutionPolicy(providerMode)
+	if err != nil {
+		return AccuracyFirstExecutionPolicy{}, err
+	}
+	policy.SequenceVersion = MemoryV20AbstentionDiagnosticExecutionSequenceV1
+	return policy, nil
+}
+
 type accuracyFirstWait func(context.Context, time.Duration) error
 
 // AccuracyFirstProviderController owns one global request gate for projection
@@ -418,6 +432,25 @@ func WrapAccuracyRepairMemoryJudgeDevelopmentProviders(
 	}
 	accuracyJudge.promptBuilder = usermemory.BuildHybridCandidateJudgeAccuracyPrompt
 	return wrappedPassage, wrappedHybrid, wrappedJudge, controller, nil
+}
+
+// WrapMemoryV20AbstentionDiagnosticProviders reuses the exact schema-v20
+// buffered accuracy adapter and bounded transport controller.
+func WrapMemoryV20AbstentionDiagnosticProviders(
+	providerMode string,
+	passage PassageEmbedder,
+	hybrid usermemory.HybridShadowProvider,
+	judge usermemory.HybridCandidateJudge,
+) (
+	PassageEmbedder,
+	usermemory.HybridShadowProvider,
+	usermemory.HybridCandidateJudge,
+	*AccuracyFirstProviderController,
+	error,
+) {
+	return WrapAccuracyRepairMemoryJudgeDevelopmentProviders(
+		providerMode, passage, hybrid, judge,
+	)
 }
 
 func wrapAccuracyFirstDevelopmentProviders(

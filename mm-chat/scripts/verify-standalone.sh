@@ -100,6 +100,8 @@ required_paths=(
   scripts/test-memory-production-buffered-validation-from-vault.sh
   scripts/run-memory-judge-slice-diagnostic-from-vault.sh
   scripts/test-memory-judge-slice-diagnostic-from-vault.sh
+  scripts/run-memory-v20-abstention-diagnostic-from-vault.sh
+  scripts/test-memory-v20-abstention-diagnostic-from-vault.sh
   scripts/run-memory-accuracy-repair-development-from-vault.sh
   scripts/test-memory-accuracy-repair-development-from-vault.sh
   rag/pyproject.toml
@@ -240,6 +242,7 @@ DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-negative-guard-
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-buffered-judge-development-from-vault.sh"
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-production-buffered-validation-from-vault.sh"
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-judge-slice-diagnostic-from-vault.sh"
+DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-v20-abstention-diagnostic-from-vault.sh"
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-accuracy-repair-development-from-vault.sh"
 
 if [[ "${full}" == true ]]; then

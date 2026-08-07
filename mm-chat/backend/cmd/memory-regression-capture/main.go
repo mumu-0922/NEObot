@@ -173,6 +173,7 @@ func run(
 	var productionBufferedMemoryJudgeValidationConfig memorycapture.ProfileConfig
 	var memoryJudgeSliceDiagnosticConfig memorycapture.ProfileConfig
 	var accuracyRepairMemoryJudgeConfig memorycapture.ProfileConfig
+	var memoryV20AbstentionDiagnosticConfig memorycapture.ProfileConfig
 	var relevanceConfigurationHash string
 	var artifactNames []string
 	var artifactPrefix string
@@ -713,6 +714,38 @@ func run(
 			memorycapture.AccuracyRepairMemoryJudgeArtifactName,
 			"run-manifest.json",
 		}
+	case memorycapture.CaptureModeMemoryV20AbstentionDiagnostic:
+		configuredJudgeAuthority, err = buildConfiguredCandidateJudgeAuthority(options)
+		if err != nil {
+			return err
+		}
+		if err := memorycapture.AuthorizeMemoryJudgeSliceDiagnosticTarget(
+			options.providerMode, configuredJudgeAuthority, authorization,
+		); err != nil {
+			return err
+		}
+		if err := memorycapture.ValidateMemoryV20AbstentionDiagnosticCostAuthority(
+			cost, configuredJudgeAuthority,
+		); err != nil {
+			return err
+		}
+		memoryV20AbstentionDiagnosticConfig, err =
+			memorycapture.BuildMemoryV20AbstentionDiagnosticProfileConfig(
+				protected, costHash, options.providerMode,
+				configuredJudgeAuthority, cost.ProviderCostPolicy,
+			)
+		if err != nil {
+			return err
+		}
+		relevanceConfigurationHash, err =
+			memorycapture.ConfigurationSHA256(memoryV20AbstentionDiagnosticConfig)
+		if err != nil {
+			return err
+		}
+		artifactNames = []string{
+			memorycapture.MemoryV20AbstentionDiagnosticArtifactName,
+			"run-manifest.json",
+		}
 	case memorycapture.CaptureModeFrozenValidation:
 		validationConfig, err = memorycapture.BuildFrozenValidationProfileConfig(
 			protected,
@@ -850,6 +883,13 @@ func run(
 		return runAccuracyRepairMemoryJudgeDevelopment(
 			ctx, stdout, options, startedAt, protected, cost, costHash,
 			accuracyRepairMemoryJudgeConfig, configuredJudgeAuthority,
+			relevanceConfigurationHash, providers, adminDB, runtimeDB,
+		)
+	}
+	if options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
+		return runMemoryV20AbstentionDiagnostic(
+			ctx, stdout, options, startedAt, protected, cost, costHash,
+			memoryV20AbstentionDiagnosticConfig, configuredJudgeAuthority,
 			relevanceConfigurationHash, providers, adminDB, runtimeDB,
 		)
 	}
@@ -1002,7 +1042,8 @@ func captureContext(
 		captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation ||
 		captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
 		captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
-		captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
+		captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
+		captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
 		return context.WithCancel(parent)
 	}
 	return context.WithTimeout(parent, defaultCaptureTimeout)
@@ -2577,6 +2618,115 @@ func runMemoryJudgeSliceDiagnostic(
 	return nil
 }
 
+func runMemoryV20AbstentionDiagnostic(
+	ctx context.Context,
+	stdout io.Writer,
+	options commandOptions,
+	startedAt time.Time,
+	protected memorycapture.ProtectedRegression,
+	cost memorycapture.CostBasis,
+	costHash string,
+	config memorycapture.ProfileConfig,
+	authority memorycapture.ConfiguredCandidateJudgeProfileAuthority,
+	configurationHash string,
+	providers providerBundle,
+	adminDB *sql.DB,
+	runtimeDB *sql.DB,
+) error {
+	selectedPool, err := memorycapture.SelectMemoryV20AbstentionDiagnosticDevelopment(
+		protected.Pool,
+	)
+	if err != nil {
+		return err
+	}
+	index, err := memorycapture.BuildFixtureIndex(selectedPool)
+	if err != nil {
+		return err
+	}
+	seed, err := memorycapture.SeedEphemeralDatabase(
+		ctx, adminDB, selectedPool, index, options.runID,
+	)
+	if err != nil {
+		return err
+	}
+	seed, err = memorycapture.ExpandMemoryV20AbstentionDiagnosticRuntimeCases(
+		ctx, adminDB, options.runID, seed,
+	)
+	if err != nil {
+		return err
+	}
+	if len(seed.Cases) != memorycapture.MemoryV20AbstentionDiagnosticExecutionCount ||
+		providers.judge == nil {
+		return memorycapture.ErrCaptureInvalid
+	}
+	if _, err := memorycapture.PopulateProjectionVectors(
+		ctx, adminDB, options.runID, providers.passage,
+	); err != nil {
+		return err
+	}
+	captured, err := memorycapture.CaptureMemoryV20AbstentionDiagnostic(
+		ctx, adminDB, runtimeDB, options.runID, selectedPool, index, seed,
+		providers.hybrid, providers.judge, authority, config.ProfileID,
+		configurationHash, cost.Candidate,
+	)
+	if err != nil {
+		return err
+	}
+	report, reportBody, err := memorycapture.BuildMemoryV20AbstentionDiagnosticReport(
+		selectedPool, captured, config, authority, cost,
+	)
+	if err != nil {
+		return err
+	}
+	if options.pretty {
+		reportBody, err = marshalJSON(report, true)
+		if err != nil {
+			return err
+		}
+	}
+	captureID, err := newCaptureID()
+	if err != nil {
+		return errors.New("create Memory Judge v20 abstention diagnostic capture ID failed")
+	}
+	artifacts := []memorycapture.Artifact{{
+		Name: memorycapture.MemoryV20AbstentionDiagnosticArtifactName,
+		Body: reportBody,
+	}}
+	_, manifestBody, err := memorycapture.BuildMemoryV20AbstentionDiagnosticRunManifest(
+		options.runID, captureID, options.providerMode, startedAt, time.Now().UTC(),
+		protected, costHash, report, artifacts,
+	)
+	if err != nil {
+		return err
+	}
+	artifacts = append(artifacts, memorycapture.Artifact{
+		Name: "run-manifest.json", Body: manifestBody,
+	})
+	if err := verifyRetainedArtifactsLeakFree(
+		protected.Pool, artifacts, providers.secrets,
+	); err != nil {
+		return err
+	}
+	if _, err := memorycapture.PublishArtifactsExclusive(
+		options.outputDir, artifacts,
+	); err != nil {
+		return err
+	}
+	summary := commandSummary{
+		SchemaVersion: "neo-chat.memory-regression-native-summary.v11",
+		RunID:         options.runID, CaptureID: captureID,
+		CorpusClass: report.CorpusClass, AdmissionMode: report.AdmissionMode,
+		PromotionEligible: false, ProviderMode: options.providerMode,
+		CaptureMode: memorycapture.CaptureModeMemoryV20AbstentionDiagnostic,
+		Split:       report.Split, CandidatePassed: report.ExecutionComplete,
+		PolicySelected: false, OutputDirectory: filepath.Clean(options.outputDir),
+	}
+	if err := json.NewEncoder(stdout).Encode(summary); err != nil {
+		return errors.New("write Memory Judge v20 abstention diagnostic summary failed")
+	}
+	return nil
+}
+
 func runMemoryToolRouteDevelopment(
 	ctx context.Context,
 	stdout io.Writer,
@@ -2992,6 +3142,7 @@ func parseCommand(args []string) (commandOptions, error) {
 		memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation,
 		memorycapture.CaptureModeMemoryJudgeSliceDiagnostic,
 		memorycapture.CaptureModeAccuracyRepairMemoryJudge,
+		memorycapture.CaptureModeMemoryV20AbstentionDiagnostic,
 		memorycapture.CaptureModeMemoryToolRouteDevelopment,
 		memorycapture.CaptureModeMemoryToolRouteDiagnostic,
 		memorycapture.CaptureModeFrozenValidation:
@@ -3026,7 +3177,8 @@ func parseCommand(args []string) (commandOptions, error) {
 			options.captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation ||
 			options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
 			options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
-			options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
+			options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
+			options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
 			if options.judgeProviderID == "" || options.judgeProviderType == "" ||
 				options.judgeBaseURL == "" || options.judgeConfiguredModelID == "" {
 				return commandOptions{}, errors.New(
@@ -3060,6 +3212,7 @@ func parseCommand(args []string) (commandOptions, error) {
 		options.captureMode != memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation &&
 		options.captureMode != memorycapture.CaptureModeMemoryJudgeSliceDiagnostic &&
 		options.captureMode != memorycapture.CaptureModeAccuracyRepairMemoryJudge &&
+		options.captureMode != memorycapture.CaptureModeMemoryV20AbstentionDiagnostic &&
 		(options.judgeCredentialPath != "" || options.judgeProviderID != "" ||
 			options.judgeProviderType != "" || options.judgeBaseURL != "" ||
 			options.judgeConfiguredModelID != "") {
@@ -3087,6 +3240,7 @@ func usageError() error {
 			"production_fixed_memory_judge_negative_guard_buffered_validation|" +
 			"development_fixed_memory_judge_negative_guard_buffered_slice_diagnostic|" +
 			"development_fixed_memory_judge_negative_guard_buffered_accuracy_repair|" +
+			"development_fixed_memory_judge_accuracy_v20_abstention_diagnostic|" +
 			"frozen_validation " +
 			"-run-id ID [-credential-file FILE] " +
 			"[-cloud-judge-model MODEL] " +
@@ -3118,7 +3272,8 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 			options.captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation ||
 			options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
 			options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
-			options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
+			options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
+			options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
 			modelID := options.judgeModelID
 			if options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge ||
 				options.captureMode == memorycapture.CaptureModeFixedMemoryJudge ||
@@ -3130,10 +3285,12 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 				options.captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation ||
 				options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
 				options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
-				options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
+				options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
+				options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
 				modelID = options.judgeConfiguredModelID
 			}
-			if options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
+			if options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
+				options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
 				bundle.judge = memorycapture.NewFakeProtocolAccuracyCandidateJudge(modelID)
 			} else {
 				bundle.judge = memorycapture.NewFakeProtocolCandidateJudge(modelID)
@@ -3177,7 +3334,8 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 		options.captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation ||
 		options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
 		options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
-		options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
+		options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
+		options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
 		gatewayOptions = append(
 			gatewayOptions,
 			ragproviders.WithProviderGatewayAccuracyFirstDevelopmentNoTimeouts(),
@@ -3225,7 +3383,8 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 		options.captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation ||
 		options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
 		options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
-		options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
+		options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
+		options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
 		judgeCredential, credentialErr := readRegularBoundedFile(
 			options.judgeCredentialPath,
 			maximumCredentialSize,
@@ -3270,7 +3429,8 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 			options.captureMode == memorycapture.CaptureModeProductionMemoryJudgeValidation ||
 			options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
 			options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
-			options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
+			options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
+			options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
 			judgeTimeout = 0
 			judgeHTTPClient = ragproviders.NewAccuracyFirstDevelopmentHTTPClient()
 		}
@@ -3296,7 +3456,8 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 		if options.captureMode == memorycapture.CaptureModeBufferedMemoryJudge ||
 			options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
 			options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
-			options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
+			options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
+			options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
 			bufferedProvider, ok := chatProvider.(chat.BufferedChatProvider)
 			if !ok {
 				clearBytes(judgeCredential)
@@ -3305,7 +3466,8 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 					"configured candidate judge has no buffered completion support",
 				)
 			}
-			if options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
+			if options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
+				options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
 				judge, judgeErr = memoryjudge.NewBufferedChatAccuracyAdapter(bufferedProvider, modelRef)
 			} else {
 				judge, judgeErr = memoryjudge.NewBufferedChatAdapter(bufferedProvider, modelRef)
@@ -3400,14 +3562,23 @@ func wrapAccuracyFirstProviderBundle(
 		options.captureMode != memorycapture.CaptureModeProductionMemoryJudgeValidation &&
 		options.captureMode != memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation &&
 		options.captureMode != memorycapture.CaptureModeMemoryJudgeSliceDiagnostic &&
-		options.captureMode != memorycapture.CaptureModeAccuracyRepairMemoryJudge {
+		options.captureMode != memorycapture.CaptureModeAccuracyRepairMemoryJudge &&
+		options.captureMode != memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
 		return bundle, nil
 	}
 	var passage memorycapture.PassageEmbedder
 	var hybrid usermemory.HybridShadowProvider
 	var judge usermemory.HybridCandidateJudge
 	var err error
-	if options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
+	if options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
+		passage, hybrid, judge, _, err =
+			memorycapture.WrapMemoryV20AbstentionDiagnosticProviders(
+				options.providerMode,
+				bundle.passage,
+				bundle.hybrid,
+				bundle.judge,
+			)
+	} else if options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge {
 		passage, hybrid, judge, _, err =
 			memorycapture.WrapAccuracyRepairMemoryJudgeDevelopmentProviders(
 				options.providerMode,
