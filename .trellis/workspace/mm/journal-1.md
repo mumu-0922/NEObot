@@ -1425,3 +1425,37 @@ Added production-v2 guarded buffered Memory Validation and exact-UUID canary adm
 ### Next Steps
 
 - None - task complete
+
+
+## Session 32: Diagnose Memory validation slice failures
+
+**Date**: 2026-08-07
+**Task**: Diagnose Memory validation slice failures
+**Branch**: `main`
+
+### Summary
+
+Added schema-v19 opaque slice diagnostics, applied the single schema-v20 Luna prompt repair, retained the failed live Development gate, and correctly blocked Validation/canary while Memory remained disabled.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1a31ebda` | (see git log) |
+| `f41c135c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
