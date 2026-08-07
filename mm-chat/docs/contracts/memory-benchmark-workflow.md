@@ -1838,6 +1838,48 @@ The schema-v20 live values are
 `a7f270f2b822df3bdc218db6ca0baaff2a5f652a91416e50a4fa5e93b87a8463`,
 and `6e91dedeefab1f2a54d638fec96421242d6287f0ea61dfa9b695ac4df00d4c7b`.
 
+The schema-v20 abstention diagnostic is a separately named, non-promotional
+Development lane; it does not consume the reserved schema-v21 Validation
+identity. It selects the exact 57-case union of `stable_fact` and
+`temporal_correction` (`30 + 30 - 3`), repeats the frozen order three times,
+and preserves prompt v2, the fixed BGE/Luna tuple, buffered decoder, negative
+guard, two-retry schedule, cooldown, and final intersection. Its report keeps
+only opaque case identity, slice membership, stage counts/rank, and a closed
+root-cause enum. Query text, Memory plaintext, raw scores, raw errors, and
+Provider bodies are forbidden.
+
+```bash
+bash scripts/run-memory-v20-abstention-diagnostic-from-vault.sh \
+  --cost-basis /secure/eval/v20-abstention-diagnostic-cost.json \
+  --output-dir /secure/eval/native-memory-runs \
+  --credential-export-approval \
+    I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_VALIDATION_CREDENTIALS \
+  --siliconflow-live-approval \
+    I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --memory-v20-abstention-diagnostic-approval \
+    I_UNDERSTAND_THIS_USES_REAL_MEMORY_SLICE_DIAGNOSTIC_QUOTA
+```
+
+The Fake lifecycle completed all 171 executions with zero network, credentials,
+or scoped Docker residue. The sole live run
+`memory-regression-20260807t071130z-90224759` also completed 171/171 and
+classified the six Luna omissions as stochastic: four opaque cases were
+affected, two once and two twice across the three repetitions, while no case
+failed all three times. Candidate, BGE rerank, final rank/budget, and terminal
+root causes were zero. Eleven typed transport failures recovered, so 171
+logical Judge decisions reconciled to 182 attempts and zero terminal cases.
+Authority reconciled at `182/513` requests, `320429/1000000` input-token upper
+bound, and `23296/65664` output-token upper bound. The cost document uses an
+owner-authorized conservative absolute ceiling, not a claim of observed spend.
+
+Report/manifest SHA-256 values are
+`7c17325844e0eb5d4874386437f471fd54f6f061318c538f4e1d30026823936a`
+and `49b24b9f0cb914abcf6af7a15c659437c165ebc18c28c256ae4fca97f0f47e97`.
+Both files are mode `0600`; credentials and all scoped runtime objects were
+destroyed. Live migration/data counts, service health, disabled Memory flags,
+and the empty canary remained unchanged. The result selects no policy and
+grants no rerun, release, promotion, canary, or schema-v21 authority.
+
 ```bash
 bash scripts/run-memory-production-buffered-validation-from-vault.sh \
   --cost-basis /secure/eval/production-buffered-validation-cost-v13.json \
@@ -2031,8 +2073,11 @@ schema identities are never interchangeable.
 Schema-v19 slice diagnostics require cost-basis v14 with exactly 765 Judge
 requests and 97,920 output tokens for 255 logical executions with two retries.
 Schema-v20 full Development requires cost-basis v15 with exactly 900 requests
-and 115,200 output tokens. Neither document is valid for Validation or any
-historical lane.
+and 115,200 output tokens. The separately named v20 abstention diagnostic cost
+schema authorizes at most 513 requests and 65,664 output tokens for 171 logical
+executions with two retries. Its owner-authorized conservative absolute ceiling
+is diagnostic-only and is not interchangeable with schema-v20, schema-v21, or
+any historical lane. None of these documents is valid for Validation.
 
 Each full fake-protocol run directory is mode `0700` and contains five
 mode-`0600` files:
@@ -2053,6 +2098,7 @@ transport-stable Development, schema-v15 production Validation, and schema-v16
 negative-guard Development and schema-v17 buffered-judge Development
 and schema-v18 production-v2 buffered Validation
 and schema-v19 slice diagnostics and schema-v20 accuracy-repair Development
+and the separately versioned v20 abstention diagnostic
 directories contain their named aggregate report plus `run-manifest.json`. In
 every mode, evidence is exclusively linked first and the content-free
 run manifest is the final completion marker. Existing targets are refused

@@ -9398,3 +9398,43 @@ and all eleven transient Judge failures recovered. Evidence is retained as
 non-promotional. The chain stopped before schema-v21 Validation; both Memory
 flags remain false, the canary allowlist remains empty, and no live data was
 mutated.
+
+## 2026-08-07 — Runtime recovery and v20 abstention diagnostic
+
+Docker Desktop invalidated the stopped backend/Memory Worker keyring mount and
+the historical image ID was no longer retained. Offline extraction proved the
+API and Worker binaries in retained image `sha256:501a8568...` byte-identical
+to the stopped containers. The live database was separately found empty, so
+the owner authorized restoration of the exact verified pre-066 backup through
+an isolated PostgreSQL 17 schema-first rehearsal and the explicit `067`–`069`
+migration sequence. The rehearsal and live recovery both passed all 214
+foreign-key orphan checks. The former empty database remains connection-
+disabled as rollback evidence.
+
+Backend and Memory Worker recovered healthy on the verified retained image;
+PostgreSQL and unrelated container IDs remained unchanged. A MinIO readiness
+failure was traced to the configured application Access Key missing from MinIO
+IAM after Docker restart. Re-running the existing byte/config-matched
+`minio-init` one-shot restored the user/policy without recreating that container
+or restarting MinIO. Final authority remains migration `069`, with one user,
+one `user_memories` row, and ten `provider_configs` rows. Both Memory flags are
+false and the canary is empty.
+
+A separately named v20 abstention diagnostic selected exactly the 57-case
+Development union of `stable_fact` and `temporal_correction`, repeated it three
+times, and reused schema-v20 prompt v2/BGE/decoder/retry/final semantics. Fake
+completed 171/171 with zero network and residue. The sole live run
+`memory-regression-20260807t071130z-90224759` classified the defect as
+stochastic: Luna omitted the expected current fact six times across four
+opaque cases; two cases failed once and two failed twice, while none failed all
+three repetitions. Four omissions were stable-fact-only and two temporal-
+correction-only. Candidate/BGE/final/terminal root causes were zero.
+
+Eleven typed transport failures recovered, reconciling 171 logical Judge
+decisions to 182 attempts and zero terminal cases. Authority reconciled at
+`182/513` requests, `320429/1000000` input-token upper bound, and
+`23296/65664` output-token upper bound. Report/manifest SHA-256 values are
+`7c17325844e0eb5d4874386437f471fd54f6f061318c538f4e1d30026823936a`
+and `49b24b9f0cb914abcf6af7a15c659437c165ebc18c28c256ae4fca97f0f47e97`.
+All exported credentials and scoped Docker objects were destroyed, live counts
+and flags stayed unchanged, and schema-v21 remains unconstructed and blocked.

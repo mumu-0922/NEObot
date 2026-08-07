@@ -49,6 +49,10 @@ removed.
 - Compare the database's applied migration version with the selected binary's
   schema requirements. A flag-only restart must not run migrations to make an
   accidentally newer image start.
+- Treat an unexpectedly empty live database as a recovery blocker, not a clean
+  compatibility state. Preserve it as an exclusive rollback artifact and
+  require separately authorized, isolated same-major restore rehearsal before
+  selecting any recovered database or applying an explicit migration range.
 - Back up the active runtime environment outside Git with mode `0600` and make
   the candidate environment render successfully before downtime.
 - Use `--no-build --no-deps` and name only the affected services. Record
@@ -61,6 +65,12 @@ removed.
   command. Build and pin the reviewed candidate explicitly for that helper;
   never move the mutable live tag and never infer helper capability from the
   current source tree.
+- Readiness must be checked by dependency, not only by container health. A
+  retained object-storage bucket does not prove that the configured application
+  IAM identity still exists after a runtime restart. If storage alone is not
+  ready, rerun only the existing byte/config-matched idempotent initializer and
+  require an independent application-credential bucket-access proof; do not
+  recreate or restart unrelated storage services.
 
 ### 4. Validation and error matrix
 
@@ -72,6 +82,8 @@ removed.
 | Target does not become healthy | Restore the protected environment and exact retained image, then verify health before further work. |
 | Any unrelated container ID changes | Treat the operation as scope violation and investigate. |
 | Persistent row count decreases | Stop, retain evidence, and restore from the protected data artifact if mutation is confirmed. |
+| Live database contains no expected public schema | Preserve the empty state, stop recreation, and obtain separate authority for an isolated same-major restore rehearsal plus an exact migration range. |
+| Target container is healthy but readiness reports storage not ready | Verify bucket and IAM separately; rerun only the existing attested initializer, then prove application-key access without restarting storage. |
 | `compose run --no-build` is rejected by the installed CLI | Stop before credentials. Capability-detect, retain `--pull never`, omit positive `--build`, and verify the exact helper image. |
 | Running admin binary lacks the required one-off command | Stop before credentials/Provider work and select an explicitly reviewed pinned helper image; do not recreate live backend. |
 
@@ -90,6 +102,13 @@ removed.
   IDs stay unchanged.
 - **Bad helper**: assume source capability exists in the running image, or call
   `compose build admin` and silently move `BACKEND_IMAGE` before export.
+- **Good dependency recovery**: backend health exposes storage-only failure;
+  bucket existence and IAM are inspected separately, the existing initializer
+  is rerun without recreation, and application-key access plus full readiness
+  pass while unrelated container IDs remain unchanged.
+- **Bad dependency recovery**: restart MinIO because its bucket exists but the
+  backend is not ready, rotate credentials opportunistically, or treat
+  container health as proof that the application identity is usable.
 
 ### 6. Tests required
 
@@ -102,6 +121,12 @@ removed.
 - Assert the database migration version is unchanged for a flag-only operation.
 - Assert the protected environment and logical dump have mode `0600`, validate
   their hashes/catalog, and compare persistent row counts before and after.
+- If the live database is unexpectedly empty, assert an exclusive rollback,
+  same-major schema-first rehearsal, exact foreign-key orphan proof, explicit
+  migration-range authorization, and post-selection counts before recreation.
+- Assert backend readiness components separately; for storage IAM repair, pin
+  the initializer image/config, keep storage and unrelated IDs unchanged, and
+  prove bucket access with the exact configured application identity.
 - Assert one-off wrapper tests cover both Compose-run capability branches,
   positive `--build` is absent, `--pull never` is present, helper image identity
   is pinned, and pre-provider failures export no credential or artifact.

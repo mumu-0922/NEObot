@@ -1187,6 +1187,12 @@ Wrong: rerun consumed schema-v18 Validation, tune BGE and Luna together, or
 advance to a canary after a schema-v20 Development slice failure.
 ```
 
+```text
+Wrong: consume schema-v21 for a v20 failure diagnostic, persist query/Memory/
+raw Provider evidence, select the best repetition, or let diagnostic output
+change the active reader, Memory flags, or canary.
+```
+
 ### Correct
 
 ```text
@@ -1223,6 +1229,10 @@ default-off hybrid-worker/shadow flag + separate default-off product Tool flag
   -> schema-v20 only: one Luna prompt-v2 semantic repair, full 300-case
      Development, v15 cost; any failed global or slice gate stops before
      schema-v21 Validation and leaves both Memory flags false
+  -> v20 abstention diagnostic only: separately versioned 57-case failed-slice
+     Development union repeated three times; unchanged schema-v20 prompt/BGE/
+     decoder/retry/final semantics; opaque closed-category evidence only;
+     stochastic/systematic diagnosis cannot select policy or schema-v21
   -> judge/BGE intersection; empty or uncertain result means no v2 Memory
   -> product first ToolRound sees normal request + search_memory, no Memory body
   -> exact call under production policy: current fixed Judge tuple reauthorized

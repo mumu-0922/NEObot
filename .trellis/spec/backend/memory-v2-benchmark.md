@@ -53,6 +53,7 @@ neo-chat.memory-regression-profile-config.v17
 neo-chat.memory-regression-profile-config.v18
 neo-chat.memory-regression-profile-config.v19
 neo-chat.memory-regression-profile-config.v20
+neo-chat.memory-regression-profile-config.v20-abstention-diagnostic.v1
 neo-chat.memory-regression-relevance-calibration.v3
 neo-chat.memory-regression-relevance-calibration.v4
 neo-chat.memory-regression-relevance-calibration.v5
@@ -69,12 +70,14 @@ neo-chat.memory-regression-relevance-calibration.v16
 neo-chat.memory-regression-relevance-calibration.v17
 neo-chat.memory-regression-relevance-calibration.v20
 neo-chat.memory-regression-slice-diagnostic.v19
+neo-chat.memory-regression-v20-abstention-diagnostic.v1
 neo-chat.memory-regression-relevance-validation.v1
 neo-chat.memory-regression-relevance-validation.v15
 neo-chat.memory-regression-relevance-run.v1
 neo-chat.memory-regression-relevance-validation-run.v15
 neo-chat.memory-regression-slice-diagnostic-run.v19
 neo-chat.memory-regression-relevance-run.v20
+neo-chat.memory-regression-v20-abstention-diagnostic-run.v1
 neo-chat.memory-regression-cost-basis.v2
 neo-chat.memory-regression-cost-basis.v3
 neo-chat.memory-regression-cost-basis.v4
@@ -89,6 +92,7 @@ neo-chat.memory-regression-cost-basis.v12
 neo-chat.memory-regression-cost-basis.v13
 neo-chat.memory-regression-cost-basis.v14
 neo-chat.memory-regression-cost-basis.v15
+neo-chat.memory-regression-cost-basis.v20-abstention-diagnostic.v1
 neo-chat.memory-cloud-candidate-judge-input.v1
 neo-chat.memory-cloud-candidate-judge-output.v1
 ```
@@ -1381,6 +1385,18 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   fragments in the buffered path, loosen finish semantics/body bounds, rebuild
   the Vault export image, rerun the consumed lane, or treat its pass as
   Validation/Release authority.
+- **V20 abstention diagnostic good**: select exactly the 57-case Development
+  union of `stable_fact` and `temporal_correction`, preserve schema-v20 prompt
+  v2/BGE/decoder/retry/final semantics, repeat the frozen order three times,
+  and retain only opaque stage evidence plus a closed root-cause enum.
+- **V20 abstention diagnostic base**: the sole live run classifies Luna
+  selection as stochastic when six omissions occur across four cases, no case
+  fails all three repetitions, eleven typed transport failures recover, and
+  all Candidate/BGE/final/terminal root causes remain zero.
+- **V20 abstention diagnostic bad**: reuse schema-v20 or reserve schema-v21 as
+  its identity, retain query/Memory/provider body/raw score/error text, select
+  the best repetition, rerun the consumed authority, or let diagnostic output
+  enable a Memory flag, canary, Validation, Release, or promotion.
 - **Exact-pair export good**: resolve only active attested `RAG:SILICONFLOW`
   and the exact fixed Luna tuple, create two exclusive private mode-`0600`
   files, run schema-v15, and wipe both source copies on every exit.
@@ -1545,6 +1561,15 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   Schema-v20 fixtures additionally prove that the buffered adapter and capture
   controller share the same versioned prompt builder, so the request bytes,
   prompt provenance, and pre-authorized input-token upper bound cannot drift.
+  V20 abstention-diagnostic fixtures additionally cover exact `30/30/3/57`
+  slice selection; repetition-major 171-execution ordering; profile/report/run/
+  cost/policy/reader isolation from schema-v20 and reserved schema-v21; exact
+  prompt-v2, BGE, decoder, retry, cooldown, and intersection reuse; seven closed
+  root causes; systematic/stochastic/not-reproduced classification; 513-request
+  authority reconciliation; forbidden plaintext/raw-body/raw-score/error
+  fields; two-file `0700/0600` publication; and Vault lifecycle cleanup across
+  success, metric failure, ordinary failure, `INT`, `TERM`, and `HUP`, including
+  both Compose `run --no-build` capability branches.
   Cost-basis fixtures must also assert the raw private-file hash and
   the decoded canonical manifest hash as different named surfaces rather than
   assuming byte equality.
