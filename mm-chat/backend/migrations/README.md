@@ -462,6 +462,15 @@ Down is clean only before any preview event; after activation, rollback is an
 append-only disable event plus both Reader flags false. Clean replay is
 `072 -> 073 -> 072 -> 073`.
 
+Migration `074` adds the server-authoritative MCP Workspace, server,
+credential, grant, selection, OAuth, run snapshot, Tool call/result, and
+artifact-cleanup schema while retaining the retired `plugin_registry` table
+for rollback compatibility. Migration `075` separately grants the
+`go_api_runtime` role the exact MCP repository/cleanup table capabilities and
+removes public execution from the account-artifact trigger. Production
+rollback keeps both migrations applied and disables MCP or restores compatible
+application images; never run `074.down` after live MCP traffic.
+
 ## Storage boundaries
 
 Postgres is the source of truth for structured records:

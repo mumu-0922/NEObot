@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type PostgresRepository struct {
@@ -63,9 +64,19 @@ RETURNING id, name, endpoint_url, transport, auth_type, auth_config, status,
 `, id, userID, input.Name, input.EndpointURL, input.AuthType, string(authConfig))
 	server, err := scanPrivateServer(row)
 	if err != nil {
+		if isMCPServerEndpointConflict(err) {
+			return Server{}, ErrServerConflict
+		}
 		return Server{}, fmt.Errorf("create private mcp server: %w", err)
 	}
 	return server, nil
+}
+
+func isMCPServerEndpointConflict(err error) bool {
+	var postgresError *pgconn.PgError
+	return errors.As(err, &postgresError) &&
+		postgresError.Code == "23505" &&
+		postgresError.ConstraintName == "idx_mcp_servers_user_endpoint_active"
 }
 
 func (r *PostgresRepository) ListPrivateServers(ctx context.Context, userID string) ([]Server, error) {

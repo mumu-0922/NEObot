@@ -8,6 +8,7 @@ var (
 	ErrStdioDisabled        = errors.New("stdio mcp is disabled")
 	ErrRepositoryRequired   = errors.New("mcp repository is required")
 	ErrServerNotFound       = errors.New("mcp server not found")
+	ErrServerConflict       = errors.New("mcp private server already exists")
 	ErrServerLimit          = errors.New("mcp private server limit reached")
 	ErrServerNotReady       = errors.New("mcp server is not ready")
 	ErrServerNeedsAuth      = errors.New("mcp server requires authorization")

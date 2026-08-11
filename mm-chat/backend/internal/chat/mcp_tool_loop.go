@@ -141,7 +141,11 @@ func mcpProviderToolDefinition(tool mcpclient.Tool) ToolDefinition {
 			Name:        tool.Alias,
 			Description: tool.Description,
 			Parameters:  tool.InputSchema,
-			Strict:      true,
+			// MCP servers own their input schemas. Do not claim OpenAI strict-mode
+			// compatibility for an arbitrary third-party schema; the MCP runtime
+			// still validates every argument against the frozen schema before the
+			// connector is called.
+			Strict: false,
 		},
 	}
 }

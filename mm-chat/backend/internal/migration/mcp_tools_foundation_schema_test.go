@@ -8,6 +8,8 @@ import (
 func TestMCPToolsFoundationSchemaContract(t *testing.T) {
 	up := readPhase15SQL(t, "074_mcp_tools_foundation.up.sql")
 	down := readPhase15SQL(t, "074_mcp_tools_foundation.down.sql")
+	runtimeGrants := readPhase15SQL(t, "075_mcp_runtime_role_grants.up.sql")
+	runtimeGrantRollback := readPhase15SQL(t, "075_mcp_runtime_role_grants.down.sql")
 
 	for _, table := range []string{
 		"workspaces",
@@ -51,4 +53,16 @@ func TestMCPToolsFoundationSchemaContract(t *testing.T) {
 	if strings.Contains(strings.ToLower(down), "drop table if exists plugin_registry") {
 		t.Fatal("074 down migration must preserve plugin_registry")
 	}
+
+	assertPhase15Fragments(t, runtimeGrants,
+		"the Go API role must receive explicit MCP table capabilities",
+		"grant select", "on table workspaces , workspace_memberships", "to go_api_runtime",
+		"mcp_artifact_cleanup_queue")
+	assertPhase15Fragments(t, runtimeGrants,
+		"the account cleanup trigger must not remain public executable",
+		"revoke all on function mcp_enqueue_account_artifacts ( ) from public",
+		"grant execute on function mcp_enqueue_account_artifacts ( ) to go_api_runtime")
+	assertPhase15Fragments(t, runtimeGrantRollback,
+		"the runtime grant migration must revoke MCP table access on rollback",
+		"revoke select , insert , update , delete", "from go_api_runtime")
 }

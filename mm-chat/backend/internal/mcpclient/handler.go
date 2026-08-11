@@ -209,7 +209,7 @@ func (h *Handler) handleConversationSelection(writer http.ResponseWriter, reques
 			writeMCPServiceError(writer, err)
 			return
 		}
-		writeMCPJSON(writer, http.StatusOK, map[string]any{"selection": selection})
+		writeMCPJSON(writer, http.StatusOK, map[string]any{"selection": viewConversationSelection(selection)})
 	case http.MethodPut:
 		var input struct {
 			Mode     string            `json:"mode"`
@@ -227,7 +227,7 @@ func (h *Handler) handleConversationSelection(writer http.ResponseWriter, reques
 			writeMCPServiceError(writer, err)
 			return
 		}
-		writeMCPJSON(writer, http.StatusOK, map[string]any{"selection": selection})
+		writeMCPJSON(writer, http.StatusOK, map[string]any{"selection": viewConversationSelection(selection)})
 	default:
 		writeMCPError(writer, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "Method not allowed")
 	}
@@ -242,7 +242,7 @@ func (h *Handler) handleWorkspaceSelection(writer http.ResponseWriter, request *
 			writeMCPServiceError(writer, err)
 			return
 		}
-		writeMCPJSON(writer, http.StatusOK, map[string]any{"selection": selection})
+		writeMCPJSON(writer, http.StatusOK, map[string]any{"selection": viewWorkspaceSelection(selection)})
 	case http.MethodPut:
 		var input struct {
 			Revision int64             `json:"revision"`
@@ -258,7 +258,7 @@ func (h *Handler) handleWorkspaceSelection(writer http.ResponseWriter, request *
 			writeMCPServiceError(writer, err)
 			return
 		}
-		writeMCPJSON(writer, http.StatusOK, map[string]any{"selection": selection})
+		writeMCPJSON(writer, http.StatusOK, map[string]any{"selection": viewWorkspaceSelection(selection)})
 	default:
 		writeMCPError(writer, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "Method not allowed")
 	}
@@ -321,9 +321,29 @@ func (h *Handler) handleOAuthRevoke(writer http.ResponseWriter, request *http.Re
 }
 
 func viewServer(server Server) serverView {
-	tools := append([]Tool(nil), server.Tools...)
+	tools := make([]Tool, len(server.Tools))
+	copy(tools, server.Tools)
 	server.Tools = nil
 	return serverView{Server: server, Tools: tools}
+}
+
+func viewConversationSelection(selection Selection) Selection {
+	selection.Servers = viewSelectionServers(selection.Servers)
+	return selection
+}
+
+func viewWorkspaceSelection(selection WorkspaceSelection) WorkspaceSelection {
+	selection.Servers = viewSelectionServers(selection.Servers)
+	return selection
+}
+
+func viewSelectionServers(servers []SelectionServer) []SelectionServer {
+	result := make([]SelectionServer, len(servers))
+	for index, server := range servers {
+		result[index] = server
+		result[index].DisabledTools = append([]string{}, server.DisabledTools...)
+	}
+	return result
 }
 
 func decodeMCPJSON(writer http.ResponseWriter, request *http.Request, target any) bool {
@@ -352,6 +372,8 @@ func writeMCPServiceError(writer http.ResponseWriter, err error) {
 		status, code, message = http.StatusNotFound, "MCP_NOT_FOUND", "Tool server or tool was not found"
 	case errors.Is(err, ErrServerLimit), errors.Is(err, ErrSelectionLimit):
 		status, code, message = http.StatusConflict, "MCP_LIMIT_REACHED", "Tools limit was reached"
+	case errors.Is(err, ErrServerConflict):
+		status, code, message = http.StatusConflict, "MCP_CONFLICT", "Tool server already exists"
 	case errors.Is(err, ErrSelectionInvalid), errors.Is(err, ErrToolArgumentsInvalid),
 		errors.Is(err, ErrCredentialInvalid), errors.Is(err, ErrURLBlocked),
 		errors.Is(err, ErrOAuthStateInvalid), errors.Is(err, ErrOAuthStateExpired),

@@ -211,7 +211,7 @@ func runNativeExternalWebToolLoop(
 				recordRuntimeToolIncompatibility(input, err)
 				if input.MCP.enabled() {
 					sendProviderEvent(ctx, events, ProviderEvent{Error: &mcpRunFailure{
-						code: "MCP_MODEL_UNSUPPORTED", err: err,
+						code: mcpProviderStartFailureCode(err), err: err,
 					}})
 					return true
 				}
@@ -895,6 +895,13 @@ func externalWebToolEnabled(input externalWebToolLoopInput) bool {
 	return input.SearchService != nil &&
 		input.Execution.Mode == websearch.ExecutionExternal &&
 		input.Execution.External != nil
+}
+
+func mcpProviderStartFailureCode(err error) string {
+	if isExplicitToolIncompatibility(err) {
+		return "MCP_MODEL_UNSUPPORTED"
+	}
+	return "MCP_PROVIDER_FAILED"
 }
 
 func recordRuntimeToolIncompatibility(

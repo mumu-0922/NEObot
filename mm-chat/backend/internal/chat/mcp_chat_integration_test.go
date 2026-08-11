@@ -314,6 +314,39 @@ func TestHandlerCompletesNativeMultiRoundMCPThroughStdioRunner(t *testing.T) {
 	}
 }
 
+func TestMCPProviderToolDefinitionDoesNotClaimStrictSchemaCompatibility(t *testing.T) {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"repoName": map[string]any{"type": "string"},
+		},
+		"required": []string{"repoName"},
+	}
+	definition := mcpProviderToolDefinition(mcpclient.Tool{
+		Alias:       "mcp_deepwiki_read_wiki_structure",
+		Description: "Return repository documentation topics.",
+		InputSchema: schema,
+	})
+	if definition.Function.Strict {
+		t.Fatal("arbitrary MCP schema was incorrectly advertised as strict-compatible")
+	}
+	if definition.Function.Parameters["additionalProperties"] != nil {
+		t.Fatalf("MCP schema was rewritten = %#v", definition.Function.Parameters)
+	}
+}
+
+func TestMCPProviderStartFailureCodeDistinguishesCapabilityFromRequestFailure(t *testing.T) {
+	if got := mcpProviderStartFailureCode(errors.New("tools are not supported by this model")); got != "MCP_MODEL_UNSUPPORTED" {
+		t.Fatalf("explicit incompatibility code = %q", got)
+	}
+	if got := mcpProviderStartFailureCode(newProviderFailure(
+		ProviderFailureRequestRejected,
+		"openai-compatible provider returned status 400",
+	)); got != "MCP_PROVIDER_FAILED" {
+		t.Fatalf("generic provider rejection code = %q", got)
+	}
+}
+
 func TestMCPToolLoopEnforcesWallClockBudget(t *testing.T) {
 	ref := mcpclient.ServerRef{Source: mcpclient.SourceManifest, ID: "budget-fixture"}
 	tool := mcpclient.Tool{
