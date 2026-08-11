@@ -61,9 +61,8 @@ This contract is derived from:
 - Rewriting React components in this phase.
 - Implementing Go endpoints in this phase.
 - Migrating browser data automatically.
-- Moving code execution, voice, or full RAG into the first MVP. Plugin
-  registry/install/execute now has Go ownership; the browser-local plugin and
-  agent Next routes were retired in G9.4 and local adapters fail closed.
+- Moving code execution, voice, or full RAG into the first MVP. The later MCP
+  cutover supersedes the retired Plugin registry/install/execute contract.
 - Exposing database schemas directly to frontend code.
 
 ## 5. Runtime Modes
@@ -93,9 +92,10 @@ local mode   -> fail-closed after G9.3 for config/provider/BYOK bootstrap
 server mode  -> GET /v1/config through the Go API client
 ```
 
-G9.4 applies the same rule to plugin and agent compatibility: server mode calls
-Go `/v1/plugins*` and `/v1/agents*`, while local plugin/agent adapters throw a
-typed unsupported-feature error instead of falling back to deleted Next routes.
+The MCP cutover removes the Plugin client and every `/v1/plugins*` route.
+Server mode exposes Tools through the typed `mcp: McpApi` boundary and
+`/v1/mcp/*`; local mode has no MCP execution fallback. Agent/Assistant behavior
+is unchanged.
 
 Rules:
 
@@ -156,7 +156,7 @@ export interface NeoChatApiClient {
   images: ImageGenerationApi;
   chat: ChatApi;
   files: FileApi;
-  plugins: PluginApi;
+  mcp: McpApi;
   imports: ImportApi;
   agents: AgentApi;
   teams: TeamApi;
@@ -249,7 +249,6 @@ export interface ConversationConfig {
   useReasoning?: boolean;
   reasoningEffort?: "auto" | "low" | "medium" | "high" | "xhigh" | "max";
   useRag?: boolean;
-  activePlugins?: string[];
   activeSkills?: string[];
 }
 ```
@@ -292,7 +291,8 @@ Compatibility notes:
 - Existing frontend role `model` maps to server/API role `assistant`.
 - Existing message branching/versioning is represented by optional tree/version fields; backend MVP may return empty fields but must not discard them during import or round-trip.
 - Local adapter may keep current `Message` shape internally but must present this DTO at the client boundary.
-- Tool calls stay opaque until plugin sandbox design is complete.
+- Tool calls are rendered from server-owned process/timeline events; the
+  browser does not execute them.
 - Terminal assistant `metadata.fusion` is a server-owned diagnostic object. The
   client may render only allowlisted degradation reasons; it must not infer a
   provider, query, or source body from diagnostic fields. Knowledge citations
@@ -1293,273 +1293,31 @@ Rules:
 - Do not send raw `opfs://` URLs without packaged file bytes.
 - Treat commit as all-or-nothing: failed imports return an error response and
   must not surface partial success in UI state.
-- Do not include provider secrets, local secret envelopes, RAG tokens, plugin
-  auth, cookies, or access tokens in the package.
+- Do not include provider secrets, local secret envelopes, RAG tokens, retired
+  Plugin auth, MCP credentials, cookies, or access tokens in the package.
 - Existing all-data JSON export is not a valid server import package because it
   omits `session_messages_*` and OPFS bytes.
 
-## 13. `settingsApi`, `providerApi`, and `pluginApi` Contracts
+## 13. Settings, Provider, and MCP Contracts
 
-```ts
-export interface SettingsApi {
-  getRuntimeConfig(): Promise<RuntimeConfig>;
-  getUserSettings(): Promise<UserSettingsSnapshot>;
-  updateUserSettings(
-    patch: Partial<UserSettingsSnapshot>,
-  ): Promise<UserSettingsSnapshot>;
-}
+`settingsApi` and `providerApi` retain their server-owned configuration and
+model-discovery responsibilities. The retired `PluginApi`, Plugin manifest
+DTOs, and `/v1/plugins*` endpoint mapping are removed.
 
-export interface ProviderApi {
-  listProviders(): Promise<ProviderSummary[]>;
-  listModels(input?: ListModelsInput): Promise<ModelInfo[]>;
-}
-
-export interface PluginApi {
-  listAvailable(): Promise<PluginSummary[]>;
-  listInstalled(): Promise<PluginSummary[]>;
-  install(input: InstallPluginInput): Promise<PluginSummary>;
-  execute(input: ExecutePluginInput): Promise<PluginExecutionResult>;
-}
-
-export interface RuntimeConfig {
-  mode: ApiMode;
-  serverVersion?: string;
-  capabilities: CapabilityMap;
-}
-
-export interface CapabilityMap {
-  serverChat: boolean;
-  serverFiles: boolean;
-  serverProviderSecrets: boolean;
-  rag: boolean;
-  plugins: boolean;
-  voice: boolean;
-  imageGeneration: boolean;
-  codeExecution: boolean;
-  importLocalData: boolean;
-}
-
-export interface UserSettingsSnapshot {
-  defaultModelRef?: ModelRef;
-  language?: string;
-  theme?: string;
-  chatDefaults?: ConversationConfig;
-}
-
-export interface PluginSummary {
-  id: EntityId;
-  name: string;
-  description?: string;
-  installed: boolean;
-  enabled: boolean;
-  risk?: "low" | "medium" | "high";
-}
-
-export interface InstallPluginInput {
-  source: "catalog" | "manifest";
-  identifier?: string;
-  manifest?: unknown;
-}
-
-export interface ExecutePluginInput {
-  pluginId: EntityId;
-  functionName: string;
-  args: unknown;
-  conversationId?: EntityId;
-}
-
-export interface PluginExecutionResult {
-  ok: boolean;
-  result?: unknown;
-  error?: ApiErrorEnvelope["error"];
-}
-
-export interface ProviderSummary {
-  id: EntityId;
-  name: string;
-  type: "OpenAI" | "OpenAICompatible" | "Gemini" | string;
-  enabled: boolean;
-  serverManaged: boolean;
-}
-
-export interface ListModelsInput {
-  providerId?: EntityId;
-  refresh?: boolean;
-}
-
-export interface ModelInfo {
-  providerId: EntityId;
-  modelId: string;
-  name: string;
-  displayName: string;
-  description?: string;
-  providerName?: string;
-}
-```
-
-Endpoint mapping:
-
-| Client Method                 | Server Endpoint                | Notes                                                                                 |
-| ----------------------------- | ------------------------------ | ------------------------------------------------------------------------------------- |
-| `settings.getRuntimeConfig`   | `GET /v1/config`               | Runtime mode/capability bootstrap; G9.3 removed local `/api/config`.                  |
-| `settings.getUserSettings`    | `GET /v1/settings`             | User-visible settings only; no plaintext provider secrets.                            |
-| `settings.updateUserSettings` | `PATCH /v1/settings`           | Partial update with server validation.                                                |
-| `providers.listProviders`     | `GET /v1/providers`            | Returns provider metadata and `serverManaged` flags.                                  |
-| `providers.listModels`        | `POST /v1/providers/models`    | Allows refresh and provider-specific lookup.                                          |
-| `plugins.listAvailable`       | `GET /v1/plugins`              | Go-owned registry list; unavailable registries degrade to an empty unavailable list.   |
-| `plugins.listInstalled`       | `GET /v1/plugins/installed`    | Reserved; installed items currently flow through the registry-backed list.             |
-| `plugins.install`             | `POST /v1/plugins/install`     | Go validates catalog/custom OpenAPI manifests and persists when Postgres is enabled.   |
-| `plugins.execute`             | `POST /v1/plugins/execute`     | Go executes id-only registry functions and normalizes bounded result envelopes.        |
-| `job.cancel`                  | `POST /v1/jobs/{jobId}/cancel` | G6.5b fail-closed cancellation admission; validates job id, then unavailable.         |
-| `code.execute`                | `POST /v1/code/executions`     | G6.4 fail-closed admission; validates `modelRef + language + code`, then unavailable. |
-| `image.generate`              | `POST /v1/images/generations`  | G6.3 fail-closed admission; validates `modelRef + prompt`, then unavailable.          |
-| `voice.transcribe`            | `POST /v1/voice/transcribe`    | TTS-only release: validated route remains unavailable; no executor is installed.      |
-| `voice.synthesize`            | `POST /v1/voice/synthesize`    | Sends current `messageId + text`; returns bounded stored-audio metadata with `cached`. |
-
-The table above is the long-term server contract. Server mode must not call a
-route until it is implemented by the Go router and explicitly reopened here.
-G3.1 reopens `GET /v1/config`, `POST /v1/providers/models` for
-`source:"server-default"` model lists only, and `GET /v1/byok/public-key`.
-Custom provider BYOK decryption remains fail-closed until the later G3 BYOK UI
-adapter slice. `/v1/settings`, `/v1/providers`, and full custom provider model
-refresh remain unopened. G4/G9.4 open `/v1/plugins*` for server-mode
-plugin registry/install/execute and remove the deleted Next fallbacks. The Go
-backend also registers the
-Phase 15.1B auth/session routes `/v1/auth/login`, `/v1/auth/logout`,
-`/v1/auth/invites/accept`, `/v1/auth/recovery/*`, `/v1/me`, and
-`/v1/me/sessions`.
+The client exposes `mcp: McpApi` for server listing/private draft creation,
+validation, credentials, OAuth, conversation/Workspace selection, and call
+timelines. Its DTOs are defined in `src/lib/mcp/types.ts`; the authoritative
+wire and error contract is [`mcp-tools-api.md`](./mcp-tools-api.md).
 
 Rules:
 
-- Server mode sends provider IDs/model IDs, not plaintext API keys.
-- Local mode must not resurrect G9.3-retired BYOK/config/provider routes; those
-  adapters fail closed unless a deliberate import/dev-only path is added later.
-- `RuntimeConfig.capabilities` gates UI visibility for features not yet migrated.
-- Voice capability truth is split. Server mode exposes
-  `voiceSynthesis=true`, `voiceTranscription=false`, and keeps the legacy
-  aggregate `voice=false`; Image remains enabled and Code remains disabled.
-  Service-layer calls must not fall through to transitional Next routes.
-- G6.2 registers Go `/v1/voice/*` admission routes, but `voice` capability stays
-  disabled until real provider execution, output storage, and audit controls are
-  implemented and tested.
-- G6.3 registers Go `/v1/images/generations` admission with `modelRef + prompt`
-  only; `imageGeneration` stays disabled until execution/storage/audit controls
-  exist.
-- G6.4 registers Go `/v1/code/executions` admission with `modelRef + language +
-code` only; `codeExecution` stays disabled until a real sandbox/executor and
-  audit controls exist.
-- G6.5a records only sanitized admission audit fields for fail-closed
-  voice/image/code services: kind, status, userId, providerId, modelId,
-  language, and reason. Prompt text, source code, synthesis text, and audio
-  bytes must not enter audit events.
-- G6.5b registers fail-closed `POST /v1/jobs/{jobId}/cancel` and keeps job
-  control routes behind the same global rate-limit middleware as other
-  non-exempt APIs.
-- G6.5c.1 establishes the storage-only artifact boundary for future voice and
-  image executor results. Enabled executors must write generated audio/image
-  bytes through the backend file/object-storage service and return artifact
-  metadata such as `fileId`, `purpose`, `contentType`, and `size`; they must not
-  return large inline base64 payloads, object-store keys, or direct storage
-  URLs to the frontend. This boundary does not enable real provider calls by
-  itself.
-- G6.5c.2a adds only the Go voice executor seam. `POST /v1/voice/transcribe`
-  may pass validated multipart audio to an explicitly configured executor, and
-  `POST /v1/voice/synthesize` may call an executor only when artifact storage
-  is also configured. Executor calls must first record sanitized `admitted`
-  audit metadata through an explicitly configured audit recorder and must fail
-  closed if that recorder is absent or unavailable. The default server remains
-  fail-closed, and this seam does not authorize live provider quota usage.
-- The production TTS adapter resolves only the enabled, currently attested
-  `VOICE:SILICONFLOW` vault record. The frontend administrator adapter uses
-  `/v1/admin/voice/providers*` and sends only an encrypted BYOK envelope. A
-  server-default read-aloud click sends `provider="default"` plus current
-  `messageId + text` through
-  `voiceJobs.synthesizeVoice`, normalizes UUID/audio/integer/10 MiB metadata,
-  fetches `/v1/files/{fileId}/content` with the authenticated File client,
-  verifies type and exact size, and creates one disposable audio object URL.
-  It never calls `/api/voice/synthesize` in server mode. Browser speech remains
-  an explicit provider choice rather than a failure fallback.
-- The Go synthesis route rejects known legacy `model`, `elevenlabs`, and `mimo`
-  provider selectors instead of silently remapping them to SiliconFlow. A
-  provider `2xx` body that cannot be identified as audio is a sanitized
-  `VOICE_PROVIDER_ERROR`, never an assumed MP3.
-- Runtime `voice.defaultTtsAvailable` controls whether the hosted default is
-  offered. The provider-qualified SiliconFlow voice is server-owned and must
-  not be copied into the persisted `ElevenLabsVoiceID` preference. STT remains
-  unavailable even while hosted TTS is ready.
-- G6.5c.3a adds only the Go image executor seam. `POST /v1/images/generations`
-  may call an explicitly configured executor only when image artifact storage
-  and an admitted-job audit recorder are configured. Stored image responses
-  must return artifact metadata and must not expose generated bytes, object
-  keys, storage URLs, prompt text, or provider credentials in responses or audit
-  events. This seam does not authorize live image-provider quota usage. The
-  executable media-job seam contract is
-  `docs/contracts/media-job-executor-seams.md`.
-- G6.5e adds the separate live-provider smoke authorization gate. Any
-  quota-consuming voice/image provider smoke must also satisfy
-  `docs/contracts/provider-live-smoke-authorization.md`; normal frontend
-  capability flags remain disabled until the authorized smoke and follow-up
-  gates pass.
-- G6.5c.3b.1 adds an OpenAI-compatible image executor and gated live smoke
-  harness.
-- G6.5c.3b.2 passes the authorized configured-provider smoke against an
-  image-capable OpenAI-compatible `gpt-image-2` endpoint. `imageGeneration`
-  remains disabled until the later route-wiring/capability-reopen slice proves
-  the Go HTTP route is configured with the executor, artifact store, admission
-  audit recorder, and frontend adapter behavior.
-- G6.5c.3c wires the Go HTTP route in `cmd/api`; G11.9F.2.3 now resolves the
-  request's exact enabled, connection-tested Postgres/vault provider before
-  creating an OpenAI-compatible image executor. `/v1/images/generations`
-  stores results through the backend file/object-storage artifact boundary.
-  A missing provider, missing valid activation, or missing storage dependency
-  fails closed.
-- G6.5c.3d reopens only `imageGeneration` in configured server mode. The
-  frontend image adapter posts `modelRef`, `prompt`, optional `size`, and
-  optional `count` to Go `/v1/images/generations`; it consumes only compact
-  artifact metadata (`fileId`, `purpose`, `contentType`, `size`) and maps
-  successful image artifacts to server-backed attachments whose bytes are read
-  through `/v1/files/{fileId}/content`. Local mode keeps the transitional
-  `/api/chat/generate-image` path, while `voice` and `codeExecution` remain
-  disabled in server mode.
-- G6.5d defines the hard gate for real code execution in
-  `docs/contracts/code-execution-sandbox-contract.md`; `codeExecution` remains
-  disabled until that sandbox/storage/audit/cancel test plan is implemented.
-- `plugins` capability is server-owned through Go `/v1/plugins*`; UI visibility
-  remains runtime capability-gated, and local mode must fail closed instead of
-  calling removed `/api/plugins/*` routes.
-
-
-### Scenario: contextual image continuation and HTML visual fallback
-
-1. **Scope / Trigger** — Applies when a short follow-up may continue a recent
-   image generation, or model-authored raw HTML contains multiline visual
-   markup.
-2. **Signatures** — `resolveImageGenerationRoute()` accepts optional
-   `recentImageGenerationModel`; `normalizeHtmlVisualMarkdown()` owns raw HTML
-   normalization before `ReactMarkdown`.
-3. **Contracts** — Only an explicit continuation phrase plus an image model
-   found within the active branch's last eight messages may inherit that image
-   model. Attachments still disable automatic text-to-image routing. Complete
-   safe flex/grid HTML visuals have internal blank lines collapsed. Visuals
-   using positioned/offset/transformed/aspect-ratio CSS enter an isolated
-   inline HTML sandbox instead of partial conversation-DOM rendering.
-4. **Validation & Error Matrix** — No recent image context keeps the selected
-   chat model; image-analysis/negation language never becomes generation;
-   unavailable recent image models use the normal provider/image fallback;
-   incomplete/unbalanced visual tails render as inert source; unsafe HTML never
-   receives the complete-safe-visual rewrite.
-5. **Good/Base/Bad Cases** — Good: `继续画…` after a recent `gpt-image-*`
-   result reuses it. Base: `继续分析图片` stays chat. Bad: absolute-positioned
-   poster HTML must not execute partly in the conversation layout.
-6. **Tests Required** — Unit-test explicit/continuation/negative routing,
-   recent-model lookup, blank-line HTML rendering, sandbox-only CSS fallback,
-   and the `ChatApp` route wiring. Deployed proof must inspect both the stored
-   model/attachment result and the previously broken message DOM.
-7. **Wrong vs Correct** — Wrong: classify only the current prompt and pass any
-   raw HTML into CommonMark. Correct: combine bounded recent context with the
-   prompt, then render only flow-layout HTML in the conversation DOM and
-   isolate poster-style code in a nonce-constrained inline sandbox. Only the
-   app-owned resize script may run; model-authored scripts remain blocked.
+- Server mode sends provider/model identities, never plaintext Provider Keys.
+- MCP credential ingress is write-only; responses expose only
+  `hasCredential`.
+- Browser Workspace and conversation caches do not authorize MCP Tools.
+- Local mode must not add a browser MCP transport or resurrect Plugin routes.
+- MCP-enabled chat uses the existing server stream and provider-native
+  continuation loop.
 
 ## 14. HTTP Client Rules
 
@@ -1653,7 +1411,8 @@ When implementation begins, add tests for:
 - Contract includes SSE event envelope and event types.
 - Contract includes error envelope and error matrix.
 - Contract maps first server endpoints back to Phase 1 inventories.
-- Contract includes provider/model identity, runtime config rollback, attachment source matrix, and plugin placeholder boundaries.
+- Contract includes provider/model identity, runtime config rollback,
+  attachment source matrix, and the MCP client boundary.
 - `progress.md` and `process.md` are updated after review.
 
 ## 19. Open Decisions for Later Phases
@@ -1662,7 +1421,8 @@ When implementation begins, add tests for:
 - Whether BYOK remains available in hosted server mode or only local mode.
 - Whether server file downloads use backend streaming only or later presigned URLs.
 - Whether search/RAG helpers stay in chat API or move to dedicated APIs after MVP.
-- Whether plugin/tool execution is disabled, client-only, or sandboxed server-side in the first public server release.
+- MCP Tool execution is resolved as server-authoritative; browser execution is
+  forbidden.
 
 ## 20. Phase 11 Server-Mode Integration Implementation Contract
 
@@ -1686,7 +1446,7 @@ First implementation slice:
 - Implement `server` mode for backend-supported chat CRUD and assistant SSE
   streaming only.
 - Keep `local` mode behavior as-is behind the same `ChatApi` contract.
-- Do not touch browser import UI, auth/login UI, RAG, plugin/tool execution,
+- Do not touch browser import UI, auth/login UI, RAG, or Tool execution,
   voice, document parsing, image generation, memory, or provider settings UI.
 - Document file endpoint mapping now, but do not make file UI a dependency of
   the first chat CRUD + stream slice.
@@ -1769,8 +1529,9 @@ component back to a local route.
 
 Unavailable Go routes in Phase 11:
 
-- Do not call `/v1/config`, `/v1/settings`, `/v1/providers*`, `/v1/plugins*`,
-  or `/v1/teams*` from server mode in this phase.
+- At the historical Phase 11 boundary, do not call then-unopened config,
+  settings, provider, or Team routes. `/v1/plugins*` is now permanently
+  retired rather than reopened.
 - The Phase 15.1B auth/session routes exist on the Go router, but frontend UI
   wiring for login/invite/recovery remains outside the Phase 11 chat slice.
 - Mode, base URL, and coarse capability flags come from build-time env,
@@ -1953,7 +1714,7 @@ Current Go event types:
 Future events already defined in §9 (`message.reasoning_delta`, `tool.*`,
 `search.updated`, `image.generated`, `timing.updated`) must remain parsed by
 type but capability-gated. In Phase 11 slice 1, receiving those events should
-not trigger plugin/RAG/import UI.
+not trigger Tool/RAG/import UI.
 
 Sequence handling:
 
@@ -2141,7 +1902,7 @@ Operational rollback smoke:
   server data.
 - Cancel one active stream and confirm UI terminal state is cancelled, not
   failed or completed.
-- Confirm no Phase 11 slice-1 path calls import, auth, RAG, plugin, voice,
+- Confirm no Phase 11 slice-1 path calls import, auth, RAG, Tool, voice,
   document, image, or code-execution routes.
 - Confirm ISO dates render as valid legacy timestamps and conversation ordering
   is stable after refresh.
@@ -2154,286 +1915,20 @@ Operational rollback smoke:
   verify existing local history remains available.
 - Verify OPFS/local attachments still render through the local path.
 - Verify existing local helpers not in server slice 1 still behave as before:
-  title helpers, RAG/search settings, plugins where enabled, voice, and
-  document parsing.
+  title helpers, RAG/search settings, voice, and document parsing. There is no
+  local Plugin or MCP execution fallback.
 - Confirm no server-mode adapter code is imported in a way that performs
   network calls during local bootstrap.
 
-## 21. Server Plugin Orchestration Contract
+## 21. Retired Plugin Orchestration
 
-### 21.1 Scope / Trigger
+The former OpenAPI Plugin planner, registry/install/execute API, built-ins, and
+browser execution loop were removed by the MCP Tools cutover. Migration `011`
+and `plugin_registry` remain read-only for one rollback release only; no active
+client or runtime route may access them.
 
-This contract applies when `NEXT_PUBLIC_API_MODE=server` and one or more
-installed plugins are active. The provider credential remains owned by Go;
-plugin auth must remain browser-encrypted when it crosses the API boundary.
-Copying any provider API Key into the frontend is forbidden. As of G4.5c.2c,
-server-mode plugin execution routes to Go `/v1/plugins/execute` with
-`pluginId/functionName`; Go resolves built-ins, supplied plugin payloads, and
-custom/OpenAPI manifest installs registered through `/v1/plugins/install`; when
-`DATABASE_URL` is configured the registry is Postgres-backed and prevents
-installed plugins from shadowing built-in ids. Go decrypts `valueSecret`,
-applies outbound URL policy including redirects, enforces timeout/response
-bounds, and normalizes built-in plugin results before returning generic plugin
-outputs. Full manifest execution payloads
-remain accepted only as a bounded compatibility path until final registry
-cleanup. The transitional Next `/api/plugins/execute` path is local-adapter
-rollback only.
-
-```text
-browser selection
-  -> Go tool planning
-  -> browser validates offered call
-  -> Go plugin execution sandbox
-  -> bounded untrusted result context
-  -> Go final stream and persistence
-```
-
-### 21.2 Signatures
-
-Backend route:
-
-```http
-POST /v1/chat/tools/plan
-Content-Type: application/json
-```
-
-Plugin execution route:
-
-```http
-POST /v1/plugins/execute
-Content-Type: application/json
-```
-
-G4.5b execution payload:
-
-```ts
-{
-  plugin: Plugin;
-  functionDef: PluginFunction;
-  args: Record<string, unknown>;
-  authConfig?: {
-    type?: "bearer" | "apiKey" | "none" | "oauth2";
-    valueSecret?: EncryptedSecretEnvelope;
-    key?: string;
-    addTo?: "header" | "query";
-  };
-}
-```
-
-Frontend API-client signature:
-
-```ts
-planTools(input: {
-  prompt: string;
-  modelRef: ModelRef;
-  tools: Array<{
-    type: "function";
-    function: {
-      name: string;
-      description?: string;
-      parameters: Record<string, unknown>;
-    };
-  }>;
-  signal?: AbortSignal;
-}): Promise<Array<{
-  id: string;
-  name: string;
-  args: Record<string, unknown>;
-}>>;
-```
-
-### 21.3 Contracts
-
-Request limits:
-
-- `prompt`: required, trimmed, at most 16 KiB UTF-8;
-- `modelRef`: required; `SERVER_DEFAULT:*` maps to the configured Go provider;
-- `tools`: 1-32 function definitions;
-- function name: 1-128 bytes, starts with a letter/underscore/hyphen, then
-  contains only letters, digits, underscores, or hyphens;
-- description: at most 2,048 bytes;
-- parameters: required JSON object, at most 32 KiB encoded.
-
-Response:
-
-```json
-{
-  "calls": [
-    {
-      "id": "call-1",
-      "name": "getCurrentWeather",
-      "args": { "location": "Shanghai" }
-    }
-  ]
-}
-```
-
-Browser execution rules:
-
-- Only installed, active, enabled functions are offered and executable.
-- Duplicate function names across active plugins fail before planning.
-- Auth configuration and plaintext secrets are never serialized into the Go
-  planning request.
-- Server-mode execution requests must go to `/v1/plugins/execute`; the
-  transitional `/api/plugins/execute` route is only reachable from the local
-  adapter until the route is removed.
-- Server-mode execution must send `pluginId`, `functionName`, and JSON `args`;
-  the Go registry resolves the full plugin/function definition. Full manifest
-  execution remains accepted as compatibility only, not as the production
-  adapter path.
-- G4.5c.2b registry scope is built-ins plus plugins registered via
-  `/v1/plugins/install`; local/dev without `DATABASE_URL` uses process memory,
-  while configured server deployments use Postgres `plugin_registry`. Supplied
-  plugin payloads register directly; custom raw OpenAPI JSON and marketplace
-  plugins with `manifestUrl` plus empty `functions` are fetched/converted in Go
-  before registration.
-- Plugin install and execute admission emit sanitized Go-side audit metadata
-  beyond installing-user persistence. Events contain action/status/user id,
-  plugin id, function name/count, call id, source, host-only URL metadata, auth
-  presence, argument count, request id/user-agent/IP when available, and never
-  raw args, plugin responses, auth values, bearer tokens, API keys, or full
-  URLs. When `DATABASE_URL` is configured the recorder writes `audit_logs`; an
-  audit sink failure maps to `503 PLUGIN_AUDIT_UNAVAILABLE` before registry
-  mutation or outbound plugin execution.
-- `authConfig.value` plaintext is rejected with
-  `PLAINTEXT_PLUGIN_AUTH_REJECTED`; only BYOK `valueSecret` is accepted.
-- Go outbound policy allows only `http|https`, blocks
-  localhost/private/link-local networks on initial URLs and redirects by
-  default, enforces a 30s timeout and 2 MiB response cap, and never echoes plugin
-  auth material in errors.
-- Planned function names must exactly match an offered name.
-- Result records execute sequentially and retain `success|error` status.
-- Result context is at most 64 KiB UTF-8, is explicitly labeled untrusted, and
-  is appended to the final Go stream instruction; oversized results carry a
-  bounded `resultPreview` and `resultTruncated: true`.
-- For browser mutating `/api/*` calls, compare `Origin` against the external
-  HTTP `Host`, not the container-internal `nextUrl.origin`. Use
-  `X-Forwarded-Host`/`X-Forwarded-Proto` only when
-  `TRUST_PROXY_HEADERS=true`; an untrusted forwarded header must never widen
-  the allowed origin.
-
-#### Plugin audit metadata contract (G4.5c.2d)
-
-1. Scope / Trigger: server-mode plugin install and execute requests must leave a
-   Go-side audit trail once the request is admitted to mutate the registry or
-   call an outbound plugin. This extends the earlier `installed_by_user_id`
-   registry column with per-operation metadata.
-2. Signatures: `POST /v1/plugins/install` emits `plugin.install`;
-   `POST /v1/plugins/execute` emits `plugin.execute`; configured deployments
-   insert rows into Postgres `audit_logs(action, resource_type='plugin',
-actor_user_id, request_id, outcome, ip_address, user_agent, metadata)`.
-3. Contracts: audit metadata may include `status`, `pluginId`, `functionName`,
-   `functionCount`, `source`, `builtIn`, `hasAuth`, `callId`, `argumentCount`,
-   `baseHost`, and `manifestHost`. `baseHost`/`manifestHost` are hostname-only,
-   never full URLs. `argumentCount` is allowed; argument names/values are not.
-4. Validation & Error Matrix: missing audit recorder in local/dev is allowed; a
-   configured recorder failure returns `503 PLUGIN_AUDIT_UNAVAILABLE`; install
-   audit failure happens before `plugin_registry` mutation; execute audit failure
-   happens before plugin HTTP egress.
-5. Good/Base/Bad Cases: Good = configured Postgres writes a sanitized row before
-   mutation/egress. Base = local memory registry runs with no recorder. Bad =
-   audit metadata includes raw `args`, auth material, provider/plugin response
-   bodies, bearer tokens, API keys, or full outbound URLs.
-6. Tests Required: handler tests must assert sanitized install/execute events,
-   fail-closed recorder errors, no outbound call after execute-audit failure,
-   no registry write after install-audit failure, and optional Postgres
-   integration persistence into `audit_logs`.
-7. Wrong vs Correct: Wrong = log `{ args, authConfig, responseBody, baseUrl }`
-   after the plugin call. Correct = record bounded metadata before side effects
-   and persist only host/count/status identifiers.
-
-### 21.4 Validation & Error Matrix
-
-| Condition                                                                      | Result                                                       |
-| ------------------------------------------------------------------------------ | ------------------------------------------------------------ |
-| Empty prompt, model, or tool list                                              | `400 INVALID_TOOL_PLAN` or `MODEL_REF_REQUIRED`              |
-| Invalid/oversized tool schema                                                  | `400 INVALID_TOOL_PLAN`                                      |
-| Configured provider has no planner                                             | `501 TOOLS_UNSUPPORTED`                                      |
-| Provider request/decode failure                                                | `502 PROVIDER_ERROR` without provider body/key               |
-| Provider returns an unoffered function, non-object args, or more than 32 calls | `502 PROVIDER_ERROR`; browser also fails closed              |
-| Id-only execution before registry is implemented                               | `501 PLUGIN_REGISTRY_REQUIRED`; no Next fallback             |
-| Invalid custom/OpenAPI plugin manifest                                         | `400 PLUGIN_MANIFEST_INVALID`                                |
-| Blocked plugin manifest or converted base URL                                  | `403 PLUGIN_URL_BLOCKED`                                     |
-| Oversized fetched plugin manifest                                              | `502 PLUGIN_RESPONSE_TOO_LARGE`                              |
-| Non-2xx or failed plugin manifest fetch                                        | `502 PLUGIN_REQUEST_FAILED`                                  |
-| Plaintext plugin auth                                                          | `400 PLAINTEXT_PLUGIN_AUTH_REJECTED`                         |
-| Missing required plugin auth or BYOK decrypt failure                           | `400 PLUGIN_AUTH_REQUIRED`                                   |
-| Unsupported plugin auth type                                                   | `400 PLUGIN_AUTH_UNSUPPORTED`                                |
-| Blocked outbound plugin URL                                                    | `403 PLUGIN_URL_BLOCKED`                                     |
-| Oversized plugin response                                                      | `502 PLUGIN_RESPONSE_TOO_LARGE`                              |
-| Non-2xx or failed plugin request                                               | `502 PLUGIN_REQUEST_FAILED`                                  |
-| Configured plugin audit recorder fails                                         | `503 PLUGIN_AUDIT_UNAVAILABLE`; no mutation/egress           |
-| Plugin execution returns `{ "error": ... }`                                    | Record `status: "error"`; final model must not claim success |
-| Abort before/during plan or execution                                          | Stop the orchestration and do not start the final stream     |
-| Browser `Origin` differs from external `Host`                                  | `403 CSRF_ORIGIN_BLOCKED`                                    |
-| External `18080` maps to internal `3000`, with matching browser Origin/Host    | Same-origin request is allowed                               |
-
-### 21.5 Good / Base / Bad Cases
-
-- Good: Weather is active; Go plans `getCurrentWeather`; frontend sends
-  `pluginId/functionName`; Go resolves and executes the registered function; the
-  final persisted assistant message uses the returned temperature.
-- Base: Plugins are active but the model returns `calls: []`; no plugin route is
-  called and normal Go chat continues.
-- G4.5c.1 base: A server receives an unknown `pluginId`; it returns
-  `PLUGIN_NOT_REGISTERED` and does not fall back to Next.
-- Bad: Provider returns `delete_all` when it was not offered; neither plugin
-  execution nor the final stream is called.
-
-### 21.6 Tests Required
-
-- Go provider: request shape, valid tool call, invalid JSON-object arguments,
-  response-size bound, and non-2xx credential redaction.
-- Go handler: route registration, request limits, planner success, unsupported
-  planner, and unoffered-call rejection.
-- Frontend API client: `/v1/chat/tools/plan` URL/body mapping and malformed
-  successful-response rejection.
-- Frontend orchestration: no-active-plugin no-op, secret exclusion, active-call
-  execution, unoffered-call failure, execution error status, abort, and 64 KiB
-  result bound.
-- G4.5b Go executor: full manifest payload success, plaintext auth rejection,
-  BYOK header/query auth, blocked private URL/redirect, response-size cap, and
-  no secret leakage in errors.
-- G4.5c.1 Go registry: built-in seed lookup, install registration, id-only
-  execution, and unknown-plugin failure.
-- G4.5c.2a durable registry: migration contract, Postgres save/get/list,
-  startup wiring, built-in shadow rejection, and runtime shared-store health.
-- G4.5c.2b OpenAPI install: raw custom JSON conversion, manifest URL fetch
-  conversion, invalid manifest errors, private manifest URL blocking, and
-  id-only execution after converted install.
-- G4.5c.2c built-in normalizers: Jina readable markdown extraction, Agnes
-  image/video result envelopes, and Unsplash result arrays from Go execution.
-- G4.5c.1 adapter: server-mode `pluginApi.execute` posts id-only payloads to
-  `/v1/plugins/execute`, maps Go errors as plugin error results, and never falls
-  back to `/api/plugins/execute`.
-- Composition: server mode opens both skill and plugin menus; search/reasoning
-  remain on the unsupported-action gate.
-- G4.6a zero-cost smoke: in-process real Go chat/plugin HTTP handlers, custom
-  OpenAPI install, provider planning, id-only plugin execution, bounded
-  untrusted plugin context, final Go SSE completion, and persisted assistant
-  message.
-- G4.6b live smoke: browser UI or deployed frontend, real plan, real plugin
-  response, final Go SSE completion, message reload, and cleanup of the smoke
-  conversation.
-
-### 21.7 Wrong vs Correct
-
-Wrong: expose the Go provider key to restore the legacy browser tool loop.
-
-```ts
-// Forbidden: browser-visible provider credential.
-const provider = { apiKey: "browser-visible-secret" };
-```
-
-Correct: provider planning remains in Go, and server-mode plugin execution is
-also admitted by Go. G4.5c persistent registry execution is the production path:
-send an id-only plugin/function request and never fall back to a production Next
+The replacement contract is [`mcp-tools-api.md`](./mcp-tools-api.md). It uses a
+server-authoritative conversation selection, frozen run snapshot, and the
+existing provider-native Tool continuation loop. There is no OpenAPI adapter,
+frontend planner, per-call approval dialog, or production fallback to a Plugin
 route.
-
-```ts
-const calls = await api.chat.planTools({ prompt, modelRef, tools, signal });
-const result = await api.plugins.execute({
-  payload: { pluginId, functionName, args: calls[0].args },
-  signal,
-});
-```

@@ -13,6 +13,11 @@ This directory is the documentation control plane for the `mm-chat` refactor. Ke
 | Persistence  | [`persistence/`](./persistence/)   | Postgres schema, migration, projection, and runtime source-of-truth contracts.                 |
 | Deployment   | [`deployment/`](./deployment/)     | Docker Compose, backup, restore, release, rollback, and operations guides.                     |
 
+The active Tool integration is MCP. See
+[`architecture/mcp-tools.md`](./architecture/mcp-tools.md),
+[`contracts/mcp-tools-api.md`](./contracts/mcp-tools-api.md), and
+[`deployment/mcp-runner.md`](./deployment/mcp-runner.md).
+
 ## Update Rule
 
 When a new plan or scope change appears:

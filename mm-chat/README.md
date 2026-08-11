@@ -12,6 +12,7 @@ the former repository-root application.
 frontend/                  Next.js 16 / React 19 application
 backend/                   Go API, migrations, and operator commands
 rag/                       Private Python RAG worker and parser sidecar
+mcp/                       Versioned MCP manifest and disabled token fixture
 compose.yml                Canonical local Compose entrypoint
 compose.single-server.yml  Complete single-server topology
 compose.production.yml     Digest-only production override
@@ -66,6 +67,13 @@ Open <http://127.0.0.1:3000>. Browser API calls stay same-origin under
 `/mm-api`; the Next.js server forwards them to the private `backend:8080`
 Compose service. Postgres, Redis, MinIO, and RAG are never exposed to the
 browser.
+
+The user-facing **Tools** area is backed by MCP. Remote Streamable HTTP servers
+run through the Go backend. Approved local stdio servers use one optional,
+hardened Runner that starts child processes on demand rather than one resident
+container per server. MCP is disabled by default; follow
+[`docs/deployment/mcp-runner.md`](./docs/deployment/mcp-runner.md) before
+enabling it.
 
 Stop the stack without deleting data:
 
@@ -123,3 +131,6 @@ The encrypted provider boundary is defined in
 [`docs/contracts/provider-secret-vault.md`](./docs/contracts/provider-secret-vault.md);
 future hosted Voice work must begin from the fail-closed
 [`Voice reservation contract`](./docs/contracts/voice-provider-reservation.md).
+The MCP boundary is defined in
+[`docs/architecture/mcp-tools.md`](./docs/architecture/mcp-tools.md) and
+[`docs/contracts/mcp-tools-api.md`](./docs/contracts/mcp-tools-api.md).

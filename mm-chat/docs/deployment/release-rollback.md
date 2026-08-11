@@ -91,6 +91,26 @@ required before destructive former-root cleanup; follow
 [`backup-restore.md`](./backup-restore.md) for the temporary Postgres and MinIO
 restore procedure.
 
+## MCP Tools release order
+
+MCP adds a fourth, dedicated Runner image. `scripts/release-images.sh` builds
+backend, `mcp_runner`, frontend, and RAG; production must pin the Runner with
+`MCP_RUNNER_IMAGE=<registry>@sha256:<digest>`. Before enabling MCP:
+
+1. Create and verify one paired PostgreSQL/MinIO `pre-deploy` backup.
+2. Validate `mcp/manifest.json` with `mm-chat-mcp-validate`.
+3. Build or pull all target images and record their immutable digests.
+4. Apply migration `074` explicitly before starting the new backend.
+5. Start the backend with `MCP_ENABLED=false` and verify readiness.
+6. Start the optional `mcp-runner` profile only when stdio is required.
+7. Start the frontend, then enable the global/transport switches separately.
+8. Smoke a trusted read-only MCP server through native same-model continuation
+   and verify the persisted call timeline.
+
+The Runner has no host port and its failure must not make the backend globally
+unready. Follow [`mcp-runner.md`](./mcp-runner.md) for token ownership, digest,
+network, manifest, and process-lifecycle gates.
+
 ## Deploy
 
 For an ordinary single-server update:
@@ -135,6 +155,9 @@ Then run the smoke checks from the pre-release gate.
   restore into a temporary bucket before touching the live bucket.
 - **Redis issue**: flush or recreate Redis only; Postgres/MinIO remain
   authoritative.
+- **MCP execution issue**: set `MCP_ENABLED=false` and recreate the backend.
+  Stop the Runner when stdio is disabled. Preserve migration `074`, its rows,
+  and `mcp-results/`; never use the retired Plugin runtime as rollback.
 
 ### Migration 053 / Memory v2 foundation rollback
 

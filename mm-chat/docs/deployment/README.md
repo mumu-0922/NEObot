@@ -14,6 +14,7 @@ Outbox state.
 | Guide                                                                  | Purpose                                                                                                                                     |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`single-server-compose.md`](./single-server-compose.md)               | Compose topology, profiles, Phase 15.2B dark-run Worker boundary, first boot, release, and rollback checklist.                              |
+| [`mcp-runner.md`](./mcp-runner.md)                                     | MCP manifest validation, optional hardened stdio Runner, token/image preflight, lifecycle, retention, and rollback.                         |
 | [`postgres-single-server.md`](./postgres-single-server.md)             | Current Postgres runtime covering private ports, DB principals, health checks, migration head, backup/restore, image fencing, and rollback. |
 | [`redis-temporary-state.md`](./redis-temporary-state.md)               | Phase 7 Redis runbook for non-authoritative temporary state, stream cancellation flags, private-network rules, and flush behavior.          |
 | [`backup-restore.md`](./backup-restore.md)                             | Backup scripts, checksum verification, Postgres restore drill, MinIO restore drill, retention, and destructive-restore warnings.            |
@@ -61,9 +62,9 @@ Outbox state.
   or `mm-chat-migrate` before starting or restarting a DB-enabled backend
   release. The Phase 15.2B migration head is `010`.
 - Compose resolves the UI from `FRONTEND_IMAGE`, resolves `backend`, `migrate`,
-  and `admin` from one `BACKEND_IMAGE`, and independently resolves the Worker
-  from `RAG_IMAGE`. Production uses full registry `@sha256:` digests for all
-  three and runs
+  and `admin` from one `BACKEND_IMAGE`, resolves the optional stdio service
+  from `MCP_RUNNER_IMAGE`, and independently resolves the Worker from
+  `RAG_IMAGE`. Production uses full registry `@sha256:` digests and runs
   `scripts/compose-single-server-production.sh` so host variables cannot
   override the validated env file and the production override removes every
   `build:` path. Retain both previous image digests through rollback.

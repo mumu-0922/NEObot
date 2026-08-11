@@ -38,9 +38,9 @@ to Go.
 | `/api/byok/public-key`     |           GET | Go `/v1/byok/public-key` through API client               |
 | `/api/agents`              |           GET | Go `/v1/agents` through API client                        |
 | `/api/agents/[identifier]` |           GET | Go `/v1/agents/{identifier}` through API client           |
-| `/api/plugins/list`        |           GET | Go `/v1/plugins` through API client                       |
-| `/api/plugins/install`     |          POST | Go `/v1/plugins/install` through API client               |
-| `/api/plugins/execute`     |          POST | Go `/v1/plugins/execute` through API client               |
+| `/api/plugins/list`        |           GET | Retired; Tools now use server-owned `/v1/mcp/servers`     |
+| `/api/plugins/install`     |          POST | Retired; private MCP drafts use `/v1/mcp/servers`         |
+| `/api/plugins/execute`     |          POST | Retired; MCP executes only inside the native chat loop    |
 | `/api/search`              |          POST | Go chat stream plus authenticated `/v1/search`            |
 
 ## Migration Priority

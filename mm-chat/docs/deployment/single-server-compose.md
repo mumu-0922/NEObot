@@ -115,6 +115,7 @@ cache reuse.
 | `admin`        | `ops`        | One-shot local identity administration; no HTTP listener.                        | None            |
 | `frontend`     | `app`        | Next.js UI and same-origin `/mm-api` edge on `127.0.0.1:3000`.                   | Localhost only  |
 | `backend`      | `app`        | Go API on `127.0.0.1:8080` for reverse proxy or local smoke tests.               | Localhost only  |
+| `mcp-runner`   | `mcp-runner` | Optional hardened on-demand host for administrator-approved stdio MCP servers.   | None            |
 | `memory-worker` | `memory-worker` | Durable Memory capture consumer using PostgreSQL leases and optional Redis wake. | None         |
 | `minio-client` | `ops`        | Utility container for backup/restore scripts.                                    | None            |
 | `rag-worker`   | `rag-worker` | Phase 15.2B durable-consumer mechanics; dispatch defaults off.                   | None            |
@@ -123,6 +124,11 @@ cache reuse.
 No database, Redis, or MinIO port is published. The backend binds to localhost
 only so a host-level reverse proxy can expose the same-origin `/mm-api` path
 without opening data services.
+
+The Runner publishes no host port and joins only the internal `mcp-control`
+network plus a separate egress network. It does not join the PostgreSQL/MinIO
+private network. See [`mcp-runner.md`](./mcp-runner.md) for manifest, token,
+digest, profile, retention, and rollback procedures.
 
 ### Optional Hindsight fixture project
 
@@ -203,6 +209,10 @@ container-local `GET /health` on port `8081`; no port is published or proxied.
 | `RAG_SOURCE_GATEWAY_TOKEN`                    | Shared infrastructure token for closed worker-to-Go RAG operations.                             |
 | `PROVIDER_SECRET_KEYRING_SOURCE`              | Host-side mode-`600` Docker Secret source; mounted into Go backend/admin/Memory Worker.         |
 | `MM_CHAT_RUNTIME_UID` / `MM_CHAT_RUNTIME_GID` | Non-root owner IDs for the file-backed provider Secret; must match `id -u` / `id -g`.           |
+| `MCP_ENABLED` / `MCP_REMOTE_ENABLED` / `MCP_STDIO_ENABLED` | Independent MCP product and transport kill switches; stdio also requires the Runner profile. |
+| `MCP_RUNNER_IMAGE`                            | Dedicated Runner image; production requires a full registry `@sha256:` digest.                 |
+| `MCP_RUNNER_TOKEN_SOURCE`                     | Host mode-`0600`, owner-matched, non-symlink Docker Secret source for backend-to-Runner auth.  |
+| `MCP_AUDIT_RETENTION` / `MCP_CLEANUP_INTERVAL` | MCP call/audit retention and cleanup cadence; defaults `2160h` and `1h`.                       |
 
 `POSTGRES_USER` is the empty-volume bootstrap and migrator login referenced by
 `MIGRATION_DATABASE_URL`. The API login inherits only `go_api_runtime` and must
