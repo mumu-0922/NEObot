@@ -3,6 +3,7 @@ name: mm-chat
 x-backend-build: &backend-build
   context: ./backend
   dockerfile: Dockerfile
+  target: runtime
 
 x-mcp-runner-build: &mcp-runner-build
   context: ./backend

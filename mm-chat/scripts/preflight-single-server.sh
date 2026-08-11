@@ -233,8 +233,8 @@ if (
 
 if values.get("MEMORY_TOOL_LOOP_CANARY_USER_IDS", ""):
     uuid_pattern = re.compile(
-        r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-"
-        r"[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
+        r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+        r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
     )
     canary_ids = [value.strip() for value in values["MEMORY_TOOL_LOOP_CANARY_USER_IDS"].split(",")]
     normalized_canary_ids = [value.lower() for value in canary_ids]

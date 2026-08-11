@@ -327,6 +327,12 @@ assert_rejected \
   "${invalid_memory_tool_canary}" \
   "MEMORY_TOOL_LOOP_CANARY_USER_IDS must be a unique comma-separated UUID list"
 
+development_memory_tool_canary="${temp_dir}/development-memory-tool-canary.env"
+sed 's|^MEMORY_TOOL_LOOP_CANARY_USER_IDS=$|MEMORY_TOOL_LOOP_CANARY_USER_IDS=00000000-0000-0000-0000-000000000001|' \
+  "${valid}" >"${development_memory_tool_canary}"
+chmod 600 "${development_memory_tool_canary}"
+"${preflight}" "${development_memory_tool_canary}" >/dev/null
+
 for memory_l2_flag in \
   MEMORY_L2_SCENE_SHADOW_ENABLED \
   MEMORY_L2_SCENE_READER_ENABLED; do
@@ -859,6 +865,8 @@ config = json.loads(sys.argv[1])
 services = config["services"]
 for name in ("postgres", "frontend", "backend", "mcp-runner", "memory-worker", "migrate", "admin", "rag-worker", "rag-replay"):
     assert "build" in services[name], name
+for name in ("backend", "memory-worker", "migrate", "admin"):
+    assert services[name]["build"]["target"] == "runtime", name
 assert "MIGRATION_DATABASE_URL" not in services["backend"]["environment"]
 assert "DATABASE_URL" not in services["migrate"]["environment"]
 assert "MIGRATION_DATABASE_URL" in services["migrate"]["environment"]

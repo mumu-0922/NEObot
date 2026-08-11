@@ -278,7 +278,8 @@ build_component \
   backend \
   "${backend_repo}" \
   "${project_dir}/backend" \
-  "${project_dir}/backend/Dockerfile"
+  "${project_dir}/backend/Dockerfile" \
+  --target runtime
 
 build_component \
   mcp_runner \

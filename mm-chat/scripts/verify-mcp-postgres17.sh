@@ -83,17 +83,31 @@ run_migrate() {
   MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"
 }
 
-log "applying a fresh 001 -> 074 chain"
+log "applying a fresh 001 -> 075 chain"
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 074_mcp_tools_foundation" "${work_dir}/fresh.log"
+grep -Fq "up 075_mcp_runtime_role_grants" "${work_dir}/fresh.log"
 
 log "proving replay is a no-op"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
-log "rolling back only 074 and seeding retired metadata"
+log "rolling back 075 and proving runtime grants are removed"
 run_migrate down >"${work_dir}/down.log" 2>&1
-grep -Fq "down 074_mcp_tools_foundation" "${work_dir}/down.log"
+grep -Fq "down 075_mcp_runtime_role_grants" "${work_dir}/down.log"
+psql_command "
+DO \$\$
+BEGIN
+  IF has_table_privilege('go_api_runtime', 'mcp_artifact_cleanup_queue', 'SELECT') THEN
+    RAISE EXCEPTION '075 down retained MCP runtime table privileges';
+  END IF;
+END
+\$\$;
+" >/dev/null
+
+log "rolling back 074 and seeding retired metadata"
+run_migrate down >"${work_dir}/down-074.log" 2>&1
+grep -Fq "down 074_mcp_tools_foundation" "${work_dir}/down-074.log"
 psql_command "
 DO \$\$
 BEGIN
@@ -119,9 +133,10 @@ VALUES (
 );
 " >/dev/null
 
-log "reapplying 074 and verifying schema, metadata, and retention"
+log "reapplying 074 -> 075 and verifying schema, metadata, retention, and grants"
 run_migrate up >"${work_dir}/reup.log" 2>&1
 grep -Fq "up 074_mcp_tools_foundation" "${work_dir}/reup.log"
+grep -Fq "up 075_mcp_runtime_role_grants" "${work_dir}/reup.log"
 psql_command "
 DO \$\$
 DECLARE
@@ -150,6 +165,21 @@ BEGIN
   IF to_regclass('public.idx_mcp_tool_calls_retention') IS NULL THEN
     RAISE EXCEPTION 'MCP retention index is missing';
   END IF;
+  IF NOT has_table_privilege(
+    'go_api_runtime', 'mcp_artifact_cleanup_queue', 'SELECT,DELETE'
+  ) THEN
+    RAISE EXCEPTION 'MCP cleanup runtime privileges are missing';
+  END IF;
+  IF NOT has_table_privilege(
+    'go_api_runtime', 'mcp_servers', 'SELECT,INSERT,UPDATE,DELETE'
+  ) THEN
+    RAISE EXCEPTION 'MCP repository runtime privileges are missing';
+  END IF;
+  IF has_function_privilege(
+    'memory_worker_runtime', 'mcp_enqueue_account_artifacts()', 'EXECUTE'
+  ) THEN
+    RAISE EXCEPTION 'MCP account cleanup trigger remains public executable';
+  END IF;
 END
 \$\$;
 " >/dev/null
@@ -162,4 +192,4 @@ log "proving a second replay remains a no-op"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 
-log "passed (fresh, replay, down/up, metadata, retention, repository lifecycle)"
+log "passed (fresh, replay, down/up, metadata, retention, runtime grants, repository lifecycle)"
