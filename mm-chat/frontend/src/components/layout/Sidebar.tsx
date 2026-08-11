@@ -36,6 +36,7 @@ import {
   Folder,
   PanelLeftClose,
   PanelLeftOpen,
+  Wrench,
 } from "lucide-react";
 import { CHAT_ENTITY_LIMITS } from "@/config/limits";
 import { sanitizeDownloadFilename } from "@/lib/utils/filename";
@@ -74,6 +75,8 @@ interface SidebarProps {
   isAssistantHubOpen: boolean;
   onOpenKnowledgeBase: () => void;
   isKnowledgeBaseOpen: boolean;
+  onOpenTools: () => void;
+  isToolsOpen: boolean;
   onOpenSettings: () => void;
   isSettingsOpen: boolean;
   onLogoClick: () => void;
@@ -167,6 +170,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   isAssistantHubOpen,
   onOpenKnowledgeBase,
   isKnowledgeBaseOpen,
+  onOpenTools,
+  isToolsOpen,
   onOpenSettings,
   isSettingsOpen,
   onLogoClick,
@@ -588,6 +593,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       currentSessionId === session.id &&
       !isAssistantHubOpen &&
       !isKnowledgeBaseOpen &&
+      !isToolsOpen &&
       !isSettingsOpen;
 
     return (
@@ -884,6 +890,27 @@ const Sidebar: React.FC<SidebarProps> = ({
               aria-hidden="true"
             />
             {isOpen && <span className="truncate">{t("knowledgeBase")}</span>}
+          </button>
+        </SidebarNavTooltip>
+
+        <SidebarNavTooltip isOpen={isOpen} content={t("tools")}>
+          <button
+            type="button"
+            aria-label={t("openTools")}
+            aria-current={isToolsOpen ? "page" : undefined}
+            onClick={onOpenTools}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60 ${
+              isToolsOpen
+                ? "bg-cyan-50 text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-300"
+                : "text-gray-600 dark:text-muted-foreground hover:bg-gray-100/80 dark:hover:bg-muted/60"
+            } ${isOpen ? "w-full" : "w-10 justify-center px-0"}`}
+          >
+            <Wrench
+              size={18}
+              className={`shrink-0 ${isToolsOpen ? "text-cyan-500" : "text-gray-500"}`}
+              aria-hidden="true"
+            />
+            {isOpen && <span className="truncate">{t("tools")}</span>}
           </button>
         </SidebarNavTooltip>
       </div>

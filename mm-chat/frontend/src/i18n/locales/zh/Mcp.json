@@ -1,5 +1,8 @@
 {
   "title": "工具",
+  "pageSubtitle": "管理 MCP Server，并为当前对话选择可用工具",
+  "serverList": "MCP Server 列表",
+  "serverSummary": "{servers} 个 MCP Server",
   "open": "管理工具",
   "close": "关闭工具",
   "refresh": "刷新工具",

@@ -1,5 +1,8 @@
 {
   "title": "Tools",
+  "pageSubtitle": "Manage MCP servers and choose Tools for this conversation",
+  "serverList": "MCP server list",
+  "serverSummary": "{servers} MCP servers",
   "open": "Manage Tools",
   "close": "Close Tools",
   "refresh": "Refresh Tools",

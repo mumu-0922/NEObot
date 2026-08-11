@@ -4,6 +4,8 @@
   "openAssistantHub": "打开助理",
   "knowledgeBase": "知识库",
   "openKnowledgeBase": "打开知识库",
+  "tools": "工具",
+  "openTools": "打开工具",
   "search": "搜索",
   "searchChats": "搜索对话",
   "searchChatsPlaceholder": "搜索对话…",

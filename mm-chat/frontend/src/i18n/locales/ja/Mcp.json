@@ -1,5 +1,8 @@
 {
   "title": "ツール",
+  "pageSubtitle": "MCP Server を管理し、この会話で使うツールを選択します",
+  "serverList": "MCP Server 一覧",
+  "serverSummary": "{servers} MCP Server",
   "open": "ツールを管理",
   "close": "ツールを閉じる",
   "refresh": "ツールを更新",

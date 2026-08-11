@@ -4,6 +4,8 @@
   "openAssistantHub": "アシスタントハブを開く",
   "knowledgeBase": "ナレッジベース",
   "openKnowledgeBase": "ナレッジベースを開く",
+  "tools": "ツール",
+  "openTools": "ツールを開く",
   "search": "検索",
   "searchChats": "チャットを検索",
   "searchChatsPlaceholder": "チャットを検索…",

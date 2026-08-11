@@ -67,6 +67,13 @@ describe("ChatApp server mode composition", () => {
     expect(chatApp).toContain("if (serverMcpEnabled)");
     expect(chatApp).toContain("preflightMcp({");
     expect(chatApp).toContain("mcpConversationId={");
+    expect(chatApp).toContain('import("@/components/mcp/McpToolsPage")');
+    expect(chatApp).toContain('onOpenTools={() => navigateToPanel("tools")}');
+    expect(chatApp).toContain('isToolsOpen={viewMode === "tools"}');
+    expect(chatApp).toContain('viewMode === "tools"');
+    expect(chatApp).toContain(
+      "conversationId={visibleCurrentSessionId ?? undefined}",
+    );
     expect(chatApp).toContain("activeSkillIdsOverride={");
     expect(chatApp).toContain("onActiveSkillIdsChange={");
     expect(chatApp).toContain(

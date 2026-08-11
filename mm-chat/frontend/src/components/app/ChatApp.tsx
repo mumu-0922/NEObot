@@ -153,6 +153,9 @@ const KnowledgeBase = dynamic(
     ssr: false,
   },
 );
+const McpToolsPage = dynamic(() => import("@/components/mcp/McpToolsPage"), {
+  ssr: false,
+});
 const SettingsPage = dynamic(
   () => import("@/components/settings/SettingsPage"),
   {
@@ -3014,6 +3017,8 @@ const ChatApp = () => {
         isAssistantHubOpen={viewMode === "assistants"}
         onOpenKnowledgeBase={() => navigateToPanel("knowledge")}
         isKnowledgeBaseOpen={viewMode === "knowledge"}
+        onOpenTools={() => navigateToPanel("tools")}
+        isToolsOpen={viewMode === "tools"}
         onOpenSettings={() => navigateToPanel("settings")}
         isSettingsOpen={viewMode === "settings"}
         onLogoClick={() => navigateToPanel("chat")}
@@ -3045,6 +3050,12 @@ const ChatApp = () => {
           />
         ) : viewMode === "knowledge" ? (
           <KnowledgeBase onClose={() => navigateToPanel("chat")} />
+        ) : viewMode === "tools" ? (
+          <McpToolsPage
+            conversationId={visibleCurrentSessionId ?? undefined}
+            enabled={serverMcpEnabled}
+            onClose={() => navigateToPanel("chat")}
+          />
         ) : viewMode === "settings" ? (
           <SettingsPage
             activeTab={settingsTab}

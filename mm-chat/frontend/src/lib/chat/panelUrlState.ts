@@ -3,6 +3,7 @@ export const CHAT_PANEL_VALUES = [
   "assistants",
   "skills",
   "knowledge",
+  "tools",
   "settings",
 ] as const;
 
@@ -32,6 +33,7 @@ const QUERY_PANEL_VALUES: readonly ChatPanel[] = [
   "assistants",
   "skills",
   "knowledge",
+  "tools",
   "settings",
 ];
 

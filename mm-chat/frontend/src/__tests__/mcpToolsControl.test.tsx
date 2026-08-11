@@ -9,6 +9,10 @@ const input = readFileSync(
   new URL("../components/chat/MessageInput.tsx", import.meta.url),
   "utf8",
 );
+const page = readFileSync(
+  new URL("../components/mcp/McpToolsPage.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("MCP Tools composer control", () => {
   it("opens on preflight attention and offers disable-all-and-continue", () => {
@@ -25,5 +29,22 @@ describe("MCP Tools composer control", () => {
     );
     expect(control).toContain('parsed.protocol !== "https:"');
     expect(control).toContain("validHttpsURL(result.authorizationUrl)");
+    expect(control).toContain(
+      "`${window.location.pathname}${window.location.search}${window.location.hash}`",
+    );
+    expect(control).not.toContain("returnUrl: window.location.href");
+  });
+
+  it("supports a first-class management page without browser-owned authority", () => {
+    expect(page).toContain('variant="page"');
+    expect(control).toContain('variant?: "composer" | "page"');
+    expect(control).toContain("client.mcp.listServers");
+    expect(control).toContain('aria-label={t("serverList")}');
+    expect(page).toContain("conversationId={conversationId}");
+  });
+
+  it("reloads authoritative drafts after a create or validation failure", () => {
+    expect(control).toContain("const message = formatError(createError");
+    expect(control).toContain("await load();\n      setError(message);");
   });
 });

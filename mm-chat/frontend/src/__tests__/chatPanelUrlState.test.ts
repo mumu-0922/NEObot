@@ -52,6 +52,19 @@ describe("chat panel URL state", () => {
     expect(state.needsReplace).toBe(false);
   });
 
+  it("round-trips the Tools panel without settings params", () => {
+    const params = setChatPanelUrlState(new URLSearchParams("keep=1"), {
+      panel: "tools",
+    });
+    const state = parseChatPanelUrlState(params);
+
+    expect(params.get("panel")).toBe("tools");
+    expect(params.has("settingsTab")).toBe(false);
+    expect(state.panel).toBe("tools");
+    expect(state.settingsTab).toBeNull();
+    expect(state.needsReplace).toBe(false);
+  });
+
   it("removes panel params when returning to chat", () => {
     const params = setChatPanelUrlState(
       new URLSearchParams("panel=settings&settingsTab=voice&keep=1"),

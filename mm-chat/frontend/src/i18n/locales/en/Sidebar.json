@@ -4,6 +4,8 @@
   "openAssistantHub": "Open Assistants",
   "knowledgeBase": "Knowledge Base",
   "openKnowledgeBase": "Open Knowledge Base",
+  "tools": "Tools",
+  "openTools": "Open Tools",
   "search": "Search",
   "searchChats": "Search chats",
   "searchChatsPlaceholder": "Search chats…",
