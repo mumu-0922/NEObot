@@ -40,6 +40,22 @@ while IFS= read -r object_key; do
 done < /knowledge-object-sample.txt
 echo "knowledge_document_version_objects_checked=${sample_count}"
 
+mcp_sample_count=0
+while IFS= read -r object_key; do
+  if [ -n "$object_key" ]; then
+    case "$object_key" in
+      mcp-results/*) ;;
+      *)
+        echo "invalid_mcp_result_object_key" >&2
+        exit 1
+        ;;
+    esac
+    mc stat "${alias_name}/${drill_bucket}/${object_key}" >/dev/null
+    mcp_sample_count=$((mcp_sample_count + 1))
+  fi
+done < /mcp-object-sample.txt
+echo "mcp_tool_result_objects_checked=${mcp_sample_count}"
+
 mc rb --force "${alias_name}/${drill_bucket}" >/dev/null
 bucket_created=false
 echo "cleanup=drill_bucket_removed"

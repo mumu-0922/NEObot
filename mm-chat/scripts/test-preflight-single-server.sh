@@ -139,6 +139,7 @@ sed \
   -e 's|ghcr.io/mumu-0922/neobot-mm-chat@sha256:replace-with-64-lowercase-hex|ghcr.io/mumu-0922/neobot-mm-chat@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|' \
   -e 's|ghcr.io/mumu-0922/neobot-mm-chat-rag@sha256:replace-with-64-lowercase-hex|ghcr.io/mumu-0922/neobot-mm-chat-rag@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|' \
   -e 's|ghcr.io/mumu-0922/neobot-mm-chat-postgres@sha256:replace-with-64-lowercase-hex|ghcr.io/mumu-0922/neobot-mm-chat-postgres@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd|' \
+  -e 's|ghcr.io/mumu-0922/neobot-mm-chat-mcp-runner@sha256:replace-with-64-lowercase-hex|ghcr.io/mumu-0922/neobot-mm-chat-mcp-runner@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee|' \
   -e 's|replace-with-release-id|git-deadbeef|' \
   -e "s|replace-with-host-uid|$(id -u)|" \
   -e "s|replace-with-host-gid|$(id -g)|" \
@@ -156,6 +157,33 @@ sed \
   "${example}" >"${valid}"
 chmod 600 "${valid}"
 "${preflight}" "${valid}" >/dev/null
+
+runner_token="${temp_dir}/mcp-runner-token"
+printf '%s' '0123456789abcdef0123456789abcdef0123456789abcdef' >"${runner_token}"
+chmod 600 "${runner_token}"
+stdio_enabled="${temp_dir}/stdio-enabled.env"
+sed \
+  -e 's|^MCP_ENABLED=false$|MCP_ENABLED=true|' \
+  -e 's|^MCP_STDIO_ENABLED=false$|MCP_STDIO_ENABLED=true|' \
+  -e "s|^MCP_RUNNER_TOKEN_SOURCE=.*|MCP_RUNNER_TOKEN_SOURCE=${runner_token}|" \
+  "${valid}" >"${stdio_enabled}"
+chmod 600 "${stdio_enabled}"
+"${preflight}" "${stdio_enabled}" >/dev/null
+
+invalid_runner_image="${temp_dir}/invalid-runner-image.env"
+sed 's|^MCP_RUNNER_IMAGE=.*|MCP_RUNNER_IMAGE=mm-chat/mcp-runner:latest|' \
+  "${stdio_enabled}" >"${invalid_runner_image}"
+chmod 600 "${invalid_runner_image}"
+assert_rejected "${invalid_runner_image}" "MCP_RUNNER_IMAGE must use a full immutable sha256 registry digest"
+
+insecure_runner_token="${temp_dir}/insecure-runner-token"
+cp "${runner_token}" "${insecure_runner_token}"
+chmod 644 "${insecure_runner_token}"
+invalid_runner_token="${temp_dir}/invalid-runner-token.env"
+sed "s|^MCP_RUNNER_TOKEN_SOURCE=.*|MCP_RUNNER_TOKEN_SOURCE=${insecure_runner_token}|" \
+  "${stdio_enabled}" >"${invalid_runner_token}"
+chmod 600 "${invalid_runner_token}"
+assert_rejected "${invalid_runner_token}" "MCP_RUNNER_TOKEN_SOURCE must use mode 600"
 
 for retired_provider_env in \
   RAG_MINERU_API_TOKEN \
@@ -562,7 +590,7 @@ rendered="$({
   MIGRATION_DATABASE_URL=postgres://override:override@override:5432/override \
   DATABASE_URL=postgres://override:override@override:5432/override \
     "${production_compose}" "${valid}" \
-      --profile app --profile ops --profile memory-worker --profile rag-worker --profile rag-ops \
+      --profile app --profile ops --profile mcp-runner --profile memory-worker --profile rag-worker --profile rag-ops \
       config --format json
 } 2>"${temp_dir}/production-compose.stderr")"
 python3 - "${rendered}" "$(id -u):$(id -g)" <<'PY'
@@ -624,17 +652,42 @@ for name in ("backend", "memory-worker", "migrate", "admin"):
     service = services[name]
     assert service["image"] == want_image, (name, service["image"])
     assert "build" not in service, name
-assert list(services["backend"]["networks"]) == ["private", "rag-private"]
+assert set(services["backend"]["networks"]) == {"private", "rag-private", "mcp-control"}
 assert services["backend"]["user"] == runtime_user
 assert services["memory-worker"]["user"] == runtime_user
 assert services["admin"]["user"] == runtime_user
-for name in ("backend", "memory-worker", "admin"):
+for name in ("memory-worker", "admin"):
     assert services[name]["secrets"] == [
         {
             "source": "mm_chat_provider_keyring",
             "target": "mm_chat_provider_keyring",
         }
     ]
+assert services["backend"]["secrets"] == [
+    {"source": "mm_chat_provider_keyring", "target": "mm_chat_provider_keyring"},
+    {"source": "mm_chat_mcp_runner_token", "target": "mm_chat_mcp_runner_token"},
+]
+
+runner = services["mcp-runner"]
+assert runner["image"] == (
+    "ghcr.io/mumu-0922/neobot-mm-chat-mcp-runner@sha256:" + "e" * 64
+)
+assert "build" not in runner
+assert runner["profiles"] == ["mcp-runner"]
+assert runner["user"] == runtime_user
+assert "ports" not in runner
+assert runner["read_only"] is True
+assert runner["init"] is True
+assert runner["cap_drop"] == ["ALL"]
+assert "no-new-privileges:true" in runner["security_opt"]
+assert float(runner["cpus"]) <= 0.5
+assert int(runner["pids_limit"]) == 128
+assert int(runner["mem_limit"]) == 256 * 1024 * 1024
+assert set(runner["networks"]) == {"mcp-control", "mcp-egress"}
+assert runner["secrets"] == [
+    {"source": "mm_chat_mcp_runner_token", "target": "mm_chat_mcp_runner_token"}
+]
+assert config["networks"]["mcp-control"]["internal"] is True
 assert services["postgres"]["environment"] == {
     "POSTGRES_DB": "neo_chat",
     "POSTGRES_PASSWORD": "test-migrator-password",
@@ -796,7 +849,7 @@ development_rendered="$(docker compose \
   --project-directory "${project_dir}" \
   --env-file "${example}" \
   -f "${project_dir}/compose.single-server.yml" \
-    --profile app --profile ops --profile memory-worker --profile rag-worker --profile rag-ops \
+    --profile app --profile ops --profile mcp-runner --profile memory-worker --profile rag-worker --profile rag-ops \
   config --format json)"
 python3 - "${development_rendered}" <<'PY'
 import json
@@ -804,7 +857,7 @@ import sys
 
 config = json.loads(sys.argv[1])
 services = config["services"]
-for name in ("postgres", "frontend", "backend", "memory-worker", "migrate", "admin", "rag-worker", "rag-replay"):
+for name in ("postgres", "frontend", "backend", "mcp-runner", "memory-worker", "migrate", "admin", "rag-worker", "rag-replay"):
     assert "build" in services[name], name
 assert "MIGRATION_DATABASE_URL" not in services["backend"]["environment"]
 assert "DATABASE_URL" not in services["migrate"]["environment"]
@@ -826,6 +879,13 @@ assert float(postgres["cpus"]) == 2
 assert services["backend"]["user"] == "replace-with-host-uid:replace-with-host-gid"
 assert services["memory-worker"]["user"] == "replace-with-host-uid:replace-with-host-gid"
 assert services["admin"]["user"] == "replace-with-host-uid:replace-with-host-gid"
+runner = services["mcp-runner"]
+assert runner["image"] == "ghcr.io/mumu-0922/neobot-mm-chat-mcp-runner@sha256:replace-with-64-lowercase-hex"
+assert runner["build"]["target"] == "mcp-runner"
+assert runner["user"] == "replace-with-host-uid:replace-with-host-gid"
+assert "ports" not in runner
+assert set(runner["networks"]) == {"mcp-control", "mcp-egress"}
+assert config["networks"]["mcp-control"]["internal"] is True
 memory = services["memory-worker"]
 assert memory["profiles"] == ["memory-worker"]
 assert memory["build"]["context"].endswith("/mm-chat/backend")
@@ -854,6 +914,9 @@ assert service["image"] == "quay.io/minio/mc:RELEASE.2025-07-21T05-28-08Z"
 assert service["entrypoint"] == ["/bin/sh", "/usr/local/libexec/restore-minio-drill.sh"]
 assert "build" not in service
 assert service["environment"]["MINIO_ROOT_PASSWORD"] == "test-minio-root-password"
+targets = {volume["target"] for volume in service["volumes"]}
+assert "/knowledge-object-sample.txt" in targets
+assert "/mcp-object-sample.txt" in targets
 PY
 
 for forbidden_args in \

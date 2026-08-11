@@ -149,6 +149,45 @@ def valid_image_digest(value: str) -> bool:
     return all(repository_segment.fullmatch(part) for part in parts[1:])
 
 
+def parse_simple_duration(name: str, value: str) -> int:
+    match = re.fullmatch(r"([1-9][0-9]*)(m|h)", value)
+    if match is None:
+        fail(f"{name} must use a positive whole-minute or whole-hour duration")
+    amount = int(match.group(1))
+    return amount * (60 if match.group(2) == "m" else 3600)
+
+
+def validate_private_token(path_value: str, name: str) -> None:
+    path = Path(path_value)
+    if not path.is_absolute():
+        path = Path(sys.argv[2]) / path
+    try:
+        metadata = path.lstat()
+    except OSError:
+        fail(f"{name} file is unavailable")
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        fail(f"{name} must be a regular non-symlink file")
+    if metadata.st_uid != os.getuid():
+        fail(f"{name} must be owned by the invoking user")
+    if stat.S_IMODE(metadata.st_mode) & 0o077:
+        fail(f"{name} must use mode 600")
+    if metadata.st_size < 32 or metadata.st_size > 4096:
+        fail(f"{name} must contain 32 to 4096 bytes")
+    try:
+        raw = path.read_bytes()
+        token = raw.decode("utf-8").strip()
+    except (OSError, UnicodeError):
+        fail(f"{name} is invalid")
+    if (
+        len(token) < 32
+        or len(token) > 4096
+        or "\r" in token
+        or "\n" in token
+        or raw.strip() != token.encode("utf-8")
+    ):
+        fail(f"{name} is invalid")
+
+
 values = parse_env(Path(sys.argv[1]))
 for key, value in values.items():
     if "$" in value:
@@ -214,6 +253,13 @@ for key in (
     if key in values and values[key] not in {"true", "false"}:
         fail(f"{key} must be true or false")
 
+for key in ("MCP_ENABLED", "MCP_REMOTE_ENABLED", "MCP_STDIO_ENABLED"):
+    if key in values and values[key] not in {"true", "false"}:
+        fail(f"{key} must be true or false")
+
+if values.get("MCP_STDIO_ENABLED") == "true" and values.get("MCP_ENABLED") != "true":
+    fail("MCP_STDIO_ENABLED requires MCP_ENABLED=true")
+
 required = (
     "FRONTEND_IMAGE",
     "BACKEND_IMAGE",
@@ -243,6 +289,11 @@ required = (
     "TEAM_MAIL_KEYRING",
     "TEAM_INVITE_ACCEPT_URL_BASE",
     "PROVIDER_SECRET_KEYRING_SOURCE",
+    "MCP_ENABLED",
+    "MCP_REMOTE_ENABLED",
+    "MCP_STDIO_ENABLED",
+    "MCP_AUDIT_RETENTION",
+    "MCP_CLEANUP_INTERVAL",
 )
 for key in required:
     if not values.get(key, "").strip():
@@ -357,6 +408,37 @@ if not valid_image_digest(values["RAG_IMAGE"]):
     fail("RAG_IMAGE must use a full immutable sha256 registry digest")
 if not valid_image_digest(values["POSTGRES_IMAGE"]):
     fail("POSTGRES_IMAGE must use a full immutable sha256 registry digest")
+
+audit_retention = parse_simple_duration("MCP_AUDIT_RETENTION", values["MCP_AUDIT_RETENTION"])
+if not 24 * 3600 <= audit_retention <= 365 * 24 * 3600:
+    fail("MCP_AUDIT_RETENTION must be between 24h and 8760h")
+cleanup_interval = parse_simple_duration("MCP_CLEANUP_INTERVAL", values["MCP_CLEANUP_INTERVAL"])
+if not 60 <= cleanup_interval <= 24 * 3600:
+    fail("MCP_CLEANUP_INTERVAL must be between 1m and 24h")
+
+if values["MCP_STDIO_ENABLED"] == "true":
+    for key in ("MCP_RUNNER_IMAGE", "MCP_RUNNER_URL", "MCP_RUNNER_TOKEN_SOURCE"):
+        if not values.get(key, "").strip():
+            fail(f"{key} is required when MCP stdio is enabled")
+    if not valid_image_digest(values["MCP_RUNNER_IMAGE"]):
+        fail("MCP_RUNNER_IMAGE must use a full immutable sha256 registry digest")
+    try:
+        runner_url = urlsplit(values["MCP_RUNNER_URL"])
+        runner_port = runner_url.port
+    except ValueError:
+        fail("MCP_RUNNER_URL must be the private http://mcp-runner:8090 service URL")
+    if (
+        runner_url.scheme != "http"
+        or runner_url.hostname != "mcp-runner"
+        or runner_port != 8090
+        or runner_url.username is not None
+        or runner_url.password is not None
+        or runner_url.path not in {"", "/"}
+        or runner_url.query
+        or runner_url.fragment
+    ):
+        fail("MCP_RUNNER_URL must be the private http://mcp-runner:8090 service URL")
+    validate_private_token(values["MCP_RUNNER_TOKEN_SOURCE"], "MCP_RUNNER_TOKEN_SOURCE")
 if values["POSTGRES_DATA_DIR"] != "./data/postgres17":
     fail("POSTGRES_DATA_DIR must be ./data/postgres17")
 

@@ -12,7 +12,9 @@ RUN CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldfl
     && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-admin ./cmd/admin \
     && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-memory-worker ./cmd/memory-worker \
     && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-memory-hindsight-fixture ./cmd/memory-hindsight-fixture \
-    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-memory-regression-capture ./cmd/memory-regression-capture
+    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-memory-regression-capture ./cmd/memory-regression-capture \
+    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-mcp-runner ./cmd/mcp-runner \
+    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-mcp-validate ./cmd/mcp-validate
 
 FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc AS runtime-base
 RUN apk add --no-cache ca-certificates curl tzdata \
@@ -34,7 +36,15 @@ COPY --from=build /out/mm-chat-api /usr/local/bin/mm-chat-api
 COPY --from=build /out/mm-chat-migrate /usr/local/bin/mm-chat-migrate
 COPY --from=build /out/mm-chat-admin /usr/local/bin/mm-chat-admin
 COPY --from=build /out/mm-chat-memory-worker /usr/local/bin/mm-chat-memory-worker
+COPY --from=build /out/mm-chat-mcp-validate /usr/local/bin/mm-chat-mcp-validate
 
 USER mmchat:mmchat
 EXPOSE 8080
 CMD ["/usr/local/bin/mm-chat-api"]
+
+FROM runtime-base AS mcp-runner
+COPY --from=build /out/mm-chat-mcp-runner /usr/local/bin/mm-chat-mcp-runner
+COPY --from=build /out/mm-chat-mcp-validate /usr/local/bin/mm-chat-mcp-validate
+USER mmchat:mmchat
+EXPOSE 8090
+ENTRYPOINT ["/usr/local/bin/mm-chat-mcp-runner"]

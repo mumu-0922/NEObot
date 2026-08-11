@@ -5,13 +5,14 @@ usage() {
   cat <<'USAGE'
 usage: release-images.sh [options]
 
-Build the three standalone mm-chat images:
+Build the four standalone mm-chat images:
   - Go backend/admin/migrate image
+  - Hardened MCP stdio runner image
   - Next.js frontend image
   - Python RAG worker image
 
 By default this builds local images with docker buildx --load. Use --push to
-publish immutable registry images and print FRONTEND_IMAGE/BACKEND_IMAGE/RAG_IMAGE
+publish immutable registry images and print FRONTEND_IMAGE/BACKEND_IMAGE/MCP_RUNNER_IMAGE/RAG_IMAGE
 values suitable for .env.single-server production preflight.
 
 Options:
@@ -21,6 +22,7 @@ Options:
   --image-namespace <namespace>  Registry namespace, e.g. ghcr.io/mumu-0922.
                                  Default: IMAGE_NAMESPACE or ghcr.io/mumu-0922.
   --backend-repo <name>          Default: neobot-mm-chat.
+  --mcp-runner-repo <name>       Default: neobot-mm-chat-mcp-runner.
   --frontend-repo <name>         Default: neobot-mm-chat-frontend.
   --rag-repo <name>              Default: neobot-mm-chat-rag.
   --tag <tag>                    Image tag and MM_CHAT_VERSION. Default: git-<sha>.
@@ -44,6 +46,7 @@ mode="load"
 dry_run=false
 image_namespace="${IMAGE_NAMESPACE:-ghcr.io/mumu-0922}"
 backend_repo="${BACKEND_IMAGE_REPOSITORY:-neobot-mm-chat}"
+mcp_runner_repo="${MCP_RUNNER_IMAGE_REPOSITORY:-neobot-mm-chat-mcp-runner}"
 frontend_repo="${FRONTEND_IMAGE_REPOSITORY:-neobot-mm-chat-frontend}"
 rag_repo="${RAG_IMAGE_REPOSITORY:-neobot-mm-chat-rag}"
 tag="${MM_CHAT_RELEASE_TAG:-}"
@@ -74,6 +77,11 @@ while (( $# > 0 )); do
     --backend-repo)
       if (( $# < 2 )); then echo "release-images: --backend-repo requires a value" >&2; exit 2; fi
       backend_repo="$2"
+      shift 2
+      ;;
+    --mcp-runner-repo)
+      if (( $# < 2 )); then echo "release-images: --mcp-runner-repo requires a value" >&2; exit 2; fi
+      mcp_runner_repo="$2"
       shift 2
       ;;
     --frontend-repo)
@@ -139,7 +147,7 @@ if [[ -z "${image_namespace}" || "${image_namespace}" != */* ]]; then
   exit 2
 fi
 
-for repo in "${backend_repo}" "${frontend_repo}" "${rag_repo}"; do
+for repo in "${backend_repo}" "${mcp_runner_repo}" "${frontend_repo}" "${rag_repo}"; do
   if [[ ! "${repo}" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
     echo "release-images: repository '${repo}' must be lowercase and registry-safe" >&2
     exit 2
@@ -273,6 +281,13 @@ build_component \
   "${project_dir}/backend/Dockerfile"
 
 build_component \
+  mcp_runner \
+  "${mcp_runner_repo}" \
+  "${project_dir}/backend" \
+  "${project_dir}/backend/Dockerfile" \
+  --target mcp-runner
+
+build_component \
   frontend \
   "${frontend_repo}" \
   "${project_dir}/frontend" \
@@ -298,7 +313,7 @@ if [[ "${mode}" == "push" ]]; then
   mv "${metadata_dir}/production-images.env.tmp" "${metadata_dir}/production-images.env"
   printf '\nProduction image refs written to:\n  %s\n\n' "${metadata_dir}/production-images.env"
   cat "${metadata_dir}/production-images.env"
-  printf '\nCopy these four lines into .env.single-server, then rerun production preflight/backup.\n'
+  printf '\nCopy these five lines into .env.single-server, then rerun production preflight/backup.\n'
 else
   printf '\nLocal image tags written to:\n  %s\n\n' "${metadata_dir}/local-images.env"
   cat "${metadata_dir}/local-images.env"

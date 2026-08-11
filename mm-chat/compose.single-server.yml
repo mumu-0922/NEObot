@@ -4,6 +4,11 @@ x-backend-build: &backend-build
   context: ./backend
   dockerfile: Dockerfile
 
+x-mcp-runner-build: &mcp-runner-build
+  context: ./backend
+  dockerfile: Dockerfile
+  target: mcp-runner
+
 x-rag-build: &rag-build
   context: ./rag
   dockerfile: Dockerfile
@@ -52,7 +57,6 @@ x-frontend-env: &frontend-env
   ALLOW_LOCAL_NETWORK_PROXY: ${ALLOW_LOCAL_NETWORK_PROXY:-}
   TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
   RATE_LIMIT_STORE: ${RATE_LIMIT_STORE:-memory}
-  PLUGIN_REGISTRY_STORE: ${PLUGIN_REGISTRY_STORE:-memory}
   UPSTASH_REDIS_REST_URL: ${UPSTASH_REDIS_REST_URL:-}
   UPSTASH_REDIS_REST_TOKEN: ${UPSTASH_REDIS_REST_TOKEN:-}
 
@@ -115,6 +119,24 @@ x-backend-env: &backend-env
   MEMORY_L2_SCENE_READER_ENABLED: ${MEMORY_L2_SCENE_READER_ENABLED:-false}
   MEMORY_L3_PERSONA_SHADOW_ENABLED: ${MEMORY_L3_PERSONA_SHADOW_ENABLED:-false}
   MEMORY_L3_PERSONA_READER_ENABLED: ${MEMORY_L3_PERSONA_READER_ENABLED:-false}
+  MCP_ENABLED: ${MCP_ENABLED:-false}
+  MCP_REMOTE_ENABLED: ${MCP_REMOTE_ENABLED:-true}
+  MCP_STDIO_ENABLED: ${MCP_STDIO_ENABLED:-false}
+  MCP_MANIFEST_FILE: /etc/mm-chat/mcp-manifest.json
+  MCP_RUNNER_URL: ${MCP_RUNNER_URL:-http://mcp-runner:8090}
+  MCP_RUNNER_TOKEN_FILE: /run/secrets/mm_chat_mcp_runner_token
+  MCP_OAUTH_CALLBACK_URL: ${MCP_OAUTH_CALLBACK_URL:-}
+  MCP_PRIVATE_SERVER_LIMIT: ${MCP_PRIVATE_SERVER_LIMIT:-20}
+  MCP_CONVERSATION_SERVER_LIMIT: ${MCP_CONVERSATION_SERVER_LIMIT:-8}
+  MCP_MAX_EXPOSED_TOOLS: ${MCP_MAX_EXPOSED_TOOLS:-32}
+  MCP_MAX_CALLS_PER_RUN: ${MCP_MAX_CALLS_PER_RUN:-32}
+  MCP_MAX_ROUNDS_PER_RUN: ${MCP_MAX_ROUNDS_PER_RUN:-8}
+  MCP_MAX_CONCURRENT_PER_USER: ${MCP_MAX_CONCURRENT_PER_USER:-4}
+  MCP_MAX_PENDING_OAUTH_FLOWS: ${MCP_MAX_PENDING_OAUTH_FLOWS:-5}
+  MCP_CALL_TIMEOUT: ${MCP_CALL_TIMEOUT:-30s}
+  MCP_RUN_TIMEOUT: ${MCP_RUN_TIMEOUT:-120s}
+  MCP_AUDIT_RETENTION: ${MCP_AUDIT_RETENTION:-2160h}
+  MCP_CLEANUP_INTERVAL: ${MCP_CLEANUP_INTERVAL:-1h}
 
 services:
   postgres:
@@ -244,6 +266,10 @@ services:
     secrets:
       - source: mm_chat_provider_keyring
         target: mm_chat_provider_keyring
+      - source: mm_chat_mcp_runner_token
+        target: mm_chat_mcp_runner_token
+    volumes:
+      - ./mcp/manifest.json:/etc/mm-chat/mcp-manifest.json:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -262,6 +288,45 @@ services:
     networks:
       - private
       - rag-private
+      - mcp-control
+
+  mcp-runner:
+    image: ${MCP_RUNNER_IMAGE:-mm-chat/mcp-runner:local}
+    build: *mcp-runner-build
+    restart: unless-stopped
+    profiles: ["mcp-runner"]
+    init: true
+    user: "${MM_CHAT_RUNTIME_UID:-1000}:${MM_CHAT_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+    tmpfs:
+      - /work:rw,noexec,nosuid,nodev,size=128m,mode=0700,uid=${MM_CHAT_RUNTIME_UID:-1000},gid=${MM_CHAT_RUNTIME_GID:-1000}
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+    environment:
+      MM_CHAT_VERSION: ${MM_CHAT_VERSION:-single-server-dev}
+      MCP_MANIFEST_FILE: /etc/mm-chat/mcp-manifest.json
+      MCP_RUNNER_TOKEN_FILE: /run/secrets/mm_chat_mcp_runner_token
+      MCP_RUNNER_ADDR: :8090
+    secrets:
+      - source: mm_chat_mcp_runner_token
+        target: mm_chat_mcp_runner_token
+    volumes:
+      - ./mcp/manifest.json:/etc/mm-chat/mcp-manifest.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8090/healthz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    networks:
+      - mcp-control
+      - mcp-egress
 
   memory-worker:
     image: ${BACKEND_IMAGE:-mm-chat/backend:local}
@@ -577,6 +642,11 @@ networks:
   rag-private:
     driver: bridge
     internal: true
+  mcp-control:
+    driver: bridge
+    internal: true
+  mcp-egress:
+    driver: bridge
 
 volumes:
   parser-ipc:
@@ -584,3 +654,5 @@ volumes:
 secrets:
   mm_chat_provider_keyring:
     file: ${PROVIDER_SECRET_KEYRING_SOURCE:-./secrets/provider-keyring.json}
+  mm_chat_mcp_runner_token:
+    file: ${MCP_RUNNER_TOKEN_SOURCE:-./mcp/runner-token.disabled}
