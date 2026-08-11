@@ -9,6 +9,7 @@
 | [RAG retrieval storage](./rag-retrieval-storage.md) | PostgreSQL retrieval, Citation authority/display, diagnostics, and rollback contracts                              |
 | [Chat source fusion](./chat-source-fusion.md)       | Conversation-aware external Search query rewriting, Knowledge/Web authority, diagnostics, and fallback contracts      |
 | [Chat Tool Loop](./chat-tool-loop.md)               | G19 provider-normalized Tool rounds, three-state Search authority, Memory first-round routing, process persistence, approvals, and citation truth |
+| [MCP Tools](./mcp-tools.md)                         | Server-authoritative MCP API, grants/selections, native Tool continuation, transports, results, retention, and Plugin retirement |
 | [Direct chat attachments](./chat-attachments.md)    | Attachment-only messages, native images, bounded document extraction, provider context, and explicit failures       |
 | [Hosted media provider smoke](./provider-live-smoke.md) | Exact live-provider authorization, one-off credentials, explicit TTS voices, artifacts, and sanitized evidence    |
 | [Hosted TTS production](./hosted-tts-production.md) | Dedicated SiliconFlow Voice authority, exact activation, server-mode playback, per-user cache, and cleanup |
@@ -52,6 +53,18 @@ For G19 Tool Loop or durable process-trace changes:
    current source-fusion rollback path.
 3. Prove provider-native continuation, cancellation, redaction, and current-
    turn Citation reconciliation before promotion.
+
+For MCP Tools, `/v1/mcp/*`, private definitions, OAuth, Runner transport,
+result persistence, or MCP retention changes:
+
+1. Read [`mcp-tools.md`](./mcp-tools.md) and
+   [`chat-tool-loop.md`](./chat-tool-loop.md).
+2. Trace current grant/selection -> immutable run snapshot -> native call ->
+   normalized result -> same-model continuation -> lifecycle cleanup.
+3. Preserve SSRF/credential boundaries, write non-retry, same-user write
+   serialization, object-before-row deletion, and cleanup while disabled.
+4. Prove both remote and Runner seams with focused tests and the PostgreSQL 17
+   migration drill.
 
 For chat upload, attachment parsing, or provider attachment changes:
 
@@ -244,6 +257,11 @@ or teardown changes:
   process when query planning is affected.
 - For attachment changes, run parser units, image-path regression,
   attachment-only API/UI tests, and one live upload-to-answer replay.
+- For MCP changes, run focused `internal/mcpclient`, `internal/mcprunner`,
+  `internal/chat`, `internal/migration`, handler/config tests, MCP frontend
+  Vitest/typecheck, `test-preflight-single-server.sh`, and
+  `verify-mcp-postgres17.sh`. Do not require unrelated full suites for an
+  intermediate MCP-only iteration.
 - For hosted provider smoke changes, run focused executor/gate tests, all Go
   tests and vet, a diff secret scan, then the exact authorized live command.
 - For production TTS changes, also run migration `051` replay/cache integration,

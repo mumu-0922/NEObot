@@ -364,9 +364,10 @@ SSE socket own delivery only.
   Knowledge.
 - Tool Calls are accumulated and validated before execution, then returned in
   the provider's native continuation format to the same model.
-- Do not add product-level Tool Round or Tool Call count limits for the current
-  single-user deployment. Cancellation, request context, provider timeout,
-  terminal errors, and approval rejection remain exit conditions.
+- Do not add product-level Tool Round or Tool Call count limits to the existing
+  Web/Knowledge/Memory loop. MCP is an intentional bounded extension: whenever
+  an MCP Tool participates, apply the frozen MCP run limits (default 8 rounds,
+  32 calls, 30 seconds/call, and 120 seconds/run) from `mcp-tools.md`.
 - A Tool-unsupported or not-yet-known current model uses the same model for one
   bounded `direct|knowledge|web|both` compatibility plan when Knowledge is in
   scope. Never use a hidden model and never add this planner round to a known
@@ -374,8 +375,11 @@ SSE socket own delivery only.
 - Persist only rendered provider reasoning and sanitized steps. Credentials,
   raw payloads, system prompts, full source bodies, and internal errors remain
   forbidden.
-- Read-only Web/Knowledge tools run automatically. Side effects require an
-  approval policy before registration.
+- Read-only Web/Knowledge tools run automatically. Existing non-MCP side
+  effects require an approval policy before registration. MCP is the explicit
+  exception: current conversation server/Tool selection is prior
+  authorization, every call is rechecked against the frozen snapshot, and no
+  per-call approval dialog is added.
 - Selected Knowledge only grants an allowed private-source scope. A native
   first round keeps `tool_choice=auto`: clear catalog/private overlap uses
   Knowledge, current public facts use Web, independently necessary private and

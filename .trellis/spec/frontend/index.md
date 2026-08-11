@@ -20,6 +20,7 @@ behavior changes require coverage under `mm-chat/frontend/src/__tests__/`.
 | [Component Guidelines](./component-guidelines.md) | Components, props, composition, styling, and accessibility    | Complete |
 | [Hook Guidelines](./hook-guidelines.md)           | Feature hooks, effects, store selectors, and async lifecycles | Complete |
 | [State Management](./state-management.md)         | Local, Zustand, persisted, URL, and server-owned state        | Complete |
+| [MCP Tools](./mcp-tools.md)                       | Tools UI, server selection authority, timeline, and Plugin-state retirement | Complete |
 | [Type Safety](./type-safety.md)                   | Domain types, DTOs, runtime validation, and normalization     | Complete |
 | [Quality Guidelines](./quality-guidelines.md)     | Formatting, linting, testing, review, and forbidden patterns  | Complete |
 
@@ -38,6 +39,9 @@ Before changing frontend code:
    validation or normalization.
 5. Read [Quality Guidelines](./quality-guidelines.md), add focused Vitest
    coverage, and run the required frontend commands from `mm-chat/frontend/`.
+6. For Tools UI, MCP DTO/client, timeline, or retired Plugin persistence work,
+   read [MCP Tools](./mcp-tools.md) and keep execution/authorization server-
+   authoritative.
 
 ## Representative Code
 

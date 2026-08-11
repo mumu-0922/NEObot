@@ -9,6 +9,7 @@
 | [Repository root boundary](./repository-root-boundary.md)   | The thin Git root, `mm-chat/` product root, automation paths, runtime protection, and verification gates. |
 | [Dependency security](./dependency-security.md)             | Lockfile remediation, official-registry audits, override compatibility, and release verification.         |
 | [Runtime recreate image pinning](./runtime-recreate-image-pinning.md) | Immutable image selection, schema compatibility, and rollback requirements for live Compose recreation. |
+| [MCP Runner](./mcp-runner.md)                         | MCP manifest, dedicated Runner image/token/topology, release, backup/restore, retention, and rollback. |
 | [Session auto-commit](./session-auto-commit.md)             | Exact journal/index staging, commit isolation, ignored paths, and regression tests.                       |
 | [Trellis scaffold boundary](./trellis-scaffold-boundary.md) | Shared Trellis/Codex scaffold, local state exclusions, explicit staging, and fresh-clone verification.    |
 
@@ -39,6 +40,11 @@ For Trellis initialization, update, platform-hook, or scaffold-tracking
 changes, read
 [`trellis-scaffold-boundary.md`](./trellis-scaffold-boundary.md). Classify
 every generated path before staging and preserve machine-local state.
+
+For MCP environment, manifest, Runner image/service, preflight, backup/restore,
+or release changes, read [`mcp-runner.md`](./mcp-runner.md). Preserve the
+dedicated immutable image, independent secret, no-host-port network boundary,
+paired Postgres/MinIO backup, and non-destructive rollback.
 
 ## Quality check
 
