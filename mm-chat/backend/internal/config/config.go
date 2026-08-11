@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/base64"
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -48,6 +49,22 @@ const (
 	DefaultTeamMailWorkerPoll           = 500 * time.Millisecond
 	DefaultTeamMailBackoffBase          = 5 * time.Second
 	DefaultTeamMailBackoffMax           = 15 * time.Minute
+	DefaultMCPEnabled                   = false
+	DefaultMCPRemoteEnabled             = true
+	DefaultMCPStdioEnabled              = false
+	DefaultMCPRunnerURL                 = "http://mcp-runner:8090"
+	DefaultMCPRunnerTokenFile           = "/run/secrets/mm_chat_mcp_runner_token"
+	DefaultMCPPrivateServerLimit        = 20
+	DefaultMCPConversationLimit         = 8
+	DefaultMCPMaxExposedTools           = 32
+	DefaultMCPMaxCallsPerRun            = 32
+	DefaultMCPMaxRoundsPerRun           = 8
+	DefaultMCPMaxConcurrentPerUser      = 4
+	DefaultMCPMaxOAuthFlows             = 5
+	DefaultMCPCallTimeout               = 30 * time.Second
+	DefaultMCPRunTimeout                = 120 * time.Second
+	DefaultMCPAuditRetention            = 90 * 24 * time.Hour
+	DefaultMCPCleanupInterval           = time.Hour
 	maximumAuthSMTPQueueSize            = 10_000
 
 	EnvAddr                   = "MM_CHAT_ADDR"
@@ -108,6 +125,24 @@ const (
 	EnvMemoryL2SceneReader    = "MEMORY_L2_SCENE_READER_ENABLED"
 	EnvMemoryL3PersonaShadow  = "MEMORY_L3_PERSONA_SHADOW_ENABLED"
 	EnvMemoryL3PersonaReader  = "MEMORY_L3_PERSONA_READER_ENABLED"
+	EnvMCPEnabled             = "MCP_ENABLED"
+	EnvMCPRemoteEnabled       = "MCP_REMOTE_ENABLED"
+	EnvMCPStdioEnabled        = "MCP_STDIO_ENABLED"
+	EnvMCPManifestFile        = "MCP_MANIFEST_FILE"
+	EnvMCPRunnerURL           = "MCP_RUNNER_URL"
+	EnvMCPRunnerTokenFile     = "MCP_RUNNER_TOKEN_FILE"
+	EnvMCPOAuthCallbackURL    = "MCP_OAUTH_CALLBACK_URL"
+	EnvMCPPrivateServerLimit  = "MCP_PRIVATE_SERVER_LIMIT"
+	EnvMCPConversationLimit   = "MCP_CONVERSATION_SERVER_LIMIT"
+	EnvMCPMaxExposedTools     = "MCP_MAX_EXPOSED_TOOLS"
+	EnvMCPMaxCallsPerRun      = "MCP_MAX_CALLS_PER_RUN"
+	EnvMCPMaxRoundsPerRun     = "MCP_MAX_ROUNDS_PER_RUN"
+	EnvMCPMaxConcurrent       = "MCP_MAX_CONCURRENT_PER_USER"
+	EnvMCPMaxOAuthFlows       = "MCP_MAX_PENDING_OAUTH_FLOWS"
+	EnvMCPCallTimeout         = "MCP_CALL_TIMEOUT"
+	EnvMCPRunTimeout          = "MCP_RUN_TIMEOUT"
+	EnvMCPAuditRetention      = "MCP_AUDIT_RETENTION"
+	EnvMCPCleanupInterval     = "MCP_CLEANUP_INTERVAL"
 )
 
 // Config contains the process-level settings required to start the API.
@@ -130,6 +165,7 @@ type Config struct {
 	Memory          MemoryConfig
 	Auth            AuthConfig
 	Team            TeamConfig
+	MCP             MCPConfig
 }
 
 // RedisConfig contains non-authoritative temporary-state settings. Redis must
@@ -191,6 +227,27 @@ type MemoryConfig struct {
 	L3PersonaShadowEnabled bool
 	L3PersonaReaderEnabled bool
 	invalidCanaryUserIDs   bool
+}
+
+type MCPConfig struct {
+	Enabled              bool
+	RemoteEnabled        bool
+	StdioEnabled         bool
+	ManifestFile         string
+	RunnerURL            string
+	RunnerTokenFile      string
+	OAuthCallbackURL     string
+	PrivateServerLimit   int
+	ConversationLimit    int
+	MaxExposedTools      int
+	MaxCallsPerRun       int
+	MaxRoundsPerRun      int
+	MaxConcurrentPerUser int
+	MaxOAuthFlows        int
+	CallTimeout          time.Duration
+	RunTimeout           time.Duration
+	AuditRetention       time.Duration
+	CleanupInterval      time.Duration
 }
 
 // S3Config contains MinIO/S3-compatible object storage settings.
@@ -330,6 +387,9 @@ func (cfg Config) Validate() error {
 			EnvTeamMailBackoffBase,
 		)
 	}
+	if err := validateMCPConfig(cfg.MCP); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -436,6 +496,26 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 			),
 			invalidCanaryUserIDs: invalidMemoryCanaryUserIDs,
 		},
+		MCP: MCPConfig{
+			Enabled:              boolEnvOrDefault(lookup, EnvMCPEnabled, DefaultMCPEnabled),
+			RemoteEnabled:        boolEnvOrDefault(lookup, EnvMCPRemoteEnabled, DefaultMCPRemoteEnabled),
+			StdioEnabled:         boolEnvOrDefault(lookup, EnvMCPStdioEnabled, DefaultMCPStdioEnabled),
+			ManifestFile:         optionalEnv(lookup, EnvMCPManifestFile),
+			RunnerURL:            envOrDefault(lookup, EnvMCPRunnerURL, DefaultMCPRunnerURL),
+			RunnerTokenFile:      envOrDefault(lookup, EnvMCPRunnerTokenFile, DefaultMCPRunnerTokenFile),
+			OAuthCallbackURL:     optionalEnv(lookup, EnvMCPOAuthCallbackURL),
+			PrivateServerLimit:   intEnvOrDefault(lookup, EnvMCPPrivateServerLimit, DefaultMCPPrivateServerLimit),
+			ConversationLimit:    intEnvOrDefault(lookup, EnvMCPConversationLimit, DefaultMCPConversationLimit),
+			MaxExposedTools:      intEnvOrDefault(lookup, EnvMCPMaxExposedTools, DefaultMCPMaxExposedTools),
+			MaxCallsPerRun:       intEnvOrDefault(lookup, EnvMCPMaxCallsPerRun, DefaultMCPMaxCallsPerRun),
+			MaxRoundsPerRun:      intEnvOrDefault(lookup, EnvMCPMaxRoundsPerRun, DefaultMCPMaxRoundsPerRun),
+			MaxConcurrentPerUser: intEnvOrDefault(lookup, EnvMCPMaxConcurrent, DefaultMCPMaxConcurrentPerUser),
+			MaxOAuthFlows:        intEnvOrDefault(lookup, EnvMCPMaxOAuthFlows, DefaultMCPMaxOAuthFlows),
+			CallTimeout:          durationEnvOrDefault(lookup, EnvMCPCallTimeout, DefaultMCPCallTimeout),
+			RunTimeout:           durationEnvOrDefault(lookup, EnvMCPRunTimeout, DefaultMCPRunTimeout),
+			AuditRetention:       durationEnvOrDefault(lookup, EnvMCPAuditRetention, DefaultMCPAuditRetention),
+			CleanupInterval:      durationEnvOrDefault(lookup, EnvMCPCleanupInterval, DefaultMCPCleanupInterval),
+		},
 
 		Auth: AuthConfig{
 			Mode:                 authModeEnvOrDefault(lookup, EnvAuthMode, DefaultAuthMode),
@@ -467,6 +547,66 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 			invalidFields:       invalidTeamFields,
 		},
 	}
+}
+
+func validateMCPConfig(config MCPConfig) error {
+	if config.AuditRetention == 0 {
+		config.AuditRetention = DefaultMCPAuditRetention
+	}
+	if config.CleanupInterval == 0 {
+		config.CleanupInterval = DefaultMCPCleanupInterval
+	}
+	if config.AuditRetention < 24*time.Hour || config.AuditRetention > 365*24*time.Hour {
+		return fmt.Errorf("%s must be between 24h and 8760h", EnvMCPAuditRetention)
+	}
+	if config.CleanupInterval < time.Minute || config.CleanupInterval > 24*time.Hour {
+		return fmt.Errorf("%s must be between 1m and 24h", EnvMCPCleanupInterval)
+	}
+	if !config.Enabled {
+		return nil
+	}
+	limits := []struct {
+		name    string
+		value   int
+		minimum int
+		maximum int
+	}{
+		{EnvMCPPrivateServerLimit, config.PrivateServerLimit, 1, 100},
+		{EnvMCPConversationLimit, config.ConversationLimit, 1, 32},
+		{EnvMCPMaxExposedTools, config.MaxExposedTools, 2, 128},
+		{EnvMCPMaxCallsPerRun, config.MaxCallsPerRun, 1, 128},
+		{EnvMCPMaxRoundsPerRun, config.MaxRoundsPerRun, 1, 32},
+		{EnvMCPMaxConcurrent, config.MaxConcurrentPerUser, 1, 32},
+		{EnvMCPMaxOAuthFlows, config.MaxOAuthFlows, 1, 20},
+	}
+	for _, limit := range limits {
+		if limit.value < limit.minimum || limit.value > limit.maximum {
+			return fmt.Errorf("%s must be between %d and %d", limit.name, limit.minimum, limit.maximum)
+		}
+	}
+	if config.CallTimeout <= 0 || config.CallTimeout > 2*time.Minute {
+		return fmt.Errorf("%s must be between 1ns and 2m", EnvMCPCallTimeout)
+	}
+	if config.RunTimeout < config.CallTimeout || config.RunTimeout > 10*time.Minute {
+		return fmt.Errorf("%s must be at least %s and at most 10m", EnvMCPRunTimeout, EnvMCPCallTimeout)
+	}
+	if config.StdioEnabled {
+		runner, err := url.Parse(strings.TrimSpace(config.RunnerURL))
+		if err != nil || runner.Scheme != "http" || runner.Host == "" || runner.User != nil ||
+			runner.RawQuery != "" || runner.Fragment != "" {
+			return fmt.Errorf("%s must be an internal HTTP URL", EnvMCPRunnerURL)
+		}
+		if !strings.HasPrefix(strings.TrimSpace(config.RunnerTokenFile), "/run/secrets/") {
+			return fmt.Errorf("%s must be under /run/secrets", EnvMCPRunnerTokenFile)
+		}
+	}
+	if callback := strings.TrimSpace(config.OAuthCallbackURL); callback != "" {
+		parsed, err := url.Parse(callback)
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
+			return fmt.Errorf("%s must be a public HTTPS URL", EnvMCPOAuthCallbackURL)
+		}
+	}
+	return nil
 }
 
 var canonicalUUIDRE = regexp.MustCompile(

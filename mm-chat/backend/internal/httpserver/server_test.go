@@ -1375,51 +1375,30 @@ func TestNewHandlerRegistersChatRoutesWithDatabaseRequired(t *testing.T) {
 	}
 }
 
-func TestNewHandlerRegistersPluginRoutesWithFailClosedRegistryFallbacks(t *testing.T) {
+func TestNewHandlerRegistersMCPRoutesAndRetiresPluginRoutes(t *testing.T) {
 	handler := NewHandler(config.Config{Addr: ":0", Version: "route-test"})
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/plugins", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/mcp/servers", nil)
 	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("plugin list status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("MCP list status = %d, want %d; body=%s", rec.Code, http.StatusServiceUnavailable, rec.Body.String())
 	}
-	var listBody struct {
-		Plugins     []any `json:"plugins"`
-		Unavailable bool  `json:"unavailable"`
+	var mcpBody struct {
+		Error ErrorBody `json:"error"`
 	}
-	if err := json.NewDecoder(rec.Body).Decode(&listBody); err != nil {
-		t.Fatalf("decode plugin list: %v", err)
+	if err := json.NewDecoder(rec.Body).Decode(&mcpBody); err != nil {
+		t.Fatalf("decode MCP error: %v", err)
 	}
-	if listBody.Unavailable || len(listBody.Plugins) == 0 {
-		t.Fatalf("plugin list = %#v, unavailable=%v; want available built-ins", listBody.Plugins, listBody.Unavailable)
+	if mcpBody.Error.Code != "MCP_DISABLED" {
+		t.Fatalf("MCP code = %q, want MCP_DISABLED", mcpBody.Error.Code)
 	}
 
-	for _, tc := range []struct {
-		path   string
-		body   string
-		status int
-		code   string
-	}{
-		{path: "/v1/plugins/install", body: `{"customInput":"not-json"}`, status: http.StatusBadRequest, code: "PLUGIN_MANIFEST_INVALID"},
-		{path: "/v1/plugins/execute", body: `{"pluginId":"missing","functionName":"lookup","args":{"secret":"sk_live_secret"}}`, status: http.StatusNotFound, code: "PLUGIN_NOT_REGISTERED"},
-	} {
-		rec = httptest.NewRecorder()
-		req = httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
-		handler.ServeHTTP(rec, req)
-		if rec.Code != tc.status {
-			t.Fatalf("%s status = %d, want %d; body=%s", tc.path, rec.Code, tc.status, rec.Body.String())
-		}
-		if strings.Contains(rec.Body.String(), "sk_live_secret") {
-			t.Fatalf("%s response leaked request secret: %s", tc.path, rec.Body.String())
-		}
-		var body ErrorResponse
-		if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-			t.Fatalf("decode %s error response: %v", tc.path, err)
-		}
-		if body.Error.Code != tc.code {
-			t.Fatalf("%s code = %q, want %q", tc.path, body.Error.Code, tc.code)
-		}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/v1/plugins", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("retired plugin route status = %d, want %d; body=%s", rec.Code, http.StatusNotFound, rec.Body.String())
 	}
 }
 

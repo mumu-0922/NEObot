@@ -66,18 +66,22 @@ type ProviderToolResult struct {
 }
 
 type ProviderToolExecutionEvent struct {
-	ExecutionID     string
-	CallID          string
-	Name            string
-	Status          string
-	Round           int
-	Arguments       map[string]any
-	Query           string
-	Search          *websearch.Result
-	Knowledge       *autoRAGDecision
-	CitationMarkers []string
-	FailureCategory string
-	Mode            string
+	ExecutionID     string            `json:"executionId"`
+	CallID          string            `json:"callId,omitempty"`
+	Name            string            `json:"toolName"`
+	Server          string            `json:"server,omitempty"`
+	Classification  string            `json:"classification,omitempty"`
+	Status          string            `json:"processStatus"`
+	CallStatus      string            `json:"status,omitempty"`
+	Round           int               `json:"round"`
+	Arguments       map[string]any    `json:"argumentsSummary,omitempty"`
+	Query           string            `json:"-"`
+	Search          *websearch.Result `json:"-"`
+	Knowledge       *autoRAGDecision  `json:"-"`
+	CitationMarkers []string          `json:"-"`
+	FailureCategory string            `json:"failureCategory,omitempty"`
+	DurationMillis  int64             `json:"durationMillis,omitempty"`
+	Mode            string            `json:"mode"`
 }
 
 func normalizeProviderToolChoice(value string) string {

@@ -99,12 +99,21 @@ func toolProcessDetail(event *ProviderToolExecutionEvent) map[string]any {
 		"round":    event.Round,
 		"mode":     event.Mode,
 	}
+	if server := strings.TrimSpace(event.Server); server != "" {
+		detail["server"] = server
+	}
+	if classification := strings.TrimSpace(event.Classification); classification != "" {
+		detail["classification"] = classification
+	}
+	if callStatus := strings.TrimSpace(event.CallStatus); callStatus != "" {
+		detail["callStatus"] = callStatus
+	}
 	if query := strings.TrimSpace(event.Query); query != "" {
 		detail["query"] = query
 	}
 	if len(event.Arguments) > 0 {
 		if encoded, err := json.Marshal(event.Arguments); err == nil {
-			detail["redactedArgs"] = string(encoded)
+			detail["argumentSummary"] = string(encoded)
 		}
 	}
 	if event.Search != nil {
@@ -123,7 +132,9 @@ func toolProcessDetail(event *ProviderToolExecutionEvent) map[string]any {
 	if len(event.CitationMarkers) > 0 {
 		detail["citationMarkers"] = append([]string(nil), event.CitationMarkers...)
 	}
-	if event.Status == ProcessStepStatusCancelled {
+	if event.Status == ProcessStepStatusOutcomeUnknown {
+		detail["outcome"] = ProcessStepStatusOutcomeUnknown
+	} else if event.Status == ProcessStepStatusCancelled {
 		detail["outcome"] = "cancelled"
 	} else if failure := strings.TrimSpace(event.FailureCategory); failure != "" {
 		detail["failureCategory"] = failure

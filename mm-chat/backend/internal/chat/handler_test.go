@@ -802,6 +802,36 @@ func TestHandlerStreamsMockAssistantAndPersistsMessages(t *testing.T) {
 	}
 }
 
+func TestHandlerMCPPreflightDoesNotAcceptMessageWhenMCPIsDisabled(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(
+		repo.conversations,
+		fakeConversation(testConversationID, "First", 0),
+	)
+	handler := NewHandler(NewService(repo), WithProvider(NewMockProvider()))
+	path := conversationsPath + "/" + testConversationID + "/mcp-preflight"
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		path,
+		`{"modelRef":{"providerId":"mock","modelId":"mock-chat"}}`,
+	)
+	assertStatus(t, rec, http.StatusOK)
+	var response mcpPreflightResponse
+	decodeBody(t, rec, &response)
+	if response.Enabled {
+		t.Fatal("MCP preflight enabled = true, want false")
+	}
+	if len(repo.messages[testConversationID]) != 0 {
+		t.Fatalf("preflight persisted messages = %#v", repo.messages[testConversationID])
+	}
+
+	rec = performRequest(handler, http.MethodPost, path, `{}`)
+	assertStatus(t, rec, http.StatusBadRequest)
+	assertErrorCode(t, rec, "MODEL_REF_REQUIRED")
+}
+
 func TestHandlerContinuesTextGenerationAfterClientDisconnect(t *testing.T) {
 	tests := []struct {
 		name          string

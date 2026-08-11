@@ -20,7 +20,14 @@ type PublicConfig struct {
 	ModelProvider ModelProviderConfig `json:"modelProvider"`
 	Search        SearchConfig        `json:"search"`
 	Voice         VoiceConfig         `json:"voice"`
+	MCP           MCPConfig           `json:"mcp"`
 	Deployment    DeploymentConfig    `json:"deployment"`
+}
+
+type MCPConfig struct {
+	Enabled       bool `json:"enabled"`
+	RemoteEnabled bool `json:"remoteEnabled"`
+	StdioEnabled  bool `json:"stdioEnabled"`
 }
 
 type ModelProviderConfig struct {
@@ -55,7 +62,6 @@ type DeploymentConfig struct {
 	BYOKStableKeyConfigured bool   `json:"byokStableKeyConfigured"`
 	BYOKEphemeralAllowed    bool   `json:"byokEphemeralAllowed"`
 	RateLimitStore          string `json:"rateLimitStore"`
-	PluginRegistryStore     string `json:"pluginRegistryStore"`
 }
 
 type ProviderModelsRequest struct {

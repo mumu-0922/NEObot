@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -29,7 +30,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/jobartifacts"
 	"neo-chat/mm-chat/backend/internal/jobaudit"
 	"neo-chat/mm-chat/backend/internal/knowledge"
-	"neo-chat/mm-chat/backend/internal/plugins"
+	"neo-chat/mm-chat/backend/internal/mcpclient"
 	"neo-chat/mm-chat/backend/internal/providersecrets"
 	"neo-chat/mm-chat/backend/internal/ragproviders"
 	"neo-chat/mm-chat/backend/internal/ragsource"
@@ -134,8 +135,6 @@ func main() {
 	var chatRepo chat.Repository
 	var fileRepo files.Repository
 	var importRepo browserimport.Repository
-	var pluginRegistry plugins.Registry
-	var pluginAuditRecorder plugins.AuditRecorder
 	var runtimeConfigRepo runtimeconfig.ProviderConfigRepository
 	var taskModelRepo runtimeconfig.TaskModelSettingsRepository
 	var userMemoryRepo usermemory.Repository
@@ -165,8 +164,6 @@ func main() {
 		}
 		chatRepo = chat.NewPostgresRepository(sqlDB)
 		fileRepo = files.NewPostgresRepository(sqlDB)
-		pluginRegistry = plugins.NewPostgresRegistry(sqlDB, plugins.BuiltInPlugins()...)
-		pluginAuditRecorder = plugins.NewPostgresAuditRecorder(sqlDB)
 		runtimeConfigRepo = runtimeconfig.NewPostgresProviderConfigRepository(sqlDB)
 		taskModelRepo = runtimeconfig.NewPostgresTaskModelSettingsRepository(sqlDB)
 		userMemoryRepo = usermemory.NewPostgresRepository(sqlDB)
@@ -309,6 +306,7 @@ func main() {
 			browserimport.WithStorageBackend(cfg.Storage.Backend),
 		)
 	}
+	mcpService := newMCPService(cfg, sqlDB, providerSecretVault, objectStore, logger)
 
 	serverOptions := []httpserver.Option{
 		httpserver.WithChatRepository(chatRepo),
@@ -332,8 +330,7 @@ func main() {
 		httpserver.WithMemoryPortabilityPlanCodec(teamRuntime.memoryPortability),
 		httpserver.WithMemoryWakePublisher(redisClient),
 		httpserver.WithProviderSecretVault(providerSecretVault),
-		httpserver.WithPluginRegistry(pluginRegistry),
-		httpserver.WithPluginAuditRecorder(pluginAuditRecorder),
+		httpserver.WithMCPService(mcpService),
 		httpserver.WithLogger(logger),
 	}
 	if runtimeConfigRepo != nil {
@@ -439,6 +436,17 @@ func main() {
 		defer close(voiceCacheWorkerDone)
 		runVoiceCacheCleanupWorker(runtimeCtx, voiceJobService, logger)
 	}()
+	var mcpRetentionWorkerDone <-chan struct{}
+	if mcpService != nil {
+		done := make(chan struct{})
+		mcpRetentionWorkerDone = done
+		go func() {
+			defer close(done)
+			mcpService.RunRetention(runtimeCtx, func(error) {
+				logger.Error("mcp_retention_sweep_failed")
+			})
+		}()
+	}
 	go func() {
 		logger.Info("api_listening", slog.String("addr", cfg.Addr), slog.String("version", cfg.Version))
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -488,6 +496,10 @@ func main() {
 		logger.Error("voice_cache_cleanup_worker_shutdown_failed", slog.String("error", err.Error()))
 		runtimeErr = errors.Join(runtimeErr, err)
 	}
+	if err := waitForBackgroundWorker(workerShutdownCtx, mcpRetentionWorkerDone, "mcp retention worker"); err != nil {
+		logger.Error("mcp_retention_worker_shutdown_failed", slog.String("error", err.Error()))
+		runtimeErr = errors.Join(runtimeErr, err)
+	}
 	cancelWorkerShutdown()
 	if err := redisClient.Close(); err != nil {
 		logger.Warn("redis_close_failed", slog.String("error", redactSensitiveLogText(err.Error())))
@@ -510,6 +522,126 @@ func newProviderSecretVault(cfg config.Config) (*providersecrets.Vault, error) {
 		return nil, nil
 	}
 	return providersecrets.LoadVaultFile(cfg.ProviderSecrets.KeyringFile)
+}
+
+func newMCPService(
+	cfg config.Config,
+	db *sql.DB,
+	vault *providersecrets.Vault,
+	objectStore storage.ObjectStore,
+	logger *slog.Logger,
+) *mcpclient.Service {
+	if db == nil {
+		if cfg.MCP.Enabled {
+			logger.Warn("mcp_disabled", slog.String("reason", "database_unavailable"))
+		}
+		return nil
+	}
+	cleanupOnly := func() *mcpclient.Service {
+		service, err := mcpclient.NewService(
+			mcpclient.Config{
+				AuditRetention:  cfg.MCP.AuditRetention,
+				CleanupInterval: cfg.MCP.CleanupInterval,
+			},
+			mcpclient.NewPostgresRepository(db),
+			nil,
+			vault,
+			objectStore,
+			mcpclient.Catalog{},
+			nil,
+		)
+		if err != nil {
+			logger.Error("mcp_cleanup_initialization_failed")
+			return nil
+		}
+		return service
+	}
+	if !cfg.MCP.Enabled {
+		return cleanupOnly()
+	}
+	catalog, err := mcpclient.LoadCatalog()
+	if err != nil {
+		logger.Error("mcp_catalog_invalid")
+		return cleanupOnly()
+	}
+	manifest, err := mcpclient.LoadManifest(cfg.MCP.ManifestFile, os.LookupEnv)
+	if err != nil {
+		logger.Error("mcp_manifest_invalid")
+		return cleanupOnly()
+	}
+
+	var remoteConnector mcpclient.Connector
+	if cfg.MCP.RemoteEnabled {
+		remoteConnector = mcpclient.NewDirectConnector("neo-chat", cfg.Version)
+	}
+	var runnerConnector mcpclient.Connector
+	if cfg.MCP.StdioEnabled {
+		token, tokenErr := readBoundedMCPRunnerToken(cfg.MCP.RunnerTokenFile)
+		if tokenErr != nil {
+			logger.Warn("mcp_runner_unavailable", slog.String("reason", "service_token_invalid"))
+		} else {
+			runnerConnector, tokenErr = mcpclient.NewRunnerConnector(cfg.MCP.RunnerURL, token)
+			if tokenErr != nil {
+				logger.Warn("mcp_runner_unavailable", slog.String("reason", "connector_invalid"))
+			}
+		}
+	}
+	service, err := mcpclient.NewService(
+		mcpclient.Config{
+			Enabled:              cfg.MCP.Enabled,
+			RemoteEnabled:        cfg.MCP.RemoteEnabled,
+			StdioEnabled:         cfg.MCP.StdioEnabled,
+			ManifestFile:         cfg.MCP.ManifestFile,
+			RunnerURL:            cfg.MCP.RunnerURL,
+			OAuthCallbackURL:     cfg.MCP.OAuthCallbackURL,
+			PrivateServerLimit:   cfg.MCP.PrivateServerLimit,
+			ConversationLimit:    cfg.MCP.ConversationLimit,
+			MaxExposedTools:      cfg.MCP.MaxExposedTools,
+			MaxCallsPerRun:       cfg.MCP.MaxCallsPerRun,
+			MaxRoundsPerRun:      cfg.MCP.MaxRoundsPerRun,
+			MaxConcurrentPerUser: cfg.MCP.MaxConcurrentPerUser,
+			MaxOAuthFlows:        cfg.MCP.MaxOAuthFlows,
+			CallTimeout:          cfg.MCP.CallTimeout,
+			RunTimeout:           cfg.MCP.RunTimeout,
+			AuditRetention:       cfg.MCP.AuditRetention,
+			CleanupInterval:      cfg.MCP.CleanupInterval,
+		},
+		mcpclient.NewPostgresRepository(db),
+		mcpclient.NewRoutingConnector(remoteConnector, runnerConnector),
+		vault,
+		objectStore,
+		catalog,
+		manifest,
+	)
+	if err != nil {
+		logger.Error("mcp_initialization_failed")
+		return cleanupOnly()
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), cfg.MCP.RunTimeout)
+		defer cancel()
+		if err := service.ValidateSharedServers(ctx); err != nil {
+			logger.Warn("mcp_shared_preflight_incomplete")
+		}
+	}()
+	return service
+}
+
+func readBoundedMCPRunnerToken(path string) (string, error) {
+	file, err := os.Open(strings.TrimSpace(path))
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, 4097))
+	if err != nil || len(data) > 4096 {
+		return "", errors.New("runner token is invalid")
+	}
+	token := strings.TrimSpace(string(data))
+	if len(token) < 32 || strings.ContainsAny(token, "\r\n") {
+		return "", errors.New("runner token is invalid")
+	}
+	return token, nil
 }
 
 func singleUserAnswerIdentities(

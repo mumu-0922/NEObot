@@ -24,8 +24,8 @@ import (
 	"neo-chat/mm-chat/backend/internal/imagejobs"
 	"neo-chat/mm-chat/backend/internal/jobcontrol"
 	"neo-chat/mm-chat/backend/internal/knowledge"
+	"neo-chat/mm-chat/backend/internal/mcpclient"
 	"neo-chat/mm-chat/backend/internal/memoryjudge"
-	"neo-chat/mm-chat/backend/internal/plugins"
 	"neo-chat/mm-chat/backend/internal/providerfactory"
 	"neo-chat/mm-chat/backend/internal/providersecrets"
 	"neo-chat/mm-chat/backend/internal/ragproviders"
@@ -76,8 +76,7 @@ type options struct {
 	teamService                *teams.Service
 	knowledgeService           *knowledge.Service
 	agentService               *agents.Service
-	pluginRegistry             plugins.Registry
-	pluginAuditRecorder        plugins.AuditRecorder
+	mcpService                 *mcpclient.Service
 	imageJobService            *imagejobs.Service
 	voiceJobService            *voicejobs.Service
 	ragSourceService           *ragsource.Service
@@ -1023,15 +1022,9 @@ func WithAgentService(service *agents.Service) Option {
 	}
 }
 
-func WithPluginRegistry(registry plugins.Registry) Option {
+func WithMCPService(service *mcpclient.Service) Option {
 	return func(opts *options) {
-		opts.pluginRegistry = registry
-	}
-}
-
-func WithPluginAuditRecorder(recorder plugins.AuditRecorder) Option {
-	return func(opts *options) {
-		opts.pluginAuditRecorder = recorder
+		opts.mcpService = service
 	}
 }
 
@@ -1120,6 +1113,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 			return err == nil
 		}),
 	)
+	mcpHandler := mcpclient.NewHandler(resolvedOptions.mcpService)
 	memoryServiceOptions := make([]usermemory.ServiceOption, 0, 4)
 	memoryServiceOptions = append(
 		memoryServiceOptions,
@@ -1191,6 +1185,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 			service: runtimeConfigService,
 			timeout: cfg.Provider.Timeout,
 		}),
+		chat.WithMCPService(resolvedOptions.mcpService),
 	}
 	if webSearchService.Configured() {
 		chatOptions = append(chatOptions, chat.WithWebSearchService(webSearchService))
@@ -1265,12 +1260,6 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		ragproviders.NewProviderGateway(runtimeConfigService),
 	)
 	ragSourceHandler := ragsource.NewHandler(resolvedOptions.ragSourceService)
-	pluginHandler := plugins.NewHandler(plugins.NewService(
-		cfg,
-		plugins.WithSecretDecrypter(runtimeConfigService.DecryptOptionalSecret),
-		plugins.WithRegistry(resolvedOptions.pluginRegistry),
-		plugins.WithAuditRecorder(resolvedOptions.pluginAuditRecorder),
-	))
 	runtimeConfigHandler := runtimeconfig.NewHandler(runtimeConfigService)
 	webSearchHandler := websearch.NewHandler(webSearchService)
 	userMemoryHandler := usermemory.NewHandler(userMemoryService)
@@ -1323,8 +1312,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/memory-import/confirm", userMemoryHandler)
 	mux.Handle("/v1/agents", agentHandler)
 	mux.Handle("/v1/agents/", agentHandler)
-	mux.Handle("/v1/plugins", pluginHandler)
-	mux.Handle("/v1/plugins/", pluginHandler)
+	mux.Handle("/v1/mcp/", mcpHandler)
 	mux.Handle("/v1/code/executions", codeJobHandler)
 	mux.Handle("/v1/images/generations", imageJobHandler)
 	mux.Handle("/v1/jobs/", jobControlHandler)
@@ -1461,7 +1449,7 @@ func isPublicWithoutAuthRequest(r *http.Request) bool {
 		return r.Method == http.MethodGet
 	case "/v1/agents":
 		return r.Method == http.MethodGet
-	case "/v1/plugins":
+	case "/v1/mcp/oauth/callback":
 		return r.Method == http.MethodGet
 	case "/v1/auth/login", "/v1/auth/invites/accept",
 		"/v1/auth/recovery/request", "/v1/auth/recovery/complete":

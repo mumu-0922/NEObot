@@ -48,21 +48,39 @@ func TestPublicConfigDoesNotUseEnvironmentProviderFallback(t *testing.T) {
 	if cfg.Deployment.RateLimitStore != "shared" {
 		t.Fatalf("rate limit store = %q", cfg.Deployment.RateLimitStore)
 	}
-	if cfg.Deployment.PluginRegistryStore != "memory" {
-		t.Fatalf("plugin registry store = %q", cfg.Deployment.PluginRegistryStore)
-	}
 	if !cfg.Deployment.BYOKEphemeralAllowed {
 		t.Fatalf("expected BYOK ephemeral flag")
 	}
+	if cfg.MCP.Enabled || cfg.MCP.RemoteEnabled || cfg.MCP.StdioEnabled {
+		t.Fatalf("MCP config = %#v, want disabled", cfg.MCP)
+	}
 }
 
-func TestPublicConfigPublishesSharedPluginRegistryWhenDatabaseConfigured(t *testing.T) {
-	service := NewService(config.Config{DatabaseURL: "postgres://mm-chat"})
+func TestPublicConfigPublishesEffectiveMCPAvailability(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  config.MCPConfig
+		want MCPConfig
+	}{
+		{
+			name: "global kill switch masks transports",
+			cfg:  config.MCPConfig{RemoteEnabled: true, StdioEnabled: true},
+			want: MCPConfig{},
+		},
+		{
+			name: "enabled transports are published",
+			cfg:  config.MCPConfig{Enabled: true, RemoteEnabled: true, StdioEnabled: true},
+			want: MCPConfig{Enabled: true, RemoteEnabled: true, StdioEnabled: true},
+		},
+	}
 
-	cfg := service.PublicConfig()
-
-	if cfg.Deployment.PluginRegistryStore != "shared" {
-		t.Fatalf("plugin registry store = %q, want shared", cfg.Deployment.PluginRegistryStore)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := NewService(config.Config{MCP: test.cfg}).PublicConfig().MCP
+			if got != test.want {
+				t.Fatalf("MCP config = %#v, want %#v", got, test.want)
+			}
+		})
 	}
 }
 

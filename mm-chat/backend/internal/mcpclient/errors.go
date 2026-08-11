@@ -1,0 +1,30 @@
+package mcpclient
+
+import "errors"
+
+var (
+	ErrDisabled             = errors.New("mcp is disabled")
+	ErrRemoteDisabled       = errors.New("remote mcp is disabled")
+	ErrStdioDisabled        = errors.New("stdio mcp is disabled")
+	ErrRepositoryRequired   = errors.New("mcp repository is required")
+	ErrServerNotFound       = errors.New("mcp server not found")
+	ErrServerLimit          = errors.New("mcp private server limit reached")
+	ErrServerNotReady       = errors.New("mcp server is not ready")
+	ErrServerNeedsAuth      = errors.New("mcp server requires authorization")
+	ErrServerUnavailable    = errors.New("mcp server is unavailable")
+	ErrSelectionInvalid     = errors.New("mcp conversation selection is invalid")
+	ErrSelectionLimit       = errors.New("mcp conversation server limit reached")
+	ErrToolNotFound         = errors.New("mcp tool not found")
+	ErrToolUnsupported      = errors.New("mcp tool schema is unsupported")
+	ErrToolArgumentsInvalid = errors.New("mcp tool arguments are invalid")
+	ErrToolBudget           = errors.New("mcp tool budget exhausted")
+	ErrResponseTooLarge     = errors.New("mcp response exceeds configured limit")
+	ErrURLBlocked           = errors.New("mcp url is blocked")
+	ErrManifestInvalid      = errors.New("mcp manifest is invalid")
+	ErrCredentialRequired   = errors.New("mcp credential is required")
+	ErrCredentialInvalid    = errors.New("mcp credential is invalid")
+	ErrOAuthStateInvalid    = errors.New("mcp oauth state is invalid")
+	ErrOAuthStateExpired    = errors.New("mcp oauth state is expired")
+	ErrOAuthStateConsumed   = errors.New("mcp oauth state is consumed")
+	ErrOutcomeUnknown       = errors.New("mcp tool outcome is unknown")
+)

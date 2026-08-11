@@ -397,7 +397,7 @@ FOR UPDATE
 	if title == "" {
 		title = duplicateConversationTitle(source.Title)
 	}
-	metadata := cloneJSONObject(source.Metadata)
+	metadata := duplicateConversationMetadata(source.Metadata)
 	metadata["pinned"] = false
 	encodedMetadata, err := marshalJSONObject(metadata)
 	if err != nil {
@@ -413,8 +413,13 @@ INSERT INTO conversations (
   model_id,
   system_prompt,
   idempotency_key,
-  metadata
-) VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), NULLIF($6, ''), NULLIF($7, ''), $8::jsonb)
+  metadata,
+  workspace_id
+) VALUES (
+  $1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), NULLIF($6, ''),
+  NULLIF($7, ''), $8::jsonb,
+  (SELECT workspace_id FROM conversations WHERE id = $9 AND user_id = $2)
+)
 RETURNING
   id,
   user_id,
@@ -429,7 +434,8 @@ RETURNING
   updated_at,
   deleted_at,
   0::bigint AS message_count
-`, newConversationID, user.ID, title, source.ModelProvider, source.ModelID, source.SystemPrompt, input.IdempotencyKey, string(encodedMetadata)))
+`, newConversationID, user.ID, title, source.ModelProvider, source.ModelID, source.SystemPrompt,
+		input.IdempotencyKey, string(encodedMetadata), conversationID))
 	if err != nil {
 		if isIdempotencyConflict(err, input.IdempotencyKey, "idx_conversations_user_idempotency") {
 			return Conversation{}, ErrIdempotencyConflict
@@ -505,6 +511,26 @@ INSERT INTO messages (
 				return Conversation{}, fmt.Errorf("insert duplicate message attachment: %w", err)
 			}
 		}
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO mcp_conversation_selections (
+  conversation_id, user_id, mode, revision
+)
+SELECT $1, $2, mode, 1
+FROM mcp_conversation_selections
+WHERE conversation_id = $3 AND user_id = $2
+`, newConversationID, user.ID, conversationID); err != nil {
+		return Conversation{}, fmt.Errorf("copy mcp conversation selection: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO mcp_conversation_servers (
+  conversation_id, server_source, server_ref, disabled_tools
+)
+SELECT $1, server_source, server_ref, disabled_tools
+FROM mcp_conversation_servers
+WHERE conversation_id = $2
+`, newConversationID, conversationID); err != nil {
+		return Conversation{}, fmt.Errorf("copy mcp selected servers: %w", err)
 	}
 
 	conversation.MessageCount = len(sourceMessages)
@@ -2203,6 +2229,21 @@ func duplicateConversationTitle(title string) string {
 		title = "New Chat"
 	}
 	return title + " (Copy)"
+}
+
+func duplicateConversationMetadata(source map[string]any) map[string]any {
+	allowed := map[string]struct{}{
+		"pinned": {}, "searchMode": {}, "useSearch": {}, "useReasoning": {},
+		"reasoningEffort": {}, "searchResultsLimit": {},
+		"selectedKnowledgeCollectionIds": {},
+	}
+	metadata := make(map[string]any, len(allowed))
+	for key := range allowed {
+		if value, ok := source[key]; ok {
+			metadata[key] = value
+		}
+	}
+	return metadata
 }
 
 func duplicateMessageStatus(status string) (string, string) {

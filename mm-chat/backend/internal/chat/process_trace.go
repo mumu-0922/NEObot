@@ -22,6 +22,7 @@ const (
 	ProcessStepStatusFailed           = "failed"
 	ProcessStepStatusSkipped          = "skipped"
 	ProcessStepStatusCancelled        = "cancelled"
+	ProcessStepStatusOutcomeUnknown   = "outcome_unknown"
 
 	processTraceMetadataKey = "processTrace"
 	reasoningMetadataKey    = "reasoning"
@@ -325,8 +326,8 @@ func sanitizeProcessDetail(detail map[string]any) map[string]any {
 		"hitCount": {}, "sourceCount": {}, "citationMarkers": {},
 		"provider": {}, "mode": {}, "outcome": {},
 		"failureCategory": {}, "queryRewritten": {}, "rerankStatus": {},
-		"toolName": {},
-		"round":    {}, "selectedCount": {}, "truncated": {},
+		"toolName": {}, "server": {}, "classification": {}, "callStatus": {},
+		"argumentSummary": {}, "round": {}, "selectedCount": {}, "truncated": {},
 	}
 	sanitized := make(map[string]any, len(detail))
 	for key, value := range detail {
@@ -384,7 +385,7 @@ func normalizeProcessStepStatus(value string) string {
 	case ProcessStepStatusPending, ProcessStepStatusRunning,
 		ProcessStepStatusAwaitingApproval, ProcessStepStatusCompleted,
 		ProcessStepStatusFailed, ProcessStepStatusSkipped,
-		ProcessStepStatusCancelled:
+		ProcessStepStatusCancelled, ProcessStepStatusOutcomeUnknown:
 		return strings.TrimSpace(value)
 	default:
 		return ""
@@ -402,7 +403,8 @@ func normalizeProcessLabelKey(kind string, value string) string {
 func isTerminalProcessStepStatus(status string) bool {
 	switch status {
 	case ProcessStepStatusCompleted, ProcessStepStatusFailed,
-		ProcessStepStatusSkipped, ProcessStepStatusCancelled:
+		ProcessStepStatusSkipped, ProcessStepStatusCancelled,
+		ProcessStepStatusOutcomeUnknown:
 		return true
 	default:
 		return false

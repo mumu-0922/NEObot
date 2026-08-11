@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
+	"neo-chat/mm-chat/backend/internal/mcpclient"
 	"neo-chat/mm-chat/backend/internal/usermemory"
 	"neo-chat/mm-chat/backend/internal/websearch"
 )
@@ -49,6 +51,7 @@ type externalWebToolLoopInput struct {
 	CapabilityConfigHash   string
 	DisableNativeToolRound bool
 	ContextBudget          *retrievalContextBudget
+	MCP                    *mcpToolRuntime
 }
 
 func searchWebToolDefinition() ToolDefinition {
@@ -95,13 +98,33 @@ func startRetrievalToolLoop(
 	events := make(chan ProviderEvent, 1)
 	go func() {
 		defer close(events)
+		loopCtx := ctx
+		cancelLoop := func() {}
+		if input.MCP.enabled() {
+			remaining := input.MCP.service.Config().RunTimeout - time.Since(input.MCP.startedAt)
+			if remaining <= 0 {
+				sendProviderEvent(ctx, events, ProviderEvent{Error: &mcpRunFailure{
+					code: "MCP_BUDGET_EXHAUSTED", err: mcpclient.ErrToolBudget,
+				}})
+				return
+			}
+			loopCtx, cancelLoop = context.WithTimeoutCause(ctx, remaining, mcpclient.ErrToolBudget)
+			defer cancelLoop()
+			defer func() {
+				if errors.Is(context.Cause(loopCtx), mcpclient.ErrToolBudget) {
+					sendProviderEvent(ctx, events, ProviderEvent{Error: &mcpRunFailure{
+						code: "MCP_BUDGET_EXHAUSTED", err: mcpclient.ErrToolBudget,
+					}})
+				}
+			}()
+		}
 		if toolProvider, ok := input.Provider.(ToolRoundProvider); ok &&
 			!input.DisableNativeToolRound {
-			if runNativeExternalWebToolLoop(ctx, events, toolProvider, input) {
+			if runNativeExternalWebToolLoop(loopCtx, events, toolProvider, input) {
 				return
 			}
 		}
-		if toolLoopWasCancelled(ctx, nil) {
+		if toolLoopWasCancelled(loopCtx, nil) {
 			return
 		}
 		if input.Knowledge.enabled() {
@@ -116,14 +139,14 @@ func startRetrievalToolLoop(
 				external := input
 				compatibilityInput.ExternalSearch = &external
 			}
-			runCompatibilityKnowledgeLoop(ctx, events, compatibilityInput)
+			runCompatibilityKnowledgeLoop(loopCtx, events, compatibilityInput)
 			return
 		}
 		if externalWebToolEnabled(input) {
-			runCompatibilityExternalWebSearch(ctx, events, input)
+			runCompatibilityExternalWebSearch(loopCtx, events, input)
 			return
 		}
-		streamCompatibilityAnswer(ctx, events, input.Provider, input.Request)
+		streamCompatibilityAnswer(loopCtx, events, input.Provider, input.Request)
 	}()
 	return events
 }
@@ -152,6 +175,13 @@ func runNativeExternalWebToolLoop(
 	answerContentEmitted := false
 	memoryContinuationStarted := false
 	for round := 1; ; round++ {
+		if input.MCP.enabled() && round > input.MCP.service.Config().MaxRoundsPerRun {
+			streamMCPFinalNoTools(
+				ctx, events, provider, input.Request, continuation, completedUsage,
+			)
+			return true
+		}
+		tools = retrievalToolDefinitions(input)
 		roundTools := retrievalToolDefinitionsForRound(tools, round)
 		roundRequest := input.Request
 		choice := ProviderToolChoiceAuto
@@ -179,6 +209,12 @@ func runNativeExternalWebToolLoop(
 			}
 			if round == 1 && len(continuation) == 0 {
 				recordRuntimeToolIncompatibility(input, err)
+				if input.MCP.enabled() {
+					sendProviderEvent(ctx, events, ProviderEvent{Error: &mcpRunFailure{
+						code: "MCP_MODEL_UNSUPPORTED", err: err,
+					}})
+					return true
+				}
 				return false
 			}
 			if memoryContinuationStarted {
@@ -222,9 +258,21 @@ func runNativeExternalWebToolLoop(
 				if round == 1 && len(continuation) == 0 && len(calls) == 0 &&
 					isExplicitToolIncompatibility(event.Error) {
 					recordRuntimeToolIncompatibility(input, event.Error)
+					if input.MCP.enabled() {
+						sendProviderEvent(ctx, events, ProviderEvent{Error: &mcpRunFailure{
+							code: "MCP_MODEL_UNSUPPORTED", err: event.Error,
+						}})
+						return true
+					}
 					return false
 				}
 				if bufferFirstRound {
+					if input.MCP.enabled() {
+						sendProviderEvent(ctx, events, ProviderEvent{Error: &mcpRunFailure{
+							code: "MCP_PROVIDER_FAILED", err: event.Error,
+						}})
+						return true
+					}
 					return false
 				}
 				fallbackUsage := completedUsage
@@ -335,8 +383,19 @@ func runNativeExternalWebToolLoop(
 			Results:            make([]ProviderToolResult, 0, len(calls)),
 			ProviderState:      roundState,
 		}
+		mcpResults, mcpBudgetReached, mcpErr := executeMCPBatch(
+			ctx, events, input.MCP, calls, round,
+		)
+		if mcpErr != nil {
+			sendProviderEvent(ctx, events, ProviderEvent{Error: mcpErr})
+			return true
+		}
 		memoryBatchValid := memoryToolBatchValid(round, calls, input)
 		for callIndex, call := range calls {
+			if result, ok := mcpResults[callIndex]; ok {
+				exchange.Results = append(exchange.Results, result)
+				continue
+			}
 			executionID := fmt.Sprintf("native-%d-%d", round, callIndex+1)
 			name := normalizedToolName(call.Name)
 			query, args, failure := validateRetrievalToolCall(
@@ -607,6 +666,12 @@ func runNativeExternalWebToolLoop(
 			})
 		}
 		continuation = append(continuation, exchange)
+		if mcpBudgetReached {
+			streamMCPFinalNoTools(
+				ctx, events, provider, input.Request, continuation, completedUsage,
+			)
+			return true
+		}
 	}
 }
 
@@ -787,7 +852,7 @@ func collectBufferedCompatibilityAnswer(
 }
 
 func retrievalToolDefinitions(input externalWebToolLoopInput) []ToolDefinition {
-	tools := make([]ToolDefinition, 0, 3)
+	tools := make([]ToolDefinition, 0, 3+len(input.MCP.definitions()))
 	if input.Memory.requiresFirstRoundCall() {
 		// ProviderToolChoiceRequired names the first offered Tool. Explicit
 		// saved-Memory reads therefore bind required to search_memory even when
@@ -805,6 +870,7 @@ func retrievalToolDefinitions(input externalWebToolLoopInput) []ToolDefinition {
 	if input.Memory.enabled() && !input.Memory.requiresFirstRoundCall() {
 		tools = append(tools, SearchMemoryToolDefinition())
 	}
+	tools = append(tools, input.MCP.definitions()...)
 	return tools
 }
 

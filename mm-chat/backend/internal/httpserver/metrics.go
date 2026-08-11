@@ -405,12 +405,40 @@ func knownMetricPath(path string) (string, bool) {
 		return path, true
 	case "/v1/rag/provider-status":
 		return path, true
-	case "/v1/agents", "/v1/plugins", "/v1/plugins/install", "/v1/plugins/execute",
+	case "/v1/agents", "/v1/mcp/servers", "/v1/mcp/oauth/start",
+		"/v1/mcp/oauth/callback", "/v1/mcp/oauth/revoke",
 		"/v1/code/executions", "/v1/images/generations", "/v1/voice/transcribe",
 		"/v1/voice/synthesize":
 		return path, true
 	}
 	parts := strings.Split(path, "/")
+	if len(parts) >= 5 && parts[1] == "v1" && parts[2] == "mcp" {
+		switch parts[3] {
+		case "servers":
+			if len(parts) == 5 {
+				return "/v1/mcp/servers/{source}", true
+			}
+			if len(parts) == 6 {
+				return "/v1/mcp/servers/{source}/{server}", true
+			}
+			if len(parts) == 7 {
+				return "/v1/mcp/servers/{source}/{server}/{action}", true
+			}
+		case "conversations":
+			if len(parts) == 6 {
+				switch parts[5] {
+				case "selection":
+					return "/v1/mcp/conversations/{conversation}/selection", true
+				case "calls":
+					return "/v1/mcp/conversations/{conversation}/calls", true
+				}
+			}
+		case "workspaces":
+			if len(parts) == 6 && parts[5] == "selection" {
+				return "/v1/mcp/workspaces/{workspace}/selection", true
+			}
+		}
+	}
 	if len(parts) >= 6 && parts[1] == "v1" && parts[2] == "admin" &&
 		parts[3] == "search" && parts[4] == "providers" {
 		switch len(parts) {

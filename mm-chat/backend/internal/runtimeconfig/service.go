@@ -254,6 +254,11 @@ func (s *Service) PublicConfigForContext(ctx context.Context) PublicConfig {
 		},
 		Search: SearchConfig{Available: searchAvailable},
 		Voice:  voice,
+		MCP: MCPConfig{
+			Enabled:       s.cfg.MCP.Enabled,
+			RemoteEnabled: s.cfg.MCP.Enabled && s.cfg.MCP.RemoteEnabled,
+			StdioEnabled:  s.cfg.MCP.Enabled && s.cfg.MCP.StdioEnabled,
+		},
 		Deployment: DeploymentConfig{
 			Mode:                    authModeToDeploymentMode(s.cfg.Auth.Mode),
 			AccessPasswordEnabled:   false,
@@ -261,7 +266,6 @@ func (s *Service) PublicConfigForContext(ctx context.Context) PublicConfig {
 			BYOKStableKeyConfigured: strings.TrimSpace(s.cfg.BYOK.PrivateKeyPEM) != "",
 			BYOKEphemeralAllowed:    s.cfg.BYOK.AllowEphemeralKey,
 			RateLimitStore:          publicStoreState(s.cfg.Redis.RateLimitEnabled),
-			PluginRegistryStore:     pluginRegistryStoreState(s.cfg.DatabaseURL),
 		},
 	}
 }
@@ -1347,13 +1351,6 @@ func authModeToDeploymentMode(mode string) string {
 
 func publicStoreState(enabled bool) string {
 	if enabled {
-		return "shared"
-	}
-	return "memory"
-}
-
-func pluginRegistryStoreState(databaseURL string) string {
-	if strings.TrimSpace(databaseURL) != "" {
 		return "shared"
 	}
 	return "memory"

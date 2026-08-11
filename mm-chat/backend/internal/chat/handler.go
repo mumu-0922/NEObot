@@ -12,6 +12,7 @@ import (
 
 	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/knowledge"
+	"neo-chat/mm-chat/backend/internal/mcpclient"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 	"neo-chat/mm-chat/backend/internal/usermemory"
 	"neo-chat/mm-chat/backend/internal/websearch"
@@ -66,6 +67,7 @@ type Handler struct {
 	contextBudgetPolicy          contextBudgetPolicy
 	toolCapabilityCache          ToolCapabilityCache
 	toolCapabilityProbes         *toolCapabilityProbeGroup
+	mcpService                   *mcpclient.Service
 }
 
 type HandlerOption func(*Handler)
@@ -261,6 +263,15 @@ type streamMessageRequest struct {
 	IdempotencyKey    string                               `json:"idempotencyKey"`
 }
 
+type mcpPreflightRequest struct {
+	ModelRef *ModelRef                            `json:"modelRef"`
+	Provider *runtimeconfig.ProviderRuntimeConfig `json:"provider"`
+}
+
+type mcpPreflightResponse struct {
+	Enabled bool `json:"enabled"`
+}
+
 type toolPlanRequest struct {
 	Prompt   string           `json:"prompt"`
 	ModelRef *ModelRef        `json:"modelRef"`
@@ -282,20 +293,21 @@ type generateTextResponse struct {
 }
 
 type streamEvent struct {
-	Type           string            `json:"type"`
-	RunID          string            `json:"runId"`
-	ConversationID string            `json:"conversationId"`
-	MessageID      string            `json:"messageId,omitempty"`
-	Sequence       int               `json:"sequence"`
-	CreatedAt      string            `json:"createdAt"`
-	Role           string            `json:"role,omitempty"`
-	ModelRef       *ModelRef         `json:"modelRef,omitempty"`
-	Delta          string            `json:"delta,omitempty"`
-	Usage          *TokenUsage       `json:"usage,omitempty"`
-	Message        *ChatMessageDTO   `json:"message,omitempty"`
-	Error          *ErrorBody        `json:"error,omitempty"`
-	Results        *websearch.Result `json:"results,omitempty"`
-	Step           *ProcessStep      `json:"step,omitempty"`
+	Type           string                      `json:"type"`
+	RunID          string                      `json:"runId"`
+	ConversationID string                      `json:"conversationId"`
+	MessageID      string                      `json:"messageId,omitempty"`
+	Sequence       int                         `json:"sequence"`
+	CreatedAt      string                      `json:"createdAt"`
+	Role           string                      `json:"role,omitempty"`
+	ModelRef       *ModelRef                   `json:"modelRef,omitempty"`
+	Delta          string                      `json:"delta,omitempty"`
+	Usage          *TokenUsage                 `json:"usage,omitempty"`
+	Message        *ChatMessageDTO             `json:"message,omitempty"`
+	Error          *ErrorBody                  `json:"error,omitempty"`
+	Results        *websearch.Result           `json:"results,omitempty"`
+	Step           *ProcessStep                `json:"step,omitempty"`
+	ToolCall       *ProviderToolExecutionEvent `json:"toolCall,omitempty"`
 }
 
 type cancelRunResponse struct {
@@ -445,6 +457,12 @@ func WithRunCancellationStore(store RunCancellationStore) HandlerOption {
 func WithToolCapabilityCache(cache ToolCapabilityCache) HandlerOption {
 	return func(h *Handler) {
 		h.toolCapabilityCache = cache
+	}
+}
+
+func WithMCPService(service *mcpclient.Service) HandlerOption {
+	return func(handler *Handler) {
+		handler.mcpService = service
 	}
 }
 
@@ -766,6 +784,13 @@ func (h *Handler) updateConversation(w http.ResponseWriter, r *http.Request, con
 }
 
 func (h *Handler) deleteConversation(w http.ResponseWriter, r *http.Request, conversationID string) {
+	if h.mcpService != nil {
+		user := auth.UserOrDevelopment(r.Context())
+		if err := h.mcpService.DeleteConversationData(r.Context(), user.ID, conversationID); err != nil {
+			writeMCPAdmissionError(w, err)
+			return
+		}
+	}
 	if err := h.service.DeleteConversation(r.Context(), conversationID); err != nil {
 		writeServiceError(w, err)
 		return
@@ -964,6 +989,10 @@ func (h *Handler) handleConversationChild(w http.ResponseWriter, r *http.Request
 		h.streamAssistantMessage(w, r, conversationID)
 		return
 	}
+	if child == "mcp-preflight" {
+		h.handleMCPPreflight(w, r, conversationID)
+		return
+	}
 	if child == "duplicate" {
 		if r.Method != http.MethodPost {
 			methodNotAllowed(w, http.MethodPost)
@@ -1005,6 +1034,76 @@ func (h *Handler) handleConversationChild(w http.ResponseWriter, r *http.Request
 	default:
 		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
+}
+
+func (h *Handler) handleMCPPreflight(
+	w http.ResponseWriter,
+	r *http.Request,
+	conversationID string,
+) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, http.MethodPost)
+		return
+	}
+	var request mcpPreflightRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeRequestDecodeError(w, err)
+		return
+	}
+	if request.ModelRef == nil {
+		writeError(w, http.StatusBadRequest, "MODEL_REF_REQUIRED", "modelRef is required")
+		return
+	}
+	if _, err := h.service.GetConversation(r.Context(), conversationID); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	if h.mcpService == nil || !h.mcpService.Config().Enabled {
+		writeJSON(w, http.StatusOK, mcpPreflightResponse{Enabled: false})
+		return
+	}
+
+	user := auth.UserOrDevelopment(r.Context())
+	prepared, err := h.mcpService.Preflight(r.Context(), user.ID, conversationID)
+	if err != nil {
+		writeMCPAdmissionError(w, err)
+		return
+	}
+	if !prepared.Enabled() {
+		writeJSON(w, http.StatusOK, mcpPreflightResponse{Enabled: false})
+		return
+	}
+
+	providerResolution, err := h.resolveStreamProvider(r.Context(), request.Provider)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	modelRef := *request.ModelRef
+	if resolver, ok := providerResolution.Provider.(ModelRefResolver); ok {
+		modelRef, err = resolver.ResolveModelRef(modelRef)
+	} else if validator, ok := providerResolution.Provider.(ModelRefValidator); ok {
+		err = validator.ValidateModelRef(modelRef)
+	}
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	if h.resolveToolRoundCapability(
+		r.Context(),
+		providerResolution.Provider,
+		providerResolution,
+		modelRef,
+	) != ToolCapabilitySupported {
+		writeError(
+			w,
+			http.StatusConflict,
+			"MCP_MODEL_UNSUPPORTED",
+			"The selected model does not support Tools",
+		)
+		return
+	}
+	writeJSON(w, http.StatusOK, mcpPreflightResponse{Enabled: true})
 }
 
 func (h *Handler) handleConversationMemoryPolicy(
@@ -1351,6 +1450,26 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 		return
 	}
+	var preparedMCPRun mcpclient.PreparedRun
+	if h.mcpService != nil && h.mcpService.Config().Enabled {
+		user := auth.UserOrDevelopment(r.Context())
+		preparedMCPRun, err = h.mcpService.PrepareRun(
+			r.Context(), user.ID, conversationID, "", runID,
+		)
+		if err != nil {
+			writeMCPAdmissionError(w, err)
+			return
+		}
+		if preparedMCPRun.Enabled() && !toolRoundCapable {
+			writeError(
+				w,
+				http.StatusConflict,
+				"MCP_MODEL_UNSUPPORTED",
+				"The selected model does not support Tools",
+			)
+			return
+		}
+	}
 
 	assistantMessage, err := h.service.CreateAssistantMessage(
 		r.Context(),
@@ -1378,6 +1497,12 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		userMessage.Content,
 		conversationID,
 		assistantMessage.ID,
+	)
+	mcpRuntime := newMCPToolRuntime(
+		h.mcpService,
+		preparedMCPRun,
+		auth.UserOrDevelopment(r.Context()).ID,
+		userMessage.Content,
 	)
 	directMemoryAction := directMemoryActionPreparation{}
 	if !memoryToolRuntime.enabled() {
@@ -1514,7 +1639,16 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return withDirectMemoryActionMetadata(metadata, directMemoryAction)
 	}
 
-	streamCtx, streamCancel := context.WithCancel(generationCtx)
+	var streamCtx context.Context
+	var streamCancel context.CancelFunc
+	if mcpRuntime.enabled() {
+		streamCtx, streamCancel = context.WithTimeout(
+			generationCtx,
+			h.mcpService.Config().RunTimeout,
+		)
+	} else {
+		streamCtx, streamCancel = context.WithCancel(generationCtx)
+	}
 	unregisterRun := h.activeRuns.register(runID, streamCancel)
 	stopCancellationWatch := watchRunCancellation(streamCtx, h.cancellationRuns, runID, streamCancel)
 	defer unregisterRun()
@@ -1552,7 +1686,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		generationStarted,
 		map[string]any{"outcome": "streaming"},
 	)
-	if memoryToolRuntime.enabled() || useLiveKnowledgeTool ||
+	if mcpRuntime.enabled() || memoryToolRuntime.enabled() || useLiveKnowledgeTool ||
 		(searchMode == chatSearchModeExternal && searchExecution != nil &&
 			searchExecution.Mode == websearch.ExecutionExternal &&
 			!useCompatibilityKnowledge) {
@@ -1575,6 +1709,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			CapabilityCache:        h.toolCapabilityCache,
 			CapabilityConfigHash:   providerResolution.ToolCapabilityConfigHash,
 			DisableNativeToolRound: !toolRoundCapable,
+			MCP:                    mcpRuntime,
 		}
 		if searchExecution != nil &&
 			searchExecution.Mode == websearch.ExecutionExternal {
@@ -1644,7 +1779,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		events, err = streamProvider.StreamChat(streamCtx, providerRequest)
 	}
 	if err != nil {
-		if streamCtx.Err() != nil || errors.Is(err, context.Canceled) {
+		deadlineExceeded := mcpRuntime.enabled() &&
+			errors.Is(streamCtx.Err(), context.DeadlineExceeded)
+		if !deadlineExceeded && (streamCtx.Err() != nil || errors.Is(err, context.Canceled)) {
 			finishProcessTrace(trace, "cancelled", time.Now(), webSearchResult)
 			h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 				Status: "cancelled",
@@ -1661,6 +1798,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			})
 			return
 		}
+		errorBody := chatStreamErrorBody(err, deadlineExceeded)
 		finishProcessTrace(trace, "failed", time.Now(), webSearchResult)
 		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 			Status: "failed",
@@ -1672,14 +1810,14 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			Metadata: withProcessTraceMessageMetadata(
 				webMessageMetadata(
 					autoDecision,
-					map[string]any{"errorCode": "PROVIDER_ERROR"},
+					map[string]any{"errorCode": errorBody.Code},
 					"",
 				),
 				reasoning.String(),
 				trace,
 			),
 		})
-		writeError(w, http.StatusBadGateway, "PROVIDER_ERROR", "provider stream failed")
+		writeError(w, http.StatusBadGateway, errorBody.Code, errorBody.Message)
 		return
 	}
 
@@ -1777,7 +1915,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				fusionDiagnostics.DegradationReason = "provider_failed"
 				fusionPlan = fallbackSourceFusionAuthority(fusionPlan, autoDecision)
 			}
-			if streamCtx.Err() != nil {
+			deadlineExceeded := mcpRuntime.enabled() &&
+				errors.Is(streamCtx.Err(), context.DeadlineExceeded)
+			if streamCtx.Err() != nil && !deadlineExceeded {
 				_ = emitReasoningDelta(reasoning.flush())
 				for _, step := range reconcileProcessTraceCitations(
 					trace,
@@ -1819,6 +1959,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				flusher.Flush()
 				return
 			}
+			errorBody := chatStreamErrorBody(providerEvent.Error, deadlineExceeded)
 			_ = emitReasoningDelta(reasoning.flush())
 			for _, step := range reconcileProcessTraceCitations(
 				trace,
@@ -1842,7 +1983,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				MessageID:      assistantMessage.ID,
 				Sequence:       sequence,
 				CreatedAt:      formatTime(time.Now()),
-				Error:          &ErrorBody{Code: "PROVIDER_ERROR", Message: "provider stream failed"},
+				Error:          &errorBody,
 			})
 			h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 				Status:  "failed",
@@ -1855,7 +1996,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				Metadata: withProcessTraceMessageMetadata(
 					webMessageMetadata(
 						autoDecision,
-						map[string]any{"errorCode": "PROVIDER_ERROR"},
+						map[string]any{"errorCode": errorBody.Code},
 						content.String(),
 					),
 					reasoning.String(),
@@ -1988,6 +2129,24 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			flusher.Flush()
 		case ProviderEventToolExecution:
 			execution := providerEvent.ToolExecution
+			if execution != nil && execution.Mode == "mcp" && execution.CallStatus != "" {
+				sequence++
+				if err := writeSSEEvent(w, "tool.call.updated", streamEvent{
+					Type:           "tool.call.updated",
+					RunID:          runID,
+					ConversationID: conversationID,
+					MessageID:      assistantMessage.ID,
+					Sequence:       sequence,
+					CreatedAt:      formatTime(time.Now()),
+					ToolCall:       execution,
+				}); err != nil {
+					h.cancelAssistantAfterWriteError(
+						conversationID, assistantMessage.ID, runID, content.String(),
+					)
+					return
+				}
+				flusher.Flush()
+			}
 			if execution != nil && execution.Status == ProcessStepStatusCancelled {
 				toolExecutionCancelled = true
 			}
@@ -2121,6 +2280,29 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		}
 	}
 
+	if mcpRuntime.enabled() && errors.Is(streamCtx.Err(), context.DeadlineExceeded) {
+		_ = emitReasoningDelta(reasoning.flush())
+		for _, step := range finishProcessTrace(trace, "failed", time.Now(), webSearchResult) {
+			_ = emitProcessStep(step)
+		}
+		errorBody := chatStreamErrorBody(context.DeadlineExceeded, true)
+		sequence++
+		_ = writeSSEEvent(w, "message.error", streamEvent{
+			Type: "message.error", RunID: runID, ConversationID: conversationID,
+			MessageID: assistantMessage.ID, Sequence: sequence,
+			CreatedAt: formatTime(time.Now()), Error: &errorBody,
+		})
+		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
+			Status: "failed", Content: content.String(),
+			OutputBlocks: usedWebSearchOutputBlocks(assistantMessage.ID, content.String(), webSearchResult),
+			Metadata: withProcessTraceMessageMetadata(
+				webMessageMetadata(autoDecision, map[string]any{"errorCode": errorBody.Code}, content.String()),
+				reasoning.String(), trace,
+			),
+		})
+		flusher.Flush()
+		return
+	}
 	if streamCtx.Err() != nil || toolExecutionCancelled ||
 		h.isRunCancelled(context.Background(), runID) {
 		streamCancel()
@@ -3208,6 +3390,56 @@ func writeRequestDecodeError(w http.ResponseWriter, err error) {
 func writeServiceError(w http.ResponseWriter, err error) {
 	status, body := serviceErrorFor(err)
 	writeError(w, status, body.Code, body.Message)
+}
+
+func writeMCPAdmissionError(w http.ResponseWriter, err error) {
+	status := http.StatusConflict
+	code := "MCP_SELECTION_INVALID"
+	message := "The selected Tools configuration is invalid"
+	switch {
+	case errors.Is(err, mcpclient.ErrCredentialRequired),
+		errors.Is(err, mcpclient.ErrCredentialInvalid),
+		errors.Is(err, mcpclient.ErrServerNeedsAuth):
+		code, message = "MCP_AUTH_REQUIRED", "Tool server authorization is required"
+	case errors.Is(err, mcpclient.ErrServerUnavailable),
+		errors.Is(err, mcpclient.ErrServerNotReady),
+		errors.Is(err, mcpclient.ErrRemoteDisabled),
+		errors.Is(err, mcpclient.ErrStdioDisabled),
+		errors.Is(err, mcpclient.ErrDisabled):
+		status = http.StatusServiceUnavailable
+		code, message = "MCP_SERVER_UNAVAILABLE", "A selected Tool server is unavailable"
+	case errors.Is(err, mcpclient.ErrSelectionLimit):
+		code, message = "MCP_LIMIT_REACHED", "Too many Tool servers are enabled"
+	case errors.Is(err, mcpclient.ErrServerNotFound),
+		errors.Is(err, mcpclient.ErrToolNotFound),
+		errors.Is(err, mcpclient.ErrSelectionInvalid):
+		code, message = "MCP_AUTHORIZATION_FAILED", "The selected Tools are no longer authorized"
+	}
+	writeError(w, status, code, message)
+}
+
+func chatStreamErrorBody(err error, deadlineExceeded bool) ErrorBody {
+	if deadlineExceeded {
+		return ErrorBody{Code: "MCP_BUDGET_EXHAUSTED", Message: "Tools run time limit was reached"}
+	}
+	var failure *mcpRunFailure
+	if errors.As(err, &failure) {
+		message := "Tools execution failed"
+		switch failure.code {
+		case "MCP_OUTCOME_UNKNOWN":
+			message = "A write Tool may have completed, so the run was stopped"
+		case "MCP_AUTH_REQUIRED":
+			message = "Tool server authorization is required"
+		case "MCP_SERVER_UNAVAILABLE":
+			message = "A selected Tool server became unavailable"
+		case "MCP_MODEL_UNSUPPORTED":
+			message = "The selected model does not support Tools"
+		case "MCP_BUDGET_EXHAUSTED":
+			message = "Tools run limit was reached"
+		}
+		return ErrorBody{Code: failure.code, Message: message}
+	}
+	return ErrorBody{Code: "PROVIDER_ERROR", Message: "provider stream failed"}
 }
 
 func serviceErrorFor(err error) (int, ErrorBody) {

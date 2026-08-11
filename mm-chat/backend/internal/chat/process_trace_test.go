@@ -188,6 +188,34 @@ func TestToolProcessTracePreservesCancelledOutcome(t *testing.T) {
 	}
 }
 
+func TestToolProcessTracePersistsMCPArgumentTypesAndUnknownOutcome(t *testing.T) {
+	trace := newProcessTrace("message-1")
+	runtime := newToolProcessTrace(trace)
+	updates := runtime.apply(&ProviderToolExecutionEvent{
+		ExecutionID:    "call-1",
+		CallID:         "call-1",
+		Name:           "write_file",
+		Server:         "manifest:files",
+		Classification: "write",
+		Status:         ProcessStepStatusOutcomeUnknown,
+		CallStatus:     "outcome_unknown",
+		Round:          2,
+		Arguments:      map[string]any{"path": "string", "overwrite": "boolean"},
+		Mode:           "mcp",
+	}, time.Now())
+	if len(updates) != 2 {
+		t.Fatalf("MCP outcome updates = %#v", updates)
+	}
+	completed := updates[1]
+	if completed.Status != ProcessStepStatusOutcomeUnknown ||
+		completed.Detail["server"] != "manifest:files" ||
+		completed.Detail["classification"] != "write" ||
+		completed.Detail["callStatus"] != "outcome_unknown" ||
+		completed.Detail["argumentSummary"] != `{"overwrite":"boolean","path":"string"}` {
+		t.Fatalf("MCP outcome step = %#v", completed)
+	}
+}
+
 func TestProcessReasoningStreamRedactsSecretsSplitAcrossProviderChunks(t *testing.T) {
 	stream := newProcessReasoningStream()
 	var rendered strings.Builder
