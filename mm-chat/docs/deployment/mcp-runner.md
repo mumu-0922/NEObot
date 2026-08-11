@@ -156,7 +156,8 @@ may start a clean approved child.
 1. Create and verify a paired PostgreSQL/MinIO `pre-deploy` backup.
 2. Validate the target manifest and Runner token metadata.
 3. Build/pull backend, Runner, frontend, and RAG images; record all digests.
-4. Run migration `074` explicitly while old application writers are stopped.
+4. Run migrations `074`-`075` explicitly while old application writers are
+   stopped.
 5. Start the backend with MCP kill switches still off and verify `/ready`.
 6. If needed, start the Runner and verify its container health internally.
 7. Start the frontend.
@@ -195,9 +196,10 @@ Recreate only the backend and stop the optional Runner when stdio is disabled.
 The cleanup-only worker must remain available through the backend process.
 
 For an image rollback, restore the previous backend/frontend/Runner digests but
-retain migration `074` and all MCP rows. The old Plugin runtime remains removed;
-MCP switches never reactivate it. Do not run `074.down` after any live MCP
-selection, credential, call, result, or artifact exists. Prefer a forward fix.
+retain migrations `074`-`075`, their runtime grants, and all MCP rows. The old
+Plugin runtime remains removed; MCP switches never reactivate it. Do not run
+`074.down` after any live MCP selection, credential, call, result, or artifact
+exists. Prefer a forward fix.
 
 ## Safe diagnostics
 

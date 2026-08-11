@@ -40,15 +40,21 @@ PruneExpiredData(ctx context.Context, limit int) (int, error)
 RunRetention(ctx context.Context, onError func(error))
 ```
 
-Database authority is migration `074_mcp_tools_foundation`: Workspaces and
-memberships plus MCP servers, grants, credentials, OAuth states, selections,
-run snapshots, calls, results, and `mcp_artifact_cleanup_queue`.
+Database authority starts with migration `074_mcp_tools_foundation`: Workspaces
+and memberships plus MCP servers, grants, credentials, OAuth states,
+selections, run snapshots, calls, results, and
+`mcp_artifact_cleanup_queue`. Migration `075_mcp_runtime_role_grants` grants
+the Go API role the required repository/cleanup capabilities and revokes
+public execution from the account-artifact trigger.
 
 ### 3. Contracts
 
 - Public API is authenticated except the state-bound OAuth callback, strict
   camelCase JSON, 1 MiB body maximum, unknown-field rejection, stable error
   envelopes, and `Cache-Control: no-store`.
+- Collection fields in public DTOs are always JSON arrays. In particular, a
+  newly created draft Server returns `tools: []`, never `tools: null`, so a
+  successful write cannot be mistaken for an invalid response by the client.
 - Sources are `catalog|manifest|private`; transports are
   `streamable_http|stdio`; selection is `inherit|custom`. `custom` with no
   servers explicitly disables all Tools.
@@ -59,6 +65,12 @@ run snapshots, calls, results, and `mcp_artifact_cleanup_queue`.
 - MCP is an intentional extension of the existing `ToolRoundProvider` loop.
   Use `model -> calls -> results -> same model`; never prompt-simulate calls or
   switch models.
+- Preserve each frozen third-party MCP input schema without advertising the
+  Provider-specific OpenAI `strict` extension. The MCP runtime remains the
+  argument-validation authority before connector execution.
+- Map only an explicit Tool-protocol incompatibility to
+  `MCP_MODEL_UNSUPPORTED`; a generic first-round Provider rejection is
+  `MCP_PROVIDER_FAILED`.
 - Default hard limits are 8 rounds, 32 calls, 30 seconds/call, 120 seconds/run,
   32 exposed schemas/round, and 4 concurrent calls/user. Same-user writes and
   unknowns serialize across runs; trusted reads may run at concurrency four.
@@ -102,6 +114,7 @@ MCP_AUDIT_RETENTION MCP_CLEANUP_INTERVAL
 | --- | --- |
 | MCP or selected transport disabled | `503 MCP_DISABLED` or `MCP_TRANSPORT_DISABLED`; no execution |
 | Private HTTP/private-network/rebinding/unsafe redirect | `400 MCP_INVALID`; no credential egress |
+| Duplicate active private endpoint for one user | `409 MCP_CONFLICT`; preserve the existing draft/Server |
 | Missing/stale grant, selection, credential, or server status | reject before send or `MCP_AUTH_REQUIRED`/`MCP_SERVER_UNAVAILABLE` |
 | Model lacks native Tool calls | reject MCP-enabled send; no prompt planner or model switch |
 | Unknown/duplicate/unsupported schema | disable only that Tool with a visible reason |
@@ -133,9 +146,10 @@ MCP_AUDIT_RETENTION MCP_CLEANUP_INTERVAL
 - Chat: fake Streamable HTTP and fake Runner complete native multi-round same-
   model continuation and persist the structured timeline; unsupported model
   rejects before acceptance.
-- PostgreSQL 17: fresh `001..074`, replay, one-step down/re-up, retired metadata
-  purge without security-field loss, 12 MCP tables, repository lifecycle,
-  account cascade queue, and final replay via `scripts/verify-mcp-postgres17.sh`.
+- PostgreSQL 17: fresh `001..075`, replay, `075` grant down/up plus `074` schema
+  down/up, retired metadata purge without security-field loss, 12 MCP tables,
+  runtime-role denial/grants, repository lifecycle, account cascade queue, and
+  final replay via `scripts/verify-mcp-postgres17.sh`.
 - Security: logs/metrics/errors contain no argument, result, token, custom URL,
   or high-cardinality user/server/tool label.
 

@@ -54,8 +54,11 @@ after live validation succeeds.
 
 Migration `074_mcp_tools_foundation` adds Workspace membership/grant,
 selection, credential, OAuth, run snapshot, call/result, and artifact cleanup
-authority. The retired `plugin_registry` table from migration `011` is retained
-read-only for one rollback release; no active route or runtime reads it.
+authority. Migration `075_mcp_runtime_role_grants` gives only the Go API role
+the table capabilities required by the MCP repository and cleanup worker, and
+removes public execution from the account-artifact trigger. The retired
+`plugin_registry` table from migration `011` is retained read-only for one
+rollback release; no active route or runtime reads it.
 
 ## Authorization and selection
 
@@ -103,7 +106,9 @@ write connection becomes `outcome_unknown` and terminates the run.
 Large servers use bounded relevance selection plus the internal
 `neo_mcp_tool_search` Tool. Aliases are deterministic and derived from stable
 server identity plus original Tool name. Tool schemas and grants are frozen for
-the run; `tools/list_changed` affects only a later run.
+the run; `tools/list_changed` affects only a later run. Third-party MCP schemas
+are exposed without claiming OpenAI `strict` compatibility, then validated by
+the MCP runtime against the frozen schema before connector execution.
 
 ## Transport and credential boundaries
 
@@ -156,8 +161,9 @@ arguments, result bodies, tokens, custom URLs, or high-cardinality identities.
 - `MCP_STDIO_ENABLED=false`: blocks Runner use only.
 
 A rollback disables MCP or restores prior application images while retaining
-migration `074` and its data. Never run `074.down` after live MCP traffic. The
-old Plugin runtime is not revived by any MCP switch.
+migrations `074`-`075` and their data/runtime grants. Never run `074.down`
+after live MCP traffic. The old Plugin runtime is not revived by any MCP
+switch.
 
 ## Verification anchors
 
@@ -165,6 +171,7 @@ old Plugin runtime is not revived by any MCP switch.
 - `backend/internal/mcprunner/`
 - `backend/internal/chat/mcp_tool_loop.go`
 - `backend/migrations/074_mcp_tools_foundation.up.sql`
+- `backend/migrations/075_mcp_runtime_role_grants.up.sql`
 - `scripts/verify-mcp-postgres17.sh`
 - `scripts/test-preflight-single-server.sh`
 - [`../contracts/mcp-tools-api.md`](../contracts/mcp-tools-api.md)

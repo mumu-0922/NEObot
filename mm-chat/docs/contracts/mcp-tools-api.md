@@ -84,7 +84,10 @@ Only private public-HTTPS Streamable HTTP drafts may be created:
 
 The response is `201 {"server": McpServer}`. The definition stays a draft
 until validation succeeds. Unknown fields, plaintext credential values, HTTP or
-private-network endpoints, and unsupported auth fail closed.
+private-network endpoints, and unsupported auth fail closed. Empty collection
+fields remain arrays (`tools: []` for a new draft), never `null`. Creating a
+second active private definition for the same user and endpoint returns
+`409 MCP_CONFLICT` without changing the existing definition.
 
 ### Validate or delete a private definition
 
@@ -195,7 +198,9 @@ an empty custom selection and retry the send.
 Process events include MCP timeline transitions. Completed results are fed back
 to the same provider model only through the backend-native continuation loop.
 Client-supplied Tool calls, aliases, grants, schemas, or results are never
-trusted as execution authority.
+trusted as execution authority. Arbitrary third-party MCP schemas are not
+advertised with the Provider-specific OpenAI `strict` extension; server-side
+validation against the frozen schema remains authoritative.
 
 ## Error mapping
 
@@ -206,6 +211,7 @@ trusted as execution authority.
 | 404 | `MCP_NOT_FOUND` | Definition or Tool does not exist in the authorized scope |
 | 409 | `MCP_AUTH_REQUIRED` | Selected server lacks current authorization |
 | 409 | `MCP_LIMIT_REACHED` | Private-server or conversation-selection quota reached |
+| 409 | `MCP_CONFLICT` | An active private definition already uses this endpoint |
 | 503 | `MCP_DISABLED` | Global Tools kill switch is off |
 | 503 | `MCP_TRANSPORT_DISABLED` | Selected remote or stdio transport is disabled |
 | 503 | `MCP_SERVER_UNAVAILABLE` | Validation or selected server is unavailable |
@@ -213,3 +219,8 @@ trusted as execution authority.
 
 All error messages remain bounded and must not include a custom endpoint,
 credential, arguments, result body, or upstream response.
+
+After an SSE run has started, only an explicit Tool-protocol incompatibility
+uses `MCP_MODEL_UNSUPPORTED`. Other first-round Provider rejections use the
+stream failure code `MCP_PROVIDER_FAILED`; they must not poison the model Tool
+capability cache.
