@@ -1493,3 +1493,36 @@ Recovered backend and Memory Worker on the byte-verified retained image with Pos
 ### Next Steps
 
 - None - task complete
+
+
+## Session 34: Launch Memory v2 and layered readers
+
+**Date**: 2026-08-11
+**Task**: Launch Memory v2 and layered readers
+**Branch**: `main`
+
+### Summary
+
+Launched exact-UUID Memory v2 for the sole user, resolved historical worker health, applied schema 071-073, enabled audited L2/L3 reader preview, tightened stale Review rejection, bounded governance UI lists, verified focused gates, and recorded rollback-safe operations.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2610d3a4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

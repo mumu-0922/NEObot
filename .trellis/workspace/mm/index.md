@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 33
-- **Last Active**: 2026-08-07
+- **Total Sessions**: 34
+- **Last Active**: 2026-08-11
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1495 | Active |
+| `journal-1.md` | ~1528 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 34 | 2026-08-11 | Launch Memory v2 and layered readers | `2610d3a4` | `main` |
 | 33 | 2026-08-07 | Recover Memory runtime and diagnose v20 abstentions | `8abde505`, `8bd2aa86` | `main` |
 | 32 | 2026-08-07 | Diagnose Memory validation slice failures | `1a31ebda`, `f41c135c` | `main` |
 | 31 | 2026-08-06 | Production Memory Validation v18 | `a098213b`, `86b4bd52`, `454b1d1c` | `main` |
