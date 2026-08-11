@@ -8,8 +8,11 @@ The `src/services` directory contains browser-facing service modules. These modu
 src/services/
 ├── api/
 │   ├── agentService.ts
+│   ├── chatCrudService.ts
 │   ├── chatService.ts
-│   ├── pluginService.ts
+│   ├── chatStreamService.ts
+│   ├── fileService.ts
+│   ├── importService.ts
 │   ├── skillService.ts
 │   └── voiceService.ts
 ├── artifactService.ts
@@ -23,7 +26,7 @@ src/services/
 Handles chat generation workflows from the browser side:
 
 - Streams chat responses.
-- Executes model tool calls through plugin utilities.
+- Delegates provider-native Tool execution to the Go chat stream.
 - Generates titles, related questions, and image outputs.
 - Prepares history for model APIs.
 - Adds applied skill context and local memory context when enabled by the chat workflow.
@@ -37,10 +40,6 @@ Fetches assistant marketplace data and assistant details from app API routes.
 ### `voiceService.ts`
 
 Calls speech-to-text and text-to-speech routes. Browser-native, ElevenLabs, and Mimo-backed flows are selected from user settings or server defaults.
-
-### `pluginService.ts`
-
-Fetches plugin marketplace data and installs plugin manifests.
 
 ### `skillService.ts`
 
@@ -57,6 +56,8 @@ Manages generated artifact creation, editing, continuation, transformation, and 
 - Components should call services rather than embedding fetch logic directly.
 - Knowledge upload, indexing, retrieval, and citations use the typed Go API
   client; browser services do not parse or query documents locally.
+- MCP server discovery, authorization, selection, and call timelines use the
+  typed `/v1/mcp/*` client. The browser never executes MCP Tools itself.
 - Services may read local settings when a workflow requires browser-owned data.
 - Sensitive user-entered secrets should travel as encrypted BYOK envelopes.
 - Server-only validation and proxy policy should stay in `src/app/api` and `src/lib/security`.

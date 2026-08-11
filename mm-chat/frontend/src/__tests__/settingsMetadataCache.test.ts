@@ -3,15 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/config/api", async () => vi.importActual("../config/api"));
 vi.mock("@/config/defaults", async () => vi.importActual("../config/defaults"));
 vi.mock("@/config/limits", async () => vi.importActual("../config/limits"));
-vi.mock("@/config/plugins", async () => vi.importActual("../config/plugins"));
 vi.mock("@/lib/defaultConfig/shared", async () =>
   vi.importActual("../lib/defaultConfig/shared"),
 );
 vi.mock("@/lib/market/agents", async () =>
   vi.importActual("../lib/market/agents"),
-);
-vi.mock("@/lib/plugin/config", async () =>
-  vi.importActual("../lib/plugin/config"),
 );
 vi.mock("@/lib/providers/config", async () =>
   vi.importActual("../lib/providers/config"),

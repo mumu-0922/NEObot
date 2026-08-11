@@ -45,6 +45,9 @@ export function createLocalChatApiShell(): ChatApi {
     async listMessages(): Promise<ChatMessageDTO[]> {
       throw unsupportedFeature("local chat adapter wiring");
     },
+    async preflightMcp() {
+      throw unsupportedFeature("MCP preflight in local API mode");
+    },
     async streamAssistantMessage(): Promise<ChatRunResult> {
       return {
         status: "unsupported",

@@ -24,7 +24,7 @@ describe("app export helpers", () => {
       exportedAt: "2026-07-01T00:00:00.000Z",
       data: {
         coreSettings: { theme: "dark" },
-        settings: { activePlugins: ["weather"] },
+        settings: {},
         chat: { sessions: [{ id: "s1", title: "Chat" }] },
         knowledge: { collections: [] },
         memory: { memories: [{ id: "mem-1" }] },

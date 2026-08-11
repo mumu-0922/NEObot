@@ -10,7 +10,6 @@ describe("marketplace interaction performance", () => {
     const markets = [
       "src/components/assistant/AssistantHub.tsx",
       "src/components/skill/SkillMarket.tsx",
-      "src/components/plugin/PluginMarket.tsx",
     ];
 
     for (const market of markets) {

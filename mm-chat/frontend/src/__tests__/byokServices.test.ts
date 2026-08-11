@@ -37,14 +37,6 @@ vi.mock("@/store/core/memoryStore", () => ({
   },
 }));
 
-vi.mock("@/utils/pluginUtils", () => ({
-  executePluginFunction: vi.fn(),
-}));
-
-vi.mock("@/lib/plugin/resolve", () => ({
-  getEnabledPluginFunctions: vi.fn(() => []),
-}));
-
 vi.mock("@/lib/utils/model", async () => vi.importActual("../lib/utils/model"));
 
 vi.mock("@/lib/chat/entities", async () =>

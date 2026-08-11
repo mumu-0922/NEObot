@@ -20,7 +20,6 @@ export const LOCAL_SECRET_CONTEXTS = {
     `local:provider:${providerId}:api-key`,
   elevenLabsApiKey: "local:voice:elevenlabs:api-key",
   mimoApiKey: "local:voice:mimo:api-key",
-  pluginAuth: (pluginId: string) => `local:plugin:${pluginId}:auth`,
 } as const;
 
 const DB_NAME = "neo-chat-local-secrets";

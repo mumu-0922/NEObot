@@ -26,7 +26,6 @@ import {
   X,
   FolderOpen,
   Settings,
-  Blocks,
   BotMessageSquare,
   ChevronDown,
   Library,
@@ -69,8 +68,6 @@ interface SidebarProps {
   toggleSidebar: () => void;
   isModal?: boolean;
   onRequestClose?: () => void;
-  onOpenPluginMarket: () => void;
-  isPluginMarketOpen: boolean;
   onOpenSkillMarket: () => void;
   isSkillMarketOpen: boolean;
   onOpenAssistantHub: () => void;
@@ -164,8 +161,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   toggleSidebar,
   isModal = false,
   onRequestClose,
-  onOpenPluginMarket,
-  isPluginMarketOpen,
   onOpenSkillMarket,
   isSkillMarketOpen,
   onOpenAssistantHub,
@@ -508,7 +503,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       {
         useSearch: workspace.enableSearch,
         useReasoning: workspace.enableReasoning,
-        activePlugins: workspace.activePlugins,
         activeSkills: workspace.activeSkills,
       },
     );
@@ -592,7 +586,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   const renderSessionItem = (session: Session) => {
     const isActive =
       currentSessionId === session.id &&
-      !isPluginMarketOpen &&
       !isAssistantHubOpen &&
       !isKnowledgeBaseOpen &&
       !isSettingsOpen;
@@ -870,27 +863,6 @@ const Sidebar: React.FC<SidebarProps> = ({
               aria-hidden="true"
             />
             {isOpen && <span className="truncate">{t("skillMarket")}</span>}
-          </button>
-        </SidebarNavTooltip>
-
-        <SidebarNavTooltip isOpen={isOpen} content={t("pluginMarket")}>
-          <button
-            type="button"
-            aria-label={t("openPluginMarket")}
-            aria-current={isPluginMarketOpen ? "page" : undefined}
-            onClick={onOpenPluginMarket}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${
-              isPluginMarketOpen
-                ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
-                : "text-gray-600 dark:text-muted-foreground hover:bg-gray-100/80 dark:hover:bg-muted/60"
-            } ${isOpen ? "w-full" : "w-10 justify-center px-0"}`}
-          >
-            <Blocks
-              size={18}
-              className={`shrink-0 ${isPluginMarketOpen ? "text-blue-500" : "text-gray-500"}`}
-              aria-hidden="true"
-            />
-            {isOpen && <span className="truncate">{t("pluginMarket")}</span>}
           </button>
         </SidebarNavTooltip>
 

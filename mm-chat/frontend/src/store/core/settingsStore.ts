@@ -4,8 +4,6 @@ import {
   ModelMetadata,
   SearchProviderID,
   SearchServiceConfig,
-  Plugin,
-  PluginConfig,
   LobeAgent,
   VoiceSettings,
   SystemSettings,
@@ -14,13 +12,6 @@ import {
   SkillCatalog,
   SkillDataLocale,
 } from "@/types";
-import {
-  AGNES_IMAGE_PLUGIN,
-  AGNES_VIDEO_PLUGIN,
-  RETIRED_BUILT_IN_PLUGIN_IDS,
-  WEATHER_PLUGIN,
-  UNSPLASH_PLUGIN,
-} from "@/config/plugins";
 import { DEFAULT_SYSTEM_SETTINGS } from "@/config/defaults";
 import { PublicServerConfig } from "@/lib/defaultConfig/shared";
 import {
@@ -50,12 +41,6 @@ import { getDefaultModelSelectValue } from "../../lib/utils/defaultModels";
 import { isElevenLabsVoiceId } from "../../lib/utils/voiceModels";
 import { readJsonResponseOrThrow } from "../../lib/api/client";
 import {
-  isPluginAuthRequired,
-  normalizeActivePluginIds,
-  normalizePluginConfig,
-  normalizePluginConfigs,
-} from "../../lib/plugin/config";
-import {
   normalizeCustomSkills,
   normalizeSkillCatalog,
   normalizeTextSkill,
@@ -66,11 +51,8 @@ import {
   createBrowserAppExportPayload,
   type AppExportPayload,
 } from "../../lib/data/appExport";
-import { hasPluginAuthValue } from "../../lib/security/localSecretResolvers";
 import {
-  migratePluginConfigLocalSecrets,
   migrateVoiceLocalSecrets,
-  stripPluginConfigPlainSecrets,
   stripVoicePlainSecrets,
 } from "../../lib/settings/localSecretMigration";
 
@@ -81,8 +63,6 @@ interface SettingsState {
   applyServerConfig: (config: PublicServerConfig) => void;
 
   // Market Cache
-  marketPlugins: Plugin[];
-  marketPluginsTimestamp: number;
   marketAgents: LobeAgent[];
   marketAgentsTimestamp: number;
   marketAgentsLocale: AgentMarketLocale | "";
@@ -90,7 +70,6 @@ interface SettingsState {
   skillCatalogTimestamps: Partial<Record<SkillDataLocale, number>>;
   skillDefinitions: Record<string, TextSkill>;
   skillDefinitionTimestamps: Record<string, number>;
-  setMarketPlugins: (plugins: Plugin[]) => void;
   setMarketAgents: (
     agents: LobeAgent[],
     locale?: AgentMarketLocale | "",
@@ -120,18 +99,6 @@ interface SettingsState {
   // Voice Settings
   voice: VoiceSettings;
   updateVoiceSettings: (settings: Partial<VoiceSettings>) => void;
-
-  // Plugin Management
-  activePlugins: string[];
-  installedPlugins: Plugin[];
-  pluginConfigs: Record<string, PluginConfig>;
-  addInstalledPlugin: (plugin: Plugin) => void;
-  removeInstalledPlugin: (pluginId: string) => void;
-  setActivePlugins: (pluginIds: string[]) => void;
-  togglePluginActive: (pluginId: string) => void;
-  updatePluginConfig: (pluginId: string, config: Partial<PluginConfig>) => void;
-  togglePluginFunction: (pluginId: string, functionName: string) => void;
-  ensureBuiltInPlugins: () => void;
 
   // Skill Management
   installedSkills: TextSkill[];
@@ -167,43 +134,7 @@ interface SettingsState {
   clearAllData: () => Promise<void>;
 }
 
-// 内置插件列表
-const BUILT_IN_PLUGINS = [
-  WEATHER_PLUGIN,
-  UNSPLASH_PLUGIN,
-  AGNES_IMAGE_PLUGIN,
-  AGNES_VIDEO_PLUGIN,
-] as const;
-const BUILT_IN_PLUGINS_BY_ID = new Map(
-  BUILT_IN_PLUGINS.map((plugin) => [plugin.id, plugin]),
-);
-const REMOVED_BUILT_IN_PLUGIN_IDS = new Set<string>(
-  RETIRED_BUILT_IN_PLUGIN_IDS,
-);
 const SKILL_ID_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-
-const removeRemovedBuiltInPlugins = (plugins: readonly Plugin[]): Plugin[] =>
-  plugins.filter((plugin) => !REMOVED_BUILT_IN_PLUGIN_IDS.has(plugin.id));
-
-const refreshBuiltInPluginDefinitions = (
-  plugins: readonly Plugin[],
-): Plugin[] =>
-  plugins.map((plugin) => {
-    const currentBuiltIn = BUILT_IN_PLUGINS_BY_ID.get(plugin.id);
-    if (!currentBuiltIn || !plugin.builtIn) return plugin;
-    const refreshedPlugin = {
-      ...currentBuiltIn,
-      added: plugin.added || currentBuiltIn.added,
-    };
-    return JSON.stringify(plugin) === JSON.stringify(refreshedPlugin)
-      ? plugin
-      : refreshedPlugin;
-  });
-
-// 插件配置初始化
-const initPluginConfig = (): PluginConfig => ({
-  disabledFunctions: [],
-});
 
 const normalizeSkillIdRefsForStorage = (
   value: unknown,
@@ -302,20 +233,6 @@ const normalizeTimestampCache = (value: unknown): Record<string, number> => {
     result[cacheKey] = normalizedTimestamp;
   }
   return result;
-};
-
-// 检查插件是否需要认证
-// 检查插件是否可以自动激活
-const canAutoActivatePlugin = (
-  plugin: Plugin,
-  config: PluginConfig | undefined,
-): boolean => {
-  const needsAuth = isPluginAuthRequired(plugin);
-  return (
-    !needsAuth ||
-    hasPluginAuthValue(config?.auth) ||
-    plugin.id === UNSPLASH_PLUGIN.id
-  );
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -441,8 +358,6 @@ export const useSettingsStore = create<SettingsState>()(
         }),
 
       // Market Cache
-      marketPlugins: [],
-      marketPluginsTimestamp: 0,
       marketAgents: [],
       marketAgentsTimestamp: 0,
       marketAgentsLocale: "",
@@ -450,11 +365,6 @@ export const useSettingsStore = create<SettingsState>()(
       skillCatalogTimestamps: {},
       skillDefinitions: {},
       skillDefinitionTimestamps: {},
-      setMarketPlugins: (plugins) =>
-        set({
-          marketPlugins: plugins,
-          marketPluginsTimestamp: Date.now(),
-        }),
       setMarketAgents: (agents, locale = "") =>
         set({
           marketAgents: normalizeMarketAgents(agents),
@@ -578,198 +488,6 @@ export const useSettingsStore = create<SettingsState>()(
       },
       updateVoiceSettings: (settings) =>
         set((state) => ({ voice: { ...state.voice, ...settings } })),
-
-      // Plugin Management
-      activePlugins: [],
-      installedPlugins: [...BUILT_IN_PLUGINS],
-      pluginConfigs: {},
-
-      addInstalledPlugin: (plugin) =>
-        set((state) => {
-          if (state.installedPlugins.some((p) => p.id === plugin.id)) {
-            return state;
-          }
-
-          const installedPlugins = [...state.installedPlugins, plugin];
-          const config = normalizePluginConfig(
-            state.pluginConfigs[plugin.id] || initPluginConfig(),
-            plugin.functions?.map((fn) => fn.name),
-          );
-          const shouldActivate = canAutoActivatePlugin(plugin, config);
-          const pluginConfigs = normalizePluginConfigs(
-            {
-              ...state.pluginConfigs,
-              [plugin.id]: config,
-            },
-            installedPlugins,
-          );
-
-          return {
-            installedPlugins,
-            activePlugins: normalizeActivePluginIds(
-              shouldActivate
-                ? [...state.activePlugins, plugin.id]
-                : state.activePlugins,
-              installedPlugins,
-              pluginConfigs,
-              { unauthenticatedAllowedPluginIds: [UNSPLASH_PLUGIN.id] },
-            ),
-            pluginConfigs,
-          };
-        }),
-
-      removeInstalledPlugin: (pluginId) =>
-        set((state) => {
-          const plugin = state.installedPlugins.find((p) => p.id === pluginId);
-          if (plugin?.builtIn) return state;
-
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { [pluginId]: _removed, ...newConfigs } = state.pluginConfigs;
-          return {
-            installedPlugins: state.installedPlugins.filter(
-              (p) => p.id !== pluginId,
-            ),
-            activePlugins: state.activePlugins.filter((id) => id !== pluginId),
-            pluginConfigs: newConfigs,
-          };
-        }),
-
-      setActivePlugins: (pluginIds) =>
-        set((state) => ({
-          activePlugins: normalizeActivePluginIds(
-            pluginIds,
-            state.installedPlugins,
-            state.pluginConfigs,
-            { unauthenticatedAllowedPluginIds: [UNSPLASH_PLUGIN.id] },
-          ),
-        })),
-
-      togglePluginActive: (pluginId) =>
-        set((state) => {
-          const plugin = state.installedPlugins.find((p) => p.id === pluginId);
-          if (!plugin) return state;
-
-          const isActive = state.activePlugins.includes(pluginId);
-
-          if (!isActive) {
-            if (plugin && isPluginAuthRequired(plugin)) {
-              const hasAuth = hasPluginAuthValue(
-                state.pluginConfigs[pluginId]?.auth,
-              );
-              if (!hasAuth && pluginId !== UNSPLASH_PLUGIN.id) {
-                return state;
-              }
-            }
-          }
-
-          return {
-            activePlugins: normalizeActivePluginIds(
-              isActive
-                ? state.activePlugins.filter((id) => id !== pluginId)
-                : [...state.activePlugins, pluginId],
-              state.installedPlugins,
-              state.pluginConfigs,
-              { unauthenticatedAllowedPluginIds: [UNSPLASH_PLUGIN.id] },
-            ),
-          };
-        }),
-
-      updatePluginConfig: (pluginId, config) =>
-        set((state) => {
-          const plugin = state.installedPlugins.find((p) => p.id === pluginId);
-          if (!plugin) return state;
-
-          const pluginConfigs = normalizePluginConfigs(
-            {
-              ...state.pluginConfigs,
-              [pluginId]: normalizePluginConfig(
-                { ...state.pluginConfigs[pluginId], ...config },
-                plugin.functions?.map((fn) => fn.name),
-              ),
-            },
-            state.installedPlugins,
-          );
-
-          return {
-            pluginConfigs,
-            activePlugins: normalizeActivePluginIds(
-              state.activePlugins,
-              state.installedPlugins,
-              pluginConfigs,
-              { unauthenticatedAllowedPluginIds: [UNSPLASH_PLUGIN.id] },
-            ),
-          };
-        }),
-
-      togglePluginFunction: (pluginId, functionName) =>
-        set((state) => {
-          const plugin = state.installedPlugins.find((p) => p.id === pluginId);
-          if (!plugin?.functions?.some((fn) => fn.name === functionName)) {
-            return state;
-          }
-
-          const currentConfig =
-            state.pluginConfigs[pluginId] || initPluginConfig();
-          const currentDisabled = currentConfig.disabledFunctions || [];
-          const newDisabled = currentDisabled.includes(functionName)
-            ? currentDisabled.filter((f) => f !== functionName)
-            : [...currentDisabled, functionName];
-
-          return {
-            pluginConfigs: {
-              ...state.pluginConfigs,
-              [pluginId]: normalizePluginConfig(
-                { ...currentConfig, disabledFunctions: newDisabled },
-                plugin.functions.map((fn) => fn.name),
-              ),
-            },
-          };
-        }),
-
-      ensureBuiltInPlugins: () =>
-        set((state) => {
-          const retainedPlugins = refreshBuiltInPluginDefinitions(
-            removeRemovedBuiltInPlugins(state.installedPlugins),
-          );
-          const missingPlugins = BUILT_IN_PLUGINS.filter(
-            (plugin) => !retainedPlugins.some((p) => p.id === plugin.id),
-          );
-          const builtInDefinitionsChanged =
-            retainedPlugins.length !== state.installedPlugins.length ||
-            retainedPlugins.some(
-              (plugin, index) => plugin !== state.installedPlugins[index],
-            );
-
-          if (missingPlugins.length === 0 && !builtInDefinitionsChanged) {
-            return state;
-          }
-
-          const newConfigs = normalizePluginConfigs(
-            state.pluginConfigs,
-            retainedPlugins,
-          );
-          missingPlugins.forEach((plugin) => {
-            if (!newConfigs[plugin.id]) {
-              newConfigs[plugin.id] = initPluginConfig();
-            }
-          });
-          const installedPlugins = [...retainedPlugins, ...missingPlugins];
-          const pluginConfigs = normalizePluginConfigs(
-            newConfigs,
-            installedPlugins,
-          );
-
-          return {
-            installedPlugins,
-            pluginConfigs,
-            activePlugins: normalizeActivePluginIds(
-              state.activePlugins,
-              installedPlugins,
-              pluginConfigs,
-              { unauthenticatedAllowedPluginIds: [UNSPLASH_PLUGIN.id] },
-            ),
-          };
-        }),
 
       // Skill Management
       installedSkills: [],
@@ -1115,19 +833,25 @@ export const useSettingsStore = create<SettingsState>()(
       storage: createJSONStorage(getAppDbStorage),
       version: STORAGE_VERSION,
       migrate: async (persistedState) => {
-        const state = persistedState as Partial<SettingsState>;
-        const installedPlugins = removeRemovedBuiltInPlugins(
-          state.installedPlugins || [...BUILT_IN_PLUGINS],
-        );
-        const pluginConfigs = await migratePluginConfigLocalSecrets(
-          normalizePluginConfigs(state.pluginConfigs, installedPlugins),
-        );
+        const state = persistedState as Partial<SettingsState> &
+          Record<string, unknown>;
+        const {
+          activePlugins: _activePlugins,
+          installedPlugins: _installedPlugins,
+          pluginConfigs: _pluginConfigs,
+          marketPlugins: _marketPlugins,
+          marketPluginsTimestamp: _marketPluginsTimestamp,
+          ...retainedState
+        } = state;
+        void _activePlugins;
+        void _installedPlugins;
+        void _pluginConfigs;
+        void _marketPlugins;
+        void _marketPluginsTimestamp;
         const search = normalizeSearchSettings(state.search);
         const voice = await migrateVoiceLocalSecrets(state.voice);
         return {
-          ...state,
-          marketPlugins: state.marketPlugins || [],
-          marketPluginsTimestamp: state.marketPluginsTimestamp || 0,
+          ...retainedState,
           marketAgents: normalizeMarketAgents(state.marketAgents),
           marketAgentsTimestamp: state.marketAgentsTimestamp || 0,
           marketAgentsLocale: state.marketAgentsLocale || "",
@@ -1152,14 +876,6 @@ export const useSettingsStore = create<SettingsState>()(
           ),
           search,
           voice,
-          activePlugins: normalizeActivePluginIds(
-            state.activePlugins,
-            installedPlugins,
-            pluginConfigs,
-            { unauthenticatedAllowedPluginIds: [UNSPLASH_PLUGIN.id] },
-          ),
-          installedPlugins,
-          pluginConfigs,
           installedSkills: normalizeInstalledSkills(
             state.installedSkills && state.installedSkills.length > 0
               ? state.installedSkills
@@ -1186,8 +902,6 @@ export const useSettingsStore = create<SettingsState>()(
         } as SettingsState;
       },
       partialize: (state) => ({
-        marketPlugins: state.marketPlugins,
-        marketPluginsTimestamp: state.marketPluginsTimestamp,
         marketAgents: state.marketAgents,
         marketAgentsTimestamp: state.marketAgentsTimestamp,
         marketAgentsLocale: state.marketAgentsLocale,
@@ -1201,9 +915,6 @@ export const useSettingsStore = create<SettingsState>()(
         customModelMetadata: state.customModelMetadata,
         search: normalizeSearchSettings(state.search),
         voice: stripVoicePlainSecrets(state.voice),
-        activePlugins: state.activePlugins,
-        installedPlugins: state.installedPlugins,
-        pluginConfigs: stripPluginConfigPlainSecrets(state.pluginConfigs),
         installedSkills: state.installedSkills,
         customSkills: state.customSkills,
         activeSkillIds: state.activeSkillIds,

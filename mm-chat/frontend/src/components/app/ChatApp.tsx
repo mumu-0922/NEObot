@@ -28,10 +28,9 @@ import Tooltip from "@/components/ui/Tooltip";
 import FollowUpQuestions from "@/components/chat/FollowUpQuestions";
 import { Logo } from "@/components/ui/Icons";
 import type { ModelInfo } from "@/services/api/chatService";
-import { createNeoChatApiClient } from "@/services/api/client";
+import { ApiClientError, createNeoChatApiClient } from "@/services/api/client";
 import { uploadMessageAttachmentsForServer } from "@/services/api/fileService";
 import { resolveSkillsForMessage } from "@/services/api/skillService";
-import { orchestrateServerPlugins } from "@/services/api/serverPluginOrchestration";
 import { buildProviderRuntimeConfig } from "@/lib/byok/client";
 import { getAgentDetail } from "@/services/api/agentService";
 import {
@@ -82,7 +81,6 @@ import {
   getMessageBranchInfo,
   normalizeSessionMessageTree,
 } from "@/lib/chat/messageTree";
-import { normalizeActivePluginIds } from "@/lib/plugin/config";
 import { parseModelString } from "@/lib/utils/model";
 import {
   DEFAULT_MODEL_TASK_KEYS,
@@ -93,8 +91,6 @@ import { retireBrowserLocalRAGState } from "@/lib/settings/serverOnlyRagMigratio
 import { SERVER_DEFAULT_PROVIDER_ID } from "@/lib/defaultConfig/shared";
 import { normalizeServerManagedProviderConfigs } from "@/lib/providers/config";
 import {
-  getSessionPluginPresetSyncKey,
-  shouldApplySessionPluginPreset,
   shouldResolveSelectedModelAfterBootstrap,
   shouldRunSettingsStartupEffects,
 } from "@/lib/app/startupEffects";
@@ -122,6 +118,7 @@ import {
   getChatNavigationScrollTop,
 } from "@/lib/chat/messageNavigation";
 import { toServerMessageAttachments } from "@/lib/utils/serverAttachments";
+import { modelStringToModelRef } from "@/services/api/chatCrudService";
 import {
   getKnowledgeAttachmentCollectionIds,
   isKnowledgeAttachment,
@@ -132,9 +129,15 @@ import {
 const ImagePreview = dynamic(() => import("@/components/media/ImagePreview"), {
   ssr: false,
 });
-const PluginMarket = dynamic(() => import("@/components/plugin/PluginMarket"), {
-  ssr: false,
-});
+
+const MCP_ADMISSION_ERROR_CODES = new Set([
+  "MCP_AUTH_REQUIRED",
+  "MCP_SERVER_UNAVAILABLE",
+  "MCP_AUTHORIZATION_FAILED",
+  "MCP_MODEL_UNSUPPORTED",
+  "MCP_LIMIT_REACHED",
+  "MCP_SELECTION_INVALID",
+]);
 const SkillMarket = dynamic(() => import("@/components/skill/SkillMarket"), {
   ssr: false,
 });
@@ -258,20 +261,16 @@ const ChatApp = () => {
     },
     settings: {
       _hasHydrated,
+      serverConfig,
       modelMetadata,
       customModelMetadata,
       fetchModelMetadata,
-      ensureBuiltInPlugins,
       system,
       search,
-      activePlugins,
-      installedPlugins,
-      pluginConfigs,
       installedSkills,
       activeSkillIds,
       skillAutoSelect,
       setActiveSkillIds,
-      setActivePlugins,
       applyServerConfig: applySettingsServerConfig,
     },
     core: {
@@ -293,6 +292,10 @@ const ChatApp = () => {
     apiClientSnapshot.capabilities.chatStream;
   const serverFilesEnabled =
     serverModeEnabled && apiClientSnapshot.capabilities.files;
+  const serverMcpEnabled =
+    serverModeEnabled &&
+    apiClientSnapshot.capabilities.mcp &&
+    serverConfig?.mcp.enabled === true;
 
   // --- Local UI State ---
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -520,7 +523,6 @@ const ChatApp = () => {
     useReasoning: currentSessionConfig?.useReasoning ?? chatConfig.useReasoning,
     reasoningEffort:
       currentSessionConfig?.reasoningEffort ?? chatConfig.reasoningEffort,
-    activePlugins,
     activeSkills: activeSkillIds,
   };
   const composerChatConfig = serverModeEnabled
@@ -674,12 +676,15 @@ const ChatApp = () => {
   const [welcomeState, setWelcomeState] = useState<
     "visible" | "exiting" | "hidden"
   >("hidden");
+  const [mcpAdmissionAttention, setMcpAdmissionAttention] = useState<{
+    nonce: number;
+    message: string;
+  } | null>(null);
   const messageInputVariant = welcomeState === "visible" ? "hero" : "default";
   const shouldShowChatTitleBar = welcomeState === "hidden";
   const prevSessionIdRef = useRef(visibleCurrentSessionId);
   const inputSessionRef = useRef(visibleCurrentSessionId);
   const workspaceAttachmentHydratedSessionRef = useRef<string | null>(null);
-  const syncedSessionPluginPresetRef = useRef<string | null>(null);
 
   // Sync welcomeState with chat emptiness, handling animations only within the same session
   useEffect(() => {
@@ -711,52 +716,6 @@ const ChatApp = () => {
   }, [welcomeState]);
 
   // --- Effects ---
-
-  // Sync Global Plugins from Session Config
-  useEffect(() => {
-    if (serverModeEnabled) return;
-
-    const sessionPlugins = normalizeActivePluginIds(
-      currentSessionConfig?.activePlugins,
-      installedPlugins,
-      pluginConfigs,
-      { unauthenticatedAllowedPluginIds: ["unsplash"] },
-    );
-    const presetSyncKey = getSessionPluginPresetSyncKey(
-      currentSessionId,
-      sessionPlugins,
-    );
-
-    if (
-      !shouldApplySessionPluginPreset(
-        _hasHydrated,
-        chatHasHydrated,
-        sessionPlugins,
-        syncedSessionPluginPresetRef.current,
-        presetSyncKey,
-      )
-    ) {
-      return;
-    }
-
-    const sortedSession = [...sessionPlugins].sort();
-    const sortedActive = [...activePlugins].sort();
-
-    if (JSON.stringify(sortedSession) !== JSON.stringify(sortedActive)) {
-      setActivePlugins(sessionPlugins);
-    }
-    syncedSessionPluginPresetRef.current = presetSyncKey;
-  }, [
-    activePlugins,
-    chatHasHydrated,
-    currentSessionId,
-    currentSessionConfig,
-    _hasHydrated,
-    installedPlugins,
-    pluginConfigs,
-    serverModeEnabled,
-    setActivePlugins,
-  ]);
 
   // Hydrate workspace preset files once when entering an empty workspace chat.
   useEffect(() => {
@@ -798,12 +757,11 @@ const ChatApp = () => {
     workspaces,
   ]);
 
-  // Fetch Metadata & Ensure Plugins on mount
+  // Fetch model metadata after persisted settings hydrate.
   useEffect(() => {
     if (!shouldRunSettingsStartupEffects(_hasHydrated)) return;
     fetchModelMetadata();
-    ensureBuiltInPlugins();
-  }, [_hasHydrated, fetchModelMetadata, ensureBuiltInPlugins]);
+  }, [_hasHydrated, fetchModelMetadata]);
 
   useEffect(() => {
     if (!coreHasHydrated || !_hasHydrated) return;
@@ -1351,10 +1309,6 @@ const ChatApp = () => {
         provider: search.provider,
         configs: search.configs,
       },
-      installedPlugins,
-      pluginConfigs,
-      activePlugins,
-      activePluginIdsOverride: serverModeEnabled ? activePlugins : undefined,
       installedSkills,
       activeSkillIds: serverModeEnabled ? activeSkillIds : [],
       activeSkillIdsOverride: serverModeEnabled ? activeSkillIds : undefined,
@@ -1502,6 +1456,33 @@ const ChatApp = () => {
       };
       const effectiveContext =
         getEffectiveContextForSession(sessionForProcessing);
+      const runtimeProvider =
+        await buildRuntimeProviderConfigForModel(routedModel);
+      const modelRef = modelStringToModelRef(routedModel);
+      if (!modelRef) {
+        throw new Error("Server stream model is required.");
+      }
+      if (serverMcpEnabled) {
+        try {
+          await apiClientSnapshot.chat.preflightMcp({
+            conversationId: targetSessionId,
+            modelRef,
+            provider: runtimeProvider,
+            signal: generation.controller.signal,
+          });
+        } catch (preflightError) {
+          if (
+            preflightError instanceof ApiClientError &&
+            MCP_ADMISSION_ERROR_CODES.has(preflightError.code)
+          ) {
+            setMcpAdmissionAttention((current) => ({
+              nonce: (current?.nonce ?? 0) + 1,
+              message: preflightError.message,
+            }));
+          }
+          throw preflightError;
+        }
+      }
       const legacyKnowledgeCollectionIds =
         getKnowledgeAttachmentCollectionIds(attachments);
       const sessionKnowledgeBinding = useChatStore
@@ -1535,7 +1516,6 @@ const ChatApp = () => {
           : [];
       if (!isGenerationRunActive(generation)) return messageAccepted;
       let skillContext = "";
-      let pluginContext = "";
       if (!routesToImageGeneration) {
         const skillResolution = await resolveSkillsForMessage({
           message: text,
@@ -1548,27 +1528,13 @@ const ChatApp = () => {
         });
         if (!isGenerationRunActive(generation)) return messageAccepted;
         skillContext = skillResolution.context;
-
-        const pluginResolution = await orchestrateServerPlugins({
-          message: text,
-          selectedModel,
-          installedPlugins,
-          pluginConfigs,
-          activePluginIds: effectiveContext.activePluginIds,
-          signal: generation.controller.signal,
-        });
-        if (!isGenerationRunActive(generation)) return messageAccepted;
-        pluginContext = pluginResolution.context;
       }
       const systemInstruction = [
         effectiveContext.systemInstruction,
         skillContext,
-        pluginContext,
       ]
         .filter((section): section is string => Boolean(section?.trim()))
         .join("\n\n");
-      const runtimeProvider =
-        await buildRuntimeProviderConfigForModel(routedModel);
       const latestServerState = useChatStore.getState().serverReadState;
       const parentMessageId =
         latestServerState.currentSessionId === targetSessionId
@@ -1825,7 +1791,6 @@ const ChatApp = () => {
           );
         },
         generation.controller.signal,
-        effectiveContext.activePluginIds,
         skillResolution.context,
         (outputBlocks) => {
           if (!isGenerationRunActive(generation)) return;
@@ -2186,7 +2151,6 @@ const ChatApp = () => {
           );
         },
         generation.controller.signal,
-        effectiveContext.activePluginIds,
         skillResolution.context,
         (outputBlocks) => {
           if (!isGenerationRunActive(generation)) return;
@@ -2282,20 +2246,9 @@ const ChatApp = () => {
         });
         if (!isGenerationRunActive(generation)) return;
 
-        const pluginResolution = await orchestrateServerPlugins({
-          message: userMessage.content,
-          selectedModel,
-          installedPlugins,
-          pluginConfigs,
-          activePluginIds: effectiveContext.activePluginIds,
-          signal: generation.controller.signal,
-        });
-        if (!isGenerationRunActive(generation)) return;
-
         const systemInstruction = [
           effectiveContext.systemInstruction,
           skillResolution.context,
-          pluginResolution.context,
         ]
           .filter((section): section is string => Boolean(section?.trim()))
           .join("\n\n");
@@ -2519,16 +2472,6 @@ const ChatApp = () => {
         });
         if (!isGenerationRunActive(generation)) return;
 
-        const pluginResolution = await orchestrateServerPlugins({
-          message: newContent,
-          selectedModel,
-          installedPlugins,
-          pluginConfigs,
-          activePluginIds: effectiveContext.activePluginIds,
-          signal: generation.controller.signal,
-        });
-        if (!isGenerationRunActive(generation)) return;
-
         const sourceParentId =
           visibleActiveMessageTree.nodesById[msgId]?.parentMessageId ??
           sourceMessage.parentMessageId ??
@@ -2536,7 +2479,6 @@ const ChatApp = () => {
         const systemInstruction = [
           effectiveContext.systemInstruction,
           skillResolution.context,
-          pluginResolution.context,
         ]
           .filter((section): section is string => Boolean(section?.trim()))
           .join("\n\n");
@@ -2734,7 +2676,6 @@ const ChatApp = () => {
           );
         },
         generation.controller.signal,
-        effectiveContext.activePluginIds,
         skillResolution.context,
         (outputBlocks) => {
           if (!isGenerationRunActive(generation) || !modelMessageId) return;
@@ -3067,8 +3008,6 @@ const ChatApp = () => {
         toggleSidebar={() => setIsSidebarOpen((open) => !open)}
         isModal={isMobileSidebarModalOpen}
         onRequestClose={() => setIsSidebarOpen(false)}
-        onOpenPluginMarket={() => navigateToPanel("plugins")}
-        isPluginMarketOpen={viewMode === "plugins"}
         onOpenSkillMarket={() => navigateToPanel("skills")}
         isSkillMarketOpen={viewMode === "skills"}
         onOpenAssistantHub={() => navigateToPanel("assistants")}
@@ -3097,9 +3036,7 @@ const ChatApp = () => {
             </div>
           </div>
         )}
-        {viewMode === "plugins" ? (
-          <PluginMarket onClose={() => navigateToPanel("chat")} />
-        ) : viewMode === "skills" ? (
+        {viewMode === "skills" ? (
           <SkillMarket onClose={() => navigateToPanel("chat")} />
         ) : viewMode === "assistants" ? (
           <AssistantHub
@@ -3428,7 +3365,16 @@ const ChatApp = () => {
                   allowSearchWhenSessionToolsDisabled={serverModeEnabled}
                   allowReasoningWhenSessionToolsDisabled={serverModeEnabled}
                   allowSkillsWhenSessionToolsDisabled={serverModeEnabled}
-                  allowPluginsWhenSessionToolsDisabled={serverModeEnabled}
+                  mcpEnabled={serverMcpEnabled}
+                  mcpConversationId={
+                    serverModeEnabled
+                      ? (visibleCurrentSessionId ?? undefined)
+                      : undefined
+                  }
+                  mcpAdmissionAttention={mcpAdmissionAttention}
+                  onMcpAdmissionAttentionHandled={() =>
+                    setMcpAdmissionAttention(null)
+                  }
                   activeSkillIdsOverride={
                     serverModeEnabled ? activeSkillIds : undefined
                   }

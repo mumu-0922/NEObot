@@ -63,22 +63,17 @@ export function useChatShellState() {
   const settings = useSettingsStore(
     useShallow((state) => ({
       _hasHydrated: state._hasHydrated,
+      serverConfig: state.serverConfig,
       modelMetadata: state.modelMetadata,
       customModelMetadata: state.customModelMetadata,
       fetchModelMetadata: state.fetchModelMetadata,
-      ensureBuiltInPlugins: state.ensureBuiltInPlugins,
       system: state.system,
       search: state.search,
-      activePlugins: state.activePlugins,
-      installedPlugins: state.installedPlugins,
-      pluginConfigs: state.pluginConfigs,
       installedSkills: state.installedSkills,
       customSkills: state.customSkills,
       activeSkillIds: state.activeSkillIds,
       skillAutoSelect: state.skillAutoSelect,
       setActiveSkillIds: state.setActiveSkillIds,
-      setActivePlugins: state.setActivePlugins,
-      togglePluginActive: state.togglePluginActive,
       applyServerConfig: state.applyServerConfig,
     })),
   );

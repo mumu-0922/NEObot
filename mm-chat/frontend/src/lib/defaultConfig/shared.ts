@@ -26,6 +26,11 @@ export interface PublicServerConfig {
   search: {
     available: boolean;
   };
+  mcp: {
+    enabled: boolean;
+    remoteEnabled: boolean;
+    stdioEnabled: boolean;
+  };
   voice: {
     defaultProvider?: ServerDefaultVoiceProvider;
     elevenLabsAvailable: boolean;
@@ -46,7 +51,6 @@ export interface PublicServerConfig {
     byokStableKeyConfigured: boolean;
     byokEphemeralAllowed: boolean;
     rateLimitStore: PublicDeploymentStoreState;
-    pluginRegistryStore: PublicDeploymentStoreState;
   };
   system?: SystemSettings;
 }

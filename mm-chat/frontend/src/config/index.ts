@@ -9,8 +9,5 @@ export * from "./api";
 // 助理配置
 export * from "./assistants";
 
-// 插件配置
-export * from "./plugins";
-
 // 默认配置
 export * from "./defaults";

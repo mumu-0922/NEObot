@@ -14,9 +14,6 @@ export { default as KnowledgeBase } from "./knowledge/KnowledgeBase";
 export { default as KnowledgeSelectionModal } from "./knowledge/KnowledgeSelectionModal";
 export { default as RAGBlock } from "./knowledge/RAGBlock";
 
-// Plugin Components
-export { default as PluginMarket } from "./plugin/PluginMarket";
-
 // Content Components
 export { default as Artifact } from "./content/Artifact";
 export { default as MarkdownRenderer } from "./content/MarkdownRenderer";

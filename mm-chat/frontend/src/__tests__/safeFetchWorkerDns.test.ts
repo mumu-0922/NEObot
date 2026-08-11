@@ -44,7 +44,7 @@ describe("safeFetch Worker DNS compatibility", () => {
       safeFetch(
         "https://example.com/openapi.json",
         { method: "GET" },
-        { policy: getSafeUrlPolicy("plugin") },
+        { policy: getSafeUrlPolicy("remoteFile") },
       ),
     ).resolves.toBeInstanceOf(Response);
 
@@ -66,7 +66,7 @@ describe("safeFetch Worker DNS compatibility", () => {
       safeFetch(
         "https://example.com/openapi.json",
         { method: "GET" },
-        { policy: getSafeUrlPolicy("plugin") },
+        { policy: getSafeUrlPolicy("remoteFile") },
       ),
     ).rejects.toThrow(/Private network/i);
 

@@ -106,12 +106,10 @@ const DeploymentHealth: React.FC = () => {
     useState<RAGProviderStatusDTO>();
   const client = useMemo(() => createNeoChatApiClient(), []);
   const { providers, defaultModels } = useCoreSettingsStore();
-  const { serverConfig, voice, installedPlugins } = useSettingsStore();
+  const { serverConfig, voice } = useSettingsStore();
   const deployment = serverConfig?.deployment;
   const deploymentMode = deployment?.mode || "local";
-  const sharedStoresOk =
-    deployment?.rateLimitStore === "shared" &&
-    deployment.pluginRegistryStore === "shared";
+  const sharedStoresOk = deployment?.rateLimitStore === "shared";
   const hasUsableModel =
     Boolean(serverConfig?.modelProvider.available) ||
     providers.some(
@@ -135,8 +133,8 @@ const DeploymentHealth: React.FC = () => {
     runtimeToHealthState(runtimeServices?.[service]?.status);
   const runtimeStoreState = runtimeServices
     ? strongestHealthState(
-        [runtimeState("rateLimitStore"), runtimeState("pluginRegistry")].filter(
-          (state): state is HealthState => Boolean(state),
+        [runtimeState("rateLimitStore")].filter((state): state is HealthState =>
+          Boolean(state),
         ),
       )
     : null;
@@ -256,24 +254,6 @@ const DeploymentHealth: React.FC = () => {
       label: t("voice"),
       state: hasVoice ? "ok" : runtimeState("voice") || "missing",
       detail: hasVoice ? t("voiceReady") : t("voiceMissing"),
-    },
-    {
-      key: "plugins",
-      label: t("plugins"),
-      state:
-        deploymentMode === "hosted" &&
-        deployment?.pluginRegistryStore !== "shared"
-          ? runtimeState("pluginRegistry") || "blocked"
-          : installedPlugins.length > 0
-            ? "ok"
-            : runtimeState("pluginRegistry") || "missing",
-      detail:
-        deploymentMode === "hosted" &&
-        deployment?.pluginRegistryStore !== "shared"
-          ? t("pluginsRegistryMissingHosted")
-          : installedPlugins.length > 0
-            ? t("pluginsReady")
-            : t("pluginsMissing"),
     },
   ];
 

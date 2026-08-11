@@ -4,7 +4,7 @@ The `src/lib/chat` directory contains chat-domain helpers that are shared by sto
 
 ## Files
 
-- `effectiveChatContext.ts` builds the effective provider/search/RAG/plugin/skill context for a request.
+- `effectiveChatContext.ts` builds the effective provider/search/RAG/Skill context for a request; MCP selection is server-authoritative and not injected by the browser.
 - `entities.ts` normalizes chat-domain entities.
 - `generationLifecycle.ts` coordinates generation state transitions.
 - `generationProgress.ts` infers the pending in-thread status from the question and enabled server sources before the first stream event arrives.

@@ -13,7 +13,6 @@ describe("service health status", () => {
     vi.stubEnv("ACCESS_PASSWORD", "access-secret");
     vi.stubEnv("BYOK_PRIVATE_KEY_PEM", "private-key-secret");
     vi.stubEnv("RATE_LIMIT_STORE", "upstash");
-    vi.stubEnv("PLUGIN_REGISTRY_STORE", "upstash");
     vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://redis.internal");
     vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "redis-secret");
     vi.stubEnv("DEFAULT_PROVIDER_API_KEY", "provider-secret");
@@ -29,7 +28,6 @@ describe("service health status", () => {
     expect(health.deploymentMode).toBe("hosted");
     expect(health.services.byok.status).toBe("available");
     expect(health.services.rateLimitStore.status).toBe("available");
-    expect(health.services.pluginRegistry.status).toBe("available");
     expect(health.services.defaultModel.status).toBe("unconfigured");
     expect(health.services.search.status).toBe("unconfigured");
     expect(health.services.voice.status).toBe("available");
@@ -62,17 +60,12 @@ describe("service health status", () => {
   it("marks hosted missing shared stores as policy blocked", async () => {
     vi.stubEnv("DEPLOYMENT_MODE", "hosted");
     vi.stubEnv("RATE_LIMIT_STORE", "memory");
-    vi.stubEnv("PLUGIN_REGISTRY_STORE", "memory");
 
     const { getServiceHealthStatus } =
       await import("../lib/services/serviceHealth");
     const health = getServiceHealthStatus({ now: 1_700_000_000_000 });
 
     expect(health.services.rateLimitStore).toMatchObject({
-      status: "policy_blocked",
-      code: "SHARED_STORE_REQUIRED",
-    });
-    expect(health.services.pluginRegistry).toMatchObject({
       status: "policy_blocked",
       code: "SHARED_STORE_REQUIRED",
     });

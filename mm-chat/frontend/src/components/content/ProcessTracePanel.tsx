@@ -123,10 +123,17 @@ function ProcessStepRow({ step }: { step: ProcessStep }) {
   const t = useTranslations("Content");
   const Icon = kindIcons[step.kind];
   const active = isProcessStepActive(step);
-  const failed = step.status === "failed" || step.status === "cancelled";
+  const outcomeUnknown = step.status === "outcome_unknown";
+  const failed =
+    step.status === "failed" || step.status === "cancelled" || outcomeUnknown;
   const reason = processReasonCategoryForDisplay(step);
   const hitCount = numberDetail(step, "hitCount");
   const sourceCount = numberDetail(step, "sourceCount");
+  const server = stringDetail(step, "server");
+  const toolName = stringDetail(step, "toolName");
+  const classification = stringDetail(step, "classification");
+  const callStatus = stringDetail(step, "callStatus");
+  const argumentSummary = stringDetail(step, "argumentSummary");
 
   return (
     <li className="flex min-w-0 items-start gap-2 text-xs text-gray-600 dark:text-muted-foreground">
@@ -167,6 +174,54 @@ function ProcessStepRow({ step }: { step: ProcessStep }) {
         {reason ? (
           <div className="mt-0.5 text-[11px] text-gray-400 dark:text-muted-foreground/70">
             {processReasonLabel(reason, t)}
+          </div>
+        ) : null}
+        {step.kind === "tool" && (server || toolName) ? (
+          <div className="mt-1.5 space-y-1 rounded-md border border-gray-200/70 bg-white/70 px-2 py-1.5 text-[11px] dark:border-border dark:bg-background/50">
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              {server ? (
+                <span>
+                  <span className="text-gray-400">
+                    {t("processToolServer")}
+                  </span>{" "}
+                  <span className="font-mono text-gray-600 dark:text-foreground/80">
+                    {server}
+                  </span>
+                </span>
+              ) : null}
+              {toolName ? (
+                <span>
+                  <span className="text-gray-400">{t("processToolName")}</span>{" "}
+                  <span className="font-mono text-gray-600 dark:text-foreground/80">
+                    {toolName}
+                  </span>
+                </span>
+              ) : null}
+            </div>
+            {classification || callStatus ? (
+              <div className="flex flex-wrap gap-1">
+                {classification ? (
+                  <span className="rounded bg-gray-100 px-1.5 py-0.5 uppercase text-gray-500 dark:bg-muted">
+                    {classification}
+                  </span>
+                ) : null}
+                {callStatus ? (
+                  <span
+                    className={`rounded px-1.5 py-0.5 ${outcomeUnknown ? "bg-red-100 font-semibold text-red-700 dark:bg-red-950/50 dark:text-red-200" : "bg-gray-100 text-gray-500 dark:bg-muted"}`}
+                  >
+                    {callStatus}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+            {argumentSummary ? (
+              <div className="break-all font-mono text-gray-500 dark:text-muted-foreground">
+                <span className="font-sans text-gray-400">
+                  {t("processToolArguments")}
+                </span>{" "}
+                {argumentSummary}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -258,6 +313,8 @@ function processStatusLabel(
       return t("statusSkipped");
     case "cancelled":
       return t("processCancelled");
+    case "outcome_unknown":
+      return t("processOutcomeUnknown");
   }
 }
 
@@ -271,4 +328,9 @@ function numberDetail(step: ProcessStep, key: string): number | undefined {
   return typeof value === "number" && Number.isFinite(value)
     ? value
     : undefined;
+}
+
+function stringDetail(step: ProcessStep, key: string): string {
+  const value = step.detail?.[key];
+  return typeof value === "string" ? value : "";
 }

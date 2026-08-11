@@ -23,5 +23,4 @@ export const BYOK_CONTEXTS = {
   voiceProvider: (provider: string) => `provider:voice:${provider}`,
   elevenLabs: "voice:elevenlabs",
   mimo: "voice:mimo",
-  pluginAuth: (pluginId: string) => `plugin:${pluginId}:auth`,
 } as const;

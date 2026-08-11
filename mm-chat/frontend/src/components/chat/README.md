@@ -4,7 +4,7 @@ Chat components render the main conversation experience: message input, message 
 
 ## Files
 
-- `MessageInput.tsx` handles text entry, file attachments, voice input, skill/plugin controls, model-aware controls, and send actions.
+- `MessageInput.tsx` handles text entry, file attachments, voice input, Skill and MCP Tool controls, model-aware controls, and send actions.
 - `MessageItem.tsx` renders a single message with editing, copying, branching, deletion, playback, reading mode, and metadata controls.
 - `ChatMessageNavigator.tsx` renders the desktop user-message rail, active reading marker, and top/bottom controls.
 - `ChatGenerationProgress.tsx` renders the compact in-thread knowledge, web, or model generation status.

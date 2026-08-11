@@ -20,7 +20,6 @@ import {
   Cpu,
   Globe,
   Lightbulb,
-  Blocks,
   Link,
   ChevronDown,
   FileUp,
@@ -33,14 +32,13 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { Attachment, ReasoningEffort, SearchMode } from "@/types";
-import { localizePluginMeta } from "@/lib/plugin/localizedMeta";
 import type { ModelInfo } from "@/services/api/chatService";
 import { createNeoChatApiClient } from "@/services/api/client";
 import Tooltip from "../ui/Tooltip";
 import RemoteFileModal from "../modals/RemoteFileModal";
 import KnowledgeSelectionModal from "../knowledge/KnowledgeSelectionModal";
-import SafeImage from "../ui/SafeImage";
 import MessageInputAttachmentTray from "./MessageInputAttachmentTray";
+import McpToolsControl from "../mcp/McpToolsControl";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -79,8 +77,6 @@ import {
   getSearchProviderLabel,
   type SearchCompatibilityReason,
 } from "@/lib/settings/search";
-import { hasPluginAuthValue } from "@/lib/security/localSecretResolvers";
-import { isPluginAuthRequired } from "@/lib/plugin/config";
 import {
   isKnowledgeAttachment,
   MAX_CONVERSATION_KNOWLEDGE_COLLECTIONS,
@@ -121,7 +117,10 @@ interface MessageInputProps {
   allowSearchWhenSessionToolsDisabled?: boolean;
   allowReasoningWhenSessionToolsDisabled?: boolean;
   allowSkillsWhenSessionToolsDisabled?: boolean;
-  allowPluginsWhenSessionToolsDisabled?: boolean;
+  mcpEnabled?: boolean;
+  mcpConversationId?: string;
+  mcpAdmissionAttention?: { nonce: number; message: string } | null;
+  onMcpAdmissionAttentionHandled?: () => void;
   activeSkillIdsOverride?: readonly string[];
   onActiveSkillIdsChange?: (skillIds: string[]) => void;
   onLocalSessionToolUnavailable?: (action: string) => void;
@@ -173,7 +172,10 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       allowSearchWhenSessionToolsDisabled = false,
       allowReasoningWhenSessionToolsDisabled = false,
       allowSkillsWhenSessionToolsDisabled = false,
-      allowPluginsWhenSessionToolsDisabled = false,
+      mcpEnabled = false,
+      mcpConversationId,
+      mcpAdmissionAttention,
+      onMcpAdmissionAttentionHandled,
       activeSkillIdsOverride,
       onActiveSkillIdsChange,
       onLocalSessionToolUnavailable,
@@ -190,7 +192,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const [recordingSeconds, setRecordingSeconds] = useState(0);
     const [showModelSelect, setShowModelSelect] = useState(false);
     const [showSkillSelect, setShowSkillSelect] = useState(false);
-    const [showPluginSelect, setShowPluginSelect] = useState(false);
     const [showAttachMenu, setShowAttachMenu] = useState(false);
     const [showRemoteModal, setShowRemoteModal] = useState(false);
     const [showKBModal, setShowKBModal] = useState(false);
@@ -205,7 +206,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     >({});
 
     const t = useTranslations("MessageInput");
-    const tConfig = useTranslations("Config");
     const {
       chatConfig,
       setChatConfig,
@@ -216,11 +216,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const {
       modelMetadata,
       customModelMetadata,
-      installedPlugins,
-      activePlugins,
-      togglePluginActive,
       installedSkills,
-      pluginConfigs,
       voice,
       updateVoiceSettings,
       search,
@@ -445,7 +441,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         if (e.key !== "Escape") return;
         setShowAttachMenu(false);
         setShowSkillSelect(false);
-        setShowPluginSelect(false);
         setShowModelSelect(false);
       };
 
@@ -558,8 +553,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     );
     const skillSelectionDisabled =
       localSessionToolsDisabled && !allowSkillsWhenSessionToolsDisabled;
-    const pluginSelectionDisabled =
-      localSessionToolsDisabled && !allowPluginsWhenSessionToolsDisabled;
     const activeSkillIds = useMemo(
       () =>
         skillSelectionDisabled
@@ -725,22 +718,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         setChatConfig({ useReasoning: true, reasoningEffort: selection });
       }
     };
-
-    // Filter plugins to show only those ready for use
-    const validPlugins = useMemo(() => {
-      if (pluginSelectionDisabled) return [];
-      return installedPlugins
-        .filter((p) => {
-          // If auth is required, check if we have a config value
-          if (isPluginAuthRequired(p)) {
-            const hasConfig = hasPluginAuthValue(pluginConfigs[p.id]?.auth);
-            return !!hasConfig;
-          }
-          return true;
-        })
-        .map((p) => localizePluginMeta(p, tConfig));
-    }, [installedPlugins, pluginConfigs, pluginSelectionDisabled, tConfig]);
-    const activePluginIdsForMenu = pluginSelectionDisabled ? [] : activePlugins;
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
       if (
@@ -1530,7 +1507,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 open={showAttachMenu}
                 onOpenChange={(open) => {
                   setShowSkillSelect(false);
-                  setShowPluginSelect(false);
                   setShowModelSelect(false);
                   setShowAttachMenu(open);
                 }}
@@ -1638,7 +1614,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                     return;
                   }
                   setShowAttachMenu(false);
-                  setShowPluginSelect(false);
                   setShowModelSelect(false);
                   setShowSkillSelect(open);
                 }}
@@ -1715,117 +1690,16 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               </DropdownMenu>
             </div>
 
-            {/* Plugin Toggle Button */}
-            <div className="relative">
-              <DropdownMenu
-                open={showPluginSelect}
-                onOpenChange={(open) => {
-                  if (pluginSelectionDisabled) {
-                    setShowPluginSelect(false);
-                    if (open) notifyLocalSessionToolUnavailable("plugins");
-                    return;
-                  }
-                  setShowAttachMenu(false);
-                  setShowSkillSelect(false);
-                  setShowModelSelect(false);
-                  setShowPluginSelect(open);
-                }}
-              >
-                <Tooltip
-                  content={
-                    activePluginIdsForMenu.length > 0
-                      ? t("activePluginsCount", {
-                          count: activePluginIdsForMenu.length,
-                        })
-                      : t("plugins")
-                  }
-                  position="top"
-                >
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label={
-                        activePluginIdsForMenu.length > 0
-                          ? t("activePluginsAria", {
-                              count: activePluginIdsForMenu.length,
-                            })
-                          : t("plugins")
-                      }
-                      className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${activePluginIdsForMenu.length > 0 ? "text-cyan-500 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/20" : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"}`}
-                      disabled={isInputBusy}
-                    >
-                      <Blocks size={16} aria-hidden="true" />
-                    </button>
-                  </DropdownMenuTrigger>
-                </Tooltip>
-
-                <DropdownMenuContent
-                  side="top"
-                  align="start"
-                  className="max-h-64 w-64 overflow-y-auto custom-scrollbar"
-                >
-                  {validPlugins.length > 0 ? (
-                    <>
-                      <DropdownMenuLabel>
-                        {t("installedPlugins")}
-                      </DropdownMenuLabel>
-                      {validPlugins.map((plugin) => {
-                        const isActive = activePluginIdsForMenu.includes(
-                          plugin.id,
-                        );
-                        return (
-                          <DropdownMenuCheckboxItem
-                            checked={isActive}
-                            aria-label={
-                              isActive
-                                ? t("disablePlugin", { title: plugin.title })
-                                : t("enablePlugin", { title: plugin.title })
-                            }
-                            indicatorPosition="right"
-                            indicator={
-                              <span className="flex h-3 w-3 items-center justify-center rounded-full border border-cyan-500 bg-cyan-500">
-                                <span className="h-1.5 w-1.5 rounded-full bg-white" />
-                              </span>
-                            }
-                            key={plugin.id}
-                            onSelect={(event) => event.preventDefault()}
-                            onCheckedChange={() => {
-                              if (pluginSelectionDisabled) {
-                                notifyLocalSessionToolUnavailable("plugins");
-                                return;
-                              }
-                              togglePluginActive(plugin.id);
-                            }}
-                          >
-                            <span className="flex min-w-0 items-center gap-2 truncate">
-                              <SafeImage
-                                src={plugin.logoUrl}
-                                className="w-4 h-4 object-contain"
-                                alt=""
-                                fallback={
-                                  <Blocks size={14} aria-hidden="true" />
-                                }
-                              />
-                              <span className="truncate">{plugin.title}</span>
-                            </span>
-                          </DropdownMenuCheckboxItem>
-                        );
-                      })}
-                    </>
-                  ) : (
-                    <div
-                      className="px-3 py-4 text-center text-xs text-muted-foreground"
-                      role="status"
-                    >
-                      {!pluginSelectionDisabled && installedPlugins.length > 0
-                        ? t("pluginsMissingAuth")
-                        : t("noPluginsInstalled")}{" "}
-                      <br /> {t("visitPluginMarket")}
-                    </div>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+            <McpToolsControl
+              enabled={mcpEnabled}
+              conversationId={mcpConversationId}
+              disabled={isInputBusy}
+              attention={mcpAdmissionAttention}
+              onAttentionHandled={onMcpAdmissionAttentionHandled}
+              onDisableAllAndContinue={() => {
+                void handleSend();
+              }}
+            />
 
             {isReasoningSupported && (
               <DropdownMenu>
@@ -1981,7 +1855,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 onOpenChange={(open) => {
                   setShowAttachMenu(false);
                   setShowSkillSelect(false);
-                  setShowPluginSelect(false);
                   setShowModelSelect(open && availableModels.length > 0);
                 }}
               >

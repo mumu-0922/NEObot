@@ -6,12 +6,10 @@ import {
   LOCAL_SECRET_CONTEXTS,
 } from "../lib/security/localSecrets";
 import {
-  migratePluginConfigLocalSecrets,
   migrateProviderLocalSecret,
   migrateVoiceLocalSecrets,
 } from "../lib/settings/localSecretMigration";
 import { normalizeModelProvider } from "../lib/providers/config";
-import { normalizePluginConfigs } from "../lib/plugin/config";
 
 describe("local secret settings migration", () => {
   afterEach(async () => {
@@ -42,36 +40,15 @@ describe("local secret settings migration", () => {
     ).resolves.toBe("provider-secret");
   });
 
-  it("migrates voice and plugin plaintext secrets", async () => {
+  it("migrates voice plaintext secrets", async () => {
     const voice = await migrateVoiceLocalSecrets({
       elevenLabsApiKey: "voice-secret",
       mimoApiKey: "mimo-secret",
     });
-    const plugin = {
-      id: "demo-plugin",
-      title: "Demo",
-      description: "Demo",
-      logoUrl: "",
-      manifestUrl: "",
-      functions: [],
-      auth: { type: "bearer" as const },
-    };
-    const pluginConfigs = await migratePluginConfigLocalSecrets(
-      normalizePluginConfigs(
-        {
-          "demo-plugin": {
-            disabledFunctions: [],
-            auth: { type: "bearer", value: "plugin-secret" },
-          },
-        },
-        [plugin],
-      ),
-    );
-    const migrated = { voice, pluginConfigs };
+    const migrated = { voice };
 
     expect(JSON.stringify(migrated)).not.toContain("voice-secret");
     expect(JSON.stringify(migrated)).not.toContain("mimo-secret");
-    expect(JSON.stringify(migrated)).not.toContain("plugin-secret");
 
     await expect(
       decryptLocalSecret(
@@ -85,11 +62,5 @@ describe("local secret settings migration", () => {
         LOCAL_SECRET_CONTEXTS.mimoApiKey,
       ),
     ).resolves.toBe("mimo-secret");
-    await expect(
-      decryptLocalSecret(
-        pluginConfigs["demo-plugin"].auth?.localValueSecret,
-        LOCAL_SECRET_CONTEXTS.pluginAuth("demo-plugin"),
-      ),
-    ).resolves.toBe("plugin-secret");
   });
 });

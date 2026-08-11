@@ -11,7 +11,6 @@ import {
   UploadCloud,
   Globe,
   Lightbulb,
-  Blocks,
   Check,
   Loader2,
   Sparkles,
@@ -25,16 +24,13 @@ import { SimpleSwitch } from "../settings/SettingsUI";
 import { optimizeSystemPrompt } from "@/services/artifactService";
 import { streamGenerateContent } from "@/services/api/chatService";
 import { deleteFromOPFS, saveToOPFS } from "@/utils/opfs";
-import SafeImage from "@/components/ui/SafeImage";
 import { createStreamingReplacement } from "@/lib/utils/streamingText";
 import {
   getWorkspaceFileSelectionMessage,
   selectWorkspaceFilesForUpload,
 } from "@/lib/utils/workspaceFiles";
 import { ATTACHMENT_LIMITS, CHAT_ENTITY_LIMITS } from "@/config/limits";
-import { normalizePluginIdRefs } from "@/lib/plugin/config";
 import { normalizeSkillIdRefs } from "@/lib/skills";
-import { localizePluginMeta } from "@/lib/plugin/localizedMeta";
 import { logDevError } from "@/lib/utils/devLogger";
 
 interface WorkspaceSettingsModalProps {
@@ -83,9 +79,8 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
   workspace,
 }) => {
   const t = useTranslations("Workspace");
-  const tConfig = useTranslations("Config");
   const { createWorkspace, updateWorkspace, deleteWorkspace } = useChatStore();
-  const { installedPlugins, installedSkills } = useSettingsStore();
+  const { installedSkills } = useSettingsStore();
 
   const [workspaceId] = useState(workspace?.id || uuidv7());
   const [name, setName] = useState(workspace?.name || "");
@@ -118,12 +113,6 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
   const [enableReasoning, setEnableReasoning] = useState(
     workspace?.enableReasoning || false,
   );
-  const [activePlugins, setActivePlugins] = useState<string[]>(
-    normalizePluginIdRefs(
-      workspace?.activePlugins,
-      installedPlugins.map((plugin) => plugin.id),
-    ),
-  );
   const [activeSkills, setActiveSkills] = useState<string[]>(
     normalizeSkillIdRefs(workspace?.activeSkills, installedSkills),
   );
@@ -138,7 +127,6 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
   const colorGroupId = `${modalId}-color`;
   const systemPromptInputId = `${modalId}-system-prompt`;
   const presetGroupId = `${modalId}-preset-parameters`;
-  const pluginGroupId = `${modalId}-plugins`;
   const skillGroupId = `${modalId}-skills`;
   const fileGroupId = `${modalId}-files`;
   const fileInputId = `${modalId}-file-input`;
@@ -224,10 +212,6 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
       color: selectedColor,
       enableSearch,
       enableReasoning,
-      activePlugins: normalizePluginIdRefs(
-        activePlugins,
-        installedPlugins.map((plugin) => plugin.id),
-      ),
       activeSkills: normalizeSkillIdRefs(activeSkills, installedSkills),
     };
 
@@ -411,17 +395,6 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
       event.preventDefault();
       firstElement.focus({ preventScroll: true });
     }
-  };
-
-  const togglePlugin = (id: string) => {
-    if (!installedPlugins.some((plugin) => plugin.id === id)) return;
-
-    setActivePlugins((prev) =>
-      normalizePluginIdRefs(
-        prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
-        installedPlugins.map((plugin) => plugin.id),
-      ),
-    );
   };
 
   const toggleSkill = (id: string) => {
@@ -660,60 +633,6 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
                     checked={enableReasoning}
                     onChange={() => setEnableReasoning(!enableReasoning)}
                   />
-                </div>
-              </div>
-
-              {/* Plugins */}
-              <div className="space-y-2">
-                <div
-                  id={pluginGroupId}
-                  className="text-xs font-semibold text-gray-500 dark:text-muted-foreground flex items-center gap-2"
-                >
-                  <Blocks size={14} aria-hidden="true" /> {t("activePlugins")}
-                </div>
-                <div
-                  role="group"
-                  aria-labelledby={pluginGroupId}
-                  className="flex flex-wrap gap-2"
-                >
-                  {installedPlugins.length > 0 ? (
-                    installedPlugins.map((rawPlugin) => {
-                      const plugin = localizePluginMeta(rawPlugin, tConfig);
-                      return (
-                        <button
-                          type="button"
-                          key={plugin.id}
-                          aria-label={
-                            activePlugins.includes(plugin.id)
-                              ? t("disablePluginAria", { title: plugin.title })
-                              : t("enablePluginAria", { title: plugin.title })
-                          }
-                          aria-pressed={activePlugins.includes(plugin.id)}
-                          onClick={() => togglePlugin(plugin.id)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500/60 ${
-                            activePlugins.includes(plugin.id)
-                              ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300"
-                              : "bg-gray-50 dark:bg-muted border-gray-200 dark:border-border text-gray-600 dark:text-muted-foreground hover:border-gray-300 dark:hover:border-border"
-                          }`}
-                        >
-                          <SafeImage
-                            src={plugin.logoUrl}
-                            className="w-3 h-3 object-contain"
-                            alt=""
-                            fallback={<Blocks size={12} aria-hidden="true" />}
-                          />
-                          {plugin.title}
-                          {activePlugins.includes(plugin.id) && (
-                            <Check size={12} aria-hidden="true" />
-                          )}
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <div className="text-xs text-gray-400 italic">
-                      {t("noPluginsInstalled")}
-                    </div>
-                  )}
                 </div>
               </div>
 

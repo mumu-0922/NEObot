@@ -3,14 +3,12 @@ import {
   API_INPUT_LIMITS,
   ATTACHMENT_LIMITS,
   CHAT_CONFIG_LIMITS,
-  PLUGIN_EXECUTION_LIMITS,
 } from "../config/limits";
 import {
   ChatRequestSchema,
   EncryptedSecretEnvelopeSchema,
   MessageSchema,
   SimpleGenerateRequestSchema,
-  ToolExecutionSchema,
   VoiceSynthesizeRequestSchema,
   VoiceTranscribeRequestSchema,
 } from "../lib/api/schemas";
@@ -278,62 +276,6 @@ describe("api schemas", () => {
         provider: "elevenlabs",
         apiKeySecret: { ...encryptedSecret, context: "voice:elevenlabs" },
         apiKey: "test",
-      }),
-    ).toThrow(/encrypted BYOK secret/i);
-  });
-
-  it("rejects oversized plugin execution arguments", () => {
-    expect(() =>
-      ToolExecutionSchema.parse({
-        plugin: {
-          id: "test-plugin",
-          baseUrl: "https://api.example.com",
-          functions: [
-            {
-              name: "lookup",
-              path: "/lookup",
-              method: "GET",
-              parameters: { type: "object", properties: {} },
-            },
-          ],
-        },
-        functionDef: {
-          name: "lookup",
-          path: "/lookup",
-          method: "GET",
-          parameters: { type: "object", properties: {} },
-        },
-        args: {
-          q: "x".repeat(PLUGIN_EXECUTION_LIMITS.maxArgsJsonChars + 1),
-        },
-      }),
-    ).toThrow(/too large/i);
-  });
-
-  it("rejects plaintext plugin auth values", () => {
-    expect(() =>
-      ToolExecutionSchema.parse({
-        plugin: {
-          id: "test-plugin",
-          baseUrl: "https://api.example.com",
-          auth: { type: "apiKey" },
-          functions: [
-            {
-              name: "lookup",
-              path: "/lookup",
-              method: "GET",
-              parameters: { type: "object", properties: {} },
-            },
-          ],
-        },
-        functionDef: {
-          name: "lookup",
-          path: "/lookup",
-          method: "GET",
-          parameters: { type: "object", properties: {} },
-        },
-        args: { q: "neo" },
-        authConfig: { type: "apiKey", value: "secret" },
       }),
     ).toThrow(/encrypted BYOK secret/i);
   });

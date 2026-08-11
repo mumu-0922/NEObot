@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { PLUGIN_EXECUTION_LIMITS } from "../config/limits";
+import { TOOL_EXECUTION_LIMITS } from "../config/limits";
 import { streamGeminiResponse } from "../lib/streaming/gemini";
 import {
   streamOpenAIChatCompletions,
@@ -100,7 +100,7 @@ describe("streamed tool-call normalization", () => {
   });
 
   it("keeps the streamed tool-call ceiling high but bounded", async () => {
-    expect(PLUGIN_EXECUTION_LIMITS.maxStreamedToolCalls).toBe(100);
+    expect(TOOL_EXECUTION_LIMITS.maxStreamedToolCalls).toBe(100);
     const messages: SSEMessage[] = [];
     const client = {
       chat: {
@@ -114,7 +114,7 @@ describe("streamed tool-call normalization", () => {
                       tool_calls: Array.from(
                         {
                           length:
-                            PLUGIN_EXECUTION_LIMITS.maxStreamedToolCalls + 2,
+                            TOOL_EXECUTION_LIMITS.maxStreamedToolCalls + 2,
                         },
                         (_, index) => ({
                           index,
@@ -143,14 +143,14 @@ describe("streamed tool-call normalization", () => {
     });
 
     expect(toolCallMessages(messages)).toHaveLength(
-      PLUGIN_EXECUTION_LIMITS.maxStreamedToolCalls,
+      TOOL_EXECUTION_LIMITS.maxStreamedToolCalls,
     );
   });
 
   it("emits oversized or invalid OpenAI tool arguments as completed errors", async () => {
     const messages: SSEMessage[] = [];
     const oversizedArgs = `{"q":"${"x".repeat(
-      PLUGIN_EXECUTION_LIMITS.maxArgsJsonChars,
+      TOOL_EXECUTION_LIMITS.maxArgsJsonChars,
     )}"}`;
     const client = {
       chat: {

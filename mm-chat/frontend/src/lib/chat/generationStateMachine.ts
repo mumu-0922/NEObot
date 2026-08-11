@@ -13,7 +13,6 @@ const PIPELINE_PHASES: ChatPipelinePhase[] = [
   "attachments",
   "rag",
   "search",
-  "plugins",
   "model",
 ];
 
@@ -30,7 +29,6 @@ export function createInitialPipelineState(): ChatPipelineState {
     attachments: createPipelineStatus("attachments"),
     rag: createPipelineStatus("rag"),
     search: createPipelineStatus("search"),
-    plugins: createPipelineStatus("plugins"),
     model: createPipelineStatus("model"),
   };
 }
@@ -95,9 +93,7 @@ export function reduceChatGenerationState(
           event.phaseState === "running"
             ? event.phase === "search"
               ? "searching"
-              : event.phase === "plugins"
-                ? "tool"
-                : event.phase
+              : event.phase
             : state.status,
         pipeline: updatePipelinePhase(
           state.pipeline,

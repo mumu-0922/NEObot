@@ -191,7 +191,7 @@ function getDefaultSystemSettings(): SystemSettings | undefined {
 }
 
 function getPublicStoreState(
-  storeEnvName: "RATE_LIMIT_STORE" | "PLUGIN_REGISTRY_STORE",
+  storeEnvName: "RATE_LIMIT_STORE",
 ): PublicDeploymentStoreState {
   const mode = getDeploymentMode();
   const store = env(storeEnvName).toLowerCase();
@@ -246,6 +246,11 @@ export function getPublicServerConfig(): PublicServerConfig {
     search: {
       available: false,
     },
+    mcp: {
+      enabled: false,
+      remoteEnabled: false,
+      stdioEnabled: false,
+    },
     voice: {
       ...(defaultVoiceProvider
         ? { defaultProvider: defaultVoiceProvider }
@@ -288,7 +293,6 @@ export function getPublicServerConfig(): PublicServerConfig {
       byokStableKeyConfigured: Boolean(env("BYOK_PRIVATE_KEY_PEM")),
       byokEphemeralAllowed: envBool("BYOK_ALLOW_EPHEMERAL_KEY") === true,
       rateLimitStore: getPublicStoreState("RATE_LIMIT_STORE"),
-      pluginRegistryStore: getPublicStoreState("PLUGIN_REGISTRY_STORE"),
     },
     ...(system ? { system } : {}),
   };

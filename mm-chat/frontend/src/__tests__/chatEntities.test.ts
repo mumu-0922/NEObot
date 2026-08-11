@@ -25,7 +25,7 @@ describe("chat entity normalization", () => {
     expect(normalizeSessionTitle("\u0000\n```")).toBe("New Chat");
   });
 
-  it("normalizes session metadata and plugin refs", () => {
+  it("normalizes session metadata and strips retired plugin refs", () => {
     const session = normalizeSession({
       id: "s1",
       title: ` ${"t".repeat(CHAT_ENTITY_LIMITS.maxSessionTitleChars + 10)}`,
@@ -65,7 +65,7 @@ describe("chat entity normalization", () => {
     expect(session.systemInstruction).toHaveLength(
       CHAT_ENTITY_LIMITS.maxSessionSystemInstructionChars,
     );
-    expect(session.config?.activePlugins).toEqual(["search", "image"]);
+    expect(session.config).not.toHaveProperty("activePlugins");
     expect(session.config?.activeSkills).toEqual([
       "clarity-rewrite",
       "summary",
@@ -86,7 +86,7 @@ describe("chat entity normalization", () => {
     expect(session.compression?.lastCompressedMessageId).toHaveLength(120);
   });
 
-  it("omits empty session plugin presets", () => {
+  it("strips empty retired session plugin presets", () => {
     expect(
       normalizeSession({
         id: "s1",
@@ -158,7 +158,7 @@ describe("chat entity normalization", () => {
       ATTACHMENT_LIMITS.maxFileNameChars,
     );
     expect(workspace.color).toBe("blue");
-    expect(workspace.activePlugins).toEqual(["reader"]);
+    expect(workspace).not.toHaveProperty("activePlugins");
     expect(workspace.activeSkills).toEqual(["meeting-minutes"]);
     expect(workspace.enableSearch).toBe(false);
     expect(workspace.enableReasoning).toBe(true);

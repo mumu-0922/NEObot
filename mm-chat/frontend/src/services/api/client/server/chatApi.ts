@@ -17,6 +17,8 @@ import type {
   GenerateTextInput,
   GenerateTextResponse,
   PlanServerToolsInput,
+  PreflightMcpInput,
+  PreflightMcpResponse,
   ServerPlannedToolCall,
   ServerSearchResult,
   StreamAssistantMessageInput,
@@ -26,6 +28,7 @@ import type {
 } from "../types";
 import type { HttpClient } from "./httpClient";
 import { normalizeProcessStep } from "@/lib/chat/processTrace";
+import { normalizeMcpToolCallUpdate } from "@/lib/mcp/types";
 
 const conversationsPath = "/v1/chat/conversations";
 const generateTextPath = "/v1/chat/generate";
@@ -81,6 +84,11 @@ type StreamAssistantMessageRequestBody = {
   systemPrompt?: string;
   metadata?: Record<string, unknown>;
   idempotencyKey: string;
+};
+
+type PreflightMcpRequestBody = {
+  modelRef: PreflightMcpInput["modelRef"];
+  provider?: PreflightMcpInput["provider"];
 };
 
 type CancelRunResponse = {
@@ -221,6 +229,25 @@ export function createServerChatApiShell(httpClient: HttpClient): ChatApi {
         `${conversationPath(conversationId)}/messages`,
       );
       return getPageItems(page, "message list");
+    },
+    async preflightMcp(
+      input: PreflightMcpInput,
+    ): Promise<PreflightMcpResponse> {
+      const response = await httpClient.requestJson<unknown>(
+        `${conversationPath(input.conversationId)}/mcp-preflight`,
+        {
+          method: "POST",
+          body: preflightMcpBody(input),
+          signal: input.signal,
+        },
+      );
+      if (!isRecord(response) || typeof response.enabled !== "boolean") {
+        throw new ApiClientError(
+          "INVALID_SERVER_RESPONSE",
+          "Server returned an invalid MCP preflight response.",
+        );
+      }
+      return { enabled: response.enabled };
     },
     async streamAssistantMessage(
       input: StreamAssistantMessageInput,
@@ -459,6 +486,13 @@ function streamAssistantMessageBody(
   });
 }
 
+function preflightMcpBody(input: PreflightMcpInput): PreflightMcpRequestBody {
+  return removeUndefined({
+    modelRef: input.modelRef,
+    provider: input.provider,
+  });
+}
+
 function dispatchStreamEvent(
   event: ServerStreamEvent,
   handlers?: ChatStreamHandlers,
@@ -496,6 +530,17 @@ function dispatchStreamEvent(
         );
       }
       handlers?.onProcess?.({ ...event, step });
+      return null;
+    }
+    case "tool.call.updated": {
+      const toolCall = normalizeMcpToolCallUpdate(event.toolCall);
+      if (!toolCall) {
+        throw new ApiClientError(
+          "INVALID_SERVER_RESPONSE",
+          "Server returned an invalid MCP Tool call update.",
+        );
+      }
+      handlers?.onToolCall?.({ ...event, toolCall });
       return null;
     }
     case "usage.updated":

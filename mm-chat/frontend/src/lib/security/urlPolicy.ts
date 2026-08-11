@@ -9,13 +9,7 @@ import {
 import { isOpenAIProviderType } from "../providers/providerTypes";
 
 export type OutboundContext =
-  | "provider"
-  | "search"
-  | "plugin"
-  | "pluginManifest"
-  | "voice"
-  | "agent"
-  | "metadata";
+  "provider" | "search" | "remoteFile" | "voice" | "agent" | "metadata";
 
 export interface SafeUrlPolicy {
   context: OutboundContext;
@@ -208,8 +202,7 @@ export function getSafeUrlPolicy(context: OutboundContext): SafeUrlPolicy {
         allowedHosts: ["basellm.github.io"],
         profile,
       };
-    case "pluginManifest":
-    case "plugin":
+    case "remoteFile":
     default:
       return {
         context,

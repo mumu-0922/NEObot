@@ -384,7 +384,7 @@ async function safeFetchResponse(
   options: SafeFetchOptions = {},
   timeoutSignal: AbortSignal,
 ): Promise<Response> {
-  const policy = options.policy || getSafeUrlPolicy("plugin");
+  const policy = options.policy || getSafeUrlPolicy("remoteFile");
   let { url } = validateOutboundUrl(input, policy);
   await assertResolvedAddressAllowed(url, policy, timeoutSignal);
 
@@ -486,7 +486,7 @@ export async function assertOutboundUrlAllowed(
   );
 
   try {
-    const policy = options.policy || getSafeUrlPolicy("plugin");
+    const policy = options.policy || getSafeUrlPolicy("remoteFile");
     const { url } = validateOutboundUrl(input, policy);
     await assertResolvedAddressAllowed(url, policy, timeout.controller.signal);
   } catch (error) {

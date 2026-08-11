@@ -42,8 +42,9 @@ describe("ChatApp server mode composition", () => {
     expect(chatApp).not.toContain("buildServerKnowledgeStreamConfig");
     expect(chatApp).not.toContain("buildServerKnowledgeMessageMetadata");
     expect(chatApp).toContain("chatConfig: composerChatConfig");
-    expect(chatApp).toContain("installedPlugins,");
-    expect(chatApp).toContain("activePlugins,");
+    expect(chatApp).not.toContain("orchestrateServerPlugins");
+    expect(chatApp).not.toContain("installedPlugins,");
+    expect(chatApp).not.toContain("activePlugins,");
     expect(chatApp).toContain("if (serverModeEnabled) return;");
     expect(chatApp).toContain("abortActiveGeneration");
     expect(chatApp).toContain("if (isGenerating && !serverModeEnabled)");
@@ -61,9 +62,11 @@ describe("ChatApp server mode composition", () => {
     expect(chatApp).toContain(
       "allowSkillsWhenSessionToolsDisabled={serverModeEnabled}",
     );
-    expect(chatApp).toContain(
-      "allowPluginsWhenSessionToolsDisabled={serverModeEnabled}",
-    );
+    expect(chatApp).toContain("mcpEnabled={");
+    expect(chatApp).toContain("serverConfig?.mcp.enabled === true");
+    expect(chatApp).toContain("if (serverMcpEnabled)");
+    expect(chatApp).toContain("preflightMcp({");
+    expect(chatApp).toContain("mcpConversationId={");
     expect(chatApp).toContain("activeSkillIdsOverride={");
     expect(chatApp).toContain("onActiveSkillIdsChange={");
     expect(chatApp).toContain(
@@ -71,10 +74,6 @@ describe("ChatApp server mode composition", () => {
     );
     expect(chatApp).toContain("autoSelect: false");
     expect(chatApp).toContain("skillResolution.context");
-    expect(chatApp).toContain(
-      "const pluginResolution = await orchestrateServerPlugins",
-    );
-    expect(chatApp).toContain("pluginResolution.context");
     expect(chatApp).toContain(
       "onLocalSessionToolUnavailable={showServerUnsupportedAction}",
     );
@@ -148,17 +147,13 @@ describe("ChatApp server mode composition", () => {
     expect(chatApp).toContain("duplicateServerSession");
     expect(chatApp).toContain("updateServerSessionInstruction");
     expect(chatApp).toContain("generateServerConversationTitle");
-    expect(chatApp).not.toContain("installedPlugins={serverModeEnabled");
     expect(chatApp).toContain(
       "activeSkillIds: serverModeEnabled ? activeSkillIds : []",
     );
     expect(chatApp).toContain(
-      "activePluginIdsOverride: serverModeEnabled ? activePlugins : undefined",
-    );
-    expect(chatApp).toContain(
       "activeSkillIdsOverride: serverModeEnabled ? activeSkillIds : undefined",
     );
-    expect(chatApp).not.toContain("activePlugins: serverModeEnabled ? []");
+    expect(chatApp).not.toContain("activePluginIdsOverride");
 
     expect(generationController).toContain("abortActiveGeneration");
     expect(generationController).toContain("await state.syncActiveSession");

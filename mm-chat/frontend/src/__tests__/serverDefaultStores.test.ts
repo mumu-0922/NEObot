@@ -1,14 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PublicServerConfig } from "../lib/defaultConfig/shared";
 import { SERVER_DEFAULT_PROVIDER_ID } from "../lib/defaultConfig/shared";
-import type { Plugin } from "../types";
 
 vi.mock("server-only", () => ({}));
 
 vi.mock("@/config/api", async () => vi.importActual("../config/api"));
 vi.mock("@/config/defaults", async () => vi.importActual("../config/defaults"));
 vi.mock("@/config/limits", async () => vi.importActual("../config/limits"));
-vi.mock("@/config/plugins", async () => vi.importActual("../config/plugins"));
 vi.mock("@/lib/defaultConfig/shared", async () =>
   vi.importActual("../lib/defaultConfig/shared"),
 );
@@ -47,6 +45,11 @@ const serverConfig: PublicServerConfig = {
   },
   search: {
     available: true,
+  },
+  mcp: {
+    enabled: true,
+    remoteEnabled: true,
+    stdioEnabled: false,
   },
   voice: {
     elevenLabsAvailable: false,
@@ -316,128 +319,6 @@ describe("server default store injection", () => {
         reasoning: false,
       },
     });
-  });
-
-  it("purges the retired Jina plugin, activation, and saved auth", async () => {
-    const { useSettingsStore } = await import("../store/core/settingsStore");
-    const { encryptLocalSecret, LOCAL_SECRET_CONTEXTS, hasLocalSecret } =
-      await import("../lib/security/localSecrets");
-    const retiredPluginId = "jina-web-reader";
-
-    const localValueSecret = await encryptLocalSecret(
-      "jina-secret",
-      LOCAL_SECRET_CONTEXTS.pluginAuth(retiredPluginId),
-    );
-    const staleJinaPlugin: Plugin = {
-      id: retiredPluginId,
-      title: "Old Jina",
-      description: "Retired reader",
-      logoUrl: "",
-      manifestUrl: "",
-      baseUrl: "https://r.jina.ai",
-      category: "Utilities",
-      builtIn: true,
-      added: new Date().toISOString(),
-      functions: [],
-      auth: { type: "bearer", required: false },
-    };
-
-    useSettingsStore.setState((state) => ({
-      ...state,
-      installedPlugins: [...state.installedPlugins, staleJinaPlugin],
-      activePlugins: [retiredPluginId],
-      pluginConfigs: {
-        [retiredPluginId]: {
-          disabledFunctions: [],
-          auth: {
-            type: "bearer",
-            value: "",
-            ...(localValueSecret ? { localValueSecret } : {}),
-            addTo: "header",
-          },
-        },
-      },
-    }));
-
-    useSettingsStore.getState().ensureBuiltInPlugins();
-
-    const retiredPlugin = useSettingsStore
-      .getState()
-      .installedPlugins.find((plugin) => plugin.id === retiredPluginId);
-    const savedAuth =
-      useSettingsStore.getState().pluginConfigs[retiredPluginId]?.auth;
-
-    expect(retiredPlugin).toBeUndefined();
-    expect(useSettingsStore.getState().activePlugins).not.toContain(
-      retiredPluginId,
-    );
-    expect(savedAuth).toBeUndefined();
-    expect(hasLocalSecret(savedAuth?.localValueSecret)).toBe(false);
-  });
-
-  it("keeps plugin auth local secrets in persisted settings snapshots", async () => {
-    const { useSettingsStore } = await import("../store/core/settingsStore");
-    const { AGNES_IMAGE_PLUGIN } = await import("../config/plugins");
-    const { encryptLocalSecret, LOCAL_SECRET_CONTEXTS, hasLocalSecret } =
-      await import("../lib/security/localSecrets");
-    const { hasPluginAuthValue } =
-      await import("../lib/security/localSecretResolvers");
-
-    const localValueSecret = await encryptLocalSecret(
-      "agnes-secret",
-      LOCAL_SECRET_CONTEXTS.pluginAuth(AGNES_IMAGE_PLUGIN.id),
-    );
-
-    useSettingsStore.setState((state) => ({
-      ...state,
-      activePlugins: [AGNES_IMAGE_PLUGIN.id],
-      pluginConfigs: {
-        ...state.pluginConfigs,
-        [AGNES_IMAGE_PLUGIN.id]: {
-          disabledFunctions: [],
-          auth: {
-            type: "bearer",
-            value: "",
-            ...(localValueSecret ? { localValueSecret } : {}),
-            addTo: "header",
-          },
-        },
-      },
-    }));
-
-    const partialize = (useSettingsStore as any).persist.getOptions()
-      .partialize;
-    const persisted = partialize(useSettingsStore.getState());
-
-    expect(
-      hasLocalSecret(
-        persisted.pluginConfigs[AGNES_IMAGE_PLUGIN.id]?.auth?.localValueSecret,
-      ),
-    ).toBe(true);
-    expect(
-      hasPluginAuthValue(persisted.pluginConfigs[AGNES_IMAGE_PLUGIN.id]?.auth),
-    ).toBe(true);
-  });
-
-  it("sets active plugins from a normalized target list", async () => {
-    const { useSettingsStore } = await import("../store/core/settingsStore");
-    const { AGNES_IMAGE_PLUGIN, UNSPLASH_PLUGIN, WEATHER_PLUGIN } =
-      await import("../config/plugins");
-
-    useSettingsStore
-      .getState()
-      .setActivePlugins([
-        WEATHER_PLUGIN.id,
-        WEATHER_PLUGIN.id,
-        AGNES_IMAGE_PLUGIN.id,
-        "missing-plugin",
-        UNSPLASH_PLUGIN.id,
-      ]);
-
-    expect(useSettingsStore.getState().activePlugins).toEqual([
-      WEATHER_PLUGIN.id,
-      UNSPLASH_PLUGIN.id,
-    ]);
   });
 
   it("removes only the unmodified legacy Gemini provider during migration", async () => {

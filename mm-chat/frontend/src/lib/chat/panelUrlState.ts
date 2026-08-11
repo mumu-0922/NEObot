@@ -1,7 +1,6 @@
 export const CHAT_PANEL_VALUES = [
   "chat",
   "assistants",
-  "plugins",
   "skills",
   "knowledge",
   "settings",
@@ -31,7 +30,6 @@ export interface ChatPanelUrlState {
 
 const QUERY_PANEL_VALUES: readonly ChatPanel[] = [
   "assistants",
-  "plugins",
   "skills",
   "knowledge",
   "settings",

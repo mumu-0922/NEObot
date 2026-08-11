@@ -1,6 +1,6 @@
 # Configuration Modules
 
-The `src/config` directory contains static configuration, limits, built-in assistants, and built-in plugin definitions. Keep this layer deterministic: configuration files should export constants, schemas, and small lookup helpers, not runtime side effects.
+The `src/config` directory contains static configuration, limits, and built-in Assistant definitions. Keep this layer deterministic: configuration files should export constants, schemas, and small lookup helpers, not runtime side effects. MCP Tool definitions come from the backend catalog or administrator manifest, never frontend constants.
 
 ## Files
 
@@ -11,7 +11,6 @@ src/config/
 ├── defaults.ts
 ├── index.ts
 ├── limits.ts
-├── plugins.ts
 └── README.md
 ```
 
@@ -36,24 +35,6 @@ Defines built-in assistant metadata and assistant categories. Assistant records 
 import { BUILT_IN_ASSISTANTS, ASSISTANT_CATEGORIES } from "@/config/assistants";
 ```
 
-### `plugins.ts`
-
-Defines built-in plugin manifests, tool schemas, plugin categories, and lookup helpers. Function descriptions and JSON schemas are sent to models as tool declarations, so keep them concise and in English.
-
-```typescript
-import {
-  BUILT_IN_PLUGINS,
-  AGNES_VIDEO_PLUGIN,
-  getPluginById,
-  getPluginsByCategory,
-} from "@/config/plugins";
-```
-
-Agnes video generation is intentionally split into two tools:
-
-- `create_video` creates an asynchronous task and returns task identifiers.
-- `get_video_result` checks the current status or final result by `video_id`, with `task_id` kept for legacy lookups.
-
 ### `defaults.ts`
 
 Defines default model selections, chat behavior, UI options, search/RAG defaults, voice defaults, memory defaults, HTML visual prompt defaults, and system settings. These values are used when neither local settings nor server defaults provide an override.
@@ -67,7 +48,7 @@ import {
 
 ### `limits.ts`
 
-Centralizes input and payload limits for chat, attachments, plugins, skills, document parsing, settings, and API validation. Prefer adding new limits here when the same boundary is enforced in more than one place.
+Centralizes input and payload limits for chat, attachments, Skills, document parsing, settings, and API validation. Prefer adding new limits here when the same boundary is enforced in more than one place.
 
 ### `index.ts`
 
@@ -79,16 +60,7 @@ Provides the public barrel for configuration modules. Named imports from the spe
 - Keep configuration values serializable when possible.
 - Keep tool descriptions and parameter descriptions in English for stable model tool-calling behavior.
 - Put runtime validation in `src/lib/api/schemas.ts` or feature-specific helpers, not in config files.
-- Use helper functions such as `getPluginById` when the lookup logic already exists.
 - Preserve backward compatibility for exported names that are used by persisted settings or older imports.
-
-## Adding A Built-In Plugin
-
-1. Define the parameter schema near the other plugin schemas.
-2. Export a `Plugin` object with stable `id`, `title`, `description`, `baseUrl`, `functions`, and `auth`.
-3. Add the plugin to `BUILT_IN_PLUGINS`.
-4. Add localized title and description keys in `src/lib/plugin/localizedMeta.ts` and locale files when the plugin is shown in the UI.
-5. Add route or utility tests for any provider-specific request shaping or response normalization.
 
 ## Adding A Route Constant
 

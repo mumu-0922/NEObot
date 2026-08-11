@@ -37,7 +37,6 @@ describe("dropdown menu composition", () => {
       "src/components/content/Artifact.tsx",
       "src/components/modals/RemoteFileModal.tsx",
       "src/components/assistant/AssistantHub.tsx",
-      "src/components/plugin/PluginMarket.tsx",
       "src/components/layout/Sidebar.tsx",
     ];
 

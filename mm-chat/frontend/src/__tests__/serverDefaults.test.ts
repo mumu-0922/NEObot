@@ -66,7 +66,6 @@ const ENV_KEYS = [
   "DEPLOYMENT_MODE",
   "TRUST_PROXY_HEADERS",
   "RATE_LIMIT_STORE",
-  "PLUGIN_REGISTRY_STORE",
   "UPSTASH_REDIS_REST_URL",
   "UPSTASH_REDIS_REST_TOKEN",
   "DEFAULT_PROVIDER_TYPE",
@@ -242,7 +241,6 @@ describe("server default configuration", () => {
       DEPLOYMENT_MODE: "hosted",
       TRUST_PROXY_HEADERS: "true",
       RATE_LIMIT_STORE: "upstash",
-      PLUGIN_REGISTRY_STORE: "upstash",
       UPSTASH_REDIS_REST_URL: "https://redis.internal",
       UPSTASH_REDIS_REST_TOKEN: "redis-secret",
     });
@@ -259,7 +257,6 @@ describe("server default configuration", () => {
       byokStableKeyConfigured: true,
       byokEphemeralAllowed: false,
       rateLimitStore: "shared",
-      pluginRegistryStore: "shared",
     });
     for (const secret of [
       "super-secret-password",

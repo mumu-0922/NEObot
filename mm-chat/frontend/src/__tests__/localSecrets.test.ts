@@ -179,15 +179,18 @@ describe("local secret envelopes", () => {
 
   it("keeps encrypted settings usable after clearing the in-memory cache", async () => {
     const envelope = await encryptLocalSecret(
-      "plugin-secret",
-      LOCAL_SECRET_CONTEXTS.pluginAuth("demo"),
+      "provider-secret",
+      LOCAL_SECRET_CONTEXTS.providerApiKey("demo"),
     );
 
     clearLocalSecretKeyCache();
 
     await expect(
-      decryptLocalSecret(envelope, LOCAL_SECRET_CONTEXTS.pluginAuth("demo")),
-    ).resolves.toBe("plugin-secret");
+      decryptLocalSecret(
+        envelope,
+        LOCAL_SECRET_CONTEXTS.providerApiKey("demo"),
+      ),
+    ).resolves.toBe("provider-secret");
   });
 
   it("uses an in-memory key when IndexedDB is unavailable", async () => {

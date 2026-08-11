@@ -6,7 +6,6 @@ vi.mock("server-only", () => ({}));
 vi.mock("@/config/api", async () => vi.importActual("../config/api"));
 vi.mock("@/config/defaults", async () => vi.importActual("../config/defaults"));
 vi.mock("@/config/limits", async () => vi.importActual("../config/limits"));
-vi.mock("@/config/plugins", async () => vi.importActual("../config/plugins"));
 vi.mock("@/lib/defaultConfig/shared", async () =>
   vi.importActual("../lib/defaultConfig/shared"),
 );

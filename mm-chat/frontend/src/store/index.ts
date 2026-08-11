@@ -35,7 +35,6 @@ export {
   useProviderSettings,
   useDefaultModels,
   useModelMetadata,
-  usePluginSettings,
   useAgentSettings,
   useSystemSettings,
   useSearchSettings,

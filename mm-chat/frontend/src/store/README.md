@@ -36,11 +36,11 @@ excluded from browser persistence.
 
 ### `settingsStore`
 
-Stores broader app configuration, including system behavior, model metadata, search, voice, plugins, installed/custom skills, skill catalog and definition caches, custom assistants, and other settings that are better suited to IndexedDB.
+Stores broader app configuration, including system behavior, model metadata, search, voice, installed/custom Skills, Skill catalog and definition caches, custom Assistants, and other settings that are better suited to IndexedDB.
 
 ### `chatStore`
 
-Owns chat sessions, messages, workspaces, message branching, session export/import state, and session-level configuration. Session and workspace config can include active plugin and skill presets. Message-heavy data is stored separately from session metadata where practical.
+Owns browser chat sessions, messages, workspaces, message branching, export/import state, and session-level configuration. Skill presets remain browser-owned; Server-mode MCP selection is stored through the backend API. Message-heavy data is stored separately from session metadata where practical.
 
 ### `memoryStore`
 
@@ -89,7 +89,7 @@ const theme = useStoreWithSSR(
 - Use `localStorage` only for browser-owned core preferences that must be
   available immediately. Server-owned task models must be loaded and saved
   through the settings API.
-- Use IndexedDB for larger browser-owned or import-source data such as legacy sessions, messages, plugins, skills, assistants, and memories.
+- Use IndexedDB for larger browser-owned or import-source data such as legacy sessions, messages, Skills, Assistants, and memories. Retired Plugin fields are migration input only and must not be re-persisted.
 - In server mode, Knowledge state lives behind Go/Postgres/MinIO. The legacy
   IndexedDB Knowledge key remains readable only for explicit browser-data import.
 - Use OPFS for uploaded file bytes and local file handles.

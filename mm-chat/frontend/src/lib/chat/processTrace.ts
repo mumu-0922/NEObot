@@ -16,6 +16,7 @@ const PROCESS_STEP_STATUSES = new Set<ProcessStepStatus>([
   "failed",
   "skipped",
   "cancelled",
+  "outcome_unknown",
 ]);
 
 const SPECIALIZED_TOOL_KINDS: Readonly<Record<string, ProcessStepKind>> = {
@@ -49,6 +50,10 @@ const PROCESS_DETAIL_KEYS = new Set([
   "failureCategory",
   "queryRewritten",
   "toolName",
+  "server",
+  "classification",
+  "callStatus",
+  "argumentSummary",
   "round",
   "selectedCount",
   "truncated",

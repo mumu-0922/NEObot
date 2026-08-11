@@ -5,7 +5,6 @@ import type {
   Workspace,
 } from "../../types";
 import { ATTACHMENT_LIMITS, CHAT_ENTITY_LIMITS } from "../../config/limits";
-import { normalizePluginIdRefs } from "../plugin/config";
 import { normalizeSkillIdRefs } from "../skills";
 import { isReasoningEffort, normalizeReasoningEffort } from "./reasoning";
 import {
@@ -199,19 +198,20 @@ export function normalizeSessionConfig(
   config?: SessionConfig,
 ): SessionConfig | undefined {
   if (!config) return undefined;
+  const legacyConfig = config as SessionConfig & { activePlugins?: unknown };
   const {
-    activePlugins: rawActivePlugins,
+    activePlugins: _retiredActivePlugins,
     activeSkills: rawActiveSkills,
     selectedKnowledgeCollectionIds: rawSelectedKnowledgeCollectionIds,
     reasoningEffort: rawReasoningEffort,
     searchMode: rawSearchMode,
     useSearch: rawUseSearch,
     ...rest
-  } = config;
+  } = legacyConfig;
+  void _retiredActivePlugins;
   const hasSearchSelection =
     isSearchMode(rawSearchMode) || typeof rawUseSearch === "boolean";
   const searchMode = normalizeSearchMode(rawSearchMode, rawUseSearch);
-  const activePlugins = normalizePluginIdRefs(rawActivePlugins);
   const activeSkills = normalizeSkillIdRefs(rawActiveSkills, []);
   const selectedKnowledgeCollectionIds =
     normalizeAttachmentKnowledgeCollectionIds(
@@ -230,7 +230,6 @@ export function normalizeSessionConfig(
     ...(isReasoningEffort(rawReasoningEffort)
       ? { reasoningEffort: normalizeReasoningEffort(rawReasoningEffort) }
       : {}),
-    ...(activePlugins.length > 0 ? { activePlugins } : {}),
     ...(activeSkills.length > 0 ? { activeSkills } : {}),
     ...(Array.isArray(rawSelectedKnowledgeCollectionIds)
       ? { selectedKnowledgeCollectionIds }
@@ -263,9 +262,14 @@ export function normalizeSession(session: Session): Session {
 export function normalizeWorkspace(workspace: Workspace): Workspace {
   const {
     knowledgeCollectionIds: _retiredKnowledgeCollectionIds,
+    activePlugins: _retiredActivePlugins,
     ...retainedWorkspace
-  } = workspace as Workspace & { knowledgeCollectionIds?: unknown };
+  } = workspace as Workspace & {
+    knowledgeCollectionIds?: unknown;
+    activePlugins?: unknown;
+  };
   void _retiredKnowledgeCollectionIds;
+  void _retiredActivePlugins;
   const color = trimString(
     workspace.color,
     CHAT_ENTITY_LIMITS.maxWorkspaceColorChars,
@@ -289,7 +293,6 @@ export function normalizeWorkspace(workspace: Workspace): Workspace {
     color: WORKSPACE_COLORS.has(color) ? color : "blue",
     enableSearch: workspace.enableSearch === true,
     enableReasoning: workspace.enableReasoning === true,
-    activePlugins: normalizePluginIdRefs(workspace.activePlugins),
     activeSkills: normalizeSkillIdRefs(workspace.activeSkills, []),
     createdAt: Number.isFinite(Number(workspace.createdAt))
       ? Number(workspace.createdAt)

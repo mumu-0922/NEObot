@@ -5,7 +5,7 @@ export function getRemoteAttachmentUrlError(value: string): string | null {
   if (!trimmed) return "Remote file URL is required";
 
   try {
-    validateOutboundUrl(trimmed, getSafeUrlPolicy("plugin"));
+    validateOutboundUrl(trimmed, getSafeUrlPolicy("remoteFile"));
     return null;
   } catch (error) {
     if (error instanceof Error) {

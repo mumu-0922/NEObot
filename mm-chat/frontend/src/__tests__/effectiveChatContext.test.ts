@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { resolveEffectiveChatContext } from "../lib/chat/effectiveChatContext";
 
 describe("effective chat context", () => {
-  it("normalizes session plugins and skills and reports unavailable capabilities", () => {
+  it("normalizes session skills and reports unavailable capabilities", () => {
     const context = resolveEffectiveChatContext({
       session: {
         id: "session-1",
@@ -12,7 +12,6 @@ describe("effective chat context", () => {
         messageCount: 0,
         systemInstruction: "Answer in project voice.",
         config: {
-          activePlugins: ["needs-auth", "free-plugin"],
           activeSkills: ["session-skill", "session-skill", ""],
         },
       },
@@ -44,28 +43,6 @@ describe("effective chat context", () => {
         provider: "default",
         configs: { default: { serverAvailable: false } },
       },
-      installedPlugins: [
-        {
-          id: "needs-auth",
-          title: "Needs Auth",
-          description: "",
-          logoUrl: "",
-          manifestUrl: "",
-          functions: [],
-          auth: { type: "apiKey" },
-        },
-        {
-          id: "free-plugin",
-          title: "Free Plugin",
-          description: "",
-          logoUrl: "",
-          manifestUrl: "",
-          functions: [],
-          auth: { type: "none" },
-        },
-      ],
-      pluginConfigs: {},
-      activePlugins: [],
     });
 
     expect(context.workspaceFiles).toHaveLength(1);
@@ -75,10 +52,9 @@ describe("effective chat context", () => {
     expect(context.systemInstruction).toContain("<diagram-rendering>");
     expect(context.systemInstruction).toContain("Current date and time");
     expect(context.systemInstruction).toContain("2026-07-01T02:03:04.000Z");
-    expect(context.activePluginIds).toEqual(["free-plugin"]);
     expect(context.activeSkillIds).toEqual(["session-skill"]);
     expect(context.capabilityStatuses.map((status) => status.code)).toEqual(
-      expect.arrayContaining(["search_unavailable", "plugin_auth_missing"]),
+      expect.arrayContaining(["search_unavailable"]),
     );
   });
 
@@ -114,15 +90,12 @@ describe("effective chat context", () => {
         provider: "default",
         configs: { default: { serverAvailable: false } },
       },
-      installedPlugins: [],
-      pluginConfigs: {},
-      activePlugins: [],
     });
 
     expect(context.activeSkillIds).toEqual(["workspace-skill"]);
   });
 
-  it("uses browser-persisted plugin and skill selections for server sessions", () => {
+  it("uses browser-persisted skill selections for server sessions", () => {
     const context = resolveEffectiveChatContext({
       session: {
         id: "server-session",
@@ -131,7 +104,6 @@ describe("effective chat context", () => {
         model: "SERVER_DEFAULT:gpt-server",
         messageCount: 0,
         config: {
-          activePlugins: ["stale-plugin"],
           activeSkills: ["stale-skill"],
         },
       },
@@ -150,29 +122,6 @@ describe("effective chat context", () => {
         provider: "default",
         configs: { default: { serverAvailable: false } },
       },
-      installedPlugins: [
-        {
-          id: "stale-plugin",
-          title: "Stale Plugin",
-          description: "",
-          logoUrl: "",
-          manifestUrl: "",
-          functions: [],
-          auth: { type: "none" },
-        },
-        {
-          id: "server-plugin",
-          title: "Server Plugin",
-          description: "",
-          logoUrl: "",
-          manifestUrl: "",
-          functions: [],
-          auth: { type: "none" },
-        },
-      ],
-      pluginConfigs: {},
-      activePlugins: [],
-      activePluginIdsOverride: ["server-plugin"],
       installedSkills: [
         {
           id: "server-skill",
@@ -205,7 +154,6 @@ describe("effective chat context", () => {
       activeSkillIdsOverride: ["server-skill"],
     });
 
-    expect(context.activePluginIds).toEqual(["server-plugin"]);
     expect(context.activeSkillIds).toEqual(["server-skill"]);
   });
 
@@ -228,9 +176,6 @@ describe("effective chat context", () => {
         provider: "default",
         configs: { default: { serverAvailable: false } },
       },
-      installedPlugins: [],
-      pluginConfigs: {},
-      activePlugins: [],
     });
 
     expect(context.systemInstruction).toContain("Global system prompt.");
@@ -278,9 +223,6 @@ describe("effective chat context", () => {
         provider: "default",
         configs: { default: { serverAvailable: false } },
       },
-      installedPlugins: [],
-      pluginConfigs: {},
-      activePlugins: [],
     });
 
     expect(context.systemInstruction).not.toContain("<html-visual>");

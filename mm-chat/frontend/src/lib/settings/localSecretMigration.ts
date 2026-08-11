@@ -1,4 +1,4 @@
-import type { ModelProvider, PluginConfig, VoiceSettings } from "../../types";
+import type { ModelProvider, VoiceSettings } from "../../types";
 import {
   encryptLocalSecret,
   hasLocalSecret,
@@ -81,54 +81,10 @@ export async function migrateVoiceLocalSecrets(
   };
 }
 
-export async function migratePluginConfigLocalSecrets(
-  configs: Record<string, PluginConfig>,
-): Promise<Record<string, PluginConfig>> {
-  const migratedEntries = await Promise.all(
-    Object.entries(configs).map(async ([pluginId, config]) => {
-      if (!config.auth) return [pluginId, config] as const;
-
-      const localValueSecret = await migrateLocalSecretField(
-        config.auth.value,
-        config.auth.localValueSecret,
-        LOCAL_SECRET_CONTEXTS.pluginAuth(pluginId),
-      );
-
-      return [
-        pluginId,
-        {
-          ...config,
-          auth: {
-            ...config.auth,
-            value: "",
-            ...(localValueSecret ? { localValueSecret } : {}),
-          },
-        },
-      ] as const;
-    }),
-  );
-
-  return Object.fromEntries(migratedEntries);
-}
-
 export function stripVoicePlainSecrets(voice: VoiceSettings): VoiceSettings {
   return {
     ...voice,
     elevenLabsApiKey: "",
     mimoApiKey: "",
   };
-}
-
-export function stripPluginConfigPlainSecrets(
-  configs: Record<string, PluginConfig>,
-): Record<string, PluginConfig> {
-  return Object.fromEntries(
-    Object.entries(configs).map(([pluginId, config]) => [
-      pluginId,
-      {
-        ...config,
-        ...(config.auth ? { auth: { ...config.auth, value: "" } } : {}),
-      },
-    ]),
-  );
 }

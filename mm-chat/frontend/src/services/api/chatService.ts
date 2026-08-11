@@ -12,8 +12,6 @@ import { useSettingsStore, getTaskModel } from "@/store/core/settingsStore";
 import { useCoreSettingsStore } from "@/store/core/coreSettingsStore";
 import { useMemoryStore } from "@/store/core/memoryStore";
 import { v7 as uuidv7 } from "uuid";
-import { executePluginFunction } from "@/utils/pluginUtils";
-import { getEnabledPluginFunctions } from "@/lib/plugin/resolve";
 import { parseModelString } from "@/lib/utils/model";
 import { normalizeSessionTitle } from "@/lib/chat/entities";
 import {
@@ -61,7 +59,7 @@ import {
   MEMORY_SEARCH_TOOL_NAME,
 } from "../../lib/memory/tools";
 import { logDevError, logDevWarn } from "../../lib/utils/devLogger";
-import { MEMORY_LIMITS, PLUGIN_EXECUTION_LIMITS } from "../../config/limits";
+import { MEMORY_LIMITS, TOOL_EXECUTION_LIMITS } from "../../config/limits";
 import { SERVER_DEFAULT_PROVIDER_ID } from "../../lib/defaultConfig/shared";
 
 type SearchStatusResults = { sources: Source[]; images: ImageSource[] };
@@ -505,7 +503,6 @@ export const streamChatResponse = async (
   onImage?: (images: Attachment[]) => void,
   onUsage?: (usage: ChatUsagePayload) => void,
   signal?: AbortSignal,
-  activePlugins?: string[], // Add activePlugins parameter
   skillsContext?: string,
   onOutputBlocks?: (outputBlocks: MessageOutputBlock[]) => void,
 ): Promise<string> => {
@@ -531,38 +528,10 @@ export const streamChatResponse = async (
     throw new Error("Web Search requires Go server chat streaming.");
   }
 
-  // Get plugin tools if activePlugins is provided
-  const { installedPlugins, pluginConfigs } = useSettingsStore.getState();
   const tools: ChatToolDefinition[] = [];
   const toolNames = new Set<string>();
 
   addInternalMemoryTools(tools, toolNames, newMessage);
-
-  if (activePlugins && activePlugins.length > 0) {
-    activePlugins.forEach((pluginId) => {
-      const plugin = installedPlugins.find((p) => p.id === pluginId);
-      const pluginConfig = pluginConfigs[pluginId];
-
-      if (plugin) {
-        const functionsToAdd = getEnabledPluginFunctions(plugin, pluginConfig);
-
-        // Convert to OpenAI tool format
-        functionsToAdd.forEach((func) => {
-          if (toolNames.has(func.name)) return;
-          toolNames.add(func.name);
-
-          tools.push({
-            type: "function",
-            function: {
-              name: func.name,
-              description: func.description,
-              parameters: func.parameters,
-            },
-          });
-        });
-      }
-    });
-  }
 
   try {
     const allToolCalls: ToolCall[] = [];
@@ -582,7 +551,7 @@ export const streamChatResponse = async (
       userSystemInstruction,
     );
     let requestAttachments = attachments;
-    const maxToolRounds = PLUGIN_EXECUTION_LIMITS.maxToolRounds;
+    const maxToolRounds = TOOL_EXECUTION_LIMITS.maxToolRounds;
 
     const emitToolCalls = () => {
       onToolUpdate?.([...allToolCalls]);
@@ -825,15 +794,10 @@ export const streamChatResponse = async (
       const executedToolCalls = await Promise.all(
         pendingToolCalls.map(async (toolCall) => {
           try {
-            const resultData = isInternalMemoryTool(toolCall.name)
-              ? await executeMemorySearchTool(toolCall.args)
-              : await executePluginFunction(
-                  toolCall.name,
-                  toolCall.args,
-                  toolCall.auth,
-                  activePlugins,
-                  signal,
-                );
+            if (!isInternalMemoryTool(toolCall.name)) {
+              throw new Error("Unsupported local tool call.");
+            }
+            const resultData = await executeMemorySearchTool(toolCall.args);
             const isError =
               !!resultData &&
               typeof resultData === "object" &&

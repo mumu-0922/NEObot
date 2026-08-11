@@ -31,13 +31,6 @@ export type {
   MessageKnowledgeMetadata,
 } from "./lib/knowledge/types";
 export type {
-  Plugin,
-  PluginAuth,
-  PluginConfig,
-  PluginFunction,
-  PluginFunctionRisk,
-} from "./lib/plugin/types";
-export type {
   AppliedSkill,
   AppliedSkillInvocation,
   SelectedSkill,

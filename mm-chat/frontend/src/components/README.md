@@ -14,7 +14,7 @@ src/components/
 ├── layout/
 ├── media/
 ├── modals/
-├── plugin/
+├── mcp/
 ├── skill/
 ├── settings/
 ├── ui/
@@ -56,9 +56,9 @@ Preview and interaction components for image and media content.
 
 Reusable feature modals that do not belong to a narrower product area.
 
-### `plugin`
+### `mcp`
 
-Plugin marketplace, installation, configuration, and built-in plugin management UI.
+Conversation-level Tools controls backed by the server-authoritative MCP API.
 
 ### `skill`
 

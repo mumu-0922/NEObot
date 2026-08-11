@@ -87,33 +87,3 @@ export async function resolveMimoApiKey(
     LOCAL_SECRET_CONTEXTS.mimoApiKey,
   );
 }
-
-type LocalAuthSecretInput = {
-  value?: string;
-  localValueSecret?: unknown;
-};
-
-export function hasPluginAuthValue(
-  auth: LocalAuthSecretInput | undefined,
-): boolean {
-  return Boolean(
-    trimSecret(auth?.value) || hasLocalSecret(auth?.localValueSecret),
-  );
-}
-
-export async function resolvePluginAuthValue(
-  pluginId: string,
-  auth: LocalAuthSecretInput | undefined,
-): Promise<string | undefined> {
-  const plain = trimSecret(auth?.value);
-  if (plain) return plain;
-
-  const localValueSecret = hasLocalSecret(auth?.localValueSecret)
-    ? auth.localValueSecret
-    : undefined;
-
-  return decryptLocalSecret(
-    localValueSecret,
-    LOCAL_SECRET_CONTEXTS.pluginAuth(pluginId),
-  );
-}

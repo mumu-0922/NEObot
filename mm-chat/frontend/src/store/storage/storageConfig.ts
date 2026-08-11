@@ -18,7 +18,7 @@ export const appDb = localforage.createInstance({
   description: "Unified application storage",
 });
 
-export const STORAGE_VERSION = 4;
+export const STORAGE_VERSION = 5;
 export type StorageVersion = typeof STORAGE_VERSION;
 
 export const noopStorage: StateStorage = {

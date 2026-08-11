@@ -7,7 +7,7 @@ import {
   type GenerateContentParameters,
   type GenerateContentConfig,
 } from "@google/genai";
-import { PLUGIN_EXECUTION_LIMITS } from "../../config/limits";
+import { TOOL_EXECUTION_LIMITS } from "../../config/limits";
 import { SSEMessage } from "./sse";
 import { finalizeStreamedToolCall } from "./toolCalls";
 import { normalizeGeneratedImageAttachment } from "../utils/generatedImages";
@@ -136,9 +136,7 @@ export async function streamGeminiResponse(options: GeminiStreamOptions) {
         }
         // 处理工具调用
         else if (part.functionCall) {
-          if (
-            emittedToolCalls >= PLUGIN_EXECUTION_LIMITS.maxStreamedToolCalls
-          ) {
+          if (emittedToolCalls >= TOOL_EXECUTION_LIMITS.maxStreamedToolCalls) {
             continue;
           }
 

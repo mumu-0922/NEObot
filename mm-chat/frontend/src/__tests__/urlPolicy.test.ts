@@ -80,13 +80,13 @@ describe("url policy and provider runtime helpers", () => {
     expect(() =>
       validateOutboundUrl(
         "http://example.com/openapi.json",
-        getSafeUrlPolicy("plugin"),
+        getSafeUrlPolicy("remoteFile"),
       ),
     ).toThrow(/Protocol|HTTP/i);
     expect(() =>
       validateOutboundUrl(
         "https://127.0.0.1/openapi.json",
-        getSafeUrlPolicy("plugin"),
+        getSafeUrlPolicy("remoteFile"),
       ),
     ).toThrow(/Private network|Localhost/i);
   });
@@ -175,7 +175,7 @@ describe("url policy and provider runtime helpers", () => {
       safeFetch(
         "https://93.184.216.34/openapi.json",
         { method: "GET" },
-        { policy: getSafeUrlPolicy("plugin") },
+        { policy: getSafeUrlPolicy("remoteFile") },
       ),
     ).rejects.toThrow(/Private network|Localhost/i);
 
@@ -212,7 +212,7 @@ describe("url policy and provider runtime helpers", () => {
           "Content-Type": "application/json",
         },
       },
-      { policy: getSafeUrlPolicy("plugin") },
+      { policy: getSafeUrlPolicy("remoteFile") },
     );
 
     const redirectedInit = fetchMock.mock.calls[1]?.[1] as RequestInit;
@@ -236,7 +236,7 @@ describe("url policy and provider runtime helpers", () => {
     await safeFetch(
       "https://93.184.216.34/openapi.json",
       { method: "GET", signal: userController.signal },
-      { policy: getSafeUrlPolicy("plugin") },
+      { policy: getSafeUrlPolicy("remoteFile") },
     );
 
     expect(addSpy).toHaveBeenCalledWith("abort", expect.any(Function), {
@@ -255,7 +255,7 @@ describe("url policy and provider runtime helpers", () => {
     const result = safeFetchText(
       "https://93.184.216.34/openapi.json",
       { method: "GET" },
-      { policy: getSafeUrlPolicy("plugin"), timeoutMs: 25 },
+      { policy: getSafeUrlPolicy("remoteFile"), timeoutMs: 25 },
     );
     const expectation = expect(result).rejects.toThrow(
       /Request timed out after 25ms/i,

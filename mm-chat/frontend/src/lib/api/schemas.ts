@@ -3,11 +3,10 @@ import {
   API_INPUT_LIMITS,
   ATTACHMENT_LIMITS,
   CHAT_CONFIG_LIMITS,
-  PLUGIN_EXECUTION_LIMITS,
+  TOOL_EXECUTION_LIMITS,
   getAttachmentsPayloadChars,
 } from "../../config/limits";
 import { getRemoteAttachmentUrlError } from "../security/remoteAttachment";
-import { getPluginExecutionArgsError } from "../plugin/execution";
 import { BYOK_ALG } from "../byok/shared";
 
 const Base64UrlStringSchema = z.string().regex(/^[A-Za-z0-9_-]+$/);
@@ -135,7 +134,7 @@ export const MessageSchema = z.object({
   attachments: z.array(AttachmentSchema).max(20).optional(),
   toolCalls: z
     .array(ToolCallSchema)
-    .max(PLUGIN_EXECUTION_LIMITS.maxStreamedToolCalls)
+    .max(TOOL_EXECUTION_LIMITS.maxStreamedToolCalls)
     .optional(),
   skillInvocations: z.array(SkillInvocationSchema).max(20).optional(),
   model: ModelNameSchema.optional(),
@@ -243,113 +242,6 @@ export const AuxiliaryGenerateRequestSchema = z
       .string()
       .max(API_INPUT_LIMITS.maxAuxiliaryTextChars)
       .optional(),
-  })
-  .strict();
-
-const PluginFunctionSchema = z
-  .object({
-    name: z
-      .string()
-      .min(1)
-      .max(128)
-      .regex(/^[A-Za-z0-9_-]+$/),
-    description: z.string().max(2_048).optional(),
-    parameters: FunctionParametersSchema.optional(),
-    path: z.string().min(1).max(1_024),
-    method: z
-      .enum(["GET", "POST", "PUT", "PATCH", "DELETE"])
-      .or(z.enum(["get", "post", "put", "patch", "delete"])),
-  })
-  .strict();
-
-const PluginSchema = z
-  .object({
-    id: z.string().min(1).max(200),
-    title: z.string().max(300).optional(),
-    description: z.string().max(5_000).optional(),
-    logoUrl: z.string().max(2_048).optional(),
-    manifestUrl: z.string().max(2_048).optional(),
-    externalDocsUrl: z.string().max(2_048).optional(),
-    baseUrl: z.string().max(2_048).optional(),
-    category: z.string().max(120).optional(),
-    categories: z.array(z.string().max(120)).max(20).optional(),
-    added: z.string().max(120).optional(),
-    functions: z.array(PluginFunctionSchema).max(40).optional(),
-    builtIn: z.boolean().optional(),
-    auth: z
-      .object({
-        type: z.enum(["bearer", "apiKey", "basic", "oauth2", "none"]),
-        name: z.string().max(120).optional(),
-        in: z.enum(["header", "query"]).optional(),
-        required: z.boolean().optional(),
-      })
-      .optional(),
-  })
-  .strict();
-
-const PluginAuthConfigSchema = z
-  .object({
-    type: z.enum(["bearer", "apiKey", "none", "oauth2"]).optional(),
-    value: z.unknown().optional(),
-    valueSecret: EncryptedSecretEnvelopeSchema.optional(),
-    key: z.string().max(120).optional(),
-    addTo: z.enum(["header", "query"]).optional(),
-  })
-  .strict()
-  .superRefine((authConfig, ctx) => {
-    rejectPlainSecretField(
-      authConfig.value,
-      ctx,
-      ["value"],
-      "Plugin auth value",
-    );
-  })
-  .transform((authConfig) => omitPlainSecretField(authConfig, "value"))
-  .optional();
-
-export const ToolExecutionSchema = z
-  .object({
-    plugin: PluginSchema,
-    functionDef: PluginFunctionSchema,
-    args: z.record(z.string(), JsonLikeSchema).default({}),
-    authConfig: PluginAuthConfigSchema,
-  })
-  .strict()
-  .superRefine((request, ctx) => {
-    const argsError = getPluginExecutionArgsError(request.args);
-    if (argsError) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["args"],
-        message: argsError,
-      });
-    }
-  });
-
-export const PluginExecutionRequestSchema = z
-  .object({
-    pluginId: z.string().min(1).max(200),
-    functionName: z.string().min(1).max(128),
-    args: z.record(z.string(), JsonLikeSchema).default({}),
-    authConfig: PluginAuthConfigSchema,
-    callId: z.string().max(200).optional(),
-  })
-  .strict()
-  .superRefine((request, ctx) => {
-    const argsError = getPluginExecutionArgsError(request.args);
-    if (argsError) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["args"],
-        message: argsError,
-      });
-    }
-  });
-
-export const PluginInstallSchema = z
-  .object({
-    plugin: PluginSchema.partial().optional(),
-    customInput: z.string().max(2_000_000).optional(),
   })
   .strict();
 

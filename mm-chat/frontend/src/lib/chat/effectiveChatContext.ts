@@ -2,20 +2,13 @@ import type {
   ChatConfig,
   ModelMetadata,
   ModelProvider,
-  Plugin,
-  PluginConfig,
   SearchProviderID,
   SearchServiceConfig,
   Session,
   TextSkill,
   Workspace,
 } from "../../types";
-import {
-  isPluginAuthRequired,
-  normalizeActivePluginIds,
-} from "../plugin/config";
 import { normalizeSkillIdRefs } from "../skills";
-import { hasPluginAuthValue } from "../security/localSecretResolvers";
 import {
   getSearchCompatibility,
   type SearchCompatibilityResult,
@@ -27,7 +20,6 @@ import { parseModelString } from "../utils/model";
 export type CapabilityStatusCode =
   | "ok"
   | "search_unavailable"
-  | "plugin_auth_missing"
   | "attachment_unsupported"
   | "audio_unsupported"
   | "reasoning_unsupported";
@@ -49,7 +41,6 @@ export interface EffectiveChatContext {
   sessionId: string | null;
   systemInstruction?: string;
   workspaceFiles: Workspace["files"];
-  activePluginIds: string[];
   activeSkillIds: string[];
   modelCapabilities: ModelCapabilities;
   searchCompatibility: SearchCompatibilityResult;
@@ -71,10 +62,6 @@ export interface ResolveEffectiveChatContextOptions {
     provider: SearchProviderID;
     configs: Record<string, SearchServiceConfig>;
   };
-  installedPlugins: Plugin[];
-  pluginConfigs: Record<string, PluginConfig>;
-  activePlugins: string[];
-  activePluginIdsOverride?: string[];
   installedSkills?: TextSkill[];
   activeSkillIds?: string[];
   activeSkillIdsOverride?: string[];
@@ -169,10 +156,6 @@ export function resolveEffectiveChatContext(
     customModelMetadata,
     chatConfig,
     search,
-    installedPlugins,
-    pluginConfigs,
-    activePlugins,
-    activePluginIdsOverride,
     installedSkills = [],
     activeSkillIds: fallbackActiveSkillIds = [],
     activeSkillIdsOverride,
@@ -187,14 +170,6 @@ export function resolveEffectiveChatContext(
     modelMetadata,
     customModelMetadata,
   });
-  const requestedPluginIds =
-    activePluginIdsOverride ?? session?.config?.activePlugins ?? activePlugins;
-  const activePluginIds = normalizeActivePluginIds(
-    requestedPluginIds,
-    installedPlugins,
-    pluginConfigs,
-    { unauthenticatedAllowedPluginIds: ["unsplash"] },
-  );
   const sessionSkillIds = session?.config?.activeSkills || [];
   const workspaceSkillIds = workspace?.activeSkills || [];
   const requestedSkillIds =
@@ -219,20 +194,6 @@ export function resolveEffectiveChatContext(
     });
   }
 
-  for (const pluginId of requestedPluginIds) {
-    const plugin = installedPlugins.find((item) => item.id === pluginId);
-    if (!plugin || !isPluginAuthRequired(plugin) || pluginId === "unsplash") {
-      continue;
-    }
-    if (!hasPluginAuthValue(pluginConfigs[pluginId]?.auth)) {
-      statuses.push({
-        code: "plugin_auth_missing",
-        level: "warning",
-        message: `Plugin "${plugin.title || plugin.id}" is active but missing authentication.`,
-      });
-    }
-  }
-
   if (chatConfig.useReasoning && !modelCapabilities.reasoning) {
     statuses.push({
       code: "reasoning_unsupported",
@@ -252,7 +213,6 @@ export function resolveEffectiveChatContext(
       now,
     }),
     workspaceFiles: workspace?.files || [],
-    activePluginIds,
     activeSkillIds,
     modelCapabilities,
     searchCompatibility,

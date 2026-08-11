@@ -187,7 +187,6 @@ export const DOWNLOAD_LIMITS = {
 
 export const MARKET_LIMITS = {
   maxAgents: 500,
-  maxPluginListResponseBytes: 16 * 1024 * 1024,
   maxAgentIdentifierChars: 120,
   maxAgentTitleChars: 160,
   maxAgentDescriptionChars: 1_000,
@@ -201,15 +200,6 @@ export const MARKET_LIMITS = {
   maxAgentSystemRoleChars: 200_000,
   maxCustomAgents: 100,
   maxUsedAgents: 50,
-  maxPlugins: 100,
-  maxPluginIdChars: 160,
-  maxPluginTitleChars: 160,
-  maxPluginDescriptionChars: 1_000,
-  maxPluginLogoUrlChars: 4_096,
-  maxPluginManifestUrlChars: 4_096,
-  maxPluginDocsUrlChars: 4_096,
-  maxPluginCategoryChars: 80,
-  maxPluginCategories: 8,
   maxSkills: 500,
   maxSkillIdChars: 160,
   maxSkillTitleChars: 160,
@@ -222,16 +212,7 @@ export const MARKET_LIMITS = {
   maxActiveSkills: 20,
 } as const;
 
-export const PLUGIN_CONFIG_LIMITS = {
-  maxPluginConfigs: MARKET_LIMITS.maxPlugins,
-  maxActivePlugins: MARKET_LIMITS.maxPlugins,
-  maxFunctionRefs: 100,
-  maxFunctionNameChars: 160,
-  maxAuthValueChars: 16_384,
-  maxAuthKeyChars: 200,
-} as const;
-
-export const PLUGIN_EXECUTION_LIMITS = {
+export const TOOL_EXECUTION_LIMITS = {
   maxFunctionNameChars: 128,
   maxArgsJsonChars: 256 * 1024,
   maxRequestBodyChars: 512 * 1024,

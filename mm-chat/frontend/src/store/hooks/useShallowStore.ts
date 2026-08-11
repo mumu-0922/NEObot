@@ -119,21 +119,6 @@ export const useModelMetadata = () => {
   );
 };
 
-export const usePluginSettings = () => {
-  return useSettingsStore(
-    useShallow((state) => ({
-      activePlugins: state.activePlugins,
-      installedPlugins: state.installedPlugins,
-      pluginConfigs: state.pluginConfigs,
-      addInstalledPlugin: state.addInstalledPlugin,
-      removeInstalledPlugin: state.removeInstalledPlugin,
-      togglePluginActive: state.togglePluginActive,
-      updatePluginConfig: state.updatePluginConfig,
-      togglePluginFunction: state.togglePluginFunction,
-    })),
-  );
-};
-
 export const useSkillSettings = () => {
   return useSettingsStore(
     useShallow((state) => ({

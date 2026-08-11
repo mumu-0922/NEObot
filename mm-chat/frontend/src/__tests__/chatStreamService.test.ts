@@ -17,7 +17,7 @@ const capabilities = {
   auth: false,
   imports: false,
   rag: false,
-  plugins: false,
+  mcp: false,
   providerSettings: false,
   agents: false,
   teams: false,
@@ -272,6 +272,9 @@ function createMockClient(
     async listMessages() {
       throw new Error("listMessages not mocked");
     },
+    async preflightMcp() {
+      return { enabled: false };
+    },
     async streamAssistantMessage() {
       return { status: "unsupported" };
     },
@@ -299,7 +302,7 @@ function createMockClient(
     voiceJobs: options.voiceJobs ?? defaultClient.voiceJobs,
     chat,
     files: options.files ?? createMockFileApi(),
-    plugins: options.plugins ?? defaultClient.plugins,
+    mcp: options.mcp ?? defaultClient.mcp,
     agents: options.agents ?? createMockAgentApi(),
     teams: options.teams ?? defaultClient.teams,
     knowledge: options.knowledge ?? defaultClient.knowledge,

@@ -25,7 +25,7 @@ const capabilities = {
   auth: false,
   imports: false,
   rag: false,
-  plugins: false,
+  mcp: false,
   providerSettings: false,
   agents: false,
   teams: false,
@@ -125,10 +125,10 @@ describe("chat CRUD DTO mappers", () => {
       config: {
         useSearch: true,
         reasoningEffort: "high",
-        activePlugins: ["writer"],
         selectedKnowledgeCollectionIds: ["kb-1"],
       },
     });
+    expect(session.config).not.toHaveProperty("activePlugins");
     expect(session.config).not.toHaveProperty("internalTrace");
     expect(session.config).not.toHaveProperty("useReasoning");
     expect(session.updatedAt).toBe(Date.parse("2026-07-08T00:01:00Z"));
@@ -609,6 +609,9 @@ function createMockClient(
     async listMessages() {
       throw new Error("listMessages not mocked");
     },
+    async preflightMcp() {
+      return { enabled: false };
+    },
     async streamAssistantMessage() {
       return { status: "unsupported" };
     },
@@ -636,7 +639,7 @@ function createMockClient(
     voiceJobs: options.voiceJobs ?? defaultClient.voiceJobs,
     chat,
     files: options.files ?? createMockFileApi(),
-    plugins: options.plugins ?? defaultClient.plugins,
+    mcp: options.mcp ?? defaultClient.mcp,
     agents: options.agents ?? createMockAgentApi(),
     teams: options.teams ?? defaultClient.teams,
     knowledge: options.knowledge ?? defaultClient.knowledge,

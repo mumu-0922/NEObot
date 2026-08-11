@@ -12,7 +12,6 @@ const REQUIRED_ENV_KEYS = [
   "ALLOW_LOCAL_NETWORK_PROXY",
   "TRUST_PROXY_HEADERS",
   "RATE_LIMIT_STORE",
-  "PLUGIN_REGISTRY_STORE",
   "UPSTASH_REDIS_REST_URL",
   "UPSTASH_REDIS_REST_TOKEN",
   "NEXT_PUBLIC_SITE_URL",
@@ -59,7 +58,6 @@ function scanDirectProcessEnvKeys(): Set<string> {
     "src/lib/security/deployment.ts",
     "src/lib/security/requestGuards.ts",
     "src/lib/security/rateLimitStore.ts",
-    "src/lib/plugin/serverRegistry.ts",
     "src/lib/seo.ts",
     "src/config/api.ts",
   ];
@@ -119,7 +117,6 @@ describe(".env.example", () => {
       "AUTH_MODE",
       "TRUST_PROXY_HEADERS",
       "RATE_LIMIT_STORE",
-      "PLUGIN_REGISTRY_STORE",
       "UPSTASH_REDIS_REST_URL",
       "UPSTASH_REDIS_REST_TOKEN",
     ]) {

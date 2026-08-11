@@ -10,24 +10,6 @@ export interface CacheStatus {
 }
 
 /**
- * Get cache status for plugins
- */
-export const getPluginsCacheStatus = (): CacheStatus => {
-  const { marketPlugins, marketPluginsTimestamp } = useSettingsStore.getState();
-  const now = Date.now();
-  const age = marketPluginsTimestamp ? now - marketPluginsTimestamp : 0;
-  const hasCache = marketPlugins && marketPlugins.length > 0;
-  const isExpired = age > CACHE_CONFIG.plugins;
-
-  return {
-    hasCache,
-    isExpired,
-    age,
-    ageFormatted: formatCacheAge(age),
-  };
-};
-
-/**
  * Get cache status for agents
  */
 export const getAgentsCacheStatus = (): CacheStatus => {
@@ -66,8 +48,7 @@ function formatCacheAge(milliseconds: number): string {
  * Clear all market data cache
  */
 export const clearAllMarketCache = (): void => {
-  const { setMarketPlugins, setMarketAgents } = useSettingsStore.getState();
-  setMarketPlugins([]);
+  const { setMarketAgents } = useSettingsStore.getState();
   setMarketAgents([]);
   logDevInfo("All market cache cleared");
 };

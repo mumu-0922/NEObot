@@ -15,7 +15,7 @@ import {
 } from "../defaultConfig/server";
 import { getDeploymentMode } from "../security/deployment";
 
-type StoreEnvName = "RATE_LIMIT_STORE" | "PLUGIN_REGISTRY_STORE";
+type StoreEnvName = "RATE_LIMIT_STORE";
 
 const sharedStoreNames = new Set(["upstash", "redis", "kv"]);
 
@@ -43,10 +43,7 @@ function hasSharedStoreCredentials(): boolean {
 }
 
 function storeHealth(
-  service: Extract<
-    ServiceHealthServiceKey,
-    "rateLimitStore" | "pluginRegistry"
-  >,
+  service: Extract<ServiceHealthServiceKey, "rateLimitStore">,
   storeEnvName: StoreEnvName,
   hosted: boolean,
 ): ServiceHealthItem {
@@ -139,11 +136,6 @@ export function getServiceHealthStatus(
         hosted ? "HOSTED_MODE_ENABLED" : "LOCAL_MODE",
       ),
       rateLimitStore: storeHealth("rateLimitStore", "RATE_LIMIT_STORE", hosted),
-      pluginRegistry: storeHealth(
-        "pluginRegistry",
-        "PLUGIN_REGISTRY_STORE",
-        hosted,
-      ),
       defaultModel: defaultModelHealth(),
       search: searchHealth(),
       voice: voiceHealth(),

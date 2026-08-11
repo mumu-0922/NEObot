@@ -24,14 +24,6 @@ vi.mock("@/store/core/memoryStore", async () =>
   vi.importActual("../store/core/memoryStore"),
 );
 
-vi.mock("@/utils/pluginUtils", () => ({
-  executePluginFunction: vi.fn(),
-}));
-
-vi.mock("@/lib/plugin/resolve", () => ({
-  getEnabledPluginFunctions: vi.fn(() => []),
-}));
-
 vi.mock("@/lib/utils/model", () => ({
   parseModelString: vi.fn((model: string) => {
     const [providerId, modelName] = model.split(":");
@@ -135,8 +127,6 @@ describe("memory dream consolidation", () => {
       modelMetadata: {},
       customModelMetadata: {},
       search: { provider: "google", configs: {} },
-      installedPlugins: [],
-      pluginConfigs: {},
       system: {
         compressionThreshold: 12,
         historyKeepCount: 4,

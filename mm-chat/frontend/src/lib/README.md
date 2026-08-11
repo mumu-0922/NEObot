@@ -1,6 +1,6 @@
 # Core Library
 
-The `src/lib` directory contains shared infrastructure for API handling, streaming, provider adapters, security, plugin execution, text-only skills, BYOK encryption, chat processing, search/RAG utilities, service health, and general helpers. Code in this directory should be framework-aware only when necessary and should avoid UI concerns.
+The `src/lib` directory contains shared infrastructure for API handling, streaming, provider adapters, security, MCP Tool presentation, text-only Skills, BYOK encryption, chat processing, search/RAG utilities, service health, and general helpers. Code in this directory should be framework-aware only when necessary and should avoid UI concerns.
 
 ## Directory Map
 
@@ -14,7 +14,7 @@ src/lib/
 ├── defaultConfig/
 ├── knowledge/
 ├── market/
-├── plugin/
+├── mcp/
 ├── providers/
 ├── search/
 ├── security/
@@ -49,9 +49,9 @@ Use this layer for server route concerns such as:
 
 `src/lib/chat` contains message normalization, effective context calculation, generation lifecycle helpers, message trees, session export, and send-time processing.
 
-### Plugin
+### MCP Tools
 
-`src/lib/plugin` contains plugin manifest parsing, OpenAPI conversion, execution payload validation, server plugin registration, localization helpers, and function resolution.
+`src/lib/mcp` contains frontend MCP DTOs. Server definitions, credentials, authorization, discovery, execution, and result persistence remain backend-owned.
 
 ### Skills
 

@@ -5,7 +5,7 @@ Layout components define app navigation, workspace structure, and global shell b
 ## Files
 
 - `Sidebar.tsx` renders session navigation, workspace navigation, pinned sessions, and primary app actions.
-- `WorkspaceSettingsModal.tsx` manages workspace metadata, preset files, workspace-level settings, active plugin presets, and active skill presets.
+- `WorkspaceSettingsModal.tsx` manages workspace metadata, preset files, workspace-level settings, MCP Tool defaults, and active Skill presets.
 
 ## Guidelines
 

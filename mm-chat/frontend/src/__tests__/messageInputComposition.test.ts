@@ -56,13 +56,10 @@ describe("MessageInput composition", () => {
     expect(messageInput).not.toContain("manageSkills");
     expect(messageInput).not.toContain("setSkillAutoSelect");
     expect(messageInput).not.toContain("border border-green-500 bg-green-500");
-    expect(messageInput).toContain("border border-cyan-500 bg-cyan-500");
+    expect(messageInput).toContain("border border-emerald-500 bg-emerald-500");
     expect(messageInput).not.toContain("border border-blue-500 bg-blue-500");
     expect(messageInput).not.toContain("text-green-500 dark:text-green-400");
     expect(messageInput).toContain("text-blue-500 dark:text-blue-400");
-    expect(messageInput).toContain(
-      "text-cyan-500 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/20",
-    );
     expect(messageInput).toContain(
       "text-blue-500 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20",
     );
@@ -106,15 +103,13 @@ describe("MessageInput composition", () => {
     expect(messageInput).toContain(
       "allowSkillsWhenSessionToolsDisabled?: boolean",
     );
-    expect(messageInput).toContain(
-      "allowPluginsWhenSessionToolsDisabled?: boolean",
-    );
+    expect(messageInput).toContain("mcpEnabled?: boolean");
+    expect(messageInput).toContain("mcpConversationId?: string");
     expect(messageInput).toContain(
       "activeSkillIdsOverride?: readonly string[]",
     );
     expect(messageInput).toContain("onActiveSkillIdsChange?:");
     expect(messageInput).toContain("const skillSelectionDisabled =");
-    expect(messageInput).toContain("const pluginSelectionDisabled =");
     expect(messageInput).toContain("onLocalSessionToolUnavailable?:");
     expect(messageInput).toContain("isReasoningEnabled?: boolean");
     expect(messageInput).toContain("reasoningEffort?: ReasoningEffort");
@@ -133,12 +128,9 @@ describe("MessageInput composition", () => {
       'notifyLocalSessionToolUnavailable("skills")',
     );
     expect(messageInput).toContain(
-      'notifyLocalSessionToolUnavailable("plugins")',
-    );
-    expect(messageInput).toContain(
       'notifyLocalSessionToolUnavailable("reasoning effort")',
     );
-    expect(messageInput).toContain("activePluginIdsForMenu");
+    expect(messageInput).toContain("<McpToolsControl");
     expect(messageInput).toContain("effectiveUseReasoning");
     expect(messageInput).toContain("reasoningEffortOptions.map");
     expect(messageInput).toContain('value="off"');

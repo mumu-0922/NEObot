@@ -63,7 +63,7 @@ export const SEO_CONTENT: Record<SeoLocale, SeoContent> = {
   en: {
     title: "Neo Chat - Local-first AI chat workspace",
     description:
-      "Neo Chat is a local-first AI chat workspace for multi-model conversations, assistant presets, plugin tools, web search, knowledge-base RAG, voice, and artifacts.",
+      "Neo Chat is a local-first AI chat workspace for multi-model conversations, assistant presets, MCP tools, web search, knowledge-base RAG, voice, and artifacts.",
     keywords: [
       "Neo Chat",
       "AI chat",
@@ -72,20 +72,20 @@ export const SEO_CONTENT: Record<SeoLocale, SeoContent> = {
       "AI assistant",
       "knowledge base RAG",
       "web search",
-      "AI plugins",
+      "MCP tools",
       "voice input",
       "Next.js chat app",
     ],
     ogTitle: "Neo Chat - Local-first AI chat workspace",
     ogDescription:
-      "Chat with multiple AI providers, assistants, plugins, web search, knowledge-base RAG, voice, and artifacts in one bilingual workspace.",
+      "Chat with multiple AI providers, assistants, MCP tools, web search, knowledge-base RAG, voice, and artifacts in one bilingual workspace.",
     ogImageAlt: "Neo Chat AI chat workspace",
     openGraphLocale: "en_US",
     structuredDataLanguage: "en",
     features: [
       "Multi-model AI conversations",
       "Assistant presets and custom assistants",
-      "Plugin tools and web search",
+      "MCP tools and web search",
       "Knowledge-base RAG",
       "Voice input and text-to-speech",
       "Markdown, math, code, citations, and artifacts",
@@ -94,7 +94,7 @@ export const SEO_CONTENT: Record<SeoLocale, SeoContent> = {
   zh: {
     title: "Neo Chat - 本地优先的 AI 对话工作台",
     description:
-      "Neo Chat 是本地优先的 AI 对话工作台，支持多模型对话、助理预设、插件工具、联网搜索、知识库 RAG、语音和可编辑产物。",
+      "Neo Chat 是本地优先的 AI 对话工作台，支持多模型对话、助理预设、MCP 工具、联网搜索、知识库 RAG、语音和可编辑产物。",
     keywords: [
       "Neo Chat",
       "AI 对话",
@@ -103,20 +103,20 @@ export const SEO_CONTENT: Record<SeoLocale, SeoContent> = {
       "AI 助理",
       "知识库 RAG",
       "联网搜索",
-      "AI 插件",
+      "MCP 工具",
       "语音输入",
       "Next.js 聊天应用",
     ],
     ogTitle: "Neo Chat - 本地优先的 AI 对话工作台",
     ogDescription:
-      "在一个双语工作台中使用多模型、助理、插件、联网搜索、知识库 RAG、语音和可编辑产物。",
+      "在一个双语工作台中使用多模型、助理、MCP 工具、联网搜索、知识库 RAG、语音和可编辑产物。",
     ogImageAlt: "Neo Chat AI 对话工作台",
     openGraphLocale: "zh_CN",
     structuredDataLanguage: "zh-CN",
     features: [
       "多模型 AI 对话",
       "助理预设与自定义助理",
-      "插件工具与联网搜索",
+      "MCP 工具与联网搜索",
       "知识库 RAG",
       "语音输入与语音合成",
       "Markdown、数学公式、代码、引用和可编辑产物",
@@ -125,7 +125,7 @@ export const SEO_CONTENT: Record<SeoLocale, SeoContent> = {
   ja: {
     title: "Neo Chat - ローカル優先の AI チャットワークスペース",
     description:
-      "Neo Chat はローカル優先の AI チャットワークスペースです。複数モデルの会話、アシスタントプリセット、プラグインツール、Web 検索、ナレッジベース RAG、音声、編集可能な成果物に対応します。",
+      "Neo Chat はローカル優先の AI チャットワークスペースです。複数モデルの会話、アシスタントプリセット、MCP ツール、Web 検索、ナレッジベース RAG、音声、編集可能な成果物に対応します。",
     keywords: [
       "Neo Chat",
       "AI チャット",
@@ -134,20 +134,20 @@ export const SEO_CONTENT: Record<SeoLocale, SeoContent> = {
       "AI アシスタント",
       "ナレッジベース RAG",
       "Web 検索",
-      "AI プラグイン",
+      "MCP ツール",
       "音声入力",
       "Next.js チャットアプリ",
     ],
     ogTitle: "Neo Chat - ローカル優先の AI チャットワークスペース",
     ogDescription:
-      "複数モデル、アシスタント、プラグイン、Web 検索、ナレッジベース RAG、音声、編集可能な成果物をひとつのワークスペースで扱えます。",
+      "複数モデル、アシスタント、MCP ツール、Web 検索、ナレッジベース RAG、音声、編集可能な成果物をひとつのワークスペースで扱えます。",
     ogImageAlt: "Neo Chat AI チャットワークスペース",
     openGraphLocale: "ja_JP",
     structuredDataLanguage: "ja-JP",
     features: [
       "複数モデルの AI 会話",
       "アシスタントプリセットとカスタムアシスタント",
-      "プラグインツールと Web 検索",
+      "MCP ツールと Web 検索",
       "ナレッジベース RAG",
       "音声入力と音声合成",
       "Markdown、数式、コード、引用、編集可能な成果物",

@@ -20,10 +20,9 @@ import Workspace from "./zh/Workspace.json";
 import Knowledge from "./zh/Knowledge.json";
 import Media from "./zh/Media.json";
 import RemoteFile from "./zh/RemoteFile.json";
-import Plugin from "./zh/Plugin.json";
+import Mcp from "./zh/Mcp.json";
 import Content from "./zh/Content.json";
 import ChatApp from "./zh/ChatApp.json";
-import Config from "./zh/Config.json";
 import Skill from "./zh/Skill.json";
 
 const messages = {
@@ -49,10 +48,9 @@ const messages = {
   Knowledge,
   Media,
   RemoteFile,
-  Plugin,
+  Mcp,
   Content,
   ChatApp,
-  Config,
   Skill,
 };
 

@@ -7,7 +7,7 @@ import { createLocalImageGenerationApiShell } from "./local/imageApi";
 import { createLocalImportApiShell } from "./local/importApi";
 import { createLocalKnowledgeApiShell } from "./local/knowledgeApi";
 import { createLocalMemoryApiShell } from "./local/memoryApi";
-import { createLocalPluginApiShell } from "./local/pluginApi";
+import { createLocalMcpApiShell } from "./local/mcpApi";
 import { createLocalProviderApiShell } from "./local/providerApi";
 import { createLocalRAGProviderApiShell } from "./local/ragProviderApi";
 import { createLocalSearchProviderApiShell } from "./local/searchProviderApi";
@@ -25,7 +25,7 @@ import { createServerImageGenerationApiShell } from "./server/imageApi";
 import { createServerImportApiShell } from "./server/importApi";
 import { createServerKnowledgeApiShell } from "./server/knowledgeApi";
 import { createServerMemoryApiShell } from "./server/memoryApi";
-import { createServerPluginApiShell } from "./server/pluginApi";
+import { createServerMcpApiShell } from "./server/mcpApi";
 import { createServerProviderApiShell } from "./server/providerApi";
 import { createServerRAGProviderApiShell } from "./server/ragProviderApi";
 import { createServerSearchProviderApiShell } from "./server/searchProviderApi";
@@ -83,9 +83,9 @@ export function createNeoChatApiClient(
   const byok = serverHttpClient
     ? createServerByokApiShell(serverHttpClient)
     : createLocalByokApiShell();
-  const plugins = serverHttpClient
-    ? createServerPluginApiShell(serverHttpClient)
-    : createLocalPluginApiShell();
+  const mcp = serverHttpClient
+    ? createServerMcpApiShell(serverHttpClient)
+    : createLocalMcpApiShell();
   const teams = serverHttpClient
     ? createServerTeamApiShell(serverHttpClient)
     : createLocalTeamApiShell();
@@ -106,7 +106,7 @@ export function createNeoChatApiClient(
       files: serverEnabled,
       auth: serverEnabled,
       imports: serverEnabled,
-      plugins: serverEnabled,
+      mcp: serverEnabled,
       teams: serverEnabled,
       knowledge: serverEnabled,
       memories: serverEnabled,
@@ -126,7 +126,7 @@ export function createNeoChatApiClient(
     voiceJobs,
     chat,
     files,
-    plugins,
+    mcp,
     imports,
     agents,
     teams,

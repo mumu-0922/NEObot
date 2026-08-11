@@ -11,7 +11,6 @@ export type ServiceHealthServiceKey =
   | "accessPassword"
   | "hostedMode"
   | "rateLimitStore"
-  | "pluginRegistry"
   | "defaultModel"
   | "search"
   | "voice";

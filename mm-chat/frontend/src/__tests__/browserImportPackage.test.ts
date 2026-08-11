@@ -52,7 +52,7 @@ describe("browser import package builder", () => {
         useSearch: true,
         activePlugins: ["weather"],
         activeSkills: ["summary"],
-      },
+      } as NonNullable<Session["config"]> & { activePlugins: string[] },
     };
     const messages: Message[] = [
       {

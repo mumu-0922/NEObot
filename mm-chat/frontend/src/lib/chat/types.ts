@@ -1,4 +1,3 @@
-import type { PluginFunctionRisk } from "../plugin/types";
 import type { ImageSource, Source } from "../search/types";
 import type { AppliedSkillInvocation } from "../skills/types";
 import type { MessageKnowledgeMetadata } from "../knowledge/types";
@@ -26,7 +25,8 @@ export type ProcessStepStatus =
   | "completed"
   | "failed"
   | "skipped"
-  | "cancelled";
+  | "cancelled"
+  | "outcome_unknown";
 
 export interface ProcessStep {
   id: string;
@@ -66,7 +66,7 @@ export interface ToolCall {
     | "denied";
   result?: any;
   isError?: boolean;
-  risk?: PluginFunctionRisk;
+  risk?: "read" | "write" | "destructive" | "external";
   confirmation?: {
     required: boolean;
     state: "pending" | "approved" | "denied";
@@ -169,8 +169,7 @@ export interface SessionMessageTree {
   activeRootMessageId?: string;
 }
 
-export type ChatPipelinePhase =
-  "attachments" | "rag" | "search" | "plugins" | "model";
+export type ChatPipelinePhase = "attachments" | "rag" | "search" | "model";
 
 export type ChatPipelinePhaseState =
   "idle" | "running" | "success" | "warning" | "error";
@@ -185,7 +184,6 @@ export interface ChatPipelineState {
   attachments: ChatPipelineStatus;
   rag: ChatPipelineStatus;
   search: ChatPipelineStatus;
-  plugins: ChatPipelineStatus;
   model: ChatPipelineStatus;
 }
 
@@ -267,7 +265,6 @@ export interface SessionConfig {
   searchResultsLimit?: number;
   useReasoning?: boolean;
   reasoningEffort?: ReasoningEffort;
-  activePlugins?: string[];
   activeSkills?: string[];
   selectedKnowledgeCollectionIds?: string[];
 }
@@ -306,7 +303,6 @@ export interface Workspace {
   color?: string;
   enableSearch?: boolean;
   enableReasoning?: boolean;
-  activePlugins?: string[];
   activeSkills?: string[];
   createdAt: number;
 }

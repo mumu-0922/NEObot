@@ -87,14 +87,14 @@ describe("chat generation state machine", () => {
     const next = reduceChatGenerationState(streaming, {
       type: "optional-capability-failed",
       runId: 3,
-      phase: "plugins",
-      message: "Plugin auth is missing",
+      phase: "search",
+      message: "Search is unavailable",
     });
 
     expect(next.status).toBe("model");
-    expect(next.pipeline.plugins).toMatchObject({
+    expect(next.pipeline.search).toMatchObject({
       state: "error",
-      message: "Plugin auth is missing",
+      message: "Search is unavailable",
     });
   });
 

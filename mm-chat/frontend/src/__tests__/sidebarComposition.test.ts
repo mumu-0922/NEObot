@@ -49,7 +49,7 @@ describe("Sidebar composition", () => {
     expect(source).toContain("if (isOpen) return children");
     expect(source).toContain('motion="instant"');
     expect(source).toContain('surface="solid"');
-    expect(source.match(/^\s*<SidebarNavTooltip /gm)).toHaveLength(5);
+    expect(source.match(/^\s*<SidebarNavTooltip /gm)).toHaveLength(4);
     expect(source).not.toContain(
       "text-sm font-medium transition-[color,background-color] focus-visible",
     );

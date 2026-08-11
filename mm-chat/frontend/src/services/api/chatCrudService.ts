@@ -51,7 +51,6 @@ export interface ChatCrudSessionConfig {
   useSearch?: boolean;
   useReasoning?: boolean;
   reasoningEffort?: ReasoningEffort;
-  activePlugins?: string[];
   activeSkills?: string[];
   selectedKnowledgeCollectionIds?: string[];
 }
@@ -395,12 +394,6 @@ function normalizeConversationConfig(
     normalized.reasoningEffort = normalizeReasoningEffort(
       config.reasoningEffort,
     );
-  }
-  if (Array.isArray(config.activePlugins)) {
-    const activePlugins = config.activePlugins.filter(
-      (value): value is string => typeof value === "string" && value !== "",
-    );
-    if (activePlugins.length > 0) normalized.activePlugins = activePlugins;
   }
   if (Array.isArray(config.activeSkills)) {
     const activeSkills = config.activeSkills.filter(

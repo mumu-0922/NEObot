@@ -3,7 +3,7 @@
  */
 
 import OpenAI from "openai";
-import { PLUGIN_EXECUTION_LIMITS } from "../../config/limits";
+import { TOOL_EXECUTION_LIMITS } from "../../config/limits";
 import { SSEMessage } from "./sse";
 import {
   appendOpenAIToolCallDelta,
@@ -546,7 +546,7 @@ export async function streamOpenAIResponses(
         }
 
         if (item?.type !== "function_call") break;
-        if (toolCallPosition >= PLUGIN_EXECUTION_LIMITS.maxStreamedToolCalls) {
+        if (toolCallPosition >= TOOL_EXECUTION_LIMITS.maxStreamedToolCalls) {
           break;
         }
 

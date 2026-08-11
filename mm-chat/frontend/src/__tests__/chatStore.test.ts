@@ -211,7 +211,6 @@ describe("chat store persistence", () => {
         searchMode: "external" as const,
         useSearch: true,
         useReasoning: false,
-        activePlugins: ["search"],
         activeSkills: ["clarity-rewrite"],
       },
     };
@@ -229,7 +228,6 @@ describe("chat store persistence", () => {
         searchMode: "external",
         useSearch: true,
         useReasoning: false,
-        activePlugins: ["search"],
         activeSkills: ["clarity-rewrite"],
       });
 

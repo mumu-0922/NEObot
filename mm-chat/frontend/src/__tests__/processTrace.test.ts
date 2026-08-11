@@ -76,6 +76,37 @@ describe("durable process trace", () => {
     ).toBeNull();
   });
 
+  it("keeps redacted MCP timeline detail and outcome_unknown status", () => {
+    expect(
+      normalizeProcessStep({
+        id: "tool-1",
+        kind: "tool",
+        status: "outcome_unknown",
+        labelKey: "process.tool",
+        detail: {
+          server: "manifest:files",
+          toolName: "write_file",
+          classification: "write",
+          callStatus: "outcome_unknown",
+          argumentSummary: '{"path":"string"}',
+          rawArguments: { path: "/private/value" },
+        },
+      }),
+    ).toEqual({
+      id: "tool-1",
+      kind: "tool",
+      status: "outcome_unknown",
+      labelKey: "process.tool",
+      detail: {
+        server: "manifest:files",
+        toolName: "write_file",
+        classification: "write",
+        callStatus: "outcome_unknown",
+        argumentSummary: '{"path":"string"}',
+      },
+    });
+  });
+
   it("hydrates reasoning and process steps from server message metadata", () => {
     const metadata = {
       reasoning: "Provider summary",

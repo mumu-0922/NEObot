@@ -1,6 +1,5 @@
 import type { LobeAgent } from "../assistant/types";
 import type { ChatConfig } from "../chat/types";
-import type { Plugin, PluginConfig } from "../plugin/types";
 import type { ModelMetadata, ModelProvider } from "../providers/types";
 import type { SearchProviderID, SearchServiceConfig } from "../search/types";
 import type { SkillCatalog, SkillDataLocale, TextSkill } from "../skills/types";
@@ -47,9 +46,6 @@ export interface AppSettings {
     configs: Record<string, SearchServiceConfig>;
   };
   voice: VoiceSettings;
-  activePlugins: string[];
-  installedPlugins: Plugin[];
-  pluginConfigs: Record<string, PluginConfig>;
   installedSkills: TextSkill[];
   customSkills: TextSkill[];
   activeSkillIds: string[];

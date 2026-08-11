@@ -26,7 +26,7 @@ describe("safe fetch DNS timeout", () => {
     const result = safeFetchText(
       "https://example.com/openapi.json",
       { method: "GET" },
-      { policy: getSafeUrlPolicy("plugin"), timeoutMs: 25 },
+      { policy: getSafeUrlPolicy("remoteFile"), timeoutMs: 25 },
     );
     const expectation = expect(result).rejects.toThrow(
       /Request timed out after 25ms/i,
@@ -48,7 +48,7 @@ describe("safe fetch DNS timeout", () => {
       safeFetchText(
         "https://example.com/openapi.json",
         { method: "GET" },
-        { policy: getSafeUrlPolicy("plugin"), timeoutMs: 1_000 },
+        { policy: getSafeUrlPolicy("remoteFile"), timeoutMs: 1_000 },
       ),
     ).rejects.toThrow(/Private network/i);
 

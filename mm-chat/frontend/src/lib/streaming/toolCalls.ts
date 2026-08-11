@@ -1,9 +1,5 @@
-import { PLUGIN_EXECUTION_LIMITS } from "../../config/limits";
+import { TOOL_EXECUTION_LIMITS } from "../../config/limits";
 import type { ToolCall } from "../../types";
-import {
-  getPluginExecutionArgsError,
-  getPluginExecutionFunctionNameError,
-} from "../plugin/execution";
 
 export interface PendingOpenAIToolCall {
   id: string;
@@ -63,7 +59,7 @@ export function appendOpenAIToolCallDelta(
   let position = accumulator.indexToPosition.get(providerIndex);
   if (position === undefined) {
     if (
-      accumulator.calls.length >= PLUGIN_EXECUTION_LIMITS.maxStreamedToolCalls
+      accumulator.calls.length >= TOOL_EXECUTION_LIMITS.maxStreamedToolCalls
     ) {
       return;
     }
@@ -78,10 +74,10 @@ export function appendOpenAIToolCallDelta(
   }
 
   const pending = accumulator.calls[position];
-  const id = trimText(delta?.id, PLUGIN_EXECUTION_LIMITS.maxToolCallIdChars);
+  const id = trimText(delta?.id, TOOL_EXECUTION_LIMITS.maxToolCallIdChars);
   const name = trimText(
     delta?.function?.name,
-    PLUGIN_EXECUTION_LIMITS.maxFunctionNameChars,
+    TOOL_EXECUTION_LIMITS.maxFunctionNameChars,
   );
   const argsFragment =
     typeof delta?.function?.arguments === "string"
@@ -94,11 +90,11 @@ export function appendOpenAIToolCallDelta(
   if (!argsFragment || pending.error) return;
 
   const nextLength = pending.argsText.length + argsFragment.length;
-  if (nextLength > PLUGIN_EXECUTION_LIMITS.maxArgsJsonChars) {
+  if (nextLength > TOOL_EXECUTION_LIMITS.maxArgsJsonChars) {
     pending.error = "Tool call arguments are too large to process safely.";
     pending.argsText = pending.argsText.slice(
       0,
-      PLUGIN_EXECUTION_LIMITS.maxArgsJsonChars,
+      TOOL_EXECUTION_LIMITS.maxArgsJsonChars,
     );
     return;
   }
@@ -117,12 +113,9 @@ export function finalizeStreamedToolCall(
   position = 0,
 ): ToolCall | null {
   const id =
-    trimText(input.id, PLUGIN_EXECUTION_LIMITS.maxToolCallIdChars) ||
+    trimText(input.id, TOOL_EXECUTION_LIMITS.maxToolCallIdChars) ||
     createFallbackToolCallId(position);
-  const name = trimText(
-    input.name,
-    PLUGIN_EXECUTION_LIMITS.maxFunctionNameChars,
-  );
+  const name = trimText(input.name, TOOL_EXECUTION_LIMITS.maxFunctionNameChars);
 
   if (
     !name &&
@@ -133,7 +126,7 @@ export function finalizeStreamedToolCall(
     return null;
   }
 
-  const nameError = getPluginExecutionFunctionNameError(name);
+  const nameError = getToolCallFunctionNameError(name);
   if (input.error || nameError) {
     return createToolCallError(
       id,
@@ -160,7 +153,7 @@ export function finalizeStreamedToolCall(
     }
   }
 
-  const argsError = getPluginExecutionArgsError(args);
+  const argsError = getToolCallArgumentsError(args);
   if (argsError) {
     return createToolCallError(id, name, argsError);
   }
@@ -171,6 +164,72 @@ export function finalizeStreamedToolCall(
     args: args as Record<string, unknown>,
     status: "pending",
   };
+}
+
+function getToolCallFunctionNameError(name: unknown): string | null {
+  if (typeof name !== "string" || !name.trim()) {
+    return "Tool function name is missing.";
+  }
+  if (name.length > TOOL_EXECUTION_LIMITS.maxFunctionNameChars) {
+    return "Tool function name is too long.";
+  }
+  return null;
+}
+
+function getToolCallArgumentsError(args: unknown): string | null {
+  if (!isRecord(args)) return "Tool arguments must be a JSON object.";
+  const seen = new WeakSet<object>();
+  const stack: Array<{ value: unknown; depth: number }> = [
+    { value: args, depth: 0 },
+  ];
+  let entries = 0;
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || current.value === null) continue;
+    const value = current.value;
+    if (typeof value === "string" || typeof value === "boolean") continue;
+    if (typeof value === "number") {
+      if (!Number.isFinite(value))
+        return "Tool arguments contain an invalid number.";
+      continue;
+    }
+    if (typeof value !== "object") {
+      return "Tool arguments contain values that are not JSON-compatible.";
+    }
+    if (current.depth >= TOOL_EXECUTION_LIMITS.maxArgDepth) {
+      return "Tool arguments are too deeply nested.";
+    }
+    if (seen.has(value)) return "Tool arguments contain a circular reference.";
+    seen.add(value);
+    if (!Array.isArray(value) && !isPlainObject(value)) {
+      return "Tool arguments must contain only JSON objects and arrays.";
+    }
+    const children = Array.isArray(value)
+      ? value
+      : Object.values(value as Record<string, unknown>);
+    entries += children.length;
+    if (entries > TOOL_EXECUTION_LIMITS.maxArgEntries) {
+      return "Tool arguments contain too many values.";
+    }
+    for (const child of children) {
+      stack.push({ value: child, depth: current.depth + 1 });
+    }
+  }
+
+  if (JSON.stringify(args).length > TOOL_EXECUTION_LIMITS.maxArgsJsonChars) {
+    return "Tool arguments are too large.";
+  }
+  return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function isPlainObject(value: object): boolean {
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 export function finalizeOpenAIToolCalls(

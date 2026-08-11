@@ -22,12 +22,19 @@ import type {
   MemorySensitivity,
   MemoryType,
 } from "../../../lib/memory/types";
-import type {
-  PluginExecutionPayload,
-  PluginExecutionRequestPayload,
-} from "../../../lib/plugin/execution";
 import type { ProcessStep } from "../../../lib/chat/types";
-import type { DefaultModels, Plugin } from "../../../types";
+import type {
+  McpAuthType,
+  McpCallRecord,
+  McpConversationSelection,
+  McpSelectionMode,
+  McpSelectionServer,
+  McpServer,
+  McpServerRef,
+  McpToolCallUpdate,
+  McpWorkspaceSelection,
+} from "../../../lib/mcp/types";
+import type { DefaultModels } from "../../../types";
 
 export type ApiMode = "local" | "server";
 
@@ -65,7 +72,7 @@ export interface ApiCapabilities {
   auth: boolean;
   imports: boolean;
   rag: boolean;
-  plugins: boolean;
+  mcp: boolean;
   providerSettings: boolean;
   agents: boolean;
   teams: boolean;
@@ -283,6 +290,17 @@ export interface StreamAssistantMessageInput {
   signal?: AbortSignal;
 }
 
+export interface PreflightMcpInput {
+  conversationId: string;
+  modelRef: ModelRef;
+  provider?: ProviderRuntimeConfigDTO;
+  signal?: AbortSignal;
+}
+
+export interface PreflightMcpResponse {
+  enabled: boolean;
+}
+
 export interface ServerToolFunctionDefinition {
   name: string;
   description?: string;
@@ -312,6 +330,7 @@ export interface ChatStreamHandlers {
   onDelta?: (event: ServerStreamEvent) => void;
   onReasoning?: (event: ServerStreamEvent) => void;
   onProcess?: (event: ServerStreamEvent) => void;
+  onToolCall?: (event: ServerStreamEvent) => void;
   onUsage?: (event: ServerStreamEvent) => void;
   onSearch?: (event: ServerStreamEvent) => void;
   onCompleted?: (event: ServerStreamEvent) => void;
@@ -344,6 +363,7 @@ export interface ChatApi {
   deleteMessage(input: DeleteMessageInput): Promise<void>;
   appendUserMessage(input: AppendUserMessageInput): Promise<ChatMessageDTO>;
   listMessages(conversationId: string): Promise<ChatMessageDTO[]>;
+  preflightMcp(input: PreflightMcpInput): Promise<PreflightMcpResponse>;
   streamAssistantMessage(
     input: StreamAssistantMessageInput,
     handlers?: ChatStreamHandlers,
@@ -746,36 +766,100 @@ export interface ByokApi {
   getPublicKey(): Promise<BYOKPublicKeyResponse>;
 }
 
-export interface PluginListAvailableInput {
+export interface McpListServersInput {
+  conversationId?: string;
   signal?: AbortSignal;
 }
 
-export interface PluginListAvailableResponse {
-  plugins: Plugin[];
-  unavailable?: boolean;
-}
-
-export interface PluginInstallInput {
-  plugin?: Plugin;
-  customInput?: string;
+export interface McpCreatePrivateServerInput {
+  name: string;
+  endpointUrl: string;
+  authType: McpAuthType;
+  headerName?: string;
+  clientId?: string;
+  scopes?: string[];
   signal?: AbortSignal;
 }
 
-export interface PluginInstallResponse {
-  plugin: Plugin;
-}
-
-export interface PluginExecuteInput {
-  payload: PluginExecutionPayload | PluginExecutionRequestPayload;
+export interface McpSetCredentialInput {
+  serverRef: McpServerRef;
+  value: string;
+  conversationId?: string;
   signal?: AbortSignal;
 }
 
-export interface PluginApi {
-  listAvailable(
-    input?: PluginListAvailableInput,
-  ): Promise<PluginListAvailableResponse>;
-  install(input: PluginInstallInput): Promise<PluginInstallResponse>;
-  execute(input: PluginExecuteInput): Promise<Response>;
+export interface McpDeleteCredentialInput {
+  serverRef: McpServerRef;
+  conversationId?: string;
+  signal?: AbortSignal;
+}
+
+export interface McpReplaceConversationSelectionInput {
+  conversationId: string;
+  mode: McpSelectionMode;
+  revision: number;
+  servers: McpSelectionServer[];
+  signal?: AbortSignal;
+}
+
+export interface McpReplaceWorkspaceSelectionInput {
+  workspaceId: string;
+  revision: number;
+  servers: McpSelectionServer[];
+  signal?: AbortSignal;
+}
+
+export interface McpOAuthStartInput {
+  serverRef: McpServerRef;
+  conversationId?: string;
+  returnUrl: string;
+  signal?: AbortSignal;
+}
+
+export interface McpOAuthStartResult {
+  authorizationUrl: string;
+  expiresAt: string;
+}
+
+export interface McpListCallsInput {
+  conversationId: string;
+  runId?: string;
+  signal?: AbortSignal;
+}
+
+export interface McpApi {
+  listServers(input?: McpListServersInput): Promise<McpServer[]>;
+  createPrivateServer(input: McpCreatePrivateServerInput): Promise<McpServer>;
+  deletePrivateServer(
+    serverId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<void>;
+  validatePrivateServer(
+    serverId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<McpServer>;
+  setCredential(input: McpSetCredentialInput): Promise<McpServer>;
+  deleteCredential(input: McpDeleteCredentialInput): Promise<void>;
+  getConversationSelection(
+    conversationId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<McpConversationSelection>;
+  replaceConversationSelection(
+    input: McpReplaceConversationSelectionInput,
+  ): Promise<McpConversationSelection>;
+  getWorkspaceSelection(
+    workspaceId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<McpWorkspaceSelection>;
+  replaceWorkspaceSelection(
+    input: McpReplaceWorkspaceSelectionInput,
+  ): Promise<McpWorkspaceSelection>;
+  startOAuth(input: McpOAuthStartInput): Promise<McpOAuthStartResult>;
+  revokeOAuth(
+    serverRef: McpServerRef,
+    options?: { signal?: AbortSignal },
+  ): Promise<void>;
+  listCalls(input: McpListCallsInput): Promise<McpCallRecord[]>;
 }
 
 export interface FileApi {
@@ -1463,7 +1547,7 @@ export interface NeoChatApiClient {
   voiceJobs: VoiceJobApi;
   chat: ChatApi;
   files: FileApi;
-  plugins: PluginApi;
+  mcp: McpApi;
   imports?: BrowserImportApi;
   agents: AgentApi;
   teams: TeamApi;
@@ -1476,6 +1560,7 @@ export type ServerStreamEventType =
   | "message.delta"
   | "reasoning.delta"
   | "process.step.updated"
+  | "tool.call.updated"
   | "usage.updated"
   | "search.results"
   | "message.completed"
@@ -1493,6 +1578,7 @@ export interface ServerStreamEvent {
   role?: "assistant";
   delta?: string;
   step?: ProcessStep;
+  toolCall?: McpToolCallUpdate;
   usage?: unknown;
   results?: ServerSearchResult;
   message?: ChatMessageDTO;

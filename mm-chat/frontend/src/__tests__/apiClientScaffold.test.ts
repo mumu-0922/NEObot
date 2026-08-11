@@ -29,7 +29,6 @@ import { createServerVoiceProviderApiShell } from "../services/api/client/server
 import { createServerSettingsApiShell } from "../services/api/client/server/settingsApi";
 import { createServerFileApiShell } from "../services/api/client/server/fileApi";
 import { createServerImageGenerationApiShell } from "../services/api/client/server/imageApi";
-import { createServerPluginApiShell } from "../services/api/client/server/pluginApi";
 import { createServerKnowledgeApiShell } from "../services/api/client/server/knowledgeApi";
 import { createServerTeamApiShell } from "../services/api/client/server/teamApi";
 
@@ -142,7 +141,7 @@ describe("Phase 11.1B API mode resolver", () => {
       auth: false,
       imports: false,
       rag: false,
-      plugins: false,
+      mcp: false,
       providerSettings: false,
       agents: false,
       teams: false,
@@ -463,6 +462,11 @@ describe("G3.1 server runtime/auth API adapters", () => {
               defaultModels: {},
             },
             search: { available: false },
+            mcp: {
+              enabled: true,
+              remoteEnabled: true,
+              stdioEnabled: false,
+            },
             rag: {
               vectorStoreAvailable: false,
               documentProcessingAvailable: false,
@@ -578,6 +582,7 @@ describe("G3.1 server runtime/auth API adapters", () => {
       createServerSettingsApiShell(http).getRuntimeConfig(),
     ).resolves.toMatchObject({
       modelProvider: { models: ["gpt-5.5"] },
+      mcp: { enabled: true, remoteEnabled: true, stdioEnabled: false },
     });
     await expect(
       createServerProviderApiShell(http).listModels({
@@ -1115,228 +1120,6 @@ describe("G2 server agent API adapter", () => {
       { url: "/mm-api/v1/agents?locale=zh", method: "GET" },
       { url: "/mm-api/v1/agents/agent%2F1?locale=ja", method: "GET" },
     ]);
-  });
-});
-
-describe("G4.2 server plugin registry API adapter", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("routes plugin list requests through the Go API", async () => {
-    const requests: Array<{ url: string; method?: string }> = [];
-    const plugins = createServerPluginApiShell(
-      createHttpClient({
-        baseUrl: "/mm-api",
-        fetchImpl: async (input, init) => {
-          requests.push({ url: String(input), method: init?.method });
-          return Response.json({
-            plugins: [
-              {
-                id: "example.com:weather",
-                title: "Weather",
-                description: "Weather plugin",
-                manifestUrl: "https://example.com/weather.json",
-                functions: [],
-              },
-            ],
-          });
-        },
-      }),
-    );
-
-    await expect(plugins.listAvailable()).resolves.toMatchObject({
-      plugins: [expect.objectContaining({ id: "example.com:weather" })],
-    });
-    expect(requests).toEqual([{ url: "/mm-api/v1/plugins", method: "GET" }]);
-  });
-
-  it("routes plugin install requests through the Go API", async () => {
-    const requests: Array<{ url: string; method?: string; body?: unknown }> =
-      [];
-    const plugins = createServerPluginApiShell(
-      createHttpClient({
-        baseUrl: "/mm-api",
-        fetchImpl: async (input, init) => {
-          requests.push({
-            url: String(input),
-            method: init?.method,
-            body: init?.body ? JSON.parse(String(init.body)) : undefined,
-          });
-          return Response.json({
-            plugin: {
-              id: "example.com:weather",
-              title: "Weather",
-              description: "Weather plugin",
-              logoUrl: "",
-              manifestUrl: "https://example.com/weather.json",
-              functions: [],
-            },
-          });
-        },
-      }),
-    );
-
-    await expect(
-      plugins.install({
-        plugin: {
-          id: "example.com:weather",
-          title: "Weather",
-          description: "Weather plugin",
-          logoUrl: "",
-          manifestUrl: "https://example.com/weather.json",
-          functions: [],
-        },
-      }),
-    ).resolves.toMatchObject({
-      plugin: { id: "example.com:weather" },
-    });
-    await expect(
-      plugins.install({ customInput: "https://example.com/custom.json" }),
-    ).resolves.toMatchObject({
-      plugin: { id: "example.com:weather" },
-    });
-
-    expect(requests).toEqual([
-      {
-        url: "/mm-api/v1/plugins/install",
-        method: "POST",
-        body: {
-          plugin: expect.objectContaining({ id: "example.com:weather" }),
-        },
-      },
-      {
-        url: "/mm-api/v1/plugins/install",
-        method: "POST",
-        body: { customInput: "https://example.com/custom.json" },
-      },
-    ]);
-  });
-
-  it("treats missing plugin install routes as explicitly unavailable", async () => {
-    const plugins = createServerPluginApiShell(
-      createHttpClient({
-        baseUrl: "/mm-api",
-        fetchImpl: async () =>
-          Response.json(
-            { error: { code: "NOT_FOUND", message: "route not found" } },
-            { status: 404 },
-          ),
-      }),
-    );
-
-    await expect(
-      plugins.install({ customInput: "https://example.com/custom.json" }),
-    ).rejects.toMatchObject({
-      code: "PLUGIN_INSTALL_UNAVAILABLE",
-      recoverable: true,
-    });
-  });
-
-  it("routes full plugin execution payloads to Go and maps execution errors", async () => {
-    const requests: Array<{ url: string; method?: string; body?: unknown }> =
-      [];
-    const plugins = createServerPluginApiShell(
-      createHttpClient({
-        baseUrl: "/mm-api",
-        fetchImpl: async (input, init) => {
-          requests.push({
-            url: String(input),
-            method: init?.method,
-            body: init?.body ? JSON.parse(String(init.body)) : undefined,
-          });
-          return Response.json(
-            {
-              error: {
-                code: "PLUGIN_URL_BLOCKED",
-                message: "plugin URL is blocked by policy",
-              },
-            },
-            { status: 403 },
-          );
-        },
-      }),
-    );
-
-    const response = await plugins.execute({
-      payload: {
-        plugin: {
-          id: "example.com:weather",
-          title: "Weather",
-          description: "Weather plugin",
-          logoUrl: "",
-          manifestUrl: "https://example.com/weather.json",
-          baseUrl: "https://api.example.com",
-          functions: [
-            {
-              name: "lookup_weather",
-              description: "Lookup weather",
-              path: "/weather",
-              method: "GET",
-              parameters: { type: "object" },
-            },
-          ],
-          auth: { type: "none" },
-        },
-        functionDef: {
-          name: "lookup_weather",
-          description: "Lookup weather",
-          path: "/weather",
-          method: "GET",
-          parameters: { type: "object" },
-        },
-        args: { city: "Shanghai" },
-      },
-    });
-
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      code: "PLUGIN_URL_BLOCKED",
-      error: "plugin URL is blocked by policy",
-    });
-
-    expect(requests).toEqual([
-      {
-        url: "/mm-api/v1/plugins/execute",
-        method: "POST",
-        body: {
-          plugin: expect.objectContaining({ id: "example.com:weather" }),
-          functionDef: expect.objectContaining({ name: "lookup_weather" }),
-          args: { city: "Shanghai" },
-        },
-      },
-    ]);
-  });
-
-  it("treats missing plugin registry routes as explicitly unavailable", async () => {
-    const plugins = createServerPluginApiShell(
-      createHttpClient({
-        baseUrl: "/mm-api",
-        fetchImpl: async () =>
-          Response.json(
-            { error: { code: "NOT_FOUND", message: "route not found" } },
-            { status: 404 },
-          ),
-      }),
-    );
-
-    await expect(plugins.listAvailable()).resolves.toEqual({
-      plugins: [],
-      unavailable: true,
-    });
-  });
-
-  it("rejects malformed successful plugin registry responses", async () => {
-    const plugins = createServerPluginApiShell(
-      createHttpClient({
-        baseUrl: "/mm-api",
-        fetchImpl: async () => Response.json({ plugins: "bad" }),
-      }),
-    );
-
-    await expect(plugins.listAvailable()).rejects.toMatchObject({
-      code: "INVALID_SERVER_RESPONSE",
-    });
   });
 });
 

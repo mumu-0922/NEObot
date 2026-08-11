@@ -12,9 +12,9 @@
   "byokEphemeral": "Ephemeral keys are allowed; configure a stable key before production.",
   "byokMissing": "No stable BYOK key is configured.",
   "sharedStores": "Shared stores",
-  "storesShared": "Rate limit and plugin registry stores use shared storage.",
+  "storesShared": "The rate-limit store uses shared storage.",
   "storesMemory": "One or more memory stores are in use; this is only suitable for local or single-instance deployments.",
-  "storesMissingHosted": "Hosted mode needs shared rate limit and plugin registry stores.",
+  "storesMissingHosted": "Hosted mode needs a shared rate-limit store.",
   "defaultModel": "Default model",
   "defaultModelReady": "A usable model source is available.",
   "defaultModelMissing": "No server or local model source is configured.",
@@ -28,9 +28,5 @@
   "ragMissing": "Knowledge services are not configured.",
   "voice": "Voice",
   "voiceReady": "Speech services are available through server defaults or local settings.",
-  "voiceMissing": "Speech services are not configured.",
-  "plugins": "Plugins",
-  "pluginsReady": "At least one plugin is installed locally.",
-  "pluginsMissing": "No local plugins are installed.",
-  "pluginsRegistryMissingHosted": "Hosted custom plugins need a shared server registry."
+  "voiceMissing": "Speech services are not configured."
 }
