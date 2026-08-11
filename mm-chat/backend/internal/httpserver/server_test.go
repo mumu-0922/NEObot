@@ -237,6 +237,49 @@ func TestRuntimeMemoryCandidateJudgeFailsClosedOnAuthorityDrift(t *testing.T) {
 	}
 }
 
+func TestProductionMemoryToolPolicyUsesValidatedDoubleConfirmationIdentity(t *testing.T) {
+	policy := productionMemoryToolRelevancePolicy()
+	descriptor, ok := usermemory.DescribeHybridShadowRelevancePolicy(
+		policy,
+	)
+	if !ok || descriptor.ID != usermemory.HybridRelevanceDoubleConfirmationProductionPolicyID ||
+		descriptor.CloudCandidateJudgeMaximumAbstentionConfirmations != 2 ||
+		!descriptor.NegativePolicyQueryGuardRequired {
+		t.Fatalf("production Memory Tool policy = %#v, ok=%v", descriptor, ok)
+	}
+	result := usermemory.NewService(
+		nil,
+		usermemory.WithHybridShadowProvider(memoryToolPolicyAcceptanceProvider{}),
+		usermemory.WithHybridMemoryToolRelevancePolicy(policy),
+	).SearchRelevantAfterMemoryToolCall(context.Background(), usermemory.HybridMemoryToolSearchInput{
+		ConversationID:     "11111111-1111-4111-8111-111111111111",
+		AssistantMessageID: "22222222-2222-4222-8222-222222222222",
+		Query:              "Which school?",
+		ContractVersion:    usermemory.HybridMemoryToolContractVersion,
+		ContractSHA256:     usermemory.HybridMemoryToolContractSHA256,
+	})
+	if result.FailureCategory != "dependency_unavailable" {
+		t.Fatalf("production Memory Tool policy admission = %#v", result)
+	}
+}
+
+type memoryToolPolicyAcceptanceProvider struct{}
+
+func (memoryToolPolicyAcceptanceProvider) EmbedQuery(
+	context.Context,
+	string,
+) (ragproviders.QueryEmbedding, error) {
+	return ragproviders.QueryEmbedding{}, ragproviders.ErrQueryEmbeddingUnavailable
+}
+
+func (memoryToolPolicyAcceptanceProvider) Rerank(
+	context.Context,
+	string,
+	[]string,
+) ([]ragproviders.RerankResult, error) {
+	return nil, ragproviders.ErrRerankUnavailable
+}
+
 type fixedMemoryJudgeResolverFixture struct {
 	provider runtimeconfig.ResolvedProvider
 	err      error

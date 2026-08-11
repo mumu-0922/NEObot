@@ -89,6 +89,40 @@ func TestBufferedChatAccuracyAdapterChangesOnlyPromptIdentity(t *testing.T) {
 	}
 }
 
+func TestBufferedChatAbstentionConfirmationAdapterSelectsExactPromptPurpose(t *testing.T) {
+	provider := &bufferedJudgeProvider{completion: chat.BufferedChatCompletion{
+		Content: validBufferedJudgeOutput(),
+	}}
+	adapter, err := NewBufferedChatAbstentionConfirmationAdapter(
+		provider,
+		chat.ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := transportStableTestInput()
+	input.PromptPurpose = usermemory.HybridCandidateJudgePromptPurposeAccuracyPrimary
+	primary, err := adapter.JudgeHybridCandidates(context.Background(), input)
+	if err != nil || primary.PromptVersion != usermemory.HybridCandidateJudgeAccuracyPromptVersion {
+		t.Fatalf("primary=%#v err=%v", primary, err)
+	}
+	primarySystem := provider.request.SystemPrompt
+	input.PromptPurpose =
+		usermemory.HybridCandidateJudgePromptPurposeAbstentionConfirmation
+	confirmation, err := adapter.JudgeHybridCandidates(context.Background(), input)
+	if err != nil ||
+		confirmation.PromptVersion != usermemory.HybridCandidateJudgeConfirmationPromptVersion ||
+		confirmation.PromptSHA256 != usermemory.HybridCandidateJudgeConfirmationPromptSHA256 ||
+		provider.request.SystemPrompt == primarySystem {
+		t.Fatalf("confirmation=%#v err=%v request=%#v", confirmation, err, provider.request)
+	}
+	input.PromptPurpose = "drifted"
+	if _, err := adapter.JudgeHybridCandidates(context.Background(), input); err == nil ||
+		FailureCategory(err) != FailureInputInvalid {
+		t.Fatalf("invalid purpose err=%v", err)
+	}
+}
+
 func TestBufferedChatAdapterFailsClosedWithoutLeakingProviderDetails(t *testing.T) {
 	validInput := transportStableTestInput()
 	tests := []struct {

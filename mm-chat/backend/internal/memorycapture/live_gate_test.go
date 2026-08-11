@@ -257,6 +257,224 @@ func TestAuthorizeAccuracyRepairMemoryJudgeRequiresFreshApproval(t *testing.T) {
 	}
 }
 
+func TestAuthorizeAbstentionConfirmationTargetsRequireIndependentApprovals(t *testing.T) {
+	authority := FixedMemoryJudgeAuthority()
+	valid := LiveAuthorization{
+		AbstentionConfirmationDevelopmentApproval: LiveAbstentionConfirmationDevelopmentApproval,
+		AbstentionConfirmationValidationApproval:  LiveAbstentionConfirmationValidationApproval,
+		ConfiguredCandidateJudgeProviderID:        authority.ProviderID,
+		ConfiguredCandidateJudgeProviderType:      authority.ProviderType,
+		ConfiguredCandidateJudgeBaseURLSHA256:     authority.BaseURLSHA256,
+		ConfiguredCandidateJudgeModelID:           authority.ModelID,
+	}
+	if err := AuthorizeAbstentionConfirmationDevelopmentTarget(
+		ProviderModeLiveSiliconFlow, authority, valid,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := AuthorizeAbstentionConfirmationValidationTarget(
+		ProviderModeLiveSiliconFlow, authority, valid,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := AuthorizeAbstentionConfirmationDevelopmentTarget(
+		ProviderModeFakeProtocol, authority, LiveAuthorization{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := AuthorizeAbstentionConfirmationValidationTarget(
+		ProviderModeFakeProtocol, authority, LiveAuthorization{},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	developmentWithValidationApproval := valid
+	developmentWithValidationApproval.AbstentionConfirmationDevelopmentApproval =
+		LiveAbstentionConfirmationValidationApproval
+	assertLiveAuthorizationError(
+		t,
+		AuthorizeAbstentionConfirmationDevelopmentTarget(
+			ProviderModeLiveSiliconFlow, authority, developmentWithValidationApproval,
+		),
+		LiveAuthorizationFixedMemoryJudgeTarget,
+	)
+	validationWithDevelopmentApproval := valid
+	validationWithDevelopmentApproval.AbstentionConfirmationValidationApproval =
+		LiveAbstentionConfirmationDevelopmentApproval
+	assertLiveAuthorizationError(
+		t,
+		AuthorizeAbstentionConfirmationValidationTarget(
+			ProviderModeLiveSiliconFlow, authority, validationWithDevelopmentApproval,
+		),
+		LiveAuthorizationFixedMemoryJudgeTarget,
+	)
+	targetDrift := valid
+	targetDrift.ConfiguredCandidateJudgeModelID = "other"
+	assertLiveAuthorizationError(
+		t,
+		AuthorizeAbstentionConfirmationDevelopmentTarget(
+			ProviderModeLiveSiliconFlow, authority, targetDrift,
+		),
+		LiveAuthorizationFixedMemoryJudgeTarget,
+	)
+
+	drifted := authority
+	drifted.ModelID = "other"
+	assertLiveAuthorizationError(
+		t,
+		AuthorizeAbstentionConfirmationDevelopmentTarget(
+			ProviderModeFakeProtocol, drifted, LiveAuthorization{},
+		),
+		LiveAuthorizationFixedMemoryJudgeTarget,
+	)
+}
+
+func TestAuthorizeDoubleConfirmationDevelopmentRequiresFreshApproval(t *testing.T) {
+	authority := FixedMemoryJudgeAuthority()
+	valid := LiveAuthorization{
+		DoubleConfirmationDevelopmentApproval: LiveDoubleConfirmationDevelopmentApproval,
+		ConfiguredCandidateJudgeProviderID:    authority.ProviderID,
+		ConfiguredCandidateJudgeProviderType:  authority.ProviderType,
+		ConfiguredCandidateJudgeBaseURLSHA256: authority.BaseURLSHA256,
+		ConfiguredCandidateJudgeModelID:       authority.ModelID,
+	}
+	if err := AuthorizeDoubleConfirmationDevelopmentTarget(
+		ProviderModeLiveSiliconFlow, authority, valid,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := AuthorizeDoubleConfirmationDevelopmentTarget(
+		ProviderModeFakeProtocol, authority, LiveAuthorization{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	for _, staleApproval := range []string{
+		LiveAbstentionConfirmationDevelopmentApproval,
+		LiveAbstentionConfirmationValidationApproval,
+		"yes",
+	} {
+		candidate := valid
+		candidate.DoubleConfirmationDevelopmentApproval = staleApproval
+		assertLiveAuthorizationError(
+			t,
+			AuthorizeDoubleConfirmationDevelopmentTarget(
+				ProviderModeLiveSiliconFlow, authority, candidate,
+			),
+			LiveAuthorizationFixedMemoryJudgeTarget,
+		)
+	}
+}
+
+func TestAuthorizeDoubleConfirmationValidationRequiresFreshApproval(t *testing.T) {
+	authority := FixedMemoryJudgeAuthority()
+	valid := LiveAuthorization{
+		DoubleConfirmationValidationApproval:  LiveDoubleConfirmationValidationApproval,
+		ConfiguredCandidateJudgeProviderID:    authority.ProviderID,
+		ConfiguredCandidateJudgeProviderType:  authority.ProviderType,
+		ConfiguredCandidateJudgeBaseURLSHA256: authority.BaseURLSHA256,
+		ConfiguredCandidateJudgeModelID:       authority.ModelID,
+	}
+	if err := AuthorizeDoubleConfirmationValidationTarget(
+		ProviderModeLiveSiliconFlow, authority, valid,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := AuthorizeDoubleConfirmationValidationTarget(
+		ProviderModeFakeProtocol, authority, LiveAuthorization{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	for _, staleApproval := range []string{
+		LiveDoubleConfirmationDevelopmentApproval,
+		LiveAbstentionConfirmationDevelopmentApproval,
+		LiveAbstentionConfirmationValidationApproval,
+		"yes",
+	} {
+		candidate := valid
+		candidate.DoubleConfirmationValidationApproval = staleApproval
+		assertLiveAuthorizationError(
+			t,
+			AuthorizeDoubleConfirmationValidationTarget(
+				ProviderModeLiveSiliconFlow, authority, candidate,
+			),
+			LiveAuthorizationFixedMemoryJudgeTarget,
+		)
+	}
+}
+
+func TestAuthorizeSingleUserBoundedMissRequiresFreshPerPhaseApprovals(t *testing.T) {
+	authority := FixedMemoryJudgeAuthority()
+	base := LiveAuthorization{
+		ConfiguredCandidateJudgeProviderID:    authority.ProviderID,
+		ConfiguredCandidateJudgeProviderType:  authority.ProviderType,
+		ConfiguredCandidateJudgeBaseURLSHA256: authority.BaseURLSHA256,
+		ConfiguredCandidateJudgeModelID:       authority.ModelID,
+	}
+	development := base
+	development.SingleUserBoundedMissDevelopmentApproval =
+		LiveSingleUserBoundedMissDevelopmentApproval
+	if err := AuthorizeSingleUserBoundedMissDevelopmentTarget(
+		ProviderModeLiveSiliconFlow,
+		authority,
+		development,
+	); err != nil {
+		t.Fatal(err)
+	}
+	validation := base
+	validation.SingleUserBoundedMissValidationApproval =
+		LiveSingleUserBoundedMissValidationApproval
+	if err := AuthorizeSingleUserBoundedMissValidationTarget(
+		ProviderModeLiveSiliconFlow,
+		authority,
+		validation,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := AuthorizeSingleUserBoundedMissDevelopmentTarget(
+		ProviderModeFakeProtocol,
+		authority,
+		LiveAuthorization{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := AuthorizeSingleUserBoundedMissValidationTarget(
+		ProviderModeFakeProtocol,
+		authority,
+		LiveAuthorization{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	for _, stale := range []string{
+		LiveDoubleConfirmationDevelopmentApproval,
+		LiveDoubleConfirmationValidationApproval,
+		LiveSingleUserBoundedMissValidationApproval,
+		"yes",
+	} {
+		candidate := development
+		candidate.SingleUserBoundedMissDevelopmentApproval = stale
+		assertLiveAuthorizationError(
+			t,
+			AuthorizeSingleUserBoundedMissDevelopmentTarget(
+				ProviderModeLiveSiliconFlow,
+				authority,
+				candidate,
+			),
+			LiveAuthorizationFixedMemoryJudgeTarget,
+		)
+	}
+	validation.SingleUserBoundedMissValidationApproval =
+		LiveSingleUserBoundedMissDevelopmentApproval
+	assertLiveAuthorizationError(
+		t,
+		AuthorizeSingleUserBoundedMissValidationTarget(
+			ProviderModeLiveSiliconFlow,
+			authority,
+			validation,
+		),
+		LiveAuthorizationFixedMemoryJudgeTarget,
+	)
+}
+
 func TestAuthorizeProductionMemoryJudgeValidationRequiresIndependentApproval(t *testing.T) {
 	authority := FixedMemoryJudgeAuthority()
 	valid := LiveAuthorization{

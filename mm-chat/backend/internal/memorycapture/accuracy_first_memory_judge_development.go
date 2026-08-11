@@ -280,6 +280,10 @@ func validateAccuracyFirstProviderTelemetryWithJudgeRetryLimit(
 		value.RerankRetries*2 > value.RerankAttempts ||
 		value.RerankAttempts-value.RerankRetries > caseCount ||
 		value.RerankAttempts-value.RerankRetries < logicalJudgeRequests ||
+		value.JudgeConfirmationAttempts != 0 ||
+		value.JudgeConfirmationRetries != 0 ||
+		value.JudgeConfirmationInputTokenUpperBound != 0 ||
+		value.JudgeConfirmationRetryInputTokenUpperBound != 0 ||
 		value.JudgeAttempts != logicalJudgeRequests+value.JudgeRetries ||
 		value.JudgeRetries < 0 ||
 		value.JudgeRetries > logicalJudgeRequests*maximumJudgeRetries ||
@@ -303,6 +307,91 @@ func validateAccuracyFirstProviderTelemetryWithJudgeRetryLimit(
 		!validAccuracyFirstLatencyDiagnostics(value.RerankLatency) ||
 		!validAccuracyFirstLatencyDiagnostics(value.JudgeLatency) {
 		return fmt.Errorf("%w: accuracy-first Provider telemetry", ErrCaptureInvalid)
+	}
+	return nil
+}
+
+func validateAbstentionConfirmationProviderTelemetry(
+	value AccuracyFirstProviderTelemetry,
+	caseCount int,
+	logicalJudgeRequests int,
+	maximumJudgeRetries int,
+	maximumAbstentionConfirmations int,
+) error {
+	confirmationRequests := value.JudgeConfirmationAttempts - value.JudgeConfirmationRetries
+	primaryAttempts := value.JudgeAttempts - value.JudgeConfirmationAttempts
+	primaryRetries := value.JudgeRetries - value.JudgeConfirmationRetries
+	primaryInputTokens := value.JudgeInputTokenUpperBound -
+		value.JudgeConfirmationInputTokenUpperBound
+	primaryRetryInputTokens := value.JudgeRetryInputTokenUpperBound -
+		value.JudgeConfirmationRetryInputTokenUpperBound
+	if (caseCount != 300 && caseCount != 100) ||
+		logicalJudgeRequests < 0 || logicalJudgeRequests > caseCount ||
+		maximumJudgeRetries != 2 ||
+		maximumAbstentionConfirmations < 1 || maximumAbstentionConfirmations > 2 ||
+		confirmationRequests < 0 ||
+		confirmationRequests > logicalJudgeRequests*maximumAbstentionConfirmations ||
+		primaryAttempts != logicalJudgeRequests+primaryRetries ||
+		primaryRetries < 0 ||
+		primaryRetries > logicalJudgeRequests*maximumJudgeRetries ||
+		value.JudgeAttempts != logicalJudgeRequests+confirmationRequests+value.JudgeRetries ||
+		value.JudgeRetries < 0 ||
+		value.JudgeConfirmationAttempts != confirmationRequests+value.JudgeConfirmationRetries ||
+		value.JudgeConfirmationRetries < 0 ||
+		value.JudgeConfirmationRetries > confirmationRequests*maximumJudgeRetries ||
+		value.JudgeConfirmationAttempts > value.JudgeAttempts ||
+		value.JudgeConfirmationInputTokenUpperBound < 0 ||
+		value.JudgeConfirmationInputTokenUpperBound > value.JudgeInputTokenUpperBound ||
+		(value.JudgeConfirmationAttempts == 0 &&
+			value.JudgeConfirmationInputTokenUpperBound != 0) ||
+		(value.JudgeConfirmationAttempts > 0 &&
+			value.JudgeConfirmationInputTokenUpperBound == 0) ||
+		value.JudgeConfirmationRetryInputTokenUpperBound < 0 ||
+		value.JudgeConfirmationRetryInputTokenUpperBound >
+			value.JudgeConfirmationInputTokenUpperBound ||
+		value.JudgeConfirmationRetryInputTokenUpperBound >
+			value.JudgeRetryInputTokenUpperBound ||
+		(value.JudgeConfirmationRetries == 0 &&
+			value.JudgeConfirmationRetryInputTokenUpperBound != 0) ||
+		(value.JudgeConfirmationRetries > 0 &&
+			value.JudgeConfirmationRetryInputTokenUpperBound == 0) ||
+		primaryInputTokens < 0 ||
+		(primaryAttempts == 0 && primaryInputTokens != 0) ||
+		(primaryAttempts > 0 && primaryInputTokens == 0) ||
+		primaryRetryInputTokens < 0 ||
+		primaryRetryInputTokens > primaryInputTokens ||
+		(primaryRetries == 0 && primaryRetryInputTokens != 0) ||
+		(primaryRetries > 0 && primaryRetryInputTokens == 0) {
+		return fmt.Errorf("%w: abstention-confirmation Provider telemetry", ErrCaptureInvalid)
+	}
+	if value.PassageEmbeddingAttempts <= 0 ||
+		value.PassageEmbeddingRetries < 0 ||
+		value.PassageEmbeddingRetries*2 > value.PassageEmbeddingAttempts ||
+		value.QueryEmbeddingAttempts != caseCount+value.QueryEmbeddingRetries ||
+		value.QueryEmbeddingRetries < 0 || value.QueryEmbeddingRetries > caseCount ||
+		value.RerankAttempts < value.RerankRetries ||
+		value.RerankRetries < 0 ||
+		value.RerankRetries*2 > value.RerankAttempts ||
+		value.RerankAttempts-value.RerankRetries > caseCount ||
+		value.RerankAttempts-value.RerankRetries < logicalJudgeRequests ||
+		value.JudgeInputTokenUpperBound <= 0 ||
+		value.JudgeRetryInputTokenUpperBound < 0 ||
+		value.JudgeRetryInputTokenUpperBound > value.JudgeInputTokenUpperBound ||
+		(value.JudgeRetries == 0 && value.JudgeRetryInputTokenUpperBound != 0) ||
+		(value.JudgeRetries > 0 && value.JudgeRetryInputTokenUpperBound == 0) ||
+		value.InterCaseCooldownCount != caseCount-1 ||
+		value.InterCaseCooldownMilliseconds !=
+			(caseCount-1)*int(AccuracyFirstInterCaseCooldown/time.Millisecond) ||
+		value.InterCaseCooldownElapsedMillis < 0 ||
+		value.PassageEmbeddingLatency.SampleCount != value.PassageEmbeddingAttempts ||
+		value.QueryEmbeddingLatency.SampleCount != value.QueryEmbeddingAttempts ||
+		value.RerankLatency.SampleCount != value.RerankAttempts ||
+		value.JudgeLatency.SampleCount != value.JudgeAttempts ||
+		!validAccuracyFirstLatencyDiagnostics(value.PassageEmbeddingLatency) ||
+		!validAccuracyFirstLatencyDiagnostics(value.QueryEmbeddingLatency) ||
+		!validAccuracyFirstLatencyDiagnostics(value.RerankLatency) ||
+		!validAccuracyFirstLatencyDiagnostics(value.JudgeLatency) {
+		return fmt.Errorf("%w: abstention-confirmation Provider telemetry", ErrCaptureInvalid)
 	}
 	return nil
 }

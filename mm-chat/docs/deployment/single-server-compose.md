@@ -193,9 +193,9 @@ container-local `GET /health` on port `8081`; no port is published or proxied.
 | `MEMORY_TOOL_LOOP_ENABLED`                    | API-only first-round `search_memory` switch; defaults false. When true, an exact canary match may use the production-v2 negative guard, fixed BGE rerank, buffered Luna Judge, current tuple reauthorization, post-call hydration, and same-model continuation. False immediately disables the reader/Judge. Never pass it to the Memory Worker. |
 | `MEMORY_TOOL_LOOP_CANARY_USER_IDS`            | API-only comma-separated exact UUID allowlist; defaults empty and therefore fail-closed. Invalid or duplicate UUIDs fail configuration validation. Never pass it to the Memory Worker. |
 | `MEMORY_L2_SCENE_SHADOW_ENABLED`              | Shared PR11 API/Memory Worker switch; defaults false, gates Scene refresh/query embedding/rerank while provider-free stale purge remains active. |
-| `MEMORY_L2_SCENE_READER_ENABLED`              | API-only PR11 reader switch; defaults false and still requires database promotion/current authority. Never pass it to the Memory Worker. |
+| `MEMORY_L2_SCENE_READER_ENABLED`              | API-only PR11 reader switch; defaults false and still requires current database authority from formal promotion or the migration-`073` sole-user preview. Never pass it to the Memory Worker. |
 | `MEMORY_L3_PERSONA_SHADOW_ENABLED`            | Shared PR12 API/Memory Worker switch; defaults false, gates Persona refresh/query embedding/rerank while provider-free stale purge remains active. |
-| `MEMORY_L3_PERSONA_READER_ENABLED`            | API-only PR12 reader switch; defaults false and still requires database promotion/current L1/Persona authority. Never pass it to the Memory Worker. |
+| `MEMORY_L3_PERSONA_READER_ENABLED`            | API-only PR12 reader switch; defaults false and still requires current database authority from formal promotion or the migration-`073` sole-user preview. Never pass it to the Memory Worker. |
 | `RAG_WORKER_DATABASE_URL`                     | Worker login inheriting only `rag_worker_executor`.                                             |
 | `RAG_REPLAY_DATABASE_URL`                     | Replay login inheriting only `rag_replay_operator`.                                             |
 | `RAG_MINERU_RESULT_PROXY_URL`                 | Optional internal ZIP download proxy for Docker Desktop/WSL CDN TLS workarounds; default empty. |
@@ -233,6 +233,43 @@ backed refresh/embedding lanes. Their provider-free stale detection and purge
 remain enabled even when every shadow flag is false. Reader flags belong only
 to the API and must never enter the Memory Worker environment.
 
+Migration `073` provides an explicitly bounded exception for a deployment with
+exactly one database user whose current L2 Scene and L3 Persona projections are
+already ready. It does not modify the formal L1 retrieval pointer and does not
+insert either formal promotion event. Activation requires the migration-owner
+capability and this exact literal:
+
+```text
+I_ACCEPT_SINGLE_USER_L2_L3_READER_PREVIEW_WITHOUT_FORMAL_PROMOTION
+```
+
+Use one fresh event UUID, bind the exact sole user UUID, and record the returned
+content-free JSON before changing either Reader flag:
+
+```sql
+SELECT memory_operator_set_single_user_derived_reader_preview(
+  '<fresh-event-uuid>'::uuid,
+  '<sole-user-uuid>'::uuid,
+  true,
+  'I_ACCEPT_SINGLE_USER_L2_L3_READER_PREVIEW_WITHOUT_FORMAL_PROMOTION'
+);
+```
+
+The transaction fails closed unless both user settings permit the layers,
+current ready Scene and Persona projections exist, and no derived job is
+pending, processing, or dead-lettered. After success, set only the two API
+Reader flags to `true`, render Compose against the pinned schema-`073` image,
+and recreate only `backend` and `memory-worker` with `--no-build --no-deps`.
+The Worker receives the shadow flags but never the Reader flags.
+
+Adding a second user automatically appends a disable event and reconciles both
+layers out of active state in the same database transaction. Deleting that user
+does not silently re-enable preview. Operational rollback appends a new disable
+event with an uppercase bounded reason, restores both Reader flags to `false`,
+and recreates only Backend/Worker while retaining schema `073` and audit. Never
+delete or rewrite preview events, and never report this preview as formal
+promotion.
+
 `MEMORY_TOOL_LOOP_ENABLED` is independent from the legacy hybrid-shadow API
 switch but consumes the same fixed BGE projections. It defaults false and the
 reader remains unavailable unless the authenticated user ID exactly matches
@@ -258,6 +295,29 @@ the authenticated API combines it with current-user capture/projection state
 at `GET /v1/memory-health`. Settings show the bounded status continuously, and
 an actually invoked Memory Tool reports only safe `indexing` or `unavailable`
 reasons. No Provider/Base URL/database detail is returned to the browser.
+Migration `071` corrects the capture lane without weakening that fail-closed
+gate: only `extract` jobs contribute capture health, while scheduled
+`review_expire` maintenance is excluded. A historical extract dead letter may
+leave health only through one exact, owner-bound, append-only acknowledgement;
+the original job and bounded error remain untouched. Apply `071` only under a
+separate schema-change authorization, then acknowledge at most one reviewed job
+per command:
+
+```bash
+mm-chat-admin memory-health-acknowledge \
+  --job-id <canonical-job-uuid> \
+  --expected-error-code <EXACT_ERROR_CODE> \
+  --resolution-code <source_no_longer_current|historical_failure_accepted> \
+  --approval I_ACKNOWLEDGE_ONE_HISTORICAL_MEMORY_CAPTURE_HEALTH_FAILURE
+```
+
+The command uses the configured bootstrap user and returns only the job UUID,
+bounded resolution, and whether a new row was created. Never delete/update
+`memory_jobs` or resolution rows to force green health. Before any
+acknowledgement, rollback may down `071` and restores exact `070` aggregation;
+after a resolution exists, schema rollback is intentionally blocked. Migration
+and each live acknowledgement require their own reviewed authority and do not
+authorize a Provider smoke replay.
 Direct `remember|correct|forget` turns and model-built-in Web Search do not
 expose the Memory Tool. Setting the flag false is the rollback; it does not
 delete canonical Memory or Usage. During the 2026-08-04 acceptance the Worker

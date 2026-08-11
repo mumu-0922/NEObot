@@ -7,36 +7,42 @@ import (
 )
 
 const (
-	MaxMemories                                           = 500
-	MaxContentChars                                       = 2000
-	MaxTags                                               = 12
-	MaxTagChars                                           = 40
-	MaxSearchResults                                      = 5
-	MaxExtractedItems                                     = 5
-	MaxActionTargets                                      = 5
-	MaxActivityPage                                       = 100
-	MaxLexicalShadowResults                               = 20
-	MaxHybridShadowResults                                = 20
-	DirectActionSchemaMajor                               = 1
-	LexicalShadowProfileID                                = "memory_lexical_cjk_bm25_v1"
-	HybridShadowProfileID                                 = "memory_hybrid_bge_m3_rrf60_v1"
-	HybridEmbeddingProfile                                = "siliconflow_bge_m3_v1"
-	HybridRelevanceCalibrationPolicyID                    = "memory_hybrid_relevance_calibration_v1"
-	HybridRelevanceIntentCalibrationPolicyID              = "memory_hybrid_relevance_intent_calibration_v1"
-	HybridRelevanceCloudJudgeCalibrationPolicyID          = "memory_hybrid_cloud_candidate_judge_calibration_v1"
-	HybridRelevanceFixedMemoryJudgePolicyID               = "memory_hybrid_fixed_cloud_candidate_judge_development_v1"
-	HybridRelevanceAccuracyFirstJudgePolicyID             = "memory_hybrid_fixed_cloud_candidate_judge_accuracy_development_v2"
-	HybridRelevanceNegativePolicyGuardDevelopmentPolicyID = "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_development_v1"
-	HybridRelevanceProductionJudgePolicyID                = "memory_hybrid_fixed_cloud_candidate_judge_production_v1"
-	HybridRelevanceNegativePolicyGuardProductionPolicyID  = "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_production_v2"
-	HybridRelevanceSliceDiagnosticPolicyID                = "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_slice_diagnostic_v1"
-	HybridRelevanceAccuracyRepairDevelopmentPolicyID      = "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_accuracy_repair_development_v2"
-	HybridRelevanceV20AbstentionDiagnosticPolicyID        = "memory_hybrid_fixed_cloud_candidate_judge_accuracy_v20_abstention_diagnostic_v1"
-	HybridFixedMemoryJudgeModelID                         = "gpt-5.6-luna"
-	HybridFixedMemoryJudgeHardCutoffMilliseconds          = 3000
-	HybridRelevanceMemoryToolRoutePolicyID                = "memory_hybrid_main_model_tool_route_calibration_v1"
-	HybridRelevanceMemoryFirstToolRoundPolicyID           = "memory_hybrid_main_model_first_tool_round_calibration_v1"
-	HybridRelevanceFrozenPolicyID                         = "memory_hybrid_relevance_intent_abstention_v1"
+	MaxMemories                                              = 500
+	MaxContentChars                                          = 2000
+	MaxTags                                                  = 12
+	MaxTagChars                                              = 40
+	MaxSearchResults                                         = 5
+	MaxExtractedItems                                        = 5
+	MaxActionTargets                                         = 5
+	MaxActivityPage                                          = 100
+	MaxLexicalShadowResults                                  = 20
+	MaxHybridShadowResults                                   = 20
+	DirectActionSchemaMajor                                  = 1
+	LexicalShadowProfileID                                   = "memory_lexical_cjk_bm25_v1"
+	HybridShadowProfileID                                    = "memory_hybrid_bge_m3_rrf60_v1"
+	HybridEmbeddingProfile                                   = "siliconflow_bge_m3_v1"
+	HybridRelevanceCalibrationPolicyID                       = "memory_hybrid_relevance_calibration_v1"
+	HybridRelevanceIntentCalibrationPolicyID                 = "memory_hybrid_relevance_intent_calibration_v1"
+	HybridRelevanceCloudJudgeCalibrationPolicyID             = "memory_hybrid_cloud_candidate_judge_calibration_v1"
+	HybridRelevanceFixedMemoryJudgePolicyID                  = "memory_hybrid_fixed_cloud_candidate_judge_development_v1"
+	HybridRelevanceAccuracyFirstJudgePolicyID                = "memory_hybrid_fixed_cloud_candidate_judge_accuracy_development_v2"
+	HybridRelevanceNegativePolicyGuardDevelopmentPolicyID    = "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_development_v1"
+	HybridRelevanceProductionJudgePolicyID                   = "memory_hybrid_fixed_cloud_candidate_judge_production_v1"
+	HybridRelevanceNegativePolicyGuardProductionPolicyID     = "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_production_v2"
+	HybridRelevanceSliceDiagnosticPolicyID                   = "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_slice_diagnostic_v1"
+	HybridRelevanceAccuracyRepairDevelopmentPolicyID         = "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_accuracy_repair_development_v2"
+	HybridRelevanceV20AbstentionDiagnosticPolicyID           = "memory_hybrid_fixed_cloud_candidate_judge_accuracy_v20_abstention_diagnostic_v1"
+	HybridRelevanceAbstentionConfirmationDevelopmentPolicyID = "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_abstention_confirmation_development_v3"
+	HybridRelevanceAbstentionConfirmationProductionPolicyID  = "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_abstention_confirmation_production_v3"
+	HybridRelevanceDoubleConfirmationDevelopmentPolicyID     = "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_double_confirmation_development_v4"
+	HybridRelevanceDoubleConfirmationProductionPolicyID      = "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_double_confirmation_production_v4"
+	HybridFixedMemoryJudgeModelID                            = "gpt-5.6-luna"
+	HybridFixedMemoryJudgeHardCutoffMilliseconds             = 3000
+	MemoryHealthResolutionSourceNoLongerCurrent              = "source_no_longer_current"
+	MemoryHealthResolutionHistoricalFailureAccepted          = "historical_failure_accepted"
+	HybridRelevanceMemoryToolRoutePolicyID                   = "memory_hybrid_main_model_tool_route_calibration_v1"
+	HybridRelevanceMemoryFirstToolRoundPolicyID              = "memory_hybrid_main_model_first_tool_round_calibration_v1"
+	HybridRelevanceFrozenPolicyID                            = "memory_hybrid_relevance_intent_abstention_v1"
 )
 
 var (
@@ -72,6 +78,16 @@ type Repository interface {
 // and projection signals only.
 type MemoryHealthRepository interface {
 	GetMemoryHealth(context.Context) (MemoryHealthSignals, error)
+}
+
+// MemoryHealthResolutionRepository records a content-free, append-only owner
+// acknowledgement for one historical extract dead letter. It is intentionally
+// separate from the HTTP health reader and ordinary Memory CRUD.
+type MemoryHealthResolutionRepository interface {
+	AcknowledgeMemoryJobHealth(
+		context.Context,
+		MemoryJobHealthResolutionInput,
+	) (bool, error)
 }
 
 // ActionRepository is optional so the v1 Repository contract and its test
@@ -169,6 +185,12 @@ type MemoryHealth struct {
 	FailedCount              int64  `json:"failedCount"`
 	JudgeModelID             string `json:"judgeModelId"`
 	JudgeFixed               bool   `json:"judgeFixed"`
+}
+
+type MemoryJobHealthResolutionInput struct {
+	JobID             string
+	ExpectedErrorCode string
+	ResolutionCode    string
 }
 
 type Memory struct {
@@ -439,45 +461,51 @@ type HybridShadowAdmission struct {
 // Calibration policies remain isolated to regression/shadow flows; the
 // product Memory Tool reader accepts only its separately promoted policy.
 type HybridShadowRelevancePolicy struct {
-	ID                               string
-	Mode                             string
-	MemoryIntentRequired             bool
-	CloudCandidateJudgeRequired      bool
-	CloudCandidateJudgeModelID       string
-	MemoryToolRouteRequired          bool
-	MemoryToolRouteModelID           string
-	NegativePolicyQueryGuardRequired bool
-	MinimumMemoryIntentMargin        float64
-	MinimumProviderSimilarity        float64
-	MinimumFinalRelevanceScore       float64
+	ID                                                string
+	Mode                                              string
+	MemoryIntentRequired                              bool
+	CloudCandidateJudgeRequired                       bool
+	CloudCandidateJudgeModelID                        string
+	MemoryToolRouteRequired                           bool
+	MemoryToolRouteModelID                            string
+	NegativePolicyQueryGuardRequired                  bool
+	CloudCandidateJudgeAbstentionConfirmationRequired bool
+	CloudCandidateJudgeMaximumAbstentionConfirmations int
+	MinimumMemoryIntentMargin                         float64
+	MinimumProviderSimilarity                         float64
+	MinimumFinalRelevanceScore                        float64
 }
 
 type HybridShadowRelevancePolicyDescriptor struct {
-	ID                                   string
-	Mode                                 string
-	HardCutoffMilliseconds               int
-	MemoryIntentRequired                 bool
-	MemoryIntentAnchorVersion            string
-	MemoryIntentAnchorSHA256             string
-	CloudCandidateJudgeRequired          bool
-	CloudCandidateJudgeModelID           string
-	CloudCandidateJudgePromptVersion     string
-	CloudCandidateJudgePromptSHA256      string
-	CloudCandidateJudgeDecodingProfile   string
-	MemoryToolRouteRequired              bool
-	MemoryToolRouteModelID               string
-	MemoryToolRouteContractVersion       string
-	MemoryToolRouteContractSHA256        string
-	MemoryToolRouteDecodingProfile       string
-	MemoryToolRouteMaximumOutputTokens   int
-	MemoryToolRouteTemperature           float64
-	MemoryToolRouteDisableThinking       bool
-	NegativePolicyQueryGuardRequired     bool   `json:",omitempty"`
-	NegativePolicyQueryGuardVersion      string `json:",omitempty"`
-	NegativePolicyQueryGuardSHA256       string `json:",omitempty"`
-	MinimumMemoryIntentMarginBasisPoints int
-	MinimumProviderSimilarityBasisPoints int
-	MinimumFinalRelevanceBasisPoints     int
+	ID                                                string
+	Mode                                              string
+	HardCutoffMilliseconds                            int
+	MemoryIntentRequired                              bool
+	MemoryIntentAnchorVersion                         string
+	MemoryIntentAnchorSHA256                          string
+	CloudCandidateJudgeRequired                       bool
+	CloudCandidateJudgeModelID                        string
+	CloudCandidateJudgePromptVersion                  string
+	CloudCandidateJudgePromptSHA256                   string
+	CloudCandidateJudgeDecodingProfile                string
+	CloudCandidateJudgeAbstentionConfirmationRequired bool   `json:",omitempty"`
+	CloudCandidateJudgeMaximumAbstentionConfirmations int    `json:",omitempty"`
+	CloudCandidateJudgeConfirmationPromptVersion      string `json:",omitempty"`
+	CloudCandidateJudgeConfirmationPromptSHA256       string `json:",omitempty"`
+	MemoryToolRouteRequired                           bool
+	MemoryToolRouteModelID                            string
+	MemoryToolRouteContractVersion                    string
+	MemoryToolRouteContractSHA256                     string
+	MemoryToolRouteDecodingProfile                    string
+	MemoryToolRouteMaximumOutputTokens                int
+	MemoryToolRouteTemperature                        float64
+	MemoryToolRouteDisableThinking                    bool
+	NegativePolicyQueryGuardRequired                  bool   `json:",omitempty"`
+	NegativePolicyQueryGuardVersion                   string `json:",omitempty"`
+	NegativePolicyQueryGuardSHA256                    string `json:",omitempty"`
+	MinimumMemoryIntentMarginBasisPoints              int
+	MinimumProviderSimilarityBasisPoints              int
+	MinimumFinalRelevanceBasisPoints                  int
 }
 
 type HybridShadowRecordInput struct {

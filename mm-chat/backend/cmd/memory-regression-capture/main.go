@@ -59,6 +59,12 @@ const (
 	liveProductionBufferedMemoryJudgeValidationApprovalEnv = "MM_CHAT_MEMORY_REGRESSION_LIVE_PRODUCTION_BUFFERED_MEMORY_JUDGE_VALIDATION_APPROVAL"
 	liveMemoryJudgeSliceDiagnosticApprovalEnv              = "MM_CHAT_MEMORY_REGRESSION_LIVE_MEMORY_JUDGE_SLICE_DIAGNOSTIC_APPROVAL"
 	liveAccuracyRepairMemoryJudgeApprovalEnv               = "MM_CHAT_MEMORY_REGRESSION_LIVE_ACCURACY_REPAIR_MEMORY_JUDGE_APPROVAL"
+	liveAbstentionConfirmationDevelopmentApprovalEnv       = "MM_CHAT_MEMORY_REGRESSION_LIVE_ABSTENTION_CONFIRMATION_DEVELOPMENT_APPROVAL"
+	liveAbstentionConfirmationValidationApprovalEnv        = "MM_CHAT_MEMORY_REGRESSION_LIVE_ABSTENTION_CONFIRMATION_VALIDATION_APPROVAL"
+	liveDoubleConfirmationDevelopmentApprovalEnv           = "MM_CHAT_MEMORY_REGRESSION_LIVE_DOUBLE_CONFIRMATION_DEVELOPMENT_APPROVAL"
+	liveDoubleConfirmationValidationApprovalEnv            = "MM_CHAT_MEMORY_REGRESSION_LIVE_DOUBLE_CONFIRMATION_VALIDATION_APPROVAL"
+	liveSingleUserBoundedMissDevelopmentApprovalEnv        = "MM_CHAT_MEMORY_REGRESSION_LIVE_SINGLE_USER_BOUNDED_MISS_DEVELOPMENT_APPROVAL"
+	liveSingleUserBoundedMissValidationApprovalEnv         = "MM_CHAT_MEMORY_REGRESSION_LIVE_SINGLE_USER_BOUNDED_MISS_VALIDATION_APPROVAL"
 
 	defaultCaptureTimeout = 45 * time.Minute
 	maximumCredentialSize = 4096
@@ -174,6 +180,12 @@ func run(
 	var memoryJudgeSliceDiagnosticConfig memorycapture.ProfileConfig
 	var accuracyRepairMemoryJudgeConfig memorycapture.ProfileConfig
 	var memoryV20AbstentionDiagnosticConfig memorycapture.ProfileConfig
+	var abstentionConfirmationMemoryJudgeConfig memorycapture.ProfileConfig
+	var abstentionConfirmationValidationConfig memorycapture.ProfileConfig
+	var doubleConfirmationMemoryJudgeConfig memorycapture.ProfileConfig
+	var doubleConfirmationValidationConfig memorycapture.ProfileConfig
+	var singleUserBoundedMissDevelopmentConfig memorycapture.ProfileConfig
+	var singleUserBoundedMissValidationConfig memorycapture.ProfileConfig
 	var relevanceConfigurationHash string
 	var artifactNames []string
 	var artifactPrefix string
@@ -746,6 +758,204 @@ func run(
 			memorycapture.MemoryV20AbstentionDiagnosticArtifactName,
 			"run-manifest.json",
 		}
+	case memorycapture.CaptureModeAbstentionConfirmationMemoryJudge:
+		configuredJudgeAuthority, err = buildConfiguredCandidateJudgeAuthority(options)
+		if err != nil {
+			return err
+		}
+		if err := memorycapture.AuthorizeAbstentionConfirmationDevelopmentTarget(
+			options.providerMode, configuredJudgeAuthority, authorization,
+		); err != nil {
+			return err
+		}
+		if err := memorycapture.ValidateAbstentionConfirmationDevelopmentCostAuthority(
+			cost, configuredJudgeAuthority,
+		); err != nil {
+			return err
+		}
+		abstentionConfirmationMemoryJudgeConfig, err =
+			memorycapture.BuildAbstentionConfirmationMemoryJudgeDevelopmentProfileConfig(
+				protected, costHash, options.providerMode,
+				configuredJudgeAuthority, cost.ProviderCostPolicy,
+			)
+		if err != nil {
+			return err
+		}
+		relevanceConfigurationHash, err = memorycapture.ConfigurationSHA256(
+			abstentionConfirmationMemoryJudgeConfig,
+		)
+		if err != nil {
+			return err
+		}
+		artifactNames = []string{
+			memorycapture.AbstentionConfirmationMemoryJudgeArtifactName,
+			"run-manifest.json",
+		}
+	case memorycapture.CaptureModeAbstentionConfirmationValidation:
+		configuredJudgeAuthority, err = buildConfiguredCandidateJudgeAuthority(options)
+		if err != nil {
+			return err
+		}
+		if err := memorycapture.AuthorizeAbstentionConfirmationValidationTarget(
+			options.providerMode, configuredJudgeAuthority, authorization,
+		); err != nil {
+			return err
+		}
+		if err := memorycapture.ValidateAbstentionConfirmationValidationCostAuthority(
+			cost, configuredJudgeAuthority,
+		); err != nil {
+			return err
+		}
+		abstentionConfirmationValidationConfig, err =
+			memorycapture.BuildAbstentionConfirmationValidationProfileConfig(
+				protected, costHash, options.providerMode,
+				configuredJudgeAuthority, cost.ProviderCostPolicy,
+			)
+		if err != nil {
+			return err
+		}
+		relevanceConfigurationHash, err = memorycapture.ConfigurationSHA256(
+			abstentionConfirmationValidationConfig,
+		)
+		if err != nil {
+			return err
+		}
+		artifactNames = []string{
+			memorycapture.AbstentionConfirmationValidationArtifactName,
+			"run-manifest.json",
+		}
+	case memorycapture.CaptureModeDoubleConfirmationMemoryJudge:
+		configuredJudgeAuthority, err = buildConfiguredCandidateJudgeAuthority(options)
+		if err != nil {
+			return err
+		}
+		if err := memorycapture.AuthorizeDoubleConfirmationDevelopmentTarget(
+			options.providerMode, configuredJudgeAuthority, authorization,
+		); err != nil {
+			return err
+		}
+		if err := memorycapture.ValidateDoubleConfirmationDevelopmentCostAuthority(
+			cost, configuredJudgeAuthority,
+		); err != nil {
+			return err
+		}
+		doubleConfirmationMemoryJudgeConfig, err =
+			memorycapture.BuildDoubleConfirmationMemoryJudgeDevelopmentProfileConfig(
+				protected, costHash, options.providerMode,
+				configuredJudgeAuthority, cost.ProviderCostPolicy,
+			)
+		if err != nil {
+			return err
+		}
+		relevanceConfigurationHash, err = memorycapture.ConfigurationSHA256(
+			doubleConfirmationMemoryJudgeConfig,
+		)
+		if err != nil {
+			return err
+		}
+		artifactNames = []string{
+			memorycapture.DoubleConfirmationMemoryJudgeArtifactName,
+			"run-manifest.json",
+		}
+	case memorycapture.CaptureModeDoubleConfirmationValidation:
+		configuredJudgeAuthority, err = buildConfiguredCandidateJudgeAuthority(options)
+		if err != nil {
+			return err
+		}
+		if err := memorycapture.AuthorizeDoubleConfirmationValidationTarget(
+			options.providerMode, configuredJudgeAuthority, authorization,
+		); err != nil {
+			return err
+		}
+		if err := memorycapture.ValidateDoubleConfirmationValidationCostAuthority(
+			cost, configuredJudgeAuthority,
+		); err != nil {
+			return err
+		}
+		doubleConfirmationValidationConfig, err =
+			memorycapture.BuildDoubleConfirmationValidationProfileConfig(
+				protected, costHash, options.providerMode,
+				configuredJudgeAuthority, cost.ProviderCostPolicy,
+			)
+		if err != nil {
+			return err
+		}
+		relevanceConfigurationHash, err = memorycapture.ConfigurationSHA256(
+			doubleConfirmationValidationConfig,
+		)
+		if err != nil {
+			return err
+		}
+		artifactNames = []string{
+			memorycapture.DoubleConfirmationValidationArtifactName,
+			"run-manifest.json",
+		}
+	case memorycapture.CaptureModeSingleUserBoundedMissDevelopment:
+		configuredJudgeAuthority, err = buildConfiguredCandidateJudgeAuthority(options)
+		if err != nil {
+			return err
+		}
+		if err := memorycapture.AuthorizeSingleUserBoundedMissDevelopmentTarget(
+			options.providerMode, configuredJudgeAuthority, authorization,
+		); err != nil {
+			return err
+		}
+		if err := memorycapture.ValidateSingleUserBoundedMissDevelopmentCostAuthority(
+			cost, configuredJudgeAuthority,
+		); err != nil {
+			return err
+		}
+		singleUserBoundedMissDevelopmentConfig, err =
+			memorycapture.BuildSingleUserBoundedMissDevelopmentProfileConfig(
+				protected, costHash, options.providerMode,
+				configuredJudgeAuthority, cost.ProviderCostPolicy,
+			)
+		if err != nil {
+			return err
+		}
+		relevanceConfigurationHash, err = memorycapture.ConfigurationSHA256(
+			singleUserBoundedMissDevelopmentConfig,
+		)
+		if err != nil {
+			return err
+		}
+		artifactNames = []string{
+			memorycapture.SingleUserBoundedMissDevelopmentArtifactName,
+			"run-manifest.json",
+		}
+	case memorycapture.CaptureModeSingleUserBoundedMissValidation:
+		configuredJudgeAuthority, err = buildConfiguredCandidateJudgeAuthority(options)
+		if err != nil {
+			return err
+		}
+		if err := memorycapture.AuthorizeSingleUserBoundedMissValidationTarget(
+			options.providerMode, configuredJudgeAuthority, authorization,
+		); err != nil {
+			return err
+		}
+		if err := memorycapture.ValidateSingleUserBoundedMissValidationCostAuthority(
+			cost, configuredJudgeAuthority,
+		); err != nil {
+			return err
+		}
+		singleUserBoundedMissValidationConfig, err =
+			memorycapture.BuildSingleUserBoundedMissValidationProfileConfig(
+				protected, costHash, options.providerMode,
+				configuredJudgeAuthority, cost.ProviderCostPolicy,
+			)
+		if err != nil {
+			return err
+		}
+		relevanceConfigurationHash, err = memorycapture.ConfigurationSHA256(
+			singleUserBoundedMissValidationConfig,
+		)
+		if err != nil {
+			return err
+		}
+		artifactNames = []string{
+			memorycapture.SingleUserBoundedMissValidationArtifactName,
+			"run-manifest.json",
+		}
 	case memorycapture.CaptureModeFrozenValidation:
 		validationConfig, err = memorycapture.BuildFrozenValidationProfileConfig(
 			protected,
@@ -890,6 +1100,48 @@ func run(
 		return runMemoryV20AbstentionDiagnostic(
 			ctx, stdout, options, startedAt, protected, cost, costHash,
 			memoryV20AbstentionDiagnosticConfig, configuredJudgeAuthority,
+			relevanceConfigurationHash, providers, adminDB, runtimeDB,
+		)
+	}
+	if options.captureMode == memorycapture.CaptureModeAbstentionConfirmationMemoryJudge {
+		return runAbstentionConfirmationMemoryJudgeDevelopment(
+			ctx, stdout, options, startedAt, protected, cost, costHash,
+			abstentionConfirmationMemoryJudgeConfig, configuredJudgeAuthority,
+			relevanceConfigurationHash, providers, adminDB, runtimeDB,
+		)
+	}
+	if options.captureMode == memorycapture.CaptureModeAbstentionConfirmationValidation {
+		return runAbstentionConfirmationValidation(
+			ctx, stdout, options, startedAt, protected, cost, costHash,
+			abstentionConfirmationValidationConfig, configuredJudgeAuthority,
+			relevanceConfigurationHash, providers, adminDB, runtimeDB,
+		)
+	}
+	if options.captureMode == memorycapture.CaptureModeDoubleConfirmationMemoryJudge {
+		return runDoubleConfirmationMemoryJudgeDevelopment(
+			ctx, stdout, options, startedAt, protected, cost, costHash,
+			doubleConfirmationMemoryJudgeConfig, configuredJudgeAuthority,
+			relevanceConfigurationHash, providers, adminDB, runtimeDB,
+		)
+	}
+	if options.captureMode == memorycapture.CaptureModeDoubleConfirmationValidation {
+		return runDoubleConfirmationValidation(
+			ctx, stdout, options, startedAt, protected, cost, costHash,
+			doubleConfirmationValidationConfig, configuredJudgeAuthority,
+			relevanceConfigurationHash, providers, adminDB, runtimeDB,
+		)
+	}
+	if options.captureMode == memorycapture.CaptureModeSingleUserBoundedMissDevelopment {
+		return runSingleUserBoundedMissDevelopment(
+			ctx, stdout, options, startedAt, protected, cost, costHash,
+			singleUserBoundedMissDevelopmentConfig, configuredJudgeAuthority,
+			relevanceConfigurationHash, providers, adminDB, runtimeDB,
+		)
+	}
+	if options.captureMode == memorycapture.CaptureModeSingleUserBoundedMissValidation {
+		return runSingleUserBoundedMissValidation(
+			ctx, stdout, options, startedAt, protected, cost, costHash,
+			singleUserBoundedMissValidationConfig, configuredJudgeAuthority,
 			relevanceConfigurationHash, providers, adminDB, runtimeDB,
 		)
 	}
@@ -1043,7 +1295,10 @@ func captureContext(
 		captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
 		captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
 		captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
-		captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
+		captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic ||
+		captureMode == memorycapture.CaptureModeAbstentionConfirmationMemoryJudge ||
+		captureMode == memorycapture.CaptureModeAbstentionConfirmationValidation ||
+		isDoubleConfirmationCaptureMode(captureMode) {
 		return context.WithCancel(parent)
 	}
 	return context.WithTimeout(parent, defaultCaptureTimeout)
@@ -2223,6 +2478,399 @@ func runAccuracyRepairMemoryJudgeDevelopment(
 	return nil
 }
 
+func runAbstentionConfirmationMemoryJudgeDevelopment(
+	ctx context.Context,
+	stdout io.Writer,
+	options commandOptions,
+	startedAt time.Time,
+	protected memorycapture.ProtectedRegression,
+	cost memorycapture.CostBasis,
+	costHash string,
+	config memorycapture.ProfileConfig,
+	authority memorycapture.ConfiguredCandidateJudgeProfileAuthority,
+	configurationHash string,
+	providers providerBundle,
+	adminDB *sql.DB,
+	runtimeDB *sql.DB,
+) error {
+	selectedPool, err := memorycapture.SelectRegressionCaptureSplit(
+		protected.Pool,
+		memorycapture.DevelopmentCalibrationSplit,
+	)
+	if err != nil {
+		return errors.Join(errors.New("select abstention-confirmation Memory Judge split failed"), err)
+	}
+	index, err := memorycapture.BuildFixtureIndex(selectedPool)
+	if err != nil {
+		return errors.Join(errors.New("index abstention-confirmation Memory Judge fixtures failed"), err)
+	}
+	seed, err := memorycapture.SeedEphemeralDatabase(
+		ctx,
+		adminDB,
+		selectedPool,
+		index,
+		options.runID,
+	)
+	if err != nil {
+		return errors.Join(errors.New("seed abstention-confirmation Memory Judge database failed"), err)
+	}
+	if len(seed.Cases) != 300 || providers.judge == nil {
+		return memorycapture.ErrCaptureInvalid
+	}
+	if _, err := memorycapture.PopulateProjectionVectors(
+		ctx,
+		adminDB,
+		options.runID,
+		providers.passage,
+	); err != nil {
+		return errors.Join(errors.New("populate abstention-confirmation Memory Judge projections failed"), err)
+	}
+	captured, err := memorycapture.CaptureAbstentionConfirmationMemoryJudgeDevelopment(
+		ctx,
+		adminDB,
+		runtimeDB,
+		options.runID,
+		protected.Pool,
+		index,
+		seed,
+		providers.hybrid,
+		providers.judge,
+		authority,
+		config.ProfileID,
+		configurationHash,
+		cost.Candidate,
+	)
+	if err != nil {
+		return errors.Join(errors.New("capture abstention-confirmation Memory Judge Development failed"), err)
+	}
+	report, reportBody, err := memorycapture.BuildAbstentionConfirmationMemoryJudgeDevelopmentReport(
+		protected.Pool,
+		captured,
+		authority,
+		cost,
+	)
+	if err != nil {
+		return errors.Join(errors.New("build abstention-confirmation Memory Judge report failed"), err)
+	}
+	if options.pretty {
+		reportBody, err = marshalJSON(report, true)
+		if err != nil {
+			return err
+		}
+	}
+	captureID, err := newCaptureID()
+	if err != nil {
+		return errors.New("create abstention-confirmation Memory Judge capture ID failed")
+	}
+	artifacts := []memorycapture.Artifact{{
+		Name: memorycapture.AbstentionConfirmationMemoryJudgeArtifactName,
+		Body: reportBody,
+	}}
+	_, manifestBody, err := memorycapture.BuildAbstentionConfirmationMemoryJudgeRunManifest(
+		options.runID,
+		captureID,
+		options.providerMode,
+		startedAt,
+		time.Now().UTC(),
+		protected,
+		costHash,
+		report,
+		artifacts,
+	)
+	if err != nil {
+		return errors.Join(errors.New("build abstention-confirmation Memory Judge manifest failed"), err)
+	}
+	artifacts = append(artifacts, memorycapture.Artifact{
+		Name: "run-manifest.json",
+		Body: manifestBody,
+	})
+	if err := verifyRetainedArtifactsLeakFree(
+		protected.Pool,
+		artifacts,
+		providers.secrets,
+	); err != nil {
+		return err
+	}
+	if _, err := memorycapture.PublishArtifactsExclusive(
+		options.outputDir,
+		artifacts,
+	); err != nil {
+		return err
+	}
+	summary := commandSummary{
+		SchemaVersion:     "neo-chat.memory-regression-native-summary.v20-confirmation-development.v1",
+		RunID:             options.runID,
+		CaptureID:         captureID,
+		CorpusClass:       report.CorpusClass,
+		AdmissionMode:     report.AdmissionMode,
+		PromotionEligible: false,
+		ProviderMode:      options.providerMode,
+		CaptureMode:       memorycapture.CaptureModeAbstentionConfirmationMemoryJudge,
+		Split:             report.Split,
+		CandidatePassed:   report.Passed,
+		PolicySelected:    false,
+		OutputDirectory:   filepath.Clean(options.outputDir),
+	}
+	if err := json.NewEncoder(stdout).Encode(summary); err != nil {
+		return errors.New("write abstention-confirmation Memory Judge summary failed")
+	}
+	if !report.Passed {
+		return errMetricsFailed
+	}
+	return nil
+}
+
+func runDoubleConfirmationMemoryJudgeDevelopment(
+	ctx context.Context,
+	stdout io.Writer,
+	options commandOptions,
+	startedAt time.Time,
+	protected memorycapture.ProtectedRegression,
+	cost memorycapture.CostBasis,
+	costHash string,
+	config memorycapture.ProfileConfig,
+	authority memorycapture.ConfiguredCandidateJudgeProfileAuthority,
+	configurationHash string,
+	providers providerBundle,
+	adminDB *sql.DB,
+	runtimeDB *sql.DB,
+) error {
+	selectedPool, err := memorycapture.SelectRegressionCaptureSplit(
+		protected.Pool,
+		memorycapture.DevelopmentCalibrationSplit,
+	)
+	if err != nil {
+		return errors.Join(errors.New("select double-confirmation Memory Judge split failed"), err)
+	}
+	index, err := memorycapture.BuildFixtureIndex(selectedPool)
+	if err != nil {
+		return errors.Join(errors.New("index double-confirmation Memory Judge fixtures failed"), err)
+	}
+	seed, err := memorycapture.SeedEphemeralDatabase(
+		ctx,
+		adminDB,
+		selectedPool,
+		index,
+		options.runID,
+	)
+	if err != nil {
+		return errors.Join(errors.New("seed double-confirmation Memory Judge database failed"), err)
+	}
+	if len(seed.Cases) != 300 || providers.judge == nil {
+		return memorycapture.ErrCaptureInvalid
+	}
+	if _, err := memorycapture.PopulateProjectionVectors(
+		ctx,
+		adminDB,
+		options.runID,
+		providers.passage,
+	); err != nil {
+		return errors.Join(errors.New("populate double-confirmation Memory Judge projections failed"), err)
+	}
+	captured, err := memorycapture.CaptureDoubleConfirmationMemoryJudgeDevelopment(
+		ctx,
+		adminDB,
+		runtimeDB,
+		options.runID,
+		protected.Pool,
+		index,
+		seed,
+		providers.hybrid,
+		providers.judge,
+		authority,
+		config.ProfileID,
+		configurationHash,
+		cost.Candidate,
+	)
+	if err != nil {
+		return errors.Join(errors.New("capture double-confirmation Memory Judge Development failed"), err)
+	}
+	report, reportBody, err := memorycapture.BuildDoubleConfirmationMemoryJudgeDevelopmentReport(
+		protected.Pool,
+		captured,
+		authority,
+		cost,
+	)
+	if err != nil {
+		return errors.Join(errors.New("build double-confirmation Memory Judge report failed"), err)
+	}
+	if options.pretty {
+		reportBody, err = marshalJSON(report, true)
+		if err != nil {
+			return err
+		}
+	}
+	captureID, err := newCaptureID()
+	if err != nil {
+		return errors.New("create double-confirmation Memory Judge capture ID failed")
+	}
+	artifacts := []memorycapture.Artifact{{
+		Name: memorycapture.DoubleConfirmationMemoryJudgeArtifactName,
+		Body: reportBody,
+	}}
+	_, manifestBody, err := memorycapture.BuildDoubleConfirmationMemoryJudgeRunManifest(
+		options.runID,
+		captureID,
+		options.providerMode,
+		startedAt,
+		time.Now().UTC(),
+		protected,
+		costHash,
+		report,
+		artifacts,
+	)
+	if err != nil {
+		return errors.Join(errors.New("build double-confirmation Memory Judge manifest failed"), err)
+	}
+	artifacts = append(artifacts, memorycapture.Artifact{
+		Name: "run-manifest.json",
+		Body: manifestBody,
+	})
+	if err := verifyRetainedArtifactsLeakFree(
+		protected.Pool,
+		artifacts,
+		providers.secrets,
+	); err != nil {
+		return err
+	}
+	if _, err := memorycapture.PublishArtifactsExclusive(
+		options.outputDir,
+		artifacts,
+	); err != nil {
+		return err
+	}
+	summary := commandSummary{
+		SchemaVersion:     "neo-chat.memory-regression-native-summary.v22-double-confirmation-development.v1",
+		RunID:             options.runID,
+		CaptureID:         captureID,
+		CorpusClass:       report.CorpusClass,
+		AdmissionMode:     report.AdmissionMode,
+		PromotionEligible: false,
+		ProviderMode:      options.providerMode,
+		CaptureMode:       memorycapture.CaptureModeDoubleConfirmationMemoryJudge,
+		Split:             report.Split,
+		CandidatePassed:   report.Passed,
+		PolicySelected:    false,
+		OutputDirectory:   filepath.Clean(options.outputDir),
+	}
+	if err := json.NewEncoder(stdout).Encode(summary); err != nil {
+		return errors.New("write double-confirmation Memory Judge summary failed")
+	}
+	if !report.Passed {
+		return errMetricsFailed
+	}
+	return nil
+}
+
+func runSingleUserBoundedMissDevelopment(
+	ctx context.Context,
+	stdout io.Writer,
+	options commandOptions,
+	startedAt time.Time,
+	protected memorycapture.ProtectedRegression,
+	cost memorycapture.CostBasis,
+	costHash string,
+	config memorycapture.ProfileConfig,
+	authority memorycapture.ConfiguredCandidateJudgeProfileAuthority,
+	configurationHash string,
+	providers providerBundle,
+	adminDB *sql.DB,
+	runtimeDB *sql.DB,
+) error {
+	selectedPool, err := memorycapture.SelectRegressionCaptureSplit(
+		protected.Pool,
+		memorycapture.DevelopmentCalibrationSplit,
+	)
+	if err != nil {
+		return errors.Join(errors.New("select bounded-miss Development split failed"), err)
+	}
+	index, err := memorycapture.BuildFixtureIndex(selectedPool)
+	if err != nil {
+		return errors.Join(errors.New("index bounded-miss Development fixtures failed"), err)
+	}
+	seed, err := memorycapture.SeedEphemeralDatabase(
+		ctx, adminDB, selectedPool, index, options.runID,
+	)
+	if err != nil {
+		return errors.Join(errors.New("seed bounded-miss Development database failed"), err)
+	}
+	if len(seed.Cases) != 300 || providers.judge == nil {
+		return memorycapture.ErrCaptureInvalid
+	}
+	if _, err := memorycapture.PopulateProjectionVectors(
+		ctx, adminDB, options.runID, providers.passage,
+	); err != nil {
+		return errors.Join(errors.New("populate bounded-miss Development projections failed"), err)
+	}
+	captured, err := memorycapture.CaptureSingleUserBoundedMissDevelopment(
+		ctx, adminDB, runtimeDB, options.runID, protected.Pool, index, seed,
+		providers.hybrid, providers.judge, authority, config.ProfileID,
+		configurationHash, cost.Candidate,
+	)
+	if err != nil {
+		return errors.Join(errors.New("capture bounded-miss Development failed"), err)
+	}
+	report, reportBody, err := memorycapture.BuildSingleUserBoundedMissDevelopmentReport(
+		protected.Pool, captured, config, authority, cost,
+	)
+	if err != nil {
+		return errors.Join(errors.New("build bounded-miss Development report failed"), err)
+	}
+	if options.pretty {
+		reportBody, err = marshalJSON(report, true)
+		if err != nil {
+			return err
+		}
+	}
+	captureID, err := newCaptureID()
+	if err != nil {
+		return errors.New("create bounded-miss Development capture ID failed")
+	}
+	artifacts := []memorycapture.Artifact{{
+		Name: memorycapture.SingleUserBoundedMissDevelopmentArtifactName,
+		Body: reportBody,
+	}}
+	_, manifestBody, err := memorycapture.BuildSingleUserBoundedMissDevelopmentRunManifest(
+		options.runID, captureID, options.providerMode, startedAt, time.Now().UTC(),
+		protected, costHash, report, artifacts,
+	)
+	if err != nil {
+		return errors.Join(errors.New("build bounded-miss Development manifest failed"), err)
+	}
+	artifacts = append(artifacts, memorycapture.Artifact{
+		Name: "run-manifest.json", Body: manifestBody,
+	})
+	if err := verifyRetainedArtifactsLeakFree(
+		protected.Pool, artifacts, providers.secrets,
+	); err != nil {
+		return err
+	}
+	if _, err := memorycapture.PublishArtifactsExclusive(options.outputDir, artifacts); err != nil {
+		return err
+	}
+	summary := commandSummary{
+		SchemaVersion:     "neo-chat.memory-regression-native-summary.v24-single-user-bounded-miss-development.v1",
+		RunID:             options.runID,
+		CaptureID:         captureID,
+		CorpusClass:       report.CorpusClass,
+		AdmissionMode:     report.AdmissionMode,
+		PromotionEligible: false,
+		ProviderMode:      options.providerMode,
+		CaptureMode:       memorycapture.CaptureModeSingleUserBoundedMissDevelopment,
+		Split:             report.Split,
+		CandidatePassed:   report.Passed,
+		PolicySelected:    false,
+		OutputDirectory:   filepath.Clean(options.outputDir),
+	}
+	if err := json.NewEncoder(stdout).Encode(summary); err != nil {
+		return errors.New("write bounded-miss Development summary failed")
+	}
+	if !report.Passed {
+		return errMetricsFailed
+	}
+	return nil
+}
+
 func runProductionMemoryJudgeValidation(
 	ctx context.Context,
 	stdout io.Writer,
@@ -2502,6 +3150,401 @@ func runProductionBufferedMemoryJudgeValidation(
 	}
 	if err := json.NewEncoder(stdout).Encode(summary); err != nil {
 		return errors.New("write production buffered Memory Judge Validation summary failed")
+	}
+	if !report.Passed {
+		return errMetricsFailed
+	}
+	return nil
+}
+
+func runAbstentionConfirmationValidation(
+	ctx context.Context,
+	stdout io.Writer,
+	options commandOptions,
+	startedAt time.Time,
+	protected memorycapture.ProtectedRegression,
+	cost memorycapture.CostBasis,
+	costHash string,
+	config memorycapture.ProfileConfig,
+	authority memorycapture.ConfiguredCandidateJudgeProfileAuthority,
+	configurationHash string,
+	providers providerBundle,
+	adminDB *sql.DB,
+	runtimeDB *sql.DB,
+) error {
+	selectedPool, err := memorycapture.SelectRegressionCaptureSplit(
+		protected.Pool,
+		memorycapture.FrozenValidationSplit,
+	)
+	if err != nil {
+		return errors.Join(errors.New("select abstention-confirmation Validation split failed"), err)
+	}
+	index, err := memorycapture.BuildFixtureIndex(selectedPool)
+	if err != nil {
+		return errors.Join(errors.New("index abstention-confirmation Validation fixtures failed"), err)
+	}
+	seed, err := memorycapture.SeedEphemeralDatabase(
+		ctx,
+		adminDB,
+		selectedPool,
+		index,
+		options.runID,
+	)
+	if err != nil {
+		return errors.Join(errors.New("seed abstention-confirmation Validation database failed"), err)
+	}
+	if len(seed.Cases) != 100 || providers.judge == nil {
+		return memorycapture.ErrCaptureInvalid
+	}
+	if _, err := memorycapture.PopulateProjectionVectors(
+		ctx,
+		adminDB,
+		options.runID,
+		providers.passage,
+	); err != nil {
+		return errors.Join(errors.New("populate abstention-confirmation Validation projections failed"), err)
+	}
+	captured, err := memorycapture.CaptureAbstentionConfirmationValidation(
+		ctx,
+		adminDB,
+		runtimeDB,
+		options.runID,
+		protected.Pool,
+		index,
+		seed,
+		providers.hybrid,
+		providers.judge,
+		authority,
+		config.ProfileID,
+		configurationHash,
+		cost.Candidate,
+	)
+	if err != nil {
+		return errors.Join(errors.New("capture abstention-confirmation Validation failed"), err)
+	}
+	report, reportBody, err := memorycapture.BuildAbstentionConfirmationValidationReport(
+		protected.Pool,
+		captured,
+		config,
+		authority,
+		cost,
+	)
+	if err != nil {
+		return errors.Join(errors.New("build abstention-confirmation Validation report failed"), err)
+	}
+	if options.pretty {
+		reportBody, err = marshalJSON(report, true)
+		if err != nil {
+			return err
+		}
+	}
+	captureID, err := newCaptureID()
+	if err != nil {
+		return errors.New("create abstention-confirmation Validation capture ID failed")
+	}
+	artifacts := []memorycapture.Artifact{{
+		Name: memorycapture.AbstentionConfirmationValidationArtifactName,
+		Body: reportBody,
+	}}
+	_, manifestBody, err := memorycapture.BuildAbstentionConfirmationValidationRunManifest(
+		options.runID,
+		captureID,
+		options.providerMode,
+		startedAt,
+		time.Now().UTC(),
+		protected,
+		costHash,
+		report,
+		artifacts,
+	)
+	if err != nil {
+		return errors.Join(errors.New("build abstention-confirmation Validation manifest failed"), err)
+	}
+	artifacts = append(artifacts, memorycapture.Artifact{
+		Name: "run-manifest.json",
+		Body: manifestBody,
+	})
+	if err := verifyRetainedArtifactsLeakFree(
+		protected.Pool,
+		artifacts,
+		providers.secrets,
+	); err != nil {
+		return err
+	}
+	if _, err := memorycapture.PublishArtifactsExclusive(
+		options.outputDir,
+		artifacts,
+	); err != nil {
+		return err
+	}
+	summary := commandSummary{
+		SchemaVersion:     "neo-chat.memory-regression-native-summary.v21",
+		RunID:             options.runID,
+		CaptureID:         captureID,
+		CorpusClass:       report.CorpusClass,
+		AdmissionMode:     report.AdmissionMode,
+		PromotionEligible: false,
+		ProviderMode:      options.providerMode,
+		CaptureMode:       memorycapture.CaptureModeAbstentionConfirmationValidation,
+		Split:             report.Split,
+		CandidatePassed:   report.Passed,
+		PolicySelected:    false,
+		OutputDirectory:   filepath.Clean(options.outputDir),
+	}
+	if err := json.NewEncoder(stdout).Encode(summary); err != nil {
+		return errors.New("write abstention-confirmation Validation summary failed")
+	}
+	if !report.Passed {
+		return errMetricsFailed
+	}
+	return nil
+}
+
+func runDoubleConfirmationValidation(
+	ctx context.Context,
+	stdout io.Writer,
+	options commandOptions,
+	startedAt time.Time,
+	protected memorycapture.ProtectedRegression,
+	cost memorycapture.CostBasis,
+	costHash string,
+	config memorycapture.ProfileConfig,
+	authority memorycapture.ConfiguredCandidateJudgeProfileAuthority,
+	configurationHash string,
+	providers providerBundle,
+	adminDB *sql.DB,
+	runtimeDB *sql.DB,
+) error {
+	selectedPool, err := memorycapture.SelectRegressionCaptureSplit(
+		protected.Pool,
+		memorycapture.FrozenValidationSplit,
+	)
+	if err != nil {
+		return errors.Join(errors.New("select double-confirmation Validation split failed"), err)
+	}
+	index, err := memorycapture.BuildFixtureIndex(selectedPool)
+	if err != nil {
+		return errors.Join(errors.New("index double-confirmation Validation fixtures failed"), err)
+	}
+	seed, err := memorycapture.SeedEphemeralDatabase(
+		ctx,
+		adminDB,
+		selectedPool,
+		index,
+		options.runID,
+	)
+	if err != nil {
+		return errors.Join(errors.New("seed double-confirmation Validation database failed"), err)
+	}
+	if len(seed.Cases) != 100 || providers.judge == nil {
+		return memorycapture.ErrCaptureInvalid
+	}
+	if _, err := memorycapture.PopulateProjectionVectors(
+		ctx,
+		adminDB,
+		options.runID,
+		providers.passage,
+	); err != nil {
+		return errors.Join(errors.New("populate double-confirmation Validation projections failed"), err)
+	}
+	captured, err := memorycapture.CaptureDoubleConfirmationValidation(
+		ctx,
+		adminDB,
+		runtimeDB,
+		options.runID,
+		protected.Pool,
+		index,
+		seed,
+		providers.hybrid,
+		providers.judge,
+		authority,
+		config.ProfileID,
+		configurationHash,
+		cost.Candidate,
+	)
+	if err != nil {
+		return errors.Join(errors.New("capture double-confirmation Validation failed"), err)
+	}
+	report, reportBody, err := memorycapture.BuildDoubleConfirmationValidationReport(
+		protected.Pool,
+		captured,
+		config,
+		authority,
+		cost,
+	)
+	if err != nil {
+		return errors.Join(errors.New("build double-confirmation Validation report failed"), err)
+	}
+	if options.pretty {
+		reportBody, err = marshalJSON(report, true)
+		if err != nil {
+			return err
+		}
+	}
+	captureID, err := newCaptureID()
+	if err != nil {
+		return errors.New("create double-confirmation Validation capture ID failed")
+	}
+	artifacts := []memorycapture.Artifact{{
+		Name: memorycapture.DoubleConfirmationValidationArtifactName,
+		Body: reportBody,
+	}}
+	_, manifestBody, err := memorycapture.BuildDoubleConfirmationValidationRunManifest(
+		options.runID,
+		captureID,
+		options.providerMode,
+		startedAt,
+		time.Now().UTC(),
+		protected,
+		costHash,
+		report,
+		artifacts,
+	)
+	if err != nil {
+		return errors.Join(errors.New("build double-confirmation Validation manifest failed"), err)
+	}
+	artifacts = append(artifacts, memorycapture.Artifact{
+		Name: "run-manifest.json",
+		Body: manifestBody,
+	})
+	if err := verifyRetainedArtifactsLeakFree(
+		protected.Pool,
+		artifacts,
+		providers.secrets,
+	); err != nil {
+		return err
+	}
+	if _, err := memorycapture.PublishArtifactsExclusive(
+		options.outputDir,
+		artifacts,
+	); err != nil {
+		return err
+	}
+	summary := commandSummary{
+		SchemaVersion:     "neo-chat.memory-regression-native-summary.v23-double-confirmation-validation.v1",
+		RunID:             options.runID,
+		CaptureID:         captureID,
+		CorpusClass:       report.CorpusClass,
+		AdmissionMode:     report.AdmissionMode,
+		PromotionEligible: false,
+		ProviderMode:      options.providerMode,
+		CaptureMode:       memorycapture.CaptureModeDoubleConfirmationValidation,
+		Split:             report.Split,
+		CandidatePassed:   report.Passed,
+		PolicySelected:    false,
+		OutputDirectory:   filepath.Clean(options.outputDir),
+	}
+	if err := json.NewEncoder(stdout).Encode(summary); err != nil {
+		return errors.New("write double-confirmation Validation summary failed")
+	}
+	if !report.Passed {
+		return errMetricsFailed
+	}
+	return nil
+}
+
+func runSingleUserBoundedMissValidation(
+	ctx context.Context,
+	stdout io.Writer,
+	options commandOptions,
+	startedAt time.Time,
+	protected memorycapture.ProtectedRegression,
+	cost memorycapture.CostBasis,
+	costHash string,
+	config memorycapture.ProfileConfig,
+	authority memorycapture.ConfiguredCandidateJudgeProfileAuthority,
+	configurationHash string,
+	providers providerBundle,
+	adminDB *sql.DB,
+	runtimeDB *sql.DB,
+) error {
+	selectedPool, err := memorycapture.SelectRegressionCaptureSplit(
+		protected.Pool,
+		memorycapture.FrozenValidationSplit,
+	)
+	if err != nil {
+		return errors.Join(errors.New("select bounded-miss Validation split failed"), err)
+	}
+	index, err := memorycapture.BuildFixtureIndex(selectedPool)
+	if err != nil {
+		return errors.Join(errors.New("index bounded-miss Validation fixtures failed"), err)
+	}
+	seed, err := memorycapture.SeedEphemeralDatabase(
+		ctx, adminDB, selectedPool, index, options.runID,
+	)
+	if err != nil {
+		return errors.Join(errors.New("seed bounded-miss Validation database failed"), err)
+	}
+	if len(seed.Cases) != 100 || providers.judge == nil {
+		return memorycapture.ErrCaptureInvalid
+	}
+	if _, err := memorycapture.PopulateProjectionVectors(
+		ctx, adminDB, options.runID, providers.passage,
+	); err != nil {
+		return errors.Join(errors.New("populate bounded-miss Validation projections failed"), err)
+	}
+	captured, err := memorycapture.CaptureSingleUserBoundedMissValidation(
+		ctx, adminDB, runtimeDB, options.runID, protected.Pool, index, seed,
+		providers.hybrid, providers.judge, authority, config.ProfileID,
+		configurationHash, cost.Candidate,
+	)
+	if err != nil {
+		return errors.Join(errors.New("capture bounded-miss Validation failed"), err)
+	}
+	report, reportBody, err := memorycapture.BuildSingleUserBoundedMissValidationReport(
+		protected.Pool, captured, config, authority, cost,
+	)
+	if err != nil {
+		return errors.Join(errors.New("build bounded-miss Validation report failed"), err)
+	}
+	if options.pretty {
+		reportBody, err = marshalJSON(report, true)
+		if err != nil {
+			return err
+		}
+	}
+	captureID, err := newCaptureID()
+	if err != nil {
+		return errors.New("create bounded-miss Validation capture ID failed")
+	}
+	artifacts := []memorycapture.Artifact{{
+		Name: memorycapture.SingleUserBoundedMissValidationArtifactName,
+		Body: reportBody,
+	}}
+	_, manifestBody, err := memorycapture.BuildSingleUserBoundedMissValidationRunManifest(
+		options.runID, captureID, options.providerMode, startedAt, time.Now().UTC(),
+		protected, costHash, report, artifacts,
+	)
+	if err != nil {
+		return errors.Join(errors.New("build bounded-miss Validation manifest failed"), err)
+	}
+	artifacts = append(artifacts, memorycapture.Artifact{
+		Name: "run-manifest.json", Body: manifestBody,
+	})
+	if err := verifyRetainedArtifactsLeakFree(
+		protected.Pool, artifacts, providers.secrets,
+	); err != nil {
+		return err
+	}
+	if _, err := memorycapture.PublishArtifactsExclusive(options.outputDir, artifacts); err != nil {
+		return err
+	}
+	summary := commandSummary{
+		SchemaVersion:     "neo-chat.memory-regression-native-summary.v25-single-user-bounded-miss-validation.v1",
+		RunID:             options.runID,
+		CaptureID:         captureID,
+		CorpusClass:       report.CorpusClass,
+		AdmissionMode:     report.AdmissionMode,
+		PromotionEligible: false,
+		ProviderMode:      options.providerMode,
+		CaptureMode:       memorycapture.CaptureModeSingleUserBoundedMissValidation,
+		Split:             report.Split,
+		CandidatePassed:   report.Passed,
+		PolicySelected:    false,
+		OutputDirectory:   filepath.Clean(options.outputDir),
+	}
+	if err := json.NewEncoder(stdout).Encode(summary); err != nil {
+		return errors.New("write bounded-miss Validation summary failed")
 	}
 	if !report.Passed {
 		return errMetricsFailed
@@ -3143,6 +4186,12 @@ func parseCommand(args []string) (commandOptions, error) {
 		memorycapture.CaptureModeMemoryJudgeSliceDiagnostic,
 		memorycapture.CaptureModeAccuracyRepairMemoryJudge,
 		memorycapture.CaptureModeMemoryV20AbstentionDiagnostic,
+		memorycapture.CaptureModeAbstentionConfirmationMemoryJudge,
+		memorycapture.CaptureModeAbstentionConfirmationValidation,
+		memorycapture.CaptureModeDoubleConfirmationMemoryJudge,
+		memorycapture.CaptureModeDoubleConfirmationValidation,
+		memorycapture.CaptureModeSingleUserBoundedMissDevelopment,
+		memorycapture.CaptureModeSingleUserBoundedMissValidation,
 		memorycapture.CaptureModeMemoryToolRouteDevelopment,
 		memorycapture.CaptureModeMemoryToolRouteDiagnostic,
 		memorycapture.CaptureModeFrozenValidation:
@@ -3178,7 +4227,10 @@ func parseCommand(args []string) (commandOptions, error) {
 			options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
 			options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
 			options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
-			options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
+			options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic ||
+			options.captureMode == memorycapture.CaptureModeAbstentionConfirmationMemoryJudge ||
+			options.captureMode == memorycapture.CaptureModeAbstentionConfirmationValidation ||
+			isDoubleConfirmationCaptureMode(options.captureMode) {
 			if options.judgeProviderID == "" || options.judgeProviderType == "" ||
 				options.judgeBaseURL == "" || options.judgeConfiguredModelID == "" {
 				return commandOptions{}, errors.New(
@@ -3213,6 +4265,9 @@ func parseCommand(args []string) (commandOptions, error) {
 		options.captureMode != memorycapture.CaptureModeMemoryJudgeSliceDiagnostic &&
 		options.captureMode != memorycapture.CaptureModeAccuracyRepairMemoryJudge &&
 		options.captureMode != memorycapture.CaptureModeMemoryV20AbstentionDiagnostic &&
+		options.captureMode != memorycapture.CaptureModeAbstentionConfirmationMemoryJudge &&
+		options.captureMode != memorycapture.CaptureModeAbstentionConfirmationValidation &&
+		!isDoubleConfirmationCaptureMode(options.captureMode) &&
 		(options.judgeCredentialPath != "" || options.judgeProviderID != "" ||
 			options.judgeProviderType != "" || options.judgeBaseURL != "" ||
 			options.judgeConfiguredModelID != "") {
@@ -3241,6 +4296,10 @@ func usageError() error {
 			"development_fixed_memory_judge_negative_guard_buffered_slice_diagnostic|" +
 			"development_fixed_memory_judge_negative_guard_buffered_accuracy_repair|" +
 			"development_fixed_memory_judge_accuracy_v20_abstention_diagnostic|" +
+			"development_fixed_memory_judge_negative_guard_abstention_confirmation|" +
+			"production_fixed_memory_judge_negative_guard_abstention_confirmation_validation|" +
+			"development_fixed_memory_judge_negative_guard_double_confirmation|" +
+			"production_fixed_memory_judge_negative_guard_double_confirmation_validation|" +
 			"frozen_validation " +
 			"-run-id ID [-credential-file FILE] " +
 			"[-cloud-judge-model MODEL] " +
@@ -3273,7 +4332,10 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 			options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
 			options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
 			options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
-			options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
+			options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic ||
+			options.captureMode == memorycapture.CaptureModeAbstentionConfirmationMemoryJudge ||
+			options.captureMode == memorycapture.CaptureModeAbstentionConfirmationValidation ||
+			isDoubleConfirmationCaptureMode(options.captureMode) {
 			modelID := options.judgeModelID
 			if options.captureMode == memorycapture.CaptureModeConfiguredCandidateJudge ||
 				options.captureMode == memorycapture.CaptureModeFixedMemoryJudge ||
@@ -3286,10 +4348,20 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 				options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
 				options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
 				options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
-				options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
+				options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic ||
+				options.captureMode == memorycapture.CaptureModeAbstentionConfirmationMemoryJudge ||
+				options.captureMode == memorycapture.CaptureModeAbstentionConfirmationValidation ||
+				isDoubleConfirmationCaptureMode(options.captureMode) {
 				modelID = options.judgeConfiguredModelID
 			}
-			if options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
+			if isDoubleConfirmationCaptureMode(options.captureMode) {
+				bundle.judge =
+					memorycapture.NewFakeProtocolDoubleConfirmationCandidateJudge(modelID)
+			} else if options.captureMode == memorycapture.CaptureModeAbstentionConfirmationMemoryJudge ||
+				options.captureMode == memorycapture.CaptureModeAbstentionConfirmationValidation {
+				bundle.judge =
+					memorycapture.NewFakeProtocolAbstentionConfirmationCandidateJudge(modelID)
+			} else if options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
 				options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
 				bundle.judge = memorycapture.NewFakeProtocolAccuracyCandidateJudge(modelID)
 			} else {
@@ -3335,7 +4407,10 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 		options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
 		options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
 		options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
-		options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
+		options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic ||
+		options.captureMode == memorycapture.CaptureModeAbstentionConfirmationMemoryJudge ||
+		options.captureMode == memorycapture.CaptureModeAbstentionConfirmationValidation ||
+		isDoubleConfirmationCaptureMode(options.captureMode) {
 		gatewayOptions = append(
 			gatewayOptions,
 			ragproviders.WithProviderGatewayAccuracyFirstDevelopmentNoTimeouts(),
@@ -3384,7 +4459,10 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 		options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
 		options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
 		options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
-		options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
+		options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic ||
+		options.captureMode == memorycapture.CaptureModeAbstentionConfirmationMemoryJudge ||
+		options.captureMode == memorycapture.CaptureModeAbstentionConfirmationValidation ||
+		isDoubleConfirmationCaptureMode(options.captureMode) {
 		judgeCredential, credentialErr := readRegularBoundedFile(
 			options.judgeCredentialPath,
 			maximumCredentialSize,
@@ -3430,7 +4508,10 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 			options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
 			options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
 			options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
-			options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
+			options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic ||
+			options.captureMode == memorycapture.CaptureModeAbstentionConfirmationMemoryJudge ||
+			options.captureMode == memorycapture.CaptureModeAbstentionConfirmationValidation ||
+			isDoubleConfirmationCaptureMode(options.captureMode) {
 			judgeTimeout = 0
 			judgeHTTPClient = ragproviders.NewAccuracyFirstDevelopmentHTTPClient()
 		}
@@ -3457,7 +4538,10 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 			options.captureMode == memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation ||
 			options.captureMode == memorycapture.CaptureModeMemoryJudgeSliceDiagnostic ||
 			options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
-			options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
+			options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic ||
+			options.captureMode == memorycapture.CaptureModeAbstentionConfirmationMemoryJudge ||
+			options.captureMode == memorycapture.CaptureModeAbstentionConfirmationValidation ||
+			isDoubleConfirmationCaptureMode(options.captureMode) {
 			bufferedProvider, ok := chatProvider.(chat.BufferedChatProvider)
 			if !ok {
 				clearBytes(judgeCredential)
@@ -3466,7 +4550,13 @@ func buildProviders(options commandOptions) (providerBundle, error) {
 					"configured candidate judge has no buffered completion support",
 				)
 			}
-			if options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
+			if options.captureMode == memorycapture.CaptureModeAbstentionConfirmationMemoryJudge ||
+				options.captureMode == memorycapture.CaptureModeAbstentionConfirmationValidation ||
+				isDoubleConfirmationCaptureMode(options.captureMode) {
+				judge, judgeErr = memoryjudge.NewBufferedChatAbstentionConfirmationAdapter(
+					bufferedProvider, modelRef,
+				)
+			} else if options.captureMode == memorycapture.CaptureModeAccuracyRepairMemoryJudge ||
 				options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
 				judge, judgeErr = memoryjudge.NewBufferedChatAccuracyAdapter(bufferedProvider, modelRef)
 			} else {
@@ -3563,14 +4653,23 @@ func wrapAccuracyFirstProviderBundle(
 		options.captureMode != memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation &&
 		options.captureMode != memorycapture.CaptureModeMemoryJudgeSliceDiagnostic &&
 		options.captureMode != memorycapture.CaptureModeAccuracyRepairMemoryJudge &&
-		options.captureMode != memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
+		options.captureMode != memorycapture.CaptureModeMemoryV20AbstentionDiagnostic &&
+		options.captureMode != memorycapture.CaptureModeAbstentionConfirmationMemoryJudge &&
+		options.captureMode != memorycapture.CaptureModeAbstentionConfirmationValidation &&
+		!isDoubleConfirmationCaptureMode(options.captureMode) {
 		return bundle, nil
 	}
 	var passage memorycapture.PassageEmbedder
 	var hybrid usermemory.HybridShadowProvider
 	var judge usermemory.HybridCandidateJudge
 	var err error
-	if options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
+	if options.captureMode == memorycapture.CaptureModeAbstentionConfirmationMemoryJudge ||
+		options.captureMode == memorycapture.CaptureModeAbstentionConfirmationValidation ||
+		isDoubleConfirmationCaptureMode(options.captureMode) {
+		passage, hybrid, judge, _, err = memorycapture.WrapAbstentionConfirmationProviders(
+			options.providerMode, bundle.passage, bundle.hybrid, bundle.judge,
+		)
+	} else if options.captureMode == memorycapture.CaptureModeMemoryV20AbstentionDiagnostic {
 		passage, hybrid, judge, _, err =
 			memorycapture.WrapMemoryV20AbstentionDiagnosticProviders(
 				options.providerMode,
@@ -3840,7 +4939,32 @@ func loadLiveAuthorization(getenv environmentLookup) memorycapture.LiveAuthoriza
 		AccuracyRepairMemoryJudgeApproval: value(
 			liveAccuracyRepairMemoryJudgeApprovalEnv,
 		),
+		AbstentionConfirmationDevelopmentApproval: value(
+			liveAbstentionConfirmationDevelopmentApprovalEnv,
+		),
+		AbstentionConfirmationValidationApproval: value(
+			liveAbstentionConfirmationValidationApprovalEnv,
+		),
+		DoubleConfirmationDevelopmentApproval: value(
+			liveDoubleConfirmationDevelopmentApprovalEnv,
+		),
+		DoubleConfirmationValidationApproval: value(
+			liveDoubleConfirmationValidationApprovalEnv,
+		),
+		SingleUserBoundedMissDevelopmentApproval: value(
+			liveSingleUserBoundedMissDevelopmentApprovalEnv,
+		),
+		SingleUserBoundedMissValidationApproval: value(
+			liveSingleUserBoundedMissValidationApprovalEnv,
+		),
 	}
+}
+
+func isDoubleConfirmationCaptureMode(value string) bool {
+	return value == memorycapture.CaptureModeDoubleConfirmationMemoryJudge ||
+		value == memorycapture.CaptureModeDoubleConfirmationValidation ||
+		value == memorycapture.CaptureModeSingleUserBoundedMissDevelopment ||
+		value == memorycapture.CaptureModeSingleUserBoundedMissValidation
 }
 
 func verifyRetainedArtifactsLeakFree(

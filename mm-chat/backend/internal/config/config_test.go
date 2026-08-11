@@ -656,6 +656,24 @@ func TestConfigValidateRejectsPartialAndInvalidTeamSettings(t *testing.T) {
 	}
 }
 
+func TestConfigAcceptsCanonicalPostgresUUIDCanary(t *testing.T) {
+	const developmentUserID = "00000000-0000-0000-0000-000000000001"
+	cfg := LoadFromEnv(func(key string) (string, bool) {
+		if key == EnvMemoryToolLoopCanary {
+			return developmentUserID, true
+		}
+		return "", false
+	})
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if len(cfg.Memory.ToolLoopCanaryUserIDs) != 1 ||
+		cfg.Memory.ToolLoopCanaryUserIDs[0] != developmentUserID {
+		t.Fatalf("Memory.ToolLoopCanaryUserIDs = %#v", cfg.Memory.ToolLoopCanaryUserIDs)
+	}
+}
+
 func TestParseBase64KeyringSupportsRotation(t *testing.T) {
 	active := bytes.Repeat([]byte{0x11}, 32)
 	old := bytes.Repeat([]byte{0x22}, 32)

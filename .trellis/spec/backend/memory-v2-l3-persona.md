@@ -2,16 +2,17 @@
 
 ## 1. Scope / Trigger
 
-Apply this contract when changing migration `063_memory_l3_persona`, L3
-Persona refresh/embedding/purge jobs, Persona retrieval, L3 promotion or
-rollback, Persona governance APIs/UI, or either `MEMORY_L3_PERSONA_*` runtime
-flag.
+Apply this contract when changing migration `063_memory_l3_persona`, migration
+`073_memory_single_user_derived_reader_preview`, L3 Persona refresh/embedding/
+purge jobs, Persona retrieval, L3 promotion or rollback, Persona governance
+APIs/UI, or either `MEMORY_L3_PERSONA_*` runtime flag.
 
 L3 Persona is one rebuildable derived profile over a user's current eligible
 Global L1 Memory. It is never canonical truth, never edits L1, never widens
 Project or Conversation scope, and never depends on or mutates the independent
 L2 Scene pointer or generation. PR12 ships the L3 profile in `shadow` with both
-runtime flags disabled because no formal promotion evidence exists.
+runtime flags default-off. Migration `073` adds a distinct sole-user preview
+authority without changing or fabricating formal promotion evidence.
 
 ## 2. Signatures
 
@@ -76,6 +77,9 @@ Migration-owner-only capabilities:
 ```text
 memory_operator_promote_l3_persona(UUID, JSONB, JSONB)
 memory_operator_rollback_l3_persona(UUID, TEXT)
+memory_operator_set_single_user_derived_reader_preview(
+  UUID, UUID, BOOLEAN, TEXT
+)
 ```
 
 ## 3. Contracts
@@ -150,10 +154,12 @@ memory_operator_rollback_l3_persona(UUID, TEXT)
   is recomputed from authoritative Persona token counts and never exceeds 300
   estimated tokens. Provider results are reauthorized after rerank.
 - Shadow mode never returns Persona plaintext to chat and never creates L1
-  Usage. Active injection requires the API reader flag plus an active database
-  profile, `l3_mode != off`, effective Memory Use/Search, the current L1 hybrid
-  pointer, current L3 generation, active Persona, current members, and current
-  Sensitive authorization.
+  Usage. Active injection requires the API Reader flag, `l3_mode != off`,
+  effective Memory Use/Search, current L3 generation, an active Persona with
+  current members, and current Sensitive authorization. Database Reader
+  authority is either the unchanged formal active-profile plus current-L1-
+  pointer lane or migration `073`'s latest enabled sole-user preview event. The
+  preview never changes the formal L1 pointer.
 - Active content uses its own lower-priority `<relevant-user-persona>` prompt
   block. Only content is sent; Persona/member IDs are omitted. The current user
   request and atomic L1 Memory remain higher authority.
@@ -165,6 +171,12 @@ memory_operator_rollback_l3_persona(UUID, TEXT)
 - Promotion and rollback append immutable bounded events and change only L3
   authority. Rollback does not change L1, L2 generation/pointer, canonical
   Memory, or chat fallback.
+- Preview activation is not promotion. It requires the exact literal
+  `I_ACCEPT_SINGLE_USER_L2_L3_READER_PREVIEW_WITHOUT_FORMAL_PROMOTION`, exactly
+  one database user, enabled L2/L3 policy, current ready Scene and Persona
+  projections, and zero pending/processing/dead derived jobs. A second user
+  appends `USER_POPULATION_CHANGED` disable evidence and reconciles both
+  derived layers fail-closed; deleting that user never auto-enables preview.
 - Governance snapshot exposes L3 profile/status/generation and the current
   Persona lifecycle/content/token/sensitivity/watermark/member metadata.
   Detail hydrates only current member L1/evidence; changed or deleted sources
@@ -175,8 +187,8 @@ memory_operator_rollback_l3_persona(UUID, TEXT)
 
 - `go_api_runtime` receives only Persona search and governance EXECUTE.
   `memory_worker_runtime` receives only Persona refresh/purge/embedding lease
-  EXECUTE. Neither runtime role receives Persona table CRUD or promotion/
-  rollback authority.
+  EXECUTE. Neither runtime role receives Persona or preview-event table CRUD,
+  promotion/rollback authority, or preview activation EXECUTE.
 - Every application capability is `SECURITY DEFINER`, owned by
   `memory_runtime_owner`, with the application schema followed by
   `pg_catalog, pg_temp` pinned in `search_path`.
@@ -184,6 +196,10 @@ memory_operator_rollback_l3_persona(UUID, TEXT)
   non-empty derived content. A clean `062 -> 063 -> 062 -> 063` removes only
   empty/rebuildable PR12 state and leaves migrations `001` through `062`
   byte-identical.
+- Migration `073` down is clean only before any preview event. After activation,
+  operational rollback appends a disable event and sets both derived Reader
+  flags false while retaining schema `073` and audit. Account deletion may
+  cascade that user's events; direct event UPDATE/DELETE remains blocked.
 
 ## 4. Validation & Error Matrix
 
@@ -199,6 +215,8 @@ memory_operator_rollback_l3_persona(UUID, TEXT)
 | Query embedding or rerank fails | Lexical or RRF fallback; L1/L2/chat continues. |
 | Client spoofs final token estimate | SQL recomputes and rejects the result. |
 | Active env flag lacks database authority | No Persona injection and no promotion claim. |
+| Sole-user preview lacks a ready L2 or L3 projection, has derived work, or user count differs from one | Preview enable aborts without an event or lifecycle change. |
+| A second user is inserted after preview enable | Append disable evidence and reconcile L2/L3 out of active state in the same transaction. |
 | Runtime attempts promotion or direct table CRUD | PostgreSQL permission denied. |
 | Account is deleted | All per-user L3 rows cascade; no state recreation or FK failure. |
 | Down sees promotion/history/derived state | Guarded refusal; schema remains applied. |
@@ -212,6 +230,8 @@ memory_operator_rollback_l3_persona(UUID, TEXT)
 - **Base**: flags remain false or no promotion evidence exists. Refresh stays
   queued, provider-free purge continues, governance shows `shadow/off`, and L1
   remains the only default prompt/Usage authority with zero L3 Provider calls.
+  A migration-`073` sole-user preview is separately allowed only under its
+  exact readiness, population, audit, and environment gates.
 - **Bad**: summarize Project/Conversation rows, trust Provider IDs/sensitivity,
   persist an oversized Persona, return shadow plaintext, inject IDs, silently
   re-enable a disabled Persona, let an old lease complete, or let the evaluator
@@ -234,6 +254,11 @@ memory_operator_rollback_l3_persona(UUID, TEXT)
   Exact/BM25/vector/RRF and lexical fallback, token spoof, disabled preservation,
   stale/purge, promotion denial/success/rollback and L2 independence, runtime
   role denial, cross-user denial, and account cascade.
+- PostgreSQL 17 preview: `072 -> 073 -> 072 -> 073` before events; exact-literal
+  and readiness validation; real active prepare/record; unchanged null L1
+  pointer; zero formal promotion events; replay/conflict; append-only audit;
+  runtime denial; second-user auto-disable without auto-restore; manual disable;
+  account cascade; and down refusal after event history.
 - Frontend: server-only Persona composition, profile/status/member/evidence
   rendering, disable/enable/rebuild, correction-through-L1, stale/error/empty
   states, accessibility, and no direct-derived plaintext mutation.
@@ -265,5 +290,6 @@ default-off independent Persona lane
   -> immediate stale on authority change + provider-free 24h purge
   -> relevant-only hybrid shadow diagnostics
   -> explicit evidence-gated promotion or independent rollback
+  -> or exact sole-user audited preview without formal-promotion mutation
   -> governed L1 correction and rebuild, never Persona authority
 ```

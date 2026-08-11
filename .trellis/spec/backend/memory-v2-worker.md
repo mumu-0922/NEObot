@@ -10,7 +10,8 @@ and database-role wiring. The production L1 successor additionally covers
 `067_memory_auto_capture_authority_hardening`, and
 `068_memory_auto_capture_tool_evidence_profile` plus
 `069_memory_auto_capture_compatible_tool_profile`. Runtime availability and
-settings UX additionally use `070_memory_worker_health`.
+settings UX additionally use `070_memory_worker_health`; actionable capture
+health uses `071_memory_worker_health_resolutions`.
 
 PR3 retains the Global-only v1 Memory reader and HTTP CRUD contract. Project
 routing, evidence/revision/tombstone, review/conflict handling, embeddings,
@@ -74,9 +75,12 @@ memory_user_health(UUID) RETURNS TABLE (
   capture_dead_letter_count, projection_ready_count,
   projection_pending_count, projection_failed_count
 )
+memory_acknowledge_job_health(UUID, UUID, TEXT, TEXT) RETURNS BOOLEAN
 ```
 
-Authenticated HTTP health is `GET /v1/memory-health`. It returns only bounded
+Authenticated HTTP health is `GET /v1/memory-health`. The fixed development
+owner identity probe is `GET /v1/me`; `/v1/auth/me` is not a registered route.
+Health returns only bounded
 `ready|indexing|degraded|disabled`, a fixed reason code, the two worker booleans,
 ready/pending/failed aggregate counts, and the fixed `gpt-5.6-luna` judge
 identity. It never returns a database/Provider/Base URL error or plaintext.
@@ -175,6 +179,35 @@ REDIS_KEY_PREFIX=mm-chat
 - Down `070` refuses while any heartbeat is live. Stop/retire the Worker or wait
   for TTL expiry; runtime roles must never delete rows to force rollback.
 
+### Actionable capture health (`071`)
+
+- Capture health counts only `memory_jobs.stage='extract'`. Scheduled
+  `review_expire` governance maintenance is not capture indexing work and must
+  not keep an otherwise ready user in `indexing`.
+- An extract dead letter remains degraded until the owning user explicitly
+  acknowledges that exact job and exact bounded `error_code` through
+  `memory_acknowledge_job_health(...)`. The append-only resolution contains no
+  free text or Memory/source content and never mutates the original job,
+  error, audit, or Activity evidence.
+- `source_no_longer_current` accepts only `SOURCE_DRIFT` whose same-owner
+  source Conversation still exists and is no longer active.
+  `historical_failure_accepted` accepts only a terminal extract job completed
+  at least 24 hours earlier. Same-parameter replay returns false; conflicting
+  replay and error-code drift fail closed.
+- Only `go_api_runtime` may execute the acknowledgement function. Neither API
+  nor Worker runtime roles have resolution-table CRUD, and the Worker cannot
+  execute the acknowledgement capability. The operator command requires the
+  bootstrap user, one canonical job UUID, one exact expected error code, one
+  bounded resolution code, and an exact approval literal.
+- Down `071` refuses after any resolution evidence exists. Before evidence,
+  down restores the exact migration-`070` all-job aggregation and removes the
+  additive `(job_id,user_id)` ownership key.
+- Once all exact resolutions exist, launch may consume the resulting ready
+  health without another Provider smoke. Require zero active extract/embedding
+  jobs before enabling behavior. In `AUTH_MODE=development`, verify the fixed
+  owner at `GET /v1/me`; use a disposable same-image `AUTH_MODE=required`
+  instance for unauthenticated `401` proof rather than changing live auth mode.
+
 ### Production L1 successor (`066`–`069`)
 
 - Free-text Provider JSON is no longer write authority. Each extraction or
@@ -246,6 +279,13 @@ REDIS_KEY_PREFIX=mm-chat
 | Health sees no live embedding-capable Worker | `degraded`; do not report a candidate-empty Tool read as a healthy miss. |
 | Current eligible Memory has no current projection | Count it as pending and report `indexing`. |
 | `070` down sees a live heartbeat | `MEMORY_HEALTH_ROLLBACK_REQUIRES_STOPPED_WORKERS`; preserve all state. |
+| Health sees `review_expire` maintenance | Exclude it from capture pending/processing/dead-letter counts. |
+| Acknowledgement job/user/stage/status/error binding drifts | Reject; preserve the dead letter in degraded health. |
+| `source_no_longer_current` sees an active or missing source Conversation | `MEMORY_JOB_HEALTH_RESOLUTION_SOURCE_CURRENT`; create no resolution. |
+| `historical_failure_accepted` sees a terminal age below 24 hours | `MEMORY_JOB_HEALTH_RESOLUTION_NOT_HISTORICAL`; create no resolution. |
+| Runtime role attempts resolution UPDATE/DELETE or Worker acknowledgement | PostgreSQL permission/append-only denial. |
+| `071` down sees resolution evidence | `MEMORY_JOB_HEALTH_RESOLUTION_ROLLBACK_REQUIRES_EMPTY`; preserve all state. |
+| Launch verifier requests `/v1/auth/me` | Treat the route-level `404` as verifier failure, execute the prepared behavior rollback, verify `GET /v1/me`, and retry only Provider-free flag/canary recreation. |
 
 ## 5. Good / Base / Bad Cases
 
@@ -275,6 +315,19 @@ REDIS_KEY_PREFIX=mm-chat
 - **Health Bad**: infer liveness from Compose/container status, return a raw SQL
   error to the browser, treat missing projections as ready, or fall back to the
   retired reader when the Worker is absent.
+- **Actionable-health Good**: exclude scheduled Review expiry, append one exact
+  same-owner resolution for an eligible historical extract dead letter, retain
+  the original job/error evidence, and make health ready only after every
+  remaining capture/projection lane is actually clear.
+- **Actionable-health Base**: no resolution exists, so clean down restores the
+  exact `070` all-job aggregation and re-up recreates the empty append-only
+  capability.
+- **Actionable-health Bad**: accept a missing/active source, acknowledge as the
+  Worker, bulk-resolve jobs, add operator notes/plaintext, mutate the original
+  error, or drop `071` after evidence exists.
+- **Actionable-health launch Good**: after both exact resolutions, prove
+  capture `0/0/0`, projection `1/0/0`, live embedding capability, fixed owner
+  `/v1/me`, and required-auth `401` without replaying an admitted Chat POST.
 
 ## 6. Tests Required
 
@@ -305,6 +358,14 @@ REDIS_KEY_PREFIX=mm-chat
   denial, invalid heartbeat input rejection, active-heartbeat rollback refusal,
   user isolation, missing/pending/ready/failed projection counts, bounded 503
   health failure, Tool-disabled repository independence, and clean re-up.
+- Replay `070 -> 071 -> 070 -> 071` on disposable PostgreSQL 17 before any
+  acknowledgement. Prove extract-only counts, exact user/error/status/age and
+  current-source fences, idempotent same-input replay, conflicting replay
+  denial, API/Worker least privilege, append-only UPDATE/DELETE denial, and
+  guarded down once resolution evidence exists.
+- Assert the launch verifier uses `GET /v1/me`, keeps the live development auth
+  mode unchanged, and proves unauthenticated denial in a disposable
+  `AUTH_MODE=required` container with unchanged durable counts.
 - Frontend tests must prove independent Governance/Health loading, a bounded
   degraded badge on Health failure, periodic refresh, and fixed Sol/Luna model
   responsibility labels without copying Provider configuration into the UI.
@@ -345,4 +406,21 @@ Runtime health:
 Wrong: container-is-running -> assume Memory is ready -> treat empty as miss
 Correct: PostgreSQL heartbeat + current-user projection/capture state
   -> bounded status -> healthy empty or explicit fail-closed Tool result
+```
+
+Actionable health:
+
+```text
+Wrong: count future Review expiry as capture indexing, or delete/edit old
+       extract failures until health turns green.
+Correct: count extract jobs only -> acknowledge one exact historical failure
+         through the owner-bound append-only function -> preserve the original
+         job/error/audit evidence -> refuse rollback after acknowledgement.
+```
+
+```text
+Wrong: change live AUTH_MODE or call /v1/auth/me to prove the sole user.
+Correct: GET /v1/me under the fixed development session -> GET
+         /v1/memory-health == ready -> disposable required-auth 401 proof ->
+         leave live auth mode and Provider authority unchanged.
 ```

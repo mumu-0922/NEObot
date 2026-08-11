@@ -2,6 +2,8 @@ package usermemory
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -92,6 +94,216 @@ func TestHybridCandidateJudgeAccuracyPromptChangesOnlySystemPolicy(t *testing.T)
 		!strings.Contains(accuracySystem, "do not abstain") ||
 		!strings.Contains(accuracySystem, "does not make unrelated candidates relevant") {
 		t.Fatalf("accuracy prompt drifted: legacy=%q accuracy=%q user=%q", legacySystem, accuracySystem, accuracyUser)
+	}
+}
+
+func TestHybridCandidateJudgeConfirmationPromptIsSeparateAndStrict(t *testing.T) {
+	input := HybridCandidateJudgeInput{
+		Query: "请读取我当前保存的 project fallback",
+		Candidates: []HybridCandidateJudgeCandidate{
+			{Ordinal: 0, Content: "Project fallback is queue-b."},
+			{Ordinal: 1, Content: "Project fallback used to be queue-a."},
+		},
+	}
+	accuracySystem, accuracyUser, err := BuildHybridCandidateJudgeAccuracyPrompt(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	confirmationSystem, confirmationUser, err :=
+		BuildHybridCandidateJudgeConfirmationPrompt(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if confirmationSystem == accuracySystem || confirmationUser != accuracyUser ||
+		sha256String(confirmationSystem) != HybridCandidateJudgeConfirmationPromptSHA256 ||
+		!strings.Contains(confirmationSystem, "primary relevance judge returned no Memory") ||
+		!strings.Contains(confirmationSystem, "current correction supersedes") ||
+		!strings.Contains(confirmationSystem, "Prefer no Memory") {
+		t.Fatalf("confirmation prompt drifted: system=%q user=%q", confirmationSystem, confirmationUser)
+	}
+}
+
+func TestAbstentionConfirmationPolicyCallsConfirmationOnlyAfterEmptyPrimary(t *testing.T) {
+	tests := []struct {
+		name            string
+		primaryOrdinals []int
+		confirmOrdinals []int
+		wantPurposes    []HybridCandidateJudgePromptPurpose
+		wantFinalCount  int
+	}{
+		{
+			name: "primary selected", primaryOrdinals: []int{0},
+			wantPurposes: []HybridCandidateJudgePromptPurpose{
+				HybridCandidateJudgePromptPurposeAccuracyPrimary,
+			}, wantFinalCount: 1,
+		},
+		{
+			name: "empty primary confirmed", confirmOrdinals: []int{0},
+			wantPurposes: []HybridCandidateJudgePromptPurpose{
+				HybridCandidateJudgePromptPurposeAccuracyPrimary,
+				HybridCandidateJudgePromptPurposeAbstentionConfirmation,
+			}, wantFinalCount: 1,
+		},
+		{
+			name: "both abstain",
+			wantPurposes: []HybridCandidateJudgePromptPurpose{
+				HybridCandidateJudgePromptPurposeAccuracyPrimary,
+				HybridCandidateJudgePromptPurposeAbstentionConfirmation,
+			}, wantFinalCount: 0,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repository := cloudJudgeTestRepository()
+			provider := &serialHybridProvider{order: &[]string{}}
+			judge := &confirmationHybridJudge{
+				primaryOrdinals:      test.primaryOrdinals,
+				confirmationOrdinals: test.confirmOrdinals,
+			}
+			_, _, err := NewService(
+				repository,
+				WithHybridShadowProvider(provider),
+				WithHybridCandidateJudge(judge),
+				WithHybridShadowRelevancePolicy(
+					HybridShadowAbstentionConfirmationDevelopmentPolicy(),
+				),
+			).SearchRelevantWithHybridShadow(
+				context.Background(), "saved preference", hybridTestConversation,
+				hybridTestAssistant, MaxSearchResults,
+			)
+			if err != nil || !equalPromptPurposes(judge.purposes, test.wantPurposes) ||
+				len(repository.recordInput.Final) != test.wantFinalCount {
+				t.Fatalf("purposes=%v final=%v err=%v", judge.purposes, repository.recordInput.Final, err)
+			}
+		})
+	}
+}
+
+func TestAbstentionConfirmationPoliciesBindOnlyFreshPromptBoundary(t *testing.T) {
+	development, developmentOK := DescribeHybridShadowRelevancePolicy(
+		HybridShadowAbstentionConfirmationDevelopmentPolicy(),
+	)
+	production, productionOK := DescribeHybridShadowRelevancePolicy(
+		HybridShadowAbstentionConfirmationProductionPolicy(),
+	)
+	for name, descriptor := range map[string]HybridShadowRelevancePolicyDescriptor{
+		"development": development,
+		"production":  production,
+	} {
+		if !developmentOK || !productionOK ||
+			!descriptor.CloudCandidateJudgeAbstentionConfirmationRequired ||
+			descriptor.CloudCandidateJudgeMaximumAbstentionConfirmations != 0 ||
+			descriptor.CloudCandidateJudgePromptVersion !=
+				HybridCandidateJudgeAccuracyPromptVersion ||
+			descriptor.CloudCandidateJudgeConfirmationPromptVersion !=
+				HybridCandidateJudgeConfirmationPromptVersion ||
+			descriptor.CloudCandidateJudgeConfirmationPromptSHA256 !=
+				HybridCandidateJudgeConfirmationPromptSHA256 {
+			t.Fatalf("%s descriptor=%#v", name, descriptor)
+		}
+	}
+	if development.ID == production.ID || development.Mode == production.Mode {
+		t.Fatalf("policy identities are not separated: %#v %#v", development, production)
+	}
+}
+
+func TestDoubleConfirmationDevelopmentPolicyIsBoundedAndFailClosed(t *testing.T) {
+	policy := HybridShadowDoubleConfirmationDevelopmentPolicy()
+	descriptor, ok := DescribeHybridShadowRelevancePolicy(policy)
+	if !ok || descriptor.ID != HybridRelevanceDoubleConfirmationDevelopmentPolicyID ||
+		descriptor.CloudCandidateJudgeMaximumAbstentionConfirmations != 2 ||
+		descriptor.CloudCandidateJudgePromptVersion !=
+			HybridCandidateJudgeAccuracyPromptVersion ||
+		descriptor.CloudCandidateJudgeConfirmationPromptVersion !=
+			HybridCandidateJudgeConfirmationPromptVersion {
+		t.Fatalf("double-confirmation descriptor=%#v ok=%v", descriptor, ok)
+	}
+
+	tests := []struct {
+		name          string
+		confirmations [][]int
+		failAt        int
+		want          []int
+		wantCalls     int
+		wantError     bool
+	}{
+		{name: "first confirms", confirmations: [][]int{{0}}, want: []int{0}, wantCalls: 1},
+		{name: "second confirms", confirmations: [][]int{{}, {0}}, want: []int{0}, wantCalls: 2},
+		{name: "both abstain", confirmations: [][]int{{}, {}}, wantCalls: 2},
+		{name: "first error stops", confirmations: [][]int{{}, {0}}, failAt: 1, wantCalls: 1, wantError: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			judge := &scriptedConfirmationHybridJudge{
+				confirmations: test.confirmations,
+				failAt:        test.failAt,
+			}
+			selected, err := judgeHybridCandidatesForPolicy(
+				context.Background(), judge, policy, "saved preference", []string{"dark mode"},
+			)
+			if (err != nil) != test.wantError ||
+				!equalInts(selected, test.want) ||
+				judge.confirmationCalls != test.wantCalls {
+				t.Fatalf("selected=%v calls=%d err=%v", selected, judge.confirmationCalls, err)
+			}
+		})
+	}
+}
+
+func TestDoubleConfirmationProductionPolicyIsSeparateAndHistoricalV3BytesStayFrozen(
+	t *testing.T,
+) {
+	production := HybridShadowDoubleConfirmationProductionPolicy()
+	descriptor, ok := DescribeHybridShadowRelevancePolicy(production)
+	if !ok || descriptor.ID != HybridRelevanceDoubleConfirmationProductionPolicyID ||
+		descriptor.Mode != hybridPolicyModeDoubleConfirmationProduction ||
+		descriptor.CloudCandidateJudgeMaximumAbstentionConfirmations != 2 ||
+		descriptor.CloudCandidateJudgePromptVersion != HybridCandidateJudgeAccuracyPromptVersion ||
+		descriptor.CloudCandidateJudgeConfirmationPromptVersion !=
+			HybridCandidateJudgeConfirmationPromptVersion {
+		t.Fatalf("double-confirmation production descriptor=%#v ok=%v", descriptor, ok)
+	}
+	productionBody, err := json.Marshal(descriptor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	productionDigest := sha256.Sum256(productionBody)
+	if got, want := hex.EncodeToString(productionDigest[:]),
+		"d5d21e747a152bd5b6bfe499c243559f9b45002456438a2ab9165fcad61d1f70"; got != want {
+		t.Fatalf("double-confirmation production descriptor hash=%s want=%s", got, want)
+	}
+	development, developmentOK := DescribeHybridShadowRelevancePolicy(
+		HybridShadowDoubleConfirmationDevelopmentPolicy(),
+	)
+	if !developmentOK || development.ID == descriptor.ID || development.Mode == descriptor.Mode {
+		t.Fatalf("v4 identities are not separated: %#v %#v", development, descriptor)
+	}
+
+	for name, test := range map[string]struct {
+		policy HybridShadowRelevancePolicy
+		want   string
+	}{
+		"development": {
+			policy: HybridShadowAbstentionConfirmationDevelopmentPolicy(),
+			want:   "c8ad5c2d42495d8ad2f106cb88e64d673a88f9bde7e56cd6969879bb1a4e7059",
+		},
+		"production": {
+			policy: HybridShadowAbstentionConfirmationProductionPolicy(),
+			want:   "63e1191d81a7579bc89f781187598a8887ac870eb59185ddf9e19a5c73dede47",
+		},
+	} {
+		historical, valid := DescribeHybridShadowRelevancePolicy(test.policy)
+		if !valid || historical.CloudCandidateJudgeMaximumAbstentionConfirmations != 0 {
+			t.Fatalf("historical %s descriptor drifted: %#v", name, historical)
+		}
+		body, err := json.Marshal(historical)
+		if err != nil {
+			t.Fatal(err)
+		}
+		digest := sha256.Sum256(body)
+		if got := hex.EncodeToString(digest[:]); got != test.want {
+			t.Fatalf("historical %s descriptor hash=%s want=%s json=%s", name, got, test.want, body)
+		}
 	}
 }
 
@@ -464,11 +676,85 @@ func equalStrings(left []string, right []string) bool {
 	return true
 }
 
+func equalPromptPurposes(
+	left []HybridCandidateJudgePromptPurpose,
+	right []HybridCandidateJudgePromptPurpose,
+) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
 type hybridTestCandidateJudge struct {
 	input  HybridCandidateJudgeInput
 	result HybridCandidateJudgeResult
 	err    error
 	calls  int
+}
+
+type confirmationHybridJudge struct {
+	primaryOrdinals      []int
+	confirmationOrdinals []int
+	purposes             []HybridCandidateJudgePromptPurpose
+}
+
+type scriptedConfirmationHybridJudge struct {
+	confirmations     [][]int
+	failAt            int
+	confirmationCalls int
+}
+
+func (judge *scriptedConfirmationHybridJudge) JudgeHybridCandidates(
+	_ context.Context,
+	input HybridCandidateJudgeInput,
+) (HybridCandidateJudgeResult, error) {
+	promptVersion := HybridCandidateJudgeAccuracyPromptVersion
+	promptSHA256 := HybridCandidateJudgeAccuracyPromptSHA256
+	ordinals := []int{}
+	if input.PromptPurpose == HybridCandidateJudgePromptPurposeAbstentionConfirmation {
+		judge.confirmationCalls++
+		if judge.failAt > 0 && judge.confirmationCalls == judge.failAt {
+			return HybridCandidateJudgeResult{}, errors.New("test confirmation failure")
+		}
+		if judge.confirmationCalls <= len(judge.confirmations) {
+			ordinals = judge.confirmations[judge.confirmationCalls-1]
+		}
+		promptVersion = HybridCandidateJudgeConfirmationPromptVersion
+		promptSHA256 = HybridCandidateJudgeConfirmationPromptSHA256
+	}
+	return HybridCandidateJudgeResult{
+		RawOutput:     []byte(judgeOutputJSON(ordinals...)),
+		ModelID:       HybridFixedMemoryJudgeModelID,
+		PromptVersion: promptVersion,
+		PromptSHA256:  promptSHA256,
+	}, nil
+}
+
+func (judge *confirmationHybridJudge) JudgeHybridCandidates(
+	_ context.Context,
+	input HybridCandidateJudgeInput,
+) (HybridCandidateJudgeResult, error) {
+	judge.purposes = append(judge.purposes, input.PromptPurpose)
+	ordinals := judge.primaryOrdinals
+	promptVersion := HybridCandidateJudgeAccuracyPromptVersion
+	promptSHA256 := HybridCandidateJudgeAccuracyPromptSHA256
+	if input.PromptPurpose == HybridCandidateJudgePromptPurposeAbstentionConfirmation {
+		ordinals = judge.confirmationOrdinals
+		promptVersion = HybridCandidateJudgeConfirmationPromptVersion
+		promptSHA256 = HybridCandidateJudgeConfirmationPromptSHA256
+	}
+	return HybridCandidateJudgeResult{
+		RawOutput:     []byte(judgeOutputJSON(ordinals...)),
+		ModelID:       HybridFixedMemoryJudgeModelID,
+		PromptVersion: promptVersion,
+		PromptSHA256:  promptSHA256,
+	}, nil
 }
 
 func (judge *hybridTestCandidateJudge) JudgeHybridCandidates(
@@ -589,4 +875,5 @@ var (
 	_ HybridCandidateJudge = (*blockingHybridJudge)(nil)
 	_ HybridShadowProvider = (*serialHybridProvider)(nil)
 	_ HybridCandidateJudge = (*serialHybridJudge)(nil)
+	_ HybridCandidateJudge = (*confirmationHybridJudge)(nil)
 )

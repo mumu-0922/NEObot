@@ -2,10 +2,11 @@
 
 ## 1. Scope / Trigger
 
-Apply this contract when changing migration `060_memory_governance_ui`, the
-authenticated Project or Conversation Memory policy APIs, scoped Memory CRUD,
-Review decisions, governance detail/snapshot hydration, the assistant Activity
-chip, or the v1 Global Memory repository after migration `060`.
+Apply this contract when changing migrations `060_memory_governance_ui` or
+`072_memory_review_stale_reject`, the authenticated Project or Conversation
+Memory policy APIs, scoped Memory CRUD, Review decisions, governance detail/
+snapshot hydration, the assistant Activity chip, or the v1 Global Memory
+repository after migration `060`.
 
 PR9 is a governance surface, not a reader promotion. The v1 Global Top 5
 remains the only prompt and Usage authority. Project/Conversation Memory is
@@ -59,6 +60,10 @@ memory_governance_decide_review(UUID, UUID, UUID, TEXT, UUID, TEXT,
 memory_governance_list_message_activities(UUID, UUID, INTEGER)
 ```
 
+Migration `072` replaces only the existing
+`memory_governance_decide_review(...)` function body. It adds no table, HTTP
+route, function signature, role, or direct table grant.
+
 ## 3. Contracts
 
 - User identity comes only from the authenticated Go context. Project,
@@ -87,10 +92,15 @@ memory_governance_list_message_activities(UUID, UUID, INTEGER)
   not revision-reconstructed plaintext.
 - Deleted source Conversations expose only `sourceDeleted=true`. Revision
   snapshots already purged expose `purged=true` without `priorContent`.
-- Review decisions are user actions but still recheck pending status, 30-day
-  expiry, epoch, scope generation, target revisions, user evidence, and
-  Sensitive authority. Decision audit stores IDs/hash/result only and clears
-  candidate plaintext.
+- Review decisions are user actions. Every decision rechecks current-user
+  ownership, pending status, 30-day expiry, decision shape, and replay hash.
+  `keep_current`, `accept_new`, `edit_merge`, and `keep_both` additionally
+  recheck epoch, scope generation, and exact target existence/lifecycle/
+  revision; write decisions also recheck user evidence and Sensitive authority.
+  `reject` is deliberately different: it never consumes or mutates canonical
+  Memory, so migration `072` allows it after epoch/scope/target drift. It may
+  only wipe the candidate, complete the link-only Activity, and append the
+  existing IDs/hash/result-only decision audit.
 - Message Activity is assistant-ID scoped, bounded to 20, link-only at rest,
   and current-content hydrated at read time. The frontend polls only while the
   answer is visible and the page is active, stops on terminal state or after
@@ -113,7 +123,9 @@ memory_governance_list_message_activities(UUID, UUID, INTEGER)
 | Same-scope exact active Memory exists | `MEMORY_GOVERNANCE_EXACT_CONFLICT`; cross-scope exact content remains legal. |
 | Detail/Activity target is no longer current | Return deleted/unavailable marker and no Memory/revision plaintext. |
 | Source Conversation was deleted | Evidence returns `sourceDeleted=true` and no source excerpt/title body. |
-| Review expired, decided, stale, or replay hash differs | Reject with Review stale/not-found/replay-conflict behavior and no canonical mutation. |
+| Review is expired, already decided, malformed, cross-user, or has a conflicting replay hash | Reject with Review stale/not-found/replay-conflict behavior and no canonical mutation. |
+| Pending unexpired `reject` after epoch, scope, or target revision drift | Return `rejected/USER_REJECTED`; wipe candidate plaintext, append one plaintext-free decision, and leave canonical Memory byte-authoritative. |
+| `keep_current`, accept, merge, or keep-both after epoch/scope/target drift | `MEMORY_GOVERNANCE_REVIEW_STALE` or `MEMORY_GOVERNANCE_SCOPE_STALE`; no candidate or canonical mutation. |
 | Old v1 write function under `go_api_runtime` after `060` | Permission denied. |
 | Down sees Review decisions, decided legacy Reviews, or `move` revisions | Fail closed with a `MEMORY_GOVERNANCE_ROLLBACK_*` code. |
 
@@ -122,13 +134,17 @@ memory_governance_list_message_activities(UUID, UUID, INTEGER)
 - **Good**: move a confirmed Global Memory to an active Project with the
   current revision. Revision advances once with operation `move`; authority,
   fact key, and temporal data survive; the row remains governance-only.
+- **Good stale Review**: a target advances from revision one to revision two;
+  rejecting the still-pending candidate succeeds, purges only candidate
+  plaintext, and leaves the target hash/revision unchanged.
 - **Base**: list an empty governance snapshot. Settings and empty arrays are
   returned, the assistant chip performs bounded empty polling, and no Provider
   or prompt behavior changes.
 - **Bad**: trust `sensitivity=normal`, call the pre-`060` legacy write function,
   hydrate Activity content from an old revision, use current Memory revision
-  instead of Activity `subjectRevision` for undo, or let a scoped row enter the
-  v1 prompt/Usage reader.
+  instead of Activity `subjectRevision` for undo, bypass target fences for an
+  accepting/merging/keep-current decision, or let a scoped row enter the v1
+  prompt/Usage reader.
 
 ## 6. Tests Required
 
@@ -140,6 +156,11 @@ memory_governance_list_message_activities(UUID, UUID, INTEGER)
   move preservation/no-op behavior, Review decision replay/conflict, deleted
   source/history markers, scoped provider-free purge, retention expiry, legacy
   old-function denial/new-wrapper behavior, and table CRUD denial.
+- Migration `072` additionally requires `071 -> 072 -> 071 -> 072`: prove a
+  stale-target reject fails before/after down, succeeds after up/re-up through
+  `go_api_runtime`, leaves target hash/revision unchanged, wipes candidate
+  plaintext, writes exactly one replay-safe audit, and keeps every target-
+  consuming decision stale-fenced.
 - Go tests cover strict JSON/UUID/limit validation, settings extension,
   Global-only legacy compatibility, secret/Sensitive classification, policy
   gating of the v1 reader, Activity mapping, and error status mapping.
@@ -173,3 +194,21 @@ The wrapper reclassifies content under the pinned SQL authority, enforces the
 Sensitive gate, rejects secrets, and then returns the current governance row.
 The Go service still performs its own earlier classification for fail-fast and
 Provider/transport containment.
+
+For stale Review rejection, do not refresh stored target authority or weaken
+all decision fences:
+
+```sql
+-- Wrong: this lets an accept/merge use stale target authority.
+UPDATE user_memory_review_targets
+SET expected_revision = current_memory.revision;
+
+-- Correct: only the non-canonical reject branch skips currentness checks.
+IF p_decision_kind <> 'reject' THEN
+  -- epoch, scope-generation, target lifecycle/revision fences
+END IF;
+```
+
+Reject is safe to unblock because it deletes candidate authority rather than
+creating, superseding, or selecting canonical Memory. The pending/expiry/user/
+replay checks remain outside and before this exception.

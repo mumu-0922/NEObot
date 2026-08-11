@@ -300,6 +300,74 @@ func EvaluateAccuracyFirstCalibrationSelectionWithProviderEgressPolicy(
 	}, nil
 }
 
+// EvaluateSingleUserBoundedMissCalibrationSelectionWithProviderEgressPolicy
+// keeps the accuracy-first accumulators and every unchanged gate, but applies
+// the separately versioned 0.95 overall / 0.90 required-slice current-fact
+// thresholds and an explicit zero-count false-injection gate.
+func EvaluateSingleUserBoundedMissCalibrationSelectionWithProviderEgressPolicy(
+	cases []GoldenCase,
+	observations []CaseObservation,
+	base Criteria,
+	providerEgressPolicy string,
+) (AccuracyFirstCalibrationEvaluation, error) {
+	criteria, err := MemoryJudgeSingleUserBoundedMissCriteriaV4(base)
+	if err != nil {
+		return AccuracyFirstCalibrationEvaluation{}, err
+	}
+	if !validProviderEgressPolicy(providerEgressPolicy) {
+		return AccuracyFirstCalibrationEvaluation{}, errors.New("Memory Provider-egress policy is invalid")
+	}
+	evaluated, evaluatedSlices, err := evaluateCasesWithSlices(
+		cases,
+		observations,
+		base,
+		providerEgressPolicy,
+	)
+	if err != nil {
+		return AccuracyFirstCalibrationEvaluation{}, err
+	}
+	failures := singleUserBoundedMissProfileFailures(
+		evaluated,
+		criteria,
+		criteria.MinimumCurrentFactAccuracy,
+	)
+	slices := make(map[string]AccuracyFirstSliceResult, len(criticalSlices))
+	for _, name := range criticalSlices {
+		sliceProfile, ok := evaluatedSlices[name]
+		if !ok {
+			continue
+		}
+		sliceFailures := singleUserBoundedMissProfileFailures(
+			sliceProfile,
+			criteria,
+			criteria.MinimumRequiredSliceCurrentFactAccuracy,
+		)
+		sort.Strings(sliceFailures)
+		slices[name] = AccuracyFirstSliceResult{
+			Cases:              sliceProfile.caseCount,
+			Metrics:            sliceProfile.metrics,
+			RankingDiagnostics: sliceProfile.ranking,
+			Budgets:            accuracyFirstBudgets(sliceProfile.budgets),
+			Safety:             sliceProfile.safety,
+			Passed:             len(sliceFailures) == 0,
+			Failures:           sliceFailures,
+		}
+		for _, failure := range sliceFailures {
+			failures = append(failures, name+": "+failure)
+		}
+	}
+	sort.Strings(failures)
+	return AccuracyFirstCalibrationEvaluation{
+		Passed:             len(failures) == 0,
+		Metrics:            evaluated.metrics,
+		RankingDiagnostics: evaluated.ranking,
+		Budgets:            accuracyFirstBudgets(evaluated.budgets),
+		Safety:             evaluated.safety,
+		Slices:             slices,
+		Failures:           failures,
+	}, nil
+}
+
 func accuracyFirstBudgets(value Budgets) AccuracyFirstBudgets {
 	return AccuracyFirstBudgets{
 		P95LatencyMilliseconds:    value.P95LatencyMilliseconds,
@@ -331,6 +399,98 @@ func accuracyFirstProfileFailures(value evaluatedProfile, criteria Criteria) []s
 		failures = append(failures, "Memory safety or authority leakage was observed")
 	}
 	return failures
+}
+
+func singleUserBoundedMissProfileFailures(
+	value evaluatedProfile,
+	criteria SingleUserBoundedMissCriteria,
+	minimumCurrentFactAccuracy float64,
+) []string {
+	failures := make([]string, 0)
+	if value.metrics.CandidateRecallAt20 < criteria.MinimumCandidateRecallAt20 {
+		failures = append(failures, "candidate recall@20 below criterion")
+	}
+	if value.metrics.FinalRecallAt5 < criteria.MinimumFinalRecallAt5 {
+		failures = append(failures, "final recall@5 below criterion")
+	}
+	if value.metrics.CurrentFactAccuracy < minimumCurrentFactAccuracy {
+		failures = append(failures, "current-fact accuracy below criterion")
+	}
+	if value.metrics.FalseInjectionRate > criteria.MaximumFalseInjectionRate {
+		failures = append(failures, "false-injection rate above criterion")
+	}
+	if value.metrics.FalseInjectionCases > criteria.MaximumFalseInjectionCases {
+		failures = append(failures, "false-injection cases above criterion")
+	}
+	if !value.budgets.PromptTokenPassed {
+		failures = append(failures, "prompt Memory token budget exceeds criterion")
+	}
+	if !value.safety.Passed {
+		failures = append(failures, "Memory safety or authority leakage was observed")
+	}
+	return failures
+}
+
+// ValidateSingleUserBoundedMissCalibrationEvaluation verifies that a retained
+// aggregate evaluation still reflects the v4 overall and required-slice
+// verdicts. It contains no case-level data and performs no Provider work.
+func ValidateSingleUserBoundedMissCalibrationEvaluation(
+	value AccuracyFirstCalibrationEvaluation,
+	criteria SingleUserBoundedMissCriteria,
+) error {
+	if err := ValidateMemoryJudgeSingleUserBoundedMissCriteriaV4(criteria); err != nil {
+		return err
+	}
+	overall := evaluatedProfile{
+		metrics: value.Metrics,
+		budgets: Budgets{PromptTokenPassed: value.Budgets.PromptTokenPassed},
+		safety:  value.Safety,
+	}
+	failures := singleUserBoundedMissProfileFailures(
+		overall,
+		criteria,
+		criteria.MinimumCurrentFactAccuracy,
+	)
+	for name, slice := range value.Slices {
+		if _, required := stringSet(criticalSlices[:])[name]; !required {
+			return errors.New("single-user bounded-miss evaluation contains an unknown slice")
+		}
+		sliceProfile := evaluatedProfile{
+			metrics: slice.Metrics,
+			budgets: Budgets{PromptTokenPassed: slice.Budgets.PromptTokenPassed},
+			safety:  slice.Safety,
+		}
+		sliceFailures := singleUserBoundedMissProfileFailures(
+			sliceProfile,
+			criteria,
+			criteria.MinimumRequiredSliceCurrentFactAccuracy,
+		)
+		sort.Strings(sliceFailures)
+		if slice.Passed != (len(sliceFailures) == 0) ||
+			!equalStrings(slice.Failures, sliceFailures) {
+			return errors.New("single-user bounded-miss slice verdict drifted")
+		}
+		for _, failure := range sliceFailures {
+			failures = append(failures, name+": "+failure)
+		}
+	}
+	sort.Strings(failures)
+	if value.Passed != (len(failures) == 0) || !equalStrings(value.Failures, failures) {
+		return errors.New("single-user bounded-miss evaluation verdict drifted")
+	}
+	return nil
+}
+
+func equalStrings(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 // EvaluateValidationSelection applies the same split metrics, slice gates,

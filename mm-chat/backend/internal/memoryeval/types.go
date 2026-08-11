@@ -415,6 +415,23 @@ type AccuracyFirstCriteria struct {
 	ApplicationDeadlineMode          string  `json:"applicationDeadlineMode"`
 }
 
+// SingleUserBoundedMissCriteria is a prospective, single-user-only criteria
+// identity. It deliberately does not extend AccuracyFirstCriteria so historical
+// v3 JSON and hashes cannot acquire new fields through ordinary marshaling.
+type SingleUserBoundedMissCriteria struct {
+	MinimumCandidateRecallAt20              float64 `json:"minimumCandidateRecallAt20"`
+	MinimumFinalRecallAt5                   float64 `json:"minimumFinalRecallAt5"`
+	MinimumCurrentFactAccuracy              float64 `json:"minimumCurrentFactAccuracy"`
+	MinimumRequiredSliceCurrentFactAccuracy float64 `json:"minimumRequiredSliceCurrentFactAccuracy"`
+	MaximumFalseInjectionRate               float64 `json:"maximumFalseInjectionRate"`
+	MaximumFalseInjectionCases              int     `json:"maximumFalseInjectionCases"`
+	MaximumAveragePromptMemoryTokens        float64 `json:"maximumAveragePromptMemoryTokens"`
+	MaximumPromptMemoryTokens               int     `json:"maximumPromptMemoryTokens"`
+	MaximumProviderCostRatio                float64 `json:"maximumProviderCostRatio"`
+	LatencyEvaluationMode                   string  `json:"latencyEvaluationMode"`
+	ApplicationDeadlineMode                 string  `json:"applicationDeadlineMode"`
+}
+
 type AccuracyFirstBudgets struct {
 	P95LatencyMilliseconds    int64   `json:"p95LatencyMilliseconds"`
 	P99LatencyMilliseconds    int64   `json:"p99LatencyMilliseconds"`

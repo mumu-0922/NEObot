@@ -74,6 +74,10 @@ Migration `062` extends this response with optional `l2Scene.profile` and
 `l2Scene.scenes` governance state.
 Migration `063` additionally exposes `l3Persona.profile` and the current
 `l3Persona.persona` governance state.
+Migration `073` may report both profiles and current artifacts as `active` for
+the exact sole user when the latest append-only preview event is enabled. That
+status is preview Reader authority, not evidence that either formal promotion
+event exists; adding a second user disables it in database authority.
 
 ### L2 Scene governance
 
@@ -96,7 +100,8 @@ There is intentionally no Scene plaintext create or patch route. User
 correction goes through the existing scoped L1 Memory create/update UI, which
 invalidates and rebuilds the derived Scene. Disable/enable and rebuild are
 revision/current-user fenced. Scene promotion remains migration-owner-only and
-cannot be invoked through HTTP.
+cannot be invoked through HTTP. The migration-`073` sole-user preview is also
+migration-owner-only and has no HTTP activation route.
 
 ### L3 Persona governance
 
@@ -126,6 +131,8 @@ uses existing governed L1 create/update, followed by the same generation-
 fenced rebuild chain. Disable/enable and rebuild are current-user/revision
 fenced; background refresh preserves an explicit disable. Persona promotion
 and rollback remain migration-owner-only and cannot be invoked through HTTP.
+The migration-`073` sole-user preview likewise cannot be activated through
+governance HTTP.
 
 ### Projects
 
@@ -214,11 +221,20 @@ POST /v1/memory-reviews/{suggestionId}/decision
      }
 ```
 
-The decision rechecks pending status, 30-day expiry, user/epoch/scope/target
-authority, evidence, Sensitive policy, and replay hash. Successful decisions
-clear candidate plaintext and retain only ID/hash/result audit. `edit_merge`
-is classified again; a normal client label cannot conceal Sensitive or secret
+Every decision rechecks current-user ownership, pending status, 30-day expiry,
+decision shape, and replay hash. `keep_current`, `accept_new`, `edit_merge`, and
+`keep_both` additionally recheck the exact visibility epoch, scope generation,
+and target existence/lifecycle/revision captured by the proposal. Write
+decisions also recheck evidence and Sensitive policy. `edit_merge` is
+classified again; a normal client label cannot conceal Sensitive or secret
 content.
+
+Migration `072` changes no HTTP route, request shape, function signature, role,
+or grant. It lets a still-pending, unexpired `reject` finish after epoch, scope,
+or target drift because that branch never consumes or mutates canonical Memory.
+It clears candidate plaintext, completes the link-only Activity, and retains
+only the existing ID/hash/result decision audit. All target-consuming decisions
+remain stale-fenced.
 
 ### Answer Activity and undo
 
@@ -302,6 +318,11 @@ retain `060` and use a forward fix; never delete user history to force down.
 - Disposable PostgreSQL 17 `059 -> 060 -> 059 -> 060`, runtime role denial,
   Project/policy/scope/Review/Activity/detail/purge cases, and legacy wrapper
   normal/Sensitive/secret cases.
+- Disposable PostgreSQL 17 `071 -> 072 -> 071 -> 072`: stale-target `reject`
+  fails before/down, succeeds after up/re-up through `go_api_runtime`, wipes
+  candidate plaintext, writes one replay-safe audit, and leaves the target
+  hash/revision unchanged; `keep_current`, accept, merge, and keep-both remain
+  stale-fenced.
 - Focused race plus all backend tests/vet.
 - Frontend format/lint/typecheck/Vitest/build with Server authority, legacy
   local-adapter rejection, and Activity tests.

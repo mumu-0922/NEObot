@@ -1880,6 +1880,82 @@ destroyed. Live migration/data counts, service health, disabled Memory flags,
 and the empty canary remained unchanged. The result selects no policy and
 grants no rerun, release, promotion, canary, or schema-v21 authority.
 
+The abstention-confirmation successor then retained prompt v2 as the primary
+decision and used separately hashed prompt v3 only after a valid empty result.
+Its first authorized live wrapper invocation failed before Provider work due
+to an omitted host Luna credential-copy predicate. After that topology defect
+was fixed and covered by live-shaped shell tests, the owner granted one fresh
+Development authority rather than reusing the consumed attempt.
+
+The replacement run `memory-regression-20260807t100046z-3c7d216f`, capture
+`85b2d1a1-8bca-4888-9e89-f1dbdec6acb4`, completed all 300 cases and passed.
+Candidate Recall@20/Final Recall@5/current-fact accuracy were
+`1.0/0.9897435897/0.9878787879`; false injection was `0/135`, every required
+slice passed, and every privacy/safety counter was zero. Three logical
+confirmations produced four attempts, including one retry. Ten primary retries
+and that confirmation retry recovered with zero terminal cases. Actual Judge
+authority reconciled at
+`179/1800` requests, `321531/2000000` input-token upper bound, and
+`22912/230400` output-token upper bound. Average/maximum prompt Memory was
+`67.85/381` tokens.
+
+Configuration/raw-cost/decoded-cost/report/manifest SHA-256 values are
+`15a957e610e96d2048a617b73f513d003bbb5f0c856b8c9bd789307a10094026`,
+`fa814cda981e10f7c7a596db51f82aabf0fcaa6571a02e8283fc63aa99c7853f`,
+`e488d0a657dba7fe05d444e4bf38587a4ec16b2f46de74dee07ad5e4c1285119`,
+`bcfd12e7d735f5b8bec09edd7fd74d22b8c7fb0f99e50f2d9367627811a3cf91`,
+and `59e322e5b4817d009013606a3972514dae34e9de3e68aa7995f9350a6951597a`.
+The private bundle is retained under
+`/var/tmp/neo-chat-abstention-confirmation-development-20260807T100027Z`.
+Credentials and all scoped runtime objects were destroyed; product services
+remained healthy and both Memory flags stayed false. This Green Development
+evidence remains non-promotional and grants no schema-v21 live Validation or
+production rollout authority.
+
+The next one-shot schema-v21 Validation invocation stopped at its argument
+gate before Provider construction. The Vault wrapper and its isolated fake
+runner forwarded an older approval literal without `FROZEN`; the generic
+runner and Go live gate correctly required
+`I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_ABSTENTION_CONFIRMATION_VALIDATION_QUOTA`.
+Credential export completed, but there were zero BGE/Luna requests, no
+isolated capture runtime, and no report or manifest. Both credential copies
+and the export container were destroyed. The wrapper and live-shaped test now
+use the frozen literal, and the test asserts literal parity across wrapper,
+generic runner, and Go gate. This started authority was not rerun and grants no
+Validation, promotion, or launch evidence.
+
+Under a fresh owner authority, the repaired live schema-v21 Validation run
+`memory-regression-20260808t131254z-f11b8601`, capture
+`cf29492b-54d5-4367-a7c7-151b1c465dcd`, completed all 100 cases. Overall
+Candidate Recall@20/Final Recall@5/current-fact accuracy were
+`1.0/0.9846153846/0.9818181818`, false injection was `0/45`, and every safety
+counter was zero. One confirmation request ran. Five typed transport retries
+recovered with no terminal case. Judge authority reconciled at `61/600`
+requests, `110083/600000` input-token upper bound, and `7808/76800`
+output-token upper bound; average/maximum prompt Memory was `67.64/365` tokens.
+
+One Judge decision still abstained. The aggregate slice membership arithmetic
+places the same omitted current fact in `mixed_language_entity` and
+`stable_fact`; each slice reached only `0.9` current-fact accuracy, below the
+unchanged `0.95` criterion. The immutable outcome is Yellow `retain_beta`,
+`passed=false`, `releaseEligible=false`, `policySelected=false`, and
+`promotionEligible=false`.
+
+Configuration/Validation-order/production-policy/raw-cost/decoded-cost/report/
+manifest SHA-256 values are
+`505cd678c703c2a0124e1af72d8ab4d83633e48810ed5f43f65aec3c7be01a99`,
+`cea5ebff03cef920deb4b5a9b36bee45e2f17ecb1d1b4987bc4f902fc1c8d430`,
+`63e1191d81a7579bc89f781187598a8887ac870eb59185ddf9e19a5c73dede47`,
+`cd60276abf34cdd2629cc68d416828154692990b93fbb5e06690733e4c4c442d`,
+`0990f44dd5ca7da2f31f07251aadcb7a00c49a42d8463b72ae229ad9a98a344b`,
+`3aff1211c6d1a2bbe422fb9053deda18726a71d5374441f85cd8179d5cc60a13`,
+and `0378b0a685267b2bb371cf35c5b965ee871a9001fc23337143b230cd176bd986`.
+The private bundle is retained under
+`/var/tmp/neo-chat-abstention-confirmation-validation-20260808T131253Z`.
+Credentials and all scoped runtime objects were destroyed; product flags
+remained off. The consumed result grants no rerun, promotion, image pinning,
+canary admission, or production launch.
+
 ```bash
 bash scripts/run-memory-production-buffered-validation-from-vault.sh \
   --cost-basis /secure/eval/production-buffered-validation-cost-v13.json \
@@ -2079,6 +2155,452 @@ executions with two retries. Its owner-authorized conservative absolute ceiling
 is diagnostic-only and is not interchangeable with schema-v20, schema-v21, or
 any historical lane. None of these documents is valid for Validation.
 
+The abstention-confirmation successor has separate, non-interchangeable
+authorities. Development uses
+`neo-chat.memory-regression-cost-basis.v20-confirmation-development.v1` with
+exactly `1800` Judge attempts and `230400` output tokens, covering one primary
+decision, at most one confirmation, and two retries for each decision across
+300 cases. Schema-v21 Validation uses
+`neo-chat.memory-regression-cost-basis.v21` with exactly `600` Judge attempts
+and `76800` output tokens for the frozen 100-case split. The pre-network input
+ceilings are bound from the corresponding full-path Fake traces with all
+allowed retries: `591134 * 3`, rounded upward to `2000000`, for Development;
+and `196772 * 3`, rounded upward to `600000`, for Validation. Fake Validation
+is always Yellow lifecycle-only evidence and can never pass or release.
+
+Both confirmation Vault wrappers require independent export and quota
+approvals. The runner must copy and mount both the BGE and Luna credentials for
+these exact modes before constructing a Provider. Missing, empty, shared, or
+drifted copies fail before network. A started one-shot live authority is never
+automatically rerun after any failure, including a pre-network runner defect.
+
+The failed schema-v21 result is consumed and is not a rerun target. Its v4
+successor keeps the primary prompt v2 and confirmation prompt v3 unchanged but
+permits a second prompt-v3 decision only after both earlier decisions return
+valid empty selections. The v22 Development cost identity binds `2700` Judge
+requests and `345600` output tokens. The successful full-path Fake measured a
+deterministic `886206` logical input-token upper bound; applying the maximum
+three attempts gives `2658618`, rounded upward to the frozen `2700000` input
+ceiling and `3045600000000` maximum Judge-cost microunits. The older
+`3000000` provisional Fake document is not live authority. V4 still requires a
+fresh one-shot live Development pass and then a separately versioned Validation
+pass before any production promotion.
+The frozen v22 Development cost document has raw/canonical decoded SHA-256
+`82771c9ebb4dd521cd4b5aa584a58f39cc2e786b3677ced6e523755c8a4c2de0`/
+`1599e276ae4de940a889b51b5b11e861483b25558b9be34b66607f97717bce16`.
+
+Its one-shot Vault path is separately named and accepts only the v4 approval:
+
+```bash
+bash scripts/run-memory-double-confirmation-development-from-vault.sh \
+  --cost-basis /secure/eval/memory-double-confirmation-development-v22.json \
+  --output-dir /secure/eval/native-memory-runs \
+  --credential-export-approval \
+    I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_DEVELOPMENT_CREDENTIALS \
+  --siliconflow-live-approval \
+    I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --double-confirmation-development-approval \
+    I_UNDERSTAND_THIS_USES_REAL_MEMORY_DOUBLE_CONFIRMATION_DEVELOPMENT_QUOTA
+```
+
+The wrapper pins the already-attested credential-export image, forbids build
+and pull, exports exactly one independent BGE/Luna pair, invokes only the v22
+Development mode, and wipes both copies after success, metric failure,
+ordinary failure, `INT`, `TERM`, or `HUP`.
+
+The sole authorized v22 live Development run
+`memory-regression-20260809t033639z-a1cde25c`, capture
+`c04bb647-96a9-4f1e-b127-ab93ed027f05`, completed `300/300` cases and passed.
+Candidate Recall@20/Final Recall@5/current-fact accuracy were
+`1.0/0.9897435897/0.9878787879`; false injection was `0/135`, every required
+slice passed, and every safety/privacy counter was zero. Eleven primary Judge
+retries recovered. Eight confirmation attempts ran with no retry or terminal
+failure. Actual Judge authority reconciled at `184/2700` requests,
+`329182/2700000` input-token upper bound, and `23552/345600` output-token upper
+bound. Average/maximum prompt Memory was `67.85/381` tokens.
+
+Configuration/report/manifest SHA-256 values are
+`836de9c5df3dc44f7be24ef54be90d10dfb1a31f0ec14129557de8eeea4f4ca1`,
+`52b454c6faf11784f7852f2784c889b6f34c5b53e72146c221a37e2613c1ef5e`,
+and `a690ad5f1a30238587336b8c4c99180789e87b432d54aa8402385b208e32a664`.
+All one-run credentials and scoped runtime objects were destroyed. This Green
+Development remains non-promotional; it permits construction of a fresh
+Validation identity but does not authorize live Validation or production.
+
+The successor Validation lane is independently frozen as schema v23:
+
+```text
+capture  production_fixed_memory_judge_negative_guard_double_confirmation_validation
+profile  neo-chat.memory-regression-profile-config.v23-double-confirmation-validation.v1
+reader   neo-chat.native-memory-reader-capture.v23-double-confirmation-validation.v1
+report   neo-chat.memory-regression-relevance-validation.v23-double-confirmation.v1
+run      neo-chat.memory-regression-relevance-validation-run.v23-double-confirmation.v1
+cost     neo-chat.memory-regression-cost-basis.v23-double-confirmation-validation.v1
+```
+
+Its PostgreSQL 17 Fake run
+`memory-regression-20260809t042942z-dd53bb1f`, capture
+`79f147cd-437a-4afd-b0ff-b4193ee72ab5`, completed the exact 100-case frozen
+Validation order. Routing reconciled as `35` empty-candidate, `10`
+negative-guard, `55` Judge-completed, and zero failed cases. Every
+Judge-completed case forced one primary plus two confirmations: `165` total
+Judge attempts, `110` confirmation attempts, `294993` total input-token upper
+bound, `196442` confirmation-only tokens, zero retry, and zero terminal case.
+All quality metrics were `1.0` except false injection, which was `0/45`; every
+safety/privacy counter was zero.
+
+Fake is deliberately Yellow `FAKE_PROTOCOL_NON_EVIDENCE` with
+`passed=false`, `policySelected=false`, `promotionEligible=false`, and
+`releaseEligible=false`. The report/manifest SHA-256 values are
+`2632e98b130ee0e1d898247b60cf0ce093d881eedf1062baa2a4df9538d88e0d` and
+`29e590baa86617e010aa5ce3d699841145d6eea032e50f5ebe94c7c490d7417b`.
+Both artifacts are mode `0600`; all containers, networks, and volumes were
+destroyed.
+
+The maximum three attempts per logical Judge decision produce
+`294993 * 3 = 884979`, rounded upward to a frozen `900000` input-token bound.
+The independent live cost authority binds `900` requests, `115200` output
+tokens, and `1015200000000` maximum Judge-cost microunits. Its private raw and
+canonical decoded SHA-256 values are
+`62d3ec814d2dcec2f9e79e6d391212d86f557be253e0533250b64d02f995b860` and
+`92563d188a999a108b027b65a543716c3fcf6cb6b3a93f30d997dad5e2cfde41`.
+The mode-`0600` document passed `DecodeCostBasis` and
+`ValidateDoubleConfirmationValidationCostAuthority`; this freezes ceilings
+but grants no quota authority.
+
+The one-shot schema-v23 Vault path is independently named and accepts only the
+Validation approvals:
+
+```bash
+bash scripts/run-memory-double-confirmation-validation-from-vault.sh \
+  --cost-basis /secure/eval/memory-double-confirmation-validation-v23.json \
+  --output-dir /secure/eval/native-memory-runs \
+  --credential-export-approval \
+    I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_VALIDATION_CREDENTIALS \
+  --siliconflow-live-approval \
+    I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --double-confirmation-validation-approval \
+    I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_DOUBLE_CONFIRMATION_VALIDATION_QUOTA
+```
+
+The already-consumed v22 Development authority, including any later wording
+that grants another Development run, cannot be reused or translated into this
+schema-v23 Validation authority. Until a fresh exact live Validation approval
+is granted and the run passes, product composition remains on the historical
+production policy and both Memory flags plus the canary remain unchanged.
+
+The sole authorized schema-v23 live Validation ran once from
+`2026-08-09T06:36:52Z` through `06:42:02Z`. Run
+`memory-regression-20260809t063653z-20bfb10b`, capture
+`79231ab8-bb00-4177-aeec-daf85daf2199`, completed `100/100` but failed the
+unchanged required-slice quality gate. Overall Candidate Recall@20, Final
+Recall@5, current-fact accuracy, and false injection were
+`1.0/0.9692307692/0.9636363636/0`. The `mixed_language_entity`, `stable_fact`,
+and `temporal_correction` slices each reached only `0.9` current-fact
+accuracy. Aggregate arithmetic records two Judge abstentions; each exhausted
+the primary plus both confirmations, producing four confirmation attempts.
+The aggregate evidence intentionally cannot identify private cases, and slice
+overlap must not be used to reconstruct them.
+
+One typed `PROVIDER_TRANSPORT_FAILED` attempt recovered. The run had `60`
+Judge attempts, one retry, zero terminal case, `107182/900000` input-token
+upper bound, and `7680/115200` output-token upper bound. Confirmation-only
+input was `6964`. Average/maximum prompt Memory was `66.53/365` tokens. False
+injection was `0/45`, and every cross-user, deleted-Memory, Secret, untrusted-
+source, unauthorized-egress, token, cost, cleanup, and privacy gate passed.
+
+The immutable outcome is Yellow `QUALITY_OR_TOKEN_GATE_FAILURE`,
+`passed=false`, `policySelected=false`, `promotionEligible=false`, and
+`releaseEligible=false`. Configuration/report/manifest SHA-256 values are
+`01f132d35c0546860ac3983a5842d7925feed74a472900b69d50ff8470cef8f3`,
+`71e71db85fed3262388991c899aa2a4799a4c9e2ace15c87552bb8dd6dbce740`,
+and `446f84c76a040ced6e9f39d657f1d7f3206337410df1fe019dd6fdfa71000682`.
+The private evidence root is
+`/var/tmp/neo-chat-double-confirmation-validation-v23-live-20260809T063629Z`.
+
+Both credentials and every scoped container, network, and volume were
+destroyed. Aggregate artifacts and logs passed the independent credential and
+private-field scans. Pre/post state hashes are
+`deabaac01944db51cbdaa2ae80ab11a88b8008bf63ab8da247a8417ba5efab65` and
+`e31d3be691fba7100e459611e74e897f076bfb429d7a3f6bf1a43f00f68744f7`;
+all six product container IDs and images remained unchanged and healthy. The
+product composition still installs the historical negative-guard production
+policy, both Memory flags remain false, and the canary is empty. Schema-v23 is
+consumed and cannot be rerun or used for launch.
+
+
+### Prospective single-user bounded-miss successor
+
+The owner accepted a prospective, single-user-only fail-closed omission risk.
+This does not reinterpret schema-v23. The new criteria identity
+`neo-chat.memory-benchmark-criteria.v4-single-user-bounded-miss` keeps overall
+current-fact accuracy at `0.95`, sets required-slice current-fact accuracy to
+`0.90`, and requires both false-injection rate and false-injection case count
+to equal zero. Candidate Recall@20, Final Recall@5, prompt-token, safety,
+privacy, Provider-egress, cost, cleanup, and terminal-failure gates are
+unchanged. The exact v4 double-confirmation reader, prompts, strict decoder,
+negative guard, BGE intersection, retry policy, and request order are also
+unchanged.
+
+The successor uses fresh, non-interchangeable identities:
+
+```text
+Development capture  development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss
+Development profile  neo-chat.memory-regression-profile-config.v24-single-user-bounded-miss-development.v1
+Development reader   neo-chat.native-memory-reader-capture.v24-single-user-bounded-miss-development.v1
+Development report   neo-chat.memory-regression-relevance-calibration.v24-single-user-bounded-miss-development.v1
+Development run      neo-chat.memory-regression-relevance-run.v24-single-user-bounded-miss-development.v1
+Development cost     neo-chat.memory-regression-cost-basis.v24-single-user-bounded-miss-development.v1
+
+Validation capture   production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation
+Validation profile   neo-chat.memory-regression-profile-config.v25-single-user-bounded-miss-validation.v1
+Validation reader    neo-chat.native-memory-reader-capture.v25-single-user-bounded-miss-validation.v1
+Validation report    neo-chat.memory-regression-relevance-validation.v25-single-user-bounded-miss.v1
+Validation run       neo-chat.memory-regression-relevance-validation-run.v25-single-user-bounded-miss.v1
+Validation cost      neo-chat.memory-regression-cost-basis.v25-single-user-bounded-miss-validation.v1
+```
+
+The PostgreSQL 17 Fake Development run
+`memory-regression-20260809t090107z-83ce1740`, capture
+`83cab806-40b6-4c4d-9f02-363cfa8e7c4b`, completed all 300 cases. Candidate
+Recall@20, Final Recall@5, and current-fact accuracy were `1.0`; false
+injection was `0/135`. It reconciled `105` empty-candidate, `30`
+negative-guard, `165` Judge-completed, and zero failed cases. All `495` Judge
+attempts completed without retry or terminal failure; `330` were confirmation
+attempts. Total and confirmation-only input-token upper bounds were `886206`
+and `590144`; output-token authority reconciled at `63360/345600`. The report
+passed but remains non-promotional.
+
+The PostgreSQL 17 Fake Validation run
+`memory-regression-20260809t090148z-629b20fa`, capture
+`246e3896-fcf8-430c-9501-48f375c043c2`, completed the exact 100-case order as
+`35/10/55/0` empty/guard/Judge-completed/failed. Every quality metric was
+`1.0`, false injection was `0/45`, and every safety/privacy counter was zero.
+It performed `165` Judge attempts, including `110` confirmations, with
+`294993` total and `196442` confirmation-only input tokens. As required, Fake
+returned non-zero and retained Yellow `FAKE_PROTOCOL_NON_EVIDENCE` with
+`passed=false`, `releaseEligible=false`, and no launch authority.
+
+The shared prospective criteria SHA-256 is
+`2c7e7325d4f8bc5d991857b9a8a90d76d866da98ce26a6c171072351ce43e779`.
+Schema-v24 report/manifest SHA-256 values are
+`aba8b0d81e3a87c9227671a7cd3bc65467f376167f3111be8936512264ba98e9`
+and `638d0d128781dc0d65a4f832366179260ce43f5e4c91c5c286b364bad888511b`;
+schema-v25 values are
+`e0d431b2f49e0fec7c1295a41c1c0c58d1952d934e6623d84ccbe972f1f997d5`
+and `6dc9d45e43957c65f6599fa9fed053cf3c407feed11e20cb67fe74c298233fb4`.
+Both isolated Compose projects and all credentials were destroyed; retained
+artifacts are mode `0600` under
+`/var/tmp/neo-chat-single-user-bounded-miss-v24-v25-fake-20260809T090053Z`.
+
+Because criteria do not change Provider request shape, schema-v24 retains the
+frozen v22 `2700/2700000/345600` request/input/output ceiling, and schema-v25
+retains the schema-v23 `900/900000/115200` ceiling. The private schema-v24
+cost document raw/canonical decoded SHA-256 values are
+`7f3f9a1c35f844b5f62aa3a77e10ec2b92e8c82bd8f3232522fe8fc41fb8a1c5` and
+`bd5e1e73a9feb7a878e905aa4ecb0ca734dcae4d78c9c9f65f2bacc67c6337e9`;
+schema-v25 values are
+`81b624658ea5b00dea6bfaa88ed8684cb9c938ec8c8fd4a1db3fd4904e64bdc7` and
+`67edc4abbe1e0cba610474947382b1d05df80a75aab194805f34aa2114192eda`.
+Both passed strict decode and their phase-specific cost validator during the
+Fake lifecycle; neither grants live quota authority.
+
+The one-shot Vault paths are independently named and approval-isolated:
+
+```bash
+bash scripts/run-memory-single-user-bounded-miss-development-from-vault.sh \
+  --cost-basis /secure/eval/memory-single-user-bounded-miss-development-v24.json \
+  --output-dir /secure/eval/native-memory-runs \
+  --credential-export-approval \
+    I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_DEVELOPMENT_CREDENTIALS \
+  --siliconflow-live-approval \
+    I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --single-user-bounded-miss-development-approval \
+    I_UNDERSTAND_THIS_USES_REAL_MEMORY_SINGLE_USER_BOUNDED_MISS_DEVELOPMENT_QUOTA
+
+bash scripts/run-memory-single-user-bounded-miss-validation-from-vault.sh \
+  --cost-basis /secure/eval/memory-single-user-bounded-miss-validation-v25.json \
+  --output-dir /secure/eval/native-memory-runs \
+  --credential-export-approval \
+    I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_VALIDATION_CREDENTIALS \
+  --siliconflow-live-approval \
+    I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --single-user-bounded-miss-validation-approval \
+    I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_SINGLE_USER_BOUNDED_MISS_VALIDATION_QUOTA
+```
+
+The separately authorized schema-v24 live Development ran exactly once as
+`memory-regression-20260809t093235z-c17a5d0a`, capture
+`3eff1154-2fe9-40b1-af9c-cc6c4d1eb574`, and passed all 300 cases. Candidate
+Recall@20 was `1.0`, Final Recall@5 was `0.9846153846153847`, overall
+current-fact accuracy was `0.9818181818181818`, and false injection was
+`0/135`. Every slice passed; the lowest slice current-fact accuracy was
+`0.9666666666666667`, above the bounded-miss `0.90` floor. Safety counts,
+terminal failed cases, and unauthorized Provider egress remained zero.
+
+The route ledger reconciled `105` empty-candidate, `30` negative-guard,
+`165` Judge-completed, and zero failed cases. The live Judge made `180`
+attempts, including `9` recovered retries and `6` confirmation attempts. Its
+request/input/output upper-bound ledger was `180/322607/23040`, within the
+frozen `2700/2700000/345600` authority. The aggregate report and manifest
+SHA-256 values are
+`68d00d695c521e4f240b105f9ecc237b6c7d3c66ce8e9d40c7f3ae72528b34b0` and
+`39a92d7174bd8f725cdb36152a33b7c6eded3fe4feb8beb6aea56caf4d363bd1`.
+Both are mode `0600` under the private mode-`0700` root
+`/var/tmp/neo-chat-single-user-bounded-miss-v24-live-20260809T093234Z`.
+
+The schema-v24 authority is consumed and cannot be rerun. Its credential
+copies and every scoped container, network, and volume were destroyed. The
+production Memory flags remain false and the canary remains empty. Schema-v25
+then ran once under its own exact live authorization as
+`memory-regression-20260809t160732z-c5e0da74`, capture
+`7ec205c3-9c65-4684-8063-e52e35d4c551`. All 100 Validation cases passed with
+Candidate Recall@20, Final Recall@5, and current-fact accuracy all `1.0`, false
+injection `0/45`, and every safety/privacy counter zero. Routing reconciled at
+`35/10/55/0`; the Judge made `63` attempts, including `6` recovered retries
+and `3` confirmation attempts. Request/input/output upper bounds were
+`63/112543/8064`, within the frozen `900/900000/115200` authority.
+
+The schema-v25 report/manifest SHA-256 values are
+`ead77fd8f505813ec7bae1f0b8cf934c6798797afb9760c15b5a2017adbc2be3` and
+`d97f3c4f1ee865eaf47e9ca188df4875c7266e07ab562d3687d9f9699c521bce`.
+Both mode-`0600` artifacts remain under the private mode-`0700` root
+`/var/tmp/neo-chat-single-user-bounded-miss-v25-live-20260809T160731Z`.
+Credential copies and all scoped runtime objects were destroyed. The Validation
+report intentionally remains non-promotional and requires owner review; the
+owner's earlier pass-then-launch decision supplies the separate rollout intent.
+
+Launch preflight found the live database at migration `069` while the reviewed
+candidate backend requires additive Memory-health migration `070`. The source
+launch contract forbids silently converting a flag-only rollout into a schema
+change. PostgreSQL, MinIO, the live environment, container identities, row
+counts, and the sole exact UUID were captured under
+`/var/tmp/neo-chat-memory-v2-single-user-launch-20260809T162030Z`. An isolated
+restore proved `069 -> 070 -> 069 -> 070` with all pre-existing persistent
+table counts unchanged, but no live migration, flag change, service recreation,
+or smoke was performed without expanded migration authority. Both schema-v24
+and schema-v25 live authorities are consumed and cannot be rerun. A later
+launch remains limited to the current sole exact authenticated UUID; adding a
+user requires a new rollout decision.
+
+The owner then separately authorized live migration `070`; it was applied
+exactly once and all persistent counts remained unchanged. Exact-UUID canary
+parsing and production v4 policy admission were corrected in the reviewed
+image
+`mm-chat/backend:memory-v2-v25-exact-uuid-policy-fix-candidate-20260810t011729z`
+with image ID
+`sha256:c79fd467421342c63185321fa966039419528ee507c9b0538f69901fe3568e08`.
+Focused race tests, all backend tests, vet, and a 100-case Fake schema-v25
+lifecycle passed before the image was deployed.
+
+One fresh live exact-UUID admitted-smoke authority with
+`provider.source=server-default` was consumed exactly once. The request
+returned HTTP `200`, completed the Memory Tool and generation steps, released
+one final Memory, wrote one immutable Usage row, and ended with
+`message.completed`. A separately isolated non-admitted proof returned HTTP
+`401` with zero Provider/Memory work and zero new hybrid observations. The live
+smoke conversation was then soft-deleted with HTTP `204`.
+
+The mandatory post-smoke health gate nevertheless returned
+`degraded/memory_index_failed`. Content-free SQL proved one ready current
+projection with no projection pending/failure, plus five future
+`review_expire` capture jobs and two historical terminal extract jobs. The HTTP
+`pendingCount` and `failedCount` intentionally aggregate capture and projection
+lanes, so the result was not a projection join/count defect. Successful
+retrieval does not override a degraded runtime gate.
+
+The prepared fail-closed behavior rollback atomically restored
+`MEMORY_HYBRID_SHADOW_ENABLED=false`,
+`MEMORY_TOOL_LOOP_ENABLED=false`, and an empty exact-UUID canary, recreating
+only `memory-worker` and `backend`. Both services are healthy; schema remains
+`070` and `user_memories/users` remain `2/1`. The admitted-smoke authority is
+consumed and must not be replayed. Memory v2 is not launched; a future rollout
+requires a separately reviewed health remediation that preserves historical
+job evidence and the unchanged fail-closed gate.
+
+The reviewed offline remediation is additive migration `071`. It preserves the
+applied `070` bytes, counts only `extract` jobs as capture health, and leaves all
+future `review_expire` jobs intact outside that lane. Historical extract dead
+letters remain degraded until the bootstrap owner appends one exact-job,
+exact-error resolution with the fixed admin approval. The original job/error/
+audit/Activity evidence is never updated or deleted. `source_no_longer_current`
+requires `SOURCE_DRIFT` plus a present non-active same-owner Conversation;
+`historical_failure_accepted` requires at least 24 hours of terminal age.
+
+Disposable PostgreSQL 17 passed `070 -> 071 -> 070 -> 071`, valid resolution
+and idempotent replay, user/error/status/age/source drift rejection, runtime
+least privilege, append-only denial, and rollback refusal after evidence. This
+does not authorize the live schema change or either live acknowledgement. Once
+separately authorized, the launch continuation rechecks health, persistent
+counts, non-admitted zero-work behavior, and rollback readiness without
+replaying the consumed Provider smoke.
+
+The offline release gate passed focused race checks, exact PostgreSQL 17 replay,
+Frontend `964/964`, all Backend tests/vet, RAG `1906 passed / 7 skipped`, and
+the full standalone verifier. The packaged, undeployed image is
+`mm-chat/backend:memory-v2-v25-schema071-health-resolution-candidate-20260810t025553z`
+with image ID
+`sha256:7f54f00a930da27d5671d7f23b7ebcf9615f62198266886c151b6bc1a6a7be0b`.
+Package inspection proved the migrator embeds `071` and the admin command is
+present; the live runtime remains on the prior policy-fix image at schema
+`070`.
+The same exact image passed isolated PostgreSQL 17 `001 -> 071`, clean
+`071 -> 070 -> 071`, packaged admin create/idempotent replay, original-error
+preservation, zero post-resolution capture failures, and post-evidence down
+refusal. The private disposable runtime was fully destroyed.
+
+The owner subsequently granted one live migration-`071` authority. A fresh
+custom-format PostgreSQL backup passed checksum verification before the old
+backend/Worker were stopped. The frozen migrator changed exactly `071`, and
+the frozen candidate image was then deployed only to those two services with
+both Memory flags still false and the canary empty. Both services are healthy;
+schema/data counts are `71/2/1`, resolutions remain zero, capture health is
+`0/0/2`, projection health is `1/0/0`, and all five future `review_expire` jobs
+remain unchanged. No Provider, Chat, acknowledgement, or Memory write was
+authorized or performed. The migration authority is consumed.
+
+The owner then separately authorized both exact historical acknowledgements.
+The packaged admin boundary created `source_no_longer_current` for job
+`d141be78-01e7-47e5-9db8-09d6e3938451` with expected error `SOURCE_DRIFT`, and
+`historical_failure_accepted` for job
+`3b384bee-87f5-41e2-9d28-72a8114c4459` with expected error
+`EXTRACTION_INVALID`. Both returned `created=true`; their original job hashes
+remained unchanged. Resolution count became `2`, unresolved extract dead
+letters became zero, capture health became `0/0/0`, and projection health
+remained `1/0/0`. The one-shot admin environment was overwritten after use.
+Resolution evidence now permanently guards migration-`071` down; rollback is
+behavior-only.
+
+Provider-free launch preflight reconfirmed schema/resolution/Memory/user counts
+`71/2/2/1`, the sole exact UUID
+`00000000-0000-0000-0000-000000000001`, zero active capture/embedding work,
+four retained hybrid observations, one retained Usage row, and the exact
+candidate image ID. The consumed admitted smoke was not replayed. The launch
+atomically enabled both reviewed flags, populated only that UUID, and recreated
+only `memory-worker` and `backend` with `--no-build --no-deps`.
+
+The first final-verifier attempt used the nonexistent identity path
+`/v1/auth/me`; its HTTP `404` triggered the prepared fail-closed behavior
+rollback. Schema, rows, image, and unrelated services were unchanged, and no
+Provider or Chat request occurred. After source verification established
+`/v1/me` as the correct route, a fresh Provider-free retry succeeded. The fixed
+development owner and exact UUID were verified, `GET /v1/memory-health`
+returned HTTP `200` with `ready`, Worker capabilities were `true/true`, capture
+was `0/0/0`, and projection was `1/0/0`. A disposable same-image
+`AUTH_MODE=required` instance returned HTTP `401` for an unauthenticated health
+request with zero Provider/Memory work and unchanged durable counts.
+
+Memory v2 is now live for the sole user with
+`MEMORY_HYBRID_SHADOW_ENABLED=true`, `MEMORY_TOOL_LOOP_ENABLED=true`, and the
+exact one-UUID canary. Both services remain healthy on image
+`sha256:7f54f00a930da27d5671d7f23b7ebcf9615f62198266886c151b6bc1a6a7be0b`;
+schema/resolution/Memory/user counts remain `71/2/2/1`. Successful mode-
+`0700/0600` evidence is under
+`/var/tmp/neo-chat-memory-v2-sole-user-launch-retry-20260810T033338Z`; the
+fail-closed verifier attempt is retained separately under
+`/var/tmp/neo-chat-memory-v2-sole-user-launch-20260810T032745Z`. Adding another
+user requires a new rollout decision.
+
 Each full fake-protocol run directory is mode `0700` and contains five
 mode-`0600` files:
 
@@ -2099,6 +2621,7 @@ negative-guard Development and schema-v17 buffered-judge Development
 and schema-v18 production-v2 buffered Validation
 and schema-v19 slice diagnostics and schema-v20 accuracy-repair Development
 and the separately versioned v20 abstention diagnostic
+and the confirmation Development/schema-v21 Validation successor
 directories contain their named aggregate report plus `run-manifest.json`. In
 every mode, evidence is exclusively linked first and the content-free
 run manifest is the final completion marker. Existing targets are refused

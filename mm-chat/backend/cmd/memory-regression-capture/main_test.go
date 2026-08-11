@@ -201,6 +201,89 @@ func TestParseCommandSeparatesFakeAndLiveCredentialBoundaries(t *testing.T) {
 		options.captureMode != memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation {
 		t.Fatalf("parse production buffered Memory Judge Validation command = %#v/%v", options, err)
 	}
+	abstentionConfirmation := append([]string(nil), bufferedJudge...)
+	for index := range abstentionConfirmation {
+		if abstentionConfirmation[index] == memorycapture.CaptureModeBufferedMemoryJudge {
+			abstentionConfirmation[index] =
+				memorycapture.CaptureModeAbstentionConfirmationMemoryJudge
+			break
+		}
+	}
+	options, err = parseCommand(abstentionConfirmation)
+	if err != nil ||
+		options.captureMode != memorycapture.CaptureModeAbstentionConfirmationMemoryJudge {
+		t.Fatalf("parse abstention-confirmation Development command = %#v/%v", options, err)
+	}
+	abstentionConfirmationValidation := append([]string(nil), abstentionConfirmation...)
+	for index := range abstentionConfirmationValidation {
+		if abstentionConfirmationValidation[index] ==
+			memorycapture.CaptureModeAbstentionConfirmationMemoryJudge {
+			abstentionConfirmationValidation[index] =
+				memorycapture.CaptureModeAbstentionConfirmationValidation
+			break
+		}
+	}
+	options, err = parseCommand(abstentionConfirmationValidation)
+	if err != nil ||
+		options.captureMode != memorycapture.CaptureModeAbstentionConfirmationValidation {
+		t.Fatalf("parse abstention-confirmation Validation command = %#v/%v", options, err)
+	}
+	doubleConfirmation := append([]string(nil), abstentionConfirmation...)
+	for index := range doubleConfirmation {
+		if doubleConfirmation[index] ==
+			memorycapture.CaptureModeAbstentionConfirmationMemoryJudge {
+			doubleConfirmation[index] =
+				memorycapture.CaptureModeDoubleConfirmationMemoryJudge
+			break
+		}
+	}
+	options, err = parseCommand(doubleConfirmation)
+	if err != nil ||
+		options.captureMode != memorycapture.CaptureModeDoubleConfirmationMemoryJudge {
+		t.Fatalf("parse double-confirmation Development command = %#v/%v", options, err)
+	}
+	doubleConfirmationValidation := append([]string(nil), doubleConfirmation...)
+	for index := range doubleConfirmationValidation {
+		if doubleConfirmationValidation[index] ==
+			memorycapture.CaptureModeDoubleConfirmationMemoryJudge {
+			doubleConfirmationValidation[index] =
+				memorycapture.CaptureModeDoubleConfirmationValidation
+			break
+		}
+	}
+	options, err = parseCommand(doubleConfirmationValidation)
+	if err != nil ||
+		options.captureMode != memorycapture.CaptureModeDoubleConfirmationValidation {
+		t.Fatalf("parse double-confirmation Validation command = %#v/%v", options, err)
+	}
+	singleUserBoundedMissDevelopment := append([]string(nil), doubleConfirmation...)
+	for index := range singleUserBoundedMissDevelopment {
+		if singleUserBoundedMissDevelopment[index] ==
+			memorycapture.CaptureModeDoubleConfirmationMemoryJudge {
+			singleUserBoundedMissDevelopment[index] =
+				memorycapture.CaptureModeSingleUserBoundedMissDevelopment
+			break
+		}
+	}
+	options, err = parseCommand(singleUserBoundedMissDevelopment)
+	if err != nil ||
+		options.captureMode != memorycapture.CaptureModeSingleUserBoundedMissDevelopment {
+		t.Fatalf("parse single-user bounded-miss Development command = %#v/%v", options, err)
+	}
+	singleUserBoundedMissValidation := append([]string(nil), doubleConfirmationValidation...)
+	for index := range singleUserBoundedMissValidation {
+		if singleUserBoundedMissValidation[index] ==
+			memorycapture.CaptureModeDoubleConfirmationValidation {
+			singleUserBoundedMissValidation[index] =
+				memorycapture.CaptureModeSingleUserBoundedMissValidation
+			break
+		}
+	}
+	options, err = parseCommand(singleUserBoundedMissValidation)
+	if err != nil ||
+		options.captureMode != memorycapture.CaptureModeSingleUserBoundedMissValidation {
+		t.Fatalf("parse single-user bounded-miss Validation command = %#v/%v", options, err)
+	}
 }
 
 func TestAccuracyFirstCaptureContextHasNoElapsedDeadline(t *testing.T) {
@@ -259,6 +342,54 @@ func TestAccuracyFirstCaptureContextHasNoElapsedDeadline(t *testing.T) {
 	defer productionBufferedCancel()
 	if _, ok := productionBufferedContext.Deadline(); ok {
 		t.Fatal("production buffered Validation inherited the legacy 45-minute deadline")
+	}
+	confirmationContext, confirmationCancel := captureContext(
+		context.Background(),
+		memorycapture.CaptureModeAbstentionConfirmationMemoryJudge,
+	)
+	defer confirmationCancel()
+	if _, ok := confirmationContext.Deadline(); ok {
+		t.Fatal("abstention-confirmation Development inherited the legacy 45-minute deadline")
+	}
+	confirmationValidationContext, confirmationValidationCancel := captureContext(
+		context.Background(),
+		memorycapture.CaptureModeAbstentionConfirmationValidation,
+	)
+	defer confirmationValidationCancel()
+	if _, ok := confirmationValidationContext.Deadline(); ok {
+		t.Fatal("abstention-confirmation Validation inherited the legacy 45-minute deadline")
+	}
+	doubleConfirmationContext, doubleConfirmationCancel := captureContext(
+		context.Background(),
+		memorycapture.CaptureModeDoubleConfirmationMemoryJudge,
+	)
+	defer doubleConfirmationCancel()
+	if _, ok := doubleConfirmationContext.Deadline(); ok {
+		t.Fatal("double-confirmation Development inherited the legacy 45-minute deadline")
+	}
+	doubleConfirmationValidationContext, doubleConfirmationValidationCancel := captureContext(
+		context.Background(),
+		memorycapture.CaptureModeDoubleConfirmationValidation,
+	)
+	defer doubleConfirmationValidationCancel()
+	if _, ok := doubleConfirmationValidationContext.Deadline(); ok {
+		t.Fatal("double-confirmation Validation inherited the legacy 45-minute deadline")
+	}
+	boundedMissDevelopmentContext, boundedMissDevelopmentCancel := captureContext(
+		context.Background(),
+		memorycapture.CaptureModeSingleUserBoundedMissDevelopment,
+	)
+	defer boundedMissDevelopmentCancel()
+	if _, ok := boundedMissDevelopmentContext.Deadline(); ok {
+		t.Fatal("single-user bounded-miss Development inherited the legacy 45-minute deadline")
+	}
+	boundedMissValidationContext, boundedMissValidationCancel := captureContext(
+		context.Background(),
+		memorycapture.CaptureModeSingleUserBoundedMissValidation,
+	)
+	defer boundedMissValidationCancel()
+	if _, ok := boundedMissValidationContext.Deadline(); ok {
+		t.Fatal("single-user bounded-miss Validation inherited the legacy 45-minute deadline")
 	}
 	legacyContext, legacyCancel := captureContext(
 		context.Background(),
@@ -490,6 +621,12 @@ func TestBuildProvidersWrapsAccuracyFirstFakeProviderSet(t *testing.T) {
 		memorycapture.CaptureModeBufferedMemoryJudge,
 		memorycapture.CaptureModeProductionMemoryJudgeValidation,
 		memorycapture.CaptureModeProductionBufferedMemoryJudgeValidation,
+		memorycapture.CaptureModeAbstentionConfirmationMemoryJudge,
+		memorycapture.CaptureModeAbstentionConfirmationValidation,
+		memorycapture.CaptureModeDoubleConfirmationMemoryJudge,
+		memorycapture.CaptureModeDoubleConfirmationValidation,
+		memorycapture.CaptureModeSingleUserBoundedMissDevelopment,
+		memorycapture.CaptureModeSingleUserBoundedMissValidation,
 	} {
 		bundle, err := buildProviders(commandOptions{
 			providerMode:           memorycapture.ProviderModeFakeProtocol,
@@ -576,6 +713,12 @@ func TestLoadLiveAuthorizationRequiresExactModelTargets(t *testing.T) {
 		liveConfiguredCandidateJudgeModelIDEnv:                 "gpt-judge",
 		liveProductionMemoryJudgeValidationApprovalEnv:         memorycapture.LiveProductionMemoryJudgeValidationApproval,
 		liveProductionBufferedMemoryJudgeValidationApprovalEnv: memorycapture.LiveProductionBufferedMemoryJudgeValidationApproval,
+		liveAbstentionConfirmationDevelopmentApprovalEnv:       memorycapture.LiveAbstentionConfirmationDevelopmentApproval,
+		liveAbstentionConfirmationValidationApprovalEnv:        memorycapture.LiveAbstentionConfirmationValidationApproval,
+		liveDoubleConfirmationDevelopmentApprovalEnv:           memorycapture.LiveDoubleConfirmationDevelopmentApproval,
+		liveDoubleConfirmationValidationApprovalEnv:            memorycapture.LiveDoubleConfirmationValidationApproval,
+		liveSingleUserBoundedMissDevelopmentApprovalEnv:        memorycapture.LiveSingleUserBoundedMissDevelopmentApproval,
+		liveSingleUserBoundedMissValidationApprovalEnv:         memorycapture.LiveSingleUserBoundedMissValidationApproval,
 	}
 	authorization := loadLiveAuthorization(mapEnvironment(values))
 	if err := memorycapture.AuthorizeProviderMode(
@@ -628,6 +771,48 @@ func TestLoadLiveAuthorizationRequiresExactModelTargets(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := memorycapture.AuthorizeProductionBufferedMemoryJudgeValidationTarget(
+		memorycapture.ProviderModeLiveSiliconFlow,
+		memorycapture.FixedMemoryJudgeAuthority(),
+		loadLiveAuthorization(mapEnvironment(productionValues)),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := memorycapture.AuthorizeAbstentionConfirmationDevelopmentTarget(
+		memorycapture.ProviderModeLiveSiliconFlow,
+		memorycapture.FixedMemoryJudgeAuthority(),
+		loadLiveAuthorization(mapEnvironment(productionValues)),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := memorycapture.AuthorizeAbstentionConfirmationValidationTarget(
+		memorycapture.ProviderModeLiveSiliconFlow,
+		memorycapture.FixedMemoryJudgeAuthority(),
+		loadLiveAuthorization(mapEnvironment(productionValues)),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := memorycapture.AuthorizeDoubleConfirmationDevelopmentTarget(
+		memorycapture.ProviderModeLiveSiliconFlow,
+		memorycapture.FixedMemoryJudgeAuthority(),
+		loadLiveAuthorization(mapEnvironment(productionValues)),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := memorycapture.AuthorizeDoubleConfirmationValidationTarget(
+		memorycapture.ProviderModeLiveSiliconFlow,
+		memorycapture.FixedMemoryJudgeAuthority(),
+		loadLiveAuthorization(mapEnvironment(productionValues)),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := memorycapture.AuthorizeSingleUserBoundedMissDevelopmentTarget(
+		memorycapture.ProviderModeLiveSiliconFlow,
+		memorycapture.FixedMemoryJudgeAuthority(),
+		loadLiveAuthorization(mapEnvironment(productionValues)),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := memorycapture.AuthorizeSingleUserBoundedMissValidationTarget(
 		memorycapture.ProviderModeLiveSiliconFlow,
 		memorycapture.FixedMemoryJudgeAuthority(),
 		loadLiveAuthorization(mapEnvironment(productionValues)),

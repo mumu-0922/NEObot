@@ -102,6 +102,292 @@ func TestCandidateJudgeDecoratorTypesRecorderConflict(t *testing.T) {
 	}
 }
 
+func TestDoubleConfirmationCandidateJudgeDecoratorRecordsBothConfirmationInputs(t *testing.T) {
+	recorder := preparedJudgeRecorder(t)
+	judge := &scriptedConfirmationCaptureJudge{rawOutputs: []string{
+		captureEmptyJudgeOutput,
+		captureEmptyJudgeOutput,
+		captureSelectedJudgeOutput,
+	}}
+	decorator, err := NewDoubleConfirmationCandidateJudgeDecorator(
+		judge,
+		recorder,
+		"expected-model",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	primary := captureConfirmationJudgeInput(
+		usermemory.HybridCandidateJudgePromptPurposeAccuracyPrimary,
+	)
+	confirmation := captureConfirmationJudgeInput(
+		usermemory.HybridCandidateJudgePromptPurposeAbstentionConfirmation,
+	)
+	primaryUpperBound, err := cloudJudgeInputTokenUpperBoundWithPrompt(
+		primary,
+		usermemory.BuildHybridCandidateJudgeAccuracyPrompt,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	confirmationUpperBound, err := cloudJudgeInputTokenUpperBoundWithPrompt(
+		confirmation,
+		usermemory.BuildHybridCandidateJudgeConfirmationPrompt,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := decorator.JudgeHybridCandidates(context.Background(), primary); err != nil {
+		t.Fatal(err)
+	}
+	assertConfirmationRecorderState(t, recorder, false, 0, primaryUpperBound)
+	if _, err := decorator.JudgeHybridCandidates(context.Background(), confirmation); err != nil {
+		t.Fatal(err)
+	}
+	assertConfirmationRecorderState(
+		t,
+		recorder,
+		false,
+		1,
+		primaryUpperBound+confirmationUpperBound,
+	)
+	if _, err := decorator.JudgeHybridCandidates(context.Background(), confirmation); err != nil {
+		t.Fatal(err)
+	}
+
+	transient, err := recorder.Finish(captureAssistantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !transient.cloudJudgeReady ||
+		transient.judgeConfirmationEgressCount != 2 ||
+		transient.judgeConfirmationInputCount != 2 ||
+		transient.judgeConfirmationResultCount != 2 ||
+		transient.cloudJudgeInputTokenUpperBound !=
+			primaryUpperBound+2*confirmationUpperBound ||
+		len(transient.cloudJudgeSelectedOrdinals) != 1 ||
+		transient.cloudJudgeSelectedOrdinals[0] != 0 || judge.calls != 3 {
+		t.Fatalf("double-confirmation transient=%#v calls=%d", transient, judge.calls)
+	}
+}
+
+func TestDoubleConfirmationCandidateJudgeDecoratorFinalizesAfterTwoEmptyResults(t *testing.T) {
+	recorder := preparedJudgeRecorder(t)
+	judge := &scriptedConfirmationCaptureJudge{rawOutputs: []string{
+		captureEmptyJudgeOutput,
+		captureEmptyJudgeOutput,
+		captureEmptyJudgeOutput,
+	}}
+	decorator, err := NewDoubleConfirmationCandidateJudgeDecorator(
+		judge,
+		recorder,
+		"expected-model",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	primary := captureConfirmationJudgeInput(
+		usermemory.HybridCandidateJudgePromptPurposeAccuracyPrimary,
+	)
+	confirmation := captureConfirmationJudgeInput(
+		usermemory.HybridCandidateJudgePromptPurposeAbstentionConfirmation,
+	)
+	for _, input := range []usermemory.HybridCandidateJudgeInput{
+		primary,
+		confirmation,
+		confirmation,
+	} {
+		if _, err := decorator.JudgeHybridCandidates(context.Background(), input); err != nil {
+			t.Fatal(err)
+		}
+	}
+	transient, err := recorder.Finish(captureAssistantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !transient.cloudJudgeReady ||
+		transient.judgeConfirmationResultCount != 2 ||
+		len(transient.cloudJudgeSelectedOrdinals) != 0 || judge.calls != 3 {
+		t.Fatalf("empty double-confirmation transient=%#v calls=%d", transient, judge.calls)
+	}
+}
+
+func TestConfirmationCandidateJudgeDecoratorsRejectWorkAfterTerminalResult(t *testing.T) {
+	tests := []struct {
+		name        string
+		constructor func(
+			usermemory.HybridCandidateJudge,
+			*Recorder,
+			string,
+		) (*CandidateJudgeDecorator, error)
+		outputs []string
+	}{
+		{
+			name:        "single confirmation rejects a second confirmation",
+			constructor: NewAbstentionConfirmationCandidateJudgeDecorator,
+			outputs: []string{
+				captureEmptyJudgeOutput,
+				captureEmptyJudgeOutput,
+			},
+		},
+		{
+			name:        "first non-empty confirmation rejects a second confirmation",
+			constructor: NewDoubleConfirmationCandidateJudgeDecorator,
+			outputs: []string{
+				captureEmptyJudgeOutput,
+				captureSelectedJudgeOutput,
+			},
+		},
+		{
+			name:        "recorder rejects a third confirmation",
+			constructor: NewDoubleConfirmationCandidateJudgeDecorator,
+			outputs: []string{
+				captureEmptyJudgeOutput,
+				captureEmptyJudgeOutput,
+				captureEmptyJudgeOutput,
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := preparedJudgeRecorder(t)
+			judge := &scriptedConfirmationCaptureJudge{rawOutputs: test.outputs}
+			decorator, err := test.constructor(judge, recorder, "expected-model")
+			if err != nil {
+				t.Fatal(err)
+			}
+			primary := captureConfirmationJudgeInput(
+				usermemory.HybridCandidateJudgePromptPurposeAccuracyPrimary,
+			)
+			confirmation := captureConfirmationJudgeInput(
+				usermemory.HybridCandidateJudgePromptPurposeAbstentionConfirmation,
+			)
+			if _, err := decorator.JudgeHybridCandidates(context.Background(), primary); err != nil {
+				t.Fatal(err)
+			}
+			for range len(test.outputs) - 1 {
+				if _, err := decorator.JudgeHybridCandidates(
+					context.Background(),
+					confirmation,
+				); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err = decorator.JudgeHybridCandidates(context.Background(), confirmation)
+			if category := memoryjudge.FailureCategory(err); category !=
+				memoryjudge.FailureRecorderStateConflict {
+				t.Fatalf("post-terminal category=%q err=%v", category, err)
+			}
+			if judge.calls != len(test.outputs) {
+				t.Fatalf("delegate calls=%d want=%d", judge.calls, len(test.outputs))
+			}
+		})
+	}
+}
+
+func TestDoubleConfirmationCandidateJudgeDecoratorStopsAfterConfirmationFailure(t *testing.T) {
+	tests := []struct {
+		name      string
+		rawOutput string
+		modelID   string
+		err       error
+		cancel    bool
+		want      string
+	}{
+		{
+			name: "provider error",
+			err:  errors.New("private provider body"),
+			want: memoryjudge.FailureUnclassified,
+		},
+		{
+			name:      "malformed response",
+			rawOutput: `{"schemaVersion":`,
+			want:      memoryjudge.FailureOutputJSONInvalid,
+		},
+		{
+			name:      "provenance drift",
+			rawOutput: captureEmptyJudgeOutput,
+			modelID:   "drifted-model",
+			want:      memoryjudge.FailureProvenanceDrift,
+		},
+		{
+			name:      "context cancellation",
+			rawOutput: captureEmptyJudgeOutput,
+			cancel:    true,
+			want:      memoryjudge.FailureCategory(context.Canceled),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := preparedJudgeRecorder(t)
+			judge := &scriptedConfirmationCaptureJudge{
+				rawOutputs: []string{captureEmptyJudgeOutput, test.rawOutput},
+				modelIDs:   []string{"", test.modelID},
+				errors:     []error{nil, test.err},
+			}
+			decorator, err := NewDoubleConfirmationCandidateJudgeDecorator(
+				judge,
+				recorder,
+				"expected-model",
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			primary := captureConfirmationJudgeInput(
+				usermemory.HybridCandidateJudgePromptPurposeAccuracyPrimary,
+			)
+			confirmation := captureConfirmationJudgeInput(
+				usermemory.HybridCandidateJudgePromptPurposeAbstentionConfirmation,
+			)
+			if _, err := decorator.JudgeHybridCandidates(context.Background(), primary); err != nil {
+				t.Fatal(err)
+			}
+			confirmationContext := context.Background()
+			if test.cancel {
+				cancelled, cancel := context.WithCancel(context.Background())
+				cancel()
+				confirmationContext = cancelled
+			}
+			_, err = decorator.JudgeHybridCandidates(confirmationContext, confirmation)
+			if category := memoryjudge.FailureCategory(err); category != test.want {
+				t.Fatalf("confirmation category=%q want=%q err=%v", category, test.want, err)
+			}
+			_, err = decorator.JudgeHybridCandidates(context.Background(), confirmation)
+			if category := memoryjudge.FailureCategory(err); category !=
+				memoryjudge.FailureRecorderStateConflict {
+				t.Fatalf("post-failure category=%q err=%v", category, err)
+			}
+			transient, finishErr := recorder.Finish(captureAssistantID)
+			if finishErr != nil {
+				t.Fatal(finishErr)
+			}
+			if transient.cloudJudgeReady ||
+				transient.cloudJudgeFailureCategory != test.want || judge.calls != 2 {
+				t.Fatalf("failure transient=%#v calls=%d", transient, judge.calls)
+			}
+		})
+	}
+}
+
+func assertConfirmationRecorderState(
+	t *testing.T,
+	recorder *Recorder,
+	ready bool,
+	confirmationResults int,
+	inputTokenUpperBound int,
+) {
+	t.Helper()
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	if recorder.current == nil || recorder.current.cloudJudgeReady != ready ||
+		recorder.current.judgeConfirmationResultCount != confirmationResults ||
+		recorder.current.cloudJudgeInputTokenUpperBound != inputTokenUpperBound {
+		t.Fatalf("confirmation recorder state=%#v", recorder.current)
+	}
+}
+
 func preparedJudgeRecorder(t *testing.T) *Recorder {
 	t.Helper()
 	recorder := &Recorder{}
@@ -132,6 +418,57 @@ func captureJudgeResult(modelID string) usermemory.HybridCandidateJudgeResult {
 		PromptVersion: usermemory.HybridCandidateJudgePromptVersion,
 		PromptSHA256:  usermemory.HybridCandidateJudgePromptSHA256,
 	}
+}
+
+const (
+	captureEmptyJudgeOutput    = `{"schemaVersion":"neo-chat.memory-cloud-candidate-judge-output.v1","selectedOrdinals":[]}`
+	captureSelectedJudgeOutput = `{"schemaVersion":"neo-chat.memory-cloud-candidate-judge-output.v1","selectedOrdinals":[0]}`
+)
+
+func captureConfirmationJudgeInput(
+	purpose usermemory.HybridCandidateJudgePromptPurpose,
+) usermemory.HybridCandidateJudgeInput {
+	input := captureJudgeInput()
+	input.PromptPurpose = purpose
+	return input
+}
+
+type scriptedConfirmationCaptureJudge struct {
+	rawOutputs []string
+	modelIDs   []string
+	errors     []error
+	calls      int
+}
+
+func (judge *scriptedConfirmationCaptureJudge) JudgeHybridCandidates(
+	_ context.Context,
+	input usermemory.HybridCandidateJudgeInput,
+) (usermemory.HybridCandidateJudgeResult, error) {
+	index := judge.calls
+	judge.calls++
+	if index >= len(judge.rawOutputs) {
+		return usermemory.HybridCandidateJudgeResult{}, ErrCaptureStateConflict
+	}
+	if index < len(judge.errors) && judge.errors[index] != nil {
+		return usermemory.HybridCandidateJudgeResult{}, judge.errors[index]
+	}
+	modelID := "expected-model"
+	if index < len(judge.modelIDs) && judge.modelIDs[index] != "" {
+		modelID = judge.modelIDs[index]
+	}
+	promptVersion := usermemory.HybridCandidateJudgeAccuracyPromptVersion
+	promptSHA256 := usermemory.HybridCandidateJudgeAccuracyPromptSHA256
+	if input.PromptPurpose ==
+		usermemory.HybridCandidateJudgePromptPurposeAbstentionConfirmation {
+		promptVersion = usermemory.HybridCandidateJudgeConfirmationPromptVersion
+		promptSHA256 = usermemory.HybridCandidateJudgeConfirmationPromptSHA256
+	}
+	return usermemory.HybridCandidateJudgeResult{
+		RawOutput:     []byte(judge.rawOutputs[index]),
+		ModelID:       modelID,
+		PromptVersion: promptVersion,
+		PromptSHA256:  promptSHA256,
+	}, nil
 }
 
 type captureCandidateJudge struct {
@@ -375,10 +712,10 @@ func TestRecorderUnionsConcurrentRerankAndCloudJudgeEgress(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := recorder.recordProviderSent("cloud_judge", 1); err != nil {
+	if err := recorder.recordProviderSent("cloud_judge", 1, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := recorder.recordProviderSent("rerank", 1); err != nil {
+	if err := recorder.recordProviderSent("rerank", 1, 0); err != nil {
 		t.Fatal(err)
 	}
 	if err := recorder.recordCloudJudgeInput(usermemory.HybridCandidateJudgeInput{
@@ -398,7 +735,7 @@ func TestRecorderUnionsConcurrentRerankAndCloudJudgeEgress(t *testing.T) {
 	if err := recorder.recordCloudJudgeResult(result, 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := recorder.recordProviderSent("cloud_judge", 1); err == nil {
+	if err := recorder.recordProviderSent("cloud_judge", 1, 0); err == nil {
 		t.Fatal("duplicate cloud-judge egress was accepted")
 	}
 	transient, err := recorder.Finish(captureAssistantID)

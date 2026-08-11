@@ -3,7 +3,7 @@
 This document defines the current runtime contract between the Go API,
 migration CLI, Memory Worker, RAG Worker/Replay processes, and Postgres. The
 original connector contract remains in force, while the current schema head is
-`069`.
+`073`.
 
 ## 1. Scope
 
@@ -14,10 +14,11 @@ In scope:
 - Startup connectivity check when DB is enabled.
 - DB-aware `/ready` behavior.
 - Embedded SQL migrations exposed through a Go migration CLI.
-- Schema head `069`, including durable Memory capture, provenance, Review,
+- Schema head `073`, including durable Memory capture, provenance, Review,
   direct action/Activity/Usage, lexical/hybrid shadow, governance/portability,
   derived L2 Scene, independent derived L3 Persona, and lease-fenced L1
-  auto-capture promotion boundaries.
+  auto-capture promotion, health resolution, stale-rejection, and sole-user
+  derived Reader preview boundaries.
 - Operator-facing migration and rollback boundaries.
 
 Out of scope:
@@ -44,9 +45,9 @@ Out of scope:
 | `MEMORY_TOOL_LOOP_ENABLED` | Go API | No | Default `false`; global first-round `search_memory` gate. When true, Server installs production-v2 negative-guard/fixed-BGE/buffered-Luna composition, reauthorizes its stored Provider tuple per Judge attempt, then uses migration-065 final hydration and same-model continuation. False is immediate reader/Judge rollback. Never pass it to the Memory Worker. |
 | `MEMORY_TOOL_LOOP_CANARY_USER_IDS` | Go API | No | Default empty; comma-separated exact authenticated UUID allowlist. Empty, malformed, duplicate, unauthenticated, and non-matching values fail closed before retrieval/Judge work. Never pass it to the Memory Worker. |
 | `MEMORY_L2_SCENE_SHADOW_ENABLED` | API + Memory Worker | No | Default `false`; gates migration-062 Scene refresh/query-embedding/rerank Provider work. Provider-free stale purge remains enabled. |
-| `MEMORY_L2_SCENE_READER_ENABLED` | Go API | No | Default `false`; requests active Scene injection, which still requires database promotion, current L1 reader authority, and user policy. Never pass this flag to the Worker. |
+| `MEMORY_L2_SCENE_READER_ENABLED` | Go API | No | Default `false`; requests active Scene injection, which still requires user/current-artifact authority plus either formal promotion or migration-`073` sole-user preview. Never pass this flag to the Worker. |
 | `MEMORY_L3_PERSONA_SHADOW_ENABLED` | API + Memory Worker | No | Default `false`; gates migration-063 Persona refresh/query-embedding/rerank Provider work. Provider-free stale purge remains enabled. |
-| `MEMORY_L3_PERSONA_READER_ENABLED` | Go API | No | Default `false`; requests active Persona injection, which still requires database promotion, current L1 reader authority, current Persona/member authority, and user policy. Never pass this flag to the Worker. |
+| `MEMORY_L3_PERSONA_READER_ENABLED` | Go API | No | Default `false`; requests active Persona injection, which still requires user/current-artifact authority plus either formal promotion or migration-`073` sole-user preview. Never pass this flag to the Worker. |
 
 Rules:
 
@@ -92,9 +93,9 @@ Rules:
 
 | Route     | URL variable              | LOGIN capability      | Boundary                                                                                       |
 | --------- | ------------------------- | --------------------- | ---------------------------------------------------------------------------------------------- |
-| Migration | `MIGRATION_DATABASE_URL`  | Bootstrap/migrator    | Owns DDL and migration metadata; never used by API, Memory/RAG Worker, or Replay.              |
-| API/admin | `DATABASE_URL`            | `go_api_runtime`      | Existing API access plus narrow Memory action/governance/portability, `058`/`059` comparison, `062` Scene, and `063` Persona search/governance capabilities; no projection/observation table CRUD or promotion authority. |
-| Memory Worker | `MEMORY_WORKER_DATABASE_URL` | `memory_worker_runtime` | Executes only lease/source/profile-fenced capture/purge/review, `066` governance-backed safe-add auto-capture plus `067`–`069` authority/profile hardening, L1 embedding, `062` Scene, and `063` Persona refresh/purge/embedding functions; receives no reader promotion, general governance, or table CRUD authority. |
+| Migration | `MIGRATION_DATABASE_URL`  | Bootstrap/migrator    | Owns DDL/migration metadata and may invoke the migration-owner-only `073` preview capability; never used by API, Memory/RAG Worker, or Replay. |
+| API/admin | `DATABASE_URL`            | `go_api_runtime`      | Existing API access plus narrow Memory action/governance/portability, `058`/`059` comparison, `062` Scene, and `063` Persona search/governance capabilities; no projection/observation/preview-event table CRUD or promotion/preview authority. |
+| Memory Worker | `MEMORY_WORKER_DATABASE_URL` | `memory_worker_runtime` | Executes only lease/source/profile-fenced capture/purge/review, `066` governance-backed safe-add auto-capture plus `067`–`069` authority/profile hardening, L1 embedding, `062` Scene, and `063` Persona refresh/purge/embedding functions; receives no reader promotion/preview, general governance, or table CRUD authority. |
 | Worker    | `RAG_WORKER_DATABASE_URL` | `rag_worker_executor` | Executes `010` Claim/CAS/Publish/Purge functions; no authority-table DML or Replay capability. |
 | Replay    | `RAG_REPLAY_DATABASE_URL` | `rag_replay_operator` | Executes only the `010` replay functions in the operator-triggered one-shot process.           |
 
@@ -114,7 +115,7 @@ or Replay roles.
 | `DATABASE_URL` set, startup passed, DB later fails | Keep process observable.       | `200` if process is alive. | `503` until DB ping recovers.        |
 
 API readiness is connectivity-oriented. It does not run migrations or mutate
-schema. Operators establish schema head `069` before starting a release that
+schema. Operators establish schema head `073` before starting a release that
 depends on it.
 
 ### Phase 14 Readiness Extension

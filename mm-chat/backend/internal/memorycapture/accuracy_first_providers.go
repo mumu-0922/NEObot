@@ -149,6 +149,74 @@ func MemoryV20AbstentionDiagnosticExecutionPolicy(
 	return policy, nil
 }
 
+func AbstentionConfirmationDevelopmentExecutionPolicy(
+	providerMode string,
+) (AccuracyFirstExecutionPolicy, error) {
+	policy, err := TransportStableDevelopmentExecutionPolicy(providerMode)
+	if err != nil {
+		return AccuracyFirstExecutionPolicy{}, err
+	}
+	policy.SequenceVersion = AbstentionConfirmationDevelopmentExecutionSequenceV1
+	policy.MaximumAbstentionConfirmationsPerLogicalRequest = 1
+	return policy, nil
+}
+
+func AbstentionConfirmationValidationExecutionPolicy(
+	providerMode string,
+) (AccuracyFirstExecutionPolicy, error) {
+	policy, err := AbstentionConfirmationDevelopmentExecutionPolicy(providerMode)
+	if err != nil {
+		return AccuracyFirstExecutionPolicy{}, err
+	}
+	policy.SequenceVersion = AbstentionConfirmationValidationExecutionSequenceV1
+	return policy, nil
+}
+
+func DoubleConfirmationDevelopmentExecutionPolicy(
+	providerMode string,
+) (AccuracyFirstExecutionPolicy, error) {
+	policy, err := AbstentionConfirmationDevelopmentExecutionPolicy(providerMode)
+	if err != nil {
+		return AccuracyFirstExecutionPolicy{}, err
+	}
+	policy.SequenceVersion = DoubleConfirmationDevelopmentExecutionSequenceV1
+	policy.MaximumAbstentionConfirmationsPerLogicalRequest = 2
+	return policy, nil
+}
+
+func DoubleConfirmationValidationExecutionPolicy(
+	providerMode string,
+) (AccuracyFirstExecutionPolicy, error) {
+	policy, err := DoubleConfirmationDevelopmentExecutionPolicy(providerMode)
+	if err != nil {
+		return AccuracyFirstExecutionPolicy{}, err
+	}
+	policy.SequenceVersion = DoubleConfirmationValidationExecutionSequenceV1
+	return policy, nil
+}
+
+func SingleUserBoundedMissDevelopmentExecutionPolicy(
+	providerMode string,
+) (AccuracyFirstExecutionPolicy, error) {
+	policy, err := DoubleConfirmationDevelopmentExecutionPolicy(providerMode)
+	if err != nil {
+		return AccuracyFirstExecutionPolicy{}, err
+	}
+	policy.SequenceVersion = SingleUserBoundedMissDevelopmentExecutionSequenceV1
+	return policy, nil
+}
+
+func SingleUserBoundedMissValidationExecutionPolicy(
+	providerMode string,
+) (AccuracyFirstExecutionPolicy, error) {
+	policy, err := DoubleConfirmationValidationExecutionPolicy(providerMode)
+	if err != nil {
+		return AccuracyFirstExecutionPolicy{}, err
+	}
+	policy.SequenceVersion = SingleUserBoundedMissValidationExecutionSequenceV1
+	return policy, nil
+}
+
 type accuracyFirstWait func(context.Context, time.Duration) error
 
 // AccuracyFirstProviderController owns one global request gate for projection
@@ -177,9 +245,11 @@ type accuracyFirstHybridProvider struct {
 }
 
 type accuracyFirstCandidateJudge struct {
-	controller    *AccuracyFirstProviderController
-	delegate      usermemory.HybridCandidateJudge
-	promptBuilder candidateJudgeCapturePromptBuilder
+	controller                *AccuracyFirstProviderController
+	delegate                  usermemory.HybridCandidateJudge
+	promptBuilder             candidateJudgeCapturePromptBuilder
+	confirmationPromptBuilder candidateJudgeCapturePromptBuilder
+	confirmationEnabled       bool
 }
 
 func WrapAccuracyFirstDevelopmentProviders(
@@ -453,6 +523,38 @@ func WrapMemoryV20AbstentionDiagnosticProviders(
 	)
 }
 
+// WrapAbstentionConfirmationProviders keeps one global Provider gate while
+// accounting primary and valid-empty confirmation requests independently.
+func WrapAbstentionConfirmationProviders(
+	providerMode string,
+	passage PassageEmbedder,
+	hybrid usermemory.HybridShadowProvider,
+	judge usermemory.HybridCandidateJudge,
+) (
+	PassageEmbedder,
+	usermemory.HybridShadowProvider,
+	usermemory.HybridCandidateJudge,
+	*AccuracyFirstProviderController,
+	error,
+) {
+	wrappedPassage, wrappedHybrid, wrappedJudge, controller, err :=
+		WrapTransportStableMemoryJudgeDevelopmentProviders(
+			providerMode, passage, hybrid, judge,
+		)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	confirmationJudge, ok := wrappedJudge.(*accuracyFirstCandidateJudge)
+	if !ok {
+		return nil, nil, nil, nil, ErrCaptureInvalid
+	}
+	confirmationJudge.promptBuilder = usermemory.BuildHybridCandidateJudgeAccuracyPrompt
+	confirmationJudge.confirmationPromptBuilder =
+		usermemory.BuildHybridCandidateJudgeConfirmationPrompt
+	confirmationJudge.confirmationEnabled = true
+	return wrappedPassage, wrappedHybrid, wrappedJudge, controller, nil
+}
+
 func wrapAccuracyFirstDevelopmentProviders(
 	passage PassageEmbedder,
 	hybrid usermemory.HybridShadowProvider,
@@ -507,7 +609,10 @@ func (controller *AccuracyFirstProviderController) Snapshot() AccuracyFirstProvi
 		controller.latencies["rerank"],
 	)
 	telemetry.JudgeLatency = accuracyFirstLatencyDiagnostics(
-		controller.latencies["judge"],
+		append(
+			append([]int64(nil), controller.latencies["judge"]...),
+			controller.latencies["judge_confirmation"]...,
+		),
 	)
 	if controller.telemetry.JudgeAttemptFailureCategoryCounts != nil {
 		telemetry.JudgeAttemptFailureCategoryCounts = make(map[string]int,
@@ -614,10 +719,19 @@ func (judge *accuracyFirstCandidateJudge) JudgeHybridCandidates(
 	if judge == nil || judge.controller == nil || judge.delegate == nil {
 		return usermemory.HybridCandidateJudgeResult{}, ErrCaptureInvalid
 	}
-	inputTokenUpperBound, err := cloudJudgeInputTokenUpperBoundWithPrompt(
-		input,
-		judge.promptBuilder,
-	)
+	operation := "judge"
+	promptBuilder := judge.promptBuilder
+	if judge.confirmationEnabled {
+		switch input.PromptPurpose {
+		case usermemory.HybridCandidateJudgePromptPurposeAccuracyPrimary:
+		case usermemory.HybridCandidateJudgePromptPurposeAbstentionConfirmation:
+			operation = "judge_confirmation"
+			promptBuilder = judge.confirmationPromptBuilder
+		default:
+			return usermemory.HybridCandidateJudgeResult{}, ErrCaptureInvalid
+		}
+	}
+	inputTokenUpperBound, err := cloudJudgeInputTokenUpperBoundWithPrompt(input, promptBuilder)
 	if err != nil {
 		return usermemory.HybridCandidateJudgeResult{}, ErrCaptureInvalid
 	}
@@ -626,7 +740,7 @@ func (judge *accuracyFirstCandidateJudge) JudgeHybridCandidates(
 	return executeAccuracyFirstRequest(
 		ctx,
 		judge.controller,
-		"judge",
+		operation,
 		func() (usermemory.HybridCandidateJudgeResult, error) {
 			return judge.delegate.JudgeHybridCandidates(ctx, input)
 		},
@@ -648,7 +762,8 @@ func executeAccuracyFirstRequest[T any](
 		return zero, ErrCaptureInvalid
 	}
 	maximumRetries := 1
-	if operation == "judge" && controller.maximumJudgeRetries > 0 {
+	if (operation == "judge" || operation == "judge_confirmation") &&
+		controller.maximumJudgeRetries > 0 {
 		maximumRetries = controller.maximumJudgeRetries
 	}
 	for attempt := 0; attempt <= maximumRetries; attempt++ {
@@ -667,7 +782,7 @@ func executeAccuracyFirstRequest[T any](
 		if !retryable {
 			return zero, err
 		}
-		if operation == "judge" && maximumRetries > 1 {
+		if (operation == "judge" || operation == "judge_confirmation") && maximumRetries > 1 {
 			if explicit, ok := chat.ProviderExplicitRetryDelay(err); ok {
 				delay = explicit
 			} else {
@@ -684,7 +799,7 @@ func executeAccuracyFirstRequest[T any](
 }
 
 func accuracyFirstFallbackDelay(operation string, retryNumber int) time.Duration {
-	if operation == "judge" && retryNumber == 2 {
+	if (operation == "judge" || operation == "judge_confirmation") && retryNumber == 2 {
 		return TransportStableSecondRetryDelay
 	}
 	return AccuracyFirstRetryFallbackDelay
@@ -694,7 +809,8 @@ func (controller *AccuracyFirstProviderController) recordFailure(
 	operation string,
 	err error,
 ) {
-	if controller == nil || !controller.judgeFailureDiagnostics || operation != "judge" {
+	if controller == nil || !controller.judgeFailureDiagnostics ||
+		(operation != "judge" && operation != "judge_confirmation") {
 		return
 	}
 	category := memoryjudge.FailureCategory(err)
@@ -779,6 +895,20 @@ func (controller *AccuracyFirstProviderController) recordAttempt(
 		if retry {
 			controller.telemetry.JudgeRetries++
 			controller.telemetry.JudgeRetryInputTokenUpperBound +=
+				judgeInputTokenUpperBound
+		}
+	case "judge_confirmation":
+		controller.telemetry.JudgeAttempts++
+		controller.telemetry.JudgeConfirmationAttempts++
+		controller.telemetry.JudgeInputTokenUpperBound += judgeInputTokenUpperBound
+		controller.telemetry.JudgeConfirmationInputTokenUpperBound +=
+			judgeInputTokenUpperBound
+		if retry {
+			controller.telemetry.JudgeRetries++
+			controller.telemetry.JudgeConfirmationRetries++
+			controller.telemetry.JudgeRetryInputTokenUpperBound +=
+				judgeInputTokenUpperBound
+			controller.telemetry.JudgeConfirmationRetryInputTokenUpperBound +=
 				judgeInputTokenUpperBound
 		}
 	}

@@ -71,6 +71,28 @@ removed.
   ready, rerun only the existing byte/config-matched idempotent initializer and
   require an independent application-credential bucket-access proof; do not
   recreate or restart unrelated storage services.
+- Validate every post-recreate probe path against the registered running
+  routes before classifying its response as service health. An unknown verifier
+  route is still a failed rollout proof: execute the prepared behavior rollback,
+  preserve the pinned image/schema/data, correct the probe, and retry only the
+  previously authorized Provider-free recreation.
+- Keep every rollback phase marker read by an `EXIT` trap in the parent shell.
+  Assigning it in a pipeline body such as `producer | while read ...` mutates a
+  subshell copy and can make the trap skip a required disable/recreate action.
+  Use process substitution, a parent-shell loop, or an explicit state file, and
+  exercise the trap before live mutation.
+- Bind verifier assertions to the documented, observed response contract.
+  Optional fields may be absent; a health proof must use authoritative fields
+  such as `status`, `readyCount`, `pendingCount`, and `failedCount` rather than
+  inventing a mandatory `reason` value.
+- Verify packaged frontend behavior against its compiled representation.
+  Tailwind source class names may be escaped, transformed, or absent from
+  minified assets; assert emitted CSS declarations or rendered browser behavior
+  instead of treating a source-marker miss as a defective candidate image.
+- Parenthesize every PostgreSQL set-operation branch that owns
+  `ORDER BY`/`LIMIT`, or move that selection into an explicit scalar subquery.
+  Never let verifier SQL syntax remain the first execution of a rollback path
+  after live mutation.
 
 ### 4. Validation and error matrix
 
@@ -86,6 +108,11 @@ removed.
 | Target container is healthy but readiness reports storage not ready | Verify bucket and IAM separately; rerun only the existing attested initializer, then prove application-key access without restarting storage. |
 | `compose run --no-build` is rejected by the installed CLI | Stop before credentials. Capability-detect, retain `--pull never`, omit positive `--build`, and verify the exact helper image. |
 | Running admin binary lacks the required one-off command | Stop before credentials/Provider work and select an explicitly reviewed pinned helper image; do not recreate live backend. |
+| A post-recreate identity/readiness probe returns route-level `404` | Restore the protected behavior environment, keep the pinned image and schema, verify the route from current source/runtime, and retry only the Provider-free recreation. Do not replay a consumed smoke. |
+| An `EXIT` trap reads a phase marker assigned inside a pipeline subshell | Treat automatic rollback as unproven. Execute the prepared corrective rollback directly, verify the disabled state, then replace the pipeline or persist state explicitly before retry. |
+| A healthy response omits an optional field assumed by the verifier | Roll back behavior, inspect the current API contract and captured response, then assert only authoritative required fields on a fresh Provider-free retry. |
+| A `UNION` arm contains unparenthesized `ORDER BY`/`LIMIT` | Reject the verifier before live use; parenthesize the arm or use a scalar subquery and execute it against the rehearsed schema. |
+| A packaged frontend lacks a literal Tailwind source class but emits the required CSS declaration | Treat the literal-marker assertion as invalid, retain the prepared rollback result, and retry with compiled-CSS or rendered-behavior verification. |
 
 ### 5. Good / base / bad cases
 
@@ -109,6 +136,29 @@ removed.
 - **Bad dependency recovery**: restart MinIO because its bucket exists but the
   backend is not ready, rotate credentials opportunistically, or treat
   container health as proof that the application identity is usable.
+- **Good verifier recovery**: an unknown probe path triggers the prepared
+  behavior rollback; source confirms the correct route, and a fresh
+  Provider-free recreation proves health without changing schema or replaying
+  the behavioral smoke.
+- **Bad verifier recovery**: leave flags enabled after an unproven route, change
+  live auth mode to make the probe pass, or rerun a consumed Provider smoke.
+- **Good rollback control**: the parent shell sets a phase marker, a forced
+  verifier failure exercises the `EXIT` trap, and post-state proves the disable
+  event plus targeted service recreation occurred.
+- **Bad rollback control**: set the marker inside `... | tee ... | while read`
+  and assume the parent-shell trap can observe it.
+- **Good contract verification**: assert required health status and counts,
+  while treating an absent optional reason as valid.
+- **Bad contract verification**: hard-code a convenient reason string that the
+  endpoint contract does not require.
+- **Good SQL verification**: execute the exact set-operation query during the
+  disposable rehearsal with every ordered/limited arm parenthesized.
+- **Bad SQL verification**: first execute an untested `UNION ... ORDER BY ...
+  LIMIT` verifier only after live flags have been enabled.
+- **Good packaged-UI verification**: assert the exact emitted `max-height` and
+  scrollbar declarations or measure the rendered scroll region.
+- **Bad packaged-UI verification**: grep minified chunks for an unescaped source
+  class and classify its absence as a broken image.
 
 ### 6. Tests required
 
@@ -118,6 +168,8 @@ removed.
 - Assert unrelated container IDs remain identical.
 - Assert target health checks pass and recent startup logs contain no
   ERROR/FATAL/panic lines.
+- Assert identity/readiness probe paths are registered by the selected image;
+  a route-level failure must exercise behavior rollback before corrected retry.
 - Assert the database migration version is unchanged for a flag-only operation.
 - Assert the protected environment and logical dump have mode `0600`, validate
   their hashes/catalog, and compare persistent row counts before and after.
@@ -130,6 +182,15 @@ removed.
 - Assert one-off wrapper tests cover both Compose-run capability branches,
   positive `--build` is absent, `--pull never` is present, helper image identity
   is pinned, and pre-provider failures export no credential or artifact.
+- Inject a failure after each live phase marker and assert the parent-shell trap
+  performs the expected append-only disable and targeted recreation exactly
+  once; pipeline logging must not own rollback state.
+- Replay captured health payloads with and without optional fields, asserting
+  required status/count behavior rather than undocumented text.
+- Run the exact verifier SQL against the disposable PostgreSQL rehearsal,
+  including every `UNION` arm with `ORDER BY`/`LIMIT`.
+- For Tailwind UI changes, inspect the packaged CSS declarations or rendered
+  computed style; do not use literal source class names as runtime evidence.
 
 ### 7. Wrong vs correct
 
@@ -144,6 +205,35 @@ docker compose up -d --no-build --force-recreate backend memory-worker
 # Wrong: current source has the command, therefore the live admin must have it.
 docker compose build admin
 docker compose run admin new-read-only-helper
+```
+
+```bash
+# Wrong: an assumed route is treated as readiness authority while flags stay on.
+curl --fail http://127.0.0.1:8080/v1/auth/me
+```
+
+```bash
+# Wrong: rollout_phase is changed only in a pipeline subshell; EXIT sees "pre".
+rollout_phase=pre
+produce | while read -r line; do rollout_phase=enabled; done
+trap '[[ "$rollout_phase" == enabled ]] && disable_preview' EXIT
+```
+
+```sql
+-- Wrong: ORDER BY/LIMIT belongs to an unparenthesized UNION arm.
+SELECT id FROM preview_events ORDER BY created_at DESC LIMIT 1
+UNION ALL
+SELECT id FROM preview_events WHERE enabled = false;
+```
+
+```bash
+# Wrong: "reason" is optional in the actual health response contract.
+jq -e '.status == "ready" and .reason == "memory_ready"' health.json
+```
+
+```bash
+# Wrong: Tailwind may escape or transform the source class in packaged assets.
+grep -R -q 'max-h-\[39.75rem\]' /app/.next/static
 ```
 
 #### Correct
@@ -161,4 +251,37 @@ docker compose --env-file .env.candidate \
 # Correct helper boundary: explicit reviewed image, no live recreation.
 docker compose --env-file .env.reviewed run --rm --no-deps --pull never admin \
   new-read-only-helper
+```
+
+```bash
+# Correct: restore the protected behavior environment first, then verify the
+# route registered by the selected image before a Provider-free retry.
+docker compose --env-file .env.rollback \
+  up -d --no-build --no-deps --force-recreate backend memory-worker
+curl --fail http://127.0.0.1:8080/v1/me
+```
+
+```bash
+# Correct: the loop and phase assignment execute in the parent shell.
+rollout_phase=pre
+while read -r line; do rollout_phase=enabled; done < <(produce)
+trap '[[ "$rollout_phase" == enabled ]] && disable_preview' EXIT
+```
+
+```sql
+-- Correct: each ordered/limited set-operation arm owns its clauses.
+(SELECT id FROM preview_events ORDER BY created_at DESC LIMIT 1)
+UNION ALL
+(SELECT id FROM preview_events WHERE enabled = false);
+```
+
+```bash
+# Correct: bind the verifier to required health fields.
+jq -e '.status == "ready" and .readyCount == 2 and
+       .pendingCount == 0 and .failedCount == 0' health.json
+```
+
+```bash
+# Correct: verify the compiled runtime declaration.
+grep -R -F -q 'max-height:39.75rem' /app/.next/static
 ```

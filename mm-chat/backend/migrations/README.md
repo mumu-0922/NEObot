@@ -143,7 +143,7 @@ function signatures, owners, and grants while pinning lookup to the application
 schema, `pg_catalog`, and `pg_temp`. Its down path intentionally retains the
 safe search path rather than reopening object-shadowing risk.
 
-The current migration head is `069`; the latest RAG retrieval-specific migration
+The current migration head is `073`; the latest RAG retrieval-specific migration
 remains `050`. Migration `043` extends the existing final-authority evidence
 hydration boundary with complete matched-Child and containing-Parent source
 text plus their persisted token counts. Parent text is answer context only. Its
@@ -419,6 +419,48 @@ contains no query, Memory body, Provider response, model secret, or raw score.
 `go_api_runtime` may execute only user health; neither role can read the
 heartbeat table. Down refuses while any heartbeat is live, then restores the
 pre-`070` readiness function. Clean replay is `069 -> 070 -> 069 -> 070`.
+
+Migration `071` keeps applied `070` immutable and makes capture health
+actionable. `memory_user_health(UUID)` counts only `extract` jobs as capture
+indexing work, so scheduled `review_expire` governance maintenance no longer
+reports false indexing. Historical extract dead letters remain degraded until
+the owning user records one content-free, append-only resolution through
+`memory_acknowledge_job_health(UUID, UUID, TEXT, TEXT)`. Source-drift
+resolution requires a non-current Conversation; other historical acceptance
+requires a terminal job at least 24 hours old. The API/admin role has function
+execution only and no resolution-table CRUD; the Worker has neither. The
+resolution binds ownership through an additive `(job_id,user_id)` unique/FK
+pair. Down takes an exclusive evidence-table lock and refuses once any
+resolution exists; otherwise it restores exact `070` aggregation and removes
+the additive key. Clean replay is `070 -> 071 -> 070 -> 071` before any
+resolution is recorded.
+
+Migration `072` corrects a Review-governance liveness defect without weakening
+canonical Memory authority. A still-pending, unexpired `reject` decision may
+purge its candidate and append the existing plaintext-free decision audit even
+when the visibility epoch, scope generation, or a referenced target Memory
+changed after proposal. Reject never hydrates or mutates canonical Memory.
+`keep_current`, `accept_new`, `edit_merge`, and `keep_both` retain the exact
+epoch/scope/target existence/lifecycle/revision fences. Down
+restores the migration-`060` all-decision target fence; clean replay is
+`071 -> 072 -> 071 -> 072`.
+
+Migration `073` adds an exact sole-user L2/L3 Reader preview without claiming
+formal benchmark promotion. One migration-owner-only capability requires the
+fixed owner acceptance literal, current ready Scene and Persona projections,
+zero active/dead derived jobs, enabled Memory Use, and exactly one database
+user. It appends an immutable enable/disable event, activates only that user's
+derived artifacts without changing the formal L1 retrieval pointer, and is
+still jointly gated by the existing default-off Reader environment flags.
+Adding any second user automatically appends a
+disable event and reconciles both derived layers fail-closed; deleting that
+user does not silently re-enable preview. Runtime roles receive no event-table
+CRUD or activation capability, and the existing 500-case/seven-day/100-turn
+formal promotion functions remain unchanged. Event audit is append-only until
+the owning account is erased, when it follows the existing per-user cascade.
+Down is clean only before any preview event; after activation, rollback is an
+append-only disable event plus both Reader flags false. Clean replay is
+`072 -> 073 -> 072 -> 073`.
 
 ## Storage boundaries
 

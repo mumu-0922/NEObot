@@ -3,14 +3,15 @@ package memoryeval
 import "errors"
 
 const (
-	CriteriaVersionV1                         = "neo-chat.memory-benchmark-criteria.v1"
-	MemoryJudgeDevelopmentCriteriaVersionV2   = "neo-chat.memory-benchmark-criteria.v2"
-	MemoryJudgeDevelopmentMaximumP95MillisV2  = int64(1500)
-	MemoryJudgeDevelopmentMaximumP99MillisV2  = int64(2500)
-	MemoryJudgeDevelopmentHardCutoffMillisV2  = int64(3000)
-	MemoryJudgeAccuracyFirstCriteriaVersionV3 = "neo-chat.memory-benchmark-criteria.v3"
-	MemoryJudgeLatencyDiagnosticOnlyV1        = "diagnostic_only_v1"
-	MemoryJudgeApplicationDeadlineNoneV1      = "none_v1"
+	CriteriaVersionV1                                 = "neo-chat.memory-benchmark-criteria.v1"
+	MemoryJudgeDevelopmentCriteriaVersionV2           = "neo-chat.memory-benchmark-criteria.v2"
+	MemoryJudgeDevelopmentMaximumP95MillisV2          = int64(1500)
+	MemoryJudgeDevelopmentMaximumP99MillisV2          = int64(2500)
+	MemoryJudgeDevelopmentHardCutoffMillisV2          = int64(3000)
+	MemoryJudgeAccuracyFirstCriteriaVersionV3         = "neo-chat.memory-benchmark-criteria.v3"
+	MemoryJudgeSingleUserBoundedMissCriteriaVersionV4 = "neo-chat.memory-benchmark-criteria.v4-single-user-bounded-miss"
+	MemoryJudgeLatencyDiagnosticOnlyV1                = "diagnostic_only_v1"
+	MemoryJudgeApplicationDeadlineNoneV1              = "none_v1"
 )
 
 // MemoryJudgeDevelopmentCriteriaV2 derives the owner-selected complete-flow
@@ -69,6 +70,60 @@ func ValidateMemoryJudgeAccuracyFirstCriteriaV3(value AccuracyFirstCriteria) err
 		value.ApplicationDeadlineMode != MemoryJudgeApplicationDeadlineNoneV1 ||
 		validateCriteria(legacy) != nil {
 		return errors.New("Memory judge accuracy-first Development criteria drifted")
+	}
+	return nil
+}
+
+// MemoryJudgeSingleUserBoundedMissCriteriaV4 derives a prospective criteria
+// identity for the existing exact-UUID single-user rollout. Historical v3
+// criteria and consumed reports remain byte-authoritative and unchanged.
+func MemoryJudgeSingleUserBoundedMissCriteriaV4(
+	base Criteria,
+) (SingleUserBoundedMissCriteria, error) {
+	if err := validateCriteria(base); err != nil {
+		return SingleUserBoundedMissCriteria{}, err
+	}
+	criteria := SingleUserBoundedMissCriteria{
+		MinimumCandidateRecallAt20:              base.MinimumCandidateRecallAt20,
+		MinimumFinalRecallAt5:                   base.MinimumFinalRecallAt5,
+		MinimumCurrentFactAccuracy:              base.MinimumCurrentFactAccuracy,
+		MinimumRequiredSliceCurrentFactAccuracy: 0.90,
+		MaximumFalseInjectionRate:               0,
+		MaximumFalseInjectionCases:              0,
+		MaximumAveragePromptMemoryTokens:        base.MaximumAveragePromptMemoryTokens,
+		MaximumPromptMemoryTokens:               base.MaximumPromptMemoryTokens,
+		MaximumProviderCostRatio:                base.MaximumProviderCostRatio,
+		LatencyEvaluationMode:                   MemoryJudgeLatencyDiagnosticOnlyV1,
+		ApplicationDeadlineMode:                 MemoryJudgeApplicationDeadlineNoneV1,
+	}
+	if err := ValidateMemoryJudgeSingleUserBoundedMissCriteriaV4(criteria); err != nil {
+		return SingleUserBoundedMissCriteria{}, err
+	}
+	return criteria, nil
+}
+
+func ValidateMemoryJudgeSingleUserBoundedMissCriteriaV4(
+	value SingleUserBoundedMissCriteria,
+) error {
+	legacy := Criteria{
+		MinimumCandidateRecallAt20:       value.MinimumCandidateRecallAt20,
+		MinimumFinalRecallAt5:            value.MinimumFinalRecallAt5,
+		MinimumCurrentFactAccuracy:       value.MinimumCurrentFactAccuracy,
+		MaximumFalseInjectionRate:        0.02,
+		MaximumP95LatencyMilliseconds:    900,
+		MaximumP99LatencyMilliseconds:    1500,
+		HardCutoffMilliseconds:           2000,
+		MaximumAveragePromptMemoryTokens: value.MaximumAveragePromptMemoryTokens,
+		MaximumPromptMemoryTokens:        value.MaximumPromptMemoryTokens,
+		MaximumProviderCostRatio:         value.MaximumProviderCostRatio,
+	}
+	if value.MinimumRequiredSliceCurrentFactAccuracy != 0.90 ||
+		value.MaximumFalseInjectionRate != 0 ||
+		value.MaximumFalseInjectionCases != 0 ||
+		value.LatencyEvaluationMode != MemoryJudgeLatencyDiagnosticOnlyV1 ||
+		value.ApplicationDeadlineMode != MemoryJudgeApplicationDeadlineNoneV1 ||
+		validateCriteria(legacy) != nil {
+		return errors.New("single-user bounded-miss criteria drifted")
 	}
 	return nil
 }

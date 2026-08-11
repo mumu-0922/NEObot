@@ -54,6 +54,10 @@ neo-chat.memory-regression-profile-config.v18
 neo-chat.memory-regression-profile-config.v19
 neo-chat.memory-regression-profile-config.v20
 neo-chat.memory-regression-profile-config.v20-abstention-diagnostic.v1
+neo-chat.memory-regression-profile-config.v22-double-confirmation-development.v1
+neo-chat.memory-regression-profile-config.v23-double-confirmation-validation.v1
+neo-chat.memory-regression-profile-config.v24-single-user-bounded-miss-development.v1
+neo-chat.memory-regression-profile-config.v25-single-user-bounded-miss-validation.v1
 neo-chat.memory-regression-relevance-calibration.v3
 neo-chat.memory-regression-relevance-calibration.v4
 neo-chat.memory-regression-relevance-calibration.v5
@@ -69,15 +73,23 @@ neo-chat.memory-regression-relevance-calibration.v14
 neo-chat.memory-regression-relevance-calibration.v16
 neo-chat.memory-regression-relevance-calibration.v17
 neo-chat.memory-regression-relevance-calibration.v20
+neo-chat.memory-regression-relevance-calibration.v22-double-confirmation-development.v1
+neo-chat.memory-regression-relevance-calibration.v24-single-user-bounded-miss-development.v1
 neo-chat.memory-regression-slice-diagnostic.v19
 neo-chat.memory-regression-v20-abstention-diagnostic.v1
 neo-chat.memory-regression-relevance-validation.v1
 neo-chat.memory-regression-relevance-validation.v15
+neo-chat.memory-regression-relevance-validation.v23-double-confirmation.v1
+neo-chat.memory-regression-relevance-validation.v25-single-user-bounded-miss.v1
 neo-chat.memory-regression-relevance-run.v1
 neo-chat.memory-regression-relevance-validation-run.v15
 neo-chat.memory-regression-slice-diagnostic-run.v19
 neo-chat.memory-regression-relevance-run.v20
 neo-chat.memory-regression-v20-abstention-diagnostic-run.v1
+neo-chat.memory-regression-relevance-run.v22-double-confirmation-development.v1
+neo-chat.memory-regression-relevance-validation-run.v23-double-confirmation.v1
+neo-chat.memory-regression-relevance-run.v24-single-user-bounded-miss-development.v1
+neo-chat.memory-regression-relevance-validation-run.v25-single-user-bounded-miss.v1
 neo-chat.memory-regression-cost-basis.v2
 neo-chat.memory-regression-cost-basis.v3
 neo-chat.memory-regression-cost-basis.v4
@@ -93,6 +105,11 @@ neo-chat.memory-regression-cost-basis.v13
 neo-chat.memory-regression-cost-basis.v14
 neo-chat.memory-regression-cost-basis.v15
 neo-chat.memory-regression-cost-basis.v20-abstention-diagnostic.v1
+neo-chat.memory-regression-cost-basis.v22-double-confirmation-development.v1
+neo-chat.memory-regression-cost-basis.v23-double-confirmation-validation.v1
+neo-chat.memory-regression-cost-basis.v24-single-user-bounded-miss-development.v1
+neo-chat.memory-regression-cost-basis.v25-single-user-bounded-miss-validation.v1
+neo-chat.memory-benchmark-criteria.v4-single-user-bounded-miss
 neo-chat.memory-cloud-candidate-judge-input.v1
 neo-chat.memory-cloud-candidate-judge-output.v1
 ```
@@ -1233,6 +1250,7 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | Schema-v18 aggregate metrics/safety pass but any required slice fails | Retain Yellow `retain_beta`, keep the global Tool flag false and allowlist empty, and never rerun or partially authorize. |
 | A versioned candidate-Judge prompt is built independently by the Provider adapter and capture cost controller, or their prompt version/SHA/token bound differs | Reject before evidence publication. Select one prompt builder for the lane and reuse it for both the outbound request and its input-token authority; duplicated prompt assumptions are not evidence. |
 | Compose v5 lacks `run --no-build` | Capability-detect before credentials, require `--pull never`, omit positive `--build`, and pin the exact reviewed export image. |
+| A post-launch verifier uses an unknown identity route or otherwise cannot prove the fixed owner | Trigger the prepared behavior rollback, preserve schema/data/evidence, verify the route from the running source (`GET /v1/me`), then use a fresh Provider-free rollout attempt. Never replay the consumed admitted Chat smoke. |
 | Development passes | Retain aggregate evidence and stop for owner review; never enter Validation automatically. |
 | Frozen validation is requested before a Development-selected policy is committed | Reject before credential read or Provider work. |
 | Schema-v15 mode selects Development/Holdout, seeds other fixtures, or changes the frozen case order/read-intent/policy/criteria hash | Reject before report publication; historical schemas and the visible machine Holdout remain untouched. |
@@ -1397,6 +1415,108 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   its identity, retain query/Memory/provider body/raw score/error text, select
   the best repetition, rerun the consumed authority, or let diagnostic output
   enable a Memory flag, canary, Validation, Release, or promotion.
+- **Abstention-confirmation good**: keep primary prompt v2 byte-authoritative;
+  after a valid empty primary result, issue at most one prompt-v3 confirmation
+  over the same ordinals, reuse the strict decoder, intersect with the fixed
+  BGE set, and reconcile primary/confirmation attempts, retries, tokens, and
+  latency separately under fresh Development and schema-v21 identities.
+- **Abstention-confirmation base**: Fake Development forces the confirmation
+  branch and may pass quality; Fake schema-v21 Validation must still publish
+  Yellow lifecycle-only evidence with `passed=false`, `releaseEligible=false`,
+  and `policySelected=false`.
+- **Abstention-confirmation bad**: confirm after a non-empty or malformed
+  primary decision, bypass the negative guard/BGE intersection, reuse a
+  Development approval for Validation, omit either mode from the host Judge
+  credential copy predicates, or automatically rerun a started live authority
+  after any failure.
+- **Double-confirmation successor good**: preserve the v3 primary and
+  confirmation prompts byte-for-byte, and only after both return valid empty
+  issue one more identical confirmation. Stop on the first non-empty result or
+  any malformed/Provider/provenance/cancellation failure. Bind v4 Development
+  to two confirmations, `2700` requests, `2700000` input tokens, and `345600`
+  output tokens under a fresh v22 cost identity.
+- **Double-confirmation successor base**: PostgreSQL 17 Fake forces all `165`
+  Judge-eligible cases through two confirmations, reconciles `495` logical
+  attempts and `886206` input-token upper bound, publishes only aggregate
+  mode-`0600` artifacts, and destroys every scoped runtime object. It is
+  lifecycle evidence only and grants no live authority.
+- **Double-confirmation Validation good**: use the independent schema-v23
+  profile/reader/report/run/cost/capture identities over the exact v4
+  production policy, freeze the 100-case Validation order, and require a new
+  exact live approval. The authority is bounded to `900/900000/115200`
+  Judge requests/input/output tokens and remains unable to release or promote
+  the policy by itself.
+- **Double-confirmation Validation base**: PostgreSQL 17 Fake completes the
+  exact `35` empty-candidate, `10` negative-guard, and `55` Judge-completed
+  routes. Every Judge-completed route performs one primary plus two
+  confirmations, so `165` attempts reconcile at `294993` total and `196442`
+  confirmation-only input tokens. The result is always Yellow
+  `FAKE_PROTOCOL_NON_EVIDENCE`, `passed=false`, and non-selecting; both
+  aggregate artifacts are mode `0600` and all scoped runtime objects are
+  destroyed.
+- **Double-confirmation Validation live base**: one authorized schema-v23 run
+  may complete all 100 cases, reconcile every attempt/token/cost and safety
+  counter, yet fail when any required slice falls below the unchanged current-
+  fact criterion. Retain the Yellow aggregate pair, consume the authority,
+  keep the historical product policy and both runtime flags unchanged, and do
+  not promote, launch, or rerun. The consumed run observed two valid-empty
+  cases after all three decisions, represented only as aggregate
+  `judgeAbstainedCaseCount=2` and four confirmation attempts; do not recover
+  private case identities from slice overlap.
+- **Double-confirmation successor bad**: mutate the consumed v3/schema-v21
+  descriptor, finalize capture after the first valid-empty confirmation, allow
+  a third confirmation, reuse the provisional `3000000` Fake cost document for
+  live work, reuse the consumed v22 Development authority, reinterpret a new
+  Development approval as schema-v23 Validation approval, rerun schema-v21, or
+  reinterpret/rerun a failed schema-v23 authority, infer private case IDs from
+  overlapping aggregate slices, or promote before fresh Development and
+  separately versioned Validation both pass.
+- **Single-user bounded-miss successor good**: preserve the exact v4 reader and
+  introduce only a fresh criteria identity. Keep overall current-fact accuracy
+  `>=0.95`, permit required-slice current-fact accuracy `>=0.90`, require both
+  false-injection rate and count to equal zero, and keep every other quality,
+  token, safety, privacy, cost, cleanup, and terminal gate unchanged. Bind the
+  criteria only to fresh schema-v24 Development and schema-v25 Validation
+  evidence with independent live approvals.
+- **Single-user bounded-miss successor base**: PostgreSQL 17 Fake schema-v24
+  completes `300/300` with `495` Judge attempts and schema-v25 completes the
+  exact `35/10/55/0` route partition with `165` Judge attempts. Development
+  may pass; Fake Validation remains Yellow `FAKE_PROTOCOL_NON_EVIDENCE`,
+  non-releasing, and non-promotional. Both phases retain only two mode-`0600`
+  aggregate artifacts and leave zero scoped runtime residue.
+- **Single-user bounded-miss successor bad**: mutate or rebind schema-v23,
+  lower overall current-fact accuracy, accept `8/10` in a required slice,
+  accept any non-zero false injection, use the legacy
+  `FALSE_INJECTION_ABOVE_0_02` reason for the exact-zero gate, reuse v22/v23
+  live approval, run schema-v25 before fresh schema-v24 passes, or admit a
+  second user under the single-user rollout decision.
+- **Exact-UUID launch good**: bind one reviewed image to the validated
+  production policy, admit only the exact authenticated UUID, prove an
+  isolated non-admitted request performs zero Provider/Memory work, consume at
+  most one separately authorized admitted Chat POST, clean up its conversation,
+  and require `GET /v1/memory-health` to report `ready` before declaring launch.
+  On any smoke or health failure, atomically disable both Memory flags, clear
+  the canary, recreate only the owning services, and prove schema plus
+  persistent counts unchanged.
+- **Exact-UUID launch completion good**: after append-only health remediation,
+  reuse the retained admitted behavior evidence without another Chat POST,
+  require zero active capture/embedding work, enable only the exact sole UUID,
+  and prove ready health plus unchanged observations/Usage. In development
+  auth mode, prove the fixed owner through `GET /v1/me`; prove unauthenticated
+  denial separately with a disposable same-image `AUTH_MODE=required` instance.
+- **Exact-UUID launch base**: the admitted Tool path may complete and persist
+  exact Usage while the independent runtime health gate remains degraded.
+  `readyCount` is projection-only, but `pendingCount` combines capture pending/
+  processing with projection pending and `failedCount` combines capture dead
+  letters with projection failures. Decompose these lanes with content-free
+  SQL before diagnosing projection duplication; successful retrieval does not
+  override degraded health.
+- **Exact-UUID launch bad**: declare launch from `message.completed` alone,
+  delete or rewrite historical capture evidence to force health green, silently
+  weaken the migration-`070` dead-letter contract, rerun a consumed admitted
+  smoke, leave the gates enabled while designing a remediation, or treat
+  `/v1/auth/me` as a valid identity probe when the registered route is
+  `/v1/me`.
 - **Exact-pair export good**: resolve only active attested `RAG:SILICONFLOW`
   and the exact fixed Luna tuple, create two exclusive private mode-`0600`
   files, run schema-v15, and wipe both source copies on every exit.
@@ -1570,6 +1690,43 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   fields; two-file `0700/0600` publication; and Vault lifecycle cleanup across
   success, metric failure, ordinary failure, `INT`, `TERM`, and `HUP`, including
   both Compose `run --no-build` capability branches.
+  Abstention-confirmation fixtures additionally cover prompt v2/v3 and policy/
+  adapter/profile/report/run/cost isolation; primary-only success; one bounded
+  confirmation after valid empty; malformed/error/provenance fail-closed;
+  primary/confirmation retry, token, latency, terminal, and cost equations;
+  Development `1800/2000000/230400` and Validation
+  `600/600000/76800` ceilings; exact 100-case schema-v21 split; Fake
+  Yellow/non-release behavior; and live-shaped shell cases that assert both
+  credential-copy bytes and the exact in-container Luna mount target.
+  The v4 successor additionally covers primary/confirmation Recorder state,
+  two confirmation input-token accumulations, first-empty non-finalization,
+  second non-empty and second-empty finalization, v3 second-call denial, v4
+  third-call denial, terminal failure denial, the full-path Fake
+  `886206 * 3 -> 2700000` input ceiling, v22 approval isolation, and the
+  dedicated Vault wrapper's pinned no-build/no-pull credential cleanup across
+  success, failure, and signal paths.
+  Schema-v23 fixtures additionally cover production-policy/profile/reader/
+  report/run/cost/capture separation; exact 100-case Validation-only order;
+  two confirmations for each of 55 Judge-completed cases; `35/10/55/0`
+  route reconciliation; Fake Yellow/non-evidence behavior; the
+  `294993 * 3 = 884979 -> 900000` input ceiling; independent live approval;
+  exact copied credential bytes and mount target; aggregate privacy; and Vault
+  cleanup across success, failure, and signal paths.
+  Schema-v24/v25 fixtures additionally cover historical v3 criteria byte
+  stability; fresh criteria hashing; `9/10` required-slice acceptance and
+  `8/10` rejection; overall current-fact rejection below `0.95`; exact-zero
+  false-injection rate/count; Orange `FALSE_INJECTION_NON_ZERO`; fresh
+  profile/reader/report/run/cost/capture identities; `2700/2700000/345600` and
+  `900/900000/115200` phase ceilings; approval isolation; live-shaped
+  credential copy/mount parity; Fake non-authority; and dedicated Vault
+  cleanup across success, failure, and signals.
+  Exact-UUID rollout verification additionally asserts single-value and
+  comma-separated UUID parsing, production-policy-only admission, a disposable
+  non-admitted `401` with zero Provider/Memory work, exactly one admitted Chat
+  POST with no automatic replay, API cleanup, independent ready-health gating,
+  atomic behavior rollback with unchanged schema and persistent counts,
+  correct fixed-owner verification at `GET /v1/me`, and Provider-free retry
+  after a verifier-only rollback.
   Cost-basis fixtures must also assert the raw private-file hash and
   the decoded canonical manifest hash as different named surfaces rather than
   assuming byte equality.
@@ -1741,4 +1898,60 @@ Wrong: select prompt v2 in the Provider adapter but let the capture controller
 Correct: inject the same versioned prompt builder into both boundaries -> build
          the outbound request and token upper bound from that authority ->
          reject any provenance or reconciliation drift before publication.
+```
+
+```text
+Wrong: add a new live capture mode only to the Compose credential target list,
+       leaving host preflight/copy predicates to create an empty mounted file.
+Correct: update tuple validation, source preflight, host copy, mount target,
+         authorization, and cleanup predicates together -> execute a live-
+         shaped fake runner that reads the copied bytes -> fail before network
+         on any empty/shared/missing/drifted credential -> never auto-rerun a
+         started one-shot authority.
+```
+
+```text
+Wrong: let a Vault wrapper and its mock runner agree on a new approval literal
+       without comparing it to the generic runner and Go live gate.
+Correct: treat the exact approval literal as part of the versioned live-mode
+         tuple -> assert wrapper, generic runner, Go gate, and live-shaped mock
+         parity -> reject any drift before Provider construction -> never
+         auto-rerun a started one-shot authority after a pre-network mismatch.
+```
+
+```text
+Wrong: rerun failed schema-v21, weaken a 10-case slice threshold, or mutate v3
+       to add another call after its single confirmation also returns empty.
+Correct: retain schema-v21 Yellow -> create a fresh v4 Development-only policy
+         -> primary valid empty -> confirmation-1 valid empty -> at most one
+         confirmation-2 -> stop on first selection or any failure -> keep v3
+         descriptors byte-stable -> require fresh Development and Validation.
+```
+
+```text
+Wrong: message.completed + one released Memory -> declare exact-UUID launch,
+       even though /v1/memory-health is degraded; replay the consumed smoke or
+       delete dead-letter rows until the endpoint appears green.
+Correct: prove admitted and non-admitted behavior -> clean up the conversation
+         -> independently require ready health -> decompose capture/projection
+         aggregates with content-free SQL -> atomically roll back every behavior
+         gate on degraded health -> preserve evidence and request a separately
+         reviewed remediation before any new rollout.
+```
+
+```text
+Wrong: reinterpret future review_expire maintenance as capture indexing, edit
+       migration 070, or bulk-ignore all historical failures to launch.
+Correct: add migration 071 -> count extract jobs only -> require a separate,
+         exact one-job owner acknowledgement for each eligible historical dead
+         letter -> preserve original evidence -> recheck health and existing
+         rollout gates without replaying any consumed Provider smoke.
+```
+
+```text
+Wrong: query /v1/auth/me after activation -> interpret its route-level 404 as
+       Memory failure -> replay the consumed admitted Chat smoke.
+Correct: fail closed through the prepared behavior rollback -> verify the
+         registered identity route as GET /v1/me -> retry only the Provider-free
+         flag/canary recreation -> require ready health and unchanged counts.
 ```

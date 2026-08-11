@@ -1,6 +1,9 @@
 package memoryeval
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestMemoryJudgeDevelopmentCriteriaV2ChangesOnlyLatency(t *testing.T) {
 	base := benchmarkCriteria()
@@ -64,5 +67,53 @@ func TestMemoryJudgeAccuracyFirstCriteriaV3OmitsLatencyGates(t *testing.T) {
 	drifted.MaximumFalseInjectionRate = 0.03
 	if ValidateMemoryJudgeAccuracyFirstCriteriaV3(drifted) == nil {
 		t.Fatal("accuracy-first safety drift was accepted")
+	}
+}
+
+func TestMemoryJudgeSingleUserBoundedMissCriteriaV4IsSeparateAndExact(t *testing.T) {
+	base := benchmarkCriteria()
+	v3, err := MemoryJudgeAccuracyFirstCriteriaV3(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v3JSONBefore, err := json.Marshal(v3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v4, err := MemoryJudgeSingleUserBoundedMissCriteriaV4(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v4.MinimumCurrentFactAccuracy != 0.95 ||
+		v4.MinimumRequiredSliceCurrentFactAccuracy != 0.90 ||
+		v4.MaximumFalseInjectionRate != 0 ||
+		v4.MaximumFalseInjectionCases != 0 ||
+		v4.MinimumCandidateRecallAt20 != v3.MinimumCandidateRecallAt20 ||
+		v4.MinimumFinalRecallAt5 != v3.MinimumFinalRecallAt5 ||
+		v4.MaximumAveragePromptMemoryTokens != v3.MaximumAveragePromptMemoryTokens ||
+		v4.MaximumPromptMemoryTokens != v3.MaximumPromptMemoryTokens ||
+		v4.MaximumProviderCostRatio != v3.MaximumProviderCostRatio ||
+		v4.LatencyEvaluationMode != v3.LatencyEvaluationMode ||
+		v4.ApplicationDeadlineMode != v3.ApplicationDeadlineMode {
+		t.Fatalf("bounded-miss criteria = %#v", v4)
+	}
+	v3JSONAfter, err := json.Marshal(v3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(v3JSONBefore) != string(v3JSONAfter) ||
+		string(v3JSONAfter) != `{"minimumCandidateRecallAt20":0.95,"minimumFinalRecallAt5":0.9,"minimumCurrentFactAccuracy":0.95,"maximumFalseInjectionRate":0.02,"maximumAveragePromptMemoryTokens":600,"maximumPromptMemoryTokens":900,"maximumProviderCostRatio":0.15,"latencyEvaluationMode":"diagnostic_only_v1","applicationDeadlineMode":"none_v1"}` {
+		t.Fatalf("historical v3 JSON drifted: %s", v3JSONAfter)
+	}
+
+	drifted := v4
+	drifted.MinimumRequiredSliceCurrentFactAccuracy = 0.89
+	if ValidateMemoryJudgeSingleUserBoundedMissCriteriaV4(drifted) == nil {
+		t.Fatal("bounded-miss required-slice drift was accepted")
+	}
+	drifted = v4
+	drifted.MaximumFalseInjectionCases = 1
+	if ValidateMemoryJudgeSingleUserBoundedMissCriteriaV4(drifted) == nil {
+		t.Fatal("bounded-miss false-injection drift was accepted")
 	}
 }

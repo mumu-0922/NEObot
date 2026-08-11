@@ -8,7 +8,7 @@ usage: run-memory-regression.sh \
   --output-dir <new-run-parent> \
   [--regression-root <protected-root>] \
   [--provider-mode fake_protocol|live_siliconflow] \
-  [--capture-mode full_regression|development_calibration|development_cloud_judge|development_memory_tool_route|development_memory_tool_route_diagnostic|development_configured_candidate_judge|development_fixed_memory_judge|development_fixed_memory_judge_accuracy|development_fixed_memory_judge_failure_diagnostic|development_fixed_memory_judge_transport_stable|development_fixed_memory_judge_negative_guard|development_fixed_memory_judge_negative_guard_buffered|production_fixed_memory_judge_validation|production_fixed_memory_judge_negative_guard_buffered_validation|development_fixed_memory_judge_negative_guard_buffered_slice_diagnostic|development_fixed_memory_judge_accuracy_v20_abstention_diagnostic|development_fixed_memory_judge_negative_guard_buffered_accuracy_repair|frozen_validation] \
+  [--capture-mode full_regression|development_calibration|development_cloud_judge|development_memory_tool_route|development_memory_tool_route_diagnostic|development_configured_candidate_judge|development_fixed_memory_judge|development_fixed_memory_judge_accuracy|development_fixed_memory_judge_failure_diagnostic|development_fixed_memory_judge_transport_stable|development_fixed_memory_judge_negative_guard|development_fixed_memory_judge_negative_guard_buffered|production_fixed_memory_judge_validation|production_fixed_memory_judge_negative_guard_buffered_validation|development_fixed_memory_judge_negative_guard_buffered_slice_diagnostic|development_fixed_memory_judge_accuracy_v20_abstention_diagnostic|development_fixed_memory_judge_negative_guard_buffered_accuracy_repair|development_fixed_memory_judge_negative_guard_abstention_confirmation|production_fixed_memory_judge_negative_guard_abstention_confirmation_validation|development_fixed_memory_judge_negative_guard_double_confirmation|production_fixed_memory_judge_negative_guard_double_confirmation_validation|development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss|production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation|frozen_validation] \
   [--cloud-judge-model <fixed-model-id>] \
   [--credential-file <mode-0600-file>] \
   [--live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA] \
@@ -28,6 +28,12 @@ usage: run-memory-regression.sh \
   [--production-buffered-memory-judge-validation-approval I_UNDERSTAND_THIS_USES_REAL_FROZEN_BUFFERED_MEMORY_VALIDATION_QUOTA]
   [--memory-judge-slice-diagnostic-approval I_UNDERSTAND_THIS_USES_REAL_MEMORY_SLICE_DIAGNOSTIC_QUOTA]
   [--accuracy-repair-memory-judge-approval I_UNDERSTAND_THIS_USES_REAL_MEMORY_ACCURACY_REPAIR_QUOTA]
+  [--abstention-confirmation-development-approval I_UNDERSTAND_THIS_USES_REAL_MEMORY_ABSTENTION_CONFIRMATION_DEVELOPMENT_QUOTA]
+  [--abstention-confirmation-validation-approval I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_ABSTENTION_CONFIRMATION_VALIDATION_QUOTA]
+  [--double-confirmation-development-approval I_UNDERSTAND_THIS_USES_REAL_MEMORY_DOUBLE_CONFIRMATION_DEVELOPMENT_QUOTA]
+  [--double-confirmation-validation-approval I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_DOUBLE_CONFIRMATION_VALIDATION_QUOTA]
+  [--single-user-bounded-miss-development-approval I_UNDERSTAND_THIS_USES_REAL_MEMORY_SINGLE_USER_BOUNDED_MISS_DEVELOPMENT_QUOTA]
+  [--single-user-bounded-miss-validation-approval I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_SINGLE_USER_BOUNDED_MISS_VALIDATION_QUOTA]
 
 Run the production v1 lexical and native v2 hybrid Memory readers against the
 protected machine regression corpus in a random isolated Compose project.
@@ -65,6 +71,12 @@ production_validation_approval=""
 production_buffered_validation_approval=""
 memory_judge_slice_diagnostic_approval=""
 accuracy_repair_memory_judge_approval=""
+abstention_confirmation_development_approval=""
+abstention_confirmation_validation_approval=""
+double_confirmation_development_approval=""
+double_confirmation_validation_approval=""
+single_user_bounded_miss_development_approval=""
+single_user_bounded_miss_validation_approval=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -186,6 +198,36 @@ while [[ $# -gt 0 ]]; do
     --accuracy-repair-memory-judge-approval)
       [[ $# -ge 2 ]] || { usage >&2; exit 2; }
       accuracy_repair_memory_judge_approval="$2"
+      shift 2
+      ;;
+    --abstention-confirmation-development-approval)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      abstention_confirmation_development_approval="$2"
+      shift 2
+      ;;
+    --abstention-confirmation-validation-approval)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      abstention_confirmation_validation_approval="$2"
+      shift 2
+      ;;
+    --double-confirmation-development-approval)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      double_confirmation_development_approval="$2"
+      shift 2
+      ;;
+    --double-confirmation-validation-approval)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      double_confirmation_validation_approval="$2"
+      shift 2
+      ;;
+    --single-user-bounded-miss-development-approval)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      single_user_bounded_miss_development_approval="$2"
+      shift 2
+      ;;
+    --single-user-bounded-miss-validation-approval)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      single_user_bounded_miss_validation_approval="$2"
       shift 2
       ;;
     -h | --help)
@@ -319,7 +361,7 @@ case "${capture_mode}" in
       exit 2
     fi
     ;;
-  development_configured_candidate_judge | development_fixed_memory_judge | development_fixed_memory_judge_accuracy | development_fixed_memory_judge_failure_diagnostic | development_fixed_memory_judge_transport_stable | development_fixed_memory_judge_negative_guard | development_fixed_memory_judge_negative_guard_buffered | production_fixed_memory_judge_validation | production_fixed_memory_judge_negative_guard_buffered_validation | development_fixed_memory_judge_negative_guard_buffered_slice_diagnostic | development_fixed_memory_judge_accuracy_v20_abstention_diagnostic | development_fixed_memory_judge_negative_guard_buffered_accuracy_repair)
+  development_configured_candidate_judge | development_fixed_memory_judge | development_fixed_memory_judge_accuracy | development_fixed_memory_judge_failure_diagnostic | development_fixed_memory_judge_transport_stable | development_fixed_memory_judge_negative_guard | development_fixed_memory_judge_negative_guard_buffered | production_fixed_memory_judge_validation | production_fixed_memory_judge_negative_guard_buffered_validation | development_fixed_memory_judge_negative_guard_buffered_slice_diagnostic | development_fixed_memory_judge_accuracy_v20_abstention_diagnostic | development_fixed_memory_judge_negative_guard_buffered_accuracy_repair | development_fixed_memory_judge_negative_guard_abstention_confirmation | production_fixed_memory_judge_negative_guard_abstention_confirmation_validation | development_fixed_memory_judge_negative_guard_double_confirmation | production_fixed_memory_judge_negative_guard_double_confirmation_validation | development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss | production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation)
     if [[ -z "${configured_judge_provider_id}" || \
       -z "${configured_judge_provider_type}" || \
       -z "${configured_judge_base_url}" || \
@@ -379,9 +421,66 @@ case "${capture_mode}" in
           echo "Memory regression: accuracy repair requires its independent exact quota approval" >&2
           exit 2
         fi
+      elif [[ "${capture_mode}" == "development_fixed_memory_judge_negative_guard_abstention_confirmation" ]]; then
+        if [[ "${abstention_confirmation_development_approval}" != "I_UNDERSTAND_THIS_USES_REAL_MEMORY_ABSTENTION_CONFIRMATION_DEVELOPMENT_QUOTA" || \
+          -n "${configured_judge_approval}" || -n "${production_validation_approval}" || \
+          -n "${production_buffered_validation_approval}" || -n "${memory_judge_slice_diagnostic_approval}" || \
+          -n "${accuracy_repair_memory_judge_approval}" || -n "${abstention_confirmation_validation_approval}" ]]; then
+          echo "Memory regression: abstention-confirmation Development requires its independent exact quota approval" >&2
+          exit 2
+        fi
+      elif [[ "${capture_mode}" == "production_fixed_memory_judge_negative_guard_abstention_confirmation_validation" ]]; then
+        if [[ "${abstention_confirmation_validation_approval}" != "I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_ABSTENTION_CONFIRMATION_VALIDATION_QUOTA" || \
+          -n "${configured_judge_approval}" || -n "${production_validation_approval}" || \
+          -n "${production_buffered_validation_approval}" || -n "${memory_judge_slice_diagnostic_approval}" || \
+          -n "${accuracy_repair_memory_judge_approval}" || -n "${abstention_confirmation_development_approval}" ]]; then
+          echo "Memory regression: abstention-confirmation Validation requires its independent exact quota approval" >&2
+          exit 2
+        fi
+      elif [[ "${capture_mode}" == "development_fixed_memory_judge_negative_guard_double_confirmation" ]]; then
+        if [[ "${double_confirmation_development_approval}" != "I_UNDERSTAND_THIS_USES_REAL_MEMORY_DOUBLE_CONFIRMATION_DEVELOPMENT_QUOTA" || \
+          -n "${configured_judge_approval}" || -n "${production_validation_approval}" || \
+          -n "${production_buffered_validation_approval}" || -n "${memory_judge_slice_diagnostic_approval}" || \
+          -n "${accuracy_repair_memory_judge_approval}" || -n "${abstention_confirmation_development_approval}" || \
+          -n "${abstention_confirmation_validation_approval}" ]]; then
+          echo "Memory regression: double-confirmation Development requires its independent exact quota approval" >&2
+          exit 2
+        fi
+      elif [[ "${capture_mode}" == "production_fixed_memory_judge_negative_guard_double_confirmation_validation" ]]; then
+        if [[ "${double_confirmation_validation_approval}" != "I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_DOUBLE_CONFIRMATION_VALIDATION_QUOTA" || \
+          -n "${configured_judge_approval}" || -n "${production_validation_approval}" || \
+          -n "${production_buffered_validation_approval}" || -n "${memory_judge_slice_diagnostic_approval}" || \
+          -n "${accuracy_repair_memory_judge_approval}" || -n "${abstention_confirmation_development_approval}" || \
+          -n "${abstention_confirmation_validation_approval}" || -n "${double_confirmation_development_approval}" ]]; then
+          echo "Memory regression: double-confirmation Validation requires its independent exact quota approval" >&2
+          exit 2
+        fi
+      elif [[ "${capture_mode}" == "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss" ]]; then
+        if [[ "${single_user_bounded_miss_development_approval}" != "I_UNDERSTAND_THIS_USES_REAL_MEMORY_SINGLE_USER_BOUNDED_MISS_DEVELOPMENT_QUOTA" || \
+          -n "${configured_judge_approval}" || -n "${production_validation_approval}" || \
+          -n "${production_buffered_validation_approval}" || -n "${memory_judge_slice_diagnostic_approval}" || \
+          -n "${accuracy_repair_memory_judge_approval}" || -n "${abstention_confirmation_development_approval}" || \
+          -n "${abstention_confirmation_validation_approval}" || -n "${double_confirmation_development_approval}" || \
+          -n "${double_confirmation_validation_approval}" || -n "${single_user_bounded_miss_validation_approval}" ]]; then
+          echo "Memory regression: single-user bounded-miss Development requires its independent exact quota approval" >&2
+          exit 2
+        fi
+      elif [[ "${capture_mode}" == "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation" ]]; then
+        if [[ "${single_user_bounded_miss_validation_approval}" != "I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_SINGLE_USER_BOUNDED_MISS_VALIDATION_QUOTA" || \
+          -n "${configured_judge_approval}" || -n "${production_validation_approval}" || \
+          -n "${production_buffered_validation_approval}" || -n "${memory_judge_slice_diagnostic_approval}" || \
+          -n "${accuracy_repair_memory_judge_approval}" || -n "${abstention_confirmation_development_approval}" || \
+          -n "${abstention_confirmation_validation_approval}" || -n "${double_confirmation_development_approval}" || \
+          -n "${double_confirmation_validation_approval}" || -n "${single_user_bounded_miss_development_approval}" ]]; then
+          echo "Memory regression: single-user bounded-miss Validation requires its independent exact quota approval" >&2
+          exit 2
+        fi
       elif [[ "${configured_judge_approval}" != "I_UNDERSTAND_THIS_USES_REAL_CONFIGURED_CHAT_PROVIDER_QUOTA" || \
         -n "${production_validation_approval}" || -n "${production_buffered_validation_approval}" || \
-        -n "${memory_judge_slice_diagnostic_approval}" || -n "${accuracy_repair_memory_judge_approval}" ]]; then
+        -n "${memory_judge_slice_diagnostic_approval}" || -n "${accuracy_repair_memory_judge_approval}" || \
+        -n "${abstention_confirmation_development_approval}" || -n "${abstention_confirmation_validation_approval}" || \
+        -n "${double_confirmation_development_approval}" || -n "${double_confirmation_validation_approval}" || \
+        -n "${single_user_bounded_miss_development_approval}" || -n "${single_user_bounded_miss_validation_approval}" ]]; then
         echo "Memory regression: live configured candidate-judge mode requires its exact Development quota approval" >&2
         exit 2
       fi
@@ -390,7 +489,13 @@ case "${capture_mode}" in
       -n "${production_validation_approval}" || \
       -n "${production_buffered_validation_approval}" || \
       -n "${memory_judge_slice_diagnostic_approval}" || \
-      -n "${accuracy_repair_memory_judge_approval}" ]]; then
+      -n "${accuracy_repair_memory_judge_approval}" || \
+      -n "${abstention_confirmation_development_approval}" || \
+      -n "${abstention_confirmation_validation_approval}" || \
+      -n "${double_confirmation_development_approval}" || \
+      -n "${double_confirmation_validation_approval}" || \
+      -n "${single_user_bounded_miss_development_approval}" || \
+      -n "${single_user_bounded_miss_validation_approval}" ]]; then
       echo "Memory regression: fake configured candidate-judge mode rejects live credential/approval inputs" >&2
       exit 2
     fi
@@ -462,6 +567,36 @@ if [[ "${capture_mode}" != "development_fixed_memory_judge_negative_guard_buffer
   echo "Memory regression: accuracy-repair approval requires its exact mode" >&2
   exit 2
 fi
+if [[ "${capture_mode}" != "development_fixed_memory_judge_negative_guard_abstention_confirmation" && \
+  -n "${abstention_confirmation_development_approval}" ]]; then
+  echo "Memory regression: abstention-confirmation Development approval requires its exact mode" >&2
+  exit 2
+fi
+if [[ "${capture_mode}" != "production_fixed_memory_judge_negative_guard_abstention_confirmation_validation" && \
+  -n "${abstention_confirmation_validation_approval}" ]]; then
+  echo "Memory regression: abstention-confirmation Validation approval requires its exact mode" >&2
+  exit 2
+fi
+if [[ "${capture_mode}" != "development_fixed_memory_judge_negative_guard_double_confirmation" && \
+  -n "${double_confirmation_development_approval}" ]]; then
+  echo "Memory regression: double-confirmation Development approval requires its exact mode" >&2
+  exit 2
+fi
+if [[ "${capture_mode}" != "production_fixed_memory_judge_negative_guard_double_confirmation_validation" && \
+  -n "${double_confirmation_validation_approval}" ]]; then
+  echo "Memory regression: double-confirmation Validation approval requires its exact mode" >&2
+  exit 2
+fi
+if [[ "${capture_mode}" != "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss" && \
+  -n "${single_user_bounded_miss_development_approval}" ]]; then
+  echo "Memory regression: single-user bounded-miss Development approval requires its exact mode" >&2
+  exit 2
+fi
+if [[ "${capture_mode}" != "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation" && \
+  -n "${single_user_bounded_miss_validation_approval}" ]]; then
+  echo "Memory regression: single-user bounded-miss Validation approval requires its exact mode" >&2
+  exit 2
+fi
 
 configured_judge_base_url_sha256=""
 if [[ "${capture_mode}" == "development_configured_candidate_judge" ||
@@ -475,7 +610,13 @@ if [[ "${capture_mode}" == "development_configured_candidate_judge" ||
   "${capture_mode}" == "production_fixed_memory_judge_negative_guard_buffered_validation" ||
   "${capture_mode}" == "development_fixed_memory_judge_negative_guard_buffered_slice_diagnostic" ||
   "${capture_mode}" == "development_fixed_memory_judge_accuracy_v20_abstention_diagnostic" ||
-  "${capture_mode}" == "development_fixed_memory_judge_negative_guard_buffered_accuracy_repair" ]]; then
+  "${capture_mode}" == "development_fixed_memory_judge_negative_guard_buffered_accuracy_repair" ||
+  "${capture_mode}" == "development_fixed_memory_judge_negative_guard_abstention_confirmation" ||
+  "${capture_mode}" == "development_fixed_memory_judge_negative_guard_double_confirmation" ||
+  "${capture_mode}" == "production_fixed_memory_judge_negative_guard_abstention_confirmation_validation" ||
+  "${capture_mode}" == "production_fixed_memory_judge_negative_guard_double_confirmation_validation" ||
+  "${capture_mode}" == "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss" ||
+  "${capture_mode}" == "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation" ]]; then
   configured_judge_base_url="$(python3 - "${configured_judge_base_url}" <<'PY'
 import sys
 from urllib.parse import urlsplit
@@ -573,7 +714,13 @@ if [[ "${provider_mode}" == "live_siliconflow" ]]; then
     "${capture_mode}" == "production_fixed_memory_judge_negative_guard_buffered_validation" ||
     "${capture_mode}" == "development_fixed_memory_judge_negative_guard_buffered_slice_diagnostic" ||
     "${capture_mode}" == "development_fixed_memory_judge_accuracy_v20_abstention_diagnostic" ||
-    "${capture_mode}" == "development_fixed_memory_judge_negative_guard_buffered_accuracy_repair" ]]; then
+    "${capture_mode}" == "development_fixed_memory_judge_negative_guard_buffered_accuracy_repair" ||
+    "${capture_mode}" == "development_fixed_memory_judge_negative_guard_abstention_confirmation" ||
+    "${capture_mode}" == "development_fixed_memory_judge_negative_guard_double_confirmation" ||
+    "${capture_mode}" == "production_fixed_memory_judge_negative_guard_abstention_confirmation_validation" ||
+    "${capture_mode}" == "production_fixed_memory_judge_negative_guard_double_confirmation_validation" ||
+    "${capture_mode}" == "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss" ||
+    "${capture_mode}" == "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation" ]]; then
     if [[ ! -f "${configured_judge_credential_source}" || \
       -L "${configured_judge_credential_source}" ]]; then
       echo "Memory regression: configured candidate-judge credential must be a regular non-symlink file" >&2
@@ -753,7 +900,13 @@ if [[ "${provider_mode}" == "live_siliconflow" && \
   "${capture_mode}" == "production_fixed_memory_judge_negative_guard_buffered_validation" ||
   "${capture_mode}" == "development_fixed_memory_judge_negative_guard_buffered_slice_diagnostic" ||
   "${capture_mode}" == "development_fixed_memory_judge_accuracy_v20_abstention_diagnostic" ||
-  "${capture_mode}" == "development_fixed_memory_judge_negative_guard_buffered_accuracy_repair") ]]; then
+  "${capture_mode}" == "development_fixed_memory_judge_negative_guard_buffered_accuracy_repair" ||
+  "${capture_mode}" == "development_fixed_memory_judge_negative_guard_abstention_confirmation" ||
+  "${capture_mode}" == "development_fixed_memory_judge_negative_guard_double_confirmation" ||
+  "${capture_mode}" == "production_fixed_memory_judge_negative_guard_abstention_confirmation_validation" ||
+  "${capture_mode}" == "production_fixed_memory_judge_negative_guard_double_confirmation_validation" ||
+  "${capture_mode}" == "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss" ||
+  "${capture_mode}" == "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation") ]]; then
   cp --no-preserve=mode,ownership,timestamps \
     "${configured_judge_credential_source}" \
     "${configured_judge_credential_copy}"
@@ -782,7 +935,13 @@ if [[ "${provider_mode}" == "live_siliconflow" && \
     "${capture_mode}" == "production_fixed_memory_judge_negative_guard_buffered_validation" ||
     "${capture_mode}" == "development_fixed_memory_judge_negative_guard_buffered_slice_diagnostic" ||
     "${capture_mode}" == "development_fixed_memory_judge_accuracy_v20_abstention_diagnostic" ||
-    "${capture_mode}" == "development_fixed_memory_judge_negative_guard_buffered_accuracy_repair") ]]; then
+    "${capture_mode}" == "development_fixed_memory_judge_negative_guard_buffered_accuracy_repair" ||
+    "${capture_mode}" == "development_fixed_memory_judge_negative_guard_abstention_confirmation" ||
+    "${capture_mode}" == "development_fixed_memory_judge_negative_guard_double_confirmation" ||
+    "${capture_mode}" == "production_fixed_memory_judge_negative_guard_abstention_confirmation_validation" ||
+    "${capture_mode}" == "production_fixed_memory_judge_negative_guard_double_confirmation_validation" ||
+    "${capture_mode}" == "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss" ||
+    "${capture_mode}" == "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation") ]]; then
   configured_judge_credential_target="/run/mm-chat-memory-regression/configured-candidate-judge-provider.key"
 fi
 cat >"${env_file}" <<EOF
@@ -815,6 +974,12 @@ MEMORY_REGRESSION_PRODUCTION_MEMORY_JUDGE_VALIDATION_APPROVAL=${production_valid
 MEMORY_REGRESSION_PRODUCTION_BUFFERED_MEMORY_JUDGE_VALIDATION_APPROVAL=${production_buffered_validation_approval:-NOT_AUTHORIZED}
 MEMORY_REGRESSION_MEMORY_JUDGE_SLICE_DIAGNOSTIC_APPROVAL=${memory_judge_slice_diagnostic_approval:-NOT_AUTHORIZED}
 MEMORY_REGRESSION_ACCURACY_REPAIR_MEMORY_JUDGE_APPROVAL=${accuracy_repair_memory_judge_approval:-NOT_AUTHORIZED}
+MEMORY_REGRESSION_ABSTENTION_CONFIRMATION_DEVELOPMENT_APPROVAL=${abstention_confirmation_development_approval:-NOT_AUTHORIZED}
+MEMORY_REGRESSION_ABSTENTION_CONFIRMATION_VALIDATION_APPROVAL=${abstention_confirmation_validation_approval:-NOT_AUTHORIZED}
+MEMORY_REGRESSION_DOUBLE_CONFIRMATION_DEVELOPMENT_APPROVAL=${double_confirmation_development_approval:-NOT_AUTHORIZED}
+MEMORY_REGRESSION_DOUBLE_CONFIRMATION_VALIDATION_APPROVAL=${double_confirmation_validation_approval:-NOT_AUTHORIZED}
+MEMORY_REGRESSION_SINGLE_USER_BOUNDED_MISS_DEVELOPMENT_APPROVAL=${single_user_bounded_miss_development_approval:-NOT_AUTHORIZED}
+MEMORY_REGRESSION_SINGLE_USER_BOUNDED_MISS_VALIDATION_APPROVAL=${single_user_bounded_miss_validation_approval:-NOT_AUTHORIZED}
 EOF
 chmod 600 "${env_file}"
 unset db_password
@@ -1021,6 +1186,36 @@ elif capture_mode == "development_fixed_memory_judge_negative_guard_buffered_acc
         "fixed-memory-judge-negative-guard-buffered-accuracy-repair-development.json",
         "run-manifest.json",
     }
+elif capture_mode == "development_fixed_memory_judge_negative_guard_abstention_confirmation":
+    expected = {
+        "fixed-memory-judge-negative-guard-abstention-confirmation-development.json",
+        "run-manifest.json",
+    }
+elif capture_mode == "production_fixed_memory_judge_negative_guard_abstention_confirmation_validation":
+    expected = {
+        "fixed-memory-judge-negative-guard-abstention-confirmation-production-validation.json",
+        "run-manifest.json",
+    }
+elif capture_mode == "development_fixed_memory_judge_negative_guard_double_confirmation":
+    expected = {
+        "fixed-memory-judge-negative-guard-double-confirmation-development.json",
+        "run-manifest.json",
+    }
+elif capture_mode == "production_fixed_memory_judge_negative_guard_double_confirmation_validation":
+    expected = {
+        "fixed-memory-judge-negative-guard-double-confirmation-production-validation.json",
+        "run-manifest.json",
+    }
+elif capture_mode == "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss":
+    expected = {
+        "fixed-memory-judge-negative-guard-double-confirmation-single-user-bounded-miss-development.json",
+        "run-manifest.json",
+    }
+elif capture_mode == "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation":
+    expected = {
+        "fixed-memory-judge-negative-guard-double-confirmation-single-user-bounded-miss-production-validation.json",
+        "run-manifest.json",
+    }
 elif capture_mode == "frozen_validation":
     expected = {"relevance-validation.json", "run-manifest.json"}
 else:
@@ -1040,6 +1235,12 @@ expected_manifest_schema = {
     "development_fixed_memory_judge_negative_guard_buffered_slice_diagnostic": "neo-chat.memory-regression-slice-diagnostic-run.v19",
     "development_fixed_memory_judge_accuracy_v20_abstention_diagnostic": "neo-chat.memory-regression-v20-abstention-diagnostic-run.v1",
     "development_fixed_memory_judge_negative_guard_buffered_accuracy_repair": "neo-chat.memory-regression-relevance-run.v20",
+    "development_fixed_memory_judge_negative_guard_abstention_confirmation": "neo-chat.memory-regression-relevance-run.v20-confirmation-development.v1",
+    "production_fixed_memory_judge_negative_guard_abstention_confirmation_validation": "neo-chat.memory-regression-relevance-validation-run.v21",
+    "development_fixed_memory_judge_negative_guard_double_confirmation": "neo-chat.memory-regression-relevance-run.v22-double-confirmation-development.v1",
+    "production_fixed_memory_judge_negative_guard_double_confirmation_validation": "neo-chat.memory-regression-relevance-validation-run.v23-double-confirmation.v1",
+    "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss": "neo-chat.memory-regression-relevance-run.v24-single-user-bounded-miss-development.v1",
+    "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation": "neo-chat.memory-regression-relevance-validation-run.v25-single-user-bounded-miss.v1",
 }.get(capture_mode, "neo-chat.memory-regression-relevance-run.v1")
 if manifest.get("schemaVersion") != expected_manifest_schema:
     raise SystemExit("invalid run manifest schema")
@@ -1063,6 +1264,12 @@ expected_admission = {
     "development_fixed_memory_judge_negative_guard_buffered_slice_diagnostic": "development_slice_union_diagnostic_only",
     "development_fixed_memory_judge_accuracy_v20_abstention_diagnostic": "development_v20_abstention_diagnostic_only",
     "development_fixed_memory_judge_negative_guard_buffered_accuracy_repair": "development_fixed_memory_judge_negative_guard_buffered_accuracy_repair_only",
+    "development_fixed_memory_judge_negative_guard_abstention_confirmation": "development_fixed_memory_judge_negative_guard_abstention_confirmation_only",
+    "production_fixed_memory_judge_negative_guard_abstention_confirmation_validation": "frozen_production_fixed_memory_judge_negative_guard_abstention_confirmation_validation_only",
+    "development_fixed_memory_judge_negative_guard_double_confirmation": "development_fixed_memory_judge_negative_guard_double_confirmation_only",
+    "production_fixed_memory_judge_negative_guard_double_confirmation_validation": "frozen_production_fixed_memory_judge_negative_guard_double_confirmation_validation_only",
+    "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss": "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_only",
+    "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation": "frozen_production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation_only",
     "frozen_validation": "frozen_validation_only",
 }[capture_mode]
 if manifest.get("admissionMode") != expected_admission or manifest.get("promotionEligible") is not False:
@@ -1093,6 +1300,9 @@ else:
         "development_fixed_memory_judge_negative_guard_buffered_slice_diagnostic",
         "development_fixed_memory_judge_accuracy_v20_abstention_diagnostic",
         "development_fixed_memory_judge_negative_guard_buffered_accuracy_repair",
+        "development_fixed_memory_judge_negative_guard_abstention_confirmation",
+        "development_fixed_memory_judge_negative_guard_double_confirmation",
+        "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss",
     } else "validation"
     if manifest.get("captureMode") != capture_mode or manifest.get("split") != expected_split:
         raise SystemExit("relevance run split authority drift")
@@ -1250,15 +1460,46 @@ elif capture_mode == "development_fixed_memory_judge_accuracy_v20_abstention_dia
 elif capture_mode in {
     "production_fixed_memory_judge_validation",
     "production_fixed_memory_judge_negative_guard_buffered_validation",
+    "production_fixed_memory_judge_negative_guard_abstention_confirmation_validation",
+    "production_fixed_memory_judge_negative_guard_double_confirmation_validation",
+    "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation",
 }:
+    bounded_miss_validation = (
+        capture_mode
+        == "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation"
+    )
+    production_double_confirmation = (
+        capture_mode in {
+            "production_fixed_memory_judge_negative_guard_double_confirmation_validation",
+            "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation",
+        }
+    )
+    production_confirmation = capture_mode in {
+        "production_fixed_memory_judge_negative_guard_abstention_confirmation_validation",
+        "production_fixed_memory_judge_negative_guard_double_confirmation_validation",
+        "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation",
+    }
     production_buffered = (
         capture_mode
         == "production_fixed_memory_judge_negative_guard_buffered_validation"
     )
+    production_guard = production_buffered or production_confirmation
     report_name = (
-        "fixed-memory-judge-negative-guard-buffered-production-validation.json"
-        if production_buffered
-        else "fixed-memory-judge-production-validation.json"
+        "fixed-memory-judge-negative-guard-double-confirmation-single-user-bounded-miss-production-validation.json"
+        if bounded_miss_validation
+        else (
+            "fixed-memory-judge-negative-guard-double-confirmation-production-validation.json"
+            if production_double_confirmation
+            else (
+                "fixed-memory-judge-negative-guard-abstention-confirmation-production-validation.json"
+                if production_confirmation
+                else (
+                    "fixed-memory-judge-negative-guard-buffered-production-validation.json"
+                    if production_buffered
+                    else "fixed-memory-judge-production-validation.json"
+                )
+            )
+        )
     )
     report = json.loads(
         (output / report_name).read_text(encoding="utf-8")
@@ -1290,9 +1531,21 @@ elif capture_mode in {
     if (
         report.get("schemaVersion")
         != (
-            "neo-chat.memory-regression-relevance-validation.v18"
-            if production_buffered
-            else "neo-chat.memory-regression-relevance-validation.v15"
+            "neo-chat.memory-regression-relevance-validation.v25-single-user-bounded-miss.v1"
+            if bounded_miss_validation
+            else (
+                "neo-chat.memory-regression-relevance-validation.v23-double-confirmation.v1"
+                if production_double_confirmation
+                else (
+                    "neo-chat.memory-regression-relevance-validation.v21"
+                    if production_confirmation
+                    else (
+                        "neo-chat.memory-regression-relevance-validation.v18"
+                        if production_buffered
+                        else "neo-chat.memory-regression-relevance-validation.v15"
+                    )
+                )
+            )
         )
         or report.get("corpusClass") != "machine_reviewed_regression"
         or report.get("admissionMode") != expected_admission
@@ -1306,9 +1559,17 @@ elif capture_mode in {
         or report.get("profileId") != candidate_profile
         or report.get("policyId")
         != (
-            "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_production_v2"
-            if production_buffered
-            else "memory_hybrid_fixed_cloud_candidate_judge_production_v1"
+            "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_double_confirmation_production_v4"
+            if production_double_confirmation
+            else (
+                "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_abstention_confirmation_production_v3"
+                if production_confirmation
+                else (
+                    "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_production_v2"
+                    if production_buffered
+                    else "memory_hybrid_fixed_cloud_candidate_judge_production_v1"
+                )
+            )
         )
         or report.get("providerEgressPolicy") != "owner_authorized_normal_candidates_v1"
         or report.get("providerCostPolicy") != "owner_authorized_absolute_cap_v1"
@@ -1319,15 +1580,39 @@ elif capture_mode in {
         or report.get("judgeModelId") != "gpt-5.6-luna"
         or report.get("judgeAdapter")
         != (
-            "chat-configured-candidate-judge-buffered-v1"
-            if production_buffered
-            else "chat-configured-candidate-judge-v1"
+            "chat-configured-candidate-judge-buffered-abstention-confirmation-v3"
+            if production_confirmation
+            else (
+                "chat-configured-candidate-judge-buffered-v1"
+                if production_buffered
+                else "chat-configured-candidate-judge-v1"
+            )
         )
-        or report.get("judgePromptVersion") != "memory-cloud-candidate-judge-prompt-v1"
-        or report.get("judgePromptSha256") != "c004e834f2db572fc8393f088f47750d420379664f972357f987a09d8647f9c8"
+        or report.get("judgePromptVersion") != (
+            "memory-cloud-candidate-judge-prompt-v2"
+            if production_confirmation
+            else "memory-cloud-candidate-judge-prompt-v1"
+        )
+        or report.get("judgePromptSha256") != (
+            "90fac3f3c97a340e6ef1963dc1456c5f088ac083658a29e75aad747efba95d90"
+            if production_confirmation
+            else "c004e834f2db572fc8393f088f47750d420379664f972357f987a09d8647f9c8"
+        )
+        or report.get("judgeConfirmationPromptVersion") != (
+            "memory-cloud-candidate-judge-abstention-confirmation-prompt-v3"
+            if production_confirmation else None
+        )
+        or report.get("judgeConfirmationPromptSha256") != (
+            "205c7cc69f9265fa21ef3d3441778224a08be84b4d20a4fa35cdfcb6c811f1c8"
+            if production_confirmation else None
+        )
         or report.get("judgeDecodingProfile") != "temperature-0_max-output-128_no-thinking_v1"
         or report.get("selectionAlgorithm") != "strict-ordinal_intersect-bge-order_top5-token-budget_v1"
-        or report.get("evaluationCriteriaVersion") != "neo-chat.memory-benchmark-criteria.v3"
+        or report.get("evaluationCriteriaVersion") != (
+            "neo-chat.memory-benchmark-criteria.v4-single-user-bounded-miss"
+            if bounded_miss_validation
+            else "neo-chat.memory-benchmark-criteria.v3"
+        )
         or report.get("memoryReadIntentPolicyVersion") != "memory-explicit-read-intent-v1"
         or report.get("memoryReadIntentPolicySha256") != "538d9ccff34fb976cedfca0d9e153078cb3ce36f1baff0691f1d2124d182119c"
         or report.get("failureTaxonomyVersion") != "memory-candidate-judge-failure-taxonomy-v1"
@@ -1343,7 +1628,11 @@ elif capture_mode in {
         or manifest.get("policyId") != report.get("policyId")
         or manifest.get("providerCostPolicy") != report.get("providerCostPolicy")
         or not isinstance(criteria, dict)
-        or criteria.get("maximumFalseInjectionRate") != 0.02
+        or criteria.get("maximumFalseInjectionRate") != (0 if bounded_miss_validation else 0.02)
+        or criteria.get("maximumFalseInjectionCases") != (0 if bounded_miss_validation else None)
+        or criteria.get("minimumRequiredSliceCurrentFactAccuracy") != (
+            0.9 if bounded_miss_validation else None
+        )
         or criteria.get("latencyEvaluationMode") != "diagnostic_only_v1"
         or criteria.get("applicationDeadlineMode") != "none_v1"
         or not isinstance(evaluation, dict)
@@ -1355,7 +1644,7 @@ elif capture_mode in {
         raise SystemExit("production Memory Judge Validation authority drift")
     expected_guard_version = "memory-negative-policy-query-guard-v1"
     expected_guard_sha256 = "8fe79b55a0f136392081a81e471abae98d0db7b8e3bece74adcc590b9d2c8f39"
-    if production_buffered:
+    if production_guard:
         if (
             report.get("negativePolicyQueryGuardVersion") != expected_guard_version
             or report.get("negativePolicyQueryGuardSha256") != expected_guard_sha256
@@ -1371,9 +1660,21 @@ elif capture_mode in {
         not isinstance(execution, dict)
         or execution.get("sequenceVersion")
         != (
-            "production_bge_m3_rerank_fixed_luna_negative_guard_buffered_json_judge_record_serial_v1"
-            if production_buffered
-            else "production_bge_m3_rerank_fixed_luna_judge_record_serial_v1"
+            "production_bge_m3_rerank_fixed_luna_negative_guard_accuracy_prompt_v2_two_empty_confirmations_v3_single_user_bounded_miss_criteria_v4_record_serial_v1"
+            if bounded_miss_validation
+            else (
+                "production_bge_m3_rerank_fixed_luna_negative_guard_accuracy_prompt_v2_two_empty_confirmations_v3_record_serial_v1"
+                if production_double_confirmation
+                else (
+                    "production_bge_m3_rerank_fixed_luna_negative_guard_accuracy_prompt_v2_empty_confirmation_v3_record_serial_v1"
+                    if production_confirmation
+                    else (
+                        "production_bge_m3_rerank_fixed_luna_negative_guard_buffered_json_judge_record_serial_v1"
+                        if production_buffered
+                        else "production_bge_m3_rerank_fixed_luna_judge_record_serial_v1"
+                    )
+                )
+            )
         )
         or execution.get("globalProviderRequestConcurrency") != 1
         or execution.get("applicationDeadlineMode") != "none_v1"
@@ -1386,6 +1687,9 @@ elif capture_mode in {
         or execution.get("retryFallbackDelayMilliseconds") != 5000
         or execution.get("maximumJudgeRetriesPerRequest") != 2
         or execution.get("secondJudgeRetryDelayMilliseconds") != 10000
+        or execution.get("maximumAbstentionConfirmationsPerLogicalRequest") != (
+            2 if production_double_confirmation else 1 if production_confirmation else None
+        )
     ):
         raise SystemExit("production Memory Judge Validation execution drift")
 
@@ -1399,7 +1703,7 @@ elif capture_mode in {
         "emptyCandidateCaseCount",
         *(
             ("negativePolicyQueryAbstainedCaseCount",)
-            if production_buffered
+            if production_guard
             else ()
         ),
         "judgeCompletedCaseCount",
@@ -1437,16 +1741,35 @@ elif capture_mode in {
     logical_judges = diagnostics["judgeCompletedCaseCount"] + failure_codes.get(
         "CANDIDATE_JUDGE_FAILED", 0
     )
+    confirmation_attempts = attempts.get("judgeConfirmationAttempts", 0)
+    confirmation_retries = attempts.get("judgeConfirmationRetries", 0)
+    confirmation_requests = confirmation_attempts - confirmation_retries
     if (
         sum(diagnostics[name] for name in aggregate_names) != 100
         or sum(terminal_counts.values()) != failure_codes.get("CANDIDATE_JUDGE_FAILED", 0)
-        or attempts["judgeAttempts"] != logical_judges + attempts["judgeRetries"]
-        or attempts["judgeRetries"] > logical_judges * 2
+        or attempts["judgeAttempts"] != logical_judges + confirmation_requests + attempts["judgeRetries"]
+        or attempts["judgeRetries"] > (logical_judges + confirmation_requests) * 2
+        or type(confirmation_attempts) is not int
+        or type(confirmation_retries) is not int
+        or confirmation_requests < 0
+        or confirmation_requests > logical_judges * (2 if production_double_confirmation else 1)
+        or confirmation_retries < 0
+        or confirmation_retries > confirmation_requests * 2
+        or (production_confirmation and confirmation_requests <= 0)
+        or (not production_confirmation and (confirmation_attempts != 0 or confirmation_retries != 0))
+        or attempts.get("judgeConfirmationInputTokenUpperBound", 0) < 0
+        or attempts.get("judgeConfirmationRetryInputTokenUpperBound", 0) < 0
+        or attempts.get("judgeConfirmationRetryInputTokenUpperBound", 0)
+        > attempts.get("judgeConfirmationInputTokenUpperBound", 0)
+        or (confirmation_attempts == 0 and attempts.get("judgeConfirmationInputTokenUpperBound", 0) != 0)
+        or (confirmation_attempts > 0 and attempts.get("judgeConfirmationInputTokenUpperBound", 0) <= 0)
         or attempts["queryEmbeddingAttempts"] != 100 + attempts["queryEmbeddingRetries"]
         or attempts["interCaseCooldownCount"] != 99
         or attempts["interCaseCooldownMilliseconds"] != 99000
         or (mode == "fake_protocol" and attempts["interCaseCooldownElapsedMilliseconds"] != 0)
-        or authority["authorizedRequestCount"] != 300
+        or authority["authorizedRequestCount"] != (
+            900 if production_double_confirmation else 600 if production_confirmation else 300
+        )
         or authority["actualRequestCount"] != attempts["judgeAttempts"]
         or authority["actualInputTokenUpperBound"] != attempts["judgeInputTokenUpperBound"]
         or authority["actualOutputTokenUpperBound"] != attempts["judgeAttempts"] * 128
@@ -1493,6 +1816,20 @@ elif capture_mode in {
             float(metrics["falseInjectionRate"])
         ):
             raise SystemExit("production Validation false-injection metric drift")
+        elif bounded_miss_validation and (
+            type(metrics.get("falseInjectionCases")) is not int
+            or metrics["falseInjectionCases"] < 0
+        ):
+            raise SystemExit("single-user bounded-miss false-injection count drift")
+        elif bounded_miss_validation and (
+            metrics["falseInjectionRate"] > 0
+            or metrics["falseInjectionCases"] > 0
+        ):
+            expected_outcome = {
+                "severity": "orange",
+                "requiredAction": "disable_memory_recall_preserve_data",
+                "reasons": ["FALSE_INJECTION_NON_ZERO"],
+            }
         elif metrics["falseInjectionRate"] > criteria["maximumFalseInjectionRate"]:
             expected_outcome = {
                 "severity": "orange",
@@ -1790,7 +2127,25 @@ elif capture_mode in {
     "development_fixed_memory_judge_negative_guard",
     "development_fixed_memory_judge_negative_guard_buffered",
     "development_fixed_memory_judge_negative_guard_buffered_accuracy_repair",
+    "development_fixed_memory_judge_negative_guard_abstention_confirmation",
+    "development_fixed_memory_judge_negative_guard_double_confirmation",
+    "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss",
 }:
+    bounded_miss_development = (
+        capture_mode
+        == "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss"
+    )
+    confirmation = capture_mode in {
+        "development_fixed_memory_judge_negative_guard_abstention_confirmation",
+        "development_fixed_memory_judge_negative_guard_double_confirmation",
+        "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss",
+    }
+    double_confirmation = (
+        capture_mode in {
+            "development_fixed_memory_judge_negative_guard_double_confirmation",
+            "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss",
+        }
+    )
     accuracy_repair = (
         capture_mode
         == "development_fixed_memory_judge_negative_guard_buffered_accuracy_repair"
@@ -1799,30 +2154,51 @@ elif capture_mode in {
         "development_fixed_memory_judge_negative_guard",
         "development_fixed_memory_judge_negative_guard_buffered",
         "development_fixed_memory_judge_negative_guard_buffered_accuracy_repair",
+        "development_fixed_memory_judge_negative_guard_abstention_confirmation",
+        "development_fixed_memory_judge_negative_guard_double_confirmation",
+        "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss",
     }
     buffered = capture_mode in {
         "development_fixed_memory_judge_negative_guard_buffered",
         "development_fixed_memory_judge_negative_guard_buffered_accuracy_repair",
+        "development_fixed_memory_judge_negative_guard_abstention_confirmation",
+        "development_fixed_memory_judge_negative_guard_double_confirmation",
+        "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss",
     }
     transport_stable = capture_mode in {
         "development_fixed_memory_judge_transport_stable",
         "development_fixed_memory_judge_negative_guard",
         "development_fixed_memory_judge_negative_guard_buffered",
         "development_fixed_memory_judge_negative_guard_buffered_accuracy_repair",
+        "development_fixed_memory_judge_negative_guard_abstention_confirmation",
+        "development_fixed_memory_judge_negative_guard_double_confirmation",
+        "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss",
     }
     report_name = (
-        "fixed-memory-judge-negative-guard-buffered-accuracy-repair-development.json"
-        if accuracy_repair
+        "fixed-memory-judge-negative-guard-double-confirmation-single-user-bounded-miss-development.json"
+        if bounded_miss_development
         else (
-            "fixed-memory-judge-negative-guard-buffered-development.json"
-            if buffered
+            "fixed-memory-judge-negative-guard-double-confirmation-development.json"
+            if double_confirmation
             else (
-                "fixed-memory-judge-negative-guard-development.json"
-                if negative_guard
+                "fixed-memory-judge-negative-guard-abstention-confirmation-development.json"
+                if confirmation
                 else (
-                    "fixed-memory-judge-transport-stable-development.json"
-                    if transport_stable
-                    else "fixed-memory-judge-failure-diagnostic-development.json"
+                    "fixed-memory-judge-negative-guard-buffered-accuracy-repair-development.json"
+                    if accuracy_repair
+                    else (
+                        "fixed-memory-judge-negative-guard-buffered-development.json"
+                        if buffered
+                        else (
+                            "fixed-memory-judge-negative-guard-development.json"
+                            if negative_guard
+                            else (
+                                "fixed-memory-judge-transport-stable-development.json"
+                                if transport_stable
+                                else "fixed-memory-judge-failure-diagnostic-development.json"
+                            )
+                        )
+                    )
                 )
             )
         )
@@ -1838,18 +2214,30 @@ elif capture_mode in {
     authority = report.get("costAuthority")
     expected_clock = "wall_clock_v1" if mode == "live_siliconflow" else "virtual_protocol_v1"
     expected_schema = (
-        "neo-chat.memory-regression-relevance-calibration.v20"
-        if accuracy_repair
+        "neo-chat.memory-regression-relevance-calibration.v24-single-user-bounded-miss-development.v1"
+        if bounded_miss_development
         else (
-            "neo-chat.memory-regression-relevance-calibration.v17"
-            if buffered
+            "neo-chat.memory-regression-relevance-calibration.v22-double-confirmation-development.v1"
+            if double_confirmation
             else (
-                "neo-chat.memory-regression-relevance-calibration.v16"
-                if negative_guard
+                "neo-chat.memory-regression-relevance-calibration.v20-confirmation-development.v1"
+                if confirmation
                 else (
-                    "neo-chat.memory-regression-relevance-calibration.v14"
-                    if transport_stable
-                    else "neo-chat.memory-regression-relevance-calibration.v13"
+                    "neo-chat.memory-regression-relevance-calibration.v20"
+                    if accuracy_repair
+                    else (
+                        "neo-chat.memory-regression-relevance-calibration.v17"
+                        if buffered
+                        else (
+                            "neo-chat.memory-regression-relevance-calibration.v16"
+                            if negative_guard
+                            else (
+                                "neo-chat.memory-regression-relevance-calibration.v14"
+                                if transport_stable
+                                else "neo-chat.memory-regression-relevance-calibration.v13"
+                            )
+                        )
+                    )
                 )
             )
         )
@@ -1874,38 +2262,71 @@ elif capture_mode in {
         or report.get("judgeBaseUrlSha256") != "3bc0bbf28d9d817b4f6c8f6058c2c51dd644c541252ed6e2542a8c8a472ff671"
         or report.get("judgeModelId") != "gpt-5.6-luna"
         or report.get("judgeAdapter") != (
-            "chat-configured-candidate-judge-buffered-accuracy-v2"
-            if accuracy_repair
+            "chat-configured-candidate-judge-buffered-abstention-confirmation-v3"
+            if confirmation
             else (
-                "chat-configured-candidate-judge-buffered-v1"
-                if buffered
-                else "chat-configured-candidate-judge-v1"
+                "chat-configured-candidate-judge-buffered-accuracy-v2"
+                if accuracy_repair
+                else (
+                    "chat-configured-candidate-judge-buffered-v1"
+                    if buffered
+                    else "chat-configured-candidate-judge-v1"
+                )
             )
         )
         or report.get("judgePromptVersion") != (
             "memory-cloud-candidate-judge-prompt-v2"
-            if accuracy_repair
+            if accuracy_repair or confirmation
             else "memory-cloud-candidate-judge-prompt-v1"
         )
         or report.get("judgePromptSha256") != (
             "90fac3f3c97a340e6ef1963dc1456c5f088ac083658a29e75aad747efba95d90"
-            if accuracy_repair
+            if accuracy_repair or confirmation
             else "c004e834f2db572fc8393f088f47750d420379664f972357f987a09d8647f9c8"
         )
+        or report.get("judgeConfirmationPromptVersion") != (
+            "memory-cloud-candidate-judge-abstention-confirmation-prompt-v3"
+            if confirmation else None
+        )
+        or report.get("judgeConfirmationPromptSha256") != (
+            "205c7cc69f9265fa21ef3d3441778224a08be84b4d20a4fa35cdfcb6c811f1c8"
+            if confirmation else None
+        )
         or report.get("policyId") != (
-            "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_accuracy_repair_development_v2"
-            if accuracy_repair
+            "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_double_confirmation_development_v4"
+            if double_confirmation
             else (
-                "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_development_v1"
-                if negative_guard
-                else "memory_hybrid_fixed_cloud_candidate_judge_accuracy_development_v2"
+                "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_abstention_confirmation_development_v3"
+                if confirmation
+                else (
+                    "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_accuracy_repair_development_v2"
+                    if accuracy_repair
+                    else (
+                        "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_development_v1"
+                        if negative_guard
+                        else "memory_hybrid_fixed_cloud_candidate_judge_accuracy_development_v2"
+                    )
+                )
             )
         )
-        or report.get("evaluationCriteriaVersion") != "neo-chat.memory-benchmark-criteria.v3"
+        or report.get("evaluationCriteriaVersion") != (
+            "neo-chat.memory-benchmark-criteria.v4-single-user-bounded-miss"
+            if bounded_miss_development
+            else "neo-chat.memory-benchmark-criteria.v3"
+        )
         or report.get("failureTaxonomyVersion") != "memory-candidate-judge-failure-taxonomy-v1"
         or report.get("failureTaxonomySha256") != "c22cb137da8b5fda87526237446519dd9abe2c8d221ad703c5445358d9059f8d"
         or report.get("diagnosticCompleteness") != "attempt_terminal_reconciled_fail_closed_v1"
         or not isinstance(criteria, dict)
+        or criteria.get("maximumFalseInjectionRate") != (0 if bounded_miss_development else 0.02)
+        or criteria.get("maximumFalseInjectionCases") != (0 if bounded_miss_development else None)
+        or criteria.get("minimumRequiredSliceCurrentFactAccuracy") != (
+            0.9 if bounded_miss_development else None
+        )
+        or (
+            bounded_miss_development
+            and report.get("evaluationCriteriaSha256") != manifest.get("evaluationCriteriaSha256")
+        )
         or criteria.get("latencyEvaluationMode") != "diagnostic_only_v1"
         or criteria.get("applicationDeadlineMode") != "none_v1"
         or not isinstance(evaluation, dict)
@@ -1919,7 +2340,7 @@ elif capture_mode in {
     expected_guard_sha256 = "8fe79b55a0f136392081a81e471abae98d0db7b8e3bece74adcc590b9d2c8f39"
     expected_policy_sha256 = (
         report.get("relevancePolicyDescriptorSha256")
-        if accuracy_repair
+        if accuracy_repair or confirmation
         else "82341542e46b091521b9f4b8c4eb637d6e732683d9902e0d2e3832a14cb50f9b"
     )
     if negative_guard:
@@ -1950,15 +2371,27 @@ elif capture_mode in {
     ):
         raise SystemExit("historical transport report gained guard provenance")
     expected_sequence = (
-        "development_full_bge_m3_rerank_fixed_luna_negative_guard_buffered_accuracy_prompt_v2_record_serial_v1"
-        if accuracy_repair
+        "development_full_bge_m3_rerank_fixed_luna_negative_guard_accuracy_prompt_v2_two_empty_confirmations_v3_single_user_bounded_miss_criteria_v4_record_serial_v1"
+        if bounded_miss_development
         else (
-            "bge_query_admission_bge_rerank_luna_judge_buffered_json_record_serial_judge_retry_v1"
-            if buffered
+            "development_full_bge_m3_rerank_fixed_luna_negative_guard_accuracy_prompt_v2_two_empty_confirmations_v3_record_serial_v1"
+            if double_confirmation
             else (
-                "bge_query_admission_bge_rerank_luna_judge_record_serial_judge_retry_v2"
-                if transport_stable
-                else "bge_query_admission_bge_rerank_luna_judge_record_serial_v1"
+                "development_full_bge_m3_rerank_fixed_luna_negative_guard_accuracy_prompt_v2_empty_confirmation_v3_record_serial_v1"
+                if confirmation
+                else (
+                    "development_full_bge_m3_rerank_fixed_luna_negative_guard_buffered_accuracy_prompt_v2_record_serial_v1"
+                    if accuracy_repair
+                    else (
+                        "bge_query_admission_bge_rerank_luna_judge_buffered_json_record_serial_judge_retry_v1"
+                        if buffered
+                        else (
+                            "bge_query_admission_bge_rerank_luna_judge_record_serial_judge_retry_v2"
+                            if transport_stable
+                            else "bge_query_admission_bge_rerank_luna_judge_record_serial_v1"
+                        )
+                    )
+                )
             )
         )
     )
@@ -1981,6 +2414,9 @@ elif capture_mode in {
         or execution.get("retryFallbackDelayMilliseconds") != 5000
         or execution.get("maximumJudgeRetriesPerRequest") != (2 if transport_stable else None)
         or execution.get("secondJudgeRetryDelayMilliseconds") != (10000 if transport_stable else None)
+        or execution.get("maximumAbstentionConfirmationsPerLogicalRequest") != (
+            (2 if double_confirmation else 1) if confirmation else None
+        )
     ):
         raise SystemExit("Memory Judge typed transport execution policy drift")
     failure_codes = diagnostics.get("failureCodeCounts")
@@ -2061,11 +2497,31 @@ elif capture_mode in {
     logical_judges = diagnostics.get("judgeCompletedCaseCount", -1) + failure_codes.get(
         "CANDIDATE_JUDGE_FAILED", 0
     )
-    authorized_requests = 900 if transport_stable else 600
+    confirmation_attempts = attempts.get("judgeConfirmationAttempts", 0)
+    confirmation_retries = attempts.get("judgeConfirmationRetries", 0)
+    confirmation_requests = confirmation_attempts - confirmation_retries
+    authorized_requests = (
+        2700 if double_confirmation else (1800 if confirmation else (900 if transport_stable else 600))
+    )
     maximum_judge_retries = 2 if transport_stable else 1
     if (
-        attempts.get("judgeAttempts") != logical_judges + attempts.get("judgeRetries", -1)
-        or attempts.get("judgeRetries", -1) > logical_judges * maximum_judge_retries
+        attempts.get("judgeAttempts") != logical_judges + confirmation_requests + attempts.get("judgeRetries", -1)
+        or attempts.get("judgeRetries", -1) > (logical_judges + confirmation_requests) * maximum_judge_retries
+        or type(confirmation_attempts) is not int
+        or type(confirmation_retries) is not int
+        or confirmation_requests < 0
+        or confirmation_requests > logical_judges * (2 if double_confirmation else 1)
+        or confirmation_retries < 0
+        or confirmation_retries > confirmation_requests * maximum_judge_retries
+        or (confirmation and confirmation_requests <= 0)
+        or (double_confirmation and mode == "fake_protocol" and confirmation_requests != logical_judges * 2)
+        or (not confirmation and (confirmation_attempts != 0 or confirmation_retries != 0))
+        or attempts.get("judgeConfirmationInputTokenUpperBound", 0) < 0
+        or attempts.get("judgeConfirmationRetryInputTokenUpperBound", 0) < 0
+        or attempts.get("judgeConfirmationRetryInputTokenUpperBound", 0)
+        > attempts.get("judgeConfirmationInputTokenUpperBound", 0)
+        or (confirmation_attempts == 0 and attempts.get("judgeConfirmationInputTokenUpperBound", 0) != 0)
+        or (confirmation_attempts > 0 and attempts.get("judgeConfirmationInputTokenUpperBound", 0) <= 0)
         or attempts.get("queryEmbeddingAttempts") != 300 + attempts.get("queryEmbeddingRetries", -1)
         or attempts.get("interCaseCooldownCount") != 299
         or attempts.get("interCaseCooldownMilliseconds") != 299000

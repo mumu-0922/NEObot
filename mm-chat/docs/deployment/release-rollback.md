@@ -264,6 +264,48 @@ restores the prior worker-readiness function; canonical Memory, projections,
 capture jobs, and Usage remain intact. Clean disposable replay is
 `069 -> 070 -> 069 -> 070`.
 
+### Migration 071 / Memory health-resolution rollback
+
+Migration `071` excludes governance `review_expire` jobs from capture indexing
+and adds content-free append-only resolution evidence for exact historical
+extract failures. Its down path takes an exclusive evidence-table lock and is
+allowed only while that table is empty. Once any acknowledgement exists, retain
+`071` and every original job/error; never delete resolution rows to force a
+down. Disable capture behavior or deploy a forward fix instead. Clean disposable
+replay before evidence is `070 -> 071 -> 070 -> 071`.
+
+### Migration 072 / stale Review rejection rollback
+
+Migration `072` allows only a still-pending, unexpired `reject` to bypass stale
+epoch/scope/target revision fences; all target-consuming decisions retain those
+fences. Down restores the old all-decision fence and may strand a currently
+rejectable stale candidate again. After the corrected rejection behavior is in
+use, keep `072` and deploy a forward fix. Clean disposable replay is
+`071 -> 072 -> 071 -> 072`.
+
+### Migration 073 / sole-user L2/L3 Reader preview rollback
+
+Before the first preview event, `073` may down and cleanly replay as
+`072 -> 073 -> 072 -> 073`. After any event, down intentionally refuses with
+`MEMORY_SINGLE_USER_DERIVED_READER_PREVIEW_ROLLBACK_REQUIRES_NO_EVENTS`.
+Operational rollback must retain schema and append-only audit:
+
+1. Call `memory_operator_set_single_user_derived_reader_preview(...)` with one
+   fresh event UUID, `false`, and an uppercase bounded reason such as
+   `OWNER_ROLLBACK`.
+2. Restore both `MEMORY_L2_SCENE_READER_ENABLED=false` and
+   `MEMORY_L3_PERSONA_READER_ENABLED=false`.
+3. Render the same Compose topology on the retained schema-`073` image and
+   recreate only `backend` and `memory-worker` with `--no-build --no-deps`.
+4. Verify the latest preview event is disabled, current derived artifacts are
+   no longer active, formal L2/L3 promotion event counts remain unchanged, and
+   unrelated container IDs plus persistent row counts are unchanged.
+
+A second user already performs the database disable automatically, but operators
+must still turn both environment Reader flags off until a new rollout decision.
+Deleting that user is not restore authority. Never update/delete preview audit,
+change the formal L1 pointer, or fabricate promotion evidence during rollback.
+
 ### Migration 069 / Memory compatible Tool-profile rollback
 
 Disable automatic recording and stop every Memory Worker before rolling back

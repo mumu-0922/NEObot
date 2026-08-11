@@ -50,6 +50,29 @@ FROM memory_user_health($1::uuid)
 	return signals, nil
 }
 
+func (r *PostgresRepository) AcknowledgeMemoryJobHealth(
+	ctx context.Context,
+	input MemoryJobHealthResolutionInput,
+) (bool, error) {
+	if err := r.requireDB(); err != nil {
+		return false, err
+	}
+	user := auth.UserOrDevelopment(ctx)
+	var created bool
+	err := r.db.QueryRowContext(ctx, `
+SELECT memory_acknowledge_job_health($1::uuid, $2::uuid, $3::text, $4::text)
+`,
+		user.ID,
+		input.JobID,
+		input.ExpectedErrorCode,
+		input.ResolutionCode,
+	).Scan(&created)
+	if err != nil {
+		return false, fmt.Errorf("acknowledge memory job health: %w", err)
+	}
+	return created, nil
+}
+
 func (r *PostgresRepository) GetSettings(ctx context.Context) (Settings, bool, error) {
 	if err := r.requireDB(); err != nil {
 		return Settings{}, false, err

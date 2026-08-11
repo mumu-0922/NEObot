@@ -9438,3 +9438,738 @@ decisions to 182 attempts and zero terminal cases. Authority reconciled at
 and `49b24b9f0cb914abcf6af7a15c659437c165ebc18c28c256ae4fca97f0f47e97`.
 All exported credentials and scoped Docker objects were destroyed, live counts
 and flags stayed unchanged, and schema-v21 remains unconstructed and blocked.
+
+## 2026-08-07 — Abstention-confirmation schema-v21 pre-network stop
+
+The separately versioned repair retained primary prompt v2 and added at most
+one strict prompt-v3 confirmation only after a valid empty primary decision.
+Negative-policy guard, fixed BGE admission/intersection, strict ordinal
+decoding, retry semantics, and all quality/safety thresholds remained
+unchanged. Focused tests and race checks, all backend tests/vet, both Vault
+lifecycle suites, frontend `964/964`, RAG `1906 passed / 7 skipped`, and full
+standalone verification passed.
+
+The real PostgreSQL 17 Fake Development rerun completed `300/300` and passed.
+The schema-v21 Fake Validation completed all 100 cases, including 55 forced
+confirmation decisions and 110 total Judge attempts, at `196772/600000` input
+tokens. It correctly retained Yellow `fake_protocol_lifecycle_only` evidence
+with `passed=false`, and all scoped Docker objects were removed.
+
+The owner-authorized one-shot live Development started at
+`2026-08-07T09:47:14Z` but stopped before any Provider request. The generic
+runner recognized the new mode for its container credential target but omitted
+it from two earlier host credential preflight/copy predicates. It therefore
+mounted an empty Luna credential and failed with
+`read configured candidate-judge credential failed`; no report or manifest was
+published. Credential copies and the isolated PostgreSQL runtime were fully
+destroyed.
+
+The predicates are now aligned and the topology test executes both live-shaped
+confirmation modes while asserting the copied Luna bytes and mount target.
+Nevertheless, the started one-shot authority is not automatically rerun.
+Schema-v21 live Validation and production launch were not attempted. The live
+Memory flags remain false, the exact-user canary remains empty, and v1 remains
+the active rollback authority.
+
+## 2026-08-07 — Abstention-confirmation Development passed
+
+The owner granted a fresh exact one-shot live Development authority after the
+earlier pre-network credential-copy failure. The replacement invocation ran
+once and produced run `memory-regression-20260807t100046z-3c7d216f`, capture
+`85b2d1a1-8bca-4888-9e89-f1dbdec6acb4`. All 300 cases completed and every
+unchanged global and required-slice gate passed.
+
+Candidate Recall@20, Final Recall@5, and current-fact accuracy were
+`1.0/0.9897435897/0.9878787879`; false injection was `0/135`. Three logical
+confirmations produced four attempts, including one retry. Ten primary Judge
+retries and that confirmation retry recovered with zero terminal cases.
+Authority reconciled at `179/1800`
+requests, `321531/2000000` input-token upper bound, and `22912/230400`
+output-token upper bound. Average/maximum prompt Memory was `67.85/381` tokens,
+and all cross-user/deleted/Secret/untrusted-source/unauthorized-egress counters
+were zero.
+
+Configuration/raw-cost/decoded-cost/report/manifest SHA-256 values are
+`15a957e610e96d2048a617b73f513d003bbb5f0c856b8c9bd789307a10094026`,
+`fa814cda981e10f7c7a596db51f82aabf0fcaa6571a02e8283fc63aa99c7853f`,
+`e488d0a657dba7fe05d444e4bf38587a4ec16b2f46de74dee07ad5e4c1285119`,
+`bcfd12e7d735f5b8bec09edd7fd74d22b8c7fb0f99e50f2d9367627811a3cf91`,
+and `59e322e5b4817d009013606a3972514dae34e9de3e68aa7995f9350a6951597a`.
+The mode-`0700/0600` private evidence remains under
+`/var/tmp/neo-chat-abstention-confirmation-development-20260807T100027Z`.
+
+Both exported credentials and every scoped container, network, and volume were
+destroyed. Backend, frontend, Memory Worker, PostgreSQL, Redis, and MinIO
+remained running; all health-checked services were healthy. Both Memory flags
+remain false and the canary allowlist remains empty. The Development report is
+`passed=true` but still `policySelected=false` and `promotionEligible=false`.
+Schema-v21 live Validation remains an independent required gate; Validation,
+policy promotion, image pinning, and production launch were not attempted.
+
+## 2026-08-08 — Schema-v21 Validation approval preflight stop
+
+The owner granted one fresh live schema-v21 Validation authority after the
+Green Development result. The invocation started and finished at
+`2026-08-08T10:20:56Z` with status `2`. The Vault wrapper exported the exact
+BGE/Luna credential pair, then the generic runner rejected the forwarded quota
+approval before Provider construction or isolated regression runtime creation.
+There were zero BGE/Luna requests and no report or manifest.
+
+The root cause was a cross-layer literal mismatch. The Validation wrapper and
+its isolated fake runner used
+`I_UNDERSTAND_THIS_USES_REAL_MEMORY_ABSTENTION_CONFIRMATION_VALIDATION_QUOTA`,
+while `run-memory-regression.sh` and the Go live gate required the frozen
+Validation literal containing `FROZEN`. The wrapper and lifecycle test now use
+the correct frozen literal, and the test additionally asserts parity across
+the wrapper, generic runner, and Go gate. Focused Vault, generic topology,
+backend, race, and full standalone checks passed after the repair. The full
+gate retained frontend `964/964` and RAG `1906 passed / 7 skipped`.
+
+Raw cost/stdout/stderr SHA-256 values are
+`cd60276abf34cdd2629cc68d416828154692990b93fbb5e06690733e4c4c442d`,
+`ccc4bacdcd64fe9c0958a0508975a07b83409a3881a1f09716e8ec892387f177`,
+and `58236b2a6c2c5de5b3ba2163c7868a752a1cc544fa69482e80c160571e944719`.
+The mode-`0700/0600` preflight evidence remains under
+`/var/tmp/neo-chat-abstention-confirmation-validation-preflight-20260808T102056Z`.
+Both credential copies and every scoped Docker object were destroyed.
+
+The started authority was not rerun. Product services remain healthy,
+`MEMORY_HYBRID_SHADOW_ENABLED=false`, `MEMORY_TOOL_LOOP_ENABLED=false`, the
+canary remains unset, and v1 remains authoritative. Live schema-v21 Validation,
+policy promotion, image pinning, and production launch remain blocked.
+
+## 2026-08-08 — Schema-v21 live Validation retained Yellow
+
+After the approval-literal repair and full standalone pass, the owner granted
+one fresh schema-v21 live Validation authority. Run
+`memory-regression-20260808t131254z-f11b8601`, capture
+`cf29492b-54d5-4367-a7c7-151b1c465dcd`, completed all 100 frozen cases.
+
+Candidate Recall@20, Final Recall@5, and current-fact accuracy were
+`1.0/0.9846153846/0.9818181818`; false injection was `0/45`. Every
+cross-user/deleted/Secret/untrusted-source/unauthorized-egress counter was zero,
+and prompt-token gates passed at `67.64/365` average/maximum tokens. One
+confirmation request ran. Five `PROVIDER_TRANSPORT_FAILED` retries recovered,
+leaving zero terminal cases. Judge authority reconciled at `61/600` requests,
+`110083/600000` input-token upper bound, and `7808/76800` output-token upper
+bound.
+
+One Judge decision abstained. The aggregate slice membership arithmetic places
+the omitted current fact in both `mixed_language_entity` and `stable_fact`;
+each slice reached `0.9` current-fact accuracy and failed the unchanged `0.95`
+criterion. The immutable outcome is Yellow `retain_beta`, `passed=false`,
+`releaseEligible=false`, `policySelected=false`, and
+`promotionEligible=false`.
+
+Configuration/Validation-order/production-policy/raw-cost/decoded-cost/report/
+manifest SHA-256 values are
+`505cd678c703c2a0124e1af72d8ab4d83633e48810ed5f43f65aec3c7be01a99`,
+`cea5ebff03cef920deb4b5a9b36bee45e2f17ecb1d1b4987bc4f902fc1c8d430`,
+`63e1191d81a7579bc89f781187598a8887ac870eb59185ddf9e19a5c73dede47`,
+`cd60276abf34cdd2629cc68d416828154692990b93fbb5e06690733e4c4c442d`,
+`0990f44dd5ca7da2f31f07251aadcb7a00c49a42d8463b72ae229ad9a98a344b`,
+`3aff1211c6d1a2bbe422fb9053deda18726a71d5374441f85cd8179d5cc60a13`,
+and `0378b0a685267b2bb371cf35c5b965ee871a9001fc23337143b230cd176bd986`.
+The private mode-`0700/0600` evidence remains under
+`/var/tmp/neo-chat-abstention-confirmation-validation-20260808T131253Z`.
+
+Both credentials and every scoped container, network, and volume were
+destroyed. Product services remain healthy,
+`MEMORY_HYBRID_SHADOW_ENABLED=false`, `MEMORY_TOOL_LOOP_ENABLED=false`, and the
+canary is unset. The Validation authority is consumed and was not rerun.
+Production policy promotion, image pinning, single-user rollout, smoke, and
+rollback activation were not attempted; v1 remains authoritative.
+
+## 2026-08-09 — V4 double-confirmation Fake Development passed
+
+The consumed schema-v21 Yellow result was not rerun or reinterpreted. A fresh
+Development-only v4 policy preserves primary prompt v2, confirmation prompt v3,
+the strict ordinal decoder, negative guard, fixed BGE intersection, retries,
+and all evaluation thresholds. It permits a second identical confirmation only
+after the primary and first confirmation both return valid empty selections.
+
+The first real Docker Fake attempt found a capture Recorder defect: the first
+confirmation was represented as a terminal boolean, so the second egress was
+rejected although the production reader loop was correct. The Recorder now
+tracks bounded confirmation egress/input/result counts. V3 is fixed at one and
+v4 at two; first selection or any error, malformed output, provenance drift, or
+cancellation terminates the trace and forbids later work. Focused
+`memorycapture`, `usermemory`, CLI, and race tests pass.
+
+A fresh PostgreSQL 17 run
+`memory-regression-20260809t011906z-d8a496b0`, capture
+`8c15a32c-8562-422e-b0c5-6e616225b283`, completed `300/300` Fake Development
+cases and passed every aggregate quality and safety gate. Candidate Recall@20,
+Final Recall@5, and current-fact accuracy were all `1.0`; false injection was
+`0/135`, and every privacy/safety counter was zero. The forced v4 path issued
+`165` primary and exactly `330` confirmation decisions. Its `495` Judge
+attempts reconciled at `886206` total input-token upper bound, including
+`590144` confirmation-only tokens, with zero retries or terminal failures.
+
+The report and manifest SHA-256 values are
+`4c230f0d219f401be2bdb0a4055fde80fea1aa5938847b029b55c8c669803e76`
+and `04642d18e868913d873741962c566aab7a9e6dde77a1a39e480ba8bee6a15840`.
+Both retained artifacts are mode `0600`, and every scoped container, network,
+and volume was destroyed. The run remains Fake-only, non-promotional evidence.
+
+Applying the maximum three attempts to the deterministic logical input gives
+`886206 * 3 = 2658618`; the frozen live Development ceiling is rounded upward
+to `2700000`. Request/output ceilings remain `2700/345600`, producing a
+`3045600000000` maximum Judge-cost bound at the frozen fixture rates. The
+earlier provisional `3000000` Fake document remains immutable with its run and
+cannot authorize live work. Production flags remain off, the canary remains
+empty, schema-v21 remains consumed, and live v4 Development now requires one
+fresh explicit owner authority.
+
+The final v22 cost document's raw/canonical decoded SHA-256 values are
+`82771c9ebb4dd521cd4b5aa584a58f39cc2e786b3677ced6e523755c8a4c2de0` and
+`1599e276ae4de940a889b51b5b11e861483b25558b9be34b66607f97717bce16`.
+It is mode `0600` under the retained Fake root and passed the Go strict decoder
+plus `ValidateDoubleConfirmationDevelopmentCostAuthority`. This validation
+does not grant live quota authority.
+
+## 2026-08-09 — V4 double-confirmation live Development passed
+
+The owner granted one fresh, exact live v4 Development authority. It was
+consumed once from `2026-08-09T03:36:39Z` through `03:52:20Z`; there was no
+rerun. Run `memory-regression-20260809t033639z-a1cde25c`, capture
+`c04bb647-96a9-4f1e-b127-ab93ed027f05`, completed all `300` cases and passed
+every unchanged global and required-slice gate.
+
+Candidate Recall@20, Final Recall@5, and current-fact accuracy were
+`1.0/0.9897435897435898/0.9878787878787879`; false injection was `0/135`.
+All cross-user, deleted, Secret, untrusted-source, and unauthorized-egress
+counters were zero. Average/maximum prompt Memory was `67.85/381` tokens.
+Eleven primary Judge retries recovered. Eight confirmation attempts ran with
+zero confirmation retry and zero terminal case. Authority reconciled at
+`184/2700` requests, `329182/2700000` input-token upper bound, and
+`23552/345600` output-token upper bound.
+
+Configuration/report/manifest SHA-256 values are
+`836de9c5df3dc44f7be24ef54be90d10dfb1a31f0ec14129557de8eeea4f4ca1`,
+`52b454c6faf11784f7852f2784c889b6f34c5b53e72146c221a37e2613c1ef5e`,
+and `a690ad5f1a30238587336b8c4c99180789e87b432d54aa8402385b208e32a664`.
+The private evidence is retained under
+`/var/tmp/neo-chat-double-confirmation-development-v22-live-20260809T033639Z`.
+
+The Vault credential pair, export container, and all regression containers,
+networks, and volumes were destroyed. All product services remained healthy;
+both Memory flags remain false and the canary is empty. The Green report still
+has `policySelected=false` and `promotionEligible=false`. Schema-v21 remains
+consumed. No live Validation, policy promotion, image pinning, or production
+launch occurred.
+
+## 2026-08-09 — V4 double-confirmation schema-v23 Fake Validation frozen
+
+Fresh schema-v23 Validation identities now bind the exact v4 production policy
+without modifying the product composition root. The PostgreSQL 17 Fake run
+`memory-regression-20260809t042942z-dd53bb1f`, capture
+`79f147cd-437a-4afd-b0ff-b4193ee72ab5`, completed all `100` frozen Validation
+cases. It reconciled `35` empty-candidate, `10` negative-guard, `55`
+Judge-completed, and zero failed routes.
+
+The forced full path performed `55` primary and `110` confirmation decisions.
+All `165` Judge attempts completed without retry or terminal failure. Total
+input-token upper bound was `294993`, including `196442` confirmation-only
+tokens; output-token upper bound was `21120`. Candidate Recall@20, Final
+Recall@5, and current-fact accuracy were all `1.0`; false injection was `0/45`
+and every privacy/safety counter was zero.
+
+The immutable Fake result is Yellow `FAKE_PROTOCOL_NON_EVIDENCE` with
+`passed=false`, `policySelected=false`, `promotionEligible=false`, and
+`releaseEligible=false`. Report/manifest SHA-256 values are
+`2632e98b130ee0e1d898247b60cf0ce093d881eedf1062baa2a4df9538d88e0d` and
+`29e590baa86617e010aa5ce3d699841145d6eea032e50f5ebe94c7c490d7417b`.
+Both are mode `0600`; every scoped container, network, and volume was
+destroyed.
+
+Applying the maximum three attempts gives
+`294993 * 3 = 884979`, rounded upward to the frozen live Validation input
+ceiling `900000`. Request/output ceilings are `900/115200`, and the exact
+maximum Judge-cost authority is `1015200000000` owner-budget microunits. The
+final cost document's raw/canonical decoded SHA-256 values are
+`62d3ec814d2dcec2f9e79e6d391212d86f557be253e0533250b64d02f995b860` and
+`92563d188a999a108b027b65a543716c3fcf6cb6b3a93f30d997dad5e2cfde41`.
+It passed the strict decoder and schema-v23 validator.
+
+The v22 live Development authority was already consumed once and remains
+Green; a later Development authorization cannot rerun it or authorize
+schema-v23. No live Validation request was made. All six product services are
+healthy, `MEMORY_HYBRID_SHADOW_ENABLED=false`,
+`MEMORY_TOOL_LOOP_ENABLED=false`, and the canary remains empty. Production
+promotion, image pinning, rollout, and smoke remain blocked pending one fresh
+exact live schema-v23 double-confirmation Validation authority.
+
+## 2026-08-09 — V4 schema-v23 live Validation retained Yellow
+
+The owner granted one fresh exact live schema-v23 double-confirmation
+Validation authority. It was consumed once from `2026-08-09T06:36:52Z`
+through `06:42:02Z`; no rerun occurred. Run
+`memory-regression-20260809t063653z-20bfb10b`, capture
+`79231ab8-bb00-4177-aeec-daf85daf2199`, completed all `100` frozen cases but
+failed the unchanged required-slice gate.
+
+Candidate Recall@20, Final Recall@5, and current-fact accuracy were
+`1.0/0.9692307692307692/0.9636363636363636`; false injection was `0/45`.
+`mixed_language_entity`, `stable_fact`, and `temporal_correction` each reached
+`0.9` current-fact accuracy. Two valid Judge abstentions remained after the
+primary and both confirmations, yielding four confirmation attempts. This is
+aggregate-only evidence: overlapping slice memberships do not authorize
+reconstruction of private case identities.
+
+One typed `PROVIDER_TRANSPORT_FAILED` attempt recovered. There were `60` Judge
+attempts, one retry, zero terminal case, `107182/900000` input-token upper
+bound, and `7680/115200` output-token upper bound. Confirmation-only input was
+`6964`. Average/maximum prompt Memory was `66.53/365` tokens. Every safety,
+privacy, token, cost, and cleanup counter passed.
+
+The outcome is immutable Yellow `QUALITY_OR_TOKEN_GATE_FAILURE` with
+`passed=false`, `policySelected=false`, `promotionEligible=false`, and
+`releaseEligible=false`. Configuration/report/manifest SHA-256 values are
+`01f132d35c0546860ac3983a5842d7925feed74a472900b69d50ff8470cef8f3`,
+`71e71db85fed3262388991c899aa2a4799a4c9e2ace15c87552bb8dd6dbce740`,
+and `446f84c76a040ced6e9f39d657f1d7f3206337410df1fe019dd6fdfa71000682`.
+Evidence remains mode `0700/0600` under
+`/var/tmp/neo-chat-double-confirmation-validation-v23-live-20260809T063629Z`.
+
+The Vault credential pair and all scoped containers, networks, and volumes
+were destroyed. Aggregate artifacts and logs passed independent privacy and
+credential scans. Pre/post state SHA-256 values are
+`deabaac01944db51cbdaa2ae80ab11a88b8008bf63ab8da247a8417ba5efab65` and
+`e31d3be691fba7100e459611e74e897f076bfb429d7a3f6bf1a43f00f68744f7`;
+all six product container IDs/images remained identical and healthy.
+`MEMORY_HYBRID_SHADOW_ENABLED=false`, `MEMORY_TOOL_LOOP_ENABLED=false`, and the
+canary remains empty. The historical production policy stays installed.
+Schema-v23 is consumed; promotion, image pinning, rollout, smoke, and launch
+were not attempted.
+
+## 2026-08-09 — Single-user bounded-miss schema-v24/v25 Fake chain frozen
+
+The owner accepted prospective fail-closed omission risk for the current sole
+user. Historical schema-v23 remains immutable Yellow and was neither rerun nor
+reinterpreted. A fresh criteria identity keeps overall current-fact accuracy
+at `0.95`, sets required-slice current-fact accuracy to `0.90`, and requires
+false-injection rate and count to be exactly zero. All other quality, token,
+safety, privacy, cost, cleanup, and terminal gates remain unchanged. The v4
+double-confirmation reader, prompt hashes, strict decoder, negative guard, BGE
+intersection, retries, and request order are unchanged.
+
+Fresh schema-v24 Development and schema-v25 Validation profile/reader/report/
+run/cost/capture identities were added with independent live approval
+literals, generic-runner mappings, Compose environment isolation, and
+dedicated Vault wrappers. Offline tests cover `9/10` required-slice acceptance,
+`8/10` rejection, overall current-fact rejection below `0.95`, exact-zero
+false-injection rejection, Fake non-authority, approval drift, live-shaped
+credential copy/mount checks, Orange `FALSE_INJECTION_NON_ZERO`, and credential
+destruction on success, failure, and signals.
+
+The PostgreSQL 17 Fake Development run
+`memory-regression-20260809t090107z-83ce1740`, capture
+`83cab806-40b6-4c4d-9f02-363cfa8e7c4b`, completed all `300` cases and passed.
+Candidate Recall@20, Final Recall@5, and current-fact accuracy were all `1.0`;
+false injection was `0/135` and every safety/privacy counter was zero. Route
+counts were `105/30/165/0` empty/guard/Judge-completed/failed. It performed
+`495` Judge attempts, including `330` confirmations, with zero retries or
+terminal cases. Total input-token upper bound was `886206`, including `590144`
+confirmation-only tokens; output authority reconciled at `63360/345600`.
+
+The PostgreSQL 17 Fake Validation run
+`memory-regression-20260809t090148z-629b20fa`, capture
+`246e3896-fcf8-430c-9501-48f375c043c2`, completed the exact 100-case order as
+`35/10/55/0`. Every quality metric was `1.0`, false injection was `0/45`, and
+every safety/privacy counter was zero. It performed `165` Judge attempts,
+including `110` confirmations, with `294993` total and `196442`
+confirmation-only input tokens. Fake correctly returned non-zero as Yellow
+`FAKE_PROTOCOL_NON_EVIDENCE`, `passed=false`, and non-releasing.
+
+The criteria SHA-256 is
+`2c7e7325d4f8bc5d991857b9a8a90d76d866da98ce26a6c171072351ce43e779`.
+Schema-v24 report/manifest SHA-256 values are
+`aba8b0d81e3a87c9227671a7cd3bc65467f376167f3111be8936512264ba98e9`
+and `638d0d128781dc0d65a4f832366179260ce43f5e4c91c5c286b364bad888511b`;
+schema-v25 values are
+`e0d431b2f49e0fec7c1295a41c1c0c58d1952d934e6623d84ccbe972f1f997d5`
+and `6dc9d45e43957c65f6599fa9fed053cf3c407feed11e20cb67fe74c298233fb4`.
+The schema-v24 cost document raw/canonical hashes are
+`7f3f9a1c35f844b5f62aa3a77e10ec2b92e8c82bd8f3232522fe8fc41fb8a1c5`/
+`bd5e1e73a9feb7a878e905aa4ecb0ca734dcae4d78c9c9f65f2bacc67c6337e9`;
+schema-v25 values are
+`81b624658ea5b00dea6bfaa88ed8684cb9c938ec8c8fd4a1db3fd4904e64bdc7`/
+`67edc4abbe1e0cba610474947382b1d05df80a75aab194805f34aa2114192eda`.
+The frozen ceilings remain `2700/2700000/345600` for Development and
+`900/900000/115200` for Validation because criteria do not change Provider
+request shape.
+
+Both aggregate pairs are mode `0600` under
+`/var/tmp/neo-chat-single-user-bounded-miss-v24-v25-fake-20260809T090053Z`.
+Every scoped container, network, volume, and temporary credential was
+destroyed. No live Provider request or quota authority was used. Product
+composition remains historical, both Memory flags remain false, and the canary
+is empty. A fresh exact schema-v24 live Development authority is now required;
+schema-v25 live Validation and exact-UUID launch remain blocked behind its
+passing evidence.
+
+## 2026-08-09 — Single-user bounded-miss schema-v24 live Development passed
+
+The owner granted one fresh exact schema-v24 live Development authority. It was
+consumed exactly once by run `memory-regression-20260809t093235z-c17a5d0a`,
+capture `3eff1154-2fe9-40b1-af9c-cc6c4d1eb574`. All 300 cases completed and the
+candidate passed. Candidate Recall@20 was `1.0`, Final Recall@5 was
+`0.9846153846153847`, overall current-fact accuracy was
+`0.9818181818181818`, and false injection was exactly `0/135`. Every slice
+passed; the minimum slice current-fact accuracy was `0.9666666666666667`.
+Safety and unauthorized-egress counts were zero.
+
+The route ledger reconciled `105` empty-candidate, `30` negative-guard,
+`165` Judge-completed, `3` final Judge abstentions, and zero failed cases. The
+Judge ledger recorded `180` attempts, `9` recovered retries, and `6`
+confirmation attempts. Actual request/input/output upper bounds were
+`180/322607/23040`, below the frozen `2700/2700000/345600` authority. Overall
+diagnostic p95/p99 latency was `6943/11743 ms`; latency remained diagnostic-only
+under the frozen policy.
+
+The aggregate report/manifest SHA-256 values are
+`68d00d695c521e4f240b105f9ecc237b6c7d3c66ce8e9d40c7f3ae72528b34b0` and
+`39a92d7174bd8f725cdb36152a33b7c6eded3fe4feb8beb6aea56caf4d363bd1`.
+Both files are mode `0600` under
+`/var/tmp/neo-chat-single-user-bounded-miss-v24-live-20260809T093234Z` and its
+mode-`0700` run directory. One-run credential copies and every scoped Compose
+container, network, and volume were destroyed.
+
+The schema-v24 authority is consumed and will not be rerun. Product
+composition was not changed: `MEMORY_HYBRID_SHADOW_ENABLED=false`,
+`MEMORY_TOOL_LOOP_ENABLED=false`, and the canary remains unset. No schema-v25
+live Provider request, policy promotion, deployment, or launch occurred. A
+fresh exact schema-v25 Validation authority is required before the chain may
+continue.
+
+## 2026-08-10 — Single-user bounded-miss schema-v25 live Validation passed
+
+The owner granted one fresh exact schema-v25 live Validation authority. It was
+consumed exactly once by run `memory-regression-20260809t160732z-c5e0da74`,
+capture `7ec205c3-9c65-4684-8063-e52e35d4c551`. All 100 cases completed and
+passed. Candidate Recall@20, Final Recall@5, current-fact accuracy, NDCG@5, and
+MRR@5 were all `1.0`; false injection was exactly `0/45`, and every
+safety/privacy counter was zero. All required slices passed.
+
+The route ledger reconciled `35` empty-candidate, `10` negative-guard, `55`
+Judge-completed, zero final abstentions, and zero failed cases. The Judge made
+`63` attempts, including `6` recovered transport retries, `3` confirmation
+attempts, and `1` recovered confirmation retry. Request/input/output upper
+bounds were `63/112543/8064`, below the frozen `900/900000/115200` authority.
+Overall diagnostic p95/p99 latency was `8130/11157 ms`.
+
+The aggregate report/manifest SHA-256 values are
+`ead77fd8f505813ec7bae1f0b8cf934c6798797afb9760c15b5a2017adbc2be3` and
+`d97f3c4f1ee865eaf47e9ca188df4875c7266e07ab562d3687d9f9699c521bce`.
+Both files are mode `0600` beneath
+`/var/tmp/neo-chat-single-user-bounded-miss-v25-live-20260809T160731Z`.
+One-run credentials and every scoped container, network, and volume were
+destroyed. Schema-v25 is consumed and will not be rerun.
+
+The separately reviewed production-v4 composition was prepared and passed a
+focused race gate plus all backend tests and vet. Launch preflight then found a
+runtime/source schema conflict: the live database is at migration `069`, while
+the candidate backend's fail-closed Memory health and Worker contract requires
+additive migration `070`. The flag-only rollout contract prohibits applying
+that migration implicitly.
+
+A mode-`0600` live environment copy, container identities, exact sole-user UUID,
+Provider tuple proof, and persistent counts were captured beneath
+`/var/tmp/neo-chat-memory-v2-single-user-launch-20260809T162030Z`. Fresh
+PostgreSQL and MinIO backups with set ID
+`memory-v2-launch-20260809T162030Z` passed SHA-256 verification. An isolated
+restore of the live dump proved `069 -> 070 -> 069 -> 070`, with every
+pre-existing persistent table count unchanged and complete drill teardown. The
+candidate image is
+`mm-chat/backend:memory-v2-v25-candidate-20260809t162030z`, image ID
+`sha256:5171f2e1055edde6381231e1c50f1423f8714bb9862367135c90a29829d18a63`.
+
+No live migration, environment change, service recreation, or smoke followed.
+`MEMORY_HYBRID_SHADOW_ENABLED=false`, `MEMORY_TOOL_LOOP_ENABLED=false`, and the
+canary remains unset. Exact live migration-070 authority is now required before
+the exact-UUID launch can continue.
+
+## 2026-08-10 — Exact-UUID policy-fix smoke passed; launch health rolled back
+
+The owner separately authorized live migration `070`. It was applied exactly
+once; the heartbeat and role-capability checks passed, and the complete
+persistent-count snapshot remained byte-identical before and after migration.
+Migration `070` is consumed and will not be rerun.
+
+The first exact-UUID deployment exposed two fail-closed composition defects
+before a successful launch proof: the comma-list parser rejected a single
+exact UUID, and the product reader did not admit the already-validated v4
+double-confirmation production policy. Focused tests were added for both
+boundaries. The final reviewed image is
+`mm-chat/backend:memory-v2-v25-exact-uuid-policy-fix-candidate-20260810t011729z`,
+image ID
+`sha256:c79fd467421342c63185321fa966039419528ee507c9b0538f69901fe3568e08`.
+The policy change admits only the v4 production policy; Development and v3
+validation policies remain fail-closed. Focused race tests, all backend tests,
+vet, and a fresh 100-case Fake schema-v25 lifecycle passed.
+
+A disposable `AUTH_MODE=required` non-admitted proof returned HTTP `401`, made
+zero Provider/Memory work, and left hybrid observation counts unchanged. One
+fresh exact-UUID admitted-smoke authority with
+`provider.source=server-default` was then consumed exactly once. The live Chat
+request returned HTTP `200`, completed both the Memory Tool and generation
+steps, persisted one final Memory Usage row, and ended at `message.completed`.
+The stream's cumulative Usage was 287 tokens. Its conversation was soft-deleted
+through the API with HTTP `204`.
+
+The post-smoke health gate returned `degraded/memory_index_failed` with live
+worker and embedding-worker heartbeats, `readyCount=1`, `pendingCount=5`, and
+`failedCount=2`. Content-free SQL ruled out projection duplication: the sole
+current eligible Memory has one ready current projection and zero pending or
+failed projection. The five pending items are future `review_expire` jobs; the
+two failed items are historical extract dead letters with bounded reason codes
+`EXTRACTION_INVALID` and `SOURCE_DRIFT`. The Go response combines capture and
+projection lanes exactly as migration `070` specifies.
+
+Because successful admitted retrieval does not override degraded runtime
+health, the launch gate failed. The prepared behavior rollback atomically set
+both Memory flags false, cleared the canary, and recreated only
+`memory-worker` and `backend`. Both services are healthy, migration head
+remains `070`, and `user_memories/users` remain `2/1`. The policy-fix image
+remains deployed but Memory v2 is disabled. No Provider request was replayed;
+the admitted authority is consumed. Evidence is retained under
+`/var/tmp/neo-chat-memory-v2-single-user-launch-20260809T162030Z`.
+
+## 2026-08-10 — Migration-071 actionable-health successor passes offline PostgreSQL 17
+
+The owner accepted an append-only remediation for the post-smoke health
+blocker. Migration `071` leaves migration `070` immutable and changes capture
+health to count only `extract` jobs. Scheduled `review_expire` maintenance stays
+stored and executable but no longer appears as capture indexing. An exact
+historical extract dead letter exits health only through a content-free row
+bound to `(job_id,user_id)`, its exact bounded error code, the bootstrap owner,
+and one of two fixed resolution codes. The original job, error, audit, and
+Activity evidence remains unchanged.
+
+The admin command accepts one canonical job UUID, exact expected error code,
+bounded resolution code, and the fixed approval literal. PostgreSQL grants the
+API/admin role function execution only; API and Worker roles have no resolution
+table CRUD, and the Worker cannot acknowledge. Source-drift acknowledgement
+requires a present non-active same-owner Conversation. Generic historical
+acceptance requires a terminal age of at least 24 hours. Same-input replay is
+idempotent; conflicting replay fails closed; any resolution blocks migration
+down.
+
+A disposable `mm-chat/postgres:17.10-pg_textsearch1.3.1-pgvector0.8.5`
+instance passed `070 -> 071 -> 070 -> 071`, extract-only counts, active and
+missing source denial, wrong user/error/status denial, both valid resolution
+paths, append-only UPDATE/DELETE denial, least privilege, and guarded rollback.
+The first real PostgreSQL run also caught and repaired a missing composite
+ownership key before release. No live database, flag, canary, service, Memory
+row, or Provider was touched. Live migration `071` and the two exact live
+acknowledgements remain separately authorized future operations; the consumed
+admitted smoke will not be replayed.
+
+Focused admin/usermemory/migration race tests passed without enabling unrelated
+database fixtures, and the exact `071` PostgreSQL 17 test passed with `-race`.
+The full standalone verifier then passed Frontend `964/964`, all Backend tests
+and vet, and RAG `1906 passed / 7 skipped`. Static security and quality scans
+reported zero findings. Image
+`mm-chat/backend:memory-v2-v25-schema071-health-resolution-candidate-20260810t025553z`
+was built with ID
+`sha256:7f54f00a930da27d5671d7f23b7ebcf9615f62198266886c151b6bc1a6a7be0b`.
+Package smoke proved all four runtime binaries, embedded migration `071`, and
+the bounded admin command. Mode-`0700/0600` evidence is retained under
+`/var/tmp/neo-chat-memory-v2-071-offline-20260810T025553Z`. The image remains
+undeployed and live remains schema `070` on the prior policy-fix image.
+
+That exact image subsequently passed an isolated private-network PostgreSQL 17
+exercise: fresh `001 -> 071`, clean `071 -> 070 -> 071`, packaged admin
+acknowledgement `created=true`, same-input replay `created=false`, unchanged
+`EXTRACTION_INVALID` source evidence with capture health `0/0/0`, and expected
+guarded-down failure while the schema remained `071`. The disposable database,
+container, and network were destroyed; no live runtime was contacted.
+
+## 2026-08-10 — Live migration-071 applied; acknowledgements remain blocked
+
+The owner granted one exact live migration-`071` authority. Content-free
+preflight reconfirmed schema `070`, `user_memories/users=2/1`, two unresolved
+extract dead letters, five future `review_expire` jobs, no resolution table,
+healthy old-image services, false Memory flags, and an empty canary. A fresh
+custom-format PostgreSQL backup was created under
+`/var/tmp/neo-chat-memory-v2-071-live-20260810T030409Z` and passed SHA-256
+verification at mode `0700/0600`.
+
+An initial Compose command used unsupported `run --no-build` and was rejected
+before migrator creation or database contact. The old services were restored,
+schema `070` and health were reconfirmed, and the corrected command then made
+the sole actual change: `up 071_memory_worker_health_resolutions`.
+
+Schema/table/function verification passed at `71/2/1`, with zero resolution
+rows, extract-only capture `0/0/2`, projection `1/0/0`, all five Review-expiry
+jobs retained, API function-only authority, Worker denial, no runtime table
+CRUD, the append-only trigger enabled, and restricted ownership intact. The
+frozen schema-071 candidate image ID
+`sha256:7f54f00a930da27d5671d7f23b7ebcf9615f62198266886c151b6bc1a6a7be0b`
+is now running on `backend` and `memory-worker`; both are healthy. Memory flags
+remain false and the canary empty. No Provider/Chat request, acknowledgement,
+job/error mutation, or Memory write occurred.
+
+Read-only Gate-B preflight identified the sole eligible unresolved
+`SOURCE_DRIFT` job as `d141be78-01e7-47e5-9db8-09d6e3938451`; its same-owner
+Conversation exists and is non-active. That exact acknowledgement remains
+blocked pending fresh UUID-bound authority. Migration `071` is consumed and
+will not be rerun.
+
+## 2026-08-10 — Exact historical health acknowledgements completed
+
+The owner separately authorized the exact `SOURCE_DRIFT` and
+`EXTRACTION_INVALID` jobs. The frozen candidate's packaged admin capability
+created one append-only resolution for each exact UUID and expected error:
+
+- `d141be78-01e7-47e5-9db8-09d6e3938451` ->
+  `source_no_longer_current`, `created=true`;
+- `3b384bee-87f5-41e2-9d28-72a8114c4459` ->
+  `historical_failure_accepted`, `created=true`.
+
+The original job hashes remained
+`513a3b70810467c42c51c32b4ea927172680f3ba56e23d2de018a7e2e39801c0` and
+`37e2dc19ceb6f8bacf61044c405cb36fdb74e13dd4367781633d135de38650a2`.
+Schema/resolution/Memory/user counts became `71/2/2/1`; unresolved extract dead
+letters became zero, capture health became `0/0/0`, and projection health
+remained `1/0/0`. The one-shot admin environment was overwritten with a
+content-free destruction marker. No Provider request, Chat POST, job/error
+mutation, or Memory write occurred. Resolution evidence now intentionally
+blocks migration-`071` down, so the remaining rollback surface is behavioral.
+
+## 2026-08-10 — Sole-user Memory v2 launch completed
+
+Provider-free preflight reconfirmed the exact sole UUID
+`00000000-0000-0000-0000-000000000001`, zero active capture and embedding
+jobs, four retained hybrid observations, one retained Memory Usage row, and the
+frozen schema-071 candidate image ID. The consumed admitted smoke was not
+replayed. Both reviewed flags were enabled and the canary was populated with
+only that UUID; Compose recreated only `memory-worker` and `backend` with the
+pinned image and `--no-build --no-deps`.
+
+The first final-verifier attempt queried the nonexistent `/v1/auth/me` route.
+Its HTTP `404` triggered the prepared fail-closed behavior rollback: both flags
+returned false, the canary was cleared, and only the two owning services were
+recreated. Schema, data, image, and unrelated services remained unchanged, and
+no Provider or Chat request occurred. Source verification established `/v1/me`
+as the correct fixed-owner route; a fresh Provider-free retry then completed.
+
+Final verification proved `/v1/me` resolves the sole UUID,
+`GET /v1/memory-health` returns HTTP `200` with `ready`, Worker capabilities
+are `true/true`, capture is `0/0/0`, projection is `1/0/0`, and
+schema/resolution/Memory/user counts remain `71/2/2/1`. A disposable same-image
+instance with `AUTH_MODE=required` returned HTTP `401` for an unauthenticated
+health request, emitted zero Provider/Memory-work log lines, and left hybrid
+observations, Usage, resolutions, Memories, and active-job counts unchanged.
+No application Chat POST was sent.
+
+Memory v2 is live for the sole user with both Memory flags true and the exact
+one-UUID canary. `backend` and `memory-worker` are healthy on image ID
+`sha256:7f54f00a930da27d5671d7f23b7ebcf9615f62198266886c151b6bc1a6a7be0b`.
+Successful mode-`0700/0600` evidence is retained under
+`/var/tmp/neo-chat-memory-v2-sole-user-launch-retry-20260810T033338Z`; the
+fail-closed verifier attempt is retained under
+`/var/tmp/neo-chat-memory-v2-sole-user-launch-20260810T032745Z`. Behavior
+rollback remains both flags false plus an empty canary on the same image.
+Adding a second user requires a new rollout decision.
+
+## 2026-08-10 — Migration-072 restores stale Review rejection
+
+The live governance UI exposed one pending Review whose target Memory had
+advanced from revision `1` to revision `2`. The migration-`060` decision
+capability applied the target-currentness fence to every decision, so clicking
+`reject` returned a stale error even though rejection consumes no canonical
+Memory. The candidate could therefore not be dismissed through the UI.
+
+Migration `072_memory_review_stale_reject` narrows the exception to `reject`.
+Current-user ownership, pending status, expiry, decision shape, and replay
+authority remain mandatory. `keep_current`, `accept_new`, `edit_merge`, and
+`keep_both` retain the exact epoch, scope-generation, and target lifecycle/
+revision fences. The migration adds no route, function signature, role, grant,
+or table.
+
+Disposable PostgreSQL 17 proved `071 -> 072 -> 071 -> 072`, including target
+hash/revision preservation, candidate plaintext purge, one replay-safe audit,
+runtime-role execution, and continued denial of every target-consuming stale
+decision. Focused race, all Backend tests/vet, and the full standalone gate
+passed with Frontend `964/964` and RAG `1906 passed / 7 skipped`.
+
+The first live attempt used an invalid verifier query for nonexistent migration
+checksum columns. Its prepared rollback cleanly restored schema `071`; no
+Review, Memory, service image, flag, or unrelated container state changed. A
+fresh retry backed up PostgreSQL, applied `072`, deployed only `backend` and
+`memory-worker`, and completed the exact pending rejection with HTTP `200`.
+Final state is `schema=72`, `pending_reviews=0`, decision
+`reject/rejected/USER_REJECTED`, and candidate plaintext count `0`. The target
+remained revision `2` with content hash
+`82f266e334944342ee7486920e3bf4477cc0c149d436f483e1ca49ce3a87388e`.
+
+Both services are healthy on image
+`mm-chat/backend:memory-v2-schema072-stale-review-reject-candidate-20260810t063127z`
+with image ID
+`sha256:6b1405eba79001fd444c48303cef11d6c0e0444b654bdbec3532e1a5ed486889`.
+L2 Scene and L3 Persona shadow generation remain enabled while both readers
+remain disabled; their persisted current counts stay `1/1` with zero promotion
+events. Successful private evidence is retained under
+`/var/tmp/neo-chat-schema072-stale-review-reject-live-20260810T063746Z`.
+
+## 2026-08-10 — Sole-user L2/L3 Reader preview launched on schema 073
+
+Migration `073_memory_single_user_derived_reader_preview` introduced a
+separate append-only preview authority for the exact sole user. It activates
+only current, ready L2 Scene and L3 Persona artifacts; it does not update the
+formal L1 retrieval pointer or create formal L2/L3 promotion evidence. A second
+user automatically appends a disable event, and deleting that user never
+silently re-enables the preview.
+
+The frozen candidate passed focused migration race coverage, all Backend tests
+and vet, Frontend format/lint/type-check plus `964/964` tests and production
+build, RAG Ruff/mypy plus `1906 passed / 7 skipped`, and the full standalone
+gate. The exact packaged image was also exercised over a verified schema-72
+live logical dump on disposable PostgreSQL 17 through `72 -> 73`, enable,
+disable, and teardown before live migration.
+
+Two Provider-free verifier defects triggered behavior rollback before the
+successful retry. The first used an unparenthesized `ORDER BY/LIMIT` branch in
+a SQL `UNION`; its initial shell trap also exposed that pipeline-subshell state
+must not control rollback. The second incorrectly required an optional health
+`reason` instead of the authoritative `status` and ready/pending/failed counts.
+Each correction retained schema `073`, appended a disable event, restored both
+Reader flags false, and recreated only Backend/Worker. No Chat POST or Provider
+request was sent.
+
+The final state is `schema=73`, one user, five immutable preview events with
+the latest enabled, L2/L3 current-active-ready counts `1/1/1` each, null formal
+L1 retrieval pointer, zero formal L2/L3 promotion events, and ready Memory
+health `2/0/0`. Backend and Memory Worker are healthy on image
+`mm-chat/backend:memory-l2-l3-reader-preview-schema073-candidate-20260810t083217z`
+with image ID
+`sha256:9ee41134bfcf3cf84028bda7cebf852a0fd2915a4a289b51c7b6feef2964a7b2`.
+PostgreSQL and every unrelated container kept the same ID. Final private
+evidence is retained under
+`/var/tmp/neo-chat-memory-l2-l3-reader-preview-schema073-live-final-retry-20260810T090329Z`.
+
+A later frontend-only cleanup removed the generic derived-content notice below
+the L2 Scene and L3 Persona profile headers in every locale while retaining all
+badges and controls. Focused composition coverage, targeted formatting,
+ESLint, strict TypeScript, and the production build passed. Only Frontend was
+recreated on image
+`mm-chat/frontend:memory-governance-derived-copy-cleanup-20260810T093913Z`
+(`sha256:9adcda09415856333412c50729eeb114381ddf1e10aed4ea6f1a7a1e0ea911f4`).
+It is healthy with HTTP `200`; Backend, Memory Worker, PostgreSQL, MinIO, and
+Redis container IDs remained unchanged.
+
+The governance UI subsequently bounded long lists without slicing server data:
+deletion progress and search diagnostics show at most six minimum-height cards
+before scrolling, while Conversation Use/Learn policy shows at most eight.
+All three regions keep keyboard scrolling and a stable right-side gutter.
+Focused composition coverage, targeted formatting, ESLint, strict TypeScript,
+and the production build passed; the unrelated full test suite was not rerun.
+An initial asset verifier searched for source Tailwind class names, triggered
+the prepared frontend-only rollback, and was corrected to inspect compiled CSS
+declarations. The retry deployed only Frontend on image
+`mm-chat/frontend:memory-governance-bounded-scroll-20260811T005030Z`
+(`sha256:92486df8cfab806faf4689cfd2638bda48a38b74cd4855ac20ce3e2b8fe02985`).
+Frontend and Memory health are ready, and every protected service container ID
+remained unchanged.

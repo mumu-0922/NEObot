@@ -288,3 +288,8 @@ rebuild, runtime role denial, and clean PostgreSQL 17 portability plus
   Candidate-empty Tool execution succeeds only for `ready`; indexing,
   unavailable, disabled, or unreadable health remains visible and fail-closed
   without reviving the legacy reader.
+- 2026-08-10: Migration `071` limits capture health to extraction jobs and adds
+  a narrow owner-bound acknowledgement for one exact historical extract dead
+  letter. Resolution evidence is content-free and append-only; original jobs,
+  errors, audits, and Activity remain immutable, while future Review expiry no
+  longer masquerades as capture indexing.

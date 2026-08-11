@@ -391,6 +391,130 @@ func BuildAccuracyRepairMemoryJudgeDevelopmentProfileConfig(
 	return config, nil
 }
 
+func BuildAbstentionConfirmationMemoryJudgeDevelopmentProfileConfig(
+	protected ProtectedRegression,
+	costBasisSHA256 string,
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	providerCostPolicy string,
+) (ProfileConfig, error) {
+	if !validFixedMemoryJudgeAuthority(authority) ||
+		providerCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+		judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
+		return ProfileConfig{}, ErrCaptureInvalid
+	}
+	policy := usermemory.HybridShadowAbstentionConfirmationDevelopmentPolicy()
+	_, config, err := buildProfileConfigs(
+		protected, costBasisSHA256, providerMode,
+		CaptureModeAbstentionConfirmationMemoryJudge,
+		DevelopmentCalibrationSplit, policy, providerCostPolicy, nil,
+	)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	descriptorSHA256, err := relevancePolicyDescriptorSHA256(policy)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	config.ConfiguredCandidateJudgeProviderID = authority.ProviderID
+	config.ConfiguredCandidateJudgeProviderType = authority.ProviderType
+	config.ConfiguredCandidateJudgeBaseURLSHA256 = authority.BaseURLSHA256
+	config.ConfiguredCandidateJudgeAdapter =
+		memoryjudge.BufferedChatAbstentionConfirmationAdapterVersion
+	config.EvaluationCriteriaVersion = memoryeval.MemoryJudgeAccuracyFirstCriteriaVersionV3
+	config.NegativePolicyQueryGuardRequired = true
+	config.NegativePolicyQueryGuardVersion = usermemory.NegativePolicyQueryGuardVersion
+	config.NegativePolicyQueryGuardSHA256 = usermemory.NegativePolicyQueryGuardSHA256
+	config.RelevancePolicyDescriptorSHA256 = descriptorSHA256
+	executionPolicy, err := AbstentionConfirmationDevelopmentExecutionPolicy(providerMode)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	config.AccuracyFirstExecutionPolicy = &executionPolicy
+	return config, nil
+}
+
+func BuildDoubleConfirmationMemoryJudgeDevelopmentProfileConfig(
+	protected ProtectedRegression,
+	costBasisSHA256 string,
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	providerCostPolicy string,
+) (ProfileConfig, error) {
+	if !validFixedMemoryJudgeAuthority(authority) ||
+		providerCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+		judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
+		return ProfileConfig{}, ErrCaptureInvalid
+	}
+	policy := usermemory.HybridShadowDoubleConfirmationDevelopmentPolicy()
+	_, config, err := buildProfileConfigs(
+		protected, costBasisSHA256, providerMode,
+		CaptureModeDoubleConfirmationMemoryJudge,
+		DevelopmentCalibrationSplit, policy, providerCostPolicy, nil,
+	)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	descriptorSHA256, err := relevancePolicyDescriptorSHA256(policy)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	config.ConfiguredCandidateJudgeProviderID = authority.ProviderID
+	config.ConfiguredCandidateJudgeProviderType = authority.ProviderType
+	config.ConfiguredCandidateJudgeBaseURLSHA256 = authority.BaseURLSHA256
+	config.ConfiguredCandidateJudgeAdapter =
+		memoryjudge.BufferedChatAbstentionConfirmationAdapterVersion
+	config.EvaluationCriteriaVersion = memoryeval.MemoryJudgeAccuracyFirstCriteriaVersionV3
+	config.NegativePolicyQueryGuardRequired = true
+	config.NegativePolicyQueryGuardVersion = usermemory.NegativePolicyQueryGuardVersion
+	config.NegativePolicyQueryGuardSHA256 = usermemory.NegativePolicyQueryGuardSHA256
+	config.RelevancePolicyDescriptorSHA256 = descriptorSHA256
+	executionPolicy, err := DoubleConfirmationDevelopmentExecutionPolicy(providerMode)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	config.AccuracyFirstExecutionPolicy = &executionPolicy
+	return config, nil
+}
+
+func BuildSingleUserBoundedMissDevelopmentProfileConfig(
+	protected ProtectedRegression,
+	costBasisSHA256 string,
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	providerCostPolicy string,
+) (ProfileConfig, error) {
+	config, err := BuildDoubleConfirmationMemoryJudgeDevelopmentProfileConfig(
+		protected,
+		costBasisSHA256,
+		providerMode,
+		authority,
+		providerCostPolicy,
+	)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	criteriaSHA256, err := singleUserBoundedMissCriteriaSHA256(
+		protected.Pool.Corpus.Criteria,
+	)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	executionPolicy, err := SingleUserBoundedMissDevelopmentExecutionPolicy(providerMode)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	config.SchemaVersion =
+		"neo-chat.memory-regression-profile-config.v24-single-user-bounded-miss-development.v1"
+	config.ReaderVersion = SingleUserBoundedMissDevelopmentReaderVersion
+	config.CaptureMode = CaptureModeSingleUserBoundedMissDevelopment
+	config.EvaluationCriteriaVersion =
+		memoryeval.MemoryJudgeSingleUserBoundedMissCriteriaVersionV4
+	config.EvaluationCriteriaSHA256 = criteriaSHA256
+	config.AccuracyFirstExecutionPolicy = &executionPolicy
+	return config, nil
+}
+
 func BuildProductionMemoryJudgeValidationProfileConfig(
 	protected ProtectedRegression,
 	costBasisSHA256 string,
@@ -500,6 +624,166 @@ func BuildProductionBufferedMemoryJudgeValidationProfileConfig(
 	if err != nil {
 		return ProfileConfig{}, err
 	}
+	config.AccuracyFirstExecutionPolicy = &executionPolicy
+	return config, nil
+}
+
+func BuildAbstentionConfirmationValidationProfileConfig(
+	protected ProtectedRegression,
+	costBasisSHA256 string,
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	providerCostPolicy string,
+) (ProfileConfig, error) {
+	if !validFixedMemoryJudgeAuthority(authority) ||
+		providerCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+		judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
+		return ProfileConfig{}, ErrCaptureInvalid
+	}
+	policy := usermemory.HybridShadowAbstentionConfirmationProductionPolicy()
+	_, config, err := buildProfileConfigs(
+		protected,
+		costBasisSHA256,
+		providerMode,
+		CaptureModeAbstentionConfirmationValidation,
+		FrozenValidationSplit,
+		policy,
+		providerCostPolicy,
+		nil,
+	)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	caseOrderSHA256, err := validationCaseOrderSHA256(protected.Pool)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	criteriaSHA256, err := productionValidationCriteriaSHA256(protected.Pool.Corpus.Criteria)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	policySHA256, err := abstentionConfirmationProductionRelevancePolicySHA256()
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	config.ConfiguredCandidateJudgeProviderID = authority.ProviderID
+	config.ConfiguredCandidateJudgeProviderType = authority.ProviderType
+	config.ConfiguredCandidateJudgeBaseURLSHA256 = authority.BaseURLSHA256
+	config.ConfiguredCandidateJudgeAdapter =
+		memoryjudge.BufferedChatAbstentionConfirmationAdapterVersion
+	config.EvaluationCriteriaVersion = memoryeval.MemoryJudgeAccuracyFirstCriteriaVersionV3
+	config.ValidationCaseOrderSHA256 = caseOrderSHA256
+	config.EvaluationCriteriaSHA256 = criteriaSHA256
+	config.ProductionRelevancePolicySHA256 = policySHA256
+	config.MemoryReadIntentPolicyVersion = chat.MemoryReadIntentPolicyVersion
+	config.MemoryReadIntentPolicySHA256 = chat.MemoryReadIntentPolicySHA256
+	config.NegativePolicyQueryGuardRequired = true
+	config.NegativePolicyQueryGuardVersion = usermemory.NegativePolicyQueryGuardVersion
+	config.NegativePolicyQueryGuardSHA256 = usermemory.NegativePolicyQueryGuardSHA256
+	config.RelevancePolicyDescriptorSHA256 = policySHA256
+	executionPolicy, err := AbstentionConfirmationValidationExecutionPolicy(providerMode)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	config.AccuracyFirstExecutionPolicy = &executionPolicy
+	return config, nil
+}
+
+func BuildDoubleConfirmationValidationProfileConfig(
+	protected ProtectedRegression,
+	costBasisSHA256 string,
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	providerCostPolicy string,
+) (ProfileConfig, error) {
+	if !validFixedMemoryJudgeAuthority(authority) ||
+		providerCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+		judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
+		return ProfileConfig{}, ErrCaptureInvalid
+	}
+	policy := usermemory.HybridShadowDoubleConfirmationProductionPolicy()
+	_, config, err := buildProfileConfigs(
+		protected,
+		costBasisSHA256,
+		providerMode,
+		CaptureModeDoubleConfirmationValidation,
+		FrozenValidationSplit,
+		policy,
+		providerCostPolicy,
+		nil,
+	)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	caseOrderSHA256, err := validationCaseOrderSHA256(protected.Pool)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	criteriaSHA256, err := productionValidationCriteriaSHA256(protected.Pool.Corpus.Criteria)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	policySHA256, err := doubleConfirmationProductionRelevancePolicySHA256()
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	config.ConfiguredCandidateJudgeProviderID = authority.ProviderID
+	config.ConfiguredCandidateJudgeProviderType = authority.ProviderType
+	config.ConfiguredCandidateJudgeBaseURLSHA256 = authority.BaseURLSHA256
+	config.ConfiguredCandidateJudgeAdapter =
+		memoryjudge.BufferedChatAbstentionConfirmationAdapterVersion
+	config.EvaluationCriteriaVersion = memoryeval.MemoryJudgeAccuracyFirstCriteriaVersionV3
+	config.ValidationCaseOrderSHA256 = caseOrderSHA256
+	config.EvaluationCriteriaSHA256 = criteriaSHA256
+	config.ProductionRelevancePolicySHA256 = policySHA256
+	config.MemoryReadIntentPolicyVersion = chat.MemoryReadIntentPolicyVersion
+	config.MemoryReadIntentPolicySHA256 = chat.MemoryReadIntentPolicySHA256
+	config.NegativePolicyQueryGuardRequired = true
+	config.NegativePolicyQueryGuardVersion = usermemory.NegativePolicyQueryGuardVersion
+	config.NegativePolicyQueryGuardSHA256 = usermemory.NegativePolicyQueryGuardSHA256
+	config.RelevancePolicyDescriptorSHA256 = policySHA256
+	executionPolicy, err := DoubleConfirmationValidationExecutionPolicy(providerMode)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	config.AccuracyFirstExecutionPolicy = &executionPolicy
+	return config, nil
+}
+
+func BuildSingleUserBoundedMissValidationProfileConfig(
+	protected ProtectedRegression,
+	costBasisSHA256 string,
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	providerCostPolicy string,
+) (ProfileConfig, error) {
+	config, err := BuildDoubleConfirmationValidationProfileConfig(
+		protected,
+		costBasisSHA256,
+		providerMode,
+		authority,
+		providerCostPolicy,
+	)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	criteriaSHA256, err := singleUserBoundedMissCriteriaSHA256(
+		protected.Pool.Corpus.Criteria,
+	)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	executionPolicy, err := SingleUserBoundedMissValidationExecutionPolicy(providerMode)
+	if err != nil {
+		return ProfileConfig{}, err
+	}
+	config.SchemaVersion =
+		"neo-chat.memory-regression-profile-config.v25-single-user-bounded-miss-validation.v1"
+	config.ReaderVersion = SingleUserBoundedMissValidationReaderVersion
+	config.CaptureMode = CaptureModeSingleUserBoundedMissValidation
+	config.EvaluationCriteriaVersion =
+		memoryeval.MemoryJudgeSingleUserBoundedMissCriteriaVersionV4
+	config.EvaluationCriteriaSHA256 = criteriaSHA256
 	config.AccuracyFirstExecutionPolicy = &executionPolicy
 	return config, nil
 }
@@ -667,7 +951,11 @@ func buildProfileConfigs(
 		captureMode == CaptureModeProductionBufferedMemoryJudgeValidation ||
 		captureMode == CaptureModeMemoryJudgeSliceDiagnostic ||
 		captureMode == CaptureModeAccuracyRepairMemoryJudge ||
-		captureMode == CaptureModeMemoryV20AbstentionDiagnostic {
+		captureMode == CaptureModeMemoryV20AbstentionDiagnostic ||
+		captureMode == CaptureModeAbstentionConfirmationMemoryJudge ||
+		captureMode == CaptureModeAbstentionConfirmationValidation ||
+		captureMode == CaptureModeDoubleConfirmationMemoryJudge ||
+		captureMode == CaptureModeDoubleConfirmationValidation {
 		if captureMode == CaptureModeJudgeFailureDiagnostic {
 			readerVersion = JudgeFailureDiagnosticReaderVersion
 			profileSchemaVersion = "neo-chat.memory-regression-profile-config.v13"
@@ -722,6 +1010,33 @@ func buildProfileConfigs(
 			if judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
 				return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
 			}
+		} else if captureMode == CaptureModeAbstentionConfirmationMemoryJudge {
+			readerVersion = AbstentionConfirmationMemoryJudgeReaderVersion
+			profileSchemaVersion =
+				"neo-chat.memory-regression-profile-config.v20-confirmation-development.v1"
+			if judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
+				return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
+			}
+		} else if captureMode == CaptureModeAbstentionConfirmationValidation {
+			readerVersion = AbstentionConfirmationValidationReaderVersion
+			profileSchemaVersion = "neo-chat.memory-regression-profile-config.v21"
+			if judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
+				return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
+			}
+		} else if captureMode == CaptureModeDoubleConfirmationMemoryJudge {
+			readerVersion = DoubleConfirmationMemoryJudgeReaderVersion
+			profileSchemaVersion =
+				"neo-chat.memory-regression-profile-config.v22-double-confirmation-development.v1"
+			if judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
+				return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
+			}
+		} else if captureMode == CaptureModeDoubleConfirmationValidation {
+			readerVersion = DoubleConfirmationValidationReaderVersion
+			profileSchemaVersion =
+				"neo-chat.memory-regression-profile-config.v23-double-confirmation-validation.v1"
+			if judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 {
+				return ProfileConfig{}, ProfileConfig{}, ErrCaptureInvalid
+			}
 		} else {
 			readerVersion = AccuracyFirstMemoryJudgeReaderVersion
 			profileSchemaVersion = "neo-chat.memory-regression-profile-config.v12"
@@ -737,6 +1052,18 @@ func buildProfileConfigs(
 			expectedPolicyID = usermemory.HybridRelevanceAccuracyRepairDevelopmentPolicyID
 		} else if captureMode == CaptureModeMemoryV20AbstentionDiagnostic {
 			expectedPolicyID = usermemory.HybridRelevanceV20AbstentionDiagnosticPolicyID
+		} else if captureMode == CaptureModeAbstentionConfirmationMemoryJudge {
+			expectedPolicyID =
+				usermemory.HybridRelevanceAbstentionConfirmationDevelopmentPolicyID
+		} else if captureMode == CaptureModeAbstentionConfirmationValidation {
+			expectedPolicyID =
+				usermemory.HybridRelevanceAbstentionConfirmationProductionPolicyID
+		} else if captureMode == CaptureModeDoubleConfirmationMemoryJudge {
+			expectedPolicyID =
+				usermemory.HybridRelevanceDoubleConfirmationDevelopmentPolicyID
+		} else if captureMode == CaptureModeDoubleConfirmationValidation {
+			expectedPolicyID =
+				usermemory.HybridRelevanceDoubleConfirmationProductionPolicyID
 		} else if captureMode == CaptureModeNegativePolicyGuardMemoryJudge ||
 			captureMode == CaptureModeBufferedMemoryJudge {
 			expectedPolicyID = usermemory.HybridRelevanceNegativePolicyGuardDevelopmentPolicyID
@@ -854,6 +1181,15 @@ func buildProfileConfigs(
 		common.CandidateJudgeDiagnosticCompleteness =
 			JudgeFailureDiagnosticCompletenessPolicy
 	}
+	if captureMode == CaptureModeAbstentionConfirmationMemoryJudge ||
+		captureMode == CaptureModeAbstentionConfirmationValidation ||
+		captureMode == CaptureModeDoubleConfirmationMemoryJudge ||
+		captureMode == CaptureModeDoubleConfirmationValidation {
+		common.CandidateJudgeFailureTaxonomyVersion = memoryjudge.FailureTaxonomyVersion
+		common.CandidateJudgeFailureTaxonomySHA256 = memoryjudge.FailureTaxonomySHA256
+		common.CandidateJudgeDiagnosticCompleteness =
+			JudgeFailureDiagnosticCompletenessPolicy
+	}
 	if captureMode == CaptureModeCalibration {
 		common.CalibrationPlan = developmentCalibrationPlan()
 	}
@@ -890,6 +1226,16 @@ func buildProfileConfigs(
 		policyDescriptor.CloudCandidateJudgePromptSHA256
 	candidate.CloudCandidateJudgeDecodingProfile =
 		policyDescriptor.CloudCandidateJudgeDecodingProfile
+	candidate.CloudCandidateJudgeAbstentionConfirmationRequired =
+		policyDescriptor.CloudCandidateJudgeAbstentionConfirmationRequired
+	if policyDescriptor.CloudCandidateJudgeMaximumAbstentionConfirmations > 1 {
+		candidate.CloudCandidateJudgeMaximumAbstentionConfirmations =
+			policyDescriptor.CloudCandidateJudgeMaximumAbstentionConfirmations
+	}
+	candidate.CloudCandidateJudgeConfirmationPromptVersion =
+		policyDescriptor.CloudCandidateJudgeConfirmationPromptVersion
+	candidate.CloudCandidateJudgeConfirmationPromptSHA256 =
+		policyDescriptor.CloudCandidateJudgeConfirmationPromptSHA256
 	candidate.MemoryToolRouteRequired = policyDescriptor.MemoryToolRouteRequired
 	candidate.MemoryToolRouteModelID = policyDescriptor.MemoryToolRouteModelID
 	candidate.MemoryToolRouteContractVersion =
@@ -1291,6 +1637,145 @@ func CaptureProductionBufferedMemoryJudgeValidation(
 	return profile, nil
 }
 
+func CaptureAbstentionConfirmationValidation(
+	ctx context.Context,
+	seedDB *sql.DB,
+	runtimeDB *sql.DB,
+	runID string,
+	fullPool memoryauthor.RegressionPool,
+	index FixtureIndex,
+	seed SeedResult,
+	provider usermemory.HybridShadowProvider,
+	judge usermemory.HybridCandidateJudge,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	profileID string,
+	configurationSHA256 string,
+	cost memoryeval.ProviderCosts,
+) (CapturedProfile, error) {
+	if err := validateCaptureDatabases(ctx, seedDB, runtimeDB, runID, seed); err != nil {
+		return CapturedProfile{}, err
+	}
+	if err := validateSeedSplit(fullPool, seed.Cases, FrozenValidationSplit); err != nil {
+		return CapturedProfile{}, err
+	}
+	hybrid, hybridOK := provider.(*accuracyFirstHybridProvider)
+	candidateJudge, judgeOK := judge.(*accuracyFirstCandidateJudge)
+	if !hybridOK || !judgeOK || hybrid.controller == nil ||
+		hybrid.controller != candidateJudge.controller ||
+		hybrid.controller.maximumJudgeRetries != 2 ||
+		!hybrid.controller.judgeFailureDiagnostics ||
+		!candidateJudge.confirmationEnabled ||
+		!validFixedMemoryJudgeAuthority(authority) {
+		return CapturedProfile{}, ErrCaptureInvalid
+	}
+	profile, err := captureCandidateProfile(
+		ctx,
+		runtimeDB,
+		index,
+		seed.Cases,
+		provider,
+		usermemory.HybridShadowAbstentionConfirmationProductionPolicy(),
+		profileID,
+		configurationSHA256,
+		cost,
+		judge,
+		nil,
+	)
+	if err != nil {
+		return CapturedProfile{}, err
+	}
+	profile.Profile.ReaderVersion = AbstentionConfirmationValidationReaderVersion
+	return profile, nil
+}
+
+func CaptureDoubleConfirmationValidation(
+	ctx context.Context,
+	seedDB *sql.DB,
+	runtimeDB *sql.DB,
+	runID string,
+	fullPool memoryauthor.RegressionPool,
+	index FixtureIndex,
+	seed SeedResult,
+	provider usermemory.HybridShadowProvider,
+	judge usermemory.HybridCandidateJudge,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	profileID string,
+	configurationSHA256 string,
+	cost memoryeval.ProviderCosts,
+) (CapturedProfile, error) {
+	if err := validateCaptureDatabases(ctx, seedDB, runtimeDB, runID, seed); err != nil {
+		return CapturedProfile{}, err
+	}
+	if err := validateSeedSplit(fullPool, seed.Cases, FrozenValidationSplit); err != nil {
+		return CapturedProfile{}, err
+	}
+	hybrid, hybridOK := provider.(*accuracyFirstHybridProvider)
+	candidateJudge, judgeOK := judge.(*accuracyFirstCandidateJudge)
+	if !hybridOK || !judgeOK || hybrid.controller == nil ||
+		hybrid.controller != candidateJudge.controller ||
+		hybrid.controller.maximumJudgeRetries != 2 ||
+		!hybrid.controller.judgeFailureDiagnostics ||
+		!candidateJudge.confirmationEnabled ||
+		!validFixedMemoryJudgeAuthority(authority) {
+		return CapturedProfile{}, ErrCaptureInvalid
+	}
+	profile, err := captureCandidateProfile(
+		ctx,
+		runtimeDB,
+		index,
+		seed.Cases,
+		provider,
+		usermemory.HybridShadowDoubleConfirmationProductionPolicy(),
+		profileID,
+		configurationSHA256,
+		cost,
+		judge,
+		nil,
+	)
+	if err != nil {
+		return CapturedProfile{}, err
+	}
+	profile.Profile.ReaderVersion = DoubleConfirmationValidationReaderVersion
+	return profile, nil
+}
+
+func CaptureSingleUserBoundedMissValidation(
+	ctx context.Context,
+	seedDB *sql.DB,
+	runtimeDB *sql.DB,
+	runID string,
+	fullPool memoryauthor.RegressionPool,
+	index FixtureIndex,
+	seed SeedResult,
+	provider usermemory.HybridShadowProvider,
+	judge usermemory.HybridCandidateJudge,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	profileID string,
+	configurationSHA256 string,
+	cost memoryeval.ProviderCosts,
+) (CapturedProfile, error) {
+	profile, err := CaptureDoubleConfirmationValidation(
+		ctx,
+		seedDB,
+		runtimeDB,
+		runID,
+		fullPool,
+		index,
+		seed,
+		provider,
+		judge,
+		authority,
+		profileID,
+		configurationSHA256,
+		cost,
+	)
+	if err != nil {
+		return CapturedProfile{}, err
+	}
+	profile.Profile.ReaderVersion = SingleUserBoundedMissValidationReaderVersion
+	return profile, nil
+}
+
 func validateCaptureDatabases(
 	ctx context.Context,
 	seedDB *sql.DB,
@@ -1366,7 +1851,11 @@ func captureCandidateProfile(
 			policy.ID != usermemory.HybridRelevanceNegativePolicyGuardProductionPolicyID &&
 			policy.ID != usermemory.HybridRelevanceSliceDiagnosticPolicyID &&
 			policy.ID != usermemory.HybridRelevanceAccuracyRepairDevelopmentPolicyID &&
-			policy.ID != usermemory.HybridRelevanceV20AbstentionDiagnosticPolicyID) {
+			policy.ID != usermemory.HybridRelevanceV20AbstentionDiagnosticPolicyID &&
+			policy.ID != usermemory.HybridRelevanceAbstentionConfirmationDevelopmentPolicyID &&
+			policy.ID != usermemory.HybridRelevanceAbstentionConfirmationProductionPolicyID &&
+			policy.ID != usermemory.HybridRelevanceDoubleConfirmationDevelopmentPolicyID &&
+			policy.ID != usermemory.HybridRelevanceDoubleConfirmationProductionPolicyID) {
 		return CapturedProfile{}, ErrCaptureInvalid
 	}
 	repository := usermemory.NewPostgresRepository(runtimeDB)
@@ -1392,6 +1881,18 @@ func captureCandidateProfile(
 				judge,
 				recorder,
 				policy.CloudCandidateJudgeModelID,
+			)
+		} else if policy.ID ==
+			usermemory.HybridRelevanceAbstentionConfirmationDevelopmentPolicyID ||
+			policy.ID == usermemory.HybridRelevanceAbstentionConfirmationProductionPolicyID {
+			decoratedJudge, judgeErr = NewAbstentionConfirmationCandidateJudgeDecorator(
+				judge, recorder, policy.CloudCandidateJudgeModelID,
+			)
+		} else if policy.ID ==
+			usermemory.HybridRelevanceDoubleConfirmationDevelopmentPolicyID ||
+			policy.ID == usermemory.HybridRelevanceDoubleConfirmationProductionPolicyID {
+			decoratedJudge, judgeErr = NewDoubleConfirmationCandidateJudgeDecorator(
+				judge, recorder, policy.CloudCandidateJudgeModelID,
 			)
 		} else {
 			decoratedJudge, judgeErr = NewCandidateJudgeDecorator(
@@ -1449,7 +1950,11 @@ func captureCandidateProfile(
 			policy.ID == usermemory.HybridRelevanceNegativePolicyGuardProductionPolicyID ||
 			policy.ID == usermemory.HybridRelevanceSliceDiagnosticPolicyID ||
 			policy.ID == usermemory.HybridRelevanceAccuracyRepairDevelopmentPolicyID ||
-			policy.ID == usermemory.HybridRelevanceV20AbstentionDiagnosticPolicyID) &&
+			policy.ID == usermemory.HybridRelevanceV20AbstentionDiagnosticPolicyID ||
+			policy.ID == usermemory.HybridRelevanceAbstentionConfirmationDevelopmentPolicyID ||
+			policy.ID == usermemory.HybridRelevanceAbstentionConfirmationProductionPolicyID ||
+			policy.ID == usermemory.HybridRelevanceDoubleConfirmationDevelopmentPolicyID ||
+			policy.ID == usermemory.HybridRelevanceDoubleConfirmationProductionPolicyID) &&
 			caseIndex+1 < len(cases) {
 			accuracyProvider, ok := provider.(*accuracyFirstHybridProvider)
 			if !ok || accuracyProvider.controller == nil {
@@ -1480,6 +1985,18 @@ func captureCandidateProfile(
 			readerVersion = AccuracyRepairMemoryJudgeReaderVersion
 		} else if policy.ID == usermemory.HybridRelevanceV20AbstentionDiagnosticPolicyID {
 			readerVersion = MemoryV20AbstentionDiagnosticReaderVersion
+		} else if policy.ID ==
+			usermemory.HybridRelevanceAbstentionConfirmationDevelopmentPolicyID {
+			readerVersion = AbstentionConfirmationMemoryJudgeReaderVersion
+		} else if policy.ID ==
+			usermemory.HybridRelevanceAbstentionConfirmationProductionPolicyID {
+			readerVersion = AbstentionConfirmationValidationReaderVersion
+		} else if policy.ID ==
+			usermemory.HybridRelevanceDoubleConfirmationDevelopmentPolicyID {
+			readerVersion = DoubleConfirmationMemoryJudgeReaderVersion
+		} else if policy.ID ==
+			usermemory.HybridRelevanceDoubleConfirmationProductionPolicyID {
+			readerVersion = DoubleConfirmationValidationReaderVersion
 		}
 		providerEgressPolicy =
 			memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1

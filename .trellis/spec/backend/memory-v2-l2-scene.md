@@ -2,14 +2,17 @@
 
 ## 1. Scope / Trigger
 
-Apply this contract when changing migration `062_memory_l2_scene`, L2 Scene
-refresh/embedding/purge jobs, derived Scene retrieval, L2 promotion/rollback,
-Scene governance APIs/UI, or either `MEMORY_L2_SCENE_*` runtime flag.
+Apply this contract when changing migration `062_memory_l2_scene`, migration
+`073_memory_single_user_derived_reader_preview`, L2 Scene refresh/embedding/
+purge jobs, derived Scene retrieval, L2 promotion/rollback, Scene governance
+APIs/UI, or either `MEMORY_L2_SCENE_*` runtime flag.
 
 L2 Scene is rebuildable derived data over current canonical L1. It never owns
-a user fact and never permits direct plaintext editing. PR11 does not implement
-L3 Persona or Hindsight and must ship with the L2 profile in `shadow` and both
-runtime flags disabled because no formal promotion evidence currently exists.
+a user fact and never permits direct plaintext editing. PR11 ships with the L2
+profile in `shadow` and both runtime flags default-off. Migration `073` adds a
+separate sole-user preview authority for an owner who explicitly accepts use
+without formal promotion; it does not alter or fabricate formal promotion
+evidence.
 
 ## 2. Signatures
 
@@ -73,6 +76,9 @@ Migration-owner-only capabilities:
 ```text
 memory_operator_promote_l2_scene(UUID, JSONB, JSONB)
 memory_operator_rollback_l2_scene(UUID, TEXT)
+memory_operator_set_single_user_derived_reader_preview(
+  UUID, UUID, BOOLEAN, TEXT
+)
 ```
 
 ## 3. Contracts
@@ -143,10 +149,12 @@ memory_operator_rollback_l2_scene(UUID, TEXT)
   Scenes, never exceeds 500 estimated L2 tokens, and fails open to L1 at the
   two-second cutoff.
 - Shadow final IDs never enter the prompt or Usage. Active injection requires
-  both env reader enablement and database authority: an active L2 profile, user
-  `l2_mode != off`, effective Memory Use/Search, current L1 hybrid reader
-  pointer, current L2 generation, active Scene, current members, and live
-  Sensitive authorization.
+  env Reader enablement, user `l2_mode != off`, effective Memory Use/Search,
+  current L2 generation, an active Scene with current members, and live
+  Sensitive authorization. Database Reader authority is either the unchanged
+  formal active-profile plus current-L1-pointer lane or migration `073`'s
+  latest enabled sole-user preview event. The preview lane requires a ready L2
+  and L3 artifact before enablement and never changes the formal L1 pointer.
 - Promotion is an explicit migration-owner transaction separate from the
   evaluator. It requires a strict passing 500-case report with all benchmark
   thresholds and zero leaks, at least seven elapsed days and 100 eligible
@@ -160,6 +168,12 @@ memory_operator_rollback_l2_scene(UUID, TEXT)
 - Promotion and rollback append immutable bounded events. Rollback changes only
   L2 reader authority and active Scene lifecycle; it does not delete canonical
   L1, change L3 generation, or prevent L1 chat fallback.
+- Preview activation is distinct from promotion. It requires the exact literal
+  `I_ACCEPT_SINGLE_USER_L2_L3_READER_PREVIEW_WITHOUT_FORMAL_PROMOTION`, exactly
+  one database user, enabled L2/L3 policy, current ready Scene and Persona
+  projections, and zero pending/processing/dead derived jobs. A second user
+  atomically appends `USER_POPULATION_CHANGED` disable evidence and reconciles
+  derived artifacts fail-closed; deleting that user never auto-enables preview.
 - Governance snapshot exposes bounded profile/generation/status metadata and
   Scene summaries. Detail hydrates member content/evidence only from current
   authorized L1 and otherwise returns source-deleted/unavailable markers.
@@ -170,13 +184,18 @@ memory_operator_rollback_l2_scene(UUID, TEXT)
 
 - `go_api_runtime` receives only Scene search and governance EXECUTE.
   `memory_worker_runtime` receives only Scene refresh/purge/embedding lease
-  EXECUTE. Promotion functions remain migration-owner-only.
+  EXECUTE. Promotion and preview activation remain migration-owner-only;
+  runtime roles receive no preview-event table CRUD or activation EXECUTE.
 - Every application capability is `SECURITY DEFINER`, owned by
   `memory_runtime_owner`, and pins the application schema followed by
   `pg_catalog, pg_temp`.
 - Down refuses any non-shadow promotion event, Scene/search observation,
   non-empty derived content/history, or active L2 reader pointer. A clean
   `061 -> 062 -> 061 -> 062` discards only empty/rebuildable PR11 state.
+- Migration `073` down is clean only before any preview event. After activation,
+  operational rollback appends a disable event and sets both derived Reader
+  flags false while retaining schema `073` and its audit. Account deletion may
+  cascade that user's events; direct event UPDATE/DELETE remains blocked.
 
 ## 4. Validation & Error Matrix
 
@@ -194,6 +213,8 @@ memory_operator_rollback_l2_scene(UUID, TEXT)
 | Query embedding or rerank fails | Use Exact/BM25 or RRF fallback; L1/chat continues. |
 | Final Scene would exceed 500 tokens | Skip it; never exceed the L2 hard budget. |
 | Active env flag but database profile/L1 pointer/gates are absent | No L2 injection and no claim of promotion. |
+| Sole-user preview has no ready L2 or L3 projection, has derived work, or user count differs from one | Preview enable aborts without an event or lifecycle change. |
+| A second user is inserted after preview enable | Append disable evidence and reconcile L2/L3 out of active state in the same transaction. |
 | Benchmark/canary/leak/dead-letter gate fails | Promotion transaction aborts without changing reader authority. |
 | Runtime attempts promotion or direct table CRUD | PostgreSQL permission denied. |
 | Down sees promotion/history/derived state | Guarded refusal; schema remains applied. |
@@ -206,7 +227,9 @@ memory_operator_rollback_l2_scene(UUID, TEXT)
   Provider response can complete.
 - **Base**: flags are false or no formal promotion exists. Rebuild requests can
   queue, purge still executes, UI shows `shadow/off`, and v1 L1 remains the
-  only prompt/Usage authority with zero Scene Provider calls.
+  only prompt/Usage authority with zero Scene Provider calls. A separately
+  enabled migration-`073` sole-user preview is allowed only under its exact
+  readiness, population, audit, and environment gates.
 - **Bad**: summarize Conversation L1 into a Project Scene, trust Provider
   sensitivity/member IDs, leave a deleted member readable until refresh,
   silently re-enable a disabled topic, inject all navigation rows, or make a
@@ -231,6 +254,11 @@ memory_operator_rollback_l2_scene(UUID, TEXT)
   response fences, derived embedding completion, stale/purge, active search,
   promotion denial/success/rollback with microsecond-aligned canary boundaries,
   runtime role denial, and account cascade.
+- PostgreSQL 17 preview: `072 -> 073 -> 072 -> 073` before events; exact-literal
+  and readiness validation; real active prepare/record; unchanged null L1
+  pointer; zero formal promotion events; replay/conflict; append-only audit;
+  runtime denial; second-user auto-disable without auto-restore; manual disable;
+  account cascade; and down refusal after event history.
 - Frontend: server-only Scene composition, profile/status/member/evidence
   rendering, disable/enable/rebuild/correction-through-L1, stale/error/empty
   states, keyboard names, and no local-mode or direct-derived mutation path.
@@ -262,5 +290,6 @@ default-off independent Scene lane
   -> immediate stale on every L1 authority change + 24h purge
   -> relevant-only hybrid shadow observations
   -> explicit benchmark/canary promotion or independent rollback
+  -> or exact sole-user audited preview without formal-promotion mutation
   -> governed L1 correction and rebuild, never direct Scene authority
 ```

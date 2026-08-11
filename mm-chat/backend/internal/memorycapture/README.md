@@ -654,6 +654,134 @@ SHA-256 values are
 Both versions are immutable failed evidence. Neither selects a policy or
 authorizes a rerun, Validation, production, or promotion.
 
+The abstention-confirmation successor keeps primary prompt v2 and invokes the
+separately hashed prompt v3 only after a valid empty primary result. It uses
+fresh Development and schema-v21 Validation profile/report/run/cost identities,
+confirmation-aware attempt/token telemetry, strict Fake non-evidence, and
+independent Vault approvals. The 300-case Fake Development passed, while the
+100-case PostgreSQL 17 Fake Validation completed with 55 confirmations and
+correctly remained Yellow/non-passing.
+
+The first live Development wrapper invocation stopped before Provider work
+because `run-memory-regression.sh` initially omitted the two confirmation modes
+from its host Luna credential copy predicates. The wrapper destroyed both
+credential copies and all scoped runtime objects. The predicates and
+live-shaped shell regression were fixed; that consumed authority was not
+automatically rerun.
+
+Under a fresh owner authority, the replacement live Development run
+`memory-regression-20260807t100046z-3c7d216f` completed all 300 cases and
+passed every unchanged global and slice gate. Candidate Recall@20, Final
+Recall@5, and current-fact accuracy were `1.0/0.9897435897/0.9878787879`, with
+zero false injection across 135 negative cases. Three logical confirmations
+produced four attempts, including one retry; eleven total recovered Judge
+retries left zero terminal cases.
+Actual Judge authority reconciled at `179/1800` requests,
+`321531/2000000` input tokens, and `22912/230400` output tokens. All privacy
+counters were zero, exported credentials and scoped runtime objects were
+destroyed, and live flags remained off. The report is Development evidence,
+not promotion authority; live schema-v21 Validation and production launch
+remain blocked.
+
+The next owner-authorized schema-v21 Validation invocation also stopped before
+Provider work. The Validation Vault wrapper and its fake runner used an older
+approval literal without `FROZEN`, while the generic runner and Go live gate
+required the exact frozen-Validation literal. The Vault export completed, but
+the generic runner rejected the mismatch before Provider construction or
+isolated regression runtime creation. Both credential copies and the export
+container were destroyed; no report was published. The wrapper and lifecycle
+test now use the frozen literal, and the test asserts parity across the wrapper,
+generic runner, and Go gate. The consumed authority was not rerun; Validation
+and production launch remain blocked.
+
+Under a fresh owner authority, the repaired schema-v21 live Validation then
+completed all 100 cases as run
+`memory-regression-20260808t131254z-f11b8601`. Overall Candidate Recall@20,
+Final Recall@5, and current-fact accuracy were
+`1.0/0.9846153846/0.9818181818`, false injection was zero across 45 negative
+cases, and every safety counter was zero. One confirmation request ran and five
+typed transport retries recovered with zero terminal cases. Authority
+reconciled at `61/600` requests, `110083/600000` input tokens, and
+`7808/76800` output tokens.
+
+The single remaining Judge abstention affected the overlapping
+`mixed_language_entity` and `stable_fact` slice memberships. Each slice reached
+only `0.9` current-fact accuracy and failed the unchanged `0.95` criterion.
+The immutable result is Yellow `retain_beta`, `passed=false`, and
+`releaseEligible=false`. Credentials and scoped runtime objects were destroyed;
+live flags stayed off. No policy promotion or launch was attempted.
+
+The consumed schema-v23 result remains immutable. The prospective single-user
+bounded-miss successor changes only evaluation criteria: overall current-fact
+accuracy remains `0.95`, required-slice current-fact accuracy becomes `0.90`,
+and both false-injection rate and case count must be exactly zero. Candidate
+Recall, Final Recall, token, safety, privacy, cost, cleanup, reader, prompt,
+decoder, BGE intersection, negative guard, retry, and double-confirmation
+semantics remain unchanged. The criteria identity is
+`neo-chat.memory-benchmark-criteria.v4-single-user-bounded-miss`; it cannot be
+bound to schema-v22 or schema-v23 evidence.
+
+Schema-v24 Development and schema-v25 Validation have independent
+profile/reader/report/run/cost/capture identities and independent live approval
+literals. Their cost authorities retain the byte-equivalent v4 request shape:
+Development is bounded by `2700/2700000/345600` Judge requests/input/output
+tokens, and Validation by `900/900000/115200`. Any non-zero false injection in
+schema-v25 is Orange `FALSE_INJECTION_NON_ZERO`; Fake Validation is always
+Yellow `FAKE_PROTOCOL_NON_EVIDENCE` and can never grant launch authority.
+
+The PostgreSQL 17 Fake lifecycle completed schema-v24 run
+`memory-regression-20260809t090107z-83ce1740` and schema-v25 run
+`memory-regression-20260809t090148z-629b20fa`. Development completed `300/300`
+with Candidate Recall@20, Final Recall@5, and current-fact accuracy all `1.0`,
+false injection `0/135`, `495` Judge attempts, `330` confirmation attempts,
+and `886206` input-token upper bound. Validation completed the exact 100-case
+order as `35/10/55/0` empty/guard/Judge-completed/failed, with all quality
+metrics `1.0`, false injection `0/45`, `165` Judge attempts, `110`
+confirmation attempts, and `294993` input-token upper bound. It correctly
+returned non-zero with Yellow Fake-only evidence.
+
+The criteria SHA-256 is
+`2c7e7325d4f8bc5d991857b9a8a90d76d866da98ce26a6c171072351ce43e779`.
+Schema-v24 report/manifest SHA-256 values are
+`aba8b0d81e3a87c9227671a7cd3bc65467f376167f3111be8936512264ba98e9`
+and `638d0d128781dc0d65a4f832366179260ce43f5e4c91c5c286b364bad888511b`;
+schema-v25 values are
+`e0d431b2f49e0fec7c1295a41c1c0c58d1952d934e6623d84ccbe972f1f997d5`
+and `6dc9d45e43957c65f6599fa9fed053cf3c407feed11e20cb67fe74c298233fb4`.
+All artifacts are mode `0600`, both isolated Compose projects were destroyed,
+and no Provider credential or live quota authority was used. The private Fake
+root is
+`/var/tmp/neo-chat-single-user-bounded-miss-v24-v25-fake-20260809T090053Z`.
+
+The dedicated Vault paths are:
+
+```bash
+bash scripts/run-memory-single-user-bounded-miss-development-from-vault.sh \
+  --cost-basis /secure/eval/memory-single-user-bounded-miss-development-v24.json \
+  --output-dir /secure/eval/native-memory-runs \
+  --credential-export-approval \
+    I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_DEVELOPMENT_CREDENTIALS \
+  --siliconflow-live-approval \
+    I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --single-user-bounded-miss-development-approval \
+    I_UNDERSTAND_THIS_USES_REAL_MEMORY_SINGLE_USER_BOUNDED_MISS_DEVELOPMENT_QUOTA
+
+bash scripts/run-memory-single-user-bounded-miss-validation-from-vault.sh \
+  --cost-basis /secure/eval/memory-single-user-bounded-miss-validation-v25.json \
+  --output-dir /secure/eval/native-memory-runs \
+  --credential-export-approval \
+    I_UNDERSTAND_THIS_EXPORTS_ACTIVE_MEMORY_VALIDATION_CREDENTIALS \
+  --siliconflow-live-approval \
+    I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --single-user-bounded-miss-validation-approval \
+    I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_SINGLE_USER_BOUNDED_MISS_VALIDATION_QUOTA
+```
+
+No schema-v24 or schema-v25 live authority has been granted or consumed yet.
+Live Validation remains blocked until a fresh schema-v24 Development passes;
+launch remains blocked until both fresh live phases pass and is limited to the
+current sole exact authenticated UUID.
+
 ## Tests
 
 ```bash
@@ -686,6 +814,12 @@ transport_stable_memory_judge_development.go Schema-v14 report/reconciliation au
 transport_stable_memory_judge_manifest.go Schema-v14 Development manifest authority
 production_memory_judge_validation.go Schema-v15 production-policy Validation report/manifest authority
 production_buffered_memory_judge_validation.go Schema-v18 production-v2 buffered Validation authority
+abstention_confirmation_memory_judge_development.go Versioned confirmation Development report/manifest authority
+abstention_confirmation_validation.go Schema-v21 confirmation Validation report/manifest authority
+double_confirmation_memory_judge_development.go Schema-v22 double-confirmation Development authority
+double_confirmation_validation.go Schema-v23 double-confirmation Validation authority
+single_user_bounded_miss_development.go Schema-v24 prospective criteria Development authority
+single_user_bounded_miss_validation.go Schema-v25 prospective criteria Validation authority
 accuracy_first_providers.go            Global serial gate, retry, cooldown, and aggregate telemetry
 ```
 

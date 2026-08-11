@@ -2,9 +2,11 @@ package memoryeval
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -145,6 +147,107 @@ func TestEvaluateAccuracyFirstCalibrationTreatsLatencyAsDiagnostic(t *testing.T)
 	if evaluation.Passed {
 		t.Fatal("accuracy-first evaluation ignored quality drift")
 	}
+}
+
+func TestEvaluateSingleUserBoundedMissSeparatesOverallAndRequiredSliceThresholds(t *testing.T) {
+	cases, observations := boundedMissCases(20)
+	observations[0].FinalMemoryIDs = nil
+	observations[0].InjectedMemoryIDs = nil
+	evaluation, err := EvaluateSingleUserBoundedMissCalibrationSelectionWithProviderEgressPolicy(
+		cases,
+		observations,
+		benchmarkCriteria(),
+		ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stable := evaluation.Slices["stable_fact"]
+	if !evaluation.Passed || evaluation.Metrics.CurrentFactAccuracy != 0.95 ||
+		stable.Metrics.CurrentFactAccuracy != 0.95 || !stable.Passed {
+		t.Fatalf("one of twenty bounded misses should pass: %#v", evaluation)
+	}
+
+	cases, observations = boundedMissCases(10)
+	observations[0].FinalMemoryIDs = nil
+	observations[0].InjectedMemoryIDs = nil
+	evaluation, err = EvaluateSingleUserBoundedMissCalibrationSelectionWithProviderEgressPolicy(
+		cases,
+		observations,
+		benchmarkCriteria(),
+		ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stable = evaluation.Slices["stable_fact"]
+	if evaluation.Passed || evaluation.Metrics.CurrentFactAccuracy != 0.9 ||
+		!stable.Passed || stable.Metrics.CurrentFactAccuracy != 0.9 {
+		t.Fatalf("9/10 slice should pass while 0.90 overall fails: %#v", evaluation)
+	}
+
+	observations[1].FinalMemoryIDs = nil
+	observations[1].InjectedMemoryIDs = nil
+	evaluation, err = EvaluateSingleUserBoundedMissCalibrationSelectionWithProviderEgressPolicy(
+		cases,
+		observations,
+		benchmarkCriteria(),
+		ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stable = evaluation.Slices["stable_fact"]
+	if stable.Passed || stable.Metrics.CurrentFactAccuracy != 0.8 {
+		t.Fatalf("8/10 required slice should fail: %#v", stable)
+	}
+}
+
+func TestEvaluateSingleUserBoundedMissRequiresZeroFalseInjection(t *testing.T) {
+	cases, observations := boundedMissCases(20)
+	observations[0].InjectedMemoryIDs = append(
+		observations[0].InjectedMemoryIDs,
+		"memory-unexpected",
+	)
+	evaluation, err := EvaluateSingleUserBoundedMissCalibrationSelectionWithProviderEgressPolicy(
+		cases,
+		observations,
+		benchmarkCriteria(),
+		ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if evaluation.Passed || evaluation.Metrics.FalseInjectionCases != 1 ||
+		evaluation.Metrics.FalseInjectionRate != 0.05 ||
+		!slices.Contains(evaluation.Failures, "false-injection cases above criterion") ||
+		!slices.Contains(evaluation.Failures, "false-injection rate above criterion") {
+		t.Fatalf("non-zero false injection passed: %#v", evaluation)
+	}
+}
+
+func boundedMissCases(count int) ([]GoldenCase, []CaseObservation) {
+	cases := make([]GoldenCase, 0, count)
+	observations := make([]CaseObservation, 0, count)
+	for index := 0; index < count; index++ {
+		caseID := fmt.Sprintf("bounded-miss-case-%02d", index)
+		memoryID := fmt.Sprintf("bounded-miss-memory-%02d", index)
+		cases = append(cases, GoldenCase{
+			ID:                        caseID,
+			Slices:                    []string{"stable_fact"},
+			ExpectedRelevantMemoryIDs: []string{memoryID},
+			ExpectedCurrentMemoryIDs:  []string{memoryID},
+		})
+		observations = append(observations, CaseObservation{
+			CaseID:              caseID,
+			CandidateMemoryIDs:  []string{memoryID},
+			FinalMemoryIDs:      []string{memoryID},
+			InjectedMemoryIDs:   []string{memoryID},
+			PromptMemoryTokens:  100,
+			LatencyMilliseconds: 25,
+		})
+	}
+	return cases, observations
 }
 
 func TestEvaluateProviderEgressPolicyAuthorizesOnlyIrrelevantCandidates(t *testing.T) {

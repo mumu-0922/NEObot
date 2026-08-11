@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"sync"
 
 	"neo-chat/mm-chat/backend/internal/chat"
 	"neo-chat/mm-chat/backend/internal/ragproviders"
@@ -92,9 +93,13 @@ func fakeProtocolVector(value string) []float32 {
 }
 
 type FakeProtocolCandidateJudge struct {
-	modelID       string
-	promptVersion string
-	promptSHA256  string
+	modelID                          string
+	promptVersion                    string
+	promptSHA256                     string
+	abstentionConfirmation           bool
+	requiredConfirmationAttempts     int
+	confirmationAttemptsSincePrimary int
+	mu                               sync.Mutex
 }
 
 func NewFakeProtocolCandidateJudge(modelID string) *FakeProtocolCandidateJudge {
@@ -113,16 +118,65 @@ func NewFakeProtocolAccuracyCandidateJudge(modelID string) *FakeProtocolCandidat
 	}
 }
 
+// NewFakeProtocolAbstentionConfirmationCandidateJudge deliberately abstains
+// on every primary candidate-bearing request, then selects the bounded prefix
+// on the confirmation request. It is lifecycle evidence only and forces the
+// confirmation branch without claiming semantic quality.
+func NewFakeProtocolAbstentionConfirmationCandidateJudge(
+	modelID string,
+) *FakeProtocolCandidateJudge {
+	return &FakeProtocolCandidateJudge{
+		modelID:                      modelID,
+		promptVersion:                usermemory.HybridCandidateJudgeAccuracyPromptVersion,
+		promptSHA256:                 usermemory.HybridCandidateJudgeAccuracyPromptSHA256,
+		abstentionConfirmation:       true,
+		requiredConfirmationAttempts: 1,
+	}
+}
+
+// NewFakeProtocolDoubleConfirmationCandidateJudge forces the complete v4
+// branch: primary and first confirmation are valid empty selections, while
+// the second confirmation selects the bounded prefix. It remains lifecycle-
+// only evidence and never supplies semantic quality authority.
+func NewFakeProtocolDoubleConfirmationCandidateJudge(
+	modelID string,
+) *FakeProtocolCandidateJudge {
+	judge := NewFakeProtocolAbstentionConfirmationCandidateJudge(modelID)
+	judge.requiredConfirmationAttempts = 2
+	return judge
+}
+
 func (judge *FakeProtocolCandidateJudge) JudgeHybridCandidates(
 	_ context.Context,
 	input usermemory.HybridCandidateJudgeInput,
 ) (usermemory.HybridCandidateJudgeResult, error) {
+	promptVersion := judge.promptVersion
+	promptSHA256 := judge.promptSHA256
 	selected := make([]int, 0, min(len(input.Candidates), usermemory.HybridShadowFinalLimit))
-	for ordinal := range input.Candidates {
-		if len(selected) == usermemory.HybridShadowFinalLimit {
-			break
+	selectCandidates := !judge.abstentionConfirmation
+	if input.PromptPurpose == usermemory.HybridCandidateJudgePromptPurposeAbstentionConfirmation {
+		promptVersion = usermemory.HybridCandidateJudgeConfirmationPromptVersion
+		promptSHA256 = usermemory.HybridCandidateJudgeConfirmationPromptSHA256
+		if judge.abstentionConfirmation {
+			judge.mu.Lock()
+			judge.confirmationAttemptsSincePrimary++
+			selectCandidates = judge.confirmationAttemptsSincePrimary >=
+				judge.requiredConfirmationAttempts
+			judge.mu.Unlock()
 		}
-		selected = append(selected, ordinal)
+	} else if judge.abstentionConfirmation &&
+		input.PromptPurpose == usermemory.HybridCandidateJudgePromptPurposeAccuracyPrimary {
+		judge.mu.Lock()
+		judge.confirmationAttemptsSincePrimary = 0
+		judge.mu.Unlock()
+	}
+	if selectCandidates {
+		for ordinal := range input.Candidates {
+			if len(selected) == usermemory.HybridShadowFinalLimit {
+				break
+			}
+			selected = append(selected, ordinal)
+		}
 	}
 	body, _ := json.Marshal(map[string]any{
 		"schemaVersion":    usermemory.HybridCandidateJudgeOutputSchemaVersion,
@@ -131,8 +185,8 @@ func (judge *FakeProtocolCandidateJudge) JudgeHybridCandidates(
 	return usermemory.HybridCandidateJudgeResult{
 		RawOutput:     body,
 		ModelID:       judge.modelID,
-		PromptVersion: judge.promptVersion,
-		PromptSHA256:  judge.promptSHA256,
+		PromptVersion: promptVersion,
+		PromptSHA256:  promptSHA256,
 	}, nil
 }
 

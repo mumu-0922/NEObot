@@ -633,6 +633,14 @@ func productionValidationCriteriaSHA256(criteria memoryeval.Criteria) (string, e
 	return sha256JSON(value)
 }
 
+func singleUserBoundedMissCriteriaSHA256(criteria memoryeval.Criteria) (string, error) {
+	value, err := memoryeval.MemoryJudgeSingleUserBoundedMissCriteriaV4(criteria)
+	if err != nil {
+		return "", ErrCaptureInvalid
+	}
+	return sha256JSON(value)
+}
+
 func productionRelevancePolicySHA256() (string, error) {
 	return relevancePolicyDescriptorSHA256(
 		usermemory.HybridShadowFixedMemoryJudgeProductionPolicy(),

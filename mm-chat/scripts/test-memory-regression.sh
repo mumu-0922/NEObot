@@ -65,6 +65,10 @@ MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_BASE_URL_SHA256=
 MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_MODEL=
 MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_APPROVAL=NOT_AUTHORIZED
 MEMORY_REGRESSION_PRODUCTION_MEMORY_JUDGE_VALIDATION_APPROVAL=NOT_AUTHORIZED
+MEMORY_REGRESSION_DOUBLE_CONFIRMATION_DEVELOPMENT_APPROVAL=NOT_AUTHORIZED
+MEMORY_REGRESSION_DOUBLE_CONFIRMATION_VALIDATION_APPROVAL=NOT_AUTHORIZED
+MEMORY_REGRESSION_SINGLE_USER_BOUNDED_MISS_DEVELOPMENT_APPROVAL=NOT_AUTHORIZED
+MEMORY_REGRESSION_SINGLE_USER_BOUNDED_MISS_VALIDATION_APPROVAL=NOT_AUTHORIZED
 EOF
 chmod 600 "${env_file}"
 
@@ -184,6 +188,22 @@ if live.get("environment", {}).get(
     "MM_CHAT_MEMORY_REGRESSION_LIVE_PRODUCTION_MEMORY_JUDGE_VALIDATION_APPROVAL"
 ) != "NOT_AUTHORIZED":
     raise SystemExit("Memory regression topology: production Validation approval default drift")
+if live.get("environment", {}).get(
+    "MM_CHAT_MEMORY_REGRESSION_LIVE_DOUBLE_CONFIRMATION_DEVELOPMENT_APPROVAL"
+) != "NOT_AUTHORIZED":
+    raise SystemExit("Memory regression topology: double-confirmation approval default drift")
+if live.get("environment", {}).get(
+    "MM_CHAT_MEMORY_REGRESSION_LIVE_DOUBLE_CONFIRMATION_VALIDATION_APPROVAL"
+) != "NOT_AUTHORIZED":
+    raise SystemExit("Memory regression topology: double-confirmation Validation approval default drift")
+if live.get("environment", {}).get(
+    "MM_CHAT_MEMORY_REGRESSION_LIVE_SINGLE_USER_BOUNDED_MISS_DEVELOPMENT_APPROVAL"
+) != "NOT_AUTHORIZED":
+    raise SystemExit("Memory regression topology: single-user bounded-miss Development approval default drift")
+if live.get("environment", {}).get(
+    "MM_CHAT_MEMORY_REGRESSION_LIVE_SINGLE_USER_BOUNDED_MISS_VALIDATION_APPROVAL"
+) != "NOT_AUTHORIZED":
+    raise SystemExit("Memory regression topology: single-user bounded-miss Validation approval default drift")
 for key, value in live.get("environment", {}).items():
     if "KEY" in key or "TOKEN" in key or "SECRET" in key:
         raise SystemExit("Memory regression topology: Provider credential entered Docker environment")
@@ -248,6 +268,75 @@ if args and args[0] == "compose":
         output = Path(values["MEMORY_REGRESSION_OUTPUT_PATH"])
         mode = "live_siliconflow" if "live" in service else "fake_protocol"
         capture_mode = values["MEMORY_REGRESSION_CAPTURE_MODE"]
+        if mode == "live_siliconflow" and capture_mode in {
+            "development_fixed_memory_judge_negative_guard_abstention_confirmation",
+            "production_fixed_memory_judge_negative_guard_abstention_confirmation_validation",
+            "development_fixed_memory_judge_negative_guard_double_confirmation",
+            "production_fixed_memory_judge_negative_guard_double_confirmation_validation",
+            "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss",
+            "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation",
+        }:
+            judge_copy = Path(
+                values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_CREDENTIAL_PATH"]
+            )
+            if (
+                not judge_copy.is_file()
+                or judge_copy.read_text(encoding="utf-8")
+                != "fixture-judge-credential-not-used\n"
+                or values.get("MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_CREDENTIAL_TARGET")
+                != "/run/mm-chat-memory-regression/configured-candidate-judge-provider.key"
+            ):
+                raise SystemExit("confirmation live Judge credential copy/target drift")
+            if capture_mode == "development_fixed_memory_judge_negative_guard_double_confirmation" and (
+                values.get("MEMORY_REGRESSION_DOUBLE_CONFIRMATION_DEVELOPMENT_APPROVAL")
+                != "I_UNDERSTAND_THIS_USES_REAL_MEMORY_DOUBLE_CONFIRMATION_DEVELOPMENT_QUOTA"
+                or values.get("MEMORY_REGRESSION_ABSTENTION_CONFIRMATION_DEVELOPMENT_APPROVAL")
+                != "NOT_AUTHORIZED"
+                or values.get("MEMORY_REGRESSION_ABSTENTION_CONFIRMATION_VALIDATION_APPROVAL")
+                != "NOT_AUTHORIZED"
+                or values.get("MEMORY_REGRESSION_SINGLE_USER_BOUNDED_MISS_DEVELOPMENT_APPROVAL")
+                != "NOT_AUTHORIZED"
+                or values.get("MEMORY_REGRESSION_SINGLE_USER_BOUNDED_MISS_VALIDATION_APPROVAL")
+                != "NOT_AUTHORIZED"
+            ):
+                raise SystemExit("double-confirmation approval literal/isolation drift")
+            if capture_mode == "production_fixed_memory_judge_negative_guard_double_confirmation_validation" and (
+                values.get("MEMORY_REGRESSION_DOUBLE_CONFIRMATION_VALIDATION_APPROVAL")
+                != "I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_DOUBLE_CONFIRMATION_VALIDATION_QUOTA"
+                or values.get("MEMORY_REGRESSION_DOUBLE_CONFIRMATION_DEVELOPMENT_APPROVAL")
+                != "NOT_AUTHORIZED"
+                or values.get("MEMORY_REGRESSION_ABSTENTION_CONFIRMATION_DEVELOPMENT_APPROVAL")
+                != "NOT_AUTHORIZED"
+                or values.get("MEMORY_REGRESSION_ABSTENTION_CONFIRMATION_VALIDATION_APPROVAL")
+                != "NOT_AUTHORIZED"
+                or values.get("MEMORY_REGRESSION_SINGLE_USER_BOUNDED_MISS_DEVELOPMENT_APPROVAL")
+                != "NOT_AUTHORIZED"
+                or values.get("MEMORY_REGRESSION_SINGLE_USER_BOUNDED_MISS_VALIDATION_APPROVAL")
+                != "NOT_AUTHORIZED"
+            ):
+                raise SystemExit("double-confirmation Validation approval literal/isolation drift")
+            if capture_mode == "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss" and (
+                values.get("MEMORY_REGRESSION_SINGLE_USER_BOUNDED_MISS_DEVELOPMENT_APPROVAL")
+                != "I_UNDERSTAND_THIS_USES_REAL_MEMORY_SINGLE_USER_BOUNDED_MISS_DEVELOPMENT_QUOTA"
+                or values.get("MEMORY_REGRESSION_SINGLE_USER_BOUNDED_MISS_VALIDATION_APPROVAL")
+                != "NOT_AUTHORIZED"
+                or values.get("MEMORY_REGRESSION_DOUBLE_CONFIRMATION_DEVELOPMENT_APPROVAL")
+                != "NOT_AUTHORIZED"
+                or values.get("MEMORY_REGRESSION_DOUBLE_CONFIRMATION_VALIDATION_APPROVAL")
+                != "NOT_AUTHORIZED"
+            ):
+                raise SystemExit("single-user bounded-miss Development approval literal/isolation drift")
+            if capture_mode == "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation" and (
+                values.get("MEMORY_REGRESSION_SINGLE_USER_BOUNDED_MISS_VALIDATION_APPROVAL")
+                != "I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_SINGLE_USER_BOUNDED_MISS_VALIDATION_QUOTA"
+                or values.get("MEMORY_REGRESSION_SINGLE_USER_BOUNDED_MISS_DEVELOPMENT_APPROVAL")
+                != "NOT_AUTHORIZED"
+                or values.get("MEMORY_REGRESSION_DOUBLE_CONFIRMATION_DEVELOPMENT_APPROVAL")
+                != "NOT_AUTHORIZED"
+                or values.get("MEMORY_REGRESSION_DOUBLE_CONFIRMATION_VALIDATION_APPROVAL")
+                != "NOT_AUTHORIZED"
+            ):
+                raise SystemExit("single-user bounded-miss Validation approval literal/isolation drift")
         candidate_prefix = "native-v2-hybrid" if mode == "live_siliconflow" else "native-v2-hybrid-fake-protocol"
         candidate_profile = "native_v2_hybrid" if mode == "live_siliconflow" else "native_v2_hybrid_fake_protocol"
         publish = os.environ.get("FAKE_PUBLISH", "full")
@@ -371,10 +460,31 @@ if args and args[0] == "compose":
             "development_fixed_memory_judge_transport_stable",
             "development_fixed_memory_judge_negative_guard",
             "development_fixed_memory_judge_negative_guard_buffered",
+            "development_fixed_memory_judge_negative_guard_abstention_confirmation",
+            "development_fixed_memory_judge_negative_guard_double_confirmation",
+            "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss",
         }:
+            bounded_miss_development = (
+                capture_mode
+                == "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss"
+            )
+            confirmation = capture_mode in {
+                "development_fixed_memory_judge_negative_guard_abstention_confirmation",
+                "development_fixed_memory_judge_negative_guard_double_confirmation",
+                "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss",
+            }
+            double_confirmation = (
+                capture_mode in {
+                    "development_fixed_memory_judge_negative_guard_double_confirmation",
+                    "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss",
+                }
+            )
             negative_guard = capture_mode in {
                 "development_fixed_memory_judge_negative_guard",
                 "development_fixed_memory_judge_negative_guard_buffered",
+                "development_fixed_memory_judge_negative_guard_abstention_confirmation",
+                "development_fixed_memory_judge_negative_guard_double_confirmation",
+                "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss",
             }
             buffered = capture_mode == "development_fixed_memory_judge_negative_guard_buffered"
             diagnostic = capture_mode in {
@@ -382,11 +492,17 @@ if args and args[0] == "compose":
                 "development_fixed_memory_judge_transport_stable",
                 "development_fixed_memory_judge_negative_guard",
                 "development_fixed_memory_judge_negative_guard_buffered",
+                "development_fixed_memory_judge_negative_guard_abstention_confirmation",
+                "development_fixed_memory_judge_negative_guard_double_confirmation",
+                "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss",
             }
             transport_stable = capture_mode in {
                 "development_fixed_memory_judge_transport_stable",
                 "development_fixed_memory_judge_negative_guard",
                 "development_fixed_memory_judge_negative_guard_buffered",
+                "development_fixed_memory_judge_negative_guard_abstention_confirmation",
+                "development_fixed_memory_judge_negative_guard_double_confirmation",
+                "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss",
             }
             guarded_case_count = 10 if negative_guard else 0
             judge_completed_case_count = (
@@ -397,7 +513,11 @@ if args and args[0] == "compose":
                 else 195
             )
             judge_attempt_count = (
-                judge_completed_case_count + 2
+                judge_completed_case_count * 3 + 2
+                if double_confirmation
+                else judge_completed_case_count * 2 + 2
+                if confirmation
+                else judge_completed_case_count + 2
                 if transport_stable
                 else judge_completed_case_count + 3
                 if diagnostic
@@ -405,6 +525,8 @@ if args and args[0] == "compose":
             )
             judge_retry_count = 2 if transport_stable else 1
             judge_input_token_upper_bound = 245893 if negative_guard else 258893 if transport_stable else 258770
+            if confirmation:
+                judge_input_token_upper_bound = 737679 if double_confirmation else 491786
             cooldown_elapsed = 299000 if mode == "live_siliconflow" else 0
             cooldown_clock = "wall_clock_v1" if mode == "live_siliconflow" else "virtual_protocol_v1"
             def latency(count):
@@ -417,7 +539,13 @@ if args and args[0] == "compose":
                 }
             accuracy = json.dumps({
                 "schemaVersion": (
-                    "neo-chat.memory-regression-relevance-calibration.v17"
+                    "neo-chat.memory-regression-relevance-calibration.v24-single-user-bounded-miss-development.v1"
+                    if bounded_miss_development
+                    else "neo-chat.memory-regression-relevance-calibration.v22-double-confirmation-development.v1"
+                    if double_confirmation
+                    else "neo-chat.memory-regression-relevance-calibration.v20-confirmation-development.v1"
+                    if confirmation
+                    else "neo-chat.memory-regression-relevance-calibration.v17"
                     if buffered
                     else "neo-chat.memory-regression-relevance-calibration.v16"
                     if negative_guard
@@ -429,7 +557,13 @@ if args and args[0] == "compose":
                 ),
                 "corpusClass": "machine_reviewed_regression",
                 "admissionMode": (
-                    "development_fixed_memory_judge_negative_guard_buffered_only"
+                    "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_only"
+                    if bounded_miss_development
+                    else "development_fixed_memory_judge_negative_guard_double_confirmation_only"
+                    if double_confirmation
+                    else "development_fixed_memory_judge_negative_guard_abstention_confirmation_only"
+                    if confirmation
+                    else "development_fixed_memory_judge_negative_guard_buffered_only"
                     if buffered
                     else "development_fixed_memory_judge_negative_guard_only"
                     if negative_guard
@@ -450,7 +584,11 @@ if args and args[0] == "compose":
                 "split": "development",
                 "caseCount": 300,
                 "policyId": (
-                    "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_development_v1"
+                    "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_double_confirmation_development_v4"
+                    if double_confirmation
+                    else "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_abstention_confirmation_development_v3"
+                    if confirmation
+                    else "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_development_v1"
                     if negative_guard
                     else "memory_hybrid_fixed_cloud_candidate_judge_accuracy_development_v2"
                 ),
@@ -458,7 +596,13 @@ if args and args[0] == "compose":
                     "negativePolicyQueryGuardRequired": True,
                     "negativePolicyQueryGuardVersion": "memory-negative-policy-query-guard-v1",
                     "negativePolicyQueryGuardSha256": "8fe79b55a0f136392081a81e471abae98d0db7b8e3bece74adcc590b9d2c8f39",
-                    "relevancePolicyDescriptorSha256": "82341542e46b091521b9f4b8c4eb637d6e732683d9902e0d2e3832a14cb50f9b",
+                    "relevancePolicyDescriptorSha256": (
+                        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                        if double_confirmation
+                        else "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                        if confirmation
+                        else "82341542e46b091521b9f4b8c4eb637d6e732683d9902e0d2e3832a14cb50f9b"
+                    ),
                 } if negative_guard else {}),
                 "providerEgressPolicy": "owner_authorized_normal_candidates_v1",
                 "providerCostPolicy": "owner_authorized_absolute_cap_v1",
@@ -468,18 +612,41 @@ if args and args[0] == "compose":
                 "judgeBaseUrlSha256": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_BASE_URL_SHA256"],
                 "judgeModelId": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_MODEL"],
                 "judgeAdapter": (
-                    "chat-configured-candidate-judge-buffered-v1"
+                    "chat-configured-candidate-judge-buffered-abstention-confirmation-v3"
+                    if confirmation
+                    else "chat-configured-candidate-judge-buffered-v1"
                     if buffered
                     else "chat-configured-candidate-judge-v1"
                 ),
-                "judgePromptVersion": "memory-cloud-candidate-judge-prompt-v1",
-                "judgePromptSha256": "c004e834f2db572fc8393f088f47750d420379664f972357f987a09d8647f9c8",
-                "evaluationCriteriaVersion": "neo-chat.memory-benchmark-criteria.v3",
+                "judgePromptVersion": (
+                    "memory-cloud-candidate-judge-prompt-v2"
+                    if confirmation else "memory-cloud-candidate-judge-prompt-v1"
+                ),
+                "judgePromptSha256": (
+                    "90fac3f3c97a340e6ef1963dc1456c5f088ac083658a29e75aad747efba95d90"
+                    if confirmation else "c004e834f2db572fc8393f088f47750d420379664f972357f987a09d8647f9c8"
+                ),
+                **({
+                    "judgeConfirmationPromptVersion": "memory-cloud-candidate-judge-abstention-confirmation-prompt-v3",
+                    "judgeConfirmationPromptSha256": "205c7cc69f9265fa21ef3d3441778224a08be84b4d20a4fa35cdfcb6c811f1c8",
+                } if confirmation else {}),
+                "evaluationCriteriaVersion": (
+                    "neo-chat.memory-benchmark-criteria.v4-single-user-bounded-miss"
+                    if bounded_miss_development
+                    else "neo-chat.memory-benchmark-criteria.v3"
+                ),
+                **({
+                    "evaluationCriteriaSha256": "c" * 64,
+                } if bounded_miss_development else {}),
                 "evaluationCriteria": {
                     "minimumCandidateRecallAt20": 0.95,
                     "minimumFinalRecallAt5": 0.90,
                     "minimumCurrentFactAccuracy": 0.95,
-                    "maximumFalseInjectionRate": 0.02,
+                    "maximumFalseInjectionRate": 0 if bounded_miss_development else 0.02,
+                    **({
+                        "maximumFalseInjectionCases": 0,
+                        "minimumRequiredSliceCurrentFactAccuracy": 0.90,
+                    } if bounded_miss_development else {}),
                     "maximumAveragePromptMemoryTokens": 600,
                     "maximumPromptMemoryTokens": 900,
                     "maximumProviderCostRatio": 0.15,
@@ -488,7 +655,13 @@ if args and args[0] == "compose":
                 },
                 "executionPolicy": {
                     "sequenceVersion": (
-                        "bge_query_admission_bge_rerank_luna_judge_buffered_json_record_serial_judge_retry_v1"
+                        "development_full_bge_m3_rerank_fixed_luna_negative_guard_accuracy_prompt_v2_two_empty_confirmations_v3_single_user_bounded_miss_criteria_v4_record_serial_v1"
+                        if bounded_miss_development
+                        else "development_full_bge_m3_rerank_fixed_luna_negative_guard_accuracy_prompt_v2_two_empty_confirmations_v3_record_serial_v1"
+                        if double_confirmation
+                        else "development_full_bge_m3_rerank_fixed_luna_negative_guard_accuracy_prompt_v2_empty_confirmation_v3_record_serial_v1"
+                        if confirmation
+                        else "bge_query_admission_bge_rerank_luna_judge_buffered_json_record_serial_judge_retry_v1"
                         if buffered
                         else "bge_query_admission_bge_rerank_luna_judge_record_serial_judge_retry_v2"
                         if transport_stable
@@ -511,6 +684,9 @@ if args and args[0] == "compose":
                         "maximumJudgeRetriesPerRequest": 2,
                         "secondJudgeRetryDelayMilliseconds": 10000,
                     } if transport_stable else {}),
+                    **({
+                        "maximumAbstentionConfirmationsPerLogicalRequest": 2 if double_confirmation else 1,
+                    } if confirmation else {}),
                 },
                 "passed": (not diagnostic) or transport_stable,
                 "evaluation": {
@@ -556,6 +732,12 @@ if args and args[0] == "compose":
                     "judgeRetries": judge_retry_count,
                     "judgeInputTokenUpperBound": judge_input_token_upper_bound,
                     "judgeRetryInputTokenUpperBound": 246 if transport_stable else 123,
+                    **({
+                        "judgeConfirmationAttempts": judge_completed_case_count * (2 if double_confirmation else 1),
+                        "judgeConfirmationRetries": 0,
+                        "judgeConfirmationInputTokenUpperBound": 491786 if double_confirmation else 245893,
+                        "judgeConfirmationRetryInputTokenUpperBound": 0,
+                    } if confirmation else {}),
                     "interCaseCooldownCount": 299,
                     "interCaseCooldownMilliseconds": 299000,
                     "interCaseCooldownElapsedMilliseconds": cooldown_elapsed,
@@ -574,18 +756,24 @@ if args and args[0] == "compose":
                 },
                 "costAuthority": {
                     "unit": "cny_microunits",
-                    "authorizedRequestCount": 900 if transport_stable else 600,
+                    "authorizedRequestCount": 2700 if double_confirmation else 1800 if confirmation else 900 if transport_stable else 600,
                     "actualRequestCount": judge_attempt_count,
-                    "authorizedMaximumInputTokens": 1500000 if transport_stable else 600000,
+                    "authorizedMaximumInputTokens": 2700000 if double_confirmation else 2000000 if confirmation else 1500000 if transport_stable else 600000,
                     "actualInputTokenUpperBound": judge_input_token_upper_bound,
-                    "authorizedMaximumOutputTokens": 115200 if transport_stable else 76800,
+                    "authorizedMaximumOutputTokens": 345600 if double_confirmation else 230400 if confirmation else 115200 if transport_stable else 76800,
                     "actualOutputTokenUpperBound": judge_attempt_count * 128,
-                    "maximumJudgeCostMicrounits": 565200 if transport_stable else 376800,
-                    "maximumMemoryProviderCostMicrounits": 565200 if transport_stable else 487716,
+                    "maximumJudgeCostMicrounits": 753600 if confirmation else 565200 if transport_stable else 376800,
+                    "maximumMemoryProviderCostMicrounits": 753600 if confirmation else 565200 if transport_stable else 487716,
                 },
             }, separators=(",", ":")).encode() + b"\n"
             report_name = (
-                "fixed-memory-judge-negative-guard-buffered-development.json"
+                "fixed-memory-judge-negative-guard-double-confirmation-single-user-bounded-miss-development.json"
+                if bounded_miss_development
+                else "fixed-memory-judge-negative-guard-double-confirmation-development.json"
+                if double_confirmation
+                else "fixed-memory-judge-negative-guard-abstention-confirmation-development.json"
+                if confirmation
+                else "fixed-memory-judge-negative-guard-buffered-development.json"
                 if buffered
                 else "fixed-memory-judge-negative-guard-development.json"
                 if negative_guard
@@ -596,9 +784,22 @@ if args and args[0] == "compose":
                 else "fixed-memory-judge-accuracy-development.json"
             )
             bodies = {report_name: accuracy}
-            manifest_schema = "neo-chat.memory-regression-relevance-run.v1"
+            manifest_schema = (
+                "neo-chat.memory-regression-relevance-run.v24-single-user-bounded-miss-development.v1"
+                if bounded_miss_development
+                else "neo-chat.memory-regression-relevance-run.v22-double-confirmation-development.v1"
+                if double_confirmation
+                else "neo-chat.memory-regression-relevance-run.v20-confirmation-development.v1"
+                if confirmation else "neo-chat.memory-regression-relevance-run.v1"
+            )
             admission_mode = (
-                "development_fixed_memory_judge_negative_guard_buffered_only"
+                "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_only"
+                if bounded_miss_development
+                else "development_fixed_memory_judge_negative_guard_double_confirmation_only"
+                if double_confirmation
+                else "development_fixed_memory_judge_negative_guard_abstention_confirmation_only"
+                if confirmation
+                else "development_fixed_memory_judge_negative_guard_buffered_only"
                 if buffered
                 else "development_fixed_memory_judge_negative_guard_only"
                 if negative_guard
@@ -764,11 +965,30 @@ if args and args[0] == "compose":
         elif capture_mode in {
             "production_fixed_memory_judge_validation",
             "production_fixed_memory_judge_negative_guard_buffered_validation",
+            "production_fixed_memory_judge_negative_guard_abstention_confirmation_validation",
+            "production_fixed_memory_judge_negative_guard_double_confirmation_validation",
+            "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation",
         }:
+            bounded_miss_validation = (
+                capture_mode
+                == "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation"
+            )
+            production_double_confirmation = (
+                capture_mode in {
+                    "production_fixed_memory_judge_negative_guard_double_confirmation_validation",
+                    "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation",
+                }
+            )
+            production_confirmation = capture_mode in {
+                "production_fixed_memory_judge_negative_guard_abstention_confirmation_validation",
+                "production_fixed_memory_judge_negative_guard_double_confirmation_validation",
+                "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation",
+            }
             production_buffered = (
                 capture_mode
                 == "production_fixed_memory_judge_negative_guard_buffered_validation"
             )
+            production_guard = production_buffered or production_confirmation
             zero_safety = {
                 "crossUserLeakCount": 0,
                 "deletedMemoryLeakCount": 0,
@@ -795,13 +1015,25 @@ if args and args[0] == "compose":
                 }
             validation_payload = {
                 "schemaVersion": (
-                    "neo-chat.memory-regression-relevance-validation.v18"
+                    "neo-chat.memory-regression-relevance-validation.v25-single-user-bounded-miss.v1"
+                    if bounded_miss_validation
+                    else "neo-chat.memory-regression-relevance-validation.v23-double-confirmation.v1"
+                    if production_double_confirmation
+                    else "neo-chat.memory-regression-relevance-validation.v21"
+                    if production_confirmation
+                    else "neo-chat.memory-regression-relevance-validation.v18"
                     if production_buffered
                     else "neo-chat.memory-regression-relevance-validation.v15"
                 ),
                 "corpusClass": "machine_reviewed_regression",
                 "admissionMode": (
-                    "frozen_production_fixed_memory_judge_negative_guard_buffered_validation_only"
+                    "frozen_production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation_only"
+                    if bounded_miss_validation
+                    else "frozen_production_fixed_memory_judge_negative_guard_double_confirmation_validation_only"
+                    if production_double_confirmation
+                    else "frozen_production_fixed_memory_judge_negative_guard_abstention_confirmation_validation_only"
+                    if production_confirmation
+                    else "frozen_production_fixed_memory_judge_negative_guard_buffered_validation_only"
                     if production_buffered
                     else "frozen_production_fixed_memory_judge_validation_only"
                 ),
@@ -817,7 +1049,11 @@ if args and args[0] == "compose":
                 "split": "validation",
                 "caseCount": 100,
                 "policyId": (
-                    "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_production_v2"
+                    "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_double_confirmation_production_v4"
+                    if production_double_confirmation
+                    else "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_abstention_confirmation_production_v3"
+                    if production_confirmation
+                    else "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_production_v2"
                     if production_buffered
                     else "memory_hybrid_fixed_cloud_candidate_judge_production_v1"
                 ),
@@ -832,27 +1068,49 @@ if args and args[0] == "compose":
                 "judgeBaseUrlSha256": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_BASE_URL_SHA256"],
                 "judgeModelId": values["MEMORY_REGRESSION_CONFIGURED_CANDIDATE_JUDGE_MODEL"],
                 "judgeAdapter": (
-                    "chat-configured-candidate-judge-buffered-v1"
+                    "chat-configured-candidate-judge-buffered-abstention-confirmation-v3"
+                    if production_confirmation
+                    else "chat-configured-candidate-judge-buffered-v1"
                     if production_buffered
                     else "chat-configured-candidate-judge-v1"
                 ),
                 **({
                     "negativePolicyQueryGuardVersion": "memory-negative-policy-query-guard-v1",
                     "negativePolicyQueryGuardSha256": "8fe79b55a0f136392081a81e471abae98d0db7b8e3bece74adcc590b9d2c8f39",
-                } if production_buffered else {}),
-                "judgePromptVersion": "memory-cloud-candidate-judge-prompt-v1",
-                "judgePromptSha256": "c004e834f2db572fc8393f088f47750d420379664f972357f987a09d8647f9c8",
+                } if production_guard else {}),
+                "judgePromptVersion": (
+                    "memory-cloud-candidate-judge-prompt-v2"
+                    if production_confirmation
+                    else "memory-cloud-candidate-judge-prompt-v1"
+                ),
+                "judgePromptSha256": (
+                    "90fac3f3c97a340e6ef1963dc1456c5f088ac083658a29e75aad747efba95d90"
+                    if production_confirmation
+                    else "c004e834f2db572fc8393f088f47750d420379664f972357f987a09d8647f9c8"
+                ),
+                **({
+                    "judgeConfirmationPromptVersion": "memory-cloud-candidate-judge-abstention-confirmation-prompt-v3",
+                    "judgeConfirmationPromptSha256": "205c7cc69f9265fa21ef3d3441778224a08be84b4d20a4fa35cdfcb6c811f1c8",
+                } if production_confirmation else {}),
                 "judgeDecodingProfile": "temperature-0_max-output-128_no-thinking_v1",
                 "failureTaxonomyVersion": "memory-candidate-judge-failure-taxonomy-v1",
                 "failureTaxonomySha256": "c22cb137da8b5fda87526237446519dd9abe2c8d221ad703c5445358d9059f8d",
                 "diagnosticCompleteness": "attempt_terminal_reconciled_fail_closed_v1",
                 "selectionAlgorithm": "strict-ordinal_intersect-bge-order_top5-token-budget_v1",
-                "evaluationCriteriaVersion": "neo-chat.memory-benchmark-criteria.v3",
+                "evaluationCriteriaVersion": (
+                    "neo-chat.memory-benchmark-criteria.v4-single-user-bounded-miss"
+                    if bounded_miss_validation
+                    else "neo-chat.memory-benchmark-criteria.v3"
+                ),
                 "evaluationCriteria": {
                     "minimumCandidateRecallAt20": 0.95,
                     "minimumFinalRecallAt5": 0.90,
                     "minimumCurrentFactAccuracy": 0.95,
-                    "maximumFalseInjectionRate": 0.02,
+                    "maximumFalseInjectionRate": 0 if bounded_miss_validation else 0.02,
+                    **({
+                        "maximumFalseInjectionCases": 0,
+                        "minimumRequiredSliceCurrentFactAccuracy": 0.90,
+                    } if bounded_miss_validation else {}),
                     "maximumAveragePromptMemoryTokens": 600,
                     "maximumPromptMemoryTokens": 900,
                     "maximumProviderCostRatio": 0.15,
@@ -861,7 +1119,13 @@ if args and args[0] == "compose":
                 },
                 "executionPolicy": {
                     "sequenceVersion": (
-                        "production_bge_m3_rerank_fixed_luna_negative_guard_buffered_json_judge_record_serial_v1"
+                        "production_bge_m3_rerank_fixed_luna_negative_guard_accuracy_prompt_v2_two_empty_confirmations_v3_single_user_bounded_miss_criteria_v4_record_serial_v1"
+                        if bounded_miss_validation
+                        else "production_bge_m3_rerank_fixed_luna_negative_guard_accuracy_prompt_v2_two_empty_confirmations_v3_record_serial_v1"
+                        if production_double_confirmation
+                        else "production_bge_m3_rerank_fixed_luna_negative_guard_accuracy_prompt_v2_empty_confirmation_v3_record_serial_v1"
+                        if production_confirmation
+                        else "production_bge_m3_rerank_fixed_luna_negative_guard_buffered_json_judge_record_serial_v1"
                         if production_buffered
                         else "production_bge_m3_rerank_fixed_luna_judge_record_serial_v1"
                     ),
@@ -880,6 +1144,11 @@ if args and args[0] == "compose":
                     "retryFallbackDelayMilliseconds": 5000,
                     "maximumJudgeRetriesPerRequest": 2,
                     "secondJudgeRetryDelayMilliseconds": 10000,
+                    **({
+                        "maximumAbstentionConfirmationsPerLogicalRequest": (
+                            2 if production_double_confirmation else 1
+                        ),
+                    } if production_confirmation else {}),
                 },
                 "passed": mode == "live_siliconflow",
                 "outcome": (
@@ -921,8 +1190,8 @@ if args and args[0] == "compose":
                 },
                 "diagnostics": {
                     "emptyCandidateCaseCount": 35,
-                    "negativePolicyQueryAbstainedCaseCount": 10 if production_buffered else 0,
-                    "judgeCompletedCaseCount": 55 if production_buffered else 65,
+                    "negativePolicyQueryAbstainedCaseCount": 10 if production_guard else 0,
+                    "judgeCompletedCaseCount": 55 if production_guard else 65,
                     "judgeAbstainedCaseCount": 10,
                     "failedCaseCount": 0,
                     "failureCodeCounts": {},
@@ -933,12 +1202,18 @@ if args and args[0] == "compose":
                     "passageEmbeddingRetries": 0,
                     "queryEmbeddingAttempts": 100,
                     "queryEmbeddingRetries": 0,
-                    "rerankAttempts": 55 if production_buffered else 65,
+                    "rerankAttempts": 55 if production_guard else 65,
                     "rerankRetries": 0,
-                    "judgeAttempts": 55 if production_buffered else 65,
+                    "judgeAttempts": 165 if production_double_confirmation else 110 if production_confirmation else 55 if production_buffered else 65,
                     "judgeRetries": 0,
-                    "judgeInputTokenUpperBound": 55000 if production_buffered else 65000,
+                    "judgeInputTokenUpperBound": 165000 if production_double_confirmation else 110000 if production_confirmation else 55000 if production_buffered else 65000,
                     "judgeRetryInputTokenUpperBound": 0,
+                    **({
+                        "judgeConfirmationAttempts": 110 if production_double_confirmation else 55,
+                        "judgeConfirmationRetries": 0,
+                        "judgeConfirmationInputTokenUpperBound": 110000 if production_double_confirmation else 55000,
+                        "judgeConfirmationRetryInputTokenUpperBound": 0,
+                    } if production_confirmation else {}),
                     "interCaseCooldownCount": 99,
                     "interCaseCooldownMilliseconds": 99000,
                     "interCaseCooldownElapsedMilliseconds": (
@@ -946,35 +1221,60 @@ if args and args[0] == "compose":
                     ),
                     "passageEmbeddingLatency": validation_latency(1),
                     "queryEmbeddingLatency": validation_latency(100),
-                    "rerankLatency": validation_latency(55 if production_buffered else 65),
-                    "judgeLatency": validation_latency(55 if production_buffered else 65),
+                    "rerankLatency": validation_latency(55 if production_guard else 65),
+                    "judgeLatency": validation_latency(165 if production_double_confirmation else 110 if production_confirmation else 55 if production_buffered else 65),
                     "judgeAttemptFailureCategoryCounts": {},
                 },
                 "costAuthority": {
                     "unit": "cny_microunits",
-                    "authorizedRequestCount": 300,
-                    "actualRequestCount": 55 if production_buffered else 65,
-                    "authorizedMaximumInputTokens": 300000,
-                    "actualInputTokenUpperBound": 55000 if production_buffered else 65000,
-                    "authorizedMaximumOutputTokens": 38400,
-                    "actualOutputTokenUpperBound": (55 if production_buffered else 65) * 128,
+                    "authorizedRequestCount": 900 if production_double_confirmation else 600 if production_confirmation else 300,
+                    "actualRequestCount": 165 if production_double_confirmation else 110 if production_confirmation else 55 if production_buffered else 65,
+                    "authorizedMaximumInputTokens": 1000000 if production_double_confirmation else 600000 if production_confirmation else 300000,
+                    "actualInputTokenUpperBound": 165000 if production_double_confirmation else 110000 if production_confirmation else 55000 if production_buffered else 65000,
+                    "authorizedMaximumOutputTokens": 115200 if production_double_confirmation else 76800 if production_confirmation else 38400,
+                    "actualOutputTokenUpperBound": (165 if production_double_confirmation else 110 if production_confirmation else 55 if production_buffered else 65) * 128,
                     "maximumJudgeCostMicrounits": 2,
                     "maximumMemoryProviderCostMicrounits": 50,
                 },
             }
+            if (
+                bounded_miss_validation
+                and os.environ.get("FAKE_BOUNDED_MISS_FALSE_INJECTION") == "1"
+            ):
+                validation_payload["evaluation"]["passed"] = False
+                validation_payload["evaluation"]["metrics"]["falseInjectionRate"] = 1 / 45
+                validation_payload["evaluation"]["metrics"]["falseInjectionCases"] = 1
+                validation_payload["passed"] = False
+                validation_payload["outcome"] = {
+                    "severity": "orange",
+                    "requiredAction": "disable_memory_recall_preserve_data",
+                    "reasons": ["FALSE_INJECTION_NON_ZERO"],
+                }
             if os.environ.get("FAKE_PRODUCTION_FORBIDDEN") == "1":
                 validation_payload["query"] = "forbidden-case-level-payload"
             validation = json.dumps(
                 validation_payload, separators=(",", ":")
             ).encode() + b"\n"
             report_name = (
-                "fixed-memory-judge-negative-guard-buffered-production-validation.json"
+                "fixed-memory-judge-negative-guard-double-confirmation-single-user-bounded-miss-production-validation.json"
+                if bounded_miss_validation
+                else "fixed-memory-judge-negative-guard-double-confirmation-production-validation.json"
+                if production_double_confirmation
+                else "fixed-memory-judge-negative-guard-abstention-confirmation-production-validation.json"
+                if production_confirmation
+                else "fixed-memory-judge-negative-guard-buffered-production-validation.json"
                 if production_buffered
                 else "fixed-memory-judge-production-validation.json"
             )
             bodies = {report_name: validation}
             manifest_schema = (
-                "neo-chat.memory-regression-relevance-validation-run.v18"
+                "neo-chat.memory-regression-relevance-validation-run.v25-single-user-bounded-miss.v1"
+                if bounded_miss_validation
+                else "neo-chat.memory-regression-relevance-validation-run.v23-double-confirmation.v1"
+                if production_double_confirmation
+                else "neo-chat.memory-regression-relevance-validation-run.v21"
+                if production_confirmation
+                else "neo-chat.memory-regression-relevance-validation-run.v18"
                 if production_buffered
                 else "neo-chat.memory-regression-relevance-validation-run.v15"
             )
@@ -1034,6 +1334,9 @@ if args and args[0] == "compose":
                         "development_fixed_memory_judge_transport_stable",
                         "development_fixed_memory_judge_negative_guard",
                         "development_fixed_memory_judge_negative_guard_buffered",
+                        "development_fixed_memory_judge_negative_guard_abstention_confirmation",
+                        "development_fixed_memory_judge_negative_guard_double_confirmation",
+                        "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss",
                     } else "validation",
                     "profileId": candidate_profile,
                 })
@@ -1050,6 +1353,12 @@ if args and args[0] == "compose":
                     "development_fixed_memory_judge_negative_guard_buffered",
                     "production_fixed_memory_judge_validation",
                     "production_fixed_memory_judge_negative_guard_buffered_validation",
+                    "development_fixed_memory_judge_negative_guard_abstention_confirmation",
+                    "development_fixed_memory_judge_negative_guard_double_confirmation",
+                    "production_fixed_memory_judge_negative_guard_abstention_confirmation_validation",
+                    "production_fixed_memory_judge_negative_guard_double_confirmation_validation",
+                    "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss",
+                    "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation",
                 }:
                     manifest["providerCostPolicy"] = "owner_authorized_absolute_cap_v1"
                 if capture_mode == "development_fixed_memory_judge_failure_diagnostic":
@@ -1059,30 +1368,35 @@ if args and args[0] == "compose":
                 elif capture_mode in {
                     "development_fixed_memory_judge_negative_guard",
                     "development_fixed_memory_judge_negative_guard_buffered",
+                    "development_fixed_memory_judge_negative_guard_abstention_confirmation",
+                    "development_fixed_memory_judge_negative_guard_double_confirmation",
+                    "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss",
                 }:
                     manifest.update({
                         "passed": True,
                         "negativePolicyQueryGuardVersion": "memory-negative-policy-query-guard-v1",
                         "negativePolicyQueryGuardSha256": "8fe79b55a0f136392081a81e471abae98d0db7b8e3bece74adcc590b9d2c8f39",
-                        "relevancePolicyDescriptorSha256": "82341542e46b091521b9f4b8c4eb637d6e732683d9902e0d2e3832a14cb50f9b",
+                        "relevancePolicyDescriptorSha256": (
+                            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                            if capture_mode in {
+                                "development_fixed_memory_judge_negative_guard_double_confirmation",
+                                "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss",
+                            }
+                            else "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                            if capture_mode == "development_fixed_memory_judge_negative_guard_abstention_confirmation"
+                            else "82341542e46b091521b9f4b8c4eb637d6e732683d9902e0d2e3832a14cb50f9b"
+                        ),
                     })
+                    if capture_mode == "development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss":
+                        manifest["evaluationCriteriaSha256"] = "c" * 64
                 elif capture_mode in {
                     "production_fixed_memory_judge_validation",
                     "production_fixed_memory_judge_negative_guard_buffered_validation",
+                    "production_fixed_memory_judge_negative_guard_abstention_confirmation_validation",
+                    "production_fixed_memory_judge_negative_guard_double_confirmation_validation",
+                    "production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation",
                 }:
-                    validation_outcome = (
-                        {
-                            "severity": "none",
-                            "requiredAction": "owner_review_no_automatic_release",
-                            "reasons": [],
-                        }
-                        if mode == "live_siliconflow"
-                        else {
-                            "severity": "yellow",
-                            "requiredAction": "retain_beta",
-                            "reasons": ["FAKE_PROTOCOL_NON_EVIDENCE"],
-                        }
-                    )
+                    validation_outcome = validation_payload["outcome"]
                     manifest.update({
                         "captureId": "00000000-0000-4000-8000-000000000001",
                         "releaseEligible": False,
@@ -1092,7 +1406,11 @@ if args and args[0] == "compose":
                             else "fake_protocol_lifecycle_only"
                         ),
                         "policyId": (
-                            "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_production_v2"
+                            "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_double_confirmation_production_v4"
+                            if production_double_confirmation
+                            else "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_abstention_confirmation_production_v3"
+                            if production_confirmation
+                            else "memory_hybrid_fixed_cloud_candidate_judge_negative_guard_production_v2"
                             if production_buffered
                             else "memory_hybrid_fixed_cloud_candidate_judge_production_v1"
                         ),
@@ -1101,7 +1419,7 @@ if args and args[0] == "compose":
                         "productionRelevancePolicySha256": validation_hashes["productionRelevancePolicySha256"],
                         "memoryReadIntentPolicySha256": validation_hashes["memoryReadIntentPolicySha256"],
                         "evaluationCriteriaSha256": validation_hashes["evaluationCriteriaSha256"],
-                        "passed": mode == "live_siliconflow",
+                        "passed": validation_payload["passed"],
                         "outcome": validation_outcome,
                         "startedAt": "2026-08-05T00:00:00Z",
                         "completedAt": "2026-08-05T00:01:39Z",
@@ -1611,6 +1929,343 @@ if [[ "$(find "${live_accuracy_first_output}" -mindepth 2 -maxdepth 2 -type f | 
   exit 1
 fi
 assert_cleanup "${live_accuracy_first_log}"
+
+fake_confirmation_output="${temp_dir}/fake-abstention-confirmation-output"
+fake_confirmation_log="${temp_dir}/fake-abstention-confirmation-docker.log"
+mkdir "${fake_confirmation_output}"
+chmod 700 "${fake_confirmation_output}"
+FAKE_DOCKER_LOG="${fake_confirmation_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${fake_confirmation_output}" \
+  --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge_negative_guard_abstention_confirmation \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  >"${temp_dir}/fake-abstention-confirmation.stdout" \
+  2>"${temp_dir}/fake-abstention-confirmation.stderr"
+if [[ "$(find "${fake_confirmation_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: fake abstention-confirmation bundle was not retained" >&2
+  exit 1
+fi
+assert_cleanup "${fake_confirmation_log}"
+
+fake_double_confirmation_output="${temp_dir}/fake-double-confirmation-output"
+fake_double_confirmation_log="${temp_dir}/fake-double-confirmation-docker.log"
+mkdir "${fake_double_confirmation_output}"
+chmod 700 "${fake_double_confirmation_output}"
+FAKE_DOCKER_LOG="${fake_double_confirmation_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${fake_double_confirmation_output}" \
+  --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge_negative_guard_double_confirmation \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  >"${temp_dir}/fake-double-confirmation.stdout" \
+  2>"${temp_dir}/fake-double-confirmation.stderr"
+if [[ "$(find "${fake_double_confirmation_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: fake double-confirmation bundle was not retained" >&2
+  exit 1
+fi
+assert_cleanup "${fake_double_confirmation_log}"
+
+fake_bounded_miss_output="${temp_dir}/fake-single-user-bounded-miss-output"
+fake_bounded_miss_log="${temp_dir}/fake-single-user-bounded-miss-docker.log"
+mkdir "${fake_bounded_miss_output}"
+chmod 700 "${fake_bounded_miss_output}"
+FAKE_DOCKER_LOG="${fake_bounded_miss_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${fake_bounded_miss_output}" \
+  --provider-mode fake_protocol \
+  --capture-mode development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  >"${temp_dir}/fake-single-user-bounded-miss.stdout" \
+  2>"${temp_dir}/fake-single-user-bounded-miss.stderr"
+if [[ "$(find "${fake_bounded_miss_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: fake single-user bounded-miss Development bundle was not retained" >&2
+  cat "${temp_dir}/fake-single-user-bounded-miss.stderr" >&2
+  exit 1
+fi
+assert_cleanup "${fake_bounded_miss_log}"
+
+fake_confirmation_validation_output="${temp_dir}/fake-abstention-confirmation-validation-output"
+fake_confirmation_validation_log="${temp_dir}/fake-abstention-confirmation-validation-docker.log"
+mkdir "${fake_confirmation_validation_output}"
+chmod 700 "${fake_confirmation_validation_output}"
+set +e
+FAKE_DOCKER_LOG="${fake_confirmation_validation_log}" FAKE_RUNNER_STATUS=7 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${fake_confirmation_validation_output}" \
+  --provider-mode fake_protocol \
+  --capture-mode production_fixed_memory_judge_negative_guard_abstention_confirmation_validation \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  >"${temp_dir}/fake-abstention-confirmation-validation.stdout" \
+  2>"${temp_dir}/fake-abstention-confirmation-validation.stderr"
+fake_confirmation_validation_status=$?
+set -e
+if [[ ${fake_confirmation_validation_status} -ne 7 ||
+  "$(find "${fake_confirmation_validation_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: fake abstention-confirmation Validation bundle was not retained as non-evidence" >&2
+  exit 1
+fi
+assert_cleanup "${fake_confirmation_validation_log}"
+
+fake_double_confirmation_validation_output="${temp_dir}/fake-double-confirmation-validation-output"
+fake_double_confirmation_validation_log="${temp_dir}/fake-double-confirmation-validation-docker.log"
+mkdir "${fake_double_confirmation_validation_output}"
+chmod 700 "${fake_double_confirmation_validation_output}"
+set +e
+FAKE_DOCKER_LOG="${fake_double_confirmation_validation_log}" FAKE_RUNNER_STATUS=7 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${fake_double_confirmation_validation_output}" \
+  --provider-mode fake_protocol \
+  --capture-mode production_fixed_memory_judge_negative_guard_double_confirmation_validation \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  >"${temp_dir}/fake-double-confirmation-validation.stdout" \
+  2>"${temp_dir}/fake-double-confirmation-validation.stderr"
+fake_double_confirmation_validation_status=$?
+set -e
+if [[ ${fake_double_confirmation_validation_status} -ne 7 ||
+  "$(find "${fake_double_confirmation_validation_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: fake double-confirmation Validation bundle was not retained as non-evidence" >&2
+  cat "${temp_dir}/fake-double-confirmation-validation.stderr" >&2
+  exit 1
+fi
+assert_cleanup "${fake_double_confirmation_validation_log}"
+
+fake_bounded_miss_validation_output="${temp_dir}/fake-single-user-bounded-miss-validation-output"
+fake_bounded_miss_validation_log="${temp_dir}/fake-single-user-bounded-miss-validation-docker.log"
+mkdir "${fake_bounded_miss_validation_output}"
+chmod 700 "${fake_bounded_miss_validation_output}"
+set +e
+FAKE_DOCKER_LOG="${fake_bounded_miss_validation_log}" FAKE_RUNNER_STATUS=7 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${fake_bounded_miss_validation_output}" \
+  --provider-mode fake_protocol \
+  --capture-mode production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  >"${temp_dir}/fake-single-user-bounded-miss-validation.stdout" \
+  2>"${temp_dir}/fake-single-user-bounded-miss-validation.stderr"
+fake_bounded_miss_validation_status=$?
+set -e
+if [[ ${fake_bounded_miss_validation_status} -ne 7 ||
+  "$(find "${fake_bounded_miss_validation_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: fake single-user bounded-miss Validation bundle was not retained as non-evidence" >&2
+  cat "${temp_dir}/fake-single-user-bounded-miss-validation.stderr" >&2
+  exit 1
+fi
+assert_cleanup "${fake_bounded_miss_validation_log}"
+
+live_confirmation_output="${temp_dir}/live-abstention-confirmation-output"
+live_confirmation_log="${temp_dir}/live-abstention-confirmation-docker.log"
+mkdir "${live_confirmation_output}"
+chmod 700 "${live_confirmation_output}"
+FAKE_DOCKER_LOG="${live_confirmation_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${live_confirmation_output}" \
+  --provider-mode live_siliconflow \
+  --capture-mode development_fixed_memory_judge_negative_guard_abstention_confirmation \
+  --credential-file "${credential_file}" \
+  --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --configured-candidate-judge-credential-file "${configured_judge_credential_file}" \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --abstention-confirmation-development-approval I_UNDERSTAND_THIS_USES_REAL_MEMORY_ABSTENTION_CONFIRMATION_DEVELOPMENT_QUOTA \
+  >"${temp_dir}/live-abstention-confirmation.stdout" \
+  2>"${temp_dir}/live-abstention-confirmation.stderr"
+if [[ "$(find "${live_confirmation_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: live abstention-confirmation Development bundle was not retained" >&2
+  exit 1
+fi
+assert_cleanup "${live_confirmation_log}"
+
+live_double_confirmation_output="${temp_dir}/live-double-confirmation-output"
+live_double_confirmation_log="${temp_dir}/live-double-confirmation-docker.log"
+mkdir "${live_double_confirmation_output}"
+chmod 700 "${live_double_confirmation_output}"
+FAKE_DOCKER_LOG="${live_double_confirmation_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${live_double_confirmation_output}" \
+  --provider-mode live_siliconflow \
+  --capture-mode development_fixed_memory_judge_negative_guard_double_confirmation \
+  --credential-file "${credential_file}" \
+  --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --configured-candidate-judge-credential-file "${configured_judge_credential_file}" \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --double-confirmation-development-approval I_UNDERSTAND_THIS_USES_REAL_MEMORY_DOUBLE_CONFIRMATION_DEVELOPMENT_QUOTA \
+  >"${temp_dir}/live-double-confirmation.stdout" \
+  2>"${temp_dir}/live-double-confirmation.stderr"
+if [[ "$(find "${live_double_confirmation_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: live double-confirmation Development bundle was not retained" >&2
+  exit 1
+fi
+assert_cleanup "${live_double_confirmation_log}"
+
+live_bounded_miss_output="${temp_dir}/live-single-user-bounded-miss-output"
+live_bounded_miss_log="${temp_dir}/live-single-user-bounded-miss-docker.log"
+mkdir "${live_bounded_miss_output}"
+chmod 700 "${live_bounded_miss_output}"
+FAKE_DOCKER_LOG="${live_bounded_miss_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${live_bounded_miss_output}" \
+  --provider-mode live_siliconflow \
+  --capture-mode development_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss \
+  --credential-file "${credential_file}" \
+  --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --configured-candidate-judge-credential-file "${configured_judge_credential_file}" \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --single-user-bounded-miss-development-approval I_UNDERSTAND_THIS_USES_REAL_MEMORY_SINGLE_USER_BOUNDED_MISS_DEVELOPMENT_QUOTA \
+  >"${temp_dir}/live-single-user-bounded-miss.stdout" \
+  2>"${temp_dir}/live-single-user-bounded-miss.stderr"
+if [[ "$(find "${live_bounded_miss_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: live single-user bounded-miss Development bundle was not retained" >&2
+  cat "${temp_dir}/live-single-user-bounded-miss.stderr" >&2
+  exit 1
+fi
+assert_cleanup "${live_bounded_miss_log}"
+
+live_confirmation_validation_output="${temp_dir}/live-abstention-confirmation-validation-output"
+live_confirmation_validation_log="${temp_dir}/live-abstention-confirmation-validation-docker.log"
+mkdir "${live_confirmation_validation_output}"
+chmod 700 "${live_confirmation_validation_output}"
+FAKE_DOCKER_LOG="${live_confirmation_validation_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${live_confirmation_validation_output}" \
+  --provider-mode live_siliconflow \
+  --capture-mode production_fixed_memory_judge_negative_guard_abstention_confirmation_validation \
+  --credential-file "${credential_file}" \
+  --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --configured-candidate-judge-credential-file "${configured_judge_credential_file}" \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --abstention-confirmation-validation-approval I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_ABSTENTION_CONFIRMATION_VALIDATION_QUOTA \
+  >"${temp_dir}/live-abstention-confirmation-validation.stdout" \
+  2>"${temp_dir}/live-abstention-confirmation-validation.stderr"
+if [[ "$(find "${live_confirmation_validation_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: live abstention-confirmation Validation bundle was not retained" >&2
+  exit 1
+fi
+assert_cleanup "${live_confirmation_validation_log}"
+
+live_double_confirmation_validation_output="${temp_dir}/live-double-confirmation-validation-output"
+live_double_confirmation_validation_log="${temp_dir}/live-double-confirmation-validation-docker.log"
+mkdir "${live_double_confirmation_validation_output}"
+chmod 700 "${live_double_confirmation_validation_output}"
+FAKE_DOCKER_LOG="${live_double_confirmation_validation_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${live_double_confirmation_validation_output}" \
+  --provider-mode live_siliconflow \
+  --capture-mode production_fixed_memory_judge_negative_guard_double_confirmation_validation \
+  --credential-file "${credential_file}" \
+  --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --configured-candidate-judge-credential-file "${configured_judge_credential_file}" \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --double-confirmation-validation-approval I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_DOUBLE_CONFIRMATION_VALIDATION_QUOTA \
+  >"${temp_dir}/live-double-confirmation-validation.stdout" \
+  2>"${temp_dir}/live-double-confirmation-validation.stderr"
+if [[ "$(find "${live_double_confirmation_validation_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: live double-confirmation Validation bundle was not retained" >&2
+  exit 1
+fi
+assert_cleanup "${live_double_confirmation_validation_log}"
+
+live_bounded_miss_validation_output="${temp_dir}/live-single-user-bounded-miss-validation-output"
+live_bounded_miss_validation_log="${temp_dir}/live-single-user-bounded-miss-validation-docker.log"
+mkdir "${live_bounded_miss_validation_output}"
+chmod 700 "${live_bounded_miss_validation_output}"
+FAKE_DOCKER_LOG="${live_bounded_miss_validation_log}" FAKE_RUNNER_STATUS=0 FAKE_PUBLISH=full \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${live_bounded_miss_validation_output}" \
+  --provider-mode live_siliconflow \
+  --capture-mode production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation \
+  --credential-file "${credential_file}" \
+  --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --configured-candidate-judge-credential-file "${configured_judge_credential_file}" \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --single-user-bounded-miss-validation-approval I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_SINGLE_USER_BOUNDED_MISS_VALIDATION_QUOTA \
+  >"${temp_dir}/live-single-user-bounded-miss-validation.stdout" \
+  2>"${temp_dir}/live-single-user-bounded-miss-validation.stderr"
+if [[ "$(find "${live_bounded_miss_validation_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: live single-user bounded-miss Validation bundle was not retained" >&2
+  cat "${temp_dir}/live-single-user-bounded-miss-validation.stderr" >&2
+  exit 1
+fi
+assert_cleanup "${live_bounded_miss_validation_log}"
+
+bounded_miss_injection_output="${temp_dir}/live-single-user-bounded-miss-injection-output"
+bounded_miss_injection_log="${temp_dir}/live-single-user-bounded-miss-injection-docker.log"
+mkdir "${bounded_miss_injection_output}"
+chmod 700 "${bounded_miss_injection_output}"
+set +e
+FAKE_DOCKER_LOG="${bounded_miss_injection_log}" FAKE_RUNNER_STATUS=1 FAKE_PUBLISH=full \
+  FAKE_BOUNDED_MISS_FALSE_INJECTION=1 \
+  DOCKER_BIN="${fake_docker}" bash "${runner_script}" \
+  --regression-root "${fixture_root}" --cost-basis "${cost_file}" \
+  --output-dir "${bounded_miss_injection_output}" \
+  --provider-mode live_siliconflow \
+  --capture-mode production_fixed_memory_judge_negative_guard_double_confirmation_single_user_bounded_miss_validation \
+  --credential-file "${credential_file}" \
+  --live-approval I_UNDERSTAND_THIS_USES_REAL_SILICONFLOW_QUOTA \
+  --configured-candidate-judge-credential-file "${configured_judge_credential_file}" \
+  --configured-candidate-judge-provider-id SERVER_DEFAULT \
+  --configured-candidate-judge-provider-type openai_compatible \
+  --configured-candidate-judge-base-url https://sub.mumubuku.top/v1 \
+  --configured-candidate-judge-model gpt-5.6-luna \
+  --single-user-bounded-miss-validation-approval I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_SINGLE_USER_BOUNDED_MISS_VALIDATION_QUOTA \
+  >"${temp_dir}/live-single-user-bounded-miss-injection.stdout" \
+  2>"${temp_dir}/live-single-user-bounded-miss-injection.stderr"
+bounded_miss_injection_status=$?
+set -e
+if [[ ${bounded_miss_injection_status} -ne 1 ||
+  "$(find "${bounded_miss_injection_output}" -mindepth 2 -maxdepth 2 -type f | wc -l)" -ne 2 ]]; then
+  echo "Memory regression protocol: bounded-miss non-zero false injection was not retained as Orange failure" >&2
+  cat "${temp_dir}/live-single-user-bounded-miss-injection.stderr" >&2
+  exit 1
+fi
+assert_cleanup "${bounded_miss_injection_log}"
 
 live_production_validation_output="${temp_dir}/live-production-validation-output"
 live_production_validation_log="${temp_dir}/live-production-validation-docker.log"

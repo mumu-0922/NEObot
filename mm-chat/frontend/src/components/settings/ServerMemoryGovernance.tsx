@@ -95,6 +95,8 @@ const MEMORY_TYPES: MemoryType[] = [
 ];
 
 const POLICY_MODES: MemoryPolicyMode[] = ["inherit", "on", "off"];
+const GOVERNANCE_SCROLL_REGION_CLASS =
+  "overflow-y-auto overscroll-contain pr-2 [scrollbar-gutter:stable] [scrollbar-width:thin] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
 const REVIEW_DECISIONS: MemoryReviewDecision[] = [
   "keep_current",
   "accept_new",
@@ -590,9 +592,6 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
             <Brain size={20} className="text-cyan-500" aria-hidden="true" />
             {t("governanceTitle")}
           </h3>
-          <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted-foreground">
-            {t("governanceSubtitle")}
-          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div
@@ -1124,80 +1123,87 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
             {snapshot.conversations.length === 0 ? (
               <EmptyState text={t("noConversations")} />
             ) : (
-              snapshot.conversations.map((policy) => (
-                <article
-                  key={policy.conversationId}
-                  className="grid gap-3 rounded-xl border border-border bg-card p-4 lg:grid-cols-[minmax(12rem,1fr)_repeat(3,minmax(8rem,0.55fr))] lg:items-end"
-                >
-                  <div>
-                    <h5 className="truncate text-sm font-medium text-foreground">
-                      {policy.title}
-                    </h5>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {t("effectivePolicy", {
-                        use: policy.effectiveUse ? t("on") : t("off"),
-                        learn: policy.effectiveLearn ? t("on") : t("off"),
-                      })}
-                      {policy.learnForcedOff
-                        ? ` · ${t("archiveLearnOff")}`
-                        : ""}
-                    </p>
-                  </div>
-                  <PolicySelect
-                    label={t("project")}
-                    value={policy.projectId ?? ""}
-                    disabled={saving}
-                    onChange={(value) =>
-                      void updatePolicy(policy, { projectId: value })
-                    }
-                    options={[
-                      { value: "", label: t("unassigned") },
-                      ...snapshot.projects
-                        .filter(
-                          (project) =>
-                            project.lifecycleStatus === "active" ||
-                            project.id === policy.projectId,
-                        )
-                        .map((project) => ({
-                          value: project.id,
-                          label: `${project.name}${
-                            project.lifecycleStatus === "archived"
-                              ? ` (${t("archived")})`
-                              : ""
-                          }`,
-                        })),
-                    ]}
-                  />
-                  <PolicySelect
-                    label={t("usePolicy")}
-                    value={policy.useMode}
-                    disabled={saving}
-                    onChange={(value) =>
-                      void updatePolicy(policy, {
-                        useMode: value as MemoryPolicyMode,
-                      })
-                    }
-                    options={POLICY_MODES.map((value) => ({
-                      value,
-                      label: t(value),
-                    }))}
-                  />
-                  <PolicySelect
-                    label={t("learnPolicy")}
-                    value={policy.learnMode}
-                    disabled={saving}
-                    onChange={(value) =>
-                      void updatePolicy(policy, {
-                        learnMode: value as MemoryPolicyMode,
-                      })
-                    }
-                    options={POLICY_MODES.map((value) => ({
-                      value,
-                      label: t(value),
-                    }))}
-                  />
-                </article>
-              ))
+              <div
+                role="region"
+                aria-label={t("conversationPolicies")}
+                tabIndex={0}
+                className={`${GOVERNANCE_SCROLL_REGION_CLASS} max-h-[51.5rem] space-y-2`}
+              >
+                {snapshot.conversations.map((policy) => (
+                  <article
+                    key={policy.conversationId}
+                    className="grid min-h-24 gap-3 rounded-xl border border-border bg-card p-4 lg:grid-cols-[minmax(12rem,1fr)_repeat(3,minmax(8rem,0.55fr))] lg:items-end"
+                  >
+                    <div>
+                      <h5 className="truncate text-sm font-medium text-foreground">
+                        {policy.title}
+                      </h5>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {t("effectivePolicy", {
+                          use: policy.effectiveUse ? t("on") : t("off"),
+                          learn: policy.effectiveLearn ? t("on") : t("off"),
+                        })}
+                        {policy.learnForcedOff
+                          ? ` · ${t("archiveLearnOff")}`
+                          : ""}
+                      </p>
+                    </div>
+                    <PolicySelect
+                      label={t("project")}
+                      value={policy.projectId ?? ""}
+                      disabled={saving}
+                      onChange={(value) =>
+                        void updatePolicy(policy, { projectId: value })
+                      }
+                      options={[
+                        { value: "", label: t("unassigned") },
+                        ...snapshot.projects
+                          .filter(
+                            (project) =>
+                              project.lifecycleStatus === "active" ||
+                              project.id === policy.projectId,
+                          )
+                          .map((project) => ({
+                            value: project.id,
+                            label: `${project.name}${
+                              project.lifecycleStatus === "archived"
+                                ? ` (${t("archived")})`
+                                : ""
+                            }`,
+                          })),
+                      ]}
+                    />
+                    <PolicySelect
+                      label={t("usePolicy")}
+                      value={policy.useMode}
+                      disabled={saving}
+                      onChange={(value) =>
+                        void updatePolicy(policy, {
+                          useMode: value as MemoryPolicyMode,
+                        })
+                      }
+                      options={POLICY_MODES.map((value) => ({
+                        value,
+                        label: t(value),
+                      }))}
+                    />
+                    <PolicySelect
+                      label={t("learnPolicy")}
+                      value={policy.learnMode}
+                      disabled={saving}
+                      onChange={(value) =>
+                        void updatePolicy(policy, {
+                          learnMode: value as MemoryPolicyMode,
+                        })
+                      }
+                      options={POLICY_MODES.map((value) => ({
+                        value,
+                        label: t(value),
+                      }))}
+                    />
+                  </article>
+                ))}
+              </div>
             )}
           </section>
         </div>
@@ -1238,32 +1244,27 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
                 aria-label={t("l2SceneProfile")}
                 className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 lg:flex-row lg:items-center lg:justify-between"
               >
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="font-semibold text-foreground">
-                      {t("l2SceneProfile")}
-                    </h4>
-                    <Badge>{snapshot.l2Scene.profile.status}</Badge>
-                    <Badge>
-                      {t("l2Generation", {
-                        generation: snapshot.l2Scene.profile.generation,
-                      })}
-                    </Badge>
-                    <Badge
-                      tone={
-                        snapshot.l2Scene.profile.l1ReaderReady
-                          ? "default"
-                          : "amber"
-                      }
-                    >
-                      {snapshot.l2Scene.profile.l1ReaderReady
-                        ? t("l1ReaderReady")
-                        : t("l1ReaderNotReady")}
-                    </Badge>
-                  </div>
-                  <p className="mt-2 max-w-3xl text-xs leading-relaxed text-muted-foreground">
-                    {t("l2SceneDerivedNotice")}
-                  </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="font-semibold text-foreground">
+                    {t("l2SceneProfile")}
+                  </h4>
+                  <Badge>{snapshot.l2Scene.profile.status}</Badge>
+                  <Badge>
+                    {t("l2Generation", {
+                      generation: snapshot.l2Scene.profile.generation,
+                    })}
+                  </Badge>
+                  <Badge
+                    tone={
+                      snapshot.l2Scene.profile.l1ReaderReady
+                        ? "default"
+                        : "amber"
+                    }
+                  >
+                    {snapshot.l2Scene.profile.l1ReaderReady
+                      ? t("l1ReaderReady")
+                      : t("l1ReaderNotReady")}
+                  </Badge>
                 </div>
                 <button
                   type="button"
@@ -1368,32 +1369,27 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
                 aria-label={t("l3PersonaProfile")}
                 className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 lg:flex-row lg:items-center lg:justify-between"
               >
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="font-semibold text-foreground">
-                      {t("l3PersonaProfile")}
-                    </h4>
-                    <Badge>{snapshot.l3Persona.profile.status}</Badge>
-                    <Badge>
-                      {t("l3Generation", {
-                        generation: snapshot.l3Persona.profile.generation,
-                      })}
-                    </Badge>
-                    <Badge
-                      tone={
-                        snapshot.l3Persona.profile.l1ReaderReady
-                          ? "default"
-                          : "amber"
-                      }
-                    >
-                      {snapshot.l3Persona.profile.l1ReaderReady
-                        ? t("l1ReaderReady")
-                        : t("l1ReaderNotReady")}
-                    </Badge>
-                  </div>
-                  <p className="mt-2 max-w-3xl text-xs leading-relaxed text-muted-foreground">
-                    {t("l3PersonaDerivedNotice")}
-                  </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="font-semibold text-foreground">
+                    {t("l3PersonaProfile")}
+                  </h4>
+                  <Badge>{snapshot.l3Persona.profile.status}</Badge>
+                  <Badge>
+                    {t("l3Generation", {
+                      generation: snapshot.l3Persona.profile.generation,
+                    })}
+                  </Badge>
+                  <Badge
+                    tone={
+                      snapshot.l3Persona.profile.l1ReaderReady
+                        ? "default"
+                        : "amber"
+                    }
+                  >
+                    {snapshot.l3Persona.profile.l1ReaderReady
+                      ? t("l1ReaderReady")
+                      : t("l1ReaderNotReady")}
+                  </Badge>
                 </div>
                 <button
                   type="button"
@@ -1531,25 +1527,32 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
                 {t("noDeletions")}
               </p>
             ) : (
-              snapshot.deletions.map((deletion) => (
-                <div
-                  key={deletion.manifestId}
-                  className="rounded-lg border border-border p-3 text-xs text-muted-foreground"
-                >
-                  <div className="flex flex-wrap gap-1.5">
-                    <Badge>{deletion.onlinePurgeStatus}</Badge>
-                    <Badge>{deletion.backupExpiryStatus}</Badge>
+              <div
+                role="region"
+                aria-label={t("deletionProgress")}
+                tabIndex={0}
+                className={`${GOVERNANCE_SCROLL_REGION_CLASS} max-h-[39.75rem] space-y-3`}
+              >
+                {snapshot.deletions.map((deletion) => (
+                  <div
+                    key={deletion.manifestId}
+                    className="min-h-24 rounded-lg border border-border p-3 text-xs text-muted-foreground"
+                  >
+                    <div className="flex flex-wrap gap-1.5">
+                      <Badge>{deletion.onlinePurgeStatus}</Badge>
+                      <Badge>{deletion.backupExpiryStatus}</Badge>
+                    </div>
+                    <p className="mt-2 font-mono text-[11px]">
+                      {deletion.memoryId}
+                    </p>
+                    <p className="mt-1">
+                      {t("backupExpires", {
+                        date: formatDate(deletion.backupExpiresAt),
+                      })}
+                    </p>
                   </div>
-                  <p className="mt-2 font-mono text-[11px]">
-                    {deletion.memoryId}
-                  </p>
-                  <p className="mt-1">
-                    {t("backupExpires", {
-                      date: formatDate(deletion.backupExpiresAt),
-                    })}
-                  </p>
-                </div>
-              ))
+                ))}
+              </div>
             )}
           </section>
           <section className="space-y-3 rounded-xl border border-border bg-card p-4">
@@ -1565,28 +1568,35 @@ const ServerMemoryGovernance = ({ apiClient }: ServerMemoryGovernanceProps) => {
                 {t("noDiagnostics")}
               </p>
             ) : (
-              snapshot.diagnostics.map((diagnostic, index) => (
-                <div
-                  key={`${diagnostic.assistantMessageId}-${diagnostic.profile}-${index}`}
-                  className="rounded-lg border border-border p-3 text-xs text-muted-foreground"
-                >
-                  <div className="flex flex-wrap gap-1.5">
-                    <Badge>{diagnostic.profile}</Badge>
-                    <Badge>{diagnostic.status}</Badge>
-                    {diagnostic.fallbackCode !== "NONE" && (
-                      <Badge tone="amber">{diagnostic.fallbackCode}</Badge>
-                    )}
+              <div
+                role="region"
+                aria-label={t("searchDiagnostics")}
+                tabIndex={0}
+                className={`${GOVERNANCE_SCROLL_REGION_CLASS} max-h-[39.75rem] space-y-3`}
+              >
+                {snapshot.diagnostics.map((diagnostic, index) => (
+                  <div
+                    key={`${diagnostic.assistantMessageId}-${diagnostic.profile}-${index}`}
+                    className="min-h-24 rounded-lg border border-border p-3 text-xs text-muted-foreground"
+                  >
+                    <div className="flex flex-wrap gap-1.5">
+                      <Badge>{diagnostic.profile}</Badge>
+                      <Badge>{diagnostic.status}</Badge>
+                      {diagnostic.fallbackCode !== "NONE" && (
+                        <Badge tone="amber">{diagnostic.fallbackCode}</Badge>
+                      )}
+                    </div>
+                    <p className="mt-2">
+                      {t("diagnosticCounts", {
+                        baseline: diagnostic.baselineCount,
+                        final: diagnostic.finalCount,
+                        overlap: diagnostic.overlapCount,
+                        duration: diagnostic.durationMillis,
+                      })}
+                    </p>
                   </div>
-                  <p className="mt-2">
-                    {t("diagnosticCounts", {
-                      baseline: diagnostic.baselineCount,
-                      final: diagnostic.finalCount,
-                      overlap: diagnostic.overlapCount,
-                      duration: diagnostic.durationMillis,
-                    })}
-                  </p>
-                </div>
-              ))
+                ))}
+              </div>
             )}
           </section>
         </div>

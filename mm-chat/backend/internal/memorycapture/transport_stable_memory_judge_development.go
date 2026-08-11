@@ -39,19 +39,25 @@ type transportStableMemoryJudgeReportSpec struct {
 	judgeAdapter                    string
 	judgePromptVersion              string
 	judgePromptSHA256               string
+	judgeConfirmationPromptVersion  string
+	judgeConfirmationPromptSHA256   string
+	confirmationRequired            bool
+	maximumAbstentionConfirmations  int
+	authorizedRequestCount          int
 	executionPolicy                 func(string) (AccuracyFirstExecutionPolicy, error)
 	validateCostAuthority           func(CostBasis, ConfiguredCandidateJudgeProfileAuthority) error
 }
 
 func transportStableMemoryJudgeDevelopmentReportSpec() transportStableMemoryJudgeReportSpec {
 	return transportStableMemoryJudgeReportSpec{
-		readerVersion:         TransportStableMemoryJudgeReaderVersion,
-		reportSchemaVersion:   TransportStableMemoryJudgeReportSchemaVersion,
-		admissionMode:         TransportStableMemoryJudgeAdmissionMode,
-		policyID:              usermemory.HybridRelevanceAccuracyFirstJudgePolicyID,
-		judgeAdapter:          memoryjudge.ChatAdapterVersion,
-		executionPolicy:       TransportStableDevelopmentExecutionPolicy,
-		validateCostAuthority: ValidateTransportStableMemoryJudgeCostAuthority,
+		readerVersion:          TransportStableMemoryJudgeReaderVersion,
+		reportSchemaVersion:    TransportStableMemoryJudgeReportSchemaVersion,
+		admissionMode:          TransportStableMemoryJudgeAdmissionMode,
+		policyID:               usermemory.HybridRelevanceAccuracyFirstJudgePolicyID,
+		judgeAdapter:           memoryjudge.ChatAdapterVersion,
+		executionPolicy:        TransportStableDevelopmentExecutionPolicy,
+		validateCostAuthority:  ValidateTransportStableMemoryJudgeCostAuthority,
+		authorizedRequestCount: 900,
 	}
 }
 
@@ -188,11 +194,9 @@ func buildTransportStableMemoryJudgeDevelopmentReport(
 		return JudgeFailureDiagnosticDevelopmentReport{}, nil, err
 	}
 	telemetry := profile.ProviderAttempts
-	if err := validateTransportStableMemoryJudgeTelemetry(
-		telemetry,
-		len(aggregate.development),
-		aggregate.logicalJudgeRequests,
-		terminalAttemptFailures,
+	if err := validateTransportStableMemoryJudgeTelemetryForSpec(
+		telemetry, len(aggregate.development), aggregate.logicalJudgeRequests,
+		terminalAttemptFailures, spec,
 	); err != nil {
 		return JudgeFailureDiagnosticDevelopmentReport{}, nil, err
 	}
@@ -226,37 +230,39 @@ func buildTransportStableMemoryJudgeDevelopmentReport(
 		)
 	}
 	report := JudgeFailureDiagnosticDevelopmentReport{
-		SchemaVersion:             spec.reportSchemaVersion,
-		CorpusClass:               memoryeval.RegressionCorpusClass,
-		AdmissionMode:             spec.admissionMode,
-		PromotionEligible:         false,
-		PolicySelected:            false,
-		DiagnosticComplete:        true,
-		Split:                     DevelopmentCalibrationSplit,
-		CaseCount:                 len(aggregate.development),
-		PolicyID:                  spec.policyID,
-		ProfileID:                 profile.Profile.ID,
-		ConfigurationSHA256:       profile.Profile.ConfigurationSHA256,
-		ProviderEgressPolicy:      memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1,
-		ProviderCostPolicy:        costBasis.ProviderCostPolicy,
-		ProviderCostAuthorized:    true,
-		JudgeProviderID:           authority.ProviderID,
-		JudgeProviderType:         authority.ProviderType,
-		JudgeBaseURLSHA256:        authority.BaseURLSHA256,
-		JudgeModelID:              authority.ModelID,
-		JudgeAdapter:              spec.judgeAdapter,
-		JudgePromptVersion:        judgePromptVersion,
-		JudgePromptSHA256:         judgePromptSHA256,
-		JudgeDecodingProfile:      usermemory.HybridCandidateJudgeDecodingProfile,
-		FailureTaxonomyVersion:    memoryjudge.FailureTaxonomyVersion,
-		FailureTaxonomySHA256:     memoryjudge.FailureTaxonomySHA256,
-		DiagnosticCompleteness:    JudgeFailureDiagnosticCompletenessPolicy,
-		SelectionAlgorithm:        cloudJudgeSelectionAlgorithm,
-		EvaluationCriteriaVersion: memoryeval.MemoryJudgeAccuracyFirstCriteriaVersionV3,
-		EvaluationCriteria:        criteria,
-		ExecutionPolicy:           executionPolicy,
-		Passed:                    evaluation.Passed && aggregate.diagnostics.FailedCaseCount == 0,
-		Evaluation:                evaluation,
+		SchemaVersion:                  spec.reportSchemaVersion,
+		CorpusClass:                    memoryeval.RegressionCorpusClass,
+		AdmissionMode:                  spec.admissionMode,
+		PromotionEligible:              false,
+		PolicySelected:                 false,
+		DiagnosticComplete:             true,
+		Split:                          DevelopmentCalibrationSplit,
+		CaseCount:                      len(aggregate.development),
+		PolicyID:                       spec.policyID,
+		ProfileID:                      profile.Profile.ID,
+		ConfigurationSHA256:            profile.Profile.ConfigurationSHA256,
+		ProviderEgressPolicy:           memoryeval.ProviderEgressPolicyOwnerAuthorizedNormalCandidatesV1,
+		ProviderCostPolicy:             costBasis.ProviderCostPolicy,
+		ProviderCostAuthorized:         true,
+		JudgeProviderID:                authority.ProviderID,
+		JudgeProviderType:              authority.ProviderType,
+		JudgeBaseURLSHA256:             authority.BaseURLSHA256,
+		JudgeModelID:                   authority.ModelID,
+		JudgeAdapter:                   spec.judgeAdapter,
+		JudgePromptVersion:             judgePromptVersion,
+		JudgePromptSHA256:              judgePromptSHA256,
+		JudgeConfirmationPromptVersion: spec.judgeConfirmationPromptVersion,
+		JudgeConfirmationPromptSHA256:  spec.judgeConfirmationPromptSHA256,
+		JudgeDecodingProfile:           usermemory.HybridCandidateJudgeDecodingProfile,
+		FailureTaxonomyVersion:         memoryjudge.FailureTaxonomyVersion,
+		FailureTaxonomySHA256:          memoryjudge.FailureTaxonomySHA256,
+		DiagnosticCompleteness:         JudgeFailureDiagnosticCompletenessPolicy,
+		SelectionAlgorithm:             cloudJudgeSelectionAlgorithm,
+		EvaluationCriteriaVersion:      memoryeval.MemoryJudgeAccuracyFirstCriteriaVersionV3,
+		EvaluationCriteria:             criteria,
+		ExecutionPolicy:                executionPolicy,
+		Passed:                         evaluation.Passed && aggregate.diagnostics.FailedCaseCount == 0,
+		Evaluation:                     evaluation,
 		Diagnostics: JudgeFailureDiagnosticDiagnostics{
 			CloudJudgeDevelopmentDiagnostics:   aggregate.diagnostics,
 			JudgeTerminalFailureCategoryCounts: terminalCounts,
@@ -323,6 +329,34 @@ func validateTransportStableMemoryJudgeTelemetry(
 	return nil
 }
 
+func validateTransportStableMemoryJudgeTelemetryForSpec(
+	value AccuracyFirstProviderTelemetry,
+	caseCount int,
+	logicalJudgeRequests int,
+	terminalAttemptFailures int,
+	spec transportStableMemoryJudgeReportSpec,
+) error {
+	var err error
+	if spec.confirmationRequired {
+		err = validateAbstentionConfirmationProviderTelemetry(
+			value, caseCount, logicalJudgeRequests, 2,
+			spec.maximumAbstentionConfirmations,
+		)
+	} else {
+		err = validateAccuracyFirstProviderTelemetryWithJudgeRetryLimit(
+			value, caseCount, logicalJudgeRequests, 2,
+		)
+	}
+	if err != nil || value.JudgeAttemptFailureCategoryCounts == nil ||
+		terminalAttemptFailures < 0 ||
+		!validJudgeAttemptFailureCategoryCounts(value.JudgeAttemptFailureCategoryCounts) ||
+		sumDiagnosticCounts(value.JudgeAttemptFailureCategoryCounts) !=
+			value.JudgeRetries+terminalAttemptFailures {
+		return fmt.Errorf("%w: versioned Provider telemetry", ErrCaptureInvalid)
+	}
+	return nil
+}
+
 func validTransportStableMemoryJudgeDevelopmentReport(
 	report TransportStableMemoryJudgeDevelopmentReport,
 ) bool {
@@ -343,6 +377,10 @@ func validTransportStableMemoryJudgeDevelopmentReportForSpec(
 	judgePromptSHA256 := spec.judgePromptSHA256
 	if judgePromptSHA256 == "" {
 		judgePromptSHA256 = usermemory.HybridCandidateJudgePromptSHA256
+	}
+	authorizedRequestCount := spec.authorizedRequestCount
+	if authorizedRequestCount == 0 {
+		authorizedRequestCount = 900
 	}
 	if judgeFailureTaxonomySHA256() != memoryjudge.FailureTaxonomySHA256 ||
 		memoryeval.ValidateMemoryJudgeAccuracyFirstCriteriaV3(
@@ -427,13 +465,13 @@ func validTransportStableMemoryJudgeDevelopmentReportForSpec(
 			report.Diagnostics.FailedCaseCount == report.CaseCount &&
 		sumDiagnosticCounts(report.Diagnostics.JudgeTerminalFailureCategoryCounts) ==
 			report.Diagnostics.FailureCodeCounts["CANDIDATE_JUDGE_FAILED"] &&
-		validateTransportStableMemoryJudgeTelemetry(
-			telemetry,
-			report.CaseCount,
-			logicalJudgeRequests,
-			terminalAttemptFailures,
+		validateTransportStableMemoryJudgeTelemetryForSpec(
+			telemetry, report.CaseCount, logicalJudgeRequests,
+			terminalAttemptFailures, spec,
 		) == nil &&
-		report.CostAuthority.AuthorizedRequestCount == 900 &&
+		report.JudgeConfirmationPromptVersion == spec.judgeConfirmationPromptVersion &&
+		report.JudgeConfirmationPromptSHA256 == spec.judgeConfirmationPromptSHA256 &&
+		report.CostAuthority.AuthorizedRequestCount == authorizedRequestCount &&
 		report.CostAuthority.ActualRequestCount == report.ProviderAttempts.JudgeAttempts &&
 		report.CostAuthority.ActualInputTokenUpperBound ==
 			uint64(report.ProviderAttempts.JudgeInputTokenUpperBound) &&

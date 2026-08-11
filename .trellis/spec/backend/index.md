@@ -14,16 +14,16 @@
 | [Hosted TTS production](./hosted-tts-production.md) | Dedicated SiliconFlow Voice authority, exact activation, server-mode playback, per-user cache, and cleanup |
 | [Memory v2 benchmark](./memory-v2-benchmark.md) | Deterministic 650-case human Golden authoring plus a schema-separated 500-case machine regression lane, strict shared scoring, protected replay, one-shot formal Holdout, isolated schema-v15 production-policy Validation, and non-promotional boundaries |
 | [Memory v2 storage](./memory-v2-storage.md) | Project/scope/settings foundation, Global v1 repository compatibility, ownership constraints, and guarded rollback |
-| [Memory v2 worker](./memory-v2-worker.md) | ID-only completed-turn capture, required Provider Tool Calls, leased PostgreSQL jobs, governance-backed safe-add promotion, PostgreSQL heartbeat/user health, least privilege, replay, and rollback |
+| [Memory v2 worker](./memory-v2-worker.md) | ID-only completed-turn capture, required Provider Tool Calls, leased PostgreSQL jobs, governance-backed safe-add promotion, PostgreSQL heartbeat/user health, append-only historical-health resolution, least privilege, replay, and rollback |
 | [Memory v2 provenance/delete](./memory-v2-provenance-deletion.md) | Canonical revisions, ID/hash evidence, visibility epochs, tombstones, manifests, and provider-free purge |
 | [Memory v2 candidate/Review](./memory-v2-candidate-review.md) | Strict Tool-framed candidate batches, historical proposal-only routing, production safe-add successor authority, Review shadow, and provider-free expiry |
 | [Memory v2 actions/Activity/Usage](./memory-v2-actions-activity-usage.md) | Current-user typed actions, strict planner authority, immutable Usage, link-only Activity polling, and revision-safe undo |
 | [Memory v2 lexical shadow](./memory-v2-lexical-shadow.md) | Transactional L1 exact/CJK BM25 projection, current-authority shadow comparison, ID-only diagnostics, and v1 fail-open |
 | [Memory v2 hybrid shadow](./memory-v2-hybrid-shadow.md) | Fixed BGE-M3 vector jobs, Exact/BM25/vector RRF, historical Tool/judge evidence, schema-v18 production-v2 guard/buffered Validation, exact-user canary admission, health-aware fail-closed abstention, old-response fences, and exact Tool-result Usage |
-| [Memory v2 governance](./memory-v2-governance.md) | Project/Conversation policy, scoped governance CRUD, Review decisions, current-only detail/Activity hydration, and governed v1 compatibility |
+| [Memory v2 governance](./memory-v2-governance.md) | Project/Conversation policy, scoped governance CRUD, Review decisions including stale-safe rejection, current-only detail/Activity hydration, and governed v1 compatibility |
 | [Memory v2 portability/retention](./memory-v2-portability-retention.md) | Authenticated age export/import, dry-run/confirm fencing, off-host deletion replay, and verified backup-set retention |
-| [Memory v2 L2 Scene](./memory-v2-l2-scene.md) | Same-scope derived Scenes, leased synthesis/embedding/purge, hybrid shadow retrieval, evidence-gated promotion, governance, and rollback |
-| [Memory v2 L3 Persona](./memory-v2-l3-persona.md) | Global stable-L1 Persona synthesis, leased refresh/embedding/purge, independent hybrid retrieval/promotion, governance, and rollback |
+| [Memory v2 L2 Scene](./memory-v2-l2-scene.md) | Same-scope derived Scenes, leased synthesis/embedding/purge, hybrid retrieval, formal promotion or audited sole-user preview, governance, and rollback |
+| [Memory v2 L3 Persona](./memory-v2-l3-persona.md) | Global stable-L1 Persona synthesis, leased refresh/embedding/purge, independent formal promotion or audited sole-user preview, governance, and rollback |
 | [Memory v2 Hindsight fixture](./memory-v2-hindsight-fixture.md) | Synthetic-only dual-profile Hindsight comparison, opaque bank mapping, content-free reports, isolated Compose, and mandatory teardown |
 
 ## Pre-Development Checklist

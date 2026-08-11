@@ -104,7 +104,20 @@ required_paths=(
   scripts/test-memory-v20-abstention-diagnostic-from-vault.sh
   scripts/run-memory-accuracy-repair-development-from-vault.sh
   scripts/test-memory-accuracy-repair-development-from-vault.sh
+  scripts/run-memory-abstention-confirmation-development-from-vault.sh
+  scripts/test-memory-abstention-confirmation-development-from-vault.sh
+  scripts/run-memory-abstention-confirmation-validation-from-vault.sh
+  scripts/test-memory-abstention-confirmation-validation-from-vault.sh
+  scripts/run-memory-double-confirmation-development-from-vault.sh
+  scripts/test-memory-double-confirmation-development-from-vault.sh
+  scripts/run-memory-double-confirmation-validation-from-vault.sh
+  scripts/test-memory-double-confirmation-validation-from-vault.sh
+  scripts/run-memory-single-user-bounded-miss-development-from-vault.sh
+  scripts/test-memory-single-user-bounded-miss-development-from-vault.sh
+  scripts/run-memory-single-user-bounded-miss-validation-from-vault.sh
+  scripts/test-memory-single-user-bounded-miss-validation-from-vault.sh
   rag/pyproject.toml
+  rag/uv.lock
   rag/Dockerfile
 )
 for path in "${required_paths[@]}"; do
@@ -244,9 +257,16 @@ DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-production-buff
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-judge-slice-diagnostic-from-vault.sh"
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-v20-abstention-diagnostic-from-vault.sh"
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-accuracy-repair-development-from-vault.sh"
+DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-abstention-confirmation-development-from-vault.sh"
+DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-abstention-confirmation-validation-from-vault.sh"
+DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-double-confirmation-development-from-vault.sh"
+DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-double-confirmation-validation-from-vault.sh"
+DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-single-user-bounded-miss-development-from-vault.sh"
+DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-single-user-bounded-miss-validation-from-vault.sh"
 
 if [[ "${full}" == true ]]; then
   rag_python="${RAG_PYTHON:-python3.13}"
+  rag_uv="${RAG_UV:-uv}"
   if ! command -v "${rag_python}" >/dev/null 2>&1; then
     echo "standalone verification: Python 3.13 is required for RAG checks" >&2
     exit 1
@@ -254,6 +274,10 @@ if [[ "${full}" == true ]]; then
   if ! "${rag_python}" -c \
     'import sys; raise SystemExit(sys.version_info[:2] != (3, 13))'; then
     echo "standalone verification: RAG checks require Python 3.13" >&2
+    exit 1
+  fi
+  if ! command -v "${rag_uv}" >/dev/null 2>&1; then
+    echo "standalone verification: uv is required for frozen RAG dependency sync" >&2
     exit 1
   fi
 
@@ -277,8 +301,7 @@ if [[ "${full}" == true ]]; then
   )
   (
     cd "${copy_dir}/rag"
-    "${rag_python}" -m venv .venv
-    .venv/bin/pip install -e . --group dev
+    "${rag_uv}" sync --frozen --all-groups --python "${rag_python}"
     .venv/bin/ruff check .
     .venv/bin/ruff format --check .
     .venv/bin/mypy src

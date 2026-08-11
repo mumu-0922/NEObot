@@ -261,10 +261,21 @@ func (judge runtimeMemoryCandidateJudge) JudgeHybridCandidates(
 			errors.New("fixed Memory candidate judge buffered Provider is unavailable"),
 		)
 	}
-	adapter, err := memoryjudge.NewBufferedChatAdapter(bufferedProvider, chat.ModelRef{
+	modelRef := chat.ModelRef{
 		ProviderID: fixedMemoryJudgeProviderID,
 		ModelID:    usermemory.HybridFixedMemoryJudgeModelID,
-	})
+	}
+	var adapter usermemory.HybridCandidateJudge
+	switch input.PromptPurpose {
+	case usermemory.HybridCandidateJudgePromptPurposeAccuracyPrimary,
+		usermemory.HybridCandidateJudgePromptPurposeAbstentionConfirmation:
+		adapter, err = memoryjudge.NewBufferedChatAbstentionConfirmationAdapter(
+			bufferedProvider,
+			modelRef,
+		)
+	default:
+		adapter, err = memoryjudge.NewBufferedChatAdapter(bufferedProvider, modelRef)
+	}
 	if err != nil {
 		return usermemory.HybridCandidateJudgeResult{}, memoryjudge.NewFailure(
 			memoryjudge.FailureProvenanceDrift,
@@ -322,6 +333,10 @@ func newRuntimeMemoryCandidateJudge(
 		return nil
 	}
 	return judge
+}
+
+func productionMemoryToolRelevancePolicy() usermemory.HybridShadowRelevancePolicy {
+	return usermemory.HybridShadowDoubleConfirmationProductionPolicy()
 }
 
 func (r runtimeMemoryActionProviderResolver) ResolveMemoryActionProvider(
@@ -1136,7 +1151,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 				memoryServiceOptions,
 				usermemory.WithHybridCandidateJudge(judge),
 				usermemory.WithHybridMemoryToolRelevancePolicy(
-					usermemory.HybridShadowNegativePolicyGuardProductionPolicy(),
+					productionMemoryToolRelevancePolicy(),
 				),
 			)
 		}

@@ -19,6 +19,12 @@ type transientCapture struct {
 	providerSent                         []string
 	rerankEgressReady                    bool
 	judgeEgressReady                     bool
+	judgeInputReady                      bool
+	judgePrimaryAbstentionReady          bool
+	judgeMaximumConfirmations            int
+	judgeConfirmationEgressCount         int
+	judgeConfirmationInputCount          int
+	judgeConfirmationResultCount         int
 	cloudJudgeReady                      bool
 	cloudJudgeInputTokenUpperBound       int
 	cloudJudgeFailureCategory            string
@@ -125,23 +131,46 @@ func (recorder *Recorder) recordFinal(assistantMessageID string, values []userme
 	return nil
 }
 
-func (recorder *Recorder) recordProviderSent(stage string, documentCount int) error {
+func (recorder *Recorder) recordProviderSent(
+	stage string,
+	documentCount int,
+	maximumConfirmations int,
+) error {
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
-	if recorder.current == nil || documentCount != len(recorder.current.candidates) {
+	if recorder.current == nil || documentCount != len(recorder.current.candidates) ||
+		maximumConfirmations < 0 || maximumConfirmations > 2 {
 		return ErrCaptureStateConflict
 	}
 	switch stage {
 	case "rerank":
-		if recorder.current.rerankEgressReady {
+		if recorder.current.rerankEgressReady || maximumConfirmations != 0 {
 			return ErrCaptureStateConflict
 		}
 		recorder.current.rerankEgressReady = true
 	case "cloud_judge":
-		if recorder.current.judgeEgressReady {
+		if recorder.current.judgeEgressReady || recorder.current.cloudJudgeReady ||
+			recorder.current.cloudJudgeFailureCategory != "" {
 			return ErrCaptureStateConflict
 		}
 		recorder.current.judgeEgressReady = true
+		recorder.current.judgeMaximumConfirmations = maximumConfirmations
+	case "cloud_judge_confirmation":
+		if maximumConfirmations == 0 ||
+			maximumConfirmations != recorder.current.judgeMaximumConfirmations ||
+			!recorder.current.judgeEgressReady ||
+			!recorder.current.judgeInputReady ||
+			!recorder.current.judgePrimaryAbstentionReady ||
+			recorder.current.judgeConfirmationEgressCount !=
+				recorder.current.judgeConfirmationInputCount ||
+			recorder.current.judgeConfirmationInputCount !=
+				recorder.current.judgeConfirmationResultCount ||
+			recorder.current.judgeConfirmationEgressCount >= maximumConfirmations ||
+			recorder.current.cloudJudgeReady ||
+			recorder.current.cloudJudgeFailureCategory != "" {
+			return ErrCaptureStateConflict
+		}
+		recorder.current.judgeConfirmationEgressCount++
 	default:
 		return ErrCaptureStateConflict
 	}
@@ -160,6 +189,7 @@ func (recorder *Recorder) recordCloudJudgeResult(
 		candidateCount,
 		usermemory.HybridCandidateJudgePromptVersion,
 		usermemory.HybridCandidateJudgePromptSHA256,
+		false,
 	)
 }
 
@@ -168,10 +198,12 @@ func (recorder *Recorder) recordCloudJudgeResultWithPrompt(
 	candidateCount int,
 	expectedPromptVersion string,
 	expectedPromptSHA256 string,
+	confirmation bool,
 ) error {
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
-	if recorder.current == nil || recorder.current.cloudJudgeReady ||
+	if !recorder.cloudJudgeResultStateReadyLocked(confirmation) ||
+		recorder.current == nil || recorder.current.cloudJudgeReady ||
 		recorder.current.cloudJudgeFailureCategory != "" ||
 		!recorder.current.judgeEgressReady ||
 		candidateCount != len(recorder.current.candidates) ||
@@ -186,9 +218,71 @@ func (recorder *Recorder) recordCloudJudgeResultWithPrompt(
 	if err != nil {
 		return ErrCaptureStateConflict
 	}
+	if recorder.current.judgeMaximumConfirmations > 0 && len(selected) == 0 {
+		return ErrCaptureStateConflict
+	}
+	if confirmation {
+		recorder.current.judgeConfirmationResultCount++
+	}
 	recorder.current.cloudJudgeSelectedOrdinals = append([]int(nil), selected...)
 	recorder.current.cloudJudgeReady = true
 	return nil
+}
+
+func (recorder *Recorder) recordCloudJudgeEmptyResultWithPrompt(
+	result usermemory.HybridCandidateJudgeResult,
+	candidateCount int,
+	expectedPromptVersion string,
+	expectedPromptSHA256 string,
+	confirmation bool,
+) error {
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	if !recorder.cloudJudgeResultStateReadyLocked(confirmation) ||
+		recorder.current == nil || recorder.current.cloudJudgeReady ||
+		recorder.current.cloudJudgeFailureCategory != "" ||
+		recorder.current.judgeMaximumConfirmations < 1 ||
+		candidateCount != len(recorder.current.candidates) ||
+		result.PromptVersion != expectedPromptVersion ||
+		result.PromptSHA256 != expectedPromptSHA256 {
+		return ErrCaptureStateConflict
+	}
+	selected, err := usermemory.DecodeHybridCandidateJudgeOutput(
+		result.RawOutput,
+		candidateCount,
+	)
+	if err != nil || len(selected) != 0 {
+		return ErrCaptureStateConflict
+	}
+	if !confirmation {
+		recorder.current.judgePrimaryAbstentionReady = true
+		return nil
+	}
+	recorder.current.judgeConfirmationResultCount++
+	if recorder.current.judgeConfirmationResultCount ==
+		recorder.current.judgeMaximumConfirmations {
+		recorder.current.cloudJudgeSelectedOrdinals = []int{}
+		recorder.current.cloudJudgeReady = true
+	}
+	return nil
+}
+
+func (recorder *Recorder) cloudJudgeResultStateReadyLocked(confirmation bool) bool {
+	if recorder.current == nil || !recorder.current.judgeInputReady {
+		return false
+	}
+	if !confirmation {
+		return !recorder.current.judgePrimaryAbstentionReady &&
+			recorder.current.judgeConfirmationEgressCount == 0 &&
+			recorder.current.judgeConfirmationInputCount == 0 &&
+			recorder.current.judgeConfirmationResultCount == 0
+	}
+	return recorder.current.judgePrimaryAbstentionReady &&
+		recorder.current.judgeConfirmationEgressCount > 0 &&
+		recorder.current.judgeConfirmationEgressCount ==
+			recorder.current.judgeConfirmationInputCount &&
+		recorder.current.judgeConfirmationInputCount ==
+			recorder.current.judgeConfirmationResultCount+1
 }
 
 func (recorder *Recorder) recordCloudJudgeFailure(category string) error {
@@ -198,6 +292,10 @@ func (recorder *Recorder) recordCloudJudgeFailure(category string) error {
 		recorder.current.cloudJudgeFailureCategory != "" ||
 		!recorder.current.judgeEgressReady ||
 		recorder.current.cloudJudgeInputTokenUpperBound <= 0 ||
+		(!recorder.current.judgeInputReady ||
+			(recorder.current.judgePrimaryAbstentionReady &&
+				recorder.current.judgeConfirmationInputCount !=
+					recorder.current.judgeConfirmationResultCount+1)) ||
 		!memoryjudge.ValidFailureCategory(category) {
 		return ErrCaptureStateConflict
 	}
@@ -230,10 +328,39 @@ func (recorder *Recorder) recordCloudJudgeInputWithPrompt(
 	defer recorder.mu.Unlock()
 	if recorder.current == nil || !recorder.current.judgeEgressReady ||
 		len(input.Candidates) != len(recorder.current.candidates) ||
+		recorder.current.judgeInputReady ||
 		recorder.current.cloudJudgeInputTokenUpperBound != 0 || upperBound <= 0 {
 		return ErrCaptureStateConflict
 	}
 	recorder.current.cloudJudgeInputTokenUpperBound = upperBound
+	recorder.current.judgeInputReady = true
+	return nil
+}
+
+func (recorder *Recorder) recordCloudJudgeConfirmationInputWithPrompt(
+	input usermemory.HybridCandidateJudgeInput,
+	promptBuilder candidateJudgeCapturePromptBuilder,
+) error {
+	upperBound, err := cloudJudgeInputTokenUpperBoundWithPrompt(input, promptBuilder)
+	if err != nil {
+		return ErrCaptureStateConflict
+	}
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	if recorder.current == nil || !recorder.current.judgeEgressReady ||
+		!recorder.current.judgeInputReady ||
+		!recorder.current.judgePrimaryAbstentionReady ||
+		recorder.current.judgeConfirmationEgressCount == 0 ||
+		recorder.current.judgeConfirmationEgressCount !=
+			recorder.current.judgeConfirmationInputCount+1 ||
+		recorder.current.judgeConfirmationInputCount !=
+			recorder.current.judgeConfirmationResultCount ||
+		len(input.Candidates) != len(recorder.current.candidates) ||
+		recorder.current.cloudJudgeInputTokenUpperBound <= 0 || upperBound <= 0 {
+		return ErrCaptureStateConflict
+	}
+	recorder.current.cloudJudgeInputTokenUpperBound += upperBound
+	recorder.current.judgeConfirmationInputCount++
 	return nil
 }
 
@@ -507,7 +634,7 @@ func (decorator *ProviderDecorator) ClassifyMemoryIntent(
 }
 
 func (decorator *ProviderDecorator) Rerank(ctx context.Context, query string, documents []string) ([]ragproviders.RerankResult, error) {
-	if err := decorator.recorder.recordProviderSent("rerank", len(documents)); err != nil {
+	if err := decorator.recorder.recordProviderSent("rerank", len(documents), 0); err != nil {
 		return nil, fmt.Errorf("capture hybrid Provider egress: %w", err)
 	}
 	results, err := decorator.provider.Rerank(ctx, query, documents)

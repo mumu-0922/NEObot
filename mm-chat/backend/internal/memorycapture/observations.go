@@ -216,6 +216,78 @@ func CostBasisSHA256(cost CostBasis) (string, error) {
 		); err != nil {
 			return "", err
 		}
+	case "neo-chat.memory-regression-cost-basis.v20-confirmation-development.v1":
+		if cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+			cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil {
+			return "", fmt.Errorf("%w: cost basis", ErrCaptureInvalid)
+		}
+		if err := validateConfiguredCandidateJudgeCostAuthority(
+			cost,
+			FixedMemoryJudgeAuthority(),
+			1800,
+		); err != nil {
+			return "", err
+		}
+	case "neo-chat.memory-regression-cost-basis.v21":
+		if cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+			cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil {
+			return "", fmt.Errorf("%w: cost basis", ErrCaptureInvalid)
+		}
+		if err := validateConfiguredCandidateJudgeCostAuthority(
+			cost,
+			FixedMemoryJudgeAuthority(),
+			600,
+		); err != nil {
+			return "", err
+		}
+	case "neo-chat.memory-regression-cost-basis.v22-double-confirmation-development.v1":
+		if cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+			cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil {
+			return "", fmt.Errorf("%w: cost basis", ErrCaptureInvalid)
+		}
+		if err := validateConfiguredCandidateJudgeCostAuthority(
+			cost,
+			FixedMemoryJudgeAuthority(),
+			2700,
+		); err != nil {
+			return "", err
+		}
+	case "neo-chat.memory-regression-cost-basis.v23-double-confirmation-validation.v1":
+		if cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+			cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil {
+			return "", fmt.Errorf("%w: cost basis", ErrCaptureInvalid)
+		}
+		if err := validateConfiguredCandidateJudgeCostAuthority(
+			cost,
+			FixedMemoryJudgeAuthority(),
+			900,
+		); err != nil {
+			return "", err
+		}
+	case "neo-chat.memory-regression-cost-basis.v24-single-user-bounded-miss-development.v1":
+		if cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+			cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil {
+			return "", fmt.Errorf("%w: cost basis", ErrCaptureInvalid)
+		}
+		if err := validateConfiguredCandidateJudgeCostAuthority(
+			cost,
+			FixedMemoryJudgeAuthority(),
+			2700,
+		); err != nil {
+			return "", err
+		}
+	case "neo-chat.memory-regression-cost-basis.v25-single-user-bounded-miss-validation.v1":
+		if cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+			cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil {
+			return "", fmt.Errorf("%w: cost basis", ErrCaptureInvalid)
+		}
+		if err := validateConfiguredCandidateJudgeCostAuthority(
+			cost,
+			FixedMemoryJudgeAuthority(),
+			900,
+		); err != nil {
+			return "", err
+		}
 	default:
 		return "", fmt.Errorf("%w: cost basis", ErrCaptureInvalid)
 	}
@@ -450,6 +522,107 @@ func ValidateAccuracyRepairMemoryJudgeCostAuthority(
 		cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil ||
 		!validFixedMemoryJudgeAuthority(authority) {
 		return fmt.Errorf("%w: accuracy-repair Memory Judge cost policy", ErrCaptureInvalid)
+	}
+	return validateConfiguredCandidateJudgeCostAuthority(cost, authority, 900)
+}
+
+func ValidateAbstentionConfirmationDevelopmentCostAuthority(
+	cost CostBasis,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+) error {
+	if cost.SchemaVersion !=
+		"neo-chat.memory-regression-cost-basis.v20-confirmation-development.v1" ||
+		cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+		cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil ||
+		!validFixedMemoryJudgeAuthority(authority) {
+		return fmt.Errorf(
+			"%w: abstention-confirmation Development cost policy",
+			ErrCaptureInvalid,
+		)
+	}
+	return validateConfiguredCandidateJudgeCostAuthority(cost, authority, 1800)
+}
+
+func ValidateAbstentionConfirmationValidationCostAuthority(
+	cost CostBasis,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+) error {
+	if cost.SchemaVersion != "neo-chat.memory-regression-cost-basis.v21" ||
+		cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+		cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil ||
+		!validFixedMemoryJudgeAuthority(authority) {
+		return fmt.Errorf(
+			"%w: abstention-confirmation Validation cost policy",
+			ErrCaptureInvalid,
+		)
+	}
+	return validateConfiguredCandidateJudgeCostAuthority(cost, authority, 600)
+}
+
+func ValidateDoubleConfirmationDevelopmentCostAuthority(
+	cost CostBasis,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+) error {
+	if cost.SchemaVersion !=
+		"neo-chat.memory-regression-cost-basis.v22-double-confirmation-development.v1" ||
+		cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+		cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil ||
+		!validFixedMemoryJudgeAuthority(authority) {
+		return fmt.Errorf(
+			"%w: double-confirmation Development cost policy",
+			ErrCaptureInvalid,
+		)
+	}
+	return validateConfiguredCandidateJudgeCostAuthority(cost, authority, 2700)
+}
+
+func ValidateDoubleConfirmationValidationCostAuthority(
+	cost CostBasis,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+) error {
+	if cost.SchemaVersion !=
+		"neo-chat.memory-regression-cost-basis.v23-double-confirmation-validation.v1" ||
+		cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+		cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil ||
+		!validFixedMemoryJudgeAuthority(authority) {
+		return fmt.Errorf(
+			"%w: double-confirmation Validation cost policy",
+			ErrCaptureInvalid,
+		)
+	}
+	return validateConfiguredCandidateJudgeCostAuthority(cost, authority, 900)
+}
+
+func ValidateSingleUserBoundedMissDevelopmentCostAuthority(
+	cost CostBasis,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+) error {
+	if cost.SchemaVersion !=
+		"neo-chat.memory-regression-cost-basis.v24-single-user-bounded-miss-development.v1" ||
+		cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+		cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil ||
+		!validFixedMemoryJudgeAuthority(authority) {
+		return fmt.Errorf(
+			"%w: single-user bounded-miss Development cost policy",
+			ErrCaptureInvalid,
+		)
+	}
+	return validateConfiguredCandidateJudgeCostAuthority(cost, authority, 2700)
+}
+
+func ValidateSingleUserBoundedMissValidationCostAuthority(
+	cost CostBasis,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+) error {
+	if cost.SchemaVersion !=
+		"neo-chat.memory-regression-cost-basis.v25-single-user-bounded-miss-validation.v1" ||
+		cost.ProviderCostPolicy != ProviderCostPolicyOwnerAuthorizedAbsoluteV1 ||
+		cost.CloudJudgeAuthority != nil || cost.MemoryToolRouteAuthority != nil ||
+		!validFixedMemoryJudgeAuthority(authority) {
+		return fmt.Errorf(
+			"%w: single-user bounded-miss Validation cost policy",
+			ErrCaptureInvalid,
+		)
 	}
 	return validateConfiguredCandidateJudgeCostAuthority(cost, authority, 900)
 }

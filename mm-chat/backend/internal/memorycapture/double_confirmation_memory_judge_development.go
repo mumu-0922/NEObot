@@ -1,0 +1,196 @@
+package memorycapture
+
+import (
+	"context"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"time"
+
+	"neo-chat/mm-chat/backend/internal/memoryauthor"
+	"neo-chat/mm-chat/backend/internal/memoryeval"
+	"neo-chat/mm-chat/backend/internal/memoryjudge"
+	"neo-chat/mm-chat/backend/internal/usermemory"
+)
+
+const (
+	DoubleConfirmationMemoryJudgeReportSchemaVersion = "neo-chat.memory-regression-relevance-calibration.v22-double-confirmation-development.v1"
+	DoubleConfirmationMemoryJudgeRunSchemaVersion    = "neo-chat.memory-regression-relevance-run.v22-double-confirmation-development.v1"
+	DoubleConfirmationMemoryJudgeAdmissionMode       = "development_fixed_memory_judge_negative_guard_double_confirmation_only"
+	DoubleConfirmationMemoryJudgeArtifactName        = "fixed-memory-judge-negative-guard-double-confirmation-development.json"
+)
+
+type DoubleConfirmationMemoryJudgeDevelopmentReport JudgeFailureDiagnosticDevelopmentReport
+type DoubleConfirmationMemoryJudgeRunManifest RelevanceRunManifest
+
+func doubleConfirmationDevelopmentReportSpec() (
+	transportStableMemoryJudgeReportSpec,
+	error,
+) {
+	descriptorSHA256, err := relevancePolicyDescriptorSHA256(
+		usermemory.HybridShadowDoubleConfirmationDevelopmentPolicy(),
+	)
+	if err != nil {
+		return transportStableMemoryJudgeReportSpec{}, err
+	}
+	return transportStableMemoryJudgeReportSpec{
+		readerVersion:                   DoubleConfirmationMemoryJudgeReaderVersion,
+		reportSchemaVersion:             DoubleConfirmationMemoryJudgeReportSchemaVersion,
+		admissionMode:                   DoubleConfirmationMemoryJudgeAdmissionMode,
+		policyID:                        usermemory.HybridRelevanceDoubleConfirmationDevelopmentPolicyID,
+		allowNegativeGuardAbstention:    true,
+		negativeGuardRequired:           true,
+		negativeGuardVersion:            usermemory.NegativePolicyQueryGuardVersion,
+		negativeGuardSHA256:             usermemory.NegativePolicyQueryGuardSHA256,
+		relevancePolicyDescriptorSHA256: descriptorSHA256,
+		judgeAdapter:                    memoryjudge.BufferedChatAbstentionConfirmationAdapterVersion,
+		judgePromptVersion:              usermemory.HybridCandidateJudgeAccuracyPromptVersion,
+		judgePromptSHA256:               usermemory.HybridCandidateJudgeAccuracyPromptSHA256,
+		judgeConfirmationPromptVersion:  usermemory.HybridCandidateJudgeConfirmationPromptVersion,
+		judgeConfirmationPromptSHA256:   usermemory.HybridCandidateJudgeConfirmationPromptSHA256,
+		confirmationRequired:            true,
+		maximumAbstentionConfirmations:  2,
+		authorizedRequestCount:          2700,
+		executionPolicy:                 DoubleConfirmationDevelopmentExecutionPolicy,
+		validateCostAuthority:           ValidateDoubleConfirmationDevelopmentCostAuthority,
+	}, nil
+}
+
+func CaptureDoubleConfirmationMemoryJudgeDevelopment(
+	ctx context.Context,
+	seedDB *sql.DB,
+	runtimeDB *sql.DB,
+	runID string,
+	fullPool memoryauthor.RegressionPool,
+	index FixtureIndex,
+	seed SeedResult,
+	provider usermemory.HybridShadowProvider,
+	judge usermemory.HybridCandidateJudge,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	profileID string,
+	configurationSHA256 string,
+	cost memoryeval.ProviderCosts,
+) (CapturedProfile, error) {
+	if err := validateCaptureDatabases(ctx, seedDB, runtimeDB, runID, seed); err != nil {
+		return CapturedProfile{}, err
+	}
+	if err := validateSeedSplit(fullPool, seed.Cases, DevelopmentCalibrationSplit); err != nil {
+		return CapturedProfile{}, err
+	}
+	hybrid, hybridOK := provider.(*accuracyFirstHybridProvider)
+	candidateJudge, judgeOK := judge.(*accuracyFirstCandidateJudge)
+	if !hybridOK || !judgeOK || hybrid.controller == nil ||
+		hybrid.controller != candidateJudge.controller ||
+		hybrid.controller.maximumJudgeRetries != 2 ||
+		!hybrid.controller.judgeFailureDiagnostics ||
+		!candidateJudge.confirmationEnabled ||
+		!validFixedMemoryJudgeAuthority(authority) {
+		return CapturedProfile{}, ErrCaptureInvalid
+	}
+	profile, err := captureCandidateProfile(
+		ctx, runtimeDB, index, seed.Cases, provider,
+		usermemory.HybridShadowDoubleConfirmationDevelopmentPolicy(),
+		profileID, configurationSHA256, cost, judge, nil,
+	)
+	if err != nil {
+		return CapturedProfile{}, err
+	}
+	profile.Profile.ReaderVersion = DoubleConfirmationMemoryJudgeReaderVersion
+	return profile, nil
+}
+
+func BuildDoubleConfirmationMemoryJudgeDevelopmentReport(
+	pool memoryauthor.RegressionPool,
+	profile CapturedProfile,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	costBasis CostBasis,
+) (DoubleConfirmationMemoryJudgeDevelopmentReport, []byte, error) {
+	spec, err := doubleConfirmationDevelopmentReportSpec()
+	if err != nil {
+		return DoubleConfirmationMemoryJudgeDevelopmentReport{}, nil, err
+	}
+	report, body, err := buildTransportStableMemoryJudgeDevelopmentReport(
+		pool, profile, authority, costBasis, spec,
+	)
+	return DoubleConfirmationMemoryJudgeDevelopmentReport(report), body, err
+}
+
+func validDoubleConfirmationMemoryJudgeDevelopmentReport(
+	report DoubleConfirmationMemoryJudgeDevelopmentReport,
+) bool {
+	spec, err := doubleConfirmationDevelopmentReportSpec()
+	return err == nil && validTransportStableMemoryJudgeDevelopmentReportForSpec(
+		JudgeFailureDiagnosticDevelopmentReport(report), spec,
+	)
+}
+
+func BuildDoubleConfirmationMemoryJudgeRunManifest(
+	runID string,
+	captureID string,
+	providerMode string,
+	startedAt time.Time,
+	completedAt time.Time,
+	protected ProtectedRegression,
+	costBasisSHA256 string,
+	report DoubleConfirmationMemoryJudgeDevelopmentReport,
+	artifacts []Artifact,
+) (DoubleConfirmationMemoryJudgeRunManifest, []byte, error) {
+	if !validDoubleConfirmationMemoryJudgeDevelopmentReport(report) ||
+		!runIDPattern.MatchString(runID) || captureID == "" ||
+		startedAt.IsZero() || completedAt.Before(startedAt) ||
+		len(costBasisSHA256) != 64 || len(artifacts) != 1 {
+		return DoubleConfirmationMemoryJudgeRunManifest{}, nil, ErrCaptureInvalid
+	}
+	if _, err := hex.DecodeString(costBasisSHA256); err != nil {
+		return DoubleConfirmationMemoryJudgeRunManifest{}, nil, ErrCaptureInvalid
+	}
+	expectedPolicy, err := DoubleConfirmationDevelopmentExecutionPolicy(providerMode)
+	if err != nil || report.ExecutionPolicy != expectedPolicy {
+		return DoubleConfirmationMemoryJudgeRunManifest{}, nil, ErrCaptureInvalid
+	}
+	expectedProfileID, err := candidateProfileID(providerMode)
+	if err != nil || report.ProfileID != expectedProfileID {
+		return DoubleConfirmationMemoryJudgeRunManifest{}, nil, ErrCaptureInvalid
+	}
+	artifactManifest, err := buildRunArtifactManifest(artifacts)
+	if err != nil || artifactManifest[0].Name !=
+		DoubleConfirmationMemoryJudgeArtifactName {
+		return DoubleConfirmationMemoryJudgeRunManifest{}, nil, ErrCaptureInvalid
+	}
+	manifest := DoubleConfirmationMemoryJudgeRunManifest(RelevanceRunManifest{
+		SchemaVersion:                   DoubleConfirmationMemoryJudgeRunSchemaVersion,
+		RunID:                           runID,
+		CaptureID:                       captureID,
+		CorpusClass:                     memoryeval.RegressionCorpusClass,
+		AdmissionMode:                   DoubleConfirmationMemoryJudgeAdmissionMode,
+		PromotionEligible:               false,
+		CaptureMode:                     CaptureModeDoubleConfirmationMemoryJudge,
+		Split:                           DevelopmentCalibrationSplit,
+		ProviderMode:                    providerMode,
+		ProfileID:                       report.ProfileID,
+		PolicyID:                        report.PolicyID,
+		ConfigurationSHA256:             report.ConfigurationSHA256,
+		Passed:                          report.Passed,
+		StartedAt:                       startedAt.UTC().Format(time.RFC3339),
+		CompletedAt:                     completedAt.UTC().Format(time.RFC3339),
+		CostBasisSHA256:                 costBasisSHA256,
+		ProviderCostPolicy:              report.ProviderCostPolicy,
+		NegativePolicyQueryGuardVersion: report.NegativePolicyQueryGuardVersion,
+		NegativePolicyQueryGuardSHA256:  report.NegativePolicyQueryGuardSHA256,
+		RelevancePolicyDescriptorSHA256: report.RelevancePolicyDescriptorSHA256,
+		Inputs: RunInputHashes{
+			FixtureRawSHA256:  protected.FixtureRawSHA256,
+			CorpusRawSHA256:   protected.CorpusRawSHA256,
+			AuditRawSHA256:    protected.AuditRawSHA256,
+			ManifestRawSHA256: protected.ManifestRawSHA256,
+		},
+		Artifacts: artifactManifest,
+	})
+	body, err := json.Marshal(manifest)
+	if err != nil {
+		return DoubleConfirmationMemoryJudgeRunManifest{}, nil,
+			errors.Join(ErrCaptureInvalid, err)
+	}
+	return manifest, append(body, '\n'), nil
+}

@@ -10,12 +10,15 @@ import (
 )
 
 type CandidateJudgeDecorator struct {
-	judge                 usermemory.HybridCandidateJudge
-	recorder              *Recorder
-	expectedModelID       string
-	expectedPromptVersion string
-	expectedPromptSHA256  string
-	promptBuilder         candidateJudgeCapturePromptBuilder
+	judge                     usermemory.HybridCandidateJudge
+	recorder                  *Recorder
+	expectedModelID           string
+	expectedPromptVersion     string
+	expectedPromptSHA256      string
+	promptBuilder             candidateJudgeCapturePromptBuilder
+	confirmationRequired      bool
+	maximumConfirmations      int
+	confirmationPromptBuilder candidateJudgeCapturePromptBuilder
 }
 
 func NewCandidateJudgeDecorator(
@@ -51,6 +54,59 @@ func NewAccuracyRepairCandidateJudgeDecorator(
 	)
 }
 
+func NewAbstentionConfirmationCandidateJudgeDecorator(
+	judge usermemory.HybridCandidateJudge,
+	recorder *Recorder,
+	expectedModelID string,
+) (*CandidateJudgeDecorator, error) {
+	return newAbstentionConfirmationCandidateJudgeDecorator(
+		judge,
+		recorder,
+		expectedModelID,
+		1,
+	)
+}
+
+func NewDoubleConfirmationCandidateJudgeDecorator(
+	judge usermemory.HybridCandidateJudge,
+	recorder *Recorder,
+	expectedModelID string,
+) (*CandidateJudgeDecorator, error) {
+	return newAbstentionConfirmationCandidateJudgeDecorator(
+		judge,
+		recorder,
+		expectedModelID,
+		2,
+	)
+}
+
+func newAbstentionConfirmationCandidateJudgeDecorator(
+	judge usermemory.HybridCandidateJudge,
+	recorder *Recorder,
+	expectedModelID string,
+	maximumConfirmations int,
+) (*CandidateJudgeDecorator, error) {
+	if maximumConfirmations < 1 || maximumConfirmations > 2 {
+		return nil, ErrCaptureInvalid
+	}
+	decorator, err := newCandidateJudgeDecorator(
+		judge,
+		recorder,
+		expectedModelID,
+		usermemory.HybridCandidateJudgeAccuracyPromptVersion,
+		usermemory.HybridCandidateJudgeAccuracyPromptSHA256,
+		usermemory.BuildHybridCandidateJudgeAccuracyPrompt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	decorator.confirmationRequired = true
+	decorator.maximumConfirmations = maximumConfirmations
+	decorator.confirmationPromptBuilder =
+		usermemory.BuildHybridCandidateJudgeConfirmationPrompt
+	return decorator, nil
+}
+
 func newCandidateJudgeDecorator(
 	judge usermemory.HybridCandidateJudge,
 	recorder *Recorder,
@@ -75,22 +131,52 @@ func (decorator *CandidateJudgeDecorator) JudgeHybridCandidates(
 	ctx context.Context,
 	input usermemory.HybridCandidateJudgeInput,
 ) (usermemory.HybridCandidateJudgeResult, error) {
+	stage := "cloud_judge"
+	promptBuilder := decorator.promptBuilder
+	expectedPromptVersion := decorator.expectedPromptVersion
+	expectedPromptSHA256 := decorator.expectedPromptSHA256
+	confirmation := false
+	if decorator.confirmationRequired {
+		switch input.PromptPurpose {
+		case usermemory.HybridCandidateJudgePromptPurposeAccuracyPrimary:
+		case usermemory.HybridCandidateJudgePromptPurposeAbstentionConfirmation:
+			confirmation = true
+			stage = "cloud_judge_confirmation"
+			promptBuilder = decorator.confirmationPromptBuilder
+			expectedPromptVersion =
+				usermemory.HybridCandidateJudgeConfirmationPromptVersion
+			expectedPromptSHA256 =
+				usermemory.HybridCandidateJudgeConfirmationPromptSHA256
+		default:
+			return usermemory.HybridCandidateJudgeResult{}, memoryjudge.NewFailure(
+				memoryjudge.FailureInputInvalid,
+				ErrCaptureStateConflict,
+			)
+		}
+	}
 	if err := decorator.recorder.recordProviderSent(
-		"cloud_judge",
+		stage,
 		len(input.Candidates),
+		decorator.maximumConfirmations,
 	); err != nil {
 		return usermemory.HybridCandidateJudgeResult{}, memoryjudge.NewFailure(
 			memoryjudge.FailureRecorderStateConflict,
 			fmt.Errorf("capture hybrid cloud-judge egress: %w", err),
 		)
 	}
-	if err := decorator.recorder.recordCloudJudgeInputWithPrompt(
-		input,
-		decorator.promptBuilder,
-	); err != nil {
+	var inputErr error
+	if confirmation {
+		inputErr = decorator.recorder.recordCloudJudgeConfirmationInputWithPrompt(
+			input,
+			promptBuilder,
+		)
+	} else {
+		inputErr = decorator.recorder.recordCloudJudgeInputWithPrompt(input, promptBuilder)
+	}
+	if inputErr != nil {
 		return usermemory.HybridCandidateJudgeResult{}, memoryjudge.NewFailure(
 			memoryjudge.FailureRecorderStateConflict,
-			fmt.Errorf("capture hybrid cloud-judge input: %w", err),
+			fmt.Errorf("capture hybrid cloud-judge input: %w", inputErr),
 		)
 	}
 	result, err := decorator.judge.JudgeHybridCandidates(ctx, input)
@@ -102,8 +188,8 @@ func (decorator *CandidateJudgeDecorator) JudgeHybridCandidates(
 			decorator.recordCloudJudgeFailure(ctx.Err())
 	}
 	if result.ModelID != decorator.expectedModelID ||
-		result.PromptVersion != decorator.expectedPromptVersion ||
-		result.PromptSHA256 != decorator.expectedPromptSHA256 {
+		result.PromptVersion != expectedPromptVersion ||
+		result.PromptSHA256 != expectedPromptSHA256 {
 		provenanceErr := memoryjudge.NewFailure(
 			memoryjudge.FailureProvenanceDrift,
 			ErrCaptureStateConflict,
@@ -111,18 +197,37 @@ func (decorator *CandidateJudgeDecorator) JudgeHybridCandidates(
 		return usermemory.HybridCandidateJudgeResult{},
 			decorator.recordCloudJudgeFailure(provenanceErr)
 	}
-	if _, err := usermemory.DecodeHybridCandidateJudgeOutput(
+	selected, err := usermemory.DecodeHybridCandidateJudgeOutput(
 		result.RawOutput,
 		len(input.Candidates),
-	); err != nil {
+	)
+	if err != nil {
 		return usermemory.HybridCandidateJudgeResult{},
 			decorator.recordCloudJudgeFailure(err)
+	}
+	if decorator.confirmationRequired && len(selected) == 0 {
+		if err := decorator.recorder.recordCloudJudgeEmptyResultWithPrompt(
+			result,
+			len(input.Candidates),
+			expectedPromptVersion,
+			expectedPromptSHA256,
+			confirmation,
+		); err != nil {
+			recorderErr := memoryjudge.NewFailure(
+				memoryjudge.FailureRecorderStateConflict,
+				err,
+			)
+			return usermemory.HybridCandidateJudgeResult{},
+				decorator.recordCloudJudgeFailure(recorderErr)
+		}
+		return result, nil
 	}
 	if err := decorator.recorder.recordCloudJudgeResultWithPrompt(
 		result,
 		len(input.Candidates),
-		decorator.expectedPromptVersion,
-		decorator.expectedPromptSHA256,
+		expectedPromptVersion,
+		expectedPromptSHA256,
+		confirmation,
 	); err != nil {
 		recorderErr := memoryjudge.NewFailure(
 			memoryjudge.FailureRecorderStateConflict,

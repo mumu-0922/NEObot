@@ -128,6 +128,12 @@ func TestSearchRelevantAfterMemoryToolCallRequiresPromotedProductionPolicy(t *te
 				HybridShadowNegativePolicyGuardDevelopmentPolicy(),
 			)},
 		},
+		{
+			name: "unvalidated abstention-confirmation production policy",
+			options: []ServiceOption{WithHybridMemoryToolRelevancePolicy(
+				HybridShadowAbstentionConfirmationProductionPolicy(),
+			)},
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			repository := &hybridTestRepository{fakeRepository: hybridV1Repository()}
@@ -151,7 +157,9 @@ func TestSearchRelevantAfterMemoryToolCallRequiresPromotedProductionPolicy(t *te
 	}
 }
 
-func TestSearchRelevantAfterMemoryToolCallReturnsOnlyReauthorizedFinal(t *testing.T) {
+func TestSearchRelevantAfterMemoryToolCallAcceptsValidatedDoubleConfirmationProductionPolicy(
+	t *testing.T,
+) {
 	query := "  How should project answers be written?  "
 	repository := &hybridTestRepository{
 		fakeRepository: hybridV1Repository(),
@@ -178,14 +186,13 @@ func TestSearchRelevantAfterMemoryToolCallReturnsOnlyReauthorizedFinal(t *testin
 		embedding: validHybridTestEmbedding(),
 		rerank:    []ragproviders.RerankResult{{Index: 0, RelevanceScore: 0.9}},
 	}
+	judge := &confirmationHybridJudge{primaryOrdinals: []int{0}}
 	result := NewService(
 		repository,
 		WithHybridShadowProvider(provider),
-		WithHybridCandidateJudge(&hybridTestCandidateJudge{
-			result: validHybridJudgeResult(HybridFixedMemoryJudgeModelID, 0),
-		}),
+		WithHybridCandidateJudge(judge),
 		WithHybridMemoryToolRelevancePolicy(
-			HybridShadowFixedMemoryJudgeProductionPolicy(),
+			HybridShadowDoubleConfirmationProductionPolicy(),
 		),
 	).SearchRelevantAfterMemoryToolCall(context.Background(), HybridMemoryToolSearchInput{
 		ConversationID: hybridTestConversation, AssistantMessageID: hybridTestAssistant,
@@ -196,7 +203,10 @@ func TestSearchRelevantAfterMemoryToolCallReturnsOnlyReauthorizedFinal(t *testin
 	if result.FailureCategory != "" || len(result.Memories) != 1 ||
 		result.Memories[0].Content != "Keep project answers concise" ||
 		repository.hydrateCalls != 1 || repository.fakeRepository.listCalls != 0 ||
-		len(repository.fakeRepository.markedUsed) != 0 {
+		len(repository.fakeRepository.markedUsed) != 0 ||
+		!equalPromptPurposes(judge.purposes, []HybridCandidateJudgePromptPurpose{
+			HybridCandidateJudgePromptPurposeAccuracyPrimary,
+		}) {
 		t.Fatalf("Memory Tool result = %#v repository=%#v", result, repository)
 	}
 	if len(repository.prepareInput.Baseline) != 0 ||

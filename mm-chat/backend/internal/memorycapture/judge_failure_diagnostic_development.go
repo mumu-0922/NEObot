@@ -57,6 +57,8 @@ type JudgeFailureDiagnosticDevelopmentReport struct {
 	JudgeAdapter                     string                                        `json:"judgeAdapter"`
 	JudgePromptVersion               string                                        `json:"judgePromptVersion"`
 	JudgePromptSHA256                string                                        `json:"judgePromptSha256"`
+	JudgeConfirmationPromptVersion   string                                        `json:"judgeConfirmationPromptVersion,omitempty"`
+	JudgeConfirmationPromptSHA256    string                                        `json:"judgeConfirmationPromptSha256,omitempty"`
 	JudgeDecodingProfile             string                                        `json:"judgeDecodingProfile"`
 	FailureTaxonomyVersion           string                                        `json:"failureTaxonomyVersion"`
 	FailureTaxonomySHA256            string                                        `json:"failureTaxonomySha256"`

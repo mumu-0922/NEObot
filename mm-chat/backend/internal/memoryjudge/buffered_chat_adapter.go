@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	BufferedChatAdapterVersion         = "chat-configured-candidate-judge-buffered-v1"
-	BufferedChatAccuracyAdapterVersion = "chat-configured-candidate-judge-buffered-accuracy-v2"
+	BufferedChatAdapterVersion                       = "chat-configured-candidate-judge-buffered-v1"
+	BufferedChatAccuracyAdapterVersion               = "chat-configured-candidate-judge-buffered-accuracy-v2"
+	BufferedChatAbstentionConfirmationAdapterVersion = "chat-configured-candidate-judge-buffered-abstention-confirmation-v3"
 )
 
 type candidateJudgePromptBuilder func(
@@ -56,6 +57,31 @@ func NewBufferedChatAccuracyAdapter(
 		provider,
 		modelRef,
 		usermemory.BuildHybridCandidateJudgeAccuracyPrompt,
+		usermemory.HybridCandidateJudgeAccuracyPromptVersion,
+		usermemory.HybridCandidateJudgeAccuracyPromptSHA256,
+	)
+}
+
+// NewBufferedChatAbstentionConfirmationAdapter selects the versioned primary
+// or confirmation prompt from request-local purpose. It rejects every other
+// purpose so a caller cannot silently substitute a historical prompt.
+func NewBufferedChatAbstentionConfirmationAdapter(
+	provider chat.BufferedChatProvider,
+	modelRef chat.ModelRef,
+) (*BufferedChatAdapter, error) {
+	return newBufferedChatAdapter(
+		provider,
+		modelRef,
+		func(input usermemory.HybridCandidateJudgeInput) (string, string, error) {
+			switch input.PromptPurpose {
+			case usermemory.HybridCandidateJudgePromptPurposeAccuracyPrimary:
+				return usermemory.BuildHybridCandidateJudgeAccuracyPrompt(input)
+			case usermemory.HybridCandidateJudgePromptPurposeAbstentionConfirmation:
+				return usermemory.BuildHybridCandidateJudgeConfirmationPrompt(input)
+			default:
+				return "", "", errors.New("Memory candidate judge prompt purpose is invalid")
+			}
+		},
 		usermemory.HybridCandidateJudgeAccuracyPromptVersion,
 		usermemory.HybridCandidateJudgeAccuracyPromptSHA256,
 	)
@@ -130,11 +156,18 @@ func (adapter *BufferedChatAdapter) JudgeHybridCandidates(
 			err,
 		)
 	}
+	promptVersion := adapter.promptVersion
+	promptSHA256 := adapter.promptSHA256
+	if input.PromptPurpose ==
+		usermemory.HybridCandidateJudgePromptPurposeAbstentionConfirmation {
+		promptVersion = usermemory.HybridCandidateJudgeConfirmationPromptVersion
+		promptSHA256 = usermemory.HybridCandidateJudgeConfirmationPromptSHA256
+	}
 	return usermemory.HybridCandidateJudgeResult{
 		RawOutput:     append([]byte(nil), output...),
 		ModelID:       adapter.modelRef.ModelID,
-		PromptVersion: adapter.promptVersion,
-		PromptSHA256:  adapter.promptSHA256,
+		PromptVersion: promptVersion,
+		PromptSHA256:  promptSHA256,
 	}, nil
 }
 

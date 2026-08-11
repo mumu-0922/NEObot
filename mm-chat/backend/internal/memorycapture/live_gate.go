@@ -15,6 +15,12 @@ const (
 	LiveProductionBufferedMemoryJudgeValidationApproval = "I_UNDERSTAND_THIS_USES_REAL_FROZEN_BUFFERED_MEMORY_VALIDATION_QUOTA"
 	LiveMemoryJudgeSliceDiagnosticApproval              = "I_UNDERSTAND_THIS_USES_REAL_MEMORY_SLICE_DIAGNOSTIC_QUOTA"
 	LiveAccuracyRepairMemoryJudgeApproval               = "I_UNDERSTAND_THIS_USES_REAL_MEMORY_ACCURACY_REPAIR_QUOTA"
+	LiveAbstentionConfirmationDevelopmentApproval       = "I_UNDERSTAND_THIS_USES_REAL_MEMORY_ABSTENTION_CONFIRMATION_DEVELOPMENT_QUOTA"
+	LiveAbstentionConfirmationValidationApproval        = "I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_ABSTENTION_CONFIRMATION_VALIDATION_QUOTA"
+	LiveDoubleConfirmationDevelopmentApproval           = "I_UNDERSTAND_THIS_USES_REAL_MEMORY_DOUBLE_CONFIRMATION_DEVELOPMENT_QUOTA"
+	LiveDoubleConfirmationValidationApproval            = "I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_DOUBLE_CONFIRMATION_VALIDATION_QUOTA"
+	LiveSingleUserBoundedMissDevelopmentApproval        = "I_UNDERSTAND_THIS_USES_REAL_MEMORY_SINGLE_USER_BOUNDED_MISS_DEVELOPMENT_QUOTA"
+	LiveSingleUserBoundedMissValidationApproval         = "I_UNDERSTAND_THIS_USES_REAL_FROZEN_MEMORY_SINGLE_USER_BOUNDED_MISS_VALIDATION_QUOTA"
 
 	LiveAuthorizationDisabled                       = "MEMORY_REGRESSION_LIVE_DISABLED"
 	LiveAuthorizationApproval                       = "MEMORY_REGRESSION_LIVE_APPROVAL_REQUIRED"
@@ -51,6 +57,120 @@ type LiveAuthorization struct {
 	ProductionBufferedMemoryJudgeValidationApproval string
 	MemoryJudgeSliceDiagnosticApproval              string
 	AccuracyRepairMemoryJudgeApproval               string
+	AbstentionConfirmationDevelopmentApproval       string
+	AbstentionConfirmationValidationApproval        string
+	DoubleConfirmationDevelopmentApproval           string
+	DoubleConfirmationValidationApproval            string
+	SingleUserBoundedMissDevelopmentApproval        string
+	SingleUserBoundedMissValidationApproval         string
+}
+
+func AuthorizeSingleUserBoundedMissDevelopmentTarget(
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	authorization LiveAuthorization,
+) error {
+	return authorizeAbstentionConfirmationTarget(
+		providerMode,
+		authority,
+		authorization,
+		authorization.SingleUserBoundedMissDevelopmentApproval,
+		LiveSingleUserBoundedMissDevelopmentApproval,
+	)
+}
+
+func AuthorizeSingleUserBoundedMissValidationTarget(
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	authorization LiveAuthorization,
+) error {
+	return authorizeAbstentionConfirmationTarget(
+		providerMode,
+		authority,
+		authorization,
+		authorization.SingleUserBoundedMissValidationApproval,
+		LiveSingleUserBoundedMissValidationApproval,
+	)
+}
+
+func AuthorizeDoubleConfirmationValidationTarget(
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	authorization LiveAuthorization,
+) error {
+	return authorizeAbstentionConfirmationTarget(
+		providerMode,
+		authority,
+		authorization,
+		authorization.DoubleConfirmationValidationApproval,
+		LiveDoubleConfirmationValidationApproval,
+	)
+}
+
+func AuthorizeDoubleConfirmationDevelopmentTarget(
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	authorization LiveAuthorization,
+) error {
+	return authorizeAbstentionConfirmationTarget(
+		providerMode,
+		authority,
+		authorization,
+		authorization.DoubleConfirmationDevelopmentApproval,
+		LiveDoubleConfirmationDevelopmentApproval,
+	)
+}
+
+func AuthorizeAbstentionConfirmationDevelopmentTarget(
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	authorization LiveAuthorization,
+) error {
+	return authorizeAbstentionConfirmationTarget(
+		providerMode,
+		authority,
+		authorization,
+		authorization.AbstentionConfirmationDevelopmentApproval,
+		LiveAbstentionConfirmationDevelopmentApproval,
+	)
+}
+
+func AuthorizeAbstentionConfirmationValidationTarget(
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	authorization LiveAuthorization,
+) error {
+	return authorizeAbstentionConfirmationTarget(
+		providerMode,
+		authority,
+		authorization,
+		authorization.AbstentionConfirmationValidationApproval,
+		LiveAbstentionConfirmationValidationApproval,
+	)
+}
+
+func authorizeAbstentionConfirmationTarget(
+	providerMode string,
+	authority ConfiguredCandidateJudgeProfileAuthority,
+	authorization LiveAuthorization,
+	approval string,
+	expectedApproval string,
+) error {
+	if !validFixedMemoryJudgeAuthority(authority) {
+		return LiveAuthorizationError{Code: LiveAuthorizationFixedMemoryJudgeTarget}
+	}
+	if providerMode == ProviderModeFakeProtocol {
+		return nil
+	}
+	if providerMode != ProviderModeLiveSiliconFlow ||
+		strings.TrimSpace(approval) != expectedApproval ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeProviderID) != authority.ProviderID ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeProviderType) != authority.ProviderType ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeBaseURLSHA256) != authority.BaseURLSHA256 ||
+		strings.TrimSpace(authorization.ConfiguredCandidateJudgeModelID) != authority.ModelID {
+		return LiveAuthorizationError{Code: LiveAuthorizationFixedMemoryJudgeTarget}
+	}
+	return nil
 }
 
 func AuthorizeAccuracyRepairMemoryJudgeTarget(

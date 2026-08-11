@@ -14,31 +14,35 @@ import (
 )
 
 const (
-	hybridShadowHardCutoff                  = 2 * time.Second
-	hybridShadowEmbedCutoff                 = 750 * time.Millisecond
-	hybridShadowIntentCutoff                = 500 * time.Millisecond
-	hybridShadowRecordReserve               = 150 * time.Millisecond
-	HybridShadowTargetTokens                = 600
-	HybridShadowMaximumTokens               = 900
-	HybridShadowFinalLimit                  = 5
-	hybridShadowTargetTokens                = HybridShadowTargetTokens
-	hybridShadowMaximumTokens               = HybridShadowMaximumTokens
-	hybridShadowFinalLimit                  = HybridShadowFinalLimit
-	hybridShadowTokenOverhead               = 24
-	hybridPolicyModeCalibration             = "calibration"
-	hybridPolicyModeIntentCalibration       = "intent_calibration"
-	hybridPolicyModeCloudJudgeCalibration   = "cloud_judge_calibration"
-	hybridPolicyModeFixedMemoryJudge        = "fixed_cloud_candidate_judge_development"
-	hybridPolicyModeAccuracyFirstJudge      = "fixed_cloud_candidate_judge_accuracy_development"
-	hybridPolicyModeNegativePolicyGuard     = "fixed_cloud_candidate_judge_negative_guard_development"
-	hybridPolicyModeProductionJudge         = "fixed_cloud_candidate_judge_production"
-	hybridPolicyModeGuardProductionJudge    = "fixed_cloud_candidate_judge_negative_guard_production"
-	hybridPolicyModeSliceDiagnostic         = "fixed_cloud_candidate_judge_negative_guard_slice_diagnostic"
-	hybridPolicyModeAccuracyRepair          = "fixed_cloud_candidate_judge_negative_guard_accuracy_repair_development"
-	hybridPolicyModeV20AbstentionDiagnostic = "fixed_cloud_candidate_judge_accuracy_v20_abstention_diagnostic"
-	hybridPolicyModeMemoryToolRoute         = "main_model_tool_route_calibration"
-	hybridPolicyModeMemoryFirstToolRound    = "main_model_first_tool_round_calibration"
-	hybridPolicyModeFrozen                  = "frozen"
+	hybridShadowHardCutoff                            = 2 * time.Second
+	hybridShadowEmbedCutoff                           = 750 * time.Millisecond
+	hybridShadowIntentCutoff                          = 500 * time.Millisecond
+	hybridShadowRecordReserve                         = 150 * time.Millisecond
+	HybridShadowTargetTokens                          = 600
+	HybridShadowMaximumTokens                         = 900
+	HybridShadowFinalLimit                            = 5
+	hybridShadowTargetTokens                          = HybridShadowTargetTokens
+	hybridShadowMaximumTokens                         = HybridShadowMaximumTokens
+	hybridShadowFinalLimit                            = HybridShadowFinalLimit
+	hybridShadowTokenOverhead                         = 24
+	hybridPolicyModeCalibration                       = "calibration"
+	hybridPolicyModeIntentCalibration                 = "intent_calibration"
+	hybridPolicyModeCloudJudgeCalibration             = "cloud_judge_calibration"
+	hybridPolicyModeFixedMemoryJudge                  = "fixed_cloud_candidate_judge_development"
+	hybridPolicyModeAccuracyFirstJudge                = "fixed_cloud_candidate_judge_accuracy_development"
+	hybridPolicyModeNegativePolicyGuard               = "fixed_cloud_candidate_judge_negative_guard_development"
+	hybridPolicyModeProductionJudge                   = "fixed_cloud_candidate_judge_production"
+	hybridPolicyModeGuardProductionJudge              = "fixed_cloud_candidate_judge_negative_guard_production"
+	hybridPolicyModeSliceDiagnostic                   = "fixed_cloud_candidate_judge_negative_guard_slice_diagnostic"
+	hybridPolicyModeAccuracyRepair                    = "fixed_cloud_candidate_judge_negative_guard_accuracy_repair_development"
+	hybridPolicyModeV20AbstentionDiagnostic           = "fixed_cloud_candidate_judge_accuracy_v20_abstention_diagnostic"
+	hybridPolicyModeAbstentionConfirmationDevelopment = "fixed_cloud_candidate_judge_negative_guard_abstention_confirmation_development"
+	hybridPolicyModeAbstentionConfirmationProduction  = "fixed_cloud_candidate_judge_negative_guard_abstention_confirmation_production"
+	hybridPolicyModeDoubleConfirmationDevelopment     = "fixed_cloud_candidate_judge_negative_guard_double_confirmation_development"
+	hybridPolicyModeDoubleConfirmationProduction      = "fixed_cloud_candidate_judge_negative_guard_double_confirmation_production"
+	hybridPolicyModeMemoryToolRoute                   = "main_model_tool_route_calibration"
+	hybridPolicyModeMemoryFirstToolRound              = "main_model_first_tool_round_calibration"
+	hybridPolicyModeFrozen                            = "frozen"
 	// These values are changed only after a successful Development calibration
 	// artifact has been reviewed. Validation refuses to run while ready=false.
 	hybridFrozenPolicyReady          = false
@@ -125,7 +129,8 @@ func (s *Service) SearchRelevantAfterMemoryToolCall(
 	}
 	policy, ok := validHybridShadowRelevancePolicy(s.hybridToolPolicy)
 	if !ok || (policy.Mode != hybridPolicyModeProductionJudge &&
-		policy.Mode != hybridPolicyModeGuardProductionJudge) {
+		policy.Mode != hybridPolicyModeGuardProductionJudge &&
+		policy.Mode != hybridPolicyModeDoubleConfirmationProduction) {
 		return hybridMemoryToolFailure("policy_unavailable")
 	}
 	hydrator, ok := s.repo.(HybridFinalRepository)
@@ -654,12 +659,10 @@ func executeHybridCandidateStages(
 		if rerankErr != nil {
 			return nil, nil, "RERANK_FAILED", rerankErr
 		}
-		selectedOrdinals, judgeErr := judgeHybridCandidates(
+		selectedOrdinals, judgeErr := judgeHybridCandidatesForPolicy(
 			ctx,
 			judge,
-			policy.CloudCandidateJudgeModelID,
-			hybridCandidateJudgePromptVersion(policy),
-			hybridCandidateJudgePromptSHA256(policy),
+			policy,
 			redactedQuery,
 			documents,
 		)
@@ -688,12 +691,10 @@ func executeHybridCandidateStages(
 		}
 	}()
 	go func() {
-		selected, stageErr := judgeHybridCandidates(
+		selected, stageErr := judgeHybridCandidatesForPolicy(
 			ctx,
 			judge,
-			policy.CloudCandidateJudgeModelID,
-			hybridCandidateJudgePromptVersion(policy),
-			hybridCandidateJudgePromptSHA256(policy),
+			policy,
 			redactedQuery,
 			documents,
 		)
@@ -813,6 +814,7 @@ func judgeHybridCandidates(
 	expectedPromptSHA256 string,
 	query string,
 	documents []string,
+	purpose HybridCandidateJudgePromptPurpose,
 ) ([]int, error) {
 	candidates := make([]HybridCandidateJudgeCandidate, len(documents))
 	for ordinal, content := range documents {
@@ -822,7 +824,7 @@ func judgeHybridCandidates(
 		}
 	}
 	result, err := judge.JudgeHybridCandidates(ctx, HybridCandidateJudgeInput{
-		Query: query, Candidates: candidates,
+		Query: query, Candidates: candidates, PromptPurpose: purpose,
 	})
 	if err != nil || ctx.Err() != nil {
 		return nil, errors.New("hybrid candidate judge request failed")
@@ -833,6 +835,49 @@ func judgeHybridCandidates(
 		return nil, errors.New("hybrid candidate judge provenance drifted")
 	}
 	return DecodeHybridCandidateJudgeOutput(result.RawOutput, len(documents))
+}
+
+func judgeHybridCandidatesForPolicy(
+	ctx context.Context,
+	judge HybridCandidateJudge,
+	policy HybridShadowRelevancePolicy,
+	query string,
+	documents []string,
+) ([]int, error) {
+	purpose := HybridCandidateJudgePromptPurpose("")
+	if policy.CloudCandidateJudgeAbstentionConfirmationRequired {
+		purpose = HybridCandidateJudgePromptPurposeAccuracyPrimary
+	}
+	selected, err := judgeHybridCandidates(
+		ctx,
+		judge,
+		policy.CloudCandidateJudgeModelID,
+		hybridCandidateJudgePromptVersion(policy),
+		hybridCandidateJudgePromptSHA256(policy),
+		query,
+		documents,
+		purpose,
+	)
+	if err != nil || len(selected) != 0 ||
+		!policy.CloudCandidateJudgeAbstentionConfirmationRequired {
+		return selected, err
+	}
+	for confirmation := 0; confirmation < policy.CloudCandidateJudgeMaximumAbstentionConfirmations; confirmation++ {
+		selected, err = judgeHybridCandidates(
+			ctx,
+			judge,
+			policy.CloudCandidateJudgeModelID,
+			HybridCandidateJudgeConfirmationPromptVersion,
+			HybridCandidateJudgeConfirmationPromptSHA256,
+			query,
+			documents,
+			HybridCandidateJudgePromptPurposeAbstentionConfirmation,
+		)
+		if err != nil || len(selected) != 0 {
+			return selected, err
+		}
+	}
+	return nil, nil
 }
 
 func intersectHybridJudgeSelection(
@@ -1027,6 +1072,73 @@ func HybridShadowV20AbstentionDiagnosticPolicy() HybridShadowRelevancePolicy {
 	}
 }
 
+// HybridShadowAbstentionConfirmationDevelopmentPolicy changes only the
+// valid-empty Luna boundary after the v20 stochastic-abstention diagnostic.
+func HybridShadowAbstentionConfirmationDevelopmentPolicy() HybridShadowRelevancePolicy {
+	return HybridShadowRelevancePolicy{
+		ID:                               HybridRelevanceAbstentionConfirmationDevelopmentPolicyID,
+		Mode:                             hybridPolicyModeAbstentionConfirmationDevelopment,
+		CloudCandidateJudgeRequired:      true,
+		CloudCandidateJudgeModelID:       HybridFixedMemoryJudgeModelID,
+		NegativePolicyQueryGuardRequired: true,
+		CloudCandidateJudgeAbstentionConfirmationRequired: true,
+		CloudCandidateJudgeMaximumAbstentionConfirmations: 1,
+		MinimumProviderSimilarity:                         -1,
+		MinimumFinalRelevanceScore:                        0,
+	}
+}
+
+// HybridShadowAbstentionConfirmationProductionPolicy is installable only
+// after its separately versioned Validation authority passes.
+func HybridShadowAbstentionConfirmationProductionPolicy() HybridShadowRelevancePolicy {
+	return HybridShadowRelevancePolicy{
+		ID:                               HybridRelevanceAbstentionConfirmationProductionPolicyID,
+		Mode:                             hybridPolicyModeAbstentionConfirmationProduction,
+		CloudCandidateJudgeRequired:      true,
+		CloudCandidateJudgeModelID:       HybridFixedMemoryJudgeModelID,
+		NegativePolicyQueryGuardRequired: true,
+		CloudCandidateJudgeAbstentionConfirmationRequired: true,
+		CloudCandidateJudgeMaximumAbstentionConfirmations: 1,
+		MinimumProviderSimilarity:                         -1,
+		MinimumFinalRelevanceScore:                        0,
+	}
+}
+
+// HybridShadowDoubleConfirmationDevelopmentPolicy is a non-production
+// successor selected by the consumed schema-v21 single-abstention result. It
+// adds only one second confirmation after primary and first confirmation both
+// return valid empty selections.
+func HybridShadowDoubleConfirmationDevelopmentPolicy() HybridShadowRelevancePolicy {
+	return HybridShadowRelevancePolicy{
+		ID:                               HybridRelevanceDoubleConfirmationDevelopmentPolicyID,
+		Mode:                             hybridPolicyModeDoubleConfirmationDevelopment,
+		CloudCandidateJudgeRequired:      true,
+		CloudCandidateJudgeModelID:       HybridFixedMemoryJudgeModelID,
+		NegativePolicyQueryGuardRequired: true,
+		CloudCandidateJudgeAbstentionConfirmationRequired: true,
+		CloudCandidateJudgeMaximumAbstentionConfirmations: 2,
+		MinimumProviderSimilarity:                         -1,
+		MinimumFinalRelevanceScore:                        0,
+	}
+}
+
+// HybridShadowDoubleConfirmationProductionPolicy is a production-capable
+// identity used only by the separately frozen v4 Validation lane. The product
+// composition root must not install it before that evidence passes.
+func HybridShadowDoubleConfirmationProductionPolicy() HybridShadowRelevancePolicy {
+	return HybridShadowRelevancePolicy{
+		ID:                               HybridRelevanceDoubleConfirmationProductionPolicyID,
+		Mode:                             hybridPolicyModeDoubleConfirmationProduction,
+		CloudCandidateJudgeRequired:      true,
+		CloudCandidateJudgeModelID:       HybridFixedMemoryJudgeModelID,
+		NegativePolicyQueryGuardRequired: true,
+		CloudCandidateJudgeAbstentionConfirmationRequired: true,
+		CloudCandidateJudgeMaximumAbstentionConfirmations: 2,
+		MinimumProviderSimilarity:                         -1,
+		MinimumFinalRelevanceScore:                        0,
+	}
+}
+
 func HybridShadowMemoryToolRouteCalibrationPolicy(
 	modelID string,
 ) HybridShadowRelevancePolicy {
@@ -1105,6 +1217,27 @@ func DescribeHybridShadowRelevancePolicy(
 			}
 			return "none"
 		}(),
+		CloudCandidateJudgeAbstentionConfirmationRequired: policy.CloudCandidateJudgeAbstentionConfirmationRequired,
+		CloudCandidateJudgeMaximumAbstentionConfirmations: func() int {
+			// Preserve the byte identity of the consumed v3 descriptors; their
+			// boolean already canonically means exactly one confirmation.
+			if policy.CloudCandidateJudgeMaximumAbstentionConfirmations > 1 {
+				return policy.CloudCandidateJudgeMaximumAbstentionConfirmations
+			}
+			return 0
+		}(),
+		CloudCandidateJudgeConfirmationPromptVersion: func() string {
+			if policy.CloudCandidateJudgeAbstentionConfirmationRequired {
+				return HybridCandidateJudgeConfirmationPromptVersion
+			}
+			return ""
+		}(),
+		CloudCandidateJudgeConfirmationPromptSHA256: func() string {
+			if policy.CloudCandidateJudgeAbstentionConfirmationRequired {
+				return HybridCandidateJudgeConfirmationPromptSHA256
+			}
+			return ""
+		}(),
 		MemoryToolRouteRequired: policy.MemoryToolRouteRequired,
 		MemoryToolRouteModelID:  policy.MemoryToolRouteModelID,
 		MemoryToolRouteContractVersion: func() string {
@@ -1179,7 +1312,20 @@ func validHybridShadowRelevancePolicy(
 				policy.Mode == hybridPolicyModeGuardProductionJudge ||
 				policy.Mode == hybridPolicyModeSliceDiagnostic ||
 				policy.Mode == hybridPolicyModeAccuracyRepair ||
-				policy.Mode == hybridPolicyModeV20AbstentionDiagnostic) ||
+				policy.Mode == hybridPolicyModeV20AbstentionDiagnostic ||
+				policy.Mode == hybridPolicyModeAbstentionConfirmationDevelopment ||
+				policy.Mode == hybridPolicyModeAbstentionConfirmationProduction ||
+				policy.Mode == hybridPolicyModeDoubleConfirmationDevelopment ||
+				policy.Mode == hybridPolicyModeDoubleConfirmationProduction) ||
+		policy.CloudCandidateJudgeAbstentionConfirmationRequired !=
+			(policy.Mode == hybridPolicyModeAbstentionConfirmationDevelopment ||
+				policy.Mode == hybridPolicyModeAbstentionConfirmationProduction ||
+				policy.Mode == hybridPolicyModeDoubleConfirmationDevelopment ||
+				policy.Mode == hybridPolicyModeDoubleConfirmationProduction) ||
+		(policy.CloudCandidateJudgeAbstentionConfirmationRequired &&
+			policy.CloudCandidateJudgeMaximumAbstentionConfirmations < 1) ||
+		(!policy.CloudCandidateJudgeAbstentionConfirmationRequired &&
+			policy.CloudCandidateJudgeMaximumAbstentionConfirmations != 0) ||
 		math.IsNaN(policy.MinimumMemoryIntentMargin) ||
 		math.IsInf(policy.MinimumMemoryIntentMargin, 0) ||
 		policy.MinimumMemoryIntentMargin < -1 || policy.MinimumMemoryIntentMargin > 1 ||
@@ -1305,6 +1451,58 @@ func validHybridShadowRelevancePolicy(
 			policy.MinimumFinalRelevanceScore != 0 {
 			return HybridShadowRelevancePolicy{}, false
 		}
+	case hybridPolicyModeAbstentionConfirmationDevelopment:
+		if policy.ID != HybridRelevanceAbstentionConfirmationDevelopmentPolicyID ||
+			policy.MemoryIntentRequired || !policy.CloudCandidateJudgeRequired ||
+			policy.CloudCandidateJudgeModelID != HybridFixedMemoryJudgeModelID ||
+			policy.MemoryToolRouteRequired || policy.MemoryToolRouteModelID != "" ||
+			!policy.NegativePolicyQueryGuardRequired ||
+			!policy.CloudCandidateJudgeAbstentionConfirmationRequired ||
+			policy.CloudCandidateJudgeMaximumAbstentionConfirmations != 1 ||
+			policy.MinimumMemoryIntentMargin != 0 ||
+			policy.MinimumProviderSimilarity != -1 ||
+			policy.MinimumFinalRelevanceScore != 0 {
+			return HybridShadowRelevancePolicy{}, false
+		}
+	case hybridPolicyModeAbstentionConfirmationProduction:
+		if policy.ID != HybridRelevanceAbstentionConfirmationProductionPolicyID ||
+			policy.MemoryIntentRequired || !policy.CloudCandidateJudgeRequired ||
+			policy.CloudCandidateJudgeModelID != HybridFixedMemoryJudgeModelID ||
+			policy.MemoryToolRouteRequired || policy.MemoryToolRouteModelID != "" ||
+			!policy.NegativePolicyQueryGuardRequired ||
+			!policy.CloudCandidateJudgeAbstentionConfirmationRequired ||
+			policy.CloudCandidateJudgeMaximumAbstentionConfirmations != 1 ||
+			policy.MinimumMemoryIntentMargin != 0 ||
+			policy.MinimumProviderSimilarity != -1 ||
+			policy.MinimumFinalRelevanceScore != 0 {
+			return HybridShadowRelevancePolicy{}, false
+		}
+	case hybridPolicyModeDoubleConfirmationDevelopment:
+		if policy.ID != HybridRelevanceDoubleConfirmationDevelopmentPolicyID ||
+			policy.MemoryIntentRequired || !policy.CloudCandidateJudgeRequired ||
+			policy.CloudCandidateJudgeModelID != HybridFixedMemoryJudgeModelID ||
+			policy.MemoryToolRouteRequired || policy.MemoryToolRouteModelID != "" ||
+			!policy.NegativePolicyQueryGuardRequired ||
+			!policy.CloudCandidateJudgeAbstentionConfirmationRequired ||
+			policy.CloudCandidateJudgeMaximumAbstentionConfirmations != 2 ||
+			policy.MinimumMemoryIntentMargin != 0 ||
+			policy.MinimumProviderSimilarity != -1 ||
+			policy.MinimumFinalRelevanceScore != 0 {
+			return HybridShadowRelevancePolicy{}, false
+		}
+	case hybridPolicyModeDoubleConfirmationProduction:
+		if policy.ID != HybridRelevanceDoubleConfirmationProductionPolicyID ||
+			policy.MemoryIntentRequired || !policy.CloudCandidateJudgeRequired ||
+			policy.CloudCandidateJudgeModelID != HybridFixedMemoryJudgeModelID ||
+			policy.MemoryToolRouteRequired || policy.MemoryToolRouteModelID != "" ||
+			!policy.NegativePolicyQueryGuardRequired ||
+			!policy.CloudCandidateJudgeAbstentionConfirmationRequired ||
+			policy.CloudCandidateJudgeMaximumAbstentionConfirmations != 2 ||
+			policy.MinimumMemoryIntentMargin != 0 ||
+			policy.MinimumProviderSimilarity != -1 ||
+			policy.MinimumFinalRelevanceScore != 0 {
+			return HybridShadowRelevancePolicy{}, false
+		}
 	case hybridPolicyModeMemoryToolRoute:
 		if policy.ID != HybridRelevanceMemoryToolRoutePolicyID ||
 			policy.MemoryIntentRequired || policy.CloudCandidateJudgeRequired ||
@@ -1367,12 +1565,20 @@ func hybridPolicyRunsAccuracyFirst(mode string) bool {
 		mode == hybridPolicyModeGuardProductionJudge ||
 		mode == hybridPolicyModeSliceDiagnostic ||
 		mode == hybridPolicyModeAccuracyRepair ||
-		mode == hybridPolicyModeV20AbstentionDiagnostic
+		mode == hybridPolicyModeV20AbstentionDiagnostic ||
+		mode == hybridPolicyModeAbstentionConfirmationDevelopment ||
+		mode == hybridPolicyModeAbstentionConfirmationProduction ||
+		mode == hybridPolicyModeDoubleConfirmationDevelopment ||
+		mode == hybridPolicyModeDoubleConfirmationProduction
 }
 
 func hybridCandidateJudgePromptVersion(policy HybridShadowRelevancePolicy) string {
 	if policy.Mode == hybridPolicyModeAccuracyRepair ||
-		policy.Mode == hybridPolicyModeV20AbstentionDiagnostic {
+		policy.Mode == hybridPolicyModeV20AbstentionDiagnostic ||
+		policy.Mode == hybridPolicyModeAbstentionConfirmationDevelopment ||
+		policy.Mode == hybridPolicyModeAbstentionConfirmationProduction ||
+		policy.Mode == hybridPolicyModeDoubleConfirmationDevelopment ||
+		policy.Mode == hybridPolicyModeDoubleConfirmationProduction {
 		return HybridCandidateJudgeAccuracyPromptVersion
 	}
 	return HybridCandidateJudgePromptVersion
@@ -1380,7 +1586,11 @@ func hybridCandidateJudgePromptVersion(policy HybridShadowRelevancePolicy) strin
 
 func hybridCandidateJudgePromptSHA256(policy HybridShadowRelevancePolicy) string {
 	if policy.Mode == hybridPolicyModeAccuracyRepair ||
-		policy.Mode == hybridPolicyModeV20AbstentionDiagnostic {
+		policy.Mode == hybridPolicyModeV20AbstentionDiagnostic ||
+		policy.Mode == hybridPolicyModeAbstentionConfirmationDevelopment ||
+		policy.Mode == hybridPolicyModeAbstentionConfirmationProduction ||
+		policy.Mode == hybridPolicyModeDoubleConfirmationDevelopment ||
+		policy.Mode == hybridPolicyModeDoubleConfirmationProduction {
 		return HybridCandidateJudgeAccuracyPromptSHA256
 	}
 	return HybridCandidateJudgePromptSHA256

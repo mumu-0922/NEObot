@@ -20,6 +20,16 @@ describe("server memory governance composition", () => {
     );
     expect(router).toContain("<ServerMemoryGovernance");
     expect(router).toContain("<LocalMemorySettings");
+    expect(governance).not.toContain('t("governanceSubtitle")');
+    expect(governance).not.toContain('t("l2SceneDerivedNotice")');
+    expect(governance).not.toContain('t("l3PersonaDerivedNotice")');
+    expect(governance).toContain("GOVERNANCE_SCROLL_REGION_CLASS");
+    expect(governance).toContain("max-h-[39.75rem] space-y-3");
+    expect(governance).toContain("max-h-[51.5rem] space-y-2");
+    expect(governance).toContain('aria-label={t("deletionProgress")}');
+    expect(governance).toContain('aria-label={t("searchDiagnostics")}');
+    expect(governance).toContain('aria-label={t("conversationPolicies")}');
+    expect(governance.match(/tabIndex=\{0\}/g)).toHaveLength(3);
     expect(governance).toContain('aria-label={t("globalPolicy")}');
     expect(governance).toContain('aria-label={t("governanceSections")}');
     expect(governance).toContain("aria-current=");
