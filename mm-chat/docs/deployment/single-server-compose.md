@@ -213,6 +213,9 @@ container-local `GET /health` on port `8081`; no port is published or proxied.
 | `MCP_RUNNER_IMAGE`                            | Dedicated Runner image; production requires a full registry `@sha256:` digest.                 |
 | `MCP_RUNNER_TOKEN_SOURCE`                     | Host mode-`0600`, owner-matched, non-symlink Docker Secret source for backend-to-Runner auth.  |
 | `MCP_AUDIT_RETENTION` / `MCP_CLEANUP_INTERVAL` | MCP call/audit retention and cleanup cadence; defaults `2160h` and `1h`.                       |
+| `MCP_MARKETPLACE_ENABLED` / `MCP_MARKETPLACE_BASE_URL` | Optional backend-only LobeHub discovery adapter; disabled by default and independent of installed Servers. |
+| `MCP_MARKETPLACE_CLIENT_ID` / `MCP_MARKETPLACE_CLIENT_SECRET_SOURCE` | Explicitly registered M2M identity plus dedicated owner-mode-`0600` Docker Secret source. |
+| `MCP_MARKETPLACE_TIMEOUT` / `MCP_MARKETPLACE_CACHE_TTL` | Bounded upstream request timeout and public-metadata cache TTL; defaults `8s` and `5m`. |
 
 `POSTGRES_USER` is the empty-volume bootstrap and migrator login referenced by
 `MIGRATION_DATABASE_URL`. The API login inherits only `go_api_runtime` and must

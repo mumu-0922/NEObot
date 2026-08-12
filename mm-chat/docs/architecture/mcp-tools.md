@@ -45,7 +45,7 @@ presentation state only.
 | --- | --- | --- |
 | Embedded release catalog | Audited release artifact | Streamable HTTP |
 | Administrator manifest | Versioned deployment file | Streamable HTTP or stdio |
-| Private user definition | PostgreSQL row after validation | Public HTTPS Streamable HTTP only |
+| Private user definition | PostgreSQL row after validation | Public HTTPS Streamable HTTP or approved Runner artifact reference |
 
 Catalog and manifest definitions are declarative authorities. PostgreSQL must
 not silently replace their endpoint, command, auth, grant, or tool policy.
@@ -56,7 +56,10 @@ Migration `074_mcp_tools_foundation` adds Workspace membership/grant,
 selection, credential, OAuth, run snapshot, call/result, and artifact cleanup
 authority. Migration `075_mcp_runtime_role_grants` gives only the Go API role
 the table capabilities required by the MCP repository and cleanup worker, and
-removes public execution from the account-artifact trigger. The retired
+removes public execution from the account-artifact trigger. Migration
+`076_mcp_private_runner_artifacts` permits private `stdio` rows only when their
+endpoint is a bounded `runner://<approved-id>` reference and refuses down while
+any stdio row remains. The retired
 `plugin_registry` table from migration `011` is retained read-only for one
 rollback release; no active route or runtime reads it.
 
@@ -159,9 +162,29 @@ arguments, result bodies, tokens, custom URLs, or high-cardinality identities.
   retention/account artifact cleanup remains active.
 - `MCP_REMOTE_ENABLED=false`: blocks remote connections only.
 - `MCP_STDIO_ENABLED=false`: blocks Runner use only.
+- `MCP_MARKETPLACE_ENABLED=false`: blocks LobeHub discovery/install only;
+  installed private Servers, selection, and chat execution are unaffected.
+
+The Marketplace adapter is backend-only and uses short-lived M2M tokens with
+singleflight refresh and bounded response caching. Search category facets and
+item icons remain display-only untrusted metadata; category filtering is
+performed upstream through the backend, and icon URLs are restricted to HTTPS.
+It is a metadata source, not an execution authority. Neo Chat never starts
+another Marketplace container or executes installation commands supplied by an
+item. A stdio item becomes installable only when its exact provider,
+identifier/version, deployment method, command/arguments/package name, and hash
+match a hidden administrator-manifest artifact. The private row stores the
+artifact ID and provenance, while the actual absolute executable comes only
+from the immutable Runner image. Every validation, selection, and execution
+rechecks that binding against the current manifest. Ordinary private Tool
+annotations remain `unknown`; only an exact current-artifact binding reapplies
+the manifest's local `toolPolicy`, so reviewed reads can run concurrently while
+artifact drift fails closed.
 
 A rollback disables MCP or restores prior application images while retaining
-migrations `074`-`075` and their data/runtime grants. Never run `074.down`
+migrations `074`-`076` and their data/runtime grants. Migration `076.down`
+refuses while private stdio rows exist; never delete those rows merely to force
+a rollback. Never run `074.down`
 after live MCP traffic. The old Plugin runtime is not revived by any MCP
 switch.
 
@@ -172,6 +195,7 @@ switch.
 - `backend/internal/chat/mcp_tool_loop.go`
 - `backend/migrations/074_mcp_tools_foundation.up.sql`
 - `backend/migrations/075_mcp_runtime_role_grants.up.sql`
+- `backend/migrations/076_mcp_private_runner_artifacts.up.sql`
 - `scripts/verify-mcp-postgres17.sh`
 - `scripts/test-preflight-single-server.sh`
 - [`../contracts/mcp-tools-api.md`](../contracts/mcp-tools-api.md)

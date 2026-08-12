@@ -54,8 +54,11 @@ type McpServer = {
 
 Each Tool includes `serverRef`, original `name`, provider-safe `alias`, optional
 `title`/`description`, `inputSchema`, `classification`, `supported`, and an
-optional `unsupportedReason`. Remote annotations are not authority for private
-server read classification.
+optional `unsupportedReason`. Ordinary private remote annotations are not
+authority for read classification and normalize to `unknown`. A private stdio
+Server may inherit `read|write|unknown` only from the current reviewed manifest
+artifact's local `toolPolicy` after its exact Marketplace provenance is rebound;
+missing policy remains `unknown`.
 
 ## Routes
 
@@ -188,6 +191,53 @@ reference, Tool name/alias, classification, state, round/call numbers, bounded
 redacted summaries, error code, timestamps, and duration. It never contains
 raw argument values, Tool result bodies, credentials, or stored object bytes.
 
+### LobeHub MCP Marketplace
+
+```http
+GET  /v1/mcp/marketplace/search?q=<text>&category=<slug>&page=1&pageSize=20
+GET  /v1/mcp/marketplace/items/<identifier>?version=<exact-version>
+POST /v1/mcp/marketplace/items/<identifier>/install
+```
+
+Search returns a bounded page of display metadata, bounded category/count
+facets, and `source: "lobehub"`. `category` is an optional exact upstream
+category key. Item icons are either a short text/emoji or a sanitized HTTPS
+URL; clients must retain a local fallback.
+Detail returns the exact version, bounded Tool preview, source links, and
+sanitized deployment compatibility. Trust badges, ratings, stars, and install
+counts are informational only. Neo Chat accepts the optional exact `version`
+query but does not forward it to LobeHub's current detail endpoint; it fetches
+the current detail and compares the returned version locally, failing with
+`MCP_MARKETPLACE_CHANGED` on drift.
+
+Install accepts no URL, command, config schema, or credential:
+
+```json
+{
+  "version": "1.2.3",
+  "conversationId": "optional-conversation-uuid",
+  "selectionRevision": 3,
+  "enableForConversation": true
+}
+```
+
+The backend re-fetches the current authoritative detail, compares its returned
+version to the exact install request, and selects either a public HTTPS
+`http` deployment or a `stdio` deployment whose provider, identifier, exact
+version, connection/install method, command, arguments, package name, and
+deployment hash match one reviewed manifest artifact. It pins provenance in a
+private Server record, then reuses quota/deduplication, validation, MCP
+initialization, `tools/list`, and optional revision-checked Conversation
+selection. The stdio record contains only an internal `runner://<artifact-id>`
+reference; public responses omit that endpoint and all artifact metadata.
+
+SSE and unmatched npm/Docker/Git/binary/manual command paths are display-only.
+The backend and Runner never execute Marketplace-supplied commands or download
+packages at runtime. Approved executables come only from the immutable Runner
+image and are re-bound to the current manifest before validation, selection,
+and execution. A validation failure may leave a visible recoverable private
+Server and returns its bounded `validationErrorCode`.
+
 ## Chat stream integration
 
 An MCP-enabled send uses the existing chat stream endpoint. Before accepting
@@ -215,6 +265,11 @@ validation against the frozen schema remains authoritative.
 | 503 | `MCP_DISABLED` | Global Tools kill switch is off |
 | 503 | `MCP_TRANSPORT_DISABLED` | Selected remote or stdio transport is disabled |
 | 503 | `MCP_SERVER_UNAVAILABLE` | Validation or selected server is unavailable |
+| 404 | `MCP_MARKETPLACE_NOT_FOUND` | Marketplace item/version does not exist |
+| 409 | `MCP_MARKETPLACE_INCOMPATIBLE` | No safe HTTPS HTTP or exact approved Runner artifact is installable |
+| 409 | `MCP_MARKETPLACE_CHANGED` | Exact version/deployment changed before install |
+| 503 | `MCP_MARKETPLACE_DISABLED` | Optional Marketplace adapter is off |
+| 503 | `MCP_MARKETPLACE_UNAVAILABLE` | Adapter credentials or bounded upstream request are unavailable |
 | 500 | `MCP_INTERNAL` | Sanitized unexpected failure |
 
 All error messages remain bounded and must not include a custom endpoint,

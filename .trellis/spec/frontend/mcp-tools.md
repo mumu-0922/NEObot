@@ -18,6 +18,8 @@ type McpSelectionMode = "inherit" | "custom";
 type McpCallStatus =
   | "queued" | "running" | "succeeded" | "failed"
   | "canceled" | "outcome_unknown";
+
+const PROVIDER_STREAM_INTERRUPTED_CODE = "PROVIDER_STREAM_INTERRUPTED";
 ```
 
 The client maps only to `/v1/mcp/*` routes defined in
@@ -41,6 +43,27 @@ events carry bounded MCP timeline updates.
 - Reuse the same server-authoritative MCP client and management behavior for
   the top-level page and composer control. Do not create a browser-owned MCP
   registry or a second selection store merely to support panel navigation.
+- The top-level page exposes **Installed | MCP Marketplace** tabs. Marketplace
+  search/detail always uses the typed `/v1/mcp/marketplace/*` API and never
+  calls or scrapes LobeHub from the browser.
+- Marketplace cards/details show source, exact version, connection type,
+  install compatibility, Tool preview, and display-only trust signals. The UI
+  enables install only when the backend returns `compatibility: "installable"`;
+  it must not infer authority from connection type. This permits public HTTPS
+  Streamable HTTP and exact approved stdio artifacts while keeping SSE and
+  unmatched package/Docker/Git options blocked.
+- Marketplace navigation exposes a curated primary-category rail backed by
+  server-returned category counts and backend category filtering. Cards and
+  details render only normalized HTTPS or short emoji/text icons, use
+  `no-referrer` for remote images, and retain a local fallback.
+- Marketplace search uses a monotonic request ID in addition to AbortSignal.
+  Only the latest request may replace items, totals, loading, or error state;
+  an older failure must never leave a false unavailable banner over newer
+  successful results.
+- `Install and enable` sends only identifier/version plus the current
+  Conversation/revision. After install it reloads authoritative Servers and
+  selection. API-key and OAuth items continue through the existing credential
+  and OAuth UI rather than collecting secrets in Marketplace state.
 - A blocked send may focus the Tools control and offer an explicit
   disable-all-and-continue action. Do not add per-call approval dialogs.
 - Credential fields are transient component state, cleared after submission,
@@ -50,6 +73,11 @@ events carry bounded MCP timeline updates.
   Results remain collapsed by default. Manual retry is allowed only if the
   backend exposes a trusted idempotent read retry affordance; never infer it
   from remote annotations.
+- A failed assistant with `PROVIDER_STREAM_INTERRUPTED` renders a localized
+  Provider-interruption notice while retaining the partial answer. It is not
+  presented as an MCP Tool failure. For persisted rows created before this
+  stable code existed, non-empty failed `PROVIDER_ERROR` content receives the
+  same notice; an empty generic Provider failure remains generic.
 - Local mode has no Plugin or MCP execution fallback.
 - Storage version 5 recursively removes `activePlugins`, `installedPlugins`,
   `pluginConfigs`, `marketPlugins`, and `marketPluginsTimestamp` without
@@ -68,6 +96,13 @@ events carry bounded MCP timeline updates.
 | Selection revision is stale | show save failure and reload authoritative state |
 | `outcome_unknown` timeline event | terminal warning state; no one-click retry |
 | Legacy Plugin fields load/import | strip recursively; persist no Plugin or inferred MCP state |
+| Marketplace disabled or unconfigured | show a bounded configuration state; Installed remains fully usable |
+| Search/detail upstream failure | show a retryable Marketplace-only error; keep installed/selection state unchanged |
+| Older search fails after a newer search succeeds | ignore the stale completion; keep the newer results with no false error banner |
+| Item is SSE or unmatched stdio/command-only | show compatibility reason; no install request is emitted |
+| Backend marks exact approved stdio deployment installable | send only identifier/version; never receive or execute command metadata |
+| Install validation/selection step fails after draft creation | reload installed Servers so the recoverable draft remains visible |
+| Provider stream interrupts after partial answer content | keep the content and show the localized Provider-interruption notice; do not blame or retry MCP Tools |
 
 ### 5. Good / Base / Bad Cases
 
@@ -86,8 +121,15 @@ events carry bounded MCP timeline updates.
   unavailable/auth states, and disable-all recovery.
 - Sidebar Tools entry, `?panel=tools` URL round-trip, top-level page
   composition, and Server listing without a current Conversation.
+- Marketplace tab/search/detail, category filtering/counts, remote-icon
+  fallback, compatibility labels, disabled/unconfigured behavior,
+  backend-approved remote/stdio installability, authoritative install payload,
+  latest-request race fencing, no command fields, install recovery, and optional
+  Conversation enablement with revision.
 - Timeline mapping for every state including `outcome_unknown`, redacted
   summaries, and cancellation.
+- Generation-error wiring for current `PROVIDER_STREAM_INTERRUPTED` plus the
+  non-empty legacy `PROVIDER_ERROR` compatibility path in every locale.
 - Storage/entity/import tests that remove all retired Plugin keys without
   modifying Assistants, Skills, security metadata, or unrelated settings.
 - Run focused Vitest files plus frontend `typecheck`; add full frontend gates

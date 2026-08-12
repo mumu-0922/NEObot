@@ -191,6 +191,52 @@ and runtime in one product cutover. Assistants and Skills remain unchanged.
   camelCase DTO, bounded JSON decoder, no-store, and stable error-envelope
   conventions. The runner API is internal only.
 
+### LobeHub MCP marketplace
+
+- Add **Installed | MCP Marketplace** tabs to the top-level Tools page. The
+  marketplace is a discovery and metadata source only; it never grants Tool
+  execution authority or changes the Assistant/Skill product concepts.
+- Proxy LobeHub Marketplace requests through the Go backend. Browser code must
+  not receive Marketplace machine credentials or call/scrape LobeHub directly.
+- Search and detail use bounded, cached server-to-server requests. Marketplace
+  configuration is disabled by default and fails independently from installed
+  Servers and chat execution.
+- Mirror LobeHub's primary category navigation with bounded category counts
+  and server-side category filtering. Cards and details render an upstream icon
+  only when it is a bounded HTTPS URL or short text/emoji, with a local fallback
+  and no browser access to Marketplace credentials.
+- Support one-click installation for an explicitly selected public HTTPS
+  `http` deployment or for a `stdio` deployment that exactly matches an
+  audited artifact in the administrator manifest. Legacy `sse` and unmatched
+  npm/Docker/Git/binary/shell options remain informational. Neo Chat must never
+  execute a Marketplace-supplied command or perform a runtime package download.
+- Installation requests contain only an exact Marketplace identifier/version
+  plus an optional current Conversation revision. The backend re-fetches the
+  item, selects the authoritative deployment option, validates the exact
+  version and a manifest/deployment hash, then reuses private Server creation,
+  duplicate endpoint checks, SSRF-safe validation, and Tool discovery.
+- An install creates a user-private Server. Unauthenticated HTTP Servers are
+  validated immediately. Approved stdio installs persist only an internal
+  Runner artifact reference plus Marketplace provenance and are resolved back
+  to the current manifest before validation, selection, or execution. API-key/
+  header and OAuth Servers remain visible in their existing authorization state
+  and use the existing credential/OAuth flows; Marketplace metadata is never
+  treated as a credential or executable authority.
+- `install and enable` may update only the authenticated user's current
+  Conversation selection and must honor the caller-supplied selection revision.
+  The install remains visible if later validation or selection update fails so
+  recovery never creates a hidden duplicate.
+- Pin provenance to `provider + identifier + exact version + deployment hash`
+  in bounded private Server metadata. Marketplace badges such as official,
+  validated, ratings, installs, or stars are display-only and do not upgrade
+  Tool classification, retry, scheduling, or authorization trust.
+- Configure the adapter with `MCP_MARKETPLACE_ENABLED`,
+  `MCP_MARKETPLACE_BASE_URL`, `MCP_MARKETPLACE_CLIENT_ID`,
+  `MCP_MARKETPLACE_CLIENT_SECRET_FILE`, `MCP_MARKETPLACE_TIMEOUT`, and
+  `MCP_MARKETPLACE_CACHE_TTL`. Credentials remain Docker-secret-backed and are
+  never logged or returned. Do not auto-register a third-party identity during
+  application startup.
+
 ### Migration and rollout
 
 - Add new tables with additive, replay-safe up/down migrations before removing
@@ -241,6 +287,11 @@ and runtime in one product cutover. Assistants and Skills remain unchanged.
       timeline rendering, cancellation, migration, and blocked sends.
 - [ ] Compose renders with the example and active environment files, and
       backup/restore includes MCP tables and result artifacts.
+- [ ] Marketplace search/detail and install are backend-proxied, bounded, and
+      fail closed without configured machine credentials; an authoritative
+      HTTPS HTTP option or exact reviewed stdio artifact installs through the
+      real private Server validation and optional current-Conversation selection
+      path without executing Marketplace commands or downloading packages.
 - [ ] Backend `go vet ./...` and `go test ./...` pass.
 - [ ] Frontend format, lint, typecheck, test, and production build pass.
 - [ ] `bash mm-chat/scripts/verify-standalone.sh --full` passes.
@@ -320,7 +371,8 @@ future work through isolated extension points rather than premature MVP scope.
 - OpenAPI plugin compatibility adapters or long-term plugin/MCP dual runtime.
 - User-supplied stdio commands, runtime package downloads, arbitrary host
   mounts, or Docker socket access.
-- Automatic third-party MCP marketplace synchronization.
+- Background or automatic third-party MCP marketplace synchronization,
+  Marketplace publishing, and execution of Marketplace installation commands.
 - Prompt-JSON tool simulation or automatic model switching.
 - Full OpenTelemetry/collector rollout and manifest hot reload.
 - Automatic migration of old plugin definitions or credentials into MCP.
@@ -345,4 +397,3 @@ future work through isolated extension points rather than premature MVP scope.
 - Frontend persisted-state migrations must use the established storage-version
   path and runtime normalization rather than component-side deletion.
 - Project documentation and Trellis specifications are written in English.
-

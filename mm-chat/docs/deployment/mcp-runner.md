@@ -12,17 +12,43 @@ MCP_REMOTE_ENABLED=true
 MCP_STDIO_ENABLED=false
 MCP_AUDIT_RETENTION=2160h
 MCP_CLEANUP_INTERVAL=1h
+MCP_MARKETPLACE_ENABLED=false
 ```
 
 Cleanup continues while the global switch is off so expired calls, OAuth
 state, run snapshots, account-deletion queue entries, and MinIO artifacts do
 not become permanent.
 
+## Optional LobeHub Marketplace
+
+The Marketplace is a Go backend adapter; it does not add a resident container
+or enable the stdio Runner. Register the Neo Chat M2M identity explicitly with
+LobeHub, then store only its client secret in a dedicated mode-`0600`,
+runtime-owner-owned file:
+
+```text
+MCP_MARKETPLACE_ENABLED=true
+MCP_MARKETPLACE_BASE_URL=https://market.lobehub.com
+MCP_MARKETPLACE_CLIENT_ID=<registered-client-id>
+MCP_MARKETPLACE_CLIENT_SECRET_SOURCE=./mcp/marketplace-client-secret
+MCP_MARKETPLACE_TIMEOUT=8s
+MCP_MARKETPLACE_CACHE_TTL=5m
+```
+
+The file is mounted as
+`/run/secrets/mm_chat_mcp_marketplace_client_secret`. Do not place its contents
+in `.env`, logs, images, or Git. Startup never registers a third-party identity.
+Disabling Marketplace or an upstream outage affects only search/install;
+already installed Servers and chat remain available. Search/detail cache
+contains bounded public metadata only. Rotate by replacing the secret file and
+recreating the backend.
+
 ## Manifest workflow
 
-The checked-in default is `mcp/manifest.json` with schema version `1` and no
-servers. Treat a deployment manifest as reviewed configuration, not user data.
-Changes take effect only after restart.
+The checked-in default is `mcp/manifest.json` with schema version `1`. It may
+contain hidden Marketplace artifacts as well as administrator-visible shared
+Servers. Treat the manifest as reviewed configuration, not user data. Changes
+take effect only after restart.
 
 Validate before release or restart:
 
@@ -83,6 +109,28 @@ Runner image. Runtime `npx`, `uvx`, package downloads, `sh -c`, Docker socket
 access, and host source mounts are forbidden. Environment values must come from
 one exact literal for non-secrets, `/run/secrets/...`, or an allowlisted
 `MCP_SECRET_*` reference; auth secrets may not be inline.
+
+### Approved Marketplace artifacts
+
+A Marketplace stdio option is installable only when one manifest entry carries
+an exact `marketplace` projection matching provider, identifier, Marketplace
+version, connection/install method, command, arguments, package name, and the
+derived deployment hash. This projection is an approval fingerprint only. The
+Runner executes the entry's separate absolute `command.argv`; it never executes
+the Marketplace command.
+
+The initial reviewed artifact maps LobeHub `upstash-context7@2.2.0`
+(`npx ctx7`) to the image-bundled
+`@upstash/context7-mcp@3.2.5` executable. The package and transitive artifacts
+are pinned by `backend/mcp-runner-runtime/package-lock.json`, installed during
+image build with `npm ci --omit=dev --ignore-scripts`, and audited before
+release. Adding a store item requires reviewing and rebuilding this lock plus
+the manifest; it never performs an install in a running container.
+
+An installed user-private stdio row stores `runner://<approved-id>` and bounded
+provenance. The public API hides both. The backend rechecks the current manifest
+binding before validation, selection, and execution, so removing or changing an
+artifact fails closed without trusting stale database metadata.
 
 ## Runner token and image
 
@@ -156,7 +204,7 @@ may start a clean approved child.
 1. Create and verify a paired PostgreSQL/MinIO `pre-deploy` backup.
 2. Validate the target manifest and Runner token metadata.
 3. Build/pull backend, Runner, frontend, and RAG images; record all digests.
-4. Run migrations `074`-`075` explicitly while old application writers are
+4. Run migrations `074`-`076` explicitly while old application writers are
    stopped.
 5. Start the backend with MCP kill switches still off and verify `/ready`.
 6. If needed, start the Runner and verify its container health internally.
@@ -196,7 +244,9 @@ Recreate only the backend and stop the optional Runner when stdio is disabled.
 The cleanup-only worker must remain available through the backend process.
 
 For an image rollback, restore the previous backend/frontend/Runner digests but
-retain migrations `074`-`075`, their runtime grants, and all MCP rows. The old
+retain migrations `074`-`076`, their runtime grants, and all MCP rows. Migration
+`076.down` refuses while stdio rows exist; do not delete installed Servers to
+force it. The old
 Plugin runtime remains removed; MCP switches never reactivate it. Do not run
 `074.down` after any live MCP selection, credential, call, result, or artifact
 exists. Prefer a forward fix.

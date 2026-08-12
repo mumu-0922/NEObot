@@ -269,8 +269,11 @@ stream with these exact constraints:
 - run only before any answer content was emitted.
 
 Cancellation, no-evidence failures, and failures after partial answer text do
-not recover. They retain their existing terminal behavior. Provider reasoning
-alone does not count as answer content and may precede a recovery answer.
+not recover. They retain their existing terminal behavior. A typed Provider
+stream-read/incomplete failure after visible content uses
+`PROVIDER_STREAM_INTERRUPTED`, preserves that content in a failed assistant,
+and is never represented as an MCP Tool failure. Provider reasoning alone does
+not count as answer content and may precede a recovery answer.
 
 The recovery answer is server-buffered until its provider stream closes
 successfully. A failed first attempt is discarded in full and retried once
@@ -536,6 +539,7 @@ more accurate.
 | Second transient external failure     | final redacted failure; ordinary answer; no `[W#]` |
 | Continuation fails after evidence, before answer text | same-model no-Tools evidence answer |
 | Continuation fails after partial answer text | terminal failure; no duplicate answer recovery |
+| Provider stream read/incomplete failure after visible answer text | failed partial answer with `PROVIDER_STREAM_INTERRUPTED`; no replay |
 | First recovery attempt emits partial text then fails | discard all events; retry once |
 | Both recovery attempts fail             | final failure with zero recovery answer content |
 | Later Search adds no source            | empty incremental Tool Result; keep prior markers  |

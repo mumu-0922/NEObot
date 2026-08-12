@@ -471,6 +471,12 @@ SSE socket own delivery only.
   `completed`, or `cancelled`) beneath the localized step Status. Meaningful
   outcomes such as `degraded` remain visible. Provider reasoning stays the
   sanitized provider-returned text and is not rewritten or translated.
+- If an ordinary Provider answer has already emitted content and its SSE read
+  fails or closes without the required terminal event, persist the partial
+  content with `status=failed` and emit stable code
+  `PROVIDER_STREAM_INTERRUPTED`. Do not replay, auto-continue, or mark the
+  message completed. The public message is fixed and must not include upstream
+  response bodies or transport error text.
 - Process detail uses an allowlist and bounded values. Exact `query`,
   `redactedArgs`, catalog metadata, unknown fields, raw payloads, source bodies,
   headers, prompts, SQL, and internal errors are dropped before SSE and
@@ -658,6 +664,7 @@ SSE socket own delivery only.
 | Memory retrieval otherwise fails | bounded failed Tool Result; ordinary continuation without Memory |
 | Continuation fails before content after a Memory call | recover from the original request with no Memory body |
 | Continuation fails after partial content | preserve the error; do not replay or duplicate the answer |
+| Provider stream read fails or ends incomplete after visible content | preserve partial output as failed; emit `PROVIDER_STREAM_INTERRUPTED`; no replay or completion |
 | Runtime Tool contract hash drifts | fail closed before Memory retrieval |
 | Official DeepSeek receives `enable_thinking=false` | protocol mismatch; the run is not model-quality evidence |
 | Official DeepSeek Tool round or continuation requests reasoning | adapter sends `thinking.type=disabled`, omits `reasoning_effort`, and leaves plain no-Tool chat unchanged |
@@ -823,6 +830,9 @@ SSE socket own delivery only.
     retrieval aggregate reconciliation, incomplete-retrieval empty-final
     enforcement, and explicit empty v9 maps while v7 bytes omit every
     diagnostic field.
+21. Public stream-error tests must map typed read/incomplete failures to
+    `PROVIDER_STREAM_INTERRUPTED`, preserve any already-emitted answer as a
+    failed partial message, and prove upstream error text is absent.
 
 ## 7. Wrong vs Correct
 

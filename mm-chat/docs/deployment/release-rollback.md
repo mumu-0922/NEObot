@@ -100,7 +100,7 @@ backend, `mcp_runner`, frontend, and RAG; production must pin the Runner with
 1. Create and verify one paired PostgreSQL/MinIO `pre-deploy` backup.
 2. Validate `mcp/manifest.json` with `mm-chat-mcp-validate`.
 3. Build or pull all target images and record their immutable digests.
-4. Apply migrations `074`-`075` explicitly before starting the new backend.
+4. Apply migrations `074`-`076` explicitly before starting the new backend.
 5. Start the backend with `MCP_ENABLED=false` and verify readiness.
 6. Start the optional `mcp-runner` profile only when stdio is required.
 7. Start the frontend, then enable the global/transport switches separately.
@@ -156,9 +156,10 @@ Then run the smoke checks from the pre-release gate.
 - **Redis issue**: flush or recreate Redis only; Postgres/MinIO remain
   authoritative.
 - **MCP execution issue**: set `MCP_ENABLED=false` and recreate the backend.
-  Stop the Runner when stdio is disabled. Preserve migrations `074`-`075`, the
+  Stop the Runner when stdio is disabled. Preserve migrations `074`-`076`, the
   MCP rows/runtime grants, and `mcp-results/`; never use the retired Plugin
-  runtime as rollback.
+  runtime as rollback. Migration `076.down` deliberately refuses while any
+  private stdio Server remains; prefer a forward fix rather than deleting rows.
 
 ### Migration 053 / Memory v2 foundation rollback
 

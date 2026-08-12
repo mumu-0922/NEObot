@@ -149,7 +149,8 @@ Repository flow:
 4. Stream provider events.
 5. Finalize the assistant row:
    - success -> `status='completed'`, final `content`, `completed_at=now()`
-   - provider error -> `status='failed'`
+   - provider error -> `status='failed'`; already-emitted content remains a
+     truthful partial answer rather than being marked complete
    - explicit Run cancellation -> `status='cancelled'`
 
 Browser request-context cancellation is not Run-cancellation authority. After
@@ -265,7 +266,10 @@ Runtime rules:
 - Malformed provider SSE frames after streaming begins map to scrubbed
   `message.error` frames.
 - Provider streams that end without `data: [DONE]` are treated as failed
-  partial streams and map to scrubbed `message.error` frames.
+  partial streams and map to scrubbed `message.error` frames. Typed stream-read
+  and incomplete-stream failures use `PROVIDER_STREAM_INTERRUPTED`; partial
+  content is preserved with `status='failed'`, never replayed or represented as
+  a complete answer. Upstream error text and response bodies remain redacted.
 - With Redis enabled, active streams poll the cancellation flag and emit
   `message.cancelled` when the flag appears. Redis errors are non-authoritative
   and do not overwrite Postgres status.
