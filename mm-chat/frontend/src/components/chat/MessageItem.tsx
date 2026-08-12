@@ -91,6 +91,8 @@ import {
   IMAGE_CONTENT_POLICY_VIOLATION_CODE,
   IMAGE_PROVIDER_CONNECTION_CODE,
   IMAGE_PROVIDER_TIMEOUT_CODE,
+  PROVIDER_ERROR_CODE,
+  PROVIDER_STREAM_INTERRUPTED_CODE,
 } from "@/lib/chat/types";
 import {
   decodeAttachmentText,
@@ -1035,6 +1037,12 @@ const MessageItem: React.FC<MessageItemProps> = ({
     generationErrorMessage = t("imageProviderConnectionFailed");
   } else if (generationError?.code === IMAGE_PROVIDER_TIMEOUT_CODE) {
     generationErrorMessage = t("imageProviderTimeout");
+  } else if (
+    generationError?.code === PROVIDER_STREAM_INTERRUPTED_CODE ||
+    (generationError?.code === PROVIDER_ERROR_CODE &&
+      message.content.trim().length > 0)
+  ) {
+    generationErrorMessage = t("providerStreamInterrupted");
   }
 
   // Branch navigation checks

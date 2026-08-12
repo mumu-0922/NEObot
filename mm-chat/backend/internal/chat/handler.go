@@ -3439,6 +3439,15 @@ func chatStreamErrorBody(err error, deadlineExceeded bool) ErrorBody {
 		}
 		return ErrorBody{Code: failure.code, Message: message}
 	}
+	if category, ok := ProviderFailureCategoryOf(err); ok {
+		switch category {
+		case ProviderFailureStreamReadFailed, ProviderFailureStreamIncomplete:
+			return ErrorBody{
+				Code:    "PROVIDER_STREAM_INTERRUPTED",
+				Message: "provider response stream was interrupted; partial output was preserved",
+			}
+		}
+	}
 	return ErrorBody{Code: "PROVIDER_ERROR", Message: "provider stream failed"}
 }
 

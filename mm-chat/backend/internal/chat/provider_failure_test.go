@@ -124,3 +124,19 @@ func TestProviderFailureCategoryCatalogueIsCompleteAndSorted(t *testing.T) {
 		}
 	}
 }
+
+func TestChatStreamErrorBodyClassifiesRetryableStreamInterruption(t *testing.T) {
+	for _, category := range []ProviderFailureCategory{
+		ProviderFailureStreamReadFailed,
+		ProviderFailureStreamIncomplete,
+	} {
+		body := chatStreamErrorBody(newProviderFailure(category, "private upstream detail"), false)
+		if body.Code != "PROVIDER_STREAM_INTERRUPTED" ||
+			body.Message != "provider response stream was interrupted; partial output was preserved" {
+			t.Fatalf("category %q body = %#v", category, body)
+		}
+		if body.Message == "private upstream detail" {
+			t.Fatalf("category %q leaked upstream detail", category)
+		}
+	}
+}

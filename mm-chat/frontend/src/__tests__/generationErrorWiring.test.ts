@@ -29,6 +29,8 @@ describe("generation error UI wiring", () => {
     expect(messageItem).toContain('t("imageProviderConnectionFailed")');
     expect(messageItem).toContain("IMAGE_PROVIDER_TIMEOUT_CODE");
     expect(messageItem).toContain('t("imageProviderTimeout")');
+    expect(messageItem).toContain("PROVIDER_STREAM_INTERRUPTED_CODE");
+    expect(messageItem).toContain('t("providerStreamInterrupted")');
 
     for (const locale of ["zh", "en", "ja"]) {
       const messages = JSON.parse(
@@ -40,6 +42,7 @@ describe("generation error UI wiring", () => {
       expect(messages.imageContentPolicyViolation).toBeTruthy();
       expect(messages.imageProviderConnectionFailed).toBeTruthy();
       expect(messages.imageProviderTimeout).toBeTruthy();
+      expect(messages.providerStreamInterrupted).toBeTruthy();
     }
   });
 });
