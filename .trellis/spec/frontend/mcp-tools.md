@@ -33,8 +33,10 @@ events carry bounded MCP timeline updates.
   authorization.
 - `inherit` means Workspace defaults. `custom` plus `servers: []` means all
   Tools are explicitly disabled. Preserve backend revision tokens on writes.
-- The composer shows one Tools control and enabled server/Tool summary. Status,
-  auth requirements, and unavailable state remain visible before send.
+- The composer shows one icon-only Tools wrench without adjacent inherited or
+  server-name chips. Its enabled styling and status tooltip retain the current
+  server/Tool summary; full status, auth requirements, and unavailable state
+  remain visible in the Tools dialog before send.
 - The Sidebar exposes a first-class **Tools** entry backed by
   `?panel=tools`. Its page lists authorized MCP Server definitions, supports
   private Server lifecycle/authorization, and edits the active Conversation
@@ -56,6 +58,10 @@ events carry bounded MCP timeline updates.
   server-returned category counts and backend category filtering. Cards and
   details render only normalized HTTPS or short emoji/text icons, use
   `no-referrer` for remote images, and retain a local fallback.
+- Installed Server cards use the same shared icon renderer as Marketplace
+  cards. They render only the optional normalized Server DTO `icon`; missing or
+  failed remote images fall back to the local generic MCP glyph without
+  changing selection or trust state.
 - Marketplace search uses a monotonic request ID in addition to AbortSignal.
   Only the latest request may replace items, totals, loading, or error state;
   an older failure must never leave a false unavailable banner over newer
@@ -102,12 +108,14 @@ events carry bounded MCP timeline updates.
 | Item is SSE or unmatched stdio/command-only | show compatibility reason; no install request is emitted |
 | Backend marks exact approved stdio deployment installable | send only identifier/version; never receive or execute command metadata |
 | Install validation/selection step fails after draft creation | reload installed Servers so the recoverable draft remains visible |
+| Installed Server icon is missing or its HTTPS image fails | show the local generic MCP fallback; keep the card usable |
 | Provider stream interrupts after partial answer content | keep the content and show the localized Provider-interruption notice; do not blame or retry MCP Tools |
 
 ### 5. Good / Base / Bad Cases
 
 - **Good**: a user opens Tools, enables one granted server, disables one Tool,
-  saves the returned revision, sends, and sees queued-to-succeeded timeline.
+  saves the returned revision, sees only the active wrench in the composer,
+  sends, and sees queued-to-succeeded timeline.
 - **Base**: a conversation without Workspace or selection shows zero enabled
   Tools and sends ordinary chat.
 - **Bad**: hydrate MCP selection from `activePlugins`, retain a credential in
@@ -122,7 +130,8 @@ events carry bounded MCP timeline updates.
 - Sidebar Tools entry, `?panel=tools` URL round-trip, top-level page
   composition, and Server listing without a current Conversation.
 - Marketplace tab/search/detail, category filtering/counts, remote-icon
-  fallback, compatibility labels, disabled/unconfigured behavior,
+  fallback, Installed shared-icon/fallback rendering, compatibility labels,
+  disabled/unconfigured behavior,
   backend-approved remote/stdio installability, authoritative install payload,
   latest-request race fencing, no command fields, install recovery, and optional
   Conversation enablement with revision.

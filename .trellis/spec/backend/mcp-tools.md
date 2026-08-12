@@ -112,6 +112,11 @@ public execution from the account-artifact trigger. Migration
 - Marketplace search returns bounded `categories: [{category,count}]` facets
   and accepts one bounded exact category key. Item icons are reduced to a
   bounded HTTPS URL or short text/emoji; all remain untrusted display metadata.
+- Public Server DTOs expose optional `icon` only after the same backend
+  normalization. New Marketplace private Servers persist that bounded display
+  value in existing metadata. Reviewed private stdio Servers rebind their icon
+  to the current exact manifest artifact on listing/validation, so a stale or
+  Marketplace-supplied icon never outranks current local review authority.
 - A Marketplace install accepts only `identifier`, exact `version`, optional
   `conversationId`, `selectionRevision`, and `enableForConversation`. The
   backend re-fetches the authoritative detail and never accepts a URL, command,
@@ -177,6 +182,8 @@ MCP_MARKETPLACE_TIMEOUT MCP_MARKETPLACE_CACHE_TTL
 | Private stdio provenance/artifact ID is stale or tampered | validation/selection/execution fails closed with server unavailable |
 | Reviewed private stdio Tool is listed as `read` by the current artifact policy | expose `read`; permit bounded read concurrency |
 | Private remote annotation claims read-only or a reviewed artifact omits a Tool policy | normalize the Tool to `unknown`; serialize and never read-retry |
+| Installed Server has a normalized icon | expose it as display-only `icon`; never treat it as trust/execution authority |
+| Icon is unsafe, oversized, or missing | omit it from the DTO; frontend uses a local fallback |
 | Client submits stale version/revision | no authority substitution; reject the install/selection mutation without hiding an already-created Server |
 
 ### 5. Good / Base / Bad Cases
@@ -215,9 +222,9 @@ MCP_MARKETPLACE_TIMEOUT MCP_MARKETPLACE_CACHE_TTL
   identifier/version handling including no upstream detail-version query,
   local drift rejection, deployment selection,
   no-command execution, SSRF/deduplication reuse, exact stdio artifact match,
-  provenance reauthorization, current-artifact Tool-policy rebinding, ordinary
-  private-annotation denial, hidden Runner endpoint, and install-plus-selection
-  revision conflict/recovery.
+  provenance reauthorization, current-artifact Tool-policy/icon rebinding,
+  ordinary private-annotation denial, bounded icon persistence/DTO projection,
+  hidden Runner endpoint, and install-plus-selection revision conflict/recovery.
 
 ### 7. Wrong vs Correct
 

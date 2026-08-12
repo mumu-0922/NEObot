@@ -65,6 +65,11 @@ relative executables, shell executables, working-directory overrides, unsafe
 environment names, inline auth secrets, invalid grants, unsafe endpoints, and
 out-of-range lifetimes.
 
+Backend, validator, and Runner compile the same strict manifest parser. When a
+release adds a manifest field, build and roll the paired Backend and Runner
+images from that same source revision. A healthy old Runner has not re-read the
+mounted file and is not proof that it can restart with the new schema.
+
 Minimal remote entry:
 
 ```json

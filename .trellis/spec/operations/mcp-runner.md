@@ -39,6 +39,10 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
 - Manifest schema v1 is strict. Stdio argv[0] is absolute and not a shell;
   runtime downloads, working-directory overrides, unsafe env names, Docker
   socket, and arbitrary host mounts are forbidden.
+- Backend, validator, and Runner compile the same strict manifest parser. Any
+  new manifest field therefore requires paired Backend and Runner images from
+  the same source revision; do not mount a newer manifest into an older Runner
+  and assume its current health proves restart compatibility.
 - Marketplace stdio approval is an exact manifest fingerprint over provider,
   identifier/version, connection/install method, upstream command/arguments/
   package name, and deployment hash. It is never an executable template. The
@@ -74,6 +78,7 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
 | Runner URL differs from internal service URL | preflight rejects |
 | Token source is symlink/wrong owner/mode/size | preflight rejects without printing content |
 | Manifest invalid | validator fails closed; unrelated chat may start with MCP unavailable |
+| Manifest contains a field unknown to the running Runner image | Runner restart fails closed; deploy the paired Runner image before declaring the manifest rollout complete |
 | Runner health fails | selected stdio runs fail closed; backend global readiness remains independent |
 | Restore lacks MCP sample file/object | temporary-bucket drill fails before production restore |
 | Partial artifact cleanup fails | retain row/queue entry and retry; never delete DB authority first |
@@ -95,6 +100,9 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
 ### 6. Tests Required
 
 - `go test ./cmd/mcp-validate ./cmd/mcp-runner ./internal/mcprunner`.
+- For a manifest schema change, restart the newly built Runner against the
+  exact target manifest and require healthy status; a still-running old
+  container is not compatibility evidence.
 - Build target `mcp-runner`; inspect non-root user and entrypoint.
 - Run the pinned runtime dependency audit against the official npm registry;
   verify the built image contains the exact reviewed package version and no

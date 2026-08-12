@@ -34,6 +34,7 @@ type McpServer = {
   ref: McpServerRef;
   name: string;
   description?: string;
+  icon?: string; // normalized HTTPS URL or short text/emoji; display-only
   transport: "streamable_http" | "stdio";
   endpointUrl?: string;
   authType: "none" | "header" | "oauth";
@@ -59,6 +60,12 @@ authority for read classification and normalize to `unknown`. A private stdio
 Server may inherit `read|write|unknown` only from the current reviewed manifest
 artifact's local `toolPolicy` after its exact Marketplace provenance is rebound;
 missing policy remains `unknown`.
+
+`icon` is optional display metadata, never trust or execution authority. The
+backend returns it only after bounding it to a credential-free HTTPS URL or
+short text/emoji. Reviewed private stdio Servers rebind the value from the
+current exact manifest artifact; unsafe or missing values are omitted so the
+frontend can use its local fallback.
 
 ## Routes
 
