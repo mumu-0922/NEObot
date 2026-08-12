@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import {
   FormEvent,
   useCallback,
@@ -46,6 +45,8 @@ import type {
   McpMarketplaceItemDetail,
 } from "@/lib/mcp/types";
 import { ApiClientError, createNeoChatApiClient } from "@/services/api/client";
+
+import McpServerIcon from "./McpServerIcon";
 
 interface McpMarketplaceProps {
   conversationId?: string;
@@ -302,7 +303,7 @@ export default function McpMarketplace({
                     className="rounded-xl border border-gray-200 bg-white p-4 text-left transition-colors hover:border-cyan-300 hover:bg-cyan-50/30 disabled:opacity-60 dark:border-border dark:bg-card dark:hover:border-cyan-900 dark:hover:bg-cyan-950/10"
                   >
                     <div className="flex items-start gap-3">
-                      <MarketplaceIcon icon={item.icon} />
+                      <McpServerIcon icon={item.icon} />
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="truncate text-sm font-semibold text-gray-800 dark:text-foreground">
@@ -489,7 +490,7 @@ function MarketplaceDetail({
       <section className="flex max-h-full w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-border dark:bg-card">
         <header className="flex items-start justify-between gap-3 border-b border-gray-200 px-5 py-4 dark:border-border">
           <div className="flex min-w-0 items-center gap-3">
-            <MarketplaceIcon icon={detail.icon} large />
+            <McpServerIcon icon={detail.icon} large />
             <div className="min-w-0">
               <h2 className="truncate text-base font-bold text-gray-800 dark:text-foreground">
                 {detail.name}
@@ -654,41 +655,6 @@ function CompatibilityBadge({
   return (
     <span className={`rounded-full px-2 py-0.5 text-[9px] ${classes}`}>
       {t(`marketplaceCompatibility.${compatibility}`)}
-    </span>
-  );
-}
-
-function MarketplaceIcon({
-  icon,
-  large = false,
-}: {
-  icon?: string;
-  large?: boolean;
-}) {
-  const [failedImageUrl, setFailedImageUrl] = useState("");
-  const imageUrl = icon?.startsWith("https://") ? icon : "";
-  const emoji = icon && !imageUrl && Array.from(icon).length <= 4 ? icon : "";
-  return (
-    <span
-      className={`flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-cyan-50 text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-200 ${
-        large ? "h-12 w-12 text-xl" : "h-10 w-10 text-lg"
-      }`}
-    >
-      {imageUrl && failedImageUrl !== imageUrl ? (
-        <Image
-          src={imageUrl}
-          alt=""
-          width={large ? 48 : 40}
-          height={large ? 48 : 40}
-          unoptimized
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          onError={() => setFailedImageUrl(imageUrl)}
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        emoji || <Box size={large ? 21 : 18} aria-hidden="true" />
-      )}
     </span>
   );
 }

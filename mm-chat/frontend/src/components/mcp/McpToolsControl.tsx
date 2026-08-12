@@ -24,6 +24,8 @@ import type {
 } from "@/lib/mcp/types";
 import { ApiClientError, createNeoChatApiClient } from "@/services/api/client";
 
+import McpServerIcon from "./McpServerIcon";
+
 interface McpToolsControlProps {
   conversationId?: string;
   enabled: boolean;
@@ -489,6 +491,7 @@ export default function McpToolsControl({
                     >
                       <Check size={13} aria-hidden="true" />
                     </button>
+                    <McpServerIcon icon={server.icon} />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="truncate text-sm font-semibold text-gray-800 dark:text-foreground">
@@ -778,21 +781,6 @@ export default function McpToolsControl({
           <Wrench size={16} aria-hidden="true" />
         </button>
       </Tooltip>
-
-      {selection?.mode === "inherit" ? (
-        <span className="hidden max-w-28 truncate rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] text-gray-500 md:inline dark:border-border dark:bg-muted/30 dark:text-muted-foreground">
-          {t("inherited")}
-        </span>
-      ) : (
-        enabledServers.slice(0, 2).map((server) => (
-          <span
-            key={serverKey(server.ref)}
-            className="hidden max-w-28 truncate rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[10px] font-medium text-cyan-700 md:inline dark:border-cyan-900/70 dark:bg-cyan-950/30 dark:text-cyan-200"
-          >
-            {server.name}
-          </span>
-        ))
-      )}
 
       <Dialog open={open} onClose={close} title={t("title")}>
         {panel}

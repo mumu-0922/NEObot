@@ -105,6 +105,7 @@ type Server struct {
 	Ref              ServerRef      `json:"ref"`
 	Name             string         `json:"name"`
 	Description      string         `json:"description,omitempty"`
+	Icon             string         `json:"icon,omitempty"`
 	Transport        string         `json:"transport"`
 	EndpointURL      string         `json:"endpointUrl,omitempty"`
 	Command          *Command       `json:"-"`

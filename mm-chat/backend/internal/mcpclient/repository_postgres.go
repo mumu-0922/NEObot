@@ -1143,6 +1143,7 @@ func scanPrivateServerRow(row scanner, withCredential bool) (Server, bool, error
 	}
 	if metadata, ok := auth["metadata"].(map[string]any); ok {
 		server.Metadata = metadata
+		server.Icon = boundedMarketplaceIcon(stringField(metadata, "icon"))
 	}
 	if err := json.Unmarshal(toolsJSON, &server.Tools); err != nil {
 		return Server{}, false, err

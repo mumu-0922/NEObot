@@ -424,6 +424,7 @@ func viewServer(server Server) serverView {
 	tools := make([]Tool, len(server.Tools))
 	copy(tools, server.Tools)
 	server.Tools = nil
+	server.Icon = boundedMarketplaceIcon(server.Icon)
 	if server.Transport == TransportStdio {
 		server.EndpointURL = ""
 	}

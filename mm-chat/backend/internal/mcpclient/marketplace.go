@@ -67,6 +67,7 @@ func (s *Service) MarketplaceItem(
 	if detail.Identifier != identifier || (version != "" && detail.Version != version) {
 		return MarketplaceItemDetail{}, ErrMarketplaceChanged
 	}
+	detail.Icon = boundedMarketplaceIcon(detail.Icon)
 	return s.approveMarketplaceDetail(detail), nil
 }
 
@@ -107,6 +108,7 @@ func (s *Service) InstallMarketplaceItem(
 	if detail.Identifier != input.Identifier || detail.Version != input.Version {
 		return MarketplaceInstallResult{}, ErrMarketplaceChanged
 	}
+	detail.Icon = boundedMarketplaceIcon(detail.Icon)
 	detail = s.approveMarketplaceDetail(detail)
 	target, found := s.installableMarketplaceDeployment(detail)
 	if !found || target.deployment.Hash == "" {
@@ -125,6 +127,9 @@ func (s *Service) InstallMarketplaceItem(
 			"version":        detail.Version,
 			"deploymentHash": deployment.Hash,
 		},
+	}
+	if detail.Icon != "" {
+		metadata["icon"] = detail.Icon
 	}
 	var server Server
 	if target.artifact != nil {

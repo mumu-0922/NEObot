@@ -187,8 +187,10 @@ func TestInstallMarketplaceItemUsesPrivateValidationAndSelection(t *testing.T) {
 	}
 	deployment.Hash, _ = marketplaceDeploymentHash("deepwiki", "1.2.3", deployment)
 	marketplace := &fakeMarketplace{detail: MarketplaceItemDetail{
-		MarketplaceItem: MarketplaceItem{Identifier: "deepwiki", Name: "DeepWiki"},
-		Version:         "1.2.3", Deployments: []MarketplaceDeployment{deployment},
+		MarketplaceItem: MarketplaceItem{
+			Identifier: "deepwiki", Name: "DeepWiki", Icon: "https://github.com/deepwiki.png",
+		},
+		Version: "1.2.3", Deployments: []MarketplaceDeployment{deployment},
 	}}
 	config := testMCPConfig()
 	config.MarketplaceEnabled = true
@@ -210,6 +212,9 @@ func TestInstallMarketplaceItemUsesPrivateValidationAndSelection(t *testing.T) {
 		len(result.Selection.Servers) != 1 || result.Selection.Servers[0].Ref != result.Server.Ref {
 		t.Fatalf("install result = %#v", result)
 	}
+	if result.Server.Icon != "https://github.com/deepwiki.png" {
+		t.Fatalf("installed remote icon = %q", result.Server.Icon)
+	}
 	provenance, _ := result.Server.Metadata["marketplace"].(map[string]any)
 	if provenance["identifier"] != "deepwiki" || provenance["deploymentHash"] != deployment.Hash {
 		t.Fatalf("provenance = %#v", provenance)
@@ -229,6 +234,7 @@ func TestInstallMarketplaceItemUsesApprovedSharedRunnerArtifact(t *testing.T) {
 	artifact := Server{
 		Ref:  ServerRef{Source: SourceManifest, ID: "marketplace-upstash-context7-2.2.0"},
 		Name: "Context7 artifact", Transport: TransportStdio, AuthType: AuthNone,
+		Icon:   "https://github.com/upstash.png",
 		Status: ServerStatusReady, Command: &Command{Argv: []string{"/opt/mcp/context7-mcp"}},
 		Metadata: map[string]any{
 			"marketplaceArtifact": MarketplaceArtifact{
@@ -239,8 +245,10 @@ func TestInstallMarketplaceItemUsesApprovedSharedRunnerArtifact(t *testing.T) {
 		},
 	}
 	marketplace := &fakeMarketplace{detail: MarketplaceItemDetail{
-		MarketplaceItem: MarketplaceItem{Identifier: "upstash-context7", Name: "Context7"},
-		Version:         "2.2.0", Deployments: []MarketplaceDeployment{deployment},
+		MarketplaceItem: MarketplaceItem{
+			Identifier: "upstash-context7", Name: "Context7", Icon: "https://untrusted.example/context7.png",
+		},
+		Version: "2.2.0", Deployments: []MarketplaceDeployment{deployment},
 	}}
 	config := testMCPConfig()
 	config.RemoteEnabled = false
@@ -273,9 +281,13 @@ func TestInstallMarketplaceItemUsesApprovedSharedRunnerArtifact(t *testing.T) {
 		result.Server.Tools[0].Classification != ClassificationRead {
 		t.Fatalf("installed Runner Tool policy = %#v", result.Server.Tools)
 	}
+	if result.Server.Icon != artifact.Icon {
+		t.Fatalf("installed Runner icon = %q, want current artifact %q", result.Server.Icon, artifact.Icon)
+	}
 	servers, err := service.ListServers(context.Background(), userID, "")
 	if err != nil || len(servers) != 1 || servers[0].Ref != result.Server.Ref ||
-		len(servers[0].Tools) != 1 || servers[0].Tools[0].Classification != ClassificationRead {
+		servers[0].Icon != artifact.Icon || len(servers[0].Tools) != 1 ||
+		servers[0].Tools[0].Classification != ClassificationRead {
 		t.Fatalf("ListServers() servers=%#v error=%v", servers, err)
 	}
 	repo.mu.Lock()

@@ -5,6 +5,7 @@
       "id": "marketplace-upstash-context7-2.2.0",
       "name": "Context7",
       "description": "Audited Context7 MCP artifact for LobeHub Marketplace installs.",
+      "icon": "https://github.com/upstash.png",
       "transport": "stdio",
       "command": {
         "argv": [

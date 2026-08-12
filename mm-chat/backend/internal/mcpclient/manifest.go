@@ -42,6 +42,7 @@ type manifestServer struct {
 	ID          string                       `json:"id"`
 	Name        string                       `json:"name"`
 	Description string                       `json:"description,omitempty"`
+	Icon        string                       `json:"icon,omitempty"`
 	Transport   string                       `json:"transport"`
 	EndpointURL string                       `json:"endpointUrl,omitempty"`
 	Command     *manifestCommand             `json:"command,omitempty"`
@@ -184,15 +185,21 @@ func normalizeManifestServer(raw manifestServer, lookupEnv func(string) (string,
 	raw.ID = strings.TrimSpace(raw.ID)
 	raw.Name = strings.TrimSpace(raw.Name)
 	raw.Description = strings.TrimSpace(raw.Description)
+	raw.Icon = strings.TrimSpace(raw.Icon)
 	raw.Transport = strings.TrimSpace(raw.Transport)
 	if !manifestIDPattern.MatchString(raw.ID) || raw.Name == "" || len(raw.Name) > 256 ||
 		len(raw.Description) > 2048 {
 		return Server{}, fmt.Errorf("%w: invalid server identity", ErrManifestInvalid)
 	}
+	icon := boundedMarketplaceIcon(raw.Icon)
+	if raw.Icon != "" && icon == "" {
+		return Server{}, fmt.Errorf("%w: invalid server icon", ErrManifestInvalid)
+	}
 	server := Server{
 		Ref:         ServerRef{Source: SourceManifest, ID: raw.ID},
 		Name:        raw.Name,
 		Description: raw.Description,
+		Icon:        icon,
 		Transport:   raw.Transport,
 		AuthType:    AuthNone,
 		Status:      ServerStatusReady,

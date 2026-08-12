@@ -42,6 +42,7 @@ export interface McpServer {
   ref: McpServerRef;
   name: string;
   description?: string;
+  icon?: string;
   transport: McpTransport;
   endpointUrl?: string;
   authType: McpAuthType;
@@ -275,6 +276,9 @@ export function normalizeMcpServer(value: unknown): McpServer | null {
     name,
     ...(stringValue(value.description, MAX_STRING)
       ? { description: stringValue(value.description, MAX_STRING) }
+      : {}),
+    ...(marketplaceIconValue(value.icon)
+      ? { icon: marketplaceIconValue(value.icon) }
       : {}),
     transport,
     ...(stringValue(value.endpointUrl, MAX_STRING)

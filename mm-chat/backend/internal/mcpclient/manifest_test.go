@@ -36,6 +36,10 @@ func TestParseManifestRejectsUnknownDuplicateAndUnsafeCommand(t *testing.T) {
 			name: "remote user info",
 			raw:  `{"version":1,"servers":[{"id":"remote","name":"Remote","transport":"streamable_http","endpointUrl":"https://user:pass@example.com/mcp"}]}`,
 		},
+		{
+			name: "unsafe icon",
+			raw:  `{"version":1,"servers":[{"id":"remote","name":"Remote","icon":"http://127.0.0.1/icon.png","transport":"streamable_http","endpointUrl":"https://example.com/mcp"}]}`,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -56,6 +60,7 @@ func TestParseManifestNormalizesApprovedRemoteAndStdioServers(t *testing.T) {
         {
           "id": "remote",
           "name": "Remote",
+          "icon": "https://cdn.example/remote.png",
           "transport": "streamable_http",
           "endpointUrl": "https://mcp.example/api?tenant=one",
           "auth": {"type":"oauth","clientId":"neo-chat","scopes":["tools.read","tools.read"]},
@@ -85,6 +90,9 @@ func TestParseManifestNormalizesApprovedRemoteAndStdioServers(t *testing.T) {
 	if servers[0].OAuthClient == nil || len(servers[0].OAuthClient.Scopes) != 1 {
 		t.Fatalf("oauth client = %#v", servers[0].OAuthClient)
 	}
+	if servers[0].Icon != "https://cdn.example/remote.png" {
+		t.Fatalf("remote icon = %q", servers[0].Icon)
+	}
 	command := servers[1].Command
 	if command == nil || command.IdleTimeout != 10*time.Minute || command.MaxLifetime != 2*time.Hour || command.Env["MCP_MODE"] != "strict" {
 		t.Fatalf("command = %#v", command)
@@ -98,6 +106,7 @@ func TestParseManifestNormalizesMarketplaceRunnerArtifact(t *testing.T) {
       "servers": [{
         "id": "marketplace-upstash-context7-2.2.0",
         "name": "Context7",
+        "icon": "https://github.com/upstash.png",
         "transport": "stdio",
         "command": {"argv":["/opt/mcp-runner/node_modules/.bin/context7-mcp"]},
         "marketplace": {
@@ -131,6 +140,9 @@ func TestParseManifestNormalizesMarketplaceRunnerArtifact(t *testing.T) {
 	if artifact.Provider != marketplaceProviderLobeHub || artifact.Identifier != "upstash-context7" ||
 		artifact.Version != "2.2.0" || artifact.DeploymentHash != wantHash {
 		t.Fatalf("marketplace artifact = %#v, want hash %q", artifact, wantHash)
+	}
+	if servers[0].Icon != "https://github.com/upstash.png" {
+		t.Fatalf("marketplace artifact icon = %q", servers[0].Icon)
 	}
 }
 

@@ -42,6 +42,7 @@ describe("server MCP API", () => {
             server: {
               ref: { source: "private", id: "server-1" },
               name: "DeepWiki",
+              icon: "https://github.com/deepwiki.png",
               transport: "streamable_http",
               authType: "none",
               status: "ready",
@@ -145,7 +146,7 @@ describe("server MCP API", () => {
         enableForConversation: false,
       }),
     ).resolves.toMatchObject({
-      server: { name: "DeepWiki" },
+      server: { name: "DeepWiki", icon: "https://github.com/deepwiki.png" },
       enabledForConversation: false,
     });
 

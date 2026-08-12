@@ -29,6 +29,7 @@ func TestViewServerEncodesEmptyToolsAsArray(t *testing.T) {
 func TestViewServerHidesPrivateRunnerEndpoint(t *testing.T) {
 	encoded, err := json.Marshal(serverResponse{Server: viewServer(Server{
 		Ref: ServerRef{Source: SourcePrivate, ID: "server-id"}, Name: "Context7",
+		Icon:      "https://github.com/upstash.png",
 		Transport: TransportStdio, EndpointURL: "runner://context7-artifact",
 		AuthType: AuthNone, Status: ServerStatusReady,
 		Metadata: map[string]any{"runnerArtifactId": "context7-artifact"},
@@ -38,6 +39,26 @@ func TestViewServerHidesPrivateRunnerEndpoint(t *testing.T) {
 	}
 	if bytes.Contains(encoded, []byte("runner://")) || bytes.Contains(encoded, []byte("runnerArtifactId")) {
 		t.Fatalf("Runner internals leaked in response: %s", encoded)
+	}
+	if !bytes.Contains(encoded, []byte(`"icon":"https://github.com/upstash.png"`)) {
+		t.Fatalf("normalized icon missing from response: %s", encoded)
+	}
+}
+
+func TestViewServerOmitsUnsafeIcon(t *testing.T) {
+	encoded, err := json.Marshal(serverResponse{Server: viewServer(Server{
+		Ref:       ServerRef{Source: SourcePrivate, ID: "server-id"},
+		Name:      "Unsafe icon",
+		Icon:      "http://127.0.0.1/icon.png",
+		Transport: TransportStreamableHTTP,
+		AuthType:  AuthNone,
+		Status:    ServerStatusReady,
+	})})
+	if err != nil {
+		t.Fatalf("marshal server response: %v", err)
+	}
+	if bytes.Contains(encoded, []byte(`"icon"`)) {
+		t.Fatalf("unsafe icon leaked in response: %s", encoded)
 	}
 }
 

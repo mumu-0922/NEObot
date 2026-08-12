@@ -5,6 +5,7 @@ import {
   normalizeMcpConversationSelectionEnvelope,
   normalizeMcpMarketplaceItemEnvelope,
   normalizeMcpMarketplaceSearch,
+  normalizeMcpServer,
   normalizeMcpToolCallUpdate,
 } from "../lib/mcp/types";
 
@@ -58,6 +59,34 @@ describe("MCP runtime DTO normalization", () => {
       revision: 4,
       servers: [],
     });
+  });
+
+  it("keeps only normalized display icons on installed Server DTOs", () => {
+    const server = {
+      ref: { source: "private", id: "context7" },
+      name: "Context7",
+      transport: "stdio",
+      authType: "none",
+      status: "ready",
+      hasCredential: false,
+      toolCount: 0,
+      unsupportedToolCount: 0,
+      grants: [],
+      tools: [],
+    };
+
+    expect(
+      normalizeMcpServer({
+        ...server,
+        icon: "https://github.com/upstash.png",
+      }),
+    ).toMatchObject({ icon: "https://github.com/upstash.png" });
+    expect(
+      normalizeMcpServer({
+        ...server,
+        icon: "http://127.0.0.1/icon.png",
+      }),
+    ).not.toHaveProperty("icon");
   });
 
   it("strictly validates streamed MCP Tool call updates", () => {

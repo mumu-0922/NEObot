@@ -155,6 +155,7 @@ func (r *fakeRepository) CreatePrivateServer(_ context.Context, userID string, i
 		Transport: transport, AuthType: input.AuthType,
 		Status: ServerStatusDraft, Metadata: cloneObject(input.Metadata),
 	}
+	server.Icon = boundedMarketplaceIcon(stringField(server.Metadata, "icon"))
 	if input.AuthType == AuthHeader {
 		server.HeaderAuth = &HeaderAuth{Name: input.HeaderName}
 	}

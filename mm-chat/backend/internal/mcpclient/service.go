@@ -232,6 +232,9 @@ func (s *Service) ListServers(ctx context.Context, userID, conversationID string
 		}
 	}
 	s.sharedMu.RUnlock()
+	for index := range private {
+		s.bindPrivateServerDisplay(&private[index])
+	}
 	scopeServers = append(scopeServers, private...)
 	for index := range scopeServers {
 		server := &scopeServers[index]
@@ -450,6 +453,9 @@ func (s *Service) ValidatePrivateServer(
 	if err != nil {
 		return Server{}, err
 	}
+	if server.Transport == TransportStdio {
+		validated.Icon = boundedMarketplaceIcon(runnerArtifact.Icon)
+	}
 	return validated, nil
 }
 
@@ -493,6 +499,23 @@ func bindPrivateRunnerToolPolicy(tools []Tool, artifact Server) []Tool {
 		bound[index].Classification = normalizeClassification(policy[bound[index].Name])
 	}
 	return bound
+}
+
+func (s *Service) bindPrivateServerDisplay(server *Server) {
+	if server == nil {
+		return
+	}
+	server.Icon = boundedMarketplaceIcon(server.Icon)
+	if server.Transport != TransportStdio {
+		return
+	}
+	server.Icon = ""
+	artifact, err := s.privateRunnerArtifact(*server)
+	if err != nil {
+		return
+	}
+	server.Icon = boundedMarketplaceIcon(artifact.Icon)
+	server.Tools = bindPrivateRunnerToolPolicy(server.Tools, artifact)
 }
 
 func (s *Service) GetSelection(
@@ -1054,6 +1077,7 @@ func (s *Service) serverForUser(
 			if err != nil {
 				return Server{}, err
 			}
+			server.Icon = boundedMarketplaceIcon(artifact.Icon)
 			server.Tools = bindPrivateRunnerToolPolicy(server.Tools, artifact)
 		}
 		return server, nil
