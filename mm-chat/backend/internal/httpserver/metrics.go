@@ -406,7 +406,7 @@ func knownMetricPath(path string) (string, bool) {
 	case "/v1/rag/provider-status":
 		return path, true
 	case "/v1/agents", "/v1/mcp/servers", "/v1/mcp/oauth/start",
-		"/v1/mcp/oauth/callback", "/v1/mcp/oauth/revoke",
+		"/v1/mcp/oauth/callback", "/v1/mcp/oauth/revoke", "/v1/mcp/marketplace/search",
 		"/v1/code/executions", "/v1/images/generations", "/v1/voice/transcribe",
 		"/v1/voice/synthesize":
 		return path, true
@@ -436,6 +436,13 @@ func knownMetricPath(path string) (string, bool) {
 		case "workspaces":
 			if len(parts) == 6 && parts[5] == "selection" {
 				return "/v1/mcp/workspaces/{workspace}/selection", true
+			}
+		case "marketplace":
+			if len(parts) >= 6 && parts[4] == "items" {
+				if parts[len(parts)-1] == "install" {
+					return "/v1/mcp/marketplace/items/{identifier}/install", true
+				}
+				return "/v1/mcp/marketplace/items/{identifier}", true
 			}
 		}
 	}

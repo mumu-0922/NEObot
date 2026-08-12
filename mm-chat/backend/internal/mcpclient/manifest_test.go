@@ -91,6 +91,85 @@ func TestParseManifestNormalizesApprovedRemoteAndStdioServers(t *testing.T) {
 	}
 }
 
+func TestParseManifestNormalizesMarketplaceRunnerArtifact(t *testing.T) {
+	t.Parallel()
+	raw := `{
+      "version": 1,
+      "servers": [{
+        "id": "marketplace-upstash-context7-2.2.0",
+        "name": "Context7",
+        "transport": "stdio",
+        "command": {"argv":["/opt/mcp-runner/node_modules/.bin/context7-mcp"]},
+        "marketplace": {
+          "provider": "lobehub",
+          "identifier": "upstash-context7",
+          "version": "2.2.0",
+          "connectionType": "stdio",
+          "installationMethod": "npm",
+          "command": "npx",
+          "args": ["ctx7"],
+          "packageName": "@upstash/context7-mcp"
+        }
+      }]
+    }`
+	servers, err := parseManifest([]byte(raw), nil)
+	if err != nil {
+		t.Fatalf("parseManifest() error = %v", err)
+	}
+	artifact, ok := marketplaceArtifactFromServer(servers[0])
+	if !ok {
+		t.Fatalf("marketplace artifact metadata = %#v", servers[0].Metadata)
+	}
+	deployment := MarketplaceDeployment{
+		ConnectionType: "stdio", InstallationMethod: "npm", Command: "npx",
+		Args: []string{"ctx7"}, PackageName: "@upstash/context7-mcp",
+	}
+	wantHash, err := marketplaceDeploymentHash("upstash-context7", "2.2.0", deployment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if artifact.Provider != marketplaceProviderLobeHub || artifact.Identifier != "upstash-context7" ||
+		artifact.Version != "2.2.0" || artifact.DeploymentHash != wantHash {
+		t.Fatalf("marketplace artifact = %#v, want hash %q", artifact, wantHash)
+	}
+}
+
+func TestParseManifestRejectsMarketplaceArtifactOnRemoteOrAuthenticatedServer(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		raw  string
+	}{
+		{
+			name: "remote transport",
+			raw: `{"version":1,"servers":[{
+              "id":"artifact","name":"Artifact","transport":"streamable_http",
+              "endpointUrl":"https://mcp.example/tools",
+              "marketplace":{"provider":"lobehub","identifier":"fixture","version":"1.0.0",
+                "connectionType":"stdio","installationMethod":"npm","command":"npx","args":["fixture"]}
+            }]}`,
+		},
+		{
+			name: "authenticated stdio",
+			raw: `{"version":1,"servers":[{
+              "id":"artifact","name":"Artifact","transport":"stdio",
+              "command":{"argv":["/opt/mcp/fixture"]},
+              "auth":{"type":"oauth","clientId":"neo-chat"},
+              "marketplace":{"provider":"lobehub","identifier":"fixture","version":"1.0.0",
+                "connectionType":"stdio","installationMethod":"npm","command":"npx","args":["fixture"]}
+            }]}`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := parseManifest([]byte(test.raw), nil); !errors.Is(err, ErrManifestInvalid) {
+				t.Fatalf("parseManifest() error = %v, want ErrManifestInvalid", err)
+			}
+		})
+	}
+}
+
 func TestParseManifestOnlyResolvesAllowlistedSecretEnvironment(t *testing.T) {
 	t.Parallel()
 	manifest := func(ref string) string {

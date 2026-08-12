@@ -35,6 +35,7 @@ INSERT INTO conversations (id, user_id, title) VALUES ($1, $2, 'MCP integration'
 	repo.newID = func() string { return serverID }
 	server, err := repo.CreatePrivateServer(ctx, userID, CreateServerInput{
 		Name: "Private MCP", EndpointURL: "https://mcp.example/tools", AuthType: AuthNone,
+		Metadata: map[string]any{"marketplace": map[string]any{"identifier": "fixture"}},
 	})
 	if err != nil || server.Ref.ID != serverID || server.Status != ServerStatusDraft {
 		t.Fatalf("CreatePrivateServer() server=%#v error=%v", server, err)
@@ -42,6 +43,24 @@ INSERT INTO conversations (id, user_id, title) VALUES ($1, $2, 'MCP integration'
 	listed, err := repo.ListPrivateServers(ctx, userID)
 	if err != nil || len(listed) != 1 || listed[0].Ref.ID != serverID {
 		t.Fatalf("ListPrivateServers() servers=%#v error=%v", listed, err)
+	}
+	marketplaceMetadata, _ := listed[0].Metadata["marketplace"].(map[string]any)
+	if marketplaceMetadata["identifier"] != "fixture" {
+		t.Fatalf("ListPrivateServers() marketplace metadata=%#v", marketplaceMetadata)
+	}
+	runnerServerID := uuid.NewString()
+	repo.newID = func() string { return runnerServerID }
+	runnerServer, err := repo.CreatePrivateServer(ctx, userID, CreateServerInput{
+		Name: "Context7", EndpointURL: "runner://marketplace-upstash-context7-2.2.0",
+		Transport: TransportStdio, AuthType: AuthNone,
+		Metadata: map[string]any{
+			"runnerArtifactId": "marketplace-upstash-context7-2.2.0",
+			"marketplace":      map[string]any{"identifier": "upstash-context7"},
+		},
+	})
+	if err != nil || runnerServer.Ref.ID != runnerServerID || runnerServer.Transport != TransportStdio ||
+		runnerServer.EndpointURL != "runner://marketplace-upstash-context7-2.2.0" {
+		t.Fatalf("CreatePrivateServer() Runner server=%#v error=%v", runnerServer, err)
 	}
 
 	selection, err := repo.ReplaceSelection(ctx, userID, Selection{

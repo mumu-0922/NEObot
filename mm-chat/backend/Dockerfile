@@ -42,7 +42,14 @@ USER mmchat:mmchat
 EXPOSE 8080
 CMD ["/usr/local/bin/mm-chat-api"]
 
-FROM runtime-base AS mcp-runner
+FROM node:22.18.0-alpine3.22@sha256:1b2479dd35a99687d6638f5976fd235e26c5b37e8122f786fcd5fe231d63de5b AS mcp-runner
+RUN apk add --no-cache ca-certificates curl tzdata \
+    && addgroup -S mmchat \
+    && adduser -S -G mmchat -H -h /nonexistent -s /sbin/nologin mmchat
+WORKDIR /opt/mcp-runner
+COPY mcp-runner-runtime/package.json mcp-runner-runtime/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts \
+    && npm cache clean --force
 COPY --from=build /out/mm-chat-mcp-runner /usr/local/bin/mm-chat-mcp-runner
 COPY --from=build /out/mm-chat-mcp-validate /usr/local/bin/mm-chat-mcp-validate
 USER mmchat:mmchat

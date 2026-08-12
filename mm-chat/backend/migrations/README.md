@@ -143,7 +143,7 @@ function signatures, owners, and grants while pinning lookup to the application
 schema, `pg_catalog`, and `pg_temp`. Its down path intentionally retains the
 safe search path rather than reopening object-shadowing risk.
 
-The current migration head is `073`; the latest RAG retrieval-specific migration
+The current migration head is `076`; the latest RAG retrieval-specific migration
 remains `050`. Migration `043` extends the existing final-authority evidence
 hydration boundary with complete matched-Child and containing-Parent source
 text plus their persisted token counts. Parent text is answer context only. Its
@@ -468,8 +468,11 @@ artifact-cleanup schema while retaining the retired `plugin_registry` table
 for rollback compatibility. Migration `075` separately grants the
 `go_api_runtime` role the exact MCP repository/cleanup table capabilities and
 removes public execution from the account-artifact trigger. Production
-rollback keeps both migrations applied and disables MCP or restores compatible
-application images; never run `074.down` after live MCP traffic.
+rollback keeps these migrations applied and disables MCP or restores compatible
+application images; never run `074.down` after live MCP traffic. Migration
+`076` extends private Servers to approved `stdio` Runner references, constrains
+their endpoint to `runner://<approved-id>`, and refuses down while any stdio row
+exists so rollback cannot silently destroy installed-server authority.
 
 ## Storage boundaries
 

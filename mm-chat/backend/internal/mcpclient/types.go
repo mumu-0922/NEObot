@@ -44,6 +44,7 @@ type Config struct {
 	Enabled              bool
 	RemoteEnabled        bool
 	StdioEnabled         bool
+	MarketplaceEnabled   bool
 	ManifestFile         string
 	RunnerURL            string
 	RunnerToken          string
@@ -156,10 +157,113 @@ type WorkspaceSelection struct {
 type CreateServerInput struct {
 	Name        string
 	EndpointURL string
+	Transport   string
 	AuthType    string
 	HeaderName  string
 	ClientID    string
 	Scopes      []string
+	Metadata    map[string]any
+}
+
+const (
+	MarketplaceCompatibilityInstallable    = "installable"
+	MarketplaceCompatibilityNeedsConfig    = "needs_configuration"
+	MarketplaceCompatibilityRequiresRunner = "requires_runner"
+	MarketplaceCompatibilityIncompatible   = "incompatible"
+)
+
+type MarketplaceSearchInput struct {
+	Query    string
+	Category string
+	Page     int
+	PageSize int
+}
+
+type MarketplaceCategory struct {
+	Category string `json:"category"`
+	Count    int    `json:"count"`
+}
+
+type MarketplaceItem struct {
+	Identifier          string  `json:"identifier"`
+	Name                string  `json:"name"`
+	Description         string  `json:"description"`
+	Icon                string  `json:"icon,omitempty"`
+	Category            string  `json:"category,omitempty"`
+	Author              string  `json:"author,omitempty"`
+	ConnectionType      string  `json:"connectionType,omitempty"`
+	InstallationMethods string  `json:"installationMethods,omitempty"`
+	ToolCount           int     `json:"toolCount"`
+	InstallCount        int     `json:"installCount"`
+	Stars               int     `json:"stars"`
+	Rating              float64 `json:"rating"`
+	Official            bool    `json:"official"`
+	Validated           bool    `json:"validated"`
+}
+
+type MarketplaceSearchResult struct {
+	Items      []MarketplaceItem     `json:"items"`
+	Categories []MarketplaceCategory `json:"categories"`
+	Page       int                   `json:"page"`
+	PageSize   int                   `json:"pageSize"`
+	TotalCount int                   `json:"totalCount"`
+	TotalPages int                   `json:"totalPages"`
+	Source     string                `json:"source"`
+	SourceURL  string                `json:"sourceUrl"`
+}
+
+type MarketplaceToolPreview struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+type MarketplaceDeployment struct {
+	ConnectionType      string   `json:"connectionType"`
+	InstallationMethod  string   `json:"installationMethod"`
+	Recommended         bool     `json:"recommended"`
+	Compatibility       string   `json:"compatibility"`
+	CompatibilityReason string   `json:"compatibilityReason"`
+	EndpointURL         string   `json:"endpointUrl,omitempty"`
+	Hash                string   `json:"hash,omitempty"`
+	Command             string   `json:"-"`
+	Args                []string `json:"-"`
+	PackageName         string   `json:"-"`
+}
+
+type MarketplaceArtifact struct {
+	Provider           string
+	Identifier         string
+	Version            string
+	ConnectionType     string
+	InstallationMethod string
+	DeploymentHash     string
+}
+
+type MarketplaceItemDetail struct {
+	MarketplaceItem
+	Version       string                   `json:"version"`
+	Summary       string                   `json:"summary,omitempty"`
+	Homepage      string                   `json:"homepage,omitempty"`
+	RepositoryURL string                   `json:"repositoryUrl,omitempty"`
+	Source        string                   `json:"source"`
+	SourceURL     string                   `json:"sourceUrl"`
+	Tools         []MarketplaceToolPreview `json:"tools"`
+	Deployments   []MarketplaceDeployment  `json:"deployments"`
+}
+
+type MarketplaceInstallInput struct {
+	Identifier            string
+	Version               string
+	ConversationID        string
+	SelectionRevision     int64
+	EnableForConversation bool
+}
+
+type MarketplaceInstallResult struct {
+	Server          Server     `json:"-"`
+	Selection       *Selection `json:"selection,omitempty"`
+	ValidationError string     `json:"validationErrorCode,omitempty"`
+	Enabled         bool       `json:"enabledForConversation"`
 }
 
 type Credential struct {

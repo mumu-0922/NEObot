@@ -138,6 +138,12 @@ x-backend-env: &backend-env
   MCP_RUN_TIMEOUT: ${MCP_RUN_TIMEOUT:-120s}
   MCP_AUDIT_RETENTION: ${MCP_AUDIT_RETENTION:-2160h}
   MCP_CLEANUP_INTERVAL: ${MCP_CLEANUP_INTERVAL:-1h}
+  MCP_MARKETPLACE_ENABLED: ${MCP_MARKETPLACE_ENABLED:-false}
+  MCP_MARKETPLACE_BASE_URL: ${MCP_MARKETPLACE_BASE_URL:-https://market.lobehub.com}
+  MCP_MARKETPLACE_CLIENT_ID: ${MCP_MARKETPLACE_CLIENT_ID:-}
+  MCP_MARKETPLACE_CLIENT_SECRET_FILE: /run/secrets/mm_chat_mcp_marketplace_client_secret
+  MCP_MARKETPLACE_TIMEOUT: ${MCP_MARKETPLACE_TIMEOUT:-8s}
+  MCP_MARKETPLACE_CACHE_TTL: ${MCP_MARKETPLACE_CACHE_TTL:-5m}
 
 services:
   postgres:
@@ -269,6 +275,8 @@ services:
         target: mm_chat_provider_keyring
       - source: mm_chat_mcp_runner_token
         target: mm_chat_mcp_runner_token
+      - source: mm_chat_mcp_marketplace_client_secret
+        target: mm_chat_mcp_marketplace_client_secret
     volumes:
       - ./mcp/manifest.json:/etc/mm-chat/mcp-manifest.json:ro
     depends_on:
@@ -657,3 +665,5 @@ secrets:
     file: ${PROVIDER_SECRET_KEYRING_SOURCE:-./secrets/provider-keyring.json}
   mm_chat_mcp_runner_token:
     file: ${MCP_RUNNER_TOKEN_SOURCE:-./mcp/runner-token.disabled}
+  mm_chat_mcp_marketplace_client_secret:
+    file: ${MCP_MARKETPLACE_CLIENT_SECRET_SOURCE:-./mcp/marketplace-client-secret.disabled}

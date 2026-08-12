@@ -54,6 +54,11 @@ const (
 	DefaultMCPStdioEnabled              = false
 	DefaultMCPRunnerURL                 = "http://mcp-runner:8090"
 	DefaultMCPRunnerTokenFile           = "/run/secrets/mm_chat_mcp_runner_token"
+	DefaultMCPMarketplaceEnabled        = false
+	DefaultMCPMarketplaceBaseURL        = "https://market.lobehub.com"
+	DefaultMCPMarketplaceSecretFile     = "/run/secrets/mm_chat_mcp_marketplace_client_secret"
+	DefaultMCPMarketplaceTimeout        = 8 * time.Second
+	DefaultMCPMarketplaceCacheTTL       = 5 * time.Minute
 	DefaultMCPPrivateServerLimit        = 20
 	DefaultMCPConversationLimit         = 8
 	DefaultMCPMaxExposedTools           = 32
@@ -67,82 +72,88 @@ const (
 	DefaultMCPCleanupInterval           = time.Hour
 	maximumAuthSMTPQueueSize            = 10_000
 
-	EnvAddr                   = "MM_CHAT_ADDR"
-	EnvVersion                = "MM_CHAT_VERSION"
-	EnvDatabaseURL            = "DATABASE_URL"
-	EnvDBMaxOpenConns         = "DB_MAX_OPEN_CONNS"
-	EnvDBMaxIdleConns         = "DB_MAX_IDLE_CONNS"
-	EnvDBConnMaxLifetime      = "DB_CONN_MAX_LIFETIME"
-	EnvRedisURL               = "REDIS_URL"
-	EnvRedisKeyPrefix         = "REDIS_KEY_PREFIX"
-	EnvRedisRunCancelTTL      = "REDIS_RUN_CANCEL_TTL"
-	EnvRedisSessionCacheTTL   = "REDIS_SESSION_CACHE_TTL"
-	EnvRedisRateLimitEnabled  = "REDIS_RATE_LIMIT_ENABLED"
-	EnvRedisRateLimitRequests = "REDIS_RATE_LIMIT_REQUESTS"
-	EnvRedisRateLimitWindow   = "REDIS_RATE_LIMIT_WINDOW"
-	EnvProviderTimeout        = "PROVIDER_TIMEOUT"
-	EnvProviderSecretKeyring  = "PROVIDER_SECRET_KEYRING_FILE"
-	EnvBYOKPrivateKeyPEM      = "BYOK_PRIVATE_KEY_PEM"
-	EnvBYOKKeyID              = "BYOK_KEY_ID"
-	EnvBYOKAllowEphemeralKey  = "BYOK_ALLOW_EPHEMERAL_KEY"
-	EnvStorageBackend         = "STORAGE_BACKEND"
-	EnvLocalStorageDir        = "LOCAL_STORAGE_DIR"
-	EnvS3Endpoint             = "S3_ENDPOINT"
-	EnvS3Bucket               = "S3_BUCKET"
-	EnvS3Region               = "S3_REGION"
-	EnvS3AccessKeyID          = "S3_ACCESS_KEY_ID"
-	EnvS3SecretAccessKey      = "S3_SECRET_ACCESS_KEY"
-	EnvS3UseSSL               = "S3_USE_SSL"
-	EnvS3ForcePathStyle       = "S3_FORCE_PATH_STYLE"
-	EnvS3BucketAutoCreate     = "S3_BUCKET_AUTO_CREATE"
-	EnvMaxUploadBytes         = "MAX_UPLOAD_BYTES"
-	EnvRAGSourceGatewayToken  = "RAG_SOURCE_GATEWAY_TOKEN"
-	EnvAuthMode               = "AUTH_MODE"
-	EnvAuthBootstrapUserID    = "AUTH_BOOTSTRAP_USER_ID"
-	EnvAuthBootstrapUserName  = "AUTH_BOOTSTRAP_DISPLAY_NAME"
-	EnvAuthSessionTTL         = "AUTH_SESSION_TTL"
-	EnvAuthRecoveryTTL        = "AUTH_RECOVERY_TTL"
-	EnvAuthSMTPAddr           = "AUTH_SMTP_ADDR"
-	EnvAuthSMTPUsername       = "AUTH_SMTP_USERNAME"
-	EnvAuthSMTPPassword       = "AUTH_SMTP_PASSWORD"
-	EnvAuthSMTPFrom           = "AUTH_SMTP_FROM"
-	EnvAuthSMTPQueueSize      = "AUTH_SMTP_QUEUE_SIZE"
-	EnvAuthSMTPTimeout        = "AUTH_SMTP_TIMEOUT"
-	EnvTeamCursorActiveKeyID  = "TEAM_CURSOR_ACTIVE_KEY_ID"
-	EnvTeamCursorKeyring      = "TEAM_CURSOR_KEYRING"
-	EnvTeamMailActiveKeyID    = "TEAM_MAIL_ACTIVE_KEY_ID"
-	EnvTeamMailKeyring        = "TEAM_MAIL_KEYRING"
-	EnvTeamInviteAcceptURL    = "TEAM_INVITE_ACCEPT_URL_BASE"
-	EnvTeamMailWorkerLease    = "TEAM_MAIL_WORKER_LEASE_DURATION"
-	EnvTeamMailWorkerPoll     = "TEAM_MAIL_WORKER_POLL_INTERVAL"
-	EnvTeamMailBackoffBase    = "TEAM_MAIL_WORKER_BACKOFF_BASE"
-	EnvTeamMailBackoffMax     = "TEAM_MAIL_WORKER_BACKOFF_MAX"
-	EnvMemoryLexicalShadow    = "MEMORY_LEXICAL_SHADOW_ENABLED"
-	EnvMemoryHybridShadow     = "MEMORY_HYBRID_SHADOW_ENABLED"
-	EnvMemoryToolLoop         = "MEMORY_TOOL_LOOP_ENABLED"
-	EnvMemoryToolLoopCanary   = "MEMORY_TOOL_LOOP_CANARY_USER_IDS"
-	EnvMemoryL2SceneShadow    = "MEMORY_L2_SCENE_SHADOW_ENABLED"
-	EnvMemoryL2SceneReader    = "MEMORY_L2_SCENE_READER_ENABLED"
-	EnvMemoryL3PersonaShadow  = "MEMORY_L3_PERSONA_SHADOW_ENABLED"
-	EnvMemoryL3PersonaReader  = "MEMORY_L3_PERSONA_READER_ENABLED"
-	EnvMCPEnabled             = "MCP_ENABLED"
-	EnvMCPRemoteEnabled       = "MCP_REMOTE_ENABLED"
-	EnvMCPStdioEnabled        = "MCP_STDIO_ENABLED"
-	EnvMCPManifestFile        = "MCP_MANIFEST_FILE"
-	EnvMCPRunnerURL           = "MCP_RUNNER_URL"
-	EnvMCPRunnerTokenFile     = "MCP_RUNNER_TOKEN_FILE"
-	EnvMCPOAuthCallbackURL    = "MCP_OAUTH_CALLBACK_URL"
-	EnvMCPPrivateServerLimit  = "MCP_PRIVATE_SERVER_LIMIT"
-	EnvMCPConversationLimit   = "MCP_CONVERSATION_SERVER_LIMIT"
-	EnvMCPMaxExposedTools     = "MCP_MAX_EXPOSED_TOOLS"
-	EnvMCPMaxCallsPerRun      = "MCP_MAX_CALLS_PER_RUN"
-	EnvMCPMaxRoundsPerRun     = "MCP_MAX_ROUNDS_PER_RUN"
-	EnvMCPMaxConcurrent       = "MCP_MAX_CONCURRENT_PER_USER"
-	EnvMCPMaxOAuthFlows       = "MCP_MAX_PENDING_OAUTH_FLOWS"
-	EnvMCPCallTimeout         = "MCP_CALL_TIMEOUT"
-	EnvMCPRunTimeout          = "MCP_RUN_TIMEOUT"
-	EnvMCPAuditRetention      = "MCP_AUDIT_RETENTION"
-	EnvMCPCleanupInterval     = "MCP_CLEANUP_INTERVAL"
+	EnvAddr                     = "MM_CHAT_ADDR"
+	EnvVersion                  = "MM_CHAT_VERSION"
+	EnvDatabaseURL              = "DATABASE_URL"
+	EnvDBMaxOpenConns           = "DB_MAX_OPEN_CONNS"
+	EnvDBMaxIdleConns           = "DB_MAX_IDLE_CONNS"
+	EnvDBConnMaxLifetime        = "DB_CONN_MAX_LIFETIME"
+	EnvRedisURL                 = "REDIS_URL"
+	EnvRedisKeyPrefix           = "REDIS_KEY_PREFIX"
+	EnvRedisRunCancelTTL        = "REDIS_RUN_CANCEL_TTL"
+	EnvRedisSessionCacheTTL     = "REDIS_SESSION_CACHE_TTL"
+	EnvRedisRateLimitEnabled    = "REDIS_RATE_LIMIT_ENABLED"
+	EnvRedisRateLimitRequests   = "REDIS_RATE_LIMIT_REQUESTS"
+	EnvRedisRateLimitWindow     = "REDIS_RATE_LIMIT_WINDOW"
+	EnvProviderTimeout          = "PROVIDER_TIMEOUT"
+	EnvProviderSecretKeyring    = "PROVIDER_SECRET_KEYRING_FILE"
+	EnvBYOKPrivateKeyPEM        = "BYOK_PRIVATE_KEY_PEM"
+	EnvBYOKKeyID                = "BYOK_KEY_ID"
+	EnvBYOKAllowEphemeralKey    = "BYOK_ALLOW_EPHEMERAL_KEY"
+	EnvStorageBackend           = "STORAGE_BACKEND"
+	EnvLocalStorageDir          = "LOCAL_STORAGE_DIR"
+	EnvS3Endpoint               = "S3_ENDPOINT"
+	EnvS3Bucket                 = "S3_BUCKET"
+	EnvS3Region                 = "S3_REGION"
+	EnvS3AccessKeyID            = "S3_ACCESS_KEY_ID"
+	EnvS3SecretAccessKey        = "S3_SECRET_ACCESS_KEY"
+	EnvS3UseSSL                 = "S3_USE_SSL"
+	EnvS3ForcePathStyle         = "S3_FORCE_PATH_STYLE"
+	EnvS3BucketAutoCreate       = "S3_BUCKET_AUTO_CREATE"
+	EnvMaxUploadBytes           = "MAX_UPLOAD_BYTES"
+	EnvRAGSourceGatewayToken    = "RAG_SOURCE_GATEWAY_TOKEN"
+	EnvAuthMode                 = "AUTH_MODE"
+	EnvAuthBootstrapUserID      = "AUTH_BOOTSTRAP_USER_ID"
+	EnvAuthBootstrapUserName    = "AUTH_BOOTSTRAP_DISPLAY_NAME"
+	EnvAuthSessionTTL           = "AUTH_SESSION_TTL"
+	EnvAuthRecoveryTTL          = "AUTH_RECOVERY_TTL"
+	EnvAuthSMTPAddr             = "AUTH_SMTP_ADDR"
+	EnvAuthSMTPUsername         = "AUTH_SMTP_USERNAME"
+	EnvAuthSMTPPassword         = "AUTH_SMTP_PASSWORD"
+	EnvAuthSMTPFrom             = "AUTH_SMTP_FROM"
+	EnvAuthSMTPQueueSize        = "AUTH_SMTP_QUEUE_SIZE"
+	EnvAuthSMTPTimeout          = "AUTH_SMTP_TIMEOUT"
+	EnvTeamCursorActiveKeyID    = "TEAM_CURSOR_ACTIVE_KEY_ID"
+	EnvTeamCursorKeyring        = "TEAM_CURSOR_KEYRING"
+	EnvTeamMailActiveKeyID      = "TEAM_MAIL_ACTIVE_KEY_ID"
+	EnvTeamMailKeyring          = "TEAM_MAIL_KEYRING"
+	EnvTeamInviteAcceptURL      = "TEAM_INVITE_ACCEPT_URL_BASE"
+	EnvTeamMailWorkerLease      = "TEAM_MAIL_WORKER_LEASE_DURATION"
+	EnvTeamMailWorkerPoll       = "TEAM_MAIL_WORKER_POLL_INTERVAL"
+	EnvTeamMailBackoffBase      = "TEAM_MAIL_WORKER_BACKOFF_BASE"
+	EnvTeamMailBackoffMax       = "TEAM_MAIL_WORKER_BACKOFF_MAX"
+	EnvMemoryLexicalShadow      = "MEMORY_LEXICAL_SHADOW_ENABLED"
+	EnvMemoryHybridShadow       = "MEMORY_HYBRID_SHADOW_ENABLED"
+	EnvMemoryToolLoop           = "MEMORY_TOOL_LOOP_ENABLED"
+	EnvMemoryToolLoopCanary     = "MEMORY_TOOL_LOOP_CANARY_USER_IDS"
+	EnvMemoryL2SceneShadow      = "MEMORY_L2_SCENE_SHADOW_ENABLED"
+	EnvMemoryL2SceneReader      = "MEMORY_L2_SCENE_READER_ENABLED"
+	EnvMemoryL3PersonaShadow    = "MEMORY_L3_PERSONA_SHADOW_ENABLED"
+	EnvMemoryL3PersonaReader    = "MEMORY_L3_PERSONA_READER_ENABLED"
+	EnvMCPEnabled               = "MCP_ENABLED"
+	EnvMCPRemoteEnabled         = "MCP_REMOTE_ENABLED"
+	EnvMCPStdioEnabled          = "MCP_STDIO_ENABLED"
+	EnvMCPManifestFile          = "MCP_MANIFEST_FILE"
+	EnvMCPRunnerURL             = "MCP_RUNNER_URL"
+	EnvMCPRunnerTokenFile       = "MCP_RUNNER_TOKEN_FILE"
+	EnvMCPOAuthCallbackURL      = "MCP_OAUTH_CALLBACK_URL"
+	EnvMCPPrivateServerLimit    = "MCP_PRIVATE_SERVER_LIMIT"
+	EnvMCPConversationLimit     = "MCP_CONVERSATION_SERVER_LIMIT"
+	EnvMCPMaxExposedTools       = "MCP_MAX_EXPOSED_TOOLS"
+	EnvMCPMaxCallsPerRun        = "MCP_MAX_CALLS_PER_RUN"
+	EnvMCPMaxRoundsPerRun       = "MCP_MAX_ROUNDS_PER_RUN"
+	EnvMCPMaxConcurrent         = "MCP_MAX_CONCURRENT_PER_USER"
+	EnvMCPMaxOAuthFlows         = "MCP_MAX_PENDING_OAUTH_FLOWS"
+	EnvMCPCallTimeout           = "MCP_CALL_TIMEOUT"
+	EnvMCPRunTimeout            = "MCP_RUN_TIMEOUT"
+	EnvMCPAuditRetention        = "MCP_AUDIT_RETENTION"
+	EnvMCPCleanupInterval       = "MCP_CLEANUP_INTERVAL"
+	EnvMCPMarketplaceEnabled    = "MCP_MARKETPLACE_ENABLED"
+	EnvMCPMarketplaceBaseURL    = "MCP_MARKETPLACE_BASE_URL"
+	EnvMCPMarketplaceClientID   = "MCP_MARKETPLACE_CLIENT_ID"
+	EnvMCPMarketplaceSecretFile = "MCP_MARKETPLACE_CLIENT_SECRET_FILE"
+	EnvMCPMarketplaceTimeout    = "MCP_MARKETPLACE_TIMEOUT"
+	EnvMCPMarketplaceCacheTTL   = "MCP_MARKETPLACE_CACHE_TTL"
 )
 
 // Config contains the process-level settings required to start the API.
@@ -230,24 +241,30 @@ type MemoryConfig struct {
 }
 
 type MCPConfig struct {
-	Enabled              bool
-	RemoteEnabled        bool
-	StdioEnabled         bool
-	ManifestFile         string
-	RunnerURL            string
-	RunnerTokenFile      string
-	OAuthCallbackURL     string
-	PrivateServerLimit   int
-	ConversationLimit    int
-	MaxExposedTools      int
-	MaxCallsPerRun       int
-	MaxRoundsPerRun      int
-	MaxConcurrentPerUser int
-	MaxOAuthFlows        int
-	CallTimeout          time.Duration
-	RunTimeout           time.Duration
-	AuditRetention       time.Duration
-	CleanupInterval      time.Duration
+	Enabled               bool
+	RemoteEnabled         bool
+	StdioEnabled          bool
+	MarketplaceEnabled    bool
+	MarketplaceBaseURL    string
+	MarketplaceClientID   string
+	MarketplaceSecretFile string
+	MarketplaceTimeout    time.Duration
+	MarketplaceCacheTTL   time.Duration
+	ManifestFile          string
+	RunnerURL             string
+	RunnerTokenFile       string
+	OAuthCallbackURL      string
+	PrivateServerLimit    int
+	ConversationLimit     int
+	MaxExposedTools       int
+	MaxCallsPerRun        int
+	MaxRoundsPerRun       int
+	MaxConcurrentPerUser  int
+	MaxOAuthFlows         int
+	CallTimeout           time.Duration
+	RunTimeout            time.Duration
+	AuditRetention        time.Duration
+	CleanupInterval       time.Duration
 }
 
 // S3Config contains MinIO/S3-compatible object storage settings.
@@ -497,24 +514,30 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 			invalidCanaryUserIDs: invalidMemoryCanaryUserIDs,
 		},
 		MCP: MCPConfig{
-			Enabled:              boolEnvOrDefault(lookup, EnvMCPEnabled, DefaultMCPEnabled),
-			RemoteEnabled:        boolEnvOrDefault(lookup, EnvMCPRemoteEnabled, DefaultMCPRemoteEnabled),
-			StdioEnabled:         boolEnvOrDefault(lookup, EnvMCPStdioEnabled, DefaultMCPStdioEnabled),
-			ManifestFile:         optionalEnv(lookup, EnvMCPManifestFile),
-			RunnerURL:            envOrDefault(lookup, EnvMCPRunnerURL, DefaultMCPRunnerURL),
-			RunnerTokenFile:      envOrDefault(lookup, EnvMCPRunnerTokenFile, DefaultMCPRunnerTokenFile),
-			OAuthCallbackURL:     optionalEnv(lookup, EnvMCPOAuthCallbackURL),
-			PrivateServerLimit:   intEnvOrDefault(lookup, EnvMCPPrivateServerLimit, DefaultMCPPrivateServerLimit),
-			ConversationLimit:    intEnvOrDefault(lookup, EnvMCPConversationLimit, DefaultMCPConversationLimit),
-			MaxExposedTools:      intEnvOrDefault(lookup, EnvMCPMaxExposedTools, DefaultMCPMaxExposedTools),
-			MaxCallsPerRun:       intEnvOrDefault(lookup, EnvMCPMaxCallsPerRun, DefaultMCPMaxCallsPerRun),
-			MaxRoundsPerRun:      intEnvOrDefault(lookup, EnvMCPMaxRoundsPerRun, DefaultMCPMaxRoundsPerRun),
-			MaxConcurrentPerUser: intEnvOrDefault(lookup, EnvMCPMaxConcurrent, DefaultMCPMaxConcurrentPerUser),
-			MaxOAuthFlows:        intEnvOrDefault(lookup, EnvMCPMaxOAuthFlows, DefaultMCPMaxOAuthFlows),
-			CallTimeout:          durationEnvOrDefault(lookup, EnvMCPCallTimeout, DefaultMCPCallTimeout),
-			RunTimeout:           durationEnvOrDefault(lookup, EnvMCPRunTimeout, DefaultMCPRunTimeout),
-			AuditRetention:       durationEnvOrDefault(lookup, EnvMCPAuditRetention, DefaultMCPAuditRetention),
-			CleanupInterval:      durationEnvOrDefault(lookup, EnvMCPCleanupInterval, DefaultMCPCleanupInterval),
+			Enabled:               boolEnvOrDefault(lookup, EnvMCPEnabled, DefaultMCPEnabled),
+			RemoteEnabled:         boolEnvOrDefault(lookup, EnvMCPRemoteEnabled, DefaultMCPRemoteEnabled),
+			StdioEnabled:          boolEnvOrDefault(lookup, EnvMCPStdioEnabled, DefaultMCPStdioEnabled),
+			MarketplaceEnabled:    boolEnvOrDefault(lookup, EnvMCPMarketplaceEnabled, DefaultMCPMarketplaceEnabled),
+			MarketplaceBaseURL:    envOrDefault(lookup, EnvMCPMarketplaceBaseURL, DefaultMCPMarketplaceBaseURL),
+			MarketplaceClientID:   optionalEnv(lookup, EnvMCPMarketplaceClientID),
+			MarketplaceSecretFile: envOrDefault(lookup, EnvMCPMarketplaceSecretFile, DefaultMCPMarketplaceSecretFile),
+			MarketplaceTimeout:    durationEnvOrDefault(lookup, EnvMCPMarketplaceTimeout, DefaultMCPMarketplaceTimeout),
+			MarketplaceCacheTTL:   durationEnvOrDefault(lookup, EnvMCPMarketplaceCacheTTL, DefaultMCPMarketplaceCacheTTL),
+			ManifestFile:          optionalEnv(lookup, EnvMCPManifestFile),
+			RunnerURL:             envOrDefault(lookup, EnvMCPRunnerURL, DefaultMCPRunnerURL),
+			RunnerTokenFile:       envOrDefault(lookup, EnvMCPRunnerTokenFile, DefaultMCPRunnerTokenFile),
+			OAuthCallbackURL:      optionalEnv(lookup, EnvMCPOAuthCallbackURL),
+			PrivateServerLimit:    intEnvOrDefault(lookup, EnvMCPPrivateServerLimit, DefaultMCPPrivateServerLimit),
+			ConversationLimit:     intEnvOrDefault(lookup, EnvMCPConversationLimit, DefaultMCPConversationLimit),
+			MaxExposedTools:       intEnvOrDefault(lookup, EnvMCPMaxExposedTools, DefaultMCPMaxExposedTools),
+			MaxCallsPerRun:        intEnvOrDefault(lookup, EnvMCPMaxCallsPerRun, DefaultMCPMaxCallsPerRun),
+			MaxRoundsPerRun:       intEnvOrDefault(lookup, EnvMCPMaxRoundsPerRun, DefaultMCPMaxRoundsPerRun),
+			MaxConcurrentPerUser:  intEnvOrDefault(lookup, EnvMCPMaxConcurrent, DefaultMCPMaxConcurrentPerUser),
+			MaxOAuthFlows:         intEnvOrDefault(lookup, EnvMCPMaxOAuthFlows, DefaultMCPMaxOAuthFlows),
+			CallTimeout:           durationEnvOrDefault(lookup, EnvMCPCallTimeout, DefaultMCPCallTimeout),
+			RunTimeout:            durationEnvOrDefault(lookup, EnvMCPRunTimeout, DefaultMCPRunTimeout),
+			AuditRetention:        durationEnvOrDefault(lookup, EnvMCPAuditRetention, DefaultMCPAuditRetention),
+			CleanupInterval:       durationEnvOrDefault(lookup, EnvMCPCleanupInterval, DefaultMCPCleanupInterval),
 		},
 
 		Auth: AuthConfig{
@@ -562,8 +585,33 @@ func validateMCPConfig(config MCPConfig) error {
 	if config.CleanupInterval < time.Minute || config.CleanupInterval > 24*time.Hour {
 		return fmt.Errorf("%s must be between 1m and 24h", EnvMCPCleanupInterval)
 	}
+	if config.MarketplaceEnabled && !config.Enabled {
+		return fmt.Errorf("%s requires %s", EnvMCPMarketplaceEnabled, EnvMCPEnabled)
+	}
 	if !config.Enabled {
 		return nil
+	}
+	if config.MarketplaceEnabled {
+		if !config.RemoteEnabled {
+			return fmt.Errorf("%s requires %s", EnvMCPMarketplaceEnabled, EnvMCPRemoteEnabled)
+		}
+		marketplaceURL, err := url.Parse(strings.TrimSpace(config.MarketplaceBaseURL))
+		if err != nil || marketplaceURL.Scheme != "https" || marketplaceURL.Host == "" ||
+			marketplaceURL.User != nil || marketplaceURL.RawQuery != "" || marketplaceURL.Fragment != "" {
+			return fmt.Errorf("%s must be an HTTPS URL", EnvMCPMarketplaceBaseURL)
+		}
+		if strings.TrimSpace(config.MarketplaceClientID) == "" || len(config.MarketplaceClientID) > 2048 {
+			return fmt.Errorf("%s is required when Marketplace is enabled", EnvMCPMarketplaceClientID)
+		}
+		if !strings.HasPrefix(strings.TrimSpace(config.MarketplaceSecretFile), "/run/secrets/") {
+			return fmt.Errorf("%s must be under /run/secrets", EnvMCPMarketplaceSecretFile)
+		}
+		if config.MarketplaceTimeout < time.Second || config.MarketplaceTimeout > 30*time.Second {
+			return fmt.Errorf("%s must be between 1s and 30s", EnvMCPMarketplaceTimeout)
+		}
+		if config.MarketplaceCacheTTL < 10*time.Second || config.MarketplaceCacheTTL > time.Hour {
+			return fmt.Errorf("%s must be between 10s and 1h", EnvMCPMarketplaceCacheTTL)
+		}
 	}
 	limits := []struct {
 		name    string

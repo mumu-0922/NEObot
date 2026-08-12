@@ -145,11 +145,15 @@ func (r *fakeRepository) CountPrivateServers(_ context.Context, userID string) (
 func (r *fakeRepository) CreatePrivateServer(_ context.Context, userID string, input CreateServerInput) (Server, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	transport := input.Transport
+	if transport == "" {
+		transport = TransportStreamableHTTP
+	}
 	server := Server{
 		Ref:  ServerRef{Source: SourcePrivate, ID: uuid.NewString()},
 		Name: input.Name, EndpointURL: input.EndpointURL,
-		Transport: TransportStreamableHTTP, AuthType: input.AuthType,
-		Status: ServerStatusDraft,
+		Transport: transport, AuthType: input.AuthType,
+		Status: ServerStatusDraft, Metadata: cloneObject(input.Metadata),
 	}
 	if input.AuthType == AuthHeader {
 		server.HeaderAuth = &HeaderAuth{Name: input.HeaderName}

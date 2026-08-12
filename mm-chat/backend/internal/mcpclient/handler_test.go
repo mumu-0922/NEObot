@@ -1,6 +1,7 @@
 package mcpclient
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -22,6 +23,21 @@ func TestViewServerEncodesEmptyToolsAsArray(t *testing.T) {
 	}
 	if string(encoded) == "" || !jsonContainsEmptyToolsArray(encoded) {
 		t.Fatalf("draft server response = %s, want tools array", encoded)
+	}
+}
+
+func TestViewServerHidesPrivateRunnerEndpoint(t *testing.T) {
+	encoded, err := json.Marshal(serverResponse{Server: viewServer(Server{
+		Ref: ServerRef{Source: SourcePrivate, ID: "server-id"}, Name: "Context7",
+		Transport: TransportStdio, EndpointURL: "runner://context7-artifact",
+		AuthType: AuthNone, Status: ServerStatusReady,
+		Metadata: map[string]any{"runnerArtifactId": "context7-artifact"},
+	})})
+	if err != nil {
+		t.Fatalf("marshal Runner server response: %v", err)
+	}
+	if bytes.Contains(encoded, []byte("runner://")) || bytes.Contains(encoded, []byte("runnerArtifactId")) {
+		t.Fatalf("Runner internals leaked in response: %s", encoded)
 	}
 }
 

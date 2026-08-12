@@ -46,22 +46,30 @@ func (r *PostgresRepository) CreatePrivateServer(
 		return Server{}, err
 	}
 	id := r.newID()
-	authConfig, err := json.Marshal(map[string]any{
+	transport := strings.TrimSpace(input.Transport)
+	if transport == "" {
+		transport = TransportStreamableHTTP
+	}
+	auth := map[string]any{
 		"headerName": strings.TrimSpace(input.HeaderName),
 		"clientId":   strings.TrimSpace(input.ClientID),
 		"scopes":     normalizeStrings(input.Scopes, 32, 256),
-	})
+	}
+	if len(input.Metadata) > 0 {
+		auth["metadata"] = objectOrEmpty(input.Metadata)
+	}
+	authConfig, err := json.Marshal(auth)
 	if err != nil {
 		return Server{}, fmt.Errorf("marshal mcp auth config: %w", err)
 	}
 	row := r.db.QueryRowContext(ctx, `
 INSERT INTO mcp_servers (
   id, user_id, name, endpoint_url, transport, auth_type, auth_config, status
-) VALUES ($1, $2, $3, $4, 'streamable_http', $5, $6::jsonb, 'draft')
+) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, 'draft')
 RETURNING id, name, endpoint_url, transport, auth_type, auth_config, status,
   tool_snapshot, tool_snapshot_hash, validated_at, last_error_code,
   created_at, updated_at
-`, id, userID, input.Name, input.EndpointURL, input.AuthType, string(authConfig))
+`, id, userID, input.Name, input.EndpointURL, transport, input.AuthType, string(authConfig))
 	server, err := scanPrivateServer(row)
 	if err != nil {
 		if isMCPServerEndpointConflict(err) {
@@ -1132,6 +1140,9 @@ func scanPrivateServerRow(row scanner, withCredential bool) (Server, bool, error
 			ClientID: stringField(auth, "clientId"),
 			Scopes:   stringSliceField(auth, "scopes"),
 		}
+	}
+	if metadata, ok := auth["metadata"].(map[string]any); ok {
+		server.Metadata = metadata
 	}
 	if err := json.Unmarshal(toolsJSON, &server.Tools); err != nil {
 		return Server{}, false, err

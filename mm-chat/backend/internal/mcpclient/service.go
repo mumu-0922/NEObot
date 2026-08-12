@@ -45,19 +45,28 @@ type ResultObjectStore interface {
 }
 
 type Service struct {
-	config     Config
-	repo       Repository
-	connector  Connector
-	vault      *providersecrets.Vault
-	objects    ResultObjectStore
-	catalog    map[string]Server
-	manifest   map[string]Server
-	now        func() time.Time
-	sharedMu   sync.RWMutex
-	refresh    singleflight.Group
-	limitMu    sync.Mutex
-	userLimits map[string]chan struct{}
-	userWrites map[string]chan struct{}
+	config      Config
+	repo        Repository
+	connector   Connector
+	vault       *providersecrets.Vault
+	objects     ResultObjectStore
+	catalog     map[string]Server
+	manifest    map[string]Server
+	marketplace Marketplace
+	now         func() time.Time
+	sharedMu    sync.RWMutex
+	refresh     singleflight.Group
+	limitMu     sync.Mutex
+	userLimits  map[string]chan struct{}
+	userWrites  map[string]chan struct{}
+}
+
+type ServiceOption func(*Service)
+
+func WithMarketplace(marketplace Marketplace) ServiceOption {
+	return func(service *Service) {
+		service.marketplace = marketplace
+	}
 }
 
 type storedCredential struct {
@@ -100,6 +109,7 @@ func NewService(
 	objects ResultObjectStore,
 	catalog Catalog,
 	manifest []Server,
+	options ...ServiceOption,
 ) (*Service, error) {
 	config = normalizeConfig(config)
 	if config.Enabled && repo == nil {
@@ -119,6 +129,11 @@ func NewService(
 		now:        time.Now,
 		userLimits: make(map[string]chan struct{}),
 		userWrites: make(map[string]chan struct{}),
+	}
+	for _, option := range options {
+		if option != nil {
+			option(service)
+		}
 	}
 	for _, server := range catalog.Servers {
 		if server.Ref.Source == "" {
@@ -165,6 +180,9 @@ func (s *Service) ValidateSharedServers(ctx context.Context) error {
 				failures = append(failures, err)
 				continue
 			}
+			if _, hidden := marketplaceArtifactFromServer(server); hidden {
+				continue
+			}
 			if server.AuthType == AuthOAuth {
 				server.Status = ServerStatusNeedsAuth
 				s.setSharedServer(server)
@@ -209,7 +227,7 @@ func (s *Service) ListServers(ctx context.Context, userID, conversationID string
 		scopeServers = append(scopeServers, cloneServer(server))
 	}
 	for _, server := range s.manifest {
-		if manifestGranted(server, scope) {
+		if _, hidden := marketplaceArtifactFromServer(server); !hidden && manifestGranted(server, scope) {
 			scopeServers = append(scopeServers, cloneServer(server))
 		}
 	}
@@ -243,6 +261,7 @@ func (s *Service) CreatePrivateServer(
 	}
 	input.Name = strings.TrimSpace(input.Name)
 	input.EndpointURL = strings.TrimSpace(input.EndpointURL)
+	input.Transport = TransportStreamableHTTP
 	input.AuthType = strings.TrimSpace(input.AuthType)
 	input.HeaderName = strings.TrimSpace(input.HeaderName)
 	input.ClientID = strings.TrimSpace(input.ClientID)
@@ -283,8 +302,42 @@ func (s *Service) CreatePrivateServer(
 	return s.repo.CreatePrivateServer(ctx, userID, input)
 }
 
+func (s *Service) createPrivateRunnerServer(
+	ctx context.Context,
+	userID string,
+	name string,
+	artifact Server,
+	metadata map[string]any,
+) (Server, error) {
+	if err := s.available(); err != nil {
+		return Server{}, err
+	}
+	if !s.config.StdioEnabled {
+		return Server{}, ErrStdioDisabled
+	}
+	name = strings.TrimSpace(name)
+	approved, ok := marketplaceArtifactFromServer(artifact)
+	if name == "" || len(name) > maxPrivateServerNameBytes || !ok ||
+		artifact.Ref.Source != SourceManifest || !validServerRef(artifact.Ref) ||
+		artifact.Transport != TransportStdio || artifact.Command == nil ||
+		approved.DeploymentHash == "" {
+		return Server{}, ErrMarketplaceIncompatible
+	}
+	count, err := s.repo.CountPrivateServers(ctx, userID)
+	if err != nil {
+		return Server{}, err
+	}
+	if count >= s.config.PrivateServerLimit {
+		return Server{}, ErrServerLimit
+	}
+	return s.repo.CreatePrivateServer(ctx, userID, CreateServerInput{
+		Name: name, EndpointURL: "runner://" + artifact.Ref.ID,
+		Transport: TransportStdio, AuthType: AuthNone, Metadata: metadata,
+	})
+}
+
 func (s *Service) DeletePrivateServer(ctx context.Context, userID, serverID string) error {
-	if err := s.remoteAvailable(); err != nil {
+	if err := s.available(); err != nil {
 		return err
 	}
 	return s.repo.DeletePrivateServer(ctx, userID, serverID)
@@ -348,15 +401,27 @@ func (s *Service) ValidatePrivateServer(
 	userID string,
 	serverID string,
 ) (Server, error) {
-	if err := s.remoteAvailable(); err != nil {
+	if err := s.available(); err != nil {
 		return Server{}, err
 	}
 	server, err := s.repo.GetPrivateServer(ctx, userID, serverID)
 	if err != nil {
 		return Server{}, err
 	}
-	if _, err := ValidateEndpoint(ctx, server.EndpointURL, NetworkPolicy{RequireHTTPS: true}); err != nil {
-		return s.recordValidationFailure(ctx, userID, server, ServerStatusUnavailable, "url_blocked", ErrURLBlocked)
+	if err := s.requireTransportEnabled(server); err != nil {
+		return s.recordValidationFailure(ctx, userID, server, ServerStatusUnavailable, "transport_disabled", err)
+	}
+	var runnerArtifact Server
+	if server.Transport == TransportStreamableHTTP {
+		if _, err := ValidateEndpoint(ctx, server.EndpointURL, NetworkPolicy{RequireHTTPS: true}); err != nil {
+			return s.recordValidationFailure(ctx, userID, server, ServerStatusUnavailable, "url_blocked", ErrURLBlocked)
+		}
+	} else {
+		var artifactErr error
+		runnerArtifact, artifactErr = s.privateRunnerArtifact(server)
+		if artifactErr != nil {
+			return s.recordValidationFailure(ctx, userID, server, ServerStatusUnavailable, "runner_artifact_invalid", artifactErr)
+		}
 	}
 	credential, credentialErr := s.connectionCredential(ctx, userID, server)
 	if credentialErr != nil {
@@ -371,6 +436,9 @@ func (s *Service) ValidatePrivateServer(
 	if err != nil {
 		return s.recordValidationFailure(ctx, userID, server, ServerStatusUnavailable, "tools_list_failed", err)
 	}
+	if server.Transport == TransportStdio {
+		tools = bindPrivateRunnerToolPolicy(tools, runnerArtifact)
+	}
 	hash, err := toolSnapshotHash(tools)
 	if err != nil {
 		return s.recordValidationFailure(ctx, userID, server, ServerStatusUnavailable, "tool_schema_invalid", err)
@@ -383,6 +451,48 @@ func (s *Service) ValidatePrivateServer(
 		return Server{}, err
 	}
 	return validated, nil
+}
+
+func (s *Service) privateRunnerArtifact(server Server) (Server, error) {
+	if server.Ref.Source != SourcePrivate || server.Transport != TransportStdio ||
+		server.AuthType != AuthNone || server.Metadata == nil {
+		return Server{}, ErrServerUnavailable
+	}
+	artifactID, _ := server.Metadata["runnerArtifactId"].(string)
+	artifactID = strings.TrimSpace(artifactID)
+	if !manifestIDPattern.MatchString(artifactID) || server.EndpointURL != "runner://"+artifactID {
+		return Server{}, ErrServerUnavailable
+	}
+	artifact, err := s.sharedServer(ServerRef{Source: SourceManifest, ID: artifactID})
+	if err != nil || artifact.Transport != TransportStdio || artifact.Command == nil {
+		return Server{}, ErrServerUnavailable
+	}
+	approved, ok := marketplaceArtifactFromServer(artifact)
+	provenance, _ := server.Metadata["marketplace"].(map[string]any)
+	provider, _ := provenance["provider"].(string)
+	identifier, _ := provenance["identifier"].(string)
+	version, _ := provenance["version"].(string)
+	deploymentHash, _ := provenance["deploymentHash"].(string)
+	if !ok || approved.DeploymentHash == "" ||
+		provider != approved.Provider || identifier != approved.Identifier ||
+		version != approved.Version || deploymentHash != approved.DeploymentHash {
+		return Server{}, ErrServerUnavailable
+	}
+	return artifact, nil
+}
+
+// bindPrivateRunnerToolPolicy is intentionally narrower than normalizeTool:
+// ordinary private Servers remain unknown because remote annotations are not
+// authorization. A private stdio Server reaches this helper only after its
+// exact Marketplace provenance has been rebound to the current reviewed
+// manifest artifact, so that artifact's local policy is authoritative.
+func bindPrivateRunnerToolPolicy(tools []Tool, artifact Server) []Tool {
+	policy, _ := artifact.Metadata["toolPolicy"].(map[string]string)
+	bound := append([]Tool(nil), tools...)
+	for index := range bound {
+		bound[index].Classification = normalizeClassification(policy[bound[index].Name])
+	}
+	return bound
 }
 
 func (s *Service) GetSelection(
@@ -935,7 +1045,18 @@ func (s *Service) serverForUser(
 		}
 		return server, nil
 	case SourcePrivate:
-		return s.repo.GetPrivateServer(ctx, userID, ref.ID)
+		server, err := s.repo.GetPrivateServer(ctx, userID, ref.ID)
+		if err != nil {
+			return Server{}, err
+		}
+		if server.Transport == TransportStdio {
+			artifact, err := s.privateRunnerArtifact(server)
+			if err != nil {
+				return Server{}, err
+			}
+			server.Tools = bindPrivateRunnerToolPolicy(server.Tools, artifact)
+		}
+		return server, nil
 	default:
 		return Server{}, ErrServerNotFound
 	}

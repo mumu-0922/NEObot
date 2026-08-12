@@ -11,6 +11,9 @@
 /mm-chat/data/
 /mm-chat/backup/
 /mm-chat/secrets/
+/mm-chat/mcp/marketplace-client-secret
+/mm-chat/mcp/marketplace-client-secret.disabled
+/mm-chat/mcp/runner-token
 /mm-chat/.release/
 
 # JavaScript / Next.js / Cloudflare

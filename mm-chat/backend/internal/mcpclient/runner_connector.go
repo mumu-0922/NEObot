@@ -69,16 +69,29 @@ func NewRunnerConnector(rawURL, token string) (*RunnerConnector, error) {
 }
 
 func (c *RunnerConnector) Connect(_ context.Context, server Server, _ string) (Session, error) {
-	if c == nil || c.baseURL == nil || server.Ref.Source != SourceManifest ||
-		server.Transport != TransportStdio || server.Command == nil {
+	if c == nil || c.baseURL == nil || server.Transport != TransportStdio {
 		return nil, ErrServerUnavailable
 	}
-	return &runnerSession{connector: c, server: server}, nil
+	runnerServerID := ""
+	switch server.Ref.Source {
+	case SourceManifest:
+		if server.Command != nil {
+			runnerServerID = server.Ref.ID
+		}
+	case SourcePrivate:
+		runnerServerID, _ = server.Metadata["runnerArtifactId"].(string)
+		runnerServerID = strings.TrimSpace(runnerServerID)
+	}
+	if !manifestIDPattern.MatchString(runnerServerID) {
+		return nil, ErrServerUnavailable
+	}
+	return &runnerSession{connector: c, server: server, runnerServerID: runnerServerID}, nil
 }
 
 type runnerSession struct {
-	connector *RunnerConnector
-	server    Server
+	connector      *RunnerConnector
+	server         Server
+	runnerServerID string
 }
 
 func (s *runnerSession) ListTools(ctx context.Context) ([]Tool, error) {
@@ -86,7 +99,7 @@ func (s *runnerSession) ListTools(ctx context.Context) ([]Tool, error) {
 		Tools []*protocol.Tool `json:"tools"`
 	}
 	if err := s.connector.post(ctx, "/internal/v1/tools/list", map[string]any{
-		"serverId": s.server.Ref.ID,
+		"serverId": s.runnerServerID,
 	}, &response); err != nil {
 		return nil, err
 	}
@@ -115,7 +128,7 @@ func (s *runnerSession) CallTool(
 		Result *protocol.CallToolResult `json:"result"`
 	}
 	if err := s.connector.post(ctx, "/internal/v1/tools/call", map[string]any{
-		"serverId": s.server.Ref.ID,
+		"serverId": s.runnerServerID,
 		"name":     name, "arguments": arguments,
 	}, &response); err != nil {
 		return CallResult{}, err

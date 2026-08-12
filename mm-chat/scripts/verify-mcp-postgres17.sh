@@ -83,18 +83,62 @@ run_migrate() {
   MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"
 }
 
-log "applying a fresh 001 -> 075 chain"
+log "applying a fresh 001 -> 076 chain"
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 074_mcp_tools_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 075_mcp_runtime_role_grants" "${work_dir}/fresh.log"
+grep -Fq "up 076_mcp_private_runner_artifacts" "${work_dir}/fresh.log"
 
 log "proving replay is a no-op"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
+log "proving 076 accepts approved Runner references and guards destructive down"
+psql_command "
+INSERT INTO users (id, email, display_name)
+VALUES ('76000000-0000-4000-8000-000000000001', 'mcp-runner-migration@example.test', 'MCP Runner migration');
+INSERT INTO mcp_servers (
+  id, user_id, name, endpoint_url, transport, auth_type
+) VALUES (
+  '76000000-0000-4000-8000-000000000002',
+  '76000000-0000-4000-8000-000000000001',
+  'Context7',
+  'runner://marketplace-upstash-context7-2.2.0',
+  'stdio',
+  'none'
+);
+DO \$\$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'mcp_servers'::regclass
+      AND conname = 'mcp_servers_stdio_endpoint_check'
+  ) THEN
+    RAISE EXCEPTION '076 stdio endpoint constraint is missing';
+  END IF;
+END
+\$\$;
+" >/dev/null
+if run_migrate down >"${work_dir}/guarded-down-076.log" 2>&1; then
+  echo "MCP PostgreSQL 17 drill: 076 down unexpectedly accepted a stdio row" >&2
+  exit 1
+fi
+grep -Fq "cannot roll back 076_mcp_private_runner_artifacts while stdio MCP servers exist" \
+  "${work_dir}/guarded-down-076.log"
+run_migrate up >"${work_dir}/guarded-replay.log" 2>&1
+grep -Fq "no migrations changed" "${work_dir}/guarded-replay.log"
+
+log "removing the fixture and rolling back 076"
+psql_command "
+DELETE FROM mcp_servers WHERE id = '76000000-0000-4000-8000-000000000002';
+DELETE FROM users WHERE id = '76000000-0000-4000-8000-000000000001';
+" >/dev/null
+run_migrate down >"${work_dir}/down-076.log" 2>&1
+grep -Fq "down 076_mcp_private_runner_artifacts" "${work_dir}/down-076.log"
+
 log "rolling back 075 and proving runtime grants are removed"
-run_migrate down >"${work_dir}/down.log" 2>&1
-grep -Fq "down 075_mcp_runtime_role_grants" "${work_dir}/down.log"
+run_migrate down >"${work_dir}/down-075.log" 2>&1
+grep -Fq "down 075_mcp_runtime_role_grants" "${work_dir}/down-075.log"
 psql_command "
 DO \$\$
 BEGIN
@@ -133,10 +177,11 @@ VALUES (
 );
 " >/dev/null
 
-log "reapplying 074 -> 075 and verifying schema, metadata, retention, and grants"
+log "reapplying 074 -> 076 and verifying schema, metadata, retention, grants, and stdio persistence"
 run_migrate up >"${work_dir}/reup.log" 2>&1
 grep -Fq "up 074_mcp_tools_foundation" "${work_dir}/reup.log"
 grep -Fq "up 075_mcp_runtime_role_grants" "${work_dir}/reup.log"
+grep -Fq "up 076_mcp_private_runner_artifacts" "${work_dir}/reup.log"
 psql_command "
 DO \$\$
 DECLARE
@@ -192,4 +237,4 @@ log "proving a second replay remains a no-op"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 
-log "passed (fresh, replay, down/up, metadata, retention, runtime grants, repository lifecycle)"
+log "passed (fresh, replay, guarded 076 down/up, metadata, retention, runtime grants, stdio repository lifecycle)"

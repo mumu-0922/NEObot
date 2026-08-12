@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"neo-chat/mm-chat/backend/internal/auth"
@@ -47,6 +48,13 @@ type oauthRevokeRequest struct {
 	ServerRef ServerRef `json:"serverRef"`
 }
 
+type marketplaceInstallResponse struct {
+	Server          serverView `json:"server"`
+	Selection       *Selection `json:"selection,omitempty"`
+	ValidationError string     `json:"validationErrorCode,omitempty"`
+	Enabled         bool       `json:"enabledForConversation"`
+}
+
 func NewHandler(service *Service) *Handler { return &Handler{service: service} }
 
 func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
@@ -65,6 +73,10 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		h.handleOAuthRevoke(writer, request)
 	case path == "/v1/mcp/servers":
 		h.handleServers(writer, request)
+	case path == "/v1/mcp/marketplace/search":
+		h.handleMarketplaceSearch(writer, request)
+	case strings.HasPrefix(path, "/v1/mcp/marketplace/items/"):
+		h.handleMarketplaceItem(writer, request, strings.TrimPrefix(path, "/v1/mcp/marketplace/items/"))
 	case strings.HasPrefix(path, "/v1/mcp/servers/"):
 		h.handleServerAction(writer, request, strings.TrimPrefix(path, "/v1/mcp/servers/"))
 	case strings.HasPrefix(path, "/v1/mcp/conversations/") && strings.HasSuffix(path, "/selection"):
@@ -79,6 +91,94 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	default:
 		writeMCPError(writer, http.StatusNotFound, "NOT_FOUND", "Route not found")
 	}
+}
+
+func (h *Handler) handleMarketplaceSearch(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		writeMCPError(writer, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "Method not allowed")
+		return
+	}
+	page, ok := marketplaceQueryInt(request, "page", 1)
+	if !ok {
+		writeMCPError(writer, http.StatusBadRequest, "INVALID_REQUEST", "Request query is invalid")
+		return
+	}
+	pageSize, ok := marketplaceQueryInt(request, "pageSize", 20)
+	if !ok {
+		writeMCPError(writer, http.StatusBadRequest, "INVALID_REQUEST", "Request query is invalid")
+		return
+	}
+	result, err := h.service.SearchMarketplace(request.Context(), MarketplaceSearchInput{
+		Query: request.URL.Query().Get("q"), Category: request.URL.Query().Get("category"),
+		Page: page, PageSize: pageSize,
+	})
+	if err != nil {
+		writeMCPServiceError(writer, err)
+		return
+	}
+	writeMCPJSON(writer, http.StatusOK, result)
+}
+
+func (h *Handler) handleMarketplaceItem(writer http.ResponseWriter, request *http.Request, suffix string) {
+	install := strings.HasSuffix(suffix, "/install")
+	identifier := suffix
+	if install {
+		identifier = strings.TrimSuffix(suffix, "/install")
+	}
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" {
+		writeMCPError(writer, http.StatusNotFound, "NOT_FOUND", "Route not found")
+		return
+	}
+	if !install {
+		if request.Method != http.MethodGet {
+			writeMCPError(writer, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "Method not allowed")
+			return
+		}
+		item, err := h.service.MarketplaceItem(request.Context(), identifier, request.URL.Query().Get("version"))
+		if err != nil {
+			writeMCPServiceError(writer, err)
+			return
+		}
+		writeMCPJSON(writer, http.StatusOK, map[string]any{"item": item})
+		return
+	}
+	if request.Method != http.MethodPost {
+		writeMCPError(writer, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "Method not allowed")
+		return
+	}
+	var input struct {
+		Version               string `json:"version"`
+		ConversationID        string `json:"conversationId,omitempty"`
+		SelectionRevision     int64  `json:"selectionRevision"`
+		EnableForConversation bool   `json:"enableForConversation"`
+	}
+	if !decodeMCPJSON(writer, request, &input) {
+		return
+	}
+	user := auth.UserOrDevelopment(request.Context())
+	result, err := h.service.InstallMarketplaceItem(request.Context(), user.ID, MarketplaceInstallInput{
+		Identifier: identifier, Version: input.Version,
+		ConversationID: input.ConversationID, SelectionRevision: input.SelectionRevision,
+		EnableForConversation: input.EnableForConversation,
+	})
+	if err != nil {
+		writeMCPServiceError(writer, err)
+		return
+	}
+	writeMCPJSON(writer, http.StatusCreated, marketplaceInstallResponse{
+		Server: viewServer(result.Server), Selection: result.Selection,
+		ValidationError: result.ValidationError, Enabled: result.Enabled,
+	})
+}
+
+func marketplaceQueryInt(request *http.Request, name string, fallback int) (int, bool) {
+	value := strings.TrimSpace(request.URL.Query().Get(name))
+	if value == "" {
+		return fallback, true
+	}
+	parsed, err := strconv.Atoi(value)
+	return parsed, err == nil
 }
 
 func (h *Handler) handleConversationCalls(writer http.ResponseWriter, request *http.Request, conversationID string) {
@@ -324,6 +424,9 @@ func viewServer(server Server) serverView {
 	tools := make([]Tool, len(server.Tools))
 	copy(tools, server.Tools)
 	server.Tools = nil
+	if server.Transport == TransportStdio {
+		server.EndpointURL = ""
+	}
 	return serverView{Server: server, Tools: tools}
 }
 
@@ -383,6 +486,16 @@ func writeMCPServiceError(writer http.ResponseWriter, err error) {
 		status, code, message = http.StatusConflict, "MCP_AUTH_REQUIRED", "Tool server authorization is required"
 	case errors.Is(err, ErrServerNotReady), errors.Is(err, ErrServerUnavailable):
 		status, code, message = http.StatusServiceUnavailable, "MCP_SERVER_UNAVAILABLE", "Tool server is unavailable"
+	case errors.Is(err, ErrMarketplaceDisabled):
+		status, code, message = http.StatusServiceUnavailable, "MCP_MARKETPLACE_DISABLED", "MCP Marketplace is disabled"
+	case errors.Is(err, ErrMarketplaceUnavailable):
+		status, code, message = http.StatusServiceUnavailable, "MCP_MARKETPLACE_UNAVAILABLE", "MCP Marketplace is unavailable"
+	case errors.Is(err, ErrMarketplaceNotFound):
+		status, code, message = http.StatusNotFound, "MCP_MARKETPLACE_NOT_FOUND", "Marketplace item was not found"
+	case errors.Is(err, ErrMarketplaceIncompatible):
+		status, code, message = http.StatusConflict, "MCP_MARKETPLACE_INCOMPATIBLE", "Marketplace item is not installable"
+	case errors.Is(err, ErrMarketplaceChanged):
+		status, code, message = http.StatusConflict, "MCP_MARKETPLACE_CHANGED", "Marketplace item version changed"
 	}
 	writeMCPError(writer, status, code, message)
 }

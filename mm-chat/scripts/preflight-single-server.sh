@@ -157,6 +157,15 @@ def parse_simple_duration(name: str, value: str) -> int:
     return amount * (60 if match.group(2) == "m" else 3600)
 
 
+def parse_simple_duration_seconds(name: str, value: str) -> int:
+    match = re.fullmatch(r"([1-9][0-9]*)(s|m|h)", value)
+    if match is None:
+        fail(f"{name} must use a positive whole-second, whole-minute, or whole-hour duration")
+    amount = int(match.group(1))
+    multiplier = {"s": 1, "m": 60, "h": 3600}[match.group(2)]
+    return amount * multiplier
+
+
 def validate_private_token(path_value: str, name: str) -> None:
     path = Path(path_value)
     if not path.is_absolute():
@@ -253,12 +262,16 @@ for key in (
     if key in values and values[key] not in {"true", "false"}:
         fail(f"{key} must be true or false")
 
-for key in ("MCP_ENABLED", "MCP_REMOTE_ENABLED", "MCP_STDIO_ENABLED"):
+for key in ("MCP_ENABLED", "MCP_REMOTE_ENABLED", "MCP_STDIO_ENABLED", "MCP_MARKETPLACE_ENABLED"):
     if key in values and values[key] not in {"true", "false"}:
         fail(f"{key} must be true or false")
 
 if values.get("MCP_STDIO_ENABLED") == "true" and values.get("MCP_ENABLED") != "true":
     fail("MCP_STDIO_ENABLED requires MCP_ENABLED=true")
+if values.get("MCP_MARKETPLACE_ENABLED") == "true" and values.get("MCP_ENABLED") != "true":
+    fail("MCP_MARKETPLACE_ENABLED requires MCP_ENABLED=true")
+if values.get("MCP_MARKETPLACE_ENABLED") == "true" and values.get("MCP_REMOTE_ENABLED") != "true":
+    fail("MCP_MARKETPLACE_ENABLED requires MCP_REMOTE_ENABLED=true")
 
 required = (
     "FRONTEND_IMAGE",
@@ -294,6 +307,9 @@ required = (
     "MCP_STDIO_ENABLED",
     "MCP_AUDIT_RETENTION",
     "MCP_CLEANUP_INTERVAL",
+    "MCP_MARKETPLACE_ENABLED",
+    "MCP_MARKETPLACE_TIMEOUT",
+    "MCP_MARKETPLACE_CACHE_TTL",
 )
 for key in required:
     if not values.get(key, "").strip():
@@ -439,6 +455,50 @@ if values["MCP_STDIO_ENABLED"] == "true":
     ):
         fail("MCP_RUNNER_URL must be the private http://mcp-runner:8090 service URL")
     validate_private_token(values["MCP_RUNNER_TOKEN_SOURCE"], "MCP_RUNNER_TOKEN_SOURCE")
+
+if values["MCP_MARKETPLACE_ENABLED"] == "true":
+    for key in (
+        "MCP_MARKETPLACE_BASE_URL",
+        "MCP_MARKETPLACE_CLIENT_ID",
+        "MCP_MARKETPLACE_CLIENT_SECRET_SOURCE",
+    ):
+        if not values.get(key, "").strip():
+            fail(f"{key} is required when MCP Marketplace is enabled")
+    try:
+        marketplace_url = urlsplit(values["MCP_MARKETPLACE_BASE_URL"])
+        marketplace_port = marketplace_url.port
+    except ValueError:
+        fail("MCP_MARKETPLACE_BASE_URL must be an HTTPS URL")
+    if (
+        marketplace_url.scheme != "https"
+        or not marketplace_url.hostname
+        or not valid_hostname(marketplace_url.hostname)
+        or marketplace_url.username is not None
+        or marketplace_url.password is not None
+        or marketplace_url.query
+        or marketplace_url.fragment
+        or marketplace_port not in {None, 443}
+        or any(part == ".." for part in marketplace_url.path.split("/"))
+    ):
+        fail("MCP_MARKETPLACE_BASE_URL must be an HTTPS URL")
+    client_id = values["MCP_MARKETPLACE_CLIENT_ID"]
+    if len(client_id) > 2048 or any(character.isspace() for character in client_id):
+        fail("MCP_MARKETPLACE_CLIENT_ID is invalid")
+    validate_private_token(
+        values["MCP_MARKETPLACE_CLIENT_SECRET_SOURCE"],
+        "MCP_MARKETPLACE_CLIENT_SECRET_SOURCE",
+    )
+
+marketplace_timeout = parse_simple_duration_seconds(
+    "MCP_MARKETPLACE_TIMEOUT", values["MCP_MARKETPLACE_TIMEOUT"]
+)
+if not 1 <= marketplace_timeout <= 30:
+    fail("MCP_MARKETPLACE_TIMEOUT must be between 1s and 30s")
+marketplace_cache_ttl = parse_simple_duration_seconds(
+    "MCP_MARKETPLACE_CACHE_TTL", values["MCP_MARKETPLACE_CACHE_TTL"]
+)
+if not 10 <= marketplace_cache_ttl <= 3600:
+    fail("MCP_MARKETPLACE_CACHE_TTL must be between 10s and 1h")
 if values["POSTGRES_DATA_DIR"] != "./data/postgres17":
     fail("POSTGRES_DATA_DIR must be ./data/postgres17")
 

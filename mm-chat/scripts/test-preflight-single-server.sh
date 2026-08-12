@@ -185,6 +185,34 @@ sed "s|^MCP_RUNNER_TOKEN_SOURCE=.*|MCP_RUNNER_TOKEN_SOURCE=${insecure_runner_tok
 chmod 600 "${invalid_runner_token}"
 assert_rejected "${invalid_runner_token}" "MCP_RUNNER_TOKEN_SOURCE must use mode 600"
 
+marketplace_secret="${temp_dir}/mcp-marketplace-client-secret"
+printf '%s' 'abcdef0123456789abcdef0123456789abcdef0123456789' >"${marketplace_secret}"
+chmod 600 "${marketplace_secret}"
+marketplace_enabled="${temp_dir}/marketplace-enabled.env"
+sed \
+  -e 's|^MCP_ENABLED=false$|MCP_ENABLED=true|' \
+  -e 's|^MCP_MARKETPLACE_ENABLED=false$|MCP_MARKETPLACE_ENABLED=true|' \
+  -e 's|^MCP_MARKETPLACE_CLIENT_ID=$|MCP_MARKETPLACE_CLIENT_ID=neo-chat-test|' \
+  -e "s|^MCP_MARKETPLACE_CLIENT_SECRET_SOURCE=.*|MCP_MARKETPLACE_CLIENT_SECRET_SOURCE=${marketplace_secret}|" \
+  "${valid}" >"${marketplace_enabled}"
+chmod 600 "${marketplace_enabled}"
+"${preflight}" "${marketplace_enabled}" >/dev/null
+
+invalid_marketplace_url="${temp_dir}/invalid-marketplace-url.env"
+sed 's|^MCP_MARKETPLACE_BASE_URL=.*|MCP_MARKETPLACE_BASE_URL=http://market.lobehub.com|' \
+  "${marketplace_enabled}" >"${invalid_marketplace_url}"
+chmod 600 "${invalid_marketplace_url}"
+assert_rejected "${invalid_marketplace_url}" "MCP_MARKETPLACE_BASE_URL must be an HTTPS URL"
+
+insecure_marketplace_secret="${temp_dir}/insecure-marketplace-client-secret"
+cp "${marketplace_secret}" "${insecure_marketplace_secret}"
+chmod 644 "${insecure_marketplace_secret}"
+invalid_marketplace_secret="${temp_dir}/invalid-marketplace-secret.env"
+sed "s|^MCP_MARKETPLACE_CLIENT_SECRET_SOURCE=.*|MCP_MARKETPLACE_CLIENT_SECRET_SOURCE=${insecure_marketplace_secret}|" \
+  "${marketplace_enabled}" >"${invalid_marketplace_secret}"
+chmod 600 "${invalid_marketplace_secret}"
+assert_rejected "${invalid_marketplace_secret}" "MCP_MARKETPLACE_CLIENT_SECRET_SOURCE must use mode 600"
+
 for retired_provider_env in \
   RAG_MINERU_API_TOKEN \
   DEFAULT_MINERU_API_TOKEN \
@@ -672,6 +700,10 @@ for name in ("memory-worker", "admin"):
 assert services["backend"]["secrets"] == [
     {"source": "mm_chat_provider_keyring", "target": "mm_chat_provider_keyring"},
     {"source": "mm_chat_mcp_runner_token", "target": "mm_chat_mcp_runner_token"},
+    {
+        "source": "mm_chat_mcp_marketplace_client_secret",
+        "target": "mm_chat_mcp_marketplace_client_secret",
+    },
 ]
 
 runner = services["mcp-runner"]

@@ -39,15 +39,27 @@ type manifestDocument struct {
 }
 
 type manifestServer struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Description string            `json:"description,omitempty"`
-	Transport   string            `json:"transport"`
-	EndpointURL string            `json:"endpointUrl,omitempty"`
-	Command     *manifestCommand  `json:"command,omitempty"`
-	Auth        *manifestAuth     `json:"auth,omitempty"`
-	Grants      []manifestGrant   `json:"grants,omitempty"`
-	ToolPolicy  map[string]string `json:"toolPolicy,omitempty"`
+	ID          string                       `json:"id"`
+	Name        string                       `json:"name"`
+	Description string                       `json:"description,omitempty"`
+	Transport   string                       `json:"transport"`
+	EndpointURL string                       `json:"endpointUrl,omitempty"`
+	Command     *manifestCommand             `json:"command,omitempty"`
+	Marketplace *manifestMarketplaceArtifact `json:"marketplace,omitempty"`
+	Auth        *manifestAuth                `json:"auth,omitempty"`
+	Grants      []manifestGrant              `json:"grants,omitempty"`
+	ToolPolicy  map[string]string            `json:"toolPolicy,omitempty"`
+}
+
+type manifestMarketplaceArtifact struct {
+	Provider           string   `json:"provider"`
+	Identifier         string   `json:"identifier"`
+	Version            string   `json:"version"`
+	ConnectionType     string   `json:"connectionType"`
+	InstallationMethod string   `json:"installationMethod"`
+	Command            string   `json:"command"`
+	Args               []string `json:"args,omitempty"`
+	PackageName        string   `json:"packageName,omitempty"`
 }
 
 type manifestCommand struct {
@@ -212,6 +224,13 @@ func normalizeManifestServer(raw manifestServer, lookupEnv func(string) (string,
 			return Server{}, err
 		}
 	}
+	if raw.Marketplace != nil {
+		artifact, err := normalizeManifestMarketplaceArtifact(server, *raw.Marketplace)
+		if err != nil {
+			return Server{}, err
+		}
+		server.Metadata["marketplaceArtifact"] = artifact
+	}
 	for _, rawGrant := range raw.Grants {
 		grant := Grant{
 			ScopeType:     strings.TrimSpace(rawGrant.ScopeType),
@@ -236,6 +255,48 @@ func normalizeManifestServer(raw manifestServer, lookupEnv func(string) (string,
 		server.Grants = []Grant{{ScopeType: "global"}}
 	}
 	return server, nil
+}
+
+func normalizeManifestMarketplaceArtifact(
+	server Server,
+	raw manifestMarketplaceArtifact,
+) (MarketplaceArtifact, error) {
+	raw.Provider = strings.TrimSpace(raw.Provider)
+	raw.Identifier = strings.TrimSpace(raw.Identifier)
+	raw.Version = strings.TrimSpace(raw.Version)
+	raw.ConnectionType = strings.TrimSpace(raw.ConnectionType)
+	raw.InstallationMethod = strings.TrimSpace(raw.InstallationMethod)
+	raw.Command = strings.TrimSpace(raw.Command)
+	raw.PackageName = strings.TrimSpace(raw.PackageName)
+	if server.Transport != TransportStdio || server.Command == nil || server.AuthType != AuthNone ||
+		raw.Provider != marketplaceProviderLobeHub || !validMarketplaceIdentifier(raw.Identifier) ||
+		!validMarketplaceVersion(raw.Version) || raw.ConnectionType != "stdio" ||
+		raw.InstallationMethod == "" || len(raw.InstallationMethod) > 64 ||
+		raw.Command == "" || len(raw.Command) > 256 || len(raw.Args) > maxManifestArgs ||
+		len(raw.PackageName) > 512 {
+		return MarketplaceArtifact{}, fmt.Errorf("%w: marketplace artifact", ErrManifestInvalid)
+	}
+	args := make([]string, len(raw.Args))
+	for index, value := range raw.Args {
+		value = strings.TrimSpace(value)
+		if value == "" || len(value) > maxManifestString || strings.ContainsRune(value, '\x00') {
+			return MarketplaceArtifact{}, fmt.Errorf("%w: marketplace artifact argument", ErrManifestInvalid)
+		}
+		args[index] = value
+	}
+	deployment := MarketplaceDeployment{
+		ConnectionType: raw.ConnectionType, InstallationMethod: raw.InstallationMethod,
+		Command: raw.Command, Args: args, PackageName: raw.PackageName,
+	}
+	hash, err := marketplaceDeploymentHash(raw.Identifier, raw.Version, deployment)
+	if err != nil {
+		return MarketplaceArtifact{}, fmt.Errorf("%w: marketplace artifact hash", ErrManifestInvalid)
+	}
+	return MarketplaceArtifact{
+		Provider: raw.Provider, Identifier: raw.Identifier, Version: raw.Version,
+		ConnectionType: raw.ConnectionType, InstallationMethod: raw.InstallationMethod,
+		DeploymentHash: hash,
+	}, nil
 }
 
 func resolveManifestCommand(raw manifestCommand, lookupEnv func(string) (string, bool)) (Command, error) {

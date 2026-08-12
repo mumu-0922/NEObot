@@ -586,11 +586,32 @@ func newMCPService(
 			}
 		}
 	}
+	var marketplace mcpclient.Marketplace
+	if cfg.MCP.MarketplaceEnabled {
+		secret, secretErr := readBoundedMCPMarketplaceSecret(cfg.MCP.MarketplaceSecretFile)
+		if secretErr != nil {
+			logger.Warn("mcp_marketplace_unavailable", slog.String("reason", "client_secret_invalid"))
+		} else {
+			marketplace, secretErr = mcpclient.NewLobeHubMarketplace(mcpclient.LobeHubMarketplaceConfig{
+				BaseURL: cfg.MCP.MarketplaceBaseURL, ClientID: cfg.MCP.MarketplaceClientID,
+				ClientSecret: secret, Timeout: cfg.MCP.MarketplaceTimeout,
+				CacheTTL: cfg.MCP.MarketplaceCacheTTL,
+			})
+			if secretErr != nil {
+				logger.Warn("mcp_marketplace_unavailable", slog.String("reason", "client_invalid"))
+			}
+		}
+	}
+	serviceOptions := []mcpclient.ServiceOption{}
+	if marketplace != nil {
+		serviceOptions = append(serviceOptions, mcpclient.WithMarketplace(marketplace))
+	}
 	service, err := mcpclient.NewService(
 		mcpclient.Config{
 			Enabled:              cfg.MCP.Enabled,
 			RemoteEnabled:        cfg.MCP.RemoteEnabled,
 			StdioEnabled:         cfg.MCP.StdioEnabled,
+			MarketplaceEnabled:   cfg.MCP.MarketplaceEnabled,
 			ManifestFile:         cfg.MCP.ManifestFile,
 			RunnerURL:            cfg.MCP.RunnerURL,
 			OAuthCallbackURL:     cfg.MCP.OAuthCallbackURL,
@@ -612,6 +633,7 @@ func newMCPService(
 		objectStore,
 		catalog,
 		manifest,
+		serviceOptions...,
 	)
 	if err != nil {
 		logger.Error("mcp_initialization_failed")
@@ -642,6 +664,23 @@ func readBoundedMCPRunnerToken(path string) (string, error) {
 		return "", errors.New("runner token is invalid")
 	}
 	return token, nil
+}
+
+func readBoundedMCPMarketplaceSecret(path string) (string, error) {
+	file, err := os.Open(strings.TrimSpace(path))
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, 4097))
+	if err != nil || len(data) > 4096 {
+		return "", errors.New("marketplace client secret is invalid")
+	}
+	secret := strings.TrimSpace(string(data))
+	if len(secret) < 32 || strings.ContainsAny(secret, "\r\n") {
+		return "", errors.New("marketplace client secret is invalid")
+	}
+	return secret, nil
 }
 
 func singleUserAnswerIdentities(

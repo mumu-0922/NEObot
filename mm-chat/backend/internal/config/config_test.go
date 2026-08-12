@@ -157,6 +157,40 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	}
 }
 
+func TestMCPMarketplaceConfiguration(t *testing.T) {
+	t.Parallel()
+	values := map[string]string{
+		EnvMCPEnabled:               "true",
+		EnvMCPRemoteEnabled:         "true",
+		EnvMCPMarketplaceEnabled:    "true",
+		EnvMCPMarketplaceBaseURL:    "https://market.example.test",
+		EnvMCPMarketplaceClientID:   "neo-chat",
+		EnvMCPMarketplaceSecretFile: "/run/secrets/marketplace",
+		EnvMCPMarketplaceTimeout:    "7s",
+		EnvMCPMarketplaceCacheTTL:   "2m",
+	}
+	cfg := LoadFromEnv(func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	})
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if !cfg.MCP.MarketplaceEnabled || cfg.MCP.MarketplaceClientID != "neo-chat" ||
+		cfg.MCP.MarketplaceTimeout != 7*time.Second || cfg.MCP.MarketplaceCacheTTL != 2*time.Minute {
+		t.Fatalf("Marketplace config = %#v", cfg.MCP)
+	}
+
+	values[EnvMCPMarketplaceBaseURL] = "http://market.example.test"
+	invalid := LoadFromEnv(func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	})
+	if err := invalid.Validate(); err == nil || !strings.Contains(err.Error(), EnvMCPMarketplaceBaseURL) {
+		t.Fatalf("invalid Marketplace URL error = %v", err)
+	}
+}
+
 func TestLoadFromEnvOverrides(t *testing.T) {
 	values := map[string]string{
 		EnvAddr:                   "127.0.0.1:9090",
