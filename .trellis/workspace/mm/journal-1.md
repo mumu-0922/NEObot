@@ -1562,3 +1562,37 @@ Replaced the Plugin surface with server-authoritative MCP Tools, added backend-p
 ### Next Steps
 
 - None - task complete
+
+
+## Session 36: Compact MCP composer and installed icons
+
+**Date**: 2026-08-12
+**Task**: Compact MCP composer and installed icons
+**Branch**: `main`
+
+### Summary
+
+Removed composer MCP summary chips, added normalized shared icons for Marketplace and Installed servers, rebound existing Context7 icons from the reviewed manifest, documented Runner schema compatibility, and deployed healthy backend/frontend/Runner images.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5b6b0b3f` | (see git log) |
+| `96814ca3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
