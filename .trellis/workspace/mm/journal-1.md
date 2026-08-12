@@ -1526,3 +1526,39 @@ Launched exact-UUID Memory v2 for the sole user, resolved historical worker heal
 ### Next Steps
 
 - None - task complete
+
+
+## Session 35: Replace Plugins with MCP Marketplace and Runner
+
+**Date**: 2026-08-12
+**Task**: Replace Plugins with MCP Marketplace and Runner
+**Branch**: `main`
+
+### Summary
+
+Replaced the Plugin surface with server-authoritative MCP Tools, added backend-proxied LobeHub discovery and exact reviewed shared-Runner installs, fixed reviewed stdio Tool-policy rebinding and Provider partial-stream truth, deployed the focused candidate, and verified live Context7 calls complete with three query-docs reads starting concurrently within 2 ms.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `aabb54c8` | (see git log) |
+| `1d9bc6a8` | (see git log) |
+| `6cc03c8d` | (see git log) |
+| `67b32db1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 34
-- **Last Active**: 2026-08-11
+- **Total Sessions**: 35
+- **Last Active**: 2026-08-12
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1528 | Active |
+| `journal-1.md` | ~1564 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 35 | 2026-08-12 | Replace Plugins with MCP Marketplace and Runner | `aabb54c8`, `1d9bc6a8`, `6cc03c8d`, `67b32db1` | `main` |
 | 34 | 2026-08-11 | Launch Memory v2 and layered readers | `2610d3a4` | `main` |
 | 33 | 2026-08-07 | Recover Memory runtime and diagnose v20 abstentions | `8abde505`, `8bd2aa86` | `main` |
 | 32 | 2026-08-07 | Diagnose Memory validation slice failures | `1a31ebda`, `f41c135c` | `main` |
