@@ -1,6 +1,9 @@
 import {
   normalizeMcpCalls,
   normalizeMcpConversationSelectionEnvelope,
+  normalizeMcpMarketplaceInstall,
+  normalizeMcpMarketplaceItemEnvelope,
+  normalizeMcpMarketplaceSearch,
   normalizeMcpServerEnvelope,
   normalizeMcpServers,
   normalizeMcpWorkspaceSelectionEnvelope,
@@ -11,6 +14,7 @@ import type {
   McpCreatePrivateServerInput,
   McpListCallsInput,
   McpListServersInput,
+  McpMarketplaceInstallInput,
   McpOAuthStartInput,
   McpOAuthStartResult,
   McpReplaceConversationSelectionInput,
@@ -180,6 +184,55 @@ export function createServerMcpApiShell(httpClient: HttpClient): McpApi {
       );
       return requireNormalized(normalizeMcpCalls(response), "call timeline");
     },
+
+    async searchMarketplace(input = {}) {
+      const response = await httpClient.requestJson<unknown>(
+        `${MCP_BASE_PATH}/marketplace/search${query({
+          q: input.query,
+          category: input.category,
+          page: input.page ?? 1,
+          pageSize: input.pageSize ?? 20,
+        })}`,
+        { signal: input.signal },
+      );
+      return requireNormalized(
+        normalizeMcpMarketplaceSearch(response),
+        "Marketplace search",
+      );
+    },
+
+    async getMarketplaceItem(input) {
+      const response = await httpClient.requestJson<unknown>(
+        `${marketplaceItemPath(input.identifier)}${query({ version: input.version })}`,
+        { signal: input.signal },
+      );
+      return requireNormalized(
+        normalizeMcpMarketplaceItemEnvelope(response),
+        "Marketplace item",
+      );
+    },
+
+    async installMarketplaceItem(input: McpMarketplaceInstallInput) {
+      const response = await httpClient.requestJson<unknown>(
+        `${marketplaceItemPath(input.identifier)}/install`,
+        {
+          method: "POST",
+          body: {
+            version: input.version,
+            ...(input.conversationId
+              ? { conversationId: input.conversationId }
+              : {}),
+            selectionRevision: input.selectionRevision,
+            enableForConversation: input.enableForConversation,
+          },
+          signal: input.signal,
+        },
+      );
+      return requireNormalized(
+        normalizeMcpMarketplaceInstall(response),
+        "Marketplace install",
+      );
+    },
   };
 }
 
@@ -195,10 +248,18 @@ function workspacePath(workspaceId: string): string {
   return `${MCP_BASE_PATH}/workspaces/${encodeURIComponent(workspaceId)}`;
 }
 
-function query(values: Record<string, string | undefined>): string {
+function marketplaceItemPath(identifier: string): string {
+  return `${MCP_BASE_PATH}/marketplace/items/${encodeURIComponent(identifier)}`;
+}
+
+function query(values: Record<string, string | number | undefined>): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(values)) {
-    if (value?.trim()) params.set(key, value.trim());
+    if (typeof value === "number" && Number.isFinite(value)) {
+      params.set(key, String(value));
+    } else if (typeof value === "string" && value.trim()) {
+      params.set(key, value.trim());
+    }
   }
   const encoded = params.toString();
   return encoded ? `?${encoded}` : "";

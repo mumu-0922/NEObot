@@ -29,7 +29,7 @@ interface McpToolsControlProps {
   enabled: boolean;
   disabled?: boolean;
   className?: string;
-  variant?: "composer" | "page";
+  variant?: "composer" | "page" | "embedded";
   onClose?: () => void;
   attention?: { nonce: number; message: string } | null;
   onAttentionHandled?: () => void;
@@ -367,7 +367,7 @@ export default function McpToolsControl({
   const panel = (
     <div
       className={`flex min-h-0 flex-col ${
-        variant === "page" ? "h-full" : "max-h-[min(650px,80vh)]"
+        variant !== "composer" ? "h-full" : "max-h-[min(650px,80vh)]"
       }`}
     >
       <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-2 dark:border-border">
@@ -718,6 +718,8 @@ export default function McpToolsControl({
       </div>
     </div>
   );
+
+  if (variant === "embedded") return panel;
 
   if (variant === "page") {
     return (

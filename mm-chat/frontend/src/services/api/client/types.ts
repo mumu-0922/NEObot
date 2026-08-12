@@ -27,6 +27,9 @@ import type {
   McpAuthType,
   McpCallRecord,
   McpConversationSelection,
+  McpMarketplaceInstallResult,
+  McpMarketplaceItemDetail,
+  McpMarketplaceSearchResult,
   McpSelectionMode,
   McpSelectionServer,
   McpServer,
@@ -827,6 +830,29 @@ export interface McpListCallsInput {
   signal?: AbortSignal;
 }
 
+export interface McpMarketplaceSearchInput {
+  query?: string;
+  category?: string;
+  page?: number;
+  pageSize?: number;
+  signal?: AbortSignal;
+}
+
+export interface McpMarketplaceItemInput {
+  identifier: string;
+  version?: string;
+  signal?: AbortSignal;
+}
+
+export interface McpMarketplaceInstallInput {
+  identifier: string;
+  version: string;
+  conversationId?: string;
+  selectionRevision: number;
+  enableForConversation: boolean;
+  signal?: AbortSignal;
+}
+
 export interface McpApi {
   listServers(input?: McpListServersInput): Promise<McpServer[]>;
   createPrivateServer(input: McpCreatePrivateServerInput): Promise<McpServer>;
@@ -860,6 +886,15 @@ export interface McpApi {
     options?: { signal?: AbortSignal },
   ): Promise<void>;
   listCalls(input: McpListCallsInput): Promise<McpCallRecord[]>;
+  searchMarketplace(
+    input?: McpMarketplaceSearchInput,
+  ): Promise<McpMarketplaceSearchResult>;
+  getMarketplaceItem(
+    input: McpMarketplaceItemInput,
+  ): Promise<McpMarketplaceItemDetail>;
+  installMarketplaceItem(
+    input: McpMarketplaceInstallInput,
+  ): Promise<McpMarketplaceInstallResult>;
 }
 
 export interface FileApi {

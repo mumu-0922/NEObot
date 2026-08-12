@@ -44,5 +44,14 @@ export function createLocalMcpApiShell(): McpApi {
     async listCalls() {
       throw unsupported();
     },
+    async searchMarketplace() {
+      throw unsupported();
+    },
+    async getMarketplaceItem() {
+      throw unsupported();
+    },
+    async installMarketplaceItem() {
+      throw unsupported();
+    },
   };
 }

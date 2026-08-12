@@ -12,6 +12,8 @@ export type McpCallStatus =
   | "failed"
   | "canceled"
   | "outcome_unknown";
+export type McpMarketplaceCompatibility =
+  "installable" | "needs_configuration" | "requires_runner" | "incompatible";
 
 export interface McpServerRef {
   source: McpServerSource;
@@ -114,6 +116,72 @@ export interface McpToolCallUpdate {
   mode: "mcp";
 }
 
+export interface McpMarketplaceItem {
+  identifier: string;
+  name: string;
+  description: string;
+  icon?: string;
+  category?: string;
+  author?: string;
+  connectionType?: string;
+  installationMethods?: string;
+  toolCount: number;
+  installCount: number;
+  stars: number;
+  rating: number;
+  official: boolean;
+  validated: boolean;
+}
+
+export interface McpMarketplaceCategory {
+  category: string;
+  count: number;
+}
+
+export interface McpMarketplaceSearchResult {
+  items: McpMarketplaceItem[];
+  categories: McpMarketplaceCategory[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  source: string;
+  sourceUrl: string;
+}
+
+export interface McpMarketplaceToolPreview {
+  name: string;
+  description?: string;
+}
+
+export interface McpMarketplaceDeployment {
+  connectionType: string;
+  installationMethod: string;
+  recommended: boolean;
+  compatibility: McpMarketplaceCompatibility;
+  compatibilityReason: string;
+  endpointUrl?: string;
+  hash?: string;
+}
+
+export interface McpMarketplaceItemDetail extends McpMarketplaceItem {
+  version: string;
+  summary?: string;
+  homepage?: string;
+  repositoryUrl?: string;
+  source: string;
+  sourceUrl: string;
+  tools: McpMarketplaceToolPreview[];
+  deployments: McpMarketplaceDeployment[];
+}
+
+export interface McpMarketplaceInstallResult {
+  server: McpServer;
+  selection?: McpConversationSelection;
+  validationErrorCode?: string;
+  enabledForConversation: boolean;
+}
+
 const SERVER_SOURCES = new Set<McpServerSource>([
   "catalog",
   "manifest",
@@ -149,6 +217,12 @@ const PROCESS_STATUSES = new Set<McpToolCallUpdate["processStatus"]>([
   "failed",
   "cancelled",
   "outcome_unknown",
+]);
+const MARKETPLACE_COMPATIBILITIES = new Set<McpMarketplaceCompatibility>([
+  "installable",
+  "needs_configuration",
+  "requires_runner",
+  "incompatible",
 ]);
 
 const MAX_SERVERS = 64;
@@ -317,6 +391,215 @@ export function normalizeMcpToolCallUpdate(
   };
 }
 
+export function normalizeMcpMarketplaceSearch(
+  value: unknown,
+): McpMarketplaceSearchResult | null {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.items) ||
+    value.items.length > 40 ||
+    !Array.isArray(value.categories) ||
+    value.categories.length > 256
+  ) {
+    return null;
+  }
+  const items = value.items.map(normalizeMcpMarketplaceItem);
+  const categories = value.categories.map(normalizeMarketplaceCategory);
+  const source = stringValue(value.source, 64);
+  const sourceUrl = httpsURLValue(value.sourceUrl);
+  if (
+    items.some((item) => item === null) ||
+    categories.some((category) => category === null) ||
+    !source ||
+    !sourceUrl
+  ) {
+    return null;
+  }
+  return {
+    items: items as McpMarketplaceItem[],
+    categories: categories as McpMarketplaceCategory[],
+    page: nonNegativeInteger(value.page),
+    pageSize: nonNegativeInteger(value.pageSize),
+    totalCount: nonNegativeInteger(value.totalCount),
+    totalPages: nonNegativeInteger(value.totalPages),
+    source,
+    sourceUrl,
+  };
+}
+
+export function normalizeMcpMarketplaceItemEnvelope(
+  value: unknown,
+): McpMarketplaceItemDetail | null {
+  if (!isRecord(value) || !isRecord(value.item)) return null;
+  const item = normalizeMcpMarketplaceItem(value.item);
+  const version = stringValue(value.item.version, 128);
+  const source = stringValue(value.item.source, 64);
+  const sourceUrl = httpsURLValue(value.item.sourceUrl);
+  if (
+    !item ||
+    !version ||
+    !source ||
+    !sourceUrl ||
+    !Array.isArray(value.item.tools) ||
+    value.item.tools.length > 64 ||
+    !Array.isArray(value.item.deployments) ||
+    value.item.deployments.length > 32
+  ) {
+    return null;
+  }
+  const tools = value.item.tools.map(normalizeMarketplaceToolPreview);
+  const deployments = value.item.deployments.map(
+    normalizeMarketplaceDeployment,
+  );
+  if (
+    tools.some((tool) => tool === null) ||
+    deployments.some((deployment) => deployment === null)
+  ) {
+    return null;
+  }
+  return {
+    ...item,
+    version,
+    ...(stringValue(value.item.summary, MAX_STRING)
+      ? { summary: stringValue(value.item.summary, MAX_STRING) }
+      : {}),
+    ...(httpsURLValue(value.item.homepage)
+      ? { homepage: httpsURLValue(value.item.homepage) }
+      : {}),
+    ...(httpsURLValue(value.item.repositoryUrl)
+      ? { repositoryUrl: httpsURLValue(value.item.repositoryUrl) }
+      : {}),
+    source,
+    sourceUrl,
+    tools: tools as McpMarketplaceToolPreview[],
+    deployments: deployments as McpMarketplaceDeployment[],
+  };
+}
+
+export function normalizeMcpMarketplaceInstall(
+  value: unknown,
+): McpMarketplaceInstallResult | null {
+  if (!isRecord(value) || typeof value.enabledForConversation !== "boolean") {
+    return null;
+  }
+  const server = normalizeMcpServerEnvelope(value);
+  const selection = value.selection
+    ? normalizeMcpConversationSelectionEnvelope({ selection: value.selection })
+    : undefined;
+  if (!server || (value.selection && !selection)) return null;
+  return {
+    server,
+    ...(selection ? { selection } : {}),
+    ...(stringValue(value.validationErrorCode, 256)
+      ? { validationErrorCode: stringValue(value.validationErrorCode, 256) }
+      : {}),
+    enabledForConversation: value.enabledForConversation,
+  };
+}
+
+function normalizeMcpMarketplaceItem(
+  value: unknown,
+): McpMarketplaceItem | null {
+  if (
+    !isRecord(value) ||
+    typeof value.official !== "boolean" ||
+    typeof value.validated !== "boolean"
+  ) {
+    return null;
+  }
+  const identifier = stringValue(value.identifier, 256);
+  const name = stringValue(value.name, 256);
+  if (!identifier || !name) return null;
+  return {
+    identifier,
+    name,
+    description: stringValue(value.description, 2048),
+    ...(marketplaceIconValue(value.icon)
+      ? { icon: marketplaceIconValue(value.icon) }
+      : {}),
+    ...(stringValue(value.category, 128)
+      ? { category: stringValue(value.category, 128) }
+      : {}),
+    ...(stringValue(value.author, 256)
+      ? { author: stringValue(value.author, 256) }
+      : {}),
+    ...(stringValue(value.connectionType, 32)
+      ? { connectionType: stringValue(value.connectionType, 32) }
+      : {}),
+    ...(stringValue(value.installationMethods, 128)
+      ? { installationMethods: stringValue(value.installationMethods, 128) }
+      : {}),
+    toolCount: nonNegativeInteger(value.toolCount),
+    installCount: nonNegativeInteger(value.installCount),
+    stars: nonNegativeInteger(value.stars),
+    rating: boundedRating(value.rating),
+    official: value.official,
+    validated: value.validated,
+  };
+}
+
+function normalizeMarketplaceCategory(
+  value: unknown,
+): McpMarketplaceCategory | null {
+  if (!isRecord(value)) return null;
+  const category = stringValue(value.category, 128);
+  if (!category || /[\u0000-\u001f\u007f]/u.test(category)) return null;
+  return { category, count: nonNegativeInteger(value.count) };
+}
+
+function normalizeMarketplaceToolPreview(
+  value: unknown,
+): McpMarketplaceToolPreview | null {
+  if (!isRecord(value)) return null;
+  const name = stringValue(value.name, 256);
+  if (!name) return null;
+  return {
+    name,
+    ...(stringValue(value.description, 1024)
+      ? { description: stringValue(value.description, 1024) }
+      : {}),
+  };
+}
+
+function normalizeMarketplaceDeployment(
+  value: unknown,
+): McpMarketplaceDeployment | null {
+  if (!isRecord(value) || typeof value.recommended !== "boolean") return null;
+  const connectionType = stringValue(value.connectionType, 16);
+  const installationMethod = stringValue(value.installationMethod, 64);
+  const compatibility = enumValue(
+    value.compatibility,
+    MARKETPLACE_COMPATIBILITIES,
+  );
+  const compatibilityReason = stringValue(value.compatibilityReason, 512);
+  const endpointUrl = value.endpointUrl ? httpsURLValue(value.endpointUrl) : "";
+  const installableShape =
+    compatibility !== "installable" ||
+    (connectionType === "http" && Boolean(endpointUrl)) ||
+    (connectionType === "stdio" && !value.endpointUrl);
+  if (
+    !connectionType ||
+    !installationMethod ||
+    !compatibility ||
+    !compatibilityReason ||
+    (value.endpointUrl && !endpointUrl) ||
+    !installableShape
+  ) {
+    return null;
+  }
+  return {
+    connectionType,
+    installationMethod,
+    recommended: value.recommended,
+    compatibility,
+    compatibilityReason,
+    ...(endpointUrl ? { endpointUrl } : {}),
+    ...(stringValue(value.hash, 64)
+      ? { hash: stringValue(value.hash, 64) }
+      : {}),
+  };
+}
+
 function normalizeMcpCall(value: unknown): McpCallRecord | null {
   if (!isRecord(value)) return null;
   const id = stringValue(value.ID ?? value.id, 256);
@@ -482,6 +765,38 @@ function nonNegativeInteger(value: unknown): number {
 function dateString(value: unknown): string {
   if (typeof value !== "string" || !value.trim()) return "";
   return Number.isFinite(Date.parse(value)) ? value : "";
+}
+
+function httpsURLValue(value: unknown): string {
+  const candidate = stringValue(value, MAX_STRING);
+  if (!candidate) return "";
+  try {
+    const parsed = new URL(candidate);
+    return parsed.protocol === "https:" &&
+      parsed.hostname &&
+      !parsed.username &&
+      !parsed.password
+      ? parsed.toString()
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+function marketplaceIconValue(value: unknown): string {
+  const candidate = stringValue(value, 2048);
+  if (!candidate) return "";
+  const httpsURL = httpsURLValue(candidate);
+  if (httpsURL) return httpsURL;
+  return Array.from(candidate).length <= 4 &&
+    !/[\u0000-\u001f\u007f]/u.test(candidate)
+    ? candidate
+    : "";
+}
+
+function boundedRating(value: unknown): number {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 && number <= 5 ? number : 0;
 }
 
 function stringArray(

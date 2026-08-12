@@ -13,6 +13,10 @@ const page = readFileSync(
   new URL("../components/mcp/McpToolsPage.tsx", import.meta.url),
   "utf8",
 );
+const marketplace = readFileSync(
+  new URL("../components/mcp/McpMarketplace.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("MCP Tools composer control", () => {
   it("opens on preflight attention and offers disable-all-and-continue", () => {
@@ -36,11 +40,32 @@ describe("MCP Tools composer control", () => {
   });
 
   it("supports a first-class management page without browser-owned authority", () => {
-    expect(page).toContain('variant="page"');
-    expect(control).toContain('variant?: "composer" | "page"');
+    expect(page).toContain('variant="embedded"');
+    expect(control).toContain('variant?: "composer" | "page" | "embedded"');
     expect(control).toContain("client.mcp.listServers");
     expect(control).toContain('aria-label={t("serverList")}');
     expect(page).toContain("conversationId={conversationId}");
+  });
+
+  it("keeps Marketplace discovery server-authoritative and never executes install commands", () => {
+    expect(page).toContain('"installed" | "marketplace"');
+    expect(page).toContain("<McpMarketplace");
+    expect(marketplace).toContain("client.mcp.searchMarketplace");
+    expect(marketplace).toContain("client.mcp.getMarketplaceItem");
+    expect(marketplace).toContain("client.mcp.installMarketplaceItem");
+    expect(marketplace).toContain("MARKETPLACE_CATEGORIES");
+    expect(marketplace).toContain("category: category || undefined");
+    expect(marketplace).toContain('referrerPolicy="no-referrer"');
+    expect(marketplace).toContain(
+      "selectionRevision: selection?.revision ?? 0",
+    );
+    expect(marketplace).toContain(
+      "const searchRequest = ++searchRequestRef.current",
+    );
+    expect(marketplace).toContain("searchRequestRef.current === searchRequest");
+    expect(marketplace).not.toContain("fetch(");
+    expect(marketplace).not.toContain("npx ");
+    expect(marketplace).not.toContain("docker run");
   });
 
   it("reloads authoritative drafts after a create or validation failure", () => {

@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeMcpCalls,
   normalizeMcpConversationSelectionEnvelope,
+  normalizeMcpMarketplaceItemEnvelope,
+  normalizeMcpMarketplaceSearch,
   normalizeMcpToolCallUpdate,
 } from "../lib/mcp/types";
 
@@ -84,5 +86,105 @@ describe("MCP runtime DTO normalization", () => {
         classification: "trusted-because-server-said-so",
       }),
     ).toBeNull();
+  });
+
+  it("normalizes bounded Marketplace metadata and rejects unsafe installable URLs", () => {
+    expect(
+      normalizeMcpMarketplaceSearch({
+        items: [
+          {
+            identifier: "deepwiki",
+            name: "DeepWiki",
+            description: "Docs",
+            icon: "https://github.com/example.png",
+            toolCount: 3,
+            installCount: 1,
+            stars: 2,
+            rating: 5,
+            official: false,
+            validated: true,
+          },
+        ],
+        categories: [{ category: "developer", count: 42 }],
+        page: 1,
+        pageSize: 20,
+        totalCount: 1,
+        totalPages: 1,
+        source: "lobehub",
+        sourceUrl: "https://market.lobehub.com",
+      }),
+    ).toMatchObject({
+      items: [
+        {
+          identifier: "deepwiki",
+          icon: "https://github.com/example.png",
+        },
+      ],
+      categories: [{ category: "developer", count: 42 }],
+    });
+
+    const item = {
+      identifier: "deepwiki",
+      name: "DeepWiki",
+      description: "Docs",
+      toolCount: 3,
+      installCount: 1,
+      stars: 2,
+      rating: 5,
+      official: false,
+      validated: true,
+      version: "1.0.0",
+      source: "lobehub",
+      sourceUrl: "https://market.lobehub.com",
+      tools: [],
+      deployments: [
+        {
+          connectionType: "http",
+          installationMethod: "none",
+          recommended: true,
+          compatibility: "installable",
+          compatibilityReason: "Public HTTPS",
+          endpointUrl: "http://127.0.0.1/mcp",
+        },
+      ],
+    };
+    expect(normalizeMcpMarketplaceItemEnvelope({ item })).toBeNull();
+    expect(
+      normalizeMcpMarketplaceItemEnvelope({
+        item: {
+          ...item,
+          deployments: [
+            {
+              ...item.deployments[0],
+              endpointUrl: "https://mcp.deepwiki.com/mcp",
+            },
+          ],
+        },
+      }),
+    ).toMatchObject({ version: "1.0.0" });
+    expect(
+      normalizeMcpMarketplaceItemEnvelope({
+        item: {
+          ...item,
+          deployments: [
+            {
+              connectionType: "stdio",
+              installationMethod: "npm",
+              recommended: true,
+              compatibility: "installable",
+              compatibilityReason: "Approved shared Runner artifact",
+              hash: "a".repeat(64),
+            },
+          ],
+        },
+      }),
+    ).toMatchObject({
+      deployments: [
+        {
+          connectionType: "stdio",
+          compatibility: "installable",
+        },
+      ],
+    });
   });
 });
