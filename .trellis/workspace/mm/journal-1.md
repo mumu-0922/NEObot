@@ -1763,3 +1763,36 @@ Implemented the server-authoritative no-execute Skill supply chain and Store aut
 ### Next Steps
 
 - None - task complete
+
+
+## Session 42: Agent Runtime G20.2 Durable Orchestrator foundation
+
+**Date**: 2026-08-13
+**Task**: Agent Runtime G20.2 Durable Orchestrator foundation
+**Branch**: `main`
+
+### Summary
+
+Implemented PostgreSQL-authoritative durable Run/Step/Attempt/events, generation-fenced leases, restart recovery, projection rebuild, hierarchical Kill Switches, retention, least privilege, and full PostgreSQL/standalone verification while Runtime remains unavailable.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bc1db3ab1444dd73137de87f0768e0d4d8ba9248` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
