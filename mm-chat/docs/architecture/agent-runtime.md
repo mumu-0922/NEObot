@@ -1,6 +1,7 @@
 # Neo Agent Runtime Architecture
 
-Status: G20.0 Phase 0 contract baseline; production Runtime remains disabled.
+Status: G20.1 no-execute Skill supply chain implemented; production Runtime
+remains disabled.
 
 ## Purpose and invariant
 
@@ -178,6 +179,10 @@ Archive extraction never occurs in the Backend working tree.
 `SKILL.md` follows Agent Skills. `allowed-tools` is a requested-intent hint only.
 `neo.runtime.json` declares the runtime surface under
 [`neo-skill-runtime-manifest.schema.json`](../contracts/schemas/neo-skill-runtime-manifest.schema.json).
+It does not contain source/admission coordinates or its own package, runtime or
+SBOM fingerprints: those are server-derived envelope fields, avoiding a
+self-referential hash while keeping the complete manifest bytes inside package
+identity.
 Neither file is executable authority before admission and grant resolution.
 
 ## Storage model
@@ -277,7 +282,8 @@ not reveal private chain-of-thought.
 
 ## Migration and rollback boundary
 
-Phase 0 changes no production code or persistence. The future final cutover:
+G20.1 adds only Skill supply/API/persistence and changes no Chat or legacy
+text-Skill behavior. The future final cutover:
 
 1. freezes new legacy Skill installation/editing;
 2. captures a rollback inventory/backup without converting legacy content;

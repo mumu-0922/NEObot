@@ -32,6 +32,12 @@ grep -Fq "up 078_mcp_legacy_tavily_runner_repair" "${work_dir}/up.log"
 grep -Fq "up 079_mcp_tavily_credential_revalidation" "${work_dir}/up.log"
 grep -Fq "up 080_mcp_legacy_deepwiki_icon" "${work_dir}/up.log"
 grep -Fq "up 081_mcp_legacy_context7_artifact_rebind" "${work_dir}/up.log"
+grep -Fq "up 082_assistant_library" "${work_dir}/up.log"
+grep -Fq "up 083_skill_supply_chain" "${work_dir}/up.log"
+MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" down >"${work_dir}/down-083.log" 2>&1
+grep -Fq "down 083_skill_supply_chain" "${work_dir}/down-083.log"
+MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" down >"${work_dir}/down-082.log" 2>&1
+grep -Fq "down 082_assistant_library" "${work_dir}/down-082.log"
 MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" down >"${work_dir}/down-081.log" 2>&1
 grep -Fq "down 081_mcp_legacy_context7_artifact_rebind" "${work_dir}/down-081.log"
 MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" down >"${work_dir}/down-080.log" 2>&1
@@ -89,6 +95,8 @@ grep -Fq "up 078_mcp_legacy_tavily_runner_repair" "${work_dir}/reup.log"
 grep -Fq "up 079_mcp_tavily_credential_revalidation" "${work_dir}/reup.log"
 grep -Fq "up 080_mcp_legacy_deepwiki_icon" "${work_dir}/reup.log"
 grep -Fq "up 081_mcp_legacy_context7_artifact_rebind" "${work_dir}/reup.log"
+grep -Fq "up 082_assistant_library" "${work_dir}/reup.log"
+grep -Fq "up 083_skill_supply_chain" "${work_dir}/reup.log"
 repaired="$(
   docker exec "${container_name}" psql -U postgres -d neo_chat_mcp_credentials -Atc \
     "SELECT concat_ws('|', transport, auth_type, status, last_error_code, auth_config #>> '{metadata,runnerArtifactId}') FROM mcp_servers WHERE id = '78000000-0000-4000-8000-000000000002'"
@@ -116,4 +124,4 @@ if [[ "${context7}" != "22b235834a14b617480cc92dd0f6f6c7587cb399880c666773135971
   exit 1
 fi
 
-printf 'MCP credential migration drill: passed (077-081 up/down/up and exact repairs)\n'
+printf 'MCP credential migration drill: passed (077-083 tail replay and exact 078-081 repairs)\n'

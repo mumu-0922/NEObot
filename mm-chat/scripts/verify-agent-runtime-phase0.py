@@ -76,21 +76,8 @@ def require_equal(left: Any, right: Any, message: str) -> None:
         raise VerificationError(message)
 
 
-def check_fingerprint_bindings(
-    manifest: JsonObject, grant: JsonObject, launch: JsonObject
-) -> None:
-    package = manifest["package"]
+def check_fingerprint_bindings(grant: JsonObject, launch: JsonObject) -> None:
     sandbox = launch["body"]["sandbox"]
-    require_equal(
-        package["packageFingerprint"],
-        grant["packageFingerprint"],
-        "manifest/grant package fingerprints differ",
-    )
-    require_equal(
-        package["runtimeBundleFingerprint"],
-        grant["runtimeBundleFingerprint"],
-        "manifest/grant runtime fingerprints differ",
-    )
     require_equal(
         sandbox["packageFingerprint"],
         grant["packageFingerprint"],
@@ -135,12 +122,11 @@ def check_event_bindings(launch: JsonObject, event: JsonObject) -> None:
 
 
 def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
-    manifest = instances["neo-skill-runtime-manifest"]
     grant = instances["neo-capability-grant"]
     launch = instances["neo-runner-rpc"]
     event = instances["neo-run-event"]
 
-    check_fingerprint_bindings(manifest, grant, launch)
+    check_fingerprint_bindings(grant, launch)
     require_equal(
         launch["body"]["attempt"]["runId"],
         grant["run"]["runId"],

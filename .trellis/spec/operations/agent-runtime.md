@@ -79,6 +79,10 @@ bundle/seccomp fingerprints.
 - Lease reclaim, Prepare/Commit crash matrix, depth-1 Registry and Runtime-off
   cleanup proof.
 - Paired PostgreSQL/object backup, restore-with-Runtime-off and reconciliation.
+- G20.1 backup/restore pairs migration `083` rows with all three immutable
+  object prefixes: `skill-quarantine/`, `skill-packages/`, and `skill-sboms/`.
+  The temporary MinIO drill exports PostgreSQL coordinates and `mc stat`s every
+  sampled key before cleanup.
 
 ### 7. Wrong vs Correct
 

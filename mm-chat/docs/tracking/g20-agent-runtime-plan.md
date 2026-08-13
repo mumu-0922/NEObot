@@ -1,6 +1,6 @@
 # G20 Neo Agent Runtime Epic Plan
 
-Status: G20.0 Phase 0 baseline complete; implementation groups not started.
+Status: G20.0 Phase 0 and G20.1 Skill supply chain complete; G20.2 not started.
 
 ## Locked outcome
 
@@ -41,6 +41,8 @@ Promotion gate: schemas and fixtures pass, cross-contract invariants and
 fail-closed boundaries pass, docs/spec/index references are synchronized.
 
 ## G20.1 — Skill supply chain and Store authority
+
+Status: complete (2026-08-13).
 
 - Add server-owned Skill source adapters for official, LobeHub, exact Git commit
   and ZIP upload into no-execute quarantine.

@@ -137,6 +137,49 @@ func TestLobeHubMarketplaceM2MSearchCacheAndDetailCompatibility(t *testing.T) {
 	}
 }
 
+func TestLobeHubMarketplaceFetchSkillPackageUsesExactUncachedM2MDownload(t *testing.T) {
+	t.Parallel()
+	var tokenCalls, downloadCalls atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/oauth/token":
+			tokenCalls.Add(1)
+			_, _ = io.WriteString(writer, `{"access_token":"skill-token","expires_in":3600}`)
+		case "/api/v1/skills/code-review/download":
+			downloadCalls.Add(1)
+			if request.Header.Get("Authorization") != "Bearer skill-token" ||
+				request.Header.Get("Accept") != "application/zip" || request.URL.Query().Get("version") != "1.2.3" {
+				t.Fatalf("download auth/accept/query = %q/%q/%#v", request.Header.Get("Authorization"),
+					request.Header.Get("Accept"), request.URL.Query())
+			}
+			_, _ = io.WriteString(writer, "PK fixture "+time.Now().String())
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+	marketplace, err := NewLobeHubMarketplace(LobeHubMarketplaceConfig{
+		BaseURL: server.URL, ClientID: "client", ClientSecret: strings.Repeat("s", 32),
+		Timeout: 5 * time.Second, CacheTTL: time.Minute, HTTPClient: server.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < 2; index++ {
+		if _, err := marketplace.FetchSkillPackage(context.Background(), "code-review", "1.2.3", 1024); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if tokenCalls.Load() != 1 || downloadCalls.Load() != 2 {
+		t.Fatalf("token/download calls = %d/%d, want 1/2", tokenCalls.Load(), downloadCalls.Load())
+	}
+	for _, version := range []string{"", "latest", "main", "v1.2.3"} {
+		if _, err := marketplace.FetchSkillPackage(context.Background(), "code-review", version, 1024); !errors.Is(err, ErrMarketplaceUnavailable) {
+			t.Fatalf("version %q error = %v", version, err)
+		}
+	}
+}
+
 func TestNormalizeLobeDeploymentUsesApprovedHeaderWithoutPersistingQuerySecret(t *testing.T) {
 	t.Parallel()
 	var option lobeDeploymentOption

@@ -10173,3 +10173,32 @@ declarations. The retry deployed only Frontend on image
 (`sha256:92486df8cfab806faf4689cfd2638bda48a38b74cd4855ac20ce3e2b8fe02985`).
 Frontend and Memory health are ready, and every protected service container ID
 remained unchanged.
+
+## 2026-08-13 — G20.1 Skill supply chain and Store authority completed
+
+G20.1 introduced the separate `internal/skillsupply` bounded context and
+migration `083`. Official synthetic, exact LobeHub version, exact lowercase
+GitHub commit, and authenticated ZIP sources now enter a bounded in-memory
+no-execute validator. Archive traversal, absolute/Windows paths, symlinks and
+special files, duplicate/case/Unicode collisions, bombs, ambiguous roots,
+malformed YAML, ambiguous JSON, mutable images, and unpinned dependencies fail
+closed. Equivalent ZIP representations reproduce the canonical package ZIP,
+package/runtime identities, and content-free CycloneDX 1.6 SBOM.
+
+PostgreSQL owns immutable versions, exact-source candidates, administrator
+fingerprint/revision-CAS review, and owner-bound installs. A composite FK plus
+admission trigger prevents direct non-admitted installs; runtime grants can
+update only review columns. `allowed-tools` and capability requests remain
+display-only. The Phase 0 manifest schema was corrected so source/admission and
+self-fingerprints live in the server envelope rather than circularly inside the
+hashed manifest.
+
+The offline supply-chain race gate, Phase 0 gate, full Backend tests/vet,
+disposable PostgreSQL 17 fresh/replay/source-drift/CAS/ownership/guarded-
+down/re-up drill, single-server preflight, and full standalone gate passed.
+The standalone clean copy included 928 Frontend tests and 1,906 passing RAG
+tests (seven integration tests skipped by their declared external-service
+preconditions). Restore sampling now covers `skill-quarantine/`,
+`skill-packages/`, and `skill-sboms/` alongside PostgreSQL coordinates. No
+Runner, Sandbox, Chat Skill application, legacy Skill mutation, or code
+execution path was added; `/v1/code/executions` remains fail closed.

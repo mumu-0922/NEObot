@@ -957,6 +957,7 @@ assert service["environment"]["MINIO_ROOT_PASSWORD"] == "test-minio-root-passwor
 targets = {volume["target"] for volume in service["volumes"]}
 assert "/knowledge-object-sample.txt" in targets
 assert "/mcp-object-sample.txt" in targets
+assert "/skill-object-sample.txt" in targets
 PY
 
 for forbidden_args in \

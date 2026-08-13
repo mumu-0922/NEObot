@@ -1,6 +1,6 @@
 # Neo Agent Runtime Executable Contract
 
-Status: G20.0 Phase 0; schemas and offline verification exist, all production
+Status: G20.1 supply-chain authority implemented; all production Agent
 execution remains disabled.
 
 ## 1. Scope and hard gates
@@ -55,6 +55,13 @@ Workspace snapshot ID + content/version fingerprint
 token / wall / Tool call / artifact / child budgets
 createdAt + expiresAt + policy revision + Kill Switch epoch
 ```
+
+`neo.runtime.json` is a package declaration, not a self-attestation. It
+contains package name/version and the requested immutable runtime surface, but
+never its own source coordinate, package/runtime/SBOM fingerprint, admission
+ID or reviewer. The Backend derives those bindings from the complete package
+bytes and stores them in the immutable version/admission envelope before any
+snapshot can reference them.
 
 Every Attempt and Runner RPC binds the exact snapshot and lease generation.
 Changing a model, Skill, Runtime, Tool schema, grant, Egress rule, Secret ref,

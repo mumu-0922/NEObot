@@ -32,5 +32,6 @@ services:
       - ./backup/restore/minio-drill:/restore-source:ro
       - ./backup/restore/knowledge-object-sample.txt:/knowledge-object-sample.txt:ro
       - ./backup/restore/mcp-object-sample.txt:/mcp-object-sample.txt:ro
+      - ./backup/restore/skill-object-sample.txt:/skill-object-sample.txt:ro
     networks:
       - private

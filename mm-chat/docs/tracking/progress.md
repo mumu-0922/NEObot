@@ -1644,7 +1644,11 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           isolation acceptance, Prepare/Commit, depth-1 registry exclusion,
           Cron/Draft learning, Kill Switches, legacy hard-delete cutover, and
           offline verifier with no production behavior change.
-    - [ ] G20.1 Skill supply chain and Store authority.
+    - [x] G20.1 Skill supply chain and Store authority: four exact-source
+          adapters, in-memory no-execute archive/manifest validation,
+          deterministic package/runtime/SBOM identities, migration `083`,
+          administrator CAS admission, owner installs, strict API, paired
+          restore sampling, offline gate, and PostgreSQL 17 drill.
     - [ ] G20.2 Durable Orchestrator foundation.
     - [ ] G20.3 `neo-runnerd` and rootless isolation.
     - [ ] G20.4 Tool, Egress, Secret and side-effect brokers.

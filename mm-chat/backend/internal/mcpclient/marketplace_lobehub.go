@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,7 +28,10 @@ const (
 	maxNPMMetadataBytes       = int64(64 << 10)
 	marketplaceTokenLeeway    = time.Minute
 	defaultNPMRegistryURL     = "https://registry.npmjs.org"
+	maxMarketplaceSkillBytes  = int64(32 << 20)
 )
+
+var exactSkillVersionPattern = regexp.MustCompile(`^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
 
 // FetchAgentMarketJSON exposes the already-authenticated, cached LobeHub
 // Market transport to the Assistant Store adapter. Keeping token exchange in
@@ -44,6 +48,26 @@ func (m *LobeHubMarketplace) FetchAgentMarketJSON(
 		return nil, ErrMarketplaceUnavailable
 	}
 	return m.authorizedGET(ctx, path, maximum)
+}
+
+// FetchSkillPackage downloads one exact Skill version through the existing
+// Marketplace M2M token owner. Skill archives are deliberately not cached:
+// the supply-chain repository must observe and reject immutable-source drift.
+func (m *LobeHubMarketplace) FetchSkillPackage(
+	ctx context.Context,
+	identifier string,
+	version string,
+	maximum int64,
+) ([]byte, error) {
+	identifier, version = strings.TrimSpace(identifier), strings.TrimSpace(version)
+	if m == nil || !validMarketplaceIdentifier(identifier) ||
+		!exactSkillVersionPattern.MatchString(version) || maximum < 1 ||
+		maximum > maxMarketplaceSkillBytes {
+		return nil, ErrMarketplaceUnavailable
+	}
+	query := url.Values{"version": []string{version}}
+	path := "/api/v1/skills/" + url.PathEscape(identifier) + "/download?" + query.Encode()
+	return m.authorizedDownload(ctx, path, maximum)
 }
 
 type LobeHubMarketplaceConfig struct {
@@ -447,6 +471,16 @@ func (m *LobeHubMarketplace) get(
 	token string,
 	maximum int64,
 ) ([]byte, int, error) {
+	return m.getWithAccept(ctx, path, token, maximum, "application/json")
+}
+
+func (m *LobeHubMarketplace) getWithAccept(
+	ctx context.Context,
+	path string,
+	token string,
+	maximum int64,
+	accept string,
+) ([]byte, int, error) {
 	requestURL, err := url.Parse(strings.TrimRight(m.baseURL.String(), "/") + path)
 	if err != nil || requestURL.Scheme != m.baseURL.Scheme || requestURL.Host != m.baseURL.Host {
 		return nil, 0, ErrMarketplaceUnavailable
@@ -455,7 +489,7 @@ func (m *LobeHubMarketplace) get(
 	if err != nil {
 		return nil, 0, ErrMarketplaceUnavailable
 	}
-	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Accept", accept)
 	if token != "" {
 		request.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -470,6 +504,42 @@ func (m *LobeHubMarketplace) get(
 		return nil, response.StatusCode, err
 	}
 	return data, response.StatusCode, nil
+}
+
+func (m *LobeHubMarketplace) authorizedDownload(
+	ctx context.Context,
+	path string,
+	maximum int64,
+) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, m.timeout)
+	defer cancel()
+	token, err := m.accessToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	data, status, err := m.getWithAccept(ctx, path, token, maximum, "application/zip")
+	if err != nil {
+		return nil, err
+	}
+	if status == http.StatusUnauthorized {
+		m.clearToken(token)
+		token, err = m.accessToken(ctx)
+		if err != nil {
+			return nil, err
+		}
+		data, status, err = m.getWithAccept(ctx, path, token, maximum, "application/zip")
+		if err != nil {
+			return nil, err
+		}
+	}
+	switch status {
+	case http.StatusOK:
+		return data, nil
+	case http.StatusNotFound:
+		return nil, ErrMarketplaceNotFound
+	default:
+		return nil, ErrMarketplaceUnavailable
+	}
 }
 
 func (m *LobeHubMarketplace) accessToken(ctx context.Context) (string, error) {

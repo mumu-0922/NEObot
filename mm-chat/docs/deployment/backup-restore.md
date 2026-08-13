@@ -79,8 +79,10 @@ The Postgres dump uses `pg_dump --format=custom --no-owner --no-acl` from the
 `postgres` service. The MinIO backup runs `mc mirror` from the `minio-client`
 Compose service, mirrors `S3_BUCKET`, then archives the mirrored tree as
 `tar.gz`. This includes all MCP authority rows in PostgreSQL and every
-`mcp-results/` object referenced by `mcp_tool_results.object_keys`; MCP rows and
-objects are never backed up independently. Both scripts set `umask 077`, so new artifacts and checksums are
+`mcp-results/` object referenced by `mcp_tool_results.object_keys`, plus G20.1
+Skill candidate/version/install rows and their `skill-quarantine/`,
+`skill-packages/`, and `skill-sboms/` objects. These database coordinates and
+object bytes are never backed up independently. Both scripts set `umask 077`, so new artifacts and checksums are
 owner-only. The MinIO backup container runs as the invoking host UID/GID so the
 operator can remove temporary staging files after the archive is created.
 The strict set manifest records the class, UTC creation time, exact relative
@@ -505,6 +507,30 @@ if [ -n "${POSTGRES_PASSWORD:-}" ]; then
   export PGPASSWORD="$POSTGRES_PASSWORD"
 fi
 
+exec psql --set=ON_ERROR_STOP=1 --tuples-only --no-align \
+  --username="$POSTGRES_USER" --dbname=neo_chat_restore_drill \
+  --command="SELECT object_key
+    FROM (
+      SELECT source_object_key AS object_key FROM skill_package_candidates
+      UNION ALL
+      SELECT package_object_key FROM skill_package_versions
+      UNION ALL
+      SELECT sbom_object_key FROM skill_package_versions
+    ) skill_object
+    WHERE object_key LIKE '''skill-quarantine/sha256/%.zip'''
+       OR object_key LIKE '''skill-packages/sha256/%.zip'''
+       OR object_key LIKE '''skill-sboms/sha256/%.cdx.json'''
+    ORDER BY object_key
+    LIMIT 15;"
+' > mm-chat/backup/restore/skill-object-sample.txt
+
+mm-chat/scripts/compose-single-server-production.sh mm-chat/.env.single-server \
+  exec -T postgres sh -ceu '
+: "${POSTGRES_USER:?POSTGRES_USER is required}"
+if [ -n "${POSTGRES_PASSWORD:-}" ]; then
+  export PGPASSWORD="$POSTGRES_PASSWORD"
+fi
+
 export PGHOST="${PGHOST:-127.0.0.1}"
 export PGPORT="${PGPORT:-5432}"
 
@@ -527,9 +553,9 @@ MinIO restores are destructive when mirrored back to the production bucket with
 3. Use the controlled `minio-restore` production-profile service to create a
    drill bucket; do not inject ad hoc env, volumes, or entrypoints.
 4. Mirror the staged backup into the drill bucket.
-5. List objects and, when available, verify both restored `files.object_key`
-   values sampled through Knowledge Document Versions and MCP Tool result keys
-   sampled from `mcp_tool_results.object_keys` with `mc stat`.
+5. List objects and, when available, verify restored `files.object_key` values,
+   MCP Tool result keys, and all three sampled Skill supply object classes from
+   `skill_package_candidates`/`skill_package_versions` with `mc stat`.
 6. Remove the drill bucket and local staging directory.
 
 ```bash
@@ -541,6 +567,7 @@ rm -rf mm-chat/backup/restore/minio-drill
 mkdir -p mm-chat/backup/restore/minio-drill
 test -f mm-chat/backup/restore/knowledge-object-sample.txt
 test -f mm-chat/backup/restore/mcp-object-sample.txt
+test -f mm-chat/backup/restore/skill-object-sample.txt
 tar -xzf mm-chat/backup/minio/<chosen-archive>.tar.gz \
   -C mm-chat/backup/restore/minio-drill
 
@@ -550,6 +577,7 @@ mm-chat/scripts/compose-single-server-production.sh mm-chat/.env.single-server \
 rm -rf mm-chat/backup/restore/minio-drill
 rm -f mm-chat/backup/restore/knowledge-object-sample.txt
 rm -f mm-chat/backup/restore/mcp-object-sample.txt
+rm -f mm-chat/backup/restore/skill-object-sample.txt
 ```
 
 The Postgres acceptance block fails closed unless every migration `001` through
@@ -559,9 +587,10 @@ Knowledge core and migration `010` projection tables are readable; migration
 the Consent expiry column/index exists; the Governance immutability trigger is
 enabled; and the purge fence is a valid unique index. It also rejects Document
 Version/File hash or object-key mismatches and exports up to five live Knowledge
-object keys and up to five MCP result object keys. The MinIO drill must
-`mc stat` every exported key. An empty sample is valid only when the restored
-database has no eligible live Knowledge Document Version or MCP artifact,
+object keys, up to five MCP result object keys, and up to fifteen Skill
+quarantine/package/SBOM keys. The MinIO drill must `mc stat` every exported
+key. An empty sample is valid only when the restored database has no eligible
+live Knowledge Document Version, MCP artifact, or Skill package authority,
 respectively.
 
 Use root/admin MinIO credentials for the temporary-bucket drill. The application

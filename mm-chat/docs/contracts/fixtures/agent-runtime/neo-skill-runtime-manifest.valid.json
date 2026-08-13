@@ -2,13 +2,7 @@
   "schemaVersion": "neo.skill-runtime/v1",
   "package": {
     "name": "repository-audit",
-    "version": "1.2.3",
-    "sourceType": "git",
-    "sourceRef": "https://github.com/example/repository-audit.git#0123456789abcdef0123456789abcdef01234567",
-    "packageFingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-    "runtimeBundleFingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
-    "sbomFingerprint": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
-    "admissionId": "admission_0123456789abcdef"
+    "version": "1.2.3"
   },
   "runtime": {
     "kind": "rootless_oci",
@@ -23,6 +17,7 @@
       "workingDirectory": "/workspace"
     }
   ],
+  "dependencies": [],
   "capabilityRequests": [
     {
       "capability": "workspace.read",

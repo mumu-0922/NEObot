@@ -500,6 +500,16 @@ keep `082` applied and restore a compatible application image. Disposable
 replay is `081 -> 082 -> 081 -> 082` via
 `scripts/verify-assistant-store-postgres17.sh`.
 
+Migration `083` adds the G20.1 no-execute Skill package supply-chain authority:
+immutable package/SBOM versions, exact-source candidates with fingerprint-bound
+administrator CAS review, and owner-bound install references. `allowed_tools`
+and capability requests remain display metadata and create no Tool grant. The
+runtime role can insert immutable versions/candidates, update only review
+columns, and insert/delete installations; a composite FK plus trigger require
+the exact admitted candidate/package pair. Down refuses while any G20.1 row
+exists. Disposable replay and least-privilege/ownership/source-drift proof use
+`scripts/verify-skill-supply-chain-postgres17.sh`.
+
 ## Storage boundaries
 
 Postgres is the source of truth for structured records:

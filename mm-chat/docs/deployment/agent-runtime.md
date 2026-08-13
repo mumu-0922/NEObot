@@ -1,7 +1,8 @@
-# Neo Agent Runtime Operations (Phase 0)
+# Neo Agent Runtime Operations
 
-Status: design-only. Do not install a Runtime, start `neo-runnerd`, enable Agent
-execution or delete legacy Skills from this document alone.
+Status: G20.1 no-execute Skill supply authority is implemented. Do not install
+a Runtime, start `neo-runnerd`, enable Agent execution or delete legacy Skills
+from this document alone.
 
 ## Default state
 
@@ -16,7 +17,7 @@ AGENT_DELEGATION_ENABLED=false
 AGENT_RUNNER_URL=
 ```
 
-Phase 0 adds no environment variables or Compose service. These names reserve
+G20.1 adds no environment variables or Compose service. These names reserve
 the intended operational boundary; later implementation must add them through
 the normal preflight/example-env/Compose/documentation gates.
 

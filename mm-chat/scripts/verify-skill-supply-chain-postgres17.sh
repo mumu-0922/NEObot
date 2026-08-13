@@ -6,10 +6,10 @@ project_dir="$(cd -- "${script_dir}/.." && pwd -P)"
 backend_dir="${project_dir}/backend"
 postgres_dir="${project_dir}/postgres"
 postgres_image="${POSTGRES_IMAGE:-mm-chat/postgres:17.10-pg_textsearch1.3.1-pgvector0.8.5}"
-container_name="neo-chat-assistant-pg17-$RANDOM-$$"
-database_name="neo_chat_assistant_drill"
+container_name="neo-chat-skill-supply-pg17-$RANDOM-$$"
+database_name="neo_chat_skill_supply_drill"
 database_user="postgres"
-database_password="assistant-drill-$(openssl rand -hex 16)"
+database_password="skill-supply-drill-$(openssl rand -hex 16)"
 work_dir="$(mktemp -d)"
 
 cleanup() {
@@ -18,14 +18,14 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-log() { printf 'Assistant Store PostgreSQL 17 drill: %s\n' "$*"; }
+log() { printf 'Skill supply PostgreSQL 17 drill: %s\n' "$*"; }
 
 if ! command -v docker >/dev/null 2>&1 || ! docker version >/dev/null 2>&1; then
-  echo "Assistant Store PostgreSQL 17 drill: Docker is required" >&2
+  echo "Skill supply PostgreSQL 17 drill: Docker is required" >&2
   exit 1
 fi
 if ! command -v openssl >/dev/null 2>&1; then
-  echo "Assistant Store PostgreSQL 17 drill: openssl is required" >&2
+  echo "Skill supply PostgreSQL 17 drill: openssl is required" >&2
   exit 1
 fi
 if ! docker image inspect "${postgres_image}" >/dev/null 2>&1; then
@@ -49,7 +49,7 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 if ! docker exec "${container_name}" pg_isready -U "${database_user}" -d "${database_name}" >/dev/null 2>&1; then
-  echo "Assistant Store PostgreSQL 17 drill: database did not become ready" >&2
+  echo "Skill supply PostgreSQL 17 drill: database did not become ready" >&2
   exit 1
 fi
 
@@ -69,63 +69,69 @@ log "building and applying 001 -> 083"
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/mm-chat-migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"; }
 run_migrate up >"${work_dir}/fresh.log" 2>&1
-grep -Fq "up 082_assistant_library" "${work_dir}/fresh.log"
 grep -Fq "up 083_skill_supply_chain" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
-log "checking schema, ownership indexes, JSON metadata, and runtime grants"
+log "checking schema, composite authority, trigger, and least-privilege grants"
 psql_command "
 DO \$\$
 BEGIN
-  IF to_regclass('public.assistant_library_entries') IS NULL
-     OR to_regclass('public.assistant_market_admissions') IS NULL THEN
-    RAISE EXCEPTION 'Assistant Store tables are missing';
-  END IF;
-  IF to_regclass('public.idx_assistant_library_user_store_unique') IS NULL THEN
-    RAISE EXCEPTION 'partial Store uniqueness index is missing';
+  IF to_regclass('public.skill_package_versions') IS NULL
+     OR to_regclass('public.skill_package_candidates') IS NULL
+     OR to_regclass('public.skill_installations') IS NULL THEN
+    RAISE EXCEPTION 'Skill supply tables are missing';
   END IF;
   IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'assistant_library_entries'
-      AND column_name = 'required_tools' AND udt_name = 'jsonb'
+    SELECT 1 FROM pg_trigger
+    WHERE tgname = 'trg_skill_installation_admission' AND NOT tgisinternal
   ) THEN
-    RAISE EXCEPTION 'required_tools JSONB is missing';
+    RAISE EXCEPTION 'Skill admission trigger is missing';
   END IF;
-  IF NOT has_table_privilege(
-    'go_api_runtime', 'assistant_library_entries', 'SELECT,INSERT,UPDATE,DELETE'
-  ) THEN
-    RAISE EXCEPTION 'Assistant library runtime grants are missing';
+  IF NOT has_table_privilege('go_api_runtime', 'skill_package_versions', 'SELECT,INSERT')
+     OR NOT has_table_privilege('go_api_runtime', 'skill_package_candidates', 'SELECT,INSERT')
+     OR NOT has_column_privilege('go_api_runtime', 'skill_package_candidates', 'status', 'UPDATE')
+     OR has_column_privilege('go_api_runtime', 'skill_package_candidates', 'source_ref', 'UPDATE')
+     OR NOT has_table_privilege('go_api_runtime', 'skill_installations', 'SELECT,INSERT,DELETE') THEN
+    RAISE EXCEPTION 'Skill runtime grants violate the contract';
   END IF;
 END
 \$\$;
 " >/dev/null
 
-log "running repository ownership and CAS lifecycle"
+log "running source-drift, review-CAS, ownership, install and uninstall lifecycle"
 (cd "${backend_dir}" && MM_CHAT_TEST_DATABASE_URL="${database_url}" \
-  go test -count=1 -run '^TestAssistantPostgresRepositoryAuthorityAndCAS$' ./internal/agents)
+  go test -count=1 -run '^TestSkillPostgresRepositoryAuthorityDriftOwnershipAndCAS$' ./internal/skillsupply)
 
-log "rolling back the clean 083 tail before the Assistant 082 replay"
-run_migrate down >"${work_dir}/down-083.log" 2>&1
-grep -Fq "down 083_skill_supply_chain" "${work_dir}/down-083.log"
+log "proving non-empty guarded down"
+set +e
+run_migrate down >"${work_dir}/guarded-down.log" 2>&1
+guard_status=$?
+set -e
+if [[ "${guard_status}" -eq 0 ]] || ! grep -Fq "SKILL_SUPPLY_CHAIN_DOWN_DATA_EXISTS" "${work_dir}/guarded-down.log"; then
+  cat "${work_dir}/guarded-down.log" >&2
+  echo "Skill supply PostgreSQL 17 drill: non-empty down did not fail closed" >&2
+  exit 1
+fi
 
-log "proving clean 081 -> 082 -> 081 -> 083 replay"
+log "proving clean 082 -> 083 -> 082 -> 083 replay"
+psql_command "TRUNCATE TABLE skill_installations, skill_package_candidates, skill_package_versions;" >/dev/null
 run_migrate down >"${work_dir}/down.log" 2>&1
-grep -Fq "down 082_assistant_library" "${work_dir}/down.log"
+grep -Fq "down 083_skill_supply_chain" "${work_dir}/down.log"
 psql_command "
 DO \$\$
 BEGIN
-  IF to_regclass('public.assistant_library_entries') IS NOT NULL
-     OR to_regclass('public.assistant_market_admissions') IS NOT NULL THEN
-    RAISE EXCEPTION '082 down retained Assistant Store tables';
+  IF to_regclass('public.skill_package_versions') IS NOT NULL
+     OR to_regclass('public.skill_package_candidates') IS NOT NULL
+     OR to_regclass('public.skill_installations') IS NOT NULL THEN
+    RAISE EXCEPTION '083 down retained Skill supply tables';
   END IF;
 END
 \$\$;
 " >/dev/null
 run_migrate up >"${work_dir}/reup.log" 2>&1
-grep -Fq "up 082_assistant_library" "${work_dir}/reup.log"
 grep -Fq "up 083_skill_supply_chain" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 
-log "passed (fresh through 083, schema/grants, repository ownership/CAS, clean 082 down/up with 083 tail replay)"
+log "passed (fresh/replay, schema/grants, drift/CAS/ownership lifecycle, guarded down, clean down/up)"

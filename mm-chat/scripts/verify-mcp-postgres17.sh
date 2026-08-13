@@ -83,7 +83,7 @@ run_migrate() {
   MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"
 }
 
-log "applying a fresh 001 -> 081 chain"
+log "applying a fresh 001 -> 083 chain"
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 074_mcp_tools_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 075_mcp_runtime_role_grants" "${work_dir}/fresh.log"
@@ -93,12 +93,18 @@ grep -Fq "up 078_mcp_legacy_tavily_runner_repair" "${work_dir}/fresh.log"
 grep -Fq "up 079_mcp_tavily_credential_revalidation" "${work_dir}/fresh.log"
 grep -Fq "up 080_mcp_legacy_deepwiki_icon" "${work_dir}/fresh.log"
 grep -Fq "up 081_mcp_legacy_context7_artifact_rebind" "${work_dir}/fresh.log"
+grep -Fq "up 082_assistant_library" "${work_dir}/fresh.log"
+grep -Fq "up 083_skill_supply_chain" "${work_dir}/fresh.log"
 
 log "proving replay is a no-op"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
-log "rolling back the clean 081 through 077 tails before the 076 guard drill"
+log "rolling back the clean 083 through 077 tails before the 076 guard drill"
+run_migrate down >"${work_dir}/down-083.log" 2>&1
+grep -Fq "down 083_skill_supply_chain" "${work_dir}/down-083.log"
+run_migrate down >"${work_dir}/down-082.log" 2>&1
+grep -Fq "down 082_assistant_library" "${work_dir}/down-082.log"
 run_migrate down >"${work_dir}/down-081.log" 2>&1
 grep -Fq "down 081_mcp_legacy_context7_artifact_rebind" "${work_dir}/down-081.log"
 run_migrate down >"${work_dir}/down-080.log" 2>&1
@@ -207,7 +213,7 @@ VALUES (
 );
 " >/dev/null
 
-log "reapplying 074 -> 081 and verifying schema, metadata, retention, grants, and stdio persistence"
+log "reapplying 074 -> 083 and verifying schema, metadata, retention, grants, and stdio persistence"
 run_migrate up >"${work_dir}/reup.log" 2>&1
 grep -Fq "up 074_mcp_tools_foundation" "${work_dir}/reup.log"
 grep -Fq "up 075_mcp_runtime_role_grants" "${work_dir}/reup.log"
@@ -217,6 +223,8 @@ grep -Fq "up 078_mcp_legacy_tavily_runner_repair" "${work_dir}/reup.log"
 grep -Fq "up 079_mcp_tavily_credential_revalidation" "${work_dir}/reup.log"
 grep -Fq "up 080_mcp_legacy_deepwiki_icon" "${work_dir}/reup.log"
 grep -Fq "up 081_mcp_legacy_context7_artifact_rebind" "${work_dir}/reup.log"
+grep -Fq "up 082_assistant_library" "${work_dir}/reup.log"
+grep -Fq "up 083_skill_supply_chain" "${work_dir}/reup.log"
 psql_command "
 DO \$\$
 DECLARE
@@ -272,4 +280,4 @@ log "proving a second replay remains a no-op"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 
-log "passed (fresh through 081, replay, guarded 076 down/up, metadata, retention, runtime grants, stdio repository lifecycle)"
+log "passed (fresh through 083, replay, guarded 076 down/up, metadata, retention, runtime grants, stdio repository lifecycle)"

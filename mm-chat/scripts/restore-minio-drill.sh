@@ -56,6 +56,22 @@ while IFS= read -r object_key; do
 done < /mcp-object-sample.txt
 echo "mcp_tool_result_objects_checked=${mcp_sample_count}"
 
+skill_sample_count=0
+while IFS= read -r object_key; do
+  if [ -n "$object_key" ]; then
+    case "$object_key" in
+      skill-quarantine/sha256/*.zip|skill-packages/sha256/*.zip|skill-sboms/sha256/*.cdx.json) ;;
+      *)
+        echo "invalid_skill_supply_object_key" >&2
+        exit 1
+        ;;
+    esac
+    mc stat "${alias_name}/${drill_bucket}/${object_key}" >/dev/null
+    skill_sample_count=$((skill_sample_count + 1))
+  fi
+done < /skill-object-sample.txt
+echo "skill_supply_objects_checked=${skill_sample_count}"
+
 mc rb --force "${alias_name}/${drill_bucket}" >/dev/null
 bucket_created=false
 echo "cleanup=drill_bucket_removed"

@@ -9,6 +9,7 @@
     "package",
     "runtime",
     "entrypoints",
+    "dependencies",
     "capabilityRequests",
     "egressRequests",
     "secretSlots",
@@ -25,6 +26,12 @@
       "maxItems": 16,
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/entrypoint" }
+    },
+    "dependencies": {
+      "type": "array",
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/dependency" }
     },
     "capabilityRequests": {
       "type": "array",
@@ -54,10 +61,6 @@
       "maxLength": 253,
       "pattern": "^(?![0-9]+(?:\\.[0-9]+){3}$)(?!localhost$)(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
     },
-    "fingerprint": {
-      "type": "string",
-      "pattern": "^sha256:[a-f0-9]{64}$"
-    },
     "identifier": {
       "type": "string",
       "minLength": 1,
@@ -75,13 +78,7 @@
       "additionalProperties": false,
       "required": [
         "name",
-        "version",
-        "sourceType",
-        "sourceRef",
-        "packageFingerprint",
-        "runtimeBundleFingerprint",
-        "sbomFingerprint",
-        "admissionId"
+        "version"
       ],
       "properties": {
         "name": { "$ref": "#/$defs/identifier" },
@@ -90,36 +87,8 @@
           "minLength": 1,
           "maxLength": 64,
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
-        },
-        "sourceType": {
-          "enum": ["official", "lobehub", "git", "zip"]
-        },
-        "sourceRef": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 512
-        },
-        "packageFingerprint": { "$ref": "#/$defs/fingerprint" },
-        "runtimeBundleFingerprint": { "$ref": "#/$defs/fingerprint" },
-        "sbomFingerprint": { "$ref": "#/$defs/fingerprint" },
-        "admissionId": {
-          "type": "string",
-          "pattern": "^admission_[a-z0-9]{16,64}$"
         }
-      },
-      "allOf": [
-        {
-          "if": {
-            "properties": { "sourceType": { "const": "git" } },
-            "required": ["sourceType"]
-          },
-          "then": {
-            "properties": {
-              "sourceRef": { "pattern": "#[a-f0-9]{40}$" }
-            }
-          }
-        }
-      ]
+      }
     },
     "runtime": {
       "type": "object",
@@ -166,6 +135,18 @@
         },
         "workingDirectory": {
           "enum": ["/workspace", "/scratch"]
+        }
+      }
+    },
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "digest"],
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
         }
       }
     },

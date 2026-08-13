@@ -39,6 +39,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/redisstate"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 	"neo-chat/mm-chat/backend/internal/sessioncache"
+	"neo-chat/mm-chat/backend/internal/skillsupply"
 	"neo-chat/mm-chat/backend/internal/storage"
 	"neo-chat/mm-chat/backend/internal/teams"
 	"neo-chat/mm-chat/backend/internal/usermemory"
@@ -323,6 +324,19 @@ func main() {
 	}
 	mcpService := newMCPService(cfg, sqlDB, providerSecretVault, objectStore, logger, marketplace)
 	agentService := agents.NewService(agentOptions...)
+	var skillRepository skillsupply.Repository
+	if sqlDB != nil {
+		skillRepository = skillsupply.NewPostgresRepository(sqlDB)
+	}
+	skillOptions := []skillsupply.ServiceOption{
+		skillsupply.WithRepository(skillRepository),
+		skillsupply.WithObjectStore(objectStore),
+		skillsupply.WithAdministratorUserID(cfg.Auth.BootstrapUserID),
+	}
+	if lobeHubMarketplace != nil {
+		skillOptions = append(skillOptions, skillsupply.WithLobeHubFetcher(lobeHubMarketplace))
+	}
+	skillSupplyService := skillsupply.NewService(skillOptions...)
 
 	serverOptions := []httpserver.Option{
 		httpserver.WithChatRepository(chatRepo),
@@ -348,6 +362,7 @@ func main() {
 		httpserver.WithProviderSecretVault(providerSecretVault),
 		httpserver.WithMCPService(mcpService),
 		httpserver.WithAgentService(agentService),
+		httpserver.WithSkillSupplyService(skillSupplyService),
 		httpserver.WithLogger(logger),
 	}
 	if runtimeConfigRepo != nil {

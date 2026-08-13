@@ -32,6 +32,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/ragsource"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
+	"neo-chat/mm-chat/backend/internal/skillsupply"
 	"neo-chat/mm-chat/backend/internal/storage"
 	"neo-chat/mm-chat/backend/internal/teams"
 	"neo-chat/mm-chat/backend/internal/usermemory"
@@ -76,6 +77,7 @@ type options struct {
 	teamService                *teams.Service
 	knowledgeService           *knowledge.Service
 	agentService               *agents.Service
+	skillSupplyService         *skillsupply.Service
 	mcpService                 *mcpclient.Service
 	imageJobService            *imagejobs.Service
 	voiceJobService            *voicejobs.Service
@@ -1022,6 +1024,12 @@ func WithAgentService(service *agents.Service) Option {
 	}
 }
 
+func WithSkillSupplyService(service *skillsupply.Service) Option {
+	return func(opts *options) {
+		opts.skillSupplyService = service
+	}
+}
+
 func WithMCPService(service *mcpclient.Service) Option {
 	return func(opts *options) {
 		opts.mcpService = service
@@ -1250,6 +1258,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	teamHandler := teams.NewHandler(resolvedOptions.teamService)
 	knowledgeHandler := knowledge.NewHandler(resolvedOptions.knowledgeService)
 	agentHandler := agents.NewHandler(resolvedOptions.agentService)
+	skillSupplyHandler := skillsupply.NewHandler(resolvedOptions.skillSupplyService)
 	codeJobHandler := codejobs.NewHandler(nil)
 	imageJobHandler := imagejobs.NewHandler(resolvedOptions.imageJobService)
 	jobControlHandler := jobcontrol.NewHandler(nil)
@@ -1314,6 +1323,8 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/agents/", agentHandler)
 	mux.Handle("/v1/assistants", agentHandler)
 	mux.Handle("/v1/assistants/", agentHandler)
+	mux.Handle("/v1/skills", skillSupplyHandler)
+	mux.Handle("/v1/skills/", skillSupplyHandler)
 	mux.Handle("/v1/mcp/", mcpHandler)
 	mux.Handle("/v1/code/executions", codeJobHandler)
 	mux.Handle("/v1/images/generations", imageJobHandler)

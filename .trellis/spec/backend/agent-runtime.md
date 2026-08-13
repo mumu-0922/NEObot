@@ -6,8 +6,9 @@
 
 Apply this contract for Agent Skill admission, Run/Step/Attempt persistence,
 Capability Grants, Runner RPC, side effects, Child Agents, Cron, Draft learning,
-Kill Switches, or the legacy text-Skill cutover. Phase 0 is design-only; current
-Chat, MCP and `/v1/code/executions` behavior remains unchanged.
+Kill Switches, or the legacy text-Skill cutover. G20.1 implements only the
+no-execute supply chain; current Chat, MCP and `/v1/code/executions` behavior
+remains unchanged.
 
 ### 2. Signatures
 
@@ -31,6 +32,10 @@ Chat, MCP and `/v1/code/executions` behavior remains unchanged.
   cannot publish output, Artifacts, Prepare or Commit.
 - Package/manifest/model/Tool output is untrusted and never creates authority.
   Agent Skills `allowed-tools` is declarative only.
+- Immutable Skill package replay compares decoded `allowed_tools` and
+  `capability_requests` structures, not their original JSON bytes: PostgreSQL
+  `jsonb` normalizes object representation, so byte comparison would falsely
+  report `SKILL_PACKAGE_COLLISION` for an idempotent candidate.
 - Mutable/external actions use Prepare/Commit. Missing acknowledgement after a
   possible effect is terminal `outcome_unknown`; never blind-retry the Commit.
 - Root Run depth is `0`; Child is exactly `1`. Child Registry construction
@@ -73,6 +78,14 @@ Chat, MCP and `/v1/code/executions` behavior remains unchanged.
 - Phase 0: schema check, positive/negative fixtures, cross-contract invariants,
   Markdown anchors/links and current code-execution fail-closed proof.
 - Supply chain: malicious archive/source drift/fingerprint/SBOM/admission corpus.
+- Supply-chain PostgreSQL replay must insert the same candidate twice through
+  migration `083` and prove normalized `jsonb` metadata remains idempotent.
+- G20.1 signatures: `internal/skillsupply`, migration `083`,
+  `/v1/skills/candidates|store|library`, and
+  `scripts/verify-skill-supply-chain{,-postgres17}.sh`.
+- Candidate `neo.runtime.json` contains declarations only. Source/admission and
+  package/runtime/SBOM fingerprint bindings are server-generated envelope
+  fields; complete manifest bytes remain inside package identity.
 - Durable state: PostgreSQL replay/down/up, state/race/lease/restart/projection,
   least privilege, backup/restore and retention.
 - Runner: exact target-host Isolation Acceptance Suite, resource/escape/network/
