@@ -1631,3 +1631,36 @@ Delivered the administrator-managed four-way MCP Marketplace install flow, share
 ### Next Steps
 
 - None - task complete
+
+
+## Session 38: Clarify MCP activity and Web citations
+
+**Date**: 2026-08-13
+**Task**: Clarify MCP activity and Web citations
+**Branch**: `main`
+
+### Summary
+
+Made MCP process rows readable with current server names and humanized actions, fixed sparse Web citation links, verified focused frontend/backend gates, rebuilt and deployed healthy frontend/backend runtime images, and manually proved combined Web plus Context7 execution.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `083d1d13` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
