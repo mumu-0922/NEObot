@@ -1730,3 +1730,36 @@ Pinned Hermes and Agent Skills evidence; defined the Neo Agent Runtime C4/ArchiM
 ### Next Steps
 
 - None - task complete
+
+
+## Session 41: Agent Runtime G20.1 Skill supply chain
+
+**Date**: 2026-08-13
+**Task**: Agent Runtime G20.1 Skill supply chain
+**Branch**: `main`
+
+### Summary
+
+Implemented the server-authoritative no-execute Skill supply chain and Store authority with exact source adapters, deterministic package/runtime/SBOM identities, migration 083, administrator CAS admission, owner-bound installs, backup/restore sampling, and full offline/PostgreSQL/standalone verification.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `33b1352b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

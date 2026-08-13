@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 40
+- **Total Sessions**: 41
 - **Last Active**: 2026-08-13
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1732 | Active |
+| `journal-1.md` | ~1765 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 41 | 2026-08-13 | Agent Runtime G20.1 Skill supply chain | `33b1352b` | `main` |
 | 40 | 2026-08-13 | Agent Runtime Phase 0 contracts | `231e0e60` | `main` |
 | 39 | 2026-08-13 | Ship server-owned Assistant Store | `a443231c` | `main` |
 | 38 | 2026-08-13 | Clarify MCP activity and Web citations | `083d1d13` | `main` |
