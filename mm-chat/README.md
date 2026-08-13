@@ -123,6 +123,15 @@ Use `./scripts/verify-standalone.sh --full` to install and verify the frontend
 and run the Go test suite inside the isolated copy. The final deletion of the
 former root application remains a separate owner-confirmed destructive gate.
 
+The design-only G20 Agent Runtime contracts have a focused offline gate:
+
+```bash
+./scripts/verify-agent-runtime-phase0.sh
+```
+
+This validates schemas, positive/negative fixtures and fail-closed boundaries;
+it does not enable a Runner or claim rootless OCI isolation acceptance.
+
 Detailed deployment, backup, and rollback instructions live in
 [`docs/deployment/`](./docs/deployment/). Migration state is tracked in
 [`docs/tracking/progress.md`](./docs/tracking/progress.md) and

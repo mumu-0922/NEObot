@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neo-chat.local/schemas/neo-run-event.schema.json",
+  "title": "Neo Durable Run Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "runId",
+    "sequence",
+    "occurredAt",
+    "kind",
+    "actor",
+    "transition"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "neo.run-event/v1" },
+    "eventId": { "type": "string", "pattern": "^event_[a-z0-9]{16,64}$" },
+    "runId": { "type": "string", "pattern": "^run_[a-z0-9]{16,64}$" },
+    "stepId": { "type": "string", "pattern": "^step_[a-z0-9]{16,64}$" },
+    "attemptId": { "type": "string", "pattern": "^attempt_[a-z0-9]{16,64}$" },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "kind": {
+      "enum": [
+        "run.transition",
+        "step.transition",
+        "attempt.transition",
+        "lease.acquired",
+        "lease.heartbeat",
+        "lease.expired",
+        "approval.requested",
+        "approval.resolved",
+        "side_effect.prepared",
+        "side_effect.commit_started",
+        "side_effect.commit_resolved",
+        "kill.requested",
+        "artifact.published"
+      ]
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "enum": ["user", "orchestrator", "runner", "scheduler", "operator"] },
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity", "to"],
+      "properties": {
+        "entity": { "enum": ["run", "step", "attempt", "fact"] },
+        "from": { "$ref": "#/$defs/state" },
+        "to": { "$ref": "#/$defs/state" },
+        "reasonCode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        }
+      }
+    },
+    "lease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generation", "expiresAt"],
+      "properties": {
+        "generation": { "type": "integer", "minimum": 1 },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "sideEffect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intentId", "intentFingerprint", "phase"],
+      "properties": {
+        "intentId": { "type": "string", "pattern": "^intent_[a-z0-9]{16,64}$" },
+        "intentFingerprint": { "$ref": "#/$defs/fingerprint" },
+        "phase": { "enum": ["prepared", "commit_started", "committed", "replayed", "rejected", "outcome_unknown"] },
+        "idempotencyKey": { "type": "string", "pattern": "^commit_[A-Za-z0-9_-]{24,128}$" },
+        "receiptFingerprint": { "$ref": "#/$defs/fingerprint" }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactId", "contentFingerprint", "sizeBytes"],
+      "properties": {
+        "artifactId": { "type": "string", "pattern": "^artifact_[a-z0-9]{16,64}$" },
+        "contentFingerprint": { "$ref": "#/$defs/fingerprint" },
+        "sizeBytes": { "type": "integer", "minimum": 0, "maximum": 1073741824 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "step.transition" } }, "required": ["kind"] },
+      "then": { "required": ["stepId"] }
+    },
+    {
+      "if": { "properties": { "kind": { "pattern": "^(attempt\\.|lease\\.|side_effect\\.|artifact\\.)" } }, "required": ["kind"] },
+      "then": { "required": ["stepId", "attemptId"] }
+    },
+    {
+      "if": { "properties": { "kind": { "pattern": "^lease\\." } }, "required": ["kind"] },
+      "then": { "required": ["lease"] }
+    },
+    {
+      "if": { "properties": { "kind": { "pattern": "^side_effect\\." } }, "required": ["kind"] },
+      "then": { "required": ["sideEffect", "lease"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "artifact.published" } }, "required": ["kind"] },
+      "then": { "required": ["artifact"] }
+    }
+  ],
+  "$defs": {
+    "fingerprint": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "state": {
+      "enum": [
+        "pending",
+        "admitted",
+        "queued",
+        "ready",
+        "leased",
+        "starting",
+        "running",
+        "prepared",
+        "committing",
+        "succeeded",
+        "failed",
+        "skipped",
+        "canceled",
+        "killed",
+        "outcome_unknown",
+        "lease_expired",
+        "requested",
+        "approved",
+        "denied",
+        "published"
+      ]
+    }
+  }
+}

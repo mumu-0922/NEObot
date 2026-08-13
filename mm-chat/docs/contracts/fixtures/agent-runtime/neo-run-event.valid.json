@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "neo.run-event/v1",
+  "eventId": "event_0123456789abcdef",
+  "runId": "run_0123456789abcdef",
+  "stepId": "step_0123456789abcdef",
+  "attemptId": "attempt_0123456789abcdef",
+  "sequence": 12,
+  "occurredAt": "2026-08-13T00:05:00Z",
+  "kind": "side_effect.commit_resolved",
+  "actor": {
+    "type": "runner",
+    "id": "runner_single_server"
+  },
+  "transition": {
+    "entity": "attempt",
+    "from": "committing",
+    "to": "succeeded",
+    "reasonCode": "COMMIT_ACKNOWLEDGED"
+  },
+  "lease": {
+    "generation": 1,
+    "expiresAt": "2026-08-13T00:06:00Z"
+  },
+  "sideEffect": {
+    "intentId": "intent_0123456789abcdef",
+    "intentFingerprint": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "phase": "committed",
+    "idempotencyKey": "commit_0123456789abcdef01234567",
+    "receiptFingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+}

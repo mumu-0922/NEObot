@@ -10,6 +10,7 @@
 | [Dependency security](./dependency-security.md)             | Lockfile remediation, official-registry audits, override compatibility, and release verification.         |
 | [Runtime recreate image pinning](./runtime-recreate-image-pinning.md) | Immutable image selection, schema compatibility, and rollback requirements for live Compose recreation. |
 | [MCP Runner](./mcp-runner.md)                         | MCP manifest, dedicated Runner image/token/topology, release, backup/restore, retention, and rollback. |
+| [Agent Runtime](./agent-runtime.md) | Non-root `neo-runnerd`, rootless OCI capability probe/isolation, broker boundaries, Kill Switches, release, backup/restore, and cutover. |
 | [Session auto-commit](./session-auto-commit.md)             | Exact journal/index staging, commit isolation, ignored paths, and regression tests.                       |
 | [Trellis scaffold boundary](./trellis-scaffold-boundary.md) | Shared Trellis/Codex scaffold, local state exclusions, explicit staging, and fresh-clone verification.    |
 
@@ -46,6 +47,14 @@ or release changes, read [`mcp-runner.md`](./mcp-runner.md). Preserve the
 dedicated immutable image, independent secret, no-host-port network boundary,
 paired Postgres/MinIO backup, and non-destructive rollback.
 
+For Agent Runtime host/runtime, `neo-runnerd`, OCI isolation, Runner mTLS,
+Workspace/Scratch/Artifact, Egress/Secret Broker, Kill Switch, backup/restore,
+or legacy Skill cutover changes, read
+[`agent-runtime.md`](./agent-runtime.md). Require the exact non-root account
+capability probe and fingerprint-bound Isolation Acceptance evidence; never
+fall back to rootful Docker, privilege, host sockets/mounts/network, or secrets
+in Sandbox environment.
+
 ## Quality check
 
 - Run `bash mm-chat/scripts/verify-standalone.sh --full`.
@@ -55,5 +64,10 @@ paired Postgres/MinIO backup, and non-destructive rollback.
   by a root-only cleanup.
 - Validate GitHub Actions syntax and live health when deployment entrypoints
   change.
+- For Agent Runtime Phase 0, run
+  `bash mm-chat/scripts/verify-agent-runtime-phase0.sh`. A production Runtime
+  release additionally requires the target-host Isolation Acceptance Suite,
+  Kill/reap/restart, Secret/network/filesystem negative proofs, paired backup/
+  restore, and the owning G20 promotion gate.
 
 **Language**: All documentation should be written in English.

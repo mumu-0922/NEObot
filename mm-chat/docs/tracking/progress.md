@@ -1636,6 +1636,24 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
     - [x] G19.12 Selected-Knowledge uncertainty guard, preserved Auto semantics,
           repeated/full gates, clean real same-question `[K1]` proof, cleanup,
           and rollback record.
+  - [ ] G20 Neo Agent Runtime, executed in isolated groups per
+        [`g20-agent-runtime-plan.md`](./g20-agent-runtime-plan.md).
+    - [x] G20.0 Phase 0 architecture and executable-contract baseline: pinned
+          Hermes/Agent Skills research, C4/ArchiMate, STRIDE, Run/Step/Attempt,
+          Runner RPC, Manifest/Grant/Event schemas and fixtures, rootless
+          isolation acceptance, Prepare/Commit, depth-1 registry exclusion,
+          Cron/Draft learning, Kill Switches, legacy hard-delete cutover, and
+          offline verifier with no production behavior change.
+    - [ ] G20.1 Skill supply chain and Store authority.
+    - [ ] G20.2 Durable Orchestrator foundation.
+    - [ ] G20.3 `neo-runnerd` and rootless isolation.
+    - [ ] G20.4 Tool, Egress, Secret and side-effect brokers.
+    - [ ] G20.5 Child Agent depth 1.
+    - [ ] G20.6 Cron durable scheduling.
+    - [ ] G20.7 Draft-only learning.
+    - [ ] G20.8 Product UI and shadow execution.
+    - [ ] G20.9 Legacy Skill deletion and production cutover.
+    - [ ] G20.10 Production closure.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

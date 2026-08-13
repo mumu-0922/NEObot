@@ -11,6 +11,7 @@
 | [Chat Tool Loop](./chat-tool-loop.md)               | G19 provider-normalized Tool rounds, three-state Search authority, Memory first-round routing, process persistence, approvals, and citation truth |
 | [MCP Tools](./mcp-tools.md)                         | Server-authoritative MCP API, grants/selections, native Tool continuation, transports, results, retention, and Plugin retirement |
 | [Assistant Store](./assistant-store.md)             | Server-owned prompt presets, LobeHub admission/fingerprints, revisions, persistence, and rollback boundaries |
+| [Agent Runtime](./agent-runtime.md) | Package-Skill admission, durable Run/Step/Attempt, Capability Grants, Runner RPC, side effects, depth-1 delegation, Cron/learning, and legacy cutover |
 | [Direct chat attachments](./chat-attachments.md)    | Attachment-only messages, native images, bounded document extraction, provider context, and explicit failures       |
 | [Hosted media provider smoke](./provider-live-smoke.md) | Exact live-provider authorization, one-off credentials, explicit TTS voices, artifacts, and sanitized evidence    |
 | [Hosted TTS production](./hosted-tts-production.md) | Dedicated SiliconFlow Voice authority, exact activation, server-mode playback, per-user cache, and cleanup |
@@ -76,6 +77,21 @@ For Assistant library, Store, admission, or LobeHub adapter changes:
    plugins, Knowledge Bases, and permissions.
 4. Prove live and legacy detail paths produce the exact fingerprint displayed
    to administrators before applying a migration or release.
+
+For Agent Skill packages, Agent Run persistence, Runner RPC, Capability Grants,
+Child Agents, Cron, Draft learning, Kill Switches, or legacy Skill cutover:
+
+1. Read [`agent-runtime.md`](./agent-runtime.md),
+   [`chat-tool-loop.md`](./chat-tool-loop.md), and
+   [`mcp-tools.md`](./mcp-tools.md).
+2. Trace admitted package/runtime -> frozen Grant/snapshot -> leased Attempt ->
+   rootless Runner launch -> brokered action -> append-only terminal event ->
+   cleanup/recovery.
+3. Preserve PostgreSQL authority, lease-generation fencing, Prepare/Commit
+   `outcome_unknown`, depth 1 plus physical `delegate_task` removal, Draft-only
+   learning, and cleanup while disabled.
+4. Keep current text Skills and `CODE_EXECUTION_UNAVAILABLE` unchanged until
+   their owning G20 cutover/runtime groups pass the exact promotion gates.
 
 For chat upload, attachment parsing, or provider attachment changes:
 
@@ -273,6 +289,11 @@ or teardown changes:
   Vitest/typecheck, `test-preflight-single-server.sh`, and
   `verify-mcp-postgres17.sh`. Do not require unrelated full suites for an
   intermediate MCP-only iteration.
+- For Agent Runtime Phase 0 changes, run
+  `bash mm-chat/scripts/verify-agent-runtime-phase0.sh`. Later implementation
+  groups must additionally run their PostgreSQL, rootless Isolation Acceptance,
+  side-effect crash, Child-depth, backup/restore, clean-copy, and cutover gates;
+  the offline Phase 0 check is never production-isolation evidence.
 - For hosted provider smoke changes, run focused executor/gate tests, all Go
   tests and vet, a diff secret scan, then the exact authorized live command.
 - For production TTS changes, also run migration `051` replay/cache integration,

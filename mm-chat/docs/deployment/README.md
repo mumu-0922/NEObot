@@ -15,6 +15,7 @@ Outbox state.
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`single-server-compose.md`](./single-server-compose.md)               | Compose topology, profiles, Phase 15.2B dark-run Worker boundary, first boot, release, and rollback checklist.                              |
 | [`mcp-runner.md`](./mcp-runner.md)                                     | MCP manifest validation, optional hardened stdio Runner, token/image preflight, lifecycle, retention, and rollback.                         |
+| [`agent-runtime.md`](./agent-runtime.md)                               | Design-only G20 non-root `neo-runnerd`, rootless OCI probe/isolation, broker, Kill Switch, release, backup/restore, and legacy cutover runbook. |
 | [`postgres-single-server.md`](./postgres-single-server.md)             | Current Postgres runtime covering private ports, DB principals, health checks, migration head, backup/restore, image fencing, and rollback. |
 | [`redis-temporary-state.md`](./redis-temporary-state.md)               | Phase 7 Redis runbook for non-authoritative temporary state, stream cancellation flags, private-network rules, and flush behavior.          |
 | [`backup-restore.md`](./backup-restore.md)                             | Backup scripts, checksum verification, Postgres restore drill, MinIO restore drill, retention, and destructive-restore warnings.            |
@@ -28,6 +29,10 @@ Outbox state.
 
 - Compose assets are isolated under `mm-chat/`; do not overwrite the
   repository-root deployment files.
+- G20 Agent Runtime is not yet part of Compose or host services. Do not treat
+  Docker availability or the existing `mcp-runner` as rootless OCI acceptance;
+  later groups must pass the exact target-host capability probe and Isolation
+  Acceptance Suite before adding or enabling `neo-runnerd`.
 - Runtime data and local backups belong under `mm-chat/data/` and
   `mm-chat/backup/`, both gitignored.
 - MinIO must remain private; the Go backend is the public file authorization

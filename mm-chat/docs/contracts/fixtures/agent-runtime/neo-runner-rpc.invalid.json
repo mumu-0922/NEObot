@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "neo.runner-rpc/v1",
+  "method": "launch",
+  "requestId": "rpc_0123456789abcdef",
+  "sentAt": "2026-08-13T00:00:00Z",
+  "nonce": "0123456789abcdef0123456789abcdef",
+  "body": {
+    "attempt": {
+      "runId": "run_0123456789abcdef",
+      "stepId": "step_0123456789abcdef",
+      "attemptId": "attempt_0123456789abcdef",
+      "leaseGeneration": 1,
+      "leaseToken": "lease_0123456789abcdef01234567"
+    },
+    "grantId": "grant_0123456789abcdef",
+    "grantFingerprint": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    "snapshotFingerprint": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "sandbox": {
+      "runtimeBundleFingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "packageFingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "image": "registry.example/neo/repository-audit@sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "uid": 0,
+      "gid": 0,
+      "rootfsReadOnly": false,
+      "noNewPrivileges": false,
+      "capabilities": ["CAP_SYS_ADMIN"],
+      "seccompProfileFingerprint": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "networkMode": "none",
+      "workspaceSnapshotId": "workspace_snapshot_0123456789abcdef",
+      "resources": {
+        "cpuMillis": 1000,
+        "memoryMiB": 512,
+        "pids": 64,
+        "wallSeconds": 300,
+        "outputBytes": 2097152
+      }
+    },
+    "toolRegistry": {
+      "depth": 1,
+      "tools": ["workspace.read", "delegate_task"],
+      "registryFingerprint": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+    },
+    "argv": ["/opt/neo/bin/repository-audit", "--workspace", "/workspace"]
+  }
+}

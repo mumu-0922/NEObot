@@ -1,0 +1,596 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neo-chat.local/schemas/neo-runner-rpc.schema.json",
+  "title": "Neo Runner RPC Envelope",
+  "oneOf": [
+    { "$ref": "#/$defs/probeRequest" },
+    { "$ref": "#/$defs/probeResponse" },
+    { "$ref": "#/$defs/launchRequest" },
+    { "$ref": "#/$defs/launchResponse" },
+    { "$ref": "#/$defs/heartbeatRequest" },
+    { "$ref": "#/$defs/heartbeatResponse" },
+    { "$ref": "#/$defs/cancelRequest" },
+    { "$ref": "#/$defs/cancelResponse" },
+    { "$ref": "#/$defs/prepareRequest" },
+    { "$ref": "#/$defs/prepareResponse" },
+    { "$ref": "#/$defs/commitRequest" },
+    { "$ref": "#/$defs/commitResponse" }
+  ],
+  "$defs": {
+    "fingerprint": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "requestId": { "type": "string", "pattern": "^rpc_[a-z0-9]{16,64}$" },
+    "runId": { "type": "string", "pattern": "^run_[a-z0-9]{16,64}$" },
+    "stepId": { "type": "string", "pattern": "^step_[a-z0-9]{16,64}$" },
+    "attemptId": { "type": "string", "pattern": "^attempt_[a-z0-9]{16,64}$" },
+    "nonce": { "type": "string", "pattern": "^[A-Za-z0-9_-]{32,128}$" },
+    "dateTime": { "type": "string", "format": "date-time" },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+    },
+    "base": {
+      "type": "object",
+      "required": ["schemaVersion", "method", "requestId", "sentAt", "nonce"],
+      "properties": {
+        "schemaVersion": { "const": "neo.runner-rpc/v1" },
+        "method": {
+          "enum": [
+            "probe",
+            "probe.result",
+            "launch",
+            "launch.result",
+            "heartbeat",
+            "heartbeat.result",
+            "cancel",
+            "cancel.result",
+            "prepare",
+            "prepare.result",
+            "commit",
+            "commit.result"
+          ]
+        },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "sentAt": { "$ref": "#/$defs/dateTime" },
+        "nonce": { "$ref": "#/$defs/nonce" }
+      }
+    },
+    "attemptRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "stepId", "attemptId", "leaseGeneration", "leaseToken"],
+      "properties": {
+        "runId": { "$ref": "#/$defs/runId" },
+        "stepId": { "$ref": "#/$defs/stepId" },
+        "attemptId": { "$ref": "#/$defs/attemptId" },
+        "leaseGeneration": { "type": "integer", "minimum": 1 },
+        "leaseToken": { "type": "string", "pattern": "^lease_[A-Za-z0-9_-]{24,128}$" }
+      }
+    },
+    "sandbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtimeBundleFingerprint",
+        "packageFingerprint",
+        "image",
+        "uid",
+        "gid",
+        "rootfsReadOnly",
+        "noNewPrivileges",
+        "capabilities",
+        "seccompProfileFingerprint",
+        "networkMode",
+        "workspaceSnapshotId",
+        "resources"
+      ],
+      "properties": {
+        "runtimeBundleFingerprint": { "$ref": "#/$defs/fingerprint" },
+        "packageFingerprint": { "$ref": "#/$defs/fingerprint" },
+        "image": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^@\\s]+@sha256:[a-f0-9]{64}$"
+        },
+        "uid": { "type": "integer", "minimum": 1 },
+        "gid": { "type": "integer", "minimum": 1 },
+        "rootfsReadOnly": { "const": true },
+        "noNewPrivileges": { "const": true },
+        "capabilities": { "type": "array", "maxItems": 0 },
+        "seccompProfileFingerprint": { "$ref": "#/$defs/fingerprint" },
+        "networkMode": { "enum": ["none", "brokered"] },
+        "workspaceSnapshotId": {
+          "type": "string",
+          "pattern": "^workspace_snapshot_[a-z0-9]{16,64}$"
+        },
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cpuMillis", "memoryMiB", "pids", "wallSeconds", "outputBytes"],
+          "properties": {
+            "cpuMillis": { "type": "integer", "minimum": 100, "maximum": 8000 },
+            "memoryMiB": { "type": "integer", "minimum": 64, "maximum": 16384 },
+            "pids": { "type": "integer", "minimum": 8, "maximum": 1024 },
+            "wallSeconds": { "type": "integer", "minimum": 1, "maximum": 86400 },
+            "outputBytes": { "type": "integer", "minimum": 1, "maximum": 33554432 }
+          }
+        }
+      }
+    },
+    "toolRegistry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["depth", "tools", "registryFingerprint"],
+      "properties": {
+        "depth": { "type": "integer", "minimum": 0, "maximum": 1 },
+        "tools": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "registryFingerprint": { "$ref": "#/$defs/fingerprint" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "depth": { "const": 1 } }, "required": ["depth"] },
+          "then": {
+            "properties": {
+              "tools": {
+                "not": {
+                  "contains": {
+                    "enum": [
+                      "delegate_task",
+                      "cron_manage",
+                      "grant_manage",
+                      "secret_manage",
+                      "runtime_manage"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "retryable"],
+      "properties": {
+        "code": {
+          "enum": [
+            "AUTH_FAILED",
+            "REPLAY_DETECTED",
+            "VERSION_UNSUPPORTED",
+            "RUNTIME_UNAVAILABLE",
+            "ISOLATION_UNAVAILABLE",
+            "SNAPSHOT_MISMATCH",
+            "GRANT_DENIED",
+            "LEASE_STALE",
+            "KILL_SWITCH_ACTIVE",
+            "INVALID_TRANSITION",
+            "OUTCOME_UNKNOWN",
+            "INTERNAL_ERROR"
+          ]
+        },
+        "retryable": { "type": "boolean" }
+      }
+    },
+    "probeRequest": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "method", "requestId", "sentAt", "nonce", "body"],
+          "properties": {
+            "schemaVersion": { "const": "neo.runner-rpc/v1" },
+            "method": { "const": "probe" },
+            "requestId": { "$ref": "#/$defs/requestId" },
+            "sentAt": { "$ref": "#/$defs/dateTime" },
+            "nonce": { "$ref": "#/$defs/nonce" },
+            "body": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["requiredFeatures"],
+              "properties": {
+                "requiredFeatures": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "enum": [
+                      "rootless_userns",
+                      "cgroup_v2",
+                      "seccomp",
+                      "readonly_rootfs",
+                      "idmapped_workspace",
+                      "network_broker",
+                      "pidfd_kill"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "probeResponse": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "method", "requestId", "sentAt", "nonce", "body"],
+          "properties": {
+            "schemaVersion": { "const": "neo.runner-rpc/v1" },
+            "method": { "const": "probe.result" },
+            "requestId": { "$ref": "#/$defs/requestId" },
+            "sentAt": { "$ref": "#/$defs/dateTime" },
+            "nonce": { "$ref": "#/$defs/nonce" },
+            "body": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["ready", "runtime", "runtimeVersion", "features", "probeFingerprint"],
+              "properties": {
+                "ready": { "type": "boolean" },
+                "runtime": { "enum": ["podman", "crun", "runc"] },
+                "runtimeVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
+                "features": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "enum": [
+                      "rootless_userns",
+                      "cgroup_v2",
+                      "seccomp",
+                      "readonly_rootfs",
+                      "idmapped_workspace",
+                      "network_broker",
+                      "pidfd_kill"
+                    ]
+                  }
+                },
+                "probeFingerprint": { "$ref": "#/$defs/fingerprint" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "launchRequest": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "method", "requestId", "sentAt", "nonce", "body"],
+          "properties": {
+            "schemaVersion": { "const": "neo.runner-rpc/v1" },
+            "method": { "const": "launch" },
+            "requestId": { "$ref": "#/$defs/requestId" },
+            "sentAt": { "$ref": "#/$defs/dateTime" },
+            "nonce": { "$ref": "#/$defs/nonce" },
+            "body": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "attempt",
+                "grantId",
+                "grantFingerprint",
+                "snapshotFingerprint",
+                "sandbox",
+                "toolRegistry",
+                "argv"
+              ],
+              "properties": {
+                "attempt": { "$ref": "#/$defs/attemptRef" },
+                "grantId": { "type": "string", "pattern": "^grant_[a-z0-9]{16,64}$" },
+                "grantFingerprint": { "$ref": "#/$defs/fingerprint" },
+                "snapshotFingerprint": { "$ref": "#/$defs/fingerprint" },
+                "sandbox": { "$ref": "#/$defs/sandbox" },
+                "toolRegistry": { "$ref": "#/$defs/toolRegistry" },
+                "argv": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 32,
+                  "items": { "type": "string", "minLength": 1, "maxLength": 512 }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "launchResponse": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "method", "requestId", "sentAt", "nonce", "body"],
+          "properties": {
+            "schemaVersion": { "const": "neo.runner-rpc/v1" },
+            "method": { "const": "launch.result" },
+            "requestId": { "$ref": "#/$defs/requestId" },
+            "sentAt": { "$ref": "#/$defs/dateTime" },
+            "nonce": { "$ref": "#/$defs/nonce" },
+            "body": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["accepted", "attempt", "sandboxId", "startedAt"],
+                  "properties": {
+                    "accepted": { "const": true },
+                    "attempt": { "$ref": "#/$defs/attemptRef" },
+                    "sandboxId": { "type": "string", "pattern": "^sandbox_[a-z0-9]{16,64}$" },
+                    "startedAt": { "$ref": "#/$defs/dateTime" }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["accepted", "attempt", "error"],
+                  "properties": {
+                    "accepted": { "const": false },
+                    "attempt": { "$ref": "#/$defs/attemptRef" },
+                    "error": { "$ref": "#/$defs/error" }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "heartbeatRequest": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "method", "requestId", "sentAt", "nonce", "body"],
+          "properties": {
+            "schemaVersion": { "const": "neo.runner-rpc/v1" },
+            "method": { "const": "heartbeat" },
+            "requestId": { "$ref": "#/$defs/requestId" },
+            "sentAt": { "$ref": "#/$defs/dateTime" },
+            "nonce": { "$ref": "#/$defs/nonce" },
+            "body": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["attempt", "observedState", "lastEventSequence"],
+              "properties": {
+                "attempt": { "$ref": "#/$defs/attemptRef" },
+                "observedState": { "enum": ["starting", "running", "prepared", "committing"] },
+                "lastEventSequence": { "type": "integer", "minimum": 0 }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "heartbeatResponse": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "method", "requestId", "sentAt", "nonce", "body"],
+          "properties": {
+            "schemaVersion": { "const": "neo.runner-rpc/v1" },
+            "method": { "const": "heartbeat.result" },
+            "requestId": { "$ref": "#/$defs/requestId" },
+            "sentAt": { "$ref": "#/$defs/dateTime" },
+            "nonce": { "$ref": "#/$defs/nonce" },
+            "body": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["accepted", "leaseExpiresAt", "killRequested"],
+              "properties": {
+                "accepted": { "type": "boolean" },
+                "leaseExpiresAt": { "$ref": "#/$defs/dateTime" },
+                "killRequested": { "type": "boolean" },
+                "error": { "$ref": "#/$defs/error" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "cancelRequest": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "method", "requestId", "sentAt", "nonce", "body"],
+          "properties": {
+            "schemaVersion": { "const": "neo.runner-rpc/v1" },
+            "method": { "const": "cancel" },
+            "requestId": { "$ref": "#/$defs/requestId" },
+            "sentAt": { "$ref": "#/$defs/dateTime" },
+            "nonce": { "$ref": "#/$defs/nonce" },
+            "body": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["attempt", "mode", "reasonCode"],
+              "properties": {
+                "attempt": { "$ref": "#/$defs/attemptRef" },
+                "mode": { "enum": ["cancel", "kill"] },
+                "reasonCode": { "$ref": "#/$defs/identifier" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "cancelResponse": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "method", "requestId", "sentAt", "nonce", "body"],
+          "properties": {
+            "schemaVersion": { "const": "neo.runner-rpc/v1" },
+            "method": { "const": "cancel.result" },
+            "requestId": { "$ref": "#/$defs/requestId" },
+            "sentAt": { "$ref": "#/$defs/dateTime" },
+            "nonce": { "$ref": "#/$defs/nonce" },
+            "body": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["accepted", "observedTerminal"],
+              "properties": {
+                "accepted": { "type": "boolean" },
+                "observedTerminal": {
+                  "enum": ["none", "succeeded", "failed", "canceled", "killed", "outcome_unknown"]
+                },
+                "error": { "$ref": "#/$defs/error" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "prepareRequest": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "method", "requestId", "sentAt", "nonce", "body"],
+          "properties": {
+            "schemaVersion": { "const": "neo.runner-rpc/v1" },
+            "method": { "const": "prepare" },
+            "requestId": { "$ref": "#/$defs/requestId" },
+            "sentAt": { "$ref": "#/$defs/dateTime" },
+            "nonce": { "$ref": "#/$defs/nonce" },
+            "body": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["attempt", "grantId", "capability", "action", "resource", "argumentsFingerprint"],
+              "properties": {
+                "attempt": { "$ref": "#/$defs/attemptRef" },
+                "grantId": { "type": "string", "pattern": "^grant_[a-z0-9]{16,64}$" },
+                "capability": { "$ref": "#/$defs/identifier" },
+                "action": { "$ref": "#/$defs/identifier" },
+                "resource": { "type": "string", "minLength": 1, "maxLength": 256 },
+                "argumentsFingerprint": { "$ref": "#/$defs/fingerprint" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "prepareResponse": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "method", "requestId", "sentAt", "nonce", "body"],
+          "properties": {
+            "schemaVersion": { "const": "neo.runner-rpc/v1" },
+            "method": { "const": "prepare.result" },
+            "requestId": { "$ref": "#/$defs/requestId" },
+            "sentAt": { "$ref": "#/$defs/dateTime" },
+            "nonce": { "$ref": "#/$defs/nonce" },
+            "body": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["prepared", "intentId", "intentFingerprint", "approval", "expiresAt"],
+              "properties": {
+                "prepared": { "const": true },
+                "intentId": { "type": "string", "pattern": "^intent_[a-z0-9]{16,64}$" },
+                "intentFingerprint": { "$ref": "#/$defs/fingerprint" },
+                "approval": { "enum": ["automatic", "once", "per_commit"] },
+                "expiresAt": { "$ref": "#/$defs/dateTime" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "commitRequest": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "method", "requestId", "sentAt", "nonce", "body"],
+          "properties": {
+            "schemaVersion": { "const": "neo.runner-rpc/v1" },
+            "method": { "const": "commit" },
+            "requestId": { "$ref": "#/$defs/requestId" },
+            "sentAt": { "$ref": "#/$defs/dateTime" },
+            "nonce": { "$ref": "#/$defs/nonce" },
+            "body": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["attempt", "intentId", "intentFingerprint", "approvalId", "idempotencyKey"],
+              "properties": {
+                "attempt": { "$ref": "#/$defs/attemptRef" },
+                "intentId": { "type": "string", "pattern": "^intent_[a-z0-9]{16,64}$" },
+                "intentFingerprint": { "$ref": "#/$defs/fingerprint" },
+                "approvalId": { "type": "string", "pattern": "^approval_[a-z0-9]{16,64}$" },
+                "idempotencyKey": { "type": "string", "pattern": "^commit_[A-Za-z0-9_-]{24,128}$" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "commitResponse": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "method", "requestId", "sentAt", "nonce", "body"],
+          "properties": {
+            "schemaVersion": { "const": "neo.runner-rpc/v1" },
+            "method": { "const": "commit.result" },
+            "requestId": { "$ref": "#/$defs/requestId" },
+            "sentAt": { "$ref": "#/$defs/dateTime" },
+            "nonce": { "$ref": "#/$defs/nonce" },
+            "body": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["outcome", "idempotencyKey"],
+              "properties": {
+                "outcome": { "enum": ["committed", "replayed", "rejected", "outcome_unknown"] },
+                "idempotencyKey": { "type": "string", "pattern": "^commit_[A-Za-z0-9_-]{24,128}$" },
+                "receiptFingerprint": { "$ref": "#/$defs/fingerprint" },
+                "error": { "$ref": "#/$defs/error" }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": { "outcome": { "enum": ["committed", "replayed"] } },
+                    "required": ["outcome"]
+                  },
+                  "then": { "required": ["receiptFingerprint"] }
+                },
+                {
+                  "if": {
+                    "properties": { "outcome": { "enum": ["rejected", "outcome_unknown"] } },
+                    "required": ["outcome"]
+                  },
+                  "then": { "required": ["error"] }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

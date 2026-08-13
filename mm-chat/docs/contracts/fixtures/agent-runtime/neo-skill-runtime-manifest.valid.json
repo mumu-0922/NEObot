@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "neo.skill-runtime/v1",
+  "package": {
+    "name": "repository-audit",
+    "version": "1.2.3",
+    "sourceType": "git",
+    "sourceRef": "https://github.com/example/repository-audit.git#0123456789abcdef0123456789abcdef01234567",
+    "packageFingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "runtimeBundleFingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "sbomFingerprint": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "admissionId": "admission_0123456789abcdef"
+  },
+  "runtime": {
+    "kind": "rootless_oci",
+    "image": "registry.example/neo/repository-audit@sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "platform": "linux/amd64",
+    "user": { "uid": 10001, "gid": 10001 }
+  },
+  "entrypoints": [
+    {
+      "name": "audit",
+      "argv": ["/opt/neo/bin/repository-audit", "--workspace", "/workspace"],
+      "workingDirectory": "/workspace"
+    }
+  ],
+  "capabilityRequests": [
+    {
+      "capability": "workspace.read",
+      "actions": ["list", "read"],
+      "reason": "Inspect the admitted project snapshot."
+    },
+    {
+      "capability": "artifact.write",
+      "actions": ["publish"],
+      "reason": "Publish the bounded audit report."
+    }
+  ],
+  "egressRequests": [],
+  "secretSlots": [],
+  "resources": {
+    "cpuMillis": 1000,
+    "memoryMiB": 512,
+    "pids": 64,
+    "wallSeconds": 300
+  },
+  "limits": {
+    "maxPackageFiles": 512,
+    "maxPackageBytes": 16777216,
+    "maxExpandedBytes": 67108864,
+    "maxStdoutBytes": 1048576,
+    "maxStderrBytes": 1048576,
+    "maxArtifactBytes": 8388608
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "neo.capability-grant/v1",
+  "grantId": "grant_0123456789abcdef",
+  "subject": {
+    "userId": "user_01234567",
+    "projectId": "project_01234567",
+    "assistantId": "assistant_01234567"
+  },
+  "run": {
+    "runId": "run_0123456789abcdef",
+    "parentRunId": "run_fedcba9876543210",
+    "depth": 1
+  },
+  "packageFingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "runtimeBundleFingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "issuedAt": "2026-08-13T00:00:00Z",
+  "expiresAt": "2026-08-13T01:00:00Z",
+  "capabilities": [
+    {
+      "capability": "workspace.read",
+      "actions": ["list", "read"],
+      "resources": {
+        "kind": "prefix",
+        "values": ["project/"]
+      },
+      "approval": "automatic",
+      "maxCalls": 100
+    },
+    {
+      "capability": "artifact.write",
+      "actions": ["publish"],
+      "resources": {
+        "kind": "exact",
+        "values": ["audit-report"]
+      },
+      "approval": "once",
+      "maxCalls": 1
+    }
+  ],
+  "egress": {
+    "mode": "none",
+    "rules": []
+  },
+  "secrets": [],
+  "budget": {
+    "maxWallSeconds": 300,
+    "maxModelTokens": 20000,
+    "maxToolCalls": 100,
+    "maxArtifactBytes": 8388608
+  }
+}

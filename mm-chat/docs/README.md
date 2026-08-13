@@ -18,6 +18,14 @@ The active Tool integration is MCP. See
 [`contracts/mcp-tools-api.md`](./contracts/mcp-tools-api.md), and
 [`deployment/mcp-runner.md`](./deployment/mcp-runner.md).
 
+The design-only G20 Agent Runtime baseline is separate from MCP Runner and from
+the current browser text-Skill path. See
+[`architecture/agent-runtime.md`](./architecture/agent-runtime.md),
+[`contracts/agent-runtime.md`](./contracts/agent-runtime.md),
+[`deployment/agent-runtime.md`](./deployment/agent-runtime.md), and
+[`tracking/g20-agent-runtime-plan.md`](./tracking/g20-agent-runtime-plan.md).
+Production Agent execution remains disabled.
+
 ## Update Rule
 
 When a new plan or scope change appears:
