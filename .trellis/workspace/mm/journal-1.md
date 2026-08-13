@@ -1796,3 +1796,36 @@ Implemented PostgreSQL-authoritative durable Run/Step/Attempt/events, generation
 ### Next Steps
 
 - None - task complete
+
+
+## Session 43: Complete G20.3 rootless Agent Runner foundation
+
+**Date**: 2026-08-13
+**Task**: Complete G20.3 rootless Agent Runner foundation
+**Branch**: `main`
+
+### Summary
+
+Implemented the held neo-runnerd source/control foundation with strict TLS 1.3 mTLS RPC, Ed25519 authority and durable replay fences, rootless Podman lifecycle inspection, Workspace and Artifact boundaries, migration 085, exact release/host verification, deployment contracts, tests, and synchronized Agent Runtime documentation. Full standalone and focused PostgreSQL 17 gates pass; production exact-host isolation remains fail-closed as ISOLATION_UNAVAILABLE and Runtime/API/Chat remain disabled.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `296ec15f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
