@@ -39,17 +39,26 @@ type manifestDocument struct {
 }
 
 type manifestServer struct {
-	ID          string                       `json:"id"`
-	Name        string                       `json:"name"`
-	Description string                       `json:"description,omitempty"`
-	Icon        string                       `json:"icon,omitempty"`
-	Transport   string                       `json:"transport"`
-	EndpointURL string                       `json:"endpointUrl,omitempty"`
-	Command     *manifestCommand             `json:"command,omitempty"`
-	Marketplace *manifestMarketplaceArtifact `json:"marketplace,omitempty"`
-	Auth        *manifestAuth                `json:"auth,omitempty"`
-	Grants      []manifestGrant              `json:"grants,omitempty"`
-	ToolPolicy  map[string]string            `json:"toolPolicy,omitempty"`
+	ID              string                       `json:"id"`
+	Name            string                       `json:"name"`
+	Description     string                       `json:"description,omitempty"`
+	Icon            string                       `json:"icon,omitempty"`
+	Transport       string                       `json:"transport"`
+	EndpointURL     string                       `json:"endpointUrl,omitempty"`
+	Command         *manifestCommand             `json:"command,omitempty"`
+	CredentialProbe *manifestCredentialProbe     `json:"credentialProbe,omitempty"`
+	Marketplace     *manifestMarketplaceArtifact `json:"marketplace,omitempty"`
+	Auth            *manifestAuth                `json:"auth,omitempty"`
+	Grants          []manifestGrant              `json:"grants,omitempty"`
+	ToolPolicy      map[string]string            `json:"toolPolicy,omitempty"`
+}
+
+type manifestCredentialProbe struct {
+	EndpointURL  string `json:"endpointUrl"`
+	Method       string `json:"method"`
+	SecretField  string `json:"secretField"`
+	HeaderName   string `json:"headerName"`
+	HeaderPrefix string `json:"headerPrefix,omitempty"`
 }
 
 type manifestMarketplaceArtifact struct {
@@ -69,6 +78,7 @@ type manifestCommand struct {
 	WorkingDirectory string        `json:"workingDirectory,omitempty"`
 	IdleTimeout      string        `json:"idleTimeout,omitempty"`
 	MaxLifetime      string        `json:"maxLifetime,omitempty"`
+	UserSecretEnv    []string      `json:"userSecretEnv,omitempty"`
 }
 
 type manifestEnv struct {
@@ -208,7 +218,7 @@ func normalizeManifestServer(raw manifestServer, lookupEnv func(string) (string,
 	switch raw.Transport {
 	case TransportStreamableHTTP:
 		server.EndpointURL = strings.TrimSpace(raw.EndpointURL)
-		if server.EndpointURL == "" || raw.Command != nil {
+		if server.EndpointURL == "" || raw.Command != nil || raw.CredentialProbe != nil {
 			return Server{}, fmt.Errorf("%w: remote server shape", ErrManifestInvalid)
 		}
 		if _, err := parseEndpoint(server.EndpointURL, false); err != nil {
@@ -225,6 +235,13 @@ func normalizeManifestServer(raw manifestServer, lookupEnv func(string) (string,
 		server.Command = &command
 	default:
 		return Server{}, fmt.Errorf("%w: unsupported transport", ErrManifestInvalid)
+	}
+	if raw.CredentialProbe != nil {
+		probe, err := normalizeManifestCredentialProbe(server, *raw.CredentialProbe)
+		if err != nil {
+			return Server{}, err
+		}
+		server.CredentialProbe = &probe
 	}
 	if raw.Auth != nil {
 		if err := applyManifestAuth(&server, *raw.Auth, lookupEnv); err != nil {
@@ -264,6 +281,27 @@ func normalizeManifestServer(raw manifestServer, lookupEnv func(string) (string,
 	return server, nil
 }
 
+func normalizeManifestCredentialProbe(server Server, raw manifestCredentialProbe) (CredentialProbe, error) {
+	raw.EndpointURL = strings.TrimSpace(raw.EndpointURL)
+	raw.Method = strings.ToUpper(strings.TrimSpace(raw.Method))
+	raw.SecretField = strings.TrimSpace(raw.SecretField)
+	raw.HeaderName = strings.TrimSpace(raw.HeaderName)
+	if server.Transport != TransportStdio || server.Command == nil || raw.Method != "GET" ||
+		!containsString(server.Command.UserSecretEnv, raw.SecretField) ||
+		!validHeaderName(raw.HeaderName) || forbiddenCredentialHeader(raw.HeaderName) ||
+		len(raw.HeaderPrefix) > 64 || strings.ContainsAny(raw.HeaderPrefix, "\r\n") {
+		return CredentialProbe{}, fmt.Errorf("%w: credential probe", ErrManifestInvalid)
+	}
+	endpoint, err := parseEndpoint(raw.EndpointURL, true)
+	if err != nil || endpoint.RawQuery != "" {
+		return CredentialProbe{}, fmt.Errorf("%w: credential probe endpoint", ErrManifestInvalid)
+	}
+	return CredentialProbe{
+		EndpointURL: endpoint.String(), Method: raw.Method, SecretField: raw.SecretField,
+		HeaderName: raw.HeaderName, HeaderPrefix: raw.HeaderPrefix,
+	}, nil
+}
+
 func normalizeManifestMarketplaceArtifact(
 	server Server,
 	raw manifestMarketplaceArtifact,
@@ -275,7 +313,8 @@ func normalizeManifestMarketplaceArtifact(
 	raw.InstallationMethod = strings.TrimSpace(raw.InstallationMethod)
 	raw.Command = strings.TrimSpace(raw.Command)
 	raw.PackageName = strings.TrimSpace(raw.PackageName)
-	if server.Transport != TransportStdio || server.Command == nil || server.AuthType != AuthNone ||
+	if server.Transport != TransportStdio || server.Command == nil ||
+		(server.AuthType != AuthNone && server.AuthType != AuthEnv) ||
 		raw.Provider != marketplaceProviderLobeHub || !validMarketplaceIdentifier(raw.Identifier) ||
 		!validMarketplaceVersion(raw.Version) || raw.ConnectionType != "stdio" ||
 		raw.InstallationMethod == "" || len(raw.InstallationMethod) > 64 ||
@@ -294,6 +333,7 @@ func normalizeManifestMarketplaceArtifact(
 	deployment := MarketplaceDeployment{
 		ConnectionType: raw.ConnectionType, InstallationMethod: raw.InstallationMethod,
 		Command: raw.Command, Args: args, PackageName: raw.PackageName,
+		SecretFields: append([]string(nil), server.Command.UserSecretEnv...),
 	}
 	hash, err := marketplaceDeploymentHash(raw.Identifier, raw.Version, deployment)
 	if err != nil {
@@ -307,7 +347,8 @@ func normalizeManifestMarketplaceArtifact(
 }
 
 func resolveManifestCommand(raw manifestCommand, lookupEnv func(string) (string, bool)) (Command, error) {
-	if len(raw.Argv) == 0 || len(raw.Argv) > maxManifestArgs || len(raw.Env) > maxManifestEnv {
+	if len(raw.Argv) == 0 || len(raw.Argv) > maxManifestArgs || len(raw.Env) > maxManifestEnv ||
+		len(raw.UserSecretEnv) > 8 {
 		return Command{}, fmt.Errorf("%w: command limits", ErrManifestInvalid)
 	}
 	argv := make([]string, len(raw.Argv))
@@ -340,6 +381,18 @@ func resolveManifestCommand(raw manifestCommand, lookupEnv func(string) (string,
 		}
 		environment[name] = value
 	}
+	userSecretEnv := make([]string, 0, len(raw.UserSecretEnv))
+	for _, rawName := range raw.UserSecretEnv {
+		name := strings.TrimSpace(rawName)
+		if !environmentPattern.MatchString(name) || !safeCommandEnvironmentName(name) {
+			return Command{}, fmt.Errorf("%w: user secret environment name", ErrManifestInvalid)
+		}
+		if _, exists := environment[name]; exists || containsString(userSecretEnv, name) {
+			return Command{}, fmt.Errorf("%w: duplicate user secret environment name", ErrManifestInvalid)
+		}
+		userSecretEnv = append(userSecretEnv, name)
+	}
+	sort.Strings(userSecretEnv)
 	idle, err := parseBoundedDuration(raw.IdleTimeout, defaultRunnerIdle, time.Minute, time.Hour)
 	if err != nil {
 		return Command{}, err
@@ -354,6 +407,7 @@ func resolveManifestCommand(raw manifestCommand, lookupEnv func(string) (string,
 		WorkingDirectory: "",
 		IdleTimeout:      idle,
 		MaxLifetime:      lifetime,
+		UserSecretEnv:    userSecretEnv,
 	}, nil
 }
 

@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,17 +24,20 @@ const (
 	maxMarketplaceSearchBytes = int64(1 << 20)
 	maxMarketplaceDetailBytes = int64(2 << 20)
 	maxMarketplaceTokenBytes  = int64(64 << 10)
+	maxNPMMetadataBytes       = int64(64 << 10)
 	marketplaceTokenLeeway    = time.Minute
+	defaultNPMRegistryURL     = "https://registry.npmjs.org"
 )
 
 type LobeHubMarketplaceConfig struct {
-	BaseURL      string
-	ClientID     string
-	ClientSecret string
-	Timeout      time.Duration
-	CacheTTL     time.Duration
-	HTTPClient   *http.Client
-	Now          func() time.Time
+	BaseURL        string
+	NPMRegistryURL string
+	ClientID       string
+	ClientSecret   string
+	Timeout        time.Duration
+	CacheTTL       time.Duration
+	HTTPClient     *http.Client
+	Now            func() time.Time
 }
 
 type marketplaceCacheEntry struct {
@@ -42,13 +46,14 @@ type marketplaceCacheEntry struct {
 }
 
 type LobeHubMarketplace struct {
-	baseURL      *url.URL
-	clientID     string
-	clientSecret string
-	timeout      time.Duration
-	cacheTTL     time.Duration
-	httpClient   *http.Client
-	now          func() time.Time
+	baseURL        *url.URL
+	npmRegistryURL *url.URL
+	clientID       string
+	clientSecret   string
+	timeout        time.Duration
+	cacheTTL       time.Duration
+	httpClient     *http.Client
+	now            func() time.Time
 
 	tokenMu     sync.Mutex
 	token       string
@@ -65,6 +70,16 @@ func NewLobeHubMarketplace(config LobeHubMarketplaceConfig) (*LobeHubMarketplace
 		return nil, ErrMarketplaceUnavailable
 	}
 	baseURL.Path = strings.TrimRight(baseURL.Path, "/")
+	npmRegistryRawURL := strings.TrimSpace(config.NPMRegistryURL)
+	if npmRegistryRawURL == "" {
+		npmRegistryRawURL = defaultNPMRegistryURL
+	}
+	npmRegistryURL, err := url.Parse(npmRegistryRawURL)
+	if err != nil || npmRegistryURL.Scheme != "https" || npmRegistryURL.Host == "" ||
+		npmRegistryURL.User != nil || npmRegistryURL.RawQuery != "" || npmRegistryURL.Fragment != "" {
+		return nil, ErrMarketplaceUnavailable
+	}
+	npmRegistryURL.Path = strings.TrimRight(npmRegistryURL.Path, "/")
 	if strings.TrimSpace(config.ClientID) == "" || len(config.ClientID) > 2048 ||
 		strings.TrimSpace(config.ClientSecret) == "" || len(config.ClientSecret) > 4096 {
 		return nil, ErrMarketplaceUnavailable
@@ -91,14 +106,15 @@ func NewLobeHubMarketplace(config LobeHubMarketplaceConfig) (*LobeHubMarketplace
 		}
 	}
 	return &LobeHubMarketplace{
-		baseURL:      baseURL,
-		clientID:     strings.TrimSpace(config.ClientID),
-		clientSecret: strings.TrimSpace(config.ClientSecret),
-		timeout:      config.Timeout,
-		cacheTTL:     config.CacheTTL,
-		httpClient:   client,
-		now:          now,
-		cache:        map[string]marketplaceCacheEntry{},
+		baseURL:        baseURL,
+		npmRegistryURL: npmRegistryURL,
+		clientID:       strings.TrimSpace(config.ClientID),
+		clientSecret:   strings.TrimSpace(config.ClientSecret),
+		timeout:        config.Timeout,
+		cacheTTL:       config.CacheTTL,
+		httpClient:     client,
+		now:            now,
+		cache:          map[string]marketplaceCacheEntry{},
 	}, nil
 }
 
@@ -215,7 +231,7 @@ func (m *LobeHubMarketplace) GetItem(
 	defer cancel()
 	query := url.Values{"locale": []string{"zh-CN"}}
 	path := "/api/v1/plugins/" + url.PathEscape(identifier) + "?" + query.Encode()
-	data, err := m.authorizedGET(ctx, path, maxMarketplaceDetailBytes)
+	data, err := m.publicGET(ctx, path, maxMarketplaceDetailBytes)
 	if err != nil {
 		return MarketplaceItemDetail{}, err
 	}
@@ -276,9 +292,98 @@ func (m *LobeHubMarketplace) GetItem(
 			break
 		}
 		deployment := normalizeLobeDeployment(raw.Identifier, raw.Version, option)
+		if deployment.ConnectionType == "stdio" && deployment.InstallationMethod == "npm" &&
+			deployment.Command == "npx" && deployment.PackageName != "" {
+			packageSpec, resolveErr := m.resolveNPMPackageSpec(
+				ctx,
+				deployment.PackageName,
+				npmPackageSelector(deployment.PackageName, deployment.Args, raw.Version),
+			)
+			if resolveErr != nil {
+				deployment.Compatibility = MarketplaceCompatibilityIncompatible
+				deployment.CompatibilityReason = "The exact npm package version is unavailable"
+			} else {
+				deployment.PackageSpec = packageSpec
+			}
+		}
 		detail.Deployments = append(detail.Deployments, deployment)
 	}
 	return detail, nil
+}
+
+func (m *LobeHubMarketplace) resolveNPMPackageSpec(
+	ctx context.Context,
+	packageName string,
+	selector string,
+) (string, error) {
+	packageName = npmPackageBase(packageName)
+	selector = strings.TrimSpace(selector)
+	if m == nil || m.npmRegistryURL == nil || packageName == "" ||
+		!validMarketplaceVersion(selector) {
+		return "", ErrMarketplaceUnavailable
+	}
+	cacheKey := "npm-package:" + packageName + "@" + selector
+	if data, ok := m.cached(cacheKey); ok {
+		return parseNPMVersionMetadata(data, packageName)
+	}
+	requestURL := strings.TrimRight(m.npmRegistryURL.String(), "/") + "/" +
+		url.PathEscape(packageName) + "/" + url.PathEscape(selector)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	if err != nil {
+		return "", ErrMarketplaceUnavailable
+	}
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("User-Agent", "Neo-Chat-MCP-Marketplace/1")
+	response, err := m.httpClient.Do(request)
+	if err != nil {
+		return "", ErrMarketplaceUnavailable
+	}
+	defer response.Body.Close()
+	data, err := readMarketplaceBody(response.Body, maxNPMMetadataBytes)
+	if err != nil || response.StatusCode != http.StatusOK {
+		return "", ErrMarketplaceUnavailable
+	}
+	packageSpec, err := parseNPMVersionMetadata(data, packageName)
+	if err != nil {
+		return "", err
+	}
+	m.storeCache(cacheKey, data)
+	return packageSpec, nil
+}
+
+func parseNPMVersionMetadata(data []byte, expectedPackageName string) (string, error) {
+	var metadata struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+	}
+	if json.Unmarshal(data, &metadata) != nil || npmPackageBase(metadata.Name) != expectedPackageName ||
+		!exactNPMVersionPattern.MatchString(metadata.Version) {
+		return "", ErrMarketplaceUnavailable
+	}
+	return expectedPackageName + "@" + metadata.Version, nil
+}
+
+func (m *LobeHubMarketplace) publicGET(
+	ctx context.Context,
+	path string,
+	maximum int64,
+) ([]byte, error) {
+	if data, ok := m.cached(path); ok {
+		return data, nil
+	}
+	data, status, err := m.get(ctx, path, "", maximum)
+	if err != nil {
+		return nil, err
+	}
+	switch status {
+	case http.StatusOK:
+		m.storeCache(path, data)
+		return data, nil
+	case http.StatusNotFound:
+		return nil, ErrMarketplaceNotFound
+	default:
+		return nil, ErrMarketplaceUnavailable
+	}
 }
 
 func (m *LobeHubMarketplace) authorizedGET(
@@ -334,7 +439,9 @@ func (m *LobeHubMarketplace) get(
 		return nil, 0, ErrMarketplaceUnavailable
 	}
 	request.Header.Set("Accept", "application/json")
-	request.Header.Set("Authorization", "Bearer "+token)
+	if token != "" {
+		request.Header.Set("Authorization", "Bearer "+token)
+	}
 	request.Header.Set("User-Agent", "Neo-Chat-MCP-Marketplace/1")
 	response, err := m.httpClient.Do(request)
 	if err != nil {
@@ -502,23 +609,35 @@ func normalizeLobeDeployment(
 	}
 	switch option.Connection.Type {
 	case "http":
-		deployment.EndpointURL = boundedHTTPSURL(option.Connection.URL)
+		secretFields := lobeRequiredStringFields(option.Connection.ConfigSchema, false)
+		deployment.EndpointURL = boundedMarketplaceEndpointTemplate(option.Connection.URL)
 		if deployment.EndpointURL == "" {
 			deployment.CompatibilityReason = "A public HTTPS endpoint is required"
-		} else if lobeConfigRequiresInput(option.Connection.ConfigSchema) {
-			deployment.Compatibility = MarketplaceCompatibilityNeedsConfig
-			deployment.CompatibilityReason = "Additional server configuration is required"
+		} else if len(secretFields) > 0 {
+			if headerName, ok := approvedMarketplaceHeader(identifier, deployment.EndpointURL, secretFields); ok {
+				deployment.SecretFields = secretFields
+				deployment.InstallMode = "header"
+				deployment.HeaderName = headerName
+				deployment.Compatibility = MarketplaceCompatibilityNeedsConfig
+				deployment.CompatibilityReason = "An API key is required"
+			} else {
+				deployment.Compatibility = MarketplaceCompatibilityIncompatible
+				deployment.CompatibilityReason = "The Marketplace does not declare an approved API-key header"
+			}
 		} else {
+			deployment.InstallMode = "direct"
 			deployment.Compatibility = MarketplaceCompatibilityInstallable
 			deployment.CompatibilityReason = "Public HTTPS Streamable HTTP"
 		}
 	case "stdio":
+		deployment.SecretFields = lobeRequiredStringFields(option.Connection.ConfigSchema, true)
 		deployment.Command = boundedMarketplaceCommand(option.Connection.Command, 256)
 		deployment.Args = boundedMarketplaceArgs(option.Connection.Args)
 		deployment.PackageName = boundedMarketplaceCommand(option.InstallationDetails.PackageName, 512)
 		if deployment.Command == "" || deployment.Args == nil {
 			deployment.CompatibilityReason = "The local command metadata is invalid"
-		} else if lobeConfigRequiresInput(option.Connection.ConfigSchema) {
+		} else if len(deployment.SecretFields) > 0 {
+			deployment.InstallMode = "runner_env"
 			deployment.Compatibility = MarketplaceCompatibilityNeedsConfig
 			deployment.CompatibilityReason = "Additional Runner configuration is required"
 		} else {
@@ -535,6 +654,14 @@ func normalizeLobeDeployment(
 		}
 	}
 	return deployment
+}
+
+func approvedMarketplaceHeader(identifier, endpoint string, secretFields []string) (string, bool) {
+	if identifier == "tavily-ai-tavily-mcp" && endpoint == "https://mcp.tavily.com/mcp/" &&
+		len(secretFields) == 1 && secretFields[0] == "TAVILY_API_KEY" {
+		return "Authorization", true
+	}
+	return "", false
 }
 
 func boundedMarketplaceCommand(value string, maximum int) string {
@@ -569,6 +696,61 @@ func lobeConfigRequiresInput(schema json.RawMessage) bool {
 		Required []string `json:"required"`
 	}
 	return json.Unmarshal(schema, &object) != nil || len(object.Required) > 0
+}
+
+func lobeRequiredStringFields(schema json.RawMessage, environmentOnly bool) []string {
+	if len(schema) == 0 || string(schema) == "null" || string(schema) == "{}" {
+		return nil
+	}
+	var object struct {
+		Required   []string `json:"required"`
+		Properties map[string]struct {
+			Type string `json:"type"`
+		} `json:"properties"`
+	}
+	if json.Unmarshal(schema, &object) != nil || len(object.Required) > 8 {
+		return nil
+	}
+	result := make([]string, 0, len(object.Required))
+	for _, field := range object.Required {
+		field = strings.TrimSpace(field)
+		property, found := object.Properties[field]
+		if field == "" || len(field) > 128 ||
+			strings.ContainsAny(field, "\x00\r\n\t") {
+			return nil
+		}
+		if found && property.Type != "" && property.Type != "string" {
+			return nil
+		}
+		if environmentOnly && (!environmentPattern.MatchString(field) || !safeCommandEnvironmentName(field)) {
+			return nil
+		}
+		result = append(result, field)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func boundedMarketplaceEndpointTemplate(value string) string {
+	value = boundedMarketplaceText(value, 2048)
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
+		return ""
+	}
+	query := parsed.Query()
+	for key, values := range query {
+		for _, candidate := range values {
+			if strings.Contains(candidate, "{{") || strings.Contains(candidate, "}}") {
+				query.Del(key)
+				break
+			}
+		}
+	}
+	parsed.RawQuery = query.Encode()
+	if strings.Contains(parsed.String(), "{{") || strings.Contains(parsed.String(), "}}") {
+		return ""
+	}
+	return parsed.String()
 }
 
 func boundedMarketplaceText(value string, maximum int) string {

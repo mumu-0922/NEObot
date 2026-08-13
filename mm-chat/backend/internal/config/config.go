@@ -650,8 +650,15 @@ func validateMCPConfig(config MCPConfig) error {
 	}
 	if callback := strings.TrimSpace(config.OAuthCallbackURL); callback != "" {
 		parsed, err := url.Parse(callback)
-		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
-			return fmt.Errorf("%s must be a public HTTPS URL", EnvMCPOAuthCallbackURL)
+		if err != nil || parsed == nil {
+			return fmt.Errorf("%s must be a public HTTPS or exact loopback HTTP URL", EnvMCPOAuthCallbackURL)
+		}
+		host := strings.ToLower(parsed.Hostname())
+		loopbackHTTP := parsed.Scheme == "http" &&
+			(host == "localhost" || host == "127.0.0.1" || host == "::1")
+		if (parsed.Scheme != "https" && !loopbackHTTP) || parsed.Host == "" ||
+			parsed.User != nil || parsed.Fragment != "" {
+			return fmt.Errorf("%s must be a public HTTPS or exact loopback HTTP URL", EnvMCPOAuthCallbackURL)
 		}
 	}
 	return nil

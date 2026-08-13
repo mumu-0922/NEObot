@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	defaultRunnerAddr = ":8090"
-	maxTokenBytes     = 4096
+	defaultRunnerAddr    = ":8090"
+	maxTokenBytes        = 4096
+	runnerRequestTimeout = 2*time.Minute + 15*time.Second
 )
 
 func main() {
@@ -64,9 +65,9 @@ func run() error {
 	server := &http.Server{
 		Addr: addr, Handler: handler,
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       35 * time.Second,
-		WriteTimeout:      35 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		ReadTimeout:       runnerRequestTimeout,
+		WriteTimeout:      runnerRequestTimeout,
+		IdleTimeout:       runnerRequestTimeout,
 		MaxHeaderBytes:    16 << 10,
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

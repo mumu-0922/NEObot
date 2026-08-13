@@ -16,7 +16,9 @@ type Repository interface {
 	CountPrivateServers(context.Context, string) (int, error)
 	CreatePrivateServer(context.Context, string, CreateServerInput) (Server, error)
 	ListPrivateServers(context.Context, string) ([]Server, error)
+	ListSharedServers(context.Context, string, string) ([]Server, error)
 	GetPrivateServer(context.Context, string, string) (Server, error)
+	GetAccessiblePrivateServer(context.Context, string, string, string) (Server, error)
 	UpdateServerValidation(context.Context, string, string, string, []Tool, string, string, *time.Time) (Server, error)
 	DeletePrivateServer(context.Context, string, string) error
 

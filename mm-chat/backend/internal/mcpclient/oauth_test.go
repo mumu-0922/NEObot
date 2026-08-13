@@ -67,7 +67,7 @@ func TestOAuthPKCEHashedSingleUseStateAndEncryptedToken(t *testing.T) {
 		Status:      ServerStatusNeedsAuth, Grants: []Grant{{ScopeType: "global"}},
 	}
 	repo := newFakeRepository()
-	config := testMCPConfig()
+	config := testMCPAdminConfig(userID)
 	config.OAuthCallbackURL = "https://chat.example/v1/mcp/oauth/callback"
 	service, err := NewService(config, repo, &fakeConnector{}, testVault(t), nil, Catalog{}, []Server{server})
 	if err != nil {
@@ -177,6 +177,65 @@ func TestOAuthRefreshUsesSingleflight(t *testing.T) {
 	}
 	if got := refreshCalls.Load(); got != 1 {
 		t.Fatalf("refresh calls = %d, want 1", got)
+	}
+}
+
+func TestOAuthDynamicClientRegistrationAndLoopbackCallback(t *testing.T) {
+	t.Parallel()
+	var registrationCalls atomic.Int32
+	var tokenServer *httptest.Server
+	tokenServer = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/.well-known/oauth-protected-resource/mcp":
+			writeJSON(t, writer, map[string]any{
+				"resource": tokenServer.URL + "/mcp", "authorization_servers": []string{tokenServer.URL},
+			})
+		case "/.well-known/oauth-authorization-server":
+			writeJSON(t, writer, map[string]any{
+				"issuer": tokenServer.URL, "authorization_endpoint": tokenServer.URL + "/authorize",
+				"token_endpoint": tokenServer.URL + "/token", "registration_endpoint": tokenServer.URL + "/register",
+				"code_challenge_methods_supported": []string{"S256"},
+				"grant_types_supported":            []string{"authorization_code"}, "response_types_supported": []string{"code"},
+			})
+		case "/register":
+			registrationCalls.Add(1)
+			var registration map[string]any
+			if json.NewDecoder(request.Body).Decode(&registration) != nil {
+				t.Error("invalid registration request")
+			}
+			redirects, _ := registration["redirect_uris"].([]any)
+			if len(redirects) != 1 || redirects[0] != "http://localhost:18080/mm-api/v1/mcp/oauth/callback" {
+				t.Errorf("redirect_uris=%#v", registration["redirect_uris"])
+			}
+			writeJSON(t, writer, map[string]any{"client_id": "dynamic-client"})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer tokenServer.Close()
+
+	userID := uuid.NewString()
+	ref := ServerRef{Source: SourceManifest, ID: "oauth-dcr"}
+	repo := newFakeRepository()
+	server := Server{
+		Ref: ref, Name: "OAuth DCR", Transport: TransportStreamableHTTP,
+		EndpointURL: tokenServer.URL + "/mcp", AuthType: AuthOAuth,
+		OAuthClient: &OAuthClient{}, Status: ServerStatusNeedsAuth,
+		Metadata: map[string]any{"oauthDynamicRegistration": true}, Grants: []Grant{{ScopeType: "global"}},
+	}
+	config := testMCPAdminConfig(userID)
+	config.OAuthCallbackURL = "http://localhost:18080/mm-api/v1/mcp/oauth/callback"
+	service, err := NewService(config, repo, &fakeConnector{}, testVault(t), nil, Catalog{}, []Server{server})
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := service.StartOAuth(context.Background(), userID, "", ref, "/settings/tools")
+	if err != nil {
+		t.Fatalf("StartOAuth() error=%v", err)
+	}
+	authorizationURL, _ := url.Parse(started.AuthorizationURL)
+	if registrationCalls.Load() != 1 || authorizationURL.Query().Get("client_id") != "dynamic-client" {
+		t.Fatalf("registration calls=%d authorization=%s", registrationCalls.Load(), started.AuthorizationURL)
 	}
 }
 

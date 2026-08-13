@@ -614,6 +614,7 @@ func newMCPService(
 			MarketplaceEnabled:   cfg.MCP.MarketplaceEnabled,
 			ManifestFile:         cfg.MCP.ManifestFile,
 			RunnerURL:            cfg.MCP.RunnerURL,
+			AdministratorUserID:  cfg.Auth.BootstrapUserID,
 			OAuthCallbackURL:     cfg.MCP.OAuthCallbackURL,
 			PrivateServerLimit:   cfg.MCP.PrivateServerLimit,
 			ConversationLimit:    cfg.MCP.ConversationLimit,

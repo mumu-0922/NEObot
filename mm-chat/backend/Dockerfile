@@ -42,16 +42,21 @@ USER mmchat:mmchat
 EXPOSE 8080
 CMD ["/usr/local/bin/mm-chat-api"]
 
-FROM node:22.18.0-alpine3.22@sha256:1b2479dd35a99687d6638f5976fd235e26c5b37e8122f786fcd5fe231d63de5b AS mcp-runner
-RUN apk add --no-cache ca-certificates curl tzdata \
-    && addgroup -S mmchat \
-    && adduser -S -G mmchat -H -h /nonexistent -s /sbin/nologin mmchat
+FROM mcr.microsoft.com/playwright/mcp:v0.0.79@sha256:18c0a9c934004fe9580cc79f1e8e6e6cde7c667348b215335e8a23fd3e509804 AS mcp-runner
+USER root
+RUN test -x /ms-playwright/chromium-1237/chrome-linux64/chrome \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /opt/google/chrome \
+    && ln -s /ms-playwright/chromium-1237/chrome-linux64/chrome /opt/google/chrome/chrome
 WORKDIR /opt/mcp-runner
+RUN test -x /usr/local/bin/npx
 COPY mcp-runner-runtime/package.json mcp-runner-runtime/package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts \
     && npm cache clean --force
 COPY --from=build /out/mm-chat-mcp-runner /usr/local/bin/mm-chat-mcp-runner
 COPY --from=build /out/mm-chat-mcp-validate /usr/local/bin/mm-chat-mcp-validate
-USER mmchat:mmchat
+USER node:node
 EXPOSE 8090
 ENTRYPOINT ["/usr/local/bin/mm-chat-mcp-runner"]

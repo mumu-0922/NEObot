@@ -54,12 +54,14 @@ func (c *DirectConnector) Connect(
 			!validHeaderName(server.HeaderAuth.Name) {
 			return nil, ErrCredentialRequired
 		}
-		headers.Set(server.HeaderAuth.Name, credential)
+		headers.Set(server.HeaderAuth.Name, server.HeaderAuth.Prefix+credential)
 	case AuthOAuth:
 		if strings.TrimSpace(credential) == "" {
 			return nil, ErrCredentialRequired
 		}
 		headers.Set("Authorization", "Bearer "+credential)
+	case AuthEnv:
+		return nil, ErrCredentialInvalid
 	default:
 		return nil, ErrCredentialInvalid
 	}

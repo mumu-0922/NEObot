@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"neo-chat/mm-chat/backend/internal/mcpclient"
 )
 
 const maxRunnerRequestBytes = 128 << 10
@@ -17,13 +19,19 @@ type Handler struct {
 }
 
 type listToolsRequest struct {
-	ServerID string `json:"serverId"`
+	ServerID    string                              `json:"serverId"`
+	InstanceID  string                              `json:"instanceId"`
+	Environment mcpclient.RunnerEnvironmentEnvelope `json:"environment"`
+	Artifact    mcpclient.RunnerArtifactEnvelope    `json:"artifact"`
 }
 
 type callToolRequest struct {
-	ServerID  string         `json:"serverId"`
-	Name      string         `json:"name"`
-	Arguments map[string]any `json:"arguments"`
+	ServerID    string                              `json:"serverId"`
+	Name        string                              `json:"name"`
+	Arguments   map[string]any                      `json:"arguments"`
+	InstanceID  string                              `json:"instanceId"`
+	Environment mcpclient.RunnerEnvironmentEnvelope `json:"environment"`
+	Artifact    mcpclient.RunnerArtifactEnvelope    `json:"artifact"`
 }
 
 func NewHandler(manager *Manager, token string) (*Handler, error) {
@@ -58,7 +66,19 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		if !decodeRunnerJSON(writer, request, &input) || !validRunnerIdentifier(input.ServerID) {
 			return
 		}
-		tools, err := h.manager.ListTools(request.Context(), input.ServerID)
+		environment, err := h.openEnvironment(input.ServerID, input.InstanceID, input.Environment)
+		if err != nil {
+			writeRunnerError(writer, http.StatusBadRequest, "INVALID_CONFIGURATION")
+			return
+		}
+		artifact, err := h.openArtifact(input.ServerID, input.InstanceID, input.Artifact)
+		if err != nil {
+			writeRunnerError(writer, http.StatusBadRequest, "INVALID_ARTIFACT")
+			return
+		}
+		tools, err := h.manager.ListTools(request.Context(), input.ServerID, instanceOptions{
+			InstanceID: input.InstanceID, Environment: environment, Artifact: artifact,
+		})
 		if err != nil {
 			writeManagerError(writer, err)
 			return
@@ -78,7 +98,19 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		if input.Arguments == nil {
 			input.Arguments = map[string]any{}
 		}
-		result, err := h.manager.CallTool(request.Context(), input.ServerID, input.Name, input.Arguments)
+		environment, err := h.openEnvironment(input.ServerID, input.InstanceID, input.Environment)
+		if err != nil {
+			writeRunnerError(writer, http.StatusBadRequest, "INVALID_CONFIGURATION")
+			return
+		}
+		artifact, err := h.openArtifact(input.ServerID, input.InstanceID, input.Artifact)
+		if err != nil {
+			writeRunnerError(writer, http.StatusBadRequest, "INVALID_ARTIFACT")
+			return
+		}
+		result, err := h.manager.CallTool(request.Context(), input.ServerID, input.Name, input.Arguments, instanceOptions{
+			InstanceID: input.InstanceID, Environment: environment, Artifact: artifact,
+		})
 		if err != nil {
 			writeManagerError(writer, err)
 			return
@@ -87,6 +119,26 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	default:
 		writeRunnerError(writer, http.StatusNotFound, "NOT_FOUND")
 	}
+}
+
+func (h *Handler) openArtifact(serverID, instanceID string, envelope mcpclient.RunnerArtifactEnvelope) (mcpclient.DynamicRunnerArtifact, error) {
+	if instanceID == "" {
+		instanceID = serverID
+	}
+	if !validRunnerIdentifier(instanceID) {
+		return mcpclient.DynamicRunnerArtifact{}, ErrUnavailable
+	}
+	return mcpclient.OpenRunnerArtifact(h.token, serverID, instanceID, envelope)
+}
+
+func (h *Handler) openEnvironment(serverID, instanceID string, envelope mcpclient.RunnerEnvironmentEnvelope) (map[string]string, error) {
+	if instanceID == "" {
+		instanceID = serverID
+	}
+	if !validRunnerIdentifier(instanceID) {
+		return nil, ErrUnavailable
+	}
+	return mcpclient.OpenRunnerEnvironment(h.token, serverID, instanceID, envelope)
 }
 
 func (h *Handler) authorized(request *http.Request) bool {

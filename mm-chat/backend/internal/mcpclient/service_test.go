@@ -51,6 +51,92 @@ func TestPrepareRunUsesExplicitEmptyAndWorkspaceInheritance(t *testing.T) {
 	}
 }
 
+func TestAdministratorDefinitionIsSharedWithoutCopyingCredential(t *testing.T) {
+	t.Parallel()
+	administratorID := uuid.NewString()
+	ordinaryUserID := uuid.NewString()
+	conversationID := uuid.NewString()
+	serverRef := ServerRef{Source: SourcePrivate, ID: uuid.NewString()}
+	tool := normalizeTool(
+		serverRef, "lookup", "Lookup", "", map[string]any{"type": "object"}, ClassificationRead,
+	)
+	server := Server{
+		Ref: serverRef, Name: "Shared search", Transport: TransportStreamableHTTP,
+		EndpointURL: "https://1.1.1.1/mcp", AuthType: AuthHeader,
+		HeaderAuth: &HeaderAuth{Name: "Authorization", Prefix: "Bearer "},
+		Status:     ServerStatusReady, OwnerUserID: administratorID, Tools: []Tool{tool},
+	}
+	repo := newFakeRepository()
+	repo.private[administratorID+":"+serverRef.ID] = server
+	repo.scopes[ordinaryUserID+":"+conversationID] = ConversationScope{
+		ConversationID: conversationID, UserID: ordinaryUserID,
+	}
+	connector := &fakeConnector{sessions: []Session{fakeSession{
+		result: CallResult{Content: []Content{{Type: "text", Text: "shared-ok"}}},
+	}}}
+	service, err := NewService(
+		testMCPAdminConfig(administratorID), repo, connector, testVault(t),
+		&memoryObjectStore{}, Catalog{}, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SetHeaderCredential(
+		context.Background(), administratorID, "", serverRef, "owner-secret",
+	); err != nil {
+		t.Fatalf("SetHeaderCredential() error = %v", err)
+	}
+
+	servers, err := service.ListServers(context.Background(), ordinaryUserID, conversationID)
+	if err != nil {
+		t.Fatalf("ListServers() error = %v", err)
+	}
+	if len(servers) != 1 || servers[0].Ref != serverRef || !servers[0].HasCredential ||
+		servers[0].CanManage {
+		t.Fatalf("ordinary shared servers = %#v", servers)
+	}
+	selection, err := service.ReplaceSelection(context.Background(), ordinaryUserID, Selection{
+		ConversationID: conversationID, Mode: SelectionModeCustom,
+		Servers: []SelectionServer{{Ref: serverRef}},
+	})
+	if err != nil || len(selection.Servers) != 1 || selection.Servers[0].Ref != serverRef {
+		t.Fatalf("ReplaceSelection() selection=%#v error=%v", selection, err)
+	}
+	prepared, err := service.PrepareRun(
+		context.Background(), ordinaryUserID, conversationID, "", uuid.NewString(),
+	)
+	if err != nil {
+		t.Fatalf("PrepareRun() error = %v", err)
+	}
+	result, err := service.Execute(context.Background(), ordinaryUserID, prepared, ExecuteInput{
+		Alias: tool.Alias, Arguments: map[string]any{}, Round: 1, Call: 1,
+	}, nil)
+	if err != nil || result.ModelContent == "" {
+		t.Fatalf("Execute() result=%#v error=%v", result, err)
+	}
+	connector.mu.Lock()
+	defer connector.mu.Unlock()
+	if len(connector.credentials) != 1 || connector.credentials[0] != "owner-secret" {
+		t.Fatalf("connector credentials = %#v", connector.credentials)
+	}
+	if _, found, err := repo.GetCredential(context.Background(), ordinaryUserID, serverRef); err != nil || found {
+		t.Fatalf("ordinary credential copy found=%v error=%v", found, err)
+	}
+}
+
+func TestAdministratorCheckFailsClosedWithoutConfiguredOwner(t *testing.T) {
+	t.Parallel()
+	service, err := NewService(
+		testMCPConfig(), newFakeRepository(), nil, nil, nil, Catalog{}, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if service.IsAdministrator(uuid.NewString()) {
+		t.Fatal("unconfigured administrator identity granted management access")
+	}
+}
+
 func TestPreflightReauthorizesSelectionWithoutPersistingSnapshot(t *testing.T) {
 	t.Parallel()
 	userID, conversationID := uuid.NewString(), uuid.NewString()
@@ -403,6 +489,12 @@ func testMCPConfig() Config {
 	config := DefaultConfig()
 	config.Enabled = true
 	config.RemoteEnabled = true
+	return config
+}
+
+func testMCPAdminConfig(userID string) Config {
+	config := testMCPConfig()
+	config.AdministratorUserID = userID
 	return config
 }
 

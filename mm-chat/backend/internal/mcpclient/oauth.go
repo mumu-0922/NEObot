@@ -25,6 +25,7 @@ const (
 	oauthStateLifetime         = 10 * time.Minute
 	oauthHTTPTimeout           = 20 * time.Second
 	maxOAuthMetadataBytes      = 64 << 10
+	maxOAuthRegistrationBytes  = 64 << 10
 	maxOAuthTokenBytes         = 64 << 10
 	maxOAuthCodeBytes          = 8192
 	maxOAuthReturnURLBytes     = 2048
@@ -64,9 +65,16 @@ type authorizationServerMetadata struct {
 	AuthorizationEndpoint         string   `json:"authorization_endpoint"`
 	TokenEndpoint                 string   `json:"token_endpoint"`
 	RevocationEndpoint            string   `json:"revocation_endpoint"`
+	RegistrationEndpoint          string   `json:"registration_endpoint"`
 	CodeChallengeMethodsSupported []string `json:"code_challenge_methods_supported"`
 	GrantTypesSupported           []string `json:"grant_types_supported"`
 	ResponseTypesSupported        []string `json:"response_types_supported"`
+}
+
+type oauthClientRegistrationResponse struct {
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+	Error        string `json:"error"`
 }
 
 type oauthTokenResponse struct {
@@ -85,13 +93,16 @@ func (s *Service) StartOAuth(
 	ref ServerRef,
 	returnURL string,
 ) (OAuthStartResult, error) {
+	if err := s.requireAdministrator(userID); err != nil {
+		return OAuthStartResult{}, err
+	}
 	if err := s.remoteAvailable(); err != nil {
 		return OAuthStartResult{}, err
 	}
 	if !validRelativeReturnURL(returnURL) {
 		return OAuthStartResult{}, ErrOAuthStateInvalid
 	}
-	callback, err := parseEndpoint(s.config.OAuthCallbackURL, true)
+	callback, err := parseOAuthCallback(s.config.OAuthCallbackURL)
 	if err != nil {
 		return OAuthStartResult{}, ErrOAuthStateInvalid
 	}
@@ -121,6 +132,17 @@ func (s *Service) StartOAuth(
 	if err != nil {
 		return OAuthStartResult{}, err
 	}
+	clientID := strings.TrimSpace(server.OAuthClient.ClientID)
+	clientSecret := server.OAuthClient.ClientSecret
+	if clientID == "" {
+		if metadata.RegistrationEndpoint == "" || !boolField(server.Metadata, "oauthDynamicRegistration") {
+			return OAuthStartResult{}, ErrCredentialInvalid
+		}
+		clientID, clientSecret, err = s.registerOAuthClient(ctx, server, metadata.RegistrationEndpoint, callback.String())
+		if err != nil {
+			return OAuthStartResult{}, err
+		}
+	}
 	verifier, err := randomOAuthToken(48)
 	if err != nil {
 		return OAuthStartResult{}, ErrOAuthStateInvalid
@@ -136,8 +158,8 @@ func (s *Service) StartOAuth(
 		Verifier: verifier, RedirectURI: callback.String(),
 		TokenEndpoint:      metadata.TokenEndpoint,
 		RevocationEndpoint: metadata.RevocationEndpoint,
-		ClientID:           server.OAuthClient.ClientID,
-		ClientSecret:       server.OAuthClient.ClientSecret,
+		ClientID:           clientID,
+		ClientSecret:       clientSecret,
 		Scope:              oauthScope,
 	}
 	encrypted, err := s.encryptOAuthFlow(flow, stateID)
@@ -159,7 +181,7 @@ func (s *Service) StartOAuth(
 	}
 	query := authorizationURL.Query()
 	query.Set("response_type", "code")
-	query.Set("client_id", server.OAuthClient.ClientID)
+	query.Set("client_id", clientID)
 	query.Set("redirect_uri", callback.String())
 	query.Set("state", stateToken)
 	query.Set("code_challenge_method", "S256")
@@ -221,10 +243,29 @@ func (s *Service) CompleteOAuth(
 	if err := s.persistOAuthToken(ctx, state.UserID, state.ServerRef, flow, token, storedCredential{}); err != nil {
 		return OAuthCallbackResult{}, err
 	}
+	if state.ServerRef.Source == SourcePrivate {
+		if _, err := s.ValidatePrivateServer(ctx, state.UserID, state.ServerRef.ID); err != nil {
+			return OAuthCallbackResult{}, err
+		}
+		if flow.ConversationID != "" {
+			selection, err := s.GetSelection(ctx, state.UserID, flow.ConversationID)
+			if err != nil {
+				return OAuthCallbackResult{}, err
+			}
+			selection.Mode = SelectionModeCustom
+			selection.Servers = appendMarketplaceSelection(selection.Servers, state.ServerRef)
+			if _, err := s.ReplaceSelection(ctx, state.UserID, selection); err != nil {
+				return OAuthCallbackResult{}, err
+			}
+		}
+	}
 	return OAuthCallbackResult{ReturnURL: state.ReturnURL, ServerRef: state.ServerRef}, nil
 }
 
 func (s *Service) RevokeOAuth(ctx context.Context, userID string, ref ServerRef) error {
+	if err := s.requireAdministrator(userID); err != nil {
+		return err
+	}
 	if err := s.available(); err != nil {
 		return err
 	}
@@ -381,7 +422,82 @@ func (s *Service) discoverOAuthMetadata(
 			return authorizationServerMetadata{}, ErrURLBlocked
 		}
 	}
+	if metadata.RegistrationEndpoint != "" {
+		if _, err := ValidateEndpoint(ctx, metadata.RegistrationEndpoint, networkPolicyFor(server)); err != nil {
+			return authorizationServerMetadata{}, ErrURLBlocked
+		}
+	}
 	return metadata, nil
+}
+
+func (s *Service) registerOAuthClient(
+	ctx context.Context,
+	server Server,
+	endpoint string,
+	callback string,
+) (string, string, error) {
+	client, err := s.oauthHTTPClient(ctx, server, endpoint)
+	if err != nil {
+		return "", "", err
+	}
+	payload, err := json.Marshal(map[string]any{
+		"client_name":                "Neo Chat",
+		"redirect_uris":              []string{callback},
+		"grant_types":                []string{"authorization_code", "refresh_token"},
+		"response_types":             []string{"code"},
+		"token_endpoint_auth_method": "none",
+	})
+	if err != nil {
+		return "", "", ErrCredentialInvalid
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return "", "", ErrServerUnavailable
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json")
+	response, err := client.Do(request)
+	if err != nil {
+		return "", "", ErrServerUnavailable
+	}
+	defer response.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(response.Body, maxOAuthRegistrationBytes+1))
+	if err != nil || len(data) > maxOAuthRegistrationBytes {
+		return "", "", ErrServerUnavailable
+	}
+	var registered oauthClientRegistrationResponse
+	if json.Unmarshal(data, &registered) != nil || response.StatusCode < 200 || response.StatusCode >= 300 ||
+		registered.Error != "" {
+		return "", "", ErrServerUnavailable
+	}
+	registered.ClientID = strings.TrimSpace(registered.ClientID)
+	registered.ClientSecret = strings.TrimSpace(registered.ClientSecret)
+	if registered.ClientID == "" || len(registered.ClientID) > 2048 ||
+		len(registered.ClientSecret) > maxCredentialBytes || strings.ContainsAny(registered.ClientID, "\x00\r\n") ||
+		strings.ContainsAny(registered.ClientSecret, "\x00\r\n") {
+		return "", "", ErrServerUnavailable
+	}
+	return registered.ClientID, registered.ClientSecret, nil
+}
+
+func parseOAuthCallback(raw string) (*url.URL, error) {
+	callback, err := parseEndpoint(raw, false)
+	if err != nil {
+		return nil, err
+	}
+	if callback.Scheme == "https" {
+		return callback, nil
+	}
+	host := strings.ToLower(callback.Hostname())
+	if callback.Scheme == "http" && (host == "localhost" || host == "127.0.0.1" || host == "::1") {
+		return callback, nil
+	}
+	return nil, ErrURLBlocked
+}
+
+func boolField(object map[string]any, name string) bool {
+	value, _ := object[name].(bool)
+	return value
 }
 
 func (s *Service) fetchOAuthJSON(ctx context.Context, server Server, endpoint string, target any) error {

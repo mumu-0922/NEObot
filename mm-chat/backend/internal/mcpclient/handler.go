@@ -30,12 +30,14 @@ type serverView struct {
 }
 
 type serversResponse struct {
-	Servers []serverView `json:"servers"`
+	Servers   []serverView `json:"servers"`
+	CanManage bool         `json:"canManage"`
 }
 
 type credentialRequest struct {
-	Value          string `json:"value"`
-	ConversationID string `json:"conversationId,omitempty"`
+	Value          string            `json:"value"`
+	Values         map[string]string `json:"values,omitempty"`
+	ConversationID string            `json:"conversationId,omitempty"`
 }
 
 type oauthStartRequest struct {
@@ -135,7 +137,8 @@ func (h *Handler) handleMarketplaceItem(writer http.ResponseWriter, request *htt
 			writeMCPError(writer, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "Method not allowed")
 			return
 		}
-		item, err := h.service.MarketplaceItem(request.Context(), identifier, request.URL.Query().Get("version"))
+		user := auth.UserOrDevelopment(request.Context())
+		item, err := h.service.MarketplaceItem(request.Context(), user.ID, identifier, request.URL.Query().Get("version"))
 		if err != nil {
 			writeMCPServiceError(writer, err)
 			return
@@ -148,10 +151,18 @@ func (h *Handler) handleMarketplaceItem(writer http.ResponseWriter, request *htt
 		return
 	}
 	var input struct {
-		Version               string `json:"version"`
-		ConversationID        string `json:"conversationId,omitempty"`
-		SelectionRevision     int64  `json:"selectionRevision"`
-		EnableForConversation bool   `json:"enableForConversation"`
+		Version               string            `json:"version"`
+		ConversationID        string            `json:"conversationId,omitempty"`
+		SelectionRevision     int64             `json:"selectionRevision"`
+		EnableForConversation bool              `json:"enableForConversation"`
+		DeploymentHash        string            `json:"deploymentHash,omitempty"`
+		Secrets               map[string]string `json:"secrets,omitempty"`
+		CustomEndpointURL     string            `json:"customEndpointUrl,omitempty"`
+		CustomAuthType        string            `json:"customAuthType,omitempty"`
+		CustomHeaderName      string            `json:"customHeaderName,omitempty"`
+		CustomHeaderPrefix    string            `json:"customHeaderPrefix,omitempty"`
+		CustomCredential      string            `json:"customCredential,omitempty"`
+		CustomClientID        string            `json:"customClientId,omitempty"`
 	}
 	if !decodeMCPJSON(writer, request, &input) {
 		return
@@ -161,6 +172,10 @@ func (h *Handler) handleMarketplaceItem(writer http.ResponseWriter, request *htt
 		Identifier: identifier, Version: input.Version,
 		ConversationID: input.ConversationID, SelectionRevision: input.SelectionRevision,
 		EnableForConversation: input.EnableForConversation,
+		DeploymentHash:        input.DeploymentHash, Secrets: input.Secrets,
+		CustomEndpointURL: input.CustomEndpointURL, CustomAuthType: input.CustomAuthType,
+		CustomHeaderName: input.CustomHeaderName, CustomHeaderPrefix: input.CustomHeaderPrefix,
+		CustomCredential: input.CustomCredential, CustomClientID: input.CustomClientID,
 	})
 	if err != nil {
 		writeMCPServiceError(writer, err)
@@ -211,22 +226,26 @@ func (h *Handler) handleServers(writer http.ResponseWriter, request *http.Reques
 		for _, server := range servers {
 			views = append(views, viewServer(server))
 		}
-		writeMCPJSON(writer, http.StatusOK, serversResponse{Servers: views})
+		writeMCPJSON(writer, http.StatusOK, serversResponse{
+			Servers: views, CanManage: h.service.IsAdministrator(user.ID),
+		})
 	case http.MethodPost:
 		var input struct {
-			Name        string   `json:"name"`
-			EndpointURL string   `json:"endpointUrl"`
-			AuthType    string   `json:"authType"`
-			HeaderName  string   `json:"headerName,omitempty"`
-			ClientID    string   `json:"clientId,omitempty"`
-			Scopes      []string `json:"scopes,omitempty"`
+			Name         string   `json:"name"`
+			EndpointURL  string   `json:"endpointUrl"`
+			AuthType     string   `json:"authType"`
+			HeaderName   string   `json:"headerName,omitempty"`
+			HeaderPrefix string   `json:"headerPrefix,omitempty"`
+			ClientID     string   `json:"clientId,omitempty"`
+			Scopes       []string `json:"scopes,omitempty"`
 		}
 		if !decodeMCPJSON(writer, request, &input) {
 			return
 		}
 		server, err := h.service.CreatePrivateServer(request.Context(), user.ID, CreateServerInput{
 			Name: input.Name, EndpointURL: input.EndpointURL, AuthType: input.AuthType,
-			HeaderName: input.HeaderName, ClientID: input.ClientID, Scopes: input.Scopes,
+			HeaderName: input.HeaderName, HeaderPrefix: input.HeaderPrefix,
+			ClientID: input.ClientID, Scopes: input.Scopes,
 		})
 		if err != nil {
 			writeMCPServiceError(writer, err)
@@ -277,9 +296,17 @@ func (h *Handler) handleServerAction(writer http.ResponseWriter, request *http.R
 			if !decodeMCPJSON(writer, request, &input) {
 				return
 			}
-			server, err := h.service.SetHeaderCredential(
-				request.Context(), user.ID, input.ConversationID, ref, input.Value,
-			)
+			var server Server
+			var err error
+			if input.Values != nil {
+				server, err = h.service.SetEnvironmentCredential(
+					request.Context(), user.ID, input.ConversationID, ref, input.Values,
+				)
+			} else {
+				server, err = h.service.SetHeaderCredential(
+					request.Context(), user.ID, input.ConversationID, ref, input.Value,
+				)
+			}
 			if err != nil {
 				writeMCPServiceError(writer, err)
 				return
@@ -497,6 +524,8 @@ func writeMCPServiceError(writer http.ResponseWriter, err error) {
 		status, code, message = http.StatusConflict, "MCP_MARKETPLACE_INCOMPATIBLE", "Marketplace item is not installable"
 	case errors.Is(err, ErrMarketplaceChanged):
 		status, code, message = http.StatusConflict, "MCP_MARKETPLACE_CHANGED", "Marketplace item version changed"
+	case errors.Is(err, ErrAdministratorRequired):
+		status, code, message = http.StatusForbidden, "MCP_ADMIN_REQUIRED", "MCP administrator access is required"
 	}
 	writeMCPError(writer, status, code, message)
 }

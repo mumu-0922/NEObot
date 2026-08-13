@@ -51,9 +51,10 @@ func (r *PostgresRepository) CreatePrivateServer(
 		transport = TransportStreamableHTTP
 	}
 	auth := map[string]any{
-		"headerName": strings.TrimSpace(input.HeaderName),
-		"clientId":   strings.TrimSpace(input.ClientID),
-		"scopes":     normalizeStrings(input.Scopes, 32, 256),
+		"headerName":   strings.TrimSpace(input.HeaderName),
+		"headerPrefix": input.HeaderPrefix,
+		"clientId":     strings.TrimSpace(input.ClientID),
+		"scopes":       normalizeStrings(input.Scopes, 32, 256),
 	}
 	if len(input.Metadata) > 0 {
 		auth["metadata"] = objectOrEmpty(input.Metadata)
@@ -66,7 +67,7 @@ func (r *PostgresRepository) CreatePrivateServer(
 INSERT INTO mcp_servers (
   id, user_id, name, endpoint_url, transport, auth_type, auth_config, status
 ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, 'draft')
-RETURNING id, name, endpoint_url, transport, auth_type, auth_config, status,
+RETURNING id, user_id, name, endpoint_url, transport, auth_type, auth_config, status,
   tool_snapshot, tool_snapshot_hash, validated_at, last_error_code,
   created_at, updated_at
 `, id, userID, input.Name, input.EndpointURL, transport, input.AuthType, string(authConfig))
@@ -92,7 +93,7 @@ func (r *PostgresRepository) ListPrivateServers(ctx context.Context, userID stri
 		return nil, err
 	}
 	rows, err := r.db.QueryContext(ctx, `
-SELECT s.id, s.name, s.endpoint_url, s.transport, s.auth_type, s.auth_config,
+SELECT s.id, s.user_id, s.name, s.endpoint_url, s.transport, s.auth_type, s.auth_config,
   s.status, s.tool_snapshot, s.tool_snapshot_hash, s.validated_at,
   s.last_error_code, s.created_at, s.updated_at,
   EXISTS (
@@ -122,6 +123,41 @@ ORDER BY s.updated_at DESC, s.id DESC
 	return servers, nil
 }
 
+func (r *PostgresRepository) ListSharedServers(ctx context.Context, userID, administratorUserID string) ([]Server, error) {
+	if err := r.requireDB(); err != nil {
+		return nil, err
+	}
+	rows, err := r.db.QueryContext(ctx, `
+SELECT s.id, s.user_id, s.name, s.endpoint_url, s.transport, s.auth_type, s.auth_config,
+  s.status, s.tool_snapshot, s.tool_snapshot_hash, s.validated_at,
+  s.last_error_code, s.created_at, s.updated_at,
+  EXISTS (
+    SELECT 1 FROM mcp_credentials c
+    WHERE c.server_source = 'private' AND c.server_ref = s.id::text
+      AND c.user_id = s.user_id
+  )
+FROM mcp_servers s
+WHERE s.user_id = $2 AND s.deleted_at IS NULL AND s.user_id <> $1
+ORDER BY s.updated_at DESC, s.id DESC
+`, userID, administratorUserID)
+	if err != nil {
+		return nil, fmt.Errorf("list shared mcp servers: %w", err)
+	}
+	defer rows.Close()
+	servers := []Server{}
+	for rows.Next() {
+		server, scanErr := scanPrivateServerWithCredential(rows)
+		if scanErr != nil {
+			return nil, fmt.Errorf("scan shared mcp server: %w", scanErr)
+		}
+		servers = append(servers, server)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate shared mcp servers: %w", err)
+	}
+	return servers, nil
+}
+
 func (r *PostgresRepository) GetPrivateServer(
 	ctx context.Context,
 	userID string,
@@ -131,7 +167,7 @@ func (r *PostgresRepository) GetPrivateServer(
 		return Server{}, err
 	}
 	server, err := scanPrivateServerWithCredential(r.db.QueryRowContext(ctx, `
-SELECT s.id, s.name, s.endpoint_url, s.transport, s.auth_type, s.auth_config,
+SELECT s.id, s.user_id, s.name, s.endpoint_url, s.transport, s.auth_type, s.auth_config,
   s.status, s.tool_snapshot, s.tool_snapshot_hash, s.validated_at,
   s.last_error_code, s.created_at, s.updated_at,
   EXISTS (
@@ -147,6 +183,31 @@ WHERE s.id = $1 AND s.user_id = $2 AND s.deleted_at IS NULL
 	}
 	if err != nil {
 		return Server{}, fmt.Errorf("get private mcp server: %w", err)
+	}
+	return server, nil
+}
+
+func (r *PostgresRepository) GetAccessiblePrivateServer(ctx context.Context, userID, administratorUserID, serverID string) (Server, error) {
+	if err := r.requireDB(); err != nil {
+		return Server{}, err
+	}
+	server, err := scanPrivateServerWithCredential(r.db.QueryRowContext(ctx, `
+SELECT s.id, s.user_id, s.name, s.endpoint_url, s.transport, s.auth_type, s.auth_config,
+  s.status, s.tool_snapshot, s.tool_snapshot_hash, s.validated_at,
+  s.last_error_code, s.created_at, s.updated_at,
+  EXISTS (
+    SELECT 1 FROM mcp_credentials c
+    WHERE c.server_source = 'private' AND c.server_ref = s.id::text
+      AND c.user_id = s.user_id
+  )
+FROM mcp_servers s
+WHERE s.id = $1 AND (s.user_id = $2 OR s.user_id = $3) AND s.deleted_at IS NULL
+`, serverID, userID, administratorUserID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Server{}, ErrServerNotFound
+	}
+	if err != nil {
+		return Server{}, fmt.Errorf("get accessible mcp server: %w", err)
 	}
 	return server, nil
 }
@@ -177,7 +238,7 @@ SET status = $3,
     validated_at = $7,
     updated_at = now()
 WHERE s.id = $1 AND s.user_id = $2 AND s.deleted_at IS NULL
-RETURNING s.id, s.name, s.endpoint_url, s.transport, s.auth_type, s.auth_config,
+RETURNING s.id, s.user_id, s.name, s.endpoint_url, s.transport, s.auth_type, s.auth_config,
   s.status, s.tool_snapshot, s.tool_snapshot_hash, s.validated_at,
   s.last_error_code, s.created_at, s.updated_at,
   EXISTS (
@@ -1110,7 +1171,7 @@ func scanPrivateServerRow(row scanner, withCredential bool) (Server, bool, error
 	var validatedAt sql.NullTime
 	var hasCredential bool
 	destinations := []any{
-		&server.Ref.ID, &server.Name, &server.EndpointURL, &server.Transport,
+		&server.Ref.ID, &server.OwnerUserID, &server.Name, &server.EndpointURL, &server.Transport,
 		&server.AuthType, &authConfig, &server.Status, &toolsJSON, &snapshotHash,
 		&validatedAt, &errorCode, &server.CreatedAt, &server.UpdatedAt,
 	}
@@ -1133,7 +1194,9 @@ func scanPrivateServerRow(row scanner, withCredential bool) (Server, bool, error
 		return Server{}, false, err
 	}
 	if server.AuthType == AuthHeader {
-		server.HeaderAuth = &HeaderAuth{Name: stringField(auth, "headerName")}
+		server.HeaderAuth = &HeaderAuth{
+			Name: stringField(auth, "headerName"), Prefix: stringField(auth, "headerPrefix"),
+		}
 	}
 	if server.AuthType == AuthOAuth {
 		server.OAuthClient = &OAuthClient{
@@ -1223,7 +1286,12 @@ func stringField(value map[string]any, key string) string {
 }
 
 func stringSliceField(value map[string]any, key string) []string {
-	raw, _ := value[key].([]any)
+	raw, ok := value[key].([]any)
+	if !ok {
+		if typed, typedOK := value[key].([]string); typedOK {
+			return append([]string(nil), typed...)
+		}
+	}
 	result := make([]string, 0, len(raw))
 	for _, item := range raw {
 		if text, ok := item.(string); ok && strings.TrimSpace(text) != "" {

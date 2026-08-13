@@ -531,7 +531,13 @@ func (r *mcpChatRepository) CreatePrivateServer(context.Context, string, mcpclie
 func (r *mcpChatRepository) ListPrivateServers(context.Context, string) ([]mcpclient.Server, error) {
 	return []mcpclient.Server{}, nil
 }
+func (r *mcpChatRepository) ListSharedServers(context.Context, string, string) ([]mcpclient.Server, error) {
+	return []mcpclient.Server{}, nil
+}
 func (r *mcpChatRepository) GetPrivateServer(context.Context, string, string) (mcpclient.Server, error) {
+	return mcpclient.Server{}, mcpclient.ErrServerNotFound
+}
+func (r *mcpChatRepository) GetAccessiblePrivateServer(context.Context, string, string, string) (mcpclient.Server, error) {
 	return mcpclient.Server{}, mcpclient.ErrServerNotFound
 }
 func (r *mcpChatRepository) UpdateServerValidation(context.Context, string, string, string, []mcpclient.Tool, string, string, *time.Time) (mcpclient.Server, error) {

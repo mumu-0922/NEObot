@@ -2,6 +2,7 @@ package mcpclient
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -143,6 +144,92 @@ func TestParseManifestNormalizesMarketplaceRunnerArtifact(t *testing.T) {
 	}
 	if servers[0].Icon != "https://github.com/upstash.png" {
 		t.Fatalf("marketplace artifact icon = %q", servers[0].Icon)
+	}
+}
+
+func TestParseManifestBindsMarketplaceRunnerSecretFieldsIntoArtifactHash(t *testing.T) {
+	t.Parallel()
+	raw := `{"version":1,"servers":[{
+	  "id":"marketplace-tavily-ai-tavily-mcp-0.2.19","name":"Tavily","transport":"stdio",
+	  "command":{"argv":["/opt/mcp-runner/node_modules/.bin/tavily-mcp"],"userSecretEnv":["TAVILY_API_KEY"]},
+	  "marketplace":{"provider":"lobehub","identifier":"tavily-ai-tavily-mcp","version":"0.2.19",
+	    "connectionType":"stdio","installationMethod":"npm","command":"npx","args":["-y","tavily-mcp@latest"],"packageName":"tavily-mcp"}
+	}]}`
+	servers, err := parseManifest([]byte(raw), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact, ok := marketplaceArtifactFromServer(servers[0])
+	if !ok {
+		t.Fatal("missing Marketplace artifact")
+	}
+	deployment := MarketplaceDeployment{
+		ConnectionType: "stdio", InstallationMethod: "npm", Command: "npx",
+		Args: []string{"-y", "tavily-mcp@latest"}, PackageName: "tavily-mcp",
+		SecretFields: []string{"TAVILY_API_KEY"},
+	}
+	want, _ := marketplaceDeploymentHash("tavily-ai-tavily-mcp", "0.2.19", deployment)
+	if artifact.DeploymentHash != want || servers[0].AuthType != AuthNone {
+		t.Fatalf("artifact=%#v server=%#v", artifact, servers[0])
+	}
+}
+
+func TestParseManifestNormalizesReviewedCredentialProbe(t *testing.T) {
+	t.Parallel()
+	raw := `{"version":1,"servers":[{
+	  "id":"tavily","name":"Tavily","transport":"stdio",
+	  "command":{"argv":["/opt/mcp/tavily"],"userSecretEnv":["TAVILY_API_KEY"]},
+	  "credentialProbe":{"endpointUrl":"https://api.tavily.com/usage","method":"GET",
+	    "secretField":"TAVILY_API_KEY","headerName":"Authorization","headerPrefix":"Bearer "}
+	}]}`
+	servers, err := parseManifest([]byte(raw), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	probe := servers[0].CredentialProbe
+	if probe == nil || probe.EndpointURL != "https://api.tavily.com/usage" ||
+		probe.SecretField != "TAVILY_API_KEY" || probe.HeaderPrefix != "Bearer " {
+		t.Fatalf("credential probe = %#v", probe)
+	}
+}
+
+func TestParseManifestRejectsUnboundOrMutableCredentialProbe(t *testing.T) {
+	t.Parallel()
+	for _, raw := range []string{
+		`{"version":1,"servers":[{"id":"bad","name":"Bad","transport":"stdio","command":{"argv":["/opt/mcp/bad"],"userSecretEnv":["API_KEY"]},"credentialProbe":{"endpointUrl":"https://api.example.com/usage","method":"POST","secretField":"API_KEY","headerName":"Authorization"}}]}`,
+		`{"version":1,"servers":[{"id":"bad","name":"Bad","transport":"stdio","command":{"argv":["/opt/mcp/bad"],"userSecretEnv":["API_KEY"]},"credentialProbe":{"endpointUrl":"https://api.example.com/usage?target=mutable","method":"GET","secretField":"API_KEY","headerName":"Authorization"}}]}`,
+		`{"version":1,"servers":[{"id":"bad","name":"Bad","transport":"stdio","command":{"argv":["/opt/mcp/bad"],"userSecretEnv":["API_KEY"]},"credentialProbe":{"endpointUrl":"https://api.example.com/usage","method":"GET","secretField":"OTHER_KEY","headerName":"Authorization"}}]}`,
+	} {
+		if _, err := parseManifest([]byte(raw), nil); !errors.Is(err, ErrManifestInvalid) {
+			t.Fatalf("parseManifest() error = %v, want ErrManifestInvalid", err)
+		}
+	}
+}
+
+func TestProductionTavilyManifestBindsCurrentPackageToolNames(t *testing.T) {
+	t.Parallel()
+	manifestPath := filepath.Join("..", "..", "..", "mcp", "manifest.json")
+	servers, err := LoadManifest(manifestPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tavily Server
+	for _, server := range servers {
+		if server.Ref.ID == "marketplace-tavily-ai-tavily-mcp-0.2.19" {
+			tavily = server
+			break
+		}
+	}
+	policy, _ := tavily.Metadata["toolPolicy"].(map[string]string)
+	for _, name := range []string{
+		"tavily_search", "tavily_extract", "tavily_map", "tavily_crawl", "tavily_research",
+	} {
+		if policy[name] != ClassificationRead {
+			t.Fatalf("Tavily policy[%q] = %q, want read", name, policy[name])
+		}
+	}
+	if tavily.CredentialProbe == nil || tavily.CredentialProbe.EndpointURL != "https://api.tavily.com/usage" {
+		t.Fatalf("Tavily credential probe = %#v", tavily.CredentialProbe)
 	}
 }
 

@@ -23,6 +23,7 @@ import (
 
 const helperEnvironment = "MM_CHAT_MCP_RUNNER_TEST_HELPER"
 const helperDescendantPIDFile = "MM_CHAT_MCP_RUNNER_DESCENDANT_PID_FILE"
+const playwrightBrowsersPath = "/ms-playwright"
 
 func TestMain(m *testing.M) {
 	if os.Getenv(helperEnvironment) == "1" {
@@ -98,9 +99,45 @@ func TestManagerStartsApprovedServerOnDemandAndReapsIt(t *testing.T) {
 	if len(manager.sessions) != 1 {
 		t.Fatalf("sessions=%d", len(manager.sessions))
 	}
+	if got := environmentValue(manager.sessions["one"].command.Env, "PLAYWRIGHT_BROWSERS_PATH"); got != playwrightBrowsersPath {
+		t.Fatalf("PLAYWRIGHT_BROWSERS_PATH=%q, want %q", got, playwrightBrowsersPath)
+	}
 	manager.reap(time.Now().Add(time.Minute))
 	if len(manager.sessions) != 0 {
 		t.Fatalf("idle session not reaped: %d", len(manager.sessions))
+	}
+}
+
+func environmentValue(environment []string, name string) string {
+	prefix := name + "="
+	for _, entry := range environment {
+		if strings.HasPrefix(entry, prefix) {
+			return strings.TrimPrefix(entry, prefix)
+		}
+	}
+	return ""
+}
+
+func TestManagerRestartsPrivateInstanceWhenSecretEnvironmentChanges(t *testing.T) {
+	server := helperManifestServer(t, "secret-instance")
+	server.Command.UserSecretEnv = []string{"TEST_API_KEY"}
+	manager, err := NewManager(Config{MaxProcesses: 1, WorkRoot: t.TempDir()}, []mcpclient.Server{server})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+	options := instanceOptions{InstanceID: "00000000-0000-0000-0000-000000000001", Environment: map[string]string{"TEST_API_KEY": "first"}}
+	if _, err := manager.ListTools(context.Background(), server.Ref.ID, options); err != nil {
+		t.Fatal(err)
+	}
+	first := manager.sessions[options.InstanceID]
+	options.Environment["TEST_API_KEY"] = "second"
+	if _, err := manager.ListTools(context.Background(), server.Ref.ID, options); err != nil {
+		t.Fatal(err)
+	}
+	second := manager.sessions[options.InstanceID]
+	if first == second || first.environmentFingerprint == second.environmentFingerprint {
+		t.Fatal("secret change reused old Runner process")
 	}
 }
 
@@ -229,6 +266,25 @@ func TestHandlerRequiresIndependentBearerAndRejectsUnknownFields(t *testing.T) {
 	handler.ServeHTTP(valid, request)
 	if valid.Code != http.StatusOK {
 		t.Fatalf("valid status=%d body=%s", valid.Code, valid.Body.String())
+	}
+}
+
+func TestDynamicServerRejectsNonRegistryPackageSpecs(t *testing.T) {
+	for _, packageSpec := range []string{
+		"https://example.com/server.tgz@1.0.0", "git+https://example.com/repo@1.0.0",
+		"file:../server@1.0.0", "package", "package@latest",
+	} {
+		if _, err := dynamicServer("npm-artifact", mcpclient.DynamicRunnerArtifact{
+			ID: "npm-artifact", PackageSpec: packageSpec, IdleSeconds: 60, LifetimeSeconds: 120,
+		}); !errors.Is(err, ErrServerNotApproved) {
+			t.Fatalf("dynamicServer(%q) error=%v", packageSpec, err)
+		}
+	}
+	server, err := dynamicServer("npm-artifact", mcpclient.DynamicRunnerArtifact{
+		ID: "npm-artifact", PackageSpec: "@scope/package@1.2.3", IdleSeconds: 60, LifetimeSeconds: 120,
+	})
+	if err != nil || server.Command == nil || server.Command.Argv[0] != "/usr/local/bin/npx" {
+		t.Fatalf("valid dynamic server=%#v error=%v", server, err)
 	}
 }
 

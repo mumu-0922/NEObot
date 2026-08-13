@@ -36,6 +36,50 @@
         "resolve-library-id": "read",
         "query-docs": "read"
       }
+    },
+    {
+      "id": "marketplace-tavily-ai-tavily-mcp-0.2.19",
+      "name": "Tavily MCP",
+      "description": "Audited Tavily MCP artifact for per-user API-key Marketplace installs.",
+      "icon": "https://github.com/tavily-ai.png",
+      "transport": "stdio",
+      "command": {
+        "argv": [
+          "/opt/mcp-runner/node_modules/.bin/tavily-mcp"
+        ],
+        "userSecretEnv": [
+          "TAVILY_API_KEY"
+        ],
+        "idleTimeout": "15m",
+        "maxLifetime": "24h"
+      },
+      "credentialProbe": {
+        "endpointUrl": "https://api.tavily.com/usage",
+        "method": "GET",
+        "secretField": "TAVILY_API_KEY",
+        "headerName": "Authorization",
+        "headerPrefix": "Bearer "
+      },
+      "marketplace": {
+        "provider": "lobehub",
+        "identifier": "tavily-ai-tavily-mcp",
+        "version": "0.2.19",
+        "connectionType": "stdio",
+        "installationMethod": "npm",
+        "command": "npx",
+        "args": [
+          "-y",
+          "tavily-mcp@latest"
+        ],
+        "packageName": "tavily-mcp"
+      },
+      "toolPolicy": {
+        "tavily_search": "read",
+        "tavily_extract": "read",
+        "tavily_map": "read",
+        "tavily_crawl": "read",
+        "tavily_research": "read"
+      }
     }
   ]
 }

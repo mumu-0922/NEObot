@@ -145,6 +145,12 @@ func (r *fakeRepository) CountPrivateServers(_ context.Context, userID string) (
 func (r *fakeRepository) CreatePrivateServer(_ context.Context, userID string, input CreateServerInput) (Server, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	for key, existing := range r.private {
+		if len(key) > len(userID)+1 && key[:len(userID)+1] == userID+":" &&
+			existing.EndpointURL == input.EndpointURL {
+			return Server{}, ErrServerConflict
+		}
+	}
 	transport := input.Transport
 	if transport == "" {
 		transport = TransportStreamableHTTP
@@ -154,16 +160,29 @@ func (r *fakeRepository) CreatePrivateServer(_ context.Context, userID string, i
 		Name: input.Name, EndpointURL: input.EndpointURL,
 		Transport: transport, AuthType: input.AuthType,
 		Status: ServerStatusDraft, Metadata: cloneObject(input.Metadata),
+		OwnerUserID: userID,
 	}
 	server.Icon = boundedMarketplaceIcon(stringField(server.Metadata, "icon"))
 	if input.AuthType == AuthHeader {
-		server.HeaderAuth = &HeaderAuth{Name: input.HeaderName}
+		server.HeaderAuth = &HeaderAuth{Name: input.HeaderName, Prefix: input.HeaderPrefix}
 	}
 	if input.AuthType == AuthOAuth {
 		server.OAuthClient = &OAuthClient{ClientID: input.ClientID, Scopes: input.Scopes}
 	}
 	r.private[userID+":"+server.Ref.ID] = server
 	return server, nil
+}
+
+func (r *fakeRepository) ListSharedServers(_ context.Context, userID, administratorUserID string) ([]Server, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	result := []Server{}
+	for key, server := range r.private {
+		if server.OwnerUserID == administratorUserID && key != userID+":"+server.Ref.ID {
+			result = append(result, server)
+		}
+	}
+	return result, nil
 }
 
 func (r *fakeRepository) ListPrivateServers(_ context.Context, userID string) ([]Server, error) {
@@ -186,6 +205,20 @@ func (r *fakeRepository) GetPrivateServer(_ context.Context, userID, serverID st
 		return Server{}, ErrServerNotFound
 	}
 	return server, nil
+}
+
+func (r *fakeRepository) GetAccessiblePrivateServer(_ context.Context, userID, administratorUserID, serverID string) (Server, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if server, ok := r.private[userID+":"+serverID]; ok {
+		return server, nil
+	}
+	for _, server := range r.private {
+		if server.Ref.ID == serverID && server.OwnerUserID == administratorUserID {
+			return server, nil
+		}
+	}
+	return Server{}, ErrServerNotFound
 }
 
 func (r *fakeRepository) UpdateServerValidation(_ context.Context, userID, serverID, status string, tools []Tool, _ string, code string, validated *time.Time) (Server, error) {
@@ -354,16 +387,20 @@ func (r *fakeRepository) ListCalls(_ context.Context, _ string, conversationID, 
 }
 
 type fakeConnector struct {
-	mu       sync.Mutex
-	connects int
-	sessions []Session
-	err      error
+	mu          sync.Mutex
+	connects    int
+	servers     []Server
+	credentials []string
+	sessions    []Session
+	err         error
 }
 
-func (c *fakeConnector) Connect(_ context.Context, _ Server, _ string) (Session, error) {
+func (c *fakeConnector) Connect(_ context.Context, server Server, credential string) (Session, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.connects++
+	c.servers = append(c.servers, server)
+	c.credentials = append(c.credentials, credential)
 	if c.err != nil {
 		return nil, c.err
 	}

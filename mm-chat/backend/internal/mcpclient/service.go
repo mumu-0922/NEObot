@@ -45,20 +45,21 @@ type ResultObjectStore interface {
 }
 
 type Service struct {
-	config      Config
-	repo        Repository
-	connector   Connector
-	vault       *providersecrets.Vault
-	objects     ResultObjectStore
-	catalog     map[string]Server
-	manifest    map[string]Server
-	marketplace Marketplace
-	now         func() time.Time
-	sharedMu    sync.RWMutex
-	refresh     singleflight.Group
-	limitMu     sync.Mutex
-	userLimits  map[string]chan struct{}
-	userWrites  map[string]chan struct{}
+	config          Config
+	repo            Repository
+	connector       Connector
+	vault           *providersecrets.Vault
+	objects         ResultObjectStore
+	catalog         map[string]Server
+	manifest        map[string]Server
+	marketplace     Marketplace
+	credentialProbe credentialProbeFunc
+	now             func() time.Time
+	sharedMu        sync.RWMutex
+	refresh         singleflight.Group
+	limitMu         sync.Mutex
+	userLimits      map[string]chan struct{}
+	userWrites      map[string]chan struct{}
 }
 
 type ServiceOption func(*Service)
@@ -69,17 +70,26 @@ func WithMarketplace(marketplace Marketplace) ServiceOption {
 	}
 }
 
+type credentialProbeFunc func(context.Context, Server, string) error
+
+func withCredentialProbe(probe credentialProbeFunc) ServiceOption {
+	return func(service *Service) {
+		service.credentialProbe = probe
+	}
+}
+
 type storedCredential struct {
-	HeaderValue        string    `json:"headerValue,omitempty"`
-	AccessToken        string    `json:"accessToken,omitempty"`
-	RefreshToken       string    `json:"refreshToken,omitempty"`
-	TokenType          string    `json:"tokenType,omitempty"`
-	Scope              string    `json:"scope,omitempty"`
-	ExpiresAt          time.Time `json:"expiresAt,omitempty"`
-	TokenEndpoint      string    `json:"tokenEndpoint,omitempty"`
-	RevocationEndpoint string    `json:"revocationEndpoint,omitempty"`
-	ClientID           string    `json:"clientId,omitempty"`
-	ClientSecret       string    `json:"clientSecret,omitempty"`
+	HeaderValue        string            `json:"headerValue,omitempty"`
+	AccessToken        string            `json:"accessToken,omitempty"`
+	RefreshToken       string            `json:"refreshToken,omitempty"`
+	TokenType          string            `json:"tokenType,omitempty"`
+	Scope              string            `json:"scope,omitempty"`
+	ExpiresAt          time.Time         `json:"expiresAt,omitempty"`
+	TokenEndpoint      string            `json:"tokenEndpoint,omitempty"`
+	RevocationEndpoint string            `json:"revocationEndpoint,omitempty"`
+	ClientID           string            `json:"clientId,omitempty"`
+	ClientSecret       string            `json:"clientSecret,omitempty"`
+	Environment        map[string]string `json:"environment,omitempty"`
 }
 
 func DefaultConfig() Config {
@@ -119,16 +129,17 @@ func NewService(
 		connector = NewDirectConnector("neo-chat", "dev")
 	}
 	service := &Service{
-		config:     config,
-		repo:       repo,
-		connector:  connector,
-		vault:      vault,
-		objects:    objects,
-		catalog:    make(map[string]Server, len(catalog.Servers)),
-		manifest:   make(map[string]Server, len(manifest)),
-		now:        time.Now,
-		userLimits: make(map[string]chan struct{}),
-		userWrites: make(map[string]chan struct{}),
+		config:          config,
+		repo:            repo,
+		connector:       connector,
+		vault:           vault,
+		objects:         objects,
+		catalog:         make(map[string]Server, len(catalog.Servers)),
+		manifest:        make(map[string]Server, len(manifest)),
+		credentialProbe: probeArtifactCredential,
+		now:             time.Now,
+		userLimits:      make(map[string]chan struct{}),
+		userWrites:      make(map[string]chan struct{}),
 	}
 	for _, option := range options {
 		if option != nil {
@@ -164,6 +175,19 @@ func (s *Service) Config() Config {
 		return normalizeConfig(Config{})
 	}
 	return s.config
+}
+
+func (s *Service) IsAdministrator(userID string) bool {
+	return s != nil && validUUID(userID) &&
+		validUUID(s.config.AdministratorUserID) &&
+		userID == s.config.AdministratorUserID
+}
+
+func (s *Service) requireAdministrator(userID string) error {
+	if !s.IsAdministrator(userID) {
+		return ErrAdministratorRequired
+	}
+	return nil
 }
 
 // ValidateSharedServers validates shipped and deployment-managed definitions
@@ -214,6 +238,14 @@ func (s *Service) ListServers(ctx context.Context, userID, conversationID string
 	if err != nil {
 		return nil, err
 	}
+	shared := []Server{}
+	if validUUID(s.config.AdministratorUserID) {
+		shared, err = s.repo.ListSharedServers(ctx, userID, s.config.AdministratorUserID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	private = append(private, shared...)
 	scope := ConversationScope{}
 	if conversationID != "" {
 		scope, err = s.repo.ConversationScope(ctx, userID, conversationID)
@@ -234,14 +266,19 @@ func (s *Service) ListServers(ctx context.Context, userID, conversationID string
 	s.sharedMu.RUnlock()
 	for index := range private {
 		s.bindPrivateServerDisplay(&private[index])
+		private[index].CanManage = s.IsAdministrator(userID) && private[index].OwnerUserID == userID
 	}
 	scopeServers = append(scopeServers, private...)
 	for index := range scopeServers {
 		server := &scopeServers[index]
-		server.HasCredential = server.AuthType == AuthNone ||
+		credentialUserID := userID
+		if server.Ref.Source == SourcePrivate && server.OwnerUserID == s.config.AdministratorUserID {
+			credentialUserID = server.OwnerUserID
+		}
+		server.HasCredential = server.HasCredential || server.AuthType == AuthNone ||
 			(server.AuthType == AuthHeader && server.HeaderAuth != nil && server.HeaderAuth.EncryptedSecret != "")
 		if !server.HasCredential && server.AuthType != AuthNone {
-			_, found, credentialErr := s.repo.GetCredential(ctx, userID, server.Ref)
+			_, found, credentialErr := s.repo.GetCredential(ctx, credentialUserID, server.Ref)
 			if credentialErr != nil {
 				return nil, credentialErr
 			}
@@ -259,6 +296,9 @@ func (s *Service) CreatePrivateServer(
 	userID string,
 	input CreateServerInput,
 ) (Server, error) {
+	if err := s.requireAdministrator(userID); err != nil {
+		return Server{}, err
+	}
 	if err := s.remoteAvailable(); err != nil {
 		return Server{}, err
 	}
@@ -267,6 +307,7 @@ func (s *Service) CreatePrivateServer(
 	input.Transport = TransportStreamableHTTP
 	input.AuthType = strings.TrimSpace(input.AuthType)
 	input.HeaderName = strings.TrimSpace(input.HeaderName)
+	input.HeaderPrefix = strings.TrimSpace(input.HeaderPrefix)
 	input.ClientID = strings.TrimSpace(input.ClientID)
 	input.Scopes = normalizeStrings(input.Scopes, maxPrivateScopes, 256)
 	if input.Name == "" || len(input.Name) > maxPrivateServerNameBytes {
@@ -281,17 +322,36 @@ func (s *Service) CreatePrivateServer(
 		input.HeaderName = ""
 		input.ClientID = ""
 		input.Scopes = nil
+		input.HeaderPrefix = ""
 	case AuthHeader:
 		if !validHeaderName(input.HeaderName) || forbiddenCredentialHeader(input.HeaderName) {
 			return Server{}, ErrCredentialInvalid
 		}
 		input.ClientID = ""
 		input.Scopes = nil
+		if len(input.HeaderPrefix) > 64 || strings.ContainsAny(input.HeaderPrefix, "\r\n") {
+			return Server{}, ErrCredentialInvalid
+		}
 	case AuthOAuth:
-		if input.ClientID == "" || len(input.ClientID) > 2048 {
+		if len(input.ClientID) > 2048 {
+			return Server{}, ErrCredentialInvalid
+		}
+		if input.ClientID == "" {
+			if input.Metadata == nil {
+				input.Metadata = map[string]any{}
+			}
+			input.Metadata["oauthDynamicRegistration"] = true
+		}
+		input.HeaderName = ""
+		input.HeaderPrefix = ""
+	case AuthEnv:
+		if input.Transport != TransportStdio {
 			return Server{}, ErrCredentialInvalid
 		}
 		input.HeaderName = ""
+		input.HeaderPrefix = ""
+		input.ClientID = ""
+		input.Scopes = nil
 	default:
 		return Server{}, ErrCredentialInvalid
 	}
@@ -335,11 +395,19 @@ func (s *Service) createPrivateRunnerServer(
 	}
 	return s.repo.CreatePrivateServer(ctx, userID, CreateServerInput{
 		Name: name, EndpointURL: "runner://" + artifact.Ref.ID,
-		Transport: TransportStdio, AuthType: AuthNone, Metadata: metadata,
+		Transport: TransportStdio, AuthType: func() string {
+			if len(artifact.Command.UserSecretEnv) > 0 {
+				return AuthEnv
+			}
+			return AuthNone
+		}(), Metadata: metadata,
 	})
 }
 
 func (s *Service) DeletePrivateServer(ctx context.Context, userID, serverID string) error {
+	if err := s.requireAdministrator(userID); err != nil {
+		return err
+	}
 	if err := s.available(); err != nil {
 		return err
 	}
@@ -353,6 +421,9 @@ func (s *Service) SetHeaderCredential(
 	ref ServerRef,
 	value string,
 ) (Server, error) {
+	if err := s.requireAdministrator(userID); err != nil {
+		return Server{}, err
+	}
 	if err := s.available(); err != nil {
 		return Server{}, err
 	}
@@ -381,7 +452,50 @@ func (s *Service) SetHeaderCredential(
 	return server, nil
 }
 
+func (s *Service) SetEnvironmentCredential(
+	ctx context.Context,
+	userID string,
+	conversationID string,
+	ref ServerRef,
+	values map[string]string,
+) (Server, error) {
+	if err := s.requireAdministrator(userID); err != nil {
+		return Server{}, err
+	}
+	if err := s.available(); err != nil {
+		return Server{}, err
+	}
+	scope := ConversationScope{}
+	var err error
+	if conversationID != "" {
+		scope, err = s.repo.ConversationScope(ctx, userID, conversationID)
+		if err != nil {
+			return Server{}, err
+		}
+	}
+	server, err := s.serverForUser(ctx, userID, ref, scope)
+	if err != nil {
+		return Server{}, err
+	}
+	if server.Ref.Source != SourcePrivate || server.AuthType != AuthEnv || server.Command == nil {
+		return Server{}, ErrCredentialInvalid
+	}
+	normalized, err := marketplaceSecretValues(server.Command.UserSecretEnv, values)
+	if err != nil {
+		return Server{}, err
+	}
+	if err := s.storeCredential(ctx, userID, ref, AuthEnv, storedCredential{Environment: normalized}, nil); err != nil {
+		return Server{}, err
+	}
+	server.HasCredential = true
+	server.ConfigurationFields = append([]string(nil), server.Command.UserSecretEnv...)
+	return server, nil
+}
+
 func (s *Service) DeleteCredential(ctx context.Context, userID, conversationID string, ref ServerRef) error {
+	if err := s.requireAdministrator(userID); err != nil {
+		return err
+	}
 	if err := s.available(); err != nil {
 		return err
 	}
@@ -404,6 +518,9 @@ func (s *Service) ValidatePrivateServer(
 	userID string,
 	serverID string,
 ) (Server, error) {
+	if err := s.requireAdministrator(userID); err != nil {
+		return Server{}, err
+	}
 	if err := s.available(); err != nil {
 		return Server{}, err
 	}
@@ -425,6 +542,10 @@ func (s *Service) ValidatePrivateServer(
 		if artifactErr != nil {
 			return s.recordValidationFailure(ctx, userID, server, ServerStatusUnavailable, "runner_artifact_invalid", artifactErr)
 		}
+		server.Command = cloneCommand(runnerArtifact.Command)
+		if dynamic, ok := runnerArtifact.Metadata["dynamicRunnerArtifact"].(DynamicRunnerArtifact); ok {
+			server.Metadata["dynamicRunnerArtifactResolved"] = dynamic
+		}
 	}
 	credential, credentialErr := s.connectionCredential(ctx, userID, server)
 	if credentialErr != nil {
@@ -432,6 +553,16 @@ func (s *Service) ValidatePrivateServer(
 	}
 	session, err := s.connector.Connect(ctx, server, credential)
 	if err != nil {
+		if server.Transport == TransportStreamableHTTP && server.AuthType == AuthNone {
+			discoveryCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			defer cancel()
+			if _, metadataErr := s.discoverOAuthMetadata(discoveryCtx, Server{
+				Ref: server.Ref, Transport: server.Transport, EndpointURL: server.EndpointURL,
+				AuthType: AuthOAuth,
+			}); metadataErr == nil {
+				return s.recordValidationFailure(ctx, userID, server, ServerStatusNeedsAuth, "oauth_required", ErrServerNeedsAuth)
+			}
+		}
 		return s.recordValidationFailure(ctx, userID, server, ServerStatusUnavailable, "connect_failed", err)
 	}
 	defer session.Close()
@@ -446,6 +577,15 @@ func (s *Service) ValidatePrivateServer(
 	if err != nil {
 		return s.recordValidationFailure(ctx, userID, server, ServerStatusUnavailable, "tool_schema_invalid", err)
 	}
+	server.Tools = tools
+	if server.Transport == TransportStdio && runnerArtifact.CredentialProbe != nil {
+		if err := s.credentialProbe(ctx, runnerArtifact, credential); err != nil {
+			if errors.Is(err, ErrCredentialInvalid) || errors.Is(err, ErrCredentialRequired) {
+				return s.recordValidationFailure(ctx, userID, server, ServerStatusNeedsAuth, "credential_invalid", ErrCredentialInvalid)
+			}
+			return s.recordValidationFailure(ctx, userID, server, ServerStatusUnavailable, "credential_probe_failed", err)
+		}
+	}
 	now := s.now().UTC()
 	validated, err := s.repo.UpdateServerValidation(
 		ctx, userID, server.Ref.ID, ServerStatusReady, tools, hash, "", &now,
@@ -455,13 +595,14 @@ func (s *Service) ValidatePrivateServer(
 	}
 	if server.Transport == TransportStdio {
 		validated.Icon = boundedMarketplaceIcon(runnerArtifact.Icon)
+		validated.ConfigurationFields = append([]string(nil), runnerArtifact.Command.UserSecretEnv...)
 	}
 	return validated, nil
 }
 
 func (s *Service) privateRunnerArtifact(server Server) (Server, error) {
 	if server.Ref.Source != SourcePrivate || server.Transport != TransportStdio ||
-		server.AuthType != AuthNone || server.Metadata == nil {
+		(server.AuthType != AuthNone && server.AuthType != AuthEnv) || server.Metadata == nil {
 		return Server{}, ErrServerUnavailable
 	}
 	artifactID, _ := server.Metadata["runnerArtifactId"].(string)
@@ -470,6 +611,9 @@ func (s *Service) privateRunnerArtifact(server Server) (Server, error) {
 		return Server{}, ErrServerUnavailable
 	}
 	artifact, err := s.sharedServer(ServerRef{Source: SourceManifest, ID: artifactID})
+	if err != nil {
+		artifact, err = dynamicArtifactServer(server)
+	}
 	if err != nil || artifact.Transport != TransportStdio || artifact.Command == nil {
 		return Server{}, ErrServerUnavailable
 	}
@@ -485,6 +629,75 @@ func (s *Service) privateRunnerArtifact(server Server) (Server, error) {
 		return Server{}, ErrServerUnavailable
 	}
 	return artifact, nil
+}
+
+func dynamicArtifactServer(installed Server) (Server, error) {
+	raw, ok := installed.Metadata["dynamicRunnerArtifact"].(map[string]any)
+	if !ok {
+		return Server{}, ErrServerUnavailable
+	}
+	artifact := DynamicRunnerArtifact{
+		ID: stringField(raw, "id"), PackageSpec: stringField(raw, "packageSpec"),
+		Args: stringSliceField(raw, "args"), SecretEnv: stringSliceField(raw, "secretEnv"),
+		IdleSeconds:     int64(numberField(raw, "idleSeconds")),
+		LifetimeSeconds: int64(numberField(raw, "lifetimeSeconds")),
+	}
+	artifactID, _ := installed.Metadata["runnerArtifactId"].(string)
+	if artifact.ID == "" || artifact.ID != artifactID ||
+		!manifestIDPattern.MatchString(artifact.ID) || !validDynamicPackageSpec(artifact.PackageSpec) ||
+		artifact.IdleSeconds < 60 || artifact.IdleSeconds > int64(time.Hour/time.Second) ||
+		artifact.LifetimeSeconds < artifact.IdleSeconds || artifact.LifetimeSeconds > int64(24*time.Hour/time.Second) ||
+		len(artifact.Args) > maxManifestArgs || len(artifact.SecretEnv) > 8 {
+		return Server{}, ErrServerUnavailable
+	}
+	for _, argument := range artifact.Args {
+		if boundedMarketplaceCommand(argument, maxManifestString) == "" {
+			return Server{}, ErrServerUnavailable
+		}
+	}
+	for _, name := range artifact.SecretEnv {
+		if !environmentPattern.MatchString(name) {
+			return Server{}, ErrServerUnavailable
+		}
+	}
+	provenance, _ := installed.Metadata["marketplace"].(map[string]any)
+	approved := MarketplaceArtifact{
+		Provider: stringField(provenance, "provider"), Identifier: stringField(provenance, "identifier"),
+		Version: stringField(provenance, "version"), ConnectionType: "stdio",
+		InstallationMethod: "npm", DeploymentHash: stringField(provenance, "deploymentHash"),
+	}
+	return Server{
+		Ref: ServerRef{Source: SourceManifest, ID: artifact.ID}, Name: installed.Name,
+		Icon: installed.Icon, Transport: TransportStdio, AuthType: installed.AuthType,
+		Command: &Command{
+			Argv: append([]string{"/usr/local/bin/npx", "--yes", artifact.PackageSpec}, artifact.Args...),
+			Env:  map[string]string{}, UserSecretEnv: append([]string(nil), artifact.SecretEnv...),
+			IdleTimeout: time.Duration(artifact.IdleSeconds) * time.Second,
+			MaxLifetime: time.Duration(artifact.LifetimeSeconds) * time.Second,
+		},
+		Metadata: map[string]any{"marketplaceArtifact": approved, "dynamicRunnerArtifact": artifact},
+	}, nil
+}
+
+func validDynamicPackageSpec(value string) bool {
+	base := npmPackageBase(value)
+	if base == "" || !strings.HasPrefix(value, base+"@") {
+		return false
+	}
+	return validMarketplaceVersion(strings.TrimPrefix(value, base+"@"))
+}
+
+func numberField(input map[string]any, name string) float64 {
+	switch value := input[name].(type) {
+	case float64:
+		return value
+	case int64:
+		return float64(value)
+	case int:
+		return float64(value)
+	default:
+		return 0
+	}
 }
 
 // bindPrivateRunnerToolPolicy is intentionally narrower than normalizeTool:
@@ -509,12 +722,15 @@ func (s *Service) bindPrivateServerDisplay(server *Server) {
 	if server.Transport != TransportStdio {
 		return
 	}
-	server.Icon = ""
+	// A dynamic Runner artifact is reconstructed from the installed Server, so
+	// resolve it before clearing the persisted display value it is bound to.
 	artifact, err := s.privateRunnerArtifact(*server)
+	server.Icon = ""
 	if err != nil {
 		return
 	}
 	server.Icon = boundedMarketplaceIcon(artifact.Icon)
+	server.ConfigurationFields = append([]string(nil), artifact.Command.UserSecretEnv...)
 	server.Tools = bindPrivateRunnerToolPolicy(server.Tools, artifact)
 }
 
@@ -1068,7 +1284,13 @@ func (s *Service) serverForUser(
 		}
 		return server, nil
 	case SourcePrivate:
-		server, err := s.repo.GetPrivateServer(ctx, userID, ref.ID)
+		administratorUserID := s.config.AdministratorUserID
+		if !validUUID(administratorUserID) {
+			// Preserve access to an actor's own legacy rows while ensuring an
+			// invalid administrator configuration never expands shared access.
+			administratorUserID = userID
+		}
+		server, err := s.repo.GetAccessiblePrivateServer(ctx, userID, administratorUserID, ref.ID)
 		if err != nil {
 			return Server{}, err
 		}
@@ -1078,6 +1300,11 @@ func (s *Service) serverForUser(
 				return Server{}, err
 			}
 			server.Icon = boundedMarketplaceIcon(artifact.Icon)
+			server.Command = cloneCommand(artifact.Command)
+			if dynamic, ok := artifact.Metadata["dynamicRunnerArtifact"].(DynamicRunnerArtifact); ok {
+				server.Metadata["dynamicRunnerArtifactResolved"] = dynamic
+			}
+			server.ConfigurationFields = append([]string(nil), artifact.Command.UserSecretEnv...)
 			server.Tools = bindPrivateRunnerToolPolicy(server.Tools, artifact)
 		}
 		return server, nil
@@ -1162,6 +1389,10 @@ func (s *Service) sharedServerIDs(source string) []string {
 }
 
 func (s *Service) connectionCredential(ctx context.Context, userID string, server Server) (string, error) {
+	credentialUserID := userID
+	if server.Ref.Source == SourcePrivate && server.OwnerUserID == s.config.AdministratorUserID {
+		credentialUserID = server.OwnerUserID
+	}
 	switch server.AuthType {
 	case AuthNone:
 		return "", nil
@@ -1169,7 +1400,7 @@ func (s *Service) connectionCredential(ctx context.Context, userID string, serve
 		if server.HeaderAuth != nil && server.HeaderAuth.EncryptedSecret != "" {
 			return server.HeaderAuth.EncryptedSecret, nil
 		}
-		stored, err := s.loadCredential(ctx, userID, server.Ref)
+		stored, err := s.loadCredential(ctx, credentialUserID, server.Ref)
 		if err != nil {
 			return "", err
 		}
@@ -1178,7 +1409,7 @@ func (s *Service) connectionCredential(ctx context.Context, userID string, serve
 		}
 		return stored.HeaderValue, nil
 	case AuthOAuth:
-		stored, err := s.loadCredential(ctx, userID, server.Ref)
+		stored, err := s.loadCredential(ctx, credentialUserID, server.Ref)
 		if err != nil {
 			return "", err
 		}
@@ -1189,9 +1420,22 @@ func (s *Service) connectionCredential(ctx context.Context, userID string, serve
 			if stored.RefreshToken == "" {
 				return "", ErrCredentialRequired
 			}
-			return s.refreshOAuthAccessToken(ctx, userID, server)
+			return s.refreshOAuthAccessToken(ctx, credentialUserID, server)
 		}
 		return stored.AccessToken, nil
+	case AuthEnv:
+		stored, err := s.loadCredential(ctx, credentialUserID, server.Ref)
+		if err != nil {
+			return "", err
+		}
+		if len(stored.Environment) == 0 {
+			return "", ErrCredentialRequired
+		}
+		encoded, err := json.Marshal(stored.Environment)
+		if err != nil {
+			return "", ErrCredentialInvalid
+		}
+		return string(encoded), nil
 	default:
 		return "", ErrCredentialInvalid
 	}
@@ -1390,12 +1634,24 @@ func cloneServer(server Server) Server {
 	}
 	server.Metadata = metadata
 	if server.Command != nil {
-		command := *server.Command
-		command.Argv = append([]string(nil), server.Command.Argv...)
-		command.Env = cloneStringMap(server.Command.Env)
-		server.Command = &command
+		server.Command = cloneCommand(server.Command)
+	}
+	if server.CredentialProbe != nil {
+		probe := *server.CredentialProbe
+		server.CredentialProbe = &probe
 	}
 	return server
+}
+
+func cloneCommand(command *Command) *Command {
+	if command == nil {
+		return nil
+	}
+	cloned := *command
+	cloned.Argv = append([]string(nil), command.Argv...)
+	cloned.Env = cloneStringMap(command.Env)
+	cloned.UserSecretEnv = append([]string(nil), command.UserSecretEnv...)
+	return &cloned
 }
 
 func toolSnapshotHash(tools []Tool) (string, error) {

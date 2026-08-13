@@ -2,12 +2,16 @@ package mcprunner
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -22,6 +26,8 @@ var (
 	ErrCapacity          = errors.New("mcp runner process capacity exhausted")
 	ErrUnavailable       = errors.New("mcp runner server is unavailable")
 )
+
+const runnerConnectTimeout = 2 * time.Minute
 
 type Config struct {
 	MaxProcesses  int
@@ -40,15 +46,18 @@ type Manager struct {
 }
 
 type managedSession struct {
-	serverID string
-	workDir  string
-	command  *exec.Cmd
-	session  *protocol.ClientSession
-	started  time.Time
-	lastUsed time.Time
-	active   int
-	closing  bool
-	changed  bool
+	serverID               string
+	workDir                string
+	command                *exec.Cmd
+	session                *protocol.ClientSession
+	started                time.Time
+	lastUsed               time.Time
+	active                 int
+	closing                bool
+	changed                bool
+	environmentFingerprint string
+	idleTimeout            time.Duration
+	maxLifetime            time.Duration
 }
 
 func NewManager(config Config, servers []mcpclient.Server) (*Manager, error) {
@@ -101,8 +110,9 @@ func (m *Manager) RunReaper(ctx context.Context) {
 	}
 }
 
-func (m *Manager) ListTools(ctx context.Context, serverID string) ([]*protocol.Tool, error) {
-	managed, release, err := m.acquire(ctx, serverID)
+func (m *Manager) ListTools(ctx context.Context, serverID string, options ...instanceOptions) ([]*protocol.Tool, error) {
+	instanceID, environment, artifact := runnerInstanceOptions(serverID, options)
+	managed, release, err := m.acquire(ctx, serverID, instanceID, environment, artifact)
 	if err != nil {
 		return nil, err
 	}
@@ -124,8 +134,10 @@ func (m *Manager) CallTool(
 	serverID string,
 	name string,
 	arguments map[string]any,
+	options ...instanceOptions,
 ) (*protocol.CallToolResult, error) {
-	managed, release, err := m.acquire(ctx, serverID)
+	instanceID, environment, artifact := runnerInstanceOptions(serverID, options)
+	managed, release, err := m.acquire(ctx, serverID, instanceID, environment, artifact)
 	if err != nil {
 		return nil, err
 	}
@@ -139,6 +151,19 @@ func (m *Manager) CallTool(
 		return nil, ErrUnavailable
 	}
 	return result, nil
+}
+
+type instanceOptions struct {
+	InstanceID  string
+	Environment map[string]string
+	Artifact    mcpclient.DynamicRunnerArtifact
+}
+
+func runnerInstanceOptions(serverID string, options []instanceOptions) (string, map[string]string, mcpclient.DynamicRunnerArtifact) {
+	if len(options) == 1 && options[0].InstanceID != "" {
+		return options[0].InstanceID, options[0].Environment, options[0].Artifact
+	}
+	return serverID, map[string]string{}, mcpclient.DynamicRunnerArtifact{}
 }
 
 func (m *Manager) Health() error {
@@ -176,6 +201,9 @@ func (m *Manager) Close() error {
 func (m *Manager) acquire(
 	ctx context.Context,
 	serverID string,
+	instanceID string,
+	environment map[string]string,
+	artifact mcpclient.DynamicRunnerArtifact,
 ) (*managedSession, func(), error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -184,33 +212,118 @@ func (m *Manager) acquire(
 	}
 	server, approved := m.servers[serverID]
 	if !approved {
-		return nil, nil, ErrServerNotApproved
+		var err error
+		server, err = dynamicServer(serverID, artifact)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
+	if err := validateInstanceEnvironment(server, environment); err != nil {
+		return nil, nil, err
+	}
+	key := instanceID
 	now := time.Now().UTC()
-	if managed := m.sessions[serverID]; managed != nil && !managed.closing {
-		if now.Sub(managed.started) < server.Command.MaxLifetime {
+	if managed := m.sessions[key]; managed != nil && !managed.closing {
+		if now.Sub(managed.started) < server.Command.MaxLifetime &&
+			managed.environmentFingerprint == environmentFingerprint(environment) {
 			managed.active++
 			managed.lastUsed = now
 			return managed, m.releaseFunc(managed), nil
 		}
 		managed.closing = true
-		delete(m.sessions, serverID)
-		go func() { _ = closeManagedSession(managed) }()
+		delete(m.sessions, key)
+		// Finish removing the old instance before recreating its workspace. An
+		// asynchronous close can delete the replacement's npm cache/workdir.
+		_ = closeManagedSession(managed)
 	}
 	if len(m.sessions) >= m.config.MaxProcesses {
 		return nil, nil, ErrCapacity
 	}
-	managed, err := m.startLocked(ctx, server)
+	managed, err := m.startLocked(ctx, server, key, environment)
 	if err != nil {
 		return nil, nil, err
 	}
 	managed.active = 1
-	m.sessions[serverID] = managed
+	m.sessions[key] = managed
 	return managed, m.releaseFunc(managed), nil
 }
 
-func (m *Manager) startLocked(ctx context.Context, server mcpclient.Server) (*managedSession, error) {
-	workDir := filepath.Join(m.config.WorkRoot, server.Ref.ID)
+func dynamicServer(serverID string, artifact mcpclient.DynamicRunnerArtifact) (mcpclient.Server, error) {
+	if artifact.ID != serverID || !validDynamicPackageSpec(artifact.PackageSpec) ||
+		len(artifact.Args) > 64 || len(artifact.SecretEnv) > 8 ||
+		artifact.IdleSeconds < 60 || artifact.IdleSeconds > 3600 ||
+		artifact.LifetimeSeconds < artifact.IdleSeconds || artifact.LifetimeSeconds > 86400 {
+		return mcpclient.Server{}, ErrServerNotApproved
+	}
+	for _, value := range artifact.Args {
+		if value == "" || len(value) > 4096 || strings.ContainsAny(value, "\x00\r\n") {
+			return mcpclient.Server{}, ErrServerNotApproved
+		}
+	}
+	for _, name := range artifact.SecretEnv {
+		if !validEnvironmentName(name) {
+			return mcpclient.Server{}, ErrServerNotApproved
+		}
+	}
+	return mcpclient.Server{
+		Ref:       mcpclient.ServerRef{Source: mcpclient.SourceManifest, ID: serverID},
+		Transport: mcpclient.TransportStdio,
+		Command: &mcpclient.Command{
+			Argv: append([]string{"/usr/local/bin/npx", "--yes", artifact.PackageSpec}, artifact.Args...),
+			Env:  map[string]string{}, UserSecretEnv: append([]string(nil), artifact.SecretEnv...),
+			IdleTimeout: time.Duration(artifact.IdleSeconds) * time.Second,
+			MaxLifetime: time.Duration(artifact.LifetimeSeconds) * time.Second,
+		},
+	}, nil
+}
+
+func validDynamicPackageSpec(value string) bool {
+	if value == "" || len(value) > 512 || strings.ContainsAny(value, "\\:#?%\x00\r\n\t") {
+		return false
+	}
+	lastAt := strings.LastIndexByte(value, '@')
+	if lastAt <= 0 || lastAt == len(value)-1 {
+		return false
+	}
+	name, version := value[:lastAt], value[lastAt+1:]
+	if strings.HasPrefix(value, "@") {
+		lastAt = strings.LastIndexByte(value[1:], '@') + 1
+		if lastAt <= strings.IndexByte(value, '/') || lastAt == len(value)-1 {
+			return false
+		}
+		name, version = value[:lastAt], value[lastAt+1:]
+	}
+	if strings.Contains(name, "..") || strings.Count(name, "/") > 1 ||
+		(strings.HasPrefix(name, "@") && !strings.Contains(name, "/")) {
+		return false
+	}
+	if version == "latest" || version == "next" || version == "beta" || version == "dev" {
+		return false
+	}
+	for _, char := range strings.ToLower(name + version) {
+		if (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || strings.ContainsRune("@/._+-", char) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func validEnvironmentName(value string) bool {
+	if value == "" || len(value) > 128 {
+		return false
+	}
+	for index, char := range value {
+		if char == '_' || (char >= 'A' && char <= 'Z') || (index > 0 && char >= '0' && char <= '9') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func (m *Manager) startLocked(ctx context.Context, server mcpclient.Server, instanceID string, environment map[string]string) (*managedSession, error) {
+	workDir := filepath.Join(m.config.WorkRoot, instanceID)
 	if err := os.RemoveAll(workDir); err != nil {
 		return nil, ErrUnavailable
 	}
@@ -219,7 +332,17 @@ func (m *Manager) startLocked(ctx context.Context, server mcpclient.Server) (*ma
 	}
 	command := exec.Command(server.Command.Argv[0], server.Command.Argv[1:]...)
 	command.Dir = workDir
-	command.Env = []string{"HOME=" + workDir, "TMPDIR=" + workDir, "PATH=/usr/local/bin:/usr/bin:/bin"}
+	cacheDir := filepath.Join(workDir, ".npm")
+	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
+		_ = os.RemoveAll(workDir)
+		return nil, ErrUnavailable
+	}
+	command.Env = []string{
+		"HOME=" + workDir, "TMPDIR=" + workDir, "PATH=/usr/local/bin:/usr/bin:/bin",
+		"PLAYWRIGHT_BROWSERS_PATH=/ms-playwright",
+		"npm_config_cache=" + cacheDir, "npm_config_update_notifier=false",
+		"npm_config_audit=false", "npm_config_fund=false",
+	}
 	keys := make([]string, 0, len(server.Command.Env))
 	for key := range server.Command.Env {
 		keys = append(keys, key)
@@ -228,12 +351,23 @@ func (m *Manager) startLocked(ctx context.Context, server mcpclient.Server) (*ma
 	for _, key := range keys {
 		command.Env = append(command.Env, key+"="+server.Command.Env[key])
 	}
+	secretKeys := make([]string, 0, len(environment))
+	for key := range environment {
+		secretKeys = append(secretKeys, key)
+	}
+	sort.Strings(secretKeys)
+	for _, key := range secretKeys {
+		command.Env = append(command.Env, key+"="+environment[key])
+	}
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	client := protocol.NewClient(
 		&protocol.Implementation{Name: fallback(m.config.ClientName, "neo-chat-mcp-runner"), Version: fallback(m.config.ClientVersion, "dev")},
 		&protocol.ClientOptions{Capabilities: &protocol.ClientCapabilities{}},
 	)
-	connectCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	// Cold npx artifacts install into the isolated per-Server cache during
+	// Connect. Bound that path independently from the shorter steady-state call
+	// timeout so a legitimate first install is not killed halfway through.
+	connectCtx, cancel := context.WithTimeout(ctx, runnerConnectTimeout)
 	defer cancel()
 	session, err := client.Connect(connectCtx, &protocol.CommandTransport{
 		Command: command, TerminateDuration: 3 * time.Second,
@@ -245,9 +379,36 @@ func (m *Manager) startLocked(ctx context.Context, server mcpclient.Server) (*ma
 	}
 	now := time.Now().UTC()
 	return &managedSession{
-		serverID: server.Ref.ID, workDir: workDir, command: command,
+		serverID: instanceID, workDir: workDir, command: command,
 		session: session, started: now, lastUsed: now,
+		environmentFingerprint: environmentFingerprint(environment),
+		idleTimeout:            server.Command.IdleTimeout, maxLifetime: server.Command.MaxLifetime,
 	}, nil
+}
+
+func environmentFingerprint(environment map[string]string) string {
+	encoded, err := json.Marshal(environment)
+	if err != nil {
+		return ""
+	}
+	digest := sha256.Sum256(encoded)
+	return hex.EncodeToString(digest[:])
+}
+
+func validateInstanceEnvironment(server mcpclient.Server, environment map[string]string) error {
+	if server.Command == nil || len(environment) != len(server.Command.UserSecretEnv) {
+		if len(environment) == 0 && server.Command != nil && len(server.Command.UserSecretEnv) == 0 {
+			return nil
+		}
+		return ErrServerNotApproved
+	}
+	for _, name := range server.Command.UserSecretEnv {
+		value, ok := environment[name]
+		if !ok || value == "" || len(value) > 16<<10 || strings.ContainsAny(value, "\x00\r\n") {
+			return ErrServerNotApproved
+		}
+	}
+	return nil
 }
 
 func (m *Manager) releaseFunc(managed *managedSession) func() {
@@ -283,9 +444,8 @@ func (m *Manager) reap(now time.Time) {
 	m.mu.Lock()
 	closing := []*managedSession{}
 	for id, session := range m.sessions {
-		server := m.servers[id]
-		idleExpired := session.active == 0 && now.Sub(session.lastUsed) >= server.Command.IdleTimeout
-		lifetimeExpired := now.Sub(session.started) >= server.Command.MaxLifetime
+		idleExpired := session.active == 0 && now.Sub(session.lastUsed) >= session.idleTimeout
+		lifetimeExpired := now.Sub(session.started) >= session.maxLifetime
 		if !idleExpired && !lifetimeExpired {
 			continue
 		}

@@ -33,4 +33,5 @@ var (
 	ErrMarketplaceNotFound     = errors.New("mcp marketplace item not found")
 	ErrMarketplaceIncompatible = errors.New("mcp marketplace item is incompatible")
 	ErrMarketplaceChanged      = errors.New("mcp marketplace item changed")
+	ErrAdministratorRequired   = errors.New("mcp administrator access is required")
 )

@@ -16,6 +16,7 @@ const (
 	AuthNone   = "none"
 	AuthHeader = "header"
 	AuthOAuth  = "oauth"
+	AuthEnv    = "env"
 
 	ServerStatusDraft       = "draft"
 	ServerStatusReady       = "ready"
@@ -48,6 +49,7 @@ type Config struct {
 	ManifestFile         string
 	RunnerURL            string
 	RunnerToken          string
+	AdministratorUserID  string
 	OAuthCallbackURL     string
 	PrivateServerLimit   int
 	ConversationLimit    int
@@ -76,6 +78,7 @@ func (r ServerRef) Key() string {
 
 type HeaderAuth struct {
 	Name            string `json:"name,omitempty"`
+	Prefix          string `json:"prefix,omitempty"`
 	EncryptedSecret string `json:"-"`
 	SecretFile      string `json:"secretFile,omitempty"`
 	EnvRef          string `json:"envRef,omitempty"`
@@ -93,6 +96,17 @@ type Command struct {
 	WorkingDirectory string            `json:"workingDirectory,omitempty"`
 	IdleTimeout      time.Duration     `json:"-"`
 	MaxLifetime      time.Duration     `json:"-"`
+	UserSecretEnv    []string          `json:"userSecretEnv,omitempty"`
+}
+
+// CredentialProbe is an operator-reviewed live credential check. Marketplace
+// metadata and browser input can never create or alter it.
+type CredentialProbe struct {
+	EndpointURL  string
+	Method       string
+	SecretField  string
+	HeaderName   string
+	HeaderPrefix string
 }
 
 type Grant struct {
@@ -102,27 +116,31 @@ type Grant struct {
 }
 
 type Server struct {
-	Ref              ServerRef      `json:"ref"`
-	Name             string         `json:"name"`
-	Description      string         `json:"description,omitempty"`
-	Icon             string         `json:"icon,omitempty"`
-	Transport        string         `json:"transport"`
-	EndpointURL      string         `json:"endpointUrl,omitempty"`
-	Command          *Command       `json:"-"`
-	AuthType         string         `json:"authType"`
-	HeaderAuth       *HeaderAuth    `json:"-"`
-	OAuthClient      *OAuthClient   `json:"-"`
-	Status           string         `json:"status"`
-	HasCredential    bool           `json:"hasCredential"`
-	ToolCount        int            `json:"toolCount"`
-	UnsupportedCount int            `json:"unsupportedToolCount"`
-	LastErrorCode    string         `json:"lastErrorCode,omitempty"`
-	ValidatedAt      *time.Time     `json:"validatedAt,omitempty"`
-	Grants           []Grant        `json:"grants,omitempty"`
-	CreatedAt        time.Time      `json:"createdAt,omitempty"`
-	UpdatedAt        time.Time      `json:"updatedAt,omitempty"`
-	Tools            []Tool         `json:"-"`
-	Metadata         map[string]any `json:"-"`
+	Ref                 ServerRef        `json:"ref"`
+	Name                string           `json:"name"`
+	Description         string           `json:"description,omitempty"`
+	Icon                string           `json:"icon,omitempty"`
+	Transport           string           `json:"transport"`
+	EndpointURL         string           `json:"endpointUrl,omitempty"`
+	Command             *Command         `json:"-"`
+	CredentialProbe     *CredentialProbe `json:"-"`
+	AuthType            string           `json:"authType"`
+	HeaderAuth          *HeaderAuth      `json:"-"`
+	OAuthClient         *OAuthClient     `json:"-"`
+	Status              string           `json:"status"`
+	HasCredential       bool             `json:"hasCredential"`
+	CanManage           bool             `json:"canManage"`
+	ConfigurationFields []string         `json:"configurationFields,omitempty"`
+	ToolCount           int              `json:"toolCount"`
+	UnsupportedCount    int              `json:"unsupportedToolCount"`
+	LastErrorCode       string           `json:"lastErrorCode,omitempty"`
+	ValidatedAt         *time.Time       `json:"validatedAt,omitempty"`
+	Grants              []Grant          `json:"grants,omitempty"`
+	CreatedAt           time.Time        `json:"createdAt,omitempty"`
+	UpdatedAt           time.Time        `json:"updatedAt,omitempty"`
+	OwnerUserID         string           `json:"-"`
+	Tools               []Tool           `json:"-"`
+	Metadata            map[string]any   `json:"-"`
 }
 
 type Tool struct {
@@ -156,14 +174,15 @@ type WorkspaceSelection struct {
 }
 
 type CreateServerInput struct {
-	Name        string
-	EndpointURL string
-	Transport   string
-	AuthType    string
-	HeaderName  string
-	ClientID    string
-	Scopes      []string
-	Metadata    map[string]any
+	Name         string
+	EndpointURL  string
+	Transport    string
+	AuthType     string
+	HeaderName   string
+	HeaderPrefix string
+	ClientID     string
+	Scopes       []string
+	Metadata     map[string]any
 }
 
 const (
@@ -226,9 +245,13 @@ type MarketplaceDeployment struct {
 	CompatibilityReason string   `json:"compatibilityReason"`
 	EndpointURL         string   `json:"endpointUrl,omitempty"`
 	Hash                string   `json:"hash,omitempty"`
+	InstallMode         string   `json:"installMode,omitempty"`
+	SecretFields        []string `json:"secretFields,omitempty"`
+	HeaderName          string   `json:"headerName,omitempty"`
 	Command             string   `json:"-"`
 	Args                []string `json:"-"`
 	PackageName         string   `json:"-"`
+	PackageSpec         string   `json:"-"`
 }
 
 type MarketplaceArtifact struct {
@@ -243,6 +266,8 @@ type MarketplaceArtifact struct {
 type MarketplaceItemDetail struct {
 	MarketplaceItem
 	Version       string                   `json:"version"`
+	Installed     bool                     `json:"installed"`
+	CanInstall    bool                     `json:"canInstall"`
 	Summary       string                   `json:"summary,omitempty"`
 	Homepage      string                   `json:"homepage,omitempty"`
 	RepositoryURL string                   `json:"repositoryUrl,omitempty"`
@@ -252,12 +277,32 @@ type MarketplaceItemDetail struct {
 	Deployments   []MarketplaceDeployment  `json:"deployments"`
 }
 
+// DynamicRunnerArtifact is a backend-authoritative npm execution definition.
+// It is persisted only on an administrator-owned Server and sealed before it
+// crosses the internal Runner control plane.
+type DynamicRunnerArtifact struct {
+	ID              string   `json:"id"`
+	PackageSpec     string   `json:"packageSpec"`
+	Args            []string `json:"args,omitempty"`
+	SecretEnv       []string `json:"secretEnv,omitempty"`
+	IdleSeconds     int64    `json:"idleSeconds"`
+	LifetimeSeconds int64    `json:"lifetimeSeconds"`
+}
+
 type MarketplaceInstallInput struct {
 	Identifier            string
 	Version               string
 	ConversationID        string
 	SelectionRevision     int64
 	EnableForConversation bool
+	DeploymentHash        string
+	Secrets               map[string]string
+	CustomEndpointURL     string
+	CustomAuthType        string
+	CustomHeaderName      string
+	CustomHeaderPrefix    string
+	CustomCredential      string
+	CustomClientID        string
 }
 
 type MarketplaceInstallResult struct {

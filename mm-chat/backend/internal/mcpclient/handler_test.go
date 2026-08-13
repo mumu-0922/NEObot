@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"neo-chat/mm-chat/backend/internal/auth"
 )
 
 func TestViewServerEncodesEmptyToolsAsArray(t *testing.T) {
@@ -122,6 +123,35 @@ func TestWriteMCPServiceErrorMapsDuplicateServerToConflict(t *testing.T) {
 	}
 	if body.Error.Code != "MCP_CONFLICT" {
 		t.Fatalf("error code = %q, want MCP_CONFLICT", body.Error.Code)
+	}
+}
+
+func TestWriteMCPServiceErrorMapsAdministratorBoundary(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writeMCPServiceError(recorder, ErrAdministratorRequired)
+	if recorder.Code != http.StatusForbidden || !bytes.Contains(recorder.Body.Bytes(), []byte("MCP_ADMIN_REQUIRED")) {
+		t.Fatalf("administrator error status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestHandlerRejectsNonAdministratorServerCreation(t *testing.T) {
+	administratorID := "00000000-0000-0000-0000-000000000001"
+	ordinaryID := "00000000-0000-0000-0000-000000000009"
+	config := testMCPConfig()
+	config.AdministratorUserID = administratorID
+	service, err := NewService(config, newFakeRepository(), nil, nil, nil, Catalog{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(service)
+	request := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers", bytes.NewBufferString(
+		`{"name":"blocked","endpointUrl":"https://mcp.example.com/mcp","authType":"none"}`,
+	))
+	request = request.WithContext(auth.WithUser(request.Context(), auth.User{ID: ordinaryID}))
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusForbidden || !bytes.Contains(recorder.Body.Bytes(), []byte("MCP_ADMIN_REQUIRED")) {
+		t.Fatalf("ordinary create status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
 
