@@ -1697,3 +1697,36 @@ Added the server-owned Assistant Store, revision/fingerprint authority, display-
 ### Next Steps
 
 - None - task complete
+
+
+## Session 40: Agent Runtime Phase 0 contracts
+
+**Date**: 2026-08-13
+**Task**: Agent Runtime Phase 0 contracts
+**Branch**: `main`
+
+### Summary
+
+Pinned Hermes and Agent Skills evidence; defined the Neo Agent Runtime C4/ArchiMate and STRIDE baseline, strict Manifest/Grant/Runner RPC/Run Event schemas with fixtures, rootless isolation/Prepare-Commit/depth-1/Cron/Draft/cutover gates, and an offline clean-copy verifier. Production Runtime remains disabled.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `231e0e60` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
