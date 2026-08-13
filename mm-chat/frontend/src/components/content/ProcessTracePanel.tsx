@@ -16,6 +16,7 @@ import { useTranslations } from "next-intl";
 
 import {
   isProcessStepActive,
+  processToolLabelForDisplay,
   processReasonCategoryForDisplay,
   projectProcessStepsForDisplay,
   resolveProcessPanelExpanded,
@@ -129,11 +130,7 @@ function ProcessStepRow({ step }: { step: ProcessStep }) {
   const reason = processReasonCategoryForDisplay(step);
   const hitCount = numberDetail(step, "hitCount");
   const sourceCount = numberDetail(step, "sourceCount");
-  const server = stringDetail(step, "server");
-  const toolName = stringDetail(step, "toolName");
-  const classification = stringDetail(step, "classification");
-  const callStatus = stringDetail(step, "callStatus");
-  const argumentSummary = stringDetail(step, "argumentSummary");
+  const toolLabel = processToolLabelForDisplay(step);
 
   return (
     <li className="flex min-w-0 items-start gap-2 text-xs text-gray-600 dark:text-muted-foreground">
@@ -153,11 +150,11 @@ function ProcessStepRow({ step }: { step: ProcessStep }) {
         )}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-gray-700 dark:text-foreground/85">
-            {processKindLabel(step.kind, t)}
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 flex-1 truncate font-medium text-gray-700 dark:text-foreground/85">
+            {toolLabel || processKindLabel(step.kind, t)}
           </span>
-          <span className="text-[11px] text-gray-400 dark:text-muted-foreground/70">
+          <span className="shrink-0 whitespace-nowrap text-[11px] text-gray-400 dark:text-muted-foreground/70">
             {processStatusLabel(step.status, t)}
             {typeof step.durationMs === "number"
               ? ` · ${formatDuration(step.durationMs)}`
@@ -176,54 +173,6 @@ function ProcessStepRow({ step }: { step: ProcessStep }) {
             {processReasonLabel(reason, t)}
           </div>
         ) : null}
-        {step.kind === "tool" && (server || toolName) ? (
-          <div className="mt-1.5 space-y-1 rounded-md border border-gray-200/70 bg-white/70 px-2 py-1.5 text-[11px] dark:border-border dark:bg-background/50">
-            <div className="flex flex-wrap gap-x-3 gap-y-1">
-              {server ? (
-                <span>
-                  <span className="text-gray-400">
-                    {t("processToolServer")}
-                  </span>{" "}
-                  <span className="font-mono text-gray-600 dark:text-foreground/80">
-                    {server}
-                  </span>
-                </span>
-              ) : null}
-              {toolName ? (
-                <span>
-                  <span className="text-gray-400">{t("processToolName")}</span>{" "}
-                  <span className="font-mono text-gray-600 dark:text-foreground/80">
-                    {toolName}
-                  </span>
-                </span>
-              ) : null}
-            </div>
-            {classification || callStatus ? (
-              <div className="flex flex-wrap gap-1">
-                {classification ? (
-                  <span className="rounded bg-gray-100 px-1.5 py-0.5 uppercase text-gray-500 dark:bg-muted">
-                    {classification}
-                  </span>
-                ) : null}
-                {callStatus ? (
-                  <span
-                    className={`rounded px-1.5 py-0.5 ${outcomeUnknown ? "bg-red-100 font-semibold text-red-700 dark:bg-red-950/50 dark:text-red-200" : "bg-gray-100 text-gray-500 dark:bg-muted"}`}
-                  >
-                    {callStatus}
-                  </span>
-                ) : null}
-              </div>
-            ) : null}
-            {argumentSummary ? (
-              <div className="break-all font-mono text-gray-500 dark:text-muted-foreground">
-                <span className="font-sans text-gray-400">
-                  {t("processToolArguments")}
-                </span>{" "}
-                {argumentSummary}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
       </div>
     </li>
   );
@@ -237,13 +186,19 @@ function buildProcessSummary(
   if (active) {
     const current = [...steps].reverse().find(isProcessStepActive);
     return current
-      ? t("processRunning", { stage: processKindLabel(current.kind, t) })
+      ? t("processRunning", {
+          stage:
+            processToolLabelForDisplay(current) ||
+            processKindLabel(current.kind, t),
+        })
       : t("processRunningGeneric");
   }
   const route = summarizeProcessRoute(steps);
   switch (route.route) {
     case "direct":
-      return t("processRouteDirect");
+      return route.toolCalls > 0
+        ? t("processRouteTools", { count: route.toolCalls })
+        : t("processRouteDirect");
     case "knowledge":
       return t("processRouteKnowledge", { count: route.knowledgeSources });
     case "web":
@@ -328,9 +283,4 @@ function numberDetail(step: ProcessStep, key: string): number | undefined {
   return typeof value === "number" && Number.isFinite(value)
     ? value
     : undefined;
-}
-
-function stringDetail(step: ProcessStep, key: string): string {
-  const value = step.detail?.[key];
-  return typeof value === "string" ? value : "";
 }

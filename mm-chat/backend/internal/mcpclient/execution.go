@@ -55,38 +55,38 @@ func (s *Service) Execute(
 		return CallResult{}, err
 	}
 	call = created
-	s.emit(ctx, sink, eventFromCall(call, input.Arguments))
+	s.emit(ctx, sink, eventFromCall(call, server.Name, input.Arguments))
 	if strings.TrimSpace(input.ValidationFailure) != "" {
 		return s.finishExecutionFailure(
-			ctx, userID, call, input.Arguments, sink, ErrToolArgumentsInvalid, false, now,
+			ctx, userID, call, server.Name, input.Arguments, sink, ErrToolArgumentsInvalid, false, now,
 		)
 	}
 	if err := ValidateToolArguments(tool, input.Arguments); err != nil {
-		return s.finishExecutionFailure(ctx, userID, call, input.Arguments, sink, err, false, now)
+		return s.finishExecutionFailure(ctx, userID, call, server.Name, input.Arguments, sink, err, false, now)
 	}
 	release, err := s.acquireUserCall(ctx, userID)
 	if err != nil {
-		return s.finishExecutionFailure(ctx, userID, call, input.Arguments, sink, err, false, now)
+		return s.finishExecutionFailure(ctx, userID, call, server.Name, input.Arguments, sink, err, false, now)
 	}
 	defer release()
 	writeRelease := func() {}
 	if tool.Classification != ClassificationRead {
 		writeRelease, err = s.acquireUserWrite(ctx, userID)
 		if err != nil {
-			return s.finishExecutionFailure(ctx, userID, call, input.Arguments, sink, err, false, now)
+			return s.finishExecutionFailure(ctx, userID, call, server.Name, input.Arguments, sink, err, false, now)
 		}
 	}
 	defer writeRelease()
 	call.Status = CallStatusRunning
 	started := s.now().UTC()
 	call.StartedAt = &started
-	s.emit(ctx, sink, eventFromCall(call, input.Arguments))
+	s.emit(ctx, sink, eventFromCall(call, server.Name, input.Arguments))
 
 	callCtx, cancel := context.WithTimeout(ctx, s.config.CallTimeout)
 	defer cancel()
 	credential, err := s.connectionCredential(callCtx, userID, server)
 	if err != nil {
-		return s.finishExecutionFailure(ctx, userID, call, input.Arguments, sink, err, false, started)
+		return s.finishExecutionFailure(ctx, userID, call, server.Name, input.Arguments, sink, err, false, started)
 	}
 
 	var result CallResult
@@ -116,12 +116,12 @@ func (s *Service) Execute(
 	if err != nil {
 		outcomeUnknown := dispatched && tool.Classification != ClassificationRead &&
 			!errors.Is(err, ErrToolArgumentsInvalid)
-		return s.finishExecutionFailure(ctx, userID, call, input.Arguments, sink, err, outcomeUnknown, started)
+		return s.finishExecutionFailure(ctx, userID, call, server.Name, input.Arguments, sink, err, outcomeUnknown, started)
 	}
 
 	bounded, objectKeys, byteSize, err := s.boundAndStoreResult(ctx, call, result)
 	if err != nil {
-		return s.finishExecutionFailure(ctx, userID, call, input.Arguments, sink, err, false, started)
+		return s.finishExecutionFailure(ctx, userID, call, server.Name, input.Arguments, sink, err, false, started)
 	}
 	completed := s.now().UTC()
 	call.CompletedAt = &completed
@@ -138,7 +138,7 @@ func (s *Service) Execute(
 		}
 		return CallResult{}, err
 	}
-	s.emit(ctx, sink, eventFromCall(call, nil))
+	s.emit(ctx, sink, eventFromCall(call, server.Name, nil))
 	return bounded, nil
 }
 
@@ -146,6 +146,7 @@ func (s *Service) finishExecutionFailure(
 	ctx context.Context,
 	userID string,
 	call CallRecord,
+	serverName string,
 	arguments map[string]any,
 	sink EventSink,
 	cause error,
@@ -178,7 +179,7 @@ func (s *Service) finishExecutionFailure(
 	if err := s.repo.FinishCall(finishCtx, userID, call, nil, nil, 0); err != nil {
 		return CallResult{}, err
 	}
-	event := eventFromCall(call, arguments)
+	event := eventFromCall(call, serverName, arguments)
 	event.FailureCategory = call.ErrorCode
 	s.emit(context.WithoutCancel(ctx), sink, event)
 	if outcomeUnknown {
@@ -399,13 +400,22 @@ func executionFailureCode(err error) string {
 	}
 }
 
-func eventFromCall(call CallRecord, arguments map[string]any) ExecutionEvent {
+func eventFromCall(call CallRecord, serverName string, arguments map[string]any) ExecutionEvent {
 	return ExecutionEvent{
-		CallID: call.ID, ServerRef: call.ServerRef, ToolName: call.ToolName,
+		CallID: call.ID, ServerRef: call.ServerRef,
+		ServerName: boundedServerName(serverName), ToolName: call.ToolName,
 		ToolAlias: call.ToolAlias, Classification: call.Classification,
 		Status: call.Status, Round: call.Round, Call: call.Call,
 		Arguments: summarizeArguments(arguments), DurationMillis: call.DurationMillis,
 	}
+}
+
+func boundedServerName(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) <= maxPrivateServerNameBytes {
+		return value
+	}
+	return boundedUTF8(value, maxPrivateServerNameBytes-len("…"))
 }
 
 func (s *Service) emit(ctx context.Context, sink EventSink, event ExecutionEvent) bool {

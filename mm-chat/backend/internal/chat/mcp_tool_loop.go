@@ -395,6 +395,7 @@ func (runtime *mcpToolRuntime) eventSink(events chan<- ProviderEvent) mcpclient.
 			Status:          status,
 			CallStatus:      event.Status,
 			Server:          event.ServerRef.Key(),
+			ServerName:      event.ServerName,
 			Classification:  event.Classification,
 			Round:           event.Round,
 			Arguments:       redactMCPArguments(event.Arguments),

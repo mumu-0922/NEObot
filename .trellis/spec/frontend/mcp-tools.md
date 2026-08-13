@@ -128,10 +128,19 @@ events carry bounded MCP timeline updates.
   Show this branch only when the authoritative detail exposes an HTTP option,
   Header/OAuth mode, or required secret fields. Credential-free local stdio
   artifacts such as Context7 do not render a relay option.
-- The process trace maps only backend-redacted call summaries and states.
-  Results remain collapsed by default. Manual retry is allowed only if the
-  backend exposes a trusted idempotent read retry affordance; never infer it
-  from remote annotations.
+- The process trace maps only backend-redacted call summaries and states. An
+  MCP row renders `<serverName> · <humanized toolName>`, the authoritative
+  outer process status, and duration. Humanize third-party identifiers
+  generically (`resolve-library-id` -> `Resolve library id`) rather than
+  maintaining a product-specific Tool-name dictionary. Do not render the
+  internal `server` reference, `classification`, `callStatus`, or
+  `argumentSummary`; operators use Backend diagnostics instead. Results remain
+  collapsed by default. Manual retry is allowed only if the backend exposes a
+  trusted idempotent read retry affordance; never infer it from remote
+  annotations.
+- A completed trace with generic MCP Tool steps but no specialized Knowledge or
+  Web steps summarizes the number of Tool calls. It must not label Tool-backed
+  work as a Direct answer.
 - A failed assistant with `PROVIDER_STREAM_INTERRUPTED` renders a localized
   Provider-interruption notice while retaining the partial answer. It is not
   presented as an MCP Tool failure. For persisted rows created before this
@@ -154,6 +163,7 @@ events carry bounded MCP timeline updates.
 | OAuth URL is not valid HTTPS | localized error; do not navigate |
 | Selection revision is stale | show save failure and reload authoritative state |
 | `outcome_unknown` timeline event | terminal warning state; no one-click retry |
+| MCP trace has only legacy detail without `serverName` | show a humanized Tool action or generic Tool label; never fall back to the internal Server reference |
 | Legacy Plugin fields load/import | strip recursively; persist no Plugin or inferred MCP state |
 | Marketplace disabled or unconfigured | show a bounded configuration state; Installed remains fully usable |
 | Search/detail upstream failure | show a retryable Marketplace-only error; keep installed/selection state unchanged |
@@ -197,7 +207,8 @@ events carry bounded MCP timeline updates.
   latest-request race fencing, no command fields, install recovery, and optional
   Conversation enablement with revision.
 - Timeline mapping for every state including `outcome_unknown`, redacted
-  summaries, and cancellation.
+  summaries, cancellation, generic Tool-name humanization, readable
+  `serverName`, and non-rendering of internal Server/call/schema detail.
 - Generation-error wiring for current `PROVIDER_STREAM_INTERRUPTED` plus the
   non-empty legacy `PROVIDER_ERROR` compatibility path in every locale.
 - Storage/entity/import tests that remove all retired Plugin keys without

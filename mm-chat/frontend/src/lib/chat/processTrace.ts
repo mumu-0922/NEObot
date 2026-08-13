@@ -51,6 +51,7 @@ const PROCESS_DETAIL_KEYS = new Set([
   "queryRewritten",
   "toolName",
   "server",
+  "serverName",
   "classification",
   "callStatus",
   "argumentSummary",
@@ -73,6 +74,7 @@ export interface ProcessRouteSummary {
   route: ProcessRoute;
   knowledgeSources: number;
   webSources: number;
+  toolCalls: number;
 }
 
 export function normalizeProcessTrace(value: unknown): ProcessStep[] {
@@ -194,6 +196,7 @@ export function summarizeProcessRoute(
 ): ProcessRouteSummary {
   const knowledgeSteps = steps.filter((step) => step.kind === "knowledge");
   const webSteps = steps.filter((step) => step.kind === "web");
+  const toolCalls = steps.filter((step) => step.kind === "tool").length;
   const knowledgeSources = knowledgeSteps.reduce(
     (total, step) => total + (processStepNumberDetail(step, "hitCount") ?? 0),
     0,
@@ -214,6 +217,7 @@ export function summarizeProcessRoute(
             : "direct",
     knowledgeSources,
     webSources,
+    toolCalls,
   };
 }
 
@@ -257,6 +261,27 @@ export function resolveProcessPanelExpanded(
   manualExpanded: boolean | null,
 ): boolean {
   return manualExpanded ?? hasActiveStep;
+}
+
+export function humanizeToolName(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const normalized = value
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return "";
+  const [first = "", ...rest] = Array.from(normalized);
+  return `${first.toUpperCase()}${rest.join("").toLowerCase()}`;
+}
+
+export function processToolLabelForDisplay(step: ProcessStep): string {
+  if (step.kind !== "tool") return "";
+  const serverName = processStepStringDetail(step, "serverName");
+  const toolName = humanizeToolName(processStepStringDetail(step, "toolName"));
+  if (serverName && toolName) return `${serverName} · ${toolName}`;
+  return serverName || toolName;
 }
 
 function stringValue(value: unknown): string {

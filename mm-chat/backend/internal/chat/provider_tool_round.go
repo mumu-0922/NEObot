@@ -70,6 +70,7 @@ type ProviderToolExecutionEvent struct {
 	CallID          string            `json:"callId,omitempty"`
 	Name            string            `json:"toolName"`
 	Server          string            `json:"server,omitempty"`
+	ServerName      string            `json:"serverName,omitempty"`
 	Classification  string            `json:"classification,omitempty"`
 	Status          string            `json:"processStatus"`
 	CallStatus      string            `json:"status,omitempty"`

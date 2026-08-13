@@ -43,6 +43,17 @@ PruneExpiredData(ctx context.Context, limit int) (int, error)
 RunRetention(ctx context.Context, onError func(error))
 ```
 
+MCP execution events crossing into chat process trace carry both identities:
+
+```go
+type ExecutionEvent struct {
+    ServerRef  ServerRef // internal authorization/diagnostic identity
+    ServerName string    // trimmed, UTF-8-safe, at most 256 bytes
+    ToolName   string
+    Status     string
+}
+```
+
 Database authority starts with migration `074_mcp_tools_foundation`: Workspaces
 and memberships plus MCP servers, grants, credentials, OAuth states,
 selections, run snapshots, calls, results, and
@@ -211,6 +222,18 @@ rollback restores only the value carrying that migration's repair marker.
   and exposed at Playwright's expected Chrome path.
   Runtime `playwright install` or other browser downloads are not the repair
   path because they would be ephemeral, version-drifting mutations.
+- Every MCP call event resolves `ServerName` from the same current-authorized
+  `Server` selected for execution. Process trace may retain the internal
+  `ServerRef.Key()` for Backend diagnostics and compatibility, but the bounded
+  display name is the only Server identity intended for product UI. Never ask
+  the browser to recover a display name from `private:<uuid>` or a stale local
+  registry.
+- For a reviewed private stdio install, rebind its display name as well as its
+  icon, command, and Tool policy to the current exact local artifact before
+  listing, validation responses, selection snapshots, or execution events. A
+  verbose/stale Marketplace title never outranks current artifact display
+  authority. Dynamic npm artifacts retain their bounded installed name because
+  their artifact definition is reconstructed from that same Server.
 - MCP initialize and tools/list prove only protocol availability, not provider
   credential validity. A reviewed Runner artifact that requires a live
   credential check declares one operator-owned HTTPS probe in the local
@@ -270,6 +293,7 @@ MCP_MARKETPLACE_TIMEOUT MCP_MARKETPLACE_CACHE_TTL
 | Reviewed private stdio Tool is listed as `read` by the current artifact policy | expose `read`; permit bounded read concurrency |
 | Private remote annotation claims read-only or a reviewed artifact omits a Tool policy | normalize the Tool to `unknown`; serialize and never read-retry |
 | Installed Server has a normalized icon | expose it as display-only `icon`; never treat it as trust/execution authority |
+| Server display name enters an execution event | trim and UTF-8-bound it to 256 bytes; preserve the internal ref separately |
 | Icon is unsafe, oversized, or missing | omit it from the DTO; frontend uses a local fallback |
 | Client submits stale version/revision | no authority substitution; reject the install/selection mutation without hiding an already-created Server |
 
@@ -296,8 +320,9 @@ MCP_MARKETPLACE_TIMEOUT MCP_MARKETPLACE_CACHE_TTL
 - HTTP: auth, methods, strict JSON, no-store, stable errors, cross-user/
   cross-Workspace denial, explicit-empty and revision conflict.
 - Chat: fake Streamable HTTP and fake Runner complete native multi-round same-
-  model continuation and persist the structured timeline; unsupported model
-  rejects before acceptance. Any method added to the shared `Repository`
+  model continuation, emit/persist the bounded Server display name beside the
+  internal ref, and persist the structured timeline; unsupported model rejects
+  before acceptance. Any method added to the shared `Repository`
   interface must also be added to Chat and cross-package test fakes; compile the
   owning Chat package in the focused gate so an MCP-only unit run cannot hide
   interface drift.

@@ -594,6 +594,7 @@ func (s *Service) ValidatePrivateServer(
 		return Server{}, err
 	}
 	if server.Transport == TransportStdio {
+		validated.Name = runnerArtifact.Name
 		validated.Icon = boundedMarketplaceIcon(runnerArtifact.Icon)
 		validated.ConfigurationFields = append([]string(nil), runnerArtifact.Command.UserSecretEnv...)
 	}
@@ -729,6 +730,7 @@ func (s *Service) bindPrivateServerDisplay(server *Server) {
 	if err != nil {
 		return
 	}
+	server.Name = artifact.Name
 	server.Icon = boundedMarketplaceIcon(artifact.Icon)
 	server.ConfigurationFields = append([]string(nil), artifact.Command.UserSecretEnv...)
 	server.Tools = bindPrivateRunnerToolPolicy(server.Tools, artifact)
@@ -1299,6 +1301,7 @@ func (s *Service) serverForUser(
 			if err != nil {
 				return Server{}, err
 			}
+			server.Name = artifact.Name
 			server.Icon = boundedMarketplaceIcon(artifact.Icon)
 			server.Command = cloneCommand(artifact.Command)
 			if dynamic, ok := artifact.Metadata["dynamicRunnerArtifact"].(DynamicRunnerArtifact); ok {

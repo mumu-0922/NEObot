@@ -432,7 +432,7 @@ func TestInstallMarketplaceItemUsesApprovedSharedRunnerArtifact(t *testing.T) {
 	}
 	marketplace := &fakeMarketplace{detail: MarketplaceItemDetail{
 		MarketplaceItem: MarketplaceItem{
-			Identifier: "upstash-context7", Name: "Context7", Icon: "https://untrusted.example/context7.png",
+			Identifier: "upstash-context7", Name: "Context7 platform - documentation for every prompt", Icon: "https://untrusted.example/context7.png",
 		},
 		Version: "2.2.0", Deployments: []MarketplaceDeployment{deployment},
 	}}
@@ -459,6 +459,7 @@ func TestInstallMarketplaceItemUsesApprovedSharedRunnerArtifact(t *testing.T) {
 		t.Fatalf("InstallMarketplaceItem() error = %v", err)
 	}
 	if result.Server.Transport != TransportStdio || result.Server.Status != ServerStatusReady ||
+		result.Server.Name != artifact.Name ||
 		result.Server.EndpointURL != "runner://"+artifact.Ref.ID ||
 		result.Server.Metadata["runnerArtifactId"] != artifact.Ref.ID {
 		t.Fatalf("installed Runner server = %#v", result.Server)
@@ -472,9 +473,15 @@ func TestInstallMarketplaceItemUsesApprovedSharedRunnerArtifact(t *testing.T) {
 	}
 	servers, err := service.ListServers(context.Background(), userID, "")
 	if err != nil || len(servers) != 1 || servers[0].Ref != result.Server.Ref ||
-		servers[0].Icon != artifact.Icon || len(servers[0].Tools) != 1 ||
+		servers[0].Name != artifact.Name || servers[0].Icon != artifact.Icon || len(servers[0].Tools) != 1 ||
 		servers[0].Tools[0].Classification != ClassificationRead {
 		t.Fatalf("ListServers() servers=%#v error=%v", servers, err)
+	}
+	resolved, err := service.serverForUser(
+		context.Background(), userID, result.Server.Ref, ConversationScope{},
+	)
+	if err != nil || resolved.Name != artifact.Name {
+		t.Fatalf("serverForUser() Server=%#v error=%v", resolved, err)
 	}
 	repo.mu.Lock()
 	tampered := repo.private[userID+":"+result.Server.Ref.ID]

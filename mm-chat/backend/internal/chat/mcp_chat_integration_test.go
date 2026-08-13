@@ -163,6 +163,7 @@ func TestHandlerCompletesNativeMultiRoundMCPThroughRemoteStreamableHTTP(t *testi
 	assertStreamStatus(t, recorder, http.StatusOK)
 	if !strings.Contains(recorder.Body.String(), "event: tool.call.updated") ||
 		!strings.Contains(recorder.Body.String(), `"server":"manifest:remote-fixture"`) ||
+		!strings.Contains(recorder.Body.String(), `"serverName":"Remote Fixture"`) ||
 		strings.Contains(recorder.Body.String(), `"value":"hello"`) {
 		t.Fatalf("MCP stream = %s", recorder.Body.String())
 	}
@@ -179,7 +180,7 @@ func TestHandlerCompletesNativeMultiRoundMCPThroughRemoteStreamableHTTP(t *testi
 		t.Fatalf("persisted messages = %#v", messages)
 	}
 	steps, ok := messages[1].Metadata[processTraceMetadataKey].([]ProcessStep)
-	if !ok || !hasCompletedMCPToolStep(steps, "manifest:remote-fixture") {
+	if !ok || !hasCompletedMCPToolStep(steps, "manifest:remote-fixture", "Remote Fixture") {
 		t.Fatalf("persisted MCP process trace = %#v", messages[1].Metadata)
 	}
 	calls := mcpRepo.callRecords()
@@ -291,6 +292,7 @@ func TestHandlerCompletesNativeMultiRoundMCPThroughStdioRunner(t *testing.T) {
 	assertStreamStatus(t, recorder, http.StatusOK)
 	if !strings.Contains(recorder.Body.String(), "event: tool.call.updated") ||
 		!strings.Contains(recorder.Body.String(), `"server":"manifest:stdio-fixture"`) ||
+		!strings.Contains(recorder.Body.String(), `"serverName":"Stdio Fixture"`) ||
 		strings.Contains(recorder.Body.String(), `"value":"hello"`) {
 		t.Fatalf("MCP stdio stream = %s", recorder.Body.String())
 	}
@@ -305,7 +307,7 @@ func TestHandlerCompletesNativeMultiRoundMCPThroughStdioRunner(t *testing.T) {
 		t.Fatalf("persisted stdio messages = %#v", messages)
 	}
 	steps, ok := messages[1].Metadata[processTraceMetadataKey].([]ProcessStep)
-	if !ok || !hasCompletedMCPToolStep(steps, "manifest:stdio-fixture") {
+	if !ok || !hasCompletedMCPToolStep(steps, "manifest:stdio-fixture", "Stdio Fixture") {
 		t.Fatalf("persisted stdio process trace = %#v", messages[1].Metadata)
 	}
 	calls := mcpRepo.callRecords()
@@ -488,10 +490,11 @@ func (*blockingMCPRoundProvider) StreamChat(ctx context.Context, _ ProviderReque
 	return events, nil
 }
 
-func hasCompletedMCPToolStep(steps []ProcessStep, server string) bool {
+func hasCompletedMCPToolStep(steps []ProcessStep, server string, serverName string) bool {
 	for _, step := range steps {
 		if step.Kind == ProcessStepKindTool && step.Status == ProcessStepStatusCompleted &&
-			step.Detail["mode"] == "mcp" && step.Detail["server"] == server {
+			step.Detail["mode"] == "mcp" && step.Detail["server"] == server &&
+			step.Detail["serverName"] == serverName {
 			return true
 		}
 	}

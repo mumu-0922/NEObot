@@ -10,13 +10,27 @@ export function linkifyCitationReferences(
 ): string {
   if (!sources?.length) return content;
 
+  const webMarkerIndexes = new Map<string, number>();
+  sources.forEach((source, index) => {
+    const marker = source.metadata?.marker;
+    if (typeof marker === "string" && /^\[W\d+\]$/.test(marker)) {
+      webMarkerIndexes.set(marker, index);
+    }
+  });
+  const hasAuthoritativeWebMarkers = webMarkerIndexes.size > 0;
+
   const segments = content.split(/(`+[^`]+`+)/g);
   return segments
     .map((segment, segmentIndex) => {
       if (segmentIndex % 2 === 1) return segment;
 
       return segment.replace(/\[(W?)(\d+)\]/g, (match, prefix, value) => {
-        const sourceIndex = Number.parseInt(value, 10) - 1;
+        const positionalIndex = Number.parseInt(value, 10) - 1;
+        const sourceIndex =
+          prefix === "W" && hasAuthoritativeWebMarkers
+            ? webMarkerIndexes.get(match)
+            : positionalIndex;
+        if (sourceIndex === undefined) return match;
         return sources[sourceIndex]
           ? `[${prefix}${value}](${createCitationHref(sourceIndex)})`
           : match;

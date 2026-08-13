@@ -326,7 +326,7 @@ func sanitizeProcessDetail(detail map[string]any) map[string]any {
 		"hitCount": {}, "sourceCount": {}, "citationMarkers": {},
 		"provider": {}, "mode": {}, "outcome": {},
 		"failureCategory": {}, "queryRewritten": {}, "rerankStatus": {},
-		"toolName": {}, "server": {}, "classification": {}, "callStatus": {},
+		"toolName": {}, "server": {}, "serverName": {}, "classification": {}, "callStatus": {},
 		"argumentSummary": {}, "round": {}, "selectedCount": {}, "truncated": {},
 	}
 	sanitized := make(map[string]any, len(detail))

@@ -196,6 +196,7 @@ func TestToolProcessTracePersistsMCPArgumentTypesAndUnknownOutcome(t *testing.T)
 		CallID:         "call-1",
 		Name:           "write_file",
 		Server:         "manifest:files",
+		ServerName:     "Files",
 		Classification: "write",
 		Status:         ProcessStepStatusOutcomeUnknown,
 		CallStatus:     "outcome_unknown",
@@ -209,6 +210,7 @@ func TestToolProcessTracePersistsMCPArgumentTypesAndUnknownOutcome(t *testing.T)
 	completed := updates[1]
 	if completed.Status != ProcessStepStatusOutcomeUnknown ||
 		completed.Detail["server"] != "manifest:files" ||
+		completed.Detail["serverName"] != "Files" ||
 		completed.Detail["classification"] != "write" ||
 		completed.Detail["callStatus"] != "outcome_unknown" ||
 		completed.Detail["argumentSummary"] != `{"overwrite":"boolean","path":"string"}` {

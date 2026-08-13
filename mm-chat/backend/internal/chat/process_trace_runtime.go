@@ -102,6 +102,9 @@ func toolProcessDetail(event *ProviderToolExecutionEvent) map[string]any {
 	if server := strings.TrimSpace(event.Server); server != "" {
 		detail["server"] = server
 	}
+	if serverName := strings.TrimSpace(event.ServerName); serverName != "" {
+		detail["serverName"] = serverName
+	}
 	if classification := strings.TrimSpace(event.Classification); classification != "" {
 		detail["classification"] = classification
 	}

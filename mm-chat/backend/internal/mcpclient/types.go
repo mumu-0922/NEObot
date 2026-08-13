@@ -406,6 +406,7 @@ type ExecuteInput struct {
 type ExecutionEvent struct {
 	CallID          string
 	ServerRef       ServerRef
+	ServerName      string
 	ToolName        string
 	ToolAlias       string
 	Classification  string

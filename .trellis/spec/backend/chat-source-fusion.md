@@ -55,6 +55,12 @@ No exact query text is part of message metadata.
   subject.
 - Query text, private history, source bodies, credentials, and provider errors
   never enter durable fusion diagnostics.
+- Current-turn Web citation reconciliation preserves each source's originally
+  minted marker. A used subset such as `[W1]`, `[W5]`, `[W7]`, and `[W10]`
+  remains sparse in storage and transport; clients resolve these markers from
+  `source.metadata.marker`, never from the source's compacted array position.
+  Positional linking is only a legacy fallback when no authoritative Web
+  marker metadata exists.
 
 ## 4. Validation & Error Matrix
 
@@ -68,6 +74,8 @@ No exact query text is part of message metadata.
 | Rewrite provider fails or output exceeds 2048 bytes | current query; `failed`; chat continues             |
 | Built-in model Search                               | provider owns query planning; `provider_managed`    |
 | Search resolution fails before rewrite              | no query call; `not_run`                            |
+| Used Web citations have sparse original markers     | every exact marker links to its matching source     |
+| Web marker is absent from authoritative metadata    | leave it unlinked; never mislink by array position  |
 
 ## 5. Good / Base / Bad Cases
 
@@ -77,11 +85,17 @@ No exact query text is part of message metadata.
   identifier rather than matching a same-named song.
 - **Base:** a first-turn explicit topic has no history and searches the current
   message unchanged.
+- **Base:** legacy source arrays without marker metadata retain positional
+  citation linking.
+- **Good:** a compacted four-source array carrying `[W1]`, `[W5]`, `[W7]`, and
+  `[W10]` links all four exact markers to those four sources.
 - **Base:** the rewrite provider fails once; external Search uses the current
   message and the final chat still completes.
 - **Bad:** literal-searching an ambiguous current message, sending raw history
   to Tavily/Exa/Bocha/Firecrawl, persisting the rewritten query, or changing
   Search provider after a rewrite failure.
+- **Bad:** interpreting `[W10]` as compacted source index 9 after unused
+  citations have been removed.
 
 ## 6. Tests Required
 
@@ -96,6 +110,8 @@ No exact query text is part of message metadata.
 5. Real selected-model plus active external-provider proof must use a temporary
    conversation, verify relevant source titles and both non-sensitive rewrite
    fields, then delete all smoke state.
+6. Frontend citation tests must cover sparse authoritative Web markers, unknown
+   markers, and the legacy positional fallback without interpolating raw URLs.
 
 ## 7. Wrong vs Correct
 
@@ -124,3 +140,22 @@ searchProvider.Search(ctx, websearch.Request{Query: query})
 
 The rewrite is bounded, active-branch aware, model-aware, non-authoritative on
 failure, and invisible to durable query diagnostics.
+
+For current-turn Web citation rendering:
+
+Wrong:
+
+```ts
+const sourceIndex = Number(marker.slice(2, -1)) - 1;
+```
+
+Correct:
+
+```ts
+const sourceIndex = sources.findIndex(
+  (source) => source.metadata?.marker === marker,
+);
+```
+
+The numeric suffix is a stable current-turn citation identity, not the
+position of a later compacted source array.

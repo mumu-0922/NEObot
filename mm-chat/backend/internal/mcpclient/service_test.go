@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -218,9 +219,13 @@ func TestExecutePersistsRedactedTimelineAndExternalizesLargeResult(t *testing.T)
 		servers:  map[string]Server{server.Ref.Key(): server},
 		aliases:  map[string]Tool{tool.Alias: tool},
 	}
+	var events []ExecutionEvent
 	result, err := service.Execute(context.Background(), userID, run, ExecuteInput{
 		Alias: tool.Alias, Arguments: map[string]any{"path": "/secret/value"}, Round: 1, Call: 1,
-	}, nil)
+	}, func(_ context.Context, event ExecutionEvent) bool {
+		events = append(events, event)
+		return true
+	})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -231,6 +236,23 @@ func TestExecutePersistsRedactedTimelineAndExternalizesLargeResult(t *testing.T)
 		if call.ArgumentsSummary["path"] != "string" || strings.Contains(call.ResultSummary, "secret") {
 			t.Fatalf("persisted call leaked arguments: %#v", call)
 		}
+	}
+	if len(events) != 3 || events[0].ServerName != "Files" ||
+		events[2].ServerName != "Files" {
+		t.Fatalf("execution events lost display name: %#v", events)
+	}
+}
+
+func TestExecutionEventBoundsServerDisplayName(t *testing.T) {
+	event := eventFromCall(
+		CallRecord{ServerRef: ServerRef{Source: SourcePrivate, ID: "fixture"}},
+		"  "+strings.Repeat("界", maxPrivateServerNameBytes)+"  ",
+		nil,
+	)
+
+	if event.ServerName == "" || len(event.ServerName) > maxPrivateServerNameBytes ||
+		!utf8.ValidString(event.ServerName) || !strings.HasSuffix(event.ServerName, "…") {
+		t.Fatalf("bounded Server display name = %q (%d bytes)", event.ServerName, len(event.ServerName))
 	}
 }
 

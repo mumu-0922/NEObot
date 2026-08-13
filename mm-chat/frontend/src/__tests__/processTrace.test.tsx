@@ -1,11 +1,17 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { NextIntlClientProvider } from "next-intl";
 import { describe, expect, it } from "vitest";
 
+import ProcessTracePanel from "../components/content/ProcessTracePanel";
+import contentMessages from "../i18n/locales/zh/Content.json";
 import {
+  humanizeToolName,
   isProcessStepActive,
   normalizeProcessStep,
   normalizeProcessTrace,
   processOutcomeForDisplay,
   processReasonCategoryForDisplay,
+  processToolLabelForDisplay,
   processTraceFromMessageMetadata,
   projectProcessStepsForDisplay,
   reasoningFromMessageMetadata,
@@ -85,6 +91,7 @@ describe("durable process trace", () => {
         labelKey: "process.tool",
         detail: {
           server: "manifest:files",
+          serverName: "Files",
           toolName: "write_file",
           classification: "write",
           callStatus: "outcome_unknown",
@@ -99,12 +106,85 @@ describe("durable process trace", () => {
       labelKey: "process.tool",
       detail: {
         server: "manifest:files",
+        serverName: "Files",
         toolName: "write_file",
         classification: "write",
         callStatus: "outcome_unknown",
         argumentSummary: '{"path":"string"}',
       },
     });
+  });
+
+  it("builds generic human-readable MCP labels without exposing internal refs", () => {
+    expect(humanizeToolName("ask_question")).toBe("Ask question");
+    expect(humanizeToolName("resolve-library-id")).toBe("Resolve library id");
+    expect(humanizeToolName("query.docs")).toBe("Query docs");
+    expect(humanizeToolName("resolveLibraryID")).toBe("Resolve library id");
+    expect(humanizeToolName("  ")).toBe("");
+    expect(humanizeToolName(null)).toBe("");
+
+    const step = normalizeProcessStep({
+      id: "tool-1",
+      kind: "tool",
+      status: "completed",
+      labelKey: "process.tool",
+      detail: {
+        server: "private:00000000-0000-4000-8000-000000000000",
+        serverName: "DeepWiki",
+        toolName: "ask_question",
+        classification: "unknown",
+        callStatus: "queued",
+        argumentSummary: '{"question":"string"}',
+      },
+    });
+
+    expect(processToolLabelForDisplay(step!)).toBe("DeepWiki · Ask question");
+    expect(
+      processToolLabelForDisplay({
+        ...step!,
+        detail: {
+          ...step!.detail,
+          serverName: "Context7",
+          toolName: "resolve-library-id",
+        },
+      }),
+    ).toBe("Context7 · Resolve library id");
+    expect(processToolLabelForDisplay({ ...step!, kind: "web" })).toBe("");
+  });
+
+  it("renders only the readable MCP label and authoritative outer status", () => {
+    const step = normalizeProcessStep({
+      id: "tool-1",
+      kind: "tool",
+      status: "completed",
+      labelKey: "process.tool",
+      durationMs: 3600,
+      detail: {
+        server: "private:00000000-0000-4000-8000-000000000000",
+        serverName: "DeepWiki",
+        toolName: "ask_question",
+        classification: "unknown",
+        callStatus: "queued",
+        argumentSummary: '{"question":"string"}',
+      },
+    });
+    const html = renderToStaticMarkup(
+      <NextIntlClientProvider
+        locale="zh"
+        messages={{ Content: contentMessages }}
+        timeZone="UTC"
+      >
+        <ProcessTracePanel steps={[step!]} />
+      </NextIntlClientProvider>,
+    );
+
+    expect(html).toContain("DeepWiki · Ask question");
+    expect(html).toContain("成功 · 3.6s");
+    expect(html).toContain("已调用 1 次工具");
+    expect(html).not.toContain("private:");
+    expect(html).not.toContain("unknown");
+    expect(html).not.toContain("queued");
+    expect(html).not.toContain("&quot;question&quot;");
   });
 
   it("hydrates reasoning and process steps from server message metadata", () => {
@@ -246,6 +326,7 @@ describe("durable process trace", () => {
       route: "direct",
       knowledgeSources: 0,
       webSources: 0,
+      toolCalls: 0,
     });
     const steps = normalizeProcessTrace([
       {
@@ -262,11 +343,19 @@ describe("durable process trace", () => {
         labelKey: "process.web",
         detail: { sourceCount: 3, rawPayload: "forbidden" },
       },
+      {
+        id: "tool-1",
+        kind: "tool",
+        status: "completed",
+        labelKey: "process.tool",
+        detail: { toolName: "ask_question" },
+      },
     ]);
     expect(summarizeProcessRoute(steps)).toEqual({
       route: "both",
       knowledgeSources: 2,
       webSources: 3,
+      toolCalls: 1,
     });
     expect(JSON.stringify(steps)).not.toContain("private exact query");
     expect(JSON.stringify(steps)).not.toContain("forbidden");
