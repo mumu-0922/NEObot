@@ -1664,3 +1664,36 @@ Made MCP process rows readable with current server names and humanized actions, 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 39: Ship server-owned Assistant Store
+
+**Date**: 2026-08-13
+**Task**: Ship server-owned Assistant Store
+**Branch**: `main`
+
+### Summary
+
+Added the server-owned Assistant Store, revision/fingerprint authority, display-only Tool dependencies, PostgreSQL 17 replay coverage, and completed full standalone verification.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a443231c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

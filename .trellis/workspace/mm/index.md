@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 38
+- **Total Sessions**: 39
 - **Last Active**: 2026-08-13
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1666 | Active |
+| `journal-1.md` | ~1699 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 39 | 2026-08-13 | Ship server-owned Assistant Store | `a443231c` | `main` |
 | 38 | 2026-08-13 | Clarify MCP activity and Web citations | `083d1d13` | `main` |
 | 37 | 2026-08-13 | Complete administrator-managed MCP Marketplace | `9c4d577a`, `25cec93c`, `a9a75d5d` | `main` |
 | 36 | 2026-08-12 | Compact MCP composer and installed icons | `5b6b0b3f`, `96814ca3` | `main` |
