@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 43
-- **Last Active**: 2026-08-13
+- **Total Sessions**: 44
+- **Last Active**: 2026-08-14
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1831 | Active |
+| `journal-1.md` | ~1864 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 44 | 2026-08-14 | Agent Runtime G20.4 brokered effects foundation | `cd6af012` | `main` |
 | 43 | 2026-08-13 | Complete G20.3 rootless Agent Runner foundation | `296ec15f` | `main` |
 | 42 | 2026-08-13 | Agent Runtime G20.2 Durable Orchestrator foundation | `bc1db3ab1444dd73137de87f0768e0d4d8ba9248` | `main` |
 | 41 | 2026-08-13 | Agent Runtime G20.1 Skill supply chain | `33b1352b` | `main` |

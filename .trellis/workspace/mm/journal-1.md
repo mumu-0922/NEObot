@@ -1829,3 +1829,36 @@ Implemented the held neo-runnerd source/control foundation with strict TLS 1.3 m
 ### Next Steps
 
 - None - task complete
+
+
+## Session 44: Agent Runtime G20.4 brokered effects foundation
+
+**Date**: 2026-08-14
+**Task**: Agent Runtime G20.4 brokered effects foundation
+**Branch**: `main`
+
+### Summary
+
+Implemented deterministic Agent Tool Registry, PostgreSQL Prepare/approval/Cancel/Commit and Grant revocation authority, shared safe network, Secret/Project/Artifact/MCP broker seams, strict Runner relay, migration drills, docs and held-promotion gates; all focused, PostgreSQL, Phase 0, Backend and standalone full checks passed.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cd6af012` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
