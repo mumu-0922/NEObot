@@ -1596,3 +1596,38 @@ Removed composer MCP summary chips, added normalized shared icons for Marketplac
 ### Next Steps
 
 - None - task complete
+
+
+## Session 37: Complete administrator-managed MCP Marketplace
+
+**Date**: 2026-08-13
+**Task**: Complete administrator-managed MCP Marketplace
+**Branch**: `main`
+
+### Summary
+
+Delivered the administrator-managed four-way MCP Marketplace install flow, shared isolated dynamic npm Runner, bounded infinite pagination, installed icons and compact management UI; passed focused backend/frontend, PostgreSQL 17, preflight, runtime, and security verification.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9c4d577a` | (see git log) |
+| `25cec93c` | (see git log) |
+| `a9a75d5d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
