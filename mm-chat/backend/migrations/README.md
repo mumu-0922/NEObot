@@ -510,6 +510,19 @@ the exact admitted candidate/package pair. Down refuses while any G20.1 row
 exists. Disposable replay and least-privilege/ownership/source-drift proof use
 `scripts/verify-skill-supply-chain-postgres17.sh`.
 
+Migration `084` adds the G20.2 durable Agent Orchestrator control-plane
+authority without enabling execution: immutable canonical Run snapshots,
+owner/idempotency-bound Run and ordered Step projections, generation-bound
+Attempt leases, a per-Run append-only sequence ledger, and revisioned
+hierarchical Kill Switches. State, sequence and projection changes are atomic
+inside narrowly granted `SECURITY DEFINER` functions. The independent
+`agent_orchestrator_runtime` role has read plus exact transition/lease/recovery
+function execution and no table DML; `go_api_runtime` has no G20.2 authority
+because no HTTP Runtime surface exists yet. Rebuild and retention remain
+owner/operations-only, down refuses non-empty authority, and disposable
+PostgreSQL 17 replay/dump/restore proof uses
+`scripts/verify-agent-orchestrator-postgres17.sh`.
+
 ## Storage boundaries
 
 Postgres is the source of truth for structured records:

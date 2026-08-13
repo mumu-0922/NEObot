@@ -1,7 +1,7 @@
 # Neo Agent Runtime Architecture
 
-Status: G20.1 no-execute Skill supply chain implemented; production Runtime
-remains disabled.
+Status: G20.1 no-execute Skill supply chain and G20.2 durable Orchestrator
+foundation implemented; production Runtime remains disabled.
 
 ## Purpose and invariant
 
@@ -282,8 +282,9 @@ not reveal private chain-of-thought.
 
 ## Migration and rollback boundary
 
-G20.1 adds only Skill supply/API/persistence and changes no Chat or legacy
-text-Skill behavior. The future final cutover:
+G20.1 adds Skill supply/API/persistence and G20.2 adds an internal, unwired
+durable control-plane seam. Neither changes Chat or legacy text-Skill behavior.
+The future final cutover:
 
 1. freezes new legacy Skill installation/editing;
 2. captures a rollback inventory/backup without converting legacy content;

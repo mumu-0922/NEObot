@@ -65,11 +65,12 @@ psql_command() {
 server_major="$(psql_command "SHOW server_version_num" | cut -c1-2)"
 [[ "${server_major}" == "17" ]] || { echo "expected PostgreSQL 17" >&2; exit 1; }
 
-log "building and applying 001 -> 083"
+log "building and applying 001 -> 084"
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/mm-chat-migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"; }
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 083_skill_supply_chain" "${work_dir}/fresh.log"
+grep -Fq "up 084_agent_orchestrator_foundation" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
@@ -103,6 +104,10 @@ log "running source-drift, review-CAS, ownership, install and uninstall lifecycl
 (cd "${backend_dir}" && MM_CHAT_TEST_DATABASE_URL="${database_url}" \
   go test -count=1 -run '^TestSkillPostgresRepositoryAuthorityDriftOwnershipAndCAS$' ./internal/skillsupply)
 
+log "rolling back the empty 084 tail before the 083 guard"
+run_migrate down >"${work_dir}/down-084.log" 2>&1
+grep -Fq "down 084_agent_orchestrator_foundation" "${work_dir}/down-084.log"
+
 log "proving non-empty guarded down"
 set +e
 run_migrate down >"${work_dir}/guarded-down.log" 2>&1
@@ -114,7 +119,7 @@ if [[ "${guard_status}" -eq 0 ]] || ! grep -Fq "SKILL_SUPPLY_CHAIN_DOWN_DATA_EXI
   exit 1
 fi
 
-log "proving clean 082 -> 083 -> 082 -> 083 replay"
+log "proving clean 082 -> 083 -> 082 -> 084 replay"
 psql_command "TRUNCATE TABLE skill_installations, skill_package_candidates, skill_package_versions;" >/dev/null
 run_migrate down >"${work_dir}/down.log" 2>&1
 grep -Fq "down 083_skill_supply_chain" "${work_dir}/down.log"
@@ -131,6 +136,7 @@ END
 " >/dev/null
 run_migrate up >"${work_dir}/reup.log" 2>&1
 grep -Fq "up 083_skill_supply_chain" "${work_dir}/reup.log"
+grep -Fq "up 084_agent_orchestrator_foundation" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 

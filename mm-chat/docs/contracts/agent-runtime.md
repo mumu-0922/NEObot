@@ -1,7 +1,7 @@
 # Neo Agent Runtime Executable Contract
 
-Status: G20.1 supply-chain authority implemented; all production Agent
-execution remains disabled.
+Status: G20.1 supply-chain and G20.2 durable Orchestrator foundations
+implemented; all production Agent execution remains disabled.
 
 ## 1. Scope and hard gates
 
@@ -142,6 +142,18 @@ separate diagnostic fact when an incompatible observation arrives.
   kills any Sandbox without a current matching lease and snapshot fingerprint.
 - Backend restart recovers from PostgreSQL; Redis is never needed to decide
   authorization, current state or cancellation.
+
+G20.2 implementation signatures:
+
+- `backend/internal/agentorchestrator/` is an internal typed service/repository
+  seam; it has no HTTP/startup wiring;
+- migration `084` owns immutable snapshots, current projections, append-only
+  events, leases and revisioned Kill Switches;
+- `agent_orchestrator_runtime` has read plus exact mutation/recovery function
+  execution and no direct table DML; `go_api_runtime` has no G20.2 privileges;
+- `scripts/verify-agent-orchestrator{,-postgres17}.sh` prove state/race/lease,
+  restart/rebuild, stale denial, Kill Switch, retention and dump/restore while
+  no Runner or Sandbox exists.
 
 ## 6. Runner RPC
 

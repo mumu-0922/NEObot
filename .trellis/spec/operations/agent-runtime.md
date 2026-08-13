@@ -14,6 +14,8 @@ legacy Skill cutover. Protect `.env.single-server`, `data/`, `secrets/` and
 
 ```bash
 bash mm-chat/scripts/verify-agent-runtime-phase0.sh
+bash mm-chat/scripts/verify-agent-orchestrator.sh
+bash mm-chat/scripts/verify-agent-orchestrator-postgres17.sh
 ```
 
 The future Runner/acceptance commands are not invented in Phase 0. Define them
@@ -43,6 +45,9 @@ bundle/seccomp fingerprints.
   handles or Broker-side credential application and prove zero leakage.
 - Runtime disabled still runs retention, cleanup, expired-intent removal and
   orphan reconciliation.
+- Migration `084` supplies database-only Kill Switch fencing, recovery,
+  projection rebuild and retention before any Runner exists. A passing G20.2
+  drill is not rootless isolation evidence and must not enable Runtime.
 - Final legacy cutover is hard deletion only after verified backup, clean-copy,
   restart, history-label and rollback rehearsal. Never mix dual execution.
 

@@ -1,8 +1,8 @@
 # Neo Agent Runtime Operations
 
-Status: G20.1 no-execute Skill supply authority is implemented. Do not install
-a Runtime, start `neo-runnerd`, enable Agent execution or delete legacy Skills
-from this document alone.
+Status: G20.1 no-execute Skill supply and G20.2 durable Orchestrator authority
+are implemented. Do not install a Runtime, start `neo-runnerd`, enable Agent
+execution or delete legacy Skills from this document alone.
 
 ## Default state
 
@@ -17,7 +17,7 @@ AGENT_DELEGATION_ENABLED=false
 AGENT_RUNNER_URL=
 ```
 
-G20.1 adds no environment variables or Compose service. These names reserve
+G20.1/G20.2 add no environment variables or Compose service. These names reserve
 the intended operational boundary; later implementation must add them through
 the normal preflight/example-env/Compose/documentation gates.
 
@@ -135,6 +135,20 @@ No group combines rootless host installation, durable state migration and
 legacy destructive deletion in one release.
 
 ## Kill Switch operations
+
+G20.2 persists and resolves the hierarchy through migration `084`. It fences
+enqueue, leases, heartbeat and nonterminal Attempt progress, but it deliberately
+has no Runner process to cancel or kill yet. Switch removal is a new inactive
+revision; cleanup/recovery/rebuild/retention remain available. Exercise the
+database-only boundary with:
+
+```bash
+bash scripts/verify-agent-orchestrator.sh
+bash scripts/verify-agent-orchestrator-postgres17.sh
+```
+
+These passes are durable control-plane evidence only, not rootless isolation or
+production Runtime enablement evidence.
 
 | Scope | Use | Expected effect |
 | --- | --- | --- |

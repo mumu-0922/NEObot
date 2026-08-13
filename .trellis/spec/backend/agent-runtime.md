@@ -6,9 +6,10 @@
 
 Apply this contract for Agent Skill admission, Run/Step/Attempt persistence,
 Capability Grants, Runner RPC, side effects, Child Agents, Cron, Draft learning,
-Kill Switches, or the legacy text-Skill cutover. G20.1 implements only the
-no-execute supply chain; current Chat, MCP and `/v1/code/executions` behavior
-remains unchanged.
+  Kill Switches, or the legacy text-Skill cutover. G20.1 implements the
+  no-execute supply chain and G20.2 implements the internal durable
+  Orchestrator control plane; current Chat, MCP and `/v1/code/executions`
+  behavior remains unchanged.
 
 ### 2. Signatures
 
@@ -26,6 +27,15 @@ remains unchanged.
 - PostgreSQL is durable authority for Run/Step/Attempt, events, leases,
   snapshots, approvals, Cron revisions, admissions and Kill Switches. Redis is
   at most an ID-only wake/cancel hint.
+- G20.2 signatures are `internal/agentorchestrator`, migration `084`, and
+  `scripts/verify-agent-orchestrator{,-postgres17}.sh`. The package has no
+  HTTP/startup import; `go_api_runtime` has no G20.2 privileges. The dedicated
+  Runtime role has SELECT plus exact function execution and no table DML.
+- Adding any new tail migration requires advancing every PostgreSQL drill that
+  peels older tails (`verify-mcp-postgres17.sh`, MCP credential, Assistant
+  Store, Skill supply, and the owning new drill). Each must down the new empty
+  tail before asserting an older migration guard, then reapply through the
+  current head; otherwise the drill may test or report the wrong migration.
 - Every Run freezes model, budgets, Workspace, lineage, admitted package/runtime
   fingerprints, Tool Registry, Capability Grant, Egress and Secret refs.
 - Runner RPC includes exact snapshot and lease generation. Reclaimed Attempts
@@ -88,6 +98,10 @@ remains unchanged.
   fields; complete manifest bytes remain inside package identity.
 - Durable state: PostgreSQL replay/down/up, state/race/lease/restart/projection,
   least privilege, backup/restore and retention.
+- G20.2 PostgreSQL replay includes idempotent enqueue collision, first-terminal
+  concurrency, gap-free sequence, exact token-digest/generation heartbeat,
+  reclaim/stale denial, restart inventory, projection rebuild, Kill Switch
+  revisions/hierarchy, terminal retention and content-free dump/restore.
 - Runner: exact target-host Isolation Acceptance Suite, resource/escape/network/
   secret/kill/orphan/reboot negatives.
 - Side effects: Prepare/Commit crash/acknowledgement-loss/idempotency matrix.

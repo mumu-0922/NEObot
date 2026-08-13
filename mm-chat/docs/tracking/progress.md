@@ -1649,7 +1649,12 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           deterministic package/runtime/SBOM identities, migration `083`,
           administrator CAS admission, owner installs, strict API, paired
           restore sampling, offline gate, and PostgreSQL 17 drill.
-    - [ ] G20.2 Durable Orchestrator foundation.
+    - [x] G20.2 Durable Orchestrator foundation: migration `084`, immutable
+          snapshots, idempotent Run/Step enqueue, append-only events,
+          generation-fenced Attempt leases/reclaim, restart inventory,
+          projection rebuild, revisioned hierarchical Kill Switches,
+          least-privilege roles, retention and PostgreSQL 17 dump/restore gate;
+          no Runtime API, Runner or Sandbox launch.
     - [ ] G20.3 `neo-runnerd` and rootless isolation.
     - [ ] G20.4 Tool, Egress, Secret and side-effect brokers.
     - [ ] G20.5 Child Agent depth 1.

@@ -10202,3 +10202,37 @@ preconditions). Restore sampling now covers `skill-quarantine/`,
 `skill-packages/`, and `skill-sboms/` alongside PostgreSQL coordinates. No
 Runner, Sandbox, Chat Skill application, legacy Skill mutation, or code
 execution path was added; `/v1/code/executions` remains fail closed.
+
+## 2026-08-13 — G20.2 Durable Orchestrator foundation completed
+
+G20.2 introduced the internal `agentorchestrator` bounded context and migration
+`084` without exposing an Agent Runtime API. PostgreSQL now owns immutable
+canonical Run snapshots, owner/idempotency-bound Run and ordered Step
+projections, generation-bound Attempts, exact opaque-token-digest leases, a
+gap-free per-Run append-only event sequence, revisioned hierarchical Kill
+Switches, restart inventory, projection rebuild and bounded terminal retention.
+
+The first legal terminal transition is immutable. Concurrent terminal attempts
+produce one winner, while later incompatible observations append sanitized
+facts without rewriting projection state. Heartbeat binds exact Run, Step,
+Attempt, generation, lease owner and token digest; expiry/reclaim appends
+`lease.expired`, advances generation and makes all predecessor mutations
+`LEASE_STALE`. Kill Switch resolution uses every frozen applicable scope and
+chooses `kill > cancel > deny_new`; inactive narrow revisions cannot override
+a broad deny.
+
+The dedicated Runtime database role has SELECT plus exact transition/lease/
+recovery function execution and no table DML. `go_api_runtime` has no G20.2
+privilege, and rebuild/retention/Kill-Switch mutation remain operations-owned.
+Legacy migration drills were advanced through tail `084` so older gates do not
+silently roll back the wrong migration.
+
+Focused race/vet, Backend full tests/vet, Frontend format/lint/type-check plus
+928 tests, RAG Ruff/mypy plus 1,906 passing tests (seven declared skips), the
+Phase 0 verifier, disposable PostgreSQL 17 fresh/replay/lease/restart/rebuild/
+Kill-Switch/retention/guarded-down/dump-restore/down-up drill, legacy
+Skill/Assistant/MCP PostgreSQL drills, security/quality scans and the full
+standalone clean-copy gate passed. Production Runtime remains unavailable: no
+HTTP route, feature flag, Redis authority, Runner RPC, `neo-runnerd`, Sandbox,
+Tool grant, side-effect broker, Child Agent, Cron, learning, Chat Skill or
+legacy Skill mutation was added.

@@ -1,6 +1,7 @@
 # G20 Neo Agent Runtime Epic Plan
 
-Status: G20.0 Phase 0 and G20.1 Skill supply chain complete; G20.2 not started.
+Status: G20.0 Phase 0, G20.1 Skill supply chain, and G20.2 durable Orchestrator
+foundation complete; G20.3 not started.
 
 ## Locked outcome
 
@@ -57,6 +58,8 @@ admission CAS, ownership, backup/restore and offline replay pass; no candidate
 file executes during ingestion.
 
 ## G20.2 — Durable Orchestrator foundation
+
+Status: complete (2026-08-13).
 
 - Add PostgreSQL Run/Step/Attempt/event, snapshot, lease and Kill Switch
   authority plus least-privilege roles.
