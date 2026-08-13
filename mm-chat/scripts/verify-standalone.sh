@@ -65,6 +65,7 @@ tar \
   --exclude='./frontend/.open-next' \
   --exclude='./frontend/node_modules' \
   --exclude='./frontend/tsconfig.tsbuildinfo' \
+  --exclude='./backend/mcp-runner-runtime/node_modules' \
   --exclude='./rag/.mypy_cache' \
   --exclude='./rag/.pytest_cache' \
   --exclude='./rag/.ruff_cache' \

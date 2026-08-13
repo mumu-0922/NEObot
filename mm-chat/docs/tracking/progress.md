@@ -1655,7 +1655,11 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           projection rebuild, revisioned hierarchical Kill Switches,
           least-privilege roles, retention and PostgreSQL 17 dump/restore gate;
           no Runtime API, Runner or Sandbox launch.
-    - [ ] G20.3 `neo-runnerd` and rootless isolation.
+    - [x] G20.3 `neo-runnerd` source/control foundation: TLS 1.3 mTLS RPC,
+          PostgreSQL plus fsync replay, migration `085`, release-bound probe,
+          strict Workspace/OCI/Scratch/Artifact lifecycle and exact reconcile;
+          production isolation promotion remains held because the current host
+          correctly returns `ISOLATION_UNAVAILABLE`.
     - [ ] G20.4 Tool, Egress, Secret and side-effect brokers.
     - [ ] G20.5 Child Agent depth 1.
     - [ ] G20.6 Cron durable scheduling.

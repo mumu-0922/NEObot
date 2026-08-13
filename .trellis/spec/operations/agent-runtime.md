@@ -16,11 +16,15 @@ legacy Skill cutover. Protect `.env.single-server`, `data/`, `secrets/` and
 bash mm-chat/scripts/verify-agent-runtime-phase0.sh
 bash mm-chat/scripts/verify-agent-orchestrator.sh
 bash mm-chat/scripts/verify-agent-orchestrator-postgres17.sh
+bash mm-chat/scripts/verify-agent-runner.sh
+bash mm-chat/scripts/verify-agent-runner-postgres17.sh
+bash mm-chat/scripts/verify-agent-runner-host.sh # expected nonzero until exact host is prepared
 ```
 
-The future Runner/acceptance commands are not invented in Phase 0. Define them
-with the implementation and bind their evidence to exact host/runtime/Runner/
-bundle/seccomp fingerprints.
+The first two Runner gates prove source/control and PostgreSQL behavior. The
+host gate must return `ISOLATION_UNAVAILABLE` here and becomes promotion
+evidence only when the exact approved service account/release passes the full
+suite.
 
 ### 3. Contracts
 
@@ -35,9 +39,10 @@ bundle/seccomp fingerprints.
   is not proof; rootful/privileged/sudo fallback is forbidden.
 - Runner RPC is private mTLS with version, deadline, body/concurrency bounds,
   nonce/request replay fence and exact lease/snapshot fingerprints.
-- Project Workspace is a snapshot/patch boundary, Scratch is per-Run and always
-  destroyed, Artifact uses Backend Broker. Sandbox never receives object-store
-  credentials or arbitrary host mounts.
+- Project Workspace is a fully rehashed read-only snapshot. Scratch is a
+  size-bounded tmpfs and host broker staging is always destroyed. Artifact uses
+  a per-Attempt framed Unix intake into Runner quarantine. Sandbox never
+  receives object-store credentials or arbitrary host mounts.
 - Egress is `none`, exact allowlist or Tool-specific broker. Re-resolve/recheck
   DNS, redirects and reconnects; deny localhost/private/link-local/metadata/raw
   IP forms and origin-changing credential forwarding.
@@ -48,6 +53,10 @@ bundle/seccomp fingerprints.
 - Migration `084` supplies database-only Kill Switch fencing, recovery,
   projection rebuild and retention before any Runner exists. A passing G20.2
   drill is not rootless isolation evidence and must not enable Runtime.
+- Migration `085` supplies Runner/lease-owner-bound replay and expected Sandbox
+  lifecycle authority through `agent_runner_control`; the host daemon has no DB
+  role. Cleanup/reconcile and completed replay pruning remain usable while
+  execution is disabled.
 - Final legacy cutover is hard deletion only after verified backup, clean-copy,
   restart, history-label and rollback rehearsal. Never mix dual execution.
 

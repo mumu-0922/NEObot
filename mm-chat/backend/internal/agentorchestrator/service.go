@@ -134,7 +134,9 @@ func (service *Service) AcquireStep(ctx context.Context, input AcquireInput) (Le
 	if _, err := rand.Read(token); err != nil {
 		return Lease{}, fmt.Errorf("create lease credential: %w", err)
 	}
-	rawToken := base64.RawURLEncoding.EncodeToString(token)
+	// The protocol-visible credential is namespaced so it cannot be confused
+	// with another opaque bearer value. Only its digest reaches PostgreSQL.
+	rawToken := "lease_" + base64.RawURLEncoding.EncodeToString(token)
 	digest := sha256.Sum256([]byte(rawToken))
 	prepared := preparedLease{
 		AttemptID: service.newID("attempt"), Token: rawToken, TokenHash: hex.EncodeToString(digest[:]),

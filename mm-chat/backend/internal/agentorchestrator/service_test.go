@@ -98,7 +98,7 @@ func TestAcquireReturnsOpaqueTokenButPersistsOnlyDigest(t *testing.T) {
 		LeaseOwner: "fixture-orchestrator", LeaseDuration: 30 * time.Second,
 		Actor: Actor{Type: "orchestrator", ID: "fixture"}, ReasonCode: "LEASE_REQUESTED",
 	})
-	if err != nil || lease.Token == "" || len(repository.lease.TokenHash) != 64 {
+	if err != nil || !strings.HasPrefix(lease.Token, "lease_") || len(repository.lease.TokenHash) != 64 {
 		t.Fatalf("AcquireStep() = %#v, %v, prepared=%#v", lease, err, repository.lease)
 	}
 	if lease.Token == repository.lease.TokenHash || strings.Contains(strings.Join(repository.lease.EventIDs, ","), lease.Token) {

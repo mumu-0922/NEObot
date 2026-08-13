@@ -7,8 +7,8 @@
 Apply this contract for Agent Skill admission, Run/Step/Attempt persistence,
 Capability Grants, Runner RPC, side effects, Child Agents, Cron, Draft learning,
   Kill Switches, or the legacy text-Skill cutover. G20.1 implements the
-  no-execute supply chain and G20.2 implements the internal durable
-  Orchestrator control plane; current Chat, MCP and `/v1/code/executions`
+  no-execute supply chain, G20.2 the internal durable Orchestrator, and G20.3
+  the held Runner source/control foundation; current Chat, MCP and `/v1/code/executions`
   behavior remains unchanged.
 
 ### 2. Signatures
@@ -31,6 +31,23 @@ Capability Grants, Runner RPC, side effects, Child Agents, Cron, Draft learning,
   `scripts/verify-agent-orchestrator{,-postgres17}.sh`. The package has no
   HTTP/startup import; `go_api_runtime` has no G20.2 privileges. The dedicated
   Runtime role has SELECT plus exact function execution and no table DML.
+- G20.3 signatures are `internal/agentrunner`, `cmd/neo-runnerd`, migration
+  `085`, `config/agent-runner`, `deploy/agent-runner`, and
+  `scripts/verify-agent-runner*.sh`. It has no HTTP/startup import and does not
+  enable Runtime. Exact-host readiness remains held at
+  `ISOLATION_UNAVAILABLE` until an approved release passes as `neo-runner`.
+- PostgreSQL replay authority binds caller identity + Runner ID + request ID +
+  nonce + authority-request fingerprint. The signed ticket carries the same
+  nonce/fingerprint, and Runner ID must equal the current Attempt lease
+  owner. The credential-free daemon independently fsync-claims the same request
+  locally before any OCI action.
+- Treat Podman flags as intent only. Compare exact post-create and post-start
+  inspection for image, userns maps, UID/GID, caps, no-new-privileges, seccomp,
+  namespace modes, cgroup manager/parent/CPU/memory/PID, log driver, bounded
+  Scratch tmpfs and exact Workspace/Broker mounts.
+- Workspace Resolve rewalks owner/modes/types/bounds and recomputes the full
+  tree fingerprint before launch. Artifact intake is a per-Attempt framed Unix
+  socket into quarantine; it never publishes or holds object-store credentials.
 - Adding any new tail migration requires advancing every PostgreSQL drill that
   peels older tails (`verify-mcp-postgres17.sh`, MCP credential, Assistant
   Store, Skill supply, and the owning new drill). Each must down the new empty
@@ -104,6 +121,10 @@ Capability Grants, Runner RPC, side effects, Child Agents, Cron, Draft learning,
   revisions/hierarchy, terminal retention and content-free dump/restore.
 - Runner: exact target-host Isolation Acceptance Suite, resource/escape/network/
   secret/kill/orphan/reboot negatives.
+- G20.3 source/control: `verify-agent-runner.sh`, disposable PostgreSQL 17
+  `verify-agent-runner-postgres17.sh`, and expected-nonzero exact-host
+  `verify-agent-runner-host.sh`. A source or fake-driver pass is never exact-host
+  promotion evidence.
 - Side effects: Prepare/Commit crash/acknowledgement-loss/idempotency matrix.
 - Child: forged Parent, depth 2, widened grant/model/package/budget and registry
   alias rejection before launch.

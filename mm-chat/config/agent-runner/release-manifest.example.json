@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "neo.agent-runner-release/v1",
+  "approved": false,
+  "runnerId": "neo-runner-primary",
+  "runnerVersion": "g20.3-source-only",
+  "protocolVersion": "neo.runner-rpc/v1",
+  "binaries": [
+    {
+      "name": "podman",
+      "path": "/opt/neo-runner/bin/podman",
+      "version": "6.1.0",
+      "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "name": "crun",
+      "path": "/opt/neo-runner/bin/crun",
+      "version": "1.29.1",
+      "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "name": "conmon",
+      "path": "/opt/neo-runner/bin/conmon",
+      "version": "2.2.1",
+      "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "name": "newuidmap",
+      "path": "/usr/bin/newuidmap",
+      "version": "4.15.0",
+      "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "name": "newgidmap",
+      "path": "/usr/bin/newgidmap",
+      "version": "4.15.0",
+      "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "storageDriver": "overlay",
+  "networkMode": "none",
+  "userNamespaceSize": 65536,
+  "requiredControllers": [
+    "cpu",
+    "memory",
+    "pids"
+  ],
+  "seccompProfile": {
+    "path": "/etc/neo-runner/seccomp-agent-v1.json",
+    "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "probeSuiteFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "isolationAcceptance": {
+    "path": "/etc/neo-runner/isolation-acceptance.json",
+    "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}

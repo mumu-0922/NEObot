@@ -1,7 +1,8 @@
 # Neo Agent Runtime Executable Contract
 
-Status: G20.1 supply-chain and G20.2 durable Orchestrator foundations
-implemented; all production Agent execution remains disabled.
+Status: G20.1 supply-chain, G20.2 durable Orchestrator and G20.3 Runner
+source/control foundations implemented. Exact-host isolation promotion is held;
+all production Agent execution remains disabled.
 
 ## 1. Scope and hard gates
 
@@ -155,21 +156,37 @@ G20.2 implementation signatures:
   restart/rebuild, stale denial, Kill Switch, retention and dump/restore while
   no Runner or Sandbox exists.
 
+G20.3 implementation signatures:
+
+- `backend/internal/agentrunner/`, `cmd/neo-runnerd` and
+  `cmd/neo-runner-probe` implement the private Runner seam without API/startup
+  wiring;
+- migration `085` owns caller+Runner+request+nonce replay claims and expected
+  Sandbox lifecycle projection; `neo-runnerd` has no PostgreSQL credential;
+- `config/agent-runner/` and `deploy/agent-runner/` freeze the exact unapproved
+  release, seccomp and rootless systemd contract;
+- `scripts/verify-agent-runner*.sh` prove source/RPC/lifecycle, PostgreSQL and
+  exact-host fail-closed behavior. Current host result is
+  `ISOLATION_UNAVAILABLE`, not production evidence.
+
 ## 6. Runner RPC
 
 ### Transport
 
 - private endpoint only; no public/host-wide unauthenticated listener;
 - mutually authenticated service identity with pinned trust roots;
-- TLS 1.3 preferred, TLS 1.2 minimum; no plaintext fallback;
+- TLS 1.3 exact; no plaintext or bearer-token fallback;
 - exact protocol version negotiation before `ready`;
 - bounded body, deadline and concurrent request limits;
-- `requestId + nonce + caller identity` durable replay fence with a bounded TTL;
+- `requestId + nonce + caller identity + authority-request fingerprint` durable
+  replay fence with a bounded TTL; the signed ticket carries the same nonce and
+  fingerprint so changing its body invalidates both fences;
 - responses echo request ID and carry no raw Secret, prompt, Tool result or
   Workspace content.
 
-The envelope supports `probe`, `launch`, `heartbeat`, `cancel`, `prepare` and
-`commit` request/result pairs. Method/body mismatch, unknown field, expired
+G20.3 strictly serves `probe`, `launch`, `heartbeat`, `cancel` and `list`.
+`prepare` and `commit` remain schema-reserved and unavailable until G20.4.
+Method/body mismatch, unknown field, duplicate key, expired
 nonce, stale lease, fingerprint mismatch or unsupported version fails closed.
 
 ### Capability probe
@@ -181,9 +198,11 @@ rootless_userns
 cgroup_v2
 seccomp
 readonly_rootfs
-idmapped_workspace or an approved copy/snapshot alternative
-network_broker
-pidfd_kill or an equivalent cgroup/process-group exact reap primitive
+snapshot_workspace
+network_none
+subordinate_ids
+pidfd_kill
+cgroup_reap
 ```
 
 Probe evidence binds runtime binary/version, kernel, user namespace/subuid
@@ -202,7 +221,9 @@ false.
 - no host PID/IPC namespace, Docker/Podman socket, device, database/object-store
   credential or arbitrary host mount;
 - `networkMode=none` or an approved brokered path only;
-- Project data is a bounded snapshot, Scratch is per Run, Artifact uses Broker;
+- Project data is a bounded snapshot rehashed before every launch; Scratch is
+  a size-bounded noexec/nosuid/nodev tmpfs; Artifact uses a per-Attempt local
+  Unix socket into Runner-owned quarantine and never object storage;
 - OCI image and every executable/dependency are digest/fingerprint bound.
 
 ## 7. Skill package and admission

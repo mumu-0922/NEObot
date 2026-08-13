@@ -1,8 +1,10 @@
 # Neo Agent Runtime Operations
 
-Status: G20.1 no-execute Skill supply and G20.2 durable Orchestrator authority
-are implemented. Do not install a Runtime, start `neo-runnerd`, enable Agent
-execution or delete legacy Skills from this document alone.
+Status: G20.1 no-execute Skill supply, G20.2 durable Orchestrator authority and
+G20.3 `neo-runnerd` source/control foundations are implemented. Exact-host
+production isolation promotion is held. Do not install a Runtime, start the
+service, enable Agent execution or delete legacy Skills from this document
+alone.
 
 ## Default state
 
@@ -17,8 +19,9 @@ AGENT_DELEGATION_ENABLED=false
 AGENT_RUNNER_URL=
 ```
 
-G20.1/G20.2 add no environment variables or Compose service. These names reserve
-the intended operational boundary; later implementation must add them through
+G20.3 also adds no application environment variable or Compose service. The
+host-only `deploy/agent-runner/neo-runnerd.env.example` is not an activation
+file. These names reserve the intended operational boundary; later promotion must add them through
 the normal preflight/example-env/Compose/documentation gates.
 
 Runtime disabled must block discovery installation changes, new Runs, leases,
@@ -41,7 +44,7 @@ host non-root neo-runnerd service account
 one fresh Sandbox per Run
   + immutable package/runtime rootfs
   + Project snapshot (not host bind)
-  + per-Run Scratch
+  + bounded tmpfs Scratch
   + private broker channels only
 ```
 
@@ -72,11 +75,12 @@ or secrets. Any missing feature or drift makes Runner readiness false. Falling
 back to rootful Docker, `sudo`, `--privileged`, unconfined seccomp, added
 capabilities or host networking is forbidden.
 
-Current development-host observation (2026-08-13): cgroup v2, user namespace
-quota and subuid/subgid exist; Docker 29.7.2 is available; Podman, crun, runc,
-rootlesskit, slirp4netns, pasta, fuse-overlayfs and bwrap commands are absent.
-This is a planning fact, not a failed production deployment. Phase 0 does not
-install or change the host.
+Current development-host observation (2026-08-13): the checked-in exact release
+probe exits nonzero with `ISOLATION_UNAVAILABLE`. Its sanitized classes include
+unapproved release, exact Podman/crun/conmon/uidmap drift, missing writable
+delegated cgroup v2 and seccomp-profile drift. Rootful Docker availability is
+irrelevant and is never promoted. This is the required fail-closed G20.3 result;
+the implementation does not install or change the host.
 
 ## Service account and filesystem boundary
 
@@ -85,8 +89,9 @@ Go API or database user. Required writable state is minimal and separated:
 
 ```text
 runtime cache: immutable-digest keyed; no source checkout
-run staging: one mode-0700 directory per Attempt; quota and owner checked
-scratch: one mount per Run; removed on all terminal/orphan paths
+run staging: one Runner-owned directory per Attempt; owner/mode checked
+scratch: noexec/nosuid/nodev tmpfs with exact byte bound; host broker staging
+         is removed on all terminal/orphan/failure paths
 probe evidence: bounded metadata only
 mTLS key: mode-0600 secret file, not env/Git/image
 ```
@@ -98,18 +103,50 @@ or run package installers from a live source at Run time.
 
 ## mTLS control plane
 
-- bind only a private Unix socket or dedicated private interface;
+- bind only explicit loopback/private TCP; G20.3 template uses loopback;
 - separate CA/service identities for API and Runner;
 - mode-0600 private keys from mounted secret files;
 - rotate by overlapping trust roots, restarting one side at a time, then
   removing the old root after reconciliation;
-- version negotiation and `probe` must pass before readiness;
+- TLS 1.3, version negotiation and `probe` must pass before readiness;
 - nonce/request replay state is durable or otherwise cannot be reset into an
   acceptance window by ordinary process restart;
 - logs include request/Run/Attempt IDs and error class only.
 
 No public reverse-proxy route exposes Runner RPC. Frontend never receives its
 URL, certificate, nonce, lease token, package coordinate or Secret handle.
+
+The Backend-facing `agentrunner.RPCClient` pins the Runner CA and exact server
+identity, sends strict `neo.runner-rpc/v1`, bounds headers/body/deadline and
+accepts only a request-ID/nonce/method-bound response. There is no bearer token
+fallback.
+
+## G20.3 source and verification commands
+
+```bash
+bash scripts/verify-agent-runner.sh
+bash scripts/verify-agent-runner-postgres17.sh
+bash scripts/verify-agent-runner-host.sh
+```
+
+The first two commands prove source/control and disposable PostgreSQL behavior.
+On this host the third must exit nonzero and print `ISOLATION_UNAVAILABLE` with
+content-free failure classes. Only an approved manifest installed for the exact
+`neo-runner` account and a complete passing target-host suite may emit a ready
+marker. The templates under `deploy/agent-runner/` are review artifacts only;
+they do not create the account, directories, sub-IDs, cgroup delegation or
+certificate files.
+
+Even an otherwise ready Podman host remains unavailable until the manifest-bound
+Isolation Acceptance report is approved, generated by the exact current UID/GID
+and release tuple, contains every required suite feature and is no older than
+24 hours. Replacing a report without advancing its manifest SHA-256 is drift.
+
+Do not apply service-level `NoNewPrivileges=yes` or an empty capability bounding
+set to this rootless Podman service: either blocks pinned `newuidmap`/
+`newgidmap`. The unit exposes only `CAP_SETUID`/`CAP_SETGID` in its bounding set,
+keeps Ambient capabilities empty, and proves the Sandbox itself has empty
+capabilities plus `no-new-privileges` before start.
 
 ## Release order (future groups)
 
@@ -136,15 +173,16 @@ legacy destructive deletion in one release.
 
 ## Kill Switch operations
 
-G20.2 persists and resolves the hierarchy through migration `084`. It fences
-enqueue, leases, heartbeat and nonterminal Attempt progress, but it deliberately
-has no Runner process to cancel or kill yet. Switch removal is a new inactive
-revision; cleanup/recovery/rebuild/retention remain available. Exercise the
-database-only boundary with:
+G20.2 persists and resolves the hierarchy through migration `084`; G20.3
+migration `085` binds short-lived Runner authority to that current epoch and
+stores expected Sandbox projection. No production Runner is started. Switch
+removal remains a new inactive revision; cleanup/recovery/rebuild/retention
+remain available. Exercise the two boundaries with:
 
 ```bash
 bash scripts/verify-agent-orchestrator.sh
 bash scripts/verify-agent-orchestrator-postgres17.sh
+bash scripts/verify-agent-runner-postgres17.sh
 ```
 
 These passes are durable control-plane evidence only, not rootless isolation or
@@ -178,7 +216,7 @@ green. Do not manually retry `outcome_unknown` writes.
 
 ## Isolation Acceptance runbook
 
-The exact future command is owned by the runner implementation group. Its output
+The exact target-host command is `scripts/verify-agent-runner-host.sh`. Its output
 must be machine-readable, content-free and fingerprint-bound. Minimum suites:
 
 ```text
@@ -191,10 +229,14 @@ Secret canary zero-leak
 cgroup CPU/memory/PID/disk/output/wall exhaustion
 cancel/kill/descendant/orphan/reboot cleanup
 lease reclaim/stale message rejection
-Prepare/Commit crash and acknowledgement-loss matrix
-Child depth/registry/grant/budget narrowing
+Prepare/Commit crash and acknowledgement-loss matrix (G20.4)
+Child depth/registry/grant/budget narrowing (G20.5)
 Runtime-off cleanup/retention
 ```
+
+The current G20.3 host command performs the release-bound prerequisite probe
+only; it must not report the later G20.4/G20.5 suites as executed. Production
+promotion requires the complete list after the owning groups exist.
 
 Evidence must identify target host class, kernel, runtime and storage/network
 drivers, Runner image/binary, Runtime Bundle, seccomp, suite commit and result

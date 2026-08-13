@@ -1,7 +1,8 @@
 # G20 Neo Agent Runtime Epic Plan
 
-Status: G20.0 Phase 0, G20.1 Skill supply chain, and G20.2 durable Orchestrator
-foundation complete; G20.3 not started.
+Status: G20.0 Phase 0, G20.1 Skill supply chain, G20.2 durable Orchestrator and
+G20.3 Runner source/control foundation complete. Exact-host isolation promotion
+is held; G20.4 has not started.
 
 ## Locked outcome
 
@@ -75,6 +76,9 @@ pass while no Sandbox can launch.
 
 ## G20.3 — `neo-runnerd` and rootless isolation
 
+Status: source/control foundation complete (2026-08-13); production isolation
+promotion held because the exact-host probe returns `ISOLATION_UNAVAILABLE`.
+
 - Build a dedicated non-root host daemon, mTLS versioned Runner RPC, replay
   fence and capability probe.
 - Pin one approved rootless OCI/runtime/storage/network stack for the target
@@ -87,6 +91,14 @@ pass while no Sandbox can launch.
 Promotion gate: exact release passes the full Isolation Acceptance Suite,
 resource exhaustion, escape negatives, cancel/kill/orphan/reboot cleanup and
 clean-host reinstall. Global Runtime stays off until evidence review.
+
+Implemented evidence: TLS 1.3 mTLS RPC/server/client, PostgreSQL plus fsync
+replay fences, Runner/lease-owner-bound authority ticket, strict Workspace
+rehash, per-Attempt Podman create/inspect/start, exact userns/seccomp/cgroup/
+mount/resource checks, bounded tmpfs Scratch, per-Attempt Unix Artifact intake,
+wall kill, exact reap/reconcile, migration `085` and disposable PostgreSQL 17
+drill. Held evidence: approved release installation and the complete suite as
+the exact `neo-runner` service account. No Runtime/API/Chat route is enabled.
 
 ## G20.4 — Tool, Egress, Secret and side effects
 

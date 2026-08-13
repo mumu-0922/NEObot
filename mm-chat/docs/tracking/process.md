@@ -10236,3 +10236,35 @@ standalone clean-copy gate passed. Production Runtime remains unavailable: no
 HTTP route, feature flag, Redis authority, Runner RPC, `neo-runnerd`, Sandbox,
 Tool grant, side-effect broker, Child Agent, Cron, learning, Chat Skill or
 legacy Skill mutation was added.
+
+## 2026-08-13 — G20.3 Agent Runner source/control foundation completed
+
+G20.3 introduced the private `agentrunner` bounded context, `neo-runnerd`, the
+exact-host probe command and migration `085` without exposing an Agent Runtime
+API or changing Chat. TLS 1.3 mutual authentication, exact client/server
+identity, strict `neo.runner-rpc/v1`, bounded concurrency/body/deadline and
+Ed25519 authority tickets now bind each request to the current G20.2 Attempt,
+lease owner/token digest, snapshot and Kill Switch epoch. PostgreSQL owns the
+control replay claim and expected Sandbox lifecycle; the credential-free Runner
+adds a mode-0600 fsync local ledger. Runner ID is durably equal to lease owner,
+so a caller cannot sign one lease for another host.
+
+A launch rewalks and rehashes the full read-only Workspace, creates only one
+fresh Podman container, then proves the immutable image, private user namespace
+maps, nonzero UID/GID, read-only rootfs, empty capabilities, exact seccomp and
+no-new-privileges options, network/PID/IPC/UTS isolation, cgroup v2 CPU/memory/
+PID limits, disabled container logging, bounded tmpfs Scratch and exact
+Workspace/Broker mounts before and after start. A per-Attempt Unix socket accepts
+only bounded framed Artifact bytes into Runner-owned quarantine and owns no
+object-store credential. Wall deadlines, cancel and reconcile use exact
+container identity, wait/remove and recorded PID/cgroup disappearance before
+removing Scratch, broker and quarantine residue.
+
+The checked-in Podman 6.1.0/crun 1.29.1 release tuple remains explicitly
+unapproved. Source/race/vet and Phase 0 gates passed; disposable PostgreSQL 17
+fresh/replay/concurrency/least-privilege/lifecycle/retention/guarded-down/dump-
+restore/down-up passed. The exact-host verifier correctly exits nonzero with
+`ISOLATION_UNAVAILABLE` and only sanitized drift classes on this development
+host. This is a production promotion hold, not a waived gate. G20.4 Tool/Egress/
+Secret/Prepare/Commit, Runtime/API/Chat, Scheduler, Child Agents, learning and
+legacy text-Skill deletion remain unavailable.

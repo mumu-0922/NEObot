@@ -1,7 +1,8 @@
 # Neo Agent Runtime Architecture
 
-Status: G20.1 no-execute Skill supply chain and G20.2 durable Orchestrator
-foundation implemented; production Runtime remains disabled.
+Status: G20.1 no-execute Skill supply chain, G20.2 durable Orchestrator and
+G20.3 Runner source/control foundations implemented. Exact-host isolation
+promotion is held; production Runtime remains disabled.
 
 ## Purpose and invariant
 
@@ -282,8 +283,14 @@ not reveal private chain-of-thought.
 
 ## Migration and rollback boundary
 
-G20.1 adds Skill supply/API/persistence and G20.2 adds an internal, unwired
-durable control-plane seam. Neither changes Chat or legacy text-Skill behavior.
+G20.1 adds Skill supply/API/persistence, G20.2 adds the internal durable
+Orchestrator and G20.3 adds the credential-free host Runner boundary. G20.3
+implements strict TLS 1.3 mTLS RPC, PostgreSQL plus local-fsync replay fences,
+release probing, one rootless Podman Sandbox per Attempt, full Workspace
+revalidation, bounded tmpfs Scratch, exact kill/reap/reconcile and local Unix
+Artifact quarantine. The release manifest remains unapproved and the current
+host returns `ISOLATION_UNAVAILABLE`; no API/Chat startup path imports it.
+None of these groups changes Chat or legacy text-Skill behavior.
 The future final cutover:
 
 1. freezes new legacy Skill installation/editing;

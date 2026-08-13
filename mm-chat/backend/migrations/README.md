@@ -523,6 +523,20 @@ owner/operations-only, down refuses non-empty authority, and disposable
 PostgreSQL 17 replay/dump/restore proof uses
 `scripts/verify-agent-orchestrator-postgres17.sh`.
 
+Migration `085` adds the G20.3 Agent Runner control authority without enabling
+Agent execution. `agent_runner_requests` durably binds caller certificate
+identity, Runner/lease-owner identity, request ID, nonce, request fingerprint,
+exact G20.2 Attempt lease/token digest, snapshot and Kill Switch epoch before a
+short-lived ticket may be signed. `agent_runner_sandboxes` stores only the
+expected content-free Sandbox lifecycle projection used for restart recovery.
+The independent `agent_runner_control` role can execute exact
+`SECURITY DEFINER` functions and has no table DML; `neo-runnerd` receives no
+database role or credential, and existing API/Orchestrator runtime roles gain
+no Runner authority. Down refuses non-empty authority. Disposable PostgreSQL
+17 replay concurrency, least privilege, lifecycle, retention, dump/restore and
+clean `084 -> 085 -> 084 -> 085` proof use
+`scripts/verify-agent-runner-postgres17.sh`.
+
 ## Storage boundaries
 
 Postgres is the source of truth for structured records:

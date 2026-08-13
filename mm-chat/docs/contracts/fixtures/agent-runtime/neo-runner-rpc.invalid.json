@@ -10,7 +10,8 @@
       "stepId": "step_0123456789abcdef",
       "attemptId": "attempt_0123456789abcdef",
       "leaseGeneration": 1,
-      "leaseToken": "lease_0123456789abcdef01234567"
+      "leaseToken": "lease_0123456789abcdef01234567",
+      "leaseOwner": "neo-runner-primary"
     },
     "grantId": "grant_0123456789abcdef",
     "grantFingerprint": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
@@ -23,7 +24,9 @@
       "gid": 0,
       "rootfsReadOnly": false,
       "noNewPrivileges": false,
-      "capabilities": ["CAP_SYS_ADMIN"],
+      "capabilities": [
+        "CAP_SYS_ADMIN"
+      ],
       "seccompProfileFingerprint": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
       "networkMode": "none",
       "workspaceSnapshotId": "workspace_snapshot_0123456789abcdef",
@@ -32,14 +35,43 @@
         "memoryMiB": 512,
         "pids": 64,
         "wallSeconds": 300,
-        "outputBytes": 2097152
-      }
+        "outputBytes": 2097152,
+        "scratchBytes": 67108864
+      },
+      "workspaceFingerprint": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
     },
     "toolRegistry": {
       "depth": 1,
-      "tools": ["workspace.read", "delegate_task"],
+      "tools": [
+        "workspace.read",
+        "delegate_task"
+      ],
       "registryFingerprint": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
     },
-    "argv": ["/opt/neo/bin/repository-audit", "--workspace", "/workspace"]
+    "argv": [
+      "/opt/neo/bin/repository-audit",
+      "--workspace",
+      "/workspace"
+    ],
+    "authority": {
+      "schemaVersion": "neo.runner-authority/v1",
+      "runnerId": "neo-runner-primary",
+      "callerIdentity": "spiffe://neo-chat/backend",
+      "method": "launch",
+      "requestId": "rpc_0123456789abcdef",
+      "runId": "run_0123456789abcdef",
+      "stepId": "step_0123456789abcdef",
+      "attemptId": "attempt_0123456789abcdef",
+      "leaseGeneration": 1,
+      "leaseOwner": "neo-runner-primary",
+      "leaseTokenDigest": "9999999999999999999999999999999999999999999999999999999999999999",
+      "snapshotFingerprint": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "killSwitchEpoch": 0,
+      "issuedAt": "2026-08-13T00:00:00Z",
+      "expiresAt": "2026-08-13T00:00:10Z",
+      "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "nonce": "0123456789abcdef0123456789abcdef",
+      "requestFingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
   }
 }
