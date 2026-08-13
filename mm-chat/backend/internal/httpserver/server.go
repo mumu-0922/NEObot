@@ -1312,6 +1312,8 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/memory-import/confirm", userMemoryHandler)
 	mux.Handle("/v1/agents", agentHandler)
 	mux.Handle("/v1/agents/", agentHandler)
+	mux.Handle("/v1/assistants", agentHandler)
+	mux.Handle("/v1/assistants/", agentHandler)
 	mux.Handle("/v1/mcp/", mcpHandler)
 	mux.Handle("/v1/code/executions", codeJobHandler)
 	mux.Handle("/v1/images/generations", imageJobHandler)

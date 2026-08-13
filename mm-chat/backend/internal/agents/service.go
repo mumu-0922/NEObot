@@ -40,9 +40,17 @@ type HTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
+type OfficialMarketClient interface {
+	FetchAgentMarketJSON(context.Context, string, int64) ([]byte, error)
+}
+
 type Service struct {
-	registryBaseURL string
-	httpClient      HTTPClient
+	registryBaseURL     string
+	liveMarketBaseURL   string
+	httpClient          HTTPClient
+	officialMarket      OfficialMarketClient
+	repository          Repository
+	administratorUserID string
 }
 
 type ServiceOption func(*Service)
@@ -56,6 +64,25 @@ func WithRegistryBaseURL(baseURL string) ServiceOption {
 	}
 }
 
+func WithLiveMarketBaseURL(baseURL string) ServiceOption {
+	return func(service *Service) {
+		baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+		if baseURL != "" {
+			service.liveMarketBaseURL = baseURL
+		}
+	}
+}
+
+func WithRepository(repository Repository) ServiceOption {
+	return func(service *Service) { service.repository = repository }
+}
+
+func WithAdministratorUserID(userID string) ServiceOption {
+	return func(service *Service) {
+		service.administratorUserID = strings.TrimSpace(userID)
+	}
+}
+
 func WithHTTPClient(client HTTPClient) ServiceOption {
 	return func(service *Service) {
 		if client != nil {
@@ -64,9 +91,16 @@ func WithHTTPClient(client HTTPClient) ServiceOption {
 	}
 }
 
+func WithOfficialMarket(client OfficialMarketClient) ServiceOption {
+	return func(service *Service) {
+		service.officialMarket = client
+	}
+}
+
 func NewService(opts ...ServiceOption) *Service {
 	service := &Service{
-		registryBaseURL: DefaultRegistryBaseURL,
+		registryBaseURL:   DefaultRegistryBaseURL,
+		liveMarketBaseURL: DefaultLiveMarketBaseURL,
 		httpClient: &http.Client{
 			Timeout: 20 * time.Second,
 		},
@@ -264,6 +298,7 @@ func normalizeAgentDetail(value any, identifier string) (Agent, bool) {
 		agent.Meta.SystemRole = systemRole
 		agent.Config = &AgentConfig{SystemRole: systemRole}
 	}
+	agent.RequiredTools = normalizeTags(config["plugins"])
 	return agent, true
 }
 

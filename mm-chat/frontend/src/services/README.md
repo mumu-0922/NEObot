@@ -36,6 +36,10 @@ Handles chat generation workflows from the browser side:
 ### `agentService.ts`
 
 Fetches assistant marketplace data and assistant details from app API routes.
+The current Assistant library and Store lifecycle is server-authoritative
+through `services/api/client/*/agentApi.ts`. Legacy registry helpers remain
+only for compatibility; UI installation, custom editing, revisions, and
+admission no longer use browser-owned Assistant state.
 
 ### `voiceService.ts`
 

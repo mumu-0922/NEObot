@@ -1,1510 +1,1740 @@
-import React, {
+"use client";
+
+import {
+  FormEvent,
   useCallback,
-  useState,
   useEffect,
+  useId,
   useMemo,
   useRef,
-  useId,
+  useState,
+  type ReactNode,
 } from "react";
-import { createPortal } from "react-dom";
 import {
-  Search,
-  Loader2,
-  X,
-  Filter,
-  Check,
+  AlertTriangle,
   BotMessageSquare,
-  ChevronLeft,
-  ChevronRight,
-  Plus,
+  Check,
+  Copy,
+  Loader2,
+  MessageSquarePlus,
+  MoreHorizontal,
   PenLine,
-  Trash2,
-  RefreshCcw,
+  Plus,
   RefreshCw,
-  Sparkles,
-  Save,
-  Library,
+  Search,
+  ShieldCheck,
+  Store,
+  Trash2,
+  X,
 } from "lucide-react";
-import { v7 as uuidv7 } from "uuid";
 import { useLocale, useTranslations } from "next-intl";
-import { LobeAgent, LobeAgentMeta } from "@/types";
-import {
-  getAgents,
-  getAgentDetail,
-  getCachedAgentsForLocale,
-} from "@/services/api/agentService";
-import { useSettingsStore } from "@/store/core/settingsStore";
-import { optimizeSystemPrompt } from "@/services/artifactService";
-import { streamGenerateContent } from "@/services/api/chatService";
-import { useChatStore } from "@/store/core/chatStore";
+
 import SafeImage from "@/components/ui/SafeImage";
+import { Dialog } from "@/components/ui/primitives";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { createStreamingReplacement } from "@/lib/utils/streamingText";
 import { MARKET_LIMITS } from "@/config/limits";
-import { normalizeLocalAgent } from "@/lib/market/agents";
-import { logDevError } from "@/lib/utils/devLogger";
+import type {
+  AssistantLibraryEntry,
+  AssistantMarketCategory,
+  LobeAgent,
+} from "@/lib/assistant/types";
+import {
+  agentMarketCountKey,
+  formatAgentMarketCategory,
+  missingAgentMarketCountCategories,
+} from "@/lib/market/agentCategory";
+import { normalizeAgentMarketLocale } from "@/lib/market/agentLocale";
+import { ApiClientError, createNeoChatApiClient } from "@/services/api/client";
 
 interface AssistantHubProps {
   onClose: () => void;
   onSelect: (agent: LobeAgent) => void;
+  onOpenTools: () => void;
 }
 
-const ITEMS_PER_PAGE = 24;
+interface AssistantDraft {
+  avatar: string;
+  title: string;
+  description: string;
+  category: string;
+  tags: string[];
+  systemPrompt: string;
+}
 
-// Helper to format category names
-const formatCategoryName = (str: string) => {
-  if (!str) return "General";
-  return str
-    .replace(/_/g, " ")
-    .replace(
-      /\b\w/g,
-      (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase(),
-    );
+const PAGE_SIZE = 20;
+
+const emptyDraft: AssistantDraft = {
+  avatar: "🤖",
+  title: "",
+  description: "",
+  category: "general",
+  tags: [],
+  systemPrompt: "",
 };
 
-// --- Assistant Editor Modal ---
-const AssistantEditorModal = ({
-  agent,
-  onSave,
+export default function AssistantHub({
   onClose,
-  onDelete,
-}: {
-  agent?: LobeAgent;
-  onSave: (agent: LobeAgent) => void;
-  onClose: () => void;
-  onDelete?: (identifier: string) => void;
-}) => {
+  onSelect,
+  onOpenTools,
+}: AssistantHubProps) {
   const t = useTranslations("Assistant");
-  const isEditing = !!agent;
-  const { selectedModel } = useChatStore();
+  const locale = normalizeAgentMarketLocale(useLocale());
+  const client = useMemo(() => createNeoChatApiClient(), []);
+  const [tab, setTab] = useState<"library" | "market">("library");
+  const [library, setLibrary] = useState<AssistantLibraryEntry[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(true);
+  const [libraryError, setLibraryError] = useState("");
+  const [libraryActionId, setLibraryActionId] = useState("");
+  const [editing, setEditing] = useState<
+    AssistantLibraryEntry | null | undefined
+  >(undefined);
+  const defaultTabResolvedRef = useRef(false);
 
-  // Initialize state. If agent exists, populate.
-  const [meta, setMeta] = useState<LobeAgentMeta>({
-    title: "",
-    description: "",
-    avatar: "🤖",
-    category: "General",
-    tags: [],
-    systemRole: "",
-  });
-
-  const [isOptimizing, setIsOptimizing] = useState(false);
-  const [optimizeError, setOptimizeError] = useState("");
-  const [isDeleteConfirming, setIsDeleteConfirming] = useState(false);
-  const isEditorMountedRef = useRef(true);
-  const optimizeRunRef = useRef(0);
-  const deleteConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  const onCloseRef = useRef(onClose);
-  const dialogRef = useRef<HTMLDivElement | null>(null);
-  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-  const editorId = useId();
-  const dialogTitleId = `${editorId}-title`;
-  const avatarInputId = `${editorId}-avatar`;
-  const nameInputId = `${editorId}-name`;
-  const categoryInputId = `${editorId}-category`;
-  const descriptionInputId = `${editorId}-description`;
-  const systemPromptInputId = `${editorId}-system-prompt`;
-  const tagInputId = `${editorId}-tag`;
-
-  useEffect(() => {
-    optimizeRunRef.current += 1;
-    setOptimizeError("");
-    setIsOptimizing(false);
-    setIsDeleteConfirming(false);
-    if (deleteConfirmTimerRef.current) {
-      clearTimeout(deleteConfirmTimerRef.current);
-      deleteConfirmTimerRef.current = null;
-    }
-
-    if (agent) {
-      setMeta({
-        title: agent.meta.title || "",
-        description: agent.meta.description || "",
-        avatar: agent.meta.avatar || "🤖",
-        category: agent.meta.category || "General",
-        tags: agent.meta.tags || [],
-        systemRole: agent.meta.systemRole || "",
-      });
-    } else {
-      setMeta({
-        title: "",
-        description: "",
-        avatar: "🤖",
-        category: "General",
-        tags: [],
-        systemRole: "",
-      });
-    }
-  }, [agent]);
-
-  useEffect(() => {
-    isEditorMountedRef.current = true;
-    const previousActiveElement =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    closeButtonRef.current?.focus({ preventScroll: true });
-
-    return () => {
-      isEditorMountedRef.current = false;
-      optimizeRunRef.current += 1;
-      if (deleteConfirmTimerRef.current) {
-        clearTimeout(deleteConfirmTimerRef.current);
-        deleteConfirmTimerRef.current = null;
-      }
-      if (previousActiveElement?.isConnected) {
-        previousActiveElement.focus({ preventScroll: true });
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
-
-  const [tagInput, setTagInput] = useState("");
-
-  const clearDeleteConfirmation = () => {
-    if (deleteConfirmTimerRef.current) {
-      clearTimeout(deleteConfirmTimerRef.current);
-      deleteConfirmTimerRef.current = null;
-    }
-    setIsDeleteConfirming(false);
-  };
-
-  const handleSubmit = () => {
-    if (!meta.title.trim() || !meta.description.trim()) return; // Simple validation
-    clearDeleteConfirmation();
-
-    const updatedAgent: LobeAgent = {
-      identifier: agent?.identifier || uuidv7(),
-      meta: meta,
-      createdAt: agent?.createdAt || new Date().toISOString(),
-      homepage: agent?.homepage || "",
-      author: agent?.author || "User",
-      isCustom: agent?.isCustom ?? true,
-    };
-    const normalizedAgent = normalizeLocalAgent(updatedAgent);
-    if (!normalizedAgent) return;
-
-    onSave(normalizedAgent);
-    onClose();
-  };
-
-  const handleDelete = () => {
-    if (agent && onDelete) {
-      if (!isDeleteConfirming) {
-        setIsDeleteConfirming(true);
-        if (deleteConfirmTimerRef.current) {
-          clearTimeout(deleteConfirmTimerRef.current);
-        }
-        deleteConfirmTimerRef.current = setTimeout(() => {
-          deleteConfirmTimerRef.current = null;
-          setIsDeleteConfirming(false);
-        }, 5000);
-        return;
-      }
-
-      clearDeleteConfirmation();
-      onDelete(agent.identifier);
-      onClose();
-    }
-  };
-
-  const handleAddTag = () => {
-    const tag = tagInput.trim().slice(0, MARKET_LIMITS.maxAgentTagChars);
-    if (
-      tag &&
-      meta.tags.length < MARKET_LIMITS.maxAgentTags &&
-      !meta.tags.some((item) => item.toLowerCase() === tag.toLowerCase())
-    ) {
-      setMeta((prev) => ({ ...prev, tags: [...prev.tags, tag] }));
-      setTagInput("");
-    }
-  };
-
-  const removeTag = (tag: string) => {
-    setMeta((prev) => ({ ...prev, tags: prev.tags.filter((t) => t !== tag) }));
-  };
-
-  const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onCloseRef.current();
-      return;
-    }
-
-    if (event.key !== "Tab") return;
-
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-
-    const focusableElements = Array.from(
-      dialog.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]):not([tabindex="-1"]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-      ),
-    ).filter((element) => element.offsetParent !== null);
-
-    if (focusableElements.length === 0) {
-      event.preventDefault();
-      dialog.focus({ preventScroll: true });
-      return;
-    }
-
-    const firstElement = focusableElements[0];
-    const lastElement = focusableElements[focusableElements.length - 1];
-
-    if (event.shiftKey && document.activeElement === firstElement) {
-      event.preventDefault();
-      lastElement.focus({ preventScroll: true });
-    } else if (!event.shiftKey && document.activeElement === lastElement) {
-      event.preventDefault();
-      firstElement.focus({ preventScroll: true });
-    }
-  };
-
-  const handleOptimize = async () => {
-    if (!meta.systemRole?.trim() || isOptimizing) return;
-
-    const runId = optimizeRunRef.current + 1;
-    optimizeRunRef.current = runId;
-    setIsOptimizing(true);
-    setOptimizeError("");
-    const originalSystemRole = meta.systemRole;
-    const replacement = createStreamingReplacement(originalSystemRole);
-    const prompt = optimizeSystemPrompt(meta.systemRole);
-
+  const loadLibrary = useCallback(async () => {
+    setLibraryLoading(true);
+    setLibraryError("");
     try {
-      await streamGenerateContent(selectedModel, prompt, (chunk) => {
-        if (!isEditorMountedRef.current || optimizeRunRef.current !== runId) {
-          return;
-        }
-        setMeta((prev) => ({
-          ...prev,
-          systemRole: replacement.append(chunk),
-        }));
-      });
-      if (!isEditorMountedRef.current || optimizeRunRef.current !== runId) {
-        return;
-      }
-      const optimizedText = replacement.value();
-      if (!optimizedText.trim()) {
-        throw new Error("Prompt optimization returned empty content");
-      }
-      setMeta((prev) => ({ ...prev, systemRole: optimizedText }));
-    } catch {
-      if (!isEditorMountedRef.current || optimizeRunRef.current !== runId) {
-        return;
-      }
-      setMeta((prev) => ({
-        ...prev,
-        systemRole: replacement.restore(),
-      }));
-      setOptimizeError(t("optimizeFailed"));
-    } finally {
-      if (isEditorMountedRef.current && optimizeRunRef.current === runId) {
-        setIsOptimizing(false);
-      }
-    }
-  };
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 p-4"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onCloseRef.current();
-        }
-      }}
-    >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={dialogTitleId}
-        tabIndex={-1}
-        onKeyDown={handleDialogKeyDown}
-        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden overscroll-contain rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-border dark:bg-card"
-      >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-border">
-          <h3
-            id={dialogTitleId}
-            className="text-lg font-bold text-gray-800 dark:text-foreground"
-          >
-            {isEditing ? t("editAssistant") : t("createAssistant")}
-          </h3>
-          <button
-            ref={closeButtonRef}
-            type="button"
-            aria-label={t("closeEditor")}
-            onClick={onClose}
-            className="rounded-full p-1 text-gray-500 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:hover:bg-muted"
-          >
-            <X size={20} aria-hidden="true" />
-          </button>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 space-y-4 custom-scrollbar">
-          {/* Avatar & Title */}
-          <div className="flex gap-4">
-            <div className="space-y-1">
-              <label
-                htmlFor={avatarInputId}
-                className="text-xs font-semibold text-gray-500 dark:text-muted-foreground"
-              >
-                {t("avatar")}
-              </label>
-              <div className="w-16 h-16 rounded-xl border border-gray-200 dark:border-border bg-gray-50 dark:bg-muted flex items-center justify-center text-2xl overflow-hidden relative group">
-                {meta.avatar.startsWith("http") ? (
-                  <SafeImage
-                    src={meta.avatar}
-                    alt={t("avatarPreviewAlt")}
-                    className="w-full h-full object-cover"
-                    fallback={
-                      <BotMessageSquare
-                        size={24}
-                        className="text-gray-400"
-                        aria-hidden="true"
-                      />
-                    }
-                  />
-                ) : (
-                  <span aria-hidden="true">{meta.avatar}</span>
-                )}
-                <input
-                  className="absolute inset-0 opacity-0 cursor-pointer"
-                  tabIndex={-1}
-                  aria-hidden="true"
-                  type="text"
-                  value={meta.avatar}
-                  onChange={(e) => setMeta({ ...meta, avatar: e.target.value })}
-                  maxLength={MARKET_LIMITS.maxAgentAvatarChars}
-                  placeholder={t("emojiOrUrl")}
-                />
-              </div>
-              <input
-                id={avatarInputId}
-                name="assistant-avatar"
-                autoComplete="off"
-                spellCheck={false}
-                className="w-16 border-b border-gray-200 bg-transparent text-center text-[10px] outline-none focus:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:border-border"
-                value={meta.avatar}
-                onChange={(e) => setMeta({ ...meta, avatar: e.target.value })}
-                maxLength={MARKET_LIMITS.maxAgentAvatarChars}
-                placeholder={t("emojiUrlShort")}
-              />
-            </div>
-            <div className="flex-1 space-y-1">
-              <label
-                htmlFor={nameInputId}
-                className="text-xs font-semibold text-gray-500 dark:text-muted-foreground"
-              >
-                {t("name")}
-              </label>
-              <input
-                id={nameInputId}
-                name="assistant-name"
-                autoComplete="off"
-                spellCheck={false}
-                className="w-full px-3 py-2 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-medium text-gray-800 dark:text-foreground"
-                placeholder={t("namePlaceholder")}
-                value={meta.title}
-                maxLength={MARKET_LIMITS.maxAgentTitleChars}
-                onChange={(e) => setMeta({ ...meta, title: e.target.value })}
-              />
-
-              <div className="flex gap-2 pt-2">
-                <div className="flex-1 space-y-1">
-                  <label
-                    htmlFor={categoryInputId}
-                    className="text-xs font-semibold text-gray-500 dark:text-muted-foreground"
-                  >
-                    {t("category")}
-                  </label>
-                  <input
-                    id={categoryInputId}
-                    name="assistant-category"
-                    autoComplete="off"
-                    spellCheck={false}
-                    className="w-full px-3 py-2 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-xs"
-                    placeholder={t("category")}
-                    value={meta.category}
-                    maxLength={MARKET_LIMITS.maxAgentCategoryChars}
-                    onChange={(e) =>
-                      setMeta({ ...meta, category: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <label
-              htmlFor={descriptionInputId}
-              className="text-xs font-semibold text-gray-500 dark:text-muted-foreground"
-            >
-              {t("description")}
-            </label>
-            <textarea
-              id={descriptionInputId}
-              name="assistant-description"
-              className="w-full px-3 py-2 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm resize-none h-20"
-              placeholder={t("descriptionPlaceholder")}
-              value={meta.description}
-              maxLength={MARKET_LIMITS.maxAgentDescriptionChars}
-              onChange={(e) =>
-                setMeta({ ...meta, description: e.target.value })
-              }
-            />
-          </div>
-
-          <div className="space-y-1">
-            <div className="flex justify-between items-center">
-              <label
-                htmlFor={systemPromptInputId}
-                className="flex items-center gap-1 text-xs font-semibold text-gray-500 dark:text-muted-foreground"
-              >
-                <Sparkles
-                  size={12}
-                  className="text-blue-500"
-                  aria-hidden="true"
-                />{" "}
-                {t("systemPrompt")}
-              </label>
-
-              <button
-                type="button"
-                aria-label={t("optimizeSystemPromptAria")}
-                aria-busy={isOptimizing || undefined}
-                onClick={handleOptimize}
-                disabled={isOptimizing || !meta.systemRole}
-                className="flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-[10px] text-blue-600 transition-colors hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30"
-              >
-                {isOptimizing ? (
-                  <Loader2
-                    size={10}
-                    className="animate-spin"
-                    aria-hidden="true"
-                  />
-                ) : (
-                  <Sparkles size={10} aria-hidden="true" />
-                )}
-                {t("optimize")}
-              </button>
-            </div>
-            <div className="relative">
-              {optimizeError && (
-                <div
-                  role="alert"
-                  className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300"
-                >
-                  {optimizeError}
-                </div>
-              )}
-              {isOptimizing && (
-                <div
-                  role="status"
-                  aria-live="polite"
-                  className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/50 backdrop-blur-[1px] dark:bg-card/50"
-                >
-                  <div className="bg-white dark:bg-muted px-3 py-1.5 rounded-full shadow-sm border border-gray-100 dark:border-border flex items-center gap-2 text-xs font-medium text-blue-600">
-                    <Loader2
-                      size={12}
-                      className="animate-spin"
-                      aria-hidden="true"
-                    />{" "}
-                    {t("optimizing")}
-                  </div>
-                </div>
-              )}
-              <textarea
-                id={systemPromptInputId}
-                name="assistant-system-prompt"
-                spellCheck={false}
-                className="w-full px-3 py-2 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-mono resize-none h-32 custom-scrollbar"
-                placeholder={t("systemPromptPlaceholder")}
-                value={meta.systemRole}
-                maxLength={MARKET_LIMITS.maxAgentSystemRoleChars}
-                onChange={(e) =>
-                  setMeta({ ...meta, systemRole: e.target.value })
-                }
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label
-              htmlFor={tagInputId}
-              className="text-xs font-semibold text-gray-500 dark:text-muted-foreground"
-            >
-              {t("tagsOptional")}
-            </label>
-            <div className="flex flex-wrap gap-2 mb-2">
-              {meta.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-muted rounded-lg text-xs text-gray-600 dark:text-foreground/85"
-                >
-                  #{tag}
-                  <button
-                    type="button"
-                    aria-label={t("removeTagAria", { tag })}
-                    onClick={() => removeTag(tag)}
-                    className="rounded-sm hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60"
-                  >
-                    <X size={12} aria-hidden="true" />
-                  </button>
-                </span>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <input
-                id={tagInputId}
-                name="assistant-tag"
-                autoComplete="off"
-                spellCheck={false}
-                className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-border dark:bg-muted"
-                placeholder={t("addTagPlaceholder")}
-                value={tagInput}
-                maxLength={MARKET_LIMITS.maxAgentTagChars}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    handleAddTag();
-                  }
-                }}
-              />
-              <button
-                type="button"
-                aria-label={t("addTagAria")}
-                onClick={handleAddTag}
-                disabled={meta.tags.length >= MARKET_LIMITS.maxAgentTags}
-                className="rounded-xl bg-gray-100 px-3 py-2 text-gray-600 hover:bg-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-muted dark:text-foreground/85 dark:hover:bg-accent"
-              >
-                <Plus size={16} aria-hidden="true" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="p-5 border-t border-gray-100 dark:border-border bg-gray-50/50 dark:bg-card/50 flex justify-between gap-3">
-          {onDelete && (
-            <button
-              type="button"
-              aria-label={
-                isDeleteConfirming
-                  ? t("confirmDeleteAssistantAria", {
-                      title: agent?.meta.title || "",
-                    })
-                  : t("deleteAssistantAria", { title: agent?.meta.title || "" })
-              }
-              onClick={handleDelete}
-              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 ${
-                isDeleteConfirming
-                  ? "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-200"
-                  : "text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
-              }`}
-            >
-              {isDeleteConfirming ? (
-                <Check size={16} aria-hidden="true" />
-              ) : (
-                <Trash2 size={16} aria-hidden="true" />
-              )}
-              {isDeleteConfirming ? t("confirmDelete") : t("delete")}
-            </button>
-          )}
-          {!onDelete && <div></div>}
-
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-xl px-4 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:text-muted-foreground dark:hover:bg-muted"
-            >
-              {t("cancel")}
-            </button>
-            <button
-              type="button"
-              onClick={handleSubmit}
-              className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2 text-sm font-medium text-white shadow-lg shadow-blue-500/20 transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-background"
-            >
-              <Save size={16} aria-hidden="true" /> {t("saveAssistant")}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-};
-
-interface AssistantCardProps {
-  agent: LobeAgent;
-  onClick: (agent: LobeAgent) => void;
-  onEdit: (e: React.MouseEvent, agent: LobeAgent) => void;
-  onDelete?: (e: React.MouseEvent, id: string) => void;
-  onReset?: (e: React.MouseEvent, id: string) => void;
-  hasOverride?: boolean;
-  isDetailLoading?: boolean;
-}
-
-const AssistantCard = React.memo(function AssistantCard({
-  agent,
-  onClick,
-  onEdit,
-  onDelete,
-  onReset,
-  hasOverride,
-  isDetailLoading,
-}: AssistantCardProps) {
-  const t = useTranslations("Assistant");
-  const [isDeleteConfirming, setIsDeleteConfirming] = useState(false);
-  const [isResetConfirming, setIsResetConfirming] = useState(false);
-  const deleteConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  const resetConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-
-  useEffect(() => {
-    return () => {
-      if (deleteConfirmTimerRef.current) {
-        clearTimeout(deleteConfirmTimerRef.current);
-        deleteConfirmTimerRef.current = null;
-      }
-      if (resetConfirmTimerRef.current) {
-        clearTimeout(resetConfirmTimerRef.current);
-        resetConfirmTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  const clearDeleteConfirmation = () => {
-    if (deleteConfirmTimerRef.current) {
-      clearTimeout(deleteConfirmTimerRef.current);
-      deleteConfirmTimerRef.current = null;
-    }
-    setIsDeleteConfirming(false);
-  };
-
-  const clearResetConfirmation = () => {
-    if (resetConfirmTimerRef.current) {
-      clearTimeout(resetConfirmTimerRef.current);
-      resetConfirmTimerRef.current = null;
-    }
-    setIsResetConfirming(false);
-  };
-
-  const handleDeleteClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!onDelete) return;
-
-    if (!isDeleteConfirming) {
-      setIsDeleteConfirming(true);
-      if (deleteConfirmTimerRef.current) {
-        clearTimeout(deleteConfirmTimerRef.current);
-      }
-      deleteConfirmTimerRef.current = setTimeout(() => {
-        deleteConfirmTimerRef.current = null;
-        setIsDeleteConfirming(false);
-      }, 3500);
-      return;
-    }
-
-    clearDeleteConfirmation();
-    onDelete(e, agent.identifier);
-  };
-
-  const handleResetClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!onReset) return;
-
-    if (!isResetConfirming) {
-      setIsResetConfirming(true);
-      if (resetConfirmTimerRef.current) {
-        clearTimeout(resetConfirmTimerRef.current);
-      }
-      resetConfirmTimerRef.current = setTimeout(() => {
-        resetConfirmTimerRef.current = null;
-        setIsResetConfirming(false);
-      }, 3500);
-      return;
-    }
-
-    clearResetConfirmation();
-    onReset(e, agent.identifier);
-  };
-
-  const renderAvatar = (avatar: string) => {
-    const isUrl =
-      avatar.startsWith("http") ||
-      avatar.startsWith("data:") ||
-      avatar.includes("/");
-    if (isUrl) {
-      return (
-        <SafeImage
-          src={avatar}
-          alt={t("avatarAlt", { title: agent.meta.title })}
-          className="w-full h-full object-cover"
-          loading="lazy"
-          fallback={
-            <BotMessageSquare
-              size={20}
-              className="text-gray-400"
-              aria-hidden="true"
-            />
-          }
-        />
-      );
-    }
-    return (
-      <span className="text-xl" aria-hidden="true">
-        {avatar}
-      </span>
-    );
-  };
-
-  return (
-    <article
-      className={`group relative flex h-full overflow-hidden rounded-2xl border bg-white [contain:paint] transition-[border-color,box-shadow] duration-150 dark:bg-muted ${
-        hasOverride
-          ? "border-rose-200 dark:border-rose-900/50"
-          : "border-gray-200 hover:border-rose-300 hover:shadow-lg hover:shadow-rose-500/5 dark:border-border dark:hover:border-rose-700"
-      }`}
-    >
-      <button
-        type="button"
-        aria-label={t("selectAssistantAria", { title: agent.meta.title })}
-        onClick={() => onClick(agent)}
-        className="flex h-full w-full flex-col p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-rose-500 dark:focus-visible:ring-rose-400"
-      >
-        <div className="mb-3 flex items-center justify-between gap-3 pr-16">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gray-100 bg-white dark:border-input dark:bg-accent">
-              {renderAvatar(agent.meta.avatar)}
-            </div>
-
-            <div className="flex min-w-0 flex-col items-start gap-1">
-              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                {agent.isCustom && (
-                  <span className="shrink-0 rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-                    <span className="truncate">{t("custom")}</span>
-                  </span>
-                )}
-                {hasOverride && (
-                  <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                    <span className="truncate">{t("edited")}</span>
-                  </span>
-                )}
-                {agent.meta.category && (
-                  <span className="max-w-25 shrink-0 truncate rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-accent dark:text-foreground/85">
-                    {formatCategoryName(agent.meta.category)}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <h3 className="mb-1 truncate text-sm font-bold text-gray-800 transition-colors group-hover:text-rose-600 dark:text-foreground dark:group-hover:text-rose-400">
-          {agent.meta.title}
-        </h3>
-        <p className="mb-3 line-clamp-2 flex-1 text-xs leading-relaxed text-gray-500 dark:text-muted-foreground">
-          {agent.meta.description}
-        </p>
-
-        <div className="mt-auto flex items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-wrap gap-1">
-            {agent.meta.tags.slice(0, 3).map((tag) => (
-              <span
-                key={tag}
-                className="max-w-24 truncate rounded border border-rose-100 bg-rose-50 px-1.5 py-0.5 text-[9px] text-rose-600 dark:border-rose-900/30 dark:bg-rose-900/10 dark:text-rose-400"
-              >
-                #{tag}
-              </span>
-            ))}
-            {agent.meta.tags.length > 3 && (
-              <span className="px-1.5 py-0.5 text-[9px] text-gray-400">
-                +{agent.meta.tags.length - 3}
-              </span>
-            )}
-          </div>
-        </div>
-      </button>
-
-      <div className="absolute right-4 top-4 z-10 flex shrink-0 items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
-        <button
-          type="button"
-          aria-label={t("editAssistantAria", { title: agent.meta.title })}
-          aria-busy={isDetailLoading || undefined}
-          onClick={(e) => onEdit(e, agent)}
-          className="relative rounded-lg border border-gray-200 bg-white p-1.5 text-gray-500 shadow-sm transition-colors hover:bg-blue-50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-60 dark:border-border dark:bg-popover dark:text-muted-foreground dark:hover:bg-blue-900/30 dark:hover:text-blue-400"
-          disabled={isDetailLoading}
-        >
-          {isDetailLoading ? (
-            <Loader2
-              size={14}
-              className="animate-spin text-blue-500"
-              aria-hidden="true"
-            />
-          ) : (
-            <PenLine size={14} aria-hidden="true" />
-          )}
-        </button>
-        {onDelete && (
-          <button
-            type="button"
-            aria-label={
-              isDeleteConfirming
-                ? t("confirmDeleteAssistantAria", { title: agent.meta.title })
-                : t("deleteAssistantAria", { title: agent.meta.title })
-            }
-            onClick={handleDeleteClick}
-            className={`rounded-lg border border-gray-200 bg-white p-1.5 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 dark:border-border dark:bg-popover ${
-              isDeleteConfirming
-                ? "text-red-600 dark:text-red-300"
-                : "text-gray-500 hover:bg-red-50 hover:text-red-600 dark:text-muted-foreground dark:hover:bg-red-900/30 dark:hover:text-red-400"
-            }`}
-          >
-            {isDeleteConfirming ? (
-              <Check size={14} aria-hidden="true" />
-            ) : (
-              <Trash2 size={14} aria-hidden="true" />
-            )}
-          </button>
-        )}
-        {hasOverride && onReset && !onDelete && (
-          <button
-            type="button"
-            aria-label={
-              isResetConfirming
-                ? t("confirmResetAria", { title: agent.meta.title })
-                : t("resetAria", { title: agent.meta.title })
-            }
-            onClick={handleResetClick}
-            className={`rounded-lg border border-gray-200 bg-white p-1.5 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60 dark:border-border dark:bg-popover ${
-              isResetConfirming
-                ? "text-amber-600 dark:text-amber-300"
-                : "text-gray-500 hover:bg-amber-50 hover:text-amber-600 dark:text-muted-foreground dark:hover:bg-amber-900/30 dark:hover:text-amber-400"
-            }`}
-          >
-            {isResetConfirming ? (
-              <Check size={14} aria-hidden="true" />
-            ) : (
-              <RefreshCcw size={14} aria-hidden="true" />
-            )}
-          </button>
-        )}
-      </div>
-    </article>
-  );
-});
-
-const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
-  const t = useTranslations("Assistant");
-  const locale = useLocale();
-  const {
-    customAgents,
-    usedAgents,
-    agentOverrides,
-    addCustomAgent,
-    updateAgent,
-    removeLocalAgent,
-    resetAgent,
-    recordUsedAgent,
-    _hasHydrated,
-  } = useSettingsStore();
-
-  const [apiAgents, setApiAgents] = useState<LobeAgent[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-
-  // Modal State
-  const [editingAgent, setEditingAgent] = useState<LobeAgent | undefined>(
-    undefined,
-  );
-  const [showEditor, setShowEditor] = useState(false);
-  const [loadingAgentId, setLoadingAgentId] = useState<string | null>(null);
-  const isMountedRef = useRef(true);
-  const agentListRequestRef = useRef(0);
-  const agentDetailRequestRef = useRef(0);
-
-  // Pagination & Filtering
-  const [currentPage, setCurrentPage] = useState(1);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]); // Multi-select
-  const [showCategoryFilter, setShowCategoryFilter] = useState(false);
-  const searchInputId = useId();
-
-  useEffect(() => {
-    isMountedRef.current = true;
-
-    return () => {
-      isMountedRef.current = false;
-      agentListRequestRef.current += 1;
-      agentDetailRequestRef.current += 1;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!_hasHydrated) return;
-
-    const cachedAgents = getCachedAgentsForLocale(locale);
-    if (cachedAgents.length > 0) {
-      setApiAgents(cachedAgents);
-      setIsLoading(false);
-      return;
-    }
-
-    const load = async () => {
-      const requestId = agentListRequestRef.current + 1;
-      agentListRequestRef.current = requestId;
-      setIsLoading(true);
-      try {
-        const list = await getAgents(false, locale);
-        if (isMountedRef.current && agentListRequestRef.current === requestId) {
-          setApiAgents(list);
-        }
-      } catch (error) {
-        if (agentListRequestRef.current === requestId) {
-          logDevError("Failed to load agents:", error);
-        }
-      } finally {
-        if (isMountedRef.current && agentListRequestRef.current === requestId) {
-          setIsLoading(false);
-        }
-      }
-    };
-    load();
-  }, [_hasHydrated, locale]);
-
-  const handleRefresh = useCallback(async () => {
-    const requestId = agentListRequestRef.current + 1;
-    agentListRequestRef.current = requestId;
-    setIsRefreshing(true);
-    try {
-      const list = await getAgents(true, locale); // Force refresh
-      if (isMountedRef.current && agentListRequestRef.current === requestId) {
-        setApiAgents(list);
+      const entries = await client.agents.listLibrary!();
+      setLibrary(entries);
+      if (!defaultTabResolvedRef.current) {
+        defaultTabResolvedRef.current = true;
+        setTab(entries.length > 0 ? "library" : "market");
       }
     } catch (error) {
-      if (agentListRequestRef.current === requestId) {
-        logDevError("Failed to refresh agents:", error);
-      }
+      setLibraryError(errorMessage(error, t("libraryLoadFailed")));
     } finally {
-      if (isMountedRef.current && agentListRequestRef.current === requestId) {
-        setIsRefreshing(false);
-      }
+      setLibraryLoading(false);
     }
-  }, [locale]);
+  }, [client.agents, t]);
 
-  // Prepare Local Assistants List (Custom + Used + Overridden)
-  const localAgents = useMemo(() => {
-    const uniqueLocal = new Map<string, LobeAgent>();
-
-    // 1. Add Custom Agents
-    customAgents.forEach((a) =>
-      uniqueLocal.set(a.identifier, { ...a, isCustom: true }),
-    );
-
-    // 2. Add Used Agents (Apply Overrides if present)
-    usedAgents.forEach((a) => {
-      if (!uniqueLocal.has(a.identifier)) {
-        const override = agentOverrides[a.identifier];
-        const merged = override
-          ? { ...a, ...override, meta: { ...a.meta, ...override.meta } }
-          : a;
-        uniqueLocal.set(a.identifier, merged);
-      }
-    });
-
-    // 3. Add any remote agent that has an override but wasn't in usedAgents (edge case)
-    apiAgents.forEach((a) => {
-      if (agentOverrides[a.identifier] && !uniqueLocal.has(a.identifier)) {
-        const override = agentOverrides[a.identifier];
-        uniqueLocal.set(a.identifier, {
-          ...a,
-          ...override,
-          meta: { ...a.meta, ...override.meta },
-        });
-      }
-    });
-
-    return Array.from(uniqueLocal.values());
-  }, [customAgents, usedAgents, agentOverrides, apiAgents]);
-
-  // Combine Data for "All" listing: API Agents (with Overrides)
-  const mergedApiAgents = useMemo(() => {
-    return apiAgents.map((agent) => {
-      const override = agentOverrides[agent.identifier];
-      if (override) {
-        return {
-          ...agent,
-          ...override,
-          meta: { ...agent.meta, ...override.meta }, // Deep merge meta
-        };
-      }
-      return agent;
-    });
-  }, [apiAgents, agentOverrides]);
-
-  // Reset to page 1 when search or category changes
   useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, selectedCategories]);
+    void loadLibrary();
+  }, [loadLibrary]);
 
-  // Derive Categories from API list
-  const categories = useMemo(() => {
-    const cats = new Set<string>();
-    mergedApiAgents.forEach((a) => {
-      if (a.meta.category) {
-        cats.add(a.meta.category);
+  const startChat = useCallback(
+    (entry: AssistantLibraryEntry) => {
+      onSelect({
+        identifier: entry.sourceIdentifier || entry.id,
+        meta: {
+          avatar: entry.avatar,
+          title: entry.title,
+          description: entry.description,
+          category: entry.category,
+          tags: entry.tags,
+          systemRole: entry.systemPrompt,
+        },
+        author: entry.author,
+        homepage: entry.homepage,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+        isCustom: entry.source === "custom",
+        fingerprint: entry.contentFingerprint,
+        requiredTools: entry.requiredTools,
+        libraryId: entry.id,
+        installed: true,
+      });
+    },
+    [onSelect],
+  );
+
+  const deleteEntry = useCallback(
+    async (entry: AssistantLibraryEntry) => {
+      setLibraryActionId(entry.id);
+      try {
+        await client.agents.deleteLibraryEntry!({
+          assistantId: entry.id,
+          revision: entry.revision,
+        });
+        setLibrary((current) => current.filter((item) => item.id !== entry.id));
+      } catch (error) {
+        setLibraryError(errorMessage(error, t("deleteFailed")));
+      } finally {
+        setLibraryActionId("");
       }
-    });
-    return Array.from(cats).sort();
-  }, [mergedApiAgents]);
+    },
+    [client.agents, t],
+  );
 
-  // Filtering & Sorting for API List
-  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
-  const filteredApiAgents = useMemo(() => {
-    return mergedApiAgents.filter((a) => {
-      const matchesSearch =
-        a.meta.title.toLowerCase().includes(normalizedSearchTerm) ||
-        a.meta.description.toLowerCase().includes(normalizedSearchTerm) ||
-        a.meta.tags.some((tag) =>
-          tag.toLowerCase().includes(normalizedSearchTerm),
+  const copyEntry = useCallback(
+    async (entry: AssistantLibraryEntry) => {
+      setLibraryActionId(entry.id);
+      try {
+        const copy = await client.agents.copyToCustom!({
+          assistantId: entry.id,
+          expectedRevision: entry.revision,
+        });
+        setLibrary((current) => [copy, ...current]);
+        setEditing(copy);
+      } catch (error) {
+        setLibraryError(errorMessage(error, t("copyFailed")));
+      } finally {
+        setLibraryActionId("");
+      }
+    },
+    [client.agents, t],
+  );
+
+  const updateInstalled = useCallback(
+    async (entry: AssistantLibraryEntry) => {
+      setLibraryActionId(entry.id);
+      try {
+        const updated = await client.agents.updateInstalled!({
+          assistantId: entry.id,
+          expectedRevision: entry.revision,
+        });
+        setLibrary((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
         );
-
-      const matchesCategory =
-        selectedCategories.length === 0
-          ? true
-          : selectedCategories.includes(a.meta.category);
-
-      return matchesSearch && matchesCategory;
-    });
-  }, [mergedApiAgents, normalizedSearchTerm, selectedCategories]);
-
-  // Filtering for Local List
-  const filteredLocalAgents = useMemo(() => {
-    return localAgents.filter(
-      (a) =>
-        a.meta.title.toLowerCase().includes(normalizedSearchTerm) ||
-        a.meta.description.toLowerCase().includes(normalizedSearchTerm),
-    );
-  }, [localAgents, normalizedSearchTerm]);
-
-  // Pagination Logic for API list
-  const totalPages = Math.ceil(filteredApiAgents.length / ITEMS_PER_PAGE);
-  const paginatedApiAgents = filteredApiAgents.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE,
-  );
-
-  const toggleCategory = (cat: string) => {
-    setSelectedCategories((prev) => {
-      if (prev.includes(cat)) {
-        return prev.filter((c) => c !== cat);
-      } else {
-        return [...prev, cat];
-      }
-    });
-  };
-
-  const handleEditClick = useCallback(
-    async (e: React.MouseEvent, agent: LobeAgent) => {
-      e.stopPropagation();
-      const requestId = agentDetailRequestRef.current + 1;
-      agentDetailRequestRef.current = requestId;
-
-      if (agent.isCustom) {
-        // Custom agents already have full data locally
-        setEditingAgent(agent);
-        setShowEditor(true);
-      } else {
-        // For remote agents, fetch the full details to get systemRole
-        setLoadingAgentId(agent.identifier);
-        try {
-          const detail = await getAgentDetail(agent.identifier, locale);
-          if (
-            !isMountedRef.current ||
-            agentDetailRequestRef.current !== requestId
-          ) {
-            return;
-          }
-          // Merge detail config into meta for editing purposes
-          const fullAgent = {
-            ...agent,
-            meta: {
-              ...agent.meta,
-              ...detail.meta, // Refresh meta from details if newer
-              systemRole: detail.config?.systemRole || agent.meta.systemRole,
-            },
-          };
-          setEditingAgent(fullAgent);
-          setShowEditor(true);
-        } catch (error) {
-          if (
-            !isMountedRef.current ||
-            agentDetailRequestRef.current !== requestId
-          ) {
-            return;
-          }
-          logDevError("Failed to load agent details:", error);
-          // Fallback to opening editor with what we have
-          setEditingAgent(agent);
-          setShowEditor(true);
-        } finally {
-          if (
-            isMountedRef.current &&
-            agentDetailRequestRef.current === requestId
-          ) {
-            setLoadingAgentId(null);
-          }
-        }
+      } catch (error) {
+        setLibraryError(errorMessage(error, t("updateFailed")));
+      } finally {
+        setLibraryActionId("");
       }
     },
-    [locale],
-  );
-
-  const handleDeleteLocal = useCallback(
-    (e: React.MouseEvent, identifier: string) => {
-      e.stopPropagation();
-      removeLocalAgent(identifier);
-    },
-    [removeLocalAgent],
-  );
-
-  const handleEditorDelete = useCallback(
-    (identifier: string) => {
-      removeLocalAgent(identifier);
-    },
-    [removeLocalAgent],
-  );
-
-  const handleResetOverride = useCallback(
-    (e: React.MouseEvent, identifier: string) => {
-      e.stopPropagation();
-      resetAgent(identifier);
-    },
-    [resetAgent],
-  );
-
-  const handleSaveAgent = useCallback(
-    (savedAgent: LobeAgent) => {
-      if (savedAgent.isCustom) {
-        // If editing an existing custom agent vs creating new
-        const exists = customAgents.some(
-          (a) => a.identifier === savedAgent.identifier,
-        );
-        if (exists) {
-          updateAgent(savedAgent.identifier, savedAgent, true);
-        } else {
-          addCustomAgent(savedAgent);
-        }
-      } else {
-        // Saving an override for a built-in agent
-        updateAgent(savedAgent.identifier, savedAgent, false);
-      }
-    },
-    [addCustomAgent, customAgents, updateAgent],
-  );
-
-  const handleCreateNew = useCallback(() => {
-    setEditingAgent(undefined);
-    setShowEditor(true);
-  }, []);
-
-  const handleSelectWrapper = useCallback(
-    (agent: LobeAgent) => {
-      // Record usage for local history
-      recordUsedAgent(agent);
-      onSelect(agent);
-    },
-    [onSelect, recordUsedAgent],
+    [client.agents, t],
   );
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden">
-      {showEditor && (
-        <AssistantEditorModal
-          agent={editingAgent}
-          onSave={handleSaveAgent}
-          onClose={() => setShowEditor(false)}
-          onDelete={editingAgent?.isCustom ? handleEditorDelete : undefined}
-        />
-      )}
-
-      {/* Header */}
-      <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-3 border-b border-gray-200/50 bg-white/95 px-6 py-4 dark:border-border dark:bg-card/95">
-        <div className="flex min-w-0 items-center gap-3">
-          <div
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-linear-to-tr from-rose-500 to-orange-500 text-white shadow-lg shadow-rose-500/20"
-            aria-hidden="true"
-          >
-            <BotMessageSquare size={20} />
+    <div className="flex h-full w-full flex-col overflow-hidden bg-gray-50/50 dark:bg-background">
+      <header className="shrink-0 border-b border-gray-200/60 bg-white/95 px-5 pt-4 dark:border-border dark:bg-card/95 md:px-6">
+        <div className="flex items-center justify-between gap-3 pb-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-linear-to-tr from-rose-500 to-orange-500 text-white shadow-lg shadow-rose-500/20">
+              <BotMessageSquare size={20} aria-hidden="true" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-bold text-gray-800 dark:text-foreground">
+                {t("hubTitle")}
+              </h1>
+              <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-muted-foreground">
+                {t("hubSubtitleNew")}
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <h1 className="truncate text-lg font-bold text-gray-800 dark:text-foreground">
-              {t("hubTitle")}
-            </h1>
-            <p className="truncate text-xs text-gray-500 dark:text-muted-foreground">
-              {t("hubSubtitle")}
-            </p>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
-            aria-label={t("refreshAgentsAria")}
-            aria-busy={isRefreshing || undefined}
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-200/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/60 disabled:cursor-not-allowed disabled:opacity-50 dark:text-muted-foreground dark:hover:bg-accent/50"
-          >
-            <RefreshCw
-              size={18}
-              className={isRefreshing ? "animate-spin" : ""}
-              aria-hidden="true"
-            />
-          </button>
-          <button
-            type="button"
-            aria-label={t("closeHubAria")}
             onClick={onClose}
-            className="rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-200/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/60 dark:text-muted-foreground dark:hover:bg-accent/50"
+            aria-label={t("closeHubAria")}
+            className="shrink-0 rounded-full p-2 text-gray-500 hover:bg-gray-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/60 dark:text-muted-foreground dark:hover:bg-accent"
           >
             <X size={20} aria-hidden="true" />
           </button>
         </div>
-      </div>
-
-      {/* Search Bar */}
-      <div className="mx-auto flex w-full max-w-7xl shrink-0 gap-3 px-6 pb-6 pt-6">
-        <div className="group relative min-w-0 flex-1">
-          <div className="relative flex items-center rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm transition-[border-color,box-shadow] focus-within:border-rose-500/50 focus-within:ring-2 focus-within:ring-rose-500/30 dark:border-border dark:bg-muted">
-            <label htmlFor={searchInputId} className="sr-only">
-              {t("searchLabel")}
-            </label>
-            <Search
-              size={20}
-              className="mr-3 text-gray-400"
-              aria-hidden="true"
-            />
-            <input
-              id={searchInputId}
-              type="text"
-              name="assistant-search"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder={t("searchPlaceholder")}
-              className="min-w-0 flex-1 border-none bg-transparent text-base text-gray-800 outline-none placeholder-gray-400 dark:text-foreground"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
+        <div role="tablist" aria-label={t("pageTabs")} className="flex gap-1">
+          <PageTab
+            active={tab === "library"}
+            label={t("myAssistants")}
+            icon={<BotMessageSquare size={14} />}
+            onClick={() => setTab("library")}
+          />
+          <PageTab
+            active={tab === "market"}
+            label={t("assistantStore")}
+            icon={<Store size={14} />}
+            onClick={() => setTab("market")}
+          />
         </div>
-      </div>
+      </header>
 
-      {/* Content Grid */}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-10 custom-scrollbar [scrollbar-gutter:stable]">
-        <div className="max-w-7xl mx-auto flex flex-col min-h-full gap-8">
-          {/* Local Assistants Section */}
-          <div>
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-1">
-              <h2 className="flex min-w-0 items-center gap-2 truncate text-sm font-bold uppercase tracking-wider text-gray-800 dark:text-foreground">
-                <Library
-                  size={16}
-                  className="text-rose-500"
-                  aria-hidden="true"
-                />
-                <span className="truncate">{t("localAssistants")}</span>
-              </h2>
-              <button
-                type="button"
-                aria-label={t("createCustomAria")}
-                onClick={handleCreateNew}
-                className="flex shrink-0 items-center gap-1 rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-600 transition-colors hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/60 dark:bg-rose-900/20 dark:text-rose-400 dark:hover:bg-rose-900/30"
-              >
-                <Plus size={14} aria-hidden="true" /> {t("custom")}
-              </button>
-            </div>
+      <main className="mx-auto min-h-0 w-full max-w-7xl flex-1 p-4 md:p-6">
+        <section className="relative h-full overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-border dark:bg-card">
+          {tab === "library" ? (
+            <LibraryView
+              entries={library}
+              loading={libraryLoading}
+              error={libraryError}
+              actionId={libraryActionId}
+              onRetry={loadLibrary}
+              onCreate={() => setEditing(null)}
+              onEdit={(entry) =>
+                entry.source === "custom"
+                  ? setEditing(entry)
+                  : void copyEntry(entry)
+              }
+              onDelete={deleteEntry}
+              onCopy={copyEntry}
+              onUpdate={updateInstalled}
+              onStart={startChat}
+              onOpenTools={onOpenTools}
+              onBrowse={() => setTab("market")}
+            />
+          ) : (
+            <MarketView
+              locale={locale}
+              installed={library}
+              onInstalled={(entry) => {
+                setLibrary((current) => [
+                  entry,
+                  ...current.filter((item) => item.id !== entry.id),
+                ]);
+              }}
+              onOpenLibrary={() => {
+                setTab("library");
+                void loadLibrary();
+              }}
+              onOpenTools={onOpenTools}
+            />
+          )}
+        </section>
+      </main>
 
-            {filteredLocalAgents.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {filteredLocalAgents.map((agent) => (
-                  <AssistantCard
-                    key={agent.identifier}
-                    agent={agent}
-                    onClick={handleSelectWrapper}
-                    onEdit={handleEditClick}
-                    onDelete={handleDeleteLocal}
-                    onReset={handleResetOverride}
-                    hasOverride={!!agentOverrides[agent.identifier]}
-                    isDetailLoading={loadingAgentId === agent.identifier}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12 text-gray-400 text-sm">
-                {t("noLocalAssistants")}
-              </div>
-            )}
-          </div>
+      {editing !== undefined && (
+        <AssistantEditor
+          entry={editing}
+          onClose={() => setEditing(undefined)}
+          onSaved={(saved) => {
+            setLibrary((current) => [
+              saved,
+              ...current.filter((item) => item.id !== saved.id),
+            ]);
+            setEditing(undefined);
+          }}
+          onDeleted={(id) => {
+            setLibrary((current) => current.filter((item) => item.id !== id));
+            setEditing(undefined);
+          }}
+        />
+      )}
+    </div>
+  );
+}
 
-          {/* All Assistants Section */}
-          <div className="flex-1 flex flex-col">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-1">
-              <h2 className="min-w-0 truncate text-sm font-bold uppercase tracking-wider text-gray-500 dark:text-muted-foreground">
-                {searchTerm
-                  ? t("foundRemote", { count: filteredApiAgents.length })
-                  : t("allAssistants")}
-              </h2>
-
-              {/* Category Filter */}
-              <div className="relative shrink-0">
-                <DropdownMenu
-                  open={showCategoryFilter}
-                  onOpenChange={setShowCategoryFilter}
-                >
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label={
-                        selectedCategories.length > 0
-                          ? t("filterCategoriesSelectedAria", {
-                              count: selectedCategories.length,
-                            })
-                          : t("filterCategoriesAria")
-                      }
-                      className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/60 ${
-                        selectedCategories.length > 0
-                          ? "bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400"
-                          : "bg-transparent text-gray-600 hover:bg-gray-100 dark:text-foreground/85 dark:hover:bg-muted"
-                      }`}
-                    >
-                      <Filter size={12} aria-hidden="true" />
-                      <span>
-                        {selectedCategories.length > 0
-                          ? t("selectedCount", {
-                              count: selectedCategories.length,
-                            })
-                          : t("filter")}
-                      </span>
-                    </button>
-                  </DropdownMenuTrigger>
-
-                  <DropdownMenuContent
-                    side="bottom"
-                    align="end"
-                    className="max-h-80 w-64 overflow-y-auto custom-scrollbar"
-                  >
-                    <DropdownMenuItem
-                      variant="destructive"
-                      disabled={selectedCategories.length === 0}
-                      onSelect={() => setSelectedCategories([])}
-                    >
-                      {t("clearSelection")}
-                    </DropdownMenuItem>
-                    {categories.map((cat) => (
-                      <DropdownMenuCheckboxItem
-                        key={cat}
-                        checked={selectedCategories.includes(cat)}
-                        onSelect={(event) => event.preventDefault()}
-                        onCheckedChange={() => toggleCategory(cat)}
-                      >
-                        <span className="truncate">
-                          {formatCategoryName(cat)}
-                        </span>
-                      </DropdownMenuCheckboxItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </div>
-
-            {isLoading ? (
-              <div
-                role="status"
-                aria-live="polite"
-                className="flex h-64 flex-col items-center justify-center gap-4 text-gray-400"
-              >
-                <Loader2
-                  size={32}
-                  className="animate-spin text-rose-500"
-                  aria-hidden="true"
-                />
-                <span className="text-sm font-medium">
-                  {t("loadingAssistants")}
-                </span>
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 flex-1 content-start">
-                  {paginatedApiAgents.map((agent) => (
-                    <AssistantCard
-                      key={agent.identifier}
-                      agent={agent}
-                      onClick={handleSelectWrapper}
-                      onEdit={handleEditClick}
-                      onReset={handleResetOverride}
-                      hasOverride={!!agentOverrides[agent.identifier]}
-                      isDetailLoading={loadingAgentId === agent.identifier}
-                    />
-                  ))}
-                </div>
-
-                {paginatedApiAgents.length === 0 && (
-                  <div className="text-center py-12 text-gray-400">
-                    <p>{t("noAssistantsFound")}</p>
-                  </div>
-                )}
-
-                {/* Pagination Controls */}
-                {totalPages > 1 && (
-                  <div className="py-6 flex items-center justify-center gap-4 mt-auto">
-                    <button
-                      type="button"
-                      aria-label={t("prevPageAria")}
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
-                      className="rounded-lg border border-gray-200 bg-white p-2 text-gray-600 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/60 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:bg-muted dark:text-foreground/85 dark:hover:bg-accent"
-                    >
-                      <ChevronLeft size={16} aria-hidden="true" />
-                    </button>
-                    <span className="text-sm font-medium tabular-nums text-gray-600 dark:text-foreground/85">
-                      {t("pageOf", { currentPage, totalPages })}
-                    </span>
-                    <button
-                      type="button"
-                      aria-label={t("nextPageAria")}
-                      onClick={() =>
-                        setCurrentPage((p) => Math.min(totalPages, p + 1))
-                      }
-                      disabled={currentPage === totalPages}
-                      className="rounded-lg border border-gray-200 bg-white p-2 text-gray-600 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/60 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:bg-muted dark:text-foreground/85 dark:hover:bg-accent"
-                    >
-                      <ChevronRight size={16} aria-hidden="true" />
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+function LibraryView({
+  entries,
+  loading,
+  error,
+  actionId,
+  onRetry,
+  onCreate,
+  onEdit,
+  onDelete,
+  onCopy,
+  onUpdate,
+  onStart,
+  onOpenTools,
+  onBrowse,
+}: {
+  entries: AssistantLibraryEntry[];
+  loading: boolean;
+  error: string;
+  actionId: string;
+  onRetry: () => void;
+  onCreate: () => void;
+  onEdit: (entry: AssistantLibraryEntry) => void;
+  onDelete: (entry: AssistantLibraryEntry) => void;
+  onCopy: (entry: AssistantLibraryEntry) => void;
+  onUpdate: (entry: AssistantLibraryEntry) => void;
+  onStart: (entry: AssistantLibraryEntry) => void;
+  onOpenTools: () => void;
+  onBrowse: () => void;
+}) {
+  const t = useTranslations("Assistant");
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-border">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-800 dark:text-foreground">
+            {t("myAssistants")}
+          </h2>
+          <p className="mt-0.5 text-xs text-gray-500 dark:text-muted-foreground">
+            {t("librarySubtitle")}
+          </p>
         </div>
+        <button
+          type="button"
+          onClick={onCreate}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/60"
+        >
+          <Plus size={15} aria-hidden="true" /> {t("createAssistant")}
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 custom-scrollbar [scrollbar-gutter:stable]">
+        {error && (
+          <ErrorNotice message={error} action={t("retry")} onAction={onRetry} />
+        )}
+        {loading ? (
+          <LoadingState label={t("loadingLibrary")} />
+        ) : entries.length === 0 ? (
+          <div className="flex min-h-80 flex-col items-center justify-center px-6 text-center">
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-500 dark:bg-rose-950/30">
+              <BotMessageSquare size={26} aria-hidden="true" />
+            </div>
+            <h3 className="font-semibold text-gray-800 dark:text-foreground">
+              {t("emptyLibraryTitle")}
+            </h3>
+            <p className="mt-2 max-w-md text-sm text-gray-500 dark:text-muted-foreground">
+              {t("emptyLibraryBody")}
+            </p>
+            <button
+              type="button"
+              onClick={onBrowse}
+              className="mt-5 inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/60 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-300"
+            >
+              <Store size={15} aria-hidden="true" /> {t("browseStore")}
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {entries.map((entry) => (
+              <LibraryCard
+                key={entry.id}
+                entry={entry}
+                busy={actionId === entry.id}
+                onEdit={() => onEdit(entry)}
+                onDelete={() => onDelete(entry)}
+                onCopy={() => onCopy(entry)}
+                onUpdate={() => onUpdate(entry)}
+                onStart={() => onStart(entry)}
+                onOpenTools={onOpenTools}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
-};
+}
 
-export default AssistantHub;
+function LibraryCard({
+  entry,
+  busy,
+  onEdit,
+  onDelete,
+  onCopy,
+  onUpdate,
+  onStart,
+  onOpenTools,
+}: {
+  entry: AssistantLibraryEntry;
+  busy: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+  onCopy: () => void;
+  onUpdate: () => void;
+  onStart: () => void;
+  onOpenTools: () => void;
+}) {
+  const t = useTranslations("Assistant");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmUpdate, setConfirmUpdate] = useState(false);
+  return (
+    <article className="flex min-h-56 flex-col rounded-2xl border border-gray-200 bg-white p-4 [contain:paint] transition-[border-color,box-shadow] hover:border-rose-300 hover:shadow-md dark:border-border dark:bg-muted dark:hover:border-rose-800">
+      <div className="flex items-start gap-3">
+        <AssistantAvatar avatar={entry.avatar} title={entry.title} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <h3 className="min-w-0 truncate font-semibold text-gray-900 dark:text-foreground">
+              {entry.title}
+            </h3>
+            <SourceBadge source={entry.source} />
+            {entry.updateAvailable && (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                {t("updateAvailable")}
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-gray-500 dark:text-muted-foreground">
+            {entry.category || "general"}
+          </p>
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={t("assistantActions", { title: entry.title })}
+              disabled={busy}
+              className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/60 disabled:opacity-50 dark:hover:bg-accent"
+            >
+              {busy ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <MoreHorizontal size={16} />
+              )}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {entry.source === "custom" ? (
+              <DropdownMenuItem onSelect={onEdit}>
+                <PenLine size={14} /> {t("editAssistant")}
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onSelect={onCopy}>
+                <Copy size={14} /> {t("copyAndEdit")}
+              </DropdownMenuItem>
+            )}
+            {entry.updateAvailable && (
+              <DropdownMenuItem onSelect={() => setConfirmUpdate(true)}>
+                <RefreshCw size={14} /> {t("updateAssistant")}
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onSelect={() => setConfirmDelete(true)}>
+              <Trash2 size={14} />
+              {entry.source === "custom" ? t("delete") : t("uninstall")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <p className="mt-4 line-clamp-3 flex-1 text-sm leading-6 text-gray-600 dark:text-muted-foreground">
+        {entry.description || t("noDescription")}
+      </p>
+      <DeclaredTools
+        requiredTools={entry.requiredTools}
+        onOpenTools={onOpenTools}
+      />
+      <div className="mt-4 flex flex-wrap gap-1.5">
+        {entry.tags.slice(0, 4).map((tag) => (
+          <span
+            key={tag}
+            className="rounded-md bg-gray-100 px-2 py-1 text-[10px] text-gray-600 dark:bg-accent dark:text-muted-foreground"
+          >
+            #{tag}
+          </span>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={onStart}
+        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/60 dark:bg-white dark:text-gray-900"
+      >
+        <MessageSquarePlus size={15} aria-hidden="true" /> {t("startChat")}
+      </button>
+      {confirmDelete && (
+        <ConfirmDialog
+          title={
+            entry.source === "custom"
+              ? t("deleteAssistantTitle")
+              : t("uninstallAssistantTitle")
+          }
+          body={t("historyPreserved")}
+          confirmLabel={
+            entry.source === "custom"
+              ? t("confirmDelete")
+              : t("confirmUninstall")
+          }
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => {
+            setConfirmDelete(false);
+            onDelete();
+          }}
+        />
+      )}
+      {confirmUpdate && (
+        <ConfirmDialog
+          title={t("updateAssistantTitle")}
+          body={t("updateAssistantBody")}
+          confirmLabel={t("confirmUpdate")}
+          busy={busy}
+          destructive={false}
+          onCancel={() => setConfirmUpdate(false)}
+          onConfirm={() => {
+            setConfirmUpdate(false);
+            onUpdate();
+          }}
+        />
+      )}
+    </article>
+  );
+}
+
+function MarketView({
+  locale,
+  installed,
+  onInstalled,
+  onOpenLibrary,
+  onOpenTools,
+}: {
+  locale: "en" | "zh" | "ja";
+  installed: AssistantLibraryEntry[];
+  onInstalled: (entry: AssistantLibraryEntry) => void;
+  onOpenLibrary: () => void;
+  onOpenTools: () => void;
+}) {
+  const t = useTranslations("Assistant");
+  const client = useMemo(() => createNeoChatApiClient(), []);
+  const [query, setQuery] = useState("");
+  const [activeQuery, setActiveQuery] = useState("");
+  const [category, setCategory] = useState("");
+  const [agents, setAgents] = useState<LobeAgent[]>([]);
+  const [categories, setCategories] = useState<AssistantMarketCategory[]>([]);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+  const [availableCounts, setAvailableCounts] = useState<
+    Record<string, number>
+  >({});
+  const availableCountsRef = useRef<Record<string, number>>({});
+  const [source, setSource] = useState("");
+  const [canReview, setCanReview] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState("");
+  const [nextError, setNextError] = useState("");
+  const [detail, setDetail] = useState<LobeAgent | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const searchGenerationRef = useRef(0);
+  const loadingMoreRef = useRef(false);
+  const searchControllerRef = useRef<AbortController | null>(null);
+  const detailControllerRef = useRef<AbortController | null>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const searchInputId = useId();
+  const installedIdentifiers = useMemo(
+    () =>
+      new Set(installed.map((entry) => entry.sourceIdentifier).filter(Boolean)),
+    [installed],
+  );
+  const search = useCallback(
+    async (nextQuery: string, nextCategory: string) => {
+      searchControllerRef.current?.abort();
+      detailControllerRef.current?.abort();
+      const controller = new AbortController();
+      searchControllerRef.current = controller;
+      const generation = ++searchGenerationRef.current;
+      setLoading(true);
+      setError("");
+      setNextError("");
+      setAgents([]);
+      setPage(0);
+      setDetail(null);
+      scrollRef.current?.scrollTo({ top: 0 });
+      try {
+        const result = await client.agents.searchMarket!({
+          query: nextQuery,
+          category: nextCategory || undefined,
+          locale,
+          page: 1,
+          pageSize: PAGE_SIZE,
+          signal: controller.signal,
+        });
+        if (
+          generation !== searchGenerationRef.current ||
+          controller.signal.aborted
+        )
+          return;
+        setAgents(dedupeAgents(result.agents));
+        setCategories(result.categories);
+        setPage(result.page);
+        setTotalPages(result.totalPages);
+        setTotalCount(result.totalCount);
+        availableCountsRef.current = {
+          ...availableCountsRef.current,
+          [agentMarketCountKey(nextQuery, nextCategory)]: result.totalCount,
+        };
+        setAvailableCounts((current) => ({
+          ...current,
+          [agentMarketCountKey(nextQuery, nextCategory)]: result.totalCount,
+        }));
+        setSource(result.source);
+        setCanReview(result.canReview === true);
+        if (result.unavailable) setError(t("marketUnavailable"));
+      } catch (searchError) {
+        if (
+          generation !== searchGenerationRef.current ||
+          controller.signal.aborted
+        )
+          return;
+        setError(errorMessage(searchError, t("marketLoadFailed")));
+      } finally {
+        if (
+          generation === searchGenerationRef.current &&
+          !controller.signal.aborted
+        ) {
+          setLoading(false);
+        }
+      }
+    },
+    [client.agents, locale, t],
+  );
+
+  useEffect(() => {
+    void search(activeQuery, category);
+    return () => {
+      searchControllerRef.current?.abort();
+      detailControllerRef.current?.abort();
+    };
+  }, [activeQuery, category, search]);
+
+  useEffect(() => {
+    if (loading || categories.length === 0) return;
+    const missing = missingAgentMarketCountCategories(
+      activeQuery,
+      categories.map((item) => item.id),
+      availableCountsRef.current,
+    );
+    if (missing.length === 0) return;
+
+    const controller = new AbortController();
+    let cursor = 0;
+    const worker = async () => {
+      while (!controller.signal.aborted) {
+        const index = cursor++;
+        const categoryID = missing[index];
+        if (!categoryID) return;
+        try {
+          const result = await client.agents.searchMarket!({
+            query: activeQuery,
+            category: categoryID,
+            locale,
+            page: 1,
+            pageSize: PAGE_SIZE,
+            signal: controller.signal,
+          });
+          if (controller.signal.aborted) return;
+          availableCountsRef.current = {
+            ...availableCountsRef.current,
+            [agentMarketCountKey(activeQuery, categoryID)]: result.totalCount,
+          };
+          setAvailableCounts((current) => ({
+            ...current,
+            [agentMarketCountKey(activeQuery, categoryID)]: result.totalCount,
+          }));
+        } catch {
+          if (controller.signal.aborted) return;
+        }
+      }
+    };
+
+    void Promise.all(
+      Array.from({ length: Math.min(3, missing.length) }, worker),
+    );
+    return () => controller.abort();
+  }, [activeQuery, categories, client.agents, loading, locale]);
+
+  const loadMore = useCallback(async () => {
+    if (loading || loadingMoreRef.current || page < 1 || page >= totalPages)
+      return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    setNextError("");
+    const generation = searchGenerationRef.current;
+    try {
+      const result = await client.agents.searchMarket!({
+        query: activeQuery,
+        category: category || undefined,
+        locale,
+        page: page + 1,
+        pageSize: PAGE_SIZE,
+      });
+      if (generation !== searchGenerationRef.current) return;
+      setAgents((current) => dedupeAgents([...current, ...result.agents]));
+      setPage(result.page);
+      setTotalPages(result.totalPages);
+    } catch (loadError) {
+      if (generation === searchGenerationRef.current) {
+        setNextError(errorMessage(loadError, t("loadMoreFailed")));
+      }
+    } finally {
+      if (generation === searchGenerationRef.current) setLoadingMore(false);
+      loadingMoreRef.current = false;
+    }
+  }, [
+    activeQuery,
+    category,
+    client.agents,
+    loading,
+    locale,
+    page,
+    t,
+    totalPages,
+  ]);
+
+  useEffect(() => {
+    const target = sentinelRef.current;
+    const root = scrollRef.current;
+    if (!target || !root || page >= totalPages) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void loadMore();
+      },
+      { root, rootMargin: "240px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [loadMore, page, totalPages]);
+
+  const submitSearch = (event: FormEvent) => {
+    event.preventDefault();
+    setActiveQuery(query.trim());
+  };
+
+  const openDetail = async (agent: LobeAgent) => {
+    detailControllerRef.current?.abort();
+    const controller = new AbortController();
+    detailControllerRef.current = controller;
+    setDetailLoading(true);
+    setDetail(agent);
+    try {
+      const result = await client.agents.getMarketDetail!({
+        identifier: agent.identifier,
+        locale,
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
+      setDetail(result.assistant);
+      setCanReview(result.canReview);
+    } catch (detailError) {
+      if (controller.signal.aborted) return;
+      setError(errorMessage(detailError, t("detailLoadFailed")));
+      setDetail(null);
+    } finally {
+      if (!controller.signal.aborted) setDetailLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex h-full overflow-hidden">
+      <aside className="hidden w-52 shrink-0 border-r border-gray-100 bg-gray-50/60 p-4 dark:border-border dark:bg-muted/30 md:block">
+        <p className="mb-3 px-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+          {t("categories")}
+        </p>
+        <div className="space-y-1">
+          <CategoryButton
+            active={!category}
+            label={t("allAssistants")}
+            count={formatOptionalCount(
+              availableCounts[agentMarketCountKey(activeQuery, "")],
+              locale,
+            )}
+            onClick={() => setCategory("")}
+          />
+          {categories.map((item) => (
+            <CategoryButton
+              key={item.id}
+              active={category === item.id}
+              label={formatAgentMarketCategory(item.id, locale)}
+              count={formatOptionalCount(
+                availableCounts[agentMarketCountKey(activeQuery, item.id)],
+                locale,
+              )}
+              onClick={() => setCategory(item.id)}
+            />
+          ))}
+        </div>
+      </aside>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="shrink-0 border-b border-gray-100 p-4 dark:border-border">
+          <form className="flex gap-2" onSubmit={submitSearch}>
+            <label htmlFor={searchInputId} className="sr-only">
+              {t("searchLabel")}
+            </label>
+            <div className="flex min-w-0 flex-1 items-center rounded-xl border border-gray-200 bg-gray-50 px-3 focus-within:border-rose-400 focus-within:ring-2 focus-within:ring-rose-500/20 dark:border-border dark:bg-muted">
+              <Search
+                size={16}
+                className="mr-2 shrink-0 text-gray-400"
+                aria-hidden="true"
+              />
+              <input
+                id={searchInputId}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={t("searchPlaceholder")}
+                className="min-w-0 flex-1 bg-transparent py-2.5 text-sm outline-none"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery("");
+                    setActiveQuery("");
+                  }}
+                  aria-label={t("clearSearch")}
+                  className="rounded p-1 text-gray-400 hover:text-gray-700"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            <button
+              type="submit"
+              className="rounded-xl bg-gray-900 px-4 text-sm font-medium text-white hover:bg-black dark:bg-white dark:text-gray-900"
+            >
+              {t("search")}
+            </button>
+          </form>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-muted-foreground">
+            <span>{t("browseableCount", { count: totalCount })}</span>
+            {source === "legacy-registry" && <span>{t("legacyFallback")}</span>}
+          </div>
+        </div>
+        <div
+          ref={scrollRef}
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 custom-scrollbar [scrollbar-gutter:stable]"
+        >
+          {error && (
+            <ErrorNotice
+              message={error}
+              action={t("retry")}
+              onAction={() => void search(activeQuery, category)}
+            />
+          )}
+          {loading ? (
+            <LoadingState label={t("loadingAssistants")} />
+          ) : agents.length === 0 ? (
+            <div className="flex min-h-72 items-center justify-center text-sm text-gray-500">
+              {canReview ? t("noLiveResults") : t("noAdmittedAssistants")}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+              {agents.map((agent) => (
+                <button
+                  key={agent.identifier}
+                  type="button"
+                  onClick={() => void openDetail(agent)}
+                  className="group flex min-h-44 flex-col rounded-2xl border border-gray-200 bg-white p-4 text-left [contain:paint] transition-[border-color,box-shadow] hover:border-rose-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/60 dark:border-border dark:bg-muted dark:hover:border-rose-800"
+                >
+                  <div className="flex items-start gap-3">
+                    <AssistantAvatar
+                      avatar={agent.meta.avatar}
+                      title={agent.meta.title}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <h3 className="truncate font-semibold text-gray-900 group-hover:text-rose-600 dark:text-foreground">
+                          {agent.meta.title}
+                        </h3>
+                        {(agent.installed ||
+                          installedIdentifiers.has(agent.identifier)) && (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                            {t("installed")}
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 truncate text-xs text-gray-500">
+                        {agent.author ||
+                          formatAgentMarketCategory(
+                            agent.meta.category,
+                            locale,
+                          )}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="mt-3 line-clamp-3 flex-1 text-sm leading-6 text-gray-600 dark:text-muted-foreground">
+                    {agent.meta.description || t("noDescription")}
+                  </p>
+                  <div className="mt-3 flex items-center justify-between text-[11px] text-gray-400">
+                    <span>
+                      {formatAgentMarketCategory(agent.meta.category, locale)}
+                    </span>
+                    {canReview && (
+                      <span
+                        className={
+                          agent.admitted ? "text-emerald-600" : "text-amber-600"
+                        }
+                      >
+                        {agent.admitted ? t("admitted") : t("pendingAdmission")}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          <div
+            ref={sentinelRef}
+            className="flex min-h-16 items-center justify-center"
+          >
+            {loadingMore && (
+              <Loader2 size={18} className="animate-spin text-rose-500" />
+            )}
+            {nextError && (
+              <button
+                type="button"
+                onClick={() => void loadMore()}
+                className="text-sm text-rose-600 hover:underline"
+              >
+                {t("loadMoreRetry")}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      {detail && (
+        <MarketDetailDialog
+          agent={detail}
+          locale={locale}
+          canReview={canReview}
+          loading={detailLoading}
+          installed={
+            installedIdentifiers.has(detail.identifier) ||
+            detail.installed === true
+          }
+          onClose={() => {
+            detailControllerRef.current?.abort();
+            setDetail(null);
+          }}
+          onInstalled={(entry) => {
+            onInstalled(entry);
+            setDetail((current) =>
+              current
+                ? { ...current, installed: true, libraryId: entry.id }
+                : current,
+            );
+          }}
+          onOpenLibrary={onOpenLibrary}
+          onOpenTools={onOpenTools}
+        />
+      )}
+    </div>
+  );
+}
+
+function MarketDetailDialog({
+  agent,
+  locale,
+  canReview,
+  loading,
+  installed,
+  onClose,
+  onInstalled,
+  onOpenLibrary,
+  onOpenTools,
+}: {
+  agent: LobeAgent;
+  locale: "en" | "zh" | "ja";
+  canReview: boolean;
+  loading: boolean;
+  installed: boolean;
+  onClose: () => void;
+  onInstalled: (entry: AssistantLibraryEntry) => void;
+  onOpenLibrary: () => void;
+  onOpenTools: () => void;
+}) {
+  const t = useTranslations("Assistant");
+  const client = useMemo(() => createNeoChatApiClient(), []);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [confirmInstall, setConfirmInstall] = useState(false);
+  const install = async () => {
+    if (!agent.fingerprint) {
+      setError(t("promptUnavailable"));
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      if (canReview && !agent.admitted) {
+        await client.agents.reviewMarket!({
+          identifier: agent.identifier,
+          locale,
+          fingerprint: agent.fingerprint,
+          status: "admitted",
+        });
+      }
+      const entry = await client.agents.installMarket!({
+        identifier: agent.identifier,
+        fingerprint: agent.fingerprint,
+      });
+      onInstalled(entry);
+      setConfirmInstall(false);
+    } catch (installError) {
+      setError(errorMessage(installError, t("installFailed")));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const reject = async () => {
+    if (!agent.fingerprint) return;
+    setBusy(true);
+    setError("");
+    try {
+      await client.agents.reviewMarket!({
+        identifier: agent.identifier,
+        locale,
+        fingerprint: agent.fingerprint,
+        status: "rejected",
+      });
+      onClose();
+    } catch (reviewError) {
+      setError(errorMessage(reviewError, t("reviewFailed")));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const admitUpdate = async () => {
+    if (!agent.fingerprint) return;
+    setBusy(true);
+    setError("");
+    try {
+      await client.agents.reviewMarket!({
+        identifier: agent.identifier,
+        locale,
+        fingerprint: agent.fingerprint,
+        status: "admitted",
+      });
+      onClose();
+      onOpenLibrary();
+    } catch (reviewError) {
+      setError(errorMessage(reviewError, t("reviewFailed")));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={agent.meta.title}
+      closeLabel={t("closeDetail")}
+      className="flex max-h-[90vh] max-w-2xl flex-col rounded-2xl dark:bg-card"
+    >
+      <div className="flex items-start gap-4 border-b border-gray-100 p-5 dark:border-border">
+        <AssistantAvatar
+          avatar={agent.meta.avatar}
+          title={agent.meta.title}
+          large
+        />
+        <div className="min-w-0 flex-1">
+          <p className="mt-1 text-sm text-gray-500">
+            {agent.author ||
+              formatAgentMarketCategory(agent.meta.category, locale)}
+          </p>
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 custom-scrollbar">
+        {loading ? (
+          <LoadingState label={t("loadingDetail")} />
+        ) : (
+          <>
+            <p className="text-sm leading-6 text-gray-700 dark:text-muted-foreground">
+              {agent.meta.description || t("noDescription")}
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {agent.meta.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-lg bg-gray-100 px-2 py-1 text-xs text-gray-600 dark:bg-muted"
+                >
+                  #{tag}
+                </span>
+              ))}
+            </div>
+            <DeclaredTools
+              requiredTools={agent.requiredTools}
+              onOpenTools={onOpenTools}
+            />
+            <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/20 dark:text-blue-200">
+              <div className="flex gap-2">
+                <ShieldCheck size={17} className="mt-0.5 shrink-0" />
+                <p>{t("compatibilityNotice")}</p>
+              </div>
+            </div>
+            <div className="mt-5">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                {t("promptPreview")}
+              </p>
+              <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-xl bg-gray-950 p-4 text-xs leading-5 text-gray-100 custom-scrollbar">
+                {agent.meta.systemRole || t("promptUnavailable")}
+              </pre>
+            </div>
+          </>
+        )}
+        {error && (
+          <div
+            role="alert"
+            className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-200"
+          >
+            {error}
+          </div>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 bg-gray-50/70 p-5 dark:border-border dark:bg-muted/20">
+        {canReview && !agent.admitted ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void reject()}
+            className="rounded-xl px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950/30"
+          >
+            {t("rejectEntry")}
+          </button>
+        ) : (
+          <div />
+        )}
+        {installed && canReview && !agent.admitted ? (
+          <button
+            type="button"
+            disabled={loading || busy || !agent.meta.systemRole}
+            onClick={() => void admitUpdate()}
+            className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <RefreshCw size={15} />
+            )}
+            {t("admitUpdate")}
+          </button>
+        ) : installed ? (
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              onOpenLibrary();
+            }}
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white"
+          >
+            <Check size={15} /> {t("viewInstalled")}
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={loading || busy || !agent.meta.systemRole}
+            onClick={() => setConfirmInstall(true)}
+            className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <Plus size={15} />
+            )}
+            {canReview && !agent.admitted ? t("admitAndInstall") : t("install")}
+          </button>
+        )}
+      </div>
+      {confirmInstall && (
+        <ConfirmDialog
+          title={t("confirmInstallTitle")}
+          body={t("compatibilityNotice")}
+          confirmLabel={
+            canReview && !agent.admitted
+              ? t("admitAndInstall")
+              : t("confirmInstall")
+          }
+          busy={busy}
+          onCancel={() => setConfirmInstall(false)}
+          onConfirm={() => void install()}
+        />
+      )}
+    </Dialog>
+  );
+}
+
+function AssistantEditor({
+  entry,
+  onClose,
+  onSaved,
+  onDeleted,
+}: {
+  entry: AssistantLibraryEntry | null;
+  onClose: () => void;
+  onSaved: (entry: AssistantLibraryEntry) => void;
+  onDeleted: (id: string) => void;
+}) {
+  const t = useTranslations("Assistant");
+  const client = useMemo(() => createNeoChatApiClient(), []);
+  const [currentEntry, setCurrentEntry] = useState(entry);
+  const [draft, setDraft] = useState<AssistantDraft>(
+    entry ? draftFromEntry(entry) : emptyDraft,
+  );
+  const [tagInput, setTagInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [conflicted, setConflicted] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const save = async () => {
+    if (!draft.title.trim() || !draft.systemPrompt.trim()) {
+      setError(t("requiredFields"));
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const saved = currentEntry
+        ? await client.agents.updateCustom!({
+            assistantId: currentEntry.id,
+            expectedRevision: currentEntry.revision,
+            ...draft,
+          })
+        : await client.agents.createCustom!(draft);
+      onSaved(saved);
+    } catch (saveError) {
+      if (
+        saveError instanceof ApiClientError &&
+        saveError.code === "ASSISTANT_REVISION_CONFLICT"
+      ) {
+        setConflicted(true);
+        setError(t("revisionConflict"));
+      } else setError(errorMessage(saveError, t("saveFailed")));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const remove = async () => {
+    if (!currentEntry) return;
+    setBusy(true);
+    setError("");
+    try {
+      await client.agents.deleteLibraryEntry!({
+        assistantId: currentEntry.id,
+        revision: currentEntry.revision,
+      });
+      onDeleted(currentEntry.id);
+    } catch (deleteError) {
+      setError(errorMessage(deleteError, t("deleteFailed")));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const reloadCurrent = async () => {
+    if (!currentEntry) return;
+    setBusy(true);
+    setError("");
+    try {
+      const latest = await client.agents.getLibraryEntry!(currentEntry.id);
+      setCurrentEntry(latest);
+      setDraft(draftFromEntry(latest));
+      setConflicted(false);
+    } catch (reloadError) {
+      setError(errorMessage(reloadError, t("reloadFailed")));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const saveConflictCopy = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const copy = await client.agents.createCustom!(draft);
+      onSaved(copy);
+    } catch (copyError) {
+      setError(errorMessage(copyError, t("copyFailed")));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const addTag = () => {
+    const tag = tagInput.trim().slice(0, MARKET_LIMITS.maxAgentTagChars);
+    if (
+      tag &&
+      draft.tags.length < MARKET_LIMITS.maxAgentTags &&
+      !draft.tags.some((item) => item.toLowerCase() === tag.toLowerCase())
+    )
+      setDraft((current) => ({ ...current, tags: [...current.tags, tag] }));
+    setTagInput("");
+  };
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={currentEntry ? t("editAssistant") : t("createAssistant")}
+      closeLabel={t("closeEditor")}
+      className="flex max-h-[92vh] flex-col rounded-2xl dark:bg-card"
+    >
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-5 custom-scrollbar">
+        <div className="grid grid-cols-[5rem_1fr] gap-3">
+          <Field label={t("avatar")}>
+            <input
+              value={draft.avatar}
+              maxLength={MARKET_LIMITS.maxAgentAvatarChars}
+              onChange={(event) =>
+                setDraft({ ...draft, avatar: event.target.value })
+              }
+              className="field-input text-center"
+            />
+          </Field>
+          <Field label={t("name")}>
+            <input
+              value={draft.title}
+              maxLength={MARKET_LIMITS.maxAgentTitleChars}
+              onChange={(event) =>
+                setDraft({ ...draft, title: event.target.value })
+              }
+              className="field-input"
+            />
+          </Field>
+        </div>
+        <Field label={t("description")}>
+          <textarea
+            value={draft.description}
+            maxLength={MARKET_LIMITS.maxAgentDescriptionChars}
+            onChange={(event) =>
+              setDraft({ ...draft, description: event.target.value })
+            }
+            className="field-input h-20 resize-none"
+          />
+        </Field>
+        <Field label={t("category")}>
+          <input
+            value={draft.category}
+            maxLength={MARKET_LIMITS.maxAgentCategoryChars}
+            onChange={(event) =>
+              setDraft({ ...draft, category: event.target.value })
+            }
+            className="field-input"
+          />
+        </Field>
+        <Field label={t("systemPrompt")}>
+          <textarea
+            value={draft.systemPrompt}
+            maxLength={MARKET_LIMITS.maxAgentSystemRoleChars}
+            onChange={(event) =>
+              setDraft({ ...draft, systemPrompt: event.target.value })
+            }
+            className="field-input h-44 resize-none font-mono text-xs"
+          />
+        </Field>
+        <Field label={t("tagsOptional")}>
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {draft.tags.map((tag) => (
+              <button
+                type="button"
+                key={tag}
+                onClick={() =>
+                  setDraft((current) => ({
+                    ...current,
+                    tags: current.tags.filter((item) => item !== tag),
+                  }))
+                }
+                className="rounded-lg bg-gray-100 px-2 py-1 text-xs text-gray-600 hover:text-red-600 dark:bg-muted"
+              >
+                #{tag} ×
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={tagInput}
+              onChange={(event) => setTagInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  addTag();
+                }
+              }}
+              className="field-input flex-1"
+            />
+            <button
+              type="button"
+              onClick={addTag}
+              className="rounded-xl border border-gray-200 px-3 hover:bg-gray-50 dark:border-border dark:hover:bg-muted"
+            >
+              <Plus size={15} />
+            </button>
+          </div>
+        </Field>
+        {error && (
+          <div
+            role="alert"
+            className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-200"
+          >
+            {error}
+          </div>
+        )}
+        {conflicted && (
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void reloadCurrent()}
+              className="rounded-xl border border-gray-200 px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50 dark:border-border dark:hover:bg-muted"
+            >
+              {t("reloadLatest")}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void saveConflictCopy()}
+              className="rounded-xl border border-rose-200 px-3 py-2 text-sm text-rose-700 hover:bg-rose-50 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/20"
+            >
+              {t("saveAsCopy")}
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="flex items-center justify-between gap-3 border-t border-gray-100 bg-gray-50/70 p-5 dark:border-border dark:bg-muted/20">
+        {currentEntry ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setConfirmDelete(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950/20"
+          >
+            <Trash2 size={15} />
+            {t("delete")}
+          </button>
+        ) : (
+          <div />
+        )}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:hover:bg-muted"
+          >
+            {t("cancel")}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void save()}
+            className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+          >
+            {busy && <Loader2 size={15} className="animate-spin" />}
+            {t("saveAssistant")}
+          </button>
+        </div>
+      </div>
+      {confirmDelete && (
+        <ConfirmDialog
+          title={t("deleteAssistantTitle")}
+          body={t("historyPreserved")}
+          confirmLabel={t("confirmDelete")}
+          busy={busy}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => void remove()}
+        />
+      )}
+    </Dialog>
+  );
+}
+
+function PageTab({
+  active,
+  label,
+  icon,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  icon: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium ${active ? "border-rose-500 text-rose-700 dark:text-rose-300" : "border-transparent text-gray-500 hover:text-gray-800 dark:text-muted-foreground dark:hover:text-foreground"}`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+function CategoryButton({
+  active,
+  label,
+  count,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  count?: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-sm ${active ? "bg-rose-100 font-medium text-rose-700 dark:bg-rose-950/40 dark:text-rose-300" : "text-gray-600 hover:bg-gray-100 dark:text-muted-foreground dark:hover:bg-accent"}`}
+    >
+      <span className="truncate">{label}</span>
+      {count !== undefined && (
+        <span className="text-[10px] opacity-65">{count}</span>
+      )}
+    </button>
+  );
+}
+function SourceBadge({ source }: { source: "custom" | "lobehub" }) {
+  const t = useTranslations("Assistant");
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${source === "custom" ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300" : "bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"}`}
+    >
+      {source === "custom" ? t("custom") : t("storeSource")}
+    </span>
+  );
+}
+function DeclaredTools({
+  requiredTools,
+  onOpenTools,
+}: {
+  requiredTools?: string[];
+  onOpenTools: () => void;
+}) {
+  const t = useTranslations("Assistant");
+  if (!requiredTools || requiredTools.length === 0) return null;
+  return (
+    <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
+      <p className="font-medium">{t("declaredTools")}</p>
+      <p className="mt-1 break-words text-xs">{requiredTools.join(", ")}</p>
+      <button
+        type="button"
+        onClick={onOpenTools}
+        className="mt-2 text-xs font-semibold underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60"
+      >
+        {t("openTools")}
+      </button>
+    </div>
+  );
+}
+function AssistantAvatar({
+  avatar,
+  title,
+  large = false,
+}: {
+  avatar: string;
+  title: string;
+  large?: boolean;
+}) {
+  const size = large ? "h-16 w-16 text-2xl" : "h-12 w-12 text-xl";
+  const remote = avatar.startsWith("http://") || avatar.startsWith("https://");
+  return (
+    <div
+      className={`flex ${size} shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gray-100 bg-gray-50 dark:border-border dark:bg-accent`}
+    >
+      {remote ? (
+        <SafeImage
+          src={avatar}
+          alt={`${title} avatar`}
+          className="h-full w-full object-cover"
+          fallback={<BotMessageSquare size={20} className="text-gray-400" />}
+        />
+      ) : (
+        <span aria-hidden="true">{avatar || "🤖"}</span>
+      )}
+    </div>
+  );
+}
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-xs font-semibold text-gray-500 dark:text-muted-foreground">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+function LoadingState({ label }: { label: string }) {
+  return (
+    <div
+      role="status"
+      className="flex min-h-72 items-center justify-center gap-2 text-sm text-gray-500"
+    >
+      <Loader2 size={18} className="animate-spin text-rose-500" />
+      {label}
+    </div>
+  );
+}
+function ErrorNotice({
+  message,
+  action,
+  onAction,
+}: {
+  message: string;
+  action: string;
+  onAction: () => void;
+}) {
+  return (
+    <div
+      role="alert"
+      className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-200"
+    >
+      <span className="flex min-w-0 items-start gap-2">
+        <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+        {message}
+      </span>
+      <button
+        type="button"
+        onClick={onAction}
+        className="shrink-0 font-medium hover:underline"
+      >
+        {action}
+      </button>
+    </div>
+  );
+}
+function ConfirmDialog({
+  title,
+  body,
+  confirmLabel,
+  busy = false,
+  destructive = true,
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  body: string;
+  confirmLabel: string;
+  busy?: boolean;
+  destructive?: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const t = useTranslations("Assistant");
+  return (
+    <Dialog
+      open
+      role="alertdialog"
+      onClose={busy ? () => undefined : onCancel}
+      title={title}
+      className="z-10000 max-w-sm rounded-2xl dark:bg-card"
+    >
+      <div className="p-5">
+        <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-muted-foreground">
+          {body}
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onCancel}
+            className="rounded-xl px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 disabled:opacity-50 dark:hover:bg-muted"
+          >
+            {t("cancel")}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onConfirm}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white disabled:opacity-50 ${destructive ? "bg-red-600 hover:bg-red-700" : "bg-rose-600 hover:bg-rose-700"}`}
+          >
+            {busy && <Loader2 size={14} className="animate-spin" />}
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+function draftFromEntry(entry: AssistantLibraryEntry): AssistantDraft {
+  return {
+    avatar: entry.avatar,
+    title: entry.title,
+    description: entry.description,
+    category: entry.category,
+    tags: entry.tags,
+    systemPrompt: entry.systemPrompt,
+  };
+}
+function dedupeAgents(agents: LobeAgent[]) {
+  const seen = new Set<string>();
+  return agents.filter((agent) => {
+    if (!agent.identifier || seen.has(agent.identifier)) return false;
+    seen.add(agent.identifier);
+    return true;
+  });
+}
+function formatCount(value: number, locale: "en" | "zh" | "ja") {
+  const numberLocale = { en: "en-US", zh: "zh-CN", ja: "ja-JP" }[locale];
+  return new Intl.NumberFormat(numberLocale, {
+    notation: value >= 1000 ? "compact" : "standard",
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+function formatOptionalCount(
+  value: number | undefined,
+  locale: "en" | "zh" | "ja",
+) {
+  return value === undefined ? undefined : formatCount(value, locale);
+}
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}

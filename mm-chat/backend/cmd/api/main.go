@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/agents"
 	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/browserimport"
 	"neo-chat/mm-chat/backend/internal/chat"
@@ -306,7 +307,22 @@ func main() {
 			browserimport.WithStorageBackend(cfg.Storage.Backend),
 		)
 	}
-	mcpService := newMCPService(cfg, sqlDB, providerSecretVault, objectStore, logger)
+	var agentRepository agents.Repository
+	if sqlDB != nil {
+		agentRepository = agents.NewPostgresRepository(sqlDB)
+	}
+	lobeHubMarketplace := newLobeHubMarketplace(cfg, logger)
+	var marketplace mcpclient.Marketplace
+	agentOptions := []agents.ServiceOption{
+		agents.WithRepository(agentRepository),
+		agents.WithAdministratorUserID(cfg.Auth.BootstrapUserID),
+	}
+	if lobeHubMarketplace != nil {
+		marketplace = lobeHubMarketplace
+		agentOptions = append(agentOptions, agents.WithOfficialMarket(lobeHubMarketplace))
+	}
+	mcpService := newMCPService(cfg, sqlDB, providerSecretVault, objectStore, logger, marketplace)
+	agentService := agents.NewService(agentOptions...)
 
 	serverOptions := []httpserver.Option{
 		httpserver.WithChatRepository(chatRepo),
@@ -331,6 +347,7 @@ func main() {
 		httpserver.WithMemoryWakePublisher(redisClient),
 		httpserver.WithProviderSecretVault(providerSecretVault),
 		httpserver.WithMCPService(mcpService),
+		httpserver.WithAgentService(agentService),
 		httpserver.WithLogger(logger),
 	}
 	if runtimeConfigRepo != nil {
@@ -530,6 +547,7 @@ func newMCPService(
 	vault *providersecrets.Vault,
 	objectStore storage.ObjectStore,
 	logger *slog.Logger,
+	marketplace mcpclient.Marketplace,
 ) *mcpclient.Service {
 	if db == nil {
 		if cfg.MCP.Enabled {
@@ -586,22 +604,6 @@ func newMCPService(
 			}
 		}
 	}
-	var marketplace mcpclient.Marketplace
-	if cfg.MCP.MarketplaceEnabled {
-		secret, secretErr := readBoundedMCPMarketplaceSecret(cfg.MCP.MarketplaceSecretFile)
-		if secretErr != nil {
-			logger.Warn("mcp_marketplace_unavailable", slog.String("reason", "client_secret_invalid"))
-		} else {
-			marketplace, secretErr = mcpclient.NewLobeHubMarketplace(mcpclient.LobeHubMarketplaceConfig{
-				BaseURL: cfg.MCP.MarketplaceBaseURL, ClientID: cfg.MCP.MarketplaceClientID,
-				ClientSecret: secret, Timeout: cfg.MCP.MarketplaceTimeout,
-				CacheTTL: cfg.MCP.MarketplaceCacheTTL,
-			})
-			if secretErr != nil {
-				logger.Warn("mcp_marketplace_unavailable", slog.String("reason", "client_invalid"))
-			}
-		}
-	}
 	serviceOptions := []mcpclient.ServiceOption{}
 	if marketplace != nil {
 		serviceOptions = append(serviceOptions, mcpclient.WithMarketplace(marketplace))
@@ -648,6 +650,30 @@ func newMCPService(
 		}
 	}()
 	return service
+}
+
+func newLobeHubMarketplace(
+	cfg config.Config,
+	logger *slog.Logger,
+) *mcpclient.LobeHubMarketplace {
+	if !cfg.MCP.MarketplaceEnabled {
+		return nil
+	}
+	secret, err := readBoundedMCPMarketplaceSecret(cfg.MCP.MarketplaceSecretFile)
+	if err != nil {
+		logger.Warn("mcp_marketplace_unavailable", slog.String("reason", "client_secret_invalid"))
+		return nil
+	}
+	marketplace, err := mcpclient.NewLobeHubMarketplace(mcpclient.LobeHubMarketplaceConfig{
+		BaseURL: cfg.MCP.MarketplaceBaseURL, ClientID: cfg.MCP.MarketplaceClientID,
+		ClientSecret: secret, Timeout: cfg.MCP.MarketplaceTimeout,
+		CacheTTL: cfg.MCP.MarketplaceCacheTTL,
+	})
+	if err != nil {
+		logger.Warn("mcp_marketplace_unavailable", slog.String("reason", "client_invalid"))
+		return nil
+	}
+	return marketplace
 }
 
 func readBoundedMCPRunnerToken(path string) (string, error) {

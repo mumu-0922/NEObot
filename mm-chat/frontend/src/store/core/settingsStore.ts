@@ -23,7 +23,6 @@ import { CACHE_CONFIG } from "@/config/api";
 import { useCoreSettingsStore } from "./coreSettingsStore";
 import { normalizeProviderBaseUrl } from "@/lib/security/urlPolicy";
 import {
-  normalizeAgentOverrides,
   normalizeLocalAgent,
   normalizeLocalAgents,
   normalizeMarketAgents,
@@ -841,6 +840,12 @@ export const useSettingsStore = create<SettingsState>()(
           pluginConfigs: _pluginConfigs,
           marketPlugins: _marketPlugins,
           marketPluginsTimestamp: _marketPluginsTimestamp,
+          customAgents: _legacyCustomAgents,
+          usedAgents: _legacyUsedAgents,
+          agentOverrides: _legacyAgentOverrides,
+          marketAgents: _legacyMarketAgents,
+          marketAgentsTimestamp: _legacyMarketAgentsTimestamp,
+          marketAgentsLocale: _legacyMarketAgentsLocale,
           ...retainedState
         } = state;
         void _activePlugins;
@@ -848,13 +853,21 @@ export const useSettingsStore = create<SettingsState>()(
         void _pluginConfigs;
         void _marketPlugins;
         void _marketPluginsTimestamp;
+        void _legacyCustomAgents;
+        void _legacyUsedAgents;
+        void _legacyAgentOverrides;
+        void _legacyMarketAgents;
+        void _legacyMarketAgentsTimestamp;
+        void _legacyMarketAgentsLocale;
         const search = normalizeSearchSettings(state.search);
         const voice = await migrateVoiceLocalSecrets(state.voice);
         return {
           ...retainedState,
-          marketAgents: normalizeMarketAgents(state.marketAgents),
-          marketAgentsTimestamp: state.marketAgentsTimestamp || 0,
-          marketAgentsLocale: state.marketAgentsLocale || "",
+          // Assistant library authority moved to Backend. Legacy browser values
+          // intentionally grant no installation or cross-device state.
+          marketAgents: [],
+          marketAgentsTimestamp: 0,
+          marketAgentsLocale: "",
           skillCatalogs: normalizeSkillCatalogCache(state.skillCatalogs),
           skillCatalogTimestamps: normalizeTimestampCache(
             state.skillCatalogTimestamps,
@@ -890,21 +903,12 @@ export const useSettingsStore = create<SettingsState>()(
             typeof state.skillAutoSelect === "boolean"
               ? state.skillAutoSelect
               : true,
-          customAgents: normalizeLocalAgents(
-            state.customAgents,
-            MARKET_LIMITS.maxCustomAgents,
-          ),
-          usedAgents: normalizeLocalAgents(
-            state.usedAgents,
-            MARKET_LIMITS.maxUsedAgents,
-          ),
-          agentOverrides: normalizeAgentOverrides(state.agentOverrides),
+          customAgents: [],
+          usedAgents: [],
+          agentOverrides: {},
         } as SettingsState;
       },
       partialize: (state) => ({
-        marketAgents: state.marketAgents,
-        marketAgentsTimestamp: state.marketAgentsTimestamp,
-        marketAgentsLocale: state.marketAgentsLocale,
         skillCatalogs: state.skillCatalogs,
         skillCatalogTimestamps: state.skillCatalogTimestamps,
         skillDefinitions: state.skillDefinitions,
@@ -919,9 +923,6 @@ export const useSettingsStore = create<SettingsState>()(
         customSkills: state.customSkills,
         activeSkillIds: state.activeSkillIds,
         skillAutoSelect: state.skillAutoSelect,
-        customAgents: state.customAgents,
-        usedAgents: state.usedAgents,
-        agentOverrides: state.agentOverrides,
       }),
       onRehydrateStorage: () => (state, error) => {
         if (typeof window === "undefined") return;

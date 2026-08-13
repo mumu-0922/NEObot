@@ -10,6 +10,7 @@
 | [Chat source fusion](./chat-source-fusion.md)       | Conversation-aware external Search query rewriting, Knowledge/Web authority, diagnostics, and fallback contracts      |
 | [Chat Tool Loop](./chat-tool-loop.md)               | G19 provider-normalized Tool rounds, three-state Search authority, Memory first-round routing, process persistence, approvals, and citation truth |
 | [MCP Tools](./mcp-tools.md)                         | Server-authoritative MCP API, grants/selections, native Tool continuation, transports, results, retention, and Plugin retirement |
+| [Assistant Store](./assistant-store.md)             | Server-owned prompt presets, LobeHub admission/fingerprints, revisions, persistence, and rollback boundaries |
 | [Direct chat attachments](./chat-attachments.md)    | Attachment-only messages, native images, bounded document extraction, provider context, and explicit failures       |
 | [Hosted media provider smoke](./provider-live-smoke.md) | Exact live-provider authorization, one-off credentials, explicit TTS voices, artifacts, and sanitized evidence    |
 | [Hosted TTS production](./hosted-tts-production.md) | Dedicated SiliconFlow Voice authority, exact activation, server-mode playback, per-user cache, and cleanup |
@@ -65,6 +66,16 @@ result persistence, or MCP retention changes:
    serialization, object-before-row deletion, and cleanup while disabled.
 4. Prove both remote and Runner seams with focused tests and the PostgreSQL 17
    migration drill.
+
+For Assistant library, Store, admission, or LobeHub adapter changes:
+
+1. Read [`assistant-store.md`](./assistant-store.md).
+2. Preserve user ownership, explicit admission, fingerprint-bound install,
+   revision/CAS writes, and immutable Conversation prompt snapshots.
+3. Keep Assistant installation separate from Models, credentials, MCP, Tools,
+   plugins, Knowledge Bases, and permissions.
+4. Prove live and legacy detail paths produce the exact fingerprint displayed
+   to administrators before applying a migration or release.
 
 For chat upload, attachment parsing, or provider attachment changes:
 

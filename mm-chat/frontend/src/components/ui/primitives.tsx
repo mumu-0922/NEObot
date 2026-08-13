@@ -243,12 +243,16 @@ export function Dialog({
   title,
   children,
   className,
+  closeLabel,
+  role = "dialog",
 }: {
   open: boolean;
   onClose: () => void;
   title: React.ReactNode;
   children: React.ReactNode;
   className?: string;
+  closeLabel?: string;
+  role?: "dialog" | "alertdialog";
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -271,6 +275,7 @@ export function Dialog({
   if (!open) return null;
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    event.stopPropagation();
     if (event.key === "Escape") {
       event.preventDefault();
       onClose();
@@ -304,10 +309,15 @@ export function Dialog({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-9999 flex items-center justify-center bg-black/45 p-4">
+    <div
+      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/45 p-4"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
       <div
         ref={dialogRef}
-        role="dialog"
+        role={role}
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
@@ -318,13 +328,26 @@ export function Dialog({
           className,
         )}
       >
-        <div className="border-b border-gray-200 px-4 py-3 dark:border-border">
+        <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-border">
           <h2
             id={titleId}
             className="text-base font-semibold text-gray-900 dark:text-foreground"
           >
             {title}
           </h2>
+          {closeLabel ? (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label={closeLabel}
+              className={cx(
+                "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xl leading-none text-gray-500 hover:bg-gray-100 dark:text-muted-foreground dark:hover:bg-muted",
+                focusRing,
+              )}
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+          ) : null}
         </div>
         {children}
       </div>

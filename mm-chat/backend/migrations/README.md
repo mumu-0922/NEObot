@@ -488,6 +488,18 @@ endpoint. Migration `081` rebinds only the exact legacy Context7 Runner row
 from its superseded deployment hash to the current reviewed manifest hash;
 both migrations carry exact rollback markers.
 
+Migration `082` adds the server-owned per-user Assistant library and explicit
+LobeHub admission snapshots. Store rows are unique only by
+`(user_id, source, source_identifier)` under the partial `lobehub` predicate,
+so multiple custom Assistants may coexist. The stored snapshot includes the
+bounded System Prompt, canonical fingerprint, revision/CAS authority,
+provenance, and display-only `required_tools` JSONB; it never grants or installs
+a Tool, Model, secret, plugin, Knowledge Base, or permission. Down is clean
+only while the Assistant library may be discarded; production rollback should
+keep `082` applied and restore a compatible application image. Disposable
+replay is `081 -> 082 -> 081 -> 082` via
+`scripts/verify-assistant-store-postgres17.sh`.
+
 ## Storage boundaries
 
 Postgres is the source of truth for structured records:

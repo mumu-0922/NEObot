@@ -107,6 +107,7 @@ export function createNeoChatApiClient(
       auth: serverEnabled,
       imports: serverEnabled,
       mcp: serverEnabled,
+      agents: serverEnabled,
       teams: serverEnabled,
       knowledge: serverEnabled,
       memories: serverEnabled,

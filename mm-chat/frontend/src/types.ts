@@ -1,4 +1,11 @@
-export type { LobeAgent, LobeAgentMeta } from "./lib/assistant/types";
+export type {
+  AssistantLibraryEntry,
+  AssistantMarketCategory,
+  AssistantMarketSearchResult,
+  AssistantSource,
+  LobeAgent,
+  LobeAgentMeta,
+} from "./lib/assistant/types";
 export type {
   Assistant,
   Attachment,

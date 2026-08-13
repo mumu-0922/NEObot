@@ -32,7 +32,6 @@ import { ApiClientError, createNeoChatApiClient } from "@/services/api/client";
 import { uploadMessageAttachmentsForServer } from "@/services/api/fileService";
 import { resolveSkillsForMessage } from "@/services/api/skillService";
 import { buildProviderRuntimeConfig } from "@/lib/byok/client";
-import { getAgentDetail } from "@/services/api/agentService";
 import {
   Message,
   Attachment,
@@ -2314,23 +2313,13 @@ const ChatApp = () => {
       navigateToPanel("chat");
     }
 
-    let instruction = agent.meta.systemRole;
-
-    if (!instruction && !agent.isCustom) {
-      try {
-        const detail = await getAgentDetail(agent.identifier, locale);
-        if (requestId !== assistantSelectRequestRef.current) return;
-        instruction = detail.config?.systemRole;
-      } catch (e) {
-        if (requestId !== assistantSelectRequestRef.current) return;
-        logChatAppError("Failed to fetch agent details for instruction", e);
-      }
-    }
+    const instruction = agent.meta.systemRole?.trim();
 
     if (requestId !== assistantSelectRequestRef.current) return;
 
     if (!instruction) {
-      instruction = `You are ${agent.meta.title}. ${agent.meta.description}`;
+      showActionError(t("errSaveChanges"));
+      return;
     }
 
     if (serverModeEnabled) {
@@ -3047,6 +3036,7 @@ const ChatApp = () => {
           <AssistantHub
             onClose={() => navigateToPanel("chat")}
             onSelect={handleAssistantSelect}
+            onOpenTools={() => navigateToPanel("tools")}
           />
         ) : viewMode === "knowledge" ? (
           <KnowledgeBase onClose={() => navigateToPanel("chat")} />

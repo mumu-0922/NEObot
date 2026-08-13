@@ -29,6 +29,23 @@ const (
 	defaultNPMRegistryURL     = "https://registry.npmjs.org"
 )
 
+// FetchAgentMarketJSON exposes the already-authenticated, cached LobeHub
+// Market transport to the Assistant Store adapter. Keeping token exchange in
+// one owner avoids a second M2M implementation and a second token cache.
+func (m *LobeHubMarketplace) FetchAgentMarketJSON(
+	ctx context.Context,
+	path string,
+	maximum int64,
+) ([]byte, error) {
+	if m == nil || (path != "/api/v1/agents" &&
+		!strings.HasPrefix(path, "/api/v1/agents?") &&
+		!strings.HasPrefix(path, "/api/v1/agents/")) ||
+		maximum < 1 || maximum > maxMarketplaceDetailBytes {
+		return nil, ErrMarketplaceUnavailable
+	}
+	return m.authorizedGET(ctx, path, maximum)
+}
+
 type LobeHubMarketplaceConfig struct {
 	BaseURL        string
 	NPMRegistryURL string

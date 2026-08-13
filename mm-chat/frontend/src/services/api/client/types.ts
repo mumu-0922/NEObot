@@ -38,6 +38,11 @@ import type {
   McpWorkspaceSelection,
 } from "../../../lib/mcp/types";
 import type { DefaultModels } from "../../../types";
+import type {
+  AssistantLibraryEntry,
+  AssistantMarketSearchResult,
+  LobeAgent,
+} from "../../../lib/assistant/types";
 
 export type ApiMode = "local" | "server";
 
@@ -386,6 +391,23 @@ export interface AgentDetailInput {
   locale?: AgentMarketLocale;
 }
 
+export interface AssistantMarketSearchInput extends AgentListInput {
+  query?: string;
+  category?: string;
+  page: number;
+  pageSize: number;
+  signal?: AbortSignal;
+}
+
+export interface AssistantDraftInput {
+  avatar: string;
+  title: string;
+  description: string;
+  category: string;
+  tags: string[];
+  systemPrompt: string;
+}
+
 export interface AgentListResponse {
   agents?: unknown[];
   unavailable?: boolean;
@@ -394,6 +416,59 @@ export interface AgentListResponse {
 export interface AgentApi {
   listAgents(input?: AgentListInput): Promise<AgentListResponse>;
   getAgentDetail(input: AgentDetailInput): Promise<unknown>;
+  listLibrary?(options?: {
+    signal?: AbortSignal;
+  }): Promise<AssistantLibraryEntry[]>;
+  getLibraryEntry?(
+    assistantId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<AssistantLibraryEntry>;
+  createCustom?(
+    input: AssistantDraftInput & { signal?: AbortSignal },
+  ): Promise<AssistantLibraryEntry>;
+  updateCustom?(
+    input: AssistantDraftInput & {
+      assistantId: string;
+      expectedRevision: number;
+      signal?: AbortSignal;
+    },
+  ): Promise<AssistantLibraryEntry>;
+  deleteLibraryEntry?(input: {
+    assistantId: string;
+    revision: number;
+    signal?: AbortSignal;
+  }): Promise<void>;
+  copyToCustom?(input: {
+    assistantId: string;
+    expectedRevision: number;
+    signal?: AbortSignal;
+  }): Promise<AssistantLibraryEntry>;
+  updateInstalled?(input: {
+    assistantId: string;
+    expectedRevision: number;
+    signal?: AbortSignal;
+  }): Promise<AssistantLibraryEntry>;
+  searchMarket?(
+    input: AssistantMarketSearchInput,
+  ): Promise<AssistantMarketSearchResult>;
+  getMarketDetail?(
+    input: AgentDetailInput & { signal?: AbortSignal },
+  ): Promise<{
+    assistant: LobeAgent;
+    canReview: boolean;
+  }>;
+  installMarket?(input: {
+    identifier: string;
+    fingerprint: string;
+    signal?: AbortSignal;
+  }): Promise<AssistantLibraryEntry>;
+  reviewMarket?(input: {
+    identifier: string;
+    locale?: AgentMarketLocale;
+    fingerprint: string;
+    status: "admitted" | "rejected";
+    signal?: AbortSignal;
+  }): Promise<void>;
 }
 
 export type GlobalUserRole = "owner" | "user" | "viewer";

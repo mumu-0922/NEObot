@@ -21,6 +21,7 @@ behavior changes require coverage under `mm-chat/frontend/src/__tests__/`.
 | [Hook Guidelines](./hook-guidelines.md)           | Feature hooks, effects, store selectors, and async lifecycles | Complete |
 | [State Management](./state-management.md)         | Local, Zustand, persisted, URL, and server-owned state        | Complete |
 | [MCP Tools](./mcp-tools.md)                       | Tools UI, server selection authority, timeline, and Plugin-state retirement | Complete |
+| [Assistant Store](./assistant-store.md)           | My Assistants, Store paging, runtime validation, CAS recovery, and start-chat snapshots | Complete |
 | [Type Safety](./type-safety.md)                   | Domain types, DTOs, runtime validation, and normalization     | Complete |
 | [Quality Guidelines](./quality-guidelines.md)     | Formatting, linting, testing, review, and forbidden patterns  | Complete |
 
@@ -42,6 +43,9 @@ Before changing frontend code:
 6. For Tools UI, MCP DTO/client, timeline, or retired Plugin persistence work,
    read [MCP Tools](./mcp-tools.md) and keep execution/authorization server-
    authoritative.
+7. For Assistant library, Store, custom editor, or start-chat changes, read
+   [Assistant Store](./assistant-store.md) and keep installation and revisions
+   server-authoritative.
 
 ## Representative Code
 
