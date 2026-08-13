@@ -103,7 +103,7 @@ func validateIssueAuthority(input IssueAuthorityInput) error {
 	if !identityPattern.MatchString(input.CallerIdentity) || !identityPattern.MatchString(input.RunnerID) ||
 		input.RunnerID != input.Attempt.LeaseOwner ||
 		!validID(input.RequestID, "rpc") || !noncePattern.MatchString(input.Nonce) ||
-		!member(input.Method, MethodLaunch, MethodHeartbeat, MethodCancel) || !validFingerprint(input.RequestFingerprint) ||
+		!member(input.Method, MethodLaunch, MethodHeartbeat, MethodCancel, MethodPrepare, MethodCommit) || !validFingerprint(input.RequestFingerprint) ||
 		!uuidPattern.MatchString(input.UserID) || !validAttempt(input.Attempt) || !validFingerprint(input.SnapshotFingerprint) ||
 		input.TTL < time.Second || input.TTL > maxAuthorityTTL {
 		return ErrInvalidInput

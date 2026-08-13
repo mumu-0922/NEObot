@@ -534,8 +534,31 @@ The independent `agent_runner_control` role can execute exact
 database role or credential, and existing API/Orchestrator runtime roles gain
 no Runner authority. Down refuses non-empty authority. Disposable PostgreSQL
 17 replay concurrency, least privilege, lifecycle, retention, dump/restore and
-clean `084 -> 085 -> 084 -> 085` proof use
+clean replay through the current migration head use
 `scripts/verify-agent-runner-postgres17.sh`.
+
+Migration `086` adds the held G20.4 Agent Broker effect authority without
+enabling an Agent API, Chat integration or production Runner relay. Immutable
+effect intents bind subject, package/runtime/grant/registry fingerprints,
+Attempt lease owner/generation/token digest, canonical action arguments,
+approval class, budgets, expiry and Kill Switch epoch. Append-only approvals,
+Grant revocations, pre-Commit cancellations, single-claim Commit receipts and
+secret-handle digests make Prepare replay, human approval, cancellation races,
+acknowledgement loss and `outcome_unknown` durable while
+keeping secret values and plaintext handles out of PostgreSQL. The independent
+`agent_effect_control` role has SELECT plus exact `SECURITY DEFINER` function
+execution and no table DML; existing API, Orchestrator and Runner roles receive
+no effect authority. The migration also extends migration `085` Runner method
+validation to `prepare|commit`, and its down restores the former method set.
+Cancellation and Commit lock the exact same intent, so only one can advance;
+the cancellation winner atomically terminalizes the prepared Attempt and
+revokes handles, while a Commit winner can no longer claim rollback. Down
+refuses while any effect, approval, cancellation, revocation, receipt or handle
+authority exists.
+Disposable PostgreSQL 17 fresh/replay, concurrency, least-privilege, fence,
+retention, dump/restore and clean down/up proof uses
+`scripts/verify-agent-broker-postgres17.sh`; every older tail drill also peels
+and reapplies `086` before testing its owning guard.
 
 ## Storage boundaries
 

@@ -41,10 +41,28 @@ type Service struct {
 	driver     SandboxDriver
 	workspaces *WorkspaceCatalog
 	artifacts  *ArtifactBroker
+	broker     BrokerRelay
 	now        func() time.Time
 	mu         sync.Mutex
 	records    map[string]sandboxRecord
 	intakes    map[string]*ArtifactIntakeListener
+}
+
+// BrokerRelay is injected by the private control plane. The Runner receives no
+// database, vault, object-store or MCP credentials and only forwards strict,
+// authority-verified Prepare/Commit messages.
+type BrokerRelay interface {
+	Prepare(context.Context, PrepareRequest) (PrepareResult, error)
+	Commit(context.Context, CommitRequest) (CommitResult, error)
+}
+
+type unavailableBrokerRelay struct{}
+
+func (unavailableBrokerRelay) Prepare(context.Context, PrepareRequest) (PrepareResult, error) {
+	return PrepareResult{}, ErrRuntimeUnavailable
+}
+func (unavailableBrokerRelay) Commit(context.Context, CommitRequest) (CommitResult, error) {
+	return CommitResult{}, ErrRuntimeUnavailable
 }
 
 func (service *Service) CompactLocalReplay(ctx context.Context) (int, error) {
@@ -72,11 +90,18 @@ func NewService(config ServiceConfig, probe HostProbe, authority AuthorityVerifi
 	}
 	service := &Service{config: config, probe: probe, authority: authority, replay: replay, driver: driver,
 		workspaces: workspaces, artifacts: artifacts, now: time.Now, records: map[string]sandboxRecord{},
-		intakes: map[string]*ArtifactIntakeListener{}}
+		intakes: map[string]*ArtifactIntakeListener{}, broker: unavailableBrokerRelay{}}
 	if err := service.loadRecords(); err != nil {
 		return nil, err
 	}
 	return service, nil
+}
+
+func (service *Service) WithBrokerRelay(relay BrokerRelay) *Service {
+	if service != nil && relay != nil {
+		service.broker = relay
+	}
+	return service
 }
 
 func (service *Service) Handle(ctx context.Context, caller string, request Request) (Response, error) {
@@ -120,7 +145,9 @@ func decodeReplayResponse(method string, body []byte) (Response, error) {
 		Nonce         string          `json:"nonce"`
 		Body          json.RawMessage `json:"body"`
 	}
-	if json.Unmarshal(body, &wire) != nil || wire.SchemaVersion != ProtocolVersion {
+	if strictjson.Decode(body, maxRPCBytes, &wire) != nil || wire.SchemaVersion != ProtocolVersion ||
+		wire.Method != method+".result" || !validID(wire.RequestID, "rpc") ||
+		!noncePattern.MatchString(wire.Nonce) || wire.SentAt.IsZero() {
 		return Response{}, ErrRuntimeUnavailable
 	}
 	response := Response{SchemaVersion: wire.SchemaVersion, Method: wire.Method,
@@ -140,6 +167,10 @@ func decodeReplayResponse(method string, body []byte) (Response, error) {
 		target = &HeartbeatResult{}
 	case MethodCancel:
 		target = &CancelResult{}
+	case MethodPrepare:
+		target = &PrepareResult{}
+	case MethodCommit:
+		target = &CommitResult{}
 	case MethodList:
 		target = &ListResult{}
 	case MethodReconcile:
@@ -147,8 +178,11 @@ func decodeReplayResponse(method string, body []byte) (Response, error) {
 	default:
 		return Response{}, ErrVersionUnsupported
 	}
-	if json.Unmarshal(wire.Body, target) != nil {
+	if strictjson.Decode(wire.Body, maxRPCBytes, target) != nil {
 		return Response{}, ErrRuntimeUnavailable
+	}
+	if err := validateRelayResult(target); err != nil {
+		return Response{}, err
 	}
 	switch typed := target.(type) {
 	case *ProbeResult:
@@ -158,6 +192,10 @@ func decodeReplayResponse(method string, body []byte) (Response, error) {
 	case *HeartbeatResult:
 		response.Body = *typed
 	case *CancelResult:
+		response.Body = *typed
+	case *PrepareResult:
+		response.Body = *typed
+	case *CommitResult:
 		response.Body = *typed
 	case *ListResult:
 		response.Body = *typed
@@ -183,6 +221,10 @@ func (service *Service) execute(ctx context.Context, caller string, request Requ
 		return service.heartbeat(ctx, caller, request)
 	case MethodCancel:
 		return service.cancel(ctx, caller, request)
+	case MethodPrepare:
+		return service.prepare(ctx, caller, request)
+	case MethodCommit:
+		return service.commit(ctx, caller, request)
 	case MethodList:
 		return service.list(ctx, request)
 	case MethodReconcile:
@@ -190,6 +232,102 @@ func (service *Service) execute(ctx context.Context, caller string, request Requ
 	default:
 		return service.errorResponse(request, ErrVersionUnsupported), ErrVersionUnsupported
 	}
+}
+
+func (service *Service) prepare(ctx context.Context, caller string, request Request) (Response, error) {
+	body := request.Prepare
+	if err := service.authority.Verify(caller, service.config.RunnerID, MethodPrepare, request.RequestID,
+		request.Nonce, authorityFingerprintForRequest(request), body.SnapshotFingerprint,
+		body.Attempt, body.Authority, service.now()); err != nil {
+		return service.response(request, MethodPrepare+".result", PrepareResult{Error: rpcError(authorityError(err))}), authorityError(err)
+	}
+	result, err := service.broker.Prepare(ctx, *body)
+	if err != nil {
+		result = PrepareResult{Error: rpcError(err)}
+	} else if validateRelayResult(&result) != nil {
+		err = ErrRuntimeUnavailable
+		result = PrepareResult{Error: rpcError(err)}
+	}
+	return service.response(request, MethodPrepare+".result", result), err
+}
+
+func (service *Service) commit(ctx context.Context, caller string, request Request) (Response, error) {
+	body := request.Commit
+	if err := service.authority.Verify(caller, service.config.RunnerID, MethodCommit, request.RequestID,
+		request.Nonce, authorityFingerprintForRequest(request), body.SnapshotFingerprint,
+		body.Attempt, body.Authority, service.now()); err != nil {
+		return service.response(request, MethodCommit+".result", CommitResult{IdempotencyKey: body.IdempotencyKey, Error: rpcError(authorityError(err))}), authorityError(err)
+	}
+	result, err := service.broker.Commit(ctx, *body)
+	if err != nil {
+		outcome := "rejected"
+		if errors.Is(err, ErrOutcomeUnknown) {
+			outcome = "outcome_unknown"
+		}
+		result = CommitResult{Outcome: outcome, IdempotencyKey: body.IdempotencyKey, Error: rpcError(err)}
+	} else if validateRelayResult(&result) != nil || result.IdempotencyKey != body.IdempotencyKey {
+		err = ErrRuntimeUnavailable
+		result = CommitResult{Outcome: "rejected", IdempotencyKey: body.IdempotencyKey, Error: rpcError(err)}
+	}
+	return service.response(request, MethodCommit+".result", result), err
+}
+
+func rpcError(err error) *RPCError {
+	if err == nil {
+		return nil
+	}
+	return &RPCError{Code: ErrorCode(err), Retryable: false}
+}
+
+func validateRelayResult(value any) error {
+	switch result := value.(type) {
+	case *PrepareResult:
+		if result.Prepared {
+			if !validID(result.IntentID, "intent") || !validFingerprint(result.IntentFingerprint) ||
+				!commitKeyPattern.MatchString(result.IdempotencyKey) ||
+				!member(result.Approval, "automatic", "once", "per_commit") ||
+				result.ExpiresAt == nil || result.ExpiresAt.IsZero() || result.Error != nil {
+				return ErrRuntimeUnavailable
+			}
+			return nil
+		}
+		if result.IntentID != "" || result.IntentFingerprint != "" || result.IdempotencyKey != "" ||
+			result.Approval != "" || result.ExpiresAt != nil || result.Replay || !validRPCError(result.Error) {
+			return ErrRuntimeUnavailable
+		}
+		return nil
+	case *CommitResult:
+		if !commitKeyPattern.MatchString(result.IdempotencyKey) {
+			return ErrRuntimeUnavailable
+		}
+		switch result.Outcome {
+		case "committed", "replayed":
+			if !validFingerprint(result.ReceiptFingerprint) || result.Error != nil ||
+				(result.Outcome == "replayed") != result.Replay {
+				return ErrRuntimeUnavailable
+			}
+		case "rejected", "outcome_unknown":
+			if result.ReceiptFingerprint != "" || result.Replay || !validRPCError(result.Error) {
+				return ErrRuntimeUnavailable
+			}
+		default:
+			return ErrRuntimeUnavailable
+		}
+		return nil
+	}
+	return nil
+}
+
+func validRPCError(value *RPCError) bool {
+	if value == nil || value.Retryable {
+		return false
+	}
+	return member(value.Code, ErrorAuthFailed, ErrorReplayDetected, ErrorVersionUnsupported,
+		ErrorRuntimeUnavailable, ErrorIsolationUnavailable, ErrorSnapshotMismatch, ErrorGrantDenied,
+		ErrorLeaseStale, ErrorKillSwitchActive, ErrorBudgetExhausted, ErrorApprovalRequired,
+		ErrorApprovalDenied, ErrorIntentExpired, ErrorEgressDenied, ErrorSecretDenied,
+		ErrorProjectConflict, ErrorArtifactDenied, ErrorExecutorUnavailable,
+		ErrorInvalidTransition, ErrorOutcomeUnknown, ErrorInternal)
 }
 
 func (service *Service) launch(ctx context.Context, caller string, request Request) (Response, error) {
@@ -594,6 +732,13 @@ func (service *Service) response(request Request, method string, body any) Respo
 	return Response{SchemaVersion: ProtocolVersion, Method: method, RequestID: request.RequestID, SentAt: service.now().UTC(), Nonce: request.Nonce, Body: body}
 }
 func (service *Service) errorResponse(request Request, err error) Response {
+	if request.Method == MethodPrepare {
+		return service.response(request, MethodPrepare+".result", PrepareResult{Error: rpcError(err)})
+	}
+	if request.Method == MethodCommit && request.Commit != nil {
+		return service.response(request, MethodCommit+".result", CommitResult{Outcome: "rejected",
+			IdempotencyKey: request.Commit.IdempotencyKey, Error: rpcError(err)})
+	}
 	return service.response(request, request.Method+".result", ErrorResult{Accepted: false,
 		Error: RPCError{Code: ErrorCode(err), Retryable: false}})
 }
@@ -610,6 +755,10 @@ func responseOperationError(response Response) error {
 	case HeartbeatResult:
 		rpcError = body.Error
 	case CancelResult:
+		rpcError = body.Error
+	case PrepareResult:
+		rpcError = body.Error
+	case CommitResult:
 		rpcError = body.Error
 	}
 	if rpcError == nil {

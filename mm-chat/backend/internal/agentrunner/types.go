@@ -18,6 +18,8 @@ const (
 	MethodLaunch    = "launch"
 	MethodHeartbeat = "heartbeat"
 	MethodCancel    = "cancel"
+	MethodPrepare   = "prepare"
+	MethodCommit    = "commit"
 	MethodList      = "list"
 	MethodReconcile = "reconcile"
 
@@ -27,9 +29,20 @@ const (
 	ErrorRuntimeUnavailable   = "RUNTIME_UNAVAILABLE"
 	ErrorIsolationUnavailable = "ISOLATION_UNAVAILABLE"
 	ErrorSnapshotMismatch     = "SNAPSHOT_MISMATCH"
+	ErrorGrantDenied          = "GRANT_DENIED"
 	ErrorLeaseStale           = "LEASE_STALE"
 	ErrorKillSwitchActive     = "KILL_SWITCH_ACTIVE"
+	ErrorBudgetExhausted      = "BUDGET_EXHAUSTED"
+	ErrorApprovalRequired     = "APPROVAL_REQUIRED"
+	ErrorApprovalDenied       = "APPROVAL_DENIED"
+	ErrorIntentExpired        = "INTENT_EXPIRED"
+	ErrorEgressDenied         = "EGRESS_DENIED"
+	ErrorSecretDenied         = "SECRET_DENIED"
+	ErrorProjectConflict      = "PROJECT_CONFLICT"
+	ErrorArtifactDenied       = "ARTIFACT_DENIED"
+	ErrorExecutorUnavailable  = "EXECUTOR_UNAVAILABLE"
 	ErrorInvalidTransition    = "INVALID_TRANSITION"
+	ErrorOutcomeUnknown       = "OUTCOME_UNKNOWN"
 	ErrorInternal             = "INTERNAL_ERROR"
 )
 
@@ -41,9 +54,20 @@ var (
 	ErrRuntimeUnavailable   = errors.New(ErrorRuntimeUnavailable)
 	ErrIsolationUnavailable = errors.New(ErrorIsolationUnavailable)
 	ErrSnapshotMismatch     = errors.New(ErrorSnapshotMismatch)
+	ErrGrantDenied          = errors.New(ErrorGrantDenied)
 	ErrLeaseStale           = errors.New(ErrorLeaseStale)
 	ErrKillSwitchActive     = errors.New(ErrorKillSwitchActive)
+	ErrBudgetExhausted      = errors.New(ErrorBudgetExhausted)
+	ErrApprovalRequired     = errors.New(ErrorApprovalRequired)
+	ErrApprovalDenied       = errors.New(ErrorApprovalDenied)
+	ErrIntentExpired        = errors.New(ErrorIntentExpired)
+	ErrEgressDenied         = errors.New(ErrorEgressDenied)
+	ErrSecretDenied         = errors.New(ErrorSecretDenied)
+	ErrProjectConflict      = errors.New(ErrorProjectConflict)
+	ErrArtifactDenied       = errors.New(ErrorArtifactDenied)
+	ErrExecutorUnavailable  = errors.New(ErrorExecutorUnavailable)
 	ErrInvalidTransition    = errors.New(ErrorInvalidTransition)
+	ErrOutcomeUnknown       = errors.New(ErrorOutcomeUnknown)
 	ErrNotFound             = errors.New("agent Runner record was not found")
 )
 
@@ -166,6 +190,35 @@ type CancelRequest struct {
 	ReasonCode string          `json:"reasonCode"`
 }
 
+type PrepareRequest struct {
+	Attempt              AttemptRef      `json:"attempt"`
+	Authority            AuthorityTicket `json:"authority"`
+	SnapshotFingerprint  string          `json:"snapshotFingerprint"`
+	GrantID              string          `json:"grantId"`
+	GrantFingerprint     string          `json:"grantFingerprint"`
+	RegistryFingerprint  string          `json:"registryFingerprint"`
+	ToolIdentity         string          `json:"toolIdentity"`
+	Capability           string          `json:"capability"`
+	Action               string          `json:"action"`
+	Resource             string          `json:"resource"`
+	Arguments            json.RawMessage `json:"arguments"`
+	ArgumentsFingerprint string          `json:"argumentsFingerprint"`
+	BaseRevision         string          `json:"baseRevision,omitempty"`
+	TTLSeconds           int             `json:"ttlSeconds"`
+}
+
+type CommitRequest struct {
+	Attempt             AttemptRef      `json:"attempt"`
+	Authority           AuthorityTicket `json:"authority"`
+	SnapshotFingerprint string          `json:"snapshotFingerprint"`
+	GrantFingerprint    string          `json:"grantFingerprint"`
+	RegistryFingerprint string          `json:"registryFingerprint"`
+	IntentID            string          `json:"intentId"`
+	IntentFingerprint   string          `json:"intentFingerprint"`
+	ApprovalID          string          `json:"approvalId"`
+	IdempotencyKey      string          `json:"idempotencyKey"`
+}
+
 type ListRequest struct {
 	RunnerID string `json:"runnerId"`
 }
@@ -181,6 +234,8 @@ type Request struct {
 	Launch    *LaunchRequest
 	Heartbeat *HeartbeatRequest
 	Cancel    *CancelRequest
+	Prepare   *PrepareRequest
+	Commit    *CommitRequest
 	List      *ListRequest
 	Reconcile *ReconcileRequest
 	Canonical []byte
@@ -224,6 +279,25 @@ type CancelResult struct {
 	Accepted         bool      `json:"accepted"`
 	ObservedTerminal string    `json:"observedTerminal"`
 	Error            *RPCError `json:"error,omitempty"`
+}
+
+type PrepareResult struct {
+	Prepared          bool       `json:"prepared"`
+	IntentID          string     `json:"intentId,omitempty"`
+	IntentFingerprint string     `json:"intentFingerprint,omitempty"`
+	IdempotencyKey    string     `json:"idempotencyKey,omitempty"`
+	Approval          string     `json:"approval,omitempty"`
+	ExpiresAt         *time.Time `json:"expiresAt,omitempty"`
+	Replay            bool       `json:"replay"`
+	Error             *RPCError  `json:"error,omitempty"`
+}
+
+type CommitResult struct {
+	Outcome            string    `json:"outcome"`
+	IdempotencyKey     string    `json:"idempotencyKey"`
+	ReceiptFingerprint string    `json:"receiptFingerprint,omitempty"`
+	Replay             bool      `json:"replay"`
+	Error              *RPCError `json:"error,omitempty"`
 }
 
 type SandboxDescriptor struct {

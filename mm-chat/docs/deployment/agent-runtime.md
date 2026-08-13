@@ -1,10 +1,10 @@
 # Neo Agent Runtime Operations
 
-Status: G20.1 no-execute Skill supply, G20.2 durable Orchestrator authority and
-G20.3 `neo-runnerd` source/control foundations are implemented. Exact-host
-production isolation promotion is held. Do not install a Runtime, start the
-service, enable Agent execution or delete legacy Skills from this document
-alone.
+Status: G20.1 no-execute Skill supply, G20.2 durable Orchestrator, G20.3
+`neo-runnerd` and G20.4 brokered-effect source/control foundations are
+implemented. Exact-host isolation and production relay promotion are held. Do
+not install a Runtime, start the service, enable Agent execution or delete
+legacy Skills from this document alone.
 
 ## Default state
 
@@ -19,7 +19,7 @@ AGENT_DELEGATION_ENABLED=false
 AGENT_RUNNER_URL=
 ```
 
-G20.3 also adds no application environment variable or Compose service. The
+G20.3 and G20.4 add no application environment variable or Compose service. The
 host-only `deploy/agent-runner/neo-runnerd.env.example` is not an activation
 file. These names reserve the intended operational boundary; later promotion must add them through
 the normal preflight/example-env/Compose/documentation gates.
@@ -121,16 +121,20 @@ identity, sends strict `neo.runner-rpc/v1`, bounds headers/body/deadline and
 accepts only a request-ID/nonce/method-bound response. There is no bearer token
 fallback.
 
-## G20.3 source and verification commands
+## G20.3/G20.4 source and verification commands
 
 ```bash
 bash scripts/verify-agent-runner.sh
 bash scripts/verify-agent-runner-postgres17.sh
+bash scripts/verify-agent-broker.sh
+bash scripts/verify-agent-broker-postgres17.sh
+bash scripts/verify-agent-runtime-phase0.sh
 bash scripts/verify-agent-runner-host.sh
 ```
 
-The first two commands prove source/control and disposable PostgreSQL behavior.
-On this host the third must exit nonzero and print `ISOLATION_UNAVAILABLE` with
+The first five commands prove source/control, contract and disposable
+PostgreSQL behavior only. On this host the last command must exit nonzero and
+print `ISOLATION_UNAVAILABLE` with
 content-free failure classes. Only an approved manifest installed for the exact
 `neo-runner` account and a complete passing target-host suite may emit a ready
 marker. The templates under `deploy/agent-runner/` are review artifacts only;
@@ -171,18 +175,50 @@ capabilities plus `no-new-privileges` before start.
 No group combines rootless host installation, durable state migration and
 legacy destructive deletion in one release.
 
+## Brokered-effect operations boundary
+
+Migration `086` creates the durable intent, approval, Commit receipt and
+secret-handle-digest authority under `agent_effect_owner`. Only the narrow
+`agent_effect_control` role may read it and call its exact mutation functions.
+`go_api_runtime`, `agent_orchestrator_runtime`, `agent_runner_control` and the
+host Runner gain no direct effect-table DML.
+
+There is currently no production Broker worker, authenticated Backend-to-Runner
+relay, vault resolver, Project store adapter, object publication adapter or live
+mutable MCP/external executor. The Runner default relay returns
+`RUNTIME_UNAVAILABLE`. Operators may run the two Broker verification commands
+above against source and disposable PostgreSQL only; they must not manually
+invoke migration functions to manufacture an effect or treat the deterministic
+Project CAS fake as storage.
+
+If a future release loses a mutable executor acknowledgement, query only the
+exact stable idempotency status. If no exact committed/not-sent proof exists,
+record `outcome_unknown`; never issue a new Commit key or retry the external
+write. Secret-handle cleanup, intent expiry and receipt reconciliation must
+remain available while Runtime is disabled.
+
+An authenticated pre-Commit cancellation must use the exact immutable intent
+fingerprint and a stable cancellation ID. Cancel and Commit serialize on the
+same PostgreSQL intent row: if Cancel wins, the prepared Attempt becomes
+`canceled`, active handles are revoked and the executor count remains zero; if
+Commit wins, never report rollback and continue receipt/`outcome_unknown`
+reconciliation. Grant revocation is append-only and must also trigger immediate
+in-process Secret byte zeroization through the coordinating Broker service.
+
 ## Kill Switch operations
 
 G20.2 persists and resolves the hierarchy through migration `084`; G20.3
 migration `085` binds short-lived Runner authority to that current epoch and
-stores expected Sandbox projection. No production Runner is started. Switch
-removal remains a new inactive revision; cleanup/recovery/rebuild/retention
-remain available. Exercise the two boundaries with:
+stores expected Sandbox projection; G20.4 migration `086` binds every Prepare
+and Commit to the same epoch. No production Runner or Broker worker is started.
+Switch removal remains a new inactive revision; cleanup/recovery/rebuild/
+retention remain available. Exercise the boundaries with:
 
 ```bash
 bash scripts/verify-agent-orchestrator.sh
 bash scripts/verify-agent-orchestrator-postgres17.sh
 bash scripts/verify-agent-runner-postgres17.sh
+bash scripts/verify-agent-broker-postgres17.sh
 ```
 
 These passes are durable control-plane evidence only, not rootless isolation or

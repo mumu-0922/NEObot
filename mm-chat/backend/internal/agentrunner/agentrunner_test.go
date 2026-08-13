@@ -292,6 +292,180 @@ func TestServiceReconcileRPCReapsUnexpectedSandboxAndReplays(t *testing.T) {
 	}
 }
 
+func TestPrepareCommitStrictRelayVerifiesAuthorityAndReplaysLocally(t *testing.T) {
+	fixture := newServiceFixture(t, true)
+	relay := &recordingBrokerRelay{}
+	fixture.service.WithBrokerRelay(relay)
+	now := time.Date(2026, 8, 14, 2, 0, 0, 0, time.UTC)
+	fixture.service.now = func() time.Time { return now }
+	attempt := testAttempt()
+	arguments := json.RawMessage(`{"path":"project/a"}`)
+	prepareBody := PrepareRequest{Attempt: attempt, SnapshotFingerprint: testFingerprint('6'),
+		GrantID: "grant_0123456789abcdef", GrantFingerprint: testFingerprint('5'),
+		RegistryFingerprint: testFingerprint('8'), ToolIdentity: "workspace_read",
+		Capability: "workspace.read", Action: "read", Resource: "project/a",
+		Arguments: arguments, ArgumentsFingerprint: fingerprintBytes("neo-effect-arguments-v1", arguments),
+		BaseRevision: "rev_01234567", TTLSeconds: 600}
+	prepareBody.Authority = signedPrepareAuthority(t, fixture.private, "rpc_aaaaaaaaaaaaaaaa",
+		strings.Repeat("p", 32), now, prepareBody)
+	prepareRaw := mustEnvelope(t, MethodPrepare, "rpc_aaaaaaaaaaaaaaaa", now, strings.Repeat("p", 32), prepareBody)
+	prepare, err := DecodeRequest(prepareRaw, now, 15*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := fixture.service.Handle(context.Background(), testCaller, prepare)
+	if err != nil || !response.Body.(PrepareResult).Prepared || relay.prepares != 1 {
+		t.Fatalf("Prepare = %#v, %v, relays=%d", response, err, relay.prepares)
+	}
+	if _, err := fixture.service.Handle(context.Background(), testCaller, prepare); err != nil || relay.prepares != 1 {
+		t.Fatalf("Prepare replay = %v, relays=%d", err, relay.prepares)
+	}
+
+	commitBody := CommitRequest{Attempt: attempt, SnapshotFingerprint: testFingerprint('6'),
+		GrantFingerprint: testFingerprint('5'), RegistryFingerprint: testFingerprint('8'),
+		IntentID: "intent_0123456789abcdef", IntentFingerprint: testFingerprint('a'),
+		ApprovalID: "approval_0123456789abcdef", IdempotencyKey: "commit_0123456789abcdefghijklmn"}
+	commitBody.Authority = signedCommitAuthority(t, fixture.private, "rpc_bbbbbbbbbbbbbbbb",
+		strings.Repeat("m", 32), now, commitBody)
+	commitRaw := mustEnvelope(t, MethodCommit, "rpc_bbbbbbbbbbbbbbbb", now, strings.Repeat("m", 32), commitBody)
+	commit, err := DecodeRequest(commitRaw, now, 15*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err = fixture.service.Handle(context.Background(), testCaller, commit)
+	if err != nil || response.Body.(CommitResult).Outcome != "committed" || relay.commits != 1 {
+		t.Fatalf("Commit = %#v, %v, relays=%d", response, err, relay.commits)
+	}
+
+	tampered := bytes.Replace(prepareRaw, []byte(`"resource":"project/a"`), []byte(`"resource":"project/b"`), 1)
+	request, err := DecodeRequest(tampered, now, 15*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.service.Handle(context.Background(), testCaller, request); !errors.Is(err, ErrReplayDetected) || relay.prepares != 1 {
+		t.Fatalf("tampered Prepare = %v, relays=%d", err, relay.prepares)
+	}
+}
+
+func TestPrepareRejectsDuplicateMalformedAndFingerprintMismatchBeforeRelay(t *testing.T) {
+	fixture := newServiceFixture(t, true)
+	relay := &recordingBrokerRelay{}
+	fixture.service.WithBrokerRelay(relay)
+	now := time.Date(2026, 8, 14, 2, 0, 0, 0, time.UTC)
+	arguments := json.RawMessage(`{"path":"project/a"}`)
+	body := PrepareRequest{Attempt: testAttempt(), SnapshotFingerprint: testFingerprint('6'),
+		GrantID: "grant_0123456789abcdef", GrantFingerprint: testFingerprint('5'), RegistryFingerprint: testFingerprint('8'),
+		ToolIdentity: "workspace_read", Capability: "workspace.read", Action: "read", Resource: "project/a",
+		Arguments: arguments, ArgumentsFingerprint: testFingerprint('f'), TTLSeconds: 600}
+	raw := mustEnvelope(t, MethodPrepare, "rpc_aaaaaaaaaaaaaaaa", now, strings.Repeat("p", 32), body)
+	for _, invalid := range [][]byte{
+		raw,
+		bytes.Replace(raw, []byte(`"ttlSeconds":600`), []byte(`"ttlSeconds":600,"ttlSeconds":601`), 1),
+		bytes.Replace(raw, []byte(`"resource":"project/a"`), []byte(`"resource":"project/a","unknown":true`), 1),
+	} {
+		if _, err := DecodeRequest(invalid, now, 15*time.Second); err == nil {
+			t.Fatalf("invalid Prepare accepted: %s", invalid)
+		}
+	}
+	if relay.prepares != 0 {
+		t.Fatalf("invalid requests reached relay %d times", relay.prepares)
+	}
+}
+
+func signedRequestAuthority(t *testing.T, private ed25519.PrivateKey, method, requestID, nonce, snapshot string,
+	attempt AttemptRef, now time.Time, body any) AuthorityTicket {
+	t.Helper()
+	claims := NewAuthorityClaims(testCaller, testRunner, method, requestID, nonce,
+		AuthorityRequestFingerprint(method, body), snapshot, attempt, 0, now, now.Add(10*time.Second))
+	ticket, err := SignAuthority(private, claims)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ticket
+}
+
+func signedPrepareAuthority(t *testing.T, private ed25519.PrivateKey, requestID, nonce string, now time.Time, body PrepareRequest) AuthorityTicket {
+	t.Helper()
+	unsigned := body
+	unsigned.Authority = AuthorityTicket{}
+	return signedRequestAuthority(t, private, MethodPrepare, requestID, nonce, body.SnapshotFingerprint, body.Attempt, now, unsigned)
+}
+
+func signedCommitAuthority(t *testing.T, private ed25519.PrivateKey, requestID, nonce string, now time.Time, body CommitRequest) AuthorityTicket {
+	t.Helper()
+	unsigned := body
+	unsigned.Authority = AuthorityTicket{}
+	return signedRequestAuthority(t, private, MethodCommit, requestID, nonce, body.SnapshotFingerprint, body.Attempt, now, unsigned)
+}
+
+type recordingBrokerRelay struct{ prepares, commits int }
+
+func (relay *recordingBrokerRelay) Prepare(context.Context, PrepareRequest) (PrepareResult, error) {
+	relay.prepares++
+	expiresAt := time.Now().Add(time.Minute)
+	return PrepareResult{Prepared: true, IntentID: "intent_0123456789abcdef", IntentFingerprint: testFingerprint('a'), IdempotencyKey: "commit_0123456789abcdefghijklmn", Approval: "once", ExpiresAt: &expiresAt}, nil
+}
+func (relay *recordingBrokerRelay) Commit(_ context.Context, input CommitRequest) (CommitResult, error) {
+	relay.commits++
+	return CommitResult{Outcome: "committed", IdempotencyKey: input.IdempotencyKey, ReceiptFingerprint: testFingerprint('b')}, nil
+}
+
+func TestPrepareCommitRelayFailuresUseSchemaShapedBodies(t *testing.T) {
+	fixture := newServiceFixture(t, true)
+	fixture.service.WithBrokerRelay(failingBrokerRelay{})
+	now := time.Date(2026, 8, 14, 2, 0, 0, 0, time.UTC)
+	fixture.service.now = func() time.Time { return now }
+	arguments := json.RawMessage(`{"path":"project/a"}`)
+	prepareBody := PrepareRequest{Attempt: testAttempt(), SnapshotFingerprint: testFingerprint('6'),
+		GrantID: "grant_0123456789abcdef", GrantFingerprint: testFingerprint('5'),
+		RegistryFingerprint: testFingerprint('8'), ToolIdentity: "workspace_read",
+		Capability: "workspace.read", Action: "read", Resource: "project/a", Arguments: arguments,
+		ArgumentsFingerprint: fingerprintBytes("neo-effect-arguments-v1", arguments), TTLSeconds: 600}
+	prepareBody.Authority = signedPrepareAuthority(t, fixture.private, "rpc_cccccccccccccccc", strings.Repeat("q", 32), now, prepareBody)
+	prepare, err := DecodeRequest(mustEnvelope(t, MethodPrepare, "rpc_cccccccccccccccc", now,
+		strings.Repeat("q", 32), prepareBody), now, 15*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := fixture.service.Handle(context.Background(), testCaller, prepare)
+	prepareResult := response.Body.(PrepareResult)
+	if !errors.Is(err, ErrRuntimeUnavailable) || prepareResult.Prepared ||
+		prepareResult.Error == nil || prepareResult.Error.Code != ErrorRuntimeUnavailable {
+		t.Fatalf("Prepare failure = %#v, %v", prepareResult, err)
+	}
+	encoded, _ := json.Marshal(response)
+	if _, err := decodeReplayResponse(MethodPrepare, encoded); err != nil {
+		t.Fatalf("Prepare response shape = %s, %v", encoded, err)
+	}
+
+	commitBody := CommitRequest{Attempt: testAttempt(), SnapshotFingerprint: testFingerprint('6'),
+		GrantFingerprint: testFingerprint('5'), RegistryFingerprint: testFingerprint('8'),
+		IntentID: "intent_0123456789abcdef", IntentFingerprint: testFingerprint('a'),
+		ApprovalID: "approval_0123456789abcdef", IdempotencyKey: "commit_0123456789abcdefghijklmn"}
+	commitBody.Authority = signedCommitAuthority(t, fixture.private, "rpc_dddddddddddddddd", strings.Repeat("r", 32), now, commitBody)
+	commit, err := DecodeRequest(mustEnvelope(t, MethodCommit, "rpc_dddddddddddddddd", now,
+		strings.Repeat("r", 32), commitBody), now, 15*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err = fixture.service.Handle(context.Background(), testCaller, commit)
+	commitResult := response.Body.(CommitResult)
+	if !errors.Is(err, ErrOutcomeUnknown) || commitResult.Outcome != "outcome_unknown" ||
+		commitResult.IdempotencyKey != commitBody.IdempotencyKey || commitResult.Error == nil ||
+		commitResult.Error.Code != ErrorOutcomeUnknown {
+		t.Fatalf("Commit failure = %#v, %v", commitResult, err)
+	}
+}
+
+type failingBrokerRelay struct{}
+
+func (failingBrokerRelay) Prepare(context.Context, PrepareRequest) (PrepareResult, error) {
+	return PrepareResult{}, ErrRuntimeUnavailable
+}
+func (failingBrokerRelay) Commit(context.Context, CommitRequest) (CommitResult, error) {
+	return CommitResult{}, ErrOutcomeUnknown
+}
+
 func TestServiceFailureReplayPreservesOperationError(t *testing.T) {
 	fixture := newServiceFixture(t, false)
 	request := fixture.launchRequest(t)
@@ -640,6 +814,25 @@ func signedTLSIdentity(t *testing.T, root, prefix, identity string, server bool,
 }
 
 func bigOne() *big.Int { return big.NewInt(time.Now().UnixNano()) }
+
+func TestBrokerErrorCodesRemainProtocolVisible(t *testing.T) {
+	for err, want := range map[error]string{
+		ErrGrantDenied:         ErrorGrantDenied,
+		ErrBudgetExhausted:     ErrorBudgetExhausted,
+		ErrApprovalRequired:    ErrorApprovalRequired,
+		ErrApprovalDenied:      ErrorApprovalDenied,
+		ErrIntentExpired:       ErrorIntentExpired,
+		ErrEgressDenied:        ErrorEgressDenied,
+		ErrSecretDenied:        ErrorSecretDenied,
+		ErrProjectConflict:     ErrorProjectConflict,
+		ErrArtifactDenied:      ErrorArtifactDenied,
+		ErrExecutorUnavailable: ErrorExecutorUnavailable,
+	} {
+		if got := ErrorCode(err); got != want {
+			t.Fatalf("ErrorCode(%v) = %q, want %q", err, got, want)
+		}
+	}
+}
 
 func (r *recordingCommands) Run(_ context.Context, _ string, args ...string) ([]byte, error) {
 	r.args = append(r.args, append([]string(nil), args...))

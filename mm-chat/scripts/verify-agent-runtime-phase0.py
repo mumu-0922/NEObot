@@ -67,6 +67,26 @@ def check_schemas_and_fixtures() -> dict[str, dict[str, Any]]:
         unknown_instance["unexpectedPhase0Field"] = True
         if not list(validator.iter_errors(unknown_instance)):
             raise VerificationError(f"schema accepts an unknown root field: {name}")
+        for supplemental_path in sorted(FIXTURE_DIR.glob(f"{name}.*.valid.json")):
+            supplemental = load_json(supplemental_path)
+            supplemental_errors = sorted(
+                validator.iter_errors(supplemental),
+                key=lambda item: [str(part) for part in item.absolute_path],
+            )
+            if supplemental_errors:
+                first = supplemental_errors[0]
+                location = "/".join(str(part) for part in first.absolute_path)
+                raise VerificationError(
+                    f"valid fixture failed {supplemental_path.name} at "
+                    f"{location or '<root>'}: {first.message}"
+                )
+            unknown_supplemental = dict(supplemental)
+            unknown_supplemental["unexpectedPhase0Field"] = True
+            if not list(validator.iter_errors(unknown_supplemental)):
+                raise VerificationError(
+                    "schema accepts an unknown root field: "
+                    f"{supplemental_path.name}"
+                )
         valid_instances[name] = valid_instance
     return valid_instances
 

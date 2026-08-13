@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "neo.runner-rpc/v1",
+  "method": "prepare.result",
+  "requestId": "rpc_cccccccccccccccc",
+  "sentAt": "2026-08-14T02:00:01Z",
+  "nonce": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "body": {
+    "prepared": false,
+    "replay": false,
+    "error": {"code": "GRANT_DENIED", "retryable": false}
+  }
+}

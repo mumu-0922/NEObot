@@ -94,7 +94,7 @@ func NewAuthorityClaims(caller, runnerID, method, requestID, nonce, requestFinge
 func validateAuthorityClaims(claims AuthorityClaims) error {
 	if claims.SchemaVersion != AuthorityVersion || !identityPattern.MatchString(claims.RunnerID) ||
 		!identityPattern.MatchString(claims.CallerIdentity) ||
-		!member(claims.Method, MethodLaunch, MethodHeartbeat, MethodCancel) ||
+		!member(claims.Method, MethodLaunch, MethodHeartbeat, MethodCancel, MethodPrepare, MethodCommit) ||
 		!validID(claims.RequestID, "rpc") || !noncePattern.MatchString(claims.Nonce) ||
 		!validFingerprint(claims.RequestFingerprint) || !validID(claims.RunID, "run") ||
 		!validID(claims.StepID, "step") || !validID(claims.AttemptID, "attempt") ||

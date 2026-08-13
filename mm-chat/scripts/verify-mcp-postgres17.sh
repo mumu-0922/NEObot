@@ -83,7 +83,7 @@ run_migrate() {
   MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"
 }
 
-log "applying a fresh 001 -> 085 chain"
+log "applying a fresh 001 -> 086 chain"
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 074_mcp_tools_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 075_mcp_runtime_role_grants" "${work_dir}/fresh.log"
@@ -97,12 +97,15 @@ grep -Fq "up 082_assistant_library" "${work_dir}/fresh.log"
 grep -Fq "up 083_skill_supply_chain" "${work_dir}/fresh.log"
 grep -Fq "up 084_agent_orchestrator_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 085_agent_runner_foundation" "${work_dir}/fresh.log"
+grep -Fq "up 086_agent_broker_foundation" "${work_dir}/fresh.log"
 
 log "proving replay is a no-op"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
-log "rolling back the clean 085 through 077 tails before the 076 guard drill"
+log "rolling back the clean 086 through 077 tails before the 076 guard drill"
+run_migrate down >"${work_dir}/down-086.log" 2>&1
+grep -Fq "down 086_agent_broker_foundation" "${work_dir}/down-086.log"
 run_migrate down >"${work_dir}/down-085.log" 2>&1
 grep -Fq "down 085_agent_runner_foundation" "${work_dir}/down-085.log"
 run_migrate down >"${work_dir}/down-084.log" 2>&1
@@ -219,7 +222,7 @@ VALUES (
 );
 " >/dev/null
 
-log "reapplying 074 -> 085 and verifying schema, metadata, retention, grants, and stdio persistence"
+log "reapplying 074 -> 086 and verifying schema, metadata, retention, grants, and stdio persistence"
 run_migrate up >"${work_dir}/reup.log" 2>&1
 grep -Fq "up 074_mcp_tools_foundation" "${work_dir}/reup.log"
 grep -Fq "up 075_mcp_runtime_role_grants" "${work_dir}/reup.log"
@@ -233,6 +236,7 @@ grep -Fq "up 082_assistant_library" "${work_dir}/reup.log"
 grep -Fq "up 083_skill_supply_chain" "${work_dir}/reup.log"
 grep -Fq "up 084_agent_orchestrator_foundation" "${work_dir}/reup.log"
 grep -Fq "up 085_agent_runner_foundation" "${work_dir}/reup.log"
+grep -Fq "up 086_agent_broker_foundation" "${work_dir}/reup.log"
 psql_command "
 DO \$\$
 DECLARE
@@ -288,4 +292,4 @@ log "proving a second replay remains a no-op"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 
-log "passed (fresh through 085, replay, guarded 076 down/up, metadata, retention, runtime grants, stdio repository lifecycle)"
+log "passed (fresh through 086, replay, guarded 076 down/up, metadata, retention, runtime grants, stdio repository lifecycle)"

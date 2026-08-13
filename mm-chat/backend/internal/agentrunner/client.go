@@ -92,6 +92,16 @@ func (client *RPCClient) Call(ctx context.Context, request Request) (Response, e
 	if err != nil || len(body) > maxRPCBytes {
 		return Response{}, ErrRuntimeUnavailable
 	}
+	decoded, decodeErr := decodeReplayResponse(request.Method, body)
+	if decodeErr == nil && decoded.RequestID == request.RequestID && decoded.Nonce == request.Nonce {
+		if operationErr := responseOperationError(decoded); operationErr != nil {
+			return decoded, operationErr
+		}
+		if response.StatusCode != http.StatusOK {
+			return Response{}, ErrRuntimeUnavailable
+		}
+		return decoded, nil
+	}
 	if response.StatusCode != http.StatusOK {
 		var failure struct {
 			Error RPCError `json:"error"`
@@ -101,9 +111,7 @@ func (client *RPCClient) Call(ctx context.Context, request Request) (Response, e
 		}
 		return Response{}, rpcCodeError(failure.Error.Code)
 	}
-	decoded, err := decodeReplayResponse(request.Method, body)
-	if err != nil || decoded.RequestID != request.RequestID || decoded.Nonce != request.Nonce ||
-		decoded.Method != request.Method+".result" {
+	if decodeErr != nil || decoded.RequestID != request.RequestID || decoded.Nonce != request.Nonce {
 		return Response{}, ErrRuntimeUnavailable
 	}
 	return decoded, nil
@@ -123,12 +131,18 @@ func rpcCodeError(code string) error {
 		return ErrIsolationUnavailable
 	case ErrorSnapshotMismatch:
 		return ErrSnapshotMismatch
+	case ErrorGrantDenied, ErrorBudgetExhausted, ErrorApprovalRequired, ErrorApprovalDenied,
+		ErrorIntentExpired, ErrorEgressDenied, ErrorSecretDenied, ErrorProjectConflict,
+		ErrorArtifactDenied, ErrorExecutorUnavailable:
+		return ErrRuntimeUnavailable
 	case ErrorLeaseStale:
 		return ErrLeaseStale
 	case ErrorKillSwitchActive:
 		return ErrKillSwitchActive
 	case ErrorInvalidTransition:
 		return ErrInvalidTransition
+	case ErrorOutcomeUnknown:
+		return ErrOutcomeUnknown
 	default:
 		return ErrRuntimeUnavailable
 	}

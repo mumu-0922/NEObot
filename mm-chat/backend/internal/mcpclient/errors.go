@@ -1,6 +1,10 @@
 package mcpclient
 
-import "errors"
+import (
+	"errors"
+
+	"neo-chat/mm-chat/backend/internal/safenet"
+)
 
 var (
 	ErrDisabled                = errors.New("mcp is disabled")
@@ -19,8 +23,8 @@ var (
 	ErrToolUnsupported         = errors.New("mcp tool schema is unsupported")
 	ErrToolArgumentsInvalid    = errors.New("mcp tool arguments are invalid")
 	ErrToolBudget              = errors.New("mcp tool budget exhausted")
-	ErrResponseTooLarge        = errors.New("mcp response exceeds configured limit")
-	ErrURLBlocked              = errors.New("mcp url is blocked")
+	ErrResponseTooLarge        = safenet.ErrResponseTooLarge
+	ErrURLBlocked              = safenet.ErrURLBlocked
 	ErrManifestInvalid         = errors.New("mcp manifest is invalid")
 	ErrCredentialRequired      = errors.New("mcp credential is required")
 	ErrCredentialInvalid       = errors.New("mcp credential is invalid")

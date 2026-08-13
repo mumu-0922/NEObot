@@ -42,6 +42,8 @@ schema = json.loads((root / "docs/contracts/schemas/neo-runner-rpc.schema.json")
 refs = {item["$ref"] for item in schema["oneOf"]}
 assert "#/$defs/listRequest" in refs and "#/$defs/listResponse" in refs
 assert "#/$defs/reconcileRequest" in refs and "#/$defs/reconcileResponse" in refs
+assert "#/$defs/prepareRequest" in refs and "#/$defs/prepareResponse" in refs
+assert "#/$defs/commitRequest" in refs and "#/$defs/commitResponse" in refs
 probe_features = schema["$defs"]["probeRequest"]["allOf"][1]["properties"]["body"]["properties"]["requiredFeatures"]["items"]["enum"]
 for feature in ("snapshot_workspace", "network_none", "subordinate_ids", "cgroup_reap"):
     assert feature in probe_features

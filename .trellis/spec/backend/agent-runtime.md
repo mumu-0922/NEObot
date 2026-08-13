@@ -7,9 +7,9 @@
 Apply this contract for Agent Skill admission, Run/Step/Attempt persistence,
 Capability Grants, Runner RPC, side effects, Child Agents, Cron, Draft learning,
   Kill Switches, or the legacy text-Skill cutover. G20.1 implements the
-  no-execute supply chain, G20.2 the internal durable Orchestrator, and G20.3
-  the held Runner source/control foundation; current Chat, MCP and `/v1/code/executions`
-  behavior remains unchanged.
+  no-execute supply chain, G20.2 the internal durable Orchestrator, G20.3 the
+  held Runner and G20.4 the held Broker source/control foundation; current
+  Agent API, Chat, MCP and `/v1/code/executions` behavior remains unchanged.
 
 ### 2. Signatures
 
@@ -18,6 +18,8 @@ Capability Grants, Runner RPC, side effects, Child Agents, Cron, Draft learning,
 - Schemas: `mm-chat/docs/contracts/schemas/neo-*.schema.json`.
 - Fixtures: `mm-chat/docs/contracts/fixtures/agent-runtime/`.
 - Offline gate: `bash mm-chat/scripts/verify-agent-runtime-phase0.sh`.
+- Broker gates: `bash mm-chat/scripts/verify-agent-broker.sh` and
+  `bash mm-chat/scripts/verify-agent-broker-postgres17.sh`.
 - Epic slices: `mm-chat/docs/tracking/g20-agent-runtime-plan.md`.
 
 ### 3. Contracts
@@ -36,6 +38,43 @@ Capability Grants, Runner RPC, side effects, Child Agents, Cron, Draft learning,
   `scripts/verify-agent-runner*.sh`. It has no HTTP/startup import and does not
   enable Runtime. Exact-host readiness remains held at
   `ISOLATION_UNAVAILABLE` until an approved release passes as `neo-runner`.
+- G20.4 signatures are `internal/agentbroker`, `internal/safenet`, migration
+  `086`, strict Runner Prepare/Commit relay shapes and
+  `scripts/verify-agent-broker{,-postgres17}.sh`. No package is imported by an
+  HTTP/Chat/startup path; the default Runner relay returns
+  `RUNTIME_UNAVAILABLE`, and production Project/object/vault/MCP mutation
+  wiring remains held.
+- PostgreSQL is the only intent/approval/receipt authority. Prepare binds
+  subject, package/runtime/grant/registry, lease generation/owner/token digest,
+  canonical arguments, approval, budget, expiry and Kill Switch epoch before
+  any executor. Exact Commit replay returns the stored sanitized receipt;
+  possible-send ambiguity becomes terminal `outcome_unknown`, never a blind
+  retry.
+- Cancellation and Commit serialize on the exact immutable intent. A valid
+  cancellation may advance only `awaiting_approval|approved -> canceled` and
+  `prepared Attempt -> canceled`; once Commit owns `committing`, cancellation
+  cannot assert rollback. The cancellation fact is append-only and exact replay
+  is stable.
+- Grant revocation is append-only and checked by Prepare, Commit and Secret
+  handle functions. Service-coordinated revocation also clears matching
+  in-memory Secret bytes; terminal Commit, cancellation and expiry clear their
+  corresponding memory-only handles after the PostgreSQL transition.
+- `agent_effect_control` has SELECT plus exact function execution and no table
+  DML. Public API, Orchestrator and Runner roles receive no effect authority;
+  Runner remains credential-free.
+- Agent Egress and MCP must share `internal/safenet`; Agent allowlists are exact
+  HTTPS origins and reject IP literals. Redirect/dial resolution is rechecked,
+  cross-origin credentials are stripped and environment proxies stay disabled.
+- Secret plaintext and handle plaintext are memory-only. Durable state stores
+  only handle digest, bindings, expiry and sanitized state. Handles are
+  single-use, short-lived and non-renewable. Validate the exact committing
+  intent, live lease and current Kill Switch before resolution and consume;
+  terminal Commit revokes all remaining active handles.
+- Until a production Project store exists, Project mutation is an interface plus
+  deterministic CAS fake only. Artifact publication is object-before-row with
+  compensating object deletion and never mutates Project. Recompute exact size
+  and SHA-256 from one bounded quarantine snapshot, then scan and store those
+  same bytes to close replacement/TOCTOU drift.
 - PostgreSQL replay authority binds caller identity + Runner ID + request ID +
   nonce + authority-request fingerprint. The signed ticket carries the same
   nonce/fingerprint, and Runner ID must equal the current Attempt lease
@@ -126,6 +165,15 @@ Capability Grants, Runner RPC, side effects, Child Agents, Cron, Draft learning,
   `verify-agent-runner-host.sh`. A source or fake-driver pass is never exact-host
   promotion evidence.
 - Side effects: Prepare/Commit crash/acknowledgement-loss/idempotency matrix.
+- G20.4 source/control: focused race tests for `internal/agentbroker`,
+  `internal/safenet`, `internal/mcpclient` and `internal/agentrunner`; migration
+  schema coverage; `verify-agent-broker.sh`; PostgreSQL 17
+  `verify-agent-broker-postgres17.sh`; Runner/Phase 0 gates; and expected-nonzero
+  exact-host `ISOLATION_UNAVAILABLE`. Advance every older PostgreSQL tail drill
+  through migration `086` before accepting the slice.
+- The G20.4 PostgreSQL drill must include Cancel-vs-Commit concurrency with one
+  winner/zero dispatch when Cancel wins, Grant-revocation zero dispatch, and
+  `outcome_unknown` atomic Run/Step/Attempt projection plus append-only events.
 - Child: forged Parent, depth 2, widened grant/model/package/budget and registry
   alias rejection before launch.
 - Cutover: backup, storage purge, zero legacy execution references, history fact,

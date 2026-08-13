@@ -1,8 +1,9 @@
 # Neo Agent Runtime Architecture
 
-Status: G20.1 no-execute Skill supply chain, G20.2 durable Orchestrator and
-G20.3 Runner source/control foundations implemented. Exact-host isolation
-promotion is held; production Runtime remains disabled.
+Status: G20.1 no-execute Skill supply chain, G20.2 durable Orchestrator, G20.3
+Runner and G20.4 brokered-effect source/control foundations implemented.
+Exact-host isolation and production relay promotion are held; production
+Runtime remains disabled.
 
 ## Purpose and invariant
 
@@ -198,6 +199,41 @@ Project writes are side effects and follow Prepare/Commit. Artifact publication
 does not imply Project mutation. An Artifact containing a secret or unsafe type
 is quarantined/rejected and never silently attached to chat.
 
+## Brokered effect authority
+
+G20.4 implements the held control foundation in
+`backend/internal/agentbroker/` and migration `086`:
+
+- the Tool Registry is a deterministic intersection of the current server
+  catalog, admitted package declarations and frozen Capability Grant;
+- depth-1 forbidden Tools are physically removed before the Registry
+  fingerprint is computed;
+- PostgreSQL owns immutable intents, append-only approval decisions, one Commit
+  claim, sanitized receipts, budgets and secret-handle digests;
+- Prepare binds the current subject, snapshot, grant, registry, lease token
+  digest, Kill Switch epoch, canonical arguments and expiry without performing
+  a mutable effect;
+- Commit rechecks those fences and returns the original terminal receipt on an
+  exact replay. A possibly dispatched write without an exact status proof ends
+  as `outcome_unknown` and is never blindly retried;
+- Agent Egress and MCP reuse `backend/internal/safenet` for dial-time DNS/IP and
+  redirect policy. Agent allowlists additionally require exact HTTPS origins
+  and reject IP literals;
+- Secret values and plaintext handles stay process-memory-only until one bound
+  consume; durable state contains only digests and sanitized bindings, and
+  issuance/consume recheck the exact committing intent, lease and Kill Switch;
+- Project mutation is represented only by a bounded patch interface and
+  deterministic CAS test fake because no production Project file store exists;
+- Artifact publication rechecks exact quarantine size and SHA-256 over the same
+  bounded bytes it scans, then uses object-before-row ordering and compensating
+  object deletion. It never implies a Project write.
+
+`neo-runnerd` validates and replay-fences strict `prepare` and `commit` relay
+messages but its default injected relay returns `RUNTIME_UNAVAILABLE`. The
+Runner still owns no database, vault, object-store or MCP credential. There is
+no public Agent route, Chat/frontend integration, startup worker, production
+Project mutation or live mutable executor wiring in this group.
+
 ## Delegation
 
 - Root Run depth is `0`; Child Run depth is exactly `1`; no other depth validates.
@@ -243,6 +279,7 @@ snapshot.
 | Sandbox -> network bypass | I/E | none/brokered network, DNS/IP/redirect checks, metadata/link-local denial |
 | output/artifact resource exhaustion | D | byte/file/PID/memory/CPU/wall limits, streaming backpressure and quota |
 | cancellation vs Commit ambiguity | R/T | Prepare/Commit event ledger, idempotency receipt, `outcome_unknown` precedence |
+| Grant revoked while Secret bytes are memory-resident | I/E | append-only revocation, durable handle revoke and control-service in-memory zeroization |
 | Child recursive delegation | E/D | max depth 1 plus physical Tool removal and launch rejection fixture |
 | operator/Runtime kill denial | D/R | hierarchical durable Kill Switch, terminal event and process-group/cgroup reap |
 | learning modifies live Skill | T/E | Draft quarantine, human Promote, new fingerprint, snapshot immutability |
@@ -284,13 +321,16 @@ not reveal private chain-of-thought.
 ## Migration and rollback boundary
 
 G20.1 adds Skill supply/API/persistence, G20.2 adds the internal durable
-Orchestrator and G20.3 adds the credential-free host Runner boundary. G20.3
+Orchestrator, G20.3 adds the credential-free host Runner boundary, and G20.4
+adds the held Tool Registry and brokered-effect authority. G20.3
 implements strict TLS 1.3 mTLS RPC, PostgreSQL plus local-fsync replay fences,
 release probing, one rootless Podman Sandbox per Attempt, full Workspace
 revalidation, bounded tmpfs Scratch, exact kill/reap/reconcile and local Unix
 Artifact quarantine. The release manifest remains unapproved and the current
 host returns `ISOLATION_UNAVAILABLE`; no API/Chat startup path imports it.
-None of these groups changes Chat or legacy text-Skill behavior.
+G20.4 adds migration `086`, shared safe-network enforcement and strict
+Prepare/Commit relay shapes, but leaves the production relay and all mutations
+unwired. None of these groups changes Chat or legacy text-Skill behavior.
 The future final cutover:
 
 1. freezes new legacy Skill installation/editing;

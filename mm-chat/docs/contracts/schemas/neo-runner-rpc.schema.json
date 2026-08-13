@@ -115,7 +115,9 @@
             "commit",
             "commit.result",
             "list",
-            "list.result"
+            "list.result",
+            "reconcile",
+            "reconcile.result"
           ]
         },
         "requestId": {
@@ -354,6 +356,15 @@
             "GRANT_DENIED",
             "LEASE_STALE",
             "KILL_SWITCH_ACTIVE",
+            "BUDGET_EXHAUSTED",
+            "APPROVAL_REQUIRED",
+            "APPROVAL_DENIED",
+            "INTENT_EXPIRED",
+            "EGRESS_DENIED",
+            "SECRET_DENIED",
+            "PROJECT_CONFLICT",
+            "ARTIFACT_DENIED",
+            "EXECUTOR_UNAVAILABLE",
             "INVALID_TRANSITION",
             "OUTCOME_UNKNOWN",
             "INTERNAL_ERROR"
@@ -976,19 +987,41 @@
               "additionalProperties": false,
               "required": [
                 "attempt",
+                "authority",
+                "snapshotFingerprint",
                 "grantId",
+                "grantFingerprint",
+                "registryFingerprint",
+                "toolIdentity",
                 "capability",
                 "action",
                 "resource",
-                "argumentsFingerprint"
+                "arguments",
+                "argumentsFingerprint",
+                "ttlSeconds"
               ],
               "properties": {
                 "attempt": {
                   "$ref": "#/$defs/attemptRef"
                 },
+                "authority": {
+                  "$ref": "#/$defs/authority"
+                },
+                "snapshotFingerprint": {
+                  "$ref": "#/$defs/fingerprint"
+                },
                 "grantId": {
                   "type": "string",
                   "pattern": "^grant_[a-z0-9]{16,64}$"
+                },
+                "grantFingerprint": {
+                  "$ref": "#/$defs/fingerprint"
+                },
+                "registryFingerprint": {
+                  "$ref": "#/$defs/fingerprint"
+                },
+                "toolIdentity": {
+                  "$ref": "#/$defs/identifier"
                 },
                 "capability": {
                   "$ref": "#/$defs/identifier"
@@ -1001,8 +1034,18 @@
                   "minLength": 1,
                   "maxLength": 256
                 },
+                "arguments": {},
                 "argumentsFingerprint": {
                   "$ref": "#/$defs/fingerprint"
+                },
+                "baseRevision": {
+                  "type": "string",
+                  "pattern": "^(rev_[A-Za-z0-9_-]{8,128}|sha256:[a-f0-9]{64})$"
+                },
+                "ttlSeconds": {
+                  "type": "integer",
+                  "minimum": 60,
+                  "maximum": 3600
                 }
               }
             }
@@ -1043,37 +1086,40 @@
               "$ref": "#/$defs/nonce"
             },
             "body": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "prepared",
-                "intentId",
-                "intentFingerprint",
-                "approval",
-                "expiresAt"
-              ],
-              "properties": {
-                "prepared": {
-                  "const": true
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "prepared",
+                    "intentId",
+                    "intentFingerprint",
+                    "idempotencyKey",
+                    "approval",
+                    "expiresAt",
+                    "replay"
+                  ],
+                  "properties": {
+                    "prepared": { "const": true },
+                    "intentId": { "type": "string", "pattern": "^intent_[a-z0-9]{16,64}$" },
+                    "intentFingerprint": { "$ref": "#/$defs/fingerprint" },
+                    "approval": { "enum": ["automatic", "once", "per_commit"] },
+                    "expiresAt": { "$ref": "#/$defs/dateTime" },
+                    "idempotencyKey": { "type": "string", "pattern": "^commit_[A-Za-z0-9_-]{24,128}$" },
+                    "replay": { "type": "boolean" }
+                  }
                 },
-                "intentId": {
-                  "type": "string",
-                  "pattern": "^intent_[a-z0-9]{16,64}$"
-                },
-                "intentFingerprint": {
-                  "$ref": "#/$defs/fingerprint"
-                },
-                "approval": {
-                  "enum": [
-                    "automatic",
-                    "once",
-                    "per_commit"
-                  ]
-                },
-                "expiresAt": {
-                  "$ref": "#/$defs/dateTime"
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["prepared", "replay", "error"],
+                  "properties": {
+                    "prepared": { "const": false },
+                    "replay": { "const": false },
+                    "error": { "$ref": "#/$defs/error" }
+                  }
                 }
-              }
+              ]
             }
           }
         }
@@ -1116,6 +1162,10 @@
               "additionalProperties": false,
               "required": [
                 "attempt",
+                "authority",
+                "snapshotFingerprint",
+                "grantFingerprint",
+                "registryFingerprint",
                 "intentId",
                 "intentFingerprint",
                 "approvalId",
@@ -1124,6 +1174,18 @@
               "properties": {
                 "attempt": {
                   "$ref": "#/$defs/attemptRef"
+                },
+                "authority": {
+                  "$ref": "#/$defs/authority"
+                },
+                "snapshotFingerprint": {
+                  "$ref": "#/$defs/fingerprint"
+                },
+                "grantFingerprint": {
+                  "$ref": "#/$defs/fingerprint"
+                },
+                "registryFingerprint": {
+                  "$ref": "#/$defs/fingerprint"
                 },
                 "intentId": {
                   "type": "string",
@@ -1183,7 +1245,8 @@
               "additionalProperties": false,
               "required": [
                 "outcome",
-                "idempotencyKey"
+                "idempotencyKey",
+                "replay"
               ],
               "properties": {
                 "outcome": {
@@ -1203,6 +1266,9 @@
                 },
                 "error": {
                   "$ref": "#/$defs/error"
+                },
+                "replay": {
+                  "type": "boolean"
                 }
               },
               "allOf": [
@@ -1316,7 +1382,9 @@
           "enum": [
             "launch",
             "heartbeat",
-            "cancel"
+            "cancel",
+            "prepare",
+            "commit"
           ]
         },
         "requestId": {

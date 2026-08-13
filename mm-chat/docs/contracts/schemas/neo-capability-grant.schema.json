@@ -91,7 +91,10 @@
       "additionalProperties": false,
       "required": ["userId", "projectId", "assistantId"],
       "properties": {
-        "userId": { "type": "string", "pattern": "^user_[a-z0-9]{8,64}$" },
+        "userId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        },
         "projectId": { "type": "string", "pattern": "^project_[a-z0-9]{8,64}$" },
         "assistantId": { "type": "string", "pattern": "^assistant_[a-z0-9]{8,64}$" }
       }

@@ -70,12 +70,13 @@ database_url="$(database_url_for "${container_name}")"
 server_major="$(psql_command "${container_name}" 'SHOW server_version_num' | cut -c1-2)"
 [[ "${server_major}" == "17" ]] || { echo "expected PostgreSQL 17" >&2; exit 1; }
 
-log "building and applying 001 -> 085"
+log "building and applying 001 -> 086"
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/mm-chat-migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"; }
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 084_agent_orchestrator_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 085_agent_runner_foundation" "${work_dir}/fresh.log"
+grep -Fq "up 086_agent_broker_foundation" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
@@ -116,6 +117,8 @@ log "creating retained authority for guarded down and dump/restore"
   MM_CHAT_AGENT_RETAIN_FIXTURE=1 \
   go test -count=1 -run '^TestPostgresAuthority' ./internal/agentorchestrator)
 
+run_migrate down >"${work_dir}/guard-peel-086.log" 2>&1
+grep -Fq "down 086_agent_broker_foundation" "${work_dir}/guard-peel-086.log"
 run_migrate down >"${work_dir}/guard-peel-085.log" 2>&1
 grep -Fq "down 085_agent_runner_foundation" "${work_dir}/guard-peel-085.log"
 set +e
@@ -127,8 +130,9 @@ if [[ "${guard_status}" -eq 0 ]] || ! grep -Fq "AGENT_ORCHESTRATOR_DOWN_DATA_EXI
   echo "Agent Orchestrator PostgreSQL 17 drill: non-empty down did not fail closed" >&2
   exit 1
 fi
-run_migrate up >"${work_dir}/guard-reapply-085.log" 2>&1
-grep -Fq "up 085_agent_runner_foundation" "${work_dir}/guard-reapply-085.log"
+run_migrate up >"${work_dir}/guard-reapply-tail.log" 2>&1
+grep -Fq "up 085_agent_runner_foundation" "${work_dir}/guard-reapply-tail.log"
+grep -Fq "up 086_agent_broker_foundation" "${work_dir}/guard-reapply-tail.log"
 
 log "dumping and restoring content-free control-plane authority"
 docker exec -e "PGPASSWORD=${database_password}" "${container_name}" \
@@ -167,7 +171,9 @@ END
 \$\$;
 " >/dev/null
 
-log "rolling back empty 085, then proving clean 083 -> 084 -> 083 -> 085 replay"
+log "rolling back empty 086 and 085, then proving clean 083 -> 084 -> 083 -> 086 replay"
+run_migrate down >"${work_dir}/down-086.log" 2>&1
+grep -Fq "down 086_agent_broker_foundation" "${work_dir}/down-086.log"
 run_migrate down >"${work_dir}/down-085.log" 2>&1
 grep -Fq "down 085_agent_runner_foundation" "${work_dir}/down-085.log"
 psql_command "${container_name}" "
@@ -181,6 +187,7 @@ grep -Fq "down 084_agent_orchestrator_foundation" "${work_dir}/down.log"
 run_migrate up >"${work_dir}/reup.log" 2>&1
 grep -Fq "up 084_agent_orchestrator_foundation" "${work_dir}/reup.log"
 grep -Fq "up 085_agent_runner_foundation" "${work_dir}/reup.log"
+grep -Fq "up 086_agent_broker_foundation" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 

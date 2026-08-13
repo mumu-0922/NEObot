@@ -1,8 +1,9 @@
 # Neo Agent Runtime Executable Contract
 
-Status: G20.1 supply-chain, G20.2 durable Orchestrator and G20.3 Runner
-source/control foundations implemented. Exact-host isolation promotion is held;
-all production Agent execution remains disabled.
+Status: G20.1 supply-chain, G20.2 durable Orchestrator, G20.3 Runner and G20.4
+brokered-effect source/control foundations implemented. Exact-host isolation
+and production relay promotion are held; all production Agent execution remains
+disabled.
 
 ## 1. Scope and hard gates
 
@@ -169,6 +170,23 @@ G20.3 implementation signatures:
   exact-host fail-closed behavior. Current host result is
   `ISOLATION_UNAVAILABLE`, not production evidence.
 
+G20.4 implementation signatures:
+
+- `backend/internal/agentbroker/` owns deterministic Registry construction,
+  Prepare/approval/Commit coordination, Egress/Secret mediation and narrow
+  Project, Artifact and MCP executor seams without HTTP/startup wiring;
+- migration `086` owns immutable intents, append-only approvals, Commit
+  claims/receipts, budget fences and secret-handle digests through the narrow
+  `agent_effect_control` role;
+- `backend/internal/safenet/` is the shared MCP/Agent DNS, address, redirect and
+  response-limit policy boundary;
+- Runner `prepare` and `commit` messages are strict authenticated relay shapes.
+  The default relay remains unavailable and Runner receives no database, vault,
+  object-store or MCP credential;
+- `scripts/verify-agent-broker{,-postgres17}.sh` prove source/control,
+  concurrency, least privilege, recovery, guarded rollback and dump/restore.
+  They are not production isolation or mutable-executor evidence.
+
 ## 6. Runner RPC
 
 ### Transport
@@ -184,9 +202,13 @@ G20.3 implementation signatures:
 - responses echo request ID and carry no raw Secret, prompt, Tool result or
   Workspace content.
 
-G20.3 strictly serves `probe`, `launch`, `heartbeat`, `cancel` and `list`.
-`prepare` and `commit` remain schema-reserved and unavailable until G20.4.
-Method/body mismatch, unknown field, duplicate key, expired
+G20.4 activates strict `prepare` and `commit` relay shapes in addition to the
+G20.3 `probe`, `launch`, `heartbeat`, `cancel` and `list` methods. The relay
+validates method-specific arguments, canonical argument fingerprint, signed
+authority fingerprint and local replay claim, then calls an injected Broker
+interface. Its default implementation returns `RUNTIME_UNAVAILABLE`; there is
+no production Backend channel or effect execution. Method/body mismatch,
+unknown field, duplicate key, expired
 nonce, stale lease, fingerprint mismatch or unsupported version fails closed.
 
 ### Capability probe
@@ -288,8 +310,11 @@ management is never present in a Child Registry.
 - Grant references an opaque `secret_ref`; Sandbox never receives vault bytes.
 - Broker resolves it for the exact subject/Run/Attempt/capability/action/
   destination and issues the narrowest possible short-lived handle.
+- PostgreSQL validates the exact `committing` intent, live lease generation and
+  current Kill Switch both before vault resolution and before handle consume.
 - Handles are non-renewable by Sandbox, single-action where possible, and
-  revoked on terminal/kill/lease expiry.
+  revoked on terminal/kill/lease expiry; Commit completion revokes all remaining
+  active handles before returning its durable receipt.
 - Secret values/handles never enter prompt, environment, argv, Workspace,
   Scratch persistence, Artifact, Tool output, event, log or metric.
 - If a third-party protocol requires a credential, the Broker adds it outside
@@ -305,7 +330,9 @@ management is never present in a Child Registry.
   kill, orphan reconcile and Runner restart cleanup path.
 - Artifact bytes stream to Backend/Broker without object-store credentials.
   Backend enforces quota, media/type policy, secret/malware scan, owner binding,
-  content fingerprint and object-before-row deletion.
+  exact size plus SHA-256 over one bounded byte snapshot, and object-before-row
+  deletion. The scanner and object write consume the same verified bytes so a
+  quarantine replacement cannot change the published content.
 - Symlinks, hardlinks, devices, sockets, FIFOs and path escape never cross from
   Sandbox into Project or Artifact storage.
 
@@ -318,6 +345,19 @@ Prepare must not perform the external mutation.
 Backend persists the prepared intent and any user approval. `commit` rechecks
 the same intent fingerprint, lease generation, approval, Kill Switch,
 revocation, expiry and budget. It then uses one stable idempotency key.
+
+`cancel` is an authenticated user/operator action bound to an append-only
+cancellation ID plus the exact intent fingerprint. It can advance only an
+`awaiting_approval` or `approved` intent and its `prepared` Attempt. PostgreSQL
+locks the same intent for Cancel and Commit, so exactly one wins. Exact Cancel
+replay is stable; moving its ID, actor or reason is `REPLAY_DETECTED`. A Commit
+winner rejects cancellation and remains governed by receipt/`outcome_unknown`.
+
+Grant revocation is a separate append-only authority bound to the exact Grant
+fingerprint, actor and reason. Prepare, Commit, Secret creation and Secret
+consumption all recheck it. Revocation changes no completed receipt; it revokes
+active durable handle digests and the coordinating control service zeroizes
+matching memory-only Secret bytes.
 
 | Crash/race point | Required result |
 | --- | --- |
@@ -452,3 +492,17 @@ It validates schemas, positive/negative fixtures, cross-contract invariants,
 required design anchors and the current fail-closed code execution route. It is
 offline and must never claim the production Runner or Isolation Acceptance Suite
 passed.
+
+The implemented G20.4 source/control foundation additionally requires:
+
+```bash
+bash scripts/verify-agent-broker.sh
+bash scripts/verify-agent-broker-postgres17.sh
+bash scripts/verify-agent-runner.sh
+bash scripts/verify-agent-runtime-phase0.sh
+bash scripts/verify-agent-runner-host.sh # expected nonzero on the current host
+```
+
+The host command must still report `ISOLATION_UNAVAILABLE`. Passing the offline
+and disposable-database gates does not authorize an Agent API, Chat/frontend
+path, production relay, Project mutation, mutable canary or text-Skill deletion.

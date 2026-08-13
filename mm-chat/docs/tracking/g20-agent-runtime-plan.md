@@ -1,8 +1,9 @@
 # G20 Neo Agent Runtime Epic Plan
 
-Status: G20.0 Phase 0, G20.1 Skill supply chain, G20.2 durable Orchestrator and
-G20.3 Runner source/control foundation complete. Exact-host isolation promotion
-is held; G20.4 has not started.
+Status: G20.0 Phase 0, G20.1 Skill supply chain, G20.2 durable Orchestrator,
+G20.3 Runner and G20.4 brokered-effect source/control foundations complete.
+Exact-host isolation and production relay promotion are held; G20.5 has not
+started.
 
 ## Locked outcome
 
@@ -102,16 +103,36 @@ the exact `neo-runner` service account. No Runtime/API/Chat route is enabled.
 
 ## G20.4 — Tool, Egress, Secret and side effects
 
+Status: source/control foundation complete (2026-08-14); production relay,
+mutable effects and exact-host promotion held.
+
 - Build Registry from frozen Capability Grant and current Tool authority.
 - Add none/allowlist/brokered Egress with DNS/IP/redirect/reconnect/size fences.
 - Add action-scoped short-lived Secret Broker handles with zero-persistence
   canaries.
 - Implement Prepare/Commit, explicit approvals, idempotency receipts and
   `outcome_unknown` across MCP/external writes and Project patches.
+- Serialize authenticated pre-Commit cancellation against Commit on the exact
+  durable intent; persist immutable cancellation facts and prove one winner.
+- Persist append-only Grant revocation and pair durable handle revocation with
+  immediate in-memory Secret byte zeroization.
 
 Promotion gate: authorization matrix, SSRF/DNS rebinding, secret zero-leak,
 Project CAS, Artifact quarantine and full crash/acknowledgement-loss matrix pass.
 Only an official synthetic read-only canary may run before mutable promotion.
+
+Implemented evidence: deterministic Grant/Tool Registry intersection with
+physical depth-1 forbidden-Tool removal; migration `086` immutable intents,
+append-only approvals, one-claim receipts, budgets, lease/Kill-Switch fences and
+secret-handle digests; shared `internal/safenet`; exact Egress and single-use
+Secret brokers; bounded Project patch plus deterministic CAS fake;
+object-before-row Artifact seam; mutable MCP possible-send no-retry adapter;
+strict Runner Prepare/Commit relay; disposable PostgreSQL 17 replay,
+least-privilege, concurrency, guarded down, dump/restore and all older-tail
+drills. Held evidence: public Agent API, Chat/frontend/startup wiring,
+authenticated production relay, real Project/object/vault adapters, live
+mutable executor/canary and target-host isolation. The current host remains
+`ISOLATION_UNAVAILABLE`, and legacy text Skills remain untouched through G20.8.
 
 ## G20.5 — Child Agent depth 1
 

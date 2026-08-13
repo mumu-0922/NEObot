@@ -65,7 +65,7 @@ psql_command() {
 server_major="$(psql_command "SHOW server_version_num" | cut -c1-2)"
 [[ "${server_major}" == "17" ]] || { echo "expected PostgreSQL 17" >&2; exit 1; }
 
-log "building and applying 001 -> 085"
+log "building and applying 001 -> 086"
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/mm-chat-migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"; }
 run_migrate up >"${work_dir}/fresh.log" 2>&1
@@ -73,6 +73,7 @@ grep -Fq "up 082_assistant_library" "${work_dir}/fresh.log"
 grep -Fq "up 083_skill_supply_chain" "${work_dir}/fresh.log"
 grep -Fq "up 084_agent_orchestrator_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 085_agent_runner_foundation" "${work_dir}/fresh.log"
+grep -Fq "up 086_agent_broker_foundation" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
@@ -107,7 +108,9 @@ log "running repository ownership and CAS lifecycle"
 (cd "${backend_dir}" && MM_CHAT_TEST_DATABASE_URL="${database_url}" \
   go test -count=1 -run '^TestAssistantPostgresRepositoryAuthorityAndCAS$' ./internal/agents)
 
-log "rolling back the clean 085, 084 and 083 tails before the Assistant 082 replay"
+log "rolling back the clean 086 through 083 tails before the Assistant 082 replay"
+run_migrate down >"${work_dir}/down-086.log" 2>&1
+grep -Fq "down 086_agent_broker_foundation" "${work_dir}/down-086.log"
 run_migrate down >"${work_dir}/down-085.log" 2>&1
 grep -Fq "down 085_agent_runner_foundation" "${work_dir}/down-085.log"
 run_migrate down >"${work_dir}/down-084.log" 2>&1
@@ -115,7 +118,7 @@ grep -Fq "down 084_agent_orchestrator_foundation" "${work_dir}/down-084.log"
 run_migrate down >"${work_dir}/down-083.log" 2>&1
 grep -Fq "down 083_skill_supply_chain" "${work_dir}/down-083.log"
 
-log "proving clean 081 -> 082 -> 081 -> 085 replay"
+log "proving clean 081 -> 082 -> 081 -> 086 replay"
 run_migrate down >"${work_dir}/down.log" 2>&1
 grep -Fq "down 082_assistant_library" "${work_dir}/down.log"
 psql_command "
@@ -133,7 +136,8 @@ grep -Fq "up 082_assistant_library" "${work_dir}/reup.log"
 grep -Fq "up 083_skill_supply_chain" "${work_dir}/reup.log"
 grep -Fq "up 084_agent_orchestrator_foundation" "${work_dir}/reup.log"
 grep -Fq "up 085_agent_runner_foundation" "${work_dir}/reup.log"
+grep -Fq "up 086_agent_broker_foundation" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 
-log "passed (fresh through 085, schema/grants, repository ownership/CAS, clean 082 down/up with 083-085 tail replay)"
+log "passed (fresh through 086, schema/grants, repository ownership/CAS, clean 082 down/up with 083-086 tail replay)"

@@ -3,7 +3,6 @@ package mcpclient
 import (
 	"context"
 	"errors"
-	"net/http"
 	"net/netip"
 	"testing"
 )
@@ -62,47 +61,4 @@ func TestValidateEndpointBlocksPrivateAndMalformedTargets(t *testing.T) {
 	if err != nil || endpoint.Port() != "8443" {
 		t.Fatalf("public endpoint = %v, %v", endpoint, err)
 	}
-}
-
-func TestSameOriginHeaderTransportOnlyAddsSecretsToBaseOrigin(t *testing.T) {
-	t.Parallel()
-	base, err := parseEndpoint("https://mcp.example/mcp", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	capture := &capturingRoundTripper{}
-	transport := sameOriginHeaderTransport{
-		base:       capture,
-		baseOrigin: origin(base),
-		headers:    http.Header{"Authorization": {"Bearer secret"}, "X-Api-Key": {"secret"}},
-	}
-	for _, raw := range []string{"https://mcp.example/next", "https://evil.example/next"} {
-		request, err := http.NewRequest(http.MethodGet, raw, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := transport.RoundTrip(request); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if got := capture.headers[0].Get("Authorization"); got != "Bearer secret" {
-		t.Fatalf("same-origin authorization = %q", got)
-	}
-	if got := capture.headers[1].Get("Authorization"); got != "" {
-		t.Fatalf("cross-origin authorization = %q", got)
-	}
-}
-
-type capturingRoundTripper struct {
-	headers []http.Header
-}
-
-func (r *capturingRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
-	r.headers = append(r.headers, request.Header.Clone())
-	return &http.Response{
-		StatusCode: http.StatusNoContent,
-		Header:     make(http.Header),
-		Body:       http.NoBody,
-		Request:    request,
-	}, nil
 }

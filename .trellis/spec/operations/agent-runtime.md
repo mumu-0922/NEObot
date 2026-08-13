@@ -18,13 +18,15 @@ bash mm-chat/scripts/verify-agent-orchestrator.sh
 bash mm-chat/scripts/verify-agent-orchestrator-postgres17.sh
 bash mm-chat/scripts/verify-agent-runner.sh
 bash mm-chat/scripts/verify-agent-runner-postgres17.sh
+bash mm-chat/scripts/verify-agent-broker.sh
+bash mm-chat/scripts/verify-agent-broker-postgres17.sh
 bash mm-chat/scripts/verify-agent-runner-host.sh # expected nonzero until exact host is prepared
 ```
 
-The first two Runner gates prove source/control and PostgreSQL behavior. The
-host gate must return `ISOLATION_UNAVAILABLE` here and becomes promotion
-evidence only when the exact approved service account/release passes the full
-suite.
+The Runner and Broker gates prove source/control and disposable PostgreSQL
+behavior. The host gate must return `ISOLATION_UNAVAILABLE` here and becomes
+promotion evidence only when the exact approved service account/release passes
+the full suite.
 
 ### 3. Contracts
 
@@ -57,6 +59,23 @@ suite.
   lifecycle authority through `agent_runner_control`; the host daemon has no DB
   role. Cleanup/reconcile and completed replay pruning remain usable while
   execution is disabled.
+- Migration `086` supplies durable Prepare/approval/Commit/receipt and
+  secret-handle-digest authority through `agent_effect_control`. The Runner,
+  public API and Orchestrator roles gain no table DML. Its default production
+  relay remains unavailable; do not manually invoke database functions as an
+  executor or promote the deterministic Project CAS fake.
+- A possibly sent mutable effect must be reconciled by its exact stable status
+  key. Without exact committed/not-sent proof, record `outcome_unknown`; never
+  retry with another key. Runtime-off operation still expires intents/revokes
+  handles and permits receipt reconciliation and cleanup.
+- Pre-Commit cancellation uses the migration `086` append-only cancellation
+  authority and races under the same exact intent lock as Commit. A cancellation
+  winner terminalizes the prepared Attempt and performs zero executor calls; a
+  `committing`/terminal intent rejects cancellation and follows receipt or
+  `outcome_unknown` recovery instead.
+- Grant revocation remains append-only. The control service must pair its
+  durable revocation with immediate zeroization of matching memory-only Secret
+  bytes; the database revokes every active durable handle digest.
 - Final legacy cutover is hard deletion only after verified backup, clean-copy,
   restart, history-label and rollback rehearsal. Never mix dual execution.
 

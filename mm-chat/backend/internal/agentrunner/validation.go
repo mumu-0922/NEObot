@@ -16,7 +16,7 @@ import (
 const maxRPCBytes = 256 << 10
 
 var (
-	prefixedID        = regexp.MustCompile(`^(rpc|run|step|attempt|grant|sandbox|workspace_snapshot)_[a-z0-9]{16,64}$`)
+	prefixedID        = regexp.MustCompile(`^(rpc|run|step|attempt|grant|intent|approval|sandbox|workspace_snapshot)_[a-z0-9]{16,64}$`)
 	fingerprint       = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 	noncePattern      = regexp.MustCompile(`^[A-Za-z0-9_-]{32,128}$`)
 	leasePattern      = regexp.MustCompile(`^lease_[A-Za-z0-9_-]{24,128}$`)
@@ -24,6 +24,8 @@ var (
 	identifierPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$`)
 	imagePattern      = regexp.MustCompile(`^[^@\s]+@sha256:[0-9a-f]{64}$`)
 	uuidPattern       = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+	revisionPattern   = regexp.MustCompile(`^(?:rev_[A-Za-z0-9_-]{8,128}|sha256:[a-f0-9]{64})$`)
+	commitKeyPattern  = regexp.MustCompile(`^commit_[A-Za-z0-9_-]{24,128}$`)
 )
 
 var allowedFeatures = stringSet(
@@ -60,6 +62,12 @@ func DecodeRequest(body []byte, now time.Time, maxSkew time.Duration) (Request, 
 	case MethodCancel:
 		request.Cancel = &CancelRequest{}
 		typed = request.Cancel
+	case MethodPrepare:
+		request.Prepare = &PrepareRequest{}
+		typed = request.Prepare
+	case MethodCommit:
+		request.Commit = &CommitRequest{}
+		typed = request.Commit
 	case MethodList:
 		request.List = &ListRequest{}
 		typed = request.List
@@ -121,6 +129,32 @@ func validateRequest(request *Request) error {
 		body := request.Cancel
 		if !validAttempt(body.Attempt) || !member(body.Mode, "cancel", "kill") ||
 			!identifierPattern.MatchString(body.ReasonCode) || len(body.ReasonCode) > 64 {
+			return ErrInvalidInput
+		}
+	case MethodPrepare:
+		body := request.Prepare
+		if !validAttempt(body.Attempt) || !validFingerprint(body.SnapshotFingerprint) ||
+			!validID(body.GrantID, "grant") || !validFingerprint(body.GrantFingerprint) ||
+			!validFingerprint(body.RegistryFingerprint) || !identifierPattern.MatchString(body.ToolIdentity) ||
+			!identifierPattern.MatchString(body.Capability) || !identifierPattern.MatchString(body.Action) ||
+			body.Resource == "" || len(body.Resource) > 256 || strings.ContainsAny(body.Resource, "\x00\r\n") ||
+			!validFingerprint(body.ArgumentsFingerprint) || body.TTLSeconds < 60 || body.TTLSeconds > 3600 ||
+			len(body.Arguments) == 0 || len(body.Arguments) > maxRPCBytes ||
+			(body.BaseRevision != "" && !revisionPattern.MatchString(body.BaseRevision)) {
+			return ErrInvalidInput
+		}
+		canonical, err := canonicalArguments(body.Arguments)
+		if err != nil || fingerprintBytes("neo-effect-arguments-v1", canonical) != body.ArgumentsFingerprint {
+			return ErrInvalidInput
+		}
+		body.Arguments = canonical
+	case MethodCommit:
+		body := request.Commit
+		if !validAttempt(body.Attempt) || !validFingerprint(body.SnapshotFingerprint) ||
+			!validFingerprint(body.GrantFingerprint) || !validFingerprint(body.RegistryFingerprint) ||
+			!validID(body.IntentID, "intent") || !validFingerprint(body.IntentFingerprint) ||
+			(body.ApprovalID != "" && !validID(body.ApprovalID, "approval")) ||
+			!commitKeyPattern.MatchString(body.IdempotencyKey) {
 			return ErrInvalidInput
 		}
 	case MethodList:
@@ -235,6 +269,19 @@ func requestFingerprint(request Request) string {
 	return "sha256:" + hex.EncodeToString(digest[:])
 }
 
+func canonicalArguments(raw []byte) ([]byte, error) {
+	var value any
+	if err := strictjson.Decode(raw, maxRPCBytes, &value); err != nil {
+		return nil, err
+	}
+	return json.Marshal(value)
+}
+
+func fingerprintBytes(domain string, value []byte) string {
+	digest := sha256.Sum256(append(append([]byte(nil), []byte(domain)...), append([]byte{0}, value...)...))
+	return "sha256:" + hex.EncodeToString(digest[:])
+}
+
 func AuthorityRequestFingerprint(method string, body any) string {
 	var unsigned any
 	switch method {
@@ -259,6 +306,20 @@ func AuthorityRequestFingerprint(method string, body any) string {
 		}
 		value.Authority = AuthorityTicket{}
 		unsigned = value
+	case MethodPrepare:
+		value, ok := body.(PrepareRequest)
+		if !ok {
+			return ""
+		}
+		value.Authority = AuthorityTicket{}
+		unsigned = value
+	case MethodCommit:
+		value, ok := body.(CommitRequest)
+		if !ok {
+			return ""
+		}
+		value.Authority = AuthorityTicket{}
+		unsigned = value
 	default:
 		return ""
 	}
@@ -278,6 +339,10 @@ func authorityFingerprintForRequest(request Request) string {
 		return AuthorityRequestFingerprint(request.Method, *request.Heartbeat)
 	case MethodCancel:
 		return AuthorityRequestFingerprint(request.Method, *request.Cancel)
+	case MethodPrepare:
+		return AuthorityRequestFingerprint(request.Method, *request.Prepare)
+	case MethodCommit:
+		return AuthorityRequestFingerprint(request.Method, *request.Commit)
 	default:
 		return ""
 	}
@@ -370,12 +435,34 @@ func ErrorCode(err error) string {
 		return ErrorRuntimeUnavailable
 	case errorsIs(err, ErrSnapshotMismatch):
 		return ErrorSnapshotMismatch
+	case errorsIs(err, ErrGrantDenied):
+		return ErrorGrantDenied
 	case errorsIs(err, ErrLeaseStale):
 		return ErrorLeaseStale
 	case errorsIs(err, ErrKillSwitchActive):
 		return ErrorKillSwitchActive
+	case errorsIs(err, ErrBudgetExhausted):
+		return ErrorBudgetExhausted
+	case errorsIs(err, ErrApprovalRequired):
+		return ErrorApprovalRequired
+	case errorsIs(err, ErrApprovalDenied):
+		return ErrorApprovalDenied
+	case errorsIs(err, ErrIntentExpired):
+		return ErrorIntentExpired
+	case errorsIs(err, ErrEgressDenied):
+		return ErrorEgressDenied
+	case errorsIs(err, ErrSecretDenied):
+		return ErrorSecretDenied
+	case errorsIs(err, ErrProjectConflict):
+		return ErrorProjectConflict
+	case errorsIs(err, ErrArtifactDenied):
+		return ErrorArtifactDenied
+	case errorsIs(err, ErrExecutorUnavailable):
+		return ErrorExecutorUnavailable
 	case errorsIs(err, ErrInvalidTransition):
 		return ErrorInvalidTransition
+	case errorsIs(err, ErrOutcomeUnknown):
+		return ErrorOutcomeUnknown
 	default:
 		return ErrorInternal
 	}

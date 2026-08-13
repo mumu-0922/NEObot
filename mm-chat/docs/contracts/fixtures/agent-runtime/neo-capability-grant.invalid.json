@@ -2,7 +2,7 @@
   "schemaVersion": "neo.capability-grant/v1",
   "grantId": "grant_0123456789abcdef",
   "subject": {
-    "userId": "user_01234567",
+    "userId": "123e4567-e89b-42d3-a456-426614174000",
     "projectId": "project_01234567",
     "assistantId": "assistant_01234567"
   },
