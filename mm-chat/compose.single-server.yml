@@ -311,12 +311,14 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    mem_limit: 256m
-    cpus: 0.5
-    pids_limit: 128
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 256
     tmpfs:
-      - /work:rw,noexec,nosuid,nodev,size=128m,mode=0700,uid=${MM_CHAT_RUNTIME_UID:-1000},gid=${MM_CHAT_RUNTIME_GID:-1000}
-      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+      # Docker tmpfs defaults to noexec. Dynamic npm package bins must execute
+      # from this isolated mount; retain nosuid/nodev and all container fences.
+      - /work:rw,exec,nosuid,nodev,size=512m,mode=0700,uid=${MM_CHAT_RUNTIME_UID:-1000},gid=${MM_CHAT_RUNTIME_GID:-1000}
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
     environment:
       MM_CHAT_VERSION: ${MM_CHAT_VERSION:-single-server-dev}
       MCP_MANIFEST_FILE: /etc/mm-chat/mcp-manifest.json

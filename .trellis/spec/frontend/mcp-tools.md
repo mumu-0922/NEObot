@@ -48,33 +48,86 @@ events carry bounded MCP timeline updates.
 - The top-level page exposes **Installed | MCP Marketplace** tabs. Marketplace
   search/detail always uses the typed `/v1/mcp/marketplace/*` API and never
   calls or scrapes LobeHub from the browser.
+- Server-list/detail DTOs expose bounded `canManage`/`canInstall` capabilities
+  derived by Backend from the authenticated user. Only the deployment
+  administrator sees create/delete/validate/credential/OAuth/install controls.
+  Ordinary users retain Installed selection and per-tool enable/disable
+  controls; frontend capability checks shape UX but never replace Backend
+  authorization.
 - Marketplace cards/details show source, exact version, connection type,
   install compatibility, Tool preview, and display-only trust signals. The UI
-  enables install only when the backend returns `compatibility: "installable"`;
-  it must not infer authority from connection type. This permits public HTTPS
-  Streamable HTTP and exact approved stdio artifacts while keeping SSE and
-  unmatched package/Docker/Git options blocked.
+  enables `installable`, plus `needs_configuration` only when the backend also
+  declares `installMode: header|runner_env` and bounded secret fields. It must
+  not infer authority from connection type. This permits public HTTPS
+  Streamable HTTP and exact administrator-installable npm stdio artifacts while
+  keeping SSE and Shell/Docker/Git/URL-package options blocked.
+- Marketplace detail consumes the authenticated Backend `installed` flag for
+  the exact current `provider + identifier + version`. Installed items disable
+  the install action and direct management to the Installed tab. When at least
+  one deployment is installable, hide incompatible duplicate alternatives from
+  the connection picker; compatibility details are not an execution tutorial.
 - Marketplace navigation exposes a curated primary-category rail backed by
   server-returned category counts and backend category filtering. Cards and
   details render only normalized HTTPS or short emoji/text icons, use
   `no-referrer` for remote images, and retain a local fallback.
+- The local icon fallback renders underneath a remote image from the first
+  paint; the remote image overlays it only when usable. Do not wait for an
+  image error before rendering the fallback, because slow/transparent remote
+  responses otherwise appear as an empty colored tile.
 - Installed Server cards use the same shared icon renderer as Marketplace
   cards. They render only the optional normalized Server DTO `icon`; missing or
   failed remote images fall back to the local generic MCP glyph without
   changing selection or trust state.
+- Installed Server cards stay compact by default: the Tool count is an
+  accessible expand/collapse button in the Server summary row, Tool details and
+  the description render only while expanded, and deselecting the Server also
+  collapses it. Hide the non-informative `unknown` classification badge while
+  preserving meaningful `read`/`write` badges and every per-Tool toggle.
 - Marketplace search uses a monotonic request ID in addition to AbortSignal.
   Only the latest request may replace items, totals, loading, or error state;
   an older failure must never leave a false unavailable banner over newer
   successful results.
-- `Install and enable` sends only identifier/version plus the current
-  Conversation/revision. After install it reloads authoritative Servers and
-  selection. API-key and OAuth items continue through the existing credential
-  and OAuth UI rather than collecting secrets in Marketplace state.
+- Marketplace errors remain scoped to the operation that failed. Initial
+  search errors may use the Marketplace-level banner; item-detail errors keep
+  the loaded result list and expose a detail retry, while install errors stay
+  inside the detail surface.
+- Marketplace browsing uses server-authoritative pages of 20. A reset search
+  replaces page 1; a near-bottom sentinel appends exactly the next page with
+  identifier deduplication and at most one request in flight. The UI reports
+  loaded/total counts and retains a manual load/retry action. Next-page failure
+  preserves current cards, while search/category changes abort and generation-
+  fence older pagination work.
+- `Install and enable` sends identifier/version, an exact backend-issued
+  deployment hash, transient values for backend-declared secret fields, and the
+  current Conversation/revision. Secret values exist only in component state,
+  clear after submission, and never enter a URL or browser persistence. OAuth
+  installs create a recoverable `needs_auth` Server and then open the validated
+  authorization URL; Runner environment drafts can be reconfigured from the
+  Installed tab using only backend-returned non-secret field names.
+- Required secret inputs render inside the currently selected deployment card,
+  with the first field focused and a visible completion hint beside the
+  disabled install action. A required configuration field must never be hidden
+  below an independently scrolling deployment list.
 - A blocked send may focus the Tools control and offer an explicit
   disable-all-and-continue action. Do not add per-call approval dialogs.
 - Credential fields are transient component state, cleared after submission,
   and never persisted/exported. OAuth authorization URLs must parse as HTTPS
   before navigation.
+- Private remote creation collects a custom HTTPS MCP endpoint and an optional
+  Header/API key as visibly separate fields in one form. Creation stores the
+  endpoint first, then submits the transient credential through the credential
+  route before validation; the secret never enters the endpoint URL.
+- Marketplace detail also offers an explicit **custom relay URL** branch. It
+  must be visually distinct from the backend-locked official/Runner deployment,
+  collect HTTPS URL plus `none|header|oauth` authentication separately, and
+  submit those fields only through the typed Marketplace install API. The
+  browser never rewrites the official deployment or inserts a secret into the
+  URL; Backend creates a provenance-marked private remote Server and performs
+  the same SSRF, credential-vault, MCP validation, and ready-before-selection
+  checks.
+  Show this branch only when the authoritative detail exposes an HTTP option,
+  Header/OAuth mode, or required secret fields. Credential-free local stdio
+  artifacts such as Context7 do not render a relay option.
 - The process trace maps only backend-redacted call summaries and states.
   Results remain collapsed by default. Manual retry is allowed only if the
   backend exposes a trusted idempotent read retry affordance; never infer it
@@ -105,10 +158,16 @@ events carry bounded MCP timeline updates.
 | Marketplace disabled or unconfigured | show a bounded configuration state; Installed remains fully usable |
 | Search/detail upstream failure | show a retryable Marketplace-only error; keep installed/selection state unchanged |
 | Older search fails after a newer search succeeds | ignore the stale completion; keep the newer results with no false error banner |
+| Repeated bottom-sentinel callbacks | issue at most one request for the next page; append no duplicate identifiers |
+| Next Marketplace page fails | preserve loaded cards and expose a manual retry; do not loop automatically |
 | Item is SSE or unmatched stdio/command-only | show compatibility reason; no install request is emitted |
-| Backend marks exact approved stdio deployment installable | send only identifier/version; never receive or execute command metadata |
+| Backend marks exact npm stdio deployment installable | administrator sends only identifier/version/hash; browser never receives or executes command metadata |
+| Current user is not MCP administrator | hide management/install/configuration actions; keep ready Server and Tool selection usable |
 | Install validation/selection step fails after draft creation | reload installed Servers so the recoverable draft remains visible |
 | Installed Server icon is missing or its HTTPS image fails | show the local generic MCP fallback; keep the card usable |
+| Installed Server has many Tools | keep Tool rows folded by default; expose the count with `aria-expanded`/`aria-controls` and preserve per-Tool selection after expansion |
+| Selected deployment requires a missing secret | keep install disabled and render the secret input plus completion hint in the selected card |
+| Custom relay URL is incomplete or non-HTTPS | keep install disabled client-side; Backend still rejects unsafe/private resolution before create |
 | Provider stream interrupts after partial answer content | keep the content and show the localized Provider-interruption notice; do not blame or retry MCP Tools |
 
 ### 5. Good / Base / Bad Cases
@@ -126,12 +185,14 @@ events carry bounded MCP timeline updates.
 - API-client URL/body/response mapping and local-mode fail-closed behavior.
 - Tools control load, inherited/custom/explicit-empty selection, Tool disable,
   private draft validation, credential submission, OAuth URL rejection,
-  unavailable/auth states, and disable-all recovery.
+  unavailable/auth states, default-folded Tool disclosure, hidden `unknown`
+  badges, and disable-all recovery.
 - Sidebar Tools entry, `?panel=tools` URL round-trip, top-level page
   composition, and Server listing without a current Conversation.
 - Marketplace tab/search/detail, category filtering/counts, remote-icon
-  fallback, Installed shared-icon/fallback rendering, compatibility labels,
-  disabled/unconfigured behavior,
+  fallback, bounded infinite pagination/reset/append/retry/race fencing,
+  loaded/total reporting, Installed shared-icon/fallback rendering,
+  compatibility labels, disabled/unconfigured behavior,
   backend-approved remote/stdio installability, authoritative install payload,
   latest-request race fencing, no command fields, install recovery, and optional
   Conversation enablement with revision.

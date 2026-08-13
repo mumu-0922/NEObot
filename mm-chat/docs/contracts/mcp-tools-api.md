@@ -37,9 +37,11 @@ type McpServer = {
   icon?: string; // normalized HTTPS URL or short text/emoji; display-only
   transport: "streamable_http" | "stdio";
   endpointUrl?: string;
-  authType: "none" | "header" | "oauth";
+  authType: "none" | "header" | "oauth" | "env";
+  configurationFields: string[]; // non-secret reviewed Runner env names
   status: "draft" | "ready" | "needs_auth" | "unavailable" | "disabled";
   hasCredential: boolean;
+  canManage: boolean; // current user may mutate this definition/credential
   toolCount: number;
   unsupportedToolCount: number;
   lastErrorCode?: string;
@@ -76,8 +78,11 @@ GET /v1/mcp/servers?conversationId=<uuid>
 POST /v1/mcp/servers
 ```
 
-`GET` returns `{"servers": McpServer[]}` filtered by current grants and, when
-provided, the conversation scope.
+`GET` returns `{"servers": McpServer[], "canManage": boolean}` filtered by
+current grants and, when provided, the conversation scope. Definitions owned
+by `AUTH_BOOTSTRAP_USER_ID` are shared with every authenticated user. Only that
+administrator receives `canManage: true`; ordinary users can select and use a
+shared ready Server but cannot mutate it.
 
 Only private public-HTTPS Streamable HTTP drafts may be created:
 
@@ -99,6 +104,12 @@ fields remain arrays (`tools: []` for a new draft), never `null`. Creating a
 second active private definition for the same user and endpoint returns
 `409 MCP_CONFLICT` without changing the existing definition.
 
+Every definition-management operation is restricted server-side to the exact
+`AUTH_BOOTSTRAP_USER_ID`: create, Marketplace install, validate, delete,
+credential write/delete, and OAuth start/revoke. A different authenticated user
+receives `403 MCP_ADMIN_REQUIRED`. An invalid or missing configured
+administrator identity grants nobody management access.
+
 ### Validate or delete a private definition
 
 ```http
@@ -110,7 +121,7 @@ Validation performs bounded MCP initialization/discovery and persists only the
 normalized compatible Tool schemas and status. Delete is owner-scoped and
 returns `204`.
 
-### Static header credentials
+### Static header or reviewed Runner environment credentials
 
 ```http
 PUT    /v1/mcp/servers/<source>/<id>/credential
@@ -126,8 +137,18 @@ PUT body:
 }
 ```
 
-The backend encrypts the value using the MCP vault context before persistence,
-clears plaintext buffers where practical, and returns only `hasCredential`.
+Reviewed Runner environment body:
+
+```json
+{
+  "values": { "TAVILY_API_KEY": "secret-value" },
+  "conversationId": "optional-conversation-uuid"
+}
+```
+
+The backend accepts only the current Server's declared non-secret field names,
+encrypts values using the MCP vault context before persistence, clears plaintext
+buffers where practical, and returns only `hasCredential` plus field names.
 
 ### OAuth
 
@@ -147,9 +168,14 @@ Start body:
 }
 ```
 
-Start returns an HTTPS authorization URL. Callback consumes the hashed
-single-use state and redirects with `303` to the previously validated return
-URL. Revoke accepts `{"serverRef": McpServerRef}` and returns `204`.
+Start returns an HTTPS authorization URL. When the server advertises a valid
+Dynamic Client Registration endpoint and the Server has no fixed client ID,
+the backend registers Neo Chat and stores the client identity only in encrypted
+OAuth state/token credentials. Callback consumes the hashed single-use state,
+validates the private Server, optionally enables it for the bound Conversation,
+and redirects with `303` to the previously validated return URL. Public callback
+configuration is HTTPS, or exact loopback HTTP for local development. Revoke
+accepts `{"serverRef": McpServerRef}` and returns `204`.
 
 ### Conversation selection
 
@@ -211,39 +237,103 @@ facets, and `source: "lobehub"`. `category` is an optional exact upstream
 category key. Item icons are either a short text/emoji or a sanitized HTTPS
 URL; clients must retain a local fallback.
 Detail returns the exact version, bounded Tool preview, source links, and
-sanitized deployment compatibility. Trust badges, ratings, stars, and install
+sanitized deployment compatibility plus `canInstall` and `installed`.
+`canInstall` is true only for `AUTH_BOOTSTRAP_USER_ID`; `installed` is derived
+from that administrator's exact Marketplace provider/identifier/version
+provenance so ordinary users see the same shared installation state. Trust
+badges, ratings, stars, and install
 counts are informational only. Neo Chat accepts the optional exact `version`
 query but does not forward it to LobeHub's current detail endpoint; it fetches
 the current detail and compares the returned version locally, failing with
 `MCP_MARKETPLACE_CHANGED` on drift.
 
-Install accepts no URL, command, config schema, or credential:
+The default Marketplace install accepts no URL, command, config schema, or
+header authority. It may submit one exact backend-issued deployment hash and
+transient values only for backend-declared secret fields:
 
 ```json
 {
   "version": "1.2.3",
+  "deploymentHash": "64-lowercase-hex",
+  "secrets": { "TAVILY_API_KEY": "secret-value" },
   "conversationId": "optional-conversation-uuid",
   "selectionRevision": 3,
   "enableForConversation": true
 }
 ```
 
+An explicit custom-relay branch may instead submit a user-owned HTTPS MCP
+endpoint plus separate authentication fields. It must not include
+`deploymentHash` or `secrets` in the same request:
+
+```json
+{
+  "version": "1.2.3",
+  "customEndpointUrl": "https://relay.example.com/mcp",
+  "customAuthType": "header",
+  "customHeaderName": "Authorization",
+  "customHeaderPrefix": "Bearer ",
+  "customCredential": "relay-secret",
+  "conversationId": "optional-conversation-uuid",
+  "selectionRevision": 3,
+  "enableForConversation": true
+}
+```
+
+`customAuthType` is `none|header|oauth`; OAuth may include
+`customClientId`, otherwise Dynamic Client Registration is attempted when the
+relay advertises it. The Backend re-fetches the Marketplace item for identity
+and display provenance, but persists the relay as an ordinary private remote
+Server marked `connectionMode=custom_remote`. It applies public-HTTPS/SSRF,
+Header allowlist, encrypted credential, live MCP validation, and
+ready-before-selection checks. The custom endpoint never replaces or claims to
+be the Marketplace-owned official endpoint.
+This branch is exposed only when the refreshed item contains an HTTP deployment,
+Header/OAuth install mode, or required secret fields. Credential-free local
+stdio entries reject it as `MCP_MARKETPLACE_INCOMPATIBLE`.
+
 The backend re-fetches the current authoritative detail, compares its returned
-version to the exact install request, and selects either a public HTTPS
-`http` deployment or a `stdio` deployment whose provider, identifier, exact
-version, connection/install method, command, arguments, package name, and
-deployment hash match one reviewed manifest artifact. It pins provenance in a
-private Server record, then reuses quota/deduplication, validation, MCP
+version and deployment hash to the exact install request, and routes the result
+as anonymous HTTP, an allowlisted header HTTP integration, OAuth HTTP with live
+protected-resource discovery, or an npm-backed `stdio` deployment. A stdio
+deployment must be `command=npx`, use a registry package with an exact version,
+contain bounded arguments and environment field names, and match the refreshed
+provider/identifier/version/deployment hash. Shell, Docker, Git, URL/file
+package specifications, and floating npm tags are rejected. A checked-in
+manifest artifact may override the dynamic definition when its exact approval
+fingerprint matches. Backend pins provenance in an administrator-owned private
+Server record, then reuses quota/deduplication, validation, MCP
 initialization, `tools/list`, and optional revision-checked Conversation
 selection. The stdio record contains only an internal `runner://<artifact-id>`
 reference; public responses omit that endpoint and all artifact metadata.
+Query-string secret templates are removed before hashing or persistence.
+Runner credentials are encrypted by Backend, internally sealed to the exact
+artifact/private-Server pair, and start a private-Server-scoped child process;
+updating the secret forces that child to restart.
 
-SSE and unmatched npm/Docker/Git/binary/manual command paths are display-only.
-The backend and Runner never execute Marketplace-supplied commands or download
-packages at runtime. Approved executables come only from the immutable Runner
-image and are re-bound to the current manifest before validation, selection,
-and execution. A validation failure may leave a visible recoverable private
-Server and returns its bounded `validationErrorCode`.
+The Marketplace catalog version is not assumed to be the npm package version.
+For npm stdio deployments, Backend resolves the Marketplace-declared package
+selector against the fixed HTTPS npm registry and freezes only the exact SemVer
+returned by registry metadata. Missing or mismatched metadata makes the option
+incompatible; Runner never receives a floating tag or a fabricated
+catalog-version package spec.
+
+SSE and non-npm/Docker/Git/binary/manual command paths are display-only. The
+browser never submits executable metadata. Backend converts only the refreshed,
+bounded npm/npx deployment into an exact dynamic artifact and seals it over the
+authenticated internal Runner control plane. The shared Runner may download
+that exact package on first use, starts it through a fixed `npx` argv with no
+browser-selected shell command, and reaps the child
+after its idle/lifetime bounds. A validation failure may leave a visible
+recoverable private Server and returns its bounded `validationErrorCode`.
+
+For an exact reviewed Runner artifact, MCP initialize and `tools/list` are
+necessary but do not by themselves validate provider credentials. If the local
+manifest declares an operator-reviewed credential probe, Backend performs that
+exact HTTPS probe before setting `ready`. `401`/`403` produces `needs_auth` and
+`credential_invalid`; a probe outage produces `unavailable` and
+`credential_probe_failed`. Marketplace data and browser requests cannot define
+or override a probe.
 
 ## Chat stream integration
 
@@ -273,7 +363,7 @@ validation against the frozen schema remains authoritative.
 | 503 | `MCP_TRANSPORT_DISABLED` | Selected remote or stdio transport is disabled |
 | 503 | `MCP_SERVER_UNAVAILABLE` | Validation or selected server is unavailable |
 | 404 | `MCP_MARKETPLACE_NOT_FOUND` | Marketplace item/version does not exist |
-| 409 | `MCP_MARKETPLACE_INCOMPATIBLE` | No safe HTTPS HTTP or exact approved Runner artifact is installable |
+| 409 | `MCP_MARKETPLACE_INCOMPATIBLE` | No safe HTTPS HTTP, exact manifest artifact, or bounded npm/npx Runner artifact is installable |
 | 409 | `MCP_MARKETPLACE_CHANGED` | Exact version/deployment changed before install |
 | 503 | `MCP_MARKETPLACE_DISABLED` | Optional Marketplace adapter is off |
 | 503 | `MCP_MARKETPLACE_UNAVAILABLE` | Adapter credentials or bounded upstream request are unavailable |

@@ -718,9 +718,9 @@ assert runner["read_only"] is True
 assert runner["init"] is True
 assert runner["cap_drop"] == ["ALL"]
 assert "no-new-privileges:true" in runner["security_opt"]
-assert float(runner["cpus"]) <= 0.5
-assert int(runner["pids_limit"]) == 128
-assert int(runner["mem_limit"]) == 256 * 1024 * 1024
+assert float(runner["cpus"]) <= 1
+assert int(runner["pids_limit"]) == 256
+assert int(runner["mem_limit"]) == 768 * 1024 * 1024
 assert set(runner["networks"]) == {"mcp-control", "mcp-egress"}
 assert runner["secrets"] == [
     {"source": "mm_chat_mcp_runner_token", "target": "mm_chat_mcp_runner_token"}

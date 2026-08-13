@@ -8,7 +8,8 @@ server.
 ## Responsibilities
 
 - Accept only manifest-approved server IDs.
-- Start at most four non-shell argv-based child processes.
+- Start at most four fixed argv-based child processes; dynamic npm may use only
+  the Runner-owned `npx` launcher, never a caller-selected shell command.
 - Create a private work directory and minimal environment per server.
 - Reuse a healthy session, reap it after its idle timeout, and enforce maximum
   lifetime.

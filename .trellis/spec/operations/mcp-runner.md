@@ -28,7 +28,7 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
   started on demand, at most four, reaped after 15 idle minutes, and capped at
   24 hours.
 - The image runs non-root with a read-only root, `cap_drop: ALL`,
-  `no-new-privileges`, 0.5 CPU, 256 MiB memory, 128 PIDs, isolated tmpfs, and no
+  `no-new-privileges`, 1 CPU, 768 MiB memory, 256 PIDs, isolated tmpfs, and no
   host port. It joins only internal `mcp-control` plus `mcp-egress`, never the
   PostgreSQL/MinIO private network.
 - Production `MCP_RUNNER_IMAGE` is a full immutable digest and has no Compose
@@ -36,28 +36,37 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
 - Runner auth uses a dedicated Docker Secret source: regular non-symlink,
   runtime-owner-owned, mode `0600`, 32..4096 bytes. Never reuse a user bearer or
   provider/RAG credential.
-- Manifest schema v1 is strict. Stdio argv[0] is absolute and not a shell;
-  runtime downloads, working-directory overrides, unsafe env names, Docker
-  socket, and arbitrary host mounts are forbidden.
+- Manifest schema v1 is strict. Static stdio argv[0] is absolute and not a
+  shell; working-directory overrides, unsafe env names, Docker socket, and
+  arbitrary host mounts are forbidden. A dynamic Marketplace artifact is the
+  only runtime-download exception and is never sourced from public DTO or
+  browser command fields.
 - Backend, validator, and Runner compile the same strict manifest parser. Any
   new manifest field therefore requires paired Backend and Runner images from
   the same source revision; do not mount a newer manifest into an older Runner
   and assume its current health proves restart compatibility.
-- Marketplace stdio approval is an exact manifest fingerprint over provider,
-  identifier/version, connection/install method, upstream command/arguments/
-  package name, and deployment hash. It is never an executable template. The
-  manifest's separate absolute argv is the only Runner authority.
-- Node MCP artifacts are fixed in
+- A static Marketplace stdio approval is an exact manifest fingerprint over
+  provider, identifier/version, connection/install method, upstream command/
+  arguments/package name, and deployment hash; the manifest's separate
+  absolute argv remains its execution authority. Otherwise Backend may derive
+  a dynamic artifact only from a freshly fetched `npx` deployment and an exact
+  npm-registry SemVer. It persists the bounded artifact on the administrator-
+  owned Server and sends it only as an AES-GCM envelope bound to Server and
+  credential-fingerprint instance IDs.
+- Image-bundled Node artifacts remain fixed in
   `backend/mcp-runner-runtime/package-lock.json` and installed at image build by
-  `npm ci --omit=dev --ignore-scripts`. A store install never invokes `npm`,
-  `npx`, or another package manager in the running Runner.
+  `npm ci --omit=dev --ignore-scripts`. Dynamic artifacts use only the Runner-
+  owned `/usr/local/bin/npx --yes <package>@<exact-version>` launcher inside a
+  per-Server work/cache directory. npm lifecycle code can execute there, which
+  is why only the deployment administrator may install and every container,
+  network, process, resource, and cleanup fence is mandatory.
 - Backup always pairs a full PostgreSQL dump with a full MinIO bucket mirror.
   This includes MCP rows and `mcp-results/`. Restore drills export both
   Knowledge and MCP sample keys and `mc stat` them in a temporary bucket.
 - Release order is backup -> validate/build/pull -> explicit migration ->
   backend with MCP off -> optional Runner -> frontend -> enable/smoke.
 - Rollback disables MCP/transports or restores prior image digests while
-  retaining migrations `074`-`076`. Cleanup remains running; never revive
+  retaining migrations `074`-`081`. Cleanup remains running; never revive
   Plugins or down-migrate after live traffic. `076.down` must reject while any
   private stdio row exists.
 - Marketplace discovery is an optional backend adapter, not another service or
@@ -68,6 +77,10 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
   configured HTTPS LobeHub-compatible base URL. Operators register/rotate the
   third-party M2M identity explicitly and may disable Marketplace without
   affecting installed private MCP Servers.
+- Runner resource values form one release contract across
+  `compose.single-server.yml`, `docs/deployment/mcp-runner.md`, and
+  `scripts/test-preflight-single-server.sh`. Change all three together; a
+  health check does not prove the intended CPU, memory, PID, or tmpfs limits.
 
 ### 4. Validation & Error Matrix
 
@@ -84,18 +97,21 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
 | Partial artifact cleanup fails | retain row/queue entry and retry; never delete DB authority first |
 | Marketplace enabled without client ID/valid secret file | preflight rejects before deployment without printing secret content |
 | Marketplace unavailable | Marketplace UI fails closed; MCP Server management and chat remain healthy |
-| Marketplace stdio fingerprint has no exact manifest match | keep `requires_runner`; do not install or execute upstream command |
+| Marketplace stdio is neither an exact manifest artifact nor a bounded exact-version dynamic npm artifact | keep it incompatible/Runner-required; do not install or execute upstream command |
 | Approved artifact is removed/changed after install | private stdio validation/selection/execution fails closed |
 | `076.down` sees a private stdio row | rollback aborts atomically; preserve row and migration |
+| Compose, deployment docs, and preflight disagree on Runner resources | release check fails; synchronize the three authorities before deployment |
+| A tail migration is added without advancing both MCP PostgreSQL drills | focused release gate fails before deployment |
 
 ### 5. Good / Base / Bad Cases
 
 - **Good**: render four pinned images, validate manifest/token metadata, migrate,
-  start backend and optional Runner, then smoke one image-bundled read-only Tool.
+  start backend and optional Runner, then smoke one approved Tool; dynamic npm
+  execution uses an exact Server-bound artifact and isolated work directory.
 - **Base**: MCP disabled and no Runner profile; cleanup still prunes expired
   durable state and artifacts.
-- **Bad**: run Marketplace `npx` in the Runner, mount Docker socket/source, publish 8090, use
-  a mutable tag, or run migration `074.down` after traffic.
+- **Bad**: execute a browser-selected/floating `npx` package, mount Docker
+  socket/source, publish 8090, use a mutable tag, or down-migrate after traffic.
 
 ### 6. Tests Required
 
@@ -104,14 +120,18 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
   exact target manifest and require healthy status; a still-running old
   container is not compatibility evidence.
 - Build target `mcp-runner`; inspect non-root user and entrypoint.
-- Run the pinned runtime dependency audit against the official npm registry;
-  verify the built image contains the exact reviewed package version and no
-  runtime install path.
+- Run the pinned image dependency audit against the official npm registry.
+  Dynamic coverage must reject Shell/Docker/Git/URL/file/floating package
+  specs, accept only exact registry package versions, verify sealed artifact
+  binding, and prove per-Server process/workspace cleanup.
 - Render example and production Compose with Runner profile; assert no port,
   hardening/resources/networks, digest, and cleared production build.
 - `bash scripts/test-preflight-single-server.sh` for toggles, duration bounds,
   token metadata, Runner URL/image, topology, and restore mounts.
-- `bash scripts/verify-mcp-postgres17.sh` for migration/repository cleanup.
+- `bash scripts/verify-mcp-postgres17.sh` and
+  `bash scripts/verify-mcp-install-credentials-postgres17.sh` for fresh
+  `001..081`, tail down/re-up, guarded `076`, targeted repairs, repository, and
+  final replay. Every new tail migration must update both scripts.
 - `scripts/release-images.sh --dry-run --tag <test>` must print four builds and
   `--target mcp-runner` only for Runner.
 - Preflight tests cover Marketplace toggle dependency, HTTPS base URL, bounded
@@ -123,36 +143,27 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
 
 ```json
 {
-  "transport": "stdio",
-  "command": { "argv": ["/usr/bin/npx", "ctx7"] }
+  "identifier": "example-mcp",
+  "version": "latest",
+  "command": ["sh", "-c", "npx arbitrary-package"]
 }
 ```
 
-This still turns untrusted mutable package resolution into runtime authority.
+This lets the browser select mutable execution authority.
 
 #### Correct
 
 ```json
 {
-  "transport": "stdio",
-  "command": {
-    "argv": ["/opt/mcp-runner/node_modules/.bin/context7-mcp"]
-  },
-  "marketplace": {
-    "provider": "lobehub",
-    "identifier": "upstash-context7",
-    "version": "2.2.0",
-    "connectionType": "stdio",
-    "installationMethod": "npm",
-    "command": "npx",
-    "args": ["ctx7"],
-    "packageName": "@upstash/context7-mcp"
-  }
+  "version": "2.2.0",
+  "deploymentHash": "<backend-issued-exact-hash>",
+  "secrets": {}
 }
 ```
 
-The Marketplace fields are compared only; the absolute image-bundled argv is
-executed.
+Backend re-fetches Marketplace detail, resolves an exact registry version, and
+either binds a static manifest executable or sends a Server-bound sealed
+dynamic artifact to the Runner. The public request contains no command.
 
 #### Wrong topology
 

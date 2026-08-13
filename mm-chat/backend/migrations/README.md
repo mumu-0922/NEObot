@@ -473,6 +473,20 @@ application images; never run `074.down` after live MCP traffic. Migration
 `076` extends private Servers to approved `stdio` Runner references, constrains
 their endpoint to `runner://<approved-id>`, and refuses down while any stdio row
 exists so rollback cannot silently destroy installed-server authority.
+Migration `077` admits encrypted per-user Runner environment credentials and
+keeps their field names manifest-authoritative. Migration `078` narrowly repairs
+the pre-four-way Tavily anonymous-HTTP failure shape into the exact reviewed
+`tavily-mcp@0.2.19` Runner reference and a recoverable `needs_auth` draft. It
+does not copy or synthesize a credential, ignores any non-exact or already
+credentialed row, and refuses rollback after the user supplies a Runner secret.
+Migration `079` invalidates prior Tavily `ready` states that were based only on
+MCP initialize/tools-list. Its rollback deliberately preserves `needs_auth`;
+only the current manifest-authoritative live credential probe may restore
+`ready`.
+Migration `080` adds bounded icon metadata only to the exact legacy DeepWiki
+endpoint. Migration `081` rebinds only the exact legacy Context7 Runner row
+from its superseded deployment hash to the current reviewed manifest hash;
+both migrations carry exact rollback markers.
 
 ## Storage boundaries
 

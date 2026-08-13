@@ -2,9 +2,12 @@
 
 ## Default state
 
-MCP is off by default. Remote MCP runs inside the Go backend. Administrator-
-approved stdio servers use the optional `mcp-runner` Compose profile; do not
-run one permanent container per Tool server.
+MCP is off by default. Remote MCP runs inside the Go backend. Only the exact
+`AUTH_BOOTSTRAP_USER_ID` may install or manage definitions. Its ready Servers
+are shared with authenticated users, who may select/use Tools but cannot
+install, configure, validate, or delete them. npm-backed stdio servers use one
+optional hardened `mcp-runner` Compose service; do not run one permanent
+container per Tool server.
 
 ```text
 MCP_ENABLED=false
@@ -109,33 +112,43 @@ Minimal stdio entry:
 }
 ```
 
-Every executable and runtime dependency must already exist in the immutable
-Runner image. Runtime `npx`, `uvx`, package downloads, `sh -c`, Docker socket
-access, and host source mounts are forbidden. Environment values must come from
-one exact literal for non-secrets, `/run/secrets/...`, or an allowlisted
-`MCP_SECRET_*` reference; auth secrets may not be inline.
+Static manifest entries still require every executable and dependency to exist
+in the immutable Runner image. They may not use `sh -c`, `uvx`, a Docker
+socket, or host source mounts. Dynamic Marketplace artifacts are the sole
+runtime-download exception: Backend re-fetches the item and accepts only
+`command=npx`, an exact registry package/version, bounded argv, and declared
+secret environment names. Shell, Docker, Git, URL/file package specifications,
+and floating npm tags remain forbidden. Secret values are encrypted in the
+Backend vault and sealed separately from the artifact on the internal control
+plane; they are never written into the manifest or public DTO.
 
-### Approved Marketplace artifacts
+### Marketplace npm artifacts
 
-A Marketplace stdio option is installable only when one manifest entry carries
-an exact `marketplace` projection matching provider, identifier, Marketplace
-version, connection/install method, command, arguments, package name, and the
-derived deployment hash. This projection is an approval fingerprint only. The
-Runner executes the entry's separate absolute `command.argv`; it never executes
-the Marketplace command.
+A Marketplace stdio option is installable only after Backend refreshes its
+authoritative detail and binds provider, identifier, Marketplace version,
+connection/install method, package, argv, environment field names, and the
+derived deployment hash. Browser requests choose only an issued deployment
+hash and transient values for declared fields; they cannot choose a command or
+package.
 
-The initial reviewed artifact maps LobeHub `upstash-context7@2.2.0`
-(`npx ctx7`) to the image-bundled
-`@upstash/context7-mcp@3.2.5` executable. The package and transitive artifacts
-are pinned by `backend/mcp-runner-runtime/package-lock.json`, installed during
-image build with `npm ci --omit=dev --ignore-scripts`, and audited before
-release. Adding a store item requires reviewing and rebuilding this lock plus
-the manifest; it never performs an install in a running container.
+If a checked-in manifest entry has the same approval fingerprint, its immutable
+absolute executable remains authoritative. Otherwise Backend derives a dynamic
+artifact containing only an exact npm package specification, bounded extra
+arguments, declared environment names, and idle/lifetime limits. It persists
+that artifact only on the administrator-owned Server and seals it before each
+Runner request. The Runner validates the definition again and invokes
+`/usr/local/bin/npx --yes <package>@<exact-version>` with a fixed executable and
+argv rather than a browser-selected shell command. npm may internally use its
+own fixed lifecycle launcher. The Server-specific work directory is its cache. npm install
+scripts can execute inside this container; this is why only the administrator
+may install and the Runner must retain every isolation fence below.
 
-An installed user-private stdio row stores `runner://<approved-id>` and bounded
-provenance. The public API hides both. The backend rechecks the current manifest
-binding before validation, selection, and execution, so removing or changing an
-artifact fails closed without trusting stale database metadata.
+An installed administrator-owned stdio row stores `runner://<approved-id>`,
+bounded provenance, and (for dynamic npm) the sealed-control-plane artifact
+source. The public API hides all of these. Backend reconstructs and validates
+the binding before validation, selection, and execution. Ordinary users share
+the definition but execution resolves the administrator's vault credential;
+no credential row is copied to the user.
 
 ## Runner token and image
 
@@ -162,6 +175,13 @@ MCP_RUNNER_URL=http://mcp-runner:8090
 Build/publish all four release images with `scripts/release-images.sh`; the
 Runner build uses Dockerfile target `mcp-runner`.
 
+Browser-backed stdio packages use the exact Chromium binary baked into the
+pinned official Playwright MCP base image and exposed at Playwright's expected
+`/opt/google/chrome/chrome` path.
+Do not repair a deployment with runtime `playwright install`: the root
+filesystem is read-only and runtime browser downloads would be ephemeral,
+unreviewed version drift.
+
 ## Compose topology
 
 Run production preflight first:
@@ -182,8 +202,10 @@ Expected Runner fences:
 - non-root runtime UID/GID and non-root image user;
 - read-only root filesystem;
 - `cap_drop: ALL` and `no-new-privileges`;
-- 0.5 CPU, 256 MiB memory, and 128 PID limit;
-- isolated `/work` and `/tmp` tmpfs mounts;
+- 1 CPU, 768 MiB memory, and 256 PID limit;
+- isolated 512 MiB `exec,nosuid,nodev` `/work` and 64 MiB `noexec` `/tmp`
+  tmpfs mounts (`/work` requires `exec` only for the exact downloaded package
+  bin; Docker otherwise defaults tmpfs to `noexec`);
 - no host port;
 - only `mcp-control` (internal) and `mcp-egress` networks;
 - no PostgreSQL, Redis, MinIO, provider-vault, or Docker-socket access.
@@ -193,23 +215,33 @@ readiness. Only sends selecting a stdio server fail closed.
 
 ## Process lifecycle
 
-The Runner accepts only independent bearer-authenticated internal calls to
-`/internal/v1/tools/list` and `/internal/v1/tools/call`. Server IDs must already
-exist in the validated manifest. It starts a child on first use, uses an
-isolated mode-`0700` work directory, sets a minimal environment, and creates a
-separate process group.
+The Runner accepts only bearer-authenticated internal calls to
+`/internal/v1/tools/list` and `/internal/v1/tools/call`. Static IDs must exist in
+the validated manifest. A dynamic ID must carry an AES-GCM-sealed artifact
+bound to the exact Server and instance IDs; required environment values travel
+in a separate sealed envelope. Runner revalidates both before it starts a child.
+It uses an isolated mode-`0700` work directory, dedicated HOME/TMP/npm cache, a
+minimal environment, direct argv execution, and a separate process group.
 
 At most four child servers are active. Default idle reap is 15 minutes and
-maximum lifetime is 24 hours. Crash, cancellation, expiry, and Runner shutdown
+maximum lifetime is 24 hours. Each installed Server is keyed separately; a
+credential fingerprint change replaces the old child. Crash, cancellation,
+expiry, and Runner shutdown
 terminate the whole process group and remove the work directory. A later call
 may start a clean approved child.
+
+A cold dynamic npm child has a bounded two-minute download/initialize window.
+The internal HTTP server carries a small envelope beyond that child-start bound;
+steady-state Tool calls retain the normal shorter MCP call timeout. Installation
+that cannot initialize inside the cold-start bound stays recoverable and never
+becomes selectable.
 
 ## Release order
 
 1. Create and verify a paired PostgreSQL/MinIO `pre-deploy` backup.
 2. Validate the target manifest and Runner token metadata.
 3. Build/pull backend, Runner, frontend, and RAG images; record all digests.
-4. Run migrations `074`-`076` explicitly while old application writers are
+4. Run migrations `074`-`081` explicitly while old application writers are
    stopped.
 5. Start the backend with MCP kill switches still off and verify `/ready`.
 6. If needed, start the Runner and verify its container health internally.
@@ -249,9 +281,9 @@ Recreate only the backend and stop the optional Runner when stdio is disabled.
 The cleanup-only worker must remain available through the backend process.
 
 For an image rollback, restore the previous backend/frontend/Runner digests but
-retain migrations `074`-`076`, their runtime grants, and all MCP rows. Migration
-`076.down` refuses while stdio rows exist; do not delete installed Servers to
-force it. The old
+retain migrations `074`-`081`, their runtime grants, and all MCP rows. MCP
+credential and stdio downs refuse while dependent rows exist; do not delete
+installed Servers merely to force them. The old
 Plugin runtime remains removed; MCP switches never reactivate it. Do not run
 `074.down` after any live MCP selection, credential, call, result, or artifact
 exists. Prefer a forward fix.

@@ -52,12 +52,33 @@ public execution from the account-artifact trigger. Migration
 `076_mcp_private_runner_artifacts` extends `mcp_servers.transport` to
 `streamable_http|stdio`, constrains private stdio endpoints to
 `runner://[approved-id]`, and refuses down while any stdio row exists.
+Migration `077_mcp_marketplace_install_credentials` adds the `env` Server and
+credential kinds used only for declared Runner environment fields. Migration
+`078_mcp_legacy_tavily_runner_repair` narrowly converts the exact failed legacy
+Tavily remote row into its reviewed Runner reference and marks it for
+credentials; rollback recognizes only its repair marker. Migration
+`079_mcp_tavily_credential_revalidation` moves an exact legacy ready Tavily
+Runner row back to `needs_auth` so protocol initialization cannot stand in for
+credential validation.
+Migration `080_mcp_legacy_deepwiki_icon` adds only bounded display metadata to
+the exact legacy DeepWiki endpoint when it has no icon; rollback removes only
+the value carrying that migration's repair marker.
+Migration `081_mcp_legacy_context7_artifact_rebind` updates only the exact
+legacy Context7 Runner provenance hash to the current reviewed manifest hash;
+rollback restores only the value carrying that migration's repair marker.
 
 ### 3. Contracts
 
 - Public API is authenticated except the state-bound OAuth callback, strict
   camelCase JSON, 1 MiB body maximum, unknown-field rejection, stable error
   envelopes, and `Cache-Control: no-store`.
+- `AUTH_BOOTSTRAP_USER_ID` is the MCP deployment administrator. Only that exact
+  user may create, install, delete, validate, configure credentials, or start
+  and revoke OAuth for managed definitions. Administrator-installed definitions
+  are globally visible; ordinary users may select ready definitions and
+  enable/disable their tools for their Conversations but cannot mutate shared
+  definition or credential state. Enforcement is server-side and rejection is
+  the stable `403 MCP_ADMIN_REQUIRED`; UI hiding is not authorization.
 - Collection fields in public DTOs are always JSON arrays. In particular, a
   newly created draft Server returns `tools: []`, never `tools: null`, so a
   successful write cannot be mistaken for an invalid response by the client.
@@ -117,32 +138,97 @@ public execution from the account-artifact trigger. Migration
   value in existing metadata. Reviewed private stdio Servers rebind their icon
   to the current exact manifest artifact on listing/validation, so a stale or
   Marketplace-supplied icon never outranks current local review authority.
+- Authenticated Marketplace detail derives `installed` from the deployment
+  administrator's globally visible definitions using exact Marketplace
+  `provider + identifier + version` provenance. It never trusts browser state,
+  display name, or endpoint alone. Detail exposes only a bounded `canInstall`
+  capability and never returns command metadata.
 - A Marketplace install accepts only `identifier`, exact `version`, optional
+  exact backend-derived `deploymentHash`, transient backend-declared `secrets`,
   `conversationId`, `selectionRevision`, and `enableForConversation`. The
   backend re-fetches the authoritative detail and never accepts a URL, command,
-  or deployment object from the browser.
-- LobeHub detail fetches use identifier plus locale only. Do not forward the
-  selected version as an upstream query parameter: the current API rejects that
-  shape. Compare the version returned by the fresh detail to the client-selected
-  exact version and return `MCP_MARKETPLACE_CHANGED` on drift.
+  header name, or deployment object from the browser.
+- LobeHub search/category fetches use the M2M bearer token, but current item
+  detail fetches are public and must send no Marketplace credential (the
+  upstream rejects that token on the detail route). Detail fetches use
+  identifier plus locale only. Do not forward the selected version as an
+  upstream query parameter: the current API rejects that shape. Compare the
+  version returned by the fresh detail to the client-selected exact version
+  and return `MCP_MARKETPLACE_CHANGED` on drift.
 - An explicit public HTTPS `http` deployment is installable through the remote
-  path. A `stdio` option is installable only when the current manifest contains
-  an unauthenticated hidden artifact matching provider, identifier, exact
-  Marketplace version, connection/install method, command, arguments, package
-  name, and derived deployment hash. `sse` and unmatched package/command paths
-  remain display-only.
-- A private stdio install persists only `runner://<artifact-id>`, the artifact
-  ID, and bounded `provider + identifier + version + deploymentHash`
-  provenance. Public Server DTOs expose neither the internal endpoint nor
-  metadata. Validation, selection, and execution re-bind all provenance fields
-  to the current manifest and reapply its current local Tool policy before
-  scheduling. Artifact or provenance drift fails closed instead of retaining a
-  stale read classification. The Runner executes only the manifest's separate
-  absolute argv and never the Marketplace command.
+  path. An npm `stdio` option is administrator-installable when current
+  Marketplace detail declares `npx`, a valid registry package name, an exact
+  version, bounded arguments and environment fields, and the derived
+  deployment hash. Shell, Docker, Git, URL/file package specs, and non-npx
+  command paths remain display-only.
+- Marketplace catalog versions are not assumed to equal npm package versions.
+  For npm `stdio`, resolve the Marketplace-declared package selector against
+  the fixed HTTPS npm registry and persist only the returned exact SemVer
+  package version. Missing/mismatched registry metadata makes the deployment
+  incompatible instead of allowing a broken install or a floating Runner tag.
+- A dynamic stdio install persists only `runner://<artifact-id>`, a bounded
+  Backend-owned artifact definition, and `provider + identifier + version +
+  deploymentHash` provenance. Public Server DTOs expose neither the internal
+  endpoint nor command metadata. Validation, selection, and execution rebind
+  the definition from administrator-owned state and keep every Tool
+  classification `unknown`; Marketplace annotations cannot grant read/retry
+  authority. Backend seals artifact definition and environment separately for
+  each authenticated internal Runner request.
+- Marketplace authentication routes server-authoritatively as anonymous HTTP,
+  approved header HTTP, OAuth HTTP, or reviewed Runner environment. Query
+  secret templates are removed from URLs; approved headers are allowlisted;
+  Runner environment names exact-match the current artifact. Submitted secrets
+  enter only the encrypted Backend credential vault.
+- Marketplace installation may explicitly branch to a user-owned custom remote
+  relay without changing the authoritative Marketplace deployment. The request
+  carries separate `customEndpointUrl`, `customAuthType`, optional approved
+  Header shape/credential, or optional OAuth client ID. Backend re-fetches the
+  exact Marketplace item for identity/display provenance, creates an ordinary
+  private Streamable HTTP Server marked `connectionMode=custom_remote`, applies
+  public-HTTPS/SSRF and credential validation, and selects it only after
+  `ready`. The custom URL is not represented as an official Marketplace URL.
+  The branch is eligible only when the refreshed detail contains an HTTP
+  deployment, Header/OAuth install mode, or required secret fields; pure
+  credential-free stdio entries reject custom-relay requests.
+- OAuth remote installs discover protected-resource and authorization-server
+  metadata, require PKCE S256, and may use Dynamic Client Registration only
+  when the live server advertises a validated registration endpoint. The
+  generated client identity remains inside encrypted OAuth flow/token state.
+  Callback URLs are public HTTPS or exact loopback HTTP only.
+- One shared constrained Runner starts multiple stdio children on demand rather
+  than one permanent container per MCP. Dynamic children get isolated
+  work/HOME/npm-cache directories and bounded environment. The `/work` tmpfs is
+  `exec,nosuid,nodev` because npm materializes package bins there; `/tmp`
+  remains `noexec`, and the container remains non-root/read-only/capability-free.
+  Process reuse is keyed by installed Server ID plus a non-reversible credential
+  fingerprint. Updating a credential replaces the child process; cancel/failure/
+  idle/lifetime expiry kills its process group and removes its workspace.
+  Cold dynamic npm download plus MCP initialize has a separate bounded two-minute
+  window; the internal HTTP server envelope is slightly longer, while
+  steady-state Tool calls keep the normal shorter call timeout.
+- Browser-backed stdio packages use the exact Chromium binary baked into the
+  pinned official Playwright MCP base image, carried into the read-only Runner,
+  and exposed at Playwright's expected Chrome path.
+  Runtime `playwright install` or other browser downloads are not the repair
+  path because they would be ephemeral, version-drifting mutations.
+- MCP initialize and tools/list prove only protocol availability, not provider
+  credential validity. A reviewed Runner artifact that requires a live
+  credential check declares one operator-owned HTTPS probe in the local
+  manifest. Marketplace/browser metadata cannot supply its URL, method,
+  secret binding, or success rule. `401`/`403` records `needs_auth` with
+  `credential_invalid`; transport/upstream failure records `unavailable`; only
+  a successful probe may produce `ready`.
 - Marketplace installation reuses private Server quota/deduplication, SSRF-safe
   validation, Tool discovery, credentials/OAuth, and revision-checked
   Conversation selection. Third-party official/validated/rating metadata never
   upgrades Tool classification or execution trust.
+- Reinstalling the exact same Marketplace deployment is idempotent across a
+  recoverable draft: match the current user plus exact backend-revalidated
+  `provider + identifier + version + deploymentHash`, transport, endpoint,
+  auth shape, and Runner artifact binding. Reuse that private Server, overwrite
+  a newly submitted credential in the vault, and validate again. Never reuse by
+  display name or endpoint alone; an unrelated private Server that owns the
+  endpoint remains `MCP_CONFLICT`.
 
 Environment:
 
@@ -166,7 +252,8 @@ MCP_MARKETPLACE_TIMEOUT MCP_MARKETPLACE_CACHE_TTL
 | --- | --- |
 | MCP or selected transport disabled | `503 MCP_DISABLED` or `MCP_TRANSPORT_DISABLED`; no execution |
 | Private HTTP/private-network/rebinding/unsafe redirect | `400 MCP_INVALID`; no credential egress |
-| Duplicate active private endpoint for one user | `409 MCP_CONFLICT`; preserve the existing draft/Server |
+| Marketplace custom relay is non-HTTPS/private, mixes official deployment fields, or has inconsistent auth fields | reject before Server creation; persist/log no credential |
+| Duplicate active private endpoint for one user | Reuse only an exact current Marketplace-provenance deployment; otherwise `409 MCP_CONFLICT` and preserve the existing Server |
 | Missing/stale grant, selection, credential, or server status | reject before send or `MCP_AUTH_REQUIRED`/`MCP_SERVER_UNAVAILABLE` |
 | Model lacks native Tool calls | reject MCP-enabled send; no prompt planner or model switch |
 | Unknown/duplicate/unsupported schema | disable only that Tool with a visible reason |
@@ -176,9 +263,9 @@ MCP_MARKETPLACE_TIMEOUT MCP_MARKETPLACE_CACHE_TTL
 | Object deletion partially fails | retain PostgreSQL row/queue entry for idempotent retry |
 | `plugin_registry` is present | retain for rollback compatibility; active access is forbidden |
 | Marketplace disabled/missing credentials/upstream failure | stable Marketplace-specific failure; installed Servers and chat remain available |
-| LobeHub rejects an upstream `version` query | do not send that unsupported query; fetch current detail and compare the returned exact version locally |
-| Marketplace stdio option exactly matches a manifest artifact and stdio is enabled | detail returns `installable`; install creates/validates one private Runner reference |
-| Marketplace item has only SSE or unmatched command/package options | detail remains visible and incompatible/Runner-required; install is rejected |
+| LobeHub detail route rejects the search bearer token or an upstream `version` query | send no Marketplace credential and no version query; fetch current detail and compare the returned exact version locally |
+| Marketplace stdio option is exact manifest-approved or valid bounded npm/npx and stdio is enabled | detail returns `installable`; install creates/validates one administrator-owned Runner reference |
+| Marketplace item has only SSE, non-npx, Shell/Docker/Git/URL/file, or floating package options | detail remains visible and incompatible/Runner-required; install is rejected |
 | Private stdio provenance/artifact ID is stale or tampered | validation/selection/execution fails closed with server unavailable |
 | Reviewed private stdio Tool is listed as `read` by the current artifact policy | expose `read`; permit bounded read concurrency |
 | Private remote annotation claims read-only or a reviewed artifact omits a Tool policy | normalize the Tool to `unknown`; serialize and never read-retry |
@@ -190,8 +277,9 @@ MCP_MARKETPLACE_TIMEOUT MCP_MARKETPLACE_CACHE_TTL
 
 - **Good**: current grants and an explicit selection freeze one snapshot; four
   compatible reads execute concurrently and the same model continues.
-- **Good**: an exact reviewed Marketplace stdio fingerprint resolves to one
-  image-bundled absolute executable without running `npx` or downloading code.
+- **Good**: a refreshed Marketplace stdio deployment resolves either to one
+  exact image-bundled manifest executable or one sealed exact-version npm/npx
+  artifact downloaded only inside the isolated Runner.
 - **Base**: no Workspace and no custom selection exposes no MCP Tools and chat
   behaves normally.
 - **Good failure**: a write connection drops, the timeline records
@@ -209,12 +297,19 @@ MCP_MARKETPLACE_TIMEOUT MCP_MARKETPLACE_CACHE_TTL
   cross-Workspace denial, explicit-empty and revision conflict.
 - Chat: fake Streamable HTTP and fake Runner complete native multi-round same-
   model continuation and persist the structured timeline; unsupported model
-  rejects before acceptance.
-- PostgreSQL 17: fresh `001..076`, replay, guarded `076` down with/without a
-  stdio row, `075` grant down/up plus `074` schema down/up, retired metadata
-  purge without security-field loss, 12 MCP tables, runtime-role denial/grants,
-  stdio repository lifecycle, account cascade queue, and final replay via
-  `scripts/verify-mcp-postgres17.sh`.
+  rejects before acceptance. Any method added to the shared `Repository`
+  interface must also be added to Chat and cross-package test fakes; compile the
+  owning Chat package in the focused gate so an MCP-only unit run cannot hide
+  interface drift.
+- PostgreSQL 17: fresh `001..081`, replay, clean `081..077` down, guarded `076`
+  down with/without a stdio row, `075` grant down/up plus `074` schema down/up,
+  retired metadata purge without security-field loss, 12 MCP tables,
+  runtime-role denial/grants, stdio repository lifecycle, targeted legacy
+  repair/rollback assertions, account cascade queue, and final replay via
+  `scripts/verify-mcp-postgres17.sh` and
+  `scripts/verify-mcp-install-credentials-postgres17.sh`. When a new tail
+  migration is added, both drills must advance their fresh, down, re-up, and
+  final replay expectations in the same change.
 - Security: logs/metrics/errors contain no argument, result, token, custom URL,
   or high-cardinality user/server/tool label.
 - Marketplace: M2M token singleflight/expiry, URL construction, response caps,

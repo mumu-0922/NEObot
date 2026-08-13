@@ -83,15 +83,32 @@ run_migrate() {
   MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"
 }
 
-log "applying a fresh 001 -> 076 chain"
+log "applying a fresh 001 -> 081 chain"
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 074_mcp_tools_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 075_mcp_runtime_role_grants" "${work_dir}/fresh.log"
 grep -Fq "up 076_mcp_private_runner_artifacts" "${work_dir}/fresh.log"
+grep -Fq "up 077_mcp_marketplace_install_credentials" "${work_dir}/fresh.log"
+grep -Fq "up 078_mcp_legacy_tavily_runner_repair" "${work_dir}/fresh.log"
+grep -Fq "up 079_mcp_tavily_credential_revalidation" "${work_dir}/fresh.log"
+grep -Fq "up 080_mcp_legacy_deepwiki_icon" "${work_dir}/fresh.log"
+grep -Fq "up 081_mcp_legacy_context7_artifact_rebind" "${work_dir}/fresh.log"
 
 log "proving replay is a no-op"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
+
+log "rolling back the clean 081 through 077 tails before the 076 guard drill"
+run_migrate down >"${work_dir}/down-081.log" 2>&1
+grep -Fq "down 081_mcp_legacy_context7_artifact_rebind" "${work_dir}/down-081.log"
+run_migrate down >"${work_dir}/down-080.log" 2>&1
+grep -Fq "down 080_mcp_legacy_deepwiki_icon" "${work_dir}/down-080.log"
+run_migrate down >"${work_dir}/down-079.log" 2>&1
+grep -Fq "down 079_mcp_tavily_credential_revalidation" "${work_dir}/down-079.log"
+run_migrate down >"${work_dir}/down-078.log" 2>&1
+grep -Fq "down 078_mcp_legacy_tavily_runner_repair" "${work_dir}/down-078.log"
+run_migrate down >"${work_dir}/down-077.log" 2>&1
+grep -Fq "down 077_mcp_marketplace_install_credentials" "${work_dir}/down-077.log"
 
 log "proving 076 accepts approved Runner references and guards destructive down"
 psql_command "
@@ -125,8 +142,21 @@ if run_migrate down >"${work_dir}/guarded-down-076.log" 2>&1; then
 fi
 grep -Fq "cannot roll back 076_mcp_private_runner_artifacts while stdio MCP servers exist" \
   "${work_dir}/guarded-down-076.log"
-run_migrate up >"${work_dir}/guarded-replay.log" 2>&1
-grep -Fq "no migrations changed" "${work_dir}/guarded-replay.log"
+psql_command "
+DO \$\$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM schema_migrations WHERE version = 76
+  ) OR NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'mcp_servers'::regclass
+      AND conname = 'mcp_servers_stdio_endpoint_check'
+  ) THEN
+    RAISE EXCEPTION 'failed 076 down changed migration or constraint state';
+  END IF;
+END
+\$\$;
+" >/dev/null
 
 log "removing the fixture and rolling back 076"
 psql_command "
@@ -177,11 +207,16 @@ VALUES (
 );
 " >/dev/null
 
-log "reapplying 074 -> 076 and verifying schema, metadata, retention, grants, and stdio persistence"
+log "reapplying 074 -> 081 and verifying schema, metadata, retention, grants, and stdio persistence"
 run_migrate up >"${work_dir}/reup.log" 2>&1
 grep -Fq "up 074_mcp_tools_foundation" "${work_dir}/reup.log"
 grep -Fq "up 075_mcp_runtime_role_grants" "${work_dir}/reup.log"
 grep -Fq "up 076_mcp_private_runner_artifacts" "${work_dir}/reup.log"
+grep -Fq "up 077_mcp_marketplace_install_credentials" "${work_dir}/reup.log"
+grep -Fq "up 078_mcp_legacy_tavily_runner_repair" "${work_dir}/reup.log"
+grep -Fq "up 079_mcp_tavily_credential_revalidation" "${work_dir}/reup.log"
+grep -Fq "up 080_mcp_legacy_deepwiki_icon" "${work_dir}/reup.log"
+grep -Fq "up 081_mcp_legacy_context7_artifact_rebind" "${work_dir}/reup.log"
 psql_command "
 DO \$\$
 DECLARE
@@ -237,4 +272,4 @@ log "proving a second replay remains a no-op"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 
-log "passed (fresh, replay, guarded 076 down/up, metadata, retention, runtime grants, stdio repository lifecycle)"
+log "passed (fresh through 081, replay, guarded 076 down/up, metadata, retention, runtime grants, stdio repository lifecycle)"

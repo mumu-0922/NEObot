@@ -28,7 +28,7 @@ Chat send
      or
   -> private mcp-control network
   -> optional hardened MCP runner
-  -> one approved stdio child process started on demand
+  -> one exact npm or image-bundled stdio child process started on demand
 
 Large/media result
   -> private MinIO bucket under mcp-results/
@@ -45,7 +45,7 @@ presentation state only.
 | --- | --- | --- |
 | Embedded release catalog | Audited release artifact | Streamable HTTP |
 | Administrator manifest | Versioned deployment file | Streamable HTTP or stdio |
-| Private user definition | PostgreSQL row after validation | Public HTTPS Streamable HTTP or approved Runner artifact reference |
+| Administrator-managed definition | PostgreSQL row after validation | Public HTTPS Streamable HTTP or exact Runner artifact reference |
 
 Catalog and manifest definitions are declarative authorities. PostgreSQL must
 not silently replace their endpoint, command, auth, grant, or tool policy.
@@ -59,11 +59,24 @@ the table capabilities required by the MCP repository and cleanup worker, and
 removes public execution from the account-artifact trigger. Migration
 `076_mcp_private_runner_artifacts` permits private `stdio` rows only when their
 endpoint is a bounded `runner://<approved-id>` reference and refuses down while
-any stdio row remains. The retired
+any stdio row remains. Migration `077_mcp_marketplace_install_credentials`
+admits encrypted Runner environment credentials. Migrations `078` and `079`
+repair legacy Tavily installation/credential readiness state. Migrations `080`
+and `081` repair bounded legacy DeepWiki display metadata and the exact
+Context7 Runner artifact binding. The retired
 `plugin_registry` table from migration `011` is retained read-only for one
 rollback release; no active route or runtime reads it.
 
 ## Authorization and selection
+
+`AUTH_BOOTSTRAP_USER_ID` is the single MCP deployment administrator. Only that
+exact authenticated user may create/install, configure credentials or OAuth,
+validate, or delete definitions. Its definitions are globally visible.
+Ordinary users may select ready shared Servers and enable/disable individual
+Tools for their own Conversations, but every management route rejects them with
+`403 MCP_ADMIN_REQUIRED`. Missing or invalid administrator configuration fails
+closed. During ordinary-user execution, Backend resolves the administrator's
+vault credential without duplicating or returning it.
 
 A conversation stores one of two explicit modes:
 
@@ -127,11 +140,24 @@ expiry. The callback restores identity from that state rather than requiring a
 browser bearer token. Refresh is singleflight per credential; `invalid_grant`
 revokes authority and blocks dependent sends.
 
-The optional stdio path is administrator-only. One resident Runner starts at
-most four allowlisted child processes on demand, reaps them after 15 idle
-minutes, and enforces a 24-hour maximum lifetime. It receives no user bearer,
-PostgreSQL credential, MinIO credential, Docker socket, shell command, or
-arbitrary host mount.
+The optional stdio install path is administrator-only. One resident Runner
+starts at most four child processes on demand, reaps them after 15 idle minutes,
+and enforces a 24-hour maximum lifetime. A static manifest child uses its
+reviewed absolute argv. A dynamic Marketplace child is accepted only after
+Backend refreshes the authoritative detail and derives an exact registry npm
+package/version with bounded argv and environment names. Artifact and secret
+environment are independently AES-GCM sealed and bound to Server/instance IDs
+on the bearer-authenticated internal control plane. Runner revalidates them and
+executes a fixed `npx` argv without accepting a shell command from the browser
+(npm may use its own internal lifecycle launcher). It receives no user bearer, PostgreSQL
+credential, MinIO credential, Docker socket, or arbitrary host mount.
+The isolated `/work` tmpfs is executable only because npm package bins are
+materialized there; it remains `nosuid,nodev`, bounded, non-persistent, and
+inside the non-root/read-only/capability-free container boundary.
+Cold npm download plus MCP initialize is bounded to two minutes; steady-state
+Tool execution keeps the ordinary call timeout. The internal HTTP server timeout
+is slightly longer than the cold-start bound so it does not truncate a valid
+Runner response first.
 
 ## Results, lifecycle, and observability
 
@@ -169,20 +195,19 @@ The Marketplace adapter is backend-only and uses short-lived M2M tokens with
 singleflight refresh and bounded response caching. Search category facets and
 item icons remain display-only untrusted metadata; category filtering is
 performed upstream through the backend, and icon URLs are restricted to HTTPS.
-It is a metadata source, not an execution authority. Neo Chat never starts
-another Marketplace container or executes installation commands supplied by an
-item. A stdio item becomes installable only when its exact provider,
-identifier/version, deployment method, command/arguments/package name, and hash
-match a hidden administrator-manifest artifact. The private row stores the
-artifact ID and provenance, while the actual absolute executable comes only
-from the immutable Runner image. Every validation, selection, and execution
-rechecks that binding against the current manifest. Ordinary private Tool
-annotations remain `unknown`; only an exact current-artifact binding reapplies
-the manifest's local `toolPolicy`, so reviewed reads can run concurrently while
-artifact drift fails closed.
+It is discovery metadata, not browser execution authority. Neo Chat never
+starts another Marketplace container or accepts commands from the browser. A
+stdio item becomes installable only when Backend's refreshed detail identifies
+`npx` plus an exact registry npm package/version and bounded arguments; Shell,
+Docker, Git, URL/file specs, and floating tags fail closed. A matching hidden
+manifest artifact may supply a reviewed image-bundled executable; otherwise a
+sealed dynamic npm artifact is downloaded and started inside the constrained
+Runner on first use. Every validation, selection, and execution reconstructs
+and rechecks the binding. Ordinary private Tool annotations remain `unknown`;
+only a matching local manifest `toolPolicy` can promote a classification.
 
 A rollback disables MCP or restores prior application images while retaining
-migrations `074`-`076` and their data/runtime grants. Migration `076.down`
+migrations `074`-`081` and their data/runtime grants. Migration `076.down`
 refuses while private stdio rows exist; never delete those rows merely to force
 a rollback. Never run `074.down`
 after live MCP traffic. The old Plugin runtime is not revived by any MCP
