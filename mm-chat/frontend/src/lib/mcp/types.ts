@@ -1,6 +1,6 @@
 export type McpServerSource = "catalog" | "manifest" | "private";
 export type McpTransport = "streamable_http" | "stdio";
-export type McpAuthType = "none" | "header" | "oauth";
+export type McpAuthType = "none" | "header" | "oauth" | "env";
 export type McpServerStatus =
   "draft" | "ready" | "needs_auth" | "unavailable" | "disabled";
 export type McpToolClassification = "read" | "write" | "unknown";
@@ -48,6 +48,8 @@ export interface McpServer {
   authType: McpAuthType;
   status: McpServerStatus;
   hasCredential: boolean;
+  canManage: boolean;
+  configurationFields: string[];
   toolCount: number;
   unsupportedToolCount: number;
   lastErrorCode?: string;
@@ -163,10 +165,15 @@ export interface McpMarketplaceDeployment {
   compatibilityReason: string;
   endpointUrl?: string;
   hash?: string;
+  installMode?: "direct" | "header" | "oauth" | "runner_env";
+  secretFields: string[];
+  headerName?: string;
 }
 
 export interface McpMarketplaceItemDetail extends McpMarketplaceItem {
   version: string;
+  installed: boolean;
+  canInstall: boolean;
   summary?: string;
   homepage?: string;
   repositoryUrl?: string;
@@ -189,7 +196,7 @@ const SERVER_SOURCES = new Set<McpServerSource>([
   "private",
 ]);
 const TRANSPORTS = new Set<McpTransport>(["streamable_http", "stdio"]);
-const AUTH_TYPES = new Set<McpAuthType>(["none", "header", "oauth"]);
+const AUTH_TYPES = new Set<McpAuthType>(["none", "header", "oauth", "env"]);
 const SERVER_STATUSES = new Set<McpServerStatus>([
   "draft",
   "ready",
@@ -231,7 +238,12 @@ const MAX_TOOLS_PER_SERVER = 256;
 const MAX_CALLS = 256;
 const MAX_STRING = 4096;
 
-export function normalizeMcpServers(value: unknown): McpServer[] | null {
+export interface McpServerList {
+  servers: McpServer[];
+  canManage: boolean;
+}
+
+export function normalizeMcpServers(value: unknown): McpServerList | null {
   if (!isRecord(value) || !Array.isArray(value.servers)) return null;
   const servers: McpServer[] = [];
   for (const candidate of value.servers.slice(0, MAX_SERVERS)) {
@@ -239,7 +251,7 @@ export function normalizeMcpServers(value: unknown): McpServer[] | null {
     if (!server) return null;
     servers.push(server);
   }
-  return servers;
+  return { servers, canManage: value.canManage === true };
 }
 
 export function normalizeMcpServerEnvelope(value: unknown): McpServer | null {
@@ -270,6 +282,12 @@ export function normalizeMcpServer(value: unknown): McpServer | null {
     ? value.grants.slice(0, 64).map(normalizeMcpGrant)
     : [];
   if (grants.some((grant) => grant === null)) return null;
+  const configurationFields = stringArray(
+    value.configurationFields ?? [],
+    8,
+    128,
+  );
+  if (!configurationFields) return null;
 
   return {
     ref,
@@ -287,6 +305,8 @@ export function normalizeMcpServer(value: unknown): McpServer | null {
     authType,
     status,
     hasCredential: value.hasCredential,
+    canManage: value.canManage === true,
+    configurationFields,
     toolCount: nonNegativeInteger(value.toolCount),
     unsupportedToolCount: nonNegativeInteger(value.unsupportedToolCount),
     ...(stringValue(value.lastErrorCode, 256)
@@ -444,6 +464,7 @@ export function normalizeMcpMarketplaceItemEnvelope(
     !version ||
     !source ||
     !sourceUrl ||
+    typeof value.item.installed !== "boolean" ||
     !Array.isArray(value.item.tools) ||
     value.item.tools.length > 64 ||
     !Array.isArray(value.item.deployments) ||
@@ -464,6 +485,8 @@ export function normalizeMcpMarketplaceItemEnvelope(
   return {
     ...item,
     version,
+    installed: value.item.installed,
+    canInstall: value.item.canInstall === true,
     ...(stringValue(value.item.summary, MAX_STRING)
       ? { summary: stringValue(value.item.summary, MAX_STRING) }
       : {}),
@@ -577,6 +600,8 @@ function normalizeMarketplaceDeployment(
   );
   const compatibilityReason = stringValue(value.compatibilityReason, 512);
   const endpointUrl = value.endpointUrl ? httpsURLValue(value.endpointUrl) : "";
+  const installMode = stringValue(value.installMode, 32);
+  const secretFields = stringArray(value.secretFields ?? [], 8, 128);
   const installableShape =
     compatibility !== "installable" ||
     (connectionType === "http" && Boolean(endpointUrl)) ||
@@ -586,6 +611,9 @@ function normalizeMarketplaceDeployment(
     !installationMethod ||
     !compatibility ||
     !compatibilityReason ||
+    !secretFields ||
+    (installMode &&
+      !["direct", "header", "oauth", "runner_env"].includes(installMode)) ||
     (value.endpointUrl && !endpointUrl) ||
     !installableShape
   ) {
@@ -597,6 +625,15 @@ function normalizeMarketplaceDeployment(
     recommended: value.recommended,
     compatibility,
     compatibilityReason,
+    ...(installMode
+      ? {
+          installMode: installMode as McpMarketplaceDeployment["installMode"],
+        }
+      : {}),
+    secretFields,
+    ...(stringValue(value.headerName, 128)
+      ? { headerName: stringValue(value.headerName, 128) }
+      : {}),
     ...(endpointUrl ? { endpointUrl } : {}),
     ...(stringValue(value.hash, 64)
       ? { hash: stringValue(value.hash, 64) }

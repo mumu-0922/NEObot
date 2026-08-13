@@ -21,6 +21,7 @@
   "credentialPlaceholder": "凭据值",
   "save": "保存",
   "tools": "Server 工具",
+  "toolCount": "{count} 个工具",
   "unsupported": "Schema 不受支持",
   "validate": "验证",
   "addRemoteServer": "添加远程 MCP Server",
@@ -28,6 +29,8 @@
   "clientId": "OAuth Client ID",
   "authNone": "无需认证",
   "authHeader": "静态 Header",
+  "customRemoteUrlNotice": "这里可填写自定义 HTTPS MCP URL；商店安装的 URL 由 Backend 锁定，避免密钥被改送到其他地址。",
+  "customRemoteSecretNotice": "URL 与 Header 凭据分开提交；凭据仅由 Backend 加密保存，不写入 URL。",
   "createAndValidate": "创建并验证",
   "saving": "正在保存…",
   "loadFailed": "工具加载失败。",
@@ -37,6 +40,12 @@
   "createFailed": "MCP Server 创建失败。",
   "deleteFailed": "MCP Server 删除失败。",
   "validateFailed": "MCP Server 验证失败。",
+  "validationErrors": {
+    "credentialInvalid": "凭据无效，请重新填写。",
+    "credentialRevalidationRequired": "需要重新验证凭据后才能启用。",
+    "credentialProbeFailed": "凭据验证服务暂时不可用，请稍后重试。",
+    "validationFailed": "Server 尚未通过在线验证。"
+  },
   "pageTabs": "工具页面",
   "installedTab": "已安装",
   "marketplaceTab": "MCP 商店",
@@ -45,7 +54,13 @@
   "marketplaceSearchAction": "搜索",
   "marketplaceLoading": "正在加载 MCP 商店…",
   "marketplaceEmpty": "没有找到匹配的 MCP Server。",
-  "marketplaceResults": "共 {count} 个结果",
+  "marketplaceResults": "已加载 {loaded} / 共 {count}",
+  "marketplaceLoadMore": "加载更多",
+  "marketplaceLoadingMore": "正在加载更多…",
+  "marketplaceRetry": "重试加载",
+  "marketplaceAllLoaded": "已加载全部 {count} 个结果",
+  "marketplaceDetailFailed": "“{name}”的详情暂时无法加载，请重试。",
+  "marketplaceRetryDetail": "重试详情",
   "marketplaceCategoriesLabel": "MCP 分类",
   "marketplaceAllCategories": "全部",
   "marketplaceCategories": {
@@ -77,7 +92,14 @@
   "marketplaceRepository": "源代码",
   "marketplaceTrustNotice": "商店标签只用于展示。Neo Chat 会重新获取版本，并校验公共 HTTPS 地址或精确匹配受审 Runner artifact，再执行 MCP initialize 与 tools/list；不会执行商店提供的 npx、Shell 或 Docker 命令。",
   "marketplaceBackendValidation": "安装由 Backend 重新获取并验证",
+  "marketplaceCompleteConfiguration": "请先在已选连接方式中填写完整配置",
+  "marketplaceUseCustomEndpoint": "使用自定义中转 URL",
+  "marketplaceCustomEndpointNotice": "不使用商店官方地址，改为连接你的 HTTPS 中转；URL 与密钥分开提交并由 Backend 校验。",
+  "marketplaceCompleteCustomEndpoint": "请填写有效的 HTTPS 中转 URL 和所选认证配置",
+  "marketplaceCustomEndpointValidation": "将按自定义远程 Server 进行 HTTPS、SSRF、认证与 MCP 在线验证",
   "marketplaceInstallAndEnable": "安装并启用",
+  "marketplaceAlreadyInstalled": "已安装",
+  "marketplaceInstalledManageNotice": "此版本已经安装，可在“已安装”中启用、授权或管理",
   "marketplaceCloseDetail": "关闭商店详情",
   "marketplaceInstalled": "已安装 MCP Server。",
   "marketplaceInstalledAndEnabled": "已安装，并在当前会话启用。",
@@ -90,7 +112,7 @@
   "marketplaceCompatibility": {
     "installable": "可安装",
     "needs_configuration": "需要配置",
-    "requires_runner": "需要 Runner",
+    "requires_runner": "当前方案不可用",
     "incompatible": "不兼容"
   },
   "status": {
@@ -99,5 +121,8 @@
     "needs_auth": "需要授权",
     "unavailable": "不可用",
     "disabled": "已禁用"
-  }
+  },
+  "marketplaceConfiguration": "安装配置",
+  "marketplaceSecretPlaceholder": "仅本次提交，保存后不会回显",
+  "marketplaceSecretNotice": "密钥与 URL 分开提交，由 Backend 加密保存；不会写入 URL、浏览器存储或日志。"
 }

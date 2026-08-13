@@ -45,6 +45,9 @@ export function createServerMcpApiShell(httpClient: HttpClient): McpApi {
             endpointUrl: input.endpointUrl,
             authType: input.authType,
             ...(input.headerName ? { headerName: input.headerName } : {}),
+            ...(input.headerPrefix !== undefined
+              ? { headerPrefix: input.headerPrefix }
+              : {}),
             ...(input.clientId ? { clientId: input.clientId } : {}),
             ...(input.scopes ? { scopes: input.scopes } : {}),
           },
@@ -75,7 +78,8 @@ export function createServerMcpApiShell(httpClient: HttpClient): McpApi {
         {
           method: "PUT",
           body: {
-            value: input.value,
+            ...(input.value ? { value: input.value } : {}),
+            ...(input.values ? { values: input.values } : {}),
             ...(input.conversationId
               ? { conversationId: input.conversationId }
               : {}),
@@ -224,6 +228,28 @@ export function createServerMcpApiShell(httpClient: HttpClient): McpApi {
               : {}),
             selectionRevision: input.selectionRevision,
             enableForConversation: input.enableForConversation,
+            ...(input.deploymentHash
+              ? { deploymentHash: input.deploymentHash }
+              : {}),
+            ...(input.secrets ? { secrets: input.secrets } : {}),
+            ...(input.customEndpointUrl
+              ? { customEndpointUrl: input.customEndpointUrl }
+              : {}),
+            ...(input.customAuthType
+              ? { customAuthType: input.customAuthType }
+              : {}),
+            ...(input.customHeaderName
+              ? { customHeaderName: input.customHeaderName }
+              : {}),
+            ...(input.customHeaderPrefix !== undefined
+              ? { customHeaderPrefix: input.customHeaderPrefix }
+              : {}),
+            ...(input.customCredential
+              ? { customCredential: input.customCredential }
+              : {}),
+            ...(input.customClientId
+              ? { customClientId: input.customClientId }
+              : {}),
           },
           signal: input.signal,
         },

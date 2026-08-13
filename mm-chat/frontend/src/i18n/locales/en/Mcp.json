@@ -21,6 +21,7 @@
   "credentialPlaceholder": "Credential value",
   "save": "Save",
   "tools": "Server tools",
+  "toolCount": "{count} tools",
   "unsupported": "Unsupported schema",
   "validate": "Validate",
   "addRemoteServer": "Add remote MCP server",
@@ -28,6 +29,8 @@
   "clientId": "OAuth client ID",
   "authNone": "No authentication",
   "authHeader": "Static header",
+  "customRemoteUrlNotice": "Enter a custom HTTPS MCP URL here. Marketplace URLs are locked by the Backend so secrets cannot be redirected elsewhere.",
+  "customRemoteSecretNotice": "The URL and Header credential are submitted separately. The Backend encrypts the credential and never writes it into the URL.",
   "createAndValidate": "Create and validate",
   "saving": "Saving…",
   "loadFailed": "Tools could not be loaded.",
@@ -37,6 +40,12 @@
   "createFailed": "MCP server could not be created.",
   "deleteFailed": "MCP server could not be deleted.",
   "validateFailed": "MCP server validation failed.",
+  "validationErrors": {
+    "credentialInvalid": "The credential is invalid. Enter it again.",
+    "credentialRevalidationRequired": "The credential must be revalidated before this server can be enabled.",
+    "credentialProbeFailed": "The credential validation service is temporarily unavailable. Try again later.",
+    "validationFailed": "The server has not passed live validation."
+  },
   "pageTabs": "Tools page",
   "installedTab": "Installed",
   "marketplaceTab": "MCP Marketplace",
@@ -45,7 +54,13 @@
   "marketplaceSearchAction": "Search",
   "marketplaceLoading": "Loading MCP Marketplace…",
   "marketplaceEmpty": "No matching MCP servers were found.",
-  "marketplaceResults": "{count} results",
+  "marketplaceResults": "Loaded {loaded} of {count}",
+  "marketplaceLoadMore": "Load more",
+  "marketplaceLoadingMore": "Loading more…",
+  "marketplaceRetry": "Retry loading",
+  "marketplaceAllLoaded": "All {count} results loaded",
+  "marketplaceDetailFailed": "Details for “{name}” are temporarily unavailable. Try again.",
+  "marketplaceRetryDetail": "Retry details",
   "marketplaceCategoriesLabel": "MCP categories",
   "marketplaceAllCategories": "All",
   "marketplaceCategories": {
@@ -77,7 +92,14 @@
   "marketplaceRepository": "Source code",
   "marketplaceTrustNotice": "Marketplace badges are display-only. Neo Chat re-fetches the version, validates a public HTTPS endpoint or an exact reviewed Runner artifact, and performs MCP initialize and tools/list. It never executes Marketplace npx, shell, or Docker commands.",
   "marketplaceBackendValidation": "The Backend re-fetches and validates before installation",
+  "marketplaceCompleteConfiguration": "Complete the configuration in the selected connection first",
+  "marketplaceUseCustomEndpoint": "Use a custom relay URL",
+  "marketplaceCustomEndpointNotice": "Connect through your HTTPS relay instead of the Marketplace endpoint. The URL and credential are submitted separately and validated by the Backend.",
+  "marketplaceCompleteCustomEndpoint": "Enter a valid HTTPS relay URL and complete the selected authentication configuration",
+  "marketplaceCustomEndpointValidation": "The custom remote Server will undergo HTTPS, SSRF, authentication, and live MCP validation",
   "marketplaceInstallAndEnable": "Install and enable",
+  "marketplaceAlreadyInstalled": "Installed",
+  "marketplaceInstalledManageNotice": "This version is installed; enable, authorize, or manage it from Installed",
   "marketplaceCloseDetail": "Close Marketplace details",
   "marketplaceInstalled": "MCP server installed.",
   "marketplaceInstalledAndEnabled": "Installed and enabled for this conversation.",
@@ -90,7 +112,7 @@
   "marketplaceCompatibility": {
     "installable": "Installable",
     "needs_configuration": "Configuration required",
-    "requires_runner": "Runner required",
+    "requires_runner": "Unavailable option",
     "incompatible": "Incompatible"
   },
   "status": {
@@ -99,5 +121,8 @@
     "needs_auth": "Authorization required",
     "unavailable": "Unavailable",
     "disabled": "Disabled"
-  }
+  },
+  "marketplaceConfiguration": "Install configuration",
+  "marketplaceSecretPlaceholder": "Submitted once and never displayed again",
+  "marketplaceSecretNotice": "Secrets stay separate from URLs and are encrypted by the backend. They are never stored in browser state or logs."
 }

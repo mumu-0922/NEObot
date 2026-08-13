@@ -21,6 +21,7 @@
   "credentialPlaceholder": "認証情報",
   "save": "保存",
   "tools": "Server ツール",
+  "toolCount": "{count} ツール",
   "unsupported": "未対応の Schema",
   "validate": "検証",
   "addRemoteServer": "リモート MCP Server を追加",
@@ -28,6 +29,8 @@
   "clientId": "OAuth Client ID",
   "authNone": "認証なし",
   "authHeader": "静的 Header",
+  "customRemoteUrlNotice": "ここではカスタム HTTPS MCP URL を入力できます。ストア URL は Secret の転送先を変更できないよう Backend が固定します。",
+  "customRemoteSecretNotice": "URL と Header 認証情報は分けて送信されます。認証情報は Backend が暗号化し、URL には書き込みません。",
   "createAndValidate": "作成して検証",
   "saving": "保存中…",
   "loadFailed": "ツールを読み込めませんでした。",
@@ -37,6 +40,12 @@
   "createFailed": "MCP Server を作成できませんでした。",
   "deleteFailed": "MCP Server を削除できませんでした。",
   "validateFailed": "MCP Server の検証に失敗しました。",
+  "validationErrors": {
+    "credentialInvalid": "認証情報が無効です。再入力してください。",
+    "credentialRevalidationRequired": "有効化する前に認証情報の再検証が必要です。",
+    "credentialProbeFailed": "認証情報の検証サービスを一時的に利用できません。後でもう一度お試しください。",
+    "validationFailed": "Server はオンライン検証を通過していません。"
+  },
   "pageTabs": "ツールページ",
   "installedTab": "インストール済み",
   "marketplaceTab": "MCP ストア",
@@ -45,7 +54,13 @@
   "marketplaceSearchAction": "検索",
   "marketplaceLoading": "MCP ストアを読み込み中…",
   "marketplaceEmpty": "一致する MCP Server はありません。",
-  "marketplaceResults": "{count} 件",
+  "marketplaceResults": "{count} 件中 {loaded} 件を読み込み済み",
+  "marketplaceLoadMore": "さらに読み込む",
+  "marketplaceLoadingMore": "さらに読み込み中…",
+  "marketplaceRetry": "再読み込み",
+  "marketplaceAllLoaded": "全 {count} 件を読み込みました",
+  "marketplaceDetailFailed": "「{name}」の詳細を一時的に読み込めません。再試行してください。",
+  "marketplaceRetryDetail": "詳細を再試行",
   "marketplaceCategoriesLabel": "MCP カテゴリ",
   "marketplaceAllCategories": "すべて",
   "marketplaceCategories": {
@@ -77,7 +92,14 @@
   "marketplaceRepository": "ソースコード",
   "marketplaceTrustNotice": "ストアのバッジは表示専用です。Neo Chat はバージョンを再取得し、公開 HTTPS エンドポイントまたは完全一致する審査済み Runner artifact を検証してから MCP initialize と tools/list を実行します。ストア由来の npx、Shell、Docker コマンドは実行しません。",
   "marketplaceBackendValidation": "Backend が再取得して検証してからインストールします",
+  "marketplaceCompleteConfiguration": "選択した接続方式の設定を先に入力してください",
+  "marketplaceUseCustomEndpoint": "カスタム中継 URL を使用",
+  "marketplaceCustomEndpointNotice": "ストアの公式 Endpoint の代わりに独自の HTTPS 中継へ接続します。URL と認証情報は分けて送信し、Backend が検証します。",
+  "marketplaceCompleteCustomEndpoint": "有効な HTTPS 中継 URL と選択した認証設定を入力してください",
+  "marketplaceCustomEndpointValidation": "カスタム Remote Server として HTTPS・SSRF・認証・MCP オンライン検証を行います",
   "marketplaceInstallAndEnable": "インストールして有効化",
+  "marketplaceAlreadyInstalled": "インストール済み",
+  "marketplaceInstalledManageNotice": "このバージョンはインストール済みです。「インストール済み」で有効化・認証・管理できます",
   "marketplaceCloseDetail": "ストア詳細を閉じる",
   "marketplaceInstalled": "MCP Server をインストールしました。",
   "marketplaceInstalledAndEnabled": "インストールし、この会話で有効化しました。",
@@ -90,7 +112,7 @@
   "marketplaceCompatibility": {
     "installable": "インストール可能",
     "needs_configuration": "設定が必要",
-    "requires_runner": "Runner が必要",
+    "requires_runner": "現在利用できない方式",
     "incompatible": "非対応"
   },
   "status": {
@@ -99,5 +121,8 @@
     "needs_auth": "認証が必要",
     "unavailable": "利用不可",
     "disabled": "無効"
-  }
+  },
+  "marketplaceConfiguration": "インストール設定",
+  "marketplaceSecretPlaceholder": "一度だけ送信され、再表示されません",
+  "marketplaceSecretNotice": "Secret は URL と分離して Backend が暗号化します。URL・ブラウザ保存・ログには残しません。"
 }

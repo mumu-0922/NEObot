@@ -43,7 +43,12 @@ import type {
   McpMarketplaceInstallResult,
   McpMarketplaceItem,
   McpMarketplaceItemDetail,
+  McpMarketplaceDeployment,
 } from "@/lib/mcp/types";
+import {
+  appendUniqueMarketplaceItems,
+  hasNextMarketplacePage,
+} from "@/lib/mcp/marketplacePagination";
 import { ApiClientError, createNeoChatApiClient } from "@/services/api/client";
 
 import McpServerIcon from "./McpServerIcon";
@@ -53,6 +58,31 @@ interface McpMarketplaceProps {
   enabled: boolean;
   onInstalled: (result: McpMarketplaceInstallResult) => void;
 }
+
+interface MarketplaceDetailFailure {
+  item: McpMarketplaceItem;
+  message: string;
+}
+
+interface CustomRemoteDraft {
+  enabled: boolean;
+  endpointUrl: string;
+  authType: "none" | "header" | "oauth";
+  headerName: string;
+  credential: string;
+  clientId: string;
+}
+
+const emptyCustomRemoteDraft: CustomRemoteDraft = {
+  enabled: false,
+  endpointUrl: "",
+  authType: "header",
+  headerName: "Authorization",
+  credential: "",
+  clientId: "",
+};
+
+const MARKETPLACE_PAGE_SIZE = 20;
 
 export default function McpMarketplace({
   conversationId,
@@ -68,62 +98,200 @@ export default function McpMarketplace({
     MarketplaceCategoryId | ""
   >("");
   const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   const [sourceUrl, setSourceUrl] = useState("");
   const [detail, setDetail] = useState<McpMarketplaceItemDetail | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [installing, setInstalling] = useState(false);
-  const [error, setError] = useState("");
+  const [searchError, setSearchError] = useState("");
+  const [detailError, setDetailError] =
+    useState<MarketplaceDetailFailure | null>(null);
+  const [installError, setInstallError] = useState("");
+  const [selectedDeploymentHash, setSelectedDeploymentHash] = useState("");
+  const [installSecrets, setInstallSecrets] = useState<Record<string, string>>(
+    {},
+  );
+  const [customRemote, setCustomRemote] = useState<CustomRemoteDraft>(
+    emptyCustomRemoteDraft,
+  );
+  const [nextPageError, setNextPageError] = useState("");
   const [notice, setNotice] = useState("");
   const searchRequestRef = useRef(0);
+  const detailRequestRef = useRef(0);
+  const activeRequestControllerRef = useRef<AbortController | null>(null);
+  const detailRequestControllerRef = useRef<AbortController | null>(null);
+  const activeSearchRef = useRef<{
+    query: string;
+    category: MarketplaceCategoryId | "";
+  }>({ query: "", category: "" });
+  const initialLoadingRef = useRef(false);
+  const loadingMoreRef = useRef(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
 
   const search = useCallback(
-    async (
-      searchQuery: string,
-      category: MarketplaceCategoryId | "",
-      signal?: AbortSignal,
-    ) => {
+    async (searchQuery: string, category: MarketplaceCategoryId | "") => {
       if (!enabled) return;
+      activeRequestControllerRef.current?.abort();
+      detailRequestControllerRef.current?.abort();
+      detailRequestControllerRef.current = null;
+      detailRequestRef.current += 1;
+      const controller = new AbortController();
+      activeRequestControllerRef.current = controller;
       const searchRequest = ++searchRequestRef.current;
       const isCurrentRequest = () =>
-        searchRequestRef.current === searchRequest && !signal?.aborted;
+        searchRequestRef.current === searchRequest &&
+        !controller.signal.aborted;
+      activeSearchRef.current = { query: searchQuery, category };
+      initialLoadingRef.current = true;
+      loadingMoreRef.current = false;
+      scrollContainerRef.current?.scrollTo({ top: 0 });
       setLoading(true);
-      setError("");
+      setLoadingMore(false);
+      setDetailLoading(false);
+      setSearchError("");
+      setDetailError(null);
+      setInstallError("");
+      setNextPageError("");
+      setDetail(null);
+      setItems([]);
+      setCategories([]);
+      setTotalCount(0);
+      setPage(0);
+      setTotalPages(0);
+      setSourceUrl("");
       try {
         const result = await client.mcp.searchMarketplace({
           query: searchQuery,
           category: category || undefined,
           page: 1,
-          pageSize: 20,
-          signal,
+          pageSize: MARKETPLACE_PAGE_SIZE,
+          signal: controller.signal,
         });
         if (!isCurrentRequest()) return;
         setItems(result.items);
         setCategories(result.categories);
         setTotalCount(result.totalCount);
+        setPage(result.page);
+        setTotalPages(result.totalPages);
         setSourceUrl(result.sourceUrl);
-        setError("");
+        setSearchError("");
       } catch (searchError) {
         if (!isCurrentRequest()) return;
         setItems([]);
+        setCategories([]);
         setTotalCount(0);
-        setError(marketplaceError(searchError, t));
+        setPage(0);
+        setTotalPages(0);
+        setSourceUrl("");
+        setSearchError(marketplaceError(searchError, t));
       } finally {
-        if (isCurrentRequest()) setLoading(false);
+        if (isCurrentRequest()) {
+          initialLoadingRef.current = false;
+          setLoading(false);
+          if (activeRequestControllerRef.current === controller) {
+            activeRequestControllerRef.current = null;
+          }
+        }
       }
     },
     [client.mcp, enabled, t],
   );
 
   useEffect(() => {
-    const controller = new AbortController();
-    void search("", "", controller.signal);
-    return () => controller.abort();
+    void search("", "");
+    return () => {
+      searchRequestRef.current += 1;
+      detailRequestRef.current += 1;
+      activeRequestControllerRef.current?.abort();
+      activeRequestControllerRef.current = null;
+      detailRequestControllerRef.current?.abort();
+      detailRequestControllerRef.current = null;
+      initialLoadingRef.current = false;
+      loadingMoreRef.current = false;
+    };
   }, [search]);
+
+  const hasMore = hasNextMarketplacePage(page, totalPages);
+
+  const loadMore = useCallback(async () => {
+    if (
+      !enabled ||
+      initialLoadingRef.current ||
+      loadingMoreRef.current ||
+      !hasNextMarketplacePage(page, totalPages)
+    ) {
+      return;
+    }
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    setNextPageError("");
+    const searchRequest = searchRequestRef.current;
+    const nextPage = page + 1;
+    const controller = new AbortController();
+    activeRequestControllerRef.current = controller;
+    const isCurrentRequest = () =>
+      searchRequestRef.current === searchRequest && !controller.signal.aborted;
+    try {
+      const result = await client.mcp.searchMarketplace({
+        query: activeSearchRef.current.query,
+        category: activeSearchRef.current.category || undefined,
+        page: nextPage,
+        pageSize: MARKETPLACE_PAGE_SIZE,
+        signal: controller.signal,
+      });
+      if (!isCurrentRequest()) return;
+      if (result.page !== nextPage) {
+        throw new Error(t("marketplaceFailed"));
+      }
+      setItems((current) =>
+        appendUniqueMarketplaceItems(current, result.items),
+      );
+      setTotalCount(result.totalCount);
+      setPage(result.page);
+      setTotalPages(result.totalPages);
+      setSourceUrl(result.sourceUrl);
+    } catch (nextPageFailure) {
+      if (!isCurrentRequest()) return;
+      setNextPageError(marketplaceError(nextPageFailure, t));
+    } finally {
+      if (isCurrentRequest()) {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+        if (activeRequestControllerRef.current === controller) {
+          activeRequestControllerRef.current = null;
+        }
+      }
+    }
+  }, [client.mcp, enabled, page, t, totalPages]);
+
+  useEffect(() => {
+    const root = scrollContainerRef.current;
+    const sentinel = loadMoreSentinelRef.current;
+    if (
+      !root ||
+      !sentinel ||
+      !hasMore ||
+      nextPageError ||
+      typeof IntersectionObserver === "undefined"
+    ) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void loadMore();
+      },
+      { root, rootMargin: "0px 0px 300px 0px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, loadMore, nextPageError]);
 
   const submitSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setDetail(null);
     setNotice("");
     void search(query.trim(), activeCategory);
   };
@@ -131,7 +299,6 @@ export default function McpMarketplace({
   const selectCategory = useCallback(
     (category: MarketplaceCategoryId | "") => {
       setActiveCategory(category);
-      setDetail(null);
       setNotice("");
       void search(query.trim(), category);
     },
@@ -152,27 +319,63 @@ export default function McpMarketplace({
 
   const openDetail = useCallback(
     async (item: McpMarketplaceItem) => {
+      detailRequestControllerRef.current?.abort();
+      const controller = new AbortController();
+      detailRequestControllerRef.current = controller;
+      const detailRequest = ++detailRequestRef.current;
+      const isCurrentRequest = () =>
+        detailRequestRef.current === detailRequest &&
+        !controller.signal.aborted;
       setDetailLoading(true);
-      setError("");
+      setDetailError(null);
+      setInstallError("");
       setNotice("");
       try {
         const next = await client.mcp.getMarketplaceItem({
           identifier: item.identifier,
+          signal: controller.signal,
         });
+        if (!isCurrentRequest()) return;
         setDetail(next);
-      } catch (detailError) {
-        setError(marketplaceError(detailError, t));
+        const preferred = preferredMarketplaceDeployment(next.deployments);
+        setSelectedDeploymentHash(preferred?.hash ?? "");
+        setInstallSecrets(
+          Object.fromEntries(
+            (preferred?.secretFields ?? []).map((field) => [field, ""]),
+          ),
+        );
+        setCustomRemote(emptyCustomRemoteDraft);
+      } catch {
+        if (!isCurrentRequest()) return;
+        setDetailError({
+          item,
+          message: t("marketplaceDetailFailed", { name: item.name }),
+        });
       } finally {
-        setDetailLoading(false);
+        if (isCurrentRequest()) {
+          setDetailLoading(false);
+          if (detailRequestControllerRef.current === controller) {
+            detailRequestControllerRef.current = null;
+          }
+        }
       }
     },
     [client.mcp, t],
   );
 
   const install = useCallback(async () => {
-    if (!detail || installing) return;
+    if (!detail || !detail.canInstall || installing) return;
+    const deployment = detail.deployments.find(
+      (candidate) => candidate.hash === selectedDeploymentHash,
+    );
+    if (
+      !customRemote.enabled &&
+      (!deployment || !canInstallMarketplaceDeployment(deployment))
+    ) {
+      return;
+    }
     setInstalling(true);
-    setError("");
+    setInstallError("");
     setNotice("");
     try {
       const selection = conversationId
@@ -184,6 +387,32 @@ export default function McpMarketplace({
         ...(conversationId ? { conversationId } : {}),
         selectionRevision: selection?.revision ?? 0,
         enableForConversation: Boolean(conversationId),
+        ...(customRemote.enabled
+          ? {
+              customEndpointUrl: customRemote.endpointUrl.trim(),
+              customAuthType: customRemote.authType,
+              ...(customRemote.authType === "header"
+                ? {
+                    customHeaderName: customRemote.headerName.trim(),
+                    customHeaderPrefix:
+                      customRemote.headerName.trim().toLowerCase() ===
+                      "authorization"
+                        ? "Bearer "
+                        : "",
+                    customCredential: customRemote.credential,
+                  }
+                : {}),
+              ...(customRemote.authType === "oauth" &&
+              customRemote.clientId.trim()
+                ? { customClientId: customRemote.clientId.trim() }
+                : {}),
+            }
+          : {
+              deploymentHash: deployment?.hash,
+              ...(deployment && deployment.secretFields.length > 0
+                ? { secrets: installSecrets }
+                : {}),
+            }),
       });
       setNotice(
         result.validationErrorCode
@@ -193,12 +422,41 @@ export default function McpMarketplace({
             : t("marketplaceInstalled"),
       );
       onInstalled(result);
+      setInstallSecrets({});
+      setCustomRemote(emptyCustomRemoteDraft);
+      if (result.server.authType === "oauth" && !result.server.hasCredential) {
+        const oauth = await client.mcp.startOAuth({
+          serverRef: result.server.ref,
+          conversationId,
+          returnUrl: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+        });
+        const authorizationUrl = validMarketplaceOAuthURL(
+          oauth.authorizationUrl,
+        );
+        if (!authorizationUrl) {
+          throw new ApiClientError(
+            "INVALID_SERVER_RESPONSE",
+            t("marketplaceFailed"),
+          );
+        }
+        window.location.assign(authorizationUrl);
+      }
     } catch (installError) {
-      setError(marketplaceError(installError, t));
+      setInstallError(marketplaceError(installError, t));
     } finally {
       setInstalling(false);
     }
-  }, [client.mcp, conversationId, detail, installing, onInstalled, t]);
+  }, [
+    client.mcp,
+    conversationId,
+    customRemote,
+    detail,
+    installSecrets,
+    installing,
+    onInstalled,
+    selectedDeploymentHash,
+    t,
+  ]);
 
   if (!enabled) {
     return (
@@ -240,13 +498,13 @@ export default function McpMarketplace({
         </button>
       </form>
 
-      {error ? (
+      {searchError ? (
         <div
           role="alert"
           className="mx-4 mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"
         >
           <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-          <span>{error}</span>
+          <span>{searchError}</span>
         </div>
       ) : null}
 
@@ -268,20 +526,28 @@ export default function McpMarketplace({
           disabled={loading}
           onSelect={selectCategory}
         />
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 custom-scrollbar">
+        <div
+          ref={scrollContainerRef}
+          className="min-h-0 flex-1 overflow-y-auto p-4 custom-scrollbar"
+        >
           {loading && items.length === 0 ? (
             <div className="flex items-center justify-center gap-2 py-16 text-sm text-gray-500">
               <Loader2 size={16} className="animate-spin" />
               {t("marketplaceLoading")}
             </div>
-          ) : items.length === 0 && !error ? (
+          ) : items.length === 0 && !searchError ? (
             <div className="py-16 text-center text-sm text-gray-500">
               {t("marketplaceEmpty")}
             </div>
           ) : (
             <>
               <div className="mb-3 flex items-center justify-between text-xs text-gray-500 dark:text-muted-foreground">
-                <span>{t("marketplaceResults", { count: totalCount })}</span>
+                <span>
+                  {t("marketplaceResults", {
+                    loaded: items.length,
+                    count: totalCount,
+                  })}
+                </span>
                 {sourceUrl ? (
                   <a
                     href={sourceUrl}
@@ -293,6 +559,24 @@ export default function McpMarketplace({
                   </a>
                 ) : null}
               </div>
+              {detailError ? (
+                <div
+                  role="alert"
+                  className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100"
+                >
+                  <span className="flex min-w-0 items-start gap-2">
+                    <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                    <span>{detailError.message}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void openDetail(detailError.item)}
+                    className="shrink-0 rounded-md border border-amber-300 bg-white/70 px-2.5 py-1 font-medium hover:bg-white dark:border-amber-800 dark:bg-amber-950/40 dark:hover:bg-amber-950/70"
+                  >
+                    {t("marketplaceRetryDetail")}
+                  </button>
+                </div>
+              ) : null}
               <div className="grid gap-3 md:grid-cols-2">
                 {items.map((item) => (
                   <button
@@ -301,6 +585,10 @@ export default function McpMarketplace({
                     disabled={detailLoading}
                     onClick={() => void openDetail(item)}
                     className="rounded-xl border border-gray-200 bg-white p-4 text-left transition-colors hover:border-cyan-300 hover:bg-cyan-50/30 disabled:opacity-60 dark:border-border dark:bg-card dark:hover:border-cyan-900 dark:hover:bg-cyan-950/10"
+                    style={{
+                      contentVisibility: "auto",
+                      containIntrinsicSize: "auto 148px",
+                    }}
                   >
                     <div className="flex items-start gap-3">
                       <McpServerIcon icon={item.icon} />
@@ -339,6 +627,40 @@ export default function McpMarketplace({
                   </button>
                 ))}
               </div>
+              <div
+                ref={loadMoreSentinelRef}
+                className="flex min-h-16 flex-col items-center justify-center gap-2 py-4 text-center"
+              >
+                {hasMore ? (
+                  <button
+                    type="button"
+                    disabled={loadingMore}
+                    onClick={() => void loadMore()}
+                    className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-600 hover:border-cyan-300 hover:text-cyan-700 disabled:cursor-wait disabled:opacity-60 dark:border-border dark:bg-card dark:text-muted-foreground"
+                  >
+                    {loadingMore ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : null}
+                    {loadingMore
+                      ? t("marketplaceLoadingMore")
+                      : nextPageError
+                        ? t("marketplaceRetry")
+                        : t("marketplaceLoadMore")}
+                  </button>
+                ) : items.length > 0 ? (
+                  <span
+                    aria-live="polite"
+                    className="text-[11px] text-gray-400"
+                  >
+                    {t("marketplaceAllLoaded", { count: items.length })}
+                  </span>
+                ) : null}
+                {nextPageError ? (
+                  <p role="alert" className="text-[11px] text-red-600">
+                    {nextPageError}
+                  </p>
+                ) : null}
+              </div>
             </>
           )}
         </div>
@@ -353,8 +675,30 @@ export default function McpMarketplace({
       {detail ? (
         <MarketplaceDetail
           detail={detail}
+          error={installError}
           installing={installing}
-          onClose={() => setDetail(null)}
+          selectedDeploymentHash={selectedDeploymentHash}
+          secrets={installSecrets}
+          customRemote={customRemote}
+          onSelectDeployment={(deployment) => {
+            setSelectedDeploymentHash(deployment.hash ?? "");
+            setInstallSecrets(
+              Object.fromEntries(
+                deployment.secretFields.map((field) => [field, ""]),
+              ),
+            );
+            setInstallError("");
+          }}
+          onSecretChange={(field, value) =>
+            setInstallSecrets((current) => ({ ...current, [field]: value }))
+          }
+          onCustomRemoteChange={setCustomRemote}
+          onClose={() => {
+            setDetail(null);
+            setInstallError("");
+            setInstallSecrets({});
+            setCustomRemote(emptyCustomRemoteDraft);
+          }}
           onInstall={() => void install()}
         />
       ) : null}
@@ -472,19 +816,53 @@ function formatMarketplaceCount(count: number): string {
 
 function MarketplaceDetail({
   detail,
+  error,
   installing,
+  selectedDeploymentHash,
+  secrets,
+  customRemote,
   onClose,
   onInstall,
+  onSelectDeployment,
+  onSecretChange,
+  onCustomRemoteChange,
 }: {
   detail: McpMarketplaceItemDetail;
+  error: string;
   installing: boolean;
+  selectedDeploymentHash: string;
+  secrets: Record<string, string>;
+  customRemote: CustomRemoteDraft;
   onClose: () => void;
   onInstall: () => void;
+  onSelectDeployment: (deployment: McpMarketplaceDeployment) => void;
+  onSecretChange: (field: string, value: string) => void;
+  onCustomRemoteChange: (draft: CustomRemoteDraft) => void;
 }) {
   const t = useTranslations("Mcp");
-  const installable = detail.deployments.some(
-    (deployment) => deployment.compatibility === "installable",
+  const selectedDeployment = detail.deployments.find(
+    (deployment) => deployment.hash === selectedDeploymentHash,
   );
+  const installable = canInstallMarketplaceDeployment(selectedDeployment);
+  const secretsComplete = (selectedDeployment?.secretFields ?? []).every(
+    (field) => Boolean(secrets[field]),
+  );
+  const customComplete =
+    customRemote.endpointUrl.trim().startsWith("https://") &&
+    (customRemote.authType !== "header" ||
+      (Boolean(customRemote.headerName.trim()) &&
+        Boolean(customRemote.credential)));
+  const canSubmit = customRemote.enabled
+    ? customComplete
+    : installable && secretsComplete;
+  const supportsCustomRemote = detail.deployments.some(
+    (deployment) =>
+      deployment.connectionType === "http" ||
+      deployment.installMode === "header" ||
+      deployment.installMode === "oauth" ||
+      deployment.secretFields.length > 0,
+  );
+  const visibleDeployments = marketplaceVisibleDeployments(detail.deployments);
   return (
     <div className="absolute inset-0 z-10 flex items-end justify-end bg-black/20 p-3 backdrop-blur-[1px] md:p-5">
       <section className="flex max-h-full w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-border dark:bg-card">
@@ -536,27 +914,171 @@ function MarketplaceDetail({
               {t("marketplaceConnections")}
             </h3>
             <div className="space-y-2">
-              {detail.deployments.map((deployment, index) => (
-                <div
-                  key={`${deployment.connectionType}:${deployment.installationMethod}:${index}`}
-                  className="rounded-lg border border-gray-200 px-3 py-2 dark:border-border"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-xs font-medium text-gray-700 dark:text-foreground/85">
-                      {deployment.connectionType.toUpperCase()} ·{" "}
-                      {deployment.installationMethod}
-                    </span>
-                    <CompatibilityBadge
-                      compatibility={deployment.compatibility}
-                    />
+              {visibleDeployments.map((deployment, index) => {
+                const selected =
+                  Boolean(selectedDeploymentHash) &&
+                  deployment.hash === selectedDeploymentHash;
+                return (
+                  <div
+                    key={`${deployment.connectionType}:${deployment.installationMethod}:${index}`}
+                    className={`overflow-hidden rounded-lg border ${selected ? "border-cyan-500 bg-cyan-50/40 dark:border-cyan-700 dark:bg-cyan-950/20" : "border-gray-200 dark:border-border"}`}
+                  >
+                    <button
+                      type="button"
+                      disabled={
+                        !detail.canInstall ||
+                        !canInstallMarketplaceDeployment(deployment)
+                      }
+                      onClick={() => onSelectDeployment(deployment)}
+                      className="w-full px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-65"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-gray-700 dark:text-foreground/85">
+                          {deployment.connectionType.toUpperCase()} ·{" "}
+                          {deployment.installationMethod}
+                        </span>
+                        <CompatibilityBadge
+                          compatibility={deployment.compatibility}
+                        />
+                      </div>
+                      <p className="mt-1 text-[11px] text-gray-500">
+                        {deployment.compatibilityReason}
+                      </p>
+                    </button>
+                    {detail.canInstall &&
+                    selected &&
+                    deployment.secretFields.length > 0 ? (
+                      <div className="space-y-2 border-t border-cyan-200/80 px-3 py-3 dark:border-cyan-900/70">
+                        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                          {t("marketplaceConfiguration")}
+                        </h4>
+                        {deployment.secretFields.map((field, fieldIndex) => (
+                          <label key={field} className="block">
+                            <span className="mb-1 block text-[11px] font-medium text-gray-600 dark:text-muted-foreground">
+                              {field}
+                            </span>
+                            <input
+                              type="password"
+                              autoComplete="new-password"
+                              autoFocus={fieldIndex === 0}
+                              value={secrets[field] ?? ""}
+                              onChange={(event) =>
+                                onSecretChange(field, event.target.value)
+                              }
+                              placeholder={t("marketplaceSecretPlaceholder")}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-500 dark:border-border dark:bg-background"
+                            />
+                          </label>
+                        ))}
+                        <p className="text-[10px] leading-4 text-gray-500">
+                          {t("marketplaceSecretNotice")}
+                        </p>
+                      </div>
+                    ) : null}
                   </div>
-                  <p className="mt-1 text-[11px] text-gray-500">
-                    {deployment.compatibilityReason}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
+
+          {detail.canInstall && supportsCustomRemote ? (
+            <section className="rounded-xl border border-dashed border-cyan-300 bg-cyan-50/30 p-3 dark:border-cyan-900 dark:bg-cyan-950/10">
+              <label className="flex cursor-pointer items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={customRemote.enabled}
+                  onChange={(event) =>
+                    onCustomRemoteChange({
+                      ...customRemote,
+                      enabled: event.target.checked,
+                    })
+                  }
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="block text-xs font-semibold text-gray-700 dark:text-foreground/85">
+                    {t("marketplaceUseCustomEndpoint")}
+                  </span>
+                  <span className="mt-1 block text-[11px] leading-4 text-gray-500">
+                    {t("marketplaceCustomEndpointNotice")}
+                  </span>
+                </span>
+              </label>
+              {customRemote.enabled ? (
+                <div className="mt-3 space-y-2 border-t border-cyan-200/80 pt-3 dark:border-cyan-900/70">
+                  <input
+                    type="url"
+                    autoFocus
+                    value={customRemote.endpointUrl}
+                    onChange={(event) =>
+                      onCustomRemoteChange({
+                        ...customRemote,
+                        endpointUrl: event.target.value,
+                      })
+                    }
+                    placeholder="https://your-relay.example.com/mcp"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-500 dark:border-border dark:bg-background"
+                  />
+                  <select
+                    value={customRemote.authType}
+                    onChange={(event) =>
+                      onCustomRemoteChange({
+                        ...customRemote,
+                        authType: event.target
+                          .value as CustomRemoteDraft["authType"],
+                      })
+                    }
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-border dark:bg-background"
+                  >
+                    <option value="none">{t("authNone")}</option>
+                    <option value="header">{t("authHeader")}</option>
+                    <option value="oauth">OAuth</option>
+                  </select>
+                  {customRemote.authType === "header" ? (
+                    <>
+                      <input
+                        value={customRemote.headerName}
+                        onChange={(event) =>
+                          onCustomRemoteChange({
+                            ...customRemote,
+                            headerName: event.target.value,
+                          })
+                        }
+                        placeholder="Authorization"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-border dark:bg-background"
+                      />
+                      <input
+                        type="password"
+                        autoComplete="new-password"
+                        value={customRemote.credential}
+                        onChange={(event) =>
+                          onCustomRemoteChange({
+                            ...customRemote,
+                            credential: event.target.value,
+                          })
+                        }
+                        placeholder={t("credentialPlaceholder")}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-border dark:bg-background"
+                      />
+                    </>
+                  ) : null}
+                  {customRemote.authType === "oauth" ? (
+                    <input
+                      value={customRemote.clientId}
+                      onChange={(event) =>
+                        onCustomRemoteChange({
+                          ...customRemote,
+                          clientId: event.target.value,
+                        })
+                      }
+                      placeholder={t("clientId")}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-border dark:bg-background"
+                    />
+                  ) : null}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -612,29 +1134,80 @@ function MarketplaceDetail({
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
             {t("marketplaceTrustNotice")}
           </div>
+          {error ? (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"
+            >
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          ) : null}
         </div>
         <footer className="flex items-center justify-between gap-3 border-t border-gray-200 px-5 py-4 dark:border-border">
           <span className="text-[11px] text-gray-500">
-            {installable
-              ? t("marketplaceBackendValidation")
-              : t("marketplaceNotInstallable")}
+            {detail.installed
+              ? t("marketplaceInstalledManageNotice")
+              : customRemote.enabled && !customComplete
+                ? t("marketplaceCompleteCustomEndpoint")
+                : customRemote.enabled
+                  ? t("marketplaceCustomEndpointValidation")
+                  : installable && !secretsComplete
+                    ? t("marketplaceCompleteConfiguration")
+                    : installable
+                      ? t("marketplaceBackendValidation")
+                      : t("marketplaceNotInstallable")}
           </span>
-          <button
-            type="button"
-            disabled={!installable || installing}
-            onClick={onInstall}
-            className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            {installing ? (
-              <Loader2 size={15} className="animate-spin" />
-            ) : (
-              <Box size={15} />
-            )}
-            {t("marketplaceInstallAndEnable")}
-          </button>
+          {detail.canInstall ? (
+            <button
+              type="button"
+              disabled={detail.installed || !canSubmit || installing}
+              onClick={onInstall}
+              className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {installing ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <Box size={15} />
+              )}
+              {detail.installed
+                ? t("marketplaceAlreadyInstalled")
+                : t("marketplaceInstallAndEnable")}
+            </button>
+          ) : null}
         </footer>
       </section>
     </div>
+  );
+}
+
+function preferredMarketplaceDeployment(
+  deployments: McpMarketplaceDeployment[],
+): McpMarketplaceDeployment | undefined {
+  return (
+    deployments.find(
+      (deployment) =>
+        canInstallMarketplaceDeployment(deployment) && deployment.recommended,
+    ) ?? deployments.find(canInstallMarketplaceDeployment)
+  );
+}
+
+function marketplaceVisibleDeployments(
+  deployments: McpMarketplaceDeployment[],
+): McpMarketplaceDeployment[] {
+  const installable = deployments.filter(canInstallMarketplaceDeployment);
+  return installable.length > 0 ? installable : deployments;
+}
+
+function canInstallMarketplaceDeployment(
+  deployment: McpMarketplaceDeployment | undefined,
+): boolean {
+  if (!deployment) return false;
+  return (
+    deployment.compatibility === "installable" ||
+    (deployment.compatibility === "needs_configuration" &&
+      (deployment.installMode === "header" ||
+        deployment.installMode === "runner_env"))
   );
 }
 
@@ -677,6 +1250,23 @@ function marketplaceError(
   return error instanceof Error && error.message
     ? error.message
     : t("marketplaceFailed");
+}
+
+function validMarketplaceOAuthURL(value: string): string | null {
+  try {
+    const parsed = new URL(value);
+    if (
+      parsed.protocol !== "https:" ||
+      !parsed.hostname ||
+      parsed.username ||
+      parsed.password
+    ) {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
 }
 
 type MarketplaceErrorKey =

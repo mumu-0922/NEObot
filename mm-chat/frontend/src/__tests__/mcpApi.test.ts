@@ -37,6 +37,22 @@ describe("server MCP API", () => {
             sourceUrl: "https://market.lobehub.com",
           };
         }
+        if (path === "/v1/mcp/servers" && options.method === "POST") {
+          return {
+            server: {
+              ref: { source: "private", id: "private-server-1" },
+              name: "Private search",
+              transport: "streamable_http",
+              authType: "header",
+              status: "draft",
+              hasCredential: false,
+              toolCount: 0,
+              unsupportedToolCount: 0,
+              grants: [],
+              tools: [],
+            },
+          };
+        }
         if (path.endsWith("/marketplace/items/deepwiki/install")) {
           return {
             server: {
@@ -68,6 +84,7 @@ describe("server MCP API", () => {
               official: true,
               validated: true,
               version: "1.2.3",
+              installed: false,
               source: "lobehub",
               sourceUrl: "https://market.lobehub.com",
               tools: [],
@@ -96,6 +113,7 @@ describe("server MCP API", () => {
           };
         }
         return {
+          canManage: true,
           servers: [
             {
               ref: { source: "catalog", id: "weather" },
@@ -117,9 +135,19 @@ describe("server MCP API", () => {
 
     await expect(
       api.listServers({ conversationId: "conversation-1" }),
-    ).resolves.toEqual([
-      expect.objectContaining({ name: "Weather", status: "ready" }),
-    ]);
+    ).resolves.toEqual({
+      canManage: true,
+      servers: [expect.objectContaining({ name: "Weather", status: "ready" })],
+    });
+    await expect(
+      api.createPrivateServer({
+        name: "Private search",
+        endpointUrl: "https://mcp.example.com/mcp",
+        authType: "header",
+        headerName: "Authorization",
+        headerPrefix: "Bearer ",
+      }),
+    ).resolves.toMatchObject({ name: "Private search", authType: "header" });
     await expect(
       api.replaceConversationSelection({
         conversationId: "conversation-1",
@@ -144,6 +172,11 @@ describe("server MCP API", () => {
         version: "1.2.3",
         selectionRevision: 0,
         enableForConversation: false,
+        customEndpointUrl: "https://relay.example.com/mcp",
+        customAuthType: "header",
+        customHeaderName: "Authorization",
+        customHeaderPrefix: "Bearer ",
+        customCredential: "relay-key",
       }),
     ).resolves.toMatchObject({
       server: { name: "DeepWiki", icon: "https://github.com/deepwiki.png" },
@@ -155,6 +188,17 @@ describe("server MCP API", () => {
         path: "/v1/mcp/servers?conversationId=conversation-1",
         method: undefined,
         body: undefined,
+      },
+      {
+        path: "/v1/mcp/servers",
+        method: "POST",
+        body: {
+          name: "Private search",
+          endpointUrl: "https://mcp.example.com/mcp",
+          authType: "header",
+          headerName: "Authorization",
+          headerPrefix: "Bearer ",
+        },
       },
       {
         path: "/v1/mcp/conversations/conversation-1/selection",
@@ -178,6 +222,11 @@ describe("server MCP API", () => {
           version: "1.2.3",
           selectionRevision: 0,
           enableForConversation: false,
+          customEndpointUrl: "https://relay.example.com/mcp",
+          customAuthType: "header",
+          customHeaderName: "Authorization",
+          customHeaderPrefix: "Bearer ",
+          customCredential: "relay-key",
         },
       },
     ]);

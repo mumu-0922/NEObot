@@ -779,6 +779,7 @@ export interface McpCreatePrivateServerInput {
   endpointUrl: string;
   authType: McpAuthType;
   headerName?: string;
+  headerPrefix?: string;
   clientId?: string;
   scopes?: string[];
   signal?: AbortSignal;
@@ -786,7 +787,8 @@ export interface McpCreatePrivateServerInput {
 
 export interface McpSetCredentialInput {
   serverRef: McpServerRef;
-  value: string;
+  value?: string;
+  values?: Record<string, string>;
   conversationId?: string;
   signal?: AbortSignal;
 }
@@ -850,11 +852,22 @@ export interface McpMarketplaceInstallInput {
   conversationId?: string;
   selectionRevision: number;
   enableForConversation: boolean;
+  deploymentHash?: string;
+  secrets?: Record<string, string>;
+  customEndpointUrl?: string;
+  customAuthType?: "none" | "header" | "oauth";
+  customHeaderName?: string;
+  customHeaderPrefix?: string;
+  customCredential?: string;
+  customClientId?: string;
   signal?: AbortSignal;
 }
 
 export interface McpApi {
-  listServers(input?: McpListServersInput): Promise<McpServer[]>;
+  listServers(input?: McpListServersInput): Promise<{
+    servers: McpServer[];
+    canManage: boolean;
+  }>;
   createPrivateServer(input: McpCreatePrivateServerInput): Promise<McpServer>;
   deletePrivateServer(
     serverId: string,

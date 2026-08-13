@@ -20,11 +20,14 @@ export default function McpServerIcon({
 
   return (
     <span
-      className={`flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-cyan-50 text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-200 ${
+      className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-cyan-50 text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-200 ${
         large ? "h-12 w-12 text-xl" : "h-10 w-10 text-lg"
       }`}
       aria-hidden="true"
     >
+      <span className="absolute inset-0 flex items-center justify-center">
+        {shortText || <Box size={large ? 21 : 18} aria-hidden="true" />}
+      </span>
       {imageUrl && failedImageUrl !== imageUrl ? (
         <Image
           src={imageUrl}
@@ -35,11 +38,9 @@ export default function McpServerIcon({
           loading="lazy"
           referrerPolicy="no-referrer"
           onError={() => setFailedImageUrl(imageUrl)}
-          className="h-full w-full object-cover"
+          className="relative z-10 h-full w-full object-cover"
         />
-      ) : (
-        shortText || <Box size={large ? 21 : 18} aria-hidden="true" />
-      )}
+      ) : null}
     </span>
   );
 }

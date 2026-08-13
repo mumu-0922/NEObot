@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
+  ChevronUp,
   KeyRound,
   Loader2,
   Plus,
@@ -43,6 +45,7 @@ type PrivateServerDraft = {
   endpointUrl: string;
   authType: "none" | "header" | "oauth";
   headerName: string;
+  headerValue: string;
   clientId: string;
 };
 
@@ -51,6 +54,7 @@ const emptyPrivateServerDraft: PrivateServerDraft = {
   endpointUrl: "",
   authType: "none",
   headerName: "Authorization",
+  headerValue: "",
   clientId: "",
 };
 
@@ -68,6 +72,7 @@ export default function McpToolsControl({
   const t = useTranslations("Mcp");
   const [open, setOpen] = useState(false);
   const [servers, setServers] = useState<McpServer[]>([]);
+  const [canManage, setCanManage] = useState(false);
   const [selection, setSelection] = useState<McpConversationSelection | null>(
     null,
   );
@@ -77,6 +82,12 @@ export default function McpToolsControl({
   const [attentionMessage, setAttentionMessage] = useState("");
   const [credentialRef, setCredentialRef] = useState<McpServerRef | null>(null);
   const [credentialValue, setCredentialValue] = useState("");
+  const [credentialValues, setCredentialValues] = useState<
+    Record<string, string>
+  >({});
+  const [expandedServerKeys, setExpandedServerKeys] = useState<Set<string>>(
+    new Set(),
+  );
   const [showCreate, setShowCreate] = useState(false);
   const [draft, setDraft] = useState<PrivateServerDraft>(
     emptyPrivateServerDraft,
@@ -104,7 +115,8 @@ export default function McpToolsControl({
             ])
           : [await nextServersPromise, null];
         if (signal?.aborted) return;
-        setServers(nextServers);
+        setServers(nextServers.servers);
+        setCanManage(nextServers.canManage);
         setSelection(nextSelection);
       } catch (loadError) {
         if (signal?.aborted) return;
@@ -195,13 +207,31 @@ export default function McpToolsControl({
       const key = serverKey(server.ref);
       const current =
         selection.mode === "custom" ? selection.servers : ([] as const);
-      const next = selectedByKey.has(key)
+      const selected = selectedByKey.has(key);
+      const next = selected
         ? current.filter((item) => serverKey(item.ref) !== key)
         : [...current, { ref: server.ref, disabledTools: [] }];
+      if (selected) {
+        setExpandedServerKeys((expanded) => {
+          const nextExpanded = new Set(expanded);
+          nextExpanded.delete(key);
+          return nextExpanded;
+        });
+      }
       void saveSelection("custom", next);
     },
     [saveSelection, selectedByKey, selection],
   );
+
+  const toggleToolsExpanded = useCallback((server: McpServer) => {
+    const key = serverKey(server.ref);
+    setExpandedServerKeys((expanded) => {
+      const next = new Set(expanded);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
   const toggleTool = useCallback(
     (server: McpServer, toolName: string) => {
@@ -221,9 +251,14 @@ export default function McpToolsControl({
 
   const authorize = useCallback(
     async (server: McpServer) => {
-      if (server.authType === "header") {
+      if (server.authType === "header" || server.authType === "env") {
         setCredentialRef(server.ref);
         setCredentialValue("");
+        setCredentialValues(
+          Object.fromEntries(
+            server.configurationFields.map((field) => [field, ""]),
+          ),
+        );
         return;
       }
       if (server.authType !== "oauth") return;
@@ -252,57 +287,93 @@ export default function McpToolsControl({
   );
 
   const saveCredential = useCallback(async () => {
-    if (!credentialRef || !credentialValue) return;
+    const hasEnvironmentValues = Object.keys(credentialValues).length > 0;
+    const credentialComplete = hasEnvironmentValues
+      ? Object.values(credentialValues).every(Boolean)
+      : Boolean(credentialValue);
+    if (!credentialRef || !credentialComplete) return;
     setSaving(true);
     setError("");
     try {
-      await client.mcp.setCredential({
+      const server = await client.mcp.setCredential({
         serverRef: credentialRef,
         conversationId,
-        value: credentialValue,
+        ...(Object.keys(credentialValues).length > 0
+          ? { values: credentialValues }
+          : { value: credentialValue }),
       });
       setCredentialRef(null);
       setCredentialValue("");
+      setCredentialValues({});
+      if (server.ref.source === "private") {
+        await client.mcp.validatePrivateServer(server.ref.id);
+      }
       await load();
     } catch (credentialError) {
       setError(formatError(credentialError, t("authorizeFailed")));
+      await load();
     } finally {
       setSaving(false);
     }
-  }, [client.mcp, conversationId, credentialRef, credentialValue, load, t]);
+  }, [
+    client.mcp,
+    conversationId,
+    credentialRef,
+    credentialValue,
+    credentialValues,
+    load,
+    t,
+  ]);
 
   const createPrivateServer = useCallback(async () => {
-    if (
-      !draft.name.trim() ||
-      !draft.endpointUrl.trim() ||
-      (draft.authType === "oauth" && !draft.clientId.trim())
-    ) {
+    if (!draft.name.trim() || !draft.endpointUrl.trim()) {
       return;
     }
     setSaving(true);
     setError("");
+    let created = false;
     try {
       const server = await client.mcp.createPrivateServer({
         name: draft.name,
         endpointUrl: draft.endpointUrl,
         authType: draft.authType,
         ...(draft.authType === "header"
-          ? { headerName: draft.headerName }
+          ? {
+              headerName: draft.headerName,
+              headerPrefix:
+                draft.headerName.trim().toLowerCase() === "authorization"
+                  ? "Bearer "
+                  : "",
+            }
           : {}),
-        ...(draft.authType === "oauth" ? { clientId: draft.clientId } : {}),
+        ...(draft.authType === "oauth" && draft.clientId.trim()
+          ? { clientId: draft.clientId }
+          : {}),
       });
-      await client.mcp.validatePrivateServer(server.ref.id);
+      created = true;
+      if (draft.authType === "header") {
+        await client.mcp.setCredential({
+          serverRef: server.ref,
+          value: draft.headerValue,
+          conversationId,
+        });
+      }
       setDraft(emptyPrivateServerDraft);
       setShowCreate(false);
+      await client.mcp.validatePrivateServer(server.ref.id);
       await load();
     } catch (createError) {
       const message = formatError(createError, t("createFailed"));
+      if (created) {
+        setDraft(emptyPrivateServerDraft);
+        setShowCreate(false);
+      }
       await load();
       setError(message);
     } finally {
       setSaving(false);
     }
-  }, [client.mcp, draft, load, t]);
+  }, [client.mcp, conversationId, draft, load, t]);
 
   const validatePrivateServer = useCallback(
     async (serverId: string) => {
@@ -461,14 +532,20 @@ export default function McpToolsControl({
         ) : (
           <div className="space-y-3">
             {servers.map((server) => {
+              const key = serverKey(server.ref);
               const selected = selectedByKey.get(serverKey(server.ref));
               const isSelected = Boolean(
                 selection?.mode === "custom" && selected,
               );
+              const toolsExpanded = expandedServerKeys.has(key);
+              const toolListId = `mcp-tools-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
               const ready = server.status === "ready";
               const needsAuth =
                 server.status === "needs_auth" ||
                 (server.authType !== "none" && !server.hasCredential);
+              const showManagementActions =
+                (needsAuth && server.canManage) ||
+                (server.ref.source === "private" && server.canManage);
               const disabledTools = new Set(selected?.disabledTools ?? []);
 
               return (
@@ -493,91 +570,149 @@ export default function McpToolsControl({
                     </button>
                     <McpServerIcon icon={server.icon} />
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="truncate text-sm font-semibold text-gray-800 dark:text-foreground">
-                          {server.name}
-                        </span>
-                        <ServerStatus status={server.status} />
-                        <span className="text-[10px] uppercase text-gray-400">
-                          {server.transport === "stdio" ? "stdio" : "HTTP"}
-                        </span>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <span className="truncate text-sm font-semibold text-gray-800 dark:text-foreground">
+                            {server.name}
+                          </span>
+                          <ServerStatus status={server.status} />
+                          <span className="text-[10px] uppercase text-gray-400">
+                            {server.transport === "stdio" ? "stdio" : "HTTP"}
+                          </span>
+                        </div>
+                        {isSelected && server.tools.length > 0 ? (
+                          <button
+                            type="button"
+                            aria-expanded={toolsExpanded}
+                            aria-controls={toolListId}
+                            onClick={() => toggleToolsExpanded(server)}
+                            className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-white dark:text-muted-foreground dark:hover:bg-background"
+                          >
+                            {t("toolCount", { count: server.tools.length })}
+                            {toolsExpanded ? (
+                              <ChevronUp size={12} aria-hidden="true" />
+                            ) : (
+                              <ChevronDown size={12} aria-hidden="true" />
+                            )}
+                          </button>
+                        ) : null}
                       </div>
-                      {server.description ? (
+                      {isSelected && toolsExpanded && server.description ? (
                         <p className="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-muted-foreground">
                           {server.description}
                         </p>
                       ) : null}
+                      {server.lastErrorCode ? (
+                        <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+                          {t(serverValidationMessageKey(server.lastErrorCode))}
+                        </p>
+                      ) : null}
 
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        {needsAuth ? (
-                          <button
-                            type="button"
-                            disabled={saving}
-                            onClick={() => void authorize(server)}
-                            className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-200 disabled:opacity-50 dark:bg-amber-950/40 dark:text-amber-200"
-                          >
-                            <KeyRound size={12} /> {t("authorize")}
-                          </button>
-                        ) : null}
-                        {server.ref.source === "private" &&
-                        server.status === "draft" ? (
-                          <button
-                            type="button"
-                            disabled={saving}
-                            onClick={() =>
-                              void validatePrivateServer(server.ref.id)
-                            }
-                            className="rounded-md bg-blue-100 px-2 py-1 text-[11px] font-medium text-blue-700 hover:bg-blue-200 dark:bg-blue-950/40 dark:text-blue-200"
-                          >
-                            {t("validate")}
-                          </button>
-                        ) : null}
-                        {server.ref.source === "private" ? (
-                          <button
-                            type="button"
-                            disabled={saving}
-                            aria-label={t("deleteServer", {
-                              name: server.name,
-                            })}
-                            onClick={() =>
-                              void deletePrivateServer(server.ref.id)
-                            }
-                            className="rounded-md p-1 text-red-500 hover:bg-red-100 disabled:opacity-50 dark:hover:bg-red-950/40"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        ) : null}
-                      </div>
+                      {showManagementActions ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          {needsAuth && server.canManage ? (
+                            <button
+                              type="button"
+                              disabled={saving}
+                              onClick={() => void authorize(server)}
+                              className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-200 disabled:opacity-50 dark:bg-amber-950/40 dark:text-amber-200"
+                            >
+                              <KeyRound size={12} /> {t("authorize")}
+                            </button>
+                          ) : null}
+                          {server.ref.source === "private" &&
+                          server.status === "draft" &&
+                          server.canManage ? (
+                            <button
+                              type="button"
+                              disabled={saving}
+                              onClick={() =>
+                                void validatePrivateServer(server.ref.id)
+                              }
+                              className="rounded-md bg-blue-100 px-2 py-1 text-[11px] font-medium text-blue-700 hover:bg-blue-200 dark:bg-blue-950/40 dark:text-blue-200"
+                            >
+                              {t("validate")}
+                            </button>
+                          ) : null}
+                          {server.ref.source === "private" &&
+                          server.canManage ? (
+                            <button
+                              type="button"
+                              disabled={saving}
+                              aria-label={t("deleteServer", {
+                                name: server.name,
+                              })}
+                              onClick={() =>
+                                void deletePrivateServer(server.ref.id)
+                              }
+                              className="rounded-md p-1 text-red-500 hover:bg-red-100 disabled:opacity-50 dark:hover:bg-red-950/40"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
 
                       {credentialRef &&
                       serverKey(credentialRef) === serverKey(server.ref) ? (
-                        <div className="mt-2 flex gap-2">
-                          <input
-                            type="password"
-                            autoComplete="new-password"
-                            value={credentialValue}
-                            onChange={(event) =>
-                              setCredentialValue(event.target.value)
-                            }
-                            placeholder={t("credentialPlaceholder")}
-                            className="min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs outline-none focus:border-cyan-500 dark:border-border dark:bg-background"
-                          />
+                        <div className="mt-2 space-y-2">
+                          {server.configurationFields.length > 0 ? (
+                            server.configurationFields.map((field) => (
+                              <label key={field} className="block">
+                                <span className="mb-1 block text-[10px] font-medium text-gray-500">
+                                  {field}
+                                </span>
+                                <input
+                                  type="password"
+                                  autoComplete="new-password"
+                                  value={credentialValues[field] ?? ""}
+                                  onChange={(event) =>
+                                    setCredentialValues((current) => ({
+                                      ...current,
+                                      [field]: event.target.value,
+                                    }))
+                                  }
+                                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs outline-none focus:border-cyan-500 dark:border-border dark:bg-background"
+                                />
+                              </label>
+                            ))
+                          ) : (
+                            <input
+                              type="password"
+                              autoComplete="new-password"
+                              value={credentialValue}
+                              onChange={(event) =>
+                                setCredentialValue(event.target.value)
+                              }
+                              placeholder={t("credentialPlaceholder")}
+                              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs outline-none focus:border-cyan-500 dark:border-border dark:bg-background"
+                            />
+                          )}
                           <button
                             type="button"
-                            disabled={saving || !credentialValue}
+                            disabled={
+                              saving ||
+                              (Object.keys(credentialValues).length > 0
+                                ? !Object.values(credentialValues).every(
+                                    Boolean,
+                                  )
+                                : !credentialValue)
+                            }
                             onClick={() => void saveCredential()}
-                            className="rounded-md bg-cyan-600 px-2 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                            className="rounded-md bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
                           >
                             {t("save")}
                           </button>
                         </div>
                       ) : null}
 
-                      {isSelected && server.tools.length > 0 ? (
-                        <div className="mt-3 border-t border-gray-200 pt-2 dark:border-border">
-                          <div className="mb-1 text-[11px] font-medium text-gray-500">
-                            {t("tools")}
-                          </div>
+                      {isSelected &&
+                      toolsExpanded &&
+                      server.tools.length > 0 ? (
+                        <div
+                          id={toolListId}
+                          className="mt-3 border-t border-gray-200 pt-2 dark:border-border"
+                        >
                           <div className="space-y-1">
                             {server.tools.map((tool) => {
                               const toolEnabled =
@@ -601,9 +736,11 @@ export default function McpToolsControl({
                                       <span className="truncate">
                                         {tool.title || tool.name}
                                       </span>
-                                      <span className="rounded bg-gray-100 px-1 py-0.5 text-[9px] uppercase text-gray-500 dark:bg-muted">
-                                        {tool.classification}
-                                      </span>
+                                      {tool.classification !== "unknown" ? (
+                                        <span className="rounded bg-gray-100 px-1 py-0.5 text-[9px] uppercase text-gray-500 dark:bg-muted">
+                                          {tool.classification}
+                                        </span>
+                                      ) : null}
                                     </span>
                                     {!tool.supported ? (
                                       <span className="block text-[10px] text-amber-600 dark:text-amber-300">
@@ -626,98 +763,122 @@ export default function McpToolsControl({
           </div>
         )}
 
-        <div className="mt-4 border-t border-gray-200 pt-3 dark:border-border">
-          <button
-            type="button"
-            disabled={!enabled || saving}
-            onClick={() => setShowCreate((value) => !value)}
-            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-cyan-700 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-cyan-300 dark:hover:bg-cyan-950/30"
-          >
-            <Plus size={13} /> {t("addRemoteServer")}
-          </button>
-          {showCreate ? (
-            <div className="mt-2 space-y-2 rounded-lg border border-gray-200 p-3 dark:border-border">
-              <input
-                value={draft.name}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-                placeholder={t("serverName")}
-                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs outline-none focus:border-cyan-500 dark:border-border dark:bg-background"
-              />
-              <input
-                type="url"
-                value={draft.endpointUrl}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    endpointUrl: event.target.value,
-                  }))
-                }
-                placeholder="https://mcp.example.com/mcp"
-                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs outline-none focus:border-cyan-500 dark:border-border dark:bg-background"
-              />
-              <select
-                value={draft.authType}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    authType: event.target
-                      .value as PrivateServerDraft["authType"],
-                  }))
-                }
-                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-border dark:bg-background"
-              >
-                <option value="none">{t("authNone")}</option>
-                <option value="header">{t("authHeader")}</option>
-                <option value="oauth">OAuth</option>
-              </select>
-              {draft.authType === "header" ? (
+        {canManage ? (
+          <div className="mt-4 border-t border-gray-200 pt-3 dark:border-border">
+            <button
+              type="button"
+              disabled={!enabled || saving}
+              onClick={() => setShowCreate((value) => !value)}
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-cyan-700 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-cyan-300 dark:hover:bg-cyan-950/30"
+            >
+              <Plus size={13} /> {t("addRemoteServer")}
+            </button>
+            {showCreate ? (
+              <div className="mt-2 space-y-2 rounded-lg border border-gray-200 p-3 dark:border-border">
                 <input
-                  value={draft.headerName}
+                  value={draft.name}
                   onChange={(event) =>
                     setDraft((current) => ({
                       ...current,
-                      headerName: event.target.value,
+                      name: event.target.value,
                     }))
                   }
-                  placeholder="Authorization"
-                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-border dark:bg-background"
+                  placeholder={t("serverName")}
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs outline-none focus:border-cyan-500 dark:border-border dark:bg-background"
                 />
-              ) : null}
-              {draft.authType === "oauth" ? (
+                <p className="text-[10px] leading-4 text-gray-500 dark:text-muted-foreground">
+                  {t("customRemoteUrlNotice")}
+                </p>
                 <input
-                  value={draft.clientId}
+                  type="url"
+                  value={draft.endpointUrl}
                   onChange={(event) =>
                     setDraft((current) => ({
                       ...current,
-                      clientId: event.target.value,
+                      endpointUrl: event.target.value,
                     }))
                   }
-                  placeholder={t("clientId")}
-                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-border dark:bg-background"
+                  placeholder="https://mcp.example.com/mcp"
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs outline-none focus:border-cyan-500 dark:border-border dark:bg-background"
                 />
-              ) : null}
-              <button
-                type="button"
-                disabled={
-                  !enabled ||
-                  saving ||
-                  !draft.name.trim() ||
-                  !draft.endpointUrl.trim() ||
-                  (draft.authType === "oauth" && !draft.clientId.trim())
-                }
-                onClick={() => void createPrivateServer()}
-                className="rounded-md bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-              >
-                {saving ? t("saving") : t("createAndValidate")}
-              </button>
-            </div>
-          ) : null}
-        </div>
+                <select
+                  value={draft.authType}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      authType: event.target
+                        .value as PrivateServerDraft["authType"],
+                    }))
+                  }
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-border dark:bg-background"
+                >
+                  <option value="none">{t("authNone")}</option>
+                  <option value="header">{t("authHeader")}</option>
+                  <option value="oauth">OAuth</option>
+                </select>
+                {draft.authType === "header" ? (
+                  <div className="space-y-2">
+                    <input
+                      value={draft.headerName}
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          headerName: event.target.value,
+                        }))
+                      }
+                      placeholder="Authorization"
+                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-border dark:bg-background"
+                    />
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={draft.headerValue}
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          headerValue: event.target.value,
+                        }))
+                      }
+                      placeholder={t("credentialPlaceholder")}
+                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-border dark:bg-background"
+                    />
+                    <p className="text-[10px] leading-4 text-gray-500 dark:text-muted-foreground">
+                      {t("customRemoteSecretNotice")}
+                    </p>
+                  </div>
+                ) : null}
+                {draft.authType === "oauth" ? (
+                  <input
+                    value={draft.clientId}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        clientId: event.target.value,
+                      }))
+                    }
+                    placeholder={t("clientId")}
+                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-border dark:bg-background"
+                  />
+                ) : null}
+                <button
+                  type="button"
+                  disabled={
+                    !enabled ||
+                    saving ||
+                    !draft.name.trim() ||
+                    !draft.endpointUrl.trim() ||
+                    (draft.authType === "header" &&
+                      (!draft.headerName.trim() || !draft.headerValue))
+                  }
+                  onClick={() => void createPrivateServer()}
+                  className="rounded-md bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                >
+                  {saving ? t("saving") : t("createAndValidate")}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -805,6 +966,19 @@ function ServerStatus({ status }: { status: McpServer["status"] }) {
       {label}
     </span>
   );
+}
+
+function serverValidationMessageKey(code: string) {
+  switch (code) {
+    case "credential_invalid":
+      return "validationErrors.credentialInvalid" as const;
+    case "credential_revalidation_required":
+      return "validationErrors.credentialRevalidationRequired" as const;
+    case "credential_probe_failed":
+      return "validationErrors.credentialProbeFailed" as const;
+    default:
+      return "validationErrors.validationFailed" as const;
+  }
 }
 
 function serverKey(ref: McpServerRef): string {

@@ -163,6 +163,7 @@ describe("MCP runtime DTO normalization", () => {
       official: false,
       validated: true,
       version: "1.0.0",
+      installed: false,
       source: "lobehub",
       sourceUrl: "https://market.lobehub.com",
       tools: [],
