@@ -170,3 +170,36 @@ Added the separately activated Broker/Artifact canary, private Runner-to-Broker 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 54: Agent Runtime G21.3 bounded Project mutation canary
+
+**Date**: 2026-08-15
+**Task**: Agent Runtime G21.3 bounded Project mutation canary
+**Branch**: `main`
+
+### Summary
+
+Added the independently activated, offline-approved synthetic Project CAS canary, caller-specific private relay, migration 092 function-only CAS/status/cleanup authority, durable acknowledgement-loss no-retry recovery, default-off production wiring, and synchronized contracts/specs. PostgreSQL 17, G21.0-G21.2 regressions, Phase 0, security/quality gates, and full standalone verification passed while this development host remained ISOLATION_UNAVAILABLE and no exact-host/live promotion evidence was produced.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0a62b406` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
