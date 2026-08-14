@@ -62,7 +62,5 @@
   "confirmDelete": "确认删除",
   "delete": "删除",
   "more": "更多",
-  "skillAppliedTooltip": "已应用 {title} 技能（{mode}）",
-  "skillModeManual": "手动",
-  "skillModeAuto": "自动"
+  "legacySkillRetired": "旧版技能已退役"
 }

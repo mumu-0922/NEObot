@@ -29,7 +29,6 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import LegacySkillCutoverCard from "./LegacySkillCutoverCard";
 import type { AgentCenterTabId } from "@/lib/chat/panelUrlState";
 import {
   ApiClientError,
@@ -398,7 +397,6 @@ function PackageSkills({ selectedId, onSelect, announce }: PanelProps) {
                 <EmptyState title={t("emptyStore")} />
               )}
             </section>
-            <LegacySkillCutoverCard />
           </div>
         </>
       }

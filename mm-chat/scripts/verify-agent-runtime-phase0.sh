@@ -51,8 +51,11 @@ required_agent_paths=(
   "${project_dir}/backend/migrations/090_agent_product_shadow.up.sql"
   "${project_dir}/backend/migrations/090_agent_product_shadow.down.sql"
   "${project_dir}/frontend/src/components/agent/AgentCenter.tsx"
-  "${project_dir}/frontend/src/lib/skills/legacyCutover.ts"
+  "${project_dir}/frontend/src/store/storage/legacySkillRetirement.ts"
   "${project_dir}/frontend/src/services/api/client/server/agentCenterApi.ts"
+  "${project_dir}/scripts/cutover-legacy-skills.sql"
+  "${project_dir}/scripts/verify-agent-legacy-cutover.sh"
+  "${project_dir}/scripts/verify-agent-legacy-cutover-postgres17.sh"
   "${project_dir}/scripts/verify-agent-product-shadow.sh"
   "${project_dir}/scripts/verify-agent-product-shadow-postgres17.sh"
 )
@@ -118,7 +121,7 @@ mkdir -p \
   "${isolated_root}/mm-chat/backend/internal/codejobs" \
   "${isolated_root}/mm-chat/backend/internal/agentcontrol" \
   "${isolated_root}/mm-chat/backend/migrations" \
-  "${isolated_root}/mm-chat/frontend/src/lib/skills" \
+  "${isolated_root}/mm-chat/frontend/src/store/storage" \
   "${isolated_root}/mm-chat/docs" \
   "${isolated_root}/mm-chat/scripts"
 
@@ -130,8 +133,12 @@ cp "${project_dir}/backend/internal/agentcontrol/service.go" \
 cp "${project_dir}/backend/migrations/090_agent_product_shadow.up.sql" \
   "${project_dir}/backend/migrations/090_agent_product_shadow.down.sql" \
   "${isolated_root}/mm-chat/backend/migrations/"
-cp "${project_dir}/frontend/src/lib/skills/legacyCutover.ts" \
-  "${isolated_root}/mm-chat/frontend/src/lib/skills/"
+cp "${project_dir}/frontend/src/store/storage/legacySkillRetirement.ts" \
+  "${isolated_root}/mm-chat/frontend/src/store/storage/"
+cp "${project_dir}/scripts/cutover-legacy-skills.sql" \
+  "${isolated_root}/mm-chat/scripts/"
+cp "${project_dir}/scripts/verify-agent-legacy-cutover.sh" \
+  "${isolated_root}/mm-chat/scripts/"
 (
   cd "${project_dir}"
   find docs -type f \( -name '*.md' -o -name '*.json' \) -print0 |

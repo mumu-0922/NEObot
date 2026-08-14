@@ -5,7 +5,7 @@ import { STORAGE_VERSION } from "../store/storage/storageConfig";
 
 describe("Assistant Store browser authority migration", () => {
   it("advances persistence and hard-deletes every legacy Assistant authority", async () => {
-    expect(STORAGE_VERSION).toBe(6);
+    expect(STORAGE_VERSION).toBe(7);
     const migrate = (
       useSettingsStore as unknown as {
         persist: {

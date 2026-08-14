@@ -270,13 +270,36 @@ and observed bounded cohort evidence. G20.8 performs no legacy deletion.
 
 ## G20.9 — Legacy Skill deletion and production cutover
 
+Status: source/browser/server cutover complete (2026-08-14); exact-host
+production Runtime promotion, live backup/apply/canary and rollback rehearsal
+remain held.
+
 - Freeze then hard delete `installedSkills`, `customSkills`, `activeSkillIds`,
   `skillAutoSelect`, Conversation/Workspace `activeSkills`, browser selection/
   context execution and legacy catalogs/definitions. Do not migrate/wrap data.
 - Preserve historical messages but render old `skillInvocations` only as the
   read-only fact “旧版技能已退役”.
 - Bump/purge browser persistence and remove old API/schema/code references.
-- Switch once to the new Runtime; no dual execute or hidden fallback.
+- Make admitted Package Runtime the sole eligible Skill path while keeping
+  execution held until exact-host acceptance; no dual execute or hidden
+  fallback.
+
+Implemented evidence: persistence version `7` with marker-last compensating
+localStorage/IndexedDB purge; Settings/Chat normalization and `partialize`
+non-resurrection; complete removal of legacy editor/sidebar/URL/composer/
+workspace/catalog/service/resolver/prompt injection; history collapse to
+`legacySkillRetired: true` and one localized label; Go Conversation
+create/update/read stripping; default-dry-run PostgreSQL cutover requiring an
+exact count and full-backup SHA-256 fingerprint while deleting only
+`metadata.activeSkills`; no migration `091`; focused source and PostgreSQL 17
+gates with schema head still `090`.
+
+Held evidence: this source cutover does not claim a live database was modified
+or the production rollback window was exercised. Package Skills are now the
+only eligible Skill domain, but no Package executor runs while the exact host
+returns `ISOLATION_UNAVAILABLE`. Production still requires G20.8 backup evidence,
+live expected-count confirmation, clean restart, full restore/rollback rehearsal
+and bounded canary proof.
 
 Promotion gate: destructive dry run from verified backup, exact state deletion,
 history preservation, zero legacy execution references, full quality/security/

@@ -2,7 +2,6 @@ import type { LobeAgent } from "../assistant/types";
 import type { ChatConfig } from "../chat/types";
 import type { ModelMetadata, ModelProvider } from "../providers/types";
 import type { SearchProviderID, SearchServiceConfig } from "../search/types";
-import type { SkillCatalog, SkillDataLocale, TextSkill } from "../skills/types";
 import type { VoiceSettings } from "../voice/types";
 export type {
   MemoryDreamStatus,
@@ -46,14 +45,6 @@ export interface AppSettings {
     configs: Record<string, SearchServiceConfig>;
   };
   voice: VoiceSettings;
-  installedSkills: TextSkill[];
-  customSkills: TextSkill[];
-  activeSkillIds: string[];
-  skillAutoSelect: boolean;
-  skillCatalogs: Partial<Record<SkillDataLocale, SkillCatalog>>;
-  skillCatalogTimestamps: Partial<Record<SkillDataLocale, number>>;
-  skillDefinitions: Record<string, TextSkill>;
-  skillDefinitionTimestamps: Record<string, number>;
   customAgents: LobeAgent[];
   usedAgents: LobeAgent[];
   agentOverrides: Record<string, Partial<LobeAgent>>;

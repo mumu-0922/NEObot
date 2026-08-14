@@ -2,10 +2,11 @@
 
 Status: G20.1 no-execute Skill supply chain, G20.2 durable Orchestrator, G20.3
 Runner, G20.4 brokered effects, G20.5 depth-1 Child delegation, G20.6 durable
-Cron scheduling, G20.7 Draft-only learning, and the G20.8 Agent Center/default-
-off Shadow control plane are implemented. Exact-host isolation and production
-Runner/Broker/Child/Scheduler/Learning/Shadow promotion are held; production
-Runtime remains disabled and legacy text Skills remain authoritative.
+Cron scheduling, G20.7 Draft-only learning, the G20.8 Agent Center/default-off
+Shadow control plane, and G20.9 legacy text-Skill hard retirement are
+implemented. Exact-host isolation and production Runner/Broker/Child/Scheduler/
+Learning/Shadow promotion are held; production Runtime remains disabled and no
+legacy/fallback Skill executor remains.
 
 ## Purpose and invariant
 
@@ -454,21 +455,26 @@ package executor. Migrations `088`, `089` and `090` have guarded rollback; the
 narrow Cron and Learning control roles have SELECT plus exact function
 execution and no table DML. The narrow product facade does not gain worker
 claim/lease/Commit authority. None of these groups changes Chat execution
-authority. Legacy pure-text Skills remain untouched in G20.8 and are deleted
-only by G20.9.
-The future final cutover:
+authority. Legacy pure-text Skills remain untouched in G20.8. G20.9 deletes
+their browser authority and execution chain without adding a schema migration;
+the PostgreSQL selection cleanup is the explicit operator cutover
+`scripts/cutover-legacy-skills.sql`, while schema head remains `090`.
+The G20.9 cutover:
 
 1. freezes new legacy Skill installation/editing;
 2. captures a rollback inventory/backup without converting legacy content;
-3. requires new Runtime clean-copy, restart, isolation, kill and rollback proof;
+3. keeps new Runtime execution held until clean-copy, restart, isolation, kill
+   and rollback proof exists;
 4. removes `installedSkills`, `customSkills`, `activeSkillIds`,
    `skillAutoSelect`, Conversation/Workspace `activeSkills`, browser Skill
    selection/context assembly and old catalog state;
 5. retains only a read-only “旧版技能已退役” projection for historical
    `skillInvocations`, without retaining executable legacy Skill definitions;
-6. switches server authority once, then prefers forward fix. A rollback may
-   restore the prior application image and backup only inside the declared
-   rollback window; it must not partially mix legacy and new execution.
+6. leaves admitted Package Skills as the only eligible Skill execution domain,
+   while the current host still returns `ISOLATION_UNAVAILABLE`. A rollback may
+   restore the prior application image and matching full backup only inside the
+   declared rollback window; it must not partially mix legacy and new
+   execution.
 
 The current `/v1/code/executions` remains fail closed. Agent Runtime must not use
 that placeholder route as an isolation shortcut.
@@ -489,6 +495,8 @@ Production execution remains disabled until later groups prove:
   cleanup and source/Kill-Switch matrices pass without mutating live authority;
 - Agent Center authorization/reload/accessibility and default-off Shadow
   cohort/generation/budget/content-free observation gates pass;
+- G20.9 browser reload/idempotence, negative executable-reference and
+  backup/count-gated PostgreSQL cutover gates pass;
 - secret/network/workspace/artifact boundaries pass negative tests;
 - Kill Switches kill/reap exact Sandboxes without stopping cleanup;
 - clean-copy, backup/restore and rollback rehearsals pass.

@@ -70,8 +70,6 @@ interface SidebarProps {
   toggleSidebar: () => void;
   isModal?: boolean;
   onRequestClose?: () => void;
-  onOpenSkillMarket: () => void;
-  isSkillMarketOpen: boolean;
   onOpenAgentCenter: () => void;
   isAgentCenterOpen: boolean;
   onOpenAssistantHub: () => void;
@@ -167,8 +165,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   toggleSidebar,
   isModal = false,
   onRequestClose,
-  onOpenSkillMarket,
-  isSkillMarketOpen,
   onOpenAgentCenter,
   isAgentCenterOpen,
   onOpenAssistantHub,
@@ -513,7 +509,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       {
         useSearch: workspace.enableSearch,
         useReasoning: workspace.enableReasoning,
-        activeSkills: workspace.activeSkills,
       },
     );
 
@@ -598,7 +593,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       currentSessionId === session.id &&
       !isAgentCenterOpen &&
       !isAssistantHubOpen &&
-      !isSkillMarketOpen &&
       !isKnowledgeBaseOpen &&
       !isToolsOpen &&
       !isSettingsOpen;
@@ -876,27 +870,6 @@ const Sidebar: React.FC<SidebarProps> = ({
               aria-hidden="true"
             />
             {isOpen && <span className="truncate">{t("assistantHub")}</span>}
-          </button>
-        </SidebarNavTooltip>
-
-        <SidebarNavTooltip isOpen={isOpen} content={t("skillMarket")}>
-          <button
-            type="button"
-            aria-label={t("openSkillMarket")}
-            aria-current={isSkillMarketOpen ? "page" : undefined}
-            onClick={onOpenSkillMarket}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 ${
-              isSkillMarketOpen
-                ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
-                : "text-gray-600 dark:text-muted-foreground hover:bg-gray-100/80 dark:hover:bg-muted/60"
-            } ${isOpen ? "w-full" : "w-10 justify-center px-0"}`}
-          >
-            <Sparkles
-              size={18}
-              className={`shrink-0 ${isSkillMarketOpen ? "text-emerald-500" : "text-gray-500"}`}
-              aria-hidden="true"
-            />
-            {isOpen && <span className="truncate">{t("skillMarket")}</span>}
           </button>
         </SidebarNavTooltip>
 

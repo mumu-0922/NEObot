@@ -14,7 +14,7 @@ project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
   corepack pnpm exec vitest run \
     src/__tests__/serverAgentCenterApi.test.ts \
     src/__tests__/chatPanelUrlState.test.ts \
-    src/__tests__/legacySkillCutover.test.ts \
+    src/__tests__/legacySkillRetirement.test.ts \
     src/__tests__/agentCenterComposition.test.ts
   corepack pnpm typecheck
 )
@@ -31,8 +31,10 @@ required = (
     "backend/migrations/090_agent_product_shadow.up.sql",
     "backend/migrations/090_agent_product_shadow.down.sql",
     "frontend/src/components/agent/AgentCenter.tsx",
-    "frontend/src/lib/skills/legacyCutover.ts",
+    "frontend/src/store/storage/legacySkillRetirement.ts",
     "frontend/src/services/api/client/server/agentCenterApi.ts",
+    "scripts/cutover-legacy-skills.sql",
+    "scripts/verify-agent-legacy-cutover.sh",
     "scripts/verify-agent-product-shadow-postgres17.sh",
 )
 for relative in required:
@@ -65,12 +67,26 @@ assert "return ErrIsolationUnavailable" in service
 assert "shadowAdapter.Observe" in service
 assert "os/exec" not in service and "podman" not in service.lower()
 
-legacy = (root / "frontend/src/lib/skills/legacyCutover.ts").read_text()
-assert "dryRun: true" in legacy
-assert "deleteStorageKeys: []" in legacy
-assert "removeItem(" not in legacy and "clear(" not in legacy
-print("Agent product/Shadow source verification: bounded facade, held Runtime, content-free inventory, and no-delete preparation passed")
+retirement = (root / "frontend/src/store/storage/legacySkillRetirement.ts").read_text()
+for retired_field in (
+    "installedSkills",
+    "customSkills",
+    "activeSkillIds",
+    "skillAutoSelect",
+    "skillCatalogs",
+    "skillCatalogTimestamps",
+    "skillDefinitions",
+    "skillDefinitionTimestamps",
+):
+    assert retired_field in retirement, retired_field
+assert not (root / "frontend/src/lib/skills/legacyCutover.ts").exists()
+assert not (root / "frontend/src/components/agent/LegacySkillCutoverCard.tsx").exists()
+cutover = (root / "scripts/cutover-legacy-skills.sql").read_text()
+assert "metadata = metadata - 'activeSkills'" in cutover
+assert "LEGACY_SKILL_BACKUP_FINGERPRINT_REQUIRED" in cutover
+print("Agent product/Shadow source verification: bounded facade, held Runtime, and one-way legacy Skill retirement passed")
 PY
 
+bash "${project_dir}/scripts/verify-agent-legacy-cutover.sh"
 bash "${project_dir}/scripts/verify-agent-runtime-phase0.sh"
 echo "Agent product/Shadow source verification: passed"

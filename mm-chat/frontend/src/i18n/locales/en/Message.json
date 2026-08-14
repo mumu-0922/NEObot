@@ -62,7 +62,5 @@
   "confirmDelete": "Confirm Delete",
   "delete": "Delete",
   "more": "More",
-  "skillAppliedTooltip": "{title} skill applied ({mode})",
-  "skillModeManual": "manual",
-  "skillModeAuto": "auto"
+  "legacySkillRetired": "Legacy Skill retired"
 }

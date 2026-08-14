@@ -111,7 +111,7 @@ export const ToolCallSchema = z
           : "pending"),
   }));
 
-export const SkillInvocationSchema = z
+const RetiredLegacySkillInvocationSchema = z
   .object({
     id: z
       .string()
@@ -125,20 +125,31 @@ export const SkillInvocationSchema = z
   })
   .strict();
 
-export const MessageSchema = z.object({
-  id: z.string().default(""),
-  role: z.enum(["user", "model"]),
-  content: z.string().max(2_000_000).default(""),
-  reasoning: z.string().max(2_000_000).optional(),
-  timestamp: z.number().default(0),
-  attachments: z.array(AttachmentSchema).max(20).optional(),
-  toolCalls: z
-    .array(ToolCallSchema)
-    .max(TOOL_EXECUTION_LIMITS.maxStreamedToolCalls)
-    .optional(),
-  skillInvocations: z.array(SkillInvocationSchema).max(20).optional(),
-  model: ModelNameSchema.optional(),
-});
+export const MessageSchema = z
+  .object({
+    id: z.string().default(""),
+    role: z.enum(["user", "model"]),
+    content: z.string().max(2_000_000).default(""),
+    reasoning: z.string().max(2_000_000).optional(),
+    timestamp: z.number().default(0),
+    attachments: z.array(AttachmentSchema).max(20).optional(),
+    toolCalls: z
+      .array(ToolCallSchema)
+      .max(TOOL_EXECUTION_LIMITS.maxStreamedToolCalls)
+      .optional(),
+    skillInvocations: z
+      .array(RetiredLegacySkillInvocationSchema)
+      .max(20)
+      .optional(),
+    legacySkillRetired: z.literal(true).optional(),
+    model: ModelNameSchema.optional(),
+  })
+  .transform(({ skillInvocations, ...message }) => ({
+    ...message,
+    ...(message.legacySkillRetired === true || skillInvocations?.length
+      ? { legacySkillRetired: true as const }
+      : {}),
+  }));
 
 const FunctionParametersSchema = z
   .object({

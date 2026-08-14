@@ -39,17 +39,13 @@ describe("chat panel URL state", () => {
     expect(params.get("settingsTab")).toBe("health");
   });
 
-  it("round-trips the skills panel without settings params", () => {
-    const params = setChatPanelUrlState(new URLSearchParams("keep=1"), {
-      panel: "skills",
-    });
-    const state = parseChatPanelUrlState(params);
+  it("normalizes the retired Legacy Skills panel to chat", () => {
+    const state = parseChatPanelUrlState("panel=skills&keep=1");
 
-    expect(params.get("panel")).toBe("skills");
-    expect(params.has("settingsTab")).toBe(false);
-    expect(state.panel).toBe("skills");
-    expect(state.settingsTab).toBeNull();
-    expect(state.needsReplace).toBe(false);
+    expect(state.panel).toBe("chat");
+    expect(state.normalizedSearchParams.get("keep")).toBe("1");
+    expect(state.normalizedSearchParams.has("panel")).toBe(false);
+    expect(state.needsReplace).toBe(true);
   });
 
   it("round-trips the Tools panel without settings params", () => {
@@ -93,6 +89,7 @@ describe("chat panel URL state", () => {
     const chat = parseChatPanelUrlState(
       "panel=skills&agentTab=runs&agentId=run_1234567890abcdef",
     );
+    expect(chat.panel).toBe("chat");
     expect(chat.agentTab).toBeNull();
     expect(chat.agentId).toBeNull();
     expect(chat.normalizedSearchParams.has("agentTab")).toBe(false);

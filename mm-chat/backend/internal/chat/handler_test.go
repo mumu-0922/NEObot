@@ -71,6 +71,56 @@ func TestHandlerCreatesAndListsConversations(t *testing.T) {
 	}
 }
 
+func TestHandlerRetiresLegacySkillConversationSelection(t *testing.T) {
+	repo := newFakeRepository()
+	handler := NewHandler(NewService(repo))
+
+	rec := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath,
+		`{"title":"Retired","config":{"activeSkills":["legacy"],"useReasoning":true}}`,
+	)
+	assertStatus(t, rec, http.StatusCreated)
+	var created ConversationDTO
+	decodeBody(t, rec, &created)
+	if _, exists := created.Config[retiredLegacySkillSelectionKey]; exists {
+		t.Fatalf("created config retained legacy Skill selection: %#v", created.Config)
+	}
+	if _, exists := repo.conversations[0].Metadata[retiredLegacySkillSelectionKey]; exists {
+		t.Fatalf("repository retained legacy Skill selection: %#v", repo.conversations[0].Metadata)
+	}
+
+	repo.conversations[0].Metadata[retiredLegacySkillSelectionKey] = []any{"stale"}
+	repo.conversations[0].Metadata[conversationKnowledgeSelectionKey] = []any{
+		"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+	}
+	rec = performRequest(handler, http.MethodGet, conversationsPath, "")
+	assertStatus(t, rec, http.StatusOK)
+	var listed Page[ConversationDTO]
+	decodeBody(t, rec, &listed)
+	if _, exists := listed.Items[0].Config[retiredLegacySkillSelectionKey]; exists {
+		t.Fatalf("list projected legacy Skill selection: %#v", listed.Items[0].Config)
+	}
+	if _, exists := repo.conversations[0].Metadata[retiredLegacySkillSelectionKey]; !exists {
+		t.Fatalf("read projection mutated repository state: %#v", repo.conversations[0].Metadata)
+	}
+
+	rec = performRequest(
+		handler,
+		http.MethodPatch,
+		conversationsPath+"/"+testConversationID,
+		`{"config":{"activeSkills":["resurrect"],"useSearch":true}}`,
+	)
+	assertStatus(t, rec, http.StatusOK)
+	if _, exists := repo.conversations[0].Metadata[retiredLegacySkillSelectionKey]; exists {
+		t.Fatalf("update resurrected legacy Skill selection: %#v", repo.conversations[0].Metadata)
+	}
+	if _, exists := repo.conversations[0].Metadata[conversationKnowledgeSelectionKey]; !exists {
+		t.Fatalf("update removed Knowledge selection: %#v", repo.conversations[0].Metadata)
+	}
+}
+
 func TestHandlerUpdatesAndDeletesConversation(t *testing.T) {
 	repo := newFakeRepository()
 	handler := NewHandler(NewService(repo))

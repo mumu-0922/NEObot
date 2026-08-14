@@ -38,19 +38,6 @@ export type {
   MessageKnowledgeMetadata,
 } from "./lib/knowledge/types";
 export type {
-  AppliedSkill,
-  AppliedSkillInvocation,
-  SelectedSkill,
-  SkillCandidate,
-  SkillCatalog,
-  SkillCatalogEntry,
-  SkillDataLocale,
-  SkillSelectionResult,
-  TextSkill,
-  TextSkillActivation,
-  TextSkillRisk,
-} from "./lib/skills/types";
-export type {
   ModelBuiltInSearchConfig,
   ModelBuiltInSearchProtocol,
   ModelMetadata,

@@ -23,7 +23,6 @@ import RemoteFile from "./ja/RemoteFile.json";
 import Mcp from "./ja/Mcp.json";
 import Content from "./ja/Content.json";
 import ChatApp from "./ja/ChatApp.json";
-import Skill from "./ja/Skill.json";
 import AgentCenter from "./ja/AgentCenter.json";
 
 const messages = {
@@ -52,7 +51,6 @@ const messages = {
   Mcp,
   Content,
   ChatApp,
-  Skill,
   AgentCenter,
 };
 

@@ -5,10 +5,8 @@ import type {
   SearchProviderID,
   SearchServiceConfig,
   Session,
-  TextSkill,
   Workspace,
 } from "../../types";
-import { normalizeSkillIdRefs } from "../skills";
 import {
   getSearchCompatibility,
   type SearchCompatibilityResult,
@@ -41,7 +39,6 @@ export interface EffectiveChatContext {
   sessionId: string | null;
   systemInstruction?: string;
   workspaceFiles: Workspace["files"];
-  activeSkillIds: string[];
   modelCapabilities: ModelCapabilities;
   searchCompatibility: SearchCompatibilityResult;
   capabilityStatuses: CapabilityStatus[];
@@ -62,9 +59,6 @@ export interface ResolveEffectiveChatContextOptions {
     provider: SearchProviderID;
     configs: Record<string, SearchServiceConfig>;
   };
-  installedSkills?: TextSkill[];
-  activeSkillIds?: string[];
-  activeSkillIdsOverride?: string[];
 }
 
 function formatCurrentDateTime(now: Date | number | undefined): string {
@@ -156,9 +150,6 @@ export function resolveEffectiveChatContext(
     customModelMetadata,
     chatConfig,
     search,
-    installedSkills = [],
-    activeSkillIds: fallbackActiveSkillIds = [],
-    activeSkillIdsOverride,
   } = options;
 
   const searchCompatibility = getSearchCompatibility({
@@ -170,19 +161,6 @@ export function resolveEffectiveChatContext(
     modelMetadata,
     customModelMetadata,
   });
-  const sessionSkillIds = session?.config?.activeSkills || [];
-  const workspaceSkillIds = workspace?.activeSkills || [];
-  const requestedSkillIds =
-    activeSkillIdsOverride ??
-    (sessionSkillIds.length
-      ? sessionSkillIds
-      : workspaceSkillIds.length
-        ? workspaceSkillIds
-        : fallbackActiveSkillIds);
-  const activeSkillIds = normalizeSkillIdRefs(
-    requestedSkillIds,
-    installedSkills,
-  );
   const statuses: CapabilityStatus[] = [];
 
   if (chatConfig.useSearch && !searchCompatibility.enabled) {
@@ -213,7 +191,6 @@ export function resolveEffectiveChatContext(
       now,
     }),
     workspaceFiles: workspace?.files || [],
-    activeSkillIds,
     modelCapabilities,
     searchCompatibility,
     capabilityStatuses: statuses.length

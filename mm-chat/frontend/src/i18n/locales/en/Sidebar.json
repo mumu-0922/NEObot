@@ -48,7 +48,5 @@
   "editWorkspace": "Edit Workspace",
   "chatActions": "Chat actions",
   "workspaceActions": "Workspace actions",
-  "moveToWorkspaceAria": "Move chat to workspace",
-  "skillMarket": "Legacy Skills",
-  "openSkillMarket": "Open Legacy Skills"
+  "moveToWorkspaceAria": "Move chat to workspace"
 }

@@ -48,7 +48,10 @@ import {
 
 ### `limits.ts`
 
-Centralizes input and payload limits for chat, attachments, Skills, document parsing, settings, and API validation. Prefer adding new limits here when the same boundary is enforced in more than one place.
+Centralizes input and payload limits for chat, attachments, document parsing,
+settings, and API validation. Prefer adding new limits here when the same
+boundary is enforced in more than one place. Package Skill limits remain at the
+typed server contract rather than the retired browser executor.
 
 ### `index.ts`
 

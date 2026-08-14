@@ -47,16 +47,18 @@ describe("MessageInput composition", () => {
     expect(messageInput).not.toContain("min-h-28");
     expect(messageInput).not.toContain("md:min-h-32");
     expect(messageInput).not.toContain("min-h-12");
-    expect(messageInput).toContain("installedSkills");
-    expect(messageInput).toContain("updateSessionConfig");
-    expect(messageInput).toContain("normalizeSkillIdRefs");
+    expect(messageInput).not.toContain("installedSkills");
+    expect(messageInput).not.toContain("activeSkillIds");
+    expect(messageInput).not.toContain("normalizeSkillIdRefs");
     expect(messageInput).not.toContain("toggleSkillActive");
     expect(messageInput).not.toContain("formatSkillCategory");
     expect(messageInput).not.toContain("autoSelectSkills");
     expect(messageInput).not.toContain("manageSkills");
     expect(messageInput).not.toContain("setSkillAutoSelect");
     expect(messageInput).not.toContain("border border-green-500 bg-green-500");
-    expect(messageInput).toContain("border border-emerald-500 bg-emerald-500");
+    expect(messageInput).not.toContain(
+      "border border-emerald-500 bg-emerald-500",
+    );
     expect(messageInput).not.toContain("border border-blue-500 bg-blue-500");
     expect(messageInput).not.toContain("text-green-500 dark:text-green-400");
     expect(messageInput).toContain("text-blue-500 dark:text-blue-400");
@@ -100,16 +102,12 @@ describe("MessageInput composition", () => {
     expect(messageInput).toContain(
       "allowReasoningWhenSessionToolsDisabled?: boolean",
     );
-    expect(messageInput).toContain(
-      "allowSkillsWhenSessionToolsDisabled?: boolean",
-    );
+    expect(messageInput).not.toContain("allowSkillsWhenSessionToolsDisabled");
     expect(messageInput).toContain("mcpEnabled?: boolean");
     expect(messageInput).toContain("mcpConversationId?: string");
-    expect(messageInput).toContain(
-      "activeSkillIdsOverride?: readonly string[]",
-    );
-    expect(messageInput).toContain("onActiveSkillIdsChange?:");
-    expect(messageInput).toContain("const skillSelectionDisabled =");
+    expect(messageInput).not.toContain("activeSkillIdsOverride");
+    expect(messageInput).not.toContain("onActiveSkillIdsChange");
+    expect(messageInput).not.toContain("skillSelectionDisabled");
     expect(messageInput).toContain("onLocalSessionToolUnavailable?:");
     expect(messageInput).toContain("isReasoningEnabled?: boolean");
     expect(messageInput).toContain("reasoningEffort?: ReasoningEffort");
@@ -124,7 +122,7 @@ describe("MessageInput composition", () => {
     expect(messageInput).toContain(
       'notifyLocalSessionToolUnavailable("search toggle")',
     );
-    expect(messageInput).toContain(
+    expect(messageInput).not.toContain(
       'notifyLocalSessionToolUnavailable("skills")',
     );
     expect(messageInput).toContain(

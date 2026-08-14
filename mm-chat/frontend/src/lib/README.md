@@ -1,6 +1,6 @@
 # Core Library
 
-The `src/lib` directory contains shared infrastructure for API handling, streaming, provider adapters, security, MCP Tool presentation, text-only Skills, BYOK encryption, chat processing, search/RAG utilities, service health, and general helpers. Code in this directory should be framework-aware only when necessary and should avoid UI concerns.
+The `src/lib` directory contains shared infrastructure for API handling, streaming, provider adapters, security, MCP Tool presentation, BYOK encryption, chat processing, search/RAG utilities, service health, and general helpers. Code in this directory should be framework-aware only when necessary and should avoid UI concerns.
 
 ## Directory Map
 
@@ -19,7 +19,6 @@ src/lib/
 ├── search/
 ├── security/
 ├── settings/
-├── skills/
 ├── services/
 ├── streaming/
 ├── utils/
@@ -53,10 +52,6 @@ Use this layer for server route concerns such as:
 
 `src/lib/mcp` contains frontend MCP DTOs. Server definitions, credentials, authorization, discovery, execution, and result persistence remain backend-owned.
 
-### Skills
-
-`src/lib/skills` contains normalization, catalog handling, text-only safety checks, candidate recall, and prompt-context construction for installed and custom skills.
-
 ### Service Health
 
 `src/lib/services` contains non-secret deployment health reporting for BYOK,
@@ -82,6 +77,9 @@ readiness.
 - Keep security checks close to network access.
 - Avoid importing React components from `src/lib`.
 - Keep browser-only helpers and server-only helpers separated when runtime APIs differ.
+- Do not recreate the retired `src/lib/skills` text-prompt executor. Package
+  Skills are server-owned; historical `skillInvocations` may only collapse to
+  the non-executable `legacySkillRetired` fact at bounded schema/migration guards.
 - Add tests for helpers that normalize persisted data, provider responses, or security-sensitive inputs.
 
 ## Example: API Route Helper

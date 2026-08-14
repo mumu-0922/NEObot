@@ -80,10 +80,5 @@
   "parsingDocument": "正在解析文档…",
   "failedToParseDocument": "解析文档“{fileName}”失败。",
   "dropFilesTitle": "松手即可添加附件",
-  "dropFilesHint": "图片、音频、文本和文档会沿用附件按钮的数量与大小限制。",
-  "skills": "技能",
-  "activeSkillsCount": "{count} 个已启用技能",
-  "activeSkillsAria": "{count} 个已启用技能",
-  "installedSkills": "已安装技能",
-  "noSkillsAvailable": "暂无可用技能。"
+  "dropFilesHint": "图片、音频、文本和文档会沿用附件按钮的数量与大小限制。"
 }

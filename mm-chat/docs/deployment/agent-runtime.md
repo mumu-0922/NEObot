@@ -2,11 +2,12 @@
 
 Status: G20.1 no-execute Skill supply, G20.2 durable Orchestrator, G20.3
 `neo-runnerd`, G20.4 brokered effects, G20.5 depth-1 Child delegation, G20.6
-durable Cron scheduling, G20.7 Draft-only learning, and G20.8 Agent Center/
-default-off Shadow control are implemented. Exact-host isolation and production
-Runner/Broker/Child/Scheduler/Learning/Shadow promotion are held. Do not install
-a Runtime, start a worker, enable Agent execution/Learning/Shadow or delete
-legacy Skills from this document alone.
+durable Cron scheduling, G20.7 Draft-only learning, G20.8 Agent Center/default-
+off Shadow control, and G20.9 legacy text-Skill source retirement are
+implemented. Exact-host isolation and production Runner/Broker/Child/Scheduler/
+Learning/Shadow promotion are held. Do not install a Runtime, start a worker,
+enable Agent execution/Learning/Shadow, or run the live data cutover without the
+specified backup/count/rollback evidence.
 
 ## Default state
 
@@ -21,7 +22,7 @@ AGENT_DELEGATION_ENABLED=false
 AGENT_RUNNER_URL=
 ```
 
-G20.3 through G20.8 add no application environment variable or Compose worker.
+G20.3 through G20.9 add no application environment variable or Compose worker.
 The host-only `deploy/agent-runner/neo-runnerd.env.example` is not an activation
 file. These names reserve the intended operational boundary; later promotion
 must add them through the normal preflight/example-env/Compose/documentation
@@ -295,7 +296,8 @@ or learning-check authority. Artifact object keys remain server-only.
 
 Agent Center is safe to deploy while Runtime is held: Run creation returns
 `ISOLATION_UNAVAILABLE`, existing durable records remain readable, and Package
-Skills stay separate from Assistants, MCP and Legacy Skills. The Shadow policy
+Skills stay separate from Assistants and MCP. Legacy text-Skill authority is
+absent after G20.9. The Shadow policy
 defaults off. Do not insert a synthetic adapter or call observation functions
 from an ad-hoc production process; an adapter is test-only until the exact-host
 isolation promotion is approved.
@@ -415,25 +417,57 @@ procedure and are not embedded in Agent artifacts.
 
 ## Legacy Skill cutover and rollback
 
-Cutover inventory includes browser persistence version, all local settings keys,
-Conversation/Workspace `activeSkills`, text Skill catalogs/custom definitions,
-selection UI/context assembly and historical `skillInvocations` projection.
+G20.9 is a one-way application/data cutover, not migration `091`. Execute it in
+this order:
 
-G20.8 inventory is local and non-destructive. It records normalized IDs,
-fingerprints, counts, invalid/orphan references and the exact settings key;
-explicit backup exports the raw local settings value, while the deletion dry-run
-lists only the eight legacy Skill fields and an empty storage-key deletion set.
-Assistant, MCP, Chat, Conversation, file, Knowledge and Memory state must remain
-byte-unchanged. G20.9 owns the actual deletion.
+1. While the G20.8 image is still running, freeze legacy Skill edits and create
+   its explicit raw browser backup/inventory. Capture the exact manifest
+   fingerprint without logging Skill bodies.
+2. Disable writes for the maintenance window. Create a full PostgreSQL backup,
+   record `sha256sum` as `sha256:<64 lowercase hex>`, and count:
 
-Final switch rules:
+   ```sql
+   SELECT count(*) FROM conversations WHERE metadata ? 'activeSkills';
+   ```
 
-- hard delete legacy definitions/state; do not convert them to packages;
-- run a bounded browser storage migration that purges obsolete keys;
-- clear server Conversation/Workspace selection references;
-- keep message history, projecting only “旧版技能已退役” as a fact;
-- new Runtime is the only executable Skill path after cutover;
-- no dual-write/dual-execute fallback.
+3. Run the SQL with no variables first. This is always dry-run and rolls back:
+
+   ```bash
+   psql "$DATABASE_URL" --file scripts/cutover-legacy-skills.sql
+   ```
+
+4. Apply only when the count and backup fingerprint match:
+
+   ```bash
+   psql "$DATABASE_URL" \
+     --variable=cutover_apply=true \
+     --variable=expected_count="$EXPECTED_COUNT" \
+     --variable=backup_fingerprint="sha256:$BACKUP_SHA256" \
+     --file scripts/cutover-legacy-skills.sql
+   ```
+
+   The transaction takes a `SHARE ROW EXCLUSIVE` lock, removes only
+   `conversations.metadata.activeSkills`, checks the updated count and requires
+   zero remaining keys. It does not rewrite message/content/other metadata or
+   advance schema head beyond `090`.
+5. Deploy G20.9. Browser persistence version `7` strips the eight retired
+   settings fields plus Session/Workspace selections from localStorage and
+   IndexedDB, writes its marker last, and compensates partial failure. Reload
+   twice and confirm the migration is idempotent and no `partialize` path
+   resurrects state.
+6. Verify old message arrays render only “旧版技能已退役”; no legacy identity or
+   definition remains. Run both G20.9 gates below.
+
+```bash
+bash scripts/verify-agent-legacy-cutover.sh
+bash scripts/verify-agent-legacy-cutover-postgres17.sh
+```
+
+Assistant, MCP, Chat content/tree, Conversation fields other than the retired
+key, files, Knowledge and Memory remain unchanged. Admitted Package Skills are
+the sole eligible Skill domain after source cutover, but production execution
+stays held at `ISOLATION_UNAVAILABLE`; never add browser/API/rootful fallback or
+dual execution.
 
 Rollback uses a pre-cutover backup plus previous application images only inside
 the declared window and only as an all-path rollback. Once new Runtime writes or
@@ -459,6 +493,7 @@ From `mm-chat/`:
 bash scripts/verify-agent-runtime-phase0.sh
 ```
 
-This offline gate also checks the G20.8 facade/Shadow/no-delete signatures. A
-pass means the design and held product artifacts are internally consistent; it
-does not mean this host or production has a usable rootless Runtime.
+This offline gate also checks the G20.8 facade/Shadow and G20.9 hard-retirement
+signatures. A pass means the design and held product artifacts are internally
+consistent; it does not mean this host or production has a usable rootless
+Runtime.

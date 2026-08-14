@@ -18,7 +18,7 @@ import {
 import { useTranslations } from "next-intl";
 import { Workspace, Attachment } from "@/types";
 import { useChatStore } from "@/store/core/chatStore";
-import { useSettingsStore, getTaskModel } from "@/store/core/settingsStore";
+import { getTaskModel } from "@/store/core/settingsStore";
 import { v7 as uuidv7 } from "uuid";
 import { SimpleSwitch } from "../settings/SettingsUI";
 import { optimizeSystemPrompt } from "@/services/artifactService";
@@ -30,7 +30,6 @@ import {
   selectWorkspaceFilesForUpload,
 } from "@/lib/utils/workspaceFiles";
 import { ATTACHMENT_LIMITS, CHAT_ENTITY_LIMITS } from "@/config/limits";
-import { normalizeSkillIdRefs } from "@/lib/skills";
 import { logDevError } from "@/lib/utils/devLogger";
 
 interface WorkspaceSettingsModalProps {
@@ -80,7 +79,6 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
 }) => {
   const t = useTranslations("Workspace");
   const { createWorkspace, updateWorkspace, deleteWorkspace } = useChatStore();
-  const { installedSkills } = useSettingsStore();
 
   const [workspaceId] = useState(workspace?.id || uuidv7());
   const [name, setName] = useState(workspace?.name || "");
@@ -113,10 +111,6 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
   const [enableReasoning, setEnableReasoning] = useState(
     workspace?.enableReasoning || false,
   );
-  const [activeSkills, setActiveSkills] = useState<string[]>(
-    normalizeSkillIdRefs(workspace?.activeSkills, installedSkills),
-  );
-
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
@@ -127,7 +121,6 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
   const colorGroupId = `${modalId}-color`;
   const systemPromptInputId = `${modalId}-system-prompt`;
   const presetGroupId = `${modalId}-preset-parameters`;
-  const skillGroupId = `${modalId}-skills`;
   const fileGroupId = `${modalId}-files`;
   const fileInputId = `${modalId}-file-input`;
   const fileUploadStatusId = `${modalId}-file-upload-status`;
@@ -212,7 +205,6 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
       color: selectedColor,
       enableSearch,
       enableReasoning,
-      activeSkills: normalizeSkillIdRefs(activeSkills, installedSkills),
     };
 
     try {
@@ -395,19 +387,6 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
       event.preventDefault();
       firstElement.focus({ preventScroll: true });
     }
-  };
-
-  const toggleSkill = (id: string) => {
-    if (!installedSkills.some((skill) => skill.id === id)) return;
-
-    setActiveSkills((prev) =>
-      normalizeSkillIdRefs(
-        prev.includes(id)
-          ? prev.filter((skillId) => skillId !== id)
-          : [...prev, id],
-        installedSkills,
-      ),
-    );
   };
 
   const handleOptimize = async () => {
@@ -633,51 +612,6 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
                     checked={enableReasoning}
                     onChange={() => setEnableReasoning(!enableReasoning)}
                   />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div
-                  id={skillGroupId}
-                  className="flex items-center gap-2 text-xs font-semibold text-gray-500 dark:text-muted-foreground"
-                >
-                  <Sparkles size={14} aria-hidden="true" /> {t("activeSkills")}
-                </div>
-                <div
-                  role="group"
-                  aria-labelledby={skillGroupId}
-                  className="flex flex-wrap gap-2"
-                >
-                  {installedSkills.length > 0 ? (
-                    installedSkills.map((skill) => (
-                      <button
-                        type="button"
-                        key={skill.id}
-                        aria-label={
-                          activeSkills.includes(skill.id)
-                            ? t("disableSkillAria", { title: skill.title })
-                            : t("enableSkillAria", { title: skill.title })
-                        }
-                        aria-pressed={activeSkills.includes(skill.id)}
-                        onClick={() => toggleSkill(skill.id)}
-                        className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 ${
-                          activeSkills.includes(skill.id)
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300"
-                            : "border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300 dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:border-border"
-                        }`}
-                      >
-                        <Sparkles size={12} aria-hidden="true" />
-                        <span className="max-w-36 truncate">{skill.title}</span>
-                        {activeSkills.includes(skill.id) && (
-                          <Check size={12} aria-hidden="true" />
-                        )}
-                      </button>
-                    ))
-                  ) : (
-                    <div className="text-xs italic text-gray-400">
-                      {t("noSkillsInstalled")}
-                    </div>
-                  )}
                 </div>
               </div>
             </div>

@@ -69,11 +69,6 @@ export function useChatShellState() {
       fetchModelMetadata: state.fetchModelMetadata,
       system: state.system,
       search: state.search,
-      installedSkills: state.installedSkills,
-      customSkills: state.customSkills,
-      activeSkillIds: state.activeSkillIds,
-      skillAutoSelect: state.skillAutoSelect,
-      setActiveSkillIds: state.setActiveSkillIds,
       applyServerConfig: state.applyServerConfig,
     })),
   );

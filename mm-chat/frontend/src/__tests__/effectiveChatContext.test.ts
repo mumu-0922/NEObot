@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { resolveEffectiveChatContext } from "../lib/chat/effectiveChatContext";
 
 describe("effective chat context", () => {
-  it("normalizes session skills and reports unavailable capabilities", () => {
+  it("combines prompt scopes and reports unavailable capabilities", () => {
     const context = resolveEffectiveChatContext({
       session: {
         id: "session-1",
@@ -11,9 +11,6 @@ describe("effective chat context", () => {
         model: "openai:gpt-test",
         messageCount: 0,
         systemInstruction: "Answer in project voice.",
-        config: {
-          activeSkills: ["session-skill", "session-skill", ""],
-        },
       },
       workspace: {
         id: "workspace-1",
@@ -24,7 +21,6 @@ describe("effective chat context", () => {
         files: [
           { id: "file-1", fileName: "brief.txt", mimeType: "text/plain" },
         ],
-        activeSkills: ["workspace-skill"],
       },
       systemPrompt: "Global system prompt.",
       now: new Date("2026-07-01T02:03:04.000Z"),
@@ -52,109 +48,9 @@ describe("effective chat context", () => {
     expect(context.systemInstruction).toContain("<diagram-rendering>");
     expect(context.systemInstruction).toContain("Current date and time");
     expect(context.systemInstruction).toContain("2026-07-01T02:03:04.000Z");
-    expect(context.activeSkillIds).toEqual(["session-skill"]);
     expect(context.capabilityStatuses.map((status) => status.code)).toEqual(
       expect.arrayContaining(["search_unavailable"]),
     );
-  });
-
-  it("uses workspace skills when the session does not override them", () => {
-    const context = resolveEffectiveChatContext({
-      session: {
-        id: "session-1",
-        title: "New Chat",
-        updatedAt: 1,
-        model: "openai:gpt-test",
-        messageCount: 0,
-      },
-      workspace: {
-        id: "workspace-1",
-        name: "Workspace",
-        color: "blue",
-        createdAt: 1,
-        files: [],
-        activeSkills: ["workspace-skill", "workspace-skill"],
-      },
-      selectedModel: "openai:gpt-test",
-      provider: { type: "OpenAI" },
-      modelMetadata: {},
-      customModelMetadata: {},
-      chatConfig: {
-        searchMode: "off",
-        useSearch: false,
-        useReasoning: false,
-        reasoningEffort: "auto",
-        temperature: 0.7,
-      },
-      search: {
-        provider: "default",
-        configs: { default: { serverAvailable: false } },
-      },
-    });
-
-    expect(context.activeSkillIds).toEqual(["workspace-skill"]);
-  });
-
-  it("uses browser-persisted skill selections for server sessions", () => {
-    const context = resolveEffectiveChatContext({
-      session: {
-        id: "server-session",
-        title: "Server session",
-        updatedAt: 1,
-        model: "SERVER_DEFAULT:gpt-server",
-        messageCount: 0,
-        config: {
-          activeSkills: ["stale-skill"],
-        },
-      },
-      selectedModel: "SERVER_DEFAULT:gpt-server",
-      provider: { type: "OpenAI Compatible" },
-      modelMetadata: {},
-      customModelMetadata: {},
-      chatConfig: {
-        searchMode: "off",
-        useSearch: false,
-        useReasoning: false,
-        reasoningEffort: "auto",
-        temperature: 0.7,
-      },
-      search: {
-        provider: "default",
-        configs: { default: { serverAvailable: false } },
-      },
-      installedSkills: [
-        {
-          id: "server-skill",
-          name: "server-skill",
-          title: "Server Skill",
-          description: "Applied to server chat.",
-          category: "writing",
-          tags: ["server"],
-          audience: "general",
-          language: "en",
-          outputFormat: "text",
-          risk: {
-            level: "low",
-            textOnly: true,
-            scriptRequired: false,
-            externalToolRequired: false,
-            networkRequired: false,
-            reviewRequiredForHighStakes: false,
-          },
-          activation: {
-            embeddingText: "server skill",
-            useWhen: ["selected"],
-            avoidWhen: [],
-            exampleQueries: [],
-          },
-          content: "Follow the server skill.",
-        },
-      ],
-      activeSkillIds: ["missing-skill"],
-      activeSkillIdsOverride: ["server-skill"],
-    });
-
-    expect(context.activeSkillIds).toEqual(["server-skill"]);
   });
 
   it("appends safe inline HTML guidance when the visual prompt setting is enabled", () => {

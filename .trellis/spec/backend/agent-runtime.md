@@ -9,9 +9,9 @@ Capability Grants, Runner RPC, side effects, Child Agents, Cron, Draft learning,
 Kill Switches, or the legacy text-Skill cutover. G20.1 implements the no-execute
 supply chain, G20.2 the internal durable Orchestrator, G20.3 the held Runner,
 G20.4 the held Broker, G20.5 the held depth-1 delegation and G20.6 the held
-durable Cron scheduling foundation, G20.7 Draft learning and G20.8 the held
-Agent Center/Shadow product facade. Chat, MCP and `/v1/code/executions`
-execution behavior remains unchanged.
+durable Cron scheduling foundation, G20.7 Draft learning, G20.8 the held
+Agent Center/Shadow product facade, and G20.9 the legacy text-Skill hard
+retirement. MCP and `/v1/code/executions` execution behavior remains unchanged.
 
 ### 2. Signatures
 
@@ -143,9 +143,10 @@ execution behavior remains unchanged.
   schedule/timezone, then rechecks current revoke/expiry/Kill Switch per trigger.
 - Learning outputs quarantined Drafts only; human Promote creates a new admitted
   fingerprint and never mutates live/installed/Cron snapshots.
-- Final cutover hard-deletes legacy text-Skill definitions/selections/execution
+- G20.9 hard-deletes legacy text-Skill definitions/selections/execution
   paths without migration/wrapping. Historical messages retain only the
-  read-only fact “旧版技能已退役”. Phase 0 must not delete them early.
+  read-only fact “旧版技能已退役”. Package execution remains held when exact-host
+  isolation is unavailable.
 
 ### 4. Validation & Error Matrix
 
@@ -500,24 +501,24 @@ succeeded depth-0 Run + exact base -> immutable quarantined Draft
 
 Apply this contract when changing `internal/agentcontrol`, `/v1/agent-center/*`,
 Agent Center projections/mutations, Artifact downloads, migration `090`, Shadow
-policy/opt-in/observations or legacy Skill cutover inventory. G20.8 exposes
+policy/opt-in/observations or the G20.9 retirement boundary. G20.8 exposes
 control and review only; it does not enable package execution.
 
 ### 2. Signatures
 
 - Backend: `mm-chat/backend/internal/agentcontrol/`.
 - Database: `090_agent_product_shadow` and `agent_product_owner`.
-- Frontend: `components/agent/AgentCenter.tsx`, the typed `agentCenterApi`, and
-  `lib/skills/legacyCutover.ts`.
-- Gates: `verify-agent-product-shadow{,-postgres17}.sh` plus Phase 0.
+- Frontend: `components/agent/AgentCenter.tsx` and the typed `agentCenterApi`.
+- Gates: `verify-agent-product-shadow{,-postgres17}.sh`,
+  `verify-agent-legacy-cutover{,-postgres17}.sh` and Phase 0.
 
 ### 3. Contracts
 
 - Bind every non-admin read/mutation to the authenticated user. Draft reads and
   review plus Shadow policy update require the configured administrator.
-- Keep package Skills, Assistants, MCP and legacy text Skills as separate
-  identity/authority domains. Package Store/library continues through
-  `/v1/skills/*`; the existing Skill editor is visibly Legacy Skills.
+- Keep package Skills, Assistants and MCP as separate identity/authority
+  domains. Package Store/library continues through `/v1/skills/*`; legacy
+  text-Skill editor/executor authority no longer exists after G20.9.
 - Handlers compose owning services. They never issue table DML, lease/claim
   worker work, Commit effects, enqueue Cron triggers or run learning checks.
 - Cancellation binds exact state/snapshot fingerprint; approval, Cron and Draft
@@ -535,8 +536,9 @@ control and review only; it does not enable package execution.
 - Missing exact-host isolation returns `ISOLATION_UNAVAILABLE`; never execute
   package code in API/browser or inject Shadow output into Chat/admission/
   promotion.
-- Legacy inventory is local and content-free by default. Explicit raw backup is
-  local-only; deletion output is dry-run with no storage mutation until G20.9.
+- G20.9 removes legacy browser execution. Chat Conversation create/update/read
+  strips `activeSkills`, and Package execution remains held rather than falling
+  back to browser/API execution.
 
 ### 4. Validation & Error Matrix
 
@@ -555,10 +557,11 @@ control and review only; it does not enable package execution.
 
 - **Good**: authenticated user reloads owned Runs/Schedules, administrator
   reviews exact Draft receipts, and default-off Shadow remains content-free.
-- **Base**: Agent Center reports held Runtime; legacy execution remains
-  authoritative and inventory/dry-run deletes nothing.
+- **Base**: Agent Center reports held Runtime; no legacy or Package execution
+  occurs and ordinary Chat remains available without Skill prompt injection.
 - **Bad**: browser receives object keys, API writes worker tables, a Shadow
-  adapter runs package code in-process, or inventory calls storage deletion.
+  adapter runs package code in-process, or retired Conversation selection is
+  accepted and projected back to a client.
 
 ### 6. Tests Required
 
@@ -566,7 +569,7 @@ control and review only; it does not enable package execution.
   Schedule lifecycle, Draft review, exact mutation replay, Artifact seam, held
   enqueue, administrator checks and Shadow budget/Kill-Switch adapter fences.
 - Frontend Vitest covers strict DTOs, URL reload, desktop/mobile composition,
-  keyboard/focus/status, held/error paths and deterministic no-delete inventory.
+  keyboard/focus/status, held/error paths and legacy retirement.
 - PostgreSQL 17 proves fresh/replay, least privilege, ownership, cancel replay,
   Artifact lookup, default-off/cohort/opt-in, Kill Switch, budget, restart,
   generation/fingerprint fences, content-free dump/restore and guarded down/up.
@@ -589,4 +592,90 @@ enable Shadow -> API executes package -> copy result into Chat -> promote
 admin policy + user opt-in + exact cohort/fingerprints + Kill/budget fences
 -> injected synthetic/read-only observation only
 -> content-free durable fact -> no Chat/admission/promotion authority
+```
+
+## Scenario: Retire legacy text-Skill authority
+
+### 1. Scope / Trigger
+
+Apply when changing Chat Conversation metadata, frontend history schemas,
+browser persistence version/migration, old Skill surfaces, or the G20.9 cutover
+SQL. This scenario deletes old authority; it never converts or promotes it.
+
+### 2. Signatures
+
+- Backend guard: `internal/chat/legacy_skill_retirement.go`.
+- Browser guard: `frontend/src/store/storage/legacySkillRetirement.ts` and
+  `STORAGE_VERSION = 7`.
+- History guards: `frontend/src/lib/api/schemas.ts` and
+  `frontend/src/store/storage/migrations.ts`.
+- Database operator cutover: `scripts/cutover-legacy-skills.sql` with
+  `cutover_apply`, `expected_count` and `backup_fingerprint` psql variables.
+- Gates: `verify-agent-legacy-cutover{,-postgres17}.sh`.
+
+### 3. Contracts
+
+- Create/update strips `activeSkills`; update also appends it to
+  `MetadataDeleteKeys`. List/get/DTO projections strip it defensively so stale
+  rows cannot revive client authority. Preserve Knowledge selection and all
+  unrelated metadata.
+- Browser purge removes exactly eight Settings fields plus Session/Workspace
+  selections from top-level and nested Zustand envelopes. Marker-last,
+  compensation and idempotent retry are mandatory.
+- `skillInvocations` is input-only historical recognition. Output/runtime types
+  expose only `legacySkillRetired?: true`; never retain invocation ID/title/
+  description/category/mode.
+- Database apply locks `conversations`, verifies full-backup SHA-256 and exact
+  target count, updates only `metadata = metadata - 'activeSkills'`, verifies
+  zero remaining, and leaves schema head at `090`. Rollback is full backup plus
+  previous images; no migration `091` or synthetic down SQL.
+- No browser/API/rootful fallback executor is permitted. The only eligible
+  Skill domain is admitted Package Skills, held at `ISOLATION_UNAVAILABLE` on
+  an unqualified host.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| create/update contains `activeSkills` | key deleted before persistence; no error or conversion |
+| stale row contains `activeSkills` | read projection omits key; update schedules server deletion |
+| legacy invocation array is non-empty | message content retained; output becomes one retirement fact |
+| SQL apply lacks valid backup fingerprint | `LEGACY_SKILL_BACKUP_FINGERPRINT_REQUIRED`; transaction rolls back |
+| expected count differs from locked count | `LEGACY_SKILL_EXPECTED_COUNT_MISMATCH`; zero rows changed |
+| exact host remains unavailable | `ISOLATION_UNAVAILABLE`; no legacy or fallback execution |
+
+### 5. Good / Base / Bad Cases
+
+- **Good**: backup/count are verified, apply removes one JSONB key, restart and
+  reload show zero resurrection, and history renders one retirement label.
+- **Base**: no stale database rows exist; expected count `0` applies
+  idempotently and schema head remains `090`.
+- **Bad**: add a reversible migration that invents deleted values, preserve old
+  invocation details, name-match a package, or silently execute in Chat.
+
+### 6. Tests Required
+
+- Go Handler regression covers create/list/update and repository state.
+- Vitest covers raw/nested Settings/Chat purge, compensation, marker-last,
+  Zustand migrate/partialize, Session/Workspace normalization and history
+  collapse.
+- PostgreSQL 17 covers default dry-run, rejected count/fingerprint, full backup
+  fingerprint, exact-key update, unrelated-row equivalence, repeated apply and
+  migration head `090`.
+- Negative source scan proves removed files/assets/resolver/context and held
+  Runtime; then run frontend/backend/full standalone gates.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+old activeSkills/name/body -> find Package Skill -> install or execute -> keep details for rollback
+```
+
+#### Correct
+
+```text
+verified backup + exact count -> delete only retired authority -> one history fact
+-> Package Runtime remains server-owned and held -> rollback only by full restore
 ```

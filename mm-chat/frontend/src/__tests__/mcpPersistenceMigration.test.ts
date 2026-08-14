@@ -6,7 +6,7 @@ import { STORAGE_VERSION } from "../store/storage/storageConfig";
 
 describe("MCP cutover browser migration", () => {
   it("uses storage version 6 and removes retired Plugin state recursively", () => {
-    expect(STORAGE_VERSION).toBe(6);
+    expect(STORAGE_VERSION).toBe(7);
     expect(
       stripRetiredPluginFields({
         activePlugins: ["weather"],

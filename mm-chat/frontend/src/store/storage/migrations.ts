@@ -44,6 +44,11 @@ export function normalizeToolCall(toolCall: Partial<ToolCall>): ToolCall {
 }
 
 export function normalizeMessage(message: Message): Message {
+  const legacyMessage = message as Message & { skillInvocations?: unknown };
+  const { skillInvocations, ...retainedMessage } = legacyMessage;
+  const legacySkillRetired =
+    message.legacySkillRetired === true ||
+    (Array.isArray(skillInvocations) && skillInvocations.length > 0);
   const normalizedBlocks = message.outputBlocks?.map((block) => {
     if (block.type !== "tool_group") return block;
     return {
@@ -52,10 +57,18 @@ export function normalizeMessage(message: Message): Message {
     } satisfies MessageOutputBlock;
   });
 
-  if (!message.toolCalls?.length && !normalizedBlocks) return message;
+  if (
+    skillInvocations === undefined &&
+    !legacySkillRetired &&
+    !message.toolCalls?.length &&
+    !normalizedBlocks
+  ) {
+    return message;
+  }
 
   return {
-    ...message,
+    ...retainedMessage,
+    ...(legacySkillRetired ? { legacySkillRetired: true as const } : {}),
     ...(message.toolCalls?.length
       ? {
           toolCalls: message.toolCalls.map((toolCall) =>

@@ -27,7 +27,6 @@ import {
   Square,
   Library,
   PencilSparkles,
-  Sparkles,
   Check,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -41,7 +40,6 @@ import MessageInputAttachmentTray from "./MessageInputAttachmentTray";
 import McpToolsControl from "../mcp/McpToolsControl";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -83,7 +81,6 @@ import {
   normalizeKnowledgeCollectionIds,
 } from "@/lib/utils/knowledgeAttachments";
 import { polishTextContent } from "@/services/artifactService";
-import { normalizeSkillIdRefs } from "@/lib/skills";
 import {
   formatRecordingTime as formatTime,
   isNativeMediaFile,
@@ -116,13 +113,10 @@ interface MessageInputProps {
   localSessionToolsDisabled?: boolean;
   allowSearchWhenSessionToolsDisabled?: boolean;
   allowReasoningWhenSessionToolsDisabled?: boolean;
-  allowSkillsWhenSessionToolsDisabled?: boolean;
   mcpEnabled?: boolean;
   mcpConversationId?: string;
   mcpAdmissionAttention?: { nonce: number; message: string } | null;
   onMcpAdmissionAttentionHandled?: () => void;
-  activeSkillIdsOverride?: readonly string[];
-  onActiveSkillIdsChange?: (skillIds: string[]) => void;
   onLocalSessionToolUnavailable?: (action: string) => void;
   knowledgeCollectionIds?: readonly string[];
   onKnowledgeCollectionIdsChange?: (
@@ -171,13 +165,10 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       localSessionToolsDisabled = false,
       allowSearchWhenSessionToolsDisabled = false,
       allowReasoningWhenSessionToolsDisabled = false,
-      allowSkillsWhenSessionToolsDisabled = false,
       mcpEnabled = false,
       mcpConversationId,
       mcpAdmissionAttention,
       onMcpAdmissionAttentionHandled,
-      activeSkillIdsOverride,
-      onActiveSkillIdsChange,
       onLocalSessionToolUnavailable,
       knowledgeCollectionIds = EMPTY_KNOWLEDGE_COLLECTION_IDS,
       onKnowledgeCollectionIdsChange,
@@ -191,7 +182,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [recordingSeconds, setRecordingSeconds] = useState(0);
     const [showModelSelect, setShowModelSelect] = useState(false);
-    const [showSkillSelect, setShowSkillSelect] = useState(false);
     const [showAttachMenu, setShowAttachMenu] = useState(false);
     const [showRemoteModal, setShowRemoteModal] = useState(false);
     const [showKBModal, setShowKBModal] = useState(false);
@@ -206,17 +196,10 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     >({});
 
     const t = useTranslations("MessageInput");
-    const {
-      chatConfig,
-      setChatConfig,
-      currentSessionId,
-      sessions,
-      updateSessionConfig,
-    } = useChatStore();
+    const { chatConfig, setChatConfig } = useChatStore();
     const {
       modelMetadata,
       customModelMetadata,
-      installedSkills,
       voice,
       updateVoiceSettings,
       search,
@@ -440,7 +423,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       const handleEscape = (e: KeyboardEvent) => {
         if (e.key !== "Escape") return;
         setShowAttachMenu(false);
-        setShowSkillSelect(false);
         setShowModelSelect(false);
       };
 
@@ -547,77 +529,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       onSearchModeChange?.(value);
     };
 
-    const currentSession = useMemo(
-      () => sessions.find((session) => session.id === currentSessionId),
-      [currentSessionId, sessions],
-    );
-    const skillSelectionDisabled =
-      localSessionToolsDisabled && !allowSkillsWhenSessionToolsDisabled;
-    const activeSkillIds = useMemo(
-      () =>
-        skillSelectionDisabled
-          ? []
-          : normalizeSkillIdRefs(
-              activeSkillIdsOverride ?? currentSession?.config?.activeSkills,
-              installedSkills,
-            ),
-      [
-        activeSkillIdsOverride,
-        currentSession?.config?.activeSkills,
-        installedSkills,
-        skillSelectionDisabled,
-      ],
-    );
-    const activeSkillSet = useMemo(
-      () => new Set(activeSkillIds),
-      [activeSkillIds],
-    );
-    const skillsForMenu = useMemo(
-      () =>
-        skillSelectionDisabled
-          ? []
-          : [...installedSkills].sort((a, b) =>
-              a.title.localeCompare(b.title, undefined, {
-                sensitivity: "base",
-              }),
-            ),
-      [installedSkills, skillSelectionDisabled],
-    );
-    const setSessionActiveSkillIds = useCallback(
-      (skillIds: string[]) => {
-        if (skillSelectionDisabled) {
-          notifyLocalSessionToolUnavailable("skills");
-          return;
-        }
-        const normalized = normalizeSkillIdRefs(skillIds, installedSkills);
-        if (onActiveSkillIdsChange) {
-          onActiveSkillIdsChange(normalized);
-          return;
-        }
-        if (!currentSessionId) return;
-        updateSessionConfig(currentSessionId, {
-          activeSkills: normalized,
-        });
-      },
-      [
-        currentSessionId,
-        installedSkills,
-        notifyLocalSessionToolUnavailable,
-        onActiveSkillIdsChange,
-        skillSelectionDisabled,
-        updateSessionConfig,
-      ],
-    );
-    const toggleSessionSkill = useCallback(
-      (skillId: string) => {
-        setSessionActiveSkillIds(
-          activeSkillSet.has(skillId)
-            ? activeSkillIds.filter((id) => id !== skillId)
-            : [...activeSkillIds, skillId],
-        );
-      },
-      [activeSkillIds, activeSkillSet, setSessionActiveSkillIds],
-    );
     // Group models by provider name
     const groupedModels = useMemo(() => {
       const groups: Record<string, ModelInfo[]> = {};
@@ -1506,7 +1417,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               <DropdownMenu
                 open={showAttachMenu}
                 onOpenChange={(open) => {
-                  setShowSkillSelect(false);
                   setShowModelSelect(false);
                   setShowAttachMenu(open);
                 }}
@@ -1602,93 +1512,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 </button>
               </Tooltip>
             )}
-
-            {/* Skill Toggle Button */}
-            <div className="relative">
-              <DropdownMenu
-                open={showSkillSelect}
-                onOpenChange={(open) => {
-                  if (skillSelectionDisabled) {
-                    setShowSkillSelect(false);
-                    if (open) notifyLocalSessionToolUnavailable("skills");
-                    return;
-                  }
-                  setShowAttachMenu(false);
-                  setShowModelSelect(false);
-                  setShowSkillSelect(open);
-                }}
-              >
-                <Tooltip
-                  content={
-                    activeSkillIds.length > 0
-                      ? t("activeSkillsCount", { count: activeSkillIds.length })
-                      : t("skills")
-                  }
-                  position="top"
-                >
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label={
-                        activeSkillIds.length > 0
-                          ? t("activeSkillsAria", {
-                              count: activeSkillIds.length,
-                            })
-                          : t("skills")
-                      }
-                      className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${
-                        activeSkillIds.length > 0
-                          ? "text-emerald-500 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
-                          : "text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-muted-foreground dark:hover:bg-accent/50 dark:hover:text-foreground"
-                      }`}
-                      disabled={isInputBusy}
-                    >
-                      <Sparkles size={16} aria-hidden="true" />
-                    </button>
-                  </DropdownMenuTrigger>
-                </Tooltip>
-
-                <DropdownMenuContent
-                  side="top"
-                  align="start"
-                  className="max-h-64 w-64 overflow-y-auto custom-scrollbar"
-                >
-                  {skillsForMenu.length > 0 ? (
-                    <>
-                      <DropdownMenuLabel>
-                        {t("installedSkills")}
-                      </DropdownMenuLabel>
-                      {skillsForMenu.map((skill) => {
-                        const isActive = activeSkillSet.has(skill.id);
-                        return (
-                          <DropdownMenuCheckboxItem
-                            key={skill.id}
-                            checked={isActive}
-                            indicatorPosition="right"
-                            indicator={
-                              <span className="flex h-3 w-3 items-center justify-center rounded-full border border-emerald-500 bg-emerald-500">
-                                <span className="h-1.5 w-1.5 rounded-full bg-white" />
-                              </span>
-                            }
-                            onSelect={(event) => event.preventDefault()}
-                            onCheckedChange={() => toggleSessionSkill(skill.id)}
-                          >
-                            <span className="truncate">{skill.title}</span>
-                          </DropdownMenuCheckboxItem>
-                        );
-                      })}
-                    </>
-                  ) : (
-                    <div
-                      className="px-3 py-4 text-center text-xs text-muted-foreground"
-                      role="status"
-                    >
-                      {t("noSkillsAvailable")}
-                    </div>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
 
             <McpToolsControl
               enabled={mcpEnabled}
@@ -1854,7 +1677,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 open={showModelSelect && availableModels.length > 0}
                 onOpenChange={(open) => {
                   setShowAttachMenu(false);
-                  setShowSkillSelect(false);
                   setShowModelSelect(open && availableModels.length > 0);
                 }}
               >

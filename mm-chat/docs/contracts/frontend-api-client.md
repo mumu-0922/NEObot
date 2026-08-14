@@ -249,7 +249,6 @@ export interface ConversationConfig {
   useReasoning?: boolean;
   reasoningEffort?: "auto" | "low" | "medium" | "high" | "xhigh" | "max";
   useRag?: boolean;
-  activeSkills?: string[];
 }
 ```
 
@@ -258,6 +257,8 @@ Mapping notes:
 - Current `Session.model` is a string that may encode `providerId:modelName`; API DTOs split this into `ModelRef.providerId` and `ModelRef.modelId` to avoid provider ambiguity.
 - Current `Session.updatedAt` is a number; server DTO uses ISO strings at the API boundary.
 - Current frontend can convert ISO strings to timestamps locally until components are refactored.
+- Legacy `activeSkills` is retired authority. Clients and server projections
+  strip it rather than preserving, matching, or converting it to a package.
 - Do not expose Postgres column names or server-only audit fields.
 
 ### 7.2 Message DTO

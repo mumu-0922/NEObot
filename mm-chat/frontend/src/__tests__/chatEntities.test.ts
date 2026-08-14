@@ -25,7 +25,7 @@ describe("chat entity normalization", () => {
     expect(normalizeSessionTitle("\u0000\n```")).toBe("New Chat");
   });
 
-  it("normalizes session metadata and strips retired plugin refs", () => {
+  it("normalizes session metadata and strips retired plugin and Skill refs", () => {
     const session = normalizeSession({
       id: "s1",
       title: ` ${"t".repeat(CHAT_ENTITY_LIMITS.maxSessionTitleChars + 10)}`,
@@ -66,10 +66,7 @@ describe("chat entity normalization", () => {
       CHAT_ENTITY_LIMITS.maxSessionSystemInstructionChars,
     );
     expect(session.config).not.toHaveProperty("activePlugins");
-    expect(session.config?.activeSkills).toEqual([
-      "clarity-rewrite",
-      "summary",
-    ]);
+    expect(session.config).not.toHaveProperty("activeSkills");
     expect(session.config?.selectedKnowledgeCollectionIds).toEqual([
       "kb-1",
       "kb-2",
@@ -159,7 +156,7 @@ describe("chat entity normalization", () => {
     );
     expect(workspace.color).toBe("blue");
     expect(workspace).not.toHaveProperty("activePlugins");
-    expect(workspace.activeSkills).toEqual(["meeting-minutes"]);
+    expect(workspace).not.toHaveProperty("activeSkills");
     expect(workspace.enableSearch).toBe(false);
     expect(workspace.enableReasoning).toBe(true);
     expect(workspace.createdAt).toEqual(expect.any(Number));

@@ -7,7 +7,7 @@ import React, {
   useRef,
   useCallback,
 } from "react";
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
 import {
   Bot,
@@ -30,7 +30,6 @@ import { Logo } from "@/components/ui/Icons";
 import type { ModelInfo } from "@/services/api/chatService";
 import { ApiClientError, createNeoChatApiClient } from "@/services/api/client";
 import { uploadMessageAttachmentsForServer } from "@/services/api/fileService";
-import { resolveSkillsForMessage } from "@/services/api/skillService";
 import { buildProviderRuntimeConfig } from "@/lib/byok/client";
 import {
   Message,
@@ -87,6 +86,7 @@ import {
 } from "@/lib/utils/defaultModels";
 import { logDevError } from "@/lib/utils/devLogger";
 import { retireBrowserLocalRAGState } from "@/lib/settings/serverOnlyRagMigration";
+import { retireBrowserLegacySkillState } from "@/store/storage/legacySkillRetirement";
 import { SERVER_DEFAULT_PROVIDER_ID } from "@/lib/defaultConfig/shared";
 import { normalizeServerManagedProviderConfigs } from "@/lib/providers/config";
 import {
@@ -138,9 +138,6 @@ const MCP_ADMISSION_ERROR_CODES = new Set([
   "MCP_LIMIT_REACHED",
   "MCP_SELECTION_INVALID",
 ]);
-const SkillMarket = dynamic(() => import("@/components/skill/SkillMarket"), {
-  ssr: false,
-});
 const AgentCenter = dynamic(() => import("@/components/agent/AgentCenter"), {
   ssr: false,
 });
@@ -273,10 +270,6 @@ const ChatApp = () => {
       fetchModelMetadata,
       system,
       search,
-      installedSkills,
-      activeSkillIds,
-      skillAutoSelect,
-      setActiveSkillIds,
       applyServerConfig: applySettingsServerConfig,
     },
     core: {
@@ -290,7 +283,6 @@ const ChatApp = () => {
   } = useChatShellState();
 
   const t = useTranslations("ChatApp");
-  const locale = useLocale();
   const apiClientSnapshot = useMemo(() => createNeoChatApiClient(), []);
   const serverModeEnabled =
     apiClientSnapshot.mode === "server" &&
@@ -531,7 +523,6 @@ const ChatApp = () => {
     useReasoning: currentSessionConfig?.useReasoning ?? chatConfig.useReasoning,
     reasoningEffort:
       currentSessionConfig?.reasoningEffort ?? chatConfig.reasoningEffort,
-    activeSkills: activeSkillIds,
   };
   const composerChatConfig = serverModeEnabled
     ? {
@@ -540,6 +531,17 @@ const ChatApp = () => {
       }
     : chatConfig;
   useChatThemeEffects(theme, system.fontSize);
+
+  useEffect(() => {
+    void retireBrowserLegacySkillState({
+      localStorageRef: window.localStorage,
+      indexedDbStore: appDb,
+      settingsKey: STORAGE_KEYS.SETTINGS,
+      chatKey: STORAGE_KEYS.CHAT,
+    }).catch((error) => {
+      logDevError("Legacy Skill retirement migration failed:", error);
+    });
+  }, []);
 
   useEffect(() => {
     if (!serverModeEnabled) return;
@@ -1341,9 +1343,6 @@ const ChatApp = () => {
         provider: search.provider,
         configs: search.configs,
       },
-      installedSkills,
-      activeSkillIds: serverModeEnabled ? activeSkillIds : [],
-      activeSkillIdsOverride: serverModeEnabled ? activeSkillIds : undefined,
     });
   };
 
@@ -1547,26 +1546,7 @@ const ChatApp = () => {
             })
           : [];
       if (!isGenerationRunActive(generation)) return messageAccepted;
-      let skillContext = "";
-      if (!routesToImageGeneration) {
-        const skillResolution = await resolveSkillsForMessage({
-          message: text,
-          selectedModel,
-          locale,
-          installedSkills,
-          activeSkillIds: effectiveContext.activeSkillIds,
-          autoSelect: false,
-          signal: generation.controller.signal,
-        });
-        if (!isGenerationRunActive(generation)) return messageAccepted;
-        skillContext = skillResolution.context;
-      }
-      const systemInstruction = [
-        effectiveContext.systemInstruction,
-        skillContext,
-      ]
-        .filter((section): section is string => Boolean(section?.trim()))
-        .join("\n\n");
+      const systemInstruction = effectiveContext.systemInstruction;
       const latestServerState = useChatStore.getState().serverReadState;
       const parentMessageId =
         latestServerState.currentSessionId === targetSessionId
@@ -1741,23 +1721,6 @@ const ChatApp = () => {
       if (!isGenerationRunActive(generation)) return;
 
       const effectiveConfig = { ...chatConfig };
-      const skillResolution = await resolveSkillsForMessage({
-        message: text,
-        selectedModel,
-        locale,
-        installedSkills,
-        activeSkillIds: effectiveContext.activeSkillIds,
-        autoSelect: skillAutoSelect,
-        signal: generation.controller.signal,
-      });
-      if (!isGenerationRunActive(generation)) return;
-
-      if (skillResolution.invocations.length > 0) {
-        updateMessage(targetSessionId, currentBotMsgId, {
-          skillInvocations: skillResolution.invocations,
-        });
-      }
-
       let latestStreamText = "";
       let latestStreamReasoning = "";
 
@@ -1823,7 +1786,6 @@ const ChatApp = () => {
           );
         },
         generation.controller.signal,
-        skillResolution.context,
         (outputBlocks) => {
           if (!isGenerationRunActive(generation)) return;
           updateMessageContent(
@@ -2091,23 +2053,9 @@ const ChatApp = () => {
         sessionMeta,
         injectedMemoryIds,
       );
-      const skillResolution = await resolveSkillsForMessage({
-        message: promptText,
-        selectedModel,
-        locale,
-        installedSkills,
-        activeSkillIds: effectiveContext.activeSkillIds,
-        autoSelect: skillAutoSelect,
-        signal: generation.controller.signal,
-      });
       if (ragSources.length > 0) {
         updateMessage(currentSessionId, branchMessageId, {
           ragSources,
-        });
-      }
-      if (skillResolution.invocations.length > 0) {
-        updateMessage(currentSessionId, branchMessageId, {
-          skillInvocations: skillResolution.invocations,
         });
       }
       const historyBeforeUser = historyContext.slice(0, -1);
@@ -2183,7 +2131,6 @@ const ChatApp = () => {
           );
         },
         generation.controller.signal,
-        skillResolution.context,
         (outputBlocks) => {
           if (!isGenerationRunActive(generation)) return;
           updateMessageContent(
@@ -2267,23 +2214,7 @@ const ChatApp = () => {
           currentSession;
         const effectiveContext =
           getEffectiveContextForSession(sessionForProcessing);
-        const skillResolution = await resolveSkillsForMessage({
-          message: userMessage.content,
-          selectedModel,
-          locale,
-          installedSkills,
-          activeSkillIds: effectiveContext.activeSkillIds,
-          autoSelect: false,
-          signal: generation.controller.signal,
-        });
-        if (!isGenerationRunActive(generation)) return;
-
-        const systemInstruction = [
-          effectiveContext.systemInstruction,
-          skillResolution.context,
-        ]
-          .filter((section): section is string => Boolean(section?.trim()))
-          .join("\n\n");
+        const systemInstruction = effectiveContext.systemInstruction;
         const runtimeProvider =
           await buildRuntimeProviderConfigForModel(selectedModel);
         if (!isGenerationRunActive(generation)) return;
@@ -2483,27 +2414,11 @@ const ChatApp = () => {
             : [];
         if (!isGenerationRunActive(generation)) return;
 
-        const skillResolution = await resolveSkillsForMessage({
-          message: newContent,
-          selectedModel,
-          locale,
-          installedSkills,
-          activeSkillIds: effectiveContext.activeSkillIds,
-          autoSelect: false,
-          signal: generation.controller.signal,
-        });
-        if (!isGenerationRunActive(generation)) return;
-
         const sourceParentId =
           visibleActiveMessageTree.nodesById[msgId]?.parentMessageId ??
           sourceMessage.parentMessageId ??
           null;
-        const systemInstruction = [
-          effectiveContext.systemInstruction,
-          skillResolution.context,
-        ]
-          .filter((section): section is string => Boolean(section?.trim()))
-          .join("\n\n");
+        const systemInstruction = effectiveContext.systemInstruction;
         const runtimeProvider =
           await buildRuntimeProviderConfigForModel(selectedModel);
         if (!isGenerationRunActive(generation)) return;
@@ -2576,17 +2491,6 @@ const ChatApp = () => {
       if (!isGenerationRunActive(generation)) return;
       commitInjectedMemoryContext(sessionId, sessionMeta, injectedMemoryIds);
 
-      const skillResolution = await resolveSkillsForMessage({
-        message: newContent,
-        selectedModel,
-        locale,
-        installedSkills,
-        activeSkillIds: effectiveContext.activeSkillIds,
-        autoSelect: skillAutoSelect,
-        signal: generation.controller.signal,
-      });
-      if (!isGenerationRunActive(generation)) return;
-
       const modelDisplayName = getModelDisplayName(
         selectedModel,
         availableModels,
@@ -2610,11 +2514,6 @@ const ChatApp = () => {
 
       editedUserMessageId = branchIds.userMessageId;
       modelMessageId = branchIds.modelMessageId;
-      if (skillResolution.invocations.length > 0) {
-        updateMessage(sessionId, modelMessageId, {
-          skillInvocations: skillResolution.invocations,
-        });
-      }
 
       const historyBeforeUser = sessionMessages.slice(0, msgIndex);
       const { prepareHistoryForLLM, streamChatResponse } =
@@ -2698,7 +2597,6 @@ const ChatApp = () => {
           );
         },
         generation.controller.signal,
-        skillResolution.context,
         (outputBlocks) => {
           if (!isGenerationRunActive(generation) || !modelMessageId) return;
           updateMessageContent(
@@ -3030,8 +2928,6 @@ const ChatApp = () => {
         toggleSidebar={() => setIsSidebarOpen((open) => !open)}
         isModal={isMobileSidebarModalOpen}
         onRequestClose={() => setIsSidebarOpen(false)}
-        onOpenSkillMarket={() => navigateToPanel("skills")}
-        isSkillMarketOpen={viewMode === "skills"}
         onOpenAgentCenter={() => navigateAgentCenter(agentTab, agentId)}
         isAgentCenterOpen={viewMode === "agent-center"}
         onOpenAssistantHub={() => navigateToPanel("assistants")}
@@ -3069,8 +2965,6 @@ const ChatApp = () => {
             onNavigate={navigateAgentCenter}
             onClose={() => navigateToPanel("chat")}
           />
-        ) : viewMode === "skills" ? (
-          <SkillMarket onClose={() => navigateToPanel("chat")} />
         ) : viewMode === "assistants" ? (
           <AssistantHub
             onClose={() => navigateToPanel("chat")}
@@ -3404,7 +3298,6 @@ const ChatApp = () => {
                   localSessionToolsDisabled={serverModeEnabled}
                   allowSearchWhenSessionToolsDisabled={serverModeEnabled}
                   allowReasoningWhenSessionToolsDisabled={serverModeEnabled}
-                  allowSkillsWhenSessionToolsDisabled={serverModeEnabled}
                   mcpEnabled={serverMcpEnabled}
                   mcpConversationId={
                     serverModeEnabled
@@ -3414,12 +3307,6 @@ const ChatApp = () => {
                   mcpAdmissionAttention={mcpAdmissionAttention}
                   onMcpAdmissionAttentionHandled={() =>
                     setMcpAdmissionAttention(null)
-                  }
-                  activeSkillIdsOverride={
-                    serverModeEnabled ? activeSkillIds : undefined
-                  }
-                  onActiveSkillIdsChange={
-                    serverModeEnabled ? setActiveSkillIds : undefined
                   }
                   onLocalSessionToolUnavailable={showServerUnsupportedAction}
                   knowledgeCollectionIds={

@@ -3698,7 +3698,7 @@ func (h *Handler) isRunCancelled(ctx context.Context, runID string) bool {
 }
 
 func newConversationDTO(conversation Conversation) ConversationDTO {
-	config := ensureObject(conversation.Metadata)
+	config := stripRetiredLegacySkillSelection(ensureObject(conversation.Metadata))
 	return ConversationDTO{
 		ID:                conversation.ID,
 		Title:             conversation.Title,

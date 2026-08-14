@@ -211,7 +211,6 @@ describe("chat store persistence", () => {
         searchMode: "external" as const,
         useSearch: true,
         useReasoning: false,
-        activeSkills: ["clarity-rewrite"],
       },
     };
     useChatStore.setState({
@@ -228,57 +227,11 @@ describe("chat store persistence", () => {
         searchMode: "external",
         useSearch: true,
         useReasoning: false,
-        activeSkills: ["clarity-rewrite"],
       });
 
     expect(sessionId).toBe("matching");
     expect(useChatStore.getState().currentSessionId).toBe("matching");
     expect(useChatStore.getState().sessions).toHaveLength(3);
-  });
-
-  it("does not reuse empty chats with different active skill presets", () => {
-    const existing = {
-      ...makeSession("skill-a"),
-      title: "New Chat",
-      messageCount: 0,
-      workspaceId: "w1",
-      config: {
-        activeSkills: ["clarity-rewrite"],
-      },
-    };
-    useChatStore.setState({
-      sessions: [existing],
-    });
-
-    const sessionId = useChatStore
-      .getState()
-      .createSession(undefined, "New Chat", "w1", [], {
-        activeSkills: ["meeting-minutes"],
-      });
-
-    expect(sessionId).not.toBe("skill-a");
-    expect(useChatStore.getState().sessions).toHaveLength(2);
-  });
-
-  it("updates the active session config with normalized skill ids", () => {
-    const existing = {
-      ...makeSession("active"),
-      title: "New Chat",
-      messageCount: 0,
-    };
-    useChatStore.setState({
-      sessions: [existing],
-      currentSessionId: "active",
-    });
-
-    useChatStore.getState().updateSessionConfig("active", {
-      activeSkills: ["clarity-rewrite", "clarity-rewrite", "", "summary"],
-    });
-
-    expect(useChatStore.getState().sessions[0].config?.activeSkills).toEqual([
-      "clarity-rewrite",
-      "summary",
-    ]);
   });
 
   it("serializes active session message writes so stale snapshots cannot overwrite newer ones", async () => {

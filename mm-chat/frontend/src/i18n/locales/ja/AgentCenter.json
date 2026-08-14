@@ -94,19 +94,5 @@
   "proposedFingerprint": "提案 package fingerprint",
   "checkReceipts": "完全な check receipts",
   "boundedDiff": "限定 diff",
-  "binaryDiff": "Binary ファイルのため fingerprint とサイズのみ表示します。",
-  "legacyTitle": "旧 pure-text Skills — G20.9 準備",
-  "legacyDescription": "Inventory、ローカル backup、dry-run のみです。このリリースでは削除も代替 package のインストールも行いません。",
-  "legacyInstalled": "Installed",
-  "legacyActive": "Active refs",
-  "legacyCached": "Cached",
-  "legacyInvalidOrphan": "Invalid / orphan",
-  "legacyInspectFailed": "ブラウザー所有の旧 Skill 状態を確認できません。",
-  "inventoryRefresh": "Inventory を更新",
-  "downloadBackup": "raw local backup を保存",
-  "dryRun": "削除 dry-run を作成",
-  "dryRunReady": "dry-run が完成しました。状態変更はありません。",
-  "dryRunFields": "G20.9 は settings 内の Skill フィールド {count} 個のみ削除します。",
-  "dryRunPreserved": "明示的に保持: {domains}。",
-  "downloadDryRun": "content-free dry-run を保存"
+  "binaryDiff": "Binary ファイルのため fingerprint とサイズのみ表示します。"
 }

@@ -23,7 +23,6 @@ import {
   type ModelRef,
 } from "@/services/api/client";
 import type { ServerBackedAttachment } from "@/lib/utils/serverAttachments";
-import { appendContextToChatInput } from "@/lib/utils/chatInput";
 import { appendDiagramRequestInstructions } from "../../lib/chat/diagramPrompt";
 import { appendHtmlVisualRequestInstructions } from "../../lib/chat/htmlVisualPrompt";
 import { createMessageOutputBlockBuilder } from "../../lib/chat/messageOutputBlocks";
@@ -503,7 +502,6 @@ export const streamChatResponse = async (
   onImage?: (images: Attachment[]) => void,
   onUsage?: (usage: ChatUsagePayload) => void,
   signal?: AbortSignal,
-  skillsContext?: string,
   onOutputBlocks?: (outputBlocks: MessageOutputBlock[]) => void,
 ): Promise<string> => {
   const { providerId, modelName } = parseModelString(model);
@@ -538,16 +536,8 @@ export const streamChatResponse = async (
     let committedContent = "";
     let committedReasoning = "";
     let requestHistory = history as Message[];
-    const messageWithSkills = skillsContext?.trim()
-      ? appendContextToChatInput(newMessage, skillsContext, {
-          separator: "\n\n",
-        })
-      : newMessage;
     let requestMessage = appendDiagramRequestInstructions(
-      appendHtmlVisualRequestInstructions(
-        messageWithSkills,
-        userSystemInstruction,
-      ),
+      appendHtmlVisualRequestInstructions(newMessage, userSystemInstruction),
       userSystemInstruction,
     );
     let requestAttachments = attachments;
@@ -1197,7 +1187,7 @@ export const streamGenerateToolCall = async (
     : providers.find((p) => p.enabled);
 
   if (!provider) {
-    logDevWarn("Skill tool selection skipped: no provider found.");
+    logDevWarn("Tool selection skipped: no provider found.");
     return null;
   }
 
@@ -1282,7 +1272,7 @@ export const streamGenerateToolCall = async (
     if (error instanceof DOMException && error.name === "AbortError") {
       throw error;
     }
-    logDevWarn("Skill tool selection failed:", error);
+    logDevWarn("Tool selection failed:", error);
     return null;
   }
 };

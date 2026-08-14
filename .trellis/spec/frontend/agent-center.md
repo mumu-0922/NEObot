@@ -6,22 +6,24 @@
 
 Apply this contract when changing the top-level Agent Center, Agent Center API
 types/client, package Skill product UI, Run/Schedule/Learning Review views,
-Shadow opt-in, Artifact download or legacy Skill cutover inventory.
+Shadow opt-in, Artifact download or G20.9 legacy Skill retirement.
 
 ### 2. Signatures
 
-- Composition: `src/components/agent/AgentCenter.tsx` and
-  `src/components/agent/LegacySkillCutoverCard.tsx`.
+- Composition: `src/components/agent/AgentCenter.tsx`.
 - URL state: `panel=agent-center`, `agentTab=skills|runs|schedules|learning`,
   and optional `agentId`.
 - Typed boundary: `src/services/api/client/server/agentCenterApi.ts`.
-- Legacy preparation: `src/lib/skills/legacyCutover.ts`.
-- Focused gate: `bash mm-chat/scripts/verify-agent-product-shadow.sh`.
+- Legacy retirement: `src/store/storage/legacySkillRetirement.ts`, persistence
+  version `7`, and `legacySkillRetired: true` history projection.
+- Focused gates: `bash mm-chat/scripts/verify-agent-product-shadow.sh` and
+  `bash mm-chat/scripts/verify-agent-legacy-cutover.sh`.
 
 ### 3. Contracts
 
 - Agent Center is a top-level product surface. Do not merge Package Skills into
-  Assistant Hub, MCP administration or the legacy text-Skill editor.
+  Assistant Hub or MCP administration, and do not recreate a legacy text-Skill
+  editor/inventory surface.
 - Package Store/library uses `/v1/skills/*` and displays immutable package and
   runtime fingerprints plus the honest held Runtime state.
 - Runs expose server-owned summary/detail, step/attempt/event timeline,
@@ -48,10 +50,18 @@ Shadow opt-in, Artifact download or legacy Skill cutover inventory.
   callback/object ref before the scheduled focus restoration executes.
 - Artifact download uses the authenticated server URL only. Browser state never
   receives an object-store key, credential or direct bucket URL.
-- Legacy inventory is deterministic and content-free. Explicit local backup may
-  include raw settings, but dry-run contains no delete call and preserves
-  Assistant, MCP, Chat, Conversation, files, Knowledge and Memory. G20.8 does
-  not auto-install a matching package or delete a text Skill.
+- G20.9 removes all legacy editor/sidebar/URL/composer/workspace/catalog/service/
+  resolver authority. Never install or match a package from an old ID, title,
+  name or body.
+- Persistence version `7` strips the eight retired settings fields and
+  Session/Workspace `activeSkills` from top-level and nested localStorage/
+  IndexedDB records. Write the completion marker last; compensate successful
+  writes when a later write fails; migrations and `partialize` remain
+  idempotent and cannot resurrect authority.
+- Historical `skillInvocations` may be recognized only by bounded schema/
+  storage normalization and must immediately become
+  `{ legacySkillRetired: true }`. Render exactly one localized, non-interactive
+  retirement label with no legacy identity/detail.
 
 ### 4. Validation & Error Matrix
 
@@ -64,17 +74,19 @@ Shadow opt-in, Artifact download or legacy Skill cutover inventory.
 | empty collection | task-specific empty state, not a spinner |
 | mobile record open/back | selected record in URL, focus returns to invoker |
 | mobile detail fetch fails | detail keeps back path and renders error/retry; list state remains intact |
-| legacy inventory invalid/orphan entry | show counts/fingerprint only; do not upload raw body |
+| any retired persistence field is present | strip it; preserve unrelated state; marker only after all writes succeed |
+| a persistence write fails mid-cutover | compensate prior writes and leave marker absent so reload retries |
+| historical invocation array is present | retain message content and one retirement fact; discard all invocation fields |
 
 ### 5. Good / Base / Bad Cases
 
 - **Good**: a user reloads a Run detail URL, reviews exact process facts,
   downloads an owned Artifact and cancels with the current fingerprint.
 - **Base**: no Runs/Schedules exist and Runtime is held; all four product areas
-  render honest empty/held states while Legacy Skills still operate separately.
+  render honest empty/held states and no legacy Skill executor exists.
 - **Bad**: optimistic local authority, raw unvalidated JSON, object key in DOM,
-  admin tab for all users, Package/Legacy Skill identity coercion or storage
-  deletion during inventory.
+  admin tab for all users, Package/Legacy identity coercion, partial migration
+  marker, or browser/API fallback execution.
 
 ### 6. Tests Required
 
@@ -82,8 +94,11 @@ Shadow opt-in, Artifact download or legacy Skill cutover inventory.
 - `chatPanelUrlState.test.ts`: panel/tab/record parse and serialization.
 - `agentCenterComposition.test.ts`: tab separation, held state, accessibility,
   mobile/back/focus/action composition.
-- `legacySkillCutover.test.ts`: deterministic inventory/backup/dry-run and
-  unrelated state preservation.
+- `legacySkillRetirement.test.ts`: top-level/nested purge, Settings/Chat
+  migrate/partialize non-resurrection, compensation, marker-last, idempotence
+  and history-detail collapse.
+- `verify-agent-legacy-cutover.sh`: deleted surface/assets, zero resolver/prompt
+  references and held `ISOLATION_UNAVAILABLE` boundary.
 - Run format, lint, typecheck, full Vitest and build before commit.
 
 ### 7. Wrong vs Correct
@@ -97,7 +112,7 @@ legacy Skill title matches package -> silently install -> execute from browser
 #### Correct
 
 ```text
-Legacy Skills stay labelled and authoritative in G20.8
-Package Skills use server fingerprints in Agent Center
-inventory + explicit local backup + dry-run only -> G20.9 deletion later
+G20.8 backup first -> G20.9 marker-last browser purge + server key strip
+-> old history becomes one retirement fact -> Package Skills remain held and
+server-owned -> no browser/API fallback
 ```

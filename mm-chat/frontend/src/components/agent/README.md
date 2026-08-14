@@ -1,8 +1,8 @@
 # Agent Center components
 
 该目录实现独立、URL-addressable 的 Agent Center。它展示 Package Skills、Runs、
-Schedules、administrator Learning Review，以及 G20.9 前的 legacy text-Skill 本地
-inventory/backup/dry-run。它不复用 Assistant Hub、MCP 或 legacy Skill editor 身份。
+Schedules 与 administrator Learning Review。G20.9 已删除 legacy text-Skill
+inventory/editor 及其执行身份；Agent Center 不复用 Assistant Hub 或 MCP 身份。
 
 ## 能力
 
@@ -12,7 +12,8 @@ inventory/backup/dry-run。它不复用 Assistant Hub、MCP 或 legacy Skill edi
 - Cron revision/lifecycle 与 administrator-only Draft review/bounded diff。
 - honest `ISOLATION_UNAVAILABLE`/Shadow held 状态、keyboard controls、live
   announcements、mobile back/focus restoration。
-- legacy inventory 仅本地计算；backup 显式下载，G20.8 dry-run 的 deletion set 为空。
+- G20.9 后 Package Skills 是唯一 eligible Skill domain；当前 host 仍 held，UI 不提供
+  browser/API fallback executor。
 
 ## 使用
 
@@ -31,7 +32,6 @@ inventory/backup/dry-run。它不复用 Assistant Hub、MCP 或 legacy Skill edi
 ## 文件
 
 - `AgentCenter.tsx`: top-level shell、四个 product panels 与 shared accessible UI。
-- `LegacySkillCutoverCard.tsx`: content-free inventory、explicit backup、no-delete dry-run。
 
 DTO 由 `services/api/client/server/agentCenterApi.ts` 在渲染前 strict Zod 验证。
 
@@ -42,7 +42,7 @@ cd mm-chat/frontend
 corepack pnpm exec vitest run \
   src/__tests__/agentCenterComposition.test.ts \
   src/__tests__/serverAgentCenterApi.test.ts \
-  src/__tests__/legacySkillCutover.test.ts \
+  src/__tests__/legacySkillRetirement.test.ts \
   src/__tests__/chatPanelUrlState.test.ts
 corepack pnpm typecheck
 ```

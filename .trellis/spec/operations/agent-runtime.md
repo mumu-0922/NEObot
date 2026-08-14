@@ -24,6 +24,8 @@ bash mm-chat/scripts/verify-agent-delegation.sh
 bash mm-chat/scripts/verify-agent-delegation-postgres17.sh
 bash mm-chat/scripts/verify-agent-product-shadow.sh
 bash mm-chat/scripts/verify-agent-product-shadow-postgres17.sh
+bash mm-chat/scripts/verify-agent-legacy-cutover.sh
+bash mm-chat/scripts/verify-agent-legacy-cutover-postgres17.sh
 bash mm-chat/scripts/verify-agent-runner-host.sh # expected nonzero until exact host is prepared
 ```
 
@@ -89,8 +91,9 @@ passes the full suite.
 - Grant revocation remains append-only. The control service must pair its
   durable revocation with immediate zeroization of matching memory-only Secret
   bytes; the database revokes every active durable handle digest.
-- Final legacy cutover is hard deletion only after verified backup, clean-copy,
-  restart, history-label and rollback rehearsal. Never mix dual execution.
+- G20.9 legacy source cutover is hard deletion. Live apply still requires the
+  verified G20.8 browser backup, a full database backup/count, clean restart and
+  rollback rehearsal. Never mix dual execution.
 
 ### 4. Validation & Error Matrix
 
@@ -388,9 +391,10 @@ Migration `090_agent_product_shadow`, `agent_product_owner` and the authenticate
   Artifact body or custom external URL in Shadow authority.
 - Reconcile/retention and held status reads remain available while disabled.
   Shadow output never becomes Chat, install, admission or promotion authority.
-- G20.8 legacy inventory/backup/dry-run is local and non-destructive. Protect
+- G20.8 legacy inventory/backup/dry-run was local and non-destructive. G20.9
+  removes that temporary UI together with legacy authority. Continue protecting
   `.env.single-server`, `data/`, `secrets/`, `backup/` and unrelated browser
-  domains. Actual deletion belongs to G20.9.
+  domains.
 - `090` down is guarded by `AGENT_PRODUCT_DOWN_DATA_EXISTS`. Production rollback
   keeps `090` applied and disables Shadow; only verified-empty disposable state
   may down/up.
@@ -411,11 +415,11 @@ Migration `090_agent_product_shadow`, `agent_product_owner` and the authenticate
 
 - **Good**: deploy `090` default-off, prove least privilege and paired restore,
   expose held Agent Center, and retain content-free Shadow diagnostics only.
-- **Base**: no policy exists and legacy text Skills remain authoritative; local
-  inventory/backup/dry-run changes no persisted state.
+- **Base**: no policy exists, Runtime is held, and G20.9 leaves no legacy
+  executor or fallback path.
 - **Bad**: call an observation function as a canary worker, expose object keys,
-  enable an in-process executor, treat PG17 as host acceptance, or delete legacy
-  state during G20.8.
+  enable an in-process executor, treat PG17 as host acceptance, or recreate
+  legacy state after G20.9.
 
 ### 6. Tests Required
 
@@ -441,5 +445,97 @@ PG17 passed -> enable Shadow worker in API -> execute package -> delete legacy
 
 ```text
 deploy guarded 090 default-off -> verify API/ACL/backup/reload/no-delete
--> keep ISOLATION_UNAVAILABLE -> later exact-host canary gate -> G20.9 deletion
+-> G20.9 source/data deletion -> keep ISOLATION_UNAVAILABLE
+-> later exact-host canary gate
+```
+
+## Scenario: Apply the G20.9 legacy Skill data cutover
+
+### 1. Scope / Trigger
+
+Apply when preparing, dry-running, executing, verifying or rolling back the
+one-way legacy text-Skill deletion. Protect `.env.single-server`, `data/`,
+`secrets/` and `backup/`; this contract does not authorize production Runtime.
+
+### 2. Signatures
+
+```bash
+bash mm-chat/scripts/verify-agent-legacy-cutover.sh
+bash mm-chat/scripts/verify-agent-legacy-cutover-postgres17.sh
+psql "$DATABASE_URL" --file mm-chat/scripts/cutover-legacy-skills.sql
+psql "$DATABASE_URL" --variable=cutover_apply=true \
+  --variable=expected_count="$EXPECTED_COUNT" \
+  --variable=backup_fingerprint="sha256:$BACKUP_SHA256" \
+  --file mm-chat/scripts/cutover-legacy-skills.sql
+```
+
+The psql variables are operator attestations: apply boolean, locked target
+count, and lowercase SHA-256 fingerprint of the matching full database backup.
+
+### 3. Contracts
+
+- Before deploying G20.9, use the still-running G20.8 release to freeze edits
+  and capture its explicit raw browser backup/inventory. Do not log Skill body.
+- Stop writes, create a full database backup, calculate its SHA-256, and record
+  `SELECT count(*) FROM conversations WHERE metadata ? 'activeSkills'`.
+- Run default dry-run first. Apply takes `SHARE ROW EXCLUSIVE`, re-counts under
+  lock, removes only the `activeSkills` JSONB key, validates updated/remaining
+  counts and commits. Schema head remains `090`.
+- Deploy the G20.9 image, reload twice, and prove localStorage/IndexedDB marker-
+  last purge and server restart do not resurrect selection. Check historical
+  content plus the single retirement label.
+- Package Skills are the sole eligible Skill path after source cutover, but
+  production remains disabled while the exact host is
+  `ISOLATION_UNAVAILABLE`. No browser/API/rootful fallback.
+- Rollback is all-path: disable writes, restore the exact full database/browser
+  backup and previous images inside the declared window. Never run a synthetic
+  down SQL or restore only legacy definitions into a G20.9 process.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| script invoked without variables | dry-run count plus explicit rollback; no mutation |
+| backup fingerprint missing/malformed | `LEGACY_SKILL_BACKUP_FINGERPRINT_REQUIRED`; transaction aborts |
+| expected count stale | `LEGACY_SKILL_EXPECTED_COUNT_MISMATCH`; transaction aborts |
+| apply succeeds but key remains | `LEGACY_SKILL_SELECTION_REMAINS`; transaction aborts |
+| browser write fails before marker | compensate prior writes; marker absent; reload retries |
+| host isolation is not accepted | keep Runtime/Shadow execution off and return `ISOLATION_UNAVAILABLE` |
+
+### 5. Good / Base / Bad Cases
+
+- **Good**: manifest/browser/DB backups match, locked count applies exactly,
+  unrelated rows are equivalent, clean restart shows zero resurrection, and
+  restore rehearsal succeeds before promotion review.
+- **Base**: count is zero; dry-run and apply with expected `0` are idempotent,
+  no migration is added, and production remains held.
+- **Bad**: guess the count, accept an arbitrary backup label, run UPDATE without
+  lock, modify `updated_at`/message content, partially restore, or enable a
+  fallback executor because rootless isolation is unavailable.
+
+### 6. Tests Required
+
+- Offline gate: focused Go/Vitest/typecheck, deleted paths/static assets,
+  allowlisted historical guards only, no resolver/prompt context, SQL
+  signatures and held Runtime.
+- PostgreSQL 17 gate: schema `001 -> 090`, sanitized fixtures, real full dump
+  fingerprint, dry-run, both rejected guards, exact JSONB deletion, unrelated
+  byte-equivalence, repeated expected-zero apply, and head `090`.
+- Production evidence additionally requires browser reload, backend restart,
+  paired restore/rollback, clean-copy and exact-host canary/Isolation Acceptance;
+  disposable gate success alone is not promotion.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+deploy new image -> best-effort UPDATE -> discover count afterward -> enable API fallback
+```
+
+#### Correct
+
+```text
+G20.8 browser backup + full DB backup/fingerprint/count -> dry-run -> locked apply
+-> G20.9 reload/restart proof -> full restore rehearsal -> exact-host promotion later
 ```

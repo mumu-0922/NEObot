@@ -38,7 +38,7 @@
   "keepHistory": "履歴保持（ターン数）",
   "dataManagement": "データ管理",
   "exportAllData": "すべてのデータをエクスポート",
-  "exportAllDataDesc": "チャット、設定、プロバイダー、スキル、アシスタント、およびナレッジのメタデータをローカルの JSON バックアップとしてダウンロードします。",
+  "exportAllDataDesc": "チャット、設定、プロバイダー、アシスタント、およびナレッジのメタデータをローカルの JSON バックアップとしてダウンロードします。",
   "exportData": "データをエクスポート",
   "exporting": "エクスポート中…",
   "exportAria": "すべてのローカルデータをエクスポート",

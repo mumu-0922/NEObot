@@ -6,8 +6,8 @@
 screen-reader 可操作的控制面，并明确展示 held Runtime/Shadow。
 
 **非目标**：不在浏览器执行 package code，不推断 server mutation success，不暴露
-object-store key，不把 Package Skill 与 Assistant、MCP、legacy text Skill 合并，也不
-在 G20.8 删除 legacy storage。
+object-store key，不把 Package Skill 与 Assistant、MCP 合并，也不在浏览器/API
+执行 package code。G20.9 后不保留 legacy text-Skill surface。
 
 ## 架构
 
@@ -16,7 +16,6 @@ ChatApp URL state
     -> AgentCenter shell/status/admin tabs/live region
        -> Package Skills -> /v1/skills/*
        -> Runs/Schedules/Learning -> /v1/agent-center/*
-       -> LegacySkillCutoverCard -> local inventory/backup/dry-run only
 ```
 
 所有 server payload 先作为 `unknown` 进入 client Zod schemas；mutation 后 reload
@@ -33,7 +32,7 @@ server projection。desktop 同时显示 list/detail，mobile 以 `agentId` dril
 | mutation 后 reload          | 浏览器不替代 PostgreSQL authority          | stale conflict 会公告并重取状态          |
 | 点击时保存 focus target     | React callback ref 在 deselect 时会清空    | mobile back 后可恢复到原按钮             |
 | list/detail error 分离      | detail failure 时 mobile list 被隐藏       | detail 自带 back、error 与 retry         |
-| legacy deletion set 为空    | G20.8 仅 inventory/backup/dry-run          | destructive cutover 留给 G20.9           |
+| legacy surface 已删除       | G20.9 硬切且不迁移/包装旧数据              | Package Skill 不匹配旧名称/正文          |
 
 ## 状态与错误矩阵
 
@@ -51,7 +50,7 @@ server projection。desktop 同时显示 list/detail，mobile 以 `agentId` dril
 
 - Artifact 仅请求 authenticated backend download URL；DOM 无 object key/credential。
 - React text rendering/`JSON.stringify` 用于 untrusted values；禁用 raw HTML。
-- legacy inventory 上传/日志中不出现 Skill body；backup 只由用户显式本地下载。
+- 不读取、上传或记录已退役 legacy Skill body；历史只显示 retirement fact。
 - UI 不提供 browser/in-process executor 或 Shadow output→Chat/admission 路径。
 
 ## 已知限制
@@ -64,3 +63,5 @@ server projection。desktop 同时显示 list/detail，mobile 以 `agentId` dril
 
 - **2026-08-14 / G20.8**：建立 Agent Center、strict client boundary、mobile focus/
   error recovery 与 legacy cutover preparation。
+- **2026-08-14 / G20.9**：删除 legacy cutover card/editor/executor，仅保留 held
+  Package Skill control plane。

@@ -90,8 +90,9 @@ Child Agents, Cron, Draft learning, Kill Switches, or legacy Skill cutover:
 3. Preserve PostgreSQL authority, lease-generation fencing, Prepare/Commit
    `outcome_unknown`, depth 1 plus physical `delegate_task` removal, Draft-only
    learning, and cleanup while disabled.
-4. Keep current text Skills and `CODE_EXECUTION_UNAVAILABLE` unchanged until
-   their owning G20 cutover/runtime groups pass the exact promotion gates.
+4. Keep G20.9 legacy text-Skill authority deleted and preserve
+   `CODE_EXECUTION_UNAVAILABLE`/`ISOLATION_UNAVAILABLE` until the Package Runtime
+   group passes exact-host promotion gates. Never add a browser/API fallback.
 
 For chat upload, attachment parsing, or provider attachment changes:
 

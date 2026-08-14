@@ -1,5 +1,4 @@
 import type { ImageSource, Source } from "../search/types";
-import type { AppliedSkillInvocation } from "../skills/types";
 import type { MessageKnowledgeMetadata } from "../knowledge/types";
 
 export const IMAGE_CONTENT_POLICY_VIOLATION_CODE =
@@ -123,7 +122,7 @@ export interface Message {
   timestamp: number;
   attachments?: Attachment[];
   toolCalls?: ToolCall[];
-  skillInvocations?: AppliedSkillInvocation[];
+  legacySkillRetired?: true;
   model?: string;
   generationError?: {
     message: string;
@@ -267,7 +266,6 @@ export interface SessionConfig {
   searchResultsLimit?: number;
   useReasoning?: boolean;
   reasoningEffort?: ReasoningEffort;
-  activeSkills?: string[];
   selectedKnowledgeCollectionIds?: string[];
 }
 
@@ -305,7 +303,6 @@ export interface Workspace {
   color?: string;
   enableSearch?: boolean;
   enableReasoning?: boolean;
-  activeSkills?: string[];
   createdAt: number;
 }
 

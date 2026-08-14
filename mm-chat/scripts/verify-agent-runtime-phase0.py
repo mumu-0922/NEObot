@@ -351,20 +351,13 @@ def check_fail_closed_source() -> None:
         raise VerificationError("code execution unavailable response is missing")
 
 
-def check_product_shadow_source() -> None:
+def check_product_migration_source() -> None:
     migration = (
         PROJECT_DIR / "backend" / "migrations" / "090_agent_product_shadow.up.sql"
     ).read_text(encoding="utf-8")
     down = (
         PROJECT_DIR / "backend" / "migrations" / "090_agent_product_shadow.down.sql"
     ).read_text(encoding="utf-8")
-    service = (
-        PROJECT_DIR / "backend" / "internal" / "agentcontrol" / "service.go"
-    ).read_text(encoding="utf-8")
-    legacy = (
-        PROJECT_DIR / "frontend" / "src" / "lib" / "skills" / "legacyCutover.ts"
-    ).read_text(encoding="utf-8")
-
     for signature in (
         "CREATE VIEW agent_product_runs",
         "CREATE FUNCTION agent_product_get_artifact(",
@@ -388,6 +381,11 @@ def check_product_shadow_source() -> None:
     if "DROP FUNCTION agent_product_append_shadow_observation(" not in down:
         raise VerificationError("migration 090 down omits the Shadow observation function")
 
+
+def check_product_service_source() -> None:
+    service = (
+        PROJECT_DIR / "backend" / "internal" / "agentcontrol" / "service.go"
+    ).read_text(encoding="utf-8")
     if "return ErrIsolationUnavailable" not in service:
         raise VerificationError("Agent product Runtime no longer fails closed")
     if "shadowAdapter.Observe" not in service:
@@ -395,10 +393,47 @@ def check_product_shadow_source() -> None:
     if "os/exec" in service or "exec.Command" in service or "podman" in service.lower():
         raise VerificationError("Agent product service contains an in-process executor")
 
-    if "dryRun: true" not in legacy or "deleteStorageKeys: []" not in legacy:
-        raise VerificationError("legacy Skill cutover is not inventory-only")
-    if "removeItem(" in legacy or ".clear(" in legacy:
-        raise VerificationError("G20.8 legacy Skill inventory contains destructive storage code")
+
+def check_legacy_retirement_source() -> None:
+    retirement = (
+        PROJECT_DIR
+        / "frontend"
+        / "src"
+        / "store"
+        / "storage"
+        / "legacySkillRetirement.ts"
+    ).read_text(encoding="utf-8")
+    cutover = (PROJECT_DIR / "scripts" / "cutover-legacy-skills.sql").read_text(
+        encoding="utf-8"
+    )
+    for retired_field in (
+        "installedSkills",
+        "customSkills",
+        "activeSkillIds",
+        "skillAutoSelect",
+        "skillCatalogs",
+        "skillCatalogTimestamps",
+        "skillDefinitions",
+        "skillDefinitionTimestamps",
+    ):
+        if retired_field not in retirement:
+            raise VerificationError(
+                f"legacy Skill retirement omits field: {retired_field}"
+            )
+    if not (PROJECT_DIR / "scripts" / "verify-agent-legacy-cutover.sh").is_file():
+        raise VerificationError("legacy Skill cutover gate is missing")
+    if "metadata = metadata - 'activeSkills'" not in cutover:
+        raise VerificationError("legacy Skill database selection is not retired")
+    if "LEGACY_SKILL_BACKUP_FINGERPRINT_REQUIRED" not in cutover:
+        raise VerificationError("legacy Skill database cutover is not backup-gated")
+    if (PROJECT_DIR / "frontend" / "src" / "lib" / "skills").exists():
+        raise VerificationError("legacy Skill executable library still exists")
+
+
+def check_product_shadow_source() -> None:
+    check_product_migration_source()
+    check_product_service_source()
+    check_legacy_retirement_source()
 
 
 def main() -> int:

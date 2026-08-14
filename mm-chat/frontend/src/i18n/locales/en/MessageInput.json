@@ -80,10 +80,5 @@
   "parsingDocument": "Parsing document…",
   "failedToParseDocument": "Failed to parse document \"{fileName}\".",
   "dropFilesTitle": "Drop files to attach",
-  "dropFilesHint": "Images, audio, text, and documents use the same limits as the attachment button.",
-  "skills": "Skills",
-  "activeSkillsCount": "{count} Active Skills",
-  "activeSkillsAria": "{count} active skills",
-  "installedSkills": "Installed Skills",
-  "noSkillsAvailable": "No skills available."
+  "dropFilesHint": "Images, audio, text, and documents use the same limits as the attachment button."
 }

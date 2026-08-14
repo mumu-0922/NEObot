@@ -13,7 +13,6 @@ src/services/
 │   ├── chatStreamService.ts
 │   ├── fileService.ts
 │   ├── importService.ts
-│   ├── skillService.ts
 │   └── voiceService.ts
 ├── artifactService.ts
 └── README.md
@@ -29,7 +28,7 @@ Handles chat generation workflows from the browser side:
 - Delegates provider-native Tool execution to the Go chat stream.
 - Generates titles, related questions, and image outputs.
 - Prepares history for model APIs.
-- Adds applied skill context and local memory context when enabled by the chat workflow.
+- Adds local memory context when enabled by the chat workflow.
 - Runs background context compression.
 - Updates tool-call status while streaming and while executing tools.
 
@@ -45,10 +44,6 @@ admission no longer use browser-owned Assistant state.
 
 Calls speech-to-text and text-to-speech routes. Browser-native, ElevenLabs, and Mimo-backed flows are selected from user settings or server defaults.
 
-### `skillService.ts`
-
-Loads localized text-only skill catalogs, fetches full skill definitions on demand, merges built-in and custom skills, and resolves active skills for a message.
-
 ## Client-Only Services
 
 ### `artifactService.ts`
@@ -62,6 +57,8 @@ Manages generated artifact creation, editing, continuation, transformation, and 
   client; browser services do not parse or query documents locally.
 - MCP server discovery, authorization, selection, and call timelines use the
   typed `/v1/mcp/*` client. The browser never executes MCP Tools itself.
+- Legacy text-Skill services and prompt-context assembly were deleted in G20.9.
+  Package Skills use the typed server API and never execute in the browser.
 - Services may read local settings when a workflow requires browser-owned data.
 - Sensitive user-entered secrets should travel as encrypted BYOK envelopes.
 - Server-only validation and proxy policy should stay in `src/app/api` and `src/lib/security`.

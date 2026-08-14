@@ -15,7 +15,6 @@ src/components/
 ├── media/
 ├── modals/
 ├── mcp/
-├── skill/
 ├── settings/
 ├── ui/
 ├── index.ts
@@ -60,10 +59,6 @@ Reusable feature modals that do not belong to a narrower product area.
 
 Conversation-level Tools controls backed by the server-authoritative MCP API.
 
-### `skill`
-
-Skills marketplace, install/uninstall flows, local skill editing, and custom text-only skill management UI.
-
 ### `settings`
 
 Settings pages and provider, model, search, RAG, voice, deployment health, and system configuration controls.
@@ -93,4 +88,6 @@ import MessageInput from "@/components/chat/MessageInput";
 - Keep store reads narrow with selectors or prebuilt hooks.
 - Avoid placing large workflow logic directly inside presentational components.
 - Use existing UI primitives and icon patterns before adding new ones.
+- Do not recreate the retired browser text-Skill editor/executor. Package Skill
+  product UI belongs to the server-backed Agent Center.
 - Add tests around behavior-heavy components or extract the behavior into testable helpers.

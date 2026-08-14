@@ -2,10 +2,10 @@
 
 Status: G20.1 supply-chain, G20.2 durable Orchestrator, G20.3 Runner, G20.4
 brokered effects, G20.5 depth-1 Child delegation, G20.6 durable Cron scheduling,
-G20.7 Draft-only learning, and G20.8 Agent Center/default-off Shadow control are
-implemented. Exact-host isolation and production Runner/Broker/Child/Scheduler/
-Learning/Shadow promotion are held; all production Agent execution remains
-disabled.
+G20.7 Draft-only learning, G20.8 Agent Center/default-off Shadow control, and
+G20.9 legacy text-Skill hard retirement are implemented. Exact-host isolation
+and production Runner/Broker/Child/Scheduler/Learning/Shadow promotion are held;
+all production Agent execution remains disabled.
 
 ## 1. Scope and hard gates
 
@@ -256,19 +256,28 @@ G20.8 implementation signatures:
   authority. `go_api_runtime` receives exact views/functions, never direct
   worker table DML, claim, lease, Commit or scheduler-trigger authority;
 - the top-level frontend Agent Center keeps Package Skills, Runs, Schedules and
-  administrator Learning Review separate from Assistants, MCP and visibly
-  labelled Legacy Skills. DTOs are strict Zod-validated and URL state preserves
-  tabs/selection across reload;
+  administrator Learning Review separate from Assistants and MCP. DTOs are
+  strict Zod-validated and URL state preserves tabs/selection across reload;
 - Shadow supports only `synthetic|read_only`, requires administrator policy plus
   user opt-in, binds cohort/revision/generation/boot/admission/package/runtime
   fingerprints and persists content-free observations. Exact-host unavailability
   returns `ISOLATION_UNAVAILABLE` and schedules no executable work;
-- `frontend/src/lib/skills/legacyCutover.ts` produces deterministic local
-  inventory, explicit raw local backup and a deletion dry-run with an empty
-  execution set. It performs no deletion in G20.8;
+- G20.8 produced deterministic local inventory, explicit raw local backup and a
+  deletion dry-run with an empty execution set. G20.9 removes those temporary
+  preparation surfaces together with the legacy editor/executor;
 - `scripts/verify-agent-product-shadow{,-postgres17}.sh` prove product contracts,
   authorization/fences/budgets/restart, content-free dump/restore and guarded
   rollback. Every older PostgreSQL tail drill finishes at head `090`.
+
+G20.9 implementation signatures:
+
+- `frontend/src/store/storage/legacySkillRetirement.ts`, persistence version
+  `7`, bounded history guards, and deleted editor/catalog/service/resolver code;
+- `backend/internal/chat/legacy_skill_retirement.go` strips retired
+  Conversation selection on create/update/read;
+- `scripts/cutover-legacy-skills.sql` plus
+  `verify-agent-legacy-cutover{,-postgres17}.sh` prove backup/count-gated
+  one-key deletion without migration `091` or Runtime promotion.
 
 ## 6. Runner RPC
 
@@ -691,7 +700,7 @@ or Docker daemon health result is not acceptance.
 
 ## 17. Legacy text-Skill cutover
 
-The future cutover deletes, rather than migrates or wraps:
+G20.9 deletes, rather than migrates or wraps:
 
 ```text
 installedSkills / customSkills / activeSkillIds / skillAutoSelect
@@ -700,13 +709,31 @@ browser Skill selection and system-context assembly
 legacy catalog/custom Skill definitions and execution references
 ```
 
-Historical message content is preserved, but old `skillInvocations` render only
-the read-only fact “旧版技能已退役”; they cannot reopen or execute old definitions.
-G20.8 changes none of this state: it records a deterministic content-free local
-inventory, offers an explicit raw local backup and emits only a dry-run deletion
-plan. Final G20.9 cutover requires that backup, inventory counts/hashes,
-storage-version purge tests, server/runtime promotion, history projection proof
-and an all-or-nothing rollback window.
+Historical message content is preserved, but old `skillInvocations` are
+collapsed at API/browser normalization boundaries to the boolean fact
+`legacySkillRetired: true`. The UI renders only “旧版技能已退役”; it retains no
+legacy ID/title/description/category/mode and cannot reopen or execute a
+definition.
+
+Browser persistence version `7` removes the eight retired settings fields and
+Session/Workspace selection from top-level and nested Zustand envelopes in
+localStorage and IndexedDB. The completion marker is written last; a failed
+write compensates already-written records and a reload safely retries. Settings
+and Chat `partialize`/normalization cannot recreate the fields.
+
+The Go Chat boundary strips `activeSkills` on create/update/read. Existing
+PostgreSQL rows are handled outside the migration chain by
+`scripts/cutover-legacy-skills.sql`: dry-run is the default, apply requires the
+exact target count and a `sha256:<64 lowercase hex>` full-backup fingerprint,
+locks `conversations`, removes only `metadata.activeSkills`, verifies zero
+remaining rows and commits. There is no migration `091` or pretend down SQL;
+rollback restores the matching full database backup and previous images as one
+operation.
+
+G20.8 backup/inventory evidence must be captured before deploying the G20.9
+browser build. Package Skills remain the only eligible Skill execution domain,
+but this host is still honestly held at `ISOLATION_UNAVAILABLE`; browser/API
+fallback execution is forbidden.
 
 ## 18. Phase 0 verification
 
@@ -721,7 +748,7 @@ required design anchors and the current fail-closed code execution route. It is
 offline and must never claim the production Runner or Isolation Acceptance Suite
 passed.
 
-The implemented G20.4-G20.8 source/control and product foundations additionally require:
+The implemented G20.4-G20.9 source/control, product and cutover foundations additionally require:
 
 ```bash
 bash scripts/verify-agent-broker.sh
@@ -734,6 +761,8 @@ bash scripts/verify-agent-learning.sh
 bash scripts/verify-agent-learning-postgres17.sh
 bash scripts/verify-agent-product-shadow.sh
 bash scripts/verify-agent-product-shadow-postgres17.sh
+bash scripts/verify-agent-legacy-cutover.sh
+bash scripts/verify-agent-legacy-cutover-postgres17.sh
 bash scripts/verify-agent-runner.sh
 bash scripts/verify-agent-runtime-phase0.sh
 bash scripts/verify-agent-runner-host.sh # expected nonzero on the current host

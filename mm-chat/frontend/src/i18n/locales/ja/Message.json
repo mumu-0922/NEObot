@@ -62,7 +62,5 @@
   "confirmDelete": "削除を確認",
   "delete": "削除",
   "more": "もっと見る",
-  "skillAppliedTooltip": "{title} スキルを適用済み（{mode}）",
-  "skillModeManual": "手動",
-  "skillModeAuto": "自動"
+  "legacySkillRetired": "旧版 Skill は廃止されました"
 }

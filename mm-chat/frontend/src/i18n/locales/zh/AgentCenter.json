@@ -94,19 +94,5 @@
   "proposedFingerprint": "拟议 package fingerprint",
   "checkReceipts": "精确检查回执",
   "boundedDiff": "受限 diff",
-  "binaryDiff": "二进制文件；仅提供 fingerprint 与大小。",
-  "legacyTitle": "旧版纯文本 Skills — G20.9 准备",
-  "legacyDescription": "仅盘点、本地备份与 dry-run。本版本不删除任何数据，也不安装替代 package。",
-  "legacyInstalled": "已安装",
-  "legacyActive": "活跃引用",
-  "legacyCached": "缓存",
-  "legacyInvalidOrphan": "无效／孤儿",
-  "legacyInspectFailed": "无法检查浏览器持有的旧版 Skill 状态。",
-  "inventoryRefresh": "刷新盘点",
-  "downloadBackup": "下载原始本地备份",
-  "dryRun": "生成删除 dry-run",
-  "dryRunReady": "dry-run 已生成；未更改任何状态。",
-  "dryRunFields": "G20.9 将只移除 settings 记录内的 {count} 个 Skill 字段。",
-  "dryRunPreserved": "明确保留：{domains}。",
-  "downloadDryRun": "下载无内容 dry-run"
+  "binaryDiff": "二进制文件；仅提供 fingerprint 与大小。"
 }

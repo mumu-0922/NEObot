@@ -59,9 +59,7 @@ describe("ChatApp server mode composition", () => {
     expect(chatApp).toContain(
       "allowReasoningWhenSessionToolsDisabled={serverModeEnabled}",
     );
-    expect(chatApp).toContain(
-      "allowSkillsWhenSessionToolsDisabled={serverModeEnabled}",
-    );
+    expect(chatApp).not.toContain("allowSkillsWhenSessionToolsDisabled");
     expect(chatApp).toContain("mcpEnabled={");
     expect(chatApp).toContain("serverConfig?.mcp.enabled === true");
     expect(chatApp).toContain("if (serverMcpEnabled)");
@@ -74,13 +72,10 @@ describe("ChatApp server mode composition", () => {
     expect(chatApp).toContain(
       "conversationId={visibleCurrentSessionId ?? undefined}",
     );
-    expect(chatApp).toContain("activeSkillIdsOverride={");
-    expect(chatApp).toContain("onActiveSkillIdsChange={");
-    expect(chatApp).toContain(
-      "const skillResolution = await resolveSkillsForMessage",
-    );
-    expect(chatApp).toContain("autoSelect: false");
-    expect(chatApp).toContain("skillResolution.context");
+    expect(chatApp).not.toContain("activeSkillIdsOverride");
+    expect(chatApp).not.toContain("onActiveSkillIdsChange");
+    expect(chatApp).not.toContain("resolveSkillsForMessage");
+    expect(chatApp).not.toContain("skillResolution.context");
     expect(chatApp).toContain(
       "onLocalSessionToolUnavailable={showServerUnsupportedAction}",
     );
@@ -154,12 +149,7 @@ describe("ChatApp server mode composition", () => {
     expect(chatApp).toContain("duplicateServerSession");
     expect(chatApp).toContain("updateServerSessionInstruction");
     expect(chatApp).toContain("generateServerConversationTitle");
-    expect(chatApp).toContain(
-      "activeSkillIds: serverModeEnabled ? activeSkillIds : []",
-    );
-    expect(chatApp).toContain(
-      "activeSkillIdsOverride: serverModeEnabled ? activeSkillIds : undefined",
-    );
+    expect(chatApp).not.toContain("activeSkillIds");
     expect(chatApp).not.toContain("activePluginIdsOverride");
 
     expect(generationController).toContain("abortActiveGeneration");

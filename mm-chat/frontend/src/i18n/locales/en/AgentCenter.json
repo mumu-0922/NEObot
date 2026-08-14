@@ -94,19 +94,5 @@
   "proposedFingerprint": "Proposed package fingerprint",
   "checkReceipts": "Exact check receipts",
   "boundedDiff": "Bounded diff",
-  "binaryDiff": "Binary file; only fingerprints and sizes are available.",
-  "legacyTitle": "Legacy pure-text Skills — G20.9 preparation",
-  "legacyDescription": "Inventory, local backup, and dry-run only. This release deletes nothing and installs no replacement package.",
-  "legacyInstalled": "Installed",
-  "legacyActive": "Active refs",
-  "legacyCached": "Cached",
-  "legacyInvalidOrphan": "Invalid / orphan",
-  "legacyInspectFailed": "Couldn't inspect browser-owned legacy Skill state.",
-  "inventoryRefresh": "Refresh inventory",
-  "downloadBackup": "Download raw local backup",
-  "dryRun": "Build deletion dry-run",
-  "dryRunReady": "Dry-run ready; no state was changed.",
-  "dryRunFields": "G20.9 would remove {count} Skill fields inside the settings record.",
-  "dryRunPreserved": "Explicitly preserved: {domains}.",
-  "downloadDryRun": "Download content-free dry-run"
+  "binaryDiff": "Binary file; only fingerprints and sizes are available."
 }

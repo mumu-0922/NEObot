@@ -81,30 +81,40 @@ describe("api schemas", () => {
     expect(message.toolCalls?.[0]?.status).toBe("success");
   });
 
-  it("accepts skill invocation descriptions in chat history", () => {
-    expect(() =>
-      ChatRequestSchema.parse({
-        provider: { type: "Gemini", apiKeySecret: encryptedSecret },
-        modelName: "gemini-test",
-        history: [
-          {
-            role: "model",
-            content: "Translated text",
-            skillInvocations: [
-              {
-                id: "translation-localization",
-                title: "Translation & Localization",
-                description:
-                  "Translate and localize text between Chinese and English.",
-                category: "writing",
-                mode: "manual",
-              },
-            ],
-          },
-        ],
-        newMessage: "regenerate",
-      }),
-    ).not.toThrow();
+  it("collapses legacy skill invocation details in chat history", () => {
+    const request = ChatRequestSchema.parse({
+      provider: { type: "Gemini", apiKeySecret: encryptedSecret },
+      modelName: "gemini-test",
+      history: [
+        {
+          role: "model",
+          content: "Translated text",
+          skillInvocations: [
+            {
+              id: "translation-localization",
+              title: "Translation & Localization",
+              description:
+                "Translate and localize text between Chinese and English.",
+              category: "writing",
+              mode: "manual",
+            },
+          ],
+        },
+      ],
+      newMessage: "regenerate",
+    });
+
+    expect(request.history[0]).toEqual({
+      id: "",
+      role: "model",
+      content: "Translated text",
+      timestamp: 0,
+      legacySkillRetired: true,
+    });
+    expect(request.history[0]).not.toHaveProperty("skillInvocations");
+    expect(JSON.stringify(request.history[0])).not.toContain(
+      "translation-localization",
+    );
   });
 
   it("rejects chat requests with too much attachment payload", () => {

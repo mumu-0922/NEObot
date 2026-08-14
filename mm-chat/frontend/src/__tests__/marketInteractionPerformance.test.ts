@@ -7,10 +7,7 @@ const readSource = (path: string) =>
 
 describe("marketplace interaction performance", () => {
   it("keeps marketplace scrolling off full-surface backdrop filters", () => {
-    const markets = [
-      "src/components/assistant/AssistantHub.tsx",
-      "src/components/skill/SkillMarket.tsx",
-    ];
+    const markets = ["src/components/assistant/AssistantHub.tsx"];
 
     for (const market of markets) {
       const source = readSource(market);

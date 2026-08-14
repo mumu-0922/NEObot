@@ -22,10 +22,10 @@ describe("MessageItem composition", () => {
     expect(messageItem).toContain("flex-row-reverse");
     expect(messageItem).toContain("data-message-bubble");
     expect(messageItem).toContain("bg-[#95ec69]");
-    expect(messageItem).toContain(
-      "const skillInvocations = message.skillInvocations || []",
-    );
-    expect(messageItem).toContain("portal");
+    expect(messageItem).toContain("message.legacySkillRetired");
+    expect(messageItem).toContain('t("legacySkillRetired")');
+    expect(messageItem).not.toContain("message.skillInvocations");
+    expect(messageItem).toContain("createPortal");
     expect(messageItem).toContain("AddToKnowledgeModal");
     expect(messageItem).toContain("handleAddToKnowledge");
     expect(messageItem).toContain("canEditUserMessage");

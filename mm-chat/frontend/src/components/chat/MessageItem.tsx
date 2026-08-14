@@ -1115,9 +1115,6 @@ const MessageItem: React.FC<MessageItemProps> = ({
   // RAG Data
   const ragSources = message.ragSources || [];
 
-  // Tool Data
-  const skillInvocations = message.skillInvocations || [];
-
   const handleAttachmentClick = (index: number) => {
     if (!message.attachments) return;
 
@@ -1446,30 +1443,14 @@ const MessageItem: React.FC<MessageItemProps> = ({
                 <SourceFusionNotice metadata={message.metadata} />
                 <RAGBlock sources={ragSources} />
 
-                {skillInvocations.length > 0 && (
+                {message.legacySkillRetired && (
                   <div className="mb-3 flex flex-wrap gap-1.5">
-                    {skillInvocations.map((skill) => (
-                      <Tooltip
-                        key={`${skill.id}-${skill.mode}`}
-                        content={
-                          skill.description ||
-                          t("skillAppliedTooltip", {
-                            title: skill.title,
-                            mode:
-                              skill.mode === "manual"
-                                ? t("skillModeManual")
-                                : t("skillModeAuto"),
-                          })
-                        }
-                        position="top"
-                        portal
-                      >
-                        <span className="inline-flex max-w-full items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-200">
-                          <Sparkles size={11} aria-hidden="true" />
-                          <span className="truncate">{skill.title}</span>
-                        </span>
-                      </Tooltip>
-                    ))}
+                    <span className="inline-flex max-w-full items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+                      <Sparkles size={11} aria-hidden="true" />
+                      <span className="truncate">
+                        {t("legacySkillRetired")}
+                      </span>
+                    </span>
                   </div>
                 )}
 

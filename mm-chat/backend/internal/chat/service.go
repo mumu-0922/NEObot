@@ -36,6 +36,7 @@ func (s *Service) CreateConversation(
 	if input.Metadata == nil {
 		input.Metadata = map[string]any{}
 	}
+	input.Metadata = stripRetiredLegacySkillSelection(input.Metadata)
 	if _, hasMode := input.Metadata["searchMode"]; !hasMode {
 		if _, hasLegacy := input.Metadata["useSearch"]; !hasLegacy {
 			conversations, err := s.repo.ListConversations(ctx)
@@ -55,7 +56,8 @@ func (s *Service) CreateConversation(
 		return Conversation{}, err
 	}
 
-	return s.repo.CreateConversation(ctx, input)
+	conversation, err := s.repo.CreateConversation(ctx, input)
+	return stripRetiredLegacySkillConversation(conversation), err
 }
 
 func (s *Service) ListConversations(ctx context.Context) ([]Conversation, error) {
@@ -63,7 +65,11 @@ func (s *Service) ListConversations(ctx context.Context) ([]Conversation, error)
 		return nil, err
 	}
 
-	return s.repo.ListConversations(ctx)
+	conversations, err := s.repo.ListConversations(ctx)
+	for index := range conversations {
+		conversations[index] = stripRetiredLegacySkillConversation(conversations[index])
+	}
+	return conversations, err
 }
 
 func (s *Service) GetConversation(ctx context.Context, conversationID string) (Conversation, error) {
@@ -75,7 +81,8 @@ func (s *Service) GetConversation(ctx context.Context, conversationID string) (C
 		return Conversation{}, newValidationError("INVALID_CONVERSATION_ID", "conversation id must be a UUID")
 	}
 
-	return s.repo.GetConversation(ctx, conversationID)
+	conversation, err := s.repo.GetConversation(ctx, conversationID)
+	return stripRetiredLegacySkillConversation(conversation), err
 }
 
 func (s *Service) UpdateConversation(
@@ -110,6 +117,8 @@ func (s *Service) UpdateConversation(
 	if input.MetadataMerge == nil {
 		input.MetadataMerge = map[string]any{}
 	}
+	input.MetadataMerge = stripRetiredLegacySkillSelection(input.MetadataMerge)
+	input.MetadataDeleteKeys = appendRetiredLegacySkillDeleteKey(input.MetadataDeleteKeys)
 	if err := normalizeConversationSearchMetadata(input.MetadataMerge, nil); err != nil {
 		return Conversation{}, err
 	}
@@ -121,6 +130,7 @@ func (s *Service) UpdateConversation(
 		input.ReplaceMetadata = &empty
 	}
 	if input.ReplaceMetadata != nil {
+		*input.ReplaceMetadata = stripRetiredLegacySkillSelection(*input.ReplaceMetadata)
 		if err := normalizeConversationSearchMetadata(*input.ReplaceMetadata, nil); err != nil {
 			return Conversation{}, err
 		}
@@ -129,7 +139,8 @@ func (s *Service) UpdateConversation(
 		}
 	}
 
-	return s.repo.UpdateConversation(ctx, conversationID, input)
+	conversation, err := s.repo.UpdateConversation(ctx, conversationID, input)
+	return stripRetiredLegacySkillConversation(conversation), err
 }
 
 func (s *Service) DeleteConversation(ctx context.Context, conversationID string) error {

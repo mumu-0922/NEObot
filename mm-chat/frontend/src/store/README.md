@@ -18,6 +18,7 @@ src/store/
 │   └── useStoreWithSSR.ts
 ├── storage/
 │   ├── legacyGeminiMigration.ts
+│   ├── legacySkillRetirement.ts
 │   ├── migrations.ts
 │   └── storageConfig.ts
 ├── index.ts
@@ -36,11 +37,16 @@ excluded from browser persistence.
 
 ### `settingsStore`
 
-Stores broader app configuration, including system behavior, model metadata, search, voice, installed/custom Skills, Skill catalog and definition caches, custom Assistants, and other settings that are better suited to IndexedDB.
+Stores broader app configuration, including system behavior, model metadata,
+search and voice settings that are better suited to IndexedDB. Legacy Skill
+fields are migration input only; Package Skill authority is server-owned.
 
 ### `chatStore`
 
-Owns browser chat sessions, messages, workspaces, message branching, export/import state, and session-level configuration. Skill presets remain browser-owned; Server-mode MCP selection is stored through the backend API. Message-heavy data is stored separately from session metadata where practical.
+Owns browser chat sessions, messages, workspaces, message branching,
+export/import state, and session-level configuration. Retired Skill presets are
+stripped; Server-mode MCP selection is stored through the backend API.
+Message-heavy data is stored separately from session metadata where practical.
 
 ### `memoryStore`
 
@@ -89,7 +95,9 @@ const theme = useStoreWithSSR(
 - Use `localStorage` only for browser-owned core preferences that must be
   available immediately. Server-owned task models must be loaded and saved
   through the settings API.
-- Use IndexedDB for larger browser-owned or import-source data such as legacy sessions, messages, Skills, Assistants, and memories. Retired Plugin fields are migration input only and must not be re-persisted.
+- Use IndexedDB for larger browser-owned or import-source data such as legacy
+  sessions, messages, Assistants, and memories. Retired Plugin/Skill fields are
+  migration input only and must not be re-persisted.
 - In server mode, Knowledge state lives behind Go/Postgres/MinIO. The legacy
   IndexedDB Knowledge key remains readable only for explicit browser-data import.
 - Use OPFS for uploaded file bytes and local file handles.
@@ -110,7 +118,8 @@ Storage migrations live under `src/store/storage`. They normalize old persisted 
 
 When changing persisted state:
 
-1. Keep old data readable.
+1. Keep old data readable unless an explicit one-way retirement contract names
+   fields that must be destroyed.
 2. Add a migration or normalizer when fields are renamed or reshaped.
 3. Keep defaults explicit.
 4. Add tests for migrated data when the shape is user-visible or difficult to recreate.

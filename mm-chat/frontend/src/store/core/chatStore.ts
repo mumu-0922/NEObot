@@ -3051,8 +3051,10 @@ export const useChatStore = create<ChatState>()(
       skipHydration: false,
       // Only persist metadata and config, do NOT persist activeMessages in main key
       partialize: (state) => ({
-        sessions: state.sessions,
-        workspaces: state.workspaces, // Persist workspaces
+        sessions: state.sessions.map((session) => normalizeSession(session)),
+        workspaces: state.workspaces.map((workspace) =>
+          normalizeWorkspace(workspace),
+        ),
         currentSessionId: state.currentSessionId,
         selectedModel: state.selectedModel,
         chatConfig: state.chatConfig,
