@@ -1,9 +1,10 @@
 # Neo Agent Runtime Architecture
 
 Status: G20.1 no-execute Skill supply chain, G20.2 durable Orchestrator, G20.3
-Runner, G20.4 brokered effects and G20.5 depth-1 Child delegation
-source/control foundations implemented. Exact-host isolation, production relay
-and Child execution promotion are held; production Runtime remains disabled.
+Runner, G20.4 brokered effects, G20.5 depth-1 Child delegation and G20.6 durable
+Cron scheduling source/control foundations are implemented. Exact-host
+isolation and production Runner/Broker/Child/Scheduler promotion are held;
+production Runtime remains disabled.
 
 ## Purpose and invariant
 
@@ -272,12 +273,37 @@ production Child-to-Runner call exists in G20.5. The current host remains
 
 ## Cron and learning
 
-A Cron template freezes owner, schedule/timezone, input/prompt, model, budget,
-Skill/package/runtime fingerprints, grants, Egress and Secret references. Each
-trigger still rechecks owner status, revocation, expiry, admission and Kill
-Switches; a failure creates a sanitized skipped/denied execution fact. Later
-grant expansion never enlarges an existing template. Any edited template gets a
-new revision and explicit approval.
+G20.6 implements the held Cron control foundation in
+`backend/internal/agentcron/` and migration `088`. Go pins
+`robfig/cron/v3@v3.0.1`, accepts only standard five-field expressions, loads the
+separately frozen IANA timezone from embedded `tzdata`, and calculates bounded
+occurrences. Spring-forward gaps are skipped; both distinct UTC instants in a
+fall-back overlap are retained.
+
+A logical template owns only lifecycle, the active revision, exact next cursor
+and lease. Each immutable revision freezes owner, input reference/fingerprint,
+schedule/timezone/calculator, model, four budgets, exact Skill installation,
+admission, package/runtime, Grant and Registry fingerprints/capabilities,
+Egress, Secret refs, expiry, steps/scopes and policies. It carries an append-only
+approval class of `automation_read_only` or `automation_brokered_effect`; the
+latter authorizes Run creation only and never bypasses per-effect
+Prepare/Commit. Later Grant, Skill or model expansion never enlarges an existing
+revision.
+
+PostgreSQL owns cursor and occurrence claims fenced by owner, generation and
+expiry. Occurrence identity is `template + revision + scheduled UTC instant`.
+Missed work is bounded to `skip`, `fire_once` or at most 100 `catch_up` Runs in
+24 hours; overlap is `skip`, `buffer_one` or `allow`. Trigger-to-normal-Run
+enqueue and link commit atomically with the stable Cron idempotency identity.
+Before enqueue, the locked transaction repeats current revision, owner, exact
+Skill, Grant/approval revocation, expiry, Kill Switch and overlap checks. It
+falls forward to no newer authority and records only a stable sanitized denial.
+
+Pause stops materialization; resume advances beyond the current instant without
+surprise backfill; delete tombstones until bounded cleanup. Retry applies only
+before enqueue is proven and never retries an effect. No public Cron API,
+frontend, Chat path, startup worker or production Scheduler invokes this held
+foundation.
 
 Learning may create a quarantined Draft containing proposed `SKILL.md`, Neo
 Manifest, tests and provenance evidence. Automated checks may reject or mark it
@@ -301,6 +327,7 @@ snapshot.
 | cancellation vs Commit ambiguity | R/T | Prepare/Commit event ledger, idempotency receipt, `outcome_unknown` precedence |
 | Grant revoked while Secret bytes are memory-resident | I/E | append-only revocation, durable handle revoke and control-service in-memory zeroization |
 | Child recursive delegation | E/D | max depth 1 plus physical Tool removal and launch rejection fixture |
+| stale/replayed Cron claim expands authority or duplicates a Run | T/E/D | immutable approved revision, generation fencing, UTC occurrence uniqueness, locked trigger-time recheck and stable Run idempotency |
 | operator/Runtime kill denial | D/R | hierarchical durable Kill Switch, terminal event and process-group/cgroup reap |
 | learning modifies live Skill | T/E | Draft quarantine, human Promote, new fingerprint, snapshot immutability |
 
@@ -342,8 +369,10 @@ not reveal private chain-of-thought.
 
 G20.1 adds Skill supply/API/persistence, G20.2 adds the internal durable
 Orchestrator, G20.3 adds the credential-free host Runner boundary, G20.4 adds
-the held Tool Registry and brokered-effect authority, and G20.5 adds held
-depth-1 lineage, reservation, launch-admission and reap authority. G20.3
+the held Tool Registry and brokered-effect authority, G20.5 adds held depth-1
+lineage, reservation, launch-admission and reap authority, and G20.6 adds held
+immutable Cron revision, cursor/claim, occurrence and normal-Run enqueue
+authority. G20.3
 implements strict TLS 1.3 mTLS RPC, PostgreSQL plus local-fsync replay fences,
 release probing, one rootless Podman Sandbox per Attempt, full Workspace
 revalidation, bounded tmpfs Scratch, exact kill/reap/reconcile and local Unix
@@ -352,7 +381,11 @@ host returns `ISOLATION_UNAVAILABLE`; no API/Chat startup path imports it.
 G20.4 adds migration `086`, shared safe-network enforcement and strict
 Prepare/Commit relay shapes, but leaves the production relay and all mutations
 unwired. G20.5 adds migration `087` and a signed Runner `runLineage`, but no
-production Child launch path. None of these groups changes Chat or legacy
+production Child launch path. G20.6 adds migration `088` and the isolated
+`agentcron` package, but no public/startup Scheduler. Migration `088` down is
+guarded by retained Cron revisions, approvals, triggers and audits; the narrow
+`agent_cron_control` role has SELECT plus exact function execution and no table
+DML. None of these groups changes Chat or legacy
 text-Skill behavior; existing pure-text Skills remain untouched through G20.8
 and are deleted only by G20.9.
 The future final cutover:
@@ -382,6 +415,8 @@ Production execution remains disabled until later groups prove:
 - Run/Step/Attempt and Prepare/Commit recovery pass disposable PostgreSQL and
   crash/restart matrices;
 - Child registry and launch admission reject recursion;
+- Cron DST/missed/overlap/restart/revocation matrices produce at most one linked
+  normal Run per exact UTC occurrence;
 - secret/network/workspace/artifact boundaries pass negative tests;
 - Kill Switches kill/reap exact Sandboxes without stopping cleanup;
 - clean-copy, backup/restore and rollback rehearsals pass.

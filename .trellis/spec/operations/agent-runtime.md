@@ -148,3 +148,96 @@ Docker works -> start a privileged container -> call Sandbox complete
 exact non-root account probe -> immutable launch envelope -> rootless OCI
 -> broker-only I/O -> fingerprint-bound acceptance evidence -> bounded canary
 ```
+
+## Scenario: Operate the held Cron control plane
+
+### 1. Scope / Trigger
+
+Apply this contract when deploying migration `088`, assigning Cron database
+roles, running Cron verification, reconciling expired scheduling claims,
+pruning Cron history or rolling the migration back. This scenario does not
+authorize a production Scheduler service.
+
+### 2. Signatures
+
+```bash
+bash mm-chat/scripts/verify-agent-cron.sh
+bash mm-chat/scripts/verify-agent-cron-postgres17.sh
+```
+
+Migration `088_agent_cron_foundation` and `agent_cron_control` are the durable
+operational boundary. The exact-host gate remains expected-nonzero
+`ISOLATION_UNAVAILABLE` until the separate Runner promotion criteria pass.
+
+### 3. Contracts
+
+- Install migration `088` with a NOLOGIN owner and the dedicated
+  `agent_cron_control` role. That control role has SELECT plus exact function
+  execution and no table DML or membership in the owner role; API,
+  Orchestrator, Runner, Broker and delegation roles gain no Cron authority.
+- Keep Runtime and Scheduler disabled. Do not add an HTTP/Chat/frontend/startup
+  route, Redis wake loop, Compose worker or production execution wiring merely
+  because the source and PostgreSQL gates pass.
+- Reconciliation may clear expired cursor claims and return expired trigger
+  claims to pending. Cleanup must use bounded `agent_cron_prune` batches and
+  retain live/enqueued Run facts until eligible.
+- Pause/resume/delete through controlled lifecycle functions. Resume advances to
+  the next future instant and records only sanitized missed-window facts; never
+  manufacture a backfill directly in tables.
+- Keep `.env.single-server`, `data/`, `secrets/` and `backup/` untouched. Cron
+  rows and audits must not contain prompts, Secret values, Workspace bytes,
+  Tool arguments/results or credentials.
+- The down migration is deliberately guarded by
+  `AGENT_CRON_DOWN_DATA_EXISTS`. Drain/tombstone and boundedly prune eligible
+  state before an intentional rollback; never delete protected runtime state or
+  bypass the guard.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| production Scheduler/Runtime switch remains off | no schedule worker starts; reconcile/prune remain available |
+| stale/expired claim worker attempts mutation | `STALE_CLAIM`; operator reconciles rather than forcing table DML |
+| trigger loses current authority | sanitized Cron denial fact; no Run enqueue |
+| `agent_cron_control` obtains table DML or another runtime role obtains Cron access | deployment gate fails; do not promote |
+| down attempted while Cron data/audit remains | `AGENT_CRON_DOWN_DATA_EXISTS`; rollback stops intact |
+| source/PG17 gates pass but exact host is unprepared | keep production disabled; host result remains `ISOLATION_UNAVAILABLE` |
+
+### 5. Good / Base / Bad Cases
+
+- **Good**: deploy `088`, prove least privilege and restart/idempotency on a
+  disposable PostgreSQL 17 database, then leave production scheduling disabled.
+- **Base**: operators run bounded reconcile/prune while Runtime is off; retained
+  Cron and Orchestrator history remains auditable.
+- **Bad**: grant direct Cron table UPDATE, manually relink an occurrence, delete
+  audit rows to force down, or treat a disposable-database pass as Scheduler or
+  exact-host promotion evidence.
+
+### 6. Tests Required
+
+- Run both Cron signatures plus Phase 0, focused race/vet tests and
+  `go mod verify`.
+- PostgreSQL 17 must prove fresh/replay, concurrency, restart reclaim,
+  acknowledgement-loss idempotency, bounded retry/overlap, all authority
+  denials, least privilege, content-free dump/restore, guarded down and clean
+  down/up.
+- Every prior PostgreSQL tail drill must peel `088` before testing its older
+  guard and finish reapplied at head `088`.
+- The full standalone gate must pass, while the exact-host Runner gate remains
+  expected-nonzero `ISOLATION_UNAVAILABLE` unless a separately approved host
+  promotion is in scope.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+PG17 Cron drill passed -> add startup Scheduler -> enable production triggers
+```
+
+#### Correct
+
+```text
+deploy guarded migration 088 -> prove narrow role + durable replay/recovery
+-> keep Scheduler/Runtime disabled -> promote only in a later explicit gate
+```

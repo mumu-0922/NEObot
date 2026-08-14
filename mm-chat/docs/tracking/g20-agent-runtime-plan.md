@@ -1,9 +1,9 @@
 # G20 Neo Agent Runtime Epic Plan
 
 Status: G20.0 Phase 0, G20.1 Skill supply chain, G20.2 durable Orchestrator,
-G20.3 Runner, G20.4 brokered effects and G20.5 depth-1 Child delegation
-source/control foundations complete. Exact-host isolation, production relay and
-Child execution promotion are held.
+G20.3 Runner, G20.4 brokered effects, G20.5 depth-1 Child delegation and G20.6
+durable Cron scheduling source/control foundations complete. Exact-host
+isolation and production Runner/Broker/Child/Scheduler promotion are held.
 
 ## Locked outcome
 
@@ -169,6 +169,9 @@ untouched through G20.8 and are deleted only by G20.9.
 
 ## G20.6 — Cron durable scheduling
 
+Status: source/control foundation complete (2026-08-14); public/startup
+Scheduler, Cron API/UI and exact-host Runtime promotion are held.
+
 - Add versioned Cron templates with exact schedule/timezone, owner, input,
   model, budgets, package/runtime/Grant fingerprints, Egress and Secret refs.
 - Require an automation approval class; recheck current revoke/expiry/Kill
@@ -178,6 +181,21 @@ untouched through G20.8 and are deleted only by G20.9.
 
 Promotion gate: timezone/DST, overlap, restart, revoked owner/Skill/Secret,
 budget, Kill Switch and stale-template matrices pass with no duplicate effect.
+
+Implemented evidence: `internal/agentcron` strict five-field
+`robfig/cron/v3@v3.0.1` plus embedded-IANA timezone calculation; migration
+`088` immutable revisions/automation approvals, exact cursor and trigger claims,
+unique UTC occurrences, atomic normal-Run enqueue, trigger-time authority,
+sanitized audit and bounded cleanup; strict `neo.cron-template/v1` schema and
+fixtures; focused race/vet plus `verify-agent-cron{,-postgres17}.sh` fresh/
+replay, concurrency, restart, acknowledgement replay, overlap, revocation,
+least-privilege, guarded-down, dump/restore and clean down/up proof. Every older
+PostgreSQL tail drill returns to head `088`.
+
+Held evidence: public Cron CRUD/trigger/backfill API, frontend/Chat integration,
+startup/Redis Scheduler, production Run execution and exact-host promotion. The
+current host remains `ISOLATION_UNAVAILABLE`; pure-text Skills remain untouched
+through G20.8 and are deleted only by G20.9.
 
 ## G20.7 — Draft-only learning
 

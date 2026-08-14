@@ -9,6 +9,7 @@ require (
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/minio/minio-go/v7 v7.0.85
 	github.com/redis/go-redis/v9 v9.18.0
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/yuin/goldmark v1.8.4
 	golang.org/x/crypto v0.45.0
 	golang.org/x/net v0.47.0

@@ -24,17 +24,24 @@ for command in jq bash; do
   fi
 done
 
-required_g20_5_paths=(
+required_g20_6_paths=(
   "${project_dir}/backend/internal/agentdelegation/service.go"
   "${project_dir}/backend/internal/agentdelegation/repository_postgres.go"
   "${project_dir}/backend/migrations/087_agent_child_delegation.up.sql"
   "${project_dir}/backend/migrations/087_agent_child_delegation.down.sql"
   "${project_dir}/scripts/verify-agent-delegation.sh"
   "${project_dir}/scripts/verify-agent-delegation-postgres17.sh"
+  "${project_dir}/backend/internal/agentcron/service.go"
+  "${project_dir}/backend/internal/agentcron/repository_postgres.go"
+  "${project_dir}/backend/migrations/088_agent_cron_foundation.up.sql"
+  "${project_dir}/backend/migrations/088_agent_cron_foundation.down.sql"
+  "${project_dir}/scripts/verify-agent-cron.sh"
+  "${project_dir}/scripts/verify-agent-cron-postgres17.sh"
+  "${project_dir}/docs/contracts/schemas/neo-cron-template.schema.json"
 )
-for path in "${required_g20_5_paths[@]}"; do
+for path in "${required_g20_6_paths[@]}"; do
   if [[ ! -s "${path}" ]]; then
-    echo "Agent Runtime Phase 0 verification: missing G20.5 artifact ${path}" >&2
+    echo "Agent Runtime Phase 0 verification: missing G20.6 artifact ${path}" >&2
     exit 1
   fi
 done
@@ -43,6 +50,14 @@ grep -Fq "CREATE FUNCTION agent_delegation_reconcile(" \
   "${project_dir}/backend/migrations/087_agent_child_delegation.up.sql"
 grep -Fq "DROP FUNCTION agent_delegation_reconcile(INTEGER)" \
   "${project_dir}/backend/migrations/087_agent_child_delegation.down.sql"
+grep -Fq "CREATE FUNCTION agent_cron_enqueue_trigger(" \
+  "${project_dir}/backend/migrations/088_agent_cron_foundation.up.sql"
+grep -Fq "CREATE FUNCTION agent_cron_reconcile(" \
+  "${project_dir}/backend/migrations/088_agent_cron_foundation.up.sql"
+grep -Fq "DROP FUNCTION agent_cron_enqueue_trigger(" \
+  "${project_dir}/backend/migrations/088_agent_cron_foundation.down.sql"
+grep -Fq "DROP FUNCTION agent_cron_reconcile(TIMESTAMPTZ,INTEGER)" \
+  "${project_dir}/backend/migrations/088_agent_cron_foundation.down.sql"
 
 schema_dir="${project_dir}/docs/contracts/schemas"
 fixture_dir="${project_dir}/docs/contracts/fixtures/agent-runtime"

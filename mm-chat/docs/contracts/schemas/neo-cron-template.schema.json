@@ -1,0 +1,320 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neo-chat.local/schemas/neo-cron-template.schema.json",
+  "title": "Neo Cron Template Revision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "owner",
+    "input",
+    "schedule",
+    "model",
+    "budget",
+    "skill",
+    "grant",
+    "egress",
+    "secrets",
+    "automation",
+    "policies",
+    "steps",
+    "scopeKeys"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "neo.cron-template/v1" },
+    "owner": { "$ref": "#/$defs/subject" },
+    "input": { "$ref": "#/$defs/input" },
+    "schedule": { "$ref": "#/$defs/schedule" },
+    "model": { "$ref": "#/$defs/model" },
+    "budget": { "$ref": "#/$defs/budget" },
+    "skill": { "$ref": "#/$defs/skill" },
+    "grant": { "$ref": "#/$defs/grant" },
+    "egress": { "$ref": "#/$defs/egress" },
+    "secrets": {
+      "type": "array",
+      "maxItems": 25,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/secret" }
+    },
+    "automation": { "$ref": "#/$defs/automation" },
+    "policies": { "$ref": "#/$defs/policies" },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind"],
+        "properties": { "kind": { "$ref": "#/$defs/identifier" } }
+      }
+    },
+    "scopeKeys": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 31,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 3, "maxLength": 600 }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "automation": {
+            "properties": { "class": { "const": "automation_read_only" } },
+            "required": ["class"]
+          }
+        },
+        "required": ["automation"]
+      },
+      "then": {
+        "properties": {
+          "grant": {
+            "properties": {
+              "capabilities": {
+                "not": {
+                  "contains": {
+                    "properties": { "approval": { "not": { "const": "automatic" } } },
+                    "required": ["approval"]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "fingerprint": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["userId", "projectId", "assistantId"],
+      "properties": {
+        "userId": { "$ref": "#/$defs/uuid" },
+        "projectId": { "type": "string", "pattern": "^project_[a-z0-9]{8,64}$" },
+        "assistantId": { "type": "string", "pattern": "^assistant_[a-z0-9]{8,64}$" }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "fingerprint"],
+      "properties": {
+        "ref": { "type": "string", "pattern": "^input_ref_[a-z0-9]{16,64}$" },
+        "fingerprint": { "$ref": "#/$defs/fingerprint" }
+      }
+    },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expression", "timezone", "calculator"],
+      "properties": {
+        "expression": {
+          "type": "string",
+          "minLength": 9,
+          "maxLength": 256,
+          "pattern": "^(?!TZ=)(?!CRON_TZ=)(?!@)\\S+(?: \\S+){4}$"
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^(?:UTC|Etc/UTC|[A-Za-z_]+(?:/[A-Za-z0-9_+.-]+)+)$"
+        },
+        "calculator": { "const": "robfig-cron/v3.0.1+go-tzdata" }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "modelId"],
+      "properties": {
+        "provider": { "$ref": "#/$defs/identifier" },
+        "modelId": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxWallSeconds", "maxModelTokens", "maxToolCalls", "maxArtifactBytes"],
+      "properties": {
+        "maxWallSeconds": { "type": "integer", "minimum": 0, "maximum": 86400 },
+        "maxModelTokens": { "type": "integer", "minimum": 0, "maximum": 10000000 },
+        "maxToolCalls": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "maxArtifactBytes": { "type": "integer", "minimum": 0, "maximum": 10737418240 }
+      }
+    },
+    "skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["installationId", "admissionId", "packageFingerprint", "runtimeBundleFingerprint"],
+      "properties": {
+        "installationId": { "$ref": "#/$defs/uuid" },
+        "admissionId": { "$ref": "#/$defs/uuid" },
+        "packageFingerprint": { "$ref": "#/$defs/fingerprint" },
+        "runtimeBundleFingerprint": { "$ref": "#/$defs/fingerprint" }
+      }
+    },
+    "grant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "grantId",
+        "grantFingerprint",
+        "registryFingerprint",
+        "issuedAt",
+        "expiresAt",
+        "capabilities"
+      ],
+      "properties": {
+        "grantId": { "type": "string", "pattern": "^grant_[a-z0-9]{16,64}$" },
+        "grantFingerprint": { "$ref": "#/$defs/fingerprint" },
+        "registryFingerprint": { "$ref": "#/$defs/fingerprint" },
+        "issuedAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/capability" }
+        }
+      }
+    },
+    "selector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "values"],
+      "properties": {
+        "kind": { "enum": ["exact", "prefix"] },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 256 }
+        }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability", "actions", "resources", "approval", "maxCalls"],
+      "properties": {
+        "capability": { "$ref": "#/$defs/identifier" },
+        "actions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "resources": { "$ref": "#/$defs/selector" },
+        "approval": { "enum": ["automatic", "once", "per_commit", "denied"] },
+        "maxCalls": { "type": "integer", "minimum": 0, "maximum": 10000 }
+      }
+    },
+    "egress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "rules"],
+      "properties": {
+        "mode": { "enum": ["none", "allowlist", "brokered"] },
+        "rules": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["scheme", "host", "ports"],
+            "properties": {
+              "scheme": { "enum": ["https", "wss"] },
+              "host": { "type": "string", "minLength": 1, "maxLength": 253 },
+              "ports": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 8,
+                "uniqueItems": true,
+                "items": { "type": "integer", "minimum": 1, "maximum": 65535 }
+              }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "mode": { "const": "none" } }, "required": ["mode"] },
+          "then": { "properties": { "rules": { "maxItems": 0 } } }
+        },
+        {
+          "if": {
+            "properties": { "mode": { "enum": ["allowlist", "brokered"] } },
+            "required": ["mode"]
+          },
+          "then": { "properties": { "rules": { "minItems": 1 } } }
+        }
+      ]
+    },
+    "secret": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slot", "brokerRef", "actions", "ttlSeconds"],
+      "properties": {
+        "slot": { "$ref": "#/$defs/identifier" },
+        "brokerRef": { "type": "string", "pattern": "^secret_ref_[a-z0-9]{16,64}$" },
+        "actions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "ttlSeconds": { "type": "integer", "minimum": 1, "maximum": 3600 }
+      }
+    },
+    "automation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "approvalId"],
+      "properties": {
+        "class": { "enum": ["automation_read_only", "automation_brokered_effect"] },
+        "approvalId": { "type": "string", "pattern": "^approval_[a-z0-9]{16,64}$" }
+      }
+    },
+    "policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "missed",
+        "catchupWindowSeconds",
+        "maxCatchupRuns",
+        "overlap",
+        "maxAttempts",
+        "retryBackoffSeconds"
+      ],
+      "properties": {
+        "missed": { "enum": ["skip", "fire_once", "catch_up"] },
+        "catchupWindowSeconds": { "type": "integer", "minimum": 10, "maximum": 86400 },
+        "maxCatchupRuns": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "overlap": { "enum": ["skip", "buffer_one", "allow"] },
+        "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "retryBackoffSeconds": { "type": "integer", "minimum": 1, "maximum": 3600 }
+      }
+    }
+  }
+}

@@ -6,11 +6,11 @@
 
 Apply this contract for Agent Skill admission, Run/Step/Attempt persistence,
 Capability Grants, Runner RPC, side effects, Child Agents, Cron, Draft learning,
-  Kill Switches, or the legacy text-Skill cutover. G20.1 implements the
-  no-execute supply chain, G20.2 the internal durable Orchestrator, G20.3 the
-  held Runner, G20.4 the held Broker and G20.5 the held depth-1 delegation
-  source/control foundations; current Agent API, Chat, MCP and
-  `/v1/code/executions` behavior remains unchanged.
+Kill Switches, or the legacy text-Skill cutover. G20.1 implements the no-execute
+supply chain, G20.2 the internal durable Orchestrator, G20.3 the held Runner,
+G20.4 the held Broker, G20.5 the held depth-1 delegation and G20.6 the held
+durable Cron scheduling source/control foundations; current Agent API, Chat, MCP
+and `/v1/code/executions` behavior remains unchanged.
 
 ### 2. Signatures
 
@@ -239,4 +239,123 @@ SKILL.md says allowed-tools -> model sees delegate_task -> child creates child
 ```text
 package request -> server Grant intersection -> depth-1 forbidden-set removal
 -> registry fingerprint -> launch admission -> no delegate_task exists
+```
+
+## Scenario: Durable Cron scheduling foundation
+
+### 1. Scope / Trigger
+
+Apply this contract when creating or changing an Agent Cron template revision,
+schedule calculator, durable cursor/claim/occurrence flow, trigger admission,
+retry/overlap policy, lifecycle, reconciliation or retention. G20.6 is a held
+control-plane foundation: it may atomically create a normal Orchestrator Run,
+but it does not expose a public API or enable a startup/production Scheduler.
+
+### 2. Signatures
+
+- Go package: `mm-chat/backend/internal/agentcron`.
+- Database authority: migration `088_agent_cron_foundation` and role
+  `agent_cron_control`.
+- Contract schema: `neo-cron-template.schema.json` with its valid and invalid
+  fixtures.
+- Source gate: `bash mm-chat/scripts/verify-agent-cron.sh`.
+- PostgreSQL 17 gate:
+  `bash mm-chat/scripts/verify-agent-cron-postgres17.sh`.
+
+### 3. Contracts
+
+- A logical template stores lifecycle, current revision, exact next UTC cursor
+  and claim state. Changing any frozen owner/input/schedule/timezone/model/
+  budget/Skill/Grant/Registry/Egress/Secret/expiry/step/scope/policy field creates
+  a new immutable revision and append-only automation approval.
+- Accept exactly a standard five-field Cron expression. Reject seconds,
+  descriptors, `TZ=`/`CRON_TZ=` prefixes and unknown fields. Load the separately
+  frozen IANA timezone from embedded Go tzdata; the calculator identity is
+  `robfig-cron/v3.0.1+go-tzdata`.
+- Spring-forward gaps create no occurrence; fall-back overlaps create both UTC
+  instants. Durable occurrence identity is
+  `template + revision + scheduled UTC instant`.
+- PostgreSQL migration `088` is the only durable template, revision, approval,
+  cursor, claim, occurrence, audit and Run-link authority. Candidate selection
+  may use `FOR UPDATE SKIP LOCKED`, but every cursor advance, enqueue, release
+  and terminal transition must recheck owner + generation + expiry under the
+  exact row lock.
+- Missed policy is only `skip`, `fire_once` or bounded `catch_up` with a maximum
+  24-hour window and `maxCatchupRuns <= 100`. Overlap is only `skip`,
+  `buffer_one` or `allow`; retry is bounded and reuses the same occurrence and
+  Run idempotency identity. Never retry a proven enqueue or an external effect.
+- Enqueue atomically links the occurrence to a normal Orchestrator Run. Trigger
+  admission rechecks current revision, live owner, exact installed/admitted
+  package/runtime, unrevoked Grant and approval, expiry, relevant Kill Switches,
+  budget and overlap. It never falls forward to a latest revision, Skill,
+  Grant, model or Secret.
+- `agent_cron_control` has SELECT plus exact `SECURITY DEFINER` function
+  execution and no table DML. Runner receives no database, vault, object-store,
+  Provider or Cron credentials.
+- Pause stops future materialization; resume advances to the next future instant
+  without surprise backfill; delete tombstones. Runtime/Scheduler disabled still
+  permits reconciliation, exhausted-retry terminalization, audit reads and
+  bounded cleanup.
+- No HTTP, Chat, frontend, startup, Redis wake, Compose or production
+  Runner/Broker path may import or invoke G20.6. Exact-host promotion remains
+  `ISOLATION_UNAVAILABLE`, and legacy text Skills remain until G20.9.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| invalid/ambiguous schedule, timezone, policy, budget or content-bearing metadata | reject revision; persist nothing |
+| stale cursor/trigger generation, owner or expired claim | `STALE_CLAIM`; no advance, enqueue, release or terminalization |
+| claimed revision is no longer the active exact revision | `STALE_TEMPLATE`; sanitized skipped fact, no Run |
+| owner deleted | `OWNER_REVOKED`; sanitized skipped fact, no Run |
+| Skill uninstalled, rejected or runtime fingerprint drifted | `SKILL_REVOKED`; no fallback and no Run |
+| Grant or automation approval revoked | `GRANT_REVOKED` / `APPROVAL_REVOKED`; no Run |
+| revision expired | `TEMPLATE_EXPIRED`; no Run |
+| matching Secret Kill Switch active | `SECRET_REVOKED`; no Run or Secret resolution |
+| global/scheduler/user/project/skill Kill Switch active | `KILL_SWITCH_ACTIVE`; no Run |
+| live overlapping Run under `skip` / full `buffer_one` | `OVERLAP_SKIPPED` / `OVERLAP_BUFFER_FULL`; no replacement Run |
+
+### 5. Good / Base / Bad Cases
+
+- **Good**: two workers race on one due cursor; one fenced generation records a
+  unique UTC occurrence and one stable-idempotency Orchestrator Run, while replay
+  after acknowledgement loss returns that same Run.
+- **Base**: Runtime and Scheduler remain disabled; no trigger loop starts, while
+  an authorized control-plane operator can reconcile expired claims and prune
+  eligible terminal history in bounded batches.
+- **Bad**: a process-local timer advances an in-memory cursor, accepts embedded
+  timezone syntax, unboundedly backfills after an outage, or enqueues with the
+  latest Skill/Grant after its claimed revision lost authority.
+
+### 6. Tests Required
+
+- Unit/race tests: strict parsing and unknown fields, fingerprint stability, IANA
+  timezone validation, DST gap/overlap, bounded missed policies, lifecycle,
+  stale claims, retry, overlap and occurrence idempotency.
+- Migration schema tests must pin immutable tables/functions, narrow grants,
+  sanitized rows and guarded rollback.
+- The PostgreSQL 17 drill must cover fresh/replay, concurrent claims,
+  crash/restart reclaim, stale advance/release/enqueue, acknowledgement-loss
+  replay, bounded retry terminalization, all overlap modes, owner/Skill/Grant/
+  approval/expiry/Kill-Switch denials, dump/restore, least privilege, guarded
+  down and clean down/up.
+- Every older PostgreSQL drill that peels tail migrations must down empty `088`
+  before testing its own guard and then reapply through head `088`.
+- Phase 0 and source gates must prove the package has no public/startup wiring;
+  the exact-host gate must remain expected-nonzero `ISOLATION_UNAVAILABLE`.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+process-local timer -> mutable template -> enqueue with latest authority
+```
+
+#### Correct
+
+```text
+strict Go Cron + embedded tzdata -> immutable approved revision
+-> PostgreSQL-fenced UTC cursor/occurrence -> trigger-time authority recheck
+-> atomic stable-idempotency Orchestrator Run link
 ```

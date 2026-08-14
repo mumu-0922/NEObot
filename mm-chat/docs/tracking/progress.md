@@ -1660,9 +1660,21 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           strict Workspace/OCI/Scratch/Artifact lifecycle and exact reconcile;
           production isolation promotion remains held because the current host
           correctly returns `ISOLATION_UNAVAILABLE`.
-    - [ ] G20.4 Tool, Egress, Secret and side-effect brokers.
-    - [ ] G20.5 Child Agent depth 1.
-    - [ ] G20.6 Cron durable scheduling.
+    - [x] G20.4 Tool, Egress, Secret and side-effect broker source/control:
+          migration `086`, frozen Registry, Prepare/approval/Commit,
+          cancellation races, Grant revocation, memory-only Secret handles,
+          shared safe-network boundary and PostgreSQL 17 recovery proof;
+          production relay remains held.
+    - [x] G20.5 Child Agent depth-1 source/control: migration `087`, strict
+          Parent-derived authority/Registry/budget subsets, launch admission,
+          settlement, Child-first cascade and durable reap recovery; public and
+          startup Child execution remains held.
+    - [x] G20.6 Cron durable scheduling source/control: migration `088`, strict
+          five-field IANA/DST calculation, immutable approved revisions,
+          generation-fenced cursors/occurrences, bounded missed/overlap/retry,
+          trigger-time authority, atomic idempotent normal-Run link, lifecycle,
+          cleanup and PostgreSQL 17 replay/restore proof; public/startup
+          Scheduler remains held.
     - [ ] G20.7 Draft-only learning.
     - [ ] G20.8 Product UI and shadow execution.
     - [ ] G20.9 Legacy Skill deletion and production cutover.

@@ -70,7 +70,7 @@ database_url="$(database_url_for "${container_name}")"
 server_major="$(psql_command "${container_name}" 'SHOW server_version_num' | cut -c1-2)"
 [[ "${server_major}" == "17" ]] || { echo "expected PostgreSQL 17" >&2; exit 1; }
 
-log "building and applying 001 -> 087"
+log "building and applying 001 -> 088"
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/mm-chat-migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"; }
 run_migrate up >"${work_dir}/fresh.log" 2>&1
@@ -78,6 +78,7 @@ grep -Fq "up 084_agent_orchestrator_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 085_agent_runner_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 086_agent_broker_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 087_agent_child_delegation" "${work_dir}/fresh.log"
+grep -Fq "up 088_agent_cron_foundation" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
@@ -118,6 +119,8 @@ log "creating retained authority for guarded down and dump/restore"
   MM_CHAT_AGENT_RETAIN_FIXTURE=1 \
   go test -count=1 -run '^TestPostgresAuthority' ./internal/agentorchestrator)
 
+run_migrate down >"${work_dir}/guard-peel-088.log" 2>&1
+grep -Fq "down 088_agent_cron_foundation" "${work_dir}/guard-peel-088.log"
 run_migrate down >"${work_dir}/guard-peel-087.log" 2>&1
 grep -Fq "down 087_agent_child_delegation" "${work_dir}/guard-peel-087.log"
 run_migrate down >"${work_dir}/guard-peel-086.log" 2>&1
@@ -137,6 +140,7 @@ run_migrate up >"${work_dir}/guard-reapply-tail.log" 2>&1
 grep -Fq "up 085_agent_runner_foundation" "${work_dir}/guard-reapply-tail.log"
 grep -Fq "up 086_agent_broker_foundation" "${work_dir}/guard-reapply-tail.log"
 grep -Fq "up 087_agent_child_delegation" "${work_dir}/guard-reapply-tail.log"
+grep -Fq "up 088_agent_cron_foundation" "${work_dir}/guard-reapply-tail.log"
 
 log "dumping and restoring content-free control-plane authority"
 docker exec -e "PGPASSWORD=${database_password}" "${container_name}" \
@@ -175,7 +179,9 @@ END
 \$\$;
 " >/dev/null
 
-log "rolling back empty 087 through 085, then proving clean 083 -> 084 -> 083 -> 087 replay"
+log "rolling back empty 088 through 085, then proving clean 083 -> 084 -> 083 -> 088 replay"
+run_migrate down >"${work_dir}/down-088.log" 2>&1
+grep -Fq "down 088_agent_cron_foundation" "${work_dir}/down-088.log"
 run_migrate down >"${work_dir}/down-087.log" 2>&1
 grep -Fq "down 087_agent_child_delegation" "${work_dir}/down-087.log"
 run_migrate down >"${work_dir}/down-086.log" 2>&1
@@ -195,6 +201,7 @@ grep -Fq "up 084_agent_orchestrator_foundation" "${work_dir}/reup.log"
 grep -Fq "up 085_agent_runner_foundation" "${work_dir}/reup.log"
 grep -Fq "up 086_agent_broker_foundation" "${work_dir}/reup.log"
 grep -Fq "up 087_agent_child_delegation" "${work_dir}/reup.log"
+grep -Fq "up 088_agent_cron_foundation" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 

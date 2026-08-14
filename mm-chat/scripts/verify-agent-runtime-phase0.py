@@ -24,6 +24,7 @@ SCHEMA_NAMES = (
     "neo-capability-grant",
     "neo-runner-rpc",
     "neo-run-event",
+    "neo-cron-template",
 )
 JsonObject = dict[str, Any]
 
@@ -145,6 +146,7 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
     grant = instances["neo-capability-grant"]
     launch = instances["neo-runner-rpc"]
     event = instances["neo-run-event"]
+    cron_template = instances["neo-cron-template"]
 
     check_fingerprint_bindings(grant, launch)
     require_equal(
@@ -172,6 +174,36 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
     check_child_registry(grant, launch)
     check_event_bindings(launch, event)
 
+    require_equal(
+        cron_template["owner"], grant["subject"], "Cron/grant subjects differ"
+    )
+    require_equal(
+        cron_template["skill"]["packageFingerprint"],
+        grant["packageFingerprint"],
+        "Cron/grant package fingerprints differ",
+    )
+    require_equal(
+        cron_template["skill"]["runtimeBundleFingerprint"],
+        grant["runtimeBundleFingerprint"],
+        "Cron/grant runtime fingerprints differ",
+    )
+    require_equal(
+        cron_template["grant"]["grantId"], grant["grantId"], "Cron/grant IDs differ"
+    )
+    require_equal(
+        cron_template["grant"]["grantFingerprint"],
+        launch["body"]["grantFingerprint"],
+        "Cron/launch Grant fingerprints differ",
+    )
+    require_equal(
+        cron_template["grant"]["registryFingerprint"],
+        launch["body"]["toolRegistry"]["registryFingerprint"],
+        "Cron/launch Registry fingerprints differ",
+    )
+    require_equal(cron_template["budget"], grant["budget"], "Cron/grant budgets differ")
+    if cron_template["schedule"]["calculator"] != "robfig-cron/v3.0.1+go-tzdata":
+        raise VerificationError("Cron calculator version is not frozen")
+
     issued = datetime.fromisoformat(grant["issuedAt"].replace("Z", "+00:00"))
     expires = datetime.fromisoformat(grant["expiresAt"].replace("Z", "+00:00"))
     if expires <= issued:
@@ -185,7 +217,7 @@ def check_document_anchors() -> None:
             "ArchiMate cross-layer blueprint",
             "Trust boundaries and STRIDE",
             "Kill Switch hierarchy",
-            "migration `087`",
+            "migration `088`",
             "旧版技能已退役",
         ),
         CONTRACT_DIR / "agent-runtime.md": (
@@ -193,6 +225,7 @@ def check_document_anchors() -> None:
             "Prepare / Commit protocol",
             "Child Agent contract",
             "G20.5 implementation signatures",
+            "G20.6 implementation signatures",
             "Isolation Acceptance Suite",
             "CODE_EXECUTION_UNAVAILABLE",
         ),
@@ -201,12 +234,14 @@ def check_document_anchors() -> None:
             "rootless OCI",
             "Kill Switch operations",
             "Child delegation operations boundary",
+            "Cron scheduling operations boundary",
             "Legacy Skill cutover and rollback",
         ),
         PROJECT_DIR / "docs" / "tracking" / "g20-agent-runtime-plan.md": (
             "G20.0",
             "G20.9",
             "G20.5",
+            "G20.6",
             "delegate_task",
             "hard delete",
         ),

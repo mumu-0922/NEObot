@@ -4,7 +4,7 @@
 - [`server-refactor-design.md`](./server-refactor-design.md) — full server-backed refactor design and phased migration plan.
 - [`memory-v2-foundation.md`](./memory-v2-foundation.md) — Memory v2 migrations `053`–`059`: scoped foundation, worker/provenance/Review, direct actions, lexical/BGE hybrid shadow, Global v1 compatibility, and guarded rollback.
 - [`mcp-tools.md`](./mcp-tools.md) — server-authoritative MCP Tools architecture, native provider loop, transports, Runner boundary, persistence, retention, and rollback.
-- [`agent-runtime.md`](./agent-runtime.md) — G20 C4/ArchiMate blueprint with implemented G20.1 Skill supply, G20.2 durable orchestration, held G20.3 non-root `neo-runnerd` source/control isolation, and future brokers, depth-1 delegation, Cron/learning, and legacy cutover.
+- [`agent-runtime.md`](./agent-runtime.md) — G20 C4/ArchiMate blueprint with implemented G20.1 Skill supply, G20.2 durable orchestration, held G20.3 non-root `neo-runnerd`, G20.4 Broker, G20.5 depth-1 delegation and G20.6 durable Cron source/control foundations, plus future Draft learning and legacy cutover.
 - [`phase-11-plus-roadmap.md`](./phase-11-plus-roadmap.md) — post-Phase-10 roadmap, planning rule, and frontend/RAG/K8s sequencing.
 - [`phase-15-accuracy-first-rag-design.md`](./phase-15-accuracy-first-rag-design.md) — proposed accuracy-first parsing, hierarchical hybrid retrieval, reranking, evaluation, and RAG safety architecture.
 - [`phase-15-recommended-implementation-profile.md`](./phase-15-recommended-implementation-profile.md) — Chinese owner-review draft recommending MinerU, Jina Embeddings v4, Qdrant hybrid retrieval, reranking, and single-server boundaries.

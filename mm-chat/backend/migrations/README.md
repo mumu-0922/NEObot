@@ -143,7 +143,7 @@ function signatures, owners, and grants while pinning lookup to the application
 schema, `pg_catalog`, and `pg_temp`. Its down path intentionally retains the
 safe search path rather than reopening object-shadowing risk.
 
-The current migration head is `076`; the latest RAG retrieval-specific migration
+The current migration head is `088`; the latest RAG retrieval-specific migration
 remains `050`. Migration `043` extends the existing final-authority evidence
 hydration boundary with complete matched-Child and containing-Parent source
 text plus their persisted token counts. Parent text is answer context only. Its
@@ -578,6 +578,24 @@ effect roles gain no delegation authority. Down refuses while any authority,
 lineage, settlement or reap fact exists. Disposable proof uses
 `scripts/verify-agent-delegation-postgres17.sh`, and every older PostgreSQL tail
 drill now peels and reapplies through `087` before testing its original guard.
+
+Migration `088` adds the held G20.6 durable Cron scheduling authority without
+enabling a public Cron API, frontend/Chat wiring, startup Scheduler or production
+Run execution. Immutable approved revisions freeze exact owner, input reference
+and fingerprint, five-field schedule, IANA timezone/calculator, model, budgets,
+Skill installation/admission/package/runtime, Grant/Registry/capabilities,
+Egress, Secret refs, expiry, steps/scopes and scheduling policies. PostgreSQL
+owns the exact cursor, owner/generation/expiry claims, unique UTC occurrences,
+trigger-time owner/Skill/Grant/approval/expiry/Kill/overlap denial, atomic normal
+Orchestrator Run link, sanitized audit and bounded cleanup. The independent
+`agent_cron_control` role has SELECT plus exact `SECURITY DEFINER` execution and
+no table DML; API, Orchestrator, Runner, effect and delegation roles gain no
+Cron authority. Down refuses while any template, revision, approval/revocation,
+trigger or audit fact exists and revokes all pre-existing-object/schema grants
+before removing the NOLOGIN Cron roles. Disposable proof uses
+`scripts/verify-agent-cron-postgres17.sh`, and every older PostgreSQL tail drill
+now peels and reapplies through current head `088` before testing its original
+guard.
 
 ## Storage boundaries
 

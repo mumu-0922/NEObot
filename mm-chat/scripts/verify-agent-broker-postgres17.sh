@@ -35,13 +35,14 @@ database_url="$(database_url_for "${container_name}")"
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 run_migrate(){ MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" "$@"; }
 
-log "applying 001 -> 087 and replaying"
+log "applying 001 -> 088 and replaying"
 if ! run_migrate up >"${work_dir}/fresh.log" 2>&1; then
   cat "${work_dir}/fresh.log" >&2
   exit 1
 fi
 grep -Fq "up 086_agent_broker_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 087_agent_child_delegation" "${work_dir}/fresh.log"
+grep -Fq "up 088_agent_cron_foundation" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
@@ -73,6 +74,8 @@ log "running Prepare/approval/Commit/budget/lease integration"
 
 log "creating retained fixture and proving guarded down"
 (cd "${backend_dir}" && MM_CHAT_TEST_DATABASE_URL="${database_url}" MM_CHAT_AGENT_BROKER_RETAIN_FIXTURE=1 go test -count=1 -run '^TestPostgresAgentBrokerPrepare' ./internal/agentbroker)
+run_migrate down >"${work_dir}/guard-peel-088.log" 2>&1
+grep -Fq "down 088_agent_cron_foundation" "${work_dir}/guard-peel-088.log"
 run_migrate down >"${work_dir}/guard-peel-087.log" 2>&1
 grep -Fq "down 087_agent_child_delegation" "${work_dir}/guard-peel-087.log"
 set +e
@@ -89,13 +92,14 @@ docker exec -i -e "PGPASSWORD=${database_password}" "${restore_container_name}" 
 restore_counts="$(psql_command "${restore_container_name}" "SELECT concat_ws(',',(SELECT count(*) FROM agent_effect_intents),(SELECT count(*) FROM agent_effect_approvals),(SELECT count(*) FROM agent_effect_receipts),(SELECT count(*) FROM agent_effect_grant_revocations),(SELECT count(*) FROM agent_effect_cancellations),(SELECT count(*) FROM agent_secret_handles));")"
 [[ "${source_counts}" == "${restore_counts}" ]]
 
-log "proving clean 085 -> 087 -> 085 -> 087"
+log "proving clean 085 -> 088 -> 085 -> 088"
 psql_command "${container_name}" "TRUNCATE agent_effect_grant_revocations;DELETE FROM agent_runs;DELETE FROM agent_run_snapshots;" >/dev/null
 run_migrate down >"${work_dir}/down.log" 2>&1
 grep -Fq "down 086_agent_broker_foundation" "${work_dir}/down.log"
 run_migrate up >"${work_dir}/reup.log" 2>&1
 grep -Fq "up 086_agent_broker_foundation" "${work_dir}/reup.log"
 grep -Fq "up 087_agent_child_delegation" "${work_dir}/reup.log"
+grep -Fq "up 088_agent_cron_foundation" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final.log"
 log "passed (fresh/replay, least privilege, concurrency, fences, guarded down, dump/restore, clean down/up)"

@@ -1,9 +1,10 @@
 # Neo Agent Runtime Executable Contract
 
 Status: G20.1 supply-chain, G20.2 durable Orchestrator, G20.3 Runner, G20.4
-brokered effects and G20.5 depth-1 Child delegation source/control foundations
-implemented. Exact-host isolation, production relay and Child execution
-promotion are held; all production Agent execution remains disabled.
+brokered effects, G20.5 depth-1 Child delegation and G20.6 durable Cron
+scheduling source/control foundations are implemented. Exact-host isolation and
+production Runner/Broker/Child/Scheduler promotion are held; all production
+Agent execution remains disabled.
 
 ## 1. Scope and hard gates
 
@@ -34,6 +35,7 @@ Acceptance Suite. `POST /v1/code/executions` remains
 | effective authorization | `neo.capability-grant/v1` — [`neo-capability-grant.schema.json`](./schemas/neo-capability-grant.schema.json) |
 | Runner protocol envelope | `neo.runner-rpc/v1` — [`neo-runner-rpc.schema.json`](./schemas/neo-runner-rpc.schema.json) |
 | durable event | `neo.run-event/v1` — [`neo-run-event.schema.json`](./schemas/neo-run-event.schema.json) |
+| immutable Cron revision | `neo.cron-template/v1` — [`neo-cron-template.schema.json`](./schemas/neo-cron-template.schema.json) |
 
 JSON Schema Draft 2020-12 is the serialization authority. Unknown object fields
 are rejected. Schema validation never replaces authorization or cross-document
@@ -201,6 +203,23 @@ G20.5 implementation signatures:
   lease/launch fences, terminal settlement, cascade, recovery, least privilege,
   guarded rollback and dump/restore. They do not enable production Child
   execution or supply exact-host isolation evidence.
+
+G20.6 implementation signatures:
+
+- `backend/internal/agentcron/` validates and fingerprints immutable template
+  revisions, performs strict five-field schedule/IANA timezone calculation, and
+  plans bounded occurrences without HTTP/startup wiring;
+- migration `088` owns templates, immutable revisions, automation approvals and
+  revocations, exact cursors, generation-fenced claims, unique UTC occurrences,
+  atomic normal-Run links, sanitized audits and bounded cleanup through the
+  narrow `agent_cron_control` role;
+- the stable occurrence and Run idempotency identity is the exact template ID,
+  revision and `scheduled_for` UTC instant. Enqueue acknowledgement replay
+  returns the existing linked Run;
+- `scripts/verify-agent-cron{,-postgres17}.sh` prove DST, bounded missed/overlap
+  policies, concurrent/restart claims, stale fencing, authority revocation,
+  pause/resume/delete, least privilege, guarded rollback and dump/restore. They
+  do not expose a Cron API, start a Scheduler or enable production Runtime.
 
 ## 6. Runner RPC
 
@@ -424,12 +443,34 @@ matching memory-only Secret bytes.
 
 ## 12. Cron and Draft learning
 
-Cron template revision freezes exact owner, input/prompt hash, schedule/timezone,
-model, budget, Skill/runtime/Grant fingerprints, Egress and Secret refs. Trigger
-creates a normal Run after current owner, admission, revoke, expiry and Kill
-Switch revalidation. No inherited interactive approval is assumed; the Cron
-must carry an explicitly approved automation class. Editing any frozen field
-creates a new revision and approval.
+Cron accepts exactly standard five-field expressions. Seconds, descriptors and
+embedded `TZ=` / `CRON_TZ=` are invalid. Timezone is a separate frozen IANA
+name; the calculator is `robfig-cron/v3.0.1+go-tzdata`. DST gaps do not invent a
+wall time and DST overlap produces both distinct UTC instants.
+
+Each immutable template revision freezes exact owner, input reference and
+fingerprint without body content, schedule/timezone/calculator, model, four
+budgets, Skill installation/admission/package/runtime, Grant ID/fingerprint/
+capabilities, Registry fingerprint, Egress, Secret refs, expiry, steps, scopes
+and scheduling policies. The append-only approval class is
+`automation_read_only` or `automation_brokered_effect`; brokered automation may
+create a Run but cannot bypass per-effect Prepare/Commit. Editing any frozen
+field creates a new revision and approval.
+
+PostgreSQL stores the exact next cursor and fences cursor/trigger claims by
+owner, generation and expiry. Missed policy is `skip`, `fire_once` or bounded
+`catch_up` with at most 100 Runs and a 24-hour window. Overlap is `skip`,
+`buffer_one` or `allow`; replacement/cancel and unbounded BufferAll do not
+exist. Pause blocks materialization, resume moves to the next future instant
+without backfill, and delete remains a tombstone until bounded cleanup.
+
+Every trigger repeats current active revision, owner, exact installed/admitted
+Skill, unrevoked Grant and automation approval, expiry, all applicable Kill
+Switch scopes and overlap under database locks. A mismatch becomes a stable
+sanitized skipped fact and never falls forward to newer authority. The
+occurrence link and normal Orchestrator Run enqueue commit atomically. Retry is
+allowed only while enqueue is unproven and retains the exact occurrence and Run
+identity; it never retries an effect.
 
 Learning output is an untrusted Draft stored in quarantine with source Run IDs,
 evidence, tests and proposed package files. Automated evaluation cannot set
@@ -464,6 +505,9 @@ audit access.
 | illegal state edge | `INVALID_TRANSITION` | no |
 | external result unknowable | `OUTCOME_UNKNOWN` | never automatic Commit retry |
 | Runner cannot start safely | `RUNTIME_UNAVAILABLE` | bounded new Attempt if classified retryable |
+| Cron cursor/trigger owner or generation is stale | `STALE_CLAIM` | old claim never; reclaim with a new generation only |
+| Cron revision changed after claim | `STALE_TEMPLATE` | no; materialize under the newly approved revision |
+| Cron owner/Skill/Grant/approval/expiry/Kill authority denied | stable sanitized denial reason | no authority substitution; future occurrence only after explicit repair |
 
 No error includes secret, raw arguments/result, package contents, Workspace
 paths/content, host paths or provider payloads.
@@ -529,13 +573,15 @@ required design anchors and the current fail-closed code execution route. It is
 offline and must never claim the production Runner or Isolation Acceptance Suite
 passed.
 
-The implemented G20.4/G20.5 source/control foundations additionally require:
+The implemented G20.4/G20.5/G20.6 source/control foundations additionally require:
 
 ```bash
 bash scripts/verify-agent-broker.sh
 bash scripts/verify-agent-broker-postgres17.sh
 bash scripts/verify-agent-delegation.sh
 bash scripts/verify-agent-delegation-postgres17.sh
+bash scripts/verify-agent-cron.sh
+bash scripts/verify-agent-cron-postgres17.sh
 bash scripts/verify-agent-runner.sh
 bash scripts/verify-agent-runtime-phase0.sh
 bash scripts/verify-agent-runner-host.sh # expected nonzero on the current host
@@ -543,4 +589,5 @@ bash scripts/verify-agent-runner-host.sh # expected nonzero on the current host
 
 The host command must still report `ISOLATION_UNAVAILABLE`. Passing the offline
 and disposable-database gates does not authorize an Agent API, Chat/frontend
-path, production relay, Project mutation, mutable canary or text-Skill deletion.
+path, production relay, Scheduler, Project mutation, mutable canary or
+text-Skill deletion.

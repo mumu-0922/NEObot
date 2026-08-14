@@ -28,10 +28,11 @@ start_database "${container_name}";database_url="$(database_url_for "${container
 [[ "$(psql_command "${container_name}" 'SHOW server_version_num'|cut -c1-2)" == "17" ]]
 (cd "${backend_dir}"&&go build -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 run_migrate(){ MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" "$@";}
-log "applying 001 -> 087 and replaying"
+log "applying 001 -> 088 and replaying"
 run_migrate up >"${work_dir}/fresh.log" 2>&1;grep -Fq "up 085_agent_runner_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 086_agent_broker_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 087_agent_child_delegation" "${work_dir}/fresh.log"
+grep -Fq "up 088_agent_cron_foundation" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1;grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
 log "checking credential-free least privilege"
@@ -56,12 +57,14 @@ log "running replay/lease/snapshot/Sandbox/retention integration"
 
 log "creating retained fixture for guarded down and restore"
 (cd "${backend_dir}"&&MM_CHAT_TEST_DATABASE_URL="${database_url}" MM_CHAT_AGENT_RUNNER_RETAIN_FIXTURE=1 go test -count=1 -run '^TestPostgresRunnerAuthority' ./internal/agentrunner)
+run_migrate down >"${work_dir}/guard-peel-088.log" 2>&1;grep -Fq "down 088_agent_cron_foundation" "${work_dir}/guard-peel-088.log"
 run_migrate down >"${work_dir}/guard-peel-087.log" 2>&1;grep -Fq "down 087_agent_child_delegation" "${work_dir}/guard-peel-087.log"
 run_migrate down >"${work_dir}/guard-peel-086.log" 2>&1;grep -Fq "down 086_agent_broker_foundation" "${work_dir}/guard-peel-086.log"
 set +e;run_migrate down >"${work_dir}/guard.log" 2>&1;guard_status=$?;set -e
 if [[ "${guard_status}" -eq 0 ]]||! grep -Fq 'AGENT_RUNNER_DOWN_DATA_EXISTS' "${work_dir}/guard.log";then cat "${work_dir}/guard.log" >&2;exit 1;fi
 run_migrate up >"${work_dir}/guard-reapply-tail.log" 2>&1;grep -Fq "up 086_agent_broker_foundation" "${work_dir}/guard-reapply-tail.log"
 grep -Fq "up 087_agent_child_delegation" "${work_dir}/guard-reapply-tail.log"
+grep -Fq "up 088_agent_cron_foundation" "${work_dir}/guard-reapply-tail.log"
 
 log "dump/restore content-free authority"
 docker exec -e "PGPASSWORD=${database_password}" "${container_name}" pg_dump --no-owner --no-privileges -U "${database_user}" -d "${database_name}" >"${work_dir}/authority.sql"
@@ -71,13 +74,15 @@ docker exec -i -e "PGPASSWORD=${database_password}" "${restore_container_name}" 
 restore_counts="$(psql_command "${restore_container_name}" "SELECT concat_ws(',',(SELECT count(*) FROM agent_runner_requests),(SELECT count(*) FROM agent_runner_sandboxes));")"
 [[ "${source_counts}" == "${restore_counts}" ]]
 
-log "proving clean 084 -> 087 -> 084 -> 087 replay"
+log "proving clean 084 -> 088 -> 084 -> 088 replay"
 psql_command "${container_name}" "DELETE FROM agent_runner_requests;DELETE FROM agent_runner_sandboxes;DELETE FROM agent_runs;DELETE FROM agent_run_snapshots;" >/dev/null
+run_migrate down >"${work_dir}/down-088.log" 2>&1;grep -Fq "down 088_agent_cron_foundation" "${work_dir}/down-088.log"
 run_migrate down >"${work_dir}/down-087.log" 2>&1;grep -Fq "down 087_agent_child_delegation" "${work_dir}/down-087.log"
 run_migrate down >"${work_dir}/down-086.log" 2>&1;grep -Fq "down 086_agent_broker_foundation" "${work_dir}/down-086.log"
 run_migrate down >"${work_dir}/down-085.log" 2>&1;grep -Fq "down 085_agent_runner_foundation" "${work_dir}/down-085.log"
 run_migrate up >"${work_dir}/reup.log" 2>&1;grep -Fq "up 085_agent_runner_foundation" "${work_dir}/reup.log"
 grep -Fq "up 086_agent_broker_foundation" "${work_dir}/reup.log"
 grep -Fq "up 087_agent_child_delegation" "${work_dir}/reup.log"
+grep -Fq "up 088_agent_cron_foundation" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final.log" 2>&1;grep -Fq "no migrations changed" "${work_dir}/final.log"
 log "passed (fresh/replay, concurrency, least privilege, lease/snapshot, retention, guarded down, dump/restore, clean down/up)"
