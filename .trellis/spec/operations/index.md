@@ -10,7 +10,7 @@
 | [Dependency security](./dependency-security.md)             | Lockfile remediation, official-registry audits, override compatibility, and release verification.         |
 | [Runtime recreate image pinning](./runtime-recreate-image-pinning.md) | Immutable image selection, schema compatibility, and rollback requirements for live Compose recreation. |
 | [MCP Runner](./mcp-runner.md)                         | MCP manifest, dedicated Runner image/token/topology, release, backup/restore, retention, and rollback. |
-| [Agent Runtime](./agent-runtime.md) | Non-root `neo-runnerd`, rootless OCI capability probe/isolation, broker boundaries, Kill Switches, release, backup/restore, and cutover. |
+| [Agent Runtime](./agent-runtime.md) | Non-root `neo-runnerd`, rootless OCI, broker/Child/Cron/Draft-learning held boundaries, Kill Switches, backup/restore, release and cutover. |
 | [Session auto-commit](./session-auto-commit.md)             | Exact journal/index staging, commit isolation, ignored paths, and regression tests.                       |
 | [Trellis scaffold boundary](./trellis-scaffold-boundary.md) | Shared Trellis/Codex scaffold, local state exclusions, explicit staging, and fresh-clone verification.    |
 

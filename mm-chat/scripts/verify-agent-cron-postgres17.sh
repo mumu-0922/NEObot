@@ -70,9 +70,10 @@ database_url="$(database_url_for "${container_name}")"
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" "$@"; }
 
-log "applying 001 -> 088 and replaying"
+log "applying 001 -> 089 and replaying"
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 088_agent_cron_foundation" "${work_dir}/fresh.log"
+grep -Fq "up 089_agent_draft_learning" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
@@ -113,6 +114,8 @@ log "creating retained fixture and proving guarded down"
 (cd "${backend_dir}" && MM_CHAT_TEST_DATABASE_URL="${database_url}" \
   MM_CHAT_AGENT_CRON_RETAIN_FIXTURE=1 \
   go test -count=1 -run '^TestPostgresAgentCron' ./internal/agentcron)
+run_migrate down >"${work_dir}/guard-peel-089.log" 2>&1
+grep -Fq "down 089_agent_draft_learning" "${work_dir}/guard-peel-089.log"
 set +e
 run_migrate down >"${work_dir}/guard.log" 2>&1
 guard_status=$?
@@ -153,12 +156,13 @@ if [[ "${source_counts}" != "${restore_counts}" ]]; then
   exit 1
 fi
 
-log "proving clean 087 -> 088 -> 087 -> 088"
+log "proving clean 087 -> 088 -> 087 -> 089"
 psql_command "${container_name}" "DELETE FROM agent_cron_templates;" >/dev/null
 run_migrate down >"${work_dir}/down.log" 2>&1
 grep -Fq "down 088_agent_cron_foundation" "${work_dir}/down.log"
 run_migrate up >"${work_dir}/reup.log" 2>&1
 grep -Fq "up 088_agent_cron_foundation" "${work_dir}/reup.log"
+grep -Fq "up 089_agent_draft_learning" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final.log"
 log "passed (fresh/replay, least privilege, schedule/claims/restart/idempotency/overlap/authority, guarded down, dump/restore, clean down/up)"

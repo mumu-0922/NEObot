@@ -1,9 +1,10 @@
 # G20 Neo Agent Runtime Epic Plan
 
 Status: G20.0 Phase 0, G20.1 Skill supply chain, G20.2 durable Orchestrator,
-G20.3 Runner, G20.4 brokered effects, G20.5 depth-1 Child delegation and G20.6
-durable Cron scheduling source/control foundations complete. Exact-host
-isolation and production Runner/Broker/Child/Scheduler promotion are held.
+G20.3 Runner, G20.4 brokered effects, G20.5 depth-1 Child delegation, G20.6
+durable Cron scheduling and G20.7 Draft-only learning source/control
+foundations complete. Exact-host isolation and production Runner/Broker/Child/
+Scheduler/Learning promotion are held.
 
 ## Locked outcome
 
@@ -190,7 +191,7 @@ sanitized audit and bounded cleanup; strict `neo.cron-template/v1` schema and
 fixtures; focused race/vet plus `verify-agent-cron{,-postgres17}.sh` fresh/
 replay, concurrency, restart, acknowledgement replay, overlap, revocation,
 least-privilege, guarded-down, dump/restore and clean down/up proof. Every older
-PostgreSQL tail drill returns to head `088`.
+PostgreSQL tail drill now returns through the current head `089`.
 
 Held evidence: public Cron CRUD/trigger/backfill API, frontend/Chat integration,
 startup/Redis Scheduler, production Run execution and exact-host promotion. The
@@ -198,6 +199,10 @@ current host remains `ISOLATION_UNAVAILABLE`; pure-text Skills remain untouched
 through G20.8 and are deleted only by G20.9.
 
 ## G20.7 — Draft-only learning
+
+Status: source/control foundation complete (2026-08-14); public review surfaces,
+startup check worker, production isolation/evaluation and exact-host Runtime
+promotion are held.
 
 - Allow completed Runs to propose quarantined Draft package revisions with
   bounded evidence and tests.
@@ -208,6 +213,23 @@ through G20.8 and are deleted only by G20.9.
 
 Promotion gate: prompt-injection, secret-copy, source laundering, evaluation
 gaming, rejected Draft cleanup and human-only Promote tests pass.
+
+Implemented evidence: `internal/agentlearning` immutable archive/evidence/test/
+changed-path fingerprints, version-only authority comparison, bounded ephemeral
+administrator diff, static prompt/secret/laundering/gaming policy, injected held
+isolation/evaluation adapters, human Reject/Promote and collision-safe canonical
+object writes; migration `089` same-user succeeded depth-0 source authority,
+exact three-check generation claims, append-only decisions/audits, atomic new
+`learning` candidate/package admission, object-before-row cleanup and guarded
+rollback; strict `neo.skill-draft/v1` schema/fixtures; focused race/vet plus
+`verify-agent-learning{,-postgres17}.sh` fresh/replay, least-privilege, stale
+claims, decision replay, cleanup, dump/restore and clean down/up proof. Every
+older PostgreSQL tail drill returns to head `089`.
+
+Held evidence: public Draft CRUD/diff/review/Promote API, frontend/Chat wiring,
+startup/Redis learning worker, live Provider evaluation, production Draft
+execution/canary and exact-host isolation. Learning and Runtime remain disabled;
+pure-text Skills remain untouched through G20.8 and are deleted only by G20.9.
 
 ## G20.8 — Product UI and shadow execution
 

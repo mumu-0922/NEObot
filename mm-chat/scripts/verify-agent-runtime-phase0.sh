@@ -24,7 +24,7 @@ for command in jq bash; do
   fi
 done
 
-required_g20_6_paths=(
+required_agent_paths=(
   "${project_dir}/backend/internal/agentdelegation/service.go"
   "${project_dir}/backend/internal/agentdelegation/repository_postgres.go"
   "${project_dir}/backend/migrations/087_agent_child_delegation.up.sql"
@@ -38,10 +38,17 @@ required_g20_6_paths=(
   "${project_dir}/scripts/verify-agent-cron.sh"
   "${project_dir}/scripts/verify-agent-cron-postgres17.sh"
   "${project_dir}/docs/contracts/schemas/neo-cron-template.schema.json"
+  "${project_dir}/backend/internal/agentlearning/service.go"
+  "${project_dir}/backend/internal/agentlearning/repository_postgres.go"
+  "${project_dir}/backend/migrations/089_agent_draft_learning.up.sql"
+  "${project_dir}/backend/migrations/089_agent_draft_learning.down.sql"
+  "${project_dir}/scripts/verify-agent-learning.sh"
+  "${project_dir}/scripts/verify-agent-learning-postgres17.sh"
+  "${project_dir}/docs/contracts/schemas/neo-skill-draft.schema.json"
 )
-for path in "${required_g20_6_paths[@]}"; do
+for path in "${required_agent_paths[@]}"; do
   if [[ ! -s "${path}" ]]; then
-    echo "Agent Runtime Phase 0 verification: missing G20.6 artifact ${path}" >&2
+    echo "Agent Runtime Phase 0 verification: missing Agent artifact ${path}" >&2
     exit 1
   fi
 done
@@ -58,6 +65,14 @@ grep -Fq "DROP FUNCTION agent_cron_enqueue_trigger(" \
   "${project_dir}/backend/migrations/088_agent_cron_foundation.down.sql"
 grep -Fq "DROP FUNCTION agent_cron_reconcile(TIMESTAMPTZ,INTEGER)" \
   "${project_dir}/backend/migrations/088_agent_cron_foundation.down.sql"
+grep -Fq "CREATE FUNCTION agent_learning_create_draft(" \
+  "${project_dir}/backend/migrations/089_agent_draft_learning.up.sql"
+grep -Fq "CREATE FUNCTION agent_learning_promote(" \
+  "${project_dir}/backend/migrations/089_agent_draft_learning.up.sql"
+grep -Fq "DROP FUNCTION agent_learning_promote(" \
+  "${project_dir}/backend/migrations/089_agent_draft_learning.down.sql"
+grep -Fq "DROP FUNCTION agent_learning_reconcile(TIMESTAMPTZ,INTEGER)" \
+  "${project_dir}/backend/migrations/089_agent_draft_learning.down.sql"
 
 schema_dir="${project_dir}/docs/contracts/schemas"
 fixture_dir="${project_dir}/docs/contracts/fixtures/agent-runtime"

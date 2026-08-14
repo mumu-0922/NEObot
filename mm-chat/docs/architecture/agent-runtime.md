@@ -1,10 +1,10 @@
 # Neo Agent Runtime Architecture
 
 Status: G20.1 no-execute Skill supply chain, G20.2 durable Orchestrator, G20.3
-Runner, G20.4 brokered effects, G20.5 depth-1 Child delegation and G20.6 durable
-Cron scheduling source/control foundations are implemented. Exact-host
-isolation and production Runner/Broker/Child/Scheduler promotion are held;
-production Runtime remains disabled.
+Runner, G20.4 brokered effects, G20.5 depth-1 Child delegation, G20.6 durable
+Cron scheduling and G20.7 Draft-only learning source/control foundations are
+implemented. Exact-host isolation and production Runner/Broker/Child/Scheduler/
+Learning promotion are held; production Runtime remains disabled.
 
 ## Purpose and invariant
 
@@ -305,11 +305,34 @@ before enqueue is proven and never retries an effect. No public Cron API,
 frontend, Chat path, startup worker or production Scheduler invokes this held
 foundation.
 
-Learning may create a quarantined Draft containing proposed `SKILL.md`, Neo
-Manifest, tests and provenance evidence. Automated checks may reject or mark it
-reviewable; only an authenticated human Promote can create a new admitted
-fingerprint. Promote never rewrites an installed version, live Run or Cron
-snapshot.
+G20.7 implements the held Draft-only learning foundation in
+`backend/internal/agentlearning/` and migration `089`. Only a same-user,
+terminal `succeeded`, depth-0 Run whose frozen snapshot names the exact base
+package may propose. The canonical Draft binds the source Run/snapshot, base
+and proposed package, runtime/SBOM/archive, exact test inventory, changed paths
+and bounded package/Run-event provenance. Prompt/input/output, Tool,
+Secret/credential and Workspace bodies are forbidden from durable evidence.
+
+The proposed archive must retain the same runtime image, entrypoints,
+dependencies, `allowed-tools`, capability/Egress/Secret/resource authority and
+limits; only the package version may change. Its bytes live under
+`skill-drafts/sha256/`. A mismatched pre-existing content-addressed object is a
+hard drift failure and is not overwritten.
+
+Generation-fenced checking produces exactly one `static`, `isolation` and
+`evaluation` receipt for the same immutable Draft. Policy failure terminalizes
+the Draft; correction creates a new Draft instead of washing a score through
+in-place retry. Only the configured authenticated administrator may Reject or
+Promote. Promote refetches and rehashes bytes, reruns full Skill validation and
+authority comparison, rechecks the exact receipts, source authority and Kill
+Switches, writes canonical package/SBOM/quarantine objects, then atomically
+creates a new admitted `learning` candidate/package. It never mutates an
+installation, source Run/snapshot, Grant or Cron revision. Quarantine cleanup
+is object-before-row and remains available while Learning is disabled.
+
+No HTTP/UI/Chat/startup/Compose path or production isolation/evaluation adapter
+is added in G20.7; the defaults remain `LEARNING_DISABLED` and
+`CHECK_UNAVAILABLE`.
 
 ## Trust boundaries and STRIDE
 
@@ -370,8 +393,9 @@ not reveal private chain-of-thought.
 G20.1 adds Skill supply/API/persistence, G20.2 adds the internal durable
 Orchestrator, G20.3 adds the credential-free host Runner boundary, G20.4 adds
 the held Tool Registry and brokered-effect authority, G20.5 adds held depth-1
-lineage, reservation, launch-admission and reap authority, and G20.6 adds held
+lineage, reservation, launch-admission and reap authority, G20.6 adds held
 immutable Cron revision, cursor/claim, occurrence and normal-Run enqueue
+authority, and G20.7 adds immutable Draft/check/decision/promotion/cleanup
 authority. G20.3
 implements strict TLS 1.3 mTLS RPC, PostgreSQL plus local-fsync replay fences,
 release probing, one rootless Podman Sandbox per Attempt, full Workspace
@@ -382,10 +406,11 @@ G20.4 adds migration `086`, shared safe-network enforcement and strict
 Prepare/Commit relay shapes, but leaves the production relay and all mutations
 unwired. G20.5 adds migration `087` and a signed Runner `runLineage`, but no
 production Child launch path. G20.6 adds migration `088` and the isolated
-`agentcron` package, but no public/startup Scheduler. Migration `088` down is
-guarded by retained Cron revisions, approvals, triggers and audits; the narrow
-`agent_cron_control` role has SELECT plus exact function execution and no table
-DML. None of these groups changes Chat or legacy
+`agentcron` package, but no public/startup Scheduler. G20.7 adds migration `089`
+and the isolated `agentlearning` package, but no public/startup Learning worker
+or executable checker. Migrations `088` and `089` have guarded rollback; the
+narrow Cron and Learning control roles have SELECT plus exact function
+execution and no table DML. None of these groups changes Chat or legacy
 text-Skill behavior; existing pure-text Skills remain untouched through G20.8
 and are deleted only by G20.9.
 The future final cutover:
@@ -417,6 +442,8 @@ Production execution remains disabled until later groups prove:
 - Child registry and launch admission reject recursion;
 - Cron DST/missed/overlap/restart/revocation matrices produce at most one linked
   normal Run per exact UTC occurrence;
+- Draft provenance/static/isolation/evaluation, human Promote, object drift,
+  cleanup and source/Kill-Switch matrices pass without mutating live authority;
 - secret/network/workspace/artifact boundaries pass negative tests;
 - Kill Switches kill/reap exact Sandboxes without stopping cleanup;
 - clean-copy, backup/restore and rollback rehearsals pass.

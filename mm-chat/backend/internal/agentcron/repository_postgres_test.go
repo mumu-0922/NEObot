@@ -448,6 +448,9 @@ VALUES($1,$2,$3,$4,'cron-fixture')
 	if err := removeCronTemplate(ctx, database, expiryTemplate.ID); err != nil {
 		t.Fatal(err)
 	}
+	// The expiry case waits across wall-clock time. Refresh the frozen clock so a
+	// run that began near a minute boundary still computes a future Cron cursor.
+	now = time.Now().UTC().Truncate(time.Second)
 	service.now = func() time.Time { return now }
 
 	// Pause does not fire, resume advances beyond now without backfill, delete is

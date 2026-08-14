@@ -1,11 +1,12 @@
 # Neo Agent Runtime Operations
 
 Status: G20.1 no-execute Skill supply, G20.2 durable Orchestrator, G20.3
-`neo-runnerd`, G20.4 brokered effects, G20.5 depth-1 Child delegation and G20.6
-durable Cron scheduling source/control foundations are implemented. Exact-host
-isolation and production Runner/Broker/Child/Scheduler promotion are held. Do
-not install a Runtime, start a service or Scheduler, enable Agent execution or
-delete legacy Skills from this document alone.
+`neo-runnerd`, G20.4 brokered effects, G20.5 depth-1 Child delegation, G20.6
+durable Cron scheduling and G20.7 Draft-only learning source/control
+foundations are implemented. Exact-host isolation and production Runner/Broker/
+Child/Scheduler/Learning promotion are held. Do not install a Runtime, start a
+service, enable Agent execution/Learning or delete legacy Skills from this
+document alone.
 
 ## Default state
 
@@ -20,7 +21,7 @@ AGENT_DELEGATION_ENABLED=false
 AGENT_RUNNER_URL=
 ```
 
-G20.3 through G20.6 add no application environment variable or Compose service.
+G20.3 through G20.7 add no application environment variable or Compose service.
 The host-only `deploy/agent-runner/neo-runnerd.env.example` is not an activation
 file. These names reserve the intended operational boundary; later promotion
 must add them through the normal preflight/example-env/Compose/documentation
@@ -123,7 +124,7 @@ identity, sends strict `neo.runner-rpc/v1`, bounds headers/body/deadline and
 accepts only a request-ID/nonce/method-bound response. There is no bearer token
 fallback.
 
-## G20.3/G20.4/G20.5/G20.6 source and verification commands
+## G20.3/G20.4/G20.5/G20.6/G20.7 source and verification commands
 
 ```bash
 bash scripts/verify-agent-runner.sh
@@ -134,12 +135,14 @@ bash scripts/verify-agent-delegation.sh
 bash scripts/verify-agent-delegation-postgres17.sh
 bash scripts/verify-agent-cron.sh
 bash scripts/verify-agent-cron-postgres17.sh
+bash scripts/verify-agent-learning.sh
+bash scripts/verify-agent-learning-postgres17.sh
 bash scripts/verify-agent-runtime-phase0.sh
 bash scripts/verify-agent-runner-host.sh
 ```
 
-The first nine commands prove source/control, contract and disposable
-PostgreSQL behavior only. On this host the last command must exit nonzero and
+The source and disposable PostgreSQL commands prove control-plane contracts
+only. The host command must exit nonzero on this host and
 print `ISOLATION_UNAVAILABLE` with
 content-free failure classes. Only an approved manifest installed for the exact
 `neo-runner` account and a complete passing target-host suite may emit a ready
@@ -252,6 +255,33 @@ revisions, approvals/revocations, triggers or audits remain. Use delete
 tombstones plus bounded prune before a deliberate clean rollback; never delete
 protected runtime state or bypass immutable audit triggers to clear the guard.
 
+## Draft learning operations boundary
+
+Migration `089` stores immutable Draft specs, exact check receipts, append-only
+human decisions, promotion links, generation-fenced cleanup work and sanitized
+audits under `agent_learning_owner`. Only `agent_learning_control` may read the
+tables and call the exact `SECURITY DEFINER` functions. API, Orchestrator,
+Runner, effect, delegation and Cron roles gain no Draft table DML or Promote
+execution.
+
+There is no public Draft API/UI, Chat hook, startup worker, Redis wake loop,
+Compose service or production isolation/evaluation adapter. Do not manufacture
+Drafts or decisions in a live database. Operators may run the source and
+disposable PostgreSQL gates above. With Learning disabled, claim
+reconciliation, audit/read, object-before-row cleanup and bounded prune remain
+available; Promote remains blocked.
+
+Promotion writes the canonical package, SBOM and source-quarantine objects
+before the atomic database transaction. A mismatched existing content-addressed
+object is `DRAFT_OBJECT_DRIFT` and must not be overwritten. Orphaned objects
+after a failed database transaction confer no authority and may be handled only
+by a separately reviewed content-addressed orphan sweep.
+
+Migration `089` down fails with `AGENT_LEARNING_DOWN_DATA_EXISTS` while any
+Draft/check/decision/cleanup/audit fact or `learning` candidate remains.
+Production rollback keeps `089` applied and disables Learning; clean down/up is
+for disposable empty databases only.
+
 ## Kill Switch operations
 
 G20.2 persists and resolves the hierarchy through migration `084`; G20.3
@@ -260,8 +290,9 @@ stores expected Sandbox projection; G20.4 migration `086` binds every Prepare
 and Commit to the same epoch; G20.5 migration `087` rechecks Parent/Child scope
 at enqueue and launch and cascades affected Child leases; G20.6 migration `088`
 checks global/scheduler/user/project/skill/admission/Secret scopes before every
-Cron Run enqueue. No production Runner, Broker, Child worker or Scheduler is
-started.
+Cron Run enqueue; G20.7 migration `089` rechecks source Run/package plus
+applicable Kill Switches before Draft completion and Promote. No production
+Runner, Broker, Child worker, Scheduler or Learning worker is started.
 Switch removal remains a new inactive revision; cleanup/recovery/rebuild/
 retention remain available. Exercise the boundaries with:
 
@@ -272,6 +303,7 @@ bash scripts/verify-agent-runner-postgres17.sh
 bash scripts/verify-agent-broker-postgres17.sh
 bash scripts/verify-agent-delegation-postgres17.sh
 bash scripts/verify-agent-cron-postgres17.sh
+bash scripts/verify-agent-learning-postgres17.sh
 ```
 
 These passes are durable control-plane evidence only, not rootless isolation or

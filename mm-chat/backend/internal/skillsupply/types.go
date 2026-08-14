@@ -11,6 +11,10 @@ const (
 	SourceLobeHub  = "lobehub"
 	SourceGit      = "git"
 	SourceZIP      = "zip"
+	// SourceLearning is reserved for the held Agent Draft promotion path. It has
+	// no public ingestion handler and never becomes admissible without the
+	// agentlearning check and human-promotion transaction.
+	SourceLearning = "learning"
 
 	StatusValidated = "validated"
 	StatusAdmitted  = "admitted"

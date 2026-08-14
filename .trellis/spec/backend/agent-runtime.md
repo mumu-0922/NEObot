@@ -339,8 +339,8 @@ but it does not expose a public API or enable a startup/production Scheduler.
   replay, bounded retry terminalization, all overlap modes, owner/Skill/Grant/
   approval/expiry/Kill-Switch denials, dump/restore, least privilege, guarded
   down and clean down/up.
-- Every older PostgreSQL drill that peels tail migrations must down empty `088`
-  before testing its own guard and then reapply through head `088`.
+- Every older PostgreSQL drill that peels tail migrations must down empty `089`
+  and then `088` before testing its own guard, then reapply through head `089`.
 - Phase 0 and source gates must prove the package has no public/startup wiring;
   the exact-host gate must remain expected-nonzero `ISOLATION_UNAVAILABLE`.
 
@@ -358,4 +358,134 @@ process-local timer -> mutable template -> enqueue with latest authority
 strict Go Cron + embedded tzdata -> immutable approved revision
 -> PostgreSQL-fenced UTC cursor/occurrence -> trigger-time authority recheck
 -> atomic stable-idempotency Orchestrator Run link
+```
+
+## Scenario: Immutable Draft-only Agent learning
+
+### 1. Scope / Trigger
+
+Apply this contract when changing Agent learning proposals, Draft archives,
+provenance/tests, check adapters or claims, administrator review/Promote,
+learning admission, quarantine cleanup, migration `089`, or the Skill supply
+`learning` source. G20.7 is a held control-plane foundation with no public API,
+startup worker, Chat/frontend/Compose wiring or production Draft execution.
+
+### 2. Signatures
+
+- Go package: `mm-chat/backend/internal/agentlearning`.
+- Database authority: migration `089_agent_draft_learning`, owner
+  `agent_learning_owner`, and control role `agent_learning_control`.
+- Contract schema: `neo-skill-draft.schema.json` with valid/invalid fixtures.
+- Source gate: `bash mm-chat/scripts/verify-agent-learning.sh`.
+- PostgreSQL 17 gate:
+  `bash mm-chat/scripts/verify-agent-learning-postgres17.sh`.
+
+### 3. Contracts
+
+- Accept only a same-user terminal `succeeded` depth-0 Run whose immutable
+  snapshot binds the exact existing base package. Child, queued/failed,
+  cross-user, stale-snapshot and unknown-base proposals persist no Draft.
+- Revalidate both base and proposal through `skillsupply.ValidateArchive`.
+  Require `SKILL.md`, an exact Neo Runtime Manifest and at least one test under
+  `tests/`. Diff and Promote must bind the revalidated base archive back to the
+  exact stored base package fingerprint, not merely compare equivalent runtime
+  authority. Proposed package/version must differ and the package must not
+  exist.
+- Learning may change only the package version inside the authority envelope.
+  Runtime image/platform/user, entrypoints, dependencies, `allowed-tools`,
+  capability/Egress/Secret requests, resources and limits cannot widen or
+  rebind.
+- The immutable Draft binds source Run/snapshot, base/proposed package,
+  runtime/SBOM/archive, exact test inventory, changed paths and bounded
+  source-package/Run-event evidence. Every changed path must be mapped to Run
+  evidence. Prompt/input/output, Tool, Secret/credential and Workspace bodies
+  are forbidden from durable Draft/check/audit documents.
+- Draft bytes use only `skill-drafts/sha256/<archive>.zip`. Existing bytes at a
+  content-addressed key must match exactly; mismatch is `DRAFT_OBJECT_DRIFT`
+  and is never overwritten.
+- PostgreSQL claims checks by owner/generation/expiry. Exactly one `static`,
+  `isolation` and `evaluation` result for the live generation is required.
+  Static high-confidence prompt override, secret copy, source laundering or
+  evaluation gaming fails policy. Policy failure is terminal for the Draft;
+  infrastructure retry is bounded and stale workers cannot publish/release.
+  Claim functions select only ready `quarantined`/`pending` work; expired
+  `checking`/cleanup claims must first pass through reconciliation so the
+  failed attempt is counted and can terminalize before a new generation.
+- Only the configured authenticated administrator may Reject or Promote using
+  exact revision, Draft/package fingerprints and reason. Exact replay is
+  stable and reads the append-only decision even after delayed quarantine
+  cleanup removed Draft bytes. Promote rehashes and revalidates bytes/authority,
+  verifies current source/Kill Switches and exact receipts, writes canonical
+  source/package/SBOM objects, then atomically creates one new immutable
+  admitted `learning` candidate/package. It never edits a package,
+  installation, Run/snapshot, Grant, Secret, Runtime or Cron revision.
+- Rejected/promoted quarantine cleanup is owner/generation/expiry fenced and
+  object-before-row. Learning disabled still permits read/audit, reconcile,
+  cleanup and bounded prune. Default isolation/evaluation adapters remain
+  unavailable and never execute a package in-process.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| source Run is cross-user, non-succeeded, depth 1 or snapshot/base drifted | `SOURCE_RUN_INVALID`; no Draft row |
+| archive, Manifest, tests, evidence or path binding is invalid | reject before persistence; no admission |
+| proposal changes runtime/Tool/capability/Egress/Secret/resource authority | `AUTHORITY_WIDENED`; no Draft row |
+| proposed package already exists | `PACKAGE_ALREADY_EXISTS`; no Draft row |
+| quarantine/canonical object key contains mismatched bytes | `DRAFT_OBJECT_DRIFT`; do not overwrite or promote |
+| base object validates but no longer matches the stored base package fingerprint | `DRAFT_OBJECT_DRIFT`; no diff or promotion |
+| check owner/generation/expiry is stale | `STALE_CLAIM`; no result/release/cleanup acknowledgement |
+| a check fails policy or exact three receipts are absent | `check_failed` / `CHECKS_INCOMPLETE`; no in-place wash or candidate |
+| non-administrator, stale revision, mismatched fingerprints or active Kill Switch promotes | administrator/revision/promotion/Kill denial; no live mutation |
+| cleanup deletion fails | retain retryable cleanup row; never acknowledge deletion first |
+
+### 5. Good / Base / Bad Cases
+
+- **Good**: a succeeded root Run proposes a version-only package, exact three
+  fenced checks pass, the administrator reviews an ephemeral diff and Promote
+  creates one new admitted fingerprint while the base/install/Run/Cron remain
+  byte-authoritative.
+- **Base**: Learning and Runtime remain disabled; no worker or public surface
+  runs, while reconciliation and object-before-row cleanup remain callable.
+- **Bad**: model output edits the installed Skill, expands a Grant/runtime,
+  retries a failed evaluation against the same Draft, auto-promotes on score,
+  overwrites a content-addressed collision, or deletes a cleanup row before the
+  object.
+
+### 6. Tests Required
+
+- Unit/race tests cover archive/Manifest/test/provenance validation, authority
+  equality, canonical fingerprints, diff limits, prompt/secret/laundering/
+  gaming attacks, default-off adapters, collision drift and cleanup ordering.
+- Migration schema tests pin the five tables, exact functions, immutable facts,
+  sanitized fields, narrow grants, internal `learning` source and guarded down.
+- PostgreSQL 17 proves fresh/replay, least privilege, source authority, exact
+  three-check claims, stale generations, human-only Reject/Promote replay,
+  replay after quarantine cleanup, bounded reconcile-before-reclaim, immutable
+  base/live state, cleanup/restart, dump/restore, guarded down and clean
+  `088 -> 089 -> 088 -> 089`.
+- Exercise failed object read/delete release paths, not only successful cleanup.
+  PL/pgSQL retry locals must use unambiguous names such as `next_attempts`
+  rather than shadowing an `attempts` column.
+- Every older PostgreSQL tail drill peels empty `089` before its original guard
+  and finishes at head `089`. Phase 0 validates the strict Draft schema and
+  cross-contract bindings.
+- Full standalone must pass and exact-host Runner verification remains expected
+  nonzero `ISOLATION_UNAVAILABLE`.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+successful Run -> evaluator score -> overwrite installed Skill -> next Run
+```
+
+#### Correct
+
+```text
+succeeded depth-0 Run + exact base -> immutable quarantined Draft
+-> reconcile-before-reclaim -> generation-fenced static/isolation/evaluation
+-> human Promote -> new admitted immutable package
+-> delayed object-before-row cleanup -> decision-only exact replay
 ```

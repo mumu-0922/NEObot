@@ -1,10 +1,10 @@
 # Neo Agent Runtime Executable Contract
 
 Status: G20.1 supply-chain, G20.2 durable Orchestrator, G20.3 Runner, G20.4
-brokered effects, G20.5 depth-1 Child delegation and G20.6 durable Cron
-scheduling source/control foundations are implemented. Exact-host isolation and
-production Runner/Broker/Child/Scheduler promotion are held; all production
-Agent execution remains disabled.
+brokered effects, G20.5 depth-1 Child delegation, G20.6 durable Cron scheduling
+and G20.7 Draft-only learning source/control foundations are implemented.
+Exact-host isolation and production Runner/Broker/Child/Scheduler/Learning
+promotion are held; all production Agent execution remains disabled.
 
 ## 1. Scope and hard gates
 
@@ -36,6 +36,7 @@ Acceptance Suite. `POST /v1/code/executions` remains
 | Runner protocol envelope | `neo.runner-rpc/v1` — [`neo-runner-rpc.schema.json`](./schemas/neo-runner-rpc.schema.json) |
 | durable event | `neo.run-event/v1` — [`neo-run-event.schema.json`](./schemas/neo-run-event.schema.json) |
 | immutable Cron revision | `neo.cron-template/v1` — [`neo-cron-template.schema.json`](./schemas/neo-cron-template.schema.json) |
+| immutable learning Draft | `neo.skill-draft/v1` — [`neo-skill-draft.schema.json`](./schemas/neo-skill-draft.schema.json) |
 
 JSON Schema Draft 2020-12 is the serialization authority. Unknown object fields
 are rejected. Schema validation never replaces authorization or cross-document
@@ -220,6 +221,27 @@ G20.6 implementation signatures:
   policies, concurrent/restart claims, stale fencing, authority revocation,
   pause/resume/delete, least privilege, guarded rollback and dump/restore. They
   do not expose a Cron API, start a Scheduler or enable production Runtime.
+
+G20.7 implementation signatures:
+
+- `backend/internal/agentlearning/` validates immutable Draft archives,
+  evidence/tests/changed paths, version-only authority, bounded in-memory diff,
+  administrator decisions and object-before-row cleanup without HTTP/startup
+  wiring;
+- migration `089` owns Drafts, exact check receipts, append-only decisions,
+  promotion links, cleanup claims and sanitized audits through the narrow
+  `agent_learning_control` role;
+- only a same-user succeeded depth-0 source Run is eligible. Exactly one
+  `static`, `isolation` and `evaluation` receipt for the live claim generation
+  is required before human Promote;
+- Promote rehashes and revalidates the exact quarantined archive and atomically
+  inserts a new admitted `learning` candidate/package. Base archive validation
+  must also reproduce the stored base package fingerprint. It does not edit a
+  live package, installation, Run snapshot, Grant or Cron revision;
+- `scripts/verify-agent-learning{,-postgres17}.sh` prove archive/provenance/
+  policy checks, stale claims, human-only replay, collision drift, cleanup,
+  least privilege, guarded rollback and dump/restore. Default isolation and
+  evaluation adapters remain unavailable.
 
 ## 6. Runner RPC
 
@@ -472,10 +494,33 @@ occurrence link and normal Orchestrator Run enqueue commit atomically. Retry is
 allowed only while enqueue is unproven and retains the exact occurrence and Run
 identity; it never retries an effect.
 
-Learning output is an untrusted Draft stored in quarantine with source Run IDs,
-evidence, tests and proposed package files. Automated evaluation cannot set
-admitted/installable status. Human Promote reruns admission and produces a new
-fingerprint; rejection/deletion cannot affect the source Run or installed Skill.
+Learning output is an untrusted immutable `neo.skill-draft/v1` document and
+content-addressed archive. It binds a same-user succeeded depth-0 Run and exact
+snapshot, an existing base package, a distinct proposed package, unchanged
+runtime authority, runtime/SBOM/archive/evidence/test fingerprints, exact tests,
+changed paths and bounded source-package/Run-event evidence. Every changed path
+must be covered by Run evidence. Durable documents contain no prompt/input,
+Run output, Tool body, Secret/credential value or Workspace body.
+
+Checking is claimed by owner/generation/expiry and publishes exactly one each
+of `static`, `isolation` and `evaluation` for that generation. High-confidence
+prompt override, secret copy, source laundering or evaluation gaming fails the
+Draft. Policy failure cannot be retried in place; infrastructure failure is
+bounded and stale workers cannot publish or release. Expired checking/cleanup
+claims pass through bounded reconciliation before ready work can be claimed
+again, so every crash consumes an attempt and exhaustion terminalizes.
+
+Only the configured authenticated administrator may Reject or Promote with the
+exact revision, Draft fingerprint, proposed package fingerprint and reason.
+Exact replay returns the original decision. Promote refetches/rehashes bytes,
+reruns complete package and authority validation, verifies the three exact
+passing receipts and current source/Kill-Switch authority, then inserts one new
+immutable admitted `learning` candidate/package. Automated check actors cannot
+admit, install, Promote, mutate Grant/Secret/Runtime authority or change live
+Runs/Cron. Rejected/promoted quarantine objects are deleted before cleanup-row
+acknowledgement; a later exact Promote replay reads the append-only decision and
+admission link without requiring deleted quarantine bytes. Cleanup/reconcile/
+prune remain callable while Learning is off.
 
 ## 13. Kill Switch contract
 
@@ -508,6 +553,11 @@ audit access.
 | Cron cursor/trigger owner or generation is stale | `STALE_CLAIM` | old claim never; reclaim with a new generation only |
 | Cron revision changed after claim | `STALE_TEMPLATE` | no; materialize under the newly approved revision |
 | Cron owner/Skill/Grant/approval/expiry/Kill authority denied | stable sanitized denial reason | no authority substitution; future occurrence only after explicit repair |
+| Draft source/snapshot/package drift | `SOURCE_RUN_INVALID` / `SOURCE_DRIFT` / `PACKAGE_ALREADY_EXISTS` | new Draft from current authority only |
+| Draft object or immutable-key collision drift | `DRAFT_OBJECT_DRIFT` | no overwrite or promotion |
+| Draft check infrastructure unavailable | `CHECK_UNAVAILABLE` | bounded claim retry; policy failure is not retried |
+| stale Draft check/cleanup worker | `STALE_CLAIM` | reclaim under a new generation only |
+| Draft Promote before exact checks/human authority | `CHECKS_INCOMPLETE` / `PROMOTION_DENIED` | no automatic fallback |
 
 No error includes secret, raw arguments/result, package contents, Workspace
 paths/content, host paths or provider payloads.
@@ -573,7 +623,7 @@ required design anchors and the current fail-closed code execution route. It is
 offline and must never claim the production Runner or Isolation Acceptance Suite
 passed.
 
-The implemented G20.4/G20.5/G20.6 source/control foundations additionally require:
+The implemented G20.4/G20.5/G20.6/G20.7 source/control foundations additionally require:
 
 ```bash
 bash scripts/verify-agent-broker.sh
@@ -582,6 +632,8 @@ bash scripts/verify-agent-delegation.sh
 bash scripts/verify-agent-delegation-postgres17.sh
 bash scripts/verify-agent-cron.sh
 bash scripts/verify-agent-cron-postgres17.sh
+bash scripts/verify-agent-learning.sh
+bash scripts/verify-agent-learning-postgres17.sh
 bash scripts/verify-agent-runner.sh
 bash scripts/verify-agent-runtime-phase0.sh
 bash scripts/verify-agent-runner-host.sh # expected nonzero on the current host

@@ -221,8 +221,8 @@ operational boundary. The exact-host gate remains expected-nonzero
   acknowledgement-loss idempotency, bounded retry/overlap, all authority
   denials, least privilege, content-free dump/restore, guarded down and clean
   down/up.
-- Every prior PostgreSQL tail drill must peel `088` before testing its older
-  guard and finish reapplied at head `088`.
+- Every prior PostgreSQL tail drill must peel `089` and then `088` before
+  testing its older guard and finish reapplied at head `089`.
 - The full standalone gate must pass, while the exact-host Runner gate remains
   expected-nonzero `ISOLATION_UNAVAILABLE` unless a separately approved host
   promotion is in scope.
@@ -240,4 +240,108 @@ PG17 Cron drill passed -> add startup Scheduler -> enable production triggers
 ```text
 deploy guarded migration 088 -> prove narrow role + durable replay/recovery
 -> keep Scheduler/Runtime disabled -> promote only in a later explicit gate
+```
+
+## Scenario: Operate the held Draft-learning control plane
+
+### 1. Scope / Trigger
+
+Apply this contract when deploying migration `089`, assigning Agent Learning
+database roles, running Draft-learning gates, reconciling claims, deleting
+quarantine objects, pruning history, backing up/restoring learning authority or
+rolling the migration back. This scenario does not authorize a public Draft
+surface, startup worker, evaluator, Sandbox execution or production Promote.
+
+### 2. Signatures
+
+```bash
+bash mm-chat/scripts/verify-agent-learning.sh
+bash mm-chat/scripts/verify-agent-learning-postgres17.sh
+bash mm-chat/scripts/verify-agent-runtime-phase0.sh
+bash mm-chat/scripts/verify-agent-runner-host.sh # expected nonzero here
+```
+
+Migration `089_agent_draft_learning` plus `agent_learning_owner` and
+`agent_learning_control` are the durable operational boundary.
+
+### 3. Contracts
+
+- Install `089` with NOLOGIN owner/control roles. Control has SELECT plus exact
+  function execution and no table DML or owner membership; API, Orchestrator,
+  Runner, Broker, delegation and Cron roles gain no learning authority.
+- Keep `AGENT_LEARNING_ENABLED=false` and `AGENT_RUNTIME_ENABLED=false`. G20.7
+  adds no environment/Compose/startup wiring; do not create it merely because
+  source or disposable PostgreSQL gates pass.
+- Preserve PostgreSQL plus all `skill-drafts/`, `skill-quarantine/`,
+  `skill-packages/` and `skill-sboms/` objects as one backup authority set.
+  Restore with Learning/Runtime off, validate fingerprints, then reconcile
+  expired check/cleanup claims before any later product promotion.
+- Cleanup deletes the exact quarantine object before completing its fenced row.
+  Missing object is idempotent success; other storage failures remain bounded
+  retry facts. Do not delete rows/audits to make storage health appear green.
+- Expired `checking` or claimed-cleanup work is never claimed directly. Run the
+  bounded reconciler first so it increments the failed-attempt counter,
+  terminalizes exhaustion and only then exposes a new ready generation.
+- Quarantine cleanup does not erase an append-only decision. An exact Promote
+  replay is served from the decision/admission link without requiring the
+  already deleted Draft object; any input mismatch remains denied.
+- Diagnostics contain IDs, fingerprints, state, generations, reason codes,
+  bounded metrics and counts only. Never log Draft/Skill/prompt/Run/Tool/
+  Workspace content, Secret values, credentials or object-store URLs.
+- A mismatched content-addressed object is an incident: stop Promote, retain the
+  bytes/evidence, activate the relevant Kill Switch, and repair through a new
+  verified object/package path. Never overwrite it manually.
+- Down is guarded by `AGENT_LEARNING_DOWN_DATA_EXISTS`. Production rollback
+  keeps `089` applied and Learning disabled. Only a disposable, verified-empty
+  database may execute clean down/up.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| Learning/Runtime flags off | no proposal/check/Promote worker starts; read/reconcile/cleanup/prune remain available |
+| another runtime role gains Draft access or Promote execution | deployment gate fails; revoke and do not promote |
+| expired check/cleanup claim remains | reconcile to a new generation; stale worker stays fenced |
+| quarantine object deletion fails | keep retry row and object authority; do not acknowledge/prune |
+| object hash/size/key drift is observed | `DRAFT_OBJECT_DRIFT`; stop promotion and preserve incident evidence |
+| down attempted with learning state/candidate | `AGENT_LEARNING_DOWN_DATA_EXISTS`; schema remains intact |
+| PG17/Phase 0 pass but exact host is unavailable | production stays disabled; `ISOLATION_UNAVAILABLE` remains expected |
+
+### 5. Good / Base / Bad Cases
+
+- **Good**: deploy `089` default-off, pass least-privilege/fresh/replay/
+  dump-restore gates, restore with switches off, and reconcile/clean exact
+  objects before any later activation review.
+- **Base**: no Draft worker is running; operators inspect content-free counts
+  and run bounded cleanup for already rejected/promoted Drafts.
+- **Bad**: grant table UPDATE, start a learning worker from an ad-hoc shell,
+  auto-promote evaluator output, overwrite a digest key, prune before object
+  deletion, or force the guarded down migration.
+
+### 6. Tests Required
+
+- Run the four signatures; the host gate remains expected nonzero unless a
+  separate exact-host promotion is explicitly in scope.
+- PostgreSQL 17 proves fresh/replay, role isolation, claims/reclaim, source and
+  human authority, exact decision replay, immutable live state, cleanup,
+  content-free dump/restore, guarded down and clean down/up.
+- Verify every older Agent/MCP/Assistant/Skill PostgreSQL drill returns to head
+  `089` without weakening its original guard.
+- Run backend race/vet, Phase 0, module/security/quality/change gates and full
+  standalone. Confirm `data/`, `secrets/`, `backup/` and live
+  `.env.single-server` remain untouched.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+PG17 passed -> enable worker -> evaluator promotes -> overwrite current Skill
+```
+
+#### Correct
+
+```text
+deploy guarded 089 default-off -> verify roles + paired backup/restore
+-> reconcile and object-before-row cleanup -> later explicit UI/shadow/host gate
 ```

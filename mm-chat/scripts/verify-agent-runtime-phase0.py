@@ -25,6 +25,7 @@ SCHEMA_NAMES = (
     "neo-runner-rpc",
     "neo-run-event",
     "neo-cron-template",
+    "neo-skill-draft",
 )
 JsonObject = dict[str, Any]
 
@@ -147,6 +148,7 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
     launch = instances["neo-runner-rpc"]
     event = instances["neo-run-event"]
     cron_template = instances["neo-cron-template"]
+    draft = instances["neo-skill-draft"]
 
     check_fingerprint_bindings(grant, launch)
     require_equal(
@@ -209,6 +211,44 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
     if expires <= issued:
         raise VerificationError("grant expiry does not follow issuance")
 
+    require_equal(
+        draft["sourceRunId"], event["runId"], "Draft/event Run IDs differ"
+    )
+    require_equal(
+        draft["basePackageFingerprint"],
+        grant["packageFingerprint"],
+        "Draft/grant base package fingerprints differ",
+    )
+    require_equal(
+        draft["runtimeBundleFingerprint"],
+        grant["runtimeBundleFingerprint"],
+        "Draft/grant runtime fingerprints differ",
+    )
+    if draft["proposedPackageFingerprint"] == draft["basePackageFingerprint"]:
+        raise VerificationError("Draft proposed package equals its immutable base")
+    source_evidence = [
+        item for item in draft["evidence"] if item["kind"] == "source_package"
+    ]
+    run_evidence = [
+        item for item in draft["evidence"] if item["kind"] == "run_event"
+    ]
+    if len(source_evidence) != 1 or source_evidence[0]["ref"] != draft["basePackageFingerprint"]:
+        raise VerificationError("Draft source-package evidence does not bind the base")
+    if not any(item["ref"] == event["eventId"] for item in run_evidence):
+        raise VerificationError("Draft Run evidence does not bind the source event")
+    test_paths = {item["path"] for item in draft["tests"]}
+    changed_paths = set(draft["changedPaths"])
+    if not test_paths.issubset(changed_paths):
+        raise VerificationError("Draft test inventory is not bound to changed paths")
+    covered_paths = {
+        path
+        for item in draft["evidence"]
+        if item["kind"] == "run_event"
+        for path in item["paths"]
+    }
+    if not changed_paths.issubset(covered_paths):
+        raise VerificationError("Draft changed paths are not covered by Run evidence")
+
 
 def check_document_anchors() -> None:
     requirements: dict[Path, tuple[str, ...]] = {
@@ -218,6 +258,7 @@ def check_document_anchors() -> None:
             "Trust boundaries and STRIDE",
             "Kill Switch hierarchy",
             "migration `088`",
+            "migration `089`",
             "旧版技能已退役",
         ),
         CONTRACT_DIR / "agent-runtime.md": (
@@ -226,6 +267,7 @@ def check_document_anchors() -> None:
             "Child Agent contract",
             "G20.5 implementation signatures",
             "G20.6 implementation signatures",
+            "G20.7 implementation signatures",
             "Isolation Acceptance Suite",
             "CODE_EXECUTION_UNAVAILABLE",
         ),
@@ -235,6 +277,7 @@ def check_document_anchors() -> None:
             "Kill Switch operations",
             "Child delegation operations boundary",
             "Cron scheduling operations boundary",
+            "Draft learning operations boundary",
             "Legacy Skill cutover and rollback",
         ),
         PROJECT_DIR / "docs" / "tracking" / "g20-agent-runtime-plan.md": (
@@ -242,6 +285,7 @@ def check_document_anchors() -> None:
             "G20.9",
             "G20.5",
             "G20.6",
+            "G20.7",
             "delegate_task",
             "hard delete",
         ),

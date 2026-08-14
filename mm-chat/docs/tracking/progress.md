@@ -1675,7 +1675,13 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           trigger-time authority, atomic idempotent normal-Run link, lifecycle,
           cleanup and PostgreSQL 17 replay/restore proof; public/startup
           Scheduler remains held.
-    - [ ] G20.7 Draft-only learning.
+    - [x] G20.7 Draft-only learning source/control: migration `089`, immutable
+          Run/snapshot/base/proposed/evidence/test provenance, version-only
+          authority, exact static/isolation/evaluation claim bundle,
+          administrator-only replay-safe Promote into a new `learning` package,
+          collision-safe objects, object-before-row cleanup, strict schema and
+          PostgreSQL 17 replay/restore proof; public/startup/product surfaces
+          and production evaluation/execution remain held.
     - [ ] G20.8 Product UI and shadow execution.
     - [ ] G20.9 Legacy Skill deletion and production cutover.
     - [ ] G20.10 Production closure.

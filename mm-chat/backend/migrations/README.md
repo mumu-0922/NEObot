@@ -143,7 +143,7 @@ function signatures, owners, and grants while pinning lookup to the application
 schema, `pg_catalog`, and `pg_temp`. Its down path intentionally retains the
 safe search path rather than reopening object-shadowing risk.
 
-The current migration head is `088`; the latest RAG retrieval-specific migration
+The current migration head is `089`; the latest RAG retrieval-specific migration
 remains `050`. Migration `043` extends the existing final-authority evidence
 hydration boundary with complete matched-Child and containing-Parent source
 text plus their persisted token counts. Parent text is answer context only. Its
@@ -594,7 +594,25 @@ Cron authority. Down refuses while any template, revision, approval/revocation,
 trigger or audit fact exists and revokes all pre-existing-object/schema grants
 before removing the NOLOGIN Cron roles. Disposable proof uses
 `scripts/verify-agent-cron-postgres17.sh`, and every older PostgreSQL tail drill
-now peels and reapplies through current head `088` before testing its original
+now peels and reapplies through migration `088` before testing its original
+guard.
+
+Migration `089` adds the held G20.7 Draft-only learning authority without a
+public API, startup worker, production evaluator or Runtime activation. It
+extends Skill candidate source authority with the internal-only `learning`
+source and stores immutable same-user succeeded depth-0 source Run/snapshot
+bindings, base/proposed package fingerprints, bounded provenance/tests/changed
+paths, exact three-kind check receipts, append-only human decisions, promotion
+links, cleanup claims and sanitized audits. The independent
+`agent_learning_control` role has SELECT plus exact `SECURITY DEFINER` function
+execution and no table DML; existing API, Orchestrator, Runner, effect,
+delegation and Cron roles gain no learning authority. Promote rechecks current
+source/Kill-Switch/check authority and atomically inserts one new admitted
+`learning` candidate/package without mutating existing packages, installations,
+Runs or Cron revisions. Down refuses while any learning authority or candidate
+exists. Disposable proof uses
+`scripts/verify-agent-learning-postgres17.sh`; every older PostgreSQL tail drill
+now peels and reapplies through current head `089` before testing its original
 guard.
 
 ## Storage boundaries

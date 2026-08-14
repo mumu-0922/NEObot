@@ -289,7 +289,8 @@ func cleanPrefix(value string) string {
 }
 
 func validSourceType(value string) bool {
-	return value == SourceOfficial || value == SourceLobeHub || value == SourceGit || value == SourceZIP
+	return value == SourceOfficial || value == SourceLobeHub || value == SourceGit ||
+		value == SourceZIP || value == SourceLearning
 }
 
 func sha256Fingerprint(data []byte) string {
