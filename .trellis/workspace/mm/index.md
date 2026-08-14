@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 46
+- **Total Sessions**: 47
 - **Last Active**: 2026-08-14
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1930 | Active |
+| `journal-1.md` | ~1963 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 47 | 2026-08-14 | Agent Runtime G20.7 Draft-only learning foundation | `4b3262b3` | `main` |
 | 46 | 2026-08-14 | Agent Runtime G20.6 durable Cron foundation | `75edb4c0` | `main` |
 | 45 | 2026-08-14 | Agent Runtime G20.5 Child delegation foundation | `20f181ff` | `main` |
 | 44 | 2026-08-14 | Agent Runtime G20.4 brokered effects foundation | `cd6af012` | `main` |

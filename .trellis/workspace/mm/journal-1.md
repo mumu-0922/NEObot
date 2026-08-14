@@ -1928,3 +1928,36 @@ Implemented held durable Agent Cron scheduling with strict five-field IANA-timez
 ### Next Steps
 
 - None - task complete
+
+
+## Session 47: Agent Runtime G20.7 Draft-only learning foundation
+
+**Date**: 2026-08-14
+**Task**: Agent Runtime G20.7 Draft-only learning foundation
+**Branch**: `main`
+
+### Summary
+
+Added immutable quarantined Skill Drafts, fenced static/isolation/evaluation checks, administrator-only replay-safe Promote, drift-preserving cleanup, migration 089, Phase 0 contracts, PostgreSQL 17 drills, and synchronized Agent Runtime documentation; full standalone and expected exact-host denial passed.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4b3262b3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
