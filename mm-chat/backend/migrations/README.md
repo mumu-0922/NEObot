@@ -560,6 +560,25 @@ retention, dump/restore and clean down/up proof uses
 `scripts/verify-agent-broker-postgres17.sh`; every older tail drill also peels
 and reapplies `086` before testing its owning guard.
 
+Migration `087` adds the held G20.5 depth-1 Child Agent delegation authority
+without enabling public Agent routes, Chat/frontend wiring, a startup worker or
+production Child execution. Immutable root/child authority binds exact subject,
+model, admitted package/runtime, Grant, Registry, snapshot, expiry and Parent
+Attempt generation/owner/token digest. Child enqueue repeats Grant/Registry
+subset checks and reserves all four Parent budget dimensions under the same
+Parent lock before creating the Child Run. Launch admission rechecks both live
+leases, frozen fingerprints, exact Registry identities, expiry and current Kill
+Switches. Parent cancel/kill atomically fences every live Child Attempt and
+terminalizes its Step/Run before durable, deterministic reap work is exposed to
+the credential-free Runner reaper; reconciliation also discovers terminal,
+expired, reclaimed or Kill-Switched Parents and retries failed reap facts. The
+independent `agent_delegation_control` role has SELECT plus exact
+`SECURITY DEFINER` execution and no table DML; API, Orchestrator, Runner and
+effect roles gain no delegation authority. Down refuses while any authority,
+lineage, settlement or reap fact exists. Disposable proof uses
+`scripts/verify-agent-delegation-postgres17.sh`, and every older PostgreSQL tail
+drill now peels and reapplies through `087` before testing its original guard.
+
 ## Storage boundaries
 
 Postgres is the source of truth for structured records:

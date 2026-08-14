@@ -569,6 +569,7 @@
               "required": [
                 "attempt",
                 "authority",
+                "lineage",
                 "grantId",
                 "grantFingerprint",
                 "snapshotFingerprint",
@@ -608,6 +609,9 @@
                 },
                 "authority": {
                   "$ref": "#/$defs/authority"
+                },
+                "lineage": {
+                  "$ref": "#/$defs/runLineage"
                 }
               }
             }
@@ -1731,6 +1735,67 @@
                 }
               }
             }
+          }
+        }
+      ]
+    },
+    "runLineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rootRunId",
+        "depth"
+      ],
+      "properties": {
+        "rootRunId": {
+          "type": "string",
+          "pattern": "^run_[a-z0-9]{16,64}$"
+        },
+        "parentRunId": {
+          "type": "string",
+          "pattern": "^run_[a-z0-9]{16,64}$"
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "depth": {
+                "const": 0
+              }
+            },
+            "required": [
+              "depth"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "parentRunId"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "depth": {
+                "const": 1
+              }
+            },
+            "required": [
+              "depth"
+            ]
+          },
+          "then": {
+            "required": [
+              "parentRunId"
+            ]
           }
         }
       ]

@@ -1,9 +1,9 @@
 # Neo Agent Runtime Architecture
 
 Status: G20.1 no-execute Skill supply chain, G20.2 durable Orchestrator, G20.3
-Runner and G20.4 brokered-effect source/control foundations implemented.
-Exact-host isolation and production relay promotion are held; production
-Runtime remains disabled.
+Runner, G20.4 brokered effects and G20.5 depth-1 Child delegation
+source/control foundations implemented. Exact-host isolation, production relay
+and Child execution promotion are held; production Runtime remains disabled.
 
 ## Purpose and invariant
 
@@ -236,19 +236,39 @@ Project mutation or live mutable executor wiring in this group.
 
 ## Delegation
 
+G20.5 implements the held control foundation in
+`backend/internal/agentdelegation/`, migration `087`, the shared Broker Registry
+builder and Runner launch-lineage validation:
+
 - Root Run depth is `0`; Child Run depth is exactly `1`; no other depth validates.
-- Parent creates a Child proposal; Backend creates an independent durable Run
-  only after deriving a strict subset snapshot.
+- PostgreSQL stores immutable root/child authority and the exact live Parent
+  Attempt generation, lease owner and token digest. A Parent proposal cannot
+  supply its own authenticated user identity, effective Child snapshot, Grant
+  or Registry.
+- Backend creates an independent durable Child Run only after deriving a strict
+  subset snapshot; PostgreSQL repeats the decisive subset, lease, expiry, Kill
+  Switch and reservation checks in the enqueue transaction.
 - Child package/runtime fingerprints must already be admitted and selected by
-  Parent authority. Model, time/token/Tool/artifact budgets cannot exceed the
-  remaining Parent budget.
+  Parent authority. Subject and model are exact Parent bindings; capabilities,
+  actions/resources, approval, Egress, Secrets, expiry and all four budgets may
+  only narrow. Concurrent reservations serialize on the Parent account.
 - Child Tool Registry is constructed from the Parent intersection, then an
   unconditional forbidden set removes `delegate_task`, `cron_manage`,
   `grant_manage`, `secret_manage` and `runtime_manage` before fingerprinting.
-- Schema validation, Registry Builder, launch admission and acceptance tests all
-  enforce this. A prompt or runtime error alone is not a security control.
-- Parent cancellation/kill cascades to all live Children; Child terminal events
-  do not silently mutate Parent state or approval decisions.
+- A retained Tool identity preserves the Parent capability, classification and
+  idempotency class; actions, resource selectors, approval and call limits only
+  narrow. PostgreSQL prefix checks are literal rather than wildcard matches.
+- Schema validation, Registry Builder, PostgreSQL launch admission and Runner
+  validation all enforce depth/lineage/fingerprint/identity binding. A prompt or
+  runtime error alone is not a security control.
+- Parent cancellation/kill fences Child leases and terminalizes Child
+  Attempt/Step/Run projections before invoking an injected reaper. Failure stays
+  durable and retryable; reconciliation discovers terminal, expired, reclaimed
+  or Kill-Switched Parents and never restores a fenced lease.
+
+No public delegation API, Chat/frontend integration, startup worker or
+production Child-to-Runner call exists in G20.5. The current host remains
+`ISOLATION_UNAVAILABLE`.
 
 ## Cron and learning
 
@@ -321,8 +341,9 @@ not reveal private chain-of-thought.
 ## Migration and rollback boundary
 
 G20.1 adds Skill supply/API/persistence, G20.2 adds the internal durable
-Orchestrator, G20.3 adds the credential-free host Runner boundary, and G20.4
-adds the held Tool Registry and brokered-effect authority. G20.3
+Orchestrator, G20.3 adds the credential-free host Runner boundary, G20.4 adds
+the held Tool Registry and brokered-effect authority, and G20.5 adds held
+depth-1 lineage, reservation, launch-admission and reap authority. G20.3
 implements strict TLS 1.3 mTLS RPC, PostgreSQL plus local-fsync replay fences,
 release probing, one rootless Podman Sandbox per Attempt, full Workspace
 revalidation, bounded tmpfs Scratch, exact kill/reap/reconcile and local Unix
@@ -330,7 +351,10 @@ Artifact quarantine. The release manifest remains unapproved and the current
 host returns `ISOLATION_UNAVAILABLE`; no API/Chat startup path imports it.
 G20.4 adds migration `086`, shared safe-network enforcement and strict
 Prepare/Commit relay shapes, but leaves the production relay and all mutations
-unwired. None of these groups changes Chat or legacy text-Skill behavior.
+unwired. G20.5 adds migration `087` and a signed Runner `runLineage`, but no
+production Child launch path. None of these groups changes Chat or legacy
+text-Skill behavior; existing pure-text Skills remain untouched through G20.8
+and are deleted only by G20.9.
 The future final cutover:
 
 1. freezes new legacy Skill installation/editing;

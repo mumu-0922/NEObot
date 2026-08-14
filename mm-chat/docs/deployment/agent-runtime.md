@@ -1,10 +1,11 @@
 # Neo Agent Runtime Operations
 
 Status: G20.1 no-execute Skill supply, G20.2 durable Orchestrator, G20.3
-`neo-runnerd` and G20.4 brokered-effect source/control foundations are
-implemented. Exact-host isolation and production relay promotion are held. Do
-not install a Runtime, start the service, enable Agent execution or delete
-legacy Skills from this document alone.
+`neo-runnerd`, G20.4 brokered effects and G20.5 depth-1 Child delegation
+source/control foundations are implemented. Exact-host isolation, production
+relay and Child execution promotion are held. Do not install a Runtime, start
+the service, enable Agent execution or delete legacy Skills from this document
+alone.
 
 ## Default state
 
@@ -19,10 +20,11 @@ AGENT_DELEGATION_ENABLED=false
 AGENT_RUNNER_URL=
 ```
 
-G20.3 and G20.4 add no application environment variable or Compose service. The
-host-only `deploy/agent-runner/neo-runnerd.env.example` is not an activation
-file. These names reserve the intended operational boundary; later promotion must add them through
-the normal preflight/example-env/Compose/documentation gates.
+G20.3 through G20.5 add no application environment variable or Compose service.
+The host-only `deploy/agent-runner/neo-runnerd.env.example` is not an activation
+file. These names reserve the intended operational boundary; later promotion
+must add them through the normal preflight/example-env/Compose/documentation
+gates.
 
 Runtime disabled must block discovery installation changes, new Runs, leases,
 Cron triggers, Child Runs and Draft promotion as appropriate, but must not stop
@@ -121,18 +123,20 @@ identity, sends strict `neo.runner-rpc/v1`, bounds headers/body/deadline and
 accepts only a request-ID/nonce/method-bound response. There is no bearer token
 fallback.
 
-## G20.3/G20.4 source and verification commands
+## G20.3/G20.4/G20.5 source and verification commands
 
 ```bash
 bash scripts/verify-agent-runner.sh
 bash scripts/verify-agent-runner-postgres17.sh
 bash scripts/verify-agent-broker.sh
 bash scripts/verify-agent-broker-postgres17.sh
+bash scripts/verify-agent-delegation.sh
+bash scripts/verify-agent-delegation-postgres17.sh
 bash scripts/verify-agent-runtime-phase0.sh
 bash scripts/verify-agent-runner-host.sh
 ```
 
-The first five commands prove source/control, contract and disposable
+The first seven commands prove source/control, contract and disposable
 PostgreSQL behavior only. On this host the last command must exit nonzero and
 print `ISOLATION_UNAVAILABLE` with
 content-free failure classes. Only an approved manifest installed for the exact
@@ -205,12 +209,32 @@ Commit wins, never report rollback and continue receipt/`outcome_unknown`
 reconciliation. Grant revocation is append-only and must also trigger immediate
 in-process Secret byte zeroization through the coordinating Broker service.
 
+## Child delegation operations boundary
+
+Migration `087` stores immutable root/child authority, exact Parent Attempt
+bindings, Parent reservations, settlements and Sandbox reap facts under
+`agent_delegation_owner`. Only `agent_delegation_control` may read those tables
+and call the exact `SECURITY DEFINER` functions; API, Orchestrator, Runner and
+effect roles gain no delegation table DML. `neo-runnerd` still receives no
+database, vault, object-store or Provider credential.
+
+There is no public Child API, application startup worker or production
+Backend-to-Runner Child launch path. Operators may run the delegation source
+and disposable PostgreSQL commands above; they must not manually register root
+authority or manufacture Child Runs in a live database. Reconciliation remains
+an internal held seam: it discovers terminal/expired/reclaimed/Kill-Switched
+Parents, fences Child leases and records exact reap work before invoking the
+injected credential-free reaper. Failed reaps stay durable and must never be
+cleared by restoring a lease or deleting authority rows.
+
 ## Kill Switch operations
 
 G20.2 persists and resolves the hierarchy through migration `084`; G20.3
 migration `085` binds short-lived Runner authority to that current epoch and
 stores expected Sandbox projection; G20.4 migration `086` binds every Prepare
-and Commit to the same epoch. No production Runner or Broker worker is started.
+and Commit to the same epoch; G20.5 migration `087` rechecks Parent/Child scope
+at enqueue and launch and cascades affected Child leases. No production Runner,
+Broker or Child worker is started.
 Switch removal remains a new inactive revision; cleanup/recovery/rebuild/
 retention remain available. Exercise the boundaries with:
 
@@ -219,6 +243,7 @@ bash scripts/verify-agent-orchestrator.sh
 bash scripts/verify-agent-orchestrator-postgres17.sh
 bash scripts/verify-agent-runner-postgres17.sh
 bash scripts/verify-agent-broker-postgres17.sh
+bash scripts/verify-agent-delegation-postgres17.sh
 ```
 
 These passes are durable control-plane evidence only, not rootless isolation or

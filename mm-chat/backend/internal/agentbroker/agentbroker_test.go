@@ -43,7 +43,7 @@ func TestBuildRegistryIsDeterministicAndPhysicallyRemovesChildAuthority(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Fingerprint != second.Fingerprint || len(first.Tools) != 1 || first.Tools[0].Identity != "workspace_read" {
+	if first.Fingerprint != second.Fingerprint || first.Secrets == nil || len(first.Tools) != 1 || first.Tools[0].Identity != "workspace_read" {
 		t.Fatalf("registry drift or child authority present: %#v %#v", first, second)
 	}
 	forged := first
@@ -53,6 +53,21 @@ func TestBuildRegistryIsDeterministicAndPhysicallyRemovesChildAuthority(t *testi
 	forged.Fingerprint, _ = registryFingerprint(forged)
 	if _, err := RegistryToolFor(forged, "delegate_task", "create", "child"); !errors.Is(err, ErrGrantDenied) && !errors.Is(err, ErrSnapshotMismatch) {
 		t.Fatalf("forged child registry error = %v", err)
+	}
+}
+
+func TestBuildRegistryRejectsChildForbiddenCapabilityAlias(t *testing.T) {
+	now := time.Date(2026, 8, 13, 1, 0, 0, 0, time.UTC)
+	grant := testGrantAt(now)
+	grant.Run = RunBinding{RunID: testRun, ParentRunID: "run_fedcba9876543210", Depth: 1}
+	grant.Capabilities = append(grant.Capabilities, Capability{Capability: "delegate_task",
+		Actions: []string{"create"}, Resources: Selector{Kind: "exact", Values: []string{"child"}},
+		Approval: ApprovalAutomatic, MaxCalls: 1})
+	sort.Slice(grant.Capabilities, func(i, j int) bool { return grant.Capabilities[i].Capability < grant.Capabilities[j].Capability })
+	_, err := BuildRegistry([]ToolDefinition{{Identity: "innocent_alias", Capability: "delegate_task",
+		Actions: []string{"create"}, Classification: ClassificationMutable}}, []string{"innocent_alias"}, grant, now)
+	if !errors.Is(err, ErrGrantDenied) {
+		t.Fatalf("forbidden capability alias error = %v", err)
 	}
 }
 
@@ -86,6 +101,24 @@ func TestBuildRegistryRejectsUnknownUnauthorizedAndExhaustedRequests(t *testing.
 			}
 			if _, err := BuildRegistry(catalog, test.requested, candidate, now); !errors.Is(err, test.want) {
 				t.Fatalf("BuildRegistry error = %v, want %v", err, test.want)
+			}
+		})
+	}
+}
+
+func TestBuildRegistryRejectsOutOfRangeWallAndModelBudgets(t *testing.T) {
+	now := time.Date(2026, 8, 13, 1, 0, 0, 0, time.UTC)
+	for name, mutate := range map[string]func(*CapabilityGrant){
+		"wall":  func(grant *CapabilityGrant) { grant.Budget.MaxWallSeconds = 86401 },
+		"model": func(grant *CapabilityGrant) { grant.Budget.MaxModelTokens = 10000001 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			grant := testGrantAt(now)
+			mutate(&grant)
+			catalog := []ToolDefinition{{Identity: "workspace_read", Capability: "workspace.read",
+				Actions: []string{"read"}, Classification: ClassificationRead, Idempotent: true}}
+			if _, err := BuildRegistry(catalog, []string{"workspace_read"}, grant, now); !errors.Is(err, ErrGrantDenied) {
+				t.Fatalf("budget validation error = %v", err)
 			}
 		})
 	}

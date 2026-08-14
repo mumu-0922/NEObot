@@ -1,9 +1,9 @@
 # Neo Agent Runtime Executable Contract
 
-Status: G20.1 supply-chain, G20.2 durable Orchestrator, G20.3 Runner and G20.4
-brokered-effect source/control foundations implemented. Exact-host isolation
-and production relay promotion are held; all production Agent execution remains
-disabled.
+Status: G20.1 supply-chain, G20.2 durable Orchestrator, G20.3 Runner, G20.4
+brokered effects and G20.5 depth-1 Child delegation source/control foundations
+implemented. Exact-host isolation, production relay and Child execution
+promotion are held; all production Agent execution remains disabled.
 
 ## 1. Scope and hard gates
 
@@ -186,6 +186,21 @@ G20.4 implementation signatures:
 - `scripts/verify-agent-broker{,-postgres17}.sh` prove source/control,
   concurrency, least privilege, recovery, guarded rollback and dump/restore.
   They are not production isolation or mutable-executor evidence.
+
+G20.5 implementation signatures:
+
+- `backend/internal/agentdelegation/` derives server-owned Child Grants,
+  Registries and snapshots, admits launch, settles reservations, and coordinates
+  Child-first cascade/reap without HTTP/startup wiring;
+- migration `087` owns immutable root/child authority, exact Parent Attempt
+  lineage, transactional reservations, append-only settlements and durable reap
+  work through the narrow `agent_delegation_control` role;
+- Runner `launch` includes signed `runLineage` and locally rejects depth 2,
+  root/parent drift and forbidden Child Tool identities before OCI create;
+- `scripts/verify-agent-delegation{,-postgres17}.sh` prove subset, concurrency,
+  lease/launch fences, terminal settlement, cascade, recovery, least privilege,
+  guarded rollback and dump/restore. They do not enable production Child
+  execution or supply exact-host isolation evidence.
 
 ## 6. Runner RPC
 
@@ -375,16 +390,37 @@ matching memory-only Secret bytes.
 
 - root is `depth=0` without `parentRunId`; child is `depth=1` with exact Parent;
   schema rejects depth 2+.
-- Child model, packages, Tools, actions/resources, Egress, Secret scopes and
-  budgets are strict subsets/intersections of Parent snapshot and remaining
-  budget.
+- A separate authenticated control `UserID` selects the durable Parent; proposed
+  Grant subject fields never provide caller authority. Root authority binds
+  exact user/Project/Assistant, snapshot, model,
+  package/runtime, Grant, Registry, expiry and budget. Child subject/model/
+  package/runtime are exact bindings; Tools, actions/resources, approval,
+  Egress, Secrets, expiry and budgets are strict subsets/intersections.
+- Enqueue binds the exact live Parent Attempt generation, lease owner and token
+  digest. PostgreSQL locks the Parent and reserves wall seconds, model tokens,
+  Tool calls and Artifact bytes atomically with Child Run creation. Exact replay
+  is free; mismatched replay fails.
 - Registry Builder always removes `delegate_task`, `cron_manage`,
   `grant_manage`, `secret_manage`, `runtime_manage` for depth 1 before computing
   the registry fingerprint.
+- A retained Child Tool identity preserves its Parent capability,
+  classification and idempotency class while actions, resource selectors,
+  approval and call limits may only narrow. PostgreSQL prefix comparison uses
+  literal `starts_with`, never wildcard `LIKE` semantics.
 - Runner launch schema also rejects a Child registry containing those names;
-  Backend admission repeats the check against canonical Tool identities.
-- Parent cancellation/kill fences Child leases first, then reaps them. Child
-  cannot create Cron, promote Drafts, approve its own effect or modify grants.
+  Backend/PostgreSQL admission repeats the check against the exact durable
+  identity set and rechecks both live leases, fingerprints, expiry and Kill
+  Switches.
+- Settlement requires an already terminal Child Run, is exact-replay
+  idempotent, cannot exceed its reservation, and releases only the reservation
+  remainder proven by terminal usage.
+- Parent cancellation/kill atomically fences every live Child lease and
+  terminalizes Child Attempt/Step/Run state before reaping. Failed reaps remain
+  durable; reconciliation discovers terminal, expired, reclaimed or
+  Kill-Switched Parents and retries without restoring a lease.
+- Child cannot delegate, create Cron, promote Drafts, approve its own effect or
+  modify grants/secrets/runtime authority. No public or startup path activates
+  this foundation in G20.5.
 
 ## 12. Cron and Draft learning
 
@@ -493,11 +529,13 @@ required design anchors and the current fail-closed code execution route. It is
 offline and must never claim the production Runner or Isolation Acceptance Suite
 passed.
 
-The implemented G20.4 source/control foundation additionally requires:
+The implemented G20.4/G20.5 source/control foundations additionally require:
 
 ```bash
 bash scripts/verify-agent-broker.sh
 bash scripts/verify-agent-broker-postgres17.sh
+bash scripts/verify-agent-delegation.sh
+bash scripts/verify-agent-delegation-postgres17.sh
 bash scripts/verify-agent-runner.sh
 bash scripts/verify-agent-runtime-phase0.sh
 bash scripts/verify-agent-runner-host.sh # expected nonzero on the current host

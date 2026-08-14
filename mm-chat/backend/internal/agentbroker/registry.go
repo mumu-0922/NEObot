@@ -11,6 +11,27 @@ var childForbiddenTools = map[string]struct{}{
 	"secret_manage": {}, "runtime_manage": {},
 }
 
+// ChildForbiddenIdentities returns a copy so delegation and launch admission
+// can enforce the same physical-removal boundary without duplicating the set.
+func ChildForbiddenIdentities() map[string]struct{} {
+	result := make(map[string]struct{}, len(childForbiddenTools))
+	for identity := range childForbiddenTools {
+		result[identity] = struct{}{}
+	}
+	return result
+}
+
+// GrantFingerprint exposes the canonical frozen Grant identity to the
+// delegation coordinator. Validation remains owned by this package.
+func GrantFingerprint(grant CapabilityGrant) (string, error) {
+	return canonicalGrantFingerprint(grant)
+}
+
+// ValidateGrant checks the exact canonical Grant shape at the supplied time.
+func ValidateGrant(grant CapabilityGrant, now time.Time) error {
+	return validateGrant(grant, now)
+}
+
 func BuildRegistry(catalog []ToolDefinition, requested []string, grant CapabilityGrant, now time.Time) (ToolRegistry, error) {
 	if validateGrant(grant, now) != nil || len(catalog) > 512 || len(requested) > 128 {
 		return ToolRegistry{}, ErrGrantDenied
@@ -48,7 +69,7 @@ func BuildRegistry(catalog []ToolDefinition, requested []string, grant Capabilit
 		RunID: grant.Run.RunID, Depth: grant.Run.Depth, GrantID: grant.GrantID,
 		PackageFingerprint: grant.PackageFingerprint, RuntimeBundleFingerprint: grant.RuntimeBundleFingerprint,
 		ExpiresAt: grant.ExpiresAt.UTC(), Egress: grant.Egress,
-		Secrets: append([]SecretGrant(nil), grant.Secrets...), Budget: grant.Budget, Tools: []RegistryTool{}}
+		Secrets: append([]SecretGrant{}, grant.Secrets...), Budget: grant.Budget, Tools: []RegistryTool{}}
 	for identity := range requestSet {
 		if grant.Run.Depth == 1 {
 			if _, forbidden := childForbiddenTools[identity]; forbidden {
@@ -58,6 +79,11 @@ func BuildRegistry(catalog []ToolDefinition, requested []string, grant Capabilit
 		definition, ok := catalogSet[identity]
 		if !ok {
 			return ToolRegistry{}, ErrGrantDenied
+		}
+		if grant.Run.Depth == 1 {
+			if _, forbidden := childForbiddenTools[definition.Capability]; forbidden {
+				return ToolRegistry{}, ErrGrantDenied
+			}
 		}
 		matched := false
 		for _, capability := range grant.Capabilities {
@@ -145,7 +171,9 @@ func RegistryToolFor(registry ToolRegistry, identity, action, resource string) (
 	}
 	if registry.Depth == 1 {
 		for _, tool := range registry.Tools {
-			if _, forbidden := childForbiddenTools[tool.Identity]; forbidden {
+			_, identityForbidden := childForbiddenTools[tool.Identity]
+			_, capabilityForbidden := childForbiddenTools[tool.Capability]
+			if identityForbidden || capabilityForbidden {
 				return RegistryTool{}, ErrGrantDenied
 			}
 		}

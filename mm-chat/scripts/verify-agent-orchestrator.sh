@@ -22,15 +22,10 @@ bash "${project_dir}/scripts/verify-agent-runtime-phase0.sh"
 if rg -n 'agentorchestrator|agent_orchestrator' \
   "${project_dir}/backend/cmd/api" "${project_dir}/backend/internal/httpserver" \
   "${project_dir}/frontend/src" >/dev/null; then
-  echo "Agent Orchestrator verification: G20.2 gained forbidden API/frontend wiring" >&2
-  exit 1
-fi
-if find "${project_dir}/backend/cmd" -maxdepth 1 -type d -name '*runner*' \
-  | grep -Fq 'neo-runner'; then
-  echo "Agent Orchestrator verification: neo-runnerd must not exist in G20.2" >&2
+  echo "Agent Orchestrator verification: forbidden API/frontend wiring detected" >&2
   exit 1
 fi
 
 printf '%s\n' \
   "Agent Orchestrator verification: passed (state machine, sanitized snapshot/events, opaque lease credentials, migration authority, Phase 0 contracts)" \
-  "Agent Orchestrator verification: production Runtime remains unavailable; no Runner or Sandbox was launched"
+  "Agent Orchestrator verification: production Runtime remains unavailable; no Sandbox was launched"

@@ -13,6 +13,11 @@
       "leaseToken": "lease_0123456789abcdef01234567",
       "leaseOwner": "neo-runner-primary"
     },
+    "lineage": {
+      "rootRunId": "run_fedcba9876543210",
+      "parentRunId": "run_fedcba9876543210",
+      "depth": 1
+    },
     "grantId": "grant_0123456789abcdef",
     "grantFingerprint": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
     "snapshotFingerprint": "sha256:6666666666666666666666666666666666666666666666666666666666666666",

@@ -152,6 +152,23 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
         grant["run"]["runId"],
         "launch/grant run IDs differ",
     )
+    lineage = launch["body"]["lineage"]
+    require_equal(
+        lineage["depth"], grant["run"]["depth"], "launch/grant lineage depths differ"
+    )
+    if lineage["depth"] == 1:
+        require_equal(
+            lineage["parentRunId"],
+            grant["run"]["parentRunId"],
+            "launch/grant Parent Run IDs differ",
+        )
+        require_equal(
+            lineage["rootRunId"],
+            lineage["parentRunId"],
+            "depth-1 root and Parent Run IDs differ",
+        )
+        if lineage["rootRunId"] == launch["body"]["attempt"]["runId"]:
+            raise VerificationError("depth-1 Child Run equals its root Run")
     check_child_registry(grant, launch)
     check_event_bindings(launch, event)
 
@@ -168,12 +185,14 @@ def check_document_anchors() -> None:
             "ArchiMate cross-layer blueprint",
             "Trust boundaries and STRIDE",
             "Kill Switch hierarchy",
+            "migration `087`",
             "旧版技能已退役",
         ),
         CONTRACT_DIR / "agent-runtime.md": (
             "Durable state machine",
             "Prepare / Commit protocol",
             "Child Agent contract",
+            "G20.5 implementation signatures",
             "Isolation Acceptance Suite",
             "CODE_EXECUTION_UNAVAILABLE",
         ),
@@ -181,11 +200,13 @@ def check_document_anchors() -> None:
             "AGENT_RUNTIME_ENABLED=false",
             "rootless OCI",
             "Kill Switch operations",
+            "Child delegation operations boundary",
             "Legacy Skill cutover and rollback",
         ),
         PROJECT_DIR / "docs" / "tracking" / "g20-agent-runtime-plan.md": (
             "G20.0",
             "G20.9",
+            "G20.5",
             "delegate_task",
             "hard delete",
         ),
@@ -256,7 +277,7 @@ def main() -> int:
         return 1
     print(
         "Agent Runtime Phase 0 verification: passed "
-        "(schemas, positive/negative fixtures, cross-contracts, docs, fail-closed route)"
+        "(schemas, positive/negative fixtures, lineage cross-contracts, docs, fail-closed route)"
     )
     print(
         "Agent Runtime Phase 0 verification: production Runtime remains disabled; "

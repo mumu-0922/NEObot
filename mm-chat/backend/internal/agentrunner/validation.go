@@ -110,6 +110,8 @@ func validateRequest(request *Request) error {
 		body := request.Launch
 		if !validAttempt(body.Attempt) || !validID(body.GrantID, "grant") ||
 			!validFingerprint(body.GrantFingerprint) || !validFingerprint(body.SnapshotFingerprint) ||
+			validateLineage(body.Attempt.RunID, body.Lineage) != nil ||
+			body.ToolRegistry.Depth != body.Lineage.Depth ||
 			validateSandbox(body.Sandbox) != nil || validateRegistry(body.ToolRegistry) != nil ||
 			len(body.Argv) < 1 || len(body.Argv) > 32 {
 			return ErrInvalidInput
@@ -179,6 +181,20 @@ func validateRequest(request *Request) error {
 		return ErrVersionUnsupported
 	}
 	return nil
+}
+
+func validateLineage(runID string, lineage RunLineage) error {
+	if lineage.Depth == 0 {
+		if lineage.RootRunID != runID || lineage.ParentRunID != "" {
+			return ErrInvalidInput
+		}
+		return nil
+	}
+	if lineage.Depth == 1 && validID(lineage.RootRunID, "run") &&
+		lineage.RootRunID != runID && lineage.ParentRunID == lineage.RootRunID {
+		return nil
+	}
+	return ErrInvalidInput
 }
 
 func validateSandbox(sandbox SandboxSpec) error {
@@ -360,10 +376,11 @@ func sandboxFingerprint(request LaunchRequest) string {
 	body, _ := json.Marshal(struct {
 		Snapshot string       `json:"snapshot"`
 		Grant    string       `json:"grant"`
+		Lineage  RunLineage   `json:"lineage"`
 		Sandbox  SandboxSpec  `json:"sandbox"`
 		Registry ToolRegistry `json:"registry"`
 		Argv     []string     `json:"argv"`
-	}{request.SnapshotFingerprint, request.GrantFingerprint, request.Sandbox,
+	}{request.SnapshotFingerprint, request.GrantFingerprint, request.Lineage, request.Sandbox,
 		request.ToolRegistry, request.Argv})
 	digest := sha256.Sum256(append([]byte("neo-runner-sandbox-spec-v1\x00"), body...))
 	return "sha256:" + hex.EncodeToString(digest[:])

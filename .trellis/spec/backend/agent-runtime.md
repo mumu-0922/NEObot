@@ -8,8 +8,9 @@ Apply this contract for Agent Skill admission, Run/Step/Attempt persistence,
 Capability Grants, Runner RPC, side effects, Child Agents, Cron, Draft learning,
   Kill Switches, or the legacy text-Skill cutover. G20.1 implements the
   no-execute supply chain, G20.2 the internal durable Orchestrator, G20.3 the
-  held Runner and G20.4 the held Broker source/control foundation; current
-  Agent API, Chat, MCP and `/v1/code/executions` behavior remains unchanged.
+  held Runner, G20.4 the held Broker and G20.5 the held depth-1 delegation
+  source/control foundations; current Agent API, Chat, MCP and
+  `/v1/code/executions` behavior remains unchanged.
 
 ### 2. Signatures
 
@@ -20,6 +21,8 @@ Capability Grants, Runner RPC, side effects, Child Agents, Cron, Draft learning,
 - Offline gate: `bash mm-chat/scripts/verify-agent-runtime-phase0.sh`.
 - Broker gates: `bash mm-chat/scripts/verify-agent-broker.sh` and
   `bash mm-chat/scripts/verify-agent-broker-postgres17.sh`.
+- Delegation gates: `bash mm-chat/scripts/verify-agent-delegation.sh` and
+  `bash mm-chat/scripts/verify-agent-delegation-postgres17.sh`.
 - Epic slices: `mm-chat/docs/tracking/g20-agent-runtime-plan.md`.
 
 ### 3. Contracts
@@ -44,6 +47,32 @@ Capability Grants, Runner RPC, side effects, Child Agents, Cron, Draft learning,
   HTTP/Chat/startup path; the default Runner relay returns
   `RUNTIME_UNAVAILABLE`, and production Project/object/vault/MCP mutation
   wiring remains held.
+- G20.5 signatures are `internal/agentdelegation`, migration `087`, Runner
+  `runLineage`, and `scripts/verify-agent-delegation{,-postgres17}.sh`. Root
+  authority registration, Child enqueue/launch/settlement and cascade/recovery
+  remain internal; no HTTP/Chat/startup import enables Child execution.
+- PostgreSQL `agent_delegation_control` has SELECT plus exact function execution
+  and no table DML. Root registration binds exact user/Project/Assistant,
+  snapshot, model, package/runtime, Grant, Registry, expiry and budget. Child
+  enqueue binds the exact live Parent Attempt generation/owner/token digest and
+  atomically reserves wall/model-token/Tool-call/Artifact-byte budget.
+- The authenticated control `UserID` is separate from every proposed Grant;
+  proposed subject fields never select another user's Parent authority. Child
+  subject/model/package/runtime are exact Parent bindings; Grant actions,
+  resources, approval, Egress, Secrets, expiry and budgets may only narrow.
+  Child Registry identities/capabilities must be a durable Parent subset after
+  physical forbidden-set removal and before fingerprinting. Reused identities
+  preserve capability, classification and idempotency class while actions,
+  selectors, approval and call limits may only narrow; SQL prefix containment
+  uses literal `starts_with`, never wildcard `LIKE`.
+- Launch admission rechecks both leases, immutable fingerprints, exact Registry
+  identities, expiry and current Parent/Child Kill Switches. Settlement requires
+  an already terminal Child Run, is exact-replay idempotent and cannot exceed
+  its reservation.
+- Parent cancel/kill terminalizes every live Child Attempt/Step/Run and fences
+  leases before invoking the reaper. Failed reap remains durable; reconcile
+  discovers terminal, expired, reclaimed or Kill-Switched Parents and retries
+  without restoring authority.
 - PostgreSQL is the only intent/approval/receipt authority. Prepare binds
   subject, package/runtime/grant/registry, lease generation/owner/token digest,
   canonical arguments, approval, budget, expiry and Kill Switch epoch before
@@ -126,6 +155,11 @@ Capability Grants, Runner RPC, side effects, Child Agents, Cron, Draft learning,
 | applicable Kill Switch | `KILL_SWITCH_ACTIVE`; fence mutable effects |
 | ambiguous external result | terminal `OUTCOME_UNKNOWN`; operator reconcile |
 | Child depth 2 or forbidden registry Tool | reject before launch |
+| Child subject/model/package/runtime/Grant/Registry widening | `SUBSET_VIOLATION`; no Child Run or reservation |
+| concurrent Parent reservation exceeds any dimension | `BUDGET_EXCEEDED`; exact replay consumes no second reservation |
+| stale Parent Attempt at enqueue/launch | `PARENT_STALE`; no Child launch |
+| settlement before terminal Run or outcome drift | `SETTLEMENT_INVALID`; reservation remains held |
+| reaper unavailable after cascade | Child lease remains fenced; reap becomes durable `failed` and reconcile retries |
 | Draft attempts self-Promote | reject and security-audit |
 
 ### 5. Good / Base / Bad Cases
@@ -137,7 +171,9 @@ Capability Grants, Runner RPC, side effects, Child Agents, Cron, Draft learning,
   cleanup/reconciliation still runs after later persistence exists.
 - **Bad**: browser assembles executable Skill context, model expands Tools,
   Backend runs code in-process, Runner uses rootful Docker, Child retains
-  `delegate_task`, or a write reconnect is automatically retried.
+  `delegate_task`, process-local Parent budgets accept concurrent Children,
+  cascade re-enables a lease after reap failure, or a write reconnect is
+  automatically retried.
 
 ### 6. Tests Required
 
@@ -174,8 +210,19 @@ Capability Grants, Runner RPC, side effects, Child Agents, Cron, Draft learning,
 - The G20.4 PostgreSQL drill must include Cancel-vs-Commit concurrency with one
   winner/zero dispatch when Cancel wins, Grant-revocation zero dispatch, and
   `outcome_unknown` atomic Run/Step/Attempt projection plus append-only events.
-- Child: forged Parent, depth 2, widened grant/model/package/budget and registry
-  alias rejection before launch.
+- G20.5 source/control: focused race tests for `internal/agentdelegation`,
+  `internal/agentbroker`, `internal/agentrunner`, `internal/agentorchestrator`
+  and migration schema; disposable PostgreSQL 17 fresh/replay, one-winner
+  concurrent Parent reservation, least privilege, stale Parent/Child launch,
+  terminal settlement, Child-first cascade, failed-reap recovery, automatic
+  stale-Parent recovery, dump/restore and guarded down/up; then advance every
+  older PostgreSQL tail drill through migration `087`.
+- Child negatives: proposed Grant subject cannot replace authenticated user;
+  forged/cross-user/non-root Parent, depth 2, widened subject/model/package/
+  runtime/Grant/Egress/Secret/expiry/budget, same-identity Registry capability/
+  action/resource/classification/idempotency rebind, SQL `_`/`%` prefix
+  wildcard attempts, stale lease/fingerprint and Kill Switch all reject before
+  launch.
 - Cutover: backup, storage purge, zero legacy execution references, history fact,
   clean-copy/restart/live canary and all-path rollback rehearsal.
 

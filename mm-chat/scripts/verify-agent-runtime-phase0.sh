@@ -24,6 +24,26 @@ for command in jq bash; do
   fi
 done
 
+required_g20_5_paths=(
+  "${project_dir}/backend/internal/agentdelegation/service.go"
+  "${project_dir}/backend/internal/agentdelegation/repository_postgres.go"
+  "${project_dir}/backend/migrations/087_agent_child_delegation.up.sql"
+  "${project_dir}/backend/migrations/087_agent_child_delegation.down.sql"
+  "${project_dir}/scripts/verify-agent-delegation.sh"
+  "${project_dir}/scripts/verify-agent-delegation-postgres17.sh"
+)
+for path in "${required_g20_5_paths[@]}"; do
+  if [[ ! -s "${path}" ]]; then
+    echo "Agent Runtime Phase 0 verification: missing G20.5 artifact ${path}" >&2
+    exit 1
+  fi
+done
+grep -Fq "type RunLineage struct" "${project_dir}/backend/internal/agentrunner/types.go"
+grep -Fq "CREATE FUNCTION agent_delegation_reconcile(" \
+  "${project_dir}/backend/migrations/087_agent_child_delegation.up.sql"
+grep -Fq "DROP FUNCTION agent_delegation_reconcile(INTEGER)" \
+  "${project_dir}/backend/migrations/087_agent_child_delegation.down.sql"
+
 schema_dir="${project_dir}/docs/contracts/schemas"
 fixture_dir="${project_dir}/docs/contracts/fixtures/agent-runtime"
 

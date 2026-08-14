@@ -664,7 +664,7 @@ func (f serviceFixture) launchRequest(t *testing.T) Request {
 	now := time.Now().UTC()
 	f.service.now = func() time.Time { return now }
 	attempt := testAttempt()
-	body := LaunchRequest{Attempt: attempt, GrantID: "grant_0123456789abcdef", GrantFingerprint: testFingerprint('5'), SnapshotFingerprint: testFingerprint('6'), Sandbox: SandboxSpec{RuntimeBundleFingerprint: testFingerprint('2'), PackageFingerprint: testFingerprint('1'), Image: "registry.example/neo/audit@" + testFingerprint('4'), UID: 10001, GID: 10001, RootfsReadOnly: true, NoNewPrivileges: true, Capabilities: []string{}, SeccompProfileFingerprint: testFingerprint('7'), NetworkMode: "none", WorkspaceSnapshotID: f.workspace.ID, WorkspaceFingerprint: f.workspace.Fingerprint, Resources: ResourceLimits{CPUMillis: 1000, MemoryMiB: 512, PIDs: 64, WallSeconds: 300, OutputBytes: 2 << 20, ScratchBytes: 64 << 20}}, ToolRegistry: ToolRegistry{Depth: 0, Tools: []string{"workspace.read"}, RegistryFingerprint: testFingerprint('8')}, Argv: []string{"/opt/neo/bin/audit"}}
+	body := LaunchRequest{Attempt: attempt, Lineage: RunLineage{RootRunID: attempt.RunID, Depth: 0}, GrantID: "grant_0123456789abcdef", GrantFingerprint: testFingerprint('5'), SnapshotFingerprint: testFingerprint('6'), Sandbox: SandboxSpec{RuntimeBundleFingerprint: testFingerprint('2'), PackageFingerprint: testFingerprint('1'), Image: "registry.example/neo/audit@" + testFingerprint('4'), UID: 10001, GID: 10001, RootfsReadOnly: true, NoNewPrivileges: true, Capabilities: []string{}, SeccompProfileFingerprint: testFingerprint('7'), NetworkMode: "none", WorkspaceSnapshotID: f.workspace.ID, WorkspaceFingerprint: f.workspace.Fingerprint, Resources: ResourceLimits{CPUMillis: 1000, MemoryMiB: 512, PIDs: 64, WallSeconds: 300, OutputBytes: 2 << 20, ScratchBytes: 64 << 20}}, ToolRegistry: ToolRegistry{Depth: 0, Tools: []string{"workspace.read"}, RegistryFingerprint: testFingerprint('8')}, Argv: []string{"/opt/neo/bin/audit"}}
 	claims := NewAuthorityClaims(testCaller, testRunner, MethodLaunch, testRequestID, strings.Repeat("n", 32), AuthorityRequestFingerprint(MethodLaunch, body), testFingerprint('6'), attempt, 0, now, now.Add(10*time.Second))
 	body.Authority, _ = SignAuthority(f.private, claims)
 	raw := mustEnvelope(t, MethodLaunch, testRequestID, now, strings.Repeat("n", 32), body)
@@ -687,6 +687,32 @@ func (f serviceFixture) cancelRequest(t *testing.T, launch *LaunchRequest, metho
 		t.Fatal(err)
 	}
 	return request
+}
+
+func TestLaunchRejectsForgedChildLineageBeforeDriverCreate(t *testing.T) {
+	fixture := newServiceFixture(t, true)
+	for _, mutate := range []func(*LaunchRequest){
+		func(value *LaunchRequest) { value.Lineage = RunLineage{RootRunID: value.Attempt.RunID, Depth: 1} },
+		func(value *LaunchRequest) {
+			value.Lineage = RunLineage{RootRunID: value.Attempt.RunID, Depth: 0}
+			value.ToolRegistry.Depth = 1
+		},
+		func(value *LaunchRequest) {
+			value.Lineage = RunLineage{RootRunID: "run_fedcba9876543210", ParentRunID: "run_fedcba9876543210", Depth: 2}
+			value.ToolRegistry.Depth = 1
+		},
+	} {
+		request := fixture.launchRequest(t)
+		mutate(request.Launch)
+		body, _ := json.Marshal(request.Launch)
+		raw := mustEnvelope(t, MethodLaunch, request.RequestID, request.SentAt, request.Nonce, json.RawMessage(body))
+		if _, err := DecodeRequest(raw, request.SentAt, 15*time.Second); !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("forged lineage error = %v", err)
+		}
+	}
+	if len(fixture.driver.Plans) != 0 {
+		t.Fatalf("driver received %d forged launches", len(fixture.driver.Plans))
+	}
 }
 
 type tarFixture struct {

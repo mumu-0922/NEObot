@@ -1,9 +1,9 @@
 # G20 Neo Agent Runtime Epic Plan
 
 Status: G20.0 Phase 0, G20.1 Skill supply chain, G20.2 durable Orchestrator,
-G20.3 Runner and G20.4 brokered-effect source/control foundations complete.
-Exact-host isolation and production relay promotion are held; G20.5 has not
-started.
+G20.3 Runner, G20.4 brokered effects and G20.5 depth-1 Child delegation
+source/control foundations complete. Exact-host isolation, production relay and
+Child execution promotion are held.
 
 ## Locked outcome
 
@@ -136,17 +136,36 @@ mutable executor/canary and target-host isolation. The current host remains
 
 ## G20.5 — Child Agent depth 1
 
+Status: source/control foundation complete (2026-08-14); public/startup Child
+execution and exact-host promotion held.
+
 - Add root-to-child durable lineage, subset snapshot derivation and parent
   budget accounting.
 - Physically remove `delegate_task`, Cron/grant/secret/runtime management from
   depth-1 Registry before fingerprinting.
 - Enforce depth, Parent binding and subset rules at API, snapshot, Registry,
   Runner launch and database boundaries.
+- Bind authenticated control user separately from proposed Grant subject, and
+  preserve Parent Registry capability/classification/idempotency while actions,
+  selectors, approval and call limits narrow.
 - Cascade cancel/kill and reconcile orphaned Children.
 
 Promotion gate: depth 2, forged Parent, widened model/package/grant/egress/
 secret/budget, registry alias and stale Parent attacks all fail before launch;
 cancel/kill leaves no descendants.
+
+Implemented evidence: `internal/agentdelegation` server-derived root/child
+authority; migration `087` immutable lineage, exact Parent Attempt binding,
+transactional four-dimensional reservations, terminal settlements and durable
+reaps; Broker identity/capability alias removal; Runner signed `runLineage`;
+stale Parent/Child lease, snapshot/Grant/Registry/Kill-Switch launch fences;
+Child-first cancel/kill plus terminal/expired/reclaimed/Kill-Switch recovery;
+focused race/vet, PostgreSQL 17 concurrency/least-privilege/cascade/recovery/
+dump-restore/down-up proof; and every older PostgreSQL tail drill advanced to
+`087`. Held evidence: public Agent/delegation API, Chat/frontend/startup wiring,
+production Child launch/reaper transport, live canary and target-host isolation.
+The current host remains `ISOLATION_UNAVAILABLE`; legacy text Skills remain
+untouched through G20.8 and are deleted only by G20.9.
 
 ## G20.6 — Cron durable scheduling
 

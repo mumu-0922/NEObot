@@ -20,13 +20,15 @@ bash mm-chat/scripts/verify-agent-runner.sh
 bash mm-chat/scripts/verify-agent-runner-postgres17.sh
 bash mm-chat/scripts/verify-agent-broker.sh
 bash mm-chat/scripts/verify-agent-broker-postgres17.sh
+bash mm-chat/scripts/verify-agent-delegation.sh
+bash mm-chat/scripts/verify-agent-delegation-postgres17.sh
 bash mm-chat/scripts/verify-agent-runner-host.sh # expected nonzero until exact host is prepared
 ```
 
-The Runner and Broker gates prove source/control and disposable PostgreSQL
-behavior. The host gate must return `ISOLATION_UNAVAILABLE` here and becomes
-promotion evidence only when the exact approved service account/release passes
-the full suite.
+The Runner, Broker and delegation gates prove source/control and disposable
+PostgreSQL behavior. The host gate must return `ISOLATION_UNAVAILABLE` here and
+becomes promotion evidence only when the exact approved service account/release
+passes the full suite.
 
 ### 3. Contracts
 
@@ -64,6 +66,15 @@ the full suite.
   public API and Orchestrator roles gain no table DML. Its default production
   relay remains unavailable; do not manually invoke database functions as an
   executor or promote the deterministic Project CAS fake.
+- Migration `087` supplies held root/child lineage, Parent reservations,
+  launch admission, settlements and durable reap work through
+  `agent_delegation_control`. API, Orchestrator, Runner and effect roles gain no
+  delegation DML; `neo-runnerd` remains credential-free. No public/startup Child
+  worker exists, and operators must not manufacture root authority or Child Runs
+  in a live database.
+- Parent cancel/kill and reconcile fence Child leases plus terminal
+  Attempt/Step/Run state before host reaping. Reap failure remains durable and
+  retryable; never restore a lease or delete delegation facts to clear health.
 - A possibly sent mutable effect must be reconciled by its exact stable status
   key. Without exact committed/not-sent proof, record `outcome_unknown`; never
   retry with another key. Runtime-off operation still expires intents/revokes
@@ -91,6 +102,8 @@ the full suite.
 | Kill Switch `kill` | fence lease/effects, kill descendants, remove Scratch |
 | restore sees pre-restore live Sandbox | kill; never trust old lease/nonces |
 | cleanup object removal fails | retain durable queue/state and retry |
+| Child reap fails after Parent cascade | keep Child terminal/lease-fenced; retry exact durable reap |
+| migration `087` passes but exact host is held | keep production Child execution disabled |
 
 ### 5. Good / Base / Bad Cases
 
@@ -111,6 +124,10 @@ the full suite.
 - CPU/memory/PID/disk/output/wall exhaustion and descendant/orphan/reboot reap.
 - Lease reclaim, Prepare/Commit crash matrix, depth-1 Registry and Runtime-off
   cleanup proof.
+- Migration `087` concurrent reservation, stale Parent/Child launch, terminal
+  settlement, cascade/reap failure, terminal/expired/reclaimed/Kill-Switch
+  recovery, least privilege, dump/restore and clean down/up; all older tail
+  drills must return to `087` head.
 - Paired PostgreSQL/object backup, restore-with-Runtime-off and reconciliation.
 - G20.1 backup/restore pairs migration `083` rows with all three immutable
   object prefixes: `skill-quarantine/`, `skill-packages/`, and `skill-sboms/`.

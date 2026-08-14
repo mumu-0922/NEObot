@@ -161,6 +161,12 @@ type ToolRegistry struct {
 	RegistryFingerprint string   `json:"registryFingerprint"`
 }
 
+type RunLineage struct {
+	RootRunID   string `json:"rootRunId"`
+	ParentRunID string `json:"parentRunId,omitempty"`
+	Depth       int    `json:"depth"`
+}
+
 type ProbeRequest struct {
 	RequiredFeatures []string `json:"requiredFeatures"`
 }
@@ -168,6 +174,7 @@ type ProbeRequest struct {
 type LaunchRequest struct {
 	Attempt             AttemptRef      `json:"attempt"`
 	Authority           AuthorityTicket `json:"authority"`
+	Lineage             RunLineage      `json:"lineage"`
 	GrantID             string          `json:"grantId"`
 	GrantFingerprint    string          `json:"grantFingerprint"`
 	SnapshotFingerprint string          `json:"snapshotFingerprint"`
