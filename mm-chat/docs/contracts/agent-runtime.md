@@ -267,7 +267,7 @@ G20.8 implementation signatures:
   preparation surfaces together with the legacy editor/executor;
 - `scripts/verify-agent-product-shadow{,-postgres17}.sh` prove product contracts,
   authorization/fences/budgets/restart, content-free dump/restore and guarded
-  rollback. Every older PostgreSQL tail drill finishes at head `090`.
+  rollback. Every older PostgreSQL tail drill finishes at head `091`.
 
 G20.9 implementation signatures:
 
@@ -745,9 +745,9 @@ PostgreSQL rows are handled outside the migration chain by
 `scripts/cutover-legacy-skills.sql`: dry-run is the default, apply requires the
 exact target count and a `sha256:<64 lowercase hex>` full-backup fingerprint,
 locks `conversations`, removes only `metadata.activeSkills`, verifies zero
-remaining rows and commits. There is no migration `091` or pretend down SQL;
-rollback restores the matching full database backup and previous images as one
-operation.
+remaining rows and commits. The cutover itself creates no migration or pretend
+down SQL; current migration `091` is unrelated Artifact authority. Rollback
+restores the matching full database backup and previous images as one operation.
 
 G20.8 backup/inventory evidence must be captured before deploying the G20.9
 browser build. Package Skills remain the only eligible Skill execution domain,
@@ -805,7 +805,7 @@ interpreter and an unapproved or placeholder `production` release. Template
 builds are deterministic and never install or mutate host state.
 
 The stage record is `neo.agent-production-activation/v1`, stage
-`control_plane`. It binds the exact Git commit, migration head `090`, operations
+`control_plane`. It binds the exact Git commit, current migration head `091`, operations
 policy, Runner manifest/binary, deployment, private HTTPS endpoint, Runner and
 TLS identities, client certificate, server CA and these five unique live
 checks:
@@ -829,9 +829,10 @@ comparison without reconcile. The database login must inherit
 `agent_runner_control` and must not inherit owner, API, effect, delegation,
 Cron or Learning roles. Startup and cycle drift terminate the process.
 
-G21.0 adds no migration `091`, API/Chat route, launch/heartbeat/cancel RPC,
-Broker adapter or public endpoint. All execution-stage environment switches
-remain false, and the control profile defaults off.
+G21.0 itself adds no migration, API/Chat route, launch/heartbeat/cancel RPC,
+Broker adapter or public endpoint. Its current evaluator nevertheless binds
+the reviewed `091` head introduced by G21.2. All execution-stage environment
+switches remain false, and the control profile defaults off.
 
 ## 20. G21.1 synthetic Root Run canary
 
@@ -892,8 +893,9 @@ until that lease expires.
 The dedicated LOGIN must be a nonprivileged `LOGIN INHERIT` principal whose
 recursive membership set is exactly
 `agent_orchestrator_runtime,agent_runner_control`. G21.1 reuses migration
-`084`/`085` SECURITY DEFINER functions and adds no migration `091` or direct
-table DML. The command and Compose profile are separate from `cmd/api`, have no
+`084`/`085` SECURITY DEFINER functions and itself adds no migration or direct
+table DML; its current release gate accepts only the reviewed `091` tail. The
+command and Compose profile are separate from `cmd/api`, have no
 port or Provider/object-store/Redis/MCP/vault credentials, and default off.
 
 Required focused gates are:
@@ -909,7 +911,76 @@ rollback on Sandbox mismatch and the atomic four-projection terminal chain.
 The G21.1 gate also reruns G21.0 and requires the current host to remain
 `ISOLATION_UNAVAILABLE`; it is not production promotion evidence.
 
-## 21. Phase 0 verification
+## 21. G21.2 read-only Broker and Artifact canary
+
+The strict plan and activation schemas are
+`schemas/neo-agent-broker-artifact-canary-plan.schema.json` and
+`schemas/neo-agent-broker-artifact-canary-activation.schema.json`. The plan is
+synthetic and admits exactly five actions: Project read, Workspace read, one
+exact auth-none MCP read, Artifact publication and a possible-send read. Every
+Sandbox is rootless, read-only, capability-free and `networkMode=none`; the plan
+contains no Secret, Provider, database, object-store, MCP token or relay key.
+
+Runner ingress has three disjoint caller policies:
+
+```text
+spiffe://neo-chat/agent-runtime-control
+  -> probe, list, reconcile
+spiffe://neo-chat/agent-runtime-root-canary
+  -> probe, list, reconcile, launch, heartbeat, cancel
+spiffe://neo-chat/agent-runtime-broker-canary
+  -> probe, list, reconcile, launch, heartbeat, cancel, prepare, commit
+```
+
+`neo-runnerd` forwards Prepare/Commit only to the private literal-HTTPS mTLS
+relay. The relay transport identity is exactly
+`spiffe://neo-chat/neo-runner-broker-relay`, distinct from all callers. It
+accepts no lifecycle method, re-verifies the original authority ticket and
+unsigned body fingerprint, and resolves the exact user, Grant and Registry
+from the mounted plan before invoking `agentbroker.Service`. Network or relay
+ambiguity never creates local authority.
+
+Registered read executors require a frozen read-classified, idempotent,
+automatic Registry entry. File reads rewalk the exact immutable root and reject
+traversal, links, special files and byte overflow. MCP admits only the pinned
+manifest server and exact read Tool. Receipts contain canonical result
+fingerprints only. Prepare and Commit exact replay do not execute twice; stale
+generation/lease fails before executor or object access. A possible send whose
+status cannot be proven becomes terminal `outcome_unknown` and replay never
+dispatches again.
+
+Migration `091_agent_artifact_publication` owns function-only Artifact
+authority. `agent_artifact_control` has no direct `agent_artifacts` DML, schema
+CREATE or owner membership. The dedicated LOGIN recursively inherits exactly
+`agent_orchestrator_runtime,agent_runner_control,agent_effect_control,
+agent_artifact_control`. Authorize and attach both recheck intent, Tool/action,
+user, Run, Attempt generation/live lease, snapshot, Grant/Registry,
+non-revocation, Kill Switch, byte bound and media allowlist. Publication scans
+one bounded byte snapshot, writes the object before the row, deletes the object
+on row failure and cleans quarantine on success or rejection. Exact row replay
+is idempotent; Artifact ID/name/object-key collisions fail closed.
+
+The `broker_artifact_canary` activation record binds migration head `091`, the
+exact release/target/policy, Runner and relay endpoints, both mTLS trust tuples,
+authority key, plan and zero Artifact/quarantine residue. The Compose profile
+is independent and default-off. The service may hold its narrow database,
+object-store and MCP credentials; Runner and Sandbox may not. No API/Chat route,
+mutable Project action, generic MCP, credentialed Tool, Provider, Secret,
+Egress, Child, Cron or Learning path is enabled.
+
+Required focused gates are:
+
+```bash
+bash scripts/verify-agent-broker-canary-activation.sh
+bash scripts/verify-agent-broker-canary-preflight.sh
+bash scripts/verify-agent-artifact-publication-postgres17.sh
+bash scripts/verify-agent-runtime-g21-2.sh
+```
+
+The source, Compose and disposable PostgreSQL proofs are not live evidence. The
+current host must still return `ISOLATION_UNAVAILABLE`.
+
+## 22. Phase 0 verification
 
 Run:
 
@@ -943,6 +1014,10 @@ bash scripts/verify-agent-runtime-g21-0.sh
 bash scripts/verify-agent-root-canary-activation.sh
 bash scripts/verify-agent-root-canary-postgres17.sh
 bash scripts/verify-agent-runtime-g21-1.sh
+bash scripts/verify-agent-broker-canary-activation.sh
+bash scripts/verify-agent-broker-canary-preflight.sh
+bash scripts/verify-agent-artifact-publication-postgres17.sh
+bash scripts/verify-agent-runtime-g21-2.sh
 bash scripts/verify-agent-runner.sh
 bash scripts/verify-agent-runtime-phase0.sh
 bash scripts/verify-agent-runner-host.sh # expected nonzero on the current host

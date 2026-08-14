@@ -16,7 +16,28 @@ func TestPrivateAddressAllowsOnlyLiteralLoopbackOrPrivateIP(t *testing.T) {
 }
 
 func TestRunnerCallerIdentitiesRemainSeparate(t *testing.T) {
-	if controlCallerIdentity == canaryCallerIdentity {
-		t.Fatal("control and canary identities must remain distinct")
+	seen := map[string]struct{}{}
+	for _, identity := range []string{controlCallerIdentity, rootCanaryCallerIdentity,
+		brokerCanaryCallerIdentity, brokerRelayIdentity} {
+		if _, duplicate := seen[identity]; duplicate {
+			t.Fatal("Runner caller and relay identities must remain distinct")
+		}
+		seen[identity] = struct{}{}
+	}
+}
+
+func TestBrokerRelayConfigurationCannotPartiallyEnable(t *testing.T) {
+	t.Setenv("NEO_RUNNER_BROKER_RELAY_URL", "")
+	t.Setenv("NEO_RUNNER_BROKER_RELAY_CLIENT_CERT_FILE", "")
+	t.Setenv("NEO_RUNNER_BROKER_RELAY_CLIENT_KEY_FILE", "")
+	t.Setenv("NEO_RUNNER_BROKER_RELAY_SERVER_CA_FILE", "")
+	t.Setenv("NEO_RUNNER_BROKER_RELAY_SERVER_NAME", "")
+	t.Setenv("NEO_RUNNER_BROKER_RELAY_CLIENT_IDENTITY", "")
+	if brokerRelayConfigured() {
+		t.Fatal("empty Broker relay configuration was enabled")
+	}
+	t.Setenv("NEO_RUNNER_BROKER_RELAY_URL", "https://10.0.0.9:9444/internal/agent-broker/v1/relay")
+	if !brokerRelayConfigured() {
+		t.Fatal("partial Broker relay configuration was not detected")
 	}
 }

@@ -332,6 +332,7 @@ func mapPostgresError(action string, err error) error {
 			{"BUDGET_EXHAUSTED", ErrBudgetExhausted}, {"APPROVAL_REQUIRED", ErrApprovalRequired},
 			{"APPROVAL_DENIED", ErrApprovalDenied}, {"INTENT_EXPIRED", ErrIntentExpired},
 			{"SECRET_DENIED", ErrSecretDenied},
+			{"ARTIFACT_DENIED", ErrArtifactDenied},
 			{"INVALID_TRANSITION", ErrInvalidTransition}, {"AGENT_EFFECT_NOT_FOUND", ErrNotFound},
 		} {
 			if strings.Contains(message, mapping.code) {

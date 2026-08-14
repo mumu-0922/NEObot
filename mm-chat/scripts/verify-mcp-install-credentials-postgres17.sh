@@ -41,6 +41,9 @@ grep -Fq "up 087_agent_child_delegation" "${work_dir}/up.log"
 grep -Fq "up 088_agent_cron_foundation" "${work_dir}/up.log"
 grep -Fq "up 089_agent_draft_learning" "${work_dir}/up.log"
 grep -Fq "up 090_agent_product_shadow" "${work_dir}/up.log"
+grep -Fq "up 091_agent_artifact_publication" "${work_dir}/up.log"
+MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" down >"${work_dir}/peel-091-tail-1.log" 2>&1
+grep -Fq "down 091_agent_artifact_publication" "${work_dir}/peel-091-tail-1.log"
 MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" down >"${work_dir}/down-090.log" 2>&1
 grep -Fq "down 090_agent_product_shadow" "${work_dir}/down-090.log"
 MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" down >"${work_dir}/down-089.log" 2>&1
@@ -125,6 +128,7 @@ grep -Fq "up 087_agent_child_delegation" "${work_dir}/reup.log"
 grep -Fq "up 088_agent_cron_foundation" "${work_dir}/reup.log"
 grep -Fq "up 089_agent_draft_learning" "${work_dir}/reup.log"
 grep -Fq "up 090_agent_product_shadow" "${work_dir}/reup.log"
+grep -Fq "up 091_agent_artifact_publication" "${work_dir}/reup.log"
 repaired="$(
   docker exec "${container_name}" psql -U postgres -d neo_chat_mcp_credentials -Atc \
     "SELECT concat_ws('|', transport, auth_type, status, last_error_code, auth_config #>> '{metadata,runnerArtifactId}') FROM mcp_servers WHERE id = '78000000-0000-4000-8000-000000000002'"
@@ -152,4 +156,4 @@ if [[ "${context7}" != "22b235834a14b617480cc92dd0f6f6c7587cb399880c666773135971
   exit 1
 fi
 
-printf 'MCP credential migration drill: passed (077-090 tail replay and exact 078-081 repairs)\n'
+printf 'MCP credential migration drill: passed (077-091 tail replay and exact 078-081 repairs)\n'

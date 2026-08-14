@@ -59,6 +59,22 @@ identities and release commit. Only `ACTIVATION_READY` may start the separate
 `probe`/`list`/`reconcile`. Root Run and every Broker/Child/Cron/Learning path
 remain disabled.
 
+G21.1 may add the separate exact caller
+`spiffe://neo-chat/agent-runtime-root-canary` for
+`probe/list/reconcile/launch/heartbeat/cancel` after its own activation. G21.2
+may add `spiffe://neo-chat/agent-runtime-broker-canary` for those lifecycle
+methods plus `prepare/commit`. The method sets are caller-specific and must not
+be merged.
+
+For G21.2, `neo-runnerd.env.example` contains only the private literal Broker
+relay URL, relay client certificate/key, relay server CA and the exact outbound
+identity `spiffe://neo-chat/neo-runner-broker-relay`. The Runner host must never
+receive the Broker database URL, S3 access key, MCP Runner token, Provider
+secret or vault credential. The relay endpoint is not exposed publicly and is
+valid only while the separate `agent-runtime-broker-canary` profile has fresh
+`broker_artifact_canary` activation evidence. Keep the relay settings empty on
+an inactive target rather than installing placeholder credentials.
+
 `Delegate=yes` requires the service to write only its delegated cgroup subtree,
 so the unit deliberately sets `ProtectControlGroups=no`. Rootless Podman also
 needs the explicit user/mount/PID/IPC/UTS/cgroup namespace allowlist; a blanket

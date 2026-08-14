@@ -46,8 +46,10 @@ if rg -n 'agentrootcanary|agent-runtime-root-canary' "${backend_dir}/cmd/api" >/
   echo 'G21.1 verification: Root canary leaked into cmd/api' >&2
   exit 1
 fi
-if find "${backend_dir}/migrations" -maxdepth 1 -name '091_*' -print -quit | grep -q .; then
-  echo 'G21.1 verification: migration 091 is forbidden in this slice' >&2
+if [[ "$(find "${backend_dir}/migrations" -maxdepth 1 -name '091_*.up.sql' -printf '%f\n')" != \
+  '091_agent_artifact_publication.up.sql' ]] || \
+  [[ ! -s "${backend_dir}/migrations/091_agent_artifact_publication.down.sql" ]]; then
+  echo 'G21.1 verification: reviewed migration 091 tail is missing or widened' >&2
   exit 1
 fi
 for signature in \

@@ -143,7 +143,7 @@ function signatures, owners, and grants while pinning lookup to the application
 schema, `pg_catalog`, and `pg_temp`. Its down path intentionally retains the
 safe search path rather than reopening object-shadowing risk.
 
-The current migration head is `090`; the latest RAG retrieval-specific migration
+The current migration head is `091`; the latest RAG retrieval-specific migration
 remains `050`. Migration `043` extends the existing final-authority evidence
 hydration boundary with complete matched-Child and containing-Parent source
 text plus their persisted token counts. Parent text is answer context only. Its
@@ -628,8 +628,23 @@ content-free counts, latency buckets and reason codes only. Down fails with
 `AGENT_PRODUCT_DOWN_DATA_EXISTS` while cancellation, Artifact, policy, opt-in
 or observation authority remains. Disposable proof uses
 `scripts/verify-agent-product-shadow-postgres17.sh`; every older Agent/MCP/
-Assistant/Skill tail drill first peels an empty `090` before asserting its
-original migration guard and finishes reapplied at head `090`.
+Assistant/Skill tail drill first peels empty `091`, then empty `090`, before
+asserting its original migration guard and finishes reapplied at head `091`.
+
+Migration `091` adds G21.2 Artifact publication authority without widening the
+G20.8 product facade. The independent NOLOGIN `agent_artifact_control` role
+receives only exact authorize/attach `SECURITY DEFINER` execution and no direct
+`agent_artifacts` DML, owner membership or schema CREATE. Both functions bind
+the committing Broker intent, user, Run/Attempt generation and live lease,
+snapshot, Grant/Registry, revocation, Kill Switch, deterministic object key,
+media allowlist, byte bound and SHA-256. Attach repeats the checks under row
+locks, returns exact replay and rejects Artifact ID/name/object collisions.
+Down removes only the functions/role after the dedicated LOGIN membership is
+removed; migration `090` retains Artifact rows and continues to guard their
+destructive rollback. Disposable proof uses
+`scripts/verify-agent-artifact-publication-postgres17.sh`. Every older
+PostgreSQL tail drill peels empty `091` before its original tail/guard and
+finishes reapplied at head `091`.
 
 ## Storage boundaries
 

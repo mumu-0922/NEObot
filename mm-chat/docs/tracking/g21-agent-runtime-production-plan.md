@@ -2,7 +2,7 @@
 
 ## Baseline
 
-G20.1-G20.10 and migrations `083`-`090` remain the authority. Legacy text
+G20.1-G20.10 and migrations `083`-`091` remain the authority. Legacy text
 Skills are retired and admitted Package Skills are the only eligible Skill
 domain. G21 advances production capability one independently evidenced stage
 at a time; no later stage may be inferred from an earlier gate.
@@ -57,10 +57,32 @@ the approved exact host. The disposable PostgreSQL proof and current-host
 
 ## G21.2 — Read-only Broker and Artifact canary
 
-Wire only reviewed read-only Project/Workspace/MCP actions plus bounded Artifact
-publication. Prove Prepare/Commit replay, stale lease denial, object-before-row
-cleanup, no credential in Sandbox and `outcome_unknown` no-retry handling.
-Mutable effects remain false.
+Status: source/control implementation complete; exact-host Broker/Artifact
+canary held.
+
+- Add a third independent `broker_artifact_canary` activation stage, caller,
+  Compose profile and eighth PostgreSQL LOGIN.
+- Relay Prepare/Commit from credential-free `neo-runnerd` over private literal
+  HTTPS mTLS; independently verify the original authority ticket at the relay.
+- Run exactly five synthetic one-Run actions: bounded Project/Workspace reads,
+  one pinned auth-none MCP read, bounded Artifact publication and one
+  acknowledgement-loss read.
+- Require read/idempotent/automatic Registry authority; keep generic/mutable
+  MCP, Project mutation, Egress, Secrets and Provider calls disabled.
+- Add migration `091_agent_artifact_publication` with function-only
+  `agent_artifact_control`, repeated live authorization and no table DML.
+- Prove exact replay, stale lease/generation rejection, Artifact collision
+  denial, same-byte scan, object-before-row compensation and quarantine cleanup.
+- Terminalize an unresolved possible send as `outcome_unknown` and never issue
+  a second Commit under any key.
+- Keep Runner and Sandbox free of database, object-store, MCP, Provider, relay
+  server-key and vault credentials.
+
+Promotion gate: run `scripts/verify-agent-runtime-g21-2.sh`, then reproduce a
+fresh `BROKER_ARTIFACT_CANARY_GATES_PASSED` record and the complete Runner-relay-
+Broker flow on the approved exact host. Disposable PostgreSQL/object fakes and
+the current `ISOLATION_UNAVAILABLE` host cannot promote mutable or user-facing
+execution.
 
 ## G21.3 — Bounded mutable effects
 

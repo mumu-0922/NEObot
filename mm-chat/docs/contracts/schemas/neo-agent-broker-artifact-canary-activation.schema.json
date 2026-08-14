@@ -1,0 +1,528 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neo-chat.local/schemas/neo-agent-broker-artifact-canary-activation.schema.json",
+  "title": "Neo Agent Broker Artifact Canary Activation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "evidenceClass",
+    "stage",
+    "release",
+    "target",
+    "wiring",
+    "window",
+    "checks",
+    "authorization",
+    "cleanup",
+    "review"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "neo.agent-production-activation/v1"
+    },
+    "evidenceClass": {
+      "enum": [
+        "template",
+        "production"
+      ]
+    },
+    "stage": {
+      "const": "broker_artifact_canary"
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gitCommit",
+        "migrationHead",
+        "runnerManifestSha256",
+        "runnerBinarySha256",
+        "operationsPolicySha256"
+      ],
+      "properties": {
+        "gitCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "migrationHead": {
+          "const": 91
+        },
+        "runnerManifestSha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "runnerBinarySha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "operationsPolicySha256": {
+          "$ref": "#/$defs/fingerprint"
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deploymentFingerprint",
+        "runnerId"
+      ],
+      "properties": {
+        "deploymentFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "runnerId": {
+          "$ref": "#/$defs/identity"
+        }
+      }
+    },
+    "wiring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "endpointSha256",
+        "clientCertificateSha256",
+        "serverCASha256",
+        "serverName",
+        "callerIdentity",
+        "canaryPlanSha256",
+        "authorityPublicKeySha256",
+        "relayEndpointSha256",
+        "relayServerCertificateSha256",
+        "relayClientCASha256",
+        "runnerRelayIdentity"
+      ],
+      "properties": {
+        "endpointSha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "clientCertificateSha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "serverCASha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "serverName": {
+          "$ref": "#/$defs/identity"
+        },
+        "callerIdentity": {
+          "const": "spiffe://neo-chat/agent-runtime-broker-canary"
+        },
+        "canaryPlanSha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "authorityPublicKeySha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "relayEndpointSha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "relayServerCertificateSha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "relayClientCASha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "runnerRelayIdentity": {
+          "const": "spiffe://neo-chat/neo-runner-broker-relay"
+        }
+      }
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "startedAt",
+        "completedAt",
+        "expiresAt"
+      ],
+      "properties": {
+        "startedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "completedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 14,
+      "maxItems": 14,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "result",
+          "observedAt",
+          "evidenceSha256",
+          "detailCode"
+        ],
+        "properties": {
+          "id": {
+            "enum": [
+              "artifact_authority_ready",
+              "artifact_cleanup_ready",
+              "control_plane_ready",
+              "exact_host_isolation",
+              "mcp_read_ready",
+              "outcome_unknown_no_retry",
+              "private_broker_relay_mtls",
+              "private_runner_mtls",
+              "project_read_ready",
+              "restart_recovery_ready",
+              "signed_authority_ready",
+              "synthetic_plan_ready",
+              "workspace_read_ready",
+              "zero_inventory"
+            ]
+          },
+          "result": {
+            "enum": [
+              "passed",
+              "failed",
+              "not_run",
+              "isolation_unavailable"
+            ]
+          },
+          "observedAt": {
+            "$ref": "#/$defs/timestamp"
+          },
+          "evidenceSha256": {
+            "$ref": "#/$defs/fingerprint"
+          },
+          "detailCode": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "artifact_authority_ready"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "artifact_cleanup_ready"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "control_plane_ready"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "exact_host_isolation"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "mcp_read_ready"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "outcome_unknown_no_retry"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "private_broker_relay_mtls"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "private_runner_mtls"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "project_read_ready"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "restart_recovery_ready"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "signed_authority_ready"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "synthetic_plan_ready"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "workspace_read_ready"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "zero_inventory"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "controlPlane",
+        "rootRuns",
+        "brokerReadOnly",
+        "artifactPublication",
+        "brokerMutable",
+        "delegation",
+        "scheduler",
+        "learning"
+      ],
+      "properties": {
+        "controlPlane": {
+          "const": false
+        },
+        "rootRuns": {
+          "const": true
+        },
+        "brokerReadOnly": {
+          "const": true
+        },
+        "artifactPublication": {
+          "const": true
+        },
+        "brokerMutable": {
+          "const": false
+        },
+        "delegation": {
+          "const": false
+        },
+        "scheduler": {
+          "const": false
+        },
+        "learning": {
+          "const": false
+        }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "orphanSandboxes",
+        "scratchResidue",
+        "artifactResidue",
+        "quarantineResidue"
+      ],
+      "properties": {
+        "orphanSandboxes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "scratchResidue": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "artifactResidue": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "quarantineResidue": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "reviewedAt",
+        "reviewerFingerprint"
+      ],
+      "properties": {
+        "decision": {
+          "enum": [
+            "approved",
+            "held"
+          ]
+        },
+        "reviewedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "reviewerFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "identity": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:@/-]{0,127}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    }
+  },
+  "description": "Short-lived G21.2 activation evidence for reviewed read-only Broker and Artifact canary wiring."
+}

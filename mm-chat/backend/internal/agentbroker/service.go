@@ -12,11 +12,18 @@ import (
 type Service struct {
 	repository   Repository
 	executors    map[string]EffectExecutor
+	readers      map[string]ReadOnlyExecutor
 	secretBroker *SecretBroker
 	now          func() time.Time
 }
 
 func NewService(repository Repository, executors map[string]EffectExecutor, secretBrokers ...*SecretBroker) (*Service, error) {
+	return NewServiceWithReadOnly(repository, executors, nil, secretBrokers...)
+}
+
+func NewServiceWithReadOnly(repository Repository, executors map[string]EffectExecutor,
+	readers map[string]ReadOnlyExecutor, secretBrokers ...*SecretBroker,
+) (*Service, error) {
 	if repository == nil {
 		return nil, ErrDatabaseRequired
 	}
@@ -30,7 +37,14 @@ func NewService(repository Repository, executors map[string]EffectExecutor, secr
 		}
 		copyExecutors[identity] = executor
 	}
-	service := &Service{repository: repository, executors: copyExecutors, now: time.Now}
+	copyReaders := make(map[string]ReadOnlyExecutor, len(readers))
+	for identity, reader := range readers {
+		if !validIdentifier(identity) || reader == nil || copyExecutors[identity] != nil {
+			return nil, ErrInvalidInput
+		}
+		copyReaders[identity] = reader
+	}
+	service := &Service{repository: repository, executors: copyExecutors, readers: copyReaders, now: time.Now}
 	if len(secretBrokers) == 1 {
 		service.secretBroker = secretBrokers[0]
 	}
@@ -62,6 +76,10 @@ func (service *Service) Prepare(ctx context.Context, input PrepareInput) (Prepar
 	tool, err := RegistryToolFor(input.Registry, input.ToolIdentity, input.Action, input.Resource)
 	if err != nil {
 		return PreparedIntent{}, err
+	}
+	if service.readers[input.ToolIdentity] != nil &&
+		(tool.Classification != ClassificationRead || !tool.Idempotent || tool.Approval != ApprovalAutomatic) {
+		return PreparedIntent{}, ErrGrantDenied
 	}
 	if tool.Classification != ClassificationRead && tool.Approval == ApprovalAutomatic {
 		// Automatic authorization is allowed by the frozen Grant, but it still
@@ -234,6 +252,9 @@ func (service *Service) Commit(ctx context.Context, input CommitInput) (CommitRe
 	if claim.Replay {
 		return resultFromIntent(claim.Intent, true)
 	}
+	if reader := service.readers[claim.Intent.ToolIdentity]; reader != nil {
+		return service.commitRead(ctx, claim.Intent, reader)
+	}
 	executor := service.executors[claim.Intent.ToolIdentity]
 	if executor == nil {
 		completed, completeErr := service.completeCommit(ctx, claim.Intent.IntentID,
@@ -296,6 +317,44 @@ func (service *Service) Commit(ctx context.Context, input CommitInput) (CommitRe
 	return result, ErrOutcomeUnknown
 }
 
+func (service *Service) commitRead(ctx context.Context, intent PreparedIntent, reader ReadOnlyExecutor) (CommitResult, error) {
+	result, readErr := reader.Read(ctx, executionRequest(intent))
+	if readErr == nil {
+		canonical, canonicalErr := canonicalJSON(result, maxArgumentsBytes)
+		clear(result)
+		if canonicalErr == nil {
+			completed, completeErr := service.completeCommit(ctx, intent.IntentID, IntentCommitted,
+				fingerprint("neo-read-executor-receipt-v1", canonical), "", "")
+			clear(canonical)
+			if completeErr != nil {
+				return CommitResult{}, completeErr
+			}
+			return resultFromIntent(completed, false)
+		}
+		readErr = &DispatchError{Cause: ErrExecutorUnavailable, PossibleSend: true}
+	}
+	possibleSend := false
+	var typed *DispatchError
+	if errors.As(readErr, &typed) {
+		possibleSend = typed.PossibleSend
+	}
+	if !possibleSend {
+		completed, completeErr := service.completeCommit(ctx, intent.IntentID,
+			IntentFailed, "", "", "EXECUTOR_FAILED_BEFORE_SEND")
+		if completeErr != nil {
+			return CommitResult{}, completeErr
+		}
+		return resultFromIntent(completed, false)
+	}
+	completed, completeErr := service.completeCommit(ctx, intent.IntentID,
+		IntentOutcomeUnknown, "", "", "OUTCOME_UNKNOWN")
+	if completeErr != nil {
+		return CommitResult{}, completeErr
+	}
+	commitResult, _ := resultFromIntent(completed, false)
+	return commitResult, ErrOutcomeUnknown
+}
+
 func (service *Service) completeCommit(ctx context.Context, intentID, state, receipt, statusDigest, code string) (PreparedIntent, error) {
 	intent, err := service.repository.CompleteCommit(ctx, intentID, state, receipt, statusDigest, code)
 	if err == nil && service.secretBroker != nil {
@@ -305,7 +364,11 @@ func (service *Service) completeCommit(ctx context.Context, intentID, state, rec
 }
 
 func executionRequest(intent PreparedIntent) ExecutionRequest {
-	return ExecutionRequest{IntentID: intent.IntentID, IdempotencyKey: intent.IdempotencyKey,
+	return ExecutionRequest{UserID: intent.Subject.UserID, RunID: intent.RunID, StepID: intent.StepID,
+		AttemptID: intent.AttemptID, Generation: intent.Generation,
+		SnapshotFingerprint: intent.SnapshotFingerprint, GrantFingerprint: intent.GrantFingerprint,
+		RegistryFingerprint: intent.RegistryFingerprint,
+		IntentID:            intent.IntentID, IdempotencyKey: intent.IdempotencyKey,
 		ToolIdentity: intent.ToolIdentity, Capability: intent.Capability, Action: intent.Action,
 		Resource: intent.Resource, Arguments: append(json.RawMessage(nil), intent.CanonicalArguments...),
 		ArgumentsFingerprint: intent.ArgumentsFingerprint, BaseRevision: intent.BaseRevision}
@@ -351,7 +414,11 @@ func (service *Service) ReconcileCommitting(ctx context.Context, limit int) (int
 	for _, intent := range intents {
 		executor := service.executors[intent.ToolIdentity]
 		state, receipt, statusDigest, code := IntentOutcomeUnknown, "", "", "OUTCOME_UNKNOWN"
-		if executor != nil {
+		if service.readers[intent.ToolIdentity] != nil {
+			// A committing read may already have returned a result to this process.
+			// The raw result is intentionally not durable, so restart recovery must
+			// not execute it again merely because the Tool is idempotent.
+		} else if executor != nil {
 			status, statusErr := executor.Status(ctx, executionRequest(intent))
 			if statusErr == nil {
 				statusDigest = digestOptional(status.StatusToken)

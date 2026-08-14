@@ -18,7 +18,7 @@ const maxArgumentsBytes = 256 << 10
 
 var (
 	identifierPattern  = regexp.MustCompile(`^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$`)
-	prefixedIDPattern  = regexp.MustCompile(`^(run|step|attempt|grant|intent|approval|cancellation|request|user|project|assistant)_[a-z0-9]{8,64}$`)
+	prefixedIDPattern  = regexp.MustCompile(`^(run|step|attempt|grant|intent|approval|cancellation|request|artifact|user|project|assistant)_[a-z0-9]{8,64}$`)
 	fingerprintPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 	uuidPattern        = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 	leasePattern       = regexp.MustCompile(`^lease_[A-Za-z0-9_-]{24,128}$`)

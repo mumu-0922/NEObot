@@ -8,9 +8,10 @@ implemented. G20.10 supplies the fail-closed operations policy, evidence
 contract, evaluator and incident runbooks. G21.0 adds a default-off,
 control-only Runner maintenance profile and exact-host deployment bundle.
 G21.1 adds a second default-off, synthetic-only Root Run canary profile.
-Exact-host installation and general Root Run/Broker/Child/Scheduler/Learning/
-Shadow promotion remain held. Do not enable Agent execution or install the
-bundle on this development host.
+G21.2 adds a third default-off read-only Broker and bounded Artifact canary
+profile plus a private Runner relay. Exact-host installation and general Root
+Run/Broker/Child/Scheduler/Learning/Shadow promotion remain held. Do not enable
+Agent execution or install the bundle on this development host.
 
 ## Default state
 
@@ -20,6 +21,7 @@ All future switches default off:
 AGENT_RUNTIME_ENABLED=false
 AGENT_RUNNER_CONTROL_ENABLED=false
 AGENT_ROOT_RUN_CANARY_ENABLED=false
+AGENT_BROKER_ARTIFACT_CANARY_ENABLED=false
 AGENT_SCHEDULER_ENABLED=false
 AGENT_SKILL_INSTALL_ENABLED=false
 AGENT_LEARNING_ENABLED=false
@@ -29,8 +31,9 @@ AGENT_BROKER_MUTATION_ENABLED=false
 ```
 
 The host-only `deploy/agent-runner/neo-runnerd.env.example` is not an activation
-file. The `agent-runtime-control` and `agent-runtime-root-canary` Compose
-profiles exist only for an approved target and are not selected by default.
+file. The `agent-runtime-control`, `agent-runtime-root-canary` and
+`agent-runtime-broker-canary` Compose profiles exist only for an approved
+target and are not selected by default.
 With their flags false, ordinary startup neither reads target-host evidence,
 plan, mTLS or authority-key files nor dials Runner.
 
@@ -131,7 +134,7 @@ identity, sends strict `neo.runner-rpc/v1`, bounds headers/body/deadline and
 accepts only a request-ID/nonce/method-bound response. There is no bearer token
 fallback.
 
-## G20.3-G21.1 source and verification commands
+## G20.3-G21.2 source and verification commands
 
 ```bash
 bash scripts/verify-agent-runner.sh
@@ -153,6 +156,10 @@ bash scripts/verify-agent-runtime-g21-0.sh
 bash scripts/verify-agent-root-canary-activation.sh
 bash scripts/verify-agent-root-canary-postgres17.sh
 bash scripts/verify-agent-runtime-g21-1.sh
+bash scripts/verify-agent-broker-canary-activation.sh
+bash scripts/verify-agent-broker-canary-preflight.sh
+bash scripts/verify-agent-artifact-publication-postgres17.sh
+bash scripts/verify-agent-runtime-g21-2.sh
 bash scripts/verify-agent-runtime-phase0.sh
 bash scripts/verify-agent-runner-host.sh
 ```
@@ -313,6 +320,85 @@ membership, method isolation, Compose/preflight boundaries and G21.0
 regression. Its expected local `ISOLATION_UNAVAILABLE` result means this host
 still cannot activate the profile.
 
+## G21.2 read-only Broker and Artifact canary activation
+
+G21.2 requires ready G21.0 control and G21.1 Root canary evidence, but reuses
+neither identity nor database principal. Provision an eighth nonprivileged
+LOGIN whose recursive memberships are exactly `agent_orchestrator_runtime`,
+`agent_runner_control`, `agent_effect_control` and `agent_artifact_control`.
+The latter comes from migration `091_agent_artifact_publication` and grants
+function execution only; never grant direct `agent_artifacts` DML.
+
+Configure Runner ingress for the exact caller
+`spiffe://neo-chat/agent-runtime-broker-canary` and configure its outbound relay
+with the distinct client identity `spiffe://neo-chat/neo-runner-broker-relay`.
+Runner receives only the private literal relay URL, client certificate/key and
+server CA. It must not receive the Broker database URL, S3 key, MCP token,
+Provider keyring or vault material. The relay endpoint is exactly one private
+literal HTTPS address on the dedicated internal Compose network and exposes no
+host port.
+
+Place owner-secure regular files outside Git for the canary mTLS tuple, approved
+release manifest, policy, activation record, strict five-action plan, Ed25519
+authority pair and relay server certificate/key/client CA. Provide immutable
+Project and Workspace read roots, an existing private S3-compatible bucket,
+the server-side Artifact quarantine root and the dedicated MCP Runner token
+file. Only the Broker canary service mounts those credentials. The plan mounts
+Project and Workspace at
+`/run/agent-runtime-broker-canary/{project,workspace}` and keeps every Sandbox
+`networkMode=none` with no secret-bearing env or mount.
+
+Validate the activation record without mutation:
+
+```bash
+python3 scripts/evaluate-agent-production-activation.py \
+  --record /secure/agent-broker-canary/production-activation.json \
+  --policy config/agent-runner/production-policy.json \
+  --release-manifest /secure/agent-broker-canary/release-manifest.json \
+  --client-certificate /secure/agent-broker-canary/client.crt \
+  --server-ca /secure/agent-broker-canary/server-ca.crt \
+  --canary-plan /secure/agent-broker-canary/broker-canary-plan.json \
+  --authority-public-key /secure/agent-broker-canary/authority-public-key \
+  --relay-endpoint 'https://172.31.254.2:9444/internal/agent-broker/v1/relay' \
+  --relay-server-certificate /secure/agent-broker-canary/relay-server.crt \
+  --relay-client-ca /secure/agent-broker-canary/relay-client-ca.crt \
+  --runner-relay-identity spiffe://neo-chat/neo-runner-broker-relay \
+  --endpoint 'https://10.0.0.8:9443/internal/neo-runner/v1/rpc' \
+  --runner-id neo-runner-primary \
+  --server-name neo-runner.internal \
+  --caller-identity spiffe://neo-chat/agent-runtime-broker-canary \
+  --release-commit "$RELEASE_COMMIT"
+```
+
+Require `ACTIVATION_READY` with
+`BROKER_ARTIFACT_CANARY_GATES_PASSED`. Production preflight also requires the
+G21.0/G21.1 flags, exact four-way identity separation, RPC timeout `1s..10s`,
+authority TTL `10s..15s`, `S3_BUCKET_AUTO_CREATE=false`, a private MCP Runner
+URL/token source, matching TLS/key pairs, strict roots and zero evidence
+residue. Every broad Runtime/Broker mutation/Child/Cron/Learning flag remains
+false.
+
+The canary executes one synthetic Run per reviewed action so migration `086`'s
+one-Commit terminal state machine is unchanged. Stop only
+`agent-runtime-broker-canary` or reset its flag for rollback; retain control and
+Root-canary reconciliation, migration `091`, Artifact rows and paired object
+storage. If a row attach fails, verify the newly written object was deleted;
+never delete the database authority first. `outcome_unknown` is terminal and
+must not be retried under another key.
+
+Verify the slice with:
+
+```bash
+bash scripts/verify-agent-broker-canary-activation.sh
+bash scripts/verify-agent-broker-canary-preflight.sh
+bash scripts/verify-agent-artifact-publication-postgres17.sh
+bash scripts/verify-agent-runtime-g21-2.sh
+```
+
+These gates retain the expected local `ISOLATION_UNAVAILABLE` result. Live
+Artifact/quarantine evidence must be produced only on the exact approved host;
+the checked-in fixture is not a claim that a Sandbox ran here.
+
 ## Release order (future groups)
 
 1. Back up PostgreSQL and object storage as a verified pair; record current
@@ -462,8 +548,8 @@ Migration `090` down fails with `AGENT_PRODUCT_DOWN_DATA_EXISTS` while any
 cancellation, Artifact, policy, opt-in or observation authority remains.
 Production rollback keeps `090` applied and leaves Shadow disabled. Clean
 down/up is restricted to a verified-empty disposable database. Every older
-Agent/MCP/Assistant/Skill migration drill must peel empty `090` before its own
-guard and return to head `090`.
+Agent/MCP/Assistant/Skill migration drill must first peel empty `091`, then its
+reviewed tail, before its own guard and return to head `091`.
 
 ## Kill Switch operations
 
@@ -691,7 +777,7 @@ changes the closure release tuple invalidates the old promotion record.
 2. Verify one paired PostgreSQL/MinIO set manifest and restore both halves into
    the isolated target. Follow `backup-restore.md`, including the latest
    encrypted Memory deletion package replay before opening Backend.
-3. Apply the exact release migrations and require head `090`. Rehash every
+3. Apply the exact release migrations and require head `091`. Rehash every
    referenced Package/Runtime/SBOM/Workspace/Artifact sample from the restored
    set.
 4. Treat all pre-restore leases, Runner nonces and Sandboxes as untrusted. Kill
@@ -710,7 +796,7 @@ The schema is
 records outside Git and outside application/object-store runtime namespaces.
 They contain fingerprints, times, low-cardinality result codes and zero-counts
 only. The record binds exactly 16 live checks to one Git commit, migration head
-`090`, Runner manifest/binary, Runtime Bundle, deployment and operations-policy
+`091`, Runner manifest/binary, Runtime Bundle, deployment and operations-policy
 fingerprint.
 
 Run the offline contract self-test:
@@ -774,7 +860,7 @@ this order:
    The transaction takes a `SHARE ROW EXCLUSIVE` lock, removes only
    `conversations.metadata.activeSkills`, checks the updated count and requires
    zero remaining keys. It does not rewrite message/content/other metadata or
-   advance schema head beyond `090`.
+   change the migration head; on a current release it remains `091`.
 5. Deploy G20.9. Browser persistence version `7` strips the eight retired
    settings fields plus Session/Workspace selections from localStorage and
    IndexedDB, writes its marker last, and compensates partial failure. Reload

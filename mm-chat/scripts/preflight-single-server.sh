@@ -227,6 +227,21 @@ def resolve_secure_file(
     return path
 
 
+def resolve_secure_directory(path_value: str, name: str) -> Path:
+    path = Path(path_value)
+    if not path.is_absolute():
+        path = Path(sys.argv[2]) / path
+    try:
+        metadata = path.lstat()
+    except OSError:
+        fail(f"{name} directory is unavailable")
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+        fail(f"{name} must be a non-symlink directory")
+    if stat.S_IMODE(metadata.st_mode) & 0o022:
+        fail(f"{name} must not be group/world writable")
+    return path
+
+
 values = parse_env(Path(sys.argv[1]))
 for key, value in values.items():
     if "$" in value:
@@ -306,6 +321,7 @@ if values.get("MCP_MARKETPLACE_ENABLED") == "true" and values.get("MCP_REMOTE_EN
 agent_flags = (
     "AGENT_RUNNER_CONTROL_ENABLED",
     "AGENT_ROOT_RUN_CANARY_ENABLED",
+    "AGENT_BROKER_ARTIFACT_CANARY_ENABLED",
     "AGENT_RUNTIME_ENABLED",
     "AGENT_SCHEDULER_ENABLED",
     "AGENT_SKILL_INSTALL_ENABLED",
@@ -317,9 +333,9 @@ agent_flags = (
 for key in agent_flags:
     if values.get(key) not in {"true", "false"}:
         fail(f"{key} must be true or false")
-for key in agent_flags[2:]:
+for key in agent_flags[3:]:
     if values[key] != "false":
-        fail(f"{key} must remain false through G21.1")
+        fail(f"{key} must remain false through G21.2")
 
 required = (
     "FRONTEND_IMAGE",
@@ -540,6 +556,9 @@ if values["MCP_MARKETPLACE_ENABLED"] == "true":
 
 agent_control_enabled = values["AGENT_RUNNER_CONTROL_ENABLED"] == "true"
 agent_root_canary_enabled = values["AGENT_ROOT_RUN_CANARY_ENABLED"] == "true"
+agent_broker_canary_enabled = (
+    values["AGENT_BROKER_ARTIFACT_CANARY_ENABLED"] == "true"
+)
 agent_control_keys = (
     "AGENT_RUNNER_DATABASE_URL",
     "AGENT_RUNNER_URL",
@@ -856,6 +875,304 @@ if agent_root_canary_enabled:
     ):
         fail("AGENT_ROOT_CANARY_ACTIVATION_SOURCE is not READY for G21.1")
 
+agent_broker_canary_keys = (
+    "AGENT_BROKER_CANARY_DATABASE_URL",
+    "AGENT_BROKER_CANARY_RUNNER_URL",
+    "AGENT_BROKER_CANARY_RUNNER_ID",
+    "AGENT_BROKER_CANARY_RUNNER_SERVER_NAME",
+    "AGENT_BROKER_CANARY_CLIENT_IDENTITY",
+    "AGENT_BROKER_CANARY_CLIENT_CERT_SOURCE",
+    "AGENT_BROKER_CANARY_CLIENT_KEY_SOURCE",
+    "AGENT_BROKER_CANARY_SERVER_CA_SOURCE",
+    "AGENT_BROKER_CANARY_RELEASE_MANIFEST_SOURCE",
+    "AGENT_BROKER_CANARY_PRODUCTION_POLICY_SOURCE",
+    "AGENT_BROKER_CANARY_ACTIVATION_SOURCE",
+    "AGENT_BROKER_CANARY_PLAN_SOURCE",
+    "AGENT_BROKER_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE",
+    "AGENT_BROKER_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE",
+    "AGENT_BROKER_CANARY_RELEASE_GIT_COMMIT",
+    "AGENT_BROKER_CANARY_RELAY_SUBNET",
+    "AGENT_BROKER_CANARY_RELAY_IP",
+    "AGENT_BROKER_CANARY_RELAY_LISTEN_ADDR",
+    "AGENT_BROKER_CANARY_RELAY_ENDPOINT",
+    "AGENT_BROKER_CANARY_RELAY_TLS_CERT_SOURCE",
+    "AGENT_BROKER_CANARY_RELAY_TLS_KEY_SOURCE",
+    "AGENT_BROKER_CANARY_RELAY_TLS_CLIENT_CA_SOURCE",
+    "AGENT_BROKER_CANARY_RUNNER_RELAY_IDENTITY",
+    "AGENT_BROKER_CANARY_QUARANTINE_SOURCE",
+    "AGENT_BROKER_CANARY_PROJECT_ROOT_SOURCE",
+    "AGENT_BROKER_CANARY_WORKSPACE_ROOT_SOURCE",
+    "AGENT_BROKER_CANARY_MCP_RUNNER_URL",
+    "AGENT_BROKER_CANARY_POLL_INTERVAL",
+    "AGENT_BROKER_CANARY_RPC_TIMEOUT",
+    "AGENT_BROKER_CANARY_AUTHORITY_TTL",
+    "AGENT_BROKER_CANARY_RECONCILE_BATCH_SIZE",
+    "MCP_RUNNER_TOKEN_SOURCE",
+    "STORAGE_BACKEND",
+    "S3_ENDPOINT",
+    "S3_BUCKET",
+    "S3_REGION",
+    "S3_USE_SSL",
+    "S3_FORCE_PATH_STYLE",
+    "S3_BUCKET_AUTO_CREATE",
+)
+if agent_broker_canary_enabled:
+    if not agent_control_enabled or not agent_root_canary_enabled:
+        fail("AGENT_BROKER_ARTIFACT_CANARY_ENABLED requires G21.0 and G21.1 enabled")
+    for key in agent_broker_canary_keys:
+        if not values.get(key, "").strip():
+            fail(f"{key} is required when the Broker canary is enabled")
+        if placeholder.search(values[key]):
+            fail(f"{key} still contains a placeholder")
+
+    try:
+        broker_runner_url = urlsplit(values["AGENT_BROKER_CANARY_RUNNER_URL"])
+        broker_runner_ip = ipaddress.ip_address(broker_runner_url.hostname or "")
+        broker_runner_port = broker_runner_url.port
+    except ValueError:
+        fail("AGENT_BROKER_CANARY_RUNNER_URL must be the exact private HTTPS Runner RPC URL")
+    if (
+        broker_runner_url.scheme != "https"
+        or broker_runner_port is None
+        or not any(
+            broker_runner_ip in network
+            for network in private_networks
+            if broker_runner_ip.version == network.version
+        )
+        or broker_runner_url.username is not None
+        or broker_runner_url.password is not None
+        or broker_runner_url.path != "/internal/neo-runner/v1/rpc"
+        or broker_runner_url.query
+        or broker_runner_url.fragment
+    ):
+        fail("AGENT_BROKER_CANARY_RUNNER_URL must be the exact private HTTPS Runner RPC URL")
+    for key in ("AGENT_BROKER_CANARY_RUNNER_ID", "AGENT_BROKER_CANARY_RUNNER_SERVER_NAME"):
+        if identity_pattern.fullmatch(values[key]) is None:
+            fail(f"{key} is invalid")
+    required_identities = {
+        values["AGENT_RUNNER_CLIENT_IDENTITY"],
+        values["AGENT_ROOT_CANARY_CLIENT_IDENTITY"],
+        values["AGENT_BROKER_CANARY_CLIENT_IDENTITY"],
+        values["AGENT_BROKER_CANARY_RUNNER_RELAY_IDENTITY"],
+    }
+    if (
+        values["AGENT_BROKER_CANARY_CLIENT_IDENTITY"]
+        != "spiffe://neo-chat/agent-runtime-broker-canary"
+        or values["AGENT_BROKER_CANARY_RUNNER_RELAY_IDENTITY"]
+        != "spiffe://neo-chat/neo-runner-broker-relay"
+        or len(required_identities) != 4
+    ):
+        fail("Agent control, Root canary, Broker canary and relay identities must be exact and distinct")
+
+    try:
+        relay_subnet = ipaddress.ip_network(values["AGENT_BROKER_CANARY_RELAY_SUBNET"], strict=True)
+        relay_ip = ipaddress.ip_address(values["AGENT_BROKER_CANARY_RELAY_IP"])
+        relay_listen = urlsplit("//" + values["AGENT_BROKER_CANARY_RELAY_LISTEN_ADDR"])
+        relay_listen_ip = ipaddress.ip_address(relay_listen.hostname or "")
+        relay_endpoint = urlsplit(values["AGENT_BROKER_CANARY_RELAY_ENDPOINT"])
+    except ValueError:
+        fail("Agent Broker relay must use one exact private literal endpoint")
+    if (
+        not relay_subnet.is_private
+        or relay_ip not in relay_subnet
+        or relay_ip in {relay_subnet.network_address, relay_subnet.broadcast_address}
+        or relay_listen_ip != relay_ip
+        or relay_listen.port is None
+        or relay_endpoint.scheme != "https"
+        or relay_endpoint.hostname != str(relay_ip)
+        or relay_endpoint.port != relay_listen.port
+        or relay_endpoint.path != "/internal/agent-broker/v1/relay"
+        or relay_endpoint.username is not None
+        or relay_endpoint.password is not None
+        or relay_endpoint.query
+        or relay_endpoint.fragment
+    ):
+        fail("Agent Broker relay must use one exact private literal endpoint")
+
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", values["AGENT_BROKER_CANARY_RELEASE_GIT_COMMIT"])
+        is None
+        or values["AGENT_BROKER_CANARY_RELEASE_GIT_COMMIT"] == "0" * 40
+    ):
+        fail("AGENT_BROKER_CANARY_RELEASE_GIT_COMMIT must be a non-placeholder lowercase Git commit")
+    broker_poll = parse_simple_duration_seconds("AGENT_BROKER_CANARY_POLL_INTERVAL", values["AGENT_BROKER_CANARY_POLL_INTERVAL"])
+    broker_rpc = parse_simple_duration_seconds("AGENT_BROKER_CANARY_RPC_TIMEOUT", values["AGENT_BROKER_CANARY_RPC_TIMEOUT"])
+    broker_authority_ttl = parse_simple_duration_seconds("AGENT_BROKER_CANARY_AUTHORITY_TTL", values["AGENT_BROKER_CANARY_AUTHORITY_TTL"])
+    if not 1 <= broker_poll <= 60:
+        fail("AGENT_BROKER_CANARY_POLL_INTERVAL must be between 1s and 1m")
+    if not 1 <= broker_rpc <= 10:
+        fail("AGENT_BROKER_CANARY_RPC_TIMEOUT must be between 1s and 10s")
+    if not 10 <= broker_authority_ttl <= 15:
+        fail("AGENT_BROKER_CANARY_AUTHORITY_TTL must be between 10s and 15s")
+    if (
+        re.fullmatch(r"[1-9][0-9]{0,3}", values["AGENT_BROKER_CANARY_RECONCILE_BATCH_SIZE"])
+        is None
+        or not 1 <= int(values["AGENT_BROKER_CANARY_RECONCILE_BATCH_SIZE"]) <= 1000
+    ):
+        fail("AGENT_BROKER_CANARY_RECONCILE_BATCH_SIZE must be between 1 and 1000")
+    if (
+        values["STORAGE_BACKEND"] not in {"minio", "s3"}
+        or values["S3_BUCKET_AUTO_CREATE"] != "false"
+        or values["S3_USE_SSL"] not in {"true", "false"}
+        or values["S3_FORCE_PATH_STYLE"] not in {"true", "false"}
+    ):
+        fail("Broker canary requires the existing S3-compatible bucket without auto-create")
+    try:
+        broker_mcp_url = urlsplit(values["AGENT_BROKER_CANARY_MCP_RUNNER_URL"])
+    except ValueError:
+        fail("AGENT_BROKER_CANARY_MCP_RUNNER_URL is invalid")
+    if (
+        broker_mcp_url.scheme != "http"
+        or broker_mcp_url.hostname != "mcp-runner"
+        or broker_mcp_url.port != 8090
+        or broker_mcp_url.path not in {"", "/"}
+        or broker_mcp_url.username is not None
+        or broker_mcp_url.password is not None
+        or broker_mcp_url.query
+        or broker_mcp_url.fragment
+    ):
+        fail("AGENT_BROKER_CANARY_MCP_RUNNER_URL must be the private MCP Runner URL")
+    validate_private_token(values["MCP_RUNNER_TOKEN_SOURCE"], "MCP_RUNNER_TOKEN_SOURCE")
+
+    broker_files = {
+        key: resolve_secure_file(
+            values[key], key,
+            private=(key != "AGENT_BROKER_CANARY_PRODUCTION_POLICY_SOURCE"),
+        )
+        for key in (
+            "AGENT_BROKER_CANARY_CLIENT_CERT_SOURCE",
+            "AGENT_BROKER_CANARY_CLIENT_KEY_SOURCE",
+            "AGENT_BROKER_CANARY_SERVER_CA_SOURCE",
+            "AGENT_BROKER_CANARY_RELEASE_MANIFEST_SOURCE",
+            "AGENT_BROKER_CANARY_PRODUCTION_POLICY_SOURCE",
+            "AGENT_BROKER_CANARY_ACTIVATION_SOURCE",
+            "AGENT_BROKER_CANARY_PLAN_SOURCE",
+            "AGENT_BROKER_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE",
+            "AGENT_BROKER_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE",
+            "AGENT_BROKER_CANARY_RELAY_TLS_CERT_SOURCE",
+            "AGENT_BROKER_CANARY_RELAY_TLS_KEY_SOURCE",
+            "AGENT_BROKER_CANARY_RELAY_TLS_CLIENT_CA_SOURCE",
+        )
+    }
+    for key in (
+        "AGENT_BROKER_CANARY_QUARANTINE_SOURCE",
+        "AGENT_BROKER_CANARY_PROJECT_ROOT_SOURCE",
+        "AGENT_BROKER_CANARY_WORKSPACE_ROOT_SOURCE",
+    ):
+        resolve_secure_directory(values[key], key)
+    try:
+        tls_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        tls_context.load_cert_chain(
+            broker_files["AGENT_BROKER_CANARY_CLIENT_CERT_SOURCE"],
+            broker_files["AGENT_BROKER_CANARY_CLIENT_KEY_SOURCE"],
+        )
+        ssl.create_default_context(cafile=broker_files["AGENT_BROKER_CANARY_SERVER_CA_SOURCE"])
+        decoded_certificate = ssl._ssl._test_decode_cert(str(broker_files["AGENT_BROKER_CANARY_CLIENT_CERT_SOURCE"]))
+        relay_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        relay_context.load_cert_chain(
+            broker_files["AGENT_BROKER_CANARY_RELAY_TLS_CERT_SOURCE"],
+            broker_files["AGENT_BROKER_CANARY_RELAY_TLS_KEY_SOURCE"],
+        )
+        ssl.create_default_context(cafile=broker_files["AGENT_BROKER_CANARY_RELAY_TLS_CLIENT_CA_SOURCE"])
+    except (OSError, ssl.SSLError, ValueError):
+        fail("Broker canary mTLS certificate/key material is invalid or mismatched")
+    common_names = [
+        value
+        for relative_name in decoded_certificate.get("subject", ())
+        for key, value in relative_name
+        if key == "commonName"
+    ]
+    if common_names != [values["AGENT_BROKER_CANARY_CLIENT_IDENTITY"]]:
+        fail("Broker canary client certificate identity does not match configuration")
+    try:
+        private_text = broker_files["AGENT_BROKER_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE"].read_text().strip()
+        public_text = broker_files["AGENT_BROKER_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE"].read_text().strip()
+        private_raw = base64.urlsafe_b64decode(private_text + "=" * (-len(private_text) % 4))
+        public_raw = base64.urlsafe_b64decode(public_text + "=" * (-len(public_text) % 4))
+    except (OSError, UnicodeError, ValueError, binascii.Error):
+        fail("Broker canary authority key material is invalid")
+    if len(private_raw) != 64 or len(public_raw) != 32 or private_raw[32:] != public_raw:
+        fail("Broker canary authority private/public keys do not match")
+
+    try:
+        broker_plan = json.loads(
+            broker_files["AGENT_BROKER_CANARY_PLAN_SOURCE"].read_text(),
+            object_pairs_hook=unique_object,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, DuplicateKey):
+        fail("AGENT_BROKER_CANARY_PLAN_SOURCE is invalid")
+    if not isinstance(broker_plan, dict):
+        fail("AGENT_BROKER_CANARY_PLAN_SOURCE is invalid")
+    actions = broker_plan.get("actions")
+    expected_actions = {"project_read", "workspace_read", "mcp_read", "artifact_publish", "possible_send"}
+    if (
+        broker_plan.get("schemaVersion") != "neo.agent-broker-artifact-canary-plan/v1"
+        or broker_plan.get("synthetic") is not True
+        or broker_plan.get("sandbox", {}).get("networkMode") != "none"
+        or broker_plan.get("sandbox", {}).get("rootfsReadOnly") is not True
+        or broker_plan.get("sandbox", {}).get("noNewPrivileges") is not True
+        or broker_plan.get("sandbox", {}).get("capabilities") != []
+        or not isinstance(actions, list)
+        or len(actions) != 5
+        or {item.get("id") for item in actions if isinstance(item, dict)} != expected_actions
+    ):
+        fail("AGENT_BROKER_CANARY_PLAN_SOURCE is not the strict synthetic five-action plan")
+    by_id = {item["id"]: item for item in actions}
+    mcp_plan = by_id["mcp_read"].get("mcp", {})
+    command_argv = mcp_plan.get("commandArgv")
+    if (
+        by_id["project_read"].get("file", {}).get("root") != "/run/agent-runtime-broker-canary/project"
+        or by_id["workspace_read"].get("file", {}).get("root") != "/run/agent-runtime-broker-canary/workspace"
+        or mcp_plan.get("toolPolicy") != {mcp_plan.get("toolName"): "read"}
+        or not isinstance(command_argv, list)
+        or not command_argv
+        or not isinstance(command_argv[0], str)
+        or not command_argv[0].startswith("/opt/mcp/")
+        or by_id["artifact_publish"].get("classification") != "mutable"
+        or by_id["artifact_publish"].get("idempotent") is not False
+        or any(
+            by_id[action_id].get("classification") != "read"
+            or by_id[action_id].get("idempotent") is not True
+            for action_id in ("project_read", "workspace_read", "mcp_read", "possible_send")
+        )
+    ):
+        fail("AGENT_BROKER_CANARY_PLAN_SOURCE widens reviewed read or Artifact authority")
+
+    evaluator = Path(sys.argv[2]) / "scripts/evaluate-agent-production-activation.py"
+    try:
+        decision = subprocess.run(
+            [
+                sys.executable, str(evaluator),
+                "--record", str(broker_files["AGENT_BROKER_CANARY_ACTIVATION_SOURCE"]),
+                "--policy", str(broker_files["AGENT_BROKER_CANARY_PRODUCTION_POLICY_SOURCE"]),
+                "--release-manifest", str(broker_files["AGENT_BROKER_CANARY_RELEASE_MANIFEST_SOURCE"]),
+                "--client-certificate", str(broker_files["AGENT_BROKER_CANARY_CLIENT_CERT_SOURCE"]),
+                "--server-ca", str(broker_files["AGENT_BROKER_CANARY_SERVER_CA_SOURCE"]),
+                "--canary-plan", str(broker_files["AGENT_BROKER_CANARY_PLAN_SOURCE"]),
+                "--authority-public-key", str(broker_files["AGENT_BROKER_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE"]),
+                "--relay-endpoint", values["AGENT_BROKER_CANARY_RELAY_ENDPOINT"],
+                "--relay-server-certificate", str(broker_files["AGENT_BROKER_CANARY_RELAY_TLS_CERT_SOURCE"]),
+                "--relay-client-ca", str(broker_files["AGENT_BROKER_CANARY_RELAY_TLS_CLIENT_CA_SOURCE"]),
+                "--runner-relay-identity", values["AGENT_BROKER_CANARY_RUNNER_RELAY_IDENTITY"],
+                "--endpoint", values["AGENT_BROKER_CANARY_RUNNER_URL"],
+                "--runner-id", values["AGENT_BROKER_CANARY_RUNNER_ID"],
+                "--server-name", values["AGENT_BROKER_CANARY_RUNNER_SERVER_NAME"],
+                "--caller-identity", values["AGENT_BROKER_CANARY_CLIENT_IDENTITY"],
+                "--release-commit", values["AGENT_BROKER_CANARY_RELEASE_GIT_COMMIT"],
+            ],
+            check=False, capture_output=True, text=True, timeout=10,
+        )
+        decision_payload = json.loads(decision.stdout)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        fail("Broker canary activation evaluator failed")
+    if (
+        decision.returncode != 0
+        or decision_payload.get("verdict") != "ACTIVATION_READY"
+        or decision_payload.get("reasonCode") != "BROKER_ARTIFACT_CANARY_GATES_PASSED"
+    ):
+        fail("AGENT_BROKER_CANARY_ACTIVATION_SOURCE is not READY for G21.2")
+
+
 marketplace_timeout = parse_simple_duration_seconds(
     "MCP_MARKETPLACE_TIMEOUT", values["MCP_MARKETPLACE_TIMEOUT"]
 )
@@ -881,6 +1198,7 @@ for key in (
     "RAG_REPLAY_DATABASE_URL",
     *(("AGENT_RUNNER_DATABASE_URL",) if agent_control_enabled else ()),
     *(("AGENT_ROOT_CANARY_DATABASE_URL",) if agent_root_canary_enabled else ()),
+    *(("AGENT_BROKER_CANARY_DATABASE_URL",) if agent_broker_canary_enabled else ()),
 ):
     try:
         parsed = urlsplit(values[key])
@@ -912,7 +1230,7 @@ for key, parsed in database_urls.items():
 
 database_users = [unquote(parsed.username or "") for parsed in database_urls.values()]
 if len(set(database_users)) != len(database_users):
-    fail("migration, API, Memory worker, RAG worker, RAG replay, Agent control, and Root canary must use distinct database principals")
+    fail("migration, API, workers, Agent control, Root canary, and Broker canary must use distinct database principals")
 
 database_passwords = [
     unquote(parsed.password or "") for parsed in database_urls.values()

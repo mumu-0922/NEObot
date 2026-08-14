@@ -33,6 +33,8 @@ SCHEMA_NAMES = (
     "neo-agent-runner-bundle",
     "neo-agent-root-run-canary-activation",
     "neo-agent-root-run-canary-plan",
+    "neo-agent-broker-artifact-canary-activation",
+    "neo-agent-broker-artifact-canary-plan",
 )
 JsonObject = dict[str, Any]
 
@@ -93,8 +95,7 @@ def check_schemas_and_fixtures() -> dict[str, dict[str, Any]]:
             unknown_supplemental["unexpectedPhase0Field"] = True
             if not list(validator.iter_errors(unknown_supplemental)):
                 raise VerificationError(
-                    "schema accepts an unknown root field: "
-                    f"{supplemental_path.name}"
+                    f"schema accepts an unknown root field: {supplemental_path.name}"
                 )
         valid_instances[name] = valid_instance
     return valid_instances
@@ -220,9 +221,7 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
     if expires <= issued:
         raise VerificationError("grant expiry does not follow issuance")
 
-    require_equal(
-        draft["sourceRunId"], event["runId"], "Draft/event Run IDs differ"
-    )
+    require_equal(draft["sourceRunId"], event["runId"], "Draft/event Run IDs differ")
     require_equal(
         draft["basePackageFingerprint"],
         grant["packageFingerprint"],
@@ -238,10 +237,11 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
     source_evidence = [
         item for item in draft["evidence"] if item["kind"] == "source_package"
     ]
-    run_evidence = [
-        item for item in draft["evidence"] if item["kind"] == "run_event"
-    ]
-    if len(source_evidence) != 1 or source_evidence[0]["ref"] != draft["basePackageFingerprint"]:
+    run_evidence = [item for item in draft["evidence"] if item["kind"] == "run_event"]
+    if (
+        len(source_evidence) != 1
+        or source_evidence[0]["ref"] != draft["basePackageFingerprint"]
+    ):
         raise VerificationError("Draft source-package evidence does not bind the base")
     if not any(item["ref"] == event["eventId"] for item in run_evidence):
         raise VerificationError("Draft Run evidence does not bind the source event")
@@ -291,9 +291,12 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
     }
     check_ids = [item["id"] for item in production_closure["checks"]]
     if len(check_ids) != len(set(check_ids)) or set(check_ids) != required_checks:
-        raise VerificationError("production closure check set is incomplete or duplicated")
+        raise VerificationError(
+            "production closure check set is incomplete or duplicated"
+        )
     isolation = next(
-        item for item in production_closure["checks"]
+        item
+        for item in production_closure["checks"]
         if item["id"] == "exact_host_isolation"
     )
     if (
@@ -301,13 +304,17 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
         or isolation["result"] != "isolation_unavailable"
         or isolation["detailCode"] != "ISOLATION_UNAVAILABLE"
     ):
-        raise VerificationError("committed production closure fixture is not honestly held")
+        raise VerificationError(
+            "committed production closure fixture is not honestly held"
+        )
     if any(
         value != 0
         for key, value in production_closure["cleanup"].items()
         if key != "promotionRecordRetained"
     ):
-        raise VerificationError("committed production closure fixture has cleanup residue")
+        raise VerificationError(
+            "committed production closure fixture has cleanup residue"
+        )
 
 
 def check_document_anchors() -> None:
@@ -320,12 +327,15 @@ def check_document_anchors() -> None:
             "migration `088`",
             "migration `089`",
             "migration `090`",
+            "Migration `091_agent_artifact_publication`",
             "Agent Center and held Shadow control",
             "旧版技能已退役",
             "G20.10",
             "promotion-evidence gate",
             "G21.0",
             "agent-runtime-control",
+            "G21.2",
+            "agent-runtime-broker-canary",
         ),
         CONTRACT_DIR / "agent-runtime.md": (
             "Durable state machine",
@@ -342,6 +352,8 @@ def check_document_anchors() -> None:
             "verify-agent-production-closure.sh",
             "G21.0 control-plane activation",
             "activation -> probe -> list -> PostgreSQL",
+            "G21.2 read-only Broker and Artifact canary",
+            "outcome_unknown",
         ),
         PROJECT_DIR / "docs" / "deployment" / "agent-runtime.md": (
             "AGENT_RUNTIME_ENABLED=false",
@@ -356,6 +368,8 @@ def check_document_anchors() -> None:
             "`outcome_unknown` operator workflow",
             "G21.0 exact-host bundle and control activation",
             "verify-agent-runtime-g21-0.sh",
+            "G21.2 read-only Broker and Artifact canary activation",
+            "verify-agent-runtime-g21-2.sh",
         ),
         PROJECT_DIR / "docs" / "tracking" / "g20-agent-runtime-plan.md": (
             "G20.0",
@@ -374,6 +388,7 @@ def check_document_anchors() -> None:
             "G21.0",
             "G21.1",
             "G21.2",
+            "source/control implementation complete; exact-host Broker/Artifact",
             "G21.3",
             "G21.4",
             "G21.5",
@@ -461,11 +476,15 @@ def check_product_migration_source() -> None:
         "GRANT DELETE ON agent_shadow_",
     ):
         if forbidden.lower() in migration.lower():
-            raise VerificationError(f"migration 090 grants direct Shadow DML: {forbidden}")
+            raise VerificationError(
+                f"migration 090 grants direct Shadow DML: {forbidden}"
+            )
     if "AGENT_PRODUCT_DOWN_DATA_EXISTS" not in down:
         raise VerificationError("migration 090 down is not data guarded")
     if "DROP FUNCTION agent_product_append_shadow_observation(" not in down:
-        raise VerificationError("migration 090 down omits the Shadow observation function")
+        raise VerificationError(
+            "migration 090 down omits the Shadow observation function"
+        )
 
 
 def check_product_service_source() -> None:

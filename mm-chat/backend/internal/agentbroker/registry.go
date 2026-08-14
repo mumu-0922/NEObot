@@ -27,6 +27,17 @@ func GrantFingerprint(grant CapabilityGrant) (string, error) {
 	return canonicalGrantFingerprint(grant)
 }
 
+// ArgumentsFingerprint exposes the same canonical binding used by Prepare so
+// a strict controller can freeze and compare an action before it reaches the
+// durable Broker repository.
+func ArgumentsFingerprint(arguments json.RawMessage) (string, error) {
+	canonical, err := canonicalJSON(arguments, maxArgumentsBytes)
+	if err != nil {
+		return "", err
+	}
+	return fingerprint("neo-effect-arguments-v1", canonical), nil
+}
+
 // ValidateGrant checks the exact canonical Grant shape at the supplied time.
 func ValidateGrant(grant CapabilityGrant, now time.Time) error {
 	return validateGrant(grant, now)

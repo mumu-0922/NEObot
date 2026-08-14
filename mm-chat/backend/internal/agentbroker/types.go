@@ -258,6 +258,14 @@ type CommitResult struct {
 }
 
 type ExecutionRequest struct {
+	UserID               string
+	RunID                string
+	StepID               string
+	AttemptID            string
+	Generation           int64
+	SnapshotFingerprint  string
+	GrantFingerprint     string
+	RegistryFingerprint  string
 	IntentID             string
 	IdempotencyKey       string
 	ToolIdentity         string

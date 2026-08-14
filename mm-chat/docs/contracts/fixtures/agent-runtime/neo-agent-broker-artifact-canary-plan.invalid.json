@@ -1,0 +1,146 @@
+{
+  "schemaVersion": "neo.agent-broker-artifact-canary-plan/v1",
+  "synthetic": true,
+  "userId": "00000000-0000-4000-8000-000000000001",
+  "projectId": "project_0000000000000001",
+  "assistantId": "assistant_0000000000000001",
+  "packageFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "runtimeBundleFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "issuedAt": "2026-08-14T00:00:00Z",
+  "expiresAt": "2026-08-15T00:00:00Z",
+  "artifactPolicy": {
+    "maxBytes": 4096,
+    "allowedMediaTypes": [
+      "text/plain",
+      "application/json"
+    ]
+  },
+  "sandbox": {
+    "runtimeBundleFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "packageFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "image": "registry.invalid/neo/broker-canary@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "uid": 10001,
+    "gid": 10001,
+    "rootfsReadOnly": true,
+    "noNewPrivileges": true,
+    "capabilities": [],
+    "seccompProfileFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "networkMode": "bridge",
+    "workspaceSnapshotId": "workspace_snapshot_0000000000000001",
+    "workspaceFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "resources": {
+      "cpuMillis": 250,
+      "memoryMiB": 128,
+      "pids": 16,
+      "wallSeconds": 30,
+      "outputBytes": 4096,
+      "scratchBytes": 1048576
+    }
+  },
+  "argv": [
+    "/opt/neo/bin/broker-canary",
+    "--wait-for-cancel"
+  ],
+  "leaseSeconds": 30,
+  "actions": [
+    {
+      "id": "project_read",
+      "idempotencyKey": "g21.2-broker-canary-project-read",
+      "toolIdentity": "project.read",
+      "capability": "project.read",
+      "action": "read_file",
+      "resource": "project-canary.txt",
+      "classification": "read",
+      "idempotent": true,
+      "approval": "automatic",
+      "arguments": {},
+      "ttlSeconds": 300,
+      "file": {
+        "root": "/run/agent-runtime-broker-canary/project",
+        "relativePath": "project-canary.txt",
+        "expectedBytes": 16,
+        "expectedFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "maxBytes": 4096
+      }
+    },
+    {
+      "id": "workspace_read",
+      "idempotencyKey": "g21.2-broker-canary-workspace-read",
+      "toolIdentity": "workspace.read",
+      "capability": "workspace.read",
+      "action": "read_file",
+      "resource": "workspace-canary.txt",
+      "classification": "read",
+      "idempotent": true,
+      "approval": "automatic",
+      "arguments": {},
+      "ttlSeconds": 300,
+      "file": {
+        "root": "/run/agent-runtime-broker-canary/workspace",
+        "relativePath": "workspace-canary.txt",
+        "expectedBytes": 18,
+        "expectedFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "maxBytes": 4096
+      }
+    },
+    {
+      "id": "mcp_read",
+      "idempotencyKey": "g21.2-broker-canary-mcp-read",
+      "toolIdentity": "mcp.read",
+      "capability": "mcp.read",
+      "action": "call",
+      "resource": "manifest:g21-2-read",
+      "classification": "read",
+      "idempotent": true,
+      "approval": "automatic",
+      "arguments": {},
+      "ttlSeconds": 300,
+      "mcp": {
+        "serverId": "g21-2-read-server",
+        "serverName": "G21.2 synthetic read server",
+        "toolName": "read_canary",
+        "commandArgv": [
+          "/opt/mcp/bin/g21-2-read-server"
+        ],
+        "toolPolicy": {
+          "read_canary": "read"
+        },
+        "maxResultBytes": 4096
+      }
+    },
+    {
+      "id": "artifact_publish",
+      "idempotencyKey": "g21.2-broker-canary-artifact-publish",
+      "toolIdentity": "artifact.publish",
+      "capability": "artifact.publish",
+      "action": "publish",
+      "resource": "canary-artifact.json",
+      "classification": "mutable",
+      "idempotent": false,
+      "approval": "automatic",
+      "arguments": {
+        "name": "canary-artifact.json"
+      },
+      "ttlSeconds": 300,
+      "artifact": {
+        "name": "canary-artifact.json",
+        "mediaType": "application/json",
+        "sizeBytes": 17,
+        "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    {
+      "id": "possible_send",
+      "idempotencyKey": "g21.2-broker-canary-possible-send",
+      "toolIdentity": "canary.possible_send",
+      "capability": "mcp.read",
+      "action": "call",
+      "resource": "manifest:g21-2-possible-send",
+      "classification": "read",
+      "idempotent": true,
+      "approval": "automatic",
+      "arguments": {},
+      "ttlSeconds": 300
+    }
+  ]
+}

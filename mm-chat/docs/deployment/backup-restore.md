@@ -96,8 +96,12 @@ for that set and publishes no manifest.
 Agent Runtime production promotion additionally hashes the verified set
 manifest into the external G20.10 closure evidence. Restore with every Agent
 worker and Runtime switch off, reject all pre-restore leases/nonces, reconcile
-Sandboxes/effects/Children/Cron/Draft cleanup, and require migration head `090`
-before a read-only canary. The closure record is not a backup and must never
+Sandboxes/effects/Children/Cron/Draft cleanup, and require migration head `091`
+before a read-only canary. The restore must also reconcile every
+`agent_artifacts.object_key` against the
+paired object mirror, remove only proven unreferenced canary objects and keep
+the Broker canary disabled until fresh exact-host activation. The closure
+record is not a backup and must never
 embed dump/object bytes or credentials.
 
 ## Verify backup checksums

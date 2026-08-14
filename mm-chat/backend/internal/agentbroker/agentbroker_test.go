@@ -313,6 +313,93 @@ func TestCommitAcknowledgementLossUsesStatusOrOutcomeUnknown(t *testing.T) {
 	}
 }
 
+func TestReadOnlyExecutorCommitsCanonicalReceiptAndReplaysWithoutSecondRead(t *testing.T) {
+	now := time.Date(2026, 8, 14, 8, 0, 0, 0, time.UTC)
+	repository := newMemoryRepository()
+	reader := &fakeReadExecutor{result: json.RawMessage(`{"value":"reviewed"}`)}
+	service, err := NewServiceWithReadOnly(repository, nil,
+		map[string]ReadOnlyExecutor{"workspace_read": reader})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.now = func() time.Time { return now }
+	input := testPrepareInput(t, now, ApprovalAutomatic)
+	prepared, err := service.Prepare(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit := testCommitInput(prepared, input.Attempt)
+	first, err := service.Commit(context.Background(), commit)
+	if err != nil || first.Outcome != OutcomeCommitted || !validFingerprint(first.ReceiptFingerprint) {
+		t.Fatalf("first read Commit = %#v, %v", first, err)
+	}
+	second, err := service.Commit(context.Background(), commit)
+	if err != nil || second.Outcome != OutcomeReplayed || reader.calls != 1 {
+		t.Fatalf("replayed read Commit = %#v, %v, calls=%d", second, err, reader.calls)
+	}
+}
+
+func TestReadOnlyExecutorRequiresReviewedAutomaticIdempotentRegistry(t *testing.T) {
+	now := time.Date(2026, 8, 14, 8, 0, 0, 0, time.UTC)
+	for _, test := range []struct {
+		name           string
+		classification string
+		idempotent     bool
+		approval       string
+	}{
+		{name: "mutable", classification: ClassificationMutable, idempotent: false, approval: ApprovalAutomatic},
+		{name: "not idempotent", classification: ClassificationRead, idempotent: false, approval: ApprovalAutomatic},
+		{name: "interactive", classification: ClassificationRead, idempotent: true, approval: ApprovalOnce},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			input := testPrepareInput(t, now, test.approval)
+			registry, err := BuildRegistry([]ToolDefinition{{Identity: "workspace_read", Capability: "workspace.read",
+				Actions: []string{"list", "read"}, Classification: test.classification, Idempotent: test.idempotent}},
+				[]string{"workspace_read"}, input.Grant, now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			input.Registry = registry
+			input.Attempt.RegistryFingerprint = registry.Fingerprint
+			service, err := NewServiceWithReadOnly(newMemoryRepository(), nil,
+				map[string]ReadOnlyExecutor{"workspace_read": &fakeReadExecutor{}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			service.now = func() time.Time { return now }
+			if _, err := service.Prepare(context.Background(), input); !errors.Is(err, ErrGrantDenied) {
+				t.Fatalf("Prepare error = %v, want ErrGrantDenied", err)
+			}
+		})
+	}
+}
+
+func TestReadOnlyPossibleSendBecomesOutcomeUnknownWithoutRetry(t *testing.T) {
+	now := time.Date(2026, 8, 14, 8, 0, 0, 0, time.UTC)
+	repository := newMemoryRepository()
+	reader := &fakeReadExecutor{err: &DispatchError{Cause: ErrExecutorUnavailable, PossibleSend: true}}
+	service, err := NewServiceWithReadOnly(repository, nil,
+		map[string]ReadOnlyExecutor{"workspace_read": reader})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.now = func() time.Time { return now }
+	input := testPrepareInput(t, now, ApprovalAutomatic)
+	prepared, err := service.Prepare(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit := testCommitInput(prepared, input.Attempt)
+	first, err := service.Commit(context.Background(), commit)
+	if !errors.Is(err, ErrOutcomeUnknown) || first.Outcome != OutcomeUnknown {
+		t.Fatalf("first Commit = %#v, %v", first, err)
+	}
+	second, err := service.Commit(context.Background(), commit)
+	if !errors.Is(err, ErrOutcomeUnknown) || second.Outcome != OutcomeUnknown || reader.calls != 1 {
+		t.Fatalf("replayed Commit = %#v, %v, calls=%d", second, err, reader.calls)
+	}
+}
+
 func TestCommitConcurrencyClaimsOneDispatch(t *testing.T) {
 	now := time.Date(2026, 8, 13, 1, 0, 0, 0, time.UTC)
 	executor := &fakeExecutor{receipt: ExecutorReceipt{ReceiptFingerprint: testPackage}}
@@ -600,6 +687,17 @@ type fakeExecutor struct {
 	statusErr error
 }
 
+type fakeReadExecutor struct {
+	result json.RawMessage
+	err    error
+	calls  int
+}
+
+func (executor *fakeReadExecutor) Read(context.Context, ExecutionRequest) (json.RawMessage, error) {
+	executor.calls++
+	return append(json.RawMessage(nil), executor.result...), executor.err
+}
+
 func (executor *fakeExecutor) Commit(_ context.Context, _ ExecutionRequest) (ExecutorReceipt, error) {
 	executor.mu.Lock()
 	defer executor.mu.Unlock()
@@ -616,12 +714,16 @@ func (executor *fakeExecutor) Status(_ context.Context, _ ExecutionRequest) (Exe
 
 func testService(t *testing.T, now time.Time, executor EffectExecutor) (*Service, *memoryRepository, CapabilityGrant) {
 	t.Helper()
-	repository := &memoryRepository{intents: map[string]PreparedIntent{}, requests: map[string]string{},
-		approvals: map[string]ApprovalInput{}}
+	repository := newMemoryRepository()
 	service, err := NewService(repository, map[string]EffectExecutor{"workspace_read": executor})
 	if err != nil {
 		t.Fatal(err)
 	}
 	service.now = func() time.Time { return now }
 	return service, repository, testGrantAt(now)
+}
+
+func newMemoryRepository() *memoryRepository {
+	return &memoryRepository{intents: map[string]PreparedIntent{}, requests: map[string]string{},
+		approvals: map[string]ApprovalInput{}}
 }

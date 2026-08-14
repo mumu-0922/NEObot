@@ -89,6 +89,25 @@ func TestEnqueueCanonicalizesSnapshotAndDoesNotEmbedAuthoritySecrets(t *testing.
 	}
 }
 
+func TestEnqueueRunWithIDBindsDeterministicRunIDIntoRequestFingerprint(t *testing.T) {
+	repository := &fakeRepository{}
+	service := NewService(repository)
+	input := EnqueueInput{UserID: "10000000-0000-4000-8000-000000000001",
+		IdempotencyKey: "controller/action", Snapshot: json.RawMessage(`{"schemaVersion":"test/v1"}`),
+		Steps: []StepPlan{{ID: "step_0123456789abcdef", Kind: "execute"}}}
+	first, err := service.prepareEnqueue(input, "run_0123456789abcdef")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := service.prepareEnqueue(input, "run_fedcba9876543210")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.RequestFingerprint == second.RequestFingerprint {
+		t.Fatal("deterministic Run ID drift did not change the enqueue request fingerprint")
+	}
+}
+
 func TestAcquireReturnsOpaqueTokenButPersistsOnlyDigest(t *testing.T) {
 	repository := &fakeRepository{}
 	service := NewService(repository)

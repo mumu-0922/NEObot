@@ -15,12 +15,15 @@ import (
 	"syscall"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/agentbrokerrelay"
 	"neo-chat/mm-chat/backend/internal/agentrunner"
 )
 
 const (
-	controlCallerIdentity = "spiffe://neo-chat/agent-runtime-control"
-	canaryCallerIdentity  = "spiffe://neo-chat/agent-runtime-root-canary"
+	controlCallerIdentity      = "spiffe://neo-chat/agent-runtime-control"
+	rootCanaryCallerIdentity   = "spiffe://neo-chat/agent-runtime-root-canary"
+	brokerCanaryCallerIdentity = "spiffe://neo-chat/agent-runtime-broker-canary"
+	brokerRelayIdentity        = "spiffe://neo-chat/neo-runner-broker-relay"
 )
 
 func main() {
@@ -93,12 +96,41 @@ func run() error {
 		Methods: []string{agentrunner.MethodProbe, agentrunner.MethodList, agentrunner.MethodReconcile}}}
 	canaryIdentity := strings.TrimSpace(os.Getenv("NEO_RUNNER_ROOT_CANARY_CLIENT_IDENTITY"))
 	if canaryIdentity != "" {
-		if canaryIdentity != canaryCallerIdentity || canaryIdentity == clientIdentity {
+		if canaryIdentity != rootCanaryCallerIdentity || canaryIdentity == clientIdentity {
 			return errors.New("neo-runnerd canary client identity is invalid")
 		}
 		policies = append(policies, agentrunner.CallerPolicy{Identity: canaryIdentity,
 			Methods: []string{agentrunner.MethodProbe, agentrunner.MethodList, agentrunner.MethodReconcile,
 				agentrunner.MethodLaunch, agentrunner.MethodHeartbeat, agentrunner.MethodCancel}})
+	}
+	brokerIdentity := strings.TrimSpace(os.Getenv("NEO_RUNNER_BROKER_CANARY_CLIENT_IDENTITY"))
+	if brokerIdentity != "" {
+		if brokerIdentity != brokerCanaryCallerIdentity || brokerIdentity == clientIdentity ||
+			brokerIdentity == canaryIdentity {
+			return errors.New("neo-runnerd Broker canary client identity is invalid")
+		}
+		relayIdentity := strings.TrimSpace(os.Getenv("NEO_RUNNER_BROKER_RELAY_CLIENT_IDENTITY"))
+		if relayIdentity != brokerRelayIdentity {
+			return errors.New("neo-runnerd Broker relay mTLS configuration is invalid")
+		}
+		relay, err := agentbrokerrelay.NewClient(strings.TrimSpace(os.Getenv("NEO_RUNNER_BROKER_RELAY_URL")),
+			agentrunner.ClientTLSFiles{
+				CertificateFile: cleanAbsoluteEnv("NEO_RUNNER_BROKER_RELAY_CLIENT_CERT_FILE"),
+				KeyFile:         cleanAbsoluteEnv("NEO_RUNNER_BROKER_RELAY_CLIENT_KEY_FILE"),
+				ServerCAFile:    cleanAbsoluteEnv("NEO_RUNNER_BROKER_RELAY_SERVER_CA_FILE"),
+				ServerName:      strings.TrimSpace(os.Getenv("NEO_RUNNER_BROKER_RELAY_SERVER_NAME")),
+				ClientIdentity:  relayIdentity,
+			}, 10*time.Second)
+		if err != nil {
+			return errors.New("neo-runnerd Broker relay mTLS configuration is invalid")
+		}
+		service.WithBrokerRelay(relay)
+		policies = append(policies, agentrunner.CallerPolicy{Identity: brokerIdentity,
+			Methods: []string{agentrunner.MethodProbe, agentrunner.MethodList, agentrunner.MethodReconcile,
+				agentrunner.MethodLaunch, agentrunner.MethodHeartbeat, agentrunner.MethodCancel,
+				agentrunner.MethodPrepare, agentrunner.MethodCommit}})
+	} else if brokerRelayConfigured() {
+		return errors.New("neo-runnerd Broker relay requires the dedicated caller identity")
 	}
 	handler, err := agentrunner.NewHTTPHandlerWithPolicies(service, 15*time.Second, policies)
 	if err != nil {
@@ -124,6 +156,17 @@ func run() error {
 		}
 		return err
 	}
+}
+
+func brokerRelayConfigured() bool {
+	for _, name := range []string{"NEO_RUNNER_BROKER_RELAY_URL", "NEO_RUNNER_BROKER_RELAY_CLIENT_CERT_FILE",
+		"NEO_RUNNER_BROKER_RELAY_CLIENT_KEY_FILE", "NEO_RUNNER_BROKER_RELAY_SERVER_CA_FILE",
+		"NEO_RUNNER_BROKER_RELAY_SERVER_NAME", "NEO_RUNNER_BROKER_RELAY_CLIENT_IDENTITY"} {
+		if strings.TrimSpace(os.Getenv(name)) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func cleanAbsoluteEnv(name string) string {

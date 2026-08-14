@@ -60,13 +60,14 @@ psql_command() {
 }
 [[ "$(psql_command 'SHOW server_version_num' | cut -c1-2)" == "17" ]]
 
-log "applying migrations through schema head 090"
+log "applying migrations through schema head 091"
 (cd "${backend_dir}" && go build -buildvcs=false -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 MIGRATION_DATABASE_URL="${admin_url}" "${work_dir}/migrate" up >"${work_dir}/migrate.log" 2>&1
 grep -Fq "up 084_agent_orchestrator_foundation" "${work_dir}/migrate.log"
 grep -Fq "up 085_agent_runner_foundation" "${work_dir}/migrate.log"
 grep -Fq "up 090_agent_product_shadow" "${work_dir}/migrate.log"
-[[ "$(psql_command "SELECT max(version) FROM schema_migrations")" == "90" ]]
+grep -Fq "up 091_agent_artifact_publication" "${work_dir}/migrate.log"
+[[ "$(psql_command "SELECT max(version) FROM schema_migrations")" == "91" ]]
 
 log "provisioning the independent exact-membership LOGIN"
 psql_command "
@@ -120,4 +121,4 @@ log "proving atomic Sandbox/Attempt/Step/Run cancellation and rollback"
       ./internal/agentrootcanary
 )
 
-log "passed (PostgreSQL 17, exact role inheritance, rollback, atomic terminal chain; no migration 091)"
+log "passed (PostgreSQL 17, exact role inheritance, rollback, atomic terminal chain; no Artifact role use)"

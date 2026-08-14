@@ -13,6 +13,8 @@ services:
     build: !reset null
   agent-runtime-root-canary:
     build: !reset null
+  agent-runtime-broker-canary:
+    build: !reset null
   migrate:
     build: !reset null
   admin:

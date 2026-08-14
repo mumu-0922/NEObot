@@ -334,7 +334,7 @@ def load_bundle_manifest(
     if (
         not isinstance(release["gitCommit"], str)
         or COMMIT_RE.fullmatch(release["gitCommit"]) is None
-        or release["migrationHead"] != 90
+        or release["migrationHead"] != 91
         or not isinstance(release["goVersion"], str)
         or GO_VERSION_RE.fullmatch(release["goVersion"]) is None
         or release["targetOS"] != "linux"

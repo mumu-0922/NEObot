@@ -10268,3 +10268,30 @@ restore/down-up passed. The exact-host verifier correctly exits nonzero with
 host. This is a production promotion hold, not a waived gate. G20.4 Tool/Egress/
 Secret/Prepare/Commit, Runtime/API/Chat, Scheduler, Child Agents, learning and
 legacy text-Skill deletion remain unavailable.
+
+## 2026-08-14 — G21.2 Broker and Artifact canary completed
+
+G21.2 added the default-off, separately identified Broker/Artifact canary and
+migration `091_agent_artifact_publication`. A private mTLS Runner relay now
+forwards only authority-verified Prepare/Commit requests to the canary service;
+the control, Root-canary, and Broker-canary caller method sets remain distinct.
+The synthetic five-action plan covers bounded Project, Workspace, and exact
+auth-none MCP reads, Artifact publication, and a possible-send acknowledgement-
+loss case that terminalizes as `outcome_unknown` without retrying dispatch.
+
+Artifact publication now requires both durable PostgreSQL function authority
+and the application-layer recheck. The object is scanned from the same bytes
+before upload, written before its row is attached, and compensating deletion
+removes a newly written object if row attachment fails. The PostgreSQL 17 drill
+proved exact replay, collision denial, live lease/generation/snapshot/Grant/Kill
+fences, successful quarantine cleanup, function-only role access, dump/restore,
+and clean role-aware down/up through schema head `091`.
+
+The enabled synthetic production preflight proved exact activation, distinct
+Runner/relay identities and principals, literal endpoint and TTL bounds, and
+rejection of widened plans without reading protected runtime state. G21.0 and
+G21.1 regressions, Phase 0, Backend tests/vet, and the full standalone gate
+passed; the clean-copy gate included 909 Frontend tests and 1,906 passing RAG
+tests with seven declared integration skips. This development host remains
+`ISOLATION_UNAVAILABLE`. No exact-host acceptance run, live activation evidence,
+or production Runtime promotion was produced.

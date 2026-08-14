@@ -13,15 +13,20 @@ import (
 const maxPublishedArtifactBytes = int64(32 << 20)
 
 type ArtifactCandidate struct {
-	UserID        string
-	RunID         string
-	AttemptID     string
-	Generation    int64
-	QuarantineRef string
-	Name          string
-	MediaType     string
-	Size          int64
-	Fingerprint   string
+	ArtifactID          string
+	IntentID            string
+	UserID              string
+	RunID               string
+	AttemptID           string
+	Generation          int64
+	SnapshotFingerprint string
+	GrantFingerprint    string
+	RegistryFingerprint string
+	QuarantineRef       string
+	Name                string
+	MediaType           string
+	Size                int64
+	Fingerprint         string
 }
 
 type ArtifactAuthority struct {
@@ -50,6 +55,7 @@ type ArtifactObjectStore interface {
 }
 
 type ArtifactPublicationRepository interface {
+	AuthorizeArtifact(context.Context, ArtifactCandidate) error
 	AttachArtifact(context.Context, ArtifactCandidate, string) error
 }
 
@@ -91,7 +97,13 @@ func (publisher *ArtifactPublisher) Publish(ctx context.Context, authority Artif
 		_ = publisher.quarantine.Delete(context.WithoutCancel(ctx), candidate.QuarantineRef)
 		return "", ErrArtifactDenied
 	}
-	objectKey := fmt.Sprintf("agent-artifacts/%s/%s/%d/%s", candidate.RunID, candidate.AttemptID, candidate.Generation, candidate.Fingerprint[7:])
+	// The local authority snapshot is only an early rejection seam. PostgreSQL
+	// must revalidate the live intent, Attempt lease, Grant and Kill Switch
+	// immediately before bytes leave quarantine.
+	if err := publisher.repository.AuthorizeArtifact(ctx, candidate); err != nil {
+		return "", err
+	}
+	objectKey := artifactObjectKey(candidate)
 	if err := publisher.objects.Put(ctx, objectKey, bytes.NewReader(payload), candidate.Size, candidate.MediaType); err != nil {
 		return "", ErrArtifactDenied
 	}
@@ -113,9 +125,17 @@ func artifactFingerprint(payload []byte) string {
 }
 
 func validArtifactRef(candidate ArtifactCandidate) bool {
-	return candidate.Name != "" && len(candidate.Name) <= 128 && !strings.ContainsAny(candidate.Name, "/\\\x00\r\n") &&
+	return validID(candidate.ArtifactID, "artifact") && validID(candidate.IntentID, "intent") &&
+		validFingerprint(candidate.SnapshotFingerprint) && validFingerprint(candidate.GrantFingerprint) &&
+		validFingerprint(candidate.RegistryFingerprint) &&
+		candidate.Name != "" && len(candidate.Name) <= 128 && !strings.ContainsAny(candidate.Name, "/\\\x00\r\n") &&
 		candidate.QuarantineRef == candidate.AttemptID+"/"+candidate.Name &&
 		candidate.MediaType != "" && len(candidate.MediaType) <= 128 && !strings.ContainsAny(candidate.MediaType, "\x00\r\n")
+}
+
+func artifactObjectKey(candidate ArtifactCandidate) string {
+	return fmt.Sprintf("agent-artifacts/%s/%s/%d/%s", candidate.RunID, candidate.AttemptID,
+		candidate.Generation, candidate.Fingerprint[7:])
 }
 
 func containsExact(values []string, candidate string) bool {

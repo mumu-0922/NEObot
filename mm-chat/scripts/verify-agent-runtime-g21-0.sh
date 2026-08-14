@@ -48,8 +48,10 @@ if rg -n 'agentactivation|agentruntimecontrol|NewRPCClient' "${backend_dir}/cmd/
   echo 'G21.0 verification: control-plane packages leaked into cmd/api' >&2
   exit 1
 fi
-if find "${backend_dir}/migrations" -maxdepth 1 -name '091_*' -print -quit | grep -q .; then
-  echo 'G21.0 verification: migration 091 is forbidden in this slice' >&2
+if [[ "$(find "${backend_dir}/migrations" -maxdepth 1 -name '091_*.up.sql' -printf '%f\n')" != \
+  '091_agent_artifact_publication.up.sql' ]] || \
+  [[ ! -s "${backend_dir}/migrations/091_agent_artifact_publication.down.sql" ]]; then
+  echo 'G21.0 verification: reviewed migration 091 tail is missing or widened' >&2
   exit 1
 fi
 for role_guard in pg_auth_members rolcanlogin rolsuper rolcreatedb rolcreaterole rolreplication rolbypassrls; do
@@ -237,7 +239,7 @@ assert_preflight_rejected() {
 
 sed 's|^AGENT_RUNTIME_ENABLED=false$|AGENT_RUNTIME_ENABLED=true|' "${enabled_env}" >"${work_dir}/execution.env"
 chmod 600 "${work_dir}/execution.env"
-assert_preflight_rejected "${work_dir}/execution.env" 'AGENT_RUNTIME_ENABLED must remain false through G21.1'
+assert_preflight_rejected "${work_dir}/execution.env" 'AGENT_RUNTIME_ENABLED must remain false through G21.2'
 
 sed 's|^AGENT_RUNNER_URL=.*|AGENT_RUNNER_URL=https://8.8.8.8:9443/internal/neo-runner/v1/rpc|' \
   "${enabled_env}" >"${work_dir}/public-url.env"

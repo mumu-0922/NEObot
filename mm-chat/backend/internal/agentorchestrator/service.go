@@ -50,11 +50,22 @@ func NewService(repository Repository) *Service {
 	}
 }
 
+// SnapshotFingerprint canonicalizes a proposed immutable Run snapshot using
+// the same content-free validation and domain separation as EnqueueRun.
+func SnapshotFingerprint(snapshot json.RawMessage) (string, error) {
+	canonical, err := canonicalSnapshot(snapshot)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(append([]byte("neo-agent-snapshot-v1\x00"), canonical...))
+	return "sha256:" + hex.EncodeToString(digest[:]), nil
+}
+
 func (service *Service) EnqueueRun(ctx context.Context, input EnqueueInput) (EnqueueResult, error) {
 	if service == nil || service.repository == nil {
 		return EnqueueResult{}, ErrDatabaseRequired
 	}
-	prepared, err := service.prepareEnqueue(input)
+	prepared, err := service.prepareEnqueue(input, "")
 	if err != nil {
 		return EnqueueResult{}, err
 	}
@@ -63,6 +74,29 @@ func (service *Service) EnqueueRun(ctx context.Context, input EnqueueInput) (Enq
 		return EnqueueResult{}, err
 	}
 	run, err := service.repository.GetRun(ctx, input.UserID, runID)
+	return EnqueueResult{Run: run, Created: created}, err
+}
+
+// EnqueueRunWithID is reserved for a controller that must freeze a Grant into
+// the immutable snapshot before enqueue. The supplied ID must be deterministic
+// from already approved controller input; PostgreSQL still owns idempotency and
+// collision checks.
+func (service *Service) EnqueueRunWithID(ctx context.Context, runID string, input EnqueueInput) (EnqueueResult, error) {
+	if service == nil || service.repository == nil {
+		return EnqueueResult{}, ErrDatabaseRequired
+	}
+	if !validID(runID, "run") {
+		return EnqueueResult{}, ErrInvalidInput
+	}
+	prepared, err := service.prepareEnqueue(input, runID)
+	if err != nil {
+		return EnqueueResult{}, err
+	}
+	resolved, created, err := service.repository.EnqueueRun(ctx, prepared)
+	if err != nil {
+		return EnqueueResult{}, err
+	}
+	run, err := service.repository.GetRun(ctx, input.UserID, resolved)
 	return EnqueueResult{Run: run, Created: created}, err
 }
 
@@ -215,7 +249,8 @@ func (service *Service) PruneTerminalRuns(ctx context.Context, cutoff time.Time,
 	return service.repository.PruneTerminalRuns(ctx, cutoff, limit)
 }
 
-func (service *Service) prepareEnqueue(input EnqueueInput) (preparedEnqueue, error) {
+func (service *Service) prepareEnqueue(input EnqueueInput, runID string) (preparedEnqueue, error) {
+	requestedRunID := runID
 	if !validUUID(input.UserID) || strings.TrimSpace(input.IdempotencyKey) != input.IdempotencyKey ||
 		len(input.IdempotencyKey) < 1 || len(input.IdempotencyKey) > 256 || len(input.Steps) < 1 || len(input.Steps) > maxSteps {
 		return preparedEnqueue{}, ErrInvalidInput
@@ -242,7 +277,9 @@ func (service *Service) prepareEnqueue(input EnqueueInput) (preparedEnqueue, err
 		}
 		seenSteps[step.ID] = struct{}{}
 	}
-	runID := service.newID("run")
+	if runID == "" {
+		runID = service.newID("run")
+	}
 	scopeKeys := []string{"global:*", "scheduler:*", "user:" + input.UserID, "run:" + runID}
 	seenScopes := map[string]struct{}{"global:*": {}, "scheduler:*": {}, "user:" + input.UserID: {}, "run:" + runID: {}}
 	for _, binding := range input.ScopeBindings {
@@ -261,10 +298,11 @@ func (service *Service) prepareEnqueue(input EnqueueInput) (preparedEnqueue, err
 	stepsJSON, _ := json.Marshal(input.Steps)
 	snapshotDigest := sha256.Sum256(append([]byte("neo-agent-snapshot-v1\x00"), canonical...))
 	requestBody, _ := json.Marshal(struct {
+		RunID    string          `json:"runId,omitempty"`
 		Snapshot json.RawMessage `json:"snapshot"`
 		Steps    []string        `json:"steps"`
 		Scopes   []string        `json:"scopes"`
-	}{canonical, requestSteps, requestScopes})
+	}{requestedRunID, canonical, requestSteps, requestScopes})
 	requestDigest := sha256.Sum256(append([]byte("neo-agent-enqueue-v1\x00"), requestBody...))
 	eventIDs := make([]string, 3+2*len(input.Steps))
 	for index := range eventIDs {

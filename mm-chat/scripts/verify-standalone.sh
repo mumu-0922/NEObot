@@ -117,6 +117,10 @@ required_paths=(
   scripts/test-memory-single-user-bounded-miss-development-from-vault.sh
   scripts/run-memory-single-user-bounded-miss-validation-from-vault.sh
   scripts/test-memory-single-user-bounded-miss-validation-from-vault.sh
+  scripts/verify-agent-runtime-g21-2.sh
+  scripts/verify-agent-broker-canary-activation.sh
+  scripts/verify-agent-broker-canary-preflight.sh
+  scripts/verify-agent-artifact-publication-postgres17.sh
   scripts/verify-agent-runtime-g21-1.sh
   scripts/verify-agent-root-canary-postgres17.sh
   rag/pyproject.toml
@@ -150,8 +154,10 @@ compose_json="${temp_dir}/compose.json"
   --project-directory "$(docker_path "${copy_dir}")" \
   -f "$(docker_path "${copy_dir}/compose.yml")" \
   --profile app --profile ops --profile memory-worker \
+  --profile mcp-runner \
   --profile agent-runtime-control \
   --profile agent-runtime-root-canary \
+  --profile agent-runtime-broker-canary \
   --profile rag-worker --profile rag-ops \
   config --format json >"${compose_json}"
 
@@ -181,8 +187,10 @@ required = {
     "frontend",
     "backend",
     "memory-worker",
+    "mcp-runner",
     "agent-runtime-control",
     "agent-runtime-root-canary",
+    "agent-runtime-broker-canary",
     "postgres",
     "redis",
     "minio",
@@ -218,6 +226,7 @@ backend = services["backend"]
 memory_worker = services["memory-worker"]
 agent_control = services["agent-runtime-control"]
 root_canary = services["agent-runtime-root-canary"]
+broker_canary = services["agent-runtime-broker-canary"]
 if memory_worker.get("profiles") != ["memory-worker"]:
     raise SystemExit("standalone verification: Memory Worker profile drifted")
 if memory_worker.get("ports"):
@@ -262,6 +271,46 @@ for name in (
 ):
     if root_canary["environment"][name] != "false":
         raise SystemExit(f"standalone verification: Root canary {name} must default false")
+if broker_canary.get("profiles") != ["agent-runtime-broker-canary"]:
+    raise SystemExit("standalone verification: Agent Broker canary profile drifted")
+if broker_canary.get("ports"):
+    raise SystemExit("standalone verification: Agent Broker canary exposes a host port")
+if set(broker_canary.get("networks", {})) != {"private", "mcp-control", "agent-broker-relay"}:
+    raise SystemExit("standalone verification: Agent Broker canary network boundary drifted")
+if broker_canary["environment"]["AGENT_BROKER_ARTIFACT_CANARY_ENABLED"] != "false":
+    raise SystemExit("standalone verification: Agent Broker canary must default false")
+if broker_canary["environment"]["S3_BUCKET_AUTO_CREATE"] != "false":
+    raise SystemExit("standalone verification: Agent Broker canary may not create buckets")
+if broker_canary.get("secrets") != [
+    {"source": "mm_chat_mcp_runner_token", "target": "mm_chat_mcp_runner_token"}
+]:
+    raise SystemExit("standalone verification: Agent Broker canary secret boundary drifted")
+if len(broker_canary.get("volumes", [])) != 15:
+    raise SystemExit("standalone verification: Agent Broker canary mount set drifted")
+if sum(volume.get("read_only") is not True for volume in broker_canary["volumes"]) != 1:
+    raise SystemExit("standalone verification: Agent Broker canary writable mounts drifted")
+for name in (
+    "AGENT_RUNTIME_ENABLED",
+    "AGENT_SCHEDULER_ENABLED",
+    "AGENT_SKILL_INSTALL_ENABLED",
+    "AGENT_LEARNING_ENABLED",
+    "AGENT_DELEGATION_ENABLED",
+    "AGENT_BROKER_READ_ONLY_ENABLED",
+    "AGENT_BROKER_MUTATION_ENABLED",
+):
+    if broker_canary["environment"][name] != "false":
+        raise SystemExit(f"standalone verification: Broker canary {name} must default false")
+for forbidden in (
+    "DATABASE_URL",
+    "MIGRATION_DATABASE_URL",
+    "PROVIDER_SECRET_KEYRING_FILE",
+    "REDIS_URL",
+    "MCP_RUNNER_TOKEN",
+):
+    if forbidden in broker_canary["environment"]:
+        raise SystemExit(f"standalone verification: Broker canary received {forbidden}")
+if not config["networks"]["agent-broker-relay"]["internal"]:
+    raise SystemExit("standalone verification: Agent Broker relay is not internal")
 if (
     backend["environment"]["MEMORY_HYBRID_SHADOW_ENABLED"]
     != memory_worker["environment"]["MEMORY_HYBRID_SHADOW_ENABLED"]
@@ -312,7 +361,7 @@ DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-single-user-bou
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-single-user-bounded-miss-validation-from-vault.sh"
 
 if [[ "${full}" == true ]]; then
-  bash "${copy_dir}/scripts/verify-agent-runtime-g21-1.sh"
+  bash "${copy_dir}/scripts/verify-agent-runtime-g21-2.sh"
   rag_python="${RAG_PYTHON:-python3.13}"
   rag_uv="${RAG_UV:-uv}"
   if ! command -v "${rag_python}" >/dev/null 2>&1; then

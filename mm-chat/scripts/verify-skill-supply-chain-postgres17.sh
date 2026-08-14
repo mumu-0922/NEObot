@@ -65,7 +65,7 @@ psql_command() {
 server_major="$(psql_command "SHOW server_version_num" | cut -c1-2)"
 [[ "${server_major}" == "17" ]] || { echo "expected PostgreSQL 17" >&2; exit 1; }
 
-log "building and applying 001 -> 090"
+log "building and applying 001 -> 091"
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/mm-chat-migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"; }
 run_migrate up >"${work_dir}/fresh.log" 2>&1
@@ -77,6 +77,7 @@ grep -Fq "up 087_agent_child_delegation" "${work_dir}/fresh.log"
 grep -Fq "up 088_agent_cron_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 089_agent_draft_learning" "${work_dir}/fresh.log"
 grep -Fq "up 090_agent_product_shadow" "${work_dir}/fresh.log"
+grep -Fq "up 091_agent_artifact_publication" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
@@ -110,7 +111,9 @@ log "running source-drift, review-CAS, ownership, install and uninstall lifecycl
 (cd "${backend_dir}" && MM_CHAT_TEST_DATABASE_URL="${database_url}" \
   go test -count=1 -run '^TestSkillPostgresRepositoryAuthorityDriftOwnershipAndCAS$' ./internal/skillsupply)
 
-log "rolling back the empty 090-084 tails before the 083 guard"
+log "rolling back the empty 091-084 tails before the 083 guard"
+run_migrate down >"${work_dir}/peel-091-tail-1.log" 2>&1
+grep -Fq "down 091_agent_artifact_publication" "${work_dir}/peel-091-tail-1.log"
 run_migrate down >"${work_dir}/down-090.log" 2>&1
 grep -Fq "down 090_agent_product_shadow" "${work_dir}/down-090.log"
 run_migrate down >"${work_dir}/down-089.log" 2>&1
@@ -137,7 +140,7 @@ if [[ "${guard_status}" -eq 0 ]] || ! grep -Fq "SKILL_SUPPLY_CHAIN_DOWN_DATA_EXI
   exit 1
 fi
 
-log "proving clean 082 -> 083 -> 082 -> 090 replay"
+log "proving clean 082 -> 083 -> 082 -> 091 replay"
 psql_command "TRUNCATE TABLE skill_installations, skill_package_candidates, skill_package_versions;" >/dev/null
 run_migrate down >"${work_dir}/down.log" 2>&1
 grep -Fq "down 083_skill_supply_chain" "${work_dir}/down.log"
@@ -161,6 +164,7 @@ grep -Fq "up 087_agent_child_delegation" "${work_dir}/reup.log"
 grep -Fq "up 088_agent_cron_foundation" "${work_dir}/reup.log"
 grep -Fq "up 089_agent_draft_learning" "${work_dir}/reup.log"
 grep -Fq "up 090_agent_product_shadow" "${work_dir}/reup.log"
+grep -Fq "up 091_agent_artifact_publication" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 

@@ -32,9 +32,18 @@ func TestArtifactPublicationRejectsStalePolicyAndCleansFailures(t *testing.T) {
 
 	quarantine := &fakeQuarantine{body: []byte("artifact")}
 	objects := &fakeArtifactObjects{}
-	publisher, _ := NewArtifactPublisher(quarantine, objects, &fakeArtifactRepository{err: errors.New("row failed")}, artifactScannerFunc(func(context.Context, ArtifactCandidate, io.Reader) error { return nil }))
+	publisher, _ := NewArtifactPublisher(quarantine, objects, &fakeArtifactRepository{attachErr: errors.New("row failed")}, artifactScannerFunc(func(context.Context, ArtifactCandidate, io.Reader) error { return nil }))
 	if _, err := publisher.Publish(context.Background(), authority, candidate); err == nil || objects.deletes != 1 {
 		t.Fatalf("row failure = %v, object deletes=%d", err, objects.deletes)
+	}
+
+	quarantine = &fakeQuarantine{body: []byte("artifact")}
+	objects = &fakeArtifactObjects{}
+	publisher, _ = NewArtifactPublisher(quarantine, objects,
+		&fakeArtifactRepository{authorizeErr: ErrLeaseStale},
+		artifactScannerFunc(func(context.Context, ArtifactCandidate, io.Reader) error { return nil }))
+	if _, err := publisher.Publish(context.Background(), authority, candidate); !errors.Is(err, ErrLeaseStale) || objects.puts != 0 {
+		t.Fatalf("pre-upload authority failure = %v, object puts=%d", err, objects.puts)
 	}
 
 	quarantine = &fakeQuarantine{body: []byte("artifact")}
@@ -67,7 +76,7 @@ func TestArtifactPublicationUsesObjectBeforeRowAndDeletesQuarantine(t *testing.T
 	if err != nil || key == "" {
 		t.Fatalf("Publish = %q, %v", key, err)
 	}
-	want := []string{"open", "scan", "put", "attach", "quarantine-delete"}
+	want := []string{"open", "scan", "authorize", "put", "attach", "quarantine-delete"}
 	if len(order) != len(want) {
 		t.Fatalf("publication order = %#v", order)
 	}
@@ -82,8 +91,11 @@ func TestArtifactPublicationUsesObjectBeforeRowAndDeletesQuarantine(t *testing.T
 }
 
 func testArtifactCandidate() ArtifactCandidate {
-	return ArtifactCandidate{UserID: testUser, RunID: testRun, AttemptID: testAttempt, Generation: 1,
-		QuarantineRef: testAttempt + "/result.txt", Name: "result.txt", MediaType: "text/plain",
+	return ArtifactCandidate{ArtifactID: "artifact_0123456789abcdef", IntentID: "intent_0123456789abcdef",
+		UserID: testUser, RunID: testRun, AttemptID: testAttempt, Generation: 1,
+		SnapshotFingerprint: testSnapshot, GrantFingerprint: testPackage,
+		RegistryFingerprint: testRuntime,
+		QuarantineRef:       testAttempt + "/result.txt", Name: "result.txt", MediaType: "text/plain",
 		Size: int64(len("artifact")), Fingerprint: artifactFingerprint([]byte("artifact"))}
 }
 func testArtifactAuthority() ArtifactAuthority {
@@ -141,13 +153,21 @@ func (store *fakeArtifactObjects) Delete(context.Context, string) error {
 }
 
 type fakeArtifactRepository struct {
-	err   error
-	order *[]string
+	authorizeErr error
+	attachErr    error
+	order        *[]string
+}
+
+func (repository *fakeArtifactRepository) AuthorizeArtifact(context.Context, ArtifactCandidate) error {
+	if repository.order != nil {
+		*repository.order = append(*repository.order, "authorize")
+	}
+	return repository.authorizeErr
 }
 
 func (repository *fakeArtifactRepository) AttachArtifact(context.Context, ArtifactCandidate, string) error {
 	if repository.order != nil {
 		*repository.order = append(*repository.order, "attach")
 	}
-	return repository.err
+	return repository.attachErr
 }

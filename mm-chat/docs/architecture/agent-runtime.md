@@ -9,7 +9,10 @@ promotion-evidence gate. Exact-host isolation and production Runner/Broker/
 Child/Scheduler/Learning/Shadow promotion are held; production Runtime remains
 disabled and no legacy/fallback Skill executor remains. G21.0 implements the
 default-off maintenance plane; G21.1 implements a separately activated,
-synthetic-only Root Run canary without enabling general execution.
+synthetic-only Root Run canary. G21.2 implements a third default-off canary
+that reaches the durable Broker only through the Runner relay for five reviewed
+synthetic actions, including bounded Artifact publication, without enabling
+general or user-facing execution.
 
 ## Purpose and invariant
 
@@ -467,7 +470,8 @@ claim/lease/Commit authority. None of these groups changes Chat execution
 authority. Legacy pure-text Skills remain untouched in G20.8. G20.9 deletes
 their browser authority and execution chain without adding a schema migration;
 the PostgreSQL selection cleanup is the explicit operator cutover
-`scripts/cutover-legacy-skills.sql`, while schema head remains `090`.
+`scripts/cutover-legacy-skills.sql`. G21.2 later advances the schema head to
+`091` without restoring any legacy authority.
 The G20.9 cutover:
 
 1. freezes new legacy Skill installation/editing;
@@ -485,8 +489,9 @@ The G20.9 cutover:
    declared rollback window; it must not partially mix legacy and new
    execution.
 
-G20.10 adds no migration or executable wiring. It binds the immutable release,
-migration head `090`, Runner manifest/binary, Runtime Bundle, target deployment
+G20.10 adds no migration or executable wiring. The current closure contract
+binds the immutable release, migration head `091`, Runner manifest/binary,
+Runtime Bundle, target deployment
 and operations policy into one strict content-free closure record. The
 read-only evaluator requires all 16 live checks plus zero temporary evidence
 residue. Committed evidence is explicitly a held template, so offline success
@@ -546,6 +551,43 @@ PostgreSQL gates can prove this path, but only an approved exact host with fresh
 production activation evidence may set `AGENT_ROOT_RUN_CANARY_ENABLED=true`.
 This development host therefore launches no Sandbox and remains
 `ISOLATION_UNAVAILABLE`.
+
+G21.2 adds `mm-chat-agent-runtime-broker-canary`, the exact caller identity
+`spiffe://neo-chat/agent-runtime-broker-canary`, and a separate Runner-to-Broker
+relay transport identity `spiffe://neo-chat/neo-runner-broker-relay`. Runner
+ingress grants the canary lifecycle methods plus `prepare/commit`, but the
+private relay accepts only Prepare and Commit, independently verifies the
+original Ed25519 authority ticket and unsigned request fingerprint, and then
+resolves Grant/Registry authority from the immutable mounted plan. Runner keeps
+only the relay URL and mTLS client tuple; it never receives the Broker database,
+object-store or MCP credentials.
+
+The plan contains exactly five one-Run actions: bounded Project and Workspace
+reads rooted at immutable canary directories, one exact auth-none read-only MCP
+Tool, one bounded Artifact publication and one possible-send acknowledgement-
+loss read. Read executors require `classification=read`, `idempotent=true` and
+automatic approval. Raw arguments and results never enter durable receipts;
+only canonical fingerprints cross Commit. The ambiguity action terminalizes as
+`outcome_unknown`, and exact replay observes that state without a second
+dispatch.
+
+Migration `091_agent_artifact_publication` introduces the NOLOGIN
+`agent_artifact_control` role and function-only authorize/attach authority. The
+G21.2 LOGIN recursively inherits exactly `agent_orchestrator_runtime`,
+`agent_runner_control`, `agent_effect_control` and `agent_artifact_control`, with
+no table DML or owner membership. Authorization is checked before object upload
+and again under locks before row attachment against the committing intent,
+Attempt generation/lease, snapshot, Grant/Registry, revocation, Kill Switch,
+media type and byte limit. Publication keeps one bounded byte snapshot, scans
+those same bytes, writes object before row, compensates object deletion on row
+failure and removes quarantine after success or rejection.
+
+The Broker canary owns an isolated static relay network and the minimum
+database/object-store/MCP material required by this slice. Sandbox launch input
+remains `networkMode=none` and contains none of those credentials. The profile,
+flag and activation record default off; checked-in evidence remains
+`ISOLATION_UNAVAILABLE`, so this source-complete seam is not exact-host or
+user-Runtime promotion evidence.
 
 The current `/v1/code/executions` remains fail closed. Agent Runtime must not use
 that placeholder route as an isolation shortcut.

@@ -229,7 +229,7 @@ def validate_policy(policy: dict[str, Any]) -> int:
     if policy["schemaVersion"] != "neo.agent-production-policy/v1":
         fail("POLICY_VERSION_INVALID")
     require_safe_id(policy["policyRevision"], "POLICY_REVISION_INVALID")
-    if policy["migrationHead"] != 90:
+    if policy["migrationHead"] != 91:
         fail("POLICY_MIGRATION_HEAD_INVALID")
     review_hours = require_integer(
         policy["reviewWindowHours"], 1, 24, "POLICY_REVIEW_WINDOW_INVALID"
