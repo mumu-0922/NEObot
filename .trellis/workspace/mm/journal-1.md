@@ -1895,3 +1895,36 @@ Implemented held depth-1 Child authority with authenticated user binding, comple
 ### Next Steps
 
 - None - task complete
+
+
+## Session 46: Agent Runtime G20.6 durable Cron foundation
+
+**Date**: 2026-08-14
+**Task**: Agent Runtime G20.6 durable Cron foundation
+**Branch**: `main`
+
+### Summary
+
+Implemented held durable Agent Cron scheduling with strict five-field IANA-timezone calculation, immutable approved revisions, PostgreSQL-fenced cursor/trigger claims, bounded missed/overlap/retry policies, trigger-time authority checks, atomic Orchestrator Run enqueue, migration 088 drills, contracts, and verification gates; production Runtime and Scheduler remain disabled.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `75edb4c0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
