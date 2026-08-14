@@ -71,3 +71,36 @@ Closed the offline production operations contract with conservative policy defau
 ### Next Steps
 
 - None - task complete
+
+
+## Session 51: Agent Runtime G21.0 production control activation
+
+**Date**: 2026-08-14
+**Task**: Agent Runtime G21.0 production control activation
+**Branch**: `main`
+
+### Summary
+
+Added the exact-host Runner bundle, strict control-plane activation evidence, dedicated least-privilege maintenance worker, default-off Compose/preflight wiring, documentation, and full verification while keeping execution disabled and this host ISOLATION_UNAVAILABLE.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b14ac9cb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
