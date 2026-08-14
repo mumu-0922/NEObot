@@ -1,0 +1,314 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neo-chat.local/contracts/neo-agent-production-policy.schema.json",
+  "title": "Neo Agent production operations policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "policyRevision",
+    "migrationHead",
+    "reviewWindowHours",
+    "capacity",
+    "budgets",
+    "canary",
+    "retention",
+    "cleanup",
+    "observability"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "neo.agent-production-policy/v1"
+    },
+    "policyRevision": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
+    "migrationHead": {
+      "const": 90
+    },
+    "reviewWindowHours": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 24
+    },
+    "capacity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxConcurrentRootRuns",
+        "maxConcurrentSandboxes",
+        "maxQueueDepth",
+        "maxConcurrentCanaries"
+      ],
+      "properties": {
+        "maxConcurrentRootRuns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "maxConcurrentSandboxes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128
+        },
+        "maxQueueDepth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "maxConcurrentCanaries": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root",
+        "child",
+        "cron"
+      ],
+      "properties": {
+        "root": {
+          "$ref": "#/$defs/budget"
+        },
+        "child": {
+          "$ref": "#/$defs/budget"
+        },
+        "cron": {
+          "$ref": "#/$defs/budget"
+        }
+      }
+    },
+    "canary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowedModes",
+        "maxRunsPerWindow",
+        "windowMinutes",
+        "maxErrors",
+        "maxOutcomeUnknown",
+        "egressMode",
+        "secretsAllowed"
+      ],
+      "properties": {
+        "allowedModes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "synthetic",
+              "read_only"
+            ]
+          }
+        },
+        "maxRunsPerWindow": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "windowMinutes": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 1440
+        },
+        "maxErrors": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "maxOutcomeUnknown": {
+          "const": 0
+        },
+        "egressMode": {
+          "const": "none"
+        },
+        "secretsAllowed": {
+          "const": false
+        }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "terminalRunsDays",
+        "runnerReplayDays",
+        "temporaryArtifactsDays",
+        "cronHistoryDays",
+        "auditDays",
+        "promotionEvidenceDays",
+        "preserveUnresolvedIncidents"
+      ],
+      "properties": {
+        "terminalRunsDays": {
+          "type": "integer",
+          "minimum": 7,
+          "maximum": 365
+        },
+        "runnerReplayDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 90
+        },
+        "temporaryArtifactsDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 90
+        },
+        "cronHistoryDays": {
+          "type": "integer",
+          "minimum": 7,
+          "maximum": 365
+        },
+        "auditDays": {
+          "type": "integer",
+          "minimum": 90,
+          "maximum": 3650
+        },
+        "promotionEvidenceDays": {
+          "type": "integer",
+          "minimum": 365,
+          "maximum": 3650
+        },
+        "preserveUnresolvedIncidents": {
+          "const": true
+        }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "batchSize",
+        "continueWhileRuntimeDisabled",
+        "objectBeforeRow"
+      ],
+      "properties": {
+        "batchSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "continueWhileRuntimeDisabled": {
+          "const": true
+        },
+        "objectBeforeRow": {
+          "const": true
+        }
+      }
+    },
+    "observability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "labelAllowlist",
+        "metrics",
+        "alerts"
+      ],
+      "properties": {
+        "labelAllowlist": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$"
+          }
+        },
+        "metrics": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^agent_[a-z0-9_]{1,95}$"
+          }
+        },
+        "alerts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/alert"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxWallSeconds",
+        "maxModelTokens",
+        "maxToolCalls",
+        "maxArtifactBytes"
+      ],
+      "properties": {
+        "maxWallSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400
+        },
+        "maxModelTokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000000
+        },
+        "maxToolCalls": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "maxArtifactBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10737418240
+        }
+      }
+    },
+    "alert": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "severity",
+        "threshold",
+        "windowMinutes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$"
+        },
+        "severity": {
+          "enum": [
+            "page",
+            "ticket"
+          ]
+        },
+        "threshold": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "windowMinutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1440
+        }
+      }
+    }
+  }
+}

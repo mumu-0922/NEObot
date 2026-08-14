@@ -539,3 +539,109 @@ deploy new image -> best-effort UPDATE -> discover count afterward -> enable API
 G20.8 browser backup + full DB backup/fingerprint/count -> dry-run -> locked apply
 -> G20.9 reload/restart proof -> full restore rehearsal -> exact-host promotion later
 ```
+
+## Scenario: Evaluate G20.10 production closure
+
+### 1. Scope / Trigger
+
+Apply when changing Agent Runtime capacity/budget defaults, retention,
+observability, exact-host promotion evidence, incident response, rotation,
+backup/restore/DR or final temporary-evidence cleanup. This contract evaluates
+read-only evidence; it does not enable Runtime.
+
+### 2. Signatures
+
+```bash
+bash mm-chat/scripts/verify-agent-production-closure.sh
+bash mm-chat/scripts/verify-agent-production-closure.sh \
+  --record /secure/operator-evidence/agent-production-closure.json
+```
+
+Policy:
+`mm-chat/config/agent-runner/production-policy.json`.
+Schemas:
+`neo-agent-production-policy.schema.json` and
+`neo-agent-production-closure.schema.json`.
+Evaluator: `mm-chat/scripts/evaluate-agent-production-closure.py`.
+
+### 3. Contracts
+
+- The policy freezes conservative single-server capacity, root/Child/Cron
+  budgets, no-Egress/no-Secret canary, retention, bounded cleanup, exact metric
+  labels and alert thresholds. It never widens a frozen Grant.
+- A closure record binds one Git commit, migration head `090`, Runner manifest/
+  binary, Runtime Bundle, target deployment and exact policy SHA-256 to 16
+  unique live checks. The input cannot self-assert its final verdict.
+- `template` evidence never promotes. Production requires every check passed,
+  current review, non-placeholder fingerprints, approved review and zero
+  temporary canary Run/Draft/Artifact/raw-Run/Sandbox/Scratch residue.
+- Records contain fingerprints, UTC times and stable result/detail codes only.
+  Raw logs, content, paths, URLs, object keys, credentials, tokens and Secret
+  values are forbidden.
+- Exit `0` is `PROMOTION_READY`, exit `3` is an honest held decision, and exit
+  `2` is invalid evidence. A ready decision is necessary but never activates a
+  worker by itself.
+- Retain unresolved `outcome_unknown`, object drift, failed reap and failed
+  cleanup until explicit content-free incident resolution. Generic terminal
+  Run pruning must exclude unresolved incident authority.
+- Actual records live outside Git and runtime object namespaces. The evaluator
+  accepts only bounded, non-symlink, non-group/world-writable regular files and
+  performs no mutation.
+- G20.10 adds no migration `091`, Compose/startup worker, production adapter,
+  flag, browser/API/rootful fallback or live-host change. The current host stays
+  `ISOLATION_UNAVAILABLE`.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| exact-host check is unavailable | exit `3`, `PROMOTION_HELD`, `ISOLATION_UNAVAILABLE` |
+| evidence class is `template` | exit `3`, `NON_PRODUCTION_EVIDENCE` |
+| review window is expired/not current | exit `3`, `EVIDENCE_STALE` |
+| any live check failed/not run | exit `3`, stable held reason |
+| temporary evidence/residue count is nonzero | exit `3`, `TEMPORARY_EVIDENCE_REMAINS` |
+| policy SHA, migration head or release binding drifts | exit `2`, invalid evidence |
+| check set is missing or duplicated | exit `2`, invalid evidence |
+| record/policy is symlink or group/world writable | exit `2`, unsafe document |
+| all exact production conditions pass | exit `0`, `PROMOTION_READY`; activation remains separate |
+
+### 5. Good / Base / Bad Cases
+
+- **Good**: exact target produces a fresh content-free `production` record,
+  every live check passes, temporary evidence cleanup is zero and the evaluator
+  returns `PROMOTION_READY` before a separate activation review.
+- **Base**: offline self-tests and all disposable PostgreSQL gates pass, but the
+  committed template returns `ISOLATION_UNAVAILABLE`; production stays off.
+- **Bad**: edit a template to `passed`, override evaluation time, embed raw
+  logs/secrets, reuse an old policy hash, delete incident rows or enable a
+  fallback because the host is unavailable.
+
+### 6. Tests Required
+
+- Validate both Draft 2020-12 schemas, positive/negative fixtures, unknown root
+  rejection and exact policy-fixture SHA binding through Phase 0.
+- Self-test ephemeral positive semantics plus isolation-held, template-held,
+  stale, cleanup residue, policy drift, incomplete, duplicate, malformed,
+  writable-file and symlink cases.
+- Run every Agent source and PostgreSQL 17 gate through schema head `090`, then
+  full frontend/backend/RAG standalone verification.
+- Run `verify-agent-runner-host.sh` separately and require nonzero
+  `ISOLATION_UNAVAILABLE` here. Only a real target-host pass may back a
+  production record.
+- Confirm `data/`, `secrets/`, `backup/` and `.env.single-server` were not read
+  or changed by the evaluator.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+offline fixture says passed -> enable Runtime -> call it production evidence
+```
+
+#### Correct
+
+```text
+offline contract green + exact-host/live matrix + release/policy-bound record
+-> read-only PROMOTION_READY -> separate activation decision
+```

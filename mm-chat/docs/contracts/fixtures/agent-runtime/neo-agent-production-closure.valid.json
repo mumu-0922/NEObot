@@ -1,0 +1,152 @@
+{
+  "schemaVersion": "neo.agent-production-closure/v1",
+  "evidenceClass": "template",
+  "release": {
+    "gitCommit": "0000000000000000000000000000000000000000",
+    "migrationHead": 90,
+    "runnerManifestSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "runnerBinarySha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "runtimeBundleFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "operationsPolicySha256": "sha256:a8491c16e2632afaf06b9a683b6c612bf464480a528bc7ff45ea7939115587cc"
+  },
+  "target": {
+    "deploymentFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "hostClass": "single-server-linux",
+    "runnerId": "neo-runner-primary",
+    "runnerUid": 65534,
+    "runnerGid": 65534
+  },
+  "window": {
+    "startedAt": "2026-08-14T10:00:00Z",
+    "completedAt": "2026-08-14T11:00:00Z",
+    "expiresAt": "2026-08-15T10:00:00Z"
+  },
+  "checks": [
+    {
+      "id": "exact_host_isolation",
+      "result": "isolation_unavailable",
+      "observedAt": "2026-08-14T10:30:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "ISOLATION_UNAVAILABLE"
+    },
+    {
+      "id": "clean_copy_install",
+      "result": "not_run",
+      "observedAt": "2026-08-14T10:30:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "NOT_RUN"
+    },
+    {
+      "id": "restart_reconcile",
+      "result": "not_run",
+      "observedAt": "2026-08-14T10:30:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "NOT_RUN"
+    },
+    {
+      "id": "host_reboot_reconcile",
+      "result": "not_run",
+      "observedAt": "2026-08-14T10:30:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "NOT_RUN"
+    },
+    {
+      "id": "paired_backup_restore",
+      "result": "not_run",
+      "observedAt": "2026-08-14T10:30:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "NOT_RUN"
+    },
+    {
+      "id": "disaster_recovery",
+      "result": "not_run",
+      "observedAt": "2026-08-14T10:30:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "NOT_RUN"
+    },
+    {
+      "id": "rollback_forward_fix",
+      "result": "not_run",
+      "observedAt": "2026-08-14T10:30:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "NOT_RUN"
+    },
+    {
+      "id": "hierarchical_kill_switch",
+      "result": "not_run",
+      "observedAt": "2026-08-14T10:30:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "NOT_RUN"
+    },
+    {
+      "id": "credential_mtls_rotation",
+      "result": "not_run",
+      "observedAt": "2026-08-14T10:30:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "NOT_RUN"
+    },
+    {
+      "id": "runtime_bundle_rotation",
+      "result": "not_run",
+      "observedAt": "2026-08-14T10:30:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "NOT_RUN"
+    },
+    {
+      "id": "orphan_reconciliation",
+      "result": "not_run",
+      "observedAt": "2026-08-14T10:30:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "NOT_RUN"
+    },
+    {
+      "id": "outcome_unknown_workflow",
+      "result": "not_run",
+      "observedAt": "2026-08-14T10:30:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "NOT_RUN"
+    },
+    {
+      "id": "metrics_alerts",
+      "result": "not_run",
+      "observedAt": "2026-08-14T10:30:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "NOT_RUN"
+    },
+    {
+      "id": "capacity_budgets",
+      "result": "not_run",
+      "observedAt": "2026-08-14T10:30:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "NOT_RUN"
+    },
+    {
+      "id": "bounded_canary",
+      "result": "not_run",
+      "observedAt": "2026-08-14T10:30:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "NOT_RUN"
+    },
+    {
+      "id": "temporary_evidence_cleanup",
+      "result": "not_run",
+      "observedAt": "2026-08-14T10:30:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "NOT_RUN"
+    }
+  ],
+  "cleanup": {
+    "temporaryCanaryRuns": 0,
+    "temporaryDrafts": 0,
+    "temporaryArtifacts": 0,
+    "temporaryRunEvidence": 0,
+    "orphanSandboxes": 0,
+    "scratchResidue": 0,
+    "promotionRecordRetained": true
+  },
+  "review": {
+    "decision": "held",
+    "reviewedAt": "2026-08-14T11:30:00Z",
+    "reviewerFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}

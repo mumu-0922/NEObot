@@ -81,14 +81,24 @@ Compose service, mirrors `S3_BUCKET`, then archives the mirrored tree as
 `tar.gz`. This includes all MCP authority rows in PostgreSQL and every
 `mcp-results/` object referenced by `mcp_tool_results.object_keys`, plus G20.1
 Skill candidate/version/install rows and their `skill-quarantine/`,
-`skill-packages/`, and `skill-sboms/` objects. These database coordinates and
-object bytes are never backed up independently. Both scripts set `umask 077`, so new artifacts and checksums are
-owner-only. The MinIO backup container runs as the invoking host UID/GID so the
-operator can remove temporary staging files after the archive is created.
+`skill-packages/`, and `skill-sboms/` objects. The same full-bucket mirror covers
+Agent Runtime Bundle/Workspace coordinates, `skill-drafts/` quarantine and
+published `agent-artifacts/` when those held paths are later promoted. These
+database coordinates and object bytes are never backed up independently. Both
+scripts set `umask 077`, so new artifacts and checksums are owner-only. The
+MinIO backup container runs as the invoking host UID/GID so the operator can
+remove temporary staging files after the archive is created.
 The strict set manifest records the class, UTC creation time, exact relative
 artifact/checksum paths, their SHA-256 values, and
 `containsMemoryPlaintext=true`. A failed wrapper run removes every partial file
 for that set and publishes no manifest.
+
+Agent Runtime production promotion additionally hashes the verified set
+manifest into the external G20.10 closure evidence. Restore with every Agent
+worker and Runtime switch off, reject all pre-restore leases/nonces, reconcile
+Sandboxes/effects/Children/Cron/Draft cleanup, and require migration head `090`
+before a read-only canary. The closure record is not a backup and must never
+embed dump/object bytes or credentials.
 
 ## Verify backup checksums
 

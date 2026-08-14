@@ -17,6 +17,20 @@ Before copying this template:
    manifest-bound path/hash; a probe-only report is insufficient;
 8. keep global Agent Runtime disabled until that evidence is reviewed.
 
+Before promotion, hash-bind the accepted release to
+`config/agent-runner/production-policy.json` and evaluate the separately
+captured content-free record:
+
+```bash
+bash scripts/verify-agent-production-closure.sh \
+  --record /secure/operator-evidence/agent-production-closure.json
+```
+
+Only `PROMOTION_READY` from `production` evidence is eligible for a separate
+activation decision. The checked-in template and this development host remain
+`PROMOTION_HELD` / `ISOLATION_UNAVAILABLE`; the evaluator never starts or
+reconfigures this service.
+
 `Delegate=yes` requires the service to write only its delegated cgroup subtree,
 so the unit deliberately sets `ProtectControlGroups=no`. Rootless Podman also
 needs the explicit user/mount/PID/IPC/UTS/cgroup namespace allowlist; a blanket

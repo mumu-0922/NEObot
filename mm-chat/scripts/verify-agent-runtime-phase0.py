@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sys
@@ -26,6 +27,8 @@ SCHEMA_NAMES = (
     "neo-run-event",
     "neo-cron-template",
     "neo-skill-draft",
+    "neo-agent-production-policy",
+    "neo-agent-production-closure",
 )
 JsonObject = dict[str, Any]
 
@@ -149,6 +152,8 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
     event = instances["neo-run-event"]
     cron_template = instances["neo-cron-template"]
     draft = instances["neo-skill-draft"]
+    production_policy = instances["neo-agent-production-policy"]
+    production_closure = instances["neo-agent-production-closure"]
 
     check_fingerprint_bindings(grant, launch)
     require_equal(
@@ -249,6 +254,57 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
     if not changed_paths.issubset(covered_paths):
         raise VerificationError("Draft changed paths are not covered by Run evidence")
 
+    policy_path = PROJECT_DIR / "config" / "agent-runner" / "production-policy.json"
+    production_policy_bytes = policy_path.read_bytes()
+    require_equal(
+        production_policy,
+        json.loads(production_policy_bytes),
+        "production policy fixture differs from the frozen policy",
+    )
+    policy_fingerprint = "sha256:" + hashlib.sha256(production_policy_bytes).hexdigest()
+    require_equal(
+        production_closure["release"]["operationsPolicySha256"],
+        policy_fingerprint,
+        "production closure does not bind the frozen operations policy",
+    )
+    required_checks = {
+        "exact_host_isolation",
+        "clean_copy_install",
+        "restart_reconcile",
+        "host_reboot_reconcile",
+        "paired_backup_restore",
+        "disaster_recovery",
+        "rollback_forward_fix",
+        "hierarchical_kill_switch",
+        "credential_mtls_rotation",
+        "runtime_bundle_rotation",
+        "orphan_reconciliation",
+        "outcome_unknown_workflow",
+        "metrics_alerts",
+        "capacity_budgets",
+        "bounded_canary",
+        "temporary_evidence_cleanup",
+    }
+    check_ids = [item["id"] for item in production_closure["checks"]]
+    if len(check_ids) != len(set(check_ids)) or set(check_ids) != required_checks:
+        raise VerificationError("production closure check set is incomplete or duplicated")
+    isolation = next(
+        item for item in production_closure["checks"]
+        if item["id"] == "exact_host_isolation"
+    )
+    if (
+        production_closure["evidenceClass"] != "template"
+        or isolation["result"] != "isolation_unavailable"
+        or isolation["detailCode"] != "ISOLATION_UNAVAILABLE"
+    ):
+        raise VerificationError("committed production closure fixture is not honestly held")
+    if any(
+        value != 0
+        for key, value in production_closure["cleanup"].items()
+        if key != "promotionRecordRetained"
+    ):
+        raise VerificationError("committed production closure fixture has cleanup residue")
+
 
 def check_document_anchors() -> None:
     requirements: dict[Path, tuple[str, ...]] = {
@@ -262,6 +318,8 @@ def check_document_anchors() -> None:
             "migration `090`",
             "Agent Center and held Shadow control",
             "旧版技能已退役",
+            "G20.10",
+            "promotion-evidence gate",
         ),
         CONTRACT_DIR / "agent-runtime.md": (
             "Durable state machine",
@@ -274,6 +332,8 @@ def check_document_anchors() -> None:
             "Agent Center and held Shadow",
             "Isolation Acceptance Suite",
             "CODE_EXECUTION_UNAVAILABLE",
+            "Production closure contract",
+            "verify-agent-production-closure.sh",
         ),
         PROJECT_DIR / "docs" / "deployment" / "agent-runtime.md": (
             "AGENT_RUNTIME_ENABLED=false",
@@ -284,6 +344,8 @@ def check_document_anchors() -> None:
             "Draft learning operations boundary",
             "Agent Center and Shadow operations boundary",
             "Legacy Skill cutover and rollback",
+            "Production closure evidence gate",
+            "`outcome_unknown` operator workflow",
         ),
         PROJECT_DIR / "docs" / "tracking" / "g20-agent-runtime-plan.md": (
             "G20.0",
@@ -295,6 +357,8 @@ def check_document_anchors() -> None:
             "migration `090`",
             "delegate_task",
             "hard delete",
+            "source/operations closure complete",
+            "PROMOTION_READY",
         ),
     }
     for path, anchors in requirements.items():
@@ -449,7 +513,8 @@ def main() -> int:
         return 1
     print(
         "Agent Runtime Phase 0 verification: passed "
-        "(schemas, fixtures, lineage, Agent product/Shadow, docs, fail-closed routes)"
+        "(schemas, fixtures, lineage, Agent product/Shadow, production closure, "
+        "docs, fail-closed routes)"
     )
     print(
         "Agent Runtime Phase 0 verification: production Runtime remains disabled; "

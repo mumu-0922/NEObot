@@ -308,6 +308,9 @@ the rollback window and prefer forward repair afterward.
 
 ## G20.10 — Production closure
 
+Status: source/operations closure complete (2026-08-14); exact-host production
+promotion held at `ISOLATION_UNAVAILABLE`.
+
 - Close metrics/alerts, capacity/budget defaults, on-call/incident runbooks,
   retention, backup/restore and disaster recovery.
 - Repeat Isolation Acceptance on exact production host/runtime/Runner/bundle.
@@ -315,6 +318,20 @@ the rollback window and prefer forward repair afterward.
   reconciliation and `outcome_unknown` operator workflow.
 - Delete temporary canary/Draft/Artifact/Run evidence that is not part of the
   content-free promotion record.
+
+Implemented evidence: conservative versioned single-server policy; strict
+production-policy and 16-check closure schemas/fixtures; read-only fail-closed
+evaluator with stable ready/held/invalid decisions; offline positive/held/stale/
+drift/incomplete/duplicate/residue matrix; and synchronized metrics/alerts,
+capacity, retention, backup/restore/DR, Kill Switch, rotation, orphan,
+`outcome_unknown` and cleanup runbooks. No migration `091`, worker, production
+adapter, Runtime flag or fallback was added.
+
+Held evidence: the checked-in record is `template` evidence and the exact host
+remains `ISOLATION_UNAVAILABLE`. No live package/canary, reboot, production
+restore/rollback, rotation or cleanup was claimed. Epic production completion
+requires an external exact-target `production` record whose policy/release-
+bound evaluation returns `PROMOTION_READY`.
 
 Promotion gate: full clean-copy and live matrix, restart/host reboot, backup
 restore, rollback/forward-fix, Kill Switch and sanitized evidence review pass.

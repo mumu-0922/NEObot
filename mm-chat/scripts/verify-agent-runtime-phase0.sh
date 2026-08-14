@@ -58,6 +58,11 @@ required_agent_paths=(
   "${project_dir}/scripts/verify-agent-legacy-cutover-postgres17.sh"
   "${project_dir}/scripts/verify-agent-product-shadow.sh"
   "${project_dir}/scripts/verify-agent-product-shadow-postgres17.sh"
+  "${project_dir}/config/agent-runner/production-policy.json"
+  "${project_dir}/docs/contracts/schemas/neo-agent-production-policy.schema.json"
+  "${project_dir}/docs/contracts/schemas/neo-agent-production-closure.schema.json"
+  "${project_dir}/scripts/evaluate-agent-production-closure.py"
+  "${project_dir}/scripts/verify-agent-production-closure.sh"
 )
 for path in "${required_agent_paths[@]}"; do
   if [[ ! -s "${path}" ]]; then
@@ -107,6 +112,7 @@ for path in "${schema_dir}"/*.json "${fixture_dir}"/*.json; do
 done
 
 bash -n "${project_dir}/scripts/verify-agent-runtime-phase0.sh"
+bash -n "${project_dir}/scripts/verify-agent-production-closure.sh"
 
 isolated_root="$(mktemp -d)"
 cleanup() {
@@ -122,6 +128,7 @@ mkdir -p \
   "${isolated_root}/mm-chat/backend/internal/agentcontrol" \
   "${isolated_root}/mm-chat/backend/migrations" \
   "${isolated_root}/mm-chat/frontend/src/store/storage" \
+  "${isolated_root}/mm-chat/config/agent-runner" \
   "${isolated_root}/mm-chat/docs" \
   "${isolated_root}/mm-chat/scripts"
 
@@ -149,7 +156,13 @@ cp "${project_dir}/scripts/verify-agent-legacy-cutover.sh" \
 )
 cp "${project_dir}/scripts/verify-agent-runtime-phase0.py" \
   "${isolated_root}/mm-chat/scripts/"
+cp "${project_dir}/config/agent-runner/production-policy.json" \
+  "${isolated_root}/mm-chat/config/agent-runner/"
+cp "${project_dir}/scripts/evaluate-agent-production-closure.py" \
+  "${project_dir}/scripts/verify-agent-production-closure.sh" \
+  "${isolated_root}/mm-chat/scripts/"
 
 cd "${isolated_root}"
 "${python_command[@]}" \
   "${isolated_root}/mm-chat/scripts/verify-agent-runtime-phase0.py"
+bash "${isolated_root}/mm-chat/scripts/verify-agent-production-closure.sh"

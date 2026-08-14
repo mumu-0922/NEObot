@@ -1,0 +1,127 @@
+{
+  "schemaVersion": "neo.agent-production-policy/v1",
+  "policyRevision": "agent-runtime-single-server-v1",
+  "migrationHead": 90,
+  "reviewWindowHours": 24,
+  "capacity": {
+    "maxConcurrentRootRuns": 2,
+    "maxConcurrentSandboxes": 4,
+    "maxQueueDepth": 32,
+    "maxConcurrentCanaries": 1
+  },
+  "budgets": {
+    "root": {
+      "maxWallSeconds": 300,
+      "maxModelTokens": 20000,
+      "maxToolCalls": 32,
+      "maxArtifactBytes": 16777216
+    },
+    "child": {
+      "maxWallSeconds": 120,
+      "maxModelTokens": 8000,
+      "maxToolCalls": 8,
+      "maxArtifactBytes": 4194304
+    },
+    "cron": {
+      "maxWallSeconds": 120,
+      "maxModelTokens": 8000,
+      "maxToolCalls": 8,
+      "maxArtifactBytes": 4194304
+    }
+  },
+  "canary": {
+    "allowedModes": [
+      "synthetic",
+      "read_only"
+    ],
+    "maxRunsPerWindow": 20,
+    "windowMinutes": 30,
+    "maxErrors": 1,
+    "maxOutcomeUnknown": 0,
+    "egressMode": "none",
+    "secretsAllowed": false
+  },
+  "retention": {
+    "terminalRunsDays": 30,
+    "runnerReplayDays": 7,
+    "temporaryArtifactsDays": 7,
+    "cronHistoryDays": 30,
+    "auditDays": 365,
+    "promotionEvidenceDays": 400,
+    "preserveUnresolvedIncidents": true
+  },
+  "cleanup": {
+    "batchSize": 100,
+    "continueWhileRuntimeDisabled": true,
+    "objectBeforeRow": true
+  },
+  "observability": {
+    "labelAllowlist": [
+      "operation",
+      "outcome",
+      "reason_code",
+      "runtime_class",
+      "scope_class",
+      "switch_mode"
+    ],
+    "metrics": [
+      "agent_runtime_ready",
+      "agent_run_queue_depth",
+      "agent_active_sandboxes",
+      "agent_orphan_sandboxes",
+      "agent_unresolved_outcome_unknown",
+      "agent_cleanup_backlog",
+      "agent_run_terminal_total",
+      "agent_kill_switch_transition_total",
+      "agent_effect_commit_total",
+      "agent_reconcile_total",
+      "agent_run_duration_seconds",
+      "agent_queue_wait_seconds",
+      "agent_budget_usage_ratio"
+    ],
+    "alerts": [
+      {
+        "id": "runtime_enabled_not_ready",
+        "severity": "page",
+        "threshold": 1,
+        "windowMinutes": 1
+      },
+      {
+        "id": "secret_canary_leak",
+        "severity": "page",
+        "threshold": 1,
+        "windowMinutes": 1
+      },
+      {
+        "id": "outcome_unknown_unresolved",
+        "severity": "page",
+        "threshold": 1,
+        "windowMinutes": 1
+      },
+      {
+        "id": "kill_switch_enforcement_failed",
+        "severity": "page",
+        "threshold": 1,
+        "windowMinutes": 1
+      },
+      {
+        "id": "orphan_after_two_reconciles",
+        "severity": "page",
+        "threshold": 1,
+        "windowMinutes": 5
+      },
+      {
+        "id": "queue_capacity_sustained",
+        "severity": "ticket",
+        "threshold": 24,
+        "windowMinutes": 15
+      },
+      {
+        "id": "cleanup_backlog_sustained",
+        "severity": "ticket",
+        "threshold": 100,
+        "windowMinutes": 30
+      }
+    ]
+  }
+}

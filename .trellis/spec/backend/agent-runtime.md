@@ -11,7 +11,9 @@ supply chain, G20.2 the internal durable Orchestrator, G20.3 the held Runner,
 G20.4 the held Broker, G20.5 the held depth-1 delegation and G20.6 the held
 durable Cron scheduling foundation, G20.7 Draft learning, G20.8 the held
 Agent Center/Shadow product facade, and G20.9 the legacy text-Skill hard
-retirement. MCP and `/v1/code/executions` execution behavior remains unchanged.
+retirement. G20.10 adds the held production-policy/evidence gate without a new
+migration or worker. MCP and `/v1/code/executions` execution behavior remains
+unchanged.
 
 ### 2. Signatures
 
@@ -26,6 +28,8 @@ retirement. MCP and `/v1/code/executions` execution behavior remains unchanged.
   `bash mm-chat/scripts/verify-agent-delegation-postgres17.sh`.
 - Product/Shadow gates: `bash mm-chat/scripts/verify-agent-product-shadow.sh`
   and `bash mm-chat/scripts/verify-agent-product-shadow-postgres17.sh`.
+- Production closure gate:
+  `bash mm-chat/scripts/verify-agent-production-closure.sh`.
 - Epic slices: `mm-chat/docs/tracking/g20-agent-runtime-plan.md`.
 
 ### 3. Contracts
@@ -147,6 +151,14 @@ retirement. MCP and `/v1/code/executions` execution behavior remains unchanged.
   paths without migration/wrapping. Historical messages retain only the
   read-only fact “旧版技能已退役”. Package execution remains held when exact-host
   isolation is unavailable.
+- G20.10 policy and closure JSON are strict, content-free and exact-release
+  bound. The read-only evaluator derives ready/held/invalid and never activates
+  Runtime. The checked-in template remains `ISOLATION_UNAVAILABLE`.
+- G20.8 intentionally imports `internal/agentlearning` only from the
+  authenticated `agentcontrol` facade and `cmd/api` construction. Startup must
+  pass `WithLearningEnabled(false)` and must not call learning Claim,
+  Reconcile, Cleanup or Prune. Source gates must allowlist those exact held
+  importers rather than preserving the obsolete G20.7 blanket no-import check.
 
 ### 4. Validation & Error Matrix
 
@@ -165,6 +177,7 @@ retirement. MCP and `/v1/code/executions` execution behavior remains unchanged.
 | settlement before terminal Run or outcome drift | `SETTLEMENT_INVALID`; reservation remains held |
 | reaper unavailable after cascade | Child lease remains fenced; reap becomes durable `failed` and reconcile retries |
 | Draft attempts self-Promote | reject and security-audit |
+| closure record is template/stale/incomplete/drifted or has residue | held/invalid; no activation |
 
 ### 5. Good / Base / Bad Cases
 
@@ -229,6 +242,9 @@ retirement. MCP and `/v1/code/executions` execution behavior remains unchanged.
   launch.
 - Cutover: backup, storage purge, zero legacy execution references, history fact,
   clean-copy/restart/live canary and all-path rollback rehearsal.
+- G20.10: strict policy/closure schemas, ephemeral positive semantics, held,
+  stale, policy drift, incomplete/duplicate checks, cleanup residue and unsafe
+  file inputs; exact-host remains separately expected-nonzero here.
 
 ### 7. Wrong vs Correct
 

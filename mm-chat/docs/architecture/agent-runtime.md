@@ -4,9 +4,10 @@ Status: G20.1 no-execute Skill supply chain, G20.2 durable Orchestrator, G20.3
 Runner, G20.4 brokered effects, G20.5 depth-1 Child delegation, G20.6 durable
 Cron scheduling, G20.7 Draft-only learning, the G20.8 Agent Center/default-off
 Shadow control plane, and G20.9 legacy text-Skill hard retirement are
-implemented. Exact-host isolation and production Runner/Broker/Child/Scheduler/
-Learning/Shadow promotion are held; production Runtime remains disabled and no
-legacy/fallback Skill executor remains.
+implemented. G20.10 adds the fail-closed operations policy and release-bound
+promotion-evidence gate. Exact-host isolation and production Runner/Broker/
+Child/Scheduler/Learning/Shadow promotion are held; production Runtime remains
+disabled and no legacy/fallback Skill executor remains.
 
 ## Purpose and invariant
 
@@ -428,6 +429,12 @@ values, auth headers, custom URL paths, provider payloads and high-cardinality
 user/Skill labels. User-visible process traces are separately sanitized and do
 not reveal private chain-of-thought.
 
+G20.10 freezes the bounded metric names, label allowlist and page/ticket
+thresholds in `config/agent-runner/production-policy.json`. A production record
+hashes the external scrape and alert-routing proof; raw metrics/logs never enter
+the record. `outcome_unknown`, readiness drift, Secret canary leakage, Kill
+Switch enforcement failure and unreaped orphans are fail-closed page conditions.
+
 ## Migration and rollback boundary
 
 G20.1 adds Skill supply/API/persistence, G20.2 adds the internal durable
@@ -476,6 +483,13 @@ The G20.9 cutover:
    declared rollback window; it must not partially mix legacy and new
    execution.
 
+G20.10 adds no migration or executable wiring. It binds the immutable release,
+migration head `090`, Runner manifest/binary, Runtime Bundle, target deployment
+and operations policy into one strict content-free closure record. The
+read-only evaluator requires all 16 live checks plus zero temporary evidence
+residue. Committed evidence is explicitly a held template, so offline success
+cannot impersonate exact-host promotion.
+
 The current `/v1/code/executions` remains fail closed. Agent Runtime must not use
 that placeholder route as an isolation shortcut.
 
@@ -500,6 +514,10 @@ Production execution remains disabled until later groups prove:
 - secret/network/workspace/artifact boundaries pass negative tests;
 - Kill Switches kill/reap exact Sandboxes without stopping cleanup;
 - clean-copy, backup/restore and rollback rehearsals pass.
+- credential/mTLS and immutable Runtime Bundle rotation pass with reconciliation;
+- metrics/alert routing, conservative capacity/budgets, host reboot/orphan
+  recovery, `outcome_unknown` no-retry review and final cleanup pass;
+- the fresh exact-target closure record evaluates to `PROMOTION_READY`.
 
 See [the executable contract](../contracts/agent-runtime.md),
 [operations guide](../deployment/agent-runtime.md) and

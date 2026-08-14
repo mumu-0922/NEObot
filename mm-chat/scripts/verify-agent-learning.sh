@@ -49,12 +49,30 @@ for signature in (
 assert "kind IN ('static','isolation','evaluation')" in migration
 assert "TO agent_learning_control" in migration
 
-go_sources = "\n".join(
-    path.read_text()
-    for path in (root / "backend").rglob("*.go")
-    if "internal/agentlearning" not in path.as_posix()
-)
-assert 'backend/internal/agentlearning"' not in go_sources
+allowed_importers = {
+    "backend/cmd/api/main.go",
+    "backend/internal/agentcontrol/handler.go",
+    "backend/internal/agentcontrol/handler_test.go",
+    "backend/internal/agentcontrol/repository_postgres.go",
+    "backend/internal/agentcontrol/service.go",
+    "backend/internal/agentcontrol/service_test.go",
+    "backend/internal/agentcontrol/types.go",
+}
+unexpected_importers = []
+for path in (root / "backend").rglob("*.go"):
+    relative = path.relative_to(root).as_posix()
+    if relative.startswith("backend/internal/agentlearning/"):
+        continue
+    if 'backend/internal/agentlearning"' in path.read_text() and relative not in allowed_importers:
+        unexpected_importers.append(relative)
+assert unexpected_importers == []
+
+api_main = (root / "backend/cmd/api/main.go").read_text()
+assert "agentlearning.WithLearningEnabled(false)" in api_main
+assert "agentLearningService.Claim" not in api_main
+assert "agentLearningService.Reconcile" not in api_main
+assert "agentLearningService.Cleanup" not in api_main
+assert "agentLearningService.Prune" not in api_main
 print("Agent Learning source verification: quarantine, exact checks, human Promote, cleanup, and held wiring passed")
 PY
 

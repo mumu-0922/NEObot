@@ -4,10 +4,11 @@ Status: G20.1 no-execute Skill supply, G20.2 durable Orchestrator, G20.3
 `neo-runnerd`, G20.4 brokered effects, G20.5 depth-1 Child delegation, G20.6
 durable Cron scheduling, G20.7 Draft-only learning, G20.8 Agent Center/default-
 off Shadow control, and G20.9 legacy text-Skill source retirement are
-implemented. Exact-host isolation and production Runner/Broker/Child/Scheduler/
-Learning/Shadow promotion are held. Do not install a Runtime, start a worker,
-enable Agent execution/Learning/Shadow, or run the live data cutover without the
-specified backup/count/rollback evidence.
+implemented. G20.10 supplies the fail-closed operations policy, evidence
+contract, evaluator and incident runbooks. Exact-host isolation and production
+Runner/Broker/Child/Scheduler/Learning/Shadow promotion are held. Do not install
+a Runtime, start a worker, enable Agent execution/Learning/Shadow, or run the
+live data cutover without the specified backup/count/rollback evidence.
 
 ## Default state
 
@@ -125,7 +126,7 @@ identity, sends strict `neo.runner-rpc/v1`, bounds headers/body/deadline and
 accepts only a request-ID/nonce/method-bound response. There is no bearer token
 fallback.
 
-## G20.3-G20.8 source and verification commands
+## G20.3-G20.10 source and verification commands
 
 ```bash
 bash scripts/verify-agent-runner.sh
@@ -140,6 +141,9 @@ bash scripts/verify-agent-learning.sh
 bash scripts/verify-agent-learning-postgres17.sh
 bash scripts/verify-agent-product-shadow.sh
 bash scripts/verify-agent-product-shadow-postgres17.sh
+bash scripts/verify-agent-legacy-cutover.sh
+bash scripts/verify-agent-legacy-cutover-postgres17.sh
+bash scripts/verify-agent-production-closure.sh
 bash scripts/verify-agent-runtime-phase0.sh
 bash scripts/verify-agent-runner-host.sh
 ```
@@ -414,6 +418,182 @@ projections before opening Backend. Reconciliation kills all pre-restore live
 Sandboxes because their leases/nonces cannot be trusted across the restore
 boundary. Secret vault/mTLS backups follow their own encrypted rotation
 procedure and are not embedded in Agent artifacts.
+
+## G20.10 production operations policy
+
+`config/agent-runner/production-policy.json` freezes the first single-server
+operations defaults. It is an acceptance-policy input, not an activation flag
+and not evidence that a worker exists. A change to any value creates a reviewed
+policy revision, changes its SHA-256, invalidates old closure records and repeats
+the affected canary/acceptance checks.
+
+Capacity defaults:
+
+| Boundary | Default | Saturation behavior |
+| --- | ---: | --- |
+| concurrent root Runs | 2 | queue, then deny when queue is full |
+| concurrent Sandboxes | 4 | no launch until exact capacity is free |
+| queue depth | 32 | stable capacity denial; never another executor |
+| concurrent production canaries | 1 | serialize canary evidence |
+
+Frozen budget defaults:
+
+| Run class | wall | model tokens | Tool calls | Artifact bytes |
+| --- | ---: | ---: | ---: | ---: |
+| root | 300 seconds | 20,000 | 32 | 16 MiB |
+| Child | 120 seconds | 8,000 | 8 | 4 MiB |
+| Cron | 120 seconds | 8,000 | 8 | 4 MiB |
+
+These are ceilings only when the frozen Grant is not narrower. Child and Cron
+budgets remain strict subsets; no default expands a Run snapshot. The first
+canary window is at most 20 `synthetic|read_only` Runs in 30 minutes, one at a
+time, with no Egress, no Secrets, no mutable action, at most one ordinary error
+and exactly zero `outcome_unknown` results.
+
+## Metrics and alerts
+
+Required metrics are listed in the policy and use only the label allowlist
+`operation`, `outcome`, `reason_code`, `runtime_class`, `scope_class` and
+`switch_mode`. Do not use Run/Attempt/user/Skill IDs, fingerprints, URL/object
+keys or any content as a metric label. The closure evidence hashes the scrape
+and alert-routing drill; it does not embed a scrape body.
+
+| Alert | Severity | Required response |
+| --- | --- | --- |
+| Runtime enabled while exact readiness is false | page immediately | append global `deny_new`; disable activation; inspect release binding |
+| Secret canary leak | page immediately | append global/Secret `kill`; revoke handles; rotate value and mTLS as applicable |
+| unresolved `outcome_unknown` | page immediately | freeze the exact Tool/action or Run; execute the no-retry workflow below |
+| Kill Switch enforcement failure | page immediately | stop new authority at the broadest safe upstream boundary; preserve evidence |
+| orphan after two reconciliation passes | page within 5 minutes | runner/global `kill`; exact cgroup/process inventory and reap |
+| queue at 24+ for 15 minutes | ticket | reduce cohort or add an independently accepted Runner; never widen budgets |
+| cleanup backlog at 100+ for 30 minutes | ticket | keep Runtime-off cleanup running; repair object/reaper dependency |
+
+The page path must be exercised end to end before promotion. An alert rule file
+that merely parses is not evidence; the receiver acknowledgement hash and
+bounded timestamps belong in the external evidence file.
+
+## Retention and cleanup
+
+| Authority | Minimum retention / eligibility |
+| --- | --- |
+| terminal Run/Step/Attempt/events/snapshot | 30 days, and only after dependent Artifact/effect cleanup |
+| completed Runner request/Sandbox projection | 7 days after exact terminal cleanup |
+| temporary canary Artifact and rejected/promoted Draft object | 7 days; object before row |
+| Cron trigger history | 30 days after linked Run is terminal and eligible |
+| immutable Cron/Draft/Kill-Switch incident audit | 365 days |
+| content-free promotion record | 400 days |
+| unresolved `outcome_unknown`, object drift, failed reap/cleanup | until explicit operator resolution; never age-only prune |
+
+Run prune/reconcile in batches of at most 100. Before calling terminal-Run
+retention, the operator must prove there is no unresolved `outcome_unknown`
+inside the candidate set; migration `084`'s generic terminal prune does not
+infer an external incident resolution. Cleanup remains active while Runtime,
+Scheduler, Learning and Shadow execution are off. Never delete a row/audit to
+silence a backlog. Delete/quarantine exact object bytes and reap processes/
+Scratch first, then acknowledge or prune the durable projection.
+
+## On-call incident workflows
+
+### Isolation drift, runaway Run or orphan residue
+
+1. Append the narrowest safe durable `deny_new`, `cancel` or `kill` switch. Use
+   global `kill` only when the affected scope cannot be bounded safely.
+2. Verify the new epoch fences leases and Commit before touching host state.
+3. Compare PostgreSQL expected inventory with `neo-runnerd` inventory. Kill only
+   exact owned cgroups/process descendants; remove exact Scratch/staging.
+4. Run Child-first reap and Runner reconciliation twice. Any remaining orphan
+   is still an incident, not a row to delete.
+5. Repair the immutable release/host cause, repeat the full acceptance suite,
+   then append a new inactive switch revision. Never delete the active-history
+   record or re-enable a stale lease.
+
+### `outcome_unknown` operator workflow
+
+1. Append a Tool/action or Run `deny_new` switch and preserve the exact intent
+   fingerprint and stable idempotency key through the authorized content-free
+   view. Never copy arguments/results into the incident record.
+2. Query only the executor's non-mutating exact-idempotency status. Never send a
+   new Commit, change the key, replay arguments or claim cancellation rollback.
+3. If an exact committed receipt exists, record its fingerprint. If the exact
+   status proves rejected/not-sent, record that status fingerprint. If neither
+   proof exists, keep the durable state terminal `outcome_unknown`.
+4. Append a content-free operator resolution in the incident authority and bind
+   its SHA-256 to the production-closure check. Do not rewrite the original
+   Run/Attempt/effect receipt.
+5. Retention remains blocked for the affected authority until review closes the
+   incident and verifies downstream business state separately.
+
+### Credential, mTLS and Runtime Bundle rotation
+
+- **Secret credential:** append the Secret-ref switch/revocation, zeroize active
+  in-memory handles, rotate in the vault, issue only new short-lived handles and
+  run a zero-leak canary before appending the inactive switch revision.
+- **Runner mTLS:** pause new leases, reconcile/drain, add the new CA/client/server
+  identities as an overlap set, restart one side at a time, prove TLS 1.3 and
+  replay fencing, then remove the old root. Keys remain mode `0600` files and
+  never enter the closure record.
+- **Runtime Bundle:** publish a new immutable fingerprint and repeat isolation,
+  clean-copy, restart and bounded canary checks. Existing Runs remain bound to
+  the old snapshot until terminal; never replace bytes under an old digest.
+
+Each rotation emits only time, result class and evidence SHA-256. Rotation that
+changes the closure release tuple invalidates the old promotion record.
+
+## Disaster recovery and forward repair
+
+1. Append global `deny_new`; stop Runtime/Scheduler/Learning/Shadow workers and
+   keep Backend unopened for restored authority.
+2. Verify one paired PostgreSQL/MinIO set manifest and restore both halves into
+   the isolated target. Follow `backup-restore.md`, including the latest
+   encrypted Memory deletion package replay before opening Backend.
+3. Apply the exact release migrations and require head `090`. Rehash every
+   referenced Package/Runtime/SBOM/Workspace/Artifact sample from the restored
+   set.
+4. Treat all pre-restore leases, Runner nonces and Sandboxes as untrusted. Kill
+   and reconcile them; rebuild projections and reconcile committing effects,
+   Children, Cron claims, Draft cleanup and Artifact cleanup with execution off.
+5. Repeat readiness, clean restart, host reboot and read-only canary. Exercise
+   both previous-image all-path rollback inside its declared window and a
+   forward-fix return to the current immutable release.
+6. Open the Backend only after deletion/reconciliation checks are zero or
+   explicitly held. A partial database-only/object-only restore cannot promote.
+
+## Production closure evidence gate
+
+The schema is
+`docs/contracts/schemas/neo-agent-production-closure.schema.json`. Keep actual
+records outside Git and outside application/object-store runtime namespaces.
+They contain fingerprints, times, low-cardinality result codes and zero-counts
+only. The record binds exactly 16 live checks to one Git commit, migration head
+`090`, Runner manifest/binary, Runtime Bundle, deployment and operations-policy
+fingerprint.
+
+Run the offline contract self-test:
+
+```bash
+bash scripts/verify-agent-production-closure.sh
+```
+
+Evaluate a separately captured production record without mutation:
+
+```bash
+bash scripts/verify-agent-production-closure.sh \
+  --record /secure/operator-evidence/agent-production-closure.json
+```
+
+Exit `0` plus `PROMOTION_READY` is necessary but not self-activating. Exit `3`
+is a valid held decision; exit `2` means malformed/drifted evidence. The
+committed template intentionally returns exit `3`, `PROMOTION_HELD` and
+`ISOLATION_UNAVAILABLE`. A template can never promote even if all checks are
+edited to `passed`.
+
+After the live record has been hashed and reviewed, delete temporary canary
+Runs, Draft quarantine, published canary Artifacts, raw Run evidence, orphan
+Sandboxes and Scratch through their bounded authoritative cleanup paths. Every
+closure cleanup count must be zero while the content-free closure/incident
+record remains retained. Do not delete user Runs, installed packages, immutable
+audits or unresolved incidents merely because they were observed during the
+promotion window.
 
 ## Legacy Skill cutover and rollback
 

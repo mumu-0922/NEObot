@@ -279,6 +279,25 @@ G20.9 implementation signatures:
   `verify-agent-legacy-cutover{,-postgres17}.sh` prove backup/count-gated
   one-key deletion without migration `091` or Runtime promotion.
 
+G20.10 implementation signatures:
+
+- `config/agent-runner/production-policy.json` freezes conservative capacity,
+  root/Child/Cron budget, canary, retention, cleanup, metric-label and alert
+  defaults without enabling a worker;
+- `neo-agent-production-policy.schema.json` and
+  `neo-agent-production-closure.schema.json` define strict, content-free policy
+  and release-bound live evidence. `template` evidence can never promote;
+- `scripts/evaluate-agent-production-closure.py` derives a deterministic
+  `PROMOTION_READY`, `PROMOTION_HELD` or `PROMOTION_EVIDENCE_INVALID` decision
+  without live access or mutation;
+- `scripts/verify-agent-production-closure.sh` proves positive semantics only
+  with an ephemeral synthetic production record and proves held, stale, drift,
+  incomplete, duplicate and residue failure paths. Its committed exact-host
+  template remains held at `ISOLATION_UNAVAILABLE`;
+- G20.10 adds no migration, Runtime flag, Compose/startup worker, production
+  adapter or fallback executor. Real promotion requires all 16 checks from the
+  exact target deployment and keeps the resulting sanitized record outside Git.
+
 ## 6. Runner RPC
 
 ### Transport
@@ -735,7 +754,47 @@ browser build. Package Skills remain the only eligible Skill execution domain,
 but this host is still honestly held at `ISOLATION_UNAVAILABLE`; browser/API
 fallback execution is forbidden.
 
-## 18. Phase 0 verification
+## 18. Production closure contract
+
+The versioned operations policy is hash-bound into every closure record. Its
+defaults never widen a frozen Grant: the initial single-server ceilings are two
+concurrent root Runs, four Sandboxes, a queue depth of 32 and one canary. Root
+budget is 300 wall seconds, 20,000 model tokens, 32 Tool calls and 16 MiB of
+Artifact bytes; Child/Cron defaults are strict subsets. The first canary is
+`synthetic|read_only`, no-Egress, no-Secret and allows zero
+`outcome_unknown`.
+
+A production record binds one immutable release to exactly these checks:
+
+```text
+exact-host isolation; clean-copy; restart; host reboot; paired backup/restore;
+disaster recovery; rollback/forward-fix; hierarchical Kill Switch;
+credential/mTLS rotation; Runtime Bundle rotation; orphan reconciliation;
+outcome_unknown workflow; metrics/alerts; capacity/budgets; bounded canary;
+temporary evidence cleanup
+```
+
+Every check stores only a result code, UTC time and SHA-256 of external
+evidence. The record accepts no log body, prompt, Tool argument/result,
+Workspace/Skill/Artifact content, path, URL, object key, credential, token or
+Secret. Production readiness additionally requires a current review window,
+non-placeholder release/target/reviewer bindings, all checks `passed`, review
+`approved`, and zero temporary canary Run/Draft/Artifact/raw-Run/Sandbox/
+Scratch residue while the sanitized record remains retained.
+
+An `outcome_unknown` result is never repaired by changing the original terminal
+Run/Attempt/receipt. Operators query only the exact non-mutating idempotency
+status, retain ambiguity if it remains unknowable, and bind an append-only
+content-free incident resolution digest into a later closure check. Generic
+terminal retention must not select unresolved incidents.
+
+The evaluator is read-only and fail closed. Exit `0` means the supplied
+`production` document satisfies this contract but does not activate Runtime;
+exit `3` is an honest held decision, including `ISOLATION_UNAVAILABLE`; exit
+`2` is invalid evidence. The offline self-test's ephemeral positive case is not
+live evidence and is deleted on exit.
+
+## 19. Phase 0 verification
 
 Run:
 
@@ -748,7 +807,8 @@ required design anchors and the current fail-closed code execution route. It is
 offline and must never claim the production Runner or Isolation Acceptance Suite
 passed.
 
-The implemented G20.4-G20.9 source/control, product and cutover foundations additionally require:
+The implemented G20.4-G20.10 source/control, product, cutover and operations
+foundations additionally require:
 
 ```bash
 bash scripts/verify-agent-broker.sh
@@ -763,12 +823,14 @@ bash scripts/verify-agent-product-shadow.sh
 bash scripts/verify-agent-product-shadow-postgres17.sh
 bash scripts/verify-agent-legacy-cutover.sh
 bash scripts/verify-agent-legacy-cutover-postgres17.sh
+bash scripts/verify-agent-production-closure.sh
 bash scripts/verify-agent-runner.sh
 bash scripts/verify-agent-runtime-phase0.sh
 bash scripts/verify-agent-runner-host.sh # expected nonzero on the current host
 ```
 
-The host command must still report `ISOLATION_UNAVAILABLE`. Passing the offline
-and disposable-database gates authorizes only the held G20.8 control surface;
-it does not authorize Agent execution, Chat invocation, production relay,
-Scheduler, Project mutation, mutable canary or text-Skill deletion.
+The host command must still report `ISOLATION_UNAVAILABLE` here. Passing the
+offline and disposable-database gates closes source/control contracts only; it
+does not authorize Agent execution, Chat invocation, production relay,
+Scheduler, Project mutation or mutable canary. Production additionally needs a
+fresh exact-host record evaluated as `PROMOTION_READY`.
