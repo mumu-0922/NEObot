@@ -9,6 +9,8 @@ services:
     build: !reset null
   memory-worker:
     build: !reset null
+  agent-runtime-control:
+    build: !reset null
   migrate:
     build: !reset null
   admin:

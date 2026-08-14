@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +23,7 @@ type ClientTLSFiles struct {
 	KeyFile         string
 	ServerCAFile    string
 	ServerName      string
+	ClientIdentity  string
 }
 
 type RPCClient struct {
@@ -31,9 +33,15 @@ type RPCClient struct {
 
 func NewRPCClient(endpoint string, files ClientTLSFiles, timeout time.Duration) (*RPCClient, error) {
 	parsed, err := url.Parse(strings.TrimSpace(endpoint))
-	if err != nil || parsed.Scheme != "https" || parsed.Path != rpcPath || parsed.RawQuery != "" ||
+	portText := ""
+	if parsed != nil {
+		portText = parsed.Port()
+	}
+	port, portErr := strconv.Atoi(portText)
+	if err != nil || parsed == nil || parsed.Scheme != "https" || parsed.Path != rpcPath || parsed.RawQuery != "" ||
 		parsed.Fragment != "" || parsed.User != nil || parsed.Hostname() == "" ||
 		(!net.ParseIP(parsed.Hostname()).IsLoopback() && !isPrivateIP(net.ParseIP(parsed.Hostname()))) ||
+		portErr != nil || port < 1 || port > 65535 ||
 		timeout < time.Second || timeout > time.Minute {
 		return nil, ErrInvalidInput
 	}
@@ -59,6 +67,13 @@ func LoadClientTLS(files ClientTLSFiles) (*tls.Config, error) {
 	certificate, err := tls.LoadX509KeyPair(files.CertificateFile, files.KeyFile)
 	if err != nil {
 		return nil, errors.New("Runner client TLS identity is unavailable")
+	}
+	if len(certificate.Certificate) == 0 || !identityPattern.MatchString(files.ClientIdentity) {
+		return nil, errors.New("Runner client TLS identity is invalid")
+	}
+	leaf, err := x509.ParseCertificate(certificate.Certificate[0])
+	if err != nil || strings.TrimSpace(leaf.Subject.CommonName) != files.ClientIdentity {
+		return nil, errors.New("Runner client TLS identity is invalid")
 	}
 	caBytes, err := os.ReadFile(files.ServerCAFile)
 	if err != nil || len(caBytes) > 1<<20 {

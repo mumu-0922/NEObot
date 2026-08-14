@@ -695,3 +695,110 @@ old activeSkills/name/body -> find Package Skill -> install or execute -> keep d
 verified backup + exact count -> delete only retired authority -> one history fact
 -> Package Runtime remains server-owned and held -> rollback only by full restore
 ```
+
+## Scenario: Activate G21.0 control-plane maintenance
+
+### 1. Scope / Trigger
+
+Apply when changing the exact-host Runner bundle, staged activation evidence,
+Runner client identity, `agent-runtime-control` command/service or recovery
+reconcile behavior. G21.0 permits maintenance only and adds no migration `091`.
+
+### 2. Signatures
+
+```bash
+bash mm-chat/scripts/verify-agent-runtime-g21-0.sh
+bash mm-chat/scripts/build-agent-runner-bundle.sh \
+  --output DIR --release-commit HEX40
+python3 mm-chat/scripts/verify-agent-runner-bundle.py --bundle DIR
+python3 mm-chat/scripts/evaluate-agent-production-activation.py --record FILE
+```
+
+- Commands: `backend/cmd/agent-runtime-control`, `cmd/neo-runnerd` and
+  `cmd/neo-runner-probe`.
+- Packages: `internal/agentactivation`, `internal/agentruntimecontrol` and
+  `internal/agentrunner`.
+- Schemas: `neo-agent-production-activation.schema.json` and
+  `neo-agent-runner-bundle.schema.json`.
+- Database capability: existing `agent_runner_control` at migration head `090`.
+
+### 3. Contracts
+
+- The control binary is separate from `cmd/api`. It receives one PostgreSQL URL,
+  exact private HTTPS Runner URL, Runner/server/client identities, client
+  certificate/key, server CA, approved release manifest, operations policy,
+  staged activation record, release commit and bounded timing/batch settings.
+- Its LOGIN recursively inherits exactly `agent_runner_control`; any second
+  membership or superuser/CREATEDB/CREATEROLE/replication/BYPASSRLS attribute
+  rejects startup.
+- Every cycle is `activation -> probe -> list -> PostgreSQL recovery inventory
+  -> reconcile -> list/equality`. Health is the read-only
+  `activation -> probe -> list -> inventory/equality` path. Equality includes
+  Sandbox state as well as identity and all immutable fingerprints.
+- Allowed RPCs are exactly `probe`, `list` and `reconcile`. The worker has no
+  Step claim, launch authority, launch/heartbeat/cancel, Broker, Child, Cron,
+  Learning, Chat or HTTP surface.
+- Activation stage is exactly `control_plane`, <=24 hours old, approved,
+  production-class and bound to migration `090`, release/policy/manifest/
+  binary/deployment/endpoint/mTLS fingerprints. Only control authorization is
+  true, `reviewedAt` is not in the future and orphan/Scratch residue is zero.
+- Runtime evidence files are opened with no-follow semantics, bounded from the
+  descriptor and parsed from the exact bytes that were fingerprinted; never
+  reopen a manifest between hash binding and semantic validation.
+- Client TLS validates TLS 1.3, exact server CA/name and client certificate CN
+  equal to `spiffe://neo-chat/agent-runtime-control`. Runner URLs require an
+  explicit numeric port in `1..65535`.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| control flag false | command exits before DB/file/Runner access |
+| execution-stage flag true | configuration rejected |
+| activation template/stale/drifted/widened/residue | held/invalid; zero DB or RPC call |
+| future review or symlink/writable evidence | invalid before DB or RPC call |
+| manifest unapproved/placeholder or mounted hash drift | activation invalid |
+| DB login shared, privileged or has any second inherited role | startup rejected |
+| probe not ready/missing exact feature | `AGENT_CONTROL_UNAVAILABLE`; no reconcile |
+| expired/probe-drifted recovery row | excluded from expected set and reaped |
+| post-reconcile identity/fingerprint/state differs | worker/health exits nonzero |
+
+### 5. Good / Base / Bad Cases
+
+- **Good:** fresh exact-target activation plus dedicated login reconciles only
+  current PostgreSQL-authorized Sandboxes and proves equality.
+- **Base:** all Agent flags are false; no target files are read and the current
+  host remains `ISOLATION_UNAVAILABLE`.
+- **Bad:** import control into API, reuse API/migrator credentials, accept a
+  hostname/public/plaintext endpoint, call launch, or treat an offline fixture
+  as live activation.
+
+### 6. Tests Required
+
+- Run focused race/vet tests for both control packages, Runner client and both
+  Runner commands.
+- Prove exact RPC order, activation-before-I/O, expired/probe drift cleanup,
+  state-sensitive equality, health no-reconcile and forbidden method absence.
+- Validate activation/bundle schemas and fixtures; test stale, widened,
+  future-review, unapproved, placeholder, symlink, extra, missing,
+  mode/size/hash and static ELF/architecture failures.
+- Run preflight positive activation plus shared-principal, public endpoint,
+  execution-flag, insecure file, certificate/key mismatch and non-READY cases.
+- Run Phase 0 and full standalone; require the exact-host command to fail here
+  with `ISOLATION_UNAVAILABLE`.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+API process + API DB login -> unreviewed Runner URL -> launch package
+```
+
+#### Correct
+
+```text
+fresh control_plane evidence + dedicated agent_runner_control login
+-> probe/list/recovery inventory -> reconcile -> exact equality
+-> Root Run and every execution-stage flag remain false
+```

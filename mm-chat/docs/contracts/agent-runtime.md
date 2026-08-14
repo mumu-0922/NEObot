@@ -794,7 +794,46 @@ exit `3` is an honest held decision, including `ISOLATION_UNAVAILABLE`; exit
 `2` is invalid evidence. The offline self-test's ephemeral positive case is not
 live evidence and is deleted on exit.
 
-## 19. Phase 0 verification
+## 19. G21.0 control-plane activation
+
+The exact-host bundle schema is
+`schemas/neo-agent-runner-bundle.schema.json`. Its seven payloads are exactly the
+two static Runner binaries, release manifest, seccomp policy, systemd unit and
+environment template plus the operator README. The bundle verifier rejects a symlink at any payload,
+unexpected directory/file, missing file, mode/size/hash drift, dynamic ELF
+interpreter and an unapproved or placeholder `production` release. Template
+builds are deterministic and never install or mutate host state.
+
+The stage record is `neo.agent-production-activation/v1`, stage
+`control_plane`. It binds the exact Git commit, migration head `090`, operations
+policy, Runner manifest/binary, deployment, private HTTPS endpoint, Runner and
+TLS identities, client certificate, server CA and these five unique live
+checks:
+
+```text
+exact_host_isolation; clean_copy_install; private_mtls_probe;
+zero_inventory_reconcile; rollback_kill_switch_ready
+```
+
+Only `authorization.controlPlane` is true. Root Runs, Broker read/mutation,
+delegation, Scheduler and Learning are explicitly false. Evidence is
+production-only, approved, no older than 24 hours and has zero orphan/Scratch
+residue. Template, stale, incomplete, widened, placeholder or drifted evidence
+holds or fails; the record cannot self-assert a verdict.
+
+The dedicated worker revalidates the record and mounted policy/manifest/mTLS
+hashes on every cycle, then runs `activation -> probe -> list -> PostgreSQL
+recovery inventory -> reconcile -> list` and requires exact post-reconcile
+equality. Its healthcheck performs the same read-only gate/probe/list/inventory
+comparison without reconcile. The database login must inherit
+`agent_runner_control` and must not inherit owner, API, effect, delegation,
+Cron or Learning roles. Startup and cycle drift terminate the process.
+
+G21.0 adds no migration `091`, API/Chat route, launch/heartbeat/cancel RPC,
+Broker adapter or public endpoint. All execution-stage environment switches
+remain false, and the control profile defaults off.
+
+## 20. Phase 0 verification
 
 Run:
 
@@ -824,6 +863,7 @@ bash scripts/verify-agent-product-shadow-postgres17.sh
 bash scripts/verify-agent-legacy-cutover.sh
 bash scripts/verify-agent-legacy-cutover-postgres17.sh
 bash scripts/verify-agent-production-closure.sh
+bash scripts/verify-agent-runtime-g21-0.sh
 bash scripts/verify-agent-runner.sh
 bash scripts/verify-agent-runtime-phase0.sh
 bash scripts/verify-agent-runner-host.sh # expected nonzero on the current host

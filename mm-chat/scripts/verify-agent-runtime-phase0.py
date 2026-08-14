@@ -29,6 +29,8 @@ SCHEMA_NAMES = (
     "neo-skill-draft",
     "neo-agent-production-policy",
     "neo-agent-production-closure",
+    "neo-agent-production-activation",
+    "neo-agent-runner-bundle",
 )
 JsonObject = dict[str, Any]
 
@@ -320,6 +322,8 @@ def check_document_anchors() -> None:
             "旧版技能已退役",
             "G20.10",
             "promotion-evidence gate",
+            "G21.0",
+            "agent-runtime-control",
         ),
         CONTRACT_DIR / "agent-runtime.md": (
             "Durable state machine",
@@ -334,6 +338,8 @@ def check_document_anchors() -> None:
             "CODE_EXECUTION_UNAVAILABLE",
             "Production closure contract",
             "verify-agent-production-closure.sh",
+            "G21.0 control-plane activation",
+            "activation -> probe -> list -> PostgreSQL",
         ),
         PROJECT_DIR / "docs" / "deployment" / "agent-runtime.md": (
             "AGENT_RUNTIME_ENABLED=false",
@@ -346,6 +352,8 @@ def check_document_anchors() -> None:
             "Legacy Skill cutover and rollback",
             "Production closure evidence gate",
             "`outcome_unknown` operator workflow",
+            "G21.0 exact-host bundle and control activation",
+            "verify-agent-runtime-g21-0.sh",
         ),
         PROJECT_DIR / "docs" / "tracking" / "g20-agent-runtime-plan.md": (
             "G20.0",
@@ -358,6 +366,17 @@ def check_document_anchors() -> None:
             "delegate_task",
             "hard delete",
             "source/operations closure complete",
+            "PROMOTION_READY",
+        ),
+        PROJECT_DIR / "docs" / "tracking" / "g21-agent-runtime-production-plan.md": (
+            "G21.0",
+            "G21.1",
+            "G21.2",
+            "G21.3",
+            "G21.4",
+            "G21.5",
+            "G21.6",
+            "ISOLATION_UNAVAILABLE",
             "PROMOTION_READY",
         ),
     }
@@ -379,6 +398,7 @@ def check_markdown_links() -> None:
         CONTRACT_DIR / "agent-runtime.md",
         PROJECT_DIR / "docs" / "deployment" / "agent-runtime.md",
         PROJECT_DIR / "docs" / "tracking" / "g20-agent-runtime-plan.md",
+        PROJECT_DIR / "docs" / "tracking" / "g21-agent-runtime-production-plan.md",
         PROJECT_DIR / "docs" / "README.md",
         PROJECT_DIR / "docs" / "architecture" / "README.md",
         CONTRACT_DIR / "README.md",

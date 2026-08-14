@@ -5,10 +5,11 @@ Status: G20.1 no-execute Skill supply, G20.2 durable Orchestrator, G20.3
 durable Cron scheduling, G20.7 Draft-only learning, G20.8 Agent Center/default-
 off Shadow control, and G20.9 legacy text-Skill source retirement are
 implemented. G20.10 supplies the fail-closed operations policy, evidence
-contract, evaluator and incident runbooks. Exact-host isolation and production
-Runner/Broker/Child/Scheduler/Learning/Shadow promotion are held. Do not install
-a Runtime, start a worker, enable Agent execution/Learning/Shadow, or run the
-live data cutover without the specified backup/count/rollback evidence.
+contract, evaluator and incident runbooks. G21.0 adds a default-off,
+control-only Runner maintenance profile and exact-host deployment bundle.
+Exact-host installation and all Root Run/Broker/Child/Scheduler/Learning/Shadow
+promotion remain held. Do not enable Agent execution or install the bundle on
+this development host.
 
 ## Default state
 
@@ -16,18 +17,19 @@ All future switches default off:
 
 ```text
 AGENT_RUNTIME_ENABLED=false
+AGENT_RUNNER_CONTROL_ENABLED=false
 AGENT_SCHEDULER_ENABLED=false
 AGENT_SKILL_INSTALL_ENABLED=false
 AGENT_LEARNING_ENABLED=false
 AGENT_DELEGATION_ENABLED=false
-AGENT_RUNNER_URL=
+AGENT_BROKER_READ_ONLY_ENABLED=false
+AGENT_BROKER_MUTATION_ENABLED=false
 ```
 
-G20.3 through G20.9 add no application environment variable or Compose worker.
 The host-only `deploy/agent-runner/neo-runnerd.env.example` is not an activation
-file. These names reserve the intended operational boundary; later promotion
-must add them through the normal preflight/example-env/Compose/documentation
-gates.
+file. The `agent-runtime-control` Compose profile exists only for an approved
+target and is not selected by default. With its control flag false, ordinary
+startup neither reads target-host evidence/mTLS files nor dials Runner.
 
 Runtime disabled must block discovery installation changes, new Runs, leases,
 Cron triggers, Child Runs and Draft promotion as appropriate, but must not stop
@@ -126,7 +128,7 @@ identity, sends strict `neo.runner-rpc/v1`, bounds headers/body/deadline and
 accepts only a request-ID/nonce/method-bound response. There is no bearer token
 fallback.
 
-## G20.3-G20.10 source and verification commands
+## G20.3-G21.0 source and verification commands
 
 ```bash
 bash scripts/verify-agent-runner.sh
@@ -144,6 +146,7 @@ bash scripts/verify-agent-product-shadow-postgres17.sh
 bash scripts/verify-agent-legacy-cutover.sh
 bash scripts/verify-agent-legacy-cutover-postgres17.sh
 bash scripts/verify-agent-production-closure.sh
+bash scripts/verify-agent-runtime-g21-0.sh
 bash scripts/verify-agent-runtime-phase0.sh
 bash scripts/verify-agent-runner-host.sh
 ```
@@ -167,6 +170,69 @@ set to this rootless Podman service: either blocks pinned `newuidmap`/
 `newgidmap`. The unit exposes only `CAP_SETUID`/`CAP_SETGID` in its bounding set,
 keeps Ambient capabilities empty, and proves the Sandbox itself has empty
 capabilities plus `no-new-privileges` before start.
+
+## G21.0 exact-host bundle and control activation
+
+Build one derived bundle without installing it:
+
+```bash
+bash scripts/build-agent-runner-bundle.sh \
+  --output /secure/release/neo-runner-g21.0 \
+  --release-commit "$RELEASE_COMMIT"
+python3 scripts/verify-agent-runner-bundle.py \
+  --bundle /secure/release/neo-runner-g21.0 \
+  --expected-class template
+```
+
+Production mode additionally requires `--evidence-class production`, an exact
+clean Git `HEAD`, and a separately reviewed manifest with `approved=true` and
+no zero fingerprint. The builder uses cached Go 1.25 modules/toolchain with
+network module resolution disabled, writes only to a new explicit output path,
+and never creates accounts, subordinate IDs, cgroups, certificates or systemd
+state. Operators copy files only after verifying the content-addressed
+inventory. `neo-runnerd` accepts literal loopback/RFC1918/ULA addresses only;
+the systemd unit runs the exact manifest probe before start and owns mode-0700
+state/runtime directories.
+
+Generate the external `control_plane` activation record after the exact target
+passes isolation, clean-copy install, private mTLS probe, zero-inventory
+reconcile and rollback/Kill-Switch checks. Validate without mutation:
+
+```bash
+python3 scripts/evaluate-agent-production-activation.py \
+  --record /secure/operator-evidence/agent-production-activation.json \
+  --policy config/agent-runner/production-policy.json \
+  --release-manifest /secure/release/release-manifest.json \
+  --runner-binary /secure/release/neo-runner-g21.0/bin/neo-runnerd \
+  --client-certificate /secure/agent-control/client.crt \
+  --server-ca /secure/agent-control/server-ca.crt \
+  --endpoint 'https://10.0.0.8:9443/internal/neo-runner/v1/rpc' \
+  --runner-id neo-runner-primary \
+  --server-name neo-runner.internal \
+  --caller-identity spiffe://neo-chat/agent-runtime-control \
+  --release-commit "$RELEASE_COMMIT"
+```
+
+Exit `0` must report `ACTIVATION_READY`. Provision a sixth distinct PostgreSQL
+login that inherits only `agent_runner_control`; never reuse migrator/API/
+Memory/RAG credentials. Put the client certificate/key, server CA, approved
+release manifest and activation record in owner-only regular files, keep the
+policy non-writable by group/world, set only
+`AGENT_RUNNER_CONTROL_ENABLED=true`, run `preflight-single-server.sh`, then
+select `--profile agent-runtime-control`. The service has no port, uses only the
+private application network, a read-only root filesystem and `cap_drop: ALL`.
+Stopping that profile or resetting its one control flag to false is the
+application-side rollback; it does not delete Runner state or evidence.
+
+Verify the whole slice with:
+
+```bash
+bash scripts/verify-agent-runtime-g21-0.sh
+```
+
+The command must end with the current-host expected failure
+`ISOLATION_UNAVAILABLE`; its synthetic positive activation exists only inside a
+temporary test directory and is not live evidence.
 
 ## Release order (future groups)
 
@@ -673,7 +739,7 @@ From `mm-chat/`:
 bash scripts/verify-agent-runtime-phase0.sh
 ```
 
-This offline gate also checks the G20.8 facade/Shadow and G20.9 hard-retirement
-signatures. A pass means the design and held product artifacts are internally
-consistent; it does not mean this host or production has a usable rootless
-Runtime.
+This gate also checks the G20.8 facade/Shadow, G20.9 hard-retirement and G21.0
+control-only wiring signatures. A pass means the design and held product
+artifacts are internally consistent; it does not mean this host or production
+has a usable rootless Runtime.

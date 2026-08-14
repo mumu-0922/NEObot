@@ -8,6 +8,7 @@ Type=simple
 User=neo-runner
 Group=neo-runner
 EnvironmentFile=/etc/neo-runner/neo-runnerd.env
+ExecStartPre=/opt/neo-runner/bin/neo-runner-probe --manifest ${NEO_RUNNER_RELEASE_MANIFEST}
 ExecStart=/opt/neo-runner/bin/neo-runnerd
 Restart=on-failure
 RestartSec=5s
@@ -42,6 +43,10 @@ CapabilityBoundingSet=CAP_SETUID CAP_SETGID
 AmbientCapabilities=
 ReadWritePaths=/var/lib/neo-runner /run/neo-runner
 UMask=0077
+StateDirectory=neo-runner
+StateDirectoryMode=0700
+RuntimeDirectory=neo-runner
+RuntimeDirectoryMode=0700
 
 [Install]
 WantedBy=multi-user.target

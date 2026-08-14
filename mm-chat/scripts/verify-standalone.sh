@@ -148,6 +148,7 @@ compose_json="${temp_dir}/compose.json"
   --project-directory "$(docker_path "${copy_dir}")" \
   -f "$(docker_path "${copy_dir}/compose.yml")" \
   --profile app --profile ops --profile memory-worker \
+  --profile agent-runtime-control \
   --profile rag-worker --profile rag-ops \
   config --format json >"${compose_json}"
 
@@ -177,6 +178,7 @@ required = {
     "frontend",
     "backend",
     "memory-worker",
+    "agent-runtime-control",
     "postgres",
     "redis",
     "minio",
@@ -210,12 +212,32 @@ if "backend" not in frontend.get("depends_on", {}):
 
 backend = services["backend"]
 memory_worker = services["memory-worker"]
+agent_control = services["agent-runtime-control"]
 if memory_worker.get("profiles") != ["memory-worker"]:
     raise SystemExit("standalone verification: Memory Worker profile drifted")
 if memory_worker.get("ports"):
     raise SystemExit("standalone verification: Memory Worker exposes a host port")
 if set(memory_worker.get("networks", {})) != {"private"}:
     raise SystemExit("standalone verification: Memory Worker is not private-only")
+if agent_control.get("profiles") != ["agent-runtime-control"]:
+    raise SystemExit("standalone verification: Agent control profile drifted")
+if agent_control.get("ports"):
+    raise SystemExit("standalone verification: Agent control exposes a host port")
+if set(agent_control.get("networks", {})) != {"private"}:
+    raise SystemExit("standalone verification: Agent control is not private-only")
+if agent_control["environment"]["AGENT_RUNNER_CONTROL_ENABLED"] != "false":
+    raise SystemExit("standalone verification: Agent control must default false")
+for name in (
+    "AGENT_RUNTIME_ENABLED",
+    "AGENT_SCHEDULER_ENABLED",
+    "AGENT_SKILL_INSTALL_ENABLED",
+    "AGENT_LEARNING_ENABLED",
+    "AGENT_DELEGATION_ENABLED",
+    "AGENT_BROKER_READ_ONLY_ENABLED",
+    "AGENT_BROKER_MUTATION_ENABLED",
+):
+    if agent_control["environment"][name] != "false":
+        raise SystemExit(f"standalone verification: {name} must default false")
 if (
     backend["environment"]["MEMORY_HYBRID_SHADOW_ENABLED"]
     != memory_worker["environment"]["MEMORY_HYBRID_SHADOW_ENABLED"]
@@ -266,6 +288,7 @@ DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-single-user-bou
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-single-user-bounded-miss-validation-from-vault.sh"
 
 if [[ "${full}" == true ]]; then
+  bash "${copy_dir}/scripts/verify-agent-runtime-g21-0.sh"
   rag_python="${RAG_PYTHON:-python3.13}"
   rag_uv="${RAG_UV:-uv}"
   if ! command -v "${rag_python}" >/dev/null 2>&1; then

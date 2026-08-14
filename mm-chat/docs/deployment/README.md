@@ -15,7 +15,7 @@ Outbox state.
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`single-server-compose.md`](./single-server-compose.md)               | Compose topology, profiles, Phase 15.2B dark-run Worker boundary, first boot, release, and rollback checklist.                              |
 | [`mcp-runner.md`](./mcp-runner.md)                                     | MCP manifest validation, optional hardened stdio Runner, token/image preflight, lifecycle, retention, and rollback.                         |
-| [`agent-runtime.md`](./agent-runtime.md)                               | G20 package Runtime, held rootless OCI promotion, backup/restore, legacy cutover, G20.10 operations policy/evidence gate, and incident runbooks. |
+| [`agent-runtime.md`](./agent-runtime.md)                               | G20 package Runtime, G21.0 exact-host bundle/control-only activation, held execution promotion, backup/restore, and incident runbooks. |
 | [`postgres-single-server.md`](./postgres-single-server.md)             | Current Postgres runtime covering private ports, DB principals, health checks, migration head, backup/restore, image fencing, and rollback. |
 | [`redis-temporary-state.md`](./redis-temporary-state.md)               | Phase 7 Redis runbook for non-authoritative temporary state, stream cancellation flags, private-network rules, and flush behavior.          |
 | [`backup-restore.md`](./backup-restore.md)                             | Backup scripts, checksum verification, Postgres restore drill, MinIO restore drill, retention, and destructive-restore warnings.            |

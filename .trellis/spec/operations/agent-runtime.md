@@ -645,3 +645,107 @@ offline fixture says passed -> enable Runtime -> call it production evidence
 offline contract green + exact-host/live matrix + release/policy-bound record
 -> read-only PROMOTION_READY -> separate activation decision
 ```
+
+## Scenario: Deploy the G21.0 exact-host bundle and control profile
+
+### 1. Scope / Trigger
+
+Apply when building/installing Runner host artifacts, configuring the private
+Runner endpoint/mTLS, enabling the `agent-runtime-control` Compose profile or
+running production preflight. The development host is not an approved target.
+
+### 2. Signatures
+
+```bash
+bash mm-chat/scripts/build-agent-runner-bundle.sh \
+  --output /secure/release/neo-runner-g21.0 \
+  --release-commit "$RELEASE_COMMIT" \
+  --evidence-class production \
+  --release-manifest /secure/release/release-manifest.json
+python3 mm-chat/scripts/verify-agent-runner-bundle.py \
+  --bundle /secure/release/neo-runner-g21.0 --expected-class production
+bash mm-chat/scripts/preflight-single-server.sh /secure/mm-chat.env
+bash mm-chat/scripts/verify-agent-runtime-g21-0.sh
+```
+
+Compose profile: `agent-runtime-control`. Host service:
+`deploy/agent-runner/neo-runnerd.service`.
+
+### 3. Contracts
+
+- The deterministic bundle contains exactly seven payloads: static
+  `neo-runnerd`, static `neo-runner-probe`, approved release manifest, seccomp,
+  systemd unit, env template and operator README. Its canonical inventory binds
+  path, mode, size and SHA-256 plus commit/head/toolchain/OS/architecture.
+- The builder writes only a new explicit derived directory, uses cached Go 1.25
+  with module network resolution off and never installs, provisions or starts
+  host state. Production requires clean exact Git `HEAD` and non-placeholder
+  approved manifest.
+- Runner bind is a literal loopback/RFC1918/ULA address, never wildcard,
+  hostname, link-local or public, and uses an explicit numeric port in
+  `1..65535`. Systemd probes the exact manifest before start and owns mode-0700
+  state/runtime directories.
+- Bundle verification validates the complete embedded Runner release contract,
+  not only its payload hash and approval bit; an internally consistent bundle
+  with an invalid runtime/network/identity tuple still fails.
+- Production Compose preflight requires a sixth distinct PostgreSQL principal,
+  private literal HTTPS Runner RPC endpoint, bounded timing/batch values,
+  owner-secure non-symlink evidence/mTLS files, a matching client cert/key and
+  `ACTIVATION_READY`. Every execution-stage flag stays false.
+- The profile has no port, read-only root, `cap_drop: ALL`, no Provider/object/
+  Redis/MCP credential, only the private application network and non-creating
+  read-only bind mounts.
+- Disabled defaults do not read evidence/mTLS files or dial Runner. Stop the
+  profile or set its control flag false for application rollback; do not delete
+  Runner state/evidence.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| output exists/symlink or payload extra/missing/drifted | bundle build/verify rejects |
+| production source dirty/commit mismatch/manifest placeholder | production bundle rejects |
+| embedded release contract invalid after inventory rehash | bundle rejects |
+| wildcard/hostname/public/link-local Runner bind | daemon/preflight rejects before listen |
+| shared DB user/password or execution flag true | preflight rejects without printing secret |
+| cert/key mismatch, insecure/symlink file or non-READY record | preflight rejects |
+| profile not selected/control false | no worker, file read or Runner dial |
+| current host probe | expected nonzero `ISOLATION_UNAVAILABLE` |
+
+### 5. Good / Base / Bad Cases
+
+- **Good:** operator verifies one clean production bundle, installs it on the
+  approved non-root host, captures fresh evidence, passes preflight and starts
+  only the control profile.
+- **Base:** checked-in env keeps every Agent flag false and the unapproved
+  manifest builds/verifies only as `template`.
+- **Bad:** turn the development machine into Runner, use rootful Docker/public
+  proxy, let Compose create missing secret paths, or enable Root Run because
+  control maintenance is healthy.
+
+### 6. Tests Required
+
+- Run bundle determinism plus symlink/extra/mode/size/hash/unapproved production
+  negatives.
+- Render Compose with example and production env; assert default-off, exact
+  profile/network/mount/capability/credential boundary and no host port.
+- Run production preflight positive/negative mTLS/evidence/principal/endpoint/
+  flag cases without touching `.env.single-server` or protected runtime paths.
+- Run `verify-agent-runtime-phase0.sh`, `verify-agent-runtime-g21-0.sh` and
+  `verify-standalone.sh --full`; host acceptance remains separately nonzero.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+template bundle -> Compose Root Run worker -> public Runner/rootful fallback
+```
+
+#### Correct
+
+```text
+clean content-addressed production bundle -> exact non-root target acceptance
+-> fresh control_plane activation -> control-only Compose profile
+-> execution stages remain physically disabled
+```

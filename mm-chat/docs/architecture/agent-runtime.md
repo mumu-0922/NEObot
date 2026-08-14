@@ -490,6 +490,24 @@ read-only evaluator requires all 16 live checks plus zero temporary evidence
 residue. Committed evidence is explicitly a held template, so offline success
 cannot impersonate exact-host promotion.
 
+G21.0 is the first production wiring slice, but it does not enable Agent
+execution. A dedicated `mm-chat-agent-runtime-control` process inherits only
+the PostgreSQL `agent_runner_control` capability and revalidates a short-lived
+`control_plane` activation record before every maintenance cycle. It may call
+only Runner `probe`, `list` and `reconcile`; it cannot acquire a Step, issue a
+launch ticket, call Broker effects, create a Child/Cron/Draft, or expose an HTTP
+route. The API process never imports this control path.
+
+The host release is delivered as an exact-path bundle containing static
+`neo-runnerd`/`neo-runner-probe` binaries, the approved release manifest,
+seccomp profile and systemd/environment templates. Its manifest binds every
+payload path, mode, size and SHA-256 plus the source commit, migration head,
+Go toolchain and target architecture. Symlinks, extras and drift are fatal;
+the checked-in unapproved release can build only a `template` bundle. The
+Compose worker remains in the explicit `agent-runtime-control` profile with
+all execution flags false, no host port and no Provider, object-store, Redis or
+MCP credential. This development host remains `ISOLATION_UNAVAILABLE`.
+
 The current `/v1/code/executions` remains fail closed. Agent Runtime must not use
 that placeholder route as an isolation shortcut.
 
@@ -521,4 +539,5 @@ Production execution remains disabled until later groups prove:
 
 See [the executable contract](../contracts/agent-runtime.md),
 [operations guide](../deployment/agent-runtime.md) and
-[G20 sliced plan](../tracking/g20-agent-runtime-plan.md).
+[G20 sliced plan](../tracking/g20-agent-runtime-plan.md). Production activation
+continues in the [G21 plan](../tracking/g21-agent-runtime-production-plan.md).

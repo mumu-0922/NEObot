@@ -158,6 +158,18 @@ sed \
 chmod 600 "${valid}"
 "${preflight}" "${valid}" >/dev/null
 
+invalid_agent_boolean="${temp_dir}/invalid-agent-boolean.env"
+sed 's|^AGENT_RUNNER_CONTROL_ENABLED=false$|AGENT_RUNNER_CONTROL_ENABLED=maybe|' \
+  "${valid}" >"${invalid_agent_boolean}"
+chmod 600 "${invalid_agent_boolean}"
+assert_rejected "${invalid_agent_boolean}" "AGENT_RUNNER_CONTROL_ENABLED must be true or false"
+
+execution_stage_enabled="${temp_dir}/execution-stage-enabled.env"
+sed 's|^AGENT_RUNTIME_ENABLED=false$|AGENT_RUNTIME_ENABLED=true|' \
+  "${valid}" >"${execution_stage_enabled}"
+chmod 600 "${execution_stage_enabled}"
+assert_rejected "${execution_stage_enabled}" "AGENT_RUNTIME_ENABLED must remain false in G21.0"
+
 runner_token="${temp_dir}/mcp-runner-token"
 printf '%s' '0123456789abcdef0123456789abcdef0123456789abcdef' >"${runner_token}"
 chmod 600 "${runner_token}"
@@ -624,7 +636,7 @@ rendered="$({
   MIGRATION_DATABASE_URL=postgres://override:override@override:5432/override \
   DATABASE_URL=postgres://override:override@override:5432/override \
     "${production_compose}" "${valid}" \
-      --profile app --profile ops --profile mcp-runner --profile memory-worker --profile rag-worker --profile rag-ops \
+      --profile app --profile ops --profile mcp-runner --profile memory-worker --profile agent-runtime-control --profile rag-worker --profile rag-ops \
       config --format json
 } 2>"${temp_dir}/production-compose.stderr")"
 python3 - "${rendered}" "$(id -u):$(id -g)" <<'PY'
@@ -682,13 +694,14 @@ want_image = (
     "ghcr.io/mumu-0922/neobot-mm-chat@sha256:"
     + "a" * 64
 )
-for name in ("backend", "memory-worker", "migrate", "admin"):
+for name in ("backend", "memory-worker", "agent-runtime-control", "migrate", "admin"):
     service = services[name]
     assert service["image"] == want_image, (name, service["image"])
     assert "build" not in service, name
 assert set(services["backend"]["networks"]) == {"private", "rag-private", "mcp-control"}
 assert services["backend"]["user"] == runtime_user
 assert services["memory-worker"]["user"] == runtime_user
+assert services["agent-runtime-control"]["user"] == runtime_user
 assert services["admin"]["user"] == runtime_user
 for name in ("memory-worker", "admin"):
     assert services[name]["secrets"] == [
@@ -771,6 +784,48 @@ assert memory_environment["REDIS_URL"].startswith("redis://")
 assert "DATABASE_URL" not in memory_environment
 assert "MIGRATION_DATABASE_URL" not in memory_environment
 assert "/usr/local/bin/mm-chat-memory-worker healthcheck" in " ".join(memory["healthcheck"]["test"])
+
+agent_control = services["agent-runtime-control"]
+assert agent_control["profiles"] == ["agent-runtime-control"]
+assert "ports" not in agent_control
+assert agent_control["read_only"] is True
+assert agent_control["init"] is True
+assert agent_control["cap_drop"] == ["ALL"]
+assert "no-new-privileges:true" in agent_control["security_opt"]
+assert float(agent_control["cpus"]) <= 0.25
+assert int(agent_control["pids_limit"]) == 32
+assert int(agent_control["mem_limit"]) == 96 * 1024 * 1024
+assert list(agent_control["networks"]) == ["private"]
+assert agent_control["depends_on"] == {
+    "postgres": {"condition": "service_healthy", "required": True}
+}
+assert "secrets" not in agent_control
+assert len(agent_control["volumes"]) == 6
+assert all(volume["read_only"] is True for volume in agent_control["volumes"])
+assert all(volume["bind"]["create_host_path"] is False for volume in agent_control["volumes"])
+agent_environment = agent_control["environment"]
+assert "agent_runner_control_app:change-me-agent-control-postgres@postgres" in agent_environment["AGENT_RUNNER_DATABASE_URL"]
+assert agent_environment["AGENT_RUNNER_CONTROL_ENABLED"] == "false"
+for name in (
+    "AGENT_RUNTIME_ENABLED",
+    "AGENT_SCHEDULER_ENABLED",
+    "AGENT_SKILL_INSTALL_ENABLED",
+    "AGENT_LEARNING_ENABLED",
+    "AGENT_DELEGATION_ENABLED",
+    "AGENT_BROKER_READ_ONLY_ENABLED",
+    "AGENT_BROKER_MUTATION_ENABLED",
+):
+    assert agent_environment[name] == "false", name
+for forbidden in (
+    "DATABASE_URL",
+    "MIGRATION_DATABASE_URL",
+    "PROVIDER_SECRET_KEYRING_FILE",
+    "REDIS_URL",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+    "MCP_RUNNER_TOKEN_FILE",
+):
+    assert forbidden not in agent_environment, forbidden
 
 migrate_environment = services["migrate"]["environment"]
 assert "neo_chat_migrator:test-migrator-password@postgres" in migrate_environment["MIGRATION_DATABASE_URL"]
@@ -887,7 +942,7 @@ development_rendered="$(docker compose \
   --project-directory "${project_dir}" \
   --env-file "${example}" \
   -f "${project_dir}/compose.single-server.yml" \
-    --profile app --profile ops --profile mcp-runner --profile memory-worker --profile rag-worker --profile rag-ops \
+    --profile app --profile ops --profile mcp-runner --profile memory-worker --profile agent-runtime-control --profile rag-worker --profile rag-ops \
   config --format json)"
 python3 - "${development_rendered}" <<'PY'
 import json
@@ -895,9 +950,9 @@ import sys
 
 config = json.loads(sys.argv[1])
 services = config["services"]
-for name in ("postgres", "frontend", "backend", "mcp-runner", "memory-worker", "migrate", "admin", "rag-worker", "rag-replay"):
+for name in ("postgres", "frontend", "backend", "mcp-runner", "memory-worker", "agent-runtime-control", "migrate", "admin", "rag-worker", "rag-replay"):
     assert "build" in services[name], name
-for name in ("backend", "memory-worker", "migrate", "admin"):
+for name in ("backend", "memory-worker", "agent-runtime-control", "migrate", "admin"):
     assert services[name]["build"]["target"] == "runtime", name
 assert "MIGRATION_DATABASE_URL" not in services["backend"]["environment"]
 assert "DATABASE_URL" not in services["migrate"]["environment"]
@@ -918,6 +973,7 @@ assert int(postgres["mem_limit"]) == 1024 * 1024 * 1024
 assert float(postgres["cpus"]) == 2
 assert services["backend"]["user"] == "replace-with-host-uid:replace-with-host-gid"
 assert services["memory-worker"]["user"] == "replace-with-host-uid:replace-with-host-gid"
+assert services["agent-runtime-control"]["user"] == "replace-with-host-uid:replace-with-host-gid"
 assert services["admin"]["user"] == "replace-with-host-uid:replace-with-host-gid"
 runner = services["mcp-runner"]
 assert runner["image"] == "ghcr.io/mumu-0922/neobot-mm-chat-mcp-runner@sha256:replace-with-64-lowercase-hex"
@@ -928,6 +984,11 @@ assert set(runner["networks"]) == {"mcp-control", "mcp-egress"}
 assert config["networks"]["mcp-control"]["internal"] is True
 memory = services["memory-worker"]
 assert memory["profiles"] == ["memory-worker"]
+agent_control = services["agent-runtime-control"]
+assert agent_control["profiles"] == ["agent-runtime-control"]
+assert "ports" not in agent_control
+assert list(agent_control["networks"]) == ["private"]
+assert agent_control["environment"]["AGENT_RUNNER_CONTROL_ENABLED"] == "false"
 assert memory["build"]["context"].endswith("/mm-chat/backend")
 assert "ports" not in memory
 rag = services["rag-worker"]

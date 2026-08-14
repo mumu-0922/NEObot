@@ -63,6 +63,20 @@ required_agent_paths=(
   "${project_dir}/docs/contracts/schemas/neo-agent-production-closure.schema.json"
   "${project_dir}/scripts/evaluate-agent-production-closure.py"
   "${project_dir}/scripts/verify-agent-production-closure.sh"
+  "${project_dir}/backend/cmd/agent-runtime-control/main.go"
+  "${project_dir}/backend/internal/agentactivation/activation.go"
+  "${project_dir}/backend/internal/agentruntimecontrol/control.go"
+  "${project_dir}/docs/contracts/schemas/neo-agent-production-activation.schema.json"
+  "${project_dir}/docs/contracts/schemas/neo-agent-runner-bundle.schema.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-runner-bundle.valid.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-runner-bundle.invalid.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-production-activation.valid.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-production-activation.invalid.json"
+  "${project_dir}/scripts/evaluate-agent-production-activation.py"
+  "${project_dir}/scripts/build-agent-runner-bundle.sh"
+  "${project_dir}/scripts/verify-agent-runner-bundle.py"
+  "${project_dir}/scripts/verify-agent-runner-bundle.sh"
+  "${project_dir}/scripts/verify-agent-runtime-g21-0.sh"
 )
 for path in "${required_agent_paths[@]}"; do
   if [[ ! -s "${path}" ]]; then
@@ -113,6 +127,9 @@ done
 
 bash -n "${project_dir}/scripts/verify-agent-runtime-phase0.sh"
 bash -n "${project_dir}/scripts/verify-agent-production-closure.sh"
+bash -n "${project_dir}/scripts/verify-agent-runtime-g21-0.sh"
+
+bash "${project_dir}/scripts/verify-agent-runtime-g21-0.sh"
 
 isolated_root="$(mktemp -d)"
 cleanup() {

@@ -10,12 +10,15 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"neo-chat/mm-chat/backend/internal/agentrunner"
 )
+
+const controlCallerIdentity = "spiffe://neo-chat/agent-runtime-control"
 
 func main() {
 	if err := run(); err != nil {
@@ -29,7 +32,7 @@ func run() error {
 	}
 	stateRoot := cleanAbsoluteEnv("NEO_RUNNER_STATE_ROOT")
 	listenAddress := strings.TrimSpace(os.Getenv("NEO_RUNNER_LISTEN_ADDR"))
-	if stateRoot == "" || !loopbackAddress(listenAddress) {
+	if stateRoot == "" || !privateAddress(listenAddress) {
 		return errors.New("neo-runnerd configuration is invalid")
 	}
 	manifest, err := agentrunner.LoadReleaseManifest(cleanAbsoluteEnv("NEO_RUNNER_RELEASE_MANIFEST"))
@@ -79,8 +82,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	handler, err := agentrunner.NewHTTPHandler(service, 15*time.Second,
-		strings.TrimSpace(os.Getenv("NEO_RUNNER_CLIENT_IDENTITY")))
+	clientIdentity := strings.TrimSpace(os.Getenv("NEO_RUNNER_CLIENT_IDENTITY"))
+	if clientIdentity != controlCallerIdentity {
+		return errors.New("neo-runnerd client identity is invalid")
+	}
+	handler, err := agentrunner.NewHTTPHandler(service, 15*time.Second, clientIdentity)
 	if err != nil {
 		return err
 	}
@@ -113,13 +119,17 @@ func cleanAbsoluteEnv(name string) string {
 	}
 	return value
 }
-func loopbackAddress(value string) bool {
+func privateAddress(value string) bool {
 	host, port, err := net.SplitHostPort(value)
 	if err != nil || port == "" {
 		return false
 	}
+	portNumber, err := strconv.Atoi(port)
+	if err != nil || portNumber < 1 || portNumber > 65535 {
+		return false
+	}
 	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	return ip != nil && !ip.IsUnspecified() && (ip.IsLoopback() || ip.IsPrivate())
 }
 func binaryPath(manifest agentrunner.ReleaseManifest, name string) string {
 	for _, binary := range manifest.Binaries {

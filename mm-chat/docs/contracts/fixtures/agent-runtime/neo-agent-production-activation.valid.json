@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "neo.agent-production-activation/v1",
+  "evidenceClass": "template",
+  "stage": "control_plane",
+  "release": {
+    "gitCommit": "0000000000000000000000000000000000000000",
+    "migrationHead": 90,
+    "runnerManifestSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "runnerBinarySha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "operationsPolicySha256": "sha256:a8491c16e2632afaf06b9a683b6c612bf464480a528bc7ff45ea7939115587cc"
+  },
+  "target": {
+    "deploymentFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "runnerId": "neo-runner-primary"
+  },
+  "wiring": {
+    "endpointSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "clientCertificateSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "serverCASha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "serverName": "neo-runner.internal",
+    "callerIdentity": "spiffe://neo-chat/agent-runtime-control"
+  },
+  "window": {
+    "startedAt": "2026-08-14T00:00:00Z",
+    "completedAt": "2026-08-14T00:10:00Z",
+    "expiresAt": "2026-08-15T00:00:00Z"
+  },
+  "checks": [
+    {
+      "id": "exact_host_isolation",
+      "result": "isolation_unavailable",
+      "observedAt": "2026-08-14T00:05:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "ISOLATION_UNAVAILABLE"
+    },
+    {
+      "id": "clean_copy_install",
+      "result": "not_run",
+      "observedAt": "2026-08-14T00:05:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "NOT_RUN"
+    },
+    {
+      "id": "private_mtls_probe",
+      "result": "not_run",
+      "observedAt": "2026-08-14T00:05:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "NOT_RUN"
+    },
+    {
+      "id": "zero_inventory_reconcile",
+      "result": "not_run",
+      "observedAt": "2026-08-14T00:05:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "NOT_RUN"
+    },
+    {
+      "id": "rollback_kill_switch_ready",
+      "result": "not_run",
+      "observedAt": "2026-08-14T00:05:00Z",
+      "evidenceSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "detailCode": "NOT_RUN"
+    }
+  ],
+  "authorization": {
+    "controlPlane": true,
+    "rootRuns": false,
+    "brokerReadOnly": false,
+    "brokerMutable": false,
+    "delegation": false,
+    "scheduler": false,
+    "learning": false
+  },
+  "cleanup": {
+    "orphanSandboxes": 0,
+    "scratchResidue": 0
+  },
+  "review": {
+    "decision": "held",
+    "reviewedAt": "2026-08-14T00:10:00Z",
+    "reviewerFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}

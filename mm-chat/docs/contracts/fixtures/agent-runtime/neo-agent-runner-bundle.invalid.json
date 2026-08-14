@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "neo.agent-runner-bundle/v1",
+  "evidenceClass": "production",
+  "release": {
+    "gitCommit": "not-a-commit",
+    "migrationHead": 91,
+    "goVersion": "go1.24.0",
+    "targetOS": "linux",
+    "targetArch": "amd64"
+  },
+  "files": [],
+  "inventorySha256": "sha256:0000"
+}

@@ -38,7 +38,9 @@ import binascii
 import json
 import os
 import re
+import ssl
 import stat
+import subprocess
 import sys
 import ipaddress
 from pathlib import Path
@@ -197,6 +199,34 @@ def validate_private_token(path_value: str, name: str) -> None:
         fail(f"{name} is invalid")
 
 
+def resolve_secure_file(
+    path_value: str,
+    name: str,
+    *,
+    private: bool,
+    minimum_size: int = 1,
+    maximum_size: int = 1 << 20,
+) -> Path:
+    path = Path(path_value)
+    if not path.is_absolute():
+        path = Path(sys.argv[2]) / path
+    try:
+        metadata = path.lstat()
+    except OSError:
+        fail(f"{name} file is unavailable")
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        fail(f"{name} must be a regular non-symlink file")
+    if metadata.st_uid != os.getuid():
+        fail(f"{name} must be owned by the invoking user")
+    mode = stat.S_IMODE(metadata.st_mode)
+    if mode & (0o077 if private else 0o022):
+        expected = "use mode 600" if private else "not be group/world writable"
+        fail(f"{name} must {expected}")
+    if not minimum_size <= metadata.st_size <= maximum_size:
+        fail(f"{name} has an invalid size")
+    return path
+
+
 values = parse_env(Path(sys.argv[1]))
 for key, value in values.items():
     if "$" in value:
@@ -273,6 +303,23 @@ if values.get("MCP_MARKETPLACE_ENABLED") == "true" and values.get("MCP_ENABLED")
 if values.get("MCP_MARKETPLACE_ENABLED") == "true" and values.get("MCP_REMOTE_ENABLED") != "true":
     fail("MCP_MARKETPLACE_ENABLED requires MCP_REMOTE_ENABLED=true")
 
+agent_flags = (
+    "AGENT_RUNNER_CONTROL_ENABLED",
+    "AGENT_RUNTIME_ENABLED",
+    "AGENT_SCHEDULER_ENABLED",
+    "AGENT_SKILL_INSTALL_ENABLED",
+    "AGENT_LEARNING_ENABLED",
+    "AGENT_DELEGATION_ENABLED",
+    "AGENT_BROKER_READ_ONLY_ENABLED",
+    "AGENT_BROKER_MUTATION_ENABLED",
+)
+for key in agent_flags:
+    if values.get(key) not in {"true", "false"}:
+        fail(f"{key} must be true or false")
+for key in agent_flags[1:]:
+    if values[key] != "false":
+        fail(f"{key} must remain false in G21.0")
+
 required = (
     "FRONTEND_IMAGE",
     "BACKEND_IMAGE",
@@ -310,6 +357,7 @@ required = (
     "MCP_MARKETPLACE_ENABLED",
     "MCP_MARKETPLACE_TIMEOUT",
     "MCP_MARKETPLACE_CACHE_TTL",
+    *agent_flags,
 )
 for key in required:
     if not values.get(key, "").strip():
@@ -489,6 +537,154 @@ if values["MCP_MARKETPLACE_ENABLED"] == "true":
         "MCP_MARKETPLACE_CLIENT_SECRET_SOURCE",
     )
 
+agent_control_enabled = values["AGENT_RUNNER_CONTROL_ENABLED"] == "true"
+agent_control_keys = (
+    "AGENT_RUNNER_DATABASE_URL",
+    "AGENT_RUNNER_URL",
+    "AGENT_RUNNER_ID",
+    "AGENT_RUNNER_SERVER_NAME",
+    "AGENT_RUNNER_CLIENT_IDENTITY",
+    "AGENT_RUNNER_CLIENT_CERT_SOURCE",
+    "AGENT_RUNNER_CLIENT_KEY_SOURCE",
+    "AGENT_RUNNER_SERVER_CA_SOURCE",
+    "AGENT_RUNNER_RELEASE_MANIFEST_SOURCE",
+    "AGENT_PRODUCTION_POLICY_SOURCE",
+    "AGENT_PRODUCTION_ACTIVATION_SOURCE",
+    "AGENT_RELEASE_GIT_COMMIT",
+    "AGENT_RUNNER_POLL_INTERVAL",
+    "AGENT_RUNNER_RPC_TIMEOUT",
+    "AGENT_RUNNER_RECONCILE_BATCH_SIZE",
+)
+if agent_control_enabled:
+    for key in agent_control_keys:
+        if not values.get(key, "").strip():
+            fail(f"{key} is required when Agent control is enabled")
+        if placeholder.search(values[key]):
+            fail(f"{key} still contains a placeholder")
+    try:
+        agent_runner_url = urlsplit(values["AGENT_RUNNER_URL"])
+        agent_runner_port = agent_runner_url.port
+        agent_runner_ip = ipaddress.ip_address(agent_runner_url.hostname or "")
+    except ValueError:
+        fail("AGENT_RUNNER_URL must be the exact private HTTPS Runner RPC URL")
+    private_networks = (
+        ipaddress.ip_network("10.0.0.0/8"),
+        ipaddress.ip_network("172.16.0.0/12"),
+        ipaddress.ip_network("192.168.0.0/16"),
+        ipaddress.ip_network("fc00::/7"),
+    )
+    agent_runner_private = any(
+        agent_runner_ip in network
+        for network in private_networks
+        if agent_runner_ip.version == network.version
+    )
+    if (
+        agent_runner_url.scheme != "https"
+        or agent_runner_port is None
+        or agent_runner_port < 1
+        or not agent_runner_private
+        or agent_runner_url.username is not None
+        or agent_runner_url.password is not None
+        or agent_runner_url.path != "/internal/neo-runner/v1/rpc"
+        or agent_runner_url.query
+        or agent_runner_url.fragment
+    ):
+        fail("AGENT_RUNNER_URL must be the exact private HTTPS Runner RPC URL")
+    identity_pattern = re.compile(r"[A-Za-z][A-Za-z0-9_.:@/-]{0,127}")
+    for key in ("AGENT_RUNNER_ID", "AGENT_RUNNER_SERVER_NAME"):
+        if identity_pattern.fullmatch(values[key]) is None:
+            fail(f"{key} is invalid")
+    if values["AGENT_RUNNER_CLIENT_IDENTITY"] != "spiffe://neo-chat/agent-runtime-control":
+        fail("AGENT_RUNNER_CLIENT_IDENTITY must be the dedicated control identity")
+    if re.fullmatch(r"[0-9a-f]{40}", values["AGENT_RELEASE_GIT_COMMIT"]) is None or values["AGENT_RELEASE_GIT_COMMIT"] == "0" * 40:
+        fail("AGENT_RELEASE_GIT_COMMIT must be a non-placeholder lowercase Git commit")
+    poll_interval = parse_simple_duration_seconds(
+        "AGENT_RUNNER_POLL_INTERVAL", values["AGENT_RUNNER_POLL_INTERVAL"]
+    )
+    rpc_timeout = parse_simple_duration_seconds(
+        "AGENT_RUNNER_RPC_TIMEOUT", values["AGENT_RUNNER_RPC_TIMEOUT"]
+    )
+    if not 5 <= poll_interval <= 300:
+        fail("AGENT_RUNNER_POLL_INTERVAL must be between 5s and 5m")
+    if not 1 <= rpc_timeout <= 60:
+        fail("AGENT_RUNNER_RPC_TIMEOUT must be between 1s and 1m")
+    if re.fullmatch(r"[1-9][0-9]{0,3}", values["AGENT_RUNNER_RECONCILE_BATCH_SIZE"]) is None or not 1 <= int(values["AGENT_RUNNER_RECONCILE_BATCH_SIZE"]) <= 1000:
+        fail("AGENT_RUNNER_RECONCILE_BATCH_SIZE must be between 1 and 1000")
+
+    client_certificate = resolve_secure_file(
+        values["AGENT_RUNNER_CLIENT_CERT_SOURCE"],
+        "AGENT_RUNNER_CLIENT_CERT_SOURCE",
+        private=True,
+    )
+    client_key = resolve_secure_file(
+        values["AGENT_RUNNER_CLIENT_KEY_SOURCE"],
+        "AGENT_RUNNER_CLIENT_KEY_SOURCE",
+        private=True,
+    )
+    server_ca = resolve_secure_file(
+        values["AGENT_RUNNER_SERVER_CA_SOURCE"],
+        "AGENT_RUNNER_SERVER_CA_SOURCE",
+        private=True,
+    )
+    release_manifest = resolve_secure_file(
+        values["AGENT_RUNNER_RELEASE_MANIFEST_SOURCE"],
+        "AGENT_RUNNER_RELEASE_MANIFEST_SOURCE",
+        private=True,
+    )
+    production_policy = resolve_secure_file(
+        values["AGENT_PRODUCTION_POLICY_SOURCE"],
+        "AGENT_PRODUCTION_POLICY_SOURCE",
+        private=False,
+    )
+    activation_record = resolve_secure_file(
+        values["AGENT_PRODUCTION_ACTIVATION_SOURCE"],
+        "AGENT_PRODUCTION_ACTIVATION_SOURCE",
+        private=True,
+    )
+    try:
+        tls_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        tls_context.load_cert_chain(client_certificate, client_key)
+        ssl.create_default_context(cafile=server_ca)
+        decoded_certificate = ssl._ssl._test_decode_cert(str(client_certificate))
+    except (OSError, ssl.SSLError, ValueError):
+        fail("Agent Runner mTLS certificate/key material is invalid or mismatched")
+    common_names = [
+        value
+        for relative_name in decoded_certificate.get("subject", ())
+        for key, value in relative_name
+        if key == "commonName"
+    ]
+    if common_names != [values["AGENT_RUNNER_CLIENT_IDENTITY"]]:
+        fail("Agent Runner client certificate identity does not match configuration")
+
+    evaluator = Path(sys.argv[2]) / "scripts/evaluate-agent-production-activation.py"
+    try:
+        decision = subprocess.run(
+            [
+                sys.executable,
+                str(evaluator),
+                "--record", str(activation_record),
+                "--policy", str(production_policy),
+                "--release-manifest", str(release_manifest),
+                "--client-certificate", str(client_certificate),
+                "--server-ca", str(server_ca),
+                "--endpoint", values["AGENT_RUNNER_URL"],
+                "--runner-id", values["AGENT_RUNNER_ID"],
+                "--server-name", values["AGENT_RUNNER_SERVER_NAME"],
+                "--caller-identity", values["AGENT_RUNNER_CLIENT_IDENTITY"],
+                "--release-commit", values["AGENT_RELEASE_GIT_COMMIT"],
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        decision_payload = json.loads(decision.stdout)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        fail("Agent Runtime activation evaluator failed")
+    if decision.returncode != 0 or decision_payload.get("verdict") != "ACTIVATION_READY":
+        fail("AGENT_PRODUCTION_ACTIVATION_SOURCE is not READY for G21.0")
+
 marketplace_timeout = parse_simple_duration_seconds(
     "MCP_MARKETPLACE_TIMEOUT", values["MCP_MARKETPLACE_TIMEOUT"]
 )
@@ -512,6 +708,7 @@ for key in (
     "MEMORY_WORKER_DATABASE_URL",
     "RAG_WORKER_DATABASE_URL",
     "RAG_REPLAY_DATABASE_URL",
+    *(("AGENT_RUNNER_DATABASE_URL",) if agent_control_enabled else ()),
 ):
     try:
         parsed = urlsplit(values[key])
@@ -543,7 +740,7 @@ for key, parsed in database_urls.items():
 
 database_users = [unquote(parsed.username or "") for parsed in database_urls.values()]
 if len(set(database_users)) != len(database_users):
-    fail("migration, API, Memory worker, RAG worker, and RAG replay must use distinct database principals")
+    fail("migration, API, Memory worker, RAG worker, RAG replay, and Agent control must use distinct database principals")
 
 database_passwords = [
     unquote(parsed.password or "") for parsed in database_urls.values()

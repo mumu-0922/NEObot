@@ -530,6 +530,19 @@ func TestRPCClientUsesTLS13MutualAuthAndBindsResponse(t *testing.T) {
 	}
 }
 
+func TestRPCClientRejectsMissingOrInvalidPort(t *testing.T) {
+	_, _, _, files := rpcTLSFixture(t)
+	for _, endpoint := range []string{
+		"https://10.0.0.8/internal/neo-runner/v1/rpc",
+		"https://10.0.0.8:0/internal/neo-runner/v1/rpc",
+		"https://10.0.0.8:https/internal/neo-runner/v1/rpc",
+	} {
+		if _, err := NewRPCClient(endpoint, files, 10*time.Second); !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("NewRPCClient(%q) error = %v", endpoint, err)
+		}
+	}
+}
+
 func TestPodmanDriverCreateIntentContainsHardIsolationAndNoShell(t *testing.T) {
 	runner := &recordingCommands{outputs: [][]byte{[]byte(strings.Repeat("a", 64) + "\n")}}
 	driver, _ := NewPodmanDriver("/usr/bin/podman", runner)
@@ -809,7 +822,8 @@ func rpcTLSFixture(t *testing.T) (tls.Certificate, tlsKeyPairFiles, *x509.CertPo
 	pool := x509.NewCertPool()
 	pool.AddCert(caCertificate)
 	return serverCertificate, clientFiles, pool, ClientTLSFiles{CertificateFile: serverFiles.certFile,
-		KeyFile: serverFiles.keyFile, ServerCAFile: caFile, ServerName: "neo-runner-primary"}
+		KeyFile: serverFiles.keyFile, ServerCAFile: caFile, ServerName: "neo-runner-primary",
+		ClientIdentity: testCaller}
 }
 
 func signedTLSIdentity(t *testing.T, root, prefix, identity string, server bool,

@@ -389,6 +389,97 @@ services:
     networks:
       - private
 
+  agent-runtime-control:
+    image: ${BACKEND_IMAGE:-mm-chat/backend:local}
+    build: *backend-build
+    restart: unless-stopped
+    profiles: ["agent-runtime-control"]
+    init: true
+    user: "${MM_CHAT_RUNTIME_UID:-1000}:${MM_CHAT_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 32
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m,mode=1777
+    environment:
+      AGENT_RUNNER_CONTROL_ENABLED: ${AGENT_RUNNER_CONTROL_ENABLED:-false}
+      AGENT_RUNTIME_ENABLED: ${AGENT_RUNTIME_ENABLED:-false}
+      AGENT_SCHEDULER_ENABLED: ${AGENT_SCHEDULER_ENABLED:-false}
+      AGENT_SKILL_INSTALL_ENABLED: ${AGENT_SKILL_INSTALL_ENABLED:-false}
+      AGENT_LEARNING_ENABLED: ${AGENT_LEARNING_ENABLED:-false}
+      AGENT_DELEGATION_ENABLED: ${AGENT_DELEGATION_ENABLED:-false}
+      AGENT_BROKER_READ_ONLY_ENABLED: ${AGENT_BROKER_READ_ONLY_ENABLED:-false}
+      AGENT_BROKER_MUTATION_ENABLED: ${AGENT_BROKER_MUTATION_ENABLED:-false}
+      AGENT_RUNNER_DATABASE_URL: ${AGENT_RUNNER_DATABASE_URL:-postgres://agent_runner_control_app:change-me-agent-control-postgres@postgres:5432/neo_chat?sslmode=disable}
+      AGENT_RUNNER_URL: ${AGENT_RUNNER_URL:-https://127.0.0.1:9443/internal/neo-runner/v1/rpc}
+      AGENT_RUNNER_ID: ${AGENT_RUNNER_ID:-neo-runner-primary}
+      AGENT_RUNNER_SERVER_NAME: ${AGENT_RUNNER_SERVER_NAME:-neo-runner.internal}
+      AGENT_RUNNER_CLIENT_IDENTITY: ${AGENT_RUNNER_CLIENT_IDENTITY:-spiffe://neo-chat/agent-runtime-control}
+      AGENT_RUNNER_CLIENT_CERT_FILE: /run/agent-runtime-control/client.crt
+      AGENT_RUNNER_CLIENT_KEY_FILE: /run/agent-runtime-control/client.key
+      AGENT_RUNNER_SERVER_CA_FILE: /run/agent-runtime-control/server-ca.crt
+      AGENT_RUNNER_RELEASE_MANIFEST_FILE: /run/agent-runtime-control/release-manifest.json
+      AGENT_PRODUCTION_POLICY_FILE: /etc/mm-chat/agent-runtime-control/production-policy.json
+      AGENT_PRODUCTION_ACTIVATION_FILE: /run/agent-runtime-control/production-activation.json
+      AGENT_RELEASE_GIT_COMMIT: ${AGENT_RELEASE_GIT_COMMIT:-0000000000000000000000000000000000000000}
+      AGENT_RUNNER_POLL_INTERVAL: ${AGENT_RUNNER_POLL_INTERVAL:-30s}
+      AGENT_RUNNER_RPC_TIMEOUT: ${AGENT_RUNNER_RPC_TIMEOUT:-10s}
+      AGENT_RUNNER_RECONCILE_BATCH_SIZE: ${AGENT_RUNNER_RECONCILE_BATCH_SIZE:-100}
+    volumes:
+      - type: bind
+        source: ${AGENT_RUNNER_CLIENT_CERT_SOURCE:-./secrets/agent-runtime-control/client.crt}
+        target: /run/agent-runtime-control/client.crt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${AGENT_RUNNER_CLIENT_KEY_SOURCE:-./secrets/agent-runtime-control/client.key}
+        target: /run/agent-runtime-control/client.key
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${AGENT_RUNNER_SERVER_CA_SOURCE:-./secrets/agent-runtime-control/server-ca.crt}
+        target: /run/agent-runtime-control/server-ca.crt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${AGENT_RUNNER_RELEASE_MANIFEST_SOURCE:-./secrets/agent-runtime-control/release-manifest.json}
+        target: /run/agent-runtime-control/release-manifest.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${AGENT_PRODUCTION_POLICY_SOURCE:-./config/agent-runner/production-policy.json}
+        target: /etc/mm-chat/agent-runtime-control/production-policy.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${AGENT_PRODUCTION_ACTIVATION_SOURCE:-./secrets/agent-runtime-control/production-activation.json}
+        target: /run/agent-runtime-control/production-activation.json
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["/usr/local/bin/mm-chat-agent-runtime-control", "run"]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/mm-chat-agent-runtime-control", "healthcheck"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 10s
+    networks:
+      - private
+
   frontend:
     image: ${FRONTEND_IMAGE:-mm-chat/frontend:local}
     build: *frontend-build

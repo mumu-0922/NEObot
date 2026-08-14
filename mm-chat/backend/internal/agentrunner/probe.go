@@ -36,6 +36,15 @@ func LoadReleaseManifest(path string) (ReleaseManifest, error) {
 	if err != nil || len(data) == 0 || len(data) > 64<<10 {
 		return ReleaseManifest{}, ErrInvalidInput
 	}
+	return ParseReleaseManifest(data)
+}
+
+// ParseReleaseManifest validates one already-read release manifest. Security-
+// sensitive callers can bind and parse the same bytes without reopening a path.
+func ParseReleaseManifest(data []byte) (ReleaseManifest, error) {
+	if len(data) == 0 || len(data) > 64<<10 {
+		return ReleaseManifest{}, ErrInvalidInput
+	}
 	var manifest ReleaseManifest
 	if err := strictjson.Decode(data, 64<<10, &manifest); err != nil || validateReleaseManifest(manifest) != nil {
 		return ReleaseManifest{}, ErrInvalidInput
