@@ -37,6 +37,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Wrench,
+  Activity,
 } from "lucide-react";
 import { CHAT_ENTITY_LIMITS } from "@/config/limits";
 import { sanitizeDownloadFilename } from "@/lib/utils/filename";
@@ -71,6 +72,8 @@ interface SidebarProps {
   onRequestClose?: () => void;
   onOpenSkillMarket: () => void;
   isSkillMarketOpen: boolean;
+  onOpenAgentCenter: () => void;
+  isAgentCenterOpen: boolean;
   onOpenAssistantHub: () => void;
   isAssistantHubOpen: boolean;
   onOpenKnowledgeBase: () => void;
@@ -166,6 +169,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   onRequestClose,
   onOpenSkillMarket,
   isSkillMarketOpen,
+  onOpenAgentCenter,
+  isAgentCenterOpen,
   onOpenAssistantHub,
   isAssistantHubOpen,
   onOpenKnowledgeBase,
@@ -591,7 +596,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   const renderSessionItem = (session: Session) => {
     const isActive =
       currentSessionId === session.id &&
+      !isAgentCenterOpen &&
       !isAssistantHubOpen &&
+      !isSkillMarketOpen &&
       !isKnowledgeBaseOpen &&
       !isToolsOpen &&
       !isSettingsOpen;
@@ -830,6 +837,27 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       <div className="px-3 pb-2 space-y-1 shrink-0">
+        <SidebarNavTooltip isOpen={isOpen} content={t("agentCenter")}>
+          <button
+            type="button"
+            aria-label={t("openAgentCenter")}
+            aria-current={isAgentCenterOpen ? "page" : undefined}
+            onClick={onOpenAgentCenter}
+            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60 ${
+              isAgentCenterOpen
+                ? "bg-cyan-50 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300"
+                : "text-gray-600 hover:bg-gray-100/80 dark:text-muted-foreground dark:hover:bg-muted/60"
+            } ${isOpen ? "w-full" : "w-10 justify-center px-0"}`}
+          >
+            <Activity
+              size={18}
+              className={`shrink-0 ${isAgentCenterOpen ? "text-cyan-600" : "text-gray-500"}`}
+              aria-hidden="true"
+            />
+            {isOpen && <span className="truncate">{t("agentCenter")}</span>}
+          </button>
+        </SidebarNavTooltip>
+
         <SidebarNavTooltip isOpen={isOpen} content={t("assistantHub")}>
           <button
             type="button"

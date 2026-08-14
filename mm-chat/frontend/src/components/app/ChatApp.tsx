@@ -94,6 +94,7 @@ import {
   shouldRunSettingsStartupEffects,
 } from "@/lib/app/startupEffects";
 import {
+  AgentCenterTabId,
   ChatPanel,
   SettingsTabId,
   parseChatPanelUrlState,
@@ -138,6 +139,9 @@ const MCP_ADMISSION_ERROR_CODES = new Set([
   "MCP_SELECTION_INVALID",
 ]);
 const SkillMarket = dynamic(() => import("@/components/skill/SkillMarket"), {
+  ssr: false,
+});
+const AgentCenter = dynamic(() => import("@/components/agent/AgentCenter"), {
   ssr: false,
 });
 const AssistantHub = dynamic(
@@ -343,6 +347,8 @@ const ChatApp = () => {
 
   const [viewMode, setViewMode] = useState<ChatPanel>("chat");
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>("providers");
+  const [agentTab, setAgentTab] = useState<AgentCenterTabId>("skills");
+  const [agentId, setAgentId] = useState<string | null>(null);
 
   const [serverConfigResolved, setServerConfigResolved] = useState(false);
   const [serverModelBootstrapReady, setServerModelBootstrapReady] =
@@ -571,12 +577,19 @@ const ChatApp = () => {
       panel: ChatPanel,
       nextSettingsTab?: SettingsTabId | null,
       historyMode: "push" | "replace" = "push",
+      nextAgentTab?: AgentCenterTabId | null,
+      nextAgentId?: string | null,
     ) => {
       if (typeof window === "undefined") return;
 
       const nextParams = setChatPanelUrlState(
         new URLSearchParams(window.location.search),
-        { panel, settingsTab: nextSettingsTab },
+        {
+          panel,
+          settingsTab: nextSettingsTab,
+          agentTab: nextAgentTab,
+          agentId: nextAgentId,
+        },
       );
       updateBrowserSearch(nextParams, historyMode);
     },
@@ -604,6 +617,21 @@ const ChatApp = () => {
     [isMobileViewport, settingsTab, updatePanelUrl],
   );
 
+  const navigateAgentCenter = useCallback(
+    (
+      tab: AgentCenterTabId,
+      id: string | null,
+      historyMode: "push" | "replace" = "push",
+    ) => {
+      setViewMode("agent-center");
+      setAgentTab(tab);
+      setAgentId(id);
+      updatePanelUrl("agent-center", null, historyMode, tab, id);
+      if (isMobileViewport) setIsSidebarOpen(false);
+    },
+    [isMobileViewport, updatePanelUrl],
+  );
+
   const handleSettingsTabChange = useCallback(
     (tab: SettingsTabId) => {
       setSettingsTab(tab);
@@ -623,6 +651,8 @@ const ChatApp = () => {
       );
       setViewMode(parsed.panel);
       setSettingsTab(parsed.settingsTab ?? "providers");
+      setAgentTab(parsed.agentTab ?? "skills");
+      setAgentId(parsed.agentId);
       if (parsed.needsReplace) {
         updateBrowserSearch(parsed.normalizedSearchParams, "replace");
       }
@@ -3002,6 +3032,8 @@ const ChatApp = () => {
         onRequestClose={() => setIsSidebarOpen(false)}
         onOpenSkillMarket={() => navigateToPanel("skills")}
         isSkillMarketOpen={viewMode === "skills"}
+        onOpenAgentCenter={() => navigateAgentCenter(agentTab, agentId)}
+        isAgentCenterOpen={viewMode === "agent-center"}
         onOpenAssistantHub={() => navigateToPanel("assistants")}
         isAssistantHubOpen={viewMode === "assistants"}
         onOpenKnowledgeBase={() => navigateToPanel("knowledge")}
@@ -3030,7 +3062,14 @@ const ChatApp = () => {
             </div>
           </div>
         )}
-        {viewMode === "skills" ? (
+        {viewMode === "agent-center" ? (
+          <AgentCenter
+            activeTab={agentTab}
+            selectedId={agentId}
+            onNavigate={navigateAgentCenter}
+            onClose={() => navigateToPanel("chat")}
+          />
+        ) : viewMode === "skills" ? (
           <SkillMarket onClose={() => navigateToPanel("chat")} />
         ) : viewMode === "assistants" ? (
           <AssistantHub

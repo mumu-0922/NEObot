@@ -22,6 +22,8 @@ bash mm-chat/scripts/verify-agent-broker.sh
 bash mm-chat/scripts/verify-agent-broker-postgres17.sh
 bash mm-chat/scripts/verify-agent-delegation.sh
 bash mm-chat/scripts/verify-agent-delegation-postgres17.sh
+bash mm-chat/scripts/verify-agent-product-shadow.sh
+bash mm-chat/scripts/verify-agent-product-shadow-postgres17.sh
 bash mm-chat/scripts/verify-agent-runner-host.sh # expected nonzero until exact host is prepared
 ```
 
@@ -127,7 +129,7 @@ passes the full suite.
 - Migration `087` concurrent reservation, stale Parent/Child launch, terminal
   settlement, cascade/reap failure, terminal/expired/reclaimed/Kill-Switch
   recovery, least privilege, dump/restore and clean down/up; all older tail
-  drills must return to `087` head.
+  drills must peel the empty product tail and return to current head `090`.
 - Paired PostgreSQL/object backup, restore-with-Runtime-off and reconciliation.
 - G20.1 backup/restore pairs migration `083` rows with all three immutable
   object prefixes: `skill-quarantine/`, `skill-packages/`, and `skill-sboms/`.
@@ -221,8 +223,8 @@ operational boundary. The exact-host gate remains expected-nonzero
   acknowledgement-loss idempotency, bounded retry/overlap, all authority
   denials, least privilege, content-free dump/restore, guarded down and clean
   down/up.
-- Every prior PostgreSQL tail drill must peel `089` and then `088` before
-  testing its older guard and finish reapplied at head `089`.
+- Every prior PostgreSQL tail drill must peel `090`, `089` and then `088` before
+  testing its older guard and finish reapplied at head `090`.
 - The full standalone gate must pass, while the exact-host Runner gate remains
   expected-nonzero `ISOLATION_UNAVAILABLE` unless a separately approved host
   promotion is in scope.
@@ -325,8 +327,8 @@ Migration `089_agent_draft_learning` plus `agent_learning_owner` and
 - PostgreSQL 17 proves fresh/replay, role isolation, claims/reclaim, source and
   human authority, exact decision replay, immutable live state, cleanup,
   content-free dump/restore, guarded down and clean down/up.
-- Verify every older Agent/MCP/Assistant/Skill PostgreSQL drill returns to head
-  `089` without weakening its original guard.
+- Verify every older Agent/MCP/Assistant/Skill PostgreSQL drill peels empty
+  `090` before its original guard and returns to head `090`.
 - Run backend race/vet, Phase 0, module/security/quality/change gates and full
   standalone. Confirm `data/`, `secrets/`, `backup/` and live
   `.env.single-server` remain untouched.
@@ -344,4 +346,100 @@ PG17 passed -> enable worker -> evaluator promotes -> overwrite current Skill
 ```text
 deploy guarded 089 default-off -> verify roles + paired backup/restore
 -> reconcile and object-before-row cleanup -> later explicit UI/shadow/host gate
+```
+
+## Scenario: Operate Agent Center and held Shadow authority
+
+### 1. Scope / Trigger
+
+Apply this contract when deploying migration `090`, exposing Agent Center,
+operating Shadow policy/opt-in state, downloading Agent Artifacts, backing up or
+restoring product authority, or preparing G20.9 legacy deletion. This scenario
+does not authorize executable Shadow or production Runtime.
+
+### 2. Signatures
+
+```bash
+bash mm-chat/scripts/verify-agent-product-shadow.sh
+bash mm-chat/scripts/verify-agent-product-shadow-postgres17.sh
+bash mm-chat/scripts/verify-agent-runtime-phase0.sh
+bash mm-chat/scripts/verify-agent-runner-host.sh # expected nonzero here
+```
+
+Migration `090_agent_product_shadow`, `agent_product_owner` and the authenticated
+`internal/agentcontrol` facade are the operational boundary.
+
+### 3. Contracts
+
+- Deploy `090` with Runtime, Scheduler, Learning and Shadow execution disabled.
+  Agent Center may expose held read/control state; it must not start a worker or
+  install a Shadow adapter from the API process.
+- `go_api_runtime` receives sanitized views and exact product functions only.
+  Deny direct worker table DML, Attempt lease/claim, effect Commit, delegation
+  launch, Cron trigger and learning-check authority.
+- Keep Artifact object keys and storage credentials server-only. Backup
+  PostgreSQL product rows and `agent-artifacts/` objects as one fingerprint-
+  bound set; restore with all workers off.
+- Shadow policy defaults off. Later enablement requires exact administrator,
+  admitted package/runtime fingerprints, bounded cohort/window/budgets and
+  explicit user opt-in. The exact-host acceptance must pass separately.
+- Global/user/admission/Skill Kill Switch, opt-out, expiry, restart, budget and
+  fingerprint drift fence observations. Store no prompt/output/Tool/Secret/
+  Artifact body or custom external URL in Shadow authority.
+- Reconcile/retention and held status reads remain available while disabled.
+  Shadow output never becomes Chat, install, admission or promotion authority.
+- G20.8 legacy inventory/backup/dry-run is local and non-destructive. Protect
+  `.env.single-server`, `data/`, `secrets/`, `backup/` and unrelated browser
+  domains. Actual deletion belongs to G20.9.
+- `090` down is guarded by `AGENT_PRODUCT_DOWN_DATA_EXISTS`. Production rollback
+  keeps `090` applied and disables Shadow; only verified-empty disposable state
+  may down/up.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| exact host unavailable | Agent Center reports `ISOLATION_UNAVAILABLE`; no executable work |
+| non-admin changes Shadow policy | `ADMINISTRATOR_REQUIRED`; no revision |
+| stale policy/opt-in/boot/fingerprint | stable conflict/fence; no observation |
+| applicable Kill Switch | `KILL_SWITCH_ACTIVE`; no adapter/observation |
+| observation/error budget exhausted | `BUDGET_EXCEEDED`; new work fenced |
+| Artifact owner mismatch | not found; object store is not opened |
+| down with product/Shadow state | `AGENT_PRODUCT_DOWN_DATA_EXISTS`; schema retained |
+
+### 5. Good / Base / Bad Cases
+
+- **Good**: deploy `090` default-off, prove least privilege and paired restore,
+  expose held Agent Center, and retain content-free Shadow diagnostics only.
+- **Base**: no policy exists and legacy text Skills remain authoritative; local
+  inventory/backup/dry-run changes no persisted state.
+- **Bad**: call an observation function as a canary worker, expose object keys,
+  enable an in-process executor, treat PG17 as host acceptance, or delete legacy
+  state during G20.8.
+
+### 6. Tests Required
+
+- Product/Shadow PG17: fresh/replay, ACLs, cross-user ownership, cancel replay,
+  Artifact seam, default-off/cohort/opt-in, Kill Switch, budget, restart,
+  generation/fingerprint fences, content-free dump/restore and guarded down/up.
+- All older Agent/MCP/Assistant/Skill PostgreSQL drills peel empty `090` before
+  their original guards and finish at head `090`.
+- Run backend race/vet/test, frontend format/lint/typecheck/test/build, Phase 0
+  and full standalone. Exact-host remains expected nonzero unless separately
+  approved.
+- Confirm protected runtime paths and the live env remain byte-untouched.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+PG17 passed -> enable Shadow worker in API -> execute package -> delete legacy
+```
+
+#### Correct
+
+```text
+deploy guarded 090 default-off -> verify API/ACL/backup/reload/no-delete
+-> keep ISOLATION_UNAVAILABLE -> later exact-host canary gate -> G20.9 deletion
 ```

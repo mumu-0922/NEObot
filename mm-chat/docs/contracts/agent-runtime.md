@@ -1,10 +1,11 @@
 # Neo Agent Runtime Executable Contract
 
 Status: G20.1 supply-chain, G20.2 durable Orchestrator, G20.3 Runner, G20.4
-brokered effects, G20.5 depth-1 Child delegation, G20.6 durable Cron scheduling
-and G20.7 Draft-only learning source/control foundations are implemented.
-Exact-host isolation and production Runner/Broker/Child/Scheduler/Learning
-promotion are held; all production Agent execution remains disabled.
+brokered effects, G20.5 depth-1 Child delegation, G20.6 durable Cron scheduling,
+G20.7 Draft-only learning, and G20.8 Agent Center/default-off Shadow control are
+implemented. Exact-host isolation and production Runner/Broker/Child/Scheduler/
+Learning/Shadow promotion are held; all production Agent execution remains
+disabled.
 
 ## 1. Scope and hard gates
 
@@ -20,6 +21,7 @@ In scope:
 - Capability Grant, Egress policy, Secret Broker and budgets;
 - Runner capability probe, launch, heartbeat, cancel/kill and side effects;
 - one-level Child Agents, Cron snapshots and Draft-only learning;
+- authenticated Agent Center projections and held synthetic/read-only Shadow;
 - legacy text-Skill cutover and rollback requirements.
 
 Hard gate: no executor, route or feature flag may make a production Agent Run
@@ -242,6 +244,31 @@ G20.7 implementation signatures:
   policy checks, stale claims, human-only replay, collision drift, cleanup,
   least privilege, guarded rollback and dump/restore. Default isolation and
   evaluation adapters remain unavailable.
+
+G20.8 implementation signatures:
+
+- `backend/internal/agentcontrol/` is the authenticated product facade over
+  existing Skill supply, Broker, Cron and Learning services. It exposes owned
+  Run process data, bounded Artifact download, exact cancel/approval/Cron/Draft
+  mutations and Shadow opt-in without worker, lease or Commit identity;
+- migration `090` owns sanitized Agent Center views, append-only cancellation,
+  bounded Artifact metadata and default-off Shadow policy/opt-in/observation
+  authority. `go_api_runtime` receives exact views/functions, never direct
+  worker table DML, claim, lease, Commit or scheduler-trigger authority;
+- the top-level frontend Agent Center keeps Package Skills, Runs, Schedules and
+  administrator Learning Review separate from Assistants, MCP and visibly
+  labelled Legacy Skills. DTOs are strict Zod-validated and URL state preserves
+  tabs/selection across reload;
+- Shadow supports only `synthetic|read_only`, requires administrator policy plus
+  user opt-in, binds cohort/revision/generation/boot/admission/package/runtime
+  fingerprints and persists content-free observations. Exact-host unavailability
+  returns `ISOLATION_UNAVAILABLE` and schedules no executable work;
+- `frontend/src/lib/skills/legacyCutover.ts` produces deterministic local
+  inventory, explicit raw local backup and a deletion dry-run with an empty
+  execution set. It performs no deletion in G20.8;
+- `scripts/verify-agent-product-shadow{,-postgres17}.sh` prove product contracts,
+  authorization/fences/budgets/restart, content-free dump/restore and guarded
+  rollback. Every older PostgreSQL tail drill finishes at head `090`.
 
 ## 6. Runner RPC
 
@@ -522,7 +549,70 @@ acknowledgement; a later exact Promote replay reads the append-only decision and
 admission link without requiring deleted quarantine bytes. Cleanup/reconcile/
 prune remain callable while Learning is off.
 
-## 13. Kill Switch contract
+## 13. Agent Center and held Shadow
+
+### Product facade
+
+`/v1/agent-center/*` is authenticated. User reads always bind the session user
+to Run, Step, Attempt, event, approval, Child, Artifact and Schedule
+projections. Learning Draft list/detail/diff/review and Shadow policy mutation
+require the configured administrator. The existing `/v1/skills/*` Store and
+library remain the Package Skill authority; Assistant, MCP and legacy text
+Skills are separate products.
+
+Mutable requests carry their owning exact authority:
+
+- Run cancel/kill: stable cancellation ID, expected live Run state and snapshot
+  fingerprint;
+- approval: intent/argument fingerprints, expected approval revision and exact
+  `approved|denied` decision;
+- Schedule create/lifecycle: immutable spec fingerprint, expected revision,
+  stable request/audit identity and effective instant;
+- Draft Reject/Promote: Draft revision/fingerprint, proposed package fingerprint
+  and append-only human decision identity;
+- Shadow: expected policy revision or user opt-in generation plus stable reason.
+
+Handlers call owning services/functions; they never issue direct table DML or
+claim Runner, Broker Commit, Scheduler trigger or learning-check authority.
+Stale or cross-user mutations change no durable authority. Artifact list DTOs
+omit object keys. Download resolves the key server-side from the exact user,
+Run and Artifact tuple and returns a bounded authenticated stream.
+
+The frontend validates every Agent Center response with strict Zod schemas.
+Unknown/malformed payloads become `INVALID_SERVER_RESPONSE`. URL parameters
+`panel=agent-center`, `agentTab` and `agentId` own reload/back/forward state.
+Desktop list/detail and mobile drill-in expose loading, empty, error and held
+states with keyboard operation, focus restoration and live status text.
+
+### Shadow authority
+
+Shadow defaults off and `effective` remains false in G20.8. An eligible cohort
+requires all of: enabled administrator policy, unexpired policy window, exact
+admitted package/runtime fingerprints, deterministic selected user, latest
+explicit opt-in, current boot epoch/generation and unused observation/error
+budget. The only modes are `synthetic` and `read_only`; neither grants writes,
+Secrets, Egress, delegation, Cron creation or Draft promotion.
+
+The injected adapter is a contract-replay seam, not an in-process package
+executor. Missing exact-host isolation returns `ISOLATION_UNAVAILABLE` before
+any work is scheduled. Opt-out, restart, expiry, budget, Kill Switch or
+fingerprint drift fences new observations; stale generations cannot publish.
+Persisted observations contain only boot/policy/generation IDs, admission and
+package/runtime fingerprints, mode/outcome/reason, latency bucket and bounded
+counts. Shadow results never enter Chat, install/admission or promotion
+authority.
+
+### Legacy inventory
+
+G20.8 locally inventories the eight legacy settings fields as counts,
+normalized IDs, fingerprints, invalid/orphan counts and the exact settings key.
+The explicit backup may contain the raw local settings value because it is a
+user-requested local export; it is never uploaded or logged. The deletion plan
+is pure dry-run, deletes no storage key and proves Assistant, MCP, Chat,
+Conversation, file, Knowledge and Memory domains are preserved. G20.9 alone
+may execute deletion.
+
+## 14. Kill Switch contract
 
 Kill Switches are durable denies with actor, scope, mode, reason, revision and
 timestamps. Broader deny overrides narrower state. Modes:
@@ -536,7 +626,7 @@ current switch epoch. Runtime disabled or Runner unavailable never stops
 retention, artifact cleanup, expired-intent cleanup, orphan reconciliation or
 audit access.
 
-## 14. Error matrix
+## 15. Error matrix
 
 | Condition | Stable code | Retry |
 | --- | --- | --- |
@@ -558,11 +648,17 @@ audit access.
 | Draft check infrastructure unavailable | `CHECK_UNAVAILABLE` | bounded claim retry; policy failure is not retried |
 | stale Draft check/cleanup worker | `STALE_CLAIM` | reclaim under a new generation only |
 | Draft Promote before exact checks/human authority | `CHECKS_INCOMPLETE` / `PROMOTION_DENIED` | no automatic fallback |
+| cross-user/non-admin Agent Center operation | `NOT_FOUND` / `ADMINISTRATOR_REQUIRED` | no authority change |
+| malformed Agent Center response | `INVALID_SERVER_RESPONSE` | reload; never trust partial DTO |
+| Shadow disabled, opt-out, cohort miss or exact host unavailable | stable held reason / `ISOLATION_UNAVAILABLE` | no executable work |
+| stale Shadow policy/generation/boot/fingerprint | `REVISION_CONFLICT` / `GENERATION_STALE` | reload exact authority |
+| Shadow observation/error budget exhausted | `BUDGET_EXCEEDED` | no new observation until a new policy |
+| applicable Shadow Kill Switch | internal `KILL_SWITCH_ACTIVE`, HTTP `AGENT_AUTHORITY_DENIED` | no adapter/observation |
 
 No error includes secret, raw arguments/result, package contents, Workspace
 paths/content, host paths or provider payloads.
 
-## 15. Isolation Acceptance Suite
+## 16. Isolation Acceptance Suite
 
 Before production enablement, test the exact release artifacts on the target
 host from a clean baseline:
@@ -593,7 +689,7 @@ Passing requires machine-readable evidence bound to host/runtime/runner image,
 runtime bundle, seccomp and test-suite fingerprints. A generic “container ran”
 or Docker daemon health result is not acceptance.
 
-## 16. Legacy text-Skill cutover
+## 17. Legacy text-Skill cutover
 
 The future cutover deletes, rather than migrates or wraps:
 
@@ -606,11 +702,13 @@ legacy catalog/custom Skill definitions and execution references
 
 Historical message content is preserved, but old `skillInvocations` render only
 the read-only fact “旧版技能已退役”; they cannot reopen or execute old definitions.
-Phase 0 deliberately changes none of this state. Final cutover requires backup,
-inventory counts/hashes, storage-version purge tests, server/runtime promotion,
-history projection proof and an all-or-nothing rollback window.
+G20.8 changes none of this state: it records a deterministic content-free local
+inventory, offers an explicit raw local backup and emits only a dry-run deletion
+plan. Final G20.9 cutover requires that backup, inventory counts/hashes,
+storage-version purge tests, server/runtime promotion, history projection proof
+and an all-or-nothing rollback window.
 
-## 17. Phase 0 verification
+## 18. Phase 0 verification
 
 Run:
 
@@ -623,7 +721,7 @@ required design anchors and the current fail-closed code execution route. It is
 offline and must never claim the production Runner or Isolation Acceptance Suite
 passed.
 
-The implemented G20.4/G20.5/G20.6/G20.7 source/control foundations additionally require:
+The implemented G20.4-G20.8 source/control and product foundations additionally require:
 
 ```bash
 bash scripts/verify-agent-broker.sh
@@ -634,12 +732,14 @@ bash scripts/verify-agent-cron.sh
 bash scripts/verify-agent-cron-postgres17.sh
 bash scripts/verify-agent-learning.sh
 bash scripts/verify-agent-learning-postgres17.sh
+bash scripts/verify-agent-product-shadow.sh
+bash scripts/verify-agent-product-shadow-postgres17.sh
 bash scripts/verify-agent-runner.sh
 bash scripts/verify-agent-runtime-phase0.sh
 bash scripts/verify-agent-runner-host.sh # expected nonzero on the current host
 ```
 
 The host command must still report `ISOLATION_UNAVAILABLE`. Passing the offline
-and disposable-database gates does not authorize an Agent API, Chat/frontend
-path, production relay, Scheduler, Project mutation, mutable canary or
-text-Skill deletion.
+and disposable-database gates authorizes only the held G20.8 control surface;
+it does not authorize Agent execution, Chat invocation, production relay,
+Scheduler, Project mutation, mutable canary or text-Skill deletion.

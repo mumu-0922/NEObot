@@ -133,15 +133,15 @@ type CreateInput struct {
 }
 
 type Template struct {
-	ID                  string
-	UserID              string
-	CurrentRevision     int64
-	RevisionFingerprint string
-	State               string
-	NextTriggerAt       *time.Time
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
-	Spec                TemplateSpec
+	ID                  string       `json:"id"`
+	UserID              string       `json:"-"`
+	CurrentRevision     int64        `json:"currentRevision"`
+	RevisionFingerprint string       `json:"revisionFingerprint"`
+	State               string       `json:"state"`
+	NextTriggerAt       *time.Time   `json:"nextTriggerAt,omitempty"`
+	CreatedAt           time.Time    `json:"createdAt"`
+	UpdatedAt           time.Time    `json:"updatedAt"`
+	Spec                TemplateSpec `json:"spec"`
 }
 
 type LifecycleInput struct {

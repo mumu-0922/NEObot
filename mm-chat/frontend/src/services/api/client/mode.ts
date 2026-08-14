@@ -19,6 +19,7 @@ export const phase11Capabilities: ApiCapabilities = {
   mcp: false,
   providerSettings: false,
   agents: false,
+  agentCenter: false,
   teams: false,
   knowledge: false,
   memories: false,

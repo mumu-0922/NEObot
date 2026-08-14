@@ -1,4 +1,5 @@
 import { createLocalAgentApiShell } from "./local/agentApi";
+import { createLocalAgentCenterApiShell } from "./local/agentCenterApi";
 import { createLocalAuthApiShell } from "./local/authApi";
 import { createLocalByokApiShell } from "./local/byokApi";
 import { createLocalChatApiShell } from "./local/chatApi";
@@ -17,6 +18,7 @@ import { createLocalVoiceJobApiShell } from "./local/voiceJobApi";
 import { createLocalVoiceProviderApiShell } from "./local/voiceProviderApi";
 import { phase11Capabilities, resolveApiClientConfig } from "./mode";
 import { createServerAgentApiShell } from "./server/agentApi";
+import { createServerAgentCenterApiShell } from "./server/agentCenterApi";
 import { createServerAuthApiShell } from "./server/authApi";
 import { createServerByokApiShell } from "./server/byokApi";
 import { createServerChatApiShell } from "./server/chatApi";
@@ -59,6 +61,9 @@ export function createNeoChatApiClient(
   const agents = serverHttpClient
     ? createServerAgentApiShell(serverHttpClient)
     : createLocalAgentApiShell();
+  const agentCenter = serverHttpClient
+    ? createServerAgentCenterApiShell(serverHttpClient)
+    : createLocalAgentCenterApiShell();
   const auth = serverHttpClient
     ? createServerAuthApiShell(serverHttpClient)
     : createLocalAuthApiShell();
@@ -108,6 +113,7 @@ export function createNeoChatApiClient(
       imports: serverEnabled,
       mcp: serverEnabled,
       agents: serverEnabled,
+      agentCenter: serverEnabled,
       teams: serverEnabled,
       knowledge: serverEnabled,
       memories: serverEnabled,
@@ -130,6 +136,7 @@ export function createNeoChatApiClient(
     mcp,
     imports,
     agents,
+    agentCenter,
     teams,
     knowledge,
     memories,

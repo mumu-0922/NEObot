@@ -144,6 +144,7 @@ describe("Phase 11.1B API mode resolver", () => {
       mcp: false,
       providerSettings: false,
       agents: false,
+      agentCenter: false,
       teams: false,
       knowledge: false,
       memories: false,

@@ -143,7 +143,7 @@ function signatures, owners, and grants while pinning lookup to the application
 schema, `pg_catalog`, and `pg_temp`. Its down path intentionally retains the
 safe search path rather than reopening object-shadowing risk.
 
-The current migration head is `089`; the latest RAG retrieval-specific migration
+The current migration head is `090`; the latest RAG retrieval-specific migration
 remains `050`. Migration `043` extends the existing final-authority evidence
 hydration boundary with complete matched-Child and containing-Parent source
 text plus their persisted token counts. Parent text is answer context only. Its
@@ -611,9 +611,25 @@ source/Kill-Switch/check authority and atomically inserts one new admitted
 `learning` candidate/package without mutating existing packages, installations,
 Runs or Cron revisions. Down refuses while any learning authority or candidate
 exists. Disposable proof uses
-`scripts/verify-agent-learning-postgres17.sh`; every older PostgreSQL tail drill
-now peels and reapplies through current head `089` before testing its original
-guard.
+`scripts/verify-agent-learning-postgres17.sh`; its original tail proof peels
+and reapplies through migration `089` before testing the learning guard.
+
+Migration `090` adds the authenticated G20.8 Agent Center read/control facade,
+bounded Artifact publication metadata and default-off Shadow observation
+authority. `go_api_runtime` receives sanitized product views plus only the exact
+Artifact lookup, Run cancel, approval, Cron lifecycle, human Draft review and
+Shadow policy/opt-in functions needed by the HTTP service; it receives no
+Agent worker table DML, lease/claim, Commit, delegation, scheduler-trigger or
+learning-check authority. Shadow policy supports only `synthetic` and
+`read_only`, binds the admitted package/runtime fingerprints, deterministic
+cohort, user opt-in, boot epoch, generation and budgets, and always reports
+`ISOLATION_UNAVAILABLE` while exact-host isolation is held. Observations are
+content-free counts, latency buckets and reason codes only. Down fails with
+`AGENT_PRODUCT_DOWN_DATA_EXISTS` while cancellation, Artifact, policy, opt-in
+or observation authority remains. Disposable proof uses
+`scripts/verify-agent-product-shadow-postgres17.sh`; every older Agent/MCP/
+Assistant/Skill tail drill first peels an empty `090` before asserting its
+original migration guard and finishes reapplied at head `090`.
 
 ## Storage boundaries
 

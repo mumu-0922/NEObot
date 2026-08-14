@@ -2,11 +2,11 @@
 
 Status: G20.1 no-execute Skill supply, G20.2 durable Orchestrator, G20.3
 `neo-runnerd`, G20.4 brokered effects, G20.5 depth-1 Child delegation, G20.6
-durable Cron scheduling and G20.7 Draft-only learning source/control
-foundations are implemented. Exact-host isolation and production Runner/Broker/
-Child/Scheduler/Learning promotion are held. Do not install a Runtime, start a
-service, enable Agent execution/Learning or delete legacy Skills from this
-document alone.
+durable Cron scheduling, G20.7 Draft-only learning, and G20.8 Agent Center/
+default-off Shadow control are implemented. Exact-host isolation and production
+Runner/Broker/Child/Scheduler/Learning/Shadow promotion are held. Do not install
+a Runtime, start a worker, enable Agent execution/Learning/Shadow or delete
+legacy Skills from this document alone.
 
 ## Default state
 
@@ -21,7 +21,7 @@ AGENT_DELEGATION_ENABLED=false
 AGENT_RUNNER_URL=
 ```
 
-G20.3 through G20.7 add no application environment variable or Compose service.
+G20.3 through G20.8 add no application environment variable or Compose worker.
 The host-only `deploy/agent-runner/neo-runnerd.env.example` is not an activation
 file. These names reserve the intended operational boundary; later promotion
 must add them through the normal preflight/example-env/Compose/documentation
@@ -124,7 +124,7 @@ identity, sends strict `neo.runner-rpc/v1`, bounds headers/body/deadline and
 accepts only a request-ID/nonce/method-bound response. There is no bearer token
 fallback.
 
-## G20.3/G20.4/G20.5/G20.6/G20.7 source and verification commands
+## G20.3-G20.8 source and verification commands
 
 ```bash
 bash scripts/verify-agent-runner.sh
@@ -137,6 +137,8 @@ bash scripts/verify-agent-cron.sh
 bash scripts/verify-agent-cron-postgres17.sh
 bash scripts/verify-agent-learning.sh
 bash scripts/verify-agent-learning-postgres17.sh
+bash scripts/verify-agent-product-shadow.sh
+bash scripts/verify-agent-product-shadow-postgres17.sh
 bash scripts/verify-agent-runtime-phase0.sh
 bash scripts/verify-agent-runner-host.sh
 ```
@@ -282,6 +284,36 @@ Draft/check/decision/cleanup/audit fact or `learning` candidate remains.
 Production rollback keeps `089` applied and disables Learning; clean down/up is
 for disposable empty databases only.
 
+## Agent Center and Shadow operations boundary
+
+Migration `090` exposes sanitized Agent Center projections plus exact
+`SECURITY DEFINER` functions under the NOLOGIN `agent_product_owner`. The API
+role may read those projections and invoke only owned Artifact lookup, Run
+cancel, approval, Cron lifecycle, human Draft review and Shadow control. It has
+no worker table DML, lease/claim, effect Commit, delegation launch, Cron trigger
+or learning-check authority. Artifact object keys remain server-only.
+
+Agent Center is safe to deploy while Runtime is held: Run creation returns
+`ISOLATION_UNAVAILABLE`, existing durable records remain readable, and Package
+Skills stay separate from Assistants, MCP and Legacy Skills. The Shadow policy
+defaults off. Do not insert a synthetic adapter or call observation functions
+from an ad-hoc production process; an adapter is test-only until the exact-host
+isolation promotion is approved.
+
+An operator enabling a later Shadow policy must bind the exact admitted
+package/runtime fingerprints, revision, cohort basis points, start/expiry and
+observation/error budgets. A user must opt in separately. Opt-out, policy drift,
+restart boot epoch, budget breach, expiry, Kill Switch or fingerprint drift
+fences new work. Diagnostics remain content-free and Shadow output never enters
+Chat or admission/promotion decisions.
+
+Migration `090` down fails with `AGENT_PRODUCT_DOWN_DATA_EXISTS` while any
+cancellation, Artifact, policy, opt-in or observation authority remains.
+Production rollback keeps `090` applied and leaves Shadow disabled. Clean
+down/up is restricted to a verified-empty disposable database. Every older
+Agent/MCP/Assistant/Skill migration drill must peel empty `090` before its own
+guard and return to head `090`.
+
 ## Kill Switch operations
 
 G20.2 persists and resolves the hierarchy through migration `084`; G20.3
@@ -369,7 +401,8 @@ stdout/stderr and high-cardinality identities.
 The durable backup set eventually includes:
 
 - PostgreSQL admissions, installs, Grants, snapshots, Run/Step/Attempt/events,
-  approvals, Cron revisions, Draft decisions, cleanup queue and Kill Switches;
+  approvals, Cron revisions, Draft decisions, Agent product cancellation/
+  Shadow policy/opt-in/observation facts, cleanup queue and Kill Switches;
 - object-store Skill packages, Runtime Bundles, SBOMs, Workspace snapshots and
   published Artifacts;
 - a manifest binding DB backup, object mirror, migration head and checksums.
@@ -385,6 +418,13 @@ procedure and are not embedded in Agent artifacts.
 Cutover inventory includes browser persistence version, all local settings keys,
 Conversation/Workspace `activeSkills`, text Skill catalogs/custom definitions,
 selection UI/context assembly and historical `skillInvocations` projection.
+
+G20.8 inventory is local and non-destructive. It records normalized IDs,
+fingerprints, counts, invalid/orphan references and the exact settings key;
+explicit backup exports the raw local settings value, while the deletion dry-run
+lists only the eight legacy Skill fields and an empty storage-key deletion set.
+Assistant, MCP, Chat, Conversation, file, Knowledge and Memory state must remain
+byte-unchanged. G20.9 owns the actual deletion.
 
 Final switch rules:
 
@@ -419,6 +459,6 @@ From `mm-chat/`:
 bash scripts/verify-agent-runtime-phase0.sh
 ```
 
-This is an offline contract check only. A pass means the design artifacts are
-internally consistent; it does not mean this host or production has a usable
-rootless Runtime.
+This offline gate also checks the G20.8 facade/Shadow/no-delete signatures. A
+pass means the design and held product artifacts are internally consistent; it
+does not mean this host or production has a usable rootless Runtime.

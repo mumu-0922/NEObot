@@ -9,8 +9,9 @@ Capability Grants, Runner RPC, side effects, Child Agents, Cron, Draft learning,
 Kill Switches, or the legacy text-Skill cutover. G20.1 implements the no-execute
 supply chain, G20.2 the internal durable Orchestrator, G20.3 the held Runner,
 G20.4 the held Broker, G20.5 the held depth-1 delegation and G20.6 the held
-durable Cron scheduling source/control foundations; current Agent API, Chat, MCP
-and `/v1/code/executions` behavior remains unchanged.
+durable Cron scheduling foundation, G20.7 Draft learning and G20.8 the held
+Agent Center/Shadow product facade. Chat, MCP and `/v1/code/executions`
+execution behavior remains unchanged.
 
 ### 2. Signatures
 
@@ -23,6 +24,8 @@ and `/v1/code/executions` behavior remains unchanged.
   `bash mm-chat/scripts/verify-agent-broker-postgres17.sh`.
 - Delegation gates: `bash mm-chat/scripts/verify-agent-delegation.sh` and
   `bash mm-chat/scripts/verify-agent-delegation-postgres17.sh`.
+- Product/Shadow gates: `bash mm-chat/scripts/verify-agent-product-shadow.sh`
+  and `bash mm-chat/scripts/verify-agent-product-shadow-postgres17.sh`.
 - Epic slices: `mm-chat/docs/tracking/g20-agent-runtime-plan.md`.
 
 ### 3. Contracts
@@ -339,8 +342,9 @@ but it does not expose a public API or enable a startup/production Scheduler.
   replay, bounded retry terminalization, all overlap modes, owner/Skill/Grant/
   approval/expiry/Kill-Switch denials, dump/restore, least privilege, guarded
   down and clean down/up.
-- Every older PostgreSQL drill that peels tail migrations must down empty `089`
-  and then `088` before testing its own guard, then reapply through head `089`.
+- Every older PostgreSQL drill that peels tail migrations must down empty `090`,
+  `089` and then `088` before testing its own guard, then reapply through head
+  `090`.
 - Phase 0 and source gates must prove the package has no public/startup wiring;
   the exact-host gate must remain expected-nonzero `ISOLATION_UNAVAILABLE`.
 
@@ -467,9 +471,9 @@ startup worker, Chat/frontend/Compose wiring or production Draft execution.
 - Exercise failed object read/delete release paths, not only successful cleanup.
   PL/pgSQL retry locals must use unambiguous names such as `next_attempts`
   rather than shadowing an `attempts` column.
-- Every older PostgreSQL tail drill peels empty `089` before its original guard
-  and finishes at head `089`. Phase 0 validates the strict Draft schema and
-  cross-contract bindings.
+- Every older PostgreSQL tail drill peels empty `090` before its original guard
+  and finishes at head `090`. Phase 0 validates the strict Draft schema,
+  G20.8 product/Shadow signatures and cross-contract bindings.
 - Full standalone must pass and exact-host Runner verification remains expected
   nonzero `ISOLATION_UNAVAILABLE`.
 
@@ -488,4 +492,101 @@ succeeded depth-0 Run + exact base -> immutable quarantined Draft
 -> reconcile-before-reclaim -> generation-fenced static/isolation/evaluation
 -> human Promote -> new admitted immutable package
 -> delayed object-before-row cleanup -> decision-only exact replay
+```
+
+## Scenario: Authenticated Agent Center and held Shadow
+
+### 1. Scope / Trigger
+
+Apply this contract when changing `internal/agentcontrol`, `/v1/agent-center/*`,
+Agent Center projections/mutations, Artifact downloads, migration `090`, Shadow
+policy/opt-in/observations or legacy Skill cutover inventory. G20.8 exposes
+control and review only; it does not enable package execution.
+
+### 2. Signatures
+
+- Backend: `mm-chat/backend/internal/agentcontrol/`.
+- Database: `090_agent_product_shadow` and `agent_product_owner`.
+- Frontend: `components/agent/AgentCenter.tsx`, the typed `agentCenterApi`, and
+  `lib/skills/legacyCutover.ts`.
+- Gates: `verify-agent-product-shadow{,-postgres17}.sh` plus Phase 0.
+
+### 3. Contracts
+
+- Bind every non-admin read/mutation to the authenticated user. Draft reads and
+  review plus Shadow policy update require the configured administrator.
+- Keep package Skills, Assistants, MCP and legacy text Skills as separate
+  identity/authority domains. Package Store/library continues through
+  `/v1/skills/*`; the existing Skill editor is visibly Legacy Skills.
+- Handlers compose owning services. They never issue table DML, lease/claim
+  worker work, Commit effects, enqueue Cron triggers or run learning checks.
+- Cancellation binds exact state/snapshot fingerprint; approval, Cron and Draft
+  mutations keep their existing request/revision/fingerprint replay fences.
+- Artifact list DTOs omit object keys. Download resolves the exact
+  user/Run/Artifact tuple server-side and streams only through injected private
+  object storage.
+- Shadow defaults off, supports only `synthetic|read_only`, requires admin
+  policy plus user opt-in and binds cohort/revision/generation/boot/admission/
+  package/runtime. Effective capabilities exclude writes, Secret, Egress,
+  delegation, Cron creation and Draft promotion.
+- Global/user/admission/Skill Kill Switch, opt-out, expiry, restart, budget and
+  fingerprint drift fence observations. Persist only IDs/fingerprints,
+  mode/outcome/reason, latency bucket and bounded counts.
+- Missing exact-host isolation returns `ISOLATION_UNAVAILABLE`; never execute
+  package code in API/browser or inject Shadow output into Chat/admission/
+  promotion.
+- Legacy inventory is local and content-free by default. Explicit raw backup is
+  local-only; deletion output is dry-run with no storage mutation until G20.9.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| cross-user Run/Artifact/cancel | `NOT_FOUND`; no object lookup or mutation |
+| non-admin Draft/Shadow policy access | `ADMINISTRATOR_REQUIRED` |
+| stale expected revision/fingerprint/generation | stable conflict; no authority change |
+| invalid server DTO | frontend `INVALID_SERVER_RESPONSE` |
+| Shadow disabled/opt-out/cohort miss | stable held reason; no adapter call |
+| applicable Kill Switch | SQL/service `KILL_SWITCH_ACTIVE`, sanitized HTTP `AGENT_AUTHORITY_DENIED`; no adapter/observation |
+| exact host unavailable | `ISOLATION_UNAVAILABLE`; no executable work |
+| migration down with product/Shadow facts | `AGENT_PRODUCT_DOWN_DATA_EXISTS` |
+
+### 5. Good / Base / Bad Cases
+
+- **Good**: authenticated user reloads owned Runs/Schedules, administrator
+  reviews exact Draft receipts, and default-off Shadow remains content-free.
+- **Base**: Agent Center reports held Runtime; legacy execution remains
+  authoritative and inventory/dry-run deletes nothing.
+- **Bad**: browser receives object keys, API writes worker tables, a Shadow
+  adapter runs package code in-process, or inventory calls storage deletion.
+
+### 6. Tests Required
+
+- Focused backend race tests cover auth, ownership, approval decision/cancel,
+  Schedule lifecycle, Draft review, exact mutation replay, Artifact seam, held
+  enqueue, administrator checks and Shadow budget/Kill-Switch adapter fences.
+- Frontend Vitest covers strict DTOs, URL reload, desktop/mobile composition,
+  keyboard/focus/status, held/error paths and deterministic no-delete inventory.
+- PostgreSQL 17 proves fresh/replay, least privilege, ownership, cancel replay,
+  Artifact lookup, default-off/cohort/opt-in, Kill Switch, budget, restart,
+  generation/fingerprint fences, content-free dump/restore and guarded down/up.
+- Every older Agent/MCP/Assistant/Skill tail drill peels empty `090` before its
+  original guard and finishes at head `090`.
+- Run Phase 0, backend vet/test, frontend full gate and full standalone. Exact
+  host remains expected-nonzero until separately promoted.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+enable Shadow -> API executes package -> copy result into Chat -> promote
+```
+
+#### Correct
+
+```text
+admin policy + user opt-in + exact cohort/fingerprints + Kill/budget fences
+-> injected synthetic/read-only observation only
+-> content-free durable fact -> no Chat/admission/promotion authority
 ```

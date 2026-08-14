@@ -65,6 +65,39 @@ describe("chat panel URL state", () => {
     expect(state.needsReplace).toBe(false);
   });
 
+  it("round-trips Agent Center tab and selected record", () => {
+    const params = setChatPanelUrlState(new URLSearchParams("keep=1"), {
+      panel: "agent-center",
+      agentTab: "runs",
+      agentId: "run_1234567890abcdef",
+    });
+    const state = parseChatPanelUrlState(params);
+
+    expect(state).toMatchObject({
+      panel: "agent-center",
+      agentTab: "runs",
+      agentId: "run_1234567890abcdef",
+      needsReplace: false,
+    });
+    expect(params.get("keep")).toBe("1");
+  });
+
+  it("removes invalid Agent Center state and state on another panel", () => {
+    const invalid = parseChatPanelUrlState(
+      "panel=agent-center&agentTab=wrong&agentId=../secret",
+    );
+    expect(invalid.agentTab).toBe("skills");
+    expect(invalid.agentId).toBeNull();
+    expect(invalid.needsReplace).toBe(true);
+
+    const chat = parseChatPanelUrlState(
+      "panel=skills&agentTab=runs&agentId=run_1234567890abcdef",
+    );
+    expect(chat.agentTab).toBeNull();
+    expect(chat.agentId).toBeNull();
+    expect(chat.normalizedSearchParams.has("agentTab")).toBe(false);
+  });
+
   it("removes panel params when returning to chat", () => {
     const params = setChatPanelUrlState(
       new URLSearchParams("panel=settings&settingsTab=voice&keep=1"),

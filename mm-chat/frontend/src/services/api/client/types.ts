@@ -83,6 +83,7 @@ export interface ApiCapabilities {
   mcp: boolean;
   providerSettings: boolean;
   agents: boolean;
+  agentCenter?: boolean;
   teams: boolean;
   knowledge: boolean;
   memories: boolean;
@@ -469,6 +470,378 @@ export interface AgentApi {
     status: "admitted" | "rejected";
     signal?: AbortSignal;
   }): Promise<void>;
+}
+
+export interface AgentPackageVersionDTO {
+  packageFingerprint: string;
+  runtimeBundleFingerprint?: string;
+  sbomFingerprint: string;
+  name: string;
+  version: string;
+  description: string;
+  license?: string;
+  compatibility?: string;
+  allowedTools: string[];
+  capabilityRequests: Array<{
+    capability: string;
+    actions: string[];
+    reason: string;
+  }>;
+  hasRuntime: boolean;
+  fileCount: number;
+  packageBytes: number;
+  expandedBytes: number;
+  createdAt: string;
+}
+
+export interface AgentPackageCandidateDTO {
+  id: string;
+  sourceType: string;
+  sourceRef: string;
+  sourceArtifactSha256: string;
+  package: AgentPackageVersionDTO;
+  status: string;
+  admissionEligible: boolean;
+  validationSummary: string;
+  reviewReason?: string;
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentPackageInstallationDTO {
+  id: string;
+  admissionId: string;
+  packageFingerprint: string;
+  name: string;
+  version: string;
+  description: string;
+  allowedTools: string[];
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentShadowPolicyDTO {
+  revision: number;
+  enabled: boolean;
+  mode: "synthetic" | "read_only";
+  admissionId?: string;
+  packageFingerprint?: string;
+  runtimeBundleFingerprint?: string;
+  cohortBasisPoints: number;
+  maxObservations: number;
+  maxErrors: number;
+  startsAt?: string;
+  expiresAt?: string;
+  updatedAt: string;
+}
+
+export interface AgentShadowSnapshotDTO {
+  policy: AgentShadowPolicyDTO;
+  optIn: {
+    optedIn: boolean;
+    generation: number;
+    policyRevision: number;
+    updatedAt: string;
+  };
+  cohortSelected: boolean;
+  eligible: boolean;
+  effective: boolean;
+  heldReasonCode: string;
+  observationCount: number;
+  errorCount: number;
+}
+
+export interface AgentCenterStatusDTO {
+  isAdministrator: boolean;
+  runtime: {
+    state: string;
+    reasonCode: string;
+    executable: boolean;
+    scheduler: boolean;
+    learningWorker: boolean;
+  };
+  shadow: AgentShadowSnapshotDTO;
+}
+
+export interface AgentRunSummaryDTO {
+  id: string;
+  state: string;
+  snapshotFingerprint: string;
+  requestFingerprint: string;
+  createdAt: string;
+  updatedAt: string;
+  terminalAt?: string;
+  cancellationState?: string;
+  cancellationMode?: string;
+  cancellationReason?: string;
+}
+
+export interface AgentApprovalDTO {
+  intentId: string;
+  intentFingerprint: string;
+  toolIdentity: string;
+  capability: string;
+  action: string;
+  argumentsFingerprint: string;
+  approvalClass: string;
+  approvalRevision: number;
+  state: string;
+  expiresAt: string;
+  approvedAt?: string;
+  terminalAt?: string;
+  errorCode?: string;
+}
+
+export interface AgentRunDetailDTO {
+  run: AgentRunSummaryDTO;
+  steps: Array<{
+    id: string;
+    ordinal: number;
+    kind: string;
+    state: string;
+    currentGeneration: number;
+    createdAt: string;
+    updatedAt: string;
+    terminalAt?: string;
+  }>;
+  attempts: Array<{
+    id: string;
+    stepId: string;
+    generation: number;
+    state: string;
+    leaseExpiresAt: string;
+    createdAt: string;
+    updatedAt: string;
+    terminalAt?: string;
+  }>;
+  events: Array<{
+    id: string;
+    stepId?: string;
+    attemptId?: string;
+    sequence: number;
+    occurredAt: string;
+    kind: string;
+    entity: string;
+    from?: string;
+    to: string;
+    actorType: string;
+    reasonCode: string;
+    generation?: number;
+    leaseExpiresAt?: string;
+  }>;
+  approvals: AgentApprovalDTO[];
+  children: Array<{
+    runId: string;
+    parentRunId?: string;
+    depth: number;
+    state: string;
+    packageFingerprint: string;
+    runtimeBundleFingerprint: string;
+    grantFingerprint: string;
+    registryFingerprint: string;
+    expiresAt: string;
+    createdAt: string;
+  }>;
+  artifacts: Array<{
+    id: string;
+    attemptId: string;
+    generation: number;
+    name: string;
+    mediaType: string;
+    size: number;
+    fingerprint: string;
+    createdAt: string;
+    downloadUrl: string;
+  }>;
+}
+
+export interface AgentScheduleSummaryDTO {
+  id: string;
+  state: string;
+  currentRevision: number;
+  revisionFingerprint: string;
+  nextTriggerAt?: string;
+  scheduleExpression: string;
+  timezone: string;
+  calculator: string;
+  automationClass: string;
+  approvalId: string;
+  packageFingerprint: string;
+  runtimeBundleFingerprint: string;
+  missedPolicy: string;
+  overlapPolicy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentScheduleDetailDTO {
+  id: string;
+  currentRevision: number;
+  revisionFingerprint: string;
+  state: string;
+  nextTriggerAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  spec: Record<string, unknown>;
+}
+
+export interface AgentDraftCheckDTO {
+  id: string;
+  kind: string;
+  status: string;
+  reasonCode: string;
+  suiteFingerprint: string;
+  evidenceFingerprint: string;
+  durationMillis: number;
+  metrics: Record<string, number>;
+}
+
+export interface AgentDraftDTO {
+  id: string;
+  ownerUserId: string;
+  state: string;
+  revision: number;
+  draftFingerprint: string;
+  basePackageFingerprint: string;
+  proposedPackageFingerprint: string;
+  runtimeBundleFingerprint: string;
+  name: string;
+  version: string;
+  checkGeneration: number;
+  checkAttempts: number;
+  admissionId?: string;
+  createdAt: string;
+  updatedAt: string;
+  objectDeletedAt?: string;
+  checks: AgentDraftCheckDTO[];
+}
+
+export interface AgentDraftDiffDTO {
+  path: string;
+  change: string;
+  beforeFingerprint: string;
+  afterFingerprint: string;
+  beforeSize: number;
+  afterSize: number;
+  beforeText: string;
+  afterText: string;
+  binary: boolean;
+}
+
+export interface AgentCenterApi {
+  getStatus(options?: { signal?: AbortSignal }): Promise<AgentCenterStatusDTO>;
+  listPackageStore(input?: {
+    page?: number;
+    pageSize?: number;
+    signal?: AbortSignal;
+  }): Promise<{
+    items: AgentPackageCandidateDTO[];
+    page: number;
+    pageSize: number;
+    totalCount: number;
+    totalPages: number;
+  }>;
+  getPackageSkill(
+    candidateId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<AgentPackageCandidateDTO>;
+  listPackageLibrary(options?: {
+    signal?: AbortSignal;
+  }): Promise<AgentPackageInstallationDTO[]>;
+  installPackageSkill(input: {
+    candidateId: string;
+    packageFingerprint: string;
+    signal?: AbortSignal;
+  }): Promise<AgentPackageInstallationDTO>;
+  uninstallPackageSkill(input: {
+    installationId: string;
+    revision: number;
+    signal?: AbortSignal;
+  }): Promise<void>;
+  listRuns(options?: {
+    limit?: number;
+    signal?: AbortSignal;
+  }): Promise<AgentRunSummaryDTO[]>;
+  getRun(
+    runId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<AgentRunDetailDTO>;
+  downloadArtifact(input: {
+    runId: string;
+    artifactId: string;
+    signal?: AbortSignal;
+  }): Promise<DownloadedFileContent>;
+  enqueueRun(options?: { signal?: AbortSignal }): Promise<void>;
+  cancelRun(input: {
+    runId: string;
+    expectedState: string;
+    snapshotFingerprint: string;
+    mode: "cancel" | "kill";
+    reasonCode: string;
+    signal?: AbortSignal;
+  }): Promise<void>;
+  decideApproval(input: {
+    runId: string;
+    intentId: string;
+    intentFingerprint: string;
+    decision: "approved" | "denied";
+    expectedRevision: number;
+    reasonCode: string;
+    signal?: AbortSignal;
+  }): Promise<AgentApprovalDTO>;
+  listSchedules(options?: {
+    limit?: number;
+    signal?: AbortSignal;
+  }): Promise<AgentScheduleSummaryDTO[]>;
+  getSchedule(
+    scheduleId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<AgentScheduleDetailDTO>;
+  createSchedule(input: {
+    templateId: string;
+    expectedRevision: number;
+    spec: Record<string, unknown>;
+    reasonCode: string;
+    activateAt?: string;
+    signal?: AbortSignal;
+  }): Promise<AgentScheduleDetailDTO>;
+  changeScheduleLifecycle(input: {
+    scheduleId: string;
+    expectedRevision: number;
+    state: "active" | "paused" | "deleted";
+    reasonCode: string;
+    signal?: AbortSignal;
+  }): Promise<AgentScheduleDetailDTO>;
+  listDrafts(options?: {
+    limit?: number;
+    signal?: AbortSignal;
+  }): Promise<AgentDraftDTO[]>;
+  getDraft(
+    draftId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<AgentDraftDTO>;
+  getDraftDiff(
+    draftId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<AgentDraftDiffDTO[]>;
+  reviewDraft(input: {
+    draftId: string;
+    decision: "reject" | "promote";
+    expectedRevision: number;
+    draftFingerprint: string;
+    proposedPackageFingerprint: string;
+    reasonCode: string;
+    signal?: AbortSignal;
+  }): Promise<void>;
+  setShadowOptIn(input: {
+    expectedGeneration: number;
+    policyRevision: number;
+    optedIn: boolean;
+    reasonCode: string;
+    signal?: AbortSignal;
+  }): Promise<AgentShadowSnapshotDTO>;
 }
 
 export type GlobalUserRole = "owner" | "user" | "viewer";
@@ -1673,6 +2046,7 @@ export interface NeoChatApiClient {
   mcp: McpApi;
   imports?: BrowserImportApi;
   agents: AgentApi;
+  agentCenter: AgentCenterApi;
   teams: TeamApi;
   knowledge: KnowledgeApi;
   memories: MemoryApi;

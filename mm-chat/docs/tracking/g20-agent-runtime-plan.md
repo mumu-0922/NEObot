@@ -2,9 +2,9 @@
 
 Status: G20.0 Phase 0, G20.1 Skill supply chain, G20.2 durable Orchestrator,
 G20.3 Runner, G20.4 brokered effects, G20.5 depth-1 Child delegation, G20.6
-durable Cron scheduling and G20.7 Draft-only learning source/control
-foundations complete. Exact-host isolation and production Runner/Broker/Child/
-Scheduler/Learning promotion are held.
+durable Cron scheduling, G20.7 Draft-only learning, and G20.8 Agent Center/
+default-off Shadow product control complete. Exact-host isolation and production
+Runner/Broker/Child/Scheduler/Learning/Shadow promotion are held.
 
 ## Locked outcome
 
@@ -191,7 +191,7 @@ sanitized audit and bounded cleanup; strict `neo.cron-template/v1` schema and
 fixtures; focused race/vet plus `verify-agent-cron{,-postgres17}.sh` fresh/
 replay, concurrency, restart, acknowledgement replay, overlap, revocation,
 least-privilege, guarded-down, dump/restore and clean down/up proof. Every older
-PostgreSQL tail drill now returns through the current head `089`.
+PostgreSQL tail drill now returns through the current head `090`.
 
 Held evidence: public Cron CRUD/trigger/backfill API, frontend/Chat integration,
 startup/Redis Scheduler, production Run execution and exact-host promotion. The
@@ -224,14 +224,18 @@ exact three-check generation claims, append-only decisions/audits, atomic new
 rollback; strict `neo.skill-draft/v1` schema/fixtures; focused race/vet plus
 `verify-agent-learning{,-postgres17}.sh` fresh/replay, least-privilege, stale
 claims, decision replay, cleanup, dump/restore and clean down/up proof. Every
-older PostgreSQL tail drill returns to head `089`.
+older PostgreSQL tail drill returns to head `090`.
 
-Held evidence: public Draft CRUD/diff/review/Promote API, frontend/Chat wiring,
-startup/Redis learning worker, live Provider evaluation, production Draft
-execution/canary and exact-host isolation. Learning and Runtime remain disabled;
-pure-text Skills remain untouched through G20.8 and are deleted only by G20.9.
+Held evidence: Chat wiring, startup/Redis learning worker, live Provider
+evaluation, production Draft execution/canary and exact-host isolation. The
+authenticated administrator Draft list/detail/diff/Reject/Promote surface is
+delivered by G20.8. Learning and Runtime remain disabled; pure-text Skills are
+untouched through G20.8 and deleted only by G20.9.
 
 ## G20.8 — Product UI and shadow execution
+
+Status: product/control foundation complete (2026-08-14); executable Shadow,
+production Runtime/Scheduler/Learning workers and exact-host promotion held.
 
 - Add separate Skill Store/install/admission views, Run process/approval/cancel,
   Artifact, Child, Cron and Draft review surfaces without merging Assistant/
@@ -244,6 +248,25 @@ pure-text Skills remain untouched through G20.8 and are deleted only by G20.9.
 Promotion gate: frontend/backend/full standalone gates, runtime acceptance on
 the exact deployment, clean-copy/restart, backup/restore and observed canary
 budgets/errors pass. Legacy execution remains authoritative until G20.9.
+
+Implemented evidence: `internal/agentcontrol` authenticated user/admin facade;
+migration `090` sanitized Run process/Schedule/Draft/Artifact views, exact
+cancel/approval/lifecycle/review functions, append-only cancellation and
+default-off Shadow policy/opt-in/boot-generation/observation authority; strict
+least privilege with no worker DML/claim/lease/Commit authority; top-level
+URL-addressable Agent Center with Package Skills, Runs, Schedules and
+administrator Learning Review, desktop list/detail, mobile drill-in, keyboard,
+focus restoration and live status states; strict typed/Zod server client and
+authenticated Artifact stream; deterministic local content-free legacy Skill
+inventory, explicit local raw backup and deletion dry-run with no mutation;
+`verify-agent-product-shadow{,-postgres17}.sh` plus every older Agent/MCP/
+Assistant/Skill PostgreSQL tail drill returning to head `090`.
+
+Held evidence: the current host remains `ISOLATION_UNAVAILABLE`; no package
+executes in the API/browser, no executable Shadow job is scheduled, and no
+Shadow output enters Chat/admission/promotion. Production promotion still needs
+the exact-host Isolation Acceptance Suite, paired backup/restore, clean restart
+and observed bounded cohort evidence. G20.8 performs no legacy deletion.
 
 ## G20.9 — Legacy Skill deletion and production cutover
 

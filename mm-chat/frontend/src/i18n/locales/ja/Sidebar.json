@@ -2,6 +2,8 @@
   "goHomeAria": "Neo Chat ホームに移動",
   "assistantHub": "アシスタントハブ",
   "openAssistantHub": "アシスタントハブを開く",
+  "agentCenter": "Agent Center",
+  "openAgentCenter": "Agent Center を開く",
   "knowledgeBase": "ナレッジベース",
   "openKnowledgeBase": "ナレッジベースを開く",
   "tools": "ツール",
@@ -47,6 +49,6 @@
   "chatActions": "チャットの操作",
   "workspaceActions": "ワークスペースの操作",
   "moveToWorkspaceAria": "チャットをワークスペースに移動",
-  "skillMarket": "スキル",
-  "openSkillMarket": "スキルを開く"
+  "skillMarket": "旧版スキル",
+  "openSkillMarket": "旧版スキルを開く"
 }

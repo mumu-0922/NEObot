@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/agentcontrol"
 	"neo-chat/mm-chat/backend/internal/agents"
 	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/browserimport"
@@ -77,6 +78,7 @@ type options struct {
 	teamService                *teams.Service
 	knowledgeService           *knowledge.Service
 	agentService               *agents.Service
+	agentControlService        *agentcontrol.Service
 	skillSupplyService         *skillsupply.Service
 	mcpService                 *mcpclient.Service
 	imageJobService            *imagejobs.Service
@@ -1024,6 +1026,12 @@ func WithAgentService(service *agents.Service) Option {
 	}
 }
 
+func WithAgentControlService(service *agentcontrol.Service) Option {
+	return func(opts *options) {
+		opts.agentControlService = service
+	}
+}
+
 func WithSkillSupplyService(service *skillsupply.Service) Option {
 	return func(opts *options) {
 		opts.skillSupplyService = service
@@ -1258,6 +1266,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	teamHandler := teams.NewHandler(resolvedOptions.teamService)
 	knowledgeHandler := knowledge.NewHandler(resolvedOptions.knowledgeService)
 	agentHandler := agents.NewHandler(resolvedOptions.agentService)
+	agentControlHandler := agentcontrol.NewHandler(resolvedOptions.agentControlService)
 	skillSupplyHandler := skillsupply.NewHandler(resolvedOptions.skillSupplyService)
 	codeJobHandler := codejobs.NewHandler(nil)
 	imageJobHandler := imagejobs.NewHandler(resolvedOptions.imageJobService)
@@ -1323,6 +1332,8 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/agents/", agentHandler)
 	mux.Handle("/v1/assistants", agentHandler)
 	mux.Handle("/v1/assistants/", agentHandler)
+	mux.Handle("/v1/agent-center", agentControlHandler)
+	mux.Handle("/v1/agent-center/", agentControlHandler)
 	mux.Handle("/v1/skills", skillSupplyHandler)
 	mux.Handle("/v1/skills/", skillSupplyHandler)
 	mux.Handle("/v1/mcp/", mcpHandler)

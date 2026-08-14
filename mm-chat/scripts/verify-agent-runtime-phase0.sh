@@ -45,6 +45,16 @@ required_agent_paths=(
   "${project_dir}/scripts/verify-agent-learning.sh"
   "${project_dir}/scripts/verify-agent-learning-postgres17.sh"
   "${project_dir}/docs/contracts/schemas/neo-skill-draft.schema.json"
+  "${project_dir}/backend/internal/agentcontrol/service.go"
+  "${project_dir}/backend/internal/agentcontrol/repository_postgres.go"
+  "${project_dir}/backend/internal/agentcontrol/handler.go"
+  "${project_dir}/backend/migrations/090_agent_product_shadow.up.sql"
+  "${project_dir}/backend/migrations/090_agent_product_shadow.down.sql"
+  "${project_dir}/frontend/src/components/agent/AgentCenter.tsx"
+  "${project_dir}/frontend/src/lib/skills/legacyCutover.ts"
+  "${project_dir}/frontend/src/services/api/client/server/agentCenterApi.ts"
+  "${project_dir}/scripts/verify-agent-product-shadow.sh"
+  "${project_dir}/scripts/verify-agent-product-shadow-postgres17.sh"
 )
 for path in "${required_agent_paths[@]}"; do
   if [[ ! -s "${path}" ]]; then
@@ -73,6 +83,18 @@ grep -Fq "DROP FUNCTION agent_learning_promote(" \
   "${project_dir}/backend/migrations/089_agent_draft_learning.down.sql"
 grep -Fq "DROP FUNCTION agent_learning_reconcile(TIMESTAMPTZ,INTEGER)" \
   "${project_dir}/backend/migrations/089_agent_draft_learning.down.sql"
+grep -Fq "CREATE FUNCTION agent_product_get_artifact(" \
+  "${project_dir}/backend/migrations/090_agent_product_shadow.up.sql"
+grep -Fq "CREATE FUNCTION agent_product_cancel_run(" \
+  "${project_dir}/backend/migrations/090_agent_product_shadow.up.sql"
+grep -Fq "CREATE FUNCTION agent_product_shadow_snapshot(" \
+  "${project_dir}/backend/migrations/090_agent_product_shadow.up.sql"
+grep -Fq "CREATE FUNCTION agent_product_append_shadow_observation(" \
+  "${project_dir}/backend/migrations/090_agent_product_shadow.up.sql"
+grep -Fq "DROP FUNCTION agent_product_append_shadow_observation(" \
+  "${project_dir}/backend/migrations/090_agent_product_shadow.down.sql"
+grep -Fq "AGENT_PRODUCT_DOWN_DATA_EXISTS" \
+  "${project_dir}/backend/migrations/090_agent_product_shadow.down.sql"
 
 schema_dir="${project_dir}/docs/contracts/schemas"
 fixture_dir="${project_dir}/docs/contracts/fixtures/agent-runtime"
@@ -94,12 +116,22 @@ trap cleanup EXIT INT TERM
 
 mkdir -p \
   "${isolated_root}/mm-chat/backend/internal/codejobs" \
+  "${isolated_root}/mm-chat/backend/internal/agentcontrol" \
+  "${isolated_root}/mm-chat/backend/migrations" \
+  "${isolated_root}/mm-chat/frontend/src/lib/skills" \
   "${isolated_root}/mm-chat/docs" \
   "${isolated_root}/mm-chat/scripts"
 
 cp "${project_dir}/backend/internal/codejobs/handler.go" \
   "${project_dir}/backend/internal/codejobs/service.go" \
   "${isolated_root}/mm-chat/backend/internal/codejobs/"
+cp "${project_dir}/backend/internal/agentcontrol/service.go" \
+  "${isolated_root}/mm-chat/backend/internal/agentcontrol/"
+cp "${project_dir}/backend/migrations/090_agent_product_shadow.up.sql" \
+  "${project_dir}/backend/migrations/090_agent_product_shadow.down.sql" \
+  "${isolated_root}/mm-chat/backend/migrations/"
+cp "${project_dir}/frontend/src/lib/skills/legacyCutover.ts" \
+  "${isolated_root}/mm-chat/frontend/src/lib/skills/"
 (
   cd "${project_dir}"
   find docs -type f \( -name '*.md' -o -name '*.json' \) -print0 |

@@ -259,6 +259,8 @@ def check_document_anchors() -> None:
             "Kill Switch hierarchy",
             "migration `088`",
             "migration `089`",
+            "migration `090`",
+            "Agent Center and held Shadow control",
             "旧版技能已退役",
         ),
         CONTRACT_DIR / "agent-runtime.md": (
@@ -268,6 +270,8 @@ def check_document_anchors() -> None:
             "G20.5 implementation signatures",
             "G20.6 implementation signatures",
             "G20.7 implementation signatures",
+            "G20.8 implementation signatures",
+            "Agent Center and held Shadow",
             "Isolation Acceptance Suite",
             "CODE_EXECUTION_UNAVAILABLE",
         ),
@@ -278,6 +282,7 @@ def check_document_anchors() -> None:
             "Child delegation operations boundary",
             "Cron scheduling operations boundary",
             "Draft learning operations boundary",
+            "Agent Center and Shadow operations boundary",
             "Legacy Skill cutover and rollback",
         ),
         PROJECT_DIR / "docs" / "tracking" / "g20-agent-runtime-plan.md": (
@@ -286,6 +291,8 @@ def check_document_anchors() -> None:
             "G20.5",
             "G20.6",
             "G20.7",
+            "G20.8",
+            "migration `090`",
             "delegate_task",
             "hard delete",
         ),
@@ -344,6 +351,56 @@ def check_fail_closed_source() -> None:
         raise VerificationError("code execution unavailable response is missing")
 
 
+def check_product_shadow_source() -> None:
+    migration = (
+        PROJECT_DIR / "backend" / "migrations" / "090_agent_product_shadow.up.sql"
+    ).read_text(encoding="utf-8")
+    down = (
+        PROJECT_DIR / "backend" / "migrations" / "090_agent_product_shadow.down.sql"
+    ).read_text(encoding="utf-8")
+    service = (
+        PROJECT_DIR / "backend" / "internal" / "agentcontrol" / "service.go"
+    ).read_text(encoding="utf-8")
+    legacy = (
+        PROJECT_DIR / "frontend" / "src" / "lib" / "skills" / "legacyCutover.ts"
+    ).read_text(encoding="utf-8")
+
+    for signature in (
+        "CREATE VIEW agent_product_runs",
+        "CREATE FUNCTION agent_product_get_artifact(",
+        "CREATE FUNCTION agent_product_cancel_run(",
+        "CREATE FUNCTION agent_product_shadow_snapshot(",
+        "CREATE FUNCTION agent_product_append_shadow_observation(",
+        "mode IN ('synthetic','read_only')",
+        "'ISOLATION_UNAVAILABLE'",
+    ):
+        if signature not in migration:
+            raise VerificationError(f"migration 090 is missing {signature!r}")
+    for forbidden in (
+        "GRANT INSERT ON agent_shadow_",
+        "GRANT UPDATE ON agent_shadow_",
+        "GRANT DELETE ON agent_shadow_",
+    ):
+        if forbidden.lower() in migration.lower():
+            raise VerificationError(f"migration 090 grants direct Shadow DML: {forbidden}")
+    if "AGENT_PRODUCT_DOWN_DATA_EXISTS" not in down:
+        raise VerificationError("migration 090 down is not data guarded")
+    if "DROP FUNCTION agent_product_append_shadow_observation(" not in down:
+        raise VerificationError("migration 090 down omits the Shadow observation function")
+
+    if "return ErrIsolationUnavailable" not in service:
+        raise VerificationError("Agent product Runtime no longer fails closed")
+    if "shadowAdapter.Observe" not in service:
+        raise VerificationError("held Shadow does not use the injected adapter seam")
+    if "os/exec" in service or "exec.Command" in service or "podman" in service.lower():
+        raise VerificationError("Agent product service contains an in-process executor")
+
+    if "dryRun: true" not in legacy or "deleteStorageKeys: []" not in legacy:
+        raise VerificationError("legacy Skill cutover is not inventory-only")
+    if "removeItem(" in legacy or ".clear(" in legacy:
+        raise VerificationError("G20.8 legacy Skill inventory contains destructive storage code")
+
+
 def main() -> int:
     try:
         instances = check_schemas_and_fixtures()
@@ -351,12 +408,13 @@ def main() -> int:
         check_document_anchors()
         check_markdown_links()
         check_fail_closed_source()
+        check_product_shadow_source()
     except VerificationError as error:
         print(f"Agent Runtime Phase 0 verification: FAILED: {error}", file=sys.stderr)
         return 1
     print(
         "Agent Runtime Phase 0 verification: passed "
-        "(schemas, positive/negative fixtures, lineage cross-contracts, docs, fail-closed route)"
+        "(schemas, fixtures, lineage, Agent product/Shadow, docs, fail-closed routes)"
     )
     print(
         "Agent Runtime Phase 0 verification: production Runtime remains disabled; "

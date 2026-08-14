@@ -2,9 +2,10 @@
 
 Status: G20.1 no-execute Skill supply chain, G20.2 durable Orchestrator, G20.3
 Runner, G20.4 brokered effects, G20.5 depth-1 Child delegation, G20.6 durable
-Cron scheduling and G20.7 Draft-only learning source/control foundations are
-implemented. Exact-host isolation and production Runner/Broker/Child/Scheduler/
-Learning promotion are held; production Runtime remains disabled.
+Cron scheduling, G20.7 Draft-only learning, and the G20.8 Agent Center/default-
+off Shadow control plane are implemented. Exact-host isolation and production
+Runner/Broker/Child/Scheduler/Learning/Shadow promotion are held; production
+Runtime remains disabled and legacy text Skills remain authoritative.
 
 ## Purpose and invariant
 
@@ -91,6 +92,7 @@ C4Component
     Component(approval, "Approval + Side-effect Coordinator", "Prepare/Commit and outcome_unknown")
     Component(scheduler, "Cron Scheduler", "Creates Runs from frozen templates")
     Component(learning, "Learning Review", "Draft quarantine and human Promote")
+    Component(product, "Agent Center Facade", "Bounded user/admin projections and exact mutations")
     Component(kills, "Kill Switch Resolver", "Global-to-run deny authority")
     Component(broker, "Broker Gateway", "Tool, egress, secret and artifact mediation")
   }
@@ -102,6 +104,8 @@ C4Component
   Rel(approval, broker, "Commits authorized intent")
   Rel(scheduler, snapshot, "Revalidates frozen template")
   Rel(learning, admission, "Submits new Draft only")
+  Rel(product, machine, "Reads owned Runs and requests exact cancellation")
+  Rel(product, learning, "Routes administrator review decisions")
 ```
 
 ## ArchiMate cross-layer blueprint
@@ -334,6 +338,40 @@ No HTTP/UI/Chat/startup/Compose path or production isolation/evaluation adapter
 is added in G20.7; the defaults remain `LEARNING_DISABLED` and
 `CHECK_UNAVAILABLE`.
 
+## Agent Center and held Shadow control
+
+G20.8 adds an independent top-level Agent Center rather than merging package
+Skills into Assistant Hub, MCP administration or the existing text-Skill
+editor. Its Package Skills, Runs, Schedules and administrator-only Learning
+Review tabs are URL-addressable and use one authenticated typed HTTP facade.
+The browser receives only user-owned/admin-authorized projections. Artifact
+metadata carries an authenticated download path; the object key stays inside
+the Go service and object-store adapter.
+
+The facade composes the existing Skill supply, Broker, Cron and Learning
+services for mutations. It does not claim Runner/Scheduler/check-worker
+identity, lease an Attempt, Commit an effect or write owning tables directly.
+Run cancellation binds expected state and snapshot fingerprint; approval,
+schedule lifecycle and Draft review retain their owning revision/fingerprint
+fences. Invalid server DTOs fail as `INVALID_SERVER_RESPONSE` in the frontend.
+
+Migration `090` owns the bounded product views, cancellation facts, Artifact
+rows and default-off Shadow policy/opt-in/observation authority. Shadow admits
+only `synthetic` and `read_only`, requires administrator policy plus explicit
+user opt-in, and deterministically binds policy revision, user, admission and
+package/runtime fingerprints. Boot epoch, generation, budget, expiry, opt-out,
+Kill Switch and fingerprint drift fence stale work. Durable observations carry
+only fingerprints, counts, latency buckets and stable reason codes; no prompt,
+output, Tool, Secret or Artifact body is persisted or returned to Chat.
+
+The production Shadow path remains held. The injected adapter seam can replay
+synthetic contracts in tests, but no package code runs in the API or browser.
+With exact-host isolation unavailable, the stable result is
+`ISOLATION_UNAVAILABLE` and no executable work is scheduled. G20.8 also creates
+a deterministic local legacy-Skill inventory, explicit raw local backup and
+pure dry-run deletion plan. It deletes nothing; G20.9 owns the approved hard
+deletion.
+
 ## Trust boundaries and STRIDE
 
 | Boundary / threat | STRIDE | Control and required proof |
@@ -353,6 +391,7 @@ is added in G20.7; the defaults remain `LEARNING_DISABLED` and
 | stale/replayed Cron claim expands authority or duplicates a Run | T/E/D | immutable approved revision, generation fencing, UTC occurrence uniqueness, locked trigger-time recheck and stable Run idempotency |
 | operator/Runtime kill denial | D/R | hierarchical durable Kill Switch, terminal event and process-group/cgroup reap |
 | learning modifies live Skill | T/E | Draft quarantine, human Promote, new fingerprint, snapshot immutability |
+| Shadow output becomes product or promotion authority | T/E/I | default-off policy plus opt-in, read-only capability, generation/fingerprint fences, content-free observations, no Chat injection |
 
 ## Kill Switch hierarchy
 
@@ -395,8 +434,9 @@ Orchestrator, G20.3 adds the credential-free host Runner boundary, G20.4 adds
 the held Tool Registry and brokered-effect authority, G20.5 adds held depth-1
 lineage, reservation, launch-admission and reap authority, G20.6 adds held
 immutable Cron revision, cursor/claim, occurrence and normal-Run enqueue
-authority, and G20.7 adds immutable Draft/check/decision/promotion/cleanup
-authority. G20.3
+authority, G20.7 adds immutable Draft/check/decision/promotion/cleanup
+authority, and G20.8 adds the authenticated Agent Center facade, Artifact seam,
+default-off Shadow authority and inventory-only legacy preparation. G20.3
 implements strict TLS 1.3 mTLS RPC, PostgreSQL plus local-fsync replay fences,
 release probing, one rootless Podman Sandbox per Attempt, full Workspace
 revalidation, bounded tmpfs Scratch, exact kill/reap/reconcile and local Unix
@@ -407,12 +447,15 @@ Prepare/Commit relay shapes, but leaves the production relay and all mutations
 unwired. G20.5 adds migration `087` and a signed Runner `runLineage`, but no
 production Child launch path. G20.6 adds migration `088` and the isolated
 `agentcron` package, but no public/startup Scheduler. G20.7 adds migration `089`
-and the isolated `agentlearning` package, but no public/startup Learning worker
-or executable checker. Migrations `088` and `089` have guarded rollback; the
+and the isolated `agentlearning` package, but no startup Learning worker or
+executable checker. G20.8 adds `internal/agentcontrol`, migration `090` and the
+top-level Agent Center, but no Runtime/Scheduler/learning-worker activation or
+package executor. Migrations `088`, `089` and `090` have guarded rollback; the
 narrow Cron and Learning control roles have SELECT plus exact function
-execution and no table DML. None of these groups changes Chat or legacy
-text-Skill behavior; existing pure-text Skills remain untouched through G20.8
-and are deleted only by G20.9.
+execution and no table DML. The narrow product facade does not gain worker
+claim/lease/Commit authority. None of these groups changes Chat execution
+authority. Legacy pure-text Skills remain untouched in G20.8 and are deleted
+only by G20.9.
 The future final cutover:
 
 1. freezes new legacy Skill installation/editing;
@@ -444,6 +487,8 @@ Production execution remains disabled until later groups prove:
   normal Run per exact UTC occurrence;
 - Draft provenance/static/isolation/evaluation, human Promote, object drift,
   cleanup and source/Kill-Switch matrices pass without mutating live authority;
+- Agent Center authorization/reload/accessibility and default-off Shadow
+  cohort/generation/budget/content-free observation gates pass;
 - secret/network/workspace/artifact boundaries pass negative tests;
 - Kill Switches kill/reap exact Sandboxes without stopping cleanup;
 - clean-copy, backup/restore and rollback rehearsals pass.

@@ -35,7 +35,7 @@ database_url="$(database_url_for "${container_name}")"
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 run_migrate(){ MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" "$@"; }
 
-log "applying 001 -> 089 and replaying"
+log "applying 001 -> 090, replaying, and peeling the empty product tail"
 if ! run_migrate up >"${work_dir}/fresh.log" 2>&1; then
   cat "${work_dir}/fresh.log" >&2
   exit 1
@@ -44,8 +44,11 @@ grep -Fq "up 086_agent_broker_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 087_agent_child_delegation" "${work_dir}/fresh.log"
 grep -Fq "up 088_agent_cron_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 089_agent_draft_learning" "${work_dir}/fresh.log"
+grep -Fq "up 090_agent_product_shadow" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
+run_migrate down >"${work_dir}/peel-090.log" 2>&1
+grep -Fq "down 090_agent_product_shadow" "${work_dir}/peel-090.log"
 
 log "checking effect least privilege"
 psql_command "${container_name}" "
@@ -95,7 +98,7 @@ docker exec -i -e "PGPASSWORD=${database_password}" "${restore_container_name}" 
 restore_counts="$(psql_command "${restore_container_name}" "SELECT concat_ws(',',(SELECT count(*) FROM agent_effect_intents),(SELECT count(*) FROM agent_effect_approvals),(SELECT count(*) FROM agent_effect_receipts),(SELECT count(*) FROM agent_effect_grant_revocations),(SELECT count(*) FROM agent_effect_cancellations),(SELECT count(*) FROM agent_secret_handles));")"
 [[ "${source_counts}" == "${restore_counts}" ]]
 
-log "proving clean 085 -> 086 -> 085 -> 089"
+log "proving clean 085 -> 086 -> 085 -> 090"
 psql_command "${container_name}" "TRUNCATE agent_effect_grant_revocations;DELETE FROM agent_runs;DELETE FROM agent_run_snapshots;" >/dev/null
 run_migrate down >"${work_dir}/down.log" 2>&1
 grep -Fq "down 086_agent_broker_foundation" "${work_dir}/down.log"
@@ -104,6 +107,7 @@ grep -Fq "up 086_agent_broker_foundation" "${work_dir}/reup.log"
 grep -Fq "up 087_agent_child_delegation" "${work_dir}/reup.log"
 grep -Fq "up 088_agent_cron_foundation" "${work_dir}/reup.log"
 grep -Fq "up 089_agent_draft_learning" "${work_dir}/reup.log"
+grep -Fq "up 090_agent_product_shadow" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final.log"
 log "passed (fresh/replay, least privilege, concurrency, fences, guarded down, dump/restore, clean down/up)"

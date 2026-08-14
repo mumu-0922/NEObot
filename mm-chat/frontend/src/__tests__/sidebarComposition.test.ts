@@ -49,7 +49,8 @@ describe("Sidebar composition", () => {
     expect(source).toContain("if (isOpen) return children");
     expect(source).toContain('motion="instant"');
     expect(source).toContain('surface="solid"');
-    expect(source.match(/^\s*<SidebarNavTooltip /gm)).toHaveLength(5);
+    expect(source.match(/^\s*<SidebarNavTooltip /gm)).toHaveLength(6);
+    expect(source).toContain("onOpenAgentCenter: () => void");
     expect(source).toContain("onOpenTools: () => void");
     expect(source).toContain('content={t("tools")}');
     expect(source).toContain('aria-current={isToolsOpen ? "page" : undefined}');

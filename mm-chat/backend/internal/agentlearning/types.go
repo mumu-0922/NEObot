@@ -175,10 +175,10 @@ type ReviewInput struct {
 }
 
 type Promotion struct {
-	DraftID            string
-	AdmissionID        string
-	PackageFingerprint string
-	Created            bool
+	DraftID            string `json:"draftId"`
+	AdmissionID        string `json:"admissionId"`
+	PackageFingerprint string `json:"packageFingerprint"`
+	Created            bool   `json:"created"`
 }
 
 type CleanupClaim struct {
@@ -207,15 +207,15 @@ type PruneResult struct {
 }
 
 type FileDiff struct {
-	Path              string
-	Change            string
-	BeforeFingerprint string
-	AfterFingerprint  string
-	BeforeSize        int64
-	AfterSize         int64
-	BeforeText        string
-	AfterText         string
-	Binary            bool
+	Path              string `json:"path"`
+	Change            string `json:"change"`
+	BeforeFingerprint string `json:"beforeFingerprint"`
+	AfterFingerprint  string `json:"afterFingerprint"`
+	BeforeSize        int64  `json:"beforeSize"`
+	AfterSize         int64  `json:"afterSize"`
+	BeforeText        string `json:"beforeText"`
+	AfterText         string `json:"afterText"`
+	Binary            bool   `json:"binary"`
 }
 
 type preparedDraft struct {

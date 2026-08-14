@@ -324,6 +324,7 @@ function createMockClient(
     },
     mcp: options.mcp ?? defaultClient.mcp,
     agents: options.agents ?? createMockAgentApi(),
+    agentCenter: options.agentCenter ?? defaultClient.agentCenter,
     teams: options.teams ?? defaultClient.teams,
     knowledge: options.knowledge ?? defaultClient.knowledge,
     memories: options.memories ?? defaultClient.memories,

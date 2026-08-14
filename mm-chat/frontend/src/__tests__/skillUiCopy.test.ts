@@ -5,10 +5,10 @@ import zh from "../i18n/locales/zh";
 describe("skill and panel copy", () => {
   it("uses normalized sidebar section titles", () => {
     expect(zh.Sidebar.assistantHub).toBe("助理");
-    expect(zh.Sidebar.skillMarket).toBe("技能");
+    expect(zh.Sidebar.skillMarket).toBe("旧版技能");
     expect(zh.Mcp.title).toBe("工具");
     expect(en.Sidebar.assistantHub).toBe("Assistants");
-    expect(en.Sidebar.skillMarket).toBe("Skills");
+    expect(en.Sidebar.skillMarket).toBe("Legacy Skills");
     expect(en.Mcp.title).toBe("Tools");
   });
 

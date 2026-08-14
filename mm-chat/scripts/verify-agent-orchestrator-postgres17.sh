@@ -70,7 +70,7 @@ database_url="$(database_url_for "${container_name}")"
 server_major="$(psql_command "${container_name}" 'SHOW server_version_num' | cut -c1-2)"
 [[ "${server_major}" == "17" ]] || { echo "expected PostgreSQL 17" >&2; exit 1; }
 
-log "building and applying 001 -> 089"
+log "building and applying 001 -> 090"
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/mm-chat-migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"; }
 run_migrate up >"${work_dir}/fresh.log" 2>&1
@@ -80,8 +80,11 @@ grep -Fq "up 086_agent_broker_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 087_agent_child_delegation" "${work_dir}/fresh.log"
 grep -Fq "up 088_agent_cron_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 089_agent_draft_learning" "${work_dir}/fresh.log"
+grep -Fq "up 090_agent_product_shadow" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
+run_migrate down >"${work_dir}/peel-090.log" 2>&1
+grep -Fq "down 090_agent_product_shadow" "${work_dir}/peel-090.log"
 
 log "checking authority schema and least privilege"
 psql_command "${container_name}" "
@@ -145,6 +148,7 @@ grep -Fq "up 086_agent_broker_foundation" "${work_dir}/guard-reapply-tail.log"
 grep -Fq "up 087_agent_child_delegation" "${work_dir}/guard-reapply-tail.log"
 grep -Fq "up 088_agent_cron_foundation" "${work_dir}/guard-reapply-tail.log"
 grep -Fq "up 089_agent_draft_learning" "${work_dir}/guard-reapply-tail.log"
+grep -Fq "up 090_agent_product_shadow" "${work_dir}/guard-reapply-tail.log"
 
 log "dumping and restoring content-free control-plane authority"
 docker exec -e "PGPASSWORD=${database_password}" "${container_name}" \
@@ -183,7 +187,9 @@ END
 \$\$;
 " >/dev/null
 
-log "rolling back empty 089 through 085, then proving clean 083 -> 084 -> 083 -> 089 replay"
+log "rolling back empty 090 through 085, then proving clean 083 -> 084 -> 083 -> 090 replay"
+run_migrate down >"${work_dir}/down-090.log" 2>&1
+grep -Fq "down 090_agent_product_shadow" "${work_dir}/down-090.log"
 run_migrate down >"${work_dir}/down-089.log" 2>&1
 grep -Fq "down 089_agent_draft_learning" "${work_dir}/down-089.log"
 run_migrate down >"${work_dir}/down-088.log" 2>&1
@@ -209,6 +215,7 @@ grep -Fq "up 086_agent_broker_foundation" "${work_dir}/reup.log"
 grep -Fq "up 087_agent_child_delegation" "${work_dir}/reup.log"
 grep -Fq "up 088_agent_cron_foundation" "${work_dir}/reup.log"
 grep -Fq "up 089_agent_draft_learning" "${work_dir}/reup.log"
+grep -Fq "up 090_agent_product_shadow" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 
