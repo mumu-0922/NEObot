@@ -1961,3 +1961,36 @@ Added immutable quarantined Skill Drafts, fenced static/isolation/evaluation che
 ### Next Steps
 
 - None - task complete
+
+
+## Session 48: Agent Runtime G20.8 product UI and held Shadow
+
+**Date**: 2026-08-14
+**Task**: Agent Runtime G20.8 product UI and held Shadow
+**Branch**: `main`
+
+### Summary
+
+Added the authenticated Agent Center facade/UI, migration 090 held Shadow authority, content-free legacy Skill inventory/backup/dry-run, Kill Switch/error/focus regressions, PostgreSQL 17 gates, and full standalone verification.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6391c46d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
