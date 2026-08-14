@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "neo.agent-project-mutation-canary-plan/v1",
+  "synthetic": true,
+  "userId": "31313131-3131-4313-8313-313131313131",
+  "projectId": "project_31313131",
+  "assistantId": "assistant_31313131",
+  "packageFingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "runtimeBundleFingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "targetFingerprint": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+  "issuedAt": "2026-08-15T00:00:00Z",
+  "expiresAt": "2026-08-16T00:00:00Z",
+  "sandbox": {
+    "runtimeBundleFingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "packageFingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "image": "registry.invalid/neo/project-canary@sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    "uid": 10001,
+    "gid": 10001,
+    "rootfsReadOnly": true,
+    "noNewPrivileges": true,
+    "capabilities": [],
+    "seccompProfileFingerprint": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "networkMode": "none",
+    "workspaceSnapshotId": "workspace_snapshot_3131313131313131",
+    "workspaceFingerprint": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+    "resources": {
+      "cpuMillis": 250,
+      "memoryMiB": 128,
+      "pids": 16,
+      "wallSeconds": 30,
+      "outputBytes": 4096,
+      "scratchBytes": 1048576
+    }
+  },
+  "argv": [
+    "/opt/neo/bin/project-canary",
+    "--wait-for-cancel"
+  ],
+  "leaseSeconds": 30,
+  "action": {
+    "id": "project_mutation",
+    "requestIdentity": "g21.3-request-project-mutation",
+    "idempotencyKey": "g21.3-project-mutation-reviewed",
+    "toolIdentity": "project.patch",
+    "capability": "project.write",
+    "action": "apply_patch",
+    "resource": "project-canary/g21-3",
+    "classification": "mutable",
+    "idempotent": false,
+    "approval": "per_commit",
+    "arguments": {
+      "contentFingerprint": "sha256:69a91c49c64a5529bbd6a69fe840807bd3fa6107dd9d1769252e83314d83d2bb",
+      "mutationFingerprint": "sha256:062a516d748abd4163ca45209e909c0d420d3f8d54361acd87a084b3fb6919c7",
+      "path": "g21-3-canary.txt",
+      "sizeBytes": 19
+    },
+    "baseRevision": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "ttlSeconds": 300,
+    "project": {
+      "resource": "project-canary/g21-3",
+      "path": "g21-3-canary.txt",
+      "baseRevision": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "content": "synthetic mutation\n",
+      "maxBytes": 1024
+    }
+  }
+}

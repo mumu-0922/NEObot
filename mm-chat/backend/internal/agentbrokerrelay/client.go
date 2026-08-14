@@ -124,6 +124,7 @@ func relayCodeError(code string) error {
 		{agentrunner.ErrorApprovalDenied, agentrunner.ErrApprovalDenied},
 		{agentrunner.ErrorIntentExpired, agentrunner.ErrIntentExpired},
 		{agentrunner.ErrorArtifactDenied, agentrunner.ErrArtifactDenied},
+		{agentrunner.ErrorProjectMutationDenied, agentrunner.ErrProjectMutationDenied},
 		{agentrunner.ErrorExecutorUnavailable, agentrunner.ErrExecutorUnavailable},
 		{agentrunner.ErrorInvalidTransition, agentrunner.ErrInvalidTransition},
 		{agentrunner.ErrorOutcomeUnknown, agentrunner.ErrOutcomeUnknown},

@@ -745,6 +745,148 @@ services:
       agent-broker-relay:
         ipv4_address: ${AGENT_BROKER_CANARY_RELAY_IP:-172.31.254.2}
 
+  agent-runtime-project-canary:
+    image: ${BACKEND_IMAGE:-mm-chat/backend:local}
+    build: *backend-build
+    restart: unless-stopped
+    profiles: ["agent-runtime-project-canary"]
+    init: true
+    user: "${MM_CHAT_RUNTIME_UID:-1000}:${MM_CHAT_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 48
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m,mode=1777
+    environment:
+      AGENT_PROJECT_MUTATION_CANARY_ENABLED: ${AGENT_PROJECT_MUTATION_CANARY_ENABLED:-false}
+      AGENT_RUNNER_CONTROL_ENABLED: ${AGENT_RUNNER_CONTROL_ENABLED:-false}
+      AGENT_ROOT_RUN_CANARY_ENABLED: ${AGENT_ROOT_RUN_CANARY_ENABLED:-false}
+      AGENT_BROKER_ARTIFACT_CANARY_ENABLED: ${AGENT_BROKER_ARTIFACT_CANARY_ENABLED:-false}
+      AGENT_RUNTIME_ENABLED: ${AGENT_RUNTIME_ENABLED:-false}
+      AGENT_SCHEDULER_ENABLED: ${AGENT_SCHEDULER_ENABLED:-false}
+      AGENT_SKILL_INSTALL_ENABLED: ${AGENT_SKILL_INSTALL_ENABLED:-false}
+      AGENT_LEARNING_ENABLED: ${AGENT_LEARNING_ENABLED:-false}
+      AGENT_DELEGATION_ENABLED: ${AGENT_DELEGATION_ENABLED:-false}
+      AGENT_BROKER_READ_ONLY_ENABLED: ${AGENT_BROKER_READ_ONLY_ENABLED:-false}
+      AGENT_BROKER_MUTATION_ENABLED: ${AGENT_BROKER_MUTATION_ENABLED:-false}
+      AGENT_PROJECT_CANARY_DATABASE_URL: ${AGENT_PROJECT_CANARY_DATABASE_URL:-postgres://agent_project_canary_app:change-me-agent-project-canary-postgres@postgres:5432/neo_chat?sslmode=disable}
+      AGENT_PROJECT_CANARY_RUNNER_URL: ${AGENT_PROJECT_CANARY_RUNNER_URL:-https://127.0.0.1:9443/internal/neo-runner/v1/rpc}
+      AGENT_PROJECT_CANARY_RUNNER_ID: ${AGENT_PROJECT_CANARY_RUNNER_ID:-neo-runner-primary}
+      AGENT_PROJECT_CANARY_RUNNER_SERVER_NAME: ${AGENT_PROJECT_CANARY_RUNNER_SERVER_NAME:-neo-runner.internal}
+      AGENT_PROJECT_CANARY_CLIENT_IDENTITY: ${AGENT_PROJECT_CANARY_CLIENT_IDENTITY:-spiffe://neo-chat/agent-runtime-project-canary}
+      AGENT_PROJECT_CANARY_CLIENT_CERT_FILE: /run/agent-runtime-project-canary/client.crt
+      AGENT_PROJECT_CANARY_CLIENT_KEY_FILE: /run/agent-runtime-project-canary/client.key
+      AGENT_PROJECT_CANARY_SERVER_CA_FILE: /run/agent-runtime-project-canary/server-ca.crt
+      AGENT_PROJECT_CANARY_RELEASE_MANIFEST_FILE: /run/agent-runtime-project-canary/release-manifest.json
+      AGENT_PROJECT_CANARY_PRODUCTION_POLICY_FILE: /etc/mm-chat/agent-runtime-project-canary/production-policy.json
+      AGENT_PROJECT_CANARY_ACTIVATION_FILE: /run/agent-runtime-project-canary/production-activation.json
+      AGENT_PROJECT_CANARY_PLAN_FILE: /run/agent-runtime-project-canary/project-canary-plan.json
+      AGENT_PROJECT_CANARY_AUTHORITY_PRIVATE_KEY_FILE: /run/agent-runtime-project-canary/authority-private-key
+      AGENT_PROJECT_CANARY_AUTHORITY_PUBLIC_KEY_FILE: /run/agent-runtime-project-canary/authority-public-key
+      AGENT_PROJECT_CANARY_APPROVAL_DOCUMENT_FILE: /run/agent-runtime-project-canary/approval.json
+      AGENT_PROJECT_CANARY_APPROVAL_PUBLIC_KEY_FILE: /run/agent-runtime-project-canary/approval-public-key
+      AGENT_PROJECT_CANARY_RELEASE_GIT_COMMIT: ${AGENT_PROJECT_CANARY_RELEASE_GIT_COMMIT:-0000000000000000000000000000000000000000}
+      AGENT_PROJECT_CANARY_RELAY_LISTEN_ADDR: ${AGENT_PROJECT_CANARY_RELAY_LISTEN_ADDR:-172.31.254.10:9445}
+      AGENT_PROJECT_CANARY_RELAY_ENDPOINT: ${AGENT_PROJECT_CANARY_RELAY_ENDPOINT:-https://172.31.254.10:9445/internal/agent-broker/v1/relay}
+      AGENT_PROJECT_CANARY_RELAY_TLS_CERT_FILE: /run/agent-runtime-project-canary/relay-server.crt
+      AGENT_PROJECT_CANARY_RELAY_TLS_KEY_FILE: /run/agent-runtime-project-canary/relay-server.key
+      AGENT_PROJECT_CANARY_RELAY_TLS_CLIENT_CA_FILE: /run/agent-runtime-project-canary/relay-client-ca.crt
+      AGENT_PROJECT_CANARY_RUNNER_RELAY_IDENTITY: ${AGENT_PROJECT_CANARY_RUNNER_RELAY_IDENTITY:-spiffe://neo-chat/neo-runner-project-relay}
+      AGENT_PROJECT_CANARY_POLL_INTERVAL: ${AGENT_PROJECT_CANARY_POLL_INTERVAL:-10s}
+      AGENT_PROJECT_CANARY_RPC_TIMEOUT: ${AGENT_PROJECT_CANARY_RPC_TIMEOUT:-10s}
+      AGENT_PROJECT_CANARY_AUTHORITY_TTL: ${AGENT_PROJECT_CANARY_AUTHORITY_TTL:-15s}
+      AGENT_PROJECT_CANARY_RECONCILE_BATCH_SIZE: ${AGENT_PROJECT_CANARY_RECONCILE_BATCH_SIZE:-100}
+    volumes:
+      - type: bind
+        source: ${AGENT_PROJECT_CANARY_CLIENT_CERT_SOURCE:-./secrets/agent-runtime-project-canary/client.crt}
+        target: /run/agent-runtime-project-canary/client.crt
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PROJECT_CANARY_CLIENT_KEY_SOURCE:-./secrets/agent-runtime-project-canary/client.key}
+        target: /run/agent-runtime-project-canary/client.key
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PROJECT_CANARY_SERVER_CA_SOURCE:-./secrets/agent-runtime-project-canary/server-ca.crt}
+        target: /run/agent-runtime-project-canary/server-ca.crt
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PROJECT_CANARY_RELEASE_MANIFEST_SOURCE:-./secrets/agent-runtime-project-canary/release-manifest.json}
+        target: /run/agent-runtime-project-canary/release-manifest.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PROJECT_CANARY_PRODUCTION_POLICY_SOURCE:-./config/agent-runner/production-policy.json}
+        target: /etc/mm-chat/agent-runtime-project-canary/production-policy.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PROJECT_CANARY_ACTIVATION_SOURCE:-./secrets/agent-runtime-project-canary/production-activation.json}
+        target: /run/agent-runtime-project-canary/production-activation.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PROJECT_CANARY_PLAN_SOURCE:-./secrets/agent-runtime-project-canary/project-canary-plan.json}
+        target: /run/agent-runtime-project-canary/project-canary-plan.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PROJECT_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE:-./secrets/agent-runtime-project-canary/authority-private-key}
+        target: /run/agent-runtime-project-canary/authority-private-key
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PROJECT_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE:-./secrets/agent-runtime-project-canary/authority-public-key}
+        target: /run/agent-runtime-project-canary/authority-public-key
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PROJECT_CANARY_APPROVAL_DOCUMENT_SOURCE:-./secrets/agent-runtime-project-canary/approval.json}
+        target: /run/agent-runtime-project-canary/approval.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PROJECT_CANARY_APPROVAL_PUBLIC_KEY_SOURCE:-./secrets/agent-runtime-project-canary/approval-public-key}
+        target: /run/agent-runtime-project-canary/approval-public-key
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PROJECT_CANARY_RELAY_TLS_CERT_SOURCE:-./secrets/agent-runtime-project-canary/relay-server.crt}
+        target: /run/agent-runtime-project-canary/relay-server.crt
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PROJECT_CANARY_RELAY_TLS_KEY_SOURCE:-./secrets/agent-runtime-project-canary/relay-server.key}
+        target: /run/agent-runtime-project-canary/relay-server.key
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PROJECT_CANARY_RELAY_TLS_CLIENT_CA_SOURCE:-./secrets/agent-runtime-project-canary/relay-client-ca.crt}
+        target: /run/agent-runtime-project-canary/relay-client-ca.crt
+        read_only: true
+        bind: { create_host_path: false }
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["/usr/local/bin/mm-chat-agent-runtime-project-canary", "run"]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/mm-chat-agent-runtime-project-canary", "healthcheck"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 10s
+    networks:
+      private: {}
+      agent-project-relay:
+        ipv4_address: ${AGENT_PROJECT_CANARY_RELAY_IP:-172.31.254.10}
+
   frontend:
     image: ${FRONTEND_IMAGE:-mm-chat/frontend:local}
     build: *frontend-build
@@ -1012,6 +1154,12 @@ networks:
     ipam:
       config:
         - subnet: ${AGENT_BROKER_CANARY_RELAY_SUBNET:-172.31.254.0/29}
+  agent-project-relay:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: ${AGENT_PROJECT_CANARY_RELAY_SUBNET:-172.31.254.8/29}
   rag-private:
     driver: bridge
     internal: true

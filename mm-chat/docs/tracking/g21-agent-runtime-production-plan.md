@@ -2,7 +2,7 @@
 
 ## Baseline
 
-G20.1-G20.10 and migrations `083`-`091` remain the authority. Legacy text
+G20.1-G20.10 and migrations `083`-`092` remain the authority. Legacy text
 Skills are retired and admitted Package Skills are the only eligible Skill
 domain. G21 advances production capability one independently evidenced stage
 at a time; no later stage may be inferred from an earlier gate.
@@ -86,9 +86,38 @@ execution.
 
 ## G21.3 — Bounded mutable effects
 
-Activate individual mutable actions by exact Grant/policy after approval,
-idempotency and crash matrices pass. Rollout is action-by-action; no generic
-network, vault or MCP write capability is admitted.
+Status: source/control implementation complete; exact-host Project mutation
+canary held.
+
+- Add a fourth independent `project_mutation_canary` stage, caller, private
+  relay, Compose profile and ninth PostgreSQL LOGIN without changing earlier
+  caller method sets.
+- Admit exactly one synthetic `project.patch/project.write/apply_patch` CAS,
+  one flat UTF-8 path and one exact resource; keep user Projects, deletes,
+  arbitrary paths, MCP writes, generic Egress and Secrets disabled.
+- Require a separate offline-signed Ed25519 `per_commit` approval. Mount only
+  its public key and signed document; keep approval, Runner authority and TLS
+  keys distinct.
+- Use a domain-separated stable activation binding fingerprint so activation
+  and approval document hashes do not form a cycle. Prepare first; a fixed
+  approval ID plus durable collision fences prevents reuse for another intent.
+- Add migration `092_agent_project_mutation_canary` with operator-provisioned
+  synthetic resources, atomic CAS plus immutable receipt, exact status and
+  replay-safe baseline cleanup under function-only authority.
+- Recheck approval, live lease/generation, snapshot, Grant/Registry,
+  revocation, Kill Switch, base revision, path, UTF-8 bytes and fingerprints at
+  CAS. Stale, revoked or killed actions create zero receipt and no mutation.
+- Resolve acknowledgement loss from the durable Project receipt. Clean
+  unchanged base proves not sent; conflicting/unavailable status becomes
+  terminal `outcome_unknown`; restart never dispatches a second CAS.
+- Keep Runner and Sandbox free of Project database, approval, authority private
+  key, relay server key, S3/MCP/Provider/vault and generic network material.
+
+Promotion gate: run `scripts/verify-agent-runtime-g21-3.sh`, then reproduce a
+fresh `PROJECT_MUTATION_CANARY_GATES_PASSED` record, exact offline approval,
+complete Runner-relay-Broker-CAS-cleanup flow and zero residue on the approved
+host. Disposable PostgreSQL and the current `ISOLATION_UNAVAILABLE` host cannot
+promote user Projects or generic mutable execution.
 
 ## G21.4 — Depth-1 Child Agents
 

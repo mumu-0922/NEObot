@@ -18,11 +18,26 @@ func TestPrivateAddressAllowsOnlyLiteralLoopbackOrPrivateIP(t *testing.T) {
 func TestRunnerCallerIdentitiesRemainSeparate(t *testing.T) {
 	seen := map[string]struct{}{}
 	for _, identity := range []string{controlCallerIdentity, rootCanaryCallerIdentity,
-		brokerCanaryCallerIdentity, brokerRelayIdentity} {
+		brokerCanaryCallerIdentity, brokerRelayIdentity, projectCanaryCallerIdentity, projectRelayIdentity} {
 		if _, duplicate := seen[identity]; duplicate {
 			t.Fatal("Runner caller and relay identities must remain distinct")
 		}
 		seen[identity] = struct{}{}
+	}
+}
+
+func TestProjectRelayConfigurationCannotPartiallyEnable(t *testing.T) {
+	for _, name := range []string{"NEO_RUNNER_PROJECT_RELAY_URL", "NEO_RUNNER_PROJECT_RELAY_CLIENT_CERT_FILE",
+		"NEO_RUNNER_PROJECT_RELAY_CLIENT_KEY_FILE", "NEO_RUNNER_PROJECT_RELAY_SERVER_CA_FILE",
+		"NEO_RUNNER_PROJECT_RELAY_SERVER_NAME", "NEO_RUNNER_PROJECT_RELAY_CLIENT_IDENTITY"} {
+		t.Setenv(name, "")
+	}
+	if projectRelayConfigured() {
+		t.Fatal("empty Project relay configuration was enabled")
+	}
+	t.Setenv("NEO_RUNNER_PROJECT_RELAY_URL", "https://10.0.0.10:9445/internal/agent-broker/v1/relay")
+	if !projectRelayConfigured() {
+		t.Fatal("partial Project relay configuration was not detected")
 	}
 }
 

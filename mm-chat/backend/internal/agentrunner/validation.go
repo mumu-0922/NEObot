@@ -476,6 +476,8 @@ func ErrorCode(err error) string {
 		return ErrorSecretDenied
 	case errorsIs(err, ErrProjectConflict):
 		return ErrorProjectConflict
+	case errorsIs(err, ErrProjectMutationDenied):
+		return ErrorProjectMutationDenied
 	case errorsIs(err, ErrArtifactDenied):
 		return ErrorArtifactDenied
 	case errorsIs(err, ErrExecutorUnavailable):

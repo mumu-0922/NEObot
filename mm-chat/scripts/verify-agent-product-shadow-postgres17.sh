@@ -54,7 +54,7 @@ psql_command() {
       --username="${database_user}" --dbname="${database_name}" --command "${command}"
 }
 
-log "starting disposable database and applying 001 -> 091"
+log "starting disposable database and applying 001 -> 092"
 start_database "${container_name}"
 database_url="$(database_url_for "${container_name}")"
 [[ "$(psql_command "${container_name}" 'SHOW server_version_num' | cut -c1-2)" == "17" ]]
@@ -63,6 +63,7 @@ run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" "
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 090_agent_product_shadow" "${work_dir}/fresh.log"
 grep -Fq "up 091_agent_artifact_publication" "${work_dir}/fresh.log"
+grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
@@ -240,7 +241,9 @@ restore_counts="$(psql_command "${restore_container_name}" "SELECT concat_ws(','
   (SELECT count(*) FROM agent_shadow_observations));")"
 [[ "${source_counts}" == "${restore_counts}" ]]
 
-log "proving guarded down and clean 089 -> 091 -> 089 -> 091"
+log "proving guarded down and clean 089 -> 092 -> 089 -> 092"
+run_migrate down >"${work_dir}/peel-092.log" 2>&1
+grep -Fq "down 092_agent_project_mutation_canary" "${work_dir}/peel-092.log"
 run_migrate down >"${work_dir}/peel-091.log" 2>&1
 grep -Fq "down 091_agent_artifact_publication" "${work_dir}/peel-091.log"
 set +e
@@ -256,6 +259,7 @@ grep -Fq "down 090_agent_product_shadow" "${work_dir}/down.log"
 run_migrate up >"${work_dir}/reup.log" 2>&1
 grep -Fq "up 090_agent_product_shadow" "${work_dir}/reup.log"
 grep -Fq "up 091_agent_artifact_publication" "${work_dir}/reup.log"
+grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final.log"
 log "passed (fresh/replay, ACLs, ownership, Artifact/cancel, Shadow fences/budget/restart, content-free dump/restore, guarded down/up)"

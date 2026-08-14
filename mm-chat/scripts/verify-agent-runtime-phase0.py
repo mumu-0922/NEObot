@@ -35,6 +35,9 @@ SCHEMA_NAMES = (
     "neo-agent-root-run-canary-plan",
     "neo-agent-broker-artifact-canary-activation",
     "neo-agent-broker-artifact-canary-plan",
+    "neo-agent-project-mutation-canary-activation",
+    "neo-agent-project-mutation-canary-plan",
+    "neo-agent-project-mutation-approval",
 )
 JsonObject = dict[str, Any]
 
@@ -159,6 +162,9 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
     draft = instances["neo-skill-draft"]
     production_policy = instances["neo-agent-production-policy"]
     production_closure = instances["neo-agent-production-closure"]
+    project_activation = instances["neo-agent-project-mutation-canary-activation"]
+    project_plan = instances["neo-agent-project-mutation-canary-plan"]
+    project_approval = instances["neo-agent-project-mutation-approval"]
 
     check_fingerprint_bindings(grant, launch)
     require_equal(
@@ -315,6 +321,28 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
         raise VerificationError(
             "committed production closure fixture has cleanup residue"
         )
+    action = project_plan["action"]
+    approval = project_approval["payload"]
+    if project_activation["release"]["migrationHead"] != 92 or approval["release"]["migrationHead"] != 92:
+        raise VerificationError("G21.3 contracts do not bind migration head 092")
+    if approval["request"] != {
+        "callerIdentity": project_activation["wiring"]["callerIdentity"],
+        "requestIdentity": action["requestIdentity"],
+        "idempotencyKey": action["idempotencyKey"],
+    }:
+        raise VerificationError("G21.3 approval request does not bind the exact plan")
+    expected_action = {
+        "toolIdentity": action["toolIdentity"],
+        "capability": action["capability"],
+        "action": action["action"],
+        "resource": action["resource"],
+        "baseRevision": action["baseRevision"],
+        "path": action["project"]["path"],
+        "contentFingerprint": action["arguments"]["contentFingerprint"],
+        "mutationFingerprint": action["arguments"]["mutationFingerprint"],
+    }
+    if approval["action"] != expected_action:
+        raise VerificationError("G21.3 approval action does not bind the exact mutation")
 
 
 def check_document_anchors() -> None:
@@ -336,6 +364,10 @@ def check_document_anchors() -> None:
             "agent-runtime-control",
             "G21.2",
             "agent-runtime-broker-canary",
+            "G21.3",
+            "agent-runtime-project-canary",
+            "ActivationBindingFingerprint",
+            "Migration `092_agent_project_mutation_canary`",
         ),
         CONTRACT_DIR / "agent-runtime.md": (
             "Durable state machine",
@@ -353,6 +385,8 @@ def check_document_anchors() -> None:
             "G21.0 control-plane activation",
             "activation -> probe -> list -> PostgreSQL",
             "G21.2 read-only Broker and Artifact canary",
+            "G21.3 offline-approved synthetic Project mutation canary",
+            "verify-agent-runtime-g21-3.sh",
             "outcome_unknown",
         ),
         PROJECT_DIR / "docs" / "deployment" / "agent-runtime.md": (
@@ -370,6 +404,8 @@ def check_document_anchors() -> None:
             "verify-agent-runtime-g21-0.sh",
             "G21.2 read-only Broker and Artifact canary activation",
             "verify-agent-runtime-g21-2.sh",
+            "G21.3 bounded Project mutation canary activation",
+            "verify-agent-runtime-g21-3.sh",
         ),
         PROJECT_DIR / "docs" / "tracking" / "g20-agent-runtime-plan.md": (
             "G20.0",
@@ -390,6 +426,7 @@ def check_document_anchors() -> None:
             "G21.2",
             "source/control implementation complete; exact-host Broker/Artifact",
             "G21.3",
+            "source/control implementation complete; exact-host Project mutation",
             "G21.4",
             "G21.5",
             "G21.6",

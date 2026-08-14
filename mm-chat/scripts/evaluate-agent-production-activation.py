@@ -49,6 +49,25 @@ BROKER_CANARY_CHECK_IDS = {
     "workspace_read_ready",
     "zero_inventory",
 }
+PROJECT_CANARY_CHECK_IDS = {
+    "approval_authority_separate",
+    "broker_artifact_canary_ready",
+    "control_plane_ready",
+    "credential_absence",
+    "exact_host_isolation",
+    "least_privilege_login",
+    "not_sent_no_redispatch",
+    "outcome_unknown_no_retry",
+    "private_project_relay_mtls",
+    "private_runner_mtls",
+    "project_cas_cleanup",
+    "project_receipt_recovery",
+    "root_run_canary_ready",
+    "signed_approval_ready",
+    "signed_authority_ready",
+    "synthetic_plan_ready",
+    "zero_inventory",
+}
 FINGERPRINT = re.compile(r"^sha256:[0-9a-f]{64}$")
 IDENTITY = re.compile(r"^[A-Za-z][A-Za-z0-9_.:@/-]{0,127}$")
 DETAIL = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
@@ -171,10 +190,19 @@ def broker_relay_endpoint_fingerprint(endpoint: str) -> str:
     )
 
 
+def project_relay_endpoint_fingerprint(endpoint: str) -> str:
+    return (
+        "sha256:"
+        + hashlib.sha256(
+            b"neo-agent-project-relay-endpoint-v1\0" + endpoint.encode("utf-8")
+        ).hexdigest()
+    )
+
+
 def validate_policy(policy: dict[str, Any]) -> None:
     if (
         policy.get("schemaVersion") != "neo.agent-production-policy/v1"
-        or policy.get("migrationHead") != 91
+        or policy.get("migrationHead") != 92
     ):
         fail("POLICY_INVALID")
 
@@ -313,26 +341,37 @@ def validate_record(
     )
     if record["schemaVersion"] != "neo.agent-production-activation/v1" or record[
         "stage"
-    ] not in {"control_plane", "root_run_canary", "broker_artifact_canary"}:
+    ] not in {
+        "control_plane",
+        "root_run_canary",
+        "broker_artifact_canary",
+        "project_mutation_canary",
+    }:
         fail("ACTIVATION_VERSION_INVALID")
     stage = record["stage"]
     check_ids = {
         "control_plane": CONTROL_CHECK_IDS,
         "root_run_canary": ROOT_CANARY_CHECK_IDS,
         "broker_artifact_canary": BROKER_CANARY_CHECK_IDS,
+        "project_mutation_canary": PROJECT_CANARY_CHECK_IDS,
     }[stage]
     if record["evidenceClass"] not in {"template", "production"}:
         fail("EVIDENCE_CLASS_INVALID")
     if stage != "control_plane" and record["evidenceClass"] == "production":
         if args.canary_plan is None or args.authority_public_key is None:
             fail("WIRING_INVALID")
-    if stage == "broker_artifact_canary" and record["evidenceClass"] == "production":
+    if stage in {"broker_artifact_canary", "project_mutation_canary"} and record[
+        "evidenceClass"
+    ] == "production":
         if (
             args.relay_endpoint is None
             or args.relay_server_certificate is None
             or args.relay_client_ca is None
             or args.runner_relay_identity is None
         ):
+            fail("WIRING_INVALID")
+    if stage == "project_mutation_canary" and record["evidenceClass"] == "production":
+        if args.approval_document is None or args.approval_public_key is None:
             fail("WIRING_INVALID")
 
     release = exact(
@@ -349,7 +388,7 @@ def validate_record(
     if (
         not isinstance(release["gitCommit"], str)
         or re.fullmatch(r"[0-9a-f]{40}", release["gitCommit"]) is None
-        or release["migrationHead"] != 91
+        or release["migrationHead"] != 92
     ):
         fail("RELEASE_INVALID")
     release_fingerprints = [
@@ -370,6 +409,11 @@ def validate_record(
     deployment_fingerprint = fingerprint(
         target["deploymentFingerprint"], "TARGET_INVALID"
     )
+    if (
+        args.target_fingerprint is not None
+        and args.target_fingerprint != deployment_fingerprint
+    ):
+        fail("TARGET_FINGERPRINT_DRIFT")
     runner_id = identity(target["runnerId"], "TARGET_INVALID")
     wiring_keys = {
         "endpointSha256",
@@ -380,13 +424,15 @@ def validate_record(
     }
     if stage != "control_plane":
         wiring_keys |= {"canaryPlanSha256", "authorityPublicKeySha256"}
-    if stage == "broker_artifact_canary":
+    if stage in {"broker_artifact_canary", "project_mutation_canary"}:
         wiring_keys |= {
             "relayEndpointSha256",
             "relayServerCertificateSha256",
             "relayClientCASha256",
             "runnerRelayIdentity",
         }
+    if stage == "project_mutation_canary":
+        wiring_keys |= {"approvalDocumentSha256", "approvalPublicKeySha256"}
     wiring = exact(record["wiring"], wiring_keys, "WIRING_INVALID")
     wiring_fingerprints = [
         fingerprint(wiring[key], "WIRING_INVALID")
@@ -397,7 +443,7 @@ def validate_record(
             fingerprint(wiring[key], "WIRING_INVALID")
             for key in ("canaryPlanSha256", "authorityPublicKeySha256")
         )
-    if stage == "broker_artifact_canary":
+    if stage in {"broker_artifact_canary", "project_mutation_canary"}:
         wiring_fingerprints.extend(
             fingerprint(wiring[key], "WIRING_INVALID")
             for key in (
@@ -407,6 +453,13 @@ def validate_record(
             )
         )
         identity(wiring["runnerRelayIdentity"], "WIRING_INVALID")
+    if stage == "project_mutation_canary":
+        wiring_fingerprints.extend(
+            fingerprint(wiring[key], "WIRING_INVALID")
+            for key in ("approvalDocumentSha256", "approvalPublicKeySha256")
+        )
+        if wiring["authorityPublicKeySha256"] == wiring["approvalPublicKeySha256"]:
+            fail("AUTHORITY_REUSE_FORBIDDEN")
     identity(wiring["serverName"], "WIRING_INVALID")
     identity(wiring["callerIdentity"], "WIRING_INVALID")
 
@@ -461,28 +514,36 @@ def validate_record(
         "scheduler",
         "learning",
     }
-    if stage == "broker_artifact_canary":
+    if stage in {"broker_artifact_canary", "project_mutation_canary"}:
         authorization_keys.add("artifactPublication")
+    if stage == "project_mutation_canary":
+        authorization_keys.add("projectMutation")
     authorization = exact(
         record["authorization"], authorization_keys, "AUTHORIZATION_INVALID"
     )
     expected_authorization = {
         "controlPlane": stage == "control_plane",
-        "rootRuns": stage in {"root_run_canary", "broker_artifact_canary"},
-        "brokerReadOnly": stage == "broker_artifact_canary",
+        "rootRuns": stage
+        in {"root_run_canary", "broker_artifact_canary", "project_mutation_canary"},
+        "brokerReadOnly": stage
+        in {"broker_artifact_canary", "project_mutation_canary"},
         "brokerMutable": False,
         "delegation": False,
         "scheduler": False,
         "learning": False,
     }
-    if stage == "broker_artifact_canary":
+    if stage in {"broker_artifact_canary", "project_mutation_canary"}:
         expected_authorization["artifactPublication"] = True
+    if stage == "project_mutation_canary":
+        expected_authorization["projectMutation"] = True
     if authorization != expected_authorization:
         fail("AUTHORIZATION_WIDENED")
 
     cleanup_keys = {"orphanSandboxes", "scratchResidue"}
-    if stage == "broker_artifact_canary":
+    if stage in {"broker_artifact_canary", "project_mutation_canary"}:
         cleanup_keys |= {"artifactResidue", "quarantineResidue"}
+    if stage == "project_mutation_canary":
+        cleanup_keys.add("projectResidue")
     cleanup = exact(record["cleanup"], cleanup_keys, "CLEANUP_INVALID")
     for key in cleanup:
         if (
@@ -530,7 +591,7 @@ def validate_record(
                 ),
             ]
         )
-    if stage == "broker_artifact_canary":
+    if stage in {"broker_artifact_canary", "project_mutation_canary"}:
         stage_bindings.extend(
             [
                 (
@@ -542,6 +603,21 @@ def validate_record(
                     args.relay_client_ca,
                     wiring["relayClientCASha256"],
                     "RELAY_CLIENT_CA_DRIFT",
+                ),
+            ]
+        )
+    if stage == "project_mutation_canary":
+        stage_bindings.extend(
+            [
+                (
+                    args.approval_document,
+                    wiring["approvalDocumentSha256"],
+                    "APPROVAL_DOCUMENT_DRIFT",
+                ),
+                (
+                    args.approval_public_key,
+                    wiring["approvalPublicKeySha256"],
+                    "APPROVAL_KEY_DRIFT",
                 ),
             ]
         )
@@ -557,9 +633,13 @@ def validate_record(
     ):
         fail("RUNNER_ENDPOINT_DRIFT")
     if (
-        stage == "broker_artifact_canary"
+        stage in {"broker_artifact_canary", "project_mutation_canary"}
         and args.relay_endpoint is not None
-        and broker_relay_endpoint_fingerprint(args.relay_endpoint)
+        and (
+            broker_relay_endpoint_fingerprint(args.relay_endpoint)
+            if stage == "broker_artifact_canary"
+            else project_relay_endpoint_fingerprint(args.relay_endpoint)
+        )
         != wiring["relayEndpointSha256"]
     ):
         fail("RELAY_ENDPOINT_DRIFT")
@@ -573,7 +653,7 @@ def validate_record(
     ):
         fail("CALLER_IDENTITY_DRIFT")
     if (
-        stage == "broker_artifact_canary"
+        stage in {"broker_artifact_canary", "project_mutation_canary"}
         and args.runner_relay_identity is not None
         and args.runner_relay_identity != wiring["runnerRelayIdentity"]
     ):
@@ -606,6 +686,7 @@ def validate_record(
         "control_plane": "CONTROL_PLANE_GATES_PASSED",
         "root_run_canary": "ROOT_RUN_CANARY_GATES_PASSED",
         "broker_artifact_canary": "BROKER_ARTIFACT_CANARY_GATES_PASSED",
+        "project_mutation_canary": "PROJECT_MUTATION_CANARY_GATES_PASSED",
     }[stage]
     return "ACTIVATION_READY", reason, release["gitCommit"]
 
@@ -647,12 +728,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--server-ca", type=Path)
     parser.add_argument("--canary-plan", type=Path)
     parser.add_argument("--authority-public-key", type=Path)
+    parser.add_argument("--approval-document", type=Path)
+    parser.add_argument("--approval-public-key", type=Path)
     parser.add_argument("--relay-endpoint")
     parser.add_argument("--relay-server-certificate", type=Path)
     parser.add_argument("--relay-client-ca", type=Path)
     parser.add_argument("--runner-relay-identity")
     parser.add_argument("--endpoint")
     parser.add_argument("--runner-id")
+    parser.add_argument("--target-fingerprint")
     parser.add_argument("--server-name")
     parser.add_argument("--caller-identity")
     parser.add_argument("--release-commit")

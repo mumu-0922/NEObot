@@ -135,7 +135,7 @@ passes the full suite.
 - Migration `087` concurrent reservation, stale Parent/Child launch, terminal
   settlement, cascade/reap failure, terminal/expired/reclaimed/Kill-Switch
   recovery, least privilege, dump/restore and clean down/up; all older tail
-  drills must peel the empty product tail and return to current head `091`.
+  drills must peel the empty product tail and return to current head `092`.
 - Paired PostgreSQL/object backup, restore-with-Runtime-off and reconciliation.
 - G20.1 backup/restore pairs migration `083` rows with all three immutable
   object prefixes: `skill-quarantine/`, `skill-packages/`, and `skill-sboms/`.
@@ -230,7 +230,7 @@ operational boundary. The exact-host gate remains expected-nonzero
   denials, least privilege, content-free dump/restore, guarded down and clean
   down/up.
 - Every prior PostgreSQL tail drill must peel `091`, `090`, `089` and then `088`
-  before testing its older guard and finish reapplied at head `091`.
+  before testing its older guard and finish reapplied at head `092`.
 - The full standalone gate must pass, while the exact-host Runner gate remains
   expected-nonzero `ISOLATION_UNAVAILABLE` unless a separately approved host
   promotion is in scope.
@@ -334,7 +334,7 @@ Migration `089_agent_draft_learning` plus `agent_learning_owner` and
   human authority, exact decision replay, immutable live state, cleanup,
   content-free dump/restore, guarded down and clean down/up.
 - Verify every older Agent/MCP/Assistant/Skill PostgreSQL drill peels empty
-  `090` before its original guard and returns to head `091`.
+  `090` before its original guard and returns to head `092`.
 - Run backend race/vet, Phase 0, module/security/quality/change gates and full
   standalone. Confirm `data/`, `secrets/`, `backup/` and live
   `.env.single-server` remain untouched.
@@ -430,7 +430,7 @@ Migration `090_agent_product_shadow`, `agent_product_owner` and the authenticate
   Artifact seam, default-off/cohort/opt-in, Kill Switch, budget, restart,
   generation/fingerprint fences, content-free dump/restore and guarded down/up.
 - All older Agent/MCP/Assistant/Skill PostgreSQL drills peel empty `091`, then
-  empty `090`, before their original guards and finish at head `091`.
+  empty `090`, before their original guards and finish at head `092`.
 - Run backend race/vet/test, frontend format/lint/typecheck/test/build, Phase 0
   and full standalone. Exact-host remains expected nonzero unless separately
   approved.
@@ -483,7 +483,7 @@ count, and lowercase SHA-256 fingerprint of the matching full database backup.
   `SELECT count(*) FROM conversations WHERE metadata ? 'activeSkills'`.
 - Run default dry-run first. Apply takes `SHARE ROW EXCLUSIVE`, re-counts under
   lock, removes only the `activeSkills` JSONB key, validates updated/remaining
-  counts and commits. Schema head is now `091`.
+  counts and commits. Schema head is now `092`.
 - Deploy the G20.9 image, reload twice, and prove localStorage/IndexedDB marker-
   last purge and server restart do not resurrect selection. Check historical
   content plus the single retirement label.
@@ -523,7 +523,7 @@ count, and lowercase SHA-256 fingerprint of the matching full database backup.
   signatures and held Runtime.
 - PostgreSQL 17 gate: schema `001 -> 090`, sanitized fixtures, real full dump
   fingerprint, dry-run, both rejected guards, exact JSONB deletion, unrelated
-  byte-equivalence, repeated expected-zero apply, and head `091`.
+  byte-equivalence, repeated expected-zero apply, and head `092`.
 - Production evidence additionally requires browser reload, backend restart,
   paired restore/rollback, clean-copy and exact-host canary/Isolation Acceptance;
   disposable gate success alone is not promotion.
@@ -572,7 +572,7 @@ Evaluator: `mm-chat/scripts/evaluate-agent-production-closure.py`.
 - The policy freezes conservative single-server capacity, root/Child/Cron
   budgets, no-Egress/no-Secret canary, retention, bounded cleanup, exact metric
   labels and alert thresholds. It never widens a frozen Grant.
-- A closure record binds one Git commit, migration head `091`, Runner manifest/
+- A closure record binds one Git commit, migration head `092`, Runner manifest/
   binary, Runtime Bundle, target deployment and exact policy SHA-256 to 16
   unique live checks. The input cannot self-assert its final verdict.
 - `template` evidence never promotes. Production requires every check passed,
@@ -592,7 +592,7 @@ Evaluator: `mm-chat/scripts/evaluate-agent-production-closure.py`.
   performs no mutation.
 - G20.10 itself adds no migration, Compose/startup worker, production adapter,
   flag, browser/API/rootful fallback or live-host change. The current closure
-  contract binds head `091`; the current host stays `ISOLATION_UNAVAILABLE`.
+  contract binds head `092`; the current host stays `ISOLATION_UNAVAILABLE`.
 
 ### 4. Validation & Error Matrix
 
@@ -626,7 +626,7 @@ Evaluator: `mm-chat/scripts/evaluate-agent-production-closure.py`.
 - Self-test ephemeral positive semantics plus isolation-held, template-held,
   stale, cleanup residue, policy drift, incomplete, duplicate, malformed,
   writable-file and symlink cases.
-- Run every Agent source and PostgreSQL 17 gate through schema head `091`, then
+- Run every Agent source and PostgreSQL 17 gate through schema head `092`, then
   full frontend/backend/RAG standalone verification.
 - Run `verify-agent-runner-host.sh` separately and require nonzero
   `ISOLATION_UNAVAILABLE` here. Only a real target-host pass may back a
@@ -893,7 +893,7 @@ Compose profile: `agent-runtime-broker-canary`. Caller identity:
   RPC timeout `1s..10s`, authority TTL `10s..15s`, existing S3-compatible
   bucket with `S3_BUCKET_AUTO_CREATE=false`, private MCP Runner URL/token,
   matching TLS/key pairs, immutable roots, strict five-action plan and a ready
-  `broker_artifact_canary` record at migration head `091`.
+  `broker_artifact_canary` record at migration head `092`.
 - Broad Runtime, generic Broker mutation/read, Child, Scheduler, Skill-install
   and Learning flags stay false. Roll back by stopping only this profile or
   clearing its flag; retain migration `091`, rows/objects and G21.0/G21.1
@@ -951,4 +951,118 @@ Root-canary identity + public relay + Runner holds DB/S3/MCP credentials
 ```text
 ready G21.0/G21.1 + distinct G21.2 caller/LOGIN + private relay identity
 -> Broker-only credentials -> exact five-action canary -> disable and reconcile
+```
+
+## Scenario: Deploy the G21.3 Project mutation canary profile
+
+### 1. Scope / Trigger
+
+Apply when configuring `agent-runtime-project-canary`, the Project relay
+network, ninth database principal, 14 secure mounts, signed approval or G21.3
+preflight/rollback. The current development host remains ineligible.
+
+### 2. Signatures
+
+```bash
+bash mm-chat/scripts/preflight-single-server.sh /secure/mm-chat.env
+bash mm-chat/scripts/verify-agent-project-canary-activation.sh
+bash mm-chat/scripts/verify-agent-project-canary-preflight.sh
+bash mm-chat/scripts/verify-agent-project-mutation-postgres17.sh
+bash mm-chat/scripts/verify-agent-runtime-g21-3.sh
+```
+
+- Compose profile: `agent-runtime-project-canary`.
+- Caller: `spiffe://neo-chat/agent-runtime-project-canary`.
+- Relay: `spiffe://neo-chat/neo-runner-project-relay`, network
+  `172.31.254.8/29`, service `172.31.254.10:9445`.
+- Principal: `agent_project_canary_app` with exactly four inherited control
+  roles and no owner/DML/provision authority.
+
+### 3. Contracts
+
+- G21.0 control, G21.1 Root and G21.2 Broker/Artifact evidence/flags must be
+  ready while all broad Runtime/Broker mutation/MCP write/Egress/Secret/Child/
+  Cron/Skill-install/Learning flags remain false.
+- The Project caller, Project relay identity, Project endpoint and ninth LOGIN
+  are distinct from every prior caller/relay/principal. Broker and Project
+  relay CIDRs cannot overlap. Use one literal private HTTPS endpoint with no
+  host port, hostname, wildcard, public or link-local address.
+- Mount exactly 14 read-only, owner-secure, regular non-symlink files:
+  Runner client cert/key/CA, release manifest, policy, activation, plan,
+  authority private/public keys, approval document/public key, relay server
+  cert/key/client CA. Disable host-path creation. Use no Compose Secret.
+- Authority, approval and TLS sensitive materials are pairwise distinct.
+  Approval private key stays offline and outside Git. The canary receives no
+  S3, MCP, Provider, vault, Redis or generic Egress configuration.
+- Runner env receives only the Project caller plus outbound relay URL/client
+  cert/key/server CA/server name/relay identity. It must not contain Project DB,
+  approval document/key, authority private key or relay server key. Sandbox
+  plan remains `networkMode=none`, capability-free and credential-free.
+- Preflight validates a strict one-action current-window plan, Ed25519-signed
+  approval, current head `092`, stable activation binding fingerprint, exact
+  release/target/caller/request/action/actor/window, TLS/key pairs and ninth
+  principal before any database or Runner access.
+- Operator provisions one reviewed synthetic baseline while all canaries are
+  off. Runtime cannot provision arbitrary resources. Stop/disable only this
+  profile for rollback; retain migration `092` and immutable facts.
+- Restore with every canary off. Matching committed facts may drive baseline
+  cleanup only; never rerun CAS. Fresh approval and activation are required
+  before restart. Destructive down is allowed only after archived evidence,
+  removal of the ninth LOGIN membership and joint operator truncate of all
+  three G21.3 tables.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| profile unselected/flag false | no G21.3 secure file read, DB open or Runner dial |
+| any G21.0-G21.2 prerequisite false | preflight rejects |
+| broad mutation/MCP/Egress/Secret flag true | preflight/startup rejects |
+| shared caller/relay/principal/key or overlapping CIDR | preflight rejects |
+| hostname/public/wildcard/link-local/incorrect relay path | preflight rejects |
+| insecure/symlink/missing/placeholder/mismatched file | reject before DB/Runner access |
+| approval signature/binding/window drift | activation/preflight rejects |
+| Runner/Sandbox contains controller credential | source/Compose gate fails |
+| populated migration down | `AGENT_PROJECT_MUTATION_DOWN_REQUIRES_EMPTY` |
+| current development host | expected nonzero `ISOLATION_UNAVAILABLE` |
+
+### 5. Good / Base / Bad Cases
+
+- **Good:** approved target preserves earlier profiles, starts only G21.3 with
+  exact secure inputs, runs one CAS, restores baseline and retains zero runtime
+  residue plus content-free immutable facts.
+- **Base:** Project profile is absent from default Compose and all flags are
+  false; ordinary services never read G21.3 material.
+- **Bad:** reuse Broker relay/TLS/login, mount a credential directory or
+  approval private key, auto-create Projects, retry after ambiguity or treat a
+  disposable PostgreSQL pass as live activation.
+
+### 6. Tests Required
+
+- Render development/production/default Compose; assert default-off profile,
+  hardened process, exact static network/IP, 14 read-only mounts, no secrets,
+  production image-only wiring and broad flags false.
+- Run enabled/default/negative preflight for prerequisites, exact identities,
+  principals, CIDRs, endpoints, secure files, TLS/Ed25519, plan, approval and
+  activation.
+- Prove Runner env/Sandbox plan credential absence and exact outbound relay
+  tuple only.
+- Run focused Project PostgreSQL 17 drill, G21.2 regression, Phase 0,
+  standalone full and separately expected-nonzero exact-host gate.
+- Backup/restore must preserve synthetic resource/receipt/cleanup counts and
+  require cleanup/status reconciliation before a fresh activation.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+Broker relay/login reused + approval private key mounted + timeout => new CAS key
+```
+
+#### Correct
+
+```text
+ready G21.0-G21.2 + isolated Project caller/relay/LOGIN + offline signed approval
+-> one synthetic CAS/status/cleanup -> disable profile, preserve immutable facts
 ```

@@ -60,14 +60,15 @@ psql_command() {
 }
 [[ "$(psql_command 'SHOW server_version_num' | cut -c1-2)" == "17" ]]
 
-log "applying migrations through schema head 091"
+log "applying migrations through schema head 092"
 (cd "${backend_dir}" && go build -buildvcs=false -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 MIGRATION_DATABASE_URL="${admin_url}" "${work_dir}/migrate" up >"${work_dir}/migrate.log" 2>&1
 grep -Fq "up 084_agent_orchestrator_foundation" "${work_dir}/migrate.log"
 grep -Fq "up 085_agent_runner_foundation" "${work_dir}/migrate.log"
 grep -Fq "up 090_agent_product_shadow" "${work_dir}/migrate.log"
 grep -Fq "up 091_agent_artifact_publication" "${work_dir}/migrate.log"
-[[ "$(psql_command "SELECT max(version) FROM schema_migrations")" == "91" ]]
+grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/migrate.log"
+[[ "$(psql_command "SELECT max(version) FROM schema_migrations")" == "92" ]]
 
 log "provisioning the independent exact-membership LOGIN"
 psql_command "
@@ -120,5 +121,12 @@ log "proving atomic Sandbox/Attempt/Step/Run cancellation and rollback"
       -run '^TestPostgresTerminalRepositoryCommitsWholeCanceledChainOrRollsBack$' \
       ./internal/agentrootcanary
 )
+
+log "peeling and reapplying the empty migration 092 tail"
+MIGRATION_DATABASE_URL="${admin_url}" "${work_dir}/migrate" down >"${work_dir}/peel-092.log" 2>&1
+grep -Fq "down 092_agent_project_mutation_canary" "${work_dir}/peel-092.log"
+MIGRATION_DATABASE_URL="${admin_url}" "${work_dir}/migrate" up >"${work_dir}/reup-092.log" 2>&1
+grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/reup-092.log"
+[[ "$(psql_command "SELECT max(version) FROM schema_migrations")" == "92" ]]
 
 log "passed (PostgreSQL 17, exact role inheritance, rollback, atomic terminal chain; no Artifact role use)"

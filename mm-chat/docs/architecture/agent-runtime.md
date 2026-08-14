@@ -12,7 +12,9 @@ default-off maintenance plane; G21.1 implements a separately activated,
 synthetic-only Root Run canary. G21.2 implements a third default-off canary
 that reaches the durable Broker only through the Runner relay for five reviewed
 synthetic actions, including bounded Artifact publication, without enabling
-general or user-facing execution.
+general or user-facing execution. G21.3 adds a fourth independently activated
+canary for one offline-approved synthetic Project compare-and-swap mutation;
+generic mutation, MCP writes and user Projects remain unavailable.
 
 ## Purpose and invariant
 
@@ -470,8 +472,8 @@ claim/lease/Commit authority. None of these groups changes Chat execution
 authority. Legacy pure-text Skills remain untouched in G20.8. G20.9 deletes
 their browser authority and execution chain without adding a schema migration;
 the PostgreSQL selection cleanup is the explicit operator cutover
-`scripts/cutover-legacy-skills.sql`. G21.2 later advances the schema head to
-`091` without restoring any legacy authority.
+`scripts/cutover-legacy-skills.sql`. G21.2 later adds migration `091` and G21.3
+adds migration `092`; neither restores any legacy authority.
 The G20.9 cutover:
 
 1. freezes new legacy Skill installation/editing;
@@ -490,7 +492,7 @@ The G20.9 cutover:
    execution.
 
 G20.10 adds no migration or executable wiring. The current closure contract
-binds the immutable release, migration head `091`, Runner manifest/binary,
+binds the immutable release, migration head `092`, Runner manifest/binary,
 Runtime Bundle, target deployment
 and operations policy into one strict content-free closure record. The
 read-only evaluator requires all 16 live checks plus zero temporary evidence
@@ -588,6 +590,51 @@ remains `networkMode=none` and contains none of those credentials. The profile,
 flag and activation record default off; checked-in evidence remains
 `ISOLATION_UNAVAILABLE`, so this source-complete seam is not exact-host or
 user-Runtime promotion evidence.
+
+G21.3 adds `mm-chat-agent-runtime-project-canary`, caller identity
+`spiffe://neo-chat/agent-runtime-project-canary` and Runner relay identity
+`spiffe://neo-chat/neo-runner-project-relay`. The existing control, Root and
+Broker caller method sets are unchanged. Runner selects the Broker or Project
+relay only after authenticating the original caller; the two literal-private
+mTLS endpoints and relay identities cannot cross-route or be reused. The
+Project process receives no S3, MCP, Provider, vault or generic Egress
+credential, and Runner receives only its outbound Project relay tuple.
+
+The strict plan admits exactly `project.patch` / `project.write` /
+`apply_patch` for one operator-provisioned synthetic resource, one flat UTF-8
+path and at most 4096 bytes. It is mutable, non-idempotent and requires
+`per_commit` approval. A dedicated offline Ed25519 operator key signs
+`neo.agent-project-mutation-approval/v1`; the canary mounts only the public key
+and signed document. Approval verification follows Prepare and binds the exact
+release, target, stable activation identity, plan, caller, request identity,
+idempotency identity, Tool/action/resource, actor, reason and time window.
+`ActivationBindingFingerprint` is a domain-separated stable binding
+fingerprint, not
+the activation record SHA, so approval and activation hashes do not form an
+impossible cycle. Random Broker Intent IDs are deliberately not pre-signed;
+the fixed approval ID plus durable intent/fingerprint collision fences make the
+approval single-use for the one reviewed action.
+
+Migration `092_agent_project_mutation_canary` owns the synthetic resource,
+immutable mutation receipt and cleanup fact. The ninth LOGIN recursively
+inherits exactly `agent_orchestrator_runtime`, `agent_runner_control`,
+`agent_effect_control` and `agent_project_mutation_control`; it has no owner
+membership, provision authority or direct table DML. In one transaction the
+CAS rechecks the committing intent, positive approval, live Attempt lease and
+generation, snapshot, Grant/Registry, revocation, Kill Switch, exact base
+revision, path, UTF-8 bytes and fingerprints, then changes content and appends
+the stable receipt. Exact replay returns that receipt. No receipt plus the
+unchanged base proves not sent; a matching receipt proves committed; every
+other state is terminal `outcome_unknown` and never dispatches another CAS.
+Cleanup restores the exact baseline only after the committed Broker fact and
+retains content-free receipt/cleanup authority across restart.
+
+The `agent-runtime-project-canary` Compose profile and dedicated flag remain
+default off. It requires G21.0-G21.2 readiness while every broad Runtime,
+Broker mutation, MCP write, Egress, Secret, delegation, Scheduler, Skill
+install and Learning switch remains false. Source, Compose and disposable
+PostgreSQL proofs do not activate the profile; this host remains
+`ISOLATION_UNAVAILABLE`.
 
 The current `/v1/code/executions` remains fail closed. Agent Runtime must not use
 that placeholder route as an isolation shortcut.

@@ -147,7 +147,7 @@ func rpcCodeError(code string) error {
 	case ErrorSnapshotMismatch:
 		return ErrSnapshotMismatch
 	case ErrorGrantDenied, ErrorBudgetExhausted, ErrorApprovalRequired, ErrorApprovalDenied,
-		ErrorIntentExpired, ErrorEgressDenied, ErrorSecretDenied, ErrorProjectConflict,
+		ErrorIntentExpired, ErrorEgressDenied, ErrorSecretDenied, ErrorProjectConflict, ErrorProjectMutationDenied,
 		ErrorArtifactDenied, ErrorExecutorUnavailable:
 		return ErrRuntimeUnavailable
 	case ErrorLeaseStale:

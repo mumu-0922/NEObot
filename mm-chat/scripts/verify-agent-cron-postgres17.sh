@@ -70,14 +70,17 @@ database_url="$(database_url_for "${container_name}")"
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" "$@"; }
 
-log "applying 001 -> 091, replaying, and peeling the empty product tail"
+log "applying 001 -> 092, replaying, and peeling the empty product tail"
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 088_agent_cron_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 089_agent_draft_learning" "${work_dir}/fresh.log"
 grep -Fq "up 090_agent_product_shadow" "${work_dir}/fresh.log"
 grep -Fq "up 091_agent_artifact_publication" "${work_dir}/fresh.log"
+grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
+run_migrate down >"${work_dir}/peel-092-tail-1.log" 2>&1
+grep -Fq "down 092_agent_project_mutation_canary" "${work_dir}/peel-092-tail-1.log"
 run_migrate down >"${work_dir}/peel-091-tail-1.log" 2>&1
 grep -Fq "down 091_agent_artifact_publication" "${work_dir}/peel-091-tail-1.log"
 run_migrate down >"${work_dir}/peel-090.log" 2>&1
@@ -162,7 +165,7 @@ if [[ "${source_counts}" != "${restore_counts}" ]]; then
   exit 1
 fi
 
-log "proving clean 087 -> 088 -> 087 -> 091"
+log "proving clean 087 -> 088 -> 087 -> 092"
 psql_command "${container_name}" "DELETE FROM agent_cron_templates;" >/dev/null
 run_migrate down >"${work_dir}/down.log" 2>&1
 grep -Fq "down 088_agent_cron_foundation" "${work_dir}/down.log"
@@ -171,6 +174,7 @@ grep -Fq "up 088_agent_cron_foundation" "${work_dir}/reup.log"
 grep -Fq "up 089_agent_draft_learning" "${work_dir}/reup.log"
 grep -Fq "up 090_agent_product_shadow" "${work_dir}/reup.log"
 grep -Fq "up 091_agent_artifact_publication" "${work_dir}/reup.log"
+grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final.log"
 log "passed (fresh/replay, least privilege, schedule/claims/restart/idempotency/overlap/authority, guarded down, dump/restore, clean down/up)"

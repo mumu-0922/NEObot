@@ -267,7 +267,7 @@ G20.8 implementation signatures:
   preparation surfaces together with the legacy editor/executor;
 - `scripts/verify-agent-product-shadow{,-postgres17}.sh` prove product contracts,
   authorization/fences/budgets/restart, content-free dump/restore and guarded
-  rollback. Every older PostgreSQL tail drill finishes at head `091`.
+  rollback. Every older PostgreSQL tail drill finishes at head `092`.
 
 G20.9 implementation signatures:
 
@@ -746,7 +746,8 @@ PostgreSQL rows are handled outside the migration chain by
 exact target count and a `sha256:<64 lowercase hex>` full-backup fingerprint,
 locks `conversations`, removes only `metadata.activeSkills`, verifies zero
 remaining rows and commits. The cutover itself creates no migration or pretend
-down SQL; current migration `091` is unrelated Artifact authority. Rollback
+down SQL; current migrations `091`/`092` are unrelated Artifact and synthetic
+Project-canary authority. Rollback
 restores the matching full database backup and previous images as one operation.
 
 G20.8 backup/inventory evidence must be captured before deploying the G20.9
@@ -805,7 +806,7 @@ interpreter and an unapproved or placeholder `production` release. Template
 builds are deterministic and never install or mutate host state.
 
 The stage record is `neo.agent-production-activation/v1`, stage
-`control_plane`. It binds the exact Git commit, current migration head `091`, operations
+`control_plane`. It binds the exact Git commit, current migration head `092`, operations
 policy, Runner manifest/binary, deployment, private HTTPS endpoint, Runner and
 TLS identities, client certificate, server CA and these five unique live
 checks:
@@ -831,7 +832,7 @@ Cron or Learning roles. Startup and cycle drift terminate the process.
 
 G21.0 itself adds no migration, API/Chat route, launch/heartbeat/cancel RPC,
 Broker adapter or public endpoint. Its current evaluator nevertheless binds
-the reviewed `091` head introduced by G21.2. All execution-stage environment
+the current `092` head introduced by G21.3. All execution-stage environment
 switches remain false, and the control profile defaults off.
 
 ## 20. G21.1 synthetic Root Run canary
@@ -894,7 +895,7 @@ The dedicated LOGIN must be a nonprivileged `LOGIN INHERIT` principal whose
 recursive membership set is exactly
 `agent_orchestrator_runtime,agent_runner_control`. G21.1 reuses migration
 `084`/`085` SECURITY DEFINER functions and itself adds no migration or direct
-table DML; its current release gate accepts only the reviewed `091` tail. The
+table DML; its current release gate accepts only the reviewed `092` tail. The
 command and Compose profile are separate from `cmd/api`, have no
 port or Provider/object-store/Redis/MCP/vault credentials, and default off.
 
@@ -960,7 +961,7 @@ one bounded byte snapshot, writes the object before the row, deletes the object
 on row failure and cleans quarantine on success or rejection. Exact row replay
 is idempotent; Artifact ID/name/object-key collisions fail closed.
 
-The `broker_artifact_canary` activation record binds migration head `091`, the
+The `broker_artifact_canary` activation record binds migration head `092`, the
 exact release/target/policy, Runner and relay endpoints, both mTLS trust tuples,
 authority key, plan and zero Artifact/quarantine residue. The Compose profile
 is independent and default-off. The service may hold its narrow database,
@@ -980,7 +981,106 @@ bash scripts/verify-agent-runtime-g21-2.sh
 The source, Compose and disposable PostgreSQL proofs are not live evidence. The
 current host must still return `ISOLATION_UNAVAILABLE`.
 
-## 22. Phase 0 verification
+## 22. G21.3 offline-approved synthetic Project mutation canary
+
+The strict schemas are
+`schemas/neo-agent-project-mutation-canary-plan.schema.json`,
+`schemas/neo-agent-project-mutation-approval.schema.json` and
+`schemas/neo-agent-project-mutation-canary-activation.schema.json`. The plan is
+synthetic and admits one action only:
+
+```text
+project.patch / project.write / apply_patch
+classification=mutable; idempotent=false; approval=per_commit
+resource=one exact project-canary/* identifier; one flat UTF-8 path; no delete
+```
+
+Runner ingress has four disjoint caller policies. G21.0-G21.2 method sets are
+unchanged; the fourth caller receives the same reviewed lifecycle plus
+Prepare/Commit set as the Broker canary but routes through a different relay:
+
+```text
+spiffe://neo-chat/agent-runtime-control
+  -> probe, list, reconcile
+spiffe://neo-chat/agent-runtime-root-canary
+  -> probe, list, reconcile, launch, heartbeat, cancel
+spiffe://neo-chat/agent-runtime-broker-canary
+  -> probe, list, reconcile, launch, heartbeat, cancel, prepare, commit
+spiffe://neo-chat/agent-runtime-project-canary
+  -> probe, list, reconcile, launch, heartbeat, cancel, prepare, commit
+```
+
+`neo-runnerd` selects the Project relay only for the authenticated Project
+caller. Its outbound identity is exactly
+`spiffe://neo-chat/neo-runner-project-relay`; it must differ from the Broker
+relay identity and endpoint. The relay re-verifies the original signed
+authority ticket, unsigned request fingerprint, caller, Runner, Attempt and
+plan before invoking Broker. A partial tuple, hostname, public/wildcard/
+link-local endpoint, identity reuse or cross-route fails before forwarding.
+
+The operator signs one short-lived
+`neo.agent-project-mutation-approval/v1` document with a dedicated Ed25519 key
+that never enters the process or Git. The canary mounts only the public key and
+signed document. The document binds release commit, current migration head
+`092`, target, stable activation binding fingerprint, plan, caller, exact
+request and idempotency identities, Tool/action/resource/base/path/content,
+actor, reason and validity window. The activation record binds the approval
+document and public-key fingerprints. Runner authority, approval and TLS keys
+must be distinct.
+
+The stable activation binding is domain-separated over stage, release, target,
+Runner, plan, caller and relay endpoint. Do not bind approval to the raw
+activation record SHA: the activation record also binds the approval document,
+which would create a hash cycle. Do not pre-sign random Broker Intent or Commit
+IDs either. Prepare first establishes the exact immutable intent; verified
+approval is then appended under one fixed approval ID. The durable approval and
+intent collision fences make any second intent/action fail closed.
+
+Migration `092_agent_project_mutation_canary` is not a user Project store. An
+operator may provision only the reviewed synthetic baseline while every canary
+is off. Runtime receives function-only
+`agent_project_mutation_control`; the ninth LOGIN recursively inherits exactly
+`agent_orchestrator_runtime,agent_runner_control,agent_effect_control,
+agent_project_mutation_control`, with no owner membership, schema CREATE,
+provision EXECUTE or direct table DML.
+
+The CAS function rechecks the exact committing intent, approved `per_commit`
+fact, user/Project, Run/Step/Attempt, generation and live lease, snapshot,
+Grant/Registry, non-revocation, Kill Switch epoch/mode, resource, base
+revision, flat path, UTF-8 content, byte budget and content/mutation
+fingerprints. Resource update and immutable receipt append are atomic. Exact
+replay returns the same receipt; idempotency key, intent, resource, base,
+content or mutation collisions reject. Status has exactly three meanings:
+
+- matching receipt: `committed`;
+- no receipt plus clean unchanged base: `rejected` (provably not sent);
+- any other resource/receipt state: `outcome_unknown`.
+
+The Broker never redispatches after a possible send. Acknowledgement loss after
+CAS resolves from the durable receipt. Status unavailable or conflicting state
+terminalizes Run, Step and Attempt as `outcome_unknown`. Cleanup runs only
+after the Broker committed fact, restores the exact baseline, is replay-safe,
+and retains content-free receipt and cleanup facts. Restart reconciliation may
+perform cleanup but may not issue a second CAS.
+
+Required focused gates are:
+
+```bash
+bash scripts/verify-agent-project-canary-activation.sh
+bash scripts/verify-agent-project-canary-preflight.sh
+bash scripts/verify-agent-project-mutation-postgres17.sh
+bash scripts/verify-agent-runtime-g21-3.sh
+```
+
+The profile and `AGENT_PROJECT_MUTATION_CANARY_ENABLED` remain default off.
+G21.0-G21.2 must already be ready while all broad Runtime/Broker mutation, MCP
+write, Egress, Secret, Child, Cron, Skill-install and Learning switches remain
+false. Runner and Sandbox receive no Project database URL, approval material,
+authority private key, relay server key, S3/MCP/Provider/vault credential or
+generic network. No API/Chat path or user Project is enabled. The current host
+still returns `ISOLATION_UNAVAILABLE`.
+
+## 23. Phase 0 verification
 
 Run:
 
@@ -1018,6 +1118,10 @@ bash scripts/verify-agent-broker-canary-activation.sh
 bash scripts/verify-agent-broker-canary-preflight.sh
 bash scripts/verify-agent-artifact-publication-postgres17.sh
 bash scripts/verify-agent-runtime-g21-2.sh
+bash scripts/verify-agent-project-canary-activation.sh
+bash scripts/verify-agent-project-canary-preflight.sh
+bash scripts/verify-agent-project-mutation-postgres17.sh
+bash scripts/verify-agent-runtime-g21-3.sh
 bash scripts/verify-agent-runner.sh
 bash scripts/verify-agent-runtime-phase0.sh
 bash scripts/verify-agent-runner-host.sh # expected nonzero on the current host
@@ -1025,6 +1129,7 @@ bash scripts/verify-agent-runner-host.sh # expected nonzero on the current host
 
 The host command must still report `ISOLATION_UNAVAILABLE` here. Passing the
 offline and disposable-database gates closes source/control contracts only; it
-does not authorize Agent execution, Chat invocation, production relay,
-Scheduler, Project mutation or mutable canary. Production additionally needs a
-fresh exact-host record evaluated as `PROMOTION_READY`.
+does not authorize Agent execution, Chat invocation, a production relay,
+Scheduler, generic Project mutation or user Projects. The one synthetic G21.3
+CAS remains independently default off. Production additionally needs a fresh
+exact-host record evaluated as `PROMOTION_READY`.

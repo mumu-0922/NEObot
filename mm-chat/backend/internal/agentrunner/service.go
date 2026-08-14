@@ -41,7 +41,7 @@ type Service struct {
 	driver     SandboxDriver
 	workspaces *WorkspaceCatalog
 	artifacts  *ArtifactBroker
-	broker     BrokerRelay
+	brokers    map[string]BrokerRelay
 	now        func() time.Time
 	mu         sync.Mutex
 	records    map[string]sandboxRecord
@@ -90,18 +90,19 @@ func NewService(config ServiceConfig, probe HostProbe, authority AuthorityVerifi
 	}
 	service := &Service{config: config, probe: probe, authority: authority, replay: replay, driver: driver,
 		workspaces: workspaces, artifacts: artifacts, now: time.Now, records: map[string]sandboxRecord{},
-		intakes: map[string]*ArtifactIntakeListener{}, broker: unavailableBrokerRelay{}}
+		intakes: map[string]*ArtifactIntakeListener{}, brokers: map[string]BrokerRelay{}}
 	if err := service.loadRecords(); err != nil {
 		return nil, err
 	}
 	return service, nil
 }
 
-func (service *Service) WithBrokerRelay(relay BrokerRelay) *Service {
-	if service != nil && relay != nil {
-		service.broker = relay
+func (service *Service) WithBrokerRelayForCaller(caller string, relay BrokerRelay) error {
+	if service == nil || !identityPattern.MatchString(caller) || relay == nil || service.brokers[caller] != nil {
+		return ErrInvalidInput
 	}
-	return service
+	service.brokers[caller] = relay
+	return nil
 }
 
 func (service *Service) Handle(ctx context.Context, caller string, request Request) (Response, error) {
@@ -241,7 +242,11 @@ func (service *Service) prepare(ctx context.Context, caller string, request Requ
 		body.Attempt, body.Authority, service.now()); err != nil {
 		return service.response(request, MethodPrepare+".result", PrepareResult{Error: rpcError(authorityError(err))}), authorityError(err)
 	}
-	result, err := service.broker.Prepare(ctx, *body)
+	relay := service.brokers[caller]
+	if relay == nil {
+		relay = unavailableBrokerRelay{}
+	}
+	result, err := relay.Prepare(ctx, *body)
 	if err != nil {
 		result = PrepareResult{Error: rpcError(err)}
 	} else if validateRelayResult(&result) != nil {
@@ -258,7 +263,11 @@ func (service *Service) commit(ctx context.Context, caller string, request Reque
 		body.Attempt, body.Authority, service.now()); err != nil {
 		return service.response(request, MethodCommit+".result", CommitResult{IdempotencyKey: body.IdempotencyKey, Error: rpcError(authorityError(err))}), authorityError(err)
 	}
-	result, err := service.broker.Commit(ctx, *body)
+	relay := service.brokers[caller]
+	if relay == nil {
+		relay = unavailableBrokerRelay{}
+	}
+	result, err := relay.Commit(ctx, *body)
 	if err != nil {
 		outcome := "rejected"
 		if errors.Is(err, ErrOutcomeUnknown) {
@@ -326,7 +335,7 @@ func validRPCError(value *RPCError) bool {
 		ErrorRuntimeUnavailable, ErrorIsolationUnavailable, ErrorSnapshotMismatch, ErrorGrantDenied,
 		ErrorLeaseStale, ErrorKillSwitchActive, ErrorBudgetExhausted, ErrorApprovalRequired,
 		ErrorApprovalDenied, ErrorIntentExpired, ErrorEgressDenied, ErrorSecretDenied,
-		ErrorProjectConflict, ErrorArtifactDenied, ErrorExecutorUnavailable,
+		ErrorProjectConflict, ErrorProjectMutationDenied, ErrorArtifactDenied, ErrorExecutorUnavailable,
 		ErrorInvalidTransition, ErrorOutcomeUnknown, ErrorInternal)
 }
 

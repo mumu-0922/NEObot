@@ -180,6 +180,7 @@ func relayErrorCode(err error) string {
 		{agentbroker.ErrIntentExpired, agentrunner.ErrorIntentExpired},
 		{agentbroker.ErrReplayDetected, agentrunner.ErrorReplayDetected},
 		{agentbroker.ErrArtifactDenied, agentrunner.ErrorArtifactDenied},
+		{agentbroker.ErrProjectMutationDenied, agentrunner.ErrorProjectMutationDenied},
 		{agentbroker.ErrExecutorUnavailable, agentrunner.ErrorExecutorUnavailable},
 		{agentbroker.ErrInvalidTransition, agentrunner.ErrorInvalidTransition},
 		{agentbroker.ErrOutcomeUnknown, agentrunner.ErrorOutcomeUnknown},

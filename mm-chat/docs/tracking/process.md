@@ -10295,3 +10295,35 @@ passed; the clean-copy gate included 909 Frontend tests and 1,906 passing RAG
 tests with seven declared integration skips. This development host remains
 `ISOLATION_UNAVAILABLE`. No exact-host acceptance run, live activation evidence,
 or production Runtime promotion was produced.
+
+## 2026-08-15 — G21.3 bounded Project mutation canary completed
+
+G21.3 added a default-off, independently identified controller for one
+offline-approved synthetic Project compare-and-swap mutation and migration
+`092_agent_project_mutation_canary`. The admitted plan is exactly
+`project.patch/project.write/apply_patch` against one operator-provisioned
+resource with a flat UTF-8 replacement and an exact byte bound. Generic
+mutation, user Projects, MCP writes, Egress, Secrets and API/Chat execution
+remain unavailable.
+
+A caller-specific private mTLS relay keeps Project traffic disjoint from the
+control, Root and Broker/Artifact canaries. A detached Ed25519 `per_commit`
+approval binds the release, schema head, target, activation/plan identity,
+request, actor and exact action without creating an approval/activation hash
+cycle or predicting a random Broker Intent. The ninth LOGIN inherits only the
+four Runtime function roles and has no owner membership or direct table DML.
+
+The PostgreSQL 17 drill proved CAS replay and collision fences, durable status,
+baseline cleanup, stale lease/generation, revoked Grant and Kill Switch denial
+before CAS, function-only least privilege, dump/restore and guarded clean
+down/up through schema head `092`. Crash coverage proved that a committed
+receipt resolves acknowledgement loss exactly once, a durable not-sent state
+fails without redispatch, and conflicting or unavailable status terminalizes
+as `outcome_unknown` without a second CAS.
+
+Focused activation/preflight, race/vet, Compose credential-absence, legacy
+G21.0-G21.2, Phase 0 and full standalone clean-copy gates passed. The full gate
+included 909 Frontend tests and 1,906 passing RAG tests with seven declared
+integration skips. The development host still reports
+`ISOLATION_UNAVAILABLE`; no live credential, exact-host acceptance evidence or
+production Runtime promotion was produced.

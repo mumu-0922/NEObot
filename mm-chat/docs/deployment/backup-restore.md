@@ -96,13 +96,21 @@ for that set and publishes no manifest.
 Agent Runtime production promotion additionally hashes the verified set
 manifest into the external G20.10 closure evidence. Restore with every Agent
 worker and Runtime switch off, reject all pre-restore leases/nonces, reconcile
-Sandboxes/effects/Children/Cron/Draft cleanup, and require migration head `091`
+Sandboxes/effects/Children/Cron/Draft cleanup, and require migration head `092`
 before a read-only canary. The restore must also reconcile every
 `agent_artifacts.object_key` against the
 paired object mirror, remove only proven unreferenced canary objects and keep
-the Broker canary disabled until fresh exact-host activation. The closure
-record is not a backup and must never
-embed dump/object bytes or credentials.
+the Broker canary disabled until fresh exact-host activation. Migration `092`
+adds database-only synthetic Project resources, immutable mutation receipts and
+cleanup facts. Restore all three as one PostgreSQL authority set with every
+Agent canary off. A restored `mutated` resource must be reconciled only from its
+matching committed Broker intent and receipt; never replay the CAS or invent a
+new idempotency key. A clean resource must match its baseline revision and
+content fingerprint. Keep the Project canary disabled until the exact release,
+approval and activation evidence is regenerated; the offline approval private
+key is backed up and rotated under the separate encrypted operator-key
+procedure, not inside this backup set. The closure record is not a backup and
+must never embed dump/object bytes or credentials.
 
 ## Verify backup checksums
 

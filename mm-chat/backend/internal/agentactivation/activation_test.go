@@ -63,6 +63,29 @@ func TestVerifyBrokerCanaryRequiresMigration091RelayAndNarrowArtifactAuthority(t
 	}
 }
 
+func TestVerifyProjectCanaryRequiresMigration092ApprovalAndNarrowMutation(t *testing.T) {
+	now := time.Date(2026, 8, 15, 1, 0, 0, 0, time.UTC)
+	config, evidence := projectCanaryActivationFixture(t, now)
+	decision, err := VerifyProjectCanary(config, now)
+	if err != nil || !decision.Ready || decision.ReasonCode != "PROJECT_MUTATION_CANARY_GATES_PASSED" {
+		t.Fatalf("VerifyProjectCanary() = %#v, %v", decision, err)
+	}
+	evidence.Authorization.BrokerMutable = true
+	writeJSON(t, config.RecordFile, evidence)
+	decision, err = VerifyProjectCanary(config, now)
+	if !errors.Is(err, ErrInvalid) || decision.ReasonCode != "AUTHORIZATION_WIDENED" {
+		t.Fatalf("generic mutation widening = %#v, %v", decision, err)
+	}
+	config, _ = projectCanaryActivationFixture(t, now)
+	if err := os.WriteFile(config.ApprovalDocumentFile, []byte(`{"drift":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	decision, err = VerifyProjectCanary(config, now)
+	if !errors.Is(err, ErrInvalid) || decision.ReasonCode != "APPROVAL_DOCUMENT_DRIFT" {
+		t.Fatalf("approval drift = %#v, %v", decision, err)
+	}
+}
+
 func TestVerifyAcceptsOnlyExactControlPlaneEvidence(t *testing.T) {
 	now := time.Date(2026, 8, 14, 9, 0, 0, 0, time.UTC)
 	config, evidence := activationFixture(t, now)
@@ -184,7 +207,7 @@ func activationFixture(t *testing.T, now time.Time) (Config, record) {
 	t.Helper()
 	root := t.TempDir()
 	policyFile := filepath.Join(root, "policy.json")
-	policyRaw := []byte(`{"schemaVersion":"neo.agent-production-policy/v1","migrationHead":91}`)
+	policyRaw := []byte(`{"schemaVersion":"neo.agent-production-policy/v1","migrationHead":92}`)
 	writePrivate(t, policyFile, policyRaw)
 	manifestFile := filepath.Join(root, "release-manifest.json")
 	manifest := map[string]any{
@@ -217,7 +240,7 @@ func activationFixture(t *testing.T, now time.Time) (Config, record) {
 	endpoint := "https://10.0.0.8:9443/internal/neo-runner/v1/rpc"
 	value := record{
 		SchemaVersion: SchemaVersion, EvidenceClass: "production", Stage: StageControl,
-		Release: release{GitCommit: strings.Repeat("a", 40), MigrationHead: 91,
+		Release: release{GitCommit: strings.Repeat("a", 40), MigrationHead: 92,
 			RunnerManifestSHA256: fingerprint(manifestRaw), RunnerBinarySHA256: testFingerprint('9'),
 			OperationsPolicySHA256: fingerprint(policyRaw)},
 		Target: target{DeploymentFingerprint: testFingerprint('a'), RunnerID: "neo-runner-primary"},
@@ -275,9 +298,9 @@ func rootCanaryActivationFixture(t *testing.T, now time.Time) (RootCanaryConfig,
 func brokerCanaryActivationFixture(t *testing.T, now time.Time) (BrokerCanaryConfig, brokerCanaryRecord) {
 	t.Helper()
 	base, control := activationFixture(t, now)
-	policyRaw := []byte(`{"schemaVersion":"neo.agent-production-policy/v1","migrationHead":91}`)
+	policyRaw := []byte(`{"schemaVersion":"neo.agent-production-policy/v1","migrationHead":92}`)
 	writePrivate(t, base.PolicyFile, policyRaw)
-	control.Release.MigrationHead = 91
+	control.Release.MigrationHead = 92
 	control.Release.OperationsPolicySHA256 = fingerprint(policyRaw)
 	planFile := filepath.Join(filepath.Dir(base.RecordFile), "broker-canary-plan.json")
 	planRaw := []byte(`{"schemaVersion":"neo.agent-broker-artifact-canary-plan/v1","synthetic":true}`)
@@ -320,6 +343,71 @@ func brokerCanaryActivationFixture(t *testing.T, now time.Time) (BrokerCanaryCon
 		AuthorityPublicKeyFile: publicKeyFile, RelayEndpoint: relayEndpoint,
 		RelayServerCertificateFile: relayCertificateFile, RelayClientCAFile: relayClientCAFile,
 		RunnerRelayIdentity: RunnerRelayIdentity}, evidence
+}
+
+func projectCanaryActivationFixture(t *testing.T, now time.Time) (ProjectCanaryConfig, projectCanaryRecord) {
+	t.Helper()
+	base, control := activationFixture(t, now)
+	policyRaw := []byte(`{"schemaVersion":"neo.agent-production-policy/v1","migrationHead":92}`)
+	writePrivate(t, base.PolicyFile, policyRaw)
+	control.Release.MigrationHead = 92
+	control.Release.OperationsPolicySHA256 = fingerprint(policyRaw)
+	directory := filepath.Dir(base.RecordFile)
+	planFile := filepath.Join(directory, "project-canary-plan.json")
+	planRaw := []byte(`{"schemaVersion":"neo.agent-project-mutation-canary-plan/v1","synthetic":true}`)
+	writePrivate(t, planFile, planRaw)
+	authorityPublic, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approvalPublic, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorityFile := filepath.Join(directory, "project-authority-public-key")
+	approvalKeyFile := filepath.Join(directory, "project-approval-public-key")
+	authorityRaw := []byte(base64.RawURLEncoding.EncodeToString(authorityPublic))
+	approvalKeyRaw := []byte(base64.RawURLEncoding.EncodeToString(approvalPublic))
+	writePrivate(t, authorityFile, authorityRaw)
+	writePrivate(t, approvalKeyFile, approvalKeyRaw)
+	approvalFile := filepath.Join(directory, "project-approval.json")
+	approvalRaw := []byte(`{"payload":{"schemaVersion":"neo.agent-project-mutation-approval/v1"},"signature":"template"}`)
+	writePrivate(t, approvalFile, approvalRaw)
+	relayCertificateFile := filepath.Join(directory, "project-relay-server.crt")
+	relayClientCAFile := filepath.Join(directory, "project-relay-client-ca.crt")
+	relayCertificateRaw, relayClientCARaw := []byte("project relay server certificate"), []byte("project relay client ca")
+	writePrivate(t, relayCertificateFile, relayCertificateRaw)
+	writePrivate(t, relayClientCAFile, relayClientCARaw)
+	runnerCertificateRaw, _ := os.ReadFile(base.ClientCertificateFile)
+	runnerCARaw, _ := os.ReadFile(base.ServerCAFile)
+	base.CallerIdentity = ProjectCanaryCallerIdentity
+	relayEndpoint := "https://10.0.0.10:9445/internal/agent-broker/v1/relay"
+	targetFingerprint := testFingerprint('e')
+	control.Target.DeploymentFingerprint = targetFingerprint
+	evidence := projectCanaryRecord{SchemaVersion: SchemaVersion, EvidenceClass: "production",
+		Stage: StageProjectCanary, Release: control.Release, Target: control.Target,
+		Wiring: projectCanaryWiring{EndpointSHA256: control.Wiring.EndpointSHA256,
+			ClientCertificateSHA256: fingerprint(runnerCertificateRaw), ServerCASHA256: fingerprint(runnerCARaw),
+			ServerName: control.Wiring.ServerName, CallerIdentity: ProjectCanaryCallerIdentity,
+			CanaryPlanSHA256: fingerprint(planRaw), AuthorityPublicKeySHA256: fingerprint(authorityRaw),
+			ApprovalDocumentSHA256: fingerprint(approvalRaw), ApprovalPublicKeySHA256: fingerprint(approvalKeyRaw),
+			RelayEndpointSHA256:          ProjectRelayEndpointFingerprint(relayEndpoint),
+			RelayServerCertificateSHA256: fingerprint(relayCertificateRaw),
+			RelayClientCASHA256:          fingerprint(relayClientCARaw), RunnerRelayIdentity: ProjectRunnerRelayIdentity},
+		Window: control.Window, Authorization: projectCanaryAuthorization{RootRuns: true,
+			BrokerReadOnly: true, ArtifactPublication: true, ProjectMutation: true}, Cleanup: projectCanaryCleanup{},
+		Review: control.Review}
+	for index, id := range projectCanaryChecks {
+		evidence.Checks = append(evidence.Checks, check{ID: id, Result: "passed",
+			ObservedAt: now.Add(-5 * time.Minute), EvidenceSHA256: testFingerprint(byte('1' + index%8)),
+			DetailCode: "PASS"})
+	}
+	writeJSON(t, base.RecordFile, evidence)
+	return ProjectCanaryConfig{Config: base, CanaryPlanFile: planFile,
+		AuthorityPublicKeyFile: authorityFile, ApprovalDocumentFile: approvalFile,
+		ApprovalPublicKeyFile: approvalKeyFile, TargetFingerprint: targetFingerprint,
+		RelayEndpoint: relayEndpoint, RelayServerCertificateFile: relayCertificateFile,
+		RelayClientCAFile: relayClientCAFile, RunnerRelayIdentity: ProjectRunnerRelayIdentity}, evidence
 }
 
 func testFingerprint(value byte) string { return "sha256:" + strings.Repeat(string(value), 64) }

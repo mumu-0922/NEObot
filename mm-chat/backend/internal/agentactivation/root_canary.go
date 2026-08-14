@@ -65,7 +65,7 @@ func VerifyRootCanary(config RootCanaryConfig, now time.Time) (Decision, error) 
 	var policyDocument map[string]any
 	if strictjson.Decode(policyRaw, maxDocument, &policyDocument) != nil ||
 		policyDocument["schemaVersion"] != "neo.agent-production-policy/v1" ||
-		policyDocument["migrationHead"] != float64(91) {
+		policyDocument["migrationHead"] != float64(92) {
 		return Decision{ReasonCode: "POLICY_INVALID"}, ErrInvalid
 	}
 	policyFingerprint := fingerprint(policyRaw)
@@ -158,7 +158,7 @@ func validateRootCanaryRecord(value rootCanaryRecord, config RootCanaryConfig, p
 	if value.SchemaVersion != SchemaVersion || value.Stage != StageRootCanary || !member(value.EvidenceClass, "template", "production") {
 		return "ACTIVATION_VERSION_INVALID"
 	}
-	if !commitPattern.MatchString(value.Release.GitCommit) || value.Release.MigrationHead != 91 ||
+	if !commitPattern.MatchString(value.Release.GitCommit) || value.Release.MigrationHead != 92 ||
 		!validFingerprint(value.Release.RunnerManifestSHA256) || !validFingerprint(value.Release.RunnerBinarySHA256) ||
 		!validFingerprint(value.Release.OperationsPolicySHA256) || value.Release.OperationsPolicySHA256 != policyFingerprint {
 		return "RELEASE_INVALID"

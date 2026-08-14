@@ -322,7 +322,9 @@ func TestServiceReconcileRPCReapsUnexpectedSandboxAndReplays(t *testing.T) {
 func TestPrepareCommitStrictRelayVerifiesAuthorityAndReplaysLocally(t *testing.T) {
 	fixture := newServiceFixture(t, true)
 	relay := &recordingBrokerRelay{}
-	fixture.service.WithBrokerRelay(relay)
+	if err := fixture.service.WithBrokerRelayForCaller(testCaller, relay); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Date(2026, 8, 14, 2, 0, 0, 0, time.UTC)
 	fixture.service.now = func() time.Time { return now }
 	attempt := testAttempt()
@@ -374,10 +376,69 @@ func TestPrepareCommitStrictRelayVerifiesAuthorityAndReplaysLocally(t *testing.T
 	}
 }
 
+func TestPrepareRelayIsSelectedByAuthenticatedOriginalCaller(t *testing.T) {
+	fixture := newServiceFixture(t, true)
+	callerA := testCaller
+	callerB := "spiffe://neo-chat/agent-runtime-project-canary"
+	relayA, relayB := &recordingBrokerRelay{}, &recordingBrokerRelay{}
+	if err := fixture.service.WithBrokerRelayForCaller(callerA, relayA); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.service.WithBrokerRelayForCaller(callerB, relayB); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.service.WithBrokerRelayForCaller(callerA, relayB); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("duplicate caller route = %v", err)
+	}
+	now := time.Date(2026, 8, 15, 2, 0, 0, 0, time.UTC)
+	fixture.service.now = func() time.Time { return now }
+	makePrepare := func(caller, requestID, nonce string) Request {
+		arguments := json.RawMessage(`{"path":"project/a"}`)
+		body := PrepareRequest{Attempt: testAttempt(), SnapshotFingerprint: testFingerprint('6'),
+			GrantID: "grant_0123456789abcdef", GrantFingerprint: testFingerprint('5'),
+			RegistryFingerprint: testFingerprint('8'), ToolIdentity: "workspace_read",
+			Capability: "workspace.read", Action: "read", Resource: "project/a",
+			Arguments: arguments, ArgumentsFingerprint: fingerprintBytes("neo-effect-arguments-v1", arguments),
+			BaseRevision: "rev_01234567", TTLSeconds: 600}
+		claims := NewAuthorityClaims(caller, testRunner, MethodPrepare, requestID, nonce,
+			AuthorityRequestFingerprint(MethodPrepare, body), body.SnapshotFingerprint, body.Attempt,
+			0, now, now.Add(10*time.Second))
+		ticket, err := SignAuthority(fixture.private, claims)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body.Authority = ticket
+		raw := mustEnvelope(t, MethodPrepare, requestID, now, nonce, body)
+		request, err := DecodeRequest(raw, now, 15*time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return request
+	}
+	requestA := makePrepare(callerA, "rpc_1111111111111111", strings.Repeat("a", 32))
+	if _, err := fixture.service.Handle(context.Background(), callerA, requestA); err != nil {
+		t.Fatal(err)
+	}
+	requestB := makePrepare(callerB, "rpc_2222222222222222", strings.Repeat("b", 32))
+	if _, err := fixture.service.Handle(context.Background(), callerB, requestB); err != nil {
+		t.Fatal(err)
+	}
+	if relayA.prepares != 1 || relayB.prepares != 1 {
+		t.Fatalf("caller routes crossed: A=%d B=%d", relayA.prepares, relayB.prepares)
+	}
+	requestCrossed := makePrepare(callerA, "rpc_3333333333333333", strings.Repeat("c", 32))
+	if _, err := fixture.service.Handle(context.Background(), callerB, requestCrossed); !errors.Is(err, ErrAuthFailed) ||
+		relayA.prepares != 1 || relayB.prepares != 1 {
+		t.Fatalf("cross-routed authority = %v A=%d B=%d", err, relayA.prepares, relayB.prepares)
+	}
+}
+
 func TestPrepareRejectsDuplicateMalformedAndFingerprintMismatchBeforeRelay(t *testing.T) {
 	fixture := newServiceFixture(t, true)
 	relay := &recordingBrokerRelay{}
-	fixture.service.WithBrokerRelay(relay)
+	if err := fixture.service.WithBrokerRelayForCaller(testCaller, relay); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Date(2026, 8, 14, 2, 0, 0, 0, time.UTC)
 	arguments := json.RawMessage(`{"path":"project/a"}`)
 	body := PrepareRequest{Attempt: testAttempt(), SnapshotFingerprint: testFingerprint('6'),
@@ -439,7 +500,9 @@ func (relay *recordingBrokerRelay) Commit(_ context.Context, input CommitRequest
 
 func TestPrepareCommitRelayFailuresUseSchemaShapedBodies(t *testing.T) {
 	fixture := newServiceFixture(t, true)
-	fixture.service.WithBrokerRelay(failingBrokerRelay{})
+	if err := fixture.service.WithBrokerRelayForCaller(testCaller, failingBrokerRelay{}); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Date(2026, 8, 14, 2, 0, 0, 0, time.UTC)
 	fixture.service.now = func() time.Time { return now }
 	arguments := json.RawMessage(`{"path":"project/a"}`)
@@ -934,16 +997,17 @@ func bigOne() *big.Int { return big.NewInt(time.Now().UnixNano()) }
 
 func TestBrokerErrorCodesRemainProtocolVisible(t *testing.T) {
 	for err, want := range map[error]string{
-		ErrGrantDenied:         ErrorGrantDenied,
-		ErrBudgetExhausted:     ErrorBudgetExhausted,
-		ErrApprovalRequired:    ErrorApprovalRequired,
-		ErrApprovalDenied:      ErrorApprovalDenied,
-		ErrIntentExpired:       ErrorIntentExpired,
-		ErrEgressDenied:        ErrorEgressDenied,
-		ErrSecretDenied:        ErrorSecretDenied,
-		ErrProjectConflict:     ErrorProjectConflict,
-		ErrArtifactDenied:      ErrorArtifactDenied,
-		ErrExecutorUnavailable: ErrorExecutorUnavailable,
+		ErrGrantDenied:           ErrorGrantDenied,
+		ErrBudgetExhausted:       ErrorBudgetExhausted,
+		ErrApprovalRequired:      ErrorApprovalRequired,
+		ErrApprovalDenied:        ErrorApprovalDenied,
+		ErrIntentExpired:         ErrorIntentExpired,
+		ErrEgressDenied:          ErrorEgressDenied,
+		ErrSecretDenied:          ErrorSecretDenied,
+		ErrProjectConflict:       ErrorProjectConflict,
+		ErrProjectMutationDenied: ErrorProjectMutationDenied,
+		ErrArtifactDenied:        ErrorArtifactDenied,
+		ErrExecutorUnavailable:   ErrorExecutorUnavailable,
 	} {
 		if got := ErrorCode(err); got != want {
 			t.Fatalf("ErrorCode(%v) = %q, want %q", err, got, want)

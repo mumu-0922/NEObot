@@ -107,6 +107,25 @@ required_agent_paths=(
   "${project_dir}/scripts/verify-agent-broker-canary-activation.sh"
   "${project_dir}/scripts/verify-agent-broker-canary-preflight.sh"
   "${project_dir}/scripts/verify-agent-runtime-g21-2.sh"
+  "${project_dir}/backend/cmd/agent-runtime-project-canary/main.go"
+  "${project_dir}/backend/internal/agentactivation/project_canary.go"
+  "${project_dir}/backend/internal/agentprojectcanary/service.go"
+  "${project_dir}/backend/internal/agentbroker/project_mutation_postgres.go"
+  "${project_dir}/backend/migrations/092_agent_project_mutation_canary.up.sql"
+  "${project_dir}/backend/migrations/092_agent_project_mutation_canary.down.sql"
+  "${project_dir}/docs/contracts/schemas/neo-agent-project-mutation-canary-activation.schema.json"
+  "${project_dir}/docs/contracts/schemas/neo-agent-project-mutation-canary-plan.schema.json"
+  "${project_dir}/docs/contracts/schemas/neo-agent-project-mutation-approval.schema.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-project-mutation-canary-activation.valid.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-project-mutation-canary-activation.invalid.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-project-mutation-canary-plan.valid.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-project-mutation-canary-plan.invalid.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-project-mutation-approval.valid.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-project-mutation-approval.invalid.json"
+  "${project_dir}/scripts/verify-agent-project-canary-activation.sh"
+  "${project_dir}/scripts/verify-agent-project-canary-preflight.sh"
+  "${project_dir}/scripts/verify-agent-project-mutation-postgres17.sh"
+  "${project_dir}/scripts/verify-agent-runtime-g21-3.sh"
 )
 for path in "${required_agent_paths[@]}"; do
   if [[ ! -s "${path}" ]]; then
@@ -153,6 +172,14 @@ grep -Fq "CREATE FUNCTION agent_artifact_attach(" \
   "${project_dir}/backend/migrations/091_agent_artifact_publication.up.sql"
 grep -Fq "DROP FUNCTION agent_artifact_attach(" \
   "${project_dir}/backend/migrations/091_agent_artifact_publication.down.sql"
+grep -Fq "CREATE FUNCTION agent_project_mutation_commit(" \
+  "${project_dir}/backend/migrations/092_agent_project_mutation_canary.up.sql"
+grep -Fq "CREATE FUNCTION agent_project_mutation_status(" \
+  "${project_dir}/backend/migrations/092_agent_project_mutation_canary.up.sql"
+grep -Fq "CREATE FUNCTION agent_project_mutation_cleanup(" \
+  "${project_dir}/backend/migrations/092_agent_project_mutation_canary.up.sql"
+grep -Fq "AGENT_PROJECT_MUTATION_DOWN_REQUIRES_EMPTY" \
+  "${project_dir}/backend/migrations/092_agent_project_mutation_canary.down.sql"
 
 schema_dir="${project_dir}/docs/contracts/schemas"
 fixture_dir="${project_dir}/docs/contracts/fixtures/agent-runtime"
@@ -171,8 +198,13 @@ bash -n "${project_dir}/scripts/verify-agent-artifact-publication-postgres17.sh"
 bash -n "${project_dir}/scripts/verify-agent-broker-canary-activation.sh"
 bash -n "${project_dir}/scripts/verify-agent-broker-canary-preflight.sh"
 bash -n "${project_dir}/scripts/verify-agent-runtime-g21-2.sh"
+bash -n "${project_dir}/scripts/verify-agent-project-canary-activation.sh"
+bash -n "${project_dir}/scripts/verify-agent-project-canary-preflight.sh"
+bash -n "${project_dir}/scripts/verify-agent-project-mutation-postgres17.sh"
+bash -n "${project_dir}/scripts/verify-agent-runtime-g21-3.sh"
 
 bash "${project_dir}/scripts/verify-agent-runtime-g21-2.sh"
+bash "${project_dir}/scripts/verify-agent-project-canary-activation.sh"
 
 isolated_root="$(mktemp -d)"
 cleanup() {
@@ -201,6 +233,8 @@ cp "${project_dir}/backend/migrations/090_agent_product_shadow.up.sql" \
   "${project_dir}/backend/migrations/090_agent_product_shadow.down.sql" \
   "${project_dir}/backend/migrations/091_agent_artifact_publication.up.sql" \
   "${project_dir}/backend/migrations/091_agent_artifact_publication.down.sql" \
+  "${project_dir}/backend/migrations/092_agent_project_mutation_canary.up.sql" \
+  "${project_dir}/backend/migrations/092_agent_project_mutation_canary.down.sql" \
   "${isolated_root}/mm-chat/backend/migrations/"
 cp "${project_dir}/frontend/src/store/storage/legacySkillRetirement.ts" \
   "${isolated_root}/mm-chat/frontend/src/store/storage/"

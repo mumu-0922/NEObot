@@ -361,7 +361,7 @@ but it does not expose a public API or enable a startup/production Scheduler.
   down and clean down/up.
 - Every older PostgreSQL drill that peels tail migrations must down empty `091`,
   `090`, `089` and then `088` before testing its own guard, then reapply through
-  head `091`.
+  head `092`.
 - Phase 0 and source gates must prove the package has no public/startup wiring;
   the exact-host gate must remain expected-nonzero `ISOLATION_UNAVAILABLE`.
 
@@ -488,8 +488,8 @@ startup worker, Chat/frontend/Compose wiring or production Draft execution.
 - Exercise failed object read/delete release paths, not only successful cleanup.
   PL/pgSQL retry locals must use unambiguous names such as `next_attempts`
   rather than shadowing an `attempts` column.
-- Every older PostgreSQL tail drill peels empty `091`, then its reviewed tail,
-  before its original guard and finishes at head `091`. Phase 0 validates the strict Draft schema,
+- Every older PostgreSQL tail drill peels empty `092`, then empty `091` and its reviewed tail,
+  before its original guard and finishes at head `092`. Phase 0 validates the strict Draft schema,
   G20.8 product/Shadow signatures and cross-contract bindings.
 - Full standalone must pass and exact-host Runner verification remains expected
   nonzero `ISOLATION_UNAVAILABLE`.
@@ -589,8 +589,8 @@ control and review only; it does not enable package execution.
 - PostgreSQL 17 proves fresh/replay, least privilege, ownership, cancel replay,
   Artifact lookup, default-off/cohort/opt-in, Kill Switch, budget, restart,
   generation/fingerprint fences, content-free dump/restore and guarded down/up.
-- Every older Agent/MCP/Assistant/Skill tail drill peels empty `091`, then empty
-  `090`, before its original guard and finishes at head `091`.
+- Every older Agent/MCP/Assistant/Skill tail drill peels empty `092`, then empty
+  `091` and `090`, before its original guard and finishes at head `092`.
 - Run Phase 0, backend vet/test, frontend full gate and full standalone. Exact
   host remains expected-nonzero until separately promoted.
 
@@ -643,7 +643,7 @@ SQL. This scenario deletes old authority; it never converts or promotes it.
   description/category/mode.
 - Database apply locks `conversations`, verifies full-backup SHA-256 and exact
   target count, updates only `metadata = metadata - 'activeSkills'`, verifies
-  zero remaining, and leaves the current schema head at `091`. Rollback is full
+  zero remaining, and leaves the current schema head at `092`. Rollback is full
   backup plus previous images; the cutover creates no migration or synthetic
   down SQL.
 - No browser/API/rootful fallback executor is permitted. The only eligible
@@ -666,7 +666,7 @@ SQL. This scenario deletes old authority; it never converts or promotes it.
 - **Good**: backup/count are verified, apply removes one JSONB key, restart and
   reload show zero resurrection, and history renders one retirement label.
 - **Base**: no stale database rows exist; expected count `0` applies
-  idempotently and current schema head remains `091`.
+  idempotently and current schema head remains `092`.
 - **Bad**: add a reversible migration that invents deleted values, preserve old
   invocation details, name-match a package, or silently execute in Chat.
 
@@ -678,7 +678,7 @@ SQL. This scenario deletes old authority; it never converts or promotes it.
   collapse.
 - PostgreSQL 17 covers default dry-run, rejected count/fingerprint, full backup
   fingerprint, exact-key update, unrelated-row equivalence, repeated apply and
-  migration head `091`.
+  migration head `092`.
 - Negative source scan proves removed files/assets/resolver/context and held
   Runtime; then run frontend/backend/full standalone gates.
 
@@ -704,8 +704,8 @@ verified backup + exact count -> delete only retired authority -> one history fa
 Apply when changing the exact-host Runner bundle, staged activation evidence,
 Runner client identity, `agent-runtime-control` command/service or recovery
 reconcile behavior. G21.0 permits maintenance only and itself adds no
-migration; the current release is nevertheless bound to the reviewed `091`
-head introduced by G21.2.
+migration; the current release is nevertheless bound to the reviewed `092`
+head introduced by G21.3.
 
 ### 2. Signatures
 
@@ -723,7 +723,7 @@ python3 mm-chat/scripts/evaluate-agent-production-activation.py --record FILE
   `internal/agentrunner`.
 - Schemas: `neo-agent-production-activation.schema.json` and
   `neo-agent-runner-bundle.schema.json`.
-- Database capability: existing `agent_runner_control` at migration head `091`.
+- Database capability: existing `agent_runner_control` at migration head `092`.
 
 ### 3. Contracts
 
@@ -1024,7 +1024,7 @@ bash mm-chat/scripts/verify-agent-runtime-g21-2.sh
 - Relay method/caller/ticket/body/plan negatives and exact Prepare/Commit replay.
 - Read executor traversal/link/special-file/bounds plus exact MCP allowlist.
 - PostgreSQL 17 fresh/replay/exact-role/authorize/attach/collision/stale/Grant/
-  Kill-Switch/dump-restore/guarded-down/up proof at head `091`.
+  Kill-Switch/dump-restore/guarded-down/up proof at head `092`.
 - Same-byte scan, object-before-row compensation, quarantine cleanup and
   `outcome_unknown` no-retry tests.
 - Strict schemas/fixtures, enabled/default preflight, development/production
@@ -1046,4 +1046,141 @@ Broker canary -> direct in-process Broker shortcut -> Sandbox receives MCP/S3 ke
 fresh broker_artifact_canary evidence -> signed Runner Prepare/Commit
 -> private mTLS relay re-verification -> plan-bound Broker executor
 -> function-only Artifact authority -> canonical receipt / terminal no-retry
+```
+
+## Scenario: Execute the G21.3 offline-approved synthetic Project CAS
+
+### 1. Scope / Trigger
+
+Apply when changing `agent-runtime-project-canary`, Project plan/approval/
+activation contracts, caller-specific Runner relay routing, migration `092`,
+Project CAS/status/cleanup or terminal recovery. This slice never authorizes a
+user Project or generic mutable executor.
+
+### 2. Signatures
+
+```bash
+bash mm-chat/scripts/verify-agent-project-canary-activation.sh
+bash mm-chat/scripts/verify-agent-project-canary-preflight.sh
+bash mm-chat/scripts/verify-agent-project-mutation-postgres17.sh
+bash mm-chat/scripts/verify-agent-runtime-g21-3.sh
+```
+
+- Command: `backend/cmd/agent-runtime-project-canary`.
+- Packages: `internal/agentprojectcanary`, `internal/agentbroker`,
+  `internal/agentbrokerrelay`, `internal/agentrunner`, `internal/agentactivation`.
+- Schemas: `neo-agent-project-mutation-canary-plan`,
+  `neo-agent-project-mutation-approval`,
+  `neo-agent-project-mutation-canary-activation`.
+- Database: migration `092_agent_project_mutation_canary`; function-only role
+  `agent_project_mutation_control`.
+- SQL functions:
+  `agent_project_mutation_commit(TEXT,UUID,TEXT,TEXT,BIGINT,TEXT,TEXT,TEXT,TEXT,TEXT,TEXT,TEXT,BYTEA,TEXT,TEXT)`,
+  `agent_project_mutation_status(TEXT,UUID,TEXT,TEXT,TEXT,TEXT)` and
+  `agent_project_mutation_cleanup(TEXT,UUID,TEXT,TEXT,TEXT)`.
+
+### 3. Contracts
+
+- Admit one exact `project.patch/project.write/apply_patch` action with
+  `classification=mutable`, `idempotent=false`, `approval=per_commit`, one
+  `project-canary/*` resource, one flat UTF-8 path, no delete/traversal and at
+  most 4096 bytes. Grant, Registry, Run, Step, snapshot, arguments and mutation
+  fingerprints are derived from the strict plan.
+- Caller is `spiffe://neo-chat/agent-runtime-project-canary`; outbound relay is
+  `spiffe://neo-chat/neo-runner-project-relay`. Preserve all G21.0-G21.2 caller
+  method sets. Runner selects one relay only after authenticating the original
+  caller; Broker and Project caller/relay/endpoint tuples cannot cross-route or
+  reuse identities.
+- `ActivationBindingFingerprint` is domain-separated over stage, release,
+  target, Runner, plan, caller and relay endpoint. It deliberately excludes the
+  raw activation-record fingerprint because the activation record binds the
+  approval document; mutual raw-hash binding would create an impossible cycle.
+- `LoadApproval` accepts strict owner-secure non-symlink files, verifies a
+  dedicated Ed25519 public key/signature and binds release/head `092`, target,
+  stable activation identity, plan, caller, request/idempotency identity,
+  exact action, operator/reason and a maximum 15-minute window. Approval,
+  Runner authority and TLS keys are distinct. The private approval key is never
+  mounted.
+- Prepare first establishes the immutable Broker intent. Approval then verifies
+  the returned intent and appends one fixed `ApprovalID` at expected revision
+  one. Do not pre-sign random Intent/Commit IDs; fixed ID plus durable intent
+  and fingerprint collision fences provide single-use semantics.
+- The ninth LOGIN recursively inherits exactly `agent_orchestrator_runtime`,
+  `agent_runner_control`, `agent_effect_control`,
+  `agent_project_mutation_control`; it has no owner membership, provision
+  EXECUTE, schema CREATE or direct table DML.
+- SQL CAS rechecks the committing intent, positive `per_commit` approval,
+  user/Project, Run/Step/Attempt, generation/live lease, snapshot,
+  Grant/Registry, revocation, Kill Switch epoch/mode, resource, base revision,
+  path, UTF-8 bytes, budget and fingerprints under locks. Resource mutation and
+  immutable receipt append are one transaction. Exact replay returns the same
+  receipt; any identity/resource/base/content collision fails closed.
+- Status is exact: matching receipt is committed; no receipt plus clean
+  unchanged base is rejected/not sent; every other state is `outcome_unknown`.
+  A possible send is never redispatched. Cleanup requires the matching
+  committed Broker receipt, restores the exact baseline, appends an immutable
+  fact and is replay-safe. Restart may reconcile cleanup only.
+- The command stays absent from API/Chat. Broad Runtime/Broker mutation/MCP
+  write/Egress/Secret/Child/Cron/Skill-install/Learning flags remain false.
+  Runner/Sandbox receive no Project DB, approval, private authority, relay
+  server, S3/MCP/Provider/vault or generic network material.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| prerequisite flag/evidence absent or G21.3 false | no Project file/DB/Runner access |
+| approval signature/key/window/binding drift | `PROJECT_CANARY_APPROVAL_INVALID`; zero approval/write |
+| caller/relay identity reuse or cross-route | startup/Runner denial before forwarding |
+| stale lease/generation | `LEASE_STALE`; clean resource and zero receipt |
+| revoked Grant | `GRANT_DENIED`; clean resource and zero receipt |
+| Kill Switch epoch/mode drift | `KILL_SWITCH_ACTIVE`; clean resource and zero receipt |
+| CAS identity/base/content collision | fail closed; no second mutation |
+| receipt exists after acknowledgement loss | committed exactly once |
+| clean unchanged base and no receipt | rejected without redispatch |
+| status conflict/unavailable | terminal `outcome_unknown`; no retry |
+| cleanup crash | `PROJECT_CANARY_RECOVERY_PENDING`; restart cleanup only |
+| current development host | expected nonzero `ISOLATION_UNAVAILABLE` |
+
+### 5. Good / Base / Bad Cases
+
+- **Good:** exact-target activation and offline approval drive one synthetic CAS
+  through Runner/relay/Broker, durable receipt resolves acknowledgement loss,
+  and cleanup restores the exact baseline with immutable audit facts retained.
+- **Base:** profile and flag are false; no G21.3 material is read and all broad
+  mutation/user-Project paths remain absent.
+- **Bad:** mount the approval private key, self-approve automatically, bind
+  approval and activation raw hashes cyclically, retry with another key, reuse
+  the Broker relay or expose direct Project DML.
+
+### 6. Tests Required
+
+- Strict schema/fixture and activation evaluator positives/negatives, including
+  no-cycle stable binding, approval signature/key/action/window drift.
+- Focused race/vet for command, controller, activation, Broker, relay,
+  Orchestrator and Runner; service crash points prove pre-Commit zero write,
+  acknowledgement-loss recovery, terminal no-retry and cleanup restart.
+- PostgreSQL 17 fresh/replay, exact ninth LOGIN, no DML/provision, CAS/replay/
+  collision/status/cleanup, late stale/Grant/Kill zero-receipt fences,
+  dump/restore, populated down guard and clean down/up at head `092`.
+- Compose/default/enabled preflight proves 14 read-only mounts, no Compose
+  secrets, isolated `172.31.254.8/29` relay, credential absence and all broad
+  flags false.
+- Run G21.0-G21.2 regression, Phase 0, standalone full and expected-nonzero
+  exact-host acceptance.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+canary owns approval private key -> generic Project write -> retry on timeout
+```
+
+#### Correct
+
+```text
+offline signed exact approval -> immutable Prepare -> fixed per_commit decision
+-> caller-specific private relay -> SQL-fenced synthetic CAS + durable receipt
+-> status-only acknowledgement recovery -> terminal cleanup, never redispatch
 ```

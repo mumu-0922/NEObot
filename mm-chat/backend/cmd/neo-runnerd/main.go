@@ -20,10 +20,12 @@ import (
 )
 
 const (
-	controlCallerIdentity      = "spiffe://neo-chat/agent-runtime-control"
-	rootCanaryCallerIdentity   = "spiffe://neo-chat/agent-runtime-root-canary"
-	brokerCanaryCallerIdentity = "spiffe://neo-chat/agent-runtime-broker-canary"
-	brokerRelayIdentity        = "spiffe://neo-chat/neo-runner-broker-relay"
+	controlCallerIdentity       = "spiffe://neo-chat/agent-runtime-control"
+	rootCanaryCallerIdentity    = "spiffe://neo-chat/agent-runtime-root-canary"
+	brokerCanaryCallerIdentity  = "spiffe://neo-chat/agent-runtime-broker-canary"
+	brokerRelayIdentity         = "spiffe://neo-chat/neo-runner-broker-relay"
+	projectCanaryCallerIdentity = "spiffe://neo-chat/agent-runtime-project-canary"
+	projectRelayIdentity        = "spiffe://neo-chat/neo-runner-project-relay"
 )
 
 func main() {
@@ -124,13 +126,49 @@ func run() error {
 		if err != nil {
 			return errors.New("neo-runnerd Broker relay mTLS configuration is invalid")
 		}
-		service.WithBrokerRelay(relay)
+		if err := service.WithBrokerRelayForCaller(brokerIdentity, relay); err != nil {
+			return errors.New("neo-runnerd Broker relay routing configuration is invalid")
+		}
 		policies = append(policies, agentrunner.CallerPolicy{Identity: brokerIdentity,
 			Methods: []string{agentrunner.MethodProbe, agentrunner.MethodList, agentrunner.MethodReconcile,
 				agentrunner.MethodLaunch, agentrunner.MethodHeartbeat, agentrunner.MethodCancel,
 				agentrunner.MethodPrepare, agentrunner.MethodCommit}})
 	} else if brokerRelayConfigured() {
 		return errors.New("neo-runnerd Broker relay requires the dedicated caller identity")
+	}
+	projectIdentity := strings.TrimSpace(os.Getenv("NEO_RUNNER_PROJECT_CANARY_CLIENT_IDENTITY"))
+	if projectIdentity != "" {
+		if projectIdentity != projectCanaryCallerIdentity || brokerIdentity == "" ||
+			projectIdentity == clientIdentity || projectIdentity == canaryIdentity || projectIdentity == brokerIdentity {
+			return errors.New("neo-runnerd Project canary client identity is invalid")
+		}
+		relayIdentity := strings.TrimSpace(os.Getenv("NEO_RUNNER_PROJECT_RELAY_CLIENT_IDENTITY"))
+		if relayIdentity != projectRelayIdentity || relayIdentity == brokerRelayIdentity {
+			return errors.New("neo-runnerd Project relay mTLS configuration is invalid")
+		}
+		projectRelayURL := strings.TrimSpace(os.Getenv("NEO_RUNNER_PROJECT_RELAY_URL"))
+		if projectRelayURL == strings.TrimSpace(os.Getenv("NEO_RUNNER_BROKER_RELAY_URL")) {
+			return errors.New("neo-runnerd Project relay endpoint is not isolated")
+		}
+		relay, err := agentbrokerrelay.NewClient(projectRelayURL, agentrunner.ClientTLSFiles{
+			CertificateFile: cleanAbsoluteEnv("NEO_RUNNER_PROJECT_RELAY_CLIENT_CERT_FILE"),
+			KeyFile:         cleanAbsoluteEnv("NEO_RUNNER_PROJECT_RELAY_CLIENT_KEY_FILE"),
+			ServerCAFile:    cleanAbsoluteEnv("NEO_RUNNER_PROJECT_RELAY_SERVER_CA_FILE"),
+			ServerName:      strings.TrimSpace(os.Getenv("NEO_RUNNER_PROJECT_RELAY_SERVER_NAME")),
+			ClientIdentity:  relayIdentity,
+		}, 10*time.Second)
+		if err != nil {
+			return errors.New("neo-runnerd Project relay mTLS configuration is invalid")
+		}
+		if err := service.WithBrokerRelayForCaller(projectIdentity, relay); err != nil {
+			return errors.New("neo-runnerd Project relay routing configuration is invalid")
+		}
+		policies = append(policies, agentrunner.CallerPolicy{Identity: projectIdentity,
+			Methods: []string{agentrunner.MethodProbe, agentrunner.MethodList, agentrunner.MethodReconcile,
+				agentrunner.MethodLaunch, agentrunner.MethodHeartbeat, agentrunner.MethodCancel,
+				agentrunner.MethodPrepare, agentrunner.MethodCommit}})
+	} else if projectRelayConfigured() {
+		return errors.New("neo-runnerd Project relay requires the dedicated caller identity")
 	}
 	handler, err := agentrunner.NewHTTPHandlerWithPolicies(service, 15*time.Second, policies)
 	if err != nil {
@@ -162,6 +200,17 @@ func brokerRelayConfigured() bool {
 	for _, name := range []string{"NEO_RUNNER_BROKER_RELAY_URL", "NEO_RUNNER_BROKER_RELAY_CLIENT_CERT_FILE",
 		"NEO_RUNNER_BROKER_RELAY_CLIENT_KEY_FILE", "NEO_RUNNER_BROKER_RELAY_SERVER_CA_FILE",
 		"NEO_RUNNER_BROKER_RELAY_SERVER_NAME", "NEO_RUNNER_BROKER_RELAY_CLIENT_IDENTITY"} {
+		if strings.TrimSpace(os.Getenv(name)) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func projectRelayConfigured() bool {
+	for _, name := range []string{"NEO_RUNNER_PROJECT_RELAY_URL", "NEO_RUNNER_PROJECT_RELAY_CLIENT_CERT_FILE",
+		"NEO_RUNNER_PROJECT_RELAY_CLIENT_KEY_FILE", "NEO_RUNNER_PROJECT_RELAY_SERVER_CA_FILE",
+		"NEO_RUNNER_PROJECT_RELAY_SERVER_NAME", "NEO_RUNNER_PROJECT_RELAY_CLIENT_IDENTITY"} {
 		if strings.TrimSpace(os.Getenv(name)) != "" {
 			return true
 		}

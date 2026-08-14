@@ -35,6 +35,7 @@ fi
 python3 - "${env_file}" "${project_dir}" <<'PY'
 import base64
 import binascii
+import hashlib
 import json
 import os
 import re
@@ -43,6 +44,7 @@ import stat
 import subprocess
 import sys
 import ipaddress
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -322,6 +324,7 @@ agent_flags = (
     "AGENT_RUNNER_CONTROL_ENABLED",
     "AGENT_ROOT_RUN_CANARY_ENABLED",
     "AGENT_BROKER_ARTIFACT_CANARY_ENABLED",
+    "AGENT_PROJECT_MUTATION_CANARY_ENABLED",
     "AGENT_RUNTIME_ENABLED",
     "AGENT_SCHEDULER_ENABLED",
     "AGENT_SKILL_INSTALL_ENABLED",
@@ -333,9 +336,9 @@ agent_flags = (
 for key in agent_flags:
     if values.get(key) not in {"true", "false"}:
         fail(f"{key} must be true or false")
-for key in agent_flags[3:]:
+for key in agent_flags[4:]:
     if values[key] != "false":
-        fail(f"{key} must remain false through G21.2")
+        fail(f"{key} must remain false through G21.3")
 
 required = (
     "FRONTEND_IMAGE",
@@ -558,6 +561,9 @@ agent_control_enabled = values["AGENT_RUNNER_CONTROL_ENABLED"] == "true"
 agent_root_canary_enabled = values["AGENT_ROOT_RUN_CANARY_ENABLED"] == "true"
 agent_broker_canary_enabled = (
     values["AGENT_BROKER_ARTIFACT_CANARY_ENABLED"] == "true"
+)
+agent_project_canary_enabled = (
+    values["AGENT_PROJECT_MUTATION_CANARY_ENABLED"] == "true"
 )
 agent_control_keys = (
     "AGENT_RUNNER_DATABASE_URL",
@@ -1172,6 +1178,409 @@ if agent_broker_canary_enabled:
     ):
         fail("AGENT_BROKER_CANARY_ACTIVATION_SOURCE is not READY for G21.2")
 
+agent_project_canary_keys = (
+    "AGENT_PROJECT_CANARY_DATABASE_URL",
+    "AGENT_PROJECT_CANARY_RUNNER_URL",
+    "AGENT_PROJECT_CANARY_RUNNER_ID",
+    "AGENT_PROJECT_CANARY_RUNNER_SERVER_NAME",
+    "AGENT_PROJECT_CANARY_CLIENT_IDENTITY",
+    "AGENT_PROJECT_CANARY_CLIENT_CERT_SOURCE",
+    "AGENT_PROJECT_CANARY_CLIENT_KEY_SOURCE",
+    "AGENT_PROJECT_CANARY_SERVER_CA_SOURCE",
+    "AGENT_PROJECT_CANARY_RELEASE_MANIFEST_SOURCE",
+    "AGENT_PROJECT_CANARY_PRODUCTION_POLICY_SOURCE",
+    "AGENT_PROJECT_CANARY_ACTIVATION_SOURCE",
+    "AGENT_PROJECT_CANARY_PLAN_SOURCE",
+    "AGENT_PROJECT_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE",
+    "AGENT_PROJECT_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE",
+    "AGENT_PROJECT_CANARY_APPROVAL_DOCUMENT_SOURCE",
+    "AGENT_PROJECT_CANARY_APPROVAL_PUBLIC_KEY_SOURCE",
+    "AGENT_PROJECT_CANARY_RELEASE_GIT_COMMIT",
+    "AGENT_PROJECT_CANARY_RELAY_SUBNET",
+    "AGENT_PROJECT_CANARY_RELAY_IP",
+    "AGENT_PROJECT_CANARY_RELAY_LISTEN_ADDR",
+    "AGENT_PROJECT_CANARY_RELAY_ENDPOINT",
+    "AGENT_PROJECT_CANARY_RELAY_TLS_CERT_SOURCE",
+    "AGENT_PROJECT_CANARY_RELAY_TLS_KEY_SOURCE",
+    "AGENT_PROJECT_CANARY_RELAY_TLS_CLIENT_CA_SOURCE",
+    "AGENT_PROJECT_CANARY_RUNNER_RELAY_IDENTITY",
+    "AGENT_PROJECT_CANARY_POLL_INTERVAL",
+    "AGENT_PROJECT_CANARY_RPC_TIMEOUT",
+    "AGENT_PROJECT_CANARY_AUTHORITY_TTL",
+    "AGENT_PROJECT_CANARY_RECONCILE_BATCH_SIZE",
+)
+if agent_project_canary_enabled:
+    if not agent_control_enabled or not agent_root_canary_enabled or not agent_broker_canary_enabled:
+        fail("AGENT_PROJECT_MUTATION_CANARY_ENABLED requires G21.0, G21.1 and G21.2 enabled")
+    for key in agent_project_canary_keys:
+        if not values.get(key, "").strip():
+            fail(f"{key} is required when the Project mutation canary is enabled")
+        if placeholder.search(values[key]):
+            fail(f"{key} still contains a placeholder")
+
+    try:
+        project_runner_url = urlsplit(values["AGENT_PROJECT_CANARY_RUNNER_URL"])
+        project_runner_ip = ipaddress.ip_address(project_runner_url.hostname or "")
+        project_runner_port = project_runner_url.port
+    except ValueError:
+        fail("AGENT_PROJECT_CANARY_RUNNER_URL must be the exact private HTTPS Runner RPC URL")
+    if (
+        project_runner_url.scheme != "https"
+        or project_runner_port is None
+        or not any(
+            project_runner_ip in network
+            for network in private_networks
+            if project_runner_ip.version == network.version
+        )
+        or project_runner_url.username is not None
+        or project_runner_url.password is not None
+        or project_runner_url.path != "/internal/neo-runner/v1/rpc"
+        or project_runner_url.query
+        or project_runner_url.fragment
+    ):
+        fail("AGENT_PROJECT_CANARY_RUNNER_URL must be the exact private HTTPS Runner RPC URL")
+    for key in ("AGENT_PROJECT_CANARY_RUNNER_ID", "AGENT_PROJECT_CANARY_RUNNER_SERVER_NAME"):
+        if identity_pattern.fullmatch(values[key]) is None:
+            fail(f"{key} is invalid")
+    project_identities = {
+        values["AGENT_RUNNER_CLIENT_IDENTITY"],
+        values["AGENT_ROOT_CANARY_CLIENT_IDENTITY"],
+        values["AGENT_BROKER_CANARY_CLIENT_IDENTITY"],
+        values["AGENT_BROKER_CANARY_RUNNER_RELAY_IDENTITY"],
+        values["AGENT_PROJECT_CANARY_CLIENT_IDENTITY"],
+        values["AGENT_PROJECT_CANARY_RUNNER_RELAY_IDENTITY"],
+    }
+    if (
+        values["AGENT_PROJECT_CANARY_CLIENT_IDENTITY"]
+        != "spiffe://neo-chat/agent-runtime-project-canary"
+        or values["AGENT_PROJECT_CANARY_RUNNER_RELAY_IDENTITY"]
+        != "spiffe://neo-chat/neo-runner-project-relay"
+        or len(project_identities) != 6
+    ):
+        fail("Agent control, Root, Broker, Project and relay identities must be exact and distinct")
+
+    try:
+        project_relay_subnet = ipaddress.ip_network(values["AGENT_PROJECT_CANARY_RELAY_SUBNET"], strict=True)
+        project_relay_ip = ipaddress.ip_address(values["AGENT_PROJECT_CANARY_RELAY_IP"])
+        project_relay_listen = urlsplit("//" + values["AGENT_PROJECT_CANARY_RELAY_LISTEN_ADDR"])
+        project_relay_listen_ip = ipaddress.ip_address(project_relay_listen.hostname or "")
+        project_relay_endpoint = urlsplit(values["AGENT_PROJECT_CANARY_RELAY_ENDPOINT"])
+    except ValueError:
+        fail("Agent Project relay must use one exact private literal endpoint")
+    if (
+        not project_relay_subnet.is_private
+        or project_relay_subnet.overlaps(relay_subnet)
+        or project_relay_ip not in project_relay_subnet
+        or project_relay_ip in {project_relay_subnet.network_address, project_relay_subnet.broadcast_address}
+        or project_relay_listen_ip != project_relay_ip
+        or project_relay_listen.port is None
+        or project_relay_endpoint.scheme != "https"
+        or project_relay_endpoint.hostname != str(project_relay_ip)
+        or project_relay_endpoint.port != project_relay_listen.port
+        or project_relay_endpoint.path != "/internal/agent-broker/v1/relay"
+        or project_relay_endpoint.username is not None
+        or project_relay_endpoint.password is not None
+        or project_relay_endpoint.query
+        or project_relay_endpoint.fragment
+    ):
+        fail("Agent Project relay must use one exact private literal endpoint")
+
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", values["AGENT_PROJECT_CANARY_RELEASE_GIT_COMMIT"])
+        is None
+        or values["AGENT_PROJECT_CANARY_RELEASE_GIT_COMMIT"] == "0" * 40
+    ):
+        fail("AGENT_PROJECT_CANARY_RELEASE_GIT_COMMIT must be a non-placeholder lowercase Git commit")
+    project_poll = parse_simple_duration_seconds("AGENT_PROJECT_CANARY_POLL_INTERVAL", values["AGENT_PROJECT_CANARY_POLL_INTERVAL"])
+    project_rpc = parse_simple_duration_seconds("AGENT_PROJECT_CANARY_RPC_TIMEOUT", values["AGENT_PROJECT_CANARY_RPC_TIMEOUT"])
+    project_authority_ttl = parse_simple_duration_seconds("AGENT_PROJECT_CANARY_AUTHORITY_TTL", values["AGENT_PROJECT_CANARY_AUTHORITY_TTL"])
+    if not 1 <= project_poll <= 60:
+        fail("AGENT_PROJECT_CANARY_POLL_INTERVAL must be between 1s and 1m")
+    if not 1 <= project_rpc <= 10:
+        fail("AGENT_PROJECT_CANARY_RPC_TIMEOUT must be between 1s and 10s")
+    if not 10 <= project_authority_ttl <= 15:
+        fail("AGENT_PROJECT_CANARY_AUTHORITY_TTL must be between 10s and 15s")
+    if (
+        re.fullmatch(r"[1-9][0-9]{0,3}", values["AGENT_PROJECT_CANARY_RECONCILE_BATCH_SIZE"])
+        is None
+        or not 1 <= int(values["AGENT_PROJECT_CANARY_RECONCILE_BATCH_SIZE"]) <= 1000
+    ):
+        fail("AGENT_PROJECT_CANARY_RECONCILE_BATCH_SIZE must be between 1 and 1000")
+
+    project_files = {
+        key: resolve_secure_file(
+            values[key], key,
+            private=(key != "AGENT_PROJECT_CANARY_PRODUCTION_POLICY_SOURCE"),
+        )
+        for key in (
+            "AGENT_PROJECT_CANARY_CLIENT_CERT_SOURCE",
+            "AGENT_PROJECT_CANARY_CLIENT_KEY_SOURCE",
+            "AGENT_PROJECT_CANARY_SERVER_CA_SOURCE",
+            "AGENT_PROJECT_CANARY_RELEASE_MANIFEST_SOURCE",
+            "AGENT_PROJECT_CANARY_PRODUCTION_POLICY_SOURCE",
+            "AGENT_PROJECT_CANARY_ACTIVATION_SOURCE",
+            "AGENT_PROJECT_CANARY_PLAN_SOURCE",
+            "AGENT_PROJECT_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE",
+            "AGENT_PROJECT_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE",
+            "AGENT_PROJECT_CANARY_APPROVAL_DOCUMENT_SOURCE",
+            "AGENT_PROJECT_CANARY_APPROVAL_PUBLIC_KEY_SOURCE",
+            "AGENT_PROJECT_CANARY_RELAY_TLS_CERT_SOURCE",
+            "AGENT_PROJECT_CANARY_RELAY_TLS_KEY_SOURCE",
+            "AGENT_PROJECT_CANARY_RELAY_TLS_CLIENT_CA_SOURCE",
+        )
+    }
+    if len(set(project_files.values())) != len(project_files):
+        fail("Project canary approval, authority and TLS files must be distinct")
+    project_sensitive_files = {
+        project_files[key]
+        for key in project_files
+        if key not in {
+            "AGENT_PROJECT_CANARY_RELEASE_MANIFEST_SOURCE",
+            "AGENT_PROJECT_CANARY_PRODUCTION_POLICY_SOURCE",
+        }
+    }
+    broker_sensitive_files = {
+        broker_files[key]
+        for key in broker_files
+        if key not in {
+            "AGENT_BROKER_CANARY_RELEASE_MANIFEST_SOURCE",
+            "AGENT_BROKER_CANARY_PRODUCTION_POLICY_SOURCE",
+        }
+    }
+    if project_sensitive_files & broker_sensitive_files:
+        fail("Project canary files must not reuse Broker canary authority or TLS material")
+    try:
+        tls_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        tls_context.load_cert_chain(
+            project_files["AGENT_PROJECT_CANARY_CLIENT_CERT_SOURCE"],
+            project_files["AGENT_PROJECT_CANARY_CLIENT_KEY_SOURCE"],
+        )
+        ssl.create_default_context(cafile=project_files["AGENT_PROJECT_CANARY_SERVER_CA_SOURCE"])
+        decoded_certificate = ssl._ssl._test_decode_cert(
+            str(project_files["AGENT_PROJECT_CANARY_CLIENT_CERT_SOURCE"])
+        )
+        relay_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        relay_context.load_cert_chain(
+            project_files["AGENT_PROJECT_CANARY_RELAY_TLS_CERT_SOURCE"],
+            project_files["AGENT_PROJECT_CANARY_RELAY_TLS_KEY_SOURCE"],
+        )
+        ssl.create_default_context(cafile=project_files["AGENT_PROJECT_CANARY_RELAY_TLS_CLIENT_CA_SOURCE"])
+    except (OSError, ssl.SSLError, ValueError):
+        fail("Project canary mTLS certificate/key material is invalid or mismatched")
+    common_names = [
+        value
+        for relative_name in decoded_certificate.get("subject", ())
+        for key, value in relative_name
+        if key == "commonName"
+    ]
+    if common_names != [values["AGENT_PROJECT_CANARY_CLIENT_IDENTITY"]]:
+        fail("Project canary client certificate identity does not match configuration")
+    try:
+        authority_private_text = project_files["AGENT_PROJECT_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE"].read_text().strip()
+        authority_public_text = project_files["AGENT_PROJECT_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE"].read_text().strip()
+        approval_public_text = project_files["AGENT_PROJECT_CANARY_APPROVAL_PUBLIC_KEY_SOURCE"].read_text().strip()
+        authority_private_raw = base64.urlsafe_b64decode(authority_private_text + "=" * (-len(authority_private_text) % 4))
+        authority_public_raw = base64.urlsafe_b64decode(authority_public_text + "=" * (-len(authority_public_text) % 4))
+        approval_public_raw = base64.urlsafe_b64decode(approval_public_text + "=" * (-len(approval_public_text) % 4))
+    except (OSError, UnicodeError, ValueError, binascii.Error):
+        fail("Project canary authority or approval key material is invalid")
+    if (
+        len(authority_private_raw) != 64
+        or len(authority_public_raw) != 32
+        or authority_private_raw[32:] != authority_public_raw
+        or len(approval_public_raw) != 32
+        or authority_public_raw == approval_public_raw
+    ):
+        fail("Project canary approval authority must be separate from the Runner authority")
+
+    try:
+        project_plan_raw = project_files["AGENT_PROJECT_CANARY_PLAN_SOURCE"].read_bytes()
+        project_plan = json.loads(project_plan_raw, object_pairs_hook=unique_object)
+    except (OSError, UnicodeError, json.JSONDecodeError, DuplicateKey):
+        fail("AGENT_PROJECT_CANARY_PLAN_SOURCE is invalid")
+    action = project_plan.get("action", {}) if isinstance(project_plan, dict) else {}
+    project_policy = action.get("project", {}) if isinstance(action, dict) else {}
+    arguments = action.get("arguments", {}) if isinstance(action, dict) else {}
+    content = project_policy.get("content")
+    if not isinstance(content, str):
+        fail("AGENT_PROJECT_CANARY_PLAN_SOURCE is not the strict one-action synthetic Project plan")
+    content_raw = content.encode("utf-8")
+    try:
+        plan_issued = datetime.fromisoformat(str(project_plan.get("issuedAt", "")).replace("Z", "+00:00"))
+        plan_expires = datetime.fromisoformat(str(project_plan.get("expiresAt", "")).replace("Z", "+00:00"))
+    except ValueError:
+        fail("AGENT_PROJECT_CANARY_PLAN_SOURCE has an invalid activation window")
+    current_time = datetime.now(timezone.utc)
+    content_fingerprint = "sha256:" + hashlib.sha256(
+        b"neo-project-file-v1\0" + content_raw
+    ).hexdigest()
+    mutation_material = "\n".join((
+        str(action.get("baseRevision", "")),
+        str(action.get("resource", "")),
+        str(project_policy.get("path", "")),
+        content_fingerprint,
+    )).encode()
+    mutation_fingerprint = "sha256:" + hashlib.sha256(
+        b"neo-project-canary-mutation-v1\0" + mutation_material
+    ).hexdigest()
+    if (
+        project_plan.get("schemaVersion") != "neo.agent-project-mutation-canary-plan/v1"
+        or project_plan.get("synthetic") is not True
+        or plan_issued.tzinfo is None
+        or plan_expires.tzinfo is None
+        or plan_issued > current_time
+        or current_time >= plan_expires
+        or plan_expires <= plan_issued
+        or project_plan.get("sandbox", {}).get("networkMode") != "none"
+        or project_plan.get("sandbox", {}).get("rootfsReadOnly") is not True
+        or project_plan.get("sandbox", {}).get("noNewPrivileges") is not True
+        or project_plan.get("sandbox", {}).get("capabilities") != []
+        or action.get("id") != "project_mutation"
+        or action.get("toolIdentity") != "project.patch"
+        or action.get("capability") != "project.write"
+        or action.get("action") != "apply_patch"
+        or action.get("classification") != "mutable"
+        or action.get("idempotent") is not False
+        or action.get("approval") != "per_commit"
+        or action.get("resource") != project_policy.get("resource")
+        or action.get("baseRevision") != project_policy.get("baseRevision")
+        or not isinstance(project_policy.get("path"), str)
+        or "/" in project_policy.get("path", "")
+        or project_policy.get("path") in {"", ".", ".."}
+        or len(content_raw) < 1
+        or len(content_raw) > 4096
+        or "\x00" in content
+        or not isinstance(project_policy.get("maxBytes"), int)
+        or not len(content_raw) <= project_policy["maxBytes"] <= 4096
+        or arguments != {
+            "contentFingerprint": content_fingerprint,
+            "mutationFingerprint": mutation_fingerprint,
+            "path": project_policy.get("path"),
+            "sizeBytes": len(content_raw),
+        }
+    ):
+        fail("AGENT_PROJECT_CANARY_PLAN_SOURCE is not the strict one-action synthetic Project plan")
+
+    try:
+        approval_document = json.loads(
+            project_files["AGENT_PROJECT_CANARY_APPROVAL_DOCUMENT_SOURCE"].read_text(),
+            object_pairs_hook=unique_object,
+        )
+        approval_payload = approval_document["payload"]
+        approval_signature = base64.urlsafe_b64decode(
+            approval_document["signature"] + "=" * (-len(approval_document["signature"]) % 4)
+        )
+        approval_window = approval_payload["window"]
+        approval_issued = datetime.fromisoformat(approval_window["issuedAt"].replace("Z", "+00:00"))
+        approval_not_before = datetime.fromisoformat(approval_window["notBefore"].replace("Z", "+00:00"))
+        approval_expires = datetime.fromisoformat(approval_window["expiresAt"].replace("Z", "+00:00"))
+    except (OSError, UnicodeError, json.JSONDecodeError, DuplicateKey, KeyError, TypeError, ValueError, binascii.Error):
+        fail("AGENT_PROJECT_CANARY_APPROVAL_DOCUMENT_SOURCE is invalid")
+    approval_action = approval_payload.get("action", {}) if isinstance(approval_payload, dict) else {}
+    approval_request = approval_payload.get("request", {}) if isinstance(approval_payload, dict) else {}
+    plan_fingerprint = "sha256:" + hashlib.sha256(project_plan_raw).hexdigest()
+    activation_material = "\n".join((
+        "project_mutation_canary",
+        values["AGENT_PROJECT_CANARY_RELEASE_GIT_COMMIT"],
+        str(project_plan.get("targetFingerprint", "")),
+        values["AGENT_PROJECT_CANARY_RUNNER_ID"],
+        plan_fingerprint,
+        values["AGENT_PROJECT_CANARY_CLIENT_IDENTITY"],
+        values["AGENT_PROJECT_CANARY_RELAY_ENDPOINT"],
+    )).encode()
+    activation_fingerprint = "sha256:" + hashlib.sha256(
+        b"neo-agent-project-canary-activation-binding-v1\0" + activation_material
+    ).hexdigest()
+    if (
+        not isinstance(approval_document, dict)
+        or set(approval_document) != {"payload", "signature"}
+        or not isinstance(approval_payload, dict)
+        or approval_payload.get("schemaVersion") != "neo.agent-project-mutation-approval/v1"
+        or re.fullmatch(r"approval_[A-Za-z0-9_-]{16,128}", str(approval_payload.get("approvalId", ""))) is None
+        or approval_payload.get("decision") != "approved"
+        or approval_payload.get("release") != {
+            "gitCommit": values["AGENT_PROJECT_CANARY_RELEASE_GIT_COMMIT"],
+            "migrationHead": 92,
+        }
+        or approval_payload.get("target") != {
+            "deploymentFingerprint": project_plan.get("targetFingerprint"),
+            "runnerId": values["AGENT_PROJECT_CANARY_RUNNER_ID"],
+        }
+        or approval_payload.get("activation") != {
+            "stage": "project_mutation_canary",
+            "activationFingerprint": activation_fingerprint,
+            "planFingerprint": plan_fingerprint,
+        }
+        or approval_request != {
+            "callerIdentity": values["AGENT_PROJECT_CANARY_CLIENT_IDENTITY"],
+            "requestIdentity": action.get("requestIdentity"),
+            "idempotencyKey": action.get("idempotencyKey"),
+        }
+        or approval_action != {
+            "toolIdentity": action.get("toolIdentity"),
+            "capability": action.get("capability"),
+            "action": action.get("action"),
+            "resource": action.get("resource"),
+            "baseRevision": action.get("baseRevision"),
+            "path": project_policy.get("path"),
+            "contentFingerprint": content_fingerprint,
+            "mutationFingerprint": mutation_fingerprint,
+        }
+        or not isinstance(approval_payload.get("actor"), dict)
+        or approval_payload["actor"].get("type") != "operator"
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}", str(approval_payload["actor"].get("id", ""))) is None
+        or re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", str(approval_payload["actor"].get("reasonCode", ""))) is None
+        or set(approval_window) != {"issuedAt", "notBefore", "expiresAt"}
+        or approval_issued.tzinfo is None
+        or approval_not_before.tzinfo is None
+        or approval_expires.tzinfo is None
+        or approval_issued > approval_not_before
+        or approval_not_before > current_time
+        or current_time >= approval_expires
+        or approval_expires <= approval_not_before
+        or (approval_expires - approval_not_before).total_seconds() > 900
+        or len(approval_signature) != 64
+        or approval_signature == b"\0" * 64
+    ):
+        fail("AGENT_PROJECT_CANARY_APPROVAL_DOCUMENT_SOURCE is not the exact reviewed approval")
+
+    evaluator = Path(sys.argv[2]) / "scripts/evaluate-agent-production-activation.py"
+    try:
+        decision = subprocess.run(
+            [
+                sys.executable, str(evaluator),
+                "--record", str(project_files["AGENT_PROJECT_CANARY_ACTIVATION_SOURCE"]),
+                "--policy", str(project_files["AGENT_PROJECT_CANARY_PRODUCTION_POLICY_SOURCE"]),
+                "--release-manifest", str(project_files["AGENT_PROJECT_CANARY_RELEASE_MANIFEST_SOURCE"]),
+                "--client-certificate", str(project_files["AGENT_PROJECT_CANARY_CLIENT_CERT_SOURCE"]),
+                "--server-ca", str(project_files["AGENT_PROJECT_CANARY_SERVER_CA_SOURCE"]),
+                "--canary-plan", str(project_files["AGENT_PROJECT_CANARY_PLAN_SOURCE"]),
+                "--authority-public-key", str(project_files["AGENT_PROJECT_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE"]),
+                "--approval-document", str(project_files["AGENT_PROJECT_CANARY_APPROVAL_DOCUMENT_SOURCE"]),
+                "--approval-public-key", str(project_files["AGENT_PROJECT_CANARY_APPROVAL_PUBLIC_KEY_SOURCE"]),
+                "--relay-endpoint", values["AGENT_PROJECT_CANARY_RELAY_ENDPOINT"],
+                "--relay-server-certificate", str(project_files["AGENT_PROJECT_CANARY_RELAY_TLS_CERT_SOURCE"]),
+                "--relay-client-ca", str(project_files["AGENT_PROJECT_CANARY_RELAY_TLS_CLIENT_CA_SOURCE"]),
+                "--runner-relay-identity", values["AGENT_PROJECT_CANARY_RUNNER_RELAY_IDENTITY"],
+                "--endpoint", values["AGENT_PROJECT_CANARY_RUNNER_URL"],
+                "--runner-id", values["AGENT_PROJECT_CANARY_RUNNER_ID"],
+                "--target-fingerprint", project_plan["targetFingerprint"],
+                "--server-name", values["AGENT_PROJECT_CANARY_RUNNER_SERVER_NAME"],
+                "--caller-identity", values["AGENT_PROJECT_CANARY_CLIENT_IDENTITY"],
+                "--release-commit", values["AGENT_PROJECT_CANARY_RELEASE_GIT_COMMIT"],
+            ],
+            check=False, capture_output=True, text=True, timeout=10,
+        )
+        decision_payload = json.loads(decision.stdout)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        fail("Project canary activation evaluator failed")
+    if (
+        decision.returncode != 0
+        or decision_payload.get("verdict") != "ACTIVATION_READY"
+        or decision_payload.get("reasonCode") != "PROJECT_MUTATION_CANARY_GATES_PASSED"
+    ):
+        fail("AGENT_PROJECT_CANARY_ACTIVATION_SOURCE is not READY for G21.3")
+
 
 marketplace_timeout = parse_simple_duration_seconds(
     "MCP_MARKETPLACE_TIMEOUT", values["MCP_MARKETPLACE_TIMEOUT"]
@@ -1199,6 +1608,7 @@ for key in (
     *(("AGENT_RUNNER_DATABASE_URL",) if agent_control_enabled else ()),
     *(("AGENT_ROOT_CANARY_DATABASE_URL",) if agent_root_canary_enabled else ()),
     *(("AGENT_BROKER_CANARY_DATABASE_URL",) if agent_broker_canary_enabled else ()),
+    *(("AGENT_PROJECT_CANARY_DATABASE_URL",) if agent_project_canary_enabled else ()),
 ):
     try:
         parsed = urlsplit(values[key])
@@ -1230,7 +1640,7 @@ for key, parsed in database_urls.items():
 
 database_users = [unquote(parsed.username or "") for parsed in database_urls.values()]
 if len(set(database_users)) != len(database_users):
-    fail("migration, API, workers, Agent control, Root canary, and Broker canary must use distinct database principals")
+    fail("migration, API, workers, Agent control, Root, Broker, and Project canaries must use distinct database principals")
 
 database_passwords = [
     unquote(parsed.password or "") for parsed in database_urls.values()

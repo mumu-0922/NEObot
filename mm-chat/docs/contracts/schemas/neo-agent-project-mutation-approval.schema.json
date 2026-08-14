@@ -1,0 +1,219 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "payload",
+    "signature"
+  ],
+  "properties": {
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "approvalId",
+        "decision",
+        "release",
+        "target",
+        "activation",
+        "request",
+        "action",
+        "actor",
+        "window"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "neo.agent-project-mutation-approval/v1"
+        },
+        "approvalId": {
+          "type": "string",
+          "pattern": "^approval_[A-Za-z0-9_-]{16,128}$"
+        },
+        "decision": {
+          "const": "approved"
+        },
+        "release": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "gitCommit",
+            "migrationHead"
+          ],
+          "properties": {
+            "gitCommit": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            },
+            "migrationHead": {
+              "const": 92
+            }
+          }
+        },
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "deploymentFingerprint",
+            "runnerId"
+          ],
+          "properties": {
+            "deploymentFingerprint": {
+              "$ref": "#/$defs/fingerprint"
+            },
+            "runnerId": {
+              "$ref": "#/$defs/identity"
+            }
+          }
+        },
+        "activation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "stage",
+            "activationFingerprint",
+            "planFingerprint"
+          ],
+          "properties": {
+            "stage": {
+              "const": "project_mutation_canary"
+            },
+            "activationFingerprint": {
+              "$ref": "#/$defs/fingerprint"
+            },
+            "planFingerprint": {
+              "$ref": "#/$defs/fingerprint"
+            }
+          }
+        },
+        "request": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "callerIdentity",
+            "requestIdentity",
+            "idempotencyKey"
+          ],
+          "properties": {
+            "callerIdentity": {
+              "const": "spiffe://neo-chat/agent-runtime-project-canary"
+            },
+            "requestIdentity": {
+              "type": "string",
+              "pattern": "^g21\\.3-request-[a-z0-9][a-z0-9._-]{7,79}$"
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "pattern": "^g21\\.3-project-mutation-[a-z0-9][a-z0-9._-]{7,79}$"
+            }
+          }
+        },
+        "action": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "toolIdentity",
+            "capability",
+            "action",
+            "resource",
+            "baseRevision",
+            "path",
+            "contentFingerprint",
+            "mutationFingerprint"
+          ],
+          "properties": {
+            "toolIdentity": {
+              "const": "project.patch"
+            },
+            "capability": {
+              "const": "project.write"
+            },
+            "action": {
+              "const": "apply_patch"
+            },
+            "resource": {
+              "type": "string",
+              "pattern": "^project-canary/[a-z0-9][a-z0-9._-]{0,63}$"
+            },
+            "baseRevision": {
+              "$ref": "#/$defs/fingerprint"
+            },
+            "path": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+            },
+            "contentFingerprint": {
+              "$ref": "#/$defs/fingerprint"
+            },
+            "mutationFingerprint": {
+              "$ref": "#/$defs/fingerprint"
+            }
+          }
+        },
+        "actor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "id",
+            "reasonCode"
+          ],
+          "properties": {
+            "type": {
+              "const": "operator"
+            },
+            "id": {
+              "$ref": "#/$defs/identity"
+            },
+            "reasonCode": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+            }
+          }
+        },
+        "window": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "issuedAt",
+            "notBefore",
+            "expiresAt"
+          ],
+          "properties": {
+            "issuedAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "notBefore": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "expiresAt": {
+              "$ref": "#/$defs/timestamp"
+            }
+          }
+        }
+      }
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{86}$"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neo-chat.local/schemas/neo-agent-project-mutation-approval.schema.json",
+  "title": "Neo Agent Project Mutation Approval",
+  "$defs": {
+    "fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "identity": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:@/-]{0,127}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    }
+  },
+  "description": "Detached Ed25519 operator approval for one reviewed G21.3 action."
+}
