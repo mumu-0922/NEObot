@@ -137,3 +137,36 @@ Added the separately activated Root Run canary, caller-scoped Runner RPC policy,
 ### Next Steps
 
 - None - task complete
+
+
+## Session 53: Agent Runtime G21.2 Broker and Artifact canary
+
+**Date**: 2026-08-14
+**Task**: Agent Runtime G21.2 Broker and Artifact canary
+**Branch**: `main`
+
+### Summary
+
+Added the separately activated Broker/Artifact canary, private Runner-to-Broker mTLS relay, strict five-action read-only/Artifact plan, migration 091 function-only Artifact authority, object-before-row cleanup, outcome_unknown no-retry handling, default-off production wiring, enabled synthetic preflight, and synchronized contracts/specs. Backend, PostgreSQL 17, G21.0/G21.1 regressions, Phase 0, and full standalone verification passed while this development host remained ISOLATION_UNAVAILABLE and no exact-host/live proof was produced.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `962c2647` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

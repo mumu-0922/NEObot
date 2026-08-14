@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 52
+- **Total Sessions**: 53
 - **Last Active**: 2026-08-14
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~139 | Active |
+| `journal-2.md` | ~172 | Active |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 53 | 2026-08-14 | Agent Runtime G21.2 Broker and Artifact canary | `962c2647` | `main` |
 | 52 | 2026-08-14 | Agent Runtime G21.1 Root Run canary | `437faf27` | `main` |
 | 51 | 2026-08-14 | Agent Runtime G21.0 production control activation | `b14ac9cb` | `main` |
 | 50 | 2026-08-14 | Agent Runtime G20.10 production closure | `14b6222f` | `main` |
