@@ -104,3 +104,36 @@ Added the exact-host Runner bundle, strict control-plane activation evidence, de
 ### Next Steps
 
 - None - task complete
+
+
+## Session 52: Agent Runtime G21.1 Root Run canary
+
+**Date**: 2026-08-14
+**Task**: Agent Runtime G21.1 Root Run canary
+**Branch**: `main`
+
+### Summary
+
+Added the separately activated Root Run canary, caller-scoped Runner RPC policy, immutable no-network/no-Tool plan, signed launch/heartbeat/cancel flow, atomic PostgreSQL terminalization, restart recovery, default-off production wiring, focused PostgreSQL/preflight gates, and synchronized architecture/contract/deployment/Trellis documentation. Final full standalone verification passed while the development host remained ISOLATION_UNAVAILABLE.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `437faf27` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
