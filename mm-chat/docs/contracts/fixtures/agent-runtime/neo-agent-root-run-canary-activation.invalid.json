@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "neo.agent-production-activation/v1",
+  "stage": "control_plane",
+  "authorization": {
+    "rootRuns": false
+  }
+}

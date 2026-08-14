@@ -1,6 +1,9 @@
 package agentactivation
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"os"
@@ -9,6 +12,33 @@ import (
 	"testing"
 	"time"
 )
+
+func TestVerifyRootCanaryRequiresIndependentStageAndBindings(t *testing.T) {
+	now := time.Date(2026, 8, 14, 10, 0, 0, 0, time.UTC)
+	config, evidence := rootCanaryActivationFixture(t, now)
+	decision, err := VerifyRootCanary(config, now)
+	if err != nil || !decision.Ready || decision.ReasonCode != "ROOT_RUN_CANARY_GATES_PASSED" {
+		t.Fatalf("VerifyRootCanary() = %#v, %v", decision, err)
+	}
+	controlConfig := config.Config
+	controlConfig.CallerIdentity = ControlCallerIdentity
+	if decision, err := Verify(controlConfig, now); !errors.Is(err, ErrInvalid) || decision.ReasonCode != "ACTIVATION_ROOT_INVALID" {
+		t.Fatalf("control accepted canary evidence: %#v, %v", decision, err)
+	}
+	evidence.Authorization.BrokerReadOnly = true
+	writeJSON(t, config.RecordFile, evidence)
+	decision, err = VerifyRootCanary(config, now)
+	if !errors.Is(err, ErrInvalid) || decision.ReasonCode != "AUTHORIZATION_WIDENED" {
+		t.Fatalf("widened canary = %#v, %v", decision, err)
+	}
+
+	config, _ = rootCanaryActivationFixture(t, now)
+	writePrivate(t, config.CanaryPlanFile, []byte(`{"schemaVersion":"drift"}`))
+	decision, err = VerifyRootCanary(config, now)
+	if !errors.Is(err, ErrInvalid) || decision.ReasonCode != "CANARY_PLAN_DRIFT" {
+		t.Fatalf("plan drift = %#v, %v", decision, err)
+	}
+}
 
 func TestVerifyAcceptsOnlyExactControlPlaneEvidence(t *testing.T) {
 	now := time.Date(2026, 8, 14, 9, 0, 0, 0, time.UTC)
@@ -185,6 +215,38 @@ func activationFixture(t *testing.T, now time.Time) (Config, record) {
 		ClientCertificateFile: certificateFile, ServerCAFile: serverCAFile, Endpoint: endpoint,
 		RunnerID: "neo-runner-primary", ServerName: "neo-runner.internal",
 		CallerIdentity: "spiffe://neo-chat/agent-runtime-control", ReleaseCommit: strings.Repeat("a", 40)}, value
+}
+
+func rootCanaryActivationFixture(t *testing.T, now time.Time) (RootCanaryConfig, rootCanaryRecord) {
+	t.Helper()
+	controlConfig, controlEvidence := activationFixture(t, now)
+	planFile := filepath.Join(filepath.Dir(controlConfig.RecordFile), "root-canary-plan.json")
+	planRaw := []byte(`{"schemaVersion":"neo.agent-root-run-canary-plan/v1","synthetic":true}`)
+	writePrivate(t, planFile, planRaw)
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKeyFile := filepath.Join(filepath.Dir(controlConfig.RecordFile), "authority-public-key")
+	publicKeyRaw := []byte(base64.RawURLEncoding.EncodeToString(publicKey))
+	writePrivate(t, publicKeyFile, publicKeyRaw)
+	controlConfig.CallerIdentity = RootCanaryCallerIdentity
+	evidence := rootCanaryRecord{
+		SchemaVersion: SchemaVersion, EvidenceClass: "production", Stage: StageRootCanary,
+		Release: controlEvidence.Release, Target: controlEvidence.Target,
+		Wiring: rootCanaryWiring{EndpointSHA256: controlEvidence.Wiring.EndpointSHA256,
+			ClientCertificateSHA256: controlEvidence.Wiring.ClientCertificateSHA256,
+			ServerCASHA256:          controlEvidence.Wiring.ServerCASHA256, ServerName: controlEvidence.Wiring.ServerName,
+			CallerIdentity: RootCanaryCallerIdentity, CanaryPlanSHA256: fingerprint(planRaw),
+			AuthorityPublicKeySHA256: fingerprint(publicKeyRaw)},
+		Window: controlEvidence.Window, Authorization: authorization{RootRuns: true}, Cleanup: cleanup{}, Review: controlEvidence.Review,
+	}
+	for index, id := range rootCanaryChecks {
+		evidence.Checks = append(evidence.Checks, check{ID: id, Result: "passed", ObservedAt: now.Add(-5 * time.Minute),
+			EvidenceSHA256: testFingerprint(byte('1' + index)), DetailCode: "PASS"})
+	}
+	writeJSON(t, controlConfig.RecordFile, evidence)
+	return RootCanaryConfig{Config: controlConfig, CanaryPlanFile: planFile, AuthorityPublicKeyFile: publicKeyFile}, evidence
 }
 
 func testFingerprint(value byte) string { return "sha256:" + strings.Repeat(string(value), 64) }

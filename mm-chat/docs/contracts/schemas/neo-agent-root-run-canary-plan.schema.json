@@ -1,0 +1,250 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neo-chat.local/schemas/neo-agent-root-run-canary-plan.schema.json",
+  "title": "Neo Agent Root Run Canary Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "synthetic",
+    "userId",
+    "idempotencyKey",
+    "stepKind",
+    "grantId",
+    "grantFingerprint",
+    "snapshot",
+    "sandbox",
+    "toolRegistry",
+    "argv",
+    "leaseSeconds"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "neo.agent-root-run-canary-plan/v1"
+    },
+    "synthetic": {
+      "const": true
+    },
+    "userId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "pattern": "^g21\\.1-root-canary-[A-Za-z0-9._:-]{1,106}$"
+    },
+    "stepKind": {
+      "const": "root_canary"
+    },
+    "grantId": {
+      "type": "string",
+      "pattern": "^grant_[a-z0-9]{16,64}$"
+    },
+    "grantFingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "mode",
+        "packageFingerprint",
+        "runtimeBundleFingerprint",
+        "grantFingerprint",
+        "registryFingerprint",
+        "workspaceFingerprint",
+        "noEgress",
+        "noSecrets",
+        "maxWallSeconds"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "neo.agent-snapshot/v1"
+        },
+        "mode": {
+          "const": "synthetic"
+        },
+        "packageFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "runtimeBundleFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "grantFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "registryFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "workspaceFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "noEgress": {
+          "const": true
+        },
+        "noSecrets": {
+          "const": true
+        },
+        "maxWallSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400
+        }
+      }
+    },
+    "sandbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtimeBundleFingerprint",
+        "packageFingerprint",
+        "image",
+        "uid",
+        "gid",
+        "rootfsReadOnly",
+        "noNewPrivileges",
+        "capabilities",
+        "seccompProfileFingerprint",
+        "networkMode",
+        "workspaceSnapshotId",
+        "workspaceFingerprint",
+        "resources"
+      ],
+      "properties": {
+        "runtimeBundleFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "packageFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "image": {
+          "type": "string",
+          "pattern": "^[^@\\s]+@sha256:[0-9a-f]{64}$"
+        },
+        "uid": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "gid": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "rootfsReadOnly": {
+          "const": true
+        },
+        "noNewPrivileges": {
+          "const": true
+        },
+        "capabilities": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "seccompProfileFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "networkMode": {
+          "const": "none"
+        },
+        "workspaceSnapshotId": {
+          "type": "string",
+          "pattern": "^workspace_snapshot_[a-z0-9]{16,64}$"
+        },
+        "workspaceFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "cpuMillis",
+            "memoryMiB",
+            "pids",
+            "wallSeconds",
+            "outputBytes",
+            "scratchBytes"
+          ],
+          "properties": {
+            "cpuMillis": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 8000
+            },
+            "memoryMiB": {
+              "type": "integer",
+              "minimum": 64,
+              "maximum": 16384
+            },
+            "pids": {
+              "type": "integer",
+              "minimum": 8,
+              "maximum": 1024
+            },
+            "wallSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 86400
+            },
+            "outputBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 33554432
+            },
+            "scratchBytes": {
+              "type": "integer",
+              "minimum": 1048576,
+              "maximum": 8589934592
+            }
+          }
+        }
+      }
+    },
+    "toolRegistry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "depth",
+        "tools",
+        "registryFingerprint"
+      ],
+      "properties": {
+        "depth": {
+          "const": 0
+        },
+        "tools": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "registryFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "argv": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      }
+    },
+    "leaseSeconds": {
+      "type": "integer",
+      "minimum": 10,
+      "maximum": 60
+    }
+  }
+}

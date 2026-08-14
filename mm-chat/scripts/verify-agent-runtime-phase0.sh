@@ -77,6 +77,19 @@ required_agent_paths=(
   "${project_dir}/scripts/verify-agent-runner-bundle.py"
   "${project_dir}/scripts/verify-agent-runner-bundle.sh"
   "${project_dir}/scripts/verify-agent-runtime-g21-0.sh"
+  "${project_dir}/backend/cmd/agent-runtime-root-canary/main.go"
+  "${project_dir}/backend/internal/agentactivation/root_canary.go"
+  "${project_dir}/backend/internal/agentrootcanary/service.go"
+  "${project_dir}/backend/internal/agentrootcanary/repository_postgres.go"
+  "${project_dir}/docs/contracts/schemas/neo-agent-root-run-canary-activation.schema.json"
+  "${project_dir}/docs/contracts/schemas/neo-agent-root-run-canary-plan.schema.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-root-run-canary-activation.valid.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-root-run-canary-activation.invalid.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-root-run-canary-plan.valid.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-root-run-canary-plan.invalid.json"
+  "${project_dir}/scripts/verify-agent-root-canary-activation.sh"
+  "${project_dir}/scripts/verify-agent-root-canary-postgres17.sh"
+  "${project_dir}/scripts/verify-agent-runtime-g21-1.sh"
 )
 for path in "${required_agent_paths[@]}"; do
   if [[ ! -s "${path}" ]]; then
@@ -128,8 +141,11 @@ done
 bash -n "${project_dir}/scripts/verify-agent-runtime-phase0.sh"
 bash -n "${project_dir}/scripts/verify-agent-production-closure.sh"
 bash -n "${project_dir}/scripts/verify-agent-runtime-g21-0.sh"
+bash -n "${project_dir}/scripts/verify-agent-root-canary-activation.sh"
+bash -n "${project_dir}/scripts/verify-agent-root-canary-postgres17.sh"
+bash -n "${project_dir}/scripts/verify-agent-runtime-g21-1.sh"
 
-bash "${project_dir}/scripts/verify-agent-runtime-g21-0.sh"
+bash "${project_dir}/scripts/verify-agent-runtime-g21-1.sh"
 
 isolated_root="$(mktemp -d)"
 cleanup() {

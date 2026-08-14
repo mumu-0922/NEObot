@@ -386,6 +386,10 @@ func sandboxFingerprint(request LaunchRequest) string {
 	return "sha256:" + hex.EncodeToString(digest[:])
 }
 
+// SandboxFingerprint returns the exact content fingerprint persisted by the
+// Runner control plane for an expected launch.
+func SandboxFingerprint(request LaunchRequest) string { return sandboxFingerprint(request) }
+
 func validAttempt(attempt AttemptRef) bool {
 	return validID(attempt.RunID, "run") && validID(attempt.StepID, "step") &&
 		validID(attempt.AttemptID, "attempt") && attempt.LeaseGeneration >= 1 &&

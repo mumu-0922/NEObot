@@ -305,6 +305,7 @@ if values.get("MCP_MARKETPLACE_ENABLED") == "true" and values.get("MCP_REMOTE_EN
 
 agent_flags = (
     "AGENT_RUNNER_CONTROL_ENABLED",
+    "AGENT_ROOT_RUN_CANARY_ENABLED",
     "AGENT_RUNTIME_ENABLED",
     "AGENT_SCHEDULER_ENABLED",
     "AGENT_SKILL_INSTALL_ENABLED",
@@ -316,9 +317,9 @@ agent_flags = (
 for key in agent_flags:
     if values.get(key) not in {"true", "false"}:
         fail(f"{key} must be true or false")
-for key in agent_flags[1:]:
+for key in agent_flags[2:]:
     if values[key] != "false":
-        fail(f"{key} must remain false in G21.0")
+        fail(f"{key} must remain false through G21.1")
 
 required = (
     "FRONTEND_IMAGE",
@@ -538,6 +539,7 @@ if values["MCP_MARKETPLACE_ENABLED"] == "true":
     )
 
 agent_control_enabled = values["AGENT_RUNNER_CONTROL_ENABLED"] == "true"
+agent_root_canary_enabled = values["AGENT_ROOT_RUN_CANARY_ENABLED"] == "true"
 agent_control_keys = (
     "AGENT_RUNNER_DATABASE_URL",
     "AGENT_RUNNER_URL",
@@ -685,6 +687,175 @@ if agent_control_enabled:
     if decision.returncode != 0 or decision_payload.get("verdict") != "ACTIVATION_READY":
         fail("AGENT_PRODUCTION_ACTIVATION_SOURCE is not READY for G21.0")
 
+agent_root_canary_keys = (
+    "AGENT_ROOT_CANARY_DATABASE_URL",
+    "AGENT_ROOT_CANARY_RUNNER_URL",
+    "AGENT_ROOT_CANARY_RUNNER_ID",
+    "AGENT_ROOT_CANARY_SERVER_NAME",
+    "AGENT_ROOT_CANARY_CLIENT_IDENTITY",
+    "AGENT_ROOT_CANARY_CLIENT_CERT_SOURCE",
+    "AGENT_ROOT_CANARY_CLIENT_KEY_SOURCE",
+    "AGENT_ROOT_CANARY_SERVER_CA_SOURCE",
+    "AGENT_ROOT_CANARY_RELEASE_MANIFEST_SOURCE",
+    "AGENT_ROOT_CANARY_PRODUCTION_POLICY_SOURCE",
+    "AGENT_ROOT_CANARY_ACTIVATION_SOURCE",
+    "AGENT_ROOT_CANARY_PLAN_SOURCE",
+    "AGENT_ROOT_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE",
+    "AGENT_ROOT_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE",
+    "AGENT_ROOT_CANARY_RELEASE_GIT_COMMIT",
+    "AGENT_ROOT_CANARY_POLL_INTERVAL",
+    "AGENT_ROOT_CANARY_RPC_TIMEOUT",
+    "AGENT_ROOT_CANARY_AUTHORITY_TTL",
+    "AGENT_ROOT_CANARY_RECONCILE_BATCH_SIZE",
+)
+if agent_root_canary_enabled:
+    if not agent_control_enabled:
+        fail("AGENT_ROOT_RUN_CANARY_ENABLED requires G21.0 control enabled")
+    for key in agent_root_canary_keys:
+        if not values.get(key, "").strip():
+            fail(f"{key} is required when the Root canary is enabled")
+        if placeholder.search(values[key]):
+            fail(f"{key} still contains a placeholder")
+    try:
+        canary_runner_url = urlsplit(values["AGENT_ROOT_CANARY_RUNNER_URL"])
+        canary_runner_port = canary_runner_url.port
+        canary_runner_ip = ipaddress.ip_address(canary_runner_url.hostname or "")
+    except ValueError:
+        fail("AGENT_ROOT_CANARY_RUNNER_URL must be the exact private HTTPS Runner RPC URL")
+    canary_runner_private = any(
+        canary_runner_ip in network
+        for network in private_networks
+        if canary_runner_ip.version == network.version
+    )
+    if (
+        canary_runner_url.scheme != "https"
+        or canary_runner_port is None
+        or canary_runner_port < 1
+        or not canary_runner_private
+        or canary_runner_url.username is not None
+        or canary_runner_url.password is not None
+        or canary_runner_url.path != "/internal/neo-runner/v1/rpc"
+        or canary_runner_url.query
+        or canary_runner_url.fragment
+    ):
+        fail("AGENT_ROOT_CANARY_RUNNER_URL must be the exact private HTTPS Runner RPC URL")
+    for key in ("AGENT_ROOT_CANARY_RUNNER_ID", "AGENT_ROOT_CANARY_SERVER_NAME"):
+        if identity_pattern.fullmatch(values[key]) is None:
+            fail(f"{key} is invalid")
+    if values["AGENT_ROOT_CANARY_CLIENT_IDENTITY"] != "spiffe://neo-chat/agent-runtime-root-canary":
+        fail("AGENT_ROOT_CANARY_CLIENT_IDENTITY must be the dedicated Root canary identity")
+    if values["AGENT_ROOT_CANARY_CLIENT_IDENTITY"] == values["AGENT_RUNNER_CLIENT_IDENTITY"]:
+        fail("Agent control and Root canary identities must be distinct")
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", values["AGENT_ROOT_CANARY_RELEASE_GIT_COMMIT"]) is None
+        or values["AGENT_ROOT_CANARY_RELEASE_GIT_COMMIT"] == "0" * 40
+    ):
+        fail("AGENT_ROOT_CANARY_RELEASE_GIT_COMMIT must be a non-placeholder lowercase Git commit")
+    canary_poll = parse_simple_duration_seconds("AGENT_ROOT_CANARY_POLL_INTERVAL", values["AGENT_ROOT_CANARY_POLL_INTERVAL"])
+    canary_rpc = parse_simple_duration_seconds("AGENT_ROOT_CANARY_RPC_TIMEOUT", values["AGENT_ROOT_CANARY_RPC_TIMEOUT"])
+    canary_authority_ttl = parse_simple_duration_seconds("AGENT_ROOT_CANARY_AUTHORITY_TTL", values["AGENT_ROOT_CANARY_AUTHORITY_TTL"])
+    if not 1 <= canary_poll <= 60:
+        fail("AGENT_ROOT_CANARY_POLL_INTERVAL must be between 1s and 1m")
+    if not 1 <= canary_rpc <= 60:
+        fail("AGENT_ROOT_CANARY_RPC_TIMEOUT must be between 1s and 1m")
+    if not 1 <= canary_authority_ttl <= 15:
+        fail("AGENT_ROOT_CANARY_AUTHORITY_TTL must be between 1s and 15s")
+    if re.fullmatch(r"[1-9][0-9]{0,3}", values["AGENT_ROOT_CANARY_RECONCILE_BATCH_SIZE"]) is None or not 1 <= int(values["AGENT_ROOT_CANARY_RECONCILE_BATCH_SIZE"]) <= 1000:
+        fail("AGENT_ROOT_CANARY_RECONCILE_BATCH_SIZE must be between 1 and 1000")
+
+    canary_files = {
+        key: resolve_secure_file(values[key], key, private=(key != "AGENT_ROOT_CANARY_PRODUCTION_POLICY_SOURCE"))
+        for key in (
+            "AGENT_ROOT_CANARY_CLIENT_CERT_SOURCE",
+            "AGENT_ROOT_CANARY_CLIENT_KEY_SOURCE",
+            "AGENT_ROOT_CANARY_SERVER_CA_SOURCE",
+            "AGENT_ROOT_CANARY_RELEASE_MANIFEST_SOURCE",
+            "AGENT_ROOT_CANARY_PRODUCTION_POLICY_SOURCE",
+            "AGENT_ROOT_CANARY_ACTIVATION_SOURCE",
+            "AGENT_ROOT_CANARY_PLAN_SOURCE",
+            "AGENT_ROOT_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE",
+            "AGENT_ROOT_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE",
+        )
+    }
+    try:
+        tls_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        tls_context.load_cert_chain(
+            canary_files["AGENT_ROOT_CANARY_CLIENT_CERT_SOURCE"],
+            canary_files["AGENT_ROOT_CANARY_CLIENT_KEY_SOURCE"],
+        )
+        ssl.create_default_context(cafile=canary_files["AGENT_ROOT_CANARY_SERVER_CA_SOURCE"])
+        decoded_certificate = ssl._ssl._test_decode_cert(str(canary_files["AGENT_ROOT_CANARY_CLIENT_CERT_SOURCE"]))
+    except (OSError, ssl.SSLError, ValueError):
+        fail("Root canary mTLS certificate/key material is invalid or mismatched")
+    common_names = [
+        value
+        for relative_name in decoded_certificate.get("subject", ())
+        for key, value in relative_name
+        if key == "commonName"
+    ]
+    if common_names != [values["AGENT_ROOT_CANARY_CLIENT_IDENTITY"]]:
+        fail("Root canary client certificate identity does not match configuration")
+    try:
+        private_text = canary_files["AGENT_ROOT_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE"].read_text().strip()
+        public_text = canary_files["AGENT_ROOT_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE"].read_text().strip()
+        private_raw = base64.urlsafe_b64decode(private_text + "=" * (-len(private_text) % 4))
+        public_raw = base64.urlsafe_b64decode(public_text + "=" * (-len(public_text) % 4))
+    except (OSError, UnicodeError, ValueError, binascii.Error):
+        fail("Root canary authority key material is invalid")
+    if len(private_raw) != 64 or len(public_raw) != 32 or private_raw[32:] != public_raw:
+        fail("Root canary authority private/public keys do not match")
+    try:
+        canary_plan = json.loads(
+            canary_files["AGENT_ROOT_CANARY_PLAN_SOURCE"].read_text(),
+            object_pairs_hook=unique_object,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, DuplicateKey):
+        fail("AGENT_ROOT_CANARY_PLAN_SOURCE is invalid")
+    if (
+        not isinstance(canary_plan, dict)
+        or canary_plan.get("schemaVersion") != "neo.agent-root-run-canary-plan/v1"
+        or canary_plan.get("synthetic") is not True
+        or canary_plan.get("stepKind") != "root_canary"
+        or canary_plan.get("toolRegistry", {}).get("tools") != []
+        or canary_plan.get("sandbox", {}).get("networkMode") != "none"
+        or canary_plan.get("snapshot", {}).get("noEgress") is not True
+        or canary_plan.get("snapshot", {}).get("noSecrets") is not True
+    ):
+        fail("AGENT_ROOT_CANARY_PLAN_SOURCE is not a no-Egress/no-Secret synthetic plan")
+    evaluator = Path(sys.argv[2]) / "scripts/evaluate-agent-production-activation.py"
+    try:
+        decision = subprocess.run(
+            [
+                sys.executable,
+                str(evaluator),
+                "--record", str(canary_files["AGENT_ROOT_CANARY_ACTIVATION_SOURCE"]),
+                "--policy", str(canary_files["AGENT_ROOT_CANARY_PRODUCTION_POLICY_SOURCE"]),
+                "--release-manifest", str(canary_files["AGENT_ROOT_CANARY_RELEASE_MANIFEST_SOURCE"]),
+                "--client-certificate", str(canary_files["AGENT_ROOT_CANARY_CLIENT_CERT_SOURCE"]),
+                "--server-ca", str(canary_files["AGENT_ROOT_CANARY_SERVER_CA_SOURCE"]),
+                "--canary-plan", str(canary_files["AGENT_ROOT_CANARY_PLAN_SOURCE"]),
+                "--authority-public-key", str(canary_files["AGENT_ROOT_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE"]),
+                "--endpoint", values["AGENT_ROOT_CANARY_RUNNER_URL"],
+                "--runner-id", values["AGENT_ROOT_CANARY_RUNNER_ID"],
+                "--server-name", values["AGENT_ROOT_CANARY_SERVER_NAME"],
+                "--caller-identity", values["AGENT_ROOT_CANARY_CLIENT_IDENTITY"],
+                "--release-commit", values["AGENT_ROOT_CANARY_RELEASE_GIT_COMMIT"],
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        decision_payload = json.loads(decision.stdout)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        fail("Root canary activation evaluator failed")
+    if (
+        decision.returncode != 0
+        or decision_payload.get("verdict") != "ACTIVATION_READY"
+        or decision_payload.get("reasonCode") != "ROOT_RUN_CANARY_GATES_PASSED"
+    ):
+        fail("AGENT_ROOT_CANARY_ACTIVATION_SOURCE is not READY for G21.1")
+
 marketplace_timeout = parse_simple_duration_seconds(
     "MCP_MARKETPLACE_TIMEOUT", values["MCP_MARKETPLACE_TIMEOUT"]
 )
@@ -709,6 +880,7 @@ for key in (
     "RAG_WORKER_DATABASE_URL",
     "RAG_REPLAY_DATABASE_URL",
     *(("AGENT_RUNNER_DATABASE_URL",) if agent_control_enabled else ()),
+    *(("AGENT_ROOT_CANARY_DATABASE_URL",) if agent_root_canary_enabled else ()),
 ):
     try:
         parsed = urlsplit(values[key])
@@ -740,7 +912,7 @@ for key, parsed in database_urls.items():
 
 database_users = [unquote(parsed.username or "") for parsed in database_urls.values()]
 if len(set(database_users)) != len(database_users):
-    fail("migration, API, Memory worker, RAG worker, RAG replay, and Agent control must use distinct database principals")
+    fail("migration, API, Memory worker, RAG worker, RAG replay, Agent control, and Root canary must use distinct database principals")
 
 database_passwords = [
     unquote(parsed.password or "") for parsed in database_urls.values()

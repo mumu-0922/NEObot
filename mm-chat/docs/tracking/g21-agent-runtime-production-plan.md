@@ -31,10 +31,29 @@ current host cannot promote.
 
 ## G21.1 — Root Run launch canary
 
-Add a separately activated Orchestrator/Runner worker for one synthetic,
-read-only, no-Egress/no-Secret Root Run. Prove claim, signed launch authority,
-heartbeat, cancellation, terminal append, restart recovery and exact cleanup.
-Do not enable Broker effects or user-facing execution.
+Status: source/control implementation complete; exact-host canary held.
+
+- Add the independent `root_run_canary` activation stage, immutable canary
+  plan, mTLS identity and Ed25519 authority key binding.
+- Give Runner control and canary identities disjoint ingress method policies;
+  control cannot launch and canary cannot call Broker Prepare/Commit.
+- Run one idempotent synthetic depth-zero Run with an empty Tool Registry,
+  read-only rootfs, `networkMode=none`, no Egress/Secret and bounded resources.
+- Prove claim, signed launch, Runner/PostgreSQL heartbeats, signed cancel, exact
+  reap and zero post-cancel Runner inventory.
+- Atomically terminalize Sandbox, Attempt, Step and Run with three append-only
+  cancellation events; roll back every projection on identity/state drift.
+- Fence tokenless restart recovery until lease expiry and prefer exact signed
+  cancel plus durable cancellation after a known-running heartbeat failure.
+- Add a seventh LOGIN inheriting exactly `agent_orchestrator_runtime` and
+  `agent_runner_control`, without adding migration `091` or direct table DML.
+- Keep the dedicated Compose profile default-off and credential-free beyond
+  its exact database, mTLS, activation, plan and signing-key inputs.
+
+Promotion gate: run `scripts/verify-agent-runtime-g21-1.sh`, then reproduce a
+fresh `ROOT_RUN_CANARY_GATES_PASSED` activation record and full canary flow on
+the approved exact host. The disposable PostgreSQL proof and current-host
+`ISOLATION_UNAVAILABLE` result cannot promote user-facing execution.
 
 ## G21.2 — Read-only Broker and Artifact canary
 

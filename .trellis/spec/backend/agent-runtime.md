@@ -802,3 +802,123 @@ fresh control_plane evidence + dedicated agent_runner_control login
 -> probe/list/recovery inventory -> reconcile -> exact equality
 -> Root Run and every execution-stage flag remain false
 ```
+
+## Scenario: Execute the G21.1 synthetic Root Run canary
+
+### 1. Scope / Trigger
+
+Apply when changing `agent-runtime-root-canary`, caller-specific Runner method
+policy, Root-canary activation/plan validation, atomic terminalization or its
+PostgreSQL role. G21.1 permits exactly one separately activated synthetic Root
+Run and does not enable user-facing or general Runtime execution.
+
+### 2. Signatures
+
+```bash
+bash mm-chat/scripts/verify-agent-root-canary-activation.sh
+bash mm-chat/scripts/verify-agent-root-canary-postgres17.sh
+bash mm-chat/scripts/verify-agent-runtime-g21-1.sh
+```
+
+- Command: `backend/cmd/agent-runtime-root-canary`.
+- Packages: `internal/agentrootcanary`, `internal/agentactivation`,
+  `internal/agentrunner` and existing `internal/agentorchestrator`.
+- Schemas: `neo-agent-root-run-canary-plan.schema.json` and
+  `neo-agent-root-run-canary-activation.schema.json`.
+- Database: existing migration `084`/`085` functions; migration `091` is
+  forbidden.
+
+### 3. Contracts
+
+- Use `spiffe://neo-chat/agent-runtime-root-canary`, separate canary mTLS/key
+  files and a separate `LOGIN INHERIT` whose recursive roles are exactly
+  `agent_orchestrator_runtime,agent_runner_control`. Reject elevated attributes,
+  extra roles and direct table DML.
+- Runner ingress authorizes methods by verified caller before execution.
+  G21.0 control is only `probe/list/reconcile`; canary is only
+  `probe/list/reconcile/launch/heartbeat/cancel`. Canary cannot call Broker
+  `prepare/commit`.
+- The immutable plan is synthetic, depth zero and content-free, with an empty
+  Tool Registry, `networkMode=none`, no Egress/Secrets/Artifact publication,
+  read-only rootfs, empty capabilities and bounded resources.
+- The `root_run_canary` record binds release, target, policy, endpoint, exact
+  canary certificate, plan and authority public key. All eight checks,
+  approved production review and zero residue are required. G21.0 control must
+  be enabled before canary preflight can pass.
+- Signed launch/heartbeat/cancel authority binds request ID, nonce, canonical
+  request fingerprint, user, Run/Step/Attempt/generation, owner, lease-token
+  digest, snapshot, Runner and Kill-Switch epoch. Attaching a ticket must not
+  regenerate request replay identity.
+- Execute one idempotent enqueue/claim/launch flow, persist expected/running
+  Sandbox state, exercise Runner and PostgreSQL heartbeats, cancel and require
+  zero Runner inventory.
+- In one SQL transaction, move Sandbox `running -> stopping -> terminal` and
+  Attempt/Step/Run `running -> canceled`, appending one terminal event for each
+  Orchestrator entity. Any identity, lease or expected-state mismatch rolls
+  everything back.
+- Terminal replay never launches again. A tokenless live Attempt waits for
+  expiry and generation reclaim. Non-expired expected Sandboxes cause
+  reconcile to fail closed until expiry rather than guessing authority.
+- After a known-running heartbeat failure, first attempt exact signed cancel
+  and atomic durable cancellation, then return unavailable. A cancel failure
+  leaves durable state fenced for expiry/recovery.
+- The command is not imported by `cmd/api`; the Compose profile defaults off,
+  has no port or Provider/object-store/Redis/MCP/vault credentials, and every
+  broad Runtime/Broker/Child/Cron/Learning flag remains false.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| canary false or G21.0 control false | no file/DB/Runner activation |
+| plan unknown field, Tool, Egress, Secret or mutable setting | `ROOT_CANARY_PLAN_INVALID` |
+| activation stale/template/drifted/widened/residue | held/invalid before launch |
+| shared/elevated/extra-role LOGIN | startup rejected |
+| control launch or canary Prepare/Commit | HTTP `403` before Runner execution |
+| live tokenless Attempt | wait for lease expiry; no token reconstruction |
+| Sandbox ID/state drift during terminal chain | transaction rollback; all projections stay running |
+| heartbeat failure after running projection | attempt signed cancel/atomic terminalization, then fail cycle |
+| nonzero post-reconcile inventory | canary unavailable; no success evidence |
+
+### 5. Good / Base / Bad Cases
+
+- **Good:** fresh exact-target activation runs one synthetic canary, atomically
+  cancels every projection and proves zero Runner inventory.
+- **Base:** both profiles and all broad flags are false; checked-in evidence
+  remains `ISOLATION_UNAVAILABLE` and no Sandbox launches.
+- **Bad:** reuse control identity, grant Broker authority, persist lease tokens,
+  mark Run terminal outside the Sandbox transaction, or treat disposable
+  PostgreSQL success as exact-host evidence.
+
+### 6. Tests Required
+
+- Focused race/vet for Root-canary command/service, activation, Runner,
+  Orchestrator and `neo-runnerd`.
+- Run Runner filesystem fixtures under `umask 022`; the production verification
+  harness may otherwise force their intentional mode-0711 broker directory to
+  0700 and create a false isolation failure.
+- Explicit control-launch and canary-Prepare ingress denial before driver work.
+- Service happy path, terminal replay, tokenless live lease, Runner/PostgreSQL
+  heartbeat failure cleanup and zero-inventory proofs.
+- PostgreSQL 17 exact-role and atomic terminal tests, including wrong Sandbox
+  rollback with Attempt/Step/Run still running.
+- Strict schemas/fixtures, preflight negative/positive, development/production
+  Compose topology, G21.0 regression, Phase 0 and standalone full gate.
+- Exact-host check remains separately expected-nonzero here with
+  `ISOLATION_UNAVAILABLE`.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+control certificate + broad Runtime flag -> launch -> three independent terminal writes
+```
+
+#### Correct
+
+```text
+fresh root_run_canary evidence + separate exact-role identity
+-> one signed synthetic launch -> heartbeats -> signed cancel/reap
+-> one atomic Sandbox/Attempt/Step/Run terminal transaction -> zero inventory
+```

@@ -81,6 +81,33 @@ func TestAuthorityBindsCallerAttemptTokenAndExpiry(t *testing.T) {
 	}
 }
 
+func TestBindAuthorityPreservesRequestReplayIdentity(t *testing.T) {
+	fixture := newServiceFixture(t, true)
+	launch := fixture.launchRequest(t)
+	body := *launch.Launch
+	body.Authority = AuthorityTicket{}
+	unsigned, err := NewRequest(MethodLaunch, body, launch.SentAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims := NewAuthorityClaims(testCaller, testRunner, MethodLaunch, unsigned.RequestID,
+		unsigned.Nonce, AuthorityRequestFingerprint(MethodLaunch, body), body.SnapshotFingerprint,
+		body.Attempt, 0, unsigned.SentAt, unsigned.SentAt.Add(10*time.Second))
+	ticket, _ := SignAuthority(fixture.private, claims)
+	signed, err := BindAuthority(unsigned, ticket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if signed.RequestID != unsigned.RequestID || signed.Nonce != unsigned.Nonce ||
+		signed.Launch.Authority.Signature == "" {
+		t.Fatalf("signed request drifted: %#v", signed)
+	}
+	ticket.RequestFingerprint = testFingerprint('f')
+	if _, err := BindAuthority(unsigned, ticket); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("fingerprint drift error = %v", err)
+	}
+}
+
 func TestFileReplayLedgerSurvivesRestartAndRejectsMismatch(t *testing.T) {
 	root := t.TempDir()
 	if err := os.Chmod(root, 0o700); err != nil {
@@ -496,6 +523,56 @@ func TestHTTPHandlerRequiresVerifiedClientAndStrictJSON(t *testing.T) {
 	handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("mtls=%d %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestHTTPHandlerEnforcesCallerMethodPolicy(t *testing.T) {
+	fixture := newServiceFixture(t, true)
+	controlIdentity := "spiffe://neo-chat/agent-runtime-control"
+	canaryIdentity := "spiffe://neo-chat/agent-runtime-root-canary"
+	handler, err := NewHTTPHandlerWithPolicies(fixture.service, 15*time.Second,
+		[]CallerPolicy{
+			{Identity: controlIdentity, Methods: []string{MethodProbe, MethodList, MethodReconcile}},
+			{Identity: canaryIdentity, Methods: []string{MethodProbe, MethodList, MethodReconcile,
+				MethodLaunch, MethodHeartbeat, MethodCancel}},
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := fixture.service.now()
+	launch := fixture.launchRequest(t)
+	arguments := json.RawMessage(`{"path":"project/a"}`)
+	prepareBody := PrepareRequest{Attempt: testAttempt(), SnapshotFingerprint: testFingerprint('6'),
+		GrantID: "grant_0123456789abcdef", GrantFingerprint: testFingerprint('5'),
+		RegistryFingerprint: testFingerprint('8'), ToolIdentity: "workspace_read",
+		Capability: "workspace.read", Action: "read", Resource: "project/a", Arguments: arguments,
+		ArgumentsFingerprint: fingerprintBytes("neo-effect-arguments-v1", arguments), TTLSeconds: 600}
+	prepareID, prepareNonce := "rpc_aaaaaaaaaaaaaaaa", strings.Repeat("p", 32)
+	prepareBody.Authority = signedPrepareAuthority(t, fixture.private, prepareID, prepareNonce, now, prepareBody)
+	prepare := mustEnvelope(t, MethodPrepare, prepareID, now, prepareNonce, prepareBody)
+
+	for _, test := range []struct {
+		name, identity string
+		body           []byte
+	}{
+		{name: "control launch", identity: controlIdentity, body: launch.Canonical},
+		{name: "canary Broker Prepare", identity: canaryIdentity, body: prepare},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, RPCPath(), bytes.NewReader(test.body))
+			request.Header.Set("Content-Type", "application/json")
+			request.TLS = &tls.ConnectionState{VerifiedChains: [][]*x509.Certificate{{{
+				Subject: pkix.Name{CommonName: test.identity},
+			}}}}
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			if recorder.Code != http.StatusForbidden || !strings.Contains(recorder.Body.String(), ErrorAuthFailed) {
+				t.Fatalf("method policy=%d %s", recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+	if len(fixture.driver.Plans) != 0 {
+		t.Fatalf("denied policy reached Runner driver: %d plans", len(fixture.driver.Plans))
 	}
 }
 

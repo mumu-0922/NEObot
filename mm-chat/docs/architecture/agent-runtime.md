@@ -7,7 +7,9 @@ Shadow control plane, and G20.9 legacy text-Skill hard retirement are
 implemented. G20.10 adds the fail-closed operations policy and release-bound
 promotion-evidence gate. Exact-host isolation and production Runner/Broker/
 Child/Scheduler/Learning/Shadow promotion are held; production Runtime remains
-disabled and no legacy/fallback Skill executor remains.
+disabled and no legacy/fallback Skill executor remains. G21.0 implements the
+default-off maintenance plane; G21.1 implements a separately activated,
+synthetic-only Root Run canary without enabling general execution.
 
 ## Purpose and invariant
 
@@ -507,6 +509,43 @@ the checked-in unapproved release can build only a `template` bundle. The
 Compose worker remains in the explicit `agent-runtime-control` profile with
 all execution flags false, no host port and no Provider, object-store, Redis or
 MCP credential. This development host remains `ISOLATION_UNAVAILABLE`.
+
+G21.1 adds a second process, `mm-chat-agent-runtime-root-canary`, and a second
+mTLS identity, `spiffe://neo-chat/agent-runtime-root-canary`. Runner ingress now
+selects an exact method set by the verified caller: control can use only
+`probe/list/reconcile`; the canary can additionally use
+`launch/heartbeat/cancel` and can never use Broker `prepare/commit`. The canary
+LOGIN recursively inherits exactly `agent_orchestrator_runtime` and
+`agent_runner_control`; it has no table DML and no API, Provider, Redis,
+object-store, MCP, vault, Child, Cron or Learning authority.
+
+The immutable canary plan identifies one pre-provisioned synthetic user and
+one idempotent depth-zero Run. It freezes an empty Tool Registry,
+`networkMode=none`, no Egress or Secret refs, a read-only rootfs, empty
+capabilities and bounded resources. The worker proves
+`enqueue -> claim -> signed launch -> Runner heartbeat -> PostgreSQL heartbeat
+-> signed cancel -> exact reap`. Sandbox, Attempt, Step and Run cancellation
+then commits in one PostgreSQL transaction through the existing migration
+`084`/`085` SECURITY DEFINER functions, including three append-only terminal
+events. A Sandbox identity mismatch rolls the whole transaction back.
+
+The short-lived `root_run_canary` activation record binds the exact release,
+target, policy, private endpoint, canary certificate, authority public key and
+plan. Terminal replay resolves the same idempotent Run without another launch.
+A live Attempt whose memory-only lease token was lost remains fenced until
+expiry; only then may reconcile remove stale runtime state and a new generation
+claim the Step. Reconcile deliberately requires zero post-operation Runner
+inventory. Non-expired expected Sandboxes are not guessed or killed by a
+replacement worker; the cycle remains unavailable until their lease expires.
+If either heartbeat fails after a known running projection, the worker first
+attempts the exact signed cancel and atomic durable cancellation, then still
+returns failure so the next cycle revalidates terminal state.
+
+The canary Compose profile is independently default-off. Source and disposable
+PostgreSQL gates can prove this path, but only an approved exact host with fresh
+production activation evidence may set `AGENT_ROOT_RUN_CANARY_ENABLED=true`.
+This development host therefore launches no Sandbox and remains
+`ISOLATION_UNAVAILABLE`.
 
 The current `/v1/code/executions` remains fail closed. Agent Runtime must not use
 that placeholder route as an isolation shortcut.

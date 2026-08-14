@@ -14,16 +14,46 @@ const rpcPath = "/internal/neo-runner/v1/rpc"
 type HTTPHandler struct {
 	service       *Service
 	maxSkew       time.Duration
-	allowedCaller string
+	callerMethods map[string]map[string]struct{}
 	requests      chan struct{}
 }
 
+type CallerPolicy struct {
+	Identity string
+	Methods  []string
+}
+
 func NewHTTPHandler(service *Service, maxSkew time.Duration, allowedCaller string) (http.Handler, error) {
-	if service == nil || maxSkew < time.Second || maxSkew > time.Minute ||
-		!identityPattern.MatchString(allowedCaller) {
+	return NewHTTPHandlerWithPolicies(service, maxSkew, []CallerPolicy{{
+		Identity: allowedCaller,
+		Methods: []string{MethodProbe, MethodLaunch, MethodHeartbeat, MethodCancel,
+			MethodPrepare, MethodCommit, MethodList, MethodReconcile},
+	}})
+}
+
+func NewHTTPHandlerWithPolicies(service *Service, maxSkew time.Duration, policies []CallerPolicy) (http.Handler, error) {
+	if service == nil || maxSkew < time.Second || maxSkew > time.Minute || len(policies) < 1 || len(policies) > 8 {
 		return nil, ErrInvalidInput
 	}
-	return &HTTPHandler{service: service, maxSkew: maxSkew, allowedCaller: allowedCaller,
+	callerMethods := make(map[string]map[string]struct{}, len(policies))
+	for _, policy := range policies {
+		if !identityPattern.MatchString(policy.Identity) || len(policy.Methods) < 1 || callerMethods[policy.Identity] != nil {
+			return nil, ErrInvalidInput
+		}
+		methods := make(map[string]struct{}, len(policy.Methods))
+		for _, method := range policy.Methods {
+			if !member(method, MethodProbe, MethodLaunch, MethodHeartbeat, MethodCancel,
+				MethodPrepare, MethodCommit, MethodList, MethodReconcile) {
+				return nil, ErrInvalidInput
+			}
+			if _, duplicate := methods[method]; duplicate {
+				return nil, ErrInvalidInput
+			}
+			methods[method] = struct{}{}
+		}
+		callerMethods[policy.Identity] = methods
+	}
+	return &HTTPHandler{service: service, maxSkew: maxSkew, callerMethods: callerMethods,
 		requests: make(chan struct{}, 32)}, nil
 }
 
@@ -52,7 +82,8 @@ func (handler *HTTPHandler) ServeHTTP(writer http.ResponseWriter, request *http.
 		return
 	}
 	caller := strings.TrimSpace(request.TLS.VerifiedChains[0][0].Subject.CommonName)
-	if !identityPattern.MatchString(caller) || caller != handler.allowedCaller {
+	methods := handler.callerMethods[caller]
+	if !identityPattern.MatchString(caller) || methods == nil {
 		writeHTTPError(writer, http.StatusUnauthorized, ErrorAuthFailed)
 		return
 	}
@@ -72,6 +103,10 @@ func (handler *HTTPHandler) ServeHTTP(writer http.ResponseWriter, request *http.
 			status = http.StatusUpgradeRequired
 		}
 		writeHTTPError(writer, status, ErrorCode(err))
+		return
+	}
+	if _, allowed := methods[decoded.Method]; !allowed {
+		writeHTTPError(writer, http.StatusForbidden, ErrorAuthFailed)
 		return
 	}
 	response, operationErr := handler.service.Handle(request.Context(), caller, decoded)

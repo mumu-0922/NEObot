@@ -16,12 +16,22 @@ from typing import Any
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_POLICY = PROJECT_DIR / "config/agent-runner/production-policy.json"
-CHECK_IDS = {
+CONTROL_CHECK_IDS = {
     "exact_host_isolation",
     "clean_copy_install",
     "private_mtls_probe",
     "zero_inventory_reconcile",
     "rollback_kill_switch_ready",
+}
+ROOT_CANARY_CHECK_IDS = {
+    "control_plane_ready",
+    "exact_host_isolation",
+    "private_mtls_canary",
+    "restart_recovery_ready",
+    "rollback_kill_switch_ready",
+    "signed_authority_ready",
+    "synthetic_plan_ready",
+    "zero_inventory",
 }
 FINGERPRINT = re.compile(r"^sha256:[0-9a-f]{64}$")
 IDENTITY = re.compile(r"^[A-Za-z][A-Za-z0-9_.:@/-]{0,127}$")
@@ -276,13 +286,19 @@ def validate_record(
         },
         "ACTIVATION_ROOT_INVALID",
     )
-    if (
-        record["schemaVersion"] != "neo.agent-production-activation/v1"
-        or record["stage"] != "control_plane"
-    ):
+    if record["schemaVersion"] != "neo.agent-production-activation/v1" or record[
+        "stage"
+    ] not in {"control_plane", "root_run_canary"}:
         fail("ACTIVATION_VERSION_INVALID")
+    stage = record["stage"]
+    check_ids = (
+        CONTROL_CHECK_IDS if stage == "control_plane" else ROOT_CANARY_CHECK_IDS
+    )
     if record["evidenceClass"] not in {"template", "production"}:
         fail("EVIDENCE_CLASS_INVALID")
+    if stage == "root_run_canary" and record["evidenceClass"] == "production":
+        if args.canary_plan is None or args.authority_public_key is None:
+            fail("WIRING_INVALID")
 
     release = exact(
         record["release"],
@@ -320,21 +336,25 @@ def validate_record(
         target["deploymentFingerprint"], "TARGET_INVALID"
     )
     runner_id = identity(target["runnerId"], "TARGET_INVALID")
-    wiring = exact(
-        record["wiring"],
-        {
+    wiring_keys = {
             "endpointSha256",
             "clientCertificateSha256",
             "serverCASha256",
             "serverName",
             "callerIdentity",
-        },
-        "WIRING_INVALID",
-    )
+    }
+    if stage == "root_run_canary":
+        wiring_keys |= {"canaryPlanSha256", "authorityPublicKeySha256"}
+    wiring = exact(record["wiring"], wiring_keys, "WIRING_INVALID")
     wiring_fingerprints = [
         fingerprint(wiring[key], "WIRING_INVALID")
         for key in ("endpointSha256", "clientCertificateSha256", "serverCASha256")
     ]
+    if stage == "root_run_canary":
+        wiring_fingerprints.extend(
+            fingerprint(wiring[key], "WIRING_INVALID")
+            for key in ("canaryPlanSha256", "authorityPublicKeySha256")
+        )
     identity(wiring["serverName"], "WIRING_INVALID")
     identity(wiring["callerIdentity"], "WIRING_INVALID")
 
@@ -348,7 +368,7 @@ def validate_record(
         fail("WINDOW_INVALID")
 
     checks = record["checks"]
-    if not isinstance(checks, list) or len(checks) != len(CHECK_IDS):
+    if not isinstance(checks, list) or len(checks) != len(check_ids):
         fail("CHECK_SET_INCOMPLETE")
     results: dict[str, str] = {}
     evidence: list[str] = []
@@ -359,7 +379,7 @@ def validate_record(
             "CHECK_INVALID",
         )
         check_id = item["id"]
-        if check_id not in CHECK_IDS or check_id in results:
+        if check_id not in check_ids or check_id in results:
             fail("CHECK_SET_INVALID")
         if item["result"] not in {
             "passed",
@@ -377,7 +397,7 @@ def validate_record(
             fail("CHECK_INVALID")
         evidence.append(fingerprint(item["evidenceSha256"], "CHECK_INVALID"))
         results[check_id] = item["result"]
-    if set(results) != CHECK_IDS:
+    if set(results) != check_ids:
         fail("CHECK_SET_INCOMPLETE")
 
     authorization = exact(
@@ -394,8 +414,8 @@ def validate_record(
         "AUTHORIZATION_INVALID",
     )
     expected_authorization = {
-        "controlPlane": True,
-        "rootRuns": False,
+        "controlPlane": stage == "control_plane",
+        "rootRuns": stage == "root_run_canary",
         "brokerReadOnly": False,
         "brokerMutable": False,
         "delegation": False,
@@ -442,7 +462,19 @@ def validate_record(
         ),
         (args.server_ca, wiring["serverCASha256"], "SERVER_CA_DRIFT"),
     )
-    for path, expected, code in bindings:
+    stage_bindings = list(bindings)
+    if stage == "root_run_canary":
+        stage_bindings.extend(
+            [
+                (args.canary_plan, wiring["canaryPlanSha256"], "CANARY_PLAN_DRIFT"),
+                (
+                    args.authority_public_key,
+                    wiring["authorityPublicKeySha256"],
+                    "AUTHORITY_KEY_DRIFT",
+                ),
+            ]
+        )
+    for path, expected, code in stage_bindings:
         if path is not None and file_fingerprint(path, code) != expected:
             fail(code)
     if args.release_manifest is not None:
@@ -486,7 +518,12 @@ def validate_record(
         return "ACTIVATION_HELD", "RUNTIME_RESIDUE_REMAINS", release["gitCommit"]
     if review["decision"] != "approved":
         return "ACTIVATION_HELD", "REVIEW_HELD", release["gitCommit"]
-    return "ACTIVATION_READY", "CONTROL_PLANE_GATES_PASSED", release["gitCommit"]
+    reason = (
+        "CONTROL_PLANE_GATES_PASSED"
+        if stage == "control_plane"
+        else "ROOT_RUN_CANARY_GATES_PASSED"
+    )
+    return "ACTIVATION_READY", reason, release["gitCommit"]
 
 
 def emit(
@@ -524,6 +561,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--runner-binary", type=Path)
     parser.add_argument("--client-certificate", type=Path)
     parser.add_argument("--server-ca", type=Path)
+    parser.add_argument("--canary-plan", type=Path)
+    parser.add_argument("--authority-public-key", type=Path)
     parser.add_argument("--endpoint")
     parser.add_argument("--runner-id")
     parser.add_argument("--server-name")

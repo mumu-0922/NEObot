@@ -14,3 +14,9 @@ func TestPrivateAddressAllowsOnlyLiteralLoopbackOrPrivateIP(t *testing.T) {
 		}
 	}
 }
+
+func TestRunnerCallerIdentitiesRemainSeparate(t *testing.T) {
+	if controlCallerIdentity == canaryCallerIdentity {
+		t.Fatal("control and canary identities must remain distinct")
+	}
+}

@@ -25,9 +25,10 @@ authority; production execution remains disabled. See
 [`contracts/agent-runtime.md`](./contracts/agent-runtime.md),
 [`deployment/agent-runtime.md`](./deployment/agent-runtime.md), and
 [`tracking/g20-agent-runtime-plan.md`](./tracking/g20-agent-runtime-plan.md).
-G21.0 adds only default-off Runner control maintenance; see
+G21.0 adds default-off Runner control maintenance and G21.1 adds a separate,
+synthetic-only Root Run canary; see
 [`tracking/g21-agent-runtime-production-plan.md`](./tracking/g21-agent-runtime-production-plan.md).
-Production Agent execution remains disabled.
+General production Agent execution remains disabled.
 
 ## Update Rule
 

@@ -1,0 +1,55 @@
+{
+  "schemaVersion": "neo.agent-root-run-canary-plan/v1",
+  "synthetic": true,
+  "userId": "00000000-0000-4000-8000-000000000001",
+  "idempotencyKey": "g21.1-root-canary-template",
+  "stepKind": "root_canary",
+  "grantId": "grant_0000000000000001",
+  "grantFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "snapshot": {
+    "schemaVersion": "neo.agent-snapshot/v1",
+    "mode": "synthetic",
+    "packageFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "runtimeBundleFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "grantFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "registryFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "workspaceFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "noEgress": true,
+    "noSecrets": true,
+    "maxWallSeconds": 30
+  },
+  "sandbox": {
+    "runtimeBundleFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "packageFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "image": "registry.invalid/neo/root-canary@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "uid": 10001,
+    "gid": 10001,
+    "rootfsReadOnly": true,
+    "noNewPrivileges": true,
+    "capabilities": [],
+    "seccompProfileFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "networkMode": "none",
+    "workspaceSnapshotId": "workspace_snapshot_0000000000000001",
+    "workspaceFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "resources": {
+      "cpuMillis": 250,
+      "memoryMiB": 128,
+      "pids": 16,
+      "wallSeconds": 30,
+      "outputBytes": 4096,
+      "scratchBytes": 1048576
+    }
+  },
+  "toolRegistry": {
+    "depth": 0,
+    "tools": [
+      "delegate_task"
+    ],
+    "registryFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "argv": [
+    "/opt/neo/bin/root-canary",
+    "--wait-for-cancel"
+  ],
+  "leaseSeconds": 30
+}

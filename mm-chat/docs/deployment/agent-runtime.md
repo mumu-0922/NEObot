@@ -7,9 +7,10 @@ off Shadow control, and G20.9 legacy text-Skill source retirement are
 implemented. G20.10 supplies the fail-closed operations policy, evidence
 contract, evaluator and incident runbooks. G21.0 adds a default-off,
 control-only Runner maintenance profile and exact-host deployment bundle.
-Exact-host installation and all Root Run/Broker/Child/Scheduler/Learning/Shadow
-promotion remain held. Do not enable Agent execution or install the bundle on
-this development host.
+G21.1 adds a second default-off, synthetic-only Root Run canary profile.
+Exact-host installation and general Root Run/Broker/Child/Scheduler/Learning/
+Shadow promotion remain held. Do not enable Agent execution or install the
+bundle on this development host.
 
 ## Default state
 
@@ -18,6 +19,7 @@ All future switches default off:
 ```text
 AGENT_RUNTIME_ENABLED=false
 AGENT_RUNNER_CONTROL_ENABLED=false
+AGENT_ROOT_RUN_CANARY_ENABLED=false
 AGENT_SCHEDULER_ENABLED=false
 AGENT_SKILL_INSTALL_ENABLED=false
 AGENT_LEARNING_ENABLED=false
@@ -27,9 +29,10 @@ AGENT_BROKER_MUTATION_ENABLED=false
 ```
 
 The host-only `deploy/agent-runner/neo-runnerd.env.example` is not an activation
-file. The `agent-runtime-control` Compose profile exists only for an approved
-target and is not selected by default. With its control flag false, ordinary
-startup neither reads target-host evidence/mTLS files nor dials Runner.
+file. The `agent-runtime-control` and `agent-runtime-root-canary` Compose
+profiles exist only for an approved target and are not selected by default.
+With their flags false, ordinary startup neither reads target-host evidence,
+plan, mTLS or authority-key files nor dials Runner.
 
 Runtime disabled must block discovery installation changes, new Runs, leases,
 Cron triggers, Child Runs and Draft promotion as appropriate, but must not stop
@@ -128,7 +131,7 @@ identity, sends strict `neo.runner-rpc/v1`, bounds headers/body/deadline and
 accepts only a request-ID/nonce/method-bound response. There is no bearer token
 fallback.
 
-## G20.3-G21.0 source and verification commands
+## G20.3-G21.1 source and verification commands
 
 ```bash
 bash scripts/verify-agent-runner.sh
@@ -147,6 +150,9 @@ bash scripts/verify-agent-legacy-cutover.sh
 bash scripts/verify-agent-legacy-cutover-postgres17.sh
 bash scripts/verify-agent-production-closure.sh
 bash scripts/verify-agent-runtime-g21-0.sh
+bash scripts/verify-agent-root-canary-activation.sh
+bash scripts/verify-agent-root-canary-postgres17.sh
+bash scripts/verify-agent-runtime-g21-1.sh
 bash scripts/verify-agent-runtime-phase0.sh
 bash scripts/verify-agent-runner-host.sh
 ```
@@ -233,6 +239,79 @@ bash scripts/verify-agent-runtime-g21-0.sh
 The command must end with the current-host expected failure
 `ISOLATION_UNAVAILABLE`; its synthetic positive activation exists only inside a
 temporary test directory and is not live evidence.
+
+## G21.1 Root Run canary activation
+
+G21.1 depends on a currently ready G21.0 control plane but does not reuse its
+identity or database login. Provision a seventh nonprivileged LOGIN that
+recursively inherits exactly `agent_orchestrator_runtime` and
+`agent_runner_control`. Configure `neo-runnerd` with the additional exact
+client identity `spiffe://neo-chat/agent-runtime-root-canary`; the control
+identity stays limited to `probe/list/reconcile`, while the canary identity may
+also call only `launch/heartbeat/cancel`. Never grant either identity Broker
+`prepare/commit` by proxy or route.
+
+Place the following as owner-only, regular, non-symlink files outside Git:
+
+- a separate canary client certificate/key and Runner server CA;
+- the exact approved Runner release manifest and production policy;
+- one strict `neo.agent-root-run-canary-plan/v1` plan for a pre-provisioned
+  synthetic user;
+- one Ed25519 authority private/public key pair; and
+- one fresh `neo.agent-production-activation/v1` record with stage
+  `root_run_canary` binding every preceding file and the exact target/release.
+
+The plan must have an empty Tool Registry, depth zero, no Egress, no Secrets,
+`networkMode=none`, a read-only rootfs, empty capabilities and bounded
+resources. Generate the content-free activation record only after the exact
+target proves G21.0 readiness, isolation, private canary mTLS, restart
+recovery, Kill-Switch rollback, signed authority, plan validity and zero
+inventory. Validate it with:
+
+```bash
+python3 scripts/evaluate-agent-production-activation.py \
+  --record /secure/operator-evidence/agent-root-canary-activation.json \
+  --policy config/agent-runner/production-policy.json \
+  --release-manifest /secure/release/release-manifest.json \
+  --client-certificate /secure/agent-root-canary/client.crt \
+  --server-ca /secure/agent-root-canary/server-ca.crt \
+  --canary-plan /secure/agent-root-canary/root-canary-plan.json \
+  --authority-public-key /secure/agent-root-canary/authority-public-key \
+  --endpoint 'https://10.0.0.8:9443/internal/neo-runner/v1/rpc' \
+  --runner-id neo-runner-primary \
+  --server-name neo-runner.internal \
+  --caller-identity spiffe://neo-chat/agent-runtime-root-canary \
+  --release-commit "$RELEASE_COMMIT"
+```
+
+Require `ACTIVATION_READY` with reason
+`ROOT_RUN_CANARY_GATES_PASSED`. Then set only
+`AGENT_RUNNER_CONTROL_ENABLED=true` and
+`AGENT_ROOT_RUN_CANARY_ENABLED=true`, run production preflight and select both
+explicit profiles. Every broad Runtime, Broker, Child, Scheduler, Skill-install
+and Learning flag remains false. The canary service has no port, a read-only
+root filesystem, `cap_drop: ALL`, only the private network, exactly nine
+non-creating read-only mounts and no Provider/object-store/Redis/MCP secret.
+
+The worker executes the exact idempotent Run once, cooperatively cancels it and
+requires zero Runner inventory. Stopping only
+`agent-runtime-root-canary` or resetting its flag to false is the application
+rollback; keep G21.0 control alive for reconciliation and do not delete Runner
+state/evidence. A restart with a live tokenless Attempt waits for lease expiry;
+operators must not reconstruct the lease token or manually mark projections
+terminal. A heartbeat failure attempts exact signed cancel and atomic durable
+cancellation; a cancel outage remains fenced for expiry/reconcile.
+
+Verify source and disposable PostgreSQL behavior with:
+
+```bash
+bash scripts/verify-agent-runtime-g21-1.sh
+```
+
+This gate proves the transaction rollback/atomic terminal chain, exact role
+membership, method isolation, Compose/preflight boundaries and G21.0
+regression. Its expected local `ISOLATION_UNAVAILABLE` result means this host
+still cannot activate the profile.
 
 ## Release order (future groups)
 
@@ -739,7 +818,7 @@ From `mm-chat/`:
 bash scripts/verify-agent-runtime-phase0.sh
 ```
 
-This gate also checks the G20.8 facade/Shadow, G20.9 hard-retirement and G21.0
-control-only wiring signatures. A pass means the design and held product
-artifacts are internally consistent; it does not mean this host or production
-has a usable rootless Runtime.
+This gate also checks the G20.8 facade/Shadow, G20.9 hard-retirement, G21.0
+control-only wiring and G21.1 Root canary signatures. A pass means the design
+and held product artifacts are internally consistent; it does not mean this
+host or production has a usable rootless Runtime.

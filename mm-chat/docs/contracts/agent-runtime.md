@@ -833,7 +833,83 @@ G21.0 adds no migration `091`, API/Chat route, launch/heartbeat/cancel RPC,
 Broker adapter or public endpoint. All execution-stage environment switches
 remain false, and the control profile defaults off.
 
-## 20. Phase 0 verification
+## 20. G21.1 synthetic Root Run canary
+
+The strict plan schema is
+`schemas/neo-agent-root-run-canary-plan.schema.json`. It admits exactly one
+synthetic user, one `root_canary` Step at depth zero, an empty Tool Registry,
+`networkMode=none`, no Egress, no Secrets, no Artifact publication, a read-only
+rootfs, empty capabilities and bounded resource limits. Unknown fields,
+placeholders, mutable environment settings, additional argv entrypoints or any
+Tool/Secret/Egress authority invalidate the plan.
+
+The activation schema is
+`schemas/neo-agent-root-run-canary-activation.schema.json`, stage
+`root_run_canary`. It binds the exact G21.0-ready release/target/policy,
+private Runner endpoint, canary certificate identity, server CA, immutable
+plan and Ed25519 authority public key. Its exact authorization vector enables
+Root Runs only; control-plane, Broker read/mutation, delegation, Scheduler and
+Learning remain false. All eight unique checks must pass inside a maximum
+24-hour production window with approved review and zero orphan/Scratch
+residue. The checked-in fixture remains held by `ISOLATION_UNAVAILABLE`.
+
+Runner ingress enforces caller-specific methods before execution:
+
+```text
+spiffe://neo-chat/agent-runtime-control
+  -> probe, list, reconcile
+spiffe://neo-chat/agent-runtime-root-canary
+  -> probe, list, reconcile, launch, heartbeat, cancel
+```
+
+Neither identity may call a method outside its row; in particular control
+cannot launch and the canary cannot call Broker `prepare` or `commit`. Launch,
+heartbeat and cancel tickets bind caller, Runner, request ID, nonce, canonical
+request fingerprint, user, Run/Step/Attempt/generation, lease owner/token
+digest, snapshot and current Kill-Switch epoch. `BindAuthority` attaches the
+ticket without regenerating request replay identity.
+
+The worker idempotently enqueues and claims the plan's single Run, launches one
+Sandbox, persists expected/running projection, transitions the Attempt to
+running, exercises Runner and PostgreSQL heartbeats, sends a signed cancel and
+requires zero Runner inventory after reconciliation. Final Sandbox
+`running -> stopping -> terminal(canceled)` plus Attempt, Step and Run
+`running -> canceled` and their three append-only events commit in one
+PostgreSQL transaction. Any Sandbox/lease/state mismatch aborts the whole
+transaction.
+
+Replaying a terminal plan returns the same canceled Run without another
+launch. A nonterminal Attempt whose memory-only token was lost cannot be
+reconstructed or canceled by guess; it remains fenced until lease expiry,
+after which ordinary reconcile and generation reclaim apply. A known running
+projection that fails either heartbeat first attempts the exact signed cancel
+and atomic cancellation, then returns unavailable. If cancel itself is
+unavailable, durable live state remains fenced for expiry/recovery rather than
+being falsely terminalized. Reconcile retains non-expired expected Sandboxes
+but still requires zero final inventory, so a replacement worker fails closed
+until that lease expires.
+
+The dedicated LOGIN must be a nonprivileged `LOGIN INHERIT` principal whose
+recursive membership set is exactly
+`agent_orchestrator_runtime,agent_runner_control`. G21.1 reuses migration
+`084`/`085` SECURITY DEFINER functions and adds no migration `091` or direct
+table DML. The command and Compose profile are separate from `cmd/api`, have no
+port or Provider/object-store/Redis/MCP/vault credentials, and default off.
+
+Required focused gates are:
+
+```bash
+bash scripts/verify-agent-root-canary-activation.sh
+bash scripts/verify-agent-root-canary-postgres17.sh
+bash scripts/verify-agent-runtime-g21-1.sh
+```
+
+The PostgreSQL 17 gate proves exact recursive role inheritance, transaction
+rollback on Sandbox mismatch and the atomic four-projection terminal chain.
+The G21.1 gate also reruns G21.0 and requires the current host to remain
+`ISOLATION_UNAVAILABLE`; it is not production promotion evidence.
+
+## 21. Phase 0 verification
 
 Run:
 
@@ -864,6 +940,9 @@ bash scripts/verify-agent-legacy-cutover.sh
 bash scripts/verify-agent-legacy-cutover-postgres17.sh
 bash scripts/verify-agent-production-closure.sh
 bash scripts/verify-agent-runtime-g21-0.sh
+bash scripts/verify-agent-root-canary-activation.sh
+bash scripts/verify-agent-root-canary-postgres17.sh
+bash scripts/verify-agent-runtime-g21-1.sh
 bash scripts/verify-agent-runner.sh
 bash scripts/verify-agent-runtime-phase0.sh
 bash scripts/verify-agent-runner-host.sh # expected nonzero on the current host

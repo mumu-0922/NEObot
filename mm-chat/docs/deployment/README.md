@@ -15,7 +15,7 @@ Outbox state.
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`single-server-compose.md`](./single-server-compose.md)               | Compose topology, profiles, Phase 15.2B dark-run Worker boundary, first boot, release, and rollback checklist.                              |
 | [`mcp-runner.md`](./mcp-runner.md)                                     | MCP manifest validation, optional hardened stdio Runner, token/image preflight, lifecycle, retention, and rollback.                         |
-| [`agent-runtime.md`](./agent-runtime.md)                               | G20 package Runtime, G21.0 exact-host bundle/control-only activation, held execution promotion, backup/restore, and incident runbooks. |
+| [`agent-runtime.md`](./agent-runtime.md)                               | G20 package Runtime, G21.0 control activation, G21.1 synthetic Root canary, held general execution, backup/restore, and incident runbooks. |
 | [`postgres-single-server.md`](./postgres-single-server.md)             | Current Postgres runtime covering private ports, DB principals, health checks, migration head, backup/restore, image fencing, and rollback. |
 | [`redis-temporary-state.md`](./redis-temporary-state.md)               | Phase 7 Redis runbook for non-authoritative temporary state, stream cancellation flags, private-network rules, and flush behavior.          |
 | [`backup-restore.md`](./backup-restore.md)                             | Backup scripts, checksum verification, Postgres restore drill, MinIO restore drill, retention, and destructive-restore warnings.            |
@@ -74,7 +74,9 @@ Outbox state.
   `scripts/compose-single-server-production.sh` so host variables cannot
   override the validated env file and the production override removes every
   `build:` path. Retain both previous image digests through rollback.
-- Database access has five distinct login principals and passwords.
+- Database access has five base login principals and passwords. G21.0 adds a
+  sixth Agent control LOGIN, and G21.1 adds a seventh Root-canary LOGIN only on
+  an approved target selecting those explicit profiles.
   `POSTGRES_USER` is the bootstrap/migrator login referenced only by the
   separately required `MIGRATION_DATABASE_URL`; migration never falls back to
   `DATABASE_URL`. The non-superuser, non-`CREATEROLE` API login inherits only
@@ -87,8 +89,11 @@ Outbox state.
 - On a fresh database, run through migration `054` so `010` and `054` create the
   NOLOGIN capability roles, then create the API, Memory Worker, RAG Worker, and Replay LOGIN principals by
   secure interactive password input and grant one matching capability to each.
-  Verify role attributes, memberships, and all five live connections before
-  promotion. A guarded `010.down` retains the API capability required by
+  Verify role attributes, memberships, and all enabled live connections before
+  promotion. The Agent control principal inherits only `agent_runner_control`;
+  the Root-canary principal recursively inherits exactly
+  `agent_orchestrator_runtime,agent_runner_control`. A guarded `010.down`
+  retains the API capability required by
   migration `009`; never grant API capability to the migrator or projection
   owner as a rollback shortcut.
 - The Consent expiry worker starts with every Postgres-backed API process using

@@ -168,7 +168,13 @@ execution_stage_enabled="${temp_dir}/execution-stage-enabled.env"
 sed 's|^AGENT_RUNTIME_ENABLED=false$|AGENT_RUNTIME_ENABLED=true|' \
   "${valid}" >"${execution_stage_enabled}"
 chmod 600 "${execution_stage_enabled}"
-assert_rejected "${execution_stage_enabled}" "AGENT_RUNTIME_ENABLED must remain false in G21.0"
+assert_rejected "${execution_stage_enabled}" "AGENT_RUNTIME_ENABLED must remain false through G21.1"
+
+root_canary_without_control="${temp_dir}/root-canary-without-control.env"
+sed 's|^AGENT_ROOT_RUN_CANARY_ENABLED=false$|AGENT_ROOT_RUN_CANARY_ENABLED=true|' \
+  "${valid}" >"${root_canary_without_control}"
+chmod 600 "${root_canary_without_control}"
+assert_rejected "${root_canary_without_control}" "AGENT_ROOT_RUN_CANARY_ENABLED requires G21.0 control enabled"
 
 runner_token="${temp_dir}/mcp-runner-token"
 printf '%s' '0123456789abcdef0123456789abcdef0123456789abcdef' >"${runner_token}"
@@ -636,7 +642,7 @@ rendered="$({
   MIGRATION_DATABASE_URL=postgres://override:override@override:5432/override \
   DATABASE_URL=postgres://override:override@override:5432/override \
     "${production_compose}" "${valid}" \
-      --profile app --profile ops --profile mcp-runner --profile memory-worker --profile agent-runtime-control --profile rag-worker --profile rag-ops \
+      --profile app --profile ops --profile mcp-runner --profile memory-worker --profile agent-runtime-control --profile agent-runtime-root-canary --profile rag-worker --profile rag-ops \
       config --format json
 } 2>"${temp_dir}/production-compose.stderr")"
 python3 - "${rendered}" "$(id -u):$(id -g)" <<'PY'
@@ -694,7 +700,7 @@ want_image = (
     "ghcr.io/mumu-0922/neobot-mm-chat@sha256:"
     + "a" * 64
 )
-for name in ("backend", "memory-worker", "agent-runtime-control", "migrate", "admin"):
+for name in ("backend", "memory-worker", "agent-runtime-control", "agent-runtime-root-canary", "migrate", "admin"):
     service = services[name]
     assert service["image"] == want_image, (name, service["image"])
     assert "build" not in service, name
@@ -702,6 +708,7 @@ assert set(services["backend"]["networks"]) == {"private", "rag-private", "mcp-c
 assert services["backend"]["user"] == runtime_user
 assert services["memory-worker"]["user"] == runtime_user
 assert services["agent-runtime-control"]["user"] == runtime_user
+assert services["agent-runtime-root-canary"]["user"] == runtime_user
 assert services["admin"]["user"] == runtime_user
 for name in ("memory-worker", "admin"):
     assert services[name]["secrets"] == [
@@ -827,6 +834,48 @@ for forbidden in (
 ):
     assert forbidden not in agent_environment, forbidden
 
+root_canary = services["agent-runtime-root-canary"]
+assert root_canary["profiles"] == ["agent-runtime-root-canary"]
+assert "ports" not in root_canary
+assert root_canary["read_only"] is True
+assert root_canary["init"] is True
+assert root_canary["cap_drop"] == ["ALL"]
+assert "no-new-privileges:true" in root_canary["security_opt"]
+assert float(root_canary["cpus"]) <= 0.25
+assert int(root_canary["pids_limit"]) == 32
+assert int(root_canary["mem_limit"]) == 96 * 1024 * 1024
+assert list(root_canary["networks"]) == ["private"]
+assert root_canary["depends_on"] == {
+    "postgres": {"condition": "service_healthy", "required": True}
+}
+assert "secrets" not in root_canary
+assert len(root_canary["volumes"]) == 9
+assert all(volume["read_only"] is True for volume in root_canary["volumes"])
+assert all(volume["bind"]["create_host_path"] is False for volume in root_canary["volumes"])
+root_canary_environment = root_canary["environment"]
+assert "agent_root_canary_app:change-me-agent-root-canary-postgres@postgres" in root_canary_environment["AGENT_ROOT_CANARY_DATABASE_URL"]
+assert root_canary_environment["AGENT_ROOT_RUN_CANARY_ENABLED"] == "false"
+for name in (
+    "AGENT_RUNTIME_ENABLED",
+    "AGENT_SCHEDULER_ENABLED",
+    "AGENT_SKILL_INSTALL_ENABLED",
+    "AGENT_LEARNING_ENABLED",
+    "AGENT_DELEGATION_ENABLED",
+    "AGENT_BROKER_READ_ONLY_ENABLED",
+    "AGENT_BROKER_MUTATION_ENABLED",
+):
+    assert root_canary_environment[name] == "false", name
+for forbidden in (
+    "DATABASE_URL",
+    "MIGRATION_DATABASE_URL",
+    "PROVIDER_SECRET_KEYRING_FILE",
+    "REDIS_URL",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+    "MCP_RUNNER_TOKEN_FILE",
+):
+    assert forbidden not in root_canary_environment, forbidden
+
 migrate_environment = services["migrate"]["environment"]
 assert "neo_chat_migrator:test-migrator-password@postgres" in migrate_environment["MIGRATION_DATABASE_URL"]
 assert "DATABASE_URL" not in migrate_environment
@@ -942,7 +991,7 @@ development_rendered="$(docker compose \
   --project-directory "${project_dir}" \
   --env-file "${example}" \
   -f "${project_dir}/compose.single-server.yml" \
-    --profile app --profile ops --profile mcp-runner --profile memory-worker --profile agent-runtime-control --profile rag-worker --profile rag-ops \
+    --profile app --profile ops --profile mcp-runner --profile memory-worker --profile agent-runtime-control --profile agent-runtime-root-canary --profile rag-worker --profile rag-ops \
   config --format json)"
 python3 - "${development_rendered}" <<'PY'
 import json
@@ -950,9 +999,9 @@ import sys
 
 config = json.loads(sys.argv[1])
 services = config["services"]
-for name in ("postgres", "frontend", "backend", "mcp-runner", "memory-worker", "agent-runtime-control", "migrate", "admin", "rag-worker", "rag-replay"):
+for name in ("postgres", "frontend", "backend", "mcp-runner", "memory-worker", "agent-runtime-control", "agent-runtime-root-canary", "migrate", "admin", "rag-worker", "rag-replay"):
     assert "build" in services[name], name
-for name in ("backend", "memory-worker", "agent-runtime-control", "migrate", "admin"):
+for name in ("backend", "memory-worker", "agent-runtime-control", "agent-runtime-root-canary", "migrate", "admin"):
     assert services[name]["build"]["target"] == "runtime", name
 assert "MIGRATION_DATABASE_URL" not in services["backend"]["environment"]
 assert "DATABASE_URL" not in services["migrate"]["environment"]
@@ -974,6 +1023,7 @@ assert float(postgres["cpus"]) == 2
 assert services["backend"]["user"] == "replace-with-host-uid:replace-with-host-gid"
 assert services["memory-worker"]["user"] == "replace-with-host-uid:replace-with-host-gid"
 assert services["agent-runtime-control"]["user"] == "replace-with-host-uid:replace-with-host-gid"
+assert services["agent-runtime-root-canary"]["user"] == "replace-with-host-uid:replace-with-host-gid"
 assert services["admin"]["user"] == "replace-with-host-uid:replace-with-host-gid"
 runner = services["mcp-runner"]
 assert runner["image"] == "ghcr.io/mumu-0922/neobot-mm-chat-mcp-runner@sha256:replace-with-64-lowercase-hex"
@@ -989,6 +1039,11 @@ assert agent_control["profiles"] == ["agent-runtime-control"]
 assert "ports" not in agent_control
 assert list(agent_control["networks"]) == ["private"]
 assert agent_control["environment"]["AGENT_RUNNER_CONTROL_ENABLED"] == "false"
+root_canary = services["agent-runtime-root-canary"]
+assert root_canary["profiles"] == ["agent-runtime-root-canary"]
+assert "ports" not in root_canary
+assert list(root_canary["networks"]) == ["private"]
+assert root_canary["environment"]["AGENT_ROOT_RUN_CANARY_ENABLED"] == "false"
 assert memory["build"]["context"].endswith("/mm-chat/backend")
 assert "ports" not in memory
 rag = services["rag-worker"]

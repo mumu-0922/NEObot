@@ -31,6 +31,8 @@ SCHEMA_NAMES = (
     "neo-agent-production-closure",
     "neo-agent-production-activation",
     "neo-agent-runner-bundle",
+    "neo-agent-root-run-canary-activation",
+    "neo-agent-root-run-canary-plan",
 )
 JsonObject = dict[str, Any]
 

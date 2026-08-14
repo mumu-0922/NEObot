@@ -129,6 +129,23 @@ func LoadEd25519PublicKey(path string) (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(append([]byte(nil), decoded...)), nil
 }
 
+func LoadEd25519PrivateKey(path string) (ed25519.PrivateKey, error) {
+	path = strings.TrimSpace(path)
+	if !strings.HasPrefix(path, "/") || securePrivateFile(path) != nil {
+		return nil, errors.New("authority private key file is invalid")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) > 512 {
+		return nil, errors.New("authority private key is unavailable")
+	}
+	defer clear(data)
+	decoded, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(string(data)))
+	if err != nil || len(decoded) != ed25519.PrivateKeySize {
+		return nil, errors.New("authority private key is invalid")
+	}
+	return ed25519.PrivateKey(append([]byte(nil), decoded...)), nil
+}
+
 func isLowerHex(value string) bool {
 	for _, character := range value {
 		if !((character >= '0' && character <= '9') || (character >= 'a' && character <= 'f')) {

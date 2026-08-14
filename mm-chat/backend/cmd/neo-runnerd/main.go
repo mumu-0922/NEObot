@@ -18,7 +18,10 @@ import (
 	"neo-chat/mm-chat/backend/internal/agentrunner"
 )
 
-const controlCallerIdentity = "spiffe://neo-chat/agent-runtime-control"
+const (
+	controlCallerIdentity = "spiffe://neo-chat/agent-runtime-control"
+	canaryCallerIdentity  = "spiffe://neo-chat/agent-runtime-root-canary"
+)
 
 func main() {
 	if err := run(); err != nil {
@@ -86,7 +89,18 @@ func run() error {
 	if clientIdentity != controlCallerIdentity {
 		return errors.New("neo-runnerd client identity is invalid")
 	}
-	handler, err := agentrunner.NewHTTPHandler(service, 15*time.Second, clientIdentity)
+	policies := []agentrunner.CallerPolicy{{Identity: clientIdentity,
+		Methods: []string{agentrunner.MethodProbe, agentrunner.MethodList, agentrunner.MethodReconcile}}}
+	canaryIdentity := strings.TrimSpace(os.Getenv("NEO_RUNNER_ROOT_CANARY_CLIENT_IDENTITY"))
+	if canaryIdentity != "" {
+		if canaryIdentity != canaryCallerIdentity || canaryIdentity == clientIdentity {
+			return errors.New("neo-runnerd canary client identity is invalid")
+		}
+		policies = append(policies, agentrunner.CallerPolicy{Identity: canaryIdentity,
+			Methods: []string{agentrunner.MethodProbe, agentrunner.MethodList, agentrunner.MethodReconcile,
+				agentrunner.MethodLaunch, agentrunner.MethodHeartbeat, agentrunner.MethodCancel}})
+	}
+	handler, err := agentrunner.NewHTTPHandlerWithPolicies(service, 15*time.Second, policies)
 	if err != nil {
 		return err
 	}

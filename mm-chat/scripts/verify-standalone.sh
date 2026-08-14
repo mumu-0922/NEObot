@@ -117,6 +117,8 @@ required_paths=(
   scripts/test-memory-single-user-bounded-miss-development-from-vault.sh
   scripts/run-memory-single-user-bounded-miss-validation-from-vault.sh
   scripts/test-memory-single-user-bounded-miss-validation-from-vault.sh
+  scripts/verify-agent-runtime-g21-1.sh
+  scripts/verify-agent-root-canary-postgres17.sh
   rag/pyproject.toml
   rag/uv.lock
   rag/Dockerfile
@@ -149,6 +151,7 @@ compose_json="${temp_dir}/compose.json"
   -f "$(docker_path "${copy_dir}/compose.yml")" \
   --profile app --profile ops --profile memory-worker \
   --profile agent-runtime-control \
+  --profile agent-runtime-root-canary \
   --profile rag-worker --profile rag-ops \
   config --format json >"${compose_json}"
 
@@ -179,6 +182,7 @@ required = {
     "backend",
     "memory-worker",
     "agent-runtime-control",
+    "agent-runtime-root-canary",
     "postgres",
     "redis",
     "minio",
@@ -213,6 +217,7 @@ if "backend" not in frontend.get("depends_on", {}):
 backend = services["backend"]
 memory_worker = services["memory-worker"]
 agent_control = services["agent-runtime-control"]
+root_canary = services["agent-runtime-root-canary"]
 if memory_worker.get("profiles") != ["memory-worker"]:
     raise SystemExit("standalone verification: Memory Worker profile drifted")
 if memory_worker.get("ports"):
@@ -238,6 +243,25 @@ for name in (
 ):
     if agent_control["environment"][name] != "false":
         raise SystemExit(f"standalone verification: {name} must default false")
+if root_canary.get("profiles") != ["agent-runtime-root-canary"]:
+    raise SystemExit("standalone verification: Agent Root canary profile drifted")
+if root_canary.get("ports"):
+    raise SystemExit("standalone verification: Agent Root canary exposes a host port")
+if set(root_canary.get("networks", {})) != {"private"}:
+    raise SystemExit("standalone verification: Agent Root canary is not private-only")
+if root_canary["environment"]["AGENT_ROOT_RUN_CANARY_ENABLED"] != "false":
+    raise SystemExit("standalone verification: Agent Root canary must default false")
+for name in (
+    "AGENT_RUNTIME_ENABLED",
+    "AGENT_SCHEDULER_ENABLED",
+    "AGENT_SKILL_INSTALL_ENABLED",
+    "AGENT_LEARNING_ENABLED",
+    "AGENT_DELEGATION_ENABLED",
+    "AGENT_BROKER_READ_ONLY_ENABLED",
+    "AGENT_BROKER_MUTATION_ENABLED",
+):
+    if root_canary["environment"][name] != "false":
+        raise SystemExit(f"standalone verification: Root canary {name} must default false")
 if (
     backend["environment"]["MEMORY_HYBRID_SHADOW_ENABLED"]
     != memory_worker["environment"]["MEMORY_HYBRID_SHADOW_ENABLED"]
@@ -288,7 +312,7 @@ DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-single-user-bou
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-single-user-bounded-miss-validation-from-vault.sh"
 
 if [[ "${full}" == true ]]; then
-  bash "${copy_dir}/scripts/verify-agent-runtime-g21-0.sh"
+  bash "${copy_dir}/scripts/verify-agent-runtime-g21-1.sh"
   rag_python="${RAG_PYTHON:-python3.13}"
   rag_uv="${RAG_UV:-uv}"
   if ! command -v "${rag_python}" >/dev/null 2>&1; then

@@ -26,6 +26,9 @@ bash mm-chat/scripts/verify-agent-product-shadow.sh
 bash mm-chat/scripts/verify-agent-product-shadow-postgres17.sh
 bash mm-chat/scripts/verify-agent-legacy-cutover.sh
 bash mm-chat/scripts/verify-agent-legacy-cutover-postgres17.sh
+bash mm-chat/scripts/verify-agent-runtime-g21-0.sh
+bash mm-chat/scripts/verify-agent-root-canary-postgres17.sh
+bash mm-chat/scripts/verify-agent-runtime-g21-1.sh
 bash mm-chat/scripts/verify-agent-runner-host.sh # expected nonzero until exact host is prepared
 ```
 
@@ -748,4 +751,101 @@ template bundle -> Compose Root Run worker -> public Runner/rootful fallback
 clean content-addressed production bundle -> exact non-root target acceptance
 -> fresh control_plane activation -> control-only Compose profile
 -> execution stages remain physically disabled
+```
+
+## Scenario: Deploy the G21.1 Root canary profile
+
+### 1. Scope / Trigger
+
+Apply when configuring the `agent-runtime-root-canary` Compose profile,
+separate mTLS/authority material, seventh PostgreSQL principal or G21.1
+preflight. The development host remains ineligible.
+
+### 2. Signatures
+
+```bash
+bash mm-chat/scripts/preflight-single-server.sh /secure/mm-chat.env
+bash mm-chat/scripts/verify-agent-root-canary-activation.sh
+bash mm-chat/scripts/verify-agent-root-canary-postgres17.sh
+bash mm-chat/scripts/verify-agent-runtime-g21-1.sh
+```
+
+Compose profile: `agent-runtime-root-canary`. Runner identity:
+`spiffe://neo-chat/agent-runtime-root-canary`.
+
+### 3. Contracts
+
+- G21.0 control must already be enabled and ready. Canary reuses neither its
+  certificate/key nor its database LOGIN.
+- Mount exactly nine non-creating read-only files: canary certificate/key,
+  server CA, release manifest, production policy, canary activation, immutable
+  plan and Ed25519 private/public authority keys.
+- The canary LOGIN recursively inherits exactly
+  `agent_orchestrator_runtime,agent_runner_control`, has no elevated attribute
+  or direct table DML and is distinct from all six earlier principals.
+- Preflight requires a private literal HTTPS Runner endpoint, exact canary
+  identity, secure regular files, matching certificate/key and Ed25519 keys,
+  no-Egress/no-Secret/empty-Tool plan and a ready `root_run_canary` record.
+- A production `root_run_canary` evaluator invocation must provide both
+  `--canary-plan` and `--authority-public-key`; their optional parser defaults
+  exist only so checked-in template/held evidence can be evaluated without
+  local production material. Missing either binding fails as `WIRING_INVALID`.
+- The profile has no port, read-only root, `cap_drop: ALL`, private network
+  only and no Provider/object-store/Redis/MCP/vault secret. Broad Runtime,
+  Broker, Child, Scheduler, Skill-install and Learning flags stay false.
+- Roll back by stopping only the canary profile or setting its flag false.
+  Keep G21.0 control available for reconcile; never delete runtime state,
+  reconstruct lease tokens or hand-edit terminal projections.
+- Source/disposable gates do not activate production. Only fresh exact-target
+  evidence may enable the profile; the current host remains
+  `ISOLATION_UNAVAILABLE`.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| profile not selected/canary false | no mounted-file read or Runner dial |
+| canary true while control false | preflight rejects |
+| shared identity/principal or extra inherited role | preflight/startup rejects |
+| insecure/symlink/mismatched mTLS or authority key | preflight rejects |
+| plan contains Tool/Egress/Secret or network | preflight rejects |
+| activation template/stale/drifted/widened/residue | not READY; no worker start |
+| current development host | expected nonzero `ISOLATION_UNAVAILABLE` |
+
+### 5. Good / Base / Bad Cases
+
+- **Good:** exact target keeps control active, mounts separate reviewed canary
+  material, passes preflight and runs only one synthetic Root canary.
+- **Base:** both profiles are unselected and flags false; no protected file is
+  read and no host is modified.
+- **Bad:** enable broad Runtime, mount a credential directory, reuse control
+  cert/login, expose a port or install rootful/container-socket fallback.
+
+### 6. Tests Required
+
+- Render example and production Compose with the canary profile; assert nine
+  mounts, default-off flags, no ports/credentials, private-only network,
+  hardened process settings and no production build block.
+- Run preflight default and canary-without-control negative, plus exact enabled
+  activation/plan/mTLS/key/principal cases in the focused G21.1 verifier.
+- Run disposable PostgreSQL 17 atomic/role proof, G21.0 regression, Phase 0 and
+  full standalone. Require exact-host acceptance to remain separately nonzero
+  on this machine.
+- Build the disposable migration helper with `-buildvcs=false`: standalone
+  verification runs from a source-only tar copy without `.git`, and that gate
+  must validate schema behavior rather than require unavailable VCS stamping.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+G21.0 control profile -> reuse certificate/login -> enable broad Runtime
+```
+
+#### Correct
+
+```text
+ready G21.0 control + separate Root-canary files/login/profile
+-> exact preflight -> one synthetic Run -> disable canary, retain reconcile
 ```
