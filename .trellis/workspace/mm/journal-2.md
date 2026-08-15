@@ -302,3 +302,36 @@ Implemented and verified migration 095, the authenticated bounded product-canary
 ### Next Steps
 
 - None - task complete
+
+
+## Session 58: Agent Runtime WSL local-test host tooling
+
+**Date**: 2026-08-16
+**Task**: Agent Runtime WSL local-test host tooling
+**Branch**: `main`
+
+### Summary
+
+Added a fail-closed Ubuntu 22.04 WSL2 local-test Runner bootstrap, exact pinned rootless Podman toolchain installer, real bounded synthetic Skill smoke, local-only report contract, guarded rollback, docs, tests, and full verification while production remained ISOLATION_UNAVAILABLE.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3546b990` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
