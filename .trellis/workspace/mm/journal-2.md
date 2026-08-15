@@ -236,3 +236,36 @@ Added the default-off G21.4 one-Parent/one-Child production-path canary, migrati
 ### Next Steps
 
 - None - task complete
+
+
+## Session 56: Complete Agent Runtime G21.5 exact workers
+
+**Date**: 2026-08-15
+**Task**: Complete Agent Runtime G21.5 exact workers
+**Branch**: `main`
+
+### Summary
+
+Added independent exact-target Cron and quarantined Draft-learning workers, migration 094 least-privilege authority, lifecycle-only Runner result transport, production wiring, PostgreSQL 17 recovery gates, and full documentation. Full standalone passed while this host remained ISOLATION_UNAVAILABLE.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9013926f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
