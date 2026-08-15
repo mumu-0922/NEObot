@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "neo.agent-runner-local-test-toolchain/v1",
+  "evidenceClass": "local_test",
+  "host": {
+    "architecture": "amd64",
+    "distribution": "ubuntu",
+    "distributionVersion": "22.04",
+    "environment": "wsl2"
+  },
+  "aptPackages": [
+    "btrfs-progs",
+    "build-essential",
+    "ca-certificates",
+    "curl",
+    "fuse-overlayfs",
+    "git",
+    "iptables",
+    "libassuan-dev",
+    "libbtrfs-dev",
+    "libc6-dev",
+    "libdevmapper-dev",
+    "libglib2.0-dev",
+    "libgpg-error-dev",
+    "libgpgme-dev",
+    "libprotobuf-c-dev",
+    "libprotobuf-dev",
+    "libseccomp-dev",
+    "libselinux1-dev",
+    "libsystemd-dev",
+    "make",
+    "pkg-config",
+    "slirp4netns",
+    "uidmap"
+  ],
+  "artifacts": [
+    {
+      "name": "go",
+      "version": "1.25.9",
+      "url": "https://go.dev/dl/go1.25.9.linux-amd64.tar.gz",
+      "size": 59795542,
+      "sha256": "sha256:00859d7bd6defe8bf84d9db9e57b9a4467b2887c18cd93ae7460e713db774bc1"
+    },
+    {
+      "name": "podman-source",
+      "version": "6.1.0",
+      "url": "https://github.com/podman-container-tools/podman/archive/refs/tags/v6.1.0.tar.gz",
+      "size": 20956524,
+      "sha256": "sha256:e086183db2f852476a7fa2580d0276cef32086b4cf17ae7020948f06eb613e0d"
+    },
+    {
+      "name": "crun",
+      "version": "1.29.1",
+      "url": "https://github.com/containers/crun/releases/download/1.29.1/crun-1.29.1-linux-amd64",
+      "size": 3580152,
+      "sha256": "sha256:0a5ea25cafe618bbfbf1c747871155063619f18025ccdd8ad648c97633f35d57"
+    },
+    {
+      "name": "conmon",
+      "version": "2.2.1",
+      "url": "https://github.com/containers/conmon/releases/download/v2.2.1/conmon.amd64",
+      "size": 1986352,
+      "sha256": "sha256:1d97294c14c43d477e0a0826e9cd0f2a2af373ddfafe6f10252e8a3c43f32be6"
+    }
+  ]
+}

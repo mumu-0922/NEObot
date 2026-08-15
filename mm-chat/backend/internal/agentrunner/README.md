@@ -14,12 +14,20 @@ approved exact release manifest and a ready exact-host probe. On the current
 development host, `verify-agent-runner-host.sh` must return
 `ISOLATION_UNAVAILABLE`.
 
+`RunLocalTestSmoke` is the only exception to the source-only host baseline. It
+runs one synthetic no-network/no-secret workload through the real driver,
+inspection, Artifact and reap paths after the separate WSL host manager proves
+its pinned local toolchain. It uses ephemeral authority and a StaticProbe,
+emits only `neo.agent-runner-local-test-report/v1`, and cannot produce an
+approved release, production activation or promotion fact.
+
 ## Verification
 
 ```bash
 bash mm-chat/scripts/verify-agent-runner.sh
 bash mm-chat/scripts/verify-agent-runner-postgres17.sh
 bash mm-chat/scripts/verify-agent-runner-host.sh # expected nonzero here
+bash mm-chat/scripts/verify-agent-runner-local-test.sh
 ```
 
 See [`DESIGN.md`](./DESIGN.md) and the repository Agent Runtime contracts for

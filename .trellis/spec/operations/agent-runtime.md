@@ -1,5 +1,95 @@
 # Agent Runtime Operations Contract
 
+## Scenario: Activate the WSL2 local-test Runner profile
+
+### 1. Scope / Trigger
+
+Apply when changing the Ubuntu 22.04 WSL2 local-test bootstrap, pinned Podman
+toolchain, synthetic Skill smoke, local report, or its rollback. This scenario
+never changes production release, activation, closure, or promotion authority.
+
+### 2. Signatures
+
+```bash
+bash mm-chat/scripts/verify-agent-runner-local-test.sh
+bash mm-chat/scripts/agent-runner-local-test.sh status
+bash mm-chat/scripts/agent-runner-local-test.sh smoke # only after host setup
+```
+
+- Lock: `mm-chat/config/agent-runner/local-test-toolchain.lock.json`.
+- Commands: `backend/cmd/agent-runtime-local-test-smoke` and
+  `backend/cmd/neo-skill-local-test-workload`.
+- Report: `neo.agent-runner-local-test-report/v1`.
+- Runbook: `mm-chat/docs/deployment/agent-runner-local-test.md`.
+
+### 3. Contracts
+
+- Support only the reviewed Ubuntu 22.04 WSL2 amd64 tuple. Require systemd,
+  delegated cgroup v2 CPU/memory/PID controllers, non-overlapping 65,536-entry
+  subordinate IDs, root-owned setuid mapping helpers, seccomp and overlay.
+- The privileged step is operator-run and handles only the preserved WSL
+  systemd setting plus a fixed apt allowlist. Never request, pipe, log or store
+  the sudo password; never initiate `wsl --shutdown` from the active session.
+- Verify pinned size and SHA-256 before extracting Go 1.25.9, Podman 6.1.0
+  source, crun 1.29.1 and conmon 2.2.1. Build as the normal user into the
+  dedicated local-test root; do not use Docker or Ubuntu Podman 3.4 fallback.
+- Publish `bin/`, `config/`, `storage/` and the receipt in one same-filesystem
+  directory rename. Build the synthetic workload with `CGO_ENABLED=0`; a
+  dynamic interpreter is unavailable in its single-file rootfs.
+- Persist `applying|applied|rolling_back|rolled_back` bootstrap state before
+  privileged mutation. An interrupted apt/apply or rollback may resume only
+  from the exact recorded before/after WSL hash and fixed package set.
+- The real smoke is synthetic-only, UID/GID 10001, empty Tool Registry,
+  read-only rootfs/Workspace, empty capabilities, no-new-privileges, reviewed
+  seccomp, network none and bounded CPU/memory/PID/wall/output/Scratch. It must
+  use post-create/post-start inspection, Artifact intake and exact kill/reap.
+- Emit only content-free `local_test` evidence with
+  `productionEligible=false`. Production evaluators reject it and the
+  checked-in production host probe remains `ISOLATION_UNAVAILABLE`.
+- Rollback validates exact configuration/toolchain state, removes the user
+  root before system packages, never runs apt autoremove, and never reaches
+  `.env.single-server`, `data/`, `secrets/`, or `backup/`.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| unsupported host, missing systemd or missing delegation | fail closed with one next-step code |
+| download size/hash, receipt or executable drift | no build or smoke |
+| rootful runtime, cgroupfs, wrong runtime/version/storage | `ISOLATION_UNAVAILABLE` |
+| writable root/Workspace, capability, network, Secret or staging residue | smoke fails and reaps |
+| local report enters production evaluator | `PROMOTION_EVIDENCE_INVALID` |
+| changed `/etc/wsl.conf` at rollback | refuse before mutation |
+
+### 5. Tests Required
+
+- Pure tests for lock strictness, WSL config preservation/idempotency,
+  subordinate-ID overlap, archive traversal, safe install roots, package
+  allowlist, interrupted apply, rollback drift, whole-directory publication
+  and absence of password/autoremove/Docker paths.
+- Go tests for exact Podman info, input file modes, signed lease/snapshot
+  authority, inner-workload capability/NNP checks and non-production report.
+- Offline gate validates report fixtures, production rejection, focused Go
+  packages, baseline production host hold and read-only status.
+- Live success additionally requires the exact pinned build, real bounded
+  smoke, Artifact receipt, signed reap, zero inventory and zero staging.
+
+### 6. Wrong vs Correct
+
+#### Wrong
+
+```text
+Docker works -> skip rootless checks -> enable Agent page
+```
+
+#### Correct
+
+```text
+operator system bootstrap -> WSL restart -> pinned user toolchain
+-> real no-network synthetic Skill -> exact inspect/reap -> local_test report
+-> production remains held
+```
+
 ## Scenario: Deploy and operate `neo-runnerd` with rootless OCI
 
 ### 1. Scope / Trigger

@@ -154,6 +154,14 @@ unchanged.
 - G20.10 policy and closure JSON are strict, content-free and exact-release
   bound. The read-only evaluator derives ready/held/invalid and never activates
   Runtime. The checked-in template remains `ISOLATION_UNAVAILABLE`.
+- The WSL2 local-test seam may run only the fixed synthetic workload through
+  Workspace, ephemeral signed authority, real Podman inspection, Artifact
+  intake and reap after the separate host manager verifies its pinned local
+  toolchain. It uses no PostgreSQL/API/Chat/Provider/MCP/user data and emits
+  only `neo.agent-runner-local-test-report/v1` with `local_test` and
+  `productionEligible=false`. It cannot satisfy release, Isolation Acceptance,
+  activation, closure or promotion authority; the production host probe stays
+  held.
 - G20.8 intentionally imports `internal/agentlearning` only from the
   authenticated `agentcontrol` facade and `cmd/api` construction. Startup must
   pass `WithLearningEnabled(false)` and must not call learning Claim,

@@ -1268,7 +1268,57 @@ Checked-in evidence is template/offline-only. The development host remains
 `ISOLATION_UNAVAILABLE`; disposable PostgreSQL or schema validation cannot
 create live activation or final-promotion evidence.
 
-## 26. Phase 0 verification
+## 26. WSL local-test Runner smoke
+
+The Ubuntu 22.04 WSL2 development machine may use one separate, explicitly
+non-production local-test profile to prove the rootless host path before page
+wiring. Its lock is
+`config/agent-runner/local-test-toolchain.lock.json`; its operator entrypoint is
+`scripts/agent-runner-local-test.sh`; its report schema is
+`schemas/neo-agent-runner-local-test-report.schema.json`.
+
+The profile requires systemd, a writable delegated cgroup v2 subtree, one
+non-overlapping 65,536-entry subuid/subgid range, setuid mapping helpers,
+Podman 6.1.0 built from pinned source, crun 1.29.1 with systemd support, conmon
+2.2.1, seccomp, and overlay storage. One operator-run sudo step may install the
+allowlisted host prerequisites and preserve/update `/etc/wsl.conf`; automation
+never receives the password or initiates the required WSL shutdown.
+
+The smoke uses a synthetic Workspace and static payload only. It runs as
+UID/GID `10001` with read-only rootfs, empty capabilities,
+`no-new-privileges`, reviewed seccomp, `network=none`, bounded CPU/memory/PID/
+wall/output/Scratch, empty Tool Registry and no Egress/Secrets. It must pass
+the real Workspace, signed request, Podman create/inspect/start/inspect,
+Artifact result and kill/reap paths, then leave zero managed Sandbox or staging
+residue.
+
+Local evidence is structurally disjoint: `evidenceClass=local_test`,
+`productionEligible=false`, and outcome `LOCAL_SKILL_SMOKE_PASSED`. It is not a
+release manifest, Isolation Acceptance, activation, closure, or promotion
+record. Production evaluators must reject it, and the checked-in
+`verify-agent-runner-host.sh` remains `ISOLATION_UNAVAILABLE`. The local seam
+adds no database, API, Chat, Agent Center, Provider, MCP, user Project, Cron,
+Child, learning or Broker-effect authority.
+
+Run the offline source/control gate:
+
+```bash
+bash scripts/verify-agent-runner-local-test.sh
+```
+
+Run the live smoke only after the host bootstrap and WSL restart:
+
+```bash
+bash scripts/agent-runner-local-test.sh status
+bash scripts/agent-runner-local-test.sh install-toolchain
+bash scripts/agent-runner-local-test.sh smoke
+```
+
+Rollback removes the dedicated user root first, then restores the exact
+recorded WSL configuration and removes only packages absent before bootstrap.
+It never uses `apt autoremove` or reaches protected product runtime state.
+
+## 27. Phase 0 verification
 
 Run:
 
