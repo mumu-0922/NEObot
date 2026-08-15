@@ -269,3 +269,36 @@ Added independent exact-target Cron and quarantined Draft-learning workers, migr
 ### Next Steps
 
 - None - task complete
+
+
+## Session 57: Complete Agent Runtime G21.6 product canary
+
+**Date**: 2026-08-15
+**Task**: Complete Agent Runtime G21.6 product canary
+**Branch**: `main`
+
+### Summary
+
+Implemented and verified migration 095, the authenticated bounded product-canary queue and worker, exact Runner caller, final closure/promotion contracts, read-only health, canonical replay bindings, deployment wiring, frontend action, PostgreSQL drills, and full standalone closure while retaining ISOLATION_UNAVAILABLE on this host.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a9ca4a57` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
