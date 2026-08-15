@@ -11,6 +11,7 @@
     "learning": "学习审查"
   },
   "heldStatus": "Runtime 已受限：{reason}。没有浏览器或 API 进程降级执行器。",
+  "canaryReadyStatus": "受限产品 Canary 已就绪：{reason}。执行权仍由服务端持有。",
   "controlUnavailable": "Agent 控制面不可用。",
   "loading": "加载中…",
   "retry": "重试",
@@ -46,6 +47,9 @@
   "installedAnnouncement": "已安装 {name}。",
   "uninstalledAnnouncement": "已卸载 {name}。",
   "runs": "运行",
+  "runProductCanary": "运行受限产品 Canary",
+  "canaryRemaining": "本次激活还可提交 {count} 个请求。",
+  "canaryQueued": "产品 Canary 请求已入队：{id}。",
   "noRuns": "暂无持久化 Agent Run。",
   "selectRun": "选择 Run 查看持久化时间线。",
   "cancelRun": "取消",

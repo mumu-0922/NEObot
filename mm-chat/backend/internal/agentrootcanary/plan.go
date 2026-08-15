@@ -18,7 +18,12 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const PlanSchemaVersion = "neo.agent-root-run-canary-plan/v1"
+const (
+	PlanSchemaVersion        = "neo.agent-root-run-canary-plan/v1"
+	ProductPlanSchemaVersion = "neo.agent-product-canary-execution/v1"
+	RootCallerIdentity       = "spiffe://neo-chat/agent-runtime-root-canary"
+	ProductCallerIdentity    = "spiffe://neo-chat/agent-runtime-product-canary"
+)
 
 var (
 	ErrInvalidPlan     = errors.New("ROOT_CANARY_PLAN_INVALID")
@@ -68,10 +73,24 @@ func LoadPlan(path string) (Plan, error) {
 }
 
 func ValidatePlan(plan Plan) error {
-	if plan.SchemaVersion != PlanSchemaVersion || !plan.Synthetic || !uuidPattern.MatchString(plan.UserID) ||
-		!strings.HasPrefix(plan.IdempotencyKey, "g21.1-root-canary-") || len(plan.IdempotencyKey) > 128 ||
-		plan.StepKind != "root_canary" || plan.LeaseSeconds < 10 || plan.LeaseSeconds > 60 ||
-		plan.Snapshot.SchemaVersion != "neo.agent-snapshot/v1" || plan.Snapshot.Mode != "synthetic" ||
+	return validatePlan(plan, false)
+}
+
+func ValidateProductPlan(plan Plan) error {
+	return validatePlan(plan, true)
+}
+
+func validatePlan(plan Plan, product bool) error {
+	expectedSchema, expectedPrefix, expectedStep, expectedMode :=
+		PlanSchemaVersion, "g21.1-root-canary-", "root_canary", "synthetic"
+	if product {
+		expectedSchema, expectedPrefix, expectedStep, expectedMode =
+			ProductPlanSchemaVersion, "g21.6-product-canary-", "product_canary", "read_only"
+	}
+	if plan.SchemaVersion != expectedSchema || plan.Synthetic == product || !uuidPattern.MatchString(plan.UserID) ||
+		!strings.HasPrefix(plan.IdempotencyKey, expectedPrefix) || len(plan.IdempotencyKey) > 128 ||
+		plan.StepKind != expectedStep || plan.LeaseSeconds < 10 || plan.LeaseSeconds > 60 ||
+		plan.Snapshot.SchemaVersion != "neo.agent-snapshot/v1" || plan.Snapshot.Mode != expectedMode ||
 		!plan.Snapshot.NoEgress || !plan.Snapshot.NoSecrets || plan.Snapshot.MaxWallSeconds != plan.Sandbox.Resources.WallSeconds ||
 		plan.Snapshot.PackageFingerprint != plan.Sandbox.PackageFingerprint ||
 		plan.Snapshot.RuntimeBundleFingerprint != plan.Sandbox.RuntimeBundleFingerprint ||
@@ -80,6 +99,14 @@ func ValidatePlan(plan Plan) error {
 		plan.Snapshot.WorkspaceFingerprint != plan.Sandbox.WorkspaceFingerprint ||
 		plan.ToolRegistry.Depth != 0 || len(plan.ToolRegistry.Tools) != 0 || len(plan.Argv) < 1 ||
 		!strings.HasPrefix(filepath.Clean(plan.Argv[0]), "/opt/neo/bin/") {
+		return ErrInvalidPlan
+	}
+	if product && (len(plan.Argv) != 2 || plan.Argv[0] != "/opt/neo/bin/product-canary" ||
+		plan.Argv[1] != "--bounded-smoke" || plan.LeaseSeconds != 30 ||
+		plan.Snapshot.MaxWallSeconds != 30 || plan.Sandbox.UID != 10001 || plan.Sandbox.GID != 10001 ||
+		plan.Sandbox.Resources.CPUMillis != 250 || plan.Sandbox.Resources.MemoryMiB != 128 ||
+		plan.Sandbox.Resources.PIDs != 16 || plan.Sandbox.Resources.WallSeconds != 30 ||
+		plan.Sandbox.Resources.OutputBytes != 4096 || plan.Sandbox.Resources.ScratchBytes != 1<<20) {
 		return ErrInvalidPlan
 	}
 	snapshot, err := json.Marshal(plan.Snapshot)

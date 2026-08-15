@@ -152,7 +152,7 @@ func Verify(config Config, now time.Time) (Decision, error) {
 		return Decision{ReasonCode: "POLICY_INVALID"}, ErrInvalid
 	}
 	migrationHead, ok := policyDocument["migrationHead"].(float64)
-	if !ok || migrationHead != 94 {
+	if !ok || migrationHead != 95 {
 		return Decision{ReasonCode: "POLICY_INVALID"}, ErrInvalid
 	}
 	policyFingerprint := fingerprint(policyRaw)
@@ -274,7 +274,7 @@ func validateRecord(value record, config Config, policyFingerprint string, now t
 		!member(value.EvidenceClass, "template", "production") {
 		return "ACTIVATION_VERSION_INVALID"
 	}
-	if !commitPattern.MatchString(value.Release.GitCommit) || value.Release.MigrationHead != 94 ||
+	if !commitPattern.MatchString(value.Release.GitCommit) || value.Release.MigrationHead != 95 ||
 		!validFingerprint(value.Release.RunnerManifestSHA256) || !validFingerprint(value.Release.RunnerBinarySHA256) ||
 		!validFingerprint(value.Release.OperationsPolicySHA256) || value.Release.OperationsPolicySHA256 != policyFingerprint {
 		return "RELEASE_INVALID"

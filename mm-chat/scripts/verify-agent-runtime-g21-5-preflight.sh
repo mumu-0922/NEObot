@@ -8,8 +8,18 @@ preflight="${script_dir}/preflight-single-server.sh"
 example_env="${project_dir}/.env.single-server.example"
 fixtures="${project_dir}/docs/contracts/fixtures/agent-runtime"
 policy="${project_dir}/config/agent-runner/production-policy.json"
-work_dir="$(mktemp -d)"
-cleanup(){ find "${work_dir}" -depth -mindepth 1 -delete 2>/dev/null || true; rmdir "${work_dir}" 2>/dev/null || true; }
+base_template="${G21_PREFLIGHT_BASE_ENV:-${example_env}}"
+export_dir="${G21_PREFLIGHT_EXPORT_DIR:-}"
+[[ -s "${base_template}" ]] || { echo 'G21.5 preflight: base environment is missing' >&2; exit 1; }
+if [[ -n "${export_dir}" ]]; then
+  [[ "${export_dir}" == /* ]] || { echo 'G21.5 preflight: export directory must be absolute' >&2; exit 1; }
+  mkdir -p "${export_dir}"
+  work_dir="$(cd -- "${export_dir}" && pwd -P)"
+  cleanup(){ :; }
+else
+  work_dir="$(mktemp -d)"
+  cleanup(){ find "${work_dir}" -depth -mindepth 1 -delete 2>/dev/null || true; rmdir "${work_dir}" 2>/dev/null || true; }
+fi
 trap cleanup EXIT INT TERM
 
 for command in date jq openssl python3 sed sha256sum; do
@@ -48,9 +58,31 @@ cp "${fixtures}/neo-agent-cron-worker-plan.valid.json" "${work_dir}/cron-plan.js
 cp "${fixtures}/neo-agent-draft-learning-worker-plan.valid.json" "${work_dir}/draft-plan.json"
 printf '%s\n' '{"credentialId":"draft-learning-cleanup-v1","scope":"exact-object-read-delete"}' \
   >"${work_dir}/object-credential.json"
-for stage in control root broker project child; do
-  printf '{"stage":"%s","ready":true}\n' "${stage}" >"${work_dir}/prerequisite-${stage}.json"
-done
+prior_source_sed=()
+if [[ -n "${G21_PREFLIGHT_BASE_ENV:-}" ]]; then
+  copy_prerequisite(){
+    local stage="$1" key="$2" source
+    source="$(sed -n "s|^${key}=||p" "${base_template}" | tail -n 1)"
+    [[ -s "${source}" ]] || { echo "G21.5 preflight: ${key} source is missing" >&2; exit 1; }
+    cp "${source}" "${work_dir}/prerequisite-${stage}.json"
+  }
+  copy_prerequisite control AGENT_PRODUCTION_ACTIVATION_SOURCE
+  copy_prerequisite root AGENT_ROOT_CANARY_ACTIVATION_SOURCE
+  copy_prerequisite broker AGENT_BROKER_CANARY_ACTIVATION_SOURCE
+  copy_prerequisite project AGENT_PROJECT_CANARY_ACTIVATION_SOURCE
+  copy_prerequisite child AGENT_CHILD_CANARY_ACTIVATION_SOURCE
+else
+  for stage in control root broker project child; do
+    printf '{"stage":"%s","ready":true}\n' "${stage}" >"${work_dir}/prerequisite-${stage}.json"
+  done
+  prior_source_sed=(
+    -e "s|^AGENT_PRODUCTION_ACTIVATION_SOURCE=.*|AGENT_PRODUCTION_ACTIVATION_SOURCE=${work_dir}/prerequisite-control.json|"
+    -e "s|^AGENT_ROOT_CANARY_ACTIVATION_SOURCE=.*|AGENT_ROOT_CANARY_ACTIVATION_SOURCE=${work_dir}/prerequisite-root.json|"
+    -e "s|^AGENT_BROKER_CANARY_ACTIVATION_SOURCE=.*|AGENT_BROKER_CANARY_ACTIVATION_SOURCE=${work_dir}/prerequisite-broker.json|"
+    -e "s|^AGENT_PROJECT_CANARY_ACTIVATION_SOURCE=.*|AGENT_PROJECT_CANARY_ACTIVATION_SOURCE=${work_dir}/prerequisite-project.json|"
+    -e "s|^AGENT_CHILD_CANARY_ACTIVATION_SOURCE=.*|AGENT_CHILD_CANARY_ACTIVATION_SOURCE=${work_dir}/prerequisite-child.json|"
+  )
+fi
 nonzero='sha256:1111111111111111111111111111111111111111111111111111111111111111'
 jq --arg nonzero "${nonzero}" '
   .approved=true | .runnerVersion="g21.5-test" |
@@ -140,11 +172,6 @@ sed \
   -e 's|change-me-base64-32-byte-random-key|MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=|g' \
   -e 's|https://change-me.example/invites/accept|https://chat.internal/invites/accept|' \
   -e "s|^PROVIDER_SECRET_KEYRING_SOURCE=.*|PROVIDER_SECRET_KEYRING_SOURCE=${work_dir}/provider-keyring.json|" \
-  -e "s|^AGENT_PRODUCTION_ACTIVATION_SOURCE=.*|AGENT_PRODUCTION_ACTIVATION_SOURCE=${work_dir}/prerequisite-control.json|" \
-  -e "s|^AGENT_ROOT_CANARY_ACTIVATION_SOURCE=.*|AGENT_ROOT_CANARY_ACTIVATION_SOURCE=${work_dir}/prerequisite-root.json|" \
-  -e "s|^AGENT_BROKER_CANARY_ACTIVATION_SOURCE=.*|AGENT_BROKER_CANARY_ACTIVATION_SOURCE=${work_dir}/prerequisite-broker.json|" \
-  -e "s|^AGENT_PROJECT_CANARY_ACTIVATION_SOURCE=.*|AGENT_PROJECT_CANARY_ACTIVATION_SOURCE=${work_dir}/prerequisite-project.json|" \
-  -e "s|^AGENT_CHILD_CANARY_ACTIVATION_SOURCE=.*|AGENT_CHILD_CANARY_ACTIVATION_SOURCE=${work_dir}/prerequisite-child.json|" \
   -e "s|^AGENT_CRON_WORKER_PLAN_SOURCE=.*|AGENT_CRON_WORKER_PLAN_SOURCE=${work_dir}/cron-plan.json|" \
   -e "s|^AGENT_CRON_WORKER_PRODUCTION_POLICY_SOURCE=.*|AGENT_CRON_WORKER_PRODUCTION_POLICY_SOURCE=${policy}|" \
   -e "s|^AGENT_CRON_WORKER_ACTIVATION_SOURCE=.*|AGENT_CRON_WORKER_ACTIVATION_SOURCE=${work_dir}/cron-activation.json|" \
@@ -163,7 +190,8 @@ sed \
   -e "s|^AGENT_DRAFT_LEARNING_WORKER_RELEASE_GIT_COMMIT=.*|AGENT_DRAFT_LEARNING_WORKER_RELEASE_GIT_COMMIT=${commit}|" \
   -e 's|^AGENT_DRAFT_LEARNING_WORKER_S3_ACCESS_KEY_ID=.*|AGENT_DRAFT_LEARNING_WORKER_S3_ACCESS_KEY_ID=draft-learning-test-access|' \
   -e 's|^AGENT_DRAFT_LEARNING_WORKER_S3_SECRET_ACCESS_KEY=.*|AGENT_DRAFT_LEARNING_WORKER_S3_SECRET_ACCESS_KEY=draft-learning-test-secret|' \
-  "${example_env}" >"${base_env}"
+  "${prior_source_sed[@]}" \
+  "${base_template}" >"${base_env}"
 chmod 600 "${base_env}"
 
 run_enabled(){

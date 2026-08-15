@@ -6,7 +6,8 @@
 
 Apply this contract when changing the top-level Agent Center, Agent Center API
 types/client, package Skill product UI, Run/Schedule/Learning Review views,
-Shadow opt-in, Artifact download or G20.9 legacy Skill retirement.
+Shadow opt-in, bounded product-canary submission, Artifact download or G20.9
+legacy Skill retirement.
 
 ### 2. Signatures
 
@@ -26,6 +27,14 @@ Shadow opt-in, Artifact download or G20.9 legacy Skill retirement.
   editor/inventory surface.
 - Package Store/library uses `/v1/skills/*` and displays immutable package and
   runtime fingerprints plus the honest held Runtime state.
+- The product-canary action is visible only when the server Shadow snapshot has
+  `effective=true`. Submit exactly `expectedPolicyRevision` and
+  `expectedGeneration`; never send prompt, arguments, Package/model/Tool,
+  Workspace, Egress, Secret, argv or resource selection from the browser.
+- An accepted product-canary request is only `queued`. Announce its server ID,
+  then reload Runs and status; never claim optimistic execution, completion or
+  promotion. When activation/budget/policy changes, keep the exact server held
+  reason visible and remove/disable the action.
 - Runs expose server-owned summary/detail, step/attempt/event timeline,
   approvals, Child hierarchy, Artifact metadata/download and cancel/kill. Never
   infer mutation success locally; reload the server projection.
@@ -68,6 +77,8 @@ Shadow opt-in, Artifact download or G20.9 legacy Skill retirement.
 | Condition | UI behavior |
 | --- | --- |
 | Runtime/Shadow held | render reason text including `ISOLATION_UNAVAILABLE`; no fake success |
+| Product canary ready | show bounded action and remaining request count from the server snapshot |
+| Product request accepted | announce queued request, then reload Runs/status without optimistic Run state |
 | malformed server payload | stable error state; no partial record render |
 | stale mutation | announce conflict, reload exact server state |
 | non-admin user | omit Learning Review and admin Shadow policy controls |
@@ -94,6 +105,8 @@ Shadow opt-in, Artifact download or G20.9 legacy Skill retirement.
 - `chatPanelUrlState.test.ts`: panel/tab/record parse and serialization.
 - `agentCenterComposition.test.ts`: tab separation, held state, accessibility,
   mobile/back/focus/action composition.
+- Product-canary tests prove the two-field request, strict queued DTO,
+  `effective=true` visibility and Runs/status refresh.
 - `legacySkillRetirement.test.ts`: top-level/nested purge, Settings/Chat
   migrate/partialize non-resurrection, compensation, marker-last, idempotence
   and history-detail collapse.

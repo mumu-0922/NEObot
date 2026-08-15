@@ -96,6 +96,21 @@ run_case() {
 
 digest_one="sha256:$(printf 'production-closure-one' | sha256sum | awk '{print $1}')"
 digest_two="sha256:$(printf 'production-closure-two' | sha256sum | awk '{print $1}')"
+fingerprint_of() {
+  printf 'sha256:%s' "$(printf '%s' "$1" | sha256sum | awk '{print $1}')"
+}
+chain_control="$(fingerprint_of chain-control)"
+chain_root="$(fingerprint_of chain-root)"
+chain_broker="$(fingerprint_of chain-broker)"
+chain_project="$(fingerprint_of chain-project)"
+chain_child="$(fingerprint_of chain-child)"
+chain_cron="$(fingerprint_of chain-cron)"
+chain_learning="$(fingerprint_of chain-learning)"
+product_activation="$(fingerprint_of product-activation)"
+product_request="$(fingerprint_of product-request)"
+product_run="$(fingerprint_of product-run)"
+product_plan="$(fingerprint_of product-plan)"
+product_receipt="$(fingerprint_of product-receipt)"
 policy_digest="sha256:$(sha256sum "${policy}" | awk '{print $1}')"
 now_epoch="$(date -u +%s)"
 format_epoch() {
@@ -128,7 +143,19 @@ jq \
 jq \
   --arg digest_one "${digest_one}" \
   --arg digest_two "${digest_two}" \
-  --arg policy_digest "${policy_digest}" '
+  --arg policy_digest "${policy_digest}" \
+  --arg chain_control "${chain_control}" \
+  --arg chain_root "${chain_root}" \
+  --arg chain_broker "${chain_broker}" \
+  --arg chain_project "${chain_project}" \
+  --arg chain_child "${chain_child}" \
+  --arg chain_cron "${chain_cron}" \
+  --arg chain_learning "${chain_learning}" \
+  --arg product_activation "${product_activation}" \
+  --arg product_request "${product_request}" \
+  --arg product_run "${product_run}" \
+  --arg product_plan "${product_plan}" \
+  --arg product_receipt "${product_receipt}" '
   .evidenceClass = "production" |
   .release.gitCommit = "1111111111111111111111111111111111111111" |
   .release.runnerManifestSha256 = $digest_one |
@@ -136,6 +163,22 @@ jq \
   .release.runtimeBundleFingerprint = $digest_one |
   .release.operationsPolicySha256 = $policy_digest |
   .target.deploymentFingerprint = $digest_two |
+  .activationChain = {
+    controlPlane: $chain_control,
+    rootRun: $chain_root,
+    brokerArtifact: $chain_broker,
+    projectMutation: $chain_project,
+    depthOneChild: $chain_child,
+    cronWorker: $chain_cron,
+    draftLearning: $chain_learning
+  } |
+  .productCanary = {
+    activationFingerprint: $product_activation,
+    requestFingerprint: $product_request,
+    runSnapshotFingerprint: $product_run,
+    planFingerprint: $product_plan,
+    receiptFingerprint: $product_receipt
+  } |
   .checks |= map(
     .result = "passed" |
     .evidenceSha256 = $digest_one |
@@ -149,6 +192,12 @@ jq '.evidenceClass = "template"' \
   "${work_dir}/ready.json" >"${work_dir}/template-ready.json"
 jq '.cleanup.temporaryArtifacts = 1' \
   "${work_dir}/ready.json" >"${work_dir}/cleanup-residue.json"
+jq '.cleanup.temporaryProductRequests = 1' \
+  "${work_dir}/ready.json" >"${work_dir}/product-residue.json"
+jq '.activationChain.draftLearning = .activationChain.cronWorker' \
+  "${work_dir}/ready.json" >"${work_dir}/activation-chain-drift.json"
+jq '.productCanary.receiptFingerprint = .productCanary.requestFingerprint' \
+  "${work_dir}/ready.json" >"${work_dir}/product-receipt-mismatch.json"
 jq \
   --arg started_at "${stale_started_at}" \
   --arg observed_at "${stale_observed_at}" \
@@ -181,6 +230,12 @@ run_case stale 3 PROMOTION_HELD EVIDENCE_STALE \
   "${work_dir}/stale.json"
 run_case cleanup-residue 3 PROMOTION_HELD TEMPORARY_EVIDENCE_REMAINS \
   "${work_dir}/cleanup-residue.json"
+run_case product-residue 3 PROMOTION_HELD TEMPORARY_EVIDENCE_REMAINS \
+  "${work_dir}/product-residue.json"
+run_case activation-chain-drift 2 PROMOTION_EVIDENCE_INVALID ACTIVATION_CHAIN_INVALID \
+  "${work_dir}/activation-chain-drift.json"
+run_case product-receipt-mismatch 2 PROMOTION_EVIDENCE_INVALID PRODUCT_CANARY_BINDING_INVALID \
+  "${work_dir}/product-receipt-mismatch.json"
 run_case policy-drift 2 PROMOTION_EVIDENCE_INVALID POLICY_FINGERPRINT_MISMATCH \
   "${work_dir}/policy-drift.json"
 run_case incomplete 2 PROMOTION_EVIDENCE_INVALID CHECK_SET_INCOMPLETE \
@@ -195,7 +250,7 @@ run_case symlink 2 PROMOTION_EVIDENCE_INVALID DOCUMENT_UNREADABLE \
   "${work_dir}/symlink.json"
 
 printf '%s\n' \
-  'Agent Runtime G20.10 offline closure contract passed; production promotion remains evidence-gated.'
+  'Agent Runtime G21.6 offline closure contract passed; production promotion remains evidence-gated.'
 
 if [[ -n "${record}" ]]; then
   production_args=(--policy "${policy}" --record "${record}")

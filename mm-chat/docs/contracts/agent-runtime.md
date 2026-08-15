@@ -267,7 +267,7 @@ G20.8 implementation signatures:
   preparation surfaces together with the legacy editor/executor;
 - `scripts/verify-agent-product-shadow{,-postgres17}.sh` prove product contracts,
   authorization/fences/budgets/restart, content-free dump/restore and guarded
-  rollback. Every older PostgreSQL tail drill finishes at head `094`.
+  rollback. Every older PostgreSQL tail drill finishes at head `095`.
 
 G20.9 implementation signatures:
 
@@ -806,7 +806,7 @@ interpreter and an unapproved or placeholder `production` release. Template
 builds are deterministic and never install or mutate host state.
 
 The stage record is `neo.agent-production-activation/v1`, stage
-`control_plane`. It binds the exact Git commit, current migration head `094`, operations
+`control_plane`. It binds the exact Git commit, current migration head `095`, operations
 policy, Runner manifest/binary, deployment, private HTTPS endpoint, Runner and
 TLS identities, client certificate, server CA and these five unique live
 checks:
@@ -832,7 +832,7 @@ Cron or Learning roles. Startup and cycle drift terminate the process.
 
 G21.0 itself adds no migration, API/Chat route, launch/heartbeat/cancel RPC,
 Broker adapter or public endpoint. Its current evaluator nevertheless binds
-the current `094` head introduced by G21.5. All execution-stage environment
+the current `095` head introduced by G21.6. All execution-stage environment
 switches remain false, and the control profile defaults off.
 
 ## 20. G21.1 synthetic Root Run canary
@@ -895,7 +895,7 @@ The dedicated LOGIN must be a nonprivileged `LOGIN INHERIT` principal whose
 recursive membership set is exactly
 `agent_orchestrator_runtime,agent_runner_control`. G21.1 reuses migration
 `084`/`085` SECURITY DEFINER functions and itself adds no migration or direct
-table DML; its current release gate accepts only the reviewed `094` tail. The
+table DML; its current release gate accepts only the reviewed `095` tail. The
 command and Compose profile are separate from `cmd/api`, have no
 port or Provider/object-store/Redis/MCP/vault credentials, and default off.
 
@@ -961,7 +961,7 @@ one bounded byte snapshot, writes the object before the row, deletes the object
 on row failure and cleans quarantine on success or rejection. Exact row replay
 is idempotent; Artifact ID/name/object-key collisions fail closed.
 
-The `broker_artifact_canary` activation record binds migration head `094`, the
+The `broker_artifact_canary` activation record binds migration head `095`, the
 exact release/target/policy, Runner and relay endpoints, both mTLS trust tuples,
 authority key, plan and zero Artifact/quarantine residue. The Compose profile
 is independent and default-off. The service may hold its narrow database,
@@ -1146,7 +1146,7 @@ The strict schemas are
 `schemas/neo-agent-cron-worker-{plan,activation}.schema.json` and
 `schemas/neo-agent-draft-learning-worker-{plan,activation}.schema.json`.
 Both activation stages require current G21.0-G21.4 prerequisite evidence,
-migration head `094`, an exact plan SHA-256 and fresh production evidence.
+migration head `095`, an exact plan SHA-256 and fresh production evidence.
 `cron_worker` and `draft_learning_worker` are independently default off; one
 flag or profile never implies the other or any broad Runtime, Scheduler,
 Learning, Skill-install, Broker or product-cohort flag.
@@ -1206,7 +1206,69 @@ attempt, cleanup and LOGIN membership guard is clean. No API/Chat path or user
 cohort is enabled, and this development host remains
 `ISOLATION_UNAVAILABLE`.
 
-## 25. Phase 0 verification
+## 25. G21.6 bounded product canary and final promotion
+
+Migration `095_agent_product_canary_activation` is the only product-canary
+request authority. `go_api_runtime` may call current-user status and enqueue
+functions only. The strict HTTP body contains exactly
+`expectedPolicyRevision` and `expectedGeneration`; the server supplies the
+request ID and fingerprint. Prompt, arguments, Package/model selection, argv,
+Tool Registry, Workspace, Egress, Secrets and resource overrides are rejected
+before persistence. PostgreSQL independently re-derives the canonical request
+fingerprint and transaction-locks the same user/policy/generation so concurrent
+submissions converge on the first immutable request instead of a unique-key
+failure.
+
+An operator-provisioned activation binds the exact release, migration head
+`095`, Shadow policy, admitted Package/Runtime, fixed plan and seven distinct
+G21.0-G21.5 evidence fingerprints. It is valid for at most 24 hours and 20
+requests, cannot widen in place, and immediately blocks new requests when
+disabled, expired or drifted. With no activation, Shadow remains
+`ISOLATION_UNAVAILABLE`; with a current activation and every existing fence,
+the status may return `PRODUCT_CANARY_READY` and a finite remaining budget.
+
+The dedicated worker LOGIN inherits exactly `agent_product_canary_worker`,
+`agent_orchestrator_runtime` and `agent_runner_control`. Product functions use
+activation-scoped lease generations, bounded retries and replay-safe completion.
+Claim accepts only `queued`; an expired claim must first pass through reconcile
+and consume one failure attempt before it may be queued again.
+The fixed worker plan has depth zero, an empty Tool Registry, read-only rootfs,
+no network/Egress/Secrets, UID/GID `10001`, 30-second wall/lease bounds and
+fixed argv `/opt/neo/bin/product-canary --bounded-smoke`. The Runner caller is:
+
+```text
+spiffe://neo-chat/agent-runtime-product-canary
+  -> probe, list, reconcile, launch, heartbeat, cancel
+  -> no result, prepare, commit or relay
+```
+
+Completion re-derives the canonical receipt fingerprint and requires an
+unexpired request claim, the exact request-derived product idempotency key,
+ordinal-zero `product_canary` Step and terminal Run/Attempt. It appends one
+immutable content-free receipt. Worker health reads only expired-claim and
+pending-terminalization counts, then uses Runner Probe/List to require zero
+Sandbox residue; it never reconciles state. Only the operator-owned promotion
+function may append a
+`PROMOTION_READY` record binding the same activation, request, receipt, release
+and closure fingerprint. API and workers have neither activation provisioning
+nor promotion authority. Dirty migration down is rejected while any activation,
+request, receipt or promotion fact remains.
+
+Required gates are:
+
+```bash
+bash scripts/verify-agent-product-canary-activation.sh
+bash scripts/verify-agent-product-canary-postgres17.sh
+bash scripts/verify-agent-runtime-g21-6-preflight.sh
+bash scripts/verify-agent-production-closure.sh
+bash scripts/verify-agent-runtime-g21-6.sh
+```
+
+Checked-in evidence is template/offline-only. The development host remains
+`ISOLATION_UNAVAILABLE`; disposable PostgreSQL or schema validation cannot
+create live activation or final-promotion evidence.
+
+## 26. Phase 0 verification
 
 Run:
 

@@ -61,6 +61,7 @@ tar \
   --exclude='./.env.single-server' \
   --exclude='./backup' \
   --exclude='./data' \
+  --exclude='./secrets' \
   --exclude='./frontend/.next' \
   --exclude='./frontend/.open-next' \
   --exclude='./frontend/node_modules' \
@@ -137,6 +138,17 @@ required_paths=(
   scripts/verify-agent-cron-worker-postgres17.sh
   scripts/verify-agent-draft-learning-worker.sh
   scripts/verify-agent-draft-learning-worker-postgres17.sh
+  scripts/verify-agent-runtime-g21-6.sh
+  scripts/verify-agent-runtime-g21-6-preflight.sh
+  scripts/verify-agent-product-canary-activation.sh
+  scripts/verify-agent-product-canary-postgres17.sh
+  scripts/verify-agent-production-closure.sh
+  backend/cmd/agent-runtime-product-canary/main.go
+  backend/internal/agentproductcanary/service.go
+  backend/migrations/095_agent_product_canary_activation.up.sql
+  backend/migrations/095_agent_product_canary_activation.down.sql
+  docs/contracts/schemas/neo-agent-product-canary-activation.schema.json
+  docs/contracts/schemas/neo-agent-product-canary-plan.schema.json
   rag/pyproject.toml
   rag/uv.lock
   rag/Dockerfile
@@ -176,6 +188,7 @@ compose_json="${temp_dir}/compose.json"
   --profile agent-runtime-child-canary \
   --profile agent-runtime-cron-worker \
   --profile agent-runtime-draft-learning-worker \
+  --profile agent-runtime-product-canary \
   --profile rag-worker --profile rag-ops \
   config --format json >"${compose_json}"
 
@@ -213,6 +226,7 @@ required = {
     "agent-runtime-child-canary",
     "agent-runtime-cron-worker",
     "agent-runtime-draft-learning-worker",
+    "agent-runtime-product-canary",
     "postgres",
     "redis",
     "minio",
@@ -253,6 +267,7 @@ project_canary = services["agent-runtime-project-canary"]
 child_canary = services["agent-runtime-child-canary"]
 cron_worker = services["agent-runtime-cron-worker"]
 draft_learning_worker = services["agent-runtime-draft-learning-worker"]
+product_canary = services["agent-runtime-product-canary"]
 if memory_worker.get("profiles") != ["memory-worker"]:
     raise SystemExit("standalone verification: Memory Worker profile drifted")
 if memory_worker.get("ports"):
@@ -448,6 +463,49 @@ for name in (
         raise SystemExit(
             f"standalone verification: Agent Draft-learning worker {name} must default false"
         )
+if product_canary.get("profiles") != ["agent-runtime-product-canary"]:
+    raise SystemExit("standalone verification: Agent Product canary profile drifted")
+if product_canary.get("ports") or product_canary.get("secrets", []) != []:
+    raise SystemExit("standalone verification: Agent Product canary exposure drifted")
+if set(product_canary.get("networks", {})) != {"private"}:
+    raise SystemExit("standalone verification: Agent Product canary is not private-only")
+if product_canary["environment"]["AGENT_PRODUCT_CANARY_ENABLED"] != "false":
+    raise SystemExit("standalone verification: Agent Product canary must default false")
+if product_canary["environment"]["AGENT_PRODUCT_CANARY_CLIENT_IDENTITY"] != (
+    "spiffe://neo-chat/agent-runtime-product-canary"
+):
+    raise SystemExit("standalone verification: Agent Product canary identity drifted")
+if len(product_canary.get("volumes", [])) != 9 or any(
+    volume.get("read_only") is not True for volume in product_canary.get("volumes", [])
+):
+    raise SystemExit("standalone verification: Agent Product canary mount set drifted")
+for name in (
+    "AGENT_RUNTIME_ENABLED",
+    "AGENT_SCHEDULER_ENABLED",
+    "AGENT_SKILL_INSTALL_ENABLED",
+    "AGENT_LEARNING_ENABLED",
+):
+    if product_canary["environment"][name] != "false":
+        raise SystemExit(
+            f"standalone verification: Agent Product canary {name} must default false"
+        )
+for forbidden in (
+    "MCP_RUNNER_TOKEN",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+    "PROVIDER_SECRET_KEYRING_FILE",
+    "REDIS_URL",
+    "VAULT_ADDR",
+    "AGENT_BROKER_CANARY_DATABASE_URL",
+    "AGENT_PROJECT_CANARY_DATABASE_URL",
+    "AGENT_CHILD_CANARY_DATABASE_URL",
+    "AGENT_CRON_WORKER_DATABASE_URL",
+    "AGENT_DRAFT_LEARNING_WORKER_DATABASE_URL",
+):
+    if forbidden in product_canary["environment"]:
+        raise SystemExit(
+            f"standalone verification: Agent Product canary received {forbidden}"
+        )
 for forbidden in (
     "AGENT_CRON_WORKER_DATABASE_URL",
     "MCP_RUNNER_TOKEN",
@@ -509,7 +567,7 @@ DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-single-user-bou
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-single-user-bounded-miss-validation-from-vault.sh"
 
 if [[ "${full}" == true ]]; then
-  bash "${copy_dir}/scripts/verify-agent-runtime-g21-5.sh"
+  bash "${copy_dir}/scripts/verify-agent-runtime-g21-6.sh"
   rag_python="${RAG_PYTHON:-python3.13}"
   rag_uv="${RAG_UV:-uv}"
   if ! command -v "${rag_python}" >/dev/null 2>&1; then

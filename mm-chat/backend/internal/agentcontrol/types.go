@@ -37,6 +37,7 @@ type RuntimeStatus struct {
 	State          string `json:"state"`
 	ReasonCode     string `json:"reasonCode"`
 	Executable     bool   `json:"executable"`
+	ProductCanary  bool   `json:"productCanary"`
 	Scheduler      bool   `json:"scheduler"`
 	LearningWorker bool   `json:"learningWorker"`
 }
@@ -244,14 +245,43 @@ type ShadowOptIn struct {
 }
 
 type ShadowSnapshot struct {
-	Policy           ShadowPolicy `json:"policy"`
-	OptIn            ShadowOptIn  `json:"optIn"`
-	CohortSelected   bool         `json:"cohortSelected"`
-	Eligible         bool         `json:"eligible"`
-	Effective        bool         `json:"effective"`
-	HeldReasonCode   string       `json:"heldReasonCode"`
-	ObservationCount int          `json:"observationCount"`
-	ErrorCount       int          `json:"errorCount"`
+	Policy           ShadowPolicy        `json:"policy"`
+	OptIn            ShadowOptIn         `json:"optIn"`
+	CohortSelected   bool                `json:"cohortSelected"`
+	Eligible         bool                `json:"eligible"`
+	Effective        bool                `json:"effective"`
+	HeldReasonCode   string              `json:"heldReasonCode"`
+	ObservationCount int                 `json:"observationCount"`
+	ErrorCount       int                 `json:"errorCount"`
+	ProductCanary    ProductCanaryStatus `json:"productCanary"`
+}
+
+type ProductCanaryStatus struct {
+	ActivationID      string `json:"activationId,omitempty"`
+	PlanFingerprint   string `json:"planFingerprint,omitempty"`
+	RemainingRequests int    `json:"remainingRequests"`
+}
+
+type EnqueueProductCanaryInput struct {
+	UserID                 string
+	ExpectedPolicyRevision int64
+	ExpectedGeneration     int64
+	RequestID              string
+	RequestFingerprint     string
+}
+
+type ProductCanaryRequest struct {
+	ID                 string     `json:"id"`
+	ActivationID       string     `json:"activationId"`
+	State              string     `json:"state"`
+	PolicyRevision     int64      `json:"policyRevision"`
+	OptGeneration      int64      `json:"optGeneration"`
+	RequestFingerprint string     `json:"requestFingerprint"`
+	FailureCount       int        `json:"failureCount"`
+	ErrorCode          string     `json:"errorCode,omitempty"`
+	CreatedAt          time.Time  `json:"createdAt"`
+	UpdatedAt          time.Time  `json:"updatedAt"`
+	TerminalAt         *time.Time `json:"terminalAt,omitempty"`
 }
 
 type UpdateShadowPolicyInput struct {
@@ -329,6 +359,7 @@ type Repository interface {
 	ListDrafts(context.Context, int) ([]DraftSummary, error)
 	GetDraft(context.Context, string) (DraftSummary, error)
 	GetShadow(context.Context, string) (ShadowSnapshot, error)
+	EnqueueProductCanary(context.Context, EnqueueProductCanaryInput) (ProductCanaryRequest, error)
 	UpdateShadowPolicy(context.Context, UpdateShadowPolicyInput) (ShadowPolicy, error)
 	SetShadowOptIn(context.Context, SetShadowOptInInput) (ShadowOptIn, error)
 	RegisterShadowBoot(context.Context, string) (int64, error)

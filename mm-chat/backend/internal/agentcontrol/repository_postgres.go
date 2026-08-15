@@ -416,6 +416,42 @@ FROM agent_product_shadow_snapshot($1::uuid)
 		value := expiresAt.Time.UTC()
 		result.Policy.ExpiresAt = &value
 	}
+	var effective bool
+	var heldReason string
+	err = repository.db.QueryRowContext(ctx, `
+SELECT activation_id,plan_fingerprint,effective,held_reason_code,remaining_requests
+FROM agent_product_canary_status($1::uuid)
+`, userID).Scan(&result.ProductCanary.ActivationID,
+		&result.ProductCanary.PlanFingerprint, &effective, &heldReason,
+		&result.ProductCanary.RemainingRequests)
+	if err != nil {
+		return ShadowSnapshot{}, mapPostgresError("get Agent product canary state", err)
+	}
+	result.Effective = effective
+	result.HeldReasonCode = heldReason
+	return result, nil
+}
+
+func (repository *PostgresRepository) EnqueueProductCanary(
+	ctx context.Context,
+	input EnqueueProductCanaryInput,
+) (ProductCanaryRequest, error) {
+	if err := repository.requireDB(); err != nil {
+		return ProductCanaryRequest{}, err
+	}
+	var result ProductCanaryRequest
+	err := repository.db.QueryRowContext(ctx, `
+SELECT request_id,activation_id,state,policy_revision,opt_generation,request_fingerprint,
+       failure_count,COALESCE(error_code,''),created_at,updated_at,terminal_at
+FROM agent_product_canary_enqueue($1,$2::uuid,$3,$4,$5)
+`, input.RequestID, input.UserID, input.ExpectedPolicyRevision,
+		input.ExpectedGeneration, input.RequestFingerprint,
+	).Scan(&result.ID, &result.ActivationID, &result.State, &result.PolicyRevision,
+		&result.OptGeneration, &result.RequestFingerprint, &result.FailureCount,
+		&result.ErrorCode, &result.CreatedAt, &result.UpdatedAt, &result.TerminalAt)
+	if err != nil {
+		return ProductCanaryRequest{}, mapPostgresError("enqueue Agent product canary", err)
+	}
 	return result, nil
 }
 
@@ -542,6 +578,8 @@ func mapPostgresError(operation string, err error) error {
 			return ErrBudgetExceeded
 		case strings.Contains(message, "KILL_SWITCH_ACTIVE"):
 			return ErrKillSwitchActive
+		case strings.Contains(message, RuntimeHeldReason):
+			return ErrIsolationUnavailable
 		case strings.Contains(message, "RUN_CANCEL_BLOCKED"):
 			return ErrRunCancelBlocked
 		case strings.Contains(message, "NOT_FOUND"):

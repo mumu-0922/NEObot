@@ -98,7 +98,7 @@ func VerifyChildCanary(config ChildCanaryConfig, now time.Time) (Decision, error
 	var policyDocument map[string]any
 	if strictjson.Decode(policyRaw, maxDocument, &policyDocument) != nil ||
 		policyDocument["schemaVersion"] != "neo.agent-production-policy/v1" ||
-		policyDocument["migrationHead"] != float64(94) {
+		policyDocument["migrationHead"] != float64(95) {
 		return Decision{ReasonCode: "POLICY_INVALID"}, ErrInvalid
 	}
 	policyFingerprint := fingerprint(policyRaw)
@@ -191,7 +191,7 @@ func validateChildCanaryRecord(value childCanaryRecord, config ChildCanaryConfig
 		!member(value.EvidenceClass, "template", "production") {
 		return "ACTIVATION_VERSION_INVALID"
 	}
-	if !commitPattern.MatchString(value.Release.GitCommit) || value.Release.MigrationHead != 94 ||
+	if !commitPattern.MatchString(value.Release.GitCommit) || value.Release.MigrationHead != 95 ||
 		!validFingerprint(value.Release.RunnerManifestSHA256) || !validFingerprint(value.Release.RunnerBinarySHA256) ||
 		!validFingerprint(value.Release.OperationsPolicySHA256) ||
 		value.Release.OperationsPolicySHA256 != policyFingerprint {

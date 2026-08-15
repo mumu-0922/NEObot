@@ -86,7 +86,7 @@ from pathlib import Path
 
 source = Path(sys.argv[1]).read_text(encoding="utf-8")
 start = source.index('childIdentity := strings.TrimSpace')
-end = source.index('handler, err :=', start)
+end = source.index('draftIdentity := strings.TrimSpace', start)
 block = source[start:end]
 for method in ('MethodProbe', 'MethodList', 'MethodReconcile', 'MethodLaunch', 'MethodHeartbeat', 'MethodCancel'):
     assert method in block, method

@@ -37,6 +37,7 @@ type fakeRepository struct {
 	boot            string
 	artifact        ArtifactSource
 	draft           DraftSummary
+	canaryRequest   EnqueueProductCanaryInput
 }
 
 type fakeBrokerService struct {
@@ -102,6 +103,18 @@ func (repository *fakeRepository) GetDraft(_ context.Context, draftID string) (D
 func (repository *fakeRepository) GetShadow(context.Context, string) (ShadowSnapshot, error) {
 	return repository.shadow, nil
 }
+func (repository *fakeRepository) EnqueueProductCanary(
+	_ context.Context,
+	input EnqueueProductCanaryInput,
+) (ProductCanaryRequest, error) {
+	if !repository.shadow.Effective {
+		return ProductCanaryRequest{}, ErrIsolationUnavailable
+	}
+	repository.canaryRequest = input
+	return ProductCanaryRequest{ID: input.RequestID, ActivationID: "activation_1234567890abcdef",
+		State: "queued", PolicyRevision: input.ExpectedPolicyRevision,
+		OptGeneration: input.ExpectedGeneration, RequestFingerprint: input.RequestFingerprint}, nil
+}
 func (repository *fakeRepository) UpdateShadowPolicy(_ context.Context, input UpdateShadowPolicyInput) (ShadowPolicy, error) {
 	repository.policy = input
 	return ShadowPolicy{Revision: input.ExpectedRevision + 1, Enabled: input.Enabled}, nil
@@ -150,8 +163,33 @@ func TestServiceStatusAndHeldEnqueueRemainHonest(t *testing.T) {
 	if !status.IsAdministrator || status.Runtime.Executable || status.Runtime.ReasonCode != RuntimeHeldReason {
 		t.Fatalf("status = %#v", status)
 	}
-	if !errors.Is(service.EnqueueRootRun(context.Background(), testAdminID), ErrIsolationUnavailable) {
+	if _, err := service.EnqueueRootRun(context.Background(), testAdminID, 1, 1); !errors.Is(err, ErrIsolationUnavailable) {
 		t.Fatal("held enqueue did not return ISOLATION_UNAVAILABLE")
+	}
+}
+
+func TestServiceEnqueuesOnlyBoundProductCanaryRequest(t *testing.T) {
+	repository := &fakeRepository{shadow: ShadowSnapshot{Effective: true,
+		HeldReasonCode: "PRODUCT_CANARY_READY"}}
+	service := NewService(WithRepository(repository))
+	request, err := service.EnqueueRootRun(context.Background(), testUserID, 7, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.State != "queued" || repository.canaryRequest.UserID != testUserID ||
+		repository.canaryRequest.ExpectedPolicyRevision != 7 ||
+		repository.canaryRequest.ExpectedGeneration != 3 ||
+		!fingerprintPattern.MatchString(repository.canaryRequest.RequestFingerprint) ||
+		!validID(repository.canaryRequest.RequestID, "product_request") {
+		t.Fatalf("request=%#v captured=%#v", request, repository.canaryRequest)
+	}
+	status, err := service.Status(context.Background(), testUserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.Runtime.Executable || !status.Runtime.ProductCanary ||
+		status.Runtime.State != "canary_ready" {
+		t.Fatalf("status=%#v", status)
 	}
 }
 

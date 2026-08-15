@@ -111,7 +111,7 @@ approval_payload = {
     "schemaVersion": "neo.agent-project-mutation-approval/v1",
     "approvalId": "approval_3131313131313131",
     "decision": "approved",
-    "release": {"gitCommit": commit, "migrationHead": 94},
+    "release": {"gitCommit": commit, "migrationHead": 95},
     "target": {"deploymentFingerprint": project_plan["targetFingerprint"], "runnerId": "neo-runner-primary"},
     "activation": {"stage": "project_mutation_canary", "activationFingerprint": activation_fingerprint,
                    "planFingerprint": plan_fingerprint},
@@ -133,7 +133,7 @@ os.chmod(work / "approval.json", 0o600)
 
 common_release = {
     "gitCommit": commit,
-    "migrationHead": 94,
+    "migrationHead": 95,
     "runnerManifestSha256": fp(manifest),
     "runnerBinarySha256": label_fp("g21.3-preflight-runner"),
     "operationsPolicySha256": fp(policy),

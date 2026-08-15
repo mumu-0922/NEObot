@@ -9,6 +9,8 @@
     "evidenceClass",
     "release",
     "target",
+    "activationChain",
+    "productCanary",
     "window",
     "checks",
     "cleanup",
@@ -41,7 +43,7 @@
           "pattern": "^[0-9a-f]{40}$"
         },
         "migrationHead": {
-          "const": 94
+          "const": 95
         },
         "runnerManifestSha256": {
           "$ref": "#/$defs/fingerprint"
@@ -88,6 +90,70 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 4294967295
+        }
+      }
+    },
+    "activationChain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "controlPlane",
+        "rootRun",
+        "brokerArtifact",
+        "projectMutation",
+        "depthOneChild",
+        "cronWorker",
+        "draftLearning"
+      ],
+      "properties": {
+        "controlPlane": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "rootRun": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "brokerArtifact": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "projectMutation": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "depthOneChild": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "cronWorker": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "draftLearning": {
+          "$ref": "#/$defs/fingerprint"
+        }
+      }
+    },
+    "productCanary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "activationFingerprint",
+        "requestFingerprint",
+        "runSnapshotFingerprint",
+        "planFingerprint",
+        "receiptFingerprint"
+      ],
+      "properties": {
+        "activationFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "requestFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "runSnapshotFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "planFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "receiptFingerprint": {
+          "$ref": "#/$defs/fingerprint"
         }
       }
     },
@@ -175,6 +241,9 @@
         "temporaryDrafts",
         "temporaryArtifacts",
         "temporaryRunEvidence",
+        "temporaryProductRequests",
+        "temporaryProductClaims",
+        "temporaryProductReceipts",
         "orphanSandboxes",
         "scratchResidue",
         "promotionRecordRetained"
@@ -196,6 +265,21 @@
           "maximum": 1000000
         },
         "temporaryRunEvidence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "temporaryProductRequests": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "temporaryProductClaims": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "temporaryProductReceipts": {
           "type": "integer",
           "minimum": 0,
           "maximum": 1000000

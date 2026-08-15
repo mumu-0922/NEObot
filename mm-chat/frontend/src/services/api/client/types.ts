@@ -551,6 +551,11 @@ export interface AgentShadowSnapshotDTO {
   heldReasonCode: string;
   observationCount: number;
   errorCount: number;
+  productCanary: {
+    activationId?: string;
+    planFingerprint?: string;
+    remainingRequests: number;
+  };
 }
 
 export interface AgentCenterStatusDTO {
@@ -559,10 +564,25 @@ export interface AgentCenterStatusDTO {
     state: string;
     reasonCode: string;
     executable: boolean;
+    productCanary: boolean;
     scheduler: boolean;
     learningWorker: boolean;
   };
   shadow: AgentShadowSnapshotDTO;
+}
+
+export interface AgentProductCanaryRequestDTO {
+  id: string;
+  activationId: string;
+  state: string;
+  policyRevision: number;
+  optGeneration: number;
+  requestFingerprint: string;
+  failureCount: number;
+  errorCode?: string;
+  createdAt: string;
+  updatedAt: string;
+  terminalAt?: string;
 }
 
 export interface AgentRunSummaryDTO {
@@ -773,7 +793,11 @@ export interface AgentCenterApi {
     artifactId: string;
     signal?: AbortSignal;
   }): Promise<DownloadedFileContent>;
-  enqueueRun(options?: { signal?: AbortSignal }): Promise<void>;
+  enqueueRun(input: {
+    expectedPolicyRevision: number;
+    expectedGeneration: number;
+    signal?: AbortSignal;
+  }): Promise<AgentProductCanaryRequestDTO>;
   cancelRun(input: {
     runId: string;
     expectedState: string;

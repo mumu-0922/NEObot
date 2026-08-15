@@ -207,7 +207,7 @@ func activationFixture(t *testing.T, now time.Time) (Config, record) {
 	t.Helper()
 	root := t.TempDir()
 	policyFile := filepath.Join(root, "policy.json")
-	policyRaw := []byte(`{"schemaVersion":"neo.agent-production-policy/v1","migrationHead":94}`)
+	policyRaw := []byte(`{"schemaVersion":"neo.agent-production-policy/v1","migrationHead":95}`)
 	writePrivate(t, policyFile, policyRaw)
 	manifestFile := filepath.Join(root, "release-manifest.json")
 	manifest := map[string]any{
@@ -240,7 +240,7 @@ func activationFixture(t *testing.T, now time.Time) (Config, record) {
 	endpoint := "https://10.0.0.8:9443/internal/neo-runner/v1/rpc"
 	value := record{
 		SchemaVersion: SchemaVersion, EvidenceClass: "production", Stage: StageControl,
-		Release: release{GitCommit: strings.Repeat("a", 40), MigrationHead: 94,
+		Release: release{GitCommit: strings.Repeat("a", 40), MigrationHead: 95,
 			RunnerManifestSHA256: fingerprint(manifestRaw), RunnerBinarySHA256: testFingerprint('9'),
 			OperationsPolicySHA256: fingerprint(policyRaw)},
 		Target: target{DeploymentFingerprint: testFingerprint('a'), RunnerID: "neo-runner-primary"},
@@ -298,9 +298,9 @@ func rootCanaryActivationFixture(t *testing.T, now time.Time) (RootCanaryConfig,
 func brokerCanaryActivationFixture(t *testing.T, now time.Time) (BrokerCanaryConfig, brokerCanaryRecord) {
 	t.Helper()
 	base, control := activationFixture(t, now)
-	policyRaw := []byte(`{"schemaVersion":"neo.agent-production-policy/v1","migrationHead":94}`)
+	policyRaw := []byte(`{"schemaVersion":"neo.agent-production-policy/v1","migrationHead":95}`)
 	writePrivate(t, base.PolicyFile, policyRaw)
-	control.Release.MigrationHead = 94
+	control.Release.MigrationHead = 95
 	control.Release.OperationsPolicySHA256 = fingerprint(policyRaw)
 	planFile := filepath.Join(filepath.Dir(base.RecordFile), "broker-canary-plan.json")
 	planRaw := []byte(`{"schemaVersion":"neo.agent-broker-artifact-canary-plan/v1","synthetic":true}`)
@@ -348,9 +348,9 @@ func brokerCanaryActivationFixture(t *testing.T, now time.Time) (BrokerCanaryCon
 func projectCanaryActivationFixture(t *testing.T, now time.Time) (ProjectCanaryConfig, projectCanaryRecord) {
 	t.Helper()
 	base, control := activationFixture(t, now)
-	policyRaw := []byte(`{"schemaVersion":"neo.agent-production-policy/v1","migrationHead":94}`)
+	policyRaw := []byte(`{"schemaVersion":"neo.agent-production-policy/v1","migrationHead":95}`)
 	writePrivate(t, base.PolicyFile, policyRaw)
-	control.Release.MigrationHead = 94
+	control.Release.MigrationHead = 95
 	control.Release.OperationsPolicySHA256 = fingerprint(policyRaw)
 	directory := filepath.Dir(base.RecordFile)
 	planFile := filepath.Join(directory, "project-canary-plan.json")

@@ -18,9 +18,18 @@
     "review"
   ],
   "properties": {
-    "schemaVersion": { "const": "neo.agent-production-activation/v1" },
-    "evidenceClass": { "enum": ["template", "production"] },
-    "stage": { "const": "control_plane" },
+    "schemaVersion": {
+      "const": "neo.agent-production-activation/v1"
+    },
+    "evidenceClass": {
+      "enum": [
+        "template",
+        "production"
+      ]
+    },
+    "stage": {
+      "const": "control_plane"
+    },
     "release": {
       "type": "object",
       "additionalProperties": false,
@@ -32,20 +41,38 @@
         "operationsPolicySha256"
       ],
       "properties": {
-        "gitCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-        "migrationHead": { "const": 94 },
-        "runnerManifestSha256": { "$ref": "#/$defs/fingerprint" },
-        "runnerBinarySha256": { "$ref": "#/$defs/fingerprint" },
-        "operationsPolicySha256": { "$ref": "#/$defs/fingerprint" }
+        "gitCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "migrationHead": {
+          "const": 95
+        },
+        "runnerManifestSha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "runnerBinarySha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "operationsPolicySha256": {
+          "$ref": "#/$defs/fingerprint"
+        }
       }
     },
     "target": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["deploymentFingerprint", "runnerId"],
+      "required": [
+        "deploymentFingerprint",
+        "runnerId"
+      ],
       "properties": {
-        "deploymentFingerprint": { "$ref": "#/$defs/fingerprint" },
-        "runnerId": { "$ref": "#/$defs/identity" }
+        "deploymentFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "runnerId": {
+          "$ref": "#/$defs/identity"
+        }
       }
     },
     "wiring": {
@@ -59,21 +86,41 @@
         "callerIdentity"
       ],
       "properties": {
-        "endpointSha256": { "$ref": "#/$defs/fingerprint" },
-        "clientCertificateSha256": { "$ref": "#/$defs/fingerprint" },
-        "serverCASha256": { "$ref": "#/$defs/fingerprint" },
-        "serverName": { "$ref": "#/$defs/identity" },
-        "callerIdentity": { "$ref": "#/$defs/identity" }
+        "endpointSha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "clientCertificateSha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "serverCASha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "serverName": {
+          "$ref": "#/$defs/identity"
+        },
+        "callerIdentity": {
+          "$ref": "#/$defs/identity"
+        }
       }
     },
     "window": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["startedAt", "completedAt", "expiresAt"],
+      "required": [
+        "startedAt",
+        "completedAt",
+        "expiresAt"
+      ],
       "properties": {
-        "startedAt": { "$ref": "#/$defs/timestamp" },
-        "completedAt": { "$ref": "#/$defs/timestamp" },
-        "expiresAt": { "$ref": "#/$defs/timestamp" }
+        "startedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "completedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/timestamp"
+        }
       }
     },
     "checks": {
@@ -83,7 +130,13 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "result", "observedAt", "evidenceSha256", "detailCode"],
+        "required": [
+          "id",
+          "result",
+          "observedAt",
+          "evidenceSha256",
+          "detailCode"
+        ],
         "properties": {
           "id": {
             "enum": [
@@ -94,10 +147,24 @@
               "rollback_kill_switch_ready"
             ]
           },
-          "result": { "enum": ["passed", "failed", "not_run", "isolation_unavailable"] },
-          "observedAt": { "$ref": "#/$defs/timestamp" },
-          "evidenceSha256": { "$ref": "#/$defs/fingerprint" },
-          "detailCode": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$" }
+          "result": {
+            "enum": [
+              "passed",
+              "failed",
+              "not_run",
+              "isolation_unavailable"
+            ]
+          },
+          "observedAt": {
+            "$ref": "#/$defs/timestamp"
+          },
+          "evidenceSha256": {
+            "$ref": "#/$defs/fingerprint"
+          },
+          "detailCode": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+          }
         }
       }
     },
@@ -114,38 +181,86 @@
         "learning"
       ],
       "properties": {
-        "controlPlane": { "const": true },
-        "rootRuns": { "const": false },
-        "brokerReadOnly": { "const": false },
-        "brokerMutable": { "const": false },
-        "delegation": { "const": false },
-        "scheduler": { "const": false },
-        "learning": { "const": false }
+        "controlPlane": {
+          "const": true
+        },
+        "rootRuns": {
+          "const": false
+        },
+        "brokerReadOnly": {
+          "const": false
+        },
+        "brokerMutable": {
+          "const": false
+        },
+        "delegation": {
+          "const": false
+        },
+        "scheduler": {
+          "const": false
+        },
+        "learning": {
+          "const": false
+        }
       }
     },
     "cleanup": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["orphanSandboxes", "scratchResidue"],
+      "required": [
+        "orphanSandboxes",
+        "scratchResidue"
+      ],
       "properties": {
-        "orphanSandboxes": { "type": "integer", "minimum": 0, "maximum": 1000000 },
-        "scratchResidue": { "type": "integer", "minimum": 0, "maximum": 1000000 }
+        "orphanSandboxes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "scratchResidue": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        }
       }
     },
     "review": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["decision", "reviewedAt", "reviewerFingerprint"],
+      "required": [
+        "decision",
+        "reviewedAt",
+        "reviewerFingerprint"
+      ],
       "properties": {
-        "decision": { "enum": ["approved", "held"] },
-        "reviewedAt": { "$ref": "#/$defs/timestamp" },
-        "reviewerFingerprint": { "$ref": "#/$defs/fingerprint" }
+        "decision": {
+          "enum": [
+            "approved",
+            "held"
+          ]
+        },
+        "reviewedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "reviewerFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        }
       }
     }
   },
   "$defs": {
-    "fingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-    "identity": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.:@/-]{0,127}$" },
-    "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" }
+    "fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "identity": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:@/-]{0,127}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    }
   }
 }

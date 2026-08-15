@@ -6,8 +6,16 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 project_dir="$(cd -- "${script_dir}/.." && pwd -P)"
 example_env="${project_dir}/.env.single-server.example"
 preflight="${script_dir}/preflight-single-server.sh"
-work_dir="$(mktemp -d)"
-cleanup(){ find "${work_dir}" -depth -mindepth 1 -delete 2>/dev/null || true; rmdir "${work_dir}" 2>/dev/null || true; }
+export_dir="${G21_PREFLIGHT_EXPORT_DIR:-}"
+if [[ -n "${export_dir}" ]]; then
+  [[ "${export_dir}" == /* ]] || { echo 'G21.4 preflight: export directory must be absolute' >&2; exit 1; }
+  mkdir -p "${export_dir}"
+  work_dir="$(cd -- "${export_dir}" && pwd -P)"
+  cleanup(){ :; }
+else
+  work_dir="$(mktemp -d)"
+  cleanup(){ find "${work_dir}" -depth -mindepth 1 -delete 2>/dev/null || true; rmdir "${work_dir}" 2>/dev/null || true; }
+fi
 trap cleanup EXIT INT TERM
 
 for command in bash date docker jq openssl python3 sed sha256sum; do
@@ -117,7 +125,7 @@ approval_payload = {
     "schemaVersion": "neo.agent-project-mutation-approval/v1",
     "approvalId": "approval_3131313131313131",
     "decision": "approved",
-    "release": {"gitCommit": commit, "migrationHead": 94},
+    "release": {"gitCommit": commit, "migrationHead": 95},
     "target": {"deploymentFingerprint": project_plan["targetFingerprint"], "runnerId": "neo-runner-primary"},
     "activation": {"stage": "project_mutation_canary", "activationFingerprint": activation_fingerprint,
                    "planFingerprint": plan_fingerprint},
@@ -139,7 +147,7 @@ os.chmod(work / "approval.json", 0o600)
 
 common_release = {
     "gitCommit": commit,
-    "migrationHead": 94,
+    "migrationHead": 95,
     "runnerManifestSha256": fp(manifest),
     "runnerBinarySha256": label_fp("g21.3-preflight-runner"),
     "operationsPolicySha256": fp(policy),

@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "neo.agent-product-canary-plan/v1",
+  "activationId": "activation_0000000000000001",
+  "stepKind": "product_canary",
+  "grantId": "grant_0000000000000001",
+  "grantFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "snapshot": {
+    "schemaVersion": "neo.agent-snapshot/v1",
+    "mode": "read_only",
+    "packageFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "runtimeBundleFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "grantFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "registryFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "workspaceFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "noEgress": true,
+    "noSecrets": true,
+    "maxWallSeconds": 30
+  },
+  "sandbox": {
+    "runtimeBundleFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "packageFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "image": "registry.invalid/neo/product-canary@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "uid": 10001,
+    "gid": 10001,
+    "rootfsReadOnly": true,
+    "noNewPrivileges": true,
+    "capabilities": [],
+    "seccompProfileFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "networkMode": "none",
+    "workspaceSnapshotId": "workspace_snapshot_0000000000000001",
+    "workspaceFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "resources": {
+      "cpuMillis": 250,
+      "memoryMiB": 128,
+      "pids": 16,
+      "wallSeconds": 30,
+      "outputBytes": 4096,
+      "scratchBytes": 1048576
+    }
+  },
+  "toolRegistry": {
+    "depth": 0,
+    "tools": [],
+    "registryFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "argv": [
+    "/bin/sh"
+  ],
+  "leaseSeconds": 30
+}

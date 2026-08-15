@@ -11,6 +11,7 @@
     "learning": "Learning Review"
   },
   "heldStatus": "Runtime held: {reason}. No browser or API-process fallback is active.",
+  "canaryReadyStatus": "Bounded product canary ready: {reason}. Execution remains server-owned.",
   "controlUnavailable": "Agent control plane is unavailable.",
   "loading": "Loading…",
   "retry": "Retry",
@@ -46,6 +47,9 @@
   "installedAnnouncement": "Installed {name}.",
   "uninstalledAnnouncement": "Uninstalled {name}.",
   "runs": "Runs",
+  "runProductCanary": "Run bounded product canary",
+  "canaryRemaining": "{count} activation requests remain.",
+  "canaryQueued": "Product canary request queued: {id}.",
   "noRuns": "No durable Agent Runs.",
   "selectRun": "Select a Run to inspect its durable timeline.",
   "cancelRun": "Cancel",

@@ -98,10 +98,21 @@ func (handler *Handler) handleRuns(writer http.ResponseWriter, request *http.Req
 		}
 		writeJSON(writer, http.StatusOK, map[string]any{"runs": runs})
 	case http.MethodPost:
-		if err := handler.service.EnqueueRootRun(request.Context(), userID); err != nil {
+		var body struct {
+			ExpectedPolicyRevision int64 `json:"expectedPolicyRevision"`
+			ExpectedGeneration     int64 `json:"expectedGeneration"`
+		}
+		if !decodeJSON(writer, request, &body) {
+			return
+		}
+		result, err := handler.service.EnqueueRootRun(
+			request.Context(), userID, body.ExpectedPolicyRevision, body.ExpectedGeneration,
+		)
+		if err != nil {
 			writeServiceError(writer, err)
 			return
 		}
+		writeJSON(writer, http.StatusAccepted, map[string]any{"request": result})
 	default:
 		methodNotAllowed(writer, http.MethodGet+", "+http.MethodPost)
 	}

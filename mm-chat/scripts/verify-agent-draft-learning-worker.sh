@@ -55,7 +55,7 @@ python3 - "${backend_dir}/cmd/neo-runnerd/main.go" <<'PY'
 import sys
 source=open(sys.argv[1]).read()
 start=source.index('draftIdentity := strings.TrimSpace')
-end=source.index('handler, err :=',start)
+end=source.index('productIdentity := strings.TrimSpace',start)
 block=source[start:end]
 for method in ('MethodProbe','MethodList','MethodReconcile','MethodLaunch','MethodResult','MethodCancel'):
     assert method in block,method

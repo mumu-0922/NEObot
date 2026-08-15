@@ -23,6 +23,8 @@ services:
     build: !reset null
   agent-runtime-draft-learning-worker:
     build: !reset null
+  agent-runtime-product-canary:
+    build: !reset null
   migrate:
     build: !reset null
   admin:

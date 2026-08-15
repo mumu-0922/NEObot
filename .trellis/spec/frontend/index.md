@@ -22,7 +22,7 @@ behavior changes require coverage under `mm-chat/frontend/src/__tests__/`.
 | [State Management](./state-management.md)         | Local, Zustand, persisted, URL, and server-owned state        | Complete |
 | [MCP Tools](./mcp-tools.md)                       | Tools UI, server selection authority, timeline, and Plugin-state retirement | Complete |
 | [Assistant Store](./assistant-store.md)           | My Assistants, Store paging, runtime validation, CAS recovery, and start-chat snapshots | Complete |
-| [Agent Center](./agent-center.md)                 | Package Skills, Runs, Schedules, Learning Review, held Shadow and G20.9 legacy retirement | Complete |
+| [Agent Center](./agent-center.md)                 | Package Skills, Runs, Schedules, Learning Review, held Shadow, bounded product canary and G20.9 legacy retirement | Complete |
 | [Type Safety](./type-safety.md)                   | Domain types, DTOs, runtime validation, and normalization     | Complete |
 | [Quality Guidelines](./quality-guidelines.md)     | Formatting, linting, testing, review, and forbidden patterns  | Complete |
 

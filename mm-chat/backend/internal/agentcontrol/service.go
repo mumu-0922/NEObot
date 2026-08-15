@@ -2,7 +2,10 @@ package agentcontrol
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"regexp"
 	"strings"
@@ -104,13 +107,20 @@ func (service *Service) Status(ctx context.Context, userID string) (CenterStatus
 	if err != nil {
 		return CenterStatus{}, err
 	}
+	runtime := RuntimeStatus{
+		State: "held", ReasonCode: RuntimeHeldReason, Executable: false,
+		Scheduler: false, LearningWorker: false,
+	}
+	if shadow.Effective {
+		runtime.State = "canary_ready"
+		runtime.ReasonCode = shadow.HeldReasonCode
+		runtime.Executable = true
+		runtime.ProductCanary = true
+	}
 	return CenterStatus{
 		IsAdministrator: service.IsAdministrator(userID),
-		Runtime: RuntimeStatus{
-			State: "held", ReasonCode: RuntimeHeldReason, Executable: false,
-			Scheduler: false, LearningWorker: false,
-		},
-		Shadow: shadow,
+		Runtime:         runtime,
+		Shadow:          shadow,
 	}, nil
 }
 
@@ -160,11 +170,29 @@ func (service *Service) GetRun(ctx context.Context, userID, runID string) (RunDe
 	return service.repository.GetRun(ctx, normalizedUserID(userID), runID)
 }
 
-// EnqueueRootRun is an explicit product boundary. It deliberately returns the
-// exact-host held result without persisting a Run or constructing authority in
-// the API process.
-func (service *Service) EnqueueRootRun(context.Context, string) error {
-	return ErrIsolationUnavailable
+// EnqueueRootRun appends only a fixed product-canary request. The API process
+// never receives Orchestrator, Runner, plan, argv, Tool or lease authority.
+func (service *Service) EnqueueRootRun(
+	ctx context.Context,
+	userID string,
+	expectedPolicyRevision, expectedGeneration int64,
+) (ProductCanaryRequest, error) {
+	if service == nil || service.repository == nil {
+		return ProductCanaryRequest{}, ErrDatabaseRequired
+	}
+	userID = normalizedUserID(userID)
+	if !validUUID(userID) || expectedPolicyRevision < 1 || expectedGeneration < 1 {
+		return ProductCanaryRequest{}, ErrInvalidInput
+	}
+	binding := []byte("neo.agent-product-canary-request/v1\x00" + userID + "\x00" +
+		fmt.Sprint(expectedPolicyRevision) + "\x00" + fmt.Sprint(expectedGeneration))
+	digest := sha256.Sum256(binding)
+	return service.repository.EnqueueProductCanary(ctx, EnqueueProductCanaryInput{
+		UserID: userID, ExpectedPolicyRevision: expectedPolicyRevision,
+		ExpectedGeneration: expectedGeneration,
+		RequestID:          service.newID("product_request"),
+		RequestFingerprint: "sha256:" + hex.EncodeToString(digest[:]),
+	})
 }
 
 func (service *Service) CancelRun(

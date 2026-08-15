@@ -48,7 +48,7 @@
           "pattern": "^[a-f0-9]{40}$"
         },
         "migrationHead": {
-          "const": 94
+          "const": 95
         },
         "runnerManifestSha256": {
           "type": "string",

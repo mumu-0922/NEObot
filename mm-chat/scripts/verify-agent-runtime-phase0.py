@@ -44,6 +44,8 @@ SCHEMA_NAMES = (
     "neo-agent-cron-worker-plan",
     "neo-agent-draft-learning-worker-activation",
     "neo-agent-draft-learning-worker-plan",
+    "neo-agent-product-canary-activation",
+    "neo-agent-product-canary-plan",
 )
 JsonObject = dict[str, Any]
 
@@ -177,6 +179,8 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
     draft_learning_worker = instances["neo-agent-draft-learning-worker-activation"]
     cron_worker_plan = instances["neo-agent-cron-worker-plan"]
     draft_learning_plan = instances["neo-agent-draft-learning-worker-plan"]
+    product_canary = instances["neo-agent-product-canary-activation"]
+    product_canary_plan = instances["neo-agent-product-canary-plan"]
 
     check_fingerprint_bindings(grant, launch)
     require_equal(
@@ -335,8 +339,8 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
         )
     action = project_plan["action"]
     approval = project_approval["payload"]
-    if project_activation["release"]["migrationHead"] != 94 or approval["release"]["migrationHead"] != 94:
-        raise VerificationError("G21.3 contracts do not bind migration head 094")
+    if project_activation["release"]["migrationHead"] != 95 or approval["release"]["migrationHead"] != 95:
+        raise VerificationError("G21.3 contracts do not bind migration head 095")
     if approval["request"] != {
         "callerIdentity": project_activation["wiring"]["callerIdentity"],
         "requestIdentity": action["requestIdentity"],
@@ -356,8 +360,8 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
     if approval["action"] != expected_action:
         raise VerificationError("G21.3 approval action does not bind the exact mutation")
 
-    if child_activation["release"]["migrationHead"] != 94:
-        raise VerificationError("G21.4 activation does not bind migration head 094")
+    if child_activation["release"]["migrationHead"] != 95:
+        raise VerificationError("G21.4 activation does not bind migration head 095")
     if (
         child_activation["stage"] != "depth_one_child_canary"
         or child_activation["wiring"]["callerIdentity"]
@@ -403,8 +407,8 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
         if sandbox["networkMode"] != "none" or sandbox["capabilities"] != []:
             raise VerificationError(f"G21.4 {sandbox_name} isolation drifted")
 
-    if cron_worker["release"]["migrationHead"] != 94 or cron_worker["stage"] != "cron_worker":
-        raise VerificationError("G21.5 Cron activation does not bind head 094 and the exact stage")
+    if cron_worker["release"]["migrationHead"] != 95 or cron_worker["stage"] != "cron_worker":
+        raise VerificationError("G21.5 Cron activation does not bind head 095 and the exact stage")
     expected_cron_authority = {
         "exactCronTarget": True,
         "runtime": False,
@@ -429,10 +433,10 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
         cron_worker_plan["activationId"],
         "G21.5 Cron activation/plan IDs differ",
     )
-    if draft_learning_worker["release"]["migrationHead"] != 94 or draft_learning_worker[
+    if draft_learning_worker["release"]["migrationHead"] != 95 or draft_learning_worker[
         "stage"
     ] != "draft_learning_worker":
-        raise VerificationError("G21.5 Draft activation does not bind head 094 and the exact stage")
+        raise VerificationError("G21.5 Draft activation does not bind head 095 and the exact stage")
     if draft_learning_worker["wiring"]["callerIdentity"] != (
         "spiffe://neo-chat/agent-runtime-draft-learning"
     ):
@@ -476,6 +480,46 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
     ]["networkMode"] != "none":
         raise VerificationError("G21.5 Draft checker can receive Tools or network")
 
+    if (
+        product_canary["release"]["migrationHead"] != 95
+        or product_canary["stage"] != "product_canary"
+        or product_canary["wiring"]["callerIdentity"]
+        != "spiffe://neo-chat/agent-runtime-product-canary"
+    ):
+        raise VerificationError("G21.6 product activation identity or migration head drifted")
+    require_equal(
+        product_canary["wiring"]["activationId"],
+        product_canary_plan["activationId"],
+        "G21.6 product activation/plan IDs differ",
+    )
+    if product_canary["authorization"] != {
+        "productCanary": True,
+        "genericRuntime": False,
+        "brokerEffects": False,
+        "delegation": False,
+        "scheduler": False,
+        "learning": False,
+        "egress": False,
+        "secrets": False,
+    }:
+        raise VerificationError("G21.6 product activation authority is widened")
+    if any(product_canary["cleanup"].values()):
+        raise VerificationError("G21.6 product activation fixture contains residue")
+    if (
+        product_canary_plan["argv"]
+        != ["/opt/neo/bin/product-canary", "--bounded-smoke"]
+        or product_canary_plan["leaseSeconds"] != 30
+        or product_canary_plan["toolRegistry"]["depth"] != 0
+        or product_canary_plan["toolRegistry"]["tools"] != []
+        or product_canary_plan["sandbox"]["networkMode"] != "none"
+        or product_canary_plan["sandbox"]["rootfsReadOnly"] is not True
+    ):
+        raise VerificationError("G21.6 product plan is not the fixed bounded smoke")
+    if set(production_closure["activationChain"]) != set(product_canary["prerequisites"]):
+        raise VerificationError("G21.6 closure and activation prerequisite chains differ")
+    if production_closure["release"]["migrationHead"] != 95:
+        raise VerificationError("G21.6 closure does not bind migration head 095")
+
 
 def check_document_anchors() -> None:
     requirements: dict[Path, tuple[str, ...]] = {
@@ -503,6 +547,9 @@ def check_document_anchors() -> None:
             "G21.4",
             "agent-runtime-child-canary",
             "Migration `093_agent_child_canary_reap_transport`",
+            "G21.6",
+            "Migration `095_agent_product_canary_activation`",
+            "spiffe://neo-chat/agent-runtime-product-canary",
         ),
         CONTRACT_DIR / "agent-runtime.md": (
             "Durable state machine",
@@ -524,6 +571,8 @@ def check_document_anchors() -> None:
             "verify-agent-runtime-g21-3.sh",
             "G21.4 synthetic depth-one Child canary",
             "verify-agent-runtime-g21-4.sh",
+            "G21.6 bounded product canary and final promotion",
+            "verify-agent-runtime-g21-6.sh",
             "outcome_unknown",
         ),
         PROJECT_DIR / "docs" / "deployment" / "agent-runtime.md": (
@@ -545,6 +594,8 @@ def check_document_anchors() -> None:
             "verify-agent-runtime-g21-3.sh",
             "G21.4 depth-one Child canary activation",
             "verify-agent-runtime-g21-4.sh",
+            "G21.6 bounded product canary and final closure",
+            "verify-agent-runtime-g21-6-preflight.sh",
         ),
         PROJECT_DIR / "docs" / "tracking" / "g20-agent-runtime-plan.md": (
             "G20.0",
@@ -668,8 +719,11 @@ def check_product_service_source() -> None:
     service = (
         PROJECT_DIR / "backend" / "internal" / "agentcontrol" / "service.go"
     ).read_text(encoding="utf-8")
-    if "return ErrIsolationUnavailable" not in service:
-        raise VerificationError("Agent product Runtime no longer fails closed")
+    if (
+        "service.repository.EnqueueProductCanary" not in service
+        or "neo.agent-product-canary-request/v1" not in service
+    ):
+        raise VerificationError("Agent product request is not the fixed migration-095 handoff")
     if "shadowAdapter.Observe" not in service:
         raise VerificationError("held Shadow does not use the injected adapter seam")
     if "os/exec" in service or "exec.Command" in service or "podman" in service.lower():

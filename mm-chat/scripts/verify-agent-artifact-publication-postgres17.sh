@@ -77,14 +77,15 @@ runtime_url="$(runtime_url_for "${container_name}")"
 (cd "${backend_dir}" && go build -buildvcs=false -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" "$@"; }
 
-log "applying and replaying migrations through schema head 094"
+log "applying and replaying migrations through schema head 095"
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 090_agent_product_shadow" "${work_dir}/fresh.log"
 grep -Fq "up 091_agent_artifact_publication" "${work_dir}/fresh.log"
 grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/fresh.log"
 grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/fresh.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/fresh.log"
-[[ "$(psql_command "${container_name}" 'SELECT max(version) FROM schema_migrations')" == "94" ]]
+grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/fresh.log"
+[[ "$(psql_command "${container_name}" 'SELECT max(version) FROM schema_migrations')" == "95" ]]
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
@@ -164,6 +165,8 @@ psql_command "${container_name}" "
 REVOKE agent_orchestrator_runtime,agent_runner_control,agent_effect_control,agent_artifact_control
   FROM ${runtime_user};
 DROP ROLE ${runtime_user};" >/dev/null
+run_migrate down >"${work_dir}/peel-095-tail-1.log" 2>&1
+grep -Fq "down 095_agent_product_canary_activation" "${work_dir}/peel-095-tail-1.log"
 run_migrate down >"${work_dir}/peel-094-tail-1.log" 2>&1
 grep -Fq "down 094_agent_cron_learning_activation" "${work_dir}/peel-094-tail-1.log"
 run_migrate down >"${work_dir}/peel-093-tail-1.log" 2>&1
@@ -179,12 +182,15 @@ grep -Fq "up 091_agent_artifact_publication" "${work_dir}/reup-091.log"
 grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/reup-091.log"
 grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/reup-091.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/reup-091.log"
+grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/reup-091.log"
 
-log "proving clean down/up and final head 094"
+log "proving clean down/up and final head 095"
 psql_command "${container_name}" "
 TRUNCATE agent_effect_grant_revocations;
 DELETE FROM agent_runs WHERE id='run_2121212121212121';
 DELETE FROM agent_run_snapshots WHERE id NOT IN (SELECT snapshot_id FROM agent_runs);" >/dev/null
+run_migrate down >"${work_dir}/peel-095-tail-2.log" 2>&1
+grep -Fq "down 095_agent_product_canary_activation" "${work_dir}/peel-095-tail-2.log"
 run_migrate down >"${work_dir}/peel-094-tail-2.log" 2>&1
 grep -Fq "down 094_agent_cron_learning_activation" "${work_dir}/peel-094-tail-2.log"
 run_migrate down >"${work_dir}/peel-093-tail-2.log" 2>&1
@@ -198,5 +204,6 @@ grep -Fq "up 091_agent_artifact_publication" "${work_dir}/final-up.log"
 grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/final-up.log"
 grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/final-up.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/final-up.log"
-[[ "$(psql_command "${container_name}" 'SELECT max(version) FROM schema_migrations')" == "94" ]]
+grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/final-up.log"
+[[ "$(psql_command "${container_name}" 'SELECT max(version) FROM schema_migrations')" == "95" ]]
 log "passed (fresh/replay, exact role, authorize/attach, collision/fences, dump/restore, down/up)"

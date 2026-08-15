@@ -11,10 +11,19 @@ import (
 	"github.com/google/uuid"
 )
 
-type PostgresTerminalRepository struct{ db *sql.DB }
+type PostgresTerminalRepository struct {
+	db                  *sql.DB
+	actorID, reasonCode string
+}
 
 func NewPostgresTerminalRepository(db *sql.DB) *PostgresTerminalRepository {
-	return &PostgresTerminalRepository{db: db}
+	return &PostgresTerminalRepository{db: db, actorID: "g21.1-root-canary",
+		reasonCode: "ROOT_CANARY_CANCELED"}
+}
+
+func NewPostgresProductTerminalRepository(db *sql.DB) *PostgresTerminalRepository {
+	return &PostgresTerminalRepository{db: db, actorID: "g21.6-product-canary",
+		reasonCode: "PRODUCT_CANARY_CANCELED"}
 }
 
 // FinalizeCanceled terminalizes the durable Runner projection and appends the
@@ -46,19 +55,19 @@ func (repository *PostgresTerminalRepository) FinalizeCanceled(ctx context.Conte
 		entity, stepID, attemptID, expected, to, reason string
 		generation                                      int64
 	}{
-		{"attempt", input.StepID, input.AttemptID, "running", "canceled", "ROOT_CANARY_CANCELED", input.Generation},
-		{"step", input.StepID, input.AttemptID, "running", "canceled", "ROOT_CANARY_CANCELED", input.Generation},
-		{"run", "", "", "running", "canceled", "ROOT_CANARY_CANCELED", 0},
+		{"attempt", input.StepID, input.AttemptID, "running", "canceled", repository.reasonCode, input.Generation},
+		{"step", input.StepID, input.AttemptID, "running", "canceled", repository.reasonCode, input.Generation},
+		{"run", "", "", "running", "canceled", repository.reasonCode, 0},
 	} {
 		var accepted bool
 		eventID := "event_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 		if err := tx.QueryRowContext(ctx, `
-SELECT agent_orchestrator_transition(
-  $1,$2::uuid,$3,NULLIF($4,''),NULLIF($5,''),$6,NULLIF($7,''),NULLIF($8,''),
-  $9,$10,$11,'orchestrator','g21.1-root-canary',$12,'{}'::jsonb
-)`, eventID, input.UserID, input.RunID, transition.stepID, transition.attemptID,
+	SELECT agent_orchestrator_transition(
+	  $1,$2::uuid,$3,NULLIF($4,''),NULLIF($5,''),$6,NULLIF($7,''),NULLIF($8,''),
+	  $9,$10,$11,'orchestrator',$12,$13,'{}'::jsonb
+		)`, eventID, input.UserID, input.RunID, transition.stepID, transition.attemptID,
 			transition.generation, input.LeaseOwner, tokenHash, transition.entity,
-			transition.expected, transition.to, transition.reason).Scan(&accepted); err != nil || !accepted {
+			transition.expected, transition.to, repository.actorID, transition.reason).Scan(&accepted); err != nil || !accepted {
 			return fmt.Errorf("finalize Root canary %s: %w", transition.entity, ErrUnavailable)
 		}
 	}

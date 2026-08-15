@@ -328,6 +328,7 @@ agent_flags = (
     "AGENT_CHILD_CANARY_ENABLED",
     "AGENT_CRON_WORKER_ENABLED",
     "AGENT_DRAFT_LEARNING_WORKER_ENABLED",
+    "AGENT_PRODUCT_CANARY_ENABLED",
     "AGENT_RUNTIME_ENABLED",
     "AGENT_SCHEDULER_ENABLED",
     "AGENT_SKILL_INSTALL_ENABLED",
@@ -348,7 +349,7 @@ for key in (
     "AGENT_BROKER_MUTATION_ENABLED",
 ):
     if values[key] != "false":
-        fail(f"{key} must remain false through G21.5")
+        fail(f"{key} must remain false through G21.6")
 if values["AGENT_DELEGATION_ENABLED"] != values["AGENT_CHILD_CANARY_ENABLED"]:
     fail("AGENT_DELEGATION_ENABLED must match the dedicated G21.4 Child canary flag")
 
@@ -582,6 +583,7 @@ agent_cron_worker_enabled = values["AGENT_CRON_WORKER_ENABLED"] == "true"
 agent_draft_learning_worker_enabled = (
     values["AGENT_DRAFT_LEARNING_WORKER_ENABLED"] == "true"
 )
+agent_product_canary_enabled = values["AGENT_PRODUCT_CANARY_ENABLED"] == "true"
 private_networks = (
     ipaddress.ip_network("10.0.0.0/8"),
     ipaddress.ip_network("172.16.0.0/12"),
@@ -589,6 +591,7 @@ private_networks = (
     ipaddress.ip_network("fc00::/7"),
 )
 identity_pattern = re.compile(r"[A-Za-z][A-Za-z0-9_.:@/-]{0,127}")
+agent_fingerprint_pattern = re.compile(r"sha256:[0-9a-f]{64}")
 agent_control_keys = (
     "AGENT_RUNNER_DATABASE_URL",
     "AGENT_RUNNER_URL",
@@ -1517,7 +1520,7 @@ if agent_project_canary_enabled:
         or approval_payload.get("decision") != "approved"
         or approval_payload.get("release") != {
             "gitCommit": values["AGENT_PROJECT_CANARY_RELEASE_GIT_COMMIT"],
-            "migrationHead": 94,
+            "migrationHead": 95,
         }
         or approval_payload.get("target") != {
             "deploymentFingerprint": project_plan.get("targetFingerprint"),
@@ -2292,6 +2295,361 @@ if agent_draft_learning_worker_enabled:
     )
 
 
+agent_product_canary_keys = (
+    "AGENT_PRODUCT_CANARY_DATABASE_URL",
+    "AGENT_PRODUCT_CANARY_ACTIVATION_ID",
+    "AGENT_PRODUCT_CANARY_RUNNER_URL",
+    "AGENT_PRODUCT_CANARY_RUNNER_ID",
+    "AGENT_PRODUCT_CANARY_SERVER_NAME",
+    "AGENT_PRODUCT_CANARY_CLIENT_IDENTITY",
+    "AGENT_PRODUCT_CANARY_CLIENT_CERT_SOURCE",
+    "AGENT_PRODUCT_CANARY_CLIENT_KEY_SOURCE",
+    "AGENT_PRODUCT_CANARY_SERVER_CA_SOURCE",
+    "AGENT_PRODUCT_CANARY_RELEASE_MANIFEST_SOURCE",
+    "AGENT_PRODUCT_CANARY_PRODUCTION_POLICY_SOURCE",
+    "AGENT_PRODUCT_CANARY_ACTIVATION_SOURCE",
+    "AGENT_PRODUCT_CANARY_PLAN_SOURCE",
+    "AGENT_PRODUCT_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE",
+    "AGENT_PRODUCT_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE",
+    "AGENT_PRODUCT_CANARY_RELEASE_GIT_COMMIT",
+    "AGENT_PRODUCT_CANARY_CLAIM_OWNER",
+    "AGENT_PRODUCT_CANARY_POLL_INTERVAL",
+    "AGENT_PRODUCT_CANARY_CLAIM_TTL",
+    "AGENT_PRODUCT_CANARY_RPC_TIMEOUT",
+    "AGENT_PRODUCT_CANARY_AUTHORITY_TTL",
+    "AGENT_PRODUCT_CANARY_BATCH_SIZE",
+)
+if agent_product_canary_enabled:
+    prerequisite_flags = (
+        "AGENT_RUNNER_CONTROL_ENABLED",
+        "AGENT_ROOT_RUN_CANARY_ENABLED",
+        "AGENT_BROKER_ARTIFACT_CANARY_ENABLED",
+        "AGENT_PROJECT_MUTATION_CANARY_ENABLED",
+        "AGENT_CHILD_CANARY_ENABLED",
+        "AGENT_CRON_WORKER_ENABLED",
+        "AGENT_DRAFT_LEARNING_WORKER_ENABLED",
+    )
+    if any(values[key] != "true" for key in prerequisite_flags):
+        fail("AGENT_PRODUCT_CANARY_ENABLED requires every G21.0-G21.5 stage flag")
+    for key in agent_product_canary_keys:
+        if not values.get(key, "").strip():
+            fail(f"{key} is required when the Product canary is enabled")
+        if placeholder.search(values[key]):
+            fail(f"{key} still contains a placeholder")
+    for key in values:
+        if key.startswith("AGENT_PRODUCT_CANARY_") and any(
+            marker in key
+            for marker in (
+                "BROKER", "PROJECT", "CHILD", "SCHEDULER", "LEARNING",
+                "EGRESS", "SECRET", "S3", "OBJECT", "MCP", "PROVIDER",
+                "VAULT", "REDIS", "ADMIN", "PROMOTE",
+            )
+        ):
+            fail("Product canary must not receive generic execution or effect credentials")
+    try:
+        product_runner_url = urlsplit(values["AGENT_PRODUCT_CANARY_RUNNER_URL"])
+        product_runner_ip = ipaddress.ip_address(product_runner_url.hostname or "")
+        product_runner_port = product_runner_url.port
+    except ValueError:
+        fail("AGENT_PRODUCT_CANARY_RUNNER_URL must be the exact private HTTPS Runner RPC URL")
+    if (
+        product_runner_url.scheme != "https"
+        or product_runner_port is None
+        or not any(
+            product_runner_ip in network
+            for network in private_networks
+            if product_runner_ip.version == network.version
+        )
+        or product_runner_url.username is not None
+        or product_runner_url.password is not None
+        or product_runner_url.path != "/internal/neo-runner/v1/rpc"
+        or product_runner_url.query
+        or product_runner_url.fragment
+    ):
+        fail("AGENT_PRODUCT_CANARY_RUNNER_URL must be the exact private HTTPS Runner RPC URL")
+    for key in ("AGENT_PRODUCT_CANARY_RUNNER_ID", "AGENT_PRODUCT_CANARY_SERVER_NAME"):
+        if identity_pattern.fullmatch(values[key]) is None:
+            fail(f"{key} is invalid")
+    if values["AGENT_PRODUCT_CANARY_CLIENT_IDENTITY"] != (
+        "spiffe://neo-chat/agent-runtime-product-canary"
+    ):
+        fail("AGENT_PRODUCT_CANARY_CLIENT_IDENTITY must be the dedicated Product identity")
+    all_execution_identities = (
+        "AGENT_RUNNER_CLIENT_IDENTITY",
+        "AGENT_ROOT_CANARY_CLIENT_IDENTITY",
+        "AGENT_BROKER_CANARY_CLIENT_IDENTITY",
+        "AGENT_BROKER_CANARY_RUNNER_RELAY_IDENTITY",
+        "AGENT_PROJECT_CANARY_CLIENT_IDENTITY",
+        "AGENT_PROJECT_CANARY_RUNNER_RELAY_IDENTITY",
+        "AGENT_CHILD_CANARY_CLIENT_IDENTITY",
+        "AGENT_DRAFT_LEARNING_WORKER_CLIENT_IDENTITY",
+        "AGENT_PRODUCT_CANARY_CLIENT_IDENTITY",
+    )
+    if len({values.get(key, "") for key in all_execution_identities}) != len(
+        all_execution_identities
+    ):
+        fail("G21.0-G21.6 caller and relay identities must be exact and distinct")
+    if (
+        re.fullmatch(
+            r"activation_[a-z0-9]{16,64}",
+            values["AGENT_PRODUCT_CANARY_ACTIVATION_ID"],
+        )
+        is None
+    ):
+        fail("AGENT_PRODUCT_CANARY_ACTIVATION_ID is invalid")
+    if (
+        re.fullmatch(
+            r"[0-9a-f]{40}", values["AGENT_PRODUCT_CANARY_RELEASE_GIT_COMMIT"]
+        )
+        is None
+        or values["AGENT_PRODUCT_CANARY_RELEASE_GIT_COMMIT"] == "0" * 40
+    ):
+        fail("AGENT_PRODUCT_CANARY_RELEASE_GIT_COMMIT must be a non-placeholder lowercase Git commit")
+    if (
+        not 1 <= len(values["AGENT_PRODUCT_CANARY_CLAIM_OWNER"].encode()) <= 128
+        or any(character.isspace() for character in values["AGENT_PRODUCT_CANARY_CLAIM_OWNER"])
+    ):
+        fail("AGENT_PRODUCT_CANARY_CLAIM_OWNER is invalid")
+    product_poll = parse_simple_duration_seconds(
+        "AGENT_PRODUCT_CANARY_POLL_INTERVAL",
+        values["AGENT_PRODUCT_CANARY_POLL_INTERVAL"],
+    )
+    product_claim_ttl = parse_simple_duration_seconds(
+        "AGENT_PRODUCT_CANARY_CLAIM_TTL",
+        values["AGENT_PRODUCT_CANARY_CLAIM_TTL"],
+    )
+    product_rpc = parse_simple_duration_seconds(
+        "AGENT_PRODUCT_CANARY_RPC_TIMEOUT",
+        values["AGENT_PRODUCT_CANARY_RPC_TIMEOUT"],
+    )
+    product_authority_ttl = parse_simple_duration_seconds(
+        "AGENT_PRODUCT_CANARY_AUTHORITY_TTL",
+        values["AGENT_PRODUCT_CANARY_AUTHORITY_TTL"],
+    )
+    if (
+        not 1 <= product_poll <= 60
+        or not 31 <= product_claim_ttl <= 300
+        or not 1 <= product_rpc <= 60
+        or not 1 <= product_authority_ttl <= 15
+        or re.fullmatch(r"[1-9][0-9]*", values["AGENT_PRODUCT_CANARY_BATCH_SIZE"])
+        is None
+        or not 1 <= int(values["AGENT_PRODUCT_CANARY_BATCH_SIZE"]) <= 20
+    ):
+        fail("Product canary polling, lease, RPC, authority or batch bound is invalid")
+
+    product_private_file_keys = (
+        "AGENT_PRODUCT_CANARY_CLIENT_CERT_SOURCE",
+        "AGENT_PRODUCT_CANARY_CLIENT_KEY_SOURCE",
+        "AGENT_PRODUCT_CANARY_SERVER_CA_SOURCE",
+        "AGENT_PRODUCT_CANARY_RELEASE_MANIFEST_SOURCE",
+        "AGENT_PRODUCT_CANARY_ACTIVATION_SOURCE",
+        "AGENT_PRODUCT_CANARY_PLAN_SOURCE",
+        "AGENT_PRODUCT_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE",
+        "AGENT_PRODUCT_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE",
+    )
+    product_files = {
+        key: resolve_secure_file(values[key], key, private=True)
+        for key in product_private_file_keys
+    }
+    product_policy = resolve_secure_file(
+        values["AGENT_PRODUCT_CANARY_PRODUCTION_POLICY_SOURCE"],
+        "AGENT_PRODUCT_CANARY_PRODUCTION_POLICY_SOURCE",
+        private=False,
+    )
+    if len(set(product_files.values())) != len(product_files):
+        fail("Product canary TLS, evidence, plan and authority files must be distinct")
+    prior_product_source_keys = (
+        "AGENT_RUNNER_CLIENT_CERT_SOURCE", "AGENT_RUNNER_CLIENT_KEY_SOURCE",
+        "AGENT_RUNNER_SERVER_CA_SOURCE", "AGENT_RUNNER_RELEASE_MANIFEST_SOURCE",
+        "AGENT_PRODUCTION_ACTIVATION_SOURCE",
+        "AGENT_ROOT_CANARY_CLIENT_CERT_SOURCE", "AGENT_ROOT_CANARY_CLIENT_KEY_SOURCE",
+        "AGENT_ROOT_CANARY_SERVER_CA_SOURCE", "AGENT_ROOT_CANARY_RELEASE_MANIFEST_SOURCE",
+        "AGENT_ROOT_CANARY_ACTIVATION_SOURCE", "AGENT_ROOT_CANARY_PLAN_SOURCE",
+        "AGENT_ROOT_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE",
+        "AGENT_ROOT_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE",
+        "AGENT_BROKER_CANARY_CLIENT_CERT_SOURCE", "AGENT_BROKER_CANARY_CLIENT_KEY_SOURCE",
+        "AGENT_BROKER_CANARY_SERVER_CA_SOURCE", "AGENT_BROKER_CANARY_RELEASE_MANIFEST_SOURCE",
+        "AGENT_BROKER_CANARY_ACTIVATION_SOURCE", "AGENT_BROKER_CANARY_PLAN_SOURCE",
+        "AGENT_BROKER_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE",
+        "AGENT_BROKER_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE",
+        "AGENT_PROJECT_CANARY_CLIENT_CERT_SOURCE", "AGENT_PROJECT_CANARY_CLIENT_KEY_SOURCE",
+        "AGENT_PROJECT_CANARY_SERVER_CA_SOURCE", "AGENT_PROJECT_CANARY_RELEASE_MANIFEST_SOURCE",
+        "AGENT_PROJECT_CANARY_ACTIVATION_SOURCE", "AGENT_PROJECT_CANARY_PLAN_SOURCE",
+        "AGENT_PROJECT_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE",
+        "AGENT_PROJECT_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE",
+        "AGENT_PROJECT_CANARY_APPROVAL_DOCUMENT_SOURCE",
+        "AGENT_PROJECT_CANARY_APPROVAL_PUBLIC_KEY_SOURCE",
+        "AGENT_CHILD_CANARY_CLIENT_CERT_SOURCE", "AGENT_CHILD_CANARY_CLIENT_KEY_SOURCE",
+        "AGENT_CHILD_CANARY_SERVER_CA_SOURCE", "AGENT_CHILD_CANARY_RELEASE_MANIFEST_SOURCE",
+        "AGENT_CHILD_CANARY_ACTIVATION_SOURCE", "AGENT_CHILD_CANARY_PLAN_SOURCE",
+        "AGENT_CHILD_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE",
+        "AGENT_CHILD_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE",
+        "AGENT_CRON_WORKER_PLAN_SOURCE", "AGENT_CRON_WORKER_ACTIVATION_SOURCE",
+        "AGENT_DRAFT_LEARNING_WORKER_CLIENT_CERT_SOURCE",
+        "AGENT_DRAFT_LEARNING_WORKER_CLIENT_KEY_SOURCE",
+        "AGENT_DRAFT_LEARNING_WORKER_SERVER_CA_SOURCE",
+        "AGENT_DRAFT_LEARNING_WORKER_RELEASE_MANIFEST_SOURCE",
+        "AGENT_DRAFT_LEARNING_WORKER_ACTIVATION_SOURCE",
+        "AGENT_DRAFT_LEARNING_WORKER_PLAN_SOURCE",
+        "AGENT_DRAFT_LEARNING_WORKER_AUTHORITY_PRIVATE_KEY_SOURCE",
+        "AGENT_DRAFT_LEARNING_WORKER_AUTHORITY_PUBLIC_KEY_SOURCE",
+    )
+    if {values[key] for key in product_private_file_keys} & {
+        values.get(key, "") for key in prior_product_source_keys if values.get(key, "")
+    }:
+        fail("Product canary files must not reuse prior Runner or canary key material")
+    try:
+        tls_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        tls_context.load_cert_chain(
+            product_files["AGENT_PRODUCT_CANARY_CLIENT_CERT_SOURCE"],
+            product_files["AGENT_PRODUCT_CANARY_CLIENT_KEY_SOURCE"],
+        )
+        ssl.create_default_context(
+            cafile=product_files["AGENT_PRODUCT_CANARY_SERVER_CA_SOURCE"]
+        )
+        decoded_certificate = ssl._ssl._test_decode_cert(
+            str(product_files["AGENT_PRODUCT_CANARY_CLIENT_CERT_SOURCE"])
+        )
+    except (OSError, ssl.SSLError, ValueError):
+        fail("Product canary mTLS certificate/key material is invalid or mismatched")
+    common_names = [
+        value
+        for relative_name in decoded_certificate.get("subject", ())
+        for key, value in relative_name
+        if key == "commonName"
+    ]
+    if common_names != [values["AGENT_PRODUCT_CANARY_CLIENT_IDENTITY"]]:
+        fail("Product canary client certificate identity does not match configuration")
+    try:
+        authority_private_text = product_files[
+            "AGENT_PRODUCT_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE"
+        ].read_text().strip()
+        authority_public_text = product_files[
+            "AGENT_PRODUCT_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE"
+        ].read_text().strip()
+        authority_private_raw = base64.urlsafe_b64decode(
+            authority_private_text + "=" * (-len(authority_private_text) % 4)
+        )
+        authority_public_raw = base64.urlsafe_b64decode(
+            authority_public_text + "=" * (-len(authority_public_text) % 4)
+        )
+    except (OSError, UnicodeError, ValueError, binascii.Error):
+        fail("Product canary authority key material is invalid")
+    if (
+        len(authority_private_raw) != 64
+        or len(authority_public_raw) != 32
+        or authority_private_raw[32:] != authority_public_raw
+    ):
+        fail("Product canary authority private/public keys do not match")
+    try:
+        product_plan_raw = product_files[
+            "AGENT_PRODUCT_CANARY_PLAN_SOURCE"
+        ].read_bytes()
+        product_plan = json.loads(product_plan_raw, object_pairs_hook=unique_object)
+    except (OSError, UnicodeError, json.JSONDecodeError, DuplicateKey):
+        fail("AGENT_PRODUCT_CANARY_PLAN_SOURCE is invalid")
+    product_snapshot = product_plan.get("snapshot", {}) if isinstance(product_plan, dict) else {}
+    product_sandbox = product_plan.get("sandbox", {}) if isinstance(product_plan, dict) else {}
+    product_registry = product_plan.get("toolRegistry", {}) if isinstance(product_plan, dict) else {}
+    product_resources = product_sandbox.get("resources", {}) if isinstance(product_sandbox, dict) else {}
+    product_fingerprints = [
+        value
+        for value in (
+            product_plan.get("grantFingerprint"),
+            product_snapshot.get("packageFingerprint"),
+            product_snapshot.get("runtimeBundleFingerprint"),
+            product_snapshot.get("grantFingerprint"),
+            product_snapshot.get("registryFingerprint"),
+            product_snapshot.get("workspaceFingerprint"),
+            product_sandbox.get("runtimeBundleFingerprint"),
+            product_sandbox.get("packageFingerprint"),
+            product_sandbox.get("seccompProfileFingerprint"),
+            product_sandbox.get("workspaceFingerprint"),
+            product_registry.get("registryFingerprint"),
+        )
+    ]
+    if (
+        not isinstance(product_plan, dict)
+        or set(product_plan) != {
+            "schemaVersion", "activationId", "stepKind", "grantId",
+            "grantFingerprint", "snapshot", "sandbox", "toolRegistry", "argv",
+            "leaseSeconds",
+        }
+        or product_plan.get("schemaVersion") != "neo.agent-product-canary-plan/v1"
+        or product_plan.get("activationId") != values["AGENT_PRODUCT_CANARY_ACTIVATION_ID"]
+        or product_plan.get("stepKind") != "product_canary"
+        or re.fullmatch(r"grant_[a-z0-9]{16,64}", str(product_plan.get("grantId", ""))) is None
+        or product_plan.get("argv") != ["/opt/neo/bin/product-canary", "--bounded-smoke"]
+        or product_plan.get("leaseSeconds") != 30
+        or product_snapshot.get("schemaVersion") != "neo.agent-snapshot/v1"
+        or product_snapshot.get("mode") != "read_only"
+        or product_snapshot.get("noEgress") is not True
+        or product_snapshot.get("noSecrets") is not True
+        or product_snapshot.get("maxWallSeconds") != 30
+        or product_snapshot.get("packageFingerprint") != product_sandbox.get("packageFingerprint")
+        or product_snapshot.get("runtimeBundleFingerprint") != product_sandbox.get("runtimeBundleFingerprint")
+        or product_snapshot.get("grantFingerprint") != product_plan.get("grantFingerprint")
+        or product_snapshot.get("registryFingerprint") != product_registry.get("registryFingerprint")
+        or product_snapshot.get("workspaceFingerprint") != product_sandbox.get("workspaceFingerprint")
+        or product_sandbox.get("uid") != 10001
+        or product_sandbox.get("gid") != 10001
+        or product_sandbox.get("rootfsReadOnly") is not True
+        or product_sandbox.get("noNewPrivileges") is not True
+        or product_sandbox.get("capabilities") != []
+        or product_sandbox.get("networkMode") != "none"
+        or product_resources != {
+            "cpuMillis": 250, "memoryMiB": 128, "pids": 16,
+            "wallSeconds": 30, "outputBytes": 4096, "scratchBytes": 1048576,
+        }
+        or product_registry.get("depth") != 0
+        or product_registry.get("tools") != []
+        or any(
+            not isinstance(value, str)
+            or agent_fingerprint_pattern.fullmatch(value) is None
+            or value == "sha256:" + "0" * 64
+            for value in product_fingerprints
+        )
+        or re.fullmatch(
+            r"[^@\s]+@sha256:[0-9a-f]{64}",
+            str(product_sandbox.get("image", "")),
+        )
+        is None
+        or str(product_sandbox.get("image", "")).endswith("@sha256:" + "0" * 64)
+    ):
+        fail("AGENT_PRODUCT_CANARY_PLAN_SOURCE is not the strict bounded smoke plan")
+
+    evaluator = Path(sys.argv[2]) / "scripts/evaluate-agent-production-activation.py"
+    try:
+        decision = subprocess.run(
+            [
+                sys.executable, str(evaluator),
+                "--record", str(product_files["AGENT_PRODUCT_CANARY_ACTIVATION_SOURCE"]),
+                "--policy", str(product_policy),
+                "--release-manifest", str(product_files["AGENT_PRODUCT_CANARY_RELEASE_MANIFEST_SOURCE"]),
+                "--client-certificate", str(product_files["AGENT_PRODUCT_CANARY_CLIENT_CERT_SOURCE"]),
+                "--server-ca", str(product_files["AGENT_PRODUCT_CANARY_SERVER_CA_SOURCE"]),
+                "--canary-plan", str(product_files["AGENT_PRODUCT_CANARY_PLAN_SOURCE"]),
+                "--authority-public-key", str(product_files["AGENT_PRODUCT_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE"]),
+                "--endpoint", values["AGENT_PRODUCT_CANARY_RUNNER_URL"],
+                "--runner-id", values["AGENT_PRODUCT_CANARY_RUNNER_ID"],
+                "--server-name", values["AGENT_PRODUCT_CANARY_SERVER_NAME"],
+                "--caller-identity", values["AGENT_PRODUCT_CANARY_CLIENT_IDENTITY"],
+                "--release-commit", values["AGENT_PRODUCT_CANARY_RELEASE_GIT_COMMIT"],
+                "--activation-id", values["AGENT_PRODUCT_CANARY_ACTIVATION_ID"],
+            ],
+            check=False, capture_output=True, text=True, timeout=10,
+        )
+        decision_payload = json.loads(decision.stdout)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        fail("Product canary activation evaluator failed")
+    if (
+        decision.returncode != 0
+        or decision_payload.get("verdict") != "ACTIVATION_READY"
+        or decision_payload.get("reasonCode") != "PRODUCT_CANARY_GATES_PASSED"
+    ):
+        fail("AGENT_PRODUCT_CANARY_ACTIVATION_SOURCE is not READY for G21.6")
+
+
 marketplace_timeout = parse_simple_duration_seconds(
     "MCP_MARKETPLACE_TIMEOUT", values["MCP_MARKETPLACE_TIMEOUT"]
 )
@@ -2322,6 +2680,7 @@ for key in (
     *(("AGENT_CHILD_CANARY_DATABASE_URL",) if agent_child_canary_enabled else ()),
     *(("AGENT_CRON_WORKER_DATABASE_URL",) if agent_cron_worker_enabled else ()),
     *(("AGENT_DRAFT_LEARNING_WORKER_DATABASE_URL",) if agent_draft_learning_worker_enabled else ()),
+    *(("AGENT_PRODUCT_CANARY_DATABASE_URL",) if agent_product_canary_enabled else ()),
 ):
     try:
         parsed = urlsplit(values[key])

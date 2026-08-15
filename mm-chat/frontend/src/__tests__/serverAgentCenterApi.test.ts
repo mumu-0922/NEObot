@@ -72,6 +72,45 @@ describe("server Agent Center API", () => {
       code: "INVALID_SERVER_RESPONSE",
     });
   });
+
+  it("submits only the current product-canary policy and generation", async () => {
+    let captured: RequestInit | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        captured = init;
+        return jsonResponse({
+          request: {
+            id: "product_request_1234567890abcdef",
+            activationId: "activation_1234567890abcdef",
+            state: "queued",
+            policyRevision: 4,
+            optGeneration: 2,
+            requestFingerprint: fingerprint,
+            failureCount: 0,
+            createdAt: "2026-08-15T00:00:00Z",
+            updatedAt: "2026-08-15T00:00:00Z",
+          },
+        });
+      }),
+    );
+    const client = createNeoChatApiClient({
+      env: {
+        NEXT_PUBLIC_API_MODE: "server",
+        NEXT_PUBLIC_API_BASE_URL: "/mm-api",
+      },
+    });
+    await expect(
+      client.agentCenter.enqueueRun({
+        expectedPolicyRevision: 4,
+        expectedGeneration: 2,
+      }),
+    ).resolves.toMatchObject({ state: "queued" });
+    expect(JSON.parse(String(captured?.body))).toEqual({
+      expectedPolicyRevision: 4,
+      expectedGeneration: 2,
+    });
+  });
 });
 
 function statusFixture() {
@@ -81,6 +120,7 @@ function statusFixture() {
       state: "held",
       reasonCode: "ISOLATION_UNAVAILABLE",
       executable: false,
+      productCanary: false,
       scheduler: false,
       learningWorker: false,
     },
@@ -106,6 +146,7 @@ function statusFixture() {
       heldReasonCode: "SHADOW_DISABLED",
       observationCount: 0,
       errorCount: 0,
+      productCanary: { remainingRequests: 0 },
     },
   };
 }

@@ -28,6 +28,7 @@ const (
 	projectRelayIdentity        = "spiffe://neo-chat/neo-runner-project-relay"
 	childCanaryCallerIdentity   = "spiffe://neo-chat/agent-runtime-child-canary"
 	draftLearningCallerIdentity = "spiffe://neo-chat/agent-runtime-draft-learning"
+	productCanaryCallerIdentity = "spiffe://neo-chat/agent-runtime-product-canary"
 )
 
 func main() {
@@ -194,6 +195,18 @@ func run() error {
 		policies = append(policies, agentrunner.CallerPolicy{Identity: draftIdentity,
 			Methods: []string{agentrunner.MethodProbe, agentrunner.MethodList, agentrunner.MethodReconcile,
 				agentrunner.MethodLaunch, agentrunner.MethodResult, agentrunner.MethodCancel}})
+	}
+	productIdentity := strings.TrimSpace(os.Getenv("NEO_RUNNER_PRODUCT_CANARY_CLIENT_IDENTITY"))
+	if productIdentity != "" {
+		if productIdentity != productCanaryCallerIdentity || draftIdentity == "" ||
+			productIdentity == clientIdentity || productIdentity == canaryIdentity ||
+			productIdentity == brokerIdentity || productIdentity == projectIdentity ||
+			productIdentity == childIdentity || productIdentity == draftIdentity {
+			return errors.New("neo-runnerd product canary client identity is invalid")
+		}
+		policies = append(policies, agentrunner.CallerPolicy{Identity: productIdentity,
+			Methods: []string{agentrunner.MethodProbe, agentrunner.MethodList, agentrunner.MethodReconcile,
+				agentrunner.MethodLaunch, agentrunner.MethodHeartbeat, agentrunner.MethodCancel}})
 	}
 	handler, err := agentrunner.NewHTTPHandlerWithPolicies(service, 15*time.Second, policies)
 	if err != nil {

@@ -1,0 +1,336 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neo-chat.local/schemas/neo-agent-product-canary-activation.schema.json",
+  "title": "Neo Agent Product Canary Activation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "evidenceClass",
+    "stage",
+    "release",
+    "target",
+    "wiring",
+    "prerequisites",
+    "window",
+    "checks",
+    "authorization",
+    "cleanup",
+    "review"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "neo.agent-production-activation/v1"
+    },
+    "evidenceClass": {
+      "enum": [
+        "template",
+        "production"
+      ]
+    },
+    "stage": {
+      "const": "product_canary"
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gitCommit",
+        "migrationHead",
+        "runnerManifestSha256",
+        "runnerBinarySha256",
+        "operationsPolicySha256"
+      ],
+      "properties": {
+        "gitCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "migrationHead": {
+          "const": 95
+        },
+        "runnerManifestSha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "runnerBinarySha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "operationsPolicySha256": {
+          "$ref": "#/$defs/fingerprint"
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deploymentFingerprint",
+        "runnerId"
+      ],
+      "properties": {
+        "deploymentFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "runnerId": {
+          "$ref": "#/$defs/identity"
+        }
+      }
+    },
+    "wiring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "activationId",
+        "endpointSha256",
+        "clientCertificateSha256",
+        "serverCASha256",
+        "serverName",
+        "callerIdentity",
+        "canaryPlanSha256",
+        "authorityPublicKeySha256"
+      ],
+      "properties": {
+        "activationId": {
+          "type": "string",
+          "pattern": "^activation_[a-z0-9]{16,64}$"
+        },
+        "endpointSha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "clientCertificateSha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "serverCASha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "serverName": {
+          "$ref": "#/$defs/identity"
+        },
+        "callerIdentity": {
+          "$ref": "#/$defs/identity"
+        },
+        "canaryPlanSha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "authorityPublicKeySha256": {
+          "$ref": "#/$defs/fingerprint"
+        }
+      }
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "startedAt",
+        "completedAt",
+        "expiresAt"
+      ],
+      "properties": {
+        "startedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "completedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "result",
+          "observedAt",
+          "evidenceSha256",
+          "detailCode"
+        ],
+        "properties": {
+          "id": {
+            "enum": [
+              "crash_restart_recovery",
+              "exact_host_isolation",
+              "fixed_plan_ready",
+              "prior_activation_chain",
+              "private_mtls_canary",
+              "product_request_authority",
+              "worker_least_privilege",
+              "zero_residue"
+            ]
+          },
+          "result": {
+            "enum": [
+              "passed",
+              "failed",
+              "not_run",
+              "isolation_unavailable"
+            ]
+          },
+          "observedAt": {
+            "$ref": "#/$defs/timestamp"
+          },
+          "evidenceSha256": {
+            "$ref": "#/$defs/fingerprint"
+          },
+          "detailCode": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+          }
+        }
+      }
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "productCanary",
+        "genericRuntime",
+        "brokerEffects",
+        "delegation",
+        "scheduler",
+        "learning",
+        "egress",
+        "secrets"
+      ],
+      "properties": {
+        "productCanary": {
+          "const": true
+        },
+        "genericRuntime": {
+          "const": false
+        },
+        "brokerEffects": {
+          "const": false
+        },
+        "delegation": {
+          "const": false
+        },
+        "scheduler": {
+          "const": false
+        },
+        "learning": {
+          "const": false
+        },
+        "egress": {
+          "const": false
+        },
+        "secrets": {
+          "const": false
+        }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "queuedRequests",
+        "claimedRequests",
+        "orphanSandboxes",
+        "scratchResidue"
+      ],
+      "properties": {
+        "queuedRequests": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "claimedRequests": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "orphanSandboxes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "scratchResidue": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "reviewedAt",
+        "reviewerFingerprint"
+      ],
+      "properties": {
+        "decision": {
+          "enum": [
+            "approved",
+            "held"
+          ]
+        },
+        "reviewedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "reviewerFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        }
+      }
+    },
+    "prerequisites": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "controlPlane",
+        "rootRun",
+        "brokerArtifact",
+        "projectMutation",
+        "depthOneChild",
+        "cronWorker",
+        "draftLearning"
+      ],
+      "properties": {
+        "controlPlane": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "rootRun": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "brokerArtifact": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "projectMutation": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "depthOneChild": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "cronWorker": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "draftLearning": {
+          "$ref": "#/$defs/fingerprint"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "identity": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:@/-]{0,127}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    }
+  },
+  "description": "Short-lived G21.6 evidence for one bounded product canary activation after the complete G21.0-G21.5 chain."
+}

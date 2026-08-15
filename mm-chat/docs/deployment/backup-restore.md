@@ -96,7 +96,7 @@ for that set and publishes no manifest.
 Agent Runtime production promotion additionally hashes the verified set
 manifest into the external G20.10 closure evidence. Restore with every Agent
 worker and Runtime switch off, reject all pre-restore leases/nonces, reconcile
-Sandboxes/effects/Children/Cron/Draft cleanup, and require migration head `094`
+Sandboxes/effects/Children/Cron/Draft cleanup, and require migration head `095`
 before a read-only canary. The restore must also reconcile every
 `agent_artifacts.object_key` against the
 paired object mirror, remove only proven unreferenced canary objects and keep
@@ -151,10 +151,32 @@ result metadata. Cron has no object-store credential; the Draft credential,
 worker database passwords, Runner mTLS key and authority private key remain
 separately encrypted deployment secrets, not backup-set contents.
 
-Require migration head `094`, zero stale target claims, zero live Draft Runner
+Require migration head `095`, zero stale target claims, zero live Draft Runner
 attempts, zero target Sandbox residue and fresh G21.5 activation evidence before
 restarting either profile. Restored activation evidence never authorizes a new
 product cohort.
+
+Migration `095` adds bounded product activations, immutable user requests,
+lease claims, terminal receipts and final-promotion facts to the PostgreSQL
+authority set. Include all four product-canary tables in the same dump as the
+Run/Step/Attempt and Runner projections they reference. No product canary
+object payload exists; its fixed Sandbox remains `networkMode=none` and does
+not add MinIO state.
+
+Restore with `agent-runtime-product-canary` off and treat every restored claim,
+lease and signed Runner authority as unusable. Resolve each exact
+request/Run/Attempt, wait retained lease/authority expiry, prove matching Runner
+Sandbox absence and reconcile before considering a new activation. Never
+create a replacement request or idempotency key to repair a restored claim.
+Preserve receipts, promotion, incident and audit facts; they are immutable and
+content-free, not temporary cleanup rows.
+
+Require migration head `095`, zero stale product claims, zero pending terminal
+chains and zero activation Runner residue before restart. A restore invalidates
+the old activation window and closure evidence: provision fresh G21.0-G21.5
+evidence, a new bounded activation and a new closure review. Database password,
+Runner mTLS private key and Ed25519 private authority key remain separately
+encrypted deployment secrets and are never recovered from the backup set.
 
 ## Verify backup checksums
 

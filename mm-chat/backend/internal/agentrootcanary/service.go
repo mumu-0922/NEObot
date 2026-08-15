@@ -72,18 +72,21 @@ type Service struct {
 }
 
 type Result struct {
-	RunID, AttemptID string
-	Generation       int64
-	Completed        bool
+	RunID, AttemptID    string
+	Generation          int64
+	SnapshotFingerprint string
+	Completed           bool
 }
 
 func NewService(config Config, plan Plan, gate Gate, orchestrator Orchestrator,
 	authority AuthorityService, runnerState RunnerRepository, client RunnerClient,
 	terminal TerminalRepository) (*Service, error) {
-	if config.RunnerID == "" || config.CallerIdentity != "spiffe://neo-chat/agent-runtime-root-canary" ||
+	validPlan := (config.CallerIdentity == RootCallerIdentity && ValidatePlan(plan) == nil) ||
+		(config.CallerIdentity == ProductCallerIdentity && ValidateProductPlan(plan) == nil)
+	if config.RunnerID == "" || !validPlan ||
 		config.PollInterval < time.Second || config.PollInterval > time.Minute ||
 		config.AuthorityTTL < time.Second || config.AuthorityTTL > 15*time.Second ||
-		config.BatchSize < 1 || config.BatchSize > 1000 || ValidatePlan(plan) != nil || gate == nil ||
+		config.BatchSize < 1 || config.BatchSize > 1000 || gate == nil ||
 		orchestrator == nil || authority == nil || runnerState == nil || client == nil || terminal == nil {
 		return nil, ErrInvalidPlan
 	}
@@ -150,7 +153,13 @@ func (service *Service) Cycle(ctx context.Context) (Result, error) {
 		if enqueued.Run.State != agentorchestrator.RunCanceled || service.reconcileEmpty(ctx, probe.ProbeFingerprint, now) != nil {
 			return Result{}, ErrUnavailable
 		}
-		return Result{RunID: enqueued.Run.ID, Completed: true}, nil
+		result := Result{RunID: enqueued.Run.ID,
+			SnapshotFingerprint: enqueued.Run.SnapshotFingerprint, Completed: true}
+		if len(enqueued.Run.Attempts) > 0 {
+			latest := enqueued.Run.Attempts[len(enqueued.Run.Attempts)-1]
+			result.AttemptID, result.Generation = latest.ID, latest.Generation
+		}
+		return result, nil
 	}
 	if len(enqueued.Run.Attempts) > 0 {
 		latest := enqueued.Run.Attempts[len(enqueued.Run.Attempts)-1]
@@ -162,12 +171,13 @@ func (service *Service) Cycle(ctx context.Context) (Result, error) {
 		return Result{}, err
 	}
 	step := enqueued.Run.Steps[0]
-	actor := agentorchestrator.Actor{Type: "orchestrator", ID: "g21.1-root-canary"}
+	profile := service.profile()
+	actor := agentorchestrator.Actor{Type: "orchestrator", ID: profile.actorID}
 	leaseDuration := time.Duration(service.plan.LeaseSeconds) * time.Second
 	lease, err := service.orchestrator.AcquireStep(ctx, agentorchestrator.AcquireInput{
 		UserID: service.plan.UserID, RunID: enqueued.Run.ID, StepID: step.ID,
 		LeaseOwner: service.config.RunnerID, LeaseDuration: leaseDuration,
-		Actor: actor, ReasonCode: "ROOT_CANARY_CLAIMED",
+		Actor: actor, ReasonCode: profile.claimed,
 	})
 	if err != nil {
 		return Result{}, ErrUnavailable
@@ -175,7 +185,7 @@ func (service *Service) Cycle(ctx context.Context) (Result, error) {
 	transition := agentorchestrator.TransitionInput{UserID: service.plan.UserID, RunID: lease.RunID,
 		StepID: lease.StepID, AttemptID: lease.ID, Generation: lease.Generation,
 		LeaseOwner: lease.LeaseOwner, LeaseToken: lease.Token, Actor: actor}
-	transition.Expected, transition.To, transition.ReasonCode = agentorchestrator.AttemptLeased, agentorchestrator.AttemptStarting, "ROOT_CANARY_STARTING"
+	transition.Expected, transition.To, transition.ReasonCode = agentorchestrator.AttemptLeased, agentorchestrator.AttemptStarting, profile.starting
 	if err := service.orchestrator.TransitionAttempt(ctx, transition); err != nil {
 		return Result{}, ErrUnavailable
 	}
@@ -206,7 +216,7 @@ func (service *Service) Cycle(ctx context.Context) (Result, error) {
 		_ = service.cancelOnly(ctx, enqueued.Run.SnapshotFingerprint, attempt)
 		return Result{}, ErrUnavailable
 	}
-	transition.Expected, transition.To, transition.ReasonCode = agentorchestrator.AttemptStarting, agentorchestrator.AttemptRunning, "ROOT_CANARY_RUNNING"
+	transition.Expected, transition.To, transition.ReasonCode = agentorchestrator.AttemptStarting, agentorchestrator.AttemptRunning, profile.running
 	if err := service.orchestrator.TransitionAttempt(ctx, transition); err != nil {
 		_ = service.cancelOnly(ctx, enqueued.Run.SnapshotFingerprint, attempt)
 		return Result{}, ErrUnavailable
@@ -223,7 +233,7 @@ func (service *Service) Cycle(ctx context.Context) (Result, error) {
 	if _, err := service.orchestrator.HeartbeatAttempt(ctx, agentorchestrator.HeartbeatInput{
 		UserID: service.plan.UserID, RunID: lease.RunID, StepID: lease.StepID, AttemptID: lease.ID,
 		Generation: lease.Generation, LeaseOwner: lease.LeaseOwner, LeaseToken: lease.Token,
-		LeaseDuration: leaseDuration, Actor: actor, ReasonCode: "ROOT_CANARY_HEARTBEAT",
+		LeaseDuration: leaseDuration, Actor: actor, ReasonCode: profile.heartbeat,
 	}); err != nil {
 		service.cancelRunning(ctx, enqueued.Run.SnapshotFingerprint, attempt, launchResult.SandboxID,
 			TerminalInput{UserID: service.plan.UserID, RunID: lease.RunID, StepID: lease.StepID,
@@ -238,7 +248,8 @@ func (service *Service) Cycle(ctx context.Context) (Result, error) {
 		launchResult.SandboxID, terminal, probe.ProbeFingerprint); err != nil {
 		return Result{}, err
 	}
-	return Result{RunID: lease.RunID, AttemptID: lease.ID, Generation: lease.Generation, Completed: true}, nil
+	return Result{RunID: lease.RunID, AttemptID: lease.ID, Generation: lease.Generation,
+		SnapshotFingerprint: enqueued.Run.SnapshotFingerprint, Completed: true}, nil
 }
 
 func (service *Service) cancelRunning(ctx context.Context, snapshot string, attempt agentrunner.AttemptRef,
@@ -257,7 +268,7 @@ func (service *Service) cancelRunning(ctx context.Context, snapshot string, atte
 }
 
 func (service *Service) cancelOnly(ctx context.Context, snapshot string, attempt agentrunner.AttemptRef) error {
-	cancel := agentrunner.CancelRequest{Attempt: attempt, Mode: "cancel", ReasonCode: "root_canary_complete"}
+	cancel := agentrunner.CancelRequest{Attempt: attempt, Mode: "cancel", ReasonCode: service.profile().cancel}
 	response, _, err := service.authorizedCall(ctx, agentrunner.MethodCancel, cancel,
 		snapshot, attempt, service.now().UTC())
 	if err != nil {
@@ -268,6 +279,23 @@ func (service *Service) cancelOnly(ctx context.Context, snapshot string, attempt
 		return ErrUnavailable
 	}
 	return nil
+}
+
+type executionProfile struct {
+	actorID, claimed, starting, running, heartbeat, cancel string
+}
+
+func (service *Service) profile() executionProfile {
+	if service.config.CallerIdentity == ProductCallerIdentity {
+		return executionProfile{actorID: "g21.6-product-canary",
+			claimed: "PRODUCT_CANARY_CLAIMED", starting: "PRODUCT_CANARY_STARTING",
+			running: "PRODUCT_CANARY_RUNNING", heartbeat: "PRODUCT_CANARY_HEARTBEAT",
+			cancel: "product_canary_complete"}
+	}
+	return executionProfile{actorID: "g21.1-root-canary",
+		claimed: "ROOT_CANARY_CLAIMED", starting: "ROOT_CANARY_STARTING",
+		running: "ROOT_CANARY_RUNNING", heartbeat: "ROOT_CANARY_HEARTBEAT",
+		cancel: "root_canary_complete"}
 }
 
 func (service *Service) authorizedCall(ctx context.Context, method string, body any, snapshot string,

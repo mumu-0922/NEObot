@@ -21,6 +21,9 @@ describe("Agent Center product boundary", () => {
     expect(center).toContain("retry={() => void loadDetail()}");
     expect(center).toContain('aria-live="polite"');
     expect(center).toContain("status.runtime.reasonCode");
+    expect(center).toContain("status?.shadow.effective");
+    expect(center).toContain("runProductCanary");
+    expect(center).toContain("expectedPolicyRevision");
     expect(center).not.toContain("dangerouslySetInnerHTML");
   });
 

@@ -70,7 +70,7 @@ database_url="$(database_url_for "${container_name}")"
 server_major="$(psql_command "${container_name}" 'SHOW server_version_num' | cut -c1-2)"
 [[ "${server_major}" == "17" ]] || { echo "expected PostgreSQL 17" >&2; exit 1; }
 
-log "building and applying 001 -> 094"
+log "building and applying 001 -> 095"
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/mm-chat-migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"; }
 run_migrate up >"${work_dir}/fresh.log" 2>&1
@@ -85,8 +85,11 @@ grep -Fq "up 091_agent_artifact_publication" "${work_dir}/fresh.log"
 grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/fresh.log"
 grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/fresh.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/fresh.log"
+grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
+run_migrate down >"${work_dir}/peel-095-tail-1.log" 2>&1
+grep -Fq "down 095_agent_product_canary_activation" "${work_dir}/peel-095-tail-1.log"
 run_migrate down >"${work_dir}/peel-094-tail-1.log" 2>&1
 grep -Fq "down 094_agent_cron_learning_activation" "${work_dir}/peel-094-tail-1.log"
 run_migrate down >"${work_dir}/peel-093-tail-1.log" 2>&1
@@ -165,6 +168,7 @@ grep -Fq "up 091_agent_artifact_publication" "${work_dir}/guard-reapply-tail.log
 grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/guard-reapply-tail.log"
 grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/guard-reapply-tail.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/guard-reapply-tail.log"
+grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/guard-reapply-tail.log"
 
 log "dumping and restoring content-free control-plane authority"
 docker exec -e "PGPASSWORD=${database_password}" "${container_name}" \
@@ -203,7 +207,9 @@ END
 \$\$;
 " >/dev/null
 
-log "rolling back empty 094 through 085, then proving clean 083 -> 084 -> 083 -> 094 replay"
+log "rolling back empty 094 through 085, then proving clean 083 -> 084 -> 083 -> 095 replay"
+run_migrate down >"${work_dir}/peel-095-tail-2.log" 2>&1
+grep -Fq "down 095_agent_product_canary_activation" "${work_dir}/peel-095-tail-2.log"
 run_migrate down >"${work_dir}/peel-094-tail-2.log" 2>&1
 grep -Fq "down 094_agent_cron_learning_activation" "${work_dir}/peel-094-tail-2.log"
 run_migrate down >"${work_dir}/peel-093-tail-2.log" 2>&1
@@ -244,6 +250,7 @@ grep -Fq "up 091_agent_artifact_publication" "${work_dir}/reup.log"
 grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/reup.log"
 grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/reup.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/reup.log"
+grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 

@@ -158,7 +158,11 @@ export default function AgentCenter({
             <span>
               {statusError ||
                 (status
-                  ? t("heldStatus", { reason: status.runtime.reasonCode })
+                  ? status.runtime.productCanary
+                    ? t("canaryReadyStatus", {
+                        reason: status.runtime.reasonCode,
+                      })
+                    : t("heldStatus", { reason: status.runtime.reasonCode })
                   : t("loading"))}
             </span>
           </div>
@@ -213,7 +217,7 @@ export default function AgentCenter({
         {activeTab === "skills" ? (
           <PackageSkills {...shared} />
         ) : activeTab === "runs" ? (
-          <Runs {...shared} />
+          <Runs {...shared} status={status} reloadStatus={loadStatus} />
         ) : activeTab === "schedules" ? (
           <Schedules {...shared} />
         ) : status?.isAdministrator ? (
@@ -238,6 +242,11 @@ interface PanelProps {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   announce: (message: string) => void;
+}
+
+interface RunsProps extends PanelProps {
+  status: AgentCenterStatusDTO | null;
+  reloadStatus: () => Promise<void>;
 }
 
 function PackageSkills({ selectedId, onSelect, announce }: PanelProps) {
@@ -470,7 +479,13 @@ function PackageSkills({ selectedId, onSelect, announce }: PanelProps) {
   );
 }
 
-function Runs({ selectedId, onSelect, announce }: PanelProps) {
+function Runs({
+  selectedId,
+  onSelect,
+  announce,
+  status,
+  reloadStatus,
+}: RunsProps) {
   const t = useTranslations("AgentCenter");
   const client = useMemo(() => createNeoChatApiClient(), []);
   const [runs, setRuns] = useState<AgentRunSummaryDTO[]>([]);
@@ -541,6 +556,24 @@ function Runs({ selectedId, onSelect, announce }: PanelProps) {
     }
   };
 
+  const enqueueCanary = async () => {
+    if (!status?.shadow.effective) return;
+    setAction("enqueue-canary");
+    try {
+      const request = await client.agentCenter.enqueueRun({
+        expectedPolicyRevision: status.shadow.policy.revision,
+        expectedGeneration: status.shadow.optIn.generation,
+      });
+      announce(t("canaryQueued", { id: request.id }));
+      await Promise.all([load(), reloadStatus()]);
+    } catch (error) {
+      announce(errorMessage(error, t("actionFailed")));
+      await reloadStatus();
+    } finally {
+      setAction("");
+    }
+  };
+
   const decide = async (
     approval: AgentRunDetailDTO["approvals"][number],
     decision: "approved" | "denied",
@@ -596,6 +629,32 @@ function Runs({ selectedId, onSelect, announce }: PanelProps) {
       list={
         <>
           <PanelHeader title={t("runs")} onReload={() => void load()} />
+          {status?.shadow.effective ? (
+            <div className="border-b px-4 py-3">
+              <button
+                type="button"
+                onClick={() => void enqueueCanary()}
+                disabled={action === "enqueue-canary"}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-cyan-500 dark:text-slate-950"
+              >
+                {action === "enqueue-canary" ? (
+                  <Loader2
+                    size={16}
+                    className="animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Activity size={16} aria-hidden="true" />
+                )}
+                {t("runProductCanary")}
+              </button>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {t("canaryRemaining", {
+                  count: status.shadow.productCanary.remainingRequests,
+                })}
+              </p>
+            </div>
+          ) : null}
           <div className="p-4">
             {loading ? (
               <Loading />

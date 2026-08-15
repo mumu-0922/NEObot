@@ -160,7 +160,7 @@ activation held.
 
 - Add independent `cron_worker` and `draft_learning_worker` activation stages,
   default-off Compose profiles and eleventh/twelfth PostgreSQL LOGINs. Require
-  current G21.0-G21.4 evidence and migration head `094`; neither stage enables
+  current G21.0-G21.4 evidence and migration head `095`; neither stage enables
   or reads the other.
 - Add migration `094_agent_cron_learning_activation` with immutable operator-
   provisioned exact targets plus disjoint `agent_cron_worker` and
@@ -186,7 +186,7 @@ activation held.
   target and object-before-row after the separate human decision.
 - Prove two due Templates/two quarantined Drafts, claim isolation, crash/replay,
   real LOGIN denials, dump/restore, guarded down and clean down/up. Advance every
-  older PostgreSQL tail drill to final head `094`.
+  older PostgreSQL tail drill to final head `095`.
 
 Promotion gate: run `scripts/verify-agent-runtime-g21-5.sh`, then reproduce
 fresh exact-host READY evidence independently for the reviewed Cron and Draft
@@ -197,11 +197,53 @@ Scheduler/Learning, autonomous promotion or a product cohort.
 
 ## G21.6 — Product canary and final closure
 
-Expose a bounded eligible cohort only after all prior stages hold current
-evidence. Run clean-copy/restart/reboot, paired backup/restore, disaster
-recovery, rollback/forward-fix, rotations, alerts, capacity and final cleanup.
-The exact release must evaluate to `PROMOTION_READY`; temporary evidence is
-removed while content-free incident/audit authority remains.
+Status: source/control implementation complete; exact-host product activation
+and final promotion held.
+
+- Add migration `095_agent_product_canary_activation` with immutable bounded
+  activation, append-only current-user requests, generation-fenced claims,
+  terminal receipts and final-promotion facts.
+- Give `go_api_runtime` only status/enqueue functions. The strict request body
+  carries the expected Shadow policy revision and opt-in generation; the server
+  owns request ID/fingerprint and accepts no execution payload or override.
+- Add the thirteenth LOGIN with exactly `agent_product_canary_worker`,
+  `agent_orchestrator_runtime` and `agent_runner_control`. Keep the worker role
+  function-only and API/worker/operator authority disjoint.
+- Add the seventh caller `spiffe://neo-chat/agent-runtime-product-canary` with
+  Probe/List/Reconcile/Launch/Heartbeat/Cancel only. Preserve every earlier
+  caller and relay policy.
+- Freeze one private bounded-smoke plan: fixed image/argv, UID/GID `10001`,
+  depth zero, empty Tool Registry, read-only rootfs, `networkMode=none`, no
+  Egress/Secrets and strict CPU/memory/PID/wall/output/scratch limits.
+- Require a fresh production `product_canary` activation binding migration head
+  `095`, the exact release/policy/Package/Runtime/plan and seven distinct
+  G21.0-G21.5 evidence fingerprints. Activation expiry, disablement, drift,
+  budget or Kill Switch blocks new requests immediately.
+- Bind completion to one exact request, Run, Attempt, snapshot, plan and
+  content-free receipt. PostgreSQL independently derives request/receipt
+  fingerprints; concurrent enqueue converges on one request, and expired claims
+  pass through bounded reconcile before reclaim. Crash/restart reuses the same
+  idempotency key and waits lost lease/authority expiry before reconciliation.
+- Keep health read-only: query stale claims and pending terminalizations, then
+  require Runner Probe/List to report zero Sandbox residue.
+- Keep final promotion separate: only the operator may append a
+  `PROMOTION_READY` fact binding the exact activation, receipt, release and
+  closure fingerprint after the read-only evaluator passes.
+- Extend closure with the full activation chain, exact product receipt,
+  product queue/stale/failure/budget metrics and zero temporary product
+  request/claim/receipt residue while retaining sanitized promotion/audit facts.
+- Prove enabled preflight, PostgreSQL ACL/lease/replay/dump/restore/down-up,
+  canonical/concurrent enqueue, read-only health, activation/closure, Compose,
+  frontend, Phase 0, G21.0-G21.5 regression and full standalone. Every older
+  tail drill peels the empty `095` tail before its earlier guard and returns to
+  head `095`.
+
+Promotion gate: run `scripts/verify-agent-runtime-g21-6.sh`, then reproduce the
+exact-host clean-copy/restart/reboot, paired backup/restore, DR,
+rollback/forward-fix, rotation, alerts, capacity and cleanup matrix. The exact
+release must evaluate to `PROMOTION_READY`. Offline fixtures, disposable
+PostgreSQL and this development host cannot create activation or promotion
+authority.
 
 ## Epic completion
 

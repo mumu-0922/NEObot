@@ -1,7 +1,7 @@
 {
   "schemaVersion": "neo.agent-production-policy/v1",
   "policyRevision": "agent-runtime-single-server-v1",
-  "migrationHead": 94,
+  "migrationHead": 95,
   "reviewWindowHours": 24,
   "capacity": {
     "maxConcurrentRootRuns": 2,
@@ -77,7 +77,11 @@
       "agent_reconcile_total",
       "agent_run_duration_seconds",
       "agent_queue_wait_seconds",
-      "agent_budget_usage_ratio"
+      "agent_budget_usage_ratio",
+      "agent_product_canary_request_queue_depth",
+      "agent_product_canary_stale_claims",
+      "agent_product_canary_failure_total",
+      "agent_product_canary_budget_remaining"
     ],
     "alerts": [
       {
@@ -121,6 +125,30 @@
         "severity": "ticket",
         "threshold": 100,
         "windowMinutes": 30
+      },
+      {
+        "id": "product_canary_request_queue_sustained",
+        "severity": "ticket",
+        "threshold": 1,
+        "windowMinutes": 15
+      },
+      {
+        "id": "product_canary_stale_claim",
+        "severity": "page",
+        "threshold": 1,
+        "windowMinutes": 1
+      },
+      {
+        "id": "product_canary_failure",
+        "severity": "page",
+        "threshold": 1,
+        "windowMinutes": 1
+      },
+      {
+        "id": "product_canary_budget_exhausted",
+        "severity": "ticket",
+        "threshold": 0,
+        "windowMinutes": 1
       }
     ]
   }

@@ -89,3 +89,11 @@ Sandbox is independently inspected for empty capabilities and
 
 The unit intentionally does not use Docker, `sudo`, `--privileged`, host
 network, an application Compose service, or a database/object-store credential.
+
+G21.6 may set `NEO_RUNNER_PRODUCT_CANARY_CLIENT_IDENTITY` only to
+`spiffe://neo-chat/agent-runtime-product-canary`, and only after all six earlier
+execution callers are installed with distinct identities. That seventh caller
+receives Probe/List/Reconcile/Launch/Heartbeat/Cancel only; it receives no
+Result, Prepare, Commit or relay route. Keep the variable empty on development
+and inactive targets. The product worker's database URL, activation/plan files
+and Ed25519 private key never enter this host environment or any Sandbox.

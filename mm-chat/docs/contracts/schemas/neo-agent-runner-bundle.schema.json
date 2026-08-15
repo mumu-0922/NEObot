@@ -16,7 +16,10 @@
       "const": "neo.agent-runner-bundle/v1"
     },
     "evidenceClass": {
-      "enum": ["template", "production"]
+      "enum": [
+        "template",
+        "production"
+      ]
     },
     "release": {
       "type": "object",
@@ -34,7 +37,7 @@
           "pattern": "^[0-9a-f]{40}$"
         },
         "migrationHead": {
-          "const": 94
+          "const": 95
         },
         "goVersion": {
           "type": "string",
@@ -44,7 +47,10 @@
           "const": "linux"
         },
         "targetArch": {
-          "enum": ["amd64", "arm64"]
+          "enum": [
+            "amd64",
+            "arm64"
+          ]
         }
       }
     },
@@ -55,14 +61,22 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["path", "mode", "size", "sha256"],
+        "required": [
+          "path",
+          "mode",
+          "size",
+          "sha256"
+        ],
         "properties": {
           "path": {
             "type": "string",
             "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,127}$"
           },
           "mode": {
-            "enum": ["0644", "0755"]
+            "enum": [
+              "0644",
+              "0755"
+            ]
           },
           "size": {
             "type": "integer",

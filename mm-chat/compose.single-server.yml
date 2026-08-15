@@ -1230,6 +1230,113 @@ services:
       start_period: 10s
     networks: [private]
 
+  agent-runtime-product-canary:
+    image: ${BACKEND_IMAGE:-mm-chat/backend:local}
+    build: *backend-build
+    restart: unless-stopped
+    profiles: ["agent-runtime-product-canary"]
+    init: true
+    user: "${MM_CHAT_RUNTIME_UID:-1000}:${MM_CHAT_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 48
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m,mode=1777
+    environment:
+      AGENT_PRODUCT_CANARY_ENABLED: ${AGENT_PRODUCT_CANARY_ENABLED:-false}
+      AGENT_RUNNER_CONTROL_ENABLED: ${AGENT_RUNNER_CONTROL_ENABLED:-false}
+      AGENT_ROOT_RUN_CANARY_ENABLED: ${AGENT_ROOT_RUN_CANARY_ENABLED:-false}
+      AGENT_BROKER_ARTIFACT_CANARY_ENABLED: ${AGENT_BROKER_ARTIFACT_CANARY_ENABLED:-false}
+      AGENT_PROJECT_MUTATION_CANARY_ENABLED: ${AGENT_PROJECT_MUTATION_CANARY_ENABLED:-false}
+      AGENT_CHILD_CANARY_ENABLED: ${AGENT_CHILD_CANARY_ENABLED:-false}
+      AGENT_CRON_WORKER_ENABLED: ${AGENT_CRON_WORKER_ENABLED:-false}
+      AGENT_DRAFT_LEARNING_WORKER_ENABLED: ${AGENT_DRAFT_LEARNING_WORKER_ENABLED:-false}
+      AGENT_RUNTIME_ENABLED: ${AGENT_RUNTIME_ENABLED:-false}
+      AGENT_SCHEDULER_ENABLED: ${AGENT_SCHEDULER_ENABLED:-false}
+      AGENT_LEARNING_ENABLED: ${AGENT_LEARNING_ENABLED:-false}
+      AGENT_SKILL_INSTALL_ENABLED: ${AGENT_SKILL_INSTALL_ENABLED:-false}
+      AGENT_PRODUCT_CANARY_DATABASE_URL: ${AGENT_PRODUCT_CANARY_DATABASE_URL:-postgres://agent_product_canary_app:change-me-agent-product-canary-postgres@postgres:5432/neo_chat?sslmode=disable}
+      AGENT_PRODUCT_CANARY_ACTIVATION_ID: ${AGENT_PRODUCT_CANARY_ACTIVATION_ID:-activation_0000000000000001}
+      AGENT_PRODUCT_CANARY_RUNNER_URL: ${AGENT_PRODUCT_CANARY_RUNNER_URL:-https://127.0.0.1:9443/internal/neo-runner/v1/rpc}
+      AGENT_PRODUCT_CANARY_RUNNER_ID: ${AGENT_PRODUCT_CANARY_RUNNER_ID:-neo-runner-primary}
+      AGENT_PRODUCT_CANARY_SERVER_NAME: ${AGENT_PRODUCT_CANARY_SERVER_NAME:-neo-runner.internal}
+      AGENT_PRODUCT_CANARY_CLIENT_IDENTITY: ${AGENT_PRODUCT_CANARY_CLIENT_IDENTITY:-spiffe://neo-chat/agent-runtime-product-canary}
+      AGENT_PRODUCT_CANARY_CLIENT_CERT_FILE: /run/agent-runtime-product-canary/client.crt
+      AGENT_PRODUCT_CANARY_CLIENT_KEY_FILE: /run/agent-runtime-product-canary/client.key
+      AGENT_PRODUCT_CANARY_SERVER_CA_FILE: /run/agent-runtime-product-canary/server-ca.crt
+      AGENT_PRODUCT_CANARY_RELEASE_MANIFEST_FILE: /run/agent-runtime-product-canary/release-manifest.json
+      AGENT_PRODUCT_CANARY_PRODUCTION_POLICY_FILE: /etc/mm-chat/agent-runtime-product-canary/production-policy.json
+      AGENT_PRODUCT_CANARY_ACTIVATION_FILE: /run/agent-runtime-product-canary/activation.json
+      AGENT_PRODUCT_CANARY_PLAN_FILE: /run/agent-runtime-product-canary/plan.json
+      AGENT_PRODUCT_CANARY_AUTHORITY_PRIVATE_KEY_FILE: /run/agent-runtime-product-canary/authority-private-key
+      AGENT_PRODUCT_CANARY_AUTHORITY_PUBLIC_KEY_FILE: /run/agent-runtime-product-canary/authority-public-key
+      AGENT_PRODUCT_CANARY_RELEASE_GIT_COMMIT: ${AGENT_PRODUCT_CANARY_RELEASE_GIT_COMMIT:-0000000000000000000000000000000000000000}
+      AGENT_PRODUCT_CANARY_CLAIM_OWNER: ${AGENT_PRODUCT_CANARY_CLAIM_OWNER:-product-canary-worker-primary}
+      AGENT_PRODUCT_CANARY_POLL_INTERVAL: ${AGENT_PRODUCT_CANARY_POLL_INTERVAL:-5s}
+      AGENT_PRODUCT_CANARY_CLAIM_TTL: ${AGENT_PRODUCT_CANARY_CLAIM_TTL:-5m}
+      AGENT_PRODUCT_CANARY_RPC_TIMEOUT: ${AGENT_PRODUCT_CANARY_RPC_TIMEOUT:-10s}
+      AGENT_PRODUCT_CANARY_AUTHORITY_TTL: ${AGENT_PRODUCT_CANARY_AUTHORITY_TTL:-10s}
+      AGENT_PRODUCT_CANARY_BATCH_SIZE: ${AGENT_PRODUCT_CANARY_BATCH_SIZE:-20}
+    volumes:
+      - type: bind
+        source: ${AGENT_PRODUCT_CANARY_CLIENT_CERT_SOURCE:-./secrets/agent-runtime-product-canary/client.crt}
+        target: /run/agent-runtime-product-canary/client.crt
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PRODUCT_CANARY_CLIENT_KEY_SOURCE:-./secrets/agent-runtime-product-canary/client.key}
+        target: /run/agent-runtime-product-canary/client.key
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PRODUCT_CANARY_SERVER_CA_SOURCE:-./secrets/agent-runtime-product-canary/server-ca.crt}
+        target: /run/agent-runtime-product-canary/server-ca.crt
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PRODUCT_CANARY_RELEASE_MANIFEST_SOURCE:-./secrets/agent-runtime-product-canary/release-manifest.json}
+        target: /run/agent-runtime-product-canary/release-manifest.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PRODUCT_CANARY_PRODUCTION_POLICY_SOURCE:-./config/agent-runner/production-policy.json}
+        target: /etc/mm-chat/agent-runtime-product-canary/production-policy.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PRODUCT_CANARY_ACTIVATION_SOURCE:-./secrets/agent-runtime-product-canary/activation.json}
+        target: /run/agent-runtime-product-canary/activation.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PRODUCT_CANARY_PLAN_SOURCE:-./secrets/agent-runtime-product-canary/plan.json}
+        target: /run/agent-runtime-product-canary/plan.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PRODUCT_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE:-./secrets/agent-runtime-product-canary/authority-private-key}
+        target: /run/agent-runtime-product-canary/authority-private-key
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PRODUCT_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE:-./secrets/agent-runtime-product-canary/authority-public-key}
+        target: /run/agent-runtime-product-canary/authority-public-key
+        read_only: true
+        bind: { create_host_path: false }
+    depends_on:
+      postgres: { condition: service_healthy }
+    command: ["/usr/local/bin/mm-chat-agent-runtime-product-canary", "run"]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/mm-chat-agent-runtime-product-canary", "healthcheck"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 10s
+    networks: [private]
+
   frontend:
     image: ${FRONTEND_IMAGE:-mm-chat/frontend:local}
     build: *frontend-build

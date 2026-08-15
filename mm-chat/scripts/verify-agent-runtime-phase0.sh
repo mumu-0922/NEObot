@@ -174,6 +174,23 @@ required_agent_paths=(
   "${project_dir}/scripts/verify-agent-draft-learning-worker-postgres17.sh"
   "${project_dir}/scripts/verify-agent-runtime-g21-5-preflight.sh"
   "${project_dir}/scripts/verify-agent-runtime-g21-5.sh"
+  "${project_dir}/backend/cmd/agent-runtime-product-canary/main.go"
+  "${project_dir}/backend/internal/agentactivation/product_canary.go"
+  "${project_dir}/backend/internal/agentproductcanary/plan.go"
+  "${project_dir}/backend/internal/agentproductcanary/service.go"
+  "${project_dir}/backend/internal/agentproductcanary/repository_postgres.go"
+  "${project_dir}/backend/migrations/095_agent_product_canary_activation.up.sql"
+  "${project_dir}/backend/migrations/095_agent_product_canary_activation.down.sql"
+  "${project_dir}/docs/contracts/schemas/neo-agent-product-canary-activation.schema.json"
+  "${project_dir}/docs/contracts/schemas/neo-agent-product-canary-plan.schema.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-product-canary-activation.valid.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-product-canary-activation.invalid.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-product-canary-plan.valid.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-product-canary-plan.invalid.json"
+  "${project_dir}/scripts/verify-agent-product-canary-activation.sh"
+  "${project_dir}/scripts/verify-agent-product-canary-postgres17.sh"
+  "${project_dir}/scripts/verify-agent-runtime-g21-6-preflight.sh"
+  "${project_dir}/scripts/verify-agent-runtime-g21-6.sh"
 )
 for path in "${required_agent_paths[@]}"; do
   if [[ ! -s "${path}" ]]; then
@@ -246,6 +263,12 @@ grep -Fq "TO agent_learning_worker;" \
   "${project_dir}/backend/migrations/094_agent_cron_learning_activation.up.sql"
 grep -Fq "AGENT_WORKER_DOWN_RETAINED_ACTIVATION_FACTS" \
   "${project_dir}/backend/migrations/094_agent_cron_learning_activation.down.sql"
+grep -Fq "CREATE FUNCTION agent_product_canary_enqueue(" \
+  "${project_dir}/backend/migrations/095_agent_product_canary_activation.up.sql"
+grep -Fq "CREATE FUNCTION agent_product_canary_record_promotion(" \
+  "${project_dir}/backend/migrations/095_agent_product_canary_activation.up.sql"
+grep -Fq "AGENT_PRODUCT_CANARY_DOWN_REQUIRES_EMPTY" \
+  "${project_dir}/backend/migrations/095_agent_product_canary_activation.down.sql"
 
 schema_dir="${project_dir}/docs/contracts/schemas"
 fixture_dir="${project_dir}/docs/contracts/fixtures/agent-runtime"
@@ -278,6 +301,10 @@ bash -n "${project_dir}/scripts/verify-agent-draft-learning-worker.sh"
 bash -n "${project_dir}/scripts/verify-agent-draft-learning-worker-postgres17.sh"
 bash -n "${project_dir}/scripts/verify-agent-runtime-g21-5-preflight.sh"
 bash -n "${project_dir}/scripts/verify-agent-runtime-g21-5.sh"
+bash -n "${project_dir}/scripts/verify-agent-product-canary-activation.sh"
+bash -n "${project_dir}/scripts/verify-agent-product-canary-postgres17.sh"
+bash -n "${project_dir}/scripts/verify-agent-runtime-g21-6-preflight.sh"
+bash -n "${project_dir}/scripts/verify-agent-runtime-g21-6.sh"
 
 bash "${project_dir}/scripts/verify-agent-runtime-g21-2.sh"
 bash "${project_dir}/scripts/verify-agent-project-canary-activation.sh"
@@ -285,6 +312,8 @@ bash "${project_dir}/scripts/verify-agent-child-canary-activation.sh"
 bash "${project_dir}/scripts/verify-agent-cron-worker.sh"
 bash "${project_dir}/scripts/verify-agent-draft-learning-worker.sh"
 bash "${project_dir}/scripts/verify-agent-runtime-g21-5-preflight.sh"
+bash "${project_dir}/scripts/verify-agent-product-canary-activation.sh"
+bash "${project_dir}/scripts/verify-agent-runtime-g21-6-preflight.sh"
 
 isolated_root="$(mktemp -d)"
 cleanup() {
@@ -319,6 +348,8 @@ cp "${project_dir}/backend/migrations/090_agent_product_shadow.up.sql" \
   "${project_dir}/backend/migrations/093_agent_child_canary_reap_transport.down.sql" \
   "${project_dir}/backend/migrations/094_agent_cron_learning_activation.up.sql" \
   "${project_dir}/backend/migrations/094_agent_cron_learning_activation.down.sql" \
+  "${project_dir}/backend/migrations/095_agent_product_canary_activation.up.sql" \
+  "${project_dir}/backend/migrations/095_agent_product_canary_activation.down.sql" \
   "${isolated_root}/mm-chat/backend/migrations/"
 cp "${project_dir}/frontend/src/store/storage/legacySkillRetirement.ts" \
   "${isolated_root}/mm-chat/frontend/src/store/storage/"

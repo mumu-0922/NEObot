@@ -499,7 +499,7 @@ The G20.9 cutover:
    execution.
 
 G20.10 adds no migration or executable wiring. The current closure contract
-binds the immutable release, migration head `094`, Runner manifest/binary,
+binds the immutable release, migration head `095`, Runner manifest/binary,
 Runtime Bundle, target deployment
 and operations policy into one strict content-free closure record. The
 read-only evaluator requires all 16 live checks plus zero temporary evidence
@@ -714,6 +714,43 @@ immutable package version; cleanup remains target-scoped and object-before-row.
 Rollback stops either profile independently and keeps migration `094` plus its
 audit facts. Checked-in evidence remains template-only, so this host continues
 to report `ISOLATION_UNAVAILABLE`.
+
+G21.6 adds the authenticated product-canary bridge without opening generic
+Agent execution. `POST /v1/agent-center/runs` accepts only the current Shadow
+policy revision and opt-in generation. The API generates the request identity
+and fingerprint. Migration `095_agent_product_canary_activation` independently
+derives the same canonical fingerprint, serializes concurrent submissions for
+the same user/policy/generation and atomically rechecks user, cohort, opt-in,
+policy, admitted Package/Runtime, bounded activation, budget and Kill Switch
+before appending an immutable request. The API owns no lease, plan, Runner or
+Orchestrator authority.
+
+`mm-chat-agent-runtime-product-canary` is a separate default-off worker. Its
+thirteenth LOGIN inherits exactly `agent_product_canary_worker`,
+`agent_orchestrator_runtime` and `agent_runner_control`; the NOLOGIN worker role
+itself remains function-only. The seventh execution caller,
+`spiffe://neo-chat/agent-runtime-product-canary`, receives only Probe, List,
+Reconcile, Launch, Heartbeat and Cancel. A private strict plan fixes one bounded
+smoke argv, depth zero, empty Tool Registry, read-only rootfs,
+`networkMode=none`, no Egress/Secrets and hard resource limits. Only user and
+stable request-derived idempotency binding vary.
+
+Expired claims are never acquired directly: reconcile first records the failed
+lease and consumes the bounded retry budget. Completion independently derives
+the receipt fingerprint and accepts only the exact request idempotency key,
+ordinal-zero `product_canary` Step and terminal Run/Attempt. Health is a
+read-only PostgreSQL stale/pending query plus Runner Probe/List zero-residue
+proof; it does not call reconcile.
+
+The product activation binds migration head `095`, the exact release/policy,
+Package/Runtime/plan and seven distinct G21.0-G21.5 evidence fingerprints. A
+terminal request binds one Run, Attempt, snapshot, plan and content-free
+receipt. Final promotion is a separate append-only operator fact and can bind
+only the same activation/receipt plus an externally evaluated
+`PROMOTION_READY` closure fingerprint. API and workers cannot provision,
+disable or promote. Rollback stops the profile and disables the activation
+while retaining immutable request, receipt, promotion, incident and audit
+facts.
 
 The current `/v1/code/executions` remains fail closed. Agent Runtime must not use
 that placeholder route as an isolation shortcut.

@@ -65,6 +65,10 @@ REQUIRED_METRICS = {
     "agent_run_duration_seconds",
     "agent_queue_wait_seconds",
     "agent_budget_usage_ratio",
+    "agent_product_canary_request_queue_depth",
+    "agent_product_canary_stale_claims",
+    "agent_product_canary_failure_total",
+    "agent_product_canary_budget_remaining",
 }
 REQUIRED_ALERTS = {
     "runtime_enabled_not_ready",
@@ -74,6 +78,10 @@ REQUIRED_ALERTS = {
     "orphan_after_two_reconciles",
     "queue_capacity_sustained",
     "cleanup_backlog_sustained",
+    "product_canary_request_queue_sustained",
+    "product_canary_stale_claim",
+    "product_canary_failure",
+    "product_canary_budget_exhausted",
 }
 
 
@@ -229,7 +237,7 @@ def validate_policy(policy: dict[str, Any]) -> int:
     if policy["schemaVersion"] != "neo.agent-production-policy/v1":
         fail("POLICY_VERSION_INVALID")
     require_safe_id(policy["policyRevision"], "POLICY_REVISION_INVALID")
-    if policy["migrationHead"] != 94:
+    if policy["migrationHead"] != 95:
         fail("POLICY_MIGRATION_HEAD_INVALID")
     review_hours = require_integer(
         policy["reviewWindowHours"], 1, 24, "POLICY_REVIEW_WINDOW_INVALID"
@@ -383,6 +391,8 @@ def validate_record(
             "evidenceClass",
             "release",
             "target",
+            "activationChain",
+            "productCanary",
             "window",
             "checks",
             "cleanup",
@@ -426,6 +436,62 @@ def validate_record(
     policy_fingerprint = "sha256:" + hashlib.sha256(policy_raw).hexdigest()
     if release["operationsPolicySha256"] != policy_fingerprint:
         fail("POLICY_FINGERPRINT_MISMATCH")
+
+    activation_chain = require_keys(
+        record["activationChain"],
+        {
+            "controlPlane",
+            "rootRun",
+            "brokerArtifact",
+            "projectMutation",
+            "depthOneChild",
+            "cronWorker",
+            "draftLearning",
+        },
+        "ACTIVATION_CHAIN_INVALID",
+    )
+    activation_fingerprints = [
+        require_fingerprint(activation_chain[key], "ACTIVATION_CHAIN_INVALID")
+        for key in (
+            "controlPlane",
+            "rootRun",
+            "brokerArtifact",
+            "projectMutation",
+            "depthOneChild",
+            "cronWorker",
+            "draftLearning",
+        )
+    ]
+    if record["evidenceClass"] == "production" and len(
+        set(activation_fingerprints)
+    ) != len(activation_fingerprints):
+        fail("ACTIVATION_CHAIN_INVALID")
+
+    product_canary = require_keys(
+        record["productCanary"],
+        {
+            "activationFingerprint",
+            "requestFingerprint",
+            "runSnapshotFingerprint",
+            "planFingerprint",
+            "receiptFingerprint",
+        },
+        "PRODUCT_CANARY_BINDING_INVALID",
+    )
+    product_fingerprints = [
+        require_fingerprint(product_canary[key], "PRODUCT_CANARY_BINDING_INVALID")
+        for key in (
+            "activationFingerprint",
+            "requestFingerprint",
+            "runSnapshotFingerprint",
+            "planFingerprint",
+            "receiptFingerprint",
+        )
+    ]
+    if record["evidenceClass"] == "production" and len(
+        set(product_fingerprints)
+    ) != len(product_fingerprints):
+        fail("PRODUCT_CANARY_BINDING_INVALID")
 
     target = require_keys(
         record["target"],
@@ -490,6 +556,9 @@ def validate_record(
             "temporaryDrafts",
             "temporaryArtifacts",
             "temporaryRunEvidence",
+            "temporaryProductRequests",
+            "temporaryProductClaims",
+            "temporaryProductReceipts",
             "orphanSandboxes",
             "scratchResidue",
             "promotionRecordRetained",
@@ -503,6 +572,9 @@ def validate_record(
             "temporaryDrafts",
             "temporaryArtifacts",
             "temporaryRunEvidence",
+            "temporaryProductRequests",
+            "temporaryProductClaims",
+            "temporaryProductReceipts",
             "orphanSandboxes",
             "scratchResidue",
         )
@@ -533,6 +605,8 @@ def validate_record(
         return "PROMOTION_HELD", "NON_PRODUCTION_EVIDENCE"
     if (
         ZERO_FINGERPRINT in release_fingerprints
+        or ZERO_FINGERPRINT in activation_fingerprints
+        or ZERO_FINGERPRINT in product_fingerprints
         or target_fingerprint == ZERO_FINGERPRINT
         or ZERO_FINGERPRINT in evidence_fingerprints
         or reviewer_fingerprint == ZERO_FINGERPRINT

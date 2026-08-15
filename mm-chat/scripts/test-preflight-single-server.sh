@@ -168,7 +168,7 @@ execution_stage_enabled="${temp_dir}/execution-stage-enabled.env"
 sed 's|^AGENT_RUNTIME_ENABLED=false$|AGENT_RUNTIME_ENABLED=true|' \
   "${valid}" >"${execution_stage_enabled}"
 chmod 600 "${execution_stage_enabled}"
-assert_rejected "${execution_stage_enabled}" "AGENT_RUNTIME_ENABLED must remain false through G21.5"
+assert_rejected "${execution_stage_enabled}" "AGENT_RUNTIME_ENABLED must remain false through G21.6"
 
 invalid_broker_canary_boolean="${temp_dir}/invalid-broker-canary-boolean.env"
 sed 's|^AGENT_BROKER_ARTIFACT_CANARY_ENABLED=false$|AGENT_BROKER_ARTIFACT_CANARY_ENABLED=maybe|' \

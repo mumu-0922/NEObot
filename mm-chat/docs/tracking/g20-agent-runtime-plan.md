@@ -191,7 +191,7 @@ sanitized audit and bounded cleanup; strict `neo.cron-template/v1` schema and
 fixtures; focused race/vet plus `verify-agent-cron{,-postgres17}.sh` fresh/
 replay, concurrency, restart, acknowledgement replay, overlap, revocation,
 least-privilege, guarded-down, dump/restore and clean down/up proof. Every older
-PostgreSQL tail drill now returns through the current head `094`.
+PostgreSQL tail drill now returns through the current head `095`.
 
 Held evidence: public Cron CRUD/trigger/backfill API, frontend/Chat integration,
 startup/Redis Scheduler, production Run execution and exact-host promotion. The
@@ -224,7 +224,7 @@ exact three-check generation claims, append-only decisions/audits, atomic new
 rollback; strict `neo.skill-draft/v1` schema/fixtures; focused race/vet plus
 `verify-agent-learning{,-postgres17}.sh` fresh/replay, least-privilege, stale
 claims, decision replay, cleanup, dump/restore and clean down/up proof. Every
-older PostgreSQL tail drill returns to head `094`.
+older PostgreSQL tail drill returns to head `095`.
 
 Held evidence: Chat wiring, startup/Redis learning worker, live Provider
 evaluation, production Draft execution/canary and exact-host isolation. The
@@ -260,7 +260,7 @@ focus restoration and live status states; strict typed/Zod server client and
 authenticated Artifact stream; deterministic local content-free legacy Skill
 inventory, explicit local raw backup and deletion dry-run with no mutation;
 `verify-agent-product-shadow{,-postgres17}.sh` plus every older Agent/MCP/
-Assistant/Skill PostgreSQL tail drill returning to head `094`.
+Assistant/Skill PostgreSQL tail drill returning to head `095`.
 
 Held evidence: the current host remains `ISOLATION_UNAVAILABLE`; no package
 executes in the API/browser, no executable Shadow job is scheduled, and no
@@ -292,7 +292,7 @@ workspace/catalog/service/resolver/prompt injection; history collapse to
 create/update/read stripping; default-dry-run PostgreSQL cutover requiring an
 exact count and full-backup SHA-256 fingerprint while deleting only
 `metadata.activeSkills`; G20.9 itself added no migration. Focused source and
-PostgreSQL 17 gates now finish at the current G21.5 schema head `094`.
+PostgreSQL 17 gates now finish at the current G21.6 schema head `095`.
 
 Held evidence: this source cutover does not claim a live database was modified
 or the production rollback window was exercised. Package Skills are now the
@@ -348,7 +348,16 @@ membership is enforced inside locking SQL and introduces no Runner/object
 credential. Draft isolation/evaluation uses non-Orchestrator attempts, strict
 result artifacts and cancel-before-receipt cleanup while preserving separate
 human Promote. The current schema head and every guarded older tail drill now
-return to `094`; generic Scheduler/Learning and product cohorts remain disabled.
+return to `095`; generic Scheduler/Learning and product cohorts remain disabled.
+
+G21.6 follow-on evidence adds migration `095`, the authenticated fixed-request
+handoff, a seventh lifecycle-only Runner caller, the thirteenth exact-membership
+LOGIN, immutable product receipts and separate final-promotion authority. The
+bounded activation requires all G21.0-G21.5 fingerprints and never opens prompt,
+Package selection, Broker effects, delegation, Scheduler, Learning, Egress or
+Secrets. All older guarded tail drills now peel the empty `095` tail first and
+return to head `095`; this development host remains
+`ISOLATION_UNAVAILABLE`.
 
 ## Epic completion definition
 

@@ -121,6 +121,16 @@ DRAFT_LEARNING_WORKER_CHECK_IDS = {
     "runner_result_acl",
     "rootless_isolation_evaluation",
 }
+PRODUCT_CANARY_CHECK_IDS = {
+    "crash_restart_recovery",
+    "exact_host_isolation",
+    "fixed_plan_ready",
+    "prior_activation_chain",
+    "private_mtls_canary",
+    "product_request_authority",
+    "worker_least_privilege",
+    "zero_residue",
+}
 FINGERPRINT = re.compile(r"^sha256:[0-9a-f]{64}$")
 IDENTITY = re.compile(r"^[A-Za-z][A-Za-z0-9_.:@/-]{0,127}$")
 DETAIL = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
@@ -255,7 +265,7 @@ def project_relay_endpoint_fingerprint(endpoint: str) -> str:
 def validate_policy(policy: dict[str, Any]) -> None:
     if (
         policy.get("schemaVersion") != "neo.agent-production-policy/v1"
-        or policy.get("migrationHead") != 94
+        or policy.get("migrationHead") != 95
     ):
         fail("POLICY_INVALID")
 
@@ -430,7 +440,7 @@ def validate_worker_record(
     if (
         not isinstance(release["gitCommit"], str)
         or re.fullmatch(r"[0-9a-f]{40}", release["gitCommit"]) is None
-        or release["migrationHead"] != 94
+        or release["migrationHead"] != 95
     ):
         fail("RELEASE_INVALID")
     release_fingerprints = [
@@ -716,6 +726,285 @@ def validate_worker_record(
     )
 
 
+def validate_product_canary_record(
+    record: dict[str, Any],
+    policy_raw: bytes,
+    now: datetime,
+    args: argparse.Namespace,
+) -> DecisionTuple:
+    exact(
+        record,
+        {
+            "schemaVersion",
+            "evidenceClass",
+            "stage",
+            "release",
+            "target",
+            "wiring",
+            "prerequisites",
+            "window",
+            "checks",
+            "authorization",
+            "cleanup",
+            "review",
+        },
+        "ACTIVATION_ROOT_INVALID",
+    )
+    if (
+        record["schemaVersion"] != "neo.agent-production-activation/v1"
+        or record["stage"] != "product_canary"
+    ):
+        fail("ACTIVATION_VERSION_INVALID")
+    if record["evidenceClass"] not in {"template", "production"}:
+        fail("EVIDENCE_CLASS_INVALID")
+
+    release = exact(
+        record["release"],
+        {
+            "gitCommit",
+            "migrationHead",
+            "runnerManifestSha256",
+            "runnerBinarySha256",
+            "operationsPolicySha256",
+        },
+        "RELEASE_INVALID",
+    )
+    if (
+        not isinstance(release["gitCommit"], str)
+        or re.fullmatch(r"[0-9a-f]{40}", release["gitCommit"]) is None
+        or release["migrationHead"] != 95
+    ):
+        fail("RELEASE_INVALID")
+    release_fingerprints = [
+        fingerprint(release[key], "RELEASE_INVALID")
+        for key in (
+            "runnerManifestSha256",
+            "runnerBinarySha256",
+            "operationsPolicySha256",
+        )
+    ]
+    policy_sha = "sha256:" + hashlib.sha256(policy_raw).hexdigest()
+    if release["operationsPolicySha256"] != policy_sha:
+        fail("POLICY_FINGERPRINT_MISMATCH")
+
+    target = exact(
+        record["target"], {"deploymentFingerprint", "runnerId"}, "TARGET_INVALID"
+    )
+    deployment_fingerprint = fingerprint(
+        target["deploymentFingerprint"], "TARGET_INVALID"
+    )
+    runner_id = identity(target["runnerId"], "TARGET_INVALID")
+
+    wiring = exact(
+        record["wiring"],
+        {
+            "activationId",
+            "endpointSha256",
+            "clientCertificateSha256",
+            "serverCASha256",
+            "serverName",
+            "callerIdentity",
+            "canaryPlanSha256",
+            "authorityPublicKeySha256",
+        },
+        "WIRING_INVALID",
+    )
+    if (
+        not isinstance(wiring["activationId"], str)
+        or re.fullmatch(r"activation_[a-z0-9]{16,64}", wiring["activationId"])
+        is None
+        or wiring["callerIdentity"]
+        != "spiffe://neo-chat/agent-runtime-product-canary"
+    ):
+        fail("WIRING_INVALID")
+    identity(wiring["serverName"], "WIRING_INVALID")
+    wiring_fingerprints = [
+        fingerprint(wiring[key], "WIRING_INVALID")
+        for key in (
+            "endpointSha256",
+            "clientCertificateSha256",
+            "serverCASha256",
+            "canaryPlanSha256",
+            "authorityPublicKeySha256",
+        )
+    ]
+
+    prerequisite_keys = {
+        "controlPlane",
+        "rootRun",
+        "brokerArtifact",
+        "projectMutation",
+        "depthOneChild",
+        "cronWorker",
+        "draftLearning",
+    }
+    prerequisites = exact(
+        record["prerequisites"], prerequisite_keys, "PREREQUISITE_INVALID"
+    )
+    prerequisite_fingerprints = [
+        fingerprint(prerequisites[key], "PREREQUISITE_INVALID")
+        for key in sorted(prerequisite_keys)
+    ]
+
+    window = exact(
+        record["window"], {"startedAt", "completedAt", "expiresAt"}, "WINDOW_INVALID"
+    )
+    started = timestamp(window["startedAt"], "WINDOW_INVALID")
+    completed = timestamp(window["completedAt"], "WINDOW_INVALID")
+    expires = timestamp(window["expiresAt"], "WINDOW_INVALID")
+    if not started <= completed < expires or expires - started > timedelta(hours=24):
+        fail("WINDOW_INVALID")
+
+    checks = record["checks"]
+    if not isinstance(checks, list) or len(checks) != len(PRODUCT_CANARY_CHECK_IDS):
+        fail("CHECK_SET_INCOMPLETE")
+    results: dict[str, str] = {}
+    check_fingerprints: list[str] = []
+    for value in checks:
+        item = exact(
+            value,
+            {"id", "result", "observedAt", "evidenceSha256", "detailCode"},
+            "CHECK_INVALID",
+        )
+        check_id = item["id"]
+        if check_id not in PRODUCT_CANARY_CHECK_IDS or check_id in results:
+            fail("CHECK_SET_INVALID")
+        if item["result"] not in {
+            "passed",
+            "failed",
+            "not_run",
+            "isolation_unavailable",
+        }:
+            fail("CHECK_INVALID")
+        observed = timestamp(item["observedAt"], "CHECK_INVALID")
+        if (
+            not started <= observed <= completed
+            or not isinstance(item["detailCode"], str)
+            or DETAIL.fullmatch(item["detailCode"]) is None
+        ):
+            fail("CHECK_INVALID")
+        check_fingerprints.append(
+            fingerprint(item["evidenceSha256"], "CHECK_INVALID")
+        )
+        results[check_id] = item["result"]
+    if set(results) != PRODUCT_CANARY_CHECK_IDS:
+        fail("CHECK_SET_INCOMPLETE")
+
+    authorization = exact(
+        record["authorization"],
+        {
+            "productCanary",
+            "genericRuntime",
+            "brokerEffects",
+            "delegation",
+            "scheduler",
+            "learning",
+            "egress",
+            "secrets",
+        },
+        "AUTHORIZATION_INVALID",
+    )
+    if authorization != {
+        "productCanary": True,
+        "genericRuntime": False,
+        "brokerEffects": False,
+        "delegation": False,
+        "scheduler": False,
+        "learning": False,
+        "egress": False,
+        "secrets": False,
+    }:
+        fail("AUTHORIZATION_WIDENED")
+
+    cleanup = exact(
+        record["cleanup"],
+        {"queuedRequests", "claimedRequests", "orphanSandboxes", "scratchResidue"},
+        "CLEANUP_INVALID",
+    )
+    for value in cleanup.values():
+        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 1_000_000:
+            fail("CLEANUP_INVALID")
+
+    review = exact(
+        record["review"],
+        {"decision", "reviewedAt", "reviewerFingerprint"},
+        "REVIEW_INVALID",
+    )
+    if review["decision"] not in {"approved", "held"}:
+        fail("REVIEW_INVALID")
+    reviewed = timestamp(review["reviewedAt"], "REVIEW_INVALID")
+    reviewer = fingerprint(review["reviewerFingerprint"], "REVIEW_INVALID")
+    if not completed <= reviewed <= now or not reviewed < expires:
+        fail("REVIEW_INVALID")
+
+    if results["exact_host_isolation"] == "isolation_unavailable":
+        return "ACTIVATION_HELD", "ISOLATION_UNAVAILABLE", release["gitCommit"]
+    if record["evidenceClass"] != "production":
+        return "ACTIVATION_HELD", "NON_PRODUCTION_EVIDENCE", release["gitCommit"]
+    if now < started or now >= expires or completed > now:
+        return "ACTIVATION_HELD", "EVIDENCE_STALE", release["gitCommit"]
+    if (
+        ZERO
+        in release_fingerprints
+        + wiring_fingerprints
+        + prerequisite_fingerprints
+        + check_fingerprints
+        + [deployment_fingerprint, reviewer]
+        or release["gitCommit"] == "0" * 40
+    ):
+        fail("PLACEHOLDER_BINDING_FORBIDDEN")
+    if len(set(prerequisite_fingerprints)) != len(prerequisite_fingerprints):
+        fail("PREREQUISITE_INVALID")
+    if any(value != "passed" for value in results.values()):
+        return "ACTIVATION_HELD", "LIVE_CHECK_NOT_PASSED", release["gitCommit"]
+    if any(cleanup.values()):
+        return "ACTIVATION_HELD", "RUNTIME_RESIDUE_REMAINS", release["gitCommit"]
+    if review["decision"] != "approved":
+        return "ACTIVATION_HELD", "REVIEW_HELD", release["gitCommit"]
+
+    required_args = (
+        args.release_manifest,
+        args.client_certificate,
+        args.server_ca,
+        args.canary_plan,
+        args.authority_public_key,
+        args.endpoint,
+        args.runner_id,
+        args.server_name,
+        args.caller_identity,
+        args.release_commit,
+        args.activation_id,
+    )
+    if any(value is None for value in required_args):
+        fail("WIRING_INVALID")
+    bindings = (
+        (args.release_manifest, release["runnerManifestSha256"], "RUNNER_MANIFEST_DRIFT"),
+        (args.client_certificate, wiring["clientCertificateSha256"], "CLIENT_CERTIFICATE_DRIFT"),
+        (args.server_ca, wiring["serverCASha256"], "SERVER_CA_DRIFT"),
+        (args.canary_plan, wiring["canaryPlanSha256"], "CANARY_PLAN_DRIFT"),
+        (args.authority_public_key, wiring["authorityPublicKeySha256"], "AUTHORITY_KEY_DRIFT"),
+    )
+    for path, expected, code in bindings:
+        assert path is not None
+        if file_fingerprint(path, code) != expected:
+            fail(code)
+    manifest, _ = load_document(args.release_manifest)
+    validate_release_manifest(manifest, args.runner_id)
+    if endpoint_fingerprint(args.endpoint) != wiring["endpointSha256"]:
+        fail("RUNNER_ENDPOINT_DRIFT")
+    if args.runner_id != runner_id:
+        fail("RUNNER_ID_DRIFT")
+    if args.server_name != wiring["serverName"]:
+        fail("SERVER_NAME_DRIFT")
+    if args.caller_identity != wiring["callerIdentity"]:
+        fail("CALLER_IDENTITY_DRIFT")
+    if args.release_commit != release["gitCommit"]:
+        fail("RELEASE_COMMIT_DRIFT")
+    if args.activation_id != wiring["activationId"]:
+        fail("ACTIVATION_ID_DRIFT")
+    return "ACTIVATION_READY", "PRODUCT_CANARY_GATES_PASSED", release["gitCommit"]
+
+
 def validate_record(
     record: dict[str, Any],
     policy_raw: bytes,
@@ -724,6 +1013,8 @@ def validate_record(
 ) -> tuple[str, str, str]:
     if record.get("stage") in {"cron_worker", "draft_learning_worker"}:
         return validate_worker_record(record, policy_raw, now, args)
+    if record.get("stage") == "product_canary":
+        return validate_product_canary_record(record, policy_raw, now, args)
     exact(
         record,
         {
@@ -792,7 +1083,7 @@ def validate_record(
     if (
         not isinstance(release["gitCommit"], str)
         or re.fullmatch(r"[0-9a-f]{40}", release["gitCommit"]) is None
-        or release["migrationHead"] != 94
+        or release["migrationHead"] != 95
     ):
         fail("RELEASE_INVALID")
     release_fingerprints = [
@@ -1191,6 +1482,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--server-name")
     parser.add_argument("--caller-identity")
     parser.add_argument("--release-commit")
+    parser.add_argument("--activation-id")
     return parser.parse_args()
 
 

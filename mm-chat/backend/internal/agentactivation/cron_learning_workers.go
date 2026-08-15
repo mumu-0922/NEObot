@@ -254,7 +254,7 @@ func readWorkerInputs(config WorkerConfig, now time.Time) ([]byte, string, []byt
 	var policy map[string]any
 	if strictjson.Decode(policyRaw, maxDocument, &policy) != nil ||
 		policy["schemaVersion"] != "neo.agent-production-policy/v1" ||
-		policy["migrationHead"] != float64(94) {
+		policy["migrationHead"] != float64(95) {
 		return nil, "", nil, Decision{ReasonCode: "POLICY_INVALID"}, ErrInvalid
 	}
 	policyFingerprint := fingerprint(policyRaw)
@@ -340,7 +340,7 @@ func validateWorkerBase(schema, evidenceClass, stage, expectedStage string, rele
 	if schema != SchemaVersion || stage != expectedStage || !member(evidenceClass, "template", "production") {
 		return "ACTIVATION_VERSION_INVALID"
 	}
-	if !commitPattern.MatchString(releaseValue.GitCommit) || releaseValue.MigrationHead != 94 ||
+	if !commitPattern.MatchString(releaseValue.GitCommit) || releaseValue.MigrationHead != 95 ||
 		releaseValue.GitCommit != releaseCommit ||
 		!validFingerprint(releaseValue.RunnerManifestSHA256) ||
 		!validFingerprint(releaseValue.RunnerBinarySHA256) ||

@@ -454,7 +454,7 @@ configuration.
 
 The offline operator signs one short-lived
 `neo.agent-project-mutation-approval/v1` document. It binds the exact release,
-head `094`, target, stable activation binding fingerprint, plan, caller,
+head `095`, target, stable activation binding fingerprint, plan, caller,
 request/idempotency identities, `project.patch/project.write/apply_patch`, one
 resource/base/path/content fingerprint, actor, reason and window. The private
 approval key remains outside both Git and the canary. Use the domain-separated
@@ -551,7 +551,7 @@ Registry. Its subject/model/Package/Runtime and four budgets only preserve or
 narrow Parent authority, its expiry is shorter, and both fixed Sandboxes are
 read-only, capability-free, `networkMode=none` and credential-free.
 
-Start only after enabled preflight returns READY at migration head `094`. The
+Start only after enabled preflight returns READY at migration head `095`. The
 controller reconciles failed reaps before work, launches from the exact Parent
 Attempt and retains stable Parent/Child idempotency keys. It cascades the Child
 first, waits out the latest signed launch authority, reconciles the exact Child
@@ -581,7 +581,7 @@ Package-selected Child work.
 
 ## G21.5 exact Cron and Draft-learning worker activation
 
-G21.5 requires current G21.0-G21.4 evidence and migration head `094`. Provision
+G21.5 requires current G21.0-G21.4 evidence and migration head `095`. Provision
 two distinct LOGINs. `agent_cron_worker_app` must inherit exactly
 `agent_cron_worker`; `agent_draft_learning_worker_app` must inherit exactly
 `agent_learning_worker`. Deny elevated attributes, owner/control membership,
@@ -637,6 +637,52 @@ bash scripts/verify-agent-runtime-g21-5.sh
 These gates preserve the current `ISOLATION_UNAVAILABLE` result. They do not
 enable a product cohort, generic Scheduler/Learning, API/Chat execution or
 autonomous promotion.
+
+## G21.6 bounded product canary and final closure
+
+Keep `agent-runtime-product-canary` absent from the default deployment. Before
+selecting it, require every G21.0-G21.5 profile flag and fresh READY evidence,
+migration head `095`, one exact activation ID, the reviewed fixed plan and a
+literal private HTTPS Runner endpoint. Provision a distinct thirteenth LOGIN
+with exactly `agent_product_canary_worker`, `agent_orchestrator_runtime` and
+`agent_runner_control`; it must not inherit owner/admin/effect/delegation/Cron/
+Learning roles or direct table DML.
+
+Install nine distinct read-only files: client certificate/key/CA, release
+manifest, production policy, product activation, product plan and Ed25519
+authority private/public keys. Do not reuse any prior canary file or identity.
+Mount no Compose Secret and provide no S3, MCP, Provider, vault, Redis, Broker,
+Project, Child, Cron, Draft-learning, Promote or administrator credential. The
+Runner host receives only the seventh product caller identity; Sandboxes receive
+none of the worker database or private authority material.
+
+Run enabled preflight before database or Runner access:
+
+```bash
+bash scripts/verify-agent-runtime-g21-6-preflight.sh
+bash scripts/verify-agent-product-canary-activation.sh
+bash scripts/verify-agent-product-canary-postgres17.sh
+```
+
+Start the worker only for the exact bounded activation. Monitor queue depth,
+remaining budget, stale claims, terminal failures and exact activation Runner
+residue using the content-free label allowlist. Restart must resolve the same
+request/Run/Attempt and wait lost lease/authority expiry; never issue another
+idempotency key. Health performs only the PostgreSQL stale/pending query and
+Runner Probe/List; it requires no expired claim, pending terminalization or
+matching Sandbox residue and must not reconcile state.
+
+Clean-copy verification must exclude `.env.single-server`, `data/`, `secrets/`
+and `backup/` in the source `tar`/`rsync` command. Copying those paths and
+ignoring them only after extraction still reads protected runtime state and is
+not valid release evidence.
+
+After the canary receipt exists, run the read-only closure evaluator over the
+same release, full activation chain and receipt. Only a separate operator may
+append final promotion when it returns `PROMOTION_READY`. Rollback stops the
+profile and disables the activation, reconciles exact residue and retains all
+immutable requests, receipts, promotion, incident and audit facts. Do not down
+migration `095` in production.
 
 ## Release order (future groups)
 
@@ -788,7 +834,7 @@ cancellation, Artifact, policy, opt-in or observation authority remains.
 Production rollback keeps `090` applied and leaves Shadow disabled. Clean
 down/up is restricted to a verified-empty disposable database. Every older
 Agent/MCP/Assistant/Skill migration drill must first peel empty `091`, then its
-reviewed tail, before its own guard and return to head `094`.
+reviewed tail, before its own guard and return to head `095`.
 
 ## Kill Switch operations
 
@@ -1016,7 +1062,7 @@ changes the closure release tuple invalidates the old promotion record.
 2. Verify one paired PostgreSQL/MinIO set manifest and restore both halves into
    the isolated target. Follow `backup-restore.md`, including the latest
    encrypted Memory deletion package replay before opening Backend.
-3. Apply the exact release migrations and require head `094`. Rehash every
+3. Apply the exact release migrations and require head `095`. Rehash every
    referenced Package/Runtime/SBOM/Workspace/Artifact sample from the restored
    set.
 4. Treat all pre-restore leases, Runner nonces and Sandboxes as untrusted. Kill
@@ -1099,7 +1145,7 @@ this order:
    The transaction takes a `SHARE ROW EXCLUSIVE` lock, removes only
    `conversations.metadata.activeSkills`, checks the updated count and requires
    zero remaining keys. It does not rewrite message/content/other metadata or
-   change the migration head; on a current release it remains `094`.
+   change the migration head; on a current release it remains `095`.
 5. Deploy G20.9. Browser persistence version `7` strips the eight retired
    settings fields plus Session/Workspace selections from localStorage and
    IndexedDB, writes its marker last, and compensates partial failure. Reload

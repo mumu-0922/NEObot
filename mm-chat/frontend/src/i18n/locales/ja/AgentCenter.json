@@ -11,6 +11,7 @@
     "learning": "Learning Review"
   },
   "heldStatus": "Runtime は保留中です: {reason}。ブラウザー/API プロセスの代替実行はありません。",
+  "canaryReadyStatus": "限定プロダクト Canary の準備完了: {reason}。実行権限はサーバー側にあります。",
   "controlUnavailable": "Agent control plane を利用できません。",
   "loading": "読み込み中…",
   "retry": "再試行",
@@ -46,6 +47,9 @@
   "installedAnnouncement": "{name} をインストールしました。",
   "uninstalledAnnouncement": "{name} をアンインストールしました。",
   "runs": "Runs",
+  "runProductCanary": "限定プロダクト Canary を実行",
+  "canaryRemaining": "このアクティベーションでは残り {count} 件を送信できます。",
+  "canaryQueued": "プロダクト Canary リクエストをキューに追加しました: {id}。",
   "noRuns": "永続 Agent Run はありません。",
   "selectRun": "Run を選択して永続タイムラインを確認します。",
   "cancelRun": "キャンセル",

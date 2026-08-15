@@ -103,6 +103,13 @@ const shadowSnapshotSchema = z
     heldReasonCode: z.string(),
     observationCount: count,
     errorCount: count,
+    productCanary: z
+      .object({
+        activationId: z.string().optional(),
+        planFingerprint: fingerprint.optional(),
+        remainingRequests: count,
+      })
+      .strict(),
   })
   .strict();
 
@@ -114,6 +121,7 @@ const statusSchema = z
         state: string,
         reasonCode: string,
         executable: z.boolean(),
+        productCanary: z.boolean(),
         scheduler: z.boolean(),
         learningWorker: z.boolean(),
       })
@@ -134,6 +142,22 @@ const runSummarySchema = z
     cancellationState: z.string().optional(),
     cancellationMode: z.string().optional(),
     cancellationReason: z.string().optional(),
+  })
+  .strict();
+
+const productCanaryRequestSchema = z
+  .object({
+    id: z.string().regex(/^product_request_[a-z0-9]{16,64}$/),
+    activationId: z.string().regex(/^activation_[a-z0-9]{16,64}$/),
+    state: z.enum(["queued", "claimed", "completed", "failed"]),
+    policyRevision: positive,
+    optGeneration: positive,
+    requestFingerprint: fingerprint,
+    failureCount: count,
+    errorCode: z.string().optional(),
+    createdAt: string,
+    updatedAt: string,
+    terminalAt: z.string().optional(),
   })
   .strict();
 
@@ -445,12 +469,23 @@ export function createServerAgentCenterApiShell(
       );
     },
 
-    async enqueueRun(options = {}) {
-      await httpClient.requestJson<unknown>("/v1/agent-center/runs", {
-        method: "POST",
-        body: {},
-        signal: options.signal,
-      });
+    async enqueueRun(input) {
+      const response = await httpClient.requestJson<unknown>(
+        "/v1/agent-center/runs",
+        {
+          method: "POST",
+          body: {
+            expectedPolicyRevision: input.expectedPolicyRevision,
+            expectedGeneration: input.expectedGeneration,
+          },
+          signal: input.signal,
+        },
+      );
+      return parse(
+        z.object({ request: productCanaryRequestSchema }).strict(),
+        response,
+        "product canary request",
+      ).request;
     },
 
     async cancelRun(input) {

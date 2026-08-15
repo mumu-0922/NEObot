@@ -10396,3 +10396,55 @@ exact `0711` mode after `Mkdir` before the Unix intake validates it. This
 development host remains `ISOLATION_UNAVAILABLE`; no exact-host acceptance,
 live activation evidence, generic Scheduler/Learning, autonomous Promote,
 public/API/Chat Agent execution or production Runtime promotion was produced.
+
+## 2026-08-15 — G21.6 bounded product canary and final closure completed
+
+G21.6 added migration `095_agent_product_canary_activation`, one authenticated
+fixed-request product boundary and a separate default-off product-canary
+worker. An opted-in user in the deterministic cohort may submit only the
+expected Shadow policy revision and opt-in generation. PostgreSQL atomically
+rechecks the activation, package/runtime admission, cohort, request budget and
+Kill Switch before appending a server-identified request; no prompt, package,
+model, Tool, argv, Workspace, Egress, Secret or resource override crosses the
+API boundary.
+
+The thirteenth LOGIN inherits exactly the function-only product worker role,
+Orchestrator Runtime and Runner control roles. API, worker and operator
+authorities remain disjoint. The seventh Runner caller receives only
+Probe/List/Reconcile/Launch/Heartbeat/Cancel. Its fixed depth-zero smoke plan
+has an empty Tool Registry, immutable image/argv, read-only rootfs,
+`networkMode=none`, no Egress or Secrets and bounded resources. Claims are
+activation-scoped, lease/generation fenced and replay-safe; expired claims must
+pass through reconcile, and the third failure terminalizes instead of leaving
+permanently stale work. PostgreSQL independently derives both request and
+receipt fingerprints, serializes concurrent submission replay and requires the
+exact product idempotency key plus ordinal-zero Step before completion. Health
+uses read-only stale/pending queries and Runner Probe/List, never reconcile.
+
+The final closure now binds all seven G21.0-G21.5 activation fingerprints and
+the exact product activation/request/Run/plan/receipt chain. Only the separate
+operator function can append an immutable `PROMOTION_READY` fact after the
+read-only 16-check evaluator passes. Template, stale, drifted, residual or
+disposable evidence cannot promote. Rollback disables the profile and
+activation while preserving request, receipt, incident, audit and promotion
+facts; migration `095` is not removed in production.
+
+The PostgreSQL 17 drill passed fresh/replay `001 -> 095`, deterministic
+opt-in/cohort, canonical concurrent API replay, forged binding denials,
+budget/Kill-Switch, exact LOGIN ACL, read-only health, lease
+expiry/reconcile/generation fencing, exact Run/Step/terminal receipt,
+operator-only promotion, dump/restore and guarded clean down/up. Enabled
+preflight proved the complete
+G21.0-G21.5 READY chain, nine read-only mounts, distinct credentials and no
+effect/admin material. The source gate exposed and fixed two regression-gate
+drifts: earlier caller checks now slice only their own policy block, and Runner
+bundle plus Project approval verification now bind head `095` consistently.
+The standalone clean-copy gate also excludes every protected runtime-state
+directory, including `secrets/`.
+
+Focused race/vet, Phase 0, G21.0-G21.5 regressions, Backend full tests/vet,
+Frontend frozen install/format/lint/type-check/build with 910 passing tests, and
+the full standalone clean-copy gate passed. The full gate also completed 1,906
+RAG tests with seven declared integration skips. This development host remains
+`ISOLATION_UNAVAILABLE`; no exact-host Isolation Acceptance, live activation,
+live product receipt or final production promotion evidence was produced.

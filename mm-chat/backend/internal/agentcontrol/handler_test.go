@@ -35,9 +35,33 @@ func TestHandlerStatusAndHeldEnqueue(t *testing.T) {
 	}
 
 	response = httptest.NewRecorder()
-	handler.ServeHTTP(response, requestWithUser(http.MethodPost, centerPath+"/runs", `{}`, testAdminID))
+	handler.ServeHTTP(response, requestWithUser(http.MethodPost, centerPath+"/runs",
+		`{"expectedPolicyRevision":1,"expectedGeneration":1}`, testAdminID))
 	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), RuntimeHeldReason) {
 		t.Fatalf("enqueue code = %d, body = %s", response.Code, response.Body.String())
+	}
+}
+
+func TestHandlerAcceptsOnlyFixedProductCanaryBinding(t *testing.T) {
+	repository := &fakeRepository{shadow: ShadowSnapshot{Effective: true,
+		HeldReasonCode: "PRODUCT_CANARY_READY"}}
+	handler := NewHandler(NewService(WithRepository(repository)))
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, requestWithUser(http.MethodPost, centerPath+"/runs",
+		`{"expectedPolicyRevision":4,"expectedGeneration":2,"prompt":"forbidden"}`, testUserID))
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("unknown field code=%d body=%s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, requestWithUser(http.MethodPost, centerPath+"/runs",
+		`{"expectedPolicyRevision":4,"expectedGeneration":2}`, testUserID))
+	if response.Code != http.StatusAccepted ||
+		!strings.Contains(response.Body.String(), `"state":"queued"`) ||
+		repository.canaryRequest.UserID != testUserID {
+		t.Fatalf("accepted code=%d body=%s request=%#v", response.Code,
+			response.Body.String(), repository.canaryRequest)
 	}
 }
 
