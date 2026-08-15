@@ -335,3 +335,36 @@ Added a fail-closed Ubuntu 22.04 WSL2 local-test Runner bootstrap, exact pinned 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 59: Agent Skill local direct execution
+
+**Date**: 2026-08-16
+**Task**: Agent Skill local direct execution
+**Branch**: `main`
+
+### Summary
+
+Replaced the mandatory WSL/Podman Skill activation path with Hermes-style local_direct execution: owner-bound Skill materialization, native Chat Skill/terminal Tools, bounded Backend-user commands, single-server wiring, local-ready UI, docs/specs, and full verification.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8a2eca7e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
