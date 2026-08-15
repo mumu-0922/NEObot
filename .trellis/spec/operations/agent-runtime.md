@@ -1,93 +1,110 @@
 # Agent Runtime Operations Contract
 
-## Scenario: Activate the WSL2 local-test Runner profile
+## Scenario: Operate the single-server `local_direct` Skill backend
 
 ### 1. Scope / Trigger
 
-Apply when changing the Ubuntu 22.04 WSL2 local-test bootstrap, pinned Podman
-toolchain, synthetic Skill smoke, local report, or its rollback. This scenario
-never changes production release, activation, closure, or promotion authority.
+Apply when changing Backend local-Skill configuration, the runtime image,
+single-server Compose mounts, local workspace authority, readiness reporting,
+verification or rollback. This is the current ordinary Chat Skill backend. The
+separate G20/G21 rootless OCI scenarios below are disabled optional/history and
+do not gate `local_direct`.
 
 ### 2. Signatures
 
 ```bash
-bash mm-chat/scripts/verify-agent-runner-local-test.sh
-bash mm-chat/scripts/agent-runner-local-test.sh status
-bash mm-chat/scripts/agent-runner-local-test.sh smoke # only after host setup
+mkdir -p mm-chat/data/agent-skills mm-chat/data/agent-workspace
+docker compose --project-directory mm-chat \
+  --env-file mm-chat/.env.single-server.example \
+  -f mm-chat/compose.single-server.yml config --quiet
+bash mm-chat/scripts/verify-standalone.sh --full
 ```
 
-- Lock: `mm-chat/config/agent-runner/local-test-toolchain.lock.json`.
-- Commands: `backend/cmd/agent-runtime-local-test-smoke` and
-  `backend/cmd/neo-skill-local-test-workload`.
-- Report: `neo.agent-runner-local-test-report/v1`.
-- Runbook: `mm-chat/docs/deployment/agent-runner-local-test.md`.
+- Example config: `mm-chat/.env.single-server.example`.
+- Compose: `mm-chat/compose.single-server.yml`.
+- Runtime image: `mm-chat/backend/Dockerfile`.
+- Runbook: `mm-chat/docs/deployment/local-skill-runtime.md`.
 
 ### 3. Contracts
 
-- Support only the reviewed Ubuntu 22.04 WSL2 amd64 tuple. Require systemd,
-  delegated cgroup v2 CPU/memory/PID controllers, non-overlapping 65,536-entry
-  subordinate IDs, root-owned setuid mapping helpers, seccomp and overlay.
-- The privileged step is operator-run and handles only the preserved WSL
-  systemd setting plus a fixed apt allowlist. Never request, pipe, log or store
-  the sudo password; never initiate `wsl --shutdown` from the active session.
-- Verify pinned size and SHA-256 before extracting Go 1.25.9, Podman 6.1.0
-  source, crun 1.29.1 and conmon 2.2.1. Build as the normal user into the
-  dedicated local-test root; do not use Docker or Ubuntu Podman 3.4 fallback.
-- Publish `bin/`, `config/`, `storage/` and the receipt in one same-filesystem
-  directory rename. Build the synthetic workload with `CGO_ENABLED=0`; a
-  dynamic interpreter is unavailable in its single-file rootfs.
-- Persist `applying|applied|rolling_back|rolled_back` bootstrap state before
-  privileged mutation. An interrupted apt/apply or rollback may resume only
-  from the exact recorded before/after WSL hash and fixed package set.
-- The real smoke is synthetic-only, UID/GID 10001, empty Tool Registry,
-  read-only rootfs/Workspace, empty capabilities, no-new-privileges, reviewed
-  seccomp, network none and bounded CPU/memory/PID/wall/output/Scratch. It must
-  use post-create/post-start inspection, Artifact intake and exact kill/reap.
-- Emit only content-free `local_test` evidence with
-  `productionEligible=false`. Production evaluators reject it and the
-  checked-in production host probe remains `ISOLATION_UNAVAILABLE`.
-- Rollback validates exact configuration/toolchain state, removes the user
-  root before system packages, never runs apt autoremove, and never reaches
-  `.env.single-server`, `data/`, `secrets/`, or `backup/`.
+- Single-server Compose defaults `AGENT_LOCAL_RUNTIME_ENABLED=true`; the bare
+  Backend binary defaults false. Startup must reject invalid enabled roots,
+  shell, approval mode, timeout, byte, call, round or concurrency limits.
+- Run as the existing `MM_CHAT_RUNTIME_UID:GID` in the Backend container.
+  Never require `sudo`, WSL systemd, a machine restart, Podman, a second daemon,
+  Runner certificates, OCI manifests or per-Skill containers.
+- Bind the materialization cache and command workspace explicitly. Default host
+  sources are `./data/agent-skills` and `./data/agent-workspace`; container
+  roots are `/var/lib/mm-chat/agent-skills` and `/workspace`. Set
+  `create_host_path: false`; the operator creates both sources as the normal
+  user so Docker never leaves a root-owned directory requiring `sudo` repair.
+- The Backend image provides Bash, Python/pip, Node/npm, Git, curl, jq,
+  ripgrep, zip/unzip and `file`. Chat-time execution must not install host OS
+  packages automatically or receive a Docker/Podman socket.
+- A workspace bind deliberately grants Backend-user read/write authority to
+  that host path. Keep secrets, live environment files and unrelated personal
+  files outside it. Docs and Agent Center must say this is not a Sandbox.
+- Compose uses `init: true` so process-group termination is reaped correctly.
+  The application executor still owns timeout/cancellation and kills the full
+  command process group.
+- `AGENT_LOCAL_APPROVAL_MODE=smart` is the default accidental-damage guardrail;
+  `off` cannot disable the catastrophic-command blocklist.
+- Runtime health reports `local_ready`, `LOCAL_DIRECT_EXECUTION`, and
+  `executable=true` when enabled. Do not substitute OCI
+  `ISOLATION_UNAVAILABLE` for this current local backend.
+- Roll back without deleting packages or workspaces: set
+  `AGENT_LOCAL_RUNTIME_ENABLED=false` and recreate only Backend. Never rewrite
+  live `.env.single-server` automatically and never delete `data/`, `secrets/`
+  or `backup/`.
 
 ### 4. Validation & Error Matrix
 
 | Condition | Required result |
 | --- | --- |
-| unsupported host, missing systemd or missing delegation | fail closed with one next-step code |
-| download size/hash, receipt or executable drift | no build or smoke |
-| rootful runtime, cgroupfs, wrong runtime/version/storage | `ISOLATION_UNAVAILABLE` |
-| writable root/Workspace, capability, network, Secret or staging residue | smoke fails and reaps |
-| local report enters production evaluator | `PROMOTION_EVIDENCE_INVALID` |
-| changed `/etc/wsl.conf` at rollback | refuse before mutation |
+| enabled root is non-absolute, `/`, or unclean | Backend configuration fails before serving |
+| shell is relative or approval mode is unknown | Backend configuration fails before serving |
+| call timeout outside 1s..10m or Run timeout outside call..30m | Backend configuration fails before serving |
+| byte/call/round/concurrency limit outside configured bounds | Backend configuration fails before serving |
+| bind source is absent or not writable by runtime UID/GID | Compose/Backend start fails visibly; no privileged repair |
+| local runtime switch is false | local Tools absent; installed packages/workspace preserved |
+| old OCI Runner is unavailable | no effect on `local_direct`; no automatic fallback |
 
-### 5. Tests Required
+### 5. Good / Base / Bad Cases
 
-- Pure tests for lock strictness, WSL config preservation/idempotency,
-  subordinate-ID overlap, archive traversal, safe install roots, package
-  allowlist, interrupted apply, rollback drift, whole-directory publication
-  and absence of password/autoremove/Docker paths.
-- Go tests for exact Podman info, input file modes, signed lease/snapshot
-  authority, inner-workload capability/NNP checks and non-production report.
-- Offline gate validates report fixtures, production rejection, focused Go
-  packages, baseline production host hold and read-only status.
-- Live success additionally requires the exact pinned build, real bounded
-  smoke, Artifact receipt, signed reap, zero inventory and zero staging.
+- **Good:** normal-user-created bind directories render into Compose, Backend
+  reports `local_ready`, and a bounded Skill command writes only the configured
+  workspace.
+- **Base:** local execution is disabled; ordinary Chat remains available and
+  no package, workspace or optional OCI state is deleted.
+- **Bad:** request a sudo password, restart WSL, mount a container socket, bind
+  `$HOME` wholesale, run Backend as root, or call local command limits Sandbox
+  evidence.
 
-### 6. Wrong vs Correct
+### 6. Tests Required
+
+- Config unit tests cover defaults and every validation range.
+- Compose render asserts enabled local wiring, ordinary UID/GID, `init: true`,
+  exact container roots and two writable bind mounts.
+- Backend image/source gate checks the common Tool executables without making
+  a live network install during tests.
+- Focused executor/catalog/Chat/Agent Center tests prove direct readiness,
+  explicit authority warning, no secret inheritance and rollback-off behavior.
+- Run frontend format/lint/typecheck/test/build, backend vet/test, RAG checks,
+  Skill supply, Agent Runtime Phase 0 and standalone full verification.
+
+### 7. Wrong vs Correct
 
 #### Wrong
 
 ```text
-Docker works -> skip rootless checks -> enable Agent page
+installed Skill -> demand sudo + Podman + WSL restart -> keep Chat unusable
 ```
 
 #### Correct
 
 ```text
-operator system bootstrap -> WSL restart -> pinned user toolchain
--> real no-network synthetic Skill -> exact inspect/reap -> local_test report
--> production remains held
+normal-user bind directories -> Compose Backend with ordinary UID/GID
+-> local_ready -> bounded local_direct Tools -> switch-off rollback
 ```
 
 ## Scenario: Deploy and operate `neo-runnerd` with rootless OCI

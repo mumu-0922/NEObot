@@ -12,6 +12,7 @@ import (
 
 	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/knowledge"
+	"neo-chat/mm-chat/backend/internal/localskills"
 	"neo-chat/mm-chat/backend/internal/mcpclient"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 	"neo-chat/mm-chat/backend/internal/usermemory"
@@ -68,6 +69,8 @@ type Handler struct {
 	toolCapabilityCache          ToolCapabilityCache
 	toolCapabilityProbes         *toolCapabilityProbeGroup
 	mcpService                   *mcpclient.Service
+	localSkillCatalog            LocalSkillCatalog
+	localSkillExecutor           *localskills.Executor
 }
 
 type HandlerOption func(*Handler)
@@ -463,6 +466,16 @@ func WithToolCapabilityCache(cache ToolCapabilityCache) HandlerOption {
 func WithMCPService(service *mcpclient.Service) HandlerOption {
 	return func(handler *Handler) {
 		handler.mcpService = service
+	}
+}
+
+func WithLocalSkillRuntime(
+	catalog LocalSkillCatalog,
+	executor *localskills.Executor,
+) HandlerOption {
+	return func(handler *Handler) {
+		handler.localSkillCatalog = catalog
+		handler.localSkillExecutor = executor
 	}
 }
 
@@ -1451,10 +1464,10 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	var preparedMCPRun mcpclient.PreparedRun
+	actor := auth.UserOrDevelopment(r.Context())
 	if h.mcpService != nil && h.mcpService.Config().Enabled {
-		user := auth.UserOrDevelopment(r.Context())
 		preparedMCPRun, err = h.mcpService.PrepareRun(
-			r.Context(), user.ID, conversationID, "", runID,
+			r.Context(), actor.ID, conversationID, "", runID,
 		)
 		if err != nil {
 			writeMCPAdmissionError(w, err)
@@ -1469,6 +1482,34 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			)
 			return
 		}
+	}
+	var localSkillRuntime *localSkillToolRuntime
+	if h.localSkillExecutor != nil && h.localSkillExecutor.Enabled() {
+		if h.localSkillCatalog == nil {
+			writeError(w, http.StatusServiceUnavailable, "SKILL_RUNTIME_UNAVAILABLE", "local Skill runtime is unavailable")
+			return
+		}
+		skills, prepareErr := h.localSkillCatalog.PrepareRuntimeSkills(
+			r.Context(), actor.ID, h.localSkillExecutor.Config().RuntimeRoot,
+		)
+		if prepareErr != nil {
+			writeError(w, http.StatusServiceUnavailable, "SKILL_RUNTIME_UNAVAILABLE", "local Skill runtime is unavailable")
+			return
+		}
+		localSkillRuntime = newLocalSkillToolRuntime(h.localSkillExecutor, skills)
+		if localSkillRuntime.enabled() && !toolRoundCapable {
+			writeError(
+				w,
+				http.StatusConflict,
+				"SKILL_MODEL_UNSUPPORTED",
+				"The selected model does not support Tools",
+			)
+			return
+		}
+		providerSystemPrompt = appendLocalSkillSystemInstruction(
+			providerSystemPrompt,
+			localSkillRuntime,
+		)
 	}
 
 	assistantMessage, err := h.service.CreateAssistantMessage(
@@ -1501,7 +1542,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	mcpRuntime := newMCPToolRuntime(
 		h.mcpService,
 		preparedMCPRun,
-		auth.UserOrDevelopment(r.Context()).ID,
+		actor.ID,
 		userMessage.Content,
 	)
 	directMemoryAction := directMemoryActionPreparation{}
@@ -1641,10 +1682,21 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 
 	var streamCtx context.Context
 	var streamCancel context.CancelFunc
+	streamTimeout := time.Duration(0)
+	streamDeadlineSource := ""
 	if mcpRuntime.enabled() {
+		streamTimeout = h.mcpService.Config().RunTimeout
+		streamDeadlineSource = "mcp"
+	}
+	if localSkillRuntime.enabled() &&
+		(streamTimeout == 0 || localSkillRuntime.config().RunTimeout < streamTimeout) {
+		streamTimeout = localSkillRuntime.config().RunTimeout
+		streamDeadlineSource = "local_skill"
+	}
+	if streamTimeout > 0 {
 		streamCtx, streamCancel = context.WithTimeout(
 			generationCtx,
-			h.mcpService.Config().RunTimeout,
+			streamTimeout,
 		)
 	} else {
 		streamCtx, streamCancel = context.WithCancel(generationCtx)
@@ -1686,7 +1738,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		generationStarted,
 		map[string]any{"outcome": "streaming"},
 	)
-	if mcpRuntime.enabled() || memoryToolRuntime.enabled() || useLiveKnowledgeTool ||
+	if mcpRuntime.enabled() || localSkillRuntime.enabled() || memoryToolRuntime.enabled() || useLiveKnowledgeTool ||
 		(searchMode == chatSearchModeExternal && searchExecution != nil &&
 			searchExecution.Mode == websearch.ExecutionExternal &&
 			!useCompatibilityKnowledge) {
@@ -1710,6 +1762,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			CapabilityConfigHash:   providerResolution.ToolCapabilityConfigHash,
 			DisableNativeToolRound: !toolRoundCapable,
 			MCP:                    mcpRuntime,
+			LocalSkills:            localSkillRuntime,
 		}
 		if searchExecution != nil &&
 			searchExecution.Mode == websearch.ExecutionExternal {
@@ -1779,7 +1832,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		events, err = streamProvider.StreamChat(streamCtx, providerRequest)
 	}
 	if err != nil {
-		deadlineExceeded := mcpRuntime.enabled() &&
+		deadlineExceeded := streamDeadlineSource != "" &&
 			errors.Is(streamCtx.Err(), context.DeadlineExceeded)
 		if !deadlineExceeded && (streamCtx.Err() != nil || errors.Is(err, context.Canceled)) {
 			finishProcessTrace(trace, "cancelled", time.Now(), webSearchResult)
@@ -1798,7 +1851,10 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			})
 			return
 		}
-		errorBody := chatStreamErrorBody(err, deadlineExceeded)
+		deadlineErr, legacyMCPDeadline := chatStreamDeadlineError(
+			streamDeadlineSource, err, deadlineExceeded,
+		)
+		errorBody := chatStreamErrorBody(deadlineErr, legacyMCPDeadline)
 		finishProcessTrace(trace, "failed", time.Now(), webSearchResult)
 		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 			Status: "failed",
@@ -1915,7 +1971,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				fusionDiagnostics.DegradationReason = "provider_failed"
 				fusionPlan = fallbackSourceFusionAuthority(fusionPlan, autoDecision)
 			}
-			deadlineExceeded := mcpRuntime.enabled() &&
+			deadlineExceeded := streamDeadlineSource != "" &&
 				errors.Is(streamCtx.Err(), context.DeadlineExceeded)
 			if streamCtx.Err() != nil && !deadlineExceeded {
 				_ = emitReasoningDelta(reasoning.flush())
@@ -1959,7 +2015,10 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				flusher.Flush()
 				return
 			}
-			errorBody := chatStreamErrorBody(providerEvent.Error, deadlineExceeded)
+			deadlineErr, legacyMCPDeadline := chatStreamDeadlineError(
+				streamDeadlineSource, providerEvent.Error, deadlineExceeded,
+			)
+			errorBody := chatStreamErrorBody(deadlineErr, legacyMCPDeadline)
 			_ = emitReasoningDelta(reasoning.flush())
 			for _, step := range reconcileProcessTraceCitations(
 				trace,
@@ -2129,7 +2188,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			flusher.Flush()
 		case ProviderEventToolExecution:
 			execution := providerEvent.ToolExecution
-			if execution != nil && execution.Mode == "mcp" && execution.CallStatus != "" {
+			if execution != nil &&
+				(execution.Mode == "mcp" || execution.Mode == "local_direct") &&
+				execution.CallStatus != "" {
 				sequence++
 				if err := writeSSEEvent(w, "tool.call.updated", streamEvent{
 					Type:           "tool.call.updated",
@@ -2280,12 +2341,15 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		}
 	}
 
-	if mcpRuntime.enabled() && errors.Is(streamCtx.Err(), context.DeadlineExceeded) {
+	if streamDeadlineSource != "" && errors.Is(streamCtx.Err(), context.DeadlineExceeded) {
 		_ = emitReasoningDelta(reasoning.flush())
 		for _, step := range finishProcessTrace(trace, "failed", time.Now(), webSearchResult) {
 			_ = emitProcessStep(step)
 		}
-		errorBody := chatStreamErrorBody(context.DeadlineExceeded, true)
+		deadlineErr, legacyMCPDeadline := chatStreamDeadlineError(
+			streamDeadlineSource, context.DeadlineExceeded, true,
+		)
+		errorBody := chatStreamErrorBody(deadlineErr, legacyMCPDeadline)
 		sequence++
 		_ = writeSSEEvent(w, "message.error", streamEvent{
 			Type: "message.error", RunID: runID, ConversationID: conversationID,
@@ -3439,6 +3503,21 @@ func chatStreamErrorBody(err error, deadlineExceeded bool) ErrorBody {
 		}
 		return ErrorBody{Code: failure.code, Message: message}
 	}
+	var localFailure *localSkillRunFailure
+	if errors.As(err, &localFailure) {
+		message := "Local Skill execution failed"
+		switch localFailure.code {
+		case "SKILL_MODEL_UNSUPPORTED":
+			message = "The selected model does not support Tools"
+		case "LOCAL_SKILL_BUDGET_EXHAUSTED":
+			message = "Local Skill run limit was reached"
+		case "LOCAL_SKILL_CANCELED":
+			message = "Local Skill execution was cancelled"
+		case "LOCAL_SKILL_PROVIDER_FAILED":
+			message = "The provider could not continue the local Skill Tool loop"
+		}
+		return ErrorBody{Code: localFailure.code, Message: message}
+	}
 	if category, ok := ProviderFailureCategoryOf(err); ok {
 		switch category {
 		case ProviderFailureStreamReadFailed, ProviderFailureStreamIncomplete:
@@ -3449,6 +3528,19 @@ func chatStreamErrorBody(err error, deadlineExceeded bool) ErrorBody {
 		}
 	}
 	return ErrorBody{Code: "PROVIDER_ERROR", Message: "provider stream failed"}
+}
+
+func chatStreamDeadlineError(
+	source string,
+	err error,
+	deadlineExceeded bool,
+) (error, bool) {
+	if !deadlineExceeded || source != "local_skill" {
+		return err, deadlineExceeded
+	}
+	return &localSkillRunFailure{
+		code: "LOCAL_SKILL_BUDGET_EXHAUSTED", err: context.DeadlineExceeded,
+	}, false
 }
 
 func serviceErrorFor(err error) (int, ErrorBody) {

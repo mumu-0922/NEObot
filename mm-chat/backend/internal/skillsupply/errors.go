@@ -18,6 +18,8 @@ var (
 	ErrInstallationConflict = errors.New("skill is already installed")
 	ErrInstallationNotFound = errors.New("skill installation not found")
 	ErrPackageCollision     = errors.New("skill package fingerprint collision")
+	ErrRuntimeUnavailable   = errors.New("skill local runtime is unavailable")
+	ErrRuntimeFileNotFound  = errors.New("skill runtime file not found")
 )
 
 type ValidationError struct {

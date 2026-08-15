@@ -25,6 +25,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/imagejobs"
 	"neo-chat/mm-chat/backend/internal/jobcontrol"
 	"neo-chat/mm-chat/backend/internal/knowledge"
+	"neo-chat/mm-chat/backend/internal/localskills"
 	"neo-chat/mm-chat/backend/internal/mcpclient"
 	"neo-chat/mm-chat/backend/internal/memoryjudge"
 	"neo-chat/mm-chat/backend/internal/providerfactory"
@@ -81,6 +82,7 @@ type options struct {
 	agentControlService        *agentcontrol.Service
 	skillSupplyService         *skillsupply.Service
 	mcpService                 *mcpclient.Service
+	localSkillExecutor         *localskills.Executor
 	imageJobService            *imagejobs.Service
 	voiceJobService            *voicejobs.Service
 	ragSourceService           *ragsource.Service
@@ -1044,6 +1046,12 @@ func WithMCPService(service *mcpclient.Service) Option {
 	}
 }
 
+func WithLocalSkillExecutor(executor *localskills.Executor) Option {
+	return func(opts *options) {
+		opts.localSkillExecutor = executor
+	}
+}
+
 func WithImageJobService(service *imagejobs.Service) Option {
 	return func(opts *options) {
 		opts.imageJobService = service
@@ -1202,6 +1210,10 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 			timeout: cfg.Provider.Timeout,
 		}),
 		chat.WithMCPService(resolvedOptions.mcpService),
+		chat.WithLocalSkillRuntime(
+			resolvedOptions.skillSupplyService,
+			resolvedOptions.localSkillExecutor,
+		),
 	}
 	if webSearchService.Configured() {
 		chatOptions = append(chatOptions, chat.WithWebSearchService(webSearchService))

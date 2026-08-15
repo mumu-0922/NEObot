@@ -23,9 +23,18 @@ with a sixth lifecycle-only Runner caller. Both remain synthetic, default off
 and separate from the product cohort. Public delegation, generic scheduling,
 autonomous learning and depth two remain unavailable.
 
+**Current product path:** single-server Chat now uses Hermes-style
+`local_direct` Skill execution. An owner-installed admitted `SKILL.md` package
+is progressively loaded through `skills_list` and `skill_view`, and `terminal`
+runs bounded commands as the existing Backend UID/GID in the configured
+workspace. It needs no runtime manifest, OCI image, Podman, WSL systemd,
+`sudo`, restart, or Runner evidence. It is explicitly not a Sandbox. The
+G20/G21 architecture below is retained as independently disabled optional
+history and does not gate the current local path.
+
 ## Purpose and invariant
 
-Neo Chat will support package-based Skills, durable Agent runs, one-level
+The optional isolated Runtime is designed to support package-based Skills, durable Agent runs, one-level
 delegation, scheduled work and review-gated learning without granting a model,
 Skill package or Sandbox direct authority over the host. The invariant is:
 

@@ -268,6 +268,20 @@ child_canary = services["agent-runtime-child-canary"]
 cron_worker = services["agent-runtime-cron-worker"]
 draft_learning_worker = services["agent-runtime-draft-learning-worker"]
 product_canary = services["agent-runtime-product-canary"]
+if backend.get("init") is not True:
+    raise SystemExit("standalone verification: Backend must use init for local command reaping")
+if backend.get("environment", {}).get("AGENT_LOCAL_RUNTIME_ENABLED") != "true":
+    raise SystemExit("standalone verification: local_direct must default enabled")
+if backend["environment"].get("AGENT_LOCAL_RUNTIME_ROOT") != "/var/lib/mm-chat/agent-skills":
+    raise SystemExit("standalone verification: local Skill runtime root drifted")
+if backend["environment"].get("AGENT_LOCAL_WORKSPACE_ROOT") != "/workspace":
+    raise SystemExit("standalone verification: local Skill workspace root drifted")
+backend_mounts = {volume.get("target"): volume for volume in backend.get("volumes", [])}
+for target in ("/var/lib/mm-chat/agent-skills", "/workspace"):
+    if target not in backend_mounts or backend_mounts[target].get("read_only") is True:
+        raise SystemExit(f"standalone verification: writable local Skill mount missing: {target}")
+    if backend_mounts[target].get("bind", {}).get("create_host_path") is not False:
+        raise SystemExit(f"standalone verification: local Skill bind may create a root-owned host path: {target}")
 if memory_worker.get("profiles") != ["memory-worker"]:
     raise SystemExit("standalone verification: Memory Worker profile drifted")
 if memory_worker.get("ports"):

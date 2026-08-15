@@ -158,11 +158,15 @@ export default function AgentCenter({
             <span>
               {statusError ||
                 (status
-                  ? status.runtime.productCanary
-                    ? t("canaryReadyStatus", {
+                  ? status.runtime.state === "local_ready"
+                    ? t("localReadyStatus", {
                         reason: status.runtime.reasonCode,
                       })
-                    : t("heldStatus", { reason: status.runtime.reasonCode })
+                    : status.runtime.productCanary
+                      ? t("canaryReadyStatus", {
+                          reason: status.runtime.reasonCode,
+                        })
+                      : t("heldStatus", { reason: status.runtime.reasonCode })
                   : t("loading"))}
             </span>
           </div>
@@ -215,7 +219,7 @@ export default function AgentCenter({
         className="min-h-0 flex-1 overflow-hidden"
       >
         {activeTab === "skills" ? (
-          <PackageSkills {...shared} />
+          <PackageSkills {...shared} runtimeStatus={status} />
         ) : activeTab === "runs" ? (
           <Runs {...shared} status={status} reloadStatus={loadStatus} />
         ) : activeTab === "schedules" ? (
@@ -249,7 +253,16 @@ interface RunsProps extends PanelProps {
   reloadStatus: () => Promise<void>;
 }
 
-function PackageSkills({ selectedId, onSelect, announce }: PanelProps) {
+interface PackageSkillsProps extends PanelProps {
+  runtimeStatus: AgentCenterStatusDTO | null;
+}
+
+function PackageSkills({
+  selectedId,
+  onSelect,
+  announce,
+  runtimeStatus,
+}: PackageSkillsProps) {
   const t = useTranslations("AgentCenter");
   const client = useMemo(() => createNeoChatApiClient(), []);
   const [items, setItems] = useState<AgentPackageCandidateDTO[]>([]);
@@ -424,9 +437,11 @@ function PackageSkills({ selectedId, onSelect, announce }: PanelProps) {
                 [t("source"), selected.sourceType],
                 [
                   t("runtime"),
-                  selected.package.hasRuntime
-                    ? t("runtimePackage")
-                    : t("textOnlyPackage"),
+                  runtimeStatus?.runtime.state === "local_ready"
+                    ? t("localDirectPackage")
+                    : selected.package.hasRuntime
+                      ? t("runtimePackage")
+                      : t("textOnlyPackage"),
                 ],
                 [t("validation"), selected.validationSummary],
               ]}

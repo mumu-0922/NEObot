@@ -52,6 +52,7 @@ type externalWebToolLoopInput struct {
 	DisableNativeToolRound bool
 	ContextBudget          *retrievalContextBudget
 	MCP                    *mcpToolRuntime
+	LocalSkills            *localSkillToolRuntime
 }
 
 func searchWebToolDefinition() ToolDefinition {
@@ -176,7 +177,13 @@ func runNativeExternalWebToolLoop(
 	memoryContinuationStarted := false
 	for round := 1; ; round++ {
 		if input.MCP.enabled() && round > input.MCP.service.Config().MaxRoundsPerRun {
-			streamMCPFinalNoTools(
+			streamFinalNoTools(
+				ctx, events, provider, input.Request, continuation, completedUsage,
+			)
+			return true
+		}
+		if input.LocalSkills.enabled() && round > input.LocalSkills.config().MaxRounds {
+			streamFinalNoTools(
 				ctx, events, provider, input.Request, continuation, completedUsage,
 			)
 			return true
@@ -212,6 +219,16 @@ func runNativeExternalWebToolLoop(
 				if input.MCP.enabled() {
 					sendProviderEvent(ctx, events, ProviderEvent{Error: &mcpRunFailure{
 						code: mcpProviderStartFailureCode(err), err: err,
+					}})
+					return true
+				}
+				if input.LocalSkills.enabled() {
+					code := "LOCAL_SKILL_PROVIDER_FAILED"
+					if isExplicitToolIncompatibility(err) {
+						code = "SKILL_MODEL_UNSUPPORTED"
+					}
+					sendProviderEvent(ctx, events, ProviderEvent{Error: &localSkillRunFailure{
+						code: code, err: err,
 					}})
 					return true
 				}
@@ -264,12 +281,24 @@ func runNativeExternalWebToolLoop(
 						}})
 						return true
 					}
+					if input.LocalSkills.enabled() {
+						sendProviderEvent(ctx, events, ProviderEvent{Error: &localSkillRunFailure{
+							code: "SKILL_MODEL_UNSUPPORTED", err: event.Error,
+						}})
+						return true
+					}
 					return false
 				}
 				if bufferFirstRound {
 					if input.MCP.enabled() {
 						sendProviderEvent(ctx, events, ProviderEvent{Error: &mcpRunFailure{
 							code: "MCP_PROVIDER_FAILED", err: event.Error,
+						}})
+						return true
+					}
+					if input.LocalSkills.enabled() {
+						sendProviderEvent(ctx, events, ProviderEvent{Error: &localSkillRunFailure{
+							code: "LOCAL_SKILL_PROVIDER_FAILED", err: event.Error,
 						}})
 						return true
 					}
@@ -390,9 +419,20 @@ func runNativeExternalWebToolLoop(
 			sendProviderEvent(ctx, events, ProviderEvent{Error: mcpErr})
 			return true
 		}
+		localResults, localBudgetReached, localErr := executeLocalSkillBatch(
+			ctx, events, input.LocalSkills, calls, round,
+		)
+		if localErr != nil {
+			sendProviderEvent(ctx, events, ProviderEvent{Error: localErr})
+			return true
+		}
 		memoryBatchValid := memoryToolBatchValid(round, calls, input)
 		for callIndex, call := range calls {
 			if result, ok := mcpResults[callIndex]; ok {
+				exchange.Results = append(exchange.Results, result)
+				continue
+			}
+			if result, ok := localResults[callIndex]; ok {
 				exchange.Results = append(exchange.Results, result)
 				continue
 			}
@@ -666,8 +706,8 @@ func runNativeExternalWebToolLoop(
 			})
 		}
 		continuation = append(continuation, exchange)
-		if mcpBudgetReached {
-			streamMCPFinalNoTools(
+		if mcpBudgetReached || localBudgetReached {
+			streamFinalNoTools(
 				ctx, events, provider, input.Request, continuation, completedUsage,
 			)
 			return true
@@ -852,7 +892,7 @@ func collectBufferedCompatibilityAnswer(
 }
 
 func retrievalToolDefinitions(input externalWebToolLoopInput) []ToolDefinition {
-	tools := make([]ToolDefinition, 0, 3+len(input.MCP.definitions()))
+	tools := make([]ToolDefinition, 0, 6+len(input.MCP.definitions()))
 	if input.Memory.requiresFirstRoundCall() {
 		// ProviderToolChoiceRequired names the first offered Tool. Explicit
 		// saved-Memory reads therefore bind required to search_memory even when
@@ -871,6 +911,7 @@ func retrievalToolDefinitions(input externalWebToolLoopInput) []ToolDefinition {
 		tools = append(tools, SearchMemoryToolDefinition())
 	}
 	tools = append(tools, input.MCP.definitions()...)
+	tools = append(tools, input.LocalSkills.definitions()...)
 	return tools
 }
 

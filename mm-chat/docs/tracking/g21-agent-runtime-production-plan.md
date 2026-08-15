@@ -12,11 +12,6 @@ credentials and live records stay outside Git. Every stage is default-off,
 rollbackable by disabling its own worker/flag, and forbidden from widening a
 frozen Grant or reviving browser/API/rootful execution.
 
-The separate Ubuntu 22.04 WSL2 `local_test` profile may prove one synthetic
-rootless Skill on the current desktop user after an operator-run system
-bootstrap. Its report is structurally ineligible for every G21 production
-stage and does not change this baseline.
-
 ## G21.0 — Exact-host bundle and control-plane maintenance
 
 Status: source/control implementation complete; target-host activation held.

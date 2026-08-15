@@ -4,14 +4,19 @@ Status: G20.1 supply-chain, G20.2 durable Orchestrator, G20.3 Runner, G20.4
 brokered effects, G20.5 depth-1 Child delegation, G20.6 durable Cron scheduling,
 G20.7 Draft-only learning, G20.8 Agent Center/default-off Shadow control, and
 G20.9 legacy text-Skill hard retirement are implemented. Exact-host isolation
-and production Runner/Broker/Child/Scheduler/Learning/Shadow promotion are held;
-all production Agent execution remains disabled.
+and production Runner/Broker/Child/Scheduler/Learning/Shadow promotion are held.
+Those optional durable OCI paths remain disabled, while the current
+single-server product executes installed Skills through the separate
+[`local_direct` contract](./local-skill-runtime.md).
 
 ## 1. Scope and hard gates
 
 This contract defines the stable boundary among Go Durable Orchestrator,
 PostgreSQL, non-root `neo-runnerd`, per-Run rootless OCI Sandbox and mediated
 Tool/Egress/Secret/Workspace/Artifact services.
+
+It does not gate the current Hermes-style Chat Skill path. `local_direct` needs
+no Runtime Manifest or OCI image and intentionally makes no isolation claim.
 
 In scope:
 
@@ -24,7 +29,7 @@ In scope:
 - authenticated Agent Center projections and held synthetic/read-only Shadow;
 - legacy text-Skill cutover and rollback requirements.
 
-Hard gate: no executor, route or feature flag may make a production Agent Run
+Hard gate for the optional durable OCI path: no executor, route or feature flag may make a production Agent Run
 until the owning G20 groups implement this contract and pass the Isolation
 Acceptance Suite. `POST /v1/code/executions` remains
 `CODE_EXECUTION_UNAVAILABLE`; it is not this Runtime API.
@@ -1268,55 +1273,22 @@ Checked-in evidence is template/offline-only. The development host remains
 `ISOLATION_UNAVAILABLE`; disposable PostgreSQL or schema validation cannot
 create live activation or final-promotion evidence.
 
-## 26. WSL local-test Runner smoke
+## 26. Current local Skill execution
 
-The Ubuntu 22.04 WSL2 development machine may use one separate, explicitly
-non-production local-test profile to prove the rootless host path before page
-wiring. Its lock is
-`config/agent-runner/local-test-toolchain.lock.json`; its operator entrypoint is
-`scripts/agent-runner-local-test.sh`; its report schema is
-`schemas/neo-agent-runner-local-test-report.schema.json`.
+The single-server product uses the separate Hermes-style `local_direct`
+contract in [`local-skill-runtime.md`](./local-skill-runtime.md). Installed
+Skills need only `SKILL.md` and may include `scripts/`, `references/`, and
+`assets/`; they do not need `neo.runtime.json` or an OCI image.
 
-The profile requires systemd, a writable delegated cgroup v2 subtree, one
-non-overlapping 65,536-entry subuid/subgid range, setuid mapping helpers,
-Podman 6.1.0 built from pinned source, crun 1.29.1 with systemd support, conmon
-2.2.1, seccomp, and overlay storage. One operator-run sudo step may install the
-allowlisted host prerequisites and preserve/update `/etc/wsl.conf`; automation
-never receives the password or initiates the required WSL shutdown.
+This current path executes through ordinary Chat native Tools as the Backend
+UID/GID in the configured workspace. It requires no Podman, WSL systemd,
+`sudo`, restart, Runner mTLS, production activation evidence, or per-Skill
+container. Its command guards and budgets reduce accidental damage but do not
+create an isolation boundary.
 
-The smoke uses a synthetic Workspace and static payload only. It runs as
-UID/GID `10001` with read-only rootfs, empty capabilities,
-`no-new-privileges`, reviewed seccomp, `network=none`, bounded CPU/memory/PID/
-wall/output/Scratch, empty Tool Registry and no Egress/Secrets. It must pass
-the real Workspace, signed request, Podman create/inspect/start/inspect,
-Artifact result and kill/reap paths, then leave zero managed Sandbox or staging
-residue.
-
-Local evidence is structurally disjoint: `evidenceClass=local_test`,
-`productionEligible=false`, and outcome `LOCAL_SKILL_SMOKE_PASSED`. It is not a
-release manifest, Isolation Acceptance, activation, closure, or promotion
-record. Production evaluators must reject it, and the checked-in
-`verify-agent-runner-host.sh` remains `ISOLATION_UNAVAILABLE`. The local seam
-adds no database, API, Chat, Agent Center, Provider, MCP, user Project, Cron,
-Child, learning or Broker-effect authority.
-
-Run the offline source/control gate:
-
-```bash
-bash scripts/verify-agent-runner-local-test.sh
-```
-
-Run the live smoke only after the host bootstrap and WSL restart:
-
-```bash
-bash scripts/agent-runner-local-test.sh status
-bash scripts/agent-runner-local-test.sh install-toolchain
-bash scripts/agent-runner-local-test.sh smoke
-```
-
-Rollback removes the dedicated user root first, then restores the exact
-recorded WSL configuration and removes only packages absent before bootstrap.
-It never uses `apt autoremove` or reaches protected product runtime state.
+The G20/G21 durable OCI code and evidence below remain disabled optional
+history. Their `ISOLATION_UNAVAILABLE` state does not gate `local_direct` Skill
+discovery or Chat execution.
 
 ## 27. Phase 0 verification
 

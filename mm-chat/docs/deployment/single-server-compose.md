@@ -47,6 +47,19 @@ services therefore run as that non-root host identity so they can read the
 mode-`600` keyring without widening host permissions. Production preflight
 rejects mismatched or root/invalid IDs.
 
+The same ordinary UID/GID owns the enabled `local_direct` Skill workspace. On
+first boot, create its default bind sources without `sudo`:
+
+```bash
+mkdir -p data/agent-skills data/agent-workspace
+chmod 700 data/agent-skills data/agent-workspace
+```
+
+Installed Skills then load through ordinary Chat and may execute in
+`./data/agent-workspace`; no Podman, WSL systemd, restart, Runner mTLS, or OCI
+Skill image is required. This is direct Backend-user authority, not an isolated
+Sandbox. See [`local-skill-runtime.md`](./local-skill-runtime.md).
+
 For stable browser BYOK ingress, encode `BYOK_PRIVATE_KEY_PEM` on one
 single-quoted env line with literal `\n` separators. Production preflight
 accepts only a bounded RSA `PRIVATE KEY` or `RSA PRIVATE KEY` PEM in that exact
@@ -114,7 +127,7 @@ cache reuse.
 | `migrate`      | `ops`        | One-shot `mm-chat-migrate up`; never auto-runs on API boot.                      | None            |
 | `admin`        | `ops`        | One-shot local identity administration; no HTTP listener.                        | None            |
 | `frontend`     | `app`        | Next.js UI and same-origin `/mm-api` edge on `127.0.0.1:3000`.                   | Localhost only  |
-| `backend`      | `app`        | Go API on `127.0.0.1:8080` for reverse proxy or local smoke tests.               | Localhost only  |
+| `backend`      | `app`        | Go API plus non-root `local_direct` Skill Tools on `127.0.0.1:8080`.              | Localhost only  |
 | `mcp-runner`   | `mcp-runner` | Optional hardened on-demand host for administrator-approved stdio MCP servers.   | None            |
 | `memory-worker` | `memory-worker` | Durable Memory capture consumer using PostgreSQL leases and optional Redis wake. | None         |
 | `minio-client` | `ops`        | Utility container for backup/restore scripts.                                    | None            |
@@ -216,6 +229,12 @@ container-local `GET /health` on port `8081`; no port is published or proxied.
 | `MCP_MARKETPLACE_ENABLED` / `MCP_MARKETPLACE_BASE_URL` | Optional backend-only LobeHub discovery adapter; disabled by default and independent of installed Servers. |
 | `MCP_MARKETPLACE_CLIENT_ID` / `MCP_MARKETPLACE_CLIENT_SECRET_SOURCE` | Explicitly registered M2M identity plus dedicated owner-mode-`0600` Docker Secret source. |
 | `MCP_MARKETPLACE_TIMEOUT` / `MCP_MARKETPLACE_CACHE_TTL` | Bounded upstream request timeout and public-metadata cache TTL; defaults `8s` and `5m`. |
+| `AGENT_LOCAL_RUNTIME_ENABLED` | Current single-server Skill execution switch; defaults true in Compose and false in the bare binary. |
+| `AGENT_LOCAL_RUNTIME_SOURCE` / `AGENT_LOCAL_RUNTIME_ROOT` | Host bind and container root for revalidated content-addressed installed Skill materialization. |
+| `AGENT_LOCAL_WORKSPACE_SOURCE` / `AGENT_LOCAL_WORKSPACE_ROOT` | Explicit host bind and container workspace in which `terminal` runs as the Backend UID/GID. |
+| `AGENT_LOCAL_APPROVAL_MODE` | `smart` denies destructive patterns; `off` never disables the catastrophic blocklist. |
+| `AGENT_LOCAL_CALL_TIMEOUT` / `AGENT_LOCAL_RUN_TIMEOUT` | Per-command and whole local Tool-loop wall limits. |
+| `AGENT_LOCAL_MAX_OUTPUT_BYTES` / `AGENT_LOCAL_MAX_CALLS_PER_RUN` / `AGENT_LOCAL_MAX_ROUNDS_PER_RUN` / `AGENT_LOCAL_MAX_CONCURRENT` | Output, call, round, and process concurrency guardrails; none is an isolation claim. |
 
 `POSTGRES_USER` is the empty-volume bootstrap and migrator login referenced by
 `MIGRATION_DATABASE_URL`. The API login inherits only `go_api_runtime` and must

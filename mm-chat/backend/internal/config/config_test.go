@@ -191,6 +191,47 @@ func TestMCPMarketplaceConfiguration(t *testing.T) {
 	}
 }
 
+func TestAgentLocalConfiguration(t *testing.T) {
+	t.Parallel()
+	values := map[string]string{
+		EnvAgentLocalEnabled:        "true",
+		EnvAgentLocalRuntimeRoot:    "/tmp/neo-skills",
+		EnvAgentLocalWorkspaceRoot:  "/tmp/neo-workspace",
+		EnvAgentLocalShell:          "/bin/sh",
+		EnvAgentLocalApprovalMode:   "off",
+		EnvAgentLocalCallTimeout:    "12s",
+		EnvAgentLocalRunTimeout:     "2m",
+		EnvAgentLocalMaxOutputBytes: "65536",
+		EnvAgentLocalMaxCalls:       "7",
+		EnvAgentLocalMaxRounds:      "4",
+		EnvAgentLocalMaxConcurrent:  "3",
+	}
+	cfg := LoadFromEnv(func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	})
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if !cfg.AgentLocal.Enabled || cfg.AgentLocal.RuntimeRoot != "/tmp/neo-skills" ||
+		cfg.AgentLocal.WorkspaceRoot != "/tmp/neo-workspace" || cfg.AgentLocal.Shell != "/bin/sh" ||
+		cfg.AgentLocal.ApprovalMode != "off" || cfg.AgentLocal.CallTimeout != 12*time.Second ||
+		cfg.AgentLocal.RunTimeout != 2*time.Minute || cfg.AgentLocal.MaxOutputBytes != 65536 ||
+		cfg.AgentLocal.MaxCalls != 7 || cfg.AgentLocal.MaxRounds != 4 ||
+		cfg.AgentLocal.MaxConcurrent != 3 {
+		t.Fatalf("AgentLocal config = %#v", cfg.AgentLocal)
+	}
+
+	values[EnvAgentLocalWorkspaceRoot] = "relative"
+	invalid := LoadFromEnv(func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	})
+	if err := invalid.Validate(); err == nil || !strings.Contains(err.Error(), EnvAgentLocalWorkspaceRoot) {
+		t.Fatalf("invalid workspace error = %v", err)
+	}
+}
+
 func TestLoadFromEnvOverrides(t *testing.T) {
 	values := map[string]string{
 		EnvAddr:                   "127.0.0.1:9090",

@@ -22,7 +22,7 @@ behavior changes require coverage under `mm-chat/frontend/src/__tests__/`.
 | [State Management](./state-management.md)         | Local, Zustand, persisted, URL, and server-owned state        | Complete |
 | [MCP Tools](./mcp-tools.md)                       | Tools UI, server selection authority, timeline, and Plugin-state retirement | Complete |
 | [Assistant Store](./assistant-store.md)           | My Assistants, Store paging, runtime validation, CAS recovery, and start-chat snapshots | Complete |
-| [Agent Center](./agent-center.md)                 | Package Skills, Runs, Schedules, Learning Review, held Shadow, bounded product canary and G20.9 legacy retirement | Complete |
+| [Agent Center](./agent-center.md)                 | Package Skills, current `local_ready` execution warning, Runs/Schedules/Learning, optional held OCI controls and G20.9 retirement | Complete |
 | [Type Safety](./type-safety.md)                   | Domain types, DTOs, runtime validation, and normalization     | Complete |
 | [Quality Guidelines](./quality-guidelines.md)     | Formatting, linting, testing, review, and forbidden patterns  | Complete |
 
@@ -48,8 +48,10 @@ Before changing frontend code:
    [Assistant Store](./assistant-store.md) and keep installation and revisions
    server-authoritative.
 8. For Package Skills, Runs, Schedules, Learning Review, Shadow state or legacy
-   Skill retirement, read [Agent Center](./agent-center.md) and preserve the
-   held Runtime, strict DTO, marker-last purge and no-fallback G20.9 boundaries.
+   Skill retirement, read [Agent Center](./agent-center.md) and preserve strict
+   DTOs, current `local_ready` plus non-isolation warning, marker-last purge and
+   no-fallback G20.9 boundaries. Optional OCI hold must not downgrade
+   `local_direct`.
 
 ## Representative Code
 

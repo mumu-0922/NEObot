@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,6 +26,7 @@ type Service struct {
 	git                 GitHubSource
 	newID               func() string
 	now                 func() time.Time
+	runtimeMu           sync.Mutex
 }
 
 type ServiceOption func(*Service)

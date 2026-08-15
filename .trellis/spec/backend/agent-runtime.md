@@ -1,6 +1,120 @@
 # Agent Runtime Backend Contract
 
-## Scenario: Durable package-Skill execution
+## Scenario: Execute installed Skills with `local_direct`
+
+### 1. Scope / Trigger
+
+Apply when changing installed-Skill materialization, the local command
+executor, Agent Center Runtime readiness, or the native Chat Skill Tool path.
+This is the current single-server execution path. It follows the Hermes model:
+Skills are progressively disclosed instruction directories and permitted
+commands run as the ordinary Backend user. The retained G20/G21 OCI Runtime is
+disabled optional/history and does not gate this path.
+
+### 2. Signatures
+
+- Catalog: `skillsupply.Service.PrepareRuntimeSkills(ctx, userID, runID)`.
+- File read: `skillsupply.ReadRuntimeSkillFile(skill, relativePath)`.
+- Executor: `localskills.Executor.Execute(ctx, localskills.Request)`.
+- Native Tools: `skills_list({})`, `skill_view({name,path?})`, and
+  `terminal({command,skill?,workingDir?,timeoutSeconds?})`.
+- Runtime state: `state=local_ready`,
+  `reasonCode=LOCAL_DIRECT_EXECUTION`, `executable=true`.
+- Contract/gate: `mm-chat/docs/contracts/local-skill-runtime.md` and
+  `bash mm-chat/scripts/verify-skill-supply.sh`.
+
+### 3. Contracts
+
+- Resolve only the authenticated owner's current installed admission. Fetch
+  the server-owned canonical object key, revalidate ZIP/name/fingerprint and
+  publish a content-addressed directory through atomic rename. Caller paths or
+  object keys never select package authority.
+- `SKILL.md` is required; `scripts/`, `references/`, and `assets/` are optional.
+  `neo.runtime.json`, an OCI image, Podman, WSL systemd, `sudo`, Runner mTLS,
+  and Isolation Acceptance evidence are not prerequisites.
+- Recompute the complete materialized file-tree fingerprint on every read.
+  Reject traversal, absolute paths, symlinks, missing/oversized files and local
+  drift. Rehash again immediately before a `terminal.skill` binding. Do not
+  execute a package while materializing it.
+- Inject only a bounded metadata index into the system prompt. Full content
+  enters the same-model Tool continuation only through `skill_view`.
+- Run `terminal` through an absolute configured shell with `-c`, never a login
+  shell that reads workspace profile files, using the Backend
+  UID/GID, and a working directory inside the configured workspace after
+  symlink resolution. A selected Skill is exposed only as
+  `NEO_CHAT_ACTIVE_SKILL_ROOT`; the model never receives its server path.
+- Construct an explicit child environment containing only fixed locale,
+  `PATH`, `HOME`, workspace and the selected local-Skill root. Do not expose a
+  global cache variable or copy Backend database, Provider, storage, vault, or
+  unrelated process environment variables.
+- Enforce per-call/per-Run time, combined output, Tool-call, Tool-round and
+  process-concurrency limits. Cancellation or Run timeout kills the complete
+  process group so no descendant outlives its Chat Run.
+- The catastrophic-command blocklist is non-overridable. `smart` approval mode
+  additionally denies destructive patterns; `off` disables only that soft
+  denial. These are accidental-damage guardrails, not a Sandbox.
+- Process events retain only Tool name, round, `local_direct`, classification,
+  timeout, duration and failure category. Command, output, file content,
+  working directory and materialized paths do not enter process trace.
+- Bare binaries default this backend off; single-server Compose defaults it on
+  with the ordinary runtime UID/GID and explicit Skill/workspace bind mounts.
+  `AGENT_LOCAL_RUNTIME_ENABLED=false` is the immediate non-destructive rollback.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| Tool-incapable model with installed Skills | `SKILL_MODEL_UNSUPPORTED`; no assistant message |
+| package fetch/validation/materialization failure | `SKILL_RUNTIME_UNAVAILABLE`; no storage/path detail |
+| traversal, symlink, missing file, or fingerprint drift | bounded Tool failure; no content returned |
+| unknown Skill or invalid Tool arguments | bounded typed Tool failure; no command starts |
+| catastrophic command | blocked before process creation in every approval mode |
+| destructive command in `smart` mode | `approval_required`; no process creation |
+| call timeout | exit `124`, `timedOut=true`, whole process group killed |
+| Chat cancellation or Run deadline | Run cancellation or `LOCAL_SKILL_BUDGET_EXHAUSTED`; whole process group killed |
+| output/call/round/concurrency limit | deterministic truncation or fail-closed bounded Tool result |
+| local backend disabled | no local Tools or Skill prompt index; packages remain installed |
+
+### 5. Good / Base / Bad Cases
+
+- **Good:** the owner-installed package is revalidated, `skill_view` loads its
+  exact `SKILL.md`, `terminal` runs a bounded script in the workspace and the
+  same model produces the final answer.
+- **Base:** no Skills are installed or the switch is off; ordinary Chat works
+  without local Tool definitions and no OCI fallback starts.
+- **Bad:** execute an archive during extraction, inherit Backend secrets, trust
+  a model-supplied filesystem path, let a child process survive cancellation,
+  require `sudo`/Podman before Skills work, or call guardrails isolation.
+
+### 6. Tests Required
+
+- `internal/skillsupply`: owner binding, archive/path/symlink/size checks,
+  atomic replay, complete-tree drift and exact file reads.
+- `internal/localskills`: explicit environment, workspace/symlink boundary,
+  normal shell/Python/Node command, hard/soft denial, timeout/process-group
+  kill, output truncation, concurrency and cancellation.
+- `internal/chat`: compact prompt index, strict Tool schemas, complete
+  `skills_list -> skill_view -> terminal -> final` continuation, budgets,
+  unsupported model/runtime failures and process-trace redaction.
+- `internal/config`, `internal/agentcontrol`, `internal/httpserver`, `cmd/api`,
+  Agent Center Vitest, Compose rendering, Skill supply and standalone gates.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+installed Skill -> require WSL/Podman/sudo/Runner promotion -> still held
+```
+
+#### Correct
+
+```text
+owner installation -> canonical revalidation -> immutable materialization
+-> progressive Skill Tools -> Backend-user local command -> same-model answer
+```
+
+## Scenario: Optional durable OCI package-Skill execution
 
 ### 1. Scope / Trigger
 
@@ -149,19 +263,12 @@ unchanged.
   fingerprint and never mutates live/installed/Cron snapshots.
 - G20.9 hard-deletes legacy text-Skill definitions/selections/execution
   paths without migration/wrapping. Historical messages retain only the
-  read-only fact “旧版技能已退役”. Package execution remains held when exact-host
-  isolation is unavailable.
+  read-only fact “旧版技能已退役”. Optional OCI Package execution remains held
+  when exact-host isolation is unavailable; current `local_direct` execution is
+  independent.
 - G20.10 policy and closure JSON are strict, content-free and exact-release
   bound. The read-only evaluator derives ready/held/invalid and never activates
   Runtime. The checked-in template remains `ISOLATION_UNAVAILABLE`.
-- The WSL2 local-test seam may run only the fixed synthetic workload through
-  Workspace, ephemeral signed authority, real Podman inspection, Artifact
-  intake and reap after the separate host manager verifies its pinned local
-  toolchain. It uses no PostgreSQL/API/Chat/Provider/MCP/user data and emits
-  only `neo.agent-runner-local-test-report/v1` with `local_test` and
-  `productionEligible=false`. It cannot satisfy release, Isolation Acceptance,
-  activation, closure or promotion authority; the production host probe stays
-  held.
 - G20.8 intentionally imports `internal/agentlearning` only from the
   authenticated `agentcontrol` facade and `cmd/api` construction. Startup must
   pass `WithLearningEnabled(false)` and must not call learning Claim,
@@ -561,8 +668,9 @@ control and review only; it does not enable package execution.
   package code in API/browser or inject Shadow output into Chat/admission/
   promotion.
 - G20.9 removes legacy browser execution. Chat Conversation create/update/read
-  strips `activeSkills`, and Package execution remains held rather than falling
-  back to browser/API execution.
+  strips `activeSkills`, and optional OCI Package execution remains held rather
+  than falling back to browser/API execution. Current `local_direct` remains a
+  separate server-owned path.
 
 ### 4. Validation & Error Matrix
 

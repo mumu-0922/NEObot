@@ -30,6 +30,113 @@ live report completed only `12/300` routes, classified the `288` failures into
 `31` context deadlines, `83` invalid Tool Calls, and `174` unclassified router
 failures, and kept Validation/Promotion blocked.
 
+## Scenario: Continue Chat through local Agent Skill Tools
+
+### 1. Scope / Trigger
+
+Apply when changing the `local_direct` Skill index, native Tool definitions,
+Tool ordering, same-model continuation, budgets, cancellation, errors or
+process-trace redaction. Local Skill Tools join the existing provider-native
+loop; they do not create another model protocol or enable Child Agents.
+
+### 2. Signatures
+
+```text
+skills_list({})
+skill_view({name, path?})
+terminal({command, skill?, workingDir?, timeoutSeconds?})
+```
+
+- Catalog: `LocalSkillCatalog.PrepareRuntimeSkills(ctx, userID, runtimeRoot)`.
+- Runtime: `newLocalSkillToolRuntime(executor, installedSkills)`.
+- Batch: `executeLocalSkillBatch(ctx, events, runtime, calls, round)`.
+- Failures: `SKILL_MODEL_UNSUPPORTED`, `SKILL_RUNTIME_UNAVAILABLE`, and
+  `LOCAL_SKILL_BUDGET_EXHAUSTED`.
+
+### 3. Contracts
+
+- Prepare only current-user installed/admitted Skills before the first model
+  request. If none exist or the runtime is disabled, inject no index and expose
+  no local Tool definitions.
+- Add only a compact bounded name/version/description index to the system
+  prompt. Mark it untrusted routing metadata. Full instructions and package
+  files load only through `skill_view` and cannot override system/developer
+  instructions.
+- Tool schemas are strict and reject additional/invalid arguments.
+  `skill_view` defaults to `SKILL.md` and permits only exact files under
+  `scripts/`, `references/`, or `assets/`. `terminal.skill` resolves only the
+  prepared catalog and exposes the package through
+  `NEO_CHAT_ACTIVE_SKILL_ROOT`; never reveal or accept server paths.
+- Execute each provider Tool batch in this order: MCP, local Skill Tools, then
+  ordinary Knowledge/Memory/Web Tools. Merge results by original call index and
+  continue on the exact same Provider/model with native Tool result framing.
+- Count local calls across rounds and cap local Tool rounds independently. When
+  a call or round budget is exhausted, return a bounded Tool failure and make
+  one Tool-free same-model continuation for the final answer. The whole local
+  loop is bounded by the executor Run deadline.
+- Model capability is checked before creating the assistant response when an
+  installed Skill would require native Tools. Catalog preparation fails closed
+  without exposing object keys, fingerprints, package bytes or local paths.
+- Cancellation propagates through Provider and local executor context. The
+  executor kills the complete command process group; cancellation remains the
+  terminal Chat Run outcome rather than an ordinary Tool failure.
+- Process Tool events retain only Tool name, round, `local_direct`,
+  classification, optional timeout, duration and failure category. Never
+  persist or stream command text, arguments except bounded timeout, output,
+  Skill content, working directory or materialized paths as process metadata.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| installed Skills plus non-Tool-capable model | fail before assistant creation with `SKILL_MODEL_UNSUPPORTED` |
+| catalog/package preparation fails | `SKILL_RUNTIME_UNAVAILABLE`; no internal detail |
+| strict arguments fail | Tool result `arguments_invalid`; no file read/process |
+| Skill/file unknown or disallowed | bounded `skill_or_file_not_found` |
+| materialized fingerprint drifts | bounded `package_drift`; no content/process |
+| command blocked or approval required | typed Tool failure before process creation |
+| local call/round budget exhausted | bounded failure then Tool-free final continuation |
+| local Run deadline expires | `LOCAL_SKILL_BUDGET_EXHAUSTED`; descendants killed |
+| client cancellation | terminal canceled Run; descendants killed |
+
+### 5. Good / Base / Bad Cases
+
+- **Good:** one native continuation performs
+  `skills_list -> skill_view -> terminal -> final answer`, with exact results in
+  model context and content-free process facts in persistence/SSE.
+- **Base:** local execution is enabled but the user has no installed Skills;
+  ordinary MCP/Knowledge/Memory/Web planning is unchanged.
+- **Bad:** paste every `SKILL.md` into the first prompt, trust a Tool-supplied
+  object/path, run local Tools after losing call ordering, persist command
+  output in process trace, or spawn a Child Agent to execute the Skill.
+
+### 6. Tests Required
+
+- Complete multi-round success with same Provider/model and exact Tool order.
+- Empty/disabled catalog, Tool-incapable model, preparation failure, invalid
+  arguments, missing/drifted file, blocked/destructive command and nonzero exit.
+- Call, round, output, call-timeout and Run-timeout boundaries plus cancellation
+  process-group termination.
+- Process event/persistence/SSE assertions prove command, output, file content,
+  working directory and server paths are absent.
+- Existing MCP, Knowledge, Memory, Web, detached Run and Citation tests remain
+  green; no source-fusion fallback is introduced.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+system prompt + every installed file + guessed server path + child agent exec
+```
+
+#### Correct
+
+```text
+bounded metadata -> native Tool call -> exact file/result -> same-model loop
+-> redacted process facts -> final answer
+```
+
 ## 1. Scope / Trigger
 
 Use this spec when changing provider streaming to expose function tools,

@@ -40,6 +40,9 @@ COPY --from=build /out/mm-chat-memory-regression-capture /usr/local/bin/mm-chat-
 USER mmchat:mmchat
 
 FROM runtime-base AS runtime
+RUN apk add --no-cache bash file git jq nodejs npm py3-pip python3 ripgrep unzip zip \
+    && mkdir -p /var/lib/mm-chat/agent-skills /workspace \
+    && chown -R mmchat:mmchat /var/lib/mm-chat /workspace
 COPY --from=build /out/mm-chat-api /usr/local/bin/mm-chat-api
 COPY --from=build /out/mm-chat-migrate /usr/local/bin/mm-chat-migrate
 COPY --from=build /out/mm-chat-admin /usr/local/bin/mm-chat-admin

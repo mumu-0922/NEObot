@@ -10448,22 +10448,3 @@ the full standalone clean-copy gate passed. The full gate also completed 1,906
 RAG tests with seven declared integration skips. This development host remains
 `ISOLATION_UNAVAILABLE`; no exact-host Isolation Acceptance, live activation,
 live product receipt or final production promotion evidence was produced.
-
-## 2026-08-15 — WSL2 Agent Runner local-test activation tooling
-
-Added a separate Ubuntu 22.04 WSL2 `local_test` profile for the current machine.
-The read-only status command detects the initial missing-system-bootstrap state.
-One operator-run sudo step preserves `/etc/wsl.conf`, enables systemd and
-installs only a fixed prerequisite allowlist; the automation never handles the
-password or triggers the required WSL shutdown. The unprivileged installer
-size/hash-pins Go 1.25.9, Podman 6.1.0 source, crun 1.29.1 and conmon 2.2.1,
-then isolates configuration and storage below a dedicated user root.
-
-The real smoke command reuses Workspace materialization, ephemeral signed
-authority, `PodmanDriver` create/inspect/start/inspect, framed Artifact result
-and exact cancel/reap for one fixed no-network/no-secret workload. Its report
-is content-free, `local_test`, `productionEligible=false`, and rejected by the
-production closure evaluator. No API/Chat/database/Provider/MCP/user Project
-path was enabled, and the checked-in production host probe remains
-`ISOLATION_UNAVAILABLE`. Live smoke still requires the operator bootstrap and
-one WSL restart on this machine.

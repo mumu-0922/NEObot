@@ -55,12 +55,3 @@ G20.3 implements source/control foundations only. The checked-in release
 manifest remains unapproved; current exact-host readiness is false. G20.4 owns
 Tool/Egress/Secret Brokers and Prepare/Commit. Public Runtime/API/Chat and legacy
 text-Skill behavior remain unchanged.
-
-The WSL local-test seam does not alter that boundary. It accepts only the
-separately verified pinned local toolchain and a synthetic static workload,
-then reuses Workspace materialization, ephemeral signed authority,
-`PodmanDriver`, post-create/post-start inspection, framed Artifact intake and
-cancel/reap. Its StaticProbe and local report schema are deliberately
-ineligible for production release, activation, closure and promotion. No
-database, API, Chat, Provider, MCP, Egress, Secret or user Project enters this
-seam.

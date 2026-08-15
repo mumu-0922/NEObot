@@ -193,6 +193,26 @@ func TestServiceEnqueuesOnlyBoundProductCanaryRequest(t *testing.T) {
 	}
 }
 
+func TestServiceStatusReportsLocalDirectExecution(t *testing.T) {
+	repository := &fakeRepository{shadow: ShadowSnapshot{HeldReasonCode: "SHADOW_DISABLED"}}
+	service := NewService(
+		WithRepository(repository),
+		WithLocalDirectExecution(true),
+	)
+	if err := service.Initialize(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	status, err := service.Status(context.Background(), testUserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.Runtime.Executable || status.Runtime.ProductCanary ||
+		status.Runtime.State != "local_ready" ||
+		status.Runtime.ReasonCode != RuntimeLocalDirectReason {
+		t.Fatalf("status=%#v", status)
+	}
+}
+
 func TestServiceRunOwnershipAndCancellationBinding(t *testing.T) {
 	repository := &fakeRepository{detailByUser: map[string]RunDetail{
 		testUserID + "/" + testRunID: {Run: RunSummary{ID: testRunID}},

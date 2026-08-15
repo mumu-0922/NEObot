@@ -1,0 +1,307 @@
+package chat
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"neo-chat/mm-chat/backend/internal/localskills"
+	"neo-chat/mm-chat/backend/internal/skillsupply"
+)
+
+func TestLocalSkillToolLoopLoadsSkillRunsTerminalAndContinuesSameModel(t *testing.T) {
+	workspace := t.TempDir()
+	runtimeRoot := filepath.Join(t.TempDir(), "runtime")
+	skillRoot := filepath.Join(runtimeRoot, "fixture")
+	if err := os.MkdirAll(skillRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	skillBody := []byte("---\nname: fixture-skill\ndescription: fixture\n---\nUse terminal to finish the fixture.\n")
+	if err := os.WriteFile(filepath.Join(skillRoot, "SKILL.md"), skillBody, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	skill := skillsupply.RuntimeSkill{
+		Name: "fixture-skill", Version: "1.0.0", Description: "Runs a fixture",
+		RootPath: skillRoot, Files: []string{"SKILL.md"},
+		PackageFingerprint: testRuntimeSkillFingerprint(map[string][]byte{
+			"SKILL.md": skillBody,
+		}),
+	}
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: runtimeRoot, WorkspaceRoot: workspace,
+		ShellPath: "/bin/sh", ApprovalMode: localskills.ApprovalSmart,
+		CallTimeout: 3 * time.Second, RunTimeout: 10 * time.Second,
+		MaxOutput: 64 << 10, MaxCalls: 8, MaxRounds: 8, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := newLocalSkillToolRuntime(executor, []skillsupply.RuntimeSkill{skill})
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "list-call", Name: localSkillsListToolName, Arguments: `{}`,
+		}}},
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "view-call", Name: localSkillViewToolName,
+			Arguments: `{"name":"fixture-skill"}`,
+		}}},
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "terminal-call", Name: localTerminalToolName,
+			Arguments: `{"command":"test -f \"$NEO_CHAT_ACTIVE_SKILL_ROOT/SKILL.md\"; printf executed > result.txt; printf terminal-ok","skill":"fixture-skill","timeoutSeconds":2}`,
+		}}},
+		{{Type: ProviderEventDelta, Delta: "fixture complete"}},
+	}}
+	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt:       "run fixture",
+			ModelRef:     ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+			SystemPrompt: appendLocalSkillSystemInstruction("base", runtime),
+		},
+		LocalSkills: runtime,
+	})
+	var content strings.Builder
+	executions := make([]ProviderToolExecutionEvent, 0, 6)
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+		if event.ToolExecution != nil {
+			executions = append(executions, *event.ToolExecution)
+		}
+	}
+	if content.String() != "fixture complete" || len(provider.inputs) != 4 ||
+		len(provider.inputs[3].Continuation) != 3 {
+		t.Fatalf("content=%q inputs=%#v", content.String(), provider.inputs)
+	}
+	terminalResult := provider.inputs[3].Continuation[2].Results[0]
+	if terminalResult.IsError || !strings.Contains(terminalResult.Content, `"stdout":"terminal-ok"`) {
+		t.Fatalf("terminal result=%#v", terminalResult)
+	}
+	resultFile, err := os.ReadFile(filepath.Join(workspace, "result.txt"))
+	if err != nil || string(resultFile) != "executed" {
+		t.Fatalf("workspace result=%q error=%v", resultFile, err)
+	}
+	if len(executions) != 6 {
+		t.Fatalf("executions=%#v", executions)
+	}
+	encodedExecutions, err := json.Marshal(executions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encodedExecutions), "printf executed") ||
+		strings.Contains(string(encodedExecutions), "terminal-ok") ||
+		!strings.Contains(string(encodedExecutions), `"mode":"local_direct"`) ||
+		!strings.Contains(string(encodedExecutions), `"timeoutSeconds":2`) {
+		t.Fatalf("unsafe or incomplete process events=%s", encodedExecutions)
+	}
+	if strings.Contains(provider.inputs[0].SystemPrompt, "Use terminal to finish") ||
+		!strings.Contains(provider.inputs[0].SystemPrompt, "fixture-skill") {
+		t.Fatalf("progressive prompt=%q", provider.inputs[0].SystemPrompt)
+	}
+}
+
+func TestLocalSkillToolRejectsTraversalAndDestructiveTerminal(t *testing.T) {
+	workspace := t.TempDir()
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: filepath.Join(workspace, ".skills"), WorkspaceRoot: workspace,
+		ShellPath: "/bin/sh", ApprovalMode: localskills.ApprovalSmart,
+		CallTimeout: 2 * time.Second, RunTimeout: 5 * time.Second,
+		MaxOutput: 4096, MaxCalls: 4, MaxRounds: 4, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := newLocalSkillToolRuntime(executor, []skillsupply.RuntimeSkill{{
+		Name: "fixture", RootPath: filepath.Join(workspace, ".skills", "fixture"),
+		Files: []string{"SKILL.md"},
+	}})
+	for _, call := range []ProviderToolCall{
+		{ID: "view", Name: localSkillViewToolName, Arguments: `{"name":"missing","path":"../SKILL.md"}`},
+		{ID: "terminal", Name: localTerminalToolName, Arguments: `{"command":"rm -rf ./build"}`},
+	} {
+		events := make(chan ProviderEvent, 4)
+		result, err := runtime.execute(context.Background(), events, call, 1, 1)
+		if err != nil || !result.IsError {
+			t.Fatalf("call=%#v result=%#v error=%v", call, result, err)
+		}
+		if call.Name == localTerminalToolName && !strings.Contains(result.Content, "approval_required") {
+			t.Fatalf("destructive result=%s", result.Content)
+		}
+	}
+}
+
+func TestLocalSkillRuntimeStaysDisabledWithoutInstalledSkills(t *testing.T) {
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: filepath.Join(t.TempDir(), "skills"),
+		WorkspaceRoot: t.TempDir(), ShellPath: "/bin/sh",
+		ApprovalMode: localskills.ApprovalSmart, CallTimeout: time.Second,
+		RunTimeout: 5 * time.Second, MaxOutput: 4096, MaxCalls: 4,
+		MaxRounds: 4, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := newLocalSkillToolRuntime(executor, nil)
+	if runtime.enabled() || len(runtime.definitions()) != 0 || runtime.promptInstruction() != "" {
+		t.Fatalf("empty catalog unexpectedly enabled: %#v", runtime)
+	}
+}
+
+func TestLocalSkillCallBudgetReturnsFailureThenFinalContinuationWithoutTools(t *testing.T) {
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: filepath.Join(t.TempDir(), "skills"),
+		WorkspaceRoot: t.TempDir(), ShellPath: "/bin/sh",
+		ApprovalMode: localskills.ApprovalSmart, CallTimeout: time.Second,
+		RunTimeout: 5 * time.Second, MaxOutput: 4096, MaxCalls: 1,
+		MaxRounds: 4, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := newLocalSkillToolRuntime(executor, []skillsupply.RuntimeSkill{{
+		Name: "fixture", Files: []string{"SKILL.md"},
+	}})
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "first", Name: localSkillsListToolName, Arguments: `{}`,
+		}}},
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "over-budget", Name: localSkillsListToolName, Arguments: `{}`,
+		}}},
+		{{Type: ProviderEventDelta, Delta: "bounded final answer"}},
+	}}
+	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt: "list twice", ModelRef: ModelRef{ProviderID: "fixture", ModelID: "model"},
+		},
+		LocalSkills: runtime,
+	})
+	var content strings.Builder
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+	}
+	if content.String() != "bounded final answer" || len(provider.inputs) != 3 ||
+		len(provider.inputs[2].Tools) != 0 || len(provider.inputs[2].Continuation) != 2 {
+		t.Fatalf("content=%q inputs=%#v", content.String(), provider.inputs)
+	}
+	budgetResult := provider.inputs[2].Continuation[1].Results[0]
+	if !budgetResult.IsError || !strings.Contains(budgetResult.Content, "budget_exhausted") {
+		t.Fatalf("budget result=%#v", budgetResult)
+	}
+}
+
+func TestLocalSkillTerminalRejectsPackageDriftBeforeProcessStart(t *testing.T) {
+	workspace := t.TempDir()
+	runtimeRoot := t.TempDir()
+	skillRoot := filepath.Join(runtimeRoot, "fixture")
+	if err := os.Mkdir(skillRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := []byte("canonical")
+	if err := os.WriteFile(filepath.Join(skillRoot, "SKILL.md"), body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	skill := skillsupply.RuntimeSkill{
+		Name: "fixture", RootPath: skillRoot, Files: []string{"SKILL.md"},
+		PackageFingerprint: testRuntimeSkillFingerprint(map[string][]byte{
+			"SKILL.md": body,
+		}),
+	}
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: runtimeRoot, WorkspaceRoot: workspace,
+		ShellPath: "/bin/sh", ApprovalMode: localskills.ApprovalSmart,
+		CallTimeout: time.Second, RunTimeout: 5 * time.Second, MaxOutput: 4096,
+		MaxCalls: 4, MaxRounds: 4, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillRoot, "injected"), []byte("drift"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runtime := newLocalSkillToolRuntime(executor, []skillsupply.RuntimeSkill{skill})
+	result, err := runtime.execute(context.Background(), make(chan ProviderEvent, 4), ProviderToolCall{
+		ID: "terminal", Name: localTerminalToolName,
+		Arguments: `{"command":"printf ran > marker","skill":"fixture"}`,
+	}, 1, 1)
+	if err != nil || !result.IsError || !strings.Contains(result.Content, "package_drift") {
+		t.Fatalf("result=%#v error=%v", result, err)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "marker")); !os.IsNotExist(err) {
+		t.Fatalf("drifted package command started: %v", err)
+	}
+}
+
+func TestLocalSkillRoundBudgetUsesFinalContinuationWithoutTools(t *testing.T) {
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: filepath.Join(t.TempDir(), "skills"),
+		WorkspaceRoot: t.TempDir(), ShellPath: "/bin/sh",
+		ApprovalMode: localskills.ApprovalSmart, CallTimeout: time.Second,
+		RunTimeout: 5 * time.Second, MaxOutput: 4096, MaxCalls: 4,
+		MaxRounds: 1, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := newLocalSkillToolRuntime(executor, []skillsupply.RuntimeSkill{{
+		Name: "fixture", Files: []string{"SKILL.md"},
+	}})
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "first", Name: localSkillsListToolName, Arguments: `{}`,
+		}}},
+		{{Type: ProviderEventDelta, Delta: "round-bounded answer"}},
+	}}
+	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt: "list", ModelRef: ModelRef{ProviderID: "fixture", ModelID: "model"},
+		},
+		LocalSkills: runtime,
+	})
+	var content strings.Builder
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+	}
+	if content.String() != "round-bounded answer" || len(provider.inputs) != 2 ||
+		len(provider.inputs[1].Tools) != 0 || len(provider.inputs[1].Continuation) != 1 {
+		t.Fatalf("content=%q inputs=%#v", content.String(), provider.inputs)
+	}
+}
+
+func testRuntimeSkillFingerprint(files map[string][]byte) string {
+	digest := sha256.New()
+	_, _ = digest.Write([]byte("neo.skill-package/v1\x00"))
+	for _, name := range []string{"SKILL.md"} {
+		body := files[name]
+		sum := sha256.Sum256(body)
+		_, _ = fmt.Fprintf(
+			digest,
+			"%d:%s\x00%d\x00%s\n",
+			len(name), name, len(body), hex.EncodeToString(sum[:]),
+		)
+	}
+	return "sha256:" + hex.EncodeToString(digest.Sum(nil))
+}

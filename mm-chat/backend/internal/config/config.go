@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -70,6 +71,17 @@ const (
 	DefaultMCPRunTimeout                = 120 * time.Second
 	DefaultMCPAuditRetention            = 90 * 24 * time.Hour
 	DefaultMCPCleanupInterval           = time.Hour
+	DefaultAgentLocalEnabled            = false
+	DefaultAgentLocalRuntimeRoot        = "/var/lib/mm-chat/agent-skills"
+	DefaultAgentLocalWorkspaceRoot      = "/workspace"
+	DefaultAgentLocalShell              = "/bin/bash"
+	DefaultAgentLocalApprovalMode       = "smart"
+	DefaultAgentLocalCallTimeout        = 30 * time.Second
+	DefaultAgentLocalRunTimeout         = 5 * time.Minute
+	DefaultAgentLocalMaxOutputBytes     = int64(1 << 20)
+	DefaultAgentLocalMaxCalls           = 32
+	DefaultAgentLocalMaxRounds          = 8
+	DefaultAgentLocalMaxConcurrent      = 2
 	maximumAuthSMTPQueueSize            = 10_000
 
 	EnvAddr                     = "MM_CHAT_ADDR"
@@ -154,6 +166,17 @@ const (
 	EnvMCPMarketplaceSecretFile = "MCP_MARKETPLACE_CLIENT_SECRET_FILE"
 	EnvMCPMarketplaceTimeout    = "MCP_MARKETPLACE_TIMEOUT"
 	EnvMCPMarketplaceCacheTTL   = "MCP_MARKETPLACE_CACHE_TTL"
+	EnvAgentLocalEnabled        = "AGENT_LOCAL_RUNTIME_ENABLED"
+	EnvAgentLocalRuntimeRoot    = "AGENT_LOCAL_RUNTIME_ROOT"
+	EnvAgentLocalWorkspaceRoot  = "AGENT_LOCAL_WORKSPACE_ROOT"
+	EnvAgentLocalShell          = "AGENT_LOCAL_SHELL"
+	EnvAgentLocalApprovalMode   = "AGENT_LOCAL_APPROVAL_MODE"
+	EnvAgentLocalCallTimeout    = "AGENT_LOCAL_CALL_TIMEOUT"
+	EnvAgentLocalRunTimeout     = "AGENT_LOCAL_RUN_TIMEOUT"
+	EnvAgentLocalMaxOutputBytes = "AGENT_LOCAL_MAX_OUTPUT_BYTES"
+	EnvAgentLocalMaxCalls       = "AGENT_LOCAL_MAX_CALLS_PER_RUN"
+	EnvAgentLocalMaxRounds      = "AGENT_LOCAL_MAX_ROUNDS_PER_RUN"
+	EnvAgentLocalMaxConcurrent  = "AGENT_LOCAL_MAX_CONCURRENT"
 )
 
 // Config contains the process-level settings required to start the API.
@@ -177,6 +200,7 @@ type Config struct {
 	Auth            AuthConfig
 	Team            TeamConfig
 	MCP             MCPConfig
+	AgentLocal      AgentLocalConfig
 }
 
 // RedisConfig contains non-authoritative temporary-state settings. Redis must
@@ -265,6 +289,22 @@ type MCPConfig struct {
 	RunTimeout            time.Duration
 	AuditRetention        time.Duration
 	CleanupInterval       time.Duration
+}
+
+// AgentLocalConfig enables Hermes-style local_direct Skill execution as the
+// ordinary Backend user. Its limits are guardrails, not a Sandbox boundary.
+type AgentLocalConfig struct {
+	Enabled        bool
+	RuntimeRoot    string
+	WorkspaceRoot  string
+	Shell          string
+	ApprovalMode   string
+	CallTimeout    time.Duration
+	RunTimeout     time.Duration
+	MaxOutputBytes int64
+	MaxCalls       int
+	MaxRounds      int
+	MaxConcurrent  int
 }
 
 // S3Config contains MinIO/S3-compatible object storage settings.
@@ -407,6 +447,9 @@ func (cfg Config) Validate() error {
 	if err := validateMCPConfig(cfg.MCP); err != nil {
 		return err
 	}
+	if err := validateAgentLocalConfig(cfg.AgentLocal); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -539,6 +582,19 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 			AuditRetention:        durationEnvOrDefault(lookup, EnvMCPAuditRetention, DefaultMCPAuditRetention),
 			CleanupInterval:       durationEnvOrDefault(lookup, EnvMCPCleanupInterval, DefaultMCPCleanupInterval),
 		},
+		AgentLocal: AgentLocalConfig{
+			Enabled:        boolEnvOrDefault(lookup, EnvAgentLocalEnabled, DefaultAgentLocalEnabled),
+			RuntimeRoot:    envOrDefault(lookup, EnvAgentLocalRuntimeRoot, DefaultAgentLocalRuntimeRoot),
+			WorkspaceRoot:  envOrDefault(lookup, EnvAgentLocalWorkspaceRoot, DefaultAgentLocalWorkspaceRoot),
+			Shell:          envOrDefault(lookup, EnvAgentLocalShell, DefaultAgentLocalShell),
+			ApprovalMode:   strings.ToLower(envOrDefault(lookup, EnvAgentLocalApprovalMode, DefaultAgentLocalApprovalMode)),
+			CallTimeout:    durationEnvOrDefault(lookup, EnvAgentLocalCallTimeout, DefaultAgentLocalCallTimeout),
+			RunTimeout:     durationEnvOrDefault(lookup, EnvAgentLocalRunTimeout, DefaultAgentLocalRunTimeout),
+			MaxOutputBytes: int64EnvOrDefault(lookup, EnvAgentLocalMaxOutputBytes, DefaultAgentLocalMaxOutputBytes),
+			MaxCalls:       intEnvOrDefault(lookup, EnvAgentLocalMaxCalls, DefaultAgentLocalMaxCalls),
+			MaxRounds:      intEnvOrDefault(lookup, EnvAgentLocalMaxRounds, DefaultAgentLocalMaxRounds),
+			MaxConcurrent:  intEnvOrDefault(lookup, EnvAgentLocalMaxConcurrent, DefaultAgentLocalMaxConcurrent),
+		},
 
 		Auth: AuthConfig{
 			Mode:                 authModeEnvOrDefault(lookup, EnvAuthMode, DefaultAuthMode),
@@ -570,6 +626,49 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 			invalidFields:       invalidTeamFields,
 		},
 	}
+}
+
+func validateAgentLocalConfig(config AgentLocalConfig) error {
+	if !config.Enabled {
+		return nil
+	}
+	for _, root := range []struct {
+		name  string
+		value string
+	}{
+		{name: EnvAgentLocalRuntimeRoot, value: config.RuntimeRoot},
+		{name: EnvAgentLocalWorkspaceRoot, value: config.WorkspaceRoot},
+	} {
+		if !filepath.IsAbs(root.value) || filepath.Clean(root.value) != root.value ||
+			root.value == string(filepath.Separator) {
+			return fmt.Errorf("%s must be a clean absolute non-root path", root.name)
+		}
+	}
+	if !filepath.IsAbs(config.Shell) || filepath.Clean(config.Shell) != config.Shell {
+		return fmt.Errorf("%s must be a clean absolute path", EnvAgentLocalShell)
+	}
+	if config.ApprovalMode != "smart" && config.ApprovalMode != "off" {
+		return fmt.Errorf("%s must be smart or off", EnvAgentLocalApprovalMode)
+	}
+	if config.CallTimeout < time.Second || config.CallTimeout > 10*time.Minute {
+		return fmt.Errorf("%s must be between 1s and 10m", EnvAgentLocalCallTimeout)
+	}
+	if config.RunTimeout < config.CallTimeout || config.RunTimeout > 30*time.Minute {
+		return fmt.Errorf("%s must be at least %s and at most 30m", EnvAgentLocalRunTimeout, EnvAgentLocalCallTimeout)
+	}
+	if config.MaxOutputBytes < 1024 || config.MaxOutputBytes > 8<<20 {
+		return fmt.Errorf("%s must be between 1024 and 8388608", EnvAgentLocalMaxOutputBytes)
+	}
+	if config.MaxCalls < 1 || config.MaxCalls > 128 {
+		return fmt.Errorf("%s must be between 1 and 128", EnvAgentLocalMaxCalls)
+	}
+	if config.MaxRounds < 1 || config.MaxRounds > 32 {
+		return fmt.Errorf("%s must be between 1 and 32", EnvAgentLocalMaxRounds)
+	}
+	if config.MaxConcurrent < 1 || config.MaxConcurrent > 32 {
+		return fmt.Errorf("%s must be between 1 and 32", EnvAgentLocalMaxConcurrent)
+	}
+	return nil
 }
 
 func validateMCPConfig(config MCPConfig) error {

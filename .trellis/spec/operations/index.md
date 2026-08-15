@@ -10,7 +10,7 @@
 | [Dependency security](./dependency-security.md)             | Lockfile remediation, official-registry audits, override compatibility, and release verification.         |
 | [Runtime recreate image pinning](./runtime-recreate-image-pinning.md) | Immutable image selection, schema compatibility, and rollback requirements for live Compose recreation. |
 | [MCP Runner](./mcp-runner.md)                         | MCP manifest, dedicated Runner image/token/topology, release, backup/restore, retention, and rollback. |
-| [Agent Runtime](./agent-runtime.md) | Non-root `neo-runnerd`, rootless OCI, held execution boundaries, G20.10 closure, G21.0-G21.5 exact stages, and the G21.6 bounded product canary/final closure. |
+| [Agent Runtime](./agent-runtime.md) | Current no-sudo `local_direct` Backend/Compose wiring plus retained optional rootless OCI G20/G21 operational history. |
 | [Session auto-commit](./session-auto-commit.md)             | Exact journal/index staging, commit isolation, ignored paths, and regression tests.                       |
 | [Trellis scaffold boundary](./trellis-scaffold-boundary.md) | Shared Trellis/Codex scaffold, local state exclusions, explicit staging, and fresh-clone verification.    |
 
@@ -47,13 +47,16 @@ or release changes, read [`mcp-runner.md`](./mcp-runner.md). Preserve the
 dedicated immutable image, independent secret, no-host-port network boundary,
 paired Postgres/MinIO backup, and non-destructive rollback.
 
-For Agent Runtime host/runtime, `neo-runnerd`, OCI isolation, Runner mTLS,
-Workspace/Scratch/Artifact, Egress/Secret Broker, Kill Switch, backup/restore,
-or legacy Skill cutover changes, read
-[`agent-runtime.md`](./agent-runtime.md). Require the exact non-root account
-capability probe and fingerprint-bound Isolation Acceptance evidence; never
-fall back to rootful Docker, privilege, host sockets/mounts/network, or secrets
-in Sandbox environment.
+For current `local_direct` Skill configuration, Backend image, Compose mounts,
+workspace or rollback changes, read [`agent-runtime.md`](./agent-runtime.md).
+Keep the ordinary runtime UID/GID, explicit mounts and environment, no-sudo
+setup, non-isolation warning, process limits and switch-off rollback. Never
+mount a container socket or bind unrelated secret/runtime paths.
+
+For retained optional `neo-runnerd`/OCI history, Runner mTLS, Scratch/Artifact,
+Egress/Secret Broker, Kill Switch, backup/restore or promotion changes, use the
+later G20/G21 scenarios in the same spec and preserve their exact-host evidence.
+Those held states are independent and must not gate current `local_direct`.
 
 ## Quality check
 
@@ -68,6 +71,7 @@ in Sandbox environment.
   `bash mm-chat/scripts/verify-agent-runtime-phase0.sh`. A production Runtime
   release additionally requires the target-host Isolation Acceptance Suite,
   Kill/reap/restart, Secret/network/filesystem negative proofs, paired backup/
-  restore, and the owning G20 promotion gate.
+  restore, and the owning G20 promotion gate. These OCI-only gates do not gate
+  the current single-server `local_direct` backend.
 
 **Language**: All documentation should be written in English.

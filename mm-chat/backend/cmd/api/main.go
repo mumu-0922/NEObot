@@ -35,6 +35,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/jobartifacts"
 	"neo-chat/mm-chat/backend/internal/jobaudit"
 	"neo-chat/mm-chat/backend/internal/knowledge"
+	"neo-chat/mm-chat/backend/internal/localskills"
 	"neo-chat/mm-chat/backend/internal/mcpclient"
 	"neo-chat/mm-chat/backend/internal/providersecrets"
 	"neo-chat/mm-chat/backend/internal/ragproviders"
@@ -105,6 +106,18 @@ func main() {
 	cfg := config.Load()
 	if err := cfg.Validate(); err != nil {
 		logger.Error("config_failed", slog.String("error", redactSensitiveLogText(err.Error())))
+		os.Exit(1)
+	}
+	localSkillExecutor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: cfg.AgentLocal.Enabled, RuntimeRoot: cfg.AgentLocal.RuntimeRoot,
+		WorkspaceRoot: cfg.AgentLocal.WorkspaceRoot, ShellPath: cfg.AgentLocal.Shell,
+		ApprovalMode: cfg.AgentLocal.ApprovalMode, CallTimeout: cfg.AgentLocal.CallTimeout,
+		RunTimeout: cfg.AgentLocal.RunTimeout, MaxOutput: cfg.AgentLocal.MaxOutputBytes,
+		MaxCalls: cfg.AgentLocal.MaxCalls, MaxRounds: cfg.AgentLocal.MaxRounds,
+		MaxConcurrent: cfg.AgentLocal.MaxConcurrent,
+	})
+	if err != nil {
+		logger.Error("agent_local_runtime_config_failed")
 		os.Exit(1)
 	}
 	providerSecretVault, err := newProviderSecretVault(cfg)
@@ -366,6 +379,7 @@ func main() {
 			agentcontrol.WithLearning(agentLearningService),
 			agentcontrol.WithArtifactStore(objectStore),
 			agentcontrol.WithAdministratorUserID(cfg.Auth.BootstrapUserID),
+			agentcontrol.WithLocalDirectExecution(cfg.AgentLocal.Enabled),
 		)
 		initializeCtx, initializeCancel := context.WithTimeout(context.Background(), databaseOpenTimeout)
 		err = agentControlService.Initialize(initializeCtx)
@@ -404,6 +418,7 @@ func main() {
 		httpserver.WithAgentService(agentService),
 		httpserver.WithAgentControlService(agentControlService),
 		httpserver.WithSkillSupplyService(skillSupplyService),
+		httpserver.WithLocalSkillExecutor(localSkillExecutor),
 		httpserver.WithLogger(logger),
 	}
 	if runtimeConfigRepo != nil {

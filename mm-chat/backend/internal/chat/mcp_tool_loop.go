@@ -500,7 +500,7 @@ func mcpFailureToolResult(category string) string {
 	return string(encoded)
 }
 
-func streamMCPFinalNoTools(
+func streamFinalNoTools(
 	ctx context.Context,
 	events chan<- ProviderEvent,
 	provider ToolRoundProvider,

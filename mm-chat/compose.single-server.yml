@@ -144,6 +144,17 @@ x-backend-env: &backend-env
   MCP_MARKETPLACE_CLIENT_SECRET_FILE: /run/secrets/mm_chat_mcp_marketplace_client_secret
   MCP_MARKETPLACE_TIMEOUT: ${MCP_MARKETPLACE_TIMEOUT:-8s}
   MCP_MARKETPLACE_CACHE_TTL: ${MCP_MARKETPLACE_CACHE_TTL:-5m}
+  AGENT_LOCAL_RUNTIME_ENABLED: ${AGENT_LOCAL_RUNTIME_ENABLED:-true}
+  AGENT_LOCAL_RUNTIME_ROOT: ${AGENT_LOCAL_RUNTIME_ROOT:-/var/lib/mm-chat/agent-skills}
+  AGENT_LOCAL_WORKSPACE_ROOT: ${AGENT_LOCAL_WORKSPACE_ROOT:-/workspace}
+  AGENT_LOCAL_SHELL: ${AGENT_LOCAL_SHELL:-/bin/bash}
+  AGENT_LOCAL_APPROVAL_MODE: ${AGENT_LOCAL_APPROVAL_MODE:-smart}
+  AGENT_LOCAL_CALL_TIMEOUT: ${AGENT_LOCAL_CALL_TIMEOUT:-30s}
+  AGENT_LOCAL_RUN_TIMEOUT: ${AGENT_LOCAL_RUN_TIMEOUT:-5m}
+  AGENT_LOCAL_MAX_OUTPUT_BYTES: ${AGENT_LOCAL_MAX_OUTPUT_BYTES:-1048576}
+  AGENT_LOCAL_MAX_CALLS_PER_RUN: ${AGENT_LOCAL_MAX_CALLS_PER_RUN:-32}
+  AGENT_LOCAL_MAX_ROUNDS_PER_RUN: ${AGENT_LOCAL_MAX_ROUNDS_PER_RUN:-8}
+  AGENT_LOCAL_MAX_CONCURRENT: ${AGENT_LOCAL_MAX_CONCURRENT:-2}
 
 services:
   postgres:
@@ -268,6 +279,7 @@ services:
     build: *backend-build
     restart: unless-stopped
     profiles: ["app"]
+    init: true
     user: "${MM_CHAT_RUNTIME_UID:-1000}:${MM_CHAT_RUNTIME_GID:-1000}"
     environment: *backend-env
     secrets:
@@ -279,6 +291,16 @@ services:
         target: mm_chat_mcp_marketplace_client_secret
     volumes:
       - ./mcp/manifest.json:/etc/mm-chat/mcp-manifest.json:ro
+      - type: bind
+        source: ${AGENT_LOCAL_RUNTIME_SOURCE:-./data/agent-skills}
+        target: ${AGENT_LOCAL_RUNTIME_ROOT:-/var/lib/mm-chat/agent-skills}
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${AGENT_LOCAL_WORKSPACE_SOURCE:-./data/agent-workspace}
+        target: ${AGENT_LOCAL_WORKSPACE_ROOT:-/workspace}
+        bind:
+          create_host_path: false
     depends_on:
       postgres:
         condition: service_healthy

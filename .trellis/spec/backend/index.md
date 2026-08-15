@@ -11,7 +11,7 @@
 | [Chat Tool Loop](./chat-tool-loop.md)               | G19 provider-normalized Tool rounds, three-state Search authority, Memory first-round routing, process persistence, approvals, and citation truth |
 | [MCP Tools](./mcp-tools.md)                         | Server-authoritative MCP API, grants/selections, native Tool continuation, transports, results, retention, and Plugin retirement |
 | [Assistant Store](./assistant-store.md)             | Server-owned prompt presets, LobeHub admission/fingerprints, revisions, persistence, and rollback boundaries |
-| [Agent Runtime](./agent-runtime.md) | Package-Skill admission, durable Run/Step/Attempt, Runner/Broker/delegation/Cron/learning, Agent Center, legacy cutover, G21.0-G21.5 exact stages, and the G21.6 bounded product canary/final closure |
+| [Agent Runtime](./agent-runtime.md) | Current `local_direct` installed-Skill materialization/execution plus retained optional G20/G21 Runner/Broker/delegation/Cron/learning history |
 | [Direct chat attachments](./chat-attachments.md)    | Attachment-only messages, native images, bounded document extraction, provider context, and explicit failures       |
 | [Hosted media provider smoke](./provider-live-smoke.md) | Exact live-provider authorization, one-off credentials, explicit TTS voices, artifacts, and sanitized evidence    |
 | [Hosted TTS production](./hosted-tts-production.md) | Dedicated SiliconFlow Voice authority, exact activation, server-mode playback, per-user cache, and cleanup |
@@ -84,15 +84,16 @@ Child Agents, Cron, Draft learning, Kill Switches, or legacy Skill cutover:
 1. Read [`agent-runtime.md`](./agent-runtime.md),
    [`chat-tool-loop.md`](./chat-tool-loop.md), and
    [`mcp-tools.md`](./mcp-tools.md).
-2. Trace admitted package/runtime -> frozen Grant/snapshot -> leased Attempt ->
-   rootless Runner launch -> brokered action -> append-only terminal event ->
-   cleanup/recovery.
-3. Preserve PostgreSQL authority, lease-generation fencing, Prepare/Commit
-   `outcome_unknown`, depth 1 plus physical `delegate_task` removal, Draft-only
-   learning, and cleanup while disabled.
-4. Keep G20.9 legacy text-Skill authority deleted and preserve
-   `CODE_EXECUTION_UNAVAILABLE`/`ISOLATION_UNAVAILABLE` until the Package Runtime
-   group passes exact-host promotion gates. Never add a browser/API fallback.
+2. For current Chat Skills, trace owner installation -> canonical package
+   revalidation -> immutable materialization -> compact index -> `skill_view`
+   -> bounded Backend-user `terminal` -> same-model answer.
+3. Preserve explicit child environment, workspace/path/fingerprint checks,
+   process-group cancellation, local call/round/time/output limits, command
+   redaction and the explicit "not a Sandbox" product warning.
+4. For retained optional G20/G21 OCI work only, preserve PostgreSQL authority,
+   lease-generation fencing, Prepare/Commit `outcome_unknown`, depth 1 plus
+   physical `delegate_task` removal, Draft-only learning and cleanup while
+   disabled. Its `ISOLATION_UNAVAILABLE` state must not gate `local_direct`.
 
 For chat upload, attachment parsing, or provider attachment changes:
 

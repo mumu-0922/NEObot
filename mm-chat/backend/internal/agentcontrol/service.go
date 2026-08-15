@@ -32,6 +32,7 @@ type Service struct {
 	administratorID string
 	shadowAdapter   ShadowAdapter
 	artifactStore   ArtifactStore
+	localDirect     bool
 	bootID          string
 	newID           func(string) string
 }
@@ -66,6 +67,10 @@ func WithShadowAdapter(adapter ShadowAdapter) ServiceOption {
 
 func WithArtifactStore(store ArtifactStore) ServiceOption {
 	return func(service *Service) { service.artifactStore = store }
+}
+
+func WithLocalDirectExecution(enabled bool) ServiceOption {
+	return func(service *Service) { service.localDirect = enabled }
 }
 
 func NewService(options ...ServiceOption) *Service {
@@ -116,6 +121,12 @@ func (service *Service) Status(ctx context.Context, userID string) (CenterStatus
 		runtime.ReasonCode = shadow.HeldReasonCode
 		runtime.Executable = true
 		runtime.ProductCanary = true
+	}
+	if service.localDirect {
+		runtime.State = "local_ready"
+		runtime.ReasonCode = RuntimeLocalDirectReason
+		runtime.Executable = true
+		runtime.ProductCanary = false
 	}
 	return CenterStatus{
 		IsAdministrator: service.IsAdministrator(userID),

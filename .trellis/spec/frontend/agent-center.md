@@ -1,13 +1,14 @@
 # Agent Center Frontend Contract
 
-## Scenario: Operate package Skills and held Agent controls
+## Scenario: Operate package Skills with local-direct readiness
 
 ### 1. Scope / Trigger
 
 Apply this contract when changing the top-level Agent Center, Agent Center API
 types/client, package Skill product UI, Run/Schedule/Learning Review views,
 Shadow opt-in, bounded product-canary submission, Artifact download or G20.9
-legacy Skill retirement.
+legacy Skill retirement. The current single-server Skill backend is
+`local_direct`; retained G20/G21 OCI controls are disabled optional/history.
 
 ### 2. Signatures
 
@@ -19,6 +20,9 @@ legacy Skill retirement.
   version `7`, and `legacySkillRetired: true` history projection.
 - Focused gates: `bash mm-chat/scripts/verify-agent-product-shadow.sh` and
   `bash mm-chat/scripts/verify-agent-legacy-cutover.sh`.
+- Current Runtime status: `state=local_ready`,
+  `reasonCode=LOCAL_DIRECT_EXECUTION`, `executable=true`,
+  `productCanary=false`.
 
 ### 3. Contracts
 
@@ -26,7 +30,16 @@ legacy Skill retirement.
   Assistant Hub or MCP administration, and do not recreate a legacy text-Skill
   editor/inventory surface.
 - Package Store/library uses `/v1/skills/*` and displays immutable package and
-  runtime fingerprints plus the honest held Runtime state.
+  runtime fingerprints plus the honest current Runtime state. An admitted
+  instruction-only Skill without `neo.runtime.json` or an OCI image remains
+  executable when the server reports `local_ready`.
+- When `state=local_ready` and `reasonCode=LOCAL_DIRECT_EXECUTION`, render that
+  local Skills can run in ordinary Chat. Also render an explicit localized
+  warning that commands use the Backend user's configured local workspace
+  authority and are **not** an isolated Sandbox. Do not imply root or `sudo`.
+- `productCanary=false` is correct for `local_direct`: ordinary Chat Tool
+  execution does not require the optional OCI product-canary path. Never
+  replace current `local_ready` with historical `ISOLATION_UNAVAILABLE`.
 - The product-canary action is visible only when the server Shadow snapshot has
   `effective=true`. Submit exactly `expectedPolicyRevision` and
   `expectedGeneration`; never send prompt, arguments, Package/model/Tool,
@@ -76,7 +89,9 @@ legacy Skill retirement.
 
 | Condition | UI behavior |
 | --- | --- |
-| Runtime/Shadow held | render reason text including `ISOLATION_UNAVAILABLE`; no fake success |
+| Runtime is `local_ready` | render ready state plus the non-isolation/local-workspace warning |
+| local Runtime disabled | render exact server-disabled reason; no executable claim |
+| optional OCI Runtime/Shadow held | render its exact held reason only in the owning historical control; do not downgrade `local_ready` |
 | Product canary ready | show bounded action and remaining request count from the server snapshot |
 | Product request accepted | announce queued request, then reload Runs/status without optimistic Run state |
 | malformed server payload | stable error state; no partial record render |
@@ -91,27 +106,30 @@ legacy Skill retirement.
 
 ### 5. Good / Base / Bad Cases
 
-- **Good**: a user reloads a Run detail URL, reviews exact process facts,
-  downloads an owned Artifact and cancels with the current fingerprint.
-- **Base**: no Runs/Schedules exist and Runtime is held; all four product areas
-  render honest empty/held states and no legacy Skill executor exists.
+- **Good**: a user sees that an installed instruction-only Skill is locally
+  executable, sees the workspace-authority warning, then uses it in Chat.
+- **Base**: no Runs/Schedules exist and local Runtime is disabled; all four
+  product areas render honest empty/disabled states and no fallback starts.
 - **Bad**: optimistic local authority, raw unvalidated JSON, object key in DOM,
-  admin tab for all users, Package/Legacy identity coercion, partial migration
-  marker, or browser/API fallback execution.
+  calling local execution isolated, forcing an OCI manifest for an ordinary
+  Skill, admin tab for all users, Package/Legacy identity coercion, partial
+  migration marker, or browser/API fallback execution.
 
 ### 6. Tests Required
 
 - `serverAgentCenterApi.test.ts`: route, request shape, strict response failure.
 - `chatPanelUrlState.test.ts`: panel/tab/record parse and serialization.
 - `agentCenterComposition.test.ts`: tab separation, held state, accessibility,
-  mobile/back/focus/action composition.
+  mobile/back/focus/action composition, `local_ready` copy, non-isolation
+  warning and instruction-only Skill executability.
 - Product-canary tests prove the two-field request, strict queued DTO,
   `effective=true` visibility and Runs/status refresh.
 - `legacySkillRetirement.test.ts`: top-level/nested purge, Settings/Chat
   migrate/partialize non-resurrection, compensation, marker-last, idempotence
   and history-detail collapse.
 - `verify-agent-legacy-cutover.sh`: deleted surface/assets, zero resolver/prompt
-  references and held `ISOLATION_UNAVAILABLE` boundary.
+  references and zero legacy fallback authority. Historical OCI hold does not
+  gate current `local_direct` execution.
 - Run format, lint, typecheck, full Vitest and build before commit.
 
 ### 7. Wrong vs Correct
@@ -119,13 +137,13 @@ legacy Skill retirement.
 #### Wrong
 
 ```text
-legacy Skill title matches package -> silently install -> execute from browser
+local_ready -> hide authority warning -> call the command an isolated Sandbox
 ```
 
 #### Correct
 
 ```text
-G20.8 backup first -> G20.9 marker-last browser purge + server key strip
--> old history becomes one retirement fact -> Package Skills remain held and
-server-owned -> no browser/API fallback
+strict server DTO -> local_ready + explicit local-workspace warning
+-> instruction-only Package Skill remains usable in ordinary Chat
+-> no browser authority and no OCI/Podman prerequisite
 ```

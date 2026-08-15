@@ -13,7 +13,8 @@ import (
 )
 
 const (
-	RuntimeHeldReason = "ISOLATION_UNAVAILABLE"
+	RuntimeHeldReason        = "ISOLATION_UNAVAILABLE"
+	RuntimeLocalDirectReason = "LOCAL_DIRECT_EXECUTION"
 
 	ShadowModeSynthetic = "synthetic"
 	ShadowModeReadOnly  = "read_only"

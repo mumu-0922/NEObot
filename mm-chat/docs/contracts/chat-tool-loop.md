@@ -8,16 +8,27 @@ selected Knowledge/Memory retrieval, live process visibility, persisted
 reasoning and trace data, tool approval, cancellation, and source
 reconciliation.
 
-The first admitted tools are read-only:
+The active native Tool catalog includes read-only retrieval/Skill discovery and
+the explicitly executing local `terminal` Tool:
 
 ```text
 search_web(query)
 search_knowledge(query)
 search_memory()  # default-off; first round only
+skills_list()    # when local_direct is enabled and the user installed Skills
+skill_view(name, path?)
+terminal(command, skill?, workingDir?, timeoutSeconds?)
 ```
 
 The generic runtime may admit more tools later only after assigning an explicit
 risk class and approval policy.
+
+The three local Skill Tools implement progressive disclosure for the current
+user's admitted installations. The prompt receives only bounded
+name/version/description metadata; `skill_view` loads exact package files on
+demand, and `terminal` executes as the Backend user in the configured local
+workspace. `local_direct` is not an isolated Sandbox. Its contract is
+[`local-skill-runtime.md`](./local-skill-runtime.md).
 
 `search_memory` is absent unless `MEMORY_TOOL_LOOP_ENABLED=true`. The schema-v7
 answer-model routing evidence remains failed and immutable, but the owner later
@@ -138,14 +149,22 @@ rounds exactly once. A continuation-recovery answer stream inherits that same
 completed-usage base, so its terminal update cannot move the visible count
 backward.
 
-There is no product-level maximum Tool Round count, total Tool Call count, or
-per-tool count for this single-user deployment. The loop terminates only when:
+Retrieval-only rounds retain their existing provider limits. MCP and
+`local_direct` add explicit per-Run Tool Call, Tool Round, wall-clock, output,
+and concurrency budgets. When one of those budgets is exhausted, the loop
+performs one same-model continuation without Tools and cannot execute another
+call. The loop otherwise terminates when:
 
 - the model returns no Tool Call;
 - the user cancels the run;
 - the request context or configured provider timeout ends;
 - a Tool/Provider returns a terminal non-degradable error; or
 - an approval is rejected.
+
+Local Skill process events contain only Tool name, round, `local_direct`, risk
+classification, optional timeout, duration, and failure category. Command text,
+working-directory text, stdout, stderr, Skill file content, and storage paths
+must never enter SSE process metadata or persisted process trace.
 
 The existing run cancellation must cancel the active provider request and any
 in-flight Tool request. A cancelled loop emits exactly one terminal

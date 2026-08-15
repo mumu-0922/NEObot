@@ -16,7 +16,7 @@ Outbox state.
 | [`single-server-compose.md`](./single-server-compose.md)               | Compose topology, profiles, Phase 15.2B dark-run Worker boundary, first boot, release, and rollback checklist.                              |
 | [`mcp-runner.md`](./mcp-runner.md)                                     | MCP manifest validation, optional hardened stdio Runner, token/image preflight, lifecycle, retention, and rollback.                         |
 | [`agent-runtime.md`](./agent-runtime.md)                               | G20 package Runtime, G21.0 control activation, G21.1 synthetic Root canary, held general execution, backup/restore, and incident runbooks. |
-| [`agent-runner-local-test.md`](./agent-runner-local-test.md)           | Ubuntu 22.04 WSL2 local-test system bootstrap, pinned rootless toolchain, bounded Skill smoke, status, and guarded rollback.               |
+| [`local-skill-runtime.md`](./local-skill-runtime.md)                   | No-sudo local Skill workspace setup, `local_direct` limits, operation, warning, and rollback.                                             |
 | [`postgres-single-server.md`](./postgres-single-server.md)             | Current Postgres runtime covering private ports, DB principals, health checks, migration head, backup/restore, image fencing, and rollback. |
 | [`redis-temporary-state.md`](./redis-temporary-state.md)               | Phase 7 Redis runbook for non-authoritative temporary state, stream cancellation flags, private-network rules, and flush behavior.          |
 | [`backup-restore.md`](./backup-restore.md)                             | Backup scripts, checksum verification, Postgres restore drill, MinIO restore drill, retention, and destructive-restore warnings.            |
@@ -30,11 +30,11 @@ Outbox state.
 
 - Compose assets are isolated under `mm-chat/`; do not overwrite the
   repository-root deployment files.
-- G20.1 adds Backend/PostgreSQL/MinIO Skill supply authority but no Agent
-  executor, Runner, Sandbox, Cron, or host service. Do not treat
-  Docker availability or the existing `mcp-runner` as rootless OCI acceptance;
-  later groups must pass the exact target-host capability probe and Isolation
-  Acceptance Suite before adding or enabling `neo-runnerd`.
+- Current ordinary Chat Skills use the no-sudo `local_direct` Backend described
+  in [`local-skill-runtime.md`](./local-skill-runtime.md). Retained G20.1 supply
+  authority originally added no OCI executor, Runner, Sandbox, Cron, or host
+  service; the optional `neo-runnerd` path still requires its own exact-host
+  Isolation Acceptance and does not gate local execution.
 - Runtime data and local backups belong under `mm-chat/data/` and
   `mm-chat/backup/`, both gitignored.
 - MinIO must remain private; the Go backend is the public file authorization
