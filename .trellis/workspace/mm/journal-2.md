@@ -203,3 +203,36 @@ Added the independently activated, offline-approved synthetic Project CAS canary
 ### Next Steps
 
 - None - task complete
+
+
+## Session 55: Complete Agent Runtime G21.4 depth-one Child canary
+
+**Date**: 2026-08-15
+**Task**: Complete Agent Runtime G21.4 depth-one Child canary
+**Branch**: `main`
+
+### Summary
+
+Added the default-off G21.4 one-Parent/one-Child production-path canary, migration-093 atomic reap transport, restart recovery, exact activation/preflight/Compose wiring, migrated every PostgreSQL tail drill through head 093, and passed focused, Phase 0, Backend, PostgreSQL 17, security, and full standalone verification while retaining ISOLATION_UNAVAILABLE.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3f5a366b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
