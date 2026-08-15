@@ -496,12 +496,16 @@ func (service *Service) runCheck(
 	}
 	metrics := nonNilMetrics(result.Metrics)
 	encoded, _ := json.Marshal(metrics)
-	evidence := []byte(strings.Join([]string{input.Draft.DraftFingerprint, kind,
-		result.Status, result.ReasonCode, result.SuiteFingerprint, string(encoded)}, "\x00"))
+	evidenceFingerprint := result.EvidenceFingerprint
+	if evidenceFingerprint == "" {
+		evidence := []byte(strings.Join([]string{input.Draft.DraftFingerprint, kind,
+			result.Status, result.ReasonCode, result.SuiteFingerprint, string(encoded)}, "\x00"))
+		evidenceFingerprint = fingerprint("neo-agent-learning-check-receipt-v1", evidence)
+	}
 	return CheckReceipt{ID: service.newID("draft_check"), Kind: kind,
 		Status: result.Status, ReasonCode: result.ReasonCode,
 		SuiteFingerprint:    result.SuiteFingerprint,
-		EvidenceFingerprint: fingerprint("neo-agent-learning-check-receipt-v1", evidence),
+		EvidenceFingerprint: evidenceFingerprint,
 		DurationMillis:      result.DurationMillis, Metrics: metrics}, nil
 }
 
@@ -631,7 +635,9 @@ func validateReviewInput(input ReviewInput) error {
 func validCheckResult(result CheckResult) bool {
 	if (result.Status != CheckPassed && result.Status != CheckFailed) ||
 		!reasonPattern.MatchString(result.ReasonCode) ||
-		!digestPattern.MatchString(result.SuiteFingerprint) || result.DurationMillis < 0 ||
+		!digestPattern.MatchString(result.SuiteFingerprint) ||
+		(result.EvidenceFingerprint != "" && !digestPattern.MatchString(result.EvidenceFingerprint)) ||
+		result.DurationMillis < 0 ||
 		result.DurationMillis > 86_400_000 || len(result.Metrics) > 16 {
 		return false
 	}

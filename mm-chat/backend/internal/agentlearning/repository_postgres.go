@@ -14,14 +14,24 @@ import (
 )
 
 type PostgresRepository struct {
-	db    *sql.DB
-	newID func(string) string
+	db           *sql.DB
+	newID        func(string) string
+	activationID string
 }
 
 func NewPostgresRepository(database *sql.DB) *PostgresRepository {
 	return &PostgresRepository{db: database, newID: func(prefix string) string {
 		return prefix + "_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 	}}
+}
+
+// NewActivationPostgresRepository binds check and cleanup operations to one
+// operator-provisioned migration-094 Draft target. The corresponding worker
+// LOGIN has no direct Draft/package SELECT and no review or Promote function.
+func NewActivationPostgresRepository(database *sql.DB, activationID string) *PostgresRepository {
+	repository := NewPostgresRepository(database)
+	repository.activationID = strings.TrimSpace(activationID)
+	return repository
 }
 
 func (repository *PostgresRepository) GetSourceRun(
@@ -119,9 +129,22 @@ func (repository *PostgresRepository) GetDraft(
 	if err := repository.requireDB(); err != nil {
 		return Draft{}, err
 	}
-	result, err := scanDraft(repository.db.QueryRowContext(ctx, draftSelect+`
+	query := draftSelect + `
 WHERE draft.id=$1 AND ($2='' OR draft.user_id::text=$2)
-`, draftID, userID))
+`
+	args := []any{draftID, userID}
+	if repository.activationID != "" {
+		query = `
+SELECT id,user_id,draft_fingerprint,spec,state,revision,check_attempts,
+  check_generation,check_owner,check_expires_at,admission_id,
+  promoted_package_fingerprint,draft_object_key,base_package_object_key,
+  created_at,updated_at,object_deleted_at
+FROM agent_learning_worker_get_draft($1)
+WHERE id=$2 AND ($3='' OR user_id=$3)
+`
+		args = append([]any{repository.activationID}, args...)
+	}
+	result, err := scanDraft(repository.db.QueryRowContext(ctx, query, args...))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Draft{}, ErrNotFound
 	}
@@ -138,12 +161,25 @@ func (repository *PostgresRepository) ClaimChecks(
 	if err := repository.requireDB(); err != nil {
 		return nil, err
 	}
-	rows, err := repository.db.QueryContext(ctx, `
-SELECT `+draftProjection+`
+	query := `
+SELECT ` + draftProjection + `
 FROM agent_learning_claim_checks($1,$2,$3,$4) draft
 JOIN skill_package_versions base ON base.package_fingerprint=draft.base_package_fingerprint
 ORDER BY draft.next_check_at,draft.id
-`, request.Owner, request.Now.UTC(), int(request.LeaseDuration/time.Second), request.Limit)
+`
+	args := []any{request.Owner, request.Now.UTC(), int(request.LeaseDuration / time.Second), request.Limit}
+	if repository.activationID != "" {
+		query = `
+SELECT id,user_id,draft_fingerprint,spec,state,revision,check_attempts,
+  check_generation,check_owner,check_expires_at,admission_id,
+  promoted_package_fingerprint,draft_object_key,base_package_object_key,
+  created_at,updated_at,object_deleted_at
+FROM agent_learning_worker_claim_checks($1,$2,$3,$4,$5)
+ORDER BY updated_at,id
+`
+		args = append([]any{repository.activationID}, args...)
+	}
+	rows, err := repository.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, repository.mapError("claim Agent Draft checks", err)
 	}
@@ -175,10 +211,17 @@ func (repository *PostgresRepository) CompleteChecks(
 	if err != nil {
 		return Draft{}, fmt.Errorf("marshal Agent Draft check receipts: %w", err)
 	}
-	if _, err := repository.db.ExecContext(ctx, `
+	query := `
 SELECT agent_learning_complete_checks($1,$2,$3,$4::jsonb,$5)
-`, claim.ID, claim.ClaimOwner, claim.ClaimGeneration, string(encoded),
-		repository.newID("draft_event")); err != nil {
+`
+	args := []any{claim.ID, claim.ClaimOwner, claim.ClaimGeneration, string(encoded),
+		repository.newID("draft_event")}
+	if repository.activationID != "" {
+		query = strings.Replace(query, "agent_learning_complete_checks($1,$2,$3,$4::jsonb,$5)",
+			"agent_learning_worker_complete_checks($1,$2,$3,$4,$5::jsonb,$6)", 1)
+		args = append([]any{repository.activationID}, args...)
+	}
+	if _, err := repository.db.ExecContext(ctx, query, args...); err != nil {
 		return Draft{}, repository.mapError("complete Agent Draft checks", err)
 	}
 	return repository.GetDraft(ctx, claim.UserID, claim.ID)
@@ -194,10 +237,17 @@ func (repository *PostgresRepository) ReleaseCheck(
 		return false, err
 	}
 	var terminal bool
-	err := repository.db.QueryRowContext(ctx, `
+	query := `
 SELECT agent_learning_release_check($1,$2,$3,$4,$5,$6)
-`, claim.ID, claim.ClaimOwner, claim.ClaimGeneration, errorCode, retryAt.UTC(),
-		repository.newID("draft_event")).Scan(&terminal)
+`
+	args := []any{claim.ID, claim.ClaimOwner, claim.ClaimGeneration, errorCode, retryAt.UTC(),
+		repository.newID("draft_event")}
+	if repository.activationID != "" {
+		query = strings.Replace(query, "agent_learning_release_check($1,$2,$3,$4,$5,$6)",
+			"agent_learning_worker_release_check($1,$2,$3,$4,$5,$6,$7)", 1)
+		args = append([]any{repository.activationID}, args...)
+	}
+	err := repository.db.QueryRowContext(ctx, query, args...).Scan(&terminal)
 	if err != nil {
 		return false, repository.mapError("release Agent Draft check", err)
 	}
@@ -310,10 +360,17 @@ func (repository *PostgresRepository) ClaimCleanup(
 	if err := repository.requireDB(); err != nil {
 		return nil, err
 	}
-	rows, err := repository.db.QueryContext(ctx, `
+	query := `
 SELECT draft_id,object_key,object_fingerprint,generation,claim_owner,claim_expires_at,attempts
 FROM agent_learning_claim_cleanup($1,$2,$3,$4) ORDER BY next_attempt_at,draft_id
-`, request.Owner, request.Now.UTC(), int(request.LeaseDuration/time.Second), request.Limit)
+`
+	args := []any{request.Owner, request.Now.UTC(), int(request.LeaseDuration / time.Second), request.Limit}
+	if repository.activationID != "" {
+		query = strings.Replace(query, "agent_learning_claim_cleanup($1,$2,$3,$4)",
+			"agent_learning_worker_claim_cleanup($1,$2,$3,$4,$5)", 1)
+		args = append([]any{repository.activationID}, args...)
+	}
+	rows, err := repository.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, repository.mapError("claim Agent Draft cleanup", err)
 	}
@@ -337,9 +394,16 @@ func (repository *PostgresRepository) CompleteCleanup(
 	if err := repository.requireDB(); err != nil {
 		return err
 	}
-	_, err := repository.db.ExecContext(ctx, `
+	query := `
 SELECT agent_learning_complete_cleanup($1,$2,$3,$4)
-`, claim.DraftID, claim.Owner, claim.Generation, claim.ObjectFingerprint)
+`
+	args := []any{claim.DraftID, claim.Owner, claim.Generation, claim.ObjectFingerprint}
+	if repository.activationID != "" {
+		query = strings.Replace(query, "agent_learning_complete_cleanup($1,$2,$3,$4)",
+			"agent_learning_worker_complete_cleanup($1,$2,$3,$4,$5)", 1)
+		args = append([]any{repository.activationID}, args...)
+	}
+	_, err := repository.db.ExecContext(ctx, query, args...)
 	return repository.mapError("complete Agent Draft cleanup", err)
 }
 
@@ -353,9 +417,16 @@ func (repository *PostgresRepository) ReleaseCleanup(
 		return false, err
 	}
 	var terminal bool
-	err := repository.db.QueryRowContext(ctx, `
+	query := `
 SELECT agent_learning_release_cleanup($1,$2,$3,$4,$5)
-`, claim.DraftID, claim.Owner, claim.Generation, errorCode, retryAt.UTC()).Scan(&terminal)
+`
+	args := []any{claim.DraftID, claim.Owner, claim.Generation, errorCode, retryAt.UTC()}
+	if repository.activationID != "" {
+		query = strings.Replace(query, "agent_learning_release_cleanup($1,$2,$3,$4,$5)",
+			"agent_learning_worker_release_cleanup($1,$2,$3,$4,$5,$6)", 1)
+		args = append([]any{repository.activationID}, args...)
+	}
+	err := repository.db.QueryRowContext(ctx, query, args...).Scan(&terminal)
 	if err != nil {
 		return false, repository.mapError("release Agent Draft cleanup", err)
 	}
@@ -371,9 +442,17 @@ func (repository *PostgresRepository) Reconcile(
 		return ReconcileResult{}, err
 	}
 	var result ReconcileResult
-	err := repository.db.QueryRowContext(ctx, `
+	query := `
 SELECT checks_reclaimed,cleanup_reclaimed FROM agent_learning_reconcile($1,$2)
-`, now.UTC(), limit).Scan(&result.ChecksReclaimed, &result.CleanupReclaimed)
+`
+	args := []any{now.UTC(), limit}
+	if repository.activationID != "" {
+		query = strings.Replace(query, "agent_learning_reconcile($1,$2)",
+			"agent_learning_worker_reconcile($1,$2,$3)", 1)
+		args = append([]any{repository.activationID}, args...)
+	}
+	err := repository.db.QueryRowContext(ctx, query, args...).Scan(
+		&result.ChecksReclaimed, &result.CleanupReclaimed)
 	if err != nil {
 		return ReconcileResult{}, repository.mapError("reconcile Agent learning", err)
 	}
@@ -389,9 +468,17 @@ func (repository *PostgresRepository) Prune(
 		return PruneResult{}, err
 	}
 	var result PruneResult
-	err := repository.db.QueryRowContext(ctx, `
+	query := `
 SELECT drafts_pruned,audits_pruned FROM agent_learning_prune($1,$2)
-`, cutoff.UTC(), limit).Scan(&result.DraftsPruned, &result.AuditsPruned)
+`
+	args := []any{cutoff.UTC(), limit}
+	if repository.activationID != "" {
+		query = strings.Replace(query, "agent_learning_prune($1,$2)",
+			"agent_learning_worker_prune($1,$2,$3)", 1)
+		args = append([]any{repository.activationID}, args...)
+	}
+	err := repository.db.QueryRowContext(ctx, query, args...).Scan(
+		&result.DraftsPruned, &result.AuditsPruned)
 	if err != nil {
 		return PruneResult{}, repository.mapError("prune Agent learning", err)
 	}

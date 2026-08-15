@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -62,6 +63,9 @@ func DecodeRequest(body []byte, now time.Time, maxSkew time.Duration) (Request, 
 	case MethodCancel:
 		request.Cancel = &CancelRequest{}
 		typed = request.Cancel
+	case MethodResult:
+		request.Result = &ResultRequest{}
+		typed = request.Result
 	case MethodPrepare:
 		request.Prepare = &PrepareRequest{}
 		typed = request.Prepare
@@ -131,6 +135,13 @@ func validateRequest(request *Request) error {
 		body := request.Cancel
 		if !validAttempt(body.Attempt) || !member(body.Mode, "cancel", "kill") ||
 			!identifierPattern.MatchString(body.ReasonCode) || len(body.ReasonCode) > 64 {
+			return ErrInvalidInput
+		}
+	case MethodResult:
+		body := request.Result
+		if !validAttempt(body.Attempt) || !validFingerprint(body.SnapshotFingerprint) ||
+			!artifactNamePattern.MatchString(body.Name) || body.Name != filepath.Base(body.Name) ||
+			!strings.HasPrefix(body.Name, "draft-") || !strings.HasSuffix(body.Name, ".json") {
 			return ErrInvalidInput
 		}
 	case MethodPrepare:
@@ -322,6 +333,13 @@ func AuthorityRequestFingerprint(method string, body any) string {
 		}
 		value.Authority = AuthorityTicket{}
 		unsigned = value
+	case MethodResult:
+		value, ok := body.(ResultRequest)
+		if !ok {
+			return ""
+		}
+		value.Authority = AuthorityTicket{}
+		unsigned = value
 	case MethodPrepare:
 		value, ok := body.(PrepareRequest)
 		if !ok {
@@ -355,6 +373,8 @@ func authorityFingerprintForRequest(request Request) string {
 		return AuthorityRequestFingerprint(request.Method, *request.Heartbeat)
 	case MethodCancel:
 		return AuthorityRequestFingerprint(request.Method, *request.Cancel)
+	case MethodResult:
+		return AuthorityRequestFingerprint(request.Method, *request.Result)
 	case MethodPrepare:
 		return AuthorityRequestFingerprint(request.Method, *request.Prepare)
 	case MethodCommit:

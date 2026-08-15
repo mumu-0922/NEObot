@@ -27,6 +27,7 @@ const (
 	projectCanaryCallerIdentity = "spiffe://neo-chat/agent-runtime-project-canary"
 	projectRelayIdentity        = "spiffe://neo-chat/neo-runner-project-relay"
 	childCanaryCallerIdentity   = "spiffe://neo-chat/agent-runtime-child-canary"
+	draftLearningCallerIdentity = "spiffe://neo-chat/agent-runtime-draft-learning"
 )
 
 func main() {
@@ -181,6 +182,18 @@ func run() error {
 		policies = append(policies, agentrunner.CallerPolicy{Identity: childIdentity,
 			Methods: []string{agentrunner.MethodProbe, agentrunner.MethodList, agentrunner.MethodReconcile,
 				agentrunner.MethodLaunch, agentrunner.MethodHeartbeat, agentrunner.MethodCancel}})
+	}
+	draftIdentity := strings.TrimSpace(os.Getenv("NEO_RUNNER_DRAFT_LEARNING_CLIENT_IDENTITY"))
+	if draftIdentity != "" {
+		if draftIdentity != draftLearningCallerIdentity || childIdentity == "" ||
+			draftIdentity == clientIdentity || draftIdentity == canaryIdentity ||
+			draftIdentity == brokerIdentity || draftIdentity == projectIdentity ||
+			draftIdentity == childIdentity {
+			return errors.New("neo-runnerd Draft learning client identity is invalid")
+		}
+		policies = append(policies, agentrunner.CallerPolicy{Identity: draftIdentity,
+			Methods: []string{agentrunner.MethodProbe, agentrunner.MethodList, agentrunner.MethodReconcile,
+				agentrunner.MethodLaunch, agentrunner.MethodResult, agentrunner.MethodCancel}})
 	}
 	handler, err := agentrunner.NewHTTPHandlerWithPolicies(service, 15*time.Second, policies)
 	if err != nil {

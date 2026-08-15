@@ -481,8 +481,10 @@ VALUES($1,$2,$3,$4,'cron-fixture')
 	}
 
 	if retain {
-		retained := createTemplate(99)
-		setCronDue(t, ctx, database, retained.ID)
+		for _, index := range []int{98, 99} {
+			retained := createTemplate(index)
+			setCronDue(t, ctx, database, retained.ID)
+		}
 		return
 	}
 	_, _ = database.ExecContext(ctx, `DELETE FROM users WHERE id=$1`, userID)

@@ -361,7 +361,7 @@ but it does not expose a public API or enable a startup/production Scheduler.
   down and clean down/up.
 - Every older PostgreSQL drill that peels tail migrations must down empty `091`,
   `090`, `089` and then `088` before testing its own guard, then reapply through
-  head `093`.
+  head `094`.
 - Phase 0 and source gates must prove the package has no public/startup wiring;
   the exact-host gate must remain expected-nonzero `ISOLATION_UNAVAILABLE`.
 
@@ -489,7 +489,7 @@ startup worker, Chat/frontend/Compose wiring or production Draft execution.
   PL/pgSQL retry locals must use unambiguous names such as `next_attempts`
   rather than shadowing an `attempts` column.
 - Every older PostgreSQL tail drill peels empty `092`, then empty `091` and its reviewed tail,
-  before its original guard and finishes at head `093`. Phase 0 validates the strict Draft schema,
+  before its original guard and finishes at head `094`. Phase 0 validates the strict Draft schema,
   G20.8 product/Shadow signatures and cross-contract bindings.
 - Full standalone must pass and exact-host Runner verification remains expected
   nonzero `ISOLATION_UNAVAILABLE`.
@@ -590,7 +590,7 @@ control and review only; it does not enable package execution.
   Artifact lookup, default-off/cohort/opt-in, Kill Switch, budget, restart,
   generation/fingerprint fences, content-free dump/restore and guarded down/up.
 - Every older Agent/MCP/Assistant/Skill tail drill peels empty `092`, then empty
-  `091` and `090`, before its original guard and finishes at head `093`.
+  `091` and `090`, before its original guard and finishes at head `094`.
 - Run Phase 0, backend vet/test, frontend full gate and full standalone. Exact
   host remains expected-nonzero until separately promoted.
 
@@ -643,7 +643,7 @@ SQL. This scenario deletes old authority; it never converts or promotes it.
   description/category/mode.
 - Database apply locks `conversations`, verifies full-backup SHA-256 and exact
   target count, updates only `metadata = metadata - 'activeSkills'`, verifies
-  zero remaining, and leaves the current schema head at `093`. Rollback is full
+  zero remaining, and leaves the current schema head at `094`. Rollback is full
   backup plus previous images; the cutover creates no migration or synthetic
   down SQL.
 - No browser/API/rootful fallback executor is permitted. The only eligible
@@ -666,7 +666,7 @@ SQL. This scenario deletes old authority; it never converts or promotes it.
 - **Good**: backup/count are verified, apply removes one JSONB key, restart and
   reload show zero resurrection, and history renders one retirement label.
 - **Base**: no stale database rows exist; expected count `0` applies
-  idempotently and current schema head remains `093`.
+  idempotently and current schema head remains `094`.
 - **Bad**: add a reversible migration that invents deleted values, preserve old
   invocation details, name-match a package, or silently execute in Chat.
 
@@ -678,7 +678,7 @@ SQL. This scenario deletes old authority; it never converts or promotes it.
   collapse.
 - PostgreSQL 17 covers default dry-run, rejected count/fingerprint, full backup
   fingerprint, exact-key update, unrelated-row equivalence, repeated apply and
-  migration head `093`.
+  migration head `094`.
 - Negative source scan proves removed files/assets/resolver/context and held
   Runtime; then run frontend/backend/full standalone gates.
 
@@ -704,8 +704,8 @@ verified backup + exact count -> delete only retired authority -> one history fa
 Apply when changing the exact-host Runner bundle, staged activation evidence,
 Runner client identity, `agent-runtime-control` command/service or recovery
 reconcile behavior. G21.0 permits maintenance only and itself adds no
-migration; the current release is nevertheless bound to the reviewed `093`
-head introduced by G21.4.
+migration; the current release is nevertheless bound to the reviewed `094`
+head introduced by G21.5.
 
 ### 2. Signatures
 
@@ -723,7 +723,7 @@ python3 mm-chat/scripts/evaluate-agent-production-activation.py --record FILE
   `internal/agentrunner`.
 - Schemas: `neo-agent-production-activation.schema.json` and
   `neo-agent-runner-bundle.schema.json`.
-- Database capability: existing `agent_runner_control` at migration head `093`.
+- Database capability: existing `agent_runner_control` at migration head `094`.
 
 ### 3. Contracts
 
@@ -897,9 +897,11 @@ bash mm-chat/scripts/verify-agent-runtime-g21-1.sh
 
 - Focused race/vet for Root-canary command/service, activation, Runner,
   Orchestrator and `neo-runnerd`.
-- Run Runner filesystem fixtures under `umask 022`; the production verification
-  harness may otherwise force their intentional mode-0711 broker directory to
-  0700 and create a false isolation failure.
+- Run Runner filesystem fixtures under restrictive `umask 077`. Because
+  `Mkdir(..., 0711)` is still masked to `0700`, launch must explicitly
+  `Chmod(..., 0711)` before Artifact intake validates the broker directory;
+  never weaken the exact-mode validator or require the process to use
+  `umask 022`.
 - Explicit control-launch and canary-Prepare ingress denial before driver work.
 - Service happy path, terminal replay, tokenless live lease, Runner/PostgreSQL
   heartbeat failure cleanup and zero-inventory proofs.
@@ -1024,7 +1026,7 @@ bash mm-chat/scripts/verify-agent-runtime-g21-2.sh
 - Relay method/caller/ticket/body/plan negatives and exact Prepare/Commit replay.
 - Read executor traversal/link/special-file/bounds plus exact MCP allowlist.
 - PostgreSQL 17 fresh/replay/exact-role/authorize/attach/collision/stale/Grant/
-  Kill-Switch/dump-restore/guarded-down/up proof at head `093`.
+  Kill-Switch/dump-restore/guarded-down/up proof at head `094`.
 - Same-byte scan, object-before-row compensation, quarantine cleanup and
   `outcome_unknown` no-retry tests.
 - Strict schemas/fixtures, enabled/default preflight, development/production
@@ -1096,7 +1098,7 @@ bash mm-chat/scripts/verify-agent-runtime-g21-3.sh
   raw activation-record fingerprint because the activation record binds the
   approval document; mutual raw-hash binding would create an impossible cycle.
 - `LoadApproval` accepts strict owner-secure non-symlink files, verifies a
-  dedicated Ed25519 public key/signature and binds release/head `093`, target,
+  dedicated Ed25519 public key/signature and binds release/head `094`, target,
   stable activation identity, plan, caller, request/idempotency identity,
   exact action, operator/reason and a maximum 15-minute window. Approval,
   Runner authority and TLS keys are distinct. The private approval key is never
@@ -1162,7 +1164,7 @@ bash mm-chat/scripts/verify-agent-runtime-g21-3.sh
   acknowledgement-loss recovery, terminal no-retry and cleanup restart.
 - PostgreSQL 17 fresh/replay, exact ninth LOGIN, no DML/provision, CAS/replay/
   collision/status/cleanup, late stale/Grant/Kill zero-receipt fences,
-  dump/restore, populated down guard and clean down/up at head `093`.
+  dump/restore, populated down guard and clean down/up at head `094`.
 - Compose/default/enabled preflight proves 14 read-only mounts, no Compose
   secrets, isolated `172.31.254.8/29` relay, credential absence and all broad
   flags false.
@@ -1269,10 +1271,10 @@ delegation, a second Child, depth two or Child effects.
 - Activation, enabled preflight, Compose default-off/production-image-only,
   credential absence, G21.0-G21.3 regression, Phase 0, standalone full and
   expected local `ISOLATION_UNAVAILABLE`.
-- An older delegation-tail drill may peel `093` to reach the migration-087
+- An older delegation-tail drill must peel `094`, then may peel `093` to reach the migration-087
   guard, but it must reapply the current head before executing the current Go
   Repository integration because `PendingReaps` requires
-  `agent_delegation_reap_inventory(integer)`. Peel `093` again only immediately
+  `agent_delegation_reap_inventory(integer)`. Peel `094` and `093` again only immediately
   before the older down-guard assertion.
 
 ### 7. Wrong vs Correct
@@ -1282,3 +1284,95 @@ launch can still arrive.
 
 **Correct:** stable existing lineage -> wait authority/token expiry -> exact
 Child Runner absence -> atomic durable reap -> cleanup-only Parent cancel.
+
+## Scenario: Execute the G21.5 exact Cron and Draft-learning workers
+
+### 1. Scope / Trigger
+
+Apply when changing migration `094`, `agentcronworker`,
+`agentlearningworker`, the Draft-only Runner result transport, exact worker
+activation plans or worker database authority. G21.5 activates only one reviewed
+synthetic Cron Template and one reviewed quarantined Draft; it does not open a
+product cohort, generic Scheduler/Learning, API/Chat execution or autonomous
+promotion.
+
+### 2. Signatures
+
+```bash
+bash mm-chat/scripts/verify-agent-cron-worker.sh
+bash mm-chat/scripts/verify-agent-cron-worker-postgres17.sh
+bash mm-chat/scripts/verify-agent-draft-learning-worker.sh
+bash mm-chat/scripts/verify-agent-draft-learning-worker-postgres17.sh
+bash mm-chat/scripts/verify-agent-runtime-g21-5-preflight.sh
+bash mm-chat/scripts/verify-agent-runtime-g21-5.sh
+```
+
+- Commands: `cmd/agent-runtime-cron-worker` and
+  `cmd/agent-runtime-draft-learning-worker`.
+- Packages: `internal/agentcronworker`, `internal/agentlearningworker` and
+  `internal/agentactivation/cron_learning_workers.go`.
+- Database: `094_agent_cron_learning_activation` at current head `094`.
+
+### 3. Contracts
+
+- Require fresh G21.0-G21.4 evidence and independent `cron_worker` /
+  `draft_learning_worker` activation records. Neither flag/profile implies the
+  other or any broad Runtime, Scheduler, Learning, Broker or product flag.
+- Immutable operator targets bind exact activation, plan and validity. Cron
+  additionally binds Template/revision/fingerprint. Draft binds user, Draft,
+  package/runtime/archive, Runner snapshot, Workspace and both suite
+  fingerprints.
+- `agent_cron_worker` and `agent_learning_worker` are disjoint NOLOGIN roles.
+  Exact-host LOGINs inherit exactly one. They receive function execution only,
+  no direct table access, owner/control membership or target provisioning.
+- Cron target membership must be inside every `FOR UPDATE SKIP LOCKED` due and
+  trigger claim. Reuse migration-088 cursor, occurrence, enqueue, DST/missed/
+  overlap/retry, revocation, approval and Kill-Switch semantics. Never claim
+  globally and filter in Go.
+- Cron has no Runner, S3, Provider or administrator credential. It may enqueue
+  the exact occurrence as a normal durable Run but G21.5 starts no generic Run
+  executor.
+- Draft check attempts are not `agent_runs`/`agent_attempts` and cannot access
+  Broker, Provider, Cron, delegation or admission functions. Use the exact
+  pre-staged Workspace, fixed checker image/argv, empty Registry, no network,
+  no capability, no Egress and no Secrets.
+- The sixth Runner caller is fixed to
+  `spiffe://neo-chat/agent-runtime-draft-learning` and receives only
+  Probe/List/Reconcile/Launch/Result/Cancel. All earlier callers remain denied
+  for Result; Heartbeat/Prepare/Commit and relays are forbidden.
+- A Runner result is strict, content-free, at most 64 KiB and binds activation,
+  Draft/fingerprint, generation/kind, package/runtime/archive, Workspace,
+  suite, status/reason, duration and bounded integer metrics. Persist exact
+  bytes/size/SHA before cancel/reap and receipt completion.
+- Learning has no Propose, diff/review, Reject, Promote, candidate or package-
+  version insertion authority. A separate human administrator decision is
+  required; cleanup is exact-target and object-before-row.
+- Production rollback disables one target/profile and retains migration `094`.
+  Down is disposable-only and guards targets, claims, Runner attempts, cleanup,
+  LOGIN membership and retained activation facts.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| activation/plan/prerequisite/head drift | held/invalid; no DB claim or Runner call |
+| unknown/disabled/expired target or revision/Draft drift | zero claim or target-drift error |
+| worker direct DML/control/Promote attempt | database permission denied |
+| Draft result caller, Attempt or binding mismatch | reject; no durable receipt |
+| stale lease/generation or request replay drift | `LEASE_STALE` / `REPLAY_DETECTED` |
+| Sandbox not reaped | no check completion; cleanup remains pending |
+| current development host | expected nonzero `ISOLATION_UNAVAILABLE` |
+
+### 5. Tests Required
+
+- Focused race/vet for both commands, both worker packages, activation,
+  Cron/Learning repositories, Runner and migration schema.
+- Compose/default and enabled-preflight proof for Cron-only, Draft-only and both
+  profiles, including credential absence and prior-caller method preservation.
+- PostgreSQL 17 proof with two due Templates and two quarantined Drafts, real
+  restricted LOGINs, exact claim isolation, result/authority replay, human
+  decision separation, cleanup, dump/restore and guarded clean down/up.
+- Every older guarded migration drill peels `094` before its prior tail and
+  returns to head `094`.
+- Run G21.0-G21.4 regressions, Phase 0, standalone full and separately require
+  the exact-host gate to remain nonzero with `ISOLATION_UNAVAILABLE`.

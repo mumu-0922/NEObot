@@ -2,7 +2,7 @@
 
 ## Baseline
 
-G20.1-G20.10 and migrations `083`-`092` remain the authority. Legacy text
+G20.1-G20.10 and migrations `083`-`094` remain the authority. Legacy text
 Skills are retired and admitted Package Skills are the only eligible Skill
 domain. G21 advances production capability one independently evidenced stage
 at a time; no later stage may be inferred from an earlier gate.
@@ -155,9 +155,45 @@ promote public delegation or depth two.
 
 ## G21.5 — Cron and Draft learning workers
 
-Activate durable Cron scheduling and Draft-only learning independently. Prove
-DST/missed/overlap/retry/revocation for Cron and provenance/check/human Promote/
-cleanup for Drafts. Learning never mutates an installed package in place.
+Status: source/control implementation complete; exact-host Cron and Draft
+activation held.
+
+- Add independent `cron_worker` and `draft_learning_worker` activation stages,
+  default-off Compose profiles and eleventh/twelfth PostgreSQL LOGINs. Require
+  current G21.0-G21.4 evidence and migration head `094`; neither stage enables
+  or reads the other.
+- Add migration `094_agent_cron_learning_activation` with immutable operator-
+  provisioned exact targets plus disjoint `agent_cron_worker` and
+  `agent_learning_worker` NOLOGIN roles. Both are function-only and inherit no
+  owner/control role or table DML.
+- Bind Cron to one active synthetic Template revision/fingerprint and put the
+  activation target inside every locking claim. Reuse migration-088 DST,
+  missed, overlap, retry, approval, revocation, expiry and Kill-Switch semantics
+  without giving Cron Runner, S3, Provider or administrator credentials.
+- Bind Draft learning to one quarantined Draft, package/runtime/archive,
+  pre-staged Workspace, Runner snapshot and fixed isolation/evaluation suites.
+  Use Draft-only attempts that are not ordinary Agent Runs and cannot reach
+  Broker, Provider, Cron, delegation or admission authority.
+- Add the sixth Runner caller
+  `spiffe://neo-chat/agent-runtime-draft-learning` with Probe/List/Reconcile/
+  Launch/Result/Cancel only. Preserve all earlier caller policies and both
+  relay routes; add no Heartbeat, Prepare or Commit.
+- Add the read-only exact-Attempt `result` RPC. Validate a strict content-free
+  result binding and persist its SHA-256 before canceling/reaping the exact
+  Sandbox and completing the three-check migration-089 receipt bundle.
+- Preserve human-only Promote/Reject and new immutable package-version
+  creation. The worker has no review/admission credential; cleanup is exact-
+  target and object-before-row after the separate human decision.
+- Prove two due Templates/two quarantined Drafts, claim isolation, crash/replay,
+  real LOGIN denials, dump/restore, guarded down and clean down/up. Advance every
+  older PostgreSQL tail drill to final head `094`.
+
+Promotion gate: run `scripts/verify-agent-runtime-g21-5.sh`, then reproduce
+fresh exact-host READY evidence independently for the reviewed Cron and Draft
+targets. Complete rootless isolation/evaluation, human decision, cleanup and
+zero-residue proof on the approved host. Disposable PostgreSQL, deterministic
+fakes and the current `ISOLATION_UNAVAILABLE` host cannot enable generic
+Scheduler/Learning, autonomous promotion or a product cohort.
 
 ## G21.6 — Product canary and final closure
 

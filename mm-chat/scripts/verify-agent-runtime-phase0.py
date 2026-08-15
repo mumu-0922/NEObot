@@ -40,6 +40,10 @@ SCHEMA_NAMES = (
     "neo-agent-project-mutation-approval",
     "neo-agent-child-run-canary-activation",
     "neo-agent-child-run-canary-plan",
+    "neo-agent-cron-worker-activation",
+    "neo-agent-cron-worker-plan",
+    "neo-agent-draft-learning-worker-activation",
+    "neo-agent-draft-learning-worker-plan",
 )
 JsonObject = dict[str, Any]
 
@@ -169,6 +173,10 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
     project_approval = instances["neo-agent-project-mutation-approval"]
     child_activation = instances["neo-agent-child-run-canary-activation"]
     child_plan = instances["neo-agent-child-run-canary-plan"]
+    cron_worker = instances["neo-agent-cron-worker-activation"]
+    draft_learning_worker = instances["neo-agent-draft-learning-worker-activation"]
+    cron_worker_plan = instances["neo-agent-cron-worker-plan"]
+    draft_learning_plan = instances["neo-agent-draft-learning-worker-plan"]
 
     check_fingerprint_bindings(grant, launch)
     require_equal(
@@ -327,8 +335,8 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
         )
     action = project_plan["action"]
     approval = project_approval["payload"]
-    if project_activation["release"]["migrationHead"] != 93 or approval["release"]["migrationHead"] != 93:
-        raise VerificationError("G21.3 contracts do not bind migration head 093")
+    if project_activation["release"]["migrationHead"] != 94 or approval["release"]["migrationHead"] != 94:
+        raise VerificationError("G21.3 contracts do not bind migration head 094")
     if approval["request"] != {
         "callerIdentity": project_activation["wiring"]["callerIdentity"],
         "requestIdentity": action["requestIdentity"],
@@ -348,8 +356,8 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
     if approval["action"] != expected_action:
         raise VerificationError("G21.3 approval action does not bind the exact mutation")
 
-    if child_activation["release"]["migrationHead"] != 93:
-        raise VerificationError("G21.4 activation does not bind migration head 093")
+    if child_activation["release"]["migrationHead"] != 94:
+        raise VerificationError("G21.4 activation does not bind migration head 094")
     if (
         child_activation["stage"] != "depth_one_child_canary"
         or child_activation["wiring"]["callerIdentity"]
@@ -394,6 +402,79 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
         sandbox = child_plan[sandbox_name]
         if sandbox["networkMode"] != "none" or sandbox["capabilities"] != []:
             raise VerificationError(f"G21.4 {sandbox_name} isolation drifted")
+
+    if cron_worker["release"]["migrationHead"] != 94 or cron_worker["stage"] != "cron_worker":
+        raise VerificationError("G21.5 Cron activation does not bind head 094 and the exact stage")
+    expected_cron_authority = {
+        "exactCronTarget": True,
+        "runtime": False,
+        "genericScheduler": False,
+        "learning": False,
+        "skillInstall": False,
+        "brokerMutation": False,
+        "delegation": False,
+        "runnerCredential": False,
+        "objectCredential": False,
+    }
+    if cron_worker["authorization"] != expected_cron_authority:
+        raise VerificationError("G21.5 Cron activation authority is widened")
+    cron_plan_bytes = (FIXTURE_DIR / "neo-agent-cron-worker-plan.valid.json").read_bytes()
+    require_equal(
+        cron_worker["target"]["planSha256"],
+        "sha256:" + hashlib.sha256(cron_plan_bytes).hexdigest(),
+        "G21.5 Cron activation does not bind the exact plan bytes",
+    )
+    require_equal(
+        cron_worker["target"]["activationId"],
+        cron_worker_plan["activationId"],
+        "G21.5 Cron activation/plan IDs differ",
+    )
+    if draft_learning_worker["release"]["migrationHead"] != 94 or draft_learning_worker[
+        "stage"
+    ] != "draft_learning_worker":
+        raise VerificationError("G21.5 Draft activation does not bind head 094 and the exact stage")
+    if draft_learning_worker["wiring"]["callerIdentity"] != (
+        "spiffe://neo-chat/agent-runtime-draft-learning"
+    ):
+        raise VerificationError("G21.5 Draft activation caller drifted")
+    draft_authority = draft_learning_worker["authorization"]
+    if not (
+        draft_authority["draftChecks"]
+        and draft_authority["cleanup"]
+        and draft_authority["runnerLifecycle"]
+    ) or any(
+        draft_authority[key]
+        for key in (
+            "runtime",
+            "genericScheduler",
+            "genericLearning",
+            "skillInstall",
+            "brokerMutation",
+            "delegation",
+            "promote",
+            "administratorCredential",
+        )
+    ):
+        raise VerificationError("G21.5 Draft worker can widen authority or Promote")
+    if draft_learning_worker["humanDecision"]["actorClass"] != "human_operator":
+        raise VerificationError("G21.5 human Promote boundary is missing")
+    draft_plan_bytes = (
+        FIXTURE_DIR / "neo-agent-draft-learning-worker-plan.valid.json"
+    ).read_bytes()
+    require_equal(
+        draft_learning_worker["target"]["planSha256"],
+        "sha256:" + hashlib.sha256(draft_plan_bytes).hexdigest(),
+        "G21.5 Draft activation does not bind the exact plan bytes",
+    )
+    require_equal(
+        draft_learning_worker["target"]["draftId"],
+        draft_learning_plan["draftId"],
+        "G21.5 Draft activation/plan IDs differ",
+    )
+    if draft_learning_plan["toolRegistry"]["tools"] != [] or draft_learning_plan[
+        "sandbox"
+    ]["networkMode"] != "none":
+        raise VerificationError("G21.5 Draft checker can receive Tools or network")
 
 
 def check_document_anchors() -> None:

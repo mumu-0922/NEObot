@@ -235,6 +235,24 @@ func TestPostgresAgentLearningDraftChecksPromotionCleanup(t *testing.T) {
 	}
 
 	if os.Getenv("MM_CHAT_AGENT_LEARNING_RETAIN_FIXTURE") == "1" {
+		for index, version := range []string{"1.3.0", "1.3.1"} {
+			runID, runEventID := seedLearningRun(t, ctx, database, orchestrator, userID, base.PackageFingerprint)
+			_, created, proposeErr := service.Propose(ctx, ProposeInput{
+				UserID: userID, SourceRunID: runID, BasePackageFingerprint: base.PackageFingerprint,
+				Archive: learningArchive(t, version, "Retained improvement.",
+					"func TestRetained() {}", ""),
+				Evidence: []EvidenceRef{
+					{Kind: EvidenceSourcePackage, Ref: base.PackageFingerprint,
+						Fingerprint: base.PackageFingerprint, Paths: []string{"*"}},
+					{Kind: EvidenceRunEvent, Ref: runEventID,
+						Fingerprint: "sha256:" + repeatHex(string(rune('1'+index))),
+						Paths:       []string{"SKILL.md", "neo.runtime.json", "tests/learning_test.go"}},
+				},
+			})
+			if proposeErr != nil || !created {
+				t.Fatalf("retained Draft %d created=%v err=%v", index, created, proposeErr)
+			}
+		}
 		return
 	}
 	// Cleanup the uncompleted stale-claim Draft and user-owned source facts.

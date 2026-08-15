@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -242,6 +243,7 @@ func TestArtifactUnixIntakeIsFramedBoundedAndFenced(t *testing.T) {
 	socketDirectory := filepath.Join(root, "broker")
 	os.Mkdir(quarantine, 0o700)
 	os.Mkdir(socketDirectory, 0o711)
+	os.Chmod(socketDirectory, 0o711)
 	broker, _ := NewArtifactBroker(quarantine)
 	attempt := testAttempt().Identity()
 	_ = broker.AuthorizeAttempt(attempt, 4)
@@ -296,6 +298,23 @@ func TestServiceLaunchReplayCancelAndProbeFence(t *testing.T) {
 	}
 }
 
+func TestServiceLaunchRestoresBrokerModeUnderRestrictiveUmask(t *testing.T) {
+	previous := syscall.Umask(0o077)
+	t.Cleanup(func() { syscall.Umask(previous) })
+	fixture := newServiceFixture(t, true)
+	request := fixture.launchRequest(t)
+	if _, err := fixture.service.Handle(context.Background(), testCaller, request); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Join(fixture.service.config.StateRoot, "scratch", testAttemptID, "broker"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o711 {
+		t.Fatalf("broker mode = %o", info.Mode().Perm())
+	}
+}
+
 func TestServiceReconcileRPCReapsUnexpectedSandboxAndReplays(t *testing.T) {
 	fixture := newServiceFixture(t, true)
 	launch := fixture.launchRequest(t)
@@ -316,6 +335,61 @@ func TestServiceReconcileRPCReapsUnexpectedSandboxAndReplays(t *testing.T) {
 	replayed, err := fixture.service.Handle(context.Background(), testCaller, request)
 	if err != nil || replayed.Body.(ReconcileResult).Cleaned != 1 {
 		t.Fatalf("reconcile replay=%#v/%v", replayed, err)
+	}
+}
+
+func TestResultRPCReadsOnlyExactLiveAttemptArtifact(t *testing.T) {
+	fixture := newServiceFixture(t, true)
+	launch := fixture.launchRequest(t)
+	if _, err := fixture.service.Handle(context.Background(), testCaller, launch); err != nil {
+		t.Fatal(err)
+	}
+	attempt := launch.Launch.Attempt
+	now := fixture.service.now()
+	makeRequest := func(id string, nonce string) Request {
+		body := ResultRequest{Attempt: attempt, SnapshotFingerprint: launch.Launch.SnapshotFingerprint,
+			Name: "draft-isolation.json"}
+		body.Authority = signedRequestAuthority(t, fixture.private, MethodResult, id, nonce,
+			body.SnapshotFingerprint, attempt, now, body)
+		raw := mustEnvelope(t, MethodResult, id, now, nonce, body)
+		request, err := DecodeRequest(raw, now, 15*time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return request
+	}
+	pending, err := fixture.service.Handle(context.Background(), testCaller,
+		makeRequest("rpc_resultpending0001", strings.Repeat("p", 32)))
+	if err != nil || pending.Body.(ResultResult).Ready {
+		t.Fatalf("pending Result = %#v, %v", pending.Body, err)
+	}
+
+	payload := []byte(`{"schemaVersion":"neo.draft-check-result/v1","status":"passed"}`)
+	directory := filepath.Join(fixture.service.artifacts.root, attempt.AttemptID)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(directory, "draft-isolation.json")
+	if err := os.WriteFile(path, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	readyRequest := makeRequest("rpc_resultready000001", strings.Repeat("q", 32))
+	ready, err := fixture.service.Handle(context.Background(), testCaller, readyRequest)
+	result := ready.Body.(ResultResult)
+	if err != nil || !result.Ready || result.Receipt == nil ||
+		!bytes.Equal(result.Payload, payload) || result.Receipt.Attempt != attempt.Identity() ||
+		result.Receipt.QuarantineRef != attempt.AttemptID+"/draft-isolation.json" {
+		t.Fatalf("ready Result = %#v, %v", result, err)
+	}
+	replay, err := fixture.service.Handle(context.Background(), testCaller, readyRequest)
+	if err != nil || !bytes.Equal(replay.Body.(ResultResult).Payload, payload) {
+		t.Fatalf("replayed Result = %#v, %v", replay.Body, err)
+	}
+
+	stale := makeRequest("rpc_resultstale000001", strings.Repeat("r", 32))
+	stale.Result.Attempt.LeaseGeneration++
+	if _, err := fixture.service.Handle(context.Background(), testCaller, stale); !errors.Is(err, ErrAuthFailed) {
+		t.Fatalf("stale Result error = %v", err)
 	}
 }
 
@@ -963,6 +1037,7 @@ func testLaunchPlan(t *testing.T) LaunchPlan {
 	os.Mkdir(workspace, 0o500)
 	os.Mkdir(scratch, 0o700)
 	os.Mkdir(broker, 0o711)
+	os.Chmod(broker, 0o711)
 	return LaunchPlan{SandboxID: "sandbox_0123456789abcdef", ContainerName: "neo-test", Attempt: testAttempt().Identity(), SnapshotFingerprint: testFingerprint('6'), SpecFingerprint: testFingerprint('3'), ProbeFingerprint: testFingerprint('9'), Sandbox: SandboxSpec{RuntimeBundleFingerprint: testFingerprint('2'), PackageFingerprint: testFingerprint('1'), Image: "registry.example/neo/audit@" + testFingerprint('4'), UID: 10001, GID: 10001, RootfsReadOnly: true, NoNewPrivileges: true, Capabilities: []string{}, SeccompProfileFingerprint: testFingerprint('7'), NetworkMode: "none", WorkspaceSnapshotID: testWorkspaceID, WorkspaceFingerprint: testFingerprint('3'), Resources: ResourceLimits{CPUMillis: 1000, MemoryMiB: 512, PIDs: 64, WallSeconds: 300, OutputBytes: 2 << 20, ScratchBytes: 64 << 20}}, WorkspacePath: workspace, ScratchPath: scratch, BrokerPath: broker, SeccompPath: "/etc/neo-runner/seccomp.json", Argv: []string{"/opt/neo/bin/audit"}}
 }
 

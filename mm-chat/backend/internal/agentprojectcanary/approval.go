@@ -228,7 +228,7 @@ func (approval *Approval) DecisionInputForResult(userID string, prepared agentru
 func validateApprovalPayload(value ApprovalPayload, binding ApprovalBinding, now time.Time) error {
 	if value.SchemaVersion != ApprovalSchemaVersion || !approvalIDPattern.MatchString(value.ApprovalID) ||
 		value.Decision != "approved" || !commitPattern.MatchString(value.Release.GitCommit) ||
-		value.Release.GitCommit != binding.ReleaseCommit || value.Release.MigrationHead != 93 ||
+		value.Release.GitCommit != binding.ReleaseCommit || value.Release.MigrationHead != 94 ||
 		value.Target.DeploymentFingerprint != binding.TargetFingerprint || value.Target.RunnerID != binding.RunnerID ||
 		value.Activation.Stage != ApprovalStage || value.Activation.ActivationFingerprint != binding.ActivationFingerprint ||
 		value.Activation.PlanFingerprint != binding.PlanFingerprint ||

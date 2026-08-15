@@ -326,6 +326,8 @@ agent_flags = (
     "AGENT_BROKER_ARTIFACT_CANARY_ENABLED",
     "AGENT_PROJECT_MUTATION_CANARY_ENABLED",
     "AGENT_CHILD_CANARY_ENABLED",
+    "AGENT_CRON_WORKER_ENABLED",
+    "AGENT_DRAFT_LEARNING_WORKER_ENABLED",
     "AGENT_RUNTIME_ENABLED",
     "AGENT_SCHEDULER_ENABLED",
     "AGENT_SKILL_INSTALL_ENABLED",
@@ -346,7 +348,7 @@ for key in (
     "AGENT_BROKER_MUTATION_ENABLED",
 ):
     if values[key] != "false":
-        fail(f"{key} must remain false through G21.4")
+        fail(f"{key} must remain false through G21.5")
 if values["AGENT_DELEGATION_ENABLED"] != values["AGENT_CHILD_CANARY_ENABLED"]:
     fail("AGENT_DELEGATION_ENABLED must match the dedicated G21.4 Child canary flag")
 
@@ -576,6 +578,17 @@ agent_project_canary_enabled = (
     values["AGENT_PROJECT_MUTATION_CANARY_ENABLED"] == "true"
 )
 agent_child_canary_enabled = values["AGENT_CHILD_CANARY_ENABLED"] == "true"
+agent_cron_worker_enabled = values["AGENT_CRON_WORKER_ENABLED"] == "true"
+agent_draft_learning_worker_enabled = (
+    values["AGENT_DRAFT_LEARNING_WORKER_ENABLED"] == "true"
+)
+private_networks = (
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("fc00::/7"),
+)
+identity_pattern = re.compile(r"[A-Za-z][A-Za-z0-9_.:@/-]{0,127}")
 agent_control_keys = (
     "AGENT_RUNNER_DATABASE_URL",
     "AGENT_RUNNER_URL",
@@ -605,12 +618,6 @@ if agent_control_enabled:
         agent_runner_ip = ipaddress.ip_address(agent_runner_url.hostname or "")
     except ValueError:
         fail("AGENT_RUNNER_URL must be the exact private HTTPS Runner RPC URL")
-    private_networks = (
-        ipaddress.ip_network("10.0.0.0/8"),
-        ipaddress.ip_network("172.16.0.0/12"),
-        ipaddress.ip_network("192.168.0.0/16"),
-        ipaddress.ip_network("fc00::/7"),
-    )
     agent_runner_private = any(
         agent_runner_ip in network
         for network in private_networks
@@ -628,7 +635,6 @@ if agent_control_enabled:
         or agent_runner_url.fragment
     ):
         fail("AGENT_RUNNER_URL must be the exact private HTTPS Runner RPC URL")
-    identity_pattern = re.compile(r"[A-Za-z][A-Za-z0-9_.:@/-]{0,127}")
     for key in ("AGENT_RUNNER_ID", "AGENT_RUNNER_SERVER_NAME"):
         if identity_pattern.fullmatch(values[key]) is None:
             fail(f"{key} is invalid")
@@ -1511,7 +1517,7 @@ if agent_project_canary_enabled:
         or approval_payload.get("decision") != "approved"
         or approval_payload.get("release") != {
             "gitCommit": values["AGENT_PROJECT_CANARY_RELEASE_GIT_COMMIT"],
-            "migrationHead": 93,
+            "migrationHead": 94,
         }
         or approval_payload.get("target") != {
             "deploymentFingerprint": project_plan.get("targetFingerprint"),
@@ -1900,6 +1906,392 @@ if agent_child_canary_enabled:
         fail("AGENT_CHILD_CANARY_ACTIVATION_SOURCE is not READY for G21.4")
 
 
+worker_prerequisite_sources = {
+    "control_plane": "AGENT_PRODUCTION_ACTIVATION_SOURCE",
+    "root_run_canary": "AGENT_ROOT_CANARY_ACTIVATION_SOURCE",
+    "broker_artifact_canary": "AGENT_BROKER_CANARY_ACTIVATION_SOURCE",
+    "project_mutation_canary": "AGENT_PROJECT_CANARY_ACTIVATION_SOURCE",
+    "child_run_canary": "AGENT_CHILD_CANARY_ACTIVATION_SOURCE",
+}
+
+
+def resolve_worker_prerequisites() -> dict[str, Path]:
+    result: dict[str, Path] = {}
+    for stage, key in worker_prerequisite_sources.items():
+        if not values.get(key, "").strip() or placeholder.search(values[key]):
+            fail(f"{key} is required as fresh G21 prerequisite evidence")
+        result[stage] = resolve_secure_file(values[key], key, private=True)
+    if len(set(result.values())) != len(result):
+        fail("G21.0-G21.4 prerequisite evidence files must be distinct")
+    return result
+
+
+def evaluate_exact_worker(
+    *,
+    record: Path,
+    policy: Path,
+    plan: Path,
+    release_commit: str,
+    prerequisites: dict[str, Path],
+    expected_reason: str,
+    extra_args: list[str] | None = None,
+) -> None:
+    command = [
+        sys.executable,
+        str(Path(sys.argv[2]) / "scripts/evaluate-agent-production-activation.py"),
+        "--record", str(record),
+        "--policy", str(policy),
+        "--worker-plan", str(plan),
+        "--release-commit", release_commit,
+    ]
+    for stage, path in sorted(prerequisites.items()):
+        command.extend(("--prerequisite", f"{stage}={path}"))
+    command.extend(extra_args or [])
+    try:
+        decision = subprocess.run(
+            command, check=False, capture_output=True, text=True, timeout=10
+        )
+        payload = json.loads(decision.stdout)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        fail("G21.5 activation evaluator failed")
+    if (
+        decision.returncode != 0
+        or payload.get("verdict") != "ACTIVATION_READY"
+        or payload.get("reasonCode") != expected_reason
+    ):
+        fail(f"G21.5 activation is not READY: {expected_reason}")
+
+
+agent_cron_worker_keys = (
+    "AGENT_CRON_WORKER_DATABASE_URL",
+    "AGENT_CRON_WORKER_PLAN_SOURCE",
+    "AGENT_CRON_WORKER_PRODUCTION_POLICY_SOURCE",
+    "AGENT_CRON_WORKER_ACTIVATION_SOURCE",
+    "AGENT_CRON_WORKER_RELEASE_GIT_COMMIT",
+)
+if agent_cron_worker_enabled:
+    for key in agent_cron_worker_keys:
+        if not values.get(key, "").strip():
+            fail(f"{key} is required when the exact Cron worker is enabled")
+        if placeholder.search(values[key]):
+            fail(f"{key} still contains a placeholder")
+    for key in values:
+        if key.startswith("AGENT_CRON_WORKER_") and any(
+            marker in key
+            for marker in (
+                "RUNNER", "CLIENT_CERT", "CLIENT_KEY", "AUTHORITY", "S3", "OBJECT",
+                "MCP", "PROVIDER", "VAULT", "REDIS", "ADMIN", "PROMOTE", "SECRET",
+            )
+        ):
+            fail("Cron worker must not receive Runner, object-store or administrator credentials")
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", values["AGENT_CRON_WORKER_RELEASE_GIT_COMMIT"])
+        is None
+        or values["AGENT_CRON_WORKER_RELEASE_GIT_COMMIT"] == "0" * 40
+    ):
+        fail("AGENT_CRON_WORKER_RELEASE_GIT_COMMIT must be a non-placeholder lowercase Git commit")
+    cron_plan = resolve_secure_file(
+        values["AGENT_CRON_WORKER_PLAN_SOURCE"],
+        "AGENT_CRON_WORKER_PLAN_SOURCE",
+        private=True,
+        maximum_size=64 << 10,
+    )
+    cron_policy = resolve_secure_file(
+        values["AGENT_CRON_WORKER_PRODUCTION_POLICY_SOURCE"],
+        "AGENT_CRON_WORKER_PRODUCTION_POLICY_SOURCE",
+        private=False,
+    )
+    cron_activation = resolve_secure_file(
+        values["AGENT_CRON_WORKER_ACTIVATION_SOURCE"],
+        "AGENT_CRON_WORKER_ACTIVATION_SOURCE",
+        private=True,
+    )
+    try:
+        cron_plan_payload = json.loads(
+            cron_plan.read_text(), object_pairs_hook=unique_object
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, DuplicateKey):
+        fail("AGENT_CRON_WORKER_PLAN_SOURCE is invalid")
+    cron_plan_keys = {
+        "schemaVersion", "synthetic", "activationId", "templateId", "userId",
+        "revision", "revisionFingerprint", "validFrom", "validUntil", "owner",
+        "pollMillis", "leaseSeconds", "batchSize", "retentionHours",
+        "maintenanceEvery",
+    }
+    if (
+        not isinstance(cron_plan_payload, dict)
+        or set(cron_plan_payload) != cron_plan_keys
+        or cron_plan_payload.get("schemaVersion") != "neo.agent-cron-worker-plan/v1"
+        or cron_plan_payload.get("synthetic") is not True
+        or not isinstance(cron_plan_payload.get("revision"), int)
+        or cron_plan_payload.get("revision", 0) < 1
+    ):
+        fail("AGENT_CRON_WORKER_PLAN_SOURCE is not one exact synthetic Template plan")
+    cron_prerequisites = resolve_worker_prerequisites()
+    evaluate_exact_worker(
+        record=cron_activation,
+        policy=cron_policy,
+        plan=cron_plan,
+        release_commit=values["AGENT_CRON_WORKER_RELEASE_GIT_COMMIT"],
+        prerequisites=cron_prerequisites,
+        expected_reason="CRON_WORKER_GATES_PASSED",
+    )
+
+
+agent_draft_learning_worker_keys = (
+    "AGENT_DRAFT_LEARNING_WORKER_DATABASE_URL",
+    "AGENT_DRAFT_LEARNING_WORKER_RUNNER_URL",
+    "AGENT_DRAFT_LEARNING_WORKER_RUNNER_ID",
+    "AGENT_DRAFT_LEARNING_WORKER_SERVER_NAME",
+    "AGENT_DRAFT_LEARNING_WORKER_CLIENT_IDENTITY",
+    "AGENT_DRAFT_LEARNING_WORKER_PLAN_SOURCE",
+    "AGENT_DRAFT_LEARNING_WORKER_CLIENT_CERT_SOURCE",
+    "AGENT_DRAFT_LEARNING_WORKER_CLIENT_KEY_SOURCE",
+    "AGENT_DRAFT_LEARNING_WORKER_SERVER_CA_SOURCE",
+    "AGENT_DRAFT_LEARNING_WORKER_AUTHORITY_PRIVATE_KEY_SOURCE",
+    "AGENT_DRAFT_LEARNING_WORKER_AUTHORITY_PUBLIC_KEY_SOURCE",
+    "AGENT_DRAFT_LEARNING_WORKER_RELEASE_MANIFEST_SOURCE",
+    "AGENT_DRAFT_LEARNING_WORKER_PRODUCTION_POLICY_SOURCE",
+    "AGENT_DRAFT_LEARNING_WORKER_ACTIVATION_SOURCE",
+    "AGENT_DRAFT_LEARNING_WORKER_OBJECT_CREDENTIAL_META_SOURCE",
+    "AGENT_DRAFT_LEARNING_WORKER_RELEASE_GIT_COMMIT",
+    "AGENT_DRAFT_LEARNING_WORKER_OWNER",
+    "AGENT_DRAFT_LEARNING_WORKER_POLL_INTERVAL",
+    "AGENT_DRAFT_LEARNING_WORKER_RPC_TIMEOUT",
+    "AGENT_DRAFT_LEARNING_WORKER_LEASE_DURATION",
+    "AGENT_DRAFT_LEARNING_WORKER_BATCH_SIZE",
+    "AGENT_DRAFT_LEARNING_WORKER_RETENTION",
+    "AGENT_DRAFT_LEARNING_WORKER_MAINTENANCE_EVERY",
+    "AGENT_DRAFT_LEARNING_WORKER_S3_ACCESS_KEY_ID",
+    "AGENT_DRAFT_LEARNING_WORKER_S3_SECRET_ACCESS_KEY",
+)
+if agent_draft_learning_worker_enabled:
+    for key in agent_draft_learning_worker_keys:
+        if not values.get(key, "").strip():
+            fail(f"{key} is required when the Draft-learning worker is enabled")
+        if placeholder.search(values[key]):
+            fail(f"{key} still contains a placeholder")
+    for key in values:
+        if key.startswith("AGENT_DRAFT_LEARNING_WORKER_") and any(
+            marker in key for marker in ("MCP", "PROVIDER", "VAULT", "REDIS", "ADMIN", "PROMOTE", "EGRESS")
+        ):
+            fail("Draft-learning worker must not receive Promote, Broker or product credentials")
+    try:
+        draft_runner_url = urlsplit(values["AGENT_DRAFT_LEARNING_WORKER_RUNNER_URL"])
+        draft_runner_ip = ipaddress.ip_address(draft_runner_url.hostname or "")
+        draft_runner_port = draft_runner_url.port
+    except ValueError:
+        fail("AGENT_DRAFT_LEARNING_WORKER_RUNNER_URL must be the exact private HTTPS Runner RPC URL")
+    if (
+        draft_runner_url.scheme != "https"
+        or draft_runner_port is None
+        or not any(
+            draft_runner_ip in network
+            for network in private_networks
+            if draft_runner_ip.version == network.version
+        )
+        or draft_runner_url.username is not None
+        or draft_runner_url.password is not None
+        or draft_runner_url.path != "/internal/neo-runner/v1/rpc"
+        or draft_runner_url.query
+        or draft_runner_url.fragment
+    ):
+        fail("AGENT_DRAFT_LEARNING_WORKER_RUNNER_URL must be the exact private HTTPS Runner RPC URL")
+    for key in (
+        "AGENT_DRAFT_LEARNING_WORKER_RUNNER_ID",
+        "AGENT_DRAFT_LEARNING_WORKER_SERVER_NAME",
+    ):
+        if identity_pattern.fullmatch(values[key]) is None:
+            fail(f"{key} is invalid")
+    if values["AGENT_DRAFT_LEARNING_WORKER_CLIENT_IDENTITY"] != (
+        "spiffe://neo-chat/agent-runtime-draft-learning"
+    ):
+        fail("AGENT_DRAFT_LEARNING_WORKER_CLIENT_IDENTITY must be the dedicated Draft identity")
+    prior_identity_keys = (
+        "AGENT_RUNNER_CLIENT_IDENTITY",
+        "AGENT_ROOT_CANARY_CLIENT_IDENTITY",
+        "AGENT_BROKER_CANARY_CLIENT_IDENTITY",
+        "AGENT_BROKER_CANARY_RUNNER_RELAY_IDENTITY",
+        "AGENT_PROJECT_CANARY_CLIENT_IDENTITY",
+        "AGENT_PROJECT_CANARY_RUNNER_RELAY_IDENTITY",
+        "AGENT_CHILD_CANARY_CLIENT_IDENTITY",
+        "AGENT_DRAFT_LEARNING_WORKER_CLIENT_IDENTITY",
+    )
+    if len({values.get(key, "") for key in prior_identity_keys}) != len(prior_identity_keys):
+        fail("G21.0-G21.5 caller and relay identities must be exact and distinct")
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", values["AGENT_DRAFT_LEARNING_WORKER_RELEASE_GIT_COMMIT"])
+        is None
+        or values["AGENT_DRAFT_LEARNING_WORKER_RELEASE_GIT_COMMIT"] == "0" * 40
+    ):
+        fail("AGENT_DRAFT_LEARNING_WORKER_RELEASE_GIT_COMMIT must be a non-placeholder lowercase Git commit")
+    draft_poll = parse_simple_duration_seconds(
+        "AGENT_DRAFT_LEARNING_WORKER_POLL_INTERVAL",
+        values["AGENT_DRAFT_LEARNING_WORKER_POLL_INTERVAL"],
+    )
+    draft_rpc = parse_simple_duration_seconds(
+        "AGENT_DRAFT_LEARNING_WORKER_RPC_TIMEOUT",
+        values["AGENT_DRAFT_LEARNING_WORKER_RPC_TIMEOUT"],
+    )
+    draft_lease = parse_simple_duration_seconds(
+        "AGENT_DRAFT_LEARNING_WORKER_LEASE_DURATION",
+        values["AGENT_DRAFT_LEARNING_WORKER_LEASE_DURATION"],
+    )
+    draft_retention = parse_simple_duration_seconds(
+        "AGENT_DRAFT_LEARNING_WORKER_RETENTION",
+        values["AGENT_DRAFT_LEARNING_WORKER_RETENTION"],
+    )
+    if not 1 <= draft_poll <= 60 or not 1 <= draft_rpc <= 60 or not 30 <= draft_lease <= 300:
+        fail("Draft-learning poll, RPC or lease duration is outside the reviewed bound")
+    if not 3600 <= draft_retention <= 365 * 24 * 3600:
+        fail("AGENT_DRAFT_LEARNING_WORKER_RETENTION is outside the reviewed bound")
+    for key, minimum, maximum in (
+        ("AGENT_DRAFT_LEARNING_WORKER_BATCH_SIZE", 1, 1000),
+        ("AGENT_DRAFT_LEARNING_WORKER_MAINTENANCE_EVERY", 1, 10000),
+    ):
+        if re.fullmatch(r"[1-9][0-9]*", values[key]) is None or not minimum <= int(values[key]) <= maximum:
+            fail(f"{key} is outside the reviewed bound")
+    if (
+        values.get("STORAGE_BACKEND") not in {"minio", "s3"}
+        or values.get("S3_BUCKET_AUTO_CREATE") != "false"
+        or values.get("S3_USE_SSL") not in {"true", "false"}
+        or values.get("S3_FORCE_PATH_STYLE") not in {"true", "false"}
+        or values["AGENT_DRAFT_LEARNING_WORKER_S3_ACCESS_KEY_ID"]
+        in {values.get("S3_ACCESS_KEY_ID"), values.get("MINIO_ROOT_USER")}
+        or values["AGENT_DRAFT_LEARNING_WORKER_S3_SECRET_ACCESS_KEY"]
+        in {values.get("S3_SECRET_ACCESS_KEY"), values.get("MINIO_ROOT_PASSWORD")}
+    ):
+        fail("Draft-learning worker requires a distinct existing S3-compatible bucket credential")
+    draft_file_keys = (
+        "AGENT_DRAFT_LEARNING_WORKER_PLAN_SOURCE",
+        "AGENT_DRAFT_LEARNING_WORKER_CLIENT_CERT_SOURCE",
+        "AGENT_DRAFT_LEARNING_WORKER_CLIENT_KEY_SOURCE",
+        "AGENT_DRAFT_LEARNING_WORKER_SERVER_CA_SOURCE",
+        "AGENT_DRAFT_LEARNING_WORKER_AUTHORITY_PRIVATE_KEY_SOURCE",
+        "AGENT_DRAFT_LEARNING_WORKER_AUTHORITY_PUBLIC_KEY_SOURCE",
+        "AGENT_DRAFT_LEARNING_WORKER_RELEASE_MANIFEST_SOURCE",
+        "AGENT_DRAFT_LEARNING_WORKER_ACTIVATION_SOURCE",
+        "AGENT_DRAFT_LEARNING_WORKER_OBJECT_CREDENTIAL_META_SOURCE",
+    )
+    draft_files = {
+        key: resolve_secure_file(values[key], key, private=True)
+        for key in draft_file_keys
+    }
+    draft_policy = resolve_secure_file(
+        values["AGENT_DRAFT_LEARNING_WORKER_PRODUCTION_POLICY_SOURCE"],
+        "AGENT_DRAFT_LEARNING_WORKER_PRODUCTION_POLICY_SOURCE",
+        private=False,
+    )
+    if len(set(draft_files.values())) != len(draft_files):
+        fail("Draft-learning TLS, evidence, plan, authority and credential metadata files must be distinct")
+    prior_source_values = {
+        values.get(key, "")
+        for key in (
+            "AGENT_RUNNER_CLIENT_CERT_SOURCE", "AGENT_RUNNER_CLIENT_KEY_SOURCE",
+            "AGENT_RUNNER_SERVER_CA_SOURCE", "AGENT_RUNNER_RELEASE_MANIFEST_SOURCE",
+            "AGENT_ROOT_CANARY_CLIENT_CERT_SOURCE", "AGENT_ROOT_CANARY_CLIENT_KEY_SOURCE",
+            "AGENT_ROOT_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE", "AGENT_ROOT_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE",
+            "AGENT_BROKER_CANARY_CLIENT_CERT_SOURCE", "AGENT_BROKER_CANARY_CLIENT_KEY_SOURCE",
+            "AGENT_BROKER_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE", "AGENT_BROKER_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE",
+            "AGENT_PROJECT_CANARY_CLIENT_CERT_SOURCE", "AGENT_PROJECT_CANARY_CLIENT_KEY_SOURCE",
+            "AGENT_PROJECT_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE", "AGENT_PROJECT_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE",
+            "AGENT_CHILD_CANARY_CLIENT_CERT_SOURCE", "AGENT_CHILD_CANARY_CLIENT_KEY_SOURCE",
+            "AGENT_CHILD_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE", "AGENT_CHILD_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE",
+        )
+        if values.get(key, "")
+    }
+    if {values[key] for key in draft_file_keys} & prior_source_values:
+        fail("Draft-learning files must not reuse prior Runner or canary key material")
+    try:
+        tls_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        tls_context.load_cert_chain(
+            draft_files["AGENT_DRAFT_LEARNING_WORKER_CLIENT_CERT_SOURCE"],
+            draft_files["AGENT_DRAFT_LEARNING_WORKER_CLIENT_KEY_SOURCE"],
+        )
+        ssl.create_default_context(
+            cafile=draft_files["AGENT_DRAFT_LEARNING_WORKER_SERVER_CA_SOURCE"]
+        )
+        decoded_certificate = ssl._ssl._test_decode_cert(
+            str(draft_files["AGENT_DRAFT_LEARNING_WORKER_CLIENT_CERT_SOURCE"])
+        )
+    except (OSError, ssl.SSLError, ValueError):
+        fail("Draft-learning mTLS certificate/key material is invalid or mismatched")
+    common_names = [
+        value
+        for relative_name in decoded_certificate.get("subject", ())
+        for key, value in relative_name
+        if key == "commonName"
+    ]
+    if common_names != [values["AGENT_DRAFT_LEARNING_WORKER_CLIENT_IDENTITY"]]:
+        fail("Draft-learning client certificate identity does not match configuration")
+    try:
+        authority_private_text = draft_files[
+            "AGENT_DRAFT_LEARNING_WORKER_AUTHORITY_PRIVATE_KEY_SOURCE"
+        ].read_text().strip()
+        authority_public_text = draft_files[
+            "AGENT_DRAFT_LEARNING_WORKER_AUTHORITY_PUBLIC_KEY_SOURCE"
+        ].read_text().strip()
+        authority_private_raw = base64.urlsafe_b64decode(
+            authority_private_text + "=" * (-len(authority_private_text) % 4)
+        )
+        authority_public_raw = base64.urlsafe_b64decode(
+            authority_public_text + "=" * (-len(authority_public_text) % 4)
+        )
+    except (OSError, UnicodeError, ValueError, binascii.Error):
+        fail("Draft-learning authority key material is invalid")
+    if (
+        len(authority_private_raw) != 64
+        or len(authority_public_raw) != 32
+        or authority_private_raw[32:] != authority_public_raw
+    ):
+        fail("Draft-learning authority private/public keys do not match")
+    try:
+        draft_plan_payload = json.loads(
+            draft_files["AGENT_DRAFT_LEARNING_WORKER_PLAN_SOURCE"].read_text(),
+            object_pairs_hook=unique_object,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, DuplicateKey):
+        fail("AGENT_DRAFT_LEARNING_WORKER_PLAN_SOURCE is invalid")
+    draft_sandbox = draft_plan_payload.get("sandbox", {}) if isinstance(draft_plan_payload, dict) else {}
+    draft_checks = draft_plan_payload.get("checks", []) if isinstance(draft_plan_payload, dict) else []
+    if (
+        not isinstance(draft_plan_payload, dict)
+        or draft_plan_payload.get("schemaVersion") != "neo.agent-draft-learning-worker-plan/v1"
+        or draft_plan_payload.get("synthetic") is not True
+        or draft_plan_payload.get("runnerId") != values["AGENT_DRAFT_LEARNING_WORKER_RUNNER_ID"]
+        or draft_plan_payload.get("callerIdentity") != values["AGENT_DRAFT_LEARNING_WORKER_CLIENT_IDENTITY"]
+        or draft_plan_payload.get("toolRegistry", {}).get("tools") != []
+        or draft_sandbox.get("networkMode") != "none"
+        or draft_sandbox.get("capabilities") != []
+        or draft_sandbox.get("rootfsReadOnly") is not True
+        or draft_sandbox.get("noNewPrivileges") is not True
+        or [item.get("kind") for item in draft_checks if isinstance(item, dict)] != ["isolation", "evaluation"]
+        or [item.get("argv", [None])[0] for item in draft_checks if isinstance(item, dict)]
+        != ["/opt/neo/bin/draft-isolation-check", "/opt/neo/bin/draft-evaluation-check"]
+    ):
+        fail("AGENT_DRAFT_LEARNING_WORKER_PLAN_SOURCE is not the strict rootless Draft-check plan")
+    draft_prerequisites = resolve_worker_prerequisites()
+    evaluate_exact_worker(
+        record=draft_files["AGENT_DRAFT_LEARNING_WORKER_ACTIVATION_SOURCE"],
+        policy=draft_policy,
+        plan=draft_files["AGENT_DRAFT_LEARNING_WORKER_PLAN_SOURCE"],
+        release_commit=values["AGENT_DRAFT_LEARNING_WORKER_RELEASE_GIT_COMMIT"],
+        prerequisites=draft_prerequisites,
+        expected_reason="DRAFT_LEARNING_WORKER_GATES_PASSED",
+        extra_args=[
+            "--release-manifest", str(draft_files["AGENT_DRAFT_LEARNING_WORKER_RELEASE_MANIFEST_SOURCE"]),
+            "--client-certificate", str(draft_files["AGENT_DRAFT_LEARNING_WORKER_CLIENT_CERT_SOURCE"]),
+            "--server-ca", str(draft_files["AGENT_DRAFT_LEARNING_WORKER_SERVER_CA_SOURCE"]),
+            "--authority-public-key", str(draft_files["AGENT_DRAFT_LEARNING_WORKER_AUTHORITY_PUBLIC_KEY_SOURCE"]),
+            "--object-credential-meta", str(draft_files["AGENT_DRAFT_LEARNING_WORKER_OBJECT_CREDENTIAL_META_SOURCE"]),
+            "--endpoint", values["AGENT_DRAFT_LEARNING_WORKER_RUNNER_URL"],
+            "--runner-id", values["AGENT_DRAFT_LEARNING_WORKER_RUNNER_ID"],
+            "--server-name", values["AGENT_DRAFT_LEARNING_WORKER_SERVER_NAME"],
+            "--caller-identity", values["AGENT_DRAFT_LEARNING_WORKER_CLIENT_IDENTITY"],
+        ],
+    )
+
+
 marketplace_timeout = parse_simple_duration_seconds(
     "MCP_MARKETPLACE_TIMEOUT", values["MCP_MARKETPLACE_TIMEOUT"]
 )
@@ -1928,6 +2320,8 @@ for key in (
     *(("AGENT_BROKER_CANARY_DATABASE_URL",) if agent_broker_canary_enabled else ()),
     *(("AGENT_PROJECT_CANARY_DATABASE_URL",) if agent_project_canary_enabled else ()),
     *(("AGENT_CHILD_CANARY_DATABASE_URL",) if agent_child_canary_enabled else ()),
+    *(("AGENT_CRON_WORKER_DATABASE_URL",) if agent_cron_worker_enabled else ()),
+    *(("AGENT_DRAFT_LEARNING_WORKER_DATABASE_URL",) if agent_draft_learning_worker_enabled else ()),
 ):
     try:
         parsed = urlsplit(values[key])
@@ -1959,7 +2353,7 @@ for key, parsed in database_urls.items():
 
 database_users = [unquote(parsed.username or "") for parsed in database_urls.values()]
 if len(set(database_users)) != len(database_users):
-    fail("migration, API, workers, Agent control, Root, Broker, Project, and Child canaries must use distinct database principals")
+    fail("migration, API, workers, Agent stages and canaries must use distinct database principals")
 
 database_passwords = [
     unquote(parsed.password or "") for parsed in database_urls.values()

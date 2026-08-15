@@ -47,7 +47,7 @@ assert list(activation_validator.iter_errors(invalid))
 assert not list(plan_validator.iter_errors(plan))
 assert list(plan_validator.iter_errors(bad_plan))
 assert activation_schema["properties"]["stage"]["const"] == "depth_one_child_canary"
-assert activation_schema["properties"]["release"]["properties"]["migrationHead"]["const"] == 93
+assert activation_schema["properties"]["release"]["properties"]["migrationHead"]["const"] == 94
 assert activation_schema["properties"]["authorization"]["properties"]["childAgents"]["const"] is True
 assert activation_schema["properties"]["authorization"]["properties"]["brokerReadOnly"]["const"] is False
 assert plan["toolCatalog"] == [{"identity":"delegate_task","capability":"delegate_task","actions":["create"],"classification":"mutable","idempotent":False}]

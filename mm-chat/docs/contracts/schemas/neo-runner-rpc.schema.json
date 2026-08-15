@@ -28,6 +28,12 @@
       "$ref": "#/$defs/cancelResponse"
     },
     {
+      "$ref": "#/$defs/resultResponse"
+    },
+    {
+      "$ref": "#/$defs/resultRequest"
+    },
+    {
       "$ref": "#/$defs/prepareRequest"
     },
     {
@@ -110,6 +116,8 @@
             "heartbeat.result",
             "cancel",
             "cancel.result",
+            "result",
+            "result.result",
             "prepare",
             "prepare.result",
             "commit",
@@ -1104,23 +1112,53 @@
                     "replay"
                   ],
                   "properties": {
-                    "prepared": { "const": true },
-                    "intentId": { "type": "string", "pattern": "^intent_[a-z0-9]{16,64}$" },
-                    "intentFingerprint": { "$ref": "#/$defs/fingerprint" },
-                    "approval": { "enum": ["automatic", "once", "per_commit"] },
-                    "expiresAt": { "$ref": "#/$defs/dateTime" },
-                    "idempotencyKey": { "type": "string", "pattern": "^commit_[A-Za-z0-9_-]{24,128}$" },
-                    "replay": { "type": "boolean" }
+                    "prepared": {
+                      "const": true
+                    },
+                    "intentId": {
+                      "type": "string",
+                      "pattern": "^intent_[a-z0-9]{16,64}$"
+                    },
+                    "intentFingerprint": {
+                      "$ref": "#/$defs/fingerprint"
+                    },
+                    "approval": {
+                      "enum": [
+                        "automatic",
+                        "once",
+                        "per_commit"
+                      ]
+                    },
+                    "expiresAt": {
+                      "$ref": "#/$defs/dateTime"
+                    },
+                    "idempotencyKey": {
+                      "type": "string",
+                      "pattern": "^commit_[A-Za-z0-9_-]{24,128}$"
+                    },
+                    "replay": {
+                      "type": "boolean"
+                    }
                   }
                 },
                 {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": ["prepared", "replay", "error"],
+                  "required": [
+                    "prepared",
+                    "replay",
+                    "error"
+                  ],
                   "properties": {
-                    "prepared": { "const": false },
-                    "replay": { "const": false },
-                    "error": { "$ref": "#/$defs/error" }
+                    "prepared": {
+                      "const": false
+                    },
+                    "replay": {
+                      "const": false
+                    },
+                    "error": {
+                      "$ref": "#/$defs/error"
+                    }
                   }
                 }
               ]
@@ -1387,6 +1425,7 @@
             "launch",
             "heartbeat",
             "cancel",
+            "result",
             "prepare",
             "commit"
           ]
@@ -1796,6 +1835,177 @@
             "required": [
               "parentRunId"
             ]
+          }
+        }
+      ]
+    },
+    "resultRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "method",
+            "requestId",
+            "sentAt",
+            "nonce",
+            "body"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "neo.runner-rpc/v1"
+            },
+            "method": {
+              "const": "result"
+            },
+            "requestId": {
+              "$ref": "#/$defs/requestId"
+            },
+            "sentAt": {
+              "$ref": "#/$defs/dateTime"
+            },
+            "nonce": {
+              "$ref": "#/$defs/nonce"
+            },
+            "body": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "attempt",
+                "authority",
+                "snapshotFingerprint",
+                "name"
+              ],
+              "properties": {
+                "attempt": {
+                  "$ref": "#/$defs/attemptRef"
+                },
+                "authority": {
+                  "$ref": "#/$defs/authority"
+                },
+                "snapshotFingerprint": {
+                  "$ref": "#/$defs/fingerprint"
+                },
+                "name": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "resultResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "method",
+            "requestId",
+            "sentAt",
+            "nonce",
+            "body"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "neo.runner-rpc/v1"
+            },
+            "method": {
+              "const": "result.result"
+            },
+            "requestId": {
+              "$ref": "#/$defs/requestId"
+            },
+            "sentAt": {
+              "$ref": "#/$defs/dateTime"
+            },
+            "nonce": {
+              "$ref": "#/$defs/nonce"
+            },
+            "body": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ready"
+              ],
+              "properties": {
+                "ready": {
+                  "type": "boolean"
+                },
+                "receipt": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "attempt",
+                    "name",
+                    "mediaType",
+                    "size",
+                    "fingerprint"
+                  ],
+                  "properties": {
+                    "attempt": {
+                      "$ref": "#/$defs/attemptIdentity"
+                    },
+                    "name": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                    },
+                    "mediaType": {
+                      "const": "application/json"
+                    },
+                    "size": {
+                      "type": "integer",
+                      "minimum": 2,
+                      "maximum": 65536
+                    },
+                    "fingerprint": {
+                      "$ref": "#/$defs/fingerprint"
+                    }
+                  }
+                },
+                "payload": {
+                  "type": "object"
+                },
+                "error": {
+                  "$ref": "#/$defs/error"
+                }
+              },
+              "oneOf": [
+                {
+                  "properties": {
+                    "ready": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "receipt",
+                    "payload"
+                  ]
+                },
+                {
+                  "properties": {
+                    "ready": {
+                      "const": false
+                    }
+                  },
+                  "not": {
+                    "required": [
+                      "receipt"
+                    ]
+                  }
+                }
+              ]
+            }
           }
         }
       ]

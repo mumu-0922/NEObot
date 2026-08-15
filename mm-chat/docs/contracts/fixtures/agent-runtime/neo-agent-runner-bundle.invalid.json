@@ -3,7 +3,7 @@
   "evidenceClass": "production",
   "release": {
     "gitCommit": "not-a-commit",
-    "migrationHead": 93,
+    "migrationHead": 94,
     "goVersion": "go1.24.0",
     "targetOS": "linux",
     "targetArch": "amd64"

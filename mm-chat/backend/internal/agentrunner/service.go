@@ -168,6 +168,8 @@ func decodeReplayResponse(method string, body []byte) (Response, error) {
 		target = &HeartbeatResult{}
 	case MethodCancel:
 		target = &CancelResult{}
+	case MethodResult:
+		target = &ResultResult{}
 	case MethodPrepare:
 		target = &PrepareResult{}
 	case MethodCommit:
@@ -193,6 +195,8 @@ func decodeReplayResponse(method string, body []byte) (Response, error) {
 	case *HeartbeatResult:
 		response.Body = *typed
 	case *CancelResult:
+		response.Body = *typed
+	case *ResultResult:
 		response.Body = *typed
 	case *PrepareResult:
 		response.Body = *typed
@@ -222,6 +226,8 @@ func (service *Service) execute(ctx context.Context, caller string, request Requ
 		return service.heartbeat(ctx, caller, request)
 	case MethodCancel:
 		return service.cancel(ctx, caller, request)
+	case MethodResult:
+		return service.result(ctx, caller, request)
 	case MethodPrepare:
 		return service.prepare(ctx, caller, request)
 	case MethodCommit:
@@ -233,6 +239,35 @@ func (service *Service) execute(ctx context.Context, caller string, request Requ
 	default:
 		return service.errorResponse(request, ErrVersionUnsupported), ErrVersionUnsupported
 	}
+}
+
+func (service *Service) result(ctx context.Context, caller string, request Request) (Response, error) {
+	body := request.Result
+	if err := service.authority.Verify(caller, service.config.RunnerID, MethodResult, request.RequestID,
+		request.Nonce, authorityFingerprintForRequest(request), body.SnapshotFingerprint,
+		body.Attempt, body.Authority, service.now()); err != nil {
+		return service.response(request, MethodResult+".result", ResultResult{Error: rpcError(authorityError(err))}), authorityError(err)
+	}
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	record, ok := service.records[body.Attempt.AttemptID]
+	if !ok || record.Descriptor.Attempt != body.Attempt.Identity() ||
+		record.Descriptor.SnapshotFingerprint != body.SnapshotFingerprint {
+		return service.response(request, MethodResult+".result", ResultResult{Error: rpcError(ErrLeaseStale)}), ErrLeaseStale
+	}
+	receipt, payload, err := service.artifacts.ReadResult(ctx, body.Attempt.Identity(), body.Name)
+	if errors.Is(err, ErrNotFound) {
+		return service.response(request, MethodResult+".result", ResultResult{Ready: false}), nil
+	}
+	if err != nil {
+		return service.response(request, MethodResult+".result", ResultResult{Error: rpcError(err)}), err
+	}
+	var value any
+	if strictjson.Decode(payload, int(maxResultArtifactBytes), &value) != nil {
+		return service.response(request, MethodResult+".result", ResultResult{Error: rpcError(ErrArtifactDenied)}), ErrArtifactDenied
+	}
+	return service.response(request, MethodResult+".result", ResultResult{Ready: true, Receipt: &receipt,
+		Payload: append(json.RawMessage(nil), payload...)}), nil
 }
 
 func (service *Service) prepare(ctx context.Context, caller string, request Request) (Response, error) {
@@ -323,6 +358,26 @@ func validateRelayResult(value any) error {
 			return ErrRuntimeUnavailable
 		}
 		return nil
+	case *ResultResult:
+		if result.Error != nil {
+			if result.Ready || result.Receipt != nil || len(result.Payload) != 0 || !validRPCError(result.Error) {
+				return ErrRuntimeUnavailable
+			}
+			return nil
+		}
+		if !result.Ready {
+			if result.Receipt != nil || len(result.Payload) != 0 {
+				return ErrRuntimeUnavailable
+			}
+			return nil
+		}
+		if result.Receipt == nil || result.Receipt.MediaType != "application/json" ||
+			result.Receipt.Size < 1 || result.Receipt.Size > maxResultArtifactBytes ||
+			!validFingerprint(result.Receipt.Fingerprint) || len(result.Payload) < 1 ||
+			int64(len(result.Payload)) != result.Receipt.Size {
+			return ErrRuntimeUnavailable
+		}
+		return nil
 	}
 	return nil
 }
@@ -379,6 +434,12 @@ func (service *Service) launch(ctx context.Context, caller string, request Reque
 	// The parent state tree is mode 0700. This bind root is execute-only to the
 	// remapped Sandbox user; the socket itself is write-only from the Sandbox.
 	if err := os.Mkdir(brokerPath, 0o711); err != nil {
+		_ = safeRemoveTree(filepath.Join(service.config.StateRoot, "scratch"), scratchPath)
+		return service.launchError(request, body.Attempt, ErrRuntimeUnavailable)
+	}
+	// Mkdir applies the process umask. Restore the exact execute-only directory
+	// contract before StartArtifactIntake validates and exposes the socket.
+	if err := os.Chmod(brokerPath, 0o711); err != nil {
 		_ = safeRemoveTree(filepath.Join(service.config.StateRoot, "scratch"), scratchPath)
 		return service.launchError(request, body.Attempt, ErrRuntimeUnavailable)
 	}
@@ -764,6 +825,8 @@ func responseOperationError(response Response) error {
 	case HeartbeatResult:
 		rpcError = body.Error
 	case CancelResult:
+		rpcError = body.Error
+	case ResultResult:
 		rpcError = body.Error
 	case PrepareResult:
 		rpcError = body.Error

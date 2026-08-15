@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "neo.agent-draft-learning-worker-plan/v1",
+  "synthetic": false,
+  "activationId": "activation_0123456789abcdef",
+  "draftId": "draft_0123456789abcdef",
+  "userId": "88888888-8888-4888-8888-888888888888",
+  "draftFingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "proposedPackageFingerprint": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "runtimeBundleFingerprint": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "archiveFingerprint": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "runnerId": "neo-runner-primary",
+  "callerIdentity": "spiffe://neo-chat/agent-runtime-draft-learning",
+  "runnerSnapshotFingerprint": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "grantId": "grant_0123456789abcdef",
+  "grantFingerprint": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "toolRegistry": {
+    "depth": 0,
+    "tools": [],
+    "registryFingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "sandbox": {
+    "runtimeBundleFingerprint": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "packageFingerprint": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "image": "registry.example/neo/draft-checker@sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "uid": 10001,
+    "gid": 10001,
+    "rootfsReadOnly": true,
+    "noNewPrivileges": true,
+    "capabilities": [],
+    "seccompProfileFingerprint": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "networkMode": "none",
+    "workspaceSnapshotId": "workspace_snapshot_0123456789abcdef",
+    "workspaceFingerprint": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "resources": {
+      "cpuMillis": 500,
+      "memoryMiB": 256,
+      "pids": 16,
+      "wallSeconds": 60,
+      "outputBytes": 65536,
+      "scratchBytes": 1048576
+    }
+  },
+  "checks": [
+    {
+      "kind": "isolation",
+      "suiteFingerprint": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "argv": [
+        "/opt/neo/bin/draft-isolation-check",
+        "--result-artifact=draft-check-result.json"
+      ]
+    },
+    {
+      "kind": "evaluation",
+      "suiteFingerprint": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "argv": [
+        "/opt/neo/bin/draft-evaluation-check",
+        "--result-artifact=draft-check-result.json"
+      ]
+    }
+  ],
+  "leaseSeconds": 120,
+  "resultTimeoutSeconds": 60,
+  "resultPollMillis": 250
+}

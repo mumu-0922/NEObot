@@ -267,7 +267,7 @@ G20.8 implementation signatures:
   preparation surfaces together with the legacy editor/executor;
 - `scripts/verify-agent-product-shadow{,-postgres17}.sh` prove product contracts,
   authorization/fences/budgets/restart, content-free dump/restore and guarded
-  rollback. Every older PostgreSQL tail drill finishes at head `093`.
+  rollback. Every older PostgreSQL tail drill finishes at head `094`.
 
 G20.9 implementation signatures:
 
@@ -806,7 +806,7 @@ interpreter and an unapproved or placeholder `production` release. Template
 builds are deterministic and never install or mutate host state.
 
 The stage record is `neo.agent-production-activation/v1`, stage
-`control_plane`. It binds the exact Git commit, current migration head `093`, operations
+`control_plane`. It binds the exact Git commit, current migration head `094`, operations
 policy, Runner manifest/binary, deployment, private HTTPS endpoint, Runner and
 TLS identities, client certificate, server CA and these five unique live
 checks:
@@ -832,7 +832,7 @@ Cron or Learning roles. Startup and cycle drift terminate the process.
 
 G21.0 itself adds no migration, API/Chat route, launch/heartbeat/cancel RPC,
 Broker adapter or public endpoint. Its current evaluator nevertheless binds
-the current `093` head introduced by G21.3. All execution-stage environment
+the current `094` head introduced by G21.5. All execution-stage environment
 switches remain false, and the control profile defaults off.
 
 ## 20. G21.1 synthetic Root Run canary
@@ -895,7 +895,7 @@ The dedicated LOGIN must be a nonprivileged `LOGIN INHERIT` principal whose
 recursive membership set is exactly
 `agent_orchestrator_runtime,agent_runner_control`. G21.1 reuses migration
 `084`/`085` SECURITY DEFINER functions and itself adds no migration or direct
-table DML; its current release gate accepts only the reviewed `093` tail. The
+table DML; its current release gate accepts only the reviewed `094` tail. The
 command and Compose profile are separate from `cmd/api`, have no
 port or Provider/object-store/Redis/MCP/vault credentials, and default off.
 
@@ -961,7 +961,7 @@ one bounded byte snapshot, writes the object before the row, deletes the object
 on row failure and cleans quarantine on success or rejection. Exact row replay
 is idempotent; Artifact ID/name/object-key collisions fail closed.
 
-The `broker_artifact_canary` activation record binds migration head `093`, the
+The `broker_artifact_canary` activation record binds migration head `094`, the
 exact release/target/policy, Runner and relay endpoints, both mTLS trust tuples,
 authority key, plan and zero Artifact/quarantine residue. The Compose profile
 is independent and default-off. The service may hold its narrow database,
@@ -1140,7 +1140,73 @@ MCP write, Egress, Secret, Scheduler, Skill-install and Learning flags remain
 false. No API/Chat or package-selected delegation path is enabled. Checked-in
 activation is template-only and this host remains `ISOLATION_UNAVAILABLE`.
 
-## 24. Phase 0 verification
+## 24. G21.5 exact Cron and Draft-learning workers
+
+The strict schemas are
+`schemas/neo-agent-cron-worker-{plan,activation}.schema.json` and
+`schemas/neo-agent-draft-learning-worker-{plan,activation}.schema.json`.
+Both activation stages require current G21.0-G21.4 prerequisite evidence,
+migration head `094`, an exact plan SHA-256 and fresh production evidence.
+`cron_worker` and `draft_learning_worker` are independently default off; one
+flag or profile never implies the other or any broad Runtime, Scheduler,
+Learning, Skill-install, Broker or product-cohort flag.
+
+Migration `094_agent_cron_learning_activation` stores immutable exact targets.
+The `agent_cron_worker` role may call only activation-scoped target read, due
+claim, cursor advance, trigger claim/enqueue/release, reconcile and prune
+functions. Target membership is part of each locking candidate query. Revision,
+fingerprint, lifecycle or activation-window drift rejects before claim. The
+role cannot create/edit Templates, provision/disable targets, read tables or
+claim another Template.
+
+The `agent_learning_worker` role may call only activation-scoped Draft read,
+check claim/complete/release, Draft-only Runner attempt/request/result,
+cleanup, reconcile and prune functions. It cannot call generic Claim, Propose,
+diff/review, Reject, Promote, candidate insertion or package-version insertion.
+The target binds the Draft/package/runtime/archive, Runner snapshot, Workspace,
+isolation/evaluation suites, plan and validity window. Human Promote remains an
+administrator-only migration-089 transaction and creates a new immutable
+candidate/package version.
+
+Draft Runner attempts are not Agent Runs or Agent Attempts and confer no Broker,
+Provider, Cron, delegation or admission authority. The sixth caller policy is:
+
+```text
+spiffe://neo-chat/agent-runtime-draft-learning
+  -> probe, list, reconcile, launch, result, cancel
+  -> no heartbeat, prepare, commit or relay
+```
+
+`result` is a read-only RPC for the exact authenticated Attempt and fixed
+artifact name. The strict artifact is at most 64 KiB and binds activation,
+Draft/fingerprint, check generation/kind, package/runtime/archive, Workspace,
+suite, status, reason, duration and bounded integer metrics. SQL accepts a
+receipt only after exact result persistence and successful Sandbox cancel/reap.
+Authority and response replay are request/nonce/fingerprint fenced; lost tokens
+wait for lease/authority expiry and reconciliation before a new Draft claim
+generation.
+
+Required gates are:
+
+```bash
+bash scripts/verify-agent-cron-worker.sh
+bash scripts/verify-agent-cron-worker-postgres17.sh
+bash scripts/verify-agent-draft-learning-worker.sh
+bash scripts/verify-agent-draft-learning-worker-postgres17.sh
+bash scripts/verify-agent-runtime-g21-5-preflight.sh
+bash scripts/verify-agent-runtime-g21-5.sh
+```
+
+The PostgreSQL gates prove two due Templates and two quarantined Drafts, exact
+claim isolation, real function-only LOGIN denial, Runner result replay,
+human-decision separation, scoped cleanup, dump/restore and guarded clean
+down/up. Production rollback disables one target/profile and retains migration
+`094`; destructive down is disposable-only after every target, claim, Runner
+attempt, cleanup and LOGIN membership guard is clean. No API/Chat path or user
+cohort is enabled, and this development host remains
+`ISOLATION_UNAVAILABLE`.
+
+## 25. Phase 0 verification
 
 Run:
 
@@ -1182,6 +1248,16 @@ bash scripts/verify-agent-project-canary-activation.sh
 bash scripts/verify-agent-project-canary-preflight.sh
 bash scripts/verify-agent-project-mutation-postgres17.sh
 bash scripts/verify-agent-runtime-g21-3.sh
+bash scripts/verify-agent-child-canary-activation.sh
+bash scripts/verify-agent-child-canary-preflight.sh
+bash scripts/verify-agent-child-canary-postgres17.sh
+bash scripts/verify-agent-runtime-g21-4.sh
+bash scripts/verify-agent-cron-worker.sh
+bash scripts/verify-agent-cron-worker-postgres17.sh
+bash scripts/verify-agent-draft-learning-worker.sh
+bash scripts/verify-agent-draft-learning-worker-postgres17.sh
+bash scripts/verify-agent-runtime-g21-5-preflight.sh
+bash scripts/verify-agent-runtime-g21-5.sh
 bash scripts/verify-agent-runner.sh
 bash scripts/verify-agent-runtime-phase0.sh
 bash scripts/verify-agent-runner-host.sh # expected nonzero on the current host

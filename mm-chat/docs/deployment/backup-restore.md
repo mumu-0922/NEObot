@@ -96,7 +96,7 @@ for that set and publishes no manifest.
 Agent Runtime production promotion additionally hashes the verified set
 manifest into the external G20.10 closure evidence. Restore with every Agent
 worker and Runtime switch off, reject all pre-restore leases/nonces, reconcile
-Sandboxes/effects/Children/Cron/Draft cleanup, and require migration head `093`
+Sandboxes/effects/Children/Cron/Draft cleanup, and require migration head `094`
 before a read-only canary. The restore must also reconcile every
 `agent_artifacts.object_key` against the
 paired object mirror, remove only proven unreferenced canary objects and keep
@@ -126,6 +126,35 @@ Only after Child cleanup and Parent cancellation are terminal may a fresh
 exact-host activation be generated. The Child database password, mTLS private
 key and authority private key are separately encrypted deployment secrets, not
 members of the Postgres/MinIO backup set or closure evidence.
+
+Migration `094` makes Cron/Draft worker targets and Draft-only Runner transport
+part of the same restore authority. Restore `agent_cron_worker_targets`,
+`agent_learning_worker_targets`, Draft Runner attempts/results/requests,
+migration-088/089 state and every referenced Draft object from one matched
+PostgreSQL/MinIO set. Keep both G21.5 profiles off and treat restored worker
+leases, request nonces and Runner tokens as unusable.
+
+For Cron, reconcile only the exact restored target cursor/trigger claims before
+new scheduling and preserve occurrence/Run idempotency links. Never globally
+claim or advance another Template to repair one target. For Draft learning,
+wait through retained lease and signed-authority expiry, prove exact Sandbox
+absence, terminalize or reap the matching Draft-only Attempt, then reconcile
+the Draft claim. Result artifacts and check receipts must retain identical
+activation/Draft/generation/kind/package/runtime/archive/Workspace/suite
+bindings.
+
+Draft cleanup remains object-before-row. Verify the referenced quarantine
+object against the paired mirror, delete only the exact object after a separate
+human Promote/Reject fact, then acknowledge its target-scoped queue row. Never
+infer a human decision from a passing check or recreate a package version from
+result metadata. Cron has no object-store credential; the Draft credential,
+worker database passwords, Runner mTLS key and authority private key remain
+separately encrypted deployment secrets, not backup-set contents.
+
+Require migration head `094`, zero stale target claims, zero live Draft Runner
+attempts, zero target Sandbox residue and fresh G21.5 activation evidence before
+restarting either profile. Restored activation evidence never authorizes a new
+product cohort.
 
 ## Verify backup checksums
 

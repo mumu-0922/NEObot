@@ -82,7 +82,7 @@ for prefix in ("root", "broker"):
 
 common_release = {
     "gitCommit": commit,
-    "migrationHead": 93,
+    "migrationHead": 94,
     "runnerManifestSha256": fp(manifest),
     "runnerBinarySha256": label_fp("g21.2-preflight-runner"),
     "operationsPolicySha256": fp(policy),

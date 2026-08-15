@@ -70,15 +70,18 @@ database_url="$(database_url_for "${container_name}")"
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" "$@"; }
 
-log "applying 001 -> 093, replaying, and peeling the empty product tail"
+log "applying 001 -> 094, replaying, and peeling the empty product tail"
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 089_agent_draft_learning" "${work_dir}/fresh.log"
 grep -Fq "up 090_agent_product_shadow" "${work_dir}/fresh.log"
 grep -Fq "up 091_agent_artifact_publication" "${work_dir}/fresh.log"
 grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/fresh.log"
 grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/fresh.log"
+grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
+run_migrate down >"${work_dir}/peel-094-tail-1.log" 2>&1
+grep -Fq "down 094_agent_cron_learning_activation" "${work_dir}/peel-094-tail-1.log"
 run_migrate down >"${work_dir}/peel-093-tail-1.log" 2>&1
 grep -Fq "down 093_agent_child_canary_reap_transport" "${work_dir}/peel-093-tail-1.log"
 run_migrate down >"${work_dir}/peel-092-tail-1.log" 2>&1
@@ -160,7 +163,7 @@ if [[ "${source_counts}" != "${restore_counts}" ]]; then
   exit 1
 fi
 
-log "proving clean 088 -> 089 -> 088 -> 093"
+log "proving clean 088 -> 089 -> 088 -> 094"
 psql_command "${container_name}" "
 TRUNCATE TABLE agent_learning_audit_events,agent_learning_cleanup_queue,agent_learning_decisions,
   agent_learning_check_results,agent_learning_drafts;
@@ -173,6 +176,7 @@ grep -Fq "up 090_agent_product_shadow" "${work_dir}/reup.log"
 grep -Fq "up 091_agent_artifact_publication" "${work_dir}/reup.log"
 grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/reup.log"
 grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/reup.log"
+grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final.log"
 log "passed (fresh/replay, least privilege, provenance/checks/promotion/cleanup, guarded down, dump/restore, clean down/up)"

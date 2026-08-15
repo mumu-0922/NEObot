@@ -305,7 +305,7 @@ func appendReplayRecord(file *os.File, record replayRecord) error {
 func validateReplayClaim(claim ReplayClaim) error {
 	if !identityPattern.MatchString(claim.CallerIdentity) || !validID(claim.RequestID, "rpc") ||
 		!noncePattern.MatchString(claim.Nonce) || !member(claim.Method, MethodProbe, MethodLaunch,
-		MethodHeartbeat, MethodCancel, MethodPrepare, MethodCommit, MethodList, MethodReconcile) || !validFingerprint(claim.RequestFingerprint) ||
+		MethodHeartbeat, MethodCancel, MethodResult, MethodPrepare, MethodCommit, MethodList, MethodReconcile) || !validFingerprint(claim.RequestFingerprint) ||
 		claim.ExpiresAt.IsZero() {
 		return ErrInvalidInput
 	}

@@ -1,0 +1,302 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "synthetic",
+    "activationId",
+    "draftId",
+    "userId",
+    "draftFingerprint",
+    "proposedPackageFingerprint",
+    "runtimeBundleFingerprint",
+    "archiveFingerprint",
+    "runnerId",
+    "callerIdentity",
+    "runnerSnapshotFingerprint",
+    "grantId",
+    "grantFingerprint",
+    "toolRegistry",
+    "sandbox",
+    "checks",
+    "leaseSeconds",
+    "resultTimeoutSeconds",
+    "resultPollMillis"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "neo.agent-draft-learning-worker-plan/v1"
+    },
+    "synthetic": {
+      "const": true
+    },
+    "activationId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{1,31}_[a-z0-9]{16,64}$"
+    },
+    "draftId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{1,31}_[a-z0-9]{16,64}$"
+    },
+    "userId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "draftFingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "proposedPackageFingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "runtimeBundleFingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "archiveFingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "runnerId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "callerIdentity": {
+      "const": "spiffe://neo-chat/agent-runtime-draft-learning"
+    },
+    "runnerSnapshotFingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "grantId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{1,31}_[a-z0-9]{16,64}$"
+    },
+    "grantFingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "toolRegistry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "depth",
+        "tools",
+        "registryFingerprint"
+      ],
+      "properties": {
+        "depth": {
+          "const": 0
+        },
+        "tools": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "registryFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "sandbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtimeBundleFingerprint",
+        "packageFingerprint",
+        "image",
+        "uid",
+        "gid",
+        "rootfsReadOnly",
+        "noNewPrivileges",
+        "capabilities",
+        "seccompProfileFingerprint",
+        "networkMode",
+        "workspaceSnapshotId",
+        "workspaceFingerprint",
+        "resources"
+      ],
+      "properties": {
+        "runtimeBundleFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "packageFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "image": {
+          "type": "string",
+          "pattern": "^[^@\\s]+@sha256:[a-f0-9]{64}$"
+        },
+        "uid": {
+          "type": "integer",
+          "minimum": 10000
+        },
+        "gid": {
+          "type": "integer",
+          "minimum": 10000
+        },
+        "rootfsReadOnly": {
+          "const": true
+        },
+        "noNewPrivileges": {
+          "const": true
+        },
+        "capabilities": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "seccompProfileFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "networkMode": {
+          "const": "none"
+        },
+        "workspaceSnapshotId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{1,31}_[a-z0-9]{16,64}$"
+        },
+        "workspaceFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "cpuMillis",
+            "memoryMiB",
+            "pids",
+            "wallSeconds",
+            "outputBytes",
+            "scratchBytes"
+          ],
+          "properties": {
+            "cpuMillis": {
+              "type": "integer",
+              "minimum": 50,
+              "maximum": 1000
+            },
+            "memoryMiB": {
+              "type": "integer",
+              "minimum": 32,
+              "maximum": 512
+            },
+            "pids": {
+              "type": "integer",
+              "minimum": 4,
+              "maximum": 32
+            },
+            "wallSeconds": {
+              "type": "integer",
+              "minimum": 5,
+              "maximum": 120
+            },
+            "outputBytes": {
+              "type": "integer",
+              "minimum": 1024,
+              "maximum": 65536
+            },
+            "scratchBytes": {
+              "type": "integer",
+              "minimum": 4096,
+              "maximum": 16777216
+            }
+          }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "prefixItems": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "suiteFingerprint",
+            "argv"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "isolation",
+                "evaluation"
+              ]
+            },
+            "suiteFingerprint": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "argv": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "suiteFingerprint",
+            "argv"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "isolation",
+                "evaluation"
+              ]
+            },
+            "suiteFingerprint": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "argv": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            }
+          }
+        }
+      ],
+      "items": false
+    },
+    "leaseSeconds": {
+      "type": "integer",
+      "minimum": 30,
+      "maximum": 300
+    },
+    "resultTimeoutSeconds": {
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 300
+    },
+    "resultPollMillis": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 5000
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neo-chat.local/contracts/neo-agent-draft-learning-worker-plan.schema.json",
+  "title": "Neo Agent Draft Learning Worker Plan"
+}

@@ -51,9 +51,9 @@ activation=json.loads((schemas/"neo-agent-project-mutation-canary-activation.sch
 plan=json.loads((schemas/"neo-agent-project-mutation-canary-plan.schema.json").read_text())
 approval=json.loads((schemas/"neo-agent-project-mutation-approval.schema.json").read_text())
 assert activation["properties"]["stage"]["const"]=="project_mutation_canary"
-assert activation["properties"]["release"]["properties"]["migrationHead"]["const"]==93
+assert activation["properties"]["release"]["properties"]["migrationHead"]["const"]==94
 assert plan["properties"]["action"]["properties"]["approval"]["const"]=="per_commit"
-assert approval["properties"]["payload"]["properties"]["release"]["properties"]["migrationHead"]["const"]==93
+assert approval["properties"]["payload"]["properties"]["release"]["properties"]["migrationHead"]["const"]==94
 PY
 
 (cd "${project_dir}/backend" && go test ./internal/agentactivation ./internal/agentprojectcanary \

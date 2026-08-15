@@ -135,7 +135,7 @@ passes the full suite.
 - Migration `087` concurrent reservation, stale Parent/Child launch, terminal
   settlement, cascade/reap failure, terminal/expired/reclaimed/Kill-Switch
   recovery, least privilege, dump/restore and clean down/up; all older tail
-  drills must peel the empty product tail and return to current head `093`.
+  drills must peel the empty product tail and return to current head `094`.
 - Paired PostgreSQL/object backup, restore-with-Runtime-off and reconciliation.
 - G20.1 backup/restore pairs migration `083` rows with all three immutable
   object prefixes: `skill-quarantine/`, `skill-packages/`, and `skill-sboms/`.
@@ -230,7 +230,7 @@ operational boundary. The exact-host gate remains expected-nonzero
   denials, least privilege, content-free dump/restore, guarded down and clean
   down/up.
 - Every prior PostgreSQL tail drill must peel `091`, `090`, `089` and then `088`
-  before testing its older guard and finish reapplied at head `093`.
+  before testing its older guard and finish reapplied at head `094`.
 - The full standalone gate must pass, while the exact-host Runner gate remains
   expected-nonzero `ISOLATION_UNAVAILABLE` unless a separately approved host
   promotion is in scope.
@@ -334,7 +334,7 @@ Migration `089_agent_draft_learning` plus `agent_learning_owner` and
   human authority, exact decision replay, immutable live state, cleanup,
   content-free dump/restore, guarded down and clean down/up.
 - Verify every older Agent/MCP/Assistant/Skill PostgreSQL drill peels empty
-  `090` before its original guard and returns to head `093`.
+  `090` before its original guard and returns to head `094`.
 - Run backend race/vet, Phase 0, module/security/quality/change gates and full
   standalone. Confirm `data/`, `secrets/`, `backup/` and live
   `.env.single-server` remain untouched.
@@ -430,7 +430,7 @@ Migration `090_agent_product_shadow`, `agent_product_owner` and the authenticate
   Artifact seam, default-off/cohort/opt-in, Kill Switch, budget, restart,
   generation/fingerprint fences, content-free dump/restore and guarded down/up.
 - All older Agent/MCP/Assistant/Skill PostgreSQL drills peel empty `091`, then
-  empty `090`, before their original guards and finish at head `093`.
+  empty `090`, before their original guards and finish at head `094`.
 - Run backend race/vet/test, frontend format/lint/typecheck/test/build, Phase 0
   and full standalone. Exact-host remains expected nonzero unless separately
   approved.
@@ -523,7 +523,7 @@ count, and lowercase SHA-256 fingerprint of the matching full database backup.
   signatures and held Runtime.
 - PostgreSQL 17 gate: schema `001 -> 090`, sanitized fixtures, real full dump
   fingerprint, dry-run, both rejected guards, exact JSONB deletion, unrelated
-  byte-equivalence, repeated expected-zero apply, and head `093`.
+  byte-equivalence, repeated expected-zero apply, and head `094`.
 - Production evidence additionally requires browser reload, backend restart,
   paired restore/rollback, clean-copy and exact-host canary/Isolation Acceptance;
   disposable gate success alone is not promotion.
@@ -572,7 +572,7 @@ Evaluator: `mm-chat/scripts/evaluate-agent-production-closure.py`.
 - The policy freezes conservative single-server capacity, root/Child/Cron
   budgets, no-Egress/no-Secret canary, retention, bounded cleanup, exact metric
   labels and alert thresholds. It never widens a frozen Grant.
-- A closure record binds one Git commit, migration head `093`, Runner manifest/
+- A closure record binds one Git commit, migration head `094`, Runner manifest/
   binary, Runtime Bundle, target deployment and exact policy SHA-256 to 16
   unique live checks. The input cannot self-assert its final verdict.
 - `template` evidence never promotes. Production requires every check passed,
@@ -592,7 +592,7 @@ Evaluator: `mm-chat/scripts/evaluate-agent-production-closure.py`.
   performs no mutation.
 - G20.10 itself adds no migration, Compose/startup worker, production adapter,
   flag, browser/API/rootful fallback or live-host change. The current closure
-  contract binds head `093`; the current host stays `ISOLATION_UNAVAILABLE`.
+  contract binds head `094`; the current host stays `ISOLATION_UNAVAILABLE`.
 
 ### 4. Validation & Error Matrix
 
@@ -626,7 +626,7 @@ Evaluator: `mm-chat/scripts/evaluate-agent-production-closure.py`.
 - Self-test ephemeral positive semantics plus isolation-held, template-held,
   stale, cleanup residue, policy drift, incomplete, duplicate, malformed,
   writable-file and symlink cases.
-- Run every Agent source and PostgreSQL 17 gate through schema head `093`, then
+- Run every Agent source and PostgreSQL 17 gate through schema head `094`, then
   full frontend/backend/RAG standalone verification.
 - Run `verify-agent-runner-host.sh` separately and require nonzero
   `ISOLATION_UNAVAILABLE` here. Only a real target-host pass may back a
@@ -893,7 +893,7 @@ Compose profile: `agent-runtime-broker-canary`. Caller identity:
   RPC timeout `1s..10s`, authority TTL `10s..15s`, existing S3-compatible
   bucket with `S3_BUCKET_AUTO_CREATE=false`, private MCP Runner URL/token,
   matching TLS/key pairs, immutable roots, strict five-action plan and a ready
-  `broker_artifact_canary` record at migration head `093`.
+  `broker_artifact_canary` record at migration head `094`.
 - Broad Runtime, generic Broker mutation/read, Child, Scheduler, Skill-install
   and Learning flags stay false. Roll back by stopping only this profile or
   clearing its flag; retain migration `091`, rows/objects and G21.0/G21.1
@@ -999,7 +999,7 @@ bash mm-chat/scripts/verify-agent-runtime-g21-3.sh
   approval document/key, authority private key or relay server key. Sandbox
   plan remains `networkMode=none`, capability-free and credential-free.
 - Preflight validates a strict one-action current-window plan, Ed25519-signed
-  approval, current head `093`, stable activation binding fingerprint, exact
+  approval, current head `094`, stable activation binding fingerprint, exact
   release/target/caller/request/action/actor/window, TLS/key pairs and ninth
   principal before any database or Runner access.
 - Operator provisions one reviewed synthetic baseline while all canaries are
@@ -1101,7 +1101,7 @@ bash mm-chat/scripts/verify-agent-runtime-g21-4.sh
 - Use no ports, Compose Secret, relay, S3, MCP, Provider, vault or Redis
   credential. Runner receives only the Child caller identity. Sandboxes remain
   credential-free and `networkMode=none`.
-- Preflight validates migration head `093`, private exact Runner endpoint,
+- Preflight validates migration head `094`, private exact Runner endpoint,
   mTLS/key pairs, distinct principals/material, stable plan identities, exact
   one-Parent/one-Child shape, empty derived Child Registry, strict expiry and
   four-budget subset, fixed argv and no network/capability.
@@ -1164,3 +1164,83 @@ reuse Root caller/login -> give Child Prepare/Commit -> restart creates sibling
 ready G21.0-G21.3 + distinct lifecycle-only caller/LOGIN + exact single lineage
 -> Child-first authority wait/reap -> atomic durable completion -> Parent cancel
 ```
+
+## Scenario: Deploy the G21.5 exact Cron and Draft-learning profiles
+
+### 1. Scope / Trigger
+
+Apply when configuring either G21.5 profile, its eleventh/twelfth database
+principal, activation/plan evidence, Draft Runner caller/object credential,
+preflight, backup/restore or rollback. The development host remains ineligible.
+
+### 2. Signatures
+
+```bash
+bash mm-chat/scripts/verify-agent-runtime-g21-5-preflight.sh
+bash mm-chat/scripts/verify-agent-cron-worker-postgres17.sh
+bash mm-chat/scripts/verify-agent-draft-learning-worker-postgres17.sh
+bash mm-chat/scripts/verify-agent-runtime-g21-5.sh
+```
+
+- Profiles: `agent-runtime-cron-worker` and
+  `agent-runtime-draft-learning-worker`.
+- Flags: `AGENT_CRON_WORKER_ENABLED` and
+  `AGENT_DRAFT_LEARNING_WORKER_ENABLED`.
+- Draft caller: `spiffe://neo-chat/agent-runtime-draft-learning`.
+- Principals: `agent_cron_worker_app` and
+  `agent_draft_learning_worker_app`, each inheriting one worker role.
+
+### 3. Contracts
+
+- Require fresh READY G21.0-G21.4 evidence, exact migration head `094`, exact
+  plan SHA and non-placeholder production fingerprints. Profiles and flags are
+  independent and default off.
+- Keep broad Runtime, Runner control, Scheduler, Learning, Skill install,
+  Broker read/mutation, API/Chat and product cohort flags false. Starting one
+  profile must not read the other stage's files or open its database/Runner/
+  object path.
+- Cron receives only its exact database URL and reviewed activation/plan/
+  prerequisite files. It has no Runner TLS/key, authority key, S3, Provider,
+  administrator or product credential.
+- Draft receives a distinct database URL, Runner client mTLS, authority key
+  pair, strict plan and dedicated S3-compatible cleanup credential. Runner host
+  env and Sandboxes receive none of the database/S3/private authority material.
+- Require a literal private HTTPS Runner URL, exact server name and caller,
+  private regular non-symlink files, matching TLS/key pairs and distinct
+  sensitive material. Fixed Sandboxes remain rootless, read-only,
+  capability-free and `networkMode=none`.
+- Runner grants the Draft caller Probe/List/Reconcile/Launch/Result/Cancel only
+  and preserves all five earlier caller policies plus both relay routes.
+- Provision exactly one reviewed active/due Template and one reviewed
+  quarantined Draft with pre-staged Workspace. Cron is Runner-free; Draft uses
+  separate isolation/evaluation Sandboxes and cannot Promote.
+- Rollback stops/disables one profile and reconciles only its exact target.
+  Retain migration `094`, activation, human decision, receipt and cleanup facts.
+- Restore PostgreSQL and object storage as one set with both profiles off.
+  Reconcile exact Cron claims, wait Draft lease/authority expiry, remove exact
+  Sandbox residue, preserve object-before-row cleanup and require fresh
+  activation before restart.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| profile absent or flag false | no stage file read, DB open or Runner/object call |
+| any prerequisite false, head/plan/evidence drift | preflight rejects |
+| shared principal/key/caller or extra inherited role | preflight/startup rejects |
+| Cron receives Runner/S3/admin credential | source/Compose gate fails |
+| Draft Runner/Sandbox receives DB/S3/private authority credential | source/Compose gate fails |
+| target claim, Runner attempt or cleanup residue remains | unhealthy; no fresh activation |
+| current development host | expected nonzero `ISOLATION_UNAVAILABLE` |
+
+### 5. Tests Required
+
+- Render default/development/production Compose and prove both profiles absent
+  by default, hardened and image-only in production.
+- Run default and enabled Cron-only, Draft-only and combined preflight, plus
+  identity, role, credential, TLS, plan, prerequisite and held-evidence
+  negatives.
+- Run both focused source/race/vet and PostgreSQL 17 exact-target gates, G21.4
+  regression, Phase 0, standalone full and expected-nonzero host acceptance.
+- Backup/restore must preserve target/result/receipt/decision/cleanup counts and
+  require zero claim/Runner/object residue before reactivation.

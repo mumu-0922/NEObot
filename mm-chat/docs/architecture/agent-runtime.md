@@ -17,7 +17,11 @@ canary for one offline-approved synthetic Project compare-and-swap mutation;
 generic mutation, MCP writes and user Projects remain unavailable. G21.4 adds
 a fifth, lifecycle-only caller that runs one synthetic Parent and one
 depth-one Child with an empty derived Registry, then proves durable Child-first
-reap and restart cleanup. Public delegation and depth two remain unavailable.
+reap and restart cleanup. G21.5 adds two independent exact-target workers: one
+Runner-free Cron scheduler and one rootless Draft isolation/evaluation worker
+with a sixth lifecycle-only Runner caller. Both remain synthetic, default off
+and separate from the product cohort. Public delegation, generic scheduling,
+autonomous learning and depth two remain unavailable.
 
 ## Purpose and invariant
 
@@ -495,7 +499,7 @@ The G20.9 cutover:
    execution.
 
 G20.10 adds no migration or executable wiring. The current closure contract
-binds the immutable release, migration head `093`, Runner manifest/binary,
+binds the immutable release, migration head `094`, Runner manifest/binary,
 Runtime Bundle, target deployment
 and operations policy into one strict content-free closure record. The
 read-only evaluator requires all 16 live checks plus zero temporary evidence
@@ -675,6 +679,41 @@ expired Parent generation be reacquired for cleanup and signed cancellation.
 Health requires one terminal Parent/Child lineage, zero pending reaps and zero
 Runner residue. The separate Compose profile and both Child/delegation flags
 default off, and this host remains `ISOLATION_UNAVAILABLE`.
+
+G21.5 adds `mm-chat-agent-runtime-cron-worker` and
+`mm-chat-agent-runtime-draft-learning-worker` as separate default-off profiles.
+Migration `094_agent_cron_learning_activation` binds each process to one
+immutable operator-provisioned activation target. `agent_cron_worker` and
+`agent_learning_worker` are disjoint NOLOGIN roles with function-only access;
+neither inherits the migration-088/089 control role, owner membership or direct
+table DML. Their exact-host LOGINs inherit one worker role each.
+
+The Cron target freezes one active Template ID, revision, revision fingerprint,
+plan fingerprint and validity window. Activation membership is inside every
+`FOR UPDATE SKIP LOCKED` candidate statement, so the worker never globally
+claims and later filters. It reuses the existing timezone/DST, missed-run,
+overlap, retry, approval, revocation and Kill-Switch semantics and may enqueue
+only the exact occurrence as an ordinary durable Orchestrator Run. It has no
+Runner, object-store, Provider, administrator or product-cohort credential.
+
+The Draft target freezes one quarantined Draft and its package/runtime/archive,
+pre-staged Workspace, Runner snapshot and two suite fingerprints. Isolation and
+evaluation use separate non-Orchestrator Draft attempts with an empty Tool
+Registry, fixed rootless checker image/argv, `networkMode=none`, no Egress and
+no Secrets. Runner caller
+`spiffe://neo-chat/agent-runtime-draft-learning` receives only Probe, List,
+Reconcile, Launch, Result and Cancel. The new read-only `result` RPC exposes only
+the exact bounded `draft-check-result.json` artifact for the authenticated
+Attempt; all five earlier callers remain unauthorized.
+
+The worker validates content-free result bindings, persists the immutable
+artifact fingerprint, cancels/reaps the exact Sandbox and only then completes
+the migration-089 receipt bundle. It has no Propose, Reject, Promote or package
+insertion authority. A separate human administrator decision creates a new
+immutable package version; cleanup remains target-scoped and object-before-row.
+Rollback stops either profile independently and keeps migration `094` plus its
+audit facts. Checked-in evidence remains template-only, so this host continues
+to report `ISOLATION_UNAVAILABLE`.
 
 The current `/v1/code/executions` remains fail closed. Agent Runtime must not use
 that placeholder route as an isolation shortcut.

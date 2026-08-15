@@ -187,7 +187,7 @@ func approvalPayloadFor(binding Binding, plan Plan, release, activationFingerpri
 ) ApprovalPayload {
 	return ApprovalPayload{SchemaVersion: ApprovalSchemaVersion,
 		ApprovalID: "approval_3131313131313131", Decision: "approved",
-		Release: ApprovalRelease{GitCommit: release, MigrationHead: 93},
+		Release: ApprovalRelease{GitCommit: release, MigrationHead: 94},
 		Target:  ApprovalTarget{DeploymentFingerprint: plan.TargetFingerprint, RunnerID: testProjectRunner},
 		Activation: ApprovalActivation{Stage: ApprovalStage, ActivationFingerprint: activationFingerprint,
 			PlanFingerprint: planFingerprint},

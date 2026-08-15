@@ -43,7 +43,7 @@
           "pattern": "^[0-9a-f]{40}$"
         },
         "migrationHead": {
-          "const": 93
+          "const": 94
         },
         "runnerManifestSha256": {
           "$ref": "#/$defs/fingerprint"

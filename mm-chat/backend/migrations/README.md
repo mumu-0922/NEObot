@@ -143,7 +143,7 @@ function signatures, owners, and grants while pinning lookup to the application
 schema, `pg_catalog`, and `pg_temp`. Its down path intentionally retains the
 safe search path rather than reopening object-shadowing risk.
 
-The current migration head is `093`; the latest RAG retrieval-specific migration
+The current migration head is `094`; the latest RAG retrieval-specific migration
 remains `050`. Migration `043` extends the existing final-authority evidence
 hydration boundary with complete matched-Child and containing-Parent source
 text plus their persisted token counts. Parent text is answer context only. Its
@@ -628,8 +628,8 @@ content-free counts, latency buckets and reason codes only. Down fails with
 `AGENT_PRODUCT_DOWN_DATA_EXISTS` while cancellation, Artifact, policy, opt-in
 or observation authority remains. Disposable proof uses
 `scripts/verify-agent-product-shadow-postgres17.sh`; every older Agent/MCP/
-Assistant/Skill tail drill first peels empty `093`, then `092`, `091` and `090`, before
-asserting its original migration guard and finishes reapplied at head `093`.
+Assistant/Skill tail drill first peels empty `094`, then `093`, `092`, `091` and `090`, before
+asserting its original migration guard and finishes reapplied at head `094`.
 
 Migration `091` adds G21.2 Artifact publication authority without widening the
 G20.8 product facade. The independent NOLOGIN `agent_artifact_control` role
@@ -643,8 +643,8 @@ Down removes only the functions/role after the dedicated LOGIN membership is
 removed; migration `090` retains Artifact rows and continues to guard their
 destructive rollback. Disposable proof uses
 `scripts/verify-agent-artifact-publication-postgres17.sh`. Every older
-PostgreSQL tail drill peels empty `093`, then `092` and `091`, before its original tail/guard and
-finishes reapplied at head `093`.
+PostgreSQL tail drill peels empty `094`, then `093`, `092` and `091`, before its original tail/guard and
+finishes reapplied at head `094`.
 
 Migration `092` adds the G21.3 synthetic Project mutation canary without
 creating a user Project store. Operator-only
@@ -667,8 +667,8 @@ trigger guard. Down fails with
 `AGENT_PROJECT_MUTATION_DOWN_REQUIRES_EMPTY` until an operator has archived
 evidence and truncated all three synthetic tables together. Disposable proof
 uses `scripts/verify-agent-project-mutation-postgres17.sh`; all older tail
-drills peel the empty `093` tail, then `092` when required, before their
-original guards and finish reapplied at head `093`.
+drills peel the empty `094` tail, then `093` and `092` when required, before their
+original guards and finish reapplied at head `094`.
 
 Migration `093` closes the production Child reap transport gap without
 rewriting migration `087`. `agent_delegation_reap_inventory(limit)` returns the
@@ -688,7 +688,28 @@ live depth-one Sandbox requires the bridge. A clean down drops inventory,
 restores migration-087 completion behavior and revokes the temporary owner
 access. Disposable proof uses
 `scripts/verify-agent-child-canary-postgres17.sh`; every older guarded tail
-drill must peel empty `093` first and finish reapplied at head `093`.
+drill must peel empty `094` before `093` and finish reapplied at head `094`.
+
+Migration `094` activates one operator-bound Cron Template and one quarantined
+Draft without opening global Scheduler/Learning cohorts. Immutable target rows
+bind exact activation, subject/revision or Draft fingerprints, plan and validity
+window. `agent_cron_worker` and `agent_learning_worker` are independent NOLOGIN
+roles with function-only execution; neither inherits the corresponding owner or
+control role and neither receives direct table access.
+
+Cron wrappers place target membership inside every due/trigger locking query
+and expose only scoped advance/enqueue/release/reconcile/prune. Draft wrappers
+add non-Orchestrator Runner attempts, immutable bounded results and replay-
+fenced request authority for the fixed Draft caller. They expose only scoped
+check, Runner lifecycle/result and cleanup/reconcile/prune operations. Propose,
+Reject, Promote and package/candidate insertion remain outside the worker role.
+
+Down is disposable-only and rejects active targets, live claims, unresolved
+Runner attempts, pending cleanup, worker LOGIN membership and every retained
+activation fact. Production rollback disables one target/profile and preserves
+`094`. Disposable proof uses
+`scripts/verify-agent-{cron,draft-learning}-worker-postgres17.sh`; all older
+tail drills peel `094` before their previous tail and finish at head `094`.
 
 ## Storage boundaries
 

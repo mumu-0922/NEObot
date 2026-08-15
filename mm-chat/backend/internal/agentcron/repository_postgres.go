@@ -12,9 +12,19 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-type PostgresRepository struct{ db *sql.DB }
+type PostgresRepository struct {
+	db           *sql.DB
+	activationID string
+}
 
 func NewPostgresRepository(db *sql.DB) *PostgresRepository { return &PostgresRepository{db: db} }
+
+// NewActivationPostgresRepository binds every worker mutation to one
+// operator-provisioned migration-094 activation target. Administrative methods
+// remain database-denied when this repository uses the narrow worker LOGIN.
+func NewActivationPostgresRepository(db *sql.DB, activationID string) *PostgresRepository {
+	return &PostgresRepository{db: db, activationID: strings.TrimSpace(activationID)}
+}
 
 func (repository *PostgresRepository) CreateRevision(ctx context.Context, prepared preparedRevision) (Template, bool, error) {
 	if repository == nil || repository.db == nil {
@@ -125,11 +135,21 @@ func (repository *PostgresRepository) ClaimDue(ctx context.Context, request Clai
 	if repository == nil || repository.db == nil {
 		return nil, ErrDatabaseRequired
 	}
-	rows, err := repository.db.QueryContext(ctx, `
+	query := `
 SELECT template_id,user_id::text,revision,revision_fingerprint,next_trigger_at,
        claim_generation,claim_owner,claim_expires_at,spec
 FROM agent_cron_claim_due($1,$2,$3,$4)
-`, request.Owner, request.Now, int(request.LeaseDuration/time.Second), request.Limit)
+`
+	args := []any{request.Owner, request.Now, int(request.LeaseDuration / time.Second), request.Limit}
+	if repository.activationID != "" {
+		query = `
+SELECT template_id,user_id::text,revision,revision_fingerprint,next_trigger_at,
+       claim_generation,claim_owner,claim_expires_at,spec
+FROM agent_cron_worker_claim_due($1,$2,$3,$4,$5)
+`
+		args = append([]any{repository.activationID}, args...)
+	}
+	rows, err := repository.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, mapPostgresError("claim due agent Cron templates", err)
 	}
@@ -159,7 +179,7 @@ func (repository *PostgresRepository) Advance(ctx context.Context, input Advance
 	if err != nil {
 		return nil, ErrInvalidInput
 	}
-	rows, err := repository.db.QueryContext(ctx, `
+	query := `
 WITH advanced AS (
   SELECT * FROM agent_cron_advance_cursor($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
 )
@@ -171,9 +191,16 @@ SELECT advanced.id,advanced.template_id,advanced.user_id::text,advanced.revision
 FROM advanced JOIN agent_cron_revisions revision
   ON revision.template_id=advanced.template_id AND revision.revision=advanced.revision
 ORDER BY advanced.scheduled_for,advanced.id
-`, input.Claim.TemplateID, input.Claim.Revision, input.Claim.RevisionFingerprint,
+	`
+	args := []any{input.Claim.TemplateID, input.Claim.Revision, input.Claim.RevisionFingerprint,
 		input.Claim.ClaimOwner, input.Claim.ClaimGeneration, input.Claim.NextTriggerAt,
-		input.ObservedAt, input.NextTriggerAt, string(decisions))
+		input.ObservedAt, input.NextTriggerAt, string(decisions)}
+	if repository.activationID != "" {
+		query = strings.Replace(query, "agent_cron_advance_cursor($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)",
+			"agent_cron_worker_advance_cursor($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)", 1)
+		args = append([]any{repository.activationID}, args...)
+	}
+	rows, err := repository.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, mapPostgresError("advance agent Cron cursor", err)
 	}
@@ -185,12 +212,19 @@ func (repository *PostgresRepository) ClaimTriggers(ctx context.Context, request
 	if repository == nil || repository.db == nil {
 		return nil, ErrDatabaseRequired
 	}
-	rows, err := repository.db.QueryContext(ctx, `
+	query := `
 SELECT trigger_id,template_id,user_id::text,revision,revision_fingerprint,scheduled_for,
        occurrence_fingerprint,state,reason_code,run_id,retry_count,next_attempt_at,
        claim_generation,claim_owner,claim_expires_at,spec
 FROM agent_cron_claim_triggers($1,$2,$3,$4)
-`, request.Owner, request.Now, int(request.LeaseDuration/time.Second), request.Limit)
+`
+	args := []any{request.Owner, request.Now, int(request.LeaseDuration / time.Second), request.Limit}
+	if repository.activationID != "" {
+		query = strings.Replace(query, "agent_cron_claim_triggers($1,$2,$3,$4)",
+			"agent_cron_worker_claim_triggers($1,$2,$3,$4,$5)", 1)
+		args = append([]any{repository.activationID}, args...)
+	}
+	rows, err := repository.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, mapPostgresError("claim agent Cron triggers", err)
 	}
@@ -238,13 +272,21 @@ func (repository *PostgresRepository) EnqueueTrigger(ctx context.Context, envelo
 		return TriggerResult{}, ErrDatabaseRequired
 	}
 	var result TriggerResult
-	err := repository.db.QueryRowContext(ctx, `
+	query := `
 SELECT trigger_id,state,reason_code,run_id,created
 FROM agent_cron_enqueue_trigger($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10::text[],$11)
-`, envelope.Trigger.ID, envelope.Trigger.ClaimOwner, envelope.Trigger.ClaimGeneration,
+	`
+	args := []any{envelope.Trigger.ID, envelope.Trigger.ClaimOwner, envelope.Trigger.ClaimGeneration,
 		envelope.RunID, envelope.SnapshotID, envelope.SnapshotFingerprint,
 		envelope.RequestFingerprint, string(envelope.CanonicalSnapshot), string(envelope.Steps),
-		envelope.EventIDs, envelope.AuditEventID).Scan(&result.TriggerID, &result.State,
+		envelope.EventIDs, envelope.AuditEventID}
+	if repository.activationID != "" {
+		query = strings.Replace(query,
+			"agent_cron_enqueue_trigger($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10::text[],$11)",
+			"agent_cron_worker_enqueue_trigger($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11::text[],$12)", 1)
+		args = append([]any{repository.activationID}, args...)
+	}
+	err := repository.db.QueryRowContext(ctx, query, args...).Scan(&result.TriggerID, &result.State,
 		&result.ReasonCode, &result.RunID, &result.Created)
 	if err != nil {
 		return TriggerResult{}, mapPostgresError("enqueue agent Cron trigger", err)
@@ -257,10 +299,17 @@ func (repository *PostgresRepository) ReleaseTrigger(ctx context.Context, input 
 		return ErrDatabaseRequired
 	}
 	var terminal bool
-	err := repository.db.QueryRowContext(ctx, `
+	query := `
 SELECT agent_cron_release_trigger($1,$2,$3,$4,$5,$6)
-`, input.TriggerID, input.ClaimOwner, input.ClaimGeneration, input.ErrorCode,
-		input.RetryAt, input.AuditEventID).Scan(&terminal)
+`
+	args := []any{input.TriggerID, input.ClaimOwner, input.ClaimGeneration, input.ErrorCode,
+		input.RetryAt, input.AuditEventID}
+	if repository.activationID != "" {
+		query = strings.Replace(query, "agent_cron_release_trigger($1,$2,$3,$4,$5,$6)",
+			"agent_cron_worker_release_trigger($1,$2,$3,$4,$5,$6,$7)", 1)
+		args = append([]any{repository.activationID}, args...)
+	}
+	err := repository.db.QueryRowContext(ctx, query, args...).Scan(&terminal)
 	if err != nil {
 		return mapPostgresError("release agent Cron trigger", err)
 	}
@@ -272,9 +321,17 @@ func (repository *PostgresRepository) Reconcile(ctx context.Context, now time.Ti
 		return CleanupResult{}, ErrDatabaseRequired
 	}
 	var result CleanupResult
-	err := repository.db.QueryRowContext(ctx, `
+	query := `
 SELECT cursor_claims_reclaimed,trigger_claims_reclaimed FROM agent_cron_reconcile($1,$2)
-`, now, limit).Scan(&result.CursorClaimsReclaimed, &result.TriggerClaimsReclaimed)
+`
+	args := []any{now, limit}
+	if repository.activationID != "" {
+		query = strings.Replace(query, "agent_cron_reconcile($1,$2)",
+			"agent_cron_worker_reconcile($1,$2,$3)", 1)
+		args = append([]any{repository.activationID}, args...)
+	}
+	err := repository.db.QueryRowContext(ctx, query, args...).Scan(
+		&result.CursorClaimsReclaimed, &result.TriggerClaimsReclaimed)
 	if err != nil {
 		return CleanupResult{}, mapPostgresError("reconcile agent Cron claims", err)
 	}
@@ -286,9 +343,17 @@ func (repository *PostgresRepository) Prune(ctx context.Context, cutoff time.Tim
 		return CleanupResult{}, ErrDatabaseRequired
 	}
 	var result CleanupResult
-	err := repository.db.QueryRowContext(ctx, `
+	query := `
 SELECT triggers_pruned,audits_pruned,templates_pruned FROM agent_cron_prune($1,$2)
-`, cutoff, limit).Scan(&result.TriggersPruned, &result.AuditsPruned, &result.TemplatesPruned)
+`
+	args := []any{cutoff, limit}
+	if repository.activationID != "" {
+		query = strings.Replace(query, "agent_cron_prune($1,$2)",
+			"agent_cron_worker_prune($1,$2,$3)", 1)
+		args = append([]any{repository.activationID}, args...)
+	}
+	err := repository.db.QueryRowContext(ctx, query, args...).Scan(
+		&result.TriggersPruned, &result.AuditsPruned, &result.TemplatesPruned)
 	if err != nil {
 		return CleanupResult{}, mapPostgresError("prune agent Cron history", err)
 	}

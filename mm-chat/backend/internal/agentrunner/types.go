@@ -18,6 +18,7 @@ const (
 	MethodLaunch    = "launch"
 	MethodHeartbeat = "heartbeat"
 	MethodCancel    = "cancel"
+	MethodResult    = "result"
 	MethodPrepare   = "prepare"
 	MethodCommit    = "commit"
 	MethodList      = "list"
@@ -199,6 +200,15 @@ type CancelRequest struct {
 	ReasonCode string          `json:"reasonCode"`
 }
 
+// ResultRequest reads one bounded quarantined JSON artifact produced by the
+// exact live Attempt. It is lifecycle transport, not Artifact publication.
+type ResultRequest struct {
+	Attempt             AttemptRef      `json:"attempt"`
+	Authority           AuthorityTicket `json:"authority"`
+	SnapshotFingerprint string          `json:"snapshotFingerprint"`
+	Name                string          `json:"name"`
+}
+
 type PrepareRequest struct {
 	Attempt              AttemptRef      `json:"attempt"`
 	Authority            AuthorityTicket `json:"authority"`
@@ -243,6 +253,7 @@ type Request struct {
 	Launch    *LaunchRequest
 	Heartbeat *HeartbeatRequest
 	Cancel    *CancelRequest
+	Result    *ResultRequest
 	Prepare   *PrepareRequest
 	Commit    *CommitRequest
 	List      *ListRequest
@@ -288,6 +299,13 @@ type CancelResult struct {
 	Accepted         bool      `json:"accepted"`
 	ObservedTerminal string    `json:"observedTerminal"`
 	Error            *RPCError `json:"error,omitempty"`
+}
+
+type ResultResult struct {
+	Ready   bool             `json:"ready"`
+	Receipt *ArtifactReceipt `json:"receipt,omitempty"`
+	Payload json.RawMessage  `json:"payload,omitempty"`
+	Error   *RPCError        `json:"error,omitempty"`
 }
 
 type PrepareResult struct {

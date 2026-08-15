@@ -137,7 +137,7 @@ identity, sends strict `neo.runner-rpc/v1`, bounds headers/body/deadline and
 accepts only a request-ID/nonce/method-bound response. There is no bearer token
 fallback.
 
-## G20.3-G21.4 source and verification commands
+## G20.3-G21.5 source and verification commands
 
 ```bash
 bash scripts/verify-agent-runner.sh
@@ -167,6 +167,16 @@ bash scripts/verify-agent-project-canary-activation.sh
 bash scripts/verify-agent-project-canary-preflight.sh
 bash scripts/verify-agent-project-mutation-postgres17.sh
 bash scripts/verify-agent-runtime-g21-3.sh
+bash scripts/verify-agent-child-canary-activation.sh
+bash scripts/verify-agent-child-canary-preflight.sh
+bash scripts/verify-agent-child-canary-postgres17.sh
+bash scripts/verify-agent-runtime-g21-4.sh
+bash scripts/verify-agent-cron-worker.sh
+bash scripts/verify-agent-cron-worker-postgres17.sh
+bash scripts/verify-agent-draft-learning-worker.sh
+bash scripts/verify-agent-draft-learning-worker-postgres17.sh
+bash scripts/verify-agent-runtime-g21-5-preflight.sh
+bash scripts/verify-agent-runtime-g21-5.sh
 bash scripts/verify-agent-runtime-phase0.sh
 bash scripts/verify-agent-runner-host.sh
 ```
@@ -444,7 +454,7 @@ configuration.
 
 The offline operator signs one short-lived
 `neo.agent-project-mutation-approval/v1` document. It binds the exact release,
-head `093`, target, stable activation binding fingerprint, plan, caller,
+head `094`, target, stable activation binding fingerprint, plan, caller,
 request/idempotency identities, `project.patch/project.write/apply_patch`, one
 resource/base/path/content fingerprint, actor, reason and window. The private
 approval key remains outside both Git and the canary. Use the domain-separated
@@ -541,7 +551,7 @@ Registry. Its subject/model/Package/Runtime and four budgets only preserve or
 narrow Parent authority, its expiry is shorter, and both fixed Sandboxes are
 read-only, capability-free, `networkMode=none` and credential-free.
 
-Start only after enabled preflight returns READY at migration head `093`. The
+Start only after enabled preflight returns READY at migration head `094`. The
 controller reconciles failed reaps before work, launches from the exact Parent
 Attempt and retains stable Parent/Child idempotency keys. It cascades the Child
 first, waits out the latest signed launch authority, reconciles the exact Child
@@ -568,6 +578,65 @@ bash scripts/verify-agent-runtime-g21-4.sh
 These gates keep this host at `ISOLATION_UNAVAILABLE`. They do not authorize
 public delegation, a second Child, depth two, Broker effects, user arguments or
 Package-selected Child work.
+
+## G21.5 exact Cron and Draft-learning worker activation
+
+G21.5 requires current G21.0-G21.4 evidence and migration head `094`. Provision
+two distinct LOGINs. `agent_cron_worker_app` must inherit exactly
+`agent_cron_worker`; `agent_draft_learning_worker_app` must inherit exactly
+`agent_learning_worker`. Deny elevated attributes, owner/control membership,
+schema CREATE and direct table access. Neither credential may be reused by an
+earlier canary, the API, Runner or the other worker.
+
+The `agent-runtime-cron-worker` profile mounts its activation and plan plus the
+common release/policy evidence. It receives no Runner TLS, authority key,
+object-store, Provider, administrator or product database credential. Enable
+only `AGENT_CRON_WORKER_ENABLED`; keep generic Runtime, Runner control,
+Scheduler, Learning, Skill install, Broker read/mutation and every canary flag
+false. Provision exactly one active/due reviewed synthetic Template revision.
+
+The `agent-runtime-draft-learning-worker` profile additionally mounts its
+distinct Runner client certificate/key/CA, authority key pair and pre-staged
+Workspace-bound plan. Use literal private HTTPS, exact Runner server name and
+caller `spiffe://neo-chat/agent-runtime-draft-learning`. Give the profile a
+dedicated S3-compatible Draft credential only for object-before-row cleanup;
+never put it in Runner host env or a Sandbox. Enable only
+`AGENT_DRAFT_LEARNING_WORKER_ENABLED`; keep broad Learning false.
+
+Runner ingress grants the Draft caller Probe/List/Reconcile/Launch/Result/
+Cancel only. Do not add Heartbeat, Prepare, Commit or either relay. Both fixed
+checker Sandboxes use an empty Tool Registry, read-only rootfs, no capabilities,
+`networkMode=none`, fixed image/argv and bounded resources. The activation plan
+binds one quarantined Draft, its package/runtime/archive, pre-staged Workspace,
+Runner snapshot and isolation/evaluation suite fingerprints. An administrator,
+not the worker, performs the final Promote or Reject.
+
+Start either profile only after enabled preflight returns READY for that exact
+stage. Enabling one must not read the other stage's files or open its database/
+Runner/object path. Health for Cron requires no stale target cursor/trigger
+claim. Health for Draft learning requires no stale Draft claim, live Draft-only
+Runner attempt, pending cleanup or target Sandbox residue.
+
+Rollback stops and disables only the selected profile, then reconciles its
+exact target. Keep migration `094`, human decision, result, receipt and cleanup
+facts. Destructive down is disposable-only after disabling targets, clearing
+claims/cleanup, terminalizing Runner attempts, removing both LOGIN memberships
+and deleting no retained activation facts outside a reviewed clean fixture.
+
+Verify the slice with:
+
+```bash
+bash scripts/verify-agent-cron-worker.sh
+bash scripts/verify-agent-cron-worker-postgres17.sh
+bash scripts/verify-agent-draft-learning-worker.sh
+bash scripts/verify-agent-draft-learning-worker-postgres17.sh
+bash scripts/verify-agent-runtime-g21-5-preflight.sh
+bash scripts/verify-agent-runtime-g21-5.sh
+```
+
+These gates preserve the current `ISOLATION_UNAVAILABLE` result. They do not
+enable a product cohort, generic Scheduler/Learning, API/Chat execution or
+autonomous promotion.
 
 ## Release order (future groups)
 
@@ -719,7 +788,7 @@ cancellation, Artifact, policy, opt-in or observation authority remains.
 Production rollback keeps `090` applied and leaves Shadow disabled. Clean
 down/up is restricted to a verified-empty disposable database. Every older
 Agent/MCP/Assistant/Skill migration drill must first peel empty `091`, then its
-reviewed tail, before its own guard and return to head `093`.
+reviewed tail, before its own guard and return to head `094`.
 
 ## Kill Switch operations
 
@@ -947,7 +1016,7 @@ changes the closure release tuple invalidates the old promotion record.
 2. Verify one paired PostgreSQL/MinIO set manifest and restore both halves into
    the isolated target. Follow `backup-restore.md`, including the latest
    encrypted Memory deletion package replay before opening Backend.
-3. Apply the exact release migrations and require head `093`. Rehash every
+3. Apply the exact release migrations and require head `094`. Rehash every
    referenced Package/Runtime/SBOM/Workspace/Artifact sample from the restored
    set.
 4. Treat all pre-restore leases, Runner nonces and Sandboxes as untrusted. Kill
@@ -966,7 +1035,7 @@ The schema is
 records outside Git and outside application/object-store runtime namespaces.
 They contain fingerprints, times, low-cardinality result codes and zero-counts
 only. The record binds exactly 16 live checks to one Git commit, migration head
-`093`, Runner manifest/binary, Runtime Bundle, deployment and operations-policy
+`094`, Runner manifest/binary, Runtime Bundle, deployment and operations-policy
 fingerprint.
 
 Run the offline contract self-test:
@@ -1030,7 +1099,7 @@ this order:
    The transaction takes a `SHARE ROW EXCLUSIVE` lock, removes only
    `conversations.metadata.activeSkills`, checks the updated count and requires
    zero remaining keys. It does not rewrite message/content/other metadata or
-   change the migration head; on a current release it remains `093`.
+   change the migration head; on a current release it remains `094`.
 5. Deploy G20.9. Browser persistence version `7` strips the eight retired
    settings fields plus Session/Workspace selections from localStorage and
    IndexedDB, writes its marker last, and compensates partial failure. Reload

@@ -1,0 +1,186 @@
+{
+  "schemaVersion": "neo.agent-production-activation/v1",
+  "evidenceClass": "template",
+  "release": {
+    "gitCommit": "0000000000000000000000000000000000000000",
+    "migrationHead": 94,
+    "runnerManifestSha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "runnerBinarySha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "operationsPolicySha256": "sha256:0b0c16685565f4e47216f92c6bfb49cb8a2d10dd52836847aa0bd553ff54677e"
+  },
+  "prerequisites": [
+    {
+      "stage": "broker_artifact_canary",
+      "evidenceSha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+    },
+    {
+      "stage": "child_run_canary",
+      "evidenceSha256": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+    },
+    {
+      "stage": "control_plane",
+      "evidenceSha256": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+    },
+    {
+      "stage": "project_mutation_canary",
+      "evidenceSha256": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+    },
+    {
+      "stage": "root_run_canary",
+      "evidenceSha256": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+    }
+  ],
+  "window": {
+    "startedAt": "2026-08-15T08:00:00Z",
+    "completedAt": "2026-08-15T08:10:00Z",
+    "expiresAt": "2026-08-15T20:00:00Z"
+  },
+  "review": {
+    "decision": "held",
+    "reviewedAt": "2026-08-15T08:11:00Z",
+    "reviewerFingerprint": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+  },
+  "stage": "draft_learning_worker",
+  "target": {
+    "activationId": "activation_0123456789abcdef",
+    "draftId": "draft_0123456789abcdef",
+    "draftFingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "packageFingerprint": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "runtimeFingerprint": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "archiveFingerprint": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "workspaceFingerprint": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "planSha256": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  },
+  "wiring": {
+    "endpointSha256": "sha256:49a98c0056212a227a7516502579f512fedcd204fa15104ffaaa462043990570",
+    "clientCertificateSha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "serverCASha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "serverName": "neo-runner.internal",
+    "callerIdentity": "spiffe://neo-chat/agent-runtime-draft-learning",
+    "authorityPublicKeySha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "objectCredentialMetaSha256": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+  },
+  "checks": [
+    {
+      "id": "broker_artifact_canary_ready",
+      "result": "not_run",
+      "observedAt": "2026-08-15T08:05:00Z",
+      "evidenceSha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "detailCode": "PREREQUISITE_HELD"
+    },
+    {
+      "id": "child_run_canary_ready",
+      "result": "not_run",
+      "observedAt": "2026-08-15T08:05:00Z",
+      "evidenceSha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "detailCode": "PREREQUISITE_HELD"
+    },
+    {
+      "id": "cleanup_recovery_ready",
+      "result": "not_run",
+      "observedAt": "2026-08-15T08:05:00Z",
+      "evidenceSha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "detailCode": "PREREQUISITE_HELD"
+    },
+    {
+      "id": "control_plane_ready",
+      "result": "not_run",
+      "observedAt": "2026-08-15T08:05:00Z",
+      "evidenceSha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "detailCode": "PREREQUISITE_HELD"
+    },
+    {
+      "id": "crash_restart_ready",
+      "result": "not_run",
+      "observedAt": "2026-08-15T08:05:00Z",
+      "evidenceSha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "detailCode": "PREREQUISITE_HELD"
+    },
+    {
+      "id": "exact_host_isolation",
+      "result": "isolation_unavailable",
+      "observedAt": "2026-08-15T08:05:00Z",
+      "evidenceSha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "detailCode": "ISOLATION_UNAVAILABLE"
+    },
+    {
+      "id": "exact_target_plan",
+      "result": "not_run",
+      "observedAt": "2026-08-15T08:05:00Z",
+      "evidenceSha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "detailCode": "PREREQUISITE_HELD"
+    },
+    {
+      "id": "human_promote_separate",
+      "result": "not_run",
+      "observedAt": "2026-08-15T08:05:00Z",
+      "evidenceSha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "detailCode": "PREREQUISITE_HELD"
+    },
+    {
+      "id": "least_privilege_login",
+      "result": "not_run",
+      "observedAt": "2026-08-15T08:05:00Z",
+      "evidenceSha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "detailCode": "PREREQUISITE_HELD"
+    },
+    {
+      "id": "object_store_separation",
+      "result": "not_run",
+      "observedAt": "2026-08-15T08:05:00Z",
+      "evidenceSha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "detailCode": "PREREQUISITE_HELD"
+    },
+    {
+      "id": "project_mutation_canary_ready",
+      "result": "not_run",
+      "observedAt": "2026-08-15T08:05:00Z",
+      "evidenceSha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "detailCode": "PREREQUISITE_HELD"
+    },
+    {
+      "id": "root_run_canary_ready",
+      "result": "not_run",
+      "observedAt": "2026-08-15T08:05:00Z",
+      "evidenceSha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "detailCode": "PREREQUISITE_HELD"
+    },
+    {
+      "id": "runner_result_acl",
+      "result": "not_run",
+      "observedAt": "2026-08-15T08:05:00Z",
+      "evidenceSha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "detailCode": "PREREQUISITE_HELD"
+    },
+    {
+      "id": "rootless_isolation_evaluation",
+      "result": "not_run",
+      "observedAt": "2026-08-15T08:05:00Z",
+      "evidenceSha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "detailCode": "PREREQUISITE_HELD"
+    }
+  ],
+  "authorization": {
+    "draftChecks": true,
+    "cleanup": true,
+    "runnerLifecycle": true,
+    "runtime": true,
+    "genericScheduler": false,
+    "genericLearning": false,
+    "skillInstall": false,
+    "brokerMutation": false,
+    "delegation": false,
+    "promote": false,
+    "administratorCredential": false
+  },
+  "cleanup": {
+    "orphanSandboxes": 0,
+    "pendingRunnerChecks": 0,
+    "pendingObjects": 0
+  },
+  "humanDecision": {
+    "decisionId": "draft_decision_0123456789abcdef",
+    "actorClass": "human_operator",
+    "promotedPackageFingerprint": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  }
+}

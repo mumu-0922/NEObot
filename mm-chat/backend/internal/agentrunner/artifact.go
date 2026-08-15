@@ -1,6 +1,7 @@
 package agentrunner
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -14,6 +15,8 @@ import (
 
 	"golang.org/x/sys/unix"
 )
+
+const maxResultArtifactBytes = int64(64 << 10)
 
 const maxArtifactBytes = int64(32 << 20)
 
@@ -246,6 +249,44 @@ func (broker *ArtifactBroker) CleanupAttempt(attemptID string) error {
 	}
 	broker.mu.Unlock()
 	return safeRemoveTree(broker.root, filepath.Join(broker.root, attemptID))
+}
+
+// ReadResult returns one exact bounded artifact only while the Attempt
+// generation remains authorized. The caller still owns domain validation.
+func (broker *ArtifactBroker) ReadResult(ctx context.Context, attempt AttemptIdentity, name string) (ArtifactReceipt, []byte, error) {
+	if broker == nil || ctx == nil || !validID(attempt.RunID, "run") || !validID(attempt.StepID, "step") ||
+		!validID(attempt.AttemptID, "attempt") || attempt.LeaseGeneration < 1 ||
+		!artifactNamePattern.MatchString(name) || filepath.Base(name) != name {
+		return ArtifactReceipt{}, nil, ErrInvalidInput
+	}
+	broker.mu.Lock()
+	defer broker.mu.Unlock()
+	if _, authorized := broker.max[attemptKey(attempt)]; !authorized {
+		return ArtifactReceipt{}, nil, ErrLeaseStale
+	}
+	path := filepath.Join(broker.root, attempt.AttemptID, name)
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return ArtifactReceipt{}, nil, ErrNotFound
+	}
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 ||
+		info.Size() < 1 || info.Size() > maxResultArtifactBytes {
+		return ArtifactReceipt{}, nil, ErrArtifactDenied
+	}
+	select {
+	case <-ctx.Done():
+		return ArtifactReceipt{}, nil, ctx.Err()
+	default:
+	}
+	body, err := os.ReadFile(path)
+	if err != nil || int64(len(body)) != info.Size() {
+		return ArtifactReceipt{}, nil, ErrRuntimeUnavailable
+	}
+	digest := sha256.Sum256(body)
+	receipt := ArtifactReceipt{Attempt: attempt, Name: name, MediaType: "application/json",
+		Size: int64(len(body)), Fingerprint: "sha256:" + hex.EncodeToString(digest[:]),
+		QuarantineRef: attempt.AttemptID + "/" + name}
+	return receipt, body, nil
 }
 
 func attemptKey(attempt AttemptIdentity) string {

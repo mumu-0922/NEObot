@@ -10363,3 +10363,36 @@ Frontend tests and 1,906 passing RAG tests with seven declared integration
 skips. This development host remains `ISOLATION_UNAVAILABLE`; no exact-host
 acceptance, live activation evidence, public delegation or production Runtime
 promotion was produced.
+
+## 2026-08-15 — G21.5 exact Cron and Draft-learning workers completed
+
+G21.5 added two independent default-off production-path workers and migration
+`094_agent_cron_learning_activation`. The Cron worker binds one immutable
+operator-reviewed activation to one exact active Template revision and performs
+target-scoped claim, schedule advancement, enqueue, release, reconcile and
+prune without Runner or object-store credentials. The Draft-learning worker
+binds one quarantined Draft, generation, package/runtime/archive fingerprints,
+pre-staged Workspace and fixed isolation/evaluation suites. Its sixth Runner
+caller receives only probe/list/reconcile/launch/result/cancel and cannot use
+Prepare, Commit, Broker, ordinary Agent Attempt or promotion authority.
+
+The eleventh and twelfth LOGIN principals each inherit exactly one NOLOGIN
+worker role and have no direct table DML, provisioning, generic claim or human
+decision authority. PostgreSQL 17 drills retained two eligible Templates and
+two quarantined Drafts to prove SQL claim isolation, exact function-only
+membership, launch/result/cancel replay, the three-receipt check bundle,
+separate administrator Promote, object-before-row cleanup, dump/restore and
+active-target, LOGIN-membership and retained-fact down guards. Clean disposable
+down/up returned to schema head `094`; every older migration-tail drill was
+also replayed and returned to `094`.
+
+Focused source/race/vet, independent enabled-preflight, Compose topology and
+credential-absence, crash/restart, G21.0-G21.4 regression, Phase 0, all Backend
+race tests and vet, and the full standalone clean-copy gate passed. The full
+gate included 909 Frontend tests and 1,906 passing RAG tests with seven declared
+integration skips. That clean-copy run also exposed and fixed an umask-sensitive
+Runner defect: the Sandbox-visible Artifact broker directory now restores its
+exact `0711` mode after `Mkdir` before the Unix intake validates it. This
+development host remains `ISOLATION_UNAVAILABLE`; no exact-host acceptance,
+live activation evidence, generic Scheduler/Learning, autonomous Promote,
+public/API/Chat Agent execution or production Runtime promotion was produced.

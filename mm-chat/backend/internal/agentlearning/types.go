@@ -147,8 +147,13 @@ type CheckResult struct {
 	Status           string
 	ReasonCode       string
 	SuiteFingerprint string
-	DurationMillis   int64
-	Metrics          map[string]int64
+	// EvidenceFingerprint is set only by an external checker whose immutable
+	// transport receipt is already durably fenced (for G21.5, the bounded
+	// Runner result artifact). In-process checks leave it empty and retain the
+	// deterministic receipt fingerprint below.
+	EvidenceFingerprint string
+	DurationMillis      int64
+	Metrics             map[string]int64
 }
 
 type CheckReceipt struct {

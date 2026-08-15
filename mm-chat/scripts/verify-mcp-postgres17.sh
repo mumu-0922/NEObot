@@ -83,7 +83,7 @@ run_migrate() {
   MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"
 }
 
-log "applying a fresh 001 -> 093 chain"
+log "applying a fresh 001 -> 094 chain"
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 074_mcp_tools_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 075_mcp_runtime_role_grants" "${work_dir}/fresh.log"
@@ -105,12 +105,15 @@ grep -Fq "up 090_agent_product_shadow" "${work_dir}/fresh.log"
 grep -Fq "up 091_agent_artifact_publication" "${work_dir}/fresh.log"
 grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/fresh.log"
 grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/fresh.log"
+grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/fresh.log"
 
 log "proving replay is a no-op"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
-log "rolling back the clean 093 through 077 tails before the 076 guard drill"
+log "rolling back the clean 094 through 077 tails before the 076 guard drill"
+run_migrate down >"${work_dir}/peel-094-tail-1.log" 2>&1
+grep -Fq "down 094_agent_cron_learning_activation" "${work_dir}/peel-094-tail-1.log"
 run_migrate down >"${work_dir}/peel-093-tail-1.log" 2>&1
 grep -Fq "down 093_agent_child_canary_reap_transport" "${work_dir}/peel-093-tail-1.log"
 run_migrate down >"${work_dir}/peel-092-tail-1.log" 2>&1
@@ -243,7 +246,7 @@ VALUES (
 );
 " >/dev/null
 
-log "reapplying 074 -> 093 and verifying schema, metadata, retention, grants, and stdio persistence"
+log "reapplying 074 -> 094 and verifying schema, metadata, retention, grants, and stdio persistence"
 run_migrate up >"${work_dir}/reup.log" 2>&1
 grep -Fq "up 074_mcp_tools_foundation" "${work_dir}/reup.log"
 grep -Fq "up 075_mcp_runtime_role_grants" "${work_dir}/reup.log"
@@ -265,6 +268,7 @@ grep -Fq "up 090_agent_product_shadow" "${work_dir}/reup.log"
 grep -Fq "up 091_agent_artifact_publication" "${work_dir}/reup.log"
 grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/reup.log"
 grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/reup.log"
+grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/reup.log"
 psql_command "
 DO \$\$
 DECLARE
@@ -320,4 +324,4 @@ log "proving a second replay remains a no-op"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 
-log "passed (fresh through 093, replay, guarded 076 down/up, metadata, retention, runtime grants, stdio repository lifecycle)"
+log "passed (fresh through 094, replay, guarded 076 down/up, metadata, retention, runtime grants, stdio repository lifecycle)"

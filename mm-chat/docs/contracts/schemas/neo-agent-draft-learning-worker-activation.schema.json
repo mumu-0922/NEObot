@@ -1,0 +1,387 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neo-chat.local/contracts/neo-agent-draft-learning-worker-activation.schema.json",
+  "title": "Neo Agent Draft Learning Worker Activation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "evidenceClass",
+    "stage",
+    "release",
+    "prerequisites",
+    "target",
+    "wiring",
+    "window",
+    "checks",
+    "authorization",
+    "cleanup",
+    "humanDecision",
+    "review"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "neo.agent-production-activation/v1"
+    },
+    "evidenceClass": {
+      "enum": [
+        "template",
+        "production"
+      ]
+    },
+    "stage": {
+      "const": "draft_learning_worker"
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gitCommit",
+        "migrationHead",
+        "runnerManifestSha256",
+        "runnerBinarySha256",
+        "operationsPolicySha256"
+      ],
+      "properties": {
+        "gitCommit": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "migrationHead": {
+          "const": 94
+        },
+        "runnerManifestSha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "runnerBinarySha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "operationsPolicySha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "prerequisites": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "stage",
+          "evidenceSha256"
+        ],
+        "properties": {
+          "stage": {
+            "enum": [
+              "control_plane",
+              "root_run_canary",
+              "broker_artifact_canary",
+              "project_mutation_canary",
+              "child_run_canary"
+            ]
+          },
+          "evidenceSha256": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          }
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "activationId",
+        "draftId",
+        "draftFingerprint",
+        "packageFingerprint",
+        "runtimeFingerprint",
+        "archiveFingerprint",
+        "workspaceFingerprint",
+        "planSha256"
+      ],
+      "properties": {
+        "activationId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:@/-]{0,127}$"
+        },
+        "draftId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:@/-]{0,127}$"
+        },
+        "draftFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "packageFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "runtimeFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "archiveFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "workspaceFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "planSha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "wiring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "endpointSha256",
+        "clientCertificateSha256",
+        "serverCASha256",
+        "serverName",
+        "callerIdentity",
+        "authorityPublicKeySha256",
+        "objectCredentialMetaSha256"
+      ],
+      "properties": {
+        "endpointSha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "clientCertificateSha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "serverCASha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "serverName": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:@/-]{0,127}$"
+        },
+        "callerIdentity": {
+          "const": "spiffe://neo-chat/agent-runtime-draft-learning"
+        },
+        "authorityPublicKeySha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "objectCredentialMetaSha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "startedAt",
+        "completedAt",
+        "expiresAt"
+      ],
+      "properties": {
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "completedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 14,
+      "maxItems": 14,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "result",
+          "observedAt",
+          "evidenceSha256",
+          "detailCode"
+        ],
+        "properties": {
+          "id": {
+            "enum": [
+              "broker_artifact_canary_ready",
+              "child_run_canary_ready",
+              "cleanup_recovery_ready",
+              "control_plane_ready",
+              "crash_restart_ready",
+              "exact_host_isolation",
+              "exact_target_plan",
+              "human_promote_separate",
+              "least_privilege_login",
+              "object_store_separation",
+              "project_mutation_canary_ready",
+              "root_run_canary_ready",
+              "runner_result_acl",
+              "rootless_isolation_evaluation"
+            ]
+          },
+          "result": {
+            "enum": [
+              "passed",
+              "failed",
+              "not_run",
+              "isolation_unavailable"
+            ]
+          },
+          "observedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "evidenceSha256": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "detailCode": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+          }
+        }
+      }
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "draftChecks",
+        "cleanup",
+        "runnerLifecycle",
+        "runtime",
+        "genericScheduler",
+        "genericLearning",
+        "skillInstall",
+        "brokerMutation",
+        "delegation",
+        "promote",
+        "administratorCredential"
+      ],
+      "properties": {
+        "draftChecks": {
+          "const": true
+        },
+        "cleanup": {
+          "const": true
+        },
+        "runnerLifecycle": {
+          "const": true
+        },
+        "runtime": {
+          "const": false
+        },
+        "genericScheduler": {
+          "const": false
+        },
+        "genericLearning": {
+          "const": false
+        },
+        "skillInstall": {
+          "const": false
+        },
+        "brokerMutation": {
+          "const": false
+        },
+        "delegation": {
+          "const": false
+        },
+        "promote": {
+          "const": false
+        },
+        "administratorCredential": {
+          "const": false
+        }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "orphanSandboxes",
+        "pendingRunnerChecks",
+        "pendingObjects"
+      ],
+      "properties": {
+        "orphanSandboxes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pendingRunnerChecks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pendingObjects": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "humanDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decisionId",
+        "actorClass",
+        "promotedPackageFingerprint"
+      ],
+      "properties": {
+        "decisionId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:@/-]{0,127}$"
+        },
+        "actorClass": {
+          "const": "human_operator"
+        },
+        "promotedPackageFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "reviewedAt",
+        "reviewerFingerprint"
+      ],
+      "properties": {
+        "decision": {
+          "enum": [
+            "approved",
+            "held"
+          ]
+        },
+        "reviewedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reviewerFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    }
+  }
+}

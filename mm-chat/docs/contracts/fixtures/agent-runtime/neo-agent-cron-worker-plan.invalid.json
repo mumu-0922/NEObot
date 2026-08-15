@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "neo.agent-cron-worker-plan/v1",
+  "synthetic": false,
+  "activationId": "activation_0123456789abcdef",
+  "templateId": "cron_0123456789abcdef",
+  "userId": "88888888-8888-4888-8888-888888888888",
+  "revision": 1,
+  "revisionFingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "validFrom": "2026-08-15T08:00:00Z",
+  "validUntil": "2026-08-15T09:00:00Z",
+  "owner": "agent-cron-worker",
+  "pollMillis": 1000,
+  "leaseSeconds": 30,
+  "batchSize": 100,
+  "retentionHours": 720,
+  "maintenanceEvery": 60
+}

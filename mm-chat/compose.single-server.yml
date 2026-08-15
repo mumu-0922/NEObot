@@ -995,6 +995,241 @@ services:
     networks:
       - private
 
+  agent-runtime-cron-worker:
+    image: ${BACKEND_IMAGE:-mm-chat/backend:local}
+    build: *backend-build
+    restart: unless-stopped
+    profiles: ["agent-runtime-cron-worker"]
+    init: true
+    user: "${MM_CHAT_RUNTIME_UID:-1000}:${MM_CHAT_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 32
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m,mode=1777
+    environment:
+      AGENT_CRON_WORKER_ENABLED: ${AGENT_CRON_WORKER_ENABLED:-false}
+      AGENT_RUNTIME_ENABLED: ${AGENT_RUNTIME_ENABLED:-false}
+      AGENT_SCHEDULER_ENABLED: ${AGENT_SCHEDULER_ENABLED:-false}
+      AGENT_LEARNING_ENABLED: ${AGENT_LEARNING_ENABLED:-false}
+      AGENT_SKILL_INSTALL_ENABLED: ${AGENT_SKILL_INSTALL_ENABLED:-false}
+      AGENT_BROKER_READ_ONLY_ENABLED: ${AGENT_BROKER_READ_ONLY_ENABLED:-false}
+      AGENT_BROKER_MUTATION_ENABLED: ${AGENT_BROKER_MUTATION_ENABLED:-false}
+      AGENT_DELEGATION_ENABLED: ${AGENT_DELEGATION_ENABLED:-false}
+      AGENT_CRON_WORKER_DATABASE_URL: ${AGENT_CRON_WORKER_DATABASE_URL:-postgres://agent_cron_worker_app:change-me-agent-cron-worker-postgres@postgres:5432/neo_chat?sslmode=disable}
+      AGENT_CRON_WORKER_PLAN_FILE: /run/agent-runtime-cron-worker/plan.json
+      AGENT_CRON_WORKER_PRODUCTION_POLICY_FILE: /etc/mm-chat/agent-runtime-cron-worker/production-policy.json
+      AGENT_CRON_WORKER_ACTIVATION_FILE: /run/agent-runtime-cron-worker/activation.json
+      AGENT_CRON_WORKER_RELEASE_GIT_COMMIT: ${AGENT_CRON_WORKER_RELEASE_GIT_COMMIT:-0000000000000000000000000000000000000000}
+      AGENT_CRON_WORKER_CONTROL_ACTIVATION_FILE: /run/agent-runtime-cron-worker/prerequisite-control.json
+      AGENT_CRON_WORKER_ROOT_ACTIVATION_FILE: /run/agent-runtime-cron-worker/prerequisite-root.json
+      AGENT_CRON_WORKER_BROKER_ACTIVATION_FILE: /run/agent-runtime-cron-worker/prerequisite-broker.json
+      AGENT_CRON_WORKER_PROJECT_ACTIVATION_FILE: /run/agent-runtime-cron-worker/prerequisite-project.json
+      AGENT_CRON_WORKER_CHILD_ACTIVATION_FILE: /run/agent-runtime-cron-worker/prerequisite-child.json
+    volumes:
+      - type: bind
+        source: ${AGENT_CRON_WORKER_PLAN_SOURCE:-./secrets/agent-runtime-cron-worker/plan.json}
+        target: /run/agent-runtime-cron-worker/plan.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_CRON_WORKER_PRODUCTION_POLICY_SOURCE:-./config/agent-runner/production-policy.json}
+        target: /etc/mm-chat/agent-runtime-cron-worker/production-policy.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_CRON_WORKER_ACTIVATION_SOURCE:-./secrets/agent-runtime-cron-worker/activation.json}
+        target: /run/agent-runtime-cron-worker/activation.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PRODUCTION_ACTIVATION_SOURCE:-./secrets/agent-runtime-control/production-activation.json}
+        target: /run/agent-runtime-cron-worker/prerequisite-control.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_ROOT_CANARY_ACTIVATION_SOURCE:-./secrets/agent-runtime-root-canary/production-activation.json}
+        target: /run/agent-runtime-cron-worker/prerequisite-root.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_BROKER_CANARY_ACTIVATION_SOURCE:-./secrets/agent-runtime-broker-canary/production-activation.json}
+        target: /run/agent-runtime-cron-worker/prerequisite-broker.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PROJECT_CANARY_ACTIVATION_SOURCE:-./secrets/agent-runtime-project-canary/production-activation.json}
+        target: /run/agent-runtime-cron-worker/prerequisite-project.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_CHILD_CANARY_ACTIVATION_SOURCE:-./secrets/agent-runtime-child-canary/production-activation.json}
+        target: /run/agent-runtime-cron-worker/prerequisite-child.json
+        read_only: true
+        bind: { create_host_path: false }
+    depends_on:
+      postgres: { condition: service_healthy }
+    command: ["/usr/local/bin/mm-chat-agent-runtime-cron-worker", "run"]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/mm-chat-agent-runtime-cron-worker", "healthcheck"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 10s
+    networks: [private]
+
+  agent-runtime-draft-learning-worker:
+    image: ${BACKEND_IMAGE:-mm-chat/backend:local}
+    build: *backend-build
+    restart: unless-stopped
+    profiles: ["agent-runtime-draft-learning-worker"]
+    init: true
+    user: "${MM_CHAT_RUNTIME_UID:-1000}:${MM_CHAT_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 48
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m,mode=1777
+    environment:
+      AGENT_DRAFT_LEARNING_WORKER_ENABLED: ${AGENT_DRAFT_LEARNING_WORKER_ENABLED:-false}
+      AGENT_RUNTIME_ENABLED: ${AGENT_RUNTIME_ENABLED:-false}
+      AGENT_SCHEDULER_ENABLED: ${AGENT_SCHEDULER_ENABLED:-false}
+      AGENT_LEARNING_ENABLED: ${AGENT_LEARNING_ENABLED:-false}
+      AGENT_SKILL_INSTALL_ENABLED: ${AGENT_SKILL_INSTALL_ENABLED:-false}
+      AGENT_BROKER_READ_ONLY_ENABLED: ${AGENT_BROKER_READ_ONLY_ENABLED:-false}
+      AGENT_BROKER_MUTATION_ENABLED: ${AGENT_BROKER_MUTATION_ENABLED:-false}
+      AGENT_DELEGATION_ENABLED: ${AGENT_DELEGATION_ENABLED:-false}
+      AGENT_DRAFT_LEARNING_WORKER_DATABASE_URL: ${AGENT_DRAFT_LEARNING_WORKER_DATABASE_URL:-postgres://agent_learning_worker_app:change-me-agent-learning-worker-postgres@postgres:5432/neo_chat?sslmode=disable}
+      AGENT_DRAFT_LEARNING_WORKER_PLAN_FILE: /run/agent-runtime-draft-learning-worker/plan.json
+      AGENT_DRAFT_LEARNING_WORKER_RUNNER_URL: ${AGENT_DRAFT_LEARNING_WORKER_RUNNER_URL:-https://127.0.0.1:9443/internal/neo-runner/v1/rpc}
+      AGENT_DRAFT_LEARNING_WORKER_RUNNER_ID: ${AGENT_DRAFT_LEARNING_WORKER_RUNNER_ID:-neo-runner-primary}
+      AGENT_DRAFT_LEARNING_WORKER_SERVER_NAME: ${AGENT_DRAFT_LEARNING_WORKER_SERVER_NAME:-neo-runner.internal}
+      AGENT_DRAFT_LEARNING_WORKER_CLIENT_IDENTITY: ${AGENT_DRAFT_LEARNING_WORKER_CLIENT_IDENTITY:-spiffe://neo-chat/agent-runtime-draft-learning}
+      AGENT_DRAFT_LEARNING_WORKER_CLIENT_CERT_FILE: /run/agent-runtime-draft-learning-worker/client.crt
+      AGENT_DRAFT_LEARNING_WORKER_CLIENT_KEY_FILE: /run/agent-runtime-draft-learning-worker/client.key
+      AGENT_DRAFT_LEARNING_WORKER_SERVER_CA_FILE: /run/agent-runtime-draft-learning-worker/server-ca.crt
+      AGENT_DRAFT_LEARNING_WORKER_AUTHORITY_PRIVATE_KEY_FILE: /run/agent-runtime-draft-learning-worker/authority-private-key
+      AGENT_DRAFT_LEARNING_WORKER_AUTHORITY_PUBLIC_KEY_FILE: /run/agent-runtime-draft-learning-worker/authority-public-key
+      AGENT_DRAFT_LEARNING_WORKER_RELEASE_MANIFEST_FILE: /run/agent-runtime-draft-learning-worker/release-manifest.json
+      AGENT_DRAFT_LEARNING_WORKER_PRODUCTION_POLICY_FILE: /etc/mm-chat/agent-runtime-draft-learning-worker/production-policy.json
+      AGENT_DRAFT_LEARNING_WORKER_ACTIVATION_FILE: /run/agent-runtime-draft-learning-worker/activation.json
+      AGENT_DRAFT_LEARNING_WORKER_RELEASE_GIT_COMMIT: ${AGENT_DRAFT_LEARNING_WORKER_RELEASE_GIT_COMMIT:-0000000000000000000000000000000000000000}
+      AGENT_DRAFT_LEARNING_WORKER_OBJECT_CREDENTIAL_META_FILE: /run/agent-runtime-draft-learning-worker/object-credential.json
+      AGENT_DRAFT_LEARNING_WORKER_CONTROL_ACTIVATION_FILE: /run/agent-runtime-draft-learning-worker/prerequisite-control.json
+      AGENT_DRAFT_LEARNING_WORKER_ROOT_ACTIVATION_FILE: /run/agent-runtime-draft-learning-worker/prerequisite-root.json
+      AGENT_DRAFT_LEARNING_WORKER_BROKER_ACTIVATION_FILE: /run/agent-runtime-draft-learning-worker/prerequisite-broker.json
+      AGENT_DRAFT_LEARNING_WORKER_PROJECT_ACTIVATION_FILE: /run/agent-runtime-draft-learning-worker/prerequisite-project.json
+      AGENT_DRAFT_LEARNING_WORKER_CHILD_ACTIVATION_FILE: /run/agent-runtime-draft-learning-worker/prerequisite-child.json
+      AGENT_DRAFT_LEARNING_WORKER_OWNER: ${AGENT_DRAFT_LEARNING_WORKER_OWNER:-draft-learning-worker-primary}
+      AGENT_DRAFT_LEARNING_WORKER_POLL_INTERVAL: ${AGENT_DRAFT_LEARNING_WORKER_POLL_INTERVAL:-10s}
+      AGENT_DRAFT_LEARNING_WORKER_RPC_TIMEOUT: ${AGENT_DRAFT_LEARNING_WORKER_RPC_TIMEOUT:-10s}
+      AGENT_DRAFT_LEARNING_WORKER_LEASE_DURATION: ${AGENT_DRAFT_LEARNING_WORKER_LEASE_DURATION:-2m}
+      AGENT_DRAFT_LEARNING_WORKER_BATCH_SIZE: ${AGENT_DRAFT_LEARNING_WORKER_BATCH_SIZE:-10}
+      AGENT_DRAFT_LEARNING_WORKER_RETENTION: ${AGENT_DRAFT_LEARNING_WORKER_RETENTION:-720h}
+      AGENT_DRAFT_LEARNING_WORKER_MAINTENANCE_EVERY: ${AGENT_DRAFT_LEARNING_WORKER_MAINTENANCE_EVERY:-60}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-minio}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_BUCKET: ${S3_BUCKET:-neo-chat-files}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY_ID: ${AGENT_DRAFT_LEARNING_WORKER_S3_ACCESS_KEY_ID:-change-me-draft-learning-access}
+      S3_SECRET_ACCESS_KEY: ${AGENT_DRAFT_LEARNING_WORKER_S3_SECRET_ACCESS_KEY:-change-me-draft-learning-secret}
+      S3_USE_SSL: ${S3_USE_SSL:-false}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+      S3_BUCKET_AUTO_CREATE: "false"
+    volumes:
+      - type: bind
+        source: ${AGENT_DRAFT_LEARNING_WORKER_PLAN_SOURCE:-./secrets/agent-runtime-draft-learning-worker/plan.json}
+        target: /run/agent-runtime-draft-learning-worker/plan.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_DRAFT_LEARNING_WORKER_CLIENT_CERT_SOURCE:-./secrets/agent-runtime-draft-learning-worker/client.crt}
+        target: /run/agent-runtime-draft-learning-worker/client.crt
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_DRAFT_LEARNING_WORKER_CLIENT_KEY_SOURCE:-./secrets/agent-runtime-draft-learning-worker/client.key}
+        target: /run/agent-runtime-draft-learning-worker/client.key
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_DRAFT_LEARNING_WORKER_SERVER_CA_SOURCE:-./secrets/agent-runtime-draft-learning-worker/server-ca.crt}
+        target: /run/agent-runtime-draft-learning-worker/server-ca.crt
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_DRAFT_LEARNING_WORKER_AUTHORITY_PRIVATE_KEY_SOURCE:-./secrets/agent-runtime-draft-learning-worker/authority-private-key}
+        target: /run/agent-runtime-draft-learning-worker/authority-private-key
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_DRAFT_LEARNING_WORKER_AUTHORITY_PUBLIC_KEY_SOURCE:-./secrets/agent-runtime-draft-learning-worker/authority-public-key}
+        target: /run/agent-runtime-draft-learning-worker/authority-public-key
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_DRAFT_LEARNING_WORKER_RELEASE_MANIFEST_SOURCE:-./secrets/agent-runtime-draft-learning-worker/release-manifest.json}
+        target: /run/agent-runtime-draft-learning-worker/release-manifest.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_DRAFT_LEARNING_WORKER_PRODUCTION_POLICY_SOURCE:-./config/agent-runner/production-policy.json}
+        target: /etc/mm-chat/agent-runtime-draft-learning-worker/production-policy.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_DRAFT_LEARNING_WORKER_ACTIVATION_SOURCE:-./secrets/agent-runtime-draft-learning-worker/activation.json}
+        target: /run/agent-runtime-draft-learning-worker/activation.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_DRAFT_LEARNING_WORKER_OBJECT_CREDENTIAL_META_SOURCE:-./secrets/agent-runtime-draft-learning-worker/object-credential.json}
+        target: /run/agent-runtime-draft-learning-worker/object-credential.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PRODUCTION_ACTIVATION_SOURCE:-./secrets/agent-runtime-control/production-activation.json}
+        target: /run/agent-runtime-draft-learning-worker/prerequisite-control.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_ROOT_CANARY_ACTIVATION_SOURCE:-./secrets/agent-runtime-root-canary/production-activation.json}
+        target: /run/agent-runtime-draft-learning-worker/prerequisite-root.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_BROKER_CANARY_ACTIVATION_SOURCE:-./secrets/agent-runtime-broker-canary/production-activation.json}
+        target: /run/agent-runtime-draft-learning-worker/prerequisite-broker.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_PROJECT_CANARY_ACTIVATION_SOURCE:-./secrets/agent-runtime-project-canary/production-activation.json}
+        target: /run/agent-runtime-draft-learning-worker/prerequisite-project.json
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AGENT_CHILD_CANARY_ACTIVATION_SOURCE:-./secrets/agent-runtime-child-canary/production-activation.json}
+        target: /run/agent-runtime-draft-learning-worker/prerequisite-child.json
+        read_only: true
+        bind: { create_host_path: false }
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio-init: { condition: service_completed_successfully }
+    command: ["/usr/local/bin/mm-chat-agent-runtime-draft-learning-worker", "run"]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/mm-chat-agent-runtime-draft-learning-worker", "healthcheck"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 10s
+    networks: [private]
+
   frontend:
     image: ${FRONTEND_IMAGE:-mm-chat/frontend:local}
     build: *frontend-build

@@ -397,9 +397,9 @@ After live Knowledge writes, prefer a forward fix or a verified pre-migration
 restore rather than dropping authoritative Documents, Consent history, Jobs,
 or Outbox events.
 
-### G21.4 Child canary principal and migration head
+### G21.4 Child canary principal
 
-Migration head `093` adds no general Runtime table. It grants the existing
+Migration `093` adds no general Runtime table. It grants the existing
 `agent_delegation_owner` the minimum Runner projection access needed inside two
 `SECURITY DEFINER` functions: bounded reap inventory and atomic successful reap
 completion. `agent_delegation_control` receives EXECUTE; application, effect
@@ -426,6 +426,44 @@ down rehearsal must first prove zero pending/failed reap and no nonterminal
 depth-one Runner Sandbox. Clean down restores migration-087 completion behavior;
 never edit migration `087` or delete a reap to bypass the guard. Verify with
 `scripts/verify-agent-child-canary-postgres17.sh`.
+
+### G21.5 exact Cron and Draft-learning principals
+
+Migration `094_agent_cron_learning_activation` is the current schema head. It
+adds immutable exact-target tables, Draft-only Runner attempt/result/request
+authority and two NOLOGIN roles. It does not grant a general Scheduler,
+Learning cohort, API/Chat execution or autonomous Promote path.
+
+Provision `agent_cron_worker_app` with LOGIN+INHERIT and exactly one recursive
+membership:
+
+```text
+agent_cron_worker
+```
+
+Provision `agent_draft_learning_worker_app` separately with exactly:
+
+```text
+agent_learning_worker
+```
+
+Deny superuser/createdb/createrole/replication/bypassrls, schema CREATE, every
+owner/control/cross-worker membership and direct SELECT/INSERT/UPDATE/DELETE on
+Agent tables. The Cron LOGIN executes only exact-target claim/advance/enqueue/
+release/reconcile/prune functions. The Draft LOGIN executes only exact-target
+check, Draft-only Runner lifecycle/result and cleanup/reconcile/prune functions.
+It has no Propose, Reject, Promote, candidate or package-version authority.
+
+Normal rollback stops one profile, disables its immutable target and retains
+migration `094`. Down is a disposable clean-database operation only. It rejects
+enabled targets, live Cron/Draft claims, unresolved Runner attempts, pending
+cleanup, any worker LOGIN membership and retained activation facts. Verify both
+real LOGIN boundaries, dump/restore and clean down/up with:
+
+```bash
+bash scripts/verify-agent-cron-worker-postgres17.sh
+bash scripts/verify-agent-draft-learning-worker-postgres17.sh
+```
 
 The guarded `010.down` removes only the API grants introduced by `010`. It
 retains `go_api_runtime` and the capability needed by the rolled-back API at

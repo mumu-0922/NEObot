@@ -131,6 +131,12 @@ required_paths=(
   scripts/verify-agent-child-canary-activation.sh
   scripts/verify-agent-child-canary-preflight.sh
   scripts/verify-agent-child-canary-postgres17.sh
+  scripts/verify-agent-runtime-g21-5.sh
+  scripts/verify-agent-runtime-g21-5-preflight.sh
+  scripts/verify-agent-cron-worker.sh
+  scripts/verify-agent-cron-worker-postgres17.sh
+  scripts/verify-agent-draft-learning-worker.sh
+  scripts/verify-agent-draft-learning-worker-postgres17.sh
   rag/pyproject.toml
   rag/uv.lock
   rag/Dockerfile
@@ -168,6 +174,8 @@ compose_json="${temp_dir}/compose.json"
   --profile agent-runtime-broker-canary \
   --profile agent-runtime-project-canary \
   --profile agent-runtime-child-canary \
+  --profile agent-runtime-cron-worker \
+  --profile agent-runtime-draft-learning-worker \
   --profile rag-worker --profile rag-ops \
   config --format json >"${compose_json}"
 
@@ -203,6 +211,8 @@ required = {
     "agent-runtime-broker-canary",
     "agent-runtime-project-canary",
     "agent-runtime-child-canary",
+    "agent-runtime-cron-worker",
+    "agent-runtime-draft-learning-worker",
     "postgres",
     "redis",
     "minio",
@@ -241,6 +251,8 @@ root_canary = services["agent-runtime-root-canary"]
 broker_canary = services["agent-runtime-broker-canary"]
 project_canary = services["agent-runtime-project-canary"]
 child_canary = services["agent-runtime-child-canary"]
+cron_worker = services["agent-runtime-cron-worker"]
+draft_learning_worker = services["agent-runtime-draft-learning-worker"]
 if memory_worker.get("profiles") != ["memory-worker"]:
     raise SystemExit("standalone verification: Memory Worker profile drifted")
 if memory_worker.get("ports"):
@@ -369,6 +381,84 @@ for forbidden in (
 ):
     if forbidden in child_canary["environment"]:
         raise SystemExit(f"standalone verification: Child canary received {forbidden}")
+if cron_worker.get("profiles") != ["agent-runtime-cron-worker"]:
+    raise SystemExit("standalone verification: Agent Cron worker profile drifted")
+if cron_worker.get("ports") or cron_worker.get("secrets", []) != []:
+    raise SystemExit("standalone verification: Agent Cron worker exposure drifted")
+if set(cron_worker.get("networks", {})) != {"private"}:
+    raise SystemExit("standalone verification: Agent Cron worker is not private-only")
+if cron_worker["environment"]["AGENT_CRON_WORKER_ENABLED"] != "false":
+    raise SystemExit("standalone verification: Agent Cron worker must default false")
+if "AGENT_DRAFT_LEARNING_WORKER_ENABLED" in cron_worker["environment"]:
+    raise SystemExit("standalone verification: Agent Cron worker received the Draft flag")
+if len(cron_worker.get("volumes", [])) != 8 or any(
+    volume.get("read_only") is not True for volume in cron_worker.get("volumes", [])
+):
+    raise SystemExit("standalone verification: Agent Cron worker mount set drifted")
+for name in (
+    "AGENT_RUNTIME_ENABLED",
+    "AGENT_SCHEDULER_ENABLED",
+    "AGENT_SKILL_INSTALL_ENABLED",
+    "AGENT_LEARNING_ENABLED",
+    "AGENT_DELEGATION_ENABLED",
+    "AGENT_BROKER_READ_ONLY_ENABLED",
+    "AGENT_BROKER_MUTATION_ENABLED",
+):
+    if cron_worker["environment"][name] != "false":
+        raise SystemExit(f"standalone verification: Agent Cron worker {name} must default false")
+for forbidden in (
+    "AGENT_DRAFT_LEARNING_WORKER_DATABASE_URL",
+    "AGENT_DRAFT_LEARNING_WORKER_RUNNER_URL",
+    "MCP_RUNNER_TOKEN",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+    "PROVIDER_SECRET_KEYRING_FILE",
+    "REDIS_URL",
+    "VAULT_ADDR",
+):
+    if forbidden in cron_worker["environment"]:
+        raise SystemExit(f"standalone verification: Agent Cron worker received {forbidden}")
+if draft_learning_worker.get("profiles") != ["agent-runtime-draft-learning-worker"]:
+    raise SystemExit("standalone verification: Agent Draft-learning worker profile drifted")
+if draft_learning_worker.get("ports") or draft_learning_worker.get("secrets", []) != []:
+    raise SystemExit("standalone verification: Agent Draft-learning worker exposure drifted")
+if set(draft_learning_worker.get("networks", {})) != {"private"}:
+    raise SystemExit("standalone verification: Agent Draft-learning worker is not private-only")
+if draft_learning_worker["environment"]["AGENT_DRAFT_LEARNING_WORKER_ENABLED"] != "false":
+    raise SystemExit("standalone verification: Agent Draft-learning worker must default false")
+if "AGENT_CRON_WORKER_ENABLED" in draft_learning_worker["environment"]:
+    raise SystemExit("standalone verification: Agent Draft-learning worker received the Cron flag")
+if len(draft_learning_worker.get("volumes", [])) != 15 or any(
+    volume.get("read_only") is not True
+    for volume in draft_learning_worker.get("volumes", [])
+):
+    raise SystemExit("standalone verification: Agent Draft-learning worker mount set drifted")
+if draft_learning_worker["environment"]["S3_BUCKET_AUTO_CREATE"] != "false":
+    raise SystemExit("standalone verification: Agent Draft-learning worker may not create buckets")
+for name in (
+    "AGENT_RUNTIME_ENABLED",
+    "AGENT_SCHEDULER_ENABLED",
+    "AGENT_SKILL_INSTALL_ENABLED",
+    "AGENT_LEARNING_ENABLED",
+    "AGENT_DELEGATION_ENABLED",
+    "AGENT_BROKER_READ_ONLY_ENABLED",
+    "AGENT_BROKER_MUTATION_ENABLED",
+):
+    if draft_learning_worker["environment"][name] != "false":
+        raise SystemExit(
+            f"standalone verification: Agent Draft-learning worker {name} must default false"
+        )
+for forbidden in (
+    "AGENT_CRON_WORKER_DATABASE_URL",
+    "MCP_RUNNER_TOKEN",
+    "PROVIDER_SECRET_KEYRING_FILE",
+    "REDIS_URL",
+    "VAULT_ADDR",
+):
+    if forbidden in draft_learning_worker["environment"]:
+        raise SystemExit(
+            f"standalone verification: Agent Draft-learning worker received {forbidden}"
+        )
 if (
     backend["environment"]["MEMORY_HYBRID_SHADOW_ENABLED"]
     != memory_worker["environment"]["MEMORY_HYBRID_SHADOW_ENABLED"]
@@ -419,7 +509,7 @@ DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-single-user-bou
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-single-user-bounded-miss-validation-from-vault.sh"
 
 if [[ "${full}" == true ]]; then
-  bash "${copy_dir}/scripts/verify-agent-runtime-g21-4.sh"
+  bash "${copy_dir}/scripts/verify-agent-runtime-g21-5.sh"
   rag_python="${RAG_PYTHON:-python3.13}"
   rag_uv="${RAG_UV:-uv}"
   if ! command -v "${rag_python}" >/dev/null 2>&1; then

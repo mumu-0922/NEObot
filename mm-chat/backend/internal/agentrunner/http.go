@@ -43,7 +43,7 @@ func NewHTTPHandlerWithPolicies(service *Service, maxSkew time.Duration, policie
 		methods := make(map[string]struct{}, len(policy.Methods))
 		for _, method := range policy.Methods {
 			if !member(method, MethodProbe, MethodLaunch, MethodHeartbeat, MethodCancel,
-				MethodPrepare, MethodCommit, MethodList, MethodReconcile) {
+				MethodResult, MethodPrepare, MethodCommit, MethodList, MethodReconcile) {
 				return nil, ErrInvalidInput
 			}
 			if _, duplicate := methods[method]; duplicate {

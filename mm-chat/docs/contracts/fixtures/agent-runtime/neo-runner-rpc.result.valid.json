@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "neo.runner-rpc/v1",
+  "method": "result",
+  "requestId": "rpc_1123456789abcdef",
+  "sentAt": "2026-08-15T08:05:00Z",
+  "nonce": "1123456789abcdef1123456789abcdef",
+  "body": {
+    "attempt": {
+      "runId": "run_1123456789abcdef",
+      "stepId": "step_1123456789abcdef",
+      "attemptId": "attempt_1123456789abcdef",
+      "leaseGeneration": 1,
+      "leaseOwner": "neo-runner-primary",
+      "leaseToken": "lease_1123456789abcdef01234567"
+    },
+    "snapshotFingerprint": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "name": "draft-check-result.json",
+    "authority": {
+      "schemaVersion": "neo.runner-authority/v1",
+      "runnerId": "neo-runner-primary",
+      "callerIdentity": "spiffe://neo-chat/agent-runtime-draft-learning",
+      "method": "result",
+      "requestId": "rpc_1123456789abcdef",
+      "nonce": "1123456789abcdef1123456789abcdef",
+      "requestFingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "runId": "run_1123456789abcdef",
+      "stepId": "step_1123456789abcdef",
+      "attemptId": "attempt_1123456789abcdef",
+      "leaseGeneration": 1,
+      "leaseOwner": "neo-runner-primary",
+      "leaseTokenDigest": "9999999999999999999999999999999999999999999999999999999999999999",
+      "snapshotFingerprint": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "killSwitchEpoch": 0,
+      "issuedAt": "2026-08-15T08:05:00Z",
+      "expiresAt": "2026-08-15T08:05:10Z",
+      "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+  }
+}

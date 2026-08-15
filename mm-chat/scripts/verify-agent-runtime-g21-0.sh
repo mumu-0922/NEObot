@@ -239,7 +239,7 @@ assert_preflight_rejected() {
 
 sed 's|^AGENT_RUNTIME_ENABLED=false$|AGENT_RUNTIME_ENABLED=true|' "${enabled_env}" >"${work_dir}/execution.env"
 chmod 600 "${work_dir}/execution.env"
-assert_preflight_rejected "${work_dir}/execution.env" 'AGENT_RUNTIME_ENABLED must remain false through G21.4'
+assert_preflight_rejected "${work_dir}/execution.env" 'AGENT_RUNTIME_ENABLED must remain false through G21.5'
 
 sed 's|^AGENT_RUNNER_URL=.*|AGENT_RUNNER_URL=https://8.8.8.8:9443/internal/neo-runner/v1/rpc|' \
   "${enabled_env}" >"${work_dir}/public-url.env"

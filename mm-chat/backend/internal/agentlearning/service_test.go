@@ -126,6 +126,26 @@ func TestHeldServiceRequiresExplicitEnablement(t *testing.T) {
 	}
 }
 
+func TestRunCheckPreservesDurableExternalEvidenceReceipt(t *testing.T) {
+	external := "sha256:" + strings.Repeat("e", 64)
+	service := NewService()
+	receipt, err := service.runCheck(context.Background(), CheckIsolation,
+		testChecker{result: CheckResult{Status: CheckPassed, ReasonCode: "ISOLATION_PASSED",
+			SuiteFingerprint:    "sha256:" + strings.Repeat("a", 64),
+			EvidenceFingerprint: external, DurationMillis: 1,
+			Metrics: map[string]int64{"casesPassed": 1}}},
+		CheckInput{Draft: Draft{DraftFingerprint: "sha256:" + strings.Repeat("b", 64)}})
+	if err != nil || receipt.EvidenceFingerprint != external {
+		t.Fatalf("runCheck() = %#v, %v", receipt, err)
+	}
+}
+
+type testChecker struct{ result CheckResult }
+
+func (checker testChecker) Check(context.Context, CheckInput) (CheckResult, error) {
+	return checker.result, nil
+}
+
 func TestImmutableObjectCollisionFailsClosed(t *testing.T) {
 	objects, err := storage.NewLocalStore(t.TempDir())
 	if err != nil {

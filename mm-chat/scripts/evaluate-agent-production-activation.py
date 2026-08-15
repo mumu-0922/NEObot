@@ -86,6 +86,41 @@ CHILD_CANARY_CHECK_IDS = {
     "synthetic_plan_ready",
     "zero_inventory",
 }
+WORKER_PREREQUISITES = {
+    "broker_artifact_canary",
+    "child_run_canary",
+    "control_plane",
+    "project_mutation_canary",
+    "root_run_canary",
+}
+CRON_WORKER_CHECK_IDS = {
+    "broker_artifact_canary_ready",
+    "child_run_canary_ready",
+    "control_plane_ready",
+    "crash_restart_ready",
+    "credential_absence",
+    "exact_host_isolation",
+    "exact_target_plan",
+    "least_privilege_login",
+    "project_mutation_canary_ready",
+    "root_run_canary_ready",
+}
+DRAFT_LEARNING_WORKER_CHECK_IDS = {
+    "broker_artifact_canary_ready",
+    "child_run_canary_ready",
+    "cleanup_recovery_ready",
+    "control_plane_ready",
+    "crash_restart_ready",
+    "exact_host_isolation",
+    "exact_target_plan",
+    "human_promote_separate",
+    "least_privilege_login",
+    "object_store_separation",
+    "project_mutation_canary_ready",
+    "root_run_canary_ready",
+    "runner_result_acl",
+    "rootless_isolation_evaluation",
+}
 FINGERPRINT = re.compile(r"^sha256:[0-9a-f]{64}$")
 IDENTITY = re.compile(r"^[A-Za-z][A-Za-z0-9_.:@/-]{0,127}$")
 DETAIL = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
@@ -220,7 +255,7 @@ def project_relay_endpoint_fingerprint(endpoint: str) -> str:
 def validate_policy(policy: dict[str, Any]) -> None:
     if (
         policy.get("schemaVersion") != "neo.agent-production-policy/v1"
-        or policy.get("migrationHead") != 93
+        or policy.get("migrationHead") != 94
     ):
         fail("POLICY_INVALID")
 
@@ -334,12 +369,361 @@ def validate_release_manifest(manifest: dict[str, Any], runner_id: str | None) -
         fail("RUNNER_MANIFEST_INVALID")
 
 
+def worker_prerequisite_paths(values: list[str]) -> dict[str, Path]:
+    result: dict[str, Path] = {}
+    for value in values:
+        stage, separator, path = value.partition("=")
+        if (
+            not separator
+            or stage not in WORKER_PREREQUISITES
+            or stage in result
+            or not path
+        ):
+            fail("PREREQUISITE_INVALID")
+        result[stage] = Path(path)
+    return result
+
+
+def validate_worker_record(
+    record: dict[str, Any],
+    policy_raw: bytes,
+    now: datetime,
+    args: argparse.Namespace,
+) -> DecisionTuple:
+    stage = record.get("stage")
+    is_draft = stage == "draft_learning_worker"
+    root_keys = {
+        "schemaVersion",
+        "evidenceClass",
+        "stage",
+        "release",
+        "prerequisites",
+        "target",
+        "window",
+        "checks",
+        "authorization",
+        "cleanup",
+        "review",
+    }
+    if is_draft:
+        root_keys |= {"wiring", "humanDecision"}
+    exact(record, root_keys, "ACTIVATION_ROOT_INVALID")
+    if (
+        record["schemaVersion"] != "neo.agent-production-activation/v1"
+        or stage not in {"cron_worker", "draft_learning_worker"}
+    ):
+        fail("ACTIVATION_VERSION_INVALID")
+    if record["evidenceClass"] not in {"template", "production"}:
+        fail("EVIDENCE_CLASS_INVALID")
+
+    release = exact(
+        record["release"],
+        {
+            "gitCommit",
+            "migrationHead",
+            "runnerManifestSha256",
+            "runnerBinarySha256",
+            "operationsPolicySha256",
+        },
+        "RELEASE_INVALID",
+    )
+    if (
+        not isinstance(release["gitCommit"], str)
+        or re.fullmatch(r"[0-9a-f]{40}", release["gitCommit"]) is None
+        or release["migrationHead"] != 94
+    ):
+        fail("RELEASE_INVALID")
+    release_fingerprints = [
+        fingerprint(release[key], "RELEASE_INVALID")
+        for key in (
+            "runnerManifestSha256",
+            "runnerBinarySha256",
+            "operationsPolicySha256",
+        )
+    ]
+    policy_sha = "sha256:" + hashlib.sha256(policy_raw).hexdigest()
+    if release["operationsPolicySha256"] != policy_sha:
+        fail("POLICY_FINGERPRINT_MISMATCH")
+
+    prerequisites = record["prerequisites"]
+    if not isinstance(prerequisites, list) or len(prerequisites) != len(
+        WORKER_PREREQUISITES
+    ):
+        fail("PREREQUISITE_INVALID")
+    prerequisite_fingerprints: dict[str, str] = {}
+    for value in prerequisites:
+        item = exact(value, {"stage", "evidenceSha256"}, "PREREQUISITE_INVALID")
+        prerequisite_stage = item["stage"]
+        if (
+            prerequisite_stage not in WORKER_PREREQUISITES
+            or prerequisite_stage in prerequisite_fingerprints
+        ):
+            fail("PREREQUISITE_INVALID")
+        prerequisite_fingerprints[prerequisite_stage] = fingerprint(
+            item["evidenceSha256"], "PREREQUISITE_INVALID"
+        )
+    if set(prerequisite_fingerprints) != WORKER_PREREQUISITES:
+        fail("PREREQUISITE_INVALID")
+
+    if is_draft:
+        target_keys = {
+            "activationId",
+            "draftId",
+            "draftFingerprint",
+            "packageFingerprint",
+            "runtimeFingerprint",
+            "archiveFingerprint",
+            "workspaceFingerprint",
+            "planSha256",
+        }
+    else:
+        target_keys = {
+            "activationId",
+            "templateId",
+            "templateRevision",
+            "templateFingerprint",
+            "planSha256",
+        }
+    target = exact(record["target"], target_keys, "TARGET_INVALID")
+    identity(target["activationId"], "TARGET_INVALID")
+    identity(target["draftId" if is_draft else "templateId"], "TARGET_INVALID")
+    if not is_draft and (
+        isinstance(target["templateRevision"], bool)
+        or not isinstance(target["templateRevision"], int)
+        or target["templateRevision"] < 1
+    ):
+        fail("TARGET_INVALID")
+    target_fingerprints = [
+        fingerprint(value, "TARGET_INVALID")
+        for key, value in target.items()
+        if key.endswith("Fingerprint") or key == "planSha256"
+    ]
+
+    wiring_fingerprints: list[str] = []
+    wiring: dict[str, Any] = {}
+    if is_draft:
+        wiring = exact(
+            record["wiring"],
+            {
+                "endpointSha256",
+                "clientCertificateSha256",
+                "serverCASha256",
+                "serverName",
+                "callerIdentity",
+                "authorityPublicKeySha256",
+                "objectCredentialMetaSha256",
+            },
+            "WIRING_INVALID",
+        )
+        wiring_fingerprints = [
+            fingerprint(wiring[key], "WIRING_INVALID")
+            for key in (
+                "endpointSha256",
+                "clientCertificateSha256",
+                "serverCASha256",
+                "authorityPublicKeySha256",
+                "objectCredentialMetaSha256",
+            )
+        ]
+        identity(wiring["serverName"], "WIRING_INVALID")
+        if wiring["callerIdentity"] != "spiffe://neo-chat/agent-runtime-draft-learning":
+            fail("WIRING_INVALID")
+
+    window = exact(
+        record["window"], {"startedAt", "completedAt", "expiresAt"}, "WINDOW_INVALID"
+    )
+    started = timestamp(window["startedAt"], "WINDOW_INVALID")
+    completed = timestamp(window["completedAt"], "WINDOW_INVALID")
+    expires = timestamp(window["expiresAt"], "WINDOW_INVALID")
+    if not started <= completed < expires or expires - started > timedelta(hours=24):
+        fail("WINDOW_INVALID")
+
+    check_ids = DRAFT_LEARNING_WORKER_CHECK_IDS if is_draft else CRON_WORKER_CHECK_IDS
+    checks = record["checks"]
+    if not isinstance(checks, list) or len(checks) != len(check_ids):
+        fail("CHECK_SET_INCOMPLETE")
+    results: dict[str, str] = {}
+    check_fingerprints: list[str] = []
+    for value in checks:
+        item = exact(
+            value,
+            {"id", "result", "observedAt", "evidenceSha256", "detailCode"},
+            "CHECK_INVALID",
+        )
+        check_id = item["id"]
+        observed = timestamp(item["observedAt"], "CHECK_INVALID")
+        if (
+            check_id not in check_ids
+            or check_id in results
+            or item["result"]
+            not in {"passed", "failed", "not_run", "isolation_unavailable"}
+            or not started <= observed <= completed
+            or not isinstance(item["detailCode"], str)
+            or DETAIL.fullmatch(item["detailCode"]) is None
+        ):
+            fail("CHECK_SET_INVALID")
+        results[check_id] = item["result"]
+        check_fingerprints.append(
+            fingerprint(item["evidenceSha256"], "CHECK_INVALID")
+        )
+    if set(results) != check_ids:
+        fail("CHECK_SET_INCOMPLETE")
+
+    if is_draft:
+        expected_authorization = {
+            "draftChecks": True,
+            "cleanup": True,
+            "runnerLifecycle": True,
+            "runtime": False,
+            "genericScheduler": False,
+            "genericLearning": False,
+            "skillInstall": False,
+            "brokerMutation": False,
+            "delegation": False,
+            "promote": False,
+            "administratorCredential": False,
+        }
+        cleanup_keys = {"orphanSandboxes", "pendingRunnerChecks", "pendingObjects"}
+    else:
+        expected_authorization = {
+            "exactCronTarget": True,
+            "runtime": False,
+            "genericScheduler": False,
+            "learning": False,
+            "skillInstall": False,
+            "brokerMutation": False,
+            "delegation": False,
+            "runnerCredential": False,
+            "objectCredential": False,
+        }
+        cleanup_keys = {"staleClaims", "pendingTriggers"}
+    authorization = exact(
+        record["authorization"], set(expected_authorization), "AUTHORIZATION_INVALID"
+    )
+    if authorization != expected_authorization:
+        fail("AUTHORIZATION_WIDENED")
+    cleanup = exact(record["cleanup"], cleanup_keys, "CLEANUP_INVALID")
+    if any(
+        isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 1_000_000
+        for value in cleanup.values()
+    ):
+        fail("CLEANUP_INVALID")
+
+    human_fingerprints: list[str] = []
+    if is_draft:
+        human = exact(
+            record["humanDecision"],
+            {"decisionId", "actorClass", "promotedPackageFingerprint"},
+            "HUMAN_DECISION_INVALID",
+        )
+        identity(human["decisionId"], "HUMAN_DECISION_INVALID")
+        if human["actorClass"] != "human_operator":
+            fail("HUMAN_DECISION_INVALID")
+        human_fingerprints.append(
+            fingerprint(
+                human["promotedPackageFingerprint"], "HUMAN_DECISION_INVALID"
+            )
+        )
+
+    review = exact(
+        record["review"],
+        {"decision", "reviewedAt", "reviewerFingerprint"},
+        "REVIEW_INVALID",
+    )
+    if review["decision"] not in {"approved", "held"}:
+        fail("REVIEW_INVALID")
+    reviewed = timestamp(review["reviewedAt"], "REVIEW_INVALID")
+    reviewer = fingerprint(review["reviewerFingerprint"], "REVIEW_INVALID")
+    if not completed <= reviewed <= now or not reviewed < expires:
+        fail("REVIEW_INVALID")
+
+    if results["exact_host_isolation"] == "isolation_unavailable":
+        return "ACTIVATION_HELD", "ISOLATION_UNAVAILABLE", release["gitCommit"]
+    if record["evidenceClass"] != "production":
+        return "ACTIVATION_HELD", "NON_PRODUCTION_EVIDENCE", release["gitCommit"]
+    if now < started or now >= expires or completed > now:
+        return "ACTIVATION_HELD", "EVIDENCE_STALE", release["gitCommit"]
+
+    all_fingerprints = (
+        release_fingerprints
+        + list(prerequisite_fingerprints.values())
+        + target_fingerprints
+        + wiring_fingerprints
+        + check_fingerprints
+        + human_fingerprints
+        + [reviewer]
+    )
+    if ZERO in all_fingerprints or release["gitCommit"] == "0" * 40:
+        fail("PLACEHOLDER_BINDING_FORBIDDEN")
+    if any(value != "passed" for value in results.values()):
+        return "ACTIVATION_HELD", "LIVE_CHECK_NOT_PASSED", release["gitCommit"]
+    if any(cleanup.values()):
+        return "ACTIVATION_HELD", "RUNTIME_RESIDUE_REMAINS", release["gitCommit"]
+    if review["decision"] != "approved":
+        return "ACTIVATION_HELD", "REVIEW_HELD", release["gitCommit"]
+
+    if args.release_commit != release["gitCommit"] or args.worker_plan is None:
+        fail("WORKER_BINDING_DRIFT")
+    if file_fingerprint(args.worker_plan, "WORKER_BINDING_DRIFT") != target["planSha256"]:
+        fail("WORKER_BINDING_DRIFT")
+    prerequisite_paths = worker_prerequisite_paths(args.prerequisite)
+    if set(prerequisite_paths) != WORKER_PREREQUISITES:
+        fail("PREREQUISITE_INVALID")
+    for prerequisite_stage, path in prerequisite_paths.items():
+        if file_fingerprint(path, "WORKER_BINDING_DRIFT") != prerequisite_fingerprints[
+            prerequisite_stage
+        ]:
+            fail("WORKER_BINDING_DRIFT")
+
+    if is_draft:
+        required_args = (
+            args.release_manifest,
+            args.client_certificate,
+            args.server_ca,
+            args.authority_public_key,
+            args.object_credential_meta,
+            args.endpoint,
+            args.runner_id,
+            args.server_name,
+            args.caller_identity,
+        )
+        if any(value is None for value in required_args):
+            fail("WIRING_INVALID")
+        bindings = (
+            (args.release_manifest, release["runnerManifestSha256"], "RUNNER_MANIFEST_DRIFT"),
+            (args.client_certificate, wiring["clientCertificateSha256"], "CLIENT_CERTIFICATE_DRIFT"),
+            (args.server_ca, wiring["serverCASha256"], "SERVER_CA_DRIFT"),
+            (args.authority_public_key, wiring["authorityPublicKeySha256"], "AUTHORITY_KEY_DRIFT"),
+            (args.object_credential_meta, wiring["objectCredentialMetaSha256"], "OBJECT_CREDENTIAL_DRIFT"),
+        )
+        for path, expected, code in bindings:
+            assert path is not None
+            if file_fingerprint(path, code) != expected:
+                fail(code)
+        manifest, _ = load_document(args.release_manifest)
+        validate_release_manifest(manifest, args.runner_id)
+        if endpoint_fingerprint(args.endpoint) != wiring["endpointSha256"]:
+            fail("RUNNER_ENDPOINT_DRIFT")
+        if args.server_name != wiring["serverName"]:
+            fail("SERVER_NAME_DRIFT")
+        if args.caller_identity != wiring["callerIdentity"]:
+            fail("CALLER_IDENTITY_DRIFT")
+
+    return (
+        "ACTIVATION_READY",
+        "DRAFT_LEARNING_WORKER_GATES_PASSED" if is_draft else "CRON_WORKER_GATES_PASSED",
+        release["gitCommit"],
+    )
+
+
 def validate_record(
     record: dict[str, Any],
     policy_raw: bytes,
     now: datetime,
     args: argparse.Namespace,
 ) -> tuple[str, str, str]:
+    if record.get("stage") in {"cron_worker", "draft_learning_worker"}:
+        return validate_worker_record(record, policy_raw, now, args)
     exact(
         record,
         {
@@ -408,7 +792,7 @@ def validate_record(
     if (
         not isinstance(release["gitCommit"], str)
         or re.fullmatch(r"[0-9a-f]{40}", release["gitCommit"]) is None
-        or release["migrationHead"] != 93
+        or release["migrationHead"] != 94
     ):
         fail("RELEASE_INVALID")
     release_fingerprints = [
@@ -791,6 +1175,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--client-certificate", type=Path)
     parser.add_argument("--server-ca", type=Path)
     parser.add_argument("--canary-plan", type=Path)
+    parser.add_argument("--worker-plan", type=Path)
+    parser.add_argument("--prerequisite", action="append", default=[])
+    parser.add_argument("--object-credential-meta", type=Path)
     parser.add_argument("--authority-public-key", type=Path)
     parser.add_argument("--approval-document", type=Path)
     parser.add_argument("--approval-public-key", type=Path)
