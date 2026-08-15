@@ -123,6 +123,14 @@ required_paths=(
   scripts/verify-agent-artifact-publication-postgres17.sh
   scripts/verify-agent-runtime-g21-1.sh
   scripts/verify-agent-root-canary-postgres17.sh
+  scripts/verify-agent-runtime-g21-3.sh
+  scripts/verify-agent-project-canary-activation.sh
+  scripts/verify-agent-project-canary-preflight.sh
+  scripts/verify-agent-project-mutation-postgres17.sh
+  scripts/verify-agent-runtime-g21-4.sh
+  scripts/verify-agent-child-canary-activation.sh
+  scripts/verify-agent-child-canary-preflight.sh
+  scripts/verify-agent-child-canary-postgres17.sh
   rag/pyproject.toml
   rag/uv.lock
   rag/Dockerfile
@@ -158,6 +166,8 @@ compose_json="${temp_dir}/compose.json"
   --profile agent-runtime-control \
   --profile agent-runtime-root-canary \
   --profile agent-runtime-broker-canary \
+  --profile agent-runtime-project-canary \
+  --profile agent-runtime-child-canary \
   --profile rag-worker --profile rag-ops \
   config --format json >"${compose_json}"
 
@@ -191,6 +201,8 @@ required = {
     "agent-runtime-control",
     "agent-runtime-root-canary",
     "agent-runtime-broker-canary",
+    "agent-runtime-project-canary",
+    "agent-runtime-child-canary",
     "postgres",
     "redis",
     "minio",
@@ -227,6 +239,8 @@ memory_worker = services["memory-worker"]
 agent_control = services["agent-runtime-control"]
 root_canary = services["agent-runtime-root-canary"]
 broker_canary = services["agent-runtime-broker-canary"]
+project_canary = services["agent-runtime-project-canary"]
+child_canary = services["agent-runtime-child-canary"]
 if memory_worker.get("profiles") != ["memory-worker"]:
     raise SystemExit("standalone verification: Memory Worker profile drifted")
 if memory_worker.get("ports"):
@@ -311,6 +325,50 @@ for forbidden in (
         raise SystemExit(f"standalone verification: Broker canary received {forbidden}")
 if not config["networks"]["agent-broker-relay"]["internal"]:
     raise SystemExit("standalone verification: Agent Broker relay is not internal")
+if project_canary.get("profiles") != ["agent-runtime-project-canary"]:
+    raise SystemExit("standalone verification: Agent Project canary profile drifted")
+if project_canary.get("ports"):
+    raise SystemExit("standalone verification: Agent Project canary exposes a host port")
+if set(project_canary.get("networks", {})) != {"private", "agent-project-relay"}:
+    raise SystemExit("standalone verification: Agent Project canary network boundary drifted")
+if project_canary["environment"]["AGENT_PROJECT_MUTATION_CANARY_ENABLED"] != "false":
+    raise SystemExit("standalone verification: Agent Project canary must default false")
+if project_canary.get("secrets", []) != [] or len(project_canary.get("volumes", [])) != 14:
+    raise SystemExit("standalone verification: Agent Project canary material boundary drifted")
+if not config["networks"]["agent-project-relay"]["internal"]:
+    raise SystemExit("standalone verification: Agent Project relay is not internal")
+if child_canary.get("profiles") != ["agent-runtime-child-canary"]:
+    raise SystemExit("standalone verification: Agent Child canary profile drifted")
+if child_canary.get("ports"):
+    raise SystemExit("standalone verification: Agent Child canary exposes a host port")
+if set(child_canary.get("networks", {})) != {"private"}:
+    raise SystemExit("standalone verification: Agent Child canary is not private-only")
+if child_canary["environment"]["AGENT_CHILD_CANARY_ENABLED"] != "false":
+    raise SystemExit("standalone verification: Agent Child canary must default false")
+if child_canary["environment"]["AGENT_DELEGATION_ENABLED"] != "false":
+    raise SystemExit("standalone verification: Agent Child delegation must default false")
+if child_canary.get("secrets", []) != [] or len(child_canary.get("volumes", [])) != 9:
+    raise SystemExit("standalone verification: Agent Child canary material boundary drifted")
+for name in (
+    "AGENT_RUNTIME_ENABLED",
+    "AGENT_SCHEDULER_ENABLED",
+    "AGENT_SKILL_INSTALL_ENABLED",
+    "AGENT_LEARNING_ENABLED",
+    "AGENT_BROKER_READ_ONLY_ENABLED",
+    "AGENT_BROKER_MUTATION_ENABLED",
+):
+    if child_canary["environment"][name] != "false":
+        raise SystemExit(f"standalone verification: Child canary {name} must default false")
+for forbidden in (
+    "MCP_RUNNER_TOKEN",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+    "PROVIDER_SECRET_KEYRING_FILE",
+    "REDIS_URL",
+    "VAULT_ADDR",
+):
+    if forbidden in child_canary["environment"]:
+        raise SystemExit(f"standalone verification: Child canary received {forbidden}")
 if (
     backend["environment"]["MEMORY_HYBRID_SHADOW_ENABLED"]
     != memory_worker["environment"]["MEMORY_HYBRID_SHADOW_ENABLED"]
@@ -361,7 +419,7 @@ DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-single-user-bou
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-single-user-bounded-miss-validation-from-vault.sh"
 
 if [[ "${full}" == true ]]; then
-  bash "${copy_dir}/scripts/verify-agent-runtime-g21-2.sh"
+  bash "${copy_dir}/scripts/verify-agent-runtime-g21-4.sh"
   rag_python="${RAG_PYTHON:-python3.13}"
   rag_uv="${RAG_UV:-uv}"
   if ! command -v "${rag_python}" >/dev/null 2>&1; then

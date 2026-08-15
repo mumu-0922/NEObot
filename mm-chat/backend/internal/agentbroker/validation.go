@@ -123,7 +123,7 @@ func validateGrant(value CapabilityGrant, now time.Time) error {
 		(value.Run.Depth == 1 && !validID(value.Run.ParentRunID, "run")) ||
 		!validFingerprint(value.PackageFingerprint) || !validFingerprint(value.RuntimeBundleFingerprint) ||
 		value.IssuedAt.IsZero() || value.IssuedAt.After(now) || !value.ExpiresAt.After(value.IssuedAt) || !now.Before(value.ExpiresAt) ||
-		len(value.Capabilities) == 0 || len(value.Capabilities) > 128 ||
+		(len(value.Capabilities) == 0 && value.Run.Depth != 1) || len(value.Capabilities) > 128 ||
 		value.Budget.MaxWallSeconds < 0 || value.Budget.MaxWallSeconds > 86400 ||
 		value.Budget.MaxModelTokens < 0 || value.Budget.MaxModelTokens > 10000000 ||
 		value.Budget.MaxToolCalls < 0 || value.Budget.MaxToolCalls > 10000 ||

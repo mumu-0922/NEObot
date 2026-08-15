@@ -45,7 +45,7 @@
               "pattern": "^[0-9a-f]{40}$"
             },
             "migrationHead": {
-              "const": 92
+              "const": 93
             }
           }
         },

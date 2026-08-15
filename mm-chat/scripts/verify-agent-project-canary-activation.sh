@@ -51,13 +51,13 @@ activation=json.loads((schemas/"neo-agent-project-mutation-canary-activation.sch
 plan=json.loads((schemas/"neo-agent-project-mutation-canary-plan.schema.json").read_text())
 approval=json.loads((schemas/"neo-agent-project-mutation-approval.schema.json").read_text())
 assert activation["properties"]["stage"]["const"]=="project_mutation_canary"
-assert activation["properties"]["release"]["properties"]["migrationHead"]["const"]==92
+assert activation["properties"]["release"]["properties"]["migrationHead"]["const"]==93
 assert plan["properties"]["action"]["properties"]["approval"]["const"]=="per_commit"
-assert approval["properties"]["payload"]["properties"]["release"]["properties"]["migrationHead"]["const"]==92
+assert approval["properties"]["payload"]["properties"]["release"]["properties"]["migrationHead"]["const"]==93
 PY
 
 (cd "${project_dir}/backend" && go test ./internal/agentactivation ./internal/agentprojectcanary \
-  -run 'TestVerifyProjectCanaryRequiresMigration092ApprovalAndNarrowMutation|TestSignedApprovalBindsReleaseActivationPlanAndAction|TestActivationBindingFingerprintHasNoApprovalRecordHashCycle')
+  -run 'TestVerifyProjectCanaryRequiresMigration093ApprovalAndNarrowMutation|TestSignedApprovalBindsReleaseActivationPlanAndAction|TestActivationBindingFingerprintHasNoApprovalRecordHashCycle')
 
 work_dir="$(mktemp -d)"
 cleanup(){ find "${work_dir}" -depth -mindepth 1 -delete 2>/dev/null || true; rmdir "${work_dir}" 2>/dev/null || true; }

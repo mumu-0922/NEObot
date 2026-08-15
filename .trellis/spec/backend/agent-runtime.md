@@ -361,7 +361,7 @@ but it does not expose a public API or enable a startup/production Scheduler.
   down and clean down/up.
 - Every older PostgreSQL drill that peels tail migrations must down empty `091`,
   `090`, `089` and then `088` before testing its own guard, then reapply through
-  head `092`.
+  head `093`.
 - Phase 0 and source gates must prove the package has no public/startup wiring;
   the exact-host gate must remain expected-nonzero `ISOLATION_UNAVAILABLE`.
 
@@ -489,7 +489,7 @@ startup worker, Chat/frontend/Compose wiring or production Draft execution.
   PL/pgSQL retry locals must use unambiguous names such as `next_attempts`
   rather than shadowing an `attempts` column.
 - Every older PostgreSQL tail drill peels empty `092`, then empty `091` and its reviewed tail,
-  before its original guard and finishes at head `092`. Phase 0 validates the strict Draft schema,
+  before its original guard and finishes at head `093`. Phase 0 validates the strict Draft schema,
   G20.8 product/Shadow signatures and cross-contract bindings.
 - Full standalone must pass and exact-host Runner verification remains expected
   nonzero `ISOLATION_UNAVAILABLE`.
@@ -590,7 +590,7 @@ control and review only; it does not enable package execution.
   Artifact lookup, default-off/cohort/opt-in, Kill Switch, budget, restart,
   generation/fingerprint fences, content-free dump/restore and guarded down/up.
 - Every older Agent/MCP/Assistant/Skill tail drill peels empty `092`, then empty
-  `091` and `090`, before its original guard and finishes at head `092`.
+  `091` and `090`, before its original guard and finishes at head `093`.
 - Run Phase 0, backend vet/test, frontend full gate and full standalone. Exact
   host remains expected-nonzero until separately promoted.
 
@@ -643,7 +643,7 @@ SQL. This scenario deletes old authority; it never converts or promotes it.
   description/category/mode.
 - Database apply locks `conversations`, verifies full-backup SHA-256 and exact
   target count, updates only `metadata = metadata - 'activeSkills'`, verifies
-  zero remaining, and leaves the current schema head at `092`. Rollback is full
+  zero remaining, and leaves the current schema head at `093`. Rollback is full
   backup plus previous images; the cutover creates no migration or synthetic
   down SQL.
 - No browser/API/rootful fallback executor is permitted. The only eligible
@@ -666,7 +666,7 @@ SQL. This scenario deletes old authority; it never converts or promotes it.
 - **Good**: backup/count are verified, apply removes one JSONB key, restart and
   reload show zero resurrection, and history renders one retirement label.
 - **Base**: no stale database rows exist; expected count `0` applies
-  idempotently and current schema head remains `092`.
+  idempotently and current schema head remains `093`.
 - **Bad**: add a reversible migration that invents deleted values, preserve old
   invocation details, name-match a package, or silently execute in Chat.
 
@@ -678,7 +678,7 @@ SQL. This scenario deletes old authority; it never converts or promotes it.
   collapse.
 - PostgreSQL 17 covers default dry-run, rejected count/fingerprint, full backup
   fingerprint, exact-key update, unrelated-row equivalence, repeated apply and
-  migration head `092`.
+  migration head `093`.
 - Negative source scan proves removed files/assets/resolver/context and held
   Runtime; then run frontend/backend/full standalone gates.
 
@@ -704,8 +704,8 @@ verified backup + exact count -> delete only retired authority -> one history fa
 Apply when changing the exact-host Runner bundle, staged activation evidence,
 Runner client identity, `agent-runtime-control` command/service or recovery
 reconcile behavior. G21.0 permits maintenance only and itself adds no
-migration; the current release is nevertheless bound to the reviewed `092`
-head introduced by G21.3.
+migration; the current release is nevertheless bound to the reviewed `093`
+head introduced by G21.4.
 
 ### 2. Signatures
 
@@ -723,7 +723,7 @@ python3 mm-chat/scripts/evaluate-agent-production-activation.py --record FILE
   `internal/agentrunner`.
 - Schemas: `neo-agent-production-activation.schema.json` and
   `neo-agent-runner-bundle.schema.json`.
-- Database capability: existing `agent_runner_control` at migration head `092`.
+- Database capability: existing `agent_runner_control` at migration head `093`.
 
 ### 3. Contracts
 
@@ -1024,7 +1024,7 @@ bash mm-chat/scripts/verify-agent-runtime-g21-2.sh
 - Relay method/caller/ticket/body/plan negatives and exact Prepare/Commit replay.
 - Read executor traversal/link/special-file/bounds plus exact MCP allowlist.
 - PostgreSQL 17 fresh/replay/exact-role/authorize/attach/collision/stale/Grant/
-  Kill-Switch/dump-restore/guarded-down/up proof at head `092`.
+  Kill-Switch/dump-restore/guarded-down/up proof at head `093`.
 - Same-byte scan, object-before-row compensation, quarantine cleanup and
   `outcome_unknown` no-retry tests.
 - Strict schemas/fixtures, enabled/default preflight, development/production
@@ -1096,7 +1096,7 @@ bash mm-chat/scripts/verify-agent-runtime-g21-3.sh
   raw activation-record fingerprint because the activation record binds the
   approval document; mutual raw-hash binding would create an impossible cycle.
 - `LoadApproval` accepts strict owner-secure non-symlink files, verifies a
-  dedicated Ed25519 public key/signature and binds release/head `092`, target,
+  dedicated Ed25519 public key/signature and binds release/head `093`, target,
   stable activation identity, plan, caller, request/idempotency identity,
   exact action, operator/reason and a maximum 15-minute window. Approval,
   Runner authority and TLS keys are distinct. The private approval key is never
@@ -1162,7 +1162,7 @@ bash mm-chat/scripts/verify-agent-runtime-g21-3.sh
   acknowledgement-loss recovery, terminal no-retry and cleanup restart.
 - PostgreSQL 17 fresh/replay, exact ninth LOGIN, no DML/provision, CAS/replay/
   collision/status/cleanup, late stale/Grant/Kill zero-receipt fences,
-  dump/restore, populated down guard and clean down/up at head `092`.
+  dump/restore, populated down guard and clean down/up at head `093`.
 - Compose/default/enabled preflight proves 14 read-only mounts, no Compose
   secrets, isolated `172.31.254.8/29` relay, credential absence and all broad
   flags false.
@@ -1184,3 +1184,101 @@ offline signed exact approval -> immutable Prepare -> fixed per_commit decision
 -> caller-specific private relay -> SQL-fenced synthetic CAS + durable receipt
 -> status-only acknowledgement recovery -> terminal cleanup, never redispatch
 ```
+
+## Scenario: Execute the G21.4 synthetic depth-one Child canary
+
+### 1. Scope / Trigger
+
+Apply when changing `agentchildcanary`, the Child canary command/activation,
+migration `093`, pending reap transport or the one-Parent/one-Child restart
+state machine. This is a synthetic internal lane; it does not enable API/Chat
+delegation, a second Child, depth two or Child effects.
+
+### 2. Signatures
+
+- Controller: `internal/agentchildcanary` and
+  `cmd/agent-runtime-child-canary`.
+- Delegation/Runner bridge: `internal/agentdelegation`,
+  `internal/agentrunner` and migration
+  `093_agent_child_canary_reap_transport`.
+- Contracts: `neo-agent-child-run-canary-{plan,activation}` schemas and
+  valid/invalid fixtures.
+- Gates: `verify-agent-child-canary-{activation,preflight,postgres17}.sh`
+  and `verify-agent-runtime-g21-4.sh`.
+
+### 3. Contracts
+
+- The fifth caller is exactly
+  `spiffe://neo-chat/agent-runtime-child-canary` and has lifecycle methods only;
+  it has no Prepare/Commit or relay. Earlier caller/relay policies do not change.
+- Freeze exactly one synthetic Parent and one Child with stable distinct
+  idempotency identities, one user/subject/model, exact Package/Runtime,
+  Sandboxes, argv, leases, expiry and four-dimensional budgets.
+- Parent Grant/Registry contains only `delegate_task/create` for the exact
+  synthetic Child resource. Child deliberately requests that identity, but
+  derivation uses a capability-empty Grant and physically empty Registry before
+  fingerprinting. Alias/capability rebinding is a subset violation.
+- Enqueue binds the exact live Parent Attempt and rechecks generation, lease,
+  snapshot, Grant/Registry, Kill Switch and reservation in Go and PostgreSQL.
+  A second Child, depth two, stale attempt or any widening fails before launch.
+- Migration `093` inventory returns exact Step/Attempt/generation, optional
+  Runner projection and latest matching launch expiry without lease tokens.
+  Failure completion is retryable; success waits out authority and atomically
+  terminalizes the matching Runner projection plus reap. Mismatch and replay
+  fail closed.
+- Reconcile failed reaps before work. Existing lineage always wins over
+  enqueue. Lost live tokens wait for expiry; restart may finish the sole Child
+  or cleanup-only Parent generation but never produce a second Child.
+- Child cascade/reap and durable settlement precede signed Parent cancellation.
+  Health requires terminal Parent/Child, zero pending reap and zero Runner
+  residue.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| missing G21.0-G21.3 readiness or activation drift | `CHILD_CANARY_UNAVAILABLE`; no DB/Runner work |
+| second Child, depth two or authority widening | reject before Runner launch |
+| live token unavailable | wait for expiry; never guess or replace the lineage |
+| active matching launch authority | `AGENT_REAP_AUTHORITY_ACTIVE` |
+| Runner projection identity drift | `AGENT_REAP_SANDBOX_MISMATCH` |
+| physical reap failure | durable `failed`; retry on restart |
+| dirty migration down | `AGENT_CHILD_REAP_TRANSPORT_DOWN_REQUIRES_CLEAN` |
+| pending/failed reap or Runner residue | health unavailable |
+
+### 5. Good / Base / Bad Cases
+
+- **Good:** one exact live Parent launches its sole derived Child, restart
+  resumes the existing lineage, the Child is reaped after authority expiry and
+  only then is the Parent canceled.
+- **Base:** the Child profile and delegation flag remain false; no plan,
+  controller credential, database role or Runner call is used.
+- **Bad:** a restart changes the Child idempotency key, a Child retains
+  `delegate_task`, a reap completes before late-launch expiry, or Parent cleanup
+  races ahead of durable Child reap.
+
+### 6. Tests Required
+
+- Focused race/vet for Child controller, activation, delegation, Runner,
+  Orchestrator and migration packages.
+- Restart matrix across enqueue, launch authority, launch, cascade, Runner
+  reap, durable completion and Parent cancel; assert zero second Child.
+- PostgreSQL 17 tenth-LOGIN least privilege, exact inventory, NULL/failure/
+  authority/mismatch/replay fences, atomic projection completion,
+  dump/restore and guarded clean down/up.
+- Activation, enabled preflight, Compose default-off/production-image-only,
+  credential absence, G21.0-G21.3 regression, Phase 0, standalone full and
+  expected local `ISOLATION_UNAVAILABLE`.
+- An older delegation-tail drill may peel `093` to reach the migration-087
+  guard, but it must reapply the current head before executing the current Go
+  Repository integration because `PendingReaps` requires
+  `agent_delegation_reap_inventory(integer)`. Peel `093` again only immediately
+  before the older down-guard assertion.
+
+### 7. Wrong vs Correct
+
+**Wrong:** restart selects a new Child key or completes a reap while an issued
+launch can still arrive.
+
+**Correct:** stable existing lineage -> wait authority/token expiry -> exact
+Child Runner absence -> atomic durable reap -> cleanup-only Parent cancel.

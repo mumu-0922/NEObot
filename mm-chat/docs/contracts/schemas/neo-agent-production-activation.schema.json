@@ -33,7 +33,7 @@
       ],
       "properties": {
         "gitCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-        "migrationHead": { "const": 92 },
+        "migrationHead": { "const": 93 },
         "runnerManifestSha256": { "$ref": "#/$defs/fingerprint" },
         "runnerBinarySha256": { "$ref": "#/$defs/fingerprint" },
         "operationsPolicySha256": { "$ref": "#/$defs/fingerprint" }

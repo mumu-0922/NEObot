@@ -25,7 +25,7 @@
       "pattern": "^[a-z][a-z0-9-]{0,63}$"
     },
     "migrationHead": {
-      "const": 92
+      "const": 93
     },
     "reviewWindowHours": {
       "type": "integer",

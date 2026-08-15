@@ -11,7 +11,7 @@
 | [Chat Tool Loop](./chat-tool-loop.md)               | G19 provider-normalized Tool rounds, three-state Search authority, Memory first-round routing, process persistence, approvals, and citation truth |
 | [MCP Tools](./mcp-tools.md)                         | Server-authoritative MCP API, grants/selections, native Tool continuation, transports, results, retention, and Plugin retirement |
 | [Assistant Store](./assistant-store.md)             | Server-owned prompt presets, LobeHub admission/fingerprints, revisions, persistence, and rollback boundaries |
-| [Agent Runtime](./agent-runtime.md) | Package-Skill admission, durable Run/Step/Attempt, Runner/Broker/delegation/Cron/learning, Agent Center, legacy cutover, G21.0 control, G21.1 Root, G21.2 Broker/Artifact, and G21.3 offline-approved Project CAS canaries |
+| [Agent Runtime](./agent-runtime.md) | Package-Skill admission, durable Run/Step/Attempt, Runner/Broker/delegation/Cron/learning, Agent Center, legacy cutover, G21.0 control, G21.1 Root, G21.2 Broker/Artifact, and G21.3 offline-approved Project CAS and G21.4 depth-one Child canaries |
 | [Direct chat attachments](./chat-attachments.md)    | Attachment-only messages, native images, bounded document extraction, provider context, and explicit failures       |
 | [Hosted media provider smoke](./provider-live-smoke.md) | Exact live-provider authorization, one-off credentials, explicit TTS voices, artifacts, and sanitized evidence    |
 | [Hosted TTS production](./hosted-tts-production.md) | Dedicated SiliconFlow Voice authority, exact activation, server-mode playback, per-user cache, and cleanup |

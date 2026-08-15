@@ -14,7 +14,10 @@ that reaches the durable Broker only through the Runner relay for five reviewed
 synthetic actions, including bounded Artifact publication, without enabling
 general or user-facing execution. G21.3 adds a fourth independently activated
 canary for one offline-approved synthetic Project compare-and-swap mutation;
-generic mutation, MCP writes and user Projects remain unavailable.
+generic mutation, MCP writes and user Projects remain unavailable. G21.4 adds
+a fifth, lifecycle-only caller that runs one synthetic Parent and one
+depth-one Child with an empty derived Registry, then proves durable Child-first
+reap and restart cleanup. Public delegation and depth two remain unavailable.
 
 ## Purpose and invariant
 
@@ -492,7 +495,7 @@ The G20.9 cutover:
    execution.
 
 G20.10 adds no migration or executable wiring. The current closure contract
-binds the immutable release, migration head `092`, Runner manifest/binary,
+binds the immutable release, migration head `093`, Runner manifest/binary,
 Runtime Bundle, target deployment
 and operations policy into one strict content-free closure record. The
 read-only evaluator requires all 16 live checks plus zero temporary evidence
@@ -635,6 +638,43 @@ Broker mutation, MCP write, Egress, Secret, delegation, Scheduler, Skill
 install and Learning switch remains false. Source, Compose and disposable
 PostgreSQL proofs do not activate the profile; this host remains
 `ISOLATION_UNAVAILABLE`.
+
+G21.4 adds `mm-chat-agent-runtime-child-canary` and caller identity
+`spiffe://neo-chat/agent-runtime-child-canary`. Its Runner policy contains
+only Probe/List/Reconcile and Launch/Heartbeat/Cancel; it has neither
+Prepare/Commit nor a Broker relay. The tenth LOGIN recursively inherits
+exactly `agent_orchestrator_runtime`, `agent_runner_control` and
+`agent_delegation_control`, with no owner membership, elevated attributes or
+direct table DML. The prior four caller policies and both relay routes remain
+unchanged.
+
+The strict plan fixes one synthetic user, model, Package Runtime, Parent and
+Child idempotency identity. The Parent Registry contains only
+`delegate_task/create` for one synthetic resource. The Child deliberately
+requests `delegate_task`, but its Grant has no capability and the server
+physically removes the forbidden Tool before Registry fingerprinting. The
+resulting depth-one Registry is empty. Subject, model, Package/Runtime,
+expiry, Grant and all four budget dimensions can only narrow; both Sandboxes
+remain rootless, read-only, capability-free, credential-free and
+`networkMode=none` with fixed argv.
+
+Migration `093_agent_child_canary_reap_transport` exposes a bounded,
+function-only pending reap inventory that joins the exact terminal Child
+Attempt to an optional Runner Sandbox and latest matching launch-authority
+expiry without returning a lease token. Successful completion waits out that
+authority and atomically terminalizes the exact Runner projection plus durable
+reap. Failure remains retryable; mismatch and replay fail closed. Down is
+blocked while a pending/failed reap or live depth-one Sandbox still depends on
+the bridge, and a clean down restores migration-087 behavior.
+
+Restart always resolves existing lineage before new work. A queued sole Child
+may continue from its exact live Parent Attempt; a lost live token waits for
+expiry, then Child cascade/reap finishes without another Child. Only after the
+Child is terminal, absent from Runner inventory and has no pending reap may an
+expired Parent generation be reacquired for cleanup and signed cancellation.
+Health requires one terminal Parent/Child lineage, zero pending reaps and zero
+Runner residue. The separate Compose profile and both Child/delegation flags
+default off, and this host remains `ISOLATION_UNAVAILABLE`.
 
 The current `/v1/code/executions` remains fail closed. Agent Runtime must not use
 that placeholder route as an isolation shortcut.

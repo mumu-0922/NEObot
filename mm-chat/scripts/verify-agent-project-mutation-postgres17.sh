@@ -77,12 +77,13 @@ runtime_url="$(runtime_url_for "${container_name}")"
 (cd "${backend_dir}" && go build -buildvcs=false -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" "$@"; }
 
-log "applying and replaying migrations through schema head 092"
+log "applying and replaying migrations through schema head 093"
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 086_agent_broker_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 091_agent_artifact_publication" "${work_dir}/fresh.log"
 grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/fresh.log"
-[[ "$(psql_command "${container_name}" 'SELECT max(version) FROM schema_migrations')" == "92" ]]
+grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/fresh.log"
+[[ "$(psql_command "${container_name}" 'SELECT max(version) FROM schema_migrations')" == "93" ]]
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
@@ -179,6 +180,8 @@ restore_counts="$(psql_command "${restore_container_name}" "SELECT concat_ws(','
 [[ "${source_counts}" == "${restore_counts}" ]]
 
 log "proving populated migration 092 cannot be peeled"
+run_migrate down >"${work_dir}/peel-093.log" 2>&1
+grep -Fq "down 093_agent_child_canary_reap_transport" "${work_dir}/peel-093.log"
 set +e
 run_migrate down >"${work_dir}/guard.log" 2>&1
 guard_status=$?
@@ -200,7 +203,8 @@ grep -Fq "down 092_agent_project_mutation_canary" "${work_dir}/down-092.log"
 [[ "$(psql_command "${container_name}" 'SELECT max(version) FROM schema_migrations')" == "91" ]]
 run_migrate up >"${work_dir}/reup-092.log" 2>&1
 grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/reup-092.log"
+grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/reup-092.log"
 run_migrate up >"${work_dir}/final.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final.log"
-[[ "$(psql_command "${container_name}" 'SELECT max(version) FROM schema_migrations')" == "92" ]]
+[[ "$(psql_command "${container_name}" 'SELECT max(version) FROM schema_migrations')" == "93" ]]
 log "passed (fresh/replay, ninth LOGIN, CAS/status/cleanup, late fences, dump/restore, guarded down/up)"

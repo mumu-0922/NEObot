@@ -639,6 +639,37 @@ func TestHTTPHandlerEnforcesCallerMethodPolicy(t *testing.T) {
 	}
 }
 
+func TestHTTPHandlerChildCallerHasLifecycleOnlyAuthority(t *testing.T) {
+	fixture := newServiceFixture(t, true)
+	childIdentity := "spiffe://neo-chat/agent-runtime-child-canary"
+	handler, err := NewHTTPHandlerWithPolicies(fixture.service, 15*time.Second,
+		[]CallerPolicy{{Identity: childIdentity, Methods: []string{MethodProbe, MethodList,
+			MethodReconcile, MethodLaunch, MethodHeartbeat, MethodCancel}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := fixture.service.now()
+	arguments := json.RawMessage(`{"path":"project/a"}`)
+	prepareBody := PrepareRequest{Attempt: testAttempt(), SnapshotFingerprint: testFingerprint('6'),
+		GrantID: "grant_0123456789abcdef", GrantFingerprint: testFingerprint('5'),
+		RegistryFingerprint: testFingerprint('8'), ToolIdentity: "workspace_read",
+		Capability: "workspace.read", Action: "read", Resource: "project/a", Arguments: arguments,
+		ArgumentsFingerprint: fingerprintBytes("neo-effect-arguments-v1", arguments), TTLSeconds: 600}
+	requestID, nonce := "rpc_eeeeeeeeeeeeeeee", strings.Repeat("s", 32)
+	prepareBody.Authority = signedPrepareAuthority(t, fixture.private, requestID, nonce, now, prepareBody)
+	prepare := mustEnvelope(t, MethodPrepare, requestID, now, nonce, prepareBody)
+	request := httptest.NewRequest(http.MethodPost, RPCPath(), bytes.NewReader(prepare))
+	request.Header.Set("Content-Type", "application/json")
+	request.TLS = &tls.ConnectionState{VerifiedChains: [][]*x509.Certificate{{{
+		Subject: pkix.Name{CommonName: childIdentity},
+	}}}}
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusForbidden || !strings.Contains(recorder.Body.String(), ErrorAuthFailed) {
+		t.Fatalf("Child Prepare policy=%d %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestRPCClientUsesTLS13MutualAuthAndBindsResponse(t *testing.T) {
 	fixture := newServiceFixture(t, true)
 	serverCertificate, clientCertificate, caPool, files := rpcTLSFixture(t)

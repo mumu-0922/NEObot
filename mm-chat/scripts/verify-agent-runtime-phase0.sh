@@ -126,6 +126,23 @@ required_agent_paths=(
   "${project_dir}/scripts/verify-agent-project-canary-preflight.sh"
   "${project_dir}/scripts/verify-agent-project-mutation-postgres17.sh"
   "${project_dir}/scripts/verify-agent-runtime-g21-3.sh"
+  "${project_dir}/backend/cmd/agent-runtime-child-canary/main.go"
+  "${project_dir}/backend/internal/agentactivation/child_canary.go"
+  "${project_dir}/backend/internal/agentchildcanary/plan.go"
+  "${project_dir}/backend/internal/agentchildcanary/reaper.go"
+  "${project_dir}/backend/internal/agentchildcanary/service.go"
+  "${project_dir}/backend/migrations/093_agent_child_canary_reap_transport.up.sql"
+  "${project_dir}/backend/migrations/093_agent_child_canary_reap_transport.down.sql"
+  "${project_dir}/docs/contracts/schemas/neo-agent-child-run-canary-activation.schema.json"
+  "${project_dir}/docs/contracts/schemas/neo-agent-child-run-canary-plan.schema.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-child-run-canary-activation.valid.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-child-run-canary-activation.invalid.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-child-run-canary-plan.valid.json"
+  "${project_dir}/docs/contracts/fixtures/agent-runtime/neo-agent-child-run-canary-plan.invalid.json"
+  "${project_dir}/scripts/verify-agent-child-canary-activation.sh"
+  "${project_dir}/scripts/verify-agent-child-canary-preflight.sh"
+  "${project_dir}/scripts/verify-agent-child-canary-postgres17.sh"
+  "${project_dir}/scripts/verify-agent-runtime-g21-4.sh"
 )
 for path in "${required_agent_paths[@]}"; do
   if [[ ! -s "${path}" ]]; then
@@ -180,6 +197,12 @@ grep -Fq "CREATE FUNCTION agent_project_mutation_cleanup(" \
   "${project_dir}/backend/migrations/092_agent_project_mutation_canary.up.sql"
 grep -Fq "AGENT_PROJECT_MUTATION_DOWN_REQUIRES_EMPTY" \
   "${project_dir}/backend/migrations/092_agent_project_mutation_canary.down.sql"
+grep -Fq "CREATE FUNCTION agent_delegation_reap_inventory(" \
+  "${project_dir}/backend/migrations/093_agent_child_canary_reap_transport.up.sql"
+grep -Fq "AGENT_REAP_AUTHORITY_ACTIVE" \
+  "${project_dir}/backend/migrations/093_agent_child_canary_reap_transport.up.sql"
+grep -Fq "AGENT_CHILD_REAP_TRANSPORT_DOWN_REQUIRES_CLEAN" \
+  "${project_dir}/backend/migrations/093_agent_child_canary_reap_transport.down.sql"
 
 schema_dir="${project_dir}/docs/contracts/schemas"
 fixture_dir="${project_dir}/docs/contracts/fixtures/agent-runtime"
@@ -202,9 +225,14 @@ bash -n "${project_dir}/scripts/verify-agent-project-canary-activation.sh"
 bash -n "${project_dir}/scripts/verify-agent-project-canary-preflight.sh"
 bash -n "${project_dir}/scripts/verify-agent-project-mutation-postgres17.sh"
 bash -n "${project_dir}/scripts/verify-agent-runtime-g21-3.sh"
+bash -n "${project_dir}/scripts/verify-agent-child-canary-activation.sh"
+bash -n "${project_dir}/scripts/verify-agent-child-canary-preflight.sh"
+bash -n "${project_dir}/scripts/verify-agent-child-canary-postgres17.sh"
+bash -n "${project_dir}/scripts/verify-agent-runtime-g21-4.sh"
 
 bash "${project_dir}/scripts/verify-agent-runtime-g21-2.sh"
 bash "${project_dir}/scripts/verify-agent-project-canary-activation.sh"
+bash "${project_dir}/scripts/verify-agent-child-canary-activation.sh"
 
 isolated_root="$(mktemp -d)"
 cleanup() {
@@ -235,6 +263,8 @@ cp "${project_dir}/backend/migrations/090_agent_product_shadow.up.sql" \
   "${project_dir}/backend/migrations/091_agent_artifact_publication.down.sql" \
   "${project_dir}/backend/migrations/092_agent_project_mutation_canary.up.sql" \
   "${project_dir}/backend/migrations/092_agent_project_mutation_canary.down.sql" \
+  "${project_dir}/backend/migrations/093_agent_child_canary_reap_transport.up.sql" \
+  "${project_dir}/backend/migrations/093_agent_child_canary_reap_transport.down.sql" \
   "${isolated_root}/mm-chat/backend/migrations/"
 cp "${project_dir}/frontend/src/store/storage/legacySkillRetirement.ts" \
   "${isolated_root}/mm-chat/frontend/src/store/storage/"

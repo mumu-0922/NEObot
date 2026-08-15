@@ -71,6 +71,23 @@ func TestBuildRegistryRejectsChildForbiddenCapabilityAlias(t *testing.T) {
 	}
 }
 
+func TestBuildRegistryPhysicallyRemovesRequestedDelegationFromEmptyChildGrant(t *testing.T) {
+	now := time.Date(2026, 8, 15, 2, 0, 0, 0, time.UTC)
+	grant := testGrantAt(now)
+	grant.Run = RunBinding{RunID: "run_fedcba9876543210", ParentRunID: grant.Run.RunID, Depth: 1}
+	grant.GrantID = "grant_fedcba9876543210"
+	grant.Capabilities = []Capability{}
+	grant.Budget.MaxToolCalls = 1
+	registry, err := BuildRegistry([]ToolDefinition{{Identity: "delegate_task", Capability: "delegate_task",
+		Actions: []string{"create"}, Classification: ClassificationMutable}}, []string{"delegate_task"}, grant, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if registry.Depth != 1 || len(registry.Tools) != 0 || registry.Fingerprint == "" {
+		t.Fatalf("child Registry = %#v", registry)
+	}
+}
+
 func TestBuildRegistryRejectsUnknownUnauthorizedAndExhaustedRequests(t *testing.T) {
 	now := time.Date(2026, 8, 13, 1, 0, 0, 0, time.UTC)
 	grant := testGrantAt(now)

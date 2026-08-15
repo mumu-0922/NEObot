@@ -10327,3 +10327,39 @@ included 909 Frontend tests and 1,906 passing RAG tests with seven declared
 integration skips. The development host still reports
 `ISOLATION_UNAVAILABLE`; no live credential, exact-host acceptance evidence or
 production Runtime promotion was produced.
+
+## 2026-08-15 — G21.4 depth-one Child Agent canary completed
+
+G21.4 added a default-off, independently identified Child controller and
+migration `093_agent_child_canary_reap_transport`. One synthetic depth-zero
+Parent may launch exactly one synthetic depth-one Child from its exact live
+Attempt. Subject, model, package/runtime, expiry, Grant and four-dimensional
+budget remain strict subsets; the Child deliberately requests
+`delegate_task`, but server derivation physically removes it before Registry
+fingerprinting and leaves the Child Registry empty. Depth two, a second Child,
+alias rebinding, stale Attempts and every authority widening fail before Runner
+launch.
+
+The tenth LOGIN inherits exactly the Orchestrator, Runner and delegation
+function roles. Its distinct mTLS Runner caller receives lifecycle methods only
+and no Prepare/Commit relay. PostgreSQL now exposes function-only pending reap
+inventory with exact Step/Attempt and optional Sandbox projection, fences late
+launches through the latest authority expiry, and atomically terminalizes the
+matching Runner projection with successful durable reap completion. Dirty down
+is guarded; clean down restores migration-087 completion behavior. Restart
+coverage proved monotonic recovery before and after enqueue, launch authority,
+launch, cascade, Runner reap, durable completion and Parent cancellation: no
+second Child is created, and terminal health requires zero pending reaps and an
+empty Runner inventory.
+
+The G21.4 activation, enabled-preflight, focused race/vet, PostgreSQL 17,
+Compose credential-absence, restart and late-launch gates passed. Every older
+guarded PostgreSQL migration drill was replayed through schema head `093`; the
+delegation drill now reapplies `093` before exercising the current Repository,
+and the legacy cutover drill refreshes its dynamically assigned database port
+after container restart. G21.0-G21.3 regressions, Phase 0, all Backend tests and
+vet, and the full standalone clean-copy gate passed. The full gate included 909
+Frontend tests and 1,906 passing RAG tests with seven declared integration
+skips. This development host remains `ISOLATION_UNAVAILABLE`; no exact-host
+acceptance, live activation evidence, public delegation or production Runtime
+promotion was produced.

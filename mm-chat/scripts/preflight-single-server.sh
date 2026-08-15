@@ -325,6 +325,7 @@ agent_flags = (
     "AGENT_ROOT_RUN_CANARY_ENABLED",
     "AGENT_BROKER_ARTIFACT_CANARY_ENABLED",
     "AGENT_PROJECT_MUTATION_CANARY_ENABLED",
+    "AGENT_CHILD_CANARY_ENABLED",
     "AGENT_RUNTIME_ENABLED",
     "AGENT_SCHEDULER_ENABLED",
     "AGENT_SKILL_INSTALL_ENABLED",
@@ -336,9 +337,18 @@ agent_flags = (
 for key in agent_flags:
     if values.get(key) not in {"true", "false"}:
         fail(f"{key} must be true or false")
-for key in agent_flags[4:]:
+for key in (
+    "AGENT_RUNTIME_ENABLED",
+    "AGENT_SCHEDULER_ENABLED",
+    "AGENT_SKILL_INSTALL_ENABLED",
+    "AGENT_LEARNING_ENABLED",
+    "AGENT_BROKER_READ_ONLY_ENABLED",
+    "AGENT_BROKER_MUTATION_ENABLED",
+):
     if values[key] != "false":
-        fail(f"{key} must remain false through G21.3")
+        fail(f"{key} must remain false through G21.4")
+if values["AGENT_DELEGATION_ENABLED"] != values["AGENT_CHILD_CANARY_ENABLED"]:
+    fail("AGENT_DELEGATION_ENABLED must match the dedicated G21.4 Child canary flag")
 
 required = (
     "FRONTEND_IMAGE",
@@ -565,6 +575,7 @@ agent_broker_canary_enabled = (
 agent_project_canary_enabled = (
     values["AGENT_PROJECT_MUTATION_CANARY_ENABLED"] == "true"
 )
+agent_child_canary_enabled = values["AGENT_CHILD_CANARY_ENABLED"] == "true"
 agent_control_keys = (
     "AGENT_RUNNER_DATABASE_URL",
     "AGENT_RUNNER_URL",
@@ -1500,7 +1511,7 @@ if agent_project_canary_enabled:
         or approval_payload.get("decision") != "approved"
         or approval_payload.get("release") != {
             "gitCommit": values["AGENT_PROJECT_CANARY_RELEASE_GIT_COMMIT"],
-            "migrationHead": 92,
+            "migrationHead": 93,
         }
         or approval_payload.get("target") != {
             "deploymentFingerprint": project_plan.get("targetFingerprint"),
@@ -1581,6 +1592,313 @@ if agent_project_canary_enabled:
     ):
         fail("AGENT_PROJECT_CANARY_ACTIVATION_SOURCE is not READY for G21.3")
 
+agent_child_canary_keys = (
+    "AGENT_CHILD_CANARY_DATABASE_URL",
+    "AGENT_CHILD_CANARY_RUNNER_URL",
+    "AGENT_CHILD_CANARY_RUNNER_ID",
+    "AGENT_CHILD_CANARY_SERVER_NAME",
+    "AGENT_CHILD_CANARY_CLIENT_IDENTITY",
+    "AGENT_CHILD_CANARY_CLIENT_CERT_SOURCE",
+    "AGENT_CHILD_CANARY_CLIENT_KEY_SOURCE",
+    "AGENT_CHILD_CANARY_SERVER_CA_SOURCE",
+    "AGENT_CHILD_CANARY_RELEASE_MANIFEST_SOURCE",
+    "AGENT_CHILD_CANARY_PRODUCTION_POLICY_SOURCE",
+    "AGENT_CHILD_CANARY_ACTIVATION_SOURCE",
+    "AGENT_CHILD_CANARY_PLAN_SOURCE",
+    "AGENT_CHILD_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE",
+    "AGENT_CHILD_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE",
+    "AGENT_CHILD_CANARY_RELEASE_GIT_COMMIT",
+    "AGENT_CHILD_CANARY_POLL_INTERVAL",
+    "AGENT_CHILD_CANARY_RPC_TIMEOUT",
+    "AGENT_CHILD_CANARY_AUTHORITY_TTL",
+    "AGENT_CHILD_CANARY_RECONCILE_BATCH_SIZE",
+)
+if agent_child_canary_enabled:
+    if not (
+        agent_control_enabled
+        and agent_root_canary_enabled
+        and agent_broker_canary_enabled
+        and agent_project_canary_enabled
+    ):
+        fail("AGENT_CHILD_CANARY_ENABLED requires G21.0-G21.3 enabled")
+    for key in agent_child_canary_keys:
+        if not values.get(key, "").strip():
+            fail(f"{key} is required when the Child canary is enabled")
+        if placeholder.search(values[key]):
+            fail(f"{key} still contains a placeholder")
+    for key in values:
+        if key.startswith("AGENT_CHILD_CANARY_") and any(
+            marker in key
+            for marker in ("S3", "MCP", "PROVIDER", "VAULT", "REDIS", "RELAY", "EGRESS", "SECRET")
+        ):
+            fail("Child canary must not receive Broker, relay, Egress, Secret, MCP, Provider, vault or Redis configuration")
+
+    try:
+        child_runner_url = urlsplit(values["AGENT_CHILD_CANARY_RUNNER_URL"])
+        child_runner_ip = ipaddress.ip_address(child_runner_url.hostname or "")
+        child_runner_port = child_runner_url.port
+    except ValueError:
+        fail("AGENT_CHILD_CANARY_RUNNER_URL must be the exact private HTTPS Runner RPC URL")
+    if (
+        child_runner_url.scheme != "https"
+        or child_runner_port is None
+        or not any(
+            child_runner_ip in network
+            for network in private_networks
+            if child_runner_ip.version == network.version
+        )
+        or child_runner_url.username is not None
+        or child_runner_url.password is not None
+        or child_runner_url.path != "/internal/neo-runner/v1/rpc"
+        or child_runner_url.query
+        or child_runner_url.fragment
+    ):
+        fail("AGENT_CHILD_CANARY_RUNNER_URL must be the exact private HTTPS Runner RPC URL")
+    for key in ("AGENT_CHILD_CANARY_RUNNER_ID", "AGENT_CHILD_CANARY_SERVER_NAME"):
+        if identity_pattern.fullmatch(values[key]) is None:
+            fail(f"{key} is invalid")
+    prior_identities = {
+        values["AGENT_RUNNER_CLIENT_IDENTITY"],
+        values["AGENT_ROOT_CANARY_CLIENT_IDENTITY"],
+        values["AGENT_BROKER_CANARY_CLIENT_IDENTITY"],
+        values["AGENT_BROKER_CANARY_RUNNER_RELAY_IDENTITY"],
+        values["AGENT_PROJECT_CANARY_CLIENT_IDENTITY"],
+        values["AGENT_PROJECT_CANARY_RUNNER_RELAY_IDENTITY"],
+        values["AGENT_CHILD_CANARY_CLIENT_IDENTITY"],
+    }
+    if (
+        values["AGENT_CHILD_CANARY_CLIENT_IDENTITY"]
+        != "spiffe://neo-chat/agent-runtime-child-canary"
+        or len(prior_identities) != 7
+    ):
+        fail("G21.0-G21.4 caller and relay identities must be exact and distinct")
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", values["AGENT_CHILD_CANARY_RELEASE_GIT_COMMIT"])
+        is None
+        or values["AGENT_CHILD_CANARY_RELEASE_GIT_COMMIT"] == "0" * 40
+    ):
+        fail("AGENT_CHILD_CANARY_RELEASE_GIT_COMMIT must be a non-placeholder lowercase Git commit")
+    child_poll = parse_simple_duration_seconds(
+        "AGENT_CHILD_CANARY_POLL_INTERVAL", values["AGENT_CHILD_CANARY_POLL_INTERVAL"]
+    )
+    child_rpc = parse_simple_duration_seconds(
+        "AGENT_CHILD_CANARY_RPC_TIMEOUT", values["AGENT_CHILD_CANARY_RPC_TIMEOUT"]
+    )
+    child_authority_ttl = parse_simple_duration_seconds(
+        "AGENT_CHILD_CANARY_AUTHORITY_TTL", values["AGENT_CHILD_CANARY_AUTHORITY_TTL"]
+    )
+    if not 1 <= child_poll <= 60:
+        fail("AGENT_CHILD_CANARY_POLL_INTERVAL must be between 1s and 1m")
+    if not 1 <= child_rpc <= 10:
+        fail("AGENT_CHILD_CANARY_RPC_TIMEOUT must be between 1s and 10s")
+    if not 10 <= child_authority_ttl <= 15:
+        fail("AGENT_CHILD_CANARY_AUTHORITY_TTL must be between 10s and 15s")
+    if (
+        re.fullmatch(r"[1-9][0-9]{0,3}", values["AGENT_CHILD_CANARY_RECONCILE_BATCH_SIZE"])
+        is None
+        or not 1 <= int(values["AGENT_CHILD_CANARY_RECONCILE_BATCH_SIZE"]) <= 1000
+    ):
+        fail("AGENT_CHILD_CANARY_RECONCILE_BATCH_SIZE must be between 1 and 1000")
+
+    child_files = {
+        key: resolve_secure_file(
+            values[key], key,
+            private=(key != "AGENT_CHILD_CANARY_PRODUCTION_POLICY_SOURCE"),
+        )
+        for key in (
+            "AGENT_CHILD_CANARY_CLIENT_CERT_SOURCE",
+            "AGENT_CHILD_CANARY_CLIENT_KEY_SOURCE",
+            "AGENT_CHILD_CANARY_SERVER_CA_SOURCE",
+            "AGENT_CHILD_CANARY_RELEASE_MANIFEST_SOURCE",
+            "AGENT_CHILD_CANARY_PRODUCTION_POLICY_SOURCE",
+            "AGENT_CHILD_CANARY_ACTIVATION_SOURCE",
+            "AGENT_CHILD_CANARY_PLAN_SOURCE",
+            "AGENT_CHILD_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE",
+            "AGENT_CHILD_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE",
+        )
+    }
+    if len(set(child_files.values())) != len(child_files):
+        fail("Child canary TLS, evidence, plan and authority files must be distinct")
+    child_sensitive_files = {
+        child_files[key]
+        for key in child_files
+        if key != "AGENT_CHILD_CANARY_PRODUCTION_POLICY_SOURCE"
+    }
+    prior_sensitive_files = {
+        *(
+            canary_files[key]
+            for key in canary_files
+            if key != "AGENT_ROOT_CANARY_PRODUCTION_POLICY_SOURCE"
+        ),
+        *(
+            broker_files[key]
+            for key in broker_files
+            if key != "AGENT_BROKER_CANARY_PRODUCTION_POLICY_SOURCE"
+        ),
+        *(
+            project_files[key]
+            for key in project_files
+            if key != "AGENT_PROJECT_CANARY_PRODUCTION_POLICY_SOURCE"
+        ),
+        client_certificate,
+        client_key,
+        server_ca,
+        release_manifest,
+        activation_record,
+    }
+    if child_sensitive_files & prior_sensitive_files:
+        fail("Child canary files must not reuse prior activation, authority or TLS material")
+    try:
+        tls_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        tls_context.load_cert_chain(
+            child_files["AGENT_CHILD_CANARY_CLIENT_CERT_SOURCE"],
+            child_files["AGENT_CHILD_CANARY_CLIENT_KEY_SOURCE"],
+        )
+        ssl.create_default_context(cafile=child_files["AGENT_CHILD_CANARY_SERVER_CA_SOURCE"])
+        decoded_certificate = ssl._ssl._test_decode_cert(
+            str(child_files["AGENT_CHILD_CANARY_CLIENT_CERT_SOURCE"])
+        )
+    except (OSError, ssl.SSLError, ValueError):
+        fail("Child canary mTLS certificate/key material is invalid or mismatched")
+    common_names = [
+        value
+        for relative_name in decoded_certificate.get("subject", ())
+        for key, value in relative_name
+        if key == "commonName"
+    ]
+    if common_names != [values["AGENT_CHILD_CANARY_CLIENT_IDENTITY"]]:
+        fail("Child canary client certificate identity does not match configuration")
+    try:
+        authority_private_text = child_files["AGENT_CHILD_CANARY_AUTHORITY_PRIVATE_KEY_SOURCE"].read_text().strip()
+        authority_public_text = child_files["AGENT_CHILD_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE"].read_text().strip()
+        authority_private_raw = base64.urlsafe_b64decode(
+            authority_private_text + "=" * (-len(authority_private_text) % 4)
+        )
+        authority_public_raw = base64.urlsafe_b64decode(
+            authority_public_text + "=" * (-len(authority_public_text) % 4)
+        )
+    except (OSError, UnicodeError, ValueError, binascii.Error):
+        fail("Child canary authority key material is invalid")
+    if (
+        len(authority_private_raw) != 64
+        or len(authority_public_raw) != 32
+        or authority_private_raw[32:] != authority_public_raw
+    ):
+        fail("Child canary authority private/public keys do not match")
+
+    try:
+        child_plan = json.loads(
+            child_files["AGENT_CHILD_CANARY_PLAN_SOURCE"].read_text(),
+            object_pairs_hook=unique_object,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, DuplicateKey):
+        fail("AGENT_CHILD_CANARY_PLAN_SOURCE is invalid")
+    plan_keys = {
+        "schemaVersion", "synthetic", "userId", "projectId", "assistantId", "model",
+        "packageFingerprint", "runtimeBundleFingerprint", "parentIdempotencyKey",
+        "childIdempotencyKey", "parentStepKind", "childStepKind", "parentGrantId",
+        "delegationResource", "grantWindowSeconds", "childExpirySeconds", "parentBudget",
+        "childBudget", "toolCatalog", "parentRequestedTools", "childRequestedTools",
+        "parentSandbox", "childSandbox", "parentArgv", "childArgv", "parentLeaseSeconds",
+        "childLeaseSeconds",
+    }
+    budget_keys = {"maxWallSeconds", "maxModelTokens", "maxToolCalls", "maxArtifactBytes"}
+    sandbox_keys = {
+        "runtimeBundleFingerprint", "packageFingerprint", "image", "uid", "gid",
+        "rootfsReadOnly", "noNewPrivileges", "capabilities", "seccompProfileFingerprint",
+        "networkMode", "workspaceSnapshotId", "workspaceFingerprint", "resources",
+    }
+    resource_keys = {"cpuMillis", "memoryMiB", "pids", "wallSeconds", "outputBytes", "scratchBytes"}
+    parent_budget = child_plan.get("parentBudget", {}) if isinstance(child_plan, dict) else {}
+    child_budget = child_plan.get("childBudget", {}) if isinstance(child_plan, dict) else {}
+    parent_sandbox = child_plan.get("parentSandbox", {}) if isinstance(child_plan, dict) else {}
+    child_sandbox = child_plan.get("childSandbox", {}) if isinstance(child_plan, dict) else {}
+    parent_resources = parent_sandbox.get("resources", {}) if isinstance(parent_sandbox, dict) else {}
+    child_resources = child_sandbox.get("resources", {}) if isinstance(child_sandbox, dict) else {}
+    exact_tool = [{
+        "identity": "delegate_task", "capability": "delegate_task", "actions": ["create"],
+        "classification": "mutable", "idempotent": False,
+    }]
+    if (
+        not isinstance(child_plan, dict)
+        or set(child_plan) != plan_keys
+        or child_plan.get("schemaVersion") != "neo.agent-child-run-canary-plan/v1"
+        or child_plan.get("synthetic") is not True
+        or child_plan.get("parentStepKind") != "child_canary_parent"
+        or child_plan.get("childStepKind") != "child_canary_work"
+        or child_plan.get("toolCatalog") != exact_tool
+        or child_plan.get("parentRequestedTools") != ["delegate_task"]
+        or child_plan.get("childRequestedTools") != ["delegate_task"]
+        or child_plan.get("parentArgv") != ["/opt/neo/bin/child-canary-parent", "--wait-for-cancel"]
+        or child_plan.get("childArgv") != ["/opt/neo/bin/child-canary-child", "--wait-for-cancel"]
+        or not isinstance(parent_budget, dict)
+        or not isinstance(child_budget, dict)
+        or set(parent_budget) != budget_keys
+        or set(child_budget) != budget_keys
+        or any(
+            not isinstance(parent_budget[key], int)
+            or not isinstance(child_budget[key], int)
+            or not 0 < child_budget[key] < parent_budget[key]
+            for key in budget_keys
+        )
+        or not isinstance(parent_sandbox, dict)
+        or not isinstance(child_sandbox, dict)
+        or set(parent_sandbox) != sandbox_keys
+        or set(child_sandbox) != sandbox_keys
+        or any(
+            sandbox.get("runtimeBundleFingerprint") != child_plan.get("runtimeBundleFingerprint")
+            or sandbox.get("packageFingerprint") != child_plan.get("packageFingerprint")
+            or sandbox.get("rootfsReadOnly") is not True
+            or sandbox.get("noNewPrivileges") is not True
+            or sandbox.get("capabilities") != []
+            or sandbox.get("networkMode") != "none"
+            for sandbox in (parent_sandbox, child_sandbox)
+        )
+        or not isinstance(parent_resources, dict)
+        or not isinstance(child_resources, dict)
+        or set(parent_resources) != resource_keys
+        or set(child_resources) != resource_keys
+        or any(
+            not isinstance(parent_resources[key], int)
+            or not isinstance(child_resources[key], int)
+            or child_resources[key] > parent_resources[key]
+            for key in resource_keys
+        )
+        or child_resources.get("wallSeconds") != child_budget.get("maxWallSeconds")
+        or parent_resources.get("wallSeconds") != parent_budget.get("maxWallSeconds")
+    ):
+        fail("AGENT_CHILD_CANARY_PLAN_SOURCE is not the strict one-Parent/one-Child plan")
+
+    evaluator = Path(sys.argv[2]) / "scripts/evaluate-agent-production-activation.py"
+    try:
+        decision = subprocess.run(
+            [
+                sys.executable, str(evaluator),
+                "--record", str(child_files["AGENT_CHILD_CANARY_ACTIVATION_SOURCE"]),
+                "--policy", str(child_files["AGENT_CHILD_CANARY_PRODUCTION_POLICY_SOURCE"]),
+                "--release-manifest", str(child_files["AGENT_CHILD_CANARY_RELEASE_MANIFEST_SOURCE"]),
+                "--client-certificate", str(child_files["AGENT_CHILD_CANARY_CLIENT_CERT_SOURCE"]),
+                "--server-ca", str(child_files["AGENT_CHILD_CANARY_SERVER_CA_SOURCE"]),
+                "--canary-plan", str(child_files["AGENT_CHILD_CANARY_PLAN_SOURCE"]),
+                "--authority-public-key", str(child_files["AGENT_CHILD_CANARY_AUTHORITY_PUBLIC_KEY_SOURCE"]),
+                "--endpoint", values["AGENT_CHILD_CANARY_RUNNER_URL"],
+                "--runner-id", values["AGENT_CHILD_CANARY_RUNNER_ID"],
+                "--server-name", values["AGENT_CHILD_CANARY_SERVER_NAME"],
+                "--caller-identity", values["AGENT_CHILD_CANARY_CLIENT_IDENTITY"],
+                "--release-commit", values["AGENT_CHILD_CANARY_RELEASE_GIT_COMMIT"],
+            ],
+            check=False, capture_output=True, text=True, timeout=10,
+        )
+        decision_payload = json.loads(decision.stdout)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        fail("Child canary activation evaluator failed")
+    if (
+        decision.returncode != 0
+        or decision_payload.get("verdict") != "ACTIVATION_READY"
+        or decision_payload.get("reasonCode") != "DEPTH_ONE_CHILD_CANARY_GATES_PASSED"
+    ):
+        fail("AGENT_CHILD_CANARY_ACTIVATION_SOURCE is not READY for G21.4")
+
 
 marketplace_timeout = parse_simple_duration_seconds(
     "MCP_MARKETPLACE_TIMEOUT", values["MCP_MARKETPLACE_TIMEOUT"]
@@ -1609,6 +1927,7 @@ for key in (
     *(("AGENT_ROOT_CANARY_DATABASE_URL",) if agent_root_canary_enabled else ()),
     *(("AGENT_BROKER_CANARY_DATABASE_URL",) if agent_broker_canary_enabled else ()),
     *(("AGENT_PROJECT_CANARY_DATABASE_URL",) if agent_project_canary_enabled else ()),
+    *(("AGENT_CHILD_CANARY_DATABASE_URL",) if agent_child_canary_enabled else ()),
 ):
     try:
         parsed = urlsplit(values[key])
@@ -1640,7 +1959,7 @@ for key, parsed in database_urls.items():
 
 database_users = [unquote(parsed.username or "") for parsed in database_urls.values()]
 if len(set(database_users)) != len(database_users):
-    fail("migration, API, workers, Agent control, Root, Broker, and Project canaries must use distinct database principals")
+    fail("migration, API, workers, Agent control, Root, Broker, Project, and Child canaries must use distinct database principals")
 
 database_passwords = [
     unquote(parsed.password or "") for parsed in database_urls.values()

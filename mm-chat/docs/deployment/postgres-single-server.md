@@ -397,6 +397,36 @@ After live Knowledge writes, prefer a forward fix or a verified pre-migration
 restore rather than dropping authoritative Documents, Consent history, Jobs,
 or Outbox events.
 
+### G21.4 Child canary principal and migration head
+
+Migration head `093` adds no general Runtime table. It grants the existing
+`agent_delegation_owner` the minimum Runner projection access needed inside two
+`SECURITY DEFINER` functions: bounded reap inventory and atomic successful reap
+completion. `agent_delegation_control` receives EXECUTE; application, effect
+and unrelated Runner roles do not. A successful reap rejects active launch
+authority and mismatched Sandbox identity before terminalizing the exact
+Runner projection and durable reap. Failed completion remains retryable.
+
+Provision `agent_child_canary_app` as the tenth LOGIN only on an approved
+G21.4 host. Its recursive inherited roles must be exactly:
+
+```text
+agent_delegation_control
+agent_orchestrator_runtime
+agent_runner_control
+```
+
+Require LOGIN+INHERIT, deny superuser/createdb/createrole/replication/bypassrls,
+deny every owner membership and direct table INSERT/UPDATE/DELETE. Store its
+password only in the protected deployment env. The development example is a
+placeholder and the profile defaults off.
+
+Normal rollback keeps migration `093` and stops the Child profile. A disposable
+down rehearsal must first prove zero pending/failed reap and no nonterminal
+depth-one Runner Sandbox. Clean down restores migration-087 completion behavior;
+never edit migration `087` or delete a reap to bypass the guard. Verify with
+`scripts/verify-agent-child-canary-postgres17.sh`.
+
 The guarded `010.down` removes only the API grants introduced by `010`. It
 retains `go_api_runtime` and the capability needed by the rolled-back API at
 schema `009`, so the API login remains least-privilege after application

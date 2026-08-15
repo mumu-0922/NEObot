@@ -38,6 +38,8 @@ SCHEMA_NAMES = (
     "neo-agent-project-mutation-canary-activation",
     "neo-agent-project-mutation-canary-plan",
     "neo-agent-project-mutation-approval",
+    "neo-agent-child-run-canary-activation",
+    "neo-agent-child-run-canary-plan",
 )
 JsonObject = dict[str, Any]
 
@@ -165,6 +167,8 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
     project_activation = instances["neo-agent-project-mutation-canary-activation"]
     project_plan = instances["neo-agent-project-mutation-canary-plan"]
     project_approval = instances["neo-agent-project-mutation-approval"]
+    child_activation = instances["neo-agent-child-run-canary-activation"]
+    child_plan = instances["neo-agent-child-run-canary-plan"]
 
     check_fingerprint_bindings(grant, launch)
     require_equal(
@@ -323,8 +327,8 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
         )
     action = project_plan["action"]
     approval = project_approval["payload"]
-    if project_activation["release"]["migrationHead"] != 92 or approval["release"]["migrationHead"] != 92:
-        raise VerificationError("G21.3 contracts do not bind migration head 092")
+    if project_activation["release"]["migrationHead"] != 93 or approval["release"]["migrationHead"] != 93:
+        raise VerificationError("G21.3 contracts do not bind migration head 093")
     if approval["request"] != {
         "callerIdentity": project_activation["wiring"]["callerIdentity"],
         "requestIdentity": action["requestIdentity"],
@@ -343,6 +347,53 @@ def check_cross_contracts(instances: dict[str, dict[str, Any]]) -> None:
     }
     if approval["action"] != expected_action:
         raise VerificationError("G21.3 approval action does not bind the exact mutation")
+
+    if child_activation["release"]["migrationHead"] != 93:
+        raise VerificationError("G21.4 activation does not bind migration head 093")
+    if (
+        child_activation["stage"] != "depth_one_child_canary"
+        or child_activation["wiring"]["callerIdentity"]
+        != "spiffe://neo-chat/agent-runtime-child-canary"
+    ):
+        raise VerificationError("G21.4 activation identity or stage drifted")
+    expected_authorization = {
+        "controlPlane": False,
+        "rootRuns": True,
+        "childAgents": True,
+        "brokerReadOnly": False,
+        "brokerMutable": False,
+        "artifactPublication": False,
+        "projectMutation": False,
+        "scheduler": False,
+        "skillInstall": False,
+        "learning": False,
+        "egress": False,
+        "secrets": False,
+        "provider": False,
+        "mcpWrite": False,
+    }
+    if child_activation["authorization"] != expected_authorization:
+        raise VerificationError("G21.4 activation authority is not narrowly bounded")
+    if any(child_activation["cleanup"].values()):
+        raise VerificationError("G21.4 activation fixture contains cleanup residue")
+    if child_plan["parentRequestedTools"] != ["delegate_task"] or child_plan[
+        "childRequestedTools"
+    ] != ["delegate_task"]:
+        raise VerificationError("G21.4 plan does not prove physical delegation removal")
+    if child_plan["parentIdempotencyKey"] == child_plan["childIdempotencyKey"]:
+        raise VerificationError("G21.4 Parent and Child idempotency keys collide")
+    for dimension in (
+        "maxWallSeconds",
+        "maxModelTokens",
+        "maxToolCalls",
+        "maxArtifactBytes",
+    ):
+        if child_plan["childBudget"][dimension] >= child_plan["parentBudget"][dimension]:
+            raise VerificationError(f"G21.4 Child {dimension} is not a strict subset")
+    for sandbox_name in ("parentSandbox", "childSandbox"):
+        sandbox = child_plan[sandbox_name]
+        if sandbox["networkMode"] != "none" or sandbox["capabilities"] != []:
+            raise VerificationError(f"G21.4 {sandbox_name} isolation drifted")
 
 
 def check_document_anchors() -> None:
@@ -368,6 +419,9 @@ def check_document_anchors() -> None:
             "agent-runtime-project-canary",
             "ActivationBindingFingerprint",
             "Migration `092_agent_project_mutation_canary`",
+            "G21.4",
+            "agent-runtime-child-canary",
+            "Migration `093_agent_child_canary_reap_transport`",
         ),
         CONTRACT_DIR / "agent-runtime.md": (
             "Durable state machine",
@@ -387,6 +441,8 @@ def check_document_anchors() -> None:
             "G21.2 read-only Broker and Artifact canary",
             "G21.3 offline-approved synthetic Project mutation canary",
             "verify-agent-runtime-g21-3.sh",
+            "G21.4 synthetic depth-one Child canary",
+            "verify-agent-runtime-g21-4.sh",
             "outcome_unknown",
         ),
         PROJECT_DIR / "docs" / "deployment" / "agent-runtime.md": (
@@ -406,6 +462,8 @@ def check_document_anchors() -> None:
             "verify-agent-runtime-g21-2.sh",
             "G21.3 bounded Project mutation canary activation",
             "verify-agent-runtime-g21-3.sh",
+            "G21.4 depth-one Child canary activation",
+            "verify-agent-runtime-g21-4.sh",
         ),
         PROJECT_DIR / "docs" / "tracking" / "g20-agent-runtime-plan.md": (
             "G20.0",
@@ -428,6 +486,7 @@ def check_document_anchors() -> None:
             "G21.3",
             "source/control implementation complete; exact-host Project mutation",
             "G21.4",
+            "source/control implementation complete; exact-host depth-one Child",
             "G21.5",
             "G21.6",
             "ISOLATION_UNAVAILABLE",

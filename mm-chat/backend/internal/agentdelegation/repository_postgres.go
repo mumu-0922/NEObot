@@ -73,6 +73,34 @@ FROM agent_delegation_authorities WHERE run_id=$1 AND user_id=$2::uuid
 	return result, nil
 }
 
+func (repository *PostgresRepository) ListChildren(ctx context.Context, userID, parentRunID string) ([]ChildLineage, error) {
+	if repository == nil || repository.db == nil {
+		return nil, ErrDatabaseRequired
+	}
+	rows, err := repository.db.QueryContext(ctx, `
+SELECT lineage.child_run_id,lineage.idempotency_key,lineage.parent_attempt_id,
+ lineage.parent_generation,lineage.request_fingerprint,lineage.state
+FROM agent_delegation_lineage lineage
+JOIN agent_delegation_authorities authority ON authority.run_id=lineage.child_run_id
+WHERE lineage.user_id=$1::uuid AND lineage.parent_run_id=$2
+  AND authority.user_id=lineage.user_id AND authority.depth=1
+ORDER BY lineage.created_at,lineage.child_run_id`, userID, parentRunID)
+	if err != nil {
+		return nil, fmt.Errorf("list child lineage: %w", err)
+	}
+	defer rows.Close()
+	var result []ChildLineage
+	for rows.Next() {
+		var item ChildLineage
+		if err := rows.Scan(&item.ChildRunID, &item.IdempotencyKey, &item.ParentAttemptID,
+			&item.ParentGeneration, &item.RequestFingerprint, &item.State); err != nil {
+			return nil, fmt.Errorf("scan child lineage: %w", err)
+		}
+		result = append(result, item)
+	}
+	return result, rows.Err()
+}
+
 func (repository *PostgresRepository) EnqueueChild(ctx context.Context, derivation Derivation, proposal ChildProposal) (Authority, bool, error) {
 	if repository == nil || repository.db == nil {
 		return Authority{}, false, ErrDatabaseRequired
@@ -137,8 +165,30 @@ FROM agent_delegation_cascade($1::uuid,$2,$3,$4,$5,$6)`, input.UserID, input.Par
 	if err != nil {
 		return nil, mapPostgresError("cascade child runs", err)
 	}
-	defer rows.Close()
-	return scanReaps(rows)
+	targets, scanErr := scanReaps(rows)
+	closeErr := rows.Close()
+	if scanErr != nil {
+		return nil, scanErr
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	inventory, err := repository.ListPendingReaps(ctx, 1000)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]ReapTarget, len(inventory))
+	for _, target := range inventory {
+		byID[target.ReapID] = target
+	}
+	for index, target := range targets {
+		enriched, ok := byID[target.ReapID]
+		if !ok {
+			return nil, fmt.Errorf("cascade child runs: reap inventory missing %s", target.ReapID)
+		}
+		targets[index] = enriched
+	}
+	return targets, nil
 }
 
 func (repository *PostgresRepository) Recover(ctx context.Context, limit int) (int, error) {
@@ -156,13 +206,51 @@ func (repository *PostgresRepository) ListPendingReaps(ctx context.Context, limi
 	if repository == nil || repository.db == nil {
 		return nil, ErrDatabaseRequired
 	}
-	rows, err := repository.db.QueryContext(ctx, `SELECT reap_id,parent_run_id,child_run_id,attempt_id,generation,lease_owner,mode,state,retry_count
-FROM agent_delegation_reaps WHERE state IN ('pending','failed') ORDER BY created_at,reap_id LIMIT $1`, limit)
+	rows, err := repository.db.QueryContext(ctx, `SELECT reap_id,parent_run_id,child_run_id,user_id::text,step_id,
+ attempt_id,generation,lease_owner,mode,reap_state,retry_count,attempt_state,
+ authority_snapshot_fingerprint,sandbox_id,sandbox_lease_generation,
+ sandbox_runner_id,sandbox_snapshot_fingerprint,spec_fingerprint,
+ probe_fingerprint,sandbox_state,launch_authority_expires_at
+FROM agent_delegation_reap_inventory($1)`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list delegation reaps: %w", err)
 	}
 	defer rows.Close()
-	return scanReaps(rows)
+	return scanReapInventory(rows)
+}
+
+func scanReapInventory(rows *sql.Rows) ([]ReapTarget, error) {
+	var result []ReapTarget
+	for rows.Next() {
+		var item ReapTarget
+		var sandboxID, sandboxRunnerID, sandboxSnapshot sql.NullString
+		var specFingerprint, probeFingerprint, sandboxState sql.NullString
+		var sandboxGeneration sql.NullInt64
+		var launchExpiry sql.NullTime
+		if err := rows.Scan(
+			&item.ReapID, &item.ParentRunID, &item.ChildRunID, &item.UserID,
+			&item.StepID, &item.AttemptID, &item.Generation, &item.LeaseOwner,
+			&item.Mode, &item.State, &item.RetryCount, &item.AttemptState,
+			&item.AuthoritySnapshotFingerprint, &sandboxID, &sandboxGeneration,
+			&sandboxRunnerID, &sandboxSnapshot, &specFingerprint,
+			&probeFingerprint, &sandboxState, &launchExpiry,
+		); err != nil {
+			return nil, err
+		}
+		item.SandboxID = sandboxID.String
+		item.SandboxGeneration = sandboxGeneration.Int64
+		item.SandboxRunnerID = sandboxRunnerID.String
+		item.SandboxSnapshotFingerprint = sandboxSnapshot.String
+		item.SpecFingerprint = specFingerprint.String
+		item.ProbeFingerprint = probeFingerprint.String
+		item.SandboxState = sandboxState.String
+		if launchExpiry.Valid {
+			expiresAt := launchExpiry.Time.UTC()
+			item.LaunchAuthorityExpiresAt = &expiresAt
+		}
+		result = append(result, item)
+	}
+	return result, rows.Err()
 }
 
 func scanReaps(rows *sql.Rows) ([]ReapTarget, error) {

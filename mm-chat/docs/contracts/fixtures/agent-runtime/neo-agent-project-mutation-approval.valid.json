@@ -5,7 +5,7 @@
     "decision": "approved",
     "release": {
       "gitCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "migrationHead": 92
+      "migrationHead": 93
     },
     "target": {
       "deploymentFingerprint": "sha256:4444444444444444444444444444444444444444444444444444444444444444",

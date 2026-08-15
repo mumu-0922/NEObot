@@ -137,7 +137,7 @@ identity, sends strict `neo.runner-rpc/v1`, bounds headers/body/deadline and
 accepts only a request-ID/nonce/method-bound response. There is no bearer token
 fallback.
 
-## G20.3-G21.3 source and verification commands
+## G20.3-G21.4 source and verification commands
 
 ```bash
 bash scripts/verify-agent-runner.sh
@@ -444,7 +444,7 @@ configuration.
 
 The offline operator signs one short-lived
 `neo.agent-project-mutation-approval/v1` document. It binds the exact release,
-head `092`, target, stable activation binding fingerprint, plan, caller,
+head `093`, target, stable activation binding fingerprint, plan, caller,
 request/idempotency identities, `project.patch/project.write/apply_patch`, one
 resource/base/path/content fingerprint, actor, reason and window. The private
 approval key remains outside both Git and the canary. Use the domain-separated
@@ -510,6 +510,64 @@ bash scripts/verify-agent-runtime-g21-3.sh
 These gates keep the current host at `ISOLATION_UNAVAILABLE`. They do not
 authorize user Projects, arbitrary paths, deletes, multi-file patches, MCP
 writes, generic Agent execution or a production promotion.
+
+## G21.4 depth-one Child canary activation
+
+G21.4 requires current G21.0-G21.3 readiness. Provision a tenth LOGIN whose
+recursive memberships are exactly `agent_orchestrator_runtime`,
+`agent_runner_control` and `agent_delegation_control`. It must be distinct from
+the earlier principals and have no elevated attributes, owner membership,
+schema CREATE or direct Orchestrator/Runner/delegation table DML.
+
+Configure Runner ingress for
+`spiffe://neo-chat/agent-runtime-child-canary`. Grant only Probe, List,
+Reconcile, Launch, Heartbeat and Cancel. Do not add Prepare/Commit or a relay.
+The prior four callers and Broker/Project relay identities, endpoints and
+method sets remain unchanged. Runner receives only the fifth caller identity;
+it receives no Child database URL, plan, authority private key or other
+controller credential.
+
+Mount nine distinct owner-secure regular files read-only into the dedicated
+profile: Runner client certificate/key/CA, release manifest, frozen production
+policy, `depth_one_child_canary` activation, strict Parent/Child plan and
+authority private/public keys. None may reuse another canary's sensitive key
+material. The profile has no host port, Compose Secret, relay network, S3, MCP,
+Provider, vault, Redis or generic Egress configuration.
+
+The plan fixes exactly one synthetic Parent and Child. Verify that the Parent
+contains one `delegate_task/create`, while the Child deliberately requests
+that Tool but derives an empty Grant capability set and physically empty
+Registry. Its subject/model/Package/Runtime and four budgets only preserve or
+narrow Parent authority, its expiry is shorter, and both fixed Sandboxes are
+read-only, capability-free, `networkMode=none` and credential-free.
+
+Start only after enabled preflight returns READY at migration head `093`. The
+controller reconciles failed reaps before work, launches from the exact Parent
+Attempt and retains stable Parent/Child idempotency keys. It cascades the Child
+first, waits out the latest signed launch authority, reconciles the exact Child
+out of Runner inventory, atomically completes the Runner projection plus reap,
+then signs Parent cancellation. Lost tokens wait for expiry; restart may finish
+the sole Child or Parent cleanup but may never enqueue another Child.
+
+Rollback stops only `agent-runtime-child-canary` and resets both
+`AGENT_CHILD_CANARY_ENABLED` and `AGENT_DELEGATION_ENABLED`. Keep migration
+`093` applied. A destructive down rehearsal is disposable-only and requires
+zero pending/failed reap plus no live depth-one Runner Sandbox. Restore with all
+canaries off, reconcile restored reaps and Runner residue, and require fresh
+exact-host activation before restart.
+
+Verify the slice with:
+
+```bash
+bash scripts/verify-agent-child-canary-activation.sh
+bash scripts/verify-agent-child-canary-preflight.sh
+bash scripts/verify-agent-child-canary-postgres17.sh
+bash scripts/verify-agent-runtime-g21-4.sh
+```
+
+These gates keep this host at `ISOLATION_UNAVAILABLE`. They do not authorize
+public delegation, a second Child, depth two, Broker effects, user arguments or
+Package-selected Child work.
 
 ## Release order (future groups)
 
@@ -661,7 +719,7 @@ cancellation, Artifact, policy, opt-in or observation authority remains.
 Production rollback keeps `090` applied and leaves Shadow disabled. Clean
 down/up is restricted to a verified-empty disposable database. Every older
 Agent/MCP/Assistant/Skill migration drill must first peel empty `091`, then its
-reviewed tail, before its own guard and return to head `092`.
+reviewed tail, before its own guard and return to head `093`.
 
 ## Kill Switch operations
 
@@ -889,7 +947,7 @@ changes the closure release tuple invalidates the old promotion record.
 2. Verify one paired PostgreSQL/MinIO set manifest and restore both halves into
    the isolated target. Follow `backup-restore.md`, including the latest
    encrypted Memory deletion package replay before opening Backend.
-3. Apply the exact release migrations and require head `092`. Rehash every
+3. Apply the exact release migrations and require head `093`. Rehash every
    referenced Package/Runtime/SBOM/Workspace/Artifact sample from the restored
    set.
 4. Treat all pre-restore leases, Runner nonces and Sandboxes as untrusted. Kill
@@ -908,7 +966,7 @@ The schema is
 records outside Git and outside application/object-store runtime namespaces.
 They contain fingerprints, times, low-cardinality result codes and zero-counts
 only. The record binds exactly 16 live checks to one Git commit, migration head
-`091`, Runner manifest/binary, Runtime Bundle, deployment and operations-policy
+`093`, Runner manifest/binary, Runtime Bundle, deployment and operations-policy
 fingerprint.
 
 Run the offline contract self-test:
@@ -972,7 +1030,7 @@ this order:
    The transaction takes a `SHARE ROW EXCLUSIVE` lock, removes only
    `conversations.metadata.activeSkills`, checks the updated count and requires
    zero remaining keys. It does not rewrite message/content/other metadata or
-   change the migration head; on a current release it remains `092`.
+   change the migration head; on a current release it remains `093`.
 5. Deploy G20.9. Browser persistence version `7` strips the eight retired
    settings fields plus Session/Workspace selections from localStorage and
    IndexedDB, writes its marker last, and compensates partial failure. Reload

@@ -104,6 +104,15 @@ type EnqueueResult struct {
 	Created   bool
 }
 
+type ChildLineage struct {
+	ChildRunID         string
+	IdempotencyKey     string
+	ParentAttemptID    string
+	ParentGeneration   int64
+	RequestFingerprint string
+	State              string
+}
+
 type LaunchAdmissionInput struct {
 	UserID              string
 	RunID               string
@@ -118,15 +127,27 @@ type LaunchAdmissionInput struct {
 }
 
 type ReapTarget struct {
-	ReapID      string
-	ParentRunID string
-	ChildRunID  string
-	AttemptID   string
-	Generation  int64
-	LeaseOwner  string
-	Mode        string
-	State       string
-	RetryCount  int
+	ReapID                       string
+	ParentRunID                  string
+	ChildRunID                   string
+	UserID                       string
+	StepID                       string
+	AttemptID                    string
+	Generation                   int64
+	LeaseOwner                   string
+	Mode                         string
+	State                        string
+	RetryCount                   int
+	AttemptState                 string
+	AuthoritySnapshotFingerprint string
+	SandboxID                    string
+	SandboxGeneration            int64
+	SandboxRunnerID              string
+	SandboxSnapshotFingerprint   string
+	SpecFingerprint              string
+	ProbeFingerprint             string
+	SandboxState                 string
+	LaunchAuthorityExpiresAt     *time.Time
 }
 
 type CascadeInput struct {
@@ -148,6 +169,7 @@ type SettleInput struct {
 type Repository interface {
 	RegisterRoot(context.Context, Authority) (Authority, bool, error)
 	GetAuthority(context.Context, string, string) (Authority, error)
+	ListChildren(context.Context, string, string) ([]ChildLineage, error)
 	EnqueueChild(context.Context, Derivation, ChildProposal) (Authority, bool, error)
 	AdmitLaunch(context.Context, LaunchAdmissionInput, string) error
 	Settle(context.Context, SettleInput, string) (bool, error)

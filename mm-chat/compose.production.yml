@@ -17,6 +17,8 @@ services:
     build: !reset null
   agent-runtime-project-canary:
     build: !reset null
+  agent-runtime-child-canary:
+    build: !reset null
   migrate:
     build: !reset null
   admin:

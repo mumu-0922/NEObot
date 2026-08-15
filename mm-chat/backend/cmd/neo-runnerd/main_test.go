@@ -18,7 +18,8 @@ func TestPrivateAddressAllowsOnlyLiteralLoopbackOrPrivateIP(t *testing.T) {
 func TestRunnerCallerIdentitiesRemainSeparate(t *testing.T) {
 	seen := map[string]struct{}{}
 	for _, identity := range []string{controlCallerIdentity, rootCanaryCallerIdentity,
-		brokerCanaryCallerIdentity, brokerRelayIdentity, projectCanaryCallerIdentity, projectRelayIdentity} {
+		brokerCanaryCallerIdentity, brokerRelayIdentity, projectCanaryCallerIdentity,
+		projectRelayIdentity, childCanaryCallerIdentity} {
 		if _, duplicate := seen[identity]; duplicate {
 			t.Fatal("Runner caller and relay identities must remain distinct")
 		}

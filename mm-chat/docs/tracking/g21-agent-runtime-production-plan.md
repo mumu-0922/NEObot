@@ -121,9 +121,37 @@ promote user Projects or generic mutable execution.
 
 ## G21.4 — Depth-1 Child Agents
 
-Enable Child launch only after physical `delegate_task` removal, strict
-Grant/Registry/budget subsets, atomic reservation, Child-first cancel/reap and
-restart reconciliation pass on the exact target. Depth two remains impossible.
+Status: source/control implementation complete; exact-host depth-one Child
+canary held.
+
+- Add a fifth independent `depth_one_child_canary` stage, lifecycle-only Runner
+  caller, default-off Compose profile and tenth exact-membership PostgreSQL
+  LOGIN. Preserve all earlier caller and relay method sets.
+- Freeze one synthetic Parent and exactly one Child. Parent has one
+  `delegate_task/create`; Child deliberately requests it while server
+  derivation creates a capability-empty Grant and physically empty Registry.
+- Preserve exact user/subject/model/Package/Runtime and require strict Child
+  expiry plus four-dimensional budget subsets. Keep both Sandboxes rootless,
+  read-only, capability-free, credential-free and `networkMode=none`.
+- Recheck the exact Parent Attempt, generation, lease, snapshot, Grant,
+  Registry, Kill Switch and reservation before enqueue/launch. Reject a second
+  Child, depth two, stale attempts, aliases and every widening before Runner.
+- Add migration `093_agent_child_canary_reap_transport` with function-only
+  exact pending inventory, late-launch expiry fencing and replay-safe atomic
+  Runner projection plus durable reap completion. Keep failures retryable and
+  guard dirty down.
+- Cascade and reap Child first, then settle budget and sign Parent cancel.
+  Restart resolves existing lineage and failed reaps before work, waits lost
+  tokens to expiry and never selects another Child idempotency key.
+- Require terminal one-Parent/one-Child lineage, zero pending reaps and empty
+  Runner inventory. Keep generic Runtime, Broker effects, Egress, Secrets,
+  Scheduler, Skill install, Learning, API/Chat and public delegation disabled.
+
+Promotion gate: run `scripts/verify-agent-runtime-g21-4.sh`, then reproduce a
+fresh `DEPTH_ONE_CHILD_CANARY_GATES_PASSED` record and complete exact-host
+Parent/Child launch, late-launch fencing, crash/restart and zero-residue proof.
+Disposable PostgreSQL and the current `ISOLATION_UNAVAILABLE` host cannot
+promote public delegation or depth two.
 
 ## G21.5 — Cron and Draft learning workers
 

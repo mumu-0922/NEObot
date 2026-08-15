@@ -123,7 +123,7 @@ manifest = {
     "evidenceClass": evidence_class,
     "release": {
         "gitCommit": release_commit,
-        "migrationHead": 92,
+        "migrationHead": 93,
         "goVersion": go_version,
         "targetOS": "linux",
         "targetArch": target_arch,

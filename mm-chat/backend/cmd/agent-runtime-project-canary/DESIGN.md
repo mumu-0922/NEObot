@@ -15,7 +15,7 @@
 strict flags/paths/literal-private relay/time bounds
   -> strict one-action plan + distinct authority/approval/TLS keys
   -> stable activation binding + signed approval verification
-  -> project_mutation_canary activation evidence at head 092
+  -> project_mutation_canary activation evidence at head 093
   -> exact four-role function-only LOGIN proof
   -> Project CAS/status/cleanup executor + private mTLS relay
   -> controller cycle or read-only health

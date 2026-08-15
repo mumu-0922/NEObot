@@ -65,6 +65,27 @@ func (service *Service) RegisterRoot(ctx context.Context, input RegisterRootInpu
 	return service.repository.RegisterRoot(ctx, authority)
 }
 
+func (service *Service) GetAuthority(ctx context.Context, userID, runID string) (Authority, error) {
+	if service == nil || service.repository == nil || userID == "" || runID == "" {
+		return Authority{}, ErrInvalidInput
+	}
+	return service.repository.GetAuthority(ctx, userID, runID)
+}
+
+func (service *Service) ListChildren(ctx context.Context, userID, parentRunID string) ([]ChildLineage, error) {
+	if service == nil || service.repository == nil || userID == "" || parentRunID == "" {
+		return nil, ErrInvalidInput
+	}
+	return service.repository.ListChildren(ctx, userID, parentRunID)
+}
+
+func (service *Service) PendingReaps(ctx context.Context, limit int) ([]ReapTarget, error) {
+	if service == nil || service.repository == nil || limit < 1 || limit > 1000 {
+		return nil, ErrInvalidInput
+	}
+	return service.repository.ListPendingReaps(ctx, limit)
+}
+
 func (service *Service) EnqueueChild(ctx context.Context, proposal ChildProposal) (EnqueueResult, error) {
 	if service == nil || service.repository == nil {
 		return EnqueueResult{}, ErrDatabaseRequired

@@ -36,6 +36,9 @@ func (r *memoryRepository) GetAuthority(_ context.Context, _, runID string) (Aut
 	}
 	return Authority{}, ErrNotFound
 }
+func (r *memoryRepository) ListChildren(context.Context, string, string) ([]ChildLineage, error) {
+	return nil, nil
+}
 func (r *memoryRepository) EnqueueChild(_ context.Context, d Derivation, _ ChildProposal) (Authority, bool, error) {
 	r.derivation = d
 	r.child = Authority{RunID: d.ChildRunID, RootRunID: d.Parent.RootRunID, ParentRunID: d.Parent.RunID, Depth: 1, UserID: d.Parent.UserID, Subject: d.ChildGrant.Subject, Model: d.Parent.Model, Grant: d.ChildGrant, Registry: d.ChildRegistry, Budget: d.Reservation}

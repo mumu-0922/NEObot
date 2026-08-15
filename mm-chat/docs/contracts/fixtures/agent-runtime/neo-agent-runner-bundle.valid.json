@@ -3,7 +3,7 @@
   "evidenceClass": "template",
   "release": {
     "gitCommit": "1111111111111111111111111111111111111111",
-    "migrationHead": 92,
+    "migrationHead": 93,
     "goVersion": "go1.25.0",
     "targetOS": "linux",
     "targetArch": "amd64"

@@ -26,6 +26,7 @@ const (
 	brokerRelayIdentity         = "spiffe://neo-chat/neo-runner-broker-relay"
 	projectCanaryCallerIdentity = "spiffe://neo-chat/agent-runtime-project-canary"
 	projectRelayIdentity        = "spiffe://neo-chat/neo-runner-project-relay"
+	childCanaryCallerIdentity   = "spiffe://neo-chat/agent-runtime-child-canary"
 )
 
 func main() {
@@ -169,6 +170,17 @@ func run() error {
 				agentrunner.MethodPrepare, agentrunner.MethodCommit}})
 	} else if projectRelayConfigured() {
 		return errors.New("neo-runnerd Project relay requires the dedicated caller identity")
+	}
+	childIdentity := strings.TrimSpace(os.Getenv("NEO_RUNNER_CHILD_CANARY_CLIENT_IDENTITY"))
+	if childIdentity != "" {
+		if childIdentity != childCanaryCallerIdentity || projectIdentity == "" ||
+			childIdentity == clientIdentity || childIdentity == canaryIdentity ||
+			childIdentity == brokerIdentity || childIdentity == projectIdentity {
+			return errors.New("neo-runnerd Child canary client identity is invalid")
+		}
+		policies = append(policies, agentrunner.CallerPolicy{Identity: childIdentity,
+			Methods: []string{agentrunner.MethodProbe, agentrunner.MethodList, agentrunner.MethodReconcile,
+				agentrunner.MethodLaunch, agentrunner.MethodHeartbeat, agentrunner.MethodCancel}})
 	}
 	handler, err := agentrunner.NewHTTPHandlerWithPolicies(service, 15*time.Second, policies)
 	if err != nil {

@@ -1,0 +1,573 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neo-chat.local/schemas/neo-agent-child-run-canary-activation.schema.json",
+  "title": "Neo Agent Depth-One Child Canary Activation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "evidenceClass",
+    "stage",
+    "release",
+    "target",
+    "wiring",
+    "window",
+    "checks",
+    "authorization",
+    "cleanup",
+    "review"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "neo.agent-production-activation/v1"
+    },
+    "evidenceClass": {
+      "enum": [
+        "template",
+        "production"
+      ]
+    },
+    "stage": {
+      "const": "depth_one_child_canary"
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gitCommit",
+        "migrationHead",
+        "runnerManifestSha256",
+        "runnerBinarySha256",
+        "operationsPolicySha256"
+      ],
+      "properties": {
+        "gitCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "migrationHead": {
+          "const": 93
+        },
+        "runnerManifestSha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "runnerBinarySha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "operationsPolicySha256": {
+          "$ref": "#/$defs/fingerprint"
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deploymentFingerprint",
+        "runnerId"
+      ],
+      "properties": {
+        "deploymentFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "runnerId": {
+          "$ref": "#/$defs/identity"
+        }
+      }
+    },
+    "wiring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "endpointSha256",
+        "clientCertificateSha256",
+        "serverCASha256",
+        "serverName",
+        "callerIdentity",
+        "canaryPlanSha256",
+        "authorityPublicKeySha256"
+      ],
+      "properties": {
+        "endpointSha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "clientCertificateSha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "serverCASha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "serverName": {
+          "$ref": "#/$defs/identity"
+        },
+        "callerIdentity": {
+          "const": "spiffe://neo-chat/agent-runtime-child-canary"
+        },
+        "canaryPlanSha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "authorityPublicKeySha256": {
+          "$ref": "#/$defs/fingerprint"
+        }
+      }
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "startedAt",
+        "completedAt",
+        "expiresAt"
+      ],
+      "properties": {
+        "startedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "completedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 16,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "result",
+          "observedAt",
+          "evidenceSha256",
+          "detailCode"
+        ],
+        "properties": {
+          "id": {
+            "enum": [
+              "broker_artifact_canary_ready",
+              "child_first_reap_ready",
+              "control_plane_ready",
+              "credential_absence",
+              "delegate_task_removed",
+              "depth_one_subset_ready",
+              "exact_host_isolation",
+              "late_launch_fenced",
+              "least_privilege_login",
+              "private_runner_mtls",
+              "project_mutation_canary_ready",
+              "restart_recovery_ready",
+              "root_run_canary_ready",
+              "signed_authority_ready",
+              "synthetic_plan_ready",
+              "zero_inventory"
+            ]
+          },
+          "result": {
+            "enum": [
+              "passed",
+              "failed",
+              "not_run",
+              "isolation_unavailable"
+            ]
+          },
+          "observedAt": {
+            "$ref": "#/$defs/timestamp"
+          },
+          "evidenceSha256": {
+            "$ref": "#/$defs/fingerprint"
+          },
+          "detailCode": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "broker_artifact_canary_ready"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "child_first_reap_ready"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "control_plane_ready"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "credential_absence"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "delegate_task_removed"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "depth_one_subset_ready"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "exact_host_isolation"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "late_launch_fenced"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "least_privilege_login"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "private_runner_mtls"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "project_mutation_canary_ready"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "restart_recovery_ready"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "root_run_canary_ready"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "signed_authority_ready"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "synthetic_plan_ready"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "zero_inventory"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "controlPlane",
+        "rootRuns",
+        "childAgents",
+        "brokerReadOnly",
+        "brokerMutable",
+        "artifactPublication",
+        "projectMutation",
+        "scheduler",
+        "skillInstall",
+        "learning",
+        "egress",
+        "secrets",
+        "provider",
+        "mcpWrite"
+      ],
+      "properties": {
+        "controlPlane": {
+          "const": false
+        },
+        "rootRuns": {
+          "const": true
+        },
+        "childAgents": {
+          "const": true
+        },
+        "brokerReadOnly": {
+          "const": false
+        },
+        "brokerMutable": {
+          "const": false
+        },
+        "artifactPublication": {
+          "const": false
+        },
+        "projectMutation": {
+          "const": false
+        },
+        "scheduler": {
+          "const": false
+        },
+        "skillInstall": {
+          "const": false
+        },
+        "learning": {
+          "const": false
+        },
+        "egress": {
+          "const": false
+        },
+        "secrets": {
+          "const": false
+        },
+        "provider": {
+          "const": false
+        },
+        "mcpWrite": {
+          "const": false
+        }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "orphanSandboxes",
+        "scratchResidue",
+        "pendingReaps",
+        "descendants",
+        "credentials"
+      ],
+      "properties": {
+        "orphanSandboxes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "scratchResidue": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "pendingReaps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "descendants": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "credentials": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "reviewedAt",
+        "reviewerFingerprint"
+      ],
+      "properties": {
+        "decision": {
+          "enum": [
+            "approved",
+            "held"
+          ]
+        },
+        "reviewedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "reviewerFingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "identity": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:@/-]{0,127}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

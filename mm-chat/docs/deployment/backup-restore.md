@@ -96,7 +96,7 @@ for that set and publishes no manifest.
 Agent Runtime production promotion additionally hashes the verified set
 manifest into the external G20.10 closure evidence. Restore with every Agent
 worker and Runtime switch off, reject all pre-restore leases/nonces, reconcile
-Sandboxes/effects/Children/Cron/Draft cleanup, and require migration head `092`
+Sandboxes/effects/Children/Cron/Draft cleanup, and require migration head `093`
 before a read-only canary. The restore must also reconcile every
 `agent_artifacts.object_key` against the
 paired object mirror, remove only proven unreferenced canary objects and keep
@@ -111,6 +111,21 @@ approval and activation evidence is regenerated; the offline approval private
 key is backed up and rotated under the separate encrypted operator-key
 procedure, not inside this backup set. The closure record is not a backup and
 must never embed dump/object bytes or credentials.
+
+Migration `093` makes the Child reap and optional Runner Sandbox projection one
+restore authority. Restore `agent_delegation_authorities`, lineage, reaps,
+Runner requests and Runner Sandboxes together from the same PostgreSQL dump;
+never reconstruct one side from host inventory. Keep G21.4 off, treat every
+restored launch authority and lease token as unusable, wait through any retained
+authority expiry, then reconcile pending/failed Child reaps to physical Runner
+absence before completing them. A restored reaped Child must have a terminal
+Runner projection or no projection, zero pending inventory and exactly one
+lineage row. Do not enqueue a replacement Child under a new key.
+
+Only after Child cleanup and Parent cancellation are terminal may a fresh
+exact-host activation be generated. The Child database password, mTLS private
+key and authority private key are separately encrypted deployment secrets, not
+members of the Postgres/MinIO backup set or closure evidence.
 
 ## Verify backup checksums
 

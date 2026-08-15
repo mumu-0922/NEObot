@@ -47,7 +47,7 @@ for schema_path, valid_path, invalid_path in ((sys.argv[1],sys.argv[3],sys.argv[
 activation=json.load(open(sys.argv[1],encoding="utf-8"))
 plan=json.load(open(sys.argv[2],encoding="utf-8"))
 assert activation["properties"]["stage"]["const"]=="broker_artifact_canary"
-assert activation["properties"]["release"]["properties"]["migrationHead"]["const"]==92
+assert activation["properties"]["release"]["properties"]["migrationHead"]["const"]==93
 assert plan["properties"]["actions"]["minItems"]==plan["properties"]["actions"]["maxItems"]==5
 PY
 

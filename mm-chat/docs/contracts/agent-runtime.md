@@ -267,7 +267,7 @@ G20.8 implementation signatures:
   preparation surfaces together with the legacy editor/executor;
 - `scripts/verify-agent-product-shadow{,-postgres17}.sh` prove product contracts,
   authorization/fences/budgets/restart, content-free dump/restore and guarded
-  rollback. Every older PostgreSQL tail drill finishes at head `092`.
+  rollback. Every older PostgreSQL tail drill finishes at head `093`.
 
 G20.9 implementation signatures:
 
@@ -746,8 +746,8 @@ PostgreSQL rows are handled outside the migration chain by
 exact target count and a `sha256:<64 lowercase hex>` full-backup fingerprint,
 locks `conversations`, removes only `metadata.activeSkills`, verifies zero
 remaining rows and commits. The cutover itself creates no migration or pretend
-down SQL; current migrations `091`/`092` are unrelated Artifact and synthetic
-Project-canary authority. Rollback
+down SQL; current migrations `091`-`093` are unrelated Artifact, synthetic
+Project-canary and Child-reap authority. Rollback
 restores the matching full database backup and previous images as one operation.
 
 G20.8 backup/inventory evidence must be captured before deploying the G20.9
@@ -806,7 +806,7 @@ interpreter and an unapproved or placeholder `production` release. Template
 builds are deterministic and never install or mutate host state.
 
 The stage record is `neo.agent-production-activation/v1`, stage
-`control_plane`. It binds the exact Git commit, current migration head `092`, operations
+`control_plane`. It binds the exact Git commit, current migration head `093`, operations
 policy, Runner manifest/binary, deployment, private HTTPS endpoint, Runner and
 TLS identities, client certificate, server CA and these five unique live
 checks:
@@ -832,7 +832,7 @@ Cron or Learning roles. Startup and cycle drift terminate the process.
 
 G21.0 itself adds no migration, API/Chat route, launch/heartbeat/cancel RPC,
 Broker adapter or public endpoint. Its current evaluator nevertheless binds
-the current `092` head introduced by G21.3. All execution-stage environment
+the current `093` head introduced by G21.3. All execution-stage environment
 switches remain false, and the control profile defaults off.
 
 ## 20. G21.1 synthetic Root Run canary
@@ -895,7 +895,7 @@ The dedicated LOGIN must be a nonprivileged `LOGIN INHERIT` principal whose
 recursive membership set is exactly
 `agent_orchestrator_runtime,agent_runner_control`. G21.1 reuses migration
 `084`/`085` SECURITY DEFINER functions and itself adds no migration or direct
-table DML; its current release gate accepts only the reviewed `092` tail. The
+table DML; its current release gate accepts only the reviewed `093` tail. The
 command and Compose profile are separate from `cmd/api`, have no
 port or Provider/object-store/Redis/MCP/vault credentials, and default off.
 
@@ -961,7 +961,7 @@ one bounded byte snapshot, writes the object before the row, deletes the object
 on row failure and cleans quarantine on success or rejection. Exact row replay
 is idempotent; Artifact ID/name/object-key collisions fail closed.
 
-The `broker_artifact_canary` activation record binds migration head `092`, the
+The `broker_artifact_canary` activation record binds migration head `093`, the
 exact release/target/policy, Runner and relay endpoints, both mTLS trust tuples,
 authority key, plan and zero Artifact/quarantine residue. The Compose profile
 is independent and default-off. The service may hold its narrow database,
@@ -1080,7 +1080,67 @@ authority private key, relay server key, S3/MCP/Provider/vault credential or
 generic network. No API/Chat path or user Project is enabled. The current host
 still returns `ISOLATION_UNAVAILABLE`.
 
-## 23. Phase 0 verification
+## 23. G21.4 synthetic depth-one Child canary
+
+The strict schemas are
+`schemas/neo-agent-child-run-canary-plan.schema.json` and
+`schemas/neo-agent-child-run-canary-activation.schema.json`. The plan contains
+exactly one synthetic Parent and one Child. It freezes the user, subject,
+model, Package/Runtime fingerprints, idempotency identities, Sandboxes, argv,
+leases, grant window and four-dimensional budgets. The Child is a strict
+budget/expiry subset and neither Sandbox has network, capability or credential
+authority.
+
+Runner ingress adds one lifecycle-only policy:
+
+```text
+spiffe://neo-chat/agent-runtime-child-canary
+  -> probe, list, reconcile, launch, heartbeat, cancel
+  -> no prepare, commit or relay
+```
+
+The Parent Grant and Registry contain exactly `delegate_task/create` for
+`g21.4/synthetic-child`. The Child requests that identity as an explicit
+negative proof, but server derivation produces a capability-empty Grant and
+physically empty depth-one Registry before fingerprinting. Alias/capability
+rebinding, a second Child, depth two and every subject/model/package/runtime/
+Grant/Registry/expiry/budget widening fail before Runner launch.
+
+Migration `093_agent_child_canary_reap_transport` retains migration `087` and
+adds two function-only seams. `agent_delegation_reap_inventory(limit)` returns
+the exact Child Step/Attempt/generation, optional Runner projection and latest
+matching launch-authority expiry without lease tokens.
+`agent_delegation_complete_reap(...)` keeps failures retryable; success rejects
+an active launch authority or mismatched Sandbox and atomically terminalizes
+the exact Runner projection plus durable reap. Exact success replay is stable.
+Dirty down fails with `AGENT_CHILD_REAP_TRANSPORT_DOWN_REQUIRES_CLEAN`; clean
+down restores the migration-087 completion function.
+
+The controller always reconciles stale Parents and failed reaps before enqueue.
+Existing lineage is authoritative, so restart never selects another Child
+idempotency key. A live tokenless Attempt waits for expiry. A queued Child may
+launch only from its exact live Parent Attempt; otherwise Child-first cascade,
+Runner absence proof and durable reap complete before Parent cleanup. Parent
+reacquisition is cleanup-only after its sole Child is terminal. Health requires
+the Parent and Child canceled, zero pending reaps, and no matching Runner
+Sandbox.
+
+Required focused gates are:
+
+```bash
+bash scripts/verify-agent-child-canary-activation.sh
+bash scripts/verify-agent-child-canary-preflight.sh
+bash scripts/verify-agent-child-canary-postgres17.sh
+bash scripts/verify-agent-runtime-g21-4.sh
+```
+
+The profile, `AGENT_CHILD_CANARY_ENABLED` and `AGENT_DELEGATION_ENABLED` remain
+default off. G21.0-G21.3 must be ready while generic Runtime, Broker mutation,
+MCP write, Egress, Secret, Scheduler, Skill-install and Learning flags remain
+false. No API/Chat or package-selected delegation path is enabled. Checked-in
+activation is template-only and this host remains `ISOLATION_UNAVAILABLE`.
+
+## 24. Phase 0 verification
 
 Run:
 

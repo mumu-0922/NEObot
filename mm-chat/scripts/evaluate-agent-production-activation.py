@@ -68,6 +68,24 @@ PROJECT_CANARY_CHECK_IDS = {
     "synthetic_plan_ready",
     "zero_inventory",
 }
+CHILD_CANARY_CHECK_IDS = {
+    "broker_artifact_canary_ready",
+    "child_first_reap_ready",
+    "control_plane_ready",
+    "credential_absence",
+    "delegate_task_removed",
+    "depth_one_subset_ready",
+    "exact_host_isolation",
+    "late_launch_fenced",
+    "least_privilege_login",
+    "private_runner_mtls",
+    "project_mutation_canary_ready",
+    "restart_recovery_ready",
+    "root_run_canary_ready",
+    "signed_authority_ready",
+    "synthetic_plan_ready",
+    "zero_inventory",
+}
 FINGERPRINT = re.compile(r"^sha256:[0-9a-f]{64}$")
 IDENTITY = re.compile(r"^[A-Za-z][A-Za-z0-9_.:@/-]{0,127}$")
 DETAIL = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
@@ -202,7 +220,7 @@ def project_relay_endpoint_fingerprint(endpoint: str) -> str:
 def validate_policy(policy: dict[str, Any]) -> None:
     if (
         policy.get("schemaVersion") != "neo.agent-production-policy/v1"
-        or policy.get("migrationHead") != 92
+        or policy.get("migrationHead") != 93
     ):
         fail("POLICY_INVALID")
 
@@ -346,6 +364,7 @@ def validate_record(
         "root_run_canary",
         "broker_artifact_canary",
         "project_mutation_canary",
+        "depth_one_child_canary",
     }:
         fail("ACTIVATION_VERSION_INVALID")
     stage = record["stage"]
@@ -354,6 +373,7 @@ def validate_record(
         "root_run_canary": ROOT_CANARY_CHECK_IDS,
         "broker_artifact_canary": BROKER_CANARY_CHECK_IDS,
         "project_mutation_canary": PROJECT_CANARY_CHECK_IDS,
+        "depth_one_child_canary": CHILD_CANARY_CHECK_IDS,
     }[stage]
     if record["evidenceClass"] not in {"template", "production"}:
         fail("EVIDENCE_CLASS_INVALID")
@@ -388,7 +408,7 @@ def validate_record(
     if (
         not isinstance(release["gitCommit"], str)
         or re.fullmatch(r"[0-9a-f]{40}", release["gitCommit"]) is None
-        or release["migrationHead"] != 92
+        or release["migrationHead"] != 93
     ):
         fail("RELEASE_INVALID")
     release_fingerprints = [
@@ -505,45 +525,88 @@ def validate_record(
     if set(results) != check_ids:
         fail("CHECK_SET_INCOMPLETE")
 
-    authorization_keys = {
-        "controlPlane",
-        "rootRuns",
-        "brokerReadOnly",
-        "brokerMutable",
-        "delegation",
-        "scheduler",
-        "learning",
-    }
-    if stage in {"broker_artifact_canary", "project_mutation_canary"}:
-        authorization_keys.add("artifactPublication")
-    if stage == "project_mutation_canary":
-        authorization_keys.add("projectMutation")
+    if stage == "depth_one_child_canary":
+        authorization_keys = {
+            "controlPlane",
+            "rootRuns",
+            "childAgents",
+            "brokerReadOnly",
+            "brokerMutable",
+            "artifactPublication",
+            "projectMutation",
+            "scheduler",
+            "skillInstall",
+            "learning",
+            "egress",
+            "secrets",
+            "provider",
+            "mcpWrite",
+        }
+        expected_authorization = {
+            "controlPlane": False,
+            "rootRuns": True,
+            "childAgents": True,
+            "brokerReadOnly": False,
+            "brokerMutable": False,
+            "artifactPublication": False,
+            "projectMutation": False,
+            "scheduler": False,
+            "skillInstall": False,
+            "learning": False,
+            "egress": False,
+            "secrets": False,
+            "provider": False,
+            "mcpWrite": False,
+        }
+    else:
+        authorization_keys = {
+            "controlPlane",
+            "rootRuns",
+            "brokerReadOnly",
+            "brokerMutable",
+            "delegation",
+            "scheduler",
+            "learning",
+        }
+        if stage in {"broker_artifact_canary", "project_mutation_canary"}:
+            authorization_keys.add("artifactPublication")
+        if stage == "project_mutation_canary":
+            authorization_keys.add("projectMutation")
+        expected_authorization = {
+            "controlPlane": stage == "control_plane",
+            "rootRuns": stage
+            in {"root_run_canary", "broker_artifact_canary", "project_mutation_canary"},
+            "brokerReadOnly": stage
+            in {"broker_artifact_canary", "project_mutation_canary"},
+            "brokerMutable": False,
+            "delegation": False,
+            "scheduler": False,
+            "learning": False,
+        }
+        if stage in {"broker_artifact_canary", "project_mutation_canary"}:
+            expected_authorization["artifactPublication"] = True
+        if stage == "project_mutation_canary":
+            expected_authorization["projectMutation"] = True
     authorization = exact(
         record["authorization"], authorization_keys, "AUTHORIZATION_INVALID"
     )
-    expected_authorization = {
-        "controlPlane": stage == "control_plane",
-        "rootRuns": stage
-        in {"root_run_canary", "broker_artifact_canary", "project_mutation_canary"},
-        "brokerReadOnly": stage
-        in {"broker_artifact_canary", "project_mutation_canary"},
-        "brokerMutable": False,
-        "delegation": False,
-        "scheduler": False,
-        "learning": False,
-    }
-    if stage in {"broker_artifact_canary", "project_mutation_canary"}:
-        expected_authorization["artifactPublication"] = True
-    if stage == "project_mutation_canary":
-        expected_authorization["projectMutation"] = True
     if authorization != expected_authorization:
         fail("AUTHORIZATION_WIDENED")
 
-    cleanup_keys = {"orphanSandboxes", "scratchResidue"}
-    if stage in {"broker_artifact_canary", "project_mutation_canary"}:
-        cleanup_keys |= {"artifactResidue", "quarantineResidue"}
-    if stage == "project_mutation_canary":
-        cleanup_keys.add("projectResidue")
+    if stage == "depth_one_child_canary":
+        cleanup_keys = {
+            "orphanSandboxes",
+            "scratchResidue",
+            "pendingReaps",
+            "descendants",
+            "credentials",
+        }
+    else:
+        cleanup_keys = {"orphanSandboxes", "scratchResidue"}
+        if stage in {"broker_artifact_canary", "project_mutation_canary"}:
+            cleanup_keys |= {"artifactResidue", "quarantineResidue"}
+        if stage == "project_mutation_canary":
+            cleanup_keys.add("projectResidue")
     cleanup = exact(record["cleanup"], cleanup_keys, "CLEANUP_INVALID")
     for key in cleanup:
         if (
@@ -687,6 +750,7 @@ def validate_record(
         "root_run_canary": "ROOT_RUN_CANARY_GATES_PASSED",
         "broker_artifact_canary": "BROKER_ARTIFACT_CANARY_GATES_PASSED",
         "project_mutation_canary": "PROJECT_MUTATION_CANARY_GATES_PASSED",
+        "depth_one_child_canary": "DEPTH_ONE_CHILD_CANARY_GATES_PASSED",
     }[stage]
     return "ACTIVATION_READY", reason, release["gitCommit"]
 
