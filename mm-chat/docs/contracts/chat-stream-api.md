@@ -123,6 +123,13 @@ durable event sequence. Terminal Message finalization precedes the deferred
 `assistant.message`/`turn.ended` append; startup recovery repairs that explicit
 torn-write window without changing an already terminal Message status.
 
+Migration `097` adds same-Conversation Goal state. Goal mutations append
+`goal.changed`, and every admitted automatic continuation appends
+`goal.round.started`, into the same Turn sequence before the next Provider
+Step. Their process projection uses `mode=goal` with
+`classification=read|write` and contains no objective, blocker text, Tool
+arguments, or workspace data.
+
 Terminal events are mutually exclusive:
 
 ```text
@@ -213,6 +220,17 @@ Errors before the SSE response begins use the standard JSON envelope.
 After SSE starts, provider or finalization failures are emitted as
 `message.error` frames with scrubbed error details. HTTP `429 RATE_LIMITED` can
 only be returned before the SSE response starts.
+
+Goal/verification terminal failures use stable SSE error codes:
+
+- `AGENT_VERIFICATION_REQUIRED`: a successful write/execute was not followed
+  by accepted Tool evidence before the available budget ended.
+- `AGENT_GOAL_PERSISTENCE_FAILED`: a Goal read/mutation/round append could not
+  be durably committed.
+
+Neither error may be replaced with a successful closing narration. A Goal
+wrap-up runs with no Tool definitions; hallucinated calls are rejected as
+`goal_concluded` and never dispatched.
 
 ## 7. Cancel Response
 

@@ -53,15 +53,16 @@ psql_command() {
       --username="${database_user}" --dbname="${database_name}" --command "$1"
 }
 
-log "applying and replaying schema head 096"
+log "applying and replaying schema head 097"
 [[ "$(psql_command 'SHOW server_version_num' | cut -c1-2)" == "17" ]]
 (cd "${backend_dir}" && go build -buildvcs=false -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" "$@"; }
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/fresh.log"
+grep -Fq "up 097_chat_agent_goals" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
-[[ "$(psql_command 'SELECT max(version) FROM schema_migrations')" == "96" ]]
+[[ "$(psql_command 'SELECT max(version) FROM schema_migrations')" == "97" ]]
 
 log "checking append-only schema and least privilege"
 [[ "$(psql_command "SELECT to_regclass('public.chat_agent_turns') IS NOT NULL")" == "t" ]]
@@ -70,11 +71,14 @@ log "checking append-only schema and least privilege"
 [[ "$(psql_command "SELECT has_table_privilege('go_api_runtime','chat_agent_events','INSERT,UPDATE,DELETE')")" == "f" ]]
 [[ "$(psql_command "SELECT has_function_privilege('go_api_runtime','chat_agent_append_event(uuid,uuid,text,integer,jsonb,timestamptz)','EXECUTE')")" == "t" ]]
 
+run_migrate down >"${work_dir}/peel-097-chat-agent-goal-tail.log" 2>&1
+grep -Fq "down 097_chat_agent_goals" "${work_dir}/peel-097-chat-agent-goal-tail.log"
+
 log "running repository sequence, replay, interruption, and torn-finalization proofs"
 (cd "${backend_dir}" && MM_CHAT_TEST_DATABASE_URL="${database_url}" \
   go test ./internal/chat -run '^TestPostgresChatAgent(EventLog|Recovery)' -count=1)
 
-log "proving dirty down refusal and clean 096 down/up"
+log "proving dirty 096 down refusal and clean 096 -> 097 replay"
 set +e
 run_migrate down >"${work_dir}/dirty-down.log" 2>&1
 dirty_status=$?
@@ -86,6 +90,7 @@ run_migrate down >"${work_dir}/clean-down.log" 2>&1
 grep -Fq "down 096_chat_agent_event_log" "${work_dir}/clean-down.log"
 run_migrate up >"${work_dir}/clean-reup.log" 2>&1
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/clean-reup.log"
-[[ "$(psql_command 'SELECT max(version) FROM schema_migrations')" == "96" ]]
+grep -Fq "up 097_chat_agent_goals" "${work_dir}/clean-reup.log"
+[[ "$(psql_command 'SELECT max(version) FROM schema_migrations')" == "97" ]]
 
 log "passed"

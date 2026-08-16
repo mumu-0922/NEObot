@@ -78,12 +78,20 @@ unrelated personal files outside the configured workspace.
 6. Complete one `skill -> terminal -> answer` Turn, refresh the page, and open
    the process panel. The Tool order and terminal statuses must match the live
    view; history now prefers migration-`096` Agent events over legacy Message
-   metadata.
+   metadata. Migration `097` additionally keeps one current Goal for the
+   Conversation.
 7. For restart recovery, start a bounded long-running local command, restart
    only the Backend, then reload the Conversation. The unfinished Tool/Step
    must show `interrupted`; an answer that had already completed before restart
    must remain completed. This uses the same ordinary Backend user and requires
    no `sudo`, Runner, or per-Skill isolation.
+8. Ask for a clearly multi-step objective. The process view should show
+   `create_goal`, then automatic Goal Rounds without requiring repeated
+   “继续”. After any successful `terminal` mutation, the Agent must run a real
+   check and call `verify_completion` before it may mark the Goal complete.
+9. Restart Backend while an active Goal exists, reload the Conversation, and
+   say “继续”. The restored Goal is disarmed until that direct human request;
+   it must not continue work merely because the service restarted.
 
 The local regression command is:
 
@@ -91,6 +99,7 @@ The local regression command is:
 cd mm-chat/backend
 go test ./internal/chat -run TestLocalSkill -count=1
 bash ../scripts/verify-chat-agent-event-log-postgres17.sh
+bash ../scripts/verify-chat-agent-goals-postgres17.sh
 ```
 
 ## Rollback

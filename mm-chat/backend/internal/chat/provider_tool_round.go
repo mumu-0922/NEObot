@@ -38,6 +38,7 @@ type ProviderToolExchange struct {
 	Calls              []ProviderToolCall
 	Results            []ProviderToolResult
 	ProviderState      any
+	FollowupPrompt     string
 }
 
 type ProviderToolCallDelta struct {
@@ -92,4 +93,11 @@ func normalizeProviderToolChoice(value string) string {
 	default:
 		return ProviderToolChoiceAuto
 	}
+}
+
+func nonEmptyAgentContinuationContent(value string) string {
+	if value = strings.TrimSpace(value); value != "" {
+		return value
+	}
+	return "Continuing the task."
 }

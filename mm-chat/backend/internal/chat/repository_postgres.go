@@ -39,6 +39,157 @@ func NewPostgresRepository(db *sql.DB) *PostgresRepository {
 	}
 }
 
+func (r *PostgresRepository) GetChatAgentGoal(
+	ctx context.Context,
+	conversationID string,
+) (*ChatAgentGoal, error) {
+	if err := r.requireDB(); err != nil {
+		return nil, err
+	}
+	userID := auth.UserOrDevelopment(ctx).ID
+	goal, err := scanChatAgentGoal(r.db.QueryRowContext(ctx, `
+SELECT id, conversation_id, user_id, objective, phase, revision,
+       rounds_started, max_goal_rounds, blocked_code, blocked_message,
+       created_at, updated_at
+FROM chat_agent_goals
+WHERE conversation_id = $1 AND user_id = $2
+`, conversationID, userID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get chat Agent Goal: %w", err)
+	}
+	return &goal, nil
+}
+
+func (r *PostgresRepository) CreateChatAgentGoal(
+	ctx context.Context,
+	input CreateChatAgentGoalInput,
+) (ChatAgentGoal, error) {
+	if err := r.requireDB(); err != nil {
+		return ChatAgentGoal{}, err
+	}
+	goal, err := scanChatAgentGoal(r.db.QueryRowContext(ctx, `
+SELECT id, conversation_id, user_id, objective, phase, revision,
+       rounds_started, max_goal_rounds, blocked_code, blocked_message,
+       created_at, updated_at
+FROM chat_agent_create_goal($1, $2, $3, $4, $5, $6)
+`, input.TurnID, input.EventID, input.GoalID, input.Objective,
+		input.MaxGoalRounds, input.OccurredAt))
+	if err != nil {
+		return ChatAgentGoal{}, fmt.Errorf(
+			"create chat Agent Goal: %w", normalizeChatAgentGoalRepositoryError(err),
+		)
+	}
+	return goal, nil
+}
+
+func (r *PostgresRepository) ChangeChatAgentGoal(
+	ctx context.Context,
+	input ChangeChatAgentGoalInput,
+) (ChatAgentGoal, error) {
+	if err := r.requireDB(); err != nil {
+		return ChatAgentGoal{}, err
+	}
+	goal, err := scanChatAgentGoal(r.db.QueryRowContext(ctx, `
+SELECT id, conversation_id, user_id, objective, phase, revision,
+       rounds_started, max_goal_rounds, blocked_code, blocked_message,
+       created_at, updated_at
+FROM chat_agent_change_goal($1, $2, $3, $4, $5, $6, $7, $8, $9)
+`, input.TurnID, input.EventID, input.GoalID, input.ExpectedRevision,
+		input.Action, nullIfEmpty(input.Objective), nullIntPointer(input.MaxGoalRounds),
+		nullIfEmpty(input.BlockedReason), input.OccurredAt))
+	if err != nil {
+		return ChatAgentGoal{}, fmt.Errorf(
+			"change chat Agent Goal: %w", normalizeChatAgentGoalRepositoryError(err),
+		)
+	}
+	return goal, nil
+}
+
+func (r *PostgresRepository) CancelChatAgentGoal(
+	ctx context.Context,
+	input CancelChatAgentGoalInput,
+) (ChatAgentGoalRef, error) {
+	if err := r.requireDB(); err != nil {
+		return ChatAgentGoalRef{}, err
+	}
+	var ref ChatAgentGoalRef
+	err := r.db.QueryRowContext(ctx, `
+SELECT goal_id, revision
+FROM chat_agent_cancel_goal($1, $2, $3, $4, $5)
+`, input.TurnID, input.EventID, input.GoalID, input.ExpectedRevision,
+		input.OccurredAt).Scan(&ref.ID, &ref.Revision)
+	if err != nil {
+		return ChatAgentGoalRef{}, fmt.Errorf(
+			"cancel chat Agent Goal: %w", normalizeChatAgentGoalRepositoryError(err),
+		)
+	}
+	return ref, nil
+}
+
+func (r *PostgresRepository) StartChatAgentGoalRound(
+	ctx context.Context,
+	input StartChatAgentGoalRoundInput,
+) (ChatAgentGoal, error) {
+	if err := r.requireDB(); err != nil {
+		return ChatAgentGoal{}, err
+	}
+	goal, err := scanChatAgentGoal(r.db.QueryRowContext(ctx, `
+SELECT id, conversation_id, user_id, objective, phase, revision,
+       rounds_started, max_goal_rounds, blocked_code, blocked_message,
+       created_at, updated_at
+FROM chat_agent_start_goal_round($1, $2, $3, $4, $5, $6)
+`, input.TurnID, input.EventID, input.GoalID, input.ExpectedRevision,
+		input.Round, input.OccurredAt))
+	if err != nil {
+		return ChatAgentGoal{}, fmt.Errorf(
+			"start chat Agent Goal round: %w", normalizeChatAgentGoalRepositoryError(err),
+		)
+	}
+	return goal, nil
+}
+
+func scanChatAgentGoal(scanner rowScanner) (ChatAgentGoal, error) {
+	var goal ChatAgentGoal
+	var blockedCode, blockedMessage sql.NullString
+	if err := scanner.Scan(
+		&goal.ID,
+		&goal.ConversationID,
+		&goal.UserID,
+		&goal.Objective,
+		&goal.Phase,
+		&goal.Revision,
+		&goal.RoundsStarted,
+		&goal.MaxGoalRounds,
+		&blockedCode,
+		&blockedMessage,
+		&goal.CreatedAt,
+		&goal.UpdatedAt,
+	); err != nil {
+		return ChatAgentGoal{}, err
+	}
+	if blockedCode.Valid && blockedMessage.Valid {
+		goal.BlockedReason = &ChatAgentGoalBlockReason{
+			Code: blockedCode.String, Message: blockedMessage.String,
+		}
+	}
+	return goal, nil
+}
+
+func normalizeChatAgentGoalRepositoryError(err error) error {
+	var postgresError *pgconn.PgError
+	if !errors.As(err, &postgresError) {
+		return err
+	}
+	code := strings.TrimSpace(postgresError.Message)
+	if strings.HasPrefix(code, "CHAT_AGENT_GOAL_") {
+		return ChatAgentGoalError{Code: code}
+	}
+	return err
+}
+
 func (r *PostgresRepository) StartChatAgentTurn(
 	ctx context.Context,
 	input StartChatAgentTurnInput,
@@ -2553,6 +2704,13 @@ func nullInt(value int) any {
 		return nil
 	}
 	return value
+}
+
+func nullIntPointer(value *int) any {
+	if value == nil {
+		return nil
+	}
+	return *value
 }
 
 func isIdempotencyConflict(err error, idempotencyKey string, constraintNames ...string) bool {

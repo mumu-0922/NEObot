@@ -9,7 +9,7 @@
 | [Server Auth identity](./auth-identity.md) | Shared Email/Password validation, Argon2id, credential revision, recovery, and Session revocation boundaries |
 | [RAG retrieval storage](./rag-retrieval-storage.md) | PostgreSQL retrieval, Citation authority/display, diagnostics, and rollback contracts                              |
 | [Chat source fusion](./chat-source-fusion.md)       | Conversation-aware external Search query rewriting, Knowledge/Web authority, diagnostics, and fallback contracts      |
-| [Chat Tool Loop](./chat-tool-loop.md)               | G19 provider-normalized Tool rounds, three-state Search authority, Memory first-round routing, process persistence, approvals, and citation truth |
+| [Chat Tool Loop](./chat-tool-loop.md)               | Provider-normalized Tool rounds, durable process replay, same-session Goals, completion evidence, Search/Memory routing, approvals, and citation truth |
 | [MCP Tools](./mcp-tools.md)                         | Server-authoritative MCP API, grants/selections, native Tool continuation, transports, results, retention, and Plugin retirement |
 | [Assistant Store](./assistant-store.md)             | Server-owned prompt presets, LobeHub admission/fingerprints, revisions, persistence, and rollback boundaries |
 | [Agent Runtime](./agent-runtime.md) | Current `local_direct` installed-Skill materialization/execution plus retained optional G20/G21 Runner/Broker/delegation/Cron/learning history |

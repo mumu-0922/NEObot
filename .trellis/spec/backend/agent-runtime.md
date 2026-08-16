@@ -11,18 +11,19 @@ Skills are progressively disclosed instruction directories and permitted
 commands run as the ordinary Backend user. The retained G20/G21 OCI Runtime is
 disabled optional/history and does not gate this path.
 
-Ordinary Chat migration `096` advances the current database head only. The
+Ordinary Chat migrations `096` and `097` advance the current database head only. The
 held OCI activation/closure artifacts remain pinned to their reviewed `095`
-release and are not implicitly promoted; older PostgreSQL drills peel `096`
-before the retained control-plane tail and reapply through `096`.
+release and are not implicitly promoted; older PostgreSQL drills peel `097`,
+then `096`, before the retained control-plane tail and reapply through `097`.
 
 ### 2. Signatures
 
 - Catalog: `skillsupply.Service.PrepareRuntimeSkills(ctx, userID, runID)`.
 - File read: `skillsupply.ReadRuntimeSkillFile(skill, relativePath)`.
 - Executor: `localskills.Executor.Execute(ctx, localskills.Request)`.
-- Native Tools: `skills_list({})`, `skill_view({name,path?})`, and
-  `terminal({command,skill?,workingDir?,timeoutSeconds?})`.
+- Native Tools: `skill({name})` and
+  `terminal({command,skill?,workingDir?,timeoutSeconds?})`. Goal and completion
+  Tools are owned by the Chat Tool Loop, not this package executor.
 - Runtime state: `state=local_ready`,
   `reasonCode=LOCAL_DIRECT_EXECUTION`, `executable=true`.
 - Contract/gate: `mm-chat/docs/contracts/local-skill-runtime.md` and
@@ -42,7 +43,8 @@ before the retained control-plane tail and reapply through `096`.
   drift. Rehash again immediately before a `terminal.skill` binding. Do not
   execute a package while materializing it.
 - Inject only a bounded metadata index into the system prompt. Full content
-  enters the same-model Tool continuation only through `skill_view`.
+  enters the same-model Tool continuation only through `skill`; retired
+  `skills_list`/`skill_view` remain execution-compatible but are not advertised.
 - Run `terminal` through an absolute configured shell with `-c`, never a login
   shell that reads workspace profile files, using the Backend
   UID/GID, and a working directory inside the configured workspace after

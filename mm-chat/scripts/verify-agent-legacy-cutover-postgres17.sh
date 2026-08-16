@@ -61,7 +61,7 @@ run_cutover() {
       --dbname="${database_name}" "$@" <"${cutover_sql}"
 }
 
-log "applying schema head 001 -> 096"
+log "applying schema head 001 -> 097"
 [[ "$(psql_command 'SHOW server_version_num' | cut -c1-2)" == "17" ]]
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" up >"${work_dir}/migrate.log" 2>&1
@@ -72,7 +72,8 @@ grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/migrate.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/migrate.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/migrate.log"
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/migrate.log"
-[[ "$(psql_command 'SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1')" == "96" ]]
+grep -Fq "up 097_chat_agent_goals" "${work_dir}/migrate.log"
+[[ "$(psql_command 'SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1')" == "97" ]]
 
 log "seeding retired selection fixtures and taking a full backup"
 user_id="11111111-1111-4111-8111-111111111111"
@@ -140,8 +141,13 @@ run_cutover --variable=cutover_apply=true --variable=expected_count=0 \
   --variable=backup_fingerprint="${backup_fingerprint}" >"${work_dir}/replay.log"
 grep -Fq "removed_legacy_skill_selections" "${work_dir}/replay.log"
 [[ "$(psql_command 'SELECT count(*) FROM conversations')" == "3" ]]
-[[ "$(psql_command 'SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1')" == "96" ]]
+[[ "$(psql_command 'SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1')" == "97" ]]
 
+if ! MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" down >"${work_dir}/peel-097-tail-1.log" 2>&1; then
+  cat "${work_dir}/peel-097-tail-1.log" >&2
+  exit 1
+fi
+grep -Fq "down 097_chat_agent_goals" "${work_dir}/peel-097-tail-1.log"
 if ! MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" down >"${work_dir}/peel-096-tail-1.log" 2>&1; then
   cat "${work_dir}/peel-096-tail-1.log" >&2
   exit 1
@@ -170,6 +176,7 @@ grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/reup-092.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/reup-092.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/reup-092.log"
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/reup-092.log"
-[[ "$(psql_command 'SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1')" == "96" ]]
+grep -Fq "up 097_chat_agent_goals" "${work_dir}/reup-092.log"
+[[ "$(psql_command 'SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1')" == "97" ]]
 
-log "passed (dry-run, backup/count fences, exact JSONB deletion, unrelated-byte equivalence, restart/replay, schema head 096)"
+log "passed (dry-run, backup/count fences, exact JSONB deletion, unrelated-byte equivalence, restart/replay, schema head 097)"

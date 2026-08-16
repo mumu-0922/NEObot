@@ -60,7 +60,7 @@ psql_command() {
 }
 [[ "$(psql_command 'SHOW server_version_num' | cut -c1-2)" == "17" ]]
 
-log "applying migrations through schema head 096"
+log "applying migrations through schema head 097"
 (cd "${backend_dir}" && go build -buildvcs=false -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 MIGRATION_DATABASE_URL="${admin_url}" "${work_dir}/migrate" up >"${work_dir}/migrate.log" 2>&1
 grep -Fq "up 084_agent_orchestrator_foundation" "${work_dir}/migrate.log"
@@ -72,7 +72,8 @@ grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/migrate.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/migrate.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/migrate.log"
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/migrate.log"
-[[ "$(psql_command "SELECT max(version) FROM schema_migrations")" == "96" ]]
+grep -Fq "up 097_chat_agent_goals" "${work_dir}/migrate.log"
+[[ "$(psql_command "SELECT max(version) FROM schema_migrations")" == "97" ]]
 
 log "provisioning the independent exact-membership LOGIN"
 psql_command "
@@ -126,7 +127,9 @@ log "proving atomic Sandbox/Attempt/Step/Run cancellation and rollback"
       ./internal/agentrootcanary
 )
 
-log "peeling and reapplying the empty migrations 096 through 092 tail"
+log "peeling and reapplying the empty migrations 097 through 092 tail"
+MIGRATION_DATABASE_URL="${admin_url}" "${work_dir}/migrate" down >"${work_dir}/peel-097-tail-1.log" 2>&1
+grep -Fq "down 097_chat_agent_goals" "${work_dir}/peel-097-tail-1.log"
 MIGRATION_DATABASE_URL="${admin_url}" "${work_dir}/migrate" down >"${work_dir}/peel-096-tail-1.log" 2>&1
 grep -Fq "down 096_chat_agent_event_log" "${work_dir}/peel-096-tail-1.log"
 MIGRATION_DATABASE_URL="${admin_url}" "${work_dir}/migrate" down >"${work_dir}/peel-095-tail-1.log" 2>&1
@@ -143,6 +146,7 @@ grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/reup-092.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/reup-092.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/reup-092.log"
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/reup-092.log"
-[[ "$(psql_command "SELECT max(version) FROM schema_migrations")" == "96" ]]
+grep -Fq "up 097_chat_agent_goals" "${work_dir}/reup-092.log"
+[[ "$(psql_command "SELECT max(version) FROM schema_migrations")" == "97" ]]
 
 log "passed (PostgreSQL 17, exact role inheritance, rollback, atomic terminal chain; no Artifact role use)"

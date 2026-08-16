@@ -140,3 +140,34 @@ func TestChatStreamErrorBodyClassifiesRetryableStreamInterruption(t *testing.T) 
 		}
 	}
 }
+
+func TestChatStreamErrorBodyClassifiesChatAgentFailures(t *testing.T) {
+	tests := []struct {
+		code    string
+		message string
+	}{
+		{
+			code:    "AGENT_VERIFICATION_REQUIRED",
+			message: "The Agent changed state but could not verify the result before stopping",
+		},
+		{
+			code:    "AGENT_GOAL_PERSISTENCE_FAILED",
+			message: "The Agent could not persist Goal state",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.code, func(t *testing.T) {
+			body := chatStreamErrorBody(&chatAgentRunFailure{
+				code: test.code,
+				err:  errors.New("private Agent failure detail"),
+			}, false)
+			if body.Code != test.code || body.Message != test.message {
+				t.Fatalf("body = %#v", body)
+			}
+			if body.Message == "private Agent failure detail" {
+				t.Fatal("Agent failure detail leaked")
+			}
+		})
+	}
+}

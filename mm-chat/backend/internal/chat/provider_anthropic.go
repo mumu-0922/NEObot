@@ -495,6 +495,22 @@ func appendAnthropicContinuation(
 ) ([]anthropicMessage, error) {
 	for _, exchange := range exchanges {
 		if len(exchange.Calls) == 0 {
+			followup := strings.TrimSpace(exchange.FollowupPrompt)
+			if followup == "" {
+				continue
+			}
+			blocks := anthropicContinuationBlocks(exchange)
+			if len(blocks) == 0 {
+				blocks = []map[string]any{{
+					"type": "text", "text": nonEmptyAgentContinuationContent(""),
+				}}
+			}
+			messages = append(messages, anthropicMessage{
+				Role: "assistant", Content: blocks,
+			})
+			messages = append(messages, anthropicMessage{
+				Role: "user", Content: followup,
+			})
 			continue
 		}
 		blocks := anthropicContinuationBlocks(exchange)

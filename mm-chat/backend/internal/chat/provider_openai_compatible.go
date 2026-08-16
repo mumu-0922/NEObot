@@ -705,6 +705,19 @@ func appendOpenAICompatibleContinuation(
 ) []openAICompatibleMessage {
 	for _, exchange := range exchanges {
 		if len(exchange.Calls) == 0 {
+			if strings.TrimSpace(exchange.FollowupPrompt) == "" {
+				continue
+			}
+			messages = append(messages, openAICompatibleMessage{
+				Role: "assistant",
+				Content: nullableOpenAICompatibleContent(
+					nonEmptyAgentContinuationContent(exchange.AssistantContent),
+				),
+				ReasoningContent: strings.TrimSpace(exchange.AssistantReasoning),
+			})
+			messages = append(messages, openAICompatibleMessage{
+				Role: "user", Content: strings.TrimSpace(exchange.FollowupPrompt),
+			})
 			continue
 		}
 		toolCalls := make([]openAICompatibleMessageToolCall, 0, len(exchange.Calls))

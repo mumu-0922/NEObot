@@ -1568,6 +1568,15 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		)
 		return
 	}
+	var goalToolRuntime *chatAgentGoalToolRuntime
+	if toolRoundCapable {
+		goalToolRuntime = newChatAgentGoalToolRuntime(
+			h.service, agentRecorder.turnID, conversationID,
+		)
+		providerSystemPrompt = appendChatAgentGoalSystemInstruction(
+			providerSystemPrompt, goalToolRuntime,
+		)
+	}
 	turnFinalStatus := ChatAgentTurnInterrupted
 	turnFinalContent := ""
 	turnFinalErrorCode := "AGENT_RUN_INTERRUPTED"
@@ -1833,7 +1842,8 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		generationStarted,
 		map[string]any{"outcome": "streaming"},
 	)
-	if mcpRuntime.enabled() || localSkillRuntime.enabled() || memoryToolRuntime.enabled() || useLiveKnowledgeTool ||
+	if mcpRuntime.enabled() || localSkillRuntime.enabled() || memoryToolRuntime.enabled() ||
+		goalToolRuntime.enabled() || useLiveKnowledgeTool ||
 		(searchMode == chatSearchModeExternal && searchExecution != nil &&
 			searchExecution.Mode == websearch.ExecutionExternal &&
 			!useCompatibilityKnowledge) {
@@ -1858,6 +1868,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			DisableNativeToolRound: !toolRoundCapable,
 			MCP:                    mcpRuntime,
 			LocalSkills:            localSkillRuntime,
+			Goals:                  goalToolRuntime,
 		}
 		if searchExecution != nil &&
 			searchExecution.Mode == websearch.ExecutionExternal {
@@ -3647,6 +3658,17 @@ func chatStreamErrorBody(err error, deadlineExceeded bool) ErrorBody {
 			message = "The provider did not load the required Skill before acting"
 		}
 		return ErrorBody{Code: localFailure.code, Message: message}
+	}
+	var agentFailure *chatAgentRunFailure
+	if errors.As(err, &agentFailure) {
+		message := "Chat Agent run failed"
+		switch agentFailure.code {
+		case "AGENT_VERIFICATION_REQUIRED":
+			message = "The Agent changed state but could not verify the result before stopping"
+		case "AGENT_GOAL_PERSISTENCE_FAILED":
+			message = "The Agent could not persist Goal state"
+		}
+		return ErrorBody{Code: agentFailure.code, Message: message}
 	}
 	if category, ok := ProviderFailureCategoryOf(err); ok {
 		switch category {

@@ -52,6 +52,7 @@ type externalWebToolLoopInput struct {
 	ContextBudget          *retrievalContextBudget
 	MCP                    *mcpToolRuntime
 	LocalSkills            *localSkillToolRuntime
+	Goals                  *chatAgentGoalToolRuntime
 }
 
 func searchWebToolDefinition() ToolDefinition {
@@ -176,10 +177,23 @@ func runNativeExternalWebToolLoop(
 	answerContentEmitted := false
 	memoryContinuationStarted := false
 	turn := newChatAgentTurnDriver()
+	goalWrapupActive := false
+	var completionPolicy *chatCompletionPolicy
+	if input.Goals.enabled() {
+		completionPolicy = newChatCompletionPolicy()
+		input.Goals.bindCompletionPolicy(completionPolicy)
+	}
 	for {
 		skillLoadRound := input.LocalSkills.requiresSkillLoad()
 		step, stepAdmitted := turn.beginStep(skillLoadRound)
 		if !stepAdmitted {
+			if completionPolicy.requiresVerification() {
+				sendProviderEvent(ctx, events, ProviderEvent{Error: &chatAgentRunFailure{
+					code: "AGENT_VERIFICATION_REQUIRED",
+					err:  errors.New("Agent Step limit reached before completion verification"),
+				}})
+				return true
+			}
 			streamFinalNoTools(
 				ctx, events, provider, input.Request, continuation, completedUsage,
 			)
@@ -188,12 +202,26 @@ func runNativeExternalWebToolLoop(
 		round := step.Sequence
 		taskRound := step.TaskSequence
 		if input.MCP.enabled() && round > input.MCP.service.Config().MaxRoundsPerRun {
+			if completionPolicy.requiresVerification() {
+				sendProviderEvent(ctx, events, ProviderEvent{Error: &chatAgentRunFailure{
+					code: "AGENT_VERIFICATION_REQUIRED",
+					err:  errors.New("MCP round limit reached before completion verification"),
+				}})
+				return true
+			}
 			streamFinalNoTools(
 				ctx, events, provider, input.Request, continuation, completedUsage,
 			)
 			return true
 		}
 		if input.LocalSkills.enabled() && round > input.LocalSkills.config().MaxRounds {
+			if completionPolicy.requiresVerification() {
+				sendProviderEvent(ctx, events, ProviderEvent{Error: &chatAgentRunFailure{
+					code: "AGENT_VERIFICATION_REQUIRED",
+					err:  errors.New("local Tool round limit reached before completion verification"),
+				}})
+				return true
+			}
 			streamFinalNoTools(
 				ctx, events, provider, input.Request, continuation, completedUsage,
 			)
@@ -205,6 +233,13 @@ func runNativeExternalWebToolLoop(
 			registry = newChatToolRegistry(input)
 		}
 		roundTools := registry.definitions(taskRound)
+		if input.Goals.consumeForceNoTools() {
+			goalWrapupActive = true
+		}
+		wrapupRound := goalWrapupActive
+		if wrapupRound {
+			roundTools = nil
+		}
 		roundRequest := input.Request
 		choice := ProviderToolChoiceAuto
 		switch {
@@ -221,6 +256,8 @@ func runNativeExternalWebToolLoop(
 		case taskRound == 1 && input.ForceSearch && externalWebToolEnabled(input):
 			choice = ProviderToolChoiceRequired
 		}
+		bufferAgentGuardRound := wrapupRound ||
+			input.Goals.automaticWorkActive() || completionPolicy.requiresVerification()
 		roundEvents, err := provider.StreamToolRound(ctx, ProviderRoundRequest{
 			ProviderRequest: roundRequest,
 			Tools:           roundTools,
@@ -250,6 +287,10 @@ func runNativeExternalWebToolLoop(
 					return true
 				}
 				return false
+			}
+			if bufferAgentGuardRound {
+				sendProviderEvent(ctx, events, ProviderEvent{Error: err})
+				return true
 			}
 			if memoryContinuationStarted {
 				input.Memory.clearUsedMemories()
@@ -284,7 +325,7 @@ func runNativeExternalWebToolLoop(
 			externalWebToolEnabled(input)
 		bufferMemoryDecisionRound := taskRound == 1 && input.Memory.enabled()
 		bufferFirstRound := bufferSkillLoadRound || bufferForcedRound ||
-			bufferMemoryDecisionRound
+			bufferMemoryDecisionRound || bufferAgentGuardRound
 		bufferedEvents := make([]ProviderEvent, 0)
 		for event := range roundEvents {
 			if event.Error != nil {
@@ -307,6 +348,10 @@ func runNativeExternalWebToolLoop(
 						return true
 					}
 					return false
+				}
+				if bufferAgentGuardRound {
+					sendProviderEvent(ctx, events, event)
+					return true
 				}
 				if bufferFirstRound {
 					if input.MCP.enabled() {
@@ -405,6 +450,33 @@ func runNativeExternalWebToolLoop(
 			if bufferForcedRound {
 				return false
 			}
+			if bufferAgentGuardRound {
+				followupPrompt := ""
+				continued := false
+				if completionPolicy.requiresVerification() {
+					followupPrompt = renderChatAgentVerificationPrompt(completionPolicy)
+					continued = true
+				} else {
+					followupPrompt, continued, err = input.Goals.beginNextRound(ctx)
+					if err != nil {
+						sendProviderEvent(ctx, events, ProviderEvent{Error: &chatAgentRunFailure{
+							code: "AGENT_GOAL_PERSISTENCE_FAILED", err: err,
+						}})
+						return true
+					}
+				}
+				if continued {
+					if roundUsage != nil {
+						completedUsage = addTokenUsageValue(completedUsage, *roundUsage)
+					}
+					continuation = append(continuation, ProviderToolExchange{
+						AssistantContent:   assistantContent.String(),
+						AssistantReasoning: assistantReasoning.String(),
+						ProviderState:      roundState, FollowupPrompt: followupPrompt,
+					})
+					continue
+				}
+			}
 			for _, event := range bufferedEvents {
 				if !sendProviderEvent(ctx, events, event) {
 					return true
@@ -419,7 +491,7 @@ func runNativeExternalWebToolLoop(
 			memoryContinuationStarted = true
 		}
 		for _, event := range bufferedEvents {
-			if bufferMemoryDecisionRound &&
+			if (bufferMemoryDecisionRound || bufferAgentGuardRound) &&
 				(event.Type == ProviderEventDelta || event.Type == ProviderEventReasoningDelta) {
 				continue
 			}
@@ -437,6 +509,14 @@ func runNativeExternalWebToolLoop(
 			Calls:              append([]ProviderToolCall(nil), calls...),
 			Results:            make([]ProviderToolResult, 0, len(calls)),
 			ProviderState:      roundState,
+		}
+		if wrapupRound {
+			for _, call := range calls {
+				exchange.Results = append(exchange.Results,
+					chatToolFailureResult(call, "goal_concluded"))
+			}
+			continuation = append(continuation, exchange)
+			continue
 		}
 		admittedCalls := turn.admitToolCalls(len(calls))
 		executionCalls := calls[:admittedCalls]
@@ -469,8 +549,16 @@ func runNativeExternalWebToolLoop(
 			}
 			exchange.Results = append(exchange.Results, executed.result)
 		}
+		completionPolicy.observe(registry, calls, exchange.Results)
 		continuation = append(continuation, exchange)
 		if infrastructure.BudgetReached || admittedCalls < len(calls) {
+			if completionPolicy.requiresVerification() {
+				sendProviderEvent(ctx, events, ProviderEvent{Error: &chatAgentRunFailure{
+					code: "AGENT_VERIFICATION_REQUIRED",
+					err:  errors.New("Tool budget reached before completion verification"),
+				}})
+				return true
+			}
 			streamFinalNoTools(
 				ctx, events, provider, input.Request, continuation, completedUsage,
 			)

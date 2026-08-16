@@ -1,9 +1,10 @@
-# Postgres Core Schema and Chat Agent Events Through Migration 096
+# Postgres Core Schema and Chat Agent Goals Through Migration 097
 
 This document describes the core schema created by the ordered migrations in
 `mm-chat/backend/migrations`, from `001_initial_schema` through
-`061_memory_portability_retention`, plus the ordinary Chat Agent event authority
-added by `096_chat_agent_event_log`. Migrations `062` through `095` own later
+`061_memory_portability_retention`, plus the ordinary Chat Agent event and Goal
+authorities added by `096_chat_agent_event_log` and `097_chat_agent_goals`.
+Migrations `062` through `095` own later
 Memory and optional Agent control-plane surfaces and remain catalogued in
 `mm-chat/backend/migrations/README.md`.
 Phase labels are retained where they explain rollout history; they do not
@@ -17,7 +18,8 @@ Postgres is the source of truth for structured server data:
 users -> sessions
 users -> provider_configs
 users -> conversations -> messages -> message_attachments -> files
-                              \-> chat_agent_turns -> chat_agent_events
+                   |          \-> chat_agent_turns -> chat_agent_events
+                   \-> chat_agent_goals
 users -> memory settings/projects/scoped memories -> memory outbox/jobs
 users -> import_batches
 users/sessions/actions -> audit_logs
@@ -35,7 +37,8 @@ In scope:
 - Conversations, messages, output block JSON, retry idempotency keys, and
   message status.
 - Append-only ordinary Chat Agent Turns/Events for process replay and restart
-  reconciliation, separate from optional control-plane Run events.
+  reconciliation plus one current same-Conversation Goal, separate from
+  optional control-plane Run events.
 - Browser import batch idempotency, response replay, and rollback state.
 - File ownership and metadata only; file bytes remain out of Postgres.
 - Append-only audit log rows for security and operational events.
@@ -98,6 +101,7 @@ Out of scope:
 | `060_memory_governance_ui`                    | Adds current-user Project/policy/scoped Memory/Review/detail/Activity capabilities, Review decision audit, and classified legacy wrappers. |
 | `061_memory_portability_retention`            | Adds imported source/revision authority, hash-only import batches, encrypted portability capabilities, deletion replay authority, and projection rebuild. |
 | `096_chat_agent_event_log`                    | Adds Chat-owned Turn/Event sequence authority, immutable replay, least-privilege append functions, and incomplete-Turn recovery. |
+| `097_chat_agent_goals`                        | Adds one revision-CAS Goal per Conversation, atomic Goal events, bounded automatic rounds, least-privilege mutations, and guarded rollback. |
 
 Published migration pairs are immutable and applied in numeric order. Migration
 SQL contains no transaction-control statements; the Go runner wraps each schema
@@ -264,6 +268,32 @@ Key boundaries:
   Message keeps its committed status and supplies the reconciled Turn status.
 - Migration `096` Down refuses while either table contains data. The disposable
   replay gate is `scripts/verify-chat-agent-event-log-postgres17.sh`.
+
+### `chat_agent_goals`
+
+Purpose: one current same-Conversation objective for ordinary Chat Agent
+continuation. Process-local activation is deliberately absent from the table,
+so a restored `active` Goal is disarmed until a direct human `resume` action.
+
+Key boundaries:
+
+- The Conversation primary key plus composite owner foreign key prevents a Goal
+  from crossing user authority. A completed Goal may be replaced; any other
+  current phase rejects creation.
+- Phase is `active|paused|blocked|complete`, revision starts at 1, and automatic
+  round budget is constrained to 3-32. `blocked` requires a bounded non-empty
+  reason; every other phase requires blocker columns to be null.
+- Create/change/cancel use revision compare-and-set where applicable and append
+  `goal.changed` atomically. Starting the next exact round appends
+  `goal.round.started` without incrementing Goal revision.
+- `go_api_runtime` receives SELECT and exact execution of the four
+  `SECURITY DEFINER` mutation functions, with no INSERT/UPDATE/DELETE grant.
+- Cancellation removes the current row but preserves a `goal.changed`
+  tombstone containing only the cleared Goal ID/revision. Migration `097` Down
+  refuses while a current Goal row exists.
+- Disposable PostgreSQL 17 proof is
+  `scripts/verify-chat-agent-goals-postgres17.sh`; older tail drills peel empty
+  `097` before `096` and return to head `097`.
 
 ### `files`
 

@@ -30,6 +30,103 @@ live report completed only `12/300` routes, classified the `288` failures into
 `31` context deadlines, `83` invalid Tool Calls, and `174` unclassified router
 failures, and kept Validation/Promotion blocked.
 
+## Scenario: Continue a Chat Agent Goal and gate completion evidence
+
+### 1. Scope / Trigger
+
+Apply when changing migration `097`, Goal Tool definitions, automatic
+continuation, Provider follow-up framing, Tool risk observation, completion
+verification, Goal process events, or terminal wrap-up behavior.
+
+### 2. Signatures
+
+```text
+get_goal({})
+create_goal({objective,maxGoalRounds})
+update_goal({goalId,revision,action,objective,maxGoalRounds,blockedReason})
+verify_completion({evidenceToolCallId,summary})
+
+chat_agent_create_goal(...)
+chat_agent_change_goal(...)
+chat_agent_cancel_goal(...)
+chat_agent_start_goal_round(...)
+
+ProviderToolExchange.FollowupPrompt
+```
+
+Goal phase is `active|paused|blocked|complete`; update action is
+`edit|pause|resume|complete|blocked|cancel`. Strict Provider schemas require
+all properties; semantic optionals are nullable.
+
+### 3. Contracts
+
+- Register Goal Tools only for a native-Tool model when the Repository supports
+  `ChatAgentGoalRepository`. Legacy/fake repositories keep their old loop and
+  do not receive an unreachable completion gate.
+- Store at most one current Goal per Conversation. Create/change/cancel append
+  `goal.changed` atomically; starting exact next round appends
+  `goal.round.started`. Every mutation uses exact Goal ID/revision CAS.
+- Activation is process-local. Each HTTP request starts disarmed; only a direct
+  human request may create/edit/pause/resume/cancel. Restored active state does
+  not self-start. Automatic work may complete/block; automatic blocked requires
+  round 3 or later and the prompt requires the same blocker across rounds.
+- Goal round budgets are 3-32, default 8. When armed work would otherwise stop,
+  start the exact next round and append `assistant -> synthetic user` through
+  `FollowupPrompt`; preserve Anthropic Thinking blocks/signatures.
+- Observe successful non-Goal Tool results in exact call/result order. A
+  `write|execute` becomes the latest mutation. Normal end and Goal complete are
+  forbidden until `verify_completion` references a successful evidence call at
+  or after it. Goal Tools never count as mutation/evidence.
+- Buffer Goal/verification intermediate prose. Complete/blocked/cancel latches
+  a Tool-free wrap-up for the rest of the Turn. A hallucinated call receives
+  `goal_concluded`, executes nothing and cannot restore ordinary Tools.
+- Goal process events contain only Tool name/round, `mode=goal`,
+  `classification=read|write`, duration/status/failure category. Do not expose
+  objective, blocker, arguments, verification summary or server data.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| absent Goal repository | no Goal Tools and no completion gate |
+| bad strict arguments / unknown Goal | bounded Tool error; no mutation |
+| stale revision / wrong exact round | `stale_revision` / `round_invalid`; no event gap |
+| non-human create/edit/pause/resume/cancel | `human_authority_required` |
+| automatic blocked before round 3 | `blocked_round_threshold` |
+| complete with outstanding mutation | `verification_required` |
+| stale/failed/unknown evidence call | `verification_evidence_invalid` |
+| Step/Tool/local/MCP budget with outstanding verification | terminal `AGENT_VERIFICATION_REQUIRED`; no Tool-free success |
+| Goal database/function failure | terminal `AGENT_GOAL_PERSISTENCE_FAILED` |
+| wrap-up Provider emits Tool Call | `goal_concluded`; no dispatch; next Step remains Tool-free |
+| dirty `097` Down | `CHAT_AGENT_GOALS_DOWN_DATA_EXISTS` |
+
+### 5. Good / Base / Bad Cases
+
+- **Good:** create -> automatic round -> execute -> checking Tool result ->
+  verify -> complete -> Tool-free final answer.
+- **Base:** short read-only chat uses no Goal; one Provider Turn ends normally.
+- **Bad:** arm a restored Goal on startup, accept narration as evidence, mark
+  blocked in round 1, or re-enable Tools after a wrap-up hallucination.
+
+### 6. Tests Required
+
+- Strict definitions, default no Subagent, human authority, CAS, 3-round
+  blocker floor, round cap, verification reference and terminal error mapping.
+- Automatic continuation hides intermediate narration and frames OpenAI/
+  Anthropic `assistant -> user` without dropping Thinking state.
+- Wrap-up hallucination proves all later requests have `Tools=nil`, no Goal or
+  business mutation occurs, and only the final prose is visible.
+- PostgreSQL 17 drill proves fresh/replay head `097`, runtime DML denial, exact
+  Function EXECUTE, contiguous Goal events, dirty refusal and clean down/up.
+
+### 7. Wrong vs Correct
+
+```text
+Wrong: write -> model says "done" -> completed
+Correct: write -> successful concrete check -> verify_completion(callId)
+         -> optional Goal complete -> permanently Tool-free wrap-up
+```
+
 ## Scenario: Drive one Chat Turn through the unified Tool Registry
 
 ### 1. Scope / Trigger

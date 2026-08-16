@@ -213,6 +213,108 @@ func TestPostgresChatAgentRecoveryPreservesCompletedMessage(t *testing.T) {
 	}
 }
 
+func TestPostgresChatAgentGoalCASRoundsEventsAndCancellation(t *testing.T) {
+	db := openPostgresIntegrationDB(t)
+	repo := NewPostgresRepository(db)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	conversation, err := repo.CreateConversation(ctx, CreateConversationInput{Title: "Agent Goal"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	userMessage, err := repo.CreateMessage(ctx, conversation.ID, CreateMessageInput{
+		Role: "user", Content: "finish a long task",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assistant, err := repo.CreateAssistantMessage(ctx, conversation.ID, CreateAssistantMessageInput{
+		ID: mustTestUUID(t), ParentMessageID: userMessage.ID,
+		IdempotencyKey: "agent-goal-assistant-" + mustTestUUID(t),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turnID := mustTestUUID(t)
+	startedAt := time.Now().UTC()
+	if _, err := repo.StartChatAgentTurn(ctx, StartChatAgentTurnInput{
+		TurnID: turnID, EventID: mustTestUUID(t), ConversationID: conversation.ID,
+		MessageID: assistant.ID, RunID: mustTestUUID(t), OccurredAt: startedAt,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	goal, err := repo.CreateChatAgentGoal(ctx, CreateChatAgentGoalInput{
+		TurnID: turnID, EventID: mustTestUUID(t), GoalID: mustTestUUID(t),
+		Objective: "produce and verify the artifact", MaxGoalRounds: 4,
+		OccurredAt: startedAt.Add(time.Millisecond),
+	})
+	if err != nil || goal.Revision != 1 || goal.Phase != ChatAgentGoalActive {
+		t.Fatalf("create Goal = %#v, %v", goal, err)
+	}
+	stored, err := repo.GetChatAgentGoal(ctx, conversation.ID)
+	if err != nil || stored == nil || stored.ID != goal.ID {
+		t.Fatalf("get Goal = %#v, %v", stored, err)
+	}
+	if _, err := repo.ChangeChatAgentGoal(ctx, ChangeChatAgentGoalInput{
+		TurnID: turnID, EventID: mustTestUUID(t), GoalID: goal.ID,
+		ExpectedRevision: 9, Action: ChatAgentGoalActionPause,
+		OccurredAt: startedAt.Add(2 * time.Millisecond),
+	}); err == nil || !strings.Contains(err.Error(), "CHAT_AGENT_GOAL_STALE_REVISION") {
+		t.Fatalf("stale Goal change error = %v", err)
+	}
+	round, err := repo.StartChatAgentGoalRound(ctx, StartChatAgentGoalRoundInput{
+		TurnID: turnID, EventID: mustTestUUID(t), GoalID: goal.ID,
+		ExpectedRevision: goal.Revision, Round: 1,
+		OccurredAt: startedAt.Add(3 * time.Millisecond),
+	})
+	if err != nil || round.RoundsStarted != 1 || round.Revision != goal.Revision {
+		t.Fatalf("start Goal round = %#v, %v", round, err)
+	}
+	paused, err := repo.ChangeChatAgentGoal(ctx, ChangeChatAgentGoalInput{
+		TurnID: turnID, EventID: mustTestUUID(t), GoalID: goal.ID,
+		ExpectedRevision: goal.Revision, Action: ChatAgentGoalActionPause,
+		OccurredAt: startedAt.Add(4 * time.Millisecond),
+	})
+	if err != nil || paused.Phase != ChatAgentGoalPaused || paused.Revision != 2 {
+		t.Fatalf("pause Goal = %#v, %v", paused, err)
+	}
+	cleared, err := repo.CancelChatAgentGoal(ctx, CancelChatAgentGoalInput{
+		TurnID: turnID, EventID: mustTestUUID(t), GoalID: goal.ID,
+		ExpectedRevision: paused.Revision,
+		OccurredAt:       startedAt.Add(5 * time.Millisecond),
+	})
+	if err != nil || cleared.ID != goal.ID || cleared.Revision != 3 {
+		t.Fatalf("cancel Goal = %#v, %v", cleared, err)
+	}
+	stored, err = repo.GetChatAgentGoal(ctx, conversation.ID)
+	if err != nil || stored != nil {
+		t.Fatalf("Goal after cancel = %#v, %v", stored, err)
+	}
+	events, err := repo.ListChatAgentEvents(ctx, conversation.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	types := make([]string, 0, len(events))
+	for _, event := range events {
+		types = append(types, event.Type)
+	}
+	if strings.Join(types, ",") != strings.Join([]string{
+		ChatAgentEventTurnStarted, ChatAgentEventGoalChanged,
+		ChatAgentEventGoalRoundStarted, ChatAgentEventGoalChanged,
+		ChatAgentEventGoalChanged,
+	}, ",") {
+		t.Fatalf("Goal event types = %#v", types)
+	}
+	if _, err := repo.AppendChatAgentEvent(ctx, turnID, AppendChatAgentEventInput{
+		EventID: mustTestUUID(t), Type: ChatAgentEventTurnEnded,
+		Payload:    map[string]any{"status": ChatAgentTurnCompleted},
+		OccurredAt: startedAt.Add(6 * time.Millisecond),
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPostgresCreateMessagePersistsAttachmentOnlyMessages(t *testing.T) {
 	db := openPostgresIntegrationDB(t)
 	repo := NewPostgresRepository(db)

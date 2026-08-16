@@ -10,11 +10,11 @@ verification or rollback. This is the current ordinary Chat Skill backend. The
 separate G20/G21 rootless OCI scenarios below are disabled optional/history and
 do not gate `local_direct`.
 
-Ordinary Chat migration `096` advances the application database head without
+Ordinary Chat migrations `096` and `097` advance the application database head without
 promoting the held OCI path. Its reviewed activation/closure artifacts remain
 pinned to migration head `095` and therefore stay ineligible until separately
-requalified. PostgreSQL tail drills must peel empty `096` before their retained
-`095` control-plane tail and return to current head `096`.
+requalified. PostgreSQL tail drills must peel empty `097`, then `096`, before
+their retained `095` control-plane tail and return to current head `097`.
 
 ### 2. Signatures
 
@@ -24,6 +24,7 @@ docker compose --project-directory mm-chat \
   --env-file mm-chat/.env.single-server.example \
   -f mm-chat/compose.single-server.yml config --quiet
 bash mm-chat/scripts/verify-standalone.sh --full
+bash mm-chat/scripts/verify-chat-agent-goals-postgres17.sh
 ```
 
 - Example config: `mm-chat/.env.single-server.example`.

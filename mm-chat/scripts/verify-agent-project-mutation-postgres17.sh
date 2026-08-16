@@ -77,7 +77,7 @@ runtime_url="$(runtime_url_for "${container_name}")"
 (cd "${backend_dir}" && go build -buildvcs=false -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" "$@"; }
 
-log "applying and replaying migrations through schema head 096"
+log "applying and replaying migrations through schema head 097"
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 086_agent_broker_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 091_agent_artifact_publication" "${work_dir}/fresh.log"
@@ -86,7 +86,8 @@ grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/fresh.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/fresh.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/fresh.log"
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/fresh.log"
-[[ "$(psql_command "${container_name}" 'SELECT max(version) FROM schema_migrations')" == "96" ]]
+grep -Fq "up 097_chat_agent_goals" "${work_dir}/fresh.log"
+[[ "$(psql_command "${container_name}" 'SELECT max(version) FROM schema_migrations')" == "97" ]]
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
@@ -183,6 +184,8 @@ restore_counts="$(psql_command "${restore_container_name}" "SELECT concat_ws(','
 [[ "${source_counts}" == "${restore_counts}" ]]
 
 log "proving populated migration 092 cannot be peeled"
+run_migrate down >"${work_dir}/peel-097-chat-agent-goal-tail.log" 2>&1
+grep -Fq "down 097_chat_agent_goals" "${work_dir}/peel-097-chat-agent-goal-tail.log"
 run_migrate down >"${work_dir}/peel-096-chat-agent-event-tail.log" 2>&1
 grep -Fq "down 096_chat_agent_event_log" "${work_dir}/peel-096-chat-agent-event-tail.log"
 run_migrate down >"${work_dir}/peel-095.log" 2>&1
@@ -216,7 +219,8 @@ grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/reup-092.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/reup-092.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/reup-092.log"
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/reup-092.log"
+grep -Fq "up 097_chat_agent_goals" "${work_dir}/reup-092.log"
 run_migrate up >"${work_dir}/final.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final.log"
-[[ "$(psql_command "${container_name}" 'SELECT max(version) FROM schema_migrations')" == "96" ]]
+[[ "$(psql_command "${container_name}" 'SELECT max(version) FROM schema_migrations')" == "97" ]]
 log "passed (fresh/replay, ninth LOGIN, CAS/status/cleanup, late fences, dump/restore, guarded down/up)"

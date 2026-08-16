@@ -86,7 +86,7 @@ assert_rejected() {
   grep -Fq "${expected}" "${work_dir}/${name}.log"
 }
 
-log "starting disposable database and applying 001 -> 096"
+log "starting disposable database and applying 001 -> 097"
 start_database "${container_name}"
 database_url="$(database_url_for "${container_name}")"
 [[ "$(psql_command "${container_name}" 'SHOW server_version_num' | cut -c1-2)" == "17" ]]
@@ -97,7 +97,8 @@ grep -Fq "up 090_agent_product_shadow" "${work_dir}/fresh.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/fresh.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/fresh.log"
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/fresh.log"
-[[ "$(psql_command "${container_name}" 'SELECT max(version) FROM schema_migrations')" == "96" ]]
+grep -Fq "up 097_chat_agent_goals" "${work_dir}/fresh.log"
+[[ "$(psql_command "${container_name}" 'SELECT max(version) FROM schema_migrations')" == "97" ]]
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
@@ -464,7 +465,9 @@ restore_counts="$(psql_command "${restore_container_name}" "SELECT concat_ws(','
   (SELECT count(*) FROM agent_product_canary_promotions));")"
 [[ "${source_counts}" == "${restore_counts}" ]]
 
-log "proving dirty 095 down refusal, then clean 095/096 replay"
+log "proving dirty 095 down refusal, then clean 095/096/097 replay"
+run_migrate down >"${work_dir}/peel-097-chat-agent-goal-tail.log" 2>&1
+grep -Fq "down 097_chat_agent_goals" "${work_dir}/peel-097-chat-agent-goal-tail.log"
 run_migrate down >"${work_dir}/peel-096-chat-agent-event-tail.log" 2>&1
 grep -Fq "down 096_chat_agent_event_log" "${work_dir}/peel-096-chat-agent-event-tail.log"
 set +e
@@ -483,6 +486,7 @@ grep -Fq "down 095_agent_product_canary_activation" "${work_dir}/clean-down.log"
 run_migrate up >"${work_dir}/clean-reup.log" 2>&1
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/clean-reup.log"
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/clean-reup.log"
-[[ "$(psql_command "${container_name}" 'SELECT max(version) FROM schema_migrations')" == "96" ]]
+grep -Fq "up 097_chat_agent_goals" "${work_dir}/clean-reup.log"
+[[ "$(psql_command "${container_name}" 'SELECT max(version) FROM schema_migrations')" == "97" ]]
 
 log "passed (fresh/replay, canonical/concurrent enqueue, exact LOGIN ACL, read-only health, lease/reconcile, terminal receipt, promotion, dump/restore, guarded down/up)"

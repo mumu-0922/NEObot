@@ -35,7 +35,7 @@ database_url="$(database_url_for "${container_name}")"
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 run_migrate(){ MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" "$@"; }
 
-log "applying 001 -> 096, replaying, and peeling the empty product tail"
+log "applying 001 -> 097, replaying, and peeling the empty product tail"
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 087_agent_child_delegation" "${work_dir}/fresh.log"
 grep -Fq "up 088_agent_cron_foundation" "${work_dir}/fresh.log"
@@ -47,8 +47,11 @@ grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/fresh.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/fresh.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/fresh.log"
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/fresh.log"
+grep -Fq "up 097_chat_agent_goals" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
+run_migrate down >"${work_dir}/peel-097-chat-agent-goal-tail.log" 2>&1
+grep -Fq "down 097_chat_agent_goals" "${work_dir}/peel-097-chat-agent-goal-tail.log"
 run_migrate down >"${work_dir}/peel-096-chat-agent-event-tail.log" 2>&1
 grep -Fq "down 096_chat_agent_event_log" "${work_dir}/peel-096-chat-agent-event-tail.log"
 run_migrate down >"${work_dir}/peel-095-tail-1.log" 2>&1
@@ -93,12 +96,15 @@ grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/current-head.lo
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/current-head.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/current-head.log"
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/current-head.log"
+grep -Fq "up 097_chat_agent_goals" "${work_dir}/current-head.log"
 
 log "running depth/subset/budget/launch/settlement/cascade/recovery integration"
 (cd "${backend_dir}" && MM_CHAT_TEST_DATABASE_URL="${database_url}" go test -count=1 -race -run '^TestPostgresAgentDelegation' ./internal/agentdelegation)
 
 log "creating retained fixture and proving guarded down"
 (cd "${backend_dir}" && MM_CHAT_TEST_DATABASE_URL="${database_url}" MM_CHAT_AGENT_DELEGATION_RETAIN_FIXTURE=1 go test -count=1 -run '^TestPostgresAgentDelegation' ./internal/agentdelegation)
+run_migrate down >"${work_dir}/peel-097-chat-agent-goal-tail.log" 2>&1
+grep -Fq "down 097_chat_agent_goals" "${work_dir}/peel-097-chat-agent-goal-tail.log"
 run_migrate down >"${work_dir}/peel-096-chat-agent-event-tail.log" 2>&1
 grep -Fq "down 096_chat_agent_event_log" "${work_dir}/peel-096-chat-agent-event-tail.log"
 run_migrate down >"${work_dir}/guard-peel-095.log" 2>&1
@@ -131,7 +137,7 @@ docker exec -i -e "PGPASSWORD=${database_password}" "${restore_container_name}" 
 restore_counts="$(psql_command "${restore_container_name}" "SELECT concat_ws(',',(SELECT count(*) FROM agent_delegation_authorities),(SELECT count(*) FROM agent_delegation_lineage),(SELECT count(*) FROM agent_delegation_settlements),(SELECT count(*) FROM agent_delegation_reaps));")"
 [[ "${source_counts}" == "${restore_counts}" ]]
 
-log "proving clean 086 -> 087 -> 086 -> 095"
+log "proving clean 086 -> 087 -> 086 -> 097"
 psql_command "${container_name}" "DELETE FROM agent_runs;DELETE FROM agent_run_snapshots;" >/dev/null
 run_migrate down >"${work_dir}/down.log" 2>&1
 grep -Fq "down 087_agent_child_delegation" "${work_dir}/down.log"
@@ -146,6 +152,7 @@ grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/reup.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/reup.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/reup.log"
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/reup.log"
+grep -Fq "up 097_chat_agent_goals" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final.log"
 log "passed (fresh/replay, least privilege, depth/subset/budget/launch/settlement/cascade/recovery, guarded down, dump/restore, clean down/up)"

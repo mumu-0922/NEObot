@@ -26,6 +26,7 @@ const (
 	chatToolBackendMemory     chatToolBackend = "memory"
 	chatToolBackendMCP        chatToolBackend = "mcp"
 	chatToolBackendLocalSkill chatToolBackend = "local_skill"
+	chatToolBackendGoal       chatToolBackend = "goal"
 )
 
 type chatToolApprovalRule string
@@ -77,6 +78,7 @@ func newChatToolRegistry(input externalWebToolLoopInput) *chatToolRegistry {
 		byName:    make(map[string]chatToolRegistration),
 		colliding: make(map[string]struct{}),
 	}
+	registry.registerGoals(input.Goals)
 	if input.Memory.requiresFirstRoundCall() {
 		registry.register(retrievalToolRegistration(
 			SearchMemoryToolDefinition(), chatToolBackendMemory, chatToolRiskRead, true,
@@ -100,6 +102,27 @@ func newChatToolRegistry(input externalWebToolLoopInput) *chatToolRegistry {
 	registry.registerMCP(input.MCP)
 	registry.registerLocalSkills(input.LocalSkills)
 	return registry
+}
+
+func (registry *chatToolRegistry) registerGoals(runtime *chatAgentGoalToolRuntime) {
+	if registry == nil || !runtime.enabled() {
+		return
+	}
+	for _, definition := range chatAgentGoalToolDefinitions() {
+		risk := chatToolRiskRead
+		if definition.Function.Name == chatAgentCreateGoalToolName ||
+			definition.Function.Name == chatAgentUpdateGoalToolName {
+			risk = chatToolRiskWrite
+		}
+		registry.register(chatToolRegistration{
+			Name: definition.Function.Name, Definition: &definition,
+			Backend: chatToolBackendGoal, RiskClass: risk,
+			MaxOutputBytes:  maxEvidenceRecoveryOutputBytes,
+			ApprovalRule:    chatToolApprovalNone,
+			Presentation:    chatToolPresentationTool,
+			ProjectForModel: identityChatToolResult,
+		})
+	}
 }
 
 func newRequiredLocalSkillRegistry(runtime *localSkillToolRuntime) *chatToolRegistry {
@@ -281,6 +304,25 @@ func (registry *chatToolRegistry) executeInfrastructureBatch(
 		execution.BudgetReached = budgetReached
 		return execution, err
 	}
+	goalCalls := registry.callsForBackend(calls, chatToolBackendGoal)
+	goalResults, err := executeChatAgentGoalBatch(
+		ctx, events, input.Goals, goalCalls, round,
+	)
+	if err != nil {
+		return execution, err
+	}
+	execution.Results = registry.projectResults(goalResults.Results)
+	if goalResults.ConcludesTurn {
+		for index, call := range calls {
+			if strings.TrimSpace(call.Name) == "" {
+				continue
+			}
+			if _, exists := execution.Results[index]; !exists {
+				execution.Results[index] = chatToolFailureResult(call, "goal_concluded")
+			}
+		}
+		return execution, nil
+	}
 	mcpCalls := registry.callsForBackend(calls, chatToolBackendMCP)
 	mcpResults, mcpBudgetReached, err := executeMCPBatch(
 		ctx, events, input.MCP, mcpCalls, round,
@@ -292,7 +334,9 @@ func (registry *chatToolRegistry) executeInfrastructureBatch(
 	localResults, localBudgetReached, err := executeLocalSkillBatch(
 		ctx, events, input.LocalSkills, localCalls, round,
 	)
-	execution.Results = registry.projectResults(mcpResults)
+	for index, result := range registry.projectResults(mcpResults) {
+		execution.Results[index] = result
+	}
 	for index, result := range registry.projectResults(localResults) {
 		execution.Results[index] = result
 	}

@@ -17,7 +17,15 @@ search_knowledge(query)
 search_memory()  # default-off; first round only
 skill(name)      # when local_direct is enabled and the user installed Skills
 terminal(command, skill?, workingDir?, timeoutSeconds?)
+get_goal()
+create_goal(objective, maxGoalRounds?)
+update_goal(goalId, revision, action, objective?, maxGoalRounds?, blockedReason?)
+verify_completion(evidenceToolCallId, summary)
 ```
+
+The four Goal Tools are present only when the selected model supports native
+Tools and the Repository implements migration-`097` Goal persistence. This
+keeps legacy/fake repositories on their prior behavior.
 
 Every active Tool now enters one server-owned Registry with its exact Provider
 definition, Backend executor, `read|write|execute|external` risk class, timeout,
@@ -88,6 +96,7 @@ type ProviderToolExchange struct {
     Calls              []ProviderToolCall
     Results            []ProviderToolResult
     ProviderState      any
+    FollowupPrompt     string
 }
 ```
 
@@ -125,8 +134,9 @@ process updates without adding a provider sideband that could change Tool
 scheduling or cancellation order.
 
 The Registry is rebuilt for every Step from current Backend authority. It
-executes registered MCP owners first, local Skills second, and retrieval Tools
-afterward, then restores Tool Results to the model's exact original call order.
+executes Goal state calls first, registered MCP owners second, local Skills
+third, and retrieval Tools afterward, then restores Tool Results to the model's
+exact original call order.
 MCP Tool-search changes therefore affect the next Step without allowing Tool
 output itself to register arbitrary names.
 
@@ -172,7 +182,10 @@ The Turn has hard caps of 32 Provider Steps and 128 Tool Calls in addition to
 the lower MCP and `local_direct` per-Run call, round, wall-clock, output, and
 concurrency budgets. A call beyond the Turn cap receives a structured
 `turn_call_budget_exhausted` Result without execution. Any exhausted budget
-then causes one same-model continuation without Tools. The loop otherwise
+then causes one same-model continuation without Tools, except that an
+outstanding completion-verification requirement fails with
+`AGENT_VERIFICATION_REQUIRED` rather than permitting an unverified success.
+The loop otherwise
 terminates when:
 
 - the model returns no Tool Call;
@@ -186,6 +199,42 @@ deadline are Tool Results so the same model can repair or report them. In
 particular, an MCP call deadline is `tool_timeout` while the parent Run remains
 healthy. Cancellation, a parent Run deadline, and a write whose outcome is
 unknown remain terminal and are never converted into retryable Results.
+
+### Same-session Goal and completion verification
+
+Migration `097` stores at most one current Goal for each Conversation. Goal
+phase is `active|paused|blocked|complete`; every mutation carries the exact Goal
+ID and revision. `create_goal`, `edit`, `pause`, `resume`, and `cancel` require
+the direct human request. A restored active Goal starts disarmed; the model may
+re-arm it with `resume` only when the human explicitly asks to continue.
+Activation itself is process-local and is never reconstructed as armed after a
+Backend restart.
+
+An armed active Goal automatically starts another Goal Round when a model Step
+would otherwise end without a Tool Call. The Backend appends
+`goal.round.started`, injects a synthetic user `FollowupPrompt`, and continues
+the same Provider/model in the same SSE request. OpenAI-compatible framing is
+`assistant -> user`; Anthropic preserves the exact assistant Thinking blocks
+before the synthetic user prompt. Goal budgets default to 8 and are constrained
+to 3-32 rounds. Automatic `blocked` is unavailable before round 3; the prompt
+also requires the same blocking condition to persist rather than treating
+difficulty or incomplete work as a blocker.
+
+Successful `write` or `execute` calls activate a process-local completion gate.
+The Agent must observe a successful Tool result at or after the latest mutation
+and call `verify_completion` with that exact Tool Call ID and a bounded truthful
+summary. Goal Tools themselves never count as mutation or evidence. An active
+gate prevents normal completion and prevents `update_goal(..., complete)`.
+Failure to satisfy it before Step/Tool/runtime exhaustion is
+`AGENT_VERIFICATION_REQUIRED`.
+
+`complete`, `blocked`, and `cancel` enter a Tool-free wrap-up. This state is
+latched for the rest of the Turn: even if a Provider hallucinates a Tool Call
+while `Tools=nil`, the Backend returns only `goal_concluded`, performs no side
+effect, keeps Tools disabled, and asks the same model for the closing answer.
+Intermediate Goal/verification narration is buffered and never merged into the
+final visible answer. Unexpected Goal persistence failure is terminal
+`AGENT_GOAL_PERSISTENCE_FAILED`.
 
 Local Skill process events contain only Tool name, round, `local_direct`, risk
 classification, optional timeout, duration, and failure category. Command text,

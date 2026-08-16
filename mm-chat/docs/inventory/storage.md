@@ -42,7 +42,7 @@ Current OPFS URLs use the `opfs://` protocol and are resolved by `src/utils/opfs
 | Data                                 | Target                                | Reason                                            |
 | ------------------------------------ | ------------------------------------- | ------------------------------------------------- |
 | Users, sessions                      | Postgres                              | canonical auth/session records                    |
-| Conversations, messages, Chat Agent events | Postgres                         | durable content plus ordered process replay        |
+| Conversations, messages, Chat Agent events/Goals | Postgres                    | durable content, ordered replay, and current objective |
 | Projects, Memory settings and L1 rows | Postgres                              | canonical scope, policy, and durable Memory authority |
 | Provider configs                     | Postgres + encryption                 | server-side secret boundary                       |
 | File metadata                        | Postgres                              | ownership, size, MIME, SHA, storage key           |
@@ -75,6 +75,7 @@ conversations
 messages
 chat_agent_turns
 chat_agent_events
+chat_agent_goals
 message_attachments
 files
 provider_configs
