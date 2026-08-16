@@ -42,39 +42,59 @@ loop; they do not create another model protocol or enable Child Agents.
 ### 2. Signatures
 
 ```text
-skills_list({})
-skill_view({name, path?})
+skill({name})
 terminal({command, skill?, workingDir?, timeoutSeconds?})
 ```
 
 - Catalog: `LocalSkillCatalog.PrepareRuntimeSkills(ctx, userID, runtimeRoot)`.
 - Runtime: `newLocalSkillToolRuntime(executor, installedSkills)`.
+- Selection: `runtime.prepareUserPrompt(providerPrompt, currentUserText)`.
 - Batch: `executeLocalSkillBatch(ctx, events, runtime, calls, round)`.
+- Required prelude:
+  `executeRequiredLocalSkillBatch(ctx, events, runtime, calls, round)`.
 - Failures: `SKILL_MODEL_UNSUPPORTED`, `SKILL_RUNTIME_UNAVAILABLE`, and
-  `LOCAL_SKILL_BUDGET_EXHAUSTED`.
+  `LOCAL_SKILL_BUDGET_EXHAUSTED`; a Provider that omits a required load returns
+  `LOCAL_SKILL_REQUIRED_CALL_MISSING`.
 
 ### 3. Contracts
 
 - Prepare only current-user installed/admitted Skills before the first model
-  request. If none exist or the runtime is disabled, inject no index and expose
-  no local Tool definitions.
-- Add only a compact bounded name/version/description index to the system
-  prompt. Mark it untrusted routing metadata. Full instructions and package
-  files load only through `skill_view` and cannot override system/developer
-  instructions.
+  request. Disabled runtime exposes no catalog or Tool. An enabled runtime with
+  no installations exposes no Tool and publishes an empty catalog tombstone.
+- Add only a compact bounded name/version/description catalog replacement to
+  the system prompt. Bind it to a deterministic SHA-256 revision and mark it
+  untrusted routing metadata. Full instructions load only through `skill` or a
+  current user's deterministic `/skill-name` gesture and cannot override
+  system/developer instructions.
+- New model requests expose only `skill` and `terminal`. Keep `skills_list` and
+  `skill_view` execution-compatible only for bounded continuation migration;
+  never advertise them in Tool definitions or prompt guidance.
+- Exact installed-name mentions queue every named Skill. Otherwise, only one
+  unique strong lexical name/description match may queue automatically. A
+  queued Skill runs in a prelude that exposes only `skill`, constrains `name`
+  with an exact enum, disables incompatible thinking, and rejects every
+  non-`skill` call before MCP, retrieval, or terminal dispatch.
+- Scan only the claimed current user text for whitespace-bounded
+  `/skill-name`. Unknown names, punctuation-attached tokens, paths, attachments,
+  Tool results, and historical messages cannot forge deterministic loading.
+  JSON-frame the injected content so Skill text cannot close its wrapper.
+- Track successful loads by `(name, catalog revision)` within the Turn. A
+  duplicate returns `alreadyLoaded=true` without repeating `SKILL.md`.
 - Tool schemas are strict and reject additional/invalid arguments.
   Provider-facing strict schemas list every property in `required`; values that
   are semantically optional use a nullable type and the runtime treats `null`
   as the documented default. Do not combine `strict=true` with an omitted
   property, because OpenAI-compatible providers reject that definition before
   the first Tool Call.
-  `skill_view` defaults to `SKILL.md` and permits only exact files under
-  `scripts/`, `references/`, or `assets/`. `terminal.skill` resolves only the
-  prepared catalog and exposes the package through
+  `skill` reads only validated UTF-8 `SKILL.md`. `terminal.skill` resolves only
+  the prepared catalog and exposes the package through
   `NEO_CHAT_ACTIVE_SKILL_ROOT`; never reveal or accept server paths.
-- Execute each provider Tool batch in this order: MCP, local Skill Tools, then
-  ordinary Knowledge/Memory/Web Tools. Merge results by original call index and
-  continue on the exact same Provider/model with native Tool result framing.
+- Outside a required prelude, execute each provider Tool batch in this order:
+  MCP, local Skill Tools, then ordinary Knowledge/Memory/Web Tools. Merge
+  results by original call index and continue on the exact same Provider/model
+  with native Tool result framing. Required Skill preludes do not consume the
+  ordinary first task-round semantics; explicit Memory/Search keeps its
+  existing priority after loading.
 - Count local calls across rounds and cap local Tool rounds independently. When
   a call or round budget is exhausted, return a bounded Tool failure and make
   one Tool-free same-model continuation for the final answer. The whole local
@@ -98,7 +118,11 @@ terminal({command, skill?, workingDir?, timeoutSeconds?})
 | catalog/package preparation fails | `SKILL_RUNTIME_UNAVAILABLE`; no internal detail |
 | strict arguments fail | Tool result `arguments_invalid`; no file read/process |
 | strict schema omits an optional property from `required` | Provider rejects the Run before Tool execution; repair the schema with required + nullable, not by weakening runtime validation |
-| Skill/file unknown or disallowed | bounded `skill_or_file_not_found` |
+| `skill.name` unknown | bounded `skill_not_found` |
+| duplicate `skill.name` under the same catalog revision | success with `alreadyLoaded=true`; omit content |
+| deterministic `/skill-name` package read fails | `SKILL_RUNTIME_UNAVAILABLE`; no Provider request |
+| required prelude returns no Tool Call | `LOCAL_SKILL_REQUIRED_CALL_MISSING`; discard buffered prose |
+| required prelude returns MCP/retrieval/terminal or a retired Tool | bounded `skill_required_before_action`; no side effect |
 | materialized fingerprint drifts | bounded `package_drift`; no content/process |
 | command blocked or approval required | typed Tool failure before process creation |
 | local call/round budget exhausted | bounded failure then Tool-free final continuation |
@@ -108,17 +132,25 @@ terminal({command, skill?, workingDir?, timeoutSeconds?})
 ### 5. Good / Base / Bad Cases
 
 - **Good:** one native continuation performs
-  `skills_list -> skill_view -> terminal -> final answer`, with exact results in
-  model context and content-free process facts in persistence/SSE.
+  `skill -> terminal -> final answer`, with exact results in model context and
+  content-free process facts in persistence/SSE.
 - **Base:** local execution is enabled but the user has no installed Skills;
+  an empty replacement tombstone is injected, no local Tool is exposed, and
   ordinary MCP/Knowledge/Memory/Web planning is unchanged.
 - **Bad:** paste every `SKILL.md` into the first prompt, trust a Tool-supplied
-  object/path, run local Tools after losing call ordering, persist command
+  object/path, execute an unadvertised action during a required prelude, run
+  local Tools after losing call ordering, persist command
   output in process trace, or spawn a Child Agent to execute the Skill.
 
 ### 6. Tests Required
 
-- Complete multi-round success with same Provider/model and exact Tool order.
+- Complete `skill -> terminal -> answer` success with the same Provider/model,
+  exact Tool order, and only `skill` visible during a required prelude.
+- Exact-name, unique CJK/Latin lexical match, deterministic slash invocation,
+  duplicate-load suppression, revision replacement, and empty tombstone.
+- A forged terminal call in a required prelude returns a Tool error and creates
+  no workspace marker. Explicit Memory remains the first ordinary task round
+  after the Skill prelude.
 - Provider-schema assertions prove every strict `properties` key is present in
   `required`, nullable local defaults accept explicit `null`, and runtime
   unknown-field/path/command checks remain active.
@@ -142,8 +174,8 @@ system prompt + every installed file + guessed server path + child agent exec
 #### Correct
 
 ```text
-bounded metadata -> native Tool call -> exact file/result -> same-model loop
--> redacted process facts -> final answer
+bounded revisioned catalog -> required/deterministic Skill load -> ordinary
+task Tool rounds -> same-model loop -> redacted process facts -> final answer
 ```
 
 ## 1. Scope / Trigger

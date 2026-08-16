@@ -175,6 +175,7 @@ func runNativeExternalWebToolLoop(
 	completedUsage := TokenUsage{}
 	answerContentEmitted := false
 	memoryContinuationStarted := false
+	taskRound := 0
 	for round := 1; ; round++ {
 		if input.MCP.enabled() && round > input.MCP.service.Config().MaxRoundsPerRun {
 			streamFinalNoTools(
@@ -189,20 +190,29 @@ func runNativeExternalWebToolLoop(
 			return true
 		}
 		tools = retrievalToolDefinitions(input)
-		roundTools := retrievalToolDefinitionsForRound(tools, round)
+		skillLoadRound := input.LocalSkills.requiresSkillLoad()
+		if !skillLoadRound {
+			taskRound++
+		}
+		roundTools := retrievalToolDefinitionsForRound(tools, taskRound)
+		if skillLoadRound {
+			roundTools = input.LocalSkills.requiredDefinition()
+		}
 		roundRequest := input.Request
 		choice := ProviderToolChoiceAuto
-		if round == 1 {
-			switch {
-			case input.Memory.requiresFirstRoundCall():
-				choice = ProviderToolChoiceRequired
-				// Required Tool selection must not be weakened by Provider
-				// reasoning modes that forbid or ignore named function calls.
-				roundRequest.UseReasoning = false
-				roundRequest.DisableThinking = true
-			case input.ForceSearch && externalWebToolEnabled(input):
-				choice = ProviderToolChoiceRequired
-			}
+		switch {
+		case skillLoadRound:
+			choice = ProviderToolChoiceRequired
+			roundRequest.UseReasoning = false
+			roundRequest.DisableThinking = true
+		case taskRound == 1 && input.Memory.requiresFirstRoundCall():
+			choice = ProviderToolChoiceRequired
+			// Required Tool selection must not be weakened by Provider
+			// reasoning modes that forbid or ignore named function calls.
+			roundRequest.UseReasoning = false
+			roundRequest.DisableThinking = true
+		case taskRound == 1 && input.ForceSearch && externalWebToolEnabled(input):
+			choice = ProviderToolChoiceRequired
 		}
 		roundEvents, err := provider.StreamToolRound(ctx, ProviderRoundRequest{
 			ProviderRequest: roundRequest,
@@ -262,10 +272,12 @@ func runNativeExternalWebToolLoop(
 		calls := make([]ProviderToolCall, 0)
 		var roundState any
 		var roundUsage *TokenUsage
-		bufferForcedRound := round == 1 && input.ForceSearch &&
+		bufferSkillLoadRound := skillLoadRound
+		bufferForcedRound := taskRound == 1 && input.ForceSearch &&
 			externalWebToolEnabled(input)
-		bufferMemoryDecisionRound := round == 1 && input.Memory.enabled()
-		bufferFirstRound := bufferForcedRound || bufferMemoryDecisionRound
+		bufferMemoryDecisionRound := taskRound == 1 && input.Memory.enabled()
+		bufferFirstRound := bufferSkillLoadRound || bufferForcedRound ||
+			bufferMemoryDecisionRound
 		bufferedEvents := make([]ProviderEvent, 0)
 		for event := range roundEvents {
 			if event.Error != nil {
@@ -376,6 +388,13 @@ func runNativeExternalWebToolLoop(
 			}
 		}
 		if len(calls) == 0 {
+			if bufferSkillLoadRound {
+				sendProviderEvent(ctx, events, ProviderEvent{Error: &localSkillRunFailure{
+					code: "LOCAL_SKILL_REQUIRED_CALL_MISSING",
+					err:  errors.New("required Skill load returned no Tool Call"),
+				}})
+				return true
+			}
 			if bufferForcedRound {
 				return false
 			}
@@ -412,21 +431,31 @@ func runNativeExternalWebToolLoop(
 			Results:            make([]ProviderToolResult, 0, len(calls)),
 			ProviderState:      roundState,
 		}
-		mcpResults, mcpBudgetReached, mcpErr := executeMCPBatch(
-			ctx, events, input.MCP, calls, round,
-		)
+		mcpResults := make(map[int]ProviderToolResult)
+		localResults := make(map[int]ProviderToolResult)
+		mcpBudgetReached, localBudgetReached := false, false
+		var mcpErr, localErr error
+		if skillLoadRound {
+			localResults, localBudgetReached, localErr = executeRequiredLocalSkillBatch(
+				ctx, events, input.LocalSkills, calls, round,
+			)
+		} else {
+			mcpResults, mcpBudgetReached, mcpErr = executeMCPBatch(
+				ctx, events, input.MCP, calls, round,
+			)
+			localResults, localBudgetReached, localErr = executeLocalSkillBatch(
+				ctx, events, input.LocalSkills, calls, round,
+			)
+		}
 		if mcpErr != nil {
 			sendProviderEvent(ctx, events, ProviderEvent{Error: mcpErr})
 			return true
 		}
-		localResults, localBudgetReached, localErr := executeLocalSkillBatch(
-			ctx, events, input.LocalSkills, calls, round,
-		)
 		if localErr != nil {
 			sendProviderEvent(ctx, events, ProviderEvent{Error: localErr})
 			return true
 		}
-		memoryBatchValid := memoryToolBatchValid(round, calls, input)
+		memoryBatchValid := memoryToolBatchValid(taskRound, calls, input)
 		for callIndex, call := range calls {
 			if result, ok := mcpResults[callIndex]; ok {
 				exchange.Results = append(exchange.Results, result)
@@ -441,7 +470,7 @@ func runNativeExternalWebToolLoop(
 			query, args, failure := validateRetrievalToolCall(
 				call,
 				input,
-				round,
+				taskRound,
 				memoryBatchValid,
 			)
 			if failure != "" {

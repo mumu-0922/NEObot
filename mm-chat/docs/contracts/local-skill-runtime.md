@@ -8,7 +8,7 @@ and the normal Chat Tool Loop loads its files and runs commands when needed.
 
 ```text
 owner installation -> admitted canonical package -> immutable local materialization
-  -> compact Skill index -> skills_list -> skill_view -> terminal -> same-model answer
+  -> revisioned catalog replacement -> skill -> terminal -> same-model answer
 ```
 
 An ordinary Skill needs `SKILL.md`. `scripts/`, `references/`, and `assets/`
@@ -27,21 +27,35 @@ Runner mTLS, and production isolation evidence are not prerequisites.
   missing files, symlinks, oversized files, and content drift.
 - A `terminal.skill` binding rehashes the complete exact inventory again before
   exposing the selected root to the child command.
-- Chat may view only `SKILL.md` or exact files below `scripts/`, `references/`,
-  and `assets/`.
+- `skill` reads only `SKILL.md`. A loaded Skill may access exact files below
+  `scripts/`, `references/`, and `assets/` through a `terminal.skill` binding
+  and `$NEO_CHAT_ACTIVE_SKILL_ROOT`; callers never receive the server path.
 
 ## Native Tools
 
 | Tool | Contract |
 | --- | --- |
-| `skills_list({})` | Returns bounded name, version, description, and file-count metadata for current installations. |
-| `skill_view({name,path?})` | Defaults to `SKILL.md`; returns UTF-8 or base64 content from one exact installed package file. |
+| `skill({name})` | Loads UTF-8 `SKILL.md` for one exact current installation. A duplicate load under the same catalog revision returns `alreadyLoaded` without repeating the body. |
 | `terminal({command,skill?,workingDir?,timeoutSeconds?})` | Runs one bounded shell command as the Backend user in the configured workspace. `skill` exposes that installed package only through `NEO_CHAT_ACTIVE_SKILL_ROOT`. |
 
-The system prompt contains only a bounded installed-Skill index. Full Skill
-instructions and files enter model context only through `skill_view`. Every
-Tool result is marked as untrusted and cannot override system/developer
-instructions.
+`skills_list` and `skill_view` remain accepted by the Backend for a bounded
+continuation migration period, but their definitions are absent from every new
+model request.
+
+The system prompt contains one bounded complete replacement of the installed
+catalog, identified by a SHA-256 revision. Removing every installation emits
+an empty tombstone, so no earlier catalog name remains authoritative. Full
+instructions enter model context only through `skill`, except for a current
+user's deterministic `/skill-name` invocation. Every Tool result and injected
+Skill block is marked as untrusted user-authorized guidance and cannot override
+system/developer instructions.
+
+An exact installed name or one unique strong lexical description match queues
+a required Skill prelude. That Provider round exposes only `skill`, constrains
+the `name` schema to the selected value, and completes before the normal first
+task round. A `/skill-name` token bounded by whitespace loads the same
+`SKILL.md` on the server before the first Provider round; unknown names and
+path-like tokens stay ordinary user text.
 
 ## Direct execution and limits
 

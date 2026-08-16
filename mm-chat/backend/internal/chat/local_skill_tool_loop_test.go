@@ -14,6 +14,7 @@ import (
 
 	"neo-chat/mm-chat/backend/internal/localskills"
 	"neo-chat/mm-chat/backend/internal/skillsupply"
+	"neo-chat/mm-chat/backend/internal/usermemory"
 )
 
 func TestLocalSkillToolLoopLoadsSkillRunsTerminalAndContinuesSameModel(t *testing.T) {
@@ -44,13 +45,14 @@ func TestLocalSkillToolLoopLoadsSkillRunsTerminalAndContinuesSameModel(t *testin
 		t.Fatal(err)
 	}
 	runtime := newLocalSkillToolRuntime(executor, []skillsupply.RuntimeSkill{skill})
+	prompt, err := runtime.prepareUserPrompt("run fixture", "Use fixture-skill to run fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
 	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
 		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
-			ID: "list-call", Name: localSkillsListToolName, Arguments: `{}`,
-		}}},
-		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
-			ID: "view-call", Name: localSkillViewToolName,
-			Arguments: `{"name":"fixture-skill","path":null}`,
+			ID: "skill-call", Name: localSkillToolName,
+			Arguments: `{"name":"fixture-skill"}`,
 		}}},
 		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
 			ID: "terminal-call", Name: localTerminalToolName,
@@ -61,14 +63,14 @@ func TestLocalSkillToolLoopLoadsSkillRunsTerminalAndContinuesSameModel(t *testin
 	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
 		Provider: provider,
 		Request: ProviderRequest{
-			Prompt:       "run fixture",
+			Prompt:       prompt,
 			ModelRef:     ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
 			SystemPrompt: appendLocalSkillSystemInstruction("base", runtime),
 		},
 		LocalSkills: runtime,
 	})
 	var content strings.Builder
-	executions := make([]ProviderToolExecutionEvent, 0, 6)
+	executions := make([]ProviderToolExecutionEvent, 0, 4)
 	for event := range events {
 		if event.Error != nil {
 			t.Fatal(event.Error)
@@ -80,11 +82,17 @@ func TestLocalSkillToolLoopLoadsSkillRunsTerminalAndContinuesSameModel(t *testin
 			executions = append(executions, *event.ToolExecution)
 		}
 	}
-	if content.String() != "fixture complete" || len(provider.inputs) != 4 ||
-		len(provider.inputs[3].Continuation) != 3 {
+	if content.String() != "fixture complete" || len(provider.inputs) != 3 ||
+		len(provider.inputs[2].Continuation) != 2 {
 		t.Fatalf("content=%q inputs=%#v", content.String(), provider.inputs)
 	}
-	terminalResult := provider.inputs[3].Continuation[2].Results[0]
+	first := provider.inputs[0]
+	if first.ToolChoice != ProviderToolChoiceRequired || len(first.Tools) != 1 ||
+		first.Tools[0].Function.Name != localSkillToolName || first.UseReasoning ||
+		!first.DisableThinking {
+		t.Fatalf("required Skill prelude=%#v", first)
+	}
+	terminalResult := provider.inputs[2].Continuation[1].Results[0]
 	if terminalResult.IsError || !strings.Contains(terminalResult.Content, `"stdout":"terminal-ok"`) {
 		t.Fatalf("terminal result=%#v", terminalResult)
 	}
@@ -92,7 +100,7 @@ func TestLocalSkillToolLoopLoadsSkillRunsTerminalAndContinuesSameModel(t *testin
 	if err != nil || string(resultFile) != "executed" {
 		t.Fatalf("workspace result=%q error=%v", resultFile, err)
 	}
-	if len(executions) != 6 {
+	if len(executions) != 4 {
 		t.Fatalf("executions=%#v", executions)
 	}
 	encodedExecutions, err := json.Marshal(executions)
@@ -111,6 +119,79 @@ func TestLocalSkillToolLoopLoadsSkillRunsTerminalAndContinuesSameModel(t *testin
 	}
 }
 
+func TestLocalSkillPreludePreservesMemoryAsFirstTaskRound(t *testing.T) {
+	runtimeRoot := t.TempDir()
+	skillRoot := filepath.Join(runtimeRoot, "fixture")
+	if err := os.Mkdir(skillRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := []byte("---\nname: fixture-skill\ndescription: fixture\n---\nUse saved Memory when asked.\n")
+	if err := os.WriteFile(filepath.Join(skillRoot, "SKILL.md"), body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: runtimeRoot, WorkspaceRoot: t.TempDir(),
+		ShellPath: "/bin/sh", ApprovalMode: localskills.ApprovalSmart,
+		CallTimeout: time.Second, RunTimeout: 5 * time.Second, MaxOutput: 4096,
+		MaxCalls: 4, MaxRounds: 4, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	localRuntime := newLocalSkillToolRuntime(executor, []skillsupply.RuntimeSkill{{
+		Name: "fixture-skill", Description: "Uses saved personal Memory",
+		RootPath: skillRoot, Files: []string{"SKILL.md"},
+		PackageFingerprint: testRuntimeSkillFingerprint(map[string][]byte{
+			"SKILL.md": body,
+		}),
+	}})
+	prompt, err := localRuntime.prepareUserPrompt(
+		"fixture-skill：我喜欢喝什么？", "fixture-skill：我喜欢喝什么？",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	searcher := &memoryToolTestSearcher{result: usermemory.HybridMemoryToolSearchResult{
+		Memories: []usermemory.Memory{{
+			ID: "11111111-1111-4111-8111-111111111111", Revision: 1,
+			ScopeType: "global", Type: "preference", Content: "用户喜欢喝茶。",
+		}},
+	}}
+	memoryRuntime := &memoryToolRuntime{
+		Searcher: searcher, ConversationID: "22222222-2222-4222-8222-222222222222",
+		AssistantMessageID: "33333333-3333-4333-8333-333333333333",
+		Query:              "我喜欢喝什么？", forceFirstCall: true,
+	}
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "skill", Name: localSkillToolName, Arguments: `{"name":"fixture-skill"}`,
+		}}},
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "memory", Name: usermemory.HybridMemoryToolName, Arguments: `{}`,
+		}}},
+		{{Type: ProviderEventDelta, Delta: "你喜欢喝茶。"}},
+	}}
+	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt: prompt, ModelRef: ModelRef{ProviderID: "fixture", ModelID: "model"},
+		},
+		Memory: memoryRuntime, LocalSkills: localRuntime,
+	})
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+	}
+	if searcher.calls != 1 || len(provider.inputs) != 3 ||
+		provider.inputs[0].ToolChoice != ProviderToolChoiceRequired ||
+		provider.inputs[0].Tools[0].Function.Name != localSkillToolName ||
+		provider.inputs[1].ToolChoice != ProviderToolChoiceRequired ||
+		provider.inputs[1].Tools[0].Function.Name != usermemory.HybridMemoryToolName {
+		t.Fatalf("Skill/Memory task rounds=%#v searchCalls=%d", provider.inputs, searcher.calls)
+	}
+}
+
 func TestLocalSkillToolDefinitionsAreOpenAIStrictCompatible(t *testing.T) {
 	executor, err := localskills.NewExecutor(localskills.Config{
 		Enabled: true, RuntimeRoot: filepath.Join(t.TempDir(), "skills"),
@@ -126,7 +207,8 @@ func TestLocalSkillToolDefinitionsAreOpenAIStrictCompatible(t *testing.T) {
 		Name: "fixture", Files: []string{"SKILL.md"},
 	}})
 	definitions := runtime.definitions()
-	if len(definitions) != 3 {
+	if len(definitions) != 2 || definitions[0].Function.Name != localSkillToolName ||
+		definitions[1].Function.Name != localTerminalToolName {
 		t.Fatalf("definitions=%#v", definitions)
 	}
 	for _, definition := range definitions {
@@ -155,7 +237,6 @@ func TestLocalSkillToolDefinitionsAreOpenAIStrictCompatible(t *testing.T) {
 		tool string
 		name string
 	}{
-		{localSkillViewToolName, "path"},
 		{localTerminalToolName, "skill"},
 		{localTerminalToolName, "workingDir"},
 		{localTerminalToolName, "timeoutSeconds"},
@@ -201,7 +282,7 @@ func TestLocalSkillToolRejectsTraversalAndDestructiveTerminal(t *testing.T) {
 		Files: []string{"SKILL.md"},
 	}})
 	for _, call := range []ProviderToolCall{
-		{ID: "view", Name: localSkillViewToolName, Arguments: `{"name":"missing","path":"../SKILL.md"}`},
+		{ID: "view", Name: legacySkillViewToolName, Arguments: `{"name":"missing","path":"../SKILL.md"}`},
 		{ID: "terminal", Name: localTerminalToolName, Arguments: `{"command":"rm -rf ./build"}`},
 	} {
 		events := make(chan ProviderEvent, 4)
@@ -227,7 +308,11 @@ func TestLocalSkillRuntimeStaysDisabledWithoutInstalledSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtime := newLocalSkillToolRuntime(executor, nil)
-	if runtime.enabled() || len(runtime.definitions()) != 0 || runtime.promptInstruction() != "" {
+	prompt := runtime.promptInstruction()
+	if runtime.enabled() || len(runtime.definitions()) != 0 ||
+		!strings.Contains(prompt, `"replacement":true`) ||
+		!strings.Contains(prompt, `"tombstone":true`) ||
+		!strings.Contains(prompt, `"skills":[]`) {
 		t.Fatalf("empty catalog unexpectedly enabled: %#v", runtime)
 	}
 }
@@ -248,10 +333,10 @@ func TestLocalSkillCallBudgetReturnsFailureThenFinalContinuationWithoutTools(t *
 	}})
 	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
 		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
-			ID: "first", Name: localSkillsListToolName, Arguments: `{}`,
+			ID: "first", Name: legacySkillsListToolName, Arguments: `{}`,
 		}}},
 		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
-			ID: "over-budget", Name: localSkillsListToolName, Arguments: `{}`,
+			ID: "over-budget", Name: legacySkillsListToolName, Arguments: `{}`,
 		}}},
 		{{Type: ProviderEventDelta, Delta: "bounded final answer"}},
 	}}
@@ -339,7 +424,7 @@ func TestLocalSkillRoundBudgetUsesFinalContinuationWithoutTools(t *testing.T) {
 	}})
 	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
 		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
-			ID: "first", Name: localSkillsListToolName, Arguments: `{}`,
+			ID: "first", Name: legacySkillsListToolName, Arguments: `{}`,
 		}}},
 		{{Type: ProviderEventDelta, Delta: "round-bounded answer"}},
 	}}

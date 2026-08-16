@@ -1497,6 +1497,14 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			return
 		}
 		localSkillRuntime = newLocalSkillToolRuntime(h.localSkillExecutor, skills)
+		providerPrompt, prepareErr = localSkillRuntime.prepareUserPrompt(
+			providerPrompt,
+			userMessage.Content,
+		)
+		if prepareErr != nil {
+			writeError(w, http.StatusServiceUnavailable, "SKILL_RUNTIME_UNAVAILABLE", "local Skill runtime is unavailable")
+			return
+		}
 		if localSkillRuntime.enabled() && !toolRoundCapable {
 			writeError(
 				w,
@@ -3515,6 +3523,8 @@ func chatStreamErrorBody(err error, deadlineExceeded bool) ErrorBody {
 			message = "Local Skill execution was cancelled"
 		case "LOCAL_SKILL_PROVIDER_FAILED":
 			message = "The provider could not continue the local Skill Tool loop"
+		case "LOCAL_SKILL_REQUIRED_CALL_MISSING":
+			message = "The provider did not load the required Skill before acting"
 		}
 		return ErrorBody{Code: localFailure.code, Message: message}
 	}

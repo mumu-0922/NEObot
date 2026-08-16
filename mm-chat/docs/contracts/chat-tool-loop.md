@@ -15,19 +15,21 @@ the explicitly executing local `terminal` Tool:
 search_web(query)
 search_knowledge(query)
 search_memory()  # default-off; first round only
-skills_list()    # when local_direct is enabled and the user installed Skills
-skill_view(name, path?)
+skill(name)      # when local_direct is enabled and the user installed Skills
 terminal(command, skill?, workingDir?, timeoutSeconds?)
 ```
 
 The generic runtime may admit more tools later only after assigning an explicit
 risk class and approval policy.
 
-The three local Skill Tools implement progressive disclosure for the current
-user's admitted installations. The prompt receives only bounded
-name/version/description metadata; `skill_view` loads exact package files on
-demand, and `terminal` executes as the Backend user in the configured local
-workspace. `local_direct` is not an isolated Sandbox. Its contract is
+The two model-visible local Tools implement progressive disclosure for the
+current user's admitted installations. Every Turn receives a bounded complete
+catalog replacement with a content-derived revision; an empty catalog is an
+explicit tombstone. `skill` loads the selected package's `SKILL.md`, and
+`terminal` executes as the Backend user in the configured local workspace.
+The retired `skills_list` and `skill_view` names remain execution-compatible
+for a bounded migration period but are never advertised to the model.
+`local_direct` is not an isolated Sandbox. Its contract is
 [`local-skill-runtime.md`](./local-skill-runtime.md).
 
 `search_memory` is absent unless `MEMORY_TOOL_LOOP_ENABLED=true`. The schema-v7
@@ -171,6 +173,23 @@ property is therefore present in `required`; semantically optional values use
 nullable JSON Schema types and explicit `null` maps to the runtime default.
 This preserves OpenAI-compatible strict-schema admission without weakening the
 Backend's unknown-field, path, command, timeout, or package validation.
+
+The current claimed user message may select Skills before the ordinary task
+round:
+
+- an exact installed Skill name, or one unique strong lexical match against a
+  catalog description, queues that Skill as a required prelude;
+- the prelude exposes only `skill`, constrains `name` to the exact match,
+  disables incompatible thinking modes, and cannot execute MCP, retrieval, or
+  `terminal` first;
+- after all required Skills load, the ordinary first task round still owns the
+  existing explicit Memory/Search priority;
+- a whitespace-bounded `/skill-name` token deterministically reads the current
+  installed `SKILL.md` into a user-authorized instruction block before the
+  first Provider round. Unknown names and path-like tokens remain ordinary
+  prose;
+- a second `skill` call for the same name and catalog revision returns a
+  bounded `alreadyLoaded` acknowledgement instead of repeating the content.
 
 The shared `tool.call.updated` Chat event accepts `mode=mcp` with
 `read|write|unknown`, or `mode=local_direct` with `read|execute`. The frontend

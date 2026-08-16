@@ -63,6 +63,26 @@ commands are isolated. Commands have the Backend user's authority inside the
 container, the mounted workspace, and reachable networks. Keep secrets and
 unrelated personal files outside the configured workspace.
 
+## Chat smoke test
+
+1. Install one Skill from **Store** and keep `AGENT_LOCAL_RUNTIME_ENABLED=true`.
+2. Start a new Chat with a Tool-capable model and ask for a task that names the
+   Skill or clearly matches its Store description.
+3. The process view must show `skill` before `terminal` or any other task Tool;
+   new requests must not advertise `skills_list` or `skill_view`.
+4. Send `/skill-name <task>` using the exact installed name. The first Provider
+   round already contains the loaded instructions and must not load the same
+   Skill again.
+5. Uninstall the last Skill and start another Turn. The Backend publishes an
+   empty catalog tombstone and exposes no local Skill Tools.
+
+The local regression command is:
+
+```bash
+cd mm-chat/backend
+go test ./internal/chat -run TestLocalSkill -count=1
+```
+
 ## Rollback
 
 Set `AGENT_LOCAL_RUNTIME_ENABLED=false` and recreate only Backend:
