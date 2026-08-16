@@ -138,6 +138,15 @@ Event 使用连续 sequence、幂等 event ID 和原子追加。模型历史、�
 
 ## Delivery plan
 
+### Delivery status
+
+- [x] G1 — Skill 自动加载。
+- [x] G2 — Unified Tool Registry + explicit Turn/Step driver。
+- [ ] G3 — Durable Events + 前端回放。
+- [ ] G4 — Goal + 完成验证。
+- [ ] G5 — File Tools + Jobs + Compaction。
+- [ ] G6 — Browser/MCP + 可选优化。
+
 ### G1 — Skill 自动加载（最快看到变化）
 
 - 新增统一 `skill({name})`。

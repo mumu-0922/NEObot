@@ -19,8 +19,11 @@ skill(name)      # when local_direct is enabled and the user installed Skills
 terminal(command, skill?, workingDir?, timeoutSeconds?)
 ```
 
-The generic runtime may admit more tools later only after assigning an explicit
-risk class and approval policy.
+Every active Tool now enters one server-owned Registry with its exact Provider
+definition, Backend executor, `read|write|execute|external` risk class, timeout,
+output budget, parallel permission, optional approval rule, model Result
+projector, and replayable `search|tool` presentation. Name collisions fail
+closed, and the default Registry contains no Subagent or delegation Tool.
 
 The two model-visible local Tools implement progressive disclosure for the
 current user's admitted installations. Every Turn receives a bounded complete
@@ -113,6 +116,18 @@ build active conversation context
         -> continue the same model in another round
 ```
 
+The implementation treats one user request as a Turn and every Provider call
+as a Step. A required Skill load is a `skill_prelude` Step and does not consume
+the ordinary task-Step sequence; this preserves first-task-Step Memory/Search
+authority. The compatibility `round` field currently carries the physical Step
+sequence until the durable event migration lands.
+
+The Registry is rebuilt for every Step from current Backend authority. It
+executes registered MCP owners first, local Skills second, and retrieval Tools
+afterward, then restores Tool Results to the model's exact original call order.
+MCP Tool-search changes therefore affect the next Step without allowing Tool
+output itself to register arbitrary names.
+
 Provider adapters must preserve their native continuation form:
 
 - OpenAI Chat Completions: assistant `tool_calls` followed by `role=tool` with
@@ -151,17 +166,24 @@ rounds exactly once. A continuation-recovery answer stream inherits that same
 completed-usage base, so its terminal update cannot move the visible count
 backward.
 
-Retrieval-only rounds retain their existing provider limits. MCP and
-`local_direct` add explicit per-Run Tool Call, Tool Round, wall-clock, output,
-and concurrency budgets. When one of those budgets is exhausted, the loop
-performs one same-model continuation without Tools and cannot execute another
-call. The loop otherwise terminates when:
+The Turn has hard caps of 32 Provider Steps and 128 Tool Calls in addition to
+the lower MCP and `local_direct` per-Run call, round, wall-clock, output, and
+concurrency budgets. A call beyond the Turn cap receives a structured
+`turn_call_budget_exhausted` Result without execution. Any exhausted budget
+then causes one same-model continuation without Tools. The loop otherwise
+terminates when:
 
 - the model returns no Tool Call;
 - the user cancels the run;
 - the request context or configured provider timeout ends;
 - a Tool/Provider returns a terminal non-degradable error; or
 - an approval is rejected.
+
+Unknown names, bad arguments, ordinary execution errors, and a per-Tool
+deadline are Tool Results so the same model can repair or report them. In
+particular, an MCP call deadline is `tool_timeout` while the parent Run remains
+healthy. Cancellation, a parent Run deadline, and a write whose outcome is
+unknown remain terminal and are never converted into retryable Results.
 
 Local Skill process events contain only Tool name, round, `local_direct`, risk
 classification, optional timeout, duration, and failure category. Command text,

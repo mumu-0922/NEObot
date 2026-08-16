@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -164,7 +163,8 @@ func runNativeExternalWebToolLoop(
 	if input.Knowledge.enabled() {
 		input.Request = withSelectedKnowledgeToolInstruction(input.Request, input.Knowledge)
 	}
-	tools := retrievalToolDefinitions(input)
+	registry := newChatToolRegistry(input)
+	tools := registry.definitions(1)
 	if len(tools) == 0 {
 		streamCompatibilityAnswer(ctx, events, input.Provider, input.Request)
 		return true
@@ -175,8 +175,18 @@ func runNativeExternalWebToolLoop(
 	completedUsage := TokenUsage{}
 	answerContentEmitted := false
 	memoryContinuationStarted := false
-	taskRound := 0
-	for round := 1; ; round++ {
+	turn := newChatAgentTurnDriver()
+	for {
+		skillLoadRound := input.LocalSkills.requiresSkillLoad()
+		step, stepAdmitted := turn.beginStep(skillLoadRound)
+		if !stepAdmitted {
+			streamFinalNoTools(
+				ctx, events, provider, input.Request, continuation, completedUsage,
+			)
+			return true
+		}
+		round := step.Sequence
+		taskRound := step.TaskSequence
 		if input.MCP.enabled() && round > input.MCP.service.Config().MaxRoundsPerRun {
 			streamFinalNoTools(
 				ctx, events, provider, input.Request, continuation, completedUsage,
@@ -189,15 +199,12 @@ func runNativeExternalWebToolLoop(
 			)
 			return true
 		}
-		tools = retrievalToolDefinitions(input)
-		skillLoadRound := input.LocalSkills.requiresSkillLoad()
-		if !skillLoadRound {
-			taskRound++
-		}
-		roundTools := retrievalToolDefinitionsForRound(tools, taskRound)
 		if skillLoadRound {
-			roundTools = input.LocalSkills.requiredDefinition()
+			registry = newRequiredLocalSkillRegistry(input.LocalSkills)
+		} else {
+			registry = newChatToolRegistry(input)
 		}
+		roundTools := registry.definitions(taskRound)
 		roundRequest := input.Request
 		choice := ProviderToolChoiceAuto
 		switch {
@@ -431,311 +438,39 @@ func runNativeExternalWebToolLoop(
 			Results:            make([]ProviderToolResult, 0, len(calls)),
 			ProviderState:      roundState,
 		}
-		mcpResults := make(map[int]ProviderToolResult)
-		localResults := make(map[int]ProviderToolResult)
-		mcpBudgetReached, localBudgetReached := false, false
-		var mcpErr, localErr error
-		if skillLoadRound {
-			localResults, localBudgetReached, localErr = executeRequiredLocalSkillBatch(
-				ctx, events, input.LocalSkills, calls, round,
-			)
-		} else {
-			mcpResults, mcpBudgetReached, mcpErr = executeMCPBatch(
-				ctx, events, input.MCP, calls, round,
-			)
-			localResults, localBudgetReached, localErr = executeLocalSkillBatch(
-				ctx, events, input.LocalSkills, calls, round,
-			)
-		}
-		if mcpErr != nil {
-			sendProviderEvent(ctx, events, ProviderEvent{Error: mcpErr})
+		admittedCalls := turn.admitToolCalls(len(calls))
+		executionCalls := calls[:admittedCalls]
+		infrastructure, infrastructureErr := registry.executeInfrastructureBatch(
+			ctx, events, input, executionCalls, round,
+		)
+		if infrastructureErr != nil {
+			sendProviderEvent(ctx, events, ProviderEvent{Error: infrastructureErr})
 			return true
 		}
-		if localErr != nil {
-			sendProviderEvent(ctx, events, ProviderEvent{Error: localErr})
-			return true
+		retrievalState := chatRetrievalExecutionState{
+			input: &input, events: events, round: round, taskStep: taskRound,
+			memoryBatchValid: memoryToolBatchValid(taskRound, executionCalls, input),
+			cumulative:       &cumulative, knowledgeDecision: &knowledgeDecision,
 		}
-		memoryBatchValid := memoryToolBatchValid(taskRound, calls, input)
 		for callIndex, call := range calls {
-			if result, ok := mcpResults[callIndex]; ok {
+			if callIndex >= admittedCalls {
+				exchange.Results = append(exchange.Results, chatToolFailureResult(
+					call, "turn_call_budget_exhausted",
+				))
+				continue
+			}
+			if result, ok := infrastructure.Results[callIndex]; ok {
 				exchange.Results = append(exchange.Results, result)
 				continue
 			}
-			if result, ok := localResults[callIndex]; ok {
-				exchange.Results = append(exchange.Results, result)
-				continue
-			}
-			executionID := fmt.Sprintf("native-%d-%d", round, callIndex+1)
-			name := normalizedToolName(call.Name)
-			query, args, failure := validateRetrievalToolCall(
-				call,
-				input,
-				taskRound,
-				memoryBatchValid,
-			)
-			if failure != "" {
-				execution := ProviderToolExecutionEvent{
-					ExecutionID:     executionID,
-					CallID:          call.ID,
-					Name:            name,
-					Status:          ProcessStepStatusFailed,
-					Round:           round,
-					Arguments:       args,
-					FailureCategory: failure,
-					Mode:            "native",
-				}
-				if !sendToolExecutionEvent(ctx, events, execution) {
-					return true
-				}
-				exchange.Results = append(exchange.Results, ProviderToolResult{
-					CallID:  call.ID,
-					Name:    call.Name,
-					Content: retrievalToolFailureResult(name, failure),
-					IsError: true,
-				})
-				continue
-			}
-			if name == usermemory.HybridMemoryToolName {
-				running := ProviderToolExecutionEvent{
-					ExecutionID: executionID,
-					CallID:      call.ID,
-					Name:        usermemory.HybridMemoryToolName,
-					Status:      ProcessStepStatusRunning,
-					Round:       round,
-					Arguments:   args,
-					Mode:        "native",
-				}
-				if !sendToolExecutionEvent(ctx, events, running) {
-					return true
-				}
-				result := executeMemoryTool(ctx, input.Memory)
-				if toolLoopWasCancelled(ctx, nil) {
-					cancelled := running
-					cancelled.Status = ProcessStepStatusCancelled
-					sendToolExecutionEvent(ctx, events, cancelled)
-					return true
-				}
-				if result.FailureCategory != "" {
-					failed := running
-					failed.Status = ProcessStepStatusFailed
-					failed.FailureCategory = result.FailureCategory
-					if !sendToolExecutionEvent(ctx, events, failed) {
-						return true
-					}
-					exchange.Results = append(exchange.Results, ProviderToolResult{
-						CallID: call.ID, Name: call.Name,
-						Content: memoryToolFailureResult(result.FailureCategory), IsError: true,
-					})
-					continue
-				}
-				toolResult, projected, usedTokens, fits := memoryToolSuccessResult(
-					result.Memories,
-					input.ContextBudget.remaining(retrievalEvidenceMemory),
-				)
-				if !fits {
-					failed := running
-					failed.Status = ProcessStepStatusFailed
-					failed.FailureCategory = "context_budget_exhausted"
-					if !sendToolExecutionEvent(ctx, events, failed) {
-						return true
-					}
-					exchange.Results = append(exchange.Results, ProviderToolResult{
-						CallID: call.ID, Name: call.Name,
-						Content: memoryToolFailureResult("context_budget_exhausted"), IsError: true,
-					})
-					continue
-				}
-				input.ContextBudget.consume(retrievalEvidenceMemory, usedTokens)
-				input.Memory.setUsedMemories(projected)
-				completed := running
-				completed.Status = ProcessStepStatusCompleted
-				if !sendToolExecutionEvent(ctx, events, completed) {
-					return true
-				}
-				exchange.Results = append(exchange.Results, ProviderToolResult{
-					CallID: call.ID, Name: call.Name,
-					Content: toolResult,
-				})
-				continue
-			}
-			if name == searchKnowledgeToolName {
-				running := ProviderToolExecutionEvent{
-					ExecutionID: executionID,
-					CallID:      call.ID,
-					Name:        searchKnowledgeToolName,
-					Status:      ProcessStepStatusRunning,
-					Round:       round,
-					Arguments:   args,
-					Query:       query,
-					Mode:        "native",
-				}
-				if !sendToolExecutionEvent(ctx, events, running) {
-					return true
-				}
-				current := executeKnowledgeTool(ctx, input.Knowledge, query)
-				if toolLoopWasCancelled(ctx, nil) {
-					cancelled := running
-					cancelled.Status = ProcessStepStatusCancelled
-					sendToolExecutionEvent(ctx, events, cancelled)
-					return true
-				}
-				failure = knowledgeToolFailureCategory(current)
-				if failure != "" {
-					failed := running
-					failed.Status = ProcessStepStatusFailed
-					failed.FailureCategory = failure
-					if knowledgeDecision.ReadyForAnswer() {
-						copy := knowledgeDecision
-						failed.Knowledge = &copy
-					} else {
-						copy := current
-						failed.Knowledge = &copy
-					}
-					if !sendToolExecutionEvent(ctx, events, failed) {
-						return true
-					}
-					exchange.Results = append(exchange.Results, ProviderToolResult{
-						CallID: call.ID, Name: call.Name,
-						Content: knowledgeToolFailureResult(failure), IsError: true,
-					})
-					continue
-				}
-				current = mapKnowledgeToolDecisionMarkers(
-					knowledgeDecision,
-					current,
-				)
-				toolResult, projectedCurrent, usedTokens, contextErr :=
-					knowledgeToolSuccessResult(
-						current,
-						input.ContextBudget.remaining(retrievalEvidenceKnowledge),
-					)
-				if contextErr != nil {
-					failed := running
-					failed.Status = ProcessStepStatusFailed
-					failed.FailureCategory = "context_budget_exhausted"
-					if !sendToolExecutionEvent(ctx, events, failed) {
-						return true
-					}
-					exchange.Results = append(exchange.Results, ProviderToolResult{
-						CallID: call.ID, Name: call.Name,
-						Content: knowledgeToolFailureResult(
-							"context_budget_exhausted",
-						), IsError: true,
-					})
-					continue
-				}
-				merged := mergeKnowledgeToolDecision(
-					knowledgeDecision,
-					projectedCurrent,
-				)
-				knowledgeDecision = merged.Cumulative
-				input.ContextBudget.consume(
-					retrievalEvidenceKnowledge,
-					usedTokens,
-				)
-				if merged.Current.ReadyForAnswer() {
-					authority := sourceAuthorityKnowledge
-					if len(cumulative.Sources) > 0 {
-						authority = sourceAuthorityMixed
-					}
-					input.Request.SystemPrompt = applySourceFusionSystemInstruction(
-						input.Request.SystemPrompt,
-						sourceFusionPlan{Authority: authority},
-					)
-				}
-				completed := running
-				completed.Status = ProcessStepStatusCompleted
-				completed.CitationMarkers = ragCitationMarkers(merged.Current.Citations)
-				copy := knowledgeDecision
-				if !copy.ReadyForAnswer() {
-					copy = merged.Current
-				}
-				completed.Knowledge = &copy
-				if !sendToolExecutionEvent(ctx, events, completed) {
-					return true
-				}
-				exchange.Results = append(exchange.Results, ProviderToolResult{
-					CallID: call.ID, Name: call.Name,
-					Content: toolResult,
-				})
-				continue
-			}
-
-			running := ProviderToolExecutionEvent{
-				ExecutionID: executionID,
-				CallID:      call.ID,
-				Name:        searchWebToolName,
-				Status:      ProcessStepStatusRunning,
-				Round:       round,
-				Arguments:   args,
-				Query:       query,
-				Mode:        "native",
-			}
-			if !sendToolExecutionEvent(ctx, events, running) {
+			executed := registry.executeRetrievalCall(ctx, call, callIndex, &retrievalState)
+			if executed.stop {
 				return true
 			}
-			result, searchErr := input.SearchService.Execute(ctx, input.Execution, websearch.Request{
-				Query:      query,
-				MaxResults: input.MaxResults,
-			})
-			if searchErr != nil {
-				if toolLoopWasCancelled(ctx, searchErr) {
-					cancelled := running
-					cancelled.Status = ProcessStepStatusCancelled
-					sendToolExecutionEvent(ctx, events, cancelled)
-					return true
-				}
-				failure = sourceSearchDegradationReason(searchErr)
-				failed := running
-				failed.Status = ProcessStepStatusFailed
-				failed.FailureCategory = failure
-				if !sendToolExecutionEvent(ctx, events, failed) {
-					return true
-				}
-				exchange.Results = append(exchange.Results, ProviderToolResult{
-					CallID:  call.ID,
-					Name:    call.Name,
-					Content: webSearchFailureToolResult(failure),
-					IsError: true,
-				})
-				continue
-			}
-			previous := cumulative
-			bounded, cumulativeResult, toolResult, usedTokens :=
-				boundedWebSearchSuccessToolResult(
-					previous,
-					result,
-					input.ContextBudget.remaining(retrievalEvidenceWeb),
-				)
-			cumulative = cumulativeResult
-			input.ContextBudget.consume(retrievalEvidenceWeb, usedTokens)
-			if input.KnowledgeReady || knowledgeDecision.ReadyForAnswer() {
-				input.Request.SystemPrompt = applySourceFusionSystemInstruction(
-					input.Request.SystemPrompt,
-					sourceFusionPlan{Authority: sourceAuthorityMixed},
-				)
-			}
-			if !sendProviderEvent(ctx, events, ProviderEvent{
-				Type:   ProviderEventSearch,
-				Search: &bounded,
-			}) {
-				return true
-			}
-			completed := running
-			completed.Status = ProcessStepStatusCompleted
-			completed.Search = &bounded
-			completed.CitationMarkers = newWebCitationMarkers(previous, cumulative)
-			if !sendToolExecutionEvent(ctx, events, completed) {
-				return true
-			}
-			exchange.Results = append(exchange.Results, ProviderToolResult{
-				CallID:  call.ID,
-				Name:    call.Name,
-				Content: toolResult,
-			})
+			exchange.Results = append(exchange.Results, executed.result)
 		}
 		continuation = append(continuation, exchange)
-		if mcpBudgetReached || localBudgetReached {
+		if infrastructure.BudgetReached || admittedCalls < len(calls) {
 			streamFinalNoTools(
 				ctx, events, provider, input.Request, continuation, completedUsage,
 			)
@@ -921,44 +656,7 @@ func collectBufferedCompatibilityAnswer(
 }
 
 func retrievalToolDefinitions(input externalWebToolLoopInput) []ToolDefinition {
-	tools := make([]ToolDefinition, 0, 6+len(input.MCP.definitions()))
-	if input.Memory.requiresFirstRoundCall() {
-		// ProviderToolChoiceRequired names the first offered Tool. Explicit
-		// saved-Memory reads therefore bind required to search_memory even when
-		// Web or Knowledge is available in the same first round.
-		tools = append(tools, SearchMemoryToolDefinition())
-	}
-	if externalWebToolEnabled(input) {
-		// Keep Web first unless an explicit Memory read has higher current-message
-		// authority, preserving the explicit-Search contract with Knowledge.
-		tools = append(tools, searchWebToolDefinition())
-	}
-	if input.Knowledge.enabled() {
-		tools = append(tools, searchKnowledgeToolDefinition())
-	}
-	if input.Memory.enabled() && !input.Memory.requiresFirstRoundCall() {
-		tools = append(tools, SearchMemoryToolDefinition())
-	}
-	tools = append(tools, input.MCP.definitions()...)
-	tools = append(tools, input.LocalSkills.definitions()...)
-	return tools
-}
-
-func retrievalToolDefinitionsForRound(
-	tools []ToolDefinition,
-	round int,
-) []ToolDefinition {
-	if round <= 1 {
-		return tools
-	}
-	filtered := make([]ToolDefinition, 0, len(tools))
-	for _, tool := range tools {
-		if strings.TrimSpace(tool.Function.Name) == usermemory.HybridMemoryToolName {
-			continue
-		}
-		filtered = append(filtered, tool)
-	}
-	return filtered
+	return newChatToolRegistry(input).definitions(1)
 }
 
 func externalWebToolEnabled(input externalWebToolLoopInput) bool {
@@ -1002,31 +700,36 @@ func recordRuntimeToolIncompatibility(
 	}()
 }
 
-func validateRetrievalToolCall(
+func validateRegisteredRetrievalToolCall(
 	call ProviderToolCall,
+	registration chatToolRegistration,
+	registered bool,
 	input externalWebToolLoopInput,
 	round int,
 	memoryBatchValid bool,
 ) (string, map[string]any, string) {
-	switch normalizedToolName(call.Name) {
-	case searchWebToolName:
+	if !registered {
+		return "", nil, "unknown_tool"
+	}
+	switch registration.Backend {
+	case chatToolBackendWeb:
 		if !externalWebToolEnabled(input) {
 			return "", nil, "tool_not_available"
 		}
 		return validateSearchWebToolCall(call)
-	case searchKnowledgeToolName:
+	case chatToolBackendKnowledge:
 		if !input.Knowledge.enabled() {
 			return "", nil, "tool_not_available"
 		}
 		return validateSearchKnowledgeToolCall(call)
-	case usermemory.HybridMemoryToolName:
+	case chatToolBackendMemory:
 		if !input.Memory.enabled() {
 			return "", nil, "tool_not_available"
 		}
 		args, failure := validateSearchMemoryToolCall(call, round, memoryBatchValid)
 		return "", args, failure
 	default:
-		return "", nil, "unknown_tool"
+		return "", nil, "tool_not_available"
 	}
 }
 

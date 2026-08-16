@@ -30,6 +30,113 @@ live report completed only `12/300` routes, classified the `288` failures into
 `31` context deadlines, `83` invalid Tool Calls, and `174` unclassified router
 failures, and kept Validation/Promotion blocked.
 
+## Scenario: Drive one Chat Turn through the unified Tool Registry
+
+### 1. Scope / Trigger
+
+Apply when adding a model-visible Chat Tool, changing Tool order or risk,
+dispatching a provider Tool batch, changing Turn/Step budgets, or changing the
+model-facing Result and process presentation. This Registry belongs to ordinary
+Chat and is independent from the optional G20/G21 control-plane registry.
+
+### 2. Signatures
+
+```text
+newChatAgentTurnDriver()
+turn.beginStep(skillPrelude) -> {sequence, taskSequence, purpose}
+turn.admitToolCalls(count) -> admittedCount
+
+newChatToolRegistry(input)
+registry.definitions(taskStep)
+registry.executeInfrastructureBatch(ctx, events, input, calls, step)
+registry.executeRetrievalCall(ctx, call, callIndex, state)
+```
+
+Every `chatToolRegistration` binds one exact name to a Provider definition,
+Backend executor, `read|write|execute|external` risk, timeout, output budget,
+parallel permission, optional approval rule, model Result projector, and
+replayable `search|tool` presentation.
+
+### 3. Contracts
+
+- Build one Registry replacement for every provider Step from current server
+  authority. Memory ordering, current MCP visibility, installed Skills, and
+  Search/Knowledge availability must be recomputed; Tool output cannot register
+  another Tool.
+- Execute registered infrastructure owners in the fixed MCP -> local Skill
+  order, then registered retrieval calls. Always merge Results back into the
+  exact Provider call order before same-model continuation.
+- A Skill prelude uses a separate Registry containing only the exact required
+  `skill` definition. It increments the physical Step sequence but not the
+  ordinary task-Step sequence.
+- `search_memory` exists only on task Step 1. `skills_list` and `skill_view`
+  are hidden compatibility registrations; every new Provider definition omits
+  them.
+- Exact name collisions remove that name from both model visibility and
+  execution. The default Registry never registers a Subagent/delegation Tool.
+- The Turn has hard safety caps of 32 provider Steps and 128 Tool Calls in
+  addition to lower MCP/local runtime budgets. Calls beyond the Turn cap get a
+  structured `turn_call_budget_exhausted` Result and no execution; then the
+  same model receives one Tool-free final Step.
+- Unknown names, invalid arguments, ordinary Tool errors, and per-Tool timeouts
+  are structured Results. A per-MCP-call deadline is `tool_timeout`; the parent
+  Run deadline, cancellation, `outcome_unknown`, and unrecoverable execution
+  errors remain terminal.
+- Existing `ProviderToolExecutionEvent.Round` remains the compatibility
+  projection of the physical Step sequence until the durable G3 event schema
+  replaces it. Registry Result projection and presentation must not add raw
+  command, credential, private path, or unbounded Tool output to process data.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| duplicate registered name | remove the name from definitions and lookup |
+| unknown Provider Tool name | structured `unknown_tool`; no Backend call |
+| registered Tool with bad arguments | Backend-specific structured invalid-argument Result |
+| physical Step 33 | no Tool execution; one Tool-free final continuation |
+| Tool Call 129 | `turn_call_budget_exhausted`; no side effect |
+| MCP per-Tool deadline while parent Run is healthy | structured `tool_timeout`; same model may recover |
+| parent MCP/Chat deadline | terminal `MCP_BUDGET_EXHAUSTED` |
+| write outcome becomes unknown | terminal `MCP_OUTCOME_UNKNOWN`; never retry |
+| Skill prelude receives another Tool | `skill_required_before_action`; no dispatch |
+
+### 5. Good / Base / Bad Cases
+
+- **Good:** `skill` prelude -> one task Step calls Web plus `terminal` -> Results
+  are returned in original call order -> same model answers.
+- **Base:** no Tool is available, so Chat streams the ordinary compatibility
+  answer without constructing a fake execution Step.
+- **Bad:** append Tool definitions in one function but dispatch names in an
+  unrelated switch, let MCP output add an alias, execute a colliding name, or
+  terminate the Turn for a recoverable read timeout.
+
+### 6. Tests Required
+
+- Registry definition order, complete policy metadata, first-task-Step Memory
+  removal, collision fail-closed behavior, and default absence of Subagents.
+- Cross-Backend `skill -> (Web + terminal) -> answer` continuation with exact
+  Provider Result order.
+- Existing MCP dynamic-search, read concurrency, write serialization,
+  Knowledge/Memory/Web, local Skill, cancellation, and recovery suites.
+- Global Step/Call cap boundaries, unknown/bad arguments, recoverable per-Tool
+  timeout, fatal parent deadline, and `outcome_unknown`.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+definitions switch + MCP switch + local switch + retrieval name switch
+```
+
+#### Correct
+
+```text
+Turn -> Step -> current Registry -> owner dispatch -> ordered Result projection
+     -> same-model next Step
+```
+
 ## Scenario: Continue Chat through local Agent Skill Tools
 
 ### 1. Scope / Trigger
