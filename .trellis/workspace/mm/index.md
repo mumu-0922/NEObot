@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 59
+- **Total Sessions**: 60
 - **Last Active**: 2026-08-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~370 | Active |
+| `journal-2.md` | ~403 | Active |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 60 | 2026-08-16 | Restore local Skill browser execution | `c8e4c734` | `main` |
 | 59 | 2026-08-16 | Agent Skill local direct execution | `8a2eca7e` | `main` |
 | 58 | 2026-08-16 | Agent Runtime WSL local-test host tooling | `3546b990` | `main` |
 | 57 | 2026-08-15 | Complete Agent Runtime G21.6 product canary | `a9ca4a57` | `main` |

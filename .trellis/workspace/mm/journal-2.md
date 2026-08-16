@@ -368,3 +368,36 @@ Replaced the mandatory WSL/Podman Skill activation path with Hermes-style local_
 ### Next Steps
 
 - None - task complete
+
+
+## Session 60: Restore local Skill browser execution
+
+**Date**: 2026-08-16
+**Task**: Restore local Skill browser execution
+**Branch**: `main`
+
+### Summary
+
+Fixed OpenAI strict local Tool schemas, canonical PostgreSQL UUID validation, and frontend local_direct Tool event normalization; rebuilt the stack and verified Agent Center plus a real workspace-smoke browser retry created /workspace/hello-skill.txt with skill-ok.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c8e4c734` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
