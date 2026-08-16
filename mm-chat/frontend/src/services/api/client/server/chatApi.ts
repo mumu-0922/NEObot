@@ -537,7 +537,7 @@ function dispatchStreamEvent(
       if (!toolCall) {
         throw new ApiClientError(
           "INVALID_SERVER_RESPONSE",
-          "Server returned an invalid MCP Tool call update.",
+          "Server returned an invalid Tool call update.",
         );
       }
       handlers?.onToolCall?.({ ...event, toolCall });

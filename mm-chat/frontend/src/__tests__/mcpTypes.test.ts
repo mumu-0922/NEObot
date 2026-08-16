@@ -89,7 +89,7 @@ describe("MCP runtime DTO normalization", () => {
     ).not.toHaveProperty("icon");
   });
 
-  it("strictly validates streamed MCP Tool call updates", () => {
+  it("strictly validates streamed MCP and local Tool call updates", () => {
     const update = normalizeMcpToolCallUpdate({
       executionId: "call-1",
       callId: "call-1",
@@ -113,6 +113,36 @@ describe("MCP runtime DTO normalization", () => {
       normalizeMcpToolCallUpdate({
         ...update,
         classification: "trusted-because-server-said-so",
+      }),
+    ).toBeNull();
+    expect(
+      normalizeMcpToolCallUpdate({
+        ...update,
+        classification: "execute",
+      }),
+    ).toBeNull();
+
+    expect(
+      normalizeMcpToolCallUpdate({
+        ...update,
+        executionId: "local-skill-3-1",
+        callId: "call-terminal",
+        toolName: "terminal",
+        classification: "execute",
+        processStatus: "completed",
+        status: "succeeded",
+        mode: "local_direct",
+      }),
+    ).toMatchObject({
+      classification: "execute",
+      mode: "local_direct",
+      processStatus: "completed",
+      status: "succeeded",
+    });
+    expect(
+      normalizeMcpToolCallUpdate({
+        ...update,
+        mode: "browser_direct",
       }),
     ).toBeNull();
   });

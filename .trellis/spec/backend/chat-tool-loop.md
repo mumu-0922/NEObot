@@ -63,6 +63,11 @@ terminal({command, skill?, workingDir?, timeoutSeconds?})
   files load only through `skill_view` and cannot override system/developer
   instructions.
 - Tool schemas are strict and reject additional/invalid arguments.
+  Provider-facing strict schemas list every property in `required`; values that
+  are semantically optional use a nullable type and the runtime treats `null`
+  as the documented default. Do not combine `strict=true` with an omitted
+  property, because OpenAI-compatible providers reject that definition before
+  the first Tool Call.
   `skill_view` defaults to `SKILL.md` and permits only exact files under
   `scripts/`, `references/`, or `assets/`. `terminal.skill` resolves only the
   prepared catalog and exposes the package through
@@ -92,6 +97,7 @@ terminal({command, skill?, workingDir?, timeoutSeconds?})
 | installed Skills plus non-Tool-capable model | fail before assistant creation with `SKILL_MODEL_UNSUPPORTED` |
 | catalog/package preparation fails | `SKILL_RUNTIME_UNAVAILABLE`; no internal detail |
 | strict arguments fail | Tool result `arguments_invalid`; no file read/process |
+| strict schema omits an optional property from `required` | Provider rejects the Run before Tool execution; repair the schema with required + nullable, not by weakening runtime validation |
 | Skill/file unknown or disallowed | bounded `skill_or_file_not_found` |
 | materialized fingerprint drifts | bounded `package_drift`; no content/process |
 | command blocked or approval required | typed Tool failure before process creation |
@@ -113,6 +119,9 @@ terminal({command, skill?, workingDir?, timeoutSeconds?})
 ### 6. Tests Required
 
 - Complete multi-round success with same Provider/model and exact Tool order.
+- Provider-schema assertions prove every strict `properties` key is present in
+  `required`, nullable local defaults accept explicit `null`, and runtime
+  unknown-field/path/command checks remain active.
 - Empty/disabled catalog, Tool-incapable model, preparation failure, invalid
   arguments, missing/drifted file, blocked/destructive command and nonzero exit.
 - Call, round, output, call-timeout and Run-timeout boundaries plus cancellation

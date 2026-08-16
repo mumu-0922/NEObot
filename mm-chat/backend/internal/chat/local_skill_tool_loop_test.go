@@ -50,11 +50,11 @@ func TestLocalSkillToolLoopLoadsSkillRunsTerminalAndContinuesSameModel(t *testin
 		}}},
 		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
 			ID: "view-call", Name: localSkillViewToolName,
-			Arguments: `{"name":"fixture-skill"}`,
+			Arguments: `{"name":"fixture-skill","path":null}`,
 		}}},
 		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
 			ID: "terminal-call", Name: localTerminalToolName,
-			Arguments: `{"command":"test -f \"$NEO_CHAT_ACTIVE_SKILL_ROOT/SKILL.md\"; printf executed > result.txt; printf terminal-ok","skill":"fixture-skill","timeoutSeconds":2}`,
+			Arguments: `{"command":"test -f \"$NEO_CHAT_ACTIVE_SKILL_ROOT/SKILL.md\"; printf executed > result.txt; printf terminal-ok","skill":"fixture-skill","workingDir":null,"timeoutSeconds":2}`,
 		}}},
 		{{Type: ProviderEventDelta, Delta: "fixture complete"}},
 	}}
@@ -109,6 +109,80 @@ func TestLocalSkillToolLoopLoadsSkillRunsTerminalAndContinuesSameModel(t *testin
 		!strings.Contains(provider.inputs[0].SystemPrompt, "fixture-skill") {
 		t.Fatalf("progressive prompt=%q", provider.inputs[0].SystemPrompt)
 	}
+}
+
+func TestLocalSkillToolDefinitionsAreOpenAIStrictCompatible(t *testing.T) {
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: filepath.Join(t.TempDir(), "skills"),
+		WorkspaceRoot: t.TempDir(), ShellPath: "/bin/sh",
+		ApprovalMode: localskills.ApprovalSmart, CallTimeout: time.Second,
+		RunTimeout: 5 * time.Second, MaxOutput: 4096, MaxCalls: 4,
+		MaxRounds: 4, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := newLocalSkillToolRuntime(executor, []skillsupply.RuntimeSkill{{
+		Name: "fixture", Files: []string{"SKILL.md"},
+	}})
+	definitions := runtime.definitions()
+	if len(definitions) != 3 {
+		t.Fatalf("definitions=%#v", definitions)
+	}
+	for _, definition := range definitions {
+		if !definition.Function.Strict {
+			t.Fatalf("%s is not strict", definition.Function.Name)
+		}
+		properties, ok := definition.Function.Parameters["properties"].(map[string]any)
+		if !ok {
+			t.Fatalf("%s properties=%#v", definition.Function.Name, definition.Function.Parameters["properties"])
+		}
+		required, ok := definition.Function.Parameters["required"].([]string)
+		if !ok || len(required) != len(properties) {
+			t.Fatalf("%s required=%#v properties=%#v", definition.Function.Name, required, properties)
+		}
+		requiredSet := make(map[string]struct{}, len(required))
+		for _, name := range required {
+			requiredSet[name] = struct{}{}
+		}
+		for name := range properties {
+			if _, exists := requiredSet[name]; !exists {
+				t.Fatalf("%s property %q is not required", definition.Function.Name, name)
+			}
+		}
+	}
+	for _, field := range []struct {
+		tool string
+		name string
+	}{
+		{localSkillViewToolName, "path"},
+		{localTerminalToolName, "skill"},
+		{localTerminalToolName, "workingDir"},
+		{localTerminalToolName, "timeoutSeconds"},
+	} {
+		definition := definitions[0]
+		for _, candidate := range definitions {
+			if candidate.Function.Name == field.tool {
+				definition = candidate
+				break
+			}
+		}
+		properties := definition.Function.Parameters["properties"].(map[string]any)
+		schema := properties[field.name].(map[string]any)
+		types, ok := schema["type"].([]string)
+		if !ok || !containsLocalSkillSchemaType(types, "null") {
+			t.Fatalf("%s.%s is not nullable: %#v", field.tool, field.name, schema)
+		}
+	}
+}
+
+func containsLocalSkillSchemaType(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func TestLocalSkillToolRejectsTraversalAndDestructiveTerminal(t *testing.T) {

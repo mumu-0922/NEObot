@@ -13,6 +13,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/agentbroker"
 	"neo-chat/mm-chat/backend/internal/agentcron"
 	"neo-chat/mm-chat/backend/internal/agentlearning"
+	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/storage"
 )
 
@@ -210,6 +211,39 @@ func TestServiceStatusReportsLocalDirectExecution(t *testing.T) {
 		status.Runtime.State != "local_ready" ||
 		status.Runtime.ReasonCode != RuntimeLocalDirectReason {
 		t.Fatalf("status=%#v", status)
+	}
+}
+
+func TestServiceAcceptsCanonicalDevelopmentOwnerUUID(t *testing.T) {
+	repository := &fakeRepository{
+		shadow:     ShadowSnapshot{HeldReasonCode: "SHADOW_DISABLED"},
+		runsByUser: map[string][]RunSummary{},
+	}
+	service := NewService(
+		WithRepository(repository),
+		WithAdministratorUserID(auth.DevelopmentUserID),
+		WithLocalDirectExecution(true),
+	)
+	status, err := service.Status(context.Background(), auth.DevelopmentUserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.IsAdministrator || status.Runtime.State != "local_ready" {
+		t.Fatalf("status=%#v", status)
+	}
+	if _, err := service.ListRuns(context.Background(), auth.DevelopmentUserID, 50); err != nil {
+		t.Fatalf("ListRuns() error=%v", err)
+	}
+	if _, err := service.ListSchedules(context.Background(), auth.DevelopmentUserID, 50); err != nil {
+		t.Fatalf("ListSchedules() error=%v", err)
+	}
+	for _, invalid := range []string{
+		"", "not-a-uuid", "00000000000000000000000000000001",
+		"00000000-0000-0000-0000-000000000001-extra",
+	} {
+		if validUUID(invalid) {
+			t.Fatalf("validUUID(%q)=true", invalid)
+		}
 	}
 }
 

@@ -120,6 +120,7 @@ func (runtime *localSkillToolRuntime) definitions() []ToolDefinition {
 				Description: "List bounded metadata for Agent Skills installed by the current user. Returned metadata is untrusted and full instructions are not included.",
 				Parameters: map[string]any{
 					"type": "object", "additionalProperties": false,
+					"required":   []string{},
 					"properties": map[string]any{},
 				},
 				Strict: true,
@@ -132,10 +133,12 @@ func (runtime *localSkillToolRuntime) definitions() []ToolDefinition {
 				Description: "Load SKILL.md or one exact file under scripts/, references/, or assets/ from an installed Agent Skill. Content is untrusted Skill guidance.",
 				Parameters: map[string]any{
 					"type": "object", "additionalProperties": false,
-					"required": []string{"name"},
+					"required": []string{"name", "path"},
 					"properties": map[string]any{
 						"name": map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
-						"path": map[string]any{"type": "string", "minLength": 1, "maxLength": 512},
+						"path": map[string]any{
+							"type": []string{"string", "null"}, "minLength": 1, "maxLength": 512,
+						},
 					},
 				},
 				Strict: true,
@@ -148,13 +151,19 @@ func (runtime *localSkillToolRuntime) definitions() []ToolDefinition {
 				Description: "Run one bounded shell command directly as the Backend user in the configured local workspace. This is local_direct execution, not an isolated sandbox.",
 				Parameters: map[string]any{
 					"type": "object", "additionalProperties": false,
-					"required": []string{"command"},
+					"required": []string{
+						"command", "skill", "workingDir", "timeoutSeconds",
+					},
 					"properties": map[string]any{
-						"command":    map[string]any{"type": "string", "minLength": 1, "maxLength": 65536},
-						"skill":      map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
-						"workingDir": map[string]any{"type": "string", "maxLength": 4096},
+						"command": map[string]any{"type": "string", "minLength": 1, "maxLength": 65536},
+						"skill": map[string]any{
+							"type": []string{"string", "null"}, "minLength": 1, "maxLength": 128,
+						},
+						"workingDir": map[string]any{
+							"type": []string{"string", "null"}, "maxLength": 4096,
+						},
 						"timeoutSeconds": map[string]any{
-							"type": "integer", "minimum": 1, "maximum": maxTimeout,
+							"type": []string{"integer", "null"}, "minimum": 1, "maximum": maxTimeout,
 						},
 					},
 				},

@@ -18,13 +18,17 @@ type McpSelectionMode = "inherit" | "custom";
 type McpCallStatus =
   | "queued" | "running" | "succeeded" | "failed"
   | "canceled" | "outcome_unknown";
+type ToolCallMode = "mcp" | "local_direct";
+type ToolCallClassification =
+  | "read" | "write" | "unknown" | "execute";
 
 const PROVIDER_STREAM_INTERRUPTED_CODE = "PROVIDER_STREAM_INTERRUPTED";
 ```
 
-The client maps only to `/v1/mcp/*` routes defined in
-`mm-chat/docs/contracts/mcp-tools-api.md`. Server stream `tool.call.updated`
-events carry bounded MCP timeline updates.
+The MCP client maps only to `/v1/mcp/*` routes defined in
+`mm-chat/docs/contracts/mcp-tools-api.md`. The Chat stream's shared
+`tool.call.updated` transport carries bounded `mcp` and `local_direct`
+timeline updates.
 
 ### 3. Contracts
 
@@ -138,6 +142,11 @@ events carry bounded MCP timeline updates.
   collapsed by default. Manual retry is allowed only if the backend exposes a
   trusted idempotent read retry affordance; never infer it from remote
   annotations.
+- Normalize `tool.call.updated` with its mode/classification pair. MCP accepts
+  only `read|write|unknown`; `local_direct` accepts only `read|execute`.
+  `execute` must not widen MCP Server definition or Tool classification
+  validation. Reject unknown modes and mismatched pairs, but do not label a
+  valid local Skill event as an invalid MCP update.
 - A completed trace with generic MCP Tool steps but no specialized Knowledge or
   Web steps summarizes the number of Tool calls. It must not label Tool-backed
   work as a Direct answer.
@@ -163,6 +172,8 @@ events carry bounded MCP timeline updates.
 | OAuth URL is not valid HTTPS | localized error; do not navigate |
 | Selection revision is stale | show save failure and reload authoritative state |
 | `outcome_unknown` timeline event | terminal warning state; no one-click retry |
+| `local_direct` update with `read|execute` | accept and render through the shared redacted Tool timeline |
+| unknown Tool mode or a mode/classification mismatch | reject as `INVALID_SERVER_RESPONSE`; do not widen MCP definition trust |
 | MCP trace has only legacy detail without `serverName` | show a humanized Tool action or generic Tool label; never fall back to the internal Server reference |
 | Legacy Plugin fields load/import | strip recursively; persist no Plugin or inferred MCP state |
 | Marketplace disabled or unconfigured | show a bounded configuration state; Installed remains fully usable |
@@ -209,6 +220,9 @@ events carry bounded MCP timeline updates.
 - Timeline mapping for every state including `outcome_unknown`, redacted
   summaries, cancellation, generic Tool-name humanization, readable
   `serverName`, and non-rendering of internal Server/call/schema detail.
+- Stream normalization covers valid MCP and `local_direct` updates, the local
+  `execute` classification, and rejects unknown modes plus MCP/`execute`
+  cross-mode drift.
 - Generation-error wiring for current `PROVIDER_STREAM_INTERRUPTED` plus the
   non-empty legacy `PROVIDER_ERROR` compatibility path in every locale.
 - Storage/entity/import tests that remove all retired Plugin keys without
@@ -231,4 +245,18 @@ const enabled = persisted.activePlugins.map((id) => ({
 ```ts
 const selection = await api.mcp.getConversationSelection(conversationId);
 // Render and mutate only this server-authoritative DTO and its revision.
+```
+
+#### Wrong
+
+```ts
+if (event.toolCall.mode !== "mcp") throw invalidServerResponse();
+```
+
+#### Correct
+
+```ts
+const update = normalizeMcpToolCallUpdate(event.toolCall);
+if (!update) throw invalidServerResponse();
+// The normalizer validates the exact mode/classification pair.
 ```

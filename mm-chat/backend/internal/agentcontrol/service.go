@@ -18,7 +18,6 @@ import (
 )
 
 var (
-	uuidPattern        = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 	prefixedIDPattern  = regexp.MustCompile(`^[a-z][a-z0-9_]*_[a-z0-9]{16,64}$`)
 	fingerprintPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 	reasonPattern      = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
@@ -541,7 +540,11 @@ func normalizedUserID(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
 
-func validUUID(value string) bool { return uuidPattern.MatchString(normalizedUserID(value)) }
+func validUUID(value string) bool {
+	value = normalizedUserID(value)
+	parsed, err := uuid.Parse(value)
+	return err == nil && parsed.String() == value
+}
 
 func validID(value, prefix string) bool {
 	return strings.HasPrefix(value, prefix+"_") && prefixedIDPattern.MatchString(value)

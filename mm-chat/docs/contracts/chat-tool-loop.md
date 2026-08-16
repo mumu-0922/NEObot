@@ -166,6 +166,17 @@ classification, optional timeout, duration, and failure category. Command text,
 working-directory text, stdout, stderr, Skill file content, and storage paths
 must never enter SSE process metadata or persisted process trace.
 
+Provider-facing local Skill functions keep `strict=true`. Every declared
+property is therefore present in `required`; semantically optional values use
+nullable JSON Schema types and explicit `null` maps to the runtime default.
+This preserves OpenAI-compatible strict-schema admission without weakening the
+Backend's unknown-field, path, command, timeout, or package validation.
+
+The shared `tool.call.updated` Chat event accepts `mode=mcp` with
+`read|write|unknown`, or `mode=local_direct` with `read|execute`. The frontend
+must validate the pair rather than rejecting a valid local event as an invalid
+MCP update; `execute` never widens MCP Server classification authority.
+
 The existing run cancellation must cancel the active provider request and any
 in-flight Tool request. A cancelled loop emits exactly one terminal
 `message.cancelled` and cannot later finalize as completed.

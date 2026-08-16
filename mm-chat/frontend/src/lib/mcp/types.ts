@@ -103,7 +103,7 @@ export interface McpToolCallUpdate {
   callId: string;
   toolName: string;
   server?: string;
-  classification?: McpToolClassification;
+  classification?: McpToolClassification | "execute";
   processStatus:
     | "pending"
     | "running"
@@ -116,7 +116,7 @@ export interface McpToolCallUpdate {
   argumentsSummary: Record<string, unknown>;
   failureCategory?: string;
   durationMillis: number;
-  mode: "mcp";
+  mode: "mcp" | "local_direct";
 }
 
 export interface McpMarketplaceItem {
@@ -208,6 +208,13 @@ const CLASSIFICATIONS = new Set<McpToolClassification>([
   "read",
   "write",
   "unknown",
+]);
+const TOOL_CALL_CLASSIFICATIONS = new Set<
+  NonNullable<McpToolCallUpdate["classification"]>
+>([...CLASSIFICATIONS, "execute"]);
+const TOOL_CALL_MODES = new Set<McpToolCallUpdate["mode"]>([
+  "mcp",
+  "local_direct",
 ]);
 const SELECTION_MODES = new Set<McpSelectionMode>(["inherit", "custom"]);
 const CALL_STATUSES = new Set<McpCallStatus>([
@@ -378,16 +385,24 @@ export function normalizeMcpToolCallUpdate(
   const toolName = stringValue(value.toolName, 512);
   const processStatus = enumValue(value.processStatus, PROCESS_STATUSES);
   const status = enumValue(value.status, CALL_STATUSES);
+  const mode = enumValue(value.mode, TOOL_CALL_MODES);
   const classification = value.classification
-    ? enumValue(value.classification, CLASSIFICATIONS)
+    ? enumValue(value.classification, TOOL_CALL_CLASSIFICATIONS)
     : undefined;
+  const classificationMatchesMode =
+    mode === "local_direct"
+      ? classification === undefined ||
+        classification === "read" ||
+        classification === "execute"
+      : classification !== "execute";
   if (
     !executionId ||
     !callId ||
     !toolName ||
     !processStatus ||
     !status ||
-    value.mode !== "mcp" ||
+    !mode ||
+    !classificationMatchesMode ||
     (value.classification !== undefined && !classification) ||
     (value.argumentsSummary !== undefined && !isRecord(value.argumentsSummary))
   ) {
@@ -411,7 +426,7 @@ export function normalizeMcpToolCallUpdate(
       ? { failureCategory: stringValue(value.failureCategory, 256) }
       : {}),
     durationMillis: nonNegativeInteger(value.durationMillis),
-    mode: "mcp",
+    mode,
   };
 }
 
