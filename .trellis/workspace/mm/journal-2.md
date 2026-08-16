@@ -401,3 +401,36 @@ Fixed OpenAI strict local Tool schemas, canonical PostgreSQL UUID validation, an
 ### Next Steps
 
 - None - task complete
+
+
+## Session 61: Lower Server Auth password minimum
+
+**Date**: 2026-08-16
+**Task**: Lower Server Auth password minimum
+**Branch**: `main`
+
+### Summary
+
+Lowered the shared Server Auth password minimum to nine characters, synchronized tests and documentation, rebuilt the local backend, rotated the Owner credentials through the recovery transaction, revoked sessions, and verified live login/logout.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `80e03a7a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
