@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"context"
 	"encoding/json"
 	"strings"
 	"time"
@@ -73,6 +72,7 @@ type chatToolRegistry struct {
 type chatToolBatchExecution struct {
 	Results       map[int]ProviderToolResult
 	BudgetReached bool
+	Stop          bool
 }
 
 func newChatToolRegistry(input externalWebToolLoopInput) *chatToolRegistry {
@@ -176,7 +176,8 @@ func localSkillToolRegistration(
 	return chatToolRegistration{
 		Name: name, Definition: &definition, Backend: chatToolBackendLocalSkill,
 		RiskClass: risk, Timeout: config.CallTimeout, MaxOutputBytes: int64(config.MaxOutput),
-		ApprovalRule: approval, Presentation: chatToolPresentationTool,
+		AllowParallel: localSkillToolAllowsParallel(name),
+		ApprovalRule:  approval, Presentation: chatToolPresentationTool,
 		ProjectForModel: identityChatToolResult,
 		MutationResultNeedsFollowup: name == localFileWriteToolName ||
 			name == localFileEditToolName || name == localJobKillToolName,
@@ -196,7 +197,8 @@ func (registry *chatToolRegistry) registerMCP(runtime *mcpToolRuntime) {
 		}
 		risk := chatToolRiskRead
 		approval := chatToolApprovalNone
-		parallel := classification == mcpclient.ClassificationRead
+		parallel := classification == mcpclient.ClassificationRead &&
+			name != mcpclient.ToolSearchAlias
 		switch classification {
 		case mcpclient.ClassificationWrite:
 			risk = chatToolRiskWrite
@@ -232,6 +234,7 @@ func (registry *chatToolRegistry) registerLocalSkills(runtime *localSkillToolRun
 			Name: name, Backend: chatToolBackendLocalSkill, RiskClass: chatToolRiskRead,
 			Timeout:        runtime.config().CallTimeout,
 			MaxOutputBytes: int64(runtime.config().MaxOutput),
+			AllowParallel:  localSkillToolAllowsParallel(name),
 			ApprovalRule:   chatToolApprovalNone, Presentation: chatToolPresentationTool,
 			ProjectForModel: identityChatToolResult,
 		})
@@ -296,65 +299,6 @@ func (registry *chatToolRegistry) projectResult(result ProviderToolResult) Provi
 		return result
 	}
 	return registration.ProjectForModel(result)
-}
-
-func (registry *chatToolRegistry) executeInfrastructureBatch(
-	ctx context.Context,
-	events chan<- ProviderEvent,
-	input externalWebToolLoopInput,
-	calls []ProviderToolCall,
-	round int,
-) (chatToolBatchExecution, error) {
-	execution := chatToolBatchExecution{Results: make(map[int]ProviderToolResult)}
-	if registry == nil {
-		return execution, nil
-	}
-	if registry.requiredLocalSkill {
-		results, budgetReached, err := executeRequiredLocalSkillBatch(
-			ctx, events, input.LocalSkills, calls, round,
-		)
-		execution.Results = registry.projectResults(results)
-		execution.BudgetReached = budgetReached
-		return execution, err
-	}
-	goalCalls := registry.callsForBackend(calls, chatToolBackendGoal)
-	goalResults, err := executeChatAgentGoalBatch(
-		ctx, events, input.Goals, goalCalls, round,
-	)
-	if err != nil {
-		return execution, err
-	}
-	execution.Results = registry.projectResults(goalResults.Results)
-	if goalResults.ConcludesTurn {
-		for index, call := range calls {
-			if strings.TrimSpace(call.Name) == "" {
-				continue
-			}
-			if _, exists := execution.Results[index]; !exists {
-				execution.Results[index] = chatToolFailureResult(call, "goal_concluded")
-			}
-		}
-		return execution, nil
-	}
-	mcpCalls := registry.callsForBackend(calls, chatToolBackendMCP)
-	mcpResults, mcpBudgetReached, err := executeMCPBatch(
-		ctx, events, input.MCP, mcpCalls, round,
-	)
-	if err != nil {
-		return execution, err
-	}
-	localCalls := registry.callsForBackend(calls, chatToolBackendLocalSkill)
-	localResults, localBudgetReached, err := executeLocalSkillBatch(
-		ctx, events, input.LocalSkills, localCalls, round,
-	)
-	for index, result := range registry.projectResults(mcpResults) {
-		execution.Results[index] = result
-	}
-	for index, result := range registry.projectResults(localResults) {
-		execution.Results[index] = result
-	}
-	execution.BudgetReached = mcpBudgetReached || localBudgetReached
-	return execution, err
 }
 
 func (registry *chatToolRegistry) callsForBackend(

@@ -4,6 +4,7 @@
   "private": true,
   "description": "Pinned audited MCP server artifacts shipped in the Neo Chat MCP Runner.",
   "dependencies": {
+    "@playwright/mcp": "0.0.79",
     "@upstash/context7-mcp": "3.2.5",
     "tavily-mcp": "0.2.19"
   }

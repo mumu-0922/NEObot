@@ -68,6 +68,17 @@ relative executables, shell executables, working-directory overrides, unsafe
 environment names, inline auth secrets, invalid grants, unsafe endpoints, and
 out-of-range lifetimes.
 
+A reviewed manifest Server may add a non-empty `allowedTools` array. When
+present, both discovery and direct Tool invocation fail closed to those exact
+upstream names; every `toolPolicy` key must be inside the allowlist. A stdio
+Server may additionally set `instanceScope: "run"`. Backend then derives a
+non-reversible instance ID from the exact Server, user, Conversation, and Chat
+Run instead of reusing one process identity across Runs.
+
+Private stdio installations that rebind to an exact reviewed manifest artifact
+inherit its allowlist for both Runner listing and calling. Stored private
+metadata cannot widen or replace the reviewed Tool surface.
+
 Backend, validator, and Runner compile the same strict manifest parser. When a
 release adds a manifest field, build and roll the paired Backend and Runner
 images from that same source revision. A healthy old Runner has not re-read the
@@ -101,11 +112,14 @@ Minimal stdio entry:
       "id": "local-example",
       "name": "Local Example",
       "transport": "stdio",
+      "instanceScope": "run",
       "command": {
         "argv": ["/usr/local/bin/example-mcp", "--stdio"],
         "idleTimeout": "15m",
         "maxLifetime": "24h"
       },
+      "allowedTools": ["read_item", "write_item"],
+      "toolPolicy": { "read_item": "read", "write_item": "write" },
       "grants": [{ "scopeType": "global", "defaultEnabled": false }]
     }
   ]
@@ -121,6 +135,33 @@ secret environment names. Shell, Docker, Git, URL/file package specifications,
 and floating npm tags remain forbidden. Secret values are encrypted in the
 Backend vault and sealed separately from the artifact on the internal control
 plane; they are never written into the manifest or public DTO.
+
+### Reviewed Playwright Browser
+
+`playwright-browser-0.0.79` is the checked-in Browser artifact. The Runner
+dependency and official base image are both pinned to `@playwright/mcp`
+`0.0.79`. It starts headless Chromium with an in-memory isolated profile,
+service workers blocked, image responses omitted, code generation disabled,
+and bounded action/navigation timeouts. `instanceScope: "run"` prevents page,
+Cookie, and in-process browser state reuse across Chat Runs.
+
+The upstream package currently advertises 24 Tools, including the RCE-
+equivalent `browser_run_code_unsafe`. Neo Chat exposes only the 17 exact names
+in the manifest allowlist. It also excludes `browser_evaluate`, file upload,
+network request/body inspection, screenshot capture, and storage-state
+mutation. Connector call paths re-check the allowlist even after Tool
+discovery, so an upstream update cannot invoke a newly added name through a
+stale or forged call.
+
+Only the upstream read-only console, find, and snapshot Tools use Neo Chat's
+parallel `read` policy. `browser_wait_for` is upstream non-read-only and stays
+an ordered `write` barrier, despite its passive-looking name.
+
+Enable both `MCP_ENABLED=true` and `MCP_STDIO_ENABLED=true`, start the existing
+`mcp-runner` profile, then explicitly select `Browser (Playwright)` for the
+Conversation. This does not move `local_direct` Skills into the Runner or add
+any sudo/new-machine requirement; it only activates the existing optional MCP
+stdio service for the Browser package.
 
 ### Marketplace npm artifacts
 
@@ -223,12 +264,14 @@ in a separate sealed envelope. Runner revalidates both before it starts a child.
 It uses an isolated mode-`0700` work directory, dedicated HOME/TMP/npm cache, a
 minimal environment, direct argv execution, and a separate process group.
 
-At most four child servers are active. Default idle reap is 15 minutes and
-maximum lifetime is 24 hours. Each installed Server is keyed separately; a
-credential fingerprint change replaces the old child. Crash, cancellation,
-expiry, and Runner shutdown
-terminate the whole process group and remove the work directory. A later call
-may start a clean approved child.
+At most four child servers are retained. Default idle reap is 15 minutes and
+maximum lifetime is 24 hours; an artifact may set lower manifest bounds. Each
+installed or run-scoped Server is keyed separately, and a credential
+fingerprint change replaces the old child. At capacity, the least-recent idle
+child is reaped before a new instance starts; an active call is never evicted.
+Crash, cancellation, expiry, and Runner shutdown terminate the whole process
+group and remove the work directory. A later call may start a clean approved
+child.
 
 A cold dynamic npm child has a bounded two-minute download/initialize window.
 The internal HTTP server carries a small envelope beyond that child-start bound;

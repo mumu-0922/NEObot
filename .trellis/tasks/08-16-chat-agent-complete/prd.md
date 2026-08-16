@@ -145,7 +145,7 @@ Event 使用连续 sequence、幂等 event ID 和原子追加。模型历史、�
 - [x] G3 — Durable Events + 前端回放。
 - [x] G4 — Goal + 完成验证。
 - [x] G5 — File Tools + Jobs + Compaction。
-- [ ] G6 — Browser/MCP + 可选优化。
+- [x] G6 — Browser/MCP + 可选优化。
 
 ### G1 — Skill 自动加载（最快看到变化）
 
@@ -193,9 +193,15 @@ Event 使用连续 sequence、幂等 event ID 和原子追加。模型历史、�
 
 ### G6 — Browser/MCP + 可选优化
 
-- 增加真实 Browser Tool/MCP；凭证由现有服务端 secret boundary 管理。
-- 只读 Tool 并行。
-- 评估 Code Mode，不影响原生 Tool 回退路径。
+- 增加固定 `@playwright/mcp@0.0.79` 的真实 Browser MCP；每个 Chat Run 使用
+  独立 Browser process identity，精确 allowlist 只开放 17 个 DOM/交互 Tool。
+- 上游实际暴露的 `browser_run_code_unsafe`、`browser_evaluate`、上传和网络正文
+  Tool 不进入 catalog，`tools/list` 与 `tools/call` 两端都 fail closed。
+- 连续安全 read 最多 4 个跨 MCP/local backend 并行；write/execute/unknown、
+  retrieval、Goal、`skill` 和 `mcp_tool_search` 保持原始顺序屏障，Result 仍按模型
+  Call 顺序回填。
+- Code Mode 结论：本阶段不增加通用 `run_code`。它只可能是后续可选的往返优化，
+  不替代原生 Tool 路径；Playwright 的 unsafe code Tool 明确拒绝。
 
 **最终效果**：形成接近 Hermes/DeepSeek Harness 使用体验的本机单 Agent，同时保留
 Neo Chat 的 Store、服务端权限边界和现有 UI。

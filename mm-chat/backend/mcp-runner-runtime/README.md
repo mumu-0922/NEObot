@@ -11,6 +11,9 @@ inside the optional Neo Chat MCP Runner image.
   runs `npm`, `npx`, or another package downloader.
 - Adding a package here does not make it executable. A matching reviewed entry
   must also exist in `mm-chat/mcp/manifest.json`.
+- `@playwright/mcp` is pinned for the reviewed Browser artifact; its manifest
+  uses an exact Tool allowlist because the upstream package also ships an
+  RCE-equivalent unsafe-code Tool.
 - The Runner starts an approved binary only on first use and reaps it according
   to the manifest lifecycle limits.
 

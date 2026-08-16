@@ -52,6 +52,14 @@ for a bounded migration period but are never advertised to the model.
 `local_direct` is not an isolated Sandbox. Its contract is
 [`local-skill-runtime.md`](./local-skill-runtime.md).
 
+Selected MCP Tools join this same Registry under their frozen provider-safe
+aliases. The reviewed `Browser (Playwright)` manifest artifact is a real
+headless browser path for navigation, accessibility snapshots, clicks, form
+input, tabs, and waits; it is not an HTTP-fetch compatibility shortcut. Its
+page process is scoped to one Chat Run, and the manifest excludes arbitrary
+Playwright code/evaluation, file upload, request-body inspection, and storage-
+state injection.
+
 `search_memory` is absent unless `MEMORY_TOOL_LOOP_ENABLED=true`. The schema-v7
 answer-model routing evidence remains failed and immutable, but the owner later
 promoted the separately passing fixed schema-v14 BGE/Luna selection semantics
@@ -143,12 +151,22 @@ sequence for provider-loop ordering. Durable events project the existing
 process updates without adding a provider sideband that could change Tool
 scheduling or cancellation order.
 
-The Registry is rebuilt for every Step from current Backend authority. It
-executes Goal state calls first, registered MCP owners second, local Skills
-third, and retrieval Tools afterward, then restores Tool Results to the model's
-exact original call order.
-MCP Tool-search changes therefore affect the next Step without allowing Tool
-output itself to register arbitrary names.
+The Registry is rebuilt for every Step from current Backend authority. Calls
+execute in the model's original order. A contiguous group of at most four
+explicitly safe reads may execute concurrently across reviewed MCP and local
+backends; the completed Results are still committed to the continuation in the
+original call order. Local parallel reads are limited to `file_read`,
+`file_search`, `job_list`, `job_output`, and legacy `skill_view`. Every
+write/execute/unknown/retrieval/Goal call is an ordered barrier. `skill` is also
+a barrier because it changes the Turn-local loaded catalog state, and
+`mcp_tool_search` is a barrier because it changes the visible MCP catalog for
+the next Step. A concluding Goal call rejects only later calls in that batch as
+`goal_concluded`; earlier calls are never reordered behind it.
+
+Tool output cannot register arbitrary names. Parallel execution shares the
+parent cancellation context, cancels sibling reads after a terminal failure,
+and never widens MCP classification authority: only a current reviewed
+`read` policy may set `AllowParallel`.
 
 Provider adapters must preserve their native continuation form:
 
@@ -226,6 +244,16 @@ deadline are Tool Results so the same model can repair or report them. In
 particular, an MCP call deadline is `tool_timeout` while the parent Run remains
 healthy. Cancellation, a parent Run deadline, and a write whose outcome is
 unknown remain terminal and are never converted into retryable Results.
+
+### Code Mode decision
+
+The default catalog does not expose a general `run_code` Tool. The native Tool
+path already provides the correctness boundary, fallback, replay, risk policy,
+and completion verification. The upstream Playwright
+`browser_run_code_unsafe` Tool is RCE-equivalent in the MCP process and is
+explicitly outside the reviewed Browser allowlist. A future Code Mode may be
+added only as an optional round-trip optimization over the same Registry; it
+must not replace or weaken native Tool fallback.
 
 ### Same-session Goal and completion verification
 
@@ -865,6 +893,12 @@ more accurate.
 19. UTF-8 Tool-result pruning, whole-exchange checkpointing, latest Provider
     state preservation, stable overflow classification, synchronous and first-
     SSE shrink/retry, and proof that a second overflow never retries.
+20. Safe-read scheduler overlap across MCP/local backends, a four-call bound,
+    write/execute/catalog/retrieval barriers, original Result order, and Goal
+    conclusion affecting only later calls.
+21. Playwright MCP initialize/list/navigate/snapshot smoke against a local
+    fixture, exact manifest allowlist filtering, per-Run instance binding, and
+    proof that `browser_run_code_unsafe` cannot reach the Runner call route.
 
 ## 11. Rollback
 
@@ -885,3 +919,8 @@ For a local workspace/Job regression, set
 Job, `terminal`, and `skill` definitions without deleting installed Skills or
 workspace files. Process-local Jobs are killed during shutdown; no OCI fallback
 is activated.
+
+For a Browser regression, remove `manifest:playwright-browser-0.0.79` from the
+Conversation selection or set `MCP_STDIO_ENABLED=false` and restart the API.
+This removes the Browser Tool surface without changing `local_direct` Skills,
+other remote MCP Servers, Conversations, or stored user data.

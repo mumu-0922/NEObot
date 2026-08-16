@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -470,7 +471,8 @@ func TestInstallMarketplaceItemUsesApprovedSharedRunnerArtifact(t *testing.T) {
 				Provider: marketplaceProviderLobeHub, Identifier: "upstash-context7", Version: "2.2.0",
 				ConnectionType: "stdio", InstallationMethod: "npm", DeploymentHash: deployment.Hash,
 			},
-			"toolPolicy": map[string]string{"query-docs": ClassificationRead},
+			manifestAllowedTools: []string{"query-docs"},
+			"toolPolicy":         map[string]string{"query-docs": ClassificationRead},
 		},
 	}
 	marketplace := &fakeMarketplace{detail: MarketplaceItemDetail{
@@ -484,7 +486,10 @@ func TestInstallMarketplaceItemUsesApprovedSharedRunnerArtifact(t *testing.T) {
 	config.StdioEnabled = true
 	config.MarketplaceEnabled = true
 	service, err := NewService(
-		config, repo, &fakeConnector{sessions: []Session{fakeSession{tools: []Tool{{Name: "query-docs", Supported: true}}}}},
+		config, repo, &fakeConnector{sessions: []Session{fakeSession{tools: []Tool{
+			{Name: "query-docs", Supported: true},
+			{Name: "run-code-unsafe", Supported: true},
+		}}}},
 		nil, nil, Catalog{}, []Server{artifact}, WithMarketplace(marketplace),
 	)
 	if err != nil {
@@ -523,7 +528,8 @@ func TestInstallMarketplaceItemUsesApprovedSharedRunnerArtifact(t *testing.T) {
 	resolved, err := service.serverForUser(
 		context.Background(), userID, result.Server.Ref, ConversationScope{},
 	)
-	if err != nil || resolved.Name != artifact.Name {
+	allowed, _ := resolved.Metadata[manifestAllowedTools].([]string)
+	if err != nil || resolved.Name != artifact.Name || !slices.Equal(allowed, []string{"query-docs"}) {
 		t.Fatalf("serverForUser() Server=%#v error=%v", resolved, err)
 	}
 	repo.mu.Lock()

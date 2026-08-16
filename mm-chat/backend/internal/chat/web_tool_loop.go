@@ -560,17 +560,20 @@ func runNativeExternalWebToolLoop(
 		}
 		admittedCalls := turn.admitToolCalls(len(calls))
 		executionCalls := calls[:admittedCalls]
-		infrastructure, infrastructureErr := registry.executeInfrastructureBatch(
-			ctx, events, input, executionCalls, round,
-		)
-		if infrastructureErr != nil {
-			sendProviderEvent(ctx, events, ProviderEvent{Error: infrastructureErr})
-			return true
-		}
 		retrievalState := chatRetrievalExecutionState{
 			input: &input, events: events, round: round, taskStep: taskRound,
 			memoryBatchValid: memoryToolBatchValid(taskRound, executionCalls, input),
 			cumulative:       &cumulative, knowledgeDecision: &knowledgeDecision,
+		}
+		toolExecution, toolExecutionErr := registry.executeToolBatch(
+			ctx, events, input, executionCalls, round, &retrievalState,
+		)
+		if toolExecutionErr != nil {
+			sendProviderEvent(ctx, events, ProviderEvent{Error: toolExecutionErr})
+			return true
+		}
+		if toolExecution.Stop {
+			return true
 		}
 		for callIndex, call := range calls {
 			if callIndex >= admittedCalls {
@@ -579,15 +582,12 @@ func runNativeExternalWebToolLoop(
 				))
 				continue
 			}
-			if result, ok := infrastructure.Results[callIndex]; ok {
+			if result, ok := toolExecution.Results[callIndex]; ok {
 				exchange.Results = append(exchange.Results, result)
 				continue
 			}
-			executed := registry.executeRetrievalCall(ctx, call, callIndex, &retrievalState)
-			if executed.stop {
-				return true
-			}
-			exchange.Results = append(exchange.Results, executed.result)
+			exchange.Results = append(exchange.Results,
+				chatToolFailureResult(call, "tool_not_available"))
 		}
 		completionPolicy.observe(registry, calls, exchange.Results)
 		exchange.FollowupPrompt = appendAgentFollowupPrompt(
@@ -601,7 +601,7 @@ func runNativeExternalWebToolLoop(
 		if !appended {
 			return true
 		}
-		if infrastructure.BudgetReached || admittedCalls < len(calls) {
+		if toolExecution.BudgetReached || admittedCalls < len(calls) {
 			if completionPolicy.requiresVerification() {
 				sendProviderEvent(ctx, events, ProviderEvent{Error: &chatAgentRunFailure{
 					code: "AGENT_VERIFICATION_REQUIRED",

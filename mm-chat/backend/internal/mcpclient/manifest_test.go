@@ -1,8 +1,11 @@
 package mcpclient
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -40,6 +43,26 @@ func TestParseManifestRejectsUnknownDuplicateAndUnsafeCommand(t *testing.T) {
 		{
 			name: "unsafe icon",
 			raw:  `{"version":1,"servers":[{"id":"remote","name":"Remote","icon":"http://127.0.0.1/icon.png","transport":"streamable_http","endpointUrl":"https://example.com/mcp"}]}`,
+		},
+		{
+			name: "empty Tool allowlist",
+			raw:  `{"version":1,"servers":[{"id":"local","name":"Local","transport":"stdio","command":{"argv":["/opt/mcp/local"]},"allowedTools":[]}]}`,
+		},
+		{
+			name: "duplicate Tool allowlist",
+			raw:  `{"version":1,"servers":[{"id":"local","name":"Local","transport":"stdio","command":{"argv":["/opt/mcp/local"]},"allowedTools":["lookup","lookup"]}]}`,
+		},
+		{
+			name: "Tool policy outside allowlist",
+			raw:  `{"version":1,"servers":[{"id":"local","name":"Local","transport":"stdio","command":{"argv":["/opt/mcp/local"]},"allowedTools":["lookup"],"toolPolicy":{"mutate":"write"}}]}`,
+		},
+		{
+			name: "run scope on remote",
+			raw:  `{"version":1,"servers":[{"id":"remote","name":"Remote","transport":"streamable_http","endpointUrl":"https://example.com/mcp","instanceScope":"run"}]}`,
+		},
+		{
+			name: "unknown instance scope",
+			raw:  `{"version":1,"servers":[{"id":"local","name":"Local","transport":"stdio","command":{"argv":["/opt/mcp/local"]},"instanceScope":"conversation"}]}`,
 		},
 	}
 	for _, test := range tests {
@@ -230,6 +253,132 @@ func TestProductionTavilyManifestBindsCurrentPackageToolNames(t *testing.T) {
 	}
 	if tavily.CredentialProbe == nil || tavily.CredentialProbe.EndpointURL != "https://api.tavily.com/usage" {
 		t.Fatalf("Tavily credential probe = %#v", tavily.CredentialProbe)
+	}
+}
+
+func TestProductionBrowserManifestPinsRunScopedSafeToolSurface(t *testing.T) {
+	t.Parallel()
+	manifestPath := filepath.Join("..", "..", "..", "mcp", "manifest.json")
+	servers, err := LoadManifest(manifestPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var browser Server
+	for _, server := range servers {
+		if server.Ref.ID == "playwright-browser-0.0.79" {
+			browser = server
+			break
+		}
+	}
+	if browser.Command == nil || browser.Metadata[runnerInstanceScope] != manifestInstanceRun {
+		t.Fatalf("Browser command/scope = %#v/%#v", browser.Command, browser.Metadata)
+	}
+	wantCommand := []string{
+		"/opt/mcp-runner/node_modules/.bin/playwright-mcp",
+		"--headless", "--isolated", "--browser", "chromium", "--no-sandbox",
+		"--block-service-workers", "--image-responses", "omit",
+		"--codegen", "none", "--timeout-action", "5000",
+		"--timeout-navigation", "20000",
+	}
+	if !slices.Equal(browser.Command.Argv, wantCommand) {
+		t.Fatalf("Browser argv = %#v, want %#v", browser.Command.Argv, wantCommand)
+	}
+	allowed, ok := browser.Metadata[manifestAllowedTools].([]string)
+	wantAllowed := []string{
+		"browser_click", "browser_close", "browser_console_messages", "browser_drag",
+		"browser_fill_form", "browser_find", "browser_handle_dialog", "browser_hover",
+		"browser_navigate", "browser_navigate_back", "browser_press_key", "browser_resize",
+		"browser_select_option", "browser_snapshot", "browser_tabs", "browser_type",
+		"browser_wait_for",
+	}
+	if !ok || !slices.Equal(allowed, wantAllowed) {
+		t.Fatalf("Browser allowed Tools = %#v", browser.Metadata[manifestAllowedTools])
+	}
+	policy, _ := browser.Metadata["toolPolicy"].(map[string]string)
+	readOnly := map[string]bool{
+		"browser_console_messages": true,
+		"browser_find":             true,
+		"browser_snapshot":         true,
+	}
+	for _, name := range allowed {
+		want := ClassificationWrite
+		if readOnly[name] {
+			want = ClassificationRead
+		}
+		if classification := normalizeClassification(policy[name]); classification != want {
+			t.Fatalf("Browser policy[%q] = %q, want %q", name, classification, want)
+		}
+	}
+	for _, forbidden := range []string{
+		"browser_run_code_unsafe", "browser_evaluate", "browser_file_upload",
+		"browser_network_request", "browser_set_storage_state",
+	} {
+		if manifestToolAllowed(browser, forbidden) {
+			t.Fatalf("unsafe Browser Tool %q escaped the allowlist", forbidden)
+		}
+	}
+
+	packagePath := filepath.Join("..", "..", "mcp-runner-runtime", "package.json")
+	packageBody, err := os.ReadFile(packagePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var packageDocument struct {
+		Dependencies map[string]string `json:"dependencies"`
+	}
+	if json.Unmarshal(packageBody, &packageDocument) != nil ||
+		packageDocument.Dependencies["@playwright/mcp"] != "0.0.79" {
+		t.Fatalf("Playwright package pin = %#v", packageDocument.Dependencies)
+	}
+}
+
+func TestManifestToolAllowlistAndRunInstanceBinding(t *testing.T) {
+	t.Parallel()
+	server := Server{
+		Ref:       ServerRef{Source: SourceManifest, ID: "browser"},
+		Transport: TransportStdio,
+		Metadata: map[string]any{
+			manifestAllowedTools: []string{"browser_snapshot"},
+			runnerInstanceScope:  manifestInstanceRun,
+		},
+	}
+	if !manifestToolAllowed(server, "browser_snapshot") ||
+		manifestToolAllowed(server, "browser_run_code_unsafe") {
+		t.Fatal("manifest Tool allowlist did not fail closed")
+	}
+	server.Tools = []Tool{
+		{Name: "browser_snapshot", Supported: true},
+		{Name: "browser_run_code_unsafe", Supported: true},
+	}
+	server.ToolCount = 2
+	filtered := filterManifestAllowedTools(server)
+	if len(filtered.Tools) != 1 || filtered.Tools[0].Name != "browser_snapshot" ||
+		filtered.ToolCount != 1 {
+		t.Fatalf("filtered manifest snapshot = %#v", filtered)
+	}
+	first := bindManifestRunnerInstance(
+		server, "11111111-1111-4111-8111-111111111111",
+		"22222222-2222-4222-8222-222222222222",
+		"33333333-3333-4333-8333-333333333333",
+	)
+	replay := bindManifestRunnerInstance(
+		server, "11111111-1111-4111-8111-111111111111",
+		"22222222-2222-4222-8222-222222222222",
+		"33333333-3333-4333-8333-333333333333",
+	)
+	second := bindManifestRunnerInstance(
+		server, "11111111-1111-4111-8111-111111111111",
+		"22222222-2222-4222-8222-222222222222",
+		"44444444-4444-4444-8444-444444444444",
+	)
+	firstID, _ := first.Metadata[runnerInstanceID].(string)
+	replayID, _ := replay.Metadata[runnerInstanceID].(string)
+	secondID, _ := second.Metadata[runnerInstanceID].(string)
+	if !manifestIDPattern.MatchString(firstID) || firstID != replayID || firstID == secondID {
+		t.Fatalf("run instances = %q/%q/%q", firstID, replayID, secondID)
+	}
+	if _, mutated := server.Metadata[runnerInstanceID]; mutated {
+		t.Fatal("run instance binding mutated the manifest authority")
 	}
 }
 

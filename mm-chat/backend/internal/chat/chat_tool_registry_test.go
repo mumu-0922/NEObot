@@ -77,6 +77,24 @@ func TestChatToolRegistryOrdersAuthorityAndCarriesExecutionPolicy(t *testing.T) 
 		!fileWrite.MutationResultNeedsFollowup {
 		t.Fatalf("file_write registration=%#v", fileWrite)
 	}
+	for _, name := range []string{
+		localFileReadToolName, localFileSearchToolName,
+		localJobListToolName, localJobOutputToolName, legacySkillViewToolName,
+	} {
+		registration, ok := registry.lookup(name)
+		if !ok || !registration.AllowParallel {
+			t.Fatalf("safe read %q registration=%#v / %v", name, registration, ok)
+		}
+	}
+	for _, name := range []string{
+		localSkillToolName, legacySkillsListToolName, localFileWriteToolName,
+		localFileEditToolName, localJobKillToolName, localTerminalToolName,
+	} {
+		registration, ok := registry.lookup(name)
+		if !ok || registration.AllowParallel {
+			t.Fatalf("barrier Tool %q registration=%#v / %v", name, registration, ok)
+		}
+	}
 	for _, forbidden := range []string{"subagent", "delegate_task"} {
 		if _, ok := registry.lookup(forbidden); ok {
 			t.Fatalf("default registry exposed forbidden Tool %q", forbidden)

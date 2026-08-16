@@ -237,7 +237,26 @@ func (m *Manager) acquire(
 		_ = closeManagedSession(managed)
 	}
 	if len(m.sessions) >= m.config.MaxProcesses {
-		return nil, nil, ErrCapacity
+		var oldestIdle *managedSession
+		for _, candidate := range m.sessions {
+			if candidate.closing || candidate.active != 0 {
+				continue
+			}
+			if oldestIdle == nil || candidate.lastUsed.Before(oldestIdle.lastUsed) {
+				oldestIdle = candidate
+			}
+		}
+		if oldestIdle == nil {
+			return nil, nil, ErrCapacity
+		}
+		oldestIdle.closing = true
+		delete(m.sessions, oldestIdle.serverID)
+		// A run-scoped Browser creates a distinct instance for every Chat Run.
+		// Reclaim the least-recent idle child at capacity so completed Runs do
+		// not block a new one until the periodic reaper fires.
+		if err := closeManagedSession(oldestIdle); err != nil {
+			return nil, nil, ErrUnavailable
+		}
 	}
 	managed, err := m.startLocked(ctx, server, key, environment)
 	if err != nil {

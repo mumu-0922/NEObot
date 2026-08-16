@@ -145,8 +145,11 @@ turn.admitToolCalls(count) -> admittedCount
 
 newChatToolRegistry(input)
 registry.definitions(taskStep)
-registry.executeInfrastructureBatch(ctx, events, input, calls, step)
+registry.executeToolBatch(ctx, events, input, calls, step, retrievalState)
+registry.executeParallelReadGroup(ctx, events, input, calls, step)
 registry.executeRetrievalCall(ctx, call, callIndex, state)
+
+maxParallelChatReadTools = 4
 ```
 
 Every `chatToolRegistration` binds one exact name to a Provider definition,
@@ -160,9 +163,18 @@ replayable `search|tool` presentation.
   authority. Memory ordering, current MCP visibility, installed Skills, and
   Search/Knowledge availability must be recomputed; Tool output cannot register
   another Tool.
-- Execute registered infrastructure owners in the fixed MCP -> local Skill
-  order, then registered retrieval calls. Always merge Results back into the
-  exact Provider call order before same-model continuation.
+- Execute calls in the model's exact order. A contiguous group of at most four
+  registrations with `AllowParallel=true` may overlap across MCP and local
+  backends; always merge Results into exact Provider call order before same-
+  model continuation.
+- Local parallel reads are exactly `file_read`, `file_search`, `job_list`,
+  `job_output`, and hidden legacy `skill_view`. `skill` mutates loaded state and
+  is a barrier. MCP requires current reviewed `read` classification;
+  `mcp_tool_search` mutates the next visible catalog and is a barrier.
+- Every `write|execute|unknown`, retrieval, Goal, unregistered, and
+  non-parallel Tool is an ordered barrier between read groups. A Goal conclude
+  result rejects only later calls as `goal_concluded`; it never suppresses or
+  reorders earlier calls.
 - A Skill prelude uses a separate Registry containing only the exact required
   `skill` definition. It increments the physical Step sequence but not the
   ordinary task-Step sequence.
@@ -171,6 +183,10 @@ replayable `search|tool` presentation.
   them.
 - Exact name collisions remove that name from both model visibility and
   execution. The default Registry never registers a Subagent/delegation Tool.
+- The default Registry exposes no general Code Mode or `run_code`. Native Tools
+  remain the correctness/fallback path. Playwright's
+  `browser_run_code_unsafe` is RCE-equivalent and is not a Browser Tool; any
+  future Code Mode must remain optional above the same Registry policy.
 - The Turn has hard safety caps of 32 provider Steps and 128 Tool Calls in
   addition to lower MCP/local runtime budgets. Calls beyond the Turn cap get a
   structured `turn_call_budget_exhausted` Result and no execution; then the
@@ -199,11 +215,16 @@ replayable `search|tool` presentation.
 | parent MCP/Chat deadline | terminal `MCP_BUDGET_EXHAUSTED` |
 | write outcome becomes unknown | terminal `MCP_OUTCOME_UNKNOWN`; never retry |
 | Skill prelude receives another Tool | `skill_required_before_action`; no dispatch |
+| contiguous safe reads exceed four | split into ordered groups of at most four |
+| write/execute/catalog/retrieval occurs between reads | finish prior reads, execute barrier alone, then start later reads |
+| Goal concludes at call N | preserve results `< N`; calls `> N` receive `goal_concluded` without execution |
 
 ### 5. Good / Base / Bad Cases
 
 - **Good:** `skill` prelude -> one task Step calls Web plus `terminal` -> Results
   are returned in original call order -> same model answers.
+- **Good:** local `job_output` and reviewed MCP reads overlap, finish out of
+  order, and enter the continuation in original model order.
 - **Base:** no Tool is available, so Chat streams the ordinary compatibility
   answer without constructing a fake execution Step.
 - **Bad:** append Tool definitions in one function but dispatch names in an
@@ -218,6 +239,9 @@ replayable `search|tool` presentation.
   Provider Result order.
 - Existing MCP dynamic-search, read concurrency, write serialization,
   Knowledge/Memory/Web, local Skill, cancellation, and recovery suites.
+- Cross-backend overlap, local safe-read overlap, maximum-four grouping,
+  write barriers, reverse-completion Result order, `mcp_tool_search` barrier,
+  and Goal-conclusion ordering.
 - Global Step/Call cap boundaries, unknown/bad arguments, recoverable per-Tool
   timeout, fatal parent deadline, and `outcome_unknown`.
 
@@ -226,14 +250,14 @@ replayable `search|tool` presentation.
 #### Wrong
 
 ```text
-definitions switch + MCP switch + local switch + retrieval name switch
+batch all Goals -> all MCP -> all local -> retrieval
 ```
 
 #### Correct
 
 ```text
-Turn -> Step -> current Registry -> owner dispatch -> ordered Result projection
-     -> same-model next Step
+Turn -> Step -> current Registry -> ordered safe-read groups + serial barriers
+     -> ordered Result projection -> same-model next Step
 ```
 
 ## Scenario: Persist and replay ordinary Chat Agent events

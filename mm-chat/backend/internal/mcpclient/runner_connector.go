@@ -94,6 +94,14 @@ func (c *RunnerConnector) Connect(_ context.Context, server Server, credential s
 		return nil, ErrServerUnavailable
 	}
 	instanceID := runnerServerID
+	if server.Ref.Source == SourceManifest {
+		if scoped, ok := server.Metadata[runnerInstanceID].(string); ok {
+			instanceID = strings.TrimSpace(scoped)
+		}
+		if !manifestIDPattern.MatchString(instanceID) {
+			return nil, ErrServerUnavailable
+		}
+	}
 	environment := map[string]string{}
 	if server.Ref.Source == SourcePrivate && server.AuthType == AuthEnv {
 		instanceID = server.Ref.ID
@@ -133,6 +141,9 @@ func (s *runnerSession) ListTools(ctx context.Context) ([]Tool, error) {
 		if raw == nil {
 			continue
 		}
+		if !manifestToolAllowed(s.server, raw.Name) {
+			continue
+		}
 		classification := ClassificationUnknown
 		if policy, ok := s.server.Metadata["toolPolicy"].(map[string]string); ok {
 			classification = normalizeClassification(policy[raw.Name])
@@ -149,6 +160,9 @@ func (s *runnerSession) CallTool(
 	name string,
 	arguments map[string]any,
 ) (CallResult, error) {
+	if !manifestToolAllowed(s.server, name) {
+		return CallResult{}, ErrToolNotFound
+	}
 	var response struct {
 		Result *protocol.CallToolResult `json:"result"`
 	}

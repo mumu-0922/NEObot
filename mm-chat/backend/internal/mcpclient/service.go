@@ -546,6 +546,7 @@ func (s *Service) ValidatePrivateServer(
 		if dynamic, ok := runnerArtifact.Metadata["dynamicRunnerArtifact"].(DynamicRunnerArtifact); ok {
 			server.Metadata["dynamicRunnerArtifactResolved"] = dynamic
 		}
+		server = bindPrivateRunnerArtifactAuthority(server, runnerArtifact)
 	}
 	credential, credentialErr := s.connectionCredential(ctx, userID, server)
 	if credentialErr != nil {
@@ -708,11 +709,29 @@ func numberField(input map[string]any, name string) float64 {
 // manifest artifact, so that artifact's local policy is authoritative.
 func bindPrivateRunnerToolPolicy(tools []Tool, artifact Server) []Tool {
 	policy, _ := artifact.Metadata["toolPolicy"].(map[string]string)
-	bound := append([]Tool(nil), tools...)
-	for index := range bound {
-		bound[index].Classification = normalizeClassification(policy[bound[index].Name])
+	bound := make([]Tool, 0, len(tools))
+	for _, tool := range tools {
+		if !manifestToolAllowed(artifact, tool.Name) {
+			continue
+		}
+		tool.Classification = normalizeClassification(policy[tool.Name])
+		bound = append(bound, tool)
 	}
 	return bound
+}
+
+// bindPrivateRunnerArtifactAuthority carries only the reviewed artifact's
+// Tool allowlist onto the installed private Server used by RunnerConnector.
+// This makes tools/call enforce the same boundary as validation/tools/list;
+// persisted private metadata can neither widen nor replace that authority.
+func bindPrivateRunnerArtifactAuthority(server Server, artifact Server) Server {
+	metadata := cloneObject(server.Metadata)
+	delete(metadata, manifestAllowedTools)
+	if allowed, exists := artifact.Metadata[manifestAllowedTools].([]string); exists {
+		metadata[manifestAllowedTools] = append([]string(nil), allowed...)
+	}
+	server.Metadata = metadata
+	return server
 }
 
 func (s *Service) bindPrivateServerDisplay(server *Server) {
@@ -733,6 +752,7 @@ func (s *Service) bindPrivateServerDisplay(server *Server) {
 	server.Name = artifact.Name
 	server.Icon = boundedMarketplaceIcon(artifact.Icon)
 	server.ConfigurationFields = append([]string(nil), artifact.Command.UserSecretEnv...)
+	*server = bindPrivateRunnerArtifactAuthority(*server, artifact)
 	server.Tools = bindPrivateRunnerToolPolicy(server.Tools, artifact)
 }
 
@@ -900,6 +920,7 @@ func (s *Service) prepareRun(
 		if err != nil {
 			return PreparedRun{}, err
 		}
+		server = bindManifestRunnerInstance(server, userID, conversationID, runID)
 		if err := s.requireTransportEnabled(server); err != nil {
 			return PreparedRun{}, err
 		}
@@ -980,6 +1001,33 @@ func (s *Service) ToolsForProvider(run PreparedRun, query string) ([]Tool, bool)
 		return ranked, false
 	}
 	return ranked[:max(limit-1, 1)], true
+}
+
+func bindManifestRunnerInstance(
+	server Server,
+	userID string,
+	conversationID string,
+	runID string,
+) Server {
+	if server.Ref.Source != SourceManifest || server.Transport != TransportStdio ||
+		server.Metadata[runnerInstanceScope] != manifestInstanceRun {
+		return server
+	}
+	boundRunID := strings.TrimSpace(runID)
+	if boundRunID == "" {
+		boundRunID = "preflight"
+	}
+	digest := sha256.Sum256([]byte(
+		server.Ref.Key() + "\x00" + strings.TrimSpace(userID) + "\x00" +
+			strings.TrimSpace(conversationID) + "\x00" + boundRunID,
+	))
+	metadata := make(map[string]any, len(server.Metadata)+1)
+	for key, value := range server.Metadata {
+		metadata[key] = value
+	}
+	metadata[runnerInstanceID] = "mcp-run-" + hex.EncodeToString(digest[:])
+	server.Metadata = metadata
+	return server
 }
 
 func (s *Service) SearchTools(run PreparedRun, query string) []Tool {
@@ -1284,7 +1332,7 @@ func (s *Service) serverForUser(
 		if err != nil || !manifestGranted(server, scope) {
 			return Server{}, ErrServerNotFound
 		}
-		return server, nil
+		return filterManifestAllowedTools(server), nil
 	case SourcePrivate:
 		administratorUserID := s.config.AdministratorUserID
 		if !validUUID(administratorUserID) {
@@ -1308,6 +1356,7 @@ func (s *Service) serverForUser(
 				server.Metadata["dynamicRunnerArtifactResolved"] = dynamic
 			}
 			server.ConfigurationFields = append([]string(nil), artifact.Command.UserSecretEnv...)
+			server = bindPrivateRunnerArtifactAuthority(server, artifact)
 			server.Tools = bindPrivateRunnerToolPolicy(server.Tools, artifact)
 		}
 		return server, nil
@@ -1633,7 +1682,11 @@ func cloneServer(server Server) Server {
 	server.Grants = append([]Grant(nil), server.Grants...)
 	metadata := make(map[string]any, len(server.Metadata))
 	for key, value := range server.Metadata {
-		metadata[key] = value
+		if stringsValue, ok := value.([]string); ok {
+			metadata[key] = append([]string(nil), stringsValue...)
+		} else {
+			metadata[key] = value
+		}
 	}
 	server.Metadata = metadata
 	if server.Command != nil {

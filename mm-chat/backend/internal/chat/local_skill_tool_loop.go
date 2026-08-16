@@ -27,7 +27,19 @@ func executeLocalSkillBatch(
 	if !runtime.enabled() {
 		return results, false, nil
 	}
+	type preparedCall struct {
+		index      int
+		call       ProviderToolCall
+		callNumber int
+	}
+	type executedCall struct {
+		index  int
+		result ProviderToolResult
+		err    error
+	}
+
 	budgetReached := false
+	prepared := make([]preparedCall, 0, len(calls))
 	for index, call := range calls {
 		if !runtime.handles(call.Name) {
 			continue
@@ -38,13 +50,70 @@ func executeLocalSkillBatch(
 			continue
 		}
 		runtime.calls++
-		result, err := runtime.execute(ctx, events, call, round, runtime.calls)
-		results[index] = result
-		if err != nil {
-			return results, budgetReached, err
+		prepared = append(prepared, preparedCall{
+			index: index, call: call, callNumber: runtime.calls,
+		})
+	}
+
+	for offset := 0; offset < len(prepared); {
+		if !localSkillToolAllowsParallel(prepared[offset].call.Name) {
+			current := prepared[offset]
+			result, err := runtime.execute(
+				ctx, events, current.call, round, current.callNumber,
+			)
+			results[current.index] = result
+			if err != nil {
+				return results, budgetReached, err
+			}
+			offset++
+			continue
 		}
+
+		end := offset + 1
+		for end < len(prepared) && end-offset < maxParallelChatReadTools &&
+			localSkillToolAllowsParallel(prepared[end].call.Name) {
+			end++
+		}
+		groupCtx, cancel := context.WithCancel(ctx)
+		completed := make(chan executedCall, end-offset)
+		for _, current := range prepared[offset:end] {
+			current := current
+			go func() {
+				result, err := runtime.execute(
+					groupCtx, events, current.call, round, current.callNumber,
+				)
+				completed <- executedCall{
+					index: current.index, result: result, err: err,
+				}
+			}()
+		}
+		var fatal error
+		for count := offset; count < end; count++ {
+			current := <-completed
+			results[current.index] = current.result
+			if current.err != nil && fatal == nil {
+				fatal = current.err
+				cancel()
+			}
+		}
+		cancel()
+		if fatal != nil {
+			return results, budgetReached, fatal
+		}
+		offset = end
 	}
 	return results, budgetReached, nil
+}
+
+func localSkillToolAllowsParallel(name string) bool {
+	switch strings.TrimSpace(name) {
+	case localFileReadToolName, localFileSearchToolName,
+		localJobListToolName, localJobOutputToolName,
+		legacySkillViewToolName:
+		return true
+	default:
+		return false
+	}
 }
 
 // executeRequiredLocalSkillBatch is the fail-closed prelude boundary. A

@@ -10,9 +10,10 @@ Tool rounds, result persistence, deletion/retention, or the stdio Runner
 connector. Assistants and Skills are separate product concepts and must not be
 changed as part of MCP work.
 
-Neo Chat is an MCP client only. Do not add a public MCP proxy/server, browser
-execution, OpenAPI adapter, legacy Plugin fallback, or MCP Resources/Prompts/
-Sampling/Elicitation in the Tools MVP.
+Neo Chat is an MCP client only. Browser execution is limited to the exact
+reviewed Playwright manifest artifact below; do not add a public MCP proxy/
+server, arbitrary browser/code executor, OpenAPI adapter, legacy Plugin
+fallback, or MCP Resources/Prompts/Sampling/Elicitation.
 
 ### 2. Signatures
 
@@ -41,6 +42,11 @@ PrepareRun(ctx, userID, conversationID, messageID, runID string) (PreparedRun, e
 ExecuteRound(ctx, PreparedRun, []ExecuteInput, EventSink) ([]CallResult, error)
 PruneExpiredData(ctx context.Context, limit int) (int, error)
 RunRetention(ctx context.Context, onError func(error))
+
+manifest.allowedTools: non-empty exact upstream Tool names, maximum 256
+manifest.instanceScope: "run" | absent; "run" is stdio-only
+bindManifestRunnerInstance(server, userID, conversationID, runID) Server
+manifest Tool call instance: mcp-run-<sha256>, no raw authority identifiers
 ```
 
 MCP execution events crossing into chat process trace carry both identities:
@@ -96,6 +102,18 @@ rollback restores only the value carrying that migration's repair marker.
 - Sources are `catalog|manifest|private`; transports are
   `streamable_http|stdio`; selection is `inherit|custom`. `custom` with no
   servers explicitly disables all Tools.
+- Optional manifest `allowedTools` is a non-empty exact allowlist. Every
+  `toolPolicy` key must be inside it. Filter preloaded snapshots and live
+  `tools/list`, then recheck the upstream name immediately before both direct
+  and Runner `tools/call`; a malformed stored allowlist exposes zero Tools.
+  When a private stdio installation rebinds to that exact reviewed artifact,
+  inherit the artifact allowlist into its private Runner session and ignore
+  any persisted private replacement so listing and calling remain identical.
+- Optional `instanceScope="run"` is valid only for a manifest stdio Server.
+  Derive its opaque instance ID from Server ref, exact user, Conversation, and
+  Chat Run. A preflight uses a conversation-bound `preflight` component; an
+  accepted Run never reuses that process or another Run's page/Cookie/memory
+  state.
 - Before accepting a send, resolve current user/Workspace grant, selection,
   credential, status, transport switch, compatible schema, and native model
   Tool capability. Persist one immutable run snapshot. Reauthorize every call
@@ -222,6 +240,16 @@ rollback restores only the value carrying that migration's repair marker.
   and exposed at Playwright's expected Chrome path.
   Runtime `playwright install` or other browser downloads are not the repair
   path because they would be ephemeral, version-drifting mutations.
+- The checked-in `playwright-browser-0.0.79` artifact pins
+  `@playwright/mcp@0.0.79`, headless isolated Chromium, no Sandbox dependency,
+  blocked service workers, omitted image responses, no codegen, and bounded
+  action/navigation timeouts. Its exact 17-name allowlist supports navigation,
+  accessibility snapshot/find, tabs, and explicit interactions. Upstream
+  `browser_run_code_unsafe`, `browser_evaluate`, file upload, network detail,
+  screenshot, storage-state, and every future unlisted Tool remain absent.
+  Only upstream read-only console/find/snapshot Tools classify as `read`;
+  notably `browser_wait_for` is upstream non-read-only and remains a serialized
+  `write` barrier rather than receiving parallelism or automatic read retry.
 - Every MCP call event resolves `ServerName` from the same current-authorized
   `Server` selected for execution. Process trace may retain the internal
   `ServerRef.Key()` for Backend diagnostics and compatibility, but the bounded
@@ -292,6 +320,12 @@ MCP_MARKETPLACE_TIMEOUT MCP_MARKETPLACE_CACHE_TTL
 | Private stdio provenance/artifact ID is stale or tampered | validation/selection/execution fails closed with server unavailable |
 | Reviewed private stdio Tool is listed as `read` by the current artifact policy | expose `read`; permit bounded read concurrency |
 | Private remote annotation claims read-only or a reviewed artifact omits a Tool policy | normalize the Tool to `unknown`; serialize and never read-retry |
+| manifest allowlist is empty, duplicate, oversized, or has an invalid name | reject the whole manifest before startup |
+| manifest Tool policy names an unallowed Tool | reject the whole manifest before startup |
+| upstream lists or a caller requests an unallowed manifest Tool, including through a rebound private stdio installation | omit from catalog / return `ErrToolNotFound`; never call upstream |
+| reviewed Browser Tool is upstream non-read-only, even when its visible action appears passive | classify it as `write`; serialize and never read-retry |
+| `instanceScope` is not `run` or is used on remote transport | reject the whole manifest before startup |
+| two Chat Runs select Browser | derive different opaque Runner instances; share no Browser process state |
 | Installed Server has a normalized icon | expose it as display-only `icon`; never treat it as trust/execution authority |
 | Server display name enters an execution event | trim and UTF-8-bound it to 256 bytes; preserve the internal ref separately |
 | Icon is unsafe, oversized, or missing | omit it from the DTO; frontend uses a local fallback |
@@ -304,19 +338,24 @@ MCP_MARKETPLACE_TIMEOUT MCP_MARKETPLACE_CACHE_TTL
 - **Good**: a refreshed Marketplace stdio deployment resolves either to one
   exact image-bundled manifest executable or one sealed exact-version npm/npx
   artifact downloaded only inside the isolated Runner.
+- **Good**: Playwright initialize/list returns 24 upstream Tools, Neo Chat
+  freezes only 17, then real navigate/snapshot succeeds while unsafe code is
+  neither visible nor callable.
 - **Base**: no Workspace and no custom selection exposes no MCP Tools and chat
   behaves normally.
 - **Good failure**: a write connection drops, the timeline records
   `outcome_unknown`, the run stops, and no automatic/manual one-click retry is
   offered.
 - **Bad**: trust a server annotation as read-only, retry a write, let Tool output
-  add another server, or execute a client-supplied alias not in the snapshot.
+  add another server, execute a client-supplied alias not in the snapshot, or
+  expose every Tool from a newly upgraded Playwright package.
 
 ### 6. Tests Required
 
 - Unit: manifest strictness, aliases/schema isolation, SSRF/DNS/redirect origin,
   OAuth PKCE/state/refresh/revoke, result caps, scheduling/retry/cancellation,
-  write serialization, retention, and account/conversation artifact deletion.
+  write serialization, allowlist list/call enforcement, run-instance
+  determinism/separation, retention, and account/conversation artifact deletion.
 - HTTP: auth, methods, strict JSON, no-store, stable errors, cross-user/
   cross-Workspace denial, explicit-empty and revision conflict.
 - Chat: fake Streamable HTTP and fake Runner complete native multi-round same-
@@ -326,6 +365,10 @@ MCP_MARKETPLACE_TIMEOUT MCP_MARKETPLACE_CACHE_TTL
   interface must also be added to Chat and cross-package test fakes; compile the
   owning Chat package in the focused gate so an MCP-only unit run cannot hide
   interface drift.
+- Browser: run real MCP initialize/list/navigate/snapshot against a local HTTP
+  fixture; assert the upstream unsafe-code Tool exists as threat evidence,
+  exact package/command/17-name manifest pins, Runner call-path denial, and
+  distinct instances across Run IDs.
 - PostgreSQL 17: fresh `001..081`, replay, clean `081..077` down, guarded `076`
   down with/without a stdio row, `075` grant down/up plus `074` schema down/up,
   retired metadata purge without security-field loss, 12 MCP tables,
@@ -361,6 +404,24 @@ connector.CallTool(ctx, clientServerURL, clientToolName, clientArgs)
 prepared, err := service.PrepareRun(ctx, userID, conversationID, messageID, runID)
 // ExecuteRound resolves only aliases and schemas frozen in prepared.
 results, err := service.ExecuteRound(ctx, prepared, calls, emit)
+```
+
+#### Wrong
+
+```go
+// A reviewed package upgrade silently expands execution authority.
+for _, tool := range session.ListTools(ctx) {
+    expose(tool)
+}
+```
+
+#### Correct
+
+```go
+if manifestToolAllowed(server, tool.Name) {
+    expose(tool)
+}
+// CallTool repeats the same check immediately before dispatch.
 ```
 
 #### Wrong

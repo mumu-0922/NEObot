@@ -107,6 +107,9 @@ func (s *directSession) ListTools(ctx context.Context) ([]Tool, error) {
 		if err != nil {
 			return nil, fmt.Errorf("list mcp tools: %w", ErrServerUnavailable)
 		}
+		if !manifestToolAllowed(s.server, raw.Name) {
+			continue
+		}
 		classification := ClassificationUnknown
 		if s.server.Ref.Source == SourceManifest {
 			if policy, ok := s.server.Metadata["toolPolicy"].(map[string]string); ok {
@@ -133,6 +136,9 @@ func (s *directSession) CallTool(
 ) (CallResult, error) {
 	if s == nil || s.connection == nil {
 		return CallResult{}, ErrServerUnavailable
+	}
+	if !manifestToolAllowed(s.server, name) {
+		return CallResult{}, ErrToolNotFound
 	}
 	result, err := s.connection.CallTool(ctx, &protocol.CallToolParams{
 		Name:      name,

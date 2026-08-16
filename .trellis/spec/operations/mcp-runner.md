@@ -17,6 +17,8 @@ scripts/release-images.sh --tag <release> [--push|--load|--dry-run]
 scripts/preflight-single-server.sh .env.single-server
 scripts/compose-single-server-production.sh .env.single-server \
   --profile app --profile mcp-runner up -d --no-build
+npm ci --omit=dev --ignore-scripts --registry=https://registry.npmjs.org
+npm audit --omit=dev --audit-level=moderate --registry=https://registry.npmjs.org
 ```
 
 Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
@@ -25,8 +27,9 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
 ### 3. Contracts
 
 - `mcp-runner` is one optional resident container; approved stdio children are
-  started on demand, at most four, reaped after 15 idle minutes, and capped at
-  24 hours.
+  started on demand, at most four retained, reaped after their manifest idle
+  bound (15 minutes by default), and capped at 24 hours. At capacity, evict the
+  least-recent inactive child before admission; never evict an active call.
 - The image runs non-root with a read-only root, `cap_drop: ALL`,
   `no-new-privileges`, 1 CPU, 768 MiB memory, 256 PIDs, isolated tmpfs, and no
   host port. It joins only internal `mcp-control` plus `mcp-egress`, never the
@@ -41,6 +44,12 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
   arbitrary host mounts are forbidden. A dynamic Marketplace artifact is the
   only runtime-download exception and is never sourced from public DTO or
   browser command fields.
+- A manifest `allowedTools` array is non-empty, bounded, duplicate-free, and
+  exact. Every `toolPolicy` key must be a member. Backend/Runner filter live
+  listing and calls, including private stdio installations rebound to the
+  reviewed artifact, so a package upgrade cannot silently expand authority.
+  `instanceScope="run"` is stdio-only and derives an opaque per-Chat-Run child
+  identity without exposing raw authority IDs.
 - Backend, validator, and Runner compile the same strict manifest parser. Any
   new manifest field therefore requires paired Backend and Runner images from
   the same source revision; do not mount a newer manifest into an older Runner
@@ -60,6 +69,10 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
   per-Server work/cache directory. npm lifecycle code can execute there, which
   is why only the deployment administrator may install and every container,
   network, process, resource, and cleanup fence is mandatory.
+- Browser uses the exact `@playwright/mcp@0.0.79` package and matching pinned
+  official Playwright MCP base image/Chromium. Its run-scoped 17-Tool allowlist
+  excludes the upstream RCE-equivalent unsafe-code Tool and all other unlisted
+  additions. Runtime browser downloads are forbidden.
 - Backup always pairs a full PostgreSQL dump with a full MinIO bucket mirror.
   This includes MCP rows and `mcp-results/`. Restore drills export both
   Knowledge and MCP sample keys and `mc stat` them in a temporary bucket.
@@ -92,6 +105,9 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
 | Token source is symlink/wrong owner/mode/size | preflight rejects without printing content |
 | Manifest invalid | validator fails closed; unrelated chat may start with MCP unavailable |
 | Manifest contains a field unknown to the running Runner image | Runner restart fails closed; deploy the paired Runner image before declaring the manifest rollout complete |
+| Manifest allowlist or run scope is invalid | validator/startup fails closed before any child starts |
+| Playwright upgrade lists a new/unsafe Tool | Tool stays invisible and `tools/call` rejects it until explicit reviewed admission |
+| Four children are retained and a new Run arrives | evict only the least-recent idle child; return capacity when every child is active |
 | Runner health fails | selected stdio runs fail closed; backend global readiness remains independent |
 | Restore lacks MCP sample file/object | temporary-bucket drill fails before production restore |
 | Partial artifact cleanup fails | retain row/queue entry and retry; never delete DB authority first |
@@ -108,10 +124,15 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
 - **Good**: render four pinned images, validate manifest/token metadata, migrate,
   start backend and optional Runner, then smoke one approved Tool; dynamic npm
   execution uses an exact Server-bound artifact and isolated work directory.
+- **Good**: real Playwright initialize/list/navigate/snapshot succeeds against a
+  local fixture; the raw 24-Tool upstream surface proves the threat while Neo
+  Chat exposes only the reviewed 17 and uses a distinct process for each Run.
 - **Base**: MCP disabled and no Runner profile; cleanup still prunes expired
   durable state and artifacts.
-- **Bad**: execute a browser-selected/floating `npx` package, mount Docker
-  socket/source, publish 8090, use a mutable tag, or down-migrate after traffic.
+- **Bad**: execute a browser-selected/floating `npx` package, trust all Tools
+  from a reviewed package, reuse one Browser process across Chat Runs, mount
+  Docker socket/source, publish 8090, use a mutable tag, or down-migrate after
+  traffic.
 
 ### 6. Tests Required
 
@@ -124,6 +145,10 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
   Dynamic coverage must reject Shell/Docker/Git/URL/file/floating package
   specs, accept only exact registry package versions, verify sealed artifact
   binding, and prove per-Server process/workspace cleanup.
+- Assert the Playwright package/base-image version pair, exact Browser argv and
+  allowlist, real protocol/browser smoke, per-Run instance separation, unsafe
+  call denial before Runner HTTP dispatch, and least-recent idle eviction at
+  process capacity.
 - Render example and production Compose with Runner profile; assert no port,
   hardening/resources/networks, digest, and cleared production build.
 - `bash scripts/test-preflight-single-server.sh` for toggles, duration bounds,

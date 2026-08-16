@@ -141,6 +141,34 @@ func TestManagerRestartsPrivateInstanceWhenSecretEnvironmentChanges(t *testing.T
 	}
 }
 
+func TestManagerEvictsLeastRecentIdleRunInstanceAtCapacity(t *testing.T) {
+	server := helperManifestServer(t, "run-scoped")
+	manager, err := NewManager(Config{
+		MaxProcesses: 1, WorkRoot: t.TempDir(), ReapInterval: time.Hour,
+	}, []mcpclient.Server{server})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+
+	firstOptions := instanceOptions{InstanceID: "mcp-run-first"}
+	if _, err := manager.ListTools(context.Background(), server.Ref.ID, firstOptions); err != nil {
+		t.Fatal(err)
+	}
+	first := manager.sessions[firstOptions.InstanceID]
+	if first == nil || first.active != 0 {
+		t.Fatalf("first instance = %#v", first)
+	}
+	secondOptions := instanceOptions{InstanceID: "mcp-run-second"}
+	if _, err := manager.ListTools(context.Background(), server.Ref.ID, secondOptions); err != nil {
+		t.Fatal(err)
+	}
+	if manager.sessions[firstOptions.InstanceID] != nil ||
+		manager.sessions[secondOptions.InstanceID] == nil || !first.closing {
+		t.Fatalf("sessions after idle eviction = %#v", manager.sessions)
+	}
+}
+
 func TestManagerRecoversAfterApprovedServerCrash(t *testing.T) {
 	manager, err := NewManager(Config{MaxProcesses: 1, WorkRoot: t.TempDir()}, []mcpclient.Server{helperManifestServer(t, "crashable")})
 	if err != nil {

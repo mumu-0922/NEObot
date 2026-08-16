@@ -76,6 +76,14 @@ func TestMCPPerToolTimeoutContinuesTheSameModel(t *testing.T) {
 		registration.MaxOutputBytes != config.MaxResultCallBytes {
 		t.Fatalf("MCP registry policy=%#v", registration)
 	}
+	runtime.searchRequired = true
+	searchRegistration, ok := newChatToolRegistry(
+		externalWebToolLoopInput{MCP: runtime},
+	).lookup(mcpclient.ToolSearchAlias)
+	if !ok || searchRegistration.AllowParallel {
+		t.Fatalf("mcp_tool_search must remain a catalog mutation barrier: %#v / %v", searchRegistration, ok)
+	}
+	runtime.searchRequired = false
 	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
 		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
 			ID: "timeout", Name: tool.Alias, Arguments: `{}`,

@@ -20,9 +20,14 @@ const (
 	maxManifestServers    = 100
 	maxManifestArgs       = 64
 	maxManifestEnv        = 64
+	maxManifestTools      = 256
 	maxManifestString     = 4096
 	defaultRunnerIdle     = 15 * time.Minute
 	defaultRunnerLifetime = 24 * time.Hour
+	manifestInstanceRun   = "run"
+	manifestAllowedTools  = "allowedTools"
+	runnerInstanceScope   = "runnerInstanceScope"
+	runnerInstanceID      = "runnerInstanceId"
 )
 
 var (
@@ -51,6 +56,8 @@ type manifestServer struct {
 	Auth            *manifestAuth                `json:"auth,omitempty"`
 	Grants          []manifestGrant              `json:"grants,omitempty"`
 	ToolPolicy      map[string]string            `json:"toolPolicy,omitempty"`
+	AllowedTools    []string                     `json:"allowedTools,omitempty"`
+	InstanceScope   string                       `json:"instanceScope,omitempty"`
 }
 
 type manifestCredentialProbe struct {
@@ -215,6 +222,29 @@ func normalizeManifestServer(raw manifestServer, lookupEnv func(string) (string,
 		Status:      ServerStatusReady,
 		Metadata:    map[string]any{"toolPolicy": cloneStringMap(raw.ToolPolicy)},
 	}
+	allowedTools, err := normalizeManifestAllowedTools(raw.AllowedTools)
+	if err != nil {
+		return Server{}, err
+	}
+	if raw.AllowedTools != nil {
+		server.Metadata[manifestAllowedTools] = allowedTools
+		allowed := make(map[string]struct{}, len(allowedTools))
+		for _, name := range allowedTools {
+			allowed[name] = struct{}{}
+		}
+		for name := range raw.ToolPolicy {
+			if _, ok := allowed[strings.TrimSpace(name)]; !ok {
+				return Server{}, fmt.Errorf("%w: Tool policy outside allowlist", ErrManifestInvalid)
+			}
+		}
+	}
+	raw.InstanceScope = strings.TrimSpace(raw.InstanceScope)
+	if raw.InstanceScope != "" {
+		if raw.Transport != TransportStdio || raw.InstanceScope != manifestInstanceRun {
+			return Server{}, fmt.Errorf("%w: invalid instance scope", ErrManifestInvalid)
+		}
+		server.Metadata[runnerInstanceScope] = raw.InstanceScope
+	}
 	switch raw.Transport {
 	case TransportStreamableHTTP:
 		server.EndpointURL = strings.TrimSpace(raw.EndpointURL)
@@ -279,6 +309,73 @@ func normalizeManifestServer(raw manifestServer, lookupEnv func(string) (string,
 		server.Grants = []Grant{{ScopeType: "global"}}
 	}
 	return server, nil
+}
+
+func normalizeManifestAllowedTools(values []string) ([]string, error) {
+	if values == nil {
+		return nil, nil
+	}
+	if len(values) == 0 || len(values) > maxManifestTools {
+		return nil, fmt.Errorf("%w: Tool allowlist size", ErrManifestInvalid)
+	}
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || len(value) > maxToolNameBytes ||
+			strings.ContainsAny(value, "\x00\r\n") {
+			return nil, fmt.Errorf("%w: Tool allowlist name", ErrManifestInvalid)
+		}
+		if _, duplicate := seen[value]; duplicate {
+			return nil, fmt.Errorf("%w: duplicate Tool allowlist name", ErrManifestInvalid)
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result, nil
+}
+
+func manifestToolAllowed(server Server, name string) bool {
+	if server.Ref.Source != SourceManifest && server.Ref.Source != SourcePrivate {
+		return true
+	}
+	allowed, exists := server.Metadata[manifestAllowedTools]
+	if !exists {
+		return true
+	}
+	names, ok := allowed.([]string)
+	if !ok {
+		return false
+	}
+	name = strings.TrimSpace(name)
+	index := sort.SearchStrings(names, name)
+	return index < len(names) && names[index] == name
+}
+
+func filterManifestAllowedTools(server Server) Server {
+	if server.Ref.Source != SourceManifest {
+		return server
+	}
+	if _, exists := server.Metadata[manifestAllowedTools]; !exists {
+		return server
+	}
+	filtered := make([]Tool, 0, len(server.Tools))
+	server.ToolCount = 0
+	server.UnsupportedCount = 0
+	for _, tool := range server.Tools {
+		if !manifestToolAllowed(server, tool.Name) {
+			continue
+		}
+		filtered = append(filtered, tool)
+		if tool.Supported {
+			server.ToolCount++
+		} else {
+			server.UnsupportedCount++
+		}
+	}
+	server.Tools = filtered
+	return server
 }
 
 func normalizeManifestCredentialProbe(server Server, raw manifestCredentialProbe) (CredentialProbe, error) {

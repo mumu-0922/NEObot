@@ -31,6 +31,8 @@ artifact ID; they never carry an argv array.
 | Exact lockfile and `npm ci` at image build | Prevents runtime dependency resolution and mutable `latest` installs. |
 | `--ignore-scripts` | Blocks dependency lifecycle code during image assembly. |
 | Separate manifest admission | A package being present is not sufficient execution authority. |
+| Exact Browser Tool allowlist | Upstream Playwright additions, especially unsafe code/evaluation, never become execution authority automatically. |
+| Browser process scoped to Chat Run | Page, Cookie, and in-memory profile state cannot cross Run boundaries. |
 | Idle reap and process cap | Bounds memory/PID use while preserving warm reuse. |
 
 ## Non-goals

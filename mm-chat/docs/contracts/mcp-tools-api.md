@@ -63,6 +63,18 @@ Server may inherit `read|write|unknown` only from the current reviewed manifest
 artifact's local `toolPolicy` after its exact Marketplace provenance is rebound;
 missing policy remains `unknown`.
 
+For a reviewed manifest with `allowedTools`, `toolCount`, `tools`, provider
+aliases, and execution all reflect only that exact allowlist. The connector
+checks it during both `tools/list` normalization and `tools/call`; an upstream
+Tool added after review does not become visible or callable. A run-scoped stdio
+artifact receives a Backend-derived opaque process instance and exposes no raw
+user, Conversation, or Run identifier to the MCP child.
+
+An installed private stdio Server that rebinds to an exact reviewed manifest
+artifact inherits that artifact's current allowlist into the Runner session.
+Persisted private metadata cannot replace or widen it, so Marketplace display,
+validation, Chat snapshots, and direct calls use the same Tool surface.
+
 `icon` is optional display metadata, never trust or execution authority. The
 backend returns it only after bounding it to a credential-free HTTPS URL or
 short text/emoji. Reviewed private stdio Servers rebind the value from the
@@ -348,6 +360,11 @@ Client-supplied Tool calls, aliases, grants, schemas, or results are never
 trusted as execution authority. Arbitrary third-party MCP schemas are not
 advertised with the Provider-specific OpenAI `strict` extension; server-side
 validation against the frozen schema remains authoritative.
+
+The checked-in Playwright Browser is selected like any other shared manifest
+Server. Its allowed navigation/snapshot/interaction Tools participate in the
+same native continuation loop. Arbitrary code/evaluation, upload, request-body,
+and storage-state Tools are absent even if the upstream package lists them.
 
 ## Error mapping
 
