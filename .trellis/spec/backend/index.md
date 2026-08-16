@@ -6,6 +6,7 @@
 
 | Guide                                               | Scope                                                                                                                 |
 | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| [Server Auth identity](./auth-identity.md) | Shared Email/Password validation, Argon2id, credential revision, recovery, and Session revocation boundaries |
 | [RAG retrieval storage](./rag-retrieval-storage.md) | PostgreSQL retrieval, Citation authority/display, diagnostics, and rollback contracts                              |
 | [Chat source fusion](./chat-source-fusion.md)       | Conversation-aware external Search query rewriting, Knowledge/Web authority, diagnostics, and fallback contracts      |
 | [Chat Tool Loop](./chat-tool-loop.md)               | G19 provider-normalized Tool rounds, three-state Search authority, Memory first-round routing, process persistence, approvals, and citation truth |
@@ -30,6 +31,14 @@
 | [Memory v2 Hindsight fixture](./memory-v2-hindsight-fixture.md) | Synthetic-only dual-profile Hindsight comparison, opaque bank mapping, content-free reports, isolated Compose, and mandatory teardown |
 
 ## Pre-Development Checklist
+
+For Server Auth email/password, Login, Invite Acceptance, Recovery, credential
+revision, or Session revocation changes:
+
+1. Read [`auth-identity.md`](./auth-identity.md).
+2. Keep all password flows on the shared validator and Argon2id implementation.
+3. Prove exact minimum/maximum boundaries, generic Login failure behavior,
+   revision fencing, and revocation before changing live credentials.
 
 For RAG retrieval, PostgreSQL migration, or indexing changes:
 

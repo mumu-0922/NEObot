@@ -117,15 +117,15 @@ func TestValidatePassword(t *testing.T) {
 		value   string
 		wantErr bool
 	}{
-		{name: "exactly 15 runes", value: "123456789012345"},
-		{name: "counts Unicode runes", value: strings.Repeat("界", 15)},
-		{name: "preserves spaces", value: strings.Repeat(" ", 15)},
+		{name: "exactly 9 runes", value: "123456789"},
+		{name: "counts Unicode runes", value: strings.Repeat("界", 9)},
+		{name: "preserves spaces", value: strings.Repeat(" ", 9)},
 		{name: "exactly 256 bytes", value: strings.Repeat("a", 256)},
-		{name: "fewer than 15 runes", value: "12345678901234", wantErr: true},
+		{name: "fewer than 9 runes", value: "12345678", wantErr: true},
 		{name: "over 256 bytes", value: strings.Repeat("a", 257), wantErr: true},
 		{
 			name:    "invalid UTF-8",
-			value:   string(append([]byte(strings.Repeat("a", 15)), 0xff)),
+			value:   string(append([]byte(strings.Repeat("a", 9)), 0xff)),
 			wantErr: true,
 		},
 	}

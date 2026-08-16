@@ -14,7 +14,7 @@ a request until a future monotonic auth epoch exists.
 ## Locked Contracts
 
 - Argon2id PHC: `v=19,m=65536,t=3,p=2`, 16-byte random salt, 32-byte hash.
-- Password: 15–256 UTF-8 characters/bytes; no trim or provider-specific
+- Password: 9–256 UTF-8 characters/bytes; no trim or provider-specific
   normalization. Argon2 work uses bounded concurrency.
 - Email: `lower(trim(email))`, one mailbox, at most 254 bytes; no dot or plus
   folding.

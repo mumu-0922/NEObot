@@ -5732,7 +5732,7 @@ The implementation pins these authority and secret boundaries:
 ```text
 password hash -> Argon2id PHC v=19, m=65536, t=3, p=2, bounded to 2 jobs
 email -> lower(trim(email)), one mailbox, at most 254 bytes
-password -> at least 15 UTF-8 runes, at most 256 bytes, no trim
+password -> at least 9 UTF-8 runes, at most 256 bytes, no trim
 session/invite/recovery token -> 32 random bytes as lowercase hex
 persistence -> SHA-256 token hashes only
 Bearer authorization -> Postgres rechecked on every request

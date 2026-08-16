@@ -18,7 +18,7 @@ import (
 
 const (
 	maximumEmailBytes       = 254
-	minimumPasswordRunes    = 15
+	minimumPasswordRunes    = 9
 	maximumPasswordBytes    = 256
 	argon2Memory            = 64 * 1024
 	argon2Time              = 3
@@ -117,7 +117,7 @@ func validatePassword(password string) error {
 		return invalidIdentityInput("password must be valid UTF-8")
 	}
 	if utf8.RuneCountInString(password) < minimumPasswordRunes {
-		return invalidIdentityInput("password must contain at least 15 characters")
+		return invalidIdentityInput("password must contain at least 9 characters")
 	}
 	return nil
 }

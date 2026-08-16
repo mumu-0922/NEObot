@@ -234,7 +234,7 @@ func TestServiceAcceptInviteRejectsMalformedPasswordBeforeTokenSnapshot(t *testi
 
 			_, err := service.AcceptInvite(context.Background(), AcceptInviteInput{
 				Token:    testRawToken('d'),
-				Password: "too-short",
+				Password: "12345678",
 			})
 			if !errors.Is(err, ErrInvalidIdentityInput) {
 				t.Fatalf("AcceptInvite() error = %v, want ErrInvalidIdentityInput", err)
