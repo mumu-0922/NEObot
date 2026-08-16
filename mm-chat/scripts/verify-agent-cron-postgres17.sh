@@ -70,7 +70,7 @@ database_url="$(database_url_for "${container_name}")"
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" "$@"; }
 
-log "applying 001 -> 095, replaying, and peeling the empty product tail"
+log "applying 001 -> 096, replaying, and peeling the empty product tail"
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 088_agent_cron_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 089_agent_draft_learning" "${work_dir}/fresh.log"
@@ -80,8 +80,11 @@ grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/fresh.log"
 grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/fresh.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/fresh.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/fresh.log"
+grep -Fq "up 096_chat_agent_event_log" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
+run_migrate down >"${work_dir}/peel-096-chat-agent-event-tail.log" 2>&1
+grep -Fq "down 096_chat_agent_event_log" "${work_dir}/peel-096-chat-agent-event-tail.log"
 run_migrate down >"${work_dir}/peel-095-tail-1.log" 2>&1
 grep -Fq "down 095_agent_product_canary_activation" "${work_dir}/peel-095-tail-1.log"
 run_migrate down >"${work_dir}/peel-094-tail-1.log" 2>&1
@@ -187,6 +190,7 @@ grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/reup.log"
 grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/reup.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/reup.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/reup.log"
+grep -Fq "up 096_chat_agent_event_log" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final.log"
 log "passed (fresh/replay, least privilege, schedule/claims/restart/idempotency/overlap/authority, guarded down, dump/restore, clean down/up)"

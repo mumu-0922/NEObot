@@ -9,6 +9,12 @@ Those optional durable OCI paths remain disabled, while the current
 single-server product executes installed Skills through the separate
 [`local_direct` contract](./local-skill-runtime.md).
 
+Ordinary Chat migration `096` advances the application schema head but does not
+requalify this held OCI release. Exact-host activation and closure artifacts
+remain pinned to their reviewed migration head `095`; all switches stay off.
+Legacy control-plane tail drills now peel empty `096` before `095` and restore
+the current database head to `096`.
+
 ## 1. Scope and hard gates
 
 This contract defines the stable boundary among Go Durable Orchestrator,

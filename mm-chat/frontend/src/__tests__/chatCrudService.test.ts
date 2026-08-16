@@ -264,6 +264,61 @@ describe("chat CRUD DTO mappers", () => {
     ]);
   });
 
+  it("prefers durable Agent events over legacy processTrace metadata", () => {
+    const assistant = mapChatMessageDtoToMessage({
+      ...assistantMessageDto,
+      metadata: {
+        processTrace: [
+          {
+            id: "legacy:generation:1",
+            kind: "generation",
+            status: "completed",
+            labelKey: "process.generation",
+          },
+        ],
+      },
+      agentEvents: [
+        {
+          eventId: "event-1",
+          turnId: "turn-1",
+          conversationId: assistantMessageDto.conversationId,
+          messageId: assistantMessageDto.id,
+          runId: "run-1",
+          sequence: 2,
+          type: "step.ended",
+          payload: {
+            processStep: {
+              id: "m2:tool:1",
+              kind: "tool",
+              status: "completed",
+              labelKey: "process.tool",
+              detail: {
+                toolName: "terminal",
+                mode: "local_direct",
+                round: 1,
+              },
+            },
+          },
+          occurredAt: "2026-08-16T12:00:01Z",
+        },
+      ],
+    });
+
+    expect(assistant.processTrace).toEqual([
+      {
+        id: "m2:tool:1",
+        kind: "tool",
+        status: "completed",
+        labelKey: "process.tool",
+        detail: {
+          toolName: "terminal",
+          mode: "local_direct",
+          round: 1,
+        },
+      },
+    ]);
+  });
+
   it("hides a stale Knowledge card when the answer only cites Web", () => {
     const webOnly = mapChatMessageDtoToMessage({
       ...assistantMessageDto,

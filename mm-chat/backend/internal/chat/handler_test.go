@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -849,6 +850,34 @@ func TestHandlerStreamsMockAssistantAndPersistsMessages(t *testing.T) {
 	if !ok || len(steps) != 1 || steps[0].Kind != ProcessStepKindGeneration ||
 		steps[0].Status != ProcessStepStatusCompleted {
 		t.Fatalf("ordinary completed assistant process trace = %#v", assistant.Metadata)
+	}
+	events, err := repo.ListChatAgentEvents(context.Background(), testConversationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventTypes := make([]string, 0, len(events))
+	for _, event := range events {
+		eventTypes = append(eventTypes, event.Type)
+	}
+	for _, want := range []string{
+		ChatAgentEventTurnStarted,
+		ChatAgentEventStepStarted,
+		ChatAgentEventStepEnded,
+		ChatAgentEventAssistantMessage,
+		ChatAgentEventTurnEnded,
+	} {
+		if !slices.Contains(eventTypes, want) {
+			t.Fatalf("durable event types = %#v, missing %q", eventTypes, want)
+		}
+	}
+	listed, err := repo.ListMessages(context.Background(), testConversationID)
+	if err != nil || len(listed) != 2 {
+		t.Fatalf("listed durable messages = %#v, %v", listed, err)
+	}
+	projected := projectChatAgentProcessTrace(listed[1].AgentEvents, nil)
+	if len(projected) != 1 || projected[0].Kind != ProcessStepKindGeneration ||
+		projected[0].Status != ProcessStepStatusCompleted {
+		t.Fatalf("durable process projection = %#v", projected)
 	}
 }
 
@@ -4311,6 +4340,9 @@ type fakeRepository struct {
 	messages      map[string][]Message
 	summaries     map[string]ConversationContextSummary
 	summaryErr    error
+	agentTurns    map[string]ChatAgentEvent
+	agentStatuses map[string]string
+	agentEvents   map[string][]ChatAgentEvent
 }
 
 type cancelFailRepository struct {
@@ -4328,9 +4360,145 @@ func (r *cancelFailRepository) CancelRun(
 
 func newFakeRepository() *fakeRepository {
 	return &fakeRepository{
-		messages:  map[string][]Message{},
-		summaries: map[string]ConversationContextSummary{},
+		messages:      map[string][]Message{},
+		summaries:     map[string]ConversationContextSummary{},
+		agentTurns:    map[string]ChatAgentEvent{},
+		agentStatuses: map[string]string{},
+		agentEvents:   map[string][]ChatAgentEvent{},
 	}
+}
+
+func (f *fakeRepository) ensureAgentEvents() {
+	if f.agentTurns == nil {
+		f.agentTurns = map[string]ChatAgentEvent{}
+	}
+	if f.agentStatuses == nil {
+		f.agentStatuses = map[string]string{}
+	}
+	if f.agentEvents == nil {
+		f.agentEvents = map[string][]ChatAgentEvent{}
+	}
+}
+
+func (f *fakeRepository) StartChatAgentTurn(
+	ctx context.Context,
+	input StartChatAgentTurnInput,
+) (ChatAgentEvent, error) {
+	f.ensureAgentEvents()
+	if existing, ok := f.agentTurns[input.TurnID]; ok {
+		return existing, nil
+	}
+	event := ChatAgentEvent{
+		EventID: input.EventID, TurnID: input.TurnID,
+		UserID: auth.UserOrDevelopment(ctx).ID, ConversationID: input.ConversationID,
+		MessageID: input.MessageID, RunID: input.RunID, Sequence: 1,
+		Type: ChatAgentEventTurnStarted, Payload: map[string]any{"status": "running"},
+		OccurredAt: input.OccurredAt,
+	}
+	f.agentTurns[input.TurnID] = event
+	f.agentStatuses[input.TurnID] = ChatAgentTurnRunning
+	f.agentEvents[input.ConversationID] = append(f.agentEvents[input.ConversationID], event)
+	return event, nil
+}
+
+func (f *fakeRepository) AppendChatAgentEvent(
+	_ context.Context,
+	turnID string,
+	input AppendChatAgentEventInput,
+) (ChatAgentEvent, error) {
+	f.ensureAgentEvents()
+	turn, ok := f.agentTurns[turnID]
+	if !ok {
+		return ChatAgentEvent{}, errors.New("CHAT_AGENT_TURN_NOT_FOUND")
+	}
+	for _, event := range f.agentEvents[turn.ConversationID] {
+		if event.EventID == input.EventID {
+			return event, nil
+		}
+	}
+	if f.agentStatuses[turnID] != ChatAgentTurnRunning {
+		return ChatAgentEvent{}, errors.New("CHAT_AGENT_TURN_TERMINAL")
+	}
+	sequence := int64(1)
+	for _, event := range f.agentEvents[turn.ConversationID] {
+		if event.TurnID == turnID && event.Sequence >= sequence {
+			sequence = event.Sequence + 1
+		}
+	}
+	event := ChatAgentEvent{
+		EventID: input.EventID, TurnID: turnID, UserID: turn.UserID,
+		ConversationID: turn.ConversationID, MessageID: turn.MessageID,
+		RunID: turn.RunID, Sequence: sequence, Type: input.Type,
+		StepSequence: input.StepSequence, Payload: cloneJSONObject(input.Payload),
+		OccurredAt: input.OccurredAt,
+	}
+	f.agentEvents[turn.ConversationID] = append(f.agentEvents[turn.ConversationID], event)
+	if input.Type == ChatAgentEventTurnEnded {
+		terminalStatus := chatAgentPayloadString(input.Payload, "status")
+		f.agentStatuses[turnID] = terminalStatus
+		if terminalStatus == ChatAgentTurnInterrupted {
+			for index := range f.messages[turn.ConversationID] {
+				message := &f.messages[turn.ConversationID][index]
+				if message.ID != turn.MessageID ||
+					(message.Status != "pending" && message.Status != "streaming") {
+					continue
+				}
+				message.Status = "failed"
+				if message.Metadata == nil {
+					message.Metadata = map[string]any{}
+				}
+				message.Metadata["errorCode"] = "AGENT_RUN_INTERRUPTED"
+				completedAt := input.OccurredAt
+				message.CompletedAt = &completedAt
+				message.UpdatedAt = completedAt
+			}
+		}
+	}
+	return event, nil
+}
+
+func (f *fakeRepository) ListChatAgentEvents(
+	_ context.Context,
+	conversationID string,
+) ([]ChatAgentEvent, error) {
+	f.ensureAgentEvents()
+	return append([]ChatAgentEvent(nil), f.agentEvents[conversationID]...), nil
+}
+
+func (f *fakeRepository) RecoverIncompleteChatAgentTurns(
+	ctx context.Context,
+	startedBefore time.Time,
+) (int, error) {
+	f.ensureAgentEvents()
+	recovered := 0
+	for turnID, turn := range f.agentTurns {
+		if f.agentStatuses[turnID] != ChatAgentTurnRunning || !turn.OccurredAt.Before(startedBefore) {
+			continue
+		}
+		messageStatus := ""
+		for _, message := range f.messages[turn.ConversationID] {
+			if message.ID == turn.MessageID {
+				messageStatus = message.Status
+				break
+			}
+		}
+		eventID, err := NewUUID()
+		if err != nil {
+			return recovered, err
+		}
+		_, err = f.AppendChatAgentEvent(ctx, turnID, AppendChatAgentEventInput{
+			EventID: eventID, Type: ChatAgentEventTurnEnded,
+			Payload: map[string]any{
+				"status": normalizeChatAgentTurnStatus(messageStatus),
+			},
+			OccurredAt: startedBefore,
+		})
+		if err != nil {
+			return recovered, err
+		}
+		recovered++
+	}
+	return recovered, nil
 }
 
 func (f *fakeRepository) GetConversationContextSummary(
@@ -4523,6 +4691,11 @@ func (f *fakeRepository) ListMessages(_ context.Context, conversationID string) 
 	items := make([]Message, 0, len(f.messages[conversationID]))
 	for _, message := range f.messages[conversationID] {
 		if message.DeletedAt == nil {
+			for _, event := range f.agentEvents[conversationID] {
+				if event.MessageID == message.ID {
+					message.AgentEvents = append(message.AgentEvents, event)
+				}
+			}
 			items = append(items, message)
 		}
 	}
@@ -4613,6 +4786,11 @@ func (f *fakeRepository) GetMessage(
 	}
 	for _, message := range f.messages[conversationID] {
 		if message.ID == messageID {
+			for _, event := range f.agentEvents[conversationID] {
+				if event.MessageID == message.ID {
+					message.AgentEvents = append(message.AgentEvents, event)
+				}
+			}
 			return message, nil
 		}
 	}

@@ -65,7 +65,7 @@ psql_command() {
 server_major="$(psql_command "SHOW server_version_num" | cut -c1-2)"
 [[ "${server_major}" == "17" ]] || { echo "expected PostgreSQL 17" >&2; exit 1; }
 
-log "building and applying 001 -> 095"
+log "building and applying 001 -> 096"
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/mm-chat-migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"; }
 run_migrate up >"${work_dir}/fresh.log" 2>&1
@@ -82,6 +82,7 @@ grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/fresh.log"
 grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/fresh.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/fresh.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/fresh.log"
+grep -Fq "up 096_chat_agent_event_log" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
@@ -116,6 +117,8 @@ log "running source-drift, review-CAS, ownership, install and uninstall lifecycl
   go test -count=1 -run '^TestSkillPostgresRepositoryAuthorityDriftOwnershipAndCAS$' ./internal/skillsupply)
 
 log "rolling back the empty 094-084 tails before the 083 guard"
+run_migrate down >"${work_dir}/peel-096-chat-agent-event-tail.log" 2>&1
+grep -Fq "down 096_chat_agent_event_log" "${work_dir}/peel-096-chat-agent-event-tail.log"
 run_migrate down >"${work_dir}/peel-095-tail-1.log" 2>&1
 grep -Fq "down 095_agent_product_canary_activation" "${work_dir}/peel-095-tail-1.log"
 run_migrate down >"${work_dir}/peel-094-tail-1.log" 2>&1
@@ -181,6 +184,7 @@ grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/reup.log"
 grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/reup.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/reup.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/reup.log"
+grep -Fq "up 096_chat_agent_event_log" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 

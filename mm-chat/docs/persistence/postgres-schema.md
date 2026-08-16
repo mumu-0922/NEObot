@@ -1,10 +1,13 @@
-# Postgres Schema Through Migration 061
+# Postgres Core Schema and Chat Agent Events Through Migration 096
 
-This document describes the current schema created by the ordered migrations in
+This document describes the core schema created by the ordered migrations in
 `mm-chat/backend/migrations`, from `001_initial_schema` through
-`061_memory_portability_retention`. Phase labels are retained where they
-explain rollout history; they do not narrow the current schema or its
-implemented repository consumers.
+`061_memory_portability_retention`, plus the ordinary Chat Agent event authority
+added by `096_chat_agent_event_log`. Migrations `062` through `095` own later
+Memory and optional Agent control-plane surfaces and remain catalogued in
+`mm-chat/backend/migrations/README.md`.
+Phase labels are retained where they explain rollout history; they do not
+narrow the current schema or its implemented repository consumers.
 
 ## 1. Scope
 
@@ -14,6 +17,7 @@ Postgres is the source of truth for structured server data:
 users -> sessions
 users -> provider_configs
 users -> conversations -> messages -> message_attachments -> files
+                              \-> chat_agent_turns -> chat_agent_events
 users -> memory settings/projects/scoped memories -> memory outbox/jobs
 users -> import_batches
 users/sessions/actions -> audit_logs
@@ -30,6 +34,8 @@ In scope:
 - Provider configuration metadata and encrypted-secret references.
 - Conversations, messages, output block JSON, retry idempotency keys, and
   message status.
+- Append-only ordinary Chat Agent Turns/Events for process replay and restart
+  reconciliation, separate from optional control-plane Run events.
 - Browser import batch idempotency, response replay, and rollback state.
 - File ownership and metadata only; file bytes remain out of Postgres.
 - Append-only audit log rows for security and operational events.
@@ -91,6 +97,7 @@ Out of scope:
 | `059_memory_hybrid_vector_shadow`             | Adds fixed BGE-M3 vector projection/jobs and hash/ID/rank/token-only RRF/rerank shadow observations. |
 | `060_memory_governance_ui`                    | Adds current-user Project/policy/scoped Memory/Review/detail/Activity capabilities, Review decision audit, and classified legacy wrappers. |
 | `061_memory_portability_retention`            | Adds imported source/revision authority, hash-only import batches, encrypted portability capabilities, deletion replay authority, and projection rebuild. |
+| `096_chat_agent_event_log`                    | Adds Chat-owned Turn/Event sequence authority, immutable replay, least-privilege append functions, and incomplete-Turn recovery. |
 
 Published migration pairs are immutable and applied in numeric order. Migration
 SQL contains no transaction-control statements; the Go runner wraps each schema
@@ -230,10 +237,33 @@ Boundary:
 - The backend should persist the user message before provider streaming begins.
 - Assistant messages can start as `streaming` and finish as `completed`,
   `failed`, or `cancelled`.
-- Streaming run identity is stored as `metadata.runId` on assistant messages
-  until a durable run table is introduced.
+- Streaming run identity remains in `metadata.runId` for compatibility and is
+  also bound by `chat_agent_turns.run_id` for new Agent Turns.
 - Store stable output fields and scrubbed metadata, not raw provider responses
   or secrets.
+
+### `chat_agent_turns` and `chat_agent_events`
+
+Purpose: append-only ordinary Chat Agent execution history and deterministic
+process replay. These tables are independent from the optional G20/G21
+`agent_runs` and `agent_run_events` control-plane model.
+
+Key boundaries:
+
+- One Turn binds one current-user Conversation, assistant Message, and Run.
+  `message_id` and `run_id` are unique.
+- `next_sequence` is allocated while the Turn row is locked. Event uniqueness
+  is enforced by both `(turn_id, sequence)` and `(turn_id, event_id)`.
+- Events allow the fixed Turn/Step/assistant/Tool/Goal/context vocabulary and a
+  bounded JSON object payload. An immutable trigger rejects UPDATE and DELETE.
+- `go_api_runtime` receives SELECT plus exact execution of
+  `chat_agent_start_turn` and `chat_agent_append_event`; it receives no direct
+  table DML.
+- Terminal `interrupted` recovery changes only a still-`pending|streaming`
+  assistant Message to failed with `AGENT_RUN_INTERRUPTED`. An already terminal
+  Message keeps its committed status and supplies the reconciled Turn status.
+- Migration `096` Down refuses while either table contains data. The disposable
+  replay gate is `scripts/verify-chat-agent-event-log-postgres17.sh`.
 
 ### `files`
 

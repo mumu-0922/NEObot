@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -36,6 +37,161 @@ func NewPostgresRepository(db *sql.DB) *PostgresRepository {
 		db:    db,
 		newID: NewUUID,
 	}
+}
+
+func (r *PostgresRepository) StartChatAgentTurn(
+	ctx context.Context,
+	input StartChatAgentTurnInput,
+) (ChatAgentEvent, error) {
+	if err := r.requireDB(); err != nil {
+		return ChatAgentEvent{}, err
+	}
+	userID := auth.UserOrDevelopment(ctx).ID
+	event, err := scanChatAgentEvent(r.db.QueryRowContext(ctx, `
+SELECT event_id, turn_id, user_id, conversation_id, message_id, run_id,
+       sequence, event_type, step_sequence, payload, occurred_at
+FROM chat_agent_start_turn($1, $2, $3, $4, $5, $6, $7)
+`, input.TurnID, input.EventID, userID, input.ConversationID, input.MessageID,
+		input.RunID, input.OccurredAt))
+	if err != nil {
+		return ChatAgentEvent{}, fmt.Errorf("start chat Agent turn: %w", err)
+	}
+	return event, nil
+}
+
+func (r *PostgresRepository) AppendChatAgentEvent(
+	ctx context.Context,
+	turnID string,
+	input AppendChatAgentEventInput,
+) (ChatAgentEvent, error) {
+	if err := r.requireDB(); err != nil {
+		return ChatAgentEvent{}, err
+	}
+	payload, err := marshalJSONObject(input.Payload)
+	if err != nil {
+		return ChatAgentEvent{}, err
+	}
+	event, err := scanChatAgentEvent(r.db.QueryRowContext(ctx, `
+SELECT event_id, turn_id, user_id, conversation_id, message_id, run_id,
+       sequence, event_type, step_sequence, payload, occurred_at
+FROM chat_agent_append_event($1, $2, $3, $4, $5::jsonb, $6)
+`, turnID, input.EventID, input.Type, nullInt(input.StepSequence), string(payload),
+		input.OccurredAt))
+	if err != nil {
+		return ChatAgentEvent{}, fmt.Errorf("append chat Agent event: %w", err)
+	}
+	return event, nil
+}
+
+func (r *PostgresRepository) ListChatAgentEvents(
+	ctx context.Context,
+	conversationID string,
+) ([]ChatAgentEvent, error) {
+	if err := r.requireDB(); err != nil {
+		return nil, err
+	}
+	if !isUUID(conversationID) {
+		return nil, newValidationError("INVALID_CONVERSATION_ID", "conversation id must be a UUID")
+	}
+	userID := auth.UserOrDevelopment(ctx).ID
+	rows, err := r.db.QueryContext(ctx, `
+SELECT event.event_id, turn.id, turn.user_id, turn.conversation_id,
+       turn.message_id, turn.run_id, event.sequence, event.event_type,
+       event.step_sequence, event.payload, event.occurred_at
+FROM chat_agent_events AS event
+JOIN chat_agent_turns AS turn ON turn.id = event.turn_id
+JOIN conversations AS conversation
+  ON conversation.id = turn.conversation_id
+ AND conversation.user_id = turn.user_id
+WHERE turn.conversation_id = $1
+  AND turn.user_id = $2
+  AND conversation.deleted_at IS NULL
+ORDER BY turn.started_at, turn.id, event.sequence
+`, conversationID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("query chat Agent events: %w", err)
+	}
+	defer rows.Close()
+	events := []ChatAgentEvent{}
+	for rows.Next() {
+		event, scanErr := scanChatAgentEvent(rows)
+		if scanErr != nil {
+			return nil, fmt.Errorf("scan chat Agent event: %w", scanErr)
+		}
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate chat Agent events: %w", err)
+	}
+	return events, nil
+}
+
+func (r *PostgresRepository) RecoverIncompleteChatAgentTurns(
+	ctx context.Context,
+	startedBefore time.Time,
+) (int, error) {
+	if err := r.requireDB(); err != nil {
+		return 0, err
+	}
+	if startedBefore.IsZero() {
+		return 0, newValidationError(
+			"INVALID_CHAT_AGENT_RECOVERY_CUTOFF", "chat Agent recovery cutoff is required",
+		)
+	}
+	rows, err := r.db.QueryContext(ctx, `
+SELECT turn.id::text, message.status
+FROM chat_agent_turns AS turn
+JOIN messages AS message ON message.id = turn.message_id
+WHERE turn.status = 'running' AND turn.started_at < $1
+ORDER BY turn.started_at, turn.id
+`, startedBefore)
+	if err != nil {
+		return 0, fmt.Errorf("query incomplete chat Agent turns: %w", err)
+	}
+	type incompleteTurn struct {
+		id             string
+		terminalStatus string
+	}
+	turns := []incompleteTurn{}
+	for rows.Next() {
+		var turnID, messageStatus string
+		if err := rows.Scan(&turnID, &messageStatus); err != nil {
+			_ = rows.Close()
+			return 0, fmt.Errorf("scan incomplete chat Agent turn: %w", err)
+		}
+		turns = append(turns, incompleteTurn{
+			id:             turnID,
+			terminalStatus: normalizeChatAgentTurnStatus(messageStatus),
+		})
+	}
+	if err := rows.Close(); err != nil {
+		return 0, fmt.Errorf("close incomplete chat Agent turns: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("iterate incomplete chat Agent turns: %w", err)
+	}
+
+	recovered := 0
+	for _, turn := range turns {
+		eventID, err := r.generateID()
+		if err != nil {
+			return recovered, err
+		}
+		_, err = r.AppendChatAgentEvent(ctx, turn.id, AppendChatAgentEventInput{
+			EventID:    eventID,
+			Type:       ChatAgentEventTurnEnded,
+			Payload:    map[string]any{"status": turn.terminalStatus},
+			OccurredAt: startedBefore,
+		})
+		if isChatAgentTurnTerminalError(err) {
+			continue
+		}
+		if err != nil {
+			return recovered, err
+		}
+		recovered++
+	}
+	return recovered, nil
 }
 
 func (r *PostgresRepository) CreateConversation(
@@ -609,6 +765,9 @@ ORDER BY sequence_no ASC, created_at ASC, id ASC
 	if err := r.populateMessageAttachments(ctx, userID, messages); err != nil {
 		return nil, err
 	}
+	if err := r.populateMessageAgentEvents(ctx, conversationID, messages); err != nil {
+		return nil, err
+	}
 
 	return messages, nil
 }
@@ -995,6 +1154,9 @@ WHERE id = $1
 	}
 	messages := []Message{message}
 	if err := r.populateMessageAttachments(ctx, userID, messages); err != nil {
+		return Message{}, err
+	}
+	if err := r.populateMessageAgentEvents(ctx, conversationID, messages); err != nil {
 		return Message{}, err
 	}
 
@@ -2199,6 +2361,62 @@ func scanConversationContextSummary(
 	return summary, err
 }
 
+func scanChatAgentEvent(scanner rowScanner) (ChatAgentEvent, error) {
+	var event ChatAgentEvent
+	var stepSequence sql.NullInt64
+	var payload []byte
+	if err := scanner.Scan(
+		&event.EventID,
+		&event.TurnID,
+		&event.UserID,
+		&event.ConversationID,
+		&event.MessageID,
+		&event.RunID,
+		&event.Sequence,
+		&event.Type,
+		&stepSequence,
+		&payload,
+		&event.OccurredAt,
+	); err != nil {
+		return ChatAgentEvent{}, err
+	}
+	if stepSequence.Valid {
+		event.StepSequence = int(stepSequence.Int64)
+	}
+	decoded, err := unmarshalJSONObject(payload)
+	if err != nil {
+		return ChatAgentEvent{}, err
+	}
+	event.Payload = decoded
+	return event, nil
+}
+
+func (r *PostgresRepository) populateMessageAgentEvents(
+	ctx context.Context,
+	conversationID string,
+	messages []Message,
+) error {
+	if len(messages) == 0 {
+		return nil
+	}
+	events, err := r.ListChatAgentEvents(ctx, conversationID)
+	if err != nil {
+		return err
+	}
+	indexes := make(map[string]int, len(messages))
+	for index := range messages {
+		indexes[messages[index].ID] = index
+	}
+	for _, event := range events {
+		index, ok := indexes[event.MessageID]
+		if !ok {
+			continue
+		}
+		messages[index].AgentEvents = append(messages[index].AgentEvents, event)
+	}
+	return nil
+}
+
 func mergeConversationMetadata(existing map[string]any, input UpdateConversationInput) map[string]any {
 	if input.ReplaceMetadata != nil {
 		return cloneJSONObject(*input.ReplaceMetadata)
@@ -2327,6 +2545,13 @@ func nullIfEmpty(value string) any {
 		return nil
 	}
 
+	return value
+}
+
+func nullInt(value int) any {
+	if value <= 0 {
+		return nil
+	}
 	return value
 }
 

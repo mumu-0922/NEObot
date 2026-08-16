@@ -100,12 +100,13 @@ database_url="$(database_url_for "${container_name}")"
 (cd "${backend_dir}" && go build -buildvcs=false -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" "$@"; }
 
-log "applying and replaying migrations through schema head 095"
+log "applying and replaying migrations through schema head 096"
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 089_agent_draft_learning" "${work_dir}/fresh.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/fresh.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/fresh.log"
-[[ "$(psql_command "${container_name}" 'SELECT max(version) FROM schema_migrations')" == "95" ]]
+grep -Fq "up 096_chat_agent_event_log" "${work_dir}/fresh.log"
+[[ "$(psql_command "${container_name}" 'SELECT max(version) FROM schema_migrations')" == "96" ]]
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
@@ -368,6 +369,8 @@ restore_counts="$(psql_command "${restore_container_name}" "SELECT concat_ws(','
   (SELECT count(*) FROM agent_learning_cleanup_queue));")"
 [[ "${source_counts}" == "${restore_counts}" ]]
 
+run_migrate down >"${work_dir}/peel-096-chat-agent-event-tail.log" 2>&1
+grep -Fq "down 096_chat_agent_event_log" "${work_dir}/peel-096-chat-agent-event-tail.log"
 run_migrate down >"${work_dir}/peel-095-tail.log" 2>&1
 grep -Fq "down 095_agent_product_canary_activation" "${work_dir}/peel-095-tail.log"
 log "proving active, LOGIN-membership and retained-fact down guards"
@@ -402,11 +405,14 @@ if [[ "${guard_status}" -eq 0 ]] ||
   exit 1
 fi
 
-log "proving clean disposable 094 down/up and final head 095"
+log "proving clean disposable 094 down/up and final head 096"
 start_database "${clean_container_name}"
 clean_database_url="$(database_url_for "${clean_container_name}")"
 MIGRATION_DATABASE_URL="${clean_database_url}" "${work_dir}/migrate" up \
   >"${work_dir}/clean-up.log" 2>&1
+MIGRATION_DATABASE_URL="${clean_database_url}" "${work_dir}/migrate" down \
+  >"${work_dir}/clean-down-096.log" 2>&1
+grep -Fq "down 096_chat_agent_event_log" "${work_dir}/clean-down-096.log"
 MIGRATION_DATABASE_URL="${clean_database_url}" "${work_dir}/migrate" down \
   >"${work_dir}/clean-down-095.log" 2>&1
 grep -Fq "down 095_agent_product_canary_activation" "${work_dir}/clean-down-095.log"
@@ -417,6 +423,7 @@ MIGRATION_DATABASE_URL="${clean_database_url}" "${work_dir}/migrate" up \
   >"${work_dir}/clean-reup.log" 2>&1
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/clean-reup.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/clean-reup.log"
-[[ "$(psql_command "${clean_container_name}" 'SELECT max(version) FROM schema_migrations')" == "95" ]]
+grep -Fq "up 096_chat_agent_event_log" "${work_dir}/clean-reup.log"
+[[ "$(psql_command "${clean_container_name}" 'SELECT max(version) FROM schema_migrations')" == "96" ]]
 
 log "passed (fresh/replay, exact LOGIN, scoped Draft claim, Runner result replay, human decision separation, cleanup, dump/restore, guarded and clean down/up)"

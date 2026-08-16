@@ -181,7 +181,32 @@ func main() {
 			}
 			developmentSession = &session
 		}
-		chatRepo = chat.NewPostgresRepository(sqlDB)
+		postgresChatRepo := chat.NewPostgresRepository(sqlDB)
+		chatRecoveryCtx, chatRecoveryCancel := context.WithTimeout(
+			context.Background(),
+			databaseOpenTimeout,
+		)
+		recoveredTurns, chatRecoveryErr := postgresChatRepo.RecoverIncompleteChatAgentTurns(
+			chatRecoveryCtx,
+			time.Now().UTC(),
+		)
+		chatRecoveryCancel()
+		if chatRecoveryErr != nil {
+			_ = redisClient.Close()
+			_ = db.Close()
+			logger.Error(
+				"chat_agent_recovery_failed",
+				slog.String("error", redactSensitiveLogText(chatRecoveryErr.Error())),
+			)
+			os.Exit(1)
+		}
+		if recoveredTurns > 0 {
+			logger.Info(
+				"chat_agent_turns_recovered",
+				slog.Int("count", recoveredTurns),
+			)
+		}
+		chatRepo = postgresChatRepo
 		fileRepo = files.NewPostgresRepository(sqlDB)
 		runtimeConfigRepo = runtimeconfig.NewPostgresProviderConfigRepository(sqlDB)
 		taskModelRepo = runtimeconfig.NewPostgresTaskModelSettingsRepository(sqlDB)

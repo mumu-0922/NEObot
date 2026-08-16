@@ -186,7 +186,7 @@ Readiness never mutates schema, creates buckets, or runs migrations.
 
 The Go migration runner owns transaction boundaries, takes a Postgres advisory
 lock, validates migration names/checksums, and records each applied migration
-in `schema_migrations`. The current schema head is `069`. Migration `038`
+in `schema_migrations`. The current schema head is `096`. Migration `038`
 requires PostgreSQL major `17`, the `pg_textsearch` preload, and exact pgvector
 `0.8.5` / pg_textsearch `1.3.1` extension versions. Migrations `039` and `040`
 retain the dedicated API role by exposing only hardened document-lifecycle and
@@ -216,6 +216,12 @@ does not promote the v1 Global Top 5 reader. Migration `068` binds promotion to
 extraction profile v4, whose Tool schema enumerates only hydrated user-role and
 assistant-role evidence IDs. Migration `069` advances to the Provider-compatible
 v5 schema while retaining local duplicate/forgery rejection.
+Migrations `070` through `095` add the later Assistant/Skill, MCP, Memory and
+default-off Agent control-plane tails catalogued in
+`backend/migrations/README.md`. Migration `096` adds the independent ordinary
+Chat Agent Turn/Event log. The API runtime has read plus exact append-function
+authority and no direct event-table DML; Backend startup reconciles incomplete
+Turns only after operators have applied the migration.
 
 Apply migrations from the same immutable `BACKEND_IMAGE` used by `backend` and
 `admin`:
@@ -265,10 +271,16 @@ exec psql --set=ON_ERROR_STOP=1 \
 '
 ```
 
-Acceptance requires versions `001` through `057`, ending at
-`057_memory_actions_activity_usage`. Treat `schema_migrations` as runner state,
+Acceptance for the current release requires versions `001` through `096`,
+ending at `096_chat_agent_event_log`. Treat `schema_migrations` as runner state,
 not a domain table. Never use `baseline` routinely; it exists only to accept
-reviewed legacy rows that lack checksums.
+reviewed legacy rows that lack checksums. The disposable Chat event replay and
+least-privilege drill is:
+
+```bash
+cd mm-chat
+bash scripts/verify-chat-agent-event-log-postgres17.sh
+```
 
 ### Fresh-install role provisioning
 

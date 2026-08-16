@@ -1,4 +1,10 @@
-import type { ProcessStep, ProcessStepKind, ProcessStepStatus } from "./types";
+import type {
+  ChatAgentEvent,
+  ChatAgentEventType,
+  ProcessStep,
+  ProcessStepKind,
+  ProcessStepStatus,
+} from "./types";
 
 const PROCESS_STEP_KINDS = new Set<ProcessStepKind>([
   "reasoning",
@@ -17,6 +23,20 @@ const PROCESS_STEP_STATUSES = new Set<ProcessStepStatus>([
   "skipped",
   "cancelled",
   "outcome_unknown",
+  "interrupted",
+]);
+
+const CHAT_AGENT_EVENT_TYPES = new Set<ChatAgentEventType>([
+  "turn.started",
+  "turn.ended",
+  "step.started",
+  "step.ended",
+  "assistant.message",
+  "tool.called",
+  "tool.result",
+  "goal.changed",
+  "goal.round.started",
+  "context.replaced",
 ]);
 
 const SPECIALIZED_TOOL_KINDS: Readonly<Record<string, ProcessStepKind>> = {
@@ -143,6 +163,101 @@ export function processTraceFromMessageMetadata(
 ): ProcessStep[] | undefined {
   const trace = normalizeProcessTrace(metadata.processTrace);
   return trace.length > 0 ? trace : undefined;
+}
+
+export function normalizeChatAgentEvent(value: unknown): ChatAgentEvent | null {
+  if (!isRecord(value)) return null;
+  const eventId = stringValue(value.eventId);
+  const turnId = stringValue(value.turnId);
+  const conversationId = stringValue(value.conversationId);
+  const messageId = stringValue(value.messageId);
+  const runId = stringValue(value.runId);
+  const type = stringValue(value.type) as ChatAgentEventType;
+  const sequence = positiveInteger(value.sequence);
+  const stepSequence = optionalPositiveInteger(value.stepSequence);
+  const occurredAt = stringValue(value.occurredAt);
+  if (
+    !eventId ||
+    !turnId ||
+    !conversationId ||
+    !messageId ||
+    !runId ||
+    !CHAT_AGENT_EVENT_TYPES.has(type) ||
+    sequence === undefined ||
+    (value.stepSequence !== undefined && stepSequence === undefined) ||
+    !occurredAt ||
+    !Number.isFinite(Date.parse(occurredAt)) ||
+    !isRecord(value.payload)
+  ) {
+    return null;
+  }
+  return {
+    eventId,
+    turnId,
+    conversationId,
+    messageId,
+    runId,
+    sequence,
+    type,
+    ...(stepSequence !== undefined ? { stepSequence } : {}),
+    payload: { ...value.payload },
+    occurredAt,
+  };
+}
+
+export function normalizeChatAgentEvents(value: unknown): ChatAgentEvent[] {
+  if (!Array.isArray(value)) return [];
+  const events: ChatAgentEvent[] = [];
+  const eventIds = new Set<string>();
+  for (const candidate of value) {
+    const event = normalizeChatAgentEvent(candidate);
+    if (!event || eventIds.has(event.eventId)) continue;
+    eventIds.add(event.eventId);
+    events.push(event);
+  }
+  return events.sort(
+    (left, right) =>
+      left.sequence - right.sequence ||
+      left.eventId.localeCompare(right.eventId),
+  );
+}
+
+export function processTraceFromChatAgentEvents(
+  value: unknown,
+  legacy: ProcessStep[] | undefined = undefined,
+): ProcessStep[] | undefined {
+  const events = normalizeChatAgentEvents(value);
+  if (events.length === 0) return legacy;
+
+  let steps: ProcessStep[] = [];
+  let interruptedAt = "";
+  for (const event of events) {
+    const processStep = normalizeProcessStep(event.payload.processStep);
+    if (processStep) {
+      steps = upsertProcessStep(steps, processStep);
+    }
+    if (Array.isArray(event.payload.processSteps)) {
+      for (const candidate of event.payload.processSteps) {
+        const step = normalizeProcessStep(candidate);
+        if (step) steps = upsertProcessStep(steps, step);
+      }
+    }
+    if (
+      event.type === "turn.ended" &&
+      stringValue(event.payload.status) === "interrupted"
+    ) {
+      interruptedAt = event.occurredAt;
+    }
+  }
+  if (steps.length === 0) return legacy;
+  if (interruptedAt) {
+    steps = steps.map((step) =>
+      isProcessStepActive(step)
+        ? interruptProcessStep(step, interruptedAt)
+        : step,
+    );
+  }
+  return steps;
 }
 
 export function upsertProcessStep(
@@ -292,6 +407,39 @@ function nonNegativeNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value >= 0
     ? value
     : undefined;
+}
+
+function positiveInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1
+    ? value
+    : undefined;
+}
+
+function optionalPositiveInteger(value: unknown): number | undefined {
+  return value === undefined ? undefined : positiveInteger(value);
+}
+
+function interruptProcessStep(
+  step: ProcessStep,
+  interruptedAt: string,
+): ProcessStep {
+  const startedAt = step.startedAt ? Date.parse(step.startedAt) : Number.NaN;
+  const completedAt = Date.parse(interruptedAt);
+  const durationMs =
+    Number.isFinite(startedAt) && Number.isFinite(completedAt)
+      ? Math.max(0, completedAt - startedAt)
+      : step.durationMs;
+  return {
+    ...step,
+    status: "interrupted",
+    completedAt: interruptedAt,
+    ...(durationMs !== undefined ? { durationMs } : {}),
+    detail: {
+      ...(step.detail ?? {}),
+      failureCategory: "interrupted",
+      outcome: "interrupted",
+    },
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -120,7 +120,9 @@ The implementation treats one user request as a Turn and every Provider call
 as a Step. A required Skill load is a `skill_prelude` Step and does not consume
 the ordinary task-Step sequence; this preserves first-task-Step Memory/Search
 authority. The compatibility `round` field currently carries the physical Step
-sequence until the durable event migration lands.
+sequence for provider-loop ordering. Durable events project the existing
+process updates without adding a provider sideband that could change Tool
+scheduling or cancellation order.
 
 The Registry is rebuilt for every Step from current Backend authority. It
 executes registered MCP owners first, local Skills second, and retrieval Tools
@@ -400,7 +402,9 @@ type ProcessStepStatus =
   | "completed"
   | "failed"
   | "skipped"
-  | "cancelled";
+  | "cancelled"
+  | "outcome_unknown"
+  | "interrupted";
 
 interface ProcessStep {
   id: string;
@@ -442,6 +446,46 @@ Terminal assistant metadata is:
 }
 ```
 
+Migration `096` makes a separate Chat-owned append-only event log the durable
+process authority for new assistant Messages:
+
+```text
+chat_agent_turns(message_id, run_id, status, next_sequence, started_at, ended_at)
+chat_agent_events(turn_id, sequence, event_id, event_type, step_sequence,
+                  payload, occurred_at)
+
+turn.started / turn.ended
+step.started / step.ended
+assistant.message
+tool.called / tool.result
+goal.changed / goal.round.started
+context.replaced
+```
+
+`chat_agent_append_event` locks the Turn and allocates `next_sequence`; it never
+derives the next value with `MAX(sequence)`. Event IDs are replay-safe and event
+rows are immutable. The API runtime has SELECT plus the two exact append
+functions and no direct event-table DML. `agent_run_events` remains the
+independent optional G20/G21 control-plane stream and never receives full Chat
+Tool Results.
+
+The backend persists each process or Tool projection before emitting the same
+sanitized projection over SSE. Historical message reads attach `agentEvents`;
+the frontend sorts and deduplicates valid events and prefers their process
+projection over legacy `metadata.processTrace`. Old Messages without valid
+events retain the legacy fallback. Tool event payloads retain only bounded
+display facts such as name, mode, risk, status, duration, Round and public
+Server label; command, arguments, query, raw Result, credentials, private
+Server refs and paths are forbidden.
+
+At startup, a `running` Turn older than the recovery cutoff receives one
+terminal event. An already terminal assistant Message keeps its committed
+`completed|failed|cancelled` status. Only a `pending|streaming` or invalid
+Message state becomes `interrupted`, which atomically marks the Message failed
+with `AGENT_RUN_INTERRUPTED`. The frontend closes any still-active projected
+steps as `interrupted`. Message finalization and the terminal event are not one
+database transaction; this reconciliation is the explicit torn-write boundary.
+
 A successful answer with only a Generation step persists that step so reload
 can display the `Direct` route. Failed and cancelled Generation steps remain
 durable. Detail fields are allowlisted and bounded; unknown keys and exact
@@ -463,6 +507,8 @@ Rules:
 - Ordinary answers render a durable `Direct` summary rather than an empty panel.
 - Persist rendered provider reasoning and sanitized Process Steps so reload and
   conversation switching reproduce the completed view.
+- Prefer the durable Chat Agent event projection on reload and use
+  `metadata.processTrace` only for pre-`096` or invalid-event compatibility.
 - Keep the durable diagnostic trace complete, but project specialized read-only
   tools once in the ordinary UI: a generic `search_web`/`search_knowledge`
   Tool row is hidden only when the same `toolName` and Round has a matching

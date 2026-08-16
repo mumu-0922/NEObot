@@ -46,6 +46,9 @@ grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/up.log"
 grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/up.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/up.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/up.log"
+grep -Fq "up 096_chat_agent_event_log" "${work_dir}/up.log"
+MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" down >"${work_dir}/peel-096-tail-1.log" 2>&1
+grep -Fq "down 096_chat_agent_event_log" "${work_dir}/peel-096-tail-1.log"
 MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" down >"${work_dir}/peel-095-tail-1.log" 2>&1
 grep -Fq "down 095_agent_product_canary_activation" "${work_dir}/peel-095-tail-1.log"
 MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" down >"${work_dir}/peel-094-tail-1.log" 2>&1
@@ -145,6 +148,7 @@ grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/reup.log"
 grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/reup.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/reup.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/reup.log"
+grep -Fq "up 096_chat_agent_event_log" "${work_dir}/reup.log"
 repaired="$(
   docker exec "${container_name}" psql -U postgres -d neo_chat_mcp_credentials -Atc \
     "SELECT concat_ws('|', transport, auth_type, status, last_error_code, auth_config #>> '{metadata,runnerArtifactId}') FROM mcp_servers WHERE id = '78000000-0000-4000-8000-000000000002'"

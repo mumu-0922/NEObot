@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +23,195 @@ import (
 )
 
 const testSHA256 = "b94d27b9934d3e08a52e52d7da7dabfadebca7838dfb27f4f9174e65a2f27f21"
+
+func TestPostgresChatAgentEventLogSequencesReplayAndInterruptsIncompleteTurn(t *testing.T) {
+	db := openPostgresIntegrationDB(t)
+	repo := NewPostgresRepository(db)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	conversation, err := repo.CreateConversation(ctx, CreateConversationInput{Title: "Agent events"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	userMessage, err := repo.CreateMessage(ctx, conversation.ID, CreateMessageInput{
+		Role: "user", Content: "run a Tool",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assistant, err := repo.CreateAssistantMessage(ctx, conversation.ID, CreateAssistantMessageInput{
+		ID: mustTestUUID(t), ParentMessageID: userMessage.ID,
+		IdempotencyKey: "agent-event-assistant-" + mustTestUUID(t),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	startedAt := time.Now().UTC()
+	turnID := mustTestUUID(t)
+	started, err := repo.StartChatAgentTurn(ctx, StartChatAgentTurnInput{
+		TurnID: turnID, EventID: mustTestUUID(t), ConversationID: conversation.ID,
+		MessageID: assistant.ID, RunID: mustTestUUID(t), OccurredAt: startedAt,
+	})
+	if err != nil || started.Sequence != 1 || started.Type != ChatAgentEventTurnStarted {
+		t.Fatalf("start event = %#v, %v", started, err)
+	}
+
+	replayInput := AppendChatAgentEventInput{
+		EventID: mustTestUUID(t), Type: ChatAgentEventStepStarted,
+		StepSequence: 1,
+		Payload: chatAgentProcessStepPayload(ProcessStep{
+			ID: assistant.ID + ":tool:1", Kind: ProcessStepKindTool,
+			Status: ProcessStepStatusRunning, LabelKey: "process.tool",
+			StartedAt: formatTime(startedAt), Detail: map[string]any{
+				"toolName": "terminal", "mode": "local_direct", "round": 1,
+			},
+		}),
+		OccurredAt: startedAt.Add(time.Millisecond),
+	}
+	first, err := repo.AppendChatAgentEvent(ctx, turnID, replayInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := repo.AppendChatAgentEvent(ctx, turnID, replayInput)
+	if err != nil || replayed.EventID != first.EventID || replayed.Sequence != first.Sequence {
+		t.Fatalf("idempotent replay = %#v, %v; first=%#v", replayed, err, first)
+	}
+
+	const concurrentEvents = 8
+	var wait sync.WaitGroup
+	errorsByCall := make(chan error, concurrentEvents)
+	concurrentEventIDs := make([]string, concurrentEvents)
+	for index := range concurrentEventIDs {
+		concurrentEventIDs[index] = mustTestUUID(t)
+	}
+	for index := 0; index < concurrentEvents; index++ {
+		wait.Add(1)
+		go func(index int) {
+			defer wait.Done()
+			_, appendErr := repo.AppendChatAgentEvent(ctx, turnID, AppendChatAgentEventInput{
+				EventID: concurrentEventIDs[index], Type: ChatAgentEventStepStarted,
+				StepSequence: index + 2,
+				Payload: map[string]any{"agentStep": map[string]any{
+					"sequence": index + 2, "status": "running",
+				}},
+				OccurredAt: startedAt.Add(time.Duration(index+2) * time.Millisecond),
+			})
+			errorsByCall <- appendErr
+		}(index)
+	}
+	wait.Wait()
+	close(errorsByCall)
+	for appendErr := range errorsByCall {
+		if appendErr != nil {
+			t.Fatalf("concurrent append: %v", appendErr)
+		}
+	}
+
+	events, err := repo.ListChatAgentEvents(ctx, conversation.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sequences := make([]int, 0, len(events))
+	for _, event := range events {
+		sequences = append(sequences, int(event.Sequence))
+	}
+	sort.Ints(sequences)
+	if len(sequences) != concurrentEvents+2 {
+		t.Fatalf("event count = %d, want %d", len(sequences), concurrentEvents+2)
+	}
+	for index, sequence := range sequences {
+		if sequence != index+1 {
+			t.Fatalf("event sequences = %#v", sequences)
+		}
+	}
+
+	interrupted, err := repo.RecoverIncompleteChatAgentTurns(
+		ctx, startedAt.Add(time.Second),
+	)
+	if err != nil || interrupted != 1 {
+		t.Fatalf("interrupt incomplete turns = %d, %v", interrupted, err)
+	}
+	message, err := repo.GetMessage(ctx, conversation.ID, assistant.ID)
+	if err != nil || message.Status != "failed" ||
+		message.Metadata["errorCode"] != "AGENT_RUN_INTERRUPTED" {
+		t.Fatalf("interrupted assistant = %#v, %v", message, err)
+	}
+	projected := projectChatAgentProcessTrace(message.AgentEvents, nil)
+	if len(projected) != 1 || projected[0].Status != ProcessStepStatusInterrupted {
+		t.Fatalf("interrupted durable projection = %#v", projected)
+	}
+}
+
+func TestPostgresChatAgentRecoveryPreservesCompletedMessage(t *testing.T) {
+	db := openPostgresIntegrationDB(t)
+	repo := NewPostgresRepository(db)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	conversation, err := repo.CreateConversation(ctx, CreateConversationInput{Title: "Agent recovery"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	userMessage, err := repo.CreateMessage(ctx, conversation.ID, CreateMessageInput{
+		Role: "user", Content: "finish before terminal event",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assistant, err := repo.CreateAssistantMessage(ctx, conversation.ID, CreateAssistantMessageInput{
+		ID: mustTestUUID(t), ParentMessageID: userMessage.ID,
+		IdempotencyKey: "agent-recovery-assistant-" + mustTestUUID(t),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	startedAt := time.Now().UTC()
+	turnID := mustTestUUID(t)
+	if _, err := repo.StartChatAgentTurn(ctx, StartChatAgentTurnInput{
+		TurnID: turnID, EventID: mustTestUUID(t), ConversationID: conversation.ID,
+		MessageID: assistant.ID, RunID: mustTestUUID(t), OccurredAt: startedAt,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.FinalizeAssistantMessage(
+		ctx,
+		conversation.ID,
+		assistant.ID,
+		FinalizeAssistantMessageInput{Status: "completed", Content: "done"},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	recovered, err := repo.RecoverIncompleteChatAgentTurns(ctx, startedAt.Add(time.Second))
+	if err != nil || recovered != 1 {
+		t.Fatalf("recover incomplete turns = %d, %v", recovered, err)
+	}
+	message, err := repo.GetMessage(ctx, conversation.ID, assistant.ID)
+	if err != nil || message.Status != "completed" || message.Content != "done" {
+		t.Fatalf("completed assistant = %#v, %v", message, err)
+	}
+	events := message.AgentEvents
+	if len(events) != 2 || events[1].Type != ChatAgentEventTurnEnded ||
+		chatAgentPayloadString(events[1].Payload, "status") != ChatAgentTurnCompleted {
+		t.Fatalf("recovered events = %#v", events)
+	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM chat_agent_events WHERE turn_id = $1`, turnID); err == nil ||
+		!strings.Contains(err.Error(), "CHAT_AGENT_EVENT_IMMUTABLE") {
+		t.Fatalf("direct event delete error = %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM conversations WHERE id = $1`, conversation.ID); err != nil {
+		t.Fatalf("cascade conversation with Agent events: %v", err)
+	}
+	var remaining int
+	if err := db.QueryRowContext(
+		ctx,
+		`SELECT count(*) FROM chat_agent_turns WHERE id = $1`,
+		turnID,
+	).Scan(&remaining); err != nil || remaining != 0 {
+		t.Fatalf("remaining Agent turns = %d, %v", remaining, err)
+	}
+}
 
 func TestPostgresCreateMessagePersistsAttachmentOnlyMessages(t *testing.T) {
 	db := openPostgresIntegrationDB(t)

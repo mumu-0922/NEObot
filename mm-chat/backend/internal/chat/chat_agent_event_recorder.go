@@ -1,0 +1,178 @@
+package chat
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+)
+
+type chatAgentEventRecorder struct {
+	service *Service
+	turnID  string
+	mu      sync.Mutex
+	ended   bool
+}
+
+func startChatAgentEventRecorder(
+	ctx context.Context,
+	service *Service,
+	conversationID string,
+	messageID string,
+	runID string,
+	at time.Time,
+) (*chatAgentEventRecorder, error) {
+	turnID, err := NewUUID()
+	if err != nil {
+		return nil, fmt.Errorf("%w: create turn id: %v", errChatAgentEventPersistence, err)
+	}
+	eventID, err := NewUUID()
+	if err != nil {
+		return nil, fmt.Errorf("%w: create event id: %v", errChatAgentEventPersistence, err)
+	}
+	if _, err := service.StartChatAgentTurn(ctx, StartChatAgentTurnInput{
+		TurnID: turnID, EventID: eventID, ConversationID: conversationID,
+		MessageID: messageID, RunID: runID, OccurredAt: at,
+	}); err != nil {
+		return nil, fmt.Errorf("%w: %v", errChatAgentEventPersistence, err)
+	}
+	return &chatAgentEventRecorder{service: service, turnID: turnID}, nil
+}
+
+func (recorder *chatAgentEventRecorder) append(
+	ctx context.Context,
+	eventType string,
+	stepSequence int,
+	payload map[string]any,
+	at time.Time,
+) (ChatAgentEvent, error) {
+	if recorder == nil || recorder.service == nil || recorder.turnID == "" {
+		return ChatAgentEvent{}, errChatAgentEventPersistence
+	}
+	eventID, err := NewUUID()
+	if err != nil {
+		return ChatAgentEvent{}, fmt.Errorf("%w: create event id: %v", errChatAgentEventPersistence, err)
+	}
+	event, err := recorder.service.AppendChatAgentEvent(ctx, recorder.turnID, AppendChatAgentEventInput{
+		EventID: eventID, Type: eventType, StepSequence: stepSequence,
+		Payload: payload, OccurredAt: at,
+	})
+	if err != nil {
+		return ChatAgentEvent{}, fmt.Errorf("%w: %v", errChatAgentEventPersistence, err)
+	}
+	return event, nil
+}
+
+func (recorder *chatAgentEventRecorder) recordProcessStep(
+	ctx context.Context,
+	step ProcessStep,
+	at time.Time,
+) (ProcessStep, error) {
+	eventType := ChatAgentEventStepStarted
+	if isTerminalProcessStepStatus(step.Status) {
+		eventType = ChatAgentEventStepEnded
+	}
+	stepSequence := 0
+	if round, ok := step.Detail["round"].(int); ok && round > 0 {
+		stepSequence = round
+	} else if round, ok := step.Detail["round"].(float64); ok && round >= 1 {
+		stepSequence = int(round)
+	}
+	event, err := recorder.append(
+		ctx, eventType, stepSequence, chatAgentProcessStepPayload(step), at,
+	)
+	if err != nil {
+		return ProcessStep{}, err
+	}
+	projected, ok := processStepFromChatAgentPayload(event.Payload["processStep"])
+	if !ok {
+		return ProcessStep{}, fmt.Errorf("%w: process projection invalid", errChatAgentEventPersistence)
+	}
+	return projected, nil
+}
+
+func (recorder *chatAgentEventRecorder) recordToolExecution(
+	ctx context.Context,
+	execution *ProviderToolExecutionEvent,
+	processSteps []ProcessStep,
+	at time.Time,
+) (ChatAgentEvent, error) {
+	if execution == nil {
+		return ChatAgentEvent{}, fmt.Errorf("%w: Tool event missing", errChatAgentEventPersistence)
+	}
+	eventType := ChatAgentEventToolCalled
+	if isTerminalProcessStepStatus(execution.Status) {
+		eventType = ChatAgentEventToolResult
+	}
+	return recorder.append(
+		ctx,
+		eventType,
+		max(execution.Round, 0),
+		chatAgentToolEventPayload(execution, processSteps),
+		at,
+	)
+}
+
+func (recorder *chatAgentEventRecorder) finish(
+	ctx context.Context,
+	status string,
+	content string,
+	errorCode string,
+	at time.Time,
+) error {
+	if recorder == nil {
+		return nil
+	}
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	if recorder.ended {
+		return nil
+	}
+	status = normalizeChatAgentTurnStatus(status)
+	messagePayload := map[string]any{
+		"status":  status,
+		"content": content,
+	}
+	if errorCode = strings.TrimSpace(errorCode); errorCode != "" {
+		messagePayload["errorCode"] = truncateChatAgentUTF8(
+			redactProcessSecrets(errorCode), 256,
+		)
+	}
+	_, messageErr := recorder.append(
+		ctx, ChatAgentEventAssistantMessage, 0, messagePayload, at,
+	)
+	_, endErr := recorder.append(
+		ctx,
+		ChatAgentEventTurnEnded,
+		0,
+		map[string]any{"status": status},
+		at,
+	)
+	if endErr == nil {
+		recorder.ended = true
+	}
+	return errors.Join(messageErr, endErr)
+}
+
+func normalizeChatAgentTurnStatus(status string) string {
+	switch strings.TrimSpace(status) {
+	case ChatAgentTurnCompleted:
+		return ChatAgentTurnCompleted
+	case ChatAgentTurnFailed:
+		return ChatAgentTurnFailed
+	case ChatAgentTurnCancelled:
+		return ChatAgentTurnCancelled
+	default:
+		return ChatAgentTurnInterrupted
+	}
+}
+
+func chatAgentErrorCode(metadata map[string]any) string {
+	if metadata == nil {
+		return ""
+	}
+	value, _ := metadata["errorCode"].(string)
+	return strings.TrimSpace(value)
+}

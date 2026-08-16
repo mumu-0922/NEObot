@@ -157,10 +157,30 @@ export interface ChatMessageDto {
   attachments: ServerAttachmentDto[];
   outputBlocks: JsonArray;
   metadata: JsonObject;
+  agentEvents?: ChatAgentEventDto[];
   parentMessageId?: EntityId;
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
   completedAt?: IsoDateTime;
+}
+
+export interface ChatAgentEventDto {
+  eventId: EntityId;
+  turnId: EntityId;
+  conversationId: EntityId;
+  messageId: EntityId;
+  runId: EntityId;
+  sequence: number;
+  type:
+    | "turn.started" | "turn.ended"
+    | "step.started" | "step.ended"
+    | "assistant.message"
+    | "tool.called" | "tool.result"
+    | "goal.changed" | "goal.round.started"
+    | "context.replaced";
+  stepSequence?: number;
+  payload: JsonObject;
+  occurredAt: IsoDateTime;
 }
 
 export interface ServerAttachmentDto {
@@ -215,6 +235,10 @@ Rules:
   `knowledge -> knowledge_source`.
 - Message responses return attachment metadata and backend file IDs only. They
   must not expose object keys, local paths, buckets, or MinIO/S3 URLs.
+- New assistant Messages return ordered `agentEvents` from the Chat-owned
+  migration-`096` event log. Old Messages omit the field. Tool payloads are
+  bounded replay projections and never expose command text, arguments, raw
+  output, credentials, private Server references, or paths.
 - `parentMessageId`, when present, must be a UUID string.
 - `sequenceNo` is repository-owned and assigned inside the conversation lock.
 - Duplicate non-empty `idempotencyKey` values return `409 IDEMPOTENCY_CONFLICT`.
@@ -267,6 +291,8 @@ conversations
 messages
 files
 message_attachments
+chat_agent_turns
+chat_agent_events
 ```
 
 Allowed behavior:
@@ -283,6 +309,8 @@ Allowed behavior:
 - Store `idempotency_key` as a retry guard without replay semantics.
   Duplicate detection is limited to the conversation/message idempotency unique
   indexes, not arbitrary database uniqueness failures.
+- Append Chat Agent Turn/Event rows only through the exact `SECURITY DEFINER`
+  functions. The API runtime has no direct event-table DML.
 
 Not allowed yet inside the chat CRUD handler/repository path: request-scoped
 `sessions`, `provider_configs`, `audit_logs`, Redis session-cache identity,

@@ -75,12 +75,22 @@ unrelated personal files outside the configured workspace.
    Skill again.
 5. Uninstall the last Skill and start another Turn. The Backend publishes an
    empty catalog tombstone and exposes no local Skill Tools.
+6. Complete one `skill -> terminal -> answer` Turn, refresh the page, and open
+   the process panel. The Tool order and terminal statuses must match the live
+   view; history now prefers migration-`096` Agent events over legacy Message
+   metadata.
+7. For restart recovery, start a bounded long-running local command, restart
+   only the Backend, then reload the Conversation. The unfinished Tool/Step
+   must show `interrupted`; an answer that had already completed before restart
+   must remain completed. This uses the same ordinary Backend user and requires
+   no `sudo`, Runner, or per-Skill isolation.
 
 The local regression command is:
 
 ```bash
 cd mm-chat/backend
 go test ./internal/chat -run TestLocalSkill -count=1
+bash ../scripts/verify-chat-agent-event-log-postgres17.sh
 ```
 
 ## Rollback

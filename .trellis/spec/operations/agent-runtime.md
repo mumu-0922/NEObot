@@ -10,6 +10,12 @@ verification or rollback. This is the current ordinary Chat Skill backend. The
 separate G20/G21 rootless OCI scenarios below are disabled optional/history and
 do not gate `local_direct`.
 
+Ordinary Chat migration `096` advances the application database head without
+promoting the held OCI path. Its reviewed activation/closure artifacts remain
+pinned to migration head `095` and therefore stay ineligible until separately
+requalified. PostgreSQL tail drills must peel empty `096` before their retained
+`095` control-plane tail and return to current head `096`.
+
 ### 2. Signatures
 
 ```bash

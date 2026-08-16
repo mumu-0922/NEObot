@@ -22,7 +22,7 @@ import type {
   MemorySensitivity,
   MemoryType,
 } from "../../../lib/memory/types";
-import type { ProcessStep } from "../../../lib/chat/types";
+import type { ChatAgentEvent, ProcessStep } from "../../../lib/chat/types";
 import type {
   McpAuthType,
   McpCallRecord,
@@ -147,6 +147,7 @@ export interface ChatMessageDTO {
   attachments: ServerAttachmentDTO[];
   outputBlocks: unknown[];
   metadata: Record<string, unknown>;
+  agentEvents?: ChatAgentEvent[];
   parentMessageId?: string;
 }
 

@@ -30,6 +30,7 @@ import {
 import { IMAGE_CONTENT_POLICY_VIOLATION_CODE } from "../../lib/chat/types";
 import type { ProcessStep } from "../../lib/chat/types";
 import {
+  processTraceFromChatAgentEvents,
   processTraceFromMessageMetadata,
   reasoningFromMessageMetadata,
 } from "../../lib/chat/processTrace";
@@ -259,7 +260,11 @@ export function mapChatMessageDtoToMessage(
   );
   const generationError = normalizeServerGenerationError(message);
   const reasoning = reasoningFromMessageMetadata(message.metadata);
-  const processTrace = processTraceFromMessageMetadata(message.metadata);
+  const legacyProcessTrace = processTraceFromMessageMetadata(message.metadata);
+  const processTrace = processTraceFromChatAgentEvents(
+    message.agentEvents,
+    legacyProcessTrace,
+  );
 
   return {
     id: message.id,

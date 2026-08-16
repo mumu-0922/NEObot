@@ -15,6 +15,12 @@ Exact-host installation and general Root Run/Broker/Project/Child/Scheduler/
 Learning/Shadow promotion remain held. Do not enable Agent execution or
 install the bundle on this development host.
 
+The ordinary Chat Agent event log advances the application schema to migration
+`096`. This does not promote or rewrite the exact-host bundle: its reviewed
+activation/closure artifacts remain pinned to `095` and therefore stay held.
+Disposable legacy tail drills peel empty `096` before `095` and reapply through
+the current head `096`.
+
 ## Default state
 
 All future switches default off:

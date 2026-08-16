@@ -165,6 +165,7 @@ type Message struct {
 	IdempotencyKey    string
 	OutputBlocks      []any
 	Metadata          map[string]any
+	AgentEvents       []ChatAgentEvent
 	Attachments       []Attachment
 	CreatedAt         time.Time
 	UpdatedAt         time.Time

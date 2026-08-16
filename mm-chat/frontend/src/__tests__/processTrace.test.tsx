@@ -7,11 +7,13 @@ import contentMessages from "../i18n/locales/zh/Content.json";
 import {
   humanizeToolName,
   isProcessStepActive,
+  normalizeChatAgentEvents,
   normalizeProcessStep,
   normalizeProcessTrace,
   processOutcomeForDisplay,
   processReasonCategoryForDisplay,
   processToolLabelForDisplay,
+  processTraceFromChatAgentEvents,
   processTraceFromMessageMetadata,
   projectProcessStepsForDisplay,
   reasoningFromMessageMetadata,
@@ -201,6 +203,112 @@ describe("durable process trace", () => {
     };
     expect(reasoningFromMessageMetadata(metadata)).toBe("Provider summary");
     expect(processTraceFromMessageMetadata(metadata)).toHaveLength(1);
+  });
+
+  it("prefers durable Agent events and interrupts active steps after restart", () => {
+    const projected = processTraceFromChatAgentEvents(
+      [
+        {
+          eventId: "event-1",
+          turnId: "turn-1",
+          conversationId: "conversation-1",
+          messageId: "message-1",
+          runId: "run-1",
+          sequence: 2,
+          type: "step.started",
+          payload: {
+            processStep: {
+              id: "message-1:tool:1",
+              kind: "tool",
+              status: "running",
+              labelKey: "process.tool",
+              startedAt: "2026-08-16T12:00:00Z",
+              detail: {
+                toolName: "terminal",
+                mode: "local_direct",
+                round: 1,
+              },
+            },
+          },
+          occurredAt: "2026-08-16T12:00:00Z",
+        },
+        {
+          eventId: "event-2",
+          turnId: "turn-1",
+          conversationId: "conversation-1",
+          messageId: "message-1",
+          runId: "run-1",
+          sequence: 3,
+          type: "turn.ended",
+          payload: { status: "interrupted" },
+          occurredAt: "2026-08-16T12:00:02Z",
+        },
+      ],
+      [
+        {
+          id: "legacy-generation",
+          kind: "generation",
+          status: "completed",
+          labelKey: "process.generation",
+        },
+      ],
+    );
+
+    expect(projected).toEqual([
+      {
+        id: "message-1:tool:1",
+        kind: "tool",
+        status: "interrupted",
+        labelKey: "process.tool",
+        startedAt: "2026-08-16T12:00:00Z",
+        completedAt: "2026-08-16T12:00:02Z",
+        durationMs: 2000,
+        detail: {
+          toolName: "terminal",
+          mode: "local_direct",
+          round: 1,
+          failureCategory: "interrupted",
+          outcome: "interrupted",
+        },
+      },
+    ]);
+    expect(projected?.some(isProcessStepActive)).toBe(false);
+  });
+
+  it("rejects malformed durable events without replacing legacy history", () => {
+    expect(normalizeChatAgentEvents([{ sequence: 0, payload: [] }])).toEqual(
+      [],
+    );
+    const legacy = [
+      {
+        id: "legacy-generation",
+        kind: "generation" as const,
+        status: "completed" as const,
+        labelKey: "process.generation",
+      },
+    ];
+    expect(processTraceFromChatAgentEvents([{ invalid: true }], legacy)).toBe(
+      legacy,
+    );
+  });
+
+  it("sorts durable events by sequence and drops repeated event IDs", () => {
+    const base = {
+      turnId: "turn-1",
+      conversationId: "conversation-1",
+      messageId: "message-1",
+      runId: "run-1",
+      type: "step.started" as const,
+      payload: {},
+      occurredAt: "2026-08-16T12:00:00Z",
+    };
+    expect(
+      normalizeChatAgentEvents([
+        { ...base, eventId: "event-2", sequence: 2 },
+        { ...base, eventId: "event-1", sequence: 1 },
+        { ...base, eventId: "event-2", sequence: 2 },
+      ]).map((event) => event.eventId),
+    ).toEqual(["event-1", "event-2"]);
   });
 
   it("upserts live step transitions without reordering other steps", () => {

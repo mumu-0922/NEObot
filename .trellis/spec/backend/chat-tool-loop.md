@@ -82,10 +82,12 @@ replayable `search|tool` presentation.
   are structured Results. A per-MCP-call deadline is `tool_timeout`; the parent
   Run deadline, cancellation, `outcome_unknown`, and unrecoverable execution
   errors remain terminal.
-- Existing `ProviderToolExecutionEvent.Round` remains the compatibility
-  projection of the physical Step sequence until the durable G3 event schema
-  replaces it. Registry Result projection and presentation must not add raw
-  command, credential, private path, or unbounded Tool output to process data.
+- Existing `ProviderToolExecutionEvent.Round` remains the provider-loop
+  ordering input and is mirrored into durable event `step_sequence` when
+  positive. Do not add a Provider sideband merely to manufacture Agent Step
+  events: it changes Tool scheduling/cancellation semantics. Registry Result
+  projection and presentation must not add raw command, credential, private
+  path, or unbounded Tool output to process data.
 
 ### 4. Validation & Error Matrix
 
@@ -135,6 +137,88 @@ definitions switch + MCP switch + local switch + retrieval name switch
 ```text
 Turn -> Step -> current Registry -> owner dispatch -> ordered Result projection
      -> same-model next Step
+```
+
+## Scenario: Persist and replay ordinary Chat Agent events
+
+### 1. Scope / Trigger
+
+Apply when changing Chat Turn/Step persistence, Message history DTOs, process
+SSE ordering, restart recovery, event payloads, or migration `096`. This event
+stream belongs to ordinary Chat and must remain separate from optional G20/G21
+`agent_run_events`.
+
+### 2. Signatures
+
+```text
+chat_agent_start_turn(turn, event, user, conversation, message, run, at)
+chat_agent_append_event(turn, event, type, step_sequence, payload, at)
+RecoverIncompleteChatAgentTurns(cutoff)
+ChatMessageDTO.agentEvents[]
+```
+
+### 3. Contracts
+
+- One Turn binds one current-user Conversation, assistant Message and Run.
+  Event sequence is contiguous per Turn, allocated by locking the Turn row and
+  incrementing `next_sequence`; never use `MAX(sequence)+1`.
+- Event IDs are idempotent. Event rows are immutable. The fixed vocabulary is
+  Turn/Step/assistant/Tool/Goal/context only. `go_api_runtime` receives SELECT
+  plus the exact start/append Functions and no direct table DML.
+- Persist each sanitized process or Tool projection before emitting the same
+  projection over SSE. Never persist command, arguments, query, raw Result,
+  credentials, private Server refs, paths, or unbounded output.
+- Message reads attach ordered events. Frontend normalization sorts and
+  deduplicates valid events, prefers their process projection, and uses
+  `metadata.processTrace` only when no valid durable projection exists.
+- On startup, reconcile an old `running` Turn to the already committed Message
+  terminal status. Only `pending`, `streaming`, missing, or unknown Message
+  states become `interrupted`; this marks the Message failed with
+  `AGENT_RUN_INTERRUPTED` and closes active UI steps as interrupted.
+- Message finalization and terminal-event append are not one transaction. The
+  startup reconciliation is the explicit torn-write repair. It must not change
+  a completed Message into interrupted.
+- Down is guarded while either Chat Agent table contains data. All older
+  migration tail drills peel empty `096` before `095` and return to head `096`.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| concurrent appends | unique contiguous sequence under Turn row lock |
+| repeated event ID with identical input | exact stored event replay |
+| repeated event ID with changed input | replay conflict |
+| append after terminal Turn | `CHAT_AGENT_TURN_TERMINAL` |
+| process/Tool persistence fails | fail the Chat Run; do not emit an unpersisted projection |
+| restart finds streaming Message | interrupted Turn and failed Message |
+| restart finds completed/failed/cancelled Message | preserve that terminal status |
+| historical Message has no valid events | legacy `metadata.processTrace` fallback |
+| dirty migration Down | `CHAT_AGENT_EVENT_LOG_DOWN_DATA_EXISTS` |
+
+### 5. Good / Base / Bad Cases
+
+- **Good:** Tool/process event commits, its projection reaches SSE, refresh
+  rebuilds the same card order, and startup repairs a torn terminal append.
+- **Base:** a pre-`096` Message has no events and renders the legacy trace.
+- **Bad:** emit before commit, store raw Tool output, reuse `agent_run_events`,
+  derive sequence with an aggregate, or mark an already completed Message
+  interrupted after restart.
+
+### 6. Tests Required
+
+- Concurrent sequence allocation, identical replay, immutable event rows,
+  runtime DML denial, dirty Down refusal and clean down/up replay on PostgreSQL
+  17 through `scripts/verify-chat-agent-event-log-postgres17.sh`.
+- Handler ordering and redaction tests, full existing cancellation suites, and
+  startup recovery for both unfinished and already completed Messages.
+- Frontend invalid-event fallback, ordering/deduplication, interrupted active
+  steps, status copy, typecheck, Vitest and build.
+
+### 7. Wrong vs Correct
+
+```text
+Wrong: SSE -> final metadata only -> restart guesses success
+Correct: append event -> project same event to SSE -> refresh/restart replay
 ```
 
 ## Scenario: Continue Chat through local Agent Skill Tools

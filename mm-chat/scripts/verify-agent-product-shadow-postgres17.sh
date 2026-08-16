@@ -54,7 +54,7 @@ psql_command() {
       --username="${database_user}" --dbname="${database_name}" --command "${command}"
 }
 
-log "starting disposable database and applying 001 -> 095"
+log "starting disposable database and applying 001 -> 096"
 start_database "${container_name}"
 database_url="$(database_url_for "${container_name}")"
 [[ "$(psql_command "${container_name}" 'SHOW server_version_num' | cut -c1-2)" == "17" ]]
@@ -67,6 +67,7 @@ grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/fresh.log"
 grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/fresh.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/fresh.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/fresh.log"
+grep -Fq "up 096_chat_agent_event_log" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
 
@@ -245,6 +246,8 @@ restore_counts="$(psql_command "${restore_container_name}" "SELECT concat_ws(','
 [[ "${source_counts}" == "${restore_counts}" ]]
 
 log "proving guarded down and clean 089 -> 095 -> 089 -> 095"
+run_migrate down >"${work_dir}/peel-096-chat-agent-event-tail.log" 2>&1
+grep -Fq "down 096_chat_agent_event_log" "${work_dir}/peel-096-chat-agent-event-tail.log"
 run_migrate down >"${work_dir}/peel-095-tail-1.log" 2>&1
 grep -Fq "down 095_agent_product_canary_activation" "${work_dir}/peel-095-tail-1.log"
 run_migrate down >"${work_dir}/peel-094-tail-1.log" 2>&1
@@ -272,6 +275,7 @@ grep -Fq "up 092_agent_project_mutation_canary" "${work_dir}/reup.log"
 grep -Fq "up 093_agent_child_canary_reap_transport" "${work_dir}/reup.log"
 grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/reup.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/reup.log"
+grep -Fq "up 096_chat_agent_event_log" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final.log"
 log "passed (fresh/replay, ACLs, ownership, Artifact/cancel, Shadow fences/budget/restart, content-free dump/restore, guarded down/up)"

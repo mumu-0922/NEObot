@@ -11,6 +11,11 @@ Skills are progressively disclosed instruction directories and permitted
 commands run as the ordinary Backend user. The retained G20/G21 OCI Runtime is
 disabled optional/history and does not gate this path.
 
+Ordinary Chat migration `096` advances the current database head only. The
+held OCI activation/closure artifacts remain pinned to their reviewed `095`
+release and are not implicitly promoted; older PostgreSQL drills peel `096`
+before the retained control-plane tail and reapply through `096`.
+
 ### 2. Signatures
 
 - Catalog: `skillsupply.Service.PrepareRuntimeSkills(ctx, userID, runID)`.

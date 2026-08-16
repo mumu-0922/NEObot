@@ -23,6 +23,7 @@ const (
 	ProcessStepStatusSkipped          = "skipped"
 	ProcessStepStatusCancelled        = "cancelled"
 	ProcessStepStatusOutcomeUnknown   = "outcome_unknown"
+	ProcessStepStatusInterrupted      = "interrupted"
 
 	processTraceMetadataKey = "processTrace"
 	reasoningMetadataKey    = "reasoning"
@@ -385,7 +386,8 @@ func normalizeProcessStepStatus(value string) string {
 	case ProcessStepStatusPending, ProcessStepStatusRunning,
 		ProcessStepStatusAwaitingApproval, ProcessStepStatusCompleted,
 		ProcessStepStatusFailed, ProcessStepStatusSkipped,
-		ProcessStepStatusCancelled, ProcessStepStatusOutcomeUnknown:
+		ProcessStepStatusCancelled, ProcessStepStatusOutcomeUnknown,
+		ProcessStepStatusInterrupted:
 		return strings.TrimSpace(value)
 	default:
 		return ""
@@ -404,7 +406,7 @@ func isTerminalProcessStepStatus(status string) bool {
 	switch status {
 	case ProcessStepStatusCompleted, ProcessStepStatusFailed,
 		ProcessStepStatusSkipped, ProcessStepStatusCancelled,
-		ProcessStepStatusOutcomeUnknown:
+		ProcessStepStatusOutcomeUnknown, ProcessStepStatusInterrupted:
 		return true
 	default:
 		return false

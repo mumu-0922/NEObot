@@ -628,8 +628,9 @@ content-free counts, latency buckets and reason codes only. Down fails with
 `AGENT_PRODUCT_DOWN_DATA_EXISTS` while cancellation, Artifact, policy, opt-in
 or observation authority remains. Disposable proof uses
 `scripts/verify-agent-product-shadow-postgres17.sh`; every older Agent/MCP/
-Assistant/Skill tail drill first peels empty `095`, then `094`, `093`, `092`, `091` and `090`, before
-asserting its original migration guard and finishes reapplied at head `095`.
+Assistant/Skill tail drill first peels empty `096`, then `095`, `094`, `093`,
+`092`, `091` and `090`, before asserting its original migration guard and
+finishes reapplied at head `096`.
 
 Migration `091` adds G21.2 Artifact publication authority without widening the
 G20.8 product facade. The independent NOLOGIN `agent_artifact_control` role
@@ -643,8 +644,8 @@ Down removes only the functions/role after the dedicated LOGIN membership is
 removed; migration `090` retains Artifact rows and continues to guard their
 destructive rollback. Disposable proof uses
 `scripts/verify-agent-artifact-publication-postgres17.sh`. Every older
-PostgreSQL tail drill peels empty `095`, then `094`, `093`, `092` and `091`, before its original tail/guard and
-finishes reapplied at head `095`.
+PostgreSQL tail drill peels empty `096`, then `095`, `094`, `093`, `092` and
+`091`, before its original tail/guard and finishes reapplied at head `096`.
 
 Migration `092` adds the G21.3 synthetic Project mutation canary without
 creating a user Project store. Operator-only
@@ -667,8 +668,8 @@ trigger guard. Down fails with
 `AGENT_PROJECT_MUTATION_DOWN_REQUIRES_EMPTY` until an operator has archived
 evidence and truncated all three synthetic tables together. Disposable proof
 uses `scripts/verify-agent-project-mutation-postgres17.sh`; all older tail
-drills peel the empty `095` tail, then `094` and `093` and `092` when required, before their
-original guards and finish reapplied at head `095`.
+drills peel the empty `096` tail, then `095`, `094`, `093` and `092` when
+required, before their original guards and finish reapplied at head `096`.
 
 Migration `093` closes the production Child reap transport gap without
 rewriting migration `087`. `agent_delegation_reap_inventory(limit)` returns the
@@ -688,7 +689,8 @@ live depth-one Sandbox requires the bridge. A clean down drops inventory,
 restores migration-087 completion behavior and revokes the temporary owner
 access. Disposable proof uses
 `scripts/verify-agent-child-canary-postgres17.sh`; every older guarded tail
-drill must peel empty `095`, then `094`, before `093` and finish reapplied at head `095`.
+drill must peel empty `096`, then `095`, then `094`, before `093` and finish
+reapplied at head `096`.
 
 Migration `094` activates one operator-bound Cron Template and one quarantined
 Draft without opening global Scheduler/Learning cohorts. Immutable target rows
@@ -709,7 +711,8 @@ Runner attempts, pending cleanup, worker LOGIN membership and every retained
 activation fact. Production rollback disables one target/profile and preserves
 `094`. Disposable proof uses
 `scripts/verify-agent-{cron,draft-learning}-worker-postgres17.sh`; all older
-tail drills peel `095` before their previous tail and finish at head `095`.
+tail drills peel `096`, then `095`, before their previous tail and finish at
+head `096`.
 
 Migration `095` adds the two-stage bounded product-canary authority. Operator-
 owned immutable activations bind release, Shadow policy, admitted
@@ -727,7 +730,17 @@ binds the same activation/request/receipt/release plus a
 `AGENT_PRODUCT_CANARY_DOWN_REQUIRES_EMPTY`; production rollback disables the
 activation/profile and retains facts. Disposable proof is
 `scripts/verify-agent-product-canary-postgres17.sh`. Every older tail drill must
-peel empty `095` before its own guard and return to head `095`.
+peel empty `096`, then `095`, before its own guard and return to head `096`.
+
+Migration `096` adds the append-only ordinary Chat Agent event authority. A
+Turn binds the current user, Conversation, assistant Message and Run, while
+events receive contiguous per-Turn sequence numbers through row-locked
+`SECURITY DEFINER` functions. The API runtime receives read plus exact function
+execution, never direct event DML. Terminal recovery preserves an already
+committed Message status and marks only unfinished Messages interrupted. Down
+refuses while any Turn or Event exists. Disposable PostgreSQL 17 proof uses
+`scripts/verify-chat-agent-event-log-postgres17.sh`; every older tail drill
+peels empty `096` before its previous `095` tail and returns to head `096`.
 
 ## Storage boundaries
 
@@ -737,6 +750,8 @@ Postgres is the source of truth for structured records:
 - provider configuration metadata and encrypted-secret references
 - server-owned automation task model selections
 - conversations and messages
+- ordinary Chat Agent Turns and immutable replay events; optional G20/G21
+  control-plane Run events remain separate
 - Projects, Memory settings, and canonical Memory rows
 - Memory capture outbox events and leased jobs; Redis is never their authority
 - Memory evidence, revisions, tombstones, and ID/hash-only deletion manifests

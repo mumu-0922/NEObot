@@ -162,20 +162,21 @@ type ConversationDTO struct {
 }
 
 type ChatMessageDTO struct {
-	ID              string          `json:"id"`
-	ConversationID  string          `json:"conversationId"`
-	SequenceNo      int             `json:"sequenceNo"`
-	Role            string          `json:"role"`
-	Status          string          `json:"status"`
-	Content         string          `json:"content"`
-	ModelRef        *ModelRef       `json:"modelRef,omitempty"`
-	Attachments     []AttachmentDTO `json:"attachments"`
-	OutputBlocks    []any           `json:"outputBlocks"`
-	Metadata        map[string]any  `json:"metadata"`
-	ParentMessageID string          `json:"parentMessageId,omitempty"`
-	CreatedAt       string          `json:"createdAt"`
-	UpdatedAt       string          `json:"updatedAt"`
-	CompletedAt     string          `json:"completedAt,omitempty"`
+	ID              string           `json:"id"`
+	ConversationID  string           `json:"conversationId"`
+	SequenceNo      int              `json:"sequenceNo"`
+	Role            string           `json:"role"`
+	Status          string           `json:"status"`
+	Content         string           `json:"content"`
+	ModelRef        *ModelRef        `json:"modelRef,omitempty"`
+	Attachments     []AttachmentDTO  `json:"attachments"`
+	OutputBlocks    []any            `json:"outputBlocks"`
+	Metadata        map[string]any   `json:"metadata"`
+	AgentEvents     []ChatAgentEvent `json:"agentEvents,omitempty"`
+	ParentMessageID string           `json:"parentMessageId,omitempty"`
+	CreatedAt       string           `json:"createdAt"`
+	UpdatedAt       string           `json:"updatedAt"`
+	CompletedAt     string           `json:"completedAt,omitempty"`
 }
 
 type AttachmentDTO struct {
@@ -1539,6 +1540,92 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeServiceError(w, err)
 		return
 	}
+	agentRecorder, err := startChatAgentEventRecorder(
+		r.Context(),
+		h.service,
+		conversationID,
+		assistantMessage.ID,
+		runID,
+		time.Now(),
+	)
+	if err != nil {
+		_, _ = h.finalizeAssistantMessage(
+			context.Background(),
+			conversationID,
+			assistantMessage.ID,
+			FinalizeAssistantMessageInput{
+				Status: "failed",
+				Metadata: map[string]any{
+					"runId": runID, "errorCode": "AGENT_EVENT_PERSISTENCE_FAILED",
+				},
+			},
+		)
+		writeError(
+			w,
+			http.StatusInternalServerError,
+			"AGENT_EVENT_PERSISTENCE_FAILED",
+			"chat Agent event persistence failed",
+		)
+		return
+	}
+	turnFinalStatus := ChatAgentTurnInterrupted
+	turnFinalContent := ""
+	turnFinalErrorCode := "AGENT_RUN_INTERRUPTED"
+	defer func() {
+		finishCtx, finishCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer finishCancel()
+		_ = agentRecorder.finish(
+			finishCtx,
+			turnFinalStatus,
+			turnFinalContent,
+			turnFinalErrorCode,
+			time.Now(),
+		)
+	}()
+	finalizeTracked := func(
+		ctx context.Context,
+		conversationID string,
+		messageID string,
+		input FinalizeAssistantMessageInput,
+	) (Message, error) {
+		message, finalizeErr := h.finalizeAssistantMessage(
+			ctx, conversationID, messageID, input,
+		)
+		if finalizeErr == nil {
+			turnFinalStatus = normalizeChatAgentTurnStatus(input.Status)
+			turnFinalContent = input.Content
+			turnFinalErrorCode = chatAgentErrorCode(input.Metadata)
+		}
+		return message, finalizeErr
+	}
+	cancelTrackedAfterWriteError := func(
+		conversationID string,
+		messageID string,
+		runID string,
+		content string,
+	) {
+		if turnFinalStatus == ChatAgentTurnFailed {
+			turnFinalContent = content
+			_, _ = h.finalizeAssistantMessage(
+				context.Background(),
+				conversationID,
+				messageID,
+				FinalizeAssistantMessageInput{
+					Status: "failed", Content: content,
+					Metadata: map[string]any{
+						"runId": runID, "errorCode": turnFinalErrorCode,
+					},
+				},
+			)
+			return
+		}
+		turnFinalStatus = ChatAgentTurnCancelled
+		turnFinalContent = content
+		turnFinalErrorCode = "SSE_WRITE_FAILED"
+		h.cancelAssistantAfterWriteError(
+			conversationID, messageID, runID, content,
+		)
+	}
 	memoryToolRuntime := h.newMemoryToolRuntime(
 		r.Context(),
 		toolRoundCapable,
@@ -1844,7 +1931,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			errors.Is(streamCtx.Err(), context.DeadlineExceeded)
 		if !deadlineExceeded && (streamCtx.Err() != nil || errors.Is(err, context.Canceled)) {
 			finishProcessTrace(trace, "cancelled", time.Now(), webSearchResult)
-			h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
+			finalizeTracked(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 				Status: "cancelled",
 				OutputBlocks: usedWebSearchOutputBlocks(
 					assistantMessage.ID,
@@ -1864,7 +1951,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		)
 		errorBody := chatStreamErrorBody(deadlineErr, legacyMCPDeadline)
 		finishProcessTrace(trace, "failed", time.Now(), webSearchResult)
-		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
+		finalizeTracked(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 			Status: "failed",
 			OutputBlocks: usedWebSearchOutputBlocks(
 				assistantMessage.ID,
@@ -1903,13 +1990,22 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		Role:           "assistant",
 		ModelRef:       modelRef,
 	}); err != nil {
-		h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, "")
+		cancelTrackedAfterWriteError(conversationID, assistantMessage.ID, runID, "")
 		return
 	}
 	flusher.Flush()
 	emitProcessStep := func(step ProcessStep) error {
+		eventAt := time.Now()
+		projected, err := agentRecorder.recordProcessStep(
+			generationCtx, step, eventAt,
+		)
+		if err != nil {
+			turnFinalStatus = ChatAgentTurnFailed
+			turnFinalErrorCode = "AGENT_EVENT_PERSISTENCE_FAILED"
+			return err
+		}
 		sequence++
-		stepCopy := step
+		stepCopy := projected
 		if err := writeSSEEvent(w, "process.step.updated", streamEvent{
 			Type:           "process.step.updated",
 			RunID:          runID,
@@ -1945,7 +2041,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	}
 	for _, step := range trace.snapshot() {
 		if err := emitProcessStep(step); err != nil {
-			h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, "")
+			cancelTrackedAfterWriteError(conversationID, assistantMessage.ID, runID, "")
 			return
 		}
 	}
@@ -1961,7 +2057,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			CreatedAt:      formatTime(time.Now()),
 			Results:        &webSearchResult,
 		}); err != nil {
-			h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, "")
+			cancelTrackedAfterWriteError(conversationID, assistantMessage.ID, runID, "")
 			return
 		}
 		flusher.Flush()
@@ -2006,7 +2102,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 					Sequence:       sequence,
 					CreatedAt:      formatTime(time.Now()),
 				})
-				h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
+				finalizeTracked(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 					Status:  "cancelled",
 					Content: content.String(),
 					OutputBlocks: usedWebSearchOutputBlocks(
@@ -2052,7 +2148,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				CreatedAt:      formatTime(time.Now()),
 				Error:          &errorBody,
 			})
-			h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
+			finalizeTracked(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 				Status:  "failed",
 				Content: content.String(),
 				OutputBlocks: usedWebSearchOutputBlocks(
@@ -2084,7 +2180,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				builtInSearchStarted,
 			)
 			if err := emitProcessStep(step); err != nil {
-				h.cancelAssistantAfterWriteError(
+				cancelTrackedAfterWriteError(
 					conversationID,
 					assistantMessage.ID,
 					runID,
@@ -2111,7 +2207,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				fusionDiagnostics.DegradationReason,
 			); ok {
 				if err := emitProcessStep(step); err != nil {
-					h.cancelAssistantAfterWriteError(
+					cancelTrackedAfterWriteError(
 						conversationID,
 						assistantMessage.ID,
 						runID,
@@ -2134,7 +2230,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 					map[string]any{"outcome": "streaming"},
 				)
 				if err := emitProcessStep(step); err != nil {
-					h.cancelAssistantAfterWriteError(
+					cancelTrackedAfterWriteError(
 						conversationID,
 						assistantMessage.ID,
 						runID,
@@ -2146,7 +2242,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			if err := emitReasoningDelta(
 				reasoning.append(providerEvent.ReasoningDelta),
 			); err != nil {
-				h.cancelAssistantAfterWriteError(
+				cancelTrackedAfterWriteError(
 					conversationID,
 					assistantMessage.ID,
 					runID,
@@ -2156,7 +2252,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			}
 		case ProviderEventDelta:
 			if err := emitReasoningDelta(reasoning.flush()); err != nil {
-				h.cancelAssistantAfterWriteError(
+				cancelTrackedAfterWriteError(
 					conversationID,
 					assistantMessage.ID,
 					runID,
@@ -2175,7 +2271,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				CreatedAt:      formatTime(time.Now()),
 				Delta:          providerEvent.Delta,
 			}); err != nil {
-				h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, content.String())
+				cancelTrackedAfterWriteError(conversationID, assistantMessage.ID, runID, content.String())
 				return
 			}
 			flusher.Flush()
@@ -2190,15 +2286,39 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				CreatedAt:      formatTime(time.Now()),
 				Usage:          providerEvent.Usage,
 			}); err != nil {
-				h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, content.String())
+				cancelTrackedAfterWriteError(conversationID, assistantMessage.ID, runID, content.String())
 				return
 			}
 			flusher.Flush()
 		case ProviderEventToolExecution:
 			execution := providerEvent.ToolExecution
+			eventAt := time.Now()
+			processUpdates := toolTrace.apply(execution, eventAt)
+			recordedTool, recordErr := agentRecorder.recordToolExecution(
+				generationCtx, execution, processUpdates, eventAt,
+			)
+			if recordErr != nil {
+				turnFinalStatus = ChatAgentTurnFailed
+				turnFinalErrorCode = "AGENT_EVENT_PERSISTENCE_FAILED"
+				streamCancel()
+				cancelTrackedAfterWriteError(
+					conversationID, assistantMessage.ID, runID, content.String(),
+				)
+				return
+			}
 			if execution != nil &&
 				(execution.Mode == "mcp" || execution.Mode == "local_direct") &&
 				execution.CallStatus != "" {
+				projectedTool := projectChatAgentToolExecution(recordedTool)
+				if projectedTool == nil {
+					turnFinalStatus = ChatAgentTurnFailed
+					turnFinalErrorCode = "AGENT_EVENT_PROJECTION_FAILED"
+					streamCancel()
+					cancelTrackedAfterWriteError(
+						conversationID, assistantMessage.ID, runID, content.String(),
+					)
+					return
+				}
 				sequence++
 				if err := writeSSEEvent(w, "tool.call.updated", streamEvent{
 					Type:           "tool.call.updated",
@@ -2207,9 +2327,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 					MessageID:      assistantMessage.ID,
 					Sequence:       sequence,
 					CreatedAt:      formatTime(time.Now()),
-					ToolCall:       execution,
+					ToolCall:       projectedTool,
 				}); err != nil {
-					h.cancelAssistantAfterWriteError(
+					cancelTrackedAfterWriteError(
 						conversationID, assistantMessage.ID, runID, content.String(),
 					)
 					return
@@ -2219,9 +2339,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			if execution != nil && execution.Status == ProcessStepStatusCancelled {
 				toolExecutionCancelled = true
 			}
-			for _, step := range toolTrace.apply(execution, time.Now()) {
+			for _, step := range processUpdates {
 				if err := emitProcessStep(step); err != nil {
-					h.cancelAssistantAfterWriteError(
+					cancelTrackedAfterWriteError(
 						conversationID,
 						assistantMessage.ID,
 						runID,
@@ -2323,7 +2443,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				CreatedAt:      formatTime(time.Now()),
 				Results:        &webSearchResult,
 			}); err != nil {
-				h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, content.String())
+				cancelTrackedAfterWriteError(conversationID, assistantMessage.ID, runID, content.String())
 				return
 			}
 			flusher.Flush()
@@ -2336,7 +2456,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 					"",
 				); ok {
 					if err := emitProcessStep(step); err != nil {
-						h.cancelAssistantAfterWriteError(
+						cancelTrackedAfterWriteError(
 							conversationID,
 							assistantMessage.ID,
 							runID,
@@ -2364,7 +2484,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			MessageID: assistantMessage.ID, Sequence: sequence,
 			CreatedAt: formatTime(time.Now()), Error: &errorBody,
 		})
-		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
+		finalizeTracked(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 			Status: "failed", Content: content.String(),
 			OutputBlocks: usedWebSearchOutputBlocks(assistantMessage.ID, content.String(), webSearchResult),
 			Metadata: withProcessTraceMessageMetadata(
@@ -2402,7 +2522,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			Sequence:       sequence,
 			CreatedAt:      formatTime(time.Now()),
 		})
-		h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
+		finalizeTracked(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 			Status:  "cancelled",
 			Content: content.String(),
 			OutputBlocks: usedWebSearchOutputBlocks(
@@ -2445,7 +2565,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				CreatedAt:      formatTime(time.Now()),
 				Delta:          delta,
 			}); err != nil {
-				h.cancelAssistantAfterWriteError(conversationID, assistantMessage.ID, runID, content.String())
+				cancelTrackedAfterWriteError(conversationID, assistantMessage.ID, runID, content.String())
 				return
 			}
 			flusher.Flush()
@@ -2465,7 +2585,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		webSearchResult,
 	)
 	if err := emitReasoningDelta(reasoning.flush()); err != nil {
-		h.cancelAssistantAfterWriteError(
+		cancelTrackedAfterWriteError(
 			conversationID,
 			assistantMessage.ID,
 			runID,
@@ -2475,7 +2595,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	}
 	for _, step := range reconcileProcessTraceCitations(trace, completedContent) {
 		if err := emitProcessStep(step); err != nil {
-			h.cancelAssistantAfterWriteError(
+			cancelTrackedAfterWriteError(
 				conversationID,
 				assistantMessage.ID,
 				runID,
@@ -2491,7 +2611,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		webSearchResult,
 	) {
 		if err := emitProcessStep(step); err != nil {
-			h.cancelAssistantAfterWriteError(
+			cancelTrackedAfterWriteError(
 				conversationID,
 				assistantMessage.ID,
 				runID,
@@ -2506,7 +2626,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		request.Provider,
 	)
 	if err != nil {
-		h.finalizeAssistantMessage(
+		finalizeTracked(
 			context.Background(),
 			conversationID,
 			assistantMessage.ID,
@@ -2535,7 +2655,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		flusher.Flush()
 		return
 	}
-	assistantMessage, err = h.finalizeAssistantMessage(
+	assistantMessage, err = finalizeTracked(
 		context.Background(),
 		conversationID,
 		assistantMessage.ID,
@@ -3827,6 +3947,7 @@ func newMessageDTO(message Message) ChatMessageDTO {
 		Attachments:     newAttachmentDTOs(message.Attachments),
 		OutputBlocks:    ensureArray(message.OutputBlocks),
 		Metadata:        ensureObject(message.Metadata),
+		AgentEvents:     append([]ChatAgentEvent(nil), message.AgentEvents...),
 		ParentMessageID: message.ParentMessageID,
 		CreatedAt:       formatTime(message.CreatedAt),
 		UpdatedAt:       formatTime(message.UpdatedAt),

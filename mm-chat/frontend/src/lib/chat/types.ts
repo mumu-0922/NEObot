@@ -27,7 +27,33 @@ export type ProcessStepStatus =
   | "failed"
   | "skipped"
   | "cancelled"
-  | "outcome_unknown";
+  | "outcome_unknown"
+  | "interrupted";
+
+export type ChatAgentEventType =
+  | "turn.started"
+  | "turn.ended"
+  | "step.started"
+  | "step.ended"
+  | "assistant.message"
+  | "tool.called"
+  | "tool.result"
+  | "goal.changed"
+  | "goal.round.started"
+  | "context.replaced";
+
+export interface ChatAgentEvent {
+  eventId: string;
+  turnId: string;
+  conversationId: string;
+  messageId: string;
+  runId: string;
+  sequence: number;
+  type: ChatAgentEventType;
+  stepSequence?: number;
+  payload: Record<string, unknown>;
+  occurredAt: string;
+}
 
 export interface ProcessStep {
   id: string;

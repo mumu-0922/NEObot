@@ -30,6 +30,7 @@
   "processAwaitingApproval": "承認待ち",
   "processCancelled": "キャンセル済み",
   "processOutcomeUnknown": "実行結果不明",
+  "processInterrupted": "中断済み",
   "processKnowledgeHits": "{count} 件一致",
   "processWebSources": "{count} 件のソース",
   "runningTool": "{name} を実行中…",

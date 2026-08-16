@@ -30,6 +30,7 @@
   "processAwaitingApproval": "Awaiting approval",
   "processCancelled": "Cancelled",
   "processOutcomeUnknown": "Outcome unknown",
+  "processInterrupted": "Interrupted",
   "processKnowledgeHits": "{count, plural, one {# match} other {# matches}}",
   "processWebSources": "{count, plural, one {# source} other {# sources}}",
   "runningTool": "Running {name}…",

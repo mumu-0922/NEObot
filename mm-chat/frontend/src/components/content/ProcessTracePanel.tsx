@@ -126,7 +126,10 @@ function ProcessStepRow({ step }: { step: ProcessStep }) {
   const active = isProcessStepActive(step);
   const outcomeUnknown = step.status === "outcome_unknown";
   const failed =
-    step.status === "failed" || step.status === "cancelled" || outcomeUnknown;
+    step.status === "failed" ||
+    step.status === "cancelled" ||
+    step.status === "interrupted" ||
+    outcomeUnknown;
   const reason = processReasonCategoryForDisplay(step);
   const hitCount = numberDetail(step, "hitCount");
   const sourceCount = numberDetail(step, "sourceCount");
@@ -270,6 +273,8 @@ function processStatusLabel(
       return t("processCancelled");
     case "outcome_unknown":
       return t("processOutcomeUnknown");
+    case "interrupted":
+      return t("processInterrupted");
   }
 }
 

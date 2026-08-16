@@ -114,6 +114,15 @@ usage.updated        # emitted when provider usage is available
 message.completed
 ```
 
+For migration-`096` Agent Turns, `turn.started` is committed after the
+assistant Message row is created and before the first SSE frame. Each
+`process.step.updated` or `tool.call.updated` projection is committed to the
+Chat Agent event log before the same sanitized projection is sent. The SSE
+`sequence` remains stream-local and is not interchangeable with the per-Turn
+durable event sequence. Terminal Message finalization precedes the deferred
+`assistant.message`/`turn.ended` append; startup recovery repairs that explicit
+torn-write window without changing an already terminal Message status.
+
 Terminal events are mutually exclusive:
 
 ```text

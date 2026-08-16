@@ -30,6 +30,7 @@
   "processAwaitingApproval": "等待确认",
   "processCancelled": "已取消",
   "processOutcomeUnknown": "执行结果未知",
+  "processInterrupted": "执行已中断",
   "processKnowledgeHits": "命中 {count} 条",
   "processWebSources": "找到 {count} 个来源",
   "runningTool": "正在运行 {name}…",

@@ -1,0 +1,115 @@
+package chat
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestChatAgentEventProjectionInterruptsActiveStepsAndOverridesLegacy(t *testing.T) {
+	started := time.Date(2026, 8, 16, 12, 0, 0, 0, time.UTC)
+	messageID := "22222222-2222-4222-8222-222222222222"
+	events := []ChatAgentEvent{
+		{
+			EventID:   "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+			MessageID: messageID, Sequence: 2, Type: ChatAgentEventStepStarted,
+			Payload: chatAgentProcessStepPayload(ProcessStep{
+				ID: messageID + ":tool:1", Kind: ProcessStepKindTool,
+				Status: ProcessStepStatusRunning, LabelKey: "process.tool",
+				StartedAt: formatTime(started), Detail: map[string]any{
+					"toolName": "terminal", "mode": "local_direct", "round": 1,
+				},
+			}),
+			OccurredAt: started,
+		},
+		{
+			EventID:   "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+			MessageID: messageID, Sequence: 3, Type: ChatAgentEventTurnEnded,
+			Payload:    map[string]any{"status": ChatAgentTurnInterrupted},
+			OccurredAt: started.Add(2 * time.Second),
+		},
+	}
+	legacy := []ProcessStep{{
+		ID: messageID + ":generation:legacy", Kind: ProcessStepKindGeneration,
+		Status: ProcessStepStatusCompleted, LabelKey: "process.generation",
+	}}
+
+	projected := projectChatAgentProcessTrace(events, legacy)
+	if len(projected) != 1 {
+		t.Fatalf("projected steps = %#v", projected)
+	}
+	step := projected[0]
+	if step.Status != ProcessStepStatusInterrupted || step.CompletedAt == "" ||
+		step.Detail["failureCategory"] != ChatAgentTurnInterrupted {
+		t.Fatalf("interrupted step = %#v", step)
+	}
+}
+
+func TestChatAgentToolEventPayloadDropsCommandsArgumentsResultsAndPrivateServerRef(t *testing.T) {
+	payload := chatAgentToolEventPayload(&ProviderToolExecutionEvent{
+		ExecutionID: "execution-1", CallID: "call-1", Name: "terminal",
+		Server: "private:secret-server", ServerName: "Local Skill",
+		Classification: "execute", Status: ProcessStepStatusCompleted,
+		CallStatus: "succeeded", Round: 2,
+		Arguments: map[string]any{
+			"command": "cat /home/private/.env",
+			"token":   "sk-fixture-secret-value",
+		},
+		Query: "private query", Mode: "local_direct",
+	}, nil)
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(encoded)
+	for _, forbidden := range []string{
+		"cat /home/private/.env", "sk-fixture-secret-value", "private query",
+		"private:secret-server", "arguments", "result",
+	} {
+		if strings.Contains(strings.ToLower(text), strings.ToLower(forbidden)) {
+			t.Fatalf("durable Tool payload leaked %q: %s", forbidden, text)
+		}
+	}
+	for _, required := range []string{"terminal", "local_direct", "succeeded"} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("durable Tool payload missing %q: %s", required, text)
+		}
+	}
+}
+
+func TestNormalizeChatAgentEventPayloadBoundsAssistantMessageOnUTF8Boundary(t *testing.T) {
+	content := strings.Repeat("界", maxChatAgentMessageEventBytes)
+	normalized, err := normalizeChatAgentEventPayload(
+		ChatAgentEventAssistantMessage,
+		map[string]any{"status": ChatAgentTurnCompleted, "content": content},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := normalized["content"].(string)
+	if len(got) > maxChatAgentMessageEventBytes || !strings.HasPrefix(content, got) {
+		t.Fatalf("bounded content bytes = %d", len(got))
+	}
+}
+
+func TestNormalizeChatAgentTurnStatusPreservesCommittedTerminalState(t *testing.T) {
+	tests := []struct {
+		messageStatus string
+		want          string
+	}{
+		{messageStatus: "completed", want: ChatAgentTurnCompleted},
+		{messageStatus: "failed", want: ChatAgentTurnFailed},
+		{messageStatus: "cancelled", want: ChatAgentTurnCancelled},
+		{messageStatus: "streaming", want: ChatAgentTurnInterrupted},
+		{messageStatus: "pending", want: ChatAgentTurnInterrupted},
+		{messageStatus: "unknown", want: ChatAgentTurnInterrupted},
+	}
+	for _, test := range tests {
+		t.Run(test.messageStatus, func(t *testing.T) {
+			if got := normalizeChatAgentTurnStatus(test.messageStatus); got != test.want {
+				t.Fatalf("terminal status = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
