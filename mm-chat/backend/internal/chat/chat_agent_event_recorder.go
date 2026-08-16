@@ -115,6 +115,25 @@ func (recorder *chatAgentEventRecorder) recordToolExecution(
 	)
 }
 
+func (recorder *chatAgentEventRecorder) recordContextReplacement(
+	ctx context.Context,
+	replacement *ProviderContextReplacementEvent,
+	at time.Time,
+) error {
+	if replacement == nil || replacement.BeforeBytes <= replacement.AfterBytes ||
+		replacement.AfterBytes < 0 || replacement.ResultsPruned < 0 ||
+		replacement.ExchangesReplaced < 0 {
+		return fmt.Errorf("%w: context replacement invalid", errChatAgentEventPersistence)
+	}
+	_, err := recorder.append(ctx, ChatAgentEventContextReplaced, 0, map[string]any{
+		"reason":      strings.TrimSpace(replacement.Reason),
+		"beforeBytes": replacement.BeforeBytes, "afterBytes": replacement.AfterBytes,
+		"resultsPruned":     replacement.ResultsPruned,
+		"exchangesReplaced": replacement.ExchangesReplaced,
+	}, at)
+	return err
+}
+
 func (recorder *chatAgentEventRecorder) finish(
 	ctx context.Context,
 	status string,

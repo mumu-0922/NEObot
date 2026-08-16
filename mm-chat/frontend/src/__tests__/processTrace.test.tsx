@@ -97,6 +97,7 @@ describe("durable process trace", () => {
           toolName: "write_file",
           classification: "write",
           callStatus: "outcome_unknown",
+          durability: "process_local",
           argumentSummary: '{"path":"string"}',
           rawArguments: { path: "/private/value" },
         },
@@ -112,6 +113,7 @@ describe("durable process trace", () => {
         toolName: "write_file",
         classification: "write",
         callStatus: "outcome_unknown",
+        durability: "process_local",
         argumentSummary: '{"path":"string"}',
       },
     });
@@ -187,6 +189,34 @@ describe("durable process trace", () => {
     expect(html).not.toContain("unknown");
     expect(html).not.toContain("queued");
     expect(html).not.toContain("&quot;question&quot;");
+  });
+
+  it("warns that process-local background Jobs disappear after restart", () => {
+    const step = normalizeProcessStep({
+      id: "tool-job-1",
+      kind: "tool",
+      status: "completed",
+      labelKey: "process.tool",
+      detail: {
+        toolName: "terminal",
+        mode: "local_direct",
+        durability: "process_local",
+      },
+    });
+    const html = renderToStaticMarkup(
+      <NextIntlClientProvider
+        locale="zh"
+        messages={{ Content: contentMessages }}
+        timeZone="UTC"
+      >
+        <ProcessTracePanel steps={[step!]} />
+      </NextIntlClientProvider>,
+    );
+
+    expect(html).toContain(
+      "后台任务仅在当前服务进程内有效，服务重启后无法恢复。",
+    );
+    expect(html).toContain('role="note"');
   });
 
   it("hydrates reasoning and process steps from server message metadata", () => {

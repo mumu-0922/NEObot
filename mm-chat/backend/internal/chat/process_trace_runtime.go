@@ -111,6 +111,9 @@ func toolProcessDetail(event *ProviderToolExecutionEvent) map[string]any {
 	if callStatus := strings.TrimSpace(event.CallStatus); callStatus != "" {
 		detail["callStatus"] = callStatus
 	}
+	if durability := strings.TrimSpace(event.Durability); durability == "process_local" {
+		detail["durability"] = durability
+	}
 	if query := strings.TrimSpace(event.Query); query != "" {
 		detail["query"] = query
 	}

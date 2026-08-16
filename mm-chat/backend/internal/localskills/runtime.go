@@ -67,8 +67,16 @@ type Result struct {
 }
 
 type Executor struct {
-	config Config
-	slots  chan struct{}
+	config           Config
+	slots            chan struct{}
+	workspaceWriteMu sync.Mutex
+	lifecycleCtx     context.Context
+	lifecycleCancel  context.CancelFunc
+	closeOnce        sync.Once
+	jobMu            sync.Mutex
+	jobs             map[string]*backgroundJob
+	jobNotices       map[string][]JobNotice
+	closed           bool
 }
 
 func NewExecutor(config Config) (*Executor, error) {
@@ -86,10 +94,16 @@ func NewExecutor(config Config) (*Executor, error) {
 		config.MaxConcurrent < 1 || config.MaxConcurrent > 32) {
 		return nil, ErrInvalidConfig
 	}
+	lifecycleCtx, lifecycleCancel := context.WithCancel(context.Background())
+	concurrency := config.MaxConcurrent
 	if !config.Enabled {
-		return &Executor{config: config, slots: make(chan struct{}, 1)}, nil
+		concurrency = 1
 	}
-	return &Executor{config: config, slots: make(chan struct{}, config.MaxConcurrent)}, nil
+	return &Executor{
+		config: config, slots: make(chan struct{}, concurrency),
+		lifecycleCtx: lifecycleCtx, lifecycleCancel: lifecycleCancel,
+		jobs: make(map[string]*backgroundJob), jobNotices: make(map[string][]JobNotice),
+	}, nil
 }
 
 func (executor *Executor) Config() Config {
@@ -107,34 +121,68 @@ func (executor *Executor) Execute(ctx context.Context, request Request) (Result,
 	if !executor.Enabled() {
 		return Result{}, ErrRuntimeFailed
 	}
-	request.Command = strings.TrimSpace(request.Command)
-	if !validCommand(request.Command) {
-		return Result{}, ErrInvalidCommand
-	}
-	if hardBlockedCommand(request.Command) {
-		return Result{}, ErrCommandBlocked
-	}
-	if executor.config.ApprovalMode == ApprovalSmart && destructiveCommand(request.Command) {
-		return Result{}, ErrApprovalRequired
-	}
-	workingDir, err := executor.resolveWorkingDirectory(request.WorkingDir)
+	workingDir, timeout, err := executor.prepareRequest(&request, executor.config.CallTimeout)
 	if err != nil {
 		return Result{}, err
 	}
-	select {
-	case executor.slots <- struct{}{}:
-		defer func() { <-executor.slots }()
-	default:
+	if !executor.acquireSlot() {
 		return Result{}, ErrRuntimeBusy
 	}
-	timeout := executor.config.CallTimeout
+	defer executor.releaseSlot()
+	return executor.executeReserved(ctx, request, workingDir, timeout)
+}
+
+func (executor *Executor) prepareRequest(
+	request *Request,
+	maximumTimeout time.Duration,
+) (string, time.Duration, error) {
+	if request == nil {
+		return "", 0, ErrInvalidCommand
+	}
+	request.Command = strings.TrimSpace(request.Command)
+	if !validCommand(request.Command) {
+		return "", 0, ErrInvalidCommand
+	}
+	if hardBlockedCommand(request.Command) {
+		return "", 0, ErrCommandBlocked
+	}
+	if executor.config.ApprovalMode == ApprovalSmart && destructiveCommand(request.Command) {
+		return "", 0, ErrApprovalRequired
+	}
+	workingDir, err := executor.resolveWorkingDirectory(request.WorkingDir)
+	if err != nil {
+		return "", 0, err
+	}
+	timeout := maximumTimeout
 	if request.TimeoutSeconds > 0 {
 		requested := time.Duration(request.TimeoutSeconds) * time.Second
-		if requested < time.Second || requested > executor.config.CallTimeout {
-			return Result{}, ErrInvalidCommand
+		if requested < time.Second || requested > maximumTimeout {
+			return "", 0, ErrInvalidCommand
 		}
 		timeout = requested
 	}
+	return workingDir, timeout, nil
+}
+
+func (executor *Executor) acquireSlot() bool {
+	select {
+	case executor.slots <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+func (executor *Executor) releaseSlot() {
+	<-executor.slots
+}
+
+func (executor *Executor) executeReserved(
+	ctx context.Context,
+	request Request,
+	workingDir string,
+	timeout time.Duration,
+) (Result, error) {
 	commandCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	started := time.Now()
@@ -152,6 +200,12 @@ func (executor *Executor) Execute(ctx context.Context, request Request) (Result,
 	capture := newBoundedCapture(executor.config.MaxOutput)
 	command.Stdout = capture.writer(true)
 	command.Stderr = capture.writer(false)
+	// Close may cancel a queued background Job after it has reserved a slot but
+	// before its goroutine reaches process creation. Never start a process once
+	// the owning lifecycle or request context is already canceled.
+	if err := commandCtx.Err(); err != nil {
+		return Result{}, err
+	}
 	if err := command.Start(); err != nil {
 		return Result{}, ErrRuntimeFailed
 	}

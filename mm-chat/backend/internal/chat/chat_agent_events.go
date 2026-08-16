@@ -161,6 +161,13 @@ func normalizeChatAgentEventPayload(
 	if payload == nil {
 		payload = map[string]any{}
 	}
+	if eventType == ChatAgentEventContextReplaced {
+		var err error
+		payload, err = normalizeChatAgentContextReplacementPayload(payload)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if eventType == ChatAgentEventAssistantMessage {
 		bounded := cloneJSONObject(payload)
 		if content, ok := bounded["content"].(string); ok {
@@ -187,6 +194,58 @@ func normalizeChatAgentEventPayload(
 		)
 	}
 	return normalized, nil
+}
+
+func normalizeChatAgentContextReplacementPayload(
+	payload map[string]any,
+) (map[string]any, error) {
+	if len(payload) != 5 {
+		return nil, newValidationError(
+			"INVALID_CHAT_AGENT_EVENT_PAYLOAD", "context replacement payload is invalid",
+		)
+	}
+	reason := chatAgentPayloadString(payload, "reason")
+	switch reason {
+	case "tool_result_pruning", "turn_summary_compaction", "provider_context_overflow":
+	default:
+		return nil, newValidationError(
+			"INVALID_CHAT_AGENT_EVENT_PAYLOAD", "context replacement reason is invalid",
+		)
+	}
+	before, beforeOK := exactNonnegativeChatAgentPayloadInt(payload["beforeBytes"])
+	after, afterOK := exactNonnegativeChatAgentPayloadInt(payload["afterBytes"])
+	pruned, prunedOK := exactNonnegativeChatAgentPayloadInt(payload["resultsPruned"])
+	replaced, replacedOK := exactNonnegativeChatAgentPayloadInt(payload["exchangesReplaced"])
+	if !beforeOK || !afterOK || !prunedOK || !replacedOK || before <= after ||
+		(pruned == 0 && replaced == 0) {
+		return nil, newValidationError(
+			"INVALID_CHAT_AGENT_EVENT_PAYLOAD", "context replacement counts are invalid",
+		)
+	}
+	return map[string]any{
+		"reason": reason, "beforeBytes": before, "afterBytes": after,
+		"resultsPruned": pruned, "exchangesReplaced": replaced,
+	}, nil
+}
+
+func exactNonnegativeChatAgentPayloadInt(value any) (int, bool) {
+	switch typed := value.(type) {
+	case int:
+		return typed, typed >= 0
+	case int64:
+		if typed < 0 || int64(int(typed)) != typed {
+			return 0, false
+		}
+		return int(typed), true
+	case float64:
+		converted := int(typed)
+		if typed < 0 || float64(converted) != typed {
+			return 0, false
+		}
+		return converted, true
+	default:
+		return 0, false
+	}
 }
 
 func chatAgentProcessStepPayload(step ProcessStep) map[string]any {
@@ -219,6 +278,9 @@ func chatAgentToolEventPayload(
 	}
 	if execution.DurationMillis > 0 {
 		toolCall["durationMillis"] = execution.DurationMillis
+	}
+	if durability := strings.TrimSpace(execution.Durability); durability == "process_local" {
+		toolCall["durability"] = durability
 	}
 	payload := map[string]any{"toolCall": toolCall}
 	if len(processSteps) > 0 {
@@ -256,6 +318,7 @@ func projectChatAgentToolExecution(event ChatAgentEvent) *ProviderToolExecutionE
 		FailureCategory: chatAgentPayloadString(toolCall, "failureCategory"),
 		DurationMillis:  int64(chatAgentPayloadInt(toolCall, "durationMillis")),
 		Mode:            mode,
+		Durability:      chatAgentPayloadString(toolCall, "durability"),
 	}
 }
 

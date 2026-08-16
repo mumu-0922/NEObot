@@ -163,6 +163,12 @@ func (runtime *localSkillToolRuntime) executeCall(
 		return localSkillFailureResult(call, "arguments_invalid"), "arguments_invalid", nil
 	}
 	switch strings.TrimSpace(call.Name) {
+	case localFileReadToolName, localFileWriteToolName, localFileEditToolName,
+		localFileSearchToolName:
+		return runtime.executeWorkspaceToolCall(ctx, call)
+	case localJobListToolName, localJobOutputToolName, localJobKillToolName:
+		execution.Durability = "process_local"
+		return runtime.executeBackgroundJobToolCall(ctx, call)
 	case localSkillToolName:
 		var arguments struct {
 			Name string `json:"name"`
@@ -256,10 +262,11 @@ func (runtime *localSkillToolRuntime) executeCall(
 		}), "", nil
 	case localTerminalToolName:
 		var arguments struct {
-			Command        string `json:"command"`
-			Skill          string `json:"skill"`
-			WorkingDir     string `json:"workingDir"`
-			TimeoutSeconds int    `json:"timeoutSeconds"`
+			Command         string `json:"command"`
+			Skill           string `json:"skill"`
+			WorkingDir      string `json:"workingDir"`
+			TimeoutSeconds  int    `json:"timeoutSeconds"`
+			RunInBackground bool   `json:"runInBackground"`
 		}
 		if !decodeStrictToolArguments(call.Arguments, &arguments) {
 			return localSkillFailureResult(call, "arguments_invalid"), "arguments_invalid", nil
@@ -278,12 +285,20 @@ func (runtime *localSkillToolRuntime) executeCall(
 			}
 			activeSkillRoot = skill.RootPath
 		}
-		result, err := runtime.executor.Execute(ctx, localskills.Request{
+		request := localskills.Request{
 			Command: arguments.Command, WorkingDir: arguments.WorkingDir,
 			TimeoutSeconds:  arguments.TimeoutSeconds,
 			SkillsRoot:      runtime.config().RuntimeRoot,
 			ActiveSkillRoot: activeSkillRoot,
-		})
+		}
+		if arguments.RunInBackground {
+			execution.Durability = "process_local"
+			job, err := runtime.executor.StartBackgroundJob(ctx, localskills.JobStartRequest{
+				Scope: runtime.jobScope, Command: request,
+			})
+			return backgroundJobToolResult(call, job, err)
+		}
+		result, err := runtime.executor.Execute(ctx, request)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return ProviderToolResult{}, "", err
@@ -323,10 +338,16 @@ func localSkillViewPathAllowed(value string) bool {
 }
 
 func localSkillClassification(name string) string {
-	if name == localTerminalToolName {
+	switch name {
+	case localTerminalToolName:
 		return "execute"
+	case localFileWriteToolName, localFileEditToolName:
+		return "write"
+	case localJobKillToolName:
+		return "execute"
+	default:
+		return "read"
 	}
-	return "read"
 }
 
 func localTerminalFailureCategory(err error) string {
@@ -356,7 +377,7 @@ func localSkillSuccessResult(call ProviderToolCall, payload map[string]any) Prov
 	encoded, _ := json.Marshal(payload)
 	if len(encoded) > maxLocalSkillToolResultMetadata && call.Name != localSkillToolName &&
 		call.Name != legacySkillViewToolName &&
-		call.Name != localTerminalToolName {
+		call.Name != localTerminalToolName && call.Name != localJobOutputToolName {
 		return localSkillFailureResult(call, "result_too_large")
 	}
 	return ProviderToolResult{CallID: call.ID, Name: call.Name, Content: string(encoded)}

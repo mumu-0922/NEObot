@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -60,13 +61,42 @@ func (policy *chatCompletionPolicy) observe(
 			Sequence: policy.sequence, CallID: strings.TrimSpace(call.ID),
 			ToolName: registration.Name, Risk: registration.RiskClass,
 		}
-		if evidence.CallID != "" {
+		if evidence.CallID != "" && !registration.MutationResultNeedsFollowup &&
+			chatToolResultCanVerify(registration.Name, result) {
 			policy.successful[evidence.CallID] = evidence
 		}
 		if registration.RiskClass == chatToolRiskWrite ||
 			registration.RiskClass == chatToolRiskExecute {
 			policy.lastMutation = evidence
 		}
+	}
+}
+
+func chatToolResultCanVerify(name string, result ProviderToolResult) bool {
+	switch name {
+	case localJobListToolName, localJobKillToolName:
+		return false
+	case localJobOutputToolName:
+		var payload struct {
+			Result struct {
+				Status string `json:"status"`
+			} `json:"result"`
+		}
+		return json.Unmarshal([]byte(result.Content), &payload) == nil &&
+			payload.Result.Status == "completed"
+	case localTerminalToolName:
+		var payload struct {
+			Result struct {
+				Status string `json:"status"`
+			} `json:"result"`
+		}
+		if json.Unmarshal([]byte(result.Content), &payload) == nil &&
+			payload.Result.Status == "running" {
+			return false
+		}
+		return true
+	default:
+		return true
 	}
 }
 

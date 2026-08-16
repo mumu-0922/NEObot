@@ -58,6 +58,9 @@ type chatToolRegistration struct {
 	Presentation    chatToolPresentation
 	FirstTaskStep   bool
 	ProjectForModel chatToolResultProjector
+	// MutationResultNeedsFollowup prevents a mutating Tool's own success result
+	// from being reused as completion evidence without a later read/check.
+	MutationResultNeedsFollowup bool
 }
 
 type chatToolRegistry struct {
@@ -163,6 +166,11 @@ func localSkillToolRegistration(
 	if name == localTerminalToolName {
 		risk = chatToolRiskExecute
 		approval = chatToolApprovalLocalPolicy
+	} else if name == localJobKillToolName {
+		risk = chatToolRiskExecute
+		approval = chatToolApprovalLocalPolicy
+	} else if name == localFileWriteToolName || name == localFileEditToolName {
+		risk = chatToolRiskWrite
 	}
 	config := runtime.config()
 	return chatToolRegistration{
@@ -170,6 +178,8 @@ func localSkillToolRegistration(
 		RiskClass: risk, Timeout: config.CallTimeout, MaxOutputBytes: int64(config.MaxOutput),
 		ApprovalRule: approval, Presentation: chatToolPresentationTool,
 		ProjectForModel: identityChatToolResult,
+		MutationResultNeedsFollowup: name == localFileWriteToolName ||
+			name == localFileEditToolName || name == localJobKillToolName,
 	}
 }
 
@@ -214,6 +224,9 @@ func (registry *chatToolRegistry) registerLocalSkills(runtime *localSkillToolRun
 	}
 	// These names remain executable only for bounded in-Turn continuation
 	// compatibility. They are intentionally absent from model definitions.
+	if !runtime.skillsAvailable() {
+		return
+	}
 	for _, name := range []string{legacySkillsListToolName, legacySkillViewToolName} {
 		registry.register(chatToolRegistration{
 			Name: name, Backend: chatToolBackendLocalSkill, RiskClass: chatToolRiskRead,

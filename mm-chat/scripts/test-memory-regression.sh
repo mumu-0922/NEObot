@@ -577,8 +577,8 @@ if args and args[0] == "compose":
                 **({
                     "policySelected": False,
                     "diagnosticComplete": True,
-                    "failureTaxonomyVersion": "memory-candidate-judge-failure-taxonomy-v1",
-                    "failureTaxonomySha256": "c22cb137da8b5fda87526237446519dd9abe2c8d221ad703c5445358d9059f8d",
+                    "failureTaxonomyVersion": "memory-candidate-judge-failure-taxonomy-v2",
+                    "failureTaxonomySha256": "229bb4fd6aaf0ec7fea2bf9c37c7f332f78876249b0dba5692ca8bf789646a6d",
                     "diagnosticCompleteness": "attempt_terminal_reconciled_fail_closed_v1",
                 } if diagnostic else {}),
                 "split": "development",
@@ -1093,8 +1093,8 @@ if args and args[0] == "compose":
                     "judgeConfirmationPromptSha256": "205c7cc69f9265fa21ef3d3441778224a08be84b4d20a4fa35cdfcb6c811f1c8",
                 } if production_confirmation else {}),
                 "judgeDecodingProfile": "temperature-0_max-output-128_no-thinking_v1",
-                "failureTaxonomyVersion": "memory-candidate-judge-failure-taxonomy-v1",
-                "failureTaxonomySha256": "c22cb137da8b5fda87526237446519dd9abe2c8d221ad703c5445358d9059f8d",
+                "failureTaxonomyVersion": "memory-candidate-judge-failure-taxonomy-v2",
+                "failureTaxonomySha256": "229bb4fd6aaf0ec7fea2bf9c37c7f332f78876249b0dba5692ca8bf789646a6d",
                 "diagnosticCompleteness": "attempt_terminal_reconciled_fail_closed_v1",
                 "selectionAlgorithm": "strict-ordinal_intersect-bge-order_top5-token-budget_v1",
                 "evaluationCriteriaVersion": (

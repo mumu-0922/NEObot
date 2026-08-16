@@ -587,11 +587,13 @@ bash scripts/run-memory-production-buffered-validation-from-vault.sh \
     I_UNDERSTAND_THIS_USES_REAL_FROZEN_BUFFERED_MEMORY_VALIDATION_QUOTA
 ```
 
-The fixed taxonomy `memory-candidate-judge-failure-taxonomy-v1` is the sorted
-24-value union of the 15 canonical `internal/chat` Provider categories and
+The fixed taxonomy `memory-candidate-judge-failure-taxonomy-v2` is the sorted
+25-value union of the 16 canonical `internal/chat` Provider categories and
 nine Judge-local input/event/output/provenance/Recorder categories. Its JSON
 array SHA-256 is
-`c22cb137da8b5fda87526237446519dd9abe2c8d221ad703c5445358d9059f8d`.
+`229bb4fd6aaf0ec7fea2bf9c37c7f332f78876249b0dba5692ca8bf789646a6d`.
+Version 2 adds the typed, message-independent
+`PROVIDER_CONTEXT_OVERFLOW` category used by Chat continuation compaction.
 JSON, schema, and ordinal failures are typed at decoder stages; unknown causes
 collapse to `CANDIDATE_JUDGE_FAILURE_UNCLASSIFIED`. Error strings and raw
 Provider output never become taxonomy keys or retained evidence.

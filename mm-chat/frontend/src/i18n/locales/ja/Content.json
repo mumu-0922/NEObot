@@ -33,6 +33,7 @@
   "processInterrupted": "中断済み",
   "processKnowledgeHits": "{count} 件一致",
   "processWebSources": "{count} 件のソース",
+  "processLocalJobRestartWarning": "バックグラウンド Job は現在のサービスプロセス内でのみ有効で、再起動後は復元できません。",
   "runningTool": "{name} を実行中…",
   "usedTools": "{count} 個のツールを使用",
   "truncated": "省略",

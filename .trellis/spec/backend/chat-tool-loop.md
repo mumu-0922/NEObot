@@ -322,16 +322,24 @@ Correct: append event -> project same event to SSE -> refresh/restart replay
 
 ### 1. Scope / Trigger
 
-Apply when changing the `local_direct` Skill index, native Tool definitions,
-Tool ordering, same-model continuation, budgets, cancellation, errors or
-process-trace redaction. Local Skill Tools join the existing provider-native
-loop; they do not create another model protocol or enable Child Agents.
+Apply when changing the `local_direct` Skill index, workspace File Tools,
+background Jobs, native Tool definitions, Tool ordering, same-model
+continuation, completion evidence, budgets, cancellation, errors or
+process-trace redaction. Local Tools join the existing provider-native loop;
+they do not create another model protocol or enable Child Agents.
 
 ### 2. Signatures
 
 ```text
 skill({name})
-terminal({command, skill?, workingDir?, timeoutSeconds?})
+file_read({path, offset?, limit?})
+file_write({path, content, expectedVersion})
+file_edit({path, oldText, newText, replaceAll, expectedVersion})
+file_search({path?, query, glob?, maxResults?})
+terminal({command, skill?, workingDir?, timeoutSeconds?, runInBackground})
+job_list({})
+job_output({jobId, wait, timeoutSeconds?})
+job_kill({jobId})
 ```
 
 - Catalog: `LocalSkillCatalog.PrepareRuntimeSkills(ctx, userID, runtimeRoot)`.
@@ -347,14 +355,16 @@ terminal({command, skill?, workingDir?, timeoutSeconds?})
 ### 3. Contracts
 
 - Prepare only current-user installed/admitted Skills before the first model
-  request. Disabled runtime exposes no catalog or Tool. An enabled runtime with
-  no installations exposes no Tool and publishes an empty catalog tombstone.
+  request. Disabled runtime exposes no catalog or local Tool. An enabled
+  runtime with no installations publishes an empty catalog tombstone, omits
+  only `skill`, and still exposes File, Job, and `terminal` Tools.
 - Add only a compact bounded name/version/description catalog replacement to
   the system prompt. Bind it to a deterministic SHA-256 revision and mark it
   untrusted routing metadata. Full instructions load only through `skill` or a
   current user's deterministic `/skill-name` gesture and cannot override
   system/developer instructions.
-- New model requests expose only `skill` and `terminal`. Keep `skills_list` and
+- New model requests expose `skill` only when installations exist, plus File,
+  Job, and `terminal` whenever the runtime is enabled. Keep `skills_list` and
   `skill_view` execution-compatible only for bounded continuation migration;
   never advertise them in Tool definitions or prompt guidance.
 - Exact installed-name mentions queue every named Skill. Otherwise, only one
@@ -387,6 +397,17 @@ terminal({command, skill?, workingDir?, timeoutSeconds?})
   a call or round budget is exhausted, return a bounded Tool failure and make
   one Tool-free same-model continuation for the final answer. The whole local
   loop is bounded by the executor Run deadline.
+- File paths are workspace-relative and anchored with `os.Root`. A read returns
+  a complete-file `sha256:<hex>` version; write/edit requires that exact
+  version, rechecks before atomic rename, and returns `version_conflict` rather
+  than overwriting an external change. Reads/writes/searches are UTF-8 and
+  byte/file/result bounded. `file_write`/`file_edit` need a later observation
+  and cannot verify their own mutation.
+- Background Jobs are in-memory, scoped to exact user plus Conversation, share
+  foreground terminal concurrency/Run timeout, and never survive restart.
+  `job_output(wait=true)` waits at most ten seconds without polling. Only a
+  successful completed `job_output` may verify the background command; start,
+  list, kill, and running output cannot. Shutdown kills/reaps every Job.
 - Model capability is checked before creating the assistant response when an
   installed Skill would require native Tools. Catalog preparation fails closed
   without exposing object keys, fingerprints, package bytes or local paths.
@@ -394,7 +415,8 @@ terminal({command, skill?, workingDir?, timeoutSeconds?})
   executor kills the complete command process group; cancellation remains the
   terminal Chat Run outcome rather than an ordinary Tool failure.
 - Process Tool events retain only Tool name, round, `local_direct`,
-  classification, optional timeout, duration and failure category. Never
+  classification, optional timeout, duration, failure category and allowlisted
+  `durability=process_local`. Never
   persist or stream command text, arguments except bounded timeout, output,
   Skill content, working directory or materialized paths as process metadata.
 
@@ -413,6 +435,11 @@ terminal({command, skill?, workingDir?, timeoutSeconds?})
 | required prelude returns MCP/retrieval/terminal or a retired Tool | bounded `skill_required_before_action`; no side effect |
 | materialized fingerprint drifts | bounded `package_drift`; no content/process |
 | command blocked or approval required | typed Tool failure before process creation |
+| workspace traversal/symlink escape | bounded `path_invalid`; no file access |
+| file version changed | bounded `version_conflict`; preserve current bytes |
+| Job lookup across user/Conversation | `job_not_found`; no existence disclosure |
+| Job is running or failed | not completion evidence |
+| Backend shutdown/restart | kill/reap active Jobs; never claim recovery |
 | local call/round budget exhausted | bounded failure then Tool-free final continuation |
 | local Run deadline expires | `LOCAL_SKILL_BUDGET_EXHAUSTED`; descendants killed |
 | client cancellation | terminal canceled Run; descendants killed |
@@ -420,10 +447,11 @@ terminal({command, skill?, workingDir?, timeoutSeconds?})
 ### 5. Good / Base / Bad Cases
 
 - **Good:** one native continuation performs
-  `skill -> terminal -> final answer`, with exact results in model context and
-  content-free process facts in persistence/SSE.
+  `skill -> file_read -> file_edit -> terminal/job_output -> verify_completion
+  -> final answer`, with exact results in model context and content-free process
+  facts in persistence/SSE.
 - **Base:** local execution is enabled but the user has no installed Skills;
-  an empty replacement tombstone is injected, no local Tool is exposed, and
+  an empty replacement tombstone is injected, File/Job/terminal remain, and
   ordinary MCP/Knowledge/Memory/Web planning is unchanged.
 - **Bad:** paste every `SKILL.md` into the first prompt, trust a Tool-supplied
   object/path, execute an unadvertised action during a required prelude, run
@@ -444,6 +472,11 @@ terminal({command, skill?, workingDir?, timeoutSeconds?})
   unknown-field/path/command checks remain active.
 - Empty/disabled catalog, Tool-incapable model, preparation failure, invalid
   arguments, missing/drifted file, blocked/destructive command and nonzero exit.
+- Workspace traversal/symlink/UTF-8/size/search bounds, read-version-write,
+  external conflict, atomic replacement and read-back evidence.
+- Background Job same-scope authorization, cross-scope denial, wait, completion
+  notices, shared concurrency, timeout/kill/process-group reap, shutdown, UI
+  restart warning, and evidence gating.
 - Call, round, output, call-timeout and Run-timeout boundaries plus cancellation
   process-group termination.
 - Process event/persistence/SSE assertions prove command, output, file content,
@@ -462,8 +495,106 @@ system prompt + every installed file + guessed server path + child agent exec
 #### Correct
 
 ```text
-bounded revisioned catalog -> required/deterministic Skill load -> ordinary
-task Tool rounds -> same-model loop -> redacted process facts -> final answer
+bounded revisioned catalog -> optional required/deterministic Skill load
+-> versioned workspace/Job Tool rounds -> same-model observation/verification
+-> redacted process facts -> final answer
+```
+
+## Scenario: Compact a Chat Agent continuation and recover from context overflow
+
+### 1. Scope / Trigger
+
+Apply when changing Provider Tool continuation storage/serialization, Tool
+Result bounds, synthetic checkpoints, Provider context-overflow classification,
+retry behavior, or durable `context.replaced` events. Compaction must preserve
+native call/result framing and must never use removed content as diagnostics.
+
+### 2. Signatures
+
+```go
+compactChatAgentContinuation(exchanges []ProviderToolExchange, aggressive bool)
+    ([]ProviderToolExchange, *ProviderContextReplacementEvent)
+
+type ProviderContextReplacementEvent struct {
+    Reason string
+    BeforeBytes, AfterBytes int
+    ResultsPruned, ExchangesReplaced int
+}
+```
+
+- Normal bounds: Tool Result `64 KiB`, head/tail `24 KiB`, Turn `256 KiB`,
+  newest `4` complete exchanges exact.
+- Overflow bounds: Tool Result `16 KiB`, head/tail `6 KiB`, newest `2`
+  complete exchanges exact.
+- Typed failure: `PROVIDER_CONTEXT_OVERFLOW`.
+
+### 3. Contracts
+
+- Prune each oversized Tool Result with a UTF-8-safe head, omission marker and
+  tail. Preserve call ID, Tool name, `IsError`, call arguments, and the owning
+  complete `ProviderToolExchange`; never mutate the input slice's nested
+  results.
+- If the continuation remains oversized, replace only a prefix of complete
+  exchanges with one bounded synthetic checkpoint. Never split a Tool Call
+  from its Result. Checkpoints contain Tool name/call ID/status/result byte
+  count only; merge older checkpoints without nesting their wrapper.
+- Preserve the newest exact Provider state. Anthropic thinking/redacted
+  thinking/signatures in retained exchanges remain byte-authoritative.
+- Classify overflow only from HTTP `413` or an allowlisted stable JSON
+  `code|type|status|reason`; never inspect free-form upstream `message` text.
+- `ProviderFailureCategories()` is a shared hash-bound input to the Memory
+  Judge failure taxonomy. Adding this category requires a new taxonomy version,
+  recomputed sorted-JSON SHA-256, and synchronized capture docs/scripts/tests;
+  a focused Chat test alone is not a complete change.
+- Retry the exact Provider, model and Step once after aggressive compaction only
+  when `AfterBytes < BeforeBytes`. Handle synchronous failure and an error in
+  the first SSE event. A retry failure does not compact/retry again.
+- Emit `ProviderEventContextReplaced` before retry/continuation. The Handler
+  appends durable `context.replaced` with counts/reason only; no removed content
+  enters PostgreSQL, SSE process detail, logs, or terminal message metadata.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| Tool Result is at or below 64 KiB | retain exact Result |
+| UTF-8 code point crosses a cut boundary | move boundary; emit valid UTF-8 |
+| continuation exceeds 256 KiB with more than four exchanges | checkpoint complete old prefix only |
+| aggressive compaction does not shrink | no retry; return original overflow |
+| synchronous first overflow after shrink | retry same Provider/model/Step once |
+| first SSE event is overflow after shrink | discard that event and retry once |
+| retry also overflows | terminal failure; total attempts remain two |
+| JSON message merely says “context too long” | ordinary request rejection, not overflow |
+| event persistence fails | terminal `AGENT_EVENT_PERSISTENCE_FAILED` |
+
+### 5. Good / Base / Bad Cases
+
+- **Good:** a large terminal Result is pruned, an oversized old exchange prefix
+  becomes one content-free checkpoint, the same Step retries once and succeeds.
+- **Base:** continuation stays below thresholds and no replacement event or
+  retry occurs.
+- **Bad:** truncate raw serialized messages, detach Tool Calls from Results,
+  discard recent Anthropic signatures, classify human-readable error text, or
+  loop retries until the Provider accepts the request.
+
+### 6. Tests Required
+
+- UTF-8 pruning preserves head/tail and the exact call/result identity without
+  mutating input.
+- Whole-exchange compaction keeps the newest four/two exchanges and recent
+  Provider state; serializer fixtures render one synthetic user checkpoint.
+- Stable-code/HTTP-413 positives and message-only/unknown-code negatives.
+- Synchronous and first-SSE overflow both prove strict shrink before the single
+  retry; a second overflow proves no third Provider call.
+- Event recorder tests prove positive counts, continuous sequence and
+  content-free payload.
+
+### 7. Wrong vs Correct
+
+```text
+Wrong: provider says “too long” -> truncate arbitrary messages -> retry loop
+Correct: typed overflow -> shrink complete exchanges -> record bounded counts
+        -> same Provider/model/Step retry once
 ```
 
 ## 1. Scope / Trigger

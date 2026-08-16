@@ -10,11 +10,12 @@ damage; they do not contain deliberately adversarial code.
 ## Execution flow
 
 ```text
-installed Skill index
-  -> skill_view exact immutable file
-  -> terminal validated command + optional active Skill binding
+enabled local_direct runtime
+  -> workspace-relative File Tools with versioned atomic writes
+  -> optional skill exact immutable instructions
+  -> terminal validated foreground/background command + optional Skill binding
   -> explicit environment + non-login shell + ordinary Backend UID/GID
-  -> bounded stdout/stderr/exit framing
+  -> bounded stdout/stderr/exit or process-local Job framing
   -> same-model Tool continuation
 ```
 
@@ -23,8 +24,22 @@ send `SIGKILL` to the whole group and wait for the direct child before returning
 Combined stdout/stderr storage is capped while both streams continue draining,
 so a verbose command cannot deadlock on a full pipe or allocate without bound.
 
+File reads and searches enter through an `os.Root` anchored to the workspace.
+File writes and edits serialize in-process, compare the caller's complete-file
+SHA-256 version twice, write and sync a same-directory temporary file, then
+atomically rename it. This is optimistic conflict protection, not a replacement
+for a filesystem Sandbox or a multi-process transactional filesystem.
+
+Background Jobs hold the same global process-concurrency slot as foreground
+commands. Their state, completion notice, and bounded captured output exist
+only in Backend memory and are authorized by exact user plus conversation.
+`job_output(wait=true)` waits on the Job completion channel rather than polling.
+Shutdown cancels the shared lifecycle context and waits for all process groups
+to be reaped before the executor closes.
+
 ## Rollback
 
 Set `AGENT_LOCAL_RUNTIME_ENABLED=false` and recreate the Backend. Installed
-Skill authority remains intact; Chat simply exposes no local Skill Tools. The
+Skill authority and workspace files remain intact; Chat exposes no local
+workspace, Job, terminal, or Skill Tools. The
 historical OCI Runner code is not invoked as an automatic fallback.

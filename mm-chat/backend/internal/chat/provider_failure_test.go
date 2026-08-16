@@ -5,21 +5,23 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestProviderHTTPFailureCategoriesAreBounded(t *testing.T) {
 	tests := map[int]ProviderFailureCategory{
-		http.StatusFound:               ProviderFailureRequestRejected,
-		http.StatusUnauthorized:        ProviderFailureAuthentication,
-		http.StatusForbidden:           ProviderFailureAuthentication,
-		http.StatusPaymentRequired:     ProviderFailureQuotaExhausted,
-		http.StatusRequestTimeout:      ProviderFailureRequestTimeout,
-		http.StatusTooManyRequests:     ProviderFailureRateLimited,
-		http.StatusUnprocessableEntity: ProviderFailureRequestRejected,
-		http.StatusInternalServerError: ProviderFailureUpstreamFailed,
-		http.StatusServiceUnavailable:  ProviderFailureUpstreamFailed,
+		http.StatusFound:                 ProviderFailureRequestRejected,
+		http.StatusUnauthorized:          ProviderFailureAuthentication,
+		http.StatusForbidden:             ProviderFailureAuthentication,
+		http.StatusPaymentRequired:       ProviderFailureQuotaExhausted,
+		http.StatusRequestTimeout:        ProviderFailureRequestTimeout,
+		http.StatusTooManyRequests:       ProviderFailureRateLimited,
+		http.StatusUnprocessableEntity:   ProviderFailureRequestRejected,
+		http.StatusRequestEntityTooLarge: ProviderFailureContextOverflow,
+		http.StatusInternalServerError:   ProviderFailureUpstreamFailed,
+		http.StatusServiceUnavailable:    ProviderFailureUpstreamFailed,
 	}
 	for status, want := range tests {
 		if got := providerHTTPFailureCategory(status); got != want {
@@ -110,9 +112,55 @@ func TestProviderFailureCategoryOfDoesNotRequireErrorText(t *testing.T) {
 	}
 }
 
+func TestProviderContextOverflowUsesOnlyStatusOrStableCodes(t *testing.T) {
+	for _, test := range []struct {
+		status int
+		body   string
+		want   ProviderFailureCategory
+	}{
+		{status: http.StatusRequestEntityTooLarge, body: `private`, want: ProviderFailureContextOverflow},
+		{status: http.StatusBadRequest, body: `{"error":{"code":"context_length_exceeded","message":"private"}}`, want: ProviderFailureContextOverflow},
+		{status: http.StatusBadRequest, body: `{"error":{"type":"request_too_large"}}`, want: ProviderFailureContextOverflow},
+		{status: http.StatusBadRequest, body: `{"error":{"status":"INVALID_ARGUMENT","message":"context too long"}}`, want: ProviderFailureRequestRejected},
+		{status: http.StatusBadRequest, body: `{"error":{"message":"context_length_exceeded"}}`, want: ProviderFailureRequestRejected},
+	} {
+		if got := providerFailureCategoryFromResponse(test.status, []byte(test.body)); got != test.want {
+			t.Fatalf("status=%d body=%s category=%q want=%q", test.status, test.body, got, test.want)
+		}
+	}
+	if _, retryable := ProviderRetryDelay(newProviderFailure(
+		ProviderFailureContextOverflow, "bounded",
+	)); retryable {
+		t.Fatal("generic Provider retry policy retried context overflow without compaction")
+	}
+}
+
+func TestOpenAICompatibleProviderClassifiesBoundedContextOverflowResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"code":"context_window_exceeded","message":"private prompt excerpt"}}`))
+	}))
+	defer server.Close()
+	provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+		BaseURL: server.URL, APIKey: "fixture-key",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = provider.StreamToolRound(context.Background(), ProviderRoundRequest{
+		ProviderRequest: ProviderRequest{
+			Prompt: "fixture", ModelRef: ModelRef{ProviderID: OpenAICompatibleProviderID, ModelID: "fixture"},
+		},
+	})
+	category, ok := ProviderFailureCategoryOf(err)
+	if !ok || category != ProviderFailureContextOverflow || strings.Contains(err.Error(), "private") {
+		t.Fatalf("category=%q/%t error=%v", category, ok, err)
+	}
+}
+
 func TestProviderFailureCategoryCatalogueIsCompleteAndSorted(t *testing.T) {
 	categories := ProviderFailureCategories()
-	if len(categories) != 15 {
+	if len(categories) != 16 {
 		t.Fatalf("category count=%d categories=%v", len(categories), categories)
 	}
 	for index, category := range categories {

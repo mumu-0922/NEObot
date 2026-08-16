@@ -49,6 +49,9 @@ export default function ProcessTracePanel({
     [steps],
   );
   const hasActiveStep = visibleSteps.some(isProcessStepActive);
+  const hasProcessLocalJob = visibleSteps.some(
+    (step) => step.detail?.durability === "process_local",
+  );
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null);
   const isExpanded = resolveProcessPanelExpanded(hasActiveStep, manualExpanded);
   const summary = useMemo(
@@ -100,6 +103,20 @@ export default function ProcessTracePanel({
                 <ProcessStepRow key={step.id} step={step} />
               ))}
             </ol>
+
+            {hasProcessLocalJob ? (
+              <div
+                role="note"
+                className="mt-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200"
+              >
+                <CircleAlert
+                  size={13}
+                  className="mt-0.5 shrink-0"
+                  aria-hidden="true"
+                />
+                <span>{t("processLocalJobRestartWarning")}</span>
+              </div>
+            ) : null}
 
             {reasoning ? (
               <div className="mt-3 border-t border-gray-200/60 pt-3 dark:border-border">

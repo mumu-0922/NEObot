@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"sort"
@@ -31,6 +32,7 @@ const (
 	ProviderFailureStreamReadFailed   ProviderFailureCategory = "PROVIDER_STREAM_READ_FAILED"
 	ProviderFailureStreamIncomplete   ProviderFailureCategory = "PROVIDER_STREAM_INCOMPLETE"
 	ProviderFailureStreamRemoteError  ProviderFailureCategory = "PROVIDER_STREAM_REMOTE_ERROR"
+	ProviderFailureContextOverflow    ProviderFailureCategory = "PROVIDER_CONTEXT_OVERFLOW"
 	ProviderFailureContextDeadline    ProviderFailureCategory = "CONTEXT_DEADLINE"
 	ProviderFailureContextCanceled    ProviderFailureCategory = "CONTEXT_CANCELED"
 )
@@ -49,6 +51,7 @@ var providerFailureCategories = map[ProviderFailureCategory]struct{}{
 	ProviderFailureStreamReadFailed:   {},
 	ProviderFailureStreamIncomplete:   {},
 	ProviderFailureStreamRemoteError:  {},
+	ProviderFailureContextOverflow:    {},
 	ProviderFailureContextDeadline:    {},
 	ProviderFailureContextCanceled:    {},
 }
@@ -187,6 +190,8 @@ func parseProviderRetryAfter(value string, now time.Time) (time.Duration, bool) 
 
 func providerHTTPFailureCategory(statusCode int) ProviderFailureCategory {
 	switch {
+	case statusCode == http.StatusRequestEntityTooLarge:
+		return ProviderFailureContextOverflow
 	case statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden:
 		return ProviderFailureAuthentication
 	case statusCode == http.StatusPaymentRequired:
@@ -202,4 +207,69 @@ func providerHTTPFailureCategory(statusCode int) ProviderFailureCategory {
 	default:
 		return ProviderFailureRequestRejected
 	}
+}
+
+func isProviderContextOverflow(err error) bool {
+	category, ok := ProviderFailureCategoryOf(err)
+	return ok && category == ProviderFailureContextOverflow
+}
+
+func providerFailureCategoryFromResponse(
+	statusCode int,
+	body []byte,
+) ProviderFailureCategory {
+	if statusCode == http.StatusRequestEntityTooLarge || providerErrorCodeSignalsOverflow(body) {
+		return ProviderFailureContextOverflow
+	}
+	return providerHTTPFailureCategory(statusCode)
+}
+
+var providerContextOverflowCodes = map[string]struct{}{
+	"context_length_exceeded": {},
+	"context_window_exceeded": {},
+	"context_length_error":    {},
+	"prompt_too_long":         {},
+	"request_too_large":       {},
+	"input_too_long":          {},
+}
+
+func providerErrorCodeSignalsOverflow(body []byte) bool {
+	if len(body) == 0 || len(body) > 16<<10 {
+		return false
+	}
+	var payload any
+	if json.Unmarshal(body, &payload) != nil {
+		return false
+	}
+	return providerErrorValueSignalsOverflow(payload)
+}
+
+func providerErrorValueSignalsOverflow(value any) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, candidate := range typed {
+			switch strings.ToLower(strings.TrimSpace(key)) {
+			case "code", "type", "status", "reason":
+				text, ok := candidate.(string)
+				if !ok {
+					continue
+				}
+				text = strings.ToLower(strings.TrimSpace(text))
+				if _, allowed := providerContextOverflowCodes[text]; allowed {
+					return true
+				}
+			case "error", "details":
+				if providerErrorValueSignalsOverflow(candidate) {
+					return true
+				}
+			}
+		}
+	case []any:
+		for _, candidate := range typed {
+			if providerErrorValueSignalsOverflow(candidate) {
+				return true
+			}
+		}
+	}
+	return false
 }

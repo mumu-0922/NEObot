@@ -111,17 +111,18 @@ type ToolCall struct {
 }
 
 type ProviderEvent struct {
-	Type            string
-	Delta           string
-	ReasoningDelta  string
-	ToolCallDelta   *ProviderToolCallDelta
-	ToolCall        *ProviderToolCall
-	ToolExecution   *ProviderToolExecutionEvent
-	RoundState      any
-	Usage           *TokenUsage
-	Search          *websearch.Result
-	FailureCategory string
-	Error           error
+	Type               string
+	Delta              string
+	ReasoningDelta     string
+	ToolCallDelta      *ProviderToolCallDelta
+	ToolCall           *ProviderToolCall
+	ToolExecution      *ProviderToolExecutionEvent
+	ContextReplacement *ProviderContextReplacementEvent
+	RoundState         any
+	Usage              *TokenUsage
+	Search             *websearch.Result
+	FailureCategory    string
+	Error              error
 }
 
 type TokenUsage struct {

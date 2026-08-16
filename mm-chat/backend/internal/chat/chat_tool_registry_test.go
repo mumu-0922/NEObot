@@ -41,7 +41,10 @@ func TestChatToolRegistryOrdersAuthorityAndCarriesExecutionPolicy(t *testing.T) 
 		LocalSkills: localRuntime,
 	})
 	definitions := registry.definitions(1)
-	want := []string{"search_memory", "search_knowledge", "skill", "terminal"}
+	want := []string{
+		"search_memory", "search_knowledge", "skill", "file_read", "file_write",
+		"file_edit", "file_search", "job_list", "job_output", "job_kill", "terminal",
+	}
 	if len(definitions) != len(want) {
 		t.Fatalf("definitions=%#v", definitions)
 	}
@@ -50,7 +53,7 @@ func TestChatToolRegistryOrdersAuthorityAndCarriesExecutionPolicy(t *testing.T) 
 			t.Fatalf("definition[%d]=%q want %q", index, definitions[index].Function.Name, name)
 		}
 	}
-	if secondStep := registry.definitions(2); len(secondStep) != 3 ||
+	if secondStep := registry.definitions(2); len(secondStep) != 10 ||
 		secondStep[0].Function.Name != searchKnowledgeToolName {
 		t.Fatalf("second-step definitions=%#v", secondStep)
 	}
@@ -68,6 +71,11 @@ func TestChatToolRegistryOrdersAuthorityAndCarriesExecutionPolicy(t *testing.T) 
 	}
 	if _, ok := registry.lookup(legacySkillViewToolName); !ok {
 		t.Fatal("legacy Skill continuation registration is missing")
+	}
+	fileWrite, ok := registry.lookup(localFileWriteToolName)
+	if !ok || fileWrite.RiskClass != chatToolRiskWrite ||
+		!fileWrite.MutationResultNeedsFollowup {
+		t.Fatalf("file_write registration=%#v", fileWrite)
 	}
 	for _, forbidden := range []string{"subagent", "delegate_task"} {
 		if _, ok := registry.lookup(forbidden); ok {

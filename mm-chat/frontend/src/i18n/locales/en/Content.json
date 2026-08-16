@@ -33,6 +33,7 @@
   "processInterrupted": "Interrupted",
   "processKnowledgeHits": "{count, plural, one {# match} other {# matches}}",
   "processWebSources": "{count, plural, one {# source} other {# sources}}",
+  "processLocalJobRestartWarning": "Background Jobs exist only in the current service process and cannot be recovered after a restart.",
   "runningTool": "Running {name}…",
   "usedTools": "{count, plural, one {Used # Tool} other {Used # Tools}}",
   "truncated": "Truncated",

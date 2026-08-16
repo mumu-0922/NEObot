@@ -194,13 +194,13 @@ func (p *OpenAICompatibleProvider) streamChatCompletion(
 	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<10+1))
 		_ = resp.Body.Close()
 		if cancel != nil {
 			cancel()
 		}
 		return nil, newProviderHTTPFailure(
-			providerHTTPFailureCategory(resp.StatusCode),
+			providerFailureCategoryFromResponse(resp.StatusCode, body),
 			fmt.Sprintf("openai-compatible provider returned status %d", resp.StatusCode),
 			resp.Header.Get("Retry-After"),
 		)
@@ -704,6 +704,12 @@ func appendOpenAICompatibleContinuation(
 	exchanges []ProviderToolExchange,
 ) []openAICompatibleMessage {
 	for _, exchange := range exchanges {
+		if checkpoint := strings.TrimSpace(exchange.Checkpoint); checkpoint != "" {
+			messages = append(messages, openAICompatibleMessage{
+				Role: "user", Content: checkpoint,
+			})
+			continue
+		}
 		if len(exchange.Calls) == 0 {
 			if strings.TrimSpace(exchange.FollowupPrompt) == "" {
 				continue
@@ -901,8 +907,12 @@ func dispatchOpenAICompatibleData(
 		return false, false
 	}
 	if len(chunk.Error) > 0 && string(chunk.Error) != "null" {
+		category := ProviderFailureStreamRemoteError
+		if providerErrorCodeSignalsOverflow(chunk.Error) {
+			category = ProviderFailureContextOverflow
+		}
 		sendProviderEvent(ctx, events, ProviderEvent{Error: newProviderFailure(
-			ProviderFailureStreamRemoteError,
+			category,
 			"openai-compatible provider stream returned an error",
 		)})
 		return false, false

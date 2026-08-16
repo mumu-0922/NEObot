@@ -8,7 +8,8 @@ and the normal Chat Tool Loop loads its files and runs commands when needed.
 
 ```text
 owner installation -> admitted canonical package -> immutable local materialization
-  -> revisioned catalog replacement -> skill -> terminal -> same-model answer
+  -> revisioned catalog replacement -> optional skill
+enabled local_direct -> File/Job/terminal Tools -> same-model answer
 ```
 
 An ordinary Skill needs `SKILL.md`. `scripts/`, `references/`, and `assets/`
@@ -36,11 +37,23 @@ Runner mTLS, and production isolation evidence are not prerequisites.
 | Tool | Contract |
 | --- | --- |
 | `skill({name})` | Loads UTF-8 `SKILL.md` for one exact current installation. A duplicate load under the same catalog revision returns `alreadyLoaded` without repeating the body. |
-| `terminal({command,skill?,workingDir?,timeoutSeconds?})` | Runs one bounded shell command as the Backend user in the configured workspace. `skill` exposes that installed package only through `NEO_CHAT_ACTIVE_SKILL_ROOT`. |
+| `file_read({path,offset?,limit?})` | Reads one bounded UTF-8 window and returns the version of the complete workspace-relative regular file. |
+| `file_write({path,content,expectedVersion})` | Atomically creates or replaces one bounded UTF-8 file. `expectedVersion="absent"` is valid only for creation. |
+| `file_edit({path,oldText,newText,replaceAll,expectedVersion})` | Performs exact text replacement over the version-pinned file; the default requires exactly one match. |
+| `file_search({path?,query,glob?,maxResults?})` | Searches bounded regular UTF-8 workspace files for literal text while skipping symlinks and generated dependency directories. |
+| `terminal({command,skill?,workingDir?,timeoutSeconds?,runInBackground})` | Runs one bounded shell command as the Backend user in the configured workspace. `skill` exposes that installed package only through `NEO_CHAT_ACTIVE_SKILL_ROOT`; background mode returns a process-local Job ID. |
+| `job_list({})` | Lists process-local Jobs for the exact user and Conversation without command text or output. |
+| `job_output({jobId,wait,timeoutSeconds?})` | Reads one owned Job and optionally waits at most ten seconds without busy-polling. Output appears only after a terminal state. |
+| `job_kill({jobId})` | Cancels one owned Job and kills/reaps its complete process group. |
 
 `skills_list` and `skill_view` remain accepted by the Backend for a bounded
 continuation migration period, but their definitions are absent from every new
 model request.
+
+When `local_direct` is enabled with no installed Skills, the catalog is still
+an explicit empty tombstone and only `skill` is omitted. File, Job, and
+`terminal` Tools remain available. Disabling `local_direct` removes all of
+these Tools without deleting installations or workspace data.
 
 The system prompt contains one bounded complete replacement of the installed
 catalog, identified by a SHA-256 revision. Removing every installation emits
@@ -85,6 +98,38 @@ The executor:
 These guards reduce accidental damage. They are not protection against an
 adversarial allowed process.
 
+## Workspace files
+
+- Every caller path is workspace-relative. Go `os.Root` operations reject
+  absolute paths, traversal, symlinks, non-regular files, and escapes.
+- A complete file is at most 2 MiB. One read window and one write/edit payload
+  are at most 24 KiB and must be valid UTF-8 without NUL bytes.
+- Versions are `sha256:<hex>` over the complete bytes or `absent`. Writes and
+  edits require the exact expected version and return `version_conflict` after
+  any observed external change instead of overwriting it.
+- Writes serialize in the Backend process, recheck the version after syncing a
+  same-directory temporary file, atomically rename, then sync the parent
+  directory.
+- Search is literal and bounded to 2,000 files, 32 MiB scanned bytes, and 200
+  results. It skips symlinks and hidden/generated dependency directories.
+- `file_write` and `file_edit` are mutations, not completion evidence. The
+  Agent must subsequently read/search/execute and verify the resulting state.
+
+## Background Jobs
+
+- A Job is memory-only and scoped to the exact authenticated user plus
+  Conversation. Cross-scope absence and denial both return `job_not_found`.
+- Status is `running|stopping|completed|killed|failed`. A foreground command
+  and a Job share the same process-concurrency slots and output cap.
+- A Job uses the local Run timeout. `job_output(wait=true)` waits at most ten
+  seconds on completion; sleeps and busy polling are forbidden.
+- Completion notices are injected into the next Agent Step or the next request
+  in that Conversation, but contain only Job ID/status and never imply output.
+- A running start/list/kill result cannot verify completion. Only a successful
+  `job_output` with `status=completed` may serve as evidence.
+- Process trace marks these Tools with `durability=process_local`; the UI warns
+  that service restart loses them. Shutdown cancels and reaps every Job.
+
 ## Failure and rollback
 
 - A model without native Tool support fails before assistant creation with
@@ -93,5 +138,10 @@ adversarial allowed process.
   exposing storage or filesystem details.
 - Run deadline returns `LOCAL_SKILL_BUDGET_EXHAUSTED`; cancellation terminates
   the process group and finalizes the Chat Run as cancelled.
+- Workspace conflicts and bounds return typed `version_conflict`,
+  `file_not_found`, `file_too_large`, `invalid_utf8`, `edit_conflict`,
+  `path_invalid`, or `arguments_invalid` Tool Results.
+- Background Job failures are bounded Tool Results. Backend restart does not
+  recover or resume a prior process-local Job.
 - Set `AGENT_LOCAL_RUNTIME_ENABLED=false` and recreate the Backend to roll back
   immediately. Installed packages remain stored and no OCI Runtime is enabled.

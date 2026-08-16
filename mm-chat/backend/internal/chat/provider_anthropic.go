@@ -237,12 +237,16 @@ func (p *AnthropicProvider) StreamToolRound(
 		return nil, fmt.Errorf("anthropic provider request failed: %w", err)
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4_096))
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<10+1))
 		_ = resp.Body.Close()
 		if cancel != nil {
 			cancel()
 		}
-		return nil, fmt.Errorf("anthropic provider returned status %d", resp.StatusCode)
+		return nil, newProviderHTTPFailure(
+			providerFailureCategoryFromResponse(resp.StatusCode, body),
+			fmt.Sprintf("anthropic provider returned status %d", resp.StatusCode),
+			resp.Header.Get("Retry-After"),
+		)
 	}
 
 	events := make(chan ProviderEvent)
@@ -494,6 +498,10 @@ func appendAnthropicContinuation(
 	exchanges []ProviderToolExchange,
 ) ([]anthropicMessage, error) {
 	for _, exchange := range exchanges {
+		if checkpoint := strings.TrimSpace(exchange.Checkpoint); checkpoint != "" {
+			messages = append(messages, anthropicMessage{Role: "user", Content: checkpoint})
+			continue
+		}
 		if len(exchange.Calls) == 0 {
 			followup := strings.TrimSpace(exchange.FollowupPrompt)
 			if followup == "" {
@@ -653,8 +661,9 @@ func normalizeAnthropicServiceBaseURL(raw string) (string, error) {
 }
 
 type anthropicStreamEnvelope struct {
-	Type  string `json:"type"`
-	Index int    `json:"index"`
+	Type  string          `json:"type"`
+	Index int             `json:"index"`
+	Error json.RawMessage `json:"error"`
 	Delta struct {
 		Type        string `json:"type"`
 		Text        string `json:"text"`
@@ -802,7 +811,14 @@ func dispatchAnthropicData(
 		}
 		return false, true
 	case "error":
-		sendProviderEvent(ctx, events, ProviderEvent{Error: errAnthropicStream})
+		failure := error(errAnthropicStream)
+		if providerErrorCodeSignalsOverflow(envelope.Error) {
+			failure = newProviderFailure(
+				ProviderFailureContextOverflow,
+				"anthropic provider context window exceeded",
+			)
+		}
+		sendProviderEvent(ctx, events, ProviderEvent{Error: failure})
 		return false, false
 	default:
 		return true, false

@@ -4,9 +4,10 @@
 
 ### 1. Scope / Trigger
 
-Apply when changing Backend local-Skill configuration, the runtime image,
-single-server Compose mounts, local workspace authority, readiness reporting,
-verification or rollback. This is the current ordinary Chat Skill backend. The
+Apply when changing Backend local-Skill/File/Job configuration, the runtime
+image, single-server Compose mounts, local workspace authority, process
+shutdown, readiness reporting, verification or rollback. This is the current
+ordinary Chat workspace backend. The
 separate G20/G21 rootless OCI scenarios below are disabled optional/history and
 do not gate `local_direct`.
 
@@ -54,6 +55,17 @@ bash mm-chat/scripts/verify-chat-agent-goals-postgres17.sh
 - Compose uses `init: true` so process-group termination is reaped correctly.
   The application executor still owns timeout/cancellation and kills the full
   command process group.
+- File Tools and background Jobs reuse this same workspace mount and ordinary
+  UID/GID. An empty installed-Skill catalog removes only `skill`; File, Job,
+  and terminal Tools stay active. Do not make Store/catalog availability a
+  prerequisite for workspace execution.
+- Background Jobs are API-process-local. They share configured concurrency,
+  output and Run-timeout limits with foreground terminal calls. Graceful API
+  shutdown must call `Executor.Close`, cancel complete process groups and wait
+  for reap before exit. Restart cannot list, resume or recover earlier Jobs.
+- Process projections may expose only `durability=process_local`; the Agent UI
+  must render a restart-loss warning for any such row. Never market this as a
+  durable queue or persist command/output merely to silence the warning.
 - `AGENT_LOCAL_APPROVAL_MODE=smart` is the default accidental-damage guardrail;
   `off` cannot disable the catastrophic-command blocklist.
 - Runtime health reports `local_ready`, `LOCAL_DIRECT_EXECUTION`, and
@@ -73,14 +85,17 @@ bash mm-chat/scripts/verify-chat-agent-goals-postgres17.sh
 | call timeout outside 1s..10m or Run timeout outside call..30m | Backend configuration fails before serving |
 | byte/call/round/concurrency limit outside configured bounds | Backend configuration fails before serving |
 | bind source is absent or not writable by runtime UID/GID | Compose/Backend start fails visibly; no privileged repair |
+| enabled runtime has zero installed Skills | empty Skill tombstone; File/Job/terminal remain available |
+| API receives graceful shutdown with active Jobs | kill/reap all Jobs before executor close returns |
+| API process crashes/restarts | prior Jobs are unavailable; UI/Tool contract never claims recovery |
 | local runtime switch is false | local Tools absent; installed packages/workspace preserved |
 | old OCI Runner is unavailable | no effect on `local_direct`; no automatic fallback |
 
 ### 5. Good / Base / Bad Cases
 
 - **Good:** normal-user-created bind directories render into Compose, Backend
-  reports `local_ready`, and a bounded Skill command writes only the configured
-  workspace.
+  reports `local_ready`, File/terminal Tools work without an installed Skill,
+  and graceful shutdown reaps a bounded background Job.
 - **Base:** local execution is disabled; ordinary Chat remains available and
   no package, workspace or optional OCI state is deleted.
 - **Bad:** request a sudo password, restart WSL, mount a container socket, bind
@@ -95,7 +110,9 @@ bash mm-chat/scripts/verify-chat-agent-goals-postgres17.sh
 - Backend image/source gate checks the common Tool executables without making
   a live network install during tests.
 - Focused executor/catalog/Chat/Agent Center tests prove direct readiness,
-  explicit authority warning, no secret inheritance and rollback-off behavior.
+  empty-catalog workspace availability, File version conflict, Job scope/reap,
+  explicit authority/restart warning, no secret inheritance and rollback-off
+  behavior.
 - Run frontend format/lint/typecheck/test/build, backend vet/test, RAG checks,
   Skill supply, Agent Runtime Phase 0 and standalone full verification.
 
@@ -111,7 +128,8 @@ installed Skill -> demand sudo + Podman + WSL restart -> keep Chat unusable
 
 ```text
 normal-user bind directories -> Compose Backend with ordinary UID/GID
--> local_ready -> bounded local_direct Tools -> switch-off rollback
+-> local_ready -> versioned File + process-local Job/terminal Tools
+-> graceful reap or switch-off rollback
 ```
 
 ## Scenario: Deploy and operate `neo-runnerd` with rootless OCI

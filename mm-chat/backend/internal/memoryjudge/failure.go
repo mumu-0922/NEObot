@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	FailureTaxonomyVersion = "memory-candidate-judge-failure-taxonomy-v1"
-	FailureTaxonomySHA256  = "c22cb137da8b5fda87526237446519dd9abe2c8d221ad703c5445358d9059f8d"
+	FailureTaxonomyVersion = "memory-candidate-judge-failure-taxonomy-v2"
+	FailureTaxonomySHA256  = "229bb4fd6aaf0ec7fea2bf9c37c7f332f78876249b0dba5692ca8bf789646a6d"
 
 	FailureInputInvalid          = "CANDIDATE_JUDGE_INPUT_INVALID"
 	FailureOutputTooLarge        = "CANDIDATE_JUDGE_OUTPUT_TOO_LARGE"

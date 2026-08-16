@@ -1615,8 +1615,8 @@ elif capture_mode in {
         )
         or report.get("memoryReadIntentPolicyVersion") != "memory-explicit-read-intent-v1"
         or report.get("memoryReadIntentPolicySha256") != "538d9ccff34fb976cedfca0d9e153078cb3ce36f1baff0691f1d2124d182119c"
-        or report.get("failureTaxonomyVersion") != "memory-candidate-judge-failure-taxonomy-v1"
-        or report.get("failureTaxonomySha256") != "c22cb137da8b5fda87526237446519dd9abe2c8d221ad703c5445358d9059f8d"
+        or report.get("failureTaxonomyVersion") != "memory-candidate-judge-failure-taxonomy-v2"
+        or report.get("failureTaxonomySha256") != "229bb4fd6aaf0ec7fea2bf9c37c7f332f78876249b0dba5692ca8bf789646a6d"
         or report.get("diagnosticCompleteness") != "attempt_terminal_reconciled_fail_closed_v1"
         or any(
             not isinstance(report.get(name), str)
@@ -2314,8 +2314,8 @@ elif capture_mode in {
             if bounded_miss_development
             else "neo-chat.memory-benchmark-criteria.v3"
         )
-        or report.get("failureTaxonomyVersion") != "memory-candidate-judge-failure-taxonomy-v1"
-        or report.get("failureTaxonomySha256") != "c22cb137da8b5fda87526237446519dd9abe2c8d221ad703c5445358d9059f8d"
+        or report.get("failureTaxonomyVersion") != "memory-candidate-judge-failure-taxonomy-v2"
+        or report.get("failureTaxonomySha256") != "229bb4fd6aaf0ec7fea2bf9c37c7f332f78876249b0dba5692ca8bf789646a6d"
         or report.get("diagnosticCompleteness") != "attempt_terminal_reconciled_fail_closed_v1"
         or not isinstance(criteria, dict)
         or criteria.get("maximumFalseInjectionRate") != (0 if bounded_miss_development else 0.02)

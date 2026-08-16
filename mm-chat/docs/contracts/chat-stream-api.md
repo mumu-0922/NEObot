@@ -14,8 +14,9 @@ POST /v1/chat/conversations/{id}/stream   -> streaming assistant message
 Phase 5.3 adds the first real provider adapter for OpenAI-compatible
 `/chat/completions` streaming APIs. Phase 5.4 adds the first durable cancel
 endpoint for streaming assistant rows. Phase 7 adds Redis-backed temporary
-cancellation flags for cross-process stream interruption. Files, tools, RAG, and
-auth remain later work.
+cancellation flags for cross-process stream interruption. Later phases extend
+this same stream with authenticated RAG, Tools, Agent events, Goals, workspace
+execution, and bounded context replacement.
 
 ## 2. Endpoint
 
@@ -129,6 +130,17 @@ Migration `097` adds same-Conversation Goal state. Goal mutations append
 Step. Their process projection uses `mode=goal` with
 `classification=read|write` and contains no objective, blocker text, Tool
 arguments, or workspace data.
+
+Context compaction is an internal Provider event rather than a new public SSE
+frame. Before a retried/continued Provider Step, the Handler durably appends a
+content-free `context.replaced` event containing only reason and before/after,
+pruned-result, and replaced-exchange counts. Removed Tool content is never
+placed in the event log or SSE.
+
+Process-local background Job Tool projections may contain only
+`durability="process_local"` in addition to the normal allowlisted Tool facts.
+This value is persisted and replayed so the frontend can warn that Backend
+restart cannot recover the Job; command text and Job output remain forbidden.
 
 Terminal events are mutually exclusive:
 
@@ -297,6 +309,11 @@ Runtime rules:
   and incomplete-stream failures use `PROVIDER_STREAM_INTERRUPTED`; partial
   content is preserved with `status='failed'`, never replayed or represented as
   a complete answer. Upstream error text and response bodies remain redacted.
+- HTTP `413` or an allowlisted stable JSON error code may classify a native
+  Tool continuation as `PROVIDER_CONTEXT_OVERFLOW`. Free-form upstream message
+  text cannot. The Agent loop may shrink the continuation and retry the same
+  Provider/model/Step once only when it became smaller; a second overflow or a
+  no-op compaction returns the ordinary scrubbed Provider error path.
 - With Redis enabled, active streams poll the cancellation flag and emit
   `message.cancelled` when the flag appears. Redis errors are non-authoritative
   and do not overwrite Postgres status.

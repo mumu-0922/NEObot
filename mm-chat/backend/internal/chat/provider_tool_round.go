@@ -12,6 +12,7 @@ const (
 	ProviderEventToolCallCompleted = "tool.call.completed"
 	ProviderEventToolExecution     = "tool.execution"
 	ProviderEventRoundCompleted    = "round.completed"
+	ProviderEventContextReplaced   = "context.replaced"
 
 	ProviderToolChoiceAuto     = "auto"
 	ProviderToolChoiceRequired = "required"
@@ -39,6 +40,7 @@ type ProviderToolExchange struct {
 	Results            []ProviderToolResult
 	ProviderState      any
 	FollowupPrompt     string
+	Checkpoint         string
 }
 
 type ProviderToolCallDelta struct {
@@ -84,6 +86,7 @@ type ProviderToolExecutionEvent struct {
 	FailureCategory string            `json:"failureCategory,omitempty"`
 	DurationMillis  int64             `json:"durationMillis,omitempty"`
 	Mode            string            `json:"mode"`
+	Durability      string            `json:"durability,omitempty"`
 }
 
 func normalizeProviderToolChoice(value string) string {

@@ -207,9 +207,18 @@ func TestLocalSkillToolDefinitionsAreOpenAIStrictCompatible(t *testing.T) {
 		Name: "fixture", Files: []string{"SKILL.md"},
 	}})
 	definitions := runtime.definitions()
-	if len(definitions) != 2 || definitions[0].Function.Name != localSkillToolName ||
-		definitions[1].Function.Name != localTerminalToolName {
+	wantNames := []string{
+		localSkillToolName, localFileReadToolName, localFileWriteToolName,
+		localFileEditToolName, localFileSearchToolName, localJobListToolName,
+		localJobOutputToolName, localJobKillToolName, localTerminalToolName,
+	}
+	if len(definitions) != len(wantNames) {
 		t.Fatalf("definitions=%#v", definitions)
+	}
+	for index, name := range wantNames {
+		if definitions[index].Function.Name != name {
+			t.Fatalf("definition[%d]=%q want %q", index, definitions[index].Function.Name, name)
+		}
 	}
 	for _, definition := range definitions {
 		if !definition.Function.Strict {
@@ -296,7 +305,7 @@ func TestLocalSkillToolRejectsTraversalAndDestructiveTerminal(t *testing.T) {
 	}
 }
 
-func TestLocalSkillRuntimeStaysDisabledWithoutInstalledSkills(t *testing.T) {
+func TestLocalWorkspaceToolsStayEnabledWithoutInstalledSkills(t *testing.T) {
 	executor, err := localskills.NewExecutor(localskills.Config{
 		Enabled: true, RuntimeRoot: filepath.Join(t.TempDir(), "skills"),
 		WorkspaceRoot: t.TempDir(), ShellPath: "/bin/sh",
@@ -309,11 +318,50 @@ func TestLocalSkillRuntimeStaysDisabledWithoutInstalledSkills(t *testing.T) {
 	}
 	runtime := newLocalSkillToolRuntime(executor, nil)
 	prompt := runtime.promptInstruction()
-	if runtime.enabled() || len(runtime.definitions()) != 0 ||
+	definitions := runtime.definitions()
+	if !runtime.enabled() || runtime.skillsAvailable() || len(definitions) != 8 ||
+		definitions[0].Function.Name != localFileReadToolName ||
+		definitions[7].Function.Name != localTerminalToolName ||
 		!strings.Contains(prompt, `"replacement":true`) ||
 		!strings.Contains(prompt, `"tombstone":true`) ||
 		!strings.Contains(prompt, `"skills":[]`) {
-		t.Fatalf("empty catalog unexpectedly enabled: %#v", runtime)
+		t.Fatalf("empty catalog workspace runtime=%#v definitions=%#v", runtime, definitions)
+	}
+}
+
+func TestLocalWorkspaceFileToolsRejectStaleWriteAndReadBack(t *testing.T) {
+	workspace := t.TempDir()
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: filepath.Join(workspace, "skills"), WorkspaceRoot: workspace,
+		ShellPath: "/bin/sh", ApprovalMode: localskills.ApprovalSmart,
+		CallTimeout: time.Second, RunTimeout: 5 * time.Second, MaxOutput: 64 << 10,
+		MaxCalls: 8, MaxRounds: 4, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := newLocalSkillToolRuntime(executor, nil)
+	events := make(chan ProviderEvent, 16)
+	write, err := runtime.execute(context.Background(), events, ProviderToolCall{
+		ID: "write", Name: localFileWriteToolName,
+		Arguments: `{"path":"fixture.txt","content":"first","expectedVersion":"absent"}`,
+	}, 1, 1)
+	if err != nil || write.IsError || !strings.Contains(write.Content, `"version":"sha256:`) {
+		t.Fatalf("write=%#v error=%v", write, err)
+	}
+	stale, err := runtime.execute(context.Background(), events, ProviderToolCall{
+		ID: "stale", Name: localFileWriteToolName,
+		Arguments: `{"path":"fixture.txt","content":"second","expectedVersion":"absent"}`,
+	}, 2, 2)
+	if err != nil || !stale.IsError || !strings.Contains(stale.Content, "version_conflict") {
+		t.Fatalf("stale=%#v error=%v", stale, err)
+	}
+	read, err := runtime.execute(context.Background(), events, ProviderToolCall{
+		ID: "read", Name: localFileReadToolName,
+		Arguments: `{"path":"fixture.txt","offset":null,"limit":null}`,
+	}, 3, 3)
+	if err != nil || read.IsError || !strings.Contains(read.Content, `"content":"first"`) {
+		t.Fatalf("read=%#v error=%v", read, err)
 	}
 }
 

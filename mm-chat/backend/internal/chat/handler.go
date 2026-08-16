@@ -15,6 +15,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/localskills"
 	"neo-chat/mm-chat/backend/internal/mcpclient"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
+	"neo-chat/mm-chat/backend/internal/skillsupply"
 	"neo-chat/mm-chat/backend/internal/usermemory"
 	"neo-chat/mm-chat/backend/internal/websearch"
 )
@@ -1486,18 +1487,20 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	}
 	var localSkillRuntime *localSkillToolRuntime
 	if h.localSkillExecutor != nil && h.localSkillExecutor.Enabled() {
-		if h.localSkillCatalog == nil {
-			writeError(w, http.StatusServiceUnavailable, "SKILL_RUNTIME_UNAVAILABLE", "local Skill runtime is unavailable")
-			return
-		}
-		skills, prepareErr := h.localSkillCatalog.PrepareRuntimeSkills(
-			r.Context(), actor.ID, h.localSkillExecutor.Config().RuntimeRoot,
-		)
-		if prepareErr != nil {
-			writeError(w, http.StatusServiceUnavailable, "SKILL_RUNTIME_UNAVAILABLE", "local Skill runtime is unavailable")
-			return
+		var skills []skillsupply.RuntimeSkill
+		if h.localSkillCatalog != nil {
+			var prepareErr error
+			skills, prepareErr = h.localSkillCatalog.PrepareRuntimeSkills(
+				r.Context(), actor.ID, h.localSkillExecutor.Config().RuntimeRoot,
+			)
+			if prepareErr != nil {
+				writeError(w, http.StatusServiceUnavailable, "SKILL_RUNTIME_UNAVAILABLE", "local Skill runtime is unavailable")
+				return
+			}
 		}
 		localSkillRuntime = newLocalSkillToolRuntime(h.localSkillExecutor, skills)
+		localSkillRuntime.bindJobScope(actor.ID, conversationID)
+		var prepareErr error
 		providerPrompt, prepareErr = localSkillRuntime.prepareUserPrompt(
 			providerPrompt,
 			userMessage.Content,
@@ -1738,6 +1741,10 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	providerSystemPrompt = applySourceFusionSystemInstruction(
 		providerSystemPrompt,
 		fusionPlan,
+	)
+	providerSystemPrompt = appendAgentFollowupPrompt(
+		providerSystemPrompt,
+		localSkillRuntime.consumeJobCompletionPrompt(),
 	)
 	providerMessages := buildProviderConversationMessages(
 		conversationMessages,
@@ -2476,6 +2483,18 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 						return
 					}
 				}
+			}
+		case ProviderEventContextReplaced:
+			if err := agentRecorder.recordContextReplacement(
+				generationCtx, providerEvent.ContextReplacement, time.Now(),
+			); err != nil {
+				turnFinalStatus = ChatAgentTurnFailed
+				turnFinalErrorCode = "AGENT_EVENT_PERSISTENCE_FAILED"
+				streamCancel()
+				cancelTrackedAfterWriteError(
+					conversationID, assistantMessage.ID, runID, content.String(),
+				)
+				return
 			}
 		}
 	}

@@ -14,7 +14,7 @@ import (
 
 func TestFailureTaxonomyBindsEveryProviderAndJudgeLocalCategory(t *testing.T) {
 	categories := FailureCategories()
-	if len(categories) != 24 {
+	if len(categories) != 25 {
 		t.Fatalf("category count=%d categories=%v", len(categories), categories)
 	}
 	seen := make(map[string]struct{}, len(categories))

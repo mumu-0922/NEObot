@@ -56,7 +56,7 @@ func TestChatAgentToolEventPayloadDropsCommandsArgumentsResultsAndPrivateServerR
 			"command": "cat /home/private/.env",
 			"token":   "sk-fixture-secret-value",
 		},
-		Query: "private query", Mode: "local_direct",
+		Query: "private query", Mode: "local_direct", Durability: "process_local",
 	}, nil)
 	encoded, err := json.Marshal(payload)
 	if err != nil {
@@ -71,10 +71,14 @@ func TestChatAgentToolEventPayloadDropsCommandsArgumentsResultsAndPrivateServerR
 			t.Fatalf("durable Tool payload leaked %q: %s", forbidden, text)
 		}
 	}
-	for _, required := range []string{"terminal", "local_direct", "succeeded"} {
+	for _, required := range []string{"terminal", "local_direct", "succeeded", "process_local"} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("durable Tool payload missing %q: %s", required, text)
 		}
+	}
+	projected := projectChatAgentToolExecution(ChatAgentEvent{Payload: payload})
+	if projected == nil || projected.Durability != "process_local" {
+		t.Fatalf("projected durability=%#v", projected)
 	}
 }
 
@@ -90,6 +94,26 @@ func TestNormalizeChatAgentEventPayloadBoundsAssistantMessageOnUTF8Boundary(t *t
 	got, _ := normalized["content"].(string)
 	if len(got) > maxChatAgentMessageEventBytes || !strings.HasPrefix(content, got) {
 		t.Fatalf("bounded content bytes = %d", len(got))
+	}
+}
+
+func TestNormalizeChatAgentContextReplacementPayloadIsContentFreeAndStrict(t *testing.T) {
+	payload, err := normalizeChatAgentEventPayload(ChatAgentEventContextReplaced, map[string]any{
+		"reason": "provider_context_overflow", "beforeBytes": 100, "afterBytes": 40,
+		"resultsPruned": 1, "exchangesReplaced": 2,
+	})
+	if err != nil || len(payload) != 5 || chatAgentPayloadInt(payload, "beforeBytes") != 100 {
+		t.Fatalf("payload=%#v error=%v", payload, err)
+	}
+	for _, invalid := range []map[string]any{
+		{"reason": "private content", "beforeBytes": 100, "afterBytes": 40, "resultsPruned": 1, "exchangesReplaced": 0},
+		{"reason": "tool_result_pruning", "beforeBytes": 40, "afterBytes": 40, "resultsPruned": 1, "exchangesReplaced": 0},
+		{"reason": "tool_result_pruning", "beforeBytes": 100, "afterBytes": 40, "resultsPruned": 0, "exchangesReplaced": 0},
+		{"reason": "tool_result_pruning", "beforeBytes": 100, "afterBytes": 40, "resultsPruned": 1, "exchangesReplaced": 0, "content": "forbidden"},
+	} {
+		if _, err := normalizeChatAgentEventPayload(ChatAgentEventContextReplaced, invalid); err == nil {
+			t.Fatalf("invalid payload accepted: %#v", invalid)
+		}
 	}
 }
 

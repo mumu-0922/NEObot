@@ -52,6 +52,23 @@ func TestExecutorDoesNotLoadWorkspaceShellProfiles(t *testing.T) {
 	}
 }
 
+func TestExecutorCanonicalizesCommandBeforeExecution(t *testing.T) {
+	workspace := t.TempDir()
+	executor := newTestExecutor(t, workspace, ApprovalSmart, 64<<10, 3*time.Second)
+	request := Request{Command: "  printf canonical  \n\t"}
+	workingDir, timeout, err := executor.prepareRequest(&request, executor.config.CallTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.Command != "printf canonical" {
+		t.Fatalf("prepared command=%q", request.Command)
+	}
+	result, err := executor.executeReserved(context.Background(), request, workingDir, timeout)
+	if err != nil || result.Stdout != "canonical" {
+		t.Fatalf("result=%#v error=%v", result, err)
+	}
+}
+
 func TestExecutorRunsScriptAndReturnsNonzeroExit(t *testing.T) {
 	workspace := t.TempDir()
 	script := filepath.Join(workspace, "fixture.sh")
@@ -117,9 +134,7 @@ func TestExecutorTimeoutKillsProcessGroup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := syscall.Kill(childPID, 0); !errors.Is(err, syscall.ESRCH) {
-		t.Fatalf("child process %d survived timeout: %v", childPID, err)
-	}
+	waitForProcessGone(t, childPID)
 }
 
 func TestExecutorBoundsCombinedOutput(t *testing.T) {
@@ -153,6 +168,25 @@ func TestExecutorCancellationKillsCommand(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("cancelled command did not terminate")
+	}
+}
+
+func TestExecutorDoesNotStartAlreadyCancelledCommand(t *testing.T) {
+	workspace := t.TempDir()
+	executor := newTestExecutor(t, workspace, ApprovalSmart, 64<<10, 5*time.Second)
+	request := Request{Command: "touch should-not-exist"}
+	workingDir, timeout, err := executor.prepareRequest(&request, executor.config.CallTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	result, err := executor.executeReserved(ctx, request, workingDir, timeout)
+	if !errors.Is(err, context.Canceled) || result != (Result{}) {
+		t.Fatalf("result=%#v error=%v", result, err)
+	}
+	if _, statErr := os.Stat(filepath.Join(workspace, "should-not-exist")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("cancelled command started: %v", statErr)
 	}
 }
 
@@ -202,4 +236,22 @@ func newTestExecutor(t *testing.T, workspace, approval string, output int64, tim
 		t.Fatal(err)
 	}
 	return executor
+}
+
+func waitForProcessGone(t *testing.T, pid int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		err := syscall.Kill(pid, 0)
+		if errors.Is(err, syscall.ESRCH) {
+			return
+		}
+		if err != nil {
+			t.Fatalf("check process %d: %v", pid, err)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("process %d survived process-group termination", pid)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }

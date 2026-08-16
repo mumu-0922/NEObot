@@ -56,6 +56,34 @@ func TestChatCompletionPolicyRequiresExplicitLaterEvidence(t *testing.T) {
 	}
 }
 
+func TestChatCompletionPolicyRejectsFileMutationResultAsItsOwnEvidence(t *testing.T) {
+	registry := &chatToolRegistry{
+		ordered: make([]chatToolRegistration, 0, 2),
+		byName:  map[string]chatToolRegistration{}, colliding: map[string]struct{}{},
+	}
+	registry.register(chatToolRegistration{
+		Name: localFileWriteToolName, Backend: chatToolBackendLocalSkill,
+		RiskClass: chatToolRiskWrite, ProjectForModel: identityChatToolResult,
+		MutationResultNeedsFollowup: true,
+	})
+	registry.register(chatToolRegistration{
+		Name: localFileReadToolName, Backend: chatToolBackendLocalSkill,
+		RiskClass: chatToolRiskRead, ProjectForModel: identityChatToolResult,
+	})
+	policy := newChatCompletionPolicy()
+	policy.observe(registry, []ProviderToolCall{{ID: "write", Name: localFileWriteToolName}},
+		[]ProviderToolResult{{CallID: "write", Name: localFileWriteToolName}})
+	if _, err := policy.verify("write", "write returned success"); err == nil ||
+		err.Error() != "verification_evidence_invalid" {
+		t.Fatalf("file mutation self-evidence error=%v", err)
+	}
+	policy.observe(registry, []ProviderToolCall{{ID: "read", Name: localFileReadToolName}},
+		[]ProviderToolResult{{CallID: "read", Name: localFileReadToolName}})
+	if _, err := policy.verify("read", "read-back matched"); err != nil {
+		t.Fatalf("read-back evidence error=%v", err)
+	}
+}
+
 func TestChatAgentGoalToolsAreStrictAndDefaultRegistryHasNoSubagent(t *testing.T) {
 	repository := newGoalTestRepository(t)
 	runtime := newChatAgentGoalToolRuntime(

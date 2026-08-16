@@ -16,7 +16,14 @@ search_web(query)
 search_knowledge(query)
 search_memory()  # default-off; first round only
 skill(name)      # when local_direct is enabled and the user installed Skills
-terminal(command, skill?, workingDir?, timeoutSeconds?)
+file_read(path, offset?, limit?)
+file_write(path, content, expectedVersion)
+file_edit(path, oldText, newText, replaceAll, expectedVersion)
+file_search(path?, query, glob?, maxResults?)
+terminal(command, skill?, workingDir?, timeoutSeconds?, runInBackground)
+job_list()
+job_output(jobId, wait, timeoutSeconds?)
+job_kill(jobId)
 get_goal()
 create_goal(objective, maxGoalRounds?)
 update_goal(goalId, revision, action, objective?, maxGoalRounds?, blockedReason?)
@@ -33,11 +40,13 @@ output budget, parallel permission, optional approval rule, model Result
 projector, and replayable `search|tool` presentation. Name collisions fail
 closed, and the default Registry contains no Subagent or delegation Tool.
 
-The two model-visible local Tools implement progressive disclosure for the
-current user's admitted installations. Every Turn receives a bounded complete
-catalog replacement with a content-derived revision; an empty catalog is an
-explicit tombstone. `skill` loads the selected package's `SKILL.md`, and
-`terminal` executes as the Backend user in the configured local workspace.
+The local Tool family implements workspace execution plus progressive Skill
+disclosure. Every Turn receives a bounded complete catalog replacement with a
+content-derived revision; an empty catalog is an explicit tombstone. `skill`
+loads the selected package's `SKILL.md`, while File/Job/`terminal` Tools operate
+in the configured local workspace. An empty catalog omits only `skill`; the
+workspace, Job, and `terminal` Tools remain available whenever `local_direct`
+is enabled.
 The retired `skills_list` and `skill_view` names remain execution-compatible
 for a bounded migration period but are never advertised to the model.
 `local_direct` is not an isolated Sandbox. Its contract is
@@ -97,6 +106,7 @@ type ProviderToolExchange struct {
     Results            []ProviderToolResult
     ProviderState      any
     FollowupPrompt     string
+    Checkpoint         string
 }
 ```
 
@@ -166,6 +176,23 @@ SSE, placed in process details, or persisted in message metadata. Anthropic
 failure results set `tool_result.is_error=true`. Tool input remains capped at
 64 KiB.
 
+Before the next Provider Step, a Tool Result larger than 64 KiB is replaced by
+a UTF-8-safe 24-KiB head and tail with an omission marker. If the complete Turn
+continuation still exceeds 256 KiB, complete old `ProviderToolExchange` units
+are replaced by one bounded synthetic `Checkpoint`; the newest four exchanges,
+including their Provider-private state, remain exact. A checkpoint contains
+only Tool name, call ID, success/failure, and result byte count, never command,
+arguments, file content, or raw Tool output.
+
+A typed `PROVIDER_CONTEXT_OVERFLOW` is recognized only from HTTP `413` or an
+allowlisted stable upstream JSON `code|type|status|reason`; free-form upstream
+messages do not classify it. The loop may aggressively compact to 6-KiB
+Tool-Result heads/tails and two exact recent exchanges, then retry the same
+Provider/model/Step once only if the continuation became smaller. Both a
+synchronous response and the first SSE error event use this path. A second
+overflow is terminal and never loops. Every shrink is persisted as a
+content-free `context.replaced` event.
+
 Anthropic extended Thinking does not use a forced named `tool_choice`. An
 explicit Search turn is buffered with `auto`; if Claude returns no Tool Call,
 the existing same-model compatibility path enforces the explicit Search
@@ -228,6 +255,12 @@ gate prevents normal completion and prevents `update_goal(..., complete)`.
 Failure to satisfy it before Step/Tool/runtime exhaustion is
 `AGENT_VERIFICATION_REQUIRED`.
 
+`file_write` and `file_edit` cannot verify their own mutation; a later
+`file_read`, `file_search`, or suitable command must observe the result. A
+background `terminal` start, `job_list`, `job_kill`, or a non-completed
+`job_output` is also not evidence. Only `job_output` with `status=completed`
+may verify a successful background command.
+
 `complete`, `blocked`, and `cancel` enter a Tool-free wrap-up. This state is
 latched for the rest of the Turn: even if a Provider hallucinates a Tool Call
 while `Tools=nil`, the Backend returns only `goal_concluded`, performs no side
@@ -265,9 +298,24 @@ round:
   bounded `alreadyLoaded` acknowledgement instead of repeating the content.
 
 The shared `tool.call.updated` Chat event accepts `mode=mcp` with
-`read|write|unknown`, or `mode=local_direct` with `read|execute`. The frontend
+`read|write|unknown`, or `mode=local_direct` with `read|write|execute`. The frontend
 must validate the pair rather than rejecting a valid local event as an invalid
 MCP update; `execute` never widens MCP Server classification authority.
+
+Workspace File Tools accept only workspace-relative paths and use anchored
+`os.Root` operations. Reads return a complete-file `sha256:<hex>` version;
+writes and edits require that exact version (`absent` only for creation), write
+through a same-directory synced temporary file, recheck for external change,
+and atomically rename. Version drift returns `version_conflict`, not overwrite.
+All file sizes, UTF-8 windows, search files/bytes/results, and previews have
+hard bounds.
+
+Background Jobs are process-local, share foreground terminal concurrency and
+Run timeout limits, and are authorized by exact user plus Conversation.
+`job_output(wait=true)` blocks at most ten seconds on completion rather than
+busy-polling. Completion notices enter the next Agent Step/request without
+output. `Executor.Close` kills and reaps Jobs; the UI receives
+`durability=process_local` and warns that Backend restart cannot recover them.
 
 The existing run cancellation must cancel the active provider request and any
 in-flight Tool request. A cancelled loop emits exactly one terminal
@@ -418,10 +466,10 @@ name + version + JSON schema + risk class + executor + redaction policy
 Risk classes:
 
 ```text
-read_only       -> automatic
-write_local     -> approval required
-external_effect -> approval required
-destructive     -> stronger approval or disabled
+read     -> server-authorized observation
+write    -> ordered local/state mutation
+execute  -> ordered command/process control
+external -> server-authorized external I/O/effect policy
 ```
 
 Approval UI must show a human-readable Tool name, target, redacted action
@@ -526,6 +574,11 @@ events retain the legacy fallback. Tool event payloads retain only bounded
 display facts such as name, mode, risk, status, duration, Round and public
 Server label; command, arguments, query, raw Result, credentials, private
 Server refs and paths are forbidden.
+
+Job-related process rows may additionally retain only
+`durability=process_local`. `context.replaced` payloads retain reason,
+before/after byte counts, pruned-result count, and replaced-exchange count;
+they never retain removed context.
 
 At startup, a `running` Turn older than the recovery cutoff receives one
 terminal event. An already terminal assistant Message keeps its committed
@@ -719,6 +772,13 @@ more accurate.
 | Compatibility planner fails           | strong Knowledge, forced Web, else Direct; never Both |
 | Knowledge miss                        | empty successful result; continue Model/Web        |
 | Tool arguments malformed/unknown      | reject execution; redacted failed step             |
+| Workspace path/symlink escape         | bounded `path_invalid`; no read/write               |
+| Workspace version changed             | bounded `version_conflict`; no overwrite            |
+| Background Job cross-scope lookup     | `job_not_found`; no existence disclosure            |
+| Background Job still running          | no completion evidence; wait/read later             |
+| Backend restarts with a Job           | Job is killed/reaped; no recovery claim              |
+| First typed context overflow after a real shrink | retry same Provider/model/Step once        |
+| Second overflow or no smaller continuation | terminal Provider failure; no retry loop       |
 | Memory Tool flag absent/false         | do not expose `search_memory`; continue without Memory and never invoke the old reader |
 | Explicit saved-Memory read on a supported model | order `search_memory` first; named `required`; no forced Web/Knowledge |
 | General memory discussion/ordinary task | preserve `tool_choice=auto`; no forced Memory retrieval |
@@ -796,6 +856,15 @@ more accurate.
     DeepSeek Tool/continuation versus plain-chat thinking wire shapes. Pin
     zero-argument JSON-object canonicalization plus malformed, generic
     compatible, and argument-bearing preservation negatives.
+17. Workspace traversal/symlink/UTF-8/size/search bounds, read-version-write,
+    external-change conflict, atomic replacement, and mandatory post-write
+    evidence.
+18. Background Job scope authorization, foreground concurrency sharing,
+    wait-without-polling, completion notice, timeout/kill/process-group reap,
+    shutdown, restart warning, and completion-evidence gating.
+19. UTF-8 Tool-result pruning, whole-exchange checkpointing, latest Provider
+    state preservation, stable overflow classification, synchronous and first-
+    SSE shrink/retry, and proof that a second overflow never retries.
 
 ## 11. Rollback
 
@@ -810,3 +879,9 @@ For a Memory Tool regression, set `MEMORY_TOOL_LOOP_ENABLED=false` and restart
 the API. This removes Tool exposure and continues without Memory; it never
 restores the retired v1 prompt/Usage path and does not delete Memory,
 projections, observations, health state, or migration `065`.
+
+For a local workspace/Job regression, set
+`AGENT_LOCAL_RUNTIME_ENABLED=false` and restart the API. This removes File,
+Job, `terminal`, and `skill` definitions without deleting installed Skills or
+workspace files. Process-local Jobs are killed during shutdown; no OCI fallback
+is activated.

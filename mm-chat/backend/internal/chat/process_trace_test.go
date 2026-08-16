@@ -203,6 +203,7 @@ func TestToolProcessTracePersistsMCPArgumentTypesAndUnknownOutcome(t *testing.T)
 		Round:          2,
 		Arguments:      map[string]any{"path": "string", "overwrite": "boolean"},
 		Mode:           "mcp",
+		Durability:     "process_local",
 	}, time.Now())
 	if len(updates) != 2 {
 		t.Fatalf("MCP outcome updates = %#v", updates)
@@ -212,6 +213,7 @@ func TestToolProcessTracePersistsMCPArgumentTypesAndUnknownOutcome(t *testing.T)
 		completed.Detail["server"] != "manifest:files" ||
 		completed.Detail["serverName"] != "Files" ||
 		completed.Detail["classification"] != "write" ||
+		completed.Detail["durability"] != "process_local" ||
 		completed.Detail["callStatus"] != "outcome_unknown" ||
 		completed.Detail["argumentSummary"] != `{"overwrite":"boolean","path":"string"}` {
 		t.Fatalf("MCP outcome step = %#v", completed)

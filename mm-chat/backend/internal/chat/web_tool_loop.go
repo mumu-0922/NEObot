@@ -258,12 +258,47 @@ func runNativeExternalWebToolLoop(
 		}
 		bufferAgentGuardRound := wrapupRound ||
 			input.Goals.automaticWorkActive() || completionPolicy.requiresVerification()
-		roundEvents, err := provider.StreamToolRound(ctx, ProviderRoundRequest{
+		providerRoundRequest := ProviderRoundRequest{
 			ProviderRequest: roundRequest,
 			Tools:           roundTools,
 			ToolChoice:      choice,
 			Continuation:    continuation,
-		})
+		}
+		roundEvents, err := provider.StreamToolRound(ctx, providerRoundRequest)
+		contextOverflowRetried := false
+		if err != nil && isProviderContextOverflow(err) {
+			compacted, replacement := compactChatAgentContinuation(continuation, true)
+			if replacement != nil && sendProviderEvent(ctx, events, ProviderEvent{
+				Type: ProviderEventContextReplaced, ContextReplacement: replacement,
+			}) {
+				continuation = compacted
+				providerRoundRequest.Continuation = continuation
+				contextOverflowRetried = true
+				roundEvents, err = provider.StreamToolRound(ctx, providerRoundRequest)
+			}
+		}
+		if err == nil && !contextOverflowRetried {
+			firstEvent, hasFirstEvent := <-roundEvents
+			if hasFirstEvent && firstEvent.Error != nil &&
+				isProviderContextOverflow(firstEvent.Error) {
+				compacted, replacement := compactChatAgentContinuation(continuation, true)
+				if replacement != nil {
+					if !sendProviderEvent(ctx, events, ProviderEvent{
+						Type: ProviderEventContextReplaced, ContextReplacement: replacement,
+					}) {
+						return true
+					}
+					continuation = compacted
+					providerRoundRequest.Continuation = continuation
+					contextOverflowRetried = true
+					roundEvents, err = provider.StreamToolRound(ctx, providerRoundRequest)
+				} else {
+					roundEvents = prependProviderEvent(ctx, firstEvent, roundEvents)
+				}
+			} else if hasFirstEvent {
+				roundEvents = prependProviderEvent(ctx, firstEvent, roundEvents)
+			}
+		}
 		if err != nil {
 			if toolLoopWasCancelled(ctx, err) {
 				return true
@@ -469,11 +504,16 @@ func runNativeExternalWebToolLoop(
 					if roundUsage != nil {
 						completedUsage = addTokenUsageValue(completedUsage, *roundUsage)
 					}
-					continuation = append(continuation, ProviderToolExchange{
-						AssistantContent:   assistantContent.String(),
-						AssistantReasoning: assistantReasoning.String(),
-						ProviderState:      roundState, FollowupPrompt: followupPrompt,
-					})
+					continuation, continued = appendCompactedChatAgentContinuation(
+						ctx, events, continuation, ProviderToolExchange{
+							AssistantContent:   assistantContent.String(),
+							AssistantReasoning: assistantReasoning.String(),
+							ProviderState:      roundState, FollowupPrompt: followupPrompt,
+						},
+					)
+					if !continued {
+						return true
+					}
 					continue
 				}
 			}
@@ -550,7 +590,17 @@ func runNativeExternalWebToolLoop(
 			exchange.Results = append(exchange.Results, executed.result)
 		}
 		completionPolicy.observe(registry, calls, exchange.Results)
-		continuation = append(continuation, exchange)
+		exchange.FollowupPrompt = appendAgentFollowupPrompt(
+			exchange.FollowupPrompt,
+			input.LocalSkills.consumeJobCompletionPrompt(),
+		)
+		var appended bool
+		continuation, appended = appendCompactedChatAgentContinuation(
+			ctx, events, continuation, exchange,
+		)
+		if !appended {
+			return true
+		}
 		if infrastructure.BudgetReached || admittedCalls < len(calls) {
 			if completionPolicy.requiresVerification() {
 				sendProviderEvent(ctx, events, ProviderEvent{Error: &chatAgentRunFailure{

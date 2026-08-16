@@ -1,9 +1,10 @@
 # `localskills`
 
-`localskills` is the Hermes-style local terminal backend for installed Agent
-Skills. It runs bounded commands directly as the existing Backend user in the
-configured workspace. It requires no Podman, WSL systemd, `sudo`, Runner daemon,
-mTLS certificate or OCI image.
+`localskills` is the Hermes-style local workspace backend for Chat Agent Tools.
+It reads and edits workspace files, runs bounded foreground/background commands
+as the existing Backend user, and optionally binds admitted installed Skills.
+It requires no Podman, WSL systemd, `sudo`, Runner daemon, mTLS certificate, or
+OCI image.
 
 The package provides accidental-damage guardrails, not a security Sandbox:
 
@@ -15,6 +16,19 @@ The package provides accidental-damage guardrails, not a security Sandbox:
 - non-login shell execution, so writable workspace profile files are not
   loaded implicitly;
 - process-group termination on timeout or Chat cancellation.
+
+The workspace API uses Go `os.Root` operations, accepts workspace-relative
+paths only, rejects symlink/traversal escapes, and bounds UTF-8 reads, writes,
+searches, file counts, and result counts. Writes and exact-text edits require a
+complete-file `sha256:<hex>` version (`absent` only creates a new file), recheck
+that version immediately before a same-directory atomic rename, and `fsync`
+the file and parent directory.
+
+`terminal` can reserve the same executor slot for a process-local background
+Job. Jobs are scoped to the exact user and conversation, expose bounded output
+only through `job_output`, support a blocking wait of at most ten seconds, and
+are killed and reaped by `Executor.Close`. They deliberately do not survive a
+Backend restart.
 
 Installed package discovery and immutable materialization remain owned by
 `internal/skillsupply`. Chat adapts both packages into its native same-model

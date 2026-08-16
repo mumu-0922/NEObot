@@ -128,15 +128,17 @@ profile      = neo-chat.memory-regression-profile-config.v13
 report       = neo-chat.memory-regression-relevance-calibration.v13
 admission    = development_fixed_memory_judge_failure_diagnostic_only
 artifact     = fixed-memory-judge-failure-diagnostic-development.json
-taxonomy     = memory-candidate-judge-failure-taxonomy-v1
-SHA-256      = c22cb137da8b5fda87526237446519dd9abe2c8d221ad703c5445358d9059f8d
+taxonomy     = memory-candidate-judge-failure-taxonomy-v2
+SHA-256      = 229bb4fd6aaf0ec7fea2bf9c37c7f332f78876249b0dba5692ca8bf789646a6d
 ```
 
-The taxonomy is the sorted JSON array of the canonical 15 Provider categories
+The taxonomy is the sorted JSON array of the canonical 16 Provider categories
 plus nine Judge-local categories. Provider categories come only from
 `internal/chat`; Judge JSON/schema/ordinal categories come from typed decoder
 stages. Unknown errors map to `CANDIDATE_JUDGE_FAILURE_UNCLASSIFIED`; callers
-must never classify by matching error text.
+must advance the taxonomy version/hash whenever the shared Provider category
+set changes. Version 2 adds `PROVIDER_CONTEXT_OVERFLOW` without parsing
+upstream message text; callers must never classify by matching error text.
 
 The transport-stable identities and Go seams are:
 
@@ -1081,7 +1083,7 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   retry classification and wait behavior, virtual/wall-clock cooldown,
   attempt/latency/input/output-token reconciliation, cost-basis-v8 ceilings,
   historical profile omission, and mandatory manual review,
-  schema-v13 exact 24-category ordering/hash, Provider single-source reuse,
+  schema-v13 exact 25-category ordering/hash, Provider single-source reuse,
   typed JSON/schema/ordinal/event/oversize/context/unknown classification,
   recovered retry and retry-exhaustion attempt counts, terminal provenance and
   Recorder-conflict handling, all three reconciliation equations, 300-case

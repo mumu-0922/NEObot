@@ -4,8 +4,9 @@
 
 ### 1. Scope / Trigger
 
-Apply when changing installed-Skill materialization, the local command
-executor, Agent Center Runtime readiness, or the native Chat Skill Tool path.
+Apply when changing installed-Skill materialization, workspace File Tools,
+process-local background Jobs, the local command executor, Agent Center Runtime
+readiness, or the native Chat local Tool path.
 This is the current single-server execution path. It follows the Hermes model:
 Skills are progressively disclosed instruction directories and permitted
 commands run as the ordinary Backend user. The retained G20/G21 OCI Runtime is
@@ -20,14 +21,18 @@ then `096`, before the retained control-plane tail and reapply through `097`.
 
 - Catalog: `skillsupply.Service.PrepareRuntimeSkills(ctx, userID, runID)`.
 - File read: `skillsupply.ReadRuntimeSkillFile(skill, relativePath)`.
-- Executor: `localskills.Executor.Execute(ctx, localskills.Request)`.
-- Native Tools: `skill({name})` and
-  `terminal({command,skill?,workingDir?,timeoutSeconds?})`. Goal and completion
-  Tools are owned by the Chat Tool Loop, not this package executor.
+- Executor: `localskills.Executor.Execute(ctx, localskills.Request)` and
+  `Executor.StartBackgroundJob|ListBackgroundJobs|BackgroundJobOutput|KillBackgroundJob|Close`.
+- Workspace: `Executor.ReadWorkspaceFile|WriteWorkspaceFile|EditWorkspaceFile|SearchWorkspaceFiles`.
+- Native Tools: optional `skill({name})`, `file_read`, `file_write`,
+  `file_edit`, `file_search`,
+  `terminal({command,skill?,workingDir?,timeoutSeconds?,runInBackground})`,
+  `job_list`, `job_output`, and `job_kill`. Goal and completion Tools are owned
+  by the Chat Tool Loop, not this package executor.
 - Runtime state: `state=local_ready`,
   `reasonCode=LOCAL_DIRECT_EXECUTION`, `executable=true`.
 - Contract/gate: `mm-chat/docs/contracts/local-skill-runtime.md` and
-  `bash mm-chat/scripts/verify-skill-supply.sh`.
+  `bash mm-chat/scripts/verify-skill-supply-chain.sh`.
 
 ### 3. Contracts
 
@@ -45,6 +50,17 @@ then `096`, before the retained control-plane tail and reapply through `097`.
 - Inject only a bounded metadata index into the system prompt. Full content
   enters the same-model Tool continuation only through `skill`; retired
   `skills_list`/`skill_view` remain execution-compatible but are not advertised.
+- An enabled runtime with an empty installed-Skill catalog publishes an empty
+  replacement tombstone and omits only `skill`; File, Job, and `terminal`
+  remain model-visible. A missing catalog dependency must not disable these
+  workspace Tools. Disabling the runtime removes the complete local Tool set.
+- File Tools accept workspace-relative paths only and use `os.Root` so
+  traversal, absolute paths, symlinks and non-regular files fail closed. Reads
+  return the complete-file `sha256:<hex>` version. Write/edit requires that
+  version (`absent` only creates), serializes process-local writers, syncs a
+  same-directory temporary file, rechecks the version, atomically renames and
+  syncs the parent. UTF-8, file/window/write/search bytes, file count and result
+  count are bounded.
 - Run `terminal` through an absolute configured shell with `-c`, never a login
   shell that reads workspace profile files, using the Backend
   UID/GID, and a working directory inside the configured workspace after
@@ -57,12 +73,19 @@ then `096`, before the retained control-plane tail and reapply through `097`.
 - Enforce per-call/per-Run time, combined output, Tool-call, Tool-round and
   process-concurrency limits. Cancellation or Run timeout kills the complete
   process group so no descendant outlives its Chat Run.
+- A background terminal command reserves the same concurrency slot and Run
+  timeout as foreground execution. Job state/output/notices are memory-only,
+  scoped by exact user plus Conversation, and marked
+  `durability=process_local`. `job_output(wait=true)` waits on completion for at
+  most ten seconds. `Executor.Close` cancels and reaps every Job; restart never
+  restores one.
 - The catastrophic-command blocklist is non-overridable. `smart` approval mode
   additionally denies destructive patterns; `off` disables only that soft
   denial. These are accidental-damage guardrails, not a Sandbox.
 - Process events retain only Tool name, round, `local_direct`, classification,
-  timeout, duration and failure category. Command, output, file content,
-  working directory and materialized paths do not enter process trace.
+  timeout, duration, failure category and exact allowlisted
+  `durability=process_local`. Command, output, file content, working directory
+  and materialized paths do not enter process trace.
 - Bare binaries default this backend off; single-server Compose defaults it on
   with the ordinary runtime UID/GID and explicit Skill/workspace bind mounts.
   `AGENT_LOCAL_RUNTIME_ENABLED=false` is the immediate non-destructive rollback.
@@ -80,15 +103,21 @@ then `096`, before the retained control-plane tail and reapply through `097`.
 | call timeout | exit `124`, `timedOut=true`, whole process group killed |
 | Chat cancellation or Run deadline | Run cancellation or `LOCAL_SKILL_BUDGET_EXHAUSTED`; whole process group killed |
 | output/call/round/concurrency limit | deterministic truncation or fail-closed bounded Tool result |
+| workspace path/symlink/non-UTF-8/size invalid | bounded typed Tool failure; no write |
+| expected file version differs | `version_conflict`; preserve current bytes |
+| Job lookup from another user/Conversation | `job_not_found`; do not disclose existence |
+| Job start/list/kill/running output used as completion evidence | reject evidence; require completed `job_output` |
+| executor shutdown | cancel and reap every Job before process exit |
 | local backend disabled | no local Tools or Skill prompt index; packages remain installed |
 
 ### 5. Good / Base / Bad Cases
 
-- **Good:** the owner-installed package is revalidated, `skill_view` loads its
-  exact `SKILL.md`, `terminal` runs a bounded script in the workspace and the
-  same model produces the final answer.
-- **Base:** no Skills are installed or the switch is off; ordinary Chat works
-  without local Tool definitions and no OCI fallback starts.
+- **Good:** the owner-installed package is revalidated, `skill` loads its exact
+  `SKILL.md`, File Tools apply one version-pinned edit, and a bounded Job is
+  observed completed before the same model produces the final answer.
+- **Base:** no Skills are installed; an empty tombstone plus File/Job/terminal
+  Tools remain. If the switch is off, all local Tools disappear without data
+  deletion and no OCI fallback starts.
 - **Bad:** execute an archive during extraction, inherit Backend secrets, trust
   a model-supplied filesystem path, let a child process survive cancellation,
   require `sudo`/Podman before Skills work, or call guardrails isolation.
@@ -99,10 +128,13 @@ then `096`, before the retained control-plane tail and reapply through `097`.
   atomic replay, complete-tree drift and exact file reads.
 - `internal/localskills`: explicit environment, workspace/symlink boundary,
   normal shell/Python/Node command, hard/soft denial, timeout/process-group
-  kill, output truncation, concurrency and cancellation.
+  kill, output truncation, concurrency and cancellation; File traversal,
+  symlink, UTF-8/size/search bounds, version conflict and atomic replacement;
+  Job scope, wait, completion notice, timeout/kill/reap and shutdown.
 - `internal/chat`: compact prompt index, strict Tool schemas, complete
-  `skills_list -> skill_view -> terminal -> final` continuation, budgets,
-  unsupported model/runtime failures and process-trace redaction.
+  `skill -> File/terminal/Job -> verification -> final` continuation, empty
+  catalog Tool availability, budgets, unsupported model/runtime failures,
+  evidence gating and process-trace redaction.
 - `internal/config`, `internal/agentcontrol`, `internal/httpserver`, `cmd/api`,
   Agent Center Vitest, Compose rendering, Skill supply and standalone gates.
 
@@ -118,7 +150,8 @@ installed Skill -> require WSL/Podman/sudo/Runner promotion -> still held
 
 ```text
 owner installation -> canonical revalidation -> immutable materialization
--> progressive Skill Tools -> Backend-user local command -> same-model answer
+-> optional Skill + versioned workspace/Job Tools -> Backend-user execution
+-> observed verification -> same-model answer
 ```
 
 ## Scenario: Optional durable OCI package-Skill execution

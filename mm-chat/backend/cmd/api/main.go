@@ -614,6 +614,10 @@ func main() {
 		runtimeErr = errors.Join(runtimeErr, err)
 	}
 	cancelWorkerShutdown()
+	if err := localSkillExecutor.Close(); err != nil {
+		logger.Warn("agent_local_runtime_close_failed")
+		runtimeErr = errors.Join(runtimeErr, err)
+	}
 	if err := redisClient.Close(); err != nil {
 		logger.Warn("redis_close_failed", slog.String("error", redactSensitiveLogText(err.Error())))
 	}

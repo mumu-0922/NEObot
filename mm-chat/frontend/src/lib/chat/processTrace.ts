@@ -78,6 +78,7 @@ const PROCESS_DETAIL_KEYS = new Set([
   "round",
   "selectedCount",
   "truncated",
+  "durability",
 ]);
 
 export type ProcessRoute = "direct" | "knowledge" | "web" | "both";
