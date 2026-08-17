@@ -108,6 +108,15 @@ function normalizeAttachment(attachment: unknown): Attachment | null {
       ? raw.url.trim().slice(0, ATTACHMENT_LIMITS.maxUrlChars)
       : undefined;
 
+  const source = raw.source === "server" ? "server" : undefined;
+  const fileId = trimString(raw.fileId, 120);
+  const size =
+    typeof raw.size === "number" && Number.isFinite(raw.size) && raw.size >= 0
+      ? raw.size
+      : undefined;
+  const sha256 = trimString(raw.sha256, 128);
+  const purpose = trimString(raw.purpose, 64);
+
   if (!fileName || !mimeType || (!data && !url)) return null;
 
   return {
@@ -116,6 +125,10 @@ function normalizeAttachment(attachment: unknown): Attachment | null {
     mimeType,
     ...(data ? { data } : {}),
     ...(url ? { url } : {}),
+    ...(source && fileId ? { source, fileId } : {}),
+    ...(size !== undefined ? { size } : {}),
+    ...(sha256 ? { sha256 } : {}),
+    ...(purpose ? { purpose } : {}),
   };
 }
 

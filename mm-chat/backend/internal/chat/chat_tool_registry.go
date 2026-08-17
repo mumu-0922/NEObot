@@ -171,6 +171,8 @@ func localSkillToolRegistration(
 		approval = chatToolApprovalLocalPolicy
 	} else if name == localFileWriteToolName || name == localFileEditToolName {
 		risk = chatToolRiskWrite
+	} else if name == localPublishFileToolName {
+		risk = chatToolRiskWrite
 	}
 	config := runtime.config()
 	return chatToolRegistration{

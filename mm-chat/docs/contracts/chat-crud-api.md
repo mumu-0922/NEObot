@@ -191,7 +191,7 @@ export interface ServerAttachmentDto {
   mimeType: string;
   size: number;
   sha256: string;
-  purpose: "input" | "image" | "knowledge_source";
+  purpose: "input" | "image" | "knowledge_source" | "output";
 }
 
 export interface AppendMessageAttachmentInput {
@@ -232,7 +232,9 @@ Rules:
   fixed development user, not deleted, and `upload_status = "available"`.
 - Attachment purpose defaults to `input`. The API accepts `input`, `image`,
   `knowledge_source`, plus compatibility aliases `chat -> input` and
-  `knowledge -> knowledge_source`.
+  `knowledge -> knowledge_source`. Client-created user Messages always reject
+  `output`; only Backend assistant creation/finalization may create an output
+  link after `publish_file` has produced an actor-owned File.
 - Message responses return attachment metadata and backend file IDs only. They
   must not expose object keys, local paths, buckets, or MinIO/S3 URLs.
 - New assistant Messages return ordered `agentEvents` from the Chat-owned
@@ -329,6 +331,8 @@ request body.
   persisted.
 - Server file attachments round-trip through `message_attachments` and are
   returned by both create and list message endpoints.
+- Assistant `output` artifacts round-trip through the same ownership/link
+  authority and remain downloadable after message reload.
 - Missing, deleted, foreign, duplicated, or non-server attachments are rejected
   without creating the message.
 - Duplicate idempotency keys return `409 IDEMPOTENCY_CONFLICT` instead of a raw

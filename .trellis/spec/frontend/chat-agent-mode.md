@@ -77,3 +77,27 @@ const effectiveToolMode = resolveEffectiveChatToolMode(
 ```
 
 Persist intent once; let Backend physically construct the allowed Runtime Tools.
+
+## Scenario: Render authenticated Agent artifacts
+
+### Contracts
+
+- A server attachment is an Agent artifact only when `source=server`, `fileId`
+  is present, and `purpose=output`. Ordinary user input/image/Knowledge
+  attachments retain their existing rendering.
+- Render the file name, MIME type, bounded size label, download state, and a
+  keyboard-accessible Download button. Download through the authenticated File
+  API with `disposition=attachment`; never navigate to the DTO URL directly.
+- Save the returned Blob through the shared short-lived object-URL helper,
+  abort an in-flight component-owned request on unmount, and expose progress or
+  failure through `aria-live`. A 404/deleted File is a visible failure, never a
+  successful download.
+- DTO mapping must retain `source`, `fileId`, `size`, `sha256`, and `purpose`
+  across the stream completion and later Conversation reload paths.
+
+### Tests Required
+
+- DTO reload preserves output metadata and the card remains selected only for
+  `purpose=output`.
+- The download helper calls authenticated `downloadFileContent`, saves only a
+  successful Blob, propagates 404/failure, and never saves ordinary input.

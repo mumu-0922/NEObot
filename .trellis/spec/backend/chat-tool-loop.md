@@ -370,6 +370,7 @@ file_read({path, offset?, limit?})
 file_write({path, content, expectedVersion})
 file_edit({path, oldText, newText, replaceAll, expectedVersion})
 file_search({path?, query, glob?, maxResults?})
+publish_file({path, displayName, contentType})
 terminal({command, skill?, workingDir?, timeoutSeconds?, runInBackground})
 job_list({})
 job_output({jobId, wait, timeoutSeconds?})
@@ -437,6 +438,17 @@ job_kill({jobId})
   than overwriting an external change. Reads/writes/searches are UTF-8 and
   byte/file/result bounded. `file_write`/`file_edit` need a later observation
   and cannot verify their own mutation.
+- `publish_file` is present only when the actor-owned File service is wired.
+  It snapshots binary or text bytes after the same path/symlink checks, rejects
+  empty files, applies the server upload limit to one file and Turn total, and
+  admits at most eight unique `(path, version)` artifacts. An unchanged replay
+  reuses the exact File ID. Successful Files use `purpose=export` and become
+  assistant-only `purpose=output` Message attachments on every completed,
+  failed, or cancelled terminal path.
+- If assistant finalization fails, reread Message authority before cleanup:
+  delete only artifacts proven unlinked, preserve an attachment already linked
+  by an ambiguous commit, and retain private Files when the authority read is
+  unavailable. Never expose a workspace/object path as a URL.
 - Background Jobs are in-memory, scoped to exact user plus Conversation, share
   foreground terminal concurrency/Run timeout, and never survive restart.
   `job_output(wait=true)` waits at most ten seconds without polling. Only a
@@ -453,6 +465,9 @@ job_kill({jobId})
   `durability=process_local`. Never
   persist or stream command text, arguments except bounded timeout, output,
   Skill content, working directory or materialized paths as process metadata.
+- Run `bash mm-chat/scripts/verify-chat-artifacts-postgres17.sh` for artifact
+  publication changes; it must prove output-link reload, two-user isolation,
+  deleted-file rejection, and ephemeral PostgreSQL 17 teardown.
 
 ### 4. Validation & Error Matrix
 

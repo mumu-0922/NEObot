@@ -25,6 +25,11 @@ type ProviderAttachmentResolver interface {
     ResolveProviderAttachment(context.Context, Attachment) (ProviderAttachment, error)
 }
 
+type WorkspaceArtifactPublisher interface {
+    PublishWorkspaceArtifact(context.Context, WorkspaceArtifactPublishInput) (WorkspaceArtifact, error)
+    DeleteWorkspaceArtifact(context.Context, string) error
+}
+
 func (h *Handler) resolveProviderMessageAttachments(
     context.Context,
     Message,
@@ -48,6 +53,12 @@ failure must not restore a duplicate draft.
 
 - Message creation accepts empty `content` only when at least one normalized
   server attachment exists. Update-message content remains non-empty.
+- Client-created user messages reject `purpose=output`. Backend assistant
+  finalization may link an actor-owned `purpose=export` File as
+  `purpose=output` only after the Agent's explicit bounded `publish_file` Tool.
+- Output attachments are presentation artifacts, never Provider input. Reads
+  and downloads keep existing File ownership/404 semantics; refresh rebuilds
+  the card from `message_attachments` metadata.
 - Server-mode remote URL attachments are imported through
   `POST /v1/files/remote` before message creation. The endpoint accepts public
   HTTPS URLs only, disables proxies and response decompression, revalidates

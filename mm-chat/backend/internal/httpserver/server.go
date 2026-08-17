@@ -1214,6 +1214,10 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 			resolvedOptions.skillSupplyService,
 			resolvedOptions.localSkillExecutor,
 		),
+		chat.WithWorkspaceArtifactPublisher(
+			chatWorkspaceArtifactPublisher{service: fileService},
+			cfg.Storage.MaxUploadBytes,
+		),
 	}
 	if webSearchService.Configured() {
 		chatOptions = append(chatOptions, chat.WithWebSearchService(webSearchService))

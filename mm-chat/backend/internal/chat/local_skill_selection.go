@@ -40,7 +40,11 @@ func (runtime *localSkillToolRuntime) promptInstruction() string {
 		"skills":                  items,
 		"legacyCatalogToolsShown": false,
 	})
-	return localSkillSystemInstruction + "\n<installed_skill_catalog>" + string(encoded) +
+	instruction := localSkillSystemInstruction
+	if runtime.artifactPublishingAvailable() {
+		instruction += "\n" + publishFileSystemInstruction
+	}
+	return instruction + "\n<installed_skill_catalog>" + string(encoded) +
 		"</installed_skill_catalog>"
 }
 

@@ -45,4 +45,25 @@ describe("MessageAttachmentView composition", () => {
     expect(zh.Message.openDocumentAttachment).toBe("打开文档");
     expect(zh.Message.readingAttachment).toContain("{name}");
   });
+
+  it("renders output artifacts as authenticated download cards", () => {
+    const attachmentView = readFileSync(
+      resolve(process.cwd(), "src/components/chat/MessageAttachmentView.tsx"),
+      "utf8",
+    );
+    const artifactHelper = readFileSync(
+      resolve(process.cwd(), "src/lib/utils/artifactAttachments.ts"),
+      "utf8",
+    );
+
+    expect(attachmentView).toContain("isServerArtifactAttachment");
+    expect(attachmentView).toContain("downloadServerArtifact");
+    expect(attachmentView).toContain('aria-live="polite"');
+    expect(attachmentView).toContain("artifactDownloadFailed");
+    expect(artifactHelper).toContain("downloadFileContent");
+    expect(artifactHelper).toContain('disposition: "attachment"');
+    expect(artifactHelper).toContain("triggerBlobDownload");
+    expect(en.Message.artifactDownloadFailed).toContain("deleted");
+    expect(zh.Message.artifactDownloadFailed).toContain("删除");
+  });
 });

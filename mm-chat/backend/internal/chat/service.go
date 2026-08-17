@@ -346,7 +346,7 @@ func (s *Service) CreateMessage(
 		return Message{}, err
 	}
 	input.Role = role
-	attachments, err := normalizeAttachmentInputs(input.Attachments)
+	attachments, err := normalizeAttachmentInputs(input.Attachments, false)
 	if err != nil {
 		return Message{}, err
 	}
@@ -396,7 +396,7 @@ func (s *Service) CreateAssistantMessage(
 	if input.Metadata == nil {
 		input.Metadata = map[string]any{}
 	}
-	attachments, err := normalizeAttachmentInputs(input.Attachments)
+	attachments, err := normalizeAttachmentInputs(input.Attachments, true)
 	if err != nil {
 		return Message{}, err
 	}
@@ -434,7 +434,7 @@ func (s *Service) FinalizeAssistantMessage(
 	if input.Metadata == nil {
 		input.Metadata = map[string]any{}
 	}
-	attachments, err := normalizeAttachmentInputs(input.Attachments)
+	attachments, err := normalizeAttachmentInputs(input.Attachments, true)
 	if err != nil {
 		return Message{}, err
 	}
@@ -562,7 +562,7 @@ func normalizeClientMessageRole(role string) (string, error) {
 	}
 }
 
-func normalizeAttachmentInputs(inputs []AttachmentInput) ([]AttachmentInput, error) {
+func normalizeAttachmentInputs(inputs []AttachmentInput, allowOutput bool) ([]AttachmentInput, error) {
 	if len(inputs) == 0 {
 		return nil, nil
 	}
@@ -588,7 +588,7 @@ func normalizeAttachmentInputs(inputs []AttachmentInput) ([]AttachmentInput, err
 		}
 		seen[fileKey] = struct{}{}
 
-		purpose, err := normalizeAttachmentPurpose(input.Purpose)
+		purpose, err := normalizeAttachmentPurpose(input.Purpose, allowOutput)
 		if err != nil {
 			return nil, err
 		}
@@ -602,7 +602,7 @@ func normalizeAttachmentInputs(inputs []AttachmentInput) ([]AttachmentInput, err
 	return normalized, nil
 }
 
-func normalizeAttachmentPurpose(purpose string) (string, error) {
+func normalizeAttachmentPurpose(purpose string, allowOutput bool) (string, error) {
 	purpose = strings.ToLower(strings.TrimSpace(purpose))
 	switch purpose {
 	case "", "input", "chat":
@@ -611,6 +611,11 @@ func normalizeAttachmentPurpose(purpose string) (string, error) {
 		return "image", nil
 	case "knowledge", "knowledge_source":
 		return "knowledge_source", nil
+	case "output":
+		if allowOutput {
+			return "output", nil
+		}
+		fallthrough
 	default:
 		return "", newValidationError("INVALID_ATTACHMENT_PURPOSE", "attachment purpose is unsupported")
 	}

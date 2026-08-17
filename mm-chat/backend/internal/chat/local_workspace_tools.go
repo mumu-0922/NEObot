@@ -3,9 +3,35 @@ package chat
 import (
 	"context"
 	"errors"
+	"mime"
+	"path"
+	"strings"
 
 	"neo-chat/mm-chat/backend/internal/localskills"
 )
+
+func workspacePublishFileDefinition() ToolDefinition {
+	return ToolDefinition{Type: "function", Function: ToolFunctionDefinition{
+		Name: localPublishFileToolName,
+		Description: "Publish one final workspace file as an authenticated chat download. " +
+			"Call this only after generating and verifying the file. Repeating the same " +
+			"unchanged path returns the existing artifact instead of creating a duplicate.",
+		Parameters: map[string]any{
+			"type": "object", "additionalProperties": false,
+			"required": []string{"path", "displayName", "contentType"},
+			"properties": map[string]any{
+				"path": map[string]any{"type": "string", "minLength": 1, "maxLength": 4096},
+				"displayName": map[string]any{
+					"type": []string{"string", "null"}, "minLength": 1, "maxLength": 255,
+				},
+				"contentType": map[string]any{
+					"type": []string{"string", "null"}, "minLength": 1, "maxLength": 255,
+				},
+			},
+		},
+		Strict: true,
+	}}
+}
 
 func workspaceFileReadDefinition() ToolDefinition {
 	return ToolDefinition{Type: "function", Function: ToolFunctionDefinition{
@@ -167,9 +193,148 @@ func (runtime *localSkillToolRuntime) executeWorkspaceToolCall(
 			MaxResults: arguments.MaxResults,
 		})
 		return workspaceToolResult(call, result, err)
+	case localPublishFileToolName:
+		return runtime.executePublishFileToolCall(ctx, call)
 	default:
 		return localSkillFailureResult(call, "tool_not_available"), "tool_not_available", nil
 	}
+}
+
+func (runtime *localSkillToolRuntime) executePublishFileToolCall(
+	ctx context.Context,
+	call ProviderToolCall,
+) (ProviderToolResult, string, error) {
+	var arguments struct {
+		Path        string  `json:"path"`
+		DisplayName *string `json:"displayName"`
+		ContentType *string `json:"contentType"`
+	}
+	if !decodeStrictToolArguments(call.Arguments, &arguments) ||
+		!runtime.artifactPublishingAvailable() {
+		return localSkillFailureResult(call, "arguments_invalid"), "arguments_invalid", nil
+	}
+	snapshot, err := runtime.executor.ReadWorkspaceArtifact(
+		ctx, arguments.Path, runtime.artifactMaxBytes,
+	)
+	if err != nil {
+		return workspaceToolResult(call, nil, err)
+	}
+	if len(snapshot.Body) == 0 {
+		return localSkillFailureResult(call, "empty_file"), "empty_file", nil
+	}
+	key := snapshot.Path + "\x00" + snapshot.Version
+	if artifact, ok := runtime.publishedByVersion[key]; ok {
+		return publishedArtifactToolResult(call, snapshot, artifact, true), "", nil
+	}
+	if len(runtime.publishedArtifacts) >= maxPublishedArtifactsPerTurn {
+		return localSkillFailureResult(call, "artifact_count_exhausted"), "artifact_count_exhausted", nil
+	}
+	if int64(len(snapshot.Body)) > runtime.artifactMaxBytes-runtime.artifactBytes {
+		return localSkillFailureResult(call, "artifact_bytes_exhausted"), "artifact_bytes_exhausted", nil
+	}
+	displayName, ok := normalizeArtifactDisplayName(snapshot.Path, arguments.DisplayName)
+	if !ok {
+		return localSkillFailureResult(call, "arguments_invalid"), "arguments_invalid", nil
+	}
+	contentType, ok := normalizeArtifactContentType(displayName, arguments.ContentType)
+	if !ok {
+		return localSkillFailureResult(call, "arguments_invalid"), "arguments_invalid", nil
+	}
+	artifact, err := runtime.artifactPublisher.PublishWorkspaceArtifact(
+		ctx,
+		WorkspaceArtifactPublishInput{
+			ConversationID: runtime.jobScope.ConversationID,
+			FileName:       displayName, MimeType: contentType, Body: snapshot.Body,
+		},
+	)
+	if err != nil || strings.TrimSpace(artifact.FileID) == "" {
+		return localSkillFailureResult(call, "publish_failed"), "publish_failed", nil
+	}
+	runtime.artifactBytes += int64(len(snapshot.Body))
+	runtime.publishedArtifacts = append(runtime.publishedArtifacts, artifact)
+	runtime.publishedByVersion[key] = artifact
+	return publishedArtifactToolResult(call, snapshot, artifact, false), "", nil
+}
+
+func normalizeArtifactDisplayName(workspacePath string, supplied *string) (string, bool) {
+	name := path.Base(workspacePath)
+	if supplied != nil {
+		name = strings.TrimSpace(*supplied)
+	}
+	if name == "" || name == "." || name == ".." || len(name) > 255 ||
+		strings.ContainsAny(name, "/\\\x00") {
+		return "", false
+	}
+	return name, true
+}
+
+func normalizeArtifactContentType(fileName string, supplied *string) (string, bool) {
+	contentType := ""
+	if supplied != nil {
+		contentType = strings.TrimSpace(*supplied)
+	}
+	if contentType == "" {
+		contentType = mime.TypeByExtension(path.Ext(fileName))
+	}
+	if contentType == "" {
+		return "application/octet-stream", true
+	}
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil || mediaType == "" || len(mediaType) > 255 {
+		return "", false
+	}
+	return mediaType, true
+}
+
+func publishedArtifactToolResult(
+	call ProviderToolCall,
+	snapshot localskills.WorkspaceArtifactSnapshot,
+	artifact WorkspaceArtifact,
+	alreadyPublished bool,
+) ProviderToolResult {
+	return localSkillSuccessResult(call, map[string]any{
+		"result": map[string]any{
+			"path": snapshot.Path, "version": snapshot.Version,
+			"fileId": artifact.FileID, "fileName": artifact.FileName,
+			"contentType": artifact.MimeType, "size": artifact.Size,
+			"sha256": artifact.SHA256, "alreadyPublished": alreadyPublished,
+		},
+	})
+}
+
+func (runtime *localSkillToolRuntime) publishedAttachmentInputs() []AttachmentInput {
+	if runtime == nil || len(runtime.publishedArtifacts) == 0 {
+		return nil
+	}
+	attachments := make([]AttachmentInput, 0, len(runtime.publishedArtifacts))
+	for _, artifact := range runtime.publishedArtifacts {
+		attachments = append(attachments, AttachmentInput{
+			Source: "server", FileID: artifact.FileID, Purpose: "output",
+		})
+	}
+	return attachments
+}
+
+func (runtime *localSkillToolRuntime) discardUnlinkedPublishedArtifacts(
+	ctx context.Context,
+	linked []Attachment,
+) {
+	if runtime == nil || runtime.artifactPublisher == nil || len(runtime.publishedArtifacts) == 0 {
+		return
+	}
+	linkedIDs := make(map[string]struct{}, len(linked))
+	for _, attachment := range linked {
+		linkedIDs[strings.TrimSpace(attachment.FileID)] = struct{}{}
+	}
+	kept := make([]WorkspaceArtifact, 0, len(runtime.publishedArtifacts))
+	for _, artifact := range runtime.publishedArtifacts {
+		if _, ok := linkedIDs[strings.TrimSpace(artifact.FileID)]; ok {
+			kept = append(kept, artifact)
+			continue
+		}
+		_ = runtime.artifactPublisher.DeleteWorkspaceArtifact(ctx, artifact.FileID)
+	}
+	runtime.publishedArtifacts = kept
 }
 
 func workspaceToolResult(

@@ -14,6 +14,11 @@ export interface Attachment {
   data?: string;
   url?: string;
   fileName: string;
+  source?: "server";
+  fileId?: string;
+  size?: number;
+  sha256?: string;
+  purpose?: string;
 }
 
 export type ProcessStepKind =

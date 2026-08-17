@@ -72,6 +72,8 @@ type Handler struct {
 	mcpService                   *mcpclient.Service
 	localSkillCatalog            LocalSkillCatalog
 	localSkillExecutor           *localskills.Executor
+	artifactPublisher            WorkspaceArtifactPublisher
+	artifactMaxBytes             int64
 }
 
 type HandlerOption func(*Handler)
@@ -478,6 +480,18 @@ func WithLocalSkillRuntime(
 	return func(handler *Handler) {
 		handler.localSkillCatalog = catalog
 		handler.localSkillExecutor = executor
+	}
+}
+
+func WithWorkspaceArtifactPublisher(
+	publisher WorkspaceArtifactPublisher,
+	maxBytes int64,
+) HandlerOption {
+	return func(handler *Handler) {
+		if publisher != nil && maxBytes > 0 {
+			handler.artifactPublisher = publisher
+			handler.artifactMaxBytes = maxBytes
+		}
 	}
 }
 
@@ -1499,6 +1513,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		}
 		localSkillRuntime = newLocalSkillToolRuntime(h.localSkillExecutor, skills)
 		localSkillRuntime.bindJobScope(actor.ID, conversationID)
+		localSkillRuntime.bindArtifactPublisher(h.artifactPublisher, h.artifactMaxBytes)
 		var prepareErr error
 		providerPrompt, prepareErr = localSkillRuntime.prepareUserPrompt(
 			providerPrompt,
@@ -1592,6 +1607,8 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		messageID string,
 		input FinalizeAssistantMessageInput,
 	) (Message, error) {
+		input.Attachments = append(input.Attachments, localSkillRuntime.publishedAttachmentInputs()...)
+		ctx = auth.WithUser(ctx, actor)
 		message, finalizeErr := h.finalizeAssistantMessage(
 			ctx, conversationID, messageID, input,
 		)
@@ -1599,6 +1616,16 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			turnFinalStatus = normalizeChatAgentTurnStatus(input.Status)
 			turnFinalContent = input.Content
 			turnFinalErrorCode = chatAgentErrorCode(input.Metadata)
+		}
+		if finalizeErr != nil {
+			reconcileCtx := auth.WithUser(context.Background(), actor)
+			if current, readErr := h.service.GetMessage(
+				reconcileCtx, conversationID, messageID,
+			); readErr == nil {
+				localSkillRuntime.discardUnlinkedPublishedArtifacts(
+					reconcileCtx, current.Attachments,
+				)
+			}
 		}
 		return message, finalizeErr
 	}
@@ -1610,8 +1637,8 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	) {
 		if turnFinalStatus == ChatAgentTurnFailed {
 			turnFinalContent = content
-			_, _ = h.finalizeAssistantMessage(
-				context.Background(),
+			_, _ = finalizeTracked(
+				generationCtx,
 				conversationID,
 				messageID,
 				FinalizeAssistantMessageInput{
@@ -1626,9 +1653,10 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		turnFinalStatus = ChatAgentTurnCancelled
 		turnFinalContent = content
 		turnFinalErrorCode = "SSE_WRITE_FAILED"
-		h.cancelAssistantAfterWriteError(
-			conversationID, messageID, runID, content,
-		)
+		_, _ = finalizeTracked(generationCtx, conversationID, messageID, FinalizeAssistantMessageInput{
+			Status: "cancelled", Content: content,
+			Metadata: map[string]any{"runId": runID, "errorCode": "SSE_WRITE_FAILED"},
+		})
 	}
 	memoryToolRuntime := h.newMemoryToolRuntime(
 		r.Context(),

@@ -107,6 +107,26 @@ type Attachment struct {
 	Purpose  string
 }
 
+type WorkspaceArtifactPublishInput struct {
+	ConversationID string
+	FileName       string
+	MimeType       string
+	Body           []byte
+}
+
+type WorkspaceArtifact struct {
+	FileID   string
+	FileName string
+	MimeType string
+	Size     int64
+	SHA256   string
+}
+
+type WorkspaceArtifactPublisher interface {
+	PublishWorkspaceArtifact(context.Context, WorkspaceArtifactPublishInput) (WorkspaceArtifact, error)
+	DeleteWorkspaceArtifact(context.Context, string) error
+}
+
 type CreateAssistantMessageInput struct {
 	ID                string
 	ParentMessageID   string

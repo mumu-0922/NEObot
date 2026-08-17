@@ -233,7 +233,7 @@ func (runtime *localSkillToolRuntime) executeCall(
 	}
 	switch strings.TrimSpace(call.Name) {
 	case localFileReadToolName, localFileWriteToolName, localFileEditToolName,
-		localFileSearchToolName:
+		localFileSearchToolName, localPublishFileToolName:
 		return runtime.executeWorkspaceToolCall(ctx, call)
 	case localJobListToolName, localJobOutputToolName, localJobKillToolName:
 		execution.Durability = "process_local"
@@ -410,7 +410,7 @@ func localSkillClassification(name string) string {
 	switch name {
 	case localTerminalToolName:
 		return "execute"
-	case localFileWriteToolName, localFileEditToolName:
+	case localFileWriteToolName, localFileEditToolName, localPublishFileToolName:
 		return "write"
 	case localJobKillToolName:
 		return "execute"

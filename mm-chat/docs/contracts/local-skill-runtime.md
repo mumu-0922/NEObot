@@ -41,6 +41,7 @@ Runner mTLS, and production isolation evidence are not prerequisites.
 | `file_write({path,content,expectedVersion})` | Atomically creates or replaces one bounded UTF-8 file. `expectedVersion="absent"` is valid only for creation. |
 | `file_edit({path,oldText,newText,replaceAll,expectedVersion})` | Performs exact text replacement over the version-pinned file; the default requires exactly one match. |
 | `file_search({path?,query,glob?,maxResults?})` | Searches bounded regular UTF-8 workspace files for literal text while skipping symlinks and generated dependency directories. |
+| `publish_file({path,displayName,contentType})` | Snapshots one final binary or text workspace file into actor-owned `purpose=export` storage and projects it onto the assistant Message as an authenticated `purpose=output` attachment. Nullable display name and content type values use safe filename/MIME inference. |
 | `terminal({command,skill?,workingDir?,timeoutSeconds?,runInBackground})` | Runs one bounded shell command as the Backend user in the configured workspace. `skill` exposes that installed package only through `NEO_CHAT_ACTIVE_SKILL_ROOT`; background mode returns a process-local Job ID. |
 | `job_list({})` | Lists process-local Jobs for the exact user and Conversation without command text or output. |
 | `job_output({jobId,wait,timeoutSeconds?})` | Reads one owned Job and optionally waits at most ten seconds without busy-polling. Output appears only after a terminal state. |
@@ -115,6 +116,33 @@ adversarial allowed process.
 - `file_write` and `file_edit` are mutations, not completion evidence. The
   Agent must subsequently read/search/execute and verify the resulting state.
 
+## Published chat artifacts
+
+- `publish_file` is model-visible only in Agent mode when both `local_direct`
+  and the server File service are available. Chat mode physically omits the
+  complete local Runtime, including publication.
+- Publication accepts only a workspace-relative regular file, rejects every
+  symlink component and directory, supports binary bytes, rejects empty files,
+  and applies `MAX_UPLOAD_BYTES` to both one file and the Turn total.
+- One Turn may publish at most eight unique `(path, sha256 version)` snapshots.
+  Repeating an unchanged path returns the existing File ID and does not upload
+  or attach a duplicate.
+- Published objects use the authenticated actor, `purpose=export`, and current
+  Conversation metadata. The assistant-only link purpose is `output`; user
+  message input rejects that purpose.
+- Every terminal assistant outcome keeps already published artifacts. If
+  assistant finalization fails, the Backend rereads current Message authority:
+  unlinked files are deleted, while files found linked after an ambiguous
+  commit acknowledgement are preserved. If authority cannot be reread during
+  an outage, cleanup fails safe by retaining the private actor-owned File
+  rather than deleting a potentially committed attachment.
+- The UI downloads through authenticated `GET /v1/files/{id}/content` with
+  `disposition=attachment`, creates a short-lived Blob URL, and reports missing
+  or deleted files as an error. It never treats a workspace path or naked
+  object-store URL as a download. The File endpoint also forces every
+  `purpose=export` response to attachment disposition even if a caller asks
+  for inline rendering.
+
 ## Background Jobs
 
 - A Job is memory-only and scoped to the exact authenticated user plus
@@ -145,3 +173,8 @@ adversarial allowed process.
   recover or resume a prior process-local Job.
 - Set `AGENT_LOCAL_RUNTIME_ENABLED=false` and recreate the Backend to roll back
   immediately. Installed packages remain stored and no OCI Runtime is enabled.
+
+Verification includes `bash scripts/verify-chat-artifacts-postgres17.sh`, the
+local Tool unit suite, Backend vet/tests, Frontend artifact tests and production
+build. The PostgreSQL drill uses an ephemeral PostgreSQL 17 container and proves
+assistant output round-trip, two-user isolation, and deleted-file rejection.

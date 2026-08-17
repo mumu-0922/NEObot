@@ -1330,7 +1330,7 @@ func (r *PostgresRepository) CreateMessage(
 		return Message{}, err
 	}
 	input.Role = role
-	attachments, err := normalizeAttachmentInputs(input.Attachments)
+	attachments, err := normalizeAttachmentInputs(input.Attachments, false)
 	if err != nil {
 		return Message{}, err
 	}

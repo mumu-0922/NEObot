@@ -174,6 +174,38 @@ describe("chat CRUD DTO mappers", () => {
     );
   });
 
+  it("reloads assistant output artifacts with authenticated file identity", () => {
+    const assistant = mapChatMessageDtoToMessage(
+      {
+        ...assistantMessageDto,
+        attachments: [
+          {
+            ...assistantMessageDto.attachments[0],
+            id: "artifact-1",
+            fileId: "55555555-5555-4555-8555-555555555555",
+            fileName: "result.csv",
+            mimeType: "text/csv",
+            size: 2048,
+            purpose: "output",
+          },
+        ],
+      },
+      { baseUrl: "http://backend.test" },
+    );
+
+    expect(assistant.attachments).toEqual([
+      expect.objectContaining({
+        source: "server",
+        fileId: "55555555-5555-4555-8555-555555555555",
+        fileName: "result.csv",
+        mimeType: "text/csv",
+        size: 2048,
+        purpose: "output",
+        url: "http://backend.test/v1/files/55555555-5555-4555-8555-555555555555/content",
+      }),
+    ]);
+  });
+
   it("reloads combined Knowledge and Web citation artifacts", () => {
     const combined = mapChatMessageDtoToMessage({
       ...assistantMessageDto,

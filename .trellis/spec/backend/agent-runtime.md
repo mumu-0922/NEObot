@@ -23,9 +23,9 @@ then `096`, before the retained control-plane tail and reapply through `097`.
 - File read: `skillsupply.ReadRuntimeSkillFile(skill, relativePath)`.
 - Executor: `localskills.Executor.Execute(ctx, localskills.Request)` and
   `Executor.StartBackgroundJob|ListBackgroundJobs|BackgroundJobOutput|KillBackgroundJob|Close`.
-- Workspace: `Executor.ReadWorkspaceFile|WriteWorkspaceFile|EditWorkspaceFile|SearchWorkspaceFiles`.
+- Workspace: `Executor.ReadWorkspaceFile|WriteWorkspaceFile|EditWorkspaceFile|SearchWorkspaceFiles|ReadWorkspaceArtifact`.
 - Native Tools: optional `skill({name})`, `file_read`, `file_write`,
-  `file_edit`, `file_search`,
+  `file_edit`, `file_search`, optional actor-owned `publish_file`,
   `terminal({command,skill?,workingDir?,timeoutSeconds?,runInBackground})`,
   `job_list`, `job_output`, and `job_kill`. Goal and completion Tools are owned
   by the Chat Tool Loop, not this package executor.

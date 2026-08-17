@@ -17,6 +17,7 @@ const (
 	localFileWriteToolName   = "file_write"
 	localFileEditToolName    = "file_edit"
 	localFileSearchToolName  = "file_search"
+	localPublishFileToolName = "publish_file"
 	localJobListToolName     = "job_list"
 	localJobOutputToolName   = "job_output"
 	localJobKillToolName     = "job_kill"
@@ -27,6 +28,7 @@ const (
 	maxLocalSkillListItems          = 64
 	maxLocalSkillDescriptionBytes   = 512
 	maxLocalSkillToolResultMetadata = 512 << 10
+	maxPublishedArtifactsPerTurn    = 8
 )
 
 const localSkillSystemInstruction = `Installed Agent Skills are available through progressive disclosure.
@@ -39,19 +41,26 @@ Workspace File Tools are available independently of installed Skills. Paths must
 For a long command, set terminal.runInBackground=true, then use job_output with wait=true when the result is actually needed. Do not sleep or busy-poll. job_list, job_output, and job_kill are limited to this user and conversation. Background Jobs are process-local and disappear when the Backend restarts.
 Do not repeat raw Tool output unnecessarily and never invent Tool results.`
 
+const publishFileSystemInstruction = `After generating and verifying a file the user should receive, call publish_file with its workspace-relative path. Only files successfully returned by publish_file are downloadable in chat; never claim that an unpublished workspace path is a downloadable attachment. Publish only final user-requested deliverables, not temporary files.`
+
 type LocalSkillCatalog interface {
 	PrepareRuntimeSkills(context.Context, string, string) ([]skillsupply.RuntimeSkill, error)
 }
 
 type localSkillToolRuntime struct {
-	executor        *localskills.Executor
-	skills          []skillsupply.RuntimeSkill
-	byName          map[string]skillsupply.RuntimeSkill
-	catalogRevision string
-	loaded          map[string]string
-	required        []string
-	calls           int
-	jobScope        localskills.JobScope
+	executor           *localskills.Executor
+	skills             []skillsupply.RuntimeSkill
+	byName             map[string]skillsupply.RuntimeSkill
+	catalogRevision    string
+	loaded             map[string]string
+	required           []string
+	calls              int
+	jobScope           localskills.JobScope
+	artifactPublisher  WorkspaceArtifactPublisher
+	artifactMaxBytes   int64
+	artifactBytes      int64
+	publishedArtifacts []WorkspaceArtifact
+	publishedByVersion map[string]WorkspaceArtifact
 }
 
 type localSkillRunFailure struct {
@@ -128,6 +137,22 @@ func (runtime *localSkillToolRuntime) bindJobScope(userID, conversationID string
 	}
 }
 
+func (runtime *localSkillToolRuntime) bindArtifactPublisher(
+	publisher WorkspaceArtifactPublisher,
+	maxBytes int64,
+) {
+	if runtime == nil || publisher == nil || maxBytes < 1 {
+		return
+	}
+	runtime.artifactPublisher = publisher
+	runtime.artifactMaxBytes = maxBytes
+	runtime.publishedByVersion = make(map[string]WorkspaceArtifact)
+}
+
+func (runtime *localSkillToolRuntime) artifactPublishingAvailable() bool {
+	return runtime.enabled() && runtime.artifactPublisher != nil && runtime.artifactMaxBytes > 0
+}
+
 func (runtime *localSkillToolRuntime) handles(name string) bool {
 	if !runtime.enabled() {
 		return false
@@ -137,6 +162,8 @@ func (runtime *localSkillToolRuntime) handles(name string) bool {
 		localFileEditToolName, localFileSearchToolName, localJobListToolName,
 		localJobOutputToolName, localJobKillToolName:
 		return true
+	case localPublishFileToolName:
+		return runtime.artifactPublishingAvailable()
 	case localSkillToolName,
 		legacySkillsListToolName, legacySkillViewToolName:
 		return runtime.skillsAvailable()
@@ -150,7 +177,7 @@ func (runtime *localSkillToolRuntime) definitions() []ToolDefinition {
 		return nil
 	}
 	maxTimeout := max(int(runtime.config().CallTimeout/time.Second), 1)
-	definitions := make([]ToolDefinition, 0, 9)
+	definitions := make([]ToolDefinition, 0, 10)
 	if runtime.skillsAvailable() {
 		definitions = append(definitions, ToolDefinition{
 			Type: "function",
@@ -175,6 +202,11 @@ func (runtime *localSkillToolRuntime) definitions() []ToolDefinition {
 		workspaceFileWriteDefinition(),
 		workspaceFileEditDefinition(),
 		workspaceFileSearchDefinition(),
+	)
+	if runtime.artifactPublishingAvailable() {
+		definitions = append(definitions, workspacePublishFileDefinition())
+	}
+	definitions = append(definitions,
 		backgroundJobListDefinition(),
 		backgroundJobOutputDefinition(),
 		backgroundJobKillDefinition(),

@@ -15,6 +15,14 @@ export interface ServerBackedAttachment extends Attachment {
   purpose?: ServerMessageAttachmentPurpose | string;
 }
 
+export function isServerArtifactAttachment(
+  attachment: Attachment,
+): attachment is ServerBackedAttachment & { purpose: "output" } {
+  return (
+    isServerBackedAttachment(attachment) && attachment.purpose === "output"
+  );
+}
+
 export function isServerBackedAttachment(
   attachment: Attachment,
 ): attachment is ServerBackedAttachment {

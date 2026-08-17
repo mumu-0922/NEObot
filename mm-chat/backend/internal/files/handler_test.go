@@ -118,6 +118,35 @@ func TestHandlerUploadErrors(t *testing.T) {
 	})
 }
 
+func TestHandlerForcesExportFilesToDownloadDisposition(t *testing.T) {
+	repo := newFakeRepository()
+	store := newFakeObjectStore()
+	service := NewService(repo, store)
+	service.newID = func() (string, error) { return testFileID, nil }
+	handler := NewHandler(service, WithMaxUploadBytes(1024))
+
+	recorder := performMultipartRequest(
+		handler,
+		http.MethodPost,
+		filesPath,
+		"result.html",
+		"text/html",
+		"<script>fixture</script>",
+		map[string]string{"purpose": "export"},
+	)
+	assertStatus(t, recorder, http.StatusCreated)
+	recorder = performRequest(
+		handler,
+		http.MethodGet,
+		filesPath+"/"+testFileID+"/content?disposition=inline",
+		"",
+	)
+	assertStatus(t, recorder, http.StatusOK)
+	if got := recorder.Header().Get("Content-Disposition"); !strings.Contains(got, "attachment") || !strings.Contains(got, "result.html") {
+		t.Fatalf("Content-Disposition=%q", got)
+	}
+}
+
 func TestHandlerImportsRemoteFile(t *testing.T) {
 	repo := newFakeRepository()
 	store := newFakeObjectStore()

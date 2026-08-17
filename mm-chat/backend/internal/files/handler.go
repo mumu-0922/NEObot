@@ -252,7 +252,8 @@ func (h *Handler) downloadFile(w http.ResponseWriter, r *http.Request, fileID st
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", record.ByteSize))
-	if r.URL.Query().Get("disposition") == "attachment" {
+	if r.URL.Query().Get("disposition") == "attachment" ||
+		purposeFromMetadata(record.Metadata) == "export" {
 		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": record.OriginalFilename}))
 	}
 	w.WriteHeader(http.StatusOK)

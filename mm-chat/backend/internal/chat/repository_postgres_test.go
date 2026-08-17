@@ -389,6 +389,37 @@ func TestPostgresCreateMessagePersistsAttachmentOnlyMessages(t *testing.T) {
 	if len(got.Attachments) != 1 || got.Attachments[0].SHA256 != testSHA256 {
 		t.Fatalf("GetMessage() attachments = %#v", got.Attachments)
 	}
+
+	assistant, err := repo.CreateAssistantMessage(ctx, conversation.ID, CreateAssistantMessageInput{
+		ParentMessageID: message.ID,
+		IdempotencyKey:  "artifact-output-roundtrip",
+	})
+	if err != nil {
+		t.Fatalf("CreateAssistantMessage() error = %v", err)
+	}
+	assistant, err = repo.FinalizeAssistantMessage(
+		ctx,
+		conversation.ID,
+		assistant.ID,
+		FinalizeAssistantMessageInput{
+			Status: "completed", Content: "download the result",
+			Attachments: []AttachmentInput{{
+				Source: "server", FileID: fileRecord.ID, Purpose: "output",
+			}},
+		},
+	)
+	if err != nil {
+		t.Fatalf("FinalizeAssistantMessage(output) error = %v", err)
+	}
+	if len(assistant.Attachments) != 1 || assistant.Attachments[0].Purpose != "output" ||
+		assistant.Attachments[0].FileID != fileRecord.ID {
+		t.Fatalf("assistant output attachment = %#v", assistant.Attachments)
+	}
+	reloaded, err := repo.ListMessages(ctx, conversation.ID)
+	if err != nil || len(reloaded) != 2 || len(reloaded[1].Attachments) != 1 ||
+		reloaded[1].Attachments[0].Purpose != "output" {
+		t.Fatalf("reloaded output messages = %#v/%v", reloaded, err)
+	}
 }
 
 func TestFinalizeAssistantMessageRecordsMemoryUsageAtomically(t *testing.T) {
