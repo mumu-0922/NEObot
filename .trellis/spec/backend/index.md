@@ -13,7 +13,7 @@
 | [Chat/Agent Mode](./chat-agent-mode.md)             | Persisted Conversation mode, effective capability downgrade, and physical Agent Tool admission |
 | [MCP Tools](./mcp-tools.md)                         | Server-authoritative MCP API, grants/selections, native Tool continuation, transports, results, retention, and Plugin retirement |
 | [Assistant Store](./assistant-store.md)             | Server-owned prompt presets, LobeHub admission/fingerprints, revisions, persistence, and rollback boundaries |
-| [Agent Runtime](./agent-runtime.md) | Current `local_direct` installed-Skill materialization/execution plus retained optional G20/G21 Runner/Broker/delegation/Cron/learning history |
+| [Agent Runtime](./agent-runtime.md) | Current Chat Agent `local_direct` Skill/File/Terminal/Job/artifact runtime and migration-`098` retirement boundary |
 | [Direct chat attachments](./chat-attachments.md)    | Attachment-only messages, native images, bounded document extraction, provider context, and explicit failures       |
 | [Hosted media provider smoke](./provider-live-smoke.md) | Exact live-provider authorization, one-off credentials, explicit TTS voices, artifacts, and sanitized evidence    |
 | [Hosted TTS production](./hosted-tts-production.md) | Dedicated SiliconFlow Voice authority, exact activation, server-mode playback, per-user cache, and cleanup |
@@ -97,22 +97,22 @@ For Assistant library, Store, admission, or LobeHub adapter changes:
 4. Prove live and legacy detail paths produce the exact fingerprint displayed
    to administrators before applying a migration or release.
 
-For Agent Skill packages, Agent Run persistence, Runner RPC, Capability Grants,
-Child Agents, Cron, Draft learning, Kill Switches, or legacy Skill cutover:
+For Agent Skill packages, Chat Agent event/Goal persistence, local Tools,
+artifact publication, or legacy control-plane retirement:
 
 1. Read [`agent-runtime.md`](./agent-runtime.md),
    [`chat-tool-loop.md`](./chat-tool-loop.md), and
    [`mcp-tools.md`](./mcp-tools.md).
 2. For current Chat Skills, trace owner installation -> canonical package
-   revalidation -> immutable materialization -> compact index -> `skill_view`
-   -> bounded Backend-user `terminal` -> same-model answer.
+   revalidation -> immutable materialization -> compact index -> `skill`
+   -> bounded Backend-user `terminal` -> optional `publish_file` -> same-model
+   answer.
 3. Preserve explicit child environment, workspace/path/fingerprint checks,
    process-group cancellation, local call/round/time/output limits, command
    redaction and the explicit "not a Sandbox" product warning.
-4. For retained optional G20/G21 OCI work only, preserve PostgreSQL authority,
-   lease-generation fencing, Prepare/Commit `outcome_unknown`, depth 1 plus
-   physical `delegate_task` removal, Draft-only learning and cleanup while
-   disabled. Its `ISOLATION_UNAVAILABLE` state must not gate `local_direct`.
+4. Preserve `chat_agent_*`, Skill, MCP, File, Knowledge, and Memory authority.
+   Migration `098` must fail closed on legacy fact rows or schema drift, use
+   exact object lists, and never recreate retired Runner/Canary authority.
 
 For chat upload, attachment parsing, or provider attachment changes:
 
@@ -310,11 +310,11 @@ or teardown changes:
   Vitest/typecheck, `test-preflight-single-server.sh`, and
   `verify-mcp-postgres17.sh`. Do not require unrelated full suites for an
   intermediate MCP-only iteration.
-- For Agent Runtime Phase 0 changes, run
-  `bash mm-chat/scripts/verify-agent-runtime-phase0.sh`. Later implementation
-  groups must additionally run their PostgreSQL, rootless Isolation Acceptance,
-  side-effect crash, Child-depth, backup/restore, clean-copy, and cutover gates;
-  the offline Phase 0 check is never production-isolation evidence.
+- For Chat Agent Runtime changes, run
+  `bash mm-chat/scripts/verify-agent-local-runtime.sh`,
+  `bash mm-chat/scripts/verify-chat-artifacts-postgres17.sh`, and, when schema
+  retirement is touched,
+  `bash mm-chat/scripts/verify-legacy-agent-cleanup-postgres17.sh`.
 - For hosted provider smoke changes, run focused executor/gate tests, all Go
   tests and vet, a diff secret scan, then the exact authorized live command.
 - For production TTS changes, also run migration `051` replay/cache integration,

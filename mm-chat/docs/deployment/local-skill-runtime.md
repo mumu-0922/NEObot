@@ -50,7 +50,7 @@ blocked even when approval mode is `off`.
 
 ## Operational truth
 
-Agent Center reports:
+Backend startup and the local Runtime verification gate report:
 
 ```text
 state=local_ready
@@ -58,10 +58,11 @@ reasonCode=LOCAL_DIRECT_EXECUTION
 executable=true
 ```
 
-This status means Skills can execute in ordinary Chat. It does **not** mean the
-commands are isolated. Commands have the Backend user's authority inside the
-container, the mounted workspace, and reachable networks. Keep secrets and
-unrelated personal files outside the configured workspace.
+This status means Agent-mode turns can execute installed Skills through the
+ordinary Chat runtime. It does **not** mean the commands are isolated. Commands
+have the Backend user's authority inside the container, the mounted workspace,
+and reachable networks. Keep secrets and unrelated personal files outside the
+configured workspace. The retired Runner/Canary control plane is not involved.
 
 ## Chat smoke test
 
@@ -111,5 +112,4 @@ docker compose --env-file .env.single-server --profile app up -d --force-recreat
 ```
 
 This stops new local Skill Tools without uninstalling packages or deleting the
-workspace/cache. The retained G20/G21 OCI Runner profiles remain independently
-disabled and are not a fallback.
+workspace/cache. There is no OCI Runner fallback or second Agent control plane.

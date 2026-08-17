@@ -186,7 +186,7 @@ Readiness never mutates schema, creates buckets, or runs migrations.
 
 The Go migration runner owns transaction boundaries, takes a Postgres advisory
 lock, validates migration names/checksums, and records each applied migration
-in `schema_migrations`. The current schema head is `097`. Migration `038`
+in `schema_migrations`. The current schema head is `098`. Migration `038`
 requires PostgreSQL major `17`, the `pg_textsearch` preload, and exact pgvector
 `0.8.5` / pg_textsearch `1.3.1` extension versions. Migrations `039` and `040`
 retain the dedicated API role by exposing only hardened document-lifecycle and
@@ -216,12 +216,13 @@ does not promote the v1 Global Top 5 reader. Migration `068` binds promotion to
 extraction profile v4, whose Tool schema enumerates only hydrated user-role and
 assistant-role evidence IDs. Migration `069` advances to the Provider-compatible
 v5 schema while retaining local duplicate/forgery rejection.
-Migrations `070` through `095` add the later Assistant/Skill, MCP, Memory and
-default-off Agent control-plane tails catalogued in
-`backend/migrations/README.md`. Migration `096` adds the independent ordinary
-Chat Agent Turn/Event log. The API runtime has read plus exact append-function
-authority and no direct event-table DML; Backend startup reconciles incomplete
-Turns only after operators have applied the migration.
+Migrations `070` through `083` add the later Assistant/Skill, MCP, and Memory
+tails catalogued in `backend/migrations/README.md`. Migrations `084` through
+`095` are immutable history for the retired Agent control plane. Migration
+`096` adds the independent ordinary Chat Agent Turn/Event log and `097` adds
+current Conversation Goals. Migration `098` removes the empty legacy control
+plane with an exact, fail-closed object whitelist while preserving Chat, Skill,
+MCP, File, Knowledge, and Memory data.
 
 Apply migrations from the same immutable `BACKEND_IMAGE` used by `backend` and
 `admin`:
@@ -271,8 +272,8 @@ exec psql --set=ON_ERROR_STOP=1 \
 '
 ```
 
-Acceptance for the current release requires versions `001` through `097`,
-ending at `097_chat_agent_goals`. Treat `schema_migrations` as runner state,
+Acceptance for the current release requires versions `001` through `098`,
+ending at `098_retire_legacy_agent_control_plane`. Treat `schema_migrations` as runner state,
 not a domain table. Never use `baseline` routinely; it exists only to accept
 reviewed legacy rows that lack checksums. The disposable Chat event replay and
 least-privilege drill is:
@@ -281,6 +282,7 @@ least-privilege drill is:
 cd mm-chat
 bash scripts/verify-chat-agent-event-log-postgres17.sh
 bash scripts/verify-chat-agent-goals-postgres17.sh
+bash scripts/verify-legacy-agent-cleanup-postgres17.sh
 ```
 
 ### Fresh-install role provisioning
@@ -410,72 +412,19 @@ After live Knowledge writes, prefer a forward fix or a verified pre-migration
 restore rather than dropping authoritative Documents, Consent history, Jobs,
 or Outbox events.
 
-### G21.4 Child canary principal
+### Legacy Agent control-plane retirement
 
-Migration `093` adds no general Runtime table. It grants the existing
-`agent_delegation_owner` the minimum Runner projection access needed inside two
-`SECURITY DEFINER` functions: bounded reap inventory and atomic successful reap
-completion. `agent_delegation_control` receives EXECUTE; application, effect
-and unrelated Runner roles do not. A successful reap rejects active launch
-authority and mismatched Sandbox identity before terminalizing the exact
-Runner projection and durable reap. Failed completion remains retryable.
+Migration `098` requires all 46 legacy fact tables to be empty and permits only
+the two migration-created singleton state rows. It locks before counting and
+aborts atomically on data or schema drift. Its down migration is an intentional
+no-op: database rollback requires the matched pre-upgrade PostgreSQL/MinIO
+backup and previous application image. Do not recreate retired Agent roles,
+services, or grants manually.
 
-Provision `agent_child_canary_app` as the tenth LOGIN only on an approved
-G21.4 host. Its recursive inherited roles must be exactly:
-
-```text
-agent_delegation_control
-agent_orchestrator_runtime
-agent_runner_control
-```
-
-Require LOGIN+INHERIT, deny superuser/createdb/createrole/replication/bypassrls,
-deny every owner membership and direct table INSERT/UPDATE/DELETE. Store its
-password only in the protected deployment env. The development example is a
-placeholder and the profile defaults off.
-
-Normal rollback keeps migration `093` and stops the Child profile. A disposable
-down rehearsal must first prove zero pending/failed reap and no nonterminal
-depth-one Runner Sandbox. Clean down restores migration-087 completion behavior;
-never edit migration `087` or delete a reap to bypass the guard. Verify with
-`scripts/verify-agent-child-canary-postgres17.sh`.
-
-### G21.5 exact Cron and Draft-learning principals
-
-Migration `094_agent_cron_learning_activation` is the current schema head. It
-adds immutable exact-target tables, Draft-only Runner attempt/result/request
-authority and two NOLOGIN roles. It does not grant a general Scheduler,
-Learning cohort, API/Chat execution or autonomous Promote path.
-
-Provision `agent_cron_worker_app` with LOGIN+INHERIT and exactly one recursive
-membership:
-
-```text
-agent_cron_worker
-```
-
-Provision `agent_draft_learning_worker_app` separately with exactly:
-
-```text
-agent_learning_worker
-```
-
-Deny superuser/createdb/createrole/replication/bypassrls, schema CREATE, every
-owner/control/cross-worker membership and direct SELECT/INSERT/UPDATE/DELETE on
-Agent tables. The Cron LOGIN executes only exact-target claim/advance/enqueue/
-release/reconcile/prune functions. The Draft LOGIN executes only exact-target
-check, Draft-only Runner lifecycle/result and cleanup/reconcile/prune functions.
-It has no Propose, Reject, Promote, candidate or package-version authority.
-
-Normal rollback stops one profile, disables its immutable target and retains
-migration `094`. Down is a disposable clean-database operation only. It rejects
-enabled targets, live Cron/Draft claims, unresolved Runner attempts, pending
-cleanup, any worker LOGIN membership and retained activation facts. Verify both
-real LOGIN boundaries, dump/restore and clean down/up with:
+Run the disposable PostgreSQL 17 proof before promotion:
 
 ```bash
-bash scripts/verify-agent-cron-worker-postgres17.sh
-bash scripts/verify-agent-draft-learning-worker-postgres17.sh
+bash scripts/verify-legacy-agent-cleanup-postgres17.sh
 ```
 
 The guarded `010.down` removes only the API grants introduced by `010`. It

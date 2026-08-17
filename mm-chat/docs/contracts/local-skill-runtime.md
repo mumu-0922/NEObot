@@ -75,7 +75,7 @@ path-like tokens stay ordinary user text.
 
 `terminal` is direct local execution, not a Sandbox. A permitted command has
 the filesystem and network authority of the Backend process and configured
-workspace. Agent Center and deployment docs must state this explicitly.
+workspace. Product and deployment surfaces must state this explicitly.
 
 The executor:
 
@@ -160,8 +160,8 @@ adversarial allowed process.
 
 ## Failure and rollback
 
-- A model without native Tool support fails before assistant creation with
-  `SKILL_MODEL_UNSUPPORTED`.
+- A model without native Tool support uses the effective Chat mode and does not
+  prepare local Skill, File, Job, Terminal, Goal, Browser, or MCP Tools.
 - Package preparation failure returns `SKILL_RUNTIME_UNAVAILABLE` without
   exposing storage or filesystem details.
 - Run deadline returns `LOCAL_SKILL_BUDGET_EXHAUSTED`; cancellation terminates

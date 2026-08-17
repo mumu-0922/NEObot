@@ -123,14 +123,17 @@ Use `./scripts/verify-standalone.sh --full` to install and verify the frontend
 and run the Go test suite inside the isolated copy. The final deletion of the
 former root application remains a separate owner-confirmed destructive gate.
 
-The design-only G20 Agent Runtime contracts have a focused offline gate:
+The current Chat Agent `local_direct` wiring and retired-control-plane boundary
+have focused gates:
 
 ```bash
-./scripts/verify-agent-runtime-phase0.sh
+./scripts/verify-agent-local-runtime.sh
+./scripts/verify-legacy-agent-cleanup-postgres17.sh
 ```
 
-This validates schemas, positive/negative fixtures and fail-closed boundaries;
-it does not enable a Runner or claim rootless OCI isolation acceptance.
+These validate the no-sudo Backend workspace, retained Skill Store and Chat
+runtime, absence of legacy services, and fail-closed migration `098`. The local
+runtime is deliberately not a Sandbox.
 
 Detailed deployment, backup, and rollback instructions live in
 [`docs/deployment/`](./docs/deployment/). Migration state is tracked in

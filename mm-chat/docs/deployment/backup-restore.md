@@ -75,108 +75,38 @@ mm-chat/backup/sets/<set-id>.json
 mm-chat/backup/sets/<set-id>.json.sha256
 ```
 
-The Postgres dump uses `pg_dump --format=custom --no-owner --no-acl` from the
-`postgres` service. The MinIO backup runs `mc mirror` from the `minio-client`
-Compose service, mirrors `S3_BUCKET`, then archives the mirrored tree as
-`tar.gz`. This includes all MCP authority rows in PostgreSQL and every
-`mcp-results/` object referenced by `mcp_tool_results.object_keys`, plus G20.1
-Skill candidate/version/install rows and their `skill-quarantine/`,
-`skill-packages/`, and `skill-sboms/` objects. The same full-bucket mirror covers
-Agent Runtime Bundle/Workspace coordinates, `skill-drafts/` quarantine and
-published `agent-artifacts/` when those held paths are later promoted. These
-database coordinates and object bytes are never backed up independently. Both
-scripts set `umask 077`, so new artifacts and checksums are owner-only. The
-MinIO backup container runs as the invoking host UID/GID so the operator can
-remove temporary staging files after the archive is created.
-The strict set manifest records the class, UTC creation time, exact relative
-artifact/checksum paths, their SHA-256 values, and
-`containsMemoryPlaintext=true`. A failed wrapper run removes every partial file
-for that set and publishes no manifest.
+The Postgres dump uses `pg_dump --format=custom --no-owner --no-acl`
+from the `postgres` service. The MinIO backup mirrors the complete `S3_BUCKET`
+and archives it as `tar.gz`. Together they cover:
 
-Agent Runtime production promotion additionally hashes the verified set
-manifest into the external G20.10 closure evidence. Restore with every Agent
-worker and Runtime switch off, reject all pre-restore leases/nonces, reconcile
-Sandboxes/effects/Children/Cron/Draft cleanup, and require migration head `095`
-before a read-only canary. The restore must also reconcile every
-`agent_artifacts.object_key` against the
-paired object mirror, remove only proven unreferenced canary objects and keep
-the Broker canary disabled until fresh exact-host activation. Migration `092`
-adds database-only synthetic Project resources, immutable mutation receipts and
-cleanup facts. Restore all three as one PostgreSQL authority set with every
-Agent canary off. A restored `mutated` resource must be reconciled only from its
-matching committed Broker intent and receipt; never replay the CAS or invent a
-new idempotency key. A clean resource must match its baseline revision and
-content fingerprint. Keep the Project canary disabled until the exact release,
-approval and activation evidence is regenerated; the offline approval private
-key is backed up and rotated under the separate encrypted operator-key
-procedure, not inside this backup set. The closure record is not a backup and
-must never embed dump/object bytes or credentials.
+- users, Conversations, Messages, Chat Agent Turns/Events/Goals, and File
+  metadata;
+- Knowledge, Memory, Assistant, Skill installation/package, and MCP authority;
+- uploaded File bytes, Agent-published outputs, Knowledge source objects, MCP
+  results, and admitted Skill package/SBOM objects.
 
-Migration `093` makes the Child reap and optional Runner Sandbox projection one
-restore authority. Restore `agent_delegation_authorities`, lineage, reaps,
-Runner requests and Runner Sandboxes together from the same PostgreSQL dump;
-never reconstruct one side from host inventory. Keep G21.4 off, treat every
-restored launch authority and lease token as unusable, wait through any retained
-authority expiry, then reconcile pending/failed Child reaps to physical Runner
-absence before completing them. A restored reaped Child must have a terminal
-Runner projection or no projection, zero pending inventory and exactly one
-lineage row. Do not enqueue a replacement Child under a new key.
+PostgreSQL coordinates and object bytes are one matched recovery set; never
+restore or retain only one side. Redis is temporary state and is not part of
+the canonical set. Both scripts set `umask 077`, and the strict manifest records
+the class, UTC creation time, exact artifact/checksum paths and SHA-256 values,
+plus `containsMemoryPlaintext=true`. A failed wrapper run removes every partial
+file for that set and publishes no manifest.
 
-Only after Child cleanup and Parent cancellation are terminal may a fresh
-exact-host activation be generated. The Child database password, mTLS private
-key and authority private key are separately encrypted deployment secrets, not
-members of the Postgres/MinIO backup set or closure evidence.
+Before applying migration `098`, create and verify a fresh matched set. The
+migration removes the disconnected legacy Agent control plane and its down file
+cannot recreate it. Rollback across `098` therefore means stopping writers and
+restoring that exact PostgreSQL/MinIO set together with the previous compatible
+application image. Do not manually recreate retired Runner, Broker, delegation,
+Cron/Learning, Shadow, Canary, role, or grant objects.
 
-Migration `094` makes Cron/Draft worker targets and Draft-only Runner transport
-part of the same restore authority. Restore `agent_cron_worker_targets`,
-`agent_learning_worker_targets`, Draft Runner attempts/results/requests,
-migration-088/089 state and every referenced Draft object from one matched
-PostgreSQL/MinIO set. Keep both G21.5 profiles off and treat restored worker
-leases, request nonces and Runner tokens as unusable.
-
-For Cron, reconcile only the exact restored target cursor/trigger claims before
-new scheduling and preserve occurrence/Run idempotency links. Never globally
-claim or advance another Template to repair one target. For Draft learning,
-wait through retained lease and signed-authority expiry, prove exact Sandbox
-absence, terminalize or reap the matching Draft-only Attempt, then reconcile
-the Draft claim. Result artifacts and check receipts must retain identical
-activation/Draft/generation/kind/package/runtime/archive/Workspace/suite
-bindings.
-
-Draft cleanup remains object-before-row. Verify the referenced quarantine
-object against the paired mirror, delete only the exact object after a separate
-human Promote/Reject fact, then acknowledge its target-scoped queue row. Never
-infer a human decision from a passing check or recreate a package version from
-result metadata. Cron has no object-store credential; the Draft credential,
-worker database passwords, Runner mTLS key and authority private key remain
-separately encrypted deployment secrets, not backup-set contents.
-
-Require migration head `095`, zero stale target claims, zero live Draft Runner
-attempts, zero target Sandbox residue and fresh G21.5 activation evidence before
-restarting either profile. Restored activation evidence never authorizes a new
-product cohort.
-
-Migration `095` adds bounded product activations, immutable user requests,
-lease claims, terminal receipts and final-promotion facts to the PostgreSQL
-authority set. Include all four product-canary tables in the same dump as the
-Run/Step/Attempt and Runner projections they reference. No product canary
-object payload exists; its fixed Sandbox remains `networkMode=none` and does
-not add MinIO state.
-
-Restore with `agent-runtime-product-canary` off and treat every restored claim,
-lease and signed Runner authority as unusable. Resolve each exact
-request/Run/Attempt, wait retained lease/authority expiry, prove matching Runner
-Sandbox absence and reconcile before considering a new activation. Never
-create a replacement request or idempotency key to repair a restored claim.
-Preserve receipts, promotion, incident and audit facts; they are immutable and
-content-free, not temporary cleanup rows.
-
-Require migration head `095`, zero stale product claims, zero pending terminal
-chains and zero activation Runner residue before restart. A restore invalidates
-the old activation window and closure evidence: provision fresh G21.0-G21.5
-evidence, a new bounded activation and a new closure review. Database password,
-Runner mTLS private key and Ed25519 private authority key remain separately
-encrypted deployment secrets and are never recovered from the backup set.
+After any restore, keep the Backend closed until the database reaches the image's
+expected migration head, sampled File/Knowledge/MCP/Skill object references
+match the restored bucket, Memory deletion replay has completed, and the
+restore drill passes. `local_direct` workspace and materialized Skill cache are
+runtime directories rather than canonical backup authority: restore installed
+Skill authority from PostgreSQL/MinIO, then allow the Backend to rematerialize
+packages. Preserve user-created workspace files separately if operators promise
+them as durable user data.
 
 ## Verify backup checksums
 

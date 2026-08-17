@@ -18,17 +18,16 @@ The active Tool integration is MCP. See
 [`contracts/mcp-tools-api.md`](./contracts/mcp-tools-api.md), and
 [`deployment/mcp-runner.md`](./deployment/mcp-runner.md).
 
-The G20 Agent Runtime is separate from MCP Runner and from the current browser
-text-Skill path. G20.1 now provides a no-execute package supply chain and Store
-authority; production execution remains disabled. See
+The current Agent is the ordinary Chat runtime in Agent mode. It combines the
+installed Skill Store with bounded File, Terminal, Job, Browser/MCP, Goal, and
+artifact Tools; `local_direct` needs no sudo, OCI Runner, or second control
+application. See
 [`architecture/agent-runtime.md`](./architecture/agent-runtime.md),
 [`contracts/agent-runtime.md`](./contracts/agent-runtime.md),
-[`deployment/agent-runtime.md`](./deployment/agent-runtime.md), and
-[`tracking/g20-agent-runtime-plan.md`](./tracking/g20-agent-runtime-plan.md).
-G21.0 adds default-off Runner control maintenance and G21.1 adds a separate,
-synthetic-only Root Run canary; see
-[`tracking/g21-agent-runtime-production-plan.md`](./tracking/g21-agent-runtime-production-plan.md).
-General production Agent execution remains disabled.
+[`contracts/local-skill-runtime.md`](./contracts/local-skill-runtime.md), and
+[`deployment/agent-runtime.md`](./deployment/agent-runtime.md). Migration `098`
+retires the disconnected Runner/Canary control-plane schema while preserving
+Chat, Skill, File, MCP, Knowledge, and Memory authority.
 
 ## Update Rule
 

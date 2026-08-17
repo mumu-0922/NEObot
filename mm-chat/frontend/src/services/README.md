@@ -57,8 +57,8 @@ Manages generated artifact creation, editing, continuation, transformation, and 
   client; browser services do not parse or query documents locally.
 - MCP server discovery, authorization, selection, and call timelines use the
   typed `/v1/mcp/*` client. The browser never executes MCP Tools itself.
-- Legacy text-Skill services and prompt-context assembly were deleted in G20.9.
-  Package Skills use the typed server API and never execute in the browser.
+- Legacy text-Skill services and prompt-context assembly are retired. Package
+  Skills use the typed server API and never execute in the browser.
 - Services may read local settings when a workflow requires browser-owned data.
 - Sensitive user-entered secrets should travel as encrypted BYOK envelopes.
 - Server-only validation and proxy policy should stay in `src/app/api` and `src/lib/security`.

@@ -1636,8 +1636,8 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
     - [x] G19.12 Selected-Knowledge uncertainty guard, preserved Auto semantics,
           repeated/full gates, clean real same-question `[K1]` proof, cleanup,
           and rollback record.
-  - [ ] G20 Neo Agent Runtime, executed in isolated groups per
-        [`g20-agent-runtime-plan.md`](./g20-agent-runtime-plan.md).
+  - [x] Historical G20/G21 Agent control-plane exploration, superseded by the
+        unified Chat Agent runtime and retired by migration `098`.
     - [x] G20.0 Phase 0 architecture and executable-contract baseline: pinned
           Hermes/Agent Skills research, C4/ArchiMate, STRIDE, Run/Step/Attempt,
           Runner RPC, Manifest/Grant/Event schemas and fixtures, rootless
@@ -1682,9 +1682,9 @@ Active process log: [`standalone-parity-sliced-process.md`](./standalone-parity-
           collision-safe objects, object-before-row cleanup, strict schema and
           PostgreSQL 17 replay/restore proof; public/startup/product surfaces
           and production evaluation/execution remain held.
-    - [ ] G20.8 Product UI and shadow execution.
-    - [ ] G20.9 Legacy Skill deletion and production cutover.
-    - [ ] G20.10 Production closure.
+    - [x] The former Product UI, Shadow, production cutover, and OCI closure
+          path was removed rather than promoted; Skill Store and ordinary
+          `chat_agent_*` execution remain.
 
 ## Phase 16 — Multi-Server or Kubernetes Migration
 

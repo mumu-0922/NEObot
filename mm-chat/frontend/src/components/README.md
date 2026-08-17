@@ -89,5 +89,5 @@ import MessageInput from "@/components/chat/MessageInput";
 - Avoid placing large workflow logic directly inside presentational components.
 - Use existing UI primitives and icon patterns before adding new ones.
 - Do not recreate the retired browser text-Skill editor/executor. Package Skill
-  product UI belongs to the server-backed Agent Center.
+  product UI belongs to the standalone server-backed Skill Store.
 - Add tests around behavior-heavy components or extract the behavior into testable helpers.

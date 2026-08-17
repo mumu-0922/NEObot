@@ -10448,3 +10448,23 @@ the full standalone clean-copy gate passed. The full gate also completed 1,906
 RAG tests with seven declared integration skips. This development host remains
 `ISOLATION_UNAVAILABLE`; no exact-host Isolation Acceptance, live activation,
 live product receipt or final production promotion evidence was produced.
+
+## 2026-08-17 — Legacy Agent control plane retired
+
+Neo Chat now treats Agent as the ordinary Chat runtime in Agent mode. The
+Backend keeps `internal/agents`, `internal/localskills`,
+`internal/skillsupply`, `/v1/skills/*`, `chat_agent_*`, MCP, File, Knowledge,
+and Memory authority while removing the disconnected Runner, Broker,
+delegation, Cron/Learning, Shadow, Canary, and Agent Center services.
+
+Migration `098_retire_legacy_agent_control_plane` locks and validates an exact
+legacy object manifest, permits only two migration-created singleton rows, and
+fails atomically on any fact row or schema drift. Its irreversible no-op down
+requires a matched PostgreSQL/MinIO backup plus the previous image for rollback.
+The PostgreSQL 17 drill passed fresh replay, repeated up, down/re-up, dirty-data
+fail-closed, atomic rollback, two-user Chat/Skill preservation, and complete
+legacy object removal. Backend vet/tests, Frontend format/lint/typecheck/tests/
+build, RAG Ruff/mypy/pytest, Preflight, Compose render, local Runtime, and diff
+checks passed. The broad standalone gate remains blocked by the pre-existing
+silent failure in `scripts/test-memory-regression.sh`; focused Agent gates and
+all directly affected component gates are green.

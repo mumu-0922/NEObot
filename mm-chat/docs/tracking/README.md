@@ -14,5 +14,3 @@
 - [`g18-bm25-pgvector-retrieval-process.md`](./g18-bm25-pgvector-retrieval-process.md) — implementation, evaluation, live proof, and rollback evidence for each G18 group.
 - [`g19-tool-loop-process-trace-plan.md`](./g19-tool-loop-process-trace-plan.md) — provider-native Tool Loop, three-state Search, durable process trace, and Knowledge-tool migration plan.
 - [`g19-tool-loop-process-trace-process.md`](./g19-tool-loop-process-trace-process.md) — research, implementation, live proof, cleanup, and rollback evidence for each G19 group.
-- [`g20-agent-runtime-plan.md`](./g20-agent-runtime-plan.md) — completed package Runtime source/control foundation through production-closure evidence.
-- [`g21-agent-runtime-production-plan.md`](./g21-agent-runtime-production-plan.md) — staged exact-host control, Root Run, Broker, Child, Cron/Learning and final production activation plan.

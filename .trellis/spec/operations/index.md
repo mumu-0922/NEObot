@@ -10,7 +10,7 @@
 | [Dependency security](./dependency-security.md)             | Lockfile remediation, official-registry audits, override compatibility, and release verification.         |
 | [Runtime recreate image pinning](./runtime-recreate-image-pinning.md) | Immutable image selection, schema compatibility, and rollback requirements for live Compose recreation. |
 | [MCP Runner](./mcp-runner.md)                         | MCP manifest, dedicated Runner image/token/topology, release, backup/restore, retention, and rollback. |
-| [Agent Runtime](./agent-runtime.md) | Current no-sudo `local_direct` Backend/Compose wiring plus retained optional rootless OCI G20/G21 operational history. |
+| [Agent Runtime](./agent-runtime.md) | Current no-sudo `local_direct` Backend/Compose wiring and migration-`098` legacy retirement boundary. |
 | [Session auto-commit](./session-auto-commit.md)             | Exact journal/index staging, commit isolation, ignored paths, and regression tests.                       |
 | [Trellis scaffold boundary](./trellis-scaffold-boundary.md) | Shared Trellis/Codex scaffold, local state exclusions, explicit staging, and fresh-clone verification.    |
 
@@ -53,11 +53,6 @@ Keep the ordinary runtime UID/GID, explicit mounts and environment, no-sudo
 setup, non-isolation warning, process limits and switch-off rollback. Never
 mount a container socket or bind unrelated secret/runtime paths.
 
-For retained optional `neo-runnerd`/OCI history, Runner mTLS, Scratch/Artifact,
-Egress/Secret Broker, Kill Switch, backup/restore or promotion changes, use the
-later G20/G21 scenarios in the same spec and preserve their exact-host evidence.
-Those held states are independent and must not gate current `local_direct`.
-
 ## Quality check
 
 - Run `bash mm-chat/scripts/verify-standalone.sh --full`.
@@ -67,11 +62,10 @@ Those held states are independent and must not gate current `local_direct`.
   by a root-only cleanup.
 - Validate GitHub Actions syntax and live health when deployment entrypoints
   change.
-- For Agent Runtime Phase 0, run
-  `bash mm-chat/scripts/verify-agent-runtime-phase0.sh`. A production Runtime
-  release additionally requires the target-host Isolation Acceptance Suite,
-  Kill/reap/restart, Secret/network/filesystem negative proofs, paired backup/
-  restore, and the owning G20 promotion gate. These OCI-only gates do not gate
-  the current single-server `local_direct` backend.
+- For Chat Agent Runtime, run
+  `bash mm-chat/scripts/verify-agent-local-runtime.sh` and the migration-`098`
+  PostgreSQL 17 cleanup drill. Verify the two Backend mounts, ordinary UID/GID,
+  process bounds, paired backup/restore rollback, and absence of retired
+  services/networks.
 
 **Language**: All documentation should be written in English.

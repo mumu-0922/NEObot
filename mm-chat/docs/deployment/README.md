@@ -15,8 +15,8 @@ Outbox state.
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`single-server-compose.md`](./single-server-compose.md)               | Compose topology, profiles, Phase 15.2B dark-run Worker boundary, first boot, release, and rollback checklist.                              |
 | [`mcp-runner.md`](./mcp-runner.md)                                     | MCP manifest validation, optional hardened stdio Runner, token/image preflight, lifecycle, retention, and rollback.                         |
-| [`agent-runtime.md`](./agent-runtime.md)                               | G20 package Runtime, G21.0 control activation, G21.1 synthetic Root canary, held general execution, backup/restore, and incident runbooks. |
-| [`local-skill-runtime.md`](./local-skill-runtime.md)                   | No-sudo local Skill workspace setup, `local_direct` limits, operation, warning, and rollback.                                             |
+| [`agent-runtime.md`](./agent-runtime.md)                               | Unified Chat Agent runtime, local Tool wiring, Skill Store, artifacts, legacy retirement, backup/restore, and rollback.                  |
+| [`local-skill-runtime.md`](./local-skill-runtime.md)                   | No-sudo local Skill workspace setup, `local_direct` limits, operation, warning, and rollback.                                           |
 | [`postgres-single-server.md`](./postgres-single-server.md)             | Current Postgres runtime covering private ports, DB principals, health checks, migration head, backup/restore, image fencing, and rollback. |
 | [`redis-temporary-state.md`](./redis-temporary-state.md)               | Phase 7 Redis runbook for non-authoritative temporary state, stream cancellation flags, private-network rules, and flush behavior.          |
 | [`backup-restore.md`](./backup-restore.md)                             | Backup scripts, checksum verification, Postgres restore drill, MinIO restore drill, retention, and destructive-restore warnings.            |
@@ -30,11 +30,10 @@ Outbox state.
 
 - Compose assets are isolated under `mm-chat/`; do not overwrite the
   repository-root deployment files.
-- Current ordinary Chat Skills use the no-sudo `local_direct` Backend described
-  in [`local-skill-runtime.md`](./local-skill-runtime.md). Retained G20.1 supply
-  authority originally added no OCI executor, Runner, Sandbox, Cron, or host
-  service; the optional `neo-runnerd` path still requires its own exact-host
-  Isolation Acceptance and does not gate local execution.
+- Current ordinary Chat Agent Skills use the no-sudo `local_direct` Backend
+  described in [`local-skill-runtime.md`](./local-skill-runtime.md). There is no
+  OCI executor, per-Skill Sandbox, separate Runner, Cron/Learning worker, or
+  fallback Agent service.
 - Runtime data and local backups belong under `mm-chat/data/` and
   `mm-chat/backup/`, both gitignored.
 - MinIO must remain private; the Go backend is the public file authorization
@@ -67,7 +66,7 @@ Outbox state.
   and a reviewed manifest is derived from its exact hashes.
 - API startup must not auto-run migrations; operators run the `migrate` service
   or `mm-chat-migrate` before starting or restarting a DB-enabled backend
-  release. The Phase 15.2B migration head is `010`.
+  release. The current migration head is `098`.
 - Compose resolves the UI from `FRONTEND_IMAGE`, resolves `backend`, `migrate`,
   and `admin` from one `BACKEND_IMAGE`, resolves the optional stdio service
   from `MCP_RUNNER_IMAGE`, and independently resolves the Worker from
@@ -75,9 +74,7 @@ Outbox state.
   `scripts/compose-single-server-production.sh` so host variables cannot
   override the validated env file and the production override removes every
   `build:` path. Retain both previous image digests through rollback.
-- Database access has five base login principals and passwords. G21.0 adds a
-  sixth Agent control LOGIN, and G21.1 adds a seventh Root-canary LOGIN only on
-  an approved target selecting those explicit profiles.
+- Database access has five runtime/operator login principals and passwords.
   `POSTGRES_USER` is the bootstrap/migrator login referenced only by the
   separately required `MIGRATION_DATABASE_URL`; migration never falls back to
   `DATABASE_URL`. The non-superuser, non-`CREATEROLE` API login inherits only

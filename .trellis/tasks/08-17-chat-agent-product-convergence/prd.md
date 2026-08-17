@@ -19,8 +19,9 @@ Skill、文件、Terminal、Browser 和外部 Connector；生成的文件直接�
   Tool Use 时有效模式自动降级 Chat。
 - LobeHub Chat 模式严格只允许 Knowledge、Memory、Web Search 和显式 Image Tool；
   Agent 模式才开放 Browser、File、Environment、Skill、Task 和 Connector。
-- Neo Chat 的旧 `agent_*` 控制面数据库表当前全部为 0 行；正在使用的
-  `chat_agent_turns` 有 3 行、`chat_agent_events` 有 73 行，二者不能混删。
+- Neo Chat 的旧控制面 fact tables 当前全部为 0 行；两个 migration-created
+  singleton state tables 各保留一行控制状态。正在使用的 `chat_agent_*`
+  持续增长，绝不能与旧对象混删。
 - 本机当前只运行 frontend、backend、mcp-runner、postgres、redis、minio；八个旧
   Agent Runtime/Canary Compose 服务均未运行。
 - 用户要求：本机就是测试机、`local_direct`、不使用 sudo/OCI/每 Skill 隔离、禁止
