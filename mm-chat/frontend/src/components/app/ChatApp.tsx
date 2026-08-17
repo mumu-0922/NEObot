@@ -28,18 +28,23 @@ import Tooltip from "@/components/ui/Tooltip";
 import FollowUpQuestions from "@/components/chat/FollowUpQuestions";
 import { Logo } from "@/components/ui/Icons";
 import type { ModelInfo } from "@/services/api/chatService";
-import { ApiClientError, createNeoChatApiClient } from "@/services/api/client";
+import { createNeoChatApiClient } from "@/services/api/client";
 import { uploadMessageAttachmentsForServer } from "@/services/api/fileService";
 import { buildProviderRuntimeConfig } from "@/lib/byok/client";
 import {
   Message,
   Attachment,
   LobeAgent,
+  ChatToolMode,
   ReasoningEffort,
   SearchMode,
   SessionMessageTree,
 } from "@/types";
 import { normalizeSearchMode, searchModeEnabled } from "@/lib/chat/searchMode";
+import {
+  resolveEffectiveChatToolMode,
+  resolveModelToolCapability,
+} from "@/lib/chat/agentMode";
 import { useChatStore } from "@/store/core/chatStore";
 import { useCoreSettingsStore } from "@/store/core/coreSettingsStore";
 import { useMemoryStore } from "@/store/core/memoryStore";
@@ -118,7 +123,6 @@ import {
   getChatNavigationScrollTop,
 } from "@/lib/chat/messageNavigation";
 import { toServerMessageAttachments } from "@/lib/utils/serverAttachments";
-import { modelStringToModelRef } from "@/services/api/chatCrudService";
 import {
   getKnowledgeAttachmentCollectionIds,
   isKnowledgeAttachment,
@@ -130,14 +134,6 @@ const ImagePreview = dynamic(() => import("@/components/media/ImagePreview"), {
   ssr: false,
 });
 
-const MCP_ADMISSION_ERROR_CODES = new Set([
-  "MCP_AUTH_REQUIRED",
-  "MCP_SERVER_UNAVAILABLE",
-  "MCP_AUTHORIZATION_FAILED",
-  "MCP_MODEL_UNSUPPORTED",
-  "MCP_LIMIT_REACHED",
-  "MCP_SELECTION_INVALID",
-]);
 const AgentCenter = dynamic(() => import("@/components/agent/AgentCenter"), {
   ssr: false,
 });
@@ -244,6 +240,7 @@ const ChatApp = () => {
       deleteSession,
       updateSessionTitle,
       updateSessionInstruction,
+      updateSessionConfig,
       updateSessionCompression,
       updateSessionMemoryContext,
       toggleSessionPin,
@@ -517,6 +514,7 @@ const ChatApp = () => {
       : null;
   const currentSessionWorkspaceId = currentSession?.workspaceId;
   const serverSessionChatConfig = {
+    toolMode: currentSessionConfig?.toolMode ?? chatConfig.toolMode,
     searchMode: currentSearchMode,
     useSearch: searchModeEnabled(currentSearchMode),
     searchResultsLimit: search.resultsLimit,
@@ -530,6 +528,20 @@ const ChatApp = () => {
         ...serverSessionChatConfig,
       }
     : chatConfig;
+  const modelToolCapability = useMemo(
+    () =>
+      resolveModelToolCapability({
+        selectedModel,
+        providers,
+        modelMetadata,
+        customModelMetadata,
+      }),
+    [selectedModel, providers, modelMetadata, customModelMetadata],
+  );
+  const effectiveToolMode = resolveEffectiveChatToolMode(
+    composerChatConfig.toolMode,
+    modelToolCapability,
+  );
   useChatThemeEffects(theme, system.fontSize);
 
   useEffect(() => {
@@ -710,10 +722,6 @@ const ChatApp = () => {
   const [welcomeState, setWelcomeState] = useState<
     "visible" | "exiting" | "hidden"
   >("hidden");
-  const [mcpAdmissionAttention, setMcpAdmissionAttention] = useState<{
-    nonce: number;
-    message: string;
-  } | null>(null);
   const messageInputVariant = welcomeState === "visible" ? "hero" : "default";
   const shouldShowChatTitleBar = welcomeState === "hidden";
   const prevSessionIdRef = useRef(visibleCurrentSessionId);
@@ -1243,6 +1251,30 @@ const ChatApp = () => {
     }
   };
 
+  const persistToolMode = async (toolMode: ChatToolMode) => {
+    setChatConfig({ toolMode });
+    if (!serverModeEnabled) {
+      if (visibleCurrentSessionId) {
+        updateSessionConfig(visibleCurrentSessionId, { toolMode });
+      }
+      return;
+    }
+    if (!visibleCurrentSessionId) {
+      const sessionId = await createServerSession({ config: { toolMode } });
+      if (!sessionId) {
+        throw new Error("Chat mode could not be saved.");
+      }
+      return;
+    }
+    const updated = await updateServerSessionConfig(visibleCurrentSessionId, {
+      ...(currentSession?.config ?? {}),
+      toolMode,
+    });
+    if (!updated) {
+      throw new Error("Chat mode could not be saved.");
+    }
+  };
+
   const persistServerReasoningSelection = async (
     useReasoning: boolean,
     reasoningEffort: ReasoningEffort,
@@ -1489,31 +1521,6 @@ const ChatApp = () => {
         getEffectiveContextForSession(sessionForProcessing);
       const runtimeProvider =
         await buildRuntimeProviderConfigForModel(routedModel);
-      const modelRef = modelStringToModelRef(routedModel);
-      if (!modelRef) {
-        throw new Error("Server stream model is required.");
-      }
-      if (serverMcpEnabled) {
-        try {
-          await apiClientSnapshot.chat.preflightMcp({
-            conversationId: targetSessionId,
-            modelRef,
-            provider: runtimeProvider,
-            signal: generation.controller.signal,
-          });
-        } catch (preflightError) {
-          if (
-            preflightError instanceof ApiClientError &&
-            MCP_ADMISSION_ERROR_CODES.has(preflightError.code)
-          ) {
-            setMcpAdmissionAttention((current) => ({
-              nonce: (current?.nonce ?? 0) + 1,
-              message: preflightError.message,
-            }));
-          }
-          throw preflightError;
-        }
-      }
       const legacyKnowledgeCollectionIds =
         getKnowledgeAttachmentCollectionIds(attachments);
       const sessionKnowledgeBinding = useChatStore
@@ -3298,16 +3305,18 @@ const ChatApp = () => {
                   localSessionToolsDisabled={serverModeEnabled}
                   allowSearchWhenSessionToolsDisabled={serverModeEnabled}
                   allowReasoningWhenSessionToolsDisabled={serverModeEnabled}
-                  mcpEnabled={serverMcpEnabled}
-                  mcpConversationId={
-                    serverModeEnabled
-                      ? (visibleCurrentSessionId ?? undefined)
-                      : undefined
-                  }
-                  mcpAdmissionAttention={mcpAdmissionAttention}
-                  onMcpAdmissionAttentionHandled={() =>
-                    setMcpAdmissionAttention(null)
-                  }
+                  toolMode={composerChatConfig.toolMode}
+                  effectiveToolMode={effectiveToolMode}
+                  canSelectAgentMode={modelToolCapability !== "unsupported"}
+                  onToolModeChange={(toolMode) => {
+                    void persistToolMode(toolMode).catch((error) =>
+                      showActionError(
+                        error instanceof Error
+                          ? error.message
+                          : "Chat mode could not be saved.",
+                      ),
+                    );
+                  }}
                   onLocalSessionToolUnavailable={showServerUnsupportedAction}
                   knowledgeCollectionIds={
                     serverModeEnabled

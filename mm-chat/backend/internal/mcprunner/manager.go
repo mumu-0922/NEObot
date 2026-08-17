@@ -28,6 +28,7 @@ var (
 )
 
 const runnerConnectTimeout = 2 * time.Minute
+const runnerWorkDirectoryDigestBytes = 12
 
 type Config struct {
 	MaxProcesses  int
@@ -342,7 +343,7 @@ func validEnvironmentName(value string) bool {
 }
 
 func (m *Manager) startLocked(ctx context.Context, server mcpclient.Server, instanceID string, environment map[string]string) (*managedSession, error) {
-	workDir := filepath.Join(m.config.WorkRoot, instanceID)
+	workDir := filepath.Join(m.config.WorkRoot, runnerWorkDirectoryName(instanceID))
 	if err := os.RemoveAll(workDir); err != nil {
 		return nil, ErrUnavailable
 	}
@@ -403,6 +404,14 @@ func (m *Manager) startLocked(ctx context.Context, server mcpclient.Server, inst
 		environmentFingerprint: environmentFingerprint(environment),
 		idleTimeout:            server.Command.IdleTimeout, maxLifetime: server.Command.MaxLifetime,
 	}, nil
+}
+
+// runnerWorkDirectoryName keeps HOME/TMPDIR short enough for Chromium's
+// process-singleton Unix socket while retaining a deterministic, run-isolated
+// directory for every opaque Runner instance.
+func runnerWorkDirectoryName(instanceID string) string {
+	digest := sha256.Sum256([]byte(instanceID))
+	return "r-" + hex.EncodeToString(digest[:runnerWorkDirectoryDigestBytes])
 }
 
 func environmentFingerprint(environment map[string]string) string {

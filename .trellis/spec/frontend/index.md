@@ -21,6 +21,7 @@ behavior changes require coverage under `mm-chat/frontend/src/__tests__/`.
 | [Hook Guidelines](./hook-guidelines.md)           | Feature hooks, effects, store selectors, and async lifecycles | Complete |
 | [State Management](./state-management.md)         | Local, Zustand, persisted, URL, and server-owned state        | Complete |
 | [MCP Tools](./mcp-tools.md)                       | Tools UI, server selection authority, timeline, and Plugin-state retirement | Complete |
+| [Chat/Agent Mode](./chat-agent-mode.md)           | Persisted composer mode, model-capability downgrade, and MCP-hidden product surface | Complete |
 | [Assistant Store](./assistant-store.md)           | My Assistants, Store paging, runtime validation, CAS recovery, and start-chat snapshots | Complete |
 | [Agent Center](./agent-center.md)                 | Package Skills, current `local_ready` execution warning, Runs/Schedules/Learning, optional held OCI controls and G20.9 retirement | Complete |
 | [Type Safety](./type-safety.md)                   | Domain types, DTOs, runtime validation, and normalization     | Complete |
@@ -44,10 +45,13 @@ Before changing frontend code:
 6. For Tools UI, MCP DTO/client, timeline, or retired Plugin persistence work,
    read [MCP Tools](./mcp-tools.md) and keep execution/authorization server-
    authoritative.
-7. For Assistant library, Store, custom editor, or start-chat changes, read
+7. For composer Chat/Agent mode or model Tool-capability behavior, read
+   [Chat/Agent Mode](./chat-agent-mode.md); persist requested intent and keep
+   effective Tool policy server-authoritative.
+8. For Assistant library, Store, custom editor, or start-chat changes, read
    [Assistant Store](./assistant-store.md) and keep installation and revisions
    server-authoritative.
-8. For Package Skills, Runs, Schedules, Learning Review, Shadow state or legacy
+9. For Package Skills, Runs, Schedules, Learning Review, Shadow state or legacy
    Skill retirement, read [Agent Center](./agent-center.md) and preserve strict
    DTOs, current `local_ready` plus non-isolation warning, marker-last purge and
    no-fallback G20.9 boundaries. Optional OCI hold must not downgrade

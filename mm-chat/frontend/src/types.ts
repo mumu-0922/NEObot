@@ -18,6 +18,7 @@ export type {
   ChatPipelinePhaseState,
   ChatPipelineState,
   ChatPipelineStatus,
+  ChatToolMode,
   Message,
   MessageOutputBlock,
   MessageTreeNode,

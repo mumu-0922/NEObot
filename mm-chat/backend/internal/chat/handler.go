@@ -1380,6 +1380,14 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		providerResolution,
 		*modelRef,
 	) == ToolCapabilitySupported
+	conversation, err := h.service.GetConversation(r.Context(), conversationID)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	requestedToolMode := requestedChatToolMode(conversation.Metadata)
+	effectiveToolMode := effectiveChatToolMode(conversation.Metadata, toolRoundCapable)
+	agentMode := effectiveToolMode == chatToolModeAgent
 	useLiveKnowledgeTool := ragSelection.Enabled && toolRoundCapable &&
 		searchMode != chatSearchModeModelBuiltIn
 	useCompatibilityKnowledge := ragSelection.Enabled && !useLiveKnowledgeTool
@@ -1467,7 +1475,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	}
 	var preparedMCPRun mcpclient.PreparedRun
 	actor := auth.UserOrDevelopment(r.Context())
-	if h.mcpService != nil && h.mcpService.Config().Enabled {
+	if agentMode && h.mcpService != nil && h.mcpService.Config().Enabled {
 		preparedMCPRun, err = h.mcpService.PrepareRun(
 			r.Context(), actor.ID, conversationID, "", runID,
 		)
@@ -1475,18 +1483,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			writeMCPAdmissionError(w, err)
 			return
 		}
-		if preparedMCPRun.Enabled() && !toolRoundCapable {
-			writeError(
-				w,
-				http.StatusConflict,
-				"MCP_MODEL_UNSUPPORTED",
-				"The selected model does not support Tools",
-			)
-			return
-		}
 	}
 	var localSkillRuntime *localSkillToolRuntime
-	if h.localSkillExecutor != nil && h.localSkillExecutor.Enabled() {
+	if agentMode && h.localSkillExecutor != nil && h.localSkillExecutor.Enabled() {
 		var skills []skillsupply.RuntimeSkill
 		if h.localSkillCatalog != nil {
 			var prepareErr error
@@ -1509,15 +1508,6 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			writeError(w, http.StatusServiceUnavailable, "SKILL_RUNTIME_UNAVAILABLE", "local Skill runtime is unavailable")
 			return
 		}
-		if localSkillRuntime.enabled() && !toolRoundCapable {
-			writeError(
-				w,
-				http.StatusConflict,
-				"SKILL_MODEL_UNSUPPORTED",
-				"The selected model does not support Tools",
-			)
-			return
-		}
 		providerSystemPrompt = appendLocalSkillSystemInstruction(
 			providerSystemPrompt,
 			localSkillRuntime,
@@ -1533,8 +1523,10 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			ModelProvider:   modelRef.ProviderID,
 			ModelID:         modelRef.ModelID,
 			Metadata: map[string]any{
-				"runId":  runID,
-				"config": ensureObject(request.Config),
+				"runId":             runID,
+				"config":            ensureObject(request.Config),
+				"requestedToolMode": string(requestedToolMode),
+				"toolMode":          string(effectiveToolMode),
 			},
 			IdempotencyKey: request.IdempotencyKey,
 		},
@@ -1572,7 +1564,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	var goalToolRuntime *chatAgentGoalToolRuntime
-	if toolRoundCapable {
+	if agentMode {
 		goalToolRuntime = newChatAgentGoalToolRuntime(
 			h.service, agentRecorder.turnID, conversationID,
 		)
@@ -1788,6 +1780,8 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		)
 		metadata = withConversationContextMetadata(metadata, contextPreparation)
 		metadata = withDurableMemoryMetadata(metadata, memoryPreparation)
+		metadata["requestedToolMode"] = string(requestedToolMode)
+		metadata["toolMode"] = string(effectiveToolMode)
 		return withDirectMemoryActionMetadata(metadata, directMemoryAction)
 	}
 

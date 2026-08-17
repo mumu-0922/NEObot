@@ -21,7 +21,12 @@ import {
   isReasoningEffort,
   normalizeReasoningEffort,
 } from "../../lib/chat/reasoning";
-import type { ReasoningEffort, SearchMode } from "../../lib/chat/types";
+import type {
+  ChatToolMode,
+  ReasoningEffort,
+  SearchMode,
+} from "../../lib/chat/types";
+import { isChatToolMode } from "../../lib/chat/agentMode";
 import {
   isSearchMode,
   normalizeSearchMode,
@@ -48,6 +53,7 @@ import {
 const SERVER_DEFAULT_BACKEND_PROVIDER_ID = "openai_compatible";
 
 export interface ChatCrudSessionConfig {
+  toolMode?: ChatToolMode;
   searchMode?: SearchMode;
   useSearch?: boolean;
   useReasoning?: boolean;
@@ -382,6 +388,10 @@ function normalizeConversationConfig(
   config: Record<string, unknown>,
 ): ChatCrudSessionConfig | undefined {
   const normalized: ChatCrudSessionConfig = {};
+
+  if (isChatToolMode(config.toolMode)) {
+    normalized.toolMode = config.toolMode;
+  }
 
   if (
     isSearchMode(config.searchMode) ||

@@ -56,6 +56,7 @@ const conversationDto: ConversationDTO = {
   systemInstruction: "server instruction",
   pinned: true,
   config: {
+    toolMode: "chat",
     useSearch: true,
     useReasoning: "bad",
     reasoningEffort: "high",
@@ -123,6 +124,7 @@ describe("chat CRUD DTO mappers", () => {
       pinned: true,
       systemInstruction: "server instruction",
       config: {
+        toolMode: "chat",
         useSearch: true,
         reasoningEffort: "high",
         selectedKnowledgeCollectionIds: ["kb-1"],

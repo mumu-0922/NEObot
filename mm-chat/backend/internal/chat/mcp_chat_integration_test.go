@@ -191,6 +191,70 @@ func TestHandlerCompletesNativeMultiRoundMCPThroughRemoteStreamableHTTP(t *testi
 	}
 }
 
+func TestHandlerChatModeSkipsSelectedMCPPreparation(t *testing.T) {
+	ref := mcpclient.ServerRef{Source: mcpclient.SourceManifest, ID: "unreachable-fixture"}
+	mcpRepo := newMCPChatRepository(DevUserID, testConversationID, ref)
+	mcpConfig := mcpclient.DefaultConfig()
+	mcpConfig.Enabled = true
+	mcpConfig.RemoteEnabled = true
+	mcpService, err := mcpclient.NewService(
+		mcpConfig,
+		mcpRepo,
+		mcpclient.NewDirectConnector("neo-chat-test", "1"),
+		nil,
+		nil,
+		mcpclient.Catalog{},
+		[]mcpclient.Server{{
+			Ref:         ref,
+			Name:        "Unreachable Fixture",
+			Transport:   mcpclient.TransportStreamableHTTP,
+			EndpointURL: "http://127.0.0.1:1",
+			AuthType:    mcpclient.AuthNone,
+			Grants:      []mcpclient.Grant{{ScopeType: "global"}},
+		}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	provider := &scriptedToolRoundProvider{chatRounds: [][]ProviderEvent{{
+		{Type: ProviderEventDelta, Delta: "Chat completed without MCP."},
+	}}}
+	chatRepo := newFakeRepository()
+	conversation := fakeConversation(testConversationID, "Chat mode", 0)
+	conversation.Metadata["toolMode"] = "chat"
+	chatRepo.conversations = append(chatRepo.conversations, conversation)
+	chatRepo.messages[testConversationID] = append(
+		chatRepo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "plain chat"),
+	)
+	handler := NewHandler(
+		NewService(chatRepo),
+		WithProvider(provider),
+		WithMCPService(mcpService),
+	)
+
+	recorder := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"tool-capable"},"config":{"toolMode":"agent"},"idempotencyKey":"chat-mode-skips-mcp"}`,
+	)
+	assertStreamStatus(t, recorder, http.StatusOK)
+	if !strings.Contains(recorder.Body.String(), "Chat completed without MCP.") ||
+		strings.Contains(recorder.Body.String(), "tool.call.updated") {
+		t.Fatalf("Chat mode stream = %s", recorder.Body.String())
+	}
+	if len(provider.inputs) != 0 || len(provider.chatInputs) != 1 {
+		t.Fatalf("Chat mode provider inputs = tool %#v / chat %#v", provider.inputs, provider.chatInputs)
+	}
+	messages := chatRepo.messages[testConversationID]
+	if len(messages) != 2 || messages[1].Metadata["toolMode"] != "chat" ||
+		messages[1].Metadata["requestedToolMode"] != "chat" {
+		t.Fatalf("Chat mode metadata = %#v", messages)
+	}
+}
+
 func TestHandlerCompletesNativeMultiRoundMCPThroughStdioRunner(t *testing.T) {
 	executable, err := os.Executable()
 	if err != nil {

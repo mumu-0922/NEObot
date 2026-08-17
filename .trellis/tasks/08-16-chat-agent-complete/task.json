@@ -18,7 +18,9 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [],
+  "children": [
+    "08-17-chat-agent-product-convergence"
+  ],
   "parent": null,
   "relatedFiles": [],
   "notes": "",

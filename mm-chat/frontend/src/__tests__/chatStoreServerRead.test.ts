@@ -243,6 +243,7 @@ describe("chat store server read path", () => {
       serverReadState: makeEmptyServerReadState(),
       selectedModel: "openai:gpt-5.5",
       chatConfig: {
+        toolMode: "agent",
         searchMode: "off",
         useSearch: false,
         useReasoning: false,

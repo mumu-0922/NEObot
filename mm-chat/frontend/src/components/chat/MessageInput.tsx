@@ -28,16 +28,22 @@ import {
   Library,
   PencilSparkles,
   Check,
+  Bot,
+  MessageCircle,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import type { Attachment, ReasoningEffort, SearchMode } from "@/types";
+import type {
+  Attachment,
+  ChatToolMode,
+  ReasoningEffort,
+  SearchMode,
+} from "@/types";
 import type { ModelInfo } from "@/services/api/chatService";
 import { createNeoChatApiClient } from "@/services/api/client";
 import Tooltip from "../ui/Tooltip";
 import RemoteFileModal from "../modals/RemoteFileModal";
 import KnowledgeSelectionModal from "../knowledge/KnowledgeSelectionModal";
 import MessageInputAttachmentTray from "./MessageInputAttachmentTray";
-import McpToolsControl from "../mcp/McpToolsControl";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -113,10 +119,10 @@ interface MessageInputProps {
   localSessionToolsDisabled?: boolean;
   allowSearchWhenSessionToolsDisabled?: boolean;
   allowReasoningWhenSessionToolsDisabled?: boolean;
-  mcpEnabled?: boolean;
-  mcpConversationId?: string;
-  mcpAdmissionAttention?: { nonce: number; message: string } | null;
-  onMcpAdmissionAttentionHandled?: () => void;
+  toolMode: ChatToolMode;
+  effectiveToolMode: ChatToolMode;
+  canSelectAgentMode: boolean;
+  onToolModeChange: (mode: ChatToolMode) => void;
   onLocalSessionToolUnavailable?: (action: string) => void;
   knowledgeCollectionIds?: readonly string[];
   onKnowledgeCollectionIdsChange?: (
@@ -165,10 +171,10 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       localSessionToolsDisabled = false,
       allowSearchWhenSessionToolsDisabled = false,
       allowReasoningWhenSessionToolsDisabled = false,
-      mcpEnabled = false,
-      mcpConversationId,
-      mcpAdmissionAttention,
-      onMcpAdmissionAttentionHandled,
+      toolMode,
+      effectiveToolMode,
+      canSelectAgentMode,
+      onToolModeChange,
       onLocalSessionToolUnavailable,
       knowledgeCollectionIds = EMPTY_KNOWLEDGE_COLLECTION_IDS,
       onKnowledgeCollectionIdsChange,
@@ -1513,16 +1519,83 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               </Tooltip>
             )}
 
-            <McpToolsControl
-              enabled={mcpEnabled}
-              conversationId={mcpConversationId}
-              disabled={isInputBusy}
-              attention={mcpAdmissionAttention}
-              onAttentionHandled={onMcpAdmissionAttentionHandled}
-              onDisableAllAndContinue={() => {
-                void handleSend();
-              }}
-            />
+            <DropdownMenu>
+              <Tooltip
+                content={
+                  toolMode === "agent" && effectiveToolMode === "chat"
+                    ? t("agentModeUnsupported")
+                    : effectiveToolMode === "agent"
+                      ? t("agentModeDescription")
+                      : t("chatModeDescription")
+                }
+                position="top"
+              >
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={t("toolModeMenuAria", {
+                      mode:
+                        effectiveToolMode === "agent"
+                          ? t("agentMode")
+                          : t("chatMode"),
+                    })}
+                    className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors ${iconButtonFocusClass} ${
+                      effectiveToolMode === "agent"
+                        ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-200"
+                        : "bg-gray-100 text-gray-600 dark:bg-accent/60 dark:text-muted-foreground"
+                    }`}
+                    disabled={isInputBusy}
+                  >
+                    {effectiveToolMode === "agent" ? (
+                      <Bot size={15} aria-hidden="true" />
+                    ) : (
+                      <MessageCircle size={15} aria-hidden="true" />
+                    )}
+                    <span>
+                      {effectiveToolMode === "agent"
+                        ? t("agentMode")
+                        : t("chatMode")}
+                    </span>
+                    <ChevronDown size={12} aria-hidden="true" />
+                  </button>
+                </DropdownMenuTrigger>
+              </Tooltip>
+              <DropdownMenuContent side="top" align="start" className="w-64">
+                <DropdownMenuLabel>{t("toolMode")}</DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={toolMode}
+                  onValueChange={(value) => {
+                    if (value === "chat" || value === "agent") {
+                      onToolModeChange(value);
+                    }
+                  }}
+                >
+                  <DropdownMenuRadioItem value="chat">
+                    <MessageCircle size={15} aria-hidden="true" />
+                    <span className="flex flex-col">
+                      <span>{t("chatMode")}</span>
+                      <span className="text-xs font-normal text-muted-foreground">
+                        {t("chatModeDescription")}
+                      </span>
+                    </span>
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem
+                    value="agent"
+                    disabled={!canSelectAgentMode}
+                  >
+                    <Bot size={15} aria-hidden="true" />
+                    <span className="flex flex-col">
+                      <span>{t("agentMode")}</span>
+                      <span className="text-xs font-normal text-muted-foreground">
+                        {canSelectAgentMode
+                          ? t("agentModeDescription")
+                          : t("agentModeUnsupported")}
+                      </span>
+                    </span>
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             {isReasoningSupported && (
               <DropdownMenu>

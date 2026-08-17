@@ -103,8 +103,10 @@ describe("MessageInput composition", () => {
       "allowReasoningWhenSessionToolsDisabled?: boolean",
     );
     expect(messageInput).not.toContain("allowSkillsWhenSessionToolsDisabled");
-    expect(messageInput).toContain("mcpEnabled?: boolean");
-    expect(messageInput).toContain("mcpConversationId?: string");
+    expect(messageInput).toContain("toolMode: ChatToolMode");
+    expect(messageInput).toContain("effectiveToolMode: ChatToolMode");
+    expect(messageInput).toContain("canSelectAgentMode: boolean");
+    expect(messageInput).toContain("onToolModeChange:");
     expect(messageInput).not.toContain("activeSkillIdsOverride");
     expect(messageInput).not.toContain("onActiveSkillIdsChange");
     expect(messageInput).not.toContain("skillSelectionDisabled");
@@ -128,7 +130,9 @@ describe("MessageInput composition", () => {
     expect(messageInput).toContain(
       'notifyLocalSessionToolUnavailable("reasoning effort")',
     );
-    expect(messageInput).toContain("<McpToolsControl");
+    expect(messageInput).not.toContain("McpToolsControl");
+    expect(messageInput).toContain('t("agentModeDescription")');
+    expect(messageInput).toContain('t("agentModeUnsupported")');
     expect(messageInput).toContain("effectiveUseReasoning");
     expect(messageInput).toContain("reasoningEffortOptions.map");
     expect(messageInput).toContain('value="off"');

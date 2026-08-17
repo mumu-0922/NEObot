@@ -114,6 +114,7 @@ describe("chat store persistence", () => {
       isActiveSessionLoading: false,
       selectedModel: "model",
       chatConfig: {
+        toolMode: "agent",
         searchMode: "off",
         useSearch: false,
         useReasoning: false,
@@ -125,6 +126,27 @@ describe("chat store persistence", () => {
 
   it("starts without a hard-coded selected model", () => {
     expect(useChatStore.getInitialState().selectedModel).toBe("");
+  });
+
+  it("persists Chat/Agent mode per session and applies it on selection", async () => {
+    const agentSession = {
+      ...makeSession("agent"),
+      config: { toolMode: "agent" as const },
+    };
+    const chatSession = {
+      ...makeSession("chat"),
+      config: { toolMode: "chat" as const },
+    };
+    useChatStore.setState({ sessions: [agentSession, chatSession] });
+
+    await useChatStore.getState().selectSession("chat");
+    expect(useChatStore.getState().chatConfig.toolMode).toBe("chat");
+
+    useChatStore.getState().updateSessionConfig("chat", { toolMode: "agent" });
+    expect(
+      useChatStore.getState().sessions.find((session) => session.id === "chat")
+        ?.config?.toolMode,
+    ).toBe("agent");
   });
 
   it("clears the deprecated Gemini selected model during migration", async () => {

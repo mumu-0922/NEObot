@@ -72,7 +72,10 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
 - Browser uses the exact `@playwright/mcp@0.0.79` package and matching pinned
   official Playwright MCP base image/Chromium. Its run-scoped 17-Tool allowlist
   excludes the upstream RCE-equivalent unsafe-code Tool and all other unlisted
-  additions. Runtime browser downloads are forbidden.
+  additions. Runtime browser downloads are forbidden. Runner session identity
+  remains the in-memory authority key, while its `HOME`/`TMPDIR` workspace name
+  is a deterministic 96-bit digest with a short `r-` prefix; never place the raw
+  opaque Run ID in Chromium's Unix-socket ancestry.
 - Backup always pairs a full PostgreSQL dump with a full MinIO bucket mirror.
   This includes MCP rows and `mcp-results/`. Restore drills export both
   Knowledge and MCP sample keys and `mc stat` them in a temporary bucket.
@@ -108,6 +111,7 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
 | Manifest allowlist or run scope is invalid | validator/startup fails closed before any child starts |
 | Playwright upgrade lists a new/unsafe Tool | Tool stays invisible and `tools/call` rejects it until explicit reviewed admission |
 | Four children are retained and a new Run arrives | evict only the least-recent idle child; return capacity when every child is active |
+| Browser Run identity is long | derive distinct stable short workspace names; Chromium socket ancestry stays bounded |
 | Runner health fails | selected stdio runs fail closed; backend global readiness remains independent |
 | Restore lacks MCP sample file/object | temporary-bucket drill fails before production restore |
 | Partial artifact cleanup fails | retain row/queue entry and retry; never delete DB authority first |
@@ -148,7 +152,8 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
 - Assert the Playwright package/base-image version pair, exact Browser argv and
   allowlist, real protocol/browser smoke, per-Run instance separation, unsafe
   call denial before Runner HTTP dispatch, and least-recent idle eviction at
-  process capacity.
+  process capacity. Unit-test short workspace stability, length, non-disclosure,
+  and separation for long opaque Run identities.
 - Render example and production Compose with Runner profile; assert no port,
   hardening/resources/networks, digest, and cleared production build.
 - `bash scripts/test-preflight-single-server.sh` for toggles, duration bounds,

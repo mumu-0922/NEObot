@@ -287,6 +287,7 @@ export type ChatGenerationEvent =
   | { type: "reset" };
 
 export interface SessionConfig {
+  toolMode?: ChatToolMode;
   searchMode?: SearchMode;
   useSearch?: boolean;
   searchResultsLimit?: number;
@@ -294,6 +295,8 @@ export interface SessionConfig {
   reasoningEffort?: ReasoningEffort;
   selectedKnowledgeCollectionIds?: string[];
 }
+
+export type ChatToolMode = "chat" | "agent";
 
 export type SearchMode = "off" | "model_builtin" | "external";
 
@@ -342,6 +345,7 @@ export interface Assistant {
 }
 
 export interface ChatConfig {
+  toolMode: ChatToolMode;
   searchMode: SearchMode;
   useSearch: boolean;
   useReasoning: boolean;

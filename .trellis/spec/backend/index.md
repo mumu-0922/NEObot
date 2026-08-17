@@ -10,6 +10,7 @@
 | [RAG retrieval storage](./rag-retrieval-storage.md) | PostgreSQL retrieval, Citation authority/display, diagnostics, and rollback contracts                              |
 | [Chat source fusion](./chat-source-fusion.md)       | Conversation-aware external Search query rewriting, Knowledge/Web authority, diagnostics, and fallback contracts      |
 | [Chat Tool Loop](./chat-tool-loop.md)               | Provider-normalized Tool rounds, durable process replay, same-session Goals, completion evidence, Search/Memory routing, approvals, and citation truth |
+| [Chat/Agent Mode](./chat-agent-mode.md)             | Persisted Conversation mode, effective capability downgrade, and physical Agent Tool admission |
 | [MCP Tools](./mcp-tools.md)                         | Server-authoritative MCP API, grants/selections, native Tool continuation, transports, results, retention, and Plugin retirement |
 | [Assistant Store](./assistant-store.md)             | Server-owned prompt presets, LobeHub admission/fingerprints, revisions, persistence, and rollback boundaries |
 | [Agent Runtime](./agent-runtime.md) | Current `local_direct` installed-Skill materialization/execution plus retained optional G20/G21 Runner/Broker/delegation/Cron/learning history |
@@ -64,6 +65,15 @@ For G19 Tool Loop or durable process-trace changes:
    current source-fusion rollback path.
 3. Prove provider-native continuation, cancellation, redaction, and current-
    turn Citation reconciliation before promotion.
+
+For composer Chat/Agent mode or ordinary Chat Agent Tool admission changes:
+
+1. Read [`chat-agent-mode.md`](./chat-agent-mode.md) and
+   [`chat-tool-loop.md`](./chat-tool-loop.md).
+2. Treat persisted Conversation metadata as authority and physically omit
+   Agent-only Tool runtimes in Chat mode.
+3. Prove legacy default, request-conflict denial, capability downgrade, and
+   Knowledge/Memory/Web independence.
 
 For MCP Tools, `/v1/mcp/*`, private definitions, OAuth, Runner transport,
 result persistence, or MCP retention changes:

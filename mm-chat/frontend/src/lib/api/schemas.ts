@@ -188,6 +188,7 @@ export const ChatRequestSchema = z
       .optional(),
     config: z
       .object({
+        toolMode: z.enum(["chat", "agent"]).optional(),
         temperature: z
           .number()
           .min(CHAT_CONFIG_LIMITS.minTemperature)

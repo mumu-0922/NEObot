@@ -1,12 +1,12 @@
 # MCP Tools Frontend Contract
 
-## Scenario: Conversation-level Tools UI
+## Scenario: Sidebar Tools and Connector management UI
 
 ### 1. Scope / Trigger
 
 Apply this contract when changing `McpToolsControl`, MCP frontend types, the
-`mcpApi` client, composer chips/blocked-send recovery, timeline rendering, or
-browser persistence migration. The product label is **Tools**; MCP is the
+`mcpApi` client, Sidebar Tools management, timeline rendering, or browser
+persistence migration. The product label is **Tools/Connectors**; MCP is the
 protocol. Assistants and Skills remain unchanged.
 
 ### 2. Signatures
@@ -37,17 +37,17 @@ timeline updates.
   authorization.
 - `inherit` means Workspace defaults. `custom` plus `servers: []` means all
   Tools are explicitly disabled. Preserve backend revision tokens on writes.
-- The composer shows one icon-only Tools wrench without adjacent inherited or
-  server-name chips. Its enabled styling and status tooltip retain the current
-  server/Tool summary; full status, auth requirements, and unavailable state
-  remain visible in the Tools dialog before send.
+- The composer exposes Chat/Agent mode, not MCP. It must not render
+  `McpToolsControl`, load MCP selection state, or preflight MCP before every
+  send. Full status, authorization, selection, and unavailable state remain in
+  Sidebar Tools; Backend prepares selected Connectors only in Agent mode.
 - The Sidebar exposes a first-class **Tools** entry backed by
   `?panel=tools`. Its page lists authorized MCP Server definitions, supports
   private Server lifecycle/authorization, and edits the active Conversation
   selection when one exists. Listing and Server management must still work
   when no Conversation exists; selection controls then remain disabled.
 - Reuse the same server-authoritative MCP client and management behavior for
-  the top-level page and composer control. Do not create a browser-owned MCP
+  top-level and embedded management surfaces. Do not create a browser-owned MCP
   registry or a second selection store merely to support panel navigation.
 - The top-level page exposes **Installed | MCP Marketplace** tabs. Marketplace
   search/detail always uses the typed `/v1/mcp/marketplace/*` API and never
@@ -112,8 +112,9 @@ timeline updates.
   with the first field focused and a visible completion hint beside the
   disabled install action. A required configuration field must never be hidden
   below an independently scrolling deployment list.
-- A blocked send may focus the Tools control and offer an explicit
-  disable-all-and-continue action. Do not add per-call approval dialogs.
+- Agent-mode MCP admission errors remain bounded chat errors and direct the user
+  to Sidebar Tools when configuration is required. Chat mode skips MCP admission
+  entirely. Do not add per-call approval dialogs.
 - Credential fields are transient component state, cleared after submission,
   and never persisted/exported. OAuth authorization URLs must parse as HTTPS
   before navigation.
@@ -165,7 +166,7 @@ timeline updates.
 
 | Condition | Required result |
 | --- | --- |
-| API mode is local or MCP config disabled | Tools control disabled/hidden with no legacy call |
+| API mode is local or MCP config disabled | Sidebar Tools shows unavailable/disabled state; composer remains MCP-free |
 | Server list/selection load fails | bounded localized error; no stale authority expansion |
 | Create succeeds but response normalization or validation fails | reload the authoritative Server list so the persisted draft remains visible; show the bounded error |
 | Server needs auth/unavailable | visible state; send remains blocked until explicit change |
@@ -193,21 +194,21 @@ timeline updates.
 
 ### 5. Good / Base / Bad Cases
 
-- **Good**: a user opens Tools, enables one granted server, disables one Tool,
-  saves the returned revision, sees only the active wrench in the composer,
-  sends, and sees queued-to-succeeded timeline.
+- **Good**: a user opens Sidebar Tools, enables one granted server, disables one
+  Tool, saves the revision, selects Agent in the composer, sends, and sees the
+  queued-to-succeeded timeline.
 - **Base**: a conversation without Workspace or selection shows zero enabled
   Tools and sends ordinary chat.
-- **Bad**: hydrate MCP selection from `activePlugins`, retain a credential in
-  Zustand, or execute a Tool from the browser.
+- **Bad**: hydrate MCP selection from `activePlugins`, expose MCP in the
+  composer, retain a credential in Zustand, or execute a Tool from the browser.
 
 ### 6. Tests Required
 
 - API-client URL/body/response mapping and local-mode fail-closed behavior.
-- Tools control load, inherited/custom/explicit-empty selection, Tool disable,
+- Tools management load, inherited/custom/explicit-empty selection, Tool disable,
   private draft validation, credential submission, OAuth URL rejection,
-  unavailable/auth states, default-folded Tool disclosure, hidden `unknown`
-  badges, and disable-all recovery.
+  unavailable/auth states, default-folded Tool disclosure, and hidden `unknown`
+  badges. Composer composition must prove MCP control/preflight absence.
 - Sidebar Tools entry, `?panel=tools` URL round-trip, top-level page
   composition, and Server listing without a current Conversation.
 - Marketplace tab/search/detail, category filtering/counts, remote-icon

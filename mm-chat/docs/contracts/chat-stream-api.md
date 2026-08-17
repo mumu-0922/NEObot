@@ -75,6 +75,8 @@ export type ReasoningEffort =
   | "high"
   | "xhigh"
   | "max";
+
+export type ChatToolMode = "chat" | "agent";
 ```
 
 Rules:
@@ -85,6 +87,14 @@ Rules:
 - `modelRef` is required and both IDs must be non-empty. `modelRef.modelId` is
   sent to the resolved provider; there is no environment model fallback.
 - `idempotencyKey` is required and applies to the assistant streaming row only.
+- Runtime mode authority is the persisted Conversation `config.toolMode`, not
+  the stream request snapshot. Missing/invalid legacy mode means Agent. Stored
+  Chat wins over a conflicting request and physically omits MCP, local Skill,
+  File, Terminal, Job, and Goal runtimes.
+- Agent requires confirmed native Tool-round capability. Unsupported or
+  unresolved capability downgrades the effective run to Chat without an MCP/
+  Skill model-conflict response. Knowledge, Memory, Web Search, and non-Tool
+  image routing remain available in Chat.
 - `content`, `attachments`, `role`, `status`, identity hints, and other
   server-managed message fields are rejected.
 - `config.useReasoning=false` disables explicit provider reasoning. When true,

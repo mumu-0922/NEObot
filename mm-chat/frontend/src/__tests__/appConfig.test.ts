@@ -19,6 +19,7 @@ describe("app config normalization", () => {
         temperature: 99,
       }),
     ).toEqual({
+      toolMode: "agent",
       searchMode: "off",
       useSearch: false,
       useReasoning: true,

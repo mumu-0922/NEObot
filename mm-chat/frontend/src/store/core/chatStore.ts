@@ -816,6 +816,7 @@ const applySessionConfig = (
   );
   return {
     ...currentConfig,
+    toolMode: sessionConfig.toolMode ?? currentConfig.toolMode,
     searchMode,
     useSearch: searchModeEnabled(searchMode),
     useReasoning: sessionConfig.useReasoning ?? currentConfig.useReasoning,

@@ -60,11 +60,14 @@ describe("ChatApp server mode composition", () => {
       "allowReasoningWhenSessionToolsDisabled={serverModeEnabled}",
     );
     expect(chatApp).not.toContain("allowSkillsWhenSessionToolsDisabled");
-    expect(chatApp).toContain("mcpEnabled={");
+    expect(chatApp).toContain("toolMode={composerChatConfig.toolMode}");
+    expect(chatApp).toContain("effectiveToolMode={effectiveToolMode}");
+    expect(chatApp).toContain("canSelectAgentMode={");
     expect(chatApp).toContain("serverConfig?.mcp.enabled === true");
-    expect(chatApp).toContain("if (serverMcpEnabled)");
-    expect(chatApp).toContain("preflightMcp({");
-    expect(chatApp).toContain("mcpConversationId={");
+    expect(chatApp).not.toContain("preflightMcp({");
+    expect(chatApp).not.toContain("mcpConversationId={");
+    expect(chatApp).toContain("persistToolMode");
+    expect(chatApp).toContain("resolveEffectiveChatToolMode");
     expect(chatApp).toContain('import("@/components/mcp/McpToolsPage")');
     expect(chatApp).toContain('onOpenTools={() => navigateToPanel("tools")}');
     expect(chatApp).toContain('isToolsOpen={viewMode === "tools"}');

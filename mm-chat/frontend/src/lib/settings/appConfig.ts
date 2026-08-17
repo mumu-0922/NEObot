@@ -7,6 +7,7 @@ import {
   DEFAULT_SYSTEM_SETTINGS,
 } from "../../config/defaults";
 import type { ChatConfig, SystemSettings } from "../../types";
+import { normalizeChatToolMode } from "../chat/agentMode";
 import { normalizeReasoningEffort } from "../chat/reasoning";
 import { normalizeSearchMode, searchModeEnabled } from "../chat/searchMode";
 
@@ -53,6 +54,7 @@ export function normalizeChatConfig(config: unknown): ChatConfig {
   const searchMode = normalizeSearchMode(raw.searchMode, raw.useSearch);
 
   return {
+    toolMode: normalizeChatToolMode(raw.toolMode),
     searchMode,
     useSearch: searchModeEnabled(searchMode),
     useReasoning:

@@ -29,6 +29,7 @@ describe("effective chat context", () => {
       modelMetadata: {},
       customModelMetadata: {},
       chatConfig: {
+        toolMode: "agent",
         searchMode: "external",
         useSearch: true,
         useReasoning: true,
@@ -62,6 +63,7 @@ describe("effective chat context", () => {
       modelMetadata: {},
       customModelMetadata: {},
       chatConfig: {
+        toolMode: "agent",
         searchMode: "off",
         useSearch: false,
         useReasoning: false,
@@ -109,6 +111,7 @@ describe("effective chat context", () => {
       modelMetadata: {},
       customModelMetadata: {},
       chatConfig: {
+        toolMode: "agent",
         searchMode: "off",
         useSearch: false,
         useReasoning: false,

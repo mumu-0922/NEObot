@@ -16,8 +16,6 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { Dialog } from "@/components/ui/primitives";
-import Tooltip from "@/components/ui/Tooltip";
 import type {
   McpConversationSelection,
   McpSelectionServer,
@@ -31,13 +29,8 @@ import McpServerIcon from "./McpServerIcon";
 interface McpToolsControlProps {
   conversationId?: string;
   enabled: boolean;
-  disabled?: boolean;
-  className?: string;
-  variant?: "composer" | "page" | "embedded";
+  variant?: "page" | "embedded";
   onClose?: () => void;
-  attention?: { nonce: number; message: string } | null;
-  onAttentionHandled?: () => void;
-  onDisableAllAndContinue?: () => void;
 }
 
 type PrivateServerDraft = {
@@ -61,16 +54,10 @@ const emptyPrivateServerDraft: PrivateServerDraft = {
 export default function McpToolsControl({
   conversationId,
   enabled,
-  disabled = false,
-  className = "",
-  variant = "composer",
+  variant = "embedded",
   onClose,
-  attention,
-  onAttentionHandled,
-  onDisableAllAndContinue,
 }: McpToolsControlProps) {
   const t = useTranslations("Mcp");
-  const [open, setOpen] = useState(false);
   const [servers, setServers] = useState<McpServer[]>([]);
   const [canManage, setCanManage] = useState(false);
   const [selection, setSelection] = useState<McpConversationSelection | null>(
@@ -79,7 +66,6 @@ export default function McpToolsControl({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [attentionMessage, setAttentionMessage] = useState("");
   const [credentialRef, setCredentialRef] = useState<McpServerRef | null>(null);
   const [credentialValue, setCredentialValue] = useState("");
   const [credentialValues, setCredentialValues] = useState<
@@ -133,19 +119,6 @@ export default function McpToolsControl({
     void load(controller.signal);
     return () => controller.abort();
   }, [load]);
-
-  useEffect(() => {
-    if (
-      variant !== "composer" ||
-      !attention?.nonce ||
-      !enabled ||
-      !conversationId
-    ) {
-      return;
-    }
-    setAttentionMessage(attention.message);
-    setOpen(true);
-  }, [attention?.message, attention?.nonce, conversationId, enabled, variant]);
 
   const selectedByKey = useMemo(
     () =>
@@ -392,23 +365,6 @@ export default function McpToolsControl({
     [client.mcp, load, saving, t],
   );
 
-  const disableAllAndContinue = useCallback(async () => {
-    const saved = await saveSelection("custom", []);
-    if (!saved) return;
-    setAttentionMessage("");
-    setOpen(false);
-    onAttentionHandled?.();
-    onDisableAllAndContinue?.();
-  }, [onAttentionHandled, onDisableAllAndContinue, saveSelection]);
-
-  const close = useCallback(() => {
-    setOpen(false);
-    if (attentionMessage) {
-      setAttentionMessage("");
-      onAttentionHandled?.();
-    }
-  }, [attentionMessage, onAttentionHandled]);
-
   const deletePrivateServer = useCallback(
     async (serverId: string) => {
       setSaving(true);
@@ -425,7 +381,6 @@ export default function McpToolsControl({
     [client.mcp, load, t],
   );
 
-  const unavailable = !enabled || !conversationId;
   const statusLabel = !enabled
     ? t("serverModeOnly")
     : !conversationId
@@ -438,11 +393,7 @@ export default function McpToolsControl({
           });
 
   const panel = (
-    <div
-      className={`flex min-h-0 flex-col ${
-        variant !== "composer" ? "h-full" : "max-h-[min(650px,80vh)]"
-      }`}
-    >
+    <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-2 dark:border-border">
         <div className="min-w-0 text-xs text-gray-500 dark:text-muted-foreground">
           {statusLabel}
@@ -477,16 +428,6 @@ export default function McpToolsControl({
           >
             {t("disableAll")}
           </button>
-          {variant === "composer" ? (
-            <button
-              type="button"
-              onClick={close}
-              aria-label={t("close")}
-              className="rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-accent"
-            >
-              <X size={15} aria-hidden="true" />
-            </button>
-          ) : null}
         </div>
       </div>
 
@@ -497,26 +438,6 @@ export default function McpToolsControl({
         >
           <AlertTriangle size={14} className="mt-0.5 shrink-0" />
           <span>{error}</span>
-        </div>
-      ) : null}
-
-      {attentionMessage ? (
-        <div
-          role="alert"
-          className="mx-4 mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100"
-        >
-          <div className="flex items-start gap-2">
-            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-            <span>{attentionMessage}</span>
-          </div>
-          <button
-            type="button"
-            disabled={saving || !selection}
-            onClick={() => void disableAllAndContinue()}
-            className="mt-2 rounded-md bg-amber-700 px-2.5 py-1.5 font-medium text-white disabled:opacity-50 dark:bg-amber-600"
-          >
-            {t("disableAllAndContinue")}
-          </button>
         </div>
       ) : null}
 
@@ -883,8 +804,6 @@ export default function McpToolsControl({
     </div>
   );
 
-  if (variant === "embedded") return panel;
-
   if (variant === "page") {
     return (
       <div className="flex h-full w-full flex-col overflow-hidden bg-gray-50/50 dark:bg-background">
@@ -928,26 +847,7 @@ export default function McpToolsControl({
     );
   }
 
-  return (
-    <div className={`flex min-w-0 items-center gap-1 ${className}`}>
-      <Tooltip content={statusLabel} position="top">
-        <button
-          type="button"
-          aria-label={t("open")}
-          aria-pressed={enabledServers.length > 0}
-          disabled={disabled || unavailable}
-          onClick={() => setOpen(true)}
-          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/40 disabled:cursor-not-allowed disabled:opacity-45 ${enabledServers.length > 0 ? "bg-cyan-50 text-cyan-600 dark:bg-cyan-950/30 dark:text-cyan-300" : "text-gray-500 hover:bg-gray-100 dark:text-muted-foreground dark:hover:bg-accent/50"}`}
-        >
-          <Wrench size={16} aria-hidden="true" />
-        </button>
-      </Tooltip>
-
-      <Dialog open={open} onClose={close} title={t("title")}>
-        {panel}
-      </Dialog>
-    </div>
-  );
+  return panel;
 }
 
 function ServerStatus({ status }: { status: McpServer["status"] }) {

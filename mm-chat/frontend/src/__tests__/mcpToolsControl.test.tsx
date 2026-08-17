@@ -22,10 +22,12 @@ const serverIcon = readFileSync(
   "utf8",
 );
 
-describe("MCP Tools composer control", () => {
-  it("keeps the composer trigger icon-only while retaining its status tooltip", () => {
-    expect(control).toContain("<Tooltip content={statusLabel}");
-    expect(control).toContain('<Wrench size={16} aria-hidden="true" />');
+describe("MCP Tools management control", () => {
+  it("has no composer trigger or pre-send recovery surface", () => {
+    expect(control).not.toContain("<Tooltip content={statusLabel}");
+    expect(control).not.toContain('variant?: "composer"');
+    expect(control).not.toContain("attentionMessage");
+    expect(control).not.toContain("disableAllAndContinue");
     expect(control).not.toContain("enabledServers.slice(0, 2)");
     expect(control).not.toContain(
       'className="hidden max-w-28 truncate rounded-full',
@@ -43,12 +45,10 @@ describe("MCP Tools composer control", () => {
     expect(control).toContain("onClick={() => toggleTool(server, tool.name)}");
   });
 
-  it("opens on preflight attention and offers disable-all-and-continue", () => {
-    expect(control).toContain("setOpen(true)");
+  it("keeps MCP out of the composer", () => {
     expect(control).toContain('saveSelection("custom", [])');
-    expect(control).toContain("disableAllAndContinue");
-    expect(input).toContain("attention={mcpAdmissionAttention}");
-    expect(input).toContain("void handleSend()");
+    expect(input).not.toContain("McpToolsControl");
+    expect(input).not.toContain("mcpAdmissionAttention");
   });
 
   it("allows OAuth dynamic registration and validates HTTPS redirects", () => {
@@ -77,7 +77,7 @@ describe("MCP Tools composer control", () => {
 
   it("supports a first-class management page without browser-owned authority", () => {
     expect(page).toContain('variant="embedded"');
-    expect(control).toContain('variant?: "composer" | "page" | "embedded"');
+    expect(control).toContain('variant?: "page" | "embedded"');
     expect(control).toContain("client.mcp.listServers");
     expect(control).toContain('aria-label={t("serverList")}');
     expect(page).toContain("conversationId={conversationId}");

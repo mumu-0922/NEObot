@@ -108,6 +108,23 @@ func TestManagerStartsApprovedServerOnDemandAndReapsIt(t *testing.T) {
 	}
 }
 
+func TestRunnerWorkDirectoryNameIsShortStableAndRunIsolated(t *testing.T) {
+	longInstance := strings.Repeat("browser-run-with-a-very-long-opaque-identity-", 8)
+	first := runnerWorkDirectoryName(longInstance)
+	if first != runnerWorkDirectoryName(longInstance) {
+		t.Fatal("Runner work directory name is not stable")
+	}
+	if len(first) != 2+runnerWorkDirectoryDigestBytes*2 {
+		t.Fatalf("Runner work directory length = %d, want %d", len(first), 2+runnerWorkDirectoryDigestBytes*2)
+	}
+	if first == runnerWorkDirectoryName(longInstance+"other-run") {
+		t.Fatal("distinct Browser Runs shared a work directory name")
+	}
+	if strings.Contains(first, longInstance) {
+		t.Fatal("opaque instance identity leaked into the filesystem path")
+	}
+}
+
 func environmentValue(environment []string, name string) string {
 	prefix := name + "="
 	for _, entry := range environment {
