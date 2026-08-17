@@ -286,6 +286,12 @@ ChatMessageDTO.agentEvents[]
 - Event IDs are idempotent. Event rows are immutable. The fixed vocabulary is
   Turn/Step/assistant/Tool/Goal/context only. `go_api_runtime` receives SELECT
   plus the exact start/append Functions and no direct table DML.
+- In `RETURNS TABLE` PL/pgSQL Functions, every output column is also a local
+  variable. SQL inside `chat_agent_start_turn` / `chat_agent_append_event`
+  must therefore use named constraints for `ON CONFLICT` and table aliases for
+  columns such as `event_id`, `conversation_id`, `user_id`, and `status`;
+  unqualified names are rejected as ambiguous at runtime even when migration
+  creation succeeds.
 - Persist each sanitized process or Tool projection before emitting the same
   projection over SSE. Never persist command, arguments, query, raw Result,
   credentials, private Server refs, paths, or unbounded output.
@@ -330,6 +336,10 @@ ChatMessageDTO.agentEvents[]
 - Concurrent sequence allocation, identical replay, immutable event rows,
   runtime DML denial, dirty Down refusal and clean down/up replay on PostgreSQL
   17 through `scripts/verify-chat-agent-event-log-postgres17.sh`.
+- The PostgreSQL drill must execute both start and append Functions, including
+  interrupted Message repair. Its dirty-Down proof creates an explicit event
+  fixture after peeling any tail migration reapplied by integration-test setup;
+  it must not rely on test residue.
 - Handler ordering and redaction tests, full existing cancellation suites, and
   startup recovery for both unfinished and already completed Messages.
 - Frontend invalid-event fallback, ordering/deduplication, interrupted active

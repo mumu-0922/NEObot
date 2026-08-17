@@ -177,7 +177,10 @@ BEGIN
     p_event_id, p_turn_id, 1, 'turn.started', '{"status":"running"}'::jsonb,
     p_occurred_at, p_occurred_at
   )
-  ON CONFLICT (event_id) DO NOTHING
+  -- The RETURNS TABLE output column `event_id` is also a PL/pgSQL variable.
+  -- Name the table constraint explicitly so PostgreSQL never has to resolve
+  -- the ambiguous unqualified identifier inside this function.
+  ON CONFLICT ON CONSTRAINT chat_agent_events_pkey DO NOTHING
   RETURNING * INTO v_event;
 
   IF NOT FOUND THEN
@@ -299,17 +302,17 @@ BEGIN
     WHERE id = p_turn_id;
 
     IF v_terminal_status = 'interrupted' THEN
-      UPDATE messages
+      UPDATE messages AS message
       SET status = 'failed',
-          error_code = COALESCE(error_code, 'AGENT_RUN_INTERRUPTED'),
-          metadata = COALESCE(metadata, '{}'::jsonb)
+          error_code = COALESCE(message.error_code, 'AGENT_RUN_INTERRUPTED'),
+          metadata = COALESCE(message.metadata, '{}'::jsonb)
             || '{"errorCode":"AGENT_RUN_INTERRUPTED"}'::jsonb,
-          completed_at = COALESCE(completed_at, p_occurred_at),
-          updated_at = GREATEST(updated_at, p_occurred_at)
-      WHERE id = v_turn.message_id
-        AND conversation_id = v_turn.conversation_id
-        AND user_id = v_turn.user_id
-        AND status IN ('pending', 'streaming');
+          completed_at = COALESCE(message.completed_at, p_occurred_at),
+          updated_at = GREATEST(message.updated_at, p_occurred_at)
+      WHERE message.id = v_turn.message_id
+        AND message.conversation_id = v_turn.conversation_id
+        AND message.user_id = v_turn.user_id
+        AND message.status IN ('pending', 'streaming');
     END IF;
   END IF;
 

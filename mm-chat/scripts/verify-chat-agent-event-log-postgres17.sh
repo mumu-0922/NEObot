@@ -79,6 +79,32 @@ log "running repository sequence, replay, interruption, and torn-finalization pr
   go test ./internal/chat -run '^TestPostgresChatAgent(EventLog|Recovery)' -count=1)
 
 log "proving dirty 096 down refusal and clean 096 -> 097 replay"
+# Each integration test calls Runner.Up independently, so the first test
+# reapplies the 097 tail that this drill peeled before invoking `go test`.
+# Peel it again before exercising the 096 dirty-data guard.
+run_migrate down >"${work_dir}/post-test-peel-097.log" 2>&1
+grep -Fq "down 097_chat_agent_goals" "${work_dir}/post-test-peel-097.log"
+psql_command "
+INSERT INTO users(id,email,display_name)
+VALUES ('96000000-0000-4000-8000-000000000001','agent-events@example.test','Agent Events');
+INSERT INTO conversations(id,user_id,title)
+VALUES ('96000000-0000-4000-8000-000000000002','96000000-0000-4000-8000-000000000001','Agent Events');
+INSERT INTO messages(id,conversation_id,user_id,sequence_no,role,status,content)
+VALUES (
+  '96000000-0000-4000-8000-000000000003',
+  '96000000-0000-4000-8000-000000000002',
+  '96000000-0000-4000-8000-000000000001',
+  1,'assistant','streaming',''
+);
+SELECT event_id FROM chat_agent_start_turn(
+  '96000000-0000-4000-8000-000000000004',
+  '96000000-0000-4000-8000-000000000005',
+  '96000000-0000-4000-8000-000000000001',
+  '96000000-0000-4000-8000-000000000002',
+  '96000000-0000-4000-8000-000000000003',
+  '96000000-0000-4000-8000-000000000006',
+  TIMESTAMPTZ '2026-08-17 00:00:00+00'
+);" >/dev/null
 set +e
 run_migrate down >"${work_dir}/dirty-down.log" 2>&1
 dirty_status=$?
