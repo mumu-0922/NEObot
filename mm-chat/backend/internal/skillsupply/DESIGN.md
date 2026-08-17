@@ -58,7 +58,7 @@ identity.
 
 Objects are written before the database transaction. Failure can therefore
 leave unreachable content-addressed bytes, but can never create admitted
-state. Repeated object writes are safe. Migration down refuses while any G20.1
+state. Repeated object writes are safe. Migration down refuses while any Skill
 row exists. Application rollback keeps migration `083` and the object prefixes
 in place; paired PostgreSQL/MinIO backup and restore is the data rollback unit.
 
@@ -68,4 +68,4 @@ Instruction-only packages are reviewable but have no runtime fingerprint or
 launch path. Executable packages are reviewable only when they are the
 server-owned official synthetic fixture, request read-only workspace actions,
 and request no Egress or Secret slots. Every other executable candidate stays
-quarantined/ineligible in G20.1.
+quarantined/ineligible for installation.

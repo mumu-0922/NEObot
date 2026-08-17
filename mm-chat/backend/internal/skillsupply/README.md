@@ -1,6 +1,6 @@
 # skillsupply
 
-`skillsupply` owns the G20.1 server-authoritative Skill package supply chain.
+`skillsupply` owns the server-authoritative Skill package supply chain.
 It accepts only server-derived official, exact LobeHub version, exact GitHub
 commit, or authenticated ZIP candidates; validates them in memory without
 execution; writes immutable quarantine/package/SBOM objects; and persists
@@ -12,7 +12,8 @@ administrator admissions plus owner-bound install references.
   models, grants, Runs, and Sandboxes are outside this package.
 - `SKILL.md` and `neo.runtime.json` are untrusted declarations.
 - `allowed-tools` is display-only and never creates Tool authority.
-- G20.1 cannot launch a candidate. `/v1/code/executions` remains unavailable.
+- Candidate admission itself never executes package bytes. Installed packages
+  become eligible only through the ordinary Chat Agent `local_direct` runtime.
 
 ## API
 

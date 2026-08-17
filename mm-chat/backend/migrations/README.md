@@ -19,7 +19,9 @@ Rules:
 - `NNN` is monotonic and never reused.
 - Published migration pairs are immutable. Add a new migration instead of
   editing SQL that may already be recorded by a database.
-- Each pair represents one reversible schema change.
+- Each pair documents the forward and rollback behavior. A deliberately
+  irreversible cleanup may use a no-op down file when backup restoration is
+  the only honest rollback.
 - Keep ordinary SQL Postgres-compatible and avoid new third-party extensions.
   Migration `038` is the reviewed exception: the full manifest now requires
   PostgreSQL 17, pgvector `0.8.5`, and pg_textsearch `1.3.1` with
@@ -143,7 +145,7 @@ function signatures, owners, and grants while pinning lookup to the application
 schema, `pg_catalog`, and `pg_temp`. Its down path intentionally retains the
 safe search path rather than reopening object-shadowing risk.
 
-The current migration head is `097`; the latest RAG retrieval-specific migration
+The current migration head is `098`; the latest RAG retrieval-specific migration
 remains `050`. Migration `043` extends the existing final-authority evidence
 hydration boundary with complete matched-Child and containing-Parent source
 text plus their persisted token counts. Parent text is answer context only. Its
@@ -500,238 +502,27 @@ keep `082` applied and restore a compatible application image. Disposable
 replay is `081 -> 082 -> 081 -> 082` via
 `scripts/verify-assistant-store-postgres17.sh`.
 
-Migration `083` adds the G20.1 no-execute Skill package supply-chain authority:
-immutable package/SBOM versions, exact-source candidates with fingerprint-bound
-administrator CAS review, and owner-bound install references. `allowed_tools`
-and capability requests remain display metadata and create no Tool grant. The
-runtime role can insert immutable versions/candidates, update only review
-columns, and insert/delete installations; a composite FK plus trigger require
-the exact admitted candidate/package pair. Down refuses while any G20.1 row
-exists. Disposable replay and least-privilege/ownership/source-drift proof use
+Migration `083` adds the server-authoritative Skill package supply chain:
+immutable admitted package/SBOM versions, fingerprint-bound review, and
+owner-bound installations. It remains active and is verified by
 `scripts/verify-skill-supply-chain-postgres17.sh`.
 
-Migration `084` adds the G20.2 durable Agent Orchestrator control-plane
-authority without enabling execution: immutable canonical Run snapshots,
-owner/idempotency-bound Run and ordered Step projections, generation-bound
-Attempt leases, a per-Run append-only sequence ledger, and revisioned
-hierarchical Kill Switches. State, sequence and projection changes are atomic
-inside narrowly granted `SECURITY DEFINER` functions. The independent
-`agent_orchestrator_runtime` role has read plus exact transition/lease/recovery
-function execution and no table DML; `go_api_runtime` has no G20.2 authority
-because no HTTP Runtime surface exists yet. Rebuild and retention remain
-owner/operations-only, down refuses non-empty authority, and disposable
-PostgreSQL 17 replay/dump/restore proof uses
-`scripts/verify-agent-orchestrator-postgres17.sh`.
+Migrations `084` through `095` are immutable history for the former Agent
+Orchestrator, Runner, Broker, delegation, Cron/Learning, Shadow, and Canary
+control plane. New application code must not depend on those objects. Migration
+`098` retires them after taking explicit locks and proving all 46 legacy fact
+tables are empty; only the two migration-created singleton state rows are
+permitted. It drops a fixed whitelist of 48 tables, 10 views, 159 functions,
+triggers, constraints, and 19 NOLOGIN roles. Any fact row, partial schema, or
+object drift aborts the complete migration transaction. It uses neither
+wildcard deletion nor `CASCADE` and never names or modifies `chat_agent_*`.
 
-Migration `085` adds the G20.3 Agent Runner control authority without enabling
-Agent execution. `agent_runner_requests` durably binds caller certificate
-identity, Runner/lease-owner identity, request ID, nonce, request fingerprint,
-exact G20.2 Attempt lease/token digest, snapshot and Kill Switch epoch before a
-short-lived ticket may be signed. `agent_runner_sandboxes` stores only the
-expected content-free Sandbox lifecycle projection used for restart recovery.
-The independent `agent_runner_control` role can execute exact
-`SECURITY DEFINER` functions and has no table DML; `neo-runnerd` receives no
-database role or credential, and existing API/Orchestrator runtime roles gain
-no Runner authority. Down refuses non-empty authority. Disposable PostgreSQL
-17 replay concurrency, least privilege, lifecycle, retention, dump/restore and
-clean replay through the current migration head use
-`scripts/verify-agent-runner-postgres17.sh`.
-
-Migration `086` adds the held G20.4 Agent Broker effect authority without
-enabling an Agent API, Chat integration or production Runner relay. Immutable
-effect intents bind subject, package/runtime/grant/registry fingerprints,
-Attempt lease owner/generation/token digest, canonical action arguments,
-approval class, budgets, expiry and Kill Switch epoch. Append-only approvals,
-Grant revocations, pre-Commit cancellations, single-claim Commit receipts and
-secret-handle digests make Prepare replay, human approval, cancellation races,
-acknowledgement loss and `outcome_unknown` durable while
-keeping secret values and plaintext handles out of PostgreSQL. The independent
-`agent_effect_control` role has SELECT plus exact `SECURITY DEFINER` function
-execution and no table DML; existing API, Orchestrator and Runner roles receive
-no effect authority. The migration also extends migration `085` Runner method
-validation to `prepare|commit`, and its down restores the former method set.
-Cancellation and Commit lock the exact same intent, so only one can advance;
-the cancellation winner atomically terminalizes the prepared Attempt and
-revokes handles, while a Commit winner can no longer claim rollback. Down
-refuses while any effect, approval, cancellation, revocation, receipt or handle
-authority exists.
-Disposable PostgreSQL 17 fresh/replay, concurrency, least-privilege, fence,
-retention, dump/restore and clean down/up proof uses
-`scripts/verify-agent-broker-postgres17.sh`; every older tail drill also peels
-and reapplies `086` before testing its owning guard.
-
-Migration `087` adds the held G20.5 depth-1 Child Agent delegation authority
-without enabling public Agent routes, Chat/frontend wiring, a startup worker or
-production Child execution. Immutable root/child authority binds exact subject,
-model, admitted package/runtime, Grant, Registry, snapshot, expiry and Parent
-Attempt generation/owner/token digest. Child enqueue repeats Grant/Registry
-subset checks and reserves all four Parent budget dimensions under the same
-Parent lock before creating the Child Run. Launch admission rechecks both live
-leases, frozen fingerprints, exact Registry identities, expiry and current Kill
-Switches. Parent cancel/kill atomically fences every live Child Attempt and
-terminalizes its Step/Run before durable, deterministic reap work is exposed to
-the credential-free Runner reaper; reconciliation also discovers terminal,
-expired, reclaimed or Kill-Switched Parents and retries failed reap facts. The
-independent `agent_delegation_control` role has SELECT plus exact
-`SECURITY DEFINER` execution and no table DML; API, Orchestrator, Runner and
-effect roles gain no delegation authority. Down refuses while any authority,
-lineage, settlement or reap fact exists. Disposable proof uses
-`scripts/verify-agent-delegation-postgres17.sh`, and every older PostgreSQL tail
-drill now peels and reapplies through `087` before testing its original guard.
-
-Migration `088` adds the held G20.6 durable Cron scheduling authority without
-enabling a public Cron API, frontend/Chat wiring, startup Scheduler or production
-Run execution. Immutable approved revisions freeze exact owner, input reference
-and fingerprint, five-field schedule, IANA timezone/calculator, model, budgets,
-Skill installation/admission/package/runtime, Grant/Registry/capabilities,
-Egress, Secret refs, expiry, steps/scopes and scheduling policies. PostgreSQL
-owns the exact cursor, owner/generation/expiry claims, unique UTC occurrences,
-trigger-time owner/Skill/Grant/approval/expiry/Kill/overlap denial, atomic normal
-Orchestrator Run link, sanitized audit and bounded cleanup. The independent
-`agent_cron_control` role has SELECT plus exact `SECURITY DEFINER` execution and
-no table DML; API, Orchestrator, Runner, effect and delegation roles gain no
-Cron authority. Down refuses while any template, revision, approval/revocation,
-trigger or audit fact exists and revokes all pre-existing-object/schema grants
-before removing the NOLOGIN Cron roles. Disposable proof uses
-`scripts/verify-agent-cron-postgres17.sh`, and every older PostgreSQL tail drill
-now peels and reapplies through migration `088` before testing its original
-guard.
-
-Migration `089` adds the held G20.7 Draft-only learning authority without a
-public API, startup worker, production evaluator or Runtime activation. It
-extends Skill candidate source authority with the internal-only `learning`
-source and stores immutable same-user succeeded depth-0 source Run/snapshot
-bindings, base/proposed package fingerprints, bounded provenance/tests/changed
-paths, exact three-kind check receipts, append-only human decisions, promotion
-links, cleanup claims and sanitized audits. The independent
-`agent_learning_control` role has SELECT plus exact `SECURITY DEFINER` function
-execution and no table DML; existing API, Orchestrator, Runner, effect,
-delegation and Cron roles gain no learning authority. Promote rechecks current
-source/Kill-Switch/check authority and atomically inserts one new admitted
-`learning` candidate/package without mutating existing packages, installations,
-Runs or Cron revisions. Down refuses while any learning authority or candidate
-exists. Disposable proof uses
-`scripts/verify-agent-learning-postgres17.sh`; its original tail proof peels
-and reapplies through migration `089` before testing the learning guard.
-
-Migration `090` adds the authenticated G20.8 Agent Center read/control facade,
-bounded Artifact publication metadata and default-off Shadow observation
-authority. `go_api_runtime` receives sanitized product views plus only the exact
-Artifact lookup, Run cancel, approval, Cron lifecycle, human Draft review and
-Shadow policy/opt-in functions needed by the HTTP service; it receives no
-Agent worker table DML, lease/claim, Commit, delegation, scheduler-trigger or
-learning-check authority. Shadow policy supports only `synthetic` and
-`read_only`, binds the admitted package/runtime fingerprints, deterministic
-cohort, user opt-in, boot epoch, generation and budgets, and always reports
-`ISOLATION_UNAVAILABLE` while exact-host isolation is held. Observations are
-content-free counts, latency buckets and reason codes only. Down fails with
-`AGENT_PRODUCT_DOWN_DATA_EXISTS` while cancellation, Artifact, policy, opt-in
-or observation authority remains. Disposable proof uses
-`scripts/verify-agent-product-shadow-postgres17.sh`; every older Agent/MCP/
-Assistant/Skill tail drill first peels empty `097`, then `096`, `095`, `094`, `093`,
-`092`, `091` and `090`, before asserting its original migration guard and
-finishes reapplied at head `097`.
-
-Migration `091` adds G21.2 Artifact publication authority without widening the
-G20.8 product facade. The independent NOLOGIN `agent_artifact_control` role
-receives only exact authorize/attach `SECURITY DEFINER` execution and no direct
-`agent_artifacts` DML, owner membership or schema CREATE. Both functions bind
-the committing Broker intent, user, Run/Attempt generation and live lease,
-snapshot, Grant/Registry, revocation, Kill Switch, deterministic object key,
-media allowlist, byte bound and SHA-256. Attach repeats the checks under row
-locks, returns exact replay and rejects Artifact ID/name/object collisions.
-Down removes only the functions/role after the dedicated LOGIN membership is
-removed; migration `090` retains Artifact rows and continues to guard their
-destructive rollback. Disposable proof uses
-`scripts/verify-agent-artifact-publication-postgres17.sh`. Every older
-PostgreSQL tail drill peels empty `097`, then `096`, `095`, `094`, `093`, `092`
-and `091`, before its original tail/guard and finishes reapplied at head `097`.
-
-Migration `092` adds the G21.3 synthetic Project mutation canary without
-creating a user Project store. Operator-only
-`agent_project_canary_provision` creates one reviewed baseline resource. The
-independent NOLOGIN `agent_project_mutation_control` role receives SELECT plus
-exact CAS/status/cleanup `SECURITY DEFINER` execution and no provision
-authority, direct table DML, owner membership or schema CREATE. The CAS repeats
-the exact committing intent, approved `per_commit` fact, live Attempt lease and
-generation, snapshot, Grant/Registry, non-revocation, Kill Switch, resource,
-base revision, flat UTF-8 path, byte budget and content/mutation fingerprints
-under row locks. Resource update and immutable receipt append are atomic.
-
-Status returns committed only for the matching receipt, rejected only when no
-receipt exists and the exact baseline remains clean, and `outcome_unknown` for
-every conflicting resource state. Cleanup requires the matching committed
-Broker fact and receipt, restores the exact baseline, appends an immutable
-cleanup fact and is replay-safe. The receipt's `cleaned_at` is the only mutable
-fact field and may transition from null to non-null once through the narrow
-trigger guard. Down fails with
-`AGENT_PROJECT_MUTATION_DOWN_REQUIRES_EMPTY` until an operator has archived
-evidence and truncated all three synthetic tables together. Disposable proof
-uses `scripts/verify-agent-project-mutation-postgres17.sh`; all older tail
-drills peel the empty `097` tail, then `096`, `095`, `094`, `093` and `092`
-when required, before their original guards and finish reapplied at head `097`.
-
-Migration `093` closes the production Child reap transport gap without
-rewriting migration `087`. `agent_delegation_reap_inventory(limit)` returns the
-exact pending/failed Child reap, user, Step/Attempt/generation, immutable
-snapshot, optional Runner Sandbox projection and latest matching launch
-authority expiry. It never returns the lease token. The existing
-`agent_delegation_complete_reap` is replaced so failure stays retryable, while
-success rejects active launch authority and Sandbox identity drift before
-atomically terminalizing the exact Runner projection and durable reap. Exact
-success replay is stable; NULL or failed-after-reaped replay is rejected.
-
-Only `agent_delegation_control` receives EXECUTE. The function owner receives
-the minimum Runner SELECT/UPDATE needed inside the hardened definitions; no
-Runtime role gains new direct Runner or delegation DML. Down fails with
-`AGENT_CHILD_REAP_TRANSPORT_DOWN_REQUIRES_CLEAN` while a pending/failed reap or
-live depth-one Sandbox requires the bridge. A clean down drops inventory,
-restores migration-087 completion behavior and revokes the temporary owner
-access. Disposable proof uses
-`scripts/verify-agent-child-canary-postgres17.sh`; every older guarded tail
-drill must peel empty `097`, then `096`, `095`, then `094`, before `093` and
-finish reapplied at head `097`.
-
-Migration `094` activates one operator-bound Cron Template and one quarantined
-Draft without opening global Scheduler/Learning cohorts. Immutable target rows
-bind exact activation, subject/revision or Draft fingerprints, plan and validity
-window. `agent_cron_worker` and `agent_learning_worker` are independent NOLOGIN
-roles with function-only execution; neither inherits the corresponding owner or
-control role and neither receives direct table access.
-
-Cron wrappers place target membership inside every due/trigger locking query
-and expose only scoped advance/enqueue/release/reconcile/prune. Draft wrappers
-add non-Orchestrator Runner attempts, immutable bounded results and replay-
-fenced request authority for the fixed Draft caller. They expose only scoped
-check, Runner lifecycle/result and cleanup/reconcile/prune operations. Propose,
-Reject, Promote and package/candidate insertion remain outside the worker role.
-
-Down is disposable-only and rejects active targets, live claims, unresolved
-Runner attempts, pending cleanup, worker LOGIN membership and every retained
-activation fact. Production rollback disables one target/profile and preserves
-`094`. Disposable proof uses
-`scripts/verify-agent-{cron,draft-learning}-worker-postgres17.sh`; all older
-tail drills peel `097`, then `096`, then `095`, before their previous tail and
-finish at head `097`.
-
-Migration `095` adds the two-stage bounded product-canary authority. Operator-
-owned immutable activations bind release, Shadow policy, admitted
-Package/Runtime, fixed plan, a finite request budget and seven distinct prior
-activation fingerprints. `go_api_runtime` receives only current-user status and
-enqueue functions. `agent_product_canary_worker` is NOLOGIN and function-only;
-the separate exact-host LOGIN combines it with existing Orchestrator and Runner
-control roles without granting product table DML.
-
-Requests are append-only except for activation-scoped, generation-fenced lease
-transitions. Completion requires an exact terminal Run/Attempt and creates one
-immutable content-free receipt. Final promotion is an operator-only append that
-binds the same activation/request/receipt/release plus a
-`PROMOTION_READY` closure fingerprint. Dirty down fails with
-`AGENT_PRODUCT_CANARY_DOWN_REQUIRES_EMPTY`; production rollback disables the
-activation/profile and retains facts. Disposable proof is
-`scripts/verify-agent-product-canary-postgres17.sh`. Every older tail drill must
-peel empty `097`, then `096`, then `095`, before its own guard and return to
-head `097`.
+Migration `098.down` is an intentional irreversible no-op. Reapplying `098.up`
+after down is a safe no-op only when every retired object is already absent.
+Production database rollback requires the matched pre-upgrade PostgreSQL/MinIO
+backup plus the previous application image. Disposable fresh, replay,
+fail-closed, least-privilege, data-preservation, and down/re-up proof uses
+`scripts/verify-legacy-agent-cleanup-postgres17.sh`.
 
 Migration `096` adds the append-only ordinary Chat Agent event authority. A
 Turn binds the current user, Conversation, assistant Message and Run, while
@@ -740,9 +531,8 @@ events receive contiguous per-Turn sequence numbers through row-locked
 execution, never direct event DML. Terminal recovery preserves an already
 committed Message status and marks only unfinished Messages interrupted. Down
 refuses while any Turn or Event exists. Disposable PostgreSQL 17 proof uses
-`scripts/verify-chat-agent-event-log-postgres17.sh`; every older tail drill
-peels empty `097`, then `096`, before its previous `095` tail and returns to
-head `097`.
+`scripts/verify-chat-agent-event-log-postgres17.sh`; the current full replay
+continues through cleanup head `098`.
 
 Migration `097` adds one persisted current Goal per Conversation for ordinary
 Chat Agent turns. Goal mutations use revision compare-and-set and append
@@ -752,8 +542,8 @@ runtime receives Goal SELECT plus four exact `SECURITY DEFINER` mutations and
 no table write privilege. Automatic Goal budgets are bounded to 3-32 rounds,
 with a default of 8 in the Go runtime. Down refuses while a Goal row exists.
 Disposable PostgreSQL 17 proof uses
-`scripts/verify-chat-agent-goals-postgres17.sh`; every older tail drill peels
-empty `097` before `096` and returns to head `097`.
+`scripts/verify-chat-agent-goals-postgres17.sh`; the current full replay
+continues through cleanup head `098`.
 
 ## Storage boundaries
 
@@ -763,8 +553,8 @@ Postgres is the source of truth for structured records:
 - provider configuration metadata and encrypted-secret references
 - server-owned automation task model selections
 - conversations and messages
-- ordinary Chat Agent Turns, immutable replay events, and current
-  Conversation Goals; optional G20/G21 control-plane Run events remain separate
+- ordinary Chat Agent Turns, immutable replay events, and current Conversation
+  Goals
 - Projects, Memory settings, and canonical Memory rows
 - Memory capture outbox events and leased jobs; Redis is never their authority
 - Memory evidence, revisions, tombstones, and ID/hash-only deletion manifests

@@ -22,8 +22,8 @@ jq empty \
   go test -count=1 -race ./internal/skillsupply ./internal/mcpclient ./internal/migration ./internal/codejobs && \
   go vet ./internal/skillsupply ./internal/mcpclient ./internal/migration ./internal/codejobs)
 
-bash "${project_dir}/scripts/verify-agent-runtime-phase0.sh"
+bash "${project_dir}/scripts/verify-agent-local-runtime.sh"
 
 printf '%s\n' \
-  "Skill supply verification: passed (malicious archives, deterministic identities/SBOM, exact sources, no-execute lifecycle, strict API, Phase 0 schema, code execution fail-closed)" \
-  "Skill supply verification: production Runtime remains unavailable"
+  "Skill supply verification: passed (malicious archives, deterministic identities/SBOM, exact sources, strict API, local_direct runtime)" \
+  "Skill supply verification: installed Skills execute only through the bounded local workspace"

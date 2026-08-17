@@ -159,56 +159,72 @@ chmod 600 "${valid}"
 "${preflight}" "${valid}" >/dev/null
 
 invalid_agent_boolean="${temp_dir}/invalid-agent-boolean.env"
-sed 's|^AGENT_RUNNER_CONTROL_ENABLED=false$|AGENT_RUNNER_CONTROL_ENABLED=maybe|' \
+sed 's|^AGENT_LOCAL_RUNTIME_ENABLED=true$|AGENT_LOCAL_RUNTIME_ENABLED=maybe|' \
   "${valid}" >"${invalid_agent_boolean}"
 chmod 600 "${invalid_agent_boolean}"
-assert_rejected "${invalid_agent_boolean}" "AGENT_RUNNER_CONTROL_ENABLED must be true or false"
+assert_rejected "${invalid_agent_boolean}" "AGENT_LOCAL_RUNTIME_ENABLED must be true or false"
 
-execution_stage_enabled="${temp_dir}/execution-stage-enabled.env"
-sed 's|^AGENT_RUNTIME_ENABLED=false$|AGENT_RUNTIME_ENABLED=true|' \
-  "${valid}" >"${execution_stage_enabled}"
-chmod 600 "${execution_stage_enabled}"
-assert_rejected "${execution_stage_enabled}" "AGENT_RUNTIME_ENABLED must remain false through G21.6"
+invalid_agent_root="${temp_dir}/invalid-agent-root.env"
+sed 's|^AGENT_LOCAL_RUNTIME_ROOT=/var/lib/mm-chat/agent-skills$|AGENT_LOCAL_RUNTIME_ROOT=/tmp/agent-skills|' \
+  "${valid}" >"${invalid_agent_root}"
+chmod 600 "${invalid_agent_root}"
+assert_rejected "${invalid_agent_root}" "AGENT_LOCAL_RUNTIME_ROOT must be /var/lib/mm-chat/agent-skills"
 
-invalid_broker_canary_boolean="${temp_dir}/invalid-broker-canary-boolean.env"
-sed 's|^AGENT_BROKER_ARTIFACT_CANARY_ENABLED=false$|AGENT_BROKER_ARTIFACT_CANARY_ENABLED=maybe|' \
-  "${valid}" >"${invalid_broker_canary_boolean}"
-chmod 600 "${invalid_broker_canary_boolean}"
-assert_rejected \
-  "${invalid_broker_canary_boolean}" \
-  "AGENT_BROKER_ARTIFACT_CANARY_ENABLED must be true or false"
+invalid_workspace_root="${temp_dir}/invalid-workspace-root.env"
+sed 's|^AGENT_LOCAL_WORKSPACE_ROOT=/workspace$|AGENT_LOCAL_WORKSPACE_ROOT=/work|' \
+  "${valid}" >"${invalid_workspace_root}"
+chmod 600 "${invalid_workspace_root}"
+assert_rejected "${invalid_workspace_root}" "AGENT_LOCAL_WORKSPACE_ROOT must be /workspace"
 
-root_canary_without_control="${temp_dir}/root-canary-without-control.env"
-sed 's|^AGENT_ROOT_RUN_CANARY_ENABLED=false$|AGENT_ROOT_RUN_CANARY_ENABLED=true|' \
-  "${valid}" >"${root_canary_without_control}"
-chmod 600 "${root_canary_without_control}"
-assert_rejected "${root_canary_without_control}" "AGENT_ROOT_RUN_CANARY_ENABLED requires G21.0 control enabled"
+invalid_agent_shell="${temp_dir}/invalid-agent-shell.env"
+sed 's|^AGENT_LOCAL_SHELL=/bin/bash$|AGENT_LOCAL_SHELL=/bin/sh|' \
+  "${valid}" >"${invalid_agent_shell}"
+chmod 600 "${invalid_agent_shell}"
+assert_rejected "${invalid_agent_shell}" "AGENT_LOCAL_SHELL must be /bin/bash"
 
-broker_canary_without_prerequisites="${temp_dir}/broker-canary-without-prerequisites.env"
-sed 's|^AGENT_BROKER_ARTIFACT_CANARY_ENABLED=false$|AGENT_BROKER_ARTIFACT_CANARY_ENABLED=true|' \
-  "${valid}" >"${broker_canary_without_prerequisites}"
-chmod 600 "${broker_canary_without_prerequisites}"
-assert_rejected \
-  "${broker_canary_without_prerequisites}" \
-  "AGENT_BROKER_ARTIFACT_CANARY_ENABLED requires G21.0 and G21.1 enabled"
+invalid_agent_approval="${temp_dir}/invalid-agent-approval.env"
+sed 's|^AGENT_LOCAL_APPROVAL_MODE=smart$|AGENT_LOCAL_APPROVAL_MODE=always|' \
+  "${valid}" >"${invalid_agent_approval}"
+chmod 600 "${invalid_agent_approval}"
+assert_rejected "${invalid_agent_approval}" "AGENT_LOCAL_APPROVAL_MODE must be smart or off"
 
-invalid_child_canary_boolean="${temp_dir}/invalid-child-canary-boolean.env"
-sed 's|^AGENT_CHILD_CANARY_ENABLED=false$|AGENT_CHILD_CANARY_ENABLED=maybe|' \
-  "${valid}" >"${invalid_child_canary_boolean}"
-chmod 600 "${invalid_child_canary_boolean}"
-assert_rejected \
-  "${invalid_child_canary_boolean}" \
-  "AGENT_CHILD_CANARY_ENABLED must be true or false"
+invalid_agent_call_timeout="${temp_dir}/invalid-agent-call-timeout.env"
+sed 's|^AGENT_LOCAL_CALL_TIMEOUT=30s$|AGENT_LOCAL_CALL_TIMEOUT=0s|' \
+  "${valid}" >"${invalid_agent_call_timeout}"
+chmod 600 "${invalid_agent_call_timeout}"
+assert_rejected "${invalid_agent_call_timeout}" "AGENT_LOCAL_CALL_TIMEOUT must use a positive whole-second"
 
-child_canary_without_prerequisites="${temp_dir}/child-canary-without-prerequisites.env"
+invalid_agent_run_timeout="${temp_dir}/invalid-agent-run-timeout.env"
 sed \
-  -e 's|^AGENT_CHILD_CANARY_ENABLED=false$|AGENT_CHILD_CANARY_ENABLED=true|' \
-  -e 's|^AGENT_DELEGATION_ENABLED=false$|AGENT_DELEGATION_ENABLED=true|' \
-  "${valid}" >"${child_canary_without_prerequisites}"
-chmod 600 "${child_canary_without_prerequisites}"
-assert_rejected \
-  "${child_canary_without_prerequisites}" \
-  "AGENT_CHILD_CANARY_ENABLED requires G21.0-G21.3 enabled"
+  -e 's|^AGENT_LOCAL_CALL_TIMEOUT=30s$|AGENT_LOCAL_CALL_TIMEOUT=2m|' \
+  -e 's|^AGENT_LOCAL_RUN_TIMEOUT=5m$|AGENT_LOCAL_RUN_TIMEOUT=1m|' \
+  "${valid}" >"${invalid_agent_run_timeout}"
+chmod 600 "${invalid_agent_run_timeout}"
+assert_rejected "${invalid_agent_run_timeout}" "AGENT_LOCAL_RUN_TIMEOUT must be at least the call timeout"
+
+invalid_agent_output_limit="${temp_dir}/invalid-agent-output-limit.env"
+sed 's|^AGENT_LOCAL_MAX_OUTPUT_BYTES=1048576$|AGENT_LOCAL_MAX_OUTPUT_BYTES=1023|' \
+  "${valid}" >"${invalid_agent_output_limit}"
+chmod 600 "${invalid_agent_output_limit}"
+assert_rejected "${invalid_agent_output_limit}" "AGENT_LOCAL_MAX_OUTPUT_BYTES must be between 1024 and 8388608"
+
+invalid_agent_concurrency="${temp_dir}/invalid-agent-concurrency.env"
+sed 's|^AGENT_LOCAL_MAX_CONCURRENT=2$|AGENT_LOCAL_MAX_CONCURRENT=33|' \
+  "${valid}" >"${invalid_agent_concurrency}"
+chmod 600 "${invalid_agent_concurrency}"
+assert_rejected "${invalid_agent_concurrency}" "AGENT_LOCAL_MAX_CONCURRENT must be between 1 and 32"
+
+invalid_agent_source="${temp_dir}/invalid-agent-source.env"
+sed 's|^AGENT_LOCAL_RUNTIME_SOURCE=./data/agent-skills$|AGENT_LOCAL_RUNTIME_SOURCE=../agent-skills|' \
+  "${valid}" >"${invalid_agent_source}"
+chmod 600 "${invalid_agent_source}"
+assert_rejected "${invalid_agent_source}" "AGENT_LOCAL_RUNTIME_SOURCE must remain below the project data directory"
+
+same_agent_sources="${temp_dir}/same-agent-sources.env"
+sed 's|^AGENT_LOCAL_WORKSPACE_SOURCE=./data/agent-workspace$|AGENT_LOCAL_WORKSPACE_SOURCE=./data/agent-skills|' \
+  "${valid}" >"${same_agent_sources}"
+chmod 600 "${same_agent_sources}"
+assert_rejected "${same_agent_sources}" "AGENT_LOCAL_RUNTIME_SOURCE and AGENT_LOCAL_WORKSPACE_SOURCE must be distinct"
 
 runner_token="${temp_dir}/mcp-runner-token"
 printf '%s' '0123456789abcdef0123456789abcdef0123456789abcdef' >"${runner_token}"
@@ -676,7 +692,7 @@ rendered="$({
   MIGRATION_DATABASE_URL=postgres://override:override@override:5432/override \
   DATABASE_URL=postgres://override:override@override:5432/override \
     "${production_compose}" "${valid}" \
-      --profile app --profile ops --profile mcp-runner --profile memory-worker --profile agent-runtime-control --profile agent-runtime-root-canary --profile agent-runtime-broker-canary --profile agent-runtime-project-canary --profile agent-runtime-child-canary --profile rag-worker --profile rag-ops \
+      --profile app --profile ops --profile mcp-runner --profile memory-worker --profile rag-worker --profile rag-ops \
       config --format json
 } 2>"${temp_dir}/production-compose.stderr")"
 python3 - "${rendered}" "$(id -u):$(id -g)" <<'PY'
@@ -734,18 +750,13 @@ want_image = (
     "ghcr.io/mumu-0922/neobot-mm-chat@sha256:"
     + "a" * 64
 )
-for name in ("backend", "memory-worker", "agent-runtime-control", "agent-runtime-root-canary", "agent-runtime-broker-canary", "agent-runtime-project-canary", "agent-runtime-child-canary", "migrate", "admin"):
+for name in ("backend", "memory-worker", "migrate", "admin"):
     service = services[name]
     assert service["image"] == want_image, (name, service["image"])
     assert "build" not in service, name
 assert set(services["backend"]["networks"]) == {"private", "rag-private", "mcp-control"}
 assert services["backend"]["user"] == runtime_user
 assert services["memory-worker"]["user"] == runtime_user
-assert services["agent-runtime-control"]["user"] == runtime_user
-assert services["agent-runtime-root-canary"]["user"] == runtime_user
-assert services["agent-runtime-broker-canary"]["user"] == runtime_user
-assert services["agent-runtime-project-canary"]["user"] == runtime_user
-assert services["agent-runtime-child-canary"]["user"] == runtime_user
 assert services["admin"]["user"] == runtime_user
 for name in ("memory-worker", "admin"):
     assert services[name]["secrets"] == [
@@ -791,6 +802,43 @@ assert services["postgres"]["environment"] == {
 backend_environment = services["backend"]["environment"]
 assert "neo_chat_api:test-api-password@postgres" in backend_environment["DATABASE_URL"]
 assert "MIGRATION_DATABASE_URL" not in backend_environment
+assert backend_environment["AGENT_LOCAL_RUNTIME_ENABLED"] == "true"
+assert backend_environment["AGENT_LOCAL_RUNTIME_ROOT"] == "/var/lib/mm-chat/agent-skills"
+assert backend_environment["AGENT_LOCAL_WORKSPACE_ROOT"] == "/workspace"
+assert backend_environment["AGENT_LOCAL_SHELL"] == "/bin/bash"
+assert backend_environment["AGENT_LOCAL_APPROVAL_MODE"] == "smart"
+assert backend_environment["AGENT_LOCAL_CALL_TIMEOUT"] == "30s"
+assert backend_environment["AGENT_LOCAL_RUN_TIMEOUT"] == "5m"
+assert backend_environment["AGENT_LOCAL_MAX_OUTPUT_BYTES"] == "1048576"
+assert backend_environment["AGENT_LOCAL_MAX_CALLS_PER_RUN"] == "32"
+assert backend_environment["AGENT_LOCAL_MAX_ROUNDS_PER_RUN"] == "8"
+assert backend_environment["AGENT_LOCAL_MAX_CONCURRENT"] == "2"
+backend_mounts = {
+    volume["target"]: volume
+    for volume in services["backend"]["volumes"]
+    if volume["type"] == "bind"
+}
+for target, suffix in (
+    ("/var/lib/mm-chat/agent-skills", "/mm-chat/data/agent-skills"),
+    ("/workspace", "/mm-chat/data/agent-workspace"),
+):
+    mount = backend_mounts[target]
+    assert mount["source"].endswith(suffix)
+    assert mount["bind"]["create_host_path"] is False
+    assert mount.get("read_only") is not True
+for retired in (
+    "agent-runtime-control",
+    "agent-runtime-root-canary",
+    "agent-runtime-broker-canary",
+    "agent-runtime-project-canary",
+    "agent-runtime-child-canary",
+    "agent-runtime-cron-worker",
+    "agent-runtime-draft-learning-worker",
+    "agent-runtime-product-canary",
+):
+    assert retired not in services
+for retired_network in ("agent-broker-relay", "agent-project-relay"):
+    assert retired_network not in config["networks"]
 assert backend_environment["MEMORY_LEXICAL_SHADOW_ENABLED"] == "false"
 assert backend_environment["MEMORY_HYBRID_SHADOW_ENABLED"] == "false"
 assert backend_environment["MEMORY_TOOL_LOOP_ENABLED"] == "false"
@@ -828,154 +876,6 @@ assert memory_environment["REDIS_URL"].startswith("redis://")
 assert "DATABASE_URL" not in memory_environment
 assert "MIGRATION_DATABASE_URL" not in memory_environment
 assert "/usr/local/bin/mm-chat-memory-worker healthcheck" in " ".join(memory["healthcheck"]["test"])
-
-agent_control = services["agent-runtime-control"]
-assert agent_control["profiles"] == ["agent-runtime-control"]
-assert "ports" not in agent_control
-assert agent_control["read_only"] is True
-assert agent_control["init"] is True
-assert agent_control["cap_drop"] == ["ALL"]
-assert "no-new-privileges:true" in agent_control["security_opt"]
-assert float(agent_control["cpus"]) <= 0.25
-assert int(agent_control["pids_limit"]) == 32
-assert int(agent_control["mem_limit"]) == 96 * 1024 * 1024
-assert list(agent_control["networks"]) == ["private"]
-assert agent_control["depends_on"] == {
-    "postgres": {"condition": "service_healthy", "required": True}
-}
-assert "secrets" not in agent_control
-assert len(agent_control["volumes"]) == 6
-assert all(volume["read_only"] is True for volume in agent_control["volumes"])
-assert all(volume["bind"]["create_host_path"] is False for volume in agent_control["volumes"])
-agent_environment = agent_control["environment"]
-assert "agent_runner_control_app:change-me-agent-control-postgres@postgres" in agent_environment["AGENT_RUNNER_DATABASE_URL"]
-assert agent_environment["AGENT_RUNNER_CONTROL_ENABLED"] == "false"
-for name in (
-    "AGENT_RUNTIME_ENABLED",
-    "AGENT_SCHEDULER_ENABLED",
-    "AGENT_SKILL_INSTALL_ENABLED",
-    "AGENT_LEARNING_ENABLED",
-    "AGENT_DELEGATION_ENABLED",
-    "AGENT_BROKER_READ_ONLY_ENABLED",
-    "AGENT_BROKER_MUTATION_ENABLED",
-):
-    assert agent_environment[name] == "false", name
-for forbidden in (
-    "DATABASE_URL",
-    "MIGRATION_DATABASE_URL",
-    "PROVIDER_SECRET_KEYRING_FILE",
-    "REDIS_URL",
-    "S3_ACCESS_KEY_ID",
-    "S3_SECRET_ACCESS_KEY",
-    "MCP_RUNNER_TOKEN_FILE",
-):
-    assert forbidden not in agent_environment, forbidden
-
-root_canary = services["agent-runtime-root-canary"]
-assert root_canary["profiles"] == ["agent-runtime-root-canary"]
-assert "ports" not in root_canary
-assert root_canary["read_only"] is True
-assert root_canary["init"] is True
-assert root_canary["cap_drop"] == ["ALL"]
-assert "no-new-privileges:true" in root_canary["security_opt"]
-assert float(root_canary["cpus"]) <= 0.25
-assert int(root_canary["pids_limit"]) == 32
-assert int(root_canary["mem_limit"]) == 96 * 1024 * 1024
-assert list(root_canary["networks"]) == ["private"]
-assert root_canary["depends_on"] == {
-    "postgres": {"condition": "service_healthy", "required": True}
-}
-assert "secrets" not in root_canary
-assert len(root_canary["volumes"]) == 9
-assert all(volume["read_only"] is True for volume in root_canary["volumes"])
-assert all(volume["bind"]["create_host_path"] is False for volume in root_canary["volumes"])
-root_canary_environment = root_canary["environment"]
-assert "agent_root_canary_app:change-me-agent-root-canary-postgres@postgres" in root_canary_environment["AGENT_ROOT_CANARY_DATABASE_URL"]
-assert root_canary_environment["AGENT_ROOT_RUN_CANARY_ENABLED"] == "false"
-for name in (
-    "AGENT_RUNTIME_ENABLED",
-    "AGENT_SCHEDULER_ENABLED",
-    "AGENT_SKILL_INSTALL_ENABLED",
-    "AGENT_LEARNING_ENABLED",
-    "AGENT_DELEGATION_ENABLED",
-    "AGENT_BROKER_READ_ONLY_ENABLED",
-    "AGENT_BROKER_MUTATION_ENABLED",
-):
-    assert root_canary_environment[name] == "false", name
-for forbidden in (
-    "DATABASE_URL",
-    "MIGRATION_DATABASE_URL",
-    "PROVIDER_SECRET_KEYRING_FILE",
-    "REDIS_URL",
-    "S3_ACCESS_KEY_ID",
-    "S3_SECRET_ACCESS_KEY",
-    "MCP_RUNNER_TOKEN_FILE",
-):
-    assert forbidden not in root_canary_environment, forbidden
-
-broker_canary = services["agent-runtime-broker-canary"]
-assert broker_canary["profiles"] == ["agent-runtime-broker-canary"]
-assert "ports" not in broker_canary
-assert broker_canary["read_only"] is True
-assert broker_canary["init"] is True
-assert broker_canary["cap_drop"] == ["ALL"]
-assert "no-new-privileges:true" in broker_canary["security_opt"]
-assert float(broker_canary["cpus"]) <= 0.5
-assert int(broker_canary["pids_limit"]) == 48
-assert int(broker_canary["mem_limit"]) == 128 * 1024 * 1024
-assert set(broker_canary["networks"]) == {"private", "mcp-control", "agent-broker-relay"}
-assert broker_canary["networks"]["agent-broker-relay"]["ipv4_address"] == "172.31.254.2"
-assert broker_canary["depends_on"] == {
-    "postgres": {"condition": "service_healthy", "required": True},
-    "minio-init": {"condition": "service_completed_successfully", "required": True},
-    "mcp-runner": {"condition": "service_healthy", "required": True},
-}
-assert broker_canary["secrets"] == [
-    {"source": "mm_chat_mcp_runner_token", "target": "mm_chat_mcp_runner_token"}
-]
-assert len(broker_canary["volumes"]) == 15
-assert sum(volume.get("read_only") is not True for volume in broker_canary["volumes"]) == 1
-assert all(volume["bind"]["create_host_path"] is False for volume in broker_canary["volumes"])
-broker_canary_environment = broker_canary["environment"]
-assert "agent_broker_canary_app:change-me-agent-broker-canary-postgres@postgres" in broker_canary_environment["AGENT_BROKER_CANARY_DATABASE_URL"]
-assert broker_canary_environment["AGENT_BROKER_ARTIFACT_CANARY_ENABLED"] == "false"
-assert broker_canary_environment["S3_BUCKET_AUTO_CREATE"] == "false"
-assert broker_canary_environment["AGENT_BROKER_CANARY_MCP_RUNNER_TOKEN_FILE"] == "/run/secrets/mm_chat_mcp_runner_token"
-for name in (
-    "AGENT_RUNTIME_ENABLED",
-    "AGENT_SCHEDULER_ENABLED",
-    "AGENT_SKILL_INSTALL_ENABLED",
-    "AGENT_LEARNING_ENABLED",
-    "AGENT_DELEGATION_ENABLED",
-    "AGENT_BROKER_READ_ONLY_ENABLED",
-    "AGENT_BROKER_MUTATION_ENABLED",
-):
-    assert broker_canary_environment[name] == "false", name
-for forbidden in (
-    "DATABASE_URL",
-    "MIGRATION_DATABASE_URL",
-    "PROVIDER_SECRET_KEYRING_FILE",
-    "REDIS_URL",
-    "MCP_RUNNER_TOKEN",
-):
-    assert forbidden not in broker_canary_environment, forbidden
-assert config["networks"]["agent-broker-relay"]["internal"] is True
-
-project_canary = services["agent-runtime-project-canary"]
-assert project_canary["profiles"] == ["agent-runtime-project-canary"]
-assert "ports" not in project_canary and project_canary["read_only"] is True
-assert set(project_canary["networks"]) == {"private", "agent-project-relay"}
-assert project_canary["environment"]["AGENT_PROJECT_MUTATION_CANARY_ENABLED"] == "false"
-assert len(project_canary["volumes"]) == 14 and "secrets" not in project_canary
-assert config["networks"]["agent-project-relay"]["internal"] is True
-
-child_canary = services["agent-runtime-child-canary"]
-assert child_canary["profiles"] == ["agent-runtime-child-canary"]
-assert "ports" not in child_canary and child_canary["read_only"] is True
-assert list(child_canary["networks"]) == ["private"]
-assert child_canary["environment"]["AGENT_CHILD_CANARY_ENABLED"] == "false"
-assert child_canary["environment"]["AGENT_DELEGATION_ENABLED"] == "false"
-assert len(child_canary["volumes"]) == 9 and "secrets" not in child_canary
 
 migrate_environment = services["migrate"]["environment"]
 assert "neo_chat_migrator:test-migrator-password@postgres" in migrate_environment["MIGRATION_DATABASE_URL"]
@@ -1092,7 +992,7 @@ development_rendered="$(docker compose \
   --project-directory "${project_dir}" \
   --env-file "${example}" \
   -f "${project_dir}/compose.single-server.yml" \
-    --profile app --profile ops --profile mcp-runner --profile memory-worker --profile agent-runtime-control --profile agent-runtime-root-canary --profile agent-runtime-broker-canary --profile agent-runtime-project-canary --profile agent-runtime-child-canary --profile rag-worker --profile rag-ops \
+    --profile app --profile ops --profile mcp-runner --profile memory-worker --profile rag-worker --profile rag-ops \
   config --format json)"
 python3 - "${development_rendered}" <<'PY'
 import json
@@ -1100,9 +1000,9 @@ import sys
 
 config = json.loads(sys.argv[1])
 services = config["services"]
-for name in ("postgres", "frontend", "backend", "mcp-runner", "memory-worker", "agent-runtime-control", "agent-runtime-root-canary", "agent-runtime-broker-canary", "agent-runtime-project-canary", "agent-runtime-child-canary", "migrate", "admin", "rag-worker", "rag-replay"):
+for name in ("postgres", "frontend", "backend", "mcp-runner", "memory-worker", "migrate", "admin", "rag-worker", "rag-replay"):
     assert "build" in services[name], name
-for name in ("backend", "memory-worker", "agent-runtime-control", "agent-runtime-root-canary", "agent-runtime-broker-canary", "agent-runtime-project-canary", "agent-runtime-child-canary", "migrate", "admin"):
+for name in ("backend", "memory-worker", "migrate", "admin"):
     assert services[name]["build"]["target"] == "runtime", name
 assert "MIGRATION_DATABASE_URL" not in services["backend"]["environment"]
 assert "DATABASE_URL" not in services["migrate"]["environment"]
@@ -1123,12 +1023,31 @@ assert int(postgres["mem_limit"]) == 1024 * 1024 * 1024
 assert float(postgres["cpus"]) == 2
 assert services["backend"]["user"] == "replace-with-host-uid:replace-with-host-gid"
 assert services["memory-worker"]["user"] == "replace-with-host-uid:replace-with-host-gid"
-assert services["agent-runtime-control"]["user"] == "replace-with-host-uid:replace-with-host-gid"
-assert services["agent-runtime-root-canary"]["user"] == "replace-with-host-uid:replace-with-host-gid"
-assert services["agent-runtime-broker-canary"]["user"] == "replace-with-host-uid:replace-with-host-gid"
-assert services["agent-runtime-project-canary"]["user"] == "replace-with-host-uid:replace-with-host-gid"
-assert services["agent-runtime-child-canary"]["user"] == "replace-with-host-uid:replace-with-host-gid"
 assert services["admin"]["user"] == "replace-with-host-uid:replace-with-host-gid"
+backend = services["backend"]
+assert backend["environment"]["AGENT_LOCAL_RUNTIME_ENABLED"] == "true"
+assert backend["environment"]["AGENT_LOCAL_RUNTIME_ROOT"] == "/var/lib/mm-chat/agent-skills"
+assert backend["environment"]["AGENT_LOCAL_WORKSPACE_ROOT"] == "/workspace"
+backend_targets = {
+    volume["target"]: volume
+    for volume in backend["volumes"]
+    if volume["type"] == "bind"
+}
+assert backend_targets["/var/lib/mm-chat/agent-skills"]["bind"]["create_host_path"] is False
+assert backend_targets["/workspace"]["bind"]["create_host_path"] is False
+for retired in (
+    "agent-runtime-control",
+    "agent-runtime-root-canary",
+    "agent-runtime-broker-canary",
+    "agent-runtime-project-canary",
+    "agent-runtime-child-canary",
+    "agent-runtime-cron-worker",
+    "agent-runtime-draft-learning-worker",
+    "agent-runtime-product-canary",
+):
+    assert retired not in services
+for retired_network in ("agent-broker-relay", "agent-project-relay"):
+    assert retired_network not in config["networks"]
 runner = services["mcp-runner"]
 assert runner["image"] == "ghcr.io/mumu-0922/neobot-mm-chat-mcp-runner@sha256:replace-with-64-lowercase-hex"
 assert runner["build"]["target"] == "mcp-runner"
@@ -1138,35 +1057,6 @@ assert set(runner["networks"]) == {"mcp-control", "mcp-egress"}
 assert config["networks"]["mcp-control"]["internal"] is True
 memory = services["memory-worker"]
 assert memory["profiles"] == ["memory-worker"]
-agent_control = services["agent-runtime-control"]
-assert agent_control["profiles"] == ["agent-runtime-control"]
-assert "ports" not in agent_control
-assert list(agent_control["networks"]) == ["private"]
-assert agent_control["environment"]["AGENT_RUNNER_CONTROL_ENABLED"] == "false"
-root_canary = services["agent-runtime-root-canary"]
-assert root_canary["profiles"] == ["agent-runtime-root-canary"]
-assert "ports" not in root_canary
-assert list(root_canary["networks"]) == ["private"]
-assert root_canary["environment"]["AGENT_ROOT_RUN_CANARY_ENABLED"] == "false"
-broker_canary = services["agent-runtime-broker-canary"]
-assert broker_canary["profiles"] == ["agent-runtime-broker-canary"]
-assert "ports" not in broker_canary
-assert set(broker_canary["networks"]) == {"private", "mcp-control", "agent-broker-relay"}
-assert broker_canary["environment"]["AGENT_BROKER_ARTIFACT_CANARY_ENABLED"] == "false"
-assert broker_canary["environment"]["S3_BUCKET_AUTO_CREATE"] == "false"
-assert config["networks"]["agent-broker-relay"]["internal"] is True
-project_canary = services["agent-runtime-project-canary"]
-assert project_canary["profiles"] == ["agent-runtime-project-canary"]
-assert "ports" not in project_canary
-assert set(project_canary["networks"]) == {"private", "agent-project-relay"}
-assert project_canary["environment"]["AGENT_PROJECT_MUTATION_CANARY_ENABLED"] == "false"
-assert config["networks"]["agent-project-relay"]["internal"] is True
-child_canary = services["agent-runtime-child-canary"]
-assert child_canary["profiles"] == ["agent-runtime-child-canary"]
-assert "ports" not in child_canary
-assert list(child_canary["networks"]) == ["private"]
-assert child_canary["environment"]["AGENT_CHILD_CANARY_ENABLED"] == "false"
-assert child_canary["environment"]["AGENT_DELEGATION_ENABLED"] == "false"
 assert memory["build"]["context"].endswith("/mm-chat/backend")
 assert "ports" not in memory
 rag = services["rag-worker"]

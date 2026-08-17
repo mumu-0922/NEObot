@@ -19,10 +19,6 @@ import (
 	"syscall"
 	"time"
 
-	"neo-chat/mm-chat/backend/internal/agentbroker"
-	"neo-chat/mm-chat/backend/internal/agentcontrol"
-	"neo-chat/mm-chat/backend/internal/agentcron"
-	"neo-chat/mm-chat/backend/internal/agentlearning"
 	"neo-chat/mm-chat/backend/internal/agents"
 	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/browserimport"
@@ -379,44 +375,6 @@ func main() {
 		skillOptions = append(skillOptions, skillsupply.WithLobeHubFetcher(lobeHubMarketplace))
 	}
 	skillSupplyService := skillsupply.NewService(skillOptions...)
-	var agentControlService *agentcontrol.Service
-	if sqlDB != nil {
-		agentBrokerService, brokerErr := agentbroker.NewService(
-			agentbroker.NewPostgresRepository(sqlDB),
-			map[string]agentbroker.EffectExecutor{},
-		)
-		if brokerErr != nil {
-			_ = redisClient.Close()
-			_ = db.Close()
-			logger.Error("agent_control_config_failed", slog.String("error", redactSensitiveLogText(brokerErr.Error())))
-			os.Exit(1)
-		}
-		agentLearningService := agentlearning.NewService(
-			agentlearning.WithRepository(agentlearning.NewPostgresRepository(sqlDB)),
-			agentlearning.WithObjectStore(objectStore),
-			agentlearning.WithAdministratorUserID(cfg.Auth.BootstrapUserID),
-			agentlearning.WithLearningEnabled(false),
-		)
-		agentControlService = agentcontrol.NewService(
-			agentcontrol.WithRepository(agentcontrol.NewPostgresRepository(sqlDB)),
-			agentcontrol.WithBroker(agentBrokerService),
-			agentcontrol.WithCron(agentcron.NewService(agentcron.NewPostgresRepository(sqlDB))),
-			agentcontrol.WithLearning(agentLearningService),
-			agentcontrol.WithArtifactStore(objectStore),
-			agentcontrol.WithAdministratorUserID(cfg.Auth.BootstrapUserID),
-			agentcontrol.WithLocalDirectExecution(cfg.AgentLocal.Enabled),
-		)
-		initializeCtx, initializeCancel := context.WithTimeout(context.Background(), databaseOpenTimeout)
-		err = agentControlService.Initialize(initializeCtx)
-		initializeCancel()
-		if err != nil {
-			_ = redisClient.Close()
-			_ = db.Close()
-			logger.Error("agent_control_initialize_failed", slog.String("error", redactSensitiveLogText(err.Error())))
-			os.Exit(1)
-		}
-	}
-
 	serverOptions := []httpserver.Option{
 		httpserver.WithChatRepository(chatRepo),
 		httpserver.WithRunCancellationStore(runCancellationStore),
@@ -441,7 +399,6 @@ func main() {
 		httpserver.WithProviderSecretVault(providerSecretVault),
 		httpserver.WithMCPService(mcpService),
 		httpserver.WithAgentService(agentService),
-		httpserver.WithAgentControlService(agentControlService),
 		httpserver.WithSkillSupplyService(skillSupplyService),
 		httpserver.WithLocalSkillExecutor(localSkillExecutor),
 		httpserver.WithLogger(logger),

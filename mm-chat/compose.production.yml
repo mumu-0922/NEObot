@@ -9,22 +9,6 @@ services:
     build: !reset null
   memory-worker:
     build: !reset null
-  agent-runtime-control:
-    build: !reset null
-  agent-runtime-root-canary:
-    build: !reset null
-  agent-runtime-broker-canary:
-    build: !reset null
-  agent-runtime-project-canary:
-    build: !reset null
-  agent-runtime-child-canary:
-    build: !reset null
-  agent-runtime-cron-worker:
-    build: !reset null
-  agent-runtime-draft-learning-worker:
-    build: !reset null
-  agent-runtime-product-canary:
-    build: !reset null
   migrate:
     build: !reset null
   admin:

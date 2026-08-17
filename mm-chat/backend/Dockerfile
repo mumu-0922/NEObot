@@ -14,15 +14,7 @@ RUN CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldfl
     && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-memory-hindsight-fixture ./cmd/memory-hindsight-fixture \
     && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-memory-regression-capture ./cmd/memory-regression-capture \
     && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-mcp-runner ./cmd/mcp-runner \
-    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-mcp-validate ./cmd/mcp-validate \
-    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-agent-runtime-control ./cmd/agent-runtime-control \
-    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-agent-runtime-root-canary ./cmd/agent-runtime-root-canary \
-    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-agent-runtime-broker-canary ./cmd/agent-runtime-broker-canary \
-    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-agent-runtime-project-canary ./cmd/agent-runtime-project-canary \
-    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-agent-runtime-child-canary ./cmd/agent-runtime-child-canary \
-    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-agent-runtime-cron-worker ./cmd/agent-runtime-cron-worker \
-    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-agent-runtime-draft-learning-worker ./cmd/agent-runtime-draft-learning-worker \
-    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-agent-runtime-product-canary ./cmd/agent-runtime-product-canary
+    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags="-s -w" -o /out/mm-chat-mcp-validate ./cmd/mcp-validate
 
 FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc AS runtime-base
 RUN apk add --no-cache ca-certificates curl tzdata \
@@ -48,14 +40,6 @@ COPY --from=build /out/mm-chat-migrate /usr/local/bin/mm-chat-migrate
 COPY --from=build /out/mm-chat-admin /usr/local/bin/mm-chat-admin
 COPY --from=build /out/mm-chat-memory-worker /usr/local/bin/mm-chat-memory-worker
 COPY --from=build /out/mm-chat-mcp-validate /usr/local/bin/mm-chat-mcp-validate
-COPY --from=build /out/mm-chat-agent-runtime-control /usr/local/bin/mm-chat-agent-runtime-control
-COPY --from=build /out/mm-chat-agent-runtime-root-canary /usr/local/bin/mm-chat-agent-runtime-root-canary
-COPY --from=build /out/mm-chat-agent-runtime-broker-canary /usr/local/bin/mm-chat-agent-runtime-broker-canary
-COPY --from=build /out/mm-chat-agent-runtime-project-canary /usr/local/bin/mm-chat-agent-runtime-project-canary
-COPY --from=build /out/mm-chat-agent-runtime-child-canary /usr/local/bin/mm-chat-agent-runtime-child-canary
-COPY --from=build /out/mm-chat-agent-runtime-cron-worker /usr/local/bin/mm-chat-agent-runtime-cron-worker
-COPY --from=build /out/mm-chat-agent-runtime-draft-learning-worker /usr/local/bin/mm-chat-agent-runtime-draft-learning-worker
-COPY --from=build /out/mm-chat-agent-runtime-product-canary /usr/local/bin/mm-chat-agent-runtime-product-canary
 
 USER mmchat:mmchat
 EXPOSE 8080
