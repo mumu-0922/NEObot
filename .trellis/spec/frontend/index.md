@@ -23,7 +23,7 @@ behavior changes require coverage under `mm-chat/frontend/src/__tests__/`.
 | [MCP Tools](./mcp-tools.md)                       | Tools UI, server selection authority, timeline, and Plugin-state retirement | Complete |
 | [Chat/Agent Mode](./chat-agent-mode.md)           | Persisted composer mode, model-capability downgrade, and MCP-hidden product surface | Complete |
 | [Assistant Store](./assistant-store.md)           | My Assistants, Store paging, runtime validation, CAS recovery, and start-chat snapshots | Complete |
-| [Agent Center](./agent-center.md)                 | Package Skills, current `local_ready` execution warning, Runs/Schedules/Learning, optional held OCI controls and G20.9 retirement | Complete |
+| [Skill Store](./skill-store.md)                   | Standalone `/v1/skills/*` package discovery, install/uninstall, URL state, and retired control-plane boundary | Complete |
 | [Type Safety](./type-safety.md)                   | Domain types, DTOs, runtime validation, and normalization     | Complete |
 | [Quality Guidelines](./quality-guidelines.md)     | Formatting, linting, testing, review, and forbidden patterns  | Complete |
 
@@ -51,11 +51,10 @@ Before changing frontend code:
 8. For Assistant library, Store, custom editor, or start-chat changes, read
    [Assistant Store](./assistant-store.md) and keep installation and revisions
    server-authoritative.
-9. For Package Skills, Runs, Schedules, Learning Review, Shadow state or legacy
-   Skill retirement, read [Agent Center](./agent-center.md) and preserve strict
-   DTOs, current `local_ready` plus non-isolation warning, marker-last purge and
-   no-fallback G20.9 boundaries. Optional OCI hold must not downgrade
-   `local_direct`.
+9. For Package Skill discovery, install/uninstall, or Skill Store URL state,
+   read [Skill Store](./skill-store.md). Keep `/v1/skills/*` server-authoritative
+   and do not restore retired Runs, Schedules, Learning, Shadow, Canary, Runner,
+   delegation, or OCI controls.
 
 ## Representative Code
 

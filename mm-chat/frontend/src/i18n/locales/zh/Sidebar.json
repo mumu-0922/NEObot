@@ -2,8 +2,6 @@
   "goHomeAria": "返回 Neo Chat 首页",
   "assistantHub": "助理",
   "openAssistantHub": "打开助理",
-  "agentCenter": "Agent 中心",
-  "openAgentCenter": "打开 Agent 中心",
   "knowledgeBase": "知识库",
   "openKnowledgeBase": "打开知识库",
   "tools": "工具",
@@ -48,5 +46,7 @@
   "editWorkspace": "编辑工作区",
   "chatActions": "对话操作",
   "workspaceActions": "工作区操作",
-  "moveToWorkspaceAria": "将对话移动到工作区"
+  "moveToWorkspaceAria": "将对话移动到工作区",
+  "skillStore": "技能商店",
+  "openSkillStore": "打开技能商店"
 }

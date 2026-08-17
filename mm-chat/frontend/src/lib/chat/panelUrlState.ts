@@ -1,6 +1,6 @@
 export const CHAT_PANEL_VALUES = [
   "chat",
-  "agent-center",
+  "skill-store",
   "assistants",
   "knowledge",
   "tools",
@@ -22,26 +22,16 @@ export const SETTINGS_TAB_VALUES = [
 
 export type SettingsTabId = (typeof SETTINGS_TAB_VALUES)[number];
 
-export const AGENT_CENTER_TAB_VALUES = [
-  "skills",
-  "runs",
-  "schedules",
-  "learning",
-] as const;
-
-export type AgentCenterTabId = (typeof AGENT_CENTER_TAB_VALUES)[number];
-
 export interface ChatPanelUrlState {
   panel: ChatPanel;
   settingsTab: SettingsTabId | null;
-  agentTab: AgentCenterTabId | null;
-  agentId: string | null;
+  skillId: string | null;
   needsReplace: boolean;
   normalizedSearchParams: URLSearchParams;
 }
 
 const QUERY_PANEL_VALUES: readonly ChatPanel[] = [
-  "agent-center",
+  "skill-store",
   "assistants",
   "knowledge",
   "tools",
@@ -57,10 +47,7 @@ const isQueryPanel = (value: string | null): value is ChatPanel =>
 const isSettingsTab = (value: string | null): value is SettingsTabId =>
   value !== null && SETTINGS_TAB_VALUES.includes(value as SettingsTabId);
 
-const isAgentCenterTab = (value: string | null): value is AgentCenterTabId =>
-  value !== null && AGENT_CENTER_TAB_VALUES.includes(value as AgentCenterTabId);
-
-const isAgentCenterId = (value: string | null): value is string =>
+const isSkillId = (value: string | null): value is string =>
   value !== null && /^[a-z][a-z0-9_]*_[a-z0-9]{16,64}$/.test(value);
 
 const cloneSearchParams = (input: URLSearchParams | string) =>
@@ -73,15 +60,19 @@ export const parseChatPanelUrlState = (
   const normalizedSearchParams = cloneSearchParams(input);
   const rawPanel = originalParams.get("panel");
   const rawSettingsTab = originalParams.get("settingsTab");
-  const rawAgentTab = originalParams.get("agentTab");
-  const rawAgentId = originalParams.get("agentId");
+  const rawSkillId = originalParams.get("skillId");
+  const legacyAgentTab = originalParams.get("agentTab");
+  const legacyAgentId = originalParams.get("agentId");
   let panel: ChatPanel = "chat";
   let settingsTab: SettingsTabId | null = null;
-  let agentTab: AgentCenterTabId | null = null;
-  let agentId: string | null = null;
+  let skillId: string | null = null;
   let needsReplace = false;
 
-  if (isQueryPanel(rawPanel)) {
+  if (rawPanel === "agent-center") {
+    panel = "skill-store";
+    normalizedSearchParams.set("panel", "skill-store");
+    needsReplace = true;
+  } else if (isQueryPanel(rawPanel)) {
     panel = rawPanel;
   } else if (isChatPanel(rawPanel)) {
     normalizedSearchParams.delete("panel");
@@ -103,32 +94,38 @@ export const parseChatPanelUrlState = (
     needsReplace = true;
   }
 
-  if (panel === "agent-center") {
-    agentTab = isAgentCenterTab(rawAgentTab) ? rawAgentTab : "skills";
-    if (rawAgentTab !== null && !isAgentCenterTab(rawAgentTab)) {
-      normalizedSearchParams.delete("agentTab");
-      needsReplace = true;
-    }
-    if (isAgentCenterId(rawAgentId)) {
-      agentId = rawAgentId;
-    } else if (rawAgentId !== null) {
-      normalizedSearchParams.delete("agentId");
-      needsReplace = true;
-    }
-  } else {
-    for (const key of ["agentTab", "agentId"]) {
-      if (originalParams.has(key)) {
-        normalizedSearchParams.delete(key);
+  if (panel === "skill-store") {
+    const migratedSkillId =
+      rawPanel === "agent-center" && legacyAgentTab === "skills"
+        ? legacyAgentId
+        : null;
+    const candidate = rawSkillId ?? migratedSkillId;
+    if (isSkillId(candidate)) {
+      skillId = candidate;
+      if (rawSkillId !== candidate) {
+        normalizedSearchParams.set("skillId", candidate);
         needsReplace = true;
       }
+    } else if (rawSkillId !== null) {
+      normalizedSearchParams.delete("skillId");
+      needsReplace = true;
+    }
+  } else if (rawSkillId !== null) {
+    normalizedSearchParams.delete("skillId");
+    needsReplace = true;
+  }
+
+  for (const key of ["agentTab", "agentId"]) {
+    if (originalParams.has(key)) {
+      normalizedSearchParams.delete(key);
+      needsReplace = true;
     }
   }
 
   return {
     panel,
     settingsTab,
-    agentTab,
-    agentId,
+    skillId,
     needsReplace,
     normalizedSearchParams,
   };
@@ -139,14 +136,14 @@ export const setChatPanelUrlState = (
   state: {
     panel: ChatPanel;
     settingsTab?: SettingsTabId | null;
-    agentTab?: AgentCenterTabId | null;
-    agentId?: string | null;
+    skillId?: string | null;
   },
 ): URLSearchParams => {
   const params = cloneSearchParams(input);
 
   params.delete("panel");
   params.delete("settingsTab");
+  params.delete("skillId");
   params.delete("agentTab");
   params.delete("agentId");
 
@@ -160,9 +157,8 @@ export const setChatPanelUrlState = (
     params.set("settingsTab", state.settingsTab ?? "providers");
   }
 
-  if (state.panel === "agent-center") {
-    params.set("agentTab", state.agentTab ?? "skills");
-    if (state.agentId) params.set("agentId", state.agentId);
+  if (state.panel === "skill-store" && state.skillId) {
+    params.set("skillId", state.skillId);
   }
 
   return params;

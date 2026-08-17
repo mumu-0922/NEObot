@@ -99,7 +99,6 @@ import {
   shouldRunSettingsStartupEffects,
 } from "@/lib/app/startupEffects";
 import {
-  AgentCenterTabId,
   ChatPanel,
   SettingsTabId,
   parseChatPanelUrlState,
@@ -134,7 +133,7 @@ const ImagePreview = dynamic(() => import("@/components/media/ImagePreview"), {
   ssr: false,
 });
 
-const AgentCenter = dynamic(() => import("@/components/agent/AgentCenter"), {
+const SkillStore = dynamic(() => import("@/components/skills/SkillStore"), {
   ssr: false,
 });
 const AssistantHub = dynamic(
@@ -336,8 +335,7 @@ const ChatApp = () => {
 
   const [viewMode, setViewMode] = useState<ChatPanel>("chat");
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>("providers");
-  const [agentTab, setAgentTab] = useState<AgentCenterTabId>("skills");
-  const [agentId, setAgentId] = useState<string | null>(null);
+  const [skillId, setSkillId] = useState<string | null>(null);
 
   const [serverConfigResolved, setServerConfigResolved] = useState(false);
   const [serverModelBootstrapReady, setServerModelBootstrapReady] =
@@ -591,8 +589,7 @@ const ChatApp = () => {
       panel: ChatPanel,
       nextSettingsTab?: SettingsTabId | null,
       historyMode: "push" | "replace" = "push",
-      nextAgentTab?: AgentCenterTabId | null,
-      nextAgentId?: string | null,
+      nextSkillId?: string | null,
     ) => {
       if (typeof window === "undefined") return;
 
@@ -601,8 +598,7 @@ const ChatApp = () => {
         {
           panel,
           settingsTab: nextSettingsTab,
-          agentTab: nextAgentTab,
-          agentId: nextAgentId,
+          skillId: nextSkillId,
         },
       );
       updateBrowserSearch(nextParams, historyMode);
@@ -631,16 +627,11 @@ const ChatApp = () => {
     [isMobileViewport, settingsTab, updatePanelUrl],
   );
 
-  const navigateAgentCenter = useCallback(
-    (
-      tab: AgentCenterTabId,
-      id: string | null,
-      historyMode: "push" | "replace" = "push",
-    ) => {
-      setViewMode("agent-center");
-      setAgentTab(tab);
-      setAgentId(id);
-      updatePanelUrl("agent-center", null, historyMode, tab, id);
+  const navigateSkillStore = useCallback(
+    (id: string | null, historyMode: "push" | "replace" = "push") => {
+      setViewMode("skill-store");
+      setSkillId(id);
+      updatePanelUrl("skill-store", null, historyMode, id);
       if (isMobileViewport) setIsSidebarOpen(false);
     },
     [isMobileViewport, updatePanelUrl],
@@ -665,8 +656,7 @@ const ChatApp = () => {
       );
       setViewMode(parsed.panel);
       setSettingsTab(parsed.settingsTab ?? "providers");
-      setAgentTab(parsed.agentTab ?? "skills");
-      setAgentId(parsed.agentId);
+      setSkillId(parsed.skillId);
       if (parsed.needsReplace) {
         updateBrowserSearch(parsed.normalizedSearchParams, "replace");
       }
@@ -2935,8 +2925,8 @@ const ChatApp = () => {
         toggleSidebar={() => setIsSidebarOpen((open) => !open)}
         isModal={isMobileSidebarModalOpen}
         onRequestClose={() => setIsSidebarOpen(false)}
-        onOpenAgentCenter={() => navigateAgentCenter(agentTab, agentId)}
-        isAgentCenterOpen={viewMode === "agent-center"}
+        onOpenSkillStore={() => navigateSkillStore(skillId)}
+        isSkillStoreOpen={viewMode === "skill-store"}
         onOpenAssistantHub={() => navigateToPanel("assistants")}
         isAssistantHubOpen={viewMode === "assistants"}
         onOpenKnowledgeBase={() => navigateToPanel("knowledge")}
@@ -2965,11 +2955,10 @@ const ChatApp = () => {
             </div>
           </div>
         )}
-        {viewMode === "agent-center" ? (
-          <AgentCenter
-            activeTab={agentTab}
-            selectedId={agentId}
-            onNavigate={navigateAgentCenter}
+        {viewMode === "skill-store" ? (
+          <SkillStore
+            selectedId={skillId}
+            onNavigate={navigateSkillStore}
             onClose={() => navigateToPanel("chat")}
           />
         ) : viewMode === "assistants" ? (

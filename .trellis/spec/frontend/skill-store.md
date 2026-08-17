@@ -1,0 +1,44 @@
+# Skill Store
+
+## Scope
+
+The top-level Skill Store is the only user-facing management surface for Agent
+Skill packages. It discovers admitted packages and installs/uninstalls the
+current user's library through `/v1/skills/*`.
+
+Runs, Schedules, Learning, Shadow, Canary, delegation, Runner, and OCI controls
+are retired product concepts and must not reappear in this surface.
+
+## URL and navigation
+
+- Canonical panel: `panel=skill-store`.
+- Optional selected package: `skillId=<validated candidate id>`.
+- Old `panel=agent-center&agentTab=skills` URLs migrate to the Skill Store.
+- Other legacy `agentTab`/`agentId` state is discarded.
+- Desktop keeps list/detail visible; mobile drills into detail and restores
+  focus to the originating package on Back.
+
+## API and authority
+
+- The frontend client exposes `skillStore`, not `agentCenter`.
+- The server adapter calls only `/v1/skills/store`, `/v1/skills/library`, and
+  their package install/detail endpoints.
+- Strict Zod schemas validate every response before rendering.
+- Install binds candidate ID to the displayed package fingerprint.
+- Uninstall sends the current installation revision; stale conflicts reload
+  PostgreSQL authority.
+- Local browser mode reports the server-owned feature as unsupported.
+
+## Security and UX
+
+- Render descriptions, status, tools, and fingerprints as React text only.
+- Never render package HTML or expose package file content in the Store.
+- Keep accessible names, live announcements, retry state, keyboard focus
+  restoration, dark mode, and responsive list/detail behavior.
+
+## Required tests
+
+- Skill Store composition and absence of retired control terms.
+- Server API route, strict DTO, install, and revision-bound uninstall tests.
+- URL round-trip plus legacy Agent Center Skills migration tests.
+- Sidebar navigation, format, lint, typecheck, Vitest, and production build.

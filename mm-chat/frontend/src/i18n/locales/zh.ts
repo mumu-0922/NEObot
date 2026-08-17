@@ -23,7 +23,7 @@ import RemoteFile from "./zh/RemoteFile.json";
 import Mcp from "./zh/Mcp.json";
 import Content from "./zh/Content.json";
 import ChatApp from "./zh/ChatApp.json";
-import AgentCenter from "./zh/AgentCenter.json";
+import SkillStore from "./zh/SkillStore.json";
 
 const messages = {
   Common,
@@ -51,7 +51,7 @@ const messages = {
   Mcp,
   Content,
   ChatApp,
-  AgentCenter,
+  SkillStore,
 };
 
 export default messages;

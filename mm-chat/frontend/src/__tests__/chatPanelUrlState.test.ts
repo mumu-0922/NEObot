@@ -39,15 +39,6 @@ describe("chat panel URL state", () => {
     expect(params.get("settingsTab")).toBe("health");
   });
 
-  it("normalizes the retired Legacy Skills panel to chat", () => {
-    const state = parseChatPanelUrlState("panel=skills&keep=1");
-
-    expect(state.panel).toBe("chat");
-    expect(state.normalizedSearchParams.get("keep")).toBe("1");
-    expect(state.normalizedSearchParams.has("panel")).toBe(false);
-    expect(state.needsReplace).toBe(true);
-  });
-
   it("round-trips the Tools panel without settings params", () => {
     const params = setChatPanelUrlState(new URLSearchParams("keep=1"), {
       panel: "tools",
@@ -61,37 +52,47 @@ describe("chat panel URL state", () => {
     expect(state.needsReplace).toBe(false);
   });
 
-  it("round-trips Agent Center tab and selected record", () => {
+  it("round-trips Skill Store and its selected package", () => {
     const params = setChatPanelUrlState(new URLSearchParams("keep=1"), {
-      panel: "agent-center",
-      agentTab: "runs",
-      agentId: "run_1234567890abcdef",
+      panel: "skill-store",
+      skillId: "candidate_1234567890abcdef",
     });
     const state = parseChatPanelUrlState(params);
 
     expect(state).toMatchObject({
-      panel: "agent-center",
-      agentTab: "runs",
-      agentId: "run_1234567890abcdef",
+      panel: "skill-store",
+      skillId: "candidate_1234567890abcdef",
       needsReplace: false,
     });
     expect(params.get("keep")).toBe("1");
   });
 
-  it("removes invalid Agent Center state and state on another panel", () => {
-    const invalid = parseChatPanelUrlState(
-      "panel=agent-center&agentTab=wrong&agentId=../secret",
+  it("migrates old Agent Center Skills URLs and drops control-plane state", () => {
+    const migrated = parseChatPanelUrlState(
+      "panel=agent-center&agentTab=skills&agentId=candidate_1234567890abcdef",
     );
-    expect(invalid.agentTab).toBe("skills");
-    expect(invalid.agentId).toBeNull();
+    expect(migrated).toMatchObject({
+      panel: "skill-store",
+      skillId: "candidate_1234567890abcdef",
+      needsReplace: true,
+    });
+    expect(migrated.normalizedSearchParams.get("panel")).toBe("skill-store");
+    expect(migrated.normalizedSearchParams.get("skillId")).toBe(
+      "candidate_1234567890abcdef",
+    );
+    expect(migrated.normalizedSearchParams.has("agentTab")).toBe(false);
+
+    const invalid = parseChatPanelUrlState(
+      "panel=skill-store&skillId=../secret",
+    );
+    expect(invalid.skillId).toBeNull();
     expect(invalid.needsReplace).toBe(true);
 
     const chat = parseChatPanelUrlState(
-      "panel=skills&agentTab=runs&agentId=run_1234567890abcdef",
+      "panel=chat&skillId=candidate_1234567890abcdef&agentTab=runs",
     );
     expect(chat.panel).toBe("chat");
-    expect(chat.agentTab).toBeNull();
-    expect(chat.agentId).toBeNull();
+    expect(chat.skillId).toBeNull();
     expect(chat.normalizedSearchParams.has("agentTab")).toBe(false);
   });
 

@@ -730,7 +730,7 @@ function createMockClient(
     files: options.files ?? createMockFileApi(),
     mcp: options.mcp ?? defaultClient.mcp,
     agents: options.agents ?? createMockAgentApi(),
-    agentCenter: options.agentCenter ?? defaultClient.agentCenter,
+    skillStore: options.skillStore ?? defaultClient.skillStore,
     teams: options.teams ?? defaultClient.teams,
     knowledge: options.knowledge ?? defaultClient.knowledge,
     memories: options.memories ?? defaultClient.memories,

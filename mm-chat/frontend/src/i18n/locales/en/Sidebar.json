@@ -2,8 +2,6 @@
   "goHomeAria": "Go to Neo Chat home",
   "assistantHub": "Assistants",
   "openAssistantHub": "Open Assistants",
-  "agentCenter": "Agent Center",
-  "openAgentCenter": "Open Agent Center",
   "knowledgeBase": "Knowledge Base",
   "openKnowledgeBase": "Open Knowledge Base",
   "tools": "Tools",
@@ -48,5 +46,7 @@
   "editWorkspace": "Edit Workspace",
   "chatActions": "Chat actions",
   "workspaceActions": "Workspace actions",
-  "moveToWorkspaceAria": "Move chat to workspace"
+  "moveToWorkspaceAria": "Move chat to workspace",
+  "skillStore": "Skill Store",
+  "openSkillStore": "Open Skill Store"
 }
