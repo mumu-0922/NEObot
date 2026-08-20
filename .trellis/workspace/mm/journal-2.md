@@ -485,3 +485,38 @@ Unified Chat and Agent modes, moved MCP behind connectors, added durable artifac
 ### Next Steps
 
 - None - task complete
+
+
+## Session 63: Deploy and accept Agent tool admission repair
+
+**Date**: 2026-08-20
+**Task**: Deploy and accept Agent tool admission repair
+**Branch**: `main`
+
+### Summary
+
+Fixed first-request Agent capability admission, restored immutable migration history with forward-only repair 099, deployed pinned local images with paired backup and rollback points, and passed a real file write/read/publish/download acceptance flow.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0edd0d1e` | (see git log) |
+| `0b8d5157` | (see git log) |
+| `6990509e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
