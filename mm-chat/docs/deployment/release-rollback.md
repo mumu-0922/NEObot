@@ -262,6 +262,13 @@ Clearing `MEMORY_TOOL_LOOP_CANARY_USER_IDS` is the narrower immediate canary
 rollback. Keep the global switch false after any failed Validation; never add a
 UUID merely because aggregate metrics passed when a required slice failed.
 
+For the Harness-style Agent timeline, set `AGENT_TIMELINE_ENABLED=false` or
+clear `AGENT_TIMELINE_CANARY_USER_IDS`, then recreate Backend only from the
+already-running immutable image. This removes typed cards and durable approval
+waits for new non-canary turns while preserving `chat_agent_events` and the
+legacy ProcessStep projection. Never delete events or rewrite applied
+migrations as a UI rollback.
+
 Before a flag-only `--force-recreate`, record each running container's exact
 image ID and pin `BACKEND_IMAGE` to an immutable digest or retained tag. The
 default `mm-chat/backend:local` tag is mutable and may no longer name the image

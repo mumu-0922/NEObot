@@ -99,6 +99,12 @@ Migration head: 100_chat_agent_approvals
   authority. API runtime has no table DML and may execute only create, decide,
   and restart-recovery gateways. First valid decision wins; duplicate/conflict
   tabs return current authority. Startup denies all pending rows.
+- Typed Harness timeline exposure requires both
+  `AGENT_TIMELINE_ENABLED=true` and an exact authenticated UUID in
+  `AGENT_TIMELINE_CANARY_USER_IDS`. Empty, malformed, duplicate, disabled, or
+  non-matching configuration fails closed. Continue immutable Agent event
+  writes while gated off, omit `agentEvents`/presentations from responses, and
+  do not create an invisible approval wait for a non-canary turn.
 
 ### Validation matrix
 
@@ -110,6 +116,8 @@ Migration head: 100_chat_agent_approvals
 | destructive command in smart mode | durable awaiting-approval event; execute only after exact allow |
 | duplicate/conflicting approval decision | return first terminal decision; do not overwrite history |
 | pending approval at Backend restart | `denied/restart_denied`; no execution |
+| timeline flag false or canary empty/non-matching | legacy ProcessStep projection; no typed cards or approval wait |
+| timeline flag true and exact UUID matches | typed live/reload cards and approval controls |
 | reconnect cursor retained | replay exact suffix in original sequence |
 | reconnect cursor evicted | explicit unsequenced gap, retained suffix, final Message convergence |
 | slow reconnect subscriber | close subscriber; Run and Provider pipes continue |

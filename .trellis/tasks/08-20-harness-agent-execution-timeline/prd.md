@@ -235,8 +235,8 @@ replace the runtime.
 
 ### Remaining slices
 
-- Backend-authorized Retry, canary flag, exact
-  rollout gates, performance/security acceptance, and legacy transport removal.
+- Backend-authorized Retry, performance/security acceptance, and legacy
+  transport removal after one stable canary release.
 
 ### Slice 2 — live Terminal transcript
 
@@ -286,3 +286,15 @@ replace the runtime.
   `interrupted`; it never fabricates process survival, output, or completion.
 - Focused Backend race tests and Frontend normalization/render tests cover
   metadata bounds/redaction, lifecycle merge, immutability, and restart state.
+
+### Slice 6 — exact-user canary gate
+
+- Added API-only `AGENT_TIMELINE_ENABLED` and
+  `AGENT_TIMELINE_CANARY_USER_IDS`; both default off/empty and both must admit
+  the exact authenticated UUID.
+- Durable Agent event writes continue for rollback safety. Non-canary responses
+  omit Agent events and typed presentations, preserve legacy ProcessSteps, and
+  never start an invisible durable approval wait.
+- Added config/admission/immutability tests, Compose/preflight defaults, and a
+  Backend-only flag rollback contract. No migration or event deletion is part
+  of rollout or rollback.

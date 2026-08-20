@@ -261,6 +261,9 @@ timeline updates.
   the first card position/round, applies the latest status/output, and never
   mutates the normalized source steps. A recovered interrupted Turn changes an
   unresolved process-local Job presentation to `interrupted`.
+- The frontend never self-enables the typed timeline. A non-canary Backend
+  response omits Agent events/presentations and must continue through the
+  legacy ProcessStep renderer without synthesizing cards or approval controls.
 - Terminal presentation tests cover running/completed, exit 0/nonzero,
   timeout/truncation/background pills, malformed-card fail-closed behavior,
   legacy steps, pending/allowed/denied/expired approval controls, malformed

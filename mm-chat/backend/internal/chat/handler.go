@@ -66,6 +66,8 @@ type Handler struct {
 	memoryL2SceneReaderEnabled   bool
 	memoryL3PersonaShadowEnabled bool
 	memoryL3PersonaReaderEnabled bool
+	agentTimelineEnabled         bool
+	agentTimelineCanaryUserIDs   map[string]struct{}
 	memoryWakePublisher          MemoryWakePublisher
 	memoryActionProviderResolver MemoryActionProviderResolver
 	contextBudgetPolicy          contextBudgetPolicy
@@ -459,6 +461,27 @@ func WithMemoryL3PersonaReaderEnabled(enabled bool) HandlerOption {
 	return func(handler *Handler) {
 		handler.memoryL3PersonaReaderEnabled = enabled
 	}
+}
+
+func WithAgentTimelineCanary(enabled bool, userIDs []string) HandlerOption {
+	return func(handler *Handler) {
+		handler.agentTimelineEnabled = enabled
+		handler.agentTimelineCanaryUserIDs = make(map[string]struct{}, len(userIDs))
+		for _, userID := range userIDs {
+			userID = strings.ToLower(strings.TrimSpace(userID))
+			if userID != "" {
+				handler.agentTimelineCanaryUserIDs[userID] = struct{}{}
+			}
+		}
+	}
+}
+
+func (h *Handler) agentTimelineEnabledFor(userID string) bool {
+	if h == nil || !h.agentTimelineEnabled {
+		return false
+	}
+	_, allowed := h.agentTimelineCanaryUserIDs[strings.ToLower(strings.TrimSpace(userID))]
+	return allowed
 }
 
 func WithMemoryWakePublisher(publisher MemoryWakePublisher) HandlerOption {
@@ -1102,7 +1125,7 @@ func (h *Handler) updateMessage(w http.ResponseWriter, r *http.Request, conversa
 		return
 	}
 
-	writeJSON(w, http.StatusOK, newMessageDTO(message))
+	writeJSON(w, http.StatusOK, h.newMessageDTO(r.Context(), message))
 }
 
 func (h *Handler) deleteMessage(w http.ResponseWriter, r *http.Request, conversationID string, messageID string) {
@@ -1142,7 +1165,7 @@ func (h *Handler) cancelRun(w http.ResponseWriter, r *http.Request, runID string
 	writeJSON(w, http.StatusOK, cancelRunResponse{
 		RunID:   runID,
 		Status:  message.Status,
-		Message: newMessageDTO(message),
+		Message: h.newMessageDTO(r.Context(), message),
 	})
 }
 
@@ -1394,7 +1417,7 @@ func (h *Handler) listMessages(w http.ResponseWriter, r *http.Request, conversat
 
 	items := make([]ChatMessageDTO, 0, len(messages))
 	for _, message := range messages {
-		items = append(items, newMessageDTO(message))
+		items = append(items, h.newMessageDTO(r.Context(), message))
 	}
 
 	writeJSON(w, http.StatusOK, Page[ChatMessageDTO]{Items: items})
@@ -1425,7 +1448,7 @@ func (h *Handler) createMessage(w http.ResponseWriter, r *http.Request, conversa
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, newMessageDTO(message))
+	writeJSON(w, http.StatusCreated, h.newMessageDTO(r.Context(), message))
 }
 
 func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request, conversationID string) {
@@ -1638,6 +1661,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	}
 	var preparedMCPRun mcpclient.PreparedRun
 	actor := auth.UserOrDevelopment(r.Context())
+	agentTimelineEnabled := h.agentTimelineEnabledFor(actor.ID)
 	if agentMode && h.mcpService != nil && h.mcpService.Config().Enabled {
 		preparedMCPRun, err = h.mcpService.PrepareRun(
 			r.Context(), actor.ID, conversationID, "", runID,
@@ -1732,9 +1756,11 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		goalToolRuntime = newChatAgentGoalToolRuntime(
 			h.service, agentRecorder.turnID, conversationID,
 		)
-		localSkillRuntime.bindApprovalRuntime(newChatToolApprovalRuntime(
-			h.service, h.approvalWaiters, agentRecorder.turnID,
-		))
+		if agentTimelineEnabled {
+			localSkillRuntime.bindApprovalRuntime(newChatToolApprovalRuntime(
+				h.service, h.approvalWaiters, agentRecorder.turnID,
+			))
+		}
 		providerSystemPrompt = appendChatAgentGoalSystemInstruction(
 			providerSystemPrompt, goalToolRuntime,
 		)
@@ -2202,6 +2228,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		}
 		sequence++
 		stepCopy := projected
+		if !agentTimelineEnabled {
+			stepCopy.Presentation = nil
+		}
 		if err := writeSSEEvent(w, "process.step.updated", streamEvent{
 			Type:           "process.step.updated",
 			RunID:          runID,
@@ -2219,6 +2248,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	emitTransientProcessStep := func(step ProcessStep) error {
 		sequence++
 		stepCopy := cloneProcessStep(step)
+		if !agentTimelineEnabled {
+			stepCopy.Presentation = nil
+		}
 		if err := writeSSEEvent(w, "process.step.updated", streamEvent{
 			Type: "process.step.updated", RunID: runID,
 			ConversationID: conversationID, MessageID: assistantMessage.ID,
@@ -2928,7 +2960,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	}
 
 	sequence++
-	assistantDTO := newMessageDTO(assistantMessage)
+	assistantDTO := h.newMessageDTO(r.Context(), assistantMessage)
 	if err := writeSSEEvent(w, "message.completed", streamEvent{
 		Type:           "message.completed",
 		RunID:          runID,
@@ -3146,7 +3178,7 @@ func (h *Handler) streamImageGeneration(
 	}
 
 	sequence++
-	assistantDTO := newMessageDTO(assistantMessage)
+	assistantDTO := h.newMessageDTO(r.Context(), assistantMessage)
 	if err := writeSSEEvent(w, "message.completed", streamEvent{
 		Type:           "message.completed",
 		RunID:          runID,
@@ -4234,6 +4266,40 @@ func newMessageDTO(message Message) ChatMessageDTO {
 		UpdatedAt:       formatTime(message.UpdatedAt),
 		CompletedAt:     formatOptionalTime(message.CompletedAt),
 	}
+}
+
+func (h *Handler) newMessageDTO(ctx context.Context, message Message) ChatMessageDTO {
+	dto := newMessageDTO(message)
+	actor := auth.UserOrDevelopment(ctx)
+	if h.agentTimelineEnabledFor(actor.ID) {
+		return dto
+	}
+	dto.AgentEvents = nil
+	dto.Metadata = metadataWithoutAgentTimelinePresentations(dto.Metadata)
+	return dto
+}
+
+func metadataWithoutAgentTimelinePresentations(metadata map[string]any) map[string]any {
+	cloned := cloneJSONObject(ensureObject(metadata))
+	rawTrace, ok := cloned[processTraceMetadataKey]
+	if !ok {
+		return cloned
+	}
+	encoded, err := json.Marshal(rawTrace)
+	if err != nil {
+		delete(cloned, processTraceMetadataKey)
+		return cloned
+	}
+	var steps []map[string]any
+	if err := json.Unmarshal(encoded, &steps); err != nil {
+		delete(cloned, processTraceMetadataKey)
+		return cloned
+	}
+	for _, step := range steps {
+		delete(step, "presentation")
+	}
+	cloned[processTraceMetadataKey] = steps
+	return cloned
 }
 
 func newAttachmentInputs(attachments []AttachmentDTO) []AttachmentInput {

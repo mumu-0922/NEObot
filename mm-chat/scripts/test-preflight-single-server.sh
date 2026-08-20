@@ -429,6 +429,22 @@ sed 's|^MEMORY_TOOL_LOOP_CANARY_USER_IDS=$|MEMORY_TOOL_LOOP_CANARY_USER_IDS=0000
 chmod 600 "${development_memory_tool_canary}"
 "${preflight}" "${development_memory_tool_canary}" >/dev/null
 
+invalid_agent_timeline="${temp_dir}/invalid-agent-timeline.env"
+sed 's|^AGENT_TIMELINE_ENABLED=false$|AGENT_TIMELINE_ENABLED=maybe|' \
+  "${valid}" >"${invalid_agent_timeline}"
+chmod 600 "${invalid_agent_timeline}"
+assert_rejected \
+  "${invalid_agent_timeline}" \
+  "AGENT_TIMELINE_ENABLED must be true or false"
+
+invalid_agent_timeline_canary="${temp_dir}/invalid-agent-timeline-canary.env"
+sed 's|^AGENT_TIMELINE_CANARY_USER_IDS=$|AGENT_TIMELINE_CANARY_USER_IDS=not-a-uuid|' \
+  "${valid}" >"${invalid_agent_timeline_canary}"
+chmod 600 "${invalid_agent_timeline_canary}"
+assert_rejected \
+  "${invalid_agent_timeline_canary}" \
+  "AGENT_TIMELINE_CANARY_USER_IDS must be a unique comma-separated UUID list"
+
 for memory_l2_flag in \
   MEMORY_L2_SCENE_SHADOW_ENABLED \
   MEMORY_L2_SCENE_READER_ENABLED; do
@@ -843,6 +859,8 @@ assert backend_environment["MEMORY_LEXICAL_SHADOW_ENABLED"] == "false"
 assert backend_environment["MEMORY_HYBRID_SHADOW_ENABLED"] == "false"
 assert backend_environment["MEMORY_TOOL_LOOP_ENABLED"] == "false"
 assert backend_environment["MEMORY_TOOL_LOOP_CANARY_USER_IDS"] == ""
+assert backend_environment["AGENT_TIMELINE_ENABLED"] == "false"
+assert backend_environment["AGENT_TIMELINE_CANARY_USER_IDS"] == ""
 assert backend_environment["MEMORY_L2_SCENE_SHADOW_ENABLED"] == "false"
 assert backend_environment["MEMORY_L2_SCENE_READER_ENABLED"] == "false"
 assert backend_environment["MEMORY_L3_PERSONA_SHADOW_ENABLED"] == "false"

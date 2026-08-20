@@ -87,6 +87,13 @@ metadata; the UI joins those facts by exact `jobId`. Because Jobs are
 process-local, startup recovery projects any unresolved `running` or `stopping`
 Job as `interrupted` rather than claiming that it survived the Backend.
 
+Typed timeline rollout is server-authoritative. It requires
+`AGENT_TIMELINE_ENABLED=true` and an exact authenticated UUID in
+`AGENT_TIMELINE_CANARY_USER_IDS`. When either gate is absent, Backend continues
+durable Agent event writes but returns only the legacy ProcessStep projection
+and does not enter a hidden approval wait. Clearing either gate is the
+non-destructive rollback.
+
 ## Artifact publication
 
 - `publish_file` exists only in effective Agent mode and accepts a

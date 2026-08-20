@@ -1196,6 +1196,10 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		chat.WithMemoryL2SceneReaderEnabled(cfg.Memory.L2SceneReaderEnabled),
 		chat.WithMemoryL3PersonaShadowEnabled(cfg.Memory.L3PersonaShadowEnabled),
 		chat.WithMemoryL3PersonaReaderEnabled(cfg.Memory.L3PersonaReaderEnabled),
+		chat.WithAgentTimelineCanary(
+			cfg.AgentTimeline.Enabled,
+			cfg.AgentTimeline.CanaryUserIDs,
+		),
 		chat.WithMemoryWakePublisher(resolvedOptions.memoryWakePublisher),
 		chat.WithMemoryActionProviderResolver(runtimeMemoryActionProviderResolver{
 			service: runtimeConfigService,

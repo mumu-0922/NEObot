@@ -249,6 +249,10 @@ if backend["environment"]["MEMORY_TOOL_LOOP_CANARY_USER_IDS"] != "":
     raise SystemExit("standalone verification: Memory Tool canary must default empty")
 if "MEMORY_TOOL_LOOP_CANARY_USER_IDS" in memory_worker["environment"]:
     raise SystemExit("standalone verification: Memory Worker received the Tool canary")
+if backend["environment"]["AGENT_TIMELINE_ENABLED"] != "false":
+    raise SystemExit("standalone verification: Agent timeline must default false")
+if backend["environment"]["AGENT_TIMELINE_CANARY_USER_IDS"] != "":
+    raise SystemExit("standalone verification: Agent timeline canary must default empty")
 if (
     backend["environment"]["MEMORY_L2_SCENE_SHADOW_ENABLED"]
     != memory_worker["environment"]["MEMORY_L2_SCENE_SHADOW_ENABLED"]

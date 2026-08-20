@@ -50,6 +50,11 @@ bash mm-chat/scripts/verify-chat-agent-approvals-postgres17.sh
   invokes recovery before serving traffic so no pending pre-restart command can
   resume. Roll back the UI/runtime path by disabling Agent local execution; do
   not down a database that contains approval/grant rows.
+- `AGENT_TIMELINE_ENABLED` defaults false and
+  `AGENT_TIMELINE_CANARY_USER_IDS` defaults empty. Both are API-only; exact
+  authenticated UUID admission is required. Clearing either is the immediate
+  UI/control rollback and must preserve durable Agent events and legacy
+  ProcessStep projection.
 
 ### Validation matrix
 
@@ -63,6 +68,7 @@ bash mm-chat/scripts/verify-chat-agent-approvals-postgres17.sh
 | legacy Compose/env/binary path returns | local runtime gate fails |
 | legacy fact exists | migration 098 fails atomically |
 | cleanup, repair, approval migration succeed | head 100; immutable 096 checksum and Chat/Skill/MCP/File/Memory data retained |
+| timeline flag false, canary invalid/empty/non-matching | invalid config stops preflight/startup; otherwise legacy projection only |
 
 ### Good / base / bad cases
 

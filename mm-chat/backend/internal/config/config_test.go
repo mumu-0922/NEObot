@@ -101,6 +101,10 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	if len(cfg.Memory.ToolLoopCanaryUserIDs) != 0 {
 		t.Fatalf("Memory.ToolLoopCanaryUserIDs = %#v, want empty", cfg.Memory.ToolLoopCanaryUserIDs)
 	}
+	if cfg.AgentTimeline.Enabled != DefaultAgentTimelineEnabled ||
+		len(cfg.AgentTimeline.CanaryUserIDs) != 0 {
+		t.Fatalf("AgentTimeline = %#v, want disabled and empty", cfg.AgentTimeline)
+	}
 	if cfg.Memory.L2SceneShadowEnabled != DefaultMemoryL2SceneShadowEnabled {
 		t.Fatalf("Memory.L2SceneShadowEnabled = %v, want %v",
 			cfg.Memory.L2SceneShadowEnabled, DefaultMemoryL2SceneShadowEnabled)
@@ -279,6 +283,8 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvMemoryHybridShadow:     " true ",
 		EnvMemoryToolLoop:         " true ",
 		EnvMemoryToolLoopCanary:   " 77777777-7777-4777-8777-777777777777,AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA ",
+		EnvAgentTimelineEnabled:   " true ",
+		EnvAgentTimelineCanary:    " AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA ",
 		EnvMemoryL2SceneShadow:    " true ",
 		EnvMemoryL2SceneReader:    " true ",
 		EnvMemoryL3PersonaShadow:  " true ",
@@ -401,6 +407,10 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	}
 	if !cfg.Memory.L3PersonaReaderEnabled {
 		t.Fatal("Memory.L3PersonaReaderEnabled = false, want true")
+	}
+	if !cfg.AgentTimeline.Enabled || len(cfg.AgentTimeline.CanaryUserIDs) != 1 ||
+		cfg.AgentTimeline.CanaryUserIDs[0] != "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" {
+		t.Fatalf("AgentTimeline = %#v", cfg.AgentTimeline)
 	}
 	if cfg.Auth.Mode != AuthModeRequired {
 		t.Fatalf("Auth.Mode = %q, want required", cfg.Auth.Mode)
@@ -668,6 +678,18 @@ func TestConfigValidateRejectsPartialAndInvalidTeamSettings(t *testing.T) {
 				EnvMemoryToolLoopCanary: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa,AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
 			},
 			want: EnvMemoryToolLoopCanary,
+		},
+		{
+			name:   "invalid Agent timeline canary UUID",
+			values: map[string]string{EnvAgentTimelineCanary: "not-a-uuid"},
+			want:   EnvAgentTimelineCanary,
+		},
+		{
+			name: "duplicate Agent timeline canary UUID",
+			values: map[string]string{
+				EnvAgentTimelineCanary: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa,AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+			},
+			want: EnvAgentTimelineCanary,
 		},
 		{
 			name:   "cursor active without keyring",

@@ -31,6 +31,7 @@ const (
 	DefaultMemoryL2SceneReaderEnabled   = false
 	DefaultMemoryL3PersonaShadowEnabled = false
 	DefaultMemoryL3PersonaReaderEnabled = false
+	DefaultAgentTimelineEnabled         = false
 	DefaultProviderTimeout              = 2 * time.Minute
 	DefaultProviderName                 = "Server Default"
 	DefaultStorageBackend               = "local"
@@ -142,6 +143,8 @@ const (
 	EnvMemoryL2SceneReader      = "MEMORY_L2_SCENE_READER_ENABLED"
 	EnvMemoryL3PersonaShadow    = "MEMORY_L3_PERSONA_SHADOW_ENABLED"
 	EnvMemoryL3PersonaReader    = "MEMORY_L3_PERSONA_READER_ENABLED"
+	EnvAgentTimelineEnabled     = "AGENT_TIMELINE_ENABLED"
+	EnvAgentTimelineCanary      = "AGENT_TIMELINE_CANARY_USER_IDS"
 	EnvMCPEnabled               = "MCP_ENABLED"
 	EnvMCPRemoteEnabled         = "MCP_REMOTE_ENABLED"
 	EnvMCPStdioEnabled          = "MCP_STDIO_ENABLED"
@@ -198,6 +201,7 @@ type Config struct {
 	Storage         StorageConfig
 	RAG             RAGConfig
 	Memory          MemoryConfig
+	AgentTimeline   AgentTimelineConfig
 	Auth            AuthConfig
 	Team            TeamConfig
 	MCP             MCPConfig
@@ -263,6 +267,14 @@ type MemoryConfig struct {
 	L3PersonaShadowEnabled bool
 	L3PersonaReaderEnabled bool
 	invalidCanaryUserIDs   bool
+}
+
+// AgentTimelineConfig controls typed Harness-style presentation exposure.
+// Durable Agent events continue to be written when this display gate is off.
+type AgentTimelineConfig struct {
+	Enabled              bool
+	CanaryUserIDs        []string
+	invalidCanaryUserIDs bool
 }
 
 type MCPConfig struct {
@@ -379,6 +391,9 @@ func (cfg Config) Validate() error {
 	if cfg.Memory.invalidCanaryUserIDs {
 		return fmt.Errorf("%s must be a comma-separated list of UUIDs", EnvMemoryToolLoopCanary)
 	}
+	if cfg.AgentTimeline.invalidCanaryUserIDs {
+		return fmt.Errorf("%s must be a comma-separated list of UUIDs", EnvAgentTimelineCanary)
+	}
 	if len(cfg.Team.invalidFields) > 0 {
 		return fmt.Errorf("invalid configuration for %s", cfg.Team.invalidFields[0])
 	}
@@ -467,7 +482,9 @@ func Load() Config {
 func LoadFromEnv(lookup func(string) (string, bool)) Config {
 	teamWorker, invalidTeamFields := loadTeamMailWorkerConfig(lookup)
 	memoryCanaryUserIDs, invalidMemoryCanaryUserIDs :=
-		loadMemoryToolLoopCanaryUserIDs(lookup)
+		loadExactCanaryUserIDs(lookup, EnvMemoryToolLoopCanary)
+	agentTimelineCanaryUserIDs, invalidAgentTimelineCanaryUserIDs :=
+		loadExactCanaryUserIDs(lookup, EnvAgentTimelineCanary)
 	return Config{
 		Addr:        envOrDefault(lookup, EnvAddr, DefaultAddr),
 		Version:     envOrDefault(lookup, EnvVersion, DefaultVersion),
@@ -557,6 +574,13 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 				DefaultMemoryL3PersonaReaderEnabled,
 			),
 			invalidCanaryUserIDs: invalidMemoryCanaryUserIDs,
+		},
+		AgentTimeline: AgentTimelineConfig{
+			Enabled: boolEnvOrDefault(
+				lookup, EnvAgentTimelineEnabled, DefaultAgentTimelineEnabled,
+			),
+			CanaryUserIDs:        agentTimelineCanaryUserIDs,
+			invalidCanaryUserIDs: invalidAgentTimelineCanaryUserIDs,
 		},
 		MCP: MCPConfig{
 			Enabled:               boolEnvOrDefault(lookup, EnvMCPEnabled, DefaultMCPEnabled),
@@ -779,10 +803,11 @@ var canonicalUUIDRE = regexp.MustCompile(
 	`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`,
 )
 
-func loadMemoryToolLoopCanaryUserIDs(
+func loadExactCanaryUserIDs(
 	lookup func(string) (string, bool),
+	envKey string,
 ) ([]string, bool) {
-	value, configured := optionalLookup(lookup, EnvMemoryToolLoopCanary)
+	value, configured := optionalLookup(lookup, envKey)
 	if !configured {
 		return nil, false
 	}
