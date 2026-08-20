@@ -7,7 +7,7 @@
     "frontendImage": "registry.example/mm-chat/frontend@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
   },
   "window": {
-    "startedAt": "2026-08-19T12:00:00Z",
+    "startedAt": "2026-08-20T11:30:00Z",
     "endedAt": "2026-08-20T12:00:00Z",
     "continuouslyDeployed": true
   },

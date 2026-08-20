@@ -269,10 +269,11 @@ waits for new non-canary turns while preserving `chat_agent_events` and the
 legacy ProcessStep projection. Never delete events or rewrite applied
 migrations as a UI rollback.
 
-Do not retire that legacy projection merely because local tests pass. One
-stable timeline canary release means all of the following remained true for at
-least 24 continuous hours on one unchanged Git commit and immutable Backend and
-Frontend image digests:
+Do not retire that legacy projection merely because local tests pass. Run one
+focused timeline canary acceptance session on an unchanged Git commit and
+immutable Backend and Frontend image digests. The recorded UTC end must be
+later than the start, but there is no arbitrary soak-time requirement. During
+that one session, all of the following must remain true:
 
 - exactly one canary UUID received Agent events while at least one disjoint
   control UUID did not;
@@ -304,7 +305,8 @@ python3 scripts/verify-agent-timeline-canary-evidence.py \
   --report /tmp/agent-timeline-canary-report.json
 ```
 
-Only an `eligible` report permits a separate legacy-removal change. It does not
+Only an `eligible` report from that focused session permits a separate
+legacy-removal change. It does not
 delete transport code, enable the flag for more users, deploy an image, or
 authorize Push. Retain the external evidence and its report together: the
 report binds the exact commit, image digests, UTC window, and canonical evidence

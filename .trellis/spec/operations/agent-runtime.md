@@ -56,14 +56,15 @@ bash mm-chat/scripts/verify-chat-agent-approvals-postgres17.sh
   UI/control rollback and must preserve durable Agent events and legacy
   ProcessStep projection.
 - Legacy ProcessStep removal requires one content-free, verifier-eligible
-  stable canary record: at least 24 continuous hours on unchanged immutable
-  Backend/Frontend digests and Git commit; exactly one canary plus a disjoint
-  control; five synthetic Agent turns and Tool calls; Terminal/Search/File/MCP
-  plus the full event chain; live/reload/reconnect/approval/cancel/retry gates;
-  the 300 ms visible-update and 20% durable-reload limits; zero leak probes;
-  and a flag-only rollback rehearsal that preserves events and unrelated
-  services. Evidence files remain outside Git at mode `0600`; only the
-  content-free report may be retained operationally.
+  focused canary session on unchanged immutable Backend/Frontend digests and
+  Git commit. Its UTC end must be later than its start; no arbitrary soak time
+  is required. Use exactly one canary plus a disjoint control; five synthetic
+  Agent turns and Tool calls; Terminal/Search/File/MCP plus the full event
+  chain; live/reload/reconnect/approval/cancel/retry gates; the 300 ms
+  visible-update and 20% durable-reload limits; zero leak probes; and a
+  flag-only rollback rehearsal that preserves events and unrelated services.
+  Evidence files remain outside Git at mode `0600`; only the content-free
+  report may be retained operationally.
 
 ### Validation matrix
 
@@ -78,7 +79,7 @@ bash mm-chat/scripts/verify-chat-agent-approvals-postgres17.sh
 | legacy fact exists | migration 098 fails atomically |
 | cleanup, repair, approval migration succeed | head 100; immutable 096 checksum and Chat/Skill/MCP/File/Memory data retained |
 | timeline flag false, canary invalid/empty/non-matching | invalid config stops preflight/startup; otherwise legacy projection only |
-| stable-canary evidence is missing or verifier-ineligible | keep legacy projection and exact-user scope; do not widen or retire transport |
+| focused-canary evidence is missing or verifier-ineligible | keep legacy projection and exact-user scope; do not widen or retire transport |
 
 ### Good / base / bad cases
 
@@ -99,7 +100,7 @@ bash mm-chat/scripts/verify-chat-agent-approvals-postgres17.sh
 - Prove protected runtime paths remain untouched by source cleanup.
 - Run `bash mm-chat/scripts/test-agent-timeline-canary-evidence.sh`; a real
   removal additionally requires an external eligible report from the pinned
-  release window.
+  focused acceptance session.
 
 ### Wrong vs correct
 

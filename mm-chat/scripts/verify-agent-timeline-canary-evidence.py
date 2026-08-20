@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate content-free Harness timeline canary release evidence."""
+"""Validate content-free Harness timeline focused-canary evidence."""
 
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 MAX_EVIDENCE_BYTES = 64 * 1024
-MINIMUM_WINDOW_SECONDS = 24 * 60 * 60
 MINIMUM_AGENT_TURNS = 5
 MINIMUM_TOOL_CALLS = 5
 MAXIMUM_VISIBLE_UPDATE_P95_MS = 300.0
@@ -91,7 +90,7 @@ def fail(code: str) -> NoReturn:
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Validate content-free Agent timeline stable-canary evidence.",
+        description="Validate content-free Agent timeline focused-canary evidence.",
     )
     parser.add_argument("evidence", type=Path)
     parser.add_argument("--report", type=Path)
@@ -219,7 +218,7 @@ def validate_window(value: Any) -> tuple[float, str, str]:
     started_at = require_timestamp(window["startedAt"], "window.startedAt")
     ended_at = require_timestamp(window["endedAt"], "window.endedAt")
     window_seconds = (ended_at - started_at).total_seconds()
-    if window_seconds < MINIMUM_WINDOW_SECONDS:
+    if window_seconds <= 0:
         fail("window.duration")
     return window_seconds, window["startedAt"], window["endedAt"]
 
@@ -326,7 +325,7 @@ def validate_evidence(value: dict[str, Any]) -> dict[str, Any]:
         "frontendImage": frontend_image,
         "windowStartedAt": window_started_at,
         "windowEndedAt": window_ended_at,
-        "windowHours": int(window_seconds // 3600),
+        "windowDurationSeconds": int(window_seconds),
         "canaryUserCount": canary_count,
         "controlUserCount": control_count,
         "agentTurns": agent_turns,

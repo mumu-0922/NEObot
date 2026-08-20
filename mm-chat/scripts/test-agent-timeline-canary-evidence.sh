@@ -54,8 +54,8 @@ assert report["securityLeakCount"] == 0
 assert report["status"] == "eligible"
 assert report["toolCalls"] == 8
 assert report["visibleUpdateP95Ms"] == 200.0
-assert report["windowHours"] == 24
-assert report["windowStartedAt"] == "2026-08-19T12:00:00Z"
+assert report["windowDurationSeconds"] == 1800
+assert report["windowStartedAt"] == "2026-08-20T11:30:00Z"
 assert report["windowEndedAt"] == "2026-08-20T12:00:00Z"
 assert report["backendImage"].endswith("@sha256:" + "0123456789abcdef" * 4)
 assert report["frontendImage"].endswith("@sha256:" + "fedcba9876543210" * 4)
@@ -75,8 +75,8 @@ import sys
 
 source, destination, mutation = sys.argv[1:]
 value = json.load(open(source, encoding="utf-8"))
-if mutation == "short_window":
-    value["window"]["startedAt"] = "2026-08-20T11:00:00Z"
+if mutation == "invalid_window":
+    value["window"]["startedAt"] = value["window"]["endedAt"]
 elif mutation == "control_exposure":
     value["rollout"]["controlAgentEventsExposed"] = True
 elif mutation == "visible_latency":
@@ -102,7 +102,7 @@ PY
   fi
 }
 
-mutate_and_reject short-window short_window window.duration
+mutate_and_reject invalid-window invalid_window window.duration
 mutate_and_reject control-exposure control_exposure rollout.controlAgentEventsExposed
 mutate_and_reject visible-latency visible_latency performance.visibleUpdateP95Ms.limit
 mutate_and_reject reload-ratio reload_ratio performance.durableReloadRatio

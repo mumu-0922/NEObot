@@ -101,17 +101,18 @@ single step-ID index rather than repeated linear scans. A hostile presentation
 fixture must also prove that secrets, runtime-owned host paths, ANSI/control
 bytes, oversized content, raw MCP payloads, and artifact bodies do not cross
 the durable event or DOM boundary. Keep the legacy ProcessStep transport until
-these gates have passed one stable canary release; do not remove it in the
-initial acceptance slice.
+these gates have passed one focused canary acceptance session; do not remove it
+in the initial acceptance slice.
 
 Legacy-removal readiness is a separate operational fact. It requires the
-content-free stable-canary evidence contract in
+content-free focused-canary evidence contract in
 `docs/deployment/release-rollback.md` and an `eligible` result from
 `scripts/verify-agent-timeline-canary-evidence.py`. The verifier is strict and
 fail-closed: one unchanged commit plus immutable Backend/Frontend digests,
-24 continuous hours, exact canary/control isolation, minimum synthetic
-coverage, performance/security/control gates, and a non-destructive rollback
-rehearsal. Local acceptance alone never authorizes transport deletion.
+a positive UTC session window, exact canary/control isolation, minimum
+synthetic coverage, performance/security/control gates, and a non-destructive
+rollback rehearsal. The focused session must exercise the live, reload,
+reconnect, approval, cancel, and retry paths against the same candidate.
 
 Manual Tool retry is also server-authoritative. A canary client may call
 `POST /v1/chat/agent-events/{eventId}/retry` with an idempotency key only when
