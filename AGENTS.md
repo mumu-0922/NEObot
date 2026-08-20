@@ -46,7 +46,9 @@ request, storage, and failure path.
 ## Commits and pull requests
 
 Use focused conventional prefixes such as `feat:`, `fix:`, `docs:`, `refactor:`,
-and `chore:`. Pull requests must summarize user-facing impact and list the
+and `chore:`. After verified work is complete, create the focused commit
+automatically without asking for confirmation; never push unless explicitly
+requested. Pull requests must summarize user-facing impact and list the
 component checks actually run. Update `mm-chat/docs/` when configuration,
 deployment, security, storage, or operational behavior changes.
 
