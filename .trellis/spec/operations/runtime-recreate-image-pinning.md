@@ -105,6 +105,12 @@ removed.
   Tailwind source class names may be escaped, transformed, or absent from
   minified assets; assert emitted CSS declarations or rendered browser behavior
   instead of treating a source-marker miss as a defective candidate image.
+- A user-reported live UI fix is not complete when only source tests and a local
+  production build pass. Prove the active Frontend container runs an image
+  built from or after the fix commit, then inspect the CSS/JavaScript fetched
+  from the live edge (or rendered computed style). If the container predates
+  the fix, classify the failure as release propagation and deploy the reviewed
+  Frontend image before changing the source again.
 - Parenthesize every PostgreSQL set-operation branch that owns
   `ORDER BY`/`LIMIT`, or move that selection into an explicit scalar subquery.
   Never let verifier SQL syntax remain the first execution of a rollback path
@@ -112,24 +118,25 @@ removed.
 
 ### 4. Validation and error matrix
 
-| Condition | Required result |
-| --- | --- |
-| Running image ID has no retained digest/tag | Stop before recreation and create a protected reference while the container still exists. |
-| Rendered image differs from the recorded live image during a flag-only change | Reject the candidate; pin the recorded image explicitly. |
-| Selected binary requires an unapplied migration | Do not migrate implicitly; select a schema-compatible image or obtain separate migration authorization. |
-| Candidate Backend image has the MCP Runner entrypoint or no API command | Do not wait out health retries. Restore the retained Backend image immediately, rebuild with `--target runtime`, inspect image config, then perform a fresh targeted recreation. |
-| Target does not become healthy | Restore the protected environment and exact retained image, then verify health before further work. |
-| Any unrelated container ID changes | Treat the operation as scope violation and investigate. |
-| Persistent row count decreases | Stop, retain evidence, and restore from the protected data artifact if mutation is confirmed. |
-| Live database contains no expected public schema | Preserve the empty state, stop recreation, and obtain separate authority for an isolated same-major restore rehearsal plus an exact migration range. |
-| Target container is healthy but readiness reports storage not ready | Verify bucket and IAM separately; rerun only the existing attested initializer, then prove application-key access without restarting storage. |
-| `compose run --no-build` is rejected by the installed CLI | Stop before credentials. Capability-detect, retain `--pull never`, omit positive `--build`, and verify the exact helper image. |
-| Running admin binary lacks the required one-off command | Stop before credentials/Provider work and select an explicitly reviewed pinned helper image; do not recreate live backend. |
-| A post-recreate identity/readiness probe returns route-level `404` | Restore the protected behavior environment, keep the pinned image and schema, verify the route from current source/runtime, and retry only the Provider-free recreation. Do not replay a consumed smoke. |
-| An `EXIT` trap reads a phase marker assigned inside a pipeline subshell | Treat automatic rollback as unproven. Execute the prepared corrective rollback directly, verify the disabled state, then replace the pipeline or persist state explicitly before retry. |
-| A healthy response omits an optional field assumed by the verifier | Roll back behavior, inspect the current API contract and captured response, then assert only authoritative required fields on a fresh Provider-free retry. |
-| A `UNION` arm contains unparenthesized `ORDER BY`/`LIMIT` | Reject the verifier before live use; parenthesize the arm or use a scalar subquery and execute it against the rehearsed schema. |
-| A packaged frontend lacks a literal Tailwind source class but emits the required CSS declaration | Treat the literal-marker assertion as invalid, retain the prepared rollback result, and retry with compiled-CSS or rendered-behavior verification. |
+| Condition                                                                                        | Required result                                                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Running image ID has no retained digest/tag                                                      | Stop before recreation and create a protected reference while the container still exists.                                                                                                                |
+| Rendered image differs from the recorded live image during a flag-only change                    | Reject the candidate; pin the recorded image explicitly.                                                                                                                                                 |
+| Selected binary requires an unapplied migration                                                  | Do not migrate implicitly; select a schema-compatible image or obtain separate migration authorization.                                                                                                  |
+| Candidate Backend image has the MCP Runner entrypoint or no API command                          | Do not wait out health retries. Restore the retained Backend image immediately, rebuild with `--target runtime`, inspect image config, then perform a fresh targeted recreation.                         |
+| Target does not become healthy                                                                   | Restore the protected environment and exact retained image, then verify health before further work.                                                                                                      |
+| Any unrelated container ID changes                                                               | Treat the operation as scope violation and investigate.                                                                                                                                                  |
+| Persistent row count decreases                                                                   | Stop, retain evidence, and restore from the protected data artifact if mutation is confirmed.                                                                                                            |
+| Live database contains no expected public schema                                                 | Preserve the empty state, stop recreation, and obtain separate authority for an isolated same-major restore rehearsal plus an exact migration range.                                                     |
+| Target container is healthy but readiness reports storage not ready                              | Verify bucket and IAM separately; rerun only the existing attested initializer, then prove application-key access without restarting storage.                                                            |
+| `compose run --no-build` is rejected by the installed CLI                                        | Stop before credentials. Capability-detect, retain `--pull never`, omit positive `--build`, and verify the exact helper image.                                                                           |
+| Running admin binary lacks the required one-off command                                          | Stop before credentials/Provider work and select an explicitly reviewed pinned helper image; do not recreate live backend.                                                                               |
+| A post-recreate identity/readiness probe returns route-level `404`                               | Restore the protected behavior environment, keep the pinned image and schema, verify the route from current source/runtime, and retry only the Provider-free recreation. Do not replay a consumed smoke. |
+| An `EXIT` trap reads a phase marker assigned inside a pipeline subshell                          | Treat automatic rollback as unproven. Execute the prepared corrective rollback directly, verify the disabled state, then replace the pipeline or persist state explicitly before retry.                  |
+| A healthy response omits an optional field assumed by the verifier                               | Roll back behavior, inspect the current API contract and captured response, then assert only authoritative required fields on a fresh Provider-free retry.                                               |
+| A `UNION` arm contains unparenthesized `ORDER BY`/`LIMIT`                                        | Reject the verifier before live use; parenthesize the arm or use a scalar subquery and execute it against the rehearsed schema.                                                                          |
+| A packaged frontend lacks a literal Tailwind source class but emits the required CSS declaration | Treat the literal-marker assertion as invalid, retain the prepared rollback result, and retry with compiled-CSS or rendered-behavior verification.                                                       |
+| Source checks pass but the live Frontend image predates the fix commit                           | Stop editing the source; retain the old image, deploy a reviewed candidate, and prove the live edge serves the candidate asset.                                                                          |
 
 ### 5. Good / base / bad cases
 
@@ -175,8 +182,8 @@ removed.
   endpoint contract does not require.
 - **Good SQL verification**: execute the exact set-operation query during the
   disposable rehearsal with every ordered/limited arm parenthesized.
-- **Bad SQL verification**: first execute an untested `UNION ... ORDER BY ...
-  LIMIT` verifier only after live flags have been enabled.
+- **Bad SQL verification**: first execute an untested set-operation verifier
+  only after live flags have been enabled.
 - **Good packaged-UI verification**: assert the exact emitted `max-height` and
   scrollbar declarations or measure the rendered scroll region.
 - **Bad packaged-UI verification**: grep minified chunks for an unescaped source
@@ -215,6 +222,9 @@ removed.
   including every `UNION` arm with `ORDER BY`/`LIMIT`.
 - For Tailwind UI changes, inspect the packaged CSS declarations or rendered
   computed style; do not use literal source class names as runtime evidence.
+- For fixes reported against a live page, record the pre/post Frontend image
+  IDs, require only the Frontend container ID to change, and fetch the decisive
+  immutable asset through the live HTTP edge after recreation.
 
 ### 7. Wrong vs correct
 
