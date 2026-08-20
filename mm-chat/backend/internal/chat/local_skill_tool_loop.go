@@ -177,14 +177,13 @@ func (runtime *localSkillToolRuntime) execute(
 		Mode:           "local_direct",
 		Classification: localSkillClassification(name),
 	}
-	if name == localTerminalToolName {
-		execution.Presentation = runtime.terminalProcessPresentation(call)
-	}
+	execution.Presentation = runtime.localProcessPresentation(call)
 	if !sendToolExecutionEvent(ctx, events, execution) {
 		return ProviderToolResult{}, context.Canceled
 	}
 	started := time.Now()
 	result, failure, fatal := runtime.executeCall(ctx, call, &execution)
+	execution.Presentation = completeLocalProcessPresentation(execution.Presentation, result)
 	execution.DurationMillis = max(time.Since(started).Milliseconds(), 0)
 	if fatal != nil {
 		execution.Status = ProcessStepStatusCancelled

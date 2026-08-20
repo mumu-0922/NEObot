@@ -6,6 +6,8 @@
   "thoughtProcessDetails": "思考プロセスの詳細",
   "processDetails": "生成プロセスの詳細",
   "processSteps": "生成プロセスのステップ",
+  "processRound": "ラウンド {round}",
+  "processCopy": "コピー",
   "providerReasoning": "プロバイダーの推論",
   "processRunning": "{stage}中…",
   "processRunningGeneric": "処理中…",

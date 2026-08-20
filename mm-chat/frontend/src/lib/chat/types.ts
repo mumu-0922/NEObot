@@ -69,10 +69,22 @@ export interface ProcessStep {
   completedAt?: string;
   durationMs?: number;
   detail?: Record<string, unknown>;
-  presentation?: ProcessTerminalPresentation;
+  presentation?: ProcessStepPresentation;
+}
+
+export interface ProcessTranscriptEntry {
+  sequence: number;
+  stream: "stdout" | "stderr";
+  content: string;
+}
+
+export interface ProcessPresentationItem {
+  label: string;
+  detail?: string;
 }
 
 export interface ProcessTerminalPresentation {
+  version: 1;
   card: "terminal";
   command: string;
   cwd?: string;
@@ -80,7 +92,65 @@ export interface ProcessTerminalPresentation {
   timedOut?: boolean;
   truncated?: boolean;
   background?: boolean;
+  transcript?: ProcessTranscriptEntry[];
 }
+
+export interface ProcessSearchPresentation {
+  version: 1;
+  card: "search";
+  title?: string;
+  provider?: string;
+  query?: string;
+  count?: number;
+  summary?: string;
+  items?: ProcessPresentationItem[];
+  truncated?: boolean;
+}
+
+export interface ProcessFilePresentation {
+  version: 1;
+  card: "file";
+  operation?: string;
+  path?: string;
+  query?: string;
+  summary?: string;
+  content?: string;
+  diff?: string;
+  size?: number;
+  offset?: number;
+  nextOffset?: number;
+  count?: number;
+  items?: ProcessPresentationItem[];
+  truncated?: boolean;
+  title?: string;
+}
+
+export interface ProcessJobPresentation {
+  version: 1;
+  card: "job";
+  operation?: string;
+  jobId?: string;
+  jobStatus?: string;
+  transcript?: ProcessTranscriptEntry[];
+  timedOut?: boolean;
+  truncated?: boolean;
+}
+
+export interface ProcessSummaryPresentation {
+  version: 1;
+  card: "skill" | "goal" | "mcp" | "browser";
+  title?: string;
+  summary?: string;
+  operation?: string;
+  items?: ProcessPresentationItem[];
+}
+
+export type ProcessStepPresentation =
+  | ProcessTerminalPresentation
+  | ProcessSearchPresentation
+  | ProcessFilePresentation
+  | ProcessJobPresentation
+  | ProcessSummaryPresentation;
 
 export interface MessageVersion {
   id: string;

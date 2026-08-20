@@ -6,6 +6,8 @@
   "thoughtProcessDetails": "Thought process details",
   "processDetails": "Generation process details",
   "processSteps": "Generation process steps",
+  "processRound": "Round {round}",
+  "processCopy": "Copy",
   "providerReasoning": "Provider reasoning",
   "processRunning": "{stage}…",
   "processRunningGeneric": "Working…",

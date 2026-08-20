@@ -407,6 +407,7 @@ func (runtime *mcpToolRuntime) eventSink(events chan<- ProviderEvent) mcpclient.
 			FailureCategory: event.FailureCategory,
 			DurationMillis:  event.DurationMillis,
 			Mode:            "mcp",
+			Presentation:    mcpProcessPresentation(event.ServerName, event.ToolName),
 		})
 	}
 }

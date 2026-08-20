@@ -632,13 +632,17 @@ the frontend sorts and deduplicates valid events and prefers their process
 projection over legacy `metadata.processTrace`. Old Messages without valid
 events retain the legacy fallback. Tool event payloads retain only bounded
 display facts such as name, mode, risk, status, duration, Round and public
-Server label. The sole command exception is a separate typed presentation on an
-exact `local_direct` Terminal ProcessStep. It stores only a UTF-8-bounded,
-secret-redacted command, stable Workspace cwd alias, exit code, timeout,
-truncation, and background flags. Raw stdout/stderr, generic arguments, query,
+Server label. Versioned typed presentations are the only result-detail
+exception. Exact Tool/mode allowlists admit Terminal, Search, File, Job, Skill,
+Goal, Browser or generic MCP cards. Terminal may retain a secret-redacted
+command, stable Workspace cwd alias, bounded final stdout/stderr transcript,
+exit code and execution flags. File may retain a bounded workspace-relative
+preview/diff or safe search/artifact summary. Generic MCP/Browser remains
+summary-only. Raw Tool Results, generic arguments, exact retrieval queries,
 credentials, private Server refs, and materialized Workspace/Host/Skill paths
-remain forbidden. Unknown/malformed presentations are dropped without
-invalidating the enclosing step, and MCP cannot opt into a Terminal card.
+remain forbidden. Unknown/malformed/version-unsupported presentations are
+dropped without invalidating the enclosing step, and MCP cannot opt into a
+local Terminal card.
 
 Job-related process rows may additionally retain only
 `durability=process_local`. `context.replaced` payloads retain reason,

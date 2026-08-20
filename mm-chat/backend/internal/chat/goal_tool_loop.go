@@ -179,6 +179,7 @@ func (runtime *chatAgentGoalToolRuntime) execute(
 		ExecutionID: fmt.Sprintf("goal-%d-%d", round, callNumber),
 		CallID:      call.ID, Name: name, Status: ProcessStepStatusRunning,
 		CallStatus: "running", Round: round, Mode: "goal", Classification: risk,
+		Presentation: goalProcessPresentation(call),
 	}
 	if !sendToolExecutionEvent(ctx, events, toolExecution) {
 		return ProviderToolResult{}, false, context.Canceled

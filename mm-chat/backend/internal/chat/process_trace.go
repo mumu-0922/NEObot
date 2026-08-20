@@ -28,10 +28,13 @@ const (
 	processTraceMetadataKey = "processTrace"
 	reasoningMetadataKey    = "reasoning"
 
-	maxProcessDetailStringBytes    = 2048
-	maxProcessTerminalCommandBytes = 4096
-	maxProcessTerminalCWDBytes     = 1024
-	maxPersistedReasoningBytes     = 1024 * 1024
+	maxProcessDetailStringBytes     = 2048
+	maxProcessTerminalCommandBytes  = 4096
+	maxProcessTerminalCWDBytes      = 1024
+	maxProcessPresentationTextBytes = 64 << 10
+	maxProcessPresentationItemBytes = 2048
+	maxProcessPresentationItems     = 64
+	maxPersistedReasoningBytes      = 1024 * 1024
 
 	// Keep enough sanitized suffix un-emitted for a credential pattern split
 	// across adjacent provider chunks to become recognizable before SSE output.
@@ -63,13 +66,41 @@ type ProcessStep struct {
 }
 
 type ProcessStepPresentation struct {
-	Card       string `json:"card"`
-	Command    string `json:"command"`
-	CWD        string `json:"cwd,omitempty"`
-	ExitCode   *int   `json:"exitCode,omitempty"`
-	TimedOut   bool   `json:"timedOut,omitempty"`
-	Truncated  bool   `json:"truncated,omitempty"`
-	Background bool   `json:"background,omitempty"`
+	Version    int                       `json:"version,omitempty"`
+	Card       string                    `json:"card"`
+	Title      string                    `json:"title,omitempty"`
+	Summary    string                    `json:"summary,omitempty"`
+	Command    string                    `json:"command,omitempty"`
+	CWD        string                    `json:"cwd,omitempty"`
+	Transcript []ProcessTranscriptEntry  `json:"transcript,omitempty"`
+	ExitCode   *int                      `json:"exitCode,omitempty"`
+	TimedOut   bool                      `json:"timedOut,omitempty"`
+	Truncated  bool                      `json:"truncated,omitempty"`
+	Background bool                      `json:"background,omitempty"`
+	Provider   string                    `json:"provider,omitempty"`
+	Query      string                    `json:"query,omitempty"`
+	Count      int                       `json:"count,omitempty"`
+	Operation  string                    `json:"operation,omitempty"`
+	Path       string                    `json:"path,omitempty"`
+	Content    string                    `json:"content,omitempty"`
+	Diff       string                    `json:"diff,omitempty"`
+	Size       int64                     `json:"size,omitempty"`
+	Offset     int64                     `json:"offset,omitempty"`
+	NextOffset int64                     `json:"nextOffset,omitempty"`
+	JobID      string                    `json:"jobId,omitempty"`
+	JobStatus  string                    `json:"jobStatus,omitempty"`
+	Items      []ProcessPresentationItem `json:"items,omitempty"`
+}
+
+type ProcessTranscriptEntry struct {
+	Sequence int    `json:"sequence"`
+	Stream   string `json:"stream"`
+	Content  string `json:"content"`
+}
+
+type ProcessPresentationItem struct {
+	Label  string `json:"label"`
+	Detail string `json:"detail,omitempty"`
 }
 
 type processTrace struct {
@@ -395,23 +426,73 @@ func sanitizeProcessStepPresentation(
 	detail map[string]any,
 	presentation *ProcessStepPresentation,
 ) *ProcessStepPresentation {
-	if presentation == nil || kind != ProcessStepKindTool ||
-		presentation.Card != "terminal" ||
-		processDetailString(detail, "toolName") != localTerminalToolName ||
-		processDetailString(detail, "mode") != "local_direct" {
+	if presentation == nil {
 		return nil
 	}
-	command := truncateProcessUTF8(
-		redactProcessSecrets(strings.TrimSpace(presentation.Command)),
-		maxProcessTerminalCommandBytes,
-	)
-	if command == "" {
+	version := presentation.Version
+	if version == 0 {
+		version = 1
+	}
+	if version != 1 {
 		return nil
 	}
-	cwd := truncateProcessUTF8(
-		redactProcessSecrets(strings.TrimSpace(presentation.CWD)),
-		maxProcessTerminalCWDBytes,
-	)
+	toolName := processDetailString(detail, "toolName")
+	mode := processDetailString(detail, "mode")
+	card := strings.TrimSpace(presentation.Card)
+	valid := false
+	switch card {
+	case "terminal":
+		valid = kind == ProcessStepKindTool && toolName == localTerminalToolName && mode == "local_direct"
+	case "search":
+		valid = kind == ProcessStepKindWeb || kind == ProcessStepKindKnowledge ||
+			toolName == "search_memory"
+	case "file":
+		valid = kind == ProcessStepKindTool && mode == "local_direct" &&
+			(toolName == localFileReadToolName || toolName == localFileWriteToolName ||
+				toolName == localFileEditToolName || toolName == localFileSearchToolName ||
+				toolName == localPublishFileToolName)
+	case "job":
+		valid = kind == ProcessStepKindTool && mode == "local_direct" &&
+			(toolName == localJobListToolName || toolName == localJobOutputToolName ||
+				toolName == localJobKillToolName)
+	case "skill":
+		valid = kind == ProcessStepKindTool && mode == "local_direct" && toolName == localSkillToolName
+	case "goal":
+		valid = kind == ProcessStepKindTool && mode == "goal"
+	case "browser", "mcp":
+		valid = kind == ProcessStepKindTool && mode == "mcp"
+	}
+	if !valid {
+		return nil
+	}
+
+	result := &ProcessStepPresentation{
+		Version: version, Card: card,
+		Title:     sanitizePresentationText(presentation.Title, maxProcessPresentationItemBytes),
+		Summary:   sanitizePresentationText(presentation.Summary, maxProcessPresentationItemBytes),
+		Provider:  sanitizePresentationText(presentation.Provider, 256),
+		Query:     sanitizePresentationText(presentation.Query, maxProcessPresentationItemBytes),
+		Count:     max(presentation.Count, 0),
+		Operation: sanitizePresentationText(presentation.Operation, 128),
+		Path:      sanitizePresentationText(presentation.Path, 4096),
+		Content:   sanitizePresentationText(presentation.Content, maxProcessPresentationTextBytes),
+		Diff:      sanitizePresentationText(presentation.Diff, maxProcessPresentationTextBytes),
+		Size:      max(presentation.Size, 0), Offset: max(presentation.Offset, 0),
+		NextOffset: max(presentation.NextOffset, 0),
+		JobID:      sanitizePresentationText(presentation.JobID, 128),
+		JobStatus:  sanitizePresentationText(presentation.JobStatus, 64),
+		TimedOut:   presentation.TimedOut, Truncated: presentation.Truncated,
+		Background: presentation.Background,
+		Items:      sanitizePresentationItems(presentation.Items),
+	}
+	if card != "terminal" {
+		return result
+	}
+	result.Command = sanitizePresentationText(presentation.Command, maxProcessTerminalCommandBytes)
+	if result.Command == "" {
+		return nil
+	}
+	result.CWD = sanitizePresentationText(presentation.CWD, maxProcessTerminalCWDBytes)
 	var exitCode *int
 	if presentation.ExitCode != nil {
 		if *presentation.ExitCode < -1 || *presentation.ExitCode > 255 {
@@ -420,11 +501,114 @@ func sanitizeProcessStepPresentation(
 		value := *presentation.ExitCode
 		exitCode = &value
 	}
-	return &ProcessStepPresentation{
-		Card: "terminal", Command: command, CWD: cwd, ExitCode: exitCode,
-		TimedOut: presentation.TimedOut, Truncated: presentation.Truncated,
-		Background: presentation.Background,
+	result.ExitCode = exitCode
+	result.Transcript, result.Truncated = sanitizeProcessTranscript(
+		presentation.Transcript, result.Truncated,
+	)
+	return result
+}
+
+func sanitizePresentationText(value string, limit int) string {
+	value = redactProcessSecrets(strings.TrimSpace(value))
+	value = strings.Map(func(character rune) rune {
+		if character == '\n' || character == '\r' || character == '\t' || character >= 0x20 {
+			return character
+		}
+		return -1
+	}, value)
+	return truncateProcessUTF8(value, limit)
+}
+
+func sanitizePresentationItems(items []ProcessPresentationItem) []ProcessPresentationItem {
+	if len(items) == 0 {
+		return nil
 	}
+	result := make([]ProcessPresentationItem, 0, min(len(items), maxProcessPresentationItems))
+	for _, item := range items {
+		if len(result) == maxProcessPresentationItems {
+			break
+		}
+		label := sanitizePresentationText(item.Label, 1024)
+		if label == "" {
+			continue
+		}
+		result = append(result, ProcessPresentationItem{
+			Label:  label,
+			Detail: sanitizePresentationText(item.Detail, maxProcessPresentationItemBytes),
+		})
+	}
+	return result
+}
+
+func sanitizeProcessTranscript(
+	entries []ProcessTranscriptEntry,
+	alreadyTruncated bool,
+) ([]ProcessTranscriptEntry, bool) {
+	sanitized := make([]ProcessTranscriptEntry, 0, len(entries))
+	total := 0
+	for _, entry := range entries {
+		if entry.Stream != "stdout" && entry.Stream != "stderr" {
+			continue
+		}
+		content := sanitizePresentationText(entry.Content, 8<<20)
+		if content == "" {
+			continue
+		}
+		sanitized = append(sanitized, ProcessTranscriptEntry{
+			Sequence: len(sanitized) + 1, Stream: entry.Stream, Content: content,
+		})
+		total += len(content)
+	}
+	if total <= maxProcessPresentationTextBytes {
+		return sanitized, alreadyTruncated
+	}
+	head := transcriptPrefix(sanitized, maxProcessPresentationTextBytes/2)
+	tail := transcriptSuffix(sanitized, maxProcessPresentationTextBytes/2)
+	result := append(head, tail...)
+	for index := range result {
+		result[index].Sequence = index + 1
+	}
+	return result, true
+}
+
+func transcriptPrefix(entries []ProcessTranscriptEntry, budget int) []ProcessTranscriptEntry {
+	result := make([]ProcessTranscriptEntry, 0, len(entries))
+	for _, entry := range entries {
+		if budget <= 0 {
+			break
+		}
+		content := truncateProcessUTF8(entry.Content, budget)
+		if content != "" {
+			entry.Content = content
+			result = append(result, entry)
+			budget -= len(content)
+		}
+	}
+	return result
+}
+
+func transcriptSuffix(entries []ProcessTranscriptEntry, budget int) []ProcessTranscriptEntry {
+	reversed := make([]ProcessTranscriptEntry, 0, len(entries))
+	for index := len(entries) - 1; index >= 0 && budget > 0; index-- {
+		entry := entries[index]
+		content := entry.Content
+		if len(content) > budget {
+			content = content[len(content)-budget:]
+			for !utf8.ValidString(content) && len(content) > 0 {
+				content = content[1:]
+			}
+		}
+		if content != "" {
+			entry.Content = content
+			reversed = append(reversed, entry)
+			budget -= len(content)
+		}
+	}
+	result := make([]ProcessTranscriptEntry, len(reversed))
+	for index := range reversed {
+		result[len(reversed)-1-index] = reversed[index]
+	}
+	return result
 }
 
 func processDetailString(detail map[string]any, key string) string {
@@ -494,6 +678,8 @@ func cloneProcessStep(step ProcessStep) ProcessStep {
 			exitCode := *step.Presentation.ExitCode
 			presentation.ExitCode = &exitCode
 		}
+		presentation.Transcript = append([]ProcessTranscriptEntry(nil), step.Presentation.Transcript...)
+		presentation.Items = append([]ProcessPresentationItem(nil), step.Presentation.Items...)
 		step.Presentation = &presentation
 	}
 	return step

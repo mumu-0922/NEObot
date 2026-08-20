@@ -143,14 +143,14 @@ timeline updates.
   collapsed by default. Manual retry is allowed only if the backend exposes a
   trusted idempotent read retry affordance; never infer it from remote
   annotations.
-- A ProcessStep presentation is untrusted input. Render a Terminal card only
-  for exact `kind=tool`, `detail.toolName=terminal`,
-  `detail.mode=local_direct`, and `presentation.card=terminal`. Strictly bound
-  and type-check command, cwd, exit code and boolean flags. Unknown/malformed
-  presentation is dropped while the valid legacy step remains. The collapsed
-  row shows a one-line command preview; expansion shows the backend-redacted
-  cwd, command, exit code, timeout/truncation/background pills. Never render
-  stdout/stderr, reuse `argumentSummary`, or allow MCP to opt into this card.
+- A ProcessStep presentation is untrusted input. Accept only schema version 1
+  cards whose `kind`, exact Tool name, and mode authorize that card. Strictly
+  bound every string, list, transcript and numeric field. Unknown/malformed or
+  cross-mode cards are dropped while the enclosing legacy step remains. Typed
+  cards cover Terminal, Search, File, Job, Skill, Goal, Browser and generic MCP;
+  generic MCP/Browser cards remain summary-only. Never reuse `argumentSummary`
+  or render raw JSON. Terminal transcript is backend-redacted and bounded to
+  64 KiB; File content/diff is bounded to 64 KiB and paths remain workspace-relative.
 - Normalize `tool.call.updated` with its mode/classification pair. MCP accepts
   only `read|write|unknown`; `local_direct` accepts `read|write|execute`.
   `execute` must not widen MCP Server definition or Tool classification

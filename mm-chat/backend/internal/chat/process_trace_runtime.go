@@ -60,6 +60,10 @@ func (runtime *toolProcessTrace) apply(
 			detail,
 		)
 		webStepID = step.ID
+		if event.Presentation != nil {
+			step.Presentation = event.Presentation
+			step = runtime.trace.add(step)
+		}
 		runtime.webStepIDs[event.ExecutionID] = webStepID
 		updates = append(updates, step)
 	}
@@ -71,6 +75,10 @@ func (runtime *toolProcessTrace) apply(
 			detail,
 		)
 		knowledgeStepID = step.ID
+		if event.Presentation != nil {
+			step.Presentation = event.Presentation
+			step = runtime.trace.add(step)
+		}
 		runtime.knowledgeStepIDs[event.ExecutionID] = knowledgeStepID
 		updates = append(updates, step)
 	}
@@ -90,11 +98,19 @@ func (runtime *toolProcessTrace) apply(
 	}
 	if webStepID != "" {
 		if step, ok := runtime.trace.transitionID(webStepID, status, at, detail); ok {
+			if event.Presentation != nil {
+				step.Presentation = event.Presentation
+				step = runtime.trace.add(step)
+			}
 			updates = append(updates, step)
 		}
 	}
 	if knowledgeStepID != "" {
 		if step, ok := runtime.trace.transitionID(knowledgeStepID, status, at, detail); ok {
+			if event.Presentation != nil {
+				step.Presentation = event.Presentation
+				step = runtime.trace.add(step)
+			}
 			updates = append(updates, step)
 		}
 	}
@@ -228,12 +244,18 @@ func startBuiltInWebProcessStep(
 	if execution != nil && execution.ModelBuiltIn != "" {
 		detail["provider"] = string(execution.ModelBuiltIn)
 	}
-	return trace.start(
+	step := trace.start(
 		ProcessStepKindWeb,
 		"process.web",
 		startedAt,
 		detail,
 	)
+	provider := "model built-in"
+	if execution != nil && execution.ModelBuiltIn != "" {
+		provider = string(execution.ModelBuiltIn)
+	}
+	step.Presentation = searchProcessPresentation(searchWebToolName, "", provider, 0)
+	return trace.add(step)
 }
 
 func completeBuiltInWebProcessStep(
@@ -271,7 +293,13 @@ func completeBuiltInWebProcessStep(
 	case ProcessStepStatusCancelled:
 		detail["outcome"] = "cancelled"
 	}
-	return trace.transition(ProcessStepKindWeb, status, completedAt, detail)
+	step, transitioned := trace.transition(ProcessStepKindWeb, status, completedAt, detail)
+	if !transitioned {
+		return step, false
+	}
+	provider := processDetailString(detail, "provider")
+	step.Presentation = searchProcessPresentation(searchWebToolName, "", provider, len(result.Sources))
+	return trace.add(step), true
 }
 
 func reconcileProcessTraceCitations(

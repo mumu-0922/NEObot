@@ -75,6 +75,7 @@ func (registry *chatToolRegistry) executeMemoryCall(
 		ExecutionID: executionID, CallID: call.ID, Name: call.Name,
 		Status: ProcessStepStatusRunning, Round: state.round,
 		Arguments: arguments, Mode: "native",
+		Presentation: searchProcessPresentation(call.Name, "", "neo-chat memory", 0),
 	}
 	if !sendToolExecutionEvent(ctx, state.events, running) {
 		return chatToolCallExecution{stop: true}
@@ -118,6 +119,7 @@ func (registry *chatToolRegistry) executeMemoryCall(
 	state.input.Memory.setUsedMemories(projected)
 	completed := running
 	completed.Status = ProcessStepStatusCompleted
+	completed.Presentation = searchProcessPresentation(call.Name, "", "neo-chat memory", len(projected))
 	if !sendToolExecutionEvent(ctx, state.events, completed) {
 		return chatToolCallExecution{stop: true}
 	}
@@ -138,6 +140,7 @@ func (registry *chatToolRegistry) executeKnowledgeCall(
 		ExecutionID: executionID, CallID: call.ID, Name: call.Name,
 		Status: ProcessStepStatusRunning, Round: state.round,
 		Arguments: arguments, Query: query, Mode: "native",
+		Presentation: searchProcessPresentation(call.Name, query, "neo-chat knowledge", 0),
 	}
 	if !sendToolExecutionEvent(ctx, state.events, running) {
 		return chatToolCallExecution{stop: true}
@@ -207,6 +210,9 @@ func (registry *chatToolRegistry) executeKnowledgeCall(
 		copy = merged.Current
 	}
 	completed.Knowledge = &copy
+	completed.Presentation = searchProcessPresentation(
+		call.Name, query, "neo-chat knowledge", len(completed.CitationMarkers),
+	)
 	if !sendToolExecutionEvent(ctx, state.events, completed) {
 		return chatToolCallExecution{stop: true}
 	}
@@ -228,6 +234,11 @@ func (registry *chatToolRegistry) executeWebCall(
 		Status: ProcessStepStatusRunning, Round: state.round,
 		Arguments: arguments, Query: query, Mode: "native",
 	}
+	provider := "server search"
+	if state.input.Execution.External != nil {
+		provider = string(state.input.Execution.External.ID())
+	}
+	running.Presentation = searchProcessPresentation(call.Name, query, provider, 0)
 	if !sendToolExecutionEvent(ctx, state.events, running) {
 		return chatToolCallExecution{stop: true}
 	}
@@ -278,6 +289,7 @@ func (registry *chatToolRegistry) executeWebCall(
 	completed.Status = ProcessStepStatusCompleted
 	completed.Search = &bounded
 	completed.CitationMarkers = newWebCitationMarkers(previous, *state.cumulative)
+	completed.Presentation = searchProcessPresentation(call.Name, query, provider, len(bounded.Sources))
 	if !sendToolExecutionEvent(ctx, state.events, completed) {
 		return chatToolCallExecution{stop: true}
 	}

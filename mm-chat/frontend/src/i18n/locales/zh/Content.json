@@ -6,6 +6,8 @@
   "thoughtProcessDetails": "思考过程详情",
   "processDetails": "生成过程详情",
   "processSteps": "生成过程步骤",
+  "processRound": "第 {round} 轮",
+  "processCopy": "复制",
   "providerReasoning": "模型返回的推理",
   "processRunning": "{stage}中…",
   "processRunningGeneric": "处理中…",

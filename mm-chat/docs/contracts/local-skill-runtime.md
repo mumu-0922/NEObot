@@ -93,10 +93,12 @@ The executor:
 - always blocks catastrophic command patterns and, in default `smart` mode,
   returns `approval_required` for destructive patterns;
 - records only Tool name, round, `local_direct`, classification, optional
-  timeout, duration, and failure category in diagnostic process detail. An
-  exact Terminal step may additionally carry a bounded/redacted typed card
-  with command, stable cwd alias, exit code and execution flags. Raw
-  stdout/stderr never enter process trace, durable Agent events, or SSE.
+  timeout, duration, and failure category in diagnostic process detail. A
+  typed local Tool step may additionally carry a versioned, bounded/redacted
+  presentation. Terminal retains command, stable cwd alias, final stdout/stderr
+  transcript, exit code and execution flags; File/Job/Skill cards retain only
+  their explicit allowlisted fields. Raw Tool Results never enter process
+  trace, durable Agent events, or SSE.
 
 These guards reduce accidental damage. They are not protection against an
 adversarial allowed process.

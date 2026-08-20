@@ -9,6 +9,12 @@ import {
   ChevronDown,
   CircleAlert,
   Globe2,
+  FileText,
+  Search,
+  BriefcaseBusiness,
+  Target,
+  Compass,
+  Copy,
   LoaderCircle,
   SquareTerminal,
   Wrench,
@@ -24,7 +30,12 @@ import {
   resolveProcessPanelExpanded,
   summarizeProcessRoute,
 } from "@/lib/chat/processTrace";
-import type { ProcessStep, ProcessStepKind } from "@/types";
+import type {
+  ProcessStep,
+  ProcessStepKind,
+  ProcessStepPresentation,
+  ProcessTranscriptEntry,
+} from "@/types";
 import MarkdownRenderer from "./MarkdownRenderer";
 
 interface ProcessTracePanelProps {
@@ -39,6 +50,15 @@ const kindIcons = {
   tool: Wrench,
   generation: Zap,
 } satisfies Record<ProcessStepKind, typeof Brain>;
+
+const presentationIcons = {
+  terminal: SquareTerminal,
+  search: Search,
+  file: FileText,
+  job: BriefcaseBusiness,
+  goal: Target,
+  browser: Compass,
+} satisfies Partial<Record<ProcessStepPresentation["card"], typeof Brain>>;
 
 export default function ProcessTracePanel({
   steps,
@@ -59,6 +79,10 @@ export default function ProcessTracePanel({
   const summary = useMemo(
     () => buildProcessSummary(visibleSteps, hasActiveStep, t),
     [hasActiveStep, t, visibleSteps],
+  );
+  const roundGroups = useMemo(
+    () => groupProcessStepsByRound(visibleSteps),
+    [visibleSteps],
   );
 
   if (visibleSteps.length === 0) return null;
@@ -100,11 +124,23 @@ export default function ProcessTracePanel({
       >
         <div className="overflow-hidden">
           <div className="max-h-80 overflow-y-auto border-t border-gray-200/60 bg-white/40 px-3 py-2 custom-scrollbar dark:border-border dark:bg-card/35">
-            <ol className="space-y-2" aria-label={t("processSteps")}>
-              {visibleSteps.map((step) => (
-                <ProcessStepRow key={step.id} step={step} />
+            <div className="space-y-3" aria-label={t("processSteps")}>
+              {roundGroups.map((group) => (
+                <section key={group.key} className="relative">
+                  {group.round !== undefined ? (
+                    <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-400 dark:text-muted-foreground/70">
+                      <span>{t("processRound", { round: group.round })}</span>
+                      <span className="h-px flex-1 bg-gray-200 dark:bg-border" />
+                    </div>
+                  ) : null}
+                  <ol className="space-y-2 border-l border-gray-200 pl-2.5 dark:border-border">
+                    {group.steps.map((step) => (
+                      <ProcessStepRow key={step.id} step={step} />
+                    ))}
+                  </ol>
+                </section>
               ))}
-            </ol>
+            </div>
 
             {hasProcessLocalJob ? (
               <div
@@ -153,8 +189,11 @@ function ProcessStepRow({ step }: { step: ProcessStep }) {
   const hitCount = numberDetail(step, "hitCount");
   const sourceCount = numberDetail(step, "sourceCount");
   const toolLabel = processToolLabelForDisplay(step);
-  const terminal = step.presentation;
-  const StepIcon = terminal ? SquareTerminal : Icon;
+  const presentation = step.presentation;
+  const StepIcon = presentation
+    ? (presentationIcons[presentation.card as keyof typeof presentationIcons] ??
+      Icon)
+    : Icon;
 
   return (
     <li className="flex min-w-0 items-start gap-2 text-xs text-gray-600 dark:text-muted-foreground">
@@ -197,16 +236,29 @@ function ProcessStepRow({ step }: { step: ProcessStep }) {
             {processReasonLabel(reason, t)}
           </div>
         ) : null}
-        {terminal ? <TerminalProcessCard terminal={terminal} /> : null}
+        {presentation ? (
+          <ProcessPresentationCard presentation={presentation} />
+        ) : null}
       </div>
     </li>
   );
 }
 
+function ProcessPresentationCard({
+  presentation,
+}: {
+  presentation: ProcessStepPresentation;
+}) {
+  if (presentation.card === "terminal") {
+    return <TerminalProcessCard terminal={presentation} />;
+  }
+  return <GenericProcessCard presentation={presentation} />;
+}
+
 function TerminalProcessCard({
   terminal,
 }: {
-  terminal: NonNullable<ProcessStep["presentation"]>;
+  terminal: Extract<ProcessStepPresentation, { card: "terminal" }>;
 }) {
   const t = useTranslations("Content");
   const preview = terminal.command.replace(/\s+/g, " ").trim();
@@ -235,6 +287,12 @@ function TerminalProcessCard({
         />
       </summary>
       <div className="border-t border-slate-800 px-2.5 py-2">
+        <div className="mb-2 flex justify-end">
+          <PresentationCopyButton
+            text={terminalPresentationText(terminal)}
+            dark
+          />
+        </div>
         {terminal.cwd ? (
           <div className="mb-2 flex min-w-0 items-center gap-2 text-[10px] text-slate-400">
             <span className="shrink-0 uppercase tracking-wide">
@@ -248,6 +306,9 @@ function TerminalProcessCard({
         <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-black/35 p-2 font-mono text-[11px] leading-5 text-slate-100 custom-scrollbar">
           <code>{terminal.command}</code>
         </pre>
+        {terminal.transcript?.length ? (
+          <Transcript entries={terminal.transcript} />
+        ) : null}
         <div className="mt-2 flex flex-wrap gap-1.5">
           {typeof terminal.exitCode === "number" ? (
             <TerminalPill tone={exitFailed ? "danger" : "success"}>
@@ -273,6 +334,252 @@ function TerminalProcessCard({
       </div>
     </details>
   );
+}
+
+function GenericProcessCard({
+  presentation,
+}: {
+  presentation: Exclude<ProcessStepPresentation, { card: "terminal" }>;
+}) {
+  const heading =
+    ("title" in presentation ? presentation.title : undefined) ||
+    ("path" in presentation ? presentation.path : undefined) ||
+    ("jobId" in presentation ? presentation.jobId : undefined) ||
+    ("operation" in presentation ? presentation.operation : undefined) ||
+    presentation.card;
+  const transcript =
+    "transcript" in presentation ? presentation.transcript : undefined;
+  const body =
+    "diff" in presentation && presentation.diff
+      ? presentation.diff
+      : "content" in presentation
+        ? presentation.content
+        : undefined;
+  const bodyLabel =
+    "diff" in presentation && presentation.diff ? "diff" : "output";
+
+  return (
+    <details className="group/card mt-1.5 overflow-hidden rounded-md border border-gray-200 bg-white/75 dark:border-border dark:bg-card/70">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-2 marker:content-none [&::-webkit-details-marker]:hidden">
+        <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-gray-700 dark:text-foreground/85">
+          {heading}
+        </span>
+        {"provider" in presentation && presentation.provider ? (
+          <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+            {presentation.provider}
+          </span>
+        ) : null}
+        <ChevronDown
+          size={13}
+          aria-hidden="true"
+          className="shrink-0 text-gray-400 transition-transform group-open/card:rotate-180"
+        />
+      </summary>
+      <div className="space-y-2 border-t border-gray-200 px-2.5 py-2 text-[11px] dark:border-border">
+        <div className="flex justify-end">
+          <PresentationCopyButton
+            text={genericPresentationText(presentation)}
+          />
+        </div>
+        {"operation" in presentation && presentation.operation ? (
+          <MetaLine label="action" value={presentation.operation} />
+        ) : null}
+        {"path" in presentation && presentation.path ? (
+          <MetaLine label="path" value={presentation.path} mono />
+        ) : null}
+        {"query" in presentation && presentation.query ? (
+          <MetaLine label="query" value={presentation.query} />
+        ) : null}
+        {"summary" in presentation && presentation.summary ? (
+          <p className="text-gray-500 dark:text-muted-foreground">
+            {presentation.summary}
+          </p>
+        ) : null}
+        {"count" in presentation && typeof presentation.count === "number" ? (
+          <MetaLine label="results" value={String(presentation.count)} />
+        ) : null}
+        {body ? (
+          <div>
+            <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-gray-400">
+              {bodyLabel}
+            </div>
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-gray-950 p-2 font-mono text-[10px] leading-5 text-gray-100 custom-scrollbar">
+              <code>{body}</code>
+            </pre>
+          </div>
+        ) : null}
+        {"items" in presentation && presentation.items?.length ? (
+          <ul className="max-h-48 space-y-1 overflow-auto custom-scrollbar">
+            {presentation.items.map((item, index) => (
+              <li
+                key={`${item.label}-${index}`}
+                className="rounded bg-gray-50 px-2 py-1 dark:bg-muted/45"
+              >
+                <div className="font-mono text-[10px] text-gray-700 dark:text-foreground/80">
+                  {item.label}
+                </div>
+                {item.detail ? (
+                  <div className="mt-0.5 text-gray-500 dark:text-muted-foreground">
+                    {item.detail}
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {transcript?.length ? <Transcript entries={transcript} /> : null}
+      </div>
+    </details>
+  );
+}
+
+function PresentationCopyButton({
+  text,
+  dark = false,
+}: {
+  text: string;
+  dark?: boolean;
+}) {
+  const t = useTranslations("Content");
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      className={`inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] transition-colors ${dark ? "text-slate-400 hover:bg-white/10 hover:text-slate-200" : "text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-muted dark:hover:text-foreground"}`}
+      aria-label={t("processCopy")}
+    >
+      {copied ? (
+        <Check size={11} aria-hidden="true" />
+      ) : (
+        <Copy size={11} aria-hidden="true" />
+      )}
+      <span>{copied ? t("copied") : t("processCopy")}</span>
+    </button>
+  );
+}
+
+function terminalPresentationText(
+  terminal: Extract<ProcessStepPresentation, { card: "terminal" }>,
+) {
+  return [
+    terminal.cwd ? `cwd: ${terminal.cwd}` : "",
+    `$ ${terminal.command}`,
+    ...(terminal.transcript ?? []).map(
+      (entry) => `[${entry.stream}] ${entry.content}`,
+    ),
+    typeof terminal.exitCode === "number" ? `exit: ${terminal.exitCode}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function genericPresentationText(
+  presentation: Exclude<ProcessStepPresentation, { card: "terminal" }>,
+) {
+  const values: string[] = [presentation.card];
+  for (const key of [
+    "title",
+    "operation",
+    "path",
+    "query",
+    "summary",
+    "content",
+    "diff",
+    "jobId",
+    "jobStatus",
+  ] as const) {
+    if (key in presentation) {
+      const value = presentation[key as keyof typeof presentation];
+      if (typeof value === "string" && value) values.push(`${key}: ${value}`);
+    }
+  }
+  if ("items" in presentation) {
+    for (const item of presentation.items ?? []) {
+      values.push(item.detail ? `${item.label}: ${item.detail}` : item.label);
+    }
+  }
+  if ("transcript" in presentation) {
+    for (const entry of presentation.transcript ?? []) {
+      values.push(`[${entry.stream}] ${entry.content}`);
+    }
+  }
+  return values.join("\n");
+}
+
+function Transcript({ entries }: { entries: ProcessTranscriptEntry[] }) {
+  return (
+    <div className="max-h-64 overflow-auto rounded bg-slate-950 p-2 font-mono text-[10px] leading-5 custom-scrollbar">
+      {entries.map((entry) => (
+        <div
+          key={`${entry.sequence}-${entry.stream}`}
+          className={
+            entry.stream === "stderr" ? "text-rose-300" : "text-slate-100"
+          }
+        >
+          <span className="mr-2 select-none text-[9px] uppercase text-slate-500">
+            {entry.stream}
+          </span>
+          <span className="whitespace-pre-wrap break-words">
+            {entry.content}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MetaLine({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex min-w-0 gap-2">
+      <span className="shrink-0 uppercase tracking-wide text-gray-400">
+        {label}
+      </span>
+      <span
+        className={`min-w-0 break-words text-gray-600 dark:text-foreground/80 ${mono ? "font-mono" : ""}`}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function groupProcessStepsByRound(steps: ProcessStep[]) {
+  const groups: { key: string; round?: number; steps: ProcessStep[] }[] = [];
+  for (const step of steps) {
+    const candidate = step.detail?.round;
+    const round =
+      typeof candidate === "number" &&
+      Number.isInteger(candidate) &&
+      candidate > 0
+        ? candidate
+        : undefined;
+    const key = round === undefined ? "unscoped" : `round-${round}`;
+    let group = groups.find((item) => item.key === key);
+    if (!group) {
+      group = { key, ...(round !== undefined ? { round } : {}), steps: [] };
+      groups.push(group);
+    }
+    group.steps.push(step);
+  }
+  return groups;
 }
 
 function TerminalPill({

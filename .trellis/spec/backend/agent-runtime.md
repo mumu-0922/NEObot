@@ -46,11 +46,13 @@ Migration head: 099_chat_agent_event_log_function_repair
   Terminal may check them. Background Terminal remains outstanding by exact Job
   ID until successful `job_output(status=completed)` evidence is explicitly
   recorded. Successful local Tool Results expose their exact Provider-only
-  `evidenceToolCallId`. Process events remain result-content-free; only the
-  typed `local_direct terminal` presentation may retain a bounded/redacted
-  command, stable workspace cwd alias, exit code and boolean execution flags.
-  Raw stdout/stderr, credentials and materialized Workspace/Host/Skill paths
-  never enter ProcessStep, durable Agent events, or SSE.
+  `evidenceToolCallId`. Process events may retain only versioned, Tool-owned,
+  allowlisted presentations: bounded/redacted Terminal command, stable cwd,
+  final stdout/stderr transcript and execution flags; bounded workspace-relative
+  File preview/diff/search summaries; Job lifecycle output; Skill/Goal summaries;
+  or safe MCP/Browser fallbacks. Provider-only raw Results, credentials, exact
+  retrieval queries, private Server refs and materialized Workspace/Host/Skill
+  paths never enter ProcessStep, durable Agent events, or SSE.
 - `publish_file` accepts only workspace-relative regular files, persists through
   the existing user-owned File/object-store path, and attaches only successful
   outputs to the assistant message. Cross-user and stale/deleted access fails.
@@ -81,7 +83,7 @@ Migration head: 099_chat_agent_event_log_function_repair
 | path traversal/symlink/non-regular publish | reject; no File row/object |
 | Host/WSL alias below configured workspace | resolve to the same relative File/workingDir path |
 | alias outside Host root, Windows drive, or traversal | reject before filesystem/command access |
-| unknown/malformed or non-`local_direct` Terminal presentation | drop presentation; retain the valid ProcessStep |
+| unknown/malformed/version-unsupported presentation | drop presentation; retain the valid ProcessStep |
 | nonempty legacy fact table at 098 | whole migration rolls back |
 | already-retired schema re-up | successful no-op |
 

@@ -4,7 +4,8 @@ import type {
   ProcessStep,
   ProcessStepKind,
   ProcessStepStatus,
-  ProcessTerminalPresentation,
+  ProcessStepPresentation,
+  ProcessTranscriptEntry,
 } from "./types";
 
 const PROCESS_STEP_KINDS = new Set<ProcessStepKind>([
@@ -84,6 +85,8 @@ const PROCESS_DETAIL_KEYS = new Set([
 
 const MAX_TERMINAL_COMMAND_BYTES = 4096;
 const MAX_TERMINAL_CWD_BYTES = 1024;
+const MAX_PRESENTATION_TEXT_BYTES = 64 * 1024;
+const MAX_PRESENTATION_ITEMS = 64;
 
 export type ProcessRoute = "direct" | "knowledge" | "web" | "both";
 
@@ -483,15 +486,112 @@ function normalizeProcessStepPresentation(
   value: unknown,
   kind: ProcessStepKind,
   detail: Record<string, unknown> | undefined,
-): ProcessTerminalPresentation | undefined {
-  if (
-    !isRecord(value) ||
-    kind !== "tool" ||
-    detail?.toolName !== "terminal" ||
-    detail.mode !== "local_direct" ||
-    value.card !== "terminal"
-  ) {
-    return undefined;
+): ProcessStepPresentation | undefined {
+  if (!isRecord(value)) return undefined;
+  const version = value.version === undefined ? 1 : value.version;
+  if (version !== 1 || typeof value.card !== "string") return undefined;
+  const card = value.card;
+  const toolName = detail?.toolName;
+  const mode = detail?.mode;
+  const valid =
+    (card === "terminal" &&
+      kind === "tool" &&
+      toolName === "terminal" &&
+      mode === "local_direct") ||
+    (card === "search" &&
+      (kind === "web" ||
+        kind === "knowledge" ||
+        toolName === "search_memory")) ||
+    (card === "file" &&
+      kind === "tool" &&
+      mode === "local_direct" &&
+      typeof toolName === "string" &&
+      (toolName.startsWith("file_") || toolName === "publish_file")) ||
+    (card === "job" &&
+      kind === "tool" &&
+      mode === "local_direct" &&
+      typeof toolName === "string" &&
+      toolName.startsWith("job_")) ||
+    (card === "skill" &&
+      kind === "tool" &&
+      mode === "local_direct" &&
+      toolName === "skill") ||
+    (card === "goal" && kind === "tool" && mode === "goal") ||
+    ((card === "mcp" || card === "browser") &&
+      kind === "tool" &&
+      mode === "mcp");
+  if (!valid) return undefined;
+
+  if (card !== "terminal") {
+    const text = (key: string, maxBytes = 2048) =>
+      value[key] === undefined
+        ? undefined
+        : boundedPresentationString(value[key], maxBytes) || null;
+    const title = text("title");
+    const summary = text("summary");
+    const provider = text("provider", 256);
+    const query = text("query");
+    const operation = text("operation", 128);
+    const path = text("path", 4096);
+    const content = text("content", MAX_PRESENTATION_TEXT_BYTES);
+    const diff = text("diff", MAX_PRESENTATION_TEXT_BYTES);
+    const jobId = text("jobId", 128);
+    const jobStatus = text("jobStatus", 64);
+    if (
+      [
+        title,
+        summary,
+        provider,
+        query,
+        operation,
+        path,
+        content,
+        diff,
+        jobId,
+        jobStatus,
+      ].includes(null)
+    ) {
+      return undefined;
+    }
+    const count = optionalNonNegativeInteger(value.count);
+    const size = optionalNonNegativeInteger(value.size);
+    const offset = optionalNonNegativeInteger(value.offset);
+    const nextOffset = optionalNonNegativeInteger(value.nextOffset);
+    const items = normalizePresentationItems(value.items);
+    const transcript = normalizePresentationTranscript(value.transcript);
+    if (
+      count === null ||
+      size === null ||
+      offset === null ||
+      nextOffset === null ||
+      items === null ||
+      transcript === null ||
+      !optionalBoolean(value.timedOut) ||
+      !optionalBoolean(value.truncated)
+    )
+      return undefined;
+    return {
+      version: 1,
+      card,
+      ...(title ? { title } : {}),
+      ...(summary ? { summary } : {}),
+      ...(provider ? { provider } : {}),
+      ...(query ? { query } : {}),
+      ...(operation ? { operation } : {}),
+      ...(path ? { path } : {}),
+      ...(content ? { content } : {}),
+      ...(diff ? { diff } : {}),
+      ...(jobId ? { jobId } : {}),
+      ...(jobStatus ? { jobStatus } : {}),
+      ...(count !== undefined ? { count } : {}),
+      ...(size !== undefined ? { size } : {}),
+      ...(offset !== undefined ? { offset } : {}),
+      ...(nextOffset !== undefined ? { nextOffset } : {}),
+      ...(items?.length ? { items } : {}),
+      ...(transcript?.length ? { transcript } : {}),
+      ...(value.timedOut === true ? { timedOut: true } : {}),
+      ...(value.truncated === true ? { truncated: true } : {}),
+    } as ProcessStepPresentation;
   }
   const command = boundedPresentationString(
     value.command,
@@ -516,11 +616,13 @@ function normalizeProcessStepPresentation(
     exitCode === null ||
     !optionalBoolean(value.timedOut) ||
     !optionalBoolean(value.truncated) ||
-    !optionalBoolean(value.background)
+    !optionalBoolean(value.background) ||
+    normalizePresentationTranscript(value.transcript) === null
   ) {
     return undefined;
   }
   return {
+    version: 1,
     card: "terminal",
     command,
     ...(cwd ? { cwd } : {}),
@@ -528,7 +630,68 @@ function normalizeProcessStepPresentation(
     ...(value.timedOut === true ? { timedOut: true } : {}),
     ...(value.truncated === true ? { truncated: true } : {}),
     ...(value.background === true ? { background: true } : {}),
+    ...(normalizePresentationTranscript(value.transcript)?.length
+      ? { transcript: normalizePresentationTranscript(value.transcript)! }
+      : {}),
   };
+}
+
+function normalizePresentationItems(
+  value: unknown,
+): { label: string; detail?: string }[] | undefined | null {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > MAX_PRESENTATION_ITEMS)
+    return null;
+  const result: { label: string; detail?: string }[] = [];
+  for (const candidate of value) {
+    if (!isRecord(candidate)) return null;
+    const label = boundedPresentationString(candidate.label, 1024);
+    const detail =
+      candidate.detail === undefined
+        ? undefined
+        : boundedPresentationString(candidate.detail, 2048);
+    if (!label || (candidate.detail !== undefined && !detail)) return null;
+    result.push({ label, ...(detail ? { detail } : {}) });
+  }
+  return result;
+}
+
+function normalizePresentationTranscript(
+  value: unknown,
+): ProcessTranscriptEntry[] | undefined | null {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 128) return null;
+  let totalBytes = 0;
+  const result: ProcessTranscriptEntry[] = [];
+  for (const candidate of value) {
+    if (
+      !isRecord(candidate) ||
+      (candidate.stream !== "stdout" && candidate.stream !== "stderr") ||
+      !Number.isInteger(candidate.sequence) ||
+      Number(candidate.sequence) < 1
+    )
+      return null;
+    const content = boundedPresentationString(
+      candidate.content,
+      MAX_PRESENTATION_TEXT_BYTES,
+    );
+    if (!content) return null;
+    totalBytes += new TextEncoder().encode(content).byteLength;
+    if (totalBytes > MAX_PRESENTATION_TEXT_BYTES) return null;
+    result.push({
+      sequence: Number(candidate.sequence),
+      stream: candidate.stream,
+      content,
+    });
+  }
+  return result.sort((left, right) => left.sequence - right.sequence);
+}
+
+function optionalNonNegativeInteger(value: unknown): number | undefined | null {
+  if (value === undefined) return undefined;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
 }
 
 function boundedPresentationString(value: unknown, maxBytes: number): string {

@@ -141,6 +141,7 @@ describe("durable process trace", () => {
       },
     });
     expect(terminal?.presentation).toEqual({
+      version: 1,
       card: "terminal",
       command: "pnpm test processTrace.test.tsx",
       cwd: "$NEO_CHAT_WORKSPACE/frontend",
@@ -177,6 +178,53 @@ describe("durable process trace", () => {
     });
     expect(mcp).not.toBeNull();
     expect(mcp?.presentation).toBeUndefined();
+  });
+
+  it("normalizes typed Tool cards and fails closed for unknown versions", () => {
+    const file = normalizeProcessStep({
+      id: "tool-file-1",
+      kind: "tool",
+      status: "completed",
+      labelKey: "process.tool",
+      detail: { toolName: "file_edit", mode: "local_direct", round: 2 },
+      presentation: {
+        version: 1,
+        card: "file",
+        operation: "edit",
+        path: "src/example.ts",
+        diff: "--- a/src/example.ts\n+++ b/src/example.ts\n@@\n-old\n+new",
+      },
+    });
+    expect(file?.presentation).toMatchObject({
+      version: 1,
+      card: "file",
+      operation: "edit",
+      path: "src/example.ts",
+    });
+
+    const unknownVersion = normalizeProcessStep({
+      id: "tool-file-2",
+      kind: "tool",
+      status: "completed",
+      labelKey: "process.tool",
+      detail: { toolName: "file_read", mode: "local_direct" },
+      presentation: { version: 99, card: "file", content: "secret" },
+    });
+    expect(unknownVersion).not.toBeNull();
+    expect(unknownVersion?.presentation).toBeUndefined();
+
+    const markup = renderToStaticMarkup(
+      <NextIntlClientProvider
+        locale="zh"
+        messages={{ Content: contentMessages }}
+        timeZone="UTC"
+      >
+        <ProcessTracePanel steps={[file!]} />
+      </NextIntlClientProvider>,
+    );
+    expect(markup).toContain("第 2 轮");
+    expect(markup).toContain("src/example.ts");
+    expect(markup).toContain("+new");
   });
 
   it("builds generic human-readable MCP labels without exposing internal refs", () => {
