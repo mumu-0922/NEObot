@@ -57,8 +57,8 @@
 - [x] File write/edit/search/publish 与 Terminal workingDir 复用同一 alias 规范化合同。
 - [x] Backend tests/vet、Frontend format/lint/typecheck/tests/build、Agent local Runtime gate、
       Compose example/live render 与 standalone full gate 通过。
-- [ ] Live Backend/Frontend 健康，数据库与非目标容器不变，旧 workspace 数据保留。
-- [ ] 网页等价真实 Agent 请求读取授权 WSL UNC `README.md`，Live Tool events 不再产生
+- [x] Live Backend/Frontend 健康，数据库与非目标容器不变，旧 workspace 数据保留。
+- [x] 网页等价真实 Agent 请求读取授权 WSL UNC `README.md`，Live Tool events 不再产生
       `invalid Tool call update`，assistant 以 `toolMode=agent` 完成并给出有内容依据的总结。
 
 ## Definition of Done

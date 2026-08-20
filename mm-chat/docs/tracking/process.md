@@ -10486,3 +10486,34 @@ server-default provider. Its first successful run remained
 `file_read`, and `publish_file`, and attached `agent-test.md` as an authenticated
 output File. Downloading that File through `/v1/files/{id}/content` returned
 the published SHA-256 bytes and the verified `Agent 测试成功` marker.
+
+## 2026-08-20 — Live Agent Tool stream and local project workspace accepted
+
+The live single-server Backend and Frontend now run immutable `live-tools`
+images built from commit `e0ce997005a9`. Only those two services were
+recreated. PostgreSQL, Redis, MinIO, and MCP Runner container identities stayed
+unchanged; migration head remained `099`, protected row counts did not
+decrease, and the previous `data/agent-workspace` bytes remained unchanged.
+The retained pre-rollout images and mode-`0600` environment provide the exact
+rollback path.
+
+The Backend now binds only `/home/mumu/projects/Oncall_Agent` at `/workspace`
+and exposes that same canonical path as the optional Linux/WSL input alias. Host
+and container SHA-256 for `README.md` matched. No parent Projects directory,
+Home, Neo Chat runtime state, Secrets, Backup, or container socket was added.
+
+A retained real-user Conversation (`6eb750e8-ab96-4c68-9c30-e7e9d0bfa541`)
+used the configured `server-default` `gpt-5.6-sol` path and requested the WSL
+UNC form of `README.md`. Before any reload, the stream emitted two redacted
+`local_direct` `file_read` updates with `executionId`, no `callId`, and a valid
+`read` classification. The packaged Frontend normalizer accepted every captured
+Tool event, the Tool completed successfully, and the assistant completed with
+both `requestedToolMode=agent` and `toolMode=agent`. Its Chinese summary named
+SuperBizAgent and the README's RAG, AIOps, FastAPI, LangChain, LangGraph,
+PostgreSQL/pgvector, BM25, and MCP capabilities.
+
+Focused race tests, Frontend live-event regressions, Agent Runtime and artifact
+gates, Compose example/live renders, Backend vet/tests, Frontend
+format/lint/typecheck with 922 tests and production build, RAG Ruff/mypy with
+1,906 passing tests and seven declared integration skips, and the full
+standalone clean-copy gate passed.
