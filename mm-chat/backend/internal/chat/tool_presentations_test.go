@@ -1,6 +1,8 @@
 package chat
 
 import (
+	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -164,5 +166,113 @@ func TestTerminalLiveOutputHoldsBackUnsafeTail(t *testing.T) {
 	}, processReasoningStreamHoldbackBytes)
 	if len(stable) != 1 || len(stable[0].Content) != 64 {
 		t.Fatalf("stable=%#v", stable)
+	}
+}
+
+func TestAgentTimelineHostileFixtureKeepsDurablePresentationSafe(t *testing.T) {
+	workspace := t.TempDir()
+	hostWorkspace := filepath.Join(t.TempDir(), "host-workspace")
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: t.TempDir(),
+		WorkspaceRoot: workspace, WorkspaceHostRoot: hostWorkspace,
+		ShellPath: "/bin/sh", ApprovalMode: localskills.ApprovalSmart,
+		CallTimeout: time.Second, RunTimeout: 2 * time.Second,
+		MaxOutput: 64 << 10, MaxCalls: 4, MaxRounds: 4, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer executor.Close()
+	runtime := newLocalSkillToolRuntime(executor, nil)
+	arguments, err := json.Marshal(map[string]any{
+		"command": "printf '%s' 'token=sk-fixture-secret-value " +
+			hostWorkspace + "/private/.env'",
+		"skill": nil, "workingDir": nil, "timeoutSeconds": 1,
+		"runInBackground": false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	presentation := runtime.localProcessPresentation(ProviderToolCall{
+		Name: localTerminalToolName, Arguments: string(arguments),
+	})
+	if presentation == nil {
+		t.Fatal("Terminal presentation was not created")
+	}
+	presentation.Transcript = []ProcessTranscriptEntry{{
+		Sequence: 1, Stream: "stdout", Content: executor.RedactExecutionPaths(
+			"\x1b[31mBearer fixture-private-token "+hostWorkspace+"/private/.env\x00"+
+				strings.Repeat("x", maxProcessPresentationTextBytes+1024)+
+				" token=sk-fixture-secret-value",
+			"", "",
+		),
+	}}
+	trace := newProcessTrace("message-hostile")
+	terminal := trace.add(ProcessStep{
+		ID: "message-hostile:tool:1", Kind: ProcessStepKindTool,
+		Status: ProcessStepStatusCompleted, LabelKey: "process.tool",
+		Detail: map[string]any{
+			"toolName": localTerminalToolName, "mode": "local_direct", "round": 1,
+		},
+		Presentation: presentation,
+	})
+	mcp := trace.add(ProcessStep{
+		ID: "message-hostile:tool:2", Kind: ProcessStepKindTool,
+		Status: ProcessStepStatusFailed, LabelKey: "process.tool",
+		Detail: map[string]any{
+			"toolName": "unknown_tool", "mode": "mcp", "serverName": "Fixture MCP",
+			"failureCategory": "execution_failed", "round": 2,
+		},
+		Presentation: mcpProcessPresentation("Fixture MCP", "unknown_tool"),
+	})
+	payload := chatAgentToolEventPayload(&ProviderToolExecutionEvent{
+		ExecutionID: "execution-hostile", CallID: "call-hostile",
+		Name: "unknown_tool", Server: "private:raw-server", ServerName: "Fixture MCP",
+		Classification: "unknown", Status: ProcessStepStatusFailed,
+		CallStatus: "failed", Round: 2, Mode: "mcp",
+		Arguments: map[string]any{
+			"token": "sk-fixture-secret-value",
+			"path":  "/home/private/.env",
+			"raw":   `{"raw":"mcp-result"}`,
+			"body":  "data:image/png;base64,private-artifact",
+		},
+	}, []ProcessStep{terminal, mcp})
+	normalized, err := normalizeChatAgentEventPayload(ChatAgentEventToolResult, payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(normalized)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(encoded) > maxChatAgentEventPayloadBytes {
+		t.Fatalf("durable payload bytes=%d", len(encoded))
+	}
+	for _, forbidden := range []string{
+		"sk-fixture-secret-value", "fixture-private-token", hostWorkspace,
+		"/home/private/.env", "private:raw-server", `\"raw\":\"mcp-result\"`,
+		"data:image/png;base64,private-artifact", "\x1b", "\x00",
+		`"argumentsSummary"`,
+	} {
+		if strings.Contains(string(encoded), forbidden) {
+			t.Fatalf("durable presentation leaked %q: %s", forbidden, encoded)
+		}
+	}
+	for _, required := range []string{
+		"$NEO_CHAT_WORKSPACE/private/.env", "[REDACTED]", "Fixture MCP",
+		"Details hidden by the safe presenter", `"processStatus":"failed"`,
+	} {
+		if !strings.Contains(string(encoded), required) {
+			t.Fatalf("durable presentation missing %q: %s", required, encoded)
+		}
+	}
+	if terminal.Presentation == nil || !terminal.Presentation.Truncated ||
+		processTranscriptBytes(terminal.Presentation.Transcript) > maxProcessPresentationTextBytes {
+		t.Fatalf("Terminal bound=%#v", terminal.Presentation)
+	}
+	if _, err := normalizeChatAgentEventPayload(ChatAgentEventToolResult, map[string]any{
+		"oversized": strings.Repeat("x", maxChatAgentEventPayloadBytes+1),
+	}); err == nil {
+		t.Fatal("oversized durable event payload was accepted")
 	}
 }

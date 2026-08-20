@@ -754,6 +754,139 @@ describe("durable process trace", () => {
     expect(durable).toEqual([live]);
   });
 
+  it("keeps a 500-event reload and visible update within the acceptance budget", () => {
+    const rawSteps = Array.from({ length: 500 }, (_, index) => ({
+      id: `message-1:tool:${index + 1}`,
+      kind: "tool",
+      status: "completed",
+      labelKey: "process.tool",
+      detail: {
+        toolName: "file_read",
+        mode: "local_direct",
+        round: Math.floor(index / 10) + 1,
+      },
+      presentation: {
+        version: 1,
+        card: "file",
+        operation: "read",
+        path: `src/fixture-${index}.ts`,
+        content: "ok",
+      },
+    }));
+    const events = rawSteps.map((processStep, index) => ({
+      eventId: `event-${String(index).padStart(4, "0")}`,
+      turnId: "turn-1",
+      conversationId: "conversation-1",
+      messageId: "message-1",
+      runId: "run-1",
+      sequence: index + 1,
+      type: "tool.result",
+      payload: { processStep },
+      occurredAt: "2026-08-20T12:00:00Z",
+    }));
+    const legacy = normalizeProcessTrace(rawSteps);
+    const durable = processTraceFromChatAgentEvents(events);
+    expect(durable).toEqual(legacy);
+
+    const render = (steps: typeof legacy) =>
+      renderToStaticMarkup(
+        <NextIntlClientProvider
+          locale="zh"
+          messages={{ Content: contentMessages }}
+          timeZone="UTC"
+        >
+          <ProcessTracePanel steps={steps} />
+        </NextIntlClientProvider>,
+      );
+    const reloadLegacyP95 = measureP95(() => {
+      render(normalizeProcessTrace(rawSteps));
+    });
+    const reloadDurableP95 = measureP95(() => {
+      render(processTraceFromChatAgentEvents(events) ?? []);
+    });
+    const liveStep = normalizeProcessStep({
+      ...rawSteps[rawSteps.length - 1],
+      status: "running",
+      presentation: {
+        version: 1,
+        card: "file",
+        operation: "read",
+        path: "src/fixture-499.ts",
+        content: "visible live update",
+      },
+    });
+    expect(liveStep).not.toBeNull();
+    const visibleUpdateP95 = measureP95(() => {
+      render(upsertProcessStep(legacy, liveStep!));
+    });
+
+    expect(visibleUpdateP95).toBeLessThanOrEqual(300);
+    expect(reloadDurableP95).toBeLessThanOrEqual(reloadLegacyP95 * 1.2);
+  }, 15_000);
+
+  it("renders only the sanitized presentation from a hostile durable event", () => {
+    const forbidden = [
+      "sk-fixture-secret-value",
+      "Bearer fixture-private-token",
+      "/home/private/.env",
+      "/workspace/private",
+      "\u001b[31m",
+      '"raw":"mcp-result"',
+      "data:image/png;base64,private-artifact",
+    ];
+    const projected = processTraceFromChatAgentEvents([
+      {
+        eventId: "event-hostile-1",
+        turnId: "turn-1",
+        conversationId: "conversation-1",
+        messageId: "message-1",
+        runId: "run-1",
+        sequence: 1,
+        type: "tool.result",
+        payload: {
+          processStep: {
+            id: "message-1:tool:1",
+            kind: "tool",
+            status: "failed",
+            labelKey: "process.tool",
+            detail: {
+              toolName: "unknown_tool",
+              mode: "mcp",
+              serverName: "Fixture MCP",
+              failureCategory: "execution_failed",
+              rawArguments: forbidden.join("|"),
+            },
+            presentation: {
+              version: 1,
+              card: "mcp",
+              title: "Fixture MCP",
+              operation: "unknown_tool",
+              summary: "Details hidden by the safe presenter",
+              rawResult: forbidden.join("|"),
+            },
+          },
+          arguments: { token: forbidden.join("|") },
+          result: { content: forbidden.join("|") },
+          artifactBody: forbidden[forbidden.length - 1],
+        },
+        occurredAt: "2026-08-20T12:00:00Z",
+      },
+    ]);
+    const html = renderToStaticMarkup(
+      <NextIntlClientProvider
+        locale="zh"
+        messages={{ Content: contentMessages }}
+        timeZone="UTC"
+      >
+        <ProcessTracePanel steps={projected ?? []} />
+      </NextIntlClientProvider>,
+    );
+
+    expect(html).toContain("Fixture MCP");
+    expect(html).toContain("错误");
+    for (const value of forbidden) expect(html).not.toContain(value);
+  });
+
   it("rejects malformed durable events without replacing legacy history", () => {
     expect(normalizeChatAgentEvents([{ sequence: 0, payload: [] }])).toEqual(
       [],
@@ -988,3 +1121,15 @@ describe("durable process trace", () => {
     expect(processOutcomeForDisplay(raw!)).toBe("");
   });
 });
+
+function measureP95(operation: () => void): number {
+  for (let index = 0; index < 3; index += 1) operation();
+  const samples = Array.from({ length: 20 }, () => {
+    const startedAt = performance.now();
+    operation();
+    return performance.now() - startedAt;
+  }).sort((left, right) => left - right);
+  return (
+    samples[Math.ceil(samples.length * 0.95) - 1] ?? Number.POSITIVE_INFINITY
+  );
+}

@@ -113,6 +113,15 @@ Migration head: 100_chat_agent_approvals
   assigns a new call ID, and persists `retryOf`. Write/execute/MCP,
   `outcome_unknown`, malformed, cross-user, non-canary, and legacy events have
   no retry affordance and the retry route fails closed.
+- Canary security acceptance must pass one hostile presentation through the
+  real local presenter, ProcessStep sanitizer, Tool-event builder, event payload
+  bound, durable JSON shape, and frontend renderer. The fixture must cover
+  high-confidence secrets, runtime-owned host-path aliasing, ANSI/control
+  filtering, 64 KiB transcript retention, the 256 KiB event cap, unknown MCP
+  summary-only fallback, raw argument/result exclusion, and artifact-body
+  exclusion. Keep safe status visible when content is hidden. Legacy
+  ProcessStep transport remains a rollback surface until these gates pass one
+  stable exact-user canary release.
 
 ### Validation matrix
 
@@ -140,6 +149,7 @@ Migration head: 100_chat_agent_approvals
 | Host/WSL alias below configured workspace | resolve to the same relative File/workingDir path |
 | alias outside Host root, Windows drive, or traversal | reject before filesystem/command access |
 | unknown/malformed/version-unsupported presentation | drop presentation; retain the valid ProcessStep |
+| hostile/oversized Tool presentation | preserve safe status; redact or reject content before durable JSON/SSE/export/DOM |
 | nonempty legacy fact table at 098 | whole migration rolls back |
 | already-retired schema re-up | successful no-op |
 

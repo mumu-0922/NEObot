@@ -235,8 +235,20 @@ replace the runtime.
 
 ### Remaining slices
 
-- Performance/security acceptance and legacy transport removal after one
-  stable canary release.
+- Legacy transport removal after one stable canary release.
+
+### Slice 8 — performance and security acceptance
+
+- Replaced repeated step-list scans during durable projection with one
+  step-ID index while preserving first-seen order and last-event state.
+- Added a 500-event warm p95 gate covering visible update latency at 300 ms
+  and durable reload within 20% of the legacy path under the same render
+  workload.
+- Added a hostile end-to-end presentation fixture covering secret redaction,
+  host-path aliases, ANSI/control filtering, transcript and payload bounds,
+  unknown MCP fallback, raw payload exclusion, and DOM non-disclosure.
+- Kept the legacy ProcessStep transport intact. Removal remains blocked until
+  one stable exact-user canary release passes these gates.
 
 ### Slice 2 — live Terminal transcript
 

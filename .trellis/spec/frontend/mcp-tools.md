@@ -275,6 +275,16 @@ timeline updates.
   legacy steps, pending/allowed/denied/expired approval controls, malformed
   approval fail-closed behavior, decision API validation, and byte-equivalent
   live `process.step.updated` versus durable Agent-event replay.
+- Timeline acceptance uses one 500-event fixture for both paths. Measure full
+  projection plus render after warm-up: visible live-update p95 must remain at
+  or below 300 ms, while durable reload p95 must remain within 20% of the
+  legacy projection under the same workload. Keep durable projection linear
+  with a per-pass step-ID index; do not repeatedly scan the accumulated list.
+- A hostile durable-event fixture must retain safe status and the generic MCP
+  fallback while proving that raw arguments/results, artifact bodies, secrets,
+  runtime-owned host paths, ANSI/control bytes, and oversized presentation
+  content do not reach rendered markup. Do not remove the legacy ProcessStep
+  transport until these gates have passed one stable exact-user canary release.
 - Generation-error wiring for current `PROVIDER_STREAM_INTERRUPTED` plus the
   non-empty legacy `PROVIDER_ERROR` compatibility path in every locale.
 - Storage/entity/import tests that remove all retired Plugin keys without

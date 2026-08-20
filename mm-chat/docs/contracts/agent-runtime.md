@@ -94,6 +94,16 @@ durable Agent event writes but returns only the legacy ProcessStep projection
 and does not enter a hidden approval wait. Clearing either gate is the
 non-destructive rollback.
 
+Canary acceptance uses a 500-event fixture. The frontend must keep visible
+update p95 at or below 300 ms and full durable reload p95 within 20% of the
+legacy projection under the same render workload. Durable projection uses a
+single step-ID index rather than repeated linear scans. A hostile presentation
+fixture must also prove that secrets, runtime-owned host paths, ANSI/control
+bytes, oversized content, raw MCP payloads, and artifact bodies do not cross
+the durable event or DOM boundary. Keep the legacy ProcessStep transport until
+these gates have passed one stable canary release; do not remove it in the
+initial acceptance slice.
+
 Manual Tool retry is also server-authoritative. A canary client may call
 `POST /v1/chat/agent-events/{eventId}/retry` with an idempotency key only when
 the durable owner-scoped event exposes a retry presentation. The initial
@@ -183,4 +193,8 @@ bash scripts/verify-chat-agent-approvals-postgres17.sh
 cd backend
 GOCACHE=/tmp/neo-chat-go-cache go vet ./...
 GOCACHE=/tmp/neo-chat-go-cache go test ./...
+
+cd ../frontend
+corepack pnpm exec vitest run src/__tests__/processTrace.test.tsx
+corepack pnpm typecheck
 ```

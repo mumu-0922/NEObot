@@ -252,16 +252,26 @@ export function processTraceFromChatAgentEvents(
   if (events.length === 0) return legacy;
 
   let steps: ProcessStep[] = [];
+  const stepIndexes = new Map<string, number>();
+  const applyStep = (step: ProcessStep) => {
+    const existingIndex = stepIndexes.get(step.id);
+    if (existingIndex === undefined) {
+      stepIndexes.set(step.id, steps.length);
+      steps.push(step);
+      return;
+    }
+    steps[existingIndex] = step;
+  };
   let interruptedAt = "";
   for (const event of events) {
     const processStep = normalizeProcessStep(event.payload.processStep);
     if (processStep) {
-      steps = upsertProcessStep(steps, processStep);
+      applyStep(processStep);
     }
     if (Array.isArray(event.payload.processSteps)) {
       for (const candidate of event.payload.processSteps) {
         const step = normalizeProcessStep(candidate);
-        if (step) steps = upsertProcessStep(steps, step);
+        if (step) applyStep(step);
       }
     }
     if (
@@ -811,6 +821,7 @@ function normalizeProcessStepPresentation(
     return undefined;
   }
   const approval = normalizeProcessApprovalPresentation(value.approval);
+  const transcript = normalizePresentationTranscript(value.transcript);
   return {
     version: 1,
     card: "terminal",
@@ -820,9 +831,7 @@ function normalizeProcessStepPresentation(
     ...(value.timedOut === true ? { timedOut: true } : {}),
     ...(value.truncated === true ? { truncated: true } : {}),
     ...(value.background === true ? { background: true } : {}),
-    ...(normalizePresentationTranscript(value.transcript)?.length
-      ? { transcript: normalizePresentationTranscript(value.transcript)! }
-      : {}),
+    ...(transcript?.length ? { transcript } : {}),
     ...(approval ? { approval } : {}),
   };
 }
