@@ -31,11 +31,14 @@ import {
   summarizeProcessRoute,
 } from "@/lib/chat/processTrace";
 import type {
+  ProcessApprovalPresentation,
   ProcessStep,
   ProcessStepKind,
   ProcessStepPresentation,
   ProcessTranscriptEntry,
 } from "@/types";
+import { createNeoChatApiClient } from "@/services/api/client";
+import type { ChatApprovalDecision } from "@/services/api/client";
 import MarkdownRenderer from "./MarkdownRenderer";
 
 interface ProcessTracePanelProps {
@@ -266,7 +269,10 @@ function TerminalProcessCard({
     typeof terminal.exitCode === "number" && terminal.exitCode !== 0;
 
   return (
-    <details className="group/terminal mt-1.5 overflow-hidden rounded-md border border-slate-800/70 bg-slate-950 text-slate-200 dark:border-slate-700">
+    <details
+      open={terminal.approval?.status === "pending" || undefined}
+      className="group/terminal mt-1.5 overflow-hidden rounded-md border border-slate-800/70 bg-slate-950 text-slate-200 dark:border-slate-700"
+    >
       <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-2 marker:content-none [&::-webkit-details-marker]:hidden">
         <span
           className="select-none font-mono text-[11px] text-emerald-400"
@@ -331,8 +337,125 @@ function TerminalProcessCard({
             </TerminalPill>
           ) : null}
         </div>
+        {terminal.approval ? (
+          <ApprovalControls approval={terminal.approval} dark />
+        ) : null}
       </div>
     </details>
+  );
+}
+
+function ApprovalControls({
+  approval,
+  dark = false,
+}: {
+  approval: ProcessApprovalPresentation;
+  dark?: boolean;
+}) {
+  const t = useTranslations("Content");
+  const client = useMemo(() => createNeoChatApiClient(), []);
+  const [resolved, setResolved] = useState(approval);
+  const [busy, setBusy] = useState<ChatApprovalDecision | null>(null);
+  const [error, setError] = useState(false);
+  const current = resolved.revision >= approval.revision ? resolved : approval;
+  const decide = async (decision: ChatApprovalDecision) => {
+    if (busy || current.status !== "pending") return;
+    setBusy(decision);
+    setError(false);
+    try {
+      const response = await client.chat.decideApproval({
+        approvalId: current.id,
+        expectedRevision: current.revision,
+        decision,
+      });
+      setResolved({
+        id: response.id,
+        revision: response.revision,
+        status: response.status,
+        ...(response.decision ? { decision: response.decision } : {}),
+        expiresAt: response.expiresAt,
+        allowConversation: response.allowConversation,
+      });
+    } catch {
+      setError(true);
+    } finally {
+      setBusy(null);
+    }
+  };
+  const muted = dark
+    ? "text-slate-400"
+    : "text-gray-500 dark:text-muted-foreground";
+  if (current.status !== "pending") {
+    return (
+      <div className={`mt-2 text-[10px] ${muted}`} role="status">
+        {current.status === "allowed"
+          ? t("processApprovalAllowed")
+          : current.status === "expired"
+            ? t("processApprovalExpired")
+            : t("processApprovalDenied")}
+      </div>
+    );
+  }
+  return (
+    <div
+      className={`mt-2 border-t pt-2 ${dark ? "border-slate-800" : "border-gray-200 dark:border-border"}`}
+      aria-label={t("processApprovalRequired")}
+    >
+      <div className={`mb-2 text-[10px] ${muted}`}>
+        {t("processApprovalRequired")}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        <ApprovalButton
+          label={t("processApprovalAllowOnce")}
+          busy={busy === "allow_once"}
+          onClick={() => void decide("allow_once")}
+        />
+        {current.allowConversation ? (
+          <ApprovalButton
+            label={t("processApprovalAllowConversation")}
+            busy={busy === "allow_conversation"}
+            onClick={() => void decide("allow_conversation")}
+          />
+        ) : null}
+        <ApprovalButton
+          label={t("processApprovalDeny")}
+          busy={busy === "deny"}
+          danger
+          onClick={() => void decide("deny")}
+        />
+      </div>
+      {error ? (
+        <div className="mt-1.5 text-[10px] text-rose-400" role="alert">
+          {t("processApprovalFailed")}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ApprovalButton({
+  label,
+  busy,
+  danger = false,
+  onClick,
+}: {
+  label: string;
+  busy: boolean;
+  danger?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors disabled:cursor-wait disabled:opacity-60 ${danger ? "bg-rose-500/15 text-rose-300 hover:bg-rose-500/25" : "bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25"}`}
+    >
+      {busy ? (
+        <LoaderCircle size={10} className="motion-safe:animate-spin" />
+      ) : null}
+      {label}
+    </button>
   );
 }
 

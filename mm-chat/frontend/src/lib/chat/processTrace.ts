@@ -6,6 +6,7 @@ import type {
   ProcessStepStatus,
   ProcessStepPresentation,
   ProcessTranscriptEntry,
+  ProcessApprovalPresentation,
 } from "./types";
 
 const PROCESS_STEP_KINDS = new Set<ProcessStepKind>([
@@ -621,6 +622,7 @@ function normalizeProcessStepPresentation(
   ) {
     return undefined;
   }
+  const approval = normalizeProcessApprovalPresentation(value.approval);
   return {
     version: 1,
     card: "terminal",
@@ -633,6 +635,51 @@ function normalizeProcessStepPresentation(
     ...(normalizePresentationTranscript(value.transcript)?.length
       ? { transcript: normalizePresentationTranscript(value.transcript)! }
       : {}),
+    ...(approval ? { approval } : {}),
+  };
+}
+
+function normalizeProcessApprovalPresentation(
+  value: unknown,
+): ProcessApprovalPresentation | undefined {
+  if (!isRecord(value)) return undefined;
+  const id = stringValue(value.id);
+  const revision = positiveInteger(value.revision);
+  const status = stringValue(value.status);
+  const decision = stringValue(value.decision);
+  const expiresAt = stringValue(value.expiresAt);
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      id,
+    ) ||
+    revision === undefined ||
+    !["pending", "allowed", "denied", "expired"].includes(status) ||
+    !Number.isFinite(Date.parse(expiresAt)) ||
+    typeof value.allowConversation !== "boolean" ||
+    (decision !== "" &&
+      ![
+        "allow_once",
+        "allow_conversation",
+        "deny",
+        "expired",
+        "restart_denied",
+      ].includes(decision))
+  ) {
+    return undefined;
+  }
+  return {
+    id,
+    revision,
+    status: status as ProcessApprovalPresentation["status"],
+    ...(decision
+      ? {
+          decision: decision as NonNullable<
+            ProcessApprovalPresentation["decision"]
+          >,
+        }
+      : {}),
+    expiresAt,
+    allowConversation: value.allowConversation,
   };
 }
 

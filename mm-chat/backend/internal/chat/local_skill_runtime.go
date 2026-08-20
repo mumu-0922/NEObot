@@ -61,6 +61,13 @@ type localSkillToolRuntime struct {
 	artifactBytes      int64
 	publishedArtifacts []WorkspaceArtifact
 	publishedByVersion map[string]WorkspaceArtifact
+	approvals          *chatToolApprovalRuntime
+}
+
+func (runtime *localSkillToolRuntime) bindApprovalRuntime(approvals *chatToolApprovalRuntime) {
+	if runtime != nil {
+		runtime.approvals = approvals
+	}
 }
 
 type localSkillRunFailure struct {

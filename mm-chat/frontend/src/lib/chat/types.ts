@@ -83,6 +83,16 @@ export interface ProcessPresentationItem {
   detail?: string;
 }
 
+export interface ProcessApprovalPresentation {
+  id: string;
+  revision: number;
+  status: "pending" | "allowed" | "denied" | "expired";
+  decision?:
+    "allow_once" | "allow_conversation" | "deny" | "expired" | "restart_denied";
+  expiresAt: string;
+  allowConversation: boolean;
+}
+
 export interface ProcessTerminalPresentation {
   version: 1;
   card: "terminal";
@@ -93,6 +103,7 @@ export interface ProcessTerminalPresentation {
   truncated?: boolean;
   background?: boolean;
   transcript?: ProcessTranscriptEntry[];
+  approval?: ProcessApprovalPresentation;
 }
 
 export interface ProcessSearchPresentation {
@@ -105,6 +116,7 @@ export interface ProcessSearchPresentation {
   summary?: string;
   items?: ProcessPresentationItem[];
   truncated?: boolean;
+  approval?: ProcessApprovalPresentation;
 }
 
 export interface ProcessFilePresentation {
@@ -123,6 +135,7 @@ export interface ProcessFilePresentation {
   items?: ProcessPresentationItem[];
   truncated?: boolean;
   title?: string;
+  approval?: ProcessApprovalPresentation;
 }
 
 export interface ProcessJobPresentation {
@@ -134,6 +147,7 @@ export interface ProcessJobPresentation {
   transcript?: ProcessTranscriptEntry[];
   timedOut?: boolean;
   truncated?: boolean;
+  approval?: ProcessApprovalPresentation;
 }
 
 export interface ProcessSummaryPresentation {
@@ -143,6 +157,7 @@ export interface ProcessSummaryPresentation {
   summary?: string;
   operation?: string;
   items?: ProcessPresentationItem[];
+  approval?: ProcessApprovalPresentation;
 }
 
 export type ProcessStepPresentation =

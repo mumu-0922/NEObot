@@ -50,9 +50,12 @@ backups.
 | `AGENT_LOCAL_MAX_ROUNDS_PER_RUN` | `8` | Provider Tool-round budget. |
 | `AGENT_LOCAL_MAX_CONCURRENT` | `2` | Concurrent commands per Backend process. |
 
-`smart` approval failures are returned to the model as
-`approval_required`; they do not silently execute. Catastrophic patterns stay
-blocked even when approval mode is `off`.
+In `smart` mode, destructive Terminal calls enter the durable Chat Agent
+approval flow when the event/approval repository is available. The same Tool
+call waits at most five minutes and executes only after `Allow once` or an exact
+conversation grant. Without durable authority the bounded result remains
+`approval_required`. Catastrophic patterns stay blocked and cannot be bypassed
+even when approval mode is `off`.
 
 Example for one explicitly authorized WSL project:
 

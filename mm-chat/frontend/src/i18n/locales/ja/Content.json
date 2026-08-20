@@ -150,5 +150,13 @@
   "toggleVersionHistory": "変更履歴を切り替え",
   "cancel": "キャンセル",
   "save": "保存",
-  "webSearchTemporarilyUnavailable": "Web 検索は一時的に利用できません。Web の結果を使わずに回答を続行しました。"
+  "webSearchTemporarilyUnavailable": "Web 検索は一時的に利用できません。Web の結果を使わずに回答を続行しました。",
+  "processApprovalRequired": "この操作には承認が必要です",
+  "processApprovalAllowOnce": "今回のみ許可",
+  "processApprovalAllowConversation": "この会話で許可",
+  "processApprovalDeny": "拒否",
+  "processApprovalAllowed": "承認されました。実行を続けています。",
+  "processApprovalDenied": "拒否されました。操作は実行されません。",
+  "processApprovalExpired": "承認の有効期限が切れました。操作は実行されません。",
+  "processApprovalFailed": "決定を保存できませんでした。再試行してください。"
 }

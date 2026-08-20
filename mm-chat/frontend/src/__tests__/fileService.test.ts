@@ -381,6 +381,9 @@ function createMockChatApi(): ChatApi {
     async cancelRun() {
       return { status: "unsupported" };
     },
+    async decideApproval() {
+      throw new Error("decideApproval not mocked");
+    },
   };
 }
 

@@ -500,6 +500,14 @@ job_kill({jobId})
   command/cwd in `detail` or persist/stream raw stdout, stderr, other arguments,
   Skill content, or materialized paths. The same sanitized ProcessStep is the
   durable event, live `process.step.updated`, and Conversation replay source.
+- A destructive Terminal result classified `approval_required` is not finalized
+  as an ordinary Tool failure when durable approval authority is available.
+  Create a five-minute approval tied to the exact Turn/execution/Tool/risk,
+  persist and emit its sanitized `awaiting_approval` ProcessStep, then wait on
+  the same Tool call. First valid revision/CAS decision wins. Allow resumes
+  exactly once; deny/expiry/cancel/restart denial never execute. Exact
+  Conversation + Tool + risk grants may auto-allow later calls. Approval rows
+  retain no raw arguments/results and the hard blocklist remains non-bypassable.
 - Run `bash mm-chat/scripts/verify-chat-artifacts-postgres17.sh` for artifact
   publication changes; it must prove output-link reload, two-user isolation,
   deleted-file rejection, and ephemeral PostgreSQL 17 teardown.
@@ -518,7 +526,9 @@ job_kill({jobId})
 | required prelude returns no Tool Call | `LOCAL_SKILL_REQUIRED_CALL_MISSING`; discard buffered prose |
 | required prelude returns MCP/retrieval/terminal or a retired Tool | bounded `skill_required_before_action`; no side effect |
 | materialized fingerprint drifts | bounded `package_drift`; no content/process |
-| command blocked or approval required | typed Tool failure before process creation |
+| catastrophic command blocked | typed Tool failure before process creation; approval cannot bypass |
+| destructive command, no durable approval authority | typed `approval_required` Tool failure |
+| destructive command with durable approval authority | durable wait; same Tool resumes only after allow |
 | workspace traversal/symlink escape | bounded `path_invalid`; no file access |
 | file version changed | bounded `version_conflict`; preserve current bytes |
 | Job lookup across user/Conversation | `job_not_found`; no existence disclosure |

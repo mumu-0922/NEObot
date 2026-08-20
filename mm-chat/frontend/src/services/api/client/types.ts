@@ -353,6 +353,32 @@ export interface ChatRunResult {
   error?: ApiErrorEnvelope["error"];
 }
 
+export type ChatApprovalDecision = "allow_once" | "allow_conversation" | "deny";
+
+export interface ChatApprovalDTO {
+  id: string;
+  turnId: string;
+  conversationId: string;
+  messageId: string;
+  runId: string;
+  executionId: string;
+  toolName: string;
+  riskClass: "write" | "execute" | "external";
+  status: "pending" | "allowed" | "denied" | "expired";
+  decision?: ChatApprovalDecision | "expired" | "restart_denied";
+  revision: number;
+  allowConversation: boolean;
+  expiresAt: string;
+  createdAt: string;
+  decidedAt?: string;
+}
+
+export interface DecideChatApprovalInput {
+  approvalId: string;
+  expectedRevision: number;
+  decision: ChatApprovalDecision;
+}
+
 export interface ChatApi {
   createConversation(input: CreateConversationInput): Promise<ConversationDTO>;
   listConversations(): Promise<ConversationDTO[]>;
@@ -379,6 +405,7 @@ export interface ChatApi {
   ): Promise<ChatRunResult>;
   planTools(input: PlanServerToolsInput): Promise<ServerPlannedToolCall[]>;
   cancelRun(runId: string): Promise<ChatRunResult>;
+  decideApproval(input: DecideChatApprovalInput): Promise<ChatApprovalDTO>;
 }
 
 export type AgentMarketLocale = "en" | "zh" | "ja";

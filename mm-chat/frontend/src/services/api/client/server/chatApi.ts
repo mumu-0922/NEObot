@@ -25,6 +25,8 @@ import type {
   ServerStreamEvent,
   UpdateConversationInput,
   UpdateMessageInput,
+  DecideChatApprovalInput,
+  ChatApprovalDTO,
 } from "../types";
 import type { HttpClient } from "./httpClient";
 import { normalizeProcessStep } from "@/lib/chat/processTrace";
@@ -332,7 +334,95 @@ export function createServerChatApiShell(httpClient: HttpClient): ChatApi {
     async cancelRun(runId: string): Promise<ChatRunResult> {
       return cancelRunById(httpClient, runId);
     },
+    async decideApproval(
+      input: DecideChatApprovalInput,
+    ): Promise<ChatApprovalDTO> {
+      const response = await httpClient.requestJson<unknown>(
+        `/v1/chat/approvals/${encodeURIComponent(input.approvalId)}/decision`,
+        {
+          method: "POST",
+          body: {
+            expectedRevision: input.expectedRevision,
+            decision: input.decision,
+          },
+        },
+      );
+      return normalizeChatApprovalResponse(response);
+    },
   };
+}
+
+function normalizeChatApprovalResponse(value: unknown): ChatApprovalDTO {
+  if (!isRecord(value)) {
+    throw invalidChatApprovalResponse();
+  }
+  const strings = [
+    "id",
+    "turnId",
+    "conversationId",
+    "messageId",
+    "runId",
+    "executionId",
+    "toolName",
+    "riskClass",
+    "status",
+    "expiresAt",
+    "createdAt",
+  ] as const;
+  if (
+    strings.some(
+      (key) => typeof value[key] !== "string" || !value[key].trim(),
+    ) ||
+    !["write", "execute", "external"].includes(String(value.riskClass)) ||
+    !["pending", "allowed", "denied", "expired"].includes(
+      String(value.status),
+    ) ||
+    !Number.isSafeInteger(value.revision) ||
+    Number(value.revision) < 1 ||
+    typeof value.allowConversation !== "boolean" ||
+    !Number.isFinite(Date.parse(String(value.expiresAt))) ||
+    !Number.isFinite(Date.parse(String(value.createdAt))) ||
+    (value.decidedAt !== undefined &&
+      (typeof value.decidedAt !== "string" ||
+        !Number.isFinite(Date.parse(value.decidedAt)))) ||
+    (value.decision !== undefined &&
+      (typeof value.decision !== "string" ||
+        ![
+          "allow_once",
+          "allow_conversation",
+          "deny",
+          "expired",
+          "restart_denied",
+        ].includes(value.decision)))
+  ) {
+    throw invalidChatApprovalResponse();
+  }
+  return {
+    id: String(value.id),
+    turnId: String(value.turnId),
+    conversationId: String(value.conversationId),
+    messageId: String(value.messageId),
+    runId: String(value.runId),
+    executionId: String(value.executionId),
+    toolName: String(value.toolName),
+    riskClass: value.riskClass as ChatApprovalDTO["riskClass"],
+    status: value.status as ChatApprovalDTO["status"],
+    ...(value.decision
+      ? { decision: value.decision as NonNullable<ChatApprovalDTO["decision"]> }
+      : {}),
+    revision: Number(value.revision),
+    allowConversation: value.allowConversation,
+    expiresAt: String(value.expiresAt),
+    createdAt: String(value.createdAt),
+    ...(value.decidedAt ? { decidedAt: value.decidedAt as string } : {}),
+  };
+}
+
+function invalidChatApprovalResponse(): ApiClientError {
+  return new ApiClientError(
+    "INVALID_SERVER_RESPONSE",
+    "Server returned an invalid chat Agent approval.",
+  );
 }
 
 function normalizeToolPlanResponse(

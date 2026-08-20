@@ -236,7 +236,6 @@ replace the runtime.
 ### Remaining slices
 
 - Cursor reconnect ring buffer and stream resumption across browser disconnects.
-- Durable Approval/CAS/expiry/restart-denial endpoints and UI controls.
 - Backend-authorized Retry, Job reconciliation metadata, canary flag, exact
   rollout gates, performance/security acceptance, and legacy transport removal.
 
@@ -249,3 +248,16 @@ replace the runtime.
 - Running ProcessSteps update the existing Terminal card in place. Transient
   progress is SSE-only; completion persists the final bounded/redacted snapshot
   so reload does not create or replay one database event per chunk.
+
+### Slice 3 — durable Tool approval
+
+- Added migration `100` with least-privilege approval/CAS gateways and exact
+  Conversation + Tool + risk grants. Raw Tool arguments/results never enter
+  approval storage.
+- Destructive Terminal calls now persist an `awaiting_approval` presentation,
+  wait at most five minutes, and resume the same call only after an exact allow.
+  Hard-blocked commands remain non-bypassable.
+- Added first-decision-wins `Allow once`, policy-permitted `Allow for
+  conversation`, `Deny`, expiry, and startup `restart_denied` behavior.
+- Added runtime-validated frontend approval controls with safe malformed-data
+  fallback, plus focused Go/Vitest and PostgreSQL 17 approval coverage.

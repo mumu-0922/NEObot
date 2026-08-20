@@ -27,6 +27,7 @@ const (
 	conversationPathBase  = conversationsPath + "/"
 	generateTextPath      = "/v1/chat/generate"
 	runsPathBase          = "/v1/chat/runs/"
+	approvalsPathBase     = "/v1/chat/approvals/"
 	toolPlanPath          = "/v1/chat/tools/plan"
 	maxToolPlanPrompt     = 16 * 1024
 	maxGenerateTextPrompt = 128 * 1024
@@ -74,6 +75,7 @@ type Handler struct {
 	localSkillExecutor           *localskills.Executor
 	artifactPublisher            WorkspaceArtifactPublisher
 	artifactMaxBytes             int64
+	approvalWaiters              *chatAgentApprovalWaiters
 }
 
 type HandlerOption func(*Handler)
@@ -323,6 +325,11 @@ type cancelRunResponse struct {
 	Message ChatMessageDTO `json:"message"`
 }
 
+type decideApprovalRequest struct {
+	ExpectedRevision int64  `json:"expectedRevision"`
+	Decision         string `json:"decision"`
+}
+
 func WithProvider(provider Provider) HandlerOption {
 	return func(h *Handler) {
 		if provider != nil {
@@ -503,6 +510,7 @@ func NewHandler(service *Service, opts ...HandlerOption) *Handler {
 	handler := &Handler{
 		service:              service,
 		activeRuns:           newActiveRunRegistry(),
+		approvalWaiters:      newChatAgentApprovalWaiters(),
 		contextBudgetPolicy:  defaultContextBudgetPolicy(),
 		toolCapabilityProbes: newToolCapabilityProbeGroup(),
 	}
@@ -527,6 +535,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleConversationChild(w, r)
 	case strings.HasPrefix(r.URL.Path, runsPathBase):
 		h.handleRunChild(w, r)
+	case strings.HasPrefix(r.URL.Path, approvalsPathBase):
+		h.handleApprovalChild(w, r)
 	case r.URL.Path == generateTextPath:
 		h.handleGenerateText(w, r)
 	case r.URL.Path == toolPlanPath:
@@ -754,6 +764,43 @@ func (h *Handler) handleRunChild(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.cancelRun(w, r, runID)
+}
+
+func (h *Handler) handleApprovalChild(w http.ResponseWriter, r *http.Request) {
+	approvalID, child, ok := parseApprovalChildPath(r.URL.Path)
+	if !ok || child != "decision" {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+		return
+	}
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, http.MethodPost)
+		return
+	}
+	var request decideApprovalRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeRequestDecodeError(w, err)
+		return
+	}
+	switch strings.TrimSpace(request.Decision) {
+	case ChatAgentApprovalAllowOnce, ChatAgentApprovalAllowConversation,
+		ChatAgentApprovalDeny:
+	default:
+		writeError(
+			w, http.StatusBadRequest, "INVALID_CHAT_AGENT_APPROVAL_DECISION",
+			"approval decision must be allow_once, allow_conversation, or deny",
+		)
+		return
+	}
+	approval, err := h.service.DecideChatAgentApproval(r.Context(), DecideChatAgentApprovalInput{
+		ApprovalID: approvalID, ExpectedRevision: request.ExpectedRevision,
+		Decision: request.Decision, OccurredAt: time.Now().UTC(),
+	})
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	h.approvalWaiters.resolve(approval)
+	writeJSON(w, http.StatusOK, approval)
 }
 
 func (h *Handler) handleConversationResource(w http.ResponseWriter, r *http.Request, conversationID string) {
@@ -1584,6 +1631,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		goalToolRuntime = newChatAgentGoalToolRuntime(
 			h.service, agentRecorder.turnID, conversationID,
 		)
+		localSkillRuntime.bindApprovalRuntime(newChatToolApprovalRuntime(
+			h.service, h.approvalWaiters, agentRecorder.turnID,
+		))
 		providerSystemPrompt = appendChatAgentGoalSystemInstruction(
 			providerSystemPrompt, goalToolRuntime,
 		)
@@ -3593,6 +3643,15 @@ func parseRunChildPath(path string) (string, string, bool) {
 	return parts[0], parts[1], true
 }
 
+func parseApprovalChildPath(path string) (string, string, bool) {
+	remainder := strings.TrimPrefix(path, approvalsPathBase)
+	parts := strings.Split(remainder, "/")
+	if len(parts) != 2 || !isUUID(parts[0]) || parts[1] == "" {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
+}
+
 func decodeJSON(w http.ResponseWriter, r *http.Request, destination any) error {
 	return decodeJSONWithForbiddenFields(w, r, destination, nil)
 }
@@ -3720,6 +3779,8 @@ func chatStreamErrorBody(err error, deadlineExceeded bool) ErrorBody {
 			message = "Local Skill execution was cancelled"
 		case "LOCAL_SKILL_PROVIDER_FAILED":
 			message = "The provider could not continue the local Skill Tool loop"
+		case "AGENT_APPROVAL_PERSISTENCE_FAILED":
+			message = "The Agent could not persist approval state"
 		case "LOCAL_SKILL_REQUIRED_CALL_MISSING":
 			message = "The provider did not load the required Skill before acting"
 		}
@@ -3798,6 +3859,27 @@ func serviceErrorFor(err error) (int, ErrorBody) {
 	}
 	if errors.Is(err, ErrRunNotCancellable) {
 		return http.StatusConflict, ErrorBody{Code: "RUN_NOT_CANCELLABLE", Message: "run is not cancellable"}
+	}
+	var approvalError ChatAgentApprovalError
+	if errors.As(err, &approvalError) {
+		switch approvalError.Code {
+		case "CHAT_AGENT_APPROVAL_NOT_FOUND":
+			return http.StatusNotFound, ErrorBody{
+				Code: approvalError.Code, Message: "approval request not found",
+			}
+		case "CHAT_AGENT_APPROVAL_STALE_REVISION":
+			return http.StatusConflict, ErrorBody{
+				Code: approvalError.Code, Message: "approval request revision is stale",
+			}
+		case "CHAT_AGENT_APPROVAL_AUTHORITY_INVALID":
+			return http.StatusNotFound, ErrorBody{
+				Code: "CHAT_AGENT_APPROVAL_NOT_FOUND", Message: "approval request not found",
+			}
+		default:
+			return http.StatusConflict, ErrorBody{
+				Code: approvalError.Code, Message: "approval request could not be decided",
+			}
+		}
 	}
 
 	var validationError ValidationError

@@ -15,7 +15,7 @@ Conversation config: toolMode = "chat" | "agent"
 Skill API: /v1/skills/*
 Agent local Tools: skill, file_read, file_write, file_edit, file_search,
                    terminal, job_list, job_output, job_kill, publish_file
-Migration head: 099_chat_agent_event_log_function_repair
+Migration head: 100_chat_agent_approvals
 ```
 
 ### Contracts
@@ -58,6 +58,12 @@ Migration head: 099_chat_agent_event_log_function_repair
   at most one per 75 ms unless 16 KiB becomes stable, and never block command
   pipes on a slow SSE consumer. Transient snapshots are SSE-only; the final
   bounded/redacted head+tail snapshot is the sole durable transcript authority.
+- A destructive Terminal call in `smart` mode creates a durable five-minute
+  approval before execution and waits on the same Tool call. `Allow once`
+  bypasses the smart approval check exactly once; policy-permitted `Allow for
+  conversation` creates an exact Conversation + Tool name + risk-class grant.
+  Deny, expiry, cancellation and `restart_denied` do not execute. The hard
+  blocklist is earlier authority and is never approval-bypassable.
 - `publish_file` accepts only workspace-relative regular files, persists through
   the existing user-owned File/object-store path, and attaches only successful
   outputs to the assistant message. Cross-user and stale/deleted access fails.
@@ -73,6 +79,11 @@ Migration head: 099_chat_agent_event_log_function_repair
   when every retired object is already absent.
 - `099` idempotently repairs the two Chat event gateways, reasserts hardened
   `search_path` and least-privilege grants, and has a forward-only no-op down.
+- `100` stores mutable approval/CAS and exact conversation-grant authority but
+  no raw Tool payload. The immutable Agent event remains presentation/replay
+  authority. API runtime has no table DML and may execute only create, decide,
+  and restart-recovery gateways. First valid decision wins; duplicate/conflict
+  tabs return current authority. Startup denies all pending rows.
 
 ### Validation matrix
 
@@ -81,7 +92,9 @@ Migration head: 099_chat_agent_event_log_function_repair
 | Chat mode or Tool-incapable model | no local/MCP/Goal Tool preparation |
 | Agent enabled, no installed Skills | File/Terminal/Job remain; Skill catalog is empty |
 | invalid root/shell/limits | Backend startup fails |
-| destructive command in smart mode | approval-required result; no execution |
+| destructive command in smart mode | durable awaiting-approval event; execute only after exact allow |
+| duplicate/conflicting approval decision | return first terminal decision; do not overwrite history |
+| pending approval at Backend restart | `denied/restart_denied`; no execution |
 | foreground Terminal-only task | Tool-free final answer; no `verify_completion` loop |
 | background Terminal plus foreground check | background remains unverified until exact completed `job_output` |
 | Backend shutdown with active Job | entire process group canceled and reaped |
@@ -114,6 +127,7 @@ Migration head: 099_chat_agent_event_log_function_repair
 bash mm-chat/scripts/verify-agent-local-runtime.sh
 bash mm-chat/scripts/verify-legacy-agent-cleanup-postgres17.sh
 bash mm-chat/scripts/verify-chat-artifacts-postgres17.sh
+bash mm-chat/scripts/verify-chat-agent-approvals-postgres17.sh
 
 cd mm-chat/backend
 GOCACHE=/tmp/neo-chat-go-cache go vet ./...
@@ -141,5 +155,5 @@ Wrong: copy stdout/stderr or Terminal arguments into generic process detail
 Correct: typed redacted Terminal card -> durable ProcessStep -> same live/replay card
 
 Wrong: DROP ... CASCADE after a broad agent_* match
-Correct: lock -> exact manifest/data validation -> explicit drops -> forward repair -> head 099
+Correct: lock -> exact manifest/data validation -> explicit drops -> forward repair -> head 100
 ```

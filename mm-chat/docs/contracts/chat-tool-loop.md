@@ -526,6 +526,28 @@ summary, and `allow once | allow for this conversation | reject`. Credentials,
 raw payloads, and hidden Tool parameters are never rendered. G19's initial Web
 and Knowledge tools are read-only and require no approval.
 
+Durable Chat Agent approvals use:
+
+```text
+chat_agent_approvals(id, turn_id, execution_id, tool_name, risk_class,
+                     status, decision, revision, allow_conversation,
+                     expires_at, decided_at)
+chat_agent_conversation_tool_grants(conversation_id, tool_name, risk_class)
+POST /v1/chat/approvals/:approvalId/decision
+  { expectedRevision, decision: allow_once|allow_conversation|deny }
+```
+
+The Backend creates an approval before publishing the `awaiting_approval`
+ProcessStep and resumes the same Tool call only after an allowed decision. The
+decision gateway authenticates the current user and uses revision/CAS: the
+first valid decision wins, while repeated or conflicting later requests return
+the current terminal row. Pending rows expire after five minutes. Startup maps
+all remaining pending rows to `denied/restart_denied`; it never resumes their
+old commands. Conversation grants are exact
+`conversation + tool_name + risk_class`, and only policy-permitted approvals
+may create them. Approval rows contain no raw arguments or Tool results and are
+not a second presentation authority.
+
 A selected Knowledge collection is only an allowed private-source scope. Native
 rounds retain Auto Tool choice: clear catalog/private overlap uses Knowledge,
 current public facts use Web, independently necessary private and public
@@ -572,6 +594,15 @@ interface ProcessTerminalPresentation {
   timedOut?: boolean;
   truncated?: boolean;
   background?: boolean;
+  approval?: {
+    id: string;
+    revision: number;
+    status: "pending" | "allowed" | "denied" | "expired";
+    decision?: "allow_once" | "allow_conversation" | "deny"
+      | "expired" | "restart_denied";
+    expiresAt: string;
+    allowConversation: boolean;
+  };
 }
 ```
 
@@ -651,6 +682,13 @@ coalesces updates to 75 ms/16 KiB, and uses nonblocking delivery so a slow
 browser cannot stall command pipes. These progress snapshots never append
 Agent events. Completion persists one bounded/redacted 32 KiB head + 32 KiB
 tail transcript, which is the reload authority.
+
+An approval presentation is sanitized before it enters the ProcessStep and
+contains only decision metadata. A malformed approval object is dropped while
+the safe Terminal card remains renderable. The active/pending card expands by
+default and submits the displayed revision to the decision endpoint. The API
+response is runtime-validated before replacing the local card; durable Agent
+events remain the reload authority.
 
 Job-related process rows may additionally retain only
 `durability=process_local`. `context.replaced` payloads retain reason,

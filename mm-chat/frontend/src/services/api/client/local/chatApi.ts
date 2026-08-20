@@ -65,5 +65,8 @@ export function createLocalChatApiShell(): ChatApi {
           .error,
       };
     },
+    async decideApproval() {
+      throw unsupportedFeature("chat Agent approval in local API mode");
+    },
   };
 }

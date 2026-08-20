@@ -56,6 +56,9 @@ type Request struct {
 	TimeoutSeconds  int
 	SkillsRoot      string
 	ActiveSkillRoot string
+	// Approved is set only by the Backend-owned durable approval authority
+	// after a matching request wins CAS. It is never model/user input.
+	Approved bool
 	// OnOutput receives bounded raw process bytes inside the Backend. Callers
 	// must sanitize before exposing them outside the process. The callback must
 	// not block command pipes.
@@ -162,7 +165,8 @@ func (executor *Executor) prepareRequest(
 	if hardBlockedCommand(request.Command) {
 		return "", 0, ErrCommandBlocked
 	}
-	if executor.config.ApprovalMode == ApprovalSmart && destructiveCommand(request.Command) {
+	if executor.config.ApprovalMode == ApprovalSmart && !request.Approved &&
+		destructiveCommand(request.Command) {
 		return "", 0, ErrApprovalRequired
 	}
 	workingDir, err := executor.resolveWorkingDirectory(request.WorkingDir)
@@ -390,7 +394,8 @@ func (executor *Executor) TerminalPresentation(
 	if background {
 		maximumTimeout = executor.config.RunTimeout
 	}
-	if _, _, err := executor.prepareRequest(&request, maximumTimeout); err != nil {
+	if _, _, err := executor.prepareRequest(&request, maximumTimeout); err != nil &&
+		!errors.Is(err, ErrApprovalRequired) {
 		return "", "", false
 	}
 	cwd, ok := executor.WorkspaceDisplayPath(request.WorkingDir)

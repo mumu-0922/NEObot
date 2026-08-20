@@ -180,6 +180,68 @@ describe("durable process trace", () => {
     expect(mcp?.presentation).toBeUndefined();
   });
 
+  it("renders a fail-closed durable Terminal approval request", () => {
+    const step = normalizeProcessStep({
+      id: "tool-terminal-approval",
+      kind: "tool",
+      status: "awaiting_approval",
+      labelKey: "process.tool",
+      detail: {
+        toolName: "terminal",
+        mode: "local_direct",
+        classification: "execute",
+      },
+      presentation: {
+        version: 1,
+        card: "terminal",
+        command: "rm -rf ./build",
+        cwd: "$NEO_CHAT_WORKSPACE",
+        approval: {
+          id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          revision: 1,
+          status: "pending",
+          expiresAt: "2026-08-20T12:05:00Z",
+          allowConversation: true,
+          rawArguments: "must-not-render",
+        },
+      },
+    });
+    expect(step?.presentation).toMatchObject({
+      card: "terminal",
+      approval: {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        revision: 1,
+        status: "pending",
+        allowConversation: true,
+      },
+    });
+    const html = renderToStaticMarkup(
+      <NextIntlClientProvider
+        locale="zh"
+        messages={{ Content: contentMessages }}
+        timeZone="UTC"
+      >
+        <ProcessTracePanel steps={[step!]} />
+      </NextIntlClientProvider>,
+    );
+    expect(html).toContain("此操作需要你的批准");
+    expect(html).toContain("仅允许一次");
+    expect(html).toContain("本会话内允许");
+    expect(html).toContain("拒绝");
+    expect(html).toContain('<details open=""');
+    expect(html).not.toContain("must-not-render");
+
+    const malformed = normalizeProcessStep({
+      ...step,
+      presentation: {
+        ...step?.presentation,
+        approval: { id: "not-a-uuid", revision: 1, status: "pending" },
+      },
+    });
+    expect(malformed?.presentation).toMatchObject({ card: "terminal" });
+    expect(malformed?.presentation?.approval).toBeUndefined();
+  });
+
   it("normalizes typed Tool cards and fails closed for unknown versions", () => {
     const file = normalizeProcessStep({
       id: "tool-file-1",

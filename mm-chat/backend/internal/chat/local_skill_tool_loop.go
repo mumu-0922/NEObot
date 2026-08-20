@@ -367,6 +367,20 @@ func (runtime *localSkillToolRuntime) executeCall(
 			job, err := runtime.executor.StartBackgroundJob(ctx, localskills.JobStartRequest{
 				Scope: runtime.jobScope, Command: request,
 			})
+			if errors.Is(err, localskills.ErrApprovalRequired) && runtime.approvals != nil {
+				approval, approvalErr := runtime.awaitTerminalApproval(ctx, events, execution)
+				if approvalErr != nil {
+					return ProviderToolResult{}, "", approvalErr
+				}
+				if !chatAgentApprovalAllowsExecution(approval) {
+					category := approvalFailureCategory(approval)
+					return localSkillFailureResult(call, category), category, nil
+				}
+				request.Approved = true
+				job, err = runtime.executor.StartBackgroundJob(ctx, localskills.JobStartRequest{
+					Scope: runtime.jobScope, Command: request,
+				})
+			}
 			return backgroundJobToolResult(call, job, err)
 		}
 		liveOutput := newTerminalLiveOutput(
@@ -374,6 +388,18 @@ func (runtime *localSkillToolRuntime) executeCall(
 		)
 		request.OnOutput = liveOutput.append
 		result, err := runtime.executor.Execute(ctx, request)
+		if errors.Is(err, localskills.ErrApprovalRequired) && runtime.approvals != nil {
+			approval, approvalErr := runtime.awaitTerminalApproval(ctx, events, execution)
+			if approvalErr != nil {
+				return ProviderToolResult{}, "", approvalErr
+			}
+			if !chatAgentApprovalAllowsExecution(approval) {
+				category := approvalFailureCategory(approval)
+				return localSkillFailureResult(call, category), category, nil
+			}
+			request.Approved = true
+			result, err = runtime.executor.Execute(ctx, request)
+		}
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return ProviderToolResult{}, "", err
@@ -393,6 +419,52 @@ func (runtime *localSkillToolRuntime) executeCall(
 	default:
 		return localSkillFailureResult(call, "tool_not_available"), "tool_not_available", nil
 	}
+}
+
+func (runtime *localSkillToolRuntime) awaitTerminalApproval(
+	ctx context.Context,
+	events chan<- ProviderEvent,
+	execution *ProviderToolExecutionEvent,
+) (ChatAgentApproval, error) {
+	approval, decisions, err := runtime.approvals.request(ctx, *execution, true)
+	if err != nil {
+		return ChatAgentApproval{}, fmt.Errorf("%w: %v", errChatAgentApprovalPersistence, err)
+	}
+	if approval.Status == ChatAgentApprovalPending {
+		execution.Status = ProcessStepStatusAwaitingApproval
+		execution.CallStatus = "waiting_approval"
+		execution.Presentation = withProcessApprovalPresentation(
+			execution.Presentation, approval,
+		)
+		if !sendToolExecutionEvent(ctx, events, *execution) {
+			return ChatAgentApproval{}, context.Canceled
+		}
+		approval, err = runtime.approvals.wait(ctx, approval, decisions)
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return ChatAgentApproval{}, err
+			}
+			return ChatAgentApproval{}, fmt.Errorf("%w: %v", errChatAgentApprovalPersistence, err)
+		}
+	}
+	execution.Presentation = withProcessApprovalPresentation(
+		execution.Presentation, approval,
+	)
+	if chatAgentApprovalAllowsExecution(approval) {
+		execution.Status = ProcessStepStatusRunning
+		execution.CallStatus = "running"
+		if !sendToolExecutionEvent(ctx, events, *execution) {
+			return ChatAgentApproval{}, context.Canceled
+		}
+	}
+	return approval, nil
+}
+
+func approvalFailureCategory(approval ChatAgentApproval) string {
+	if approval.Status == ChatAgentApprovalExpired {
+		return "approval_expired"
+	}
+	return "approval_denied"
 }
 
 type terminalLiveOutput struct {
@@ -506,11 +578,31 @@ func cloneProcessStepPresentation(
 	cloned := *presentation
 	cloned.Transcript = append([]ProcessTranscriptEntry(nil), presentation.Transcript...)
 	cloned.Items = append([]ProcessPresentationItem(nil), presentation.Items...)
+	if presentation.Approval != nil {
+		approval := *presentation.Approval
+		cloned.Approval = &approval
+	}
 	if presentation.ExitCode != nil {
 		exitCode := *presentation.ExitCode
 		cloned.ExitCode = &exitCode
 	}
 	return &cloned
+}
+
+func withProcessApprovalPresentation(
+	presentation *ProcessStepPresentation,
+	approval ChatAgentApproval,
+) *ProcessStepPresentation {
+	completed := cloneProcessStepPresentation(presentation)
+	if completed == nil {
+		return nil
+	}
+	completed.Approval = &ProcessApprovalPresentation{
+		ID: approval.ID, Revision: approval.Revision, Status: approval.Status,
+		Decision: approval.Decision, ExpiresAt: formatTime(approval.ExpiresAt),
+		AllowConversation: approval.AllowConversation,
+	}
+	return completed
 }
 
 type localTerminalToolArguments struct {
@@ -560,6 +652,10 @@ func terminalResultPresentation(
 		return nil
 	}
 	completed := *presentation
+	if presentation.Approval != nil {
+		approval := *presentation.Approval
+		completed.Approval = &approval
+	}
 	if presentation.ExitCode != nil {
 		exitCode := *presentation.ExitCode
 		completed.ExitCode = &exitCode
@@ -623,6 +719,9 @@ func localTerminalFailureCategory(err error) string {
 }
 
 func localSkillFatalCode(err error) string {
+	if errors.Is(err, errChatAgentApprovalPersistence) {
+		return "AGENT_APPROVAL_PERSISTENCE_FAILED"
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return "LOCAL_SKILL_BUDGET_EXHAUSTED"
 	}

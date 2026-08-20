@@ -66,12 +66,13 @@ psql_command() {
 server_major="$(psql_command "SHOW server_version_num" | cut -c1-2)"
 [[ "${server_major}" == "17" ]] || { echo "expected PostgreSQL 17" >&2; exit 1; }
 
-log "building and applying 001 -> 097 with the irreversible 098/099 tail deferred"
+log "building and applying 001 -> 097 with the 098/099/100 tail deferred"
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/mm-chat-migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"; }
 psql_command "$(migration_drill_deferred_tail_sql "${backend_dir}" \
   098_retire_legacy_agent_control_plane \
-  099_chat_agent_event_log_function_repair)" >/dev/null
+  099_chat_agent_event_log_function_repair \
+  100_chat_agent_approvals)" >/dev/null
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 082_assistant_library" "${work_dir}/fresh.log"
 grep -Fq "up 083_skill_supply_chain" "${work_dir}/fresh.log"
@@ -91,7 +92,7 @@ grep -Fq "up 096_chat_agent_event_log" "${work_dir}/fresh.log"
 grep -Fq "up 097_chat_agent_goals" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
-psql_command "DELETE FROM schema_migrations WHERE version IN (98,99)" >/dev/null
+psql_command "DELETE FROM schema_migrations WHERE version IN (98,99,100)" >/dev/null
 
 log "checking schema, ownership indexes, JSON metadata, and runtime grants"
 psql_command "
@@ -156,7 +157,7 @@ grep -Fq "down 084_agent_orchestrator_foundation" "${work_dir}/down-084.log"
 run_migrate down >"${work_dir}/down-083.log" 2>&1
 grep -Fq "down 083_skill_supply_chain" "${work_dir}/down-083.log"
 
-log "proving clean 081 -> 082 -> 081 -> 099 replay"
+log "proving clean 081 -> 082 -> 081 -> 100 replay"
 run_migrate down >"${work_dir}/down.log" 2>&1
 grep -Fq "down 082_assistant_library" "${work_dir}/down.log"
 psql_command "
@@ -188,7 +189,8 @@ grep -Fq "up 096_chat_agent_event_log" "${work_dir}/reup.log"
 grep -Fq "up 097_chat_agent_goals" "${work_dir}/reup.log"
 grep -Fq "up 098_retire_legacy_agent_control_plane" "${work_dir}/reup.log"
 grep -Fq "up 099_chat_agent_event_log_function_repair" "${work_dir}/reup.log"
+grep -Fq "up 100_chat_agent_approvals" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 
-log "passed (historical 097 boundary, schema/grants, repository ownership/CAS, clean 082 down/up with replay to head 099)"
+log "passed (historical 097 boundary, schema/grants, repository ownership/CAS, clean 082 down/up with replay to head 100)"

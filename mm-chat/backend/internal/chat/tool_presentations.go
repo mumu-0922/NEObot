@@ -72,6 +72,10 @@ func completeLocalProcessPresentation(
 	completed := *presentation
 	completed.Transcript = append([]ProcessTranscriptEntry(nil), presentation.Transcript...)
 	completed.Items = append([]ProcessPresentationItem(nil), presentation.Items...)
+	if presentation.Approval != nil {
+		approval := *presentation.Approval
+		completed.Approval = &approval
+	}
 	if result.IsError {
 		return &completed
 	}

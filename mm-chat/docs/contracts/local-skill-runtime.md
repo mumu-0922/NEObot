@@ -91,7 +91,10 @@ The executor:
 - starts a process group and kills the complete group on timeout or Chat Run
   cancellation;
 - always blocks catastrophic command patterns and, in default `smart` mode,
-  returns `approval_required` for destructive patterns;
+  classifies destructive patterns as `approval_required`. When the Chat Agent
+  durable approval authority is bound, the same Tool call waits for a decision
+  and an approved request bypasses the smart check exactly once; callers
+  without that authority retain the bounded failure behavior;
 - records only Tool name, round, `local_direct`, classification, optional
   timeout, duration, and failure category in diagnostic process detail. A
   typed local Tool step may additionally carry a versioned, bounded/redacted
@@ -103,6 +106,12 @@ The executor:
   path redaction, a 64-byte sanitizer holdback and 75 ms/16 KiB coalescing.
   Intermediate chunks are never durable; only the final bounded/redacted
   transcript snapshot is persisted.
+- A pending destructive Terminal call publishes only an allowlisted approval
+  presentation: approval ID, revision, state, expiry, and whether the
+  conversation scope is permitted. Raw arguments/results remain absent. Deny,
+  expiry, cancellation, and restart denial never execute the command; an exact
+  conversation grant applies only to the same Tool name and risk class. Hard-
+  blocked commands never enter or bypass this approval path.
 
 These guards reduce accidental damage. They are not protection against an
 adversarial allowed process.

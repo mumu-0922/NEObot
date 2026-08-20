@@ -150,5 +150,13 @@
   "toggleVersionHistory": "Toggle version history",
   "cancel": "Cancel",
   "save": "Save",
-  "webSearchTemporarilyUnavailable": "Web search is temporarily unavailable. This answer continued without Web results."
+  "webSearchTemporarilyUnavailable": "Web search is temporarily unavailable. This answer continued without Web results.",
+  "processApprovalRequired": "This action requires your approval",
+  "processApprovalAllowOnce": "Allow once",
+  "processApprovalAllowConversation": "Allow for conversation",
+  "processApprovalDeny": "Deny",
+  "processApprovalAllowed": "Approved. Execution is continuing.",
+  "processApprovalDenied": "Denied. The action was not executed.",
+  "processApprovalExpired": "Approval expired. The action was not executed.",
+  "processApprovalFailed": "The decision could not be saved. Try again."
 }

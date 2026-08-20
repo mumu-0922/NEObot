@@ -2478,6 +2478,57 @@ describe("Phase 11.2A server chat CRUD adapter", () => {
       },
     ]);
   });
+
+  it("decides Chat Agent approvals with revision CAS", async () => {
+    const requests: Array<{ url: string; method?: string; body?: string }> = [];
+    const chat = createServerChatApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async (input, init) => {
+          requests.push({
+            url: String(input),
+            method: init?.method,
+            body: typeof init?.body === "string" ? init.body : undefined,
+          });
+          return Response.json({
+            id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            turnId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            conversationId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            messageId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+            runId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+            executionId: "local-skill-1-1",
+            toolName: "terminal",
+            riskClass: "execute",
+            status: "allowed",
+            decision: "allow_once",
+            revision: 2,
+            allowConversation: true,
+            expiresAt: "2026-08-20T12:05:00Z",
+            createdAt: "2026-08-20T12:00:00Z",
+            decidedAt: "2026-08-20T12:00:01Z",
+          });
+        },
+      }),
+    );
+
+    await expect(
+      chat.decideApproval({
+        approvalId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        expectedRevision: 1,
+        decision: "allow_once",
+      }),
+    ).resolves.toMatchObject({ status: "allowed", revision: 2 });
+    expect(requests).toEqual([
+      {
+        url: "http://backend.test/v1/chat/approvals/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/decision",
+        method: "POST",
+        body: JSON.stringify({
+          expectedRevision: 1,
+          decision: "allow_once",
+        }),
+      },
+    ]);
+  });
 });
 
 describe("Phase 11.1B Go SSE scaffold", () => {

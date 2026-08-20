@@ -150,5 +150,13 @@
   "toggleVersionHistory": "切换版本历史",
   "cancel": "取消",
   "save": "保存",
-  "webSearchTemporarilyUnavailable": "网络搜索暂时不可用，本回答已在没有网络结果的情况下继续。"
+  "webSearchTemporarilyUnavailable": "网络搜索暂时不可用，本回答已在没有网络结果的情况下继续。",
+  "processApprovalRequired": "此操作需要你的批准",
+  "processApprovalAllowOnce": "仅允许一次",
+  "processApprovalAllowConversation": "本会话内允许",
+  "processApprovalDeny": "拒绝",
+  "processApprovalAllowed": "已批准，正在继续执行。",
+  "processApprovalDenied": "已拒绝，操作未执行。",
+  "processApprovalExpired": "批准已过期，操作未执行。",
+  "processApprovalFailed": "裁决保存失败，请重试。"
 }

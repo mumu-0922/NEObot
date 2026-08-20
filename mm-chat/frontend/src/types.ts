@@ -24,6 +24,7 @@ export type {
   MessageTreeNode,
   MessageVersion,
   ProcessStep,
+  ProcessApprovalPresentation,
   ProcessStepKind,
   ProcessStepPresentation,
   ProcessStepStatus,

@@ -114,7 +114,9 @@ timeline updates.
   below an independently scrolling deployment list.
 - Agent-mode MCP admission errors remain bounded chat errors and direct the user
   to Sidebar Tools when configuration is required. Chat mode skips MCP admission
-  entirely. Do not add per-call approval dialogs.
+  entirely. Do not invent browser-owned MCP approval dialogs; only render a
+  backend-issued approval presentation for a Tool/risk combination whose
+  runtime policy explicitly permits it.
 - Credential fields are transient component state, cleared after submission,
   and never persisted/exported. OAuth authorization URLs must parse as HTTPS
   before navigation.
@@ -148,6 +150,14 @@ timeline updates.
   bound every string, list, transcript and numeric field. Unknown/malformed or
   cross-mode cards are dropped while the enclosing legacy step remains. Typed
   cards cover Terminal, Search, File, Job, Skill, Goal, Browser and generic MCP;
+  an optional approval union accepts only a UUID, positive revision, bounded
+  enum state/decision, parseable expiry, and Boolean conversation capability.
+  Malformed approval data is dropped without destroying its safe Tool card.
+- A pending Terminal approval expands by default and offers `Allow once`,
+  policy-permitted `Allow for conversation`, and `Deny`. Submit the exact
+  displayed revision to the typed decision API and runtime-validate the full
+  response. First-decision-wins responses replace only the approval metadata;
+  browser state never becomes approval authority.
   generic MCP/Browser cards remain summary-only. Never reuse `argumentSummary`
   or render raw JSON. Terminal transcript is backend-redacted and bounded to
   64 KiB; File content/diff is bounded to 64 KiB and paths remain workspace-relative.
@@ -243,8 +253,9 @@ timeline updates.
   not evidence that the live wire contract works.
 - Terminal presentation tests cover running/completed, exit 0/nonzero,
   timeout/truncation/background pills, malformed-card fail-closed behavior,
-  legacy steps, and byte-equivalent live `process.step.updated` versus durable
-  Agent-event replay.
+  legacy steps, pending/allowed/denied/expired approval controls, malformed
+  approval fail-closed behavior, decision API validation, and byte-equivalent
+  live `process.step.updated` versus durable Agent-event replay.
 - Generation-error wiring for current `PROVIDER_STREAM_INTERRUPTED` plus the
   non-empty legacy `PROVIDER_ERROR` compatibility path in every locale.
 - Storage/entity/import tests that remove all retired Plugin keys without

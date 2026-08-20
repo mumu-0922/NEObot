@@ -17,6 +17,7 @@ docker compose --project-directory mm-chat \
   -f mm-chat/compose.single-server.yml config --quiet
 bash mm-chat/scripts/verify-agent-local-runtime.sh
 bash mm-chat/scripts/verify-legacy-agent-cleanup-postgres17.sh
+bash mm-chat/scripts/verify-chat-agent-approvals-postgres17.sh
 ```
 
 ### Contracts
@@ -44,6 +45,11 @@ bash mm-chat/scripts/verify-legacy-agent-cleanup-postgres17.sh
   disposable PostgreSQL 17 drill. Nonempty legacy facts stop the upgrade.
 - `098.down` does not recreate execution authority; restore the matched backup
   plus previous image for database rollback.
+- Migration `100` is the durable Chat Agent approval head. Runtime roles have
+  no Approval/Grant table DML and use only the three hardened gateways. Startup
+  invokes recovery before serving traffic so no pending pre-restart command can
+  resume. Roll back the UI/runtime path by disabling Agent local execution; do
+  not down a database that contains approval/grant rows.
 
 ### Validation matrix
 
@@ -56,7 +62,7 @@ bash mm-chat/scripts/verify-legacy-agent-cleanup-postgres17.sh
 | API restart | prior process-local Jobs unavailable and labeled non-durable |
 | legacy Compose/env/binary path returns | local runtime gate fails |
 | legacy fact exists | migration 098 fails atomically |
-| cleanup and repair succeed | head 099; immutable 096 checksum and Chat/Skill/MCP/File/Memory data retained |
+| cleanup, repair, approval migration succeed | head 100; immutable 096 checksum and Chat/Skill/MCP/File/Memory data retained |
 
 ### Good / base / bad cases
 
@@ -71,6 +77,8 @@ bash mm-chat/scripts/verify-legacy-agent-cleanup-postgres17.sh
 
 - Render Compose with example and active env files.
 - Run `verify-agent-local-runtime.sh` and the PostgreSQL 17 cleanup drill.
+- Run `verify-chat-agent-approvals-postgres17.sh` for fresh/replay head, exact
+  grants, CAS, expiry, restart denial, guarded down, and clean down/up.
 - Run Backend vet/tests, frontend gates, RAG gates, and standalone full.
 - Prove protected runtime paths remain untouched by source cleanup.
 

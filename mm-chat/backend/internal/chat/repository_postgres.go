@@ -39,6 +39,108 @@ func NewPostgresRepository(db *sql.DB) *PostgresRepository {
 	}
 }
 
+func (r *PostgresRepository) CreateChatAgentApproval(
+	ctx context.Context,
+	input CreateChatAgentApprovalInput,
+) (ChatAgentApproval, error) {
+	if err := r.requireDB(); err != nil {
+		return ChatAgentApproval{}, err
+	}
+	userID := auth.UserOrDevelopment(ctx).ID
+	approval, err := scanChatAgentApproval(r.db.QueryRowContext(ctx, `
+SELECT id, turn_id, user_id, conversation_id, message_id, run_id,
+       execution_id, tool_name, risk_class, status, decision, revision,
+       allow_conversation, expires_at, created_at, decided_at
+FROM chat_agent_create_approval($1, $2, $3, $4, $5, $6, $7, $8, $9)
+`, input.ID, input.TurnID, userID, input.ExecutionID, input.ToolName,
+		input.RiskClass, input.AllowConversation, input.ExpiresAt, input.OccurredAt))
+	if err != nil {
+		return ChatAgentApproval{}, fmt.Errorf(
+			"create chat Agent approval: %w", normalizeChatAgentApprovalRepositoryError(err),
+		)
+	}
+	return approval, nil
+}
+
+func (r *PostgresRepository) DecideChatAgentApproval(
+	ctx context.Context,
+	input DecideChatAgentApprovalInput,
+) (ChatAgentApproval, error) {
+	if err := r.requireDB(); err != nil {
+		return ChatAgentApproval{}, err
+	}
+	userID := auth.UserOrDevelopment(ctx).ID
+	approval, err := scanChatAgentApproval(r.db.QueryRowContext(ctx, `
+SELECT id, turn_id, user_id, conversation_id, message_id, run_id,
+       execution_id, tool_name, risk_class, status, decision, revision,
+       allow_conversation, expires_at, created_at, decided_at
+FROM chat_agent_decide_approval($1, $2, $3, $4, $5)
+`, input.ApprovalID, userID, input.ExpectedRevision, input.Decision, input.OccurredAt))
+	if err != nil {
+		return ChatAgentApproval{}, fmt.Errorf(
+			"decide chat Agent approval: %w", normalizeChatAgentApprovalRepositoryError(err),
+		)
+	}
+	return approval, nil
+}
+
+func (r *PostgresRepository) RecoverPendingChatAgentApprovals(
+	ctx context.Context,
+	decidedAt time.Time,
+) (int, error) {
+	if err := r.requireDB(); err != nil {
+		return 0, err
+	}
+	if decidedAt.IsZero() {
+		return 0, newValidationError(
+			"INVALID_CHAT_AGENT_APPROVAL_RECOVERY", "chat Agent approval recovery time is required",
+		)
+	}
+	var recovered int
+	if err := r.db.QueryRowContext(ctx, `
+SELECT chat_agent_recover_approvals($1)
+`, decidedAt).Scan(&recovered); err != nil {
+		return 0, fmt.Errorf("recover chat Agent approvals: %w", err)
+	}
+	return recovered, nil
+}
+
+func scanChatAgentApproval(scanner rowScanner) (ChatAgentApproval, error) {
+	var approval ChatAgentApproval
+	var decision sql.NullString
+	var decidedAt sql.NullTime
+	if err := scanner.Scan(
+		&approval.ID, &approval.TurnID, &approval.UserID,
+		&approval.ConversationID, &approval.MessageID, &approval.RunID,
+		&approval.ExecutionID, &approval.ToolName, &approval.RiskClass,
+		&approval.Status, &decision, &approval.Revision,
+		&approval.AllowConversation, &approval.ExpiresAt, &approval.CreatedAt,
+		&decidedAt,
+	); err != nil {
+		return ChatAgentApproval{}, err
+	}
+	if decision.Valid {
+		approval.Decision = decision.String
+	}
+	if decidedAt.Valid {
+		value := decidedAt.Time
+		approval.DecidedAt = &value
+	}
+	return approval, nil
+}
+
+func normalizeChatAgentApprovalRepositoryError(err error) error {
+	var postgresError *pgconn.PgError
+	if !errors.As(err, &postgresError) {
+		return err
+	}
+	code := strings.TrimSpace(postgresError.Message)
+	if strings.HasPrefix(code, "CHAT_AGENT_APPROVAL_") {
+		return ChatAgentApprovalError{Code: code}
+	}
+	return err
+}
+
 func (r *PostgresRepository) GetChatAgentGoal(
 	ctx context.Context,
 	conversationID string,

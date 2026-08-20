@@ -183,6 +183,20 @@ func main() {
 			context.Background(),
 			databaseOpenTimeout,
 		)
+		recoveredApprovals, chatApprovalRecoveryErr := postgresChatRepo.RecoverPendingChatAgentApprovals(
+			chatRecoveryCtx,
+			time.Now().UTC(),
+		)
+		if chatApprovalRecoveryErr != nil {
+			chatRecoveryCancel()
+			_ = redisClient.Close()
+			_ = db.Close()
+			logger.Error(
+				"chat_agent_approval_recovery_failed",
+				slog.String("error", redactSensitiveLogText(chatApprovalRecoveryErr.Error())),
+			)
+			os.Exit(1)
+		}
 		recoveredTurns, chatRecoveryErr := postgresChatRepo.RecoverIncompleteChatAgentTurns(
 			chatRecoveryCtx,
 			time.Now().UTC(),
@@ -201,6 +215,12 @@ func main() {
 			logger.Info(
 				"chat_agent_turns_recovered",
 				slog.Int("count", recoveredTurns),
+			)
+		}
+		if recoveredApprovals > 0 {
+			logger.Info(
+				"chat_agent_approvals_recovered",
+				slog.Int("count", recoveredApprovals),
 			)
 		}
 		chatRepo = postgresChatRepo

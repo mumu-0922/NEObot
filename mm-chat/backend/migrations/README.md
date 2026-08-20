@@ -145,7 +145,7 @@ function signatures, owners, and grants while pinning lookup to the application
 schema, `pg_catalog`, and `pg_temp`. Its down path intentionally retains the
 safe search path rather than reopening object-shadowing risk.
 
-The current migration head is `099`; the latest RAG retrieval-specific migration
+The current migration head is `100`; the latest RAG retrieval-specific migration
 remains `050`. Migration `043` extends the existing final-authority evidence
 hydration boundary with complete matched-Child and containing-Parent source
 text plus their persisted token counts. Parent text is answer context only. Its
@@ -532,7 +532,7 @@ execution, never direct event DML. Terminal recovery preserves an already
 committed Message status and marks only unfinished Messages interrupted. Down
 refuses while any Turn or Event exists. Disposable PostgreSQL 17 proof uses
 `scripts/verify-chat-agent-event-log-postgres17.sh`; the current full replay
-continues through repair head `099`.
+continues through approval head `100`.
 
 The production-applied byte identity of migration `096` is immutable and has
 checksum
@@ -553,7 +553,15 @@ no table write privilege. Automatic Goal budgets are bounded to 3-32 rounds,
 with a default of 8 in the Go runtime. Down refuses while a Goal row exists.
 Disposable PostgreSQL 17 proof uses
 `scripts/verify-chat-agent-goals-postgres17.sh`; the current full replay
-continues through repair head `099`.
+continues through approval head `100`.
+
+Migration `100` adds durable five-minute Chat Agent Tool approval requests,
+first-decision-wins revision CAS, exact Conversation-scoped Tool grants, and a
+startup recovery gateway that denies every pending request after Backend
+restart. Approval rows contain only identifiers, Tool/risk classification,
+status, and timestamps; raw arguments and results remain forbidden. The API
+runtime has only the three exact `SECURITY DEFINER` gateways and no direct
+table DML. Down refuses while Approval or grant rows exist.
 
 ## Storage boundaries
 
@@ -563,8 +571,8 @@ Postgres is the source of truth for structured records:
 - provider configuration metadata and encrypted-secret references
 - server-owned automation task model selections
 - conversations and messages
-- ordinary Chat Agent Turns, immutable replay events, and current Conversation
-  Goals
+- ordinary Chat Agent Turns, immutable replay events, current Conversation
+  Goals, and bounded Tool approval authority
 - Projects, Memory settings, and canonical Memory rows
 - Memory capture outbox events and leased jobs; Redis is never their authority
 - Memory evidence, revisions, tombstones, and ID/hash-only deletion manifests

@@ -39,8 +39,10 @@ containers, Canary runs, schedules, autonomous learning, and Agent Center.
   second root. Linux absolute and WSL UNC inputs must map below it before the
   existing relative-path and `os.Root` checks run.
 - The runtime enforces call timeout, Run timeout, output bytes, Tool calls,
-  Tool rounds, and concurrency. `smart` approval denies destructive patterns;
-  the catastrophic blocklist remains active even with approval mode `off`.
+  Tool rounds, and concurrency. In `smart` mode, a destructive Terminal call
+  creates a durable five-minute approval and waits for `Allow once`, an
+  authorized conversation grant, or `Deny`. The catastrophic blocklist remains
+  active and cannot be bypassed even with approval mode `off`.
 - Jobs are process-local and must be presented as non-durable. Shutdown cancels
   and reaps them; restart does not resume them.
 - No Docker/Podman socket, host-wide home bind, privileged user, or automatic OS
@@ -57,8 +59,20 @@ user input -> persisted policy/context -> model -> Tool call -> durable event
 
 The Tool registry, arguments, results, approvals, errors, cancellation, and
 Goal state follow the ordinary `internal/chat` contracts. Current durable
-authority is `chat_agent_turns`, `chat_agent_events`, and `chat_agent_goals`.
-Message metadata is compatibility projection, not a second event authority.
+authority is `chat_agent_turns`, `chat_agent_events`, `chat_agent_goals`,
+`chat_agent_approvals`, and exact conversation Tool grants. Approval rows are
+mutable decision authority only; `chat_agent_events` remains the immutable
+timeline/presentation authority. Message metadata is compatibility projection,
+not a second event authority.
+
+Pending approvals survive browser refresh because their sanitized presentation
+is already in the durable event stream. The decision API uses the presented
+revision as CAS input; the first terminal decision wins and later duplicate or
+conflicting tabs receive that current row without overwriting history. Approval
+waits expire after five minutes. Backend startup denies every still-pending row
+with `restart_denied`, because the original process and waiter cannot be proved
+recoverable. Conversation grants are scoped to the exact Conversation, Tool
+name, and risk class. Approval storage never contains Tool arguments or results.
 
 ## Artifact publication
 
@@ -121,12 +135,19 @@ Chat event gateways, reasserts their hardened `search_path` and exact runtime
 grants, and keeps those corrected bodies on down. Never repair an applied
 migration by changing its source bytes or `schema_migrations.checksum`.
 
+Migration `100_chat_agent_approvals` adds the approval/CAS and exact
+conversation-grant authorities. The API runtime has no table DML and may call
+only `chat_agent_create_approval`, `chat_agent_decide_approval`, and
+`chat_agent_recover_approvals`. Down is refused while either table contains
+data.
+
 ## Required verification
 
 ```bash
 bash scripts/verify-agent-local-runtime.sh
 bash scripts/verify-legacy-agent-cleanup-postgres17.sh
 bash scripts/verify-chat-artifacts-postgres17.sh
+bash scripts/verify-chat-agent-approvals-postgres17.sh
 
 cd backend
 GOCACHE=/tmp/neo-chat-go-cache go vet ./...

@@ -66,30 +66,40 @@ type ProcessStep struct {
 }
 
 type ProcessStepPresentation struct {
-	Version    int                       `json:"version,omitempty"`
-	Card       string                    `json:"card"`
-	Title      string                    `json:"title,omitempty"`
-	Summary    string                    `json:"summary,omitempty"`
-	Command    string                    `json:"command,omitempty"`
-	CWD        string                    `json:"cwd,omitempty"`
-	Transcript []ProcessTranscriptEntry  `json:"transcript,omitempty"`
-	ExitCode   *int                      `json:"exitCode,omitempty"`
-	TimedOut   bool                      `json:"timedOut,omitempty"`
-	Truncated  bool                      `json:"truncated,omitempty"`
-	Background bool                      `json:"background,omitempty"`
-	Provider   string                    `json:"provider,omitempty"`
-	Query      string                    `json:"query,omitempty"`
-	Count      int                       `json:"count,omitempty"`
-	Operation  string                    `json:"operation,omitempty"`
-	Path       string                    `json:"path,omitempty"`
-	Content    string                    `json:"content,omitempty"`
-	Diff       string                    `json:"diff,omitempty"`
-	Size       int64                     `json:"size,omitempty"`
-	Offset     int64                     `json:"offset,omitempty"`
-	NextOffset int64                     `json:"nextOffset,omitempty"`
-	JobID      string                    `json:"jobId,omitempty"`
-	JobStatus  string                    `json:"jobStatus,omitempty"`
-	Items      []ProcessPresentationItem `json:"items,omitempty"`
+	Version    int                          `json:"version,omitempty"`
+	Card       string                       `json:"card"`
+	Title      string                       `json:"title,omitempty"`
+	Summary    string                       `json:"summary,omitempty"`
+	Command    string                       `json:"command,omitempty"`
+	CWD        string                       `json:"cwd,omitempty"`
+	Transcript []ProcessTranscriptEntry     `json:"transcript,omitempty"`
+	ExitCode   *int                         `json:"exitCode,omitempty"`
+	TimedOut   bool                         `json:"timedOut,omitempty"`
+	Truncated  bool                         `json:"truncated,omitempty"`
+	Background bool                         `json:"background,omitempty"`
+	Provider   string                       `json:"provider,omitempty"`
+	Query      string                       `json:"query,omitempty"`
+	Count      int                          `json:"count,omitempty"`
+	Operation  string                       `json:"operation,omitempty"`
+	Path       string                       `json:"path,omitempty"`
+	Content    string                       `json:"content,omitempty"`
+	Diff       string                       `json:"diff,omitempty"`
+	Size       int64                        `json:"size,omitempty"`
+	Offset     int64                        `json:"offset,omitempty"`
+	NextOffset int64                        `json:"nextOffset,omitempty"`
+	JobID      string                       `json:"jobId,omitempty"`
+	JobStatus  string                       `json:"jobStatus,omitempty"`
+	Items      []ProcessPresentationItem    `json:"items,omitempty"`
+	Approval   *ProcessApprovalPresentation `json:"approval,omitempty"`
+}
+
+type ProcessApprovalPresentation struct {
+	ID                string `json:"id"`
+	Revision          int64  `json:"revision"`
+	Status            string `json:"status"`
+	Decision          string `json:"decision,omitempty"`
+	ExpiresAt         string `json:"expiresAt"`
+	AllowConversation bool   `json:"allowConversation"`
 }
 
 type ProcessTranscriptEntry struct {
@@ -493,6 +503,7 @@ func sanitizeProcessStepPresentation(
 		return nil
 	}
 	result.CWD = sanitizePresentationText(presentation.CWD, maxProcessTerminalCWDBytes)
+	result.Approval = sanitizeProcessApprovalPresentation(presentation.Approval)
 	var exitCode *int
 	if presentation.ExitCode != nil {
 		if *presentation.ExitCode < -1 || *presentation.ExitCode > 255 {
@@ -506,6 +517,40 @@ func sanitizeProcessStepPresentation(
 		presentation.Transcript, result.Truncated,
 	)
 	return result
+}
+
+func sanitizeProcessApprovalPresentation(
+	approval *ProcessApprovalPresentation,
+) *ProcessApprovalPresentation {
+	if approval == nil || !isUUID(strings.TrimSpace(approval.ID)) ||
+		approval.Revision < 1 {
+		return nil
+	}
+	status := strings.TrimSpace(approval.Status)
+	switch status {
+	case ChatAgentApprovalPending, ChatAgentApprovalAllowed,
+		ChatAgentApprovalDenied, ChatAgentApprovalExpired:
+	default:
+		return nil
+	}
+	decision := strings.TrimSpace(approval.Decision)
+	if decision != "" {
+		switch decision {
+		case ChatAgentApprovalAllowOnce, ChatAgentApprovalAllowConversation,
+			ChatAgentApprovalDeny, chatAgentApprovalExpire, chatAgentApprovalRestartDeny:
+		default:
+			return nil
+		}
+	}
+	expiresAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(approval.ExpiresAt))
+	if err != nil {
+		return nil
+	}
+	return &ProcessApprovalPresentation{
+		ID: approval.ID, Revision: approval.Revision, Status: status,
+		Decision: decision, ExpiresAt: formatTime(expiresAt),
+		AllowConversation: approval.AllowConversation,
+	}
 }
 
 func sanitizePresentationText(value string, limit int) string {
@@ -680,6 +725,10 @@ func cloneProcessStep(step ProcessStep) ProcessStep {
 		}
 		presentation.Transcript = append([]ProcessTranscriptEntry(nil), step.Presentation.Transcript...)
 		presentation.Items = append([]ProcessPresentationItem(nil), step.Presentation.Items...)
+		if step.Presentation.Approval != nil {
+			approval := *step.Presentation.Approval
+			presentation.Approval = &approval
+		}
 		step.Presentation = &presentation
 	}
 	return step

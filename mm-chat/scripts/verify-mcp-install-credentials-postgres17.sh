@@ -36,7 +36,8 @@ psql_command() {
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 psql_command "$(migration_drill_deferred_tail_sql "${backend_dir}" \
   098_retire_legacy_agent_control_plane \
-  099_chat_agent_event_log_function_repair)" >/dev/null
+  099_chat_agent_event_log_function_repair \
+  100_chat_agent_approvals)" >/dev/null
 MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" up >"${work_dir}/up.log" 2>&1
 grep -Fq "up 077_mcp_marketplace_install_credentials" "${work_dir}/up.log"
 grep -Fq "up 078_mcp_legacy_tavily_runner_repair" "${work_dir}/up.log"
@@ -59,7 +60,7 @@ grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/up.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/up.log"
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/up.log"
 grep -Fq "up 097_chat_agent_goals" "${work_dir}/up.log"
-psql_command "DELETE FROM schema_migrations WHERE version IN (98,99)" >/dev/null
+psql_command "DELETE FROM schema_migrations WHERE version IN (98,99,100)" >/dev/null
 MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" down >"${work_dir}/peel-097-tail-1.log" 2>&1
 grep -Fq "down 097_chat_agent_goals" "${work_dir}/peel-097-tail-1.log"
 MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" down >"${work_dir}/peel-096-tail-1.log" 2>&1
@@ -167,6 +168,7 @@ grep -Fq "up 096_chat_agent_event_log" "${work_dir}/reup.log"
 grep -Fq "up 097_chat_agent_goals" "${work_dir}/reup.log"
 grep -Fq "up 098_retire_legacy_agent_control_plane" "${work_dir}/reup.log"
 grep -Fq "up 099_chat_agent_event_log_function_repair" "${work_dir}/reup.log"
+grep -Fq "up 100_chat_agent_approvals" "${work_dir}/reup.log"
 repaired="$(
   docker exec "${container_name}" psql -U postgres -d neo_chat_mcp_credentials -Atc \
     "SELECT concat_ws('|', transport, auth_type, status, last_error_code, auth_config #>> '{metadata,runnerArtifactId}') FROM mcp_servers WHERE id = '78000000-0000-4000-8000-000000000002'"
@@ -194,4 +196,4 @@ if [[ "${context7}" != "22b235834a14b617480cc92dd0f6f6c7587cb399880c666773135971
   exit 1
 fi
 
-printf 'MCP credential migration drill: passed (historical 097 boundary, replay to head 099, and exact 078-081 repairs)\n'
+printf 'MCP credential migration drill: passed (historical 097 boundary, replay to head 100, and exact 078-081 repairs)\n'
