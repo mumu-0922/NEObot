@@ -1800,6 +1800,7 @@ export type ServerStreamEventType =
   | "message.delta"
   | "reasoning.delta"
   | "agent.event"
+  | "agent.progress"
   | "process.step.updated"
   | "tool.call.updated"
   | "usage.updated"

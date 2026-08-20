@@ -55,7 +55,8 @@ bash mm-chat/scripts/verify-chat-agent-approvals-postgres17.sh
   authenticated UUID admission is required. Clearing either is the immediate
   UI/control rollback and must preserve durable Agent events and legacy
   ProcessStep projection.
-- Legacy ProcessStep removal requires one content-free, verifier-eligible
+- Widening the typed transport beyond exact canaries or deleting the legacy
+  control/rollback fallback requires one content-free, verifier-eligible
   focused canary session on unchanged immutable Backend/Frontend digests and
   Git commit. Its UTC end must be later than its start; no arbitrary soak time
   is required. Use exactly one canary plus a disjoint control; five synthetic
@@ -79,7 +80,7 @@ bash mm-chat/scripts/verify-chat-agent-approvals-postgres17.sh
 | legacy fact exists | migration 098 fails atomically |
 | cleanup, repair, approval migration succeed | head 100; immutable 096 checksum and Chat/Skill/MCP/File/Memory data retained |
 | timeline flag false, canary invalid/empty/non-matching | invalid config stops preflight/startup; otherwise legacy projection only |
-| focused-canary evidence is missing or verifier-ineligible | keep legacy projection and exact-user scope; do not widen or retire transport |
+| focused-canary evidence is missing or verifier-ineligible | keep the exact-user scope and legacy control/rollback fallback; do not widen or delete it |
 
 ### Good / base / bad cases
 

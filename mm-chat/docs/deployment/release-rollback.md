@@ -306,7 +306,9 @@ python3 scripts/verify-agent-timeline-canary-evidence.py \
 ```
 
 Only an `eligible` report from that focused session permits a separate
-legacy-removal change. It does not
+scope-widening or final fallback-retirement change. The exact canary path may
+already use `agent.event`/`agent.progress` without duplicate compatibility
+frames while the disjoint control proves the legacy rollback path. The report does not
 delete transport code, enable the flag for more users, deploy an image, or
 authorize Push. Retain the external evidence and its report together: the
 report binds the exact commit, image digests, UTC window, and canonical evidence

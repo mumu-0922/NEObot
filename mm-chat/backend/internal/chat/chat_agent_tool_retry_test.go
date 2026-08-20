@@ -160,6 +160,9 @@ func TestRetryChatAgentToolCreatesLinkedDurableReadAttempt(t *testing.T) {
 	if response.ID == testMessageID || len(response.AgentEvents) < 4 {
 		t.Fatalf("retry response=%#v", response)
 	}
+	if _, legacy := response.Metadata[processTraceMetadataKey]; legacy {
+		t.Fatalf("retry response retained legacy processTrace: %#v", response.Metadata)
+	}
 	var linked bool
 	for _, event := range response.AgentEvents {
 		execution := projectChatAgentToolExecution(event)

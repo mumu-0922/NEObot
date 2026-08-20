@@ -661,6 +661,7 @@ function dispatchStreamEvent(
       handlers?.onAgentEvent?.({ ...event, agentEvent });
       return null;
     }
+    case "agent.progress":
     case "process.step.updated": {
       const step = normalizeProcessStep(event.step);
       if (!step) {

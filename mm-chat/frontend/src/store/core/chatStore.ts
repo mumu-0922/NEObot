@@ -84,6 +84,27 @@ let selectSessionRequestId = 0;
 let serverReadRequestId = 0;
 const sessionMessageWriteQueues = new Map<string, Promise<void>>();
 
+function projectLiveAgentEvent(
+  events: ChatAgentEvent[],
+  transientSteps: Map<string, ProcessStep>,
+  incoming: ChatAgentEvent,
+  legacy: ProcessStep[] | undefined,
+): { events: ChatAgentEvent[]; processTrace: ProcessStep[] | undefined } {
+  const nextEvents = upsertChatAgentEvent(events, incoming);
+  if (incoming.type === "turn.ended") {
+    transientSteps.clear();
+  } else {
+    for (const step of processTraceFromChatAgentEvents([incoming]) ?? []) {
+      transientSteps.delete(step.id);
+    }
+  }
+  let processTrace = processTraceFromChatAgentEvents(nextEvents, legacy);
+  for (const step of transientSteps.values()) {
+    processTrace = upsertProcessStep(processTrace, step);
+  }
+  return { events: nextEvents, processTrace };
+}
+
 function serverStreamGapStep(event: ServerStreamEvent): ProcessStep {
   const occurredAt =
     typeof event.createdAt === "string" &&
@@ -1343,6 +1364,7 @@ export const useChatStore = create<ChatState>()(
 
           let assistantContent = "";
           let liveAgentEvents: ChatAgentEvent[] = [];
+          const liveTransientSteps = new Map<string, ProcessStep>();
           const setServerGeneration = (
             update: (
               generation: ServerGenerationState,
@@ -1469,21 +1491,24 @@ export const useChatStore = create<ChatState>()(
               },
               onAgentEvent: (event) => {
                 if (!event.agentEvent) return;
-                liveAgentEvents = upsertChatAgentEvent(
-                  liveAgentEvents,
-                  event.agentEvent,
-                );
-                updateAssistantDraft(event.messageId, (message) => ({
-                  ...message,
-                  processTrace: processTraceFromChatAgentEvents(
+                const incoming = event.agentEvent;
+                updateAssistantDraft(event.messageId, (message) => {
+                  const projection = projectLiveAgentEvent(
                     liveAgentEvents,
+                    liveTransientSteps,
+                    incoming,
                     message.processTrace,
-                  ),
-                }));
+                  );
+                  liveAgentEvents = projection.events;
+                  return { ...message, processTrace: projection.processTrace };
+                });
               },
               onProcess: (event) => {
                 const step = event.step;
                 if (!step) return;
+                if (event.type === "agent.progress") {
+                  liveTransientSteps.set(step.id, step);
+                }
                 updateAssistantDraft(event.messageId, (message) => ({
                   ...message,
                   processTrace: upsertProcessStep(message.processTrace, step),
@@ -1635,6 +1660,7 @@ export const useChatStore = create<ChatState>()(
         try {
           let assistantContent = "";
           let liveAgentEvents: ChatAgentEvent[] = [];
+          const liveTransientSteps = new Map<string, ProcessStep>();
           const setServerGeneration = (
             update: (
               generation: ServerGenerationState,
@@ -1764,22 +1790,28 @@ export const useChatStore = create<ChatState>()(
               },
               onAgentEvent: (event) => {
                 if (!event.agentEvent) return;
-                liveAgentEvents = upsertChatAgentEvent(
-                  liveAgentEvents,
-                  event.agentEvent,
-                );
-                updateAssistantDraft(event.messageId, (message) => ({
-                  ...message,
-                  processTrace: processTraceFromChatAgentEvents(
+                const incoming = event.agentEvent;
+                updateAssistantDraft(event.messageId, (message) => {
+                  const projection = projectLiveAgentEvent(
                     liveAgentEvents,
+                    liveTransientSteps,
+                    incoming,
                     message.processTrace,
-                  ),
-                  parentMessageId: userMessageId,
-                }));
+                  );
+                  liveAgentEvents = projection.events;
+                  return {
+                    ...message,
+                    processTrace: projection.processTrace,
+                    parentMessageId: userMessageId,
+                  };
+                });
               },
               onProcess: (event) => {
                 const step = event.step;
                 if (!step) return;
+                if (event.type === "agent.progress") {
+                  liveTransientSteps.set(step.id, step);
+                }
                 updateAssistantDraft(event.messageId, (message) => ({
                   ...message,
                   processTrace: upsertProcessStep(message.processTrace, step),

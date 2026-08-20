@@ -235,9 +235,9 @@ replace the runtime.
 
 ### Remaining slices
 
-- Run one pinned focused canary acceptance session, produce verifier-eligible
-  content-free evidence, then remove the legacy transport in a separate
-  reversible slice.
+- Run one pinned focused canary acceptance session on the authoritative typed
+  path, produce verifier-eligible content-free evidence, then widen scope or
+  delete the legacy control/rollback fallback in a separate reversible slice.
 
 ### Slice 8 — performance and security acceptance
 
@@ -279,6 +279,20 @@ replace the runtime.
   them with the same durable-event projector used after reload. The legacy
   ProcessStep/Tool compatibility frames remain for the next reversible removal
   slice.
+
+### Slice 11 — remove duplicate transport from the typed canary path
+
+- Admitted canaries now receive persisted facts only through `agent.event`;
+  duplicate `process.step.updated` and `tool.call.updated` frames are not sent.
+- Coalesced Terminal snapshots use transient `agent.progress`. The frontend
+  overlays them without adding them to the immutable event accumulator and
+  removes them on the next matching durable event or terminal Turn state.
+- Backend retains bounded ProcessTrace metadata solely for flag-off rollback
+  but omits it from typed canary DTOs. Non-canary controls retain legacy frames
+  and metadata, so rollback does not fabricate events or erase historical UI.
+- Focused eligible evidence still gates widening beyond exact users and final
+  deletion of the control/rollback fallback. No flag widening, deployment,
+  Push, or evidence fabrication is part of this code slice.
 
 ### Slice 2 — live Terminal transcript
 

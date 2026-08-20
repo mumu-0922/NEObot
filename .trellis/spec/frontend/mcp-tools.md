@@ -28,8 +28,8 @@ const PROVIDER_STREAM_INTERRUPTED_CODE = "PROVIDER_STREAM_INTERRUPTED";
 The MCP client maps only to `/v1/mcp/*` routes defined in
 `mm-chat/docs/contracts/mcp-tools-api.md`. For an admitted timeline canary, the
 Chat stream carries persisted timeline facts through `agent.event`; the
-compatibility `tool.call.updated` transport remains only during the bounded
-legacy-removal transition.
+compatibility `tool.call.updated` transport is accepted only for the
+non-canary/control rollback path.
 
 ### 3. Contracts
 
@@ -165,12 +165,17 @@ legacy-removal transition.
 - Repeated running ProcessSteps with the same ID update the existing Terminal
   card in place. They are transient live projections; reload must converge on
   the final durable snapshot and must not create one row per output chunk.
+- An admitted canary receives those coalesced snapshots as `agent.progress`,
+  never as `process.step.updated`. Keep transient steps separate from the
+  immutable event accumulator, overlay them for display, and remove the exact
+  step when its next durable event arrives or the Turn ends.
 - Normalize each `agent.event` at the untrusted stream boundary. Deduplicate by
   immutable `eventId`, order by the inner durable sequence, and project the
   accumulated events through the same function used for reload. The outer
   stream sequence remains only the reconnect cursor; a duplicate reconnect
   frame must not replace an already accepted durable event.
-- Normalize `tool.call.updated` with its mode/classification pair. MCP accepts
+- On the legacy control path, normalize `tool.call.updated` with its
+  mode/classification pair. MCP accepts
   only `read|write|unknown`; `local_direct` accepts `read|write|execute`.
   `execute` must not widen MCP Server definition or Tool classification
   validation. Reject unknown modes and mismatched pairs, but do not label a
@@ -290,9 +295,10 @@ legacy-removal transition.
 - A hostile durable-event fixture must retain safe status and the generic MCP
   fallback while proving that raw arguments/results, artifact bodies, secrets,
   runtime-owned host paths, ANSI/control bytes, and oversized presentation
-  content do not reach rendered markup. Do not remove the legacy ProcessStep
-  transport until these gates have passed one focused exact-user canary
-  acceptance session.
+  content do not reach rendered markup. Keep the legacy ProcessStep fallback
+  for disjoint controls and flag-off rollback until these gates have passed one
+  focused exact-user canary acceptance session; do not widen or delete it
+  earlier.
 - Generation-error wiring for current `PROVIDER_STREAM_INTERRUPTED` plus the
   non-empty legacy `PROVIDER_ERROR` compatibility path in every locale.
 - Storage/entity/import tests that remove all retired Plugin keys without

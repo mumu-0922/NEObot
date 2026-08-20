@@ -72,6 +72,12 @@ Migration head: 100_chat_agent_approvals
   sequence remains the reconnect cursor. Emit `assistant.message` and
   `turn.ended` before the terminal Message frame, and include the same event set
   in that terminal Message so live, reconnect, and reload share one authority.
+- Admitted canaries receive no duplicate `process.step.updated` or
+  `tool.call.updated` frame for persisted facts. Sanitized, coalesced Terminal
+  snapshots use `agent.progress` and remain transient; the next durable event
+  replaces the same step. Continue writing the bounded metadata ProcessTrace
+  only as flag-off rollback state, but omit it from typed canary DTOs. A
+  non-canary/control request retains the legacy frames and metadata projection.
 - A background Terminal start is presented as a Job card and persists only its
   sanitized command/cwd plus `jobId`, process-local status, timestamps,
   duration, exit flags, and bounded transcript. Later `job_output`/`job_kill`
@@ -126,8 +132,9 @@ Migration head: 100_chat_agent_approvals
   filtering, 64 KiB transcript retention, the 256 KiB event cap, unknown MCP
   summary-only fallback, raw argument/result exclusion, and artifact-body
   exclusion. Keep safe status visible when content is hidden. Legacy
-  ProcessStep transport remains a rollback surface until these gates pass one
-  focused exact-user canary acceptance session.
+  ProcessStep transport remains a control/rollback surface until these gates
+  pass one focused exact-user canary acceptance session. Do not widen beyond
+  exact users or delete the fallback code before eligible evidence exists.
 
 ### Validation matrix
 

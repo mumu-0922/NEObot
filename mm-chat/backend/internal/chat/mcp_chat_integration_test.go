@@ -152,6 +152,7 @@ func TestHandlerCompletesNativeMultiRoundMCPThroughRemoteStreamableHTTP(t *testi
 		NewService(chatRepo),
 		WithProvider(provider),
 		WithMCPService(mcpService),
+		WithAgentTimelineCanary(true, []string{DevUserID}),
 	)
 
 	recorder := performAuthenticatedRequest(
@@ -161,7 +162,9 @@ func TestHandlerCompletesNativeMultiRoundMCPThroughRemoteStreamableHTTP(t *testi
 		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mcp-native"},"idempotencyKey":"mcp-remote-stream"}`,
 	)
 	assertStreamStatus(t, recorder, http.StatusOK)
-	if !strings.Contains(recorder.Body.String(), "event: tool.call.updated") ||
+	if !strings.Contains(recorder.Body.String(), "event: agent.event") ||
+		strings.Contains(recorder.Body.String(), "event: tool.call.updated") ||
+		strings.Contains(recorder.Body.String(), "event: process.step.updated") ||
 		!strings.Contains(recorder.Body.String(), `"server":"manifest:remote-fixture"`) ||
 		!strings.Contains(recorder.Body.String(), `"serverName":"Remote Fixture"`) ||
 		strings.Contains(recorder.Body.String(), `"value":"hello"`) {
@@ -181,7 +184,13 @@ func TestHandlerCompletesNativeMultiRoundMCPThroughRemoteStreamableHTTP(t *testi
 	}
 	steps, ok := messages[1].Metadata[processTraceMetadataKey].([]ProcessStep)
 	if !ok || !hasCompletedMCPToolStep(steps, "manifest:remote-fixture", "Remote Fixture") {
-		t.Fatalf("persisted MCP process trace = %#v", messages[1].Metadata)
+		t.Fatalf("persisted MCP rollback projection = %#v", messages[1].Metadata)
+	}
+	terminalFrame := strings.LastIndex(recorder.Body.String(), "event: message.completed")
+	if terminalFrame < 0 || strings.Contains(
+		recorder.Body.String()[terminalFrame:], `"processTrace":`,
+	) {
+		t.Fatalf("typed MCP terminal response exposed legacy metadata: %s", recorder.Body.String())
 	}
 	calls := mcpRepo.callRecords()
 	if len(calls) != 1 || calls[0].Status != mcpclient.CallStatusSucceeded ||

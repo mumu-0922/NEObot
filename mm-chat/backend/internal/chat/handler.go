@@ -2306,11 +2306,12 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		if err := emitAgentEvent(recordedEvent); err != nil {
 			return err
 		}
+		if agentTimelineEnabled {
+			return nil
+		}
 		sequence++
 		stepCopy := projected
-		if !agentTimelineEnabled {
-			stepCopy.Presentation = nil
-		}
+		stepCopy.Presentation = nil
 		if err := writeSSEEvent(w, "process.step.updated", streamEvent{
 			Type:           "process.step.updated",
 			RunID:          runID,
@@ -2328,11 +2329,13 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	emitTransientProcessStep := func(step ProcessStep) error {
 		sequence++
 		stepCopy := cloneProcessStep(step)
+		eventType := "agent.progress"
 		if !agentTimelineEnabled {
+			eventType = "process.step.updated"
 			stepCopy.Presentation = nil
 		}
-		if err := writeSSEEvent(w, "process.step.updated", streamEvent{
-			Type: "process.step.updated", RunID: runID,
+		if err := writeSSEEvent(w, eventType, streamEvent{
+			Type: eventType, RunID: runID,
 			ConversationID: conversationID, MessageID: assistantMessage.ID,
 			Sequence: sequence, CreatedAt: formatTime(time.Now()), Step: &stepCopy,
 		}); err != nil {
@@ -2647,7 +2650,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			if recordedSteps := processStepsFromChatAgentEvent(recordedTool); len(recordedSteps) > 0 {
 				processUpdates = recordedSteps
 			}
-			if execution != nil &&
+			if !agentTimelineEnabled && execution != nil &&
 				(execution.Mode == "mcp" || execution.Mode == "local_direct") &&
 				execution.CallStatus != "" {
 				projectedTool := projectChatAgentToolExecution(recordedTool)
@@ -4368,11 +4371,18 @@ func (h *Handler) newMessageDTO(ctx context.Context, message Message) ChatMessag
 	dto := newMessageDTO(message)
 	actor := auth.UserOrDevelopment(ctx)
 	if h.agentTimelineEnabledFor(actor.ID) {
+		dto.Metadata = metadataWithoutProcessTrace(dto.Metadata)
 		return dto
 	}
 	dto.AgentEvents = nil
 	dto.Metadata = metadataWithoutAgentTimelinePresentations(dto.Metadata)
 	return dto
+}
+
+func metadataWithoutProcessTrace(metadata map[string]any) map[string]any {
+	cloned := cloneJSONObject(ensureObject(metadata))
+	delete(cloned, processTraceMetadataKey)
+	return cloned
 }
 
 func metadataWithoutAgentTimelinePresentations(metadata map[string]any) map[string]any {

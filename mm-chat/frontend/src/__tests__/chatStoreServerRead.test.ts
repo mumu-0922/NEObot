@@ -1168,7 +1168,7 @@ describe("chat store server read path", () => {
             })),
         );
         handlers?.onProcess?.({
-          type: "process.step.updated",
+          type: "agent.progress",
           runId: "run-1",
           conversationId: "c1",
           messageId: "m4",

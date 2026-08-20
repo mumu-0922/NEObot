@@ -90,6 +90,15 @@ the same event set. The frontend runtime-normalizes these untrusted frames and
 uses the durable reload projector for live state rather than creating a second
 Tool-card authority.
 
+The admitted typed path sends no duplicate `process.step.updated` or
+`tool.call.updated` frame for a persisted fact. Coalesced Terminal output uses
+`agent.progress`; it is display-only, remains outside `chat_agent_events`, and
+is replaced by the next matching durable snapshot. Backend still stores the
+bounded legacy ProcessTrace as flag-off rollback state but omits it from typed
+canary DTOs. Disjoint controls and non-canary users continue to receive the
+legacy projection until focused acceptance authorizes scope widening and final
+fallback retirement.
+
 Background Terminal execution is displayed as one Job lifecycle. Durable Agent
 events retain each immutable start/output/kill Tool fact plus only safe Job
 metadata; the UI joins those facts by exact `jobId`. Because Jobs are

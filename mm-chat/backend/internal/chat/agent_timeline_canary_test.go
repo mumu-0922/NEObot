@@ -66,6 +66,9 @@ func TestAgentTimelineCanaryStreamsDurableEventsBeforeTerminalMessage(t *testing
 	if count := strings.Count(body, "event: agent.event"); count != 5 {
 		t.Fatalf("agent.event frame count=%d, want 5; body=%s", count, body)
 	}
+	if strings.Contains(body, "event: process.step.updated") {
+		t.Fatalf("canary stream retained legacy ProcessStep frames; body=%s", body)
+	}
 	terminalFrame := strings.LastIndex(body, "event: message.completed")
 	turnEnded := strings.Index(body, `"type":"turn.ended"`)
 	if terminalFrame < 0 || turnEnded < 0 || turnEnded > terminalFrame {
@@ -73,6 +76,16 @@ func TestAgentTimelineCanaryStreamsDurableEventsBeforeTerminalMessage(t *testing
 	}
 	if !strings.Contains(body[terminalFrame:], `"agentEvents":[`) {
 		t.Fatalf("terminal Message omits authoritative Agent events; body=%s", body)
+	}
+	if strings.Contains(body[terminalFrame:], `"processTrace":`) {
+		t.Fatalf("terminal Message retained legacy ProcessTrace metadata; body=%s", body)
+	}
+	messages := repository.messages[testConversationID]
+	if len(messages) != 2 {
+		t.Fatalf("persisted messages=%#v", messages)
+	}
+	if _, rollbackProjection := messages[1].Metadata[processTraceMetadataKey]; !rollbackProjection {
+		t.Fatalf("persisted rollback projection missing: %#v", messages[1].Metadata)
 	}
 }
 
@@ -120,8 +133,10 @@ func TestAgentTimelineGateKeepsDurableAuthorityAndReturnsLegacyProjection(t *tes
 	if len(canaryDTO.AgentEvents) != 1 {
 		t.Fatalf("canary events=%#v", canaryDTO.AgentEvents)
 	}
-	canarySteps := canaryDTO.Metadata[processTraceMetadataKey].([]ProcessStep)
-	if canarySteps[0].Presentation == nil {
-		t.Fatal("canary presentation was stripped")
+	if _, legacy := canaryDTO.Metadata[processTraceMetadataKey]; legacy {
+		t.Fatalf("canary DTO exposed legacy processTrace=%#v", canaryDTO.Metadata)
+	}
+	if message.Metadata[processTraceMetadataKey].([]ProcessStep)[0].Presentation == nil {
+		t.Fatal("canary DTO projection mutated stored rollback metadata")
 	}
 }
