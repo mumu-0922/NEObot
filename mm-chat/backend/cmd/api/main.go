@@ -106,7 +106,8 @@ func main() {
 	}
 	localSkillExecutor, err := localskills.NewExecutor(localskills.Config{
 		Enabled: cfg.AgentLocal.Enabled, RuntimeRoot: cfg.AgentLocal.RuntimeRoot,
-		WorkspaceRoot: cfg.AgentLocal.WorkspaceRoot, ShellPath: cfg.AgentLocal.Shell,
+		WorkspaceRoot:     cfg.AgentLocal.WorkspaceRoot,
+		WorkspaceHostRoot: cfg.AgentLocal.WorkspaceHostRoot, ShellPath: cfg.AgentLocal.Shell,
 		ApprovalMode: cfg.AgentLocal.ApprovalMode, CallTimeout: cfg.AgentLocal.CallTimeout,
 		RunTimeout: cfg.AgentLocal.RunTimeout, MaxOutput: cfg.AgentLocal.MaxOutputBytes,
 		MaxCalls: cfg.AgentLocal.MaxCalls, MaxRounds: cfg.AgentLocal.MaxRounds,

@@ -232,6 +232,7 @@ container-local `GET /health` on port `8081`; no port is published or proxied.
 | `AGENT_LOCAL_RUNTIME_ENABLED` | Current single-server Skill execution switch; defaults true in Compose and false in the bare binary. |
 | `AGENT_LOCAL_RUNTIME_SOURCE` / `AGENT_LOCAL_RUNTIME_ROOT` | Host bind and container root for revalidated content-addressed installed Skill materialization. |
 | `AGENT_LOCAL_WORKSPACE_SOURCE` / `AGENT_LOCAL_WORKSPACE_ROOT` | Explicit host bind and container workspace in which `terminal` runs as the Backend UID/GID. |
+| `AGENT_LOCAL_WORKSPACE_HOST_ROOT` | Optional canonical Host alias for the exact workspace bind; maps Linux/WSL pasted paths back to one relative Tool path without adding another root. |
 | `AGENT_LOCAL_APPROVAL_MODE` | `smart` denies destructive patterns; `off` never disables the catastrophic blocklist. |
 | `AGENT_LOCAL_CALL_TIMEOUT` / `AGENT_LOCAL_RUN_TIMEOUT` | Per-command and whole local Tool-loop wall limits. |
 | `AGENT_LOCAL_MAX_OUTPUT_BYTES` / `AGENT_LOCAL_MAX_CALLS_PER_RUN` / `AGENT_LOCAL_MAX_ROUNDS_PER_RUN` / `AGENT_LOCAL_MAX_CONCURRENT` | Output, call, round, and process concurrency guardrails; none is an isolation claim. |

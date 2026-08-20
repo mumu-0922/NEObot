@@ -197,6 +197,7 @@ func TestAgentLocalConfiguration(t *testing.T) {
 		EnvAgentLocalEnabled:        "true",
 		EnvAgentLocalRuntimeRoot:    "/tmp/neo-skills",
 		EnvAgentLocalWorkspaceRoot:  "/tmp/neo-workspace",
+		EnvAgentLocalHostRoot:       "/home/fixture/Oncall_Agent",
 		EnvAgentLocalShell:          "/bin/sh",
 		EnvAgentLocalApprovalMode:   "off",
 		EnvAgentLocalCallTimeout:    "12s",
@@ -214,7 +215,9 @@ func TestAgentLocalConfiguration(t *testing.T) {
 		t.Fatalf("Validate() error = %v", err)
 	}
 	if !cfg.AgentLocal.Enabled || cfg.AgentLocal.RuntimeRoot != "/tmp/neo-skills" ||
-		cfg.AgentLocal.WorkspaceRoot != "/tmp/neo-workspace" || cfg.AgentLocal.Shell != "/bin/sh" ||
+		cfg.AgentLocal.WorkspaceRoot != "/tmp/neo-workspace" ||
+		cfg.AgentLocal.WorkspaceHostRoot != "/home/fixture/Oncall_Agent" ||
+		cfg.AgentLocal.Shell != "/bin/sh" ||
 		cfg.AgentLocal.ApprovalMode != "off" || cfg.AgentLocal.CallTimeout != 12*time.Second ||
 		cfg.AgentLocal.RunTimeout != 2*time.Minute || cfg.AgentLocal.MaxOutputBytes != 65536 ||
 		cfg.AgentLocal.MaxCalls != 7 || cfg.AgentLocal.MaxRounds != 4 ||
@@ -229,6 +232,17 @@ func TestAgentLocalConfiguration(t *testing.T) {
 	})
 	if err := invalid.Validate(); err == nil || !strings.Contains(err.Error(), EnvAgentLocalWorkspaceRoot) {
 		t.Fatalf("invalid workspace error = %v", err)
+	}
+
+	values[EnvAgentLocalWorkspaceRoot] = "/tmp/neo-workspace"
+	values[EnvAgentLocalHostRoot] = "relative"
+	invalid = LoadFromEnv(func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	})
+	if err := invalid.Validate(); err == nil ||
+		!strings.Contains(err.Error(), EnvAgentLocalHostRoot) {
+		t.Fatalf("invalid host workspace error = %v", err)
 	}
 }
 

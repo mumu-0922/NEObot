@@ -33,6 +33,10 @@ Migration head: 099_chat_agent_event_log_function_repair
   timeout, output, call, round, and concurrency bounds plus process-group
   cancellation/reaping. Jobs remain process-local and must never claim restart
   durability.
+- `AGENT_LOCAL_WORKSPACE_HOST_ROOT`, when nonempty, must be the clean absolute
+  Host path for the one directory already mounted at `/workspace`. Resolve only
+  canonical Linux absolute and WSL UNC inputs below it into relative names
+  before the existing `os.Root`/CAS/symlink checks. It is never a second root.
 - Local execution is not a Sandbox. Never add `sudo`, a container socket,
   host-wide personal/secret binds, privileged execution, automatic OS package
   installation, or per-Skill isolation claims.
@@ -62,17 +66,21 @@ Migration head: 099_chat_agent_event_log_function_repair
 | destructive command in smart mode | approval-required result; no execution |
 | Backend shutdown with active Job | entire process group canceled and reaped |
 | path traversal/symlink/non-regular publish | reject; no File row/object |
+| Host/WSL alias below configured workspace | resolve to the same relative File/workingDir path |
+| alias outside Host root, Windows drive, or traversal | reject before filesystem/command access |
 | nonempty legacy fact table at 098 | whole migration rolls back |
 | already-retired schema re-up | successful no-op |
 
 ### Good / base / bad cases
 
-- **Good**: Agent mode loads an admitted Skill, edits a workspace-relative
-  file, verifies it, publishes it, and returns an authenticated download card.
+- **Good**: Agent mode loads an admitted Skill, maps an authorized pasted Host
+  path to a workspace-relative name, edits that file, verifies it, publishes
+  it, and returns an authenticated download card.
 - **Base**: Agent mode has no installed Skills; bounded File/Terminal/Job Tools
   still work, while Chat mode exposes none of them.
 - **Bad**: route local execution through a second control service, claim Sandbox
-  isolation, expose a host path, or let migration `098` delete by wildcard.
+  isolation, mount a Home/parent directory containing unrelated secrets, treat
+  an alias as a second root, or let migration `098` delete by wildcard.
 
 ### Required tests
 

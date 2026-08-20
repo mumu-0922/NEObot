@@ -41,10 +41,22 @@ func (runtime *localSkillToolRuntime) promptInstruction() string {
 		"legacyCatalogToolsShown": false,
 	})
 	instruction := localSkillSystemInstruction
+	workspaceAlias := ""
+	if hostRoot := strings.TrimSpace(runtime.config().WorkspaceHostRoot); hostRoot != "" {
+		alias, _ := json.Marshal(map[string]any{
+			"kind": "authorizedWorkspaceHostRoot", "hostRoot": hostRoot,
+		})
+		workspaceAlias = "\nThe configured local workspace is the single project identified by " +
+			"<authorized_workspace_alias>. When the user supplies a Linux absolute path or " +
+			"WSL UNC path under that root, pass the corresponding workspace-relative path to " +
+			"File Tools. Terminal starts at the workspace root; use $PWD or relative paths in " +
+			"commands instead of repeating the host path. Paths outside this root are unavailable." +
+			"\n<authorized_workspace_alias>" + string(alias) + "</authorized_workspace_alias>"
+	}
 	if runtime.artifactPublishingAvailable() {
 		instruction += "\n" + publishFileSystemInstruction
 	}
-	return instruction + "\n<installed_skill_catalog>" + string(encoded) +
+	return instruction + workspaceAlias + "\n<installed_skill_catalog>" + string(encoded) +
 		"</installed_skill_catalog>"
 }
 

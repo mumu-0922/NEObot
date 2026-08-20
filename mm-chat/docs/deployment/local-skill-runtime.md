@@ -23,8 +23,13 @@ Docker daemon from leaving root-owned workspace directories behind.
 The default workspace is `./data/agent-workspace`. To let Skills work on a
 different host directory, set an absolute or project-relative
 `AGENT_LOCAL_WORKSPACE_SOURCE` in `.env.single-server`, ensure the current UID
-can read/write it, and recreate the Backend. That deliberately widens Skill
-authority to that directory.
+can read/write it, and recreate the Backend. Set
+`AGENT_LOCAL_WORKSPACE_HOST_ROOT` to the same canonical absolute Host path when
+users should be able to paste its Linux or WSL UNC representation. That value
+is only an input alias; the bind remains the single filesystem authority.
+This deliberately widens Skill authority to that one directory, so never use a
+Home or parent directory containing unrelated projects, live env, Secrets, or
+backups.
 
 ## Configuration
 
@@ -35,6 +40,7 @@ authority to that directory.
 | `AGENT_LOCAL_RUNTIME_ROOT` | `/var/lib/mm-chat/agent-skills` | Container materialization root. |
 | `AGENT_LOCAL_WORKSPACE_SOURCE` | `./data/agent-workspace` | Host workspace bind source. |
 | `AGENT_LOCAL_WORKSPACE_ROOT` | `/workspace` | Container command workspace. |
+| `AGENT_LOCAL_WORKSPACE_HOST_ROOT` | empty | Optional clean absolute Host alias for the exact workspace source; accepts Linux/WSL pasted paths only below that root. |
 | `AGENT_LOCAL_SHELL` | `/bin/bash` | Absolute shell used with `-c`; workspace login/profile files are not loaded. |
 | `AGENT_LOCAL_APPROVAL_MODE` | `smart` | Deny destructive patterns; `off` disables only this soft denial. |
 | `AGENT_LOCAL_CALL_TIMEOUT` | `30s` | Maximum one command duration. |
@@ -47,6 +53,18 @@ authority to that directory.
 `smart` approval failures are returned to the model as
 `approval_required`; they do not silently execute. Catastrophic patterns stay
 blocked even when approval mode is `off`.
+
+Example for one explicitly authorized WSL project:
+
+```dotenv
+AGENT_LOCAL_WORKSPACE_SOURCE=/home/example/projects/authorized-project
+AGENT_LOCAL_WORKSPACE_HOST_ROOT=/home/example/projects/authorized-project
+```
+
+`/home/example/projects/authorized-project/README.md` and
+`\\wsl.localhost\Ubuntu\home\example\projects\authorized-project\README.md`
+then resolve to the same internal `README.md`. Other project roots remain
+unavailable.
 
 ## Operational truth
 

@@ -83,6 +83,31 @@ After implementation:
 - [ ] Verified error handling at each boundary
 - [ ] Checked data survives round-trip
 
+## Live Stream vs Durable Replay Checklist
+
+Use this when the same operation is shown first from SSE/WebSocket events and
+later from persisted history:
+
+- [ ] Capture the actively served live event shape before changing either
+      producer or consumer; checked-in DTOs and comments are secondary.
+- [ ] Compare live and durable identities, optional/redacted fields, enums, and
+      classification values field by field. Do not assume both paths serialize
+      the same projection.
+- [ ] Keep the live client boundary typed as untrusted data and normalize once.
+      If a field is absent by contract, add a narrow fallback; a present
+      malformed field must still fail closed.
+- [ ] Test the actual stream dispatch before reload, then test persisted replay
+      separately. A successful reload can hide a broken live parser because
+      detached Backend execution may finish and persist after the UI aborts.
+- [ ] For rollout acceptance, retain one complete pre-reload stream trace and
+      prove the final UI state without using reload as recovery.
+
+**Real-world example**: Backend `local_direct` events redacted Provider
+`callId`, retained `executionId`, and emitted File mutations as `write`.
+Frontend required `callId` and allowed only `read|execute`, so the browser
+reported an invalid Tool update while Backend execution continued. Reload later
+rendered the durable timeline and made an API-only acceptance look healthy.
+
 ## Applied Migration Immutability Checklist
 
 Use this before editing any committed migration or changing the repository

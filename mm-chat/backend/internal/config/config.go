@@ -169,6 +169,7 @@ const (
 	EnvAgentLocalEnabled        = "AGENT_LOCAL_RUNTIME_ENABLED"
 	EnvAgentLocalRuntimeRoot    = "AGENT_LOCAL_RUNTIME_ROOT"
 	EnvAgentLocalWorkspaceRoot  = "AGENT_LOCAL_WORKSPACE_ROOT"
+	EnvAgentLocalHostRoot       = "AGENT_LOCAL_WORKSPACE_HOST_ROOT"
 	EnvAgentLocalShell          = "AGENT_LOCAL_SHELL"
 	EnvAgentLocalApprovalMode   = "AGENT_LOCAL_APPROVAL_MODE"
 	EnvAgentLocalCallTimeout    = "AGENT_LOCAL_CALL_TIMEOUT"
@@ -294,17 +295,18 @@ type MCPConfig struct {
 // AgentLocalConfig enables Hermes-style local_direct Skill execution as the
 // ordinary Backend user. Its limits are guardrails, not a Sandbox boundary.
 type AgentLocalConfig struct {
-	Enabled        bool
-	RuntimeRoot    string
-	WorkspaceRoot  string
-	Shell          string
-	ApprovalMode   string
-	CallTimeout    time.Duration
-	RunTimeout     time.Duration
-	MaxOutputBytes int64
-	MaxCalls       int
-	MaxRounds      int
-	MaxConcurrent  int
+	Enabled           bool
+	RuntimeRoot       string
+	WorkspaceRoot     string
+	WorkspaceHostRoot string
+	Shell             string
+	ApprovalMode      string
+	CallTimeout       time.Duration
+	RunTimeout        time.Duration
+	MaxOutputBytes    int64
+	MaxCalls          int
+	MaxRounds         int
+	MaxConcurrent     int
 }
 
 // S3Config contains MinIO/S3-compatible object storage settings.
@@ -583,17 +585,18 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 			CleanupInterval:       durationEnvOrDefault(lookup, EnvMCPCleanupInterval, DefaultMCPCleanupInterval),
 		},
 		AgentLocal: AgentLocalConfig{
-			Enabled:        boolEnvOrDefault(lookup, EnvAgentLocalEnabled, DefaultAgentLocalEnabled),
-			RuntimeRoot:    envOrDefault(lookup, EnvAgentLocalRuntimeRoot, DefaultAgentLocalRuntimeRoot),
-			WorkspaceRoot:  envOrDefault(lookup, EnvAgentLocalWorkspaceRoot, DefaultAgentLocalWorkspaceRoot),
-			Shell:          envOrDefault(lookup, EnvAgentLocalShell, DefaultAgentLocalShell),
-			ApprovalMode:   strings.ToLower(envOrDefault(lookup, EnvAgentLocalApprovalMode, DefaultAgentLocalApprovalMode)),
-			CallTimeout:    durationEnvOrDefault(lookup, EnvAgentLocalCallTimeout, DefaultAgentLocalCallTimeout),
-			RunTimeout:     durationEnvOrDefault(lookup, EnvAgentLocalRunTimeout, DefaultAgentLocalRunTimeout),
-			MaxOutputBytes: int64EnvOrDefault(lookup, EnvAgentLocalMaxOutputBytes, DefaultAgentLocalMaxOutputBytes),
-			MaxCalls:       intEnvOrDefault(lookup, EnvAgentLocalMaxCalls, DefaultAgentLocalMaxCalls),
-			MaxRounds:      intEnvOrDefault(lookup, EnvAgentLocalMaxRounds, DefaultAgentLocalMaxRounds),
-			MaxConcurrent:  intEnvOrDefault(lookup, EnvAgentLocalMaxConcurrent, DefaultAgentLocalMaxConcurrent),
+			Enabled:           boolEnvOrDefault(lookup, EnvAgentLocalEnabled, DefaultAgentLocalEnabled),
+			RuntimeRoot:       envOrDefault(lookup, EnvAgentLocalRuntimeRoot, DefaultAgentLocalRuntimeRoot),
+			WorkspaceRoot:     envOrDefault(lookup, EnvAgentLocalWorkspaceRoot, DefaultAgentLocalWorkspaceRoot),
+			WorkspaceHostRoot: optionalEnv(lookup, EnvAgentLocalHostRoot),
+			Shell:             envOrDefault(lookup, EnvAgentLocalShell, DefaultAgentLocalShell),
+			ApprovalMode:      strings.ToLower(envOrDefault(lookup, EnvAgentLocalApprovalMode, DefaultAgentLocalApprovalMode)),
+			CallTimeout:       durationEnvOrDefault(lookup, EnvAgentLocalCallTimeout, DefaultAgentLocalCallTimeout),
+			RunTimeout:        durationEnvOrDefault(lookup, EnvAgentLocalRunTimeout, DefaultAgentLocalRunTimeout),
+			MaxOutputBytes:    int64EnvOrDefault(lookup, EnvAgentLocalMaxOutputBytes, DefaultAgentLocalMaxOutputBytes),
+			MaxCalls:          intEnvOrDefault(lookup, EnvAgentLocalMaxCalls, DefaultAgentLocalMaxCalls),
+			MaxRounds:         intEnvOrDefault(lookup, EnvAgentLocalMaxRounds, DefaultAgentLocalMaxRounds),
+			MaxConcurrent:     intEnvOrDefault(lookup, EnvAgentLocalMaxConcurrent, DefaultAgentLocalMaxConcurrent),
 		},
 
 		Auth: AuthConfig{
@@ -643,6 +646,15 @@ func validateAgentLocalConfig(config AgentLocalConfig) error {
 			root.value == string(filepath.Separator) {
 			return fmt.Errorf("%s must be a clean absolute non-root path", root.name)
 		}
+	}
+	if config.WorkspaceHostRoot != "" &&
+		(!filepath.IsAbs(config.WorkspaceHostRoot) ||
+			filepath.Clean(config.WorkspaceHostRoot) != config.WorkspaceHostRoot ||
+			config.WorkspaceHostRoot == string(filepath.Separator)) {
+		return fmt.Errorf(
+			"%s must be empty or a clean absolute non-root path",
+			EnvAgentLocalHostRoot,
+		)
 	}
 	if !filepath.IsAbs(config.Shell) || filepath.Clean(config.Shell) != config.Shell {
 		return fmt.Errorf("%s must be a clean absolute path", EnvAgentLocalShell)

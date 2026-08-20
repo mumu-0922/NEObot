@@ -25,7 +25,7 @@ func (executor *Executor) ReadWorkspaceArtifact(
 	if !executor.Enabled() {
 		return WorkspaceArtifactSnapshot{}, ErrRuntimeFailed
 	}
-	name, err := cleanWorkspacePath(value, false)
+	name, err := executor.cleanWorkspaceInputPath(value, false)
 	if err != nil || maxBytes < 1 {
 		return WorkspaceArtifactSnapshot{}, ErrWorkspaceInvalidInput
 	}

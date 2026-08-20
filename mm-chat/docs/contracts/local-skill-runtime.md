@@ -101,8 +101,16 @@ adversarial allowed process.
 
 ## Workspace files
 
-- Every caller path is workspace-relative. Go `os.Root` operations reject
-  absolute paths, traversal, symlinks, non-regular files, and escapes.
+- Every caller path resolves to one workspace-relative name before access.
+  Relative paths are always supported. When `AGENT_LOCAL_WORKSPACE_HOST_ROOT`
+  identifies the exact Host source mounted at `/workspace`, canonical Linux
+  absolute paths and `\\wsl.localhost\<distro>\...` / `\\wsl$\<distro>\...`
+  paths below it are accepted as aliases. Other absolute paths, Windows drives,
+  traversal, symlinks, non-regular files, and escapes are rejected by the same
+  Go `os.Root` boundary.
+- Terminal command strings are never rewritten. Only structured `workingDir`
+  uses alias resolution; the model is instructed to use `$PWD` or relative
+  paths inside commands.
 - A complete file is at most 2 MiB. One read window and one write/edit payload
   are at most 24 KiB and must be valid UTF-8 without NUL bytes.
 - Versions are `sha256:<hex>` over the complete bytes or `absent`. Writes and

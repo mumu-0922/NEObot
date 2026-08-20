@@ -31,6 +31,10 @@ bash mm-chat/scripts/verify-legacy-agent-cleanup-postgres17.sh
   certificates, a machine restart, or a container socket.
 - Workspace access is deliberate Backend-user read/write access, not Sandbox
   isolation. Keep secrets, live env, backups, and unrelated files outside it.
+- A nonempty `AGENT_LOCAL_WORKSPACE_HOST_ROOT` may identify only the exact
+  canonical Host directory already bound to `/workspace`. It enables pasted
+  Linux/WSL path aliases but adds no mount or second authority. Never bind its
+  Home/parent directory merely to expose several unrelated projects.
 - Roll back local execution by setting `AGENT_LOCAL_RUNTIME_ENABLED=false` and
   recreating Backend only. Never delete packages, workspace, `data/`,
   `secrets/`, `backup/`, or the live env.
@@ -46,6 +50,7 @@ bash mm-chat/scripts/verify-legacy-agent-cleanup-postgres17.sh
 | Condition | Required result |
 | --- | --- |
 | bind source missing/not writable | visible startup/preflight failure; no privileged repair |
+| Host alias differs from or escapes the mounted project | reject the Tool input; do not add another bind |
 | local runtime false | local Tools absent; packages/workspace preserved |
 | zero installed Skills | workspace Tools remain available |
 | API restart | prior process-local Jobs unavailable and labeled non-durable |

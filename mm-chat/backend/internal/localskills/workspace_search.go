@@ -48,7 +48,7 @@ func (executor *Executor) SearchWorkspaceFiles(
 	if !executor.Enabled() {
 		return result, ErrRuntimeFailed
 	}
-	rootPath, err := cleanWorkspacePath(request.Path, true)
+	rootPath, err := executor.cleanWorkspaceInputPath(request.Path, true)
 	if err != nil || request.Query == "" || len(request.Query) > 4<<10 ||
 		!utf8.ValidString(request.Query) || strings.ContainsRune(request.Query, '\x00') ||
 		len(request.Glob) > 512 || request.MaxResults < 0 ||

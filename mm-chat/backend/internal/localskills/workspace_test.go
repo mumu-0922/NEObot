@@ -141,6 +141,104 @@ func TestWorkspaceToolsRejectInRootSymlinkAliases(t *testing.T) {
 	}
 }
 
+func TestWorkspaceToolsResolveAuthorizedLinuxAndWSLHostAliases(t *testing.T) {
+	workspace := t.TempDir()
+	hostRoot := "/home/mumu/projects/Oncall_Agent"
+	if err := os.WriteFile(
+		filepath.Join(workspace, "README.md"),
+		[]byte("on-call agent\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	executor := newTestExecutorWithHostRoot(t, workspace, hostRoot)
+	aliases := []string{
+		"README.md",
+		filepath.Join(workspace, "README.md"),
+		hostRoot + "/README.md",
+		`\\wsl.localhost\Ubuntu\home\mumu\projects\Oncall_Agent\README.md`,
+		`\\wsl$\Ubuntu\home\mumu\projects\Oncall_Agent\README.md`,
+	}
+	for _, alias := range aliases {
+		result, err := executor.ReadWorkspaceFile(
+			context.Background(),
+			FileReadRequest{Path: alias},
+		)
+		if err != nil || result.Path != "README.md" || result.Content != "on-call agent\n" {
+			t.Fatalf("alias %q result=%#v error=%v", alias, result, err)
+		}
+	}
+
+	created, err := executor.WriteWorkspaceFile(context.Background(), FileWriteRequest{
+		Path: hostRoot + "/notes.txt", Content: "old", ExpectedVersion: WorkspaceVersionAbsent,
+	})
+	if err != nil || created.Path != "notes.txt" {
+		t.Fatalf("host write=%#v error=%v", created, err)
+	}
+	edited, err := executor.EditWorkspaceFile(context.Background(), FileEditRequest{
+		Path:    `\\wsl.localhost\Ubuntu\home\mumu\projects\Oncall_Agent\notes.txt`,
+		OldText: "old", NewText: "new", ExpectedVersion: created.Version,
+	})
+	if err != nil || edited.Path != "notes.txt" {
+		t.Fatalf("UNC edit=%#v error=%v", edited, err)
+	}
+	searched, err := executor.SearchWorkspaceFiles(context.Background(), FileSearchRequest{
+		Path: hostRoot, Query: "on-call", Glob: "*.md", MaxResults: 5,
+	})
+	if err != nil || len(searched.Matches) != 1 || searched.Matches[0].Path != "README.md" {
+		t.Fatalf("host search=%#v error=%v", searched, err)
+	}
+	artifact, err := executor.ReadWorkspaceArtifact(
+		context.Background(),
+		`\\wsl$\Ubuntu\home\mumu\projects\Oncall_Agent\README.md`,
+		1024,
+	)
+	if err != nil || artifact.Path != "README.md" || string(artifact.Body) != "on-call agent\n" {
+		t.Fatalf("UNC artifact=%#v error=%v", artifact, err)
+	}
+	result, err := executor.Execute(context.Background(), Request{
+		Command: "printf workspace-ok", WorkingDir: hostRoot,
+	})
+	if err != nil || result.Stdout != "workspace-ok" {
+		t.Fatalf("host working directory=%#v error=%v", result, err)
+	}
+}
+
+func TestWorkspaceAliasesRejectOtherRootsTraversalDrivesAndSymlinkEscape(t *testing.T) {
+	workspace := t.TempDir()
+	hostRoot := "/home/mumu/projects/Oncall_Agent"
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(workspace, "escape")); err != nil {
+		t.Fatal(err)
+	}
+	executor := newTestExecutorWithHostRoot(t, workspace, hostRoot)
+	for _, alias := range []string{
+		"../secret.txt",
+		hostRoot + "/../neo-chat/mm-chat/.env.single-server",
+		"/home/mumu/projects/private-project/.env",
+		`\\wsl.localhost\Ubuntu\home\mumu\projects\private-project\.env`,
+		`\\wsl.localhost\Ubuntu\home\mumu\projects\Oncall_Agent\..\private-project\secret`,
+		`\wsl.localhost\Ubuntu\home\mumu\projects\Oncall_Agent\README.md`,
+		`\\wsl.localhost\..\home\mumu\projects\Oncall_Agent\README.md`,
+		`C:\Users\Administrator\secret.txt`,
+		"escape/secret.txt",
+	} {
+		if _, err := executor.ReadWorkspaceFile(
+			context.Background(), FileReadRequest{Path: alias},
+		); err == nil {
+			t.Fatalf("alias %q escaped workspace", alias)
+		}
+	}
+	if _, err := executor.Execute(context.Background(), Request{
+		Command: "printf forbidden", WorkingDir: "/home/mumu/projects/private-project",
+	}); !errors.Is(err, ErrInvalidCommand) {
+		t.Fatalf("outside working directory error=%v", err)
+	}
+}
+
 func TestWorkspaceSearchIsBoundedAndSkipsGeneratedAndSymlinkTrees(t *testing.T) {
 	workspace := t.TempDir()
 	for name, body := range map[string]string{
@@ -200,4 +298,19 @@ func TestWorkspaceSearchBoundsEnumerationBeforeGlobFiltering(t *testing.T) {
 	if err != nil || !result.Truncated || len(result.Matches) != 0 || result.FilesScanned != 0 {
 		t.Fatalf("result=%#v error=%v", result, err)
 	}
+}
+
+func newTestExecutorWithHostRoot(t *testing.T, workspace, hostRoot string) *Executor {
+	t.Helper()
+	executor, err := NewExecutor(Config{
+		Enabled: true, RuntimeRoot: filepath.Join(workspace, ".skills"),
+		WorkspaceRoot: workspace, WorkspaceHostRoot: hostRoot,
+		ShellPath: "/bin/sh", ApprovalMode: ApprovalSmart,
+		CallTimeout: 3 * time.Second, RunTimeout: 5 * time.Second,
+		MaxOutput: 64 << 10, MaxCalls: 8, MaxRounds: 4, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return executor
 }

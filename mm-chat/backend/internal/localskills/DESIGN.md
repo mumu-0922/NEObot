@@ -11,7 +11,8 @@ damage; they do not contain deliberately adversarial code.
 
 ```text
 enabled local_direct runtime
-  -> workspace-relative File Tools with versioned atomic writes
+  -> optional Host/WSL alias normalized to one workspace-relative path
+  -> File Tools with versioned atomic writes
   -> optional skill exact immutable instructions
   -> terminal validated foreground/background command + optional Skill binding
   -> explicit environment + non-login shell + ordinary Backend UID/GID
@@ -25,6 +26,9 @@ Combined stdout/stderr storage is capped while both streams continue draining,
 so a verbose command cannot deadlock on a full pipe or allocate without bound.
 
 File reads and searches enter through an `os.Root` anchored to the workspace.
+An optional configured Host path exists only as an input alias and is reduced
+to a relative name before this boundary. Terminal command text is never
+rewritten; only its structured working directory uses the same resolver.
 File writes and edits serialize in-process, compare the caller's complete-file
 SHA-256 version twice, write and sync a same-directory temporary file, then
 atomically rename it. This is optimistic conflict protection, not a replacement

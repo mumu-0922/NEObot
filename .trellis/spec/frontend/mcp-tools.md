@@ -144,10 +144,14 @@ timeline updates.
   trusted idempotent read retry affordance; never infer it from remote
   annotations.
 - Normalize `tool.call.updated` with its mode/classification pair. MCP accepts
-  only `read|write|unknown`; `local_direct` accepts only `read|execute`.
+  only `read|write|unknown`; `local_direct` accepts `read|write|execute`.
   `execute` must not widen MCP Server definition or Tool classification
   validation. Reject unknown modes and mismatched pairs, but do not label a
   valid local Skill event as an invalid MCP update.
+- The redacted local event may omit Provider `callId`. Only when the wire field
+  is absent, keep `executionId` mandatory and bounded and use it as the
+  normalized UI `callId` fallback. A present empty/wrong-type identity remains
+  an invalid response; optionality must not hide malformed data.
 - A completed trace with generic MCP Tool steps but no specialized Knowledge or
   Web steps summarizes the number of Tool calls. It must not label Tool-backed
   work as a Direct answer.
@@ -173,7 +177,7 @@ timeline updates.
 | OAuth URL is not valid HTTPS | localized error; do not navigate |
 | Selection revision is stale | show save failure and reload authoritative state |
 | `outcome_unknown` timeline event | terminal warning state; no one-click retry |
-| `local_direct` update with `read|execute` | accept and render through the shared redacted Tool timeline |
+| `local_direct` update with `read|write|execute` and optional `callId` | accept, derive missing `callId` from `executionId`, and render through the shared redacted Tool timeline |
 | unknown Tool mode or a mode/classification mismatch | reject as `INVALID_SERVER_RESPONSE`; do not widen MCP definition trust |
 | MCP trace has only legacy detail without `serverName` | show a humanized Tool action or generic Tool label; never fall back to the internal Server reference |
 | Legacy Plugin fields load/import | strip recursively; persist no Plugin or inferred MCP state |
@@ -221,9 +225,11 @@ timeline updates.
 - Timeline mapping for every state including `outcome_unknown`, redacted
   summaries, cancellation, generic Tool-name humanization, readable
   `serverName`, and non-rendering of internal Server/call/schema detail.
-- Stream normalization covers valid MCP and `local_direct` updates, the local
-  `execute` classification, and rejects unknown modes plus MCP/`execute`
-  cross-mode drift.
+- Stream normalization covers valid MCP and `local_direct` updates, local
+  `write|execute`, absent-`callId` fallback, malformed explicit identity, and
+  rejects unknown modes plus MCP/`execute` cross-mode drift. Exercise the live
+  SSE normalization path directly; a reload-only durable timeline replay is
+  not evidence that the live wire contract works.
 - Generation-error wiring for current `PROVIDER_STREAM_INTERRUPTED` plus the
   non-empty legacy `PROVIDER_ERROR` compatibility path in every locale.
 - Storage/entity/import tests that remove all retired Plugin keys without

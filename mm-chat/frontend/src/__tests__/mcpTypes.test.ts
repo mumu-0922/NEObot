@@ -126,7 +126,7 @@ describe("MCP runtime DTO normalization", () => {
       normalizeMcpToolCallUpdate({
         ...update,
         executionId: "local-skill-3-1",
-        callId: "call-terminal",
+        callId: undefined,
         toolName: "terminal",
         classification: "execute",
         processStatus: "completed",
@@ -134,11 +134,44 @@ describe("MCP runtime DTO normalization", () => {
         mode: "local_direct",
       }),
     ).toMatchObject({
+      callId: "local-skill-3-1",
       classification: "execute",
       mode: "local_direct",
       processStatus: "completed",
       status: "succeeded",
     });
+    expect(
+      normalizeMcpToolCallUpdate({
+        ...update,
+        executionId: "local-skill-4-1",
+        callId: undefined,
+        toolName: "file_write",
+        classification: "write",
+        processStatus: "running",
+        status: "running",
+        mode: "local_direct",
+      }),
+    ).toMatchObject({
+      callId: "local-skill-4-1",
+      classification: "write",
+      mode: "local_direct",
+    });
+    expect(
+      normalizeMcpToolCallUpdate({
+        ...update,
+        executionId: "",
+        callId: undefined,
+        mode: "local_direct",
+      }),
+    ).toBeNull();
+    expect(
+      normalizeMcpToolCallUpdate({
+        ...update,
+        executionId: "local-skill-5-1",
+        callId: 42,
+        mode: "local_direct",
+      }),
+    ).toBeNull();
     expect(
       normalizeMcpToolCallUpdate({
         ...update,

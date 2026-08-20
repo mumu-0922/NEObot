@@ -77,7 +77,7 @@ func (executor *Executor) ReadWorkspaceFile(
 	if !executor.Enabled() {
 		return FileReadResult{}, ErrRuntimeFailed
 	}
-	name, err := cleanWorkspacePath(request.Path, false)
+	name, err := executor.cleanWorkspaceInputPath(request.Path, false)
 	if err != nil || request.Offset < 0 || request.Offset > MaxWorkspaceFileBytes ||
 		request.Limit < 0 || request.Limit > MaxWorkspaceReadWindowBytes {
 		return FileReadResult{}, ErrWorkspaceInvalidInput
@@ -120,7 +120,7 @@ func (executor *Executor) WriteWorkspaceFile(
 	if !executor.Enabled() {
 		return FileWriteResult{}, ErrRuntimeFailed
 	}
-	name, err := cleanWorkspacePath(request.Path, false)
+	name, err := executor.cleanWorkspaceInputPath(request.Path, false)
 	if err != nil || !validWorkspaceVersion(request.ExpectedVersion) ||
 		len(request.Content) > MaxWorkspaceWriteBytes || !utf8.ValidString(request.Content) ||
 		strings.ContainsRune(request.Content, '\x00') {
@@ -140,7 +140,7 @@ func (executor *Executor) EditWorkspaceFile(
 	if !executor.Enabled() {
 		return FileWriteResult{}, ErrRuntimeFailed
 	}
-	name, err := cleanWorkspacePath(request.Path, false)
+	name, err := executor.cleanWorkspaceInputPath(request.Path, false)
 	if err != nil || request.OldText == "" || !utf8.ValidString(request.OldText) ||
 		!utf8.ValidString(request.NewText) || strings.ContainsRune(request.OldText, '\x00') ||
 		strings.ContainsRune(request.NewText, '\x00') ||

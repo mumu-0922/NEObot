@@ -36,17 +36,18 @@ var (
 )
 
 type Config struct {
-	Enabled       bool
-	RuntimeRoot   string
-	WorkspaceRoot string
-	ShellPath     string
-	ApprovalMode  string
-	CallTimeout   time.Duration
-	RunTimeout    time.Duration
-	MaxOutput     int64
-	MaxCalls      int
-	MaxRounds     int
-	MaxConcurrent int
+	Enabled           bool
+	RuntimeRoot       string
+	WorkspaceRoot     string
+	WorkspaceHostRoot string
+	ShellPath         string
+	ApprovalMode      string
+	CallTimeout       time.Duration
+	RunTimeout        time.Duration
+	MaxOutput         int64
+	MaxCalls          int
+	MaxRounds         int
+	MaxConcurrent     int
 }
 
 type Request struct {
@@ -82,9 +83,14 @@ type Executor struct {
 func NewExecutor(config Config) (*Executor, error) {
 	config.RuntimeRoot = filepath.Clean(strings.TrimSpace(config.RuntimeRoot))
 	config.WorkspaceRoot = filepath.Clean(strings.TrimSpace(config.WorkspaceRoot))
+	config.WorkspaceHostRoot = strings.TrimSpace(config.WorkspaceHostRoot)
+	if config.WorkspaceHostRoot != "" {
+		config.WorkspaceHostRoot = filepath.Clean(config.WorkspaceHostRoot)
+	}
 	config.ShellPath = filepath.Clean(strings.TrimSpace(config.ShellPath))
 	config.ApprovalMode = strings.TrimSpace(config.ApprovalMode)
 	if config.Enabled && (!secureRoot(config.RuntimeRoot) || !secureRoot(config.WorkspaceRoot) ||
+		(config.WorkspaceHostRoot != "" && !secureRoot(config.WorkspaceHostRoot)) ||
 		!filepath.IsAbs(config.ShellPath) ||
 		(config.ApprovalMode != ApprovalSmart && config.ApprovalMode != ApprovalOff) ||
 		config.CallTimeout < time.Second || config.CallTimeout > 10*time.Minute ||
@@ -267,8 +273,12 @@ func (executor *Executor) resolveWorkingDirectory(value string) (string, error) 
 	value = strings.TrimSpace(value)
 	if value == "" {
 		value = executor.config.WorkspaceRoot
-	} else if !filepath.IsAbs(value) {
-		value = filepath.Join(executor.config.WorkspaceRoot, value)
+	} else {
+		name, err := executor.cleanWorkspaceInputPath(value, true)
+		if err != nil {
+			return "", ErrInvalidCommand
+		}
+		value = filepath.Join(executor.config.WorkspaceRoot, filepath.FromSlash(name))
 	}
 	value = filepath.Clean(value)
 	if strings.ContainsRune(value, '\x00') {

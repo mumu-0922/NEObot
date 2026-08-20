@@ -17,9 +17,13 @@ The package provides accidental-damage guardrails, not a security Sandbox:
   loaded implicitly;
 - process-group termination on timeout or Chat cancellation.
 
-The workspace API uses Go `os.Root` operations, accepts workspace-relative
-paths only, rejects symlink/traversal escapes, and bounds UTF-8 reads, writes,
-searches, file counts, and result counts. Writes and exact-text edits require a
+The workspace API uses Go `os.Root` operations and always reduces input to one
+workspace-relative path. An optional exact Host-root alias accepts canonical
+Linux absolute and WSL UNC representations beneath the same mounted workspace;
+it never adds a filesystem root. Other absolute paths, Windows drives,
+symlink/traversal escapes, and malformed aliases are rejected. UTF-8 reads,
+writes, searches, file counts, and result counts are bounded. Writes and
+exact-text edits require a
 complete-file `sha256:<hex>` version (`absent` only creates a new file), recheck
 that version immediately before a same-directory atomic rename, and `fsync`
 the file and parent directory.

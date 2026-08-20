@@ -53,17 +53,15 @@ describe("MCP chat preflight and timeline", () => {
               runId: "run-1",
               sequence: 2,
               toolCall: {
-                executionId: "call-1",
-                callId: "call-1",
-                toolName: "read_file",
-                server: "manifest:files",
-                classification: "read",
+                executionId: "local-skill-1-1",
+                toolName: "file_write",
+                classification: "write",
                 processStatus: "running",
                 status: "running",
                 round: 1,
                 argumentsSummary: { path: "string" },
                 durationMillis: 0,
-                mode: "mcp",
+                mode: "local_direct",
               },
             },
           });
@@ -88,8 +86,9 @@ describe("MCP chat preflight and timeline", () => {
     ).resolves.toMatchObject({ status: "completed" });
     expect(updates).toEqual([
       expect.objectContaining({
-        toolName: "read_file",
-        classification: "read",
+        callId: "local-skill-1-1",
+        toolName: "file_write",
+        classification: "write",
         argumentsSummary: { path: "string" },
       }),
     ]);

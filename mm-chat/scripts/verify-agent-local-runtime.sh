@@ -114,6 +114,7 @@ expected_environment = {
     "AGENT_LOCAL_RUNTIME_ENABLED": "true",
     "AGENT_LOCAL_RUNTIME_ROOT": "/var/lib/mm-chat/agent-skills",
     "AGENT_LOCAL_WORKSPACE_ROOT": "/workspace",
+    "AGENT_LOCAL_WORKSPACE_HOST_ROOT": "",
     "AGENT_LOCAL_SHELL": "/bin/bash",
     "AGENT_LOCAL_APPROVAL_MODE": "smart",
 }
@@ -173,6 +174,7 @@ expected_local_names = sorted(
         "AGENT_LOCAL_RUNTIME_ROOT",
         "AGENT_LOCAL_WORKSPACE_SOURCE",
         "AGENT_LOCAL_WORKSPACE_ROOT",
+        "AGENT_LOCAL_WORKSPACE_HOST_ROOT",
         "AGENT_LOCAL_SHELL",
         "AGENT_LOCAL_APPROVAL_MODE",
         "AGENT_LOCAL_CALL_TIMEOUT",

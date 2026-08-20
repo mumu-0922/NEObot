@@ -34,7 +34,6 @@ import type {
   McpSelectionServer,
   McpServer,
   McpServerRef,
-  McpToolCallUpdate,
   McpWorkspaceSelection,
 } from "../../../lib/mcp/types";
 import type { DefaultModels } from "../../../types";
@@ -1785,7 +1784,7 @@ export interface ServerStreamEvent {
   role?: "assistant";
   delta?: string;
   step?: ProcessStep;
-  toolCall?: McpToolCallUpdate;
+  toolCall?: unknown;
   usage?: unknown;
   results?: ServerSearchResult;
   message?: ChatMessageDTO;

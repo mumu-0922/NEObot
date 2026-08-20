@@ -381,7 +381,8 @@ export function normalizeMcpToolCallUpdate(
 ): McpToolCallUpdate | null {
   if (!isRecord(value)) return null;
   const executionId = stringValue(value.executionId, 256);
-  const callId = stringValue(value.callId, 256);
+  const callId =
+    value.callId === undefined ? executionId : stringValue(value.callId, 256);
   const toolName = stringValue(value.toolName, 512);
   const processStatus = enumValue(value.processStatus, PROCESS_STATUSES);
   const status = enumValue(value.status, CALL_STATUSES);
@@ -393,6 +394,7 @@ export function normalizeMcpToolCallUpdate(
     mode === "local_direct"
       ? classification === undefined ||
         classification === "read" ||
+        classification === "write" ||
         classification === "execute"
       : classification !== "execute";
   if (

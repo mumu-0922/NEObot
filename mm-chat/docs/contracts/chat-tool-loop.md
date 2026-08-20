@@ -329,10 +329,16 @@ round:
 The shared `tool.call.updated` Chat event accepts `mode=mcp` with
 `read|write|unknown`, or `mode=local_direct` with `read|write|execute`. The frontend
 must validate the pair rather than rejecting a valid local event as an invalid
-MCP update; `execute` never widens MCP Server classification authority.
+MCP update; `execute` never widens MCP Server classification authority. The
+durable redacted local projection may omit the Provider `callId`; in that case
+the frontend uses the required bounded `executionId` as its stable display
+identity. A missing `executionId` still fails closed.
 
-Workspace File Tools accept only workspace-relative paths and use anchored
-`os.Root` operations. Reads return a complete-file `sha256:<hex>` version;
+Workspace File Tools resolve inputs to workspace-relative paths and use anchored
+`os.Root` operations. An optional configured Host root accepts only canonical
+Linux absolute and WSL UNC representations below that same single workspace;
+it is an input alias, not a second filesystem authority. Reads return a
+complete-file `sha256:<hex>` version;
 writes and edits require that exact version (`absent` only for creation), write
 through a same-directory synced temporary file, recheck for external change,
 and atomically rename. Version drift returns `version_conflict`, not overwrite.

@@ -207,3 +207,31 @@ func TestLocalSkillCatalogRevisionChangesWithReplacement(t *testing.T) {
 		t.Fatalf("catalog revisions=%q/%q", first.catalogRevision, second.catalogRevision)
 	}
 }
+
+func TestLocalSkillPromptDescribesOnlyConfiguredWorkspaceHostAlias(t *testing.T) {
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: filepath.Join(t.TempDir(), "skills"),
+		WorkspaceRoot:     t.TempDir(),
+		WorkspaceHostRoot: "/home/mumu/projects/Oncall_Agent",
+		ShellPath:         "/bin/sh", ApprovalMode: localskills.ApprovalSmart,
+		CallTimeout: time.Second, RunTimeout: 5 * time.Second, MaxOutput: 4096,
+		MaxCalls: 4, MaxRounds: 4, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prompt := newLocalSkillToolRuntime(executor, nil).promptInstruction()
+	for _, required := range []string{
+		"authorized_workspace_alias",
+		`"hostRoot":"/home/mumu/projects/Oncall_Agent"`,
+		"WSL UNC path",
+		"use $PWD or relative paths",
+	} {
+		if !strings.Contains(prompt, required) {
+			t.Fatalf("prompt omitted %q: %s", required, prompt)
+		}
+	}
+	if strings.Contains(prompt, "/home/mumu/projects/private-project") {
+		t.Fatalf("prompt widened workspace: %s", prompt)
+	}
+}

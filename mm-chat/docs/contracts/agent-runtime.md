@@ -34,6 +34,10 @@ containers, Canary runs, schedules, autonomous learning, and Agent Center.
   execution; the Backend registry and current user installation remain gates.
 - `local_direct` runs as the Backend UID/GID only under the configured Skill
   cache and workspace roots.
+- An optional clean `AGENT_LOCAL_WORKSPACE_HOST_ROOT` is an input alias for the
+  exact directory already mounted as `/workspace`; it does not authorize a
+  second root. Linux absolute and WSL UNC inputs must map below it before the
+  existing relative-path and `os.Root` checks run.
 - The runtime enforces call timeout, Run timeout, output bytes, Tool calls,
   Tool rounds, and concurrency. `smart` approval denies destructive patterns;
   the catastrophic blocklist remains active even with approval mode `off`.
@@ -79,6 +83,7 @@ AGENT_LOCAL_RUNTIME_SOURCE
 AGENT_LOCAL_RUNTIME_ROOT
 AGENT_LOCAL_WORKSPACE_SOURCE
 AGENT_LOCAL_WORKSPACE_ROOT
+AGENT_LOCAL_WORKSPACE_HOST_ROOT
 AGENT_LOCAL_SHELL
 AGENT_LOCAL_APPROVAL_MODE
 AGENT_LOCAL_CALL_TIMEOUT
