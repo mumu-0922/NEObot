@@ -19,7 +19,15 @@ Hard-deleted legacy browser text-Skill state, UI, catalogs and prompt execution;
 
 ### Main Changes
 
-(Add details)
+- Added persistent Chat/Agent modes with physical Agent Tool admission and
+  model-capability downgrade.
+- Moved MCP behind the Connector layer, repaired Browser execution, and added
+  authenticated chat artifact publication/download.
+- Split Skill Store from Agent Center and retired the unused legacy Runner,
+  Orchestrator, Broker, Delegation, Canary, Schedule, and Learning control
+  plane through migration `098`.
+- Repaired the Memory regression taxonomy-v2 validator by admitting the
+  canonical `PROVIDER_CONTEXT_OVERFLOW` category.
 
 ### Git Commits
 
@@ -29,7 +37,12 @@ Hard-deleted legacy browser text-Skill state, UI, catalogs and prompt execution;
 
 ### Testing
 
-- [OK] (Add test results)
+- [OK] `bash scripts/test-memory-regression.sh`
+- [OK] `bash scripts/verify-standalone.sh --full`
+- [OK] Frontend: 190 Vitest files / 922 tests and production build
+- [OK] Backend: `go vet ./...` and `go test ./...`
+- [OK] RAG: Ruff, mypy, and 1906 passed / 7 skipped pytest cases
+- [OK] Migration `098` PostgreSQL 17 cleanup and preservation drill
 
 ### Status
 
@@ -422,6 +435,44 @@ Lowered the shared Server Auth password minimum to nine characters, synchronized
 | Hash | Message |
 |------|---------|
 | `80e03a7a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 62: Converge Chat Agent product runtime
+
+**Date**: 2026-08-20
+**Task**: Converge Chat Agent product runtime
+**Branch**: `main`
+
+### Summary
+
+Unified Chat and Agent modes, moved MCP behind connectors, added durable artifacts and local_direct operations, retired the legacy Agent control plane, and repaired the final Memory regression gate; full standalone verification passed.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `da0c756f` | (see git log) |
+| `8750ec98` | (see git log) |
+| `e3df158b` | (see git log) |
+| `b44b8799` | (see git log) |
+| `3abdf135` | (see git log) |
+| `01970ccd` | (see git log) |
 
 ### Testing
 
