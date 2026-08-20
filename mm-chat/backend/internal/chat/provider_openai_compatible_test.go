@@ -671,6 +671,74 @@ func TestOpenAICompatibleStreamClassifiesParseRemoteAndIncompleteFailures(t *tes
 	}
 }
 
+func TestOpenAICompatibleStreamRejectsFragmentedRawDSMLToolProtocol(t *testing.T) {
+	tests := []struct {
+		name   string
+		chunks []string
+	}{
+		{
+			name: "fullwidth bars from compatible DeepSeek response",
+			chunks: []string{
+				"让我使用终端工具。\n\n<｜",
+				"｜DSML｜",
+				"｜tool_calls>\n<｜｜DSML｜｜invoke name=\"exec_command\">",
+			},
+		},
+		{
+			name: "ASCII bars",
+			chunks: []string{
+				"safe prefix\n<|DS",
+				"ML|tool_calls><|DSML|invoke name=\"exec_command\">",
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var body strings.Builder
+			for _, chunk := range test.chunks {
+				body.WriteString("data: ")
+				body.WriteString(mustJSON(t, map[string]any{
+					"choices": []any{map[string]any{
+						"delta": map[string]any{"content": chunk},
+					}},
+				}))
+				body.WriteString("\n\n")
+			}
+			body.WriteString("data: [DONE]\n\n")
+
+			events := make(chan ProviderEvent, 16)
+			streamOpenAICompatibleEvents(
+				context.Background(), strings.NewReader(body.String()), events, nil,
+			)
+			close(events)
+
+			var visible strings.Builder
+			var failure error
+			for event := range events {
+				if event.Type == ProviderEventDelta {
+					visible.WriteString(event.Delta)
+				}
+				if event.Error != nil {
+					failure = event.Error
+				}
+			}
+			category, ok := ProviderFailureCategoryOf(failure)
+			if !ok || category != ProviderFailureResponseInvalid {
+				t.Fatalf("failure category = %q/%t (%v)", category, ok, failure)
+			}
+			content := visible.String()
+			if strings.Contains(content, "DSML") || strings.Contains(content, "exec_command") ||
+				!strings.Contains(content, strings.TrimSpace(strings.Split(test.chunks[0], "<")[0])) {
+				t.Fatalf("visible content = %q", content)
+			}
+			if strings.Contains(failure.Error(), "exec_command") || strings.Contains(failure.Error(), "DSML") {
+				t.Fatalf("failure leaked raw protocol details: %v", failure)
+			}
+		})
+	}
+}
+
 func TestOpenAICompatibleStreamClassifiesReadFailure(t *testing.T) {
 	events := make(chan ProviderEvent, 2)
 	streamOpenAICompatibleEvents(context.Background(), failingSSEReader{}, events, nil)

@@ -924,6 +924,15 @@ completed `tool_calls`, followed by one `role=tool` message per matching
 `tool_call_id`. Fragmented names/arguments are accumulated before execution;
 arguments are capped at 64 KiB.
 
+Raw model-generated Tool protocol in a Provider `content` delta is never a
+Tool Call. In particular, an ASCII or fullwidth-bar DSML marker is an invalid
+OpenAI-compatible response: the adapter retains a bounded UTF-8-safe suffix
+across chunks, emits neither the marker nor its trailing payload, and returns
+the fixed `PROVIDER_RESPONSE_INVALID` category. It must not parse, persist, or
+execute the embedded name/arguments. Only the provider's structured
+`tool_calls` field may enter Registry validation, mode admission, and Tool
+execution.
+
 Anthropic continuation uses the same normalized exchange but carries an
 in-memory, provider-private `ProviderState` from `round.completed`. It preserves
 ordered `thinking`/signature, `redacted_thinking`, `text`, and `tool_use`

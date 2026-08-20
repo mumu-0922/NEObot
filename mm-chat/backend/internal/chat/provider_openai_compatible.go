@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -23,6 +24,10 @@ const (
 	maxOpenAICompatibleToolPlanBytes        = 2 << 20
 	maxOpenAICompatibleBufferedChatBytes    = 2 << 20
 	maxOpenAICompatibleToolArgumentsBytes   = 64 << 10
+)
+
+var openAICompatibleRawToolProtocolPattern = regexp.MustCompile(
+	`(?i)<[|｜]{1,4}DSML[|｜]{1,4}`,
 )
 
 type OpenAICompatibleProviderConfig struct {
@@ -828,6 +833,7 @@ func streamOpenAICompatibleEvents(
 
 	dataLines := make([]string, 0, 1)
 	toolCalls := newOpenAICompatibleToolCallAccumulator(zeroArgumentToolNames)
+	content := newOpenAICompatibleContentStream()
 	completed := false
 	for scanner.Scan() {
 		line := strings.TrimSuffix(scanner.Text(), "\r")
@@ -837,6 +843,7 @@ func streamOpenAICompatibleEvents(
 				strings.Join(dataLines, "\n"),
 				events,
 				toolCalls,
+				content,
 			)
 			completed = completed || eventCompleted
 			if !keepReading {
@@ -858,6 +865,7 @@ func streamOpenAICompatibleEvents(
 			strings.Join(dataLines, "\n"),
 			events,
 			toolCalls,
+			content,
 		)
 		completed = completed || eventCompleted
 		if !keepReading {
@@ -886,12 +894,16 @@ func dispatchOpenAICompatibleData(
 	data string,
 	events chan<- ProviderEvent,
 	toolCalls *openAICompatibleToolCallAccumulator,
+	content *openAICompatibleContentStream,
 ) (bool, bool) {
 	data = strings.TrimSpace(data)
 	if data == "" {
 		return true, false
 	}
 	if data == "[DONE]" {
+		if !content.flush(ctx, events) {
+			return false, false
+		}
 		if !toolCalls.complete(ctx, events) {
 			return false, false
 		}
@@ -943,10 +955,7 @@ func dispatchOpenAICompatibleData(
 		if choice.Delta.Content == nil || *choice.Delta.Content == "" {
 			continue
 		}
-		if !sendProviderEvent(ctx, events, ProviderEvent{
-			Type:  ProviderEventDelta,
-			Delta: *choice.Delta.Content,
-		}) {
+		if !content.append(ctx, events, *choice.Delta.Content) {
 			return false, false
 		}
 	}
@@ -964,10 +973,126 @@ func dispatchOpenAICompatibleData(
 		}
 	}
 
-	if completed && !toolCalls.complete(ctx, events) {
-		return false, false
+	if completed {
+		if !content.flush(ctx, events) || !toolCalls.complete(ctx, events) {
+			return false, false
+		}
 	}
 	return true, completed
+}
+
+type openAICompatibleContentStream struct {
+	pending string
+	blocked bool
+}
+
+func newOpenAICompatibleContentStream() *openAICompatibleContentStream {
+	return &openAICompatibleContentStream{}
+}
+
+func (stream *openAICompatibleContentStream) append(
+	ctx context.Context,
+	events chan<- ProviderEvent,
+	value string,
+) bool {
+	if stream == nil || stream.blocked || value == "" {
+		return stream != nil && !stream.blocked
+	}
+	stream.pending += value
+	if marker := openAICompatibleRawToolProtocolPattern.FindStringIndex(stream.pending); marker != nil {
+		safePrefix := stream.pending[:marker[0]]
+		stream.pending = ""
+		stream.blocked = true
+		if safePrefix != "" && !sendProviderEvent(ctx, events, ProviderEvent{
+			Type: ProviderEventDelta, Delta: safePrefix,
+		}) {
+			return false
+		}
+		sendProviderEvent(ctx, events, ProviderEvent{Error: newProviderFailure(
+			ProviderFailureResponseInvalid,
+			"openai-compatible provider returned raw tool protocol content",
+		)})
+		return false
+	}
+
+	stableBytes := len(stream.pending) - openAICompatibleRawToolProtocolPrefixBytes(stream.pending)
+	if stableBytes == 0 {
+		return true
+	}
+	delta := stream.pending[:stableBytes]
+	stream.pending = stream.pending[stableBytes:]
+	return sendProviderEvent(ctx, events, ProviderEvent{
+		Type: ProviderEventDelta, Delta: delta,
+	})
+}
+
+func openAICompatibleRawToolProtocolPrefixBytes(value string) int {
+	start := strings.LastIndex(value, "<")
+	if start < 0 {
+		return 0
+	}
+	prefix := []rune(value[start:])
+	if len(prefix) == 0 || prefix[0] != '<' {
+		return 0
+	}
+	if len(prefix) == 1 {
+		return len(value) - start
+	}
+
+	index := 1
+	barCount := 0
+	for index < len(prefix) && isOpenAICompatibleToolProtocolBar(prefix[index]) && barCount < 4 {
+		index++
+		barCount++
+	}
+	if barCount == 0 {
+		return 0
+	}
+	if index == len(prefix) {
+		return len(value) - start
+	}
+	if isOpenAICompatibleToolProtocolBar(prefix[index]) {
+		return 0
+	}
+
+	for _, expected := range "DSML" {
+		if index == len(prefix) {
+			return len(value) - start
+		}
+		actual := prefix[index]
+		if actual >= 'a' && actual <= 'z' {
+			actual -= 'a' - 'A'
+		}
+		if actual != expected {
+			return 0
+		}
+		index++
+	}
+	if index == len(prefix) {
+		return len(value) - start
+	}
+	return 0
+}
+
+func isOpenAICompatibleToolProtocolBar(value rune) bool {
+	return value == '|' || value == '｜'
+}
+
+func (stream *openAICompatibleContentStream) flush(
+	ctx context.Context,
+	events chan<- ProviderEvent,
+) bool {
+	if stream == nil || stream.blocked {
+		return stream != nil && !stream.blocked
+	}
+	if stream.pending == "" {
+		return true
+	}
+	delta := stream.pending
+	stream.pending = ""
+	return sendProviderEvent(ctx, events, ProviderEvent{
+		Type: ProviderEventDelta, Delta: delta,
+	})
 }
 
 type openAICompatibleToolCallKey struct {
