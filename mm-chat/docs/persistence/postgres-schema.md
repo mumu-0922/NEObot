@@ -1,9 +1,10 @@
-# Postgres Core Schema and Chat Agent Goals Through Migration 097
+# Postgres Core Schema and Chat Agent Runtime Through Migration 099
 
 This document describes the core schema created by the ordered migrations in
 `mm-chat/backend/migrations`, from `001_initial_schema` through
 `061_memory_portability_retention`, plus the ordinary Chat Agent event and Goal
-authorities added by `096_chat_agent_event_log` and `097_chat_agent_goals`.
+authorities added by `096_chat_agent_event_log`, `097_chat_agent_goals`, and
+their forward-only function repair in `099_chat_agent_event_log_function_repair`.
 Migrations `062` through `095` own later
 Memory and optional Agent control-plane surfaces and remain catalogued in
 `mm-chat/backend/migrations/README.md`.
@@ -102,6 +103,8 @@ Out of scope:
 | `061_memory_portability_retention`            | Adds imported source/revision authority, hash-only import batches, encrypted portability capabilities, deletion replay authority, and projection rebuild. |
 | `096_chat_agent_event_log`                    | Adds Chat-owned Turn/Event sequence authority, immutable replay, least-privilege append functions, and incomplete-Turn recovery. |
 | `097_chat_agent_goals`                        | Adds one revision-CAS Goal per Conversation, atomic Goal events, bounded automatic rounds, least-privilege mutations, and guarded rollback. |
+| `098_retire_legacy_agent_control_plane`       | Removes the disconnected legacy Agent control-plane objects after exact empty-state validation while retaining Chat Agent, Skill, MCP, File, Knowledge, and Memory authority. |
+| `099_chat_agent_event_log_function_repair`    | Forward-repairs the two migration-096 event gateways, preserves safe search paths and grants, and intentionally retains the corrected bodies on down. |
 
 Published migration pairs are immutable and applied in numeric order. Migration
 SQL contains no transaction-control statements; the Go runner wraps each schema

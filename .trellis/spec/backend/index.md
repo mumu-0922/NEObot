@@ -113,6 +113,8 @@ artifact publication, or legacy control-plane retirement:
 4. Preserve `chat_agent_*`, Skill, MCP, File, Knowledge, and Memory authority.
    Migration `098` must fail closed on legacy fact rows or schema drift, use
    exact object lists, and never recreate retired Runner/Canary authority.
+5. Treat every applied migration pair as byte-immutable. Pin a retained live
+   checksum and add a forward migration for repairs; never rewrite the ledger.
 
 For chat upload, attachment parsing, or provider attachment changes:
 

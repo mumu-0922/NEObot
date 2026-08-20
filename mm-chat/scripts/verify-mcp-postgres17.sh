@@ -5,6 +5,7 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 project_dir="$(cd -- "${script_dir}/.." && pwd -P)"
 backend_dir="${project_dir}/backend"
 postgres_dir="${project_dir}/postgres"
+source "${script_dir}/migration-drill-tail.sh"
 postgres_image="${POSTGRES_IMAGE:-mm-chat/postgres:17.10-pg_textsearch1.3.1-pgvector0.8.5}"
 container_name="neo-chat-mcp-pg17-$RANDOM-$$"
 database_name="neo_chat_mcp_drill"
@@ -83,7 +84,10 @@ run_migrate() {
   MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"
 }
 
-log "applying a fresh 001 -> 097 chain"
+log "applying 001 -> 097 with the irreversible 098/099 tail deferred"
+psql_command "$(migration_drill_deferred_tail_sql "${backend_dir}" \
+  098_retire_legacy_agent_control_plane \
+  099_chat_agent_event_log_function_repair)" >/dev/null
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 074_mcp_tools_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 075_mcp_runtime_role_grants" "${work_dir}/fresh.log"
@@ -113,6 +117,7 @@ grep -Fq "up 097_chat_agent_goals" "${work_dir}/fresh.log"
 log "proving replay is a no-op"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
+psql_command "DELETE FROM schema_migrations WHERE version IN (98,99)" >/dev/null
 
 log "rolling back the clean 097 through 077 tails before the 076 guard drill"
 run_migrate down >"${work_dir}/peel-097-chat-agent-goal-tail.log" 2>&1
@@ -255,7 +260,7 @@ VALUES (
 );
 " >/dev/null
 
-log "reapplying 074 -> 097 and verifying schema, metadata, retention, grants, and stdio persistence"
+log "reapplying 074 -> 099 and verifying schema, metadata, retention, grants, and stdio persistence"
 run_migrate up >"${work_dir}/reup.log" 2>&1
 grep -Fq "up 074_mcp_tools_foundation" "${work_dir}/reup.log"
 grep -Fq "up 075_mcp_runtime_role_grants" "${work_dir}/reup.log"
@@ -281,6 +286,8 @@ grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/reup.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/reup.log"
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/reup.log"
 grep -Fq "up 097_chat_agent_goals" "${work_dir}/reup.log"
+grep -Fq "up 098_retire_legacy_agent_control_plane" "${work_dir}/reup.log"
+grep -Fq "up 099_chat_agent_event_log_function_repair" "${work_dir}/reup.log"
 psql_command "
 DO \$\$
 DECLARE
@@ -336,4 +343,4 @@ log "proving a second replay remains a no-op"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 
-log "passed (fresh through 097, replay, guarded 076 down/up, metadata, retention, runtime grants, stdio repository lifecycle)"
+log "passed (historical 097 boundary, replay to head 099, guarded 076 down/up, metadata, retention, runtime grants, stdio repository lifecycle)"

@@ -20,6 +20,7 @@ This guide helps you **ask the right questions before coding**.
 | ----------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------ |
 | [Agent Orchestration Guide](./agent-orchestration.md) | Allocate Sub-agents and Review Agents without sacrificing quality | When work may benefit from parallelism or independent review |
 | [Code Reuse Guide](./code-reuse-thinking-guide.md)    | Find and extend existing behavior before creating parallel logic  | Before adding utilities, patterns, or mirrored mechanisms    |
+| [Cross-Layer Guide](./cross-layer-thinking-guide.md)  | Trace contracts across runtime, storage, release, and UI boundaries | When one change crosses multiple system or deployment layers |
 
 Repository layout, cleanup, CI, and runtime-state rules are executable
 operations contracts, not thinking guides. Read

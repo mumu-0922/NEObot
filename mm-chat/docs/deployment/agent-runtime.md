@@ -60,9 +60,12 @@ bash scripts/verify-legacy-agent-cleanup-postgres17.sh
 docker compose --env-file .env.single-server --profile ops run --rm migrate
 ```
 
-After migration, head must be `098_retire_legacy_agent_control_plane`,
+After migration, head must be `099_chat_agent_event_log_function_repair`,
 `chat_agent_turns/events/goals` and Skill tables must exist, and no legacy
-Agent control-plane relation/function/role may remain.
+Agent control-plane relation/function/role may remain. The ledger checksum for
+`096_chat_agent_event_log` must remain the production-applied
+`f7c6227d3dd559cb53b22a28af1d77bc570d45a42288bf1f348b22136ef1b042`;
+`099` carries the idempotent gateway repair instead of rewriting that history.
 
 ## Verification
 

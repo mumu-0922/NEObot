@@ -110,6 +110,12 @@ Migration `098_retire_legacy_agent_control_plane`:
 A previously completed cleanup re-applies as a no-op. `chat_agent_*`, Skills,
 MCP, Chat, Knowledge, Memory, and Files are outside every cleanup whitelist.
 
+The production-applied bytes of `096_chat_agent_event_log` are immutable.
+Migration `099_chat_agent_event_log_function_repair` forward-repairs the two
+Chat event gateways, reasserts their hardened `search_path` and exact runtime
+grants, and keeps those corrected bodies on down. Never repair an applied
+migration by changing its source bytes or `schema_migrations.checksum`.
+
 ## Required verification
 
 ```bash

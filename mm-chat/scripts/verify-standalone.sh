@@ -121,8 +121,11 @@ required_paths=(
   scripts/verify-agent-local-runtime.sh
   scripts/verify-chat-artifacts-postgres17.sh
   scripts/verify-legacy-agent-cleanup-postgres17.sh
+  scripts/migration-drill-tail.sh
   backend/migrations/098_retire_legacy_agent_control_plane.up.sql
   backend/migrations/098_retire_legacy_agent_control_plane.down.sql
+  backend/migrations/099_chat_agent_event_log_function_repair.up.sql
+  backend/migrations/099_chat_agent_event_log_function_repair.down.sql
   rag/pyproject.toml
   rag/uv.lock
   rag/Dockerfile

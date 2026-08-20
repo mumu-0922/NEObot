@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+project_dir="$(cd -- "${script_dir}/.." && pwd -P)"
+backend_dir="${project_dir}/backend"
+source "${script_dir}/migration-drill-tail.sh"
 postgres_image="${POSTGRES_IMAGE:-mm-chat/postgres:17.10-pg_textsearch1.3.1-pgvector0.8.5}"
 container_name="neo-chat-mcp-credentials-pg17-$RANDOM-$$"
 database_password="mcp-credentials-$(openssl rand -hex 16)"
@@ -24,8 +27,16 @@ for _ in $(seq 1 60); do
 done
 port="$(docker port "${container_name}" 5432/tcp | awk -F: 'NR == 1 {print $NF}')"
 database_url="postgres://postgres:${database_password}@127.0.0.1:${port}/neo_chat_mcp_credentials?sslmode=disable"
+psql_command() {
+  docker exec "${container_name}" psql --set=ON_ERROR_STOP=1 --no-psqlrc \
+    --tuples-only --no-align --username=postgres \
+    --dbname=neo_chat_mcp_credentials --command "$1"
+}
 
-(cd "${project_dir}/backend" && go build -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
+(cd "${backend_dir}" && go build -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
+psql_command "$(migration_drill_deferred_tail_sql "${backend_dir}" \
+  098_retire_legacy_agent_control_plane \
+  099_chat_agent_event_log_function_repair)" >/dev/null
 MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" up >"${work_dir}/up.log" 2>&1
 grep -Fq "up 077_mcp_marketplace_install_credentials" "${work_dir}/up.log"
 grep -Fq "up 078_mcp_legacy_tavily_runner_repair" "${work_dir}/up.log"
@@ -48,6 +59,7 @@ grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/up.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/up.log"
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/up.log"
 grep -Fq "up 097_chat_agent_goals" "${work_dir}/up.log"
+psql_command "DELETE FROM schema_migrations WHERE version IN (98,99)" >/dev/null
 MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" down >"${work_dir}/peel-097-tail-1.log" 2>&1
 grep -Fq "down 097_chat_agent_goals" "${work_dir}/peel-097-tail-1.log"
 MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" down >"${work_dir}/peel-096-tail-1.log" 2>&1
@@ -153,6 +165,8 @@ grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/reup.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/reup.log"
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/reup.log"
 grep -Fq "up 097_chat_agent_goals" "${work_dir}/reup.log"
+grep -Fq "up 098_retire_legacy_agent_control_plane" "${work_dir}/reup.log"
+grep -Fq "up 099_chat_agent_event_log_function_repair" "${work_dir}/reup.log"
 repaired="$(
   docker exec "${container_name}" psql -U postgres -d neo_chat_mcp_credentials -Atc \
     "SELECT concat_ws('|', transport, auth_type, status, last_error_code, auth_config #>> '{metadata,runnerArtifactId}') FROM mcp_servers WHERE id = '78000000-0000-4000-8000-000000000002'"
@@ -180,4 +194,4 @@ if [[ "${context7}" != "22b235834a14b617480cc92dd0f6f6c7587cb399880c666773135971
   exit 1
 fi
 
-printf 'MCP credential migration drill: passed (077-095 tail replay and exact 078-081 repairs)\n'
+printf 'MCP credential migration drill: passed (historical 097 boundary, replay to head 099, and exact 078-081 repairs)\n'

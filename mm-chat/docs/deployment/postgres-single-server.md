@@ -186,7 +186,7 @@ Readiness never mutates schema, creates buckets, or runs migrations.
 
 The Go migration runner owns transaction boundaries, takes a Postgres advisory
 lock, validates migration names/checksums, and records each applied migration
-in `schema_migrations`. The current schema head is `098`. Migration `038`
+in `schema_migrations`. The current schema head is `099`. Migration `038`
 requires PostgreSQL major `17`, the `pg_textsearch` preload, and exact pgvector
 `0.8.5` / pg_textsearch `1.3.1` extension versions. Migrations `039` and `040`
 retain the dedicated API role by exposing only hardened document-lifecycle and
@@ -272,8 +272,9 @@ exec psql --set=ON_ERROR_STOP=1 \
 '
 ```
 
-Acceptance for the current release requires versions `001` through `098`,
-ending at `098_retire_legacy_agent_control_plane`. Treat `schema_migrations` as runner state,
+Acceptance for the current release requires versions `001` through `099`,
+ending at `099_chat_agent_event_log_function_repair`. Migration `098` remains
+the legacy control-plane retirement boundary. Treat `schema_migrations` as runner state,
 not a domain table. Never use `baseline` routinely; it exists only to accept
 reviewed legacy rows that lack checksums. The disposable Chat event replay and
 least-privilege drill is:

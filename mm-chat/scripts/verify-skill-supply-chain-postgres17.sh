@@ -5,6 +5,7 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 project_dir="$(cd -- "${script_dir}/.." && pwd -P)"
 backend_dir="${project_dir}/backend"
 postgres_dir="${project_dir}/postgres"
+source "${script_dir}/migration-drill-tail.sh"
 postgres_image="${POSTGRES_IMAGE:-mm-chat/postgres:17.10-pg_textsearch1.3.1-pgvector0.8.5}"
 container_name="neo-chat-skill-supply-pg17-$RANDOM-$$"
 database_name="neo_chat_skill_supply_drill"
@@ -65,9 +66,12 @@ psql_command() {
 server_major="$(psql_command "SHOW server_version_num" | cut -c1-2)"
 [[ "${server_major}" == "17" ]] || { echo "expected PostgreSQL 17" >&2; exit 1; }
 
-log "building and applying 001 -> 097"
+log "building and applying 001 -> 097 with the irreversible 098/099 tail deferred"
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/mm-chat-migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"; }
+psql_command "$(migration_drill_deferred_tail_sql "${backend_dir}" \
+  098_retire_legacy_agent_control_plane \
+  099_chat_agent_event_log_function_repair)" >/dev/null
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 083_skill_supply_chain" "${work_dir}/fresh.log"
 grep -Fq "up 084_agent_orchestrator_foundation" "${work_dir}/fresh.log"
@@ -86,6 +90,7 @@ grep -Fq "up 096_chat_agent_event_log" "${work_dir}/fresh.log"
 grep -Fq "up 097_chat_agent_goals" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
+psql_command "DELETE FROM schema_migrations WHERE version IN (98,99)" >/dev/null
 
 log "checking schema, composite authority, trigger, and least-privilege grants"
 psql_command "
@@ -158,7 +163,7 @@ if [[ "${guard_status}" -eq 0 ]] || ! grep -Fq "SKILL_SUPPLY_CHAIN_DOWN_DATA_EXI
   exit 1
 fi
 
-log "proving clean 082 -> 083 -> 082 -> 097 replay"
+log "proving clean 082 -> 083 -> 082 -> 099 replay"
 psql_command "TRUNCATE TABLE skill_installations, skill_package_candidates, skill_package_versions;" >/dev/null
 run_migrate down >"${work_dir}/down.log" 2>&1
 grep -Fq "down 083_skill_supply_chain" "${work_dir}/down.log"
@@ -189,7 +194,9 @@ grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/reup.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/reup.log"
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/reup.log"
 grep -Fq "up 097_chat_agent_goals" "${work_dir}/reup.log"
+grep -Fq "up 098_retire_legacy_agent_control_plane" "${work_dir}/reup.log"
+grep -Fq "up 099_chat_agent_event_log_function_repair" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 
-log "passed (fresh/replay, schema/grants, drift/CAS/ownership lifecycle, guarded down, clean down/up)"
+log "passed (historical 097 boundary, replay to head 099, schema/grants, drift/CAS/ownership lifecycle, guarded down, clean down/up)"

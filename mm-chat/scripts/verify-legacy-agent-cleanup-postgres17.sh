@@ -6,6 +6,7 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 project_dir="$(cd -- "${script_dir}/.." && pwd -P)"
 backend_dir="${project_dir}/backend"
 postgres_dir="${project_dir}/postgres"
+source "${script_dir}/migration-drill-tail.sh"
 postgres_image="${POSTGRES_IMAGE:-mm-chat/postgres:17.10-pg_textsearch1.3.1-pgvector0.8.5}"
 container_name="neo-chat-legacy-agent-cleanup-pg17-$RANDOM-$$"
 fresh_database="neo_chat_agent_cleanup_fresh"
@@ -69,6 +70,12 @@ psql_command() {
     psql --set=ON_ERROR_STOP=1 --no-psqlrc --tuples-only --no-align --quiet \
       --username="${database_user}" --dbname="${database}" --command "${command}"
 }
+psql_file() {
+  local database="$1" path="$2"
+  docker exec -i -e "PGPASSWORD=${database_password}" "${container_name}" \
+    psql --set=ON_ERROR_STOP=1 --no-psqlrc --quiet \
+      --username="${database_user}" --dbname="${database}" <"${path}"
+}
 
 log "building the migration binary"
 (cd "${backend_dir}" && GOCACHE="${GOCACHE:-/tmp/neo-chat-go-cache}" \
@@ -108,53 +115,45 @@ assert_retained_schema() {
     to_regclass('public.skill_installations') IS NOT NULL);")" == "t|t|t|t|t|t" ]]
 }
 
-log "proving a fresh replay to head 098"
+log "proving a fresh replay to head 099"
 [[ "$(psql_command "${fresh_database}" 'SHOW server_version_num' | cut -c1-2)" == "17" ]]
 run_migrate "${fresh_database}" up >"${work_dir}/fresh.log" 2>&1
 grep -Fq 'up 098_retire_legacy_agent_control_plane' "${work_dir}/fresh.log"
-[[ "$(psql_command "${fresh_database}" 'SELECT max(version) FROM schema_migrations')" == "98" ]]
+grep -Fq 'up 099_chat_agent_event_log_function_repair' "${work_dir}/fresh.log"
+[[ "$(psql_command "${fresh_database}" 'SELECT max(version) FROM schema_migrations')" == "99" ]]
+[[ "$(psql_command "${fresh_database}" 'SELECT checksum FROM schema_migrations WHERE version=96')" == \
+  "f7c6227d3dd559cb53b22a28af1d77bc570d45a42288bf1f348b22136ef1b042" ]]
 assert_retired_objects_absent "${fresh_database}"
 assert_retained_schema "${fresh_database}"
 run_migrate "${fresh_database}" up >"${work_dir}/fresh-replay.log" 2>&1
 grep -Fq 'no migrations changed' "${work_dir}/fresh-replay.log"
 
-log "proving irreversible down/re-up remains a safe no-op"
+log "proving the forward-only 099 and irreversible 098 down/re-up remain safe no-ops"
 run_migrate "${fresh_database}" down >"${work_dir}/fresh-down.log" 2>&1
-grep -Fq 'down 098_retire_legacy_agent_control_plane' "${work_dir}/fresh-down.log"
+grep -Fq 'down 099_chat_agent_event_log_function_repair' "${work_dir}/fresh-down.log"
+run_migrate "${fresh_database}" down >"${work_dir}/fresh-down-098.log" 2>&1
+grep -Fq 'down 098_retire_legacy_agent_control_plane' "${work_dir}/fresh-down-098.log"
 assert_retired_objects_absent "${fresh_database}"
 run_migrate "${fresh_database}" up >"${work_dir}/fresh-reup.log" 2>&1
 grep -Fq 'up 098_retire_legacy_agent_control_plane' "${work_dir}/fresh-reup.log"
+grep -Fq 'up 099_chat_agent_event_log_function_repair' "${work_dir}/fresh-reup.log"
 assert_retired_objects_absent "${fresh_database}"
 
-log "preparing a schema-097 upgrade with two users and retained Skill/Chat data"
+log "preparing a schema-097 upgrade with the live 096 checksum and repaired functions"
 psql_command postgres "CREATE DATABASE ${upgrade_database}" >/dev/null
-migration_checksum="$(python3 - \
-  "${backend_dir}/migrations/098_retire_legacy_agent_control_plane.up.sql" \
-  "${backend_dir}/migrations/098_retire_legacy_agent_control_plane.down.sql" <<'PY'
-import hashlib
-import sys
-from pathlib import Path
-
-digest = hashlib.sha256()
-digest.update(b"098_retire_legacy_agent_control_plane\0")
-digest.update(Path(sys.argv[1]).read_bytes())
-digest.update(b"\0")
-digest.update(Path(sys.argv[2]).read_bytes())
-print(digest.hexdigest())
-PY
-)"
-psql_command "${upgrade_database}" "
-CREATE TABLE schema_migrations (
-  version BIGINT PRIMARY KEY,
-  name TEXT NOT NULL,
-  checksum TEXT
-);
-INSERT INTO schema_migrations(version,name,checksum)
-VALUES (98,'retire_legacy_agent_control_plane','${migration_checksum}');" >/dev/null
+psql_command "${upgrade_database}" "$(migration_drill_deferred_tail_sql "${backend_dir}" \
+  098_retire_legacy_agent_control_plane \
+  099_chat_agent_event_log_function_repair)" >/dev/null
 run_migrate "${upgrade_database}" up >"${work_dir}/through-097.log" 2>&1
-[[ "$(psql_command "${upgrade_database}" "SELECT count(*) FROM schema_migrations")" == "98" ]]
+[[ "$(psql_command "${upgrade_database}" "SELECT count(*) FROM schema_migrations")" == "99" ]]
 [[ "$(psql_command "${upgrade_database}" "SELECT to_regclass('public.agent_runs') IS NOT NULL")" == "t" ]]
-psql_command "${upgrade_database}" 'DELETE FROM schema_migrations WHERE version=98' >/dev/null
+[[ "$(psql_command "${upgrade_database}" 'SELECT checksum FROM schema_migrations WHERE version=96')" == \
+  "f7c6227d3dd559cb53b22a28af1d77bc570d45a42288bf1f348b22136ef1b042" ]]
+psql_command "${upgrade_database}" 'DELETE FROM schema_migrations WHERE version IN (98,99)' >/dev/null
+# Production already has these corrected bodies while retaining the original
+# 096 ledger checksum. Rehearse that exact state, then prove 099 is idempotent.
+psql_file "${upgrade_database}" \
+  "${backend_dir}/migrations/099_chat_agent_event_log_function_repair.up.sql" >/dev/null
 
 psql_command "${upgrade_database}" "
 INSERT INTO users(id,email,display_name) VALUES
@@ -225,7 +224,11 @@ log "removing only the synthetic blocker and completing the upgrade"
 psql_command "${upgrade_database}" 'DELETE FROM agent_kill_switches' >/dev/null
 run_migrate "${upgrade_database}" up >"${work_dir}/upgrade.log" 2>&1
 grep -Fq 'up 098_retire_legacy_agent_control_plane' "${work_dir}/upgrade.log"
-[[ "$(psql_command "${upgrade_database}" 'SELECT max(version) FROM schema_migrations')" == "98" ]]
+grep -Fq 'up 099_chat_agent_event_log_function_repair' "${work_dir}/upgrade.log"
+[[ "$(psql_command "${upgrade_database}" 'SELECT max(version) FROM schema_migrations')" == "99" ]]
+[[ "$(psql_command "${upgrade_database}" "SELECT concat_ws('|',
+  pg_get_functiondef('chat_agent_start_turn(uuid,uuid,uuid,uuid,uuid,uuid,timestamptz)'::regprocedure) LIKE '%ON CONFLICT ON CONSTRAINT chat_agent_events_pkey%',
+  pg_get_functiondef('chat_agent_append_event(uuid,uuid,text,integer,jsonb,timestamptz)'::regprocedure) LIKE '%UPDATE messages AS message%')")" == "t|t" ]]
 assert_retired_objects_absent "${upgrade_database}"
 assert_retained_schema "${upgrade_database}"
 [[ "$(psql_command "${upgrade_database}" "SELECT concat_ws('|',
@@ -236,4 +239,4 @@ assert_retained_schema "${upgrade_database}"
   (SELECT count(*) FROM chat_agent_events WHERE turn_id='98000000-0000-4000-8000-000000000031'),
   (SELECT count(*) FROM skill_package_versions WHERE name='cleanup-proof'));")" == "${business_counts_before}" ]]
 
-log "passed (fresh/replay, fail-closed nonempty guard, atomic rollback, retained two-user Chat/Skill data, irreversible re-up)"
+log "passed (fresh/replay to 099, immutable 096 checksum, idempotent function repair, fail-closed cleanup, retained two-user Chat/Skill data)"

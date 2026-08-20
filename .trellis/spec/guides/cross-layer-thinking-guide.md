@@ -83,6 +83,37 @@ After implementation:
 - [ ] Verified error handling at each boundary
 - [ ] Checked data survives round-trip
 
+## Applied Migration Immutability Checklist
+
+Use this before editing any committed migration or changing the repository
+schema head:
+
+- [ ] Determine whether either SQL direction has been applied to any retained
+      environment. Treat comments, whitespace, line endings, and terminal
+      blank lines as checksum-bearing bytes.
+- [ ] Compare the embedded migration checksum with the persistent
+      `schema_migrations` ledger before changing source. Runtime function shape
+      does not override ledger evidence because a later repair may already have
+      replaced the function body.
+- [ ] If an applied pair drifted, restore its exact applied bytes, pin the live
+      checksum in a regression test, and carry every behavioral correction in
+      a new forward migration. Never edit `schema_migrations.checksum` to bless
+      changed source.
+- [ ] Reassert function owner-sensitive security properties in the forward
+      repair: `SECURITY DEFINER`, safe `search_path`, revokes, and exact grants.
+- [ ] Update current-head assertions and historical rollback drills together.
+      A drill targeting an older boundary must explicitly defer a later
+      irreversible migration, remove only its synthetic ledger rows before
+      down, and replay the real tail afterward.
+- [ ] Prove fresh install, exact retained-ledger upgrade, repeated up, and safe
+      down/re-up against the supported PostgreSQL major before deployment.
+
+**Real-world example**: A Chat Agent gateway fix directly edited migration
+`096` after production had recorded its checksum. The runtime function was
+correct, but the next deployment stopped before `098`. The recovery restored
+the original `096` bytes, pinned its applied checksum, and moved the idempotent
+function repair into forward-only migration `099`.
+
 ## Long-Running Provider Response Checklist
 
 Use this before attributing a slow AI/media request to a reverse proxy:

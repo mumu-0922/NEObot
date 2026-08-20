@@ -15,7 +15,7 @@ Conversation config: toolMode = "chat" | "agent"
 Skill API: /v1/skills/*
 Agent local Tools: skill, file_read, file_write, file_edit, file_search,
                    terminal, job_list, job_output, job_kill, publish_file
-Migration head: 098_retire_legacy_agent_control_plane
+Migration head: 099_chat_agent_event_log_function_repair
 ```
 
 ### Contracts
@@ -39,12 +39,18 @@ Migration head: 098_retire_legacy_agent_control_plane
 - `publish_file` accepts only workspace-relative regular files, persists through
   the existing user-owned File/object-store path, and attaches only successful
   outputs to the assistant message. Cross-user and stale/deleted access fails.
+- Applied migration SQL is byte-immutable. The production checksum for `096`
+  is `f7c6227d3dd559cb53b22a28af1d77bc570d45a42288bf1f348b22136ef1b042`;
+  runtime corrections belong in forward migration `099`, never in the old
+  pair or `schema_migrations.checksum`.
 - Migrations `084`–`095` remain immutable history. Migration `098` uses explicit
   object whitelists, locks before counting, permits only two bootstrap
   singleton rows, aborts on any fact row or schema drift, uses no wildcard
   deletion/`CASCADE`, and never names `chat_agent_*`.
 - `098.down` is an irreversible no-op. Reapplying after down must succeed only
   when every retired object is already absent.
+- `099` idempotently repairs the two Chat event gateways, reasserts hardened
+  `search_path` and least-privilege grants, and has a forward-only no-op down.
 
 ### Validation matrix
 
@@ -90,5 +96,5 @@ Wrong: Agent Center -> OCI Runner -> Broker -> downloadable host path
 Correct: Chat Agent -> bounded local Tool -> user-owned File -> message artifact
 
 Wrong: DROP ... CASCADE after a broad agent_* match
-Correct: lock -> exact manifest/data validation -> explicit drops -> head 098
+Correct: lock -> exact manifest/data validation -> explicit drops -> forward repair -> head 099
 ```

@@ -145,7 +145,7 @@ function signatures, owners, and grants while pinning lookup to the application
 schema, `pg_catalog`, and `pg_temp`. Its down path intentionally retains the
 safe search path rather than reopening object-shadowing risk.
 
-The current migration head is `098`; the latest RAG retrieval-specific migration
+The current migration head is `099`; the latest RAG retrieval-specific migration
 remains `050`. Migration `043` extends the existing final-authority evidence
 hydration boundary with complete matched-Child and containing-Parent source
 text plus their persisted token counts. Parent text is answer context only. Its
@@ -532,7 +532,17 @@ execution, never direct event DML. Terminal recovery preserves an already
 committed Message status and marks only unfinished Messages interrupted. Down
 refuses while any Turn or Event exists. Disposable PostgreSQL 17 proof uses
 `scripts/verify-chat-agent-event-log-postgres17.sh`; the current full replay
-continues through cleanup head `098`.
+continues through repair head `099`.
+
+The production-applied byte identity of migration `096` is immutable and has
+checksum
+`f7c6227d3dd559cb53b22a28af1d77bc570d45a42288bf1f348b22136ef1b042`.
+Migration `099` is the forward-only repair for its two runtime gateways: it
+uses the named event primary-key constraint to avoid PL/pgSQL output-variable
+ambiguity and qualifies the interrupted-Message update. It reasserts the safe
+`search_path` and exact runtime grants. `099.down` intentionally keeps the
+known-good function bodies; never edit the `096` bytes or its applied ledger
+checksum to carry a repair.
 
 Migration `097` adds one persisted current Goal per Conversation for ordinary
 Chat Agent turns. Goal mutations use revision compare-and-set and append
@@ -543,7 +553,7 @@ no table write privilege. Automatic Goal budgets are bounded to 3-32 rounds,
 with a default of 8 in the Go runtime. Down refuses while a Goal row exists.
 Disposable PostgreSQL 17 proof uses
 `scripts/verify-chat-agent-goals-postgres17.sh`; the current full replay
-continues through cleanup head `098`.
+continues through repair head `099`.
 
 ## Storage boundaries
 

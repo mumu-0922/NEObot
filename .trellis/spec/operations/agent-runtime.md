@@ -51,7 +51,7 @@ bash mm-chat/scripts/verify-legacy-agent-cleanup-postgres17.sh
 | API restart | prior process-local Jobs unavailable and labeled non-durable |
 | legacy Compose/env/binary path returns | local runtime gate fails |
 | legacy fact exists | migration 098 fails atomically |
-| cleanup succeeds | head 098; Chat/Skill/MCP/File/Memory data retained |
+| cleanup and repair succeed | head 099; immutable 096 checksum and Chat/Skill/MCP/File/Memory data retained |
 
 ### Good / base / bad cases
 

@@ -1,100 +1,9 @@
--- Durable, append-only event authority for ordinary Chat Agent turns. This is
--- intentionally separate from the optional G20/G21 agent_run_events control
--- plane: Chat history, live process projection, and restart recovery share
--- this log without widening control-plane state.
+-- Forward-only repair for the two ordinary Chat Agent event gateways.
+-- Migration 096 is already applied in production and its byte identity is
+-- immutable; this migration carries the runtime fixes without rewriting that
+-- historical manifest.
 
-CREATE TABLE chat_agent_turns (
-  id UUID PRIMARY KEY,
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  conversation_id UUID NOT NULL,
-  message_id UUID NOT NULL,
-  run_id UUID NOT NULL,
-  status TEXT NOT NULL DEFAULT 'running',
-  next_sequence BIGINT NOT NULL DEFAULT 1,
-  started_at TIMESTAMPTZ NOT NULL,
-  ended_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT chat_agent_turns_conversation_owner_fk
-    FOREIGN KEY (conversation_id, user_id)
-    REFERENCES conversations(id, user_id) ON DELETE CASCADE,
-  CONSTRAINT chat_agent_turns_message_owner_fk
-    FOREIGN KEY (message_id, user_id)
-    REFERENCES messages(id, user_id) ON DELETE CASCADE,
-  CONSTRAINT chat_agent_turns_message_unique UNIQUE (message_id),
-  CONSTRAINT chat_agent_turns_run_unique UNIQUE (run_id),
-  CONSTRAINT chat_agent_turns_status_allowed
-    CHECK (status IN ('running', 'completed', 'failed', 'cancelled', 'interrupted')),
-  CONSTRAINT chat_agent_turns_next_sequence_positive CHECK (next_sequence >= 1),
-  CONSTRAINT chat_agent_turns_timestamps_order
-    CHECK (updated_at >= created_at AND started_at >= created_at),
-  CONSTRAINT chat_agent_turns_ended_after_started
-    CHECK (ended_at IS NULL OR ended_at >= started_at),
-  CONSTRAINT chat_agent_turns_terminal_shape CHECK (
-    (status = 'running' AND ended_at IS NULL)
-    OR (status <> 'running' AND ended_at IS NOT NULL)
-  )
-);
-
-CREATE TABLE chat_agent_events (
-  event_id UUID PRIMARY KEY,
-  turn_id UUID NOT NULL REFERENCES chat_agent_turns(id) ON DELETE CASCADE,
-  sequence BIGINT NOT NULL,
-  event_type TEXT NOT NULL,
-  step_sequence INTEGER,
-  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
-  occurred_at TIMESTAMPTZ NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT chat_agent_events_turn_sequence_unique UNIQUE (turn_id, sequence),
-  CONSTRAINT chat_agent_events_turn_event_unique UNIQUE (turn_id, event_id),
-  CONSTRAINT chat_agent_events_sequence_positive CHECK (sequence >= 1),
-  CONSTRAINT chat_agent_events_step_sequence_positive
-    CHECK (step_sequence IS NULL OR step_sequence >= 1),
-  CONSTRAINT chat_agent_events_type_allowed CHECK (event_type IN (
-    'turn.started', 'turn.ended',
-    'step.started', 'step.ended',
-    'assistant.message',
-    'tool.called', 'tool.result',
-    'goal.changed', 'goal.round.started',
-    'context.replaced'
-  )),
-  CONSTRAINT chat_agent_events_payload_object CHECK (jsonb_typeof(payload) = 'object'),
-  CONSTRAINT chat_agent_events_payload_bounded
-    CHECK (octet_length(payload::text) <= 262144),
-  CONSTRAINT chat_agent_events_occurred_after_turn_created
-    CHECK (occurred_at >= created_at - interval '5 minutes')
-);
-
-CREATE INDEX idx_chat_agent_turns_user_conversation_started
-  ON chat_agent_turns(user_id, conversation_id, started_at, id);
-CREATE INDEX idx_chat_agent_turns_running_started
-  ON chat_agent_turns(started_at, id) WHERE status = 'running';
-CREATE INDEX idx_chat_agent_events_turn_sequence
-  ON chat_agent_events(turn_id, sequence);
-
-CREATE FUNCTION chat_agent_event_immutable()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $function$
-BEGIN
-  IF TG_OP = 'DELETE' AND NOT EXISTS (
-    SELECT 1 FROM chat_agent_turns WHERE id = OLD.turn_id
-  ) THEN
-    -- Parent/user/conversation/message hard deletion owns the only removal
-    -- path. Direct event deletion still sees its Turn and remains forbidden.
-    RETURN OLD;
-  END IF;
-  RAISE EXCEPTION USING
-    ERRCODE = '55000',
-    MESSAGE = 'CHAT_AGENT_EVENT_IMMUTABLE';
-END
-$function$;
-
-CREATE TRIGGER trg_chat_agent_event_immutable
-BEFORE UPDATE OR DELETE ON chat_agent_events
-FOR EACH ROW EXECUTE FUNCTION chat_agent_event_immutable();
-
-CREATE FUNCTION chat_agent_start_turn(
+CREATE OR REPLACE FUNCTION chat_agent_start_turn(
   p_turn_id UUID,
   p_event_id UUID,
   p_user_id UUID,
@@ -177,7 +86,10 @@ BEGIN
     p_event_id, p_turn_id, 1, 'turn.started', '{"status":"running"}'::jsonb,
     p_occurred_at, p_occurred_at
   )
-  ON CONFLICT (event_id) DO NOTHING
+  -- The RETURNS TABLE output column `event_id` is also a PL/pgSQL variable.
+  -- Name the table constraint explicitly so PostgreSQL never has to resolve
+  -- the ambiguous unqualified identifier inside this function.
+  ON CONFLICT ON CONSTRAINT chat_agent_events_pkey DO NOTHING
   RETURNING * INTO v_event;
 
   IF NOT FOUND THEN
@@ -197,7 +109,7 @@ BEGIN
 END
 $function$;
 
-CREATE FUNCTION chat_agent_append_event(
+CREATE OR REPLACE FUNCTION chat_agent_append_event(
   p_turn_id UUID,
   p_event_id UUID,
   p_event_type TEXT,
@@ -299,17 +211,17 @@ BEGIN
     WHERE id = p_turn_id;
 
     IF v_terminal_status = 'interrupted' THEN
-      UPDATE messages
+      UPDATE messages AS message
       SET status = 'failed',
-          error_code = COALESCE(error_code, 'AGENT_RUN_INTERRUPTED'),
-          metadata = COALESCE(metadata, '{}'::jsonb)
+          error_code = COALESCE(message.error_code, 'AGENT_RUN_INTERRUPTED'),
+          metadata = COALESCE(message.metadata, '{}'::jsonb)
             || '{"errorCode":"AGENT_RUN_INTERRUPTED"}'::jsonb,
-          completed_at = COALESCE(completed_at, p_occurred_at),
-          updated_at = GREATEST(updated_at, p_occurred_at)
-      WHERE id = v_turn.message_id
-        AND conversation_id = v_turn.conversation_id
-        AND user_id = v_turn.user_id
-        AND status IN ('pending', 'streaming');
+          completed_at = COALESCE(message.completed_at, p_occurred_at),
+          updated_at = GREATEST(message.updated_at, p_occurred_at)
+      WHERE message.id = v_turn.message_id
+        AND message.conversation_id = v_turn.conversation_id
+        AND message.user_id = v_turn.user_id
+        AND message.status IN ('pending', 'streaming');
     END IF;
   END IF;
 
@@ -323,10 +235,6 @@ $function$;
 DO $function_paths$
 BEGIN
   EXECUTE format(
-    'ALTER FUNCTION %I.chat_agent_event_immutable() SET search_path TO %I, pg_catalog, pg_temp',
-    current_schema(), current_schema()
-  );
-  EXECUTE format(
     'ALTER FUNCTION %I.chat_agent_start_turn(UUID,UUID,UUID,UUID,UUID,UUID,TIMESTAMPTZ) SET search_path TO %I, pg_catalog, pg_temp',
     current_schema(), current_schema()
   );
@@ -337,15 +245,11 @@ BEGIN
 END
 $function_paths$;
 
-REVOKE ALL ON chat_agent_turns, chat_agent_events FROM PUBLIC, go_api_runtime;
-GRANT SELECT ON chat_agent_turns, chat_agent_events TO go_api_runtime;
-
 REVOKE ALL ON FUNCTION chat_agent_start_turn(
   UUID,UUID,UUID,UUID,UUID,UUID,TIMESTAMPTZ
 ), chat_agent_append_event(
   UUID,UUID,TEXT,INTEGER,JSONB,TIMESTAMPTZ
-), chat_agent_event_immutable()
-FROM PUBLIC, go_api_runtime;
+) FROM PUBLIC, go_api_runtime;
 GRANT EXECUTE ON FUNCTION chat_agent_start_turn(
   UUID,UUID,UUID,UUID,UUID,UUID,TIMESTAMPTZ
 ), chat_agent_append_event(
