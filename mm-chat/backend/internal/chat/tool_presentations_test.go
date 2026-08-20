@@ -3,9 +3,34 @@ package chat
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"neo-chat/mm-chat/backend/internal/localskills"
 )
+
+func TestBackgroundTerminalUsesJobPresentation(t *testing.T) {
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: t.TempDir(), WorkspaceRoot: t.TempDir(),
+		ShellPath: "/bin/sh", ApprovalMode: localskills.ApprovalSmart,
+		CallTimeout: time.Second, RunTimeout: 2 * time.Second,
+		MaxOutput: 64 << 10, MaxCalls: 4, MaxRounds: 4, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer executor.Close()
+	runtime := newLocalSkillToolRuntime(executor, nil)
+	presentation := runtime.localProcessPresentation(ProviderToolCall{
+		Name: localTerminalToolName,
+		Arguments: `{"command":"printf ok","skill":null,"workingDir":null,` +
+			`"timeoutSeconds":1,"runInBackground":true}`,
+	})
+	if presentation == nil || presentation.Card != "job" ||
+		presentation.Operation != "start" || !presentation.Background ||
+		presentation.Command != "printf ok" {
+		t.Fatalf("background presentation=%#v", presentation)
+	}
+}
 
 func TestProcessPresentationTerminalOutputIsBoundedAndRedacted(t *testing.T) {
 	trace := newProcessTrace("message-1")
@@ -96,6 +121,40 @@ func TestTerminalResultPresentationKeepsExistingResultFacts(t *testing.T) {
 	}, &localskills.Result{ExitCode: exitCode, Stdout: "done", Stderr: "warning"})
 	if presentation == nil || presentation.ExitCode == nil || *presentation.ExitCode != exitCode {
 		t.Fatalf("presentation=%#v", presentation)
+	}
+}
+
+func TestBackgroundJobPresentationPersistsBoundedLifecycleMetadata(t *testing.T) {
+	job := completeLocalProcessPresentation(&ProcessStepPresentation{
+		Version: 1, Card: "job", Operation: "start", Command: "printf ok",
+		CWD: "$NEO_CHAT_WORKSPACE", Background: true,
+	}, localSkillSuccessResult(ProviderToolCall{ID: "call-1", Name: localTerminalToolName}, map[string]any{
+		"result": map[string]any{
+			"jobId": "job_0123456789abcdef0123456789abcdef", "status": "completed",
+			"startedAt": "2026-08-20T10:00:00Z", "completedAt": "2026-08-20T10:00:01Z",
+			"durationMillis": 1000, "exitCode": 0,
+			"stdout": "token=fixture-secret\nok", "stderr": "",
+		},
+	}))
+	if job == nil || job.JobID != "job_0123456789abcdef0123456789abcdef" ||
+		job.JobStatus != "completed" || job.JobDurationMS != 1000 ||
+		job.ExitCode == nil || *job.ExitCode != 0 || len(job.Transcript) != 1 {
+		t.Fatalf("job presentation=%#v", job)
+	}
+	trace := newProcessTrace("message-job")
+	step := trace.add(ProcessStep{
+		ID: "message-job:tool:1", Kind: ProcessStepKindTool,
+		Status: ProcessStepStatusCompleted, LabelKey: "process.tool",
+		Detail: map[string]any{
+			"toolName": localTerminalToolName, "mode": "local_direct",
+			"durability": "process_local",
+		},
+		Presentation: job,
+	})
+	if step.Presentation == nil || step.Presentation.Card != "job" ||
+		strings.Contains(step.Presentation.Transcript[0].Content, "fixture-secret") ||
+		!strings.Contains(step.Presentation.Transcript[0].Content, "[REDACTED]") {
+		t.Fatalf("sanitized job presentation=%#v", step.Presentation)
 	}
 }
 

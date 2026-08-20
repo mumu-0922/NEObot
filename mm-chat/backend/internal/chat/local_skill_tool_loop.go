@@ -638,9 +638,14 @@ func (runtime *localSkillToolRuntime) terminalProcessPresentation(
 	if !ok {
 		return nil
 	}
+	if arguments.RunInBackground {
+		return &ProcessStepPresentation{
+			Card: "job", Operation: "start", Command: command, CWD: cwd,
+			Background: true,
+		}
+	}
 	return &ProcessStepPresentation{
 		Card: "terminal", Command: command, CWD: cwd,
-		Background: arguments.RunInBackground,
 	}
 }
 

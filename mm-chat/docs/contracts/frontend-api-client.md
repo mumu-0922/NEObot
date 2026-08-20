@@ -1748,6 +1748,10 @@ Sequence handling:
 - `message.completed.message` is authoritative over accumulated deltas.
 - Exactly one terminal event is allowed. Extra frames after a terminal event
   are ignored.
+- Background Terminal and later Job Tool steps remain separate durable facts.
+  The timeline display joins exact matching `jobId` values into one lifecycle,
+  keeps the first call position, applies the latest safe status/transcript, and
+  does not mutate the normalized source array.
 
 Abort/cancel handling:
 

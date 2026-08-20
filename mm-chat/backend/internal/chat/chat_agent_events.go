@@ -357,6 +357,10 @@ func projectChatAgentProcessTrace(
 	}
 	if !interruptedAt.IsZero() {
 		for _, step := range trace.snapshot() {
+			if reconciled, ok := interruptProcessLocalJobStep(step, interruptedAt); ok {
+				trace.add(reconciled)
+				continue
+			}
 			if !isActiveProcessStepStatus(step.Status) {
 				continue
 			}
@@ -374,6 +378,30 @@ func projectChatAgentProcessTrace(
 		return cloneProcessSteps(legacy)
 	}
 	return projected
+}
+
+func interruptProcessLocalJobStep(step ProcessStep, interruptedAt time.Time) (ProcessStep, bool) {
+	if step.Presentation == nil || step.Presentation.Card != "job" ||
+		processDetailString(step.Detail, "durability") != "process_local" {
+		return ProcessStep{}, false
+	}
+	switch step.Presentation.JobStatus {
+	case "running", "stopping":
+	default:
+		return ProcessStep{}, false
+	}
+	reconciled := cloneProcessStep(step)
+	reconciled.Status = ProcessStepStatusInterrupted
+	reconciled.CompletedAt = formatTime(interruptedAt)
+	reconciled.DurationMS = processStepDurationMillis(reconciled.StartedAt, interruptedAt)
+	reconciled.Detail = cloneProcessDetail(reconciled.Detail)
+	if reconciled.Detail == nil {
+		reconciled.Detail = map[string]any{}
+	}
+	reconciled.Detail["failureCategory"] = ChatAgentTurnInterrupted
+	reconciled.Detail["outcome"] = ChatAgentTurnInterrupted
+	reconciled.Presentation.JobStatus = ChatAgentTurnInterrupted
+	return reconciled, true
 }
 
 func processStepFromChatAgentPayload(value any) (ProcessStep, bool) {

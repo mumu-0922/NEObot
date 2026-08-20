@@ -66,6 +66,13 @@ Migration head: 100_chat_agent_approvals
   emit `stream.gap/cursor_evicted` when the requested prefix is gone. Never
   write transient chunks to `chat_agent_events`; converge on the terminal
   persisted Message snapshot after a gap.
+- A background Terminal start is presented as a Job card and persists only its
+  sanitized command/cwd plus `jobId`, process-local status, timestamps,
+  duration, exit flags, and bounded transcript. Later `job_output`/`job_kill`
+  calls remain immutable Tool events; the frontend merges their cards by exact
+  `jobId` without mutating history. Startup Turn recovery changes a persisted
+  `running`/`stopping` process-local Job to `interrupted`, even when the Tool
+  call that launched it already succeeded. Do not add a second Job authority.
 - A destructive Terminal call in `smart` mode creates a durable five-minute
   approval before execution and waits on the same Tool call. `Allow once`
   bypasses the smart approval check exactly once; policy-permitted `Allow for
@@ -106,6 +113,8 @@ Migration head: 100_chat_agent_approvals
 | reconnect cursor retained | replay exact suffix in original sequence |
 | reconnect cursor evicted | explicit unsequenced gap, retained suffix, final Message convergence |
 | slow reconnect subscriber | close subscriber; Run and Provider pipes continue |
+| restart after successful background start but before terminal Job result | preserve events; project exact Job as `interrupted` |
+| later output/kill events share exact Job ID | one display lifecycle; underlying Tool events remain immutable |
 | foreground Terminal-only task | Tool-free final answer; no `verify_completion` loop |
 | background Terminal plus foreground check | background remains unverified until exact completed `job_output` |
 | Backend shutdown with active Job | entire process group canceled and reaped |
@@ -152,6 +161,10 @@ presentation redaction/bounds, raw-output absence, and live/reload parity.
 Cursor tests must prove after-sequence replay, duplicate suppression, bounded
 eviction gap, exact-user authorization, terminal grace replay, browser
 auto-resume, and final-snapshot convergence without per-chunk database events.
+Job lifecycle tests must prove background Terminal -> Job presentation,
+start/output/kill merge by exact ID, bounded/redacted transcript retention,
+input-event immutability, and restart reconciliation of unresolved process-
+local status.
 
 Cross-layer changes also require frontend format/lint/typecheck/test/build and
 `bash mm-chat/scripts/verify-standalone.sh --full`.
@@ -167,6 +180,9 @@ Correct: foreground result -> synchronous boundary; background Job -> exact comp
 
 Wrong: copy stdout/stderr or Terminal arguments into generic process detail
 Correct: typed redacted Terminal card -> durable ProcessStep -> same live/replay card
+
+Wrong: overwrite the background start event when job_output arrives
+Correct: retain immutable events -> merge display cards by exact jobId
 
 Wrong: DROP ... CASCADE after a broad agent_* match
 Correct: lock -> exact manifest/data validation -> explicit drops -> forward repair -> head 100

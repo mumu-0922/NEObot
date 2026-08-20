@@ -515,6 +515,11 @@ job_kill({jobId})
   and live follow. Bound frames, bytes, subscribers, subscriber queues, terminal
   grace, and finished Run count. A queue overflow closes only that subscriber.
   An evicted cursor emits safe gap metadata, never missing payload content.
+- Background Terminal is a Job lifecycle start, not a completed command card.
+  Persist safe process-local Job metadata in the existing ProcessStep
+  presentation. Keep later Job Tool events immutable, merge only the display
+  projection by exact `jobId`, and reconcile `running`/`stopping` to
+  `interrupted` when startup recovery proves the owning Turn was interrupted.
 - Run `bash mm-chat/scripts/verify-chat-artifacts-postgres17.sh` for artifact
   publication changes; it must prove output-link reload, two-user isolation,
   deleted-file rejection, and ephemeral PostgreSQL 17 teardown.
@@ -538,6 +543,7 @@ job_kill({jobId})
 | destructive command with durable approval authority | durable wait; same Tool resumes only after allow |
 | primary SSE disconnects | generation continues; reconnect from last accepted sequence |
 | requested cursor predates ring | `stream.gap(cursor_evicted)` then retained suffix |
+| Backend restarts with process-local Job still running/stopping | durable lifecycle projects `interrupted`; never claim recovery |
 | workspace traversal/symlink escape | bounded `path_invalid`; no file access |
 | file version changed | bounded `version_conflict`; preserve current bytes |
 | Job lookup across user/Conversation | `job_not_found`; no existence disclosure |

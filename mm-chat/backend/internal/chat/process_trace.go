@@ -66,31 +66,34 @@ type ProcessStep struct {
 }
 
 type ProcessStepPresentation struct {
-	Version    int                          `json:"version,omitempty"`
-	Card       string                       `json:"card"`
-	Title      string                       `json:"title,omitempty"`
-	Summary    string                       `json:"summary,omitempty"`
-	Command    string                       `json:"command,omitempty"`
-	CWD        string                       `json:"cwd,omitempty"`
-	Transcript []ProcessTranscriptEntry     `json:"transcript,omitempty"`
-	ExitCode   *int                         `json:"exitCode,omitempty"`
-	TimedOut   bool                         `json:"timedOut,omitempty"`
-	Truncated  bool                         `json:"truncated,omitempty"`
-	Background bool                         `json:"background,omitempty"`
-	Provider   string                       `json:"provider,omitempty"`
-	Query      string                       `json:"query,omitempty"`
-	Count      int                          `json:"count,omitempty"`
-	Operation  string                       `json:"operation,omitempty"`
-	Path       string                       `json:"path,omitempty"`
-	Content    string                       `json:"content,omitempty"`
-	Diff       string                       `json:"diff,omitempty"`
-	Size       int64                        `json:"size,omitempty"`
-	Offset     int64                        `json:"offset,omitempty"`
-	NextOffset int64                        `json:"nextOffset,omitempty"`
-	JobID      string                       `json:"jobId,omitempty"`
-	JobStatus  string                       `json:"jobStatus,omitempty"`
-	Items      []ProcessPresentationItem    `json:"items,omitempty"`
-	Approval   *ProcessApprovalPresentation `json:"approval,omitempty"`
+	Version        int                          `json:"version,omitempty"`
+	Card           string                       `json:"card"`
+	Title          string                       `json:"title,omitempty"`
+	Summary        string                       `json:"summary,omitempty"`
+	Command        string                       `json:"command,omitempty"`
+	CWD            string                       `json:"cwd,omitempty"`
+	Transcript     []ProcessTranscriptEntry     `json:"transcript,omitempty"`
+	ExitCode       *int                         `json:"exitCode,omitempty"`
+	TimedOut       bool                         `json:"timedOut,omitempty"`
+	Truncated      bool                         `json:"truncated,omitempty"`
+	Background     bool                         `json:"background,omitempty"`
+	Provider       string                       `json:"provider,omitempty"`
+	Query          string                       `json:"query,omitempty"`
+	Count          int                          `json:"count,omitempty"`
+	Operation      string                       `json:"operation,omitempty"`
+	Path           string                       `json:"path,omitempty"`
+	Content        string                       `json:"content,omitempty"`
+	Diff           string                       `json:"diff,omitempty"`
+	Size           int64                        `json:"size,omitempty"`
+	Offset         int64                        `json:"offset,omitempty"`
+	NextOffset     int64                        `json:"nextOffset,omitempty"`
+	JobID          string                       `json:"jobId,omitempty"`
+	JobStatus      string                       `json:"jobStatus,omitempty"`
+	JobStartedAt   string                       `json:"jobStartedAt,omitempty"`
+	JobCompletedAt string                       `json:"jobCompletedAt,omitempty"`
+	JobDurationMS  int64                        `json:"jobDurationMs,omitempty"`
+	Items          []ProcessPresentationItem    `json:"items,omitempty"`
+	Approval       *ProcessApprovalPresentation `json:"approval,omitempty"`
 }
 
 type ProcessApprovalPresentation struct {
@@ -463,7 +466,8 @@ func sanitizeProcessStepPresentation(
 				toolName == localPublishFileToolName)
 	case "job":
 		valid = kind == ProcessStepKindTool && mode == "local_direct" &&
-			(toolName == localJobListToolName || toolName == localJobOutputToolName ||
+			((toolName == localTerminalToolName && presentation.Background) ||
+				toolName == localJobListToolName || toolName == localJobOutputToolName ||
 				toolName == localJobKillToolName)
 	case "skill":
 		valid = kind == ProcessStepKindTool && mode == "local_direct" && toolName == localSkillToolName
@@ -488,12 +492,34 @@ func sanitizeProcessStepPresentation(
 		Content:   sanitizePresentationText(presentation.Content, maxProcessPresentationTextBytes),
 		Diff:      sanitizePresentationText(presentation.Diff, maxProcessPresentationTextBytes),
 		Size:      max(presentation.Size, 0), Offset: max(presentation.Offset, 0),
-		NextOffset: max(presentation.NextOffset, 0),
-		JobID:      sanitizePresentationText(presentation.JobID, 128),
-		JobStatus:  sanitizePresentationText(presentation.JobStatus, 64),
-		TimedOut:   presentation.TimedOut, Truncated: presentation.Truncated,
+		NextOffset:     max(presentation.NextOffset, 0),
+		JobID:          sanitizePresentationText(presentation.JobID, 128),
+		JobStatus:      sanitizeProcessJobStatus(presentation.JobStatus),
+		JobStartedAt:   sanitizeProcessJobTimestamp(presentation.JobStartedAt),
+		JobCompletedAt: sanitizeProcessJobTimestamp(presentation.JobCompletedAt),
+		JobDurationMS:  max(presentation.JobDurationMS, 0),
+		TimedOut:       presentation.TimedOut, Truncated: presentation.Truncated,
 		Background: presentation.Background,
 		Items:      sanitizePresentationItems(presentation.Items),
+	}
+	if card == "job" {
+		result.Command = sanitizePresentationText(
+			presentation.Command, maxProcessTerminalCommandBytes,
+		)
+		result.CWD = sanitizePresentationText(
+			presentation.CWD, maxProcessTerminalCWDBytes,
+		)
+		if presentation.ExitCode != nil {
+			if *presentation.ExitCode < -1 || *presentation.ExitCode > 255 {
+				return nil
+			}
+			exitCode := *presentation.ExitCode
+			result.ExitCode = &exitCode
+		}
+		result.Transcript, result.Truncated = sanitizeProcessTranscript(
+			presentation.Transcript, result.Truncated,
+		)
+		return result
 	}
 	if card != "terminal" {
 		return result
@@ -517,6 +543,26 @@ func sanitizeProcessStepPresentation(
 		presentation.Transcript, result.Truncated,
 	)
 	return result
+}
+
+func sanitizeProcessJobStatus(value string) string {
+	switch strings.TrimSpace(value) {
+	case "running", "stopping", "completed", "killed", "failed", "interrupted", "unknown":
+		return strings.TrimSpace(value)
+	default:
+		return ""
+	}
+}
+
+func sanitizeProcessJobTimestamp(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if _, err := time.Parse(time.RFC3339Nano, value); err != nil {
+		return ""
+	}
+	return value
 }
 
 func sanitizeProcessApprovalPresentation(

@@ -256,6 +256,11 @@ timeline updates.
   prove replayed Tool/transcript updates deduplicate. An explicit valid gap
   renders the localized partial-view reason and terminal Message replacement;
   malformed gap bounds/run identity fail closed.
+- A background Terminal presentation normalizes as a Job `start`. Display
+  projection merges later `job_output`/`job_kill` cards by exact `jobId`, keeps
+  the first card position/round, applies the latest status/output, and never
+  mutates the normalized source steps. A recovered interrupted Turn changes an
+  unresolved process-local Job presentation to `interrupted`.
 - Terminal presentation tests cover running/completed, exit 0/nonzero,
   timeout/truncation/background pills, malformed-card fail-closed behavior,
   legacy steps, pending/allowed/denied/expired approval controls, malformed

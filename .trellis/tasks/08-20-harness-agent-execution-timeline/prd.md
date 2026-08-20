@@ -235,7 +235,7 @@ replace the runtime.
 
 ### Remaining slices
 
-- Backend-authorized Retry, Job reconciliation metadata, canary flag, exact
+- Backend-authorized Retry, canary flag, exact
   rollout gates, performance/security acceptance, and legacy transport removal.
 
 ### Slice 2 — live Terminal transcript
@@ -273,3 +273,16 @@ replace the runtime.
   converges on the terminal Message snapshot without fabricating missing data.
 - Focused Backend ring/endpoint and Frontend reconnect/gap tests pass; transient
   chunks remain SSE-only and never become one database event per chunk.
+
+### Slice 5 — process-local Job lifecycle
+
+- Background Terminal now emits a Job start presentation with sanitized
+  command/cwd and minimal process-local lifecycle metadata. Later output/kill
+  calls remain separate immutable Agent Tool events.
+- The frontend joins exact matching `jobId` cards into one lifecycle while
+  preserving the first call position and leaving normalized source steps
+  untouched.
+- Startup Turn recovery projects unresolved `running`/`stopping` Jobs as
+  `interrupted`; it never fabricates process survival, output, or completion.
+- Focused Backend race tests and Frontend normalization/render tests cover
+  metadata bounds/redaction, lifecycle merge, immutability, and restart state.

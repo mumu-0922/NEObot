@@ -507,6 +507,25 @@ function GenericProcessCard({
         {"operation" in presentation && presentation.operation ? (
           <MetaLine label="action" value={presentation.operation} />
         ) : null}
+        {"jobStatus" in presentation && presentation.jobStatus ? (
+          <MetaLine label="status" value={presentation.jobStatus} />
+        ) : null}
+        {"command" in presentation && presentation.command ? (
+          <MetaLine label="command" value={presentation.command} mono />
+        ) : null}
+        {"cwd" in presentation && presentation.cwd ? (
+          <MetaLine label="cwd" value={presentation.cwd} mono />
+        ) : null}
+        {"jobStartedAt" in presentation && presentation.jobStartedAt ? (
+          <MetaLine label="started" value={presentation.jobStartedAt} />
+        ) : null}
+        {"jobCompletedAt" in presentation && presentation.jobCompletedAt ? (
+          <MetaLine label="completed" value={presentation.jobCompletedAt} />
+        ) : null}
+        {"exitCode" in presentation &&
+        typeof presentation.exitCode === "number" ? (
+          <MetaLine label="exit" value={String(presentation.exitCode)} />
+        ) : null}
         {"path" in presentation && presentation.path ? (
           <MetaLine label="path" value={presentation.path} mono />
         ) : null}
@@ -620,6 +639,10 @@ function genericPresentationText(
     "diff",
     "jobId",
     "jobStatus",
+    "jobStartedAt",
+    "jobCompletedAt",
+    "command",
+    "cwd",
   ] as const) {
     if (key in presentation) {
       const value = presentation[key as keyof typeof presentation];

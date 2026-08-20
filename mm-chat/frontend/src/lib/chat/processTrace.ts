@@ -267,11 +267,14 @@ export function processTraceFromChatAgentEvents(
   }
   if (steps.length === 0) return legacy;
   if (interruptedAt) {
-    steps = steps.map((step) =>
-      isProcessStepActive(step)
+    steps = steps.map((step) => {
+      if (isUnresolvedProcessLocalJob(step)) {
+        return interruptProcessStep(step, interruptedAt, true);
+      }
+      return isProcessStepActive(step)
         ? interruptProcessStep(step, interruptedAt)
-        : step,
-    );
+        : step;
+    });
   }
   return steps;
 }
@@ -301,7 +304,7 @@ export function isProcessStepActive(step: ProcessStep): boolean {
 export function projectProcessStepsForDisplay(
   steps: ProcessStep[],
 ): ProcessStep[] {
-  return steps.filter((step) => {
+  const visible = steps.filter((step) => {
     if (step.kind !== "tool") return true;
     const toolName = processStepStringDetail(step, "toolName");
     const specializedKind = SPECIALIZED_TOOL_KINDS[toolName];
@@ -312,6 +315,7 @@ export function projectProcessStepsForDisplay(
         representsSameToolExecution(step, candidate, toolName),
     );
   });
+  return mergeJobLifecycleSteps(visible);
 }
 
 export function processOutcomeForDisplay(step: ProcessStep): string {
@@ -441,6 +445,7 @@ function optionalPositiveInteger(value: unknown): number | undefined {
 function interruptProcessStep(
   step: ProcessStep,
   interruptedAt: string,
+  interruptJob = false,
 ): ProcessStep {
   const startedAt = step.startedAt ? Date.parse(step.startedAt) : Number.NaN;
   const completedAt = Date.parse(interruptedAt);
@@ -458,7 +463,144 @@ function interruptProcessStep(
       failureCategory: "interrupted",
       outcome: "interrupted",
     },
+    ...(interruptJob && step.presentation?.card === "job"
+      ? {
+          presentation: {
+            ...step.presentation,
+            jobStatus: "interrupted",
+          },
+        }
+      : {}),
   };
+}
+
+function isUnresolvedProcessLocalJob(step: ProcessStep): boolean {
+  return (
+    step.detail?.durability === "process_local" &&
+    step.presentation?.card === "job" &&
+    (step.presentation.jobStatus === "running" ||
+      step.presentation.jobStatus === "stopping")
+  );
+}
+
+function mergeJobLifecycleSteps(steps: ProcessStep[]): ProcessStep[] {
+  const merged: ProcessStep[] = [];
+  const lifecycleIndex = new Map<string, number>();
+  for (const step of steps) {
+    const presentation = step.presentation;
+    if (presentation?.card !== "job" || !presentation.jobId) {
+      merged.push(step);
+      continue;
+    }
+    const index = lifecycleIndex.get(presentation.jobId);
+    if (index === undefined) {
+      lifecycleIndex.set(presentation.jobId, merged.length);
+      merged.push(projectJobLifecycleStep(step));
+      continue;
+    }
+    merged[index] = mergeJobLifecycleStep(merged[index], step);
+  }
+  return merged;
+}
+
+function projectJobLifecycleStep(step: ProcessStep): ProcessStep {
+  const presentation = step.presentation;
+  if (presentation?.card !== "job") return step;
+  const status = processStatusForJobLifecycle(
+    presentation.jobStatus,
+    step.status,
+  );
+  const projected: ProcessStep = {
+    ...step,
+    status,
+    startedAt: presentation.jobStartedAt ?? step.startedAt,
+    detail: {
+      ...(step.detail ?? {}),
+      toolName: "job_lifecycle",
+    },
+    presentation: { ...presentation },
+  };
+  if (status === "running" || status === "pending") {
+    delete projected.completedAt;
+    delete projected.durationMs;
+  } else {
+    projected.completedAt = presentation.jobCompletedAt ?? step.completedAt;
+    projected.durationMs = presentation.jobDurationMs ?? step.durationMs;
+  }
+  return projected;
+}
+
+function mergeJobLifecycleStep(
+  current: ProcessStep,
+  incoming: ProcessStep,
+): ProcessStep {
+  const currentPresentation = current.presentation;
+  const incomingPresentation = incoming.presentation;
+  if (
+    currentPresentation?.card !== "job" ||
+    incomingPresentation?.card !== "job"
+  ) {
+    return current;
+  }
+  const presentation = {
+    ...currentPresentation,
+    ...incomingPresentation,
+    operation: "lifecycle",
+    command: currentPresentation.command ?? incomingPresentation.command,
+    cwd: currentPresentation.cwd ?? incomingPresentation.cwd,
+    jobStartedAt:
+      currentPresentation.jobStartedAt ?? incomingPresentation.jobStartedAt,
+    transcript:
+      incomingPresentation.transcript ?? currentPresentation.transcript,
+  };
+  const status = processStatusForJobLifecycle(
+    presentation.jobStatus,
+    incoming.status,
+  );
+  const merged: ProcessStep = {
+    ...current,
+    status,
+    detail: {
+      ...(incoming.detail ?? {}),
+      ...(current.detail ?? {}),
+      toolName: "job_lifecycle",
+    },
+    presentation,
+  };
+  if (status === "running" || status === "pending") {
+    delete merged.completedAt;
+    delete merged.durationMs;
+  } else {
+    merged.completedAt =
+      presentation.jobCompletedAt ??
+      incoming.completedAt ??
+      current.completedAt;
+    merged.durationMs =
+      presentation.jobDurationMs ?? incoming.durationMs ?? current.durationMs;
+  }
+  return merged;
+}
+
+function processStatusForJobLifecycle(
+  jobStatus: string | undefined,
+  fallback: ProcessStepStatus,
+): ProcessStepStatus {
+  switch (jobStatus) {
+    case "running":
+    case "stopping":
+      return "running";
+    case "completed":
+      return "completed";
+    case "failed":
+      return "failed";
+    case "killed":
+      return "cancelled";
+    case "interrupted":
+    case "unknown":
+      return "interrupted";
+    default:
+      return fallback;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -516,7 +658,8 @@ function normalizeProcessStepPresentation(
       kind === "tool" &&
       mode === "local_direct" &&
       typeof toolName === "string" &&
-      toolName.startsWith("job_")) ||
+      (toolName.startsWith("job_") ||
+        (toolName === "terminal" && value.background === true))) ||
     (card === "skill" &&
       kind === "tool" &&
       mode === "local_direct" &&
@@ -542,6 +685,10 @@ function normalizeProcessStepPresentation(
     const diff = text("diff", MAX_PRESENTATION_TEXT_BYTES);
     const jobId = text("jobId", 128);
     const jobStatus = text("jobStatus", 64);
+    const jobStartedAt = text("jobStartedAt", 128);
+    const jobCompletedAt = text("jobCompletedAt", 128);
+    const command = text("command", MAX_TERMINAL_COMMAND_BYTES);
+    const cwd = text("cwd", MAX_TERMINAL_CWD_BYTES);
     if (
       [
         title,
@@ -554,6 +701,10 @@ function normalizeProcessStepPresentation(
         diff,
         jobId,
         jobStatus,
+        jobStartedAt,
+        jobCompletedAt,
+        command,
+        cwd,
       ].includes(null)
     ) {
       return undefined;
@@ -562,6 +713,8 @@ function normalizeProcessStepPresentation(
     const size = optionalNonNegativeInteger(value.size);
     const offset = optionalNonNegativeInteger(value.offset);
     const nextOffset = optionalNonNegativeInteger(value.nextOffset);
+    const jobDurationMs = optionalNonNegativeInteger(value.jobDurationMs);
+    const exitCode = optionalExitCode(value.exitCode);
     const items = normalizePresentationItems(value.items);
     const transcript = normalizePresentationTranscript(value.transcript);
     if (
@@ -569,10 +722,19 @@ function normalizeProcessStepPresentation(
       size === null ||
       offset === null ||
       nextOffset === null ||
+      jobDurationMs === null ||
+      exitCode === null ||
       items === null ||
       transcript === null ||
       !optionalBoolean(value.timedOut) ||
-      !optionalBoolean(value.truncated)
+      !optionalBoolean(value.truncated) ||
+      !optionalBoolean(value.background) ||
+      (card === "job" && !validJobStatus(jobStatus)) ||
+      (typeof jobStartedAt === "string" &&
+        !validPresentationTimestamp(jobStartedAt)) ||
+      (typeof jobCompletedAt === "string" &&
+        !validPresentationTimestamp(jobCompletedAt)) ||
+      (card === "job" && toolName === "terminal" && !command)
     )
       return undefined;
     return {
@@ -588,14 +750,21 @@ function normalizeProcessStepPresentation(
       ...(diff ? { diff } : {}),
       ...(jobId ? { jobId } : {}),
       ...(jobStatus ? { jobStatus } : {}),
+      ...(jobStartedAt ? { jobStartedAt } : {}),
+      ...(jobCompletedAt ? { jobCompletedAt } : {}),
+      ...(jobDurationMs !== undefined ? { jobDurationMs } : {}),
+      ...(command ? { command } : {}),
+      ...(cwd ? { cwd } : {}),
       ...(count !== undefined ? { count } : {}),
       ...(size !== undefined ? { size } : {}),
       ...(offset !== undefined ? { offset } : {}),
       ...(nextOffset !== undefined ? { nextOffset } : {}),
       ...(items?.length ? { items } : {}),
       ...(transcript?.length ? { transcript } : {}),
+      ...(exitCode !== undefined ? { exitCode } : {}),
       ...(value.timedOut === true ? { timedOut: true } : {}),
       ...(value.truncated === true ? { truncated: true } : {}),
+      ...(value.background === true ? { background: true } : {}),
     } as ProcessStepPresentation;
   }
   const command = boundedPresentationString(
@@ -743,6 +912,33 @@ function optionalNonNegativeInteger(value: unknown): number | undefined | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
     ? value
     : null;
+}
+
+function optionalExitCode(value: unknown): number | undefined | null {
+  if (value === undefined) return undefined;
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= -1 &&
+    value <= 255
+    ? value
+    : null;
+}
+
+function validJobStatus(value: string | undefined | null): boolean {
+  return (
+    value === undefined ||
+    value === "running" ||
+    value === "stopping" ||
+    value === "completed" ||
+    value === "killed" ||
+    value === "failed" ||
+    value === "interrupted" ||
+    value === "unknown"
+  );
+}
+
+function validPresentationTimestamp(value: string): boolean {
+  return Number.isFinite(Date.parse(value));
 }
 
 function boundedPresentationString(value: unknown, maxBytes: number): string {

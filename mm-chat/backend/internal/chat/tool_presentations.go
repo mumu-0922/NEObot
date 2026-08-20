@@ -121,8 +121,14 @@ func completeLocalProcessPresentation(
 		if resultValue != nil {
 			completed.JobID = presentationString(resultValue, "jobId")
 			completed.JobStatus = presentationString(resultValue, "status")
+			completed.JobStartedAt = presentationString(resultValue, "startedAt")
+			completed.JobCompletedAt = presentationString(resultValue, "completedAt")
+			completed.JobDurationMS = int64(presentationInt(resultValue, "durationMillis"))
 			completed.TimedOut = presentationBool(resultValue, "timedOut")
 			completed.Truncated = presentationBool(resultValue, "truncated")
+			if exitCode, ok := presentationOptionalInt(resultValue, "exitCode"); ok {
+				completed.ExitCode = &exitCode
+			}
 			completed.Transcript = transcriptFromOutput(
 				presentationString(resultValue, "stdout"), presentationString(resultValue, "stderr"),
 			)
@@ -134,6 +140,30 @@ func completeLocalProcessPresentation(
 		completed.Summary = presentationString(payload, "version")
 	}
 	return &completed
+}
+
+func presentationOptionalInt(value map[string]any, key string) (int, bool) {
+	if value == nil {
+		return 0, false
+	}
+	raw, ok := value[key]
+	if !ok || raw == nil {
+		return 0, false
+	}
+	switch typed := raw.(type) {
+	case float64:
+		converted := int(typed)
+		return converted, float64(converted) == typed
+	case int:
+		return typed, true
+	case int64:
+		return int(typed), int64(int(typed)) == typed
+	case json.Number:
+		converted, err := typed.Int64()
+		return int(converted), err == nil && int64(int(converted)) == converted
+	default:
+		return 0, false
+	}
 }
 
 func searchProcessPresentation(

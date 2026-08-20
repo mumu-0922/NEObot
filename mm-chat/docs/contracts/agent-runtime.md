@@ -81,6 +81,12 @@ explicit gap and the UI converges on the final persisted Message snapshot. This
 delivery buffer is not durable Tool authority and never causes per-chunk event
 rows.
 
+Background Terminal execution is displayed as one Job lifecycle. Durable Agent
+events retain each immutable start/output/kill Tool fact plus only safe Job
+metadata; the UI joins those facts by exact `jobId`. Because Jobs are
+process-local, startup recovery projects any unresolved `running` or `stopping`
+Job as `interrupted` rather than claiming that it survived the Backend.
+
 ## Artifact publication
 
 - `publish_file` exists only in effective Agent mode and accepts a

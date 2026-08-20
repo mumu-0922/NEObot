@@ -432,6 +432,99 @@ describe("durable process trace", () => {
     expect(html).toContain('role="note"');
   });
 
+  it("merges background start and output into one immutable Job lifecycle", () => {
+    const steps = normalizeProcessTrace([
+      {
+        id: "tool-job-start",
+        kind: "tool",
+        status: "completed",
+        labelKey: "process.tool",
+        startedAt: "2026-08-20T10:00:00Z",
+        detail: {
+          toolName: "terminal",
+          mode: "local_direct",
+          durability: "process_local",
+          round: 1,
+        },
+        presentation: {
+          card: "job",
+          operation: "start",
+          command: "printf ok",
+          cwd: "$NEO_CHAT_WORKSPACE",
+          background: true,
+          jobId: "job_0123456789abcdef0123456789abcdef",
+          jobStatus: "running",
+          jobStartedAt: "2026-08-20T10:00:00Z",
+        },
+      },
+      {
+        id: "tool-job-output",
+        kind: "tool",
+        status: "completed",
+        labelKey: "process.tool",
+        detail: {
+          toolName: "job_output",
+          mode: "local_direct",
+          durability: "process_local",
+          round: 2,
+        },
+        presentation: {
+          card: "job",
+          operation: "output",
+          jobId: "job_0123456789abcdef0123456789abcdef",
+          jobStatus: "completed",
+          jobStartedAt: "2026-08-20T10:00:00Z",
+          jobCompletedAt: "2026-08-20T10:00:01Z",
+          jobDurationMs: 1000,
+          exitCode: 0,
+          transcript: [{ sequence: 1, stream: "stdout", content: "ok" }],
+        },
+      },
+    ]);
+    const before = JSON.stringify(steps);
+    expect(projectProcessStepsForDisplay([steps[0]])[0]).toMatchObject({
+      status: "running",
+      detail: { toolName: "job_lifecycle" },
+      presentation: { card: "job", jobStatus: "running" },
+    });
+    expect(
+      projectProcessStepsForDisplay([steps[0]])[0].completedAt,
+    ).toBeUndefined();
+    const projected = projectProcessStepsForDisplay(steps);
+
+    expect(projected).toHaveLength(1);
+    expect(projected[0]).toMatchObject({
+      id: "tool-job-start",
+      status: "completed",
+      durationMs: 1000,
+      detail: { toolName: "job_lifecycle" },
+      presentation: {
+        card: "job",
+        operation: "lifecycle",
+        command: "printf ok",
+        cwd: "$NEO_CHAT_WORKSPACE",
+        jobStatus: "completed",
+        exitCode: 0,
+        transcript: [{ sequence: 1, stream: "stdout", content: "ok" }],
+      },
+    });
+    expect(JSON.stringify(steps)).toBe(before);
+
+    const html = renderToStaticMarkup(
+      <NextIntlClientProvider
+        locale="zh"
+        messages={{ Content: contentMessages }}
+        timeZone="UTC"
+      >
+        <ProcessTracePanel steps={steps} />
+      </NextIntlClientProvider>,
+    );
+    expect(html).toContain("job_0123456789abcdef0123456789abcdef");
+    expect(html).toContain("printf ok");
+    expect(html).toContain("completed");
+    expect(html).toContain("stdout");
+  });
+
   it("hydrates reasoning and process steps from server message metadata", () => {
     const metadata = {
       reasoning: "Provider summary",
@@ -516,6 +609,68 @@ describe("durable process trace", () => {
       },
     ]);
     expect(projected?.some(isProcessStepActive)).toBe(false);
+  });
+
+  it("reconciles a completed Tool call with a running process-local Job after restart", () => {
+    const projected = processTraceFromChatAgentEvents([
+      {
+        eventId: "event-job-1",
+        turnId: "turn-1",
+        conversationId: "conversation-1",
+        messageId: "message-1",
+        runId: "run-1",
+        sequence: 2,
+        type: "tool.result",
+        payload: {
+          processStep: {
+            id: "message-1:tool:1",
+            kind: "tool",
+            status: "completed",
+            labelKey: "process.tool",
+            startedAt: "2026-08-20T12:00:00Z",
+            completedAt: "2026-08-20T12:00:01Z",
+            detail: {
+              toolName: "terminal",
+              mode: "local_direct",
+              durability: "process_local",
+            },
+            presentation: {
+              card: "job",
+              operation: "start",
+              command: "sleep 60",
+              background: true,
+              jobId: "job_0123456789abcdef0123456789abcdef",
+              jobStatus: "running",
+              jobStartedAt: "2026-08-20T12:00:00Z",
+            },
+          },
+        },
+        occurredAt: "2026-08-20T12:00:01Z",
+      },
+      {
+        eventId: "event-job-2",
+        turnId: "turn-1",
+        conversationId: "conversation-1",
+        messageId: "message-1",
+        runId: "run-1",
+        sequence: 3,
+        type: "turn.ended",
+        payload: { status: "interrupted" },
+        occurredAt: "2026-08-20T12:00:02Z",
+      },
+    ]);
+
+    expect(projected).toMatchObject([
+      {
+        status: "interrupted",
+        detail: {
+          durability: "process_local",
+          failureCategory: "interrupted",
+          outcome: "interrupted",
+        },
+        presentation: { card: "job", jobStatus: "interrupted" },
+      },
+    ]);
   });
 
   it("projects the same Terminal presentation from live and durable steps", () => {

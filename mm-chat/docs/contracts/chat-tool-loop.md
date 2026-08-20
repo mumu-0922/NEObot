@@ -692,6 +692,14 @@ partial-view notice and replaces it with the final persisted Message snapshot.
 The ring retains completed streams for 30 seconds but never writes transient
 Terminal chunks to the Agent event log.
 
+A background Terminal start uses a Job presentation containing a sanitized
+command/cwd and minimal process-local lifecycle metadata. `job_output` and
+`job_kill` continue to append their own immutable Tool events. The frontend
+merges cards with the exact same `jobId` while retaining the original event
+order underneath. If startup recovery interrupts the Turn while the Job status
+is `running` or `stopping`, live/reload projection changes that lifecycle to
+`interrupted`; no output or completion is invented.
+
 An approval presentation is sanitized before it enters the ProcessStep and
 contains only decision metadata. A malformed approval object is dropped while
 the safe Terminal card remains renderable. The active/pending card expands by

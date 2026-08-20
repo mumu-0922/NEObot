@@ -46,6 +46,43 @@ func TestChatAgentEventProjectionInterruptsActiveStepsAndOverridesLegacy(t *test
 	}
 }
 
+func TestChatAgentEventProjectionInterruptsUnresolvedProcessLocalJob(t *testing.T) {
+	started := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	messageID := "22222222-2222-4222-8222-222222222222"
+	step := ProcessStep{
+		ID: messageID + ":tool:1", Kind: ProcessStepKindTool,
+		Status: ProcessStepStatusCompleted, LabelKey: "process.tool",
+		StartedAt: formatTime(started), CompletedAt: formatTime(started.Add(time.Second)),
+		Detail: map[string]any{
+			"toolName": localTerminalToolName, "mode": "local_direct",
+			"durability": "process_local",
+		},
+		Presentation: &ProcessStepPresentation{
+			Version: 1, Card: "job", Operation: "start", Background: true,
+			Command: "sleep 60", JobID: "job_0123456789abcdef0123456789abcdef",
+			JobStatus: "running", JobStartedAt: formatTime(started),
+		},
+	}
+	projected := projectChatAgentProcessTrace([]ChatAgentEvent{
+		{
+			EventID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", MessageID: messageID,
+			Sequence: 2, Type: ChatAgentEventToolResult,
+			Payload: chatAgentProcessStepPayload(step), OccurredAt: started.Add(time.Second),
+		},
+		{
+			EventID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", MessageID: messageID,
+			Sequence: 3, Type: ChatAgentEventTurnEnded,
+			Payload:    map[string]any{"status": ChatAgentTurnInterrupted},
+			OccurredAt: started.Add(2 * time.Second),
+		},
+	}, nil)
+	if len(projected) != 1 || projected[0].Status != ProcessStepStatusInterrupted ||
+		projected[0].Presentation == nil ||
+		projected[0].Presentation.JobStatus != ChatAgentTurnInterrupted {
+		t.Fatalf("reconciled job=%#v", projected)
+	}
+}
+
 func TestChatAgentToolEventPayloadDropsCommandsArgumentsResultsAndPrivateServerRef(t *testing.T) {
 	payload := chatAgentToolEventPayload(&ProviderToolExecutionEvent{
 		ExecutionID: "execution-1", CallID: "call-1", Name: "terminal",

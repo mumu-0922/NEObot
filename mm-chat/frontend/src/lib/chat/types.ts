@@ -144,9 +144,16 @@ export interface ProcessJobPresentation {
   operation?: string;
   jobId?: string;
   jobStatus?: string;
+  jobStartedAt?: string;
+  jobCompletedAt?: string;
+  jobDurationMs?: number;
+  command?: string;
+  cwd?: string;
   transcript?: ProcessTranscriptEntry[];
+  exitCode?: number;
   timedOut?: boolean;
   truncated?: boolean;
+  background?: boolean;
   approval?: ProcessApprovalPresentation;
 }
 
