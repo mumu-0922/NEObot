@@ -11,6 +11,8 @@ export type {
   Attachment,
   BackgroundTaskSnapshot,
   ChatConfig,
+  ChatAgentEvent,
+  ChatAgentEventType,
   ChatGenerationEvent,
   ChatGenerationState,
   ChatGenerationStatus,

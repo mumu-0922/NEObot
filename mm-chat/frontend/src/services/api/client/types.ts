@@ -338,6 +338,7 @@ export interface ChatStreamHandlers {
   onStarted?: (event: ServerStreamEvent) => void;
   onDelta?: (event: ServerStreamEvent) => void;
   onReasoning?: (event: ServerStreamEvent) => void;
+  onAgentEvent?: (event: ServerStreamEvent) => void;
   onProcess?: (event: ServerStreamEvent) => void;
   onToolCall?: (event: ServerStreamEvent) => void;
   onUsage?: (event: ServerStreamEvent) => void;
@@ -1798,6 +1799,7 @@ export type ServerStreamEventType =
   | "message.started"
   | "message.delta"
   | "reasoning.delta"
+  | "agent.event"
   | "process.step.updated"
   | "tool.call.updated"
   | "usage.updated"
@@ -1817,6 +1819,7 @@ export interface ServerStreamEvent {
   createdAt?: string;
   role?: "assistant";
   delta?: string;
+  agentEvent?: ChatAgentEvent;
   step?: ProcessStep;
   toolCall?: unknown;
   usage?: unknown;

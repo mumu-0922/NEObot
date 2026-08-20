@@ -66,6 +66,12 @@ Migration head: 100_chat_agent_approvals
   emit `stream.gap/cursor_evicted` when the requested prefix is gone. Never
   write transient chunks to `chat_agent_events`; converge on the terminal
   persisted Message snapshot after a gap.
+- For an admitted timeline canary, every event persisted through the active
+  recorder is also sent as `agent.event` with its durable `eventId`, durable
+  sequence, UTC occurrence time, and already-normalized payload. The outer SSE
+  sequence remains the reconnect cursor. Emit `assistant.message` and
+  `turn.ended` before the terminal Message frame, and include the same event set
+  in that terminal Message so live, reconnect, and reload share one authority.
 - A background Terminal start is presented as a Job card and persists only its
   sanitized command/cwd plus `jobId`, process-local status, timestamps,
   duration, exit flags, and bounded transcript. Later `job_output`/`job_kill`
@@ -121,7 +127,7 @@ Migration head: 100_chat_agent_approvals
   summary-only fallback, raw argument/result exclusion, and artifact-body
   exclusion. Keep safe status visible when content is hidden. Legacy
   ProcessStep transport remains a rollback surface until these gates pass one
-  stable exact-user canary release.
+  focused exact-user canary acceptance session.
 
 ### Validation matrix
 

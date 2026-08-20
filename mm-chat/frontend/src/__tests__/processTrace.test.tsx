@@ -14,6 +14,7 @@ import {
   processReasonCategoryForDisplay,
   processToolLabelForDisplay,
   processTraceFromChatAgentEvents,
+  upsertChatAgentEvent,
   processTraceFromMessageMetadata,
   projectProcessStepsForDisplay,
   reasoningFromMessageMetadata,
@@ -921,6 +922,35 @@ describe("durable process trace", () => {
         { ...base, eventId: "event-2", sequence: 2 },
       ]).map((event) => event.eventId),
     ).toEqual(["event-1", "event-2"]);
+  });
+
+  it("inserts live durable events in sequence order without replacing an immutable event", () => {
+    const base = {
+      turnId: "turn-1",
+      conversationId: "conversation-1",
+      messageId: "message-1",
+      runId: "run-1",
+      type: "step.started" as const,
+      payload: {},
+      occurredAt: "2026-08-20T12:00:00Z",
+    };
+    const second = { ...base, eventId: "event-2", sequence: 2 };
+    const first = { ...base, eventId: "event-1", sequence: 1 };
+    const ordered = upsertChatAgentEvent(
+      upsertChatAgentEvent([], second),
+      first,
+    );
+
+    expect(ordered.map((event) => event.eventId)).toEqual([
+      "event-1",
+      "event-2",
+    ]);
+    expect(
+      upsertChatAgentEvent(ordered, {
+        ...second,
+        payload: { processStep: { id: "must-not-replace" } },
+      }),
+    ).toBe(ordered);
   });
 
   it("upserts live step transitions without reordering other steps", () => {

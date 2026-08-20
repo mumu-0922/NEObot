@@ -81,6 +81,15 @@ explicit gap and the UI converges on the final persisted Message snapshot. This
 delivery buffer is not durable Tool authority and never causes per-chunk event
 rows.
 
+For an admitted timeline canary, `agent.event` carries the exact normalized
+`ChatAgentEvent` returned by durable persistence. Its inner `eventId` and
+sequence own deduplication and projection; the outer SSE sequence remains the
+cursor for reconnect delivery. The Backend emits final `assistant.message` and
+`turn.ended` facts before the terminal Message frame, and that Message includes
+the same event set. The frontend runtime-normalizes these untrusted frames and
+uses the durable reload projector for live state rather than creating a second
+Tool-card authority.
+
 Background Terminal execution is displayed as one Job lifecycle. Durable Agent
 events retain each immutable start/output/kill Tool fact plus only safe Job
 metadata; the UI joins those facts by exact `jobId`. Because Jobs are

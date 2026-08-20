@@ -147,7 +147,7 @@ func (h *Handler) retryChatAgentTool(w http.ResponseWriter, r *http.Request, eve
 			auth.WithUser(context.Background(), actor), 5*time.Second,
 		)
 		defer finishCancel()
-		_ = recorder.finish(finishCtx, turnStatus, "", turnErrorCode, time.Now())
+		_, _ = recorder.finish(finishCtx, turnStatus, "", turnErrorCode, time.Now())
 	}()
 
 	runtime := newLocalSkillToolRuntime(h.localSkillExecutor, nil)
@@ -195,7 +195,7 @@ func (h *Handler) retryChatAgentTool(w http.ResponseWriter, r *http.Request, eve
 		writeServiceError(w, err)
 		return
 	}
-	if err := recorder.finish(
+	if _, err := recorder.finish(
 		executionCtx, turnStatus, "", turnErrorCode, time.Now(),
 	); err != nil {
 		writeServiceError(w, err)

@@ -93,6 +93,50 @@ describe("MCP chat preflight and timeline", () => {
       }),
     ]);
   });
+
+  it("rejects malformed authoritative Agent events at the stream boundary", async () => {
+    const client = createServerChatApiShell(
+      createHttpClient({
+        requestSse: async (_path, options) => {
+          options.onFrame({
+            event: "message.started",
+            data: { type: "message.started", runId: "run-1", sequence: 1 },
+          });
+          options.onFrame({
+            event: "agent.event",
+            data: {
+              type: "agent.event",
+              runId: "run-1",
+              sequence: 2,
+              agentEvent: {
+                eventId: "event-1",
+                turnId: "turn-1",
+                conversationId: "conversation-1",
+                messageId: "message-1",
+                runId: "run-1",
+                sequence: 0,
+                type: "tool.result",
+                payload: {},
+                occurredAt: "2026-08-20T12:00:00Z",
+              },
+            },
+          });
+        },
+      }),
+    );
+
+    await expect(
+      client.streamAssistantMessage({
+        conversationId: "conversation-1",
+        userMessageId: "message-1",
+        modelRef: { providerId: "openai", modelId: "gpt-5.5" },
+        idempotencyKey: "stream-invalid-agent-event",
+      }),
+    ).resolves.toMatchObject({
+      status: "failed",
+      error: { code: "INVALID_SERVER_RESPONSE" },
+    });
+  });
 });
 
 function createHttpClient(overrides: {

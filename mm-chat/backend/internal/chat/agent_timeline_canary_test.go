@@ -1,7 +1,11 @@
 package chat
 
 import (
+	"bytes"
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"neo-chat/mm-chat/backend/internal/auth"
@@ -25,6 +29,50 @@ func TestAgentTimelineCanaryAdmissionIsExactAndFailClosed(t *testing.T) {
 	WithAgentTimelineCanary(true, nil)(handler)
 	if handler.agentTimelineEnabledFor(canaryID) {
 		t.Fatal("empty canary set admitted user")
+	}
+}
+
+func TestAgentTimelineCanaryStreamsDurableEventsBeforeTerminalMessage(t *testing.T) {
+	const canaryID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	repository := newFakeRepository()
+	repository.conversations = append(
+		repository.conversations,
+		fakeConversation(testConversationID, "Agent timeline", 0),
+	)
+	repository.messages[testConversationID] = append(
+		repository.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "hello"),
+	)
+	handler := NewHandler(
+		NewService(repository),
+		WithProvider(NewMockProvider()),
+		WithAgentTimelineCanary(true, []string{canaryID}),
+	)
+	request := httptest.NewRequest(
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		bytes.NewBufferString(
+			`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"idempotencyKey":"timeline-live-events"}`,
+		),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	request = request.WithContext(auth.WithUser(request.Context(), auth.User{ID: canaryID}))
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	body := recorder.Body.String()
+	if count := strings.Count(body, "event: agent.event"); count != 5 {
+		t.Fatalf("agent.event frame count=%d, want 5; body=%s", count, body)
+	}
+	terminalFrame := strings.LastIndex(body, "event: message.completed")
+	turnEnded := strings.Index(body, `"type":"turn.ended"`)
+	if terminalFrame < 0 || turnEnded < 0 || turnEnded > terminalFrame {
+		t.Fatalf("turn.ended must precede terminal frame; body=%s", body)
+	}
+	if !strings.Contains(body[terminalFrame:], `"agentEvents":[`) {
+		t.Fatalf("terminal Message omits authoritative Agent events; body=%s", body)
 	}
 }
 

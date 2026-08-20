@@ -26,9 +26,10 @@ const PROVIDER_STREAM_INTERRUPTED_CODE = "PROVIDER_STREAM_INTERRUPTED";
 ```
 
 The MCP client maps only to `/v1/mcp/*` routes defined in
-`mm-chat/docs/contracts/mcp-tools-api.md`. The Chat stream's shared
-`tool.call.updated` transport carries bounded `mcp` and `local_direct`
-timeline updates.
+`mm-chat/docs/contracts/mcp-tools-api.md`. For an admitted timeline canary, the
+Chat stream carries persisted timeline facts through `agent.event`; the
+compatibility `tool.call.updated` transport remains only during the bounded
+legacy-removal transition.
 
 ### 3. Contracts
 
@@ -164,6 +165,11 @@ timeline updates.
 - Repeated running ProcessSteps with the same ID update the existing Terminal
   card in place. They are transient live projections; reload must converge on
   the final durable snapshot and must not create one row per output chunk.
+- Normalize each `agent.event` at the untrusted stream boundary. Deduplicate by
+  immutable `eventId`, order by the inner durable sequence, and project the
+  accumulated events through the same function used for reload. The outer
+  stream sequence remains only the reconnect cursor; a duplicate reconnect
+  frame must not replace an already accepted durable event.
 - Normalize `tool.call.updated` with its mode/classification pair. MCP accepts
   only `read|write|unknown`; `local_direct` accepts `read|write|execute`.
   `execute` must not widen MCP Server definition or Tool classification
@@ -274,7 +280,8 @@ timeline updates.
   timeout/truncation/background pills, malformed-card fail-closed behavior,
   legacy steps, pending/allowed/denied/expired approval controls, malformed
   approval fail-closed behavior, decision API validation, and byte-equivalent
-  live `process.step.updated` versus durable Agent-event replay.
+  live `agent.event` versus durable Agent-event replay, with transient Terminal
+  progress tested separately.
 - Timeline acceptance uses one 500-event fixture for both paths. Measure full
   projection plus render after warm-up: visible live-update p95 must remain at
   or below 300 ms, while durable reload p95 must remain within 20% of the
@@ -284,7 +291,8 @@ timeline updates.
   fallback while proving that raw arguments/results, artifact bodies, secrets,
   runtime-owned host paths, ANSI/control bytes, and oversized presentation
   content do not reach rendered markup. Do not remove the legacy ProcessStep
-  transport until these gates have passed one stable exact-user canary release.
+  transport until these gates have passed one focused exact-user canary
+  acceptance session.
 - Generation-error wiring for current `PROVIDER_STREAM_INTERRUPTED` plus the
   non-empty legacy `PROVIDER_ERROR` compatibility path in every locale.
 - Storage/entity/import tests that remove all retired Plugin keys without

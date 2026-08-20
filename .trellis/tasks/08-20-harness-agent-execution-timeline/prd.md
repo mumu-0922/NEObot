@@ -267,6 +267,19 @@ replace the runtime.
   transport deletion. Legacy removal remains blocked until real external
   focused-session evidence returns `eligible`.
 
+### Slice 10 — authoritative live Agent events
+
+- Added exact-canary `agent.event` SSE frames containing the normalized event
+  returned by durable persistence. Durable `eventId`/sequence own frontend
+  ordering and deduplication while the outer SSE sequence remains the reconnect
+  cursor.
+- Final `assistant.message` and `turn.ended` facts precede the terminal Message,
+  which carries the same recorded event set for immediate convergence.
+- The frontend validates live Agent events at the stream boundary and projects
+  them with the same durable-event projector used after reload. The legacy
+  ProcessStep/Tool compatibility frames remain for the next reversible removal
+  slice.
+
 ### Slice 2 — live Terminal transcript
 
 - Added ordered stdout/stderr pipe callbacks under the existing executor output

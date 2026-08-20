@@ -244,6 +244,26 @@ export function normalizeChatAgentEvents(value: unknown): ChatAgentEvent[] {
   );
 }
 
+export function upsertChatAgentEvent(
+  events: ChatAgentEvent[],
+  incoming: ChatAgentEvent,
+): ChatAgentEvent[] {
+  if (events.some((event) => event.eventId === incoming.eventId)) return events;
+  const next = [...events];
+  const insertionIndex = next.findIndex(
+    (event) =>
+      event.sequence > incoming.sequence ||
+      (event.sequence === incoming.sequence &&
+        event.eventId.localeCompare(incoming.eventId) > 0),
+  );
+  if (insertionIndex === -1) {
+    next.push(incoming);
+  } else {
+    next.splice(insertionIndex, 0, incoming);
+  }
+  return next;
+}
+
 export function processTraceFromChatAgentEvents(
   value: unknown,
   legacy: ProcessStep[] | undefined = undefined,

@@ -11,6 +11,7 @@ import {
   SessionConfig,
   SessionMessageTree,
   ProcessStep,
+  ChatAgentEvent,
 } from "@/types";
 import {
   appDb,
@@ -51,7 +52,11 @@ import {
   switchMessageBranch,
   updateMessageInTree,
 } from "../../lib/chat/messageTree";
-import { upsertProcessStep } from "../../lib/chat/processTrace";
+import {
+  processTraceFromChatAgentEvents,
+  upsertChatAgentEvent,
+  upsertProcessStep,
+} from "../../lib/chat/processTrace";
 import {
   createChatCrudService,
   type ChatCrudMessage,
@@ -1337,6 +1342,7 @@ export const useChatStore = create<ChatState>()(
           }
 
           let assistantContent = "";
+          let liveAgentEvents: ChatAgentEvent[] = [];
           const setServerGeneration = (
             update: (
               generation: ServerGenerationState,
@@ -1459,6 +1465,20 @@ export const useChatStore = create<ChatState>()(
                 updateAssistantDraft(event.messageId, (message) => ({
                   ...message,
                   reasoning: `${message.reasoning ?? ""}${delta}`,
+                }));
+              },
+              onAgentEvent: (event) => {
+                if (!event.agentEvent) return;
+                liveAgentEvents = upsertChatAgentEvent(
+                  liveAgentEvents,
+                  event.agentEvent,
+                );
+                updateAssistantDraft(event.messageId, (message) => ({
+                  ...message,
+                  processTrace: processTraceFromChatAgentEvents(
+                    liveAgentEvents,
+                    message.processTrace,
+                  ),
                 }));
               },
               onProcess: (event) => {
@@ -1614,6 +1634,7 @@ export const useChatStore = create<ChatState>()(
         let assistantMessageId: string | null = null;
         try {
           let assistantContent = "";
+          let liveAgentEvents: ChatAgentEvent[] = [];
           const setServerGeneration = (
             update: (
               generation: ServerGenerationState,
@@ -1738,6 +1759,21 @@ export const useChatStore = create<ChatState>()(
                 updateAssistantDraft(event.messageId, (message) => ({
                   ...message,
                   reasoning: `${message.reasoning ?? ""}${delta}`,
+                  parentMessageId: userMessageId,
+                }));
+              },
+              onAgentEvent: (event) => {
+                if (!event.agentEvent) return;
+                liveAgentEvents = upsertChatAgentEvent(
+                  liveAgentEvents,
+                  event.agentEvent,
+                );
+                updateAssistantDraft(event.messageId, (message) => ({
+                  ...message,
+                  processTrace: processTraceFromChatAgentEvents(
+                    liveAgentEvents,
+                    message.processTrace,
+                  ),
                   parentMessageId: userMessageId,
                 }));
               },

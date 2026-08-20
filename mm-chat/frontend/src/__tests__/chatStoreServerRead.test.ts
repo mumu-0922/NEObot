@@ -1179,6 +1179,30 @@ describe("chat store server read path", () => {
             labelKey: "process.generation",
           },
         });
+        handlers?.onAgentEvent?.({
+          type: "agent.event",
+          runId: "run-1",
+          conversationId: "c1",
+          messageId: "m4",
+          agentEvent: {
+            eventId: "event-generation-running",
+            turnId: "turn-1",
+            conversationId: "c1",
+            messageId: "m4",
+            runId: "run-1",
+            sequence: 2,
+            type: "step.started",
+            payload: {
+              processStep: {
+                id: "m4:generation:1",
+                kind: "generation",
+                status: "running",
+                labelKey: "process.generation",
+              },
+            },
+            occurredAt: "2026-07-08T00:00:02Z",
+          },
+        });
         handlers?.onReasoning?.({
           type: "reasoning.delta",
           runId: "run-1",
@@ -1385,6 +1409,7 @@ describe("chat store server read path", () => {
         onStarted: expect.any(Function),
         onDelta: expect.any(Function),
         onReasoning: expect.any(Function),
+        onAgentEvent: expect.any(Function),
         onProcess: expect.any(Function),
         onSearch: expect.any(Function),
       }),

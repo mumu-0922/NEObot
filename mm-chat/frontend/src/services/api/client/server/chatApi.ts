@@ -30,7 +30,10 @@ import type {
   RetryChatAgentToolInput,
 } from "../types";
 import type { HttpClient } from "./httpClient";
-import { normalizeProcessStep } from "@/lib/chat/processTrace";
+import {
+  normalizeChatAgentEvent,
+  normalizeProcessStep,
+} from "@/lib/chat/processTrace";
 import { normalizeMcpToolCallUpdate } from "@/lib/mcp/types";
 
 const conversationsPath = "/v1/chat/conversations";
@@ -647,6 +650,17 @@ function dispatchStreamEvent(
       }
       handlers?.onReasoning?.(event);
       return null;
+    case "agent.event": {
+      const agentEvent = normalizeChatAgentEvent(event.agentEvent);
+      if (!agentEvent) {
+        throw new ApiClientError(
+          "INVALID_SERVER_RESPONSE",
+          "Server returned an invalid Agent event.",
+        );
+      }
+      handlers?.onAgentEvent?.({ ...event, agentEvent });
+      return null;
+    }
     case "process.step.updated": {
       const step = normalizeProcessStep(event.step);
       if (!step) {

@@ -10,10 +10,11 @@ import (
 )
 
 type chatAgentEventRecorder struct {
-	service *Service
-	turnID  string
-	mu      sync.Mutex
-	ended   bool
+	service      *Service
+	turnID       string
+	startedEvent ChatAgentEvent
+	mu           sync.Mutex
+	ended        bool
 }
 
 func startChatAgentEventRecorder(
@@ -32,13 +33,16 @@ func startChatAgentEventRecorder(
 	if err != nil {
 		return nil, fmt.Errorf("%w: create event id: %v", errChatAgentEventPersistence, err)
 	}
-	if _, err := service.StartChatAgentTurn(ctx, StartChatAgentTurnInput{
+	startedEvent, err := service.StartChatAgentTurn(ctx, StartChatAgentTurnInput{
 		TurnID: turnID, EventID: eventID, ConversationID: conversationID,
-		MessageID: messageID, RunID: runID, OccurredAt: at,
-	}); err != nil {
+		MessageID: messageID, RunID: runID, OccurredAt: at.UTC(),
+	})
+	if err != nil {
 		return nil, fmt.Errorf("%w: %v", errChatAgentEventPersistence, err)
 	}
-	return &chatAgentEventRecorder{service: service, turnID: turnID}, nil
+	return &chatAgentEventRecorder{
+		service: service, turnID: turnID, startedEvent: startedEvent,
+	}, nil
 }
 
 func (recorder *chatAgentEventRecorder) append(
@@ -71,7 +75,7 @@ func (recorder *chatAgentEventRecorder) appendWithEventID(
 	}
 	event, err := recorder.service.AppendChatAgentEvent(ctx, recorder.turnID, AppendChatAgentEventInput{
 		EventID: eventID, Type: eventType, StepSequence: stepSequence,
-		Payload: payload, OccurredAt: at,
+		Payload: payload, OccurredAt: at.UTC(),
 	})
 	if err != nil {
 		return ChatAgentEvent{}, fmt.Errorf("%w: %v", errChatAgentEventPersistence, err)
@@ -83,7 +87,7 @@ func (recorder *chatAgentEventRecorder) recordProcessStep(
 	ctx context.Context,
 	step ProcessStep,
 	at time.Time,
-) (ProcessStep, error) {
+) (ChatAgentEvent, ProcessStep, error) {
 	eventType := ChatAgentEventStepStarted
 	if isTerminalProcessStepStatus(step.Status) {
 		eventType = ChatAgentEventStepEnded
@@ -98,13 +102,15 @@ func (recorder *chatAgentEventRecorder) recordProcessStep(
 		ctx, eventType, stepSequence, chatAgentProcessStepPayload(step), at,
 	)
 	if err != nil {
-		return ProcessStep{}, err
+		return ChatAgentEvent{}, ProcessStep{}, err
 	}
 	projected, ok := processStepFromChatAgentPayload(event.Payload["processStep"])
 	if !ok {
-		return ProcessStep{}, fmt.Errorf("%w: process projection invalid", errChatAgentEventPersistence)
+		return ChatAgentEvent{}, ProcessStep{}, fmt.Errorf(
+			"%w: process projection invalid", errChatAgentEventPersistence,
+		)
 	}
-	return projected, nil
+	return event, projected, nil
 }
 
 func (recorder *chatAgentEventRecorder) recordToolExecution(
@@ -168,19 +174,20 @@ func (recorder *chatAgentEventRecorder) recordContextReplacement(
 	ctx context.Context,
 	replacement *ProviderContextReplacementEvent,
 	at time.Time,
-) error {
+) (ChatAgentEvent, error) {
 	if replacement == nil || replacement.BeforeBytes <= replacement.AfterBytes ||
 		replacement.AfterBytes < 0 || replacement.ResultsPruned < 0 ||
 		replacement.ExchangesReplaced < 0 {
-		return fmt.Errorf("%w: context replacement invalid", errChatAgentEventPersistence)
+		return ChatAgentEvent{}, fmt.Errorf(
+			"%w: context replacement invalid", errChatAgentEventPersistence,
+		)
 	}
-	_, err := recorder.append(ctx, ChatAgentEventContextReplaced, 0, map[string]any{
+	return recorder.append(ctx, ChatAgentEventContextReplaced, 0, map[string]any{
 		"reason":      strings.TrimSpace(replacement.Reason),
 		"beforeBytes": replacement.BeforeBytes, "afterBytes": replacement.AfterBytes,
 		"resultsPruned":     replacement.ResultsPruned,
 		"exchangesReplaced": replacement.ExchangesReplaced,
 	}, at)
-	return err
 }
 
 func (recorder *chatAgentEventRecorder) finish(
@@ -189,14 +196,14 @@ func (recorder *chatAgentEventRecorder) finish(
 	content string,
 	errorCode string,
 	at time.Time,
-) error {
+) ([]ChatAgentEvent, error) {
 	if recorder == nil {
-		return nil
+		return nil, nil
 	}
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
 	if recorder.ended {
-		return nil
+		return nil, nil
 	}
 	status = normalizeChatAgentTurnStatus(status)
 	messagePayload := map[string]any{
@@ -208,10 +215,10 @@ func (recorder *chatAgentEventRecorder) finish(
 			redactProcessSecrets(errorCode), 256,
 		)
 	}
-	_, messageErr := recorder.append(
+	messageEvent, messageErr := recorder.append(
 		ctx, ChatAgentEventAssistantMessage, 0, messagePayload, at,
 	)
-	_, endErr := recorder.append(
+	endEvent, endErr := recorder.append(
 		ctx,
 		ChatAgentEventTurnEnded,
 		0,
@@ -221,7 +228,14 @@ func (recorder *chatAgentEventRecorder) finish(
 	if endErr == nil {
 		recorder.ended = true
 	}
-	return errors.Join(messageErr, endErr)
+	events := make([]ChatAgentEvent, 0, 2)
+	if messageErr == nil {
+		events = append(events, messageEvent)
+	}
+	if endErr == nil {
+		events = append(events, endEvent)
+	}
+	return events, errors.Join(messageErr, endErr)
 }
 
 func normalizeChatAgentTurnStatus(status string) string {
