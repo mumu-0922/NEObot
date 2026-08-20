@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import enMessageInput from "../i18n/locales/en/MessageInput.json";
+import jaMessageInput from "../i18n/locales/ja/MessageInput.json";
+import zhMessageInput from "../i18n/locales/zh/MessageInput.json";
 import {
   getSearchCompatibility,
   getSearchCompatibilityErrorMessage,
@@ -25,6 +28,17 @@ describe("search compatibility", () => {
       reason: "server_search_unavailable",
     });
     expect(getSearchCompatibilityErrorMessage(unavailable)).toContain("server");
-    expect(getSearchProviderLabel("default")).toBe("Server");
+    expect(getSearchProviderLabel("default")).toBe("Tavily");
+  });
+
+  it("uses product-facing built-in and Tavily menu labels", () => {
+    const provider = getSearchProviderLabel("default");
+
+    expect(zhMessageInput.searchModeOpenAIWeb).toBe("内置搜索");
+    expect(
+      zhMessageInput.searchModeExternal.replace("{provider}", provider),
+    ).toBe("Tavily 搜索");
+    expect(enMessageInput.searchModeOpenAIWeb).toBe("Built-in search");
+    expect(jaMessageInput.searchModeOpenAIWeb).toBe("内蔵検索");
   });
 });

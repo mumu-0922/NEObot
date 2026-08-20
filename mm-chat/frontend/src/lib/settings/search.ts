@@ -38,7 +38,7 @@ export const normalizeSearchProvider = (
 
 export const getSearchProviderLabel = (provider: SearchProviderID): string => {
   void provider;
-  return "Server";
+  return "Tavily";
 };
 
 export const getSearchCompatibility = ({

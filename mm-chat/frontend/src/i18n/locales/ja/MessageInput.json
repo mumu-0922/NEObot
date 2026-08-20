@@ -34,7 +34,7 @@
   "searchModeOff": "オフ",
   "searchModeMenuAria": "ウェブ検索モードを選択、現在は {mode}",
   "searchModeGeminiGoogle": "Gemini Google 検索",
-  "searchModeOpenAIWeb": "OpenAI Web Search",
+  "searchModeOpenAIWeb": "内蔵検索",
   "searchModeAnthropicWeb": "Claude Web Search",
   "searchModeModelBuiltIn": "モデル内蔵検索",
   "searchModeExternal": "{provider} 検索",

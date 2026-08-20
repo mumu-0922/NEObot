@@ -34,7 +34,7 @@
   "searchModeOff": "关闭",
   "searchModeMenuAria": "选择联网搜索方式，当前为 {mode}",
   "searchModeGeminiGoogle": "Gemini Google 搜索",
-  "searchModeOpenAIWeb": "OpenAI Web Search",
+  "searchModeOpenAIWeb": "内置搜索",
   "searchModeAnthropicWeb": "Claude Web Search",
   "searchModeModelBuiltIn": "模型内置搜索",
   "searchModeExternal": "{provider} 搜索",
