@@ -177,6 +177,9 @@ func (runtime *localSkillToolRuntime) execute(
 		Mode:           "local_direct",
 		Classification: localSkillClassification(name),
 	}
+	if name == localTerminalToolName {
+		execution.Presentation = runtime.terminalProcessPresentation(call)
+	}
 	if !sendToolExecutionEvent(ctx, events, execution) {
 		return ProviderToolResult{}, context.Canceled
 	}
@@ -330,13 +333,7 @@ func (runtime *localSkillToolRuntime) executeCall(
 			"encoding": encoding, "content": content,
 		}), "", nil
 	case localTerminalToolName:
-		var arguments struct {
-			Command         string `json:"command"`
-			Skill           string `json:"skill"`
-			WorkingDir      string `json:"workingDir"`
-			TimeoutSeconds  int    `json:"timeoutSeconds"`
-			RunInBackground bool   `json:"runInBackground"`
-		}
+		var arguments localTerminalToolArguments
 		if !decodeStrictToolArguments(call.Arguments, &arguments) {
 			return localSkillFailureResult(call, "arguments_invalid"), "arguments_invalid", nil
 		}
@@ -362,6 +359,10 @@ func (runtime *localSkillToolRuntime) executeCall(
 		}
 		if arguments.RunInBackground {
 			execution.Durability = "process_local"
+			execution.Presentation = terminalResultPresentation(
+				execution.Presentation,
+				nil,
+			)
 			job, err := runtime.executor.StartBackgroundJob(ctx, localskills.JobStartRequest{
 				Scope: runtime.jobScope, Command: request,
 			})
@@ -375,6 +376,10 @@ func (runtime *localSkillToolRuntime) executeCall(
 			category := localTerminalFailureCategory(err)
 			return localSkillFailureResult(call, category), category, nil
 		}
+		execution.Presentation = terminalResultPresentation(
+			execution.Presentation,
+			&result,
+		)
 		return localSkillSuccessResult(call, map[string]any{
 			"exitCode": result.ExitCode, "stdout": result.Stdout, "stderr": result.Stderr,
 			"timedOut": result.TimedOut, "truncated": result.Truncated,
@@ -383,6 +388,66 @@ func (runtime *localSkillToolRuntime) executeCall(
 	default:
 		return localSkillFailureResult(call, "tool_not_available"), "tool_not_available", nil
 	}
+}
+
+type localTerminalToolArguments struct {
+	Command         string `json:"command"`
+	Skill           string `json:"skill"`
+	WorkingDir      string `json:"workingDir"`
+	TimeoutSeconds  int    `json:"timeoutSeconds"`
+	RunInBackground bool   `json:"runInBackground"`
+}
+
+func (runtime *localSkillToolRuntime) terminalProcessPresentation(
+	call ProviderToolCall,
+) *ProcessStepPresentation {
+	if runtime == nil || runtime.executor == nil {
+		return nil
+	}
+	var arguments localTerminalToolArguments
+	if !decodeStrictToolArguments(call.Arguments, &arguments) {
+		return nil
+	}
+	activeSkillRoot := ""
+	if skillName := strings.TrimSpace(arguments.Skill); skillName != "" {
+		if skill, ok := runtime.byName[skillName]; ok {
+			activeSkillRoot = skill.RootPath
+		}
+	}
+	command, cwd, ok := runtime.executor.TerminalPresentation(localskills.Request{
+		Command: arguments.Command, WorkingDir: arguments.WorkingDir,
+		TimeoutSeconds:  arguments.TimeoutSeconds,
+		SkillsRoot:      runtime.config().RuntimeRoot,
+		ActiveSkillRoot: activeSkillRoot,
+	}, arguments.RunInBackground)
+	if !ok {
+		return nil
+	}
+	return &ProcessStepPresentation{
+		Card: "terminal", Command: command, CWD: cwd,
+		Background: arguments.RunInBackground,
+	}
+}
+
+func terminalResultPresentation(
+	presentation *ProcessStepPresentation,
+	result *localskills.Result,
+) *ProcessStepPresentation {
+	if presentation == nil {
+		return nil
+	}
+	completed := *presentation
+	if presentation.ExitCode != nil {
+		exitCode := *presentation.ExitCode
+		completed.ExitCode = &exitCode
+	}
+	if result != nil {
+		exitCode := result.ExitCode
+		completed.ExitCode = &exitCode
+		completed.TimedOut = result.TimedOut
+		completed.Truncated = result.Truncated
+	}
+	return &completed
 }
 
 func decodeStrictToolArguments(raw string, destination any) bool {

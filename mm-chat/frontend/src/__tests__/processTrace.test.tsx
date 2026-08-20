@@ -119,6 +119,66 @@ describe("durable process trace", () => {
     });
   });
 
+  it("strictly normalizes only authorized local Terminal presentations", () => {
+    const terminal = normalizeProcessStep({
+      id: "tool-terminal-1",
+      kind: "tool",
+      status: "completed",
+      labelKey: "process.tool",
+      detail: {
+        toolName: "terminal",
+        mode: "local_direct",
+        classification: "execute",
+      },
+      presentation: {
+        card: "terminal",
+        command: "pnpm test processTrace.test.tsx",
+        cwd: "$NEO_CHAT_WORKSPACE/frontend",
+        exitCode: 0,
+        timedOut: false,
+        truncated: true,
+        background: false,
+      },
+    });
+    expect(terminal?.presentation).toEqual({
+      card: "terminal",
+      command: "pnpm test processTrace.test.tsx",
+      cwd: "$NEO_CHAT_WORKSPACE/frontend",
+      exitCode: 0,
+      truncated: true,
+    });
+
+    for (const presentation of [
+      { card: "unknown", command: "pwd" },
+      { card: "terminal", command: "pwd", exitCode: "0" },
+      { card: "terminal", command: "pwd", timedOut: "yes" },
+      { card: "terminal", command: "" },
+      { card: "terminal", command: "界".repeat(2000) },
+    ]) {
+      const normalized = normalizeProcessStep({
+        id: "tool-terminal-malformed",
+        kind: "tool",
+        status: "running",
+        labelKey: "process.tool",
+        detail: { toolName: "terminal", mode: "local_direct" },
+        presentation,
+      });
+      expect(normalized).not.toBeNull();
+      expect(normalized?.presentation).toBeUndefined();
+    }
+
+    const mcp = normalizeProcessStep({
+      id: "tool-terminal-mcp",
+      kind: "tool",
+      status: "running",
+      labelKey: "process.tool",
+      detail: { toolName: "terminal", mode: "mcp" },
+      presentation: { card: "terminal", command: "cat /private/.env" },
+    });
+    expect(mcp).not.toBeNull();
+    expect(mcp?.presentation).toBeUndefined();
+  });
+
   it("builds generic human-readable MCP labels without exposing internal refs", () => {
     expect(humanizeToolName("ask_question")).toBe("Ask question");
     expect(humanizeToolName("resolve-library-id")).toBe("Resolve library id");
@@ -189,6 +249,49 @@ describe("durable process trace", () => {
     expect(html).not.toContain("unknown");
     expect(html).not.toContain("queued");
     expect(html).not.toContain("&quot;question&quot;");
+  });
+
+  it("renders a collapsible Terminal command card and result state", () => {
+    const step = normalizeProcessStep({
+      id: "tool-terminal-1",
+      kind: "tool",
+      status: "failed",
+      labelKey: "process.tool",
+      durationMs: 1250,
+      detail: {
+        toolName: "terminal",
+        mode: "local_direct",
+        classification: "execute",
+      },
+      presentation: {
+        card: "terminal",
+        command: "go test ./internal/chat\nprintf done",
+        cwd: "$NEO_CHAT_WORKSPACE/backend",
+        exitCode: 17,
+        timedOut: true,
+        truncated: true,
+        background: true,
+      },
+    });
+    const html = renderToStaticMarkup(
+      <NextIntlClientProvider
+        locale="zh"
+        messages={{ Content: contentMessages }}
+        timeZone="UTC"
+      >
+        <ProcessTracePanel steps={[step!]} />
+      </NextIntlClientProvider>,
+    );
+
+    expect(html).toContain("go test ./internal/chat printf done");
+    expect(html).toContain("$NEO_CHAT_WORKSPACE/backend");
+    expect(html).toContain("退出码 17");
+    expect(html).toContain("已超时");
+    expect(html).toContain("输出已截断");
+    expect(html).toContain("后台运行");
+    expect(html).toContain("<details");
+    expect(html).not.toContain("stdout");
+    expect(html).not.toContain("stderr");
   });
 
   it("warns that process-local background Jobs disappear after restart", () => {
@@ -303,6 +406,37 @@ describe("durable process trace", () => {
       },
     ]);
     expect(projected?.some(isProcessStepActive)).toBe(false);
+  });
+
+  it("projects the same Terminal presentation from live and durable steps", () => {
+    const rawStep = {
+      id: "message-1:tool:1",
+      kind: "tool",
+      status: "completed",
+      labelKey: "process.tool",
+      detail: { toolName: "terminal", mode: "local_direct", round: 1 },
+      presentation: {
+        card: "terminal",
+        command: "go test ./internal/chat",
+        cwd: "$NEO_CHAT_WORKSPACE/backend",
+        exitCode: 0,
+      },
+    };
+    const live = normalizeProcessStep(rawStep);
+    const durable = processTraceFromChatAgentEvents([
+      {
+        eventId: "event-terminal-1",
+        turnId: "turn-1",
+        conversationId: "conversation-1",
+        messageId: "message-1",
+        runId: "run-1",
+        sequence: 1,
+        type: "tool.result",
+        payload: { processSteps: [rawStep] },
+        occurredAt: "2026-08-20T12:00:00Z",
+      },
+    ]);
+    expect(durable).toEqual([live]);
   });
 
   it("rejects malformed durable events without replacing legacy history", () => {

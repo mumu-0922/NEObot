@@ -230,15 +230,13 @@ func (executor *Executor) executeReserved(
 		waitErr = <-waited
 	}
 	stdout, stderr, truncated := capture.result()
-	stdout = redactExecutionPaths(
+	stdout = executor.RedactExecutionPaths(
 		stdout,
-		executor.config.WorkspaceRoot,
 		request.SkillsRoot,
 		request.ActiveSkillRoot,
 	)
-	stderr = redactExecutionPaths(
+	stderr = executor.RedactExecutionPaths(
 		stderr,
-		executor.config.WorkspaceRoot,
 		request.SkillsRoot,
 		request.ActiveSkillRoot,
 	)
@@ -324,14 +322,24 @@ func explicitEnvironment(workspace, skillsRoot, activeSkillRoot string) []string
 	return environment
 }
 
-func redactExecutionPaths(value, workspace, skillsRoot, activeSkillRoot string) string {
+// RedactExecutionPaths replaces runtime-owned paths with stable aliases for
+// bounded Tool results and process presentation. It does not authorize a path.
+func (executor *Executor) RedactExecutionPaths(
+	value string,
+	skillsRoot string,
+	activeSkillRoot string,
+) string {
+	if executor == nil {
+		return value
+	}
 	replacements := []struct {
 		path  string
 		label string
 	}{
 		{path: activeSkillRoot, label: "$NEO_CHAT_ACTIVE_SKILL_ROOT"},
 		{path: skillsRoot, label: "<skill-cache>"},
-		{path: workspace, label: "$NEO_CHAT_WORKSPACE"},
+		{path: executor.config.WorkspaceHostRoot, label: "$NEO_CHAT_WORKSPACE"},
+		{path: executor.config.WorkspaceRoot, label: "$NEO_CHAT_WORKSPACE"},
 	}
 	for _, replacement := range replacements {
 		path := filepath.Clean(strings.TrimSpace(replacement.path))
@@ -340,6 +348,50 @@ func redactExecutionPaths(value, workspace, skillsRoot, activeSkillRoot string) 
 		}
 	}
 	return value
+}
+
+// WorkspaceDisplayPath maps a valid workspace alias to the stable path shown
+// in process presentation without requiring the target directory to exist.
+func (executor *Executor) WorkspaceDisplayPath(value string) (string, bool) {
+	if executor == nil || !executor.Enabled() {
+		return "", false
+	}
+	name, err := executor.cleanWorkspaceInputPath(value, true)
+	if err != nil {
+		return "", false
+	}
+	if name == "." {
+		return "$NEO_CHAT_WORKSPACE", true
+	}
+	return "$NEO_CHAT_WORKSPACE/" + filepath.ToSlash(name), true
+}
+
+// TerminalPresentation validates a request through the same admission path as
+// execution, then returns only stable, redacted display values.
+func (executor *Executor) TerminalPresentation(
+	request Request,
+	background bool,
+) (string, string, bool) {
+	if executor == nil || !executor.Enabled() {
+		return "", "", false
+	}
+	maximumTimeout := executor.config.CallTimeout
+	if background {
+		maximumTimeout = executor.config.RunTimeout
+	}
+	if _, _, err := executor.prepareRequest(&request, maximumTimeout); err != nil {
+		return "", "", false
+	}
+	cwd, ok := executor.WorkspaceDisplayPath(request.WorkingDir)
+	if !ok {
+		return "", "", false
+	}
+	command := executor.RedactExecutionPaths(
+		request.Command,
+		request.SkillsRoot,
+		request.ActiveSkillRoot,
+	)
+	return command, cwd, command != ""
 }
 
 func boundOutput(stdout, stderr string, limit int64) (string, string, bool) {

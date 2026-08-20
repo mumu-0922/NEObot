@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import {
   BookOpenText,
   Brain,
@@ -9,6 +10,7 @@ import {
   CircleAlert,
   Globe2,
   LoaderCircle,
+  SquareTerminal,
   Wrench,
   Zap,
 } from "lucide-react";
@@ -151,6 +153,8 @@ function ProcessStepRow({ step }: { step: ProcessStep }) {
   const hitCount = numberDetail(step, "hitCount");
   const sourceCount = numberDetail(step, "sourceCount");
   const toolLabel = processToolLabelForDisplay(step);
+  const terminal = step.presentation;
+  const StepIcon = terminal ? SquareTerminal : Icon;
 
   return (
     <li className="flex min-w-0 items-start gap-2 text-xs text-gray-600 dark:text-muted-foreground">
@@ -166,7 +170,7 @@ function ProcessStepRow({ step }: { step: ProcessStep }) {
             aria-hidden="true"
           />
         ) : (
-          <Icon size={12} aria-hidden="true" />
+          <StepIcon size={12} aria-hidden="true" />
         )}
       </span>
       <div className="min-w-0 flex-1">
@@ -193,8 +197,103 @@ function ProcessStepRow({ step }: { step: ProcessStep }) {
             {processReasonLabel(reason, t)}
           </div>
         ) : null}
+        {terminal ? <TerminalProcessCard terminal={terminal} /> : null}
       </div>
     </li>
+  );
+}
+
+function TerminalProcessCard({
+  terminal,
+}: {
+  terminal: NonNullable<ProcessStep["presentation"]>;
+}) {
+  const t = useTranslations("Content");
+  const preview = terminal.command.replace(/\s+/g, " ").trim();
+  const exitFailed =
+    typeof terminal.exitCode === "number" && terminal.exitCode !== 0;
+
+  return (
+    <details className="group/terminal mt-1.5 overflow-hidden rounded-md border border-slate-800/70 bg-slate-950 text-slate-200 dark:border-slate-700">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-2 marker:content-none [&::-webkit-details-marker]:hidden">
+        <span
+          className="select-none font-mono text-[11px] text-emerald-400"
+          aria-hidden="true"
+        >
+          $
+        </span>
+        <code
+          className="min-w-0 flex-1 truncate font-mono text-[11px] text-slate-200"
+          title={preview}
+        >
+          {preview}
+        </code>
+        <ChevronDown
+          size={13}
+          aria-hidden="true"
+          className="shrink-0 text-slate-500 transition-transform group-open/terminal:rotate-180"
+        />
+      </summary>
+      <div className="border-t border-slate-800 px-2.5 py-2">
+        {terminal.cwd ? (
+          <div className="mb-2 flex min-w-0 items-center gap-2 text-[10px] text-slate-400">
+            <span className="shrink-0 uppercase tracking-wide">
+              {t("processTerminalCwd")}
+            </span>
+            <code className="min-w-0 truncate font-mono text-slate-300">
+              {terminal.cwd}
+            </code>
+          </div>
+        ) : null}
+        <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-black/35 p-2 font-mono text-[11px] leading-5 text-slate-100 custom-scrollbar">
+          <code>{terminal.command}</code>
+        </pre>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {typeof terminal.exitCode === "number" ? (
+            <TerminalPill tone={exitFailed ? "danger" : "success"}>
+              {t("processTerminalExitCode", { code: terminal.exitCode })}
+            </TerminalPill>
+          ) : null}
+          {terminal.timedOut ? (
+            <TerminalPill tone="warning">
+              {t("processTerminalTimedOut")}
+            </TerminalPill>
+          ) : null}
+          {terminal.truncated ? (
+            <TerminalPill tone="warning">
+              {t("processTerminalTruncated")}
+            </TerminalPill>
+          ) : null}
+          {terminal.background ? (
+            <TerminalPill tone="info">
+              {t("processTerminalBackground")}
+            </TerminalPill>
+          ) : null}
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function TerminalPill({
+  children,
+  tone,
+}: {
+  children: ReactNode;
+  tone: "success" | "danger" | "warning" | "info";
+}) {
+  const tones = {
+    success: "bg-emerald-400/15 text-emerald-300",
+    danger: "bg-red-400/15 text-red-300",
+    warning: "bg-amber-400/15 text-amber-200",
+    info: "bg-violet-400/15 text-violet-200",
+  } as const;
+  return (
+    <span
+      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${tones[tone]}`}
+    >
+      {children}
+    </span>
   );
 }
 

@@ -44,6 +44,10 @@ func (runtime *toolProcessTrace) apply(
 			at,
 			detail,
 		)
+		if event.Presentation != nil {
+			step.Presentation = event.Presentation
+			step = runtime.trace.add(step)
+		}
 		toolStepID = step.ID
 		runtime.toolStepIDs[event.ExecutionID] = toolStepID
 		updates = append(updates, step)
@@ -78,6 +82,10 @@ func (runtime *toolProcessTrace) apply(
 		status = ProcessStepStatusFailed
 	}
 	if step, ok := runtime.trace.transitionID(toolStepID, status, at, detail); ok {
+		if event.Presentation != nil {
+			step.Presentation = event.Presentation
+			step = runtime.trace.add(step)
+		}
 		updates = append(updates, step)
 	}
 	if webStepID != "" {

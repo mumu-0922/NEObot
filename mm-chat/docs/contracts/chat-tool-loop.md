@@ -561,6 +561,17 @@ interface ProcessStep {
   completedAt?: string;
   durationMs?: number;
   detail?: Record<string, unknown>;
+  presentation?: ProcessTerminalPresentation;
+}
+
+interface ProcessTerminalPresentation {
+  card: "terminal";
+  command: string;
+  cwd?: string;
+  exitCode?: number;
+  timedOut?: boolean;
+  truncated?: boolean;
+  background?: boolean;
 }
 ```
 
@@ -621,8 +632,13 @@ the frontend sorts and deduplicates valid events and prefers their process
 projection over legacy `metadata.processTrace`. Old Messages without valid
 events retain the legacy fallback. Tool event payloads retain only bounded
 display facts such as name, mode, risk, status, duration, Round and public
-Server label; command, arguments, query, raw Result, credentials, private
-Server refs and paths are forbidden.
+Server label. The sole command exception is a separate typed presentation on an
+exact `local_direct` Terminal ProcessStep. It stores only a UTF-8-bounded,
+secret-redacted command, stable Workspace cwd alias, exit code, timeout,
+truncation, and background flags. Raw stdout/stderr, generic arguments, query,
+credentials, private Server refs, and materialized Workspace/Host/Skill paths
+remain forbidden. Unknown/malformed presentations are dropped without
+invalidating the enclosing step, and MCP cannot opt into a Terminal card.
 
 Job-related process rows may additionally retain only
 `durability=process_local`. `context.replaced` payloads retain reason,

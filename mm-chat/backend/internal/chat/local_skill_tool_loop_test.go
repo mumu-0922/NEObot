@@ -105,6 +105,16 @@ func TestLocalSkillToolLoopLoadsSkillRunsTerminalAndContinuesSameModel(t *testin
 	if len(executions) != 4 {
 		t.Fatalf("executions=%#v", executions)
 	}
+	runningTerminal := executions[2].Presentation
+	completedTerminal := executions[3].Presentation
+	if runningTerminal == nil || completedTerminal == nil ||
+		runningTerminal.Card != "terminal" ||
+		!strings.Contains(runningTerminal.Command, "printf executed") ||
+		runningTerminal.CWD != "$NEO_CHAT_WORKSPACE" ||
+		runningTerminal.ExitCode != nil || completedTerminal.ExitCode == nil ||
+		*completedTerminal.ExitCode != 0 {
+		t.Fatalf("terminal presentations=%#v / %#v", runningTerminal, completedTerminal)
+	}
 	encodedExecutions, err := json.Marshal(executions)
 	if err != nil {
 		t.Fatal(err)

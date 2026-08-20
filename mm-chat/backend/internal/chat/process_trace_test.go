@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/websearch"
@@ -217,6 +218,91 @@ func TestToolProcessTracePersistsMCPArgumentTypesAndUnknownOutcome(t *testing.T)
 		completed.Detail["callStatus"] != "outcome_unknown" ||
 		completed.Detail["argumentSummary"] != `{"overwrite":"boolean","path":"string"}` {
 		t.Fatalf("MCP outcome step = %#v", completed)
+	}
+}
+
+func TestToolProcessTraceSanitizesTerminalPresentationAndPreservesResultState(t *testing.T) {
+	trace := newProcessTrace("message-1")
+	runtime := newToolProcessTrace(trace)
+	startedAt := time.Now()
+	running := &ProviderToolExecutionEvent{
+		ExecutionID: "terminal-1", Name: localTerminalToolName,
+		Status: ProcessStepStatusRunning, Round: 1, Mode: "local_direct",
+		Classification: "execute", Presentation: &ProcessStepPresentation{
+			Card:    "terminal",
+			Command: "printf token=fixture-secret; echo /workspace/private",
+			CWD:     "$NEO_CHAT_WORKSPACE",
+		},
+	}
+	updates := runtime.apply(running, startedAt)
+	if len(updates) != 1 || updates[0].Presentation == nil ||
+		strings.Contains(updates[0].Presentation.Command, "fixture-secret") ||
+		!strings.Contains(updates[0].Presentation.Command, "[REDACTED]") {
+		t.Fatalf("running terminal step = %#v", updates)
+	}
+
+	exitCode := 17
+	completed := *running
+	completed.Status = ProcessStepStatusCompleted
+	completed.Presentation = &ProcessStepPresentation{
+		Card: "terminal", Command: running.Presentation.Command,
+		CWD: "$NEO_CHAT_WORKSPACE", ExitCode: &exitCode,
+		TimedOut: true, Truncated: true, Background: true,
+	}
+	updates = runtime.apply(&completed, startedAt.Add(time.Second))
+	if len(updates) != 1 || updates[0].Presentation == nil ||
+		updates[0].Presentation.ExitCode == nil ||
+		*updates[0].Presentation.ExitCode != 17 ||
+		!updates[0].Presentation.TimedOut || !updates[0].Presentation.Truncated ||
+		!updates[0].Presentation.Background {
+		t.Fatalf("completed terminal step = %#v", updates)
+	}
+
+	encoded := metadataString(t, chatAgentProcessStepPayload(updates[0]))
+	for _, forbidden := range []string{"fixture-secret", "stdout", "stderr"} {
+		if strings.Contains(encoded, forbidden) {
+			t.Fatalf("terminal presentation leaked %q: %s", forbidden, encoded)
+		}
+	}
+	cloned := cloneProcessStep(updates[0])
+	*cloned.Presentation.ExitCode = 0
+	if *updates[0].Presentation.ExitCode != 17 {
+		t.Fatal("terminal presentation exit code pointer was not cloned")
+	}
+}
+
+func TestProcessTraceDropsUnauthorizedOrMalformedTerminalPresentation(t *testing.T) {
+	trace := newProcessTrace("message-1")
+	for index, step := range []ProcessStep{
+		{
+			ID: "message-1:tool:1", Kind: ProcessStepKindTool,
+			Status: ProcessStepStatusRunning, LabelKey: "process.tool",
+			Detail:       map[string]any{"toolName": localTerminalToolName, "mode": "mcp"},
+			Presentation: &ProcessStepPresentation{Card: "terminal", Command: "pwd"},
+		},
+		{
+			ID: "message-1:tool:2", Kind: ProcessStepKindTool,
+			Status: ProcessStepStatusRunning, LabelKey: "process.tool",
+			Detail:       map[string]any{"toolName": localTerminalToolName, "mode": "local_direct"},
+			Presentation: &ProcessStepPresentation{Card: "unknown", Command: "pwd"},
+		},
+	} {
+		if normalized := trace.add(step); normalized.Presentation != nil {
+			t.Fatalf("case %d retained unauthorized presentation: %#v", index, normalized)
+		}
+	}
+	bounded := trace.add(ProcessStep{
+		ID: "message-1:tool:3", Kind: ProcessStepKindTool,
+		Status: ProcessStepStatusRunning, LabelKey: "process.tool",
+		Detail: map[string]any{"toolName": localTerminalToolName, "mode": "local_direct"},
+		Presentation: &ProcessStepPresentation{
+			Card: "terminal", Command: strings.Repeat("界", maxProcessTerminalCommandBytes),
+		},
+	})
+	if bounded.Presentation == nil ||
+		len(bounded.Presentation.Command) > maxProcessTerminalCommandBytes ||
+		!utf8.ValidString(bounded.Presentation.Command) {
+		t.Fatalf("UTF-8 terminal bound = %#v", bounded.Presentation)
 	}
 }
 

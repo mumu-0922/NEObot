@@ -4,6 +4,7 @@ import type {
   ProcessStep,
   ProcessStepKind,
   ProcessStepStatus,
+  ProcessTerminalPresentation,
 } from "./types";
 
 const PROCESS_STEP_KINDS = new Set<ProcessStepKind>([
@@ -81,6 +82,9 @@ const PROCESS_DETAIL_KEYS = new Set([
   "durability",
 ]);
 
+const MAX_TERMINAL_COMMAND_BYTES = 4096;
+const MAX_TERMINAL_CWD_BYTES = 1024;
+
 export type ProcessRoute = "direct" | "knowledge" | "web" | "both";
 
 export type ProcessReasonCategory =
@@ -134,6 +138,11 @@ export function normalizeProcessStep(value: unknown): ProcessStep | null {
 
   const durationMs = nonNegativeNumber(value.durationMs);
   const detail = normalizeProcessDetail(value.detail);
+  const presentation = normalizeProcessStepPresentation(
+    value.presentation,
+    kind,
+    detail,
+  );
   return {
     id,
     kind,
@@ -147,6 +156,7 @@ export function normalizeProcessStep(value: unknown): ProcessStep | null {
       : {}),
     ...(durationMs !== undefined ? { durationMs } : {}),
     ...(detail ? { detail } : {}),
+    ...(presentation ? { presentation } : {}),
   };
 }
 
@@ -467,6 +477,71 @@ function normalizeProcessDetail(
     }
   }
   return Object.keys(detail).length > 0 ? detail : undefined;
+}
+
+function normalizeProcessStepPresentation(
+  value: unknown,
+  kind: ProcessStepKind,
+  detail: Record<string, unknown> | undefined,
+): ProcessTerminalPresentation | undefined {
+  if (
+    !isRecord(value) ||
+    kind !== "tool" ||
+    detail?.toolName !== "terminal" ||
+    detail.mode !== "local_direct" ||
+    value.card !== "terminal"
+  ) {
+    return undefined;
+  }
+  const command = boundedPresentationString(
+    value.command,
+    MAX_TERMINAL_COMMAND_BYTES,
+  );
+  if (!command) return undefined;
+  const cwd =
+    value.cwd === undefined
+      ? undefined
+      : boundedPresentationString(value.cwd, MAX_TERMINAL_CWD_BYTES);
+  const exitCode =
+    value.exitCode === undefined
+      ? undefined
+      : typeof value.exitCode === "number" &&
+          Number.isInteger(value.exitCode) &&
+          value.exitCode >= -1 &&
+          value.exitCode <= 255
+        ? value.exitCode
+        : null;
+  if (
+    (value.cwd !== undefined && !cwd) ||
+    exitCode === null ||
+    !optionalBoolean(value.timedOut) ||
+    !optionalBoolean(value.truncated) ||
+    !optionalBoolean(value.background)
+  ) {
+    return undefined;
+  }
+  return {
+    card: "terminal",
+    command,
+    ...(cwd ? { cwd } : {}),
+    ...(exitCode !== undefined ? { exitCode } : {}),
+    ...(value.timedOut === true ? { timedOut: true } : {}),
+    ...(value.truncated === true ? { truncated: true } : {}),
+    ...(value.background === true ? { background: true } : {}),
+  };
+}
+
+function boundedPresentationString(value: unknown, maxBytes: number): string {
+  if (typeof value !== "string") return "";
+  const normalized = value.trim();
+  return normalized &&
+    new TextEncoder().encode(normalized).byteLength <= maxBytes
+    ? normalized
+    : "";
+}
+
+function optionalBoolean(value: unknown): boolean {
+  return value === undefined || typeof value === "boolean";
 }
 
 function representsSameToolExecution(

@@ -224,6 +224,60 @@ func TestExecutorRejectsBusyInvalidCommandAndWorkingDirectory(t *testing.T) {
 	}
 }
 
+func TestExecutorBuildsStableRedactedProcessPaths(t *testing.T) {
+	workspace := t.TempDir()
+	hostWorkspace := filepath.Join(t.TempDir(), "host-workspace")
+	executor, err := NewExecutor(Config{
+		Enabled: true, RuntimeRoot: filepath.Join(workspace, ".skills"),
+		WorkspaceRoot: workspace, WorkspaceHostRoot: hostWorkspace,
+		ShellPath: "/bin/sh", ApprovalMode: ApprovalSmart,
+		CallTimeout: time.Second, RunTimeout: 5 * time.Second,
+		MaxOutput: 4096, MaxCalls: 4, MaxRounds: 4, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	skillsRoot := filepath.Join(workspace, ".skills")
+	activeSkillRoot := filepath.Join(skillsRoot, "fixture")
+	raw := strings.Join([]string{
+		activeSkillRoot, skillsRoot, hostWorkspace, workspace,
+	}, "|")
+	redacted := executor.RedactExecutionPaths(raw, skillsRoot, activeSkillRoot)
+	if strings.Contains(redacted, workspace) || strings.Contains(redacted, hostWorkspace) ||
+		!strings.Contains(redacted, "$NEO_CHAT_ACTIVE_SKILL_ROOT") ||
+		!strings.Contains(redacted, "<skill-cache>") ||
+		strings.Count(redacted, "$NEO_CHAT_WORKSPACE") != 2 {
+		t.Fatalf("redacted paths = %q", redacted)
+	}
+	for input, expected := range map[string]string{
+		"":                             "$NEO_CHAT_WORKSPACE",
+		"nested/path":                  "$NEO_CHAT_WORKSPACE/nested/path",
+		hostWorkspace + "/nested/path": "$NEO_CHAT_WORKSPACE/nested/path",
+		workspace + "/nested/path":     "$NEO_CHAT_WORKSPACE/nested/path",
+	} {
+		if got, ok := executor.WorkspaceDisplayPath(input); !ok || got != expected {
+			t.Fatalf("display path %q = %q/%t, want %q", input, got, ok, expected)
+		}
+	}
+	if got, ok := executor.WorkspaceDisplayPath("/private/outside"); ok || got != "" {
+		t.Fatalf("outside display path = %q/%t", got, ok)
+	}
+	command, cwd, ok := executor.TerminalPresentation(Request{
+		Command:    "printf " + hostWorkspace + "/nested/path",
+		WorkingDir: workspace, SkillsRoot: skillsRoot,
+		ActiveSkillRoot: activeSkillRoot,
+	}, false)
+	if !ok || command != "printf $NEO_CHAT_WORKSPACE/nested/path" ||
+		cwd != "$NEO_CHAT_WORKSPACE" {
+		t.Fatalf("terminal presentation = %q / %q / %t", command, cwd, ok)
+	}
+	if command, cwd, ok := executor.TerminalPresentation(Request{
+		Command: "cat /run/secrets/private",
+	}, false); ok || command != "" || cwd != "" {
+		t.Fatalf("blocked terminal presentation = %q / %q / %t", command, cwd, ok)
+	}
+}
+
 func newTestExecutor(t *testing.T, workspace, approval string, output int64, timeout time.Duration) *Executor {
 	t.Helper()
 	executor, err := NewExecutor(Config{

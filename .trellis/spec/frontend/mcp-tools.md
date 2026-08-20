@@ -143,6 +143,14 @@ timeline updates.
   collapsed by default. Manual retry is allowed only if the backend exposes a
   trusted idempotent read retry affordance; never infer it from remote
   annotations.
+- A ProcessStep presentation is untrusted input. Render a Terminal card only
+  for exact `kind=tool`, `detail.toolName=terminal`,
+  `detail.mode=local_direct`, and `presentation.card=terminal`. Strictly bound
+  and type-check command, cwd, exit code and boolean flags. Unknown/malformed
+  presentation is dropped while the valid legacy step remains. The collapsed
+  row shows a one-line command preview; expansion shows the backend-redacted
+  cwd, command, exit code, timeout/truncation/background pills. Never render
+  stdout/stderr, reuse `argumentSummary`, or allow MCP to opt into this card.
 - Normalize `tool.call.updated` with its mode/classification pair. MCP accepts
   only `read|write|unknown`; `local_direct` accepts `read|write|execute`.
   `execute` must not widen MCP Server definition or Tool classification
@@ -230,6 +238,10 @@ timeline updates.
   rejects unknown modes plus MCP/`execute` cross-mode drift. Exercise the live
   SSE normalization path directly; a reload-only durable timeline replay is
   not evidence that the live wire contract works.
+- Terminal presentation tests cover running/completed, exit 0/nonzero,
+  timeout/truncation/background pills, malformed-card fail-closed behavior,
+  legacy steps, and byte-equivalent live `process.step.updated` versus durable
+  Agent-event replay.
 - Generation-error wiring for current `PROVIDER_STREAM_INTERRUPTED` plus the
   non-empty legacy `PROVIDER_ERROR` compatibility path in every locale.
 - Storage/entity/import tests that remove all retired Plugin keys without

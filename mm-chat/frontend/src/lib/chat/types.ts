@@ -69,6 +69,17 @@ export interface ProcessStep {
   completedAt?: string;
   durationMs?: number;
   detail?: Record<string, unknown>;
+  presentation?: ProcessTerminalPresentation;
+}
+
+export interface ProcessTerminalPresentation {
+  card: "terminal";
+  command: string;
+  cwd?: string;
+  exitCode?: number;
+  timedOut?: boolean;
+  truncated?: boolean;
+  background?: boolean;
 }
 
 export interface MessageVersion {

@@ -46,7 +46,11 @@ Migration head: 099_chat_agent_event_log_function_repair
   Terminal may check them. Background Terminal remains outstanding by exact Job
   ID until successful `job_output(status=completed)` evidence is explicitly
   recorded. Successful local Tool Results expose their exact Provider-only
-  `evidenceToolCallId`; Process events remain content-free.
+  `evidenceToolCallId`. Process events remain result-content-free; only the
+  typed `local_direct terminal` presentation may retain a bounded/redacted
+  command, stable workspace cwd alias, exit code and boolean execution flags.
+  Raw stdout/stderr, credentials and materialized Workspace/Host/Skill paths
+  never enter ProcessStep, durable Agent events, or SSE.
 - `publish_file` accepts only workspace-relative regular files, persists through
   the existing user-owned File/object-store path, and attaches only successful
   outputs to the assistant message. Cross-user and stale/deleted access fails.
@@ -77,6 +81,7 @@ Migration head: 099_chat_agent_event_log_function_repair
 | path traversal/symlink/non-regular publish | reject; no File row/object |
 | Host/WSL alias below configured workspace | resolve to the same relative File/workingDir path |
 | alias outside Host root, Windows drive, or traversal | reject before filesystem/command access |
+| unknown/malformed or non-`local_direct` Terminal presentation | drop presentation; retain the valid ProcessStep |
 | nonempty legacy fact table at 098 | whole migration rolls back |
 | already-retired schema re-up | successful no-op |
 
@@ -88,7 +93,8 @@ Migration head: 099_chat_agent_event_log_function_repair
 - **Base**: Agent mode has no installed Skills; bounded File/Terminal/Job Tools
   still work, while Chat mode exposes none of them.
 - **Base**: Agent runs `pwd` and `git status --short` in foreground, observes the
-  redacted workspace result, and answers without manufacturing verification.
+  redacted workspace result, shows the same bounded Terminal card live and
+  after reload, and answers without manufacturing verification.
 - **Bad**: route local execution through a second control service, claim Sandbox
   isolation, parse arbitrary Shell text as a reliable mutation classifier,
   verify a running background Job with unrelated foreground output, mount a
@@ -109,7 +115,8 @@ GOCACHE=/tmp/neo-chat-go-cache go test ./...
 
 The local Runtime suite must also prove foreground Terminal-only completion,
 `file_write -> terminal -> verify_completion`, exact local
-`evidenceToolCallId`, and background Job ID/status gating.
+`evidenceToolCallId`, background Job ID/status gating, typed Terminal
+presentation redaction/bounds, raw-output absence, and live/reload parity.
 
 Cross-layer changes also require frontend format/lint/typecheck/test/build and
 `bash mm-chat/scripts/verify-standalone.sh --full`.
@@ -122,6 +129,9 @@ Correct: Chat Agent -> bounded local Tool -> user-owned File -> message artifact
 
 Wrong: inspect Shell command text -> guess mutation -> force verification
 Correct: foreground result -> synchronous boundary; background Job -> exact completed output
+
+Wrong: copy stdout/stderr or Terminal arguments into generic process detail
+Correct: typed redacted Terminal card -> durable ProcessStep -> same live/replay card
 
 Wrong: DROP ... CASCADE after a broad agent_* match
 Correct: lock -> exact manifest/data validation -> explicit drops -> forward repair -> head 099

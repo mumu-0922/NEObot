@@ -93,8 +93,10 @@ The executor:
 - always blocks catastrophic command patterns and, in default `smart` mode,
   returns `approval_required` for destructive patterns;
 - records only Tool name, round, `local_direct`, classification, optional
-  timeout, duration, and failure category in process events. Command text and
-  output are never process-trace or SSE metadata.
+  timeout, duration, and failure category in diagnostic process detail. An
+  exact Terminal step may additionally carry a bounded/redacted typed card
+  with command, stable cwd alias, exit code and execution flags. Raw
+  stdout/stderr never enter process trace, durable Agent events, or SSE.
 
 These guards reduce accidental damage. They are not protection against an
 adversarial allowed process.
@@ -108,9 +110,11 @@ adversarial allowed process.
   paths below it are accepted as aliases. Other absolute paths, Windows drives,
   traversal, symlinks, non-regular files, and escapes are rejected by the same
   Go `os.Root` boundary.
-- Terminal command strings are never rewritten. Only structured `workingDir`
-  uses alias resolution; the model is instructed to use `$PWD` or relative
-  paths inside commands.
+- Terminal command strings used for execution are never rewritten. Only
+  structured `workingDir` uses alias resolution; the model is instructed to
+  use `$PWD` or relative paths inside commands. The separate UI presentation
+  copy replaces configured Workspace/Host/Skill roots with stable aliases and
+  redacts common credential forms before persistence.
 - A complete file is at most 2 MiB. One read window and one write/edit payload
   are at most 24 KiB and must be valid UTF-8 without NUL bytes.
 - Versions are `sha256:<hex>` over the complete bytes or `absent`. Writes and

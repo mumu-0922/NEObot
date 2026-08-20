@@ -28,8 +28,10 @@ const (
 	processTraceMetadataKey = "processTrace"
 	reasoningMetadataKey    = "reasoning"
 
-	maxProcessDetailStringBytes = 2048
-	maxPersistedReasoningBytes  = 1024 * 1024
+	maxProcessDetailStringBytes    = 2048
+	maxProcessTerminalCommandBytes = 4096
+	maxProcessTerminalCWDBytes     = 1024
+	maxPersistedReasoningBytes     = 1024 * 1024
 
 	// Keep enough sanitized suffix un-emitted for a credential pattern split
 	// across adjacent provider chunks to become recognizable before SSE output.
@@ -49,14 +51,25 @@ var (
 )
 
 type ProcessStep struct {
-	ID          string         `json:"id"`
-	Kind        string         `json:"kind"`
-	Status      string         `json:"status"`
-	LabelKey    string         `json:"labelKey"`
-	StartedAt   string         `json:"startedAt,omitempty"`
-	CompletedAt string         `json:"completedAt,omitempty"`
-	DurationMS  int64          `json:"durationMs,omitempty"`
-	Detail      map[string]any `json:"detail,omitempty"`
+	ID           string                   `json:"id"`
+	Kind         string                   `json:"kind"`
+	Status       string                   `json:"status"`
+	LabelKey     string                   `json:"labelKey"`
+	StartedAt    string                   `json:"startedAt,omitempty"`
+	CompletedAt  string                   `json:"completedAt,omitempty"`
+	DurationMS   int64                    `json:"durationMs,omitempty"`
+	Detail       map[string]any           `json:"detail,omitempty"`
+	Presentation *ProcessStepPresentation `json:"presentation,omitempty"`
+}
+
+type ProcessStepPresentation struct {
+	Card       string `json:"card"`
+	Command    string `json:"command"`
+	CWD        string `json:"cwd,omitempty"`
+	ExitCode   *int   `json:"exitCode,omitempty"`
+	TimedOut   bool   `json:"timedOut,omitempty"`
+	Truncated  bool   `json:"truncated,omitempty"`
+	Background bool   `json:"background,omitempty"`
 }
 
 type processTrace struct {
@@ -136,6 +149,11 @@ func (trace *processTrace) add(step ProcessStep) ProcessStep {
 	step.Status = normalizeProcessStepStatus(step.Status)
 	step.LabelKey = normalizeProcessLabelKey(step.Kind, step.LabelKey)
 	step.Detail = sanitizeProcessDetail(step.Detail)
+	step.Presentation = sanitizeProcessStepPresentation(
+		step.Kind,
+		step.Detail,
+		step.Presentation,
+	)
 	if step.ID == "" || step.Kind == "" || step.Status == "" {
 		return ProcessStep{}
 	}
@@ -372,6 +390,48 @@ func sanitizeProcessDetailValue(value any) (any, bool) {
 	}
 }
 
+func sanitizeProcessStepPresentation(
+	kind string,
+	detail map[string]any,
+	presentation *ProcessStepPresentation,
+) *ProcessStepPresentation {
+	if presentation == nil || kind != ProcessStepKindTool ||
+		presentation.Card != "terminal" ||
+		processDetailString(detail, "toolName") != localTerminalToolName ||
+		processDetailString(detail, "mode") != "local_direct" {
+		return nil
+	}
+	command := truncateProcessUTF8(
+		redactProcessSecrets(strings.TrimSpace(presentation.Command)),
+		maxProcessTerminalCommandBytes,
+	)
+	if command == "" {
+		return nil
+	}
+	cwd := truncateProcessUTF8(
+		redactProcessSecrets(strings.TrimSpace(presentation.CWD)),
+		maxProcessTerminalCWDBytes,
+	)
+	var exitCode *int
+	if presentation.ExitCode != nil {
+		if *presentation.ExitCode < -1 || *presentation.ExitCode > 255 {
+			return nil
+		}
+		value := *presentation.ExitCode
+		exitCode = &value
+	}
+	return &ProcessStepPresentation{
+		Card: "terminal", Command: command, CWD: cwd, ExitCode: exitCode,
+		TimedOut: presentation.TimedOut, Truncated: presentation.Truncated,
+		Background: presentation.Background,
+	}
+}
+
+func processDetailString(detail map[string]any, key string) string {
+	value, _ := detail[key].(string)
+	return strings.TrimSpace(value)
+}
+
 func normalizeProcessStepKind(value string) string {
 	switch strings.TrimSpace(value) {
 	case ProcessStepKindReasoning, ProcessStepKindKnowledge, ProcessStepKindWeb,
@@ -428,6 +488,14 @@ func processStepDurationMillis(startedAt string, completedAt time.Time) int64 {
 
 func cloneProcessStep(step ProcessStep) ProcessStep {
 	step.Detail = cloneProcessDetail(step.Detail)
+	if step.Presentation != nil {
+		presentation := *step.Presentation
+		if step.Presentation.ExitCode != nil {
+			exitCode := *step.Presentation.ExitCode
+			presentation.ExitCode = &exitCode
+		}
+		step.Presentation = &presentation
+	}
 	return step
 }
 

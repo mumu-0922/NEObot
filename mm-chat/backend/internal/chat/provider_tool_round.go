@@ -69,24 +69,25 @@ type ProviderToolResult struct {
 }
 
 type ProviderToolExecutionEvent struct {
-	ExecutionID     string            `json:"executionId"`
-	CallID          string            `json:"callId,omitempty"`
-	Name            string            `json:"toolName"`
-	Server          string            `json:"server,omitempty"`
-	ServerName      string            `json:"serverName,omitempty"`
-	Classification  string            `json:"classification,omitempty"`
-	Status          string            `json:"processStatus"`
-	CallStatus      string            `json:"status,omitempty"`
-	Round           int               `json:"round"`
-	Arguments       map[string]any    `json:"argumentsSummary,omitempty"`
-	Query           string            `json:"-"`
-	Search          *websearch.Result `json:"-"`
-	Knowledge       *autoRAGDecision  `json:"-"`
-	CitationMarkers []string          `json:"-"`
-	FailureCategory string            `json:"failureCategory,omitempty"`
-	DurationMillis  int64             `json:"durationMillis,omitempty"`
-	Mode            string            `json:"mode"`
-	Durability      string            `json:"durability,omitempty"`
+	ExecutionID     string                   `json:"executionId"`
+	CallID          string                   `json:"callId,omitempty"`
+	Name            string                   `json:"toolName"`
+	Server          string                   `json:"server,omitempty"`
+	ServerName      string                   `json:"serverName,omitempty"`
+	Classification  string                   `json:"classification,omitempty"`
+	Status          string                   `json:"processStatus"`
+	CallStatus      string                   `json:"status,omitempty"`
+	Round           int                      `json:"round"`
+	Arguments       map[string]any           `json:"argumentsSummary,omitempty"`
+	Query           string                   `json:"-"`
+	Search          *websearch.Result        `json:"-"`
+	Knowledge       *autoRAGDecision         `json:"-"`
+	CitationMarkers []string                 `json:"-"`
+	FailureCategory string                   `json:"failureCategory,omitempty"`
+	DurationMillis  int64                    `json:"durationMillis,omitempty"`
+	Mode            string                   `json:"mode"`
+	Durability      string                   `json:"durability,omitempty"`
+	Presentation    *ProcessStepPresentation `json:"-"`
 }
 
 func normalizeProviderToolChoice(value string) string {

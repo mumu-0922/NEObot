@@ -224,8 +224,10 @@ replayable `search|tool` presentation.
   ordering input and is mirrored into durable event `step_sequence` when
   positive. Do not add a Provider sideband merely to manufacture Agent Step
   events: it changes Tool scheduling/cancellation semantics. Registry Result
-  projection and presentation must not add raw command, credential, private
-  path, or unbounded Tool output to process data.
+  projection and presentation must not add credentials, private paths, or
+  unbounded Tool output to process data. The sole command exception is the
+  bounded/redacted typed `local_direct terminal` presentation defined below;
+  generic Tool detail and MCP remain command-free.
 
 ### 4. Validation & Error Matrix
 
@@ -318,8 +320,10 @@ ChatMessageDTO.agentEvents[]
   unqualified names are rejected as ambiguous at runtime even when migration
   creation succeeds.
 - Persist each sanitized process or Tool projection before emitting the same
-  projection over SSE. Never persist command, arguments, query, raw Result,
-  credentials, private Server refs, paths, or unbounded output.
+  projection over SSE. Never persist arguments, query, raw Result,
+  credentials, private Server refs, paths, or unbounded output. A bounded,
+  redacted command may exist only inside an authorized `local_direct terminal`
+  presentation; it must replay byte-identically through the same ProcessStep.
 - Message reads attach ordered events. Frontend normalization sorts and
   deduplicates valid events, prefers their process projection, and uses
   `metadata.processTrace` only when no valid durable projection exists.
@@ -487,9 +491,15 @@ job_kill({jobId})
   terminal Chat Run outcome rather than an ordinary Tool failure.
 - Process Tool events retain only Tool name, round, `local_direct`,
   classification, optional timeout, duration, failure category and allowlisted
-  `durability=process_local`. Never
-  persist or stream command text, arguments except bounded timeout, output,
-  Skill content, working directory or materialized paths as process metadata.
+  `durability=process_local` in diagnostic `detail`. A Terminal ProcessStep may
+  additionally carry the separate tagged presentation
+  `{card:"terminal", command, cwd?, exitCode?, timedOut?, truncated?, background?}`.
+  Accept it only for exact `toolName=terminal` plus `mode=local_direct`; bound
+  command/cwd on UTF-8 boundaries, apply common-secret redaction, and replace
+  Workspace/Host Workspace/Skill cache roots with stable aliases. Never put
+  command/cwd in `detail` or persist/stream raw stdout, stderr, other arguments,
+  Skill content, or materialized paths. The same sanitized ProcessStep is the
+  durable event, live `process.step.updated`, and Conversation replay source.
 - Run `bash mm-chat/scripts/verify-chat-artifacts-postgres17.sh` for artifact
   publication changes; it must prove output-link reload, two-user isolation,
   deleted-file rejection, and ephemeral PostgreSQL 17 teardown.
@@ -522,15 +532,16 @@ job_kill({jobId})
 
 - **Good:** one native continuation performs
   `skill -> file_read -> file_edit -> terminal/job_output -> verify_completion
-  -> final answer`, with exact results in model context and content-free process
-  facts in persistence/SSE.
+  -> final answer`, with exact results only in model context and a bounded,
+  redacted Terminal card in persistence/SSE.
 - **Base:** local execution is enabled but the user has no installed Skills;
   an empty replacement tombstone is injected, File/Job/terminal remain, and
   ordinary MCP/Knowledge/Memory/Web planning is unchanged.
 - **Bad:** paste every `SKILL.md` into the first prompt, trust a Tool-supplied
   object/path, execute an unadvertised action during a required prelude, run
-  local Tools after losing call ordering, persist command
-  output in process trace, or spawn a Child Agent to execute the Skill.
+  local Tools after losing call ordering, put raw stdout/stderr or command data
+  in generic Tool detail, accept an MCP-forged Terminal card, or spawn a Child
+  Agent to execute the Skill.
 
 ### 6. Tests Required
 
@@ -553,8 +564,12 @@ job_kill({jobId})
   restart warning, and evidence gating.
 - Call, round, output, call-timeout and Run-timeout boundaries plus cancellation
   process-group termination.
-- Process event/persistence/SSE assertions prove command, output, file content,
-  working directory and server paths are absent.
+- Process event/persistence/SSE assertions prove the typed Terminal card keeps
+  only bounded/redacted command, stable cwd alias and result flags; raw
+  stdout/stderr, file content, materialized paths and credentials remain absent.
+- Running/completed, exit 0/nonzero, timeout, truncation and background cases
+  must replay identically. Unknown/malformed presentation is dropped without
+  invalidating the enclosing ProcessStep; non-Terminal/MCP behavior is unchanged.
 - Existing MCP, Knowledge, Memory, Web, detached Run and Citation tests remain
   green; no source-fusion fallback is introduced.
 

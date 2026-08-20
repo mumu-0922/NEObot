@@ -82,6 +82,57 @@ func TestChatAgentToolEventPayloadDropsCommandsArgumentsResultsAndPrivateServerR
 	}
 }
 
+func TestChatAgentTerminalPresentationReplaysFromDurableProcessSteps(t *testing.T) {
+	exitCode := 0
+	step := ProcessStep{
+		ID: "message-1:tool:1", Kind: ProcessStepKindTool,
+		Status: ProcessStepStatusCompleted, LabelKey: "process.tool",
+		Detail: map[string]any{
+			"toolName": localTerminalToolName, "mode": "local_direct", "round": 1,
+		},
+		Presentation: &ProcessStepPresentation{
+			Card: "terminal", Command: "go test ./internal/chat", CWD: "$NEO_CHAT_WORKSPACE",
+			ExitCode: &exitCode, Truncated: true,
+		},
+	}
+	payload := chatAgentToolEventPayload(&ProviderToolExecutionEvent{
+		ExecutionID: "terminal-1", Name: localTerminalToolName,
+		Status: ProcessStepStatusCompleted, Round: 1, Mode: "local_direct",
+		Classification: "execute",
+	}, []ProcessStep{step})
+	payload, err := normalizeChatAgentEventPayload(ChatAgentEventToolResult, payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		`"card":"terminal"`, `"command":"go test ./internal/chat"`,
+		`"cwd":"$NEO_CHAT_WORKSPACE"`, `"exitCode":0`, `"truncated":true`,
+	} {
+		if !strings.Contains(string(encoded), required) {
+			t.Fatalf("durable payload missing %q: %s", required, encoded)
+		}
+	}
+	for _, forbidden := range []string{"stdout", "stderr"} {
+		if strings.Contains(string(encoded), forbidden) {
+			t.Fatalf("durable payload retained %q: %s", forbidden, encoded)
+		}
+	}
+	projected := projectChatAgentProcessTrace([]ChatAgentEvent{{
+		EventID: "event-1", MessageID: "message-1", Sequence: 1,
+		Type: ChatAgentEventToolResult, Payload: payload,
+	}}, nil)
+	if len(projected) != 1 || projected[0].Presentation == nil ||
+		projected[0].Presentation.ExitCode == nil ||
+		*projected[0].Presentation.ExitCode != 0 ||
+		projected[0].Presentation.Command != step.Presentation.Command {
+		t.Fatalf("durable presentation projection = %#v", projected)
+	}
+}
+
 func TestNormalizeChatAgentEventPayloadBoundsAssistantMessageOnUTF8Boundary(t *testing.T) {
 	content := strings.Repeat("界", maxChatAgentMessageEventBytes)
 	normalized, err := normalizeChatAgentEventPayload(
