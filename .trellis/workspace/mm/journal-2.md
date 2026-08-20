@@ -588,3 +588,37 @@ Stopped foreground Terminal-only turns from entering the mutation verifier, adde
 ### Next Steps
 
 - None - task complete
+
+
+## Session 66: Fix Chat/Agent mode menu layout and automate commits
+
+**Date**: 2026-08-20
+**Task**: Fix Chat/Agent mode menu layout and automate commits
+**Branch**: `main`
+
+### Summary
+
+Fixed multiline Chat/Agent composer menu rows with content-driven height and safe wrapping, added regression coverage and frontend spec guidance, passed all frontend quality gates, and recorded the user's automatic-commit preference.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1e3a532a` | (see git log) |
+| `c9fa2642` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

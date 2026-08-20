@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 65
+- **Total Sessions**: 66
 - **Last Active**: 2026-08-20
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~590 | Active |
+| `journal-2.md` | ~624 | Active |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 66 | 2026-08-20 | Fix Chat/Agent mode menu layout and automate commits | `1e3a532a`, `c9fa2642` | `main` |
 | 65 | 2026-08-20 | Repair and deploy Terminal-only Agent completion | `e7ba11f2`, `4e9cd791` | `main` |
 | 64 | 2026-08-20 | Restore live Agent tools and authorize local project workspace | `e0ce9970`, `d2cf5152` | `main` |
 | 63 | 2026-08-20 | Deploy and accept Agent tool admission repair | `0edd0d1e`, `0b8d5157`, `6990509e` | `main` |
