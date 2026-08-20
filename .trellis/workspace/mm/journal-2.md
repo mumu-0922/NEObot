@@ -655,3 +655,37 @@ Traced the unchanged UI to a stale Frontend image, retained an exact rollback im
 ### Next Steps
 
 - None - task complete
+
+
+## Session 68: Rename and deploy search menu labels
+
+**Date**: 2026-08-20
+**Task**: Rename and deploy search menu labels
+**Branch**: `main`
+
+### Summary
+
+Renamed OpenAI built-in search and server search labels to localized built-in/Tavily wording, added exact focused locale/provider tests, persisted the proportional-verification rule, built and deployed a Frontend-only image with retained rollback state, and verified live compiled labels and readiness without running unrelated full suites.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `edb11b06` | (see git log) |
+| `10b3792c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
