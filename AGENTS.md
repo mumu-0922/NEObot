@@ -30,6 +30,13 @@ Use Node.js 22 with pnpm 10.30.3, Go 1.25, Python 3.13, and Docker Compose v2.
   `mm-chat/rag/`.
 - Compose: run commands from `mm-chat/` with
   `--env-file .env.single-server`.
+- Keep verification proportional. For low-risk localized copy or styling
+  changes, run changed-file format/lint checks and focused tests only; do not
+  default to full component or repository suites. Escalate to full checks for
+  shared logic, cross-layer contracts, dependencies, security, persistence,
+  build/toolchain or infrastructure changes, high-risk releases, or when the
+  user explicitly requests them. A production build needed only to package a
+  localized UI deployment does not require unrelated full test suites.
 
 ## Coding and testing conventions
 

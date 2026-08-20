@@ -1,8 +1,8 @@
 # Quality Guidelines
 
-> Frontend changes are complete only after formatting, lint, strict type-check,
-> focused Vitest coverage, and a production build when the change affects
-> compilation, routing, bundling, or deployment.
+> Frontend verification is proportional to change risk. Prove the changed
+> contract with the smallest decisive checks, and reserve full suites for
+> changes whose blast radius justifies them.
 
 ## Required Commands
 
@@ -23,8 +23,22 @@ The repository-level release gate is:
 bash mm-chat/scripts/verify-standalone.sh --full
 ```
 
-During a focused edit, run the cheapest relevant checks first; before release,
-run the complete gate. Do not claim a command passed unless it was executed.
+Select checks by scope:
+
+- Low-risk localized copy/style changes: changed-file Prettier and ESLint (when
+  TS/TSX changes) plus focused Vitest only.
+- Local typed logic: changed-file format/lint, focused Vitest, and TypeScript
+  typecheck when the contract is not fully isolated by the focused test.
+- Shared state/API/routing, security, persistence, dependency, toolchain,
+  infrastructure, or broad refactors: run the complete affected-component
+  gate and any cross-layer checks.
+- Run the full standalone gate for cross-layer or high-risk releases, changes
+  to the standalone/deployment contract, or an explicit user request—not by
+  default for every small edit.
+- A production build required to package or deploy a localized UI change is a
+  packaging check; it does not by itself require unrelated full test suites.
+
+Do not claim a command passed unless it was executed.
 
 ## Formatting and Static Analysis
 
