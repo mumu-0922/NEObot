@@ -554,3 +554,37 @@ Fixed live local_direct Tool event normalization, added a single-root Linux/WSL 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 65: Repair and deploy Terminal-only Agent completion
+
+**Date**: 2026-08-20
+**Task**: Repair and deploy Terminal-only Agent completion
+**Branch**: `main`
+
+### Summary
+
+Stopped foreground Terminal-only turns from entering the mutation verifier, added exact local evidence IDs and exact background Job completion tracking, passed full verification, deployed Backend-only with rollback protection, and accepted the original pwd/git-status request without verify_completion.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e7ba11f2` | (see git log) |
+| `4e9cd791` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
