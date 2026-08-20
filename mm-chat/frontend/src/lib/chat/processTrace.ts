@@ -97,7 +97,8 @@ export type ProcessReasonCategory =
   | "planner_failed"
   | "provider_degraded"
   | "memory_indexing"
-  | "memory_unavailable";
+  | "memory_unavailable"
+  | "stream_gap";
 
 export interface ProcessRouteSummary {
   route: ProcessRoute;
@@ -374,6 +375,9 @@ export function processReasonCategoryForDisplay(
   }
   if (failure === "planner_failed") {
     return "planner_failed";
+  }
+  if (failure === "stream_gap") {
+    return "stream_gap";
   }
   if (
     failure === "provider_failed" ||

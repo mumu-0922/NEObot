@@ -345,6 +345,7 @@ export interface ChatStreamHandlers {
   onCompleted?: (event: ServerStreamEvent) => void;
   onError?: (event: ServerStreamEvent) => void;
   onCancelled?: (event: ServerStreamEvent) => void;
+  onGap?: (event: ServerStreamEvent) => void;
 }
 
 export interface ChatRunResult {
@@ -1799,6 +1800,7 @@ export type ServerStreamEventType =
   | "message.completed"
   | "message.error"
   | "message.cancelled"
+  | "stream.gap"
   | string;
 
 export interface ServerStreamEvent {
@@ -1816,6 +1818,10 @@ export interface ServerStreamEvent {
   results?: ServerSearchResult;
   message?: ChatMessageDTO;
   error?: ApiErrorEnvelope["error"];
+  after?: number;
+  oldestSequence?: number;
+  latestSequence?: number;
+  reason?: string;
   [key: string]: unknown;
 }
 

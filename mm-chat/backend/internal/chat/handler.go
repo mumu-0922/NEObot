@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -317,6 +318,18 @@ type streamEvent struct {
 	Results        *websearch.Result           `json:"results,omitempty"`
 	Step           *ProcessStep                `json:"step,omitempty"`
 	ToolCall       *ProviderToolExecutionEvent `json:"toolCall,omitempty"`
+}
+
+type runStreamGapEvent struct {
+	Type           string `json:"type"`
+	RunID          string `json:"runId"`
+	ConversationID string `json:"conversationId"`
+	MessageID      string `json:"messageId,omitempty"`
+	CreatedAt      string `json:"createdAt"`
+	After          int    `json:"after"`
+	OldestSequence int    `json:"oldestSequence"`
+	LatestSequence int    `json:"latestSequence"`
+	Reason         string `json:"reason"`
 }
 
 type cancelRunResponse struct {
@@ -754,16 +767,104 @@ func (h *Handler) handleRunChild(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
 		return
 	}
-	if child != "cancel" {
+	switch child {
+	case "cancel":
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w, http.MethodPost)
+			return
+		}
+		h.cancelRun(w, r, runID)
+	case "events":
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w, http.MethodGet)
+			return
+		}
+		h.resumeRunEvents(w, r, runID)
+	default:
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
-		return
 	}
-	if r.Method != http.MethodPost {
-		methodNotAllowed(w, http.MethodPost)
-		return
-	}
+}
 
-	h.cancelRun(w, r, runID)
+func (h *Handler) resumeRunEvents(w http.ResponseWriter, r *http.Request, runID string) {
+	afterValue := strings.TrimSpace(r.URL.Query().Get("after"))
+	if afterValue == "" {
+		afterValue = strings.TrimSpace(r.Header.Get("Last-Event-ID"))
+	}
+	after := 0
+	var err error
+	if afterValue != "" {
+		after, err = strconv.Atoi(afterValue)
+		if err != nil || after < 0 {
+			writeError(w, http.StatusBadRequest, "INVALID_STREAM_CURSOR", "after must be a non-negative integer")
+			return
+		}
+	}
+	actor := auth.UserOrDevelopment(r.Context())
+	stream, conversationID := h.activeRuns.streamForUser(runID, actor.ID)
+	if stream == nil {
+		writeError(w, http.StatusNotFound, "RUN_STREAM_NOT_FOUND", "run stream not found")
+		return
+	}
+	if _, err := h.service.GetConversation(r.Context(), conversationID); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "STREAMING_UNSUPPORTED", "streaming is not supported")
+		return
+	}
+	subscription := stream.subscribe(after)
+	defer subscription.Unsubscribe()
+
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+	if subscription.Gap != nil {
+		gap := subscription.Gap
+		if err := writeSSEEvent(w, "stream.gap", runStreamGapEvent{
+			Type: "stream.gap", RunID: runID, ConversationID: conversationID,
+			MessageID: stream.messageID, CreatedAt: formatTime(time.Now()),
+			After: gap.After, OldestSequence: gap.OldestSequence,
+			LatestSequence: gap.LatestSequence, Reason: "cursor_evicted",
+		}); err != nil {
+			return
+		}
+		flusher.Flush()
+	}
+	for _, frame := range subscription.Replay {
+		if _, err := w.Write(frame.Bytes); err != nil {
+			return
+		}
+		flusher.Flush()
+	}
+	if subscription.Closed {
+		return
+	}
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case frame, open := <-subscription.Updates:
+			if !open {
+				return
+			}
+			if _, err := w.Write(frame.Bytes); err != nil {
+				return
+			}
+			flusher.Flush()
+		case <-heartbeat.C:
+			if _, err := io.WriteString(w, ": keep-alive\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
 }
 
 func (h *Handler) handleApprovalChild(w http.ResponseWriter, r *http.Request) {
@@ -1885,7 +1986,11 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	} else {
 		streamCtx, streamCancel = context.WithCancel(generationCtx)
 	}
-	unregisterRun := h.activeRuns.register(runID, streamCancel)
+	runStream := newActiveRunStream(runID, conversationID, assistantMessage.ID)
+	delivery.attachStream(runStream)
+	unregisterRun := h.activeRuns.registerStream(
+		runID, streamCancel, actor.ID, conversationID, runStream,
+	)
 	stopCancellationWatch := watchRunCancellation(streamCtx, h.cancellationRuns, runID, streamCancel)
 	defer unregisterRun()
 	defer h.clearRunCancelled(context.Background(), runID)
@@ -3914,7 +4019,13 @@ func writeSSEEvent(w io.Writer, event string, payload any) error {
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, encoded)
+	if writer, ok := w.(interface {
+		WriteSSEEvent(string, []byte) error
+	}); ok {
+		return writer.WriteSSEEvent(event, encoded)
+	}
+	sequence, _, _ := streamEventIdentity(encoded)
+	_, err = w.Write(formatSSEFrame(event, encoded, sequence))
 	return err
 }
 

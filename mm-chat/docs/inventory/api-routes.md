@@ -65,6 +65,7 @@ GET    /v1/chat/conversations/:id/messages
 POST   /v1/chat/conversations/:id/messages
 POST   /v1/chat/conversations/:id/stream
 POST   /v1/chat/runs/:runId/cancel
+GET    /v1/chat/runs/:runId/events?after=:sequence
 POST   /v1/chat/approvals/:approvalId/decision
 
 POST   /v1/providers/models

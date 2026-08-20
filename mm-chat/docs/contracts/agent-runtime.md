@@ -74,6 +74,13 @@ with `restart_denied`, because the original process and waiter cannot be proved
 recoverable. Conversation grants are scoped to the exact Conversation, Tool
 name, and risk class. Approval storage never contains Tool arguments or results.
 
+Browser transport loss does not stop the Run. Each active Run retains a bounded
+process-local SSE cursor ring and exposes an authenticated `after` resume
+endpoint. Retained events replay in original sequence; evicted data produces an
+explicit gap and the UI converges on the final persisted Message snapshot. This
+delivery buffer is not durable Tool authority and never causes per-chunk event
+rows.
+
 ## Artifact publication
 
 - `publish_file` exists only in effective Agent mode and accepts a

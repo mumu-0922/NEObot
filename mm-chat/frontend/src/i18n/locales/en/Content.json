@@ -24,6 +24,7 @@
   "processReasonProviderDegraded": "The retrieval provider is temporarily unavailable",
   "processReasonMemoryIndexing": "Memory is still indexing and was not used for this answer",
   "processReasonMemoryUnavailable": "Memory is temporarily unavailable and was not used for this answer",
+  "processReasonStreamGap": "Some live updates were evicted; the final saved result will replace this partial view",
   "processReasoning": "Reasoning",
   "processKnowledge": "Knowledge",
   "processWeb": "Web search",

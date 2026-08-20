@@ -24,6 +24,7 @@
   "processReasonProviderDegraded": "検索プロバイダーは一時的に利用できません",
   "processReasonMemoryIndexing": "メモリはインデックス作成中のため、この回答では使用されませんでした",
   "processReasonMemoryUnavailable": "メモリサービスは一時的に利用できないため、この回答では使用されませんでした",
+  "processReasonStreamGap": "一部のライブ更新が破棄されました。完了後、最終保存結果でこの部分表示を置き換えます",
   "processReasoning": "推論",
   "processKnowledge": "ナレッジ検索",
   "processWeb": "Web 検索",

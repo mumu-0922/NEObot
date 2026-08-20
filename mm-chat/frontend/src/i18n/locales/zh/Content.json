@@ -24,6 +24,7 @@
   "processReasonProviderDegraded": "检索供应商暂时不可用",
   "processReasonMemoryIndexing": "记忆仍在索引，本轮未使用",
   "processReasonMemoryUnavailable": "记忆服务暂不可用，本轮未使用",
+  "processReasonStreamGap": "部分实时更新已被淘汰，完成后将以最终保存结果替换当前局部视图",
   "processReasoning": "推理",
   "processKnowledge": "知识库检索",
   "processWeb": "联网搜索",

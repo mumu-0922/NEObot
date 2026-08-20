@@ -683,6 +683,15 @@ browser cannot stall command pipes. These progress snapshots never append
 Agent events. Completion persists one bounded/redacted 32 KiB head + 32 KiB
 tail transcript, which is the reload authority.
 
+Every emitted Run event also enters a process-local 1,024-frame/4 MiB cursor
+ring using the existing stream `sequence` as SSE `id`. A browser reconnects
+through `GET /v1/chat/runs/{runId}/events?after={sequence}`; retained frames are
+deduplicated through the same monotonic sequence contract. Eviction produces a
+safe `stream.gap` before the retained suffix. The browser renders an explicit
+partial-view notice and replaces it with the final persisted Message snapshot.
+The ring retains completed streams for 30 seconds but never writes transient
+Terminal chunks to the Agent event log.
+
 An approval presentation is sanitized before it enters the ProcessStep and
 contains only decision metadata. A malformed approval object is dropped while
 the safe Terminal card remains renderable. The active/pending card expands by

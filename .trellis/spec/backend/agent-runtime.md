@@ -58,6 +58,14 @@ Migration head: 100_chat_agent_approvals
   at most one per 75 ms unless 16 KiB becomes stable, and never block command
   pipes on a slow SSE consumer. Transient snapshots are SSE-only; the final
   bounded/redacted head+tail snapshot is the sole durable transcript authority.
+- Every Run SSE frame uses the JSON `sequence` as SSE `id` and enters a
+  process-local 1,024-frame/4 MiB ring. Exact-user reconnect uses
+  `GET /v1/chat/runs/{runId}/events?after={sequence}` and reauthorizes the
+  Conversation. Retain completed streams for 30 seconds, cap finished entries
+  and subscribers, close slow subscribers rather than blocking execution, and
+  emit `stream.gap/cursor_evicted` when the requested prefix is gone. Never
+  write transient chunks to `chat_agent_events`; converge on the terminal
+  persisted Message snapshot after a gap.
 - A destructive Terminal call in `smart` mode creates a durable five-minute
   approval before execution and waits on the same Tool call. `Allow once`
   bypasses the smart approval check exactly once; policy-permitted `Allow for
@@ -95,6 +103,9 @@ Migration head: 100_chat_agent_approvals
 | destructive command in smart mode | durable awaiting-approval event; execute only after exact allow |
 | duplicate/conflicting approval decision | return first terminal decision; do not overwrite history |
 | pending approval at Backend restart | `denied/restart_denied`; no execution |
+| reconnect cursor retained | replay exact suffix in original sequence |
+| reconnect cursor evicted | explicit unsequenced gap, retained suffix, final Message convergence |
+| slow reconnect subscriber | close subscriber; Run and Provider pipes continue |
 | foreground Terminal-only task | Tool-free final answer; no `verify_completion` loop |
 | background Terminal plus foreground check | background remains unverified until exact completed `job_output` |
 | Backend shutdown with active Job | entire process group canceled and reaped |
@@ -138,6 +149,9 @@ The local Runtime suite must also prove foreground Terminal-only completion,
 `file_write -> terminal -> verify_completion`, exact local
 `evidenceToolCallId`, background Job ID/status gating, typed Terminal
 presentation redaction/bounds, raw-output absence, and live/reload parity.
+Cursor tests must prove after-sequence replay, duplicate suppression, bounded
+eviction gap, exact-user authorization, terminal grace replay, browser
+auto-resume, and final-snapshot convergence without per-chunk database events.
 
 Cross-layer changes also require frontend format/lint/typecheck/test/build and
 `bash mm-chat/scripts/verify-standalone.sh --full`.

@@ -10,6 +10,7 @@ import {
   Attachment,
   SessionConfig,
   SessionMessageTree,
+  ProcessStep,
 } from "@/types";
 import {
   appDb,
@@ -70,12 +71,30 @@ import {
 import type {
   AppendUserMessageInput,
   ProviderRuntimeConfigDTO,
+  ServerStreamEvent,
   ServerSearchResult,
 } from "../../services/api/client";
 
 let selectSessionRequestId = 0;
 let serverReadRequestId = 0;
 const sessionMessageWriteQueues = new Map<string, Promise<void>>();
+
+function serverStreamGapStep(event: ServerStreamEvent): ProcessStep {
+  const occurredAt =
+    typeof event.createdAt === "string" &&
+    Number.isFinite(Date.parse(event.createdAt))
+      ? event.createdAt
+      : new Date().toISOString();
+  return {
+    id: `${event.messageId ?? "message"}:generation:stream-gap`,
+    kind: "generation",
+    status: "interrupted",
+    labelKey: "process.generation",
+    startedAt: occurredAt,
+    completedAt: occurredAt,
+    detail: { failureCategory: "stream_gap", outcome: "interrupted" },
+  };
+}
 
 const createEmptyMessageTree = () => normalizeSessionMessageTree([]);
 
@@ -1433,6 +1452,15 @@ export const useChatStore = create<ChatState>()(
                   applyServerSearchResult(message, result),
                 );
               },
+              onGap: (event) => {
+                updateAssistantDraft(event.messageId, (message) => ({
+                  ...message,
+                  processTrace: upsertProcessStep(
+                    message.processTrace,
+                    serverStreamGapStep(event),
+                  ),
+                }));
+              },
             },
           );
 
@@ -1704,6 +1732,16 @@ export const useChatStore = create<ChatState>()(
                 updateAssistantDraft(event.messageId, (message) =>
                   applyServerSearchResult(message, result),
                 );
+              },
+              onGap: (event) => {
+                updateAssistantDraft(event.messageId, (message) => ({
+                  ...message,
+                  processTrace: upsertProcessStep(
+                    message.processTrace,
+                    serverStreamGapStep(event),
+                  ),
+                  parentMessageId: userMessageId,
+                }));
               },
             },
           );

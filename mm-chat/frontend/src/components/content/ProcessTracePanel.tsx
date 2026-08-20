@@ -777,6 +777,8 @@ function processReasonLabel(
       return t("processReasonMemoryIndexing");
     case "memory_unavailable":
       return t("processReasonMemoryUnavailable");
+    case "stream_gap":
+      return t("processReasonStreamGap");
   }
 }
 

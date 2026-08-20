@@ -12,6 +12,7 @@ import (
 type bestEffortStreamWriter struct {
 	base       http.ResponseWriter
 	controller *http.ResponseController
+	stream     *activeRunStream
 	detached   bool
 }
 
@@ -20,6 +21,20 @@ func newBestEffortStreamWriter(base http.ResponseWriter) *bestEffortStreamWriter
 		base:       base,
 		controller: http.NewResponseController(base),
 	}
+}
+
+func (w *bestEffortStreamWriter) attachStream(stream *activeRunStream) {
+	w.stream = stream
+}
+
+func (w *bestEffortStreamWriter) WriteSSEEvent(event string, payload []byte) error {
+	sequence, _, _ := streamEventIdentity(payload)
+	frame := formatSSEFrame(event, payload, sequence)
+	if w.stream != nil {
+		frame = w.stream.publish(event, payload)
+	}
+	_, err := w.Write(frame)
+	return err
 }
 
 func (w *bestEffortStreamWriter) Header() http.Header {

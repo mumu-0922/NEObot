@@ -105,6 +105,7 @@ type ToolPlanResponse = {
 
 type StreamDispatchState = {
   startedRunId?: string;
+  messageId?: string;
   lastSequenceByRunId: Map<string, number>;
 };
 
@@ -259,7 +260,17 @@ export function createServerChatApiShell(httpClient: HttpClient): ChatApi {
       const dispatchState: StreamDispatchState = {
         lastSequenceByRunId: new Map(),
       };
-
+      const onFrame = ({ data }: { data: ServerStreamEvent }) => {
+        if (result) return;
+        if (input.signal?.aborted && dispatchState.startedRunId) {
+          throw streamAbortedAfterStartError();
+        }
+        result = dispatchStreamEvent(data, handlers, dispatchState);
+        if (!result && input.signal?.aborted && dispatchState.startedRunId) {
+          throw streamAbortedAfterStartError();
+        }
+      };
+      let streamError: unknown;
       try {
         await httpClient.requestSse(
           `${conversationPath(input.conversationId)}/stream`,
@@ -267,51 +278,59 @@ export function createServerChatApiShell(httpClient: HttpClient): ChatApi {
             method: "POST",
             body: streamAssistantMessageBody(input),
             signal: input.signal,
-            onFrame: ({ data }) => {
-              if (result) return;
-              if (input.signal?.aborted && dispatchState.startedRunId) {
-                throw streamAbortedAfterStartError();
-              }
-              result = dispatchStreamEvent(data, handlers, dispatchState);
-              if (
-                !result &&
-                input.signal?.aborted &&
-                dispatchState.startedRunId
-              ) {
-                throw streamAbortedAfterStartError();
-              }
-            },
+            onFrame,
           },
         );
       } catch (error) {
-        if (
-          isStreamInterrupted(error) &&
-          input.signal?.aborted &&
-          dispatchState.startedRunId
-        ) {
-          return cancelRunById(httpClient, dispatchState.startedRunId);
-        }
-
-        return runResultFromError(error, {
-          streamInterruptedStatus: input.signal?.aborted
-            ? "cancelled"
-            : "failed",
-        });
+        streamError = error;
       }
 
       if (!result && input.signal?.aborted && dispatchState.startedRunId) {
         return cancelRunById(httpClient, dispatchState.startedRunId);
       }
 
-      return (
-        result ?? {
-          status: "failed",
-          error: new ApiClientError(
+      if (
+        !result &&
+        dispatchState.startedRunId &&
+        !input.signal?.aborted &&
+        (streamError === undefined ||
+          isRecoverableStreamDisconnect(streamError))
+      ) {
+        streamError = await resumeInterruptedRunStream(
+          httpClient,
+          input,
+          onFrame,
+          dispatchState,
+          () => result !== null,
+        );
+      }
+
+      if (!result && input.signal?.aborted && dispatchState.startedRunId) {
+        return cancelRunById(httpClient, dispatchState.startedRunId);
+      }
+
+      if (!result && dispatchState.startedRunId && dispatchState.messageId) {
+        const recovered = await recoverTerminalRunResult(
+          httpClient,
+          input.conversationId,
+          dispatchState.messageId,
+        );
+        if (recovered) result = recovered;
+      }
+
+      if (result) return result;
+      return runResultFromError(
+        streamError ??
+          new ApiClientError(
             "STREAM_INTERRUPTED",
             "Stream ended without a terminal event.",
             { recoverable: true },
-          ).toEnvelope().error,
-        }
+          ),
+        {
+          streamInterruptedStatus: input.signal?.aborted
+            ? "cancelled"
+            : "failed",
+        },
       );
     },
     async planTools(
@@ -588,6 +607,10 @@ function dispatchStreamEvent(
   handlers?: ChatStreamHandlers,
   state?: StreamDispatchState,
 ): ChatRunResult | null {
+  if (event.type === "stream.gap") {
+    applyStreamGap(event, handlers, state);
+    return null;
+  }
   if (state && !shouldDispatchSequencedEvent(event, state)) {
     return null;
   }
@@ -596,6 +619,7 @@ function dispatchStreamEvent(
     case "message.started":
       if (state && event.runId) {
         state.startedRunId = event.runId;
+        state.messageId = event.messageId;
       }
       handlers?.onStarted?.(event);
       return null;
@@ -667,6 +691,124 @@ function dispatchStreamEvent(
       };
     default:
       return null;
+  }
+}
+
+function applyStreamGap(
+  event: ServerStreamEvent,
+  handlers?: ChatStreamHandlers,
+  state?: StreamDispatchState,
+): void {
+  const after = event.after;
+  const oldest = event.oldestSequence;
+  const latest = event.latestSequence;
+  const runId = event.runId ?? state?.startedRunId;
+  if (
+    !runId ||
+    !Number.isSafeInteger(after) ||
+    Number(after) < 0 ||
+    !Number.isSafeInteger(oldest) ||
+    Number(oldest) < 1 ||
+    !Number.isSafeInteger(latest) ||
+    Number(latest) < Number(oldest) - 1 ||
+    event.reason !== "cursor_evicted"
+  ) {
+    throw new ApiClientError(
+      "STREAM_PROTOCOL_ERROR",
+      "Server returned an invalid stream gap.",
+      { recoverable: true },
+    );
+  }
+  if (state) {
+    if (state.startedRunId && state.startedRunId !== runId) {
+      throw new ApiClientError(
+        "STREAM_PROTOCOL_ERROR",
+        "Server returned a stream gap for another run.",
+        { recoverable: true },
+      );
+    }
+    state.startedRunId = runId;
+    state.messageId = event.messageId ?? state.messageId;
+    state.lastSequenceByRunId.set(runId, Number(oldest) - 1);
+  }
+  handlers?.onGap?.(event);
+}
+
+async function resumeInterruptedRunStream(
+  httpClient: HttpClient,
+  input: StreamAssistantMessageInput,
+  onFrame: (frame: { data: ServerStreamEvent }) => void,
+  state: StreamDispatchState,
+  terminal: () => boolean,
+): Promise<unknown> {
+  const runId = state.startedRunId;
+  if (!runId) return undefined;
+  let lastError: unknown = new ApiClientError(
+    "STREAM_INTERRUPTED",
+    "Stream ended before the terminal event.",
+    { recoverable: true },
+  );
+  for (let attempt = 0; attempt < 3 && !terminal(); attempt += 1) {
+    const after = state.lastSequenceByRunId.get(runId) ?? 0;
+    try {
+      await httpClient.requestSse(
+        `/v1/chat/runs/${encodeURIComponent(runId)}/events?after=${after}`,
+        {
+          method: "GET",
+          headers: { "Last-Event-ID": String(after) },
+          signal: input.signal,
+          onFrame,
+        },
+      );
+      if (terminal()) return undefined;
+      lastError = new ApiClientError(
+        "STREAM_INTERRUPTED",
+        "Resumed stream ended before the terminal event.",
+        { recoverable: true },
+      );
+    } catch (error) {
+      lastError = error;
+      if (input.signal?.aborted || !isRecoverableStreamDisconnect(error)) {
+        break;
+      }
+    }
+  }
+  return lastError;
+}
+
+async function recoverTerminalRunResult(
+  httpClient: HttpClient,
+  conversationId: string,
+  messageId: string,
+): Promise<ChatRunResult | null> {
+  try {
+    const page = await httpClient.requestJson<ApiPage<ChatMessageDTO>>(
+      `${conversationPath(conversationId)}/messages`,
+    );
+    const message = getPageItems(page, "message list").find(
+      (candidate) => candidate.id === messageId,
+    );
+    if (!message) return null;
+    switch (message.status) {
+      case "completed":
+        return { status: "completed", message };
+      case "cancelled":
+        return { status: "cancelled", message };
+      case "failed":
+        return {
+          status: "failed",
+          message,
+          error: new ApiClientError(
+            "STREAM_INTERRUPTED",
+            "The final message was recovered after a stream interruption.",
+            { recoverable: true },
+          ).toEnvelope().error,
+        };
+      default:
+        return null;
+    }
+  } catch {
+    return null;
   }
 }
 
@@ -786,8 +928,8 @@ function streamInterruptedError(
   );
 }
 
-function isStreamInterrupted(error: unknown): boolean {
-  return error instanceof ApiClientError && error.code === "STREAM_INTERRUPTED";
+function isRecoverableStreamDisconnect(error: unknown): boolean {
+  return error instanceof ApiClientError && error.recoverable;
 }
 
 function streamAbortedAfterStartError(): ApiClientError {

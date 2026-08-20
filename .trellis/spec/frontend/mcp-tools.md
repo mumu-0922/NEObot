@@ -251,6 +251,11 @@ timeline updates.
   rejects unknown modes plus MCP/`execute` cross-mode drift. Exercise the live
   SSE normalization path directly; a reload-only durable timeline replay is
   not evidence that the live wire contract works.
+- Stream reconnect tests split the primary response after a known sequence,
+  assert `GET /v1/chat/runs/{runId}/events?after=...` plus `Last-Event-ID`, and
+  prove replayed Tool/transcript updates deduplicate. An explicit valid gap
+  renders the localized partial-view reason and terminal Message replacement;
+  malformed gap bounds/run identity fail closed.
 - Terminal presentation tests cover running/completed, exit 0/nonzero,
   timeout/truncation/background pills, malformed-card fail-closed behavior,
   legacy steps, pending/allowed/denied/expired approval controls, malformed

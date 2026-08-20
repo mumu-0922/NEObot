@@ -486,6 +486,7 @@ Rules:
 | `appendUserMessage`      | `POST /v1/chat/conversations/:id/messages` | Role=user                                  |
 | `streamAssistantMessage` | `POST /v1/chat/conversations/:id/stream`   | SSE response                               |
 | `cancelRun`              | `POST /v1/chat/runs/:runId/cancel`         | Durable cancellation now; Redis flag later |
+| `resumeRun`              | `GET /v1/chat/runs/:runId/events?after=N`  | Bounded SSE cursor replay                   |
 | `generateTitle`          | `POST /v1/chat/conversations/:id/title`    | Later helper; not first MVP                |
 
 ## 9. Streaming Contract
@@ -505,7 +506,8 @@ export type ChatStreamEvent =
   | UsageUpdatedEvent
   | MessageCompletedEvent
   | MessageErrorEvent
-  | MessageCancelledEvent;
+  | MessageCancelledEvent
+  | StreamGapEvent;
 ```
 
 ### 9.1 Event Envelope
@@ -521,9 +523,23 @@ export interface StreamEventBase {
   sequence: number;
   createdAt: IsoDateTime;
 }
+
+export interface StreamGapEvent {
+  type: "stream.gap";
+  runId: EntityId;
+  conversationId: EntityId;
+  messageId?: EntityId;
+  after: number;
+  oldestSequence: number;
+  latestSequence: number;
+  reason: "cursor_evicted";
+}
 ```
 
-`sequence` is monotonic per `runId`. The frontend must ignore duplicate sequence numbers and treat gaps as recoverable stream errors until the backend supports resume.
+`sequence` is monotonic per `runId` and equals the SSE `id`/resume cursor. The
+frontend ignores duplicates and resumes a recoverable disconnect through
+`GET /v1/chat/runs/{runId}/events?after={lastSequence}` with the matching
+`Last-Event-ID` header.
 
 ### 9.2 Events
 
@@ -603,12 +619,15 @@ export interface MessageCancelledEvent extends StreamEventBase {
 Canonical SSE wire examples:
 
 ```text
+id: 1
 event: message.started
 data: {"type":"message.started","runId":"run_1","conversationId":"c_1","messageId":"m_2","sequence":1,"createdAt":"2026-07-07T10:00:00.000Z","role":"assistant","modelRef":{"providerId":"provider_openai","modelId":"gpt-5.5","displayName":"GPT-5.5"}}
 
+id: 2
 event: message.delta
 data: {"type":"message.delta","runId":"run_1","conversationId":"c_1","messageId":"m_2","sequence":2,"createdAt":"2026-07-07T10:00:01.000Z","delta":"hello"}
 
+id: 3
 event: message.completed
 data: {"type":"message.completed","runId":"run_1","conversationId":"c_1","messageId":"m_2","sequence":3,"createdAt":"2026-07-07T10:00:02.000Z","message":{"id":"m_2","conversationId":"c_1","role":"assistant","content":"hello","createdAt":"2026-07-07T10:00:02.000Z"}}
 ```
@@ -616,6 +635,7 @@ data: {"type":"message.completed","runId":"run_1","conversationId":"c_1","messag
 Error frame:
 
 ```text
+id: 4
 event: message.error
 data: {"type":"message.error","runId":"run_1","conversationId":"c_1","sequence":4,"createdAt":"2026-07-07T10:00:03.000Z","error":{"code":"PROVIDER_TIMEOUT","message":"Provider timed out.","recoverable":true,"requestId":"req_1"}}
 ```
@@ -1721,9 +1741,10 @@ Sequence handling:
 
 - `sequence` is monotonic per `runId`.
 - Duplicate sequence numbers are ignored.
-- A sequence gap is recoverable: emit or synthesize `STREAM_INTERRUPTED`,
-  stop applying more deltas for that run, and refresh via `listMessages` when
-  the request settles.
+- A sequence gap is recoverable: reconnect from the last accepted sequence.
+  A backend `stream.gap` resets the delivery cursor to the declared retained
+  suffix, renders an explicit partial-view notice, and converges on the final
+  persisted Message; never invent evicted deltas.
 - `message.completed.message` is authoritative over accumulated deltas.
 - Exactly one terminal event is allowed. Extra frames after a terminal event
   are ignored.

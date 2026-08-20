@@ -33,6 +33,19 @@ POST /v1/chat/runs/{runId}/cancel
 Content-Type: application/json
 ```
 
+Cursor resume endpoint:
+
+```http
+GET /v1/chat/runs/{runId}/events?after={lastSequence}
+Accept: text/event-stream
+Last-Event-ID: {lastSequence}
+```
+
+`after` takes precedence over `Last-Event-ID`; either value must be a
+non-negative integer. The endpoint is available only to the exact Run user and
+reauthorizes the current Conversation before returning data. Unknown,
+unauthorized, or expired retained Runs return the same bounded not-found shape.
+
 Stream success response:
 
 ```http
@@ -115,8 +128,9 @@ Rules:
 
 ## 4. SSE Events
 
-Every frame uses a named `event:` line matching `data.type` and a single JSON
-object in `data:`.
+Every sequenced frame uses `id: <sequence>`, a named `event:` line matching
+`data.type`, and a single JSON object in `data:`. The JSON `sequence`, SSE
+`id`, and reconnect cursor are the same Run-local integer.
 
 Required sequence for a successful mock/provider stream:
 
@@ -135,6 +149,30 @@ Chat Agent event log before the same sanitized projection is sent. The SSE
 durable event sequence. Terminal Message finalization precedes the deferred
 `assistant.message`/`turn.ended` append; startup recovery repairs that explicit
 torn-write window without changing an already terminal Message status.
+
+The active Run keeps a process-local ring of at most 1,024 encoded SSE frames
+and 4 MiB. Publishing never waits on a reconnect client. Each subscriber has a
+bounded queue; a slow subscriber is closed and may reconnect from its last
+cursor. At most 16 subscribers exist per Run. A completed stream is retained
+for 30 seconds, with at most 64 finished streams retained process-wide, so a
+client that loses the terminal frame can still replay it. This ring is delivery
+state only: transient chunks are never appended to `chat_agent_events`, and the
+final bounded Tool presentation remains the database reload authority.
+
+If `after` predates an evicted or oversized frame, the resume stream first
+emits an unsequenced explicit gap:
+
+```text
+event: stream.gap
+data: {"type":"stream.gap","runId":"...","messageId":"...","after":12,
+       "oldestSequence":18,"latestSequence":25,"reason":"cursor_evicted"}
+```
+
+Retained frames then continue from `oldestSequence`. The frontend shows a safe
+partial-view notice, resets only its delivery cursor, and converges on the
+terminal Message snapshot. If the terminal frame is also unavailable, it reads
+the persisted Message list after bounded resume attempts. It never fabricates
+the evicted content.
 
 Migration `097` adds same-Conversation Goal state. Goal mutations append
 `goal.changed`, and every admitted automatic continuation appends
@@ -165,9 +203,11 @@ message.cancelled
 Example:
 
 ```text
+id: 1
 event: message.started
 data: {"type":"message.started","runId":"...","conversationId":"...","messageId":"...","sequence":1,"createdAt":"2026-07-07T10:00:00Z","role":"assistant","modelRef":{"providerId":"mock","modelId":"mock-chat"}}
 
+id: 2
 event: message.delta
 data: {"type":"message.delta","runId":"...","conversationId":"...","messageId":"...","sequence":2,"createdAt":"2026-07-07T10:00:01Z","delta":"Mock response: "}
 
@@ -435,6 +475,9 @@ explicit Stop -> AbortController.abort()
 - `bestEffortStreamWriter` delegates headers and healthy writes. The first
   write, short-write, or `ResponseController.Flush` error marks delivery
   detached; later writes return success without touching the socket.
+- Before socket delivery, the writer records each sequenced frame in the
+  bounded active-Run ring. Detachment changes only the primary socket; cursor
+  replay and final persistence continue.
 - Delivery detachment never invokes `cancelAssistantAfterWriteError`. Provider
   consumption, Tool/Memory/Search continuation, final assistant persistence,
   Usage, and Memory capture continue exactly once.
@@ -451,6 +494,9 @@ explicit Stop -> AbortController.abort()
 | --- | --- |
 | HTTP request context is cancelled before the first SSE write | Provider/Run context remains live; assistant reaches its normal durable terminal state |
 | SSE write or flush fails during a delta | Mark delivery detached; consume remaining events and persist the full assistant |
+| Browser reconnects with retained cursor | Replay the exact suffix, then subscribe atomically to new frames |
+| Browser reconnects behind eviction | Emit explicit `stream.gap`, replay retained suffix, converge on terminal Message |
+| Reconnect subscriber stops reading | Close only that subscriber; do not block Provider/Tool execution |
 | Browser switches or creates a Conversation | Do not abort Server Run; stale visible state may ignore its deltas |
 | Browser closes after generation is accepted | Backend continues without an attached client |
 | User presses Stop after `message.started` | Client calls the Run cancel endpoint; Provider/Tool/Image context is cancelled and assistant is `cancelled` |
@@ -460,7 +506,8 @@ explicit Stop -> AbortController.abort()
 ### 10.5 Good / Base / Bad Cases
 
 - Good: a long Tool-backed answer loses its socket halfway through, continues
-  every continuation, and reloads as one completed full assistant.
+  every continuation, resumes from the last cursor, and finishes as one
+  completed full assistant.
 - Base: an attached browser receives the unchanged ordered SSE sequence.
 - Bad: Sidebar navigation calls `AbortController.abort()`, the API client calls
   `/cancel`, and a healthy Run is persisted as cancelled.
@@ -479,6 +526,10 @@ explicit Stop -> AbortController.abort()
   unchanged.
 - Frontend composition/API: navigation has no implicit abort; explicit abort
   after `message.started` still calls `/v1/chat/runs/{runId}/cancel`.
+- Ring/API: prove bounded eviction, gap metadata, exact-user/current-
+  Conversation authorization, replay/live race freedom, and terminal grace.
+- Frontend: split one response after sequence N, assert the resume URL/header,
+  duplicate suppression, gap notice, and final authoritative Message.
 
 ### 10.7 Wrong vs Correct
 
@@ -496,13 +547,16 @@ Correct:
 ```go
 generationCtx := context.WithoutCancel(r.Context())
 streamCtx, cancelRun := context.WithCancel(generationCtx)
-activeRuns.register(runID, cancelRun)
-w = newBestEffortStreamWriter(w)
+runStream := newActiveRunStream(runID, conversationID, messageID)
+activeRuns.registerStream(runID, cancelRun, userID, conversationID, runStream)
+delivery := newBestEffortStreamWriter(w)
+delivery.attachStream(runStream)
+w = delivery
 ```
 
 ## 11. Non-Goals
 
 - Gemini and native OpenAI Responses API adapters.
 - Stream endpoint auth enforcement through the new session-cache substrate.
-- Streaming resume, cursor replay, or durable run records.
+- Durable external Run records or cross-process stream replay.
 - Tool calls, plugins, attachments, MinIO/S3, RAG, title generation, and auth.

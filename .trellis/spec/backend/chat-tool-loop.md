@@ -508,6 +508,13 @@ job_kill({jobId})
   exactly once; deny/expiry/cancel/restart denial never execute. Exact
   Conversation + Tool + risk grants may auto-allow later calls. Approval rows
   retain no raw arguments/results and the hard blocklist remains non-bypassable.
+- The best-effort primary SSE writer must publish every sequenced event to the
+  active Run ring before attempting socket delivery. Reconnect uses the same
+  monotonic sequence/SSE ID; never manufacture a second event order. Snapshot
+  and subscriber registration are atomic so events cannot fall between replay
+  and live follow. Bound frames, bytes, subscribers, subscriber queues, terminal
+  grace, and finished Run count. A queue overflow closes only that subscriber.
+  An evicted cursor emits safe gap metadata, never missing payload content.
 - Run `bash mm-chat/scripts/verify-chat-artifacts-postgres17.sh` for artifact
   publication changes; it must prove output-link reload, two-user isolation,
   deleted-file rejection, and ephemeral PostgreSQL 17 teardown.
@@ -529,6 +536,8 @@ job_kill({jobId})
 | catastrophic command blocked | typed Tool failure before process creation; approval cannot bypass |
 | destructive command, no durable approval authority | typed `approval_required` Tool failure |
 | destructive command with durable approval authority | durable wait; same Tool resumes only after allow |
+| primary SSE disconnects | generation continues; reconnect from last accepted sequence |
+| requested cursor predates ring | `stream.gap(cursor_evicted)` then retained suffix |
 | workspace traversal/symlink escape | bounded `path_invalid`; no file access |
 | file version changed | bounded `version_conflict`; preserve current bytes |
 | Job lookup across user/Conversation | `job_not_found`; no existence disclosure |

@@ -235,7 +235,6 @@ replace the runtime.
 
 ### Remaining slices
 
-- Cursor reconnect ring buffer and stream resumption across browser disconnects.
 - Backend-authorized Retry, Job reconciliation metadata, canary flag, exact
   rollout gates, performance/security acceptance, and legacy transport removal.
 
@@ -261,3 +260,16 @@ replace the runtime.
   conversation`, `Deny`, expiry, and startup `restart_denied` behavior.
 - Added runtime-validated frontend approval controls with safe malformed-data
   fallback, plus focused Go/Vitest and PostgreSQL 17 approval coverage.
+
+### Slice 4 — cursor reconnect
+
+- Added a process-local bounded Run ring keyed by the existing monotonic SSE
+  sequence. Sequenced frames now also carry the matching SSE `id` cursor.
+- Added exact-user/current-Conversation `GET /v1/chat/runs/{runId}/events`
+  replay with atomic suffix subscription, bounded slow-client queues, heartbeat,
+  terminal grace retention, and explicit `cursor_evicted` gaps.
+- Frontend automatically resumes from the last accepted sequence, ignores
+  duplicates, shows a localized partial-view warning after eviction, and
+  converges on the terminal Message snapshot without fabricating missing data.
+- Focused Backend ring/endpoint and Frontend reconnect/gap tests pass; transient
+  chunks remain SSE-only and never become one database event per chunk.

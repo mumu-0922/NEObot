@@ -2079,6 +2079,141 @@ describe("Phase 11.2A server chat CRUD adapter", () => {
     ]);
   });
 
+  it("resumes an interrupted run from the last sequence cursor", async () => {
+    const requests: Array<{
+      url: string;
+      method?: string;
+      lastEventId?: string | null;
+    }> = [];
+    let requestCount = 0;
+    const chat = createServerChatApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async (input, init) => {
+          requestCount += 1;
+          const headers = new Headers(init?.headers);
+          requests.push({
+            url: String(input),
+            method: init?.method,
+            lastEventId: headers.get("last-event-id"),
+          });
+          if (requestCount === 1) {
+            return new Response(
+              [
+                "id: 1",
+                "event: message.started",
+                'data: {"type":"message.started","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":1}',
+                "",
+                "id: 2",
+                "event: message.delta",
+                'data: {"type":"message.delta","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":2,"delta":"hel"}',
+                "",
+              ].join("\n"),
+              { headers: { "content-type": "text/event-stream" } },
+            );
+          }
+          return new Response(
+            [
+              "id: 3",
+              "event: message.delta",
+              'data: {"type":"message.delta","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":3,"delta":"lo"}',
+              "",
+              "id: 4",
+              "event: message.completed",
+              'data: {"type":"message.completed","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":4,"message":{"id":"m2","conversationId":"c1","role":"assistant","status":"completed","content":"hello","sequenceNo":2,"attachments":[],"outputBlocks":[],"metadata":{},"createdAt":"2026-07-08T00:00:00Z","updatedAt":"2026-07-08T00:00:02Z"}}',
+              "",
+            ].join("\n"),
+            { headers: { "content-type": "text/event-stream" } },
+          );
+        },
+      }),
+    );
+    const deltas: string[] = [];
+
+    await expect(
+      chat.streamAssistantMessage(
+        {
+          conversationId: "c1",
+          userMessageId: "m1",
+          modelRef: { providerId: "openai", modelId: "gpt-5.5" },
+          idempotencyKey: "stream-key",
+        },
+        { onDelta: (event) => deltas.push(String(event.delta)) },
+      ),
+    ).resolves.toMatchObject({
+      status: "completed",
+      message: { id: "m2", content: "hello" },
+    });
+    expect(deltas).toEqual(["hel", "lo"]);
+    expect(requests).toEqual([
+      {
+        url: "http://backend.test/v1/chat/conversations/c1/stream",
+        method: "POST",
+        lastEventId: null,
+      },
+      {
+        url: "http://backend.test/v1/chat/runs/run-1/events?after=2",
+        method: "GET",
+        lastEventId: "2",
+      },
+    ]);
+  });
+
+  it("surfaces an evicted cursor gap and converges on the final snapshot", async () => {
+    let requestCount = 0;
+    const gapEvents: string[] = [];
+    const chat = createServerChatApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async () => {
+          requestCount += 1;
+          if (requestCount === 1) {
+            return new Response(
+              [
+                "event: message.started",
+                'data: {"type":"message.started","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":1}',
+                "",
+              ].join("\n"),
+              { headers: { "content-type": "text/event-stream" } },
+            );
+          }
+          return new Response(
+            [
+              "event: stream.gap",
+              'data: {"type":"stream.gap","runId":"run-1","conversationId":"c1","messageId":"m2","after":1,"oldestSequence":3,"latestSequence":4,"reason":"cursor_evicted"}',
+              "",
+              "id: 3",
+              "event: message.delta",
+              'data: {"type":"message.delta","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":3,"delta":"tail"}',
+              "",
+              "id: 4",
+              "event: message.completed",
+              'data: {"type":"message.completed","runId":"run-1","conversationId":"c1","messageId":"m2","sequence":4,"message":{"id":"m2","conversationId":"c1","role":"assistant","status":"completed","content":"authoritative final","sequenceNo":2,"attachments":[],"outputBlocks":[],"metadata":{},"createdAt":"2026-07-08T00:00:00Z","updatedAt":"2026-07-08T00:00:02Z"}}',
+              "",
+            ].join("\n"),
+            { headers: { "content-type": "text/event-stream" } },
+          );
+        },
+      }),
+    );
+
+    await expect(
+      chat.streamAssistantMessage(
+        {
+          conversationId: "c1",
+          userMessageId: "m1",
+          modelRef: { providerId: "openai", modelId: "gpt-5.5" },
+          idempotencyKey: "stream-key",
+        },
+        { onGap: (event) => gapEvents.push(String(event.reason)) },
+      ),
+    ).resolves.toMatchObject({
+      status: "completed",
+      message: { content: "authoritative final" },
+    });
+    expect(gapEvents).toEqual(["cursor_evicted"]);
+  });
+
   it("maps stream error frames and pre-SSE JSON errors to failed run results", async () => {
     const errorEvents: string[] = [];
     const streamErrorChat = createServerChatApiShell(
