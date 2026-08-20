@@ -2061,6 +2061,19 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		flusher.Flush()
 		return nil
 	}
+	emitTransientProcessStep := func(step ProcessStep) error {
+		sequence++
+		stepCopy := cloneProcessStep(step)
+		if err := writeSSEEvent(w, "process.step.updated", streamEvent{
+			Type: "process.step.updated", RunID: runID,
+			ConversationID: conversationID, MessageID: assistantMessage.ID,
+			Sequence: sequence, CreatedAt: formatTime(time.Now()), Step: &stepCopy,
+		}); err != nil {
+			return err
+		}
+		flusher.Flush()
+		return nil
+	}
 	emitReasoningDelta := func(delta string) error {
 		if delta == "" {
 			return nil
@@ -2335,6 +2348,17 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			execution := providerEvent.ToolExecution
 			eventAt := time.Now()
 			processUpdates := toolTrace.apply(execution, eventAt)
+			if execution != nil && execution.Transient {
+				for _, step := range processUpdates {
+					if err := emitTransientProcessStep(step); err != nil {
+						cancelTrackedAfterWriteError(
+							conversationID, assistantMessage.ID, runID, content.String(),
+						)
+						return
+					}
+				}
+				continue
+			}
 			recordedTool, recordErr := agentRecorder.recordToolExecution(
 				generationCtx, execution, processUpdates, eventAt,
 			)

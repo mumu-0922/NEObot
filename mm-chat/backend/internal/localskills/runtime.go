@@ -56,6 +56,16 @@ type Request struct {
 	TimeoutSeconds  int
 	SkillsRoot      string
 	ActiveSkillRoot string
+	// OnOutput receives bounded raw process bytes inside the Backend. Callers
+	// must sanitize before exposing them outside the process. The callback must
+	// not block command pipes.
+	OnOutput func(OutputChunk)
+}
+
+type OutputChunk struct {
+	Sequence int
+	Stream   string
+	Content  string
 }
 
 type Result struct {
@@ -204,6 +214,7 @@ func (executor *Executor) executeReserved(
 	)
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	capture := newBoundedCapture(executor.config.MaxOutput)
+	capture.onOutput = request.OnOutput
 	command.Stdout = capture.writer(true)
 	command.Stderr = capture.writer(false)
 	// Close may cancel a queued background Job after it has reserved a slot but
@@ -465,6 +476,8 @@ type boundedCapture struct {
 	stdout    strings.Builder
 	stderr    strings.Builder
 	truncated bool
+	sequence  int
+	onOutput  func(OutputChunk)
 }
 
 type captureWriter struct {
@@ -483,7 +496,6 @@ func (capture *boundedCapture) writer(stdout bool) io.Writer {
 func (writer captureWriter) Write(value []byte) (int, error) {
 	written := len(value)
 	writer.capture.mu.Lock()
-	defer writer.capture.mu.Unlock()
 	keep := int64(len(value))
 	if keep > writer.capture.remaining {
 		keep = writer.capture.remaining
@@ -497,6 +509,18 @@ func (writer captureWriter) Write(value []byte) (int, error) {
 		}
 		writer.capture.remaining -= keep
 	}
+	writer.capture.sequence++
+	sequence := writer.capture.sequence
+	callback := writer.capture.onOutput
+	stream := "stderr"
+	if writer.stdout {
+		stream = "stdout"
+	}
+	content := string(append([]byte(nil), value[:keep]...))
+	if callback != nil && content != "" {
+		callback(OutputChunk{Sequence: sequence, Stream: stream, Content: content})
+	}
+	writer.capture.mu.Unlock()
 	return written, nil
 }
 

@@ -82,6 +82,41 @@ func TestExecutorRunsScriptAndReturnsNonzeroExit(t *testing.T) {
 	}
 }
 
+func TestExecutorEmitsBoundedOutputChunks(t *testing.T) {
+	workspace := t.TempDir()
+	executor := newTestExecutor(t, workspace, ApprovalSmart, 64<<10, 3*time.Second)
+	var chunks []OutputChunk
+	result, err := executor.Execute(context.Background(), Request{
+		Command: "printf stdout-value; printf stderr-value >&2",
+		OnOutput: func(chunk OutputChunk) {
+			chunks = append(chunks, chunk)
+		},
+	})
+	if err != nil || result.Stdout != "stdout-value" || result.Stderr != "stderr-value" {
+		t.Fatalf("result=%#v error=%v", result, err)
+	}
+	if len(chunks) < 2 {
+		t.Fatalf("chunks=%#v", chunks)
+	}
+	var stdout, stderr strings.Builder
+	for index, chunk := range chunks {
+		if chunk.Sequence != index+1 {
+			t.Fatalf("chunk sequence=%#v", chunks)
+		}
+		switch chunk.Stream {
+		case "stdout":
+			stdout.WriteString(chunk.Content)
+		case "stderr":
+			stderr.WriteString(chunk.Content)
+		default:
+			t.Fatalf("chunk stream=%q", chunk.Stream)
+		}
+	}
+	if stdout.String() != result.Stdout || stderr.String() != result.Stderr {
+		t.Fatalf("chunks stdout/stderr=%q/%q", stdout.String(), stderr.String())
+	}
+}
+
 func TestExecutorBlocksCatastrophicAndApprovalCommandsBeforeStart(t *testing.T) {
 	workspace := t.TempDir()
 	executor := newTestExecutor(t, workspace, ApprovalSmart, 64<<10, 3*time.Second)

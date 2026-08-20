@@ -151,6 +151,9 @@ timeline updates.
   generic MCP/Browser cards remain summary-only. Never reuse `argumentSummary`
   or render raw JSON. Terminal transcript is backend-redacted and bounded to
   64 KiB; File content/diff is bounded to 64 KiB and paths remain workspace-relative.
+- Repeated running ProcessSteps with the same ID update the existing Terminal
+  card in place. They are transient live projections; reload must converge on
+  the final durable snapshot and must not create one row per output chunk.
 - Normalize `tool.call.updated` with its mode/classification pair. MCP accepts
   only `read|write|unknown`; `local_direct` accepts `read|write|execute`.
   `execute` must not widen MCP Server definition or Tool classification

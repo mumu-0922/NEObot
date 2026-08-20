@@ -131,6 +131,55 @@ func TestLocalSkillToolLoopLoadsSkillRunsTerminalAndContinuesSameModel(t *testin
 	}
 }
 
+func TestLocalTerminalStreamsTransientPresentationAndPersistsFinalSnapshot(t *testing.T) {
+	workspace := t.TempDir()
+	runtimeRoot := t.TempDir()
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: runtimeRoot, WorkspaceRoot: workspace,
+		ShellPath: "/bin/sh", ApprovalMode: localskills.ApprovalSmart,
+		CallTimeout: 3 * time.Second, RunTimeout: 10 * time.Second,
+		MaxOutput: 64 << 10, MaxCalls: 8, MaxRounds: 8, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := newLocalSkillToolRuntime(executor, nil)
+	events := make(chan ProviderEvent, 16)
+	result, err := runtime.execute(context.Background(), events, ProviderToolCall{
+		ID: "terminal-live-call", Name: localTerminalToolName,
+		Arguments: `{"command":"head -c 1024 /dev/zero | tr '\\0' x","skill":null,` +
+			`"workingDir":null,"timeoutSeconds":2,"runInBackground":false}`,
+	}, 1, 1)
+	if err != nil || result.IsError {
+		t.Fatalf("result=%#v error=%v", result, err)
+	}
+	close(events)
+	var transient *ProviderToolExecutionEvent
+	var completed *ProviderToolExecutionEvent
+	for event := range events {
+		if event.ToolExecution == nil {
+			continue
+		}
+		if event.ToolExecution.Transient {
+			copy := *event.ToolExecution
+			transient = &copy
+		}
+		if event.ToolExecution.Status == ProcessStepStatusCompleted {
+			copy := *event.ToolExecution
+			completed = &copy
+		}
+	}
+	if transient == nil || transient.Presentation == nil ||
+		len(transient.Presentation.Transcript) == 0 {
+		t.Fatalf("transient=%#v", transient)
+	}
+	if completed == nil || completed.Transient || completed.Presentation == nil ||
+		len(completed.Presentation.Transcript) != 1 ||
+		len(completed.Presentation.Transcript[0].Content) != 1024 {
+		t.Fatalf("completed=%#v", completed)
+	}
+}
+
 func TestLocalSkillPreludePreservesMemoryAsFirstTaskRound(t *testing.T) {
 	runtimeRoot := t.TempDir()
 	skillRoot := filepath.Join(runtimeRoot, "fixture")

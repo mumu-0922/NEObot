@@ -9,6 +9,7 @@ import (
 	"io"
 	"path"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -182,7 +183,7 @@ func (runtime *localSkillToolRuntime) execute(
 		return ProviderToolResult{}, context.Canceled
 	}
 	started := time.Now()
-	result, failure, fatal := runtime.executeCall(ctx, call, &execution)
+	result, failure, fatal := runtime.executeCall(ctx, events, call, &execution)
 	execution.Presentation = completeLocalProcessPresentation(execution.Presentation, result)
 	execution.DurationMillis = max(time.Since(started).Milliseconds(), 0)
 	if fatal != nil {
@@ -227,6 +228,7 @@ func sendLocalSkillTerminalEvent(
 
 func (runtime *localSkillToolRuntime) executeCall(
 	ctx context.Context,
+	events chan<- ProviderEvent,
 	call ProviderToolCall,
 	execution *ProviderToolExecutionEvent,
 ) (ProviderToolResult, string, error) {
@@ -367,6 +369,10 @@ func (runtime *localSkillToolRuntime) executeCall(
 			})
 			return backgroundJobToolResult(call, job, err)
 		}
+		liveOutput := newTerminalLiveOutput(
+			ctx, events, *execution, runtime.executor, request,
+		)
+		request.OnOutput = liveOutput.append
 		result, err := runtime.executor.Execute(ctx, request)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -387,6 +393,124 @@ func (runtime *localSkillToolRuntime) executeCall(
 	default:
 		return localSkillFailureResult(call, "tool_not_available"), "tool_not_available", nil
 	}
+}
+
+type terminalLiveOutput struct {
+	mu              sync.Mutex
+	ctx             context.Context
+	events          chan<- ProviderEvent
+	execution       ProviderToolExecutionEvent
+	executor        *localskills.Executor
+	request         localskills.Request
+	entries         []ProcessTranscriptEntry
+	lastEmit        time.Time
+	lastStableBytes int
+}
+
+func newTerminalLiveOutput(
+	ctx context.Context,
+	events chan<- ProviderEvent,
+	execution ProviderToolExecutionEvent,
+	executor *localskills.Executor,
+	request localskills.Request,
+) *terminalLiveOutput {
+	return &terminalLiveOutput{
+		ctx: ctx, events: events, execution: execution, executor: executor, request: request,
+	}
+}
+
+func (output *terminalLiveOutput) append(chunk localskills.OutputChunk) {
+	if output == nil || output.executor == nil || chunk.Content == "" ||
+		(chunk.Stream != "stdout" && chunk.Stream != "stderr") {
+		return
+	}
+	output.mu.Lock()
+	if last := len(output.entries) - 1; last >= 0 && output.entries[last].Stream == chunk.Stream {
+		output.entries[last].Content += chunk.Content
+	} else {
+		output.entries = append(output.entries, ProcessTranscriptEntry{
+			Sequence: len(output.entries) + 1, Stream: chunk.Stream, Content: chunk.Content,
+		})
+	}
+	stable := terminalStableTranscript(output.entries, processReasoningStreamHoldbackBytes)
+	stableBytes := processTranscriptBytes(stable)
+	now := time.Now()
+	if stableBytes == 0 ||
+		(stableBytes-output.lastStableBytes < 16<<10 && now.Sub(output.lastEmit) < 75*time.Millisecond) {
+		output.mu.Unlock()
+		return
+	}
+	for index := range stable {
+		stable[index].Content = output.executor.RedactExecutionPaths(
+			stable[index].Content,
+			output.request.SkillsRoot,
+			output.request.ActiveSkillRoot,
+		)
+	}
+	presentation := cloneProcessStepPresentation(output.execution.Presentation)
+	if presentation == nil {
+		output.mu.Unlock()
+		return
+	}
+	presentation.Transcript = stable
+	presentation.Truncated = presentation.Truncated || stableBytes > maxProcessPresentationTextBytes
+	execution := output.execution
+	execution.Transient = true
+	execution.Presentation = presentation
+	output.lastEmit = now
+	output.lastStableBytes = stableBytes
+	output.mu.Unlock()
+
+	event := ProviderEvent{Type: ProviderEventToolExecution, ToolExecution: &execution}
+	select {
+	case <-output.ctx.Done():
+	case output.events <- event:
+	default:
+	}
+}
+
+func terminalStableTranscript(
+	entries []ProcessTranscriptEntry,
+	holdback int,
+) []ProcessTranscriptEntry {
+	stable := append([]ProcessTranscriptEntry(nil), entries...)
+	for index := len(stable) - 1; index >= 0 && holdback > 0; index-- {
+		length := len(stable[index].Content)
+		if length <= holdback {
+			holdback -= length
+			stable = stable[:index]
+			continue
+		}
+		stable[index].Content = truncateProcessUTF8(
+			stable[index].Content, length-holdback,
+		)
+		holdback = 0
+	}
+	return stable
+}
+
+func processTranscriptBytes(entries []ProcessTranscriptEntry) int {
+	total := 0
+	for _, entry := range entries {
+		total += len(entry.Content)
+	}
+	return total
+}
+
+func cloneProcessStepPresentation(
+	presentation *ProcessStepPresentation,
+) *ProcessStepPresentation {
+	if presentation == nil {
+		return nil
+	}
+	cloned := *presentation
+	cloned.Transcript = append([]ProcessTranscriptEntry(nil), presentation.Transcript...)
+	cloned.Items = append([]ProcessPresentationItem(nil), presentation.Items...)
+	if presentation.ExitCode != nil {
+		exitCode := *presentation.ExitCode
+		cloned.ExitCode = &exitCode
+	}
+	return &cloned
 }
 
 type localTerminalToolArguments struct {

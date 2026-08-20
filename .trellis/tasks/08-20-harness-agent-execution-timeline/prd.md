@@ -235,8 +235,17 @@ replace the runtime.
 
 ### Remaining slices
 
-- Real-time transcript chunks, cursor reconnect ring buffer, and coalesced
-  backpressure (the current slice streams the final bounded snapshot).
+- Cursor reconnect ring buffer and stream resumption across browser disconnects.
 - Durable Approval/CAS/expiry/restart-denial endpoints and UI controls.
 - Backend-authorized Retry, Job reconciliation metadata, canary flag, exact
   rollout gates, performance/security acceptance, and legacy transport removal.
+
+### Slice 2 — live Terminal transcript
+
+- Added ordered stdout/stderr pipe callbacks under the existing executor output
+  budget.
+- Added a 64-byte sanitizer holdback, 75 ms/16 KiB coalescing, path redaction,
+  and nonblocking transient Provider events.
+- Running ProcessSteps update the existing Terminal card in place. Transient
+  progress is SSE-only; completion persists the final bounded/redacted snapshot
+  so reload does not create or replay one database event per chunk.

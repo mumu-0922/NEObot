@@ -83,6 +83,14 @@ func (runtime *toolProcessTrace) apply(
 		updates = append(updates, step)
 	}
 	if event.Status == ProcessStepStatusRunning {
+		if event.Presentation != nil && len(updates) == 0 {
+			if step, ok := runtime.trace.transitionID(
+				toolStepID, ProcessStepStatusRunning, at, detail,
+			); ok {
+				step.Presentation = event.Presentation
+				updates = append(updates, runtime.trace.add(step))
+			}
+		}
 		return updates
 	}
 	status := normalizeProcessStepStatus(event.Status)

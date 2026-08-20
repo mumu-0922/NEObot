@@ -53,6 +53,11 @@ Migration head: 099_chat_agent_event_log_function_repair
   or safe MCP/Browser fallbacks. Provider-only raw Results, credentials, exact
   retrieval queries, private Server refs and materialized Workspace/Host/Skill
   paths never enter ProcessStep, durable Agent events, or SSE.
+- Foreground Terminal may emit transient running ProcessStep snapshots from its
+  bounded pipe capture. Keep a 64-byte sanitizer holdback, coalesce updates to
+  at most one per 75 ms unless 16 KiB becomes stable, and never block command
+  pipes on a slow SSE consumer. Transient snapshots are SSE-only; the final
+  bounded/redacted head+tail snapshot is the sole durable transcript authority.
 - `publish_file` accepts only workspace-relative regular files, persists through
   the existing user-owned File/object-store path, and attaches only successful
   outputs to the assistant message. Cross-user and stale/deleted access fails.

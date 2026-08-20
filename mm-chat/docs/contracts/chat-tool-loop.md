@@ -644,6 +644,14 @@ remain forbidden. Unknown/malformed/version-unsupported presentations are
 dropped without invalidating the enclosing step, and MCP cannot opt into a
 local Terminal card.
 
+Foreground Terminal output uses SSE-only transient running ProcessStep updates.
+The executor captures ordered source-tagged chunks within the existing output
+budget; the chat boundary holds back 64 bytes for cross-chunk sanitization,
+coalesces updates to 75 ms/16 KiB, and uses nonblocking delivery so a slow
+browser cannot stall command pipes. These progress snapshots never append
+Agent events. Completion persists one bounded/redacted 32 KiB head + 32 KiB
+tail transcript, which is the reload authority.
+
 Job-related process rows may additionally retain only
 `durability=process_local`. `context.replaced` payloads retain reason,
 before/after byte counts, pruned-result count, and replaced-exchange count;

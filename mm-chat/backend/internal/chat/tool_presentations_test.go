@@ -98,3 +98,12 @@ func TestTerminalResultPresentationKeepsExistingResultFacts(t *testing.T) {
 		t.Fatalf("presentation=%#v", presentation)
 	}
 }
+
+func TestTerminalLiveOutputHoldsBackUnsafeTail(t *testing.T) {
+	stable := terminalStableTranscript([]ProcessTranscriptEntry{
+		{Sequence: 1, Stream: "stdout", Content: strings.Repeat("x", 128)},
+	}, processReasoningStreamHoldbackBytes)
+	if len(stable) != 1 || len(stable[0].Content) != 64 {
+		t.Fatalf("stable=%#v", stable)
+	}
+}

@@ -99,6 +99,10 @@ The executor:
   transcript, exit code and execution flags; File/Job/Skill cards retain only
   their explicit allowlisted fields. Raw Tool Results never enter process
   trace, durable Agent events, or SSE.
+- Terminal pipe writes may feed nonblocking transient ProcessStep updates after
+  path redaction, a 64-byte sanitizer holdback and 75 ms/16 KiB coalescing.
+  Intermediate chunks are never durable; only the final bounded/redacted
+  transcript snapshot is persisted.
 
 These guards reduce accidental damage. They are not protection against an
 adversarial allowed process.

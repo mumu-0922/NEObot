@@ -88,6 +88,7 @@ type ProviderToolExecutionEvent struct {
 	Mode            string                   `json:"mode"`
 	Durability      string                   `json:"durability,omitempty"`
 	Presentation    *ProcessStepPresentation `json:"-"`
+	Transient       bool                     `json:"-"`
 }
 
 func normalizeProviderToolChoice(value string) string {

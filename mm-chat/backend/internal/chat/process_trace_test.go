@@ -164,6 +164,32 @@ func TestToolProcessTraceCreatesIndependentKnowledgeAndToolSteps(t *testing.T) {
 	}
 }
 
+func TestToolProcessTraceUpdatesRunningPresentationWithoutCreatingAnotherStep(t *testing.T) {
+	trace := newProcessTrace("message-live")
+	runtime := newToolProcessTrace(trace)
+	running := &ProviderToolExecutionEvent{
+		ExecutionID: "terminal-live", Name: localTerminalToolName,
+		Status: ProcessStepStatusRunning, Round: 1, Mode: "local_direct",
+		Presentation: &ProcessStepPresentation{
+			Version: 1, Card: "terminal", Command: "printf fixture",
+		},
+	}
+	if updates := runtime.apply(running, time.Now()); len(updates) != 1 {
+		t.Fatalf("initial updates=%#v", updates)
+	}
+	progress := *running
+	progress.Transient = true
+	progress.Presentation = cloneProcessStepPresentation(running.Presentation)
+	progress.Presentation.Transcript = []ProcessTranscriptEntry{
+		{Sequence: 1, Stream: "stdout", Content: "fixture progress"},
+	}
+	updates := runtime.apply(&progress, time.Now())
+	if len(updates) != 1 || len(updates[0].Presentation.Transcript) != 1 ||
+		len(trace.snapshot()) != 1 {
+		t.Fatalf("progress updates=%#v snapshot=%#v", updates, trace.snapshot())
+	}
+}
+
 func TestToolProcessTracePreservesCancelledOutcome(t *testing.T) {
 	trace := newProcessTrace("message-1")
 	runtime := newToolProcessTrace(trace)
