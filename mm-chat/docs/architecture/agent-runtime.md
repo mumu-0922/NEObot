@@ -9,9 +9,11 @@ Neo Chat has one conversation surface with two persisted runtime policies:
   connectors, Goals, and explicit artifact publication.
 
 The choice lives in `conversation.metadata.config.toolMode`. Missing historical
-values map to Agent for compatibility. If the selected model cannot perform
-native Tool rounds, the effective policy falls back to Chat without changing
-the stored user choice.
+values map to Agent for compatibility. On an Auto-capability cache miss, Agent
+waits for one shared bounded probe and enters the Tool Registry in that same
+request when supported. Only confirmed inability to perform native Tool rounds
+falls back to Chat; transient or inconclusive discovery preserves the native
+adapter path without changing the stored user choice.
 
 MCP is a connector implementation, not the Agent product. Users operate Tools
 and connectors from their management surface; the composer does not expose MCP

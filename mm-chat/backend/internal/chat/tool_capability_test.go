@@ -145,7 +145,7 @@ func TestResolveToolRoundCapabilityHonorsOverridePrecedence(t *testing.T) {
 	}
 }
 
-func TestToolCapabilityUnknownUsesNonBlockingSingleflightProbe(t *testing.T) {
+func TestChatCapabilityUnknownUsesNonBlockingSingleflightProbe(t *testing.T) {
 	release := make(chan struct{})
 	provider := &capabilityProbeProvider{
 		release: release,
@@ -166,7 +166,9 @@ func TestToolCapabilityUnknownUsesNonBlockingSingleflightProbe(t *testing.T) {
 
 	started := time.Now()
 	for range 2 {
-		if got := handler.resolveToolRoundCapability(context.Background(), provider, resolution, model); got != ToolCapabilityUnknown {
+		if got := handler.resolveToolRoundCapabilityForMode(
+			context.Background(), provider, resolution, model, chatToolModeChat,
+		); got != ToolCapabilityUnknown {
 			t.Fatalf("unknown status = %q", got)
 		}
 	}
@@ -188,6 +190,166 @@ func TestToolCapabilityUnknownUsesNonBlockingSingleflightProbe(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("probe result was not stored")
+	}
+}
+
+func TestAgentCapabilityMissWaitsForSupportedProbe(t *testing.T) {
+	release := make(chan struct{})
+	provider := &capabilityProbeProvider{
+		release: release,
+		events: []ProviderEvent{{
+			Type: ProviderEventToolCallCompleted,
+			ToolCall: &ProviderToolCall{
+				ID: "probe", Name: toolCapabilityProbeToolName, Arguments: `{}`,
+			},
+		}},
+	}
+	handler := NewHandler(nil, WithToolCapabilityCache(&capabilityMemoryCache{}))
+	resolution := RuntimeProviderResolution{
+		ToolCapabilityPolicy:     toolCapabilityPolicyAuto,
+		ToolCapabilityConfigHash: strings.Repeat("c", 64),
+	}
+	model := ModelRef{ProviderID: "fixture", ModelID: "model-a"}
+	result := make(chan ToolCapabilityStatus, 1)
+	go func() {
+		result <- handler.resolveToolRoundCapabilityForMode(
+			context.Background(), provider, resolution, model, chatToolModeAgent,
+		)
+	}()
+
+	waitForCapabilityProbeCalls(t, provider, 1)
+	select {
+	case status := <-result:
+		t.Fatalf("Agent capability returned %q before the probe completed", status)
+	default:
+	}
+	close(release)
+	select {
+	case status := <-result:
+		if status != ToolCapabilitySupported {
+			t.Fatalf("Agent capability = %q, want supported", status)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Agent capability did not receive the supported probe result")
+	}
+}
+
+func TestAgentCapabilityConcurrentWaitersShareProbe(t *testing.T) {
+	release := make(chan struct{})
+	provider := &capabilityProbeProvider{
+		release: release,
+		events: []ProviderEvent{{
+			Type: ProviderEventToolCallCompleted,
+			ToolCall: &ProviderToolCall{
+				ID: "probe", Name: toolCapabilityProbeToolName, Arguments: `{}`,
+			},
+		}},
+	}
+	handler := NewHandler(nil, WithToolCapabilityCache(&capabilityMemoryCache{}))
+	resolution := RuntimeProviderResolution{
+		ToolCapabilityPolicy:     toolCapabilityPolicyAuto,
+		ToolCapabilityConfigHash: strings.Repeat("d", 64),
+	}
+	model := ModelRef{ProviderID: "fixture", ModelID: "model-a"}
+	results := make(chan ToolCapabilityStatus, 2)
+	for range 2 {
+		go func() {
+			results <- handler.resolveToolRoundCapabilityForMode(
+				context.Background(), provider, resolution, model, chatToolModeAgent,
+			)
+		}()
+	}
+
+	waitForCapabilityProbeCalls(t, provider, 1)
+	close(release)
+	for range 2 {
+		select {
+		case status := <-results:
+			if status != ToolCapabilitySupported {
+				t.Fatalf("Agent capability = %q, want supported", status)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("concurrent Agent capability waiter did not finish")
+		}
+	}
+	if calls := provider.callCount(); calls != 1 {
+		t.Fatalf("probe calls = %d, want singleflight 1", calls)
+	}
+}
+
+func TestAgentCapabilityOnlyConfirmedUnsupportedDowngrades(t *testing.T) {
+	tests := []struct {
+		name       string
+		cache      *capabilityMemoryCache
+		provider   *capabilityProbeProvider
+		wantStatus ToolCapabilityStatus
+	}{
+		{
+			name: "cached unknown preserves native Agent",
+			cache: &capabilityMemoryCache{
+				lookupStatus: ToolCapabilityUnknown,
+				lookupFound:  true,
+			},
+			provider:   &capabilityProbeProvider{},
+			wantStatus: ToolCapabilitySupported,
+		},
+		{
+			name:  "transient probe preserves native Agent",
+			cache: &capabilityMemoryCache{},
+			provider: &capabilityProbeProvider{
+				startErr: errors.New("provider status 429"),
+			},
+			wantStatus: ToolCapabilitySupported,
+		},
+		{
+			name:  "explicit incompatibility downgrades",
+			cache: &capabilityMemoryCache{},
+			provider: &capabilityProbeProvider{
+				startErr: errors.New("tools are not supported by this model"),
+			},
+			wantStatus: ToolCapabilityUnsupported,
+		},
+	}
+
+	for index, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			handler := NewHandler(nil, WithToolCapabilityCache(test.cache))
+			resolution := RuntimeProviderResolution{
+				ToolCapabilityPolicy: toolCapabilityPolicyAuto,
+				ToolCapabilityConfigHash: strings.Repeat(
+					string(rune('e'+index)),
+					64,
+				),
+			}
+			got := handler.resolveToolRoundCapabilityForMode(
+				context.Background(),
+				test.provider,
+				resolution,
+				ModelRef{ProviderID: "fixture", ModelID: "model-a"},
+				chatToolModeAgent,
+			)
+			if got != test.wantStatus {
+				t.Fatalf("Agent capability = %q, want %q", got, test.wantStatus)
+			}
+			if test.cache.lookupFound && test.provider.callCount() != 0 {
+				t.Fatalf("cached capability started %d probes, want 0", test.provider.callCount())
+			}
+		})
+	}
+}
+
+func waitForCapabilityProbeCalls(
+	t *testing.T,
+	provider *capabilityProbeProvider,
+	want int,
+) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for provider.callCount() < want && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if calls := provider.callCount(); calls != want {
+		t.Fatalf("probe calls = %d, want %d", calls, want)
 	}
 }
 

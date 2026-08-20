@@ -211,9 +211,6 @@ func TestAssistantOnlyAttachmentPurposeAndArtifactCleanup(t *testing.T) {
 
 func TestHandlerPersistsAndReplaysPublishedArtifactOnAssistantMessage(t *testing.T) {
 	workspace := t.TempDir()
-	if err := os.WriteFile(filepath.Join(workspace, "result.csv"), []byte("name,value\ngold,1\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	executor, err := localskills.NewExecutor(localskills.Config{
 		Enabled: true, RuntimeRoot: filepath.Join(workspace, ".skills"),
 		WorkspaceRoot: workspace, ShellPath: "/bin/sh", ApprovalMode: localskills.ApprovalSmart,
@@ -225,6 +222,17 @@ func TestHandlerPersistsAndReplaysPublishedArtifactOnAssistantMessage(t *testing
 	}
 	publisher := &fakeWorkspaceArtifactPublisher{}
 	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "capability-probe", Name: toolCapabilityProbeToolName, Arguments: `{}`,
+		}}},
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "write", Name: localFileWriteToolName,
+			Arguments: `{"path":"result.csv","content":"name,value\ngold,1\n","expectedVersion":"absent"}`,
+		}}},
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "read", Name: localFileReadToolName,
+			Arguments: `{"path":"result.csv","offset":null,"limit":null}`,
+		}}},
 		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
 			ID: "publish", Name: localPublishFileToolName,
 			Arguments: `{"path":"result.csv","displayName":"gold.csv","contentType":"text/csv"}`,
@@ -239,9 +247,16 @@ func TestHandlerPersistsAndReplaysPublishedArtifactOnAssistantMessage(t *testing
 	repo.messages[testConversationID] = []Message{
 		fakeMessage(testMessageID, testConversationID, 0, "user", "生成 CSV"),
 	}
+	cache := &capabilityMemoryCache{stored: make(chan capabilityStoredValue, 1)}
+	resolver := &fakeRuntimeProviderResolver{
+		provider:                 provider,
+		toolCapabilityPolicy:     toolCapabilityPolicyAuto,
+		toolCapabilityConfigHash: strings.Repeat("9", 64),
+	}
 	handler := NewHandler(
 		NewService(repo),
-		WithProvider(provider),
+		WithRuntimeProviderResolver(resolver),
+		WithToolCapabilityCache(cache),
 		WithLocalSkillRuntime(nil, executor),
 		WithWorkspaceArtifactPublisher(publisher, 1024),
 	)
@@ -249,30 +264,57 @@ func TestHandlerPersistsAndReplaysPublishedArtifactOnAssistantMessage(t *testing
 		handler,
 		http.MethodPost,
 		conversationsPath+"/"+testConversationID+"/stream",
-		`{"userMessageId":"`+testMessageID+`","modelRef":{"providerId":"mock","modelId":"tool-model"},"idempotencyKey":"artifact-stream"}`,
+		`{"userMessageId":"`+testMessageID+`","modelRef":{"providerId":"mock","modelId":"tool-model"},"provider":{"source":"server-default"},"idempotencyKey":"artifact-stream"}`,
 	)
 	assertStreamStatus(t, recorder, http.StatusOK)
 	if !strings.Contains(recorder.Body.String(), `"purpose":"output"`) ||
 		!strings.Contains(recorder.Body.String(), "event: message.completed") {
 		t.Fatalf("stream=%s", recorder.Body.String())
 	}
-	if len(provider.inputs) != 2 {
+	if len(provider.inputs) != 5 {
 		t.Fatalf("provider inputs=%#v", provider.inputs)
 	}
-	foundPublish := false
-	for _, definition := range provider.inputs[0].Tools {
-		if definition.Function.Name == localPublishFileToolName {
-			foundPublish = true
+	wantTools := map[string]bool{
+		localFileReadToolName:    false,
+		localFileWriteToolName:   false,
+		localFileEditToolName:    false,
+		localFileSearchToolName:  false,
+		localTerminalToolName:    false,
+		localPublishFileToolName: false,
+	}
+	for _, definition := range provider.inputs[1].Tools {
+		if _, wanted := wantTools[definition.Function.Name]; wanted {
+			wantTools[definition.Function.Name] = true
 		}
 	}
-	if !foundPublish {
-		t.Fatalf("Agent Tools=%#v", provider.inputs[0].Tools)
+	for name, found := range wantTools {
+		if !found {
+			t.Fatalf("first Agent round omitted %q: %#v", name, provider.inputs[1].Tools)
+		}
+	}
+	written, err := os.ReadFile(filepath.Join(workspace, "result.csv"))
+	if err != nil || string(written) != "name,value\ngold,1\n" {
+		t.Fatalf("workspace result=%q err=%v", written, err)
+	}
+	if len(provider.inputs[4].Continuation) != 3 ||
+		!strings.Contains(provider.inputs[4].Continuation[1].Results[0].Content, `"content":"name,value\ngold,1\n"`) {
+		t.Fatalf("read-back continuation=%#v", provider.inputs[4].Continuation)
 	}
 	messages := repo.messages[testConversationID]
 	if len(messages) != 2 || messages[1].Status != "completed" ||
 		len(messages[1].Attachments) != 1 || messages[1].Attachments[0].Purpose != "output" ||
-		messages[1].Attachments[0].FileID != testFileID {
+		messages[1].Attachments[0].FileID != testFileID ||
+		messages[1].Metadata["requestedToolMode"] != "agent" ||
+		messages[1].Metadata["toolMode"] != "agent" {
 		t.Fatalf("messages=%#v", messages)
+	}
+	select {
+	case stored := <-cache.stored:
+		if stored.status != ToolCapabilitySupported || stored.category != "structured_tool_call" {
+			t.Fatalf("stored capability=%#v", stored)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("supported capability was not stored")
 	}
 	reloaded := performRequest(
 		handler,

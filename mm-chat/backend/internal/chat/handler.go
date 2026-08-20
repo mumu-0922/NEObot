@@ -1387,19 +1387,20 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeServiceError(w, err)
 		return
 	}
-	searchMode := searchModeFromConfig(request.Config)
-	toolRoundCapable := h.resolveToolRoundCapability(
-		r.Context(),
-		streamProvider,
-		providerResolution,
-		*modelRef,
-	) == ToolCapabilitySupported
 	conversation, err := h.service.GetConversation(r.Context(), conversationID)
 	if err != nil {
 		writeServiceError(w, err)
 		return
 	}
 	requestedToolMode := requestedChatToolMode(conversation.Metadata)
+	searchMode := searchModeFromConfig(request.Config)
+	toolRoundCapable := h.resolveToolRoundCapabilityForMode(
+		r.Context(),
+		streamProvider,
+		providerResolution,
+		*modelRef,
+		requestedToolMode,
+	) == ToolCapabilitySupported
 	effectiveToolMode := effectiveChatToolMode(conversation.Metadata, toolRoundCapable)
 	agentMode := effectiveToolMode == chatToolModeAgent
 	useLiveKnowledgeTool := ragSelection.Enabled && toolRoundCapable &&

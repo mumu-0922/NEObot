@@ -1018,8 +1018,12 @@ SSE socket own delivery only.
   continue to Web; a private-document existence request reports no matching
   selected Knowledge evidence; ordinary answers must not fabricate `[K#]`.
 - Tool capability resolves in this order: model override, provider default,
-  unexpired probe cache, then `unknown` compatibility planning. `enabled` and
-  `disabled` are explicit operator assertions; `auto` is the normal default.
+  unexpired probe cache, then `unknown`. `enabled` and `disabled` are explicit
+  operator assertions; `auto` is the normal default. Persisted Chat keeps the
+  non-blocking compatibility path. Persisted Agent waits for the shared bounded
+  probe on a cache miss; a supported result admits the same request, an explicit
+  unsupported result downgrades it, and transient/inconclusive `unknown`
+  preserves the adapter-native Agent Tool round.
 - An Auto probe sends only a fixed fictional Tool definition and fixed prompt
   with thinking disabled, temperature zero, and maximum output `128`.
   It contains no user query, conversation, catalog, source body, provider raw
@@ -1042,9 +1046,11 @@ SSE socket own delivery only.
   Tools remain unchanged. This wire normalization does not change the
   canonical Memory Tool definition or SHA-256.
 - Provider save/activation schedules detached background warmup for the first
-  configured model and matching task models. An unknown first-use model uses
-  Planner immediately and starts one singleflight probe; neither save nor chat
-  waits for the probe. Probe/cache writes use bounded detached contexts.
+  configured model and matching task models. An unknown first-use Chat request
+  uses Planner immediately and starts one singleflight probe. An unknown
+  first-use Agent request waits for that same bounded probe, but no request waits
+  for the subsequent cache write. Probe/cache writes use bounded detached
+  contexts.
 - A real native first round downgrades capability only for explicit Tool
   incompatibility, writes the downgrade asynchronously, and continues through
   same-turn Planner. Transient provider failures remain provider failures.
@@ -1218,7 +1224,9 @@ SSE socket own delivery only.
 | Native Web Tool unsupported      | same-model compatibility plan                    |
 | Native Knowledge Tool unsupported | live compatibility executor; no pre-SSE retrieval |
 | Tool capability override enabled/disabled | bypass probe cache with explicit operator assertion |
-| Auto capability cache miss/expired | current turn Planner; one background singleflight probe |
+| Auto capability cache miss/expired in Chat | current turn Planner; one background singleflight probe |
+| Auto capability cache miss/expired in Agent | wait for the shared bounded probe; supported admits the same request |
+| Agent probe/cache remains unknown | preserve the native Tool round; only real explicit incompatibility may downgrade |
 | Probe valid matching Tool Call   | shared `supported` row, seven-day TTL            |
 | Probe explicit Tool incompatibility | shared `unsupported` row, 24-hour TTL          |
 | Probe timeout/429/5xx/ordinary 400 | shared `unknown` retry backoff, five-minute TTL |
@@ -1261,7 +1269,8 @@ SSE socket own delivery only.
 | Anthropic failed Tool Result     | matching `tool_use_id` plus `is_error=true`       |
 | Current user explicitly requests saved Memory | order `search_memory` first, use named `required`, and disable optional reasoning only for the first decision round |
 | Current user discusses memory generally or submits an ordinary task | keep `tool_choice=auto`; do not force retrieval |
-| Capability is `unknown` on an explicit read | start the bounded background probe and release no Tool Memory on that turn; never force-enable the model |
+| Capability is `unknown` on an explicit read in Chat | start the bounded background probe and release no Tool Memory on that turn |
+| Capability probe remains `unknown` for persisted Agent | preserve native Agent admission; normal required-Memory Tool policy applies |
 | First product round returns no Memory call | flush buffered answer, perform zero hybrid retrieval, and keep ordinary chat |
 | First product round returns one exact `search_memory({})` call | run bounded hybrid retrieval, rehydrate through migration `065`, and continue on the same Provider/model |
 | Product Memory policy is absent/non-production or fixed Judge tuple drifts | fail closed to an empty/failed Memory Tool result; do not call v1 or switch Judge Provider/model |
@@ -1302,8 +1311,10 @@ SSE socket own delivery only.
 - Good: `有小作文模板嘛` sees a matching bounded filename and uses Knowledge,
   while an unrelated birthday greeting in the same conversation remains
   Direct.
-- Good: an unknown model answers through same-model Planner immediately while
-  one user-data-free probe warms later turns.
+- Good: an unknown model in Chat answers through same-model Planner immediately
+  while one user-data-free probe warms later turns; the same cache miss in Agent
+  waits for that shared probe and enters the Tool Registry in the same request
+  when supported.
 - Good: the frontend sends `openai_compatible`, the configured runtime restores
   `SERVER_DEFAULT`, the exact attestation resolves, and one required Responses
   Web call persists normalized sources.
@@ -1516,27 +1527,35 @@ Correct after the owning G19 promotion:
 search mode + selected Knowledge + capabilities
   -> bounded governed catalog + capability resolution
   -> known native: expose allowed tools with Auto choice
-  -> unknown/unsupported: same-model Direct|Knowledge|Web|Both Planner
+  -> Chat unknown or confirmed unsupported: same-model Direct|Knowledge|Web|Both Planner
+  -> Agent cache miss: await shared probe; supported/unknown native, unsupported Chat
   -> no Tool Call: answer
   -> Tool Call: validate/execute/trace -> native continuation
   -> reconcile only current-turn used citations -> persist
 ```
 
 ```go
-// Current turn never waits for synthetic capability discovery.
-status := resolveFromOverridesOrCache(providerConfigHash, modelID)
-if status == ToolCapabilityUnknown {
-    startSingleflightBackgroundProbe(providerConfigHash, modelID)
+// Chat never waits; Agent shares and awaits only the bounded probe.
+requested := requestedChatToolMode(conversation.Metadata)
+status, probe := resolveFromOverridesCacheOrProbe(providerConfigHash, modelID)
+if requested == chatToolModeChat && status == ToolCapabilityUnknown {
     return compatibilityPlanner
+}
+if requested == chatToolModeAgent && status == ToolCapabilityUnknown {
+    status = awaitSharedProbe(probe)
+    if status != ToolCapabilityUnsupported {
+        return nativeAgentToolRound
+    }
 }
 ```
 
 ```text
 // Correct: current-user intent controls only Tool selection; the fixed Judge
 // still controls which current-authorized Memory bodies may be released.
-explicit saved-Memory read -> search_memory first + named required
-ordinary/general turn      -> auto
-unknown capability         -> no Memory this turn + background fixed probe
+explicit saved-Memory read       -> search_memory first + named required
+ordinary/general turn            -> auto
+Chat unknown capability          -> no Memory this turn + background fixed probe
+Agent unknown after bounded probe -> native required/auto Tool policy
 ```
 
 ```go

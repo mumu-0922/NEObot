@@ -43,11 +43,18 @@ type ToolCapabilityCache interface {
 
 type toolCapabilityProbeGroup struct {
 	mu      sync.Mutex
-	running map[string]struct{}
+	running map[string]*toolCapabilityProbeState
+}
+
+type toolCapabilityProbeState struct {
+	done   chan struct{}
+	status ToolCapabilityStatus
 }
 
 func newToolCapabilityProbeGroup() *toolCapabilityProbeGroup {
-	return &toolCapabilityProbeGroup{running: map[string]struct{}{}}
+	return &toolCapabilityProbeGroup{
+		running: map[string]*toolCapabilityProbeState{},
+	}
 }
 
 func (h *Handler) resolveToolRoundCapability(
@@ -56,6 +63,56 @@ func (h *Handler) resolveToolRoundCapability(
 	resolution RuntimeProviderResolution,
 	modelRef ModelRef,
 ) ToolCapabilityStatus {
+	status, _ := h.resolveToolRoundCapabilityWithProbe(
+		ctx,
+		provider,
+		resolution,
+		modelRef,
+	)
+	return status
+}
+
+func (h *Handler) resolveToolRoundCapabilityForMode(
+	ctx context.Context,
+	provider Provider,
+	resolution RuntimeProviderResolution,
+	modelRef ModelRef,
+	requestedMode chatToolMode,
+) ToolCapabilityStatus {
+	status, probe := h.resolveToolRoundCapabilityWithProbe(
+		ctx,
+		provider,
+		resolution,
+		modelRef,
+	)
+	if requestedMode != chatToolModeAgent || status != ToolCapabilityUnknown {
+		return status
+	}
+	if probe != nil {
+		select {
+		case <-probe.done:
+			status = probe.status
+		case <-ctx.Done():
+			return ToolCapabilitySupported
+		}
+	}
+	if status == ToolCapabilityUnsupported {
+		return ToolCapabilityUnsupported
+	}
+	// Auto/unknown is not proof that the model lacks Tools. The Provider
+	// adapter already implements the native Tool round, so preserve an explicit
+	// Agent request and let the existing first-round incompatibility path make a
+	// confirmed downgrade. This also covers a cached transient-unknown result
+	// without bypassing its five-minute probe backoff.
+	return ToolCapabilitySupported
+}
+
+func (h *Handler) resolveToolRoundCapabilityWithProbe(
+	ctx context.Context,
+	provider Provider,
+	resolution RuntimeProviderResolution,
+	modelRef ModelRef,
+) (ToolCapabilityStatus, *toolCapabilityProbeState) {
 	toolProvider, adapterCapable := provider.(ToolRoundProvider)
 	policy := strings.ToLower(strings.TrimSpace(resolution.ToolCapabilityPolicy))
 	if override := strings.ToLower(strings.TrimSpace(
@@ -67,15 +124,15 @@ func (h *Handler) resolveToolRoundCapability(
 		// In-process providers and legacy tests have no persisted provider
 		// identity. Preserve their established adapter capability behavior.
 		if adapterCapable {
-			return ToolCapabilitySupported
+			return ToolCapabilitySupported, nil
 		}
-		return ToolCapabilityUnsupported
+		return ToolCapabilityUnsupported, nil
 	}
 	if policy == toolCapabilityPolicyDisabled || !adapterCapable {
-		return ToolCapabilityUnsupported
+		return ToolCapabilityUnsupported, nil
 	}
 	if policy == toolCapabilityPolicyEnabled {
-		return ToolCapabilitySupported
+		return ToolCapabilitySupported, nil
 	}
 
 	configHash := strings.TrimSpace(resolution.ToolCapabilityConfigHash)
@@ -89,14 +146,14 @@ func (h *Handler) resolveToolRoundCapability(
 		if err == nil && found {
 			switch status {
 			case ToolCapabilitySupported, ToolCapabilityUnsupported:
-				return status
+				return status, nil
 			case ToolCapabilityUnknown:
-				return ToolCapabilityUnknown
+				return ToolCapabilityUnknown, nil
 			}
 		}
 	}
-	h.startToolCapabilityProbe(toolProvider, configHash, modelRef)
-	return ToolCapabilityUnknown
+	probe := h.startToolCapabilityProbe(toolProvider, configHash, modelRef)
+	return ToolCapabilityUnknown, probe
 }
 
 // PrewarmToolCapabilities resolves a server-owned provider and starts bounded
@@ -137,31 +194,39 @@ func (h *Handler) startToolCapabilityProbe(
 	provider ToolRoundProvider,
 	configHash string,
 	modelRef ModelRef,
-) {
+) *toolCapabilityProbeState {
 	if h == nil || h.toolCapabilityProbes == nil || provider == nil ||
 		h.toolCapabilityCache == nil || strings.TrimSpace(configHash) == "" ||
 		strings.TrimSpace(modelRef.ModelID) == "" {
-		return
+		return nil
 	}
 	key := strings.TrimSpace(configHash) + "\x00" + strings.TrimSpace(modelRef.ModelID)
 	group := h.toolCapabilityProbes
 	group.mu.Lock()
-	if _, running := group.running[key]; running {
+	if state, running := group.running[key]; running {
 		group.mu.Unlock()
-		return
+		return state
 	}
-	group.running[key] = struct{}{}
+	state := &toolCapabilityProbeState{done: make(chan struct{})}
+	group.running[key] = state
 	group.mu.Unlock()
 
 	go func() {
 		defer func() {
 			group.mu.Lock()
-			delete(group.running, key)
+			if group.running[key] == state {
+				delete(group.running, key)
+			}
 			group.mu.Unlock()
 		}()
 		ctx, cancel := context.WithTimeout(context.Background(), toolCapabilityProbeTimeout)
 		status, category := probeToolCapability(ctx, provider, modelRef)
 		cancel()
+		// Publish the probe result before writing the cache. Agent requests wait
+		// for provider capability evidence, not for a best-effort persistence
+		// round trip that may take up to toolCapabilityCacheWriteTimeout.
+		state.status = status
+		close(state.done)
 		storeCtx, storeCancel := context.WithTimeout(
 			context.Background(),
 			toolCapabilityCacheWriteTimeout,
@@ -175,6 +240,7 @@ func (h *Handler) startToolCapabilityProbe(
 			category,
 		)
 	}()
+	return state
 }
 
 func probeToolCapability(

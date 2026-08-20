@@ -15,8 +15,10 @@ containers, Canary runs, schedules, autonomous learning, and Agent Center.
 - The authenticated persisted Conversation is the mode authority.
 - `config.toolMode` is `"chat"` or `"agent"`; missing/invalid historical values
   mean Agent.
-- A model without native Tool-round support executes effective Chat while the
-  stored user choice remains unchanged.
+- A model with confirmed missing native Tool-round support executes effective
+  Chat while the stored user choice remains unchanged. Auto-capability cache
+  misses wait for one shared bounded probe in Agent; transient/inconclusive
+  unknown results retain the adapter-native Agent round.
 - Chat mode physically omits Skill, File, Terminal, Job, Goal, Browser, and MCP
   Tool definitions. Knowledge, Memory, Search, and non-Tool image generation
   remain available.

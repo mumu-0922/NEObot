@@ -376,8 +376,9 @@ failure unless the run was separately cancelled.
   `search_memory` first and require that exact Tool.
 - Explicit Search intent must force `search_web` or native Search within the
   selected mode even when automatic selection would skip it.
-- When selected Knowledge is in scope and capability is unsupported or unknown,
-  the same selected model performs one bounded unified plan:
+- When selected Knowledge is in scope and capability is confirmed unsupported,
+  or when persisted Chat sees unknown capability, the same selected model
+  performs one bounded unified plan:
 
 ```json
 {
@@ -393,10 +394,13 @@ failure unless the run was separately cancelled.
   only on deterministic authority: strong catalog/private signal uses
   Knowledge, explicitly forced available Search uses Web, and all other turns
   answer Direct. Failure never defaults to Both.
-- An unknown current turn uses Planner immediately and starts one background
-  singleflight synthetic probe. Provider save/activation also prewarms the first
-  model and matching task models. Neither chat nor provider-save waits for a
-  probe/cache write.
+- An unknown persisted Chat turn uses Planner immediately and starts one
+  background singleflight synthetic probe. An unknown persisted Agent turn
+  waits for that shared bounded probe; `supported` admits the same request,
+  confirmed `unsupported` downgrades to Chat, and transient/inconclusive
+  `unknown` preserves the adapter-native Tool round. Provider save/activation
+  also prewarms the first model and matching task models. No request waits for
+  the best-effort cache write.
 - The probe contains a fixed fictional Tool and fixed prompt only, with
   thinking disabled, temperature zero, and maximum output `128`. It never
   includes user text, conversation, catalog, source bodies, raw provider
@@ -792,8 +796,10 @@ more accurate.
 | Both recovery attempts fail             | final failure with zero recovery answer content |
 | Later Search adds no source            | empty incremental Tool Result; keep prior markers  |
 | Built-in capability unavailable       | mode disabled or degraded; no external fallback    |
-| Native Tool unsupported/unknown       | same-model unified compatibility planner           |
-| Auto capability cache miss/expired    | current turn Planner; background singleflight probe |
+| Native Tool confirmed unsupported     | same-model unified compatibility planner           |
+| Auto capability cache miss/expired in Chat | current turn Planner; background singleflight probe |
+| Auto capability cache miss/expired in Agent | wait for shared bounded probe; supported admits the same request |
+| Agent probe/cache remains unknown     | preserve native Agent Tool round; do not synthesize Chat metadata |
 | Valid/explicitly incompatible probe   | shared supported/unsupported TTL row               |
 | Transient/inconclusive probe          | shared five-minute unknown retry backoff            |
 | Runtime explicit incompatibility      | async downgrade plus same-turn Planner              |
@@ -811,7 +817,8 @@ more accurate.
 | Memory Tool flag absent/false         | do not expose `search_memory`; continue without Memory and never invoke the old reader |
 | Explicit saved-Memory read on a supported model | order `search_memory` first; named `required`; no forced Web/Knowledge |
 | General memory discussion/ordinary task | preserve `tool_choice=auto`; no forced Memory retrieval |
-| Explicit read while capability is unknown | no Memory this turn; start the fixed background probe; never force-enable |
+| Explicit read while Chat capability is unknown | no Memory this turn; start the fixed background probe |
+| Explicit read after Agent probe remains unknown | preserve native Agent admission and required-Memory Tool policy |
 | No first-round Memory call            | zero hybrid retrieval; release buffered answer     |
 | Exact first-round `search_memory({})`  | current-authorized hybrid retrieval and same-model continuation |
 | Buffered first round fails after a call is assembled | discard call/draft; compatibility path; zero Memory retrieval |
@@ -836,9 +843,10 @@ more accurate.
    OpenAI-compatible/Gemini and Anthropic formats.
 2. Zero Search I/O with mode off and ordinary Auto no-search.
 3. Explicit/current Search plus contextual follow-up Query correctness.
-4. Native Auto Tool only for known-supported models; unified four-route Planner
-   for unsupported/unknown selected-Knowledge models, with Direct, Knowledge,
-   Web, and Both fixtures.
+4. Native Auto Tool for known-supported models and persisted Agent unknowns;
+   unified four-route Planner for confirmed-unsupported or persisted-Chat
+   unknown selected-Knowledge models, with Direct, Knowledge, Web, and Both
+   fixtures.
 5. Strict built-in/external mutual exclusion and no provider fallback.
 6. Ordered reasoning/process SSE, cancellation, redaction, terminal persistence,
    reload, collapsed summary, and manual-scroll behavior.
@@ -869,8 +877,9 @@ more accurate.
 14. Capability override precedence, fixed user-data-free probe payload,
     thinking-disabled/temperature-zero/output-128 bounds, valid-call
     classification, transient unknown, TTL/config-hash isolation, background
-    warmup, singleflight, runtime downgrade, non-blocking cache writes, and
-    optional multi-instance PostgreSQL visibility.
+    warmup, Agent waiters sharing one probe, same-request workspace Tool
+    admission, confirmed-only downgrade, Chat non-blocking behavior,
+    non-blocking cache writes, and optional multi-instance PostgreSQL visibility.
 15. Frontend provider round-trip and Inherit cleanup plus durable query-free
     Direct/Knowledge/Web/Both summaries, dual source counts, and reason
     allowlisting.

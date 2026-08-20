@@ -5337,10 +5337,13 @@ func (r fakeProviderAttachmentResolver) ResolveProviderAttachment(
 }
 
 type fakeRuntimeProviderResolver struct {
-	provider           Provider
-	ragAnswerProcessor string
-	input              runtimeconfig.ProviderRuntimeConfig
-	err                error
+	provider                     Provider
+	ragAnswerProcessor           string
+	toolCapabilityPolicy         string
+	toolCapabilityModelOverrides map[string]string
+	toolCapabilityConfigHash     string
+	input                        runtimeconfig.ProviderRuntimeConfig
+	err                          error
 }
 
 func (r *fakeRuntimeProviderResolver) ResolveRuntimeProvider(
@@ -5352,8 +5355,11 @@ func (r *fakeRuntimeProviderResolver) ResolveRuntimeProvider(
 		return RuntimeProviderResolution{}, r.err
 	}
 	return RuntimeProviderResolution{
-		Provider:           r.provider,
-		RAGAnswerProcessor: r.ragAnswerProcessor,
+		Provider:                     r.provider,
+		RAGAnswerProcessor:           r.ragAnswerProcessor,
+		ToolCapabilityPolicy:         r.toolCapabilityPolicy,
+		ToolCapabilityModelOverrides: r.toolCapabilityModelOverrides,
+		ToolCapabilityConfigHash:     r.toolCapabilityConfigHash,
 	}, nil
 }
 
