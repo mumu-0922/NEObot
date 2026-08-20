@@ -723,3 +723,37 @@ Renamed OpenAI built-in search and server search labels to localized built-in/Ta
 ### Next Steps
 
 - None - task complete
+
+
+## Session 70: 展示并部署 Terminal Agent 执行详情
+
+**Date**: 2026-08-20
+**Task**: 展示并部署 Terminal Agent 执行详情
+**Branch**: `main`
+
+### Summary
+
+参考 DeepSeek Harness 增加安全的 typed Terminal presentation，展示脱敏命令、cwd 与退出/超时/截断/后台状态；完成 focused Backend/Frontend 验证、生产镜像构建、仅 Backend/Frontend 灰度重建及 live/durable parity 验收，保留自动回滚证据并清理临时会话。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `64838937` | (see git log) |
+| `4441b0c5` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
