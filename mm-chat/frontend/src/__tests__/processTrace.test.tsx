@@ -326,6 +326,56 @@ describe("durable process trace", () => {
     expect(processToolLabelForDisplay({ ...step!, kind: "web" })).toBe("");
   });
 
+  it("renders only backend-issued safe read retry controls", () => {
+    const eventId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const step = normalizeProcessStep({
+      id: "tool-read-retry",
+      kind: "tool",
+      status: "failed",
+      labelKey: "process.tool",
+      detail: {
+        toolName: "file_read",
+        mode: "local_direct",
+        callId: "source-call",
+      },
+      presentation: {
+        version: 1,
+        card: "file",
+        operation: "read",
+        path: "fixture.txt",
+        retry: { eventId, retryOf: "source-call" },
+      },
+    });
+    expect(step?.presentation).toMatchObject({
+      card: "file",
+      retry: { eventId, retryOf: "source-call" },
+    });
+    const html = renderToStaticMarkup(
+      <NextIntlClientProvider
+        locale="zh"
+        messages={{ Content: contentMessages }}
+        timeZone="UTC"
+      >
+        <ProcessTracePanel steps={[step!]} />
+      </NextIntlClientProvider>,
+    );
+    expect(html).toContain("重试安全读取");
+
+    const write = normalizeProcessStep({
+      ...step,
+      id: "tool-write-retry",
+      detail: { toolName: "file_write", mode: "local_direct" },
+      presentation: {
+        version: 1,
+        card: "file",
+        operation: "write",
+        path: "fixture.txt",
+        retry: { eventId, retryOf: "source-call" },
+      },
+    });
+    expect(write?.presentation).not.toHaveProperty("retry");
+  });
+
   it("renders only the readable MCP label and authoritative outer status", () => {
     const step = normalizeProcessStep({
       id: "tool-1",

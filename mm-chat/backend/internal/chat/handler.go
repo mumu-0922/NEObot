@@ -29,6 +29,7 @@ const (
 	generateTextPath      = "/v1/chat/generate"
 	runsPathBase          = "/v1/chat/runs/"
 	approvalsPathBase     = "/v1/chat/approvals/"
+	agentEventsPathBase   = "/v1/chat/agent-events/"
 	toolPlanPath          = "/v1/chat/tools/plan"
 	maxToolPlanPrompt     = 16 * 1024
 	maxGenerateTextPrompt = 128 * 1024
@@ -573,6 +574,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleRunChild(w, r)
 	case strings.HasPrefix(r.URL.Path, approvalsPathBase):
 		h.handleApprovalChild(w, r)
+	case strings.HasPrefix(r.URL.Path, agentEventsPathBase):
+		h.handleAgentEventChild(w, r)
 	case r.URL.Path == generateTextPath:
 		h.handleGenerateText(w, r)
 	case r.URL.Path == toolPlanPath:
@@ -2557,6 +2560,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 					conversationID, assistantMessage.ID, runID, content.String(),
 				)
 				return
+			}
+			if recordedSteps := processStepsFromChatAgentEvent(recordedTool); len(recordedSteps) > 0 {
+				processUpdates = recordedSteps
 			}
 			if execution != nil &&
 				(execution.Mode == "mcp" || execution.Mode == "local_direct") &&

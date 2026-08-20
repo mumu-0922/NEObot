@@ -4465,6 +4465,24 @@ func (f *fakeRepository) ListChatAgentEvents(
 	return append([]ChatAgentEvent(nil), f.agentEvents[conversationID]...), nil
 }
 
+func (f *fakeRepository) GetChatAgentEvent(
+	ctx context.Context,
+	eventID string,
+) (ChatAgentEvent, error) {
+	f.ensureAgentEvents()
+	actor := auth.UserOrDevelopment(ctx)
+	for _, events := range f.agentEvents {
+		for _, event := range events {
+			if event.EventID == eventID && event.UserID == actor.ID {
+				return event, nil
+			}
+		}
+	}
+	return ChatAgentEvent{}, newValidationError(
+		"CHAT_AGENT_EVENT_NOT_FOUND", "chat Agent event not found",
+	)
+}
+
 func (f *fakeRepository) RecoverIncompleteChatAgentTurns(
 	ctx context.Context,
 	startedBefore time.Time,

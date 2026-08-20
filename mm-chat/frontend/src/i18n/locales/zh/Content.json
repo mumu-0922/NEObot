@@ -159,5 +159,8 @@
   "processApprovalAllowed": "已批准，正在继续执行。",
   "processApprovalDenied": "已拒绝，操作未执行。",
   "processApprovalExpired": "批准已过期，操作未执行。",
-  "processApprovalFailed": "裁决保存失败，请重试。"
+  "processApprovalFailed": "裁决保存失败，请重试。",
+  "processRetry": "重试安全读取",
+  "processRetryCreated": "已创建重试",
+  "processRetryFailed": "Backend 未授权或未完成此次重试。"
 }

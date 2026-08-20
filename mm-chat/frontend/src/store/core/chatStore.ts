@@ -637,6 +637,7 @@ interface ChatState {
   selectSession: (id: string) => Promise<void>;
   refreshServerSessions: () => Promise<boolean>;
   selectServerSession: (id: string) => Promise<boolean>;
+  retryAgentTool: (eventId: string) => Promise<boolean>;
   createServerSession: (
     options?: CreateServerSessionOptions,
   ) => Promise<string | null>;
@@ -1119,6 +1120,29 @@ export const useChatStore = create<ChatState>()(
             }));
           }
           throw error;
+        }
+      },
+
+      retryAgentTool: async (eventId) => {
+        const sessionId = get().serverReadState.currentSessionId;
+        if (!sessionId) return false;
+        const service = createChatCrudService();
+        if (!service.serverEnabled) return false;
+        try {
+          const retried = toStoreMessageFromServer(
+            await service.retryAgentTool(eventId),
+          );
+          set((state) => ({
+            serverReadState: applyServerMessageToReadState(
+              state.serverReadState,
+              sessionId,
+              retried,
+            ),
+          }));
+          return true;
+        } catch (error) {
+          logDevError("Failed to retry Agent Tool", error);
+          return false;
         }
       },
 

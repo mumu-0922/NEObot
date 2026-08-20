@@ -68,5 +68,8 @@ export function createLocalChatApiShell(): ChatApi {
     async decideApproval() {
       throw unsupportedFeature("chat Agent approval in local API mode");
     },
+    async retryAgentTool(): Promise<ChatMessageDTO> {
+      throw unsupportedFeature("chat Agent Tool retry in local API mode");
+    },
   };
 }

@@ -380,6 +380,10 @@ export interface DecideChatApprovalInput {
   decision: ChatApprovalDecision;
 }
 
+export interface RetryChatAgentToolInput {
+  eventId: string;
+}
+
 export interface ChatApi {
   createConversation(input: CreateConversationInput): Promise<ConversationDTO>;
   listConversations(): Promise<ConversationDTO[]>;
@@ -407,6 +411,7 @@ export interface ChatApi {
   planTools(input: PlanServerToolsInput): Promise<ServerPlannedToolCall[]>;
   cancelRun(runId: string): Promise<ChatRunResult>;
   decideApproval(input: DecideChatApprovalInput): Promise<ChatApprovalDTO>;
+  retryAgentTool(input: RetryChatAgentToolInput): Promise<ChatMessageDTO>;
 }
 
 export type AgentMarketLocale = "en" | "zh" | "ja";

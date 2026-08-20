@@ -27,6 +27,7 @@ import type {
   UpdateMessageInput,
   DecideChatApprovalInput,
   ChatApprovalDTO,
+  RetryChatAgentToolInput,
 } from "../types";
 import type { HttpClient } from "./httpClient";
 import { normalizeProcessStep } from "@/lib/chat/processTrace";
@@ -367,6 +368,17 @@ export function createServerChatApiShell(httpClient: HttpClient): ChatApi {
         },
       );
       return normalizeChatApprovalResponse(response);
+    },
+    async retryAgentTool(
+      input: RetryChatAgentToolInput,
+    ): Promise<ChatMessageDTO> {
+      return httpClient.requestJson<ChatMessageDTO>(
+        `/v1/chat/agent-events/${encodeURIComponent(input.eventId)}/retry`,
+        {
+          method: "POST",
+          body: { idempotencyKey: `agent-tool-retry:${input.eventId}` },
+        },
+      );
     },
   };
 }

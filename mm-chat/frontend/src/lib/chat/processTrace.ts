@@ -7,6 +7,7 @@ import type {
   ProcessStepPresentation,
   ProcessTranscriptEntry,
   ProcessApprovalPresentation,
+  ProcessRetryPresentation,
 } from "./types";
 
 const PROCESS_STEP_KINDS = new Set<ProcessStepKind>([
@@ -77,6 +78,8 @@ const PROCESS_DETAIL_KEYS = new Set([
   "serverName",
   "classification",
   "callStatus",
+  "callId",
+  "retryOf",
   "argumentSummary",
   "round",
   "selectedCount",
@@ -148,6 +151,9 @@ export function normalizeProcessStep(value: unknown): ProcessStep | null {
     kind,
     detail,
   );
+  if (status !== "failed" && presentation && "retry" in presentation) {
+    delete presentation.retry;
+  }
   return {
     id,
     kind,
@@ -717,6 +723,14 @@ function normalizeProcessStepPresentation(
     const exitCode = optionalExitCode(value.exitCode);
     const items = normalizePresentationItems(value.items);
     const transcript = normalizePresentationTranscript(value.transcript);
+    const retry = normalizeProcessRetryPresentation(
+      value.retry,
+      card,
+      kind,
+      mode,
+      toolName,
+      operation,
+    );
     if (
       count === null ||
       size === null ||
@@ -765,6 +779,7 @@ function normalizeProcessStepPresentation(
       ...(value.timedOut === true ? { timedOut: true } : {}),
       ...(value.truncated === true ? { truncated: true } : {}),
       ...(value.background === true ? { background: true } : {}),
+      ...(retry ? { retry } : {}),
     } as ProcessStepPresentation;
   }
   const command = boundedPresentationString(
@@ -810,6 +825,37 @@ function normalizeProcessStepPresentation(
       : {}),
     ...(approval ? { approval } : {}),
   };
+}
+
+function normalizeProcessRetryPresentation(
+  value: unknown,
+  card: string,
+  kind: ProcessStepKind,
+  mode: unknown,
+  toolName: unknown,
+  operation: string | null | undefined,
+): ProcessRetryPresentation | undefined {
+  if (
+    !isRecord(value) ||
+    card !== "file" ||
+    kind !== "tool" ||
+    mode !== "local_direct" ||
+    toolName !== "file_read" ||
+    operation !== "read"
+  ) {
+    return undefined;
+  }
+  const eventId = stringValue(value.eventId);
+  const retryOf = boundedPresentationString(value.retryOf, 256);
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      eventId,
+    ) ||
+    !retryOf
+  ) {
+    return undefined;
+  }
+  return { eventId, retryOf };
 }
 
 function normalizeProcessApprovalPresentation(

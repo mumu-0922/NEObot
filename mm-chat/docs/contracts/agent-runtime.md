@@ -94,6 +94,17 @@ durable Agent event writes but returns only the legacy ProcessStep projection
 and does not enter a hidden approval wait. Clearing either gate is the
 non-destructive rollback.
 
+Manual Tool retry is also server-authoritative. A canary client may call
+`POST /v1/chat/agent-events/{eventId}/retry` with an idempotency key only when
+the durable owner-scoped event exposes a retry presentation. The initial
+allowlist is intentionally narrow: failed `local_direct file_read` events with
+`file_not_found` or `execution_failed`. Backend reconstructs the read from the
+sanitized workspace-relative presentation, creates at most one retry Message
+per source event, assigns a new call ID, and persists `retryOf`; the browser
+never submits Tool arguments or decides idempotence. Write, execute, MCP,
+`outcome_unknown`, cross-user, non-canary, malformed, and legacy events fail
+closed without execution.
+
 ## Artifact publication
 
 - `publish_file` exists only in effective Agent mode and accepts a

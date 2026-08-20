@@ -73,6 +73,14 @@ func TestPostgresChatAgentEventLogSequencesReplayAndInterruptsIncompleteTurn(t *
 	if err != nil {
 		t.Fatal(err)
 	}
+	lookedUp, err := repo.GetChatAgentEvent(ctx, first.EventID)
+	if err != nil || lookedUp.EventID != first.EventID || lookedUp.UserID != started.UserID {
+		t.Fatalf("owner event lookup = %#v, %v", lookedUp, err)
+	}
+	otherCtx := auth.WithUser(ctx, auth.User{ID: mustTestUUID(t)})
+	if _, err := repo.GetChatAgentEvent(otherCtx, first.EventID); err == nil {
+		t.Fatal("cross-user event lookup succeeded")
+	}
 	replayed, err := repo.AppendChatAgentEvent(ctx, turnID, replayInput)
 	if err != nil || replayed.EventID != first.EventID || replayed.Sequence != first.Sequence {
 		t.Fatalf("idempotent replay = %#v, %v; first=%#v", replayed, err, first)

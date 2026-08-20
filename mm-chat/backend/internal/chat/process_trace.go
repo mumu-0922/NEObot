@@ -94,6 +94,12 @@ type ProcessStepPresentation struct {
 	JobDurationMS  int64                        `json:"jobDurationMs,omitempty"`
 	Items          []ProcessPresentationItem    `json:"items,omitempty"`
 	Approval       *ProcessApprovalPresentation `json:"approval,omitempty"`
+	Retry          *ProcessRetryPresentation    `json:"retry,omitempty"`
+}
+
+type ProcessRetryPresentation struct {
+	EventID string `json:"eventId"`
+	RetryOf string `json:"retryOf"`
 }
 
 type ProcessApprovalPresentation struct {
@@ -198,6 +204,9 @@ func (trace *processTrace) add(step ProcessStep) ProcessStep {
 		step.Detail,
 		step.Presentation,
 	)
+	if step.Status != ProcessStepStatusFailed && step.Presentation != nil {
+		step.Presentation.Retry = nil
+	}
 	if step.ID == "" || step.Kind == "" || step.Status == "" {
 		return ProcessStep{}
 	}
@@ -502,6 +511,9 @@ func sanitizeProcessStepPresentation(
 		Background: presentation.Background,
 		Items:      sanitizePresentationItems(presentation.Items),
 	}
+	result.Retry = sanitizeProcessRetryPresentation(
+		presentation.Retry, card, kind, mode, toolName, result.Operation,
+	)
 	if card == "job" {
 		result.Command = sanitizePresentationText(
 			presentation.Command, maxProcessTerminalCommandBytes,
@@ -543,6 +555,26 @@ func sanitizeProcessStepPresentation(
 		presentation.Transcript, result.Truncated,
 	)
 	return result
+}
+
+func sanitizeProcessRetryPresentation(
+	retry *ProcessRetryPresentation,
+	card string,
+	kind string,
+	mode string,
+	toolName string,
+	operation string,
+) *ProcessRetryPresentation {
+	if retry == nil || card != "file" || kind != ProcessStepKindTool ||
+		mode != "local_direct" || toolName != localFileReadToolName ||
+		operation != "read" || !isUUID(strings.TrimSpace(retry.EventID)) {
+		return nil
+	}
+	retryOf := sanitizePresentationText(retry.RetryOf, 256)
+	if retryOf == "" {
+		return nil
+	}
+	return &ProcessRetryPresentation{EventID: retry.EventID, RetryOf: retryOf}
 }
 
 func sanitizeProcessJobStatus(value string) string {
@@ -774,6 +806,10 @@ func cloneProcessStep(step ProcessStep) ProcessStep {
 		if step.Presentation.Approval != nil {
 			approval := *step.Presentation.Approval
 			presentation.Approval = &approval
+		}
+		if step.Presentation.Retry != nil {
+			retry := *step.Presentation.Retry
+			presentation.Retry = &retry
 		}
 		step.Presentation = &presentation
 	}

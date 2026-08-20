@@ -71,6 +71,7 @@ type ProviderToolResult struct {
 type ProviderToolExecutionEvent struct {
 	ExecutionID     string                   `json:"executionId"`
 	CallID          string                   `json:"callId,omitempty"`
+	RetryOf         string                   `json:"retryOf,omitempty"`
 	Name            string                   `json:"toolName"`
 	Server          string                   `json:"server,omitempty"`
 	ServerName      string                   `json:"serverName,omitempty"`

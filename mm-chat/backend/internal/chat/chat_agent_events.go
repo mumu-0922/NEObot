@@ -82,6 +82,10 @@ type ChatAgentEventRepository interface {
 	ListChatAgentEvents(context.Context, string) ([]ChatAgentEvent, error)
 }
 
+type ChatAgentEventLookupRepository interface {
+	GetChatAgentEvent(context.Context, string) (ChatAgentEvent, error)
+}
+
 type ChatAgentTurnRecoveryRepository interface {
 	RecoverIncompleteChatAgentTurns(context.Context, time.Time) (int, error)
 }
@@ -152,6 +156,26 @@ func (s *Service) chatAgentEventRepository() (ChatAgentEventRepository, error) {
 		return nil, ErrDatabaseRequired
 	}
 	return repository, nil
+}
+
+func (s *Service) GetChatAgentEvent(
+	ctx context.Context,
+	eventID string,
+) (ChatAgentEvent, error) {
+	if err := s.requireRepository(); err != nil {
+		return ChatAgentEvent{}, err
+	}
+	eventID = strings.TrimSpace(eventID)
+	if !isUUID(eventID) {
+		return ChatAgentEvent{}, newValidationError(
+			"INVALID_CHAT_AGENT_EVENT_ID", "chat Agent event id must be a UUID",
+		)
+	}
+	repository, ok := s.repo.(ChatAgentEventLookupRepository)
+	if !ok {
+		return ChatAgentEvent{}, ErrDatabaseRequired
+	}
+	return repository.GetChatAgentEvent(ctx, eventID)
 }
 
 func normalizeChatAgentEventPayload(
@@ -267,6 +291,12 @@ func chatAgentToolEventPayload(
 		"mode":           truncateChatAgentUTF8(execution.Mode, 64),
 		"classification": truncateChatAgentUTF8(execution.Classification, 64),
 	}
+	if callID := strings.TrimSpace(execution.CallID); callID != "" {
+		toolCall["callId"] = truncateChatAgentUTF8(redactProcessSecrets(callID), 256)
+	}
+	if retryOf := strings.TrimSpace(execution.RetryOf); retryOf != "" {
+		toolCall["retryOf"] = truncateChatAgentUTF8(redactProcessSecrets(retryOf), 256)
+	}
 	if callStatus := strings.TrimSpace(execution.CallStatus); callStatus != "" {
 		toolCall["status"] = truncateChatAgentUTF8(callStatus, 64)
 	}
@@ -309,6 +339,8 @@ func projectChatAgentToolExecution(event ChatAgentEvent) *ProviderToolExecutionE
 	}
 	return &ProviderToolExecutionEvent{
 		ExecutionID:     executionID,
+		CallID:          chatAgentPayloadString(toolCall, "callId"),
+		RetryOf:         chatAgentPayloadString(toolCall, "retryOf"),
 		Name:            toolName,
 		ServerName:      chatAgentPayloadString(toolCall, "serverName"),
 		Classification:  chatAgentPayloadString(toolCall, "classification"),
@@ -378,6 +410,20 @@ func projectChatAgentProcessTrace(
 		return cloneProcessSteps(legacy)
 	}
 	return projected
+}
+
+func processStepsFromChatAgentEvent(event ChatAgentEvent) []ProcessStep {
+	rawSteps, ok := event.Payload["processSteps"].([]any)
+	if !ok {
+		return nil
+	}
+	steps := make([]ProcessStep, 0, len(rawSteps))
+	for _, rawStep := range rawSteps {
+		if step, valid := processStepFromChatAgentPayload(rawStep); valid {
+			steps = append(steps, step)
+		}
+	}
+	return steps
 }
 
 func interruptProcessLocalJobStep(step ProcessStep, interruptedAt time.Time) (ProcessStep, bool) {

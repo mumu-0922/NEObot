@@ -287,6 +287,9 @@ function createMockClient(
     async decideApproval() {
       throw new Error("decideApproval not mocked");
     },
+    async retryAgentTool() {
+      throw new Error("retryAgentTool not mocked");
+    },
     ...chatOverrides,
   };
 

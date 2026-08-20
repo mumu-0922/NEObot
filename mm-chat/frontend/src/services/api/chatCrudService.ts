@@ -127,6 +127,7 @@ export interface ChatCrudService {
   deleteMessage(input: DeleteMessageInput): Promise<void>;
   appendUserMessage(input: AppendUserMessageInput): Promise<ChatCrudMessage>;
   listMessages(conversationId: string): Promise<ChatCrudMessage[]>;
+  retryAgentTool(eventId: string): Promise<ChatCrudMessage>;
 }
 
 export function createChatCrudService(
@@ -217,6 +218,14 @@ export function createChatCrudService(
       const messages = await client.chat.listMessages(conversationId);
       return messages.map((message) =>
         mapChatMessageDtoToMessage(message, { baseUrl }),
+      );
+    },
+
+    async retryAgentTool(eventId) {
+      requireServerCrud();
+      return mapChatMessageDtoToMessage(
+        await client.chat.retryAgentTool({ eventId }),
+        { baseUrl },
       );
     },
   };

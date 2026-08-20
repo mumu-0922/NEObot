@@ -264,6 +264,12 @@ timeline updates.
 - The frontend never self-enables the typed timeline. A non-canary Backend
   response omits Agent events/presentations and must continue through the
   legacy ProcessStep renderer without synthesizing cards or approval controls.
+- A Retry control renders only from a normalized Backend-issued `retry`
+  presentation containing a valid event UUID and bounded `retryOf`, and only
+  on `local_direct file_read/read`. It submits no Tool name, path, arguments,
+  classification, or user-selected policy. The Backend response becomes a new
+  sibling Agent Message; duplicate clicks reuse the source-event idempotency
+  key. Unknown, write, execute, MCP, and malformed retry shapes are dropped.
 - Terminal presentation tests cover running/completed, exit 0/nonzero,
   timeout/truncation/background pills, malformed-card fail-closed behavior,
   legacy steps, pending/allowed/denied/expired approval controls, malformed

@@ -25,6 +25,7 @@ export type {
   MessageVersion,
   ProcessStep,
   ProcessApprovalPresentation,
+  ProcessRetryPresentation,
   ProcessStepKind,
   ProcessStepPresentation,
   ProcessStepStatus,

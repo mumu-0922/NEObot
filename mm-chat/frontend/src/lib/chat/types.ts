@@ -93,6 +93,11 @@ export interface ProcessApprovalPresentation {
   allowConversation: boolean;
 }
 
+export interface ProcessRetryPresentation {
+  eventId: string;
+  retryOf: string;
+}
+
 export interface ProcessTerminalPresentation {
   version: 1;
   card: "terminal";
@@ -136,6 +141,7 @@ export interface ProcessFilePresentation {
   truncated?: boolean;
   title?: string;
   approval?: ProcessApprovalPresentation;
+  retry?: ProcessRetryPresentation;
 }
 
 export interface ProcessJobPresentation {

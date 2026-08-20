@@ -16,6 +16,7 @@ import {
   Compass,
   Copy,
   LoaderCircle,
+  RotateCcw,
   SquareTerminal,
   Wrench,
   Zap,
@@ -39,6 +40,7 @@ import type {
 } from "@/types";
 import { createNeoChatApiClient } from "@/services/api/client";
 import type { ChatApprovalDecision } from "@/services/api/client";
+import { useChatStore } from "@/store/core/chatStore";
 import MarkdownRenderer from "./MarkdownRenderer";
 
 interface ProcessTracePanelProps {
@@ -570,8 +572,50 @@ function GenericProcessCard({
           </ul>
         ) : null}
         {transcript?.length ? <Transcript entries={transcript} /> : null}
+        {"retry" in presentation && presentation.retry ? (
+          <RetryControls eventId={presentation.retry.eventId} />
+        ) : null}
       </div>
     </details>
+  );
+}
+
+function RetryControls({ eventId }: { eventId: string }) {
+  const t = useTranslations("Content");
+  const retryAgentTool = useChatStore((state) => state.retryAgentTool);
+  const [busy, setBusy] = useState(false);
+  const [outcome, setOutcome] = useState<"idle" | "succeeded" | "failed">(
+    "idle",
+  );
+  const retry = async () => {
+    if (busy || outcome === "succeeded") return;
+    setBusy(true);
+    setOutcome("idle");
+    const succeeded = await retryAgentTool(eventId);
+    setOutcome(succeeded ? "succeeded" : "failed");
+    setBusy(false);
+  };
+  return (
+    <div className="border-t border-gray-200 pt-2 dark:border-border">
+      <button
+        type="button"
+        disabled={busy || outcome === "succeeded"}
+        onClick={() => void retry()}
+        className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-wait disabled:opacity-60 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/60"
+      >
+        {busy ? (
+          <LoaderCircle size={10} className="motion-safe:animate-spin" />
+        ) : (
+          <RotateCcw size={10} aria-hidden="true" />
+        )}
+        {outcome === "succeeded" ? t("processRetryCreated") : t("processRetry")}
+      </button>
+      {outcome === "failed" ? (
+        <div className="mt-1.5 text-[10px] text-rose-500" role="alert">
+          {t("processRetryFailed")}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

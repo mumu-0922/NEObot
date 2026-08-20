@@ -2664,6 +2664,48 @@ describe("Phase 11.2A server chat CRUD adapter", () => {
       },
     ]);
   });
+
+  it("retries a Backend-issued Agent Tool event without browser arguments", async () => {
+    const requests: Array<{ url: string; method?: string; body?: string }> = [];
+    const eventId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const chat = createServerChatApiShell(
+      createHttpClient({
+        baseUrl: "http://backend.test",
+        fetchImpl: async (input, init) => {
+          requests.push({
+            url: String(input),
+            method: init?.method,
+            body: typeof init?.body === "string" ? init.body : undefined,
+          });
+          return Response.json({
+            id: eventId,
+            conversationId: "c1",
+            role: "assistant",
+            status: "completed",
+            content: "",
+            sequenceNo: 3,
+            attachments: [],
+            outputBlocks: [],
+            metadata: {},
+            createdAt: "2026-08-20T12:00:00Z",
+            updatedAt: "2026-08-20T12:00:00Z",
+          });
+        },
+      }),
+    );
+
+    await expect(chat.retryAgentTool({ eventId })).resolves.toMatchObject({
+      id: eventId,
+      role: "assistant",
+    });
+    expect(requests).toEqual([
+      {
+        url: `http://backend.test/v1/chat/agent-events/${eventId}/retry`,
+        method: "POST",
+        body: JSON.stringify({ idempotencyKey: `agent-tool-retry:${eventId}` }),
+      },
+    ]);
+  });
 });
 
 describe("Phase 11.1B Go SSE scaffold", () => {

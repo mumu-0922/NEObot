@@ -55,6 +55,20 @@ func (recorder *chatAgentEventRecorder) append(
 	if err != nil {
 		return ChatAgentEvent{}, fmt.Errorf("%w: create event id: %v", errChatAgentEventPersistence, err)
 	}
+	return recorder.appendWithEventID(ctx, eventID, eventType, stepSequence, payload, at)
+}
+
+func (recorder *chatAgentEventRecorder) appendWithEventID(
+	ctx context.Context,
+	eventID string,
+	eventType string,
+	stepSequence int,
+	payload map[string]any,
+	at time.Time,
+) (ChatAgentEvent, error) {
+	if recorder == nil || recorder.service == nil || recorder.turnID == "" {
+		return ChatAgentEvent{}, errChatAgentEventPersistence
+	}
 	event, err := recorder.service.AppendChatAgentEvent(ctx, recorder.turnID, AppendChatAgentEventInput{
 		EventID: eventID, Type: eventType, StepSequence: stepSequence,
 		Payload: payload, OccurredAt: at,
@@ -102,17 +116,52 @@ func (recorder *chatAgentEventRecorder) recordToolExecution(
 	if execution == nil {
 		return ChatAgentEvent{}, fmt.Errorf("%w: Tool event missing", errChatAgentEventPersistence)
 	}
+	eventID, err := NewUUID()
+	if err != nil {
+		return ChatAgentEvent{}, fmt.Errorf("%w: create event id: %v", errChatAgentEventPersistence, err)
+	}
 	eventType := ChatAgentEventToolCalled
 	if isTerminalProcessStepStatus(execution.Status) {
 		eventType = ChatAgentEventToolResult
 	}
-	return recorder.append(
+	steps := cloneProcessSteps(processSteps)
+	if chatAgentToolRetryEligible(execution) {
+		retryOf := truncateChatAgentUTF8(redactProcessSecrets(execution.CallID), 256)
+		for index := range steps {
+			if steps[index].Presentation == nil ||
+				steps[index].Presentation.Card != "file" ||
+				steps[index].Presentation.Operation != "read" {
+				continue
+			}
+			steps[index].Presentation.Retry = &ProcessRetryPresentation{
+				EventID: eventID, RetryOf: retryOf,
+			}
+		}
+	}
+	return recorder.appendWithEventID(
 		ctx,
+		eventID,
 		eventType,
 		max(execution.Round, 0),
-		chatAgentToolEventPayload(execution, processSteps),
+		chatAgentToolEventPayload(execution, steps),
 		at,
 	)
+}
+
+func chatAgentToolRetryEligible(execution *ProviderToolExecutionEvent) bool {
+	if execution == nil || execution.Status != ProcessStepStatusFailed ||
+		execution.Mode != "local_direct" || execution.Name != localFileReadToolName ||
+		strings.TrimSpace(execution.CallID) == "" || execution.Presentation == nil ||
+		execution.Presentation.Card != "file" || execution.Presentation.Operation != "read" ||
+		strings.TrimSpace(execution.Presentation.Path) == "" {
+		return false
+	}
+	switch strings.TrimSpace(execution.FailureCategory) {
+	case "file_not_found", "execution_failed":
+		return true
+	default:
+		return false
+	}
 }
 
 func (recorder *chatAgentEventRecorder) recordContextReplacement(

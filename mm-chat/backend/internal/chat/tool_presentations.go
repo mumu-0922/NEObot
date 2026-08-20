@@ -76,6 +76,10 @@ func completeLocalProcessPresentation(
 		approval := *presentation.Approval
 		completed.Approval = &approval
 	}
+	if presentation.Retry != nil {
+		retry := *presentation.Retry
+		completed.Retry = &retry
+	}
 	if result.IsError {
 		return &completed
 	}

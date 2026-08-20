@@ -105,6 +105,14 @@ Migration head: 100_chat_agent_approvals
   non-matching configuration fails closed. Continue immutable Agent event
   writes while gated off, omit `agentEvents`/presentations from responses, and
   do not create an invisible approval wait for a non-canary turn.
+- Manual Tool retry is Backend-authorized, never inferred from a frontend Tool
+  name or risk label. The first admitted Tool is a failed `local_direct`
+  `file_read` with `file_not_found` or `execution_failed`: Backend rehydrates
+  only its sanitized workspace-relative path/offset from the owner-scoped
+  terminal event, creates one deterministic retry Message per source event,
+  assigns a new call ID, and persists `retryOf`. Write/execute/MCP,
+  `outcome_unknown`, malformed, cross-user, non-canary, and legacy events have
+  no retry affordance and the retry route fails closed.
 
 ### Validation matrix
 
@@ -118,6 +126,8 @@ Migration head: 100_chat_agent_approvals
 | pending approval at Backend restart | `denied/restart_denied`; no execution |
 | timeline flag false or canary empty/non-matching | legacy ProcessStep projection; no typed cards or approval wait |
 | timeline flag true and exact UUID matches | typed live/reload cards and approval controls |
+| failed safe `file_read` retried twice | one retry Message/Tool execution; new call ID links to immutable source through `retryOf` |
+| write/execute/MCP/outcome-unknown/cross-user retry | no affordance; Backend denies without Tool execution |
 | reconnect cursor retained | replay exact suffix in original sequence |
 | reconnect cursor evicted | explicit unsequenced gap, retained suffix, final Message convergence |
 | slow reconnect subscriber | close subscriber; Run and Provider pipes continue |

@@ -582,6 +582,10 @@ func cloneProcessStepPresentation(
 		approval := *presentation.Approval
 		cloned.Approval = &approval
 	}
+	if presentation.Retry != nil {
+		retry := *presentation.Retry
+		cloned.Retry = &retry
+	}
 	if presentation.ExitCode != nil {
 		exitCode := *presentation.ExitCode
 		cloned.ExitCode = &exitCode
@@ -660,6 +664,10 @@ func terminalResultPresentation(
 	if presentation.Approval != nil {
 		approval := *presentation.Approval
 		completed.Approval = &approval
+	}
+	if presentation.Retry != nil {
+		retry := *presentation.Retry
+		completed.Retry = &retry
 	}
 	if presentation.ExitCode != nil {
 		exitCode := *presentation.ExitCode

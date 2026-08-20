@@ -159,5 +159,8 @@
   "processApprovalAllowed": "Approved. Execution is continuing.",
   "processApprovalDenied": "Denied. The action was not executed.",
   "processApprovalExpired": "Approval expired. The action was not executed.",
-  "processApprovalFailed": "The decision could not be saved. Try again."
+  "processApprovalFailed": "The decision could not be saved. Try again.",
+  "processRetry": "Retry safe read",
+  "processRetryCreated": "Retry created",
+  "processRetryFailed": "The backend did not authorize or complete this retry."
 }

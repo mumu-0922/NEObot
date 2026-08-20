@@ -555,6 +555,15 @@ describe("chat CRUD service gateway", () => {
         calls.push(`list-messages:${conversationId}`);
         return [userMessageDto, assistantMessageDto];
       },
+      async retryAgentTool(input) {
+        calls.push(`retry-tool:${input.eventId}`);
+        return {
+          ...assistantMessageDto,
+          id: input.eventId,
+          content: "",
+          outputBlocks: [],
+        };
+      },
     });
 
     const service = createChatCrudService({ client });
@@ -611,6 +620,12 @@ describe("chat CRUD service gateway", () => {
       expect.objectContaining({ id: "m1", role: "user" }),
       expect.objectContaining({ id: "m2", role: "model" }),
     ]);
+    await expect(
+      service.retryAgentTool("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+    ).resolves.toMatchObject({
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      role: "model",
+    });
     expect(calls).toEqual([
       "create:conversation-key",
       "list-conversations",
@@ -622,6 +637,7 @@ describe("chat CRUD service gateway", () => {
       "delete-message:c1:m1:subsequent",
       "append:c1:message-key",
       "list-messages:c1",
+      "retry-tool:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     ]);
   });
 
@@ -712,6 +728,9 @@ function createMockClient(
     },
     async decideApproval() {
       throw new Error("decideApproval not mocked");
+    },
+    async retryAgentTool() {
+      throw new Error("retryAgentTool not mocked");
     },
     ...chatOverrides,
   };

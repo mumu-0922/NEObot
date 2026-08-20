@@ -159,5 +159,8 @@
   "processApprovalAllowed": "承認されました。実行を続けています。",
   "processApprovalDenied": "拒否されました。操作は実行されません。",
   "processApprovalExpired": "承認の有効期限が切れました。操作は実行されません。",
-  "processApprovalFailed": "決定を保存できませんでした。再試行してください。"
+  "processApprovalFailed": "決定を保存できませんでした。再試行してください。",
+  "processRetry": "安全な読み取りを再試行",
+  "processRetryCreated": "再試行を作成しました",
+  "processRetryFailed": "Backend がこの再試行を承認または完了しませんでした。"
 }

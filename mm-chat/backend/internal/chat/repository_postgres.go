@@ -379,6 +379,43 @@ ORDER BY turn.started_at, turn.id, event.sequence
 	return events, nil
 }
 
+func (r *PostgresRepository) GetChatAgentEvent(
+	ctx context.Context,
+	eventID string,
+) (ChatAgentEvent, error) {
+	if err := r.requireDB(); err != nil {
+		return ChatAgentEvent{}, err
+	}
+	if !isUUID(eventID) {
+		return ChatAgentEvent{}, newValidationError(
+			"INVALID_CHAT_AGENT_EVENT_ID", "chat Agent event id must be a UUID",
+		)
+	}
+	userID := auth.UserOrDevelopment(ctx).ID
+	event, err := scanChatAgentEvent(r.db.QueryRowContext(ctx, `
+SELECT event.event_id, turn.id, turn.user_id, turn.conversation_id,
+       turn.message_id, turn.run_id, event.sequence, event.event_type,
+       event.step_sequence, event.payload, event.occurred_at
+FROM chat_agent_events AS event
+JOIN chat_agent_turns AS turn ON turn.id = event.turn_id
+JOIN conversations AS conversation
+  ON conversation.id = turn.conversation_id
+ AND conversation.user_id = turn.user_id
+WHERE event.event_id = $1
+  AND turn.user_id = $2
+  AND conversation.deleted_at IS NULL
+`, eventID, userID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return ChatAgentEvent{}, newValidationError(
+			"CHAT_AGENT_EVENT_NOT_FOUND", "chat Agent event not found",
+		)
+	}
+	if err != nil {
+		return ChatAgentEvent{}, fmt.Errorf("query chat Agent event: %w", err)
+	}
+	return event, nil
+}
+
 func (r *PostgresRepository) RecoverIncompleteChatAgentTurns(
 	ctx context.Context,
 	startedBefore time.Time,

@@ -235,8 +235,8 @@ replace the runtime.
 
 ### Remaining slices
 
-- Backend-authorized Retry, performance/security acceptance, and legacy
-  transport removal after one stable canary release.
+- Performance/security acceptance and legacy transport removal after one
+  stable canary release.
 
 ### Slice 2 — live Terminal transcript
 
@@ -298,3 +298,18 @@ replace the runtime.
 - Added config/admission/immutability tests, Compose/preflight defaults, and a
   Backend-only flag rollback contract. No migration or event deletion is part
   of rollout or rollback.
+
+### Slice 7 — Backend-authorized safe Retry
+
+- Added a fail-closed Retry capability carried only by a versioned sanitized
+  presentation. The first allowlist admits failed `local_direct file_read`
+  calls with `file_not_found` or `execution_failed`; no browser arguments or
+  risk inference cross the API.
+- The owner-scoped source event is immutable. A retry creates one deterministic
+  sibling Agent Message per source event, a new call ID, and durable `retryOf`
+  linkage. Duplicate requests return the existing attempt instead of executing
+  twice.
+- Write/execute/MCP, `outcome_unknown`, cross-user, non-canary, malformed, and
+  legacy events expose no control and fail closed. Focused Backend race tests
+  and Frontend normalization/render/store tests cover the admitted and denied
+  paths.
