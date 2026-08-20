@@ -52,11 +52,11 @@ Backend/Frontend，使同一请求真实完成文件创建、读取验证和下�
       假性能力降级；明确 unsupported 仍降级 Chat。
 - [x] Chat 请求保持非阻塞且物理不注入 Agent-only Tools。
 - [x] 聚焦 Go 测试、`go vet ./...`、`go test ./...` 通过。
-- [x] `verify-agent-local-runtime.sh`、migration `098` PostgreSQL 17 drill、Frontend
+- [x] `verify-agent-local-runtime.sh`、migration `098/099` PostgreSQL 17 drills、Frontend
       format/lint/typecheck/test/build 与 standalone full gate 通过。
-- [ ] 生产数据库 migration head 为 `099_chat_agent_event_log_function_repair`，`096`
+- [x] 生产数据库 migration head 为 `099_chat_agent_event_log_function_repair`，`096`
       checksum 保持 `f7c6227d...`，服务健康。
-- [ ] 真实 Agent 请求创建并验证 `agent-test.md`，聊天出现受权限保护的下载卡片。
+- [x] 真实 Agent 请求创建并验证 `agent-test.md`，聊天出现受权限保护的下载卡片。
 
 ## Definition of Done
 

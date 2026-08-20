@@ -10468,3 +10468,21 @@ build, RAG Ruff/mypy/pytest, Preflight, Compose render, local Runtime, and diff
 checks passed. The broad standalone gate remains blocked by the pre-existing
 silent failure in `scripts/test-memory-regression.sh`; focused Agent gates and
 all directly affected component gates are green.
+
+## 2026-08-20 — Agent Tool admission repair deployed and accepted
+
+The live single-server Backend and Frontend now run immutable Agent-admission
+images. Migration head is `099_chat_agent_event_log_function_repair`; the
+already-applied migration `096_chat_agent_event_log` retains its original
+`f7c6227d...` checksum while `099` replays the function repair forward-only.
+Health, readiness, backup checks, PostgreSQL migration drills, Backend tests,
+Frontend checks, RAG checks, the local Agent Runtime gate, and the full
+standalone gate passed.
+
+A retained real-user Conversation (`a053e3aa-5c47-4509-9e8b-5ae278f52471`)
+then completed the browser-equivalent Agent path with the configured
+server-default provider. Its first successful run remained
+`requestedToolMode=agent` and `toolMode=agent`, called `file_write`,
+`file_read`, and `publish_file`, and attached `agent-test.md` as an authenticated
+output File. Downloading that File through `/v1/files/{id}/content` returned
+the published SHA-256 bytes and the verified `Agent 测试成功` marker.
