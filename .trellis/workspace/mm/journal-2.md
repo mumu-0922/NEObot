@@ -622,3 +622,36 @@ Fixed multiline Chat/Agent composer menu rows with content-driven height and saf
 ### Next Steps
 
 - None - task complete
+
+
+## Session 67: Deploy and verify live Chat/Agent menu fix
+
+**Date**: 2026-08-20
+**Task**: Deploy and verify live Chat/Agent menu fix
+**Branch**: `main`
+
+### Summary
+
+Traced the unchanged UI to a stale Frontend image, retained an exact rollback image and protected environment, built and deployed a Frontend-only candidate from fix commit 1e3a532a, proved the live edge serves the new immutable CSS with correct override order, kept unrelated containers unchanged, passed live readiness and the full standalone gate, and added a release-propagation verification contract.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `23e50d2a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
