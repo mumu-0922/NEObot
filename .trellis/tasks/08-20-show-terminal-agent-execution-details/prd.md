@@ -39,14 +39,14 @@ DeepSeek Harness 一样提供可读、可回放的终端执行卡片，明确展
 
 ## Acceptance Criteria
 
-- [ ] running Terminal step 可见脱敏 command/cwd，completed step 可见 exit 0。
-- [ ] nonzero/timed-out/truncated/background 状态有明确视觉语义。
-- [ ] Workspace/Host/Skill internal paths and common credential forms are redacted.
-- [ ] raw stdout/stderr never appears in process presentation/event payload.
-- [ ] fragmented live updates and durable replay normalize to the same card.
-- [ ] malformed or unknown presentation is ignored without invalidating the Tool step.
-- [ ] focused Backend and Frontend tests pass; no unnecessary full suite.
-- [ ] only Backend and Frontend are rebuilt/recreated for live rollout.
+- [x] running Terminal step 可见脱敏 command/cwd，completed step 可见 exit 0。
+- [x] nonzero/timed-out/truncated/background 状态有明确视觉语义。
+- [x] Workspace/Host/Skill internal paths and common credential forms are redacted.
+- [x] raw stdout/stderr never appears in process presentation/event payload.
+- [x] fragmented live updates and durable replay normalize to the same card.
+- [x] malformed or unknown presentation is ignored without invalidating the Tool step.
+- [x] focused Backend and Frontend tests pass; no unnecessary full suite。
+- [x] only Backend and Frontend are rebuilt/recreated for live rollout.
 
 ## Definition of Done
 
@@ -79,3 +79,21 @@ DeepSeek Harness 一样提供可读、可回放的终端执行卡片，明确展
   `components/content/ProcessTracePanel.tsx`.
 - Existing Tool scheduling, allowlist, approvals, execution and model-facing
   results remain authoritative and unchanged.
+
+## Verification
+
+- Focused Backend `go test`/`go vet` passed for `internal/chat` and
+  `internal/localskills`.
+- Focused Frontend Process Trace/message parity Vitest, changed-file Prettier,
+  ESLint and TypeScript checks passed. The initial Vitest invocation also ran
+  the existing Frontend suite and exposed only the newly added Japanese locale
+  parity omission; that omission was fixed before the focused re-run.
+- Backend/Frontend production image builds passed and only those two services
+  were recreated. PostgreSQL, Redis, MinIO and MCP Runner container identities
+  stayed unchanged.
+- Live Agent acceptance observed Terminal running/completed ProcessSteps with
+  the same command, stable `$NEO_CHAT_WORKSPACE` cwd, `exitCode=0`, durable
+  reload parity and no stdout/stderr in presentation. Both temporary
+  Conversations were deleted after proof.
+- Exact evidence and rollback artifacts are recorded in
+  [`research/live-rollout.md`](research/live-rollout.md).
