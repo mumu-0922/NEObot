@@ -29,12 +29,12 @@
 
 ## Acceptance Criteria
 
-- [ ] 分片的 `<｜｜DSML｜｜tool_calls>` 不会作为 content delta 输出，并产生 typed Provider failure。
-- [ ] ASCII bar 变体同样被阻断。
-- [ ] marker 前的普通文本可以安全输出，marker、Tool 名和参数均不输出。
-- [ ] 普通流式回答和原生结构化 Tool Calls 的 focused tests 继续通过。
-- [ ] Backend contract 记录 raw Provider Tool protocol fail-closed 边界。
-- [ ] 仅执行 owning package 的 focused Go tests；非必要不运行全量 gate。
+- [x] 分片的 `<｜｜DSML｜｜tool_calls>` 不会作为 content delta 输出，并产生 typed Provider failure。
+- [x] ASCII bar 变体同样被阻断。
+- [x] marker 前的普通文本可以安全输出，marker、Tool 名和参数均不输出。
+- [x] 普通流式回答和原生结构化 Tool Calls 的 focused tests 继续通过。
+- [x] Backend contract 记录 raw Provider Tool protocol fail-closed 边界。
+- [x] 仅执行 owning package 的 focused Go tests；非必要不运行全量 gate。
 
 ## Definition of Done
 
@@ -58,3 +58,5 @@
 - Tool loop contract：`.trellis/spec/backend/chat-tool-loop.md`
 - Live flow：Provider content delta → `ProviderEventDelta` → Tool loop → SSE/persistence → durable `assistant.message` → Frontend Markdown。
 - 复用 `processReasoningStream` 的 bounded suffix / UTF-8-safe holdback 思路，避免逐 chunk 独立匹配造成 marker 分片绕过。
+- Root cause 属于 **Cross-Layer Contract + Test Coverage Gap**：Provider adapter 默认所有 `content` 都是用户回答，未对模型泄漏的协议 envelope 建立 fail-closed 边界；此前测试只覆盖结构化 `tool_calls` 与普通 content。
+- 历史污染消息及 immutable agent event 未被重写；本任务保证部署后的新 Provider stream 不再跨越该边界。
