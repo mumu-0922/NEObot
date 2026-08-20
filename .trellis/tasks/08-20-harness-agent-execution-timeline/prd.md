@@ -235,7 +235,8 @@ replace the runtime.
 
 ### Remaining slices
 
-- Legacy transport removal after one stable canary release.
+- Run one pinned stable canary release, produce verifier-eligible content-free
+  evidence, then remove the legacy transport in a separate reversible slice.
 
 ### Slice 8 — performance and security acceptance
 
@@ -249,6 +250,21 @@ replace the runtime.
   unknown MCP fallback, raw payload exclusion, and DOM non-disclosure.
 - Kept the legacy ProcessStep transport intact. Removal remains blocked until
   one stable exact-user canary release passes these gates.
+
+### Slice 9 — stable-canary evidence gate
+
+- Defined a stable release as 24 continuous hours on one unchanged Git commit
+  and immutable Backend/Frontend digests with exactly one canary plus a
+  disjoint control.
+- Added a strict content-free evidence verifier for minimum synthetic Tool and
+  event coverage, live/reload/reconnect/approval/cancel/retry behavior,
+  performance limits, security probes, and rollback preservation.
+- Added a synthetic example and focused mutation tests for short windows,
+  control leakage, latency/ratio regression, missing security probes, and raw
+  content fields.
+- The verifier performs no deployment, Provider call, flag mutation, Push, or
+  transport deletion. Legacy removal remains blocked until real external
+  evidence returns `eligible`.
 
 ### Slice 2 — live Terminal transcript
 

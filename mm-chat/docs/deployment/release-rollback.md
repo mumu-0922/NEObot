@@ -269,6 +269,49 @@ waits for new non-canary turns while preserving `chat_agent_events` and the
 legacy ProcessStep projection. Never delete events or rewrite applied
 migrations as a UI rollback.
 
+Do not retire that legacy projection merely because local tests pass. One
+stable timeline canary release means all of the following remained true for at
+least 24 continuous hours on one unchanged Git commit and immutable Backend and
+Frontend image digests:
+
+- exactly one canary UUID received Agent events while at least one disjoint
+  control UUID did not;
+- at least five synthetic Agent turns and five Tool calls covered Terminal,
+  Search, File, generic MCP, and the authoritative event chain;
+- live/reload parity, reconnect convergence, approval CAS, cancellation, and
+  safe retry passed;
+- visible update p95 stayed at or below 300 ms and durable reload p95 stayed
+  within 20% of the legacy path under the same workload;
+- Secret, host-path, ANSI/control, oversized-payload, unknown-MCP, and artifact
+  authorization probes produced zero presentation or raw-payload leaks;
+- a flag-only rollback rehearsal preserved event counts, the legacy projection,
+  immutable images, and unrelated services.
+
+Record only content-free counters and booleans. Never put real chat content,
+commands, paths, event payloads, cookies, credentials, or production user IDs
+in Git. Copy the synthetic template to a mode-`0600` path outside the
+repository, replace every fixture value with observed evidence, and validate it:
+
+```bash
+cd mm-chat
+install -m 0600 \
+  docs/deployment/agent-timeline-canary-evidence.example.json \
+  /tmp/agent-timeline-canary-evidence.json
+# Fill the external file from reviewed, synthetic-only canary observations.
+# Set templateOnly=false only after every fixture value has been replaced.
+python3 scripts/verify-agent-timeline-canary-evidence.py \
+  /tmp/agent-timeline-canary-evidence.json \
+  --report /tmp/agent-timeline-canary-report.json
+```
+
+Only an `eligible` report permits a separate legacy-removal change. It does not
+delete transport code, enable the flag for more users, deploy an image, or
+authorize Push. Retain the external evidence and its report together: the
+report binds the exact commit, image digests, UTC window, and canonical evidence
+SHA-256 without copying user IDs into the report. Any failed field requires the
+immediate flag rollback above; do not edit the evidence to convert a failed
+release into a passing one.
+
 Before a flag-only `--force-recreate`, record each running container's exact
 image ID and pin `BACKEND_IMAGE` to an immutable digest or retained tag. The
 default `mm-chat/backend:local` tag is mutable and may no longer name the image

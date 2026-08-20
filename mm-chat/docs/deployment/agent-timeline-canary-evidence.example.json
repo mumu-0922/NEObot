@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "templateOnly": true,
+  "candidate": {
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "backendImage": "registry.example/mm-chat/backend@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "frontendImage": "registry.example/mm-chat/frontend@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "window": {
+    "startedAt": "2026-08-19T12:00:00Z",
+    "endedAt": "2026-08-20T12:00:00Z",
+    "continuouslyDeployed": true
+  },
+  "rollout": {
+    "timelineEnabled": true,
+    "canaryUserIds": ["11111111-1111-4111-8111-111111111111"],
+    "controlUserIds": ["22222222-2222-4222-8222-222222222222"],
+    "canaryAgentEventsExposed": true,
+    "controlAgentEventsExposed": false,
+    "legacyProjectionAvailable": true,
+    "candidateUnchanged": true,
+    "rollbackRehearsed": true,
+    "rollbackPreservedEvents": true,
+    "unrelatedServicesStable": true
+  },
+  "coverage": {
+    "agentTurns": 5,
+    "toolCalls": 8,
+    "cardTypes": ["terminal", "search", "file", "mcp"],
+    "eventTypes": [
+      "turn.started",
+      "tool.called",
+      "tool.result",
+      "assistant.message",
+      "turn.ended"
+    ]
+  },
+  "performance": {
+    "visibleUpdateP95Ms": 200,
+    "legacyReloadP95Ms": 100,
+    "durableReloadP95Ms": 120
+  },
+  "security": {
+    "probeTypes": [
+      "secret",
+      "host_path",
+      "ansi_control",
+      "oversized_payload",
+      "unknown_mcp",
+      "artifact_authorization"
+    ],
+    "leakCount": 0,
+    "rawPayloadLeakCount": 0
+  },
+  "controls": {
+    "liveReloadParity": true,
+    "reconnectConverged": true,
+    "approvalCASPassed": true,
+    "cancelPassed": true,
+    "safeRetryPassed": true
+  }
+}
