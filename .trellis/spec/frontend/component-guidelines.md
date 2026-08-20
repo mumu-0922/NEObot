@@ -60,6 +60,10 @@ const FollowUpQuestions: React.FC<FollowUpQuestionsProps> = ({
   `motion-reduce` behavior already present in nearby components.
 - Shared primitives combine conditional class strings locally and accept a
   `className` override. Keep the override last so callers can extend the base.
+- Compact shared menu items use fixed single-line heights. A feature that adds
+  title-and-description content must opt into content-driven height and safe
+  flex wrapping (`h-auto`, vertical padding, `min-w-0`, and `break-words`)
+  instead of letting the second line overflow into the next item.
 - Reuse CSS variables such as `--background`, `--foreground`, and semantic
   Tailwind tokens instead of adding isolated hard-coded theme systems.
 

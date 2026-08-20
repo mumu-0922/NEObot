@@ -151,6 +151,13 @@ const reasoningEffortItemClass =
 const searchModeItemClass =
   "data-[state=checked]:bg-blue-100 data-[state=checked]:font-medium data-[state=checked]:text-blue-700 dark:data-[state=checked]:bg-blue-900/40 dark:data-[state=checked]:text-blue-200";
 
+const toolModeItemClass = "h-auto items-start py-2";
+
+const toolModeItemTextClass = "flex min-w-0 flex-1 flex-col";
+
+const toolModeDescriptionClass =
+  "whitespace-normal break-words text-xs leading-4 font-normal text-muted-foreground";
+
 const loadChatService = () => import("@/services/api/chatService");
 const EMPTY_KNOWLEDGE_COLLECTION_IDS: readonly string[] = [];
 
@@ -1570,11 +1577,18 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                     }
                   }}
                 >
-                  <DropdownMenuRadioItem value="chat">
-                    <MessageCircle size={15} aria-hidden="true" />
-                    <span className="flex flex-col">
+                  <DropdownMenuRadioItem
+                    value="chat"
+                    className={toolModeItemClass}
+                  >
+                    <MessageCircle
+                      size={15}
+                      className="mt-0.5 shrink-0"
+                      aria-hidden="true"
+                    />
+                    <span className={toolModeItemTextClass}>
                       <span>{t("chatMode")}</span>
-                      <span className="text-xs font-normal text-muted-foreground">
+                      <span className={toolModeDescriptionClass}>
                         {t("chatModeDescription")}
                       </span>
                     </span>
@@ -1582,11 +1596,16 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                   <DropdownMenuRadioItem
                     value="agent"
                     disabled={!canSelectAgentMode}
+                    className={toolModeItemClass}
                   >
-                    <Bot size={15} aria-hidden="true" />
-                    <span className="flex flex-col">
+                    <Bot
+                      size={15}
+                      className="mt-0.5 shrink-0"
+                      aria-hidden="true"
+                    />
+                    <span className={toolModeItemTextClass}>
                       <span>{t("agentMode")}</span>
-                      <span className="text-xs font-normal text-muted-foreground">
+                      <span className={toolModeDescriptionClass}>
                         {canSelectAgentMode
                           ? t("agentModeDescription")
                           : t("agentModeUnsupported")}

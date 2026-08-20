@@ -133,6 +133,18 @@ describe("MessageInput composition", () => {
     expect(messageInput).not.toContain("McpToolsControl");
     expect(messageInput).toContain('t("agentModeDescription")');
     expect(messageInput).toContain('t("agentModeUnsupported")');
+    expect(messageInput).toContain(
+      'const toolModeItemClass = "h-auto items-start py-2"',
+    );
+    expect(messageInput).toContain(
+      'const toolModeItemTextClass = "flex min-w-0 flex-1 flex-col"',
+    );
+    expect(messageInput).toContain(
+      '"whitespace-normal break-words text-xs leading-4 font-normal text-muted-foreground"',
+    );
+    expect(messageInput.match(/className={toolModeItemClass}/g)).toHaveLength(
+      2,
+    );
     expect(messageInput).toContain("effectiveUseReasoning");
     expect(messageInput).toContain("reasoningEffortOptions.map");
     expect(messageInput).toContain('value="off"');
