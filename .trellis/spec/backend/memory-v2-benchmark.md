@@ -875,6 +875,12 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   from attempt telemetry. Even a passing Development report emits
   `policySelected=false` and stops for owner review. It cannot enter
   Validation, production, or promotion automatically.
+- Candidate-Judge failure taxonomy v2 is the exact sorted 25-category union of
+  the 16 Provider and nine Judge-local categories, with SHA-256
+  `229bb4fd6aaf0ec7fea2bf9c37c7f332f78876249b0dba5692ca8bf789646a6d`.
+  Every shell-side report validator must enumerate that same set, including
+  `PROVIDER_CONTEXT_OVERFLOW`; updating only the version/hash while leaving a
+  v1 category set is contract drift and must make the lifecycle fixture fail.
 - The retained schema-v12 live Development result is immutable failed
   criteria-v3 evidence. It completed all `195` candidate-bearing decisions
   with zero failed cases, `203` Judge attempts including `8` retries, and all
@@ -1235,6 +1241,7 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
 | Schema-v12 receives 408/429/5xx or a retryable transport/read interruption | Honor valid `Retry-After`, otherwise wait five seconds, retry exactly once, and include both attempts in telemetry and cost authority. |
 | Schema-v12 attempt counts, latency samples, cooldown totals, Judge input bounds, or `attempts * 128` output authority do not reconcile | Reject report/manifest publication; never repair aggregate evidence after the run. |
 | Schema-v12 contains `HardCutoffApplied` or a `HARD_CUTOFF` trace | Reject it as execution-policy drift; criteria v3 is diagnostic-only, not permission to retain historical cutoff semantics. |
+| Candidate-Judge taxonomy version/hash changes but a shell validator omits `PROVIDER_CONTEXT_OVERFLOW` or any other canonical category | Reject the lifecycle fixture as taxonomy drift; update the exact enumerated set together with its version/hash rather than weakening reconciliation. |
 | Aggregate-only evidence shows a false injection but no case identity/response, or one run has Judge failures | Preserve the failed bundle; do not infer a causal case, mutate another corpus, relax `0.02`, or compare positive quality as if execution were stable. Require separately versioned diagnostic or policy evidence. |
 | The Development negative-policy guard matches after Prepare | Record `NEGATIVE_POLICY_QUERY_ABSTAINED` with empty rerank/final/token surfaces; skip admission, candidate rerank, and Judge egress. Query-only BGE embedding before Prepare is allowed. |
 | The Development guard/policy identity or descriptor provenance drifts, or the Development identity is installed as the product Tool policy | Reject before Provider work. Production-v1 descriptor bytes/hash remain immutable; only the separate production-v2 identity may carry the guard, and its failed Validation leaves runtime gates off. |
@@ -1649,7 +1656,11 @@ memorycapture.PublishArtifactsExclusive(directory, artifacts) (map[string]string
   Schema-v13/v14 fixtures additionally cover typed attempt/terminal category
   reconciliation, diagnostic non-selection, Judge-only two-retry recovery and
   exhaustion, exact `5s/10s` fallback/`Retry-After`, BGE one-retry preservation,
-  zero-terminal pass semantics, and cost-basis-v9 `900`-attempt authority.
+  zero-terminal pass semantics, the exact taxonomy-v2 category set including
+  `PROVIDER_CONTEXT_OVERFLOW`, and cost-basis-v9 `900`-attempt authority. Run
+  `bash scripts/test-memory-regression.sh` after any Provider failure-category
+  change; the fake v2 diagnostic bundle must pass the same validator used for
+  retained evidence.
   Schema-v15 fixtures additionally cover exact 100-case selection and Holdout
   denial; profile/reader/report/manifest/hash identity; frozen read-intent
   hash; cost-basis-v10 `300`-attempt authority isolated from v9; independent
