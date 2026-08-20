@@ -98,7 +98,7 @@ func chatAgentGoalToolDefinitions() []ToolDefinition {
 			Type: "function",
 			Function: ToolFunctionDefinition{
 				Name:        chatAgentVerifyCompletionToolName,
-				Description: "Record completion evidence after a successful write or execute. evidenceToolCallId must name an exact later successful Tool result that actually checked the changed state. Summarize the observed check result; do not call this from narration alone.",
+				Description: "Record evidence only when the completion policy requires verification after a structured mutation or background Terminal start. evidenceToolCallId must be copied exactly from a successful later Tool result that checked the changed state. Do not call this for a foreground Terminal-only task or from narration alone.",
 				Strict:      true,
 				Parameters: map[string]any{
 					"type": "object", "additionalProperties": false,

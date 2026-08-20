@@ -123,6 +123,13 @@ adversarial allowed process.
   results. It skips symlinks and hidden/generated dependency directories.
 - `file_write` and `file_edit` are mutations, not completion evidence. The
   Agent must subsequently read/search/execute and verify the resulting state.
+- Successful local Tool Results sent back to the same model include the exact
+  Provider-only `evidenceToolCallId`. A foreground Terminal check may use that
+  ID to verify an earlier File mutation. The field is not Process metadata.
+- A successful foreground Terminal call does not itself create an outstanding
+  Completion Policy mutation. The Backend never guesses side effects by
+  parsing arbitrary Shell command text; the model must still interpret the
+  returned exit code/stdout/stderr truthfully.
 
 ## Published chat artifacts
 
@@ -161,8 +168,10 @@ adversarial allowed process.
   seconds on completion; sleeps and busy polling are forbidden.
 - Completion notices are injected into the next Agent Step or the next request
   in that Conversation, but contain only Job ID/status and never imply output.
-- A running start/list/kill result cannot verify completion. Only a successful
-  `job_output` with `status=completed` may serve as evidence.
+- A running start/list/kill or foreground Terminal result cannot verify a
+  pending background Job. Only a successful `job_output` with the exact Job ID
+  and `status=completed` may serve as evidence; multiple Jobs remain pending
+  independently.
 - Process trace marks these Tools with `durability=process_local`; the UI warns
   that service restart loses them. Shutdown cancels and reaps every Job.
 

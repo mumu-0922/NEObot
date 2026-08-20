@@ -276,19 +276,29 @@ to 3-32 rounds. Automatic `blocked` is unavailable before round 3; the prompt
 also requires the same blocking condition to persist rather than treating
 difficulty or incomplete work as a blocker.
 
-Successful `write` or `execute` calls activate a process-local completion gate.
-The Agent must observe a successful Tool result at or after the latest mutation
-and call `verify_completion` with that exact Tool Call ID and a bounded truthful
-summary. Goal Tools themselves never count as mutation or evidence. An active
-gate prevents normal completion and prevents `update_goal(..., complete)`.
-Failure to satisfy it before Step/Tool/runtime exhaustion is
-`AGENT_VERIFICATION_REQUIRED`.
+Successful structured `write` and non-Terminal `execute` calls activate a
+process-local completion gate. A foreground `terminal` success is instead a
+synchronous execution boundary: Terminal-only work may answer directly and
+must not manufacture a `verify_completion` call. The Backend deliberately does
+not parse arbitrary Shell text into read/write classes. A foreground Terminal
+result remains eligible evidence for an earlier structured mutation.
+
+The Agent must observe a successful eligible Tool result at or after the latest
+mutation and call `verify_completion` with the exact `evidenceToolCallId`
+returned inside that Result plus a bounded truthful summary. Every successful
+local Tool Result supplies this Provider-only field; it is not persisted in
+redacted process metadata. Goal Tools themselves never count as mutation or
+evidence. An active gate prevents normal completion and prevents
+`update_goal(..., complete)`. Failure to satisfy it before Step/Tool/runtime
+exhaustion is `AGENT_VERIFICATION_REQUIRED`.
 
 `file_write` and `file_edit` cannot verify their own mutation; a later
 `file_read`, `file_search`, or suitable command must observe the result. A
-background `terminal` start, `job_list`, `job_kill`, or a non-completed
-`job_output` is also not evidence. Only `job_output` with `status=completed`
-may verify a successful background command.
+background `terminal` start remains outstanding under its exact Job ID.
+`job_list`, `job_kill`, a foreground Terminal, a different Job's output, or a
+non-completed `job_output` cannot verify it. Only successful `job_output` with
+the same Job ID and `status=completed` may be recorded as evidence. Multiple
+background starts remain independently pending.
 
 `complete`, `blocked`, and `cancel` enter a Tool-free wrap-up. This state is
 latched for the rest of the Turn: even if a Provider hallucinates a Tool Call

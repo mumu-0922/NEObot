@@ -10517,3 +10517,32 @@ gates, Compose example/live renders, Backend vet/tests, Frontend
 format/lint/typecheck with 922 tests and production build, RAG Ruff/mypy with
 1,906 passing tests and seven declared integration skips, and the full
 standalone clean-copy gate passed.
+
+## 2026-08-20 — Foreground Terminal completion policy repair verified
+
+The retained live Agent failure showed six successful `terminal` executions,
+two `verify_completion` calls rejected as `verification_evidence_invalid`, and
+a final `AGENT_VERIFICATION_REQUIRED` for the read-only request `pwd` plus
+`git status --short`. Runtime tracing found that the Completion Policy treated
+every successful `execute` registration as a mutation and that local Tool
+Results did not expose the exact Provider Tool Call ID required by the verifier.
+
+The repaired policy keeps Terminal classified as `execute` for scheduling,
+approval and Process presentation, but treats successful foreground Terminal
+as a synchronous completion boundary without parsing arbitrary Shell text.
+Foreground Terminal remains valid evidence for an earlier structured write.
+Background Terminal starts remain independently pending by exact Job ID; only a
+successful same-Job `job_output(status=completed)` can verify them. Every
+successful local Tool Result now supplies its exact Provider-only
+`evidenceToolCallId`, while redacted Process events remain unchanged.
+
+Regression coverage proves the exact user prompt completes without a verifier
+round, `file_write -> terminal -> verify_completion` still gates structured
+mutation, stale IDs and File self-evidence fail, foreground/unrelated Job
+evidence cannot close a background Job, and multiple background Jobs close
+independently. Focused Chat tests, `go test -race ./internal/chat`, Backend vet
+and full tests, the local Agent Runtime gate, and the full standalone clean-copy
+gate passed. The full gate retained 922 passing Frontend tests and 1,906 passing
+RAG tests with seven declared integration skips. No database migration,
+Frontend change, runtime-state deletion, or live rollout occurred in this
+source-verification step.

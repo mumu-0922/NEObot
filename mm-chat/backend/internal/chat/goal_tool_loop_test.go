@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,35 +25,63 @@ func TestChatCompletionPolicyRequiresExplicitLaterEvidence(t *testing.T) {
 		byName:  map[string]chatToolRegistration{}, colliding: map[string]struct{}{},
 	}
 	registry.register(chatToolRegistration{
-		Name: "terminal", Backend: chatToolBackendLocalSkill,
-		RiskClass: chatToolRiskExecute, ProjectForModel: identityChatToolResult,
+		Name: localFileWriteToolName, Backend: chatToolBackendLocalSkill,
+		RiskClass: chatToolRiskWrite, ProjectForModel: identityChatToolResult,
+		MutationResultNeedsFollowup: true,
 	})
 	registry.register(chatToolRegistration{
-		Name: "read_file", Backend: chatToolBackendLocalSkill,
-		RiskClass: chatToolRiskRead, ProjectForModel: identityChatToolResult,
+		Name: localTerminalToolName, Backend: chatToolBackendLocalSkill,
+		RiskClass: chatToolRiskExecute, ProjectForModel: identityChatToolResult,
 	})
 	policy := newChatCompletionPolicy()
-	policy.observe(registry, []ProviderToolCall{{ID: "write-1", Name: "terminal"}},
-		[]ProviderToolResult{{CallID: "write-1", Name: "terminal"}})
+	policy.observe(registry, []ProviderToolCall{{ID: "write-1", Name: localFileWriteToolName}},
+		[]ProviderToolResult{{CallID: "write-1", Name: localFileWriteToolName}})
 	if !policy.requiresVerification() {
-		t.Fatal("successful execute must require verification")
+		t.Fatal("successful structured write must require verification")
 	}
-	if _, err := policy.verify("write-1", "command said success"); err != nil {
-		t.Fatalf("latest successful execute may serve as explicit check evidence: %v", err)
+	if _, err := policy.verify("write-1", "write returned success"); err == nil ||
+		err.Error() != "verification_evidence_invalid" {
+		t.Fatalf("write self-evidence error = %v", err)
 	}
-	if policy.requiresVerification() {
-		t.Fatal("explicit evidence should satisfy the current mutation")
+	policy.observe(registry, []ProviderToolCall{{ID: "check-1", Name: localTerminalToolName}},
+		[]ProviderToolResult{{CallID: "check-1", Name: localTerminalToolName,
+			Content: `{"exitCode":0}`}})
+	if _, err := policy.verify("check-1", "terminal check passed"); err != nil {
+		t.Fatalf("foreground terminal evidence: %v", err)
 	}
-	policy.observe(registry, []ProviderToolCall{{ID: "write-2", Name: "terminal"}},
-		[]ProviderToolResult{{CallID: "write-2", Name: "terminal"}})
-	policy.observe(registry, []ProviderToolCall{{ID: "read-2", Name: "read_file"}},
-		[]ProviderToolResult{{CallID: "read-2", Name: "read_file"}})
-	if _, err := policy.verify("write-1", "stale proof"); err == nil ||
+	policy.observe(registry, []ProviderToolCall{{ID: "write-2", Name: localFileWriteToolName}},
+		[]ProviderToolResult{{CallID: "write-2", Name: localFileWriteToolName}})
+	if _, err := policy.verify("check-1", "stale proof"); err == nil ||
 		err.Error() != "verification_evidence_invalid" {
 		t.Fatalf("stale evidence error = %v", err)
 	}
-	if _, err := policy.verify("read-2", "read-back matched expected content"); err != nil {
-		t.Fatalf("later read evidence: %v", err)
+	policy.observe(registry, []ProviderToolCall{{ID: "check-2", Name: localTerminalToolName}},
+		[]ProviderToolResult{{CallID: "check-2", Name: localTerminalToolName,
+			Content: `{"exitCode":0}`}})
+	if _, err := policy.verify("check-2", "later terminal check passed"); err != nil {
+		t.Fatalf("later terminal evidence: %v", err)
+	}
+}
+
+func TestChatCompletionPolicyAllowsForegroundTerminalWithoutVerification(t *testing.T) {
+	registry := &chatToolRegistry{
+		ordered: make([]chatToolRegistration, 0, 1),
+		byName:  map[string]chatToolRegistration{}, colliding: map[string]struct{}{},
+	}
+	registry.register(chatToolRegistration{
+		Name: localTerminalToolName, Backend: chatToolBackendLocalSkill,
+		RiskClass: chatToolRiskExecute, ProjectForModel: identityChatToolResult,
+	})
+	policy := newChatCompletionPolicy()
+	policy.observe(registry, []ProviderToolCall{{ID: "status", Name: localTerminalToolName}},
+		[]ProviderToolResult{{CallID: "status", Name: localTerminalToolName,
+			Content: `{"exitCode":0,"stdout":"/workspace\\n"}`}})
+	if policy.requiresVerification() {
+		t.Fatal("foreground Terminal-only work must not require verification")
+	}
+	if _, err := policy.verify("status", "read-only status observed"); err == nil ||
+		err.Error() != "verification_not_required" {
+		t.Fatalf("foreground Terminal verification error=%v", err)
 	}
 }
 
@@ -131,8 +160,8 @@ func TestChatAgentCompletionGateContinuesUntilExplicitToolEvidence(t *testing.T)
 	}})
 	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
 		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
-			ID: "mutation", Name: localTerminalToolName,
-			Arguments: `{"command":"printf changed > artifact.txt","skill":null,"workingDir":null,"timeoutSeconds":1}`,
+			ID: "mutation", Name: localFileWriteToolName,
+			Arguments: `{"path":"artifact.txt","content":"changed","expectedVersion":"absent"}`,
 		}}},
 		{{Type: ProviderEventDelta, Delta: "unverified narration"}},
 		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
@@ -178,6 +207,66 @@ func TestChatAgentCompletionGateContinuesUntilExplicitToolEvidence(t *testing.T)
 	if len(verificationResult) != 1 || verificationResult[0].IsError ||
 		!strings.Contains(verificationResult[0].Content, `"verified":true`) {
 		t.Fatalf("verification result = %#v", verificationResult)
+	}
+}
+
+func TestChatAgentForegroundTerminalOnlyCompletesWithoutVerification(t *testing.T) {
+	repository := newGoalTestRepository(t)
+	goalRuntime := newChatAgentGoalToolRuntime(
+		NewService(repository), goalTestTurnID, testConversationID,
+	)
+	workspace := t.TempDir()
+	if output, err := exec.Command("git", "-C", workspace, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("initialize fixture Git repository: %v: %s", err, output)
+	}
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: filepath.Join(t.TempDir(), "skills"),
+		WorkspaceRoot: workspace, ShellPath: "/bin/sh",
+		ApprovalMode: localskills.ApprovalSmart, CallTimeout: time.Second,
+		RunTimeout: 5 * time.Second, MaxOutput: 4096, MaxCalls: 4,
+		MaxRounds: 4, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	localRuntime := newLocalSkillToolRuntime(executor, nil)
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "status", Name: localTerminalToolName,
+			Arguments: `{"command":"pwd && git status --short","skill":null,"workingDir":null,"timeoutSeconds":1,"runInBackground":false}`,
+		}}},
+		{{Type: ProviderEventDelta, Delta: "当前目录是干净的 Git 工作区。"}},
+	}}
+
+	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt:   "在当前项目执行 pwd 和 git status --short，然后解释结果，不要修改文件。",
+			ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+		},
+		LocalSkills: localRuntime, Goals: goalRuntime,
+	})
+	var content strings.Builder
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+	}
+	if content.String() != "当前目录是干净的 Git 工作区。" || len(provider.inputs) != 2 {
+		t.Fatalf("content=%q rounds=%d", content.String(), len(provider.inputs))
+	}
+	result := provider.inputs[1].Continuation[0].Results
+	if len(result) != 1 || result[0].IsError ||
+		!strings.Contains(result[0].Content, `"stdout":"$NEO_CHAT_WORKSPACE\n"`) ||
+		!strings.Contains(result[0].Content, `"evidenceToolCallId":"status"`) {
+		t.Fatalf("Terminal result=%#v", result)
+	}
+	if strings.Contains(provider.inputs[1].Continuation[0].FollowupPrompt,
+		"<completion_verification_required>") {
+		t.Fatalf("Terminal-only continuation requested verification: %#v", provider.inputs[1].Continuation)
 	}
 }
 
@@ -324,11 +413,12 @@ func TestChatAgentGoalCompleteRejectsUnverifiedMutation(t *testing.T) {
 		byName:  map[string]chatToolRegistration{}, colliding: map[string]struct{}{},
 	}
 	registry.register(chatToolRegistration{
-		Name: "terminal", Backend: chatToolBackendLocalSkill,
-		RiskClass: chatToolRiskExecute, ProjectForModel: identityChatToolResult,
+		Name: localFileWriteToolName, Backend: chatToolBackendLocalSkill,
+		RiskClass: chatToolRiskWrite, ProjectForModel: identityChatToolResult,
+		MutationResultNeedsFollowup: true,
 	})
-	policy.observe(registry, []ProviderToolCall{{ID: "mutation", Name: "terminal"}},
-		[]ProviderToolResult{{CallID: "mutation", Name: "terminal"}})
+	policy.observe(registry, []ProviderToolCall{{ID: "mutation", Name: localFileWriteToolName}},
+		[]ProviderToolResult{{CallID: "mutation", Name: localFileWriteToolName}})
 	repository.goal = &ChatAgentGoal{
 		ID: goalTestGoalID, ConversationID: testConversationID,
 		Objective: "prove it", Phase: ChatAgentGoalActive, Revision: 1,

@@ -442,6 +442,7 @@ func localSkillFatalCode(err error) string {
 }
 
 func localSkillSuccessResult(call ProviderToolCall, payload map[string]any) ProviderToolResult {
+	payload["evidenceToolCallId"] = strings.TrimSpace(call.ID)
 	payload["untrustedLocalSkillResult"] = true
 	encoded, _ := json.Marshal(payload)
 	if len(encoded) > maxLocalSkillToolResultMetadata && call.Name != localSkillToolName &&

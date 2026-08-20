@@ -91,21 +91,70 @@ func TestBackgroundTerminalRequiresCompletedJobOutputForVerification(t *testing.
 	policy := newChatCompletionPolicy()
 	policy.observe(registry, []ProviderToolCall{{ID: "start", Name: localTerminalToolName}},
 		[]ProviderToolResult{{CallID: "start", Name: localTerminalToolName,
-			Content: `{"result":{"status":"running"},"durability":"process_local"}`}})
+			Content: `{"result":{"jobId":"job-1","status":"running"},"durability":"process_local"}`}})
 	if _, err := policy.verify("start", "started"); err == nil {
 		t.Fatal("background start became completion evidence")
 	}
 	policy.observe(registry, []ProviderToolCall{{ID: "running", Name: localJobOutputToolName}},
 		[]ProviderToolResult{{CallID: "running", Name: localJobOutputToolName,
-			Content: `{"result":{"status":"running"}}`}})
+			Content: `{"result":{"jobId":"job-1","status":"running"}}`}})
 	if _, err := policy.verify("running", "still running"); err == nil {
 		t.Fatal("running output became completion evidence")
 	}
+	policy.observe(registry, []ProviderToolCall{{ID: "foreground", Name: localTerminalToolName}},
+		[]ProviderToolResult{{CallID: "foreground", Name: localTerminalToolName,
+			Content: `{"exitCode":0}`}})
+	if _, err := policy.verify("foreground", "foreground command completed"); err == nil ||
+		err.Error() != "verification_evidence_invalid" {
+		t.Fatalf("foreground command verified a background Job: %v", err)
+	}
 	policy.observe(registry, []ProviderToolCall{{ID: "done", Name: localJobOutputToolName}},
 		[]ProviderToolResult{{CallID: "done", Name: localJobOutputToolName,
-			Content: `{"result":{"status":"completed"}}`}})
+			Content: `{"result":{"jobId":"job-1","status":"completed"}}`}})
 	if _, err := policy.verify("done", "job completed successfully"); err != nil {
 		t.Fatalf("completed output evidence error=%v", err)
+	}
+}
+
+func TestBackgroundTerminalTracksEachPendingJobByExactID(t *testing.T) {
+	registry := &chatToolRegistry{
+		ordered: make([]chatToolRegistration, 0, 2),
+		byName:  map[string]chatToolRegistration{}, colliding: map[string]struct{}{},
+	}
+	registry.register(chatToolRegistration{
+		Name: localTerminalToolName, Backend: chatToolBackendLocalSkill,
+		RiskClass: chatToolRiskExecute, ProjectForModel: identityChatToolResult,
+	})
+	registry.register(chatToolRegistration{
+		Name: localJobOutputToolName, Backend: chatToolBackendLocalSkill,
+		RiskClass: chatToolRiskRead, ProjectForModel: identityChatToolResult,
+	})
+	policy := newChatCompletionPolicy()
+	for _, jobID := range []string{"job-1", "job-2"} {
+		policy.observe(registry,
+			[]ProviderToolCall{{ID: "start-" + jobID, Name: localTerminalToolName}},
+			[]ProviderToolResult{{CallID: "start-" + jobID, Name: localTerminalToolName,
+				Content: `{"result":{"jobId":"` + jobID + `","status":"running"}}`}},
+		)
+	}
+	policy.observe(registry, []ProviderToolCall{{ID: "wrong", Name: localJobOutputToolName}},
+		[]ProviderToolResult{{CallID: "wrong", Name: localJobOutputToolName,
+			Content: `{"result":{"jobId":"job-3","status":"completed"}}`}})
+	if _, err := policy.verify("wrong", "unrelated Job completed"); err == nil ||
+		err.Error() != "verification_evidence_invalid" {
+		t.Fatalf("unrelated Job evidence error=%v", err)
+	}
+	for index, jobID := range []string{"job-1", "job-2"} {
+		callID := "done-" + jobID
+		policy.observe(registry, []ProviderToolCall{{ID: callID, Name: localJobOutputToolName}},
+			[]ProviderToolResult{{CallID: callID, Name: localJobOutputToolName,
+				Content: `{"result":{"jobId":"` + jobID + `","status":"completed"}}`}})
+		if _, err := policy.verify(callID, jobID+" completed"); err != nil {
+			t.Fatalf("%s evidence error=%v", jobID, err)
+		}
+		if got := policy.requiresVerification(); got != (index == 0) {
+			t.Fatalf("after %s requiresVerification=%v", jobID, got)
+		}
 	}
 }
 

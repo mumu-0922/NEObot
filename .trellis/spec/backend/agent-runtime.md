@@ -40,6 +40,13 @@ Migration head: 099_chat_agent_event_log_function_repair
 - Local execution is not a Sandbox. Never add `sudo`, a container socket,
   host-wide personal/secret binds, privileged execution, automatic OS package
   installation, or per-Skill isolation claims.
+- Foreground Terminal success is a synchronous execution boundary and does not
+  create a Completion Policy mutation. Do not classify arbitrary Shell text as
+  read-only/write. Structured File/MCP writes remain evidence-gated; foreground
+  Terminal may check them. Background Terminal remains outstanding by exact Job
+  ID until successful `job_output(status=completed)` evidence is explicitly
+  recorded. Successful local Tool Results expose their exact Provider-only
+  `evidenceToolCallId`; Process events remain content-free.
 - `publish_file` accepts only workspace-relative regular files, persists through
   the existing user-owned File/object-store path, and attaches only successful
   outputs to the assistant message. Cross-user and stale/deleted access fails.
@@ -64,6 +71,8 @@ Migration head: 099_chat_agent_event_log_function_repair
 | Agent enabled, no installed Skills | File/Terminal/Job remain; Skill catalog is empty |
 | invalid root/shell/limits | Backend startup fails |
 | destructive command in smart mode | approval-required result; no execution |
+| foreground Terminal-only task | Tool-free final answer; no `verify_completion` loop |
+| background Terminal plus foreground check | background remains unverified until exact completed `job_output` |
 | Backend shutdown with active Job | entire process group canceled and reaped |
 | path traversal/symlink/non-regular publish | reject; no File row/object |
 | Host/WSL alias below configured workspace | resolve to the same relative File/workingDir path |
@@ -78,9 +87,13 @@ Migration head: 099_chat_agent_event_log_function_repair
   it, and returns an authenticated download card.
 - **Base**: Agent mode has no installed Skills; bounded File/Terminal/Job Tools
   still work, while Chat mode exposes none of them.
+- **Base**: Agent runs `pwd` and `git status --short` in foreground, observes the
+  redacted workspace result, and answers without manufacturing verification.
 - **Bad**: route local execution through a second control service, claim Sandbox
-  isolation, mount a Home/parent directory containing unrelated secrets, treat
-  an alias as a second root, or let migration `098` delete by wildcard.
+  isolation, parse arbitrary Shell text as a reliable mutation classifier,
+  verify a running background Job with unrelated foreground output, mount a
+  Home/parent directory containing unrelated secrets, treat an alias as a
+  second root, or let migration `098` delete by wildcard.
 
 ### Required tests
 
@@ -94,6 +107,10 @@ GOCACHE=/tmp/neo-chat-go-cache go vet ./...
 GOCACHE=/tmp/neo-chat-go-cache go test ./...
 ```
 
+The local Runtime suite must also prove foreground Terminal-only completion,
+`file_write -> terminal -> verify_completion`, exact local
+`evidenceToolCallId`, and background Job ID/status gating.
+
 Cross-layer changes also require frontend format/lint/typecheck/test/build and
 `bash mm-chat/scripts/verify-standalone.sh --full`.
 
@@ -102,6 +119,9 @@ Cross-layer changes also require frontend format/lint/typecheck/test/build and
 ```text
 Wrong: Agent Center -> OCI Runner -> Broker -> downloadable host path
 Correct: Chat Agent -> bounded local Tool -> user-owned File -> message artifact
+
+Wrong: inspect Shell command text -> guess mutation -> force verification
+Correct: foreground result -> synchronous boundary; background Job -> exact completed output
 
 Wrong: DROP ... CASCADE after a broad agent_* match
 Correct: lock -> exact manifest/data validation -> explicit drops -> forward repair -> head 099

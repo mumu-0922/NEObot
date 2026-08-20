@@ -74,9 +74,19 @@ all properties; semantic optionals are nullable.
   start the exact next round and append `assistant -> synthetic user` through
   `FollowupPrompt`; preserve Anthropic Thinking blocks/signatures.
 - Observe successful non-Goal Tool results in exact call/result order. A
-  `write|execute` becomes the latest mutation. Normal end and Goal complete are
-  forbidden until `verify_completion` references a successful evidence call at
-  or after it. Goal Tools never count as mutation/evidence.
+  structured `write` or non-Terminal `execute` becomes the latest mutation.
+  Never parse Shell text to guess whether a foreground Terminal command is
+  read-only: its synchronous result does not create an outstanding mutation,
+  but remains valid evidence for an earlier structured mutation. A background
+  Terminal start stays outstanding by exact Job ID; only a later successful
+  `job_output(status=completed)` for that Job may verify it. Normal end and Goal
+  complete are forbidden until `verify_completion` references a valid evidence
+  call at or after the latest mutation and every pending background Job is
+  verified. Goal Tools never count as mutation/evidence.
+- Every successful local Tool Result returned to the same model includes
+  `evidenceToolCallId=<exact Provider call ID>`. This Provider-only field is the
+  value copied into `verify_completion`; it never enters redacted process
+  metadata or grants authority by itself.
 - Buffer Goal/verification intermediate prose. Complete/blocked/cancel latches
   a Tool-free wrap-up for the rest of the Turn. A hallucinated call receives
   `goal_concluded`, executes nothing and cannot restore ordinary Tools.
@@ -95,6 +105,9 @@ all properties; semantic optionals are nullable.
 | automatic blocked before round 3 | `blocked_round_threshold` |
 | complete with outstanding mutation | `verification_required` |
 | stale/failed/unknown evidence call | `verification_evidence_invalid` |
+| foreground Terminal-only task | no completion gate; answer from the synchronous Result |
+| foreground Terminal used to verify a pending background Job | `verification_evidence_invalid` |
+| completed `job_output` names a different pending Job | `verification_evidence_invalid` |
 | Step/Tool/local/MCP budget with outstanding verification | terminal `AGENT_VERIFICATION_REQUIRED`; no Tool-free success |
 | Goal database/function failure | terminal `AGENT_GOAL_PERSISTENCE_FAILED` |
 | wrap-up Provider emits Tool Call | `goal_concluded`; no dispatch; next Step remains Tool-free |
@@ -102,16 +115,25 @@ all properties; semantic optionals are nullable.
 
 ### 5. Good / Base / Bad Cases
 
-- **Good:** create -> automatic round -> execute -> checking Tool result ->
-  verify -> complete -> Tool-free final answer.
+- **Good:** create -> automatic round -> structured write -> foreground Terminal
+  check -> copy its `evidenceToolCallId` -> verify -> complete -> Tool-free final
+  answer.
 - **Base:** short read-only chat uses no Goal; one Provider Turn ends normally.
-- **Bad:** arm a restored Goal on startup, accept narration as evidence, mark
-  blocked in round 1, or re-enable Tools after a wrap-up hallucination.
+- **Base:** `pwd` plus `git status --short` runs in foreground Terminal and
+  answers without `verify_completion`.
+- **Bad:** parse Shell strings into read/write guesses, accept narration as
+  evidence, use a foreground Terminal result for a running background Job, arm
+  a restored Goal on startup, mark blocked in round 1, or re-enable Tools after
+  a wrap-up hallucination.
 
 ### 6. Tests Required
 
 - Strict definitions, default no Subagent, human authority, CAS, 3-round
-  blocker floor, round cap, verification reference and terminal error mapping.
+  blocker floor, round cap, exact verification reference and terminal error
+  mapping.
+- Foreground Terminal-only completion, structured write -> Terminal evidence,
+  local Result `evidenceToolCallId`, background start/running/wrong-Job refusal,
+  and exact completed Job acceptance.
 - Automatic continuation hides intermediate narration and frames OpenAI/
   Anthropic `assistant -> user` without dropping Thinking state.
 - Wrap-up hallucination proves all later requests have `Tools=nil`, no Goal or
@@ -122,9 +144,12 @@ all properties; semantic optionals are nullable.
 ### 7. Wrong vs Correct
 
 ```text
-Wrong: write -> model says "done" -> completed
-Correct: write -> successful concrete check -> verify_completion(callId)
-         -> optional Goal complete -> permanently Tool-free wrap-up
+Wrong: every Terminal -> mutation gate -> model guesses a Tool Call ID
+Correct: foreground Terminal-only -> synchronous result -> answer
+
+Wrong: structured write -> model says "done" -> completed
+Correct: structured write -> successful later check -> copy evidenceToolCallId
+         -> verify_completion -> optional Goal complete -> Tool-free wrap-up
 ```
 
 ## Scenario: Drive one Chat Turn through the unified Tool Registry

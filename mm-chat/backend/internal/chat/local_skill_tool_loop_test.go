@@ -93,7 +93,9 @@ func TestLocalSkillToolLoopLoadsSkillRunsTerminalAndContinuesSameModel(t *testin
 		t.Fatalf("required Skill prelude=%#v", first)
 	}
 	terminalResult := provider.inputs[2].Continuation[1].Results[0]
-	if terminalResult.IsError || !strings.Contains(terminalResult.Content, `"stdout":"terminal-ok"`) {
+	if terminalResult.IsError ||
+		!strings.Contains(terminalResult.Content, `"stdout":"terminal-ok"`) ||
+		!strings.Contains(terminalResult.Content, `"evidenceToolCallId":"terminal-call"`) {
 		t.Fatalf("terminal result=%#v", terminalResult)
 	}
 	resultFile, err := os.ReadFile(filepath.Join(workspace, "result.txt"))
@@ -348,6 +350,9 @@ func TestLocalWorkspaceFileToolsRejectStaleWriteAndReadBack(t *testing.T) {
 	}, 1, 1)
 	if err != nil || write.IsError || !strings.Contains(write.Content, `"version":"sha256:`) {
 		t.Fatalf("write=%#v error=%v", write, err)
+	}
+	if !strings.Contains(write.Content, `"evidenceToolCallId":"write"`) {
+		t.Fatalf("write result omitted evidence Tool Call ID: %s", write.Content)
 	}
 	stale, err := runtime.execute(context.Background(), events, ProviderToolCall{
 		ID: "stale", Name: localFileWriteToolName,
