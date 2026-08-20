@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 68
+- **Total Sessions**: 69
 - **Last Active**: 2026-08-20
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~691 | Active |
+| `journal-2.md` | ~725 | Active |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 69 | 2026-08-20 | 阻断 OpenAI-compatible 原始 DSML 工具协议泄漏 | `af89f7af`, `99a18f83` | `main` |
 | 68 | 2026-08-20 | Rename and deploy search menu labels | `edb11b06`, `10b3792c` | `main` |
 | 67 | 2026-08-20 | Deploy and verify live Chat/Agent menu fix | `23e50d2a` | `main` |
 | 66 | 2026-08-20 | Fix Chat/Agent mode menu layout and automate commits | `1e3a532a`, `c9fa2642` | `main` |

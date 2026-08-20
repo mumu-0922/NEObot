@@ -689,3 +689,37 @@ Renamed OpenAI built-in search and server search labels to localized built-in/Ta
 ### Next Steps
 
 - None - task complete
+
+
+## Session 69: 阻断 OpenAI-compatible 原始 DSML 工具协议泄漏
+
+**Date**: 2026-08-20
+**Task**: 阻断 OpenAI-compatible 原始 DSML 工具协议泄漏
+**Branch**: `main`
+
+### Summary
+
+从 live 持久化消息确认 DeepSeek-compatible content delta 泄漏 DSML；在 Backend Provider 边界跨分片 fail-closed，保留原生 tool_calls 权限链，局部测试与 vet 通过，并仅重建 Backend 完成健康部署。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `af89f7af` | (see git log) |
+| `99a18f83` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
