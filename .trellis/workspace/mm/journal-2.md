@@ -520,3 +520,37 @@ Fixed first-request Agent capability admission, restored immutable migration his
 ### Next Steps
 
 - None - task complete
+
+
+## Session 64: Restore live Agent tools and authorize local project workspace
+
+**Date**: 2026-08-20
+**Task**: Restore live Agent tools and authorize local project workspace
+**Branch**: `main`
+
+### Summary
+
+Fixed live local_direct Tool event normalization, added a single-root Linux/WSL workspace alias for Oncall_Agent, passed the full standalone gate, deployed immutable Backend/Frontend images with retained rollback state, and accepted a real pre-reload Agent file_read against the WSL UNC README.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e0ce9970` | (see git log) |
+| `d2cf5152` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
