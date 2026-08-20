@@ -10546,3 +10546,35 @@ gate passed. The full gate retained 922 passing Frontend tests and 1,906 passing
 RAG tests with seven declared integration skips. No database migration,
 Frontend change, runtime-state deletion, or live rollout occurred in this
 source-verification step.
+
+## 2026-08-20 — Terminal-only Agent repair deployed and accepted
+
+Only Backend was replaced from source commit `e7ba11f2fed4`; Frontend, MCP
+Runner, MinIO, PostgreSQL and Redis image/container identities remained
+unchanged. The final Backend image is
+`mm-chat/backend:terminal-completion-e7ba11f2fed4-20260820T072454Z`, health and
+readiness passed, migration head remained `099`, the live environment retained
+mode `0600`, and Host/container SHA-256 for the authorized Workspace README
+still matched.
+
+The first manual candidate exposed an operational build error before
+acceptance: a bare Docker build selected the Dockerfile's final `mcp-runner`
+stage, so the Backend health check could not reach port 8080. The retained
+environment and previous Backend image were immediately restored and verified
+healthy. The replacement candidate was then rebuilt with `--target runtime`,
+and image inspection proved `USER mmchat:mmchat` plus
+`CMD ["/usr/local/bin/mm-chat-api"]` before the fresh Backend-only recreation.
+The runtime image-pinning spec and release runbook now make that target
+requirement explicit.
+
+A retained real-user Conversation (`bf87b6a9-a89a-452a-9041-2ac841c4bab7`)
+replayed the exact request to run `pwd` and `git status --short` without
+modifying files. Its SSE stream contained only Terminal updates, progressed
+from running to successful completion, emitted no `verify_completion` Tool and
+no `message.error`, and persisted a completed assistant answer explaining both
+Workspace and Git status. Message metadata remained
+`requestedToolMode=agent` and `toolMode=agent`. The temporary operator
+acceptance Session was logged out and deleted; the Conversation remains for
+owner inspection. The protected rollout directory retains the old environment,
+old Backend image reference, raw SSE and sanitized acceptance result for exact
+rollback and replay.

@@ -21,6 +21,12 @@ rag-worker  -> ./rag/Dockerfile
 Optional image publishing still exists through `scripts/release-images.sh`, but
 it is a future hardening/promotion path, not the default deployment flow.
 
+`backend/Dockerfile` is multi-target and its final stage is the separate MCP
+Runner. Do not create a manual Backend image with a bare `docker build`. For a
+Backend-only local tag, use `docker build --target runtime ...` and inspect that
+the image runs as `mmchat:mmchat` with
+`CMD ["/usr/local/bin/mm-chat-api"]` before changing the live environment.
+
 ## Pre-Release Gate
 
 Run from the standalone project root:

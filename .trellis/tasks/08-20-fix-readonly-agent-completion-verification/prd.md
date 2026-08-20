@@ -42,7 +42,7 @@
       `evidenceToolCallId`。
 - [x] `go test -race ./internal/chat`、`go vet ./...`、`go test ./...` 通过。
 - [x] `verify-agent-local-runtime.sh` 与 `verify-standalone.sh --full` 通过。
-- [ ] 只重建并重启 Backend 后，live 会话复测用户原话成功完成且 SSE 无错误。
+- [x] 只重建并重启 Backend 后，live 会话复测用户原话成功完成且 SSE 无错误。
 
 ## Definition of Done
 

@@ -24,6 +24,17 @@ docker compose --env-file .env.single-server \
   up -d --no-build --no-deps --force-recreate backend
 ```
 
+The Backend Dockerfile is multi-target and ends in the distinct `mcp-runner`
+stage. A manual immutable Backend-only build must select `runtime` explicitly
+and inspect its command before recreation:
+
+```bash
+docker build --pull=false --target runtime \
+  --tag mm-chat/backend:<immutable-tag> backend
+docker image inspect mm-chat/backend:<immutable-tag> \
+  --format 'user={{.Config.User}} cmd={{json .Config.Cmd}}'
+```
+
 One-off helper commands must also pin the reviewed image. Compose versions may
 omit `run --no-build`; capability inspection is allowed only before credentials
 or Provider work:
@@ -45,6 +56,11 @@ removed.
   health state before stopping it.
 - Resolve the exact image ID through an immutable digest or a protected retained
   tag before `--force-recreate`; a mutable fallback tag is not rollback state.
+- Never build `backend/Dockerfile` without an explicit target for a manual
+  Backend tag. Its final stage is `mcp-runner`; Backend requires
+  `--target runtime`, `USER mmchat:mmchat`, and
+  `CMD ["/usr/local/bin/mm-chat-api"]`. Prefer the target-aware Compose build
+  or `scripts/release-images.sh` over a handwritten Docker build.
 - Render the same Compose topology named by the live container labels.
 - Compare the database's applied migration version with the selected binary's
   schema requirements. A flag-only restart must not run migrations to make an
@@ -101,6 +117,7 @@ removed.
 | Running image ID has no retained digest/tag | Stop before recreation and create a protected reference while the container still exists. |
 | Rendered image differs from the recorded live image during a flag-only change | Reject the candidate; pin the recorded image explicitly. |
 | Selected binary requires an unapplied migration | Do not migrate implicitly; select a schema-compatible image or obtain separate migration authorization. |
+| Candidate Backend image has the MCP Runner entrypoint or no API command | Do not wait out health retries. Restore the retained Backend image immediately, rebuild with `--target runtime`, inspect image config, then perform a fresh targeted recreation. |
 | Target does not become healthy | Restore the protected environment and exact retained image, then verify health before further work. |
 | Any unrelated container ID changes | Treat the operation as scope violation and investigate. |
 | Persistent row count decreases | Stop, retain evidence, and restore from the protected data artifact if mutation is confirmed. |
@@ -124,6 +141,11 @@ removed.
 - **Bad**: run `--force-recreate` against `backend:local`, discover afterward
   that the tag moved to a schema-incompatible image, and then run migrations to
   fit the accidental release.
+- **Good Backend-only build**: select Docker target `runtime`, inspect the image
+  user and API command, preserve the old environment/image, then recreate only
+  Backend.
+- **Bad Backend-only build**: build the Dockerfile's final `mcp-runner` stage as
+  a Backend tag and wait for an API health check that can never open port 8080.
 - **Base helper**: the old live admin lacks the command; a pinned candidate
   image runs only the read-only helper with `--pull never`, while live service
   IDs stay unchanged.
@@ -168,6 +190,8 @@ removed.
 - Assert unrelated container IDs remain identical.
 - Assert target health checks pass and recent startup logs contain no
   ERROR/FATAL/panic lines.
+- For a manual Backend image, assert target `runtime`, `mmchat:mmchat`, and
+  `/usr/local/bin/mm-chat-api` before changing the live environment.
 - Assert identity/readiness probe paths are registered by the selected image;
   a route-level failure must exercise behavior rollback before corrected retry.
 - Assert the database migration version is unchanged for a flag-only operation.
@@ -199,6 +223,11 @@ removed.
 ```bash
 # backend:local may no longer be the image used by the live container.
 docker compose up -d --no-build --force-recreate backend memory-worker
+```
+
+```bash
+# Wrong: the Dockerfile's final stage is MCP Runner, not Backend API.
+docker build --tag mm-chat/backend:candidate backend
 ```
 
 ```bash
@@ -245,6 +274,14 @@ printf '%s\n' 'BACKEND_IMAGE=mm-chat/backend:retained-before-flag-change' >> .en
 docker compose --env-file .env.candidate config --quiet
 docker compose --env-file .env.candidate \
   up -d --no-build --no-deps --force-recreate backend memory-worker
+```
+
+```bash
+# Correct: select and inspect the Backend API runtime before recreation.
+docker build --pull=false --target runtime \
+  --tag mm-chat/backend:candidate backend
+docker image inspect mm-chat/backend:candidate \
+  --format 'user={{.Config.User}} cmd={{json .Config.Cmd}}'
 ```
 
 ```bash
