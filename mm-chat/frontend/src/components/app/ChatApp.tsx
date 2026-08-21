@@ -36,6 +36,7 @@ import {
   Attachment,
   LobeAgent,
   ChatToolMode,
+  AgentPermissionMode,
   ReasoningEffort,
   SearchMode,
   SessionMessageTree,
@@ -94,6 +95,8 @@ import { retireBrowserLocalRAGState } from "@/lib/settings/serverOnlyRagMigratio
 import { retireBrowserLegacySkillState } from "@/store/storage/legacySkillRetirement";
 import { SERVER_DEFAULT_PROVIDER_ID } from "@/lib/defaultConfig/shared";
 import { normalizeServerManagedProviderConfigs } from "@/lib/providers/config";
+import { createWorkspaceService } from "@/services/api/workspaceService";
+import type { HostWorkspaceStatusDTO } from "@/services/api/client";
 import {
   shouldResolveSelectedModelAfterBootstrap,
   shouldRunSettingsStartupEffects,
@@ -230,6 +233,7 @@ const ChatApp = () => {
       updateServerSessionTitle,
       updateServerSessionInstruction,
       updateServerSessionConfig,
+      updateServerSessionPermission,
       toggleServerSessionPin,
       deleteServerSession,
       duplicateServerSession,
@@ -296,6 +300,8 @@ const ChatApp = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [hostWorkspaceStatus, setHostWorkspaceStatus] =
+    useState<HostWorkspaceStatusDTO | null>(null);
   const [activeImageGeneration, setActiveImageGeneration] = useState<{
     startedAt: number;
   } | null>(null);
@@ -341,6 +347,24 @@ const ChatApp = () => {
   const [serverConfigResolved, setServerConfigResolved] = useState(false);
   const [serverModelBootstrapReady, setServerModelBootstrapReady] =
     useState(false);
+
+  useEffect(() => {
+    if (!serverModeEnabled) {
+      setHostWorkspaceStatus(null);
+      return;
+    }
+    const controller = new AbortController();
+    createWorkspaceService()
+      .getHostStatus(controller.signal)
+      .then(setHostWorkspaceStatus)
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          logDevError("Failed to load Host Workspace permissions", error);
+          setHostWorkspaceStatus(null);
+        }
+      });
+    return () => controller.abort();
+  }, [serverModeEnabled]);
 
   const availableModels = useMemo<ModelInfo[]>(() => {
     if (!_hasHydrated || !coreHasHydrated) return [];
@@ -512,6 +536,14 @@ const ChatApp = () => {
         })
       : null;
   const currentSessionWorkspaceId = currentSession?.workspaceId;
+  const currentHostWorkspace = currentSessionWorkspaceId
+    ? workspaces.find((workspace) => workspace.id === currentSessionWorkspaceId)
+    : undefined;
+  const availablePermissionModes =
+    hostWorkspaceStatus?.status === "ready" &&
+    hostWorkspaceStatus.features.execution
+      ? hostWorkspaceStatus.features.permissionModes
+      : [];
   const serverSessionChatConfig = {
     toolMode: currentSessionConfig?.toolMode ?? chatConfig.toolMode,
     searchMode: currentSearchMode,
@@ -1264,6 +1296,25 @@ const ChatApp = () => {
     });
     if (!updated) {
       throw new Error("Chat mode could not be saved.");
+    }
+  };
+
+  const persistAgentPermissionMode = async (
+    permissionMode: AgentPermissionMode,
+    fullAccessAcknowledged: boolean,
+  ) => {
+    if (!visibleCurrentSessionId) {
+      throw new Error(
+        "Create a project conversation before changing Agent permission.",
+      );
+    }
+    const updated = await updateServerSessionPermission(
+      visibleCurrentSessionId,
+      permissionMode,
+      fullAccessAcknowledged,
+    );
+    if (!updated) {
+      throw new Error("Agent permission could not be saved.");
     }
   };
 
@@ -3306,6 +3357,25 @@ const ChatApp = () => {
                           ? error.message
                           : "Chat mode could not be saved.",
                       ),
+                    );
+                  }}
+                  permissionMode={
+                    currentSessionConfig?.permissionMode ?? "workspace-write"
+                  }
+                  availablePermissionModes={availablePermissionModes}
+                  showPermissionControl={
+                    serverModeEnabled &&
+                    currentHostWorkspace?.bindingStatus === "bound"
+                  }
+                  permissionLocked={isGenerating}
+                  onPermissionModeChange={(mode, acknowledged) => {
+                    void persistAgentPermissionMode(mode, acknowledged).catch(
+                      (error) =>
+                        showActionError(
+                          error instanceof Error
+                            ? error.message
+                            : "Agent permission could not be saved.",
+                        ),
                     );
                   }}
                   onLocalSessionToolUnavailable={showServerUnsupportedAction}

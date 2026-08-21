@@ -15,12 +15,13 @@ POST   /v1/workspaces/directories/browse
 POST   /v1/workspaces/directories/pick-native
 PUT    /v1/workspaces/{workspaceId}/conversations/{conversationId}
 DELETE /v1/workspaces/{workspaceId}/conversations/{conversationId}
+PUT    /v1/chat/conversations/{conversationId}/permission
 ```
 
 Frontend writes flow through `WorkspaceApi -> workspaceService -> chatStore`.
 Server Workspace DTOs carry positive `revision`, `bindingStatus`, safe display
 metadata, and optional canonical binding metadata. Conversation DTOs carry
-optional `workspaceId`.
+optional `workspaceId` plus durable `permissionMode`.
 
 ## 3. Contracts
 
@@ -45,6 +46,12 @@ optional `workspaceId`.
 - Host unavailability preserves ordinary Workspace/chat reads and fails
   bind/browse/pick closed. It must not fall back to Docker `/workspace` or imply
   that Host execution is available.
+- Show the permission selector only for Agent Conversations in a bound Host
+  Workspace. Populate it from advertised Host modes, lock it during active
+  generation, and persist through the dedicated Conversation permission route.
+- Selecting Full access opens an accessible in-app `alertdialog` and sends
+  `fullAccessAcknowledged=true` only after explicit confirmation. Never use
+  generic Conversation config or `window.confirm` as permission authority.
 
 ## 4. Validation and Error Matrix
 
@@ -56,6 +63,8 @@ optional `workspaceId`.
 | picker cancelled | no error and no path mutation |
 | grouping clear after execution snapshot lock | surface locked failure; retain current grouping |
 | server Conversation creation succeeds but grouping fails | do not navigate/select it as a Workspace conversation |
+| Full access selected then cancelled | no permission request or local mutation |
+| permission request conflicts with an active Turn | retain authoritative mode and surface the locked error |
 
 ## 5. Good / Base / Bad Cases
 
@@ -74,6 +83,8 @@ optional `workspaceId`.
 - CAS conflict refresh;
 - Conversation `workspaceId` round trip and grouping/clear failure handling;
 - bound/unbound and directory-control composition where UI changes.
+- permission DTO round trip, active-generation selector lock, and Full access
+  acknowledgement dialog composition.
 
 ## 7. Wrong vs Correct
 
@@ -83,4 +94,7 @@ Correct: GET server -> PUT only missing ids -> GET -> adopt server revisions
 
 Wrong: browser path -> normalize to /mnt/d -> claim binding
 Correct: browser selection/input -> Host resolve -> Backend CAS bind -> safe view
+
+Wrong: put permissionMode in generic config or use window.confirm
+Correct: accessible dialog -> dedicated acknowledged API -> refresh durable DTO
 ```

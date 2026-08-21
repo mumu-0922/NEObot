@@ -8,12 +8,13 @@ import (
 )
 
 type fakeRepository struct {
-	items       map[string]Workspace
-	bindings    map[string]ExecutionBinding
-	setCalls    int
-	lastPath    agenthost.WorkspaceDescriptor
-	lastRunner  string
-	returnError error
+	items          map[string]Workspace
+	bindings       map[string]ExecutionBinding
+	setCalls       int
+	lastPath       agenthost.WorkspaceDescriptor
+	lastRunner     string
+	returnError    error
+	permissionMode agenthost.PermissionMode
 }
 
 func newFakeRepository() *fakeRepository {
@@ -145,6 +146,15 @@ func (repo *fakeRepository) LockConversationExecutionWorkspace(
 	}
 	repo.bindings[conversationID] = binding
 	return binding, nil
+}
+
+func (repo *fakeRepository) SetConversationPermission(
+	_ context.Context,
+	_ string,
+	mode agenthost.PermissionMode,
+) error {
+	repo.permissionMode = mode
+	return repo.returnError
 }
 
 type fakeResolver struct {

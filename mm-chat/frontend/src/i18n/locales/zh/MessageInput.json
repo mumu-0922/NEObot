@@ -26,6 +26,19 @@
   "agentMode": "Agent",
   "agentModeDescription": "自动使用 Skill、文件、终端、Browser 与连接器",
   "agentModeUnsupported": "当前模型不支持 Tool，已自动使用 Chat",
+  "permissionTitle": "Agent 权限",
+  "permissionMenuAria": "选择 Agent 权限，当前为 {mode}",
+  "permissionMode": {
+    "read-only": "只读",
+    "workspace-write": "工作区写入",
+    "danger-full-access": "完全访问"
+  },
+  "permissionDescription": {
+    "read-only": "可读取项目和运行命令，但禁止任何持久文件写入。",
+    "workspace-write": "可写入当前项目，项目外路径保持只读。",
+    "danger-full-access": "以 Host Runner 普通用户权限访问整台机器。"
+  },
+  "fullAccessConfirmation": "完全访问将允许 Agent 以 Host Runner 当前普通用户权限修改项目外文件。确认继续吗？",
   "enableSearchAria": "启用搜索",
   "disableSearchAria": "禁用搜索",
   "enableSearchWithMode": "启用搜索（{mode}）",
@@ -87,5 +100,8 @@
   "parsingDocument": "正在解析文档…",
   "failedToParseDocument": "解析文档“{fileName}”失败。",
   "dropFilesTitle": "松手即可添加附件",
-  "dropFilesHint": "图片、音频、文本和文档会沿用附件按钮的数量与大小限制。"
+  "dropFilesHint": "图片、音频、文本和文档会沿用附件按钮的数量与大小限制。",
+  "fullAccessTitle": "启用完全访问",
+  "permissionCancel": "取消",
+  "enableFullAccess": "确认启用"
 }

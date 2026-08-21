@@ -39,6 +39,7 @@ type ExecutionConfig struct {
 	RunTimeout    time.Duration
 	MaxOutput     int64
 	MaxConcurrent int
+	SandboxPath   string
 }
 
 type ExecutionManager struct {
@@ -46,6 +47,7 @@ type ExecutionManager struct {
 	config    ExecutionConfig
 	mu        sync.Mutex
 	executors map[string]*localskills.Executor
+	modes     []PermissionMode
 	closed    bool
 }
 
@@ -89,15 +91,31 @@ func NewExecutionManager(
 	if err != nil || resolvedSkillsRoot != config.SkillsRoot {
 		return nil, ErrWorkspacePathInvalid
 	}
+	sandbox, err := probeSandboxRuntime(config.SandboxPath)
+	if err != nil {
+		return nil, err
+	}
+	config.SandboxPath = sandbox.command
 	return &ExecutionManager{
 		resolver: resolver, config: config, executors: make(map[string]*localskills.Executor),
+		modes: append([]PermissionMode(nil), sandbox.modes...),
 	}, nil
+}
+
+func (manager *ExecutionManager) PermissionModes() []PermissionMode {
+	if manager == nil {
+		return []PermissionMode{}
+	}
+	return append([]PermissionMode(nil), manager.modes...)
 }
 
 func (manager *ExecutionManager) Execute(
 	ctx context.Context,
 	request ToolExecuteRequest,
 ) (any, error) {
+	if !manager.supportsPermissionMode(request.PermissionMode) {
+		return nil, executionFailure(localskills.ErrPermissionDenied)
+	}
 	executor, err := manager.executorFor(ctx, request.Workspace)
 	if err != nil {
 		return nil, err
@@ -112,7 +130,8 @@ func (manager *ExecutionManager) Execute(
 			Command: arguments.Command, WorkingDir: arguments.WorkingDir,
 			TimeoutSeconds: arguments.TimeoutSeconds,
 		}
-		input.Approved = request.Approved
+		input.Approved = request.Approved || request.PermissionMode == PermissionFullAccess
+		input.PermissionMode = string(request.PermissionMode)
 		input.SkillsRoot = manager.config.SkillsRoot
 		if request.ActiveSkillRoot != "" {
 			activeRoot, ok := manager.activeSkillRoot(request.ActiveSkillRoot)
@@ -131,6 +150,9 @@ func (manager *ExecutionManager) Execute(
 		result, executeErr := executor.ReadWorkspaceFile(ctx, input)
 		return result, executionFailure(executeErr)
 	case ToolFileWrite:
+		if request.PermissionMode == PermissionReadOnly {
+			return nil, executionFailure(localskills.ErrPermissionDenied)
+		}
 		var input localskills.FileWriteRequest
 		if !decodeExecutionArguments(request.Arguments, &input) {
 			return nil, executionFailure(localskills.ErrWorkspaceInvalidInput)
@@ -138,6 +160,9 @@ func (manager *ExecutionManager) Execute(
 		result, executeErr := executor.WriteWorkspaceFile(ctx, input)
 		return result, executionFailure(executeErr)
 	case ToolFileEdit:
+		if request.PermissionMode == PermissionReadOnly {
+			return nil, executionFailure(localskills.ErrPermissionDenied)
+		}
 		var input localskills.FileEditRequest
 		if !decodeExecutionArguments(request.Arguments, &input) {
 			return nil, executionFailure(localskills.ErrWorkspaceInvalidInput)
@@ -174,7 +199,8 @@ func (manager *ExecutionManager) Execute(
 			Command: arguments.Command, WorkingDir: arguments.WorkingDir,
 			TimeoutSeconds: arguments.TimeoutSeconds,
 		}
-		input.Approved = request.Approved
+		input.Approved = request.Approved || request.PermissionMode == PermissionFullAccess
+		input.PermissionMode = string(request.PermissionMode)
 		input.SkillsRoot = manager.config.SkillsRoot
 		if request.ActiveSkillRoot != "" {
 			activeRoot, ok := manager.activeSkillRoot(request.ActiveSkillRoot)
@@ -292,12 +318,22 @@ func (manager *ExecutionManager) executorFor(
 		ApprovalMode: manager.config.ApprovalMode, CallTimeout: manager.config.CallTimeout,
 		RunTimeout: manager.config.RunTimeout, MaxOutput: manager.config.MaxOutput,
 		MaxCalls: 128, MaxRounds: 32, MaxConcurrent: manager.config.MaxConcurrent,
+		SandboxCommand: manager.config.SandboxPath,
 	})
 	if err != nil {
 		return nil, &ToolExecutionError{Code: "HOST_EXECUTION_UNAVAILABLE", Err: err}
 	}
 	manager.executors[key] = executor
 	return executor, nil
+}
+
+func (manager *ExecutionManager) supportsPermissionMode(mode PermissionMode) bool {
+	for _, available := range manager.modes {
+		if available == mode {
+			return true
+		}
+	}
+	return false
 }
 
 func (manager *ExecutionManager) activeSkillRoot(value string) (string, bool) {
@@ -372,6 +408,8 @@ func executionFailure(err error) error {
 		code = "APPROVAL_REQUIRED"
 	case errors.Is(err, localskills.ErrCommandBlocked):
 		code = "COMMAND_BLOCKED"
+	case errors.Is(err, localskills.ErrPermissionDenied):
+		code = "PERMISSION_DENIED"
 	case errors.Is(err, localskills.ErrInvalidCommand),
 		errors.Is(err, localskills.ErrWorkspaceInvalidInput):
 		code = "ARGUMENTS_INVALID"

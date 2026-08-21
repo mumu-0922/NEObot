@@ -527,6 +527,7 @@ RETURNING
   idempotency_key,
   metadata,
   workspace_id,
+  agent_permission_mode,
   created_at,
   updated_at,
   deleted_at,
@@ -562,6 +563,7 @@ SELECT
   c.idempotency_key,
   c.metadata,
   c.workspace_id,
+  c.agent_permission_mode,
   c.created_at,
   c.updated_at,
   c.deleted_at,
@@ -618,6 +620,7 @@ SELECT
   c.idempotency_key,
   c.metadata,
   c.workspace_id,
+  c.agent_permission_mode,
   c.created_at,
   c.updated_at,
   c.deleted_at,
@@ -674,6 +677,7 @@ SELECT
   idempotency_key,
   metadata,
   workspace_id,
+  agent_permission_mode,
   created_at,
   updated_at,
   deleted_at,
@@ -720,6 +724,7 @@ RETURNING
   idempotency_key,
   metadata,
   workspace_id,
+  agent_permission_mode,
   created_at,
   updated_at,
   deleted_at,
@@ -828,6 +833,7 @@ SELECT
   idempotency_key,
   metadata,
   workspace_id,
+  agent_permission_mode,
   created_at,
   updated_at,
   deleted_at,
@@ -866,11 +872,13 @@ INSERT INTO conversations (
   system_prompt,
   idempotency_key,
   metadata,
-  workspace_id
+  workspace_id,
+  agent_permission_mode
 ) VALUES (
   $1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), NULLIF($6, ''),
   NULLIF($7, ''), $8::jsonb,
-  (SELECT workspace_id FROM conversations WHERE id = $9 AND user_id = $2)
+  (SELECT workspace_id FROM conversations WHERE id = $9 AND user_id = $2),
+  (SELECT agent_permission_mode FROM conversations WHERE id = $9 AND user_id = $2)
 )
 RETURNING
   id,
@@ -883,6 +891,7 @@ RETURNING
   idempotency_key,
   metadata,
   workspace_id,
+  agent_permission_mode,
   created_at,
   updated_at,
   deleted_at,
@@ -1002,6 +1011,7 @@ SELECT
   c.idempotency_key,
   c.metadata,
   c.workspace_id,
+  c.agent_permission_mode,
   c.created_at,
   c.updated_at,
   c.deleted_at,
@@ -2534,6 +2544,7 @@ func scanConversation(scanner rowScanner) (Conversation, error) {
 	var systemPrompt sql.NullString
 	var idempotencyKey sql.NullString
 	var workspaceID sql.NullString
+	var permissionMode string
 	var metadata []byte
 	var deletedAt sql.NullTime
 	var messageCount int64
@@ -2549,6 +2560,7 @@ func scanConversation(scanner rowScanner) (Conversation, error) {
 		&idempotencyKey,
 		&metadata,
 		&workspaceID,
+		&permissionMode,
 		&conversation.CreatedAt,
 		&conversation.UpdatedAt,
 		&deletedAt,
@@ -2562,6 +2574,7 @@ func scanConversation(scanner rowScanner) (Conversation, error) {
 	conversation.SystemPrompt = systemPrompt.String
 	conversation.IdempotencyKey = idempotencyKey.String
 	conversation.WorkspaceID = workspaceID.String
+	conversation.PermissionMode = permissionMode
 	conversation.MessageCount = int(messageCount)
 	if deletedAt.Valid {
 		conversation.DeletedAt = &deletedAt.Time

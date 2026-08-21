@@ -15,14 +15,17 @@ import (
 )
 
 type fakeHostWorkspaceExecutionService struct {
-	status       hostworkspace.HostStatus
-	binding      hostworkspace.ExecutionBinding
-	lockErr      error
-	executeErr   error
-	lockCalls    int
-	executeCalls int
-	lastRequest  agenthost.ToolExecuteRequest
-	result       localskills.Result
+	status           hostworkspace.HostStatus
+	binding          hostworkspace.ExecutionBinding
+	lockErr          error
+	executeErr       error
+	permissionErr    error
+	lockCalls        int
+	executeCalls     int
+	lastRequest      agenthost.ToolExecuteRequest
+	lastPermission   agenthost.PermissionMode
+	lastAcknowledged bool
+	result           localskills.Result
 }
 
 func (service *fakeHostWorkspaceExecutionService) HostStatus(context.Context) hostworkspace.HostStatus {
@@ -56,6 +59,17 @@ func (service *fakeHostWorkspaceExecutionService) ExecuteTool(
 	return nil
 }
 
+func (service *fakeHostWorkspaceExecutionService) SetConversationPermission(
+	_ context.Context,
+	_ string,
+	mode agenthost.PermissionMode,
+	acknowledged bool,
+) error {
+	service.lastPermission = mode
+	service.lastAcknowledged = acknowledged
+	return service.permissionErr
+}
+
 func TestLocalToolExecutorForConversationKeepsLegacyLocalAndRoutesBoundHost(t *testing.T) {
 	localExecutor := newHostRoutingLocalExecutor(t)
 	binding := hostworkspace.ExecutionBinding{
@@ -65,11 +79,12 @@ func TestLocalToolExecutorForConversationKeepsLegacyLocalAndRoutesBoundHost(t *t
 		CanonicalPath:  "/mnt/d/project",
 		DirectoryFingerprint: "sha256:" +
 			"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		PermissionMode: agenthost.PermissionWorkspaceWrite,
 	}
 	host := &fakeHostWorkspaceExecutionService{
 		status: hostworkspace.HostStatus{
 			Status: "ready", RunnerID: binding.RunnerID,
-			Features: agenthost.HostFeatures{Execution: true},
+			Features: agenthost.HostFeatures{Execution: true, PermissionModes: []agenthost.PermissionMode{agenthost.PermissionWorkspaceWrite}},
 		},
 		binding: binding,
 		result:  localskills.Result{ExitCode: 0, Stdout: "host-result"},
@@ -108,11 +123,12 @@ func TestBoundHostExecutionFailsClosedWithoutLocalWorkspaceMutation(t *testing.T
 		RunnerID: "wsl-test-runner", CanonicalPath: "/mnt/d/project",
 		DirectoryFingerprint: "sha256:" +
 			"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		PermissionMode: agenthost.PermissionWorkspaceWrite,
 	}
 	host := &fakeHostWorkspaceExecutionService{
 		status: hostworkspace.HostStatus{
 			Status: "ready", RunnerID: binding.RunnerID,
-			Features: agenthost.HostFeatures{Execution: true},
+			Features: agenthost.HostFeatures{Execution: true, PermissionModes: []agenthost.PermissionMode{agenthost.PermissionWorkspaceWrite}},
 		},
 		binding: binding, executeErr: agenthost.ErrHostUnavailable,
 	}
@@ -194,6 +210,7 @@ func TestHostWorkspaceExecutorMapsSkillRootAndStablePresentation(t *testing.T) {
 		RunnerID: "wsl-test-runner", CanonicalPath: "/mnt/d/private/project",
 		DirectoryFingerprint: "sha256:" +
 			"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+		PermissionMode: agenthost.PermissionWorkspaceWrite,
 	}, localskills.Config{Enabled: true, RuntimeRoot: runtimeRoot})
 	if config := executor.Config(); config.RuntimeMode != localskills.RuntimeHostWorkspace ||
 		config.WorkspaceRoot != "" || config.WorkspaceHostRoot != "" {
@@ -205,7 +222,8 @@ func TestHostWorkspaceExecutorMapsSkillRootAndStablePresentation(t *testing.T) {
 		SkillsRoot:      runtimeRoot,
 		ActiveSkillRoot: activeRoot,
 	})
-	if err != nil || result.Stdout != "done" || host.lastRequest.ActiveSkillRoot != "skill-a" {
+	if err != nil || result.Stdout != "done" || host.lastRequest.ActiveSkillRoot != "skill-a" ||
+		host.lastRequest.PermissionMode != agenthost.PermissionWorkspaceWrite {
 		t.Fatalf("execution = %+v, %v, request = %+v", result, err, host.lastRequest)
 	}
 	command, cwd, ok := executor.TerminalPresentation(localskills.Request{
@@ -217,6 +235,21 @@ func TestHostWorkspaceExecutorMapsSkillRootAndStablePresentation(t *testing.T) {
 	if !ok || cwd != "$NEO_CHAT_WORKSPACE/src" ||
 		command != "cat $NEO_CHAT_ACTIVE_SKILL_ROOT $NEO_CHAT_WORKSPACE/README.md" {
 		t.Fatalf("presentation = %q, %q, %v", command, cwd, ok)
+	}
+}
+
+func TestFullAccessHostExecutorDisablesSmartApproval(t *testing.T) {
+	executor := newHostWorkspaceExecutor(
+		&fakeHostWorkspaceExecutionService{},
+		hostworkspace.ExecutionBinding{
+			CanonicalPath:        "/home/user/project",
+			DirectoryFingerprint: "sha256:" + strings.Repeat("f", 64),
+			PermissionMode:       agenthost.PermissionFullAccess,
+		},
+		localskills.Config{Enabled: true, ApprovalMode: localskills.ApprovalSmart},
+	)
+	if executor == nil || executor.Config().ApprovalMode != localskills.ApprovalOff {
+		t.Fatalf("Full access approval mode = %+v", executor.Config())
 	}
 }
 

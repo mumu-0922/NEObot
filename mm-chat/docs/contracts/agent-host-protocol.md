@@ -5,7 +5,7 @@
 Protocol version `1` defines Host identity/capabilities, canonical Workspace
 resolution, WSL directory browsing, the native Windows directory picker, and
 bounded Agent Tool execution in an immutable Host Workspace. Permission modes
-remain unavailable until their enforcement slice lands.
+are capability facts produced only after live enforcement probes pass.
 
 ## Transport and authentication
 
@@ -40,7 +40,7 @@ Returns:
     "nativeDirectoryPicker": true,
     "windowsPathInterop": true,
     "execution": true,
-    "permissionModes": []
+    "permissionModes": ["read-only", "workspace-write", "danger-full-access"]
   },
   "limits": {
     "maxRequestBytes": 16384,
@@ -51,11 +51,9 @@ Returns:
 ```
 
 The Host must not list `read-only`, `workspace-write`, or
-`danger-full-access` until the corresponding enforcement probes pass on the
-target WSL kernel and filesystem.
-
-`execution=true` means the Tool route below is active. It does not imply that
-any permission preset is enforced; `permissionModes` therefore remains empty.
+`danger-full-access` until the exact Bubblewrap execution boundary passes on
+WSL storage and the live DrvFS probe target. `execution=true` means the Tool
+route is active; each request must still carry one advertised permission mode.
 
 ### `POST /internal/v1/workspaces/resolve`
 
@@ -135,6 +133,7 @@ Conversation Workspace snapshot:
   "scope": {"userId":"<uuid>","conversationId":"<uuid>"},
   "tool": "terminal",
   "arguments": {"command":"pwd","workingDir":"","timeoutSeconds":30},
+  "permissionMode": "workspace-write",
   "approved": false,
   "activeSkillRoot": "<relative-materialized-skill-root>"
 }
@@ -148,6 +147,19 @@ It creates one bounded `localskills.Executor` per exact Workspace authority,
 rooted at the Host directory, and preserves CAS/symlink defenses, smart
 approval, hard blocks, process-group cancellation, time/output limits, and
 process-local Jobs.
+
+Permission enforcement is below model Tool arguments:
+
+- `read-only`: Terminal runs with the Host root read-only; `file_write` and
+  `file_edit` are rejected before filesystem mutation.
+- `workspace-write`: Terminal sees the Host root read-only and receives one
+  exact read-write bind for the canonical Workspace. File Tools remain rooted
+  to that Workspace with existing CAS and symlink defenses.
+- `danger-full-access`: Terminal uses the ordinary Host process authority and
+  smart approval is disabled. It never invokes `sudo` or elevates privileges.
+
+The Bubblewrap modes are write boundaries, not confidentiality or network
+isolation: commands may read resources already readable by the Host user.
 
 The response carries the pinned Runner identity and one strict typed result:
 
@@ -187,6 +199,7 @@ Stable codes in v1 are:
 - `EXECUTION_RESULT_INVALID`
 - `APPROVAL_REQUIRED`
 - `COMMAND_BLOCKED`
+- `PERMISSION_DENIED`
 - `ARGUMENTS_INVALID`
 - `RUNTIME_BUSY`
 - `JOB_NOT_FOUND`
@@ -206,8 +219,7 @@ violations as protocol failures.
 
 ## Forward contract
 
-Future permission requests must carry one enforced advertised mode. Bounded
-NDJSON may replace the buffered foreground response without changing durable
+Bounded NDJSON may replace the buffered foreground response without changing durable
 Tool result authority. Runner loss fails closed; an operation with unknown
 outcome is never automatically replayed. Host-bound conversations never fall
 back to Docker execution.

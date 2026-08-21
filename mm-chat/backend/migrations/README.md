@@ -573,6 +573,18 @@ intentionally a no-op because immutable history may already contain the widened
 event types; runtime rollback uses the exact-user timeline flag and previous
 application image.
 
+Migration `102` converges the existing Workspace registry with preserved
+browser settings, revision-CAS updates, one-time canonical Host Runner binding,
+and immutable Conversation execution snapshots. Its down migration refuses
+after imported settings, Host binding, or execution state exists.
+
+Migration `103` adds the non-null checked
+`conversations.agent_permission_mode` authority with the recommended
+`workspace-write` default and column-scoped `go_api_runtime` update privilege.
+The dedicated Backend route requires current Host capability admission,
+explicit Full access acknowledgement, and no active assistant Turn. Down
+refuses while any Conversation retains a non-default permission choice.
+
 ## Storage boundaries
 
 Postgres is the source of truth for structured records:

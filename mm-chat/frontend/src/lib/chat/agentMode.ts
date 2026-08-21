@@ -1,4 +1,9 @@
-import type { ChatToolMode, ModelMetadata, ModelProvider } from "../../types";
+import type {
+  AgentPermissionMode,
+  ChatToolMode,
+  ModelMetadata,
+  ModelProvider,
+} from "../../types";
 import { parseModelString } from "../utils/model";
 
 export type ModelToolCapability = "supported" | "unsupported" | "unknown";
@@ -12,6 +17,16 @@ export interface ResolveModelToolCapabilityOptions {
 
 export function isChatToolMode(value: unknown): value is ChatToolMode {
   return value === "chat" || value === "agent";
+}
+
+export function isAgentPermissionMode(
+  value: unknown,
+): value is AgentPermissionMode {
+  return (
+    value === "read-only" ||
+    value === "workspace-write" ||
+    value === "danger-full-access"
+  );
 }
 
 export function normalizeChatToolMode(

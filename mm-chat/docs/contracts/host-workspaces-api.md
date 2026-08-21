@@ -2,10 +2,10 @@
 
 ## Status and scope
 
-Migration `102_host_workspaces` and `/v1/workspaces*` provide the durable
-Backend half of Harness-style filesystem Workspaces. They preserve legacy
-browser Workspace settings and add one-time Host binding plus immutable
-Conversation execution authority.
+Migrations `102_host_workspaces` and `103_chat_agent_permission_modes`, plus
+`/v1/workspaces*`, provide the durable Backend half of Harness-style filesystem
+Workspaces. They preserve legacy browser Workspace settings and add one-time
+Host binding plus immutable Conversation execution and permission authority.
 
 When `AGENT_HOST_ENABLED=true`, the Backend connects to the pinned Host Runner
 through the exact read-only-mounted private socket directory and two independent
@@ -169,6 +169,27 @@ File, Job, and Skill cards pass the same strict frontend projection. Failed
 Host `file_read` calls deliberately have no local manual-retry affordance;
 retry cannot target the Docker Workspace.
 
+## Conversation permission
+
+Every Conversation DTO carries `permissionMode`. For a Conversation grouped
+under a bound Host Workspace, the dedicated mutation is:
+
+```text
+PUT /v1/chat/conversations/{conversationId}/permission
+```
+
+```json
+{"permissionMode":"danger-full-access","fullAccessAcknowledged":true}
+```
+
+Accepted values are `read-only`, `workspace-write`, and
+`danger-full-access`. Full access requires explicit acknowledgement. The
+pinned Host must currently advertise the requested mode, and an assistant
+Message must not be `pending` or `streaming`. Generic Conversation `config`
+always strips `permissionMode`, so this dedicated route is the only mutation
+authority. The selected value survives refresh and Backend restart and is
+captured with the immutable execution binding for each admitted Turn.
+
 ## Validation and errors
 
 Requests require authenticated ownership, exact route shape, no query string,
@@ -178,6 +199,7 @@ UTF-8 fields. Responses use `Cache-Control: no-store`.
 | Condition | Status/code |
 | --- | --- |
 | malformed input or UUID | `400 INVALID_WORKSPACE_REQUEST` |
+| invalid Conversation permission value | `400 INVALID_AGENT_PERMISSION` |
 | missing/cross-user record | `404 WORKSPACE_NOT_FOUND` |
 | stale revision | `409 WORKSPACE_REVISION_CONFLICT` |
 | Workspace already bound | `409 WORKSPACE_ALREADY_BOUND` |
@@ -190,6 +212,9 @@ UTF-8 fields. Responses use `Cache-Control: no-store`.
 | Host response violates protocol | `502 HOST_WORKSPACE_PROTOCOL_INVALID` |
 | bound Agent Turn while execution is unavailable | `503 HOST_EXECUTION_UNAVAILABLE` |
 | immutable binding and current Runner identity conflict | `409 HOST_WORKSPACE_BINDING_FAILED` |
+| Full access without acknowledgement | `400 FULL_ACCESS_ACKNOWLEDGEMENT_REQUIRED` |
+| permission change during active Turn | `409 CONVERSATION_PERMISSION_LOCKED` |
+| requested mode is not advertised | `409 AGENT_PERMISSION_UNAVAILABLE` |
 
 Errors never echo the submitted Host path, Runner transport details, SQL, or
 raw OS errors.
@@ -200,6 +225,11 @@ Migration `102` extends the existing `workspaces` table in place and adds the
 Conversation execution snapshot. It does not create a second top-level Project
 table. The runtime role receives only the required Workspace insert/update
 columns and Conversation grouping/snapshot update columns.
+
+Migration `103` adds a checked, non-null `agent_permission_mode` column with
+the recommended `workspace-write` default and column-scoped runtime update
+authority. Its down migration refuses when any Conversation retains a
+non-default permission choice.
 
 An empty migration can down/re-up cleanly. Once legacy settings, a Host binding,
 or an execution snapshot exists, down raises `HOST_WORKSPACE_ROLLBACK_BLOCKED`.

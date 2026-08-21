@@ -120,3 +120,50 @@ func TestServiceLocksConversationWorkspaceThroughRepository(t *testing.T) {
 		t.Fatalf("unexpected binding: %+v", binding)
 	}
 }
+
+type permissionCapabilityResolver struct {
+	fakeResolver
+	modes []agenthost.PermissionMode
+}
+
+func (resolver permissionCapabilityResolver) Capabilities(context.Context) (agenthost.Capabilities, error) {
+	return agenthost.Capabilities{
+		RunnerID: "wsl-test-runner",
+		Features: agenthost.HostFeatures{
+			Execution: true, PermissionModes: resolver.modes,
+		},
+	}, nil
+}
+
+func TestServiceEnforcesPermissionCapabilitiesAndFullAccessAcknowledgement(t *testing.T) {
+	repo := newFakeRepository()
+	service := NewService(repo, permissionCapabilityResolver{
+		modes: []agenthost.PermissionMode{
+			agenthost.PermissionReadOnly,
+			agenthost.PermissionWorkspaceWrite,
+			agenthost.PermissionFullAccess,
+		},
+	})
+	if err := service.SetConversationPermission(
+		context.Background(), testConversationID,
+		agenthost.PermissionFullAccess, false,
+	); !errors.Is(err, ErrPermissionAcknowledgement) {
+		t.Fatalf("unacknowledged Full access error = %v", err)
+	}
+	if err := service.SetConversationPermission(
+		context.Background(), testConversationID,
+		agenthost.PermissionFullAccess, true,
+	); err != nil || repo.permissionMode != agenthost.PermissionFullAccess {
+		t.Fatalf("acknowledged Full access = %v, stored %q", err, repo.permissionMode)
+	}
+
+	service = NewService(repo, permissionCapabilityResolver{
+		modes: []agenthost.PermissionMode{agenthost.PermissionReadOnly},
+	})
+	if err := service.SetConversationPermission(
+		context.Background(), testConversationID,
+		agenthost.PermissionWorkspaceWrite, false,
+	); !errors.Is(err, ErrPermissionUnavailable) {
+		t.Fatalf("unadvertised mode error = %v", err)
+	}
+}

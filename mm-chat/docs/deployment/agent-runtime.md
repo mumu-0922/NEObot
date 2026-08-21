@@ -30,11 +30,14 @@ limit and the user smoke flow.
 
 ## Security truth
 
-Neither execution route is a permission Sandbox yet. `local_direct` can change
-workspace files and reach networks available to Backend. Do not bind `$HOME`,
-`.env.single-server`, `secrets/`, `backup/`, the container socket, or unrelated
-projects. Installed Skill content is untrusted; keep `AGENT_LOCAL_APPROVAL_MODE`
-at `smart` unless a test explicitly requires otherwise.
+Docker `local_direct` is not a permission Sandbox. Bound Host Workspaces use a
+probed Bubblewrap write boundary: Read Only exposes the Host tree read-only,
+Workspace Write adds one exact read-write Workspace bind, and Full access uses
+the ordinary Host process user's authority with approval disabled. These modes
+do not promise read confidentiality or network isolation and never elevate via
+`sudo`. Do not bind `$HOME`, `.env.single-server`, `secrets/`, `backup/`, the
+container socket, or unrelated projects into Docker. Installed Skill content
+is untrusted; keep Docker `AGENT_LOCAL_APPROVAL_MODE` at `smart`.
 
 ## Skill Store and connectors
 
@@ -61,7 +64,8 @@ bash scripts/verify-legacy-agent-cleanup-postgres17.sh
 docker compose --env-file .env.single-server --profile ops run --rm migrate
 ```
 
-After the current migration set, head must be `102_host_workspaces`,
+After the current migration set, head must be
+`103_chat_agent_permission_modes`,
 `chat_agent_turns/events/goals` and Skill tables must exist, and no legacy
 Agent control-plane relation/function/role may remain. The ledger checksum for
 `096_chat_agent_event_log` must remain the production-applied
@@ -69,10 +73,10 @@ Agent control-plane relation/function/role may remain. The ledger checksum for
 `099` carries the idempotent gateway repair instead of rewriting that history;
 `101` forward-widens the same authority for bounded Context/Reasoning blocks;
 `102` extends the existing Workspace registry and adds immutable Conversation
-execution snapshots. The Host socket supports status, browse, native Windows
-selection, canonical resolution, durable binding, and bounded Tool execution.
-It advertises `execution=true` with `permissionModes=[]`; the three permission
-presets remain unavailable until their enforcement probes pass.
+execution snapshots; `103` adds durable checked per-Conversation permission.
+The Host socket supports status, browse, native Windows selection, canonical
+resolution, durable binding, bounded Tool execution, and advertises all three
+permission modes only after exact WSL/DrvFS enforcement probes pass.
 
 ## Verification
 
@@ -86,6 +90,9 @@ bash scripts/verify-standalone.sh --full
 
 A Host Workspace smoke should execute `pwd`, `git status --short`, File read,
 write/CAS, one background Job, and refresh replay in the selected Host project.
+It must also prove Read Only denies all writes, Workspace Write denies an
+outside write while allowing an inside write, and acknowledged Full access can
+write outside under the ordinary Host user's authority.
 Stopping the Host must make the next bound Tool fail without creating anything
 under Docker `/workspace`; restarting the same pinned Runner restores it.
 

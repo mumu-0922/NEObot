@@ -18,6 +18,9 @@ export function createLocalChatApiShell(): ChatApi {
     async updateConversation(): Promise<ConversationDTO> {
       throw unsupportedFeature("local chat adapter wiring");
     },
+    async updateConversationPermission(): Promise<ConversationDTO> {
+      throw unsupportedFeature("local chat permission adapter wiring");
+    },
     async deleteConversation(): Promise<void> {
       throw unsupportedFeature("local chat adapter wiring");
     },

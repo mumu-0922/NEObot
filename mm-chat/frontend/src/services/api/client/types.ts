@@ -130,6 +130,7 @@ export interface ConversationDTO {
   pinned?: boolean;
   config: Record<string, unknown>;
   workspaceId?: string;
+  permissionMode: "read-only" | "workspace-write" | "danger-full-access";
   createdAt: string;
   updatedAt: string;
 }
@@ -355,6 +356,12 @@ export interface UpdateConversationInput {
   pinned?: boolean;
 }
 
+export interface UpdateConversationPermissionInput {
+  conversationId: string;
+  permissionMode: "read-only" | "workspace-write" | "danger-full-access";
+  fullAccessAcknowledged?: boolean;
+}
+
 export interface DuplicateConversationInput {
   conversationId: string;
   title?: string;
@@ -518,6 +525,9 @@ export interface ChatApi {
   createConversation(input: CreateConversationInput): Promise<ConversationDTO>;
   listConversations(): Promise<ConversationDTO[]>;
   updateConversation(input: UpdateConversationInput): Promise<ConversationDTO>;
+  updateConversationPermission(
+    input: UpdateConversationPermissionInput,
+  ): Promise<ConversationDTO>;
   deleteConversation(conversationId: string): Promise<void>;
   duplicateConversation(
     input: DuplicateConversationInput,

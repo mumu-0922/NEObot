@@ -49,6 +49,7 @@ func TestExecutorMarksHostWorkspaceEnvironmentWithoutLocalDirectAlias(t *testing
 	result, err := executor.Execute(context.Background(), Request{
 		Command: `printf '%s|%s|%s' "$NEO_CHAT_AGENT_RUNTIME" ` +
 			`"${NEO_CHAT_HOST_WORKSPACE-unset}" "${NEO_CHAT_LOCAL_DIRECT-unset}"`,
+		PermissionMode: "danger-full-access",
 	})
 	if err != nil || result.Stdout != "host_workspace|1|unset" {
 		t.Fatalf("result=%#v error=%v", result, err)

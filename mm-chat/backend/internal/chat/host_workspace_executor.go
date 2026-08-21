@@ -24,6 +24,7 @@ type hostWorkspaceExecutionService interface {
 	HostStatus(context.Context) hostworkspace.HostStatus
 	LockConversationExecutionWorkspace(context.Context, string, string) (hostworkspace.ExecutionBinding, error)
 	ExecuteTool(context.Context, agenthost.ToolExecuteRequest, any) error
+	SetConversationPermission(context.Context, string, agenthost.PermissionMode, bool) error
 }
 
 type hostWorkspaceExecutor struct {
@@ -56,6 +57,9 @@ func (h *Handler) localToolExecutorForConversation(
 	if err != nil || binding.RunnerID != status.RunnerID {
 		return nil, errHostWorkspaceBinding
 	}
+	if !hostPermissionModeAvailable(status.Features.PermissionModes, binding.PermissionMode) {
+		return nil, errHostExecutionUnavailable
+	}
 	executor := newHostWorkspaceExecutor(
 		h.hostWorkspaceService, binding, h.localSkillExecutor.Config(),
 	)
@@ -76,6 +80,9 @@ func newHostWorkspaceExecutor(
 	config.RuntimeMode = localskills.RuntimeHostWorkspace
 	config.WorkspaceRoot = ""
 	config.WorkspaceHostRoot = ""
+	if binding.PermissionMode == agenthost.PermissionFullAccess {
+		config.ApprovalMode = localskills.ApprovalOff
+	}
 	return &hostWorkspaceExecutor{service: service, binding: binding, config: config}
 }
 
@@ -290,8 +297,18 @@ func (executor *hostWorkspaceExecutor) callWithScope(
 		Scope: agenthost.ExecutionScope{
 			UserID: scope.UserID, ConversationID: scope.ConversationID,
 		}, Tool: tool, Arguments: encoded, Approved: approved,
+		PermissionMode:  executor.binding.PermissionMode,
 		ActiveSkillRoot: activeSkillRoot,
 	}, output)
+}
+
+func hostPermissionModeAvailable(modes []agenthost.PermissionMode, wanted agenthost.PermissionMode) bool {
+	for _, mode := range modes {
+		if mode == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func hostActiveSkillRoot(skillsRoot, activeRoot string) (string, bool) {

@@ -67,6 +67,12 @@ describe("ChatApp server mode composition", () => {
     expect(chatApp).not.toContain("preflightMcp({");
     expect(chatApp).not.toContain("mcpConversationId={");
     expect(chatApp).toContain("persistToolMode");
+    expect(chatApp).toContain("persistAgentPermissionMode");
+    expect(chatApp).toContain("updateServerSessionPermission");
+    expect(chatApp).toContain(
+      "availablePermissionModes={availablePermissionModes}",
+    );
+    expect(chatApp).toContain("permissionLocked={isGenerating}");
     expect(chatApp).toContain("resolveEffectiveChatToolMode");
     expect(chatApp).toContain('import("@/components/mcp/McpToolsPage")');
     expect(chatApp).toContain('onOpenTools={() => navigateToPanel("tools")}');

@@ -26,6 +26,19 @@
   "agentMode": "Agent",
   "agentModeDescription": "Skill、ファイル、ターミナル、Browser、コネクターを自動使用",
   "agentModeUnsupported": "現在のモデルは Tool 非対応のため Chat を使用中",
+  "permissionTitle": "Agent 権限",
+  "permissionMenuAria": "Agent 権限を選択、現在は {mode}",
+  "permissionMode": {
+    "read-only": "読み取り専用",
+    "workspace-write": "ワークスペース書き込み",
+    "danger-full-access": "フルアクセス"
+  },
+  "permissionDescription": {
+    "read-only": "プロジェクトの読み取りとコマンド実行はできますが、永続的な書き込みは禁止します。",
+    "workspace-write": "現在のプロジェクト内だけ書き込みでき、外部は読み取り専用です。",
+    "danger-full-access": "Host Runner の一般ユーザー権限でマシン全体にアクセスします。"
+  },
+  "fullAccessConfirmation": "フルアクセスでは、現在の Host Runner ユーザー権限でプロジェクト外のファイルも変更できます。続行しますか？",
   "enableSearchAria": "検索を有効化",
   "disableSearchAria": "検索を無効化",
   "enableSearchWithMode": "検索を有効化 ({mode})",
@@ -87,5 +100,8 @@
   "parsingDocument": "ドキュメントを解析中…",
   "failedToParseDocument": "ドキュメント「{fileName}」の解析に失敗しました。",
   "dropFilesTitle": "ファイルをドロップして添付",
-  "dropFilesHint": "画像、音声、テキスト、ドキュメントには添付ボタンと同じ制限が適用されます。"
+  "dropFilesHint": "画像、音声、テキスト、ドキュメントには添付ボタンと同じ制限が適用されます。",
+  "fullAccessTitle": "フルアクセスを有効化",
+  "permissionCancel": "キャンセル",
+  "enableFullAccess": "有効にする"
 }

@@ -55,6 +55,7 @@ const conversationDto: ConversationDTO = {
   messageCount: 2,
   systemInstruction: "server instruction",
   pinned: true,
+  permissionMode: "workspace-write",
   config: {
     toolMode: "chat",
     useSearch: true,
@@ -125,6 +126,7 @@ describe("chat CRUD DTO mappers", () => {
       systemInstruction: "server instruction",
       config: {
         toolMode: "chat",
+        permissionMode: "workspace-write",
         useSearch: true,
         reasoningEffort: "high",
         selectedKnowledgeCollectionIds: ["kb-1"],
@@ -516,6 +518,12 @@ describe("chat CRUD service gateway", () => {
           title: input.title ?? conversationDto.title,
         };
       },
+      async updateConversationPermission(input) {
+        calls.push(
+          `permission:${input.conversationId}:${input.permissionMode}:${input.fullAccessAcknowledged === true}`,
+        );
+        return { ...conversationDto, permissionMode: input.permissionMode };
+      },
       async deleteConversation(conversationId) {
         calls.push(`delete:${conversationId}`);
       },
@@ -580,6 +588,16 @@ describe("chat CRUD service gateway", () => {
     ).resolves.toMatchObject({ id: "c1", title: "Renamed" });
     await expect(service.deleteConversation("c1")).resolves.toBeUndefined();
     await expect(
+      service.updateConversationPermission({
+        conversationId: "c1",
+        permissionMode: "danger-full-access",
+        fullAccessAcknowledged: true,
+      }),
+    ).resolves.toMatchObject({
+      id: "c1",
+      config: { permissionMode: "danger-full-access" },
+    });
+    await expect(
       service.duplicateConversation({
         conversationId: "c1",
         idempotencyKey: "duplicate-key",
@@ -631,6 +649,7 @@ describe("chat CRUD service gateway", () => {
       "list-conversations",
       "update:c1:Renamed",
       "delete:c1",
+      "permission:c1:danger-full-access:true",
       "duplicate:c1:duplicate-key",
       "title:c1:gpt-title",
       "update-message:c1:m2:edited",
@@ -686,6 +705,9 @@ function createMockClient(
     },
     async updateConversation() {
       throw new Error("updateConversation not mocked");
+    },
+    async updateConversationPermission() {
+      throw new Error("updateConversationPermission not mocked");
     },
     async deleteConversation() {
       throw new Error("deleteConversation not mocked");

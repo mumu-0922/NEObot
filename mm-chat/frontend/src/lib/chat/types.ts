@@ -406,6 +406,7 @@ export type ChatGenerationEvent =
 
 export interface SessionConfig {
   toolMode?: ChatToolMode;
+  permissionMode?: AgentPermissionMode;
   searchMode?: SearchMode;
   useSearch?: boolean;
   searchResultsLimit?: number;
@@ -415,6 +416,9 @@ export interface SessionConfig {
 }
 
 export type ChatToolMode = "chat" | "agent";
+
+export type AgentPermissionMode =
+  "read-only" | "workspace-write" | "danger-full-access";
 
 export type SearchMode = "off" | "model_builtin" | "external";
 

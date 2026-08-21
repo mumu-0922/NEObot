@@ -14,7 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/agenthost"
 	"neo-chat/mm-chat/backend/internal/auth"
+	"neo-chat/mm-chat/backend/internal/hostworkspace"
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 	"neo-chat/mm-chat/backend/internal/websearch"
@@ -76,11 +78,64 @@ func TestNewConversationDTOIncludesWorkspaceID(t *testing.T) {
 	workspaceID := "0198ca9a-81c6-7c8d-9444-b16da02de9b4"
 	dto := newConversationDTO(Conversation{
 		ID: "0198ca9a-81c6-7c8d-9444-b16da02de9b5", Title: "Workspace chat",
-		Status: "active", WorkspaceID: workspaceID, Metadata: map[string]any{},
+		Status: "active", WorkspaceID: workspaceID,
+		Metadata:  map[string]any{conversationPermissionMetadataKey: "danger-full-access"},
 		CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	})
 	if dto.WorkspaceID != workspaceID {
 		t.Fatalf("WorkspaceID = %q, want %q", dto.WorkspaceID, workspaceID)
+	}
+	if _, exists := dto.Config[conversationPermissionMetadataKey]; exists ||
+		dto.PermissionMode != string(agenthost.PermissionWorkspaceWrite) {
+		t.Fatalf("permission authority leaked through config: %+v", dto)
+	}
+}
+
+func TestConversationPermissionRequiresAcknowledgementAndLocksActiveTurn(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "Agent", 0))
+	host := &fakeHostWorkspaceExecutionService{
+		permissionErr: hostworkspace.ErrPermissionAcknowledgement,
+	}
+	handler := NewHandler(NewService(repo))
+	handler.hostWorkspaceService = host
+	recorder := performRequest(
+		handler, http.MethodPut,
+		conversationsPath+"/"+testConversationID+"/permission",
+		`{"permissionMode":"danger-full-access","fullAccessAcknowledged":false}`,
+	)
+	assertStatus(t, recorder, http.StatusBadRequest)
+	if !strings.Contains(recorder.Body.String(), "FULL_ACCESS_ACKNOWLEDGEMENT_REQUIRED") ||
+		host.lastPermission != agenthost.PermissionFullAccess || host.lastAcknowledged {
+		t.Fatalf("unacknowledged response = %s, host = %+v", recorder.Body.String(), host)
+	}
+
+	host.permissionErr = hostworkspace.ErrPermissionLocked
+	recorder = performRequest(
+		handler, http.MethodPut,
+		conversationsPath+"/"+testConversationID+"/permission",
+		`{"permissionMode":"read-only","fullAccessAcknowledged":false}`,
+	)
+	assertStatus(t, recorder, http.StatusConflict)
+	if !strings.Contains(recorder.Body.String(), "CONVERSATION_PERMISSION_LOCKED") {
+		t.Fatalf("locked response = %s", recorder.Body.String())
+	}
+}
+
+func TestConversationPermissionRejectsUnknownMode(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "Agent", 0))
+	host := &fakeHostWorkspaceExecutionService{permissionErr: hostworkspace.ErrInvalid}
+	handler := NewHandler(NewService(repo))
+	handler.hostWorkspaceService = host
+	recorder := performRequest(
+		handler, http.MethodPut,
+		conversationsPath+"/"+testConversationID+"/permission",
+		`{"permissionMode":"root-everything","fullAccessAcknowledged":true}`,
+	)
+	assertStatus(t, recorder, http.StatusBadRequest)
+	if !strings.Contains(recorder.Body.String(), "INVALID_AGENT_PERMISSION") {
+		t.Fatalf("invalid permission response = %s", recorder.Body.String())
 	}
 }
 
@@ -92,13 +147,17 @@ func TestHandlerRetiresLegacySkillConversationSelection(t *testing.T) {
 		handler,
 		http.MethodPost,
 		conversationsPath,
-		`{"title":"Retired","config":{"activeSkills":["legacy"],"useReasoning":true}}`,
+		`{"title":"Retired","config":{"activeSkills":["legacy"],"useReasoning":true,"permissionMode":"danger-full-access"}}`,
 	)
 	assertStatus(t, rec, http.StatusCreated)
 	var created ConversationDTO
 	decodeBody(t, rec, &created)
 	if _, exists := created.Config[retiredLegacySkillSelectionKey]; exists {
 		t.Fatalf("created config retained legacy Skill selection: %#v", created.Config)
+	}
+	if _, exists := created.Config[conversationPermissionMetadataKey]; exists ||
+		created.PermissionMode != string(agenthost.PermissionWorkspaceWrite) {
+		t.Fatalf("generic config bypassed permission authority: %#v", created)
 	}
 	if _, exists := repo.conversations[0].Metadata[retiredLegacySkillSelectionKey]; exists {
 		t.Fatalf("repository retained legacy Skill selection: %#v", repo.conversations[0].Metadata)

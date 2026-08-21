@@ -149,6 +149,8 @@ func mapToolExecutionError(err error) error {
 		return localskills.ErrJobNotFound
 	case "JOB_SCOPE_INVALID":
 		return localskills.ErrJobScopeInvalid
+	case "PERMISSION_DENIED":
+		return localskills.ErrPermissionDenied
 	case "FILE_NOT_FOUND":
 		return localskills.ErrWorkspaceFileNotFound
 	case "FILE_TOO_LARGE":
@@ -414,6 +416,7 @@ func validRemoteErrorCode(value string) bool {
 		"WORKSPACE_AUTHORITY_INVALID",
 		"TOOL_NOT_AVAILABLE", "EXECUTION_FAILED", "EXECUTION_RESULT_INVALID",
 		"APPROVAL_REQUIRED", "COMMAND_BLOCKED", "ARGUMENTS_INVALID", "RUNTIME_BUSY",
+		"PERMISSION_DENIED",
 		"JOB_NOT_FOUND", "JOB_SCOPE_INVALID", "FILE_NOT_FOUND", "FILE_TOO_LARGE",
 		"INVALID_UTF8", "VERSION_CONFLICT", "EDIT_CONFLICT", "PATH_INVALID",
 		"WORKSPACE_PATH_INVALID",

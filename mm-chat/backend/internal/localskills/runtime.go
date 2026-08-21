@@ -33,6 +33,7 @@ var (
 	ErrInvalidCommand   = errors.New("local Skill command is invalid")
 	ErrCommandBlocked   = errors.New("local Skill command is blocked")
 	ErrApprovalRequired = errors.New("local Skill command requires approval")
+	ErrPermissionDenied = errors.New("local Skill permission mode denied the operation")
 	ErrRuntimeBusy      = errors.New("local Skill runtime is busy")
 	ErrRuntimeFailed    = errors.New("local Skill runtime failed")
 )
@@ -51,6 +52,9 @@ type Config struct {
 	MaxCalls          int
 	MaxRounds         int
 	MaxConcurrent     int
+	// SandboxCommand is an absolute, trusted bubblewrap-compatible executable.
+	// It is required only for Host Workspace read-only/workspace-write calls.
+	SandboxCommand string
 }
 
 type Request struct {
@@ -62,6 +66,9 @@ type Request struct {
 	// Approved is set only by the Backend-owned durable approval authority
 	// after a matching request wins CAS. It is never model/user input.
 	Approved bool
+	// PermissionMode is fixed by the Backend conversation authority. It is
+	// never accepted from model Tool arguments.
+	PermissionMode string
 	// OnOutput receives bounded raw process bytes inside the Backend. Callers
 	// must sanitize before exposing them outside the process. The callback must
 	// not block command pipes.
@@ -109,6 +116,10 @@ func NewExecutor(config Config) (*Executor, error) {
 	}
 	config.ShellPath = filepath.Clean(strings.TrimSpace(config.ShellPath))
 	config.ApprovalMode = strings.TrimSpace(config.ApprovalMode)
+	config.SandboxCommand = strings.TrimSpace(config.SandboxCommand)
+	if config.SandboxCommand != "" {
+		config.SandboxCommand = filepath.Clean(config.SandboxCommand)
+	}
 	if config.Enabled && (!secureRoot(config.RuntimeRoot) || !secureRoot(config.WorkspaceRoot) ||
 		(config.WorkspaceHostRoot != "" && !secureRoot(config.WorkspaceHostRoot)) ||
 		!filepath.IsAbs(config.ShellPath) ||
@@ -119,6 +130,9 @@ func NewExecutor(config Config) (*Executor, error) {
 		config.MaxOutput < 1024 || config.MaxOutput > 8<<20 ||
 		config.MaxCalls < 1 || config.MaxCalls > 128 || config.MaxRounds < 1 || config.MaxRounds > 32 ||
 		config.MaxConcurrent < 1 || config.MaxConcurrent > 32) {
+		return nil, ErrInvalidConfig
+	}
+	if config.SandboxCommand != "" && !SecureSandboxCommand(config.SandboxCommand) {
 		return nil, ErrInvalidConfig
 	}
 	lifecycleCtx, lifecycleCancel := context.WithCancel(context.Background())
@@ -165,6 +179,10 @@ func (executor *Executor) prepareRequest(
 ) (string, time.Duration, error) {
 	if request == nil {
 		return "", 0, ErrInvalidCommand
+	}
+	if executor.config.RuntimeMode == RuntimeHostWorkspace &&
+		!validHostPermissionMode(request.PermissionMode) {
+		return "", 0, ErrPermissionDenied
 	}
 	request.Command = strings.TrimSpace(request.Command)
 	if !validCommand(request.Command) {
@@ -217,8 +235,10 @@ func (executor *Executor) executeReserved(
 	// Do not start a login shell. HOME is the writable workspace, so -l would
 	// implicitly execute a Skill-created .profile/.bash_profile before the
 	// validated command on every later Tool call.
-	command := exec.Command(executor.config.ShellPath, "-c", request.Command)
-	command.Dir = workingDir
+	command, err := executor.command(request, workingDir)
+	if err != nil {
+		return Result{}, err
+	}
 	command.Env = explicitEnvironment(
 		executor.config.WorkspaceRoot,
 		request.SkillsRoot,
@@ -289,6 +309,67 @@ func (executor *Executor) executeReserved(
 		ExitCode: exitCode, Stdout: stdout, Stderr: stderr, TimedOut: timedOut,
 		Truncated: truncated, DurationMillis: max(time.Since(started).Milliseconds(), 0),
 	}, nil
+}
+
+func (executor *Executor) command(request Request, workingDir string) (*exec.Cmd, error) {
+	if executor.config.RuntimeMode != RuntimeHostWorkspace ||
+		request.PermissionMode == "danger-full-access" {
+		command := exec.Command(executor.config.ShellPath, "-c", request.Command)
+		command.Dir = workingDir
+		return command, nil
+	}
+	if executor.config.SandboxCommand == "" {
+		return nil, ErrPermissionDenied
+	}
+	arguments := SandboxCommandArguments(
+		request.PermissionMode, executor.config.WorkspaceRoot, workingDir,
+	)
+	arguments = append(arguments,
+		"--", executor.config.ShellPath, "-c", request.Command,
+	)
+	command := exec.Command(executor.config.SandboxCommand, arguments...)
+	command.Dir = workingDir
+	return command, nil
+}
+
+// SandboxCommandArguments is shared by the startup capability probe and every
+// actual Host terminal process so advertised behavior cannot drift from use.
+func SandboxCommandArguments(permissionMode, workspace, workingDir string) []string {
+	arguments := []string{
+		"--unshare-user", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
+		"--die-with-parent", "--ro-bind", "/", "/", "--proc", "/proc",
+		"--dev", "/dev",
+	}
+	if permissionMode == "workspace-write" {
+		arguments = append(arguments, "--bind", workspace, workspace)
+	}
+	return append(arguments, "--chdir", workingDir)
+}
+
+func validHostPermissionMode(value string) bool {
+	switch strings.TrimSpace(value) {
+	case "read-only", "workspace-write", "danger-full-access":
+		return true
+	default:
+		return false
+	}
+}
+
+func SecureSandboxCommand(path string) bool {
+	if !filepath.IsAbs(path) || strings.ContainsRune(path, '\x00') {
+		return false
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil || resolved != path {
+		return false
+	}
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 ||
+		info.Mode().Perm()&0o022 != 0 {
+		return false
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && (stat.Uid == 0 || stat.Uid == uint32(os.Geteuid()))
 }
 
 func (executor *Executor) resolveWorkingDirectory(value string) (string, error) {

@@ -20,6 +20,7 @@ const (
 	envSocket     = "AGENT_HOST_SOCKET"
 	envTokenFile  = "AGENT_HOST_TOKEN_FILE"
 	envSkillsRoot = "AGENT_HOST_SKILLS_ROOT"
+	envSandbox    = "AGENT_HOST_SANDBOX_BINARY"
 )
 
 func main() {
@@ -46,6 +47,7 @@ func run() error {
 		SkillsRoot: os.Getenv(envSkillsRoot), ShellPath: "/bin/bash",
 		ApprovalMode: localskills.ApprovalSmart, CallTimeout: 30 * time.Second,
 		RunTimeout: 5 * time.Minute, MaxOutput: 1 << 20, MaxConcurrent: 2,
+		SandboxPath: os.Getenv(envSandbox),
 	})
 	if err != nil {
 		return err

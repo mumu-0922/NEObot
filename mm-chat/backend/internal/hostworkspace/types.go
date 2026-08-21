@@ -19,6 +19,9 @@ var (
 	ErrConversationNotFound       = errors.New("conversation was not found")
 	ErrWorkspaceUnbound           = errors.New("Host Workspace is unbound")
 	ErrWorkspaceInUse             = errors.New("Host Workspace is in use")
+	ErrPermissionUnavailable      = errors.New("Agent permission mode is unavailable")
+	ErrPermissionAcknowledgement  = errors.New("Full access acknowledgement is required")
+	ErrPermissionLocked           = errors.New("Agent permission mode is locked by an active Turn")
 )
 
 type WorkspaceFile struct {
@@ -69,6 +72,7 @@ type ExecutionBinding struct {
 	CanonicalPath        string
 	DirectoryFingerprint string
 	BoundAt              time.Time
+	PermissionMode       agenthost.PermissionMode
 }
 
 type Repository interface {
@@ -81,6 +85,7 @@ type Repository interface {
 	SetConversationWorkspace(context.Context, string, string) error
 	ClearConversationWorkspace(context.Context, string, string) error
 	LockConversationExecutionWorkspace(context.Context, string, string, time.Time) (ExecutionBinding, error)
+	SetConversationPermission(context.Context, string, agenthost.PermissionMode) error
 }
 
 type PathResolver interface {

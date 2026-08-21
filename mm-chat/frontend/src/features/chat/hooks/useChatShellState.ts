@@ -30,6 +30,7 @@ export function useChatShellState() {
       updateServerSessionTitle: state.updateServerSessionTitle,
       updateServerSessionInstruction: state.updateServerSessionInstruction,
       updateServerSessionConfig: state.updateServerSessionConfig,
+      updateServerSessionPermission: state.updateServerSessionPermission,
       toggleServerSessionPin: state.toggleServerSessionPin,
       deleteServerSession: state.deleteServerSession,
       duplicateServerSession: state.duplicateServerSession,

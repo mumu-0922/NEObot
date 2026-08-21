@@ -5,7 +5,7 @@ import type {
   Workspace,
 } from "../../types";
 import { ATTACHMENT_LIMITS, CHAT_ENTITY_LIMITS } from "../../config/limits";
-import { isChatToolMode } from "./agentMode";
+import { isAgentPermissionMode, isChatToolMode } from "./agentMode";
 import { isReasoningEffort, normalizeReasoningEffort } from "./reasoning";
 import {
   isSearchMode,
@@ -221,6 +221,7 @@ export function normalizeSessionConfig(
     selectedKnowledgeCollectionIds: rawSelectedKnowledgeCollectionIds,
     reasoningEffort: rawReasoningEffort,
     toolMode: rawToolMode,
+    permissionMode: rawPermissionMode,
     searchMode: rawSearchMode,
     useSearch: rawUseSearch,
     ...rest
@@ -242,6 +243,9 @@ export function normalizeSessionConfig(
   return {
     ...rest,
     ...(isChatToolMode(rawToolMode) ? { toolMode: rawToolMode } : {}),
+    ...(isAgentPermissionMode(rawPermissionMode)
+      ? { permissionMode: rawPermissionMode }
+      : {}),
     ...(hasSearchSelection
       ? { searchMode, useSearch: searchModeEnabled(searchMode) }
       : {}),

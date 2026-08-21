@@ -229,12 +229,13 @@ Wrong: socket rollout -> mount `$HOME` or project parents into Backend
 Correct: exact private socket directory + two identity secrets only
 ```
 
-## Scenario: deploy durable Host Workspaces and socket binding
+## Scenario: deploy durable Host Workspaces, permissions, and socket binding
 
 ### Scope / trigger
 
-Apply when releasing migration `102`, the `/v1/workspaces*` Backend API, the
-interactive Host socket mount, or the converged Workspace frontend.
+Apply when releasing migrations `102`/`103`, the Workspace/Conversation
+permission APIs, the interactive Host socket mount, or the converged Workspace
+frontend.
 
 ### Signatures
 
@@ -247,13 +248,14 @@ docker compose --env-file .env.single-server --profile app \
 ```
 
 ```text
-Expected database head: 102_host_workspaces
+Expected database head: 103_chat_agent_permission_modes
 Enabled Host status:     ready
+Permission modes:        read-only, workspace-write, danger-full-access
 ```
 
 ### Contracts
 
-- Apply `102` with the migrator credential before recreating Backend; API
+- Apply through `103` with the migrator credential before recreating Backend; API
   startup never runs migrations.
 - With `AGENT_HOST_ENABLED=true`, mount the exact private state directory
   read-only plus independent token/Runner-id secrets and pin every response.
@@ -262,9 +264,15 @@ Enabled Host status:     ready
   or recreate RAG, Postgres, Redis, MinIO, or MCP Runner.
 - Preserve `data/`, `secrets/`, `backup/`, `.env.single-server`, the stable Host
   token/Runner id, and existing project directories.
+- Run the Host as the ordinary project-owning WSL user. The wrapper may extract
+  the checksum-pinned Bubblewrap executable into private runtime state; it must
+  not call `sudo`, mutate the package database, or advertise modes before WSL
+  and available DrvFS probes pass.
 - `102.down` is clean only before any imported settings, Host binding, or
   execution snapshot. After durable state exists, use the compatible previous
   application path or a matched backup; never purge records to force down.
+- `103.down` refuses any non-default permission choice. Preserve the compatible
+  image or matched backup instead of erasing durable user authority.
 - Keep existing unbound Conversations on their current behavior. Bound
   Conversations use `host_workspace` and must never fall back after Runner loss.
 
@@ -272,17 +280,21 @@ Enabled Host status:     ready
 
 | Condition | Required result |
 | --- | --- |
-| schema remains at 101 with new Backend | readiness/API smoke fails; do not serve Workspace writes |
+| schema remains below 103 with new Backend | readiness/API smoke fails; do not serve Workspace/permission writes |
 | migration 102 empty down/re-up | succeeds and restores exact grants/constraints |
 | migration 102 down after imported/bound state | `HOST_WORKSPACE_ROLLBACK_BLOCKED`; head/data unchanged |
 | Host feature disabled or socket absent | list/import work; status unavailable/disabled and bind is generic `503` |
 | Host stopped after socket rollout | bound Tool fails without Docker fallback or mutation |
+| Read Only mutation inside/outside Workspace | both denied; no fixture remains |
+| Workspace Write mutation inside/outside Workspace | inside succeeds; outside is read-only |
+| Full access without UI acknowledgement | dedicated API returns `400`; no change |
 | protected runtime paths differ after release | release fails review |
 
 ### Good / base / bad cases
 
-- **Good**: head is 102, Host is ready, legacy Workspaces import once, browse or
-  native picker selects a directory, and bind returns its canonical safe view.
+- **Good**: head is 103, Host advertises all three probed modes, legacy
+  Workspaces import once, directory binding persists, and permissions survive
+  browser/Backend restart.
 - **Base**: the Host process is stopped; the durable API remains readable,
   bound Agent execution fails, and ungrouped legacy `local_direct` is unchanged.
 - **Bad**: mount `$HOME`, rewrite the Host token, rebuild every service, or
@@ -301,11 +313,13 @@ cd ..
 docker compose --env-file .env.single-server ps backend postgres
 ```
 
-Also query `schema_migrations` numerically for exact head `102`, exercise one
+Also query `schema_migrations` numerically for exact head `103`, exercise one
 authenticated Workspace list/import/status/browse/bind and Conversation
-grouping/clear round trip, and prove Runner loss returns a generic unavailable
-response without the submitted path. The native Windows picker remains a
-manual browser smoke because it opens an interactive desktop dialog.
+grouping/clear/permission round trip, and prove Runner loss returns a generic
+unavailable response without the submitted path. Test write boundaries once
+on WSL storage and once on `/mnt/d`; clean the fixtures. The native Windows
+picker remains a manual browser smoke because it opens an interactive desktop
+dialog.
 
 ### Wrong vs correct
 

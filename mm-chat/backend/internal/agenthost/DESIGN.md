@@ -26,8 +26,9 @@ WSL Agent Host (ordinary user)
 ```
 
 The Host reports `execution=true` only when its ExecutionManager starts. It
-still reports an empty `permissionModes` array because advertising Read Only,
-Workspace Write, or Full access before enforcement probes would be false.
+advertises `read-only`, `workspace-write`, and `danger-full-access` only after
+the exact Bubblewrap command used for Terminal execution passes live startup
+probes on both WSL storage and the available `/mnt/d` DrvFS mount.
 
 ## Trust boundary and threat model
 
@@ -70,6 +71,12 @@ The current controls are:
 - separate bounded control and execution envelopes, process-group cancellation,
   strict error allowlists, contained non-symlink active Skill roots, and no
   Host-to-Docker fallback.
+- an owner/root-owned, non-group/world-writable, canonical Bubblewrap binary;
+  `--ro-bind / /` for Read Only, plus one exact `--bind workspace workspace`
+  for Workspace Write. Structured File writes are also rejected in Read Only.
+- durable Conversation permission authority sent on every execution. Full
+  access disables smart approval to match `approval=never`, but never elevates
+  beyond the ordinary Host process user.
 
 The fingerprint is a deduplication key, not a secret, MAC, filesystem inode
 identity, or proof that a directory has not been replaced later. Every future
@@ -87,6 +94,11 @@ It creates the token and Runner id only when absent, builds through a temporary
 file, detaches through `setsid`, uses a private PID file, verifies the exact executable path before
 signalling, and proves protocol plus Runner identity before reporting healthy.
 It refuses to clean up a PID that belongs to an unrelated live process.
+
+The wrapper bootstraps a checksum-pinned Ubuntu Bubblewrap package into the
+private runtime directory without `apt install`, `sudo`, or a setuid helper.
+Host startup fails rather than advertising partial permission behavior when
+the binary or either live filesystem probe fails.
 
 There remains a narrow same-UID race between the final stale-socket recheck and
 unlink. The containing directory is exact-mode `0700`, so this race is limited
@@ -113,9 +125,11 @@ identity-fencing behavior.
 
 - Only WSL is implemented; Windows-drive projects use WSL tools through
   `/mnt/<drive>`.
-- There is no native Windows Runner, permission Sandbox, or enforced permission
-  preset yet. Foreground execution is one bounded buffered response rather than
-  per-chunk NDJSON; the final durable transcript remains authoritative.
+- There is no native Windows Runner. The Bubblewrap boundary prevents writes;
+  it is not a confidentiality or network sandbox and read-capable modes retain
+  the ordinary Host user's read authority. Foreground execution is one bounded
+  buffered response rather than per-chunk NDJSON; the final durable transcript
+  remains authoritative.
 - Canonical string identity does not detect a directory deleted and recreated
   at the same path. Execution admission must revalidate future durable state.
 - Unix peer credentials are not yet captured. Token, socket ownership, and
@@ -129,6 +143,6 @@ identity-fencing behavior.
 | ---------- | -------- | ----------- |
 | 2026-08-21 | Use HTTP/1.1 over a private Unix socket | Reuses bounded Go HTTP machinery without opening a Host TCP port. |
 | 2026-08-21 | Use one ordinary-user WSL Runner first | WSL and mounted Windows paths share one protocol; native Windows can be added through another `runnerId`. |
-| 2026-08-21 | Advertise execution separately from permission modes | Bound Tools may use the Host while all unenforced presets stay unavailable. |
+| 2026-08-21 | Probe Bubblewrap before advertising all three permission modes | Read Only and Workspace Write have real WSL/DrvFS write boundaries; Full access remains ordinary-user authority. |
 | 2026-08-21 | Reuse the guarded local executor at a Host root | File CAS, symlink checks, approvals, process groups, limits, and Jobs retain one implementation. |
 | 2026-08-21 | Use a wrapper rather than systemd | The verified target WSL environment has no active user systemd manager. |

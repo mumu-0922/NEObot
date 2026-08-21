@@ -1,4 +1,4 @@
-# Postgres Core Schema and Chat Agent Runtime Through Migration 102
+# Postgres Core Schema and Chat Agent Runtime Through Migration 103
 
 This document describes the core schema created by the ordered migrations in
 `mm-chat/backend/migrations`, from `001_initial_schema` through
@@ -8,6 +8,8 @@ their forward-only function repair in `099_chat_agent_event_log_function_repair`
 Migration `102_host_workspaces` then converges the existing Workspace registry
 with browser settings, one-time Host directory binding, and immutable
 Conversation execution snapshots.
+Migration `103_chat_agent_permission_modes` adds checked durable
+per-Conversation Host Agent permission authority.
 Migrations `062` through `095` own later
 Memory and optional Agent control-plane surfaces and remain catalogued in
 `mm-chat/backend/migrations/README.md`.
@@ -111,6 +113,7 @@ Out of scope:
 | `100_chat_agent_approvals`                    | Adds durable Tool approval/CAS and exact Conversation grants without raw Tool payloads. |
 | `101_chat_agent_transcript_blocks`            | Forward-widens immutable Agent events for sanitized Context and Provider-returned reasoning blocks and marks new Turns as Transcript v2. |
 | `102_host_workspaces`                         | Extends the existing Workspace registry in place with preserved browser settings, CAS revision, one-time Runner/path binding, and immutable Conversation execution snapshots. |
+| `103_chat_agent_permission_modes`             | Adds checked durable `read-only`, `workspace-write`, or `danger-full-access` Conversation authority with a guarded down migration. |
 
 Published migration pairs are immutable and applied in numeric order. Migration
 SQL contains no transaction-control statements; the Go runner wraps each schema
@@ -195,6 +198,10 @@ Key columns:
 - `model_provider`, `model_id`, `system_prompt`
 - `idempotency_key TEXT` with non-blank guard when present
 - `metadata JSONB NOT NULL DEFAULT '{}'::jsonb`
+- `workspace_id` plus immutable `agent_workspace_*` Runner/path execution
+  snapshot columns for Host-bound Conversations
+- `agent_permission_mode TEXT NOT NULL DEFAULT 'workspace-write'` with an
+  exact three-mode check constraint
 - `created_at`, `updated_at`, `deleted_at`
 
 Indexes / constraints:
@@ -209,6 +216,9 @@ Boundary:
 - Conversation APIs must scope reads and writes by `user_id` before loading
   child messages.
 - `metadata` must not store provider API keys or object-store credentials.
+- `permissionMode` in generic metadata is not authoritative; only the dedicated
+  owner-scoped permission route may update `agent_permission_mode`, and it is
+  locked while an assistant Message is `pending` or `streaming`.
 
 ### `messages`
 

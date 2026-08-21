@@ -58,6 +58,9 @@ func NewHandler(config HandlerConfig) (*Handler, error) {
 		features.NativeDirectoryPicker = picker.NativeDirectoryPickerAvailable()
 	}
 	features.Execution = config.Execution != nil
+	if config.Execution != nil {
+		features.PermissionModes = config.Execution.PermissionModes()
+	}
 	return &Handler{
 		runnerID:  config.RunnerID,
 		tokenSum:  sha256.Sum256([]byte(config.Token)),
@@ -149,7 +152,7 @@ func (handler *Handler) executeTool(writer http.ResponseWriter, request *http.Re
 		}
 		status := http.StatusUnprocessableEntity
 		switch failure.Code {
-		case "APPROVAL_REQUIRED", "VERSION_CONFLICT", "EDIT_CONFLICT":
+		case "APPROVAL_REQUIRED", "VERSION_CONFLICT", "EDIT_CONFLICT", "PERMISSION_DENIED":
 			status = http.StatusConflict
 		case "RUNTIME_BUSY":
 			status = http.StatusTooManyRequests

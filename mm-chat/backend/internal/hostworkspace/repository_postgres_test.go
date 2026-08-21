@@ -92,8 +92,42 @@ INSERT INTO conversations (id, user_id, title) VALUES ($1, $2, 'Host-bound conve
 		userCtx, conversationID, workspaceID, time.Now().UTC(),
 	)
 	if err != nil || binding.RunnerID != "wsl-test-runner" ||
-		binding.CanonicalPath != descriptor.CanonicalPath {
+		binding.CanonicalPath != descriptor.CanonicalPath ||
+		binding.PermissionMode != agenthost.PermissionWorkspaceWrite {
 		t.Fatalf("LockConversationExecutionWorkspace() = %+v, %v", binding, err)
+	}
+	if err := repo.SetConversationPermission(
+		userCtx, conversationID, agenthost.PermissionReadOnly,
+	); err != nil {
+		t.Fatalf("SetConversationPermission(read-only) error = %v", err)
+	}
+	binding, err = repo.LockConversationExecutionWorkspace(
+		userCtx, conversationID, workspaceID, time.Now().UTC(),
+	)
+	if err != nil || binding.PermissionMode != agenthost.PermissionReadOnly {
+		t.Fatalf("durable permission binding = %+v, %v", binding, err)
+	}
+	messageID := uuid.NewString()
+	if _, err := adminDB.ExecContext(ctx, `
+INSERT INTO messages (id, conversation_id, user_id, sequence_no, role, status, content)
+VALUES ($1, $2, $3, 1, 'assistant', 'streaming', '')
+`, messageID, conversationID, userID); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SetConversationPermission(
+		userCtx, conversationID, agenthost.PermissionFullAccess,
+	); !errors.Is(err, ErrPermissionLocked) {
+		t.Fatalf("active Turn permission change error = %v", err)
+	}
+	if _, err := adminDB.ExecContext(ctx, `
+UPDATE messages SET status = 'completed', completed_at = now() WHERE id = $1
+`, messageID); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SetConversationPermission(
+		userCtx, conversationID, agenthost.PermissionFullAccess,
+	); err != nil {
+		t.Fatalf("SetConversationPermission(Full access) error = %v", err)
 	}
 	if err := repo.SetConversationWorkspace(userCtx, conversationID, secondID); !errors.Is(err, ErrConversationLocked) {
 		t.Fatalf("move locked conversation error = %v, want %v", err, ErrConversationLocked)
@@ -104,9 +138,21 @@ INSERT INTO conversations (id, user_id, title) VALUES ($1, $2, 'Host-bound conve
 	if err := repo.Delete(userCtx, workspaceID, bound.Revision, time.Now().UTC()); !errors.Is(err, ErrWorkspaceInUse) {
 		t.Fatalf("delete used Workspace error = %v, want %v", err, ErrWorkspaceInUse)
 	}
-	if _, err := migration.NewRunner(adminDB, migrationfiles.FS).Down(ctx, false); err == nil ||
+	if err := repo.SetConversationPermission(
+		userCtx, conversationID, agenthost.PermissionWorkspaceWrite,
+	); err != nil {
+		t.Fatal(err)
+	}
+	runner := migration.NewRunner(adminDB, migrationfiles.FS)
+	if peeled, err := runner.Down(ctx, false); err != nil || len(peeled) != 1 || peeled[0].Version != 103 {
+		t.Fatalf("peel permission migration = %+v, %v", peeled, err)
+	}
+	if _, err := runner.Down(ctx, false); err == nil ||
 		!strings.Contains(err.Error(), "HOST_WORKSPACE_ROLLBACK_BLOCKED") {
 		t.Fatalf("guarded migration down error = %v", err)
+	}
+	if reapplied, err := runner.Up(ctx); err != nil || len(reapplied) != 1 || reapplied[0].Version != 103 {
+		t.Fatalf("restore permission migration = %+v, %v", reapplied, err)
 	}
 }
 
@@ -160,11 +206,15 @@ func openHostWorkspacePostgres(t *testing.T) *sql.DB {
 		t.Fatalf("apply migrations: %v", err)
 	}
 	rolledBack, err := runner.Down(ctx, false)
+	if err != nil || len(rolledBack) != 1 || rolledBack[0].Version != 103 {
+		t.Fatalf("rollback Agent permission migration: %+v, %v", rolledBack, err)
+	}
+	rolledBack, err = runner.Down(ctx, false)
 	if err != nil || len(rolledBack) != 1 || rolledBack[0].Version != 102 {
 		t.Fatalf("rollback empty Host Workspace migration: %+v, %v", rolledBack, err)
 	}
 	reapplied, err := runner.Up(ctx)
-	if err != nil || len(reapplied) != 1 || reapplied[0].Version != 102 {
+	if err != nil || len(reapplied) != 2 || reapplied[0].Version != 102 || reapplied[1].Version != 103 {
 		t.Fatalf("reapply Host Workspace migration: %+v, %v", reapplied, err)
 	}
 	return db

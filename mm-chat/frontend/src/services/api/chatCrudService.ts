@@ -12,6 +12,7 @@ import {
   type GenerateConversationTitleInput,
   type ModelRef,
   type UpdateConversationInput,
+  type UpdateConversationPermissionInput,
   type UpdateMessageInput,
   type NeoChatApiClient,
   type ServerAttachmentDTO,
@@ -23,11 +24,15 @@ import {
 } from "../../lib/chat/reasoning";
 import type {
   ChatAgentEvent,
+  AgentPermissionMode,
   ChatToolMode,
   ReasoningEffort,
   SearchMode,
 } from "../../lib/chat/types";
-import { isChatToolMode } from "../../lib/chat/agentMode";
+import {
+  isAgentPermissionMode,
+  isChatToolMode,
+} from "../../lib/chat/agentMode";
 import {
   isSearchMode,
   normalizeSearchMode,
@@ -56,6 +61,7 @@ const SERVER_DEFAULT_BACKEND_PROVIDER_ID = "openai_compatible";
 
 export interface ChatCrudSessionConfig {
   toolMode?: ChatToolMode;
+  permissionMode?: AgentPermissionMode;
   searchMode?: SearchMode;
   useSearch?: boolean;
   useReasoning?: boolean;
@@ -120,6 +126,9 @@ export interface ChatCrudService {
   createConversation(input: CreateConversationInput): Promise<ChatCrudSession>;
   listConversations(): Promise<ChatCrudSession[]>;
   updateConversation(input: UpdateConversationInput): Promise<ChatCrudSession>;
+  updateConversationPermission(
+    input: UpdateConversationPermissionInput,
+  ): Promise<ChatCrudSession>;
   deleteConversation(conversationId: string): Promise<void>;
   duplicateConversation(
     input: DuplicateConversationInput,
@@ -173,6 +182,13 @@ export function createChatCrudService(
       requireServerCrud();
       return mapConversationDtoToSession(
         await client.chat.updateConversation(input),
+      );
+    },
+
+    async updateConversationPermission(input) {
+      requireServerCrud();
+      return mapConversationDtoToSession(
+        await client.chat.updateConversationPermission(input),
       );
     },
 
@@ -255,7 +271,12 @@ export function mapConversationDtoToSession(
       typeof conversation.systemInstruction === "string"
         ? conversation.systemInstruction
         : undefined,
-    config: normalizeConversationConfig(conversation.config),
+    config: {
+      ...(normalizeConversationConfig(conversation.config) ?? {}),
+      permissionMode: isAgentPermissionMode(conversation.permissionMode)
+        ? conversation.permissionMode
+        : "workspace-write",
+    },
     ...(conversation.workspaceId
       ? { workspaceId: conversation.workspaceId }
       : {}),

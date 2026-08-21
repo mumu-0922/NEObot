@@ -347,17 +347,18 @@ func (repository *PostgresRepository) LockConversationExecutionWorkspace(
 	userID := auth.UserOrDevelopment(ctx).ID
 	var groupedWorkspace sql.NullString
 	var existingID, existingRunner, existingPath, existingFingerprint sql.NullString
+	var permissionMode string
 	var existingBoundAt sql.NullTime
 	err = tx.QueryRowContext(ctx, `
 SELECT workspace_id, agent_workspace_id, agent_workspace_runner_id,
        agent_workspace_canonical_path, agent_workspace_fingerprint,
-       agent_workspace_bound_at
+       agent_workspace_bound_at, agent_permission_mode
 FROM conversations
 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
 FOR UPDATE
 `, conversationID, userID).Scan(
 		&groupedWorkspace, &existingID, &existingRunner, &existingPath,
-		&existingFingerprint, &existingBoundAt,
+		&existingFingerprint, &existingBoundAt, &permissionMode,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ExecutionBinding{}, ErrConversationNotFound
@@ -373,6 +374,7 @@ FOR UPDATE
 			ConversationID: conversationID, WorkspaceID: existingID.String,
 			RunnerID: existingRunner.String, CanonicalPath: existingPath.String,
 			DirectoryFingerprint: existingFingerprint.String, BoundAt: existingBoundAt.Time,
+			PermissionMode: agenthost.PermissionMode(permissionMode),
 		}, nil
 	}
 	if !groupedWorkspace.Valid || groupedWorkspace.String != workspaceID {
@@ -396,6 +398,7 @@ FOR SHARE
 	}
 	binding.ConversationID = conversationID
 	binding.BoundAt = boundAt
+	binding.PermissionMode = agenthost.PermissionMode(permissionMode)
 	_, err = tx.ExecContext(ctx, `
 UPDATE conversations SET
   agent_workspace_id = $3,
@@ -414,6 +417,75 @@ WHERE id = $1 AND user_id = $2 AND agent_workspace_id IS NULL
 		return ExecutionBinding{}, fmt.Errorf("commit conversation Agent Workspace: %w", err)
 	}
 	return binding, nil
+}
+
+func (repository *PostgresRepository) SetConversationPermission(
+	ctx context.Context,
+	conversationID string,
+	mode agenthost.PermissionMode,
+) error {
+	if repository == nil || repository.db == nil {
+		return ErrDisabled
+	}
+	userID := auth.UserOrDevelopment(ctx).ID
+	result, err := repository.db.ExecContext(ctx, `
+UPDATE conversations AS conversation SET
+  agent_permission_mode = $3,
+  updated_at = now()
+WHERE conversation.id = $1 AND conversation.user_id = $2
+  AND conversation.deleted_at IS NULL AND conversation.workspace_id IS NOT NULL
+  AND EXISTS (
+    SELECT 1 FROM workspaces
+    WHERE id = conversation.workspace_id AND owner_user_id = $2
+      AND deleted_at IS NULL AND runner_id IS NOT NULL
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM messages
+    WHERE conversation_id = conversation.id AND deleted_at IS NULL
+      AND role = 'assistant' AND status IN ('pending', 'streaming')
+  )
+`, conversationID, userID, string(mode))
+	if err != nil {
+		return fmt.Errorf("set conversation Agent permission: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 1 {
+		return nil
+	}
+	var exists, bound, active bool
+	err = repository.db.QueryRowContext(ctx, `
+SELECT
+  EXISTS (
+    SELECT 1 FROM conversations
+    WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+  ),
+  EXISTS (
+    SELECT 1 FROM conversations AS conversation
+    JOIN workspaces ON workspaces.id = conversation.workspace_id
+      AND workspaces.owner_user_id = conversation.user_id
+    WHERE conversation.id = $1 AND conversation.user_id = $2
+      AND conversation.deleted_at IS NULL AND workspaces.deleted_at IS NULL
+      AND workspaces.runner_id IS NOT NULL
+  ),
+  EXISTS (
+    SELECT 1 FROM messages
+    WHERE conversation_id = $1 AND user_id = $2 AND deleted_at IS NULL
+      AND role = 'assistant' AND status IN ('pending', 'streaming')
+  )
+`, conversationID, userID).Scan(&exists, &bound, &active)
+	if err != nil {
+		return fmt.Errorf("classify conversation Agent permission: %w", err)
+	}
+	if !exists {
+		return ErrConversationNotFound
+	}
+	if !bound {
+		return ErrWorkspaceUnbound
+	}
+	if active {
+		return ErrPermissionLocked
+	}
+	return ErrPermissionUnavailable
 }
 
 func (repository *PostgresRepository) classifyWorkspaceMiss(

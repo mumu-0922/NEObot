@@ -14,8 +14,8 @@
 ## Non-goals
 
 - This module does not browse the Host filesystem or open a native picker.
-- It delegates bound Agent Tools to the pinned Host client; it does not enforce
-  permission presets yet.
+- It delegates bound Agent Tools and the immutable effective permission to the
+  pinned Host client; Host capability probes and the Runner enforce the mode.
 - It never creates, renames, writes, or deletes a selected directory.
 - It does not infer a filesystem path from a Workspace name.
 
@@ -68,6 +68,14 @@ This snapshot is not a second Project. It is the minimum authority needed to
 prove that later UI grouping or Workspace metadata changes cannot silently
 change an already-running Conversation's `cwd`.
 
+Migration `103_chat_agent_permission_modes` adds the durable
+`conversations.agent_permission_mode` authority with a default of
+`workspace-write`. The dedicated permission mutation requires a bound Host
+Workspace, a currently advertised Runner mode, no pending/streaming assistant
+Turn, and explicit acknowledgement for Full access. Generic Conversation
+metadata cannot update or shadow this field. Execution locking returns the
+permission in the same immutable per-Turn binding as `cwd`.
+
 ## Design decisions and trade-offs
 
 - **In-place convergence over a second Project table** preserves visible
@@ -88,6 +96,9 @@ change an already-running Conversation's `cwd`.
 - Binding is one-way; a bound Workspace cannot be rebound in place.
 - Execution locking uses `SELECT ... FOR UPDATE` on the Conversation and
   `FOR SHARE` on the bound Workspace in one transaction.
+- Permission changes are owner-scoped and rejected while an assistant Message
+  is `pending` or `streaming`; a Turn that already captured its execution
+  binding cannot be changed through browser metadata.
 - Runtime grants are column-scoped to fields used by this repository. The
   runtime role cannot change Workspace ownership or delete database rows.
 
@@ -108,6 +119,9 @@ Important states:
 - `ErrWorkspaceUnbound`: execution locking was requested before binding.
 - `ErrConversationLocked`: visible grouping conflicts with the immutable
   execution snapshot.
+- `ErrPermissionAcknowledgement`: Full access lacked explicit acknowledgement.
+- `ErrPermissionUnavailable`: the live pinned Host does not advertise the mode.
+- `ErrPermissionLocked`: an assistant Turn is active.
 
 ## Rollout and rollback
 
@@ -120,10 +134,12 @@ Migration `102.down` succeeds only when no imported settings, Host binding, or
 Conversation execution snapshot exists. Otherwise it raises
 `HOST_WORKSPACE_ROLLBACK_BLOCKED`; rollback must preserve the database and use
 the compatible application image. Soft deletion never touches Host files.
+Migration `103.down` first refuses to erase any non-default permission choice;
+after a clean `103.down`, the existing migration-102 rollback guard still
+applies.
 
 ## Known limitations
 
-- Three-mode permission enforcement belongs to the next committed slice.
 - Foreground Host Terminal chunks arrive at Backend after completion in this
   slice; final durable cards are preserved, but live per-chunk transport is not.
 - The first Runner target executes both WSL and mounted Windows projects with
@@ -144,3 +160,5 @@ the compatible application image. Soft deletion never touches Host files.
   strict API, one-time Host binding contract, and Conversation execution lock.
 - **2026-08-21**: routed immutable bound Workspace Tools through the pinned Host
   while preserving ungrouped legacy `local_direct` and fail-closed loss.
+- **2026-08-21**: added migration-103 durable permissions, active-Turn locking,
+  capability admission, and immutable permission propagation to the Host.

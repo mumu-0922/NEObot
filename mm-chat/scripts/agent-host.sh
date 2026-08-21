@@ -25,6 +25,7 @@ Optional test/operator overrides:
   AGENT_HOST_BINARY
   AGENT_HOST_VERSION_FILE
   AGENT_HOST_SKILLS_ROOT
+  AGENT_HOST_SANDBOX_BINARY
 USAGE
 }
 
@@ -41,6 +42,10 @@ log_file="${AGENT_HOST_LOG_FILE:-${state_dir}/agent-host.log}"
 binary="${AGENT_HOST_BINARY:-${state_dir}/agent-host}"
 version_file="${AGENT_HOST_VERSION_FILE:-${state_dir}/agent-host.version}"
 skills_root="${AGENT_HOST_SKILLS_ROOT:-${project_dir}/data/agent-skills}"
+sandbox_binary="${AGENT_HOST_SANDBOX_BINARY:-${state_dir}/bwrap}"
+sandbox_package_url="https://security.ubuntu.com/ubuntu/pool/main/b/bubblewrap/bubblewrap_0.6.1-1ubuntu0.1_amd64.deb"
+sandbox_package_sha256="f75c835d6871d1b36370e12ee82940334b2a9f94efc7b959b5b236447e89743d"
+sandbox_binary_sha256="d78807229d616606e339c5988392b9e0ab4a6a6998fa51e4590837f426a12fca"
 
 command="${1:-}"
 if [[ -z "${command}" || $# -ne 1 ]]; then
@@ -86,6 +91,7 @@ for pair in \
   "version file:${version_file}"; do
   require_absolute_path "${pair%%:*}" "${pair#*:}"
 done
+require_absolute_path "sandbox binary" "${sandbox_binary}"
 require_absolute_path "Skills root" "${skills_root}"
 [[ -d "${skills_root}" && ! -L "${skills_root}" ]] || fail "Skills root must be an existing directory"
 [[ "$(readlink -f -- "${skills_root}")" == "${skills_root}" ]] || fail "Skills root contains a symlink component"
@@ -135,6 +141,49 @@ ensure_runtime_layout() {
     fail "binary must remain directly under the private state directory"
   [[ "$(dirname -- "${version_file}")" == "${state_dir}" ]] ||
     fail "version file must remain directly under the private state directory"
+  if [[ -z "${AGENT_HOST_SANDBOX_BINARY:-}" ]]; then
+    [[ "$(dirname -- "${sandbox_binary}")" == "${state_dir}" ]] ||
+      fail "sandbox binary must remain directly under the private state directory"
+  fi
+}
+
+ensure_sandbox_binary() {
+  local sandbox_mode sandbox_owner
+  sandbox_mode="$(stat -c '%a' -- "${sandbox_binary}" 2>/dev/null || true)"
+  sandbox_owner="$(stat -c '%u' -- "${sandbox_binary}" 2>/dev/null || true)"
+  if [[ -f "${sandbox_binary}" && ! -L "${sandbox_binary}" && -x "${sandbox_binary}" &&
+    "$(readlink -f -- "${sandbox_binary}")" == "${sandbox_binary}" &&
+    "${sandbox_mode}" =~ ^[0-7]{3,4}$ ]] &&
+    (( (8#${sandbox_mode} & 8#022) == 0 )) &&
+    [[ "${sandbox_owner}" == "0" || "${sandbox_owner}" == "${EUID}" ]]; then
+    if [[ -n "${AGENT_HOST_SANDBOX_BINARY:-}" ]] ||
+      [[ "$(sha256sum -- "${sandbox_binary}" | awk '{print $1}')" == "${sandbox_binary_sha256}" ]]; then
+      return 0
+    fi
+  fi
+  [[ -z "${AGENT_HOST_SANDBOX_BINARY:-}" ]] ||
+    fail "configured sandbox binary is missing or unsafe"
+  [[ "$(uname -m)" == "x86_64" ]] || fail "bundled sandbox supports x86_64 only"
+  for dependency in curl dpkg-deb sha256sum; do
+    command -v "${dependency}" >/dev/null 2>&1 || fail "${dependency} is required to prepare the Host sandbox"
+  done
+  local temporary package extracted source
+  temporary="$(mktemp -d "${state_dir}/.sandbox-package.XXXXXX")"
+  trap 'rm -rf -- "${temporary}"' RETURN
+  package="${temporary}/bubblewrap.deb"
+  extracted="${temporary}/root"
+  curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+    --output "${package}" "${sandbox_package_url}"
+  [[ "$(sha256sum -- "${package}" | awk '{print $1}')" == "${sandbox_package_sha256}" ]] ||
+    fail "sandbox package checksum mismatch"
+  dpkg-deb -x "${package}" "${extracted}"
+  source="${extracted}/usr/bin/bwrap"
+  [[ -f "${source}" && ! -L "${source}" ]] || fail "sandbox package is missing bwrap"
+  [[ "$(sha256sum -- "${source}" | awk '{print $1}')" == "${sandbox_binary_sha256}" ]] ||
+    fail "sandbox binary checksum mismatch"
+  install -m 0700 "${source}" "${sandbox_binary}"
+  trap - RETURN
+  rm -rf -- "${temporary}"
 }
 
 install_generated_file_once() {
@@ -252,6 +301,10 @@ if payload.get("protocolVersion") != 1 or payload.get("runnerId") != expected_ru
     raise SystemExit(1)
 if expected_version and payload.get("version") != expected_version:
     raise SystemExit(1)
+if payload.get("features", {}).get("permissionModes") != [
+    "read-only", "workspace-write", "danger-full-access"
+]:
+    raise SystemExit(1)
 PY
 }
 
@@ -262,12 +315,14 @@ source_version() {
       find backend/cmd/agent-host backend/internal/agenthost -type f \
         \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \) -print0
       printf '%s\0' backend/go.mod backend/go.sum
+      printf '%s\0' scripts/agent-host.sh
     } | sort -zu | xargs -0 sha256sum | sha256sum | awk '{print "source-" substr($1, 1, 24)}'
   )
 }
 
 build_runner() {
   ensure_runtime_layout
+  ensure_sandbox_binary
   command -v go >/dev/null 2>&1 || fail "Go is required to build the Agent Host"
   local temporary
   temporary="$(mktemp "${state_dir}/.agent-host-binary.XXXXXX")"
@@ -288,6 +343,7 @@ build_runner() {
 start_runner() {
   ensure_runtime_layout
   ensure_identity_files
+  ensure_sandbox_binary
   [[ -f "${binary}" && ! -L "${binary}" && -x "${binary}" ]] ||
     fail "Runner binary is missing; run '$0 build' first"
   [[ -f "${version_file}" && ! -L "${version_file}" ]] ||
@@ -328,6 +384,7 @@ start_runner() {
     AGENT_HOST_SOCKET="${socket_path}" \
     AGENT_HOST_TOKEN_FILE="${token_file}" \
     AGENT_HOST_SKILLS_ROOT="${skills_root}" \
+    AGENT_HOST_SANDBOX_BINARY="${sandbox_binary}" \
     MM_CHAT_VERSION="${version}" \
     "${binary}" >>"${log_file}" 2>&1 </dev/null &
   pid=$!

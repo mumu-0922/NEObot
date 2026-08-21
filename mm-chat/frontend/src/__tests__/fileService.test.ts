@@ -342,6 +342,9 @@ function createMockChatApi(): ChatApi {
     async updateConversation() {
       throw new Error("updateConversation not mocked");
     },
+    async updateConversationPermission() {
+      throw new Error("updateConversationPermission not mocked");
+    },
     async deleteConversation() {
       throw new Error("deleteConversation not mocked");
     },

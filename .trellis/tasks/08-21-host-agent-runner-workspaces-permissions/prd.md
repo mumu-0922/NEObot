@@ -210,8 +210,10 @@ permission presets whose enforcement is real rather than presentation-only.
    approvals, cancellation, limits, and durable `host_workspace` presentation;
    focused cross-layer tests, targeted deployment, Host cwd/File/Job smoke,
    Runner-loss/recovery drill, and no Docker `/workspace` fallback.
-5. **Permission enforcement and UI**: three durable presets, sandbox probes,
-   Full access confirmation, active-turn locking, escalation and denial tests.
+5. **Permission enforcement and UI** — completed 2026-08-21: migration `103`
+   durable presets, active-Turn locking, acknowledged Full access, exact
+   permission propagation, checksum-pinned Bubblewrap with WSL/DrvFS startup
+   probes, and accessible capability-driven composer controls.
 6. **Canary deployment and hardening**: focused cross-layer smoke, rollback
    drill, docs, automatic commits/builds, and live canary verification.
 

@@ -256,6 +256,39 @@ func (service *Service) LockConversationExecutionWorkspace(
 	)
 }
 
+func (service *Service) SetConversationPermission(
+	ctx context.Context,
+	conversationID string,
+	mode agenthost.PermissionMode,
+	fullAccessAcknowledged bool,
+) error {
+	if service == nil || service.repository == nil || !validUUID(conversationID) {
+		return ErrInvalid
+	}
+	if mode != agenthost.PermissionReadOnly && mode != agenthost.PermissionWorkspaceWrite &&
+		mode != agenthost.PermissionFullAccess {
+		return ErrInvalid
+	}
+	if mode == agenthost.PermissionFullAccess && !fullAccessAcknowledged {
+		return ErrPermissionAcknowledgement
+	}
+	status := service.HostStatus(ctx)
+	if status.Status != "ready" || !status.Features.Execution ||
+		!permissionModeAvailable(status.Features.PermissionModes, mode) {
+		return ErrPermissionUnavailable
+	}
+	return service.repository.SetConversationPermission(ctx, conversationID, mode)
+}
+
+func permissionModeAvailable(modes []agenthost.PermissionMode, wanted agenthost.PermissionMode) bool {
+	for _, mode := range modes {
+		if mode == wanted {
+			return true
+		}
+	}
+	return false
+}
+
 func validateSettings(settings Settings) error {
 	name := strings.TrimSpace(settings.Name)
 	if name == "" || len(name) > maxNameBytes || !utf8.ValidString(name) ||

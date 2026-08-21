@@ -21,6 +21,7 @@ export type {
   ChatPipelineState,
   ChatPipelineStatus,
   ChatToolMode,
+  AgentPermissionMode,
   Message,
   MessageOutputBlock,
   MessageTreeNode,

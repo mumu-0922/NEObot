@@ -15,7 +15,7 @@ Conversation config: toolMode = "chat" | "agent"
 Skill API: /v1/skills/*
 Agent local Tools: skill, file_read, file_write, file_edit, file_search,
                    terminal, job_list, job_output, job_kill, publish_file
-Migration head: 102_host_workspaces
+Migration head: 103_chat_agent_permission_modes
 
 Transcript v2 events: context.injected, assistant.chunk,
                       assistant.block.completed
@@ -248,8 +248,8 @@ Cross-layer changes also require frontend format/lint/typecheck/test/build and
 
 ```text
 Wrong: treat execution=true as proof that permission presets are enforced
-Correct: route bound Tools only when execution=true; keep permissionModes empty
-         until each advertised preset passes its independent enforcement probes
+Correct: advertise each mode only after the exact Bubblewrap WSL/DrvFS probes
+         pass, then require that mode on every Host Tool execution
 
 Wrong: inspect Shell command text -> guess mutation -> force verification
 Correct: foreground result -> synchronous boundary; background Job -> exact completed output
@@ -264,7 +264,7 @@ Wrong: overwrite the background start event when job_output arrives
 Correct: retain immutable events -> merge display cards by exact jobId
 
 Wrong: DROP ... CASCADE after a broad agent_* match
-Correct: lock -> exact manifest/data validation -> explicit drops -> forward repair -> head 102
+Correct: lock -> exact manifest/data validation -> explicit drops -> forward repair -> head 103
 ```
 
 ## Scenario: operate the interactive WSL Agent Host control plane
@@ -308,8 +308,9 @@ Workspace path:    1..4096 valid UTF-8 bytes without controls
 - `capabilities` advertises only implemented facts. The interactive control
   plane reports Workspace resolve, WSL directory browse, and the native
   Windows picker when their Host dependencies exist. An active
-  `ExecutionManager` reports `execution=true`; `permissionModes` remains empty
-  until the separate enforcement probes pass.
+  `ExecutionManager` reports `execution=true`; it advertises all three
+  permission modes only after the exact Bubblewrap command passes live WSL and
+  available DrvFS startup probes.
 - Directory browse starts at the ordinary Host user's home for an empty path,
   returns at most 256 sorted directory-only entries, and never reads file
   contents. Native picker runs a fixed PowerShell/WinForms command with no
@@ -326,9 +327,14 @@ Workspace path:    1..4096 valid UTF-8 bytes without controls
   proof; every future execution must re-resolve durable authority.
 - A Tool execution request carries the immutable canonical path/fingerprint,
   camel-case user/Conversation Job scope, allowlisted Tool name, strict
-  arguments, Backend-owned approval bit, and an optional contained relative
-  active Skill root. Re-resolve the Workspace on every call and require the
-  returned canonical path and fingerprint to match exactly.
+  arguments, durable Backend-owned permission mode and approval bit, and an
+  optional contained relative active Skill root. Re-resolve the Workspace on
+  every call and require the returned canonical path and fingerprint to match
+  exactly.
+- Read Only uses `--ro-bind / /` and rejects structured File mutations;
+  Workspace Write adds one exact read-write Workspace bind; Full access uses
+  the ordinary Host user and disables smart approval. These are write
+  boundaries, not read-confidentiality or network isolation claims.
 - Reuse `localskills.Executor` at the Host canonical root so File CAS/symlink
   checks, Terminal hard blocks/approval, time/output bounds, process-group
   cancellation, artifacts, and process-local Jobs remain one implementation.
@@ -356,6 +362,7 @@ Workspace path:    1..4096 valid UTF-8 bytes without controls
 | native picker cancellation | successful `cancelled=true`; no Workspace mutation |
 | execution canonical path/fingerprint drift | `WORKSPACE_AUTHORITY_INVALID`; no Tool execution |
 | active Skill root is absolute, escaping, missing, or symlinked | `ARGUMENTS_INVALID`; no process |
+| missing/unadvertised permission or Read Only File mutation | `PERMISSION_DENIED`; no mutation |
 | Host loss after immutable binding | durable failed/interrupted Tool; never Docker `/workspace` |
 
 ### Good / base / bad cases
@@ -413,7 +420,8 @@ Correct: persist the Host failure -> restore the same pinned Runner -> retry exp
 ### Scope / trigger
 
 Apply when changing `internal/hostworkspace`, `/v1/workspaces*`, migration
-`102_host_workspaces`, `conversations.workspace_id`, or any future call to
+`102_host_workspaces`, migration `103_chat_agent_permission_modes`,
+`conversations.workspace_id`, or any future call to
 `LockConversationExecutionWorkspace`.
 
 ### Signatures
@@ -428,7 +436,7 @@ POST   /v1/workspaces/{workspaceId}/bind
 PUT    /v1/workspaces/{workspaceId}/conversations/{conversationId}
 
 Binding status: unbound | bound
-Migration head: 102_host_workspaces
+Migration head: 103_chat_agent_permission_modes
 ```
 
 ### Contracts
@@ -451,6 +459,10 @@ Migration head: 102_host_workspaces
   execution, transactionally copy the selected bound Workspace into the
   `agent_workspace_*` execution snapshot. Repeating the same lock is
   idempotent; a different Workspace is drift and must fail.
+- Persist `agent_permission_mode` outside generic metadata. The dedicated
+  mutation requires a bound Workspace, current Host capability, explicit Full
+  access acknowledgement, and no pending/streaming assistant Message. Return
+  the mode in the same immutable execution binding used by the admitted Turn.
 - Scope every query and mutation to the authenticated owner. Use the composite
   Conversation/Workspace ownership FK and column-limited runtime grants. The
   runtime role must not change owner/team identity or physically delete rows.
@@ -478,6 +490,10 @@ Migration head: 102_host_workspaces
 | resolver missing or Host unavailable | `503 HOST_WORKSPACE_UNAVAILABLE` |
 | Host stable error/protocol violation | sanitized `502` |
 | down after durable state | atomic `HOST_WORKSPACE_ROLLBACK_BLOCKED` |
+| Full access without acknowledgement | `400 FULL_ACCESS_ACKNOWLEDGEMENT_REQUIRED` |
+| unknown permission mode | `400 INVALID_AGENT_PERMISSION` |
+| permission change during an active Turn | `409 CONVERSATION_PERMISSION_LOCKED` |
+| requested mode absent from Host capabilities | `409 AGENT_PERMISSION_UNAVAILABLE` |
 
 ### Good / base / bad cases
 
@@ -499,7 +515,7 @@ go vet ./internal/hostworkspace ./internal/agenthost \
   ./internal/migration ./internal/httpserver ./cmd/api
 ```
 
-The disposable PostgreSQL 17 test must apply through `102`, run Repository
+The disposable PostgreSQL 17 test must apply through `103`, run Repository
 mutations as `go_api_runtime`, prove empty down/re-up, idempotent import, alias
 uniqueness, cross-user denial, execution lock/no drift, in-use delete denial,
 and guarded down after durable state.
@@ -531,7 +547,8 @@ presentation, or Runner-loss behavior after a Conversation has a Workspace.
 Chat mode:                 no Agent local/Host Tools
 Agent + workspace_id:      host_workspace
 Agent + no workspace_id:   local_direct (legacy rollback only)
-Host capability:           execution=true, permissionModes=[]
+Host capability:           execution=true,
+                           permissionModes=[read-only,workspace-write,danger-full-access]
 Runtime environment:       NEO_CHAT_AGENT_RUNTIME=host_workspace
                            NEO_CHAT_HOST_WORKSPACE=1
 ```

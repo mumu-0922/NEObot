@@ -12,6 +12,7 @@ import {
   SessionMessageTree,
   ProcessStep,
   ChatAgentEvent,
+  AgentPermissionMode,
 } from "@/types";
 import {
   appDb,
@@ -692,6 +693,11 @@ interface ChatState {
   updateServerSessionConfig: (
     id: string,
     config: SessionConfig,
+  ) => Promise<boolean>;
+  updateServerSessionPermission: (
+    id: string,
+    permissionMode: AgentPermissionMode,
+    fullAccessAcknowledged?: boolean,
   ) => Promise<boolean>;
   toggleServerSessionPin: (id: string) => Promise<boolean>;
   deleteServerSession: (id: string) => Promise<boolean>;
@@ -2018,6 +2024,32 @@ export const useChatStore = create<ChatState>()(
           await service.updateConversation({
             conversationId: id,
             config: { ...normalizedConfig },
+          }),
+        );
+        set((state) => ({
+          serverReadState: {
+            ...state.serverReadState,
+            sessions: state.serverReadState.sessions.map((item) =>
+              item.id === id ? session : item,
+            ),
+            error: null,
+          },
+        }));
+        return true;
+      },
+
+      updateServerSessionPermission: async (
+        id,
+        permissionMode,
+        fullAccessAcknowledged = false,
+      ) => {
+        const service = createChatCrudService();
+        if (!service.serverEnabled) return false;
+        const session = toStoreSessionFromServer(
+          await service.updateConversationPermission({
+            conversationId: id,
+            permissionMode,
+            fullAccessAcknowledged,
           }),
         );
         set((state) => ({

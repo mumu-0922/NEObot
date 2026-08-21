@@ -30,17 +30,21 @@ import {
   Check,
   Bot,
   MessageCircle,
+  ShieldCheck,
+  ShieldAlert,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type {
   Attachment,
   ChatToolMode,
+  AgentPermissionMode,
   ReasoningEffort,
   SearchMode,
 } from "@/types";
 import type { ModelInfo } from "@/services/api/chatService";
 import { createNeoChatApiClient } from "@/services/api/client";
 import Tooltip from "../ui/Tooltip";
+import { Dialog } from "@/components/ui/primitives";
 import RemoteFileModal from "../modals/RemoteFileModal";
 import KnowledgeSelectionModal from "../knowledge/KnowledgeSelectionModal";
 import MessageInputAttachmentTray from "./MessageInputAttachmentTray";
@@ -123,6 +127,14 @@ interface MessageInputProps {
   effectiveToolMode: ChatToolMode;
   canSelectAgentMode: boolean;
   onToolModeChange: (mode: ChatToolMode) => void;
+  permissionMode?: AgentPermissionMode;
+  availablePermissionModes?: readonly AgentPermissionMode[];
+  showPermissionControl?: boolean;
+  permissionLocked?: boolean;
+  onPermissionModeChange?: (
+    mode: AgentPermissionMode,
+    fullAccessAcknowledged: boolean,
+  ) => void;
   onLocalSessionToolUnavailable?: (action: string) => void;
   knowledgeCollectionIds?: readonly string[];
   onKnowledgeCollectionIdsChange?: (
@@ -182,6 +194,11 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       effectiveToolMode,
       canSelectAgentMode,
       onToolModeChange,
+      permissionMode = "workspace-write",
+      availablePermissionModes = [],
+      showPermissionControl = false,
+      permissionLocked = false,
+      onPermissionModeChange,
       onLocalSessionToolUnavailable,
       knowledgeCollectionIds = EMPTY_KNOWLEDGE_COLLECTION_IDS,
       onKnowledgeCollectionIdsChange,
@@ -198,6 +215,8 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const [showAttachMenu, setShowAttachMenu] = useState(false);
     const [showRemoteModal, setShowRemoteModal] = useState(false);
     const [showKBModal, setShowKBModal] = useState(false);
+    const [showFullAccessConfirmation, setShowFullAccessConfirmation] =
+      useState(false);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [isDragUploadActive, setIsDragUploadActive] = useState(false);
     const [isPolishingInput, setIsPolishingInput] = useState(false);
@@ -1265,6 +1284,49 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           />
         )}
 
+        {showFullAccessConfirmation && (
+          <Dialog
+            open
+            role="alertdialog"
+            onClose={() => setShowFullAccessConfirmation(false)}
+            title={t("fullAccessTitle")}
+            className="z-10000 max-w-md rounded-2xl dark:bg-card"
+          >
+            <div className="p-5">
+              <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-red-800 dark:border-red-900/60 dark:bg-red-950/25 dark:text-red-200">
+                <ShieldAlert
+                  size={20}
+                  className="mt-0.5 shrink-0"
+                  aria-hidden="true"
+                />
+                <p className="text-sm leading-6">
+                  {t("fullAccessConfirmation")}
+                </p>
+              </div>
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowFullAccessConfirmation(false)}
+                  className="rounded-xl px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-muted-foreground dark:hover:bg-muted"
+                >
+                  {t("permissionCancel")}
+                </button>
+                <button
+                  type="button"
+                  disabled={permissionLocked || isInputBusy}
+                  onClick={() => {
+                    setShowFullAccessConfirmation(false);
+                    onPermissionModeChange?.("danger-full-access", true);
+                  }}
+                  className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {t("enableFullAccess")}
+                </button>
+              </div>
+            </div>
+          </Dialog>
+        )}
+
         {/* Error Message Toast */}
         {errorMsg && (
           <div
@@ -1615,6 +1677,90 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {effectiveToolMode === "agent" && showPermissionControl && (
+              <DropdownMenu>
+                <Tooltip
+                  content={t(`permissionDescription.${permissionMode}`)}
+                  position="top"
+                >
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={t("permissionMenuAria", {
+                        mode: t(`permissionMode.${permissionMode}`),
+                      })}
+                      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors ${iconButtonFocusClass} ${
+                        permissionMode === "danger-full-access"
+                          ? "bg-red-50 text-red-700 dark:bg-red-950/35 dark:text-red-200"
+                          : "bg-amber-50 text-amber-700 dark:bg-amber-950/35 dark:text-amber-200"
+                      }`}
+                      disabled={
+                        isInputBusy ||
+                        permissionLocked ||
+                        availablePermissionModes.length === 0
+                      }
+                    >
+                      {permissionMode === "danger-full-access" ? (
+                        <ShieldAlert size={15} aria-hidden="true" />
+                      ) : (
+                        <ShieldCheck size={15} aria-hidden="true" />
+                      )}
+                      <span>{t(`permissionMode.${permissionMode}`)}</span>
+                      <ChevronDown size={12} aria-hidden="true" />
+                    </button>
+                  </DropdownMenuTrigger>
+                </Tooltip>
+                <DropdownMenuContent side="top" align="start" className="w-72">
+                  <DropdownMenuLabel>{t("permissionTitle")}</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={permissionMode}
+                    onValueChange={(value) => {
+                      if (
+                        value !== "read-only" &&
+                        value !== "workspace-write" &&
+                        value !== "danger-full-access"
+                      ) {
+                        return;
+                      }
+                      if (value === "danger-full-access") {
+                        setShowFullAccessConfirmation(true);
+                        return;
+                      }
+                      onPermissionModeChange?.(value, false);
+                    }}
+                  >
+                    {availablePermissionModes.map((mode) => (
+                      <DropdownMenuRadioItem
+                        key={mode}
+                        value={mode}
+                        className={toolModeItemClass}
+                      >
+                        {mode === "danger-full-access" ? (
+                          <ShieldAlert
+                            size={15}
+                            className="mt-0.5 shrink-0 text-red-600"
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <ShieldCheck
+                            size={15}
+                            className="mt-0.5 shrink-0"
+                            aria-hidden="true"
+                          />
+                        )}
+                        <span className={toolModeItemTextClass}>
+                          <span>{t(`permissionMode.${mode}`)}</span>
+                          <span className={toolModeDescriptionClass}>
+                            {t(`permissionDescription.${mode}`)}
+                          </span>
+                        </span>
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
 
             {isReasoningSupported && (
               <DropdownMenu>

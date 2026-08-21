@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/agenthost"
 	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/hostworkspace"
 	"neo-chat/mm-chat/backend/internal/knowledge"
@@ -169,6 +170,7 @@ type ConversationDTO struct {
 	Pinned            bool           `json:"pinned"`
 	Config            map[string]any `json:"config"`
 	WorkspaceID       string         `json:"workspaceId,omitempty"`
+	PermissionMode    string         `json:"permissionMode"`
 	CreatedAt         string         `json:"createdAt"`
 	UpdatedAt         string         `json:"updatedAt"`
 }
@@ -220,6 +222,11 @@ type updateConversationRequest struct {
 	Config            map[string]any `json:"config"`
 	Metadata          map[string]any `json:"metadata"`
 	Pinned            *bool          `json:"pinned"`
+}
+
+type updateConversationPermissionRequest struct {
+	PermissionMode         agenthost.PermissionMode `json:"permissionMode"`
+	FullAccessAcknowledged bool                     `json:"fullAccessAcknowledged"`
 }
 
 type updateConversationMemoryPolicyRequest struct {
@@ -1234,6 +1241,10 @@ func (h *Handler) handleConversationChild(w http.ResponseWriter, r *http.Request
 		h.handleConversationMemoryPolicy(w, r, conversationID)
 		return
 	}
+	if child == "permission" {
+		h.handleConversationPermission(w, r, conversationID)
+		return
+	}
 	if child != "messages" {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
 		return
@@ -1247,6 +1258,62 @@ func (h *Handler) handleConversationChild(w http.ResponseWriter, r *http.Request
 	default:
 		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
+}
+
+func (h *Handler) handleConversationPermission(
+	w http.ResponseWriter,
+	r *http.Request,
+	conversationID string,
+) {
+	if r.Method != http.MethodPut {
+		methodNotAllowed(w, http.MethodPut)
+		return
+	}
+	if h.hostWorkspaceService == nil {
+		writeError(w, http.StatusServiceUnavailable, "HOST_EXECUTION_UNAVAILABLE", "Host Workspace execution is unavailable")
+		return
+	}
+	var request updateConversationPermissionRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeRequestDecodeError(w, err)
+		return
+	}
+	err := h.hostWorkspaceService.SetConversationPermission(
+		r.Context(), conversationID, request.PermissionMode,
+		request.FullAccessAcknowledged,
+	)
+	switch {
+	case errors.Is(err, hostworkspace.ErrInvalid):
+		writeError(w, http.StatusBadRequest, "INVALID_AGENT_PERMISSION", "Agent permission request is invalid")
+		return
+	case errors.Is(err, hostworkspace.ErrPermissionAcknowledgement):
+		writeError(w, http.StatusBadRequest, "FULL_ACCESS_ACKNOWLEDGEMENT_REQUIRED", "Full access acknowledgement is required")
+		return
+	case errors.Is(err, hostworkspace.ErrPermissionLocked):
+		writeError(w, http.StatusConflict, "CONVERSATION_PERMISSION_LOCKED", "Agent permission cannot change during an active Turn")
+		return
+	case errors.Is(err, hostworkspace.ErrPermissionUnavailable):
+		writeError(w, http.StatusConflict, "AGENT_PERMISSION_UNAVAILABLE", "Agent permission mode is unavailable")
+		return
+	case errors.Is(err, hostworkspace.ErrDisabled):
+		writeError(w, http.StatusServiceUnavailable, "HOST_EXECUTION_UNAVAILABLE", "Host Workspace execution is unavailable")
+		return
+	case errors.Is(err, hostworkspace.ErrWorkspaceUnbound):
+		writeError(w, http.StatusConflict, "WORKSPACE_UNBOUND", "Workspace has no Host directory")
+		return
+	case errors.Is(err, hostworkspace.ErrConversationNotFound):
+		writeError(w, http.StatusNotFound, "CONVERSATION_NOT_FOUND", "conversation was not found")
+		return
+	case err != nil:
+		writeServiceError(w, err)
+		return
+	}
+	conversation, err := h.service.GetConversation(r.Context(), conversationID)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, newConversationDTO(conversation))
 }
 
 func (h *Handler) handleMCPPreflight(
@@ -4526,6 +4593,13 @@ func (h *Handler) isRunCancelled(ctx context.Context, runID string) bool {
 
 func newConversationDTO(conversation Conversation) ConversationDTO {
 	config := stripRetiredLegacySkillSelection(ensureObject(conversation.Metadata))
+	delete(config, conversationPermissionMetadataKey)
+	permissionMode := conversation.PermissionMode
+	if permissionMode != string(agenthost.PermissionReadOnly) &&
+		permissionMode != string(agenthost.PermissionWorkspaceWrite) &&
+		permissionMode != string(agenthost.PermissionFullAccess) {
+		permissionMode = string(agenthost.PermissionWorkspaceWrite)
+	}
 	return ConversationDTO{
 		ID:                conversation.ID,
 		Title:             conversation.Title,
@@ -4536,6 +4610,7 @@ func newConversationDTO(conversation Conversation) ConversationDTO {
 		Pinned:            configBool(config, "pinned"),
 		Config:            config,
 		WorkspaceID:       conversation.WorkspaceID,
+		PermissionMode:    permissionMode,
 		CreatedAt:         formatTime(conversation.CreatedAt),
 		UpdatedAt:         formatTime(conversation.UpdatedAt),
 	}

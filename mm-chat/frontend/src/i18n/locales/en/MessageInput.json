@@ -26,6 +26,19 @@
   "agentMode": "Agent",
   "agentModeDescription": "Automatically use Skills, files, terminal, Browser, and connectors",
   "agentModeUnsupported": "This model does not support Tools; Chat is active",
+  "permissionTitle": "Agent permission",
+  "permissionMenuAria": "Choose Agent permission, currently {mode}",
+  "permissionMode": {
+    "read-only": "Read Only",
+    "workspace-write": "Workspace Write",
+    "danger-full-access": "Full access"
+  },
+  "permissionDescription": {
+    "read-only": "Read the project and run commands without persistent file writes.",
+    "workspace-write": "Write inside the current project while paths outside it stay read-only.",
+    "danger-full-access": "Use the Host Runner user’s full machine access."
+  },
+  "fullAccessConfirmation": "Full access lets the Agent modify files outside this project with the current Host Runner user’s authority. Continue?",
   "enableSearchAria": "Enable search",
   "disableSearchAria": "Disable search",
   "enableSearchWithMode": "Enable Search ({mode})",
@@ -87,5 +100,8 @@
   "parsingDocument": "Parsing document…",
   "failedToParseDocument": "Failed to parse document \"{fileName}\".",
   "dropFilesTitle": "Drop files to attach",
-  "dropFilesHint": "Images, audio, text, and documents use the same limits as the attachment button."
+  "dropFilesHint": "Images, audio, text, and documents use the same limits as the attachment button.",
+  "fullAccessTitle": "Enable Full access",
+  "permissionCancel": "Cancel",
+  "enableFullAccess": "Enable Full access"
 }

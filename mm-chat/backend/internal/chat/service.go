@@ -7,9 +7,10 @@ import (
 )
 
 const (
-	maxMessageAttachments        = 20
-	maxContextSummaryBytes       = 64 * 1024
-	contextSummaryDigestHexBytes = 32
+	maxMessageAttachments             = 20
+	maxContextSummaryBytes            = 64 * 1024
+	contextSummaryDigestHexBytes      = 32
+	conversationPermissionMetadataKey = "permissionMode"
 )
 
 type Service struct {
@@ -36,6 +37,7 @@ func (s *Service) CreateConversation(
 	if input.Metadata == nil {
 		input.Metadata = map[string]any{}
 	}
+	delete(input.Metadata, conversationPermissionMetadataKey)
 	input.Metadata = stripRetiredLegacySkillSelection(input.Metadata)
 	if _, hasMode := input.Metadata["searchMode"]; !hasMode {
 		if _, hasLegacy := input.Metadata["useSearch"]; !hasLegacy {
@@ -117,6 +119,8 @@ func (s *Service) UpdateConversation(
 	if input.MetadataMerge == nil {
 		input.MetadataMerge = map[string]any{}
 	}
+	delete(input.MetadataMerge, conversationPermissionMetadataKey)
+	input.MetadataDeleteKeys = append(input.MetadataDeleteKeys, conversationPermissionMetadataKey)
 	input.MetadataMerge = stripRetiredLegacySkillSelection(input.MetadataMerge)
 	input.MetadataDeleteKeys = appendRetiredLegacySkillDeleteKey(input.MetadataDeleteKeys)
 	if err := normalizeConversationSearchMetadata(input.MetadataMerge, nil); err != nil {
@@ -130,6 +134,7 @@ func (s *Service) UpdateConversation(
 		input.ReplaceMetadata = &empty
 	}
 	if input.ReplaceMetadata != nil {
+		delete(*input.ReplaceMetadata, conversationPermissionMetadataKey)
 		*input.ReplaceMetadata = stripRetiredLegacySkillSelection(*input.ReplaceMetadata)
 		if err := normalizeConversationSearchMetadata(*input.ReplaceMetadata, nil); err != nil {
 			return Conversation{}, err

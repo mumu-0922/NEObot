@@ -107,6 +107,13 @@ describe("MessageInput composition", () => {
     expect(messageInput).toContain("effectiveToolMode: ChatToolMode");
     expect(messageInput).toContain("canSelectAgentMode: boolean");
     expect(messageInput).toContain("onToolModeChange:");
+    expect(messageInput).toContain("permissionMode?: AgentPermissionMode");
+    expect(messageInput).toContain("availablePermissionModes.map");
+    expect(messageInput).toContain('role="alertdialog"');
+    expect(messageInput).toContain(
+      'onPermissionModeChange?.("danger-full-access", true)',
+    );
+    expect(messageInput).not.toContain("window.confirm");
     expect(messageInput).not.toContain("activeSkillIdsOverride");
     expect(messageInput).not.toContain("onActiveSkillIdsChange");
     expect(messageInput).not.toContain("skillSelectionDisabled");
@@ -143,7 +150,7 @@ describe("MessageInput composition", () => {
       '"whitespace-normal break-words text-xs leading-4 font-normal text-muted-foreground"',
     );
     expect(messageInput.match(/className={toolModeItemClass}/g)).toHaveLength(
-      2,
+      3,
     );
     expect(messageInput).toContain("effectiveUseReasoning");
     expect(messageInput).toContain("reasoningEffortOptions.map");

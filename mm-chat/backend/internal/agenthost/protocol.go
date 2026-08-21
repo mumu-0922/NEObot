@@ -115,6 +115,7 @@ type ToolExecuteRequest struct {
 	Scope           ExecutionScope     `json:"scope"`
 	Tool            string             `json:"tool"`
 	Arguments       json.RawMessage    `json:"arguments"`
+	PermissionMode  PermissionMode     `json:"permissionMode"`
 	Approved        bool               `json:"approved"`
 	ActiveSkillRoot string             `json:"activeSkillRoot,omitempty"`
 }

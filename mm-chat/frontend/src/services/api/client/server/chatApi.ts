@@ -24,6 +24,7 @@ import type {
   StreamAssistantMessageInput,
   ServerStreamEvent,
   UpdateConversationInput,
+  UpdateConversationPermissionInput,
   UpdateMessageInput,
   DecideChatApprovalInput,
   ChatApprovalDTO,
@@ -138,6 +139,20 @@ export function createServerChatApiShell(httpClient: HttpClient): ChatApi {
         {
           method: "PATCH",
           body: updateConversationBody(input),
+        },
+      );
+    },
+    async updateConversationPermission(
+      input: UpdateConversationPermissionInput,
+    ): Promise<ConversationDTO> {
+      return httpClient.requestJson<ConversationDTO>(
+        `${conversationPath(input.conversationId)}/permission`,
+        {
+          method: "PUT",
+          body: {
+            permissionMode: input.permissionMode,
+            fullAccessAcknowledged: input.fullAccessAcknowledged === true,
+          },
         },
       );
     },
