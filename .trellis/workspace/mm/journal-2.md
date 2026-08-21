@@ -825,3 +825,37 @@ Implemented and deployed answer-only continuation for exact provider stream inte
 ### Next Steps
 
 - None - task complete
+
+
+## Session 73: Isolate answer versions and composer menus
+
+**Date**: 2026-08-21
+**Task**: Isolate answer versions and composer menus
+**Branch**: `main`
+
+### Summary
+
+Fixed Local and Server answer-version switching so only the selected Assistant answer changes while the visible downstream conversation remains stable; made Conversation mode, Agent permission, Reasoning, and Search menus single-open; passed focused frontend checks and deployed a healthy immutable Frontend-only image with rollback state.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d4475fa5` | (see git log) |
+| `6675a848` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
