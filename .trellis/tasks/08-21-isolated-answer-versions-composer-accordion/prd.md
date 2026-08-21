@@ -26,21 +26,21 @@ composer configuration menus behave as a single-open accordion group.
 
 ## Acceptance Criteria
 
-- [ ] Given an active assistant version with downstream messages, switching to
+- [x] Given an active assistant version with downstream messages, switching to
       a sibling version changes only that assistant message; downstream message
       IDs and order stay identical.
-- [ ] Repeated next/previous switching preserves the currently visible
+- [x] Repeated next/previous switching preserves the currently visible
       downstream path and does not lose inactive subtrees.
-- [ ] User-message branch switching still selects that user's own continuation.
-- [ ] Local store switching persists the updated tree and keeps the visible
+- [x] User-message branch switching still selects that user's own continuation.
+- [x] Local store switching persists the updated tree and keeps the visible
       message count stable.
-- [ ] Server store switching updates only Server read state/cache and does not
+- [x] Server store switching updates only Server read state/cache and does not
       write Local IndexedDB state.
-- [ ] Opening any one of the four composer configuration menus closes the
+- [x] Opening any one of the four composer configuration menus closes the
       previously open configuration menu.
-- [ ] Focused Vitest coverage, changed-file formatting/lint, TypeScript
+- [x] Focused Vitest coverage, changed-file formatting/lint, TypeScript
       typecheck, and production frontend build pass.
-- [ ] Updated frontend image is deployed and the application health check
+- [x] Updated frontend image is deployed and the application health check
       passes.
 
 ## Definition of Done
@@ -103,3 +103,24 @@ or API migration is needed.
 - User explicitly confirmed the UX through screenshots and requested direct
   implementation, focused tests only, automatic commit/build/deploy, and no
   confirmation prompts.
+
+## Rollout Evidence
+
+- Work commit: `d4475fa5`.
+- Frontend image:
+  `mm-chat/frontend:isolated-answers-d4475fa5-20260821T093509Z`
+  (`sha256:8777ed58345aa8117bd4f2fd0df637084252429f2e6cc5882c7cda24c9991272`).
+- Rollback snapshot:
+  `mm-chat/backup/deployments/20260821T093509Z-isolated-answers-d4475fa5/`
+  contains the mode-`0600` pre-deploy environment, candidate environment,
+  before/after container snapshots, and image identity.
+- Focused verification passed: 77 Vitest tests across the tree, Local store,
+  Server store, and composer composition suites; changed-file Prettier and
+  ESLint; TypeScript typecheck; host and Docker production builds.
+- Live root and `/api/health` returned HTTP `200`; Frontend and unchanged
+  Backend containers are healthy, and deployed compiled assets contain the
+  controlled `tool-mode` menu contract.
+- Full suites and the standalone gate were intentionally not run because this
+  is a localized Frontend behavior fix under the proportional-test rule.
+- Roll back by restoring `.env.single-server.before` from the snapshot and
+  recreating only `frontend`; no schema or durable-data migration is involved.
