@@ -48,6 +48,11 @@ transcript when a partial replay lacks the start event.
   renderer and must not hide `message.reasoning` or fabricate a v2 history.
 - Keep `agentEvents` on the live Message draft and on DTO reload mapping so
   streaming, reconnect, terminal replacement, and reload run the same projector.
+- Preserve `agentEvents` through every intermediate Message conversion,
+  including `mapChatMessageDtoToMessage` and `toStoreMessageFromServer`.
+  `message.completed` replaces the streaming draft with the terminal snapshot;
+  omitting the field at either hop makes details disappear at completion and
+  again after reload even though durable storage and SSE are correct.
 - Context/Reasoning limits are 64 KiB per event and 1 MiB reasoning per Turn.
   Unknown sources, orphan deltas, unsupported block types, and malformed values
   fail closed.
@@ -81,8 +86,9 @@ transcript when a partial replay lacks the start event.
   malformed/orphan fail-closed behavior.
 - Component SSR/DOM: independent expandable rows, typed Terminal details,
   localized labels, no aggregate wrapper, and no hostile raw fields.
-- DTO/store/SSE: retain `agentEvents`, deduplicate reconnect events, and converge
-  terminal Message/reload with the same order.
+- DTO/store/SSE: retain `agentEvents` through the terminal Message replacement
+  and a fresh list/reload, deduplicate reconnect events, and converge both paths
+  with the same order.
 - Run frontend format, lint, typecheck, focused Vitest, and production build.
 
 ## 7. Wrong vs Correct

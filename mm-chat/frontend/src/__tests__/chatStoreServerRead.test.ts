@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Message, Session } from "../types";
+import type { ChatAgentEvent, Message, Session } from "../types";
 
 const mocks = vi.hoisted(() => {
   const storedItems = new Map<string, unknown>();
@@ -149,6 +149,36 @@ const makeMessage = (id: string, role: Message["role"]): Message => ({
   timestamp: Date.parse("2026-07-08T00:00:01Z"),
 });
 
+const makeTranscriptEvents = (messageId: string): ChatAgentEvent[] => [
+  {
+    eventId: `${messageId}-event-1`,
+    turnId: `${messageId}-turn`,
+    conversationId: "c1",
+    messageId,
+    runId: `${messageId}-run`,
+    sequence: 1,
+    type: "turn.started",
+    payload: { status: "running", transcriptVersion: 2 },
+    occurredAt: "2026-08-21T00:00:00Z",
+  },
+  {
+    eventId: `${messageId}-event-2`,
+    turnId: `${messageId}-turn`,
+    conversationId: "c1",
+    messageId,
+    runId: `${messageId}-run`,
+    sequence: 2,
+    type: "context.injected",
+    payload: {
+      source: "system-prompt",
+      label: "System prompt",
+      content: "Durable transcript fixture",
+      truncated: false,
+    },
+    occurredAt: "2026-08-21T00:00:01Z",
+  },
+];
+
 const makeEmptyServerReadState = () => ({
   sessions: [],
   currentSessionId: null,
@@ -256,6 +286,13 @@ describe("chat store server read path", () => {
   it("loads server conversations into a non-persisted snapshot", async () => {
     const localSession = makeServerSession("local");
     const localMessage = makeMessage("local-m1", "user");
+    mocks.serverService.listMessages.mockResolvedValueOnce([
+      makeMessage("m1", "user"),
+      {
+        ...makeMessage("m2", "model"),
+        agentEvents: makeTranscriptEvents("m2"),
+      },
+    ]);
     useChatStore.setState({
       sessions: [localSession],
       currentSessionId: "local",
@@ -275,6 +312,9 @@ describe("chat store server read path", () => {
     expect(
       state.serverReadState.activeMessages.map((message) => message.id),
     ).toEqual(["m1", "m2"]);
+    expect(state.serverReadState.activeMessages[1]?.agentEvents).toEqual(
+      makeTranscriptEvents("m2"),
+    );
     expect(state.serverReadState.isLoading).toBe(false);
     expect(state.serverReadState.error).toBeNull();
 
@@ -1253,6 +1293,7 @@ describe("chat store server read path", () => {
             ...makeMessage("m4", "model"),
             content: "hello",
             reasoning: "checked",
+            agentEvents: makeTranscriptEvents("m4"),
             processTrace: [
               {
                 id: "m4:generation:1",
@@ -1380,6 +1421,7 @@ describe("chat store server read path", () => {
     });
     expect(state.serverReadState.activeMessages[1]).toMatchObject({
       reasoning: "checked",
+      agentEvents: makeTranscriptEvents("m4"),
       processTrace: [{ id: "m4:generation:1", status: "completed" }],
     });
     expect(state.currentSessionId).toBe("local");

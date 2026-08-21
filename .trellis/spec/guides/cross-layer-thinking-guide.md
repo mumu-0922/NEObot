@@ -99,6 +99,14 @@ later from persisted history:
 - [ ] Test the actual stream dispatch before reload, then test persisted replay
       separately. A successful reload can hide a broken live parser because
       detached Backend execution may finish and persist after the UI aborts.
+- [ ] Trace every client-side conversion after normalization. In particular,
+      compare the live draft, terminal Message replacement, store-domain
+      conversion, and list/reload conversion field by field; a typed DTO field
+      can still disappear in a handwritten object mapper without a compiler
+      error.
+- [ ] Assert the terminal replacement and a fresh reload retain the same durable
+      event collection. Do not stop at proving that details appear while SSE is
+      still streaming.
 - [ ] For rollout acceptance, retain one complete pre-reload stream trace and
       prove the final UI state without using reload as recovery.
 
