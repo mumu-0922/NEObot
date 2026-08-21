@@ -892,3 +892,36 @@ Closed the regeneration entry-point gap left by the previous answer-version fix.
 ### Next Steps
 
 - None - task complete
+
+
+## Session 75: Preserve regenerated continuations after reload
+
+**Date**: 2026-08-21
+**Task**: Preserve regenerated continuations after reload
+**Branch**: `main`
+
+### Summary
+
+Completed the answer-slot fix across reload reconstruction. Chronological Server messages now project newer Assistant siblings through the descendant-preserving branch helper, so already persisted and newly regenerated conversations retain their downstream messages after refresh. Focused checks passed and the final Frontend-only image is healthy.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6b687638` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
