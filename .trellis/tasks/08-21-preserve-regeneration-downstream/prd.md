@@ -23,16 +23,16 @@ messages below it.
 
 ## Acceptance Criteria
 
-- [ ] Local `addMessageVersion` immediately renders the new empty Assistant
+- [x] Local `addMessageVersion` immediately renders the new empty Assistant
       version followed by the exact same downstream message IDs and order.
-- [ ] Server regeneration `message.started` immediately renders the new
+- [x] Server regeneration `message.started` immediately renders the new
       Assistant draft followed by the exact same downstream message IDs/order.
-- [ ] Completing either regeneration updates the new answer without disturbing
+- [x] Completing either regeneration updates the new answer without disturbing
       its continuation.
-- [ ] Switching between the old and regenerated answers remains slot-local.
-- [ ] All tree nodes remain reachable exactly once and direct child node parent
+- [x] Switching between the old and regenerated answers remains slot-local.
+- [x] All tree nodes remain reachable exactly once and direct child node parent
       IDs match the selected answer.
-- [ ] Focused tree/store tests, changed-file format/lint, typecheck, production
+- [x] Focused tree/store tests, changed-file format/lint, typecheck, production
       build, Frontend rollout, and live health checks pass.
 
 ## Technical Approach
@@ -69,3 +69,31 @@ no API, backend, database, or persisted-schema migration is needed.
   `chatStoreServerRead.test.ts`.
 - This task closes an incomplete prior fix demonstrated by the user's live
   screenshot after regeneration.
+
+## Debug Retrospective
+
+- Root cause category: change-propagation failure plus a test-coverage gap.
+- The prior patch enforced slot-local behavior only in the navigation actions;
+  it missed both sibling-creation entry points: Local `addMessageVersion` and
+  Server regeneration draft insertion.
+- Prevention is now structural: `createModelResponseBranch` owns descendant
+  transfer, both modes reuse it, and the Server test asserts state immediately
+  inside `message.started`, not only after the terminal result.
+- The executable contract is recorded in
+  `.trellis/spec/frontend/state-management.md` so future changes must cover
+  creation and selection together.
+
+## Rollout Evidence
+
+- Work commit: `b87425ed`.
+- Frontend image: `mm-chat/frontend:regen-downstream-b87425ed-20260821T094432Z`
+  (`sha256:a87be57fcbb23e0a3528c14d0a8427a209fa8860966cca2409a1407e8f338afc`).
+- Rollback snapshot:
+  `mm-chat/backup/deployments/20260821T094432Z-regen-downstream-b87425ed/`.
+- Focused verification passed: 76 tree/Local-store/Server-store Vitest tests,
+  changed-file Prettier and ESLint, TypeScript typecheck, and host/Docker
+  production builds. No unrelated full suite or standalone gate was run.
+- Live root and `/api/health` returned HTTP `200`; the new Frontend and unchanged
+  Backend containers are healthy.
+- Roll back by restoring the snapshot's `.env.single-server.before` and
+  recreating only `frontend`; no schema or durable-state rollback is required.
