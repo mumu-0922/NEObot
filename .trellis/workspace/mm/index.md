@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 73
+- **Total Sessions**: 74
 - **Last Active**: 2026-08-21
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~861 | Active |
+| `journal-2.md` | ~894 | Active |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 74 | 2026-08-21 | Preserve downstream messages during regeneration | `b87425ed` | `main` |
 | 73 | 2026-08-21 | Isolate answer versions and composer menus | `d4475fa5`, `6675a848` | `main` |
 | 72 | 2026-08-21 | Safe provider stream continuation | `cf98a2db`, `ba908478` | `main` |
 | 71 | 2026-08-21 | Deploy Harness-style Host Agent permissions | `504d3938`, `dc48d4ed` | `main` |

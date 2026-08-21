@@ -859,3 +859,36 @@ Fixed Local and Server answer-version switching so only the selected Assistant a
 ### Next Steps
 
 - None - task complete
+
+
+## Session 74: Preserve downstream messages during regeneration
+
+**Date**: 2026-08-21
+**Task**: Preserve downstream messages during regeneration
+**Branch**: `main`
+
+### Summary
+
+Closed the regeneration entry-point gap left by the previous answer-version fix. Local and Server regeneration now transfer the visible continuation when creating a sibling Assistant draft; focused tests assert the Server message.started state, builds passed, and a healthy Frontend-only image was deployed with rollback state.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b87425ed` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
