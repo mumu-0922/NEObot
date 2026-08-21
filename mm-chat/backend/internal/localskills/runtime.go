@@ -20,8 +20,10 @@ import (
 )
 
 const (
-	ApprovalSmart = "smart"
-	ApprovalOff   = "off"
+	ApprovalSmart        = "smart"
+	ApprovalOff          = "off"
+	RuntimeLocalDirect   = "local_direct"
+	RuntimeHostWorkspace = "host_workspace"
 
 	defaultPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 )
@@ -37,6 +39,7 @@ var (
 
 type Config struct {
 	Enabled           bool
+	RuntimeMode       string
 	RuntimeRoot       string
 	WorkspaceRoot     string
 	WorkspaceHostRoot string
@@ -94,6 +97,10 @@ type Executor struct {
 }
 
 func NewExecutor(config Config) (*Executor, error) {
+	config.RuntimeMode = strings.TrimSpace(config.RuntimeMode)
+	if config.RuntimeMode == "" {
+		config.RuntimeMode = RuntimeLocalDirect
+	}
 	config.RuntimeRoot = filepath.Clean(strings.TrimSpace(config.RuntimeRoot))
 	config.WorkspaceRoot = filepath.Clean(strings.TrimSpace(config.WorkspaceRoot))
 	config.WorkspaceHostRoot = strings.TrimSpace(config.WorkspaceHostRoot)
@@ -105,6 +112,7 @@ func NewExecutor(config Config) (*Executor, error) {
 	if config.Enabled && (!secureRoot(config.RuntimeRoot) || !secureRoot(config.WorkspaceRoot) ||
 		(config.WorkspaceHostRoot != "" && !secureRoot(config.WorkspaceHostRoot)) ||
 		!filepath.IsAbs(config.ShellPath) ||
+		(config.RuntimeMode != RuntimeLocalDirect && config.RuntimeMode != RuntimeHostWorkspace) ||
 		(config.ApprovalMode != ApprovalSmart && config.ApprovalMode != ApprovalOff) ||
 		config.CallTimeout < time.Second || config.CallTimeout > 10*time.Minute ||
 		config.RunTimeout < config.CallTimeout || config.RunTimeout > 30*time.Minute ||
@@ -215,6 +223,7 @@ func (executor *Executor) executeReserved(
 		executor.config.WorkspaceRoot,
 		request.SkillsRoot,
 		request.ActiveSkillRoot,
+		executor.config.RuntimeMode,
 	)
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	capture := newBoundedCapture(executor.config.MaxOutput)
@@ -318,14 +327,19 @@ func pathWithin(root, target string) bool {
 		!strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
-func explicitEnvironment(workspace, skillsRoot, activeSkillRoot string) []string {
+func explicitEnvironment(workspace, skillsRoot, activeSkillRoot, runtimeMode string) []string {
 	environment := []string{
 		"HOME=" + workspace,
 		"LANG=C.UTF-8",
 		"LC_ALL=C.UTF-8",
-		"NEO_CHAT_LOCAL_DIRECT=1",
+		"NEO_CHAT_AGENT_RUNTIME=" + runtimeMode,
 		"NEO_CHAT_WORKSPACE=" + workspace,
 		"PATH=" + defaultPath,
+	}
+	if runtimeMode == RuntimeHostWorkspace {
+		environment = append(environment, "NEO_CHAT_HOST_WORKSPACE=1")
+	} else {
+		environment = append(environment, "NEO_CHAT_LOCAL_DIRECT=1")
 	}
 	if secureRoot(filepath.Clean(strings.TrimSpace(skillsRoot))) {
 		skillsRoot = filepath.Clean(skillsRoot)

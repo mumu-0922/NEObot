@@ -92,6 +92,21 @@ func (service *Service) PickNativeDirectory(
 	return picker.PickNativeDirectory(ctx)
 }
 
+func (service *Service) ExecuteTool(
+	ctx context.Context,
+	request agenthost.ToolExecuteRequest,
+	output any,
+) error {
+	if service == nil || service.resolver == nil {
+		return ErrDisabled
+	}
+	executor, ok := service.resolver.(hostToolExecutor)
+	if !ok {
+		return ErrDisabled
+	}
+	return executor.ExecuteTool(ctx, request, output)
+}
+
 func (service *Service) List(ctx context.Context) ([]Workspace, error) {
 	if service == nil || service.repository == nil {
 		return nil, ErrDisabled

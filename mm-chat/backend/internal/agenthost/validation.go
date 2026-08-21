@@ -8,13 +8,15 @@ import (
 )
 
 const (
-	maxTokenBytes           = 4096
-	minTokenBytes           = 32
-	maxRunnerIDBytes        = 64
-	maxVersionBytes         = 128
-	maxWorkspacePathBytes   = 4096
-	maxControlRequestBytes  = int64(16 << 10)
-	maxControlResponseBytes = int64(64 << 10)
+	maxTokenBytes             = 4096
+	minTokenBytes             = 32
+	maxRunnerIDBytes          = 64
+	maxVersionBytes           = 128
+	maxWorkspacePathBytes     = 4096
+	maxControlRequestBytes    = int64(16 << 10)
+	maxControlResponseBytes   = int64(64 << 10)
+	maxExecutionRequestBytes  = int64(128 << 10)
+	maxExecutionResponseBytes = int64(72 << 20)
 )
 
 var runnerIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{2,63}$`)

@@ -100,6 +100,10 @@ type nativeDirectoryPicker interface {
 	PickNativeDirectory(context.Context) (agenthost.NativeDirectoryPickResponse, error)
 }
 
+type hostToolExecutor interface {
+	ExecuteTool(context.Context, agenthost.ToolExecuteRequest, any) error
+}
+
 type HostStatus struct {
 	Enabled      bool
 	Status       string

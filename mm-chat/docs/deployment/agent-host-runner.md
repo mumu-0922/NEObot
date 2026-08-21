@@ -6,9 +6,9 @@ The Agent Host is an ordinary-user WSL process for arbitrary WSL and mounted
 Windows project directories. It exposes capability discovery, canonical
 Workspace resolution, WSL directory browsing, and a native Windows folder
 picker. Migration `102` and the Backend `/v1/workspaces*` API persist Workspace
-settings and execution authority. Compose can mount only the exact socket
-directory and independent identity files; no Agent Tool execution is routed
-through the Host yet.
+settings and execution authority. Bound Agent Conversations route File,
+Terminal, Job, Skill-script, and artifact-read operations through the exact
+socket; ungrouped legacy Conversations retain Docker `local_direct`.
 
 The Host lifecycle remains independently deployable and reversible. Database
 rollback is separate: `102.down` refuses once imported settings, a Host binding,
@@ -52,10 +52,16 @@ Defaults:
 | `secrets/agent-host-runner-id` | `0600` | Stable identity used to pin Backend responses. |
 | `.runtime/agent-host/agent-host.sock` | `0600` | No-TCP control channel. |
 | `secrets/agent-host-token` | `0600` | Independent bearer token; generated only when absent. |
+| `data/agent-skills/` | `0700` | Host-visible source of Backend-materialized Skill packages. |
 
 The wrapper never overwrites an existing token or Runner id and never prints
 the token. It refuses root, symlinked state, unsafe modes, wrong ownership,
 malformed PID files, and unrelated live PIDs.
+
+`AGENT_HOST_SKILLS_ROOT` may override the Skill root for tests. It must be an
+existing absolute canonical directory with no symlink component. Active Skill
+roots cross the socket only as contained relative names and are revalidated by
+the Host before process creation.
 
 ## Connect the Compose Backend
 
@@ -112,10 +118,12 @@ contents into issue trackers.
 - Runner identity mismatch: stop the unexpected process and restore the
   persisted Runner id expected by future durable workspace records. Do not
   silently adopt another Runner.
+- `HOST_EXECUTION_UNAVAILABLE`: restore the same pinned Runner and run
+  `prepare`; never switch a bound Conversation to Docker `/workspace`.
 
-An execution request whose outcome is unknown will not be retried once
-execution routes exist. Workspace binding mutates only Backend registration;
-directory browse/pick/resolve never mutate project files.
+An execution request whose outcome is unknown is not retried. Workspace
+binding mutates only Backend registration; directory browse/pick/resolve never
+mutate project files.
 
 ## Stop and rollback
 
@@ -124,8 +132,9 @@ directory browse/pick/resolve never mutate project files.
 ```
 
 Set `AGENT_HOST_ENABLED=false` and recreate Backend to disconnect the socket;
-existing Workspace records remain readable and binding fails closed. Then stop
-the Host if desired. Preserve `secrets/agent-host-token` and
+existing Workspace records remain readable, while every Host-bound Agent Turn
+fails closed. Ungrouped legacy Conversations may still use `local_direct`.
+Then stop the Host if desired. Preserve `secrets/agent-host-token` and
 `secrets/agent-host-runner-id` for forward recovery unless the owner explicitly
 authorizes credential destruction. The disposable `.runtime/agent-host/`
 directory may be rebuilt, but never delete or rewrite `data/`, `secrets/`,

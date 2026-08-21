@@ -141,6 +141,7 @@ Default runtime state:
 .runtime/agent-host/                 mode 0700, disposable process state
 secrets/agent-host-token             mode 0600, persistent, create-if-absent
 secrets/agent-host-runner-id         mode 0600, persistent, create-if-absent
+data/agent-skills/                    mode 0700, Host Skill materialization root
 ```
 
 ### Contracts
@@ -167,9 +168,9 @@ secrets/agent-host-runner-id         mode 0600, persistent, create-if-absent
   protocol, Runner id, and source fingerprint all match; changed code restarts
   the exact managed process.
 - When enabled, Compose mounts only the exact socket directory read-only plus
-  independent token/Runner-id secrets. The default-off feature flag and
-  sanitized health projection preserve fail-closed binding. Existing Tool
-  execution remains unchanged until the execution-routing slice.
+  independent token/Runner-id secrets. The Host wrapper passes the canonical
+  non-symlink `data/agent-skills` root to the ordinary-user process. Bound Tool
+  execution uses the Host; ungrouped legacy execution remains unchanged.
 - Rollback stops the process and reverts source. Preserve persistent identity
   files unless the owner explicitly authorizes credential destruction.
 
@@ -185,7 +186,7 @@ secrets/agent-host-runner-id         mode 0600, persistent, create-if-absent
 | PID points to unrelated live process | refuse to signal or remove PID file |
 | owned stale socket | same-file recheck, replace, bind mode `0600` |
 | active socket | refuse a second listener |
-| Host stopped after socket rollout | status unavailable; bind/browse/pick fail; current Tool routing unchanged |
+| Host stopped after execution rollout | status/control fail; bound Tools fail closed; ungrouped legacy Tools remain local |
 
 ### Good / base / bad cases
 
@@ -264,8 +265,8 @@ Enabled Host status:     ready
 - `102.down` is clean only before any imported settings, Host binding, or
   execution snapshot. After durable state exists, use the compatible previous
   application path or a matched backup; never purge records to force down.
-- Keep existing unbound Conversations on their current behavior. Socket rollout
-  enables resolve/browse/pick/bind only and must not claim Host execution.
+- Keep existing unbound Conversations on their current behavior. Bound
+  Conversations use `host_workspace` and must never fall back after Runner loss.
 
 ### Validation and error matrix
 
@@ -275,15 +276,15 @@ Enabled Host status:     ready
 | migration 102 empty down/re-up | succeeds and restores exact grants/constraints |
 | migration 102 down after imported/bound state | `HOST_WORKSPACE_ROLLBACK_BLOCKED`; head/data unchanged |
 | Host feature disabled or socket absent | list/import work; status unavailable/disabled and bind is generic `503` |
-| Host stopped after socket rollout | no current Tool-routing fallback or mutation |
+| Host stopped after socket rollout | bound Tool fails without Docker fallback or mutation |
 | protected runtime paths differ after release | release fails review |
 
 ### Good / base / bad cases
 
 - **Good**: head is 102, Host is ready, legacy Workspaces import once, browse or
   native picker selects a directory, and bind returns its canonical safe view.
-- **Base**: the Host process is stopped; the durable API remains usable except
-  bind, while existing `local_direct` execution is unchanged.
+- **Base**: the Host process is stopped; the durable API remains readable,
+  bound Agent execution fails, and ungrouped legacy `local_direct` is unchanged.
 - **Bad**: mount `$HOME`, rewrite the Host token, rebuild every service, or
   down/purge durable Workspaces merely to return to schema 101.
 

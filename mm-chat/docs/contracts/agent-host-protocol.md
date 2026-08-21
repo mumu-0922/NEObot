@@ -3,9 +3,9 @@
 ## Status
 
 Protocol version `1` defines Host identity/capabilities, canonical Workspace
-resolution, WSL directory browsing, and the native Windows directory picker.
-It is not yet an execution protocol and does not change the existing Docker
-`local_direct` Agent Tool runtime.
+resolution, WSL directory browsing, the native Windows directory picker, and
+bounded Agent Tool execution in an immutable Host Workspace. Permission modes
+remain unavailable until their enforcement slice lands.
 
 ## Transport and authentication
 
@@ -15,7 +15,9 @@ It is not yet an execution protocol and does not change the existing Docker
 - Every request: `Authorization: Bearer <agent-host-token>`.
 - The token is independent from MCP and is loaded from an absolute,
   owner-matched, regular, non-symlink file with exact mode `0600`.
-- Request bodies are at most 16 KiB; responses are at most 64 KiB.
+- Control request bodies are at most 16 KiB and responses are at most 64 KiB.
+  Tool execution has independent 128 KiB request and 72 MiB response bounds;
+  the larger response exists only for the already-bounded artifact body.
 - JSON is strict: unknown fields and multiple/trailing documents are rejected.
 - Successful responses carry the expected stable `runnerId`.
 
@@ -37,7 +39,7 @@ Returns:
     "directoryBrowse": true,
     "nativeDirectoryPicker": true,
     "windowsPathInterop": true,
-    "execution": false,
+    "execution": true,
     "permissionModes": []
   },
   "limits": {
@@ -51,6 +53,9 @@ Returns:
 The Host must not list `read-only`, `workspace-write`, or
 `danger-full-access` until the corresponding enforcement probes pass on the
 target WSL kernel and filesystem.
+
+`execution=true` means the Tool route below is active. It does not imply that
+any permission preset is enforced; `permissionModes` therefore remains empty.
 
 ### `POST /internal/v1/workspaces/resolve`
 
@@ -115,6 +120,47 @@ successful `{"cancelled":true}` response. The Backend uses a dedicated bounded
 270-second HTTP client for this human interaction, below the frontend proxy's
 five-minute ceiling, while ordinary control calls retain the short timeout.
 
+### `POST /internal/v1/tools/execute`
+
+The Docker Backend sends one already-authorized Tool call with the immutable
+Conversation Workspace snapshot:
+
+```json
+{
+  "protocolVersion": 1,
+  "workspace": {
+    "canonicalPath": "/mnt/d/projects/neo-chat",
+    "directoryFingerprint": "sha256:<64-lowercase-hex>"
+  },
+  "scope": {"userId":"<uuid>","conversationId":"<uuid>"},
+  "tool": "terminal",
+  "arguments": {"command":"pwd","workingDir":"","timeoutSeconds":30},
+  "approved": false,
+  "activeSkillRoot": "<relative-materialized-skill-root>"
+}
+```
+
+Supported operations are `terminal`, `file_read`, `file_write`, `file_edit`,
+`file_search`, `artifact_read`, `job_start`, `job_list`, `job_output`,
+`job_kill`, and `job_notices`. Before every call the Host canonicalizes the
+persisted path again and requires an exact canonical-path/fingerprint match.
+It creates one bounded `localskills.Executor` per exact Workspace authority,
+rooted at the Host directory, and preserves CAS/symlink defenses, smart
+approval, hard blocks, process-group cancellation, time/output limits, and
+process-local Jobs.
+
+The response carries the pinned Runner identity and one strict typed result:
+
+```json
+{"protocolVersion":1,"runnerId":"wsl-0123456789abcdef01234567","result":{"exitCode":0,"stdout":"$NEO_CHAT_WORKSPACE\n","stderr":"","timedOut":false,"truncated":false,"durationMillis":4}}
+```
+
+Host paths and materialized Skill paths are redacted before results return.
+This slice uses one bounded request/response exchange. Foreground Terminal
+output is replayed into the existing callback after completion; durable final
+transcript cards remain authoritative, but per-chunk Host NDJSON is not yet
+implemented.
+
 ## Errors
 
 Errors use:
@@ -134,6 +180,23 @@ Stable codes in v1 are:
 - `WINDOWS_PATH_INTEROP_UNAVAILABLE`
 - `DIRECTORY_BROWSE_UNAVAILABLE`
 - `NATIVE_DIRECTORY_PICKER_UNAVAILABLE`
+- `HOST_EXECUTION_UNAVAILABLE`
+- `WORKSPACE_AUTHORITY_INVALID`
+- `TOOL_NOT_AVAILABLE`
+- `EXECUTION_FAILED`
+- `EXECUTION_RESULT_INVALID`
+- `APPROVAL_REQUIRED`
+- `COMMAND_BLOCKED`
+- `ARGUMENTS_INVALID`
+- `RUNTIME_BUSY`
+- `JOB_NOT_FOUND`
+- `JOB_SCOPE_INVALID`
+- `FILE_NOT_FOUND`
+- `FILE_TOO_LARGE`
+- `INVALID_UTF8`
+- `VERSION_CONFLICT`
+- `EDIT_CONFLICT`
+- `PATH_INVALID`
 - `WORKSPACE_PATH_INVALID`
 - `WORKSPACE_PATH_UNAVAILABLE`
 
@@ -143,7 +206,8 @@ violations as protocol failures.
 
 ## Forward contract
 
-Future bounded NDJSON execution routes remain under a versioned internal
-namespace and carry `runnerId`, Workspace identity, and permission mode. Runner
-loss must fail closed; an operation with unknown outcome is never automatically
-replayed. Host-bound conversations never fall back to Docker execution.
+Future permission requests must carry one enforced advertised mode. Bounded
+NDJSON may replace the buffered foreground response without changing durable
+Tool result authority. Runner loss fails closed; an operation with unknown
+outcome is never automatically replayed. Host-bound conversations never fall
+back to Docker execution.

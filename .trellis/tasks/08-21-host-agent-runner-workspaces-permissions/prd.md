@@ -200,9 +200,10 @@ permission presets whose enforcement is real rather than presentation-only.
    execution snapshots, and passes runtime-role PostgreSQL 17 down/re-up and
    ownership/locking tests. The deployed bind route remains fail closed until
    the next socket-wiring slice supplies the pinned Runner resolver.
-3. **Workspace UI convergence**: upgrade existing Workspace state and sidebar,
-   native Windows picker/WSL browser flow, unbound/bound states, refresh and
-   migration tests.
+3. **Workspace UI convergence** — completed 2026-08-21: Backend socket and
+   Docker-secret wiring, Host status/browse/native-picker protocol, server-
+   authoritative Workspace UI/state convergence, Conversation grouping round
+   trip, focused tests/build, targeted deployment, and live Runner-loss smoke.
 4. **Execution routing**: file, terminal, jobs, output/cancellation and process
    presentation over Runner while preserving approvals, verification, and
    durable Transcript behavior.

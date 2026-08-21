@@ -12,12 +12,14 @@ import (
 	"time"
 
 	"neo-chat/mm-chat/backend/internal/agenthost"
+	"neo-chat/mm-chat/backend/internal/localskills"
 )
 
 const (
-	envRunnerID  = "AGENT_HOST_RUNNER_ID"
-	envSocket    = "AGENT_HOST_SOCKET"
-	envTokenFile = "AGENT_HOST_TOKEN_FILE"
+	envRunnerID   = "AGENT_HOST_RUNNER_ID"
+	envSocket     = "AGENT_HOST_SOCKET"
+	envTokenFile  = "AGENT_HOST_TOKEN_FILE"
+	envSkillsRoot = "AGENT_HOST_SKILLS_ROOT"
 )
 
 func main() {
@@ -40,11 +42,21 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	execution, err := agenthost.NewExecutionManager(resolver, agenthost.ExecutionConfig{
+		SkillsRoot: os.Getenv(envSkillsRoot), ShellPath: "/bin/bash",
+		ApprovalMode: localskills.ApprovalSmart, CallTimeout: 30 * time.Second,
+		RunTimeout: 5 * time.Minute, MaxOutput: 1 << 20, MaxConcurrent: 2,
+	})
+	if err != nil {
+		return err
+	}
+	defer execution.Close()
 	handler, err := agenthost.NewHandler(agenthost.HandlerConfig{
-		RunnerID: runnerID,
-		Version:  os.Getenv("MM_CHAT_VERSION"),
-		Token:    token,
-		Resolver: resolver,
+		RunnerID:  runnerID,
+		Version:   os.Getenv("MM_CHAT_VERSION"),
+		Token:     token,
+		Resolver:  resolver,
+		Execution: execution,
 	})
 	if err != nil {
 		return err

@@ -47,8 +47,26 @@ type LocalSkillCatalog interface {
 	PrepareRuntimeSkills(context.Context, string, string) ([]skillsupply.RuntimeSkill, error)
 }
 
+type localToolExecutor interface {
+	Enabled() bool
+	Config() localskills.Config
+	Execute(context.Context, localskills.Request) (localskills.Result, error)
+	StartBackgroundJob(context.Context, localskills.JobStartRequest) (localskills.JobSnapshot, error)
+	ListBackgroundJobs(localskills.JobScope) ([]localskills.JobSnapshot, error)
+	BackgroundJobOutput(context.Context, localskills.JobScope, string, bool, time.Duration) (localskills.JobSnapshot, error)
+	KillBackgroundJob(localskills.JobScope, string) (localskills.JobSnapshot, error)
+	ConsumeJobNotices(localskills.JobScope) []localskills.JobNotice
+	ReadWorkspaceFile(context.Context, localskills.FileReadRequest) (localskills.FileReadResult, error)
+	WriteWorkspaceFile(context.Context, localskills.FileWriteRequest) (localskills.FileWriteResult, error)
+	EditWorkspaceFile(context.Context, localskills.FileEditRequest) (localskills.FileWriteResult, error)
+	SearchWorkspaceFiles(context.Context, localskills.FileSearchRequest) (localskills.FileSearchResult, error)
+	ReadWorkspaceArtifact(context.Context, string, int64) (localskills.WorkspaceArtifactSnapshot, error)
+	TerminalPresentation(localskills.Request, bool) (string, string, bool)
+	RedactExecutionPaths(string, string, string) string
+}
+
 type localSkillToolRuntime struct {
-	executor           *localskills.Executor
+	executor           localToolExecutor
 	skills             []skillsupply.RuntimeSkill
 	byName             map[string]skillsupply.RuntimeSkill
 	catalogRevision    string
@@ -90,7 +108,7 @@ func (failure *localSkillRunFailure) Unwrap() error {
 }
 
 func newLocalSkillToolRuntime(
-	executor *localskills.Executor,
+	executor localToolExecutor,
 	skills []skillsupply.RuntimeSkill,
 ) *localSkillToolRuntime {
 	if executor == nil || !executor.Enabled() {
@@ -220,10 +238,8 @@ func (runtime *localSkillToolRuntime) definitions() []ToolDefinition {
 		ToolDefinition{
 			Type: "function",
 			Function: ToolFunctionDefinition{
-				Name: localTerminalToolName,
-				Description: "Run one bounded shell command directly as the Backend user in " +
-					"the configured local workspace. This is local_direct execution, not an " +
-					"isolated sandbox.",
+				Name:        localTerminalToolName,
+				Description: runtime.terminalToolDescription(),
 				Parameters: map[string]any{
 					"type": "object", "additionalProperties": false,
 					"required": []string{
@@ -252,6 +268,22 @@ func (runtime *localSkillToolRuntime) definitions() []ToolDefinition {
 		},
 	)
 	return definitions
+}
+
+func (runtime *localSkillToolRuntime) executionMode() string {
+	if runtime != nil && runtime.config().RuntimeMode == localskills.RuntimeHostWorkspace {
+		return localskills.RuntimeHostWorkspace
+	}
+	return localskills.RuntimeLocalDirect
+}
+
+func (runtime *localSkillToolRuntime) terminalToolDescription() string {
+	if runtime.executionMode() == localskills.RuntimeHostWorkspace {
+		return "Run one bounded shell command as the ordinary Host Runner user in the selected " +
+			"Host Workspace. This is host_workspace execution, not an isolated sandbox."
+	}
+	return "Run one bounded shell command directly as the Backend user in the configured " +
+		"local workspace. This is local_direct execution, not an isolated sandbox."
 }
 
 func (runtime *localSkillToolRuntime) skillNameSchema() map[string]any {

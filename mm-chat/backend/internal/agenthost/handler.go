@@ -16,10 +16,11 @@ import (
 )
 
 type HandlerConfig struct {
-	RunnerID string
-	Version  string
-	Token    string
-	Resolver WorkspaceResolver
+	RunnerID  string
+	Version   string
+	Token     string
+	Resolver  WorkspaceResolver
+	Execution *ExecutionManager
 }
 
 type Handler struct {
@@ -28,6 +29,7 @@ type Handler struct {
 	resolver     WorkspaceResolver
 	browser      DirectoryBrowser
 	picker       NativeDirectoryPicker
+	execution    *ExecutionManager
 	capabilities Capabilities
 }
 
@@ -55,12 +57,14 @@ func NewHandler(config HandlerConfig) (*Handler, error) {
 	if picker != nil {
 		features.NativeDirectoryPicker = picker.NativeDirectoryPickerAvailable()
 	}
+	features.Execution = config.Execution != nil
 	return &Handler{
-		runnerID: config.RunnerID,
-		tokenSum: sha256.Sum256([]byte(config.Token)),
-		resolver: config.Resolver,
-		browser:  browser,
-		picker:   picker,
+		runnerID:  config.RunnerID,
+		tokenSum:  sha256.Sum256([]byte(config.Token)),
+		resolver:  config.Resolver,
+		browser:   browser,
+		picker:    picker,
+		execution: config.Execution,
 		capabilities: Capabilities{
 			ProtocolVersion: ProtocolVersion,
 			RunnerID:        config.RunnerID,
@@ -114,9 +118,57 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 			return
 		}
 		handler.pickNativeDirectory(writer, request)
+	case ToolExecutePath:
+		if request.Method != http.MethodPost {
+			handler.methodNotAllowed(writer, http.MethodPost)
+			return
+		}
+		handler.executeTool(writer, request)
 	default:
 		handler.writeError(writer, http.StatusNotFound, "AGENT_HOST_ROUTE_NOT_FOUND", "Agent Host route not found")
 	}
+}
+
+func (handler *Handler) executeTool(writer http.ResponseWriter, request *http.Request) {
+	if handler.execution == nil {
+		handler.writeError(writer, http.StatusServiceUnavailable, "HOST_EXECUTION_UNAVAILABLE", "Host execution is unavailable")
+		return
+	}
+	var input ToolExecuteRequest
+	if err := decodeStrictJSONLimit(writer, request, &input, maxExecutionRequestBytes); err != nil ||
+		input.ProtocolVersion != ProtocolVersion {
+		handler.writeError(writer, http.StatusBadRequest, "AGENT_HOST_REQUEST_INVALID", "Agent Host request is invalid")
+		return
+	}
+	result, err := handler.execution.Execute(request.Context(), input)
+	if err != nil {
+		var failure *ToolExecutionError
+		if !errors.As(err, &failure) {
+			handler.writeError(writer, http.StatusInternalServerError, "EXECUTION_FAILED", "Host Tool execution failed")
+			return
+		}
+		status := http.StatusUnprocessableEntity
+		switch failure.Code {
+		case "APPROVAL_REQUIRED", "VERSION_CONFLICT", "EDIT_CONFLICT":
+			status = http.StatusConflict
+		case "RUNTIME_BUSY":
+			status = http.StatusTooManyRequests
+		case "JOB_NOT_FOUND", "FILE_NOT_FOUND":
+			status = http.StatusNotFound
+		case "HOST_EXECUTION_UNAVAILABLE":
+			status = http.StatusServiceUnavailable
+		}
+		handler.writeError(writer, status, failure.Code, "Host Tool execution failed")
+		return
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil || int64(len(encoded)) > maxExecutionResponseBytes-1024 {
+		handler.writeError(writer, http.StatusInternalServerError, "EXECUTION_RESULT_INVALID", "Host Tool result is invalid")
+		return
+	}
+	handler.writeJSON(writer, http.StatusOK, ToolExecuteResponse{
+		ProtocolVersion: ProtocolVersion, RunnerID: handler.runnerID, Result: encoded,
+	})
 }
 
 func (handler *Handler) browseDirectories(writer http.ResponseWriter, request *http.Request) {
@@ -248,16 +300,25 @@ func (handler *Handler) resolveWorkspace(writer http.ResponseWriter, request *ht
 }
 
 func decodeStrictJSON(writer http.ResponseWriter, request *http.Request, output any) error {
+	return decodeStrictJSONLimit(writer, request, output, maxControlRequestBytes)
+}
+
+func decodeStrictJSONLimit(
+	writer http.ResponseWriter,
+	request *http.Request,
+	output any,
+	limit int64,
+) error {
 	mediaType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
 		return errors.New("invalid content type")
 	}
-	request.Body = http.MaxBytesReader(writer, request.Body, maxControlRequestBytes)
+	request.Body = http.MaxBytesReader(writer, request.Body, limit)
 	data, err := io.ReadAll(request.Body)
 	if err != nil {
 		return err
 	}
-	return strictjson.Decode(data, int(maxControlRequestBytes), output)
+	return strictjson.Decode(data, int(limit), output)
 }
 
 func (handler *Handler) methodNotAllowed(writer http.ResponseWriter, allowed string) {

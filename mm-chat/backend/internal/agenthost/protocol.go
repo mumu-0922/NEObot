@@ -1,6 +1,9 @@
 package agenthost
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 const (
 	ProtocolVersion = 1
@@ -9,6 +12,7 @@ const (
 	WorkspaceResolvePath    = "/internal/v1/workspaces/resolve"
 	DirectoryBrowsePath     = "/internal/v1/directories/browse"
 	NativeDirectoryPickPath = "/internal/v1/directories/pick-native"
+	ToolExecutePath         = "/internal/v1/tools/execute"
 )
 
 type PermissionMode string
@@ -93,6 +97,38 @@ type NativeDirectoryPickResponse struct {
 	RunnerID        string               `json:"runnerId"`
 	Cancelled       bool                 `json:"cancelled"`
 	Workspace       *WorkspaceDescriptor `json:"workspace,omitempty"`
+}
+
+type ExecutionWorkspace struct {
+	CanonicalPath        string `json:"canonicalPath"`
+	DirectoryFingerprint string `json:"directoryFingerprint"`
+}
+
+type ExecutionScope struct {
+	UserID         string `json:"userId"`
+	ConversationID string `json:"conversationId"`
+}
+
+type ToolExecuteRequest struct {
+	ProtocolVersion int                `json:"protocolVersion"`
+	Workspace       ExecutionWorkspace `json:"workspace"`
+	Scope           ExecutionScope     `json:"scope"`
+	Tool            string             `json:"tool"`
+	Arguments       json.RawMessage    `json:"arguments"`
+	Approved        bool               `json:"approved"`
+	ActiveSkillRoot string             `json:"activeSkillRoot,omitempty"`
+}
+
+type ToolExecuteResponse struct {
+	ProtocolVersion int             `json:"protocolVersion"`
+	RunnerID        string          `json:"runnerId"`
+	Result          json.RawMessage `json:"result"`
+}
+
+type TerminalToolArguments struct {
+	Command        string `json:"command"`
+	WorkingDir     string `json:"workingDir"`
+	TimeoutSeconds int    `json:"timeoutSeconds"`
 }
 
 type ErrorBody struct {

@@ -755,6 +755,42 @@ describe("durable process trace", () => {
     expect(durable).toEqual([live]);
   });
 
+  it("retains Host Workspace Terminal details live and after reload", () => {
+    const rawStep = {
+      id: "message-host:tool:1",
+      kind: "tool",
+      status: "completed",
+      labelKey: "process.tool",
+      detail: { toolName: "terminal", mode: "host_workspace", round: 1 },
+      presentation: {
+        card: "terminal",
+        command: "pwd",
+        cwd: "$NEO_CHAT_WORKSPACE",
+        exitCode: 0,
+      },
+    };
+    const live = normalizeProcessStep(rawStep);
+    const durable = processTraceFromChatAgentEvents([
+      {
+        eventId: "event-host-terminal-1",
+        turnId: "turn-host-1",
+        conversationId: "conversation-host-1",
+        messageId: "message-host",
+        runId: "run-host-1",
+        sequence: 1,
+        type: "tool.result",
+        payload: { processSteps: [rawStep] },
+        occurredAt: "2026-08-21T12:00:00Z",
+      },
+    ]);
+    expect(live?.presentation).toMatchObject({
+      card: "terminal",
+      command: "pwd",
+      cwd: "$NEO_CHAT_WORKSPACE",
+    });
+    expect(durable).toEqual([live]);
+  });
+
   it("keeps a 500-event reload and visible update within the acceptance budget", () => {
     const rawSteps = Array.from({ length: 500 }, (_, index) => ({
       id: `message-1:tool:${index + 1}`,

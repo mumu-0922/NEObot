@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/localskills"
 	"neo-chat/mm-chat/backend/internal/strictjson"
 )
 
@@ -24,6 +25,7 @@ var (
 )
 
 const nativePickerRequestTimeout = 270 * time.Second
+const executionRequestTimeout = 330 * time.Second
 
 type ClientConfig struct {
 	SocketPath       string
@@ -33,12 +35,14 @@ type ClientConfig struct {
 }
 
 type Client struct {
-	token            string
-	expectedRunnerID string
-	httpClient       *http.Client
-	transport        *http.Transport
-	pickerHTTPClient *http.Client
-	pickerTransport  *http.Transport
+	token               string
+	expectedRunnerID    string
+	httpClient          *http.Client
+	transport           *http.Transport
+	pickerHTTPClient    *http.Client
+	pickerTransport     *http.Transport
+	executionHTTPClient *http.Client
+	executionTransport  *http.Transport
 }
 
 func NewClient(config ClientConfig) (*Client, error) {
@@ -74,13 +78,16 @@ func NewClient(config ClientConfig) (*Client, error) {
 	}
 	transport := newTransport(timeout)
 	pickerTransport := newTransport(nativePickerRequestTimeout)
+	executionTransport := newTransport(executionRequestTimeout)
 	return &Client{
-		token:            config.Token,
-		expectedRunnerID: config.ExpectedRunnerID,
-		httpClient:       &http.Client{Transport: transport, Timeout: timeout},
-		transport:        transport,
-		pickerHTTPClient: &http.Client{Transport: pickerTransport, Timeout: nativePickerRequestTimeout},
-		pickerTransport:  pickerTransport,
+		token:               config.Token,
+		expectedRunnerID:    config.ExpectedRunnerID,
+		httpClient:          &http.Client{Transport: transport, Timeout: timeout},
+		transport:           transport,
+		pickerHTTPClient:    &http.Client{Transport: pickerTransport, Timeout: nativePickerRequestTimeout},
+		pickerTransport:     pickerTransport,
+		executionHTTPClient: &http.Client{Transport: executionTransport, Timeout: executionRequestTimeout},
+		executionTransport:  executionTransport,
 	}, nil
 }
 
@@ -90,6 +97,76 @@ func (client *Client) Close() {
 	}
 	if client != nil && client.pickerTransport != nil {
 		client.pickerTransport.CloseIdleConnections()
+	}
+	if client != nil && client.executionTransport != nil {
+		client.executionTransport.CloseIdleConnections()
+	}
+}
+
+func (client *Client) ExecuteTool(
+	ctx context.Context,
+	request ToolExecuteRequest,
+	output any,
+) error {
+	if output == nil || !validWorkspacePathInput(request.Workspace.CanonicalPath) ||
+		!validExecutionFingerprint(request.Workspace.DirectoryFingerprint) || request.Tool == "" {
+		return ErrHostProtocol
+	}
+	request.ProtocolVersion = ProtocolVersion
+	var response ToolExecuteResponse
+	err := client.doWithHTTPClientLimits(
+		ctx, client.executionHTTPClient, http.MethodPost, ToolExecutePath, request, &response,
+		maxExecutionRequestBytes, maxExecutionResponseBytes,
+	)
+	if err != nil {
+		return mapToolExecutionError(err)
+	}
+	if response.ProtocolVersion != ProtocolVersion || response.RunnerID != client.expectedRunnerID ||
+		len(response.Result) == 0 {
+		return ErrHostProtocol
+	}
+	if err := strictjson.Decode(response.Result, int(maxExecutionResponseBytes), output); err != nil {
+		return ErrHostProtocol
+	}
+	return nil
+}
+
+func mapToolExecutionError(err error) error {
+	var remote RemoteError
+	if !errors.As(err, &remote) {
+		return err
+	}
+	switch remote.Code {
+	case "APPROVAL_REQUIRED":
+		return localskills.ErrApprovalRequired
+	case "COMMAND_BLOCKED":
+		return localskills.ErrCommandBlocked
+	case "ARGUMENTS_INVALID":
+		return localskills.ErrInvalidCommand
+	case "RUNTIME_BUSY":
+		return localskills.ErrRuntimeBusy
+	case "JOB_NOT_FOUND":
+		return localskills.ErrJobNotFound
+	case "JOB_SCOPE_INVALID":
+		return localskills.ErrJobScopeInvalid
+	case "FILE_NOT_FOUND":
+		return localskills.ErrWorkspaceFileNotFound
+	case "FILE_TOO_LARGE":
+		return localskills.ErrWorkspaceFileTooLarge
+	case "INVALID_UTF8":
+		return localskills.ErrWorkspaceInvalidUTF8
+	case "VERSION_CONFLICT":
+		return localskills.ErrWorkspaceVersionConflict
+	case "EDIT_CONFLICT":
+		return localskills.ErrWorkspaceEditConflict
+	case "PATH_INVALID", "WORKSPACE_AUTHORITY_INVALID":
+		return localskills.ErrWorkspaceInvalidPath
+	case "HOST_EXECUTION_UNAVAILABLE":
+		return ErrHostUnavailable
+	case "TOOL_NOT_AVAILABLE", "EXECUTION_FAILED", "EXECUTION_RESULT_INVALID":
+		return localskills.ErrRuntimeFailed
+	default:
+		return ErrHostProtocol
 	}
 }
 
@@ -250,13 +327,29 @@ func (client *Client) doWithHTTPClient(
 	input any,
 	output any,
 ) error {
+	return client.doWithHTTPClientLimits(
+		ctx, httpClient, method, path, input, output,
+		maxControlRequestBytes, maxControlResponseBytes,
+	)
+}
+
+func (client *Client) doWithHTTPClientLimits(
+	ctx context.Context,
+	httpClient *http.Client,
+	method string,
+	path string,
+	input any,
+	output any,
+	requestLimit int64,
+	responseLimit int64,
+) error {
 	if client == nil || httpClient == nil {
 		return ErrHostUnavailable
 	}
 	var body io.Reader
 	if input != nil {
 		encoded, err := json.Marshal(input)
-		if err != nil || int64(len(encoded)) > maxControlRequestBytes {
+		if err != nil || int64(len(encoded)) > requestLimit {
 			return ErrHostProtocol
 		}
 		body = bytes.NewReader(encoded)
@@ -280,8 +373,8 @@ func (client *Client) doWithHTTPClient(
 		return ErrHostUnavailable
 	}
 	defer response.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(response.Body, maxControlResponseBytes+1))
-	if err != nil || int64(len(data)) > maxControlResponseBytes {
+	data, err := io.ReadAll(io.LimitReader(response.Body, responseLimit+1))
+	if err != nil || int64(len(data)) > responseLimit {
 		return ErrHostProtocol
 	}
 	mediaType, _, mediaErr := mime.ParseMediaType(response.Header.Get("Content-Type"))
@@ -290,7 +383,8 @@ func (client *Client) doWithHTTPClient(
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		var failure ErrorResponse
-		if decodeOneJSON(data, &failure) != nil || !validRemoteErrorCode(failure.Error.Code) {
+		if strictjson.Decode(data, int(responseLimit), &failure) != nil ||
+			!validRemoteErrorCode(failure.Error.Code) {
 			return ErrHostProtocol
 		}
 		return RemoteError{
@@ -299,7 +393,7 @@ func (client *Client) doWithHTTPClient(
 			Message:    "Agent Host request failed",
 		}
 	}
-	if decodeOneJSON(data, output) != nil {
+	if strictjson.Decode(data, int(responseLimit), output) != nil {
 		return ErrHostProtocol
 	}
 	return nil
@@ -316,6 +410,12 @@ func validRemoteErrorCode(value string) bool {
 		"WINDOWS_PATH_INTEROP_UNAVAILABLE",
 		"DIRECTORY_BROWSE_UNAVAILABLE",
 		"NATIVE_DIRECTORY_PICKER_UNAVAILABLE",
+		"HOST_EXECUTION_UNAVAILABLE",
+		"WORKSPACE_AUTHORITY_INVALID",
+		"TOOL_NOT_AVAILABLE", "EXECUTION_FAILED", "EXECUTION_RESULT_INVALID",
+		"APPROVAL_REQUIRED", "COMMAND_BLOCKED", "ARGUMENTS_INVALID", "RUNTIME_BUSY",
+		"JOB_NOT_FOUND", "JOB_SCOPE_INVALID", "FILE_NOT_FOUND", "FILE_TOO_LARGE",
+		"INVALID_UTF8", "VERSION_CONFLICT", "EDIT_CONFLICT", "PATH_INVALID",
 		"WORKSPACE_PATH_INVALID",
 		"WORKSPACE_PATH_UNAVAILABLE":
 		return true

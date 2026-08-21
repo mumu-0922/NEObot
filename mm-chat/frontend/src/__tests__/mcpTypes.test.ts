@@ -159,6 +159,22 @@ describe("MCP runtime DTO normalization", () => {
     expect(
       normalizeMcpToolCallUpdate({
         ...update,
+        executionId: "host-skill-4-1",
+        callId: undefined,
+        toolName: "terminal",
+        classification: "execute",
+        processStatus: "completed",
+        status: "succeeded",
+        mode: "host_workspace",
+      }),
+    ).toMatchObject({
+      callId: "host-skill-4-1",
+      classification: "execute",
+      mode: "host_workspace",
+    });
+    expect(
+      normalizeMcpToolCallUpdate({
+        ...update,
         executionId: "",
         callId: undefined,
         mode: "local_direct",

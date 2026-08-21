@@ -1219,6 +1219,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 			resolvedOptions.skillSupplyService,
 			resolvedOptions.localSkillExecutor,
 		),
+		chat.WithHostWorkspaceExecution(resolvedOptions.hostWorkspaceService),
 		chat.WithWorkspaceArtifactPublisher(
 			chatWorkspaceArtifactPublisher{service: fileService},
 			cfg.Storage.MaxUploadBytes,

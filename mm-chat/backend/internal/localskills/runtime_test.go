@@ -34,6 +34,27 @@ func TestExecutorRunsDirectCommandWithExplicitEnvironment(t *testing.T) {
 	}
 }
 
+func TestExecutorMarksHostWorkspaceEnvironmentWithoutLocalDirectAlias(t *testing.T) {
+	workspace := t.TempDir()
+	executor, err := NewExecutor(Config{
+		Enabled: true, RuntimeMode: RuntimeHostWorkspace,
+		RuntimeRoot: filepath.Join(workspace, ".skills"), WorkspaceRoot: workspace,
+		ShellPath: "/bin/sh", ApprovalMode: ApprovalSmart,
+		CallTimeout: 3 * time.Second, RunTimeout: 5 * time.Second,
+		MaxOutput: 64 << 10, MaxCalls: 8, MaxRounds: 4, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := executor.Execute(context.Background(), Request{
+		Command: `printf '%s|%s|%s' "$NEO_CHAT_AGENT_RUNTIME" ` +
+			`"${NEO_CHAT_HOST_WORKSPACE-unset}" "${NEO_CHAT_LOCAL_DIRECT-unset}"`,
+	})
+	if err != nil || result.Stdout != "host_workspace|1|unset" {
+		t.Fatalf("result=%#v error=%v", result, err)
+	}
+}
+
 func TestExecutorDoesNotLoadWorkspaceShellProfiles(t *testing.T) {
 	workspace := t.TempDir()
 	for _, name := range []string{".profile", ".bash_profile", ".bashrc"} {

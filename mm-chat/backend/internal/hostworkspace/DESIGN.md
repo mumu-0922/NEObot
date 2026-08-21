@@ -14,7 +14,8 @@
 ## Non-goals
 
 - This module does not browse the Host filesystem or open a native picker.
-- It does not execute Agent Tools or enforce permission presets.
+- It delegates bound Agent Tools to the pinned Host client; it does not enforce
+  permission presets yet.
 - It never creates, renames, writes, or deletes a selected directory.
 - It does not infer a filesystem path from a Workspace name.
 
@@ -44,6 +45,11 @@ conversion, `realpath`, directory probing, path classification, and the
 Runner-bound directory fingerprint. The Service validates the returned
 descriptor again before persistence.
 
+For a bound Agent turn, Chat resolves this module's immutable execution
+snapshot, verifies current Runner capability/identity, and adapts the existing
+local Tool loop to `agenthost.Client`. Transport loss propagates as a Tool
+failure; the adapter never invokes the Docker executor as a fallback.
+
 ## Persistence model
 
 Migration `102_host_workspaces` extends `workspaces` in place. Legacy records
@@ -70,9 +76,8 @@ change an already-running Conversation's `cwd`.
 - **Immutable execution snapshot over live grouping lookup** prevents `cwd`
   drift, at the cost of retaining a small amount of duplicated authority on
   each executed Conversation.
-- **Dark fail-closed resolver over Docker path fallback** delays binding UI by
-  one slice, but prevents the product from claiming arbitrary Host access
-  before the socket boundary exists.
+- **Fail-closed Host routing over Docker path fallback** preserves execution
+  authority across Runner loss and identity drift.
 
 ## Concurrency and authorization
 
@@ -106,9 +111,10 @@ Important states:
 
 ## Rollout and rollback
 
-This slice registers the HTTP API but injects no `PathResolver`, so binding is
-unavailable by construction. A later Compose slice must mount only the exact
-private Runner socket/token and create an authenticated `agenthost.Client`.
+Compose injects one pinned `agenthost.Client` through this Service for both
+path resolution and Tool execution. The only Host mount in Backend remains the
+private Runner socket and identity secrets; project directories stay outside
+Docker.
 
 Migration `102.down` succeeds only when no imported settings, Host binding, or
 Conversation execution snapshot exists. Otherwise it raises
@@ -117,9 +123,9 @@ the compatible application image. Soft deletion never touches Host files.
 
 ## Known limitations
 
-- The current Backend has no Host socket/token mount, so binding is unavailable.
-- Native picker, directory browsing, Tool routing, and three-mode permission
-  enforcement belong to later committed slices.
+- Three-mode permission enforcement belongs to the next committed slice.
+- Foreground Host Terminal chunks arrive at Backend after completion in this
+  slice; final durable cards are preserved, but live per-chunk transport is not.
 - The first Runner target executes both WSL and mounted Windows projects with
   the WSL toolchain; a native Windows execution engine is not yet present.
 
@@ -136,3 +142,5 @@ the compatible application image. Soft deletion never touches Host files.
 
 - **2026-08-21**: introduced migration-102 in-place Workspace convergence,
   strict API, one-time Host binding contract, and Conversation execution lock.
+- **2026-08-21**: routed immutable bound Workspace Tools through the pinned Host
+  while preserving ungrouped legacy `local_direct` and fail-closed loss.

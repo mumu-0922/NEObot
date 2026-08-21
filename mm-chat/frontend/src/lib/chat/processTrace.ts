@@ -679,29 +679,30 @@ function normalizeProcessStepPresentation(
   const card = value.card;
   const toolName = detail?.toolName;
   const mode = detail?.mode;
+  const localToolMode = mode === "local_direct" || mode === "host_workspace";
   const valid =
     (card === "terminal" &&
       kind === "tool" &&
       toolName === "terminal" &&
-      mode === "local_direct") ||
+      localToolMode) ||
     (card === "search" &&
       (kind === "web" ||
         kind === "knowledge" ||
         toolName === "search_memory")) ||
     (card === "file" &&
       kind === "tool" &&
-      mode === "local_direct" &&
+      localToolMode &&
       typeof toolName === "string" &&
       (toolName.startsWith("file_") || toolName === "publish_file")) ||
     (card === "job" &&
       kind === "tool" &&
-      mode === "local_direct" &&
+      localToolMode &&
       typeof toolName === "string" &&
       (toolName.startsWith("job_") ||
         (toolName === "terminal" && value.background === true))) ||
     (card === "skill" &&
       kind === "tool" &&
-      mode === "local_direct" &&
+      localToolMode &&
       toolName === "skill") ||
     (card === "goal" && kind === "tool" && mode === "goal") ||
     ((card === "mcp" || card === "browser") &&

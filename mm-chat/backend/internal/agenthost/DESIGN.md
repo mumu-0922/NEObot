@@ -7,7 +7,7 @@ already-running container. The Agent Host therefore runs as the ordinary WSL
 user that owns the projects and will become the only authority that probes and
 executes against Host paths.
 
-This first slice establishes a rollback-safe control plane:
+The current slice extends the rollback-safe control plane with execution:
 
 ```text
 future Docker Backend
@@ -22,11 +22,12 @@ WSL Agent Host (ordinary user)
       +-- capability facts
       +-- canonical WSL workspace resolution
       +-- Windows path -> fixed wslpath argv -> canonical WSL path
+      +-- Workspace-pinned File / Terminal / Job execution
 ```
 
-The Host currently reports `execution=false`, an empty `permissionModes`
-array, and no directory browser or picker. Advertising these features before
-their enforcement probes exist would create a false security claim.
+The Host reports `execution=true` only when its ExecutionManager starts. It
+still reports an empty `permissionModes` array because advertising Read Only,
+Workspace Write, or Full access before enforcement probes would be false.
 
 ## Trust boundary and threat model
 
@@ -44,6 +45,8 @@ single-user. Relevant threats are:
 - error text discloses a private Host path or token;
 - a symlink alias creates duplicate durable workspace identities;
 - Runner state changes while the Backend still trusts an old workspace.
+- a Host-bound Tool silently executes in Docker `/workspace` after Runner loss;
+- an active Skill relative path escapes the canonical materialization root.
 
 The current controls are:
 
@@ -62,6 +65,11 @@ The current controls are:
   `-u`, `--`, and a separate argument. No shell is involved;
 - `filepath.EvalSymlinks` followed by an absolute-directory probe;
 - fingerprints derived from `SHA-256(runnerId || NUL || canonicalPath)`.
+- per-call canonical Workspace/fingerprint revalidation and one Host-rooted
+  `localskills.Executor` per exact authority;
+- separate bounded control and execution envelopes, process-group cancellation,
+  strict error allowlists, contained non-symlink active Skill roots, and no
+  Host-to-Docker fallback.
 
 The fingerprint is a deduplication key, not a secret, MAC, filesystem inode
 identity, or proof that a directory has not been replaced later. Every future
@@ -95,8 +103,8 @@ identity-fencing behavior.
 - Transport loss fails as unavailable. There is no retry for operations with
   unknown outcomes and no Docker `local_direct` fallback for future Host-bound
   conversations.
-- This slice does not route existing conversations through the Host, so
-  stopping it has no effect on the current live Agent runtime.
+- Stopping the Host makes every bound Agent Tool fail closed. Only ungrouped
+  legacy Conversations retain Docker `local_direct`.
 - Rollback is `./scripts/agent-host.sh stop` plus reverting the source commit.
   Runtime identity files may remain for forward recovery; rollback must not
   delete `data/`, `secrets/`, `backup/`, or `.env.single-server`.
@@ -105,9 +113,9 @@ identity-fencing behavior.
 
 - Only WSL is implemented; Windows-drive projects use WSL tools through
   `/mnt/<drive>`.
-- There is no native Windows Runner, directory picker, directory browser,
-  workspace persistence, execution stream, sandbox, or permission enforcement
-  yet.
+- There is no native Windows Runner, permission Sandbox, or enforced permission
+  preset yet. Foreground execution is one bounded buffered response rather than
+  per-chunk NDJSON; the final durable transcript remains authoritative.
 - Canonical string identity does not detect a directory deleted and recreated
   at the same path. Execution admission must revalidate future durable state.
 - Unix peer credentials are not yet captured. Token, socket ownership, and
@@ -121,5 +129,6 @@ identity-fencing behavior.
 | ---------- | -------- | ----------- |
 | 2026-08-21 | Use HTTP/1.1 over a private Unix socket | Reuses bounded Go HTTP machinery without opening a Host TCP port. |
 | 2026-08-21 | Use one ordinary-user WSL Runner first | WSL and mounted Windows paths share one protocol; native Windows can be added through another `runnerId`. |
-| 2026-08-21 | Advertise foundation features only | Existing execution remains unchanged until real routing and permission enforcement are proven. |
+| 2026-08-21 | Advertise execution separately from permission modes | Bound Tools may use the Host while all unenforced presets stay unavailable. |
+| 2026-08-21 | Reuse the guarded local executor at a Host root | File CAS, symlink checks, approvals, process groups, limits, and Jobs retain one implementation. |
 | 2026-08-21 | Use a wrapper rather than systemd | The verified target WSL environment has no active user systemd manager. |

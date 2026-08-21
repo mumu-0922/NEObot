@@ -175,7 +175,7 @@ func (runtime *localSkillToolRuntime) execute(
 		Status:         ProcessStepStatusRunning,
 		CallStatus:     "running",
 		Round:          round,
-		Mode:           "local_direct",
+		Mode:           runtime.executionMode(),
 		Classification: localSkillClassification(name),
 	}
 	execution.Presentation = runtime.localProcessPresentation(call)
@@ -472,7 +472,7 @@ type terminalLiveOutput struct {
 	ctx             context.Context
 	events          chan<- ProviderEvent
 	execution       ProviderToolExecutionEvent
-	executor        *localskills.Executor
+	executor        localToolExecutor
 	request         localskills.Request
 	entries         []ProcessTranscriptEntry
 	lastEmit        time.Time
@@ -483,7 +483,7 @@ func newTerminalLiveOutput(
 	ctx context.Context,
 	events chan<- ProviderEvent,
 	execution ProviderToolExecutionEvent,
-	executor *localskills.Executor,
+	executor localToolExecutor,
 	request localskills.Request,
 ) *terminalLiveOutput {
 	return &terminalLiveOutput{

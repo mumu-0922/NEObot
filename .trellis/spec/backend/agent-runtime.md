@@ -247,11 +247,9 @@ Cross-layer changes also require frontend format/lint/typecheck/test/build and
 ### Wrong vs correct
 
 ```text
-Wrong: route Tools through the interactive Host workspace control plane before
-       it advertises execution and enforced permission capabilities
-Correct: keep current local_direct execution authority while using the Host
-         socket only for durable workspace selection/binding; cut execution
-         over only after execution parity and permission probes pass
+Wrong: treat execution=true as proof that permission presets are enforced
+Correct: route bound Tools only when execution=true; keep permissionModes empty
+         until each advertised preset passes its independent enforcement probes
 
 Wrong: inspect Shell command text -> guess mutation -> force verification
 Correct: foreground result -> synchronous boundary; background Job -> exact completed output
@@ -284,11 +282,14 @@ GET  /internal/v1/capabilities
 POST /internal/v1/workspaces/resolve
 POST /internal/v1/directories/browse
 POST /internal/v1/directories/pick-native
+POST /internal/v1/tools/execute
 
 Protocol version: 1
 Runner id:         [a-z][a-z0-9-]{2,63}
 Request limit:     16 KiB
 Response limit:    64 KiB
+Execution request: 128 KiB
+Execution response:72 MiB
 Workspace path:    1..4096 valid UTF-8 bytes without controls
 ```
 
@@ -306,8 +307,9 @@ Workspace path:    1..4096 valid UTF-8 bytes without controls
   workspace fingerprints are protocol failures.
 - `capabilities` advertises only implemented facts. The interactive control
   plane reports Workspace resolve, WSL directory browse, and the native
-  Windows picker when their Host dependencies exist. It still reports
-  `execution=false` and an empty `permissionModes` list.
+  Windows picker when their Host dependencies exist. An active
+  `ExecutionManager` reports `execution=true`; `permissionModes` remains empty
+  until the separate enforcement probes pass.
 - Directory browse starts at the ordinary Host user's home for an empty path,
   returns at most 256 sorted directory-only entries, and never reads file
   contents. Native picker runs a fixed PowerShell/WinForms command with no
@@ -322,12 +324,22 @@ Workspace path:    1..4096 valid UTF-8 bytes without controls
   `sha256(runnerId || NUL || canonicalPath)`. The client recomputes the exact
   lowercase fingerprint. It is a deduplication key, not integrity or inode
   proof; every future execution must re-resolve durable authority.
+- A Tool execution request carries the immutable canonical path/fingerprint,
+  camel-case user/Conversation Job scope, allowlisted Tool name, strict
+  arguments, Backend-owned approval bit, and an optional contained relative
+  active Skill root. Re-resolve the Workspace on every call and require the
+  returned canonical path and fingerprint to match exactly.
+- Reuse `localskills.Executor` at the Host canonical root so File CAS/symlink
+  checks, Terminal hard blocks/approval, time/output bounds, process-group
+  cancellation, artifacts, and process-local Jobs remain one implementation.
+  Emit `mode=host_workspace`; clear Docker Workspace aliases from the adapter
+  config and redact Host/Skill paths before Provider or durable presentation.
 - Error bodies use allowlisted stable codes and generic messages. Do not return
   submitted Host paths, token material, converter output, or raw OS errors.
-- Compose may connect this control plane through the exact read-only socket
-  directory and independent credential secrets. Existing Tools remain on
-  `local_direct`; Runner loss makes bind/browse/pick unavailable without a
-  Docker-path fallback.
+- Compose connects through the exact read-only socket directory and independent
+  credential secrets. Bound Conversations execute on Host; ungrouped legacy
+  Conversations retain `local_direct`. Runner loss makes bound Tools fail
+  closed without a Docker-path fallback.
 
 ### Validation and error matrix
 
@@ -342,6 +354,9 @@ Workspace path:    1..4096 valid UTF-8 bytes without controls
 | fingerprint is non-hex, uppercase, wrong length, or does not recompute | client `ErrHostProtocol` |
 | socket unavailable/cancelled request | unavailable/context error; no fallback |
 | native picker cancellation | successful `cancelled=true`; no Workspace mutation |
+| execution canonical path/fingerprint drift | `WORKSPACE_AUTHORITY_INVALID`; no Tool execution |
+| active Skill root is absolute, escaping, missing, or symlinked | `ARGUMENTS_INVALID`; no process |
+| Host loss after immutable binding | durable failed/interrupted Tool; never Docker `/workspace` |
 
 ### Good / base / bad cases
 
@@ -350,8 +365,8 @@ Workspace path:    1..4096 valid UTF-8 bytes without controls
 - **Good**: `D:\\project` is passed as one `wslpath` argv value and returns a
   canonical `/mnt/d/project` descriptor while retaining the Windows display
   path.
-- **Base**: the Host is stopped; existing `local_direct` conversations remain
-  unchanged while Host status/binding fail closed.
+- **Base**: the Host is stopped; ungrouped legacy `local_direct` remains, while
+  every bound Conversation and Host control operation fails closed.
 - **Bad**: advertise `workspace-write` before filesystem and shell sandbox
   probes enforce it on both WSL filesystems and DrvFS.
 - **Bad**: trust a path, fingerprint, error message, or Runner identity merely
@@ -361,8 +376,10 @@ Workspace path:    1..4096 valid UTF-8 bytes without controls
 
 ```bash
 cd mm-chat/backend
-go test -race ./internal/agenthost ./cmd/agent-host
-go vet ./internal/agenthost ./cmd/agent-host
+go test -race ./internal/agenthost ./internal/hostworkspace ./internal/chat \
+  ./internal/httpserver ./cmd/agent-host ./cmd/api
+go vet ./internal/agenthost ./internal/hostworkspace ./internal/chat \
+  ./internal/httpserver ./cmd/agent-host ./cmd/api
 ```
 
 Tests must cover bearer failures/non-disclosure, strict JSON including
@@ -371,6 +388,9 @@ Unix-socket client/server round trip, active/stale/replaced sockets, unsafe
 socket/token ownership/modes/symlinks, Windows conversion, symlink alias
 deduplication, invalid paths, exact fingerprint recomputation, and Host-path
 non-disclosure.
+Execution tests additionally prove actual Host cwd, File read/write, Job
+lifecycle, cancellation, Skill-root containment, `host_workspace` live/reload
+presentation, and loss without local fallback.
 
 ### Wrong vs correct
 
@@ -383,6 +403,9 @@ Correct: strict bounded response -> pin runnerId -> validate facts -> recompute 
 
 Wrong: Host unavailable -> canonicalize the submitted path inside Docker
 Correct: old conversations remain unchanged; Host binding/browse/pick fail closed
+
+Wrong: bound Host call fails -> retry the same Tool through local_direct
+Correct: persist the Host failure -> restore the same pinned Runner -> retry explicitly
 ```
 
 ## Scenario: persist converged Host Workspaces before execution routing
@@ -492,4 +515,97 @@ Correct: owner-scoped SQL + composite FK + only required insert/update columns
 
 Wrong: Host resolver not wired -> accept/clean the path inside Docker
 Correct: return 503 until the pinned Host authority is reachable
+```
+
+## Scenario: route immutable Workspace Agent Tools through the Host
+
+### Scope / trigger
+
+Apply when changing Chat selection of `localToolExecutor`,
+`agenthost.ExecuteTool`, Host File/Terminal/Job execution, execution-mode
+presentation, or Runner-loss behavior after a Conversation has a Workspace.
+
+### Signatures
+
+```text
+Chat mode:                 no Agent local/Host Tools
+Agent + workspace_id:      host_workspace
+Agent + no workspace_id:   local_direct (legacy rollback only)
+Host capability:           execution=true, permissionModes=[]
+Runtime environment:       NEO_CHAT_AGENT_RUNTIME=host_workspace
+                           NEO_CHAT_HOST_WORKSPACE=1
+```
+
+### Contracts
+
+- Probe Host status before locking the first bound Agent Turn. Atomically lock
+  `agent_workspace_*`, require the locked Runner id to match the current pinned
+  Host, then construct a Host adapter. Do not select by mutable Workspace state
+  after the snapshot exists.
+- A bound route returns no Docker executor on any status, binding, transport,
+  protocol, or execution error. Never retain `WorkspaceRoot=/workspace` or its
+  Host alias in the Host adapter config because prompt path rewriting would map
+  the wrong project into the selected Host Workspace.
+- Materialized Skills remain Backend-authorized. Convert the Backend absolute
+  active Skill directory to one contained relative name; the Host joins it to
+  its canonical Skill root, rejects symlinked/escaping directories, and adds
+  only the Host path to the child environment.
+- Emit `host_workspace` in ProcessStep and typed Tool updates. Backend and
+  frontend sanitizers must accept the same Terminal/File/Job/Skill cards live
+  and after reload. Manual safe-read retry remains `local_direct`-only until the
+  retry route can resolve the immutable Host binding.
+- Buffered Host foreground output may feed the existing callback only after
+  completion in this slice. The sole durable authority is still the final
+  bounded transcript; do not claim per-chunk Host streaming.
+
+### Validation and error matrix
+
+| Condition | Required result |
+| --- | --- |
+| bound Workspace, ready matching Runner | every local Agent Tool uses Host adapter |
+| missing Service or `execution=false` | `503 HOST_EXECUTION_UNAVAILABLE`; no Provider/Tool execution |
+| lock error or Runner mismatch | `409 HOST_WORKSPACE_BINDING_FAILED`; no fallback |
+| Tool transport loss after lock | failed/cancelled durable Host Tool; no local mutation |
+| ungrouped legacy Conversation | existing `local_direct` executor |
+| Tool event `mode=host_workspace` | same strict card live and after reload |
+
+### Good / base / bad cases
+
+- **Good**: selected `/mnt/d/project` executes `pwd`, File CAS, and Jobs there;
+  refresh retains detailed `host_workspace` cards.
+- **Base**: an old ungrouped Conversation continues on the one configured
+  Docker project until migration removes the compatibility route.
+- **Bad**: inherit `/workspace` path aliases in a Host adapter, label Host work
+  `local_direct`, accept an active Skill symlink, or retry on Docker after loss.
+
+### Tests required
+
+```bash
+cd mm-chat/backend
+go test -race ./internal/localskills ./internal/agenthost \
+  ./internal/hostworkspace ./internal/chat ./internal/httpserver \
+  ./cmd/agent-host ./cmd/api
+go vet ./internal/localskills ./internal/agenthost \
+  ./internal/hostworkspace ./internal/chat ./internal/httpserver \
+  ./cmd/agent-host ./cmd/api
+
+cd ../frontend
+corepack pnpm exec vitest run src/__tests__/mcpTypes.test.ts \
+  src/__tests__/processTrace.test.tsx
+corepack pnpm typecheck
+```
+
+Assert real Host cwd/file mutation, cancellation, greater-than-16-KiB execution
+input, control-limit separation, no Skill symlink escape, no Docker fallback,
+Runner-identity fencing, environment mode truth, and byte-equivalent live/reload
+Host presentations.
+
+### Wrong vs correct
+
+```text
+Wrong: conversation.workspace_id -> read mutable Workspace path for every Tool
+Correct: first Agent Turn -> immutable execution snapshot -> every Host Tool
+
+Wrong: Host unavailable -> localSkillExecutor.Execute(request)
+Correct: Host unavailable -> durable generic failure -> zero local execution
 ```

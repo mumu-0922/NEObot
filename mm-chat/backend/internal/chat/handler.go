@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"neo-chat/mm-chat/backend/internal/auth"
+	"neo-chat/mm-chat/backend/internal/hostworkspace"
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/localskills"
 	"neo-chat/mm-chat/backend/internal/mcpclient"
@@ -77,6 +78,7 @@ type Handler struct {
 	mcpService                   *mcpclient.Service
 	localSkillCatalog            LocalSkillCatalog
 	localSkillExecutor           *localskills.Executor
+	hostWorkspaceService         hostWorkspaceExecutionService
 	artifactPublisher            WorkspaceArtifactPublisher
 	artifactMaxBytes             int64
 	approvalWaiters              *chatAgentApprovalWaiters
@@ -526,6 +528,12 @@ func WithLocalSkillRuntime(
 	return func(handler *Handler) {
 		handler.localSkillCatalog = catalog
 		handler.localSkillExecutor = executor
+	}
+}
+
+func WithHostWorkspaceExecution(service *hostworkspace.Service) HandlerOption {
+	return func(handler *Handler) {
+		handler.hostWorkspaceService = service
 	}
 }
 
@@ -1679,6 +1687,17 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	var localSkillRuntime *localSkillToolRuntime
 	localSkillContextPrompt := ""
 	if agentMode && h.localSkillExecutor != nil && h.localSkillExecutor.Enabled() {
+		toolExecutor, executorErr := h.localToolExecutorForConversation(
+			r.Context(), conversationID, conversation.WorkspaceID,
+		)
+		if executorErr != nil {
+			if errors.Is(executorErr, errHostWorkspaceBinding) {
+				writeError(w, http.StatusConflict, "HOST_WORKSPACE_BINDING_FAILED", "Conversation Workspace binding is unavailable")
+			} else {
+				writeError(w, http.StatusServiceUnavailable, "HOST_EXECUTION_UNAVAILABLE", "Host Workspace execution is unavailable")
+			}
+			return
+		}
 		var skills []skillsupply.RuntimeSkill
 		if h.localSkillCatalog != nil {
 			var prepareErr error
@@ -1690,7 +1709,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				return
 			}
 		}
-		localSkillRuntime = newLocalSkillToolRuntime(h.localSkillExecutor, skills)
+		localSkillRuntime = newLocalSkillToolRuntime(toolExecutor, skills)
 		localSkillRuntime.bindJobScope(actor.ID, conversationID)
 		localSkillRuntime.bindArtifactPublisher(h.artifactPublisher, h.artifactMaxBytes)
 		var prepareErr error
@@ -2812,7 +2831,8 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				processUpdates = recordedSteps
 			}
 			if !agentTimelineEnabled && execution != nil &&
-				(execution.Mode == "mcp" || execution.Mode == "local_direct") &&
+				(execution.Mode == "mcp" || execution.Mode == localskills.RuntimeLocalDirect ||
+					execution.Mode == localskills.RuntimeHostWorkspace) &&
 				execution.CallStatus != "" {
 				projectedTool := projectChatAgentToolExecution(recordedTool)
 				if projectedTool == nil {

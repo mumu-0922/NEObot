@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"neo-chat/mm-chat/backend/internal/localskills"
 )
 
 const (
@@ -462,24 +464,26 @@ func sanitizeProcessStepPresentation(
 	mode := processDetailString(detail, "mode")
 	card := strings.TrimSpace(presentation.Card)
 	valid := false
+	localToolMode := mode == localskills.RuntimeLocalDirect ||
+		mode == localskills.RuntimeHostWorkspace
 	switch card {
 	case "terminal":
-		valid = kind == ProcessStepKindTool && toolName == localTerminalToolName && mode == "local_direct"
+		valid = kind == ProcessStepKindTool && toolName == localTerminalToolName && localToolMode
 	case "search":
 		valid = kind == ProcessStepKindWeb || kind == ProcessStepKindKnowledge ||
 			toolName == "search_memory"
 	case "file":
-		valid = kind == ProcessStepKindTool && mode == "local_direct" &&
+		valid = kind == ProcessStepKindTool && localToolMode &&
 			(toolName == localFileReadToolName || toolName == localFileWriteToolName ||
 				toolName == localFileEditToolName || toolName == localFileSearchToolName ||
 				toolName == localPublishFileToolName)
 	case "job":
-		valid = kind == ProcessStepKindTool && mode == "local_direct" &&
+		valid = kind == ProcessStepKindTool && localToolMode &&
 			((toolName == localTerminalToolName && presentation.Background) ||
 				toolName == localJobListToolName || toolName == localJobOutputToolName ||
 				toolName == localJobKillToolName)
 	case "skill":
-		valid = kind == ProcessStepKindTool && mode == "local_direct" && toolName == localSkillToolName
+		valid = kind == ProcessStepKindTool && localToolMode && toolName == localSkillToolName
 	case "goal":
 		valid = kind == ProcessStepKindTool && mode == "goal"
 	case "browser", "mcp":

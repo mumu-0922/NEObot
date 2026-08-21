@@ -31,16 +31,15 @@ Outbox state.
 
 - Compose assets are isolated under `mm-chat/`; do not overwrite the
   repository-root deployment files.
-- Current ordinary Chat Agent Skills use the no-sudo `local_direct` Backend
+- Ungrouped legacy Chat Agent Skills use the no-sudo `local_direct` Backend
   described in [`local-skill-runtime.md`](./local-skill-runtime.md). There is no
   OCI executor, per-Skill Sandbox, separate Runner, Cron/Learning worker, or
   fallback Agent service.
-- The separately managed WSL Agent Host is wired to Backend only as an
-  interactive workspace control plane. It reports identity/capabilities,
-  browses or picks Host directories, and resolves canonical paths over the
-  pinned Unix socket/token mount. It still advertises no execution or enforced
-  permission modes, so Chat Agent Tools remain on `local_direct` and Host-bound
-  execution stays unavailable.
+- The separately managed WSL Agent Host reports identity/capabilities, browses
+  or picks directories, resolves canonical paths, and executes bound Agent
+  Tools over the pinned Unix socket/token mount. It advertises execution but no
+  enforced permission modes. Bound Tools use `host_workspace`; ungrouped legacy
+  Conversations retain `local_direct`.
 - Runtime data and local backups belong under `mm-chat/data/` and
   `mm-chat/backup/`, both gitignored.
 - MinIO must remain private; the Go backend is the public file authorization

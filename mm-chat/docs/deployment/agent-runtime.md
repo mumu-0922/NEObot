@@ -2,9 +2,10 @@
 
 ## Current deployment
 
-Agent mode runs inside the ordinary single-server Backend through
-`local_direct`. No second machine, `sudo`, Podman/OCI daemon, Runner certificate,
-Canary worker, or per-Skill container is required.
+Agent mode has two explicit execution routes. A Conversation grouped under a
+bound Host Workspace uses the ordinary-user WSL Agent Host and reports
+`mode=host_workspace`. An ungrouped legacy Conversation retains Docker
+`local_direct`. A Host-bound Conversation never falls back to Docker.
 
 Create the two bind sources as the normal runtime user before first start:
 
@@ -29,7 +30,7 @@ limit and the user smoke flow.
 
 ## Security truth
 
-`local_direct` is not isolated from the Backend container. Commands can change
+Neither execution route is a permission Sandbox yet. `local_direct` can change
 workspace files and reach networks available to Backend. Do not bind `$HOME`,
 `.env.single-server`, `secrets/`, `backup/`, the container socket, or unrelated
 projects. Installed Skill content is untrusted; keep `AGENT_LOCAL_APPROVAL_MODE`
@@ -68,10 +69,10 @@ Agent control-plane relation/function/role may remain. The ledger checksum for
 `099` carries the idempotent gateway repair instead of rewriting that history;
 `101` forward-widens the same authority for bounded Context/Reasoning blocks;
 `102` extends the existing Workspace registry and adds immutable Conversation
-execution snapshots. The interactive Host socket now supports workspace
-status, browsing, native Windows selection, canonical resolution, and durable
-binding, but it does not route Tools until execution and permission
-capabilities are implemented and advertised.
+execution snapshots. The Host socket supports status, browse, native Windows
+selection, canonical resolution, durable binding, and bounded Tool execution.
+It advertises `execution=true` with `permissionModes=[]`; the three permission
+presets remain unavailable until their enforcement probes pass.
 
 ## Verification
 
@@ -83,9 +84,10 @@ bash scripts/verify-chat-artifacts-postgres17.sh
 bash scripts/verify-standalone.sh --full
 ```
 
-A chat smoke should cover Skill installation, one `skill -> terminal -> verify
--> publish_file -> answer` flow, refresh replay, authorized download, and a
-cross-user download denial.
+A Host Workspace smoke should execute `pwd`, `git status --short`, File read,
+write/CAS, one background Job, and refresh replay in the selected Host project.
+Stopping the Host must make the next bound Tool fail without creating anything
+under Docker `/workspace`; restarting the same pinned Runner restores it.
 
 ## Rollback
 

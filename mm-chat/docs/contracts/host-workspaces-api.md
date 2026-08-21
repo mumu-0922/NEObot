@@ -142,10 +142,10 @@ Content-Type: application/json
 Deletion changes only the registration. It never deletes, renames, or writes
 the Host directory. An execution-bound Workspace cannot be deleted.
 
-## Execution binding
+## Execution binding and routing
 
 `conversations.workspace_id` is the visible grouping selected by the user.
-Before the first future Host Agent execution, the Backend must call
+Before the first Host Agent turn, the Backend calls
 `LockConversationExecutionWorkspace`, which atomically persists:
 
 ```text
@@ -157,8 +157,17 @@ agent_workspace_bound_at
 ```
 
 The exact snapshot is returned on idempotent repeats. A different Workspace is
-rejected; execution must never follow later grouping drift or fall back to the
-Docker `local_direct` root.
+rejected. The pinned Runner must advertise `execution=true`; every File,
+Terminal, Job, and artifact read then crosses the private Host socket with this
+exact snapshot. Runner loss, identity change, or Workspace re-resolution drift
+fails closed and never follows later grouping drift or falls back to the Docker
+`local_direct` root. Ungrouped legacy Conversations retain `local_direct` as the
+explicit migration rollback surface.
+
+Durable Process events use `mode=host_workspace` so live and reloaded Terminal,
+File, Job, and Skill cards pass the same strict frontend projection. Failed
+Host `file_read` calls deliberately have no local manual-retry affordance;
+retry cannot target the Docker Workspace.
 
 ## Validation and errors
 
@@ -179,6 +188,8 @@ UTF-8 fields. Responses use `Cache-Control: no-store`.
 | Host resolver absent/unavailable | `503 HOST_WORKSPACE_UNAVAILABLE` |
 | Host returns a stable resolve error | `502 HOST_WORKSPACE_RESOLVE_FAILED` |
 | Host response violates protocol | `502 HOST_WORKSPACE_PROTOCOL_INVALID` |
+| bound Agent Turn while execution is unavailable | `503 HOST_EXECUTION_UNAVAILABLE` |
+| immutable binding and current Runner identity conflict | `409 HOST_WORKSPACE_BINDING_FAILED` |
 
 Errors never echo the submitted Host path, Runner transport details, SQL, or
 raw OS errors.

@@ -116,7 +116,7 @@ export interface McpToolCallUpdate {
   argumentsSummary: Record<string, unknown>;
   failureCategory?: string;
   durationMillis: number;
-  mode: "mcp" | "local_direct";
+  mode: "mcp" | "local_direct" | "host_workspace";
 }
 
 export interface McpMarketplaceItem {
@@ -215,6 +215,7 @@ const TOOL_CALL_CLASSIFICATIONS = new Set<
 const TOOL_CALL_MODES = new Set<McpToolCallUpdate["mode"]>([
   "mcp",
   "local_direct",
+  "host_workspace",
 ]);
 const SELECTION_MODES = new Set<McpSelectionMode>(["inherit", "custom"]);
 const CALL_STATUSES = new Set<McpCallStatus>([
@@ -391,7 +392,7 @@ export function normalizeMcpToolCallUpdate(
     ? enumValue(value.classification, TOOL_CALL_CLASSIFICATIONS)
     : undefined;
   const classificationMatchesMode =
-    mode === "local_direct"
+    mode === "local_direct" || mode === "host_workspace"
       ? classification === undefined ||
         classification === "read" ||
         classification === "write" ||

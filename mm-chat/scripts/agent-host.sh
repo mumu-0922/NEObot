@@ -24,6 +24,7 @@ Optional test/operator overrides:
   AGENT_HOST_LOG_FILE
   AGENT_HOST_BINARY
   AGENT_HOST_VERSION_FILE
+  AGENT_HOST_SKILLS_ROOT
 USAGE
 }
 
@@ -39,6 +40,7 @@ pid_file="${AGENT_HOST_PID_FILE:-${state_dir}/agent-host.pid}"
 log_file="${AGENT_HOST_LOG_FILE:-${state_dir}/agent-host.log}"
 binary="${AGENT_HOST_BINARY:-${state_dir}/agent-host}"
 version_file="${AGENT_HOST_VERSION_FILE:-${state_dir}/agent-host.version}"
+skills_root="${AGENT_HOST_SKILLS_ROOT:-${project_dir}/data/agent-skills}"
 
 command="${1:-}"
 if [[ -z "${command}" || $# -ne 1 ]]; then
@@ -84,6 +86,9 @@ for pair in \
   "version file:${version_file}"; do
   require_absolute_path "${pair%%:*}" "${pair#*:}"
 done
+require_absolute_path "Skills root" "${skills_root}"
+[[ -d "${skills_root}" && ! -L "${skills_root}" ]] || fail "Skills root must be an existing directory"
+[[ "$(readlink -f -- "${skills_root}")" == "${skills_root}" ]] || fail "Skills root contains a symlink component"
 
 ensure_private_directory() {
   local directory="$1"
@@ -322,6 +327,7 @@ start_runner() {
     AGENT_HOST_RUNNER_ID="$(<"${runner_id_file}")" \
     AGENT_HOST_SOCKET="${socket_path}" \
     AGENT_HOST_TOKEN_FILE="${token_file}" \
+    AGENT_HOST_SKILLS_ROOT="${skills_root}" \
     MM_CHAT_VERSION="${version}" \
     "${binary}" >>"${log_file}" 2>&1 </dev/null &
   pid=$!
