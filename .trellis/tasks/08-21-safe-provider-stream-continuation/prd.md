@@ -42,24 +42,24 @@ side effect that already ran in the failed Turn.
 
 ## Acceptance Criteria
 
-- [ ] An eligible interrupted partial answer shows `Continue answer` and
+- [x] An eligible interrupted partial answer shows `Continue answer` and
       retains `Regenerate` as a separate full-rerun action.
-- [ ] Continue creates a sibling assistant version whose initial content is the
+- [x] Continue creates a sibling assistant version whose initial content is the
       exact preserved prefix and whose completed content is prefix plus suffix.
-- [ ] Backend-focused tests prove the continuation request reaches only the
+- [x] Backend-focused tests prove the continuation request reaches only the
       plain Provider stream path and includes no callable Tools or Search path.
-- [ ] Backend-focused tests reject wrong role/status/error/parent, empty
+- [x] Backend-focused tests reject wrong role/status/error/parent, empty
       partial content, cross-Conversation lookup, and unresolved Tool state.
-- [ ] A second Provider interruption preserves the longer partial result and
+- [x] A second Provider interruption preserves the longer partial result and
       remains eligible for another continuation.
-- [ ] The source message, source Agent events, and completed Tool call IDs are
+- [x] The source message, source Agent events, and completed Tool call IDs are
       unchanged; no Tool execution event is copied or rerun.
-- [ ] Frontend focused tests cover request wiring, eligibility, visible copy,
+- [x] Frontend focused tests cover request wiring, eligibility, visible copy,
       active-generation locking, and coexistence with Regenerate.
-- [ ] Focused Backend tests/race/vet and Frontend format/lint/typecheck/tests/
+- [x] Focused Backend tests/race/vet and Frontend format/lint/typecheck/tests/
       production build pass. Full standalone verification is not run unless a
       discovered cross-domain risk makes it necessary.
-- [ ] Immutable images are deployed with a backup/rollback point and the live
+- [x] Immutable images are deployed with a backup/rollback point and the live
       Backend, Frontend, and PostgreSQL services are healthy.
 
 ## Definition of Done
@@ -122,3 +122,25 @@ must choose Regenerate when they intentionally want a fresh execution.
 - Research reference:
   [`research/current-continuation-seams.md`](research/current-continuation-seams.md).
 
+
+## Rollout Evidence
+
+- Work commit: `cf98a2db`.
+- Backend image: `mm-chat/backend:answer-continuation-cf98a2db-20260821T090719Z`
+  (`sha256:4d4b39acdc0e6ebea5d91b372020cfb1adfc99d86f37f5b44ab659652dd29dce`).
+- Frontend image: `mm-chat/frontend:answer-continuation-cf98a2db-20260821T090719Z`
+  (`sha256:21f067d95a050aeb75d3eecabb6d0c3f36ab7b0eb548920b460e00560b8ec8c0`).
+- Backup set: `20260821T090656Z-answer-continuation-cf98a2db` plus the
+  pre-deploy environment and container snapshot under protected `backup/`.
+- Focused Backend race tests and vet passed. Frontend targeted formatting,
+  ESLint, typecheck, 36 focused tests, and production build passed. The
+  existing frontend test script also executed all 952 Vitest cases once and
+  passed; no standalone full gate was run.
+- Controlled fixtures proved a completed Tool round is not replayed, an exact
+  partial prefix including reserved-looking text survives, and a second
+  Provider interruption remains continuable.
+- Live Backend, Frontend, and PostgreSQL are healthy on the pinned images; the
+  deployed binaries/assets contain the continuation contract and localized UI.
+- Roll back by restoring the two previous image pins from the protected
+  pre-deploy environment snapshot and recreating only Backend and Frontend. No
+  schema or durable-state down migration is involved.
