@@ -92,15 +92,26 @@ regenerated Assistant answers, but their navigation contracts differ:
   `switchMessageVersionInTree`; it swaps the current and target nodes'
   descendant attachments, repairs direct-child `parentMessageId` links, and
   then keeps the already visible downstream message IDs in the same order.
+- Assistant sibling creation is also answer-slot selection. Use
+  `createModelResponseBranch`; the new active sibling must inherit the source
+  node's descendants immediately, before an empty regeneration draft renders.
+  The source becomes childless and moved direct children point to the new node.
 - Both `switchMessageVersion` and `switchServerMessageVersion` in
   `chatStore.ts` must use the answer-slot operation. Do not fix only the Local
   or Server projection.
+- Server regeneration must pass its source Assistant ID through the draft and
+  terminal insertion paths so a first `message.started` event and a terminal-
+  only response both use `createModelResponseBranch`. Ordinary new Assistant
+  messages still use `appendServerMessageToTree`.
 
 This distinction prevents `1/N` or `2/N` answer navigation from making later
 messages disappear while preserving the tree's single-parent invariant and
 every inactive subtree. Regression tests must assert the downstream ID list,
 the repaired direct-child parent, Local persistence, Server cache isolation,
-and unchanged User-branch behavior.
+unchanged User-branch behavior, and the state observed synchronously after the
+Server `message.started` callback. Testing navigation alone is insufficient:
+every creation and selection entry point must satisfy the same slot-local
+contract.
 
 ## Avoid
 

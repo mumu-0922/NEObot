@@ -87,7 +87,7 @@ describe("message tree utilities", () => {
     ]);
   });
 
-  it("creates a model response branch without deleting the old continuation", () => {
+  it("creates a model response branch without hiding the visible continuation", () => {
     let tree = normalizeSessionMessageTree([
       makeMessage("u1", "user", "hello"),
       makeMessage("m1", "model", "old answer"),
@@ -104,13 +104,19 @@ describe("message tree utilities", () => {
     expect(getActiveMessagePath(tree).map((message) => message.id)).toEqual([
       "u1",
       "m1b",
+      "u2",
+      "m2",
     ]);
+    expect(tree.nodesById.m1.childMessageIds).toEqual([]);
+    expect(tree.nodesById.m1b.activeChildMessageId).toBe("u2");
+    expect(tree.nodesById.u2.parentMessageId).toBe("m1b");
+    expect(getAllMessagesFromTree(tree)).toHaveLength(5);
     expect(getMessageBranchInfo(tree, "m1b")).toEqual({
       index: 1,
       count: 2,
     });
 
-    tree = switchMessageBranch(tree, "m1b", "prev");
+    tree = switchMessageVersionInTree(tree, "m1b", "prev");
 
     expect(getActiveMessagePath(tree).map((message) => message.id)).toEqual([
       "u1",
@@ -142,9 +148,11 @@ describe("message tree utilities", () => {
     expect(getActiveMessagePath(tree).map((message) => message.id)).toEqual([
       "u1",
       "m1b",
+      "u2",
+      "m2b",
     ]);
 
-    tree = switchMessageBranch(tree, "m1b", "prev");
+    tree = switchMessageVersionInTree(tree, "m1b", "prev");
 
     expect(getActiveMessagePath(tree).map((message) => message.id)).toEqual([
       "u1",

@@ -310,6 +310,16 @@ export function createModelResponseBranch(
 
   const parentMessageId = sourceNode.parentMessageId;
   const node = createNode(message, parentMessageId);
+  node.childMessageIds = sourceNode.childMessageIds;
+  node.activeChildMessageId = sourceNode.activeChildMessageId;
+  sourceNode.childMessageIds = [];
+  sourceNode.activeChildMessageId = undefined;
+
+  for (const childId of node.childMessageIds) {
+    const child = nextTree.nodesById[childId];
+    if (child) child.parentMessageId = node.id;
+  }
+
   nextTree.nodesById[node.id] = node;
   addChild(nextTree, parentMessageId, node.id);
 

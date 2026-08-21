@@ -945,10 +945,22 @@ describe("chat store server read path", () => {
       ...makeMessage("m2", "model"),
       parentMessageId: "m1",
     };
+    const m4 = {
+      ...makeMessage("m4", "user"),
+      parentMessageId: "m2",
+    };
+    const m5 = {
+      ...makeMessage("m5", "model"),
+      parentMessageId: "m4",
+    };
     const branchTree = appendMessageToParent(
-      normalizeSessionMessageTree([m1]),
-      m2,
-      "m1",
+      appendMessageToParent(
+        appendMessageToParent(normalizeSessionMessageTree([m1]), m2, "m1"),
+        m4,
+        "m2",
+      ),
+      m5,
+      "m4",
     );
     mocks.streamService.streamAssistantMessage.mockImplementationOnce(
       async (input, handlers) => {
@@ -959,6 +971,11 @@ describe("chat store server read path", () => {
           sequence: 1,
           createdAt: "2026-07-08T00:00:02Z",
         });
+        expect(
+          useChatStore
+            .getState()
+            .serverReadState.activeMessages.map((message) => message.id),
+        ).toEqual(["m1", "m3", "m4", "m5"]);
         handlers?.onDelta?.({
           type: "message.delta",
           runId: "run-regen",
@@ -979,9 +996,9 @@ describe("chat store server read path", () => {
     useChatStore.setState({
       serverReadState: {
         ...makeEmptyServerReadState(),
-        sessions: [{ ...makeServerSession("c1"), messageCount: 2 }],
+        sessions: [{ ...makeServerSession("c1"), messageCount: 4 }],
         currentSessionId: "c1",
-        activeMessages: [m1, m2],
+        activeMessages: [m1, m2, m4, m5],
         activeMessageTree: branchTree,
       },
       selectedModel: "openai:gpt-5.5",
@@ -1007,13 +1024,16 @@ describe("chat store server read path", () => {
     );
     expect(
       state.serverReadState.activeMessages.map((message) => message.id),
-    ).toEqual(["m1", "m3"]);
+    ).toEqual(["m1", "m3", "m4", "m5"]);
     expect(state.serverReadState.activeMessages[1]).toMatchObject({
       id: "m3",
       content: "new answer",
       parentMessageId: "m1",
     });
-    expect(state.serverReadState.sessions[0]?.messageCount).toBe(3);
+    expect(
+      state.serverReadState.activeMessageTree.nodesById.m4.parentMessageId,
+    ).toBe("m3");
+    expect(state.serverReadState.sessions[0]?.messageCount).toBe(5);
     expect(state.serverReadState.generation.status).toBe("completed");
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
   });

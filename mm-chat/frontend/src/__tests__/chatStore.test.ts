@@ -680,7 +680,7 @@ describe("chat store persistence", () => {
     ).toMatchObject({ messageCount: 2 });
   });
 
-  it("keeps the current layout when switching from a fresh model branch", async () => {
+  it("keeps downstream messages visible while creating and switching a model branch", async () => {
     const userMessage = makeMessage("u1", "prompt");
     const firstAnswer = makeModelMessage("m1", "old answer");
     const followUp = makeMessage("u2", "follow up");
@@ -700,10 +700,12 @@ describe("chat store persistence", () => {
     expect(useChatStore.getState().activeMessages.map((m) => m.id)).toEqual([
       "u1",
       branchId,
+      "u2",
+      "m2",
     ]);
     expect(
       useChatStore.getState().sessions.find((session) => session.id === "a"),
-    ).toMatchObject({ messageCount: 2 });
+    ).toMatchObject({ messageCount: 4 });
 
     useChatStore.getState().updateMessageContent("a", branchId, "new answer");
     await useChatStore.getState().syncActiveSession("a");
@@ -712,17 +714,19 @@ describe("chat store persistence", () => {
     expect(isSessionMessageTree(storedTree)).toBe(true);
     expect(
       getActiveMessagePath(storedTree as any).map((message) => message.id),
-    ).toEqual(["u1", branchId]);
+    ).toEqual(["u1", branchId, "u2", "m2"]);
 
     useChatStore.getState().switchMessageVersion("a", branchId, "prev");
 
     expect(useChatStore.getState().activeMessages.map((m) => m.id)).toEqual([
       "u1",
       "m1",
+      "u2",
+      "m2",
     ]);
     expect(
       useChatStore.getState().sessions.find((session) => session.id === "a"),
-    ).toMatchObject({ messageCount: 2 });
+    ).toMatchObject({ messageCount: 4 });
   });
 
   it("switches a model version without removing downstream local messages", async () => {
@@ -818,7 +822,7 @@ describe("chat store persistence", () => {
     ]);
   });
 
-  it("keeps the current empty layout when switching nested model branches", async () => {
+  it("keeps nested downstream messages visible while regenerating an upstream answer", async () => {
     useChatStore.setState({
       sessions: [{ ...makeSession("a"), messageCount: 4 }],
       currentSessionId: "a",
@@ -843,6 +847,8 @@ describe("chat store persistence", () => {
     expect(useChatStore.getState().activeMessages.map((m) => m.id)).toEqual([
       "u1",
       rootBranchId,
+      "u2",
+      nestedBranchId,
     ]);
 
     useChatStore.getState().switchMessageVersion("a", rootBranchId, "prev");
@@ -850,6 +856,8 @@ describe("chat store persistence", () => {
     expect(useChatStore.getState().activeMessages.map((m) => m.id)).toEqual([
       "u1",
       "m1",
+      "u2",
+      nestedBranchId,
     ]);
   });
 

@@ -361,6 +361,7 @@ const applyServerMessageToReadState = (
   serverReadState: ServerReadState,
   sessionId: string,
   message: Message,
+  branchSourceMessageId?: string,
 ): ServerReadState => {
   const isCurrentServerSession = serverReadState.currentSessionId === sessionId;
   const hasMessageInActiveTree = Boolean(
@@ -373,7 +374,13 @@ const applyServerMessageToReadState = (
           message.id,
           () => message,
         )
-      : appendServerMessageToTree(serverReadState.activeMessageTree, message)
+      : branchSourceMessageId
+        ? createModelResponseBranch(
+            serverReadState.activeMessageTree,
+            branchSourceMessageId,
+            message,
+          )
+        : appendServerMessageToTree(serverReadState.activeMessageTree, message)
     : serverReadState.activeMessageTree;
   const activeMessages = isCurrentServerSession
     ? getActiveMessagePath(activeMessageTree)
@@ -1728,6 +1735,7 @@ export const useChatStore = create<ChatState>()(
                     current.serverReadState,
                     options.sessionId,
                     message,
+                    options.assistantMessageId,
                   ),
                   isLoading: true,
                   error: null,
@@ -1868,6 +1876,7 @@ export const useChatStore = create<ChatState>()(
                     current.serverReadState,
                     options.sessionId,
                     terminalMessage,
+                    options.assistantMessageId,
                   )
                 : current.serverReadState;
               const terminalStatus = getTerminalServerGenerationStatus(result);
