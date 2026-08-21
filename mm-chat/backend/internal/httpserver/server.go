@@ -21,6 +21,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/files"
 	"neo-chat/mm-chat/backend/internal/health"
+	"neo-chat/mm-chat/backend/internal/hostworkspace"
 	"neo-chat/mm-chat/backend/internal/imagejobs"
 	"neo-chat/mm-chat/backend/internal/jobcontrol"
 	"neo-chat/mm-chat/backend/internal/knowledge"
@@ -93,6 +94,7 @@ type options struct {
 	memoryWakePublisher        chat.MemoryWakePublisher
 	providerSecretVault        *providersecrets.Vault
 	webSearchResolver          websearch.Resolver
+	hostWorkspaceService       *hostworkspace.Service
 }
 
 type ragEvidenceCandidateFetcher interface {
@@ -1038,6 +1040,12 @@ func WithMCPService(service *mcpclient.Service) Option {
 	}
 }
 
+func WithHostWorkspaceService(service *hostworkspace.Service) Option {
+	return func(opts *options) {
+		opts.hostWorkspaceService = service
+	}
+}
+
 func WithLocalSkillExecutor(executor *localskills.Executor) Option {
 	return func(opts *options) {
 		opts.localSkillExecutor = executor
@@ -1130,6 +1138,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		}),
 	)
 	mcpHandler := mcpclient.NewHandler(resolvedOptions.mcpService)
+	hostWorkspaceHandler := hostworkspace.NewHandler(resolvedOptions.hostWorkspaceService)
 	memoryServiceOptions := make([]usermemory.ServiceOption, 0, 4)
 	memoryServiceOptions = append(
 		memoryServiceOptions,
@@ -1346,6 +1355,8 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/skills", skillSupplyHandler)
 	mux.Handle("/v1/skills/", skillSupplyHandler)
 	mux.Handle("/v1/mcp/", mcpHandler)
+	mux.Handle("/v1/workspaces", hostWorkspaceHandler)
+	mux.Handle("/v1/workspaces/", hostWorkspaceHandler)
 	mux.Handle("/v1/code/executions", codeJobHandler)
 	mux.Handle("/v1/images/generations", imageJobHandler)
 	mux.Handle("/v1/jobs/", jobControlHandler)

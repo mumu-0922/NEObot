@@ -227,3 +227,89 @@ Correct: parse private PID -> verify exact /proc cmdline -> signal -> recheck
 Wrong: Runner rollout -> rebuild/recreate all Docker services
 Correct: focused Go/lifecycle gates -> start dark Host only -> leave live Compose unchanged
 ```
+
+## Scenario: deploy the durable Host Workspace schema dark
+
+### Scope / trigger
+
+Apply when releasing migration `102`, the `/v1/workspaces*` Backend API, or the
+later Host socket mount that changes binding availability.
+
+### Signatures
+
+```bash
+cd mm-chat
+docker compose --env-file .env.single-server --profile ops run --rm migrate
+docker compose --env-file .env.single-server --profile app up -d backend
+./scripts/agent-host.sh status
+```
+
+```text
+Expected database head: 102_host_workspaces
+Dark bind result:         503 HOST_WORKSPACE_UNAVAILABLE
+```
+
+### Contracts
+
+- Apply `102` with the migrator credential before recreating Backend; API
+  startup never runs migrations.
+- This slice does not mount the Host socket/token into Backend. The Host process
+  may remain healthy and dark while Workspace settings become durable.
+- Build and recreate Backend only. Do not rebuild Frontend, RAG, Postgres,
+  Redis, MinIO, or MCP Runner for this Backend/schema-only slice.
+- Preserve `data/`, `secrets/`, `backup/`, `.env.single-server`, the stable Host
+  token/Runner id, and existing project directories.
+- `102.down` is clean only before any imported settings, Host binding, or
+  execution snapshot. After durable state exists, use the compatible previous
+  application path or a matched backup; never purge records to force down.
+- A later socket rollout must mount only the exact private runtime directory
+  and independent token, pin the persisted Runner id, add health projection,
+  and keep existing unbound Conversations on their current behavior.
+
+### Validation and error matrix
+
+| Condition | Required result |
+| --- | --- |
+| schema remains at 101 with new Backend | readiness/API smoke fails; do not serve Workspace writes |
+| migration 102 empty down/re-up | succeeds and restores exact grants/constraints |
+| migration 102 down after imported/bound state | `HOST_WORKSPACE_ROLLBACK_BLOCKED`; head/data unchanged |
+| Host healthy but socket not mounted | list/import work; bind is generic `503` |
+| Host stopped during dark schema rollout | no Tool routing change |
+| protected runtime paths differ after release | release fails review |
+
+### Good / base / bad cases
+
+- **Good**: disposable PG17 replay and runtime-role tests pass, migration runs,
+  Backend-only image is recreated, head is 102, API health/list pass, and bind
+  fails closed without a path leak.
+- **Base**: the Host process is stopped; the durable API remains usable except
+  bind, while existing `local_direct` execution is unchanged.
+- **Bad**: mount `$HOME`, rewrite the Host token, rebuild every service, or
+  down/purge durable Workspaces merely to return to schema 101.
+
+### Tests required
+
+```bash
+cd mm-chat/backend
+go test -race ./internal/hostworkspace ./internal/agenthost \
+  ./internal/migration ./internal/httpserver ./cmd/api
+go vet ./internal/hostworkspace ./internal/agenthost \
+  ./internal/migration ./internal/httpserver ./cmd/api
+cd ..
+./scripts/agent-host.sh status
+docker compose --env-file .env.single-server ps backend postgres
+```
+
+Also query `schema_migrations` numerically for exact head `102`, exercise one
+authenticated Workspace list/import, and prove the bind response is `503`
+without the submitted path.
+
+### Wrong vs correct
+
+```text
+Wrong: new Backend image -> auto-migrate on startup -> mount arbitrary Host root
+Correct: explicit migrate -> Backend-only recreate -> dark 503 until exact socket wiring
+
+Wrong: rollback requires 101 -> delete Workspace/project state -> migrate down
+Correct: preserve state -> use compatible image or restore an operator backup
+```

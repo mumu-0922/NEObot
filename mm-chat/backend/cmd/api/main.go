@@ -26,6 +26,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/config"
 	"neo-chat/mm-chat/backend/internal/database"
 	"neo-chat/mm-chat/backend/internal/files"
+	"neo-chat/mm-chat/backend/internal/hostworkspace"
 	"neo-chat/mm-chat/backend/internal/httpserver"
 	"neo-chat/mm-chat/backend/internal/imagejobs"
 	"neo-chat/mm-chat/backend/internal/jobartifacts"
@@ -382,6 +383,11 @@ func main() {
 		agentOptions = append(agentOptions, agents.WithOfficialMarket(lobeHubMarketplace))
 	}
 	mcpService := newMCPService(cfg, sqlDB, providerSecretVault, objectStore, logger, marketplace)
+	var hostWorkspaceRepository hostworkspace.Repository
+	if sqlDB != nil {
+		hostWorkspaceRepository = hostworkspace.NewPostgresRepository(sqlDB)
+	}
+	hostWorkspaceService := hostworkspace.NewService(hostWorkspaceRepository, nil)
 	agentService := agents.NewService(agentOptions...)
 	var skillRepository skillsupply.Repository
 	if sqlDB != nil {
@@ -419,6 +425,7 @@ func main() {
 		httpserver.WithMemoryWakePublisher(redisClient),
 		httpserver.WithProviderSecretVault(providerSecretVault),
 		httpserver.WithMCPService(mcpService),
+		httpserver.WithHostWorkspaceService(hostWorkspaceService),
 		httpserver.WithAgentService(agentService),
 		httpserver.WithSkillSupplyService(skillSupplyService),
 		httpserver.WithLocalSkillExecutor(localSkillExecutor),

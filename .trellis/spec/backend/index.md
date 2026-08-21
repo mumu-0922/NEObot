@@ -13,7 +13,7 @@
 | [Chat/Agent Mode](./chat-agent-mode.md)             | Persisted Conversation mode, effective capability downgrade, and physical Agent Tool admission |
 | [MCP Tools](./mcp-tools.md)                         | Server-authoritative MCP API, grants/selections, native Tool continuation, transports, results, retention, and Plugin retirement |
 | [Assistant Store](./assistant-store.md)             | Server-owned prompt presets, LobeHub admission/fingerprints, revisions, persistence, and rollback boundaries |
-| [Agent Runtime](./agent-runtime.md) | Current Chat Agent `local_direct` runtime plus the dark WSL Agent Host identity/workspace-resolution foundation and migration-`098` retirement boundary |
+| [Agent Runtime](./agent-runtime.md) | Current Chat Agent `local_direct`, dark WSL Host protocol, migration-102 durable Workspace convergence/execution snapshots, and fail-closed rollout boundaries |
 | [Direct chat attachments](./chat-attachments.md)    | Attachment-only messages, native images, bounded document extraction, provider context, and explicit failures       |
 | [Hosted media provider smoke](./provider-live-smoke.md) | Exact live-provider authorization, one-off credentials, explicit TTS voices, artifacts, and sanitized evidence    |
 | [Hosted TTS production](./hosted-tts-production.md) | Dedicated SiliconFlow Voice authority, exact activation, server-mode playback, per-user cache, and cleanup |

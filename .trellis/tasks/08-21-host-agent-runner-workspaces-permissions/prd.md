@@ -194,9 +194,12 @@ permission presets whose enforcement is real rather than presentation-only.
    token/socket lifecycle wrapper, focused protocol and security tests. The
    deployed dark Runner advertises no execution or permission modes and does
    not alter current Compose routing.
-2. **Durable Workspace domain**: migrations, repository/service/API,
-   canonical-path adoption through Runner, conversation binding, idempotent
-   legacy import, focused migration and API tests.
+2. **Durable Workspace domain** — completed 2026-08-21: migration `102`
+   extends the existing Workspace registry in place, preserves browser
+   settings, adds CAS repository/service/API and immutable Conversation
+   execution snapshots, and passes runtime-role PostgreSQL 17 down/re-up and
+   ownership/locking tests. The deployed bind route remains fail closed until
+   the next socket-wiring slice supplies the pinned Runner resolver.
 3. **Workspace UI convergence**: upgrade existing Workspace state and sidebar,
    native Windows picker/WSL browser flow, unbound/bound states, refresh and
    migration tests.

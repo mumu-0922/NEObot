@@ -4,12 +4,16 @@
 
 The Agent Host is an ordinary-user WSL process that will eventually let Agent
 conversations use arbitrary WSL and mounted Windows project directories. The
-current slice is deliberately dark: it exposes only capability discovery and
-canonical workspace resolution. The Docker Backend is not mounted to its
-socket and no existing execution is routed through it.
+Host process is deliberately dark: it exposes only capability discovery and
+canonical workspace resolution. Migration `102` and the Backend
+`/v1/workspaces*` API now persist Workspace settings and execution authority,
+but the Docker Backend is not mounted to the Host socket and no existing
+execution is routed through it. The bind route therefore returns
+`503 HOST_WORKSPACE_UNAVAILABLE` instead of guessing a Host path.
 
-This makes the slice independently deployable and reversible without touching
-the running frontend, Backend, Postgres, or current `local_direct` workspace.
+The Host lifecycle remains independently deployable and reversible. Database
+rollback is separate: `102.down` refuses once imported settings, a Host binding,
+or a Conversation execution snapshot exists.
 
 ## Requirements
 
@@ -108,6 +112,7 @@ directory may be rebuilt, but never delete or rewrite `data/`, `secrets/`,
 `backup/`, or `.env.single-server` as part of rollback.
 
 The later Backend-integration slice must add a read-only bind of the exact
-socket runtime directory plus token secret, health projection, feature flag,
-and fail-closed routing. It must not switch existing conversations during this
-foundation rollout.
+socket runtime directory plus token secret, construct the pinned
+`agenthost.Client`, add a health projection and feature flag, and retain
+fail-closed routing. It must not switch existing conversations during the
+socket rollout.

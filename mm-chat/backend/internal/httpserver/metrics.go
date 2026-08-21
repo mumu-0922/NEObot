@@ -407,11 +407,22 @@ func knownMetricPath(path string) (string, bool) {
 		return path, true
 	case "/v1/agents", "/v1/mcp/servers", "/v1/mcp/oauth/start",
 		"/v1/mcp/oauth/callback", "/v1/mcp/oauth/revoke", "/v1/mcp/marketplace/search",
+		"/v1/workspaces",
 		"/v1/code/executions", "/v1/images/generations", "/v1/voice/transcribe",
 		"/v1/voice/synthesize":
 		return path, true
 	}
 	parts := strings.Split(path, "/")
+	if len(parts) >= 4 && parts[1] == "v1" && parts[2] == "workspaces" {
+		switch {
+		case len(parts) == 4:
+			return "/v1/workspaces/{workspace}", true
+		case len(parts) == 5 && parts[4] == "bind":
+			return "/v1/workspaces/{workspace}/bind", true
+		case len(parts) == 6 && parts[4] == "conversations":
+			return "/v1/workspaces/{workspace}/conversations/{conversation}", true
+		}
+	}
 	if len(parts) >= 5 && parts[1] == "v1" && parts[2] == "mcp" {
 		switch parts[3] {
 		case "servers":

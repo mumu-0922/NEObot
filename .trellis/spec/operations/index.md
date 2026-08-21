@@ -10,7 +10,7 @@
 | [Dependency security](./dependency-security.md)             | Lockfile remediation, official-registry audits, override compatibility, and release verification.         |
 | [Runtime recreate image pinning](./runtime-recreate-image-pinning.md) | Immutable image selection, schema compatibility, and rollback requirements for live Compose recreation. |
 | [MCP Runner](./mcp-runner.md)                         | MCP manifest, dedicated Runner image/token/topology, release, backup/restore, retention, and rollback. |
-| [Agent Runtime](./agent-runtime.md) | Current no-sudo `local_direct` Backend/Compose wiring plus the dark non-systemd WSL Agent Host lifecycle and migration-`098` legacy retirement boundary. |
+| [Agent Runtime](./agent-runtime.md) | Current no-sudo `local_direct`, dark non-systemd WSL Host lifecycle, and migration-102 durable Workspace deployment/rollback boundary. |
 | [Session auto-commit](./session-auto-commit.md)             | Exact journal/index staging, commit isolation, ignored paths, and regression tests.                       |
 | [Trellis scaffold boundary](./trellis-scaffold-boundary.md) | Shared Trellis/Codex scaffold, local state exclusions, explicit staging, and fresh-clone verification.    |
 

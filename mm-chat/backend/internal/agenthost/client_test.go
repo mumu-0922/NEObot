@@ -47,6 +47,17 @@ func newTestClient(t *testing.T, socketPath, expectedRunnerID string) *Client {
 	return client
 }
 
+func TestClientRunnerID(t *testing.T) {
+	client := &Client{expectedRunnerID: "wsl-test-runner"}
+	if got := client.RunnerID(); got != "wsl-test-runner" {
+		t.Fatalf("RunnerID() = %q", got)
+	}
+	var nilClient *Client
+	if got := nilClient.RunnerID(); got != "" {
+		t.Fatalf("nil RunnerID() = %q", got)
+	}
+}
+
 func TestClientServerRoundTripOverUnixSocket(t *testing.T) {
 	project := t.TempDir()
 	resolver := newTestResolver(t)

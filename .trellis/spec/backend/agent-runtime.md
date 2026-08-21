@@ -15,7 +15,7 @@ Conversation config: toolMode = "chat" | "agent"
 Skill API: /v1/skills/*
 Agent local Tools: skill, file_read, file_write, file_edit, file_search,
                    terminal, job_list, job_output, job_kill, publish_file
-Migration head: 101_chat_agent_transcript_blocks
+Migration head: 102_host_workspaces
 
 Transcript v2 events: context.injected, assistant.chunk,
                       assistant.block.completed
@@ -239,7 +239,7 @@ event rejection, marker-gated legacy compatibility, and byte-equivalent
 live/reload rendering. The PostgreSQL 17
 event-log drill must append all three migration-101 event types through the
 hardened runtime gateway, assert the v2 start marker, and replay cleanly to head
-101.
+102.
 
 Cross-layer changes also require frontend format/lint/typecheck/test/build and
 `bash mm-chat/scripts/verify-standalone.sh --full`.
@@ -264,7 +264,7 @@ Wrong: overwrite the background start event when job_output arrives
 Correct: retain immutable events -> merge display cards by exact jobId
 
 Wrong: DROP ... CASCADE after a broad agent_* match
-Correct: lock -> exact manifest/data validation -> explicit drops -> forward repair -> head 101
+Correct: lock -> exact manifest/data validation -> explicit drops -> forward repair -> head 102
 ```
 
 ## Scenario: establish the dark WSL Agent Host control plane
@@ -371,4 +371,113 @@ Correct: strict bounded response -> pin runnerId -> validate facts -> recompute 
 
 Wrong: Host unavailable -> silently execute the same Tool inside Docker
 Correct: dark phase leaves old conversations unchanged; future Host-bound work fails closed
+```
+
+## Scenario: persist converged Host Workspaces before execution routing
+
+### Scope / trigger
+
+Apply when changing `internal/hostworkspace`, `/v1/workspaces*`, migration
+`102_host_workspaces`, `conversations.workspace_id`, or any future call to
+`LockConversationExecutionWorkspace`.
+
+### Signatures
+
+```text
+GET    /v1/workspaces
+GET    /v1/workspaces/{workspaceId}
+PUT    /v1/workspaces/{workspaceId}
+PATCH  /v1/workspaces/{workspaceId}
+DELETE /v1/workspaces/{workspaceId}
+POST   /v1/workspaces/{workspaceId}/bind
+PUT    /v1/workspaces/{workspaceId}/conversations/{conversationId}
+
+Binding status: unbound | bound
+Migration head: 102_host_workspaces
+```
+
+### Contracts
+
+- Extend the existing `workspaces` table and visible Workspace identity in
+  place. Preserve UUID, name, system prompt, files, color, Search/Reasoning
+  settings, and `conversations.workspace_id`; never create a competing Project
+  table or infer a path from the name.
+- Legacy browser import is current-user, idempotent, and unbound. Equivalent
+  replay leaves revision unchanged. Settings updates, bind, and delete use an
+  exact positive compare-and-set revision.
+- The Host Runner alone canonicalizes/probes an input path. Persist its pinned
+  Runner id, canonical/display paths, kind, and recomputed fingerprint as one
+  all-or-null tuple. Binding is one-way; aliases conflict through the active
+  `(owner_user_id, runner_id, directory_fingerprint)` unique index.
+- Authorize the current-user Workspace, expected revision, and unbound state
+  before invoking the Host resolver. Missing/cross-user/stale/already-bound
+  requests must not become Host filesystem probes.
+- Keep visible grouping in `conversations.workspace_id`. On first Host Agent
+  execution, transactionally copy the selected bound Workspace into the
+  `agent_workspace_*` execution snapshot. Repeating the same lock is
+  idempotent; a different Workspace is drift and must fail.
+- Scope every query and mutation to the authenticated owner. Use the composite
+  Conversation/Workspace ownership FK and column-limited runtime grants. The
+  runtime role must not change owner/team identity or physically delete rows.
+- Strict JSON rejects unknown/duplicate keys, trailing documents, wrong media
+  types, queries, and oversize. Browser errors are generic and never echo a
+  submitted Host path, SQL, Runner transport detail, or raw OS failure.
+- Until the Backend mounts the Host socket and constructs a pinned resolver,
+  bind returns `503 HOST_WORKSPACE_UNAVAILABLE`. Do not canonicalize inside
+  Docker or silently bind the static `local_direct` root.
+- Soft deletion never mutates the Host directory. Migration down refuses with
+  `HOST_WORKSPACE_ROLLBACK_BLOCKED` once imported settings, Host binding, or an
+  execution snapshot exists.
+
+### Validation and error matrix
+
+| Condition | Required result |
+| --- | --- |
+| malformed UUID/settings/body or query | `400 INVALID_WORKSPACE_REQUEST` |
+| missing or cross-user Workspace/Conversation | generic `404` |
+| stale revision | `409 WORKSPACE_REVISION_CONFLICT` |
+| second bind | `409 WORKSPACE_ALREADY_BOUND` |
+| canonical directory alias duplicate | `409 WORKSPACE_DIRECTORY_REGISTERED` |
+| unbound execution lock | `409 WORKSPACE_UNBOUND` |
+| grouping conflicts with execution snapshot | `409 CONVERSATION_WORKSPACE_LOCKED` |
+| resolver missing or Host unavailable | `503 HOST_WORKSPACE_UNAVAILABLE` |
+| Host stable error/protocol violation | sanitized `502` |
+| down after durable state | atomic `HOST_WORKSPACE_ROLLBACK_BLOCKED` |
+
+### Good / base / bad cases
+
+- **Good**: import one legacy browser Workspace, preserve every setting, bind
+  it once through the pinned Runner, group a Conversation, and lock the exact
+  Runner/canonical-path snapshot before its first Host Tool call.
+- **Base**: legacy Workspace remains `unbound`; ordinary chat rendering works,
+  while Host binding/execution is unavailable and no Docker fallback occurs.
+- **Bad**: resolve a path in Backend, overwrite a bound path, expose raw path
+  failures, or use mutable grouping as the execution `cwd` after work starts.
+
+### Tests required
+
+```bash
+cd mm-chat/backend
+go test -race ./internal/hostworkspace ./internal/agenthost \
+  ./internal/migration ./internal/httpserver ./cmd/api
+go vet ./internal/hostworkspace ./internal/agenthost \
+  ./internal/migration ./internal/httpserver ./cmd/api
+```
+
+The disposable PostgreSQL 17 test must apply through `102`, run Repository
+mutations as `go_api_runtime`, prove empty down/re-up, idempotent import, alias
+uniqueness, cross-user denial, execution lock/no drift, in-use delete denial,
+and guarded down after durable state.
+
+### Wrong vs correct
+
+```text
+Wrong: frontend Workspace + separate Host Project table + copied conversations
+Correct: one existing Workspace id + additive Host binding + execution snapshot
+
+Wrong: GRANT UPDATE ON workspaces -> rely only on Go ownership filters
+Correct: owner-scoped SQL + composite FK + only required insert/update columns
+
+Wrong: Host resolver not wired -> accept/clean the path inside Docker
+Correct: return 503 until the pinned Host authority is reachable
 ```

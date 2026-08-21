@@ -80,6 +80,13 @@ func (client *Client) Close() {
 	}
 }
 
+func (client *Client) RunnerID() string {
+	if client == nil {
+		return ""
+	}
+	return client.expectedRunnerID
+}
+
 func (client *Client) Capabilities(ctx context.Context) (Capabilities, error) {
 	var response Capabilities
 	if err := client.do(ctx, http.MethodGet, CapabilitiesPath, nil, &response); err != nil {

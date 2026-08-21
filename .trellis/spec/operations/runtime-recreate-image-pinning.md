@@ -62,6 +62,13 @@ removed.
   `CMD ["/usr/local/bin/mm-chat-api"]`. Prefer the target-aware Compose build
   or `scripts/release-images.sh` over a handwritten Docker build.
 - Render the same Compose topology named by the live container labels.
+- Compose `config --images` lists only services admitted by the active profile
+  set. Include `--profile app` when asserting the Backend candidate; output
+  produced without that profile cannot prove which Backend image will run.
+- Under `set -o pipefail`, do not validate a long producer with
+  `producer | grep -q`: an early successful grep can close the pipe, make the
+  producer exit on `SIGPIPE`, and falsely trigger rollback. Capture the bounded
+  output first, then grep the captured string.
 - Compare the database's applied migration version with the selected binary's
   schema requirements. A flag-only restart must not run migrations to make an
   accidentally newer image start.
@@ -92,6 +99,11 @@ removed.
   route is still a failed rollout proof: execute the prepared behavior rollback,
   preserve the pinned image/schema/data, correct the probe, and retry only the
   previously authorized Provider-free recreation.
+- Authenticated deployment smokes may create a short-lived marked Session, but
+  cleanup must use an exact tested SQL path and prove the marker count returns
+  to zero. `psql -v name=value -c "... :'name' ..."` does not perform psql
+  variable interpolation in this execution mode; use stdin/heredoc SQL for
+  psql variables, or a validated fixed marker for cleanup.
 - Keep every rollback phase marker read by an `EXIT` trap in the parent shell.
   Assigning it in a pipeline body such as `producer | while read ...` mutates a
   subshell copy and can make the trap skip a required disable/recreate action.
@@ -132,6 +144,9 @@ removed.
 | `compose run --no-build` is rejected by the installed CLI                                        | Stop before credentials. Capability-detect, retain `--pull never`, omit positive `--build`, and verify the exact helper image.                                                                           |
 | Running admin binary lacks the required one-off command                                          | Stop before credentials/Provider work and select an explicitly reviewed pinned helper image; do not recreate live backend.                                                                               |
 | A post-recreate identity/readiness probe returns route-level `404`                               | Restore the protected behavior environment, keep the pinned image and schema, verify the route from current source/runtime, and retry only the Provider-free recreation. Do not replay a consumed smoke. |
+| `config --images` omits Backend because profile `app` was not active                             | Re-render with the exact live profile set before deciding the candidate reference is absent. |
+| `producer \| grep -q` fails only under `pipefail` after a visible match                          | Treat it as a verifier defect; capture producer output before matching and do not mutate live state until it passes. |
+| temporary authenticated Session cleanup leaves its marker row                                   | Keep rollback active, delete by the exact validated marker, prove zero rows, then retry with stdin-based psql variable substitution. |
 | An `EXIT` trap reads a phase marker assigned inside a pipeline subshell                          | Treat automatic rollback as unproven. Execute the prepared corrective rollback directly, verify the disabled state, then replace the pipeline or persist state explicitly before retry.                  |
 | A healthy response omits an optional field assumed by the verifier                               | Roll back behavior, inspect the current API contract and captured response, then assert only authoritative required fields on a fresh Provider-free retry.                                               |
 | A `UNION` arm contains unparenthesized `ORDER BY`/`LIMIT`                                        | Reject the verifier before live use; parenthesize the arm or use a scalar subquery and execute it against the rehearsed schema.                                                                          |
@@ -193,6 +208,8 @@ removed.
 
 - Assert the candidate Compose render names the intended pinned image and exact
   flag values.
+- Assert image checks activate the target service profile and that the verifier
+  cannot false-fail from `grep -q` closing a `pipefail` pipeline.
 - Assert target container IDs change while image IDs remain the reviewed IDs.
 - Assert unrelated container IDs remain identical.
 - Assert target health checks pass and recent startup logs contain no
@@ -201,6 +218,9 @@ removed.
   `/usr/local/bin/mm-chat-api` before changing the live environment.
 - Assert identity/readiness probe paths are registered by the selected image;
   a route-level failure must exercise behavior rollback before corrected retry.
+- For a temporary authenticated Session, prove insert, request authorization,
+  exact cleanup, and zero remaining marker rows. Execute psql-variable SQL from
+  stdin rather than assuming `-c` interpolation.
 - Assert the database migration version is unchanged for a flag-only operation.
 - Assert the protected environment and logical dump have mode `0600`, validate
   their hashes/catalog, and compare persistent row counts before and after.
@@ -249,6 +269,14 @@ docker compose run admin new-read-only-helper
 ```bash
 # Wrong: an assumed route is treated as readiness authority while flags stay on.
 curl --fail http://127.0.0.1:8080/v1/auth/me
+```
+
+```bash
+# Wrong: Backend is profile-gated and may be absent from this render.
+docker compose config --images | grep -q 'mm-chat/backend:candidate'
+
+# Wrong: psql variables remain literal in this -c execution mode.
+psql -v sid="$session_id" -c "DELETE FROM sessions WHERE id = :'sid'::uuid"
 ```
 
 ```bash
@@ -306,6 +334,17 @@ docker compose --env-file .env.reviewed run --rm --no-deps --pull never admin \
 docker compose --env-file .env.rollback \
   up -d --no-build --no-deps --force-recreate backend memory-worker
 curl --fail http://127.0.0.1:8080/v1/me
+```
+
+```bash
+# Correct: activate the exact profile, capture bounded output, then match it.
+images="$(docker compose --profile app config --images)"
+grep -Fx 'mm-chat/backend:candidate' <<<"$images"
+
+# Correct: psql variables are expanded while processing stdin.
+psql -v sid="$session_id" <<'SQL'
+DELETE FROM sessions WHERE id = :'sid'::uuid;
+SQL
 ```
 
 ```bash

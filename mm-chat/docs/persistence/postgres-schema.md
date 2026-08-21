@@ -1,10 +1,13 @@
-# Postgres Core Schema and Chat Agent Runtime Through Migration 099
+# Postgres Core Schema and Chat Agent Runtime Through Migration 102
 
 This document describes the core schema created by the ordered migrations in
 `mm-chat/backend/migrations`, from `001_initial_schema` through
 `061_memory_portability_retention`, plus the ordinary Chat Agent event and Goal
 authorities added by `096_chat_agent_event_log`, `097_chat_agent_goals`, and
 their forward-only function repair in `099_chat_agent_event_log_function_repair`.
+Migration `102_host_workspaces` then converges the existing Workspace registry
+with browser settings, one-time Host directory binding, and immutable
+Conversation execution snapshots.
 Migrations `062` through `095` own later
 Memory and optional Agent control-plane surfaces and remain catalogued in
 `mm-chat/backend/migrations/README.md`.
@@ -107,6 +110,7 @@ Out of scope:
 | `099_chat_agent_event_log_function_repair`    | Forward-repairs the two migration-096 event gateways, preserves safe search paths and grants, and intentionally retains the corrected bodies on down. |
 | `100_chat_agent_approvals`                    | Adds durable Tool approval/CAS and exact Conversation grants without raw Tool payloads. |
 | `101_chat_agent_transcript_blocks`            | Forward-widens immutable Agent events for sanitized Context and Provider-returned reasoning blocks and marks new Turns as Transcript v2. |
+| `102_host_workspaces`                         | Extends the existing Workspace registry in place with preserved browser settings, CAS revision, one-time Runner/path binding, and immutable Conversation execution snapshots. |
 
 Published migration pairs are immutable and applied in numeric order. Migration
 SQL contains no transaction-control statements; the Go runner wraps each schema

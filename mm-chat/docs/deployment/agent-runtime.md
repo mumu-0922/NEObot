@@ -60,13 +60,15 @@ bash scripts/verify-legacy-agent-cleanup-postgres17.sh
 docker compose --env-file .env.single-server --profile ops run --rm migrate
 ```
 
-After migration, head must be `101_chat_agent_transcript_blocks`,
+After the current migration set, head must be `102_host_workspaces`,
 `chat_agent_turns/events/goals` and Skill tables must exist, and no legacy
 Agent control-plane relation/function/role may remain. The ledger checksum for
 `096_chat_agent_event_log` must remain the production-applied
 `f7c6227d3dd559cb53b22a28af1d77bc570d45a42288bf1f348b22136ef1b042`;
 `099` carries the idempotent gateway repair instead of rewriting that history;
-`101` forward-widens the same authority for bounded Context/Reasoning blocks.
+`101` forward-widens the same authority for bounded Context/Reasoning blocks;
+`102` extends the existing Workspace registry and adds immutable Conversation
+execution snapshots without routing Tools to the dark Host.
 
 ## Verification
 
