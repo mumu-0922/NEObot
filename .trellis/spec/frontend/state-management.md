@@ -103,6 +103,11 @@ regenerated Assistant answers, but their navigation contracts differ:
   terminal insertion paths so a first `message.started` event and a terminal-
   only response both use `createModelResponseBranch`. Ordinary new Assistant
   messages still use `appendServerMessageToTree`.
+- Server reload must reconstruct the same invariant from chronological durable
+  messages. When `appendServerMessageToTree` sees another Model child under a
+  User parent whose active child is already a Model, it must route that newer
+  sibling through `createModelResponseBranch`; otherwise a refresh reattaches
+  the continuation to the old answer and hides it below the newest version.
 
 This distinction prevents `1/N` or `2/N` answer navigation from making later
 messages disappear while preserving the tree's single-parent invariant and
@@ -111,7 +116,7 @@ the repaired direct-child parent, Local persistence, Server cache isolation,
 unchanged User-branch behavior, and the state observed synchronously after the
 Server `message.started` callback. Testing navigation alone is insufficient:
 every creation and selection entry point must satisfy the same slot-local
-contract.
+contract, including a clean Server reload from persisted messages.
 
 ## Avoid
 

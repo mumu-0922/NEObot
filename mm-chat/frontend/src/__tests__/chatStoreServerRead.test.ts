@@ -462,6 +462,53 @@ describe("chat store server read path", () => {
     expect(state.sessions[0]?.messageCount).toBe(4);
   });
 
+  it("keeps a persisted continuation below the newest regenerated answer after reload", async () => {
+    const m1 = makeMessage("m1", "user");
+    const m2 = {
+      ...makeMessage("m2", "model"),
+      parentMessageId: "m1",
+    };
+    const m3 = {
+      ...makeMessage("m3", "user"),
+      parentMessageId: "m2",
+    };
+    const m4 = {
+      ...makeMessage("m4", "model"),
+      parentMessageId: "m3",
+    };
+    const m5 = {
+      ...makeMessage("m5", "model"),
+      parentMessageId: "m1",
+    };
+    mocks.serverService.listMessages.mockResolvedValueOnce([
+      m1,
+      m2,
+      m3,
+      m4,
+      m5,
+    ]);
+    useChatStore.setState({
+      serverReadState: {
+        ...makeEmptyServerReadState(),
+        sessions: [makeServerSession("c1")],
+      },
+    });
+
+    await expect(
+      useChatStore.getState().selectServerSession("c1"),
+    ).resolves.toBe(true);
+
+    const state = useChatStore.getState().serverReadState;
+    expect(state.activeMessages.map((message) => message.id)).toEqual([
+      "m1",
+      "m5",
+      "m3",
+      "m4",
+    ]);
+    expect(state.activeMessageTree.nodesById.m3?.parentMessageId).toBe("m5");
+    expect(state.sessions[0]?.messageCount).toBe(5);
+  });
+
   it("does not call server or local storage when server CRUD is disabled", async () => {
     mocks.serverService.serverEnabled = false;
 

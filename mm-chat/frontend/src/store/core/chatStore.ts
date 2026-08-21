@@ -410,15 +410,26 @@ const appendServerMessageToTree = (
   tree: SessionMessageTree,
   message: Message,
 ): SessionMessageTree => {
-  if (Object.prototype.hasOwnProperty.call(message, "treeParentMessageId")) {
-    return appendMessageToParent(
-      tree,
-      message,
-      message.treeParentMessageId ?? null,
-    );
+  const hasTreeParent = Object.prototype.hasOwnProperty.call(
+    message,
+    "treeParentMessageId",
+  );
+  const parentMessageId = hasTreeParent
+    ? (message.treeParentMessageId ?? null)
+    : (message.parentMessageId ?? null);
+
+  if (message.role === "model" && parentMessageId) {
+    const parent = tree.nodesById[parentMessageId];
+    const activeSibling = parent?.activeChildMessageId
+      ? tree.nodesById[parent.activeChildMessageId]
+      : undefined;
+    if (activeSibling?.message.role === "model") {
+      return createModelResponseBranch(tree, activeSibling.id, message);
+    }
   }
-  if (message.parentMessageId) {
-    return appendMessageToParent(tree, message, message.parentMessageId);
+
+  if (hasTreeParent || parentMessageId) {
+    return appendMessageToParent(tree, message, parentMessageId);
   }
 
   return appendMessageToActivePath(tree, message);
