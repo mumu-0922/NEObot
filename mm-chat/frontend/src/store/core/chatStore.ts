@@ -50,7 +50,7 @@ import {
   normalizeSessionMessageTree,
   removeMessageFromTree,
   removeMessageSubtree,
-  switchMessageBranch,
+  switchMessageVersionInTree,
   updateMessageInTree,
 } from "../../lib/chat/messageTree";
 import {
@@ -1940,7 +1940,7 @@ export const useChatStore = create<ChatState>()(
           if (state.serverReadState.currentSessionId !== sessionId) {
             return {};
           }
-          const newMessageTree = switchMessageBranch(
+          const newMessageTree = switchMessageVersionInTree(
             state.serverReadState.activeMessageTree,
             messageId,
             direction,
@@ -2914,7 +2914,7 @@ export const useChatStore = create<ChatState>()(
         set((state) => {
           if (state.currentSessionId !== sessionId) return {};
 
-          const newMessageTree = switchMessageBranch(
+          const newMessageTree = switchMessageVersionInTree(
             getMessageTreeFromState(state),
             messageId,
             direction,

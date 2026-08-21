@@ -107,6 +107,24 @@ describe("MessageInput composition", () => {
     expect(messageInput).toContain("effectiveToolMode: ChatToolMode");
     expect(messageInput).toContain("canSelectAgentMode: boolean");
     expect(messageInput).toContain("onToolModeChange:");
+    expect(messageInput).toContain("type OpenComposerSection =");
+    expect(messageInput).toContain("useState<OpenComposerSection>(null)");
+    expect(messageInput).toContain(
+      'open={openComposerSection === "tool-mode"}',
+    );
+    expect(messageInput).toContain(
+      'open={openComposerSection === "permission"}',
+    );
+    expect(messageInput).toContain(
+      'open={openComposerSection === "reasoning"}',
+    );
+    expect(messageInput).toContain('open={openComposerSection === "search"}');
+    expect(messageInput).toContain(
+      'handleComposerSectionOpenChange("tool-mode", open)',
+    );
+    expect(messageInput).toContain(
+      "open ? section : current === section ? null : current",
+    );
     expect(messageInput).toContain("permissionMode?: AgentPermissionMode");
     expect(messageInput).toContain("availablePermissionModes.map");
     expect(messageInput).toContain('role="alertdialog"');

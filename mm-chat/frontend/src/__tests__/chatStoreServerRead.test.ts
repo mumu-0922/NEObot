@@ -878,7 +878,7 @@ describe("chat store server read path", () => {
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
   });
 
-  it("switches server message versions in memory without local persistence", () => {
+  it("switches server versions without removing downstream messages or using local persistence", () => {
     const localMessage = makeMessage("local-m1", "user");
     const m1 = makeMessage("m1", "user");
     const m2 = {
@@ -889,10 +889,26 @@ describe("chat store server read path", () => {
       ...makeMessage("m3", "model"),
       parentMessageId: "m1",
     };
+    const m4 = {
+      ...makeMessage("m4", "user"),
+      parentMessageId: "m3",
+    };
+    const m5 = {
+      ...makeMessage("m5", "model"),
+      parentMessageId: "m4",
+    };
     const branchTree = appendMessageToParent(
-      appendMessageToParent(normalizeSessionMessageTree([m1]), m2, "m1"),
-      m3,
-      "m1",
+      appendMessageToParent(
+        appendMessageToParent(
+          appendMessageToParent(normalizeSessionMessageTree([m1]), m2, "m1"),
+          m3,
+          "m1",
+        ),
+        m4,
+        "m3",
+      ),
+      m5,
+      "m4",
     );
     useChatStore.setState({
       currentSessionId: "local",
@@ -900,9 +916,9 @@ describe("chat store server read path", () => {
       activeMessageTree: normalizeSessionMessageTree([localMessage]),
       serverReadState: {
         ...makeEmptyServerReadState(),
-        sessions: [{ ...makeServerSession("c1"), messageCount: 3 }],
+        sessions: [{ ...makeServerSession("c1"), messageCount: 5 }],
         currentSessionId: "c1",
-        activeMessages: [m1, m3],
+        activeMessages: [m1, m3, m4, m5],
         activeMessageTree: branchTree,
       },
     });
@@ -914,8 +930,11 @@ describe("chat store server read path", () => {
     const state = useChatStore.getState();
     expect(
       state.serverReadState.activeMessages.map((message) => message.id),
-    ).toEqual(["m1", "m2"]);
-    expect(state.serverReadState.sessions[0]?.messageCount).toBe(3);
+    ).toEqual(["m1", "m2", "m4", "m5"]);
+    expect(
+      state.serverReadState.activeMessageTree.nodesById.m4.parentMessageId,
+    ).toBe("m2");
+    expect(state.serverReadState.sessions[0]?.messageCount).toBe(5);
     expect(state.activeMessages).toEqual([localMessage]);
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
   });

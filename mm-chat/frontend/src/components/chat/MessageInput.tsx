@@ -105,6 +105,9 @@ import { getModelBuiltInSearchAvailability } from "@/lib/chat/searchCapabilities
 
 type MessageInputVariant = "default" | "hero";
 
+type OpenComposerSection =
+  "tool-mode" | "permission" | "reasoning" | "search" | null;
+
 interface MessageInputProps {
   onSend: (
     text: string,
@@ -213,6 +216,8 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const [recordingSeconds, setRecordingSeconds] = useState(0);
     const [showModelSelect, setShowModelSelect] = useState(false);
     const [showAttachMenu, setShowAttachMenu] = useState(false);
+    const [openComposerSection, setOpenComposerSection] =
+      useState<OpenComposerSection>(null);
     const [showRemoteModal, setShowRemoteModal] = useState(false);
     const [showKBModal, setShowKBModal] = useState(false);
     const [showFullAccessConfirmation, setShowFullAccessConfirmation] =
@@ -226,6 +231,15 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const [knowledgeCollectionNames, setKnowledgeCollectionNames] = useState<
       Record<string, string>
     >({});
+
+    const handleComposerSectionOpenChange = useCallback(
+      (section: Exclude<OpenComposerSection, null>, open: boolean) => {
+        setOpenComposerSection((current) =>
+          open ? section : current === section ? null : current,
+        );
+      },
+      [],
+    );
 
     const t = useTranslations("MessageInput");
     const { chatConfig, setChatConfig } = useChatStore();
@@ -1588,7 +1602,12 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               </Tooltip>
             )}
 
-            <DropdownMenu>
+            <DropdownMenu
+              open={openComposerSection === "tool-mode"}
+              onOpenChange={(open) =>
+                handleComposerSectionOpenChange("tool-mode", open)
+              }
+            >
               <Tooltip
                 content={
                   toolMode === "agent" && effectiveToolMode === "chat"
@@ -1679,7 +1698,12 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             </DropdownMenu>
 
             {effectiveToolMode === "agent" && showPermissionControl && (
-              <DropdownMenu>
+              <DropdownMenu
+                open={openComposerSection === "permission"}
+                onOpenChange={(open) =>
+                  handleComposerSectionOpenChange("permission", open)
+                }
+              >
                 <Tooltip
                   content={t(`permissionDescription.${permissionMode}`)}
                   position="top"
@@ -1763,7 +1787,12 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             )}
 
             {isReasoningSupported && (
-              <DropdownMenu>
+              <DropdownMenu
+                open={openComposerSection === "reasoning"}
+                onOpenChange={(open) =>
+                  handleComposerSectionOpenChange("reasoning", open)
+                }
+              >
                 <Tooltip
                   content={
                     effectiveUseReasoning
@@ -1832,7 +1861,12 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
             {/* Search Button */}
             {onSearchModeChange && (
-              <DropdownMenu>
+              <DropdownMenu
+                open={openComposerSection === "search"}
+                onOpenChange={(open) =>
+                  handleComposerSectionOpenChange("search", open)
+                }
+              >
                 <Tooltip content={searchTooltip} position="top">
                   <DropdownMenuTrigger asChild>
                     <button

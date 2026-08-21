@@ -11,6 +11,7 @@ import {
   removeActivePathAfter,
   removeMessageFromTree,
   switchMessageBranch,
+  switchMessageVersionInTree,
 } from "../lib/chat/messageTree";
 
 const makeMessage = (
@@ -150,6 +151,66 @@ describe("message tree utilities", () => {
       "m1",
       "u2",
       "m2b",
+    ]);
+  });
+
+  it("switches model versions without changing the visible continuation", () => {
+    let tree = normalizeSessionMessageTree([
+      makeMessage("u1", "user", "root"),
+      makeMessage("m1", "model", "first answer"),
+    ]);
+    tree = createModelResponseBranch(
+      tree,
+      "m1",
+      makeMessage("m1b", "model", "second answer"),
+    );
+    tree = appendMessageToActivePath(tree, makeMessage("u2", "user", "follow"));
+    tree = appendMessageToActivePath(
+      tree,
+      makeMessage("m2", "model", "follow answer"),
+    );
+
+    tree = switchMessageVersionInTree(tree, "m1b", "prev");
+
+    expect(getActiveMessagePath(tree).map((message) => message.id)).toEqual([
+      "u1",
+      "m1",
+      "u2",
+      "m2",
+    ]);
+    expect(tree.nodesById.u2.parentMessageId).toBe("m1");
+    expect(tree.nodesById.m1b.childMessageIds).toEqual([]);
+
+    tree = switchMessageVersionInTree(tree, "m1", "next");
+
+    expect(getActiveMessagePath(tree).map((message) => message.id)).toEqual([
+      "u1",
+      "m1b",
+      "u2",
+      "m2",
+    ]);
+    expect(tree.nodesById.u2.parentMessageId).toBe("m1b");
+    expect(getAllMessagesFromTree(tree)).toHaveLength(5);
+  });
+
+  it("keeps user version switching attached to its own continuation", () => {
+    const createUserMessageBranch = (messageTree as any)
+      .createUserMessageBranch as typeof createModelResponseBranch;
+    let tree = normalizeSessionMessageTree([
+      makeMessage("u1", "user", "first prompt"),
+      makeMessage("m1", "model", "first answer"),
+    ]);
+    tree = createUserMessageBranch(
+      tree,
+      "u1",
+      makeMessage("u1b", "user", "edited prompt"),
+    );
+
+    tree = switchMessageVersionInTree(tree, "u1b", "prev");
+
+    expect(getActiveMessagePath(tree).map((message) => message.id)).toEqual([
+      "u1",
+      "m1",
     ]);
   });
 

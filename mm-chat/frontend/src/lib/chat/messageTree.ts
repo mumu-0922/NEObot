@@ -397,6 +397,41 @@ export function switchMessageBranch(
   return nextTree;
 }
 
+export function switchMessageVersionInTree(
+  tree: SessionMessageTree,
+  messageId: string,
+  direction: "prev" | "next",
+): SessionMessageTree {
+  const nextTree = switchMessageBranch(tree, messageId, direction);
+  const node = nextTree.nodesById[messageId];
+  if (!node || node.message.role !== "model") return nextTree;
+
+  const targetId = node.parentMessageId
+    ? nextTree.nodesById[node.parentMessageId]?.activeChildMessageId
+    : nextTree.activeRootMessageId;
+  const target = targetId ? nextTree.nodesById[targetId] : undefined;
+  if (!target || target.id === node.id) return nextTree;
+
+  const currentChildMessageIds = node.childMessageIds;
+  const currentActiveChildMessageId = node.activeChildMessageId;
+
+  node.childMessageIds = target.childMessageIds;
+  node.activeChildMessageId = target.activeChildMessageId;
+  target.childMessageIds = currentChildMessageIds;
+  target.activeChildMessageId = currentActiveChildMessageId;
+
+  for (const childId of node.childMessageIds) {
+    const child = nextTree.nodesById[childId];
+    if (child) child.parentMessageId = node.id;
+  }
+  for (const childId of target.childMessageIds) {
+    const child = nextTree.nodesById[childId];
+    if (child) child.parentMessageId = target.id;
+  }
+
+  return nextTree;
+}
+
 function collectSubtreeMessages(
   tree: SessionMessageTree,
   rootMessageId: string,

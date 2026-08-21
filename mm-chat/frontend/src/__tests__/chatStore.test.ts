@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Attachment, Message, Session, Workspace } from "../types";
 import {
+  appendMessageToActivePath,
+  createModelResponseBranch,
   getActiveMessagePath,
   isSessionMessageTree,
   normalizeSessionMessageTree,
@@ -678,7 +680,7 @@ describe("chat store persistence", () => {
     ).toMatchObject({ messageCount: 2 });
   });
 
-  it("branches model messages as sibling paths and restores the old continuation", async () => {
+  it("keeps the current layout when switching from a fresh model branch", async () => {
     const userMessage = makeMessage("u1", "prompt");
     const firstAnswer = makeModelMessage("m1", "old answer");
     const followUp = makeMessage("u2", "follow up");
@@ -717,12 +719,51 @@ describe("chat store persistence", () => {
     expect(useChatStore.getState().activeMessages.map((m) => m.id)).toEqual([
       "u1",
       "m1",
+    ]);
+    expect(
+      useChatStore.getState().sessions.find((session) => session.id === "a"),
+    ).toMatchObject({ messageCount: 2 });
+  });
+
+  it("switches a model version without removing downstream local messages", async () => {
+    const userMessage = makeMessage("u1", "prompt");
+    const firstAnswer = makeModelMessage("m1", "first answer");
+    const secondAnswer = makeModelMessage("m1b", "second answer");
+    const followUp = makeMessage("u2", "follow up");
+    const followUpAnswer = makeModelMessage("m2", "follow answer");
+    let tree = normalizeSessionMessageTree([userMessage, firstAnswer]);
+    tree = createModelResponseBranch(tree, "m1", secondAnswer);
+    tree = appendMessageToActivePath(tree, followUp);
+    tree = appendMessageToActivePath(tree, followUpAnswer);
+    useChatStore.setState({
+      sessions: [{ ...makeSession("a"), messageCount: 4 }],
+      currentSessionId: "a",
+      activeMessages: getActiveMessagePath(tree),
+      activeMessageTree: tree,
+    });
+
+    useChatStore.getState().switchMessageVersion("a", "m1b", "prev");
+
+    expect(useChatStore.getState().activeMessages.map((m) => m.id)).toEqual([
+      "u1",
+      "m1",
       "u2",
       "m2",
     ]);
     expect(
+      useChatStore.getState().activeMessageTree.nodesById.u2.parentMessageId,
+    ).toBe("m1");
+    expect(
       useChatStore.getState().sessions.find((session) => session.id === "a"),
     ).toMatchObject({ messageCount: 4 });
+    await vi.waitFor(() =>
+      expectStoredActivePath("a", [
+        userMessage,
+        firstAnswer,
+        followUp,
+        followUpAnswer,
+      ]),
+    );
   });
 
   it("creates an edited user branch with a fresh model placeholder atomically", async () => {
@@ -777,7 +818,7 @@ describe("chat store persistence", () => {
     ]);
   });
 
-  it("keeps nested downstream branch choices attached to their upstream branch", async () => {
+  it("keeps the current empty layout when switching nested model branches", async () => {
     useChatStore.setState({
       sessions: [{ ...makeSession("a"), messageCount: 4 }],
       currentSessionId: "a",
@@ -809,8 +850,6 @@ describe("chat store persistence", () => {
     expect(useChatStore.getState().activeMessages.map((m) => m.id)).toEqual([
       "u1",
       "m1",
-      "u2",
-      nestedBranchId,
     ]);
   });
 

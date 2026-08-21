@@ -81,6 +81,27 @@ Promote only into the existing owning store. A modal toggle used by one
 component should remain local; the global image preview belongs in `uiStore`
 because many content components can open it.
 
+## Message Version Navigation
+
+`SessionMessageTree` uses sibling nodes for both edited User prompts and
+regenerated Assistant answers, but their navigation contracts differ:
+
+- User sibling selection is branch selection. Use `switchMessageBranch`; the
+  selected prompt's own continuation becomes visible.
+- Assistant sibling selection is answer-slot selection. Use
+  `switchMessageVersionInTree`; it swaps the current and target nodes'
+  descendant attachments, repairs direct-child `parentMessageId` links, and
+  then keeps the already visible downstream message IDs in the same order.
+- Both `switchMessageVersion` and `switchServerMessageVersion` in
+  `chatStore.ts` must use the answer-slot operation. Do not fix only the Local
+  or Server projection.
+
+This distinction prevents `1/N` or `2/N` answer navigation from making later
+messages disappear while preserving the tree's single-parent invariant and
+every inactive subtree. Regression tests must assert the downstream ID list,
+the repaired direct-child parent, Local persistence, Server cache isolation,
+and unchanged User-branch behavior.
+
 ## Avoid
 
 - Duplicating server state in component state and Zustand without a defined
