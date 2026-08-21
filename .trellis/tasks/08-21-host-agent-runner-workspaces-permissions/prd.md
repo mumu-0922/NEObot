@@ -204,9 +204,12 @@ permission presets whose enforcement is real rather than presentation-only.
    Docker-secret wiring, Host status/browse/native-picker protocol, server-
    authoritative Workspace UI/state convergence, Conversation grouping round
    trip, focused tests/build, targeted deployment, and live Runner-loss smoke.
-4. **Execution routing**: file, terminal, jobs, output/cancellation and process
-   presentation over Runner while preserving approvals, verification, and
-   durable Transcript behavior.
+4. **Execution routing** — completed 2026-08-21: immutable bound-Conversation
+   routing for File, Terminal, Job, Skill-script, and artifact reads through
+   the Host Runner; fail-closed Runner identity/path revalidation; preserved
+   approvals, cancellation, limits, and durable `host_workspace` presentation;
+   focused cross-layer tests, targeted deployment, Host cwd/File/Job smoke,
+   Runner-loss/recovery drill, and no Docker `/workspace` fallback.
 5. **Permission enforcement and UI**: three durable presets, sandbox probes,
    Full access confirmation, active-turn locking, escalation and denial tests.
 6. **Canary deployment and hardening**: focused cross-layer smoke, rollback
