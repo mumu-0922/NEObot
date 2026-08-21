@@ -78,28 +78,28 @@ permission presets whose enforcement is real rather than presentation-only.
 
 ## Acceptance Criteria (evolving)
 
-* [ ] A user can register `/home/...`, `/mnt/d/...`, or a Windows `D:\\...`
+* [x] A user can register `/home/...`, `/mnt/d/...`, or a Windows `D:\\...`
       selection and receive one canonical durable workspace record.
-* [ ] Re-registering path aliases for the same directory resolves the same
+* [x] Re-registering path aliases for the same directory resolves the same
       workspace instead of creating duplicates.
-* [ ] A new Agent conversation opened in a workspace runs file and terminal
+* [x] A new Agent conversation opened in a workspace runs file and terminal
       tools with that workspace as its actual `cwd`.
-* [ ] Project selection requires no Backend container rebuild or bind-mount
+* [x] Project selection requires no Backend container rebuild or bind-mount
       edit.
-* [ ] Read Only prevents durable project mutations from file and terminal
+* [x] Read Only prevents durable project mutations from file and terminal
       capabilities.
-* [ ] Workspace Write permits writes inside the selected workspace and denies
+* [x] Workspace Write permits writes inside the selected workspace and denies
       or explicitly escalates writes outside it.
-* [ ] Full access requires UI acknowledgement and is bounded by the Host
+* [x] Full access requires UI acknowledgement and is bounded by the Host
       Runner process user's operating-system authority.
-* [ ] Permission/workspace state survives browser refresh and Backend restart.
-* [ ] Runner loss produces a durable, understandable failed/interrupted Tool
+* [x] Permission/workspace state survives browser refresh and Backend restart.
+* [x] Runner loss produces a durable, understandable failed/interrupted Tool
       state and never silently falls back to Docker local execution.
-* [ ] Historical conversations without a Host Runner workspace still load.
-* [ ] Existing prompt/files Workspaces migrate without losing settings,
+* [x] Historical conversations without a Host Runner workspace still load.
+* [x] Existing prompt/files Workspaces migrate without losing settings,
       attachments, or conversation membership; an unbound Workspace can be
       bound exactly once to a canonical project directory.
-* [ ] Focused Backend, Runner, Frontend, migration, and security tests pass.
+* [x] Focused Backend, Runner, Frontend, migration, and security tests pass.
 
 ## Definition of Done
 
@@ -214,8 +214,10 @@ permission presets whose enforcement is real rather than presentation-only.
    durable presets, active-Turn locking, acknowledged Full access, exact
    permission propagation, checksum-pinned Bubblewrap with WSL/DrvFS startup
    probes, and accessible capability-driven composer controls.
-6. **Canary deployment and hardening**: focused cross-layer smoke, rollback
-   drill, docs, automatic commits/builds, and live canary verification.
+6. **Canary deployment and hardening** — completed 2026-08-21: verified paired
+   pre-deploy backups, immutable Backend/Frontend images, schema head `103`,
+   exact live image identity, healthy services, three-mode Host capabilities,
+   and clean WSL plus DrvFS write-boundary smokes.
 
 ## Decision (ADR-lite)
 
