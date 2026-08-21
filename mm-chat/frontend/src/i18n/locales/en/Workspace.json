@@ -30,5 +30,20 @@
   "saveWorkspace": "Save Workspace",
   "saveFailed": "Failed to save workspace. Please try again.",
   "deleteFailed": "Failed to delete workspace. Please try again.",
-  "saveFilesFailed": "Failed to save {count} file(s). Please try again."
+  "saveFilesFailed": "Failed to save {count} file(s). Please try again.",
+  "projectDirectory": "Project Directory",
+  "projectBound": "This Workspace is permanently bound to its Host project directory.",
+  "projectReady": "Choose a Windows or WSL project directory. Binding cannot be changed later.",
+  "hostUnavailable": "The Host Runner is unavailable. Reconnect it before selecting and binding a new project.",
+  "projectRequired": "A new Workspace requires a selected or entered project directory.",
+  "bound": "Bound",
+  "unbound": "Unbound",
+  "projectPathPlaceholder": "D:\\projects\\app or /home/user/project",
+  "chooseWindowsFolder": "Choose Windows Folder",
+  "browseWslFolders": "Browse WSL Directories",
+  "parentDirectory": "Go to parent directory",
+  "useThisFolder": "Use This Folder",
+  "noSubdirectories": "No subdirectories",
+  "browseFailed": "The Host directory could not be read.",
+  "pickerFailed": "The Windows folder picker could not be opened."
 }

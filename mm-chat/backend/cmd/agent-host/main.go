@@ -58,9 +58,11 @@ func run() error {
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      15 * time.Second,
-		IdleTimeout:       30 * time.Second,
-		MaxHeaderBytes:    16 << 10,
+		// Native Windows folder selection is an authenticated human interaction.
+		// The Backend picker client remains capped at five minutes.
+		WriteTimeout:   6 * time.Minute,
+		IdleTimeout:    30 * time.Second,
+		MaxHeaderBytes: 16 << 10,
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()

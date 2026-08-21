@@ -48,5 +48,8 @@
   "workspaceActions": "ワークスペースの操作",
   "moveToWorkspaceAria": "チャットをワークスペースに移動",
   "skillStore": "スキルストア",
-  "openSkillStore": "スキルストアを開く"
+  "openSkillStore": "スキルストアを開く",
+  "workspaceBound": "プロジェクトディレクトリにバインド済み",
+  "workspaceUnbound": "プロジェクトディレクトリ未設定",
+  "moveWorkspaceFailed": "会話の移動に失敗しました。更新して再試行してください。"
 }

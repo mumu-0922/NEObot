@@ -48,5 +48,8 @@
   "workspaceActions": "Workspace actions",
   "moveToWorkspaceAria": "Move chat to workspace",
   "skillStore": "Skill Store",
-  "openSkillStore": "Open Skill Store"
+  "openSkillStore": "Open Skill Store",
+  "workspaceBound": "Project directory bound",
+  "workspaceUnbound": "No project directory",
+  "moveWorkspaceFailed": "Failed to move the conversation. Refresh and try again."
 }

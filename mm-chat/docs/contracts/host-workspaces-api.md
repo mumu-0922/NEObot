@@ -7,9 +7,10 @@ Backend half of Harness-style filesystem Workspaces. They preserve legacy
 browser Workspace settings and add one-time Host binding plus immutable
 Conversation execution authority.
 
-The live Backend is not yet connected to the Host Runner socket. Listing,
-legacy import, settings updates, grouping, and deletion are available after the
-migration; binding currently fails closed with `503`.
+When `AGENT_HOST_ENABLED=true`, the Backend connects to the pinned Host Runner
+through the exact read-only-mounted private socket directory and two independent
+Compose secrets. Binding and capability-driven directory selection are then
+available. Runner loss fails closed without affecting ordinary chat reads.
 
 ## Workspace representation
 
@@ -49,6 +50,20 @@ GET /v1/workspaces/{workspaceId}
 ```
 
 Only active Workspaces owned by the authenticated user are returned.
+
+### Host status and directory selection
+
+```text
+GET  /v1/workspaces/host-status
+POST /v1/workspaces/directories/browse
+POST /v1/workspaces/directories/pick-native
+```
+
+Status is a sanitized projection: `disabled`, `unavailable`, or `ready`, plus
+the pinned Runner identity/platform and exact advertised features. Browse
+accepts `{"path":""}` to start at the WSL user's home. Native picker accepts
+`{}` and returns either `{"cancelled":true}` or the selected canonical/display
+path. The browser never opens or canonicalizes Host paths itself.
 
 ### Idempotent legacy import
 
@@ -97,7 +112,8 @@ Host Runner, validates the returned descriptor, and atomically binds the full
 Runner/path/fingerprint tuple. A Workspace cannot be rebound. Another spelling
 of the same owner/Runner directory conflicts with the existing registration.
 
-Until the Backend socket integration slice is enabled, this route returns:
+When the feature is disabled or the pinned Runner/socket is unavailable, this
+route returns:
 
 ```json
 {"error":{"code":"HOST_WORKSPACE_UNAVAILABLE","message":"Host Workspace is unavailable"}}
@@ -110,8 +126,9 @@ PUT /v1/workspaces/{workspaceId}/conversations/{conversationId}
 ```
 
 The request has no body. It sets current visible grouping only when both
-records belong to the authenticated user. Once an Agent execution snapshot
-exists, grouping cannot move to a different Workspace.
+records belong to the authenticated user. `DELETE` on the same URL clears an
+unlocked grouping. Once an Agent execution snapshot exists, grouping cannot
+move or clear.
 
 ### Soft delete
 

@@ -26,6 +26,8 @@ type Handler struct {
 	runnerID     string
 	tokenSum     [sha256.Size]byte
 	resolver     WorkspaceResolver
+	browser      DirectoryBrowser
+	picker       NativeDirectoryPicker
 	capabilities Capabilities
 }
 
@@ -45,10 +47,20 @@ func NewHandler(config HandlerConfig) (*Handler, error) {
 		features.WorkspaceResolve = true
 		features.WindowsPathInterop = config.Resolver.WindowsPathInterop()
 	}
+	browser, _ := config.Resolver.(DirectoryBrowser)
+	if browser != nil {
+		features.DirectoryBrowse = browser.DirectoryBrowseAvailable()
+	}
+	picker, _ := config.Resolver.(NativeDirectoryPicker)
+	if picker != nil {
+		features.NativeDirectoryPicker = picker.NativeDirectoryPickerAvailable()
+	}
 	return &Handler{
 		runnerID: config.RunnerID,
 		tokenSum: sha256.Sum256([]byte(config.Token)),
 		resolver: config.Resolver,
+		browser:  browser,
+		picker:   picker,
 		capabilities: Capabilities{
 			ProtocolVersion: ProtocolVersion,
 			RunnerID:        config.RunnerID,
@@ -90,8 +102,92 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 			return
 		}
 		handler.resolveWorkspace(writer, request)
+	case DirectoryBrowsePath:
+		if request.Method != http.MethodPost {
+			handler.methodNotAllowed(writer, http.MethodPost)
+			return
+		}
+		handler.browseDirectories(writer, request)
+	case NativeDirectoryPickPath:
+		if request.Method != http.MethodPost {
+			handler.methodNotAllowed(writer, http.MethodPost)
+			return
+		}
+		handler.pickNativeDirectory(writer, request)
 	default:
 		handler.writeError(writer, http.StatusNotFound, "AGENT_HOST_ROUTE_NOT_FOUND", "Agent Host route not found")
+	}
+}
+
+func (handler *Handler) browseDirectories(writer http.ResponseWriter, request *http.Request) {
+	if handler.browser == nil || !handler.browser.DirectoryBrowseAvailable() {
+		handler.writeError(writer, http.StatusServiceUnavailable, "DIRECTORY_BROWSE_UNAVAILABLE", "Directory browsing is unavailable")
+		return
+	}
+	var input DirectoryBrowseRequest
+	if err := decodeStrictJSON(writer, request, &input); err != nil {
+		handler.writeError(writer, http.StatusBadRequest, "AGENT_HOST_REQUEST_INVALID", "Agent Host request is invalid")
+		return
+	}
+	if input.ProtocolVersion != ProtocolVersion {
+		handler.writeError(writer, http.StatusConflict, "AGENT_HOST_PROTOCOL_UNSUPPORTED", "Agent Host protocol version is unsupported")
+		return
+	}
+	result, err := handler.browser.BrowseDirectories(request.Context(), input.Path)
+	if err != nil {
+		handler.writeDirectoryError(writer, err)
+		return
+	}
+	result.ProtocolVersion = ProtocolVersion
+	result.RunnerID = handler.runnerID
+	if result.Entries == nil {
+		result.Entries = []DirectoryEntry{}
+	}
+	handler.writeJSON(writer, http.StatusOK, result)
+}
+
+func (handler *Handler) pickNativeDirectory(writer http.ResponseWriter, request *http.Request) {
+	if handler.picker == nil || !handler.picker.NativeDirectoryPickerAvailable() {
+		handler.writeError(writer, http.StatusServiceUnavailable, "NATIVE_DIRECTORY_PICKER_UNAVAILABLE", "Native directory picker is unavailable")
+		return
+	}
+	var input NativeDirectoryPickRequest
+	if err := decodeStrictJSON(writer, request, &input); err != nil {
+		handler.writeError(writer, http.StatusBadRequest, "AGENT_HOST_REQUEST_INVALID", "Agent Host request is invalid")
+		return
+	}
+	if input.ProtocolVersion != ProtocolVersion {
+		handler.writeError(writer, http.StatusConflict, "AGENT_HOST_PROTOCOL_UNSUPPORTED", "Agent Host protocol version is unsupported")
+		return
+	}
+	workspace, err := handler.picker.PickNativeDirectory(request.Context())
+	if errors.Is(err, ErrDirectoryPickerCancelled) {
+		handler.writeJSON(writer, http.StatusOK, NativeDirectoryPickResponse{
+			ProtocolVersion: ProtocolVersion, RunnerID: handler.runnerID, Cancelled: true,
+		})
+		return
+	}
+	if err != nil {
+		handler.writeDirectoryError(writer, err)
+		return
+	}
+	handler.writeJSON(writer, http.StatusOK, NativeDirectoryPickResponse{
+		ProtocolVersion: ProtocolVersion, RunnerID: handler.runnerID, Workspace: &workspace,
+	})
+}
+
+func (handler *Handler) writeDirectoryError(writer http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, ErrDirectoryBrowseUnavailable):
+		handler.writeError(writer, http.StatusServiceUnavailable, "DIRECTORY_BROWSE_UNAVAILABLE", "Directory browsing is unavailable")
+	case errors.Is(err, ErrNativePickerUnavailable):
+		handler.writeError(writer, http.StatusServiceUnavailable, "NATIVE_DIRECTORY_PICKER_UNAVAILABLE", "Native directory picker is unavailable")
+	case errors.Is(err, ErrWindowsInteropUnavailable):
+		handler.writeError(writer, http.StatusServiceUnavailable, "WINDOWS_PATH_INTEROP_UNAVAILABLE", "Windows path interop is unavailable")
+	case errors.Is(err, ErrWorkspacePathUnavailable):
+		handler.writeError(writer, http.StatusNotFound, "WORKSPACE_PATH_UNAVAILABLE", "Workspace path is unavailable")
+	default:
+		handler.writeError(writer, http.StatusBadRequest, "WORKSPACE_PATH_INVALID", "Workspace path is invalid")
 	}
 }
 

@@ -68,7 +68,7 @@ func TestClientServerRoundTripOverUnixSocket(t *testing.T) {
 		t.Fatalf("Capabilities() error = %v", err)
 	}
 	if capabilities.RunnerID != "wsl-test-runner" || !capabilities.Features.WorkspaceResolve ||
-		capabilities.Features.Execution {
+		!capabilities.Features.DirectoryBrowse || capabilities.Features.Execution {
 		t.Fatalf("unexpected capabilities: %+v", capabilities)
 	}
 	workspace, err := client.ResolveWorkspace(context.Background(), project)
@@ -77,6 +77,13 @@ func TestClientServerRoundTripOverUnixSocket(t *testing.T) {
 	}
 	if workspace.CanonicalPath != project || workspace.PathKind != "wsl" {
 		t.Fatalf("unexpected workspace: %+v", workspace)
+	}
+	listing, err := client.BrowseDirectories(context.Background(), project)
+	if err != nil {
+		t.Fatalf("BrowseDirectories() error = %v", err)
+	}
+	if listing.Path != project || listing.Entries == nil {
+		t.Fatalf("unexpected directory listing: %+v", listing)
 	}
 }
 

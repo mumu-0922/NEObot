@@ -287,6 +287,49 @@ SELECT EXISTS (
 	return ErrNotFound
 }
 
+func (repository *PostgresRepository) ClearConversationWorkspace(
+	ctx context.Context,
+	conversationID string,
+	workspaceID string,
+) error {
+	if repository == nil || repository.db == nil {
+		return ErrDisabled
+	}
+	userID := auth.UserOrDevelopment(ctx).ID
+	result, err := repository.db.ExecContext(ctx, `
+UPDATE conversations SET workspace_id = NULL, updated_at = now()
+WHERE id = $1 AND user_id = $2 AND workspace_id = $3
+  AND deleted_at IS NULL AND agent_workspace_id IS NULL
+`, conversationID, userID, workspaceID)
+	if err != nil {
+		return fmt.Errorf("clear conversation Host Workspace: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 1 {
+		return nil
+	}
+	var exists, locked bool
+	err = repository.db.QueryRowContext(ctx, `
+SELECT EXISTS (
+  SELECT 1 FROM conversations WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+), EXISTS (
+  SELECT 1 FROM conversations
+  WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+    AND agent_workspace_id IS NOT NULL
+)
+`, conversationID, userID).Scan(&exists, &locked)
+	if err != nil {
+		return fmt.Errorf("classify clear conversation Host Workspace: %w", err)
+	}
+	if !exists {
+		return ErrConversationNotFound
+	}
+	if locked {
+		return ErrConversationLocked
+	}
+	return ErrNotFound
+}
+
 func (repository *PostgresRepository) LockConversationExecutionWorkspace(
 	ctx context.Context,
 	conversationID string,

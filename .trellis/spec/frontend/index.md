@@ -25,6 +25,7 @@ behavior changes require coverage under `mm-chat/frontend/src/__tests__/`.
 | [Agent Transcript](./agent-transcript.md)          | Flat durable Context/Think/Tool projection, live/reload parity, and legacy fallback | Complete |
 | [Assistant Store](./assistant-store.md)           | My Assistants, Store paging, runtime validation, CAS recovery, and start-chat snapshots | Complete |
 | [Skill Store](./skill-store.md)                   | Standalone `/v1/skills/*` package discovery, install/uninstall, URL state, and retired control-plane boundary | Complete |
+| [Host Workspaces](./host-workspaces.md)            | Converged Workspace persistence, directory selection, binding, and Conversation grouping | Complete |
 | [Type Safety](./type-safety.md)                   | Domain types, DTOs, runtime validation, and normalization     | Complete |
 | [Quality Guidelines](./quality-guidelines.md)     | Formatting, linting, testing, review, and forbidden patterns  | Complete |
 
@@ -58,7 +59,10 @@ Before changing frontend code:
 10. For Package Skill discovery, install/uninstall, or Skill Store URL state,
    read [Skill Store](./skill-store.md). Keep `/v1/skills/*` server-authoritative
    and do not restore retired Runs, Schedules, Learning, Shadow, Canary, Runner,
-   delegation, or OCI controls.
+    delegation, or OCI controls.
+11. For Workspace sidebar/settings, Host directory selection, or Conversation
+    grouping, read [Host Workspaces](./host-workspaces.md). Preserve legacy
+    settings while keeping canonical paths and revisions server-authoritative.
 
 ## Representative Code
 

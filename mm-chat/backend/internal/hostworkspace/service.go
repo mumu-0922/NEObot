@@ -9,6 +9,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+
+	"neo-chat/mm-chat/backend/internal/agenthost"
 )
 
 const (
@@ -30,6 +32,64 @@ type Service struct {
 
 func NewService(repository Repository, resolver PathResolver) *Service {
 	return &Service{repository: repository, resolver: resolver, now: time.Now}
+}
+
+func (service *Service) HostStatus(ctx context.Context) HostStatus {
+	status := HostStatus{Status: "disabled", Features: agenthost.HostFeatures{
+		PermissionModes: []agenthost.PermissionMode{},
+	}}
+	if service == nil || service.resolver == nil {
+		return status
+	}
+	status.Enabled = true
+	status.Status = "unavailable"
+	resolver, ok := service.resolver.(capabilityResolver)
+	if !ok {
+		return status
+	}
+	capabilities, err := resolver.Capabilities(ctx)
+	if err != nil {
+		return status
+	}
+	status.Status = "ready"
+	status.RunnerID = capabilities.RunnerID
+	status.Platform = capabilities.Platform
+	status.Architecture = capabilities.Architecture
+	status.Features = capabilities.Features
+	if status.Features.PermissionModes == nil {
+		status.Features.PermissionModes = []agenthost.PermissionMode{}
+	}
+	return status
+}
+
+func (service *Service) BrowseDirectories(
+	ctx context.Context,
+	path string,
+) (agenthost.DirectoryBrowseResponse, error) {
+	if service == nil || service.resolver == nil {
+		return agenthost.DirectoryBrowseResponse{}, ErrDisabled
+	}
+	if path != "" && !validPath(path) {
+		return agenthost.DirectoryBrowseResponse{}, ErrInvalid
+	}
+	browser, ok := service.resolver.(directoryBrowser)
+	if !ok {
+		return agenthost.DirectoryBrowseResponse{}, ErrDisabled
+	}
+	return browser.BrowseDirectories(ctx, path)
+}
+
+func (service *Service) PickNativeDirectory(
+	ctx context.Context,
+) (agenthost.NativeDirectoryPickResponse, error) {
+	if service == nil || service.resolver == nil {
+		return agenthost.NativeDirectoryPickResponse{}, ErrDisabled
+	}
+	picker, ok := service.resolver.(nativeDirectoryPicker)
+	if !ok {
+		return agenthost.NativeDirectoryPickResponse{}, ErrDisabled
+	}
+	return picker.PickNativeDirectory(ctx)
 }
 
 func (service *Service) List(ctx context.Context) ([]Workspace, error) {
@@ -149,6 +209,20 @@ func (service *Service) SetConversationWorkspace(
 		return ErrInvalid
 	}
 	return service.repository.SetConversationWorkspace(ctx, conversationID, workspaceID)
+}
+
+func (service *Service) ClearConversationWorkspace(
+	ctx context.Context,
+	conversationID string,
+	workspaceID string,
+) error {
+	if service == nil || service.repository == nil {
+		return ErrDisabled
+	}
+	if !validUUID(conversationID) || !validUUID(workspaceID) {
+		return ErrInvalid
+	}
+	return service.repository.ClearConversationWorkspace(ctx, conversationID, workspaceID)
 }
 
 func (service *Service) LockConversationExecutionWorkspace(

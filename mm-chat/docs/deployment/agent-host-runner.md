@@ -2,14 +2,13 @@
 
 ## Current rollout boundary
 
-The Agent Host is an ordinary-user WSL process that will eventually let Agent
-conversations use arbitrary WSL and mounted Windows project directories. The
-Host process is deliberately dark: it exposes only capability discovery and
-canonical workspace resolution. Migration `102` and the Backend
-`/v1/workspaces*` API now persist Workspace settings and execution authority,
-but the Docker Backend is not mounted to the Host socket and no existing
-execution is routed through it. The bind route therefore returns
-`503 HOST_WORKSPACE_UNAVAILABLE` instead of guessing a Host path.
+The Agent Host is an ordinary-user WSL process for arbitrary WSL and mounted
+Windows project directories. It exposes capability discovery, canonical
+Workspace resolution, WSL directory browsing, and a native Windows folder
+picker. Migration `102` and the Backend `/v1/workspaces*` API persist Workspace
+settings and execution authority. Compose can mount only the exact socket
+directory and independent identity files; no Agent Tool execution is routed
+through the Host yet.
 
 The Host lifecycle remains independently deployable and reversible. Database
 rollback is separate: `102.down` refuses once imported settings, a Host binding,
@@ -21,6 +20,7 @@ or a Conversation execution snapshot exists.
   operator shell;
 - an ordinary non-root WSL user;
 - `wslpath` for Windows path interoperability;
+- Windows PowerShell interop for the native folder picker;
 - no systemd requirement;
 - repository runtime paths must not be symlinked.
 
@@ -56,6 +56,25 @@ Defaults:
 The wrapper never overwrites an existing token or Runner id and never prints
 the token. It refuses root, symlinked state, unsafe modes, wrong ownership,
 malformed PID files, and unrelated live PIDs.
+
+## Connect the Compose Backend
+
+Run `prepare` first, then set the active environment without changing any
+project-directory mounts:
+
+```dotenv
+AGENT_HOST_ENABLED=true
+AGENT_HOST_STATE_SOURCE=./.runtime/agent-host
+AGENT_HOST_TOKEN_SOURCE=./secrets/agent-host-token
+AGENT_HOST_RUNNER_ID_SOURCE=./secrets/agent-host-runner-id
+AGENT_HOST_TIMEOUT=15s
+```
+
+Compose mounts the state directory read-only at `/run/mm-chat/agent-host` and
+the two identity files as `/run/secrets/*`. The Backend runs as the same
+ordinary UID/GID, validates the Docker-secret projections, pins the Runner id,
+and exposes sanitized status at `GET /v1/workspaces/host-status`. Never mount
+`$HOME`, a project parent, unrelated secrets, or a container socket.
 
 ## Focused verification
 
@@ -95,7 +114,8 @@ contents into issue trackers.
   silently adopt another Runner.
 
 An execution request whose outcome is unknown will not be retried once
-execution routes exist. This foundation currently has no mutation route.
+execution routes exist. Workspace binding mutates only Backend registration;
+directory browse/pick/resolve never mutate project files.
 
 ## Stop and rollback
 
@@ -103,16 +123,13 @@ execution routes exist. This foundation currently has no mutation route.
 ./scripts/agent-host.sh stop
 ```
 
-Stopping is sufficient to roll back this dark foundation because nothing in
-the live Compose stack consumes it. Revert the source commit if the binary and
-protocol should also be removed. Preserve `secrets/agent-host-token` and
+Set `AGENT_HOST_ENABLED=false` and recreate Backend to disconnect the socket;
+existing Workspace records remain readable and binding fails closed. Then stop
+the Host if desired. Preserve `secrets/agent-host-token` and
 `secrets/agent-host-runner-id` for forward recovery unless the owner explicitly
 authorizes credential destruction. The disposable `.runtime/agent-host/`
 directory may be rebuilt, but never delete or rewrite `data/`, `secrets/`,
 `backup/`, or `.env.single-server` as part of rollback.
 
-The later Backend-integration slice must add a read-only bind of the exact
-socket runtime directory plus token secret, construct the pinned
-`agenthost.Client`, add a health projection and feature flag, and retain
-fail-closed routing. It must not switch existing conversations during the
-socket rollout.
+Rollback never deletes Workspace records or project directories and never
+rewrites protected runtime trees merely to reach an older schema head.

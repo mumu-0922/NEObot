@@ -67,6 +67,7 @@ import {
   createChatStreamService,
   type ChatStreamRunResult,
 } from "../../services/api/chatStreamService";
+import { createWorkspaceService } from "../../services/api/workspaceService";
 import {
   deleteServerConversationMemorySnapshot,
   getServerConversationMemorySnapshot,
@@ -239,6 +240,7 @@ const toStoreSessionFromServer = (session: ChatCrudSession): Session =>
     pinned: session.pinned,
     systemInstruction: session.systemInstruction,
     config: session.config,
+    workspaceId: session.workspaceId,
   });
 
 const toStoreMessageFromServer = (message: ChatCrudMessage): Message => ({
@@ -726,7 +728,7 @@ interface ChatState {
   moveSessionToWorkspace: (
     sessionId: string,
     workspaceId: string | null,
-  ) => void;
+  ) => Promise<void>;
 
   toggleSessionPin: (id: string) => void;
   duplicateSession: (id: string) => Promise<void>;
@@ -747,9 +749,13 @@ interface ChatState {
   setMessages: (sessionId: string, messages: Message[]) => void;
 
   // Workspace Actions
-  createWorkspace: (workspace: Omit<Workspace, "createdAt">) => void;
+  createWorkspace: (
+    workspace: Omit<Workspace, "createdAt">,
+  ) => Promise<Workspace>;
   updateWorkspace: (id: string, updates: Partial<Workspace>) => Promise<void>;
   deleteWorkspace: (id: string) => Promise<void>;
+  refreshServerWorkspaces: () => Promise<boolean>;
+  bindWorkspace: (id: string, path: string) => Promise<Workspace>;
 
   // Persistence Helper
   syncActiveSession: (
@@ -2450,7 +2456,23 @@ export const useChatStore = create<ChatState>()(
         }));
       },
 
-      moveSessionToWorkspace: (sessionId, workspaceId) => {
+      moveSessionToWorkspace: async (sessionId, workspaceId) => {
+        const workspaceService = createWorkspaceService();
+        const state = get();
+        const existing =
+          state.serverReadState.sessions.find(
+            (session) => session.id === sessionId,
+          ) ?? state.sessions.find((session) => session.id === sessionId);
+        if (workspaceService.serverEnabled) {
+          if (workspaceId) {
+            await workspaceService.setConversation(workspaceId, sessionId);
+          } else if (existing?.workspaceId) {
+            await workspaceService.clearConversation(
+              existing.workspaceId,
+              sessionId,
+            );
+          }
+        }
         set((state) => ({
           sessions: state.sessions.map((s) =>
             s.id === sessionId
@@ -2461,6 +2483,18 @@ export const useChatStore = create<ChatState>()(
                 }
               : s,
           ),
+          serverReadState: {
+            ...state.serverReadState,
+            sessions: state.serverReadState.sessions.map((session) =>
+              session.id === sessionId
+                ? {
+                    ...session,
+                    workspaceId: workspaceId || undefined,
+                    updatedAt: Date.now(),
+                  }
+                : session,
+            ),
+          },
         }));
       },
 
@@ -3075,32 +3109,53 @@ export const useChatStore = create<ChatState>()(
       },
 
       // --- Workspace Actions ---
-      createWorkspace: (workspaceData) => {
+      createWorkspace: async (workspaceData) => {
         const newWorkspace: Workspace = {
           ...normalizeWorkspace(workspaceData as Workspace),
           id: workspaceData.id || uuidv7(),
           createdAt: Date.now(),
         };
-        set((state) => ({ workspaces: [...state.workspaces, newWorkspace] }));
+        const workspaceService = createWorkspaceService();
+        const persisted = workspaceService.serverEnabled
+          ? await workspaceService.importLegacy(newWorkspace)
+          : newWorkspace;
+        set((state) => ({
+          workspaces: [
+            ...state.workspaces.filter(
+              (workspace) => workspace.id !== persisted.id,
+            ),
+            persisted,
+          ],
+        }));
+        return persisted;
       },
 
       updateWorkspace: async (id, updates) => {
         let removedFileUrls: string[] = [];
-
+        const current = get().workspaces.find(
+          (workspace) => workspace.id === id,
+        );
+        if (!current) return;
+        let updatedWorkspace = normalizeWorkspace({ ...current, ...updates });
+        if ("files" in updates) {
+          removedFileUrls = getRemovedWorkspaceFileUrls(
+            current.files,
+            updatedWorkspace.files,
+          );
+        }
+        const workspaceService = createWorkspaceService();
+        if (workspaceService.serverEnabled) {
+          try {
+            updatedWorkspace = await workspaceService.update(updatedWorkspace);
+          } catch (error) {
+            await get().refreshServerWorkspaces();
+            throw error;
+          }
+        }
         set((state) => ({
-          workspaces: state.workspaces.map((w) => {
-            if (w.id !== id) return w;
-
-            const updatedWorkspace = normalizeWorkspace({ ...w, ...updates });
-            if ("files" in updates) {
-              removedFileUrls = getRemovedWorkspaceFileUrls(
-                w.files,
-                updatedWorkspace.files,
-              );
-            }
-
-            return updatedWorkspace;
-          }),
+          workspaces: state.workspaces.map((workspace) =>
+            workspace.id === id ? updatedWorkspace : workspace,
+          ),
         }));
 
         if (removedFileUrls.length > 0) {
@@ -3119,7 +3174,18 @@ export const useChatStore = create<ChatState>()(
 
       deleteWorkspace: async (id) => {
         const workspace = get().workspaces.find((w) => w.id === id);
+        if (!workspace) return;
         const fileUrlsToCleanup = getAttachmentUrls(workspace?.files);
+
+        const workspaceService = createWorkspaceService();
+        if (workspaceService.serverEnabled) {
+          try {
+            await workspaceService.delete(workspace);
+          } catch (error) {
+            await get().refreshServerWorkspaces();
+            throw error;
+          }
+        }
 
         // Move sessions in this workspace back to root (workspaceId = undefined)
         set((state) => {
@@ -3146,6 +3212,54 @@ export const useChatStore = create<ChatState>()(
               });
             },
           );
+        }
+      },
+
+      refreshServerWorkspaces: async () => {
+        const workspaceService = createWorkspaceService();
+        if (!workspaceService.serverEnabled) return false;
+        try {
+          let serverWorkspaces = await workspaceService.list();
+          const serverIDs = new Set(
+            serverWorkspaces.map((workspace) => workspace.id),
+          );
+          const missing = get().workspaces.filter(
+            (workspace) => !serverIDs.has(workspace.id),
+          );
+          for (const workspace of missing) {
+            await workspaceService.importLegacy(workspace);
+          }
+          if (missing.length > 0) {
+            serverWorkspaces = await workspaceService.list();
+          }
+          set({ workspaces: serverWorkspaces });
+          return true;
+        } catch (error) {
+          logDevError("Failed to refresh server Workspaces", error);
+          return false;
+        }
+      },
+
+      bindWorkspace: async (id, path) => {
+        const workspace = get().workspaces.find((item) => item.id === id);
+        if (!workspace) {
+          throw new Error("Workspace was not found.");
+        }
+        const workspaceService = createWorkspaceService();
+        if (!workspaceService.serverEnabled) {
+          throw new Error("Host Workspaces require server mode.");
+        }
+        try {
+          const bound = await workspaceService.bind(workspace, path);
+          set((state) => ({
+            workspaces: state.workspaces.map((item) =>
+              item.id === id ? bound : item,
+            ),
+          }));
+          return bound;
+        } catch (error) {
+          await get().refreshServerWorkspaces();
+          throw error;
         }
       },
 

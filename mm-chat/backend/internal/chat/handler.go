@@ -166,6 +166,7 @@ type ConversationDTO struct {
 	SystemInstruction string         `json:"systemInstruction,omitempty"`
 	Pinned            bool           `json:"pinned"`
 	Config            map[string]any `json:"config"`
+	WorkspaceID       string         `json:"workspaceId,omitempty"`
 	CreatedAt         string         `json:"createdAt"`
 	UpdatedAt         string         `json:"updatedAt"`
 }
@@ -4514,6 +4515,7 @@ func newConversationDTO(conversation Conversation) ConversationDTO {
 		SystemInstruction: conversation.SystemPrompt,
 		Pinned:            configBool(config, "pinned"),
 		Config:            config,
+		WorkspaceID:       conversation.WorkspaceID,
 		CreatedAt:         formatTime(conversation.CreatedAt),
 		UpdatedAt:         formatTime(conversation.UpdatedAt),
 	}

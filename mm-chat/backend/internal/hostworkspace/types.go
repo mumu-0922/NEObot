@@ -79,10 +79,32 @@ type Repository interface {
 	Bind(context.Context, string, int64, agenthost.WorkspaceDescriptor, string, time.Time) (Workspace, error)
 	Delete(context.Context, string, int64, time.Time) error
 	SetConversationWorkspace(context.Context, string, string) error
+	ClearConversationWorkspace(context.Context, string, string) error
 	LockConversationExecutionWorkspace(context.Context, string, string, time.Time) (ExecutionBinding, error)
 }
 
 type PathResolver interface {
 	ResolveWorkspace(context.Context, string) (agenthost.WorkspaceDescriptor, error)
 	RunnerID() string
+}
+
+type capabilityResolver interface {
+	Capabilities(context.Context) (agenthost.Capabilities, error)
+}
+
+type directoryBrowser interface {
+	BrowseDirectories(context.Context, string) (agenthost.DirectoryBrowseResponse, error)
+}
+
+type nativeDirectoryPicker interface {
+	PickNativeDirectory(context.Context) (agenthost.NativeDirectoryPickResponse, error)
+}
+
+type HostStatus struct {
+	Enabled      bool
+	Status       string
+	RunnerID     string
+	Platform     string
+	Architecture string
+	Features     agenthost.HostFeatures
 }

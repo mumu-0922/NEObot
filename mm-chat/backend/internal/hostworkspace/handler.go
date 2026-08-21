@@ -56,6 +56,22 @@ type bindRequest struct {
 	Path             string `json:"path"`
 }
 
+type hostStatusDTO struct {
+	Enabled      bool                   `json:"enabled"`
+	Status       string                 `json:"status"`
+	RunnerID     string                 `json:"runnerId,omitempty"`
+	Platform     string                 `json:"platform,omitempty"`
+	Architecture string                 `json:"architecture,omitempty"`
+	Features     agenthost.HostFeatures `json:"features"`
+}
+
+type publicDirectoryEntry struct {
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	DisplayPath string `json:"displayPath"`
+	PathKind    string `json:"pathKind"`
+}
+
 type errorResponse struct {
 	Error struct {
 		Code    string `json:"code"`
@@ -101,6 +117,18 @@ func (handler *Handler) collection(writer http.ResponseWriter, request *http.Req
 
 func (handler *Handler) item(writer http.ResponseWriter, request *http.Request, suffix string) {
 	parts := strings.Split(suffix, "/")
+	if suffix == "host-status" {
+		handler.hostStatus(writer, request)
+		return
+	}
+	if suffix == "directories/browse" {
+		handler.browseDirectories(writer, request)
+		return
+	}
+	if suffix == "directories/pick-native" {
+		handler.pickNativeDirectory(writer, request)
+		return
+	}
 	if len(parts) == 1 {
 		handler.workspace(writer, request, parts[0])
 		return
@@ -114,6 +142,71 @@ func (handler *Handler) item(writer http.ResponseWriter, request *http.Request, 
 		return
 	}
 	writeWorkspaceError(writer, http.StatusNotFound, "NOT_FOUND", "Route not found")
+}
+
+func (handler *Handler) hostStatus(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		methodNotAllowed(writer, http.MethodGet)
+		return
+	}
+	status := handler.service.HostStatus(request.Context())
+	writeWorkspaceJSON(writer, http.StatusOK, hostStatusDTO{
+		Enabled: status.Enabled, Status: status.Status, RunnerID: status.RunnerID,
+		Platform: status.Platform, Architecture: status.Architecture, Features: status.Features,
+	})
+}
+
+func (handler *Handler) browseDirectories(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		methodNotAllowed(writer, http.MethodPost)
+		return
+	}
+	var input struct {
+		Path string `json:"path"`
+	}
+	if decodeWorkspaceJSON(writer, request, &input) != nil {
+		writeWorkspaceError(writer, http.StatusBadRequest, "INVALID_WORKSPACE_REQUEST", "Request is invalid")
+		return
+	}
+	result, err := handler.service.BrowseDirectories(request.Context(), input.Path)
+	if err != nil {
+		writeWorkspaceServiceError(writer, err)
+		return
+	}
+	entries := make([]publicDirectoryEntry, 0, len(result.Entries))
+	for _, entry := range result.Entries {
+		entries = append(entries, publicDirectoryEntry{
+			Name: entry.Name, Path: entry.Path, DisplayPath: entry.DisplayPath, PathKind: entry.PathKind,
+		})
+	}
+	writeWorkspaceJSON(writer, http.StatusOK, map[string]any{
+		"path": result.Path, "displayPath": result.DisplayPath,
+		"pathKind": result.PathKind, "parentPath": result.ParentPath, "entries": entries,
+	})
+}
+
+func (handler *Handler) pickNativeDirectory(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		methodNotAllowed(writer, http.MethodPost)
+		return
+	}
+	var input struct{}
+	if decodeWorkspaceJSON(writer, request, &input) != nil {
+		writeWorkspaceError(writer, http.StatusBadRequest, "INVALID_WORKSPACE_REQUEST", "Request is invalid")
+		return
+	}
+	result, err := handler.service.PickNativeDirectory(request.Context())
+	if err != nil {
+		writeWorkspaceServiceError(writer, err)
+		return
+	}
+	response := map[string]any{"cancelled": result.Cancelled}
+	if result.Workspace != nil {
+		response["path"] = result.Workspace.CanonicalPath
+		response["displayPath"] = result.Workspace.DisplayPath
+		response["pathKind"] = result.Workspace.PathKind
+	}
+	writeWorkspaceJSON(writer, http.StatusOK, response)
 }
 
 func (handler *Handler) workspace(writer http.ResponseWriter, request *http.Request, workspaceID string) {
@@ -196,7 +289,21 @@ func (handler *Handler) setConversation(
 	conversationID string,
 ) {
 	if request.Method != http.MethodPut {
-		methodNotAllowed(writer, http.MethodPut)
+		if request.Method == http.MethodDelete {
+			if request.Body != nil && request.ContentLength != 0 {
+				writeWorkspaceError(writer, http.StatusBadRequest, "INVALID_WORKSPACE_REQUEST", "Request is invalid")
+				return
+			}
+			if err := handler.service.ClearConversationWorkspace(
+				request.Context(), conversationID, workspaceID,
+			); err != nil {
+				writeWorkspaceServiceError(writer, err)
+				return
+			}
+			writer.WriteHeader(http.StatusNoContent)
+			return
+		}
+		methodNotAllowed(writer, http.MethodPut+", "+http.MethodDelete)
 		return
 	}
 	if request.Body != nil && request.ContentLength != 0 {

@@ -221,6 +221,7 @@ const ChatApp = () => {
       createSession,
       selectSession,
       refreshServerSessions,
+      refreshServerWorkspaces,
       selectServerSession,
       createServerSession,
       sendServerMessageAndStream,
@@ -1012,8 +1013,8 @@ const ChatApp = () => {
     if (serverBootstrapRef.current) return;
     serverBootstrapRef.current = true;
 
-    refreshServerSessions()
-      .then((loaded) => {
+    Promise.all([refreshServerWorkspaces(), refreshServerSessions()])
+      .then(([, loaded]) => {
         if (!loaded) return;
         const state = useChatStore.getState().serverReadState;
         if (state.sessions.length === 0) {
@@ -1028,6 +1029,7 @@ const ChatApp = () => {
     chatHasHydrated,
     createServerSession,
     refreshServerSessions,
+    refreshServerWorkspaces,
     serverModeEnabled,
     serverModelBootstrapReady,
   ]);

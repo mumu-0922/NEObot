@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"neo-chat/mm-chat/backend/internal/agenthost"
 	"neo-chat/mm-chat/backend/internal/agents"
 	"neo-chat/mm-chat/backend/internal/auth"
 	"neo-chat/mm-chat/backend/internal/browserimport"
@@ -117,6 +118,25 @@ func main() {
 	if err != nil {
 		logger.Error("agent_local_runtime_config_failed")
 		os.Exit(1)
+	}
+	var agentHostClient *agenthost.Client
+	if cfg.AgentHost.Enabled {
+		token, runnerID, credentialErr := agenthost.LoadClientCredentials(
+			cfg.AgentHost.TokenFile, cfg.AgentHost.RunnerIDFile,
+		)
+		if credentialErr != nil {
+			logger.Error("agent_host_credentials_failed")
+			os.Exit(1)
+		}
+		agentHostClient, err = agenthost.NewClient(agenthost.ClientConfig{
+			SocketPath: cfg.AgentHost.Socket, Token: token,
+			ExpectedRunnerID: runnerID, Timeout: cfg.AgentHost.Timeout,
+		})
+		if err != nil {
+			logger.Error("agent_host_client_config_failed")
+			os.Exit(1)
+		}
+		defer agentHostClient.Close()
 	}
 	providerSecretVault, err := newProviderSecretVault(cfg)
 	if err != nil {
@@ -387,7 +407,7 @@ func main() {
 	if sqlDB != nil {
 		hostWorkspaceRepository = hostworkspace.NewPostgresRepository(sqlDB)
 	}
-	hostWorkspaceService := hostworkspace.NewService(hostWorkspaceRepository, nil)
+	hostWorkspaceService := hostworkspace.NewService(hostWorkspaceRepository, agentHostClient)
 	agentService := agents.NewService(agentOptions...)
 	var skillRepository skillsupply.Repository
 	if sqlDB != nil {

@@ -75,6 +75,7 @@ type Conversation struct {
 	ModelID        string
 	SystemPrompt   string
 	Metadata       map[string]any
+	WorkspaceID    string
 	MessageCount   int
 	CreatedAt      time.Time
 	UpdatedAt      time.Time

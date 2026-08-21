@@ -158,6 +158,11 @@ x-backend-env: &backend-env
   AGENT_LOCAL_MAX_CALLS_PER_RUN: ${AGENT_LOCAL_MAX_CALLS_PER_RUN:-32}
   AGENT_LOCAL_MAX_ROUNDS_PER_RUN: ${AGENT_LOCAL_MAX_ROUNDS_PER_RUN:-8}
   AGENT_LOCAL_MAX_CONCURRENT: ${AGENT_LOCAL_MAX_CONCURRENT:-2}
+  AGENT_HOST_ENABLED: ${AGENT_HOST_ENABLED:-false}
+  AGENT_HOST_SOCKET: /run/mm-chat/agent-host/agent-host.sock
+  AGENT_HOST_TOKEN_FILE: /run/secrets/mm_chat_agent_host_token
+  AGENT_HOST_RUNNER_ID_FILE: /run/secrets/mm_chat_agent_host_runner_id
+  AGENT_HOST_TIMEOUT: ${AGENT_HOST_TIMEOUT:-15s}
 
 services:
   postgres:
@@ -292,6 +297,10 @@ services:
         target: mm_chat_mcp_runner_token
       - source: mm_chat_mcp_marketplace_client_secret
         target: mm_chat_mcp_marketplace_client_secret
+      - source: mm_chat_agent_host_token
+        target: mm_chat_agent_host_token
+      - source: mm_chat_agent_host_runner_id
+        target: mm_chat_agent_host_runner_id
     volumes:
       - ./mcp/manifest.json:/etc/mm-chat/mcp-manifest.json:ro
       - type: bind
@@ -302,6 +311,12 @@ services:
       - type: bind
         source: ${AGENT_LOCAL_WORKSPACE_SOURCE:-./data/agent-workspace}
         target: ${AGENT_LOCAL_WORKSPACE_ROOT:-/workspace}
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${AGENT_HOST_STATE_SOURCE:-./agent-host/disabled-runtime}
+        target: /run/mm-chat/agent-host
+        read_only: true
         bind:
           create_host_path: false
     depends_on:
@@ -694,3 +709,7 @@ secrets:
     file: ${MCP_RUNNER_TOKEN_SOURCE:-./mcp/runner-token.disabled}
   mm_chat_mcp_marketplace_client_secret:
     file: ${MCP_MARKETPLACE_CLIENT_SECRET_SOURCE:-./mcp/marketplace-client-secret.disabled}
+  mm_chat_agent_host_token:
+    file: ${AGENT_HOST_TOKEN_SOURCE:-./agent-host/token.disabled}
+  mm_chat_agent_host_runner_id:
+    file: ${AGENT_HOST_RUNNER_ID_SOURCE:-./agent-host/runner-id.disabled}

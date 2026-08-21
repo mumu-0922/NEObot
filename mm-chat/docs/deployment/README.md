@@ -35,11 +35,12 @@ Outbox state.
   described in [`local-skill-runtime.md`](./local-skill-runtime.md). There is no
   OCI executor, per-Skill Sandbox, separate Runner, Cron/Learning worker, or
   fallback Agent service.
-- The separately managed WSL Agent Host is dark and is not wired to Backend
-  execution. It reports identity/capabilities and resolves canonical Host
-  workspace paths only; it advertises no execution or enforced permission
-  modes. The migration-102 Workspace API is durable, but Host binding fails
-  closed until the socket/token mount is explicitly shipped.
+- The separately managed WSL Agent Host is wired to Backend only as an
+  interactive workspace control plane. It reports identity/capabilities,
+  browses or picks Host directories, and resolves canonical paths over the
+  pinned Unix socket/token mount. It still advertises no execution or enforced
+  permission modes, so Chat Agent Tools remain on `local_direct` and Host-bound
+  execution stays unavailable.
 - Runtime data and local backups belong under `mm-chat/data/` and
   `mm-chat/backup/`, both gitignored.
 - MinIO must remain private; the Go backend is the public file authorization

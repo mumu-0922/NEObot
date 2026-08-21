@@ -250,6 +250,35 @@ func TestAgentLocalConfiguration(t *testing.T) {
 	}
 }
 
+func TestAgentHostConfiguration(t *testing.T) {
+	t.Parallel()
+	values := map[string]string{
+		EnvAgentHostEnabled:      "true",
+		EnvAgentHostSocket:       "/run/mm-chat/agent-host/agent-host.sock",
+		EnvAgentHostTokenFile:    "/run/secrets/mm_chat_agent_host_token",
+		EnvAgentHostRunnerIDFile: "/run/secrets/mm_chat_agent_host_runner_id",
+		EnvAgentHostTimeout:      "12s",
+	}
+	cfg := LoadFromEnv(func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	})
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if !cfg.AgentHost.Enabled || cfg.AgentHost.Timeout != 12*time.Second {
+		t.Fatalf("AgentHost config = %#v", cfg.AgentHost)
+	}
+	values[EnvAgentHostTokenFile] = "/tmp/token"
+	invalid := LoadFromEnv(func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	})
+	if err := invalid.Validate(); err == nil || !strings.Contains(err.Error(), EnvAgentHostTokenFile) {
+		t.Fatalf("invalid Host token path error = %v", err)
+	}
+}
+
 func TestLoadFromEnvOverrides(t *testing.T) {
 	values := map[string]string{
 		EnvAddr:                   "127.0.0.1:9090",

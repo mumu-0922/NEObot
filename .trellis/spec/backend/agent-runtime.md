@@ -247,9 +247,11 @@ Cross-layer changes also require frontend format/lint/typecheck/test/build and
 ### Wrong vs correct
 
 ```text
-Wrong: replace current execution with an unproven remote control service
-Correct: keep current local_direct authority until the dark Host protocol,
-         durable workspace binding, execution parity, and permission probes pass
+Wrong: route Tools through the interactive Host workspace control plane before
+       it advertises execution and enforced permission capabilities
+Correct: keep current local_direct execution authority while using the Host
+         socket only for durable workspace selection/binding; cut execution
+         over only after execution parity and permission probes pass
 
 Wrong: inspect Shell command text -> guess mutation -> force verification
 Correct: foreground result -> synchronous boundary; background Job -> exact completed output
@@ -267,7 +269,7 @@ Wrong: DROP ... CASCADE after a broad agent_* match
 Correct: lock -> exact manifest/data validation -> explicit drops -> forward repair -> head 102
 ```
 
-## Scenario: establish the dark WSL Agent Host control plane
+## Scenario: operate the interactive WSL Agent Host control plane
 
 ### Scope / trigger
 
@@ -280,6 +282,8 @@ Runner capability boundary.
 ```text
 GET  /internal/v1/capabilities
 POST /internal/v1/workspaces/resolve
+POST /internal/v1/directories/browse
+POST /internal/v1/directories/pick-native
 
 Protocol version: 1
 Runner id:         [a-z][a-z0-9-]{2,63}
@@ -300,9 +304,15 @@ Workspace path:    1..4096 valid UTF-8 bytes without controls
   JSON fields, duplicate keys, trailing documents, oversized bodies, malformed
   capability labels/modes/limits, unknown remote error codes, and invalid
   workspace fingerprints are protocol failures.
-- `capabilities` advertises only implemented facts. This foundation reports
-  `workspaceResolve=true`, but `execution=false`, no picker/browser, and an
-  empty `permissionModes` list.
+- `capabilities` advertises only implemented facts. The interactive control
+  plane reports Workspace resolve, WSL directory browse, and the native
+  Windows picker when their Host dependencies exist. It still reports
+  `execution=false` and an empty `permissionModes` list.
+- Directory browse starts at the ordinary Host user's home for an empty path,
+  returns at most 256 sorted directory-only entries, and never reads file
+  contents. Native picker runs a fixed PowerShell/WinForms command with no
+  caller interpolation and resolves the selection through the same `wslpath`
+  and canonicalization boundary.
 - The Host alone converts and probes Host paths. Invoke the fixed absolute
   `wslpath` executable with `-u`, `--`, and the path as a distinct argv value;
   never invoke a shell. Resolve symlinks, require an existing absolute
@@ -314,9 +324,10 @@ Workspace path:    1..4096 valid UTF-8 bytes without controls
   proof; every future execution must re-resolve durable authority.
 - Error bodies use allowlisted stable codes and generic messages. Do not return
   submitted Host paths, token material, converter output, or raw OS errors.
-- This foundation does not route existing Tools. Once later Host binding is
-  active, Runner loss fails closed, outcome-unknown work is not retried, and a
-  Host-bound Conversation never falls back to Docker `local_direct`.
+- Compose may connect this control plane through the exact read-only socket
+  directory and independent credential secrets. Existing Tools remain on
+  `local_direct`; Runner loss makes bind/browse/pick unavailable without a
+  Docker-path fallback.
 
 ### Validation and error matrix
 
@@ -330,6 +341,7 @@ Workspace path:    1..4096 valid UTF-8 bytes without controls
 | response Runner id differs from the pinned id | client `ErrHostProtocol` |
 | fingerprint is non-hex, uppercase, wrong length, or does not recompute | client `ErrHostProtocol` |
 | socket unavailable/cancelled request | unavailable/context error; no fallback |
+| native picker cancellation | successful `cancelled=true`; no Workspace mutation |
 
 ### Good / base / bad cases
 
@@ -339,7 +351,7 @@ Workspace path:    1..4096 valid UTF-8 bytes without controls
   canonical `/mnt/d/project` descriptor while retaining the Windows display
   path.
 - **Base**: the Host is stopped; existing `local_direct` conversations remain
-  unchanged because routing is still dark.
+  unchanged while Host status/binding fail closed.
 - **Bad**: advertise `workspace-write` before filesystem and shell sandbox
   probes enforce it on both WSL filesystems and DrvFS.
 - **Bad**: trust a path, fingerprint, error message, or Runner identity merely
@@ -369,8 +381,8 @@ Correct: exec.CommandContext(ctx, absoluteWslpath, "-u", "--", userPath)
 Wrong: authenticated socket response -> trust runnerId/path/fingerprint/message
 Correct: strict bounded response -> pin runnerId -> validate facts -> recompute fingerprint
 
-Wrong: Host unavailable -> silently execute the same Tool inside Docker
-Correct: dark phase leaves old conversations unchanged; future Host-bound work fails closed
+Wrong: Host unavailable -> canonicalize the submitted path inside Docker
+Correct: old conversations remain unchanged; Host binding/browse/pick fail closed
 ```
 
 ## Scenario: persist converged Host Workspaces before execution routing

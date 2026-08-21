@@ -23,6 +23,8 @@ var (
 	ErrHostProtocol    = errors.New("agent Host protocol is invalid")
 )
 
+const nativePickerRequestTimeout = 270 * time.Second
+
 type ClientConfig struct {
 	SocketPath       string
 	Token            string
@@ -35,6 +37,8 @@ type Client struct {
 	expectedRunnerID string
 	httpClient       *http.Client
 	transport        *http.Transport
+	pickerHTTPClient *http.Client
+	pickerTransport  *http.Transport
 }
 
 func NewClient(config ClientConfig) (*Client, error) {
@@ -53,30 +57,39 @@ func NewClient(config ClientConfig) (*Client, error) {
 	if timeout <= 0 || timeout > time.Minute {
 		timeout = 15 * time.Second
 	}
-	dialer := &net.Dialer{Timeout: 3 * time.Second, KeepAlive: 30 * time.Second}
-	transport := &http.Transport{
-		Proxy: nil,
-		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return dialer.DialContext(ctx, "unix", socketPath)
-		},
-		ForceAttemptHTTP2:      false,
-		MaxIdleConns:           4,
-		MaxIdleConnsPerHost:    4,
-		IdleConnTimeout:        30 * time.Second,
-		ResponseHeaderTimeout:  timeout,
-		MaxResponseHeaderBytes: 16 << 10,
+	newTransport := func(responseHeaderTimeout time.Duration) *http.Transport {
+		dialer := &net.Dialer{Timeout: 3 * time.Second, KeepAlive: 30 * time.Second}
+		return &http.Transport{
+			Proxy: nil,
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return dialer.DialContext(ctx, "unix", socketPath)
+			},
+			ForceAttemptHTTP2:      false,
+			MaxIdleConns:           4,
+			MaxIdleConnsPerHost:    4,
+			IdleConnTimeout:        30 * time.Second,
+			ResponseHeaderTimeout:  responseHeaderTimeout,
+			MaxResponseHeaderBytes: 16 << 10,
+		}
 	}
+	transport := newTransport(timeout)
+	pickerTransport := newTransport(nativePickerRequestTimeout)
 	return &Client{
 		token:            config.Token,
 		expectedRunnerID: config.ExpectedRunnerID,
 		httpClient:       &http.Client{Transport: transport, Timeout: timeout},
 		transport:        transport,
+		pickerHTTPClient: &http.Client{Transport: pickerTransport, Timeout: nativePickerRequestTimeout},
+		pickerTransport:  pickerTransport,
 	}, nil
 }
 
 func (client *Client) Close() {
 	if client != nil && client.transport != nil {
 		client.transport.CloseIdleConnections()
+	}
+	if client != nil && client.pickerTransport != nil {
+		client.pickerTransport.CloseIdleConnections()
 	}
 }
 
@@ -158,6 +171,64 @@ func (client *Client) ResolveWorkspace(
 	return response.Workspace, nil
 }
 
+func (client *Client) BrowseDirectories(
+	ctx context.Context,
+	path string,
+) (DirectoryBrowseResponse, error) {
+	var response DirectoryBrowseResponse
+	if err := client.do(ctx, http.MethodPost, DirectoryBrowsePath, DirectoryBrowseRequest{
+		ProtocolVersion: ProtocolVersion,
+		Path:            path,
+	}, &response); err != nil {
+		return DirectoryBrowseResponse{}, err
+	}
+	if !validDirectoryBrowseResponse(client.expectedRunnerID, response) {
+		return DirectoryBrowseResponse{}, ErrHostProtocol
+	}
+	if response.Entries == nil {
+		response.Entries = []DirectoryEntry{}
+	}
+	return response, nil
+}
+
+func (client *Client) PickNativeDirectory(
+	ctx context.Context,
+) (NativeDirectoryPickResponse, error) {
+	var response NativeDirectoryPickResponse
+	if err := client.doWithHTTPClient(ctx, client.pickerHTTPClient, http.MethodPost, NativeDirectoryPickPath, NativeDirectoryPickRequest{
+		ProtocolVersion: ProtocolVersion,
+	}, &response); err != nil {
+		return NativeDirectoryPickResponse{}, err
+	}
+	if response.ProtocolVersion != ProtocolVersion ||
+		response.RunnerID != client.expectedRunnerID ||
+		(response.Cancelled && response.Workspace != nil) ||
+		(!response.Cancelled && (response.Workspace == nil ||
+			!validWorkspaceDescriptor(client.expectedRunnerID, *response.Workspace))) {
+		return NativeDirectoryPickResponse{}, ErrHostProtocol
+	}
+	return response, nil
+}
+
+func validDirectoryBrowseResponse(runnerID string, value DirectoryBrowseResponse) bool {
+	if value.ProtocolVersion != ProtocolVersion || value.RunnerID != runnerID ||
+		!filepath.IsAbs(value.Path) || !validWorkspacePathInput(value.Path) ||
+		!validWorkspacePathInput(value.DisplayPath) ||
+		(value.PathKind != "wsl" && value.PathKind != "windows-mounted") ||
+		(value.ParentPath != "" && (!filepath.IsAbs(value.ParentPath) ||
+			!validWorkspacePathInput(value.ParentPath))) || len(value.Entries) > 256 {
+		return false
+	}
+	for _, entry := range value.Entries {
+		if !validDirectoryName(entry.Name) || !filepath.IsAbs(entry.Path) ||
+			!validWorkspacePathInput(entry.Path) || !validWorkspacePathInput(entry.DisplayPath) ||
+			(entry.PathKind != "wsl" && entry.PathKind != "windows-mounted") {
+			return false
+		}
+	}
+	return true
+}
+
 func (client *Client) do(
 	ctx context.Context,
 	method string,
@@ -165,7 +236,21 @@ func (client *Client) do(
 	input any,
 	output any,
 ) error {
-	if client == nil || client.httpClient == nil {
+	if client == nil {
+		return ErrHostUnavailable
+	}
+	return client.doWithHTTPClient(ctx, client.httpClient, method, path, input, output)
+}
+
+func (client *Client) doWithHTTPClient(
+	ctx context.Context,
+	httpClient *http.Client,
+	method string,
+	path string,
+	input any,
+	output any,
+) error {
+	if client == nil || httpClient == nil {
 		return ErrHostUnavailable
 	}
 	var body io.Reader
@@ -187,7 +272,7 @@ func (client *Client) do(
 	if input != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
-	response, err := client.httpClient.Do(request)
+	response, err := httpClient.Do(request)
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -229,6 +314,8 @@ func validRemoteErrorCode(value string) bool {
 		"AGENT_HOST_ROUTE_NOT_FOUND",
 		"WORKSPACE_RESOLVE_UNAVAILABLE",
 		"WINDOWS_PATH_INTEROP_UNAVAILABLE",
+		"DIRECTORY_BROWSE_UNAVAILABLE",
+		"NATIVE_DIRECTORY_PICKER_UNAVAILABLE",
 		"WORKSPACE_PATH_INVALID",
 		"WORKSPACE_PATH_UNAVAILABLE":
 		return true

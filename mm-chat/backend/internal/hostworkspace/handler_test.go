@@ -2,6 +2,7 @@ package hostworkspace
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,39 @@ import (
 
 	"neo-chat/mm-chat/backend/internal/agenthost"
 )
+
+type interactiveResolver struct{ fakeResolver }
+
+func (resolver interactiveResolver) Capabilities(context.Context) (agenthost.Capabilities, error) {
+	return agenthost.Capabilities{
+		ProtocolVersion: agenthost.ProtocolVersion,
+		RunnerID:        resolver.runnerID,
+		Platform:        "linux-wsl",
+		Architecture:    "amd64",
+		Features: agenthost.HostFeatures{
+			WorkspaceResolve: true, DirectoryBrowse: true, NativeDirectoryPicker: true,
+			WindowsPathInterop: true, PermissionModes: []agenthost.PermissionMode{},
+		},
+	}, nil
+}
+
+func (resolver interactiveResolver) BrowseDirectories(context.Context, string) (agenthost.DirectoryBrowseResponse, error) {
+	return agenthost.DirectoryBrowseResponse{
+		Path: "/home/user", DisplayPath: "/home/user", PathKind: "wsl",
+		Entries: []agenthost.DirectoryEntry{{
+			Name: "project", Path: "/home/user/project",
+			DisplayPath: "/home/user/project", PathKind: "wsl",
+		}},
+	}, nil
+}
+
+func (resolver interactiveResolver) PickNativeDirectory(context.Context) (agenthost.NativeDirectoryPickResponse, error) {
+	return agenthost.NativeDirectoryPickResponse{
+		Workspace: &agenthost.WorkspaceDescriptor{
+			CanonicalPath: "/mnt/d/project", DisplayPath: `D:\project`, PathKind: "windows-mounted",
+		},
+	}, nil
+}
 
 func workspaceRequest(method, path, body string) *http.Request {
 	request := httptest.NewRequest(method, path, strings.NewReader(body))
@@ -107,5 +141,46 @@ func TestHandlerConversationBindingRoute(t *testing.T) {
 	))
 	if recorder.Code != http.StatusNoContent || repo.setCalls != 1 {
 		t.Fatalf("status = %d, setCalls = %d", recorder.Code, repo.setCalls)
+	}
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, workspaceRequest(
+		http.MethodDelete,
+		workspacePathPrefix+testWorkspaceID+"/conversations/"+testConversationID,
+		"",
+	))
+	if recorder.Code != http.StatusNoContent || repo.setCalls != 2 {
+		t.Fatalf("clear status = %d, setCalls = %d", recorder.Code, repo.setCalls)
+	}
+}
+
+func TestHandlerProjectsHostStatusBrowseAndNativePicker(t *testing.T) {
+	handler := NewHandler(NewService(newFakeRepository(), interactiveResolver{
+		fakeResolver: fakeResolver{runnerID: "wsl-test-runner"},
+	}))
+
+	statusRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(statusRecorder, workspaceRequest(http.MethodGet, workspacePathPrefix+"host-status", ""))
+	if statusRecorder.Code != http.StatusOK ||
+		!strings.Contains(statusRecorder.Body.String(), `"status":"ready"`) ||
+		!strings.Contains(statusRecorder.Body.String(), `"directoryBrowse":true`) {
+		t.Fatalf("status = %d, body = %s", statusRecorder.Code, statusRecorder.Body.String())
+	}
+
+	browseRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(browseRecorder, workspaceRequest(
+		http.MethodPost, workspacePathPrefix+"directories/browse", `{"path":"/home/user"}`,
+	))
+	if browseRecorder.Code != http.StatusOK ||
+		!strings.Contains(browseRecorder.Body.String(), `"name":"project"`) {
+		t.Fatalf("browse = %d, body = %s", browseRecorder.Code, browseRecorder.Body.String())
+	}
+
+	pickerRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(pickerRecorder, workspaceRequest(
+		http.MethodPost, workspacePathPrefix+"directories/pick-native", `{}`,
+	))
+	if pickerRecorder.Code != http.StatusOK ||
+		!strings.Contains(pickerRecorder.Body.String(), `"displayPath":"D:\\project"`) {
+		t.Fatalf("picker = %d, body = %s", pickerRecorder.Code, pickerRecorder.Body.String())
 	}
 }

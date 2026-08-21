@@ -48,5 +48,8 @@
   "workspaceActions": "工作区操作",
   "moveToWorkspaceAria": "将对话移动到工作区",
   "skillStore": "技能商店",
-  "openSkillStore": "打开技能商店"
+  "openSkillStore": "打开技能商店",
+  "workspaceBound": "已绑定项目目录",
+  "workspaceUnbound": "未绑定项目目录",
+  "moveWorkspaceFailed": "移动对话失败，请刷新后重试。"
 }

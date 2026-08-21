@@ -83,6 +83,11 @@ const (
 	DefaultAgentLocalMaxCalls           = 32
 	DefaultAgentLocalMaxRounds          = 8
 	DefaultAgentLocalMaxConcurrent      = 2
+	DefaultAgentHostEnabled             = false
+	DefaultAgentHostSocket              = "/run/mm-chat/agent-host/agent-host.sock"
+	DefaultAgentHostTokenFile           = "/run/secrets/mm_chat_agent_host_token"
+	DefaultAgentHostRunnerIDFile        = "/run/secrets/mm_chat_agent_host_runner_id"
+	DefaultAgentHostTimeout             = 15 * time.Second
 	maximumAuthSMTPQueueSize            = 10_000
 
 	EnvAddr                     = "MM_CHAT_ADDR"
@@ -181,6 +186,11 @@ const (
 	EnvAgentLocalMaxCalls       = "AGENT_LOCAL_MAX_CALLS_PER_RUN"
 	EnvAgentLocalMaxRounds      = "AGENT_LOCAL_MAX_ROUNDS_PER_RUN"
 	EnvAgentLocalMaxConcurrent  = "AGENT_LOCAL_MAX_CONCURRENT"
+	EnvAgentHostEnabled         = "AGENT_HOST_ENABLED"
+	EnvAgentHostSocket          = "AGENT_HOST_SOCKET"
+	EnvAgentHostTokenFile       = "AGENT_HOST_TOKEN_FILE"
+	EnvAgentHostRunnerIDFile    = "AGENT_HOST_RUNNER_ID_FILE"
+	EnvAgentHostTimeout         = "AGENT_HOST_TIMEOUT"
 )
 
 // Config contains the process-level settings required to start the API.
@@ -206,6 +216,7 @@ type Config struct {
 	Team            TeamConfig
 	MCP             MCPConfig
 	AgentLocal      AgentLocalConfig
+	AgentHost       AgentHostConfig
 }
 
 // RedisConfig contains non-authoritative temporary-state settings. Redis must
@@ -319,6 +330,16 @@ type AgentLocalConfig struct {
 	MaxCalls          int
 	MaxRounds         int
 	MaxConcurrent     int
+}
+
+// AgentHostConfig connects the containerized Backend to the ordinary-user WSL
+// Host Runner over one pinned Unix socket and independent secret files.
+type AgentHostConfig struct {
+	Enabled      bool
+	Socket       string
+	TokenFile    string
+	RunnerIDFile string
+	Timeout      time.Duration
 }
 
 // S3Config contains MinIO/S3-compatible object storage settings.
@@ -465,6 +486,9 @@ func (cfg Config) Validate() error {
 		return err
 	}
 	if err := validateAgentLocalConfig(cfg.AgentLocal); err != nil {
+		return err
+	}
+	if err := validateAgentHostConfig(cfg.AgentHost); err != nil {
 		return err
 	}
 	return nil
@@ -622,6 +646,13 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 			MaxRounds:         intEnvOrDefault(lookup, EnvAgentLocalMaxRounds, DefaultAgentLocalMaxRounds),
 			MaxConcurrent:     intEnvOrDefault(lookup, EnvAgentLocalMaxConcurrent, DefaultAgentLocalMaxConcurrent),
 		},
+		AgentHost: AgentHostConfig{
+			Enabled:      boolEnvOrDefault(lookup, EnvAgentHostEnabled, DefaultAgentHostEnabled),
+			Socket:       envOrDefault(lookup, EnvAgentHostSocket, DefaultAgentHostSocket),
+			TokenFile:    envOrDefault(lookup, EnvAgentHostTokenFile, DefaultAgentHostTokenFile),
+			RunnerIDFile: envOrDefault(lookup, EnvAgentHostRunnerIDFile, DefaultAgentHostRunnerIDFile),
+			Timeout:      durationEnvOrDefault(lookup, EnvAgentHostTimeout, DefaultAgentHostTimeout),
+		},
 
 		Auth: AuthConfig{
 			Mode:                 authModeEnvOrDefault(lookup, EnvAuthMode, DefaultAuthMode),
@@ -703,6 +734,32 @@ func validateAgentLocalConfig(config AgentLocalConfig) error {
 	}
 	if config.MaxConcurrent < 1 || config.MaxConcurrent > 32 {
 		return fmt.Errorf("%s must be between 1 and 32", EnvAgentLocalMaxConcurrent)
+	}
+	return nil
+}
+
+func validateAgentHostConfig(config AgentHostConfig) error {
+	if !config.Enabled {
+		return nil
+	}
+	if !filepath.IsAbs(config.Socket) || filepath.Clean(config.Socket) != config.Socket ||
+		config.Socket == string(filepath.Separator) {
+		return fmt.Errorf("%s must be a clean absolute non-root path", EnvAgentHostSocket)
+	}
+	for _, secret := range []struct {
+		name string
+		path string
+	}{
+		{name: EnvAgentHostTokenFile, path: config.TokenFile},
+		{name: EnvAgentHostRunnerIDFile, path: config.RunnerIDFile},
+	} {
+		if !strings.HasPrefix(secret.path, "/run/secrets/") ||
+			filepath.Clean(secret.path) != secret.path {
+			return fmt.Errorf("%s must be a clean path under /run/secrets", secret.name)
+		}
+	}
+	if config.Timeout < time.Second || config.Timeout > time.Minute {
+		return fmt.Errorf("%s must be between 1s and 1m", EnvAgentHostTimeout)
 	}
 	return nil
 }

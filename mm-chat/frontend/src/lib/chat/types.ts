@@ -451,6 +451,15 @@ export interface Workspace {
   enableSearch?: boolean;
   enableReasoning?: boolean;
   createdAt: number;
+  updatedAt?: number;
+  revision?: number;
+  bindingStatus?: "unbound" | "bound";
+  runnerId?: string;
+  canonicalPath?: string;
+  displayPath?: string;
+  pathKind?: "wsl" | "windows-mounted";
+  directoryFingerprint?: string;
+  boundAt?: number;
 }
 
 export interface Assistant {

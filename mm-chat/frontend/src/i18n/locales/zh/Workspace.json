@@ -30,5 +30,20 @@
   "saveWorkspace": "保存工作区",
   "saveFailed": "保存工作区失败，请重试。",
   "deleteFailed": "删除工作区失败，请重试。",
-  "saveFilesFailed": "保存 {count} 个文件失败，请重试。"
+  "saveFilesFailed": "保存 {count} 个文件失败，请重试。",
+  "projectDirectory": "项目目录",
+  "projectBound": "此工作区已永久绑定到 Host 项目目录。",
+  "projectReady": "选择 Windows 或 WSL 项目目录；绑定后不可更改。",
+  "hostUnavailable": "Host Runner 当前不可用；恢复连接后才能选择并绑定新项目。",
+  "projectRequired": "新工作区必须选择或输入一个项目目录。",
+  "bound": "已绑定",
+  "unbound": "未绑定",
+  "projectPathPlaceholder": "D:\\projects\\app 或 /home/user/project",
+  "chooseWindowsFolder": "选择 Windows 文件夹",
+  "browseWslFolders": "浏览 WSL 目录",
+  "parentDirectory": "返回上级目录",
+  "useThisFolder": "使用此目录",
+  "noSubdirectories": "没有子目录",
+  "browseFailed": "无法读取 Host 目录。",
+  "pickerFailed": "无法打开 Windows 文件夹选择器。"
 }

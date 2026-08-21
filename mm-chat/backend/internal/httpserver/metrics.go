@@ -408,6 +408,8 @@ func knownMetricPath(path string) (string, bool) {
 	case "/v1/agents", "/v1/mcp/servers", "/v1/mcp/oauth/start",
 		"/v1/mcp/oauth/callback", "/v1/mcp/oauth/revoke", "/v1/mcp/marketplace/search",
 		"/v1/workspaces",
+		"/v1/workspaces/host-status", "/v1/workspaces/directories/browse",
+		"/v1/workspaces/directories/pick-native",
 		"/v1/code/executions", "/v1/images/generations", "/v1/voice/transcribe",
 		"/v1/voice/synthesize":
 		return path, true

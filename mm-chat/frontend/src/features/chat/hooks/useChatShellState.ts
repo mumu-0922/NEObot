@@ -21,6 +21,7 @@ export function useChatShellState() {
       createSession: state.createSession,
       selectSession: state.selectSession,
       refreshServerSessions: state.refreshServerSessions,
+      refreshServerWorkspaces: state.refreshServerWorkspaces,
       selectServerSession: state.selectServerSession,
       createServerSession: state.createServerSession,
       sendServerMessageAndStream: state.sendServerMessageAndStream,

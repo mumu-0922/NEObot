@@ -16,6 +16,7 @@ import { createLocalSettingsApiShell } from "./local/settingsApi";
 import { createLocalTeamApiShell } from "./local/teamApi";
 import { createLocalVoiceJobApiShell } from "./local/voiceJobApi";
 import { createLocalVoiceProviderApiShell } from "./local/voiceProviderApi";
+import { createLocalWorkspaceApiShell } from "./local/workspaceApi";
 import { phase11Capabilities, resolveApiClientConfig } from "./mode";
 import { createServerAgentApiShell } from "./server/agentApi";
 import { createServerSkillStoreApiShell } from "./server/skillStoreApi";
@@ -35,6 +36,7 @@ import { createServerSettingsApiShell } from "./server/settingsApi";
 import { createServerTeamApiShell } from "./server/teamApi";
 import { createServerVoiceJobApiShell } from "./server/voiceJobApi";
 import { createServerVoiceProviderApiShell } from "./server/voiceProviderApi";
+import { createServerWorkspaceApiShell } from "./server/workspaceApi";
 import { createHttpClient } from "./server/httpClient";
 import type { ApiClientConfig, NeoChatApiClient } from "./types";
 
@@ -100,6 +102,9 @@ export function createNeoChatApiClient(
   const memories = serverHttpClient
     ? createServerMemoryApiShell(serverHttpClient)
     : createLocalMemoryApiShell();
+  const workspaces = serverHttpClient
+    ? createServerWorkspaceApiShell(serverHttpClient)
+    : createLocalWorkspaceApiShell();
 
   return {
     mode: resolved.mode,
@@ -121,6 +126,7 @@ export function createNeoChatApiClient(
       voice: false,
       voiceSynthesis: serverEnabled,
       voiceTranscription: false,
+      ...(serverEnabled ? { workspaces: true } : {}),
     },
     auth,
     settings,
@@ -140,6 +146,7 @@ export function createNeoChatApiClient(
     teams,
     knowledge,
     memories,
+    workspaces,
   };
 }
 

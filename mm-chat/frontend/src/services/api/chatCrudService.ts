@@ -72,6 +72,7 @@ export interface ChatCrudSession {
   pinned: boolean;
   systemInstruction?: string;
   config?: ChatCrudSessionConfig;
+  workspaceId?: string;
 }
 
 export interface ChatCrudAttachment {
@@ -255,6 +256,9 @@ export function mapConversationDtoToSession(
         ? conversation.systemInstruction
         : undefined,
     config: normalizeConversationConfig(conversation.config),
+    ...(conversation.workspaceId
+      ? { workspaceId: conversation.workspaceId }
+      : {}),
   };
 }
 

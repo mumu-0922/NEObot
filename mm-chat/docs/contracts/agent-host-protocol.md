@@ -2,9 +2,10 @@
 
 ## Status
 
-Protocol version `1` currently defines only the Host identity/capability and
-workspace-resolution control plane. It is not an execution protocol and does
-not change the existing Docker `local_direct` Agent runtime.
+Protocol version `1` defines Host identity/capabilities, canonical Workspace
+resolution, WSL directory browsing, and the native Windows directory picker.
+It is not yet an execution protocol and does not change the existing Docker
+`local_direct` Agent Tool runtime.
 
 ## Transport and authentication
 
@@ -33,8 +34,8 @@ Returns:
   "architecture": "amd64",
   "features": {
     "workspaceResolve": true,
-    "directoryBrowse": false,
-    "nativeDirectoryPicker": false,
+    "directoryBrowse": true,
+    "nativeDirectoryPicker": true,
     "windowsPathInterop": true,
     "execution": false,
     "permissionModes": []
@@ -80,6 +81,40 @@ original display string. Canonicalization resolves symlinks and requires an
 existing directory. The fingerprint binds the Runner id and canonical string;
 it is a durable deduplication key, not a filesystem integrity proof.
 
+### `POST /internal/v1/directories/browse`
+
+The request contains `protocolVersion` and an optional absolute `path`. An
+empty path starts at the ordinary Host user's home directory. The Host resolves
+the current directory and returns its canonical/display path, optional parent,
+and at most 256 sorted directory-only entries. Files are never returned.
+
+```json
+{"protocolVersion":1,"path":"/home/user"}
+```
+
+```json
+{
+  "protocolVersion": 1,
+  "runnerId": "wsl-0123456789abcdef01234567",
+  "path": "/home/user",
+  "displayPath": "/home/user",
+  "pathKind": "wsl",
+  "parentPath": "/home",
+  "entries": [
+    {"name":"project","path":"/home/user/project","displayPath":"/home/user/project","pathKind":"wsl"}
+  ]
+}
+```
+
+### `POST /internal/v1/directories/pick-native`
+
+The Host invokes a fixed PowerShell/WinForms folder picker and never
+interpolates caller text into the command. A selection is converted through
+the same `wslpath` and canonical Workspace resolver. Cancellation is a
+successful `{"cancelled":true}` response. The Backend uses a dedicated bounded
+270-second HTTP client for this human interaction, below the frontend proxy's
+five-minute ceiling, while ordinary control calls retain the short timeout.
+
 ## Errors
 
 Errors use:
@@ -97,6 +132,8 @@ Stable codes in v1 are:
 - `AGENT_HOST_ROUTE_NOT_FOUND`
 - `WORKSPACE_RESOLVE_UNAVAILABLE`
 - `WINDOWS_PATH_INTEROP_UNAVAILABLE`
+- `DIRECTORY_BROWSE_UNAVAILABLE`
+- `NATIVE_DIRECTORY_PICKER_UNAVAILABLE`
 - `WORKSPACE_PATH_INVALID`
 - `WORKSPACE_PATH_UNAVAILABLE`
 
@@ -106,8 +143,7 @@ violations as protocol failures.
 
 ## Forward contract
 
-Future browse, picker, and bounded NDJSON execution routes will remain under a
-versioned internal namespace and carry `runnerId`, workspace identity, and
-permission mode. Runner loss must fail closed; an operation with unknown
-outcome is never automatically replayed. Host-bound conversations never fall
-back to Docker execution.
+Future bounded NDJSON execution routes remain under a versioned internal
+namespace and carry `runnerId`, Workspace identity, and permission mode. Runner
+loss must fail closed; an operation with unknown outcome is never automatically
+replayed. Host-bound conversations never fall back to Docker execution.

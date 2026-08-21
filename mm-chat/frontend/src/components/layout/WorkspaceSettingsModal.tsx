@@ -14,6 +14,9 @@ import {
   Check,
   Loader2,
   Sparkles,
+  FolderOpen,
+  Monitor,
+  ArrowUp,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Workspace, Attachment } from "@/types";
@@ -31,6 +34,11 @@ import {
 } from "@/lib/utils/workspaceFiles";
 import { ATTACHMENT_LIMITS, CHAT_ENTITY_LIMITS } from "@/config/limits";
 import { logDevError } from "@/lib/utils/devLogger";
+import { createWorkspaceService } from "@/services/api/workspaceService";
+import type {
+  HostDirectoryBrowseDTO,
+  HostWorkspaceStatusDTO,
+} from "@/services/api/client";
 
 interface WorkspaceSettingsModalProps {
   onClose: () => void;
@@ -78,7 +86,9 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
   workspace,
 }) => {
   const t = useTranslations("Workspace");
-  const { createWorkspace, updateWorkspace, deleteWorkspace } = useChatStore();
+  const serverWorkspaceEnabled = createWorkspaceService().serverEnabled;
+  const { createWorkspace, updateWorkspace, deleteWorkspace, bindWorkspace } =
+    useChatStore();
 
   const [workspaceId] = useState(workspace?.id || uuidv7());
   const [name, setName] = useState(workspace?.name || "");
@@ -93,6 +103,19 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const [optimizeError, setOptimizeError] = useState("");
   const [fileUploadError, setFileUploadError] = useState("");
+  const [projectError, setProjectError] = useState("");
+  const [projectPath, setProjectPath] = useState(
+    workspace?.canonicalPath || "",
+  );
+  const [projectDisplayPath, setProjectDisplayPath] = useState(
+    workspace?.displayPath || "",
+  );
+  const [hostStatus, setHostStatus] = useState<HostWorkspaceStatusDTO | null>(
+    null,
+  );
+  const [directoryListing, setDirectoryListing] =
+    useState<HostDirectoryBrowseDTO | null>(null);
+  const [isProjectPending, setIsProjectPending] = useState(false);
   const [pendingAction, setPendingAction] =
     useState<PendingWorkspaceAction>(null);
   const [isDeleteConfirming, setIsDeleteConfirming] = useState(false);
@@ -127,6 +150,9 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
   const optimizeErrorId = `${modalId}-optimize-error`;
   const isActionPending = pendingAction !== null;
   const trimmedName = name.trim();
+  const projectPathRequired = !workspace && serverWorkspaceEnabled;
+  const canSave =
+    !!trimmedName && (!projectPathRequired || !!projectPath.trim());
 
   const clearDeleteConfirmation = () => {
     if (deleteConfirmTimerRef.current) {
@@ -181,21 +207,39 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
   }, []);
 
   useEffect(() => {
+    const controller = new AbortController();
+    const service = createWorkspaceService();
+    if (!service.serverEnabled) return () => controller.abort();
+    service
+      .getHostStatus(controller.signal)
+      .then((status) => setHostStatus(status))
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        logDevError("Failed to load Host Workspace status", error);
+        setProjectError(t("hostUnavailable"));
+      });
+    return () => controller.abort();
+  }, [t]);
+
+  useEffect(() => {
     optimizeRunRef.current += 1;
     setOptimizeError("");
     setIsOptimizing(false);
   }, [workspaceId]);
 
   const handleSubmit = async () => {
-    if (!trimmedName || isActionPending || isUploadingFiles) {
+    if (!canSave || isActionPending || isUploadingFiles) {
       if (!trimmedName) {
         nameInputRef.current?.focus({ preventScroll: true });
+      } else if (projectPathRequired && !projectPath.trim()) {
+        setProjectError(t("projectRequired"));
       }
       return;
     }
     clearDeleteConfirmation();
     setPendingAction("save");
     setFileUploadError("");
+    setProjectError("");
 
     const data = {
       id: workspaceId,
@@ -208,10 +252,19 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
     };
 
     try {
+      let persisted: Workspace;
       if (workspace) {
         await updateWorkspace(workspace.id, data);
+        persisted =
+          useChatStore
+            .getState()
+            .workspaces.find((item) => item.id === workspace.id) ?? workspace;
       } else {
-        createWorkspace(data);
+        persisted = await createWorkspace(data);
+      }
+
+      if (persisted.bindingStatus !== "bound" && projectPath.trim()) {
+        persisted = await bindWorkspace(persisted.id, projectPath.trim());
       }
 
       releaseCommittedUploadUrls(files);
@@ -220,9 +273,44 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
     } catch (error) {
       logDevError("Failed to save workspace", error);
       if (isMountedRef.current) {
-        setFileUploadError(t("saveFailed"));
+        setProjectError(t("saveFailed"));
         setPendingAction(null);
       }
+    }
+  };
+
+  const browseDirectory = async (path?: string) => {
+    if (isProjectPending) return;
+    setIsProjectPending(true);
+    setProjectError("");
+    try {
+      const listing = await createWorkspaceService().browseDirectories(path);
+      if (!isMountedRef.current) return;
+      setDirectoryListing(listing);
+    } catch (error) {
+      logDevError("Failed to browse Host directories", error);
+      if (isMountedRef.current) setProjectError(t("browseFailed"));
+    } finally {
+      if (isMountedRef.current) setIsProjectPending(false);
+    }
+  };
+
+  const handleNativePicker = async () => {
+    if (isProjectPending) return;
+    setIsProjectPending(true);
+    setProjectError("");
+    try {
+      const selection = await createWorkspaceService().pickNativeDirectory();
+      if (!isMountedRef.current || selection.cancelled || !selection.path)
+        return;
+      setProjectPath(selection.path);
+      setProjectDisplayPath(selection.displayPath || selection.path);
+      setDirectoryListing(null);
+    } catch (error) {
+      logDevError("Failed to open native directory picker", error);
+      if (isMountedRef.current) setProjectError(t("pickerFailed"));
+    } finally {
+      if (isMountedRef.current) setIsProjectPending(false);
     }
   };
 
@@ -575,6 +663,162 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
             </div>
           </div>
 
+          <div className="space-y-3 border-t border-gray-100 pt-4 dark:border-border">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold text-gray-500 dark:text-muted-foreground">
+                  {t("projectDirectory")}
+                </div>
+                <div className="mt-1 text-xs text-gray-400 dark:text-muted-foreground/80">
+                  {workspace?.bindingStatus === "bound"
+                    ? t("projectBound")
+                    : hostStatus?.status === "ready"
+                      ? t("projectReady")
+                      : t("hostUnavailable")}
+                </div>
+              </div>
+              <span
+                className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold ${
+                  workspace?.bindingStatus === "bound"
+                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
+                    : "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"
+                }`}
+              >
+                {workspace?.bindingStatus === "bound"
+                  ? t("bound")
+                  : t("unbound")}
+              </span>
+            </div>
+
+            {workspace?.bindingStatus === "bound" ? (
+              <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-700 break-all dark:border-border dark:bg-muted dark:text-foreground/85">
+                {workspace.displayPath || workspace.canonicalPath}
+              </div>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  name="workspace-project-path"
+                  autoComplete="off"
+                  value={projectDisplayPath || projectPath}
+                  onChange={(event) => {
+                    setProjectDisplayPath(event.target.value);
+                    setProjectPath(event.target.value);
+                    setDirectoryListing(null);
+                  }}
+                  placeholder={t("projectPathPlaceholder")}
+                  disabled={isActionPending || isProjectPending}
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs transition-[border-color,box-shadow,background-color] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-60 dark:border-border dark:bg-muted"
+                />
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleNativePicker()}
+                    disabled={
+                      isActionPending ||
+                      isProjectPending ||
+                      hostStatus?.status !== "ready" ||
+                      !hostStatus.features.nativeDirectoryPicker
+                    }
+                    className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:text-foreground/85 dark:hover:bg-muted"
+                  >
+                    <Monitor size={14} aria-hidden="true" />
+                    {t("chooseWindowsFolder")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void browseDirectory(projectPath || undefined)
+                    }
+                    disabled={
+                      isActionPending ||
+                      isProjectPending ||
+                      hostStatus?.status !== "ready" ||
+                      !hostStatus.features.directoryBrowse
+                    }
+                    className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:text-foreground/85 dark:hover:bg-muted"
+                  >
+                    {isProjectPending ? (
+                      <Loader2
+                        size={14}
+                        className="animate-spin"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <FolderOpen size={14} aria-hidden="true" />
+                    )}
+                    {t("browseWslFolders")}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {directoryListing && workspace?.bindingStatus !== "bound" && (
+              <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-border">
+                <div className="flex items-center gap-2 border-b border-gray-200 bg-gray-50 px-2 py-2 dark:border-border dark:bg-muted/60">
+                  {directoryListing.parentPath && (
+                    <button
+                      type="button"
+                      aria-label={t("parentDirectory")}
+                      onClick={() =>
+                        void browseDirectory(directoryListing.parentPath)
+                      }
+                      className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:hover:bg-accent"
+                    >
+                      <ArrowUp size={14} aria-hidden="true" />
+                    </button>
+                  )}
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-gray-600 dark:text-muted-foreground">
+                    {directoryListing.displayPath}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProjectPath(directoryListing.path);
+                      setProjectDisplayPath(directoryListing.displayPath);
+                      setDirectoryListing(null);
+                    }}
+                    className="shrink-0 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+                  >
+                    {t("useThisFolder")}
+                  </button>
+                </div>
+                <div className="max-h-44 overflow-y-auto p-1 custom-scrollbar">
+                  {directoryListing.entries.length === 0 ? (
+                    <div className="px-3 py-4 text-center text-xs text-gray-400">
+                      {t("noSubdirectories")}
+                    </div>
+                  ) : (
+                    directoryListing.entries.map((entry) => (
+                      <button
+                        type="button"
+                        key={entry.path}
+                        onClick={() => void browseDirectory(entry.path)}
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:text-foreground/85 dark:hover:bg-muted"
+                      >
+                        <FolderOpen
+                          size={14}
+                          className="shrink-0 text-blue-500"
+                          aria-hidden="true"
+                        />
+                        <span className="truncate">{entry.name}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {projectError && (
+              <div
+                role="alert"
+                className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200"
+              >
+                {projectError}
+              </div>
+            )}
+          </div>
+
           <div className="border-t border-gray-100 dark:border-border pt-4 space-y-4">
             {/* Preset Parameters */}
             <div className="space-y-3">
@@ -756,7 +1000,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={!trimmedName || isActionPending || isUploadingFiles}
+              disabled={!canSave || isActionPending || isUploadingFiles}
               className="px-6 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-500/20 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-background"
             >
               {pendingAction === "save" ? (

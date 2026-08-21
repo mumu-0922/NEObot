@@ -5,8 +5,10 @@ import "fmt"
 const (
 	ProtocolVersion = 1
 
-	CapabilitiesPath     = "/internal/v1/capabilities"
-	WorkspaceResolvePath = "/internal/v1/workspaces/resolve"
+	CapabilitiesPath        = "/internal/v1/capabilities"
+	WorkspaceResolvePath    = "/internal/v1/workspaces/resolve"
+	DirectoryBrowsePath     = "/internal/v1/directories/browse"
+	NativeDirectoryPickPath = "/internal/v1/directories/pick-native"
 )
 
 type PermissionMode string
@@ -58,6 +60,39 @@ type WorkspaceResolveResponse struct {
 	ProtocolVersion int                 `json:"protocolVersion"`
 	RunnerID        string              `json:"runnerId"`
 	Workspace       WorkspaceDescriptor `json:"workspace"`
+}
+
+type DirectoryBrowseRequest struct {
+	ProtocolVersion int    `json:"protocolVersion"`
+	Path            string `json:"path,omitempty"`
+}
+
+type DirectoryEntry struct {
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	DisplayPath string `json:"displayPath"`
+	PathKind    string `json:"pathKind"`
+}
+
+type DirectoryBrowseResponse struct {
+	ProtocolVersion int              `json:"protocolVersion"`
+	RunnerID        string           `json:"runnerId"`
+	Path            string           `json:"path"`
+	DisplayPath     string           `json:"displayPath"`
+	PathKind        string           `json:"pathKind"`
+	ParentPath      string           `json:"parentPath,omitempty"`
+	Entries         []DirectoryEntry `json:"entries"`
+}
+
+type NativeDirectoryPickRequest struct {
+	ProtocolVersion int `json:"protocolVersion"`
+}
+
+type NativeDirectoryPickResponse struct {
+	ProtocolVersion int                  `json:"protocolVersion"`
+	RunnerID        string               `json:"runnerId"`
+	Cancelled       bool                 `json:"cancelled"`
+	Workspace       *WorkspaceDescriptor `json:"workspace,omitempty"`
 }
 
 type ErrorBody struct {

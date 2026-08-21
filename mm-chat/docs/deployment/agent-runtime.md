@@ -68,7 +68,10 @@ Agent control-plane relation/function/role may remain. The ledger checksum for
 `099` carries the idempotent gateway repair instead of rewriting that history;
 `101` forward-widens the same authority for bounded Context/Reasoning blocks;
 `102` extends the existing Workspace registry and adds immutable Conversation
-execution snapshots without routing Tools to the dark Host.
+execution snapshots. The interactive Host socket now supports workspace
+status, browsing, native Windows selection, canonical resolution, and durable
+binding, but it does not route Tools until execution and permission
+capabilities are implemented and advertised.
 
 ## Verification
 

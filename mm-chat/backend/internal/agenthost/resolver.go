@@ -3,20 +3,26 @@ package agenthost
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
+	"unicode/utf16"
 )
 
 var (
-	ErrWorkspacePathInvalid      = errors.New("workspace path is invalid")
-	ErrWorkspacePathUnavailable  = errors.New("workspace path is unavailable")
-	ErrWindowsInteropUnavailable = errors.New("Windows path interop is unavailable")
+	ErrWorkspacePathInvalid       = errors.New("workspace path is invalid")
+	ErrWorkspacePathUnavailable   = errors.New("workspace path is unavailable")
+	ErrWindowsInteropUnavailable  = errors.New("Windows path interop is unavailable")
+	ErrDirectoryBrowseUnavailable = errors.New("directory browsing is unavailable")
+	ErrNativePickerUnavailable    = errors.New("native directory picker is unavailable")
+	ErrDirectoryPickerCancelled   = errors.New("native directory picker was cancelled")
 
 	windowsDrivePathPattern = regexp.MustCompile(`^[A-Za-z]:[\\/]`)
 	windowsMountPattern     = regexp.MustCompile(`^/mnt/[A-Za-z](?:/|$)`)
@@ -25,6 +31,16 @@ var (
 type WorkspaceResolver interface {
 	ResolveWorkspace(context.Context, string) (WorkspaceDescriptor, error)
 	WindowsPathInterop() bool
+}
+
+type DirectoryBrowser interface {
+	BrowseDirectories(context.Context, string) (DirectoryBrowseResponse, error)
+	DirectoryBrowseAvailable() bool
+}
+
+type NativeDirectoryPicker interface {
+	PickNativeDirectory(context.Context) (WorkspaceDescriptor, error)
+	NativeDirectoryPickerAvailable() bool
 }
 
 type WindowsPathConverter interface {
@@ -72,6 +88,7 @@ func (converter *ExecWindowsPathConverter) ToWSL(ctx context.Context, value stri
 type LocalWorkspaceResolver struct {
 	RunnerID  string
 	Converter WindowsPathConverter
+	Picker    *ExecWindowsDirectoryPicker
 }
 
 func NewLocalWorkspaceResolver(runnerID string) (*LocalWorkspaceResolver, error) {
@@ -80,12 +97,21 @@ func NewLocalWorkspaceResolver(runnerID string) (*LocalWorkspaceResolver, error)
 	}
 	return &LocalWorkspaceResolver{
 		RunnerID: runnerID, Converter: NewExecWindowsPathConverter(),
+		Picker: NewExecWindowsDirectoryPicker(),
 	}, nil
 }
 
 func (resolver *LocalWorkspaceResolver) WindowsPathInterop() bool {
 	converter, ok := resolver.Converter.(*ExecWindowsPathConverter)
 	return ok && converter.Available()
+}
+
+func (resolver *LocalWorkspaceResolver) DirectoryBrowseAvailable() bool {
+	return resolver != nil
+}
+
+func (resolver *LocalWorkspaceResolver) NativeDirectoryPickerAvailable() bool {
+	return resolver != nil && resolver.Picker != nil && resolver.Picker.Available()
 }
 
 func (resolver *LocalWorkspaceResolver) ResolveWorkspace(
@@ -134,6 +160,147 @@ func (resolver *LocalWorkspaceResolver) ResolveWorkspace(
 		PathKind:             pathKind,
 		DirectoryFingerprint: fmt.Sprintf("sha256:%x", fingerprint),
 	}, nil
+}
+
+func (resolver *LocalWorkspaceResolver) BrowseDirectories(
+	ctx context.Context,
+	input string,
+) (DirectoryBrowseResponse, error) {
+	if resolver == nil || validateRunnerID(resolver.RunnerID) != nil {
+		return DirectoryBrowseResponse{}, ErrDirectoryBrowseUnavailable
+	}
+	if strings.TrimSpace(input) == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return DirectoryBrowseResponse{}, ErrDirectoryBrowseUnavailable
+		}
+		input = home
+	}
+	current, err := resolver.ResolveWorkspace(ctx, input)
+	if err != nil {
+		return DirectoryBrowseResponse{}, err
+	}
+	items, err := os.ReadDir(current.CanonicalPath)
+	if err != nil {
+		return DirectoryBrowseResponse{}, ErrWorkspacePathUnavailable
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return strings.ToLower(items[i].Name()) < strings.ToLower(items[j].Name())
+	})
+	entries := make([]DirectoryEntry, 0, min(len(items), 256))
+	for _, item := range items {
+		if len(entries) >= 256 {
+			break
+		}
+		if !validDirectoryName(item.Name()) {
+			continue
+		}
+		candidate := filepath.Join(current.CanonicalPath, item.Name())
+		info, statErr := os.Stat(candidate)
+		if statErr != nil || !info.IsDir() {
+			continue
+		}
+		pathKind := "wsl"
+		if windowsMountPattern.MatchString(candidate) {
+			pathKind = "windows-mounted"
+		}
+		entries = append(entries, DirectoryEntry{
+			Name: item.Name(), Path: candidate, DisplayPath: candidate, PathKind: pathKind,
+		})
+	}
+	parent := filepath.Dir(current.CanonicalPath)
+	if parent == current.CanonicalPath {
+		parent = ""
+	}
+	return DirectoryBrowseResponse{
+		ProtocolVersion: ProtocolVersion,
+		RunnerID:        resolver.RunnerID,
+		Path:            current.CanonicalPath,
+		DisplayPath:     current.DisplayPath,
+		PathKind:        current.PathKind,
+		ParentPath:      parent,
+		Entries:         entries,
+	}, nil
+}
+
+func validDirectoryName(value string) bool {
+	return value != "" && value != "." && value != ".." && validWorkspacePathInput(value) &&
+		!strings.ContainsAny(value, `/\\`)
+}
+
+func (resolver *LocalWorkspaceResolver) PickNativeDirectory(
+	ctx context.Context,
+) (WorkspaceDescriptor, error) {
+	if !resolver.NativeDirectoryPickerAvailable() {
+		return WorkspaceDescriptor{}, ErrNativePickerUnavailable
+	}
+	selected, err := resolver.Picker.Pick(ctx)
+	if err != nil {
+		return WorkspaceDescriptor{}, err
+	}
+	return resolver.ResolveWorkspace(ctx, selected)
+}
+
+type ExecWindowsDirectoryPicker struct {
+	Executable string
+	Timeout    time.Duration
+}
+
+func NewExecWindowsDirectoryPicker() *ExecWindowsDirectoryPicker {
+	executable, _ := exec.LookPath("powershell.exe")
+	return &ExecWindowsDirectoryPicker{Executable: executable, Timeout: 5 * time.Minute}
+}
+
+func (picker *ExecWindowsDirectoryPicker) Available() bool {
+	return picker != nil && filepath.IsAbs(strings.TrimSpace(picker.Executable))
+}
+
+func (picker *ExecWindowsDirectoryPicker) Pick(ctx context.Context) (string, error) {
+	if !picker.Available() {
+		return "", ErrNativePickerUnavailable
+	}
+	timeout := picker.Timeout
+	if timeout <= 0 || timeout > 10*time.Minute {
+		timeout = 5 * time.Minute
+	}
+	commandCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	const script = `$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.Windows.Forms; $d=New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description='Select a project folder'; $d.ShowNewFolderButton=$false; if($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK){[Console]::OutputEncoding=New-Object System.Text.UTF8Encoding($false); Write-Output $d.SelectedPath; exit 0}; exit 2`
+	encodedScript := encodePowerShellCommand(script)
+	command := exec.CommandContext(
+		commandCtx, picker.Executable,
+		"-NoLogo", "-NoProfile", "-STA", "-NonInteractive", "-EncodedCommand", encodedScript,
+	)
+	command.Env = os.Environ()
+	output, err := command.Output()
+	if commandCtx.Err() != nil {
+		return "", ErrNativePickerUnavailable
+	}
+	if err != nil {
+		var exitError *exec.ExitError
+		if errors.As(err, &exitError) && exitError.ExitCode() == 2 {
+			return "", ErrDirectoryPickerCancelled
+		}
+		return "", ErrNativePickerUnavailable
+	}
+	if len(output) > maxWorkspacePathBytes+2 {
+		return "", ErrWorkspacePathInvalid
+	}
+	selected := strings.TrimSpace(string(output))
+	if !isWindowsPath(selected) || !validWorkspacePathInput(selected) {
+		return "", ErrWorkspacePathInvalid
+	}
+	return selected, nil
+}
+
+func encodePowerShellCommand(value string) string {
+	encoded := utf16.Encode([]rune(value))
+	data := make([]byte, len(encoded)*2)
+	for index, char := range encoded {
+		data[index*2] = byte(char)
+		data[index*2+1] = byte(char >> 8)
+	}
+	return base64.StdEncoding.EncodeToString(data)
 }
 
 func isWindowsPath(value string) bool {

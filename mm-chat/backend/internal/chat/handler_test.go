@@ -72,6 +72,18 @@ func TestHandlerCreatesAndListsConversations(t *testing.T) {
 	}
 }
 
+func TestNewConversationDTOIncludesWorkspaceID(t *testing.T) {
+	workspaceID := "0198ca9a-81c6-7c8d-9444-b16da02de9b4"
+	dto := newConversationDTO(Conversation{
+		ID: "0198ca9a-81c6-7c8d-9444-b16da02de9b5", Title: "Workspace chat",
+		Status: "active", WorkspaceID: workspaceID, Metadata: map[string]any{},
+		CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	})
+	if dto.WorkspaceID != workspaceID {
+		t.Fatalf("WorkspaceID = %q, want %q", dto.WorkspaceID, workspaceID)
+	}
+}
+
 func TestHandlerRetiresLegacySkillConversationSelection(t *testing.T) {
 	repo := newFakeRepository()
 	handler := NewHandler(NewService(repo))

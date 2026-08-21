@@ -82,6 +82,12 @@ INSERT INTO conversations (id, user_id, title) VALUES ($1, $2, 'Host-bound conve
 	if err := repo.SetConversationWorkspace(userCtx, conversationID, workspaceID); err != nil {
 		t.Fatal(err)
 	}
+	if err := repo.ClearConversationWorkspace(userCtx, conversationID, workspaceID); err != nil {
+		t.Fatalf("ClearConversationWorkspace() error = %v", err)
+	}
+	if err := repo.SetConversationWorkspace(userCtx, conversationID, workspaceID); err != nil {
+		t.Fatal(err)
+	}
 	binding, err := repo.LockConversationExecutionWorkspace(
 		userCtx, conversationID, workspaceID, time.Now().UTC(),
 	)
@@ -91,6 +97,9 @@ INSERT INTO conversations (id, user_id, title) VALUES ($1, $2, 'Host-bound conve
 	}
 	if err := repo.SetConversationWorkspace(userCtx, conversationID, secondID); !errors.Is(err, ErrConversationLocked) {
 		t.Fatalf("move locked conversation error = %v, want %v", err, ErrConversationLocked)
+	}
+	if err := repo.ClearConversationWorkspace(userCtx, conversationID, workspaceID); !errors.Is(err, ErrConversationLocked) {
+		t.Fatalf("clear locked conversation error = %v, want %v", err, ErrConversationLocked)
 	}
 	if err := repo.Delete(userCtx, workspaceID, bound.Revision, time.Now().UTC()); !errors.Is(err, ErrWorkspaceInUse) {
 		t.Fatalf("delete used Workspace error = %v, want %v", err, ErrWorkspaceInUse)

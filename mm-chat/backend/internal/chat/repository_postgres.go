@@ -526,6 +526,7 @@ RETURNING
   system_prompt,
   idempotency_key,
   metadata,
+  workspace_id,
   created_at,
   updated_at,
   deleted_at,
@@ -560,6 +561,7 @@ SELECT
   c.system_prompt,
   c.idempotency_key,
   c.metadata,
+  c.workspace_id,
   c.created_at,
   c.updated_at,
   c.deleted_at,
@@ -615,6 +617,7 @@ SELECT
   c.system_prompt,
   c.idempotency_key,
   c.metadata,
+  c.workspace_id,
   c.created_at,
   c.updated_at,
   c.deleted_at,
@@ -670,6 +673,7 @@ SELECT
   system_prompt,
   idempotency_key,
   metadata,
+  workspace_id,
   created_at,
   updated_at,
   deleted_at,
@@ -715,6 +719,7 @@ RETURNING
   system_prompt,
   idempotency_key,
   metadata,
+  workspace_id,
   created_at,
   updated_at,
   deleted_at,
@@ -822,6 +827,7 @@ SELECT
   system_prompt,
   idempotency_key,
   metadata,
+  workspace_id,
   created_at,
   updated_at,
   deleted_at,
@@ -876,6 +882,7 @@ RETURNING
   system_prompt,
   idempotency_key,
   metadata,
+  workspace_id,
   created_at,
   updated_at,
   deleted_at,
@@ -994,6 +1001,7 @@ SELECT
   c.system_prompt,
   c.idempotency_key,
   c.metadata,
+  c.workspace_id,
   c.created_at,
   c.updated_at,
   c.deleted_at,
@@ -2525,6 +2533,7 @@ func scanConversation(scanner rowScanner) (Conversation, error) {
 	var modelID sql.NullString
 	var systemPrompt sql.NullString
 	var idempotencyKey sql.NullString
+	var workspaceID sql.NullString
 	var metadata []byte
 	var deletedAt sql.NullTime
 	var messageCount int64
@@ -2539,6 +2548,7 @@ func scanConversation(scanner rowScanner) (Conversation, error) {
 		&systemPrompt,
 		&idempotencyKey,
 		&metadata,
+		&workspaceID,
 		&conversation.CreatedAt,
 		&conversation.UpdatedAt,
 		&deletedAt,
@@ -2551,6 +2561,7 @@ func scanConversation(scanner rowScanner) (Conversation, error) {
 	conversation.ModelID = modelID.String
 	conversation.SystemPrompt = systemPrompt.String
 	conversation.IdempotencyKey = idempotencyKey.String
+	conversation.WorkspaceID = workspaceID.String
 	conversation.MessageCount = int(messageCount)
 	if deletedAt.Valid {
 		conversation.DeletedAt = &deletedAt.Time

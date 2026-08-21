@@ -316,5 +316,34 @@ export function normalizeWorkspace(workspace: Workspace): Workspace {
     createdAt: Number.isFinite(Number(workspace.createdAt))
       ? Number(workspace.createdAt)
       : Date.now(),
+    updatedAt: Number.isFinite(Number(workspace.updatedAt))
+      ? Number(workspace.updatedAt)
+      : undefined,
+    revision:
+      Number.isSafeInteger(Number(workspace.revision)) &&
+      Number(workspace.revision) > 0
+        ? Number(workspace.revision)
+        : undefined,
+    bindingStatus: workspace.bindingStatus === "bound" ? "bound" : "unbound",
+    runnerId: trimString(workspace.runnerId, 64) || undefined,
+    canonicalPath:
+      typeof workspace.canonicalPath === "string"
+        ? workspace.canonicalPath.slice(0, 4096)
+        : undefined,
+    displayPath:
+      typeof workspace.displayPath === "string"
+        ? workspace.displayPath.slice(0, 4096)
+        : undefined,
+    pathKind:
+      workspace.pathKind === "wsl" || workspace.pathKind === "windows-mounted"
+        ? workspace.pathKind
+        : undefined,
+    directoryFingerprint:
+      typeof workspace.directoryFingerprint === "string"
+        ? workspace.directoryFingerprint.slice(0, 128)
+        : undefined,
+    boundAt: Number.isFinite(Number(workspace.boundAt))
+      ? Number(workspace.boundAt)
+      : undefined,
   };
 }

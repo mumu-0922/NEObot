@@ -43,6 +43,7 @@ import { CHAT_ENTITY_LIMITS } from "@/config/limits";
 import { sanitizeDownloadFilename } from "@/lib/utils/filename";
 import { createSessionExportPayload } from "@/lib/chat/sessionExport";
 import { logDevError } from "@/lib/utils/devLogger";
+import { createWorkspaceService } from "@/services/api/workspaceService";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -179,7 +180,12 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const t = useTranslations("Sidebar");
   const chatT = useTranslations("ChatApp");
-  const { workspaces, createSession, moveSessionToWorkspace } = useChatStore();
+  const {
+    workspaces,
+    createSession,
+    createServerSession,
+    moveSessionToWorkspace,
+  } = useChatStore();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [contextMenu, setContextMenu] = useState<{
@@ -501,18 +507,34 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const handleNewChatInWorkspace = async (workspace: Workspace) => {
-    const sessionId = createSession(
-      workspace.systemPrompt,
-      "New Chat",
-      workspace.id,
-      workspace.files,
-      {
+    try {
+      const config = {
         useSearch: workspace.enableSearch,
         useReasoning: workspace.enableReasoning,
-      },
-    );
-
-    onSelectSession(sessionId);
+      };
+      if (createWorkspaceService().serverEnabled) {
+        const sessionId = await createServerSession({
+          systemInstruction: workspace.systemPrompt,
+          title: "New Chat",
+          config,
+        });
+        if (!sessionId) throw new Error("Server conversation was not created.");
+        await moveSessionToWorkspace(sessionId, workspace.id);
+        onSelectSession(sessionId);
+        return;
+      }
+      const sessionId = createSession(
+        workspace.systemPrompt,
+        "New Chat",
+        workspace.id,
+        workspace.files,
+        config,
+      );
+      onSelectSession(sessionId);
+    } catch (error) {
+      logDevError("Failed to create a Workspace conversation", error);
+      setExportError(t("moveWorkspaceFailed"));
+    }
   };
 
   // Filtering Logic
@@ -1017,8 +1039,21 @@ const Sidebar: React.FC<SidebarProps> = ({
                                 aria-hidden="true"
                               />
                             )}
-                            <span className="text-sm text-gray-700 dark:text-foreground/85 truncate font-medium">
-                              {ws.name}
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-medium text-gray-700 dark:text-foreground/85">
+                                {ws.name}
+                              </span>
+                              <span
+                                className={`block truncate text-[10px] ${
+                                  ws.bindingStatus === "bound"
+                                    ? "text-emerald-600 dark:text-emerald-400"
+                                    : "text-amber-600 dark:text-amber-400"
+                                }`}
+                              >
+                                {ws.bindingStatus === "bound"
+                                  ? ws.displayPath || t("workspaceBound")
+                                  : t("workspaceUnbound")}
+                              </span>
                             </span>
                           </button>
 
@@ -1328,10 +1363,16 @@ const Sidebar: React.FC<SidebarProps> = ({
                       <DropdownMenuRadioGroup
                         value={session.workspaceId ?? ""}
                         onValueChange={(workspaceId) => {
-                          moveSessionToWorkspace(
+                          void moveSessionToWorkspace(
                             session.id,
                             workspaceId || null,
-                          );
+                          ).catch((error) => {
+                            logDevError(
+                              "Failed to move conversation to Workspace",
+                              error,
+                            );
+                            setExportError(t("moveWorkspaceFailed"));
+                          });
                           setContextMenu(null);
                         }}
                       >

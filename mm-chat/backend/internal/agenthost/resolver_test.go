@@ -119,3 +119,30 @@ func TestExecWindowsPathConverterRejectsUnavailableExecutable(t *testing.T) {
 		t.Fatalf("error = %v, want %v", err, ErrWindowsInteropUnavailable)
 	}
 }
+
+func TestLocalWorkspaceResolverBrowsesOnlyDirectories(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "beta"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "Alpha"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	listing, err := newTestResolver(t).BrowseDirectories(context.Background(), root)
+	if err != nil {
+		t.Fatalf("BrowseDirectories() error = %v", err)
+	}
+	if listing.Path != root || len(listing.Entries) != 2 ||
+		listing.Entries[0].Name != "Alpha" || listing.Entries[1].Name != "beta" {
+		t.Fatalf("unexpected listing: %+v", listing)
+	}
+}
+
+func TestPowerShellCommandEncodingIsUTF16LEBase64(t *testing.T) {
+	if got := encodePowerShellCommand("A"); got != "QQA=" {
+		t.Fatalf("encodePowerShellCommand() = %q", got)
+	}
+}

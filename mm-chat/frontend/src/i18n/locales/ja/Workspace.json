@@ -30,5 +30,20 @@
   "saveWorkspace": "ワークスペースを保存",
   "saveFailed": "ワークスペースの保存に失敗しました。もう一度お試しください。",
   "deleteFailed": "ワークスペースの削除に失敗しました。もう一度お試しください。",
-  "saveFilesFailed": "{count} 個のファイルの保存に失敗しました。もう一度お試しください。"
+  "saveFilesFailed": "{count} 個のファイルの保存に失敗しました。もう一度お試しください。",
+  "projectDirectory": "プロジェクトディレクトリ",
+  "projectBound": "このワークスペースは Host のプロジェクトディレクトリに永続的にバインドされています。",
+  "projectReady": "Windows または WSL のプロジェクトディレクトリを選択します。後から変更できません。",
+  "hostUnavailable": "Host Runner は現在利用できません。新しいプロジェクトを選択してバインドする前に再接続してください。",
+  "projectRequired": "新しいワークスペースにはプロジェクトディレクトリが必要です。",
+  "bound": "バインド済み",
+  "unbound": "未バインド",
+  "projectPathPlaceholder": "D:\\projects\\app または /home/user/project",
+  "chooseWindowsFolder": "Windows フォルダーを選択",
+  "browseWslFolders": "WSL ディレクトリを参照",
+  "parentDirectory": "親ディレクトリへ移動",
+  "useThisFolder": "このフォルダーを使用",
+  "noSubdirectories": "サブディレクトリはありません",
+  "browseFailed": "Host ディレクトリを読み取れませんでした。",
+  "pickerFailed": "Windows フォルダーピッカーを開けませんでした。"
 }

@@ -91,6 +91,7 @@ export interface ApiCapabilities {
   voiceTranscription: boolean;
   imageGeneration: boolean;
   codeExecution: boolean;
+  workspaces?: boolean;
 }
 
 export interface ApiErrorEnvelope {
@@ -128,8 +129,136 @@ export interface ConversationDTO {
   systemInstruction?: string;
   pinned?: boolean;
   config: Record<string, unknown>;
+  workspaceId?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface WorkspaceFileDTO {
+  id: string;
+  mimeType: string;
+  data?: string;
+  url?: string;
+  fileName: string;
+  source?: string;
+  fileId?: string;
+  size?: number;
+  sha256?: string;
+  purpose?: string;
+}
+
+export interface WorkspaceSettingsDTO {
+  name: string;
+  systemPrompt: string;
+  files: WorkspaceFileDTO[];
+  color: string;
+  enableSearch?: boolean;
+  enableReasoning?: boolean;
+}
+
+export interface WorkspaceDTO extends WorkspaceSettingsDTO {
+  id: string;
+  revision: number;
+  bindingStatus: "unbound" | "bound";
+  runnerId?: string;
+  canonicalPath?: string;
+  displayPath?: string;
+  pathKind?: "wsl" | "windows-mounted";
+  directoryFingerprint?: string;
+  boundAt?: string;
+  legacyImportedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HostWorkspaceStatusDTO {
+  enabled: boolean;
+  status: "disabled" | "unavailable" | "ready";
+  runnerId?: string;
+  platform?: string;
+  architecture?: string;
+  features: {
+    workspaceResolve: boolean;
+    directoryBrowse: boolean;
+    nativeDirectoryPicker: boolean;
+    windowsPathInterop: boolean;
+    execution: boolean;
+    permissionModes: Array<
+      "read-only" | "workspace-write" | "danger-full-access"
+    >;
+  };
+}
+
+export interface HostDirectoryEntryDTO {
+  name: string;
+  path: string;
+  displayPath: string;
+  pathKind: "wsl" | "windows-mounted";
+}
+
+export interface HostDirectoryBrowseDTO {
+  path: string;
+  displayPath: string;
+  pathKind: "wsl" | "windows-mounted";
+  parentPath?: string;
+  entries: HostDirectoryEntryDTO[];
+}
+
+export interface NativeDirectoryPickDTO {
+  cancelled: boolean;
+  path?: string;
+  displayPath?: string;
+  pathKind?: "wsl" | "windows-mounted";
+}
+
+export interface WorkspaceApi {
+  list(options?: { signal?: AbortSignal }): Promise<WorkspaceDTO[]>;
+  get(
+    workspaceId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<WorkspaceDTO>;
+  importLegacy(input: {
+    workspaceId: string;
+    settings: WorkspaceSettingsDTO;
+    signal?: AbortSignal;
+  }): Promise<WorkspaceDTO>;
+  update(input: {
+    workspaceId: string;
+    expectedRevision: number;
+    settings: WorkspaceSettingsDTO;
+    signal?: AbortSignal;
+  }): Promise<WorkspaceDTO>;
+  delete(input: {
+    workspaceId: string;
+    expectedRevision: number;
+    signal?: AbortSignal;
+  }): Promise<void>;
+  bind(input: {
+    workspaceId: string;
+    expectedRevision: number;
+    path: string;
+    signal?: AbortSignal;
+  }): Promise<WorkspaceDTO>;
+  setConversation(input: {
+    workspaceId: string;
+    conversationId: string;
+    signal?: AbortSignal;
+  }): Promise<void>;
+  clearConversation(input: {
+    workspaceId: string;
+    conversationId: string;
+    signal?: AbortSignal;
+  }): Promise<void>;
+  getHostStatus(options?: {
+    signal?: AbortSignal;
+  }): Promise<HostWorkspaceStatusDTO>;
+  browseDirectories(input: {
+    path?: string;
+    signal?: AbortSignal;
+  }): Promise<HostDirectoryBrowseDTO>;
+  pickNativeDirectory(options?: {
+    signal?: AbortSignal;
+  }): Promise<NativeDirectoryPickDTO>;
 }
 
 export interface ChatMessageDTO {
@@ -1793,6 +1922,7 @@ export interface NeoChatApiClient {
   teams: TeamApi;
   knowledge: KnowledgeApi;
   memories: MemoryApi;
+  workspaces?: WorkspaceApi;
 }
 
 export type ServerStreamEventType =

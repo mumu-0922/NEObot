@@ -124,6 +124,11 @@ func (repo *fakeRepository) SetConversationWorkspace(context.Context, string, st
 	return repo.returnError
 }
 
+func (repo *fakeRepository) ClearConversationWorkspace(context.Context, string, string) error {
+	repo.setCalls++
+	return repo.returnError
+}
+
 func (repo *fakeRepository) LockConversationExecutionWorkspace(
 	_ context.Context,
 	conversationID string,
