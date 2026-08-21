@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 70
-- **Last Active**: 2026-08-20
+- **Total Sessions**: 71
+- **Last Active**: 2026-08-21
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~759 | Active |
+| `journal-2.md` | ~793 | Active |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 71 | 2026-08-21 | Deploy Harness-style Host Agent permissions | `504d3938`, `dc48d4ed` | `main` |
 | 70 | 2026-08-20 | 展示并部署 Terminal Agent 执行详情 | `64838937`, `4441b0c5` | `main` |
 | 69 | 2026-08-20 | 阻断 OpenAI-compatible 原始 DSML 工具协议泄漏 | `af89f7af`, `99a18f83` | `main` |
 | 68 | 2026-08-20 | Rename and deploy search menu labels | `edb11b06`, `10b3792c` | `main` |

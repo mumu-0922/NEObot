@@ -757,3 +757,37 @@ Renamed OpenAI built-in search and server search labels to localized built-in/Ta
 ### Next Steps
 
 - None - task complete
+
+
+## Session 71: Deploy Harness-style Host Agent permissions
+
+**Date**: 2026-08-21
+**Task**: Deploy Harness-style Host Agent permissions
+**Branch**: `main`
+
+### Summary
+
+Implemented durable Read Only, Workspace Write, and Full access modes end to end; enforced Host writes with checksum-pinned Bubblewrap on WSL and DrvFS; added acknowledged UI, migration 103, focused security tests and docs; built immutable Backend/Frontend images, backed up, migrated, deployed, and verified live boundaries.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `504d3938` | (see git log) |
+| `dc48d4ed` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
