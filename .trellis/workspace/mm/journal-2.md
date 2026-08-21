@@ -791,3 +791,37 @@ Implemented durable Read Only, Workspace Write, and Full access modes end to end
 ### Next Steps
 
 - None - task complete
+
+
+## Session 72: Safe provider stream continuation
+
+**Date**: 2026-08-21
+**Task**: Safe provider stream continuation
+**Branch**: `main`
+
+### Summary
+
+Implemented and deployed answer-only continuation for exact provider stream interruptions. Backend validates the durable failed source, refuses unresolved Tool state, bypasses every Tool/Search/RAG/Memory path, and creates a sibling response with the preserved prefix. Frontend exposes Continue alongside Regenerate, with localized guidance. Focused race/vet, frontend gates, production build, immutable image rollout, backups, and live health checks passed.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cf98a2db` | (see git log) |
+| `ba908478` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
