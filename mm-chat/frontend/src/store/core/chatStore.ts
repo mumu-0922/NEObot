@@ -1500,7 +1500,11 @@ export const useChatStore = create<ChatState>()(
                     message.processTrace,
                   );
                   liveAgentEvents = projection.events;
-                  return { ...message, processTrace: projection.processTrace };
+                  return {
+                    ...message,
+                    agentEvents: projection.events,
+                    processTrace: projection.processTrace,
+                  };
                 });
               },
               onProcess: (event) => {
@@ -1801,6 +1805,7 @@ export const useChatStore = create<ChatState>()(
                   liveAgentEvents = projection.events;
                   return {
                     ...message,
+                    agentEvents: projection.events,
                     processTrace: projection.processTrace,
                     parentMessageId: userMessageId,
                   };

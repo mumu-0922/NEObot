@@ -15,7 +15,11 @@ Conversation config: toolMode = "chat" | "agent"
 Skill API: /v1/skills/*
 Agent local Tools: skill, file_read, file_write, file_edit, file_search,
                    terminal, job_list, job_output, job_kill, publish_file
-Migration head: 100_chat_agent_approvals
+Migration head: 101_chat_agent_transcript_blocks
+
+Transcript v2 events: context.injected, assistant.chunk,
+                      assistant.block.completed
+Transcript v2 start marker: turn.started.payload.transcriptVersion = 2
 ```
 
 ### Contracts
@@ -72,6 +76,25 @@ Migration head: 100_chat_agent_approvals
   sequence remains the reconnect cursor. Emit `assistant.message` and
   `turn.ended` before the terminal Message frame, and include the same event set
   in that terminal Message so live, reconnect, and reload share one authority.
+- Transcript v2 projects one flat durable sequence rather than grouping Tools
+  inside a summary panel. Record only sanitized context segments that actually
+  reached the Provider and reasoning text actually returned by the Provider.
+  Each reasoning block uses `assistant.chunk(block-start|reasoning-delta)` plus
+  `assistant.block.completed`, carries a positive block index and Provider
+  round, is bounded to 64 KiB per event/1 MiB per Turn, and closes before the
+  next Tool or answer-text boundary. Unsupported Providers produce no fake
+  `Think` row. DeepSeek native Tool rounds must not force thinking off; preserve
+  `reasoning_content` through the existing continuation exchange.
+- Migration `101` redefines `chat_agent_start_turn` so every new Turn receives
+  the exact numeric `transcriptVersion: 2` start marker. Frontend admission uses
+  it for Tool-only Turns; historical unmarked Tool events remain on the legacy
+  renderer. Presence of a v2-only Context/assistant event is sufficient for a
+  partial replay whose `turn.started` prefix is unavailable.
+- `context.injected` accepts only `system-prompt|skill-catalog|skill-instruction|
+  runtime-context`, a bounded label/content pair, and explicit truncation.
+  Redact credentials and replace the configured Host workspace root before
+  persistence/SSE; never expose materialized Skill paths or Provider-internal
+  encrypted/redacted thinking.
 - Admitted canaries receive no duplicate `process.step.updated` or
   `tool.call.updated` frame for persisted facts. Sanitized, coalesced Terminal
   snapshots use `agent.progress` and remain transient; the next durable event
@@ -148,6 +171,10 @@ Migration head: 100_chat_agent_approvals
 | pending approval at Backend restart | `denied/restart_denied`; no execution |
 | timeline flag false or canary empty/non-matching | legacy ProcessStep projection; no typed cards or approval wait |
 | timeline flag true and exact UUID matches | typed live/reload cards and approval controls |
+| Provider returns reasoning around a Tool call | separate ordered `Think -> Tool -> Think` rows live and after reload |
+| Provider returns no reasoning on a marked v2 Turn | no fabricated Think row; Tool/final answer order remains authoritative |
+| historical Tool-only Turn has no v2 marker | retain legacy renderer and legacy reasoning |
+| context or reasoning contains a secret/Host root or exceeds bounds | redact/alias/truncate before event append and DOM rendering |
 | failed safe `file_read` retried twice | one retry Message/Tool execution; new call ID links to immutable source through `retryOf` |
 | write/execute/MCP/outcome-unknown/cross-user retry | no affordance; Backend denies without Tool execution |
 | reconnect cursor retained | replay exact suffix in original sequence |
@@ -206,6 +233,13 @@ Job lifecycle tests must prove background Terminal -> Job presentation,
 start/output/kill merge by exact ID, bounded/redacted transcript retention,
 input-event immutability, and restart reconciliation of unresolved process-
 local status.
+Transcript tests must prove strict payload unions, DeepSeek Tool-round thinking,
+context/reasoning redaction and bounds, flat sequence projection, duplicate
+event rejection, marker-gated legacy compatibility, and byte-equivalent
+live/reload rendering. The PostgreSQL 17
+event-log drill must append all three migration-101 event types through the
+hardened runtime gateway, assert the v2 start marker, and replay cleanly to head
+101.
 
 Cross-layer changes also require frontend format/lint/typecheck/test/build and
 `bash mm-chat/scripts/verify-standalone.sh --full`.
@@ -222,9 +256,12 @@ Correct: foreground result -> synchronous boundary; background Job -> exact comp
 Wrong: copy stdout/stderr or Terminal arguments into generic process detail
 Correct: typed redacted Terminal card -> durable ProcessStep -> same live/replay card
 
+Wrong: append reasoning to message metadata only and render it below a grouped Tool panel
+Correct: Provider reasoning -> durable indexed assistant blocks -> flat live/reload transcript
+
 Wrong: overwrite the background start event when job_output arrives
 Correct: retain immutable events -> merge display cards by exact jobId
 
 Wrong: DROP ... CASCADE after a broad agent_* match
-Correct: lock -> exact manifest/data validation -> explicit drops -> forward repair -> head 100
+Correct: lock -> exact manifest/data validation -> explicit drops -> forward repair -> head 101
 ```

@@ -106,8 +106,7 @@ func (p *OpenAICompatibleProvider) StreamToolRound(
 		providerMessagesOrPrompt(input.ProviderRequest),
 	)
 	messages = appendOpenAICompatibleContinuation(messages, input.Continuation)
-	toolProtocolRound := len(input.Tools) > 0 || len(input.Continuation) > 0
-	disableThinking := input.DisableThinking || (p.deepSeek && toolProtocolRound)
+	disableThinking := input.DisableThinking
 	enableThinking, thinking := p.thinkingControls(disableThinking, true)
 	payload, err := json.Marshal(openAICompatibleChatCompletionRequest{
 		Model:    model,

@@ -21,6 +21,9 @@ const (
 	ChatAgentEventGoalChanged      = "goal.changed"
 	ChatAgentEventGoalRoundStarted = "goal.round.started"
 	ChatAgentEventContextReplaced  = "context.replaced"
+	ChatAgentEventContextInjected  = "context.injected"
+	ChatAgentEventAssistantChunk   = "assistant.chunk"
+	ChatAgentEventBlockCompleted   = "assistant.block.completed"
 
 	ChatAgentTurnRunning     = "running"
 	ChatAgentTurnCompleted   = "completed"
@@ -30,6 +33,8 @@ const (
 
 	maxChatAgentEventPayloadBytes = 256 * 1024
 	maxChatAgentMessageEventBytes = 192 * 1024
+	maxChatAgentContextEventBytes = 64 * 1024
+	maxChatAgentChunkEventBytes   = 64 * 1024
 )
 
 var chatAgentEventTypes = map[string]struct{}{
@@ -43,6 +48,9 @@ var chatAgentEventTypes = map[string]struct{}{
 	ChatAgentEventGoalChanged:      {},
 	ChatAgentEventGoalRoundStarted: {},
 	ChatAgentEventContextReplaced:  {},
+	ChatAgentEventContextInjected:  {},
+	ChatAgentEventAssistantChunk:   {},
+	ChatAgentEventBlockCompleted:   {},
 }
 
 type ChatAgentEvent struct {
@@ -192,6 +200,27 @@ func normalizeChatAgentEventPayload(
 			return nil, err
 		}
 	}
+	if eventType == ChatAgentEventContextInjected {
+		var err error
+		payload, err = normalizeChatAgentContextInjectionPayload(payload)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if eventType == ChatAgentEventAssistantChunk {
+		var err error
+		payload, err = normalizeChatAgentAssistantChunkPayload(payload)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if eventType == ChatAgentEventBlockCompleted {
+		var err error
+		payload, err = normalizeChatAgentBlockCompletedPayload(payload)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if eventType == ChatAgentEventAssistantMessage {
 		bounded := cloneJSONObject(payload)
 		if content, ok := bounded["content"].(string); ok {
@@ -218,6 +247,98 @@ func normalizeChatAgentEventPayload(
 		)
 	}
 	return normalized, nil
+}
+
+func normalizeChatAgentContextInjectionPayload(payload map[string]any) (map[string]any, error) {
+	if len(payload) < 3 || len(payload) > 4 {
+		return nil, newValidationError(
+			"INVALID_CHAT_AGENT_EVENT_PAYLOAD", "context injection payload is invalid",
+		)
+	}
+	source := chatAgentPayloadString(payload, "source")
+	switch source {
+	case "system-prompt", "skill-catalog", "skill-instruction", "runtime-context":
+	default:
+		return nil, newValidationError(
+			"INVALID_CHAT_AGENT_EVENT_PAYLOAD", "context injection source is invalid",
+		)
+	}
+	label := truncateChatAgentUTF8(redactProcessSecrets(chatAgentPayloadString(payload, "label")), 256)
+	content, contentOK := payload["content"].(string)
+	content = sanitizeProviderReasoningDelta(content)
+	if label == "" || !contentOK || strings.TrimSpace(content) == "" {
+		return nil, newValidationError(
+			"INVALID_CHAT_AGENT_EVENT_PAYLOAD", "context injection content is invalid",
+		)
+	}
+	truncated := len(content) > maxChatAgentContextEventBytes
+	content = truncateChatAgentUTF8(content, maxChatAgentContextEventBytes)
+	if supplied, ok := payload["truncated"].(bool); ok {
+		truncated = truncated || supplied
+	} else if _, exists := payload["truncated"]; exists {
+		return nil, newValidationError(
+			"INVALID_CHAT_AGENT_EVENT_PAYLOAD", "context injection truncation is invalid",
+		)
+	}
+	return map[string]any{
+		"source": source, "label": label, "content": content, "truncated": truncated,
+	}, nil
+}
+
+func normalizeChatAgentAssistantChunkPayload(payload map[string]any) (map[string]any, error) {
+	if len(payload) < 3 || len(payload) > 4 {
+		return nil, newValidationError(
+			"INVALID_CHAT_AGENT_EVENT_PAYLOAD", "assistant chunk payload is invalid",
+		)
+	}
+	chunkType := chatAgentPayloadString(payload, "chunkType")
+	blockType := chatAgentPayloadString(payload, "blockType")
+	blockIndex, blockOK := exactPositiveChatAgentPayloadInt(payload["blockIndex"])
+	if !blockOK || blockType != "reasoning" {
+		return nil, newValidationError(
+			"INVALID_CHAT_AGENT_EVENT_PAYLOAD", "assistant chunk block is invalid",
+		)
+	}
+	result := map[string]any{
+		"chunkType": chunkType, "blockType": blockType, "blockIndex": blockIndex,
+	}
+	switch chunkType {
+	case "block-start":
+		if len(payload) != 3 {
+			return nil, newValidationError(
+				"INVALID_CHAT_AGENT_EVENT_PAYLOAD", "assistant block start is invalid",
+			)
+		}
+	case "reasoning-delta":
+		content, contentOK := payload["content"].(string)
+		content = sanitizeProviderReasoningDelta(content)
+		if !contentOK || content == "" {
+			return nil, newValidationError(
+				"INVALID_CHAT_AGENT_EVENT_PAYLOAD", "assistant reasoning delta is empty",
+			)
+		}
+		result["content"] = truncateChatAgentUTF8(content, maxChatAgentChunkEventBytes)
+	default:
+		return nil, newValidationError(
+			"INVALID_CHAT_AGENT_EVENT_PAYLOAD", "assistant chunk type is invalid",
+		)
+	}
+	return result, nil
+}
+
+func normalizeChatAgentBlockCompletedPayload(payload map[string]any) (map[string]any, error) {
+	if len(payload) != 2 || chatAgentPayloadString(payload, "blockType") != "reasoning" {
+		return nil, newValidationError(
+			"INVALID_CHAT_AGENT_EVENT_PAYLOAD", "assistant completed block is invalid",
+		)
+	}
+	blockIndex, ok := exactPositiveChatAgentPayloadInt(payload["blockIndex"])
+	if !ok {
+		return nil, newValidationError(
+			"INVALID_CHAT_AGENT_EVENT_PAYLOAD", "assistant completed block index is invalid",
+		)
+	}
+	return map[string]any{"blockType": "reasoning", "blockIndex": blockIndex}, nil
 }
 
 func normalizeChatAgentContextReplacementPayload(
@@ -270,6 +391,11 @@ func exactNonnegativeChatAgentPayloadInt(value any) (int, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func exactPositiveChatAgentPayloadInt(value any) (int, bool) {
+	converted, ok := exactNonnegativeChatAgentPayloadInt(value)
+	return converted, ok && converted > 0
 }
 
 func chatAgentProcessStepPayload(step ProcessStep) map[string]any {

@@ -89,6 +89,90 @@ func TestAgentTimelineCanaryStreamsDurableEventsBeforeTerminalMessage(t *testing
 	}
 }
 
+func TestAgentTimelineCanaryStreamsDurableContextAndReasoningBlocks(t *testing.T) {
+	const canaryID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	repository := newFakeRepository()
+	repository.conversations = append(
+		repository.conversations,
+		fakeConversation(testConversationID, "Transcript v2", 0),
+	)
+	repository.messages[testConversationID] = append(
+		repository.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "solve this"),
+	)
+	handler := NewHandler(
+		NewService(repository),
+		WithProvider(reasoningFixtureProvider{}),
+		WithAgentTimelineCanary(true, []string{canaryID}),
+	)
+	request := httptest.NewRequest(
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		bytes.NewBufferString(
+			`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"reasoning"},"systemInstruction":"Be precise and keep token=fixture-secret-value private.","config":{"useReasoning":true},"idempotencyKey":"timeline-reasoning-blocks"}`,
+		),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	request = request.WithContext(auth.WithUser(request.Context(), auth.User{ID: canaryID}))
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	body := recorder.Body.String()
+	for _, required := range []string{
+		`"type":"context.injected"`,
+		`"source":"system-prompt"`,
+		`"type":"assistant.chunk"`,
+		`"chunkType":"block-start"`,
+		`"chunkType":"reasoning-delta"`,
+		`"type":"assistant.block.completed"`,
+		`[REDACTED]`,
+	} {
+		if !strings.Contains(body, required) {
+			t.Fatalf("Transcript stream missing %q; body=%s", required, body)
+		}
+	}
+	if strings.Contains(body, "fixture-secret-value") ||
+		strings.Contains(body, "super-secret-value") {
+		t.Fatalf("Transcript stream leaked a secret; body=%s", body)
+	}
+	if strings.Contains(body, "event: reasoning.delta\n") {
+		t.Fatalf("typed canary retained duplicate legacy reasoning transport; body=%s", body)
+	}
+	contextIndex := strings.Index(body, `"type":"context.injected"`)
+	blockIndex := strings.Index(body, `"chunkType":"block-start"`)
+	deltaIndex := strings.Index(body, `"chunkType":"reasoning-delta"`)
+	completedIndex := strings.Index(body, `"type":"assistant.block.completed"`)
+	if contextIndex < 0 || blockIndex <= contextIndex || deltaIndex <= blockIndex ||
+		completedIndex <= deltaIndex {
+		t.Fatalf("Transcript event order is invalid; body=%s", body)
+	}
+
+	events := repository.agentEvents[testConversationID]
+	types := make([]string, 0, len(events))
+	reasoningDeltas := 0
+	for _, event := range events {
+		types = append(types, event.Type)
+		if event.Type == ChatAgentEventAssistantChunk &&
+			chatAgentPayloadString(event.Payload, "chunkType") == "reasoning-delta" {
+			reasoningDeltas++
+		}
+	}
+	if reasoningDeltas != 1 {
+		t.Fatalf("coalesced reasoning delta events=%d, want 1; events=%#v", reasoningDeltas, events)
+	}
+	for _, required := range []string{
+		ChatAgentEventContextInjected,
+		ChatAgentEventAssistantChunk,
+		ChatAgentEventBlockCompleted,
+	} {
+		if !containsString(types, required) {
+			t.Fatalf("durable Transcript events=%v, missing %q", types, required)
+		}
+	}
+}
+
 func TestAgentTimelineGateKeepsDurableAuthorityAndReturnsLegacyProjection(t *testing.T) {
 	const canaryID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 	presentation := &ProcessStepPresentation{

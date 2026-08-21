@@ -41,6 +41,9 @@ const CHAT_AGENT_EVENT_TYPES = new Set<ChatAgentEventType>([
   "goal.changed",
   "goal.round.started",
   "context.replaced",
+  "context.injected",
+  "assistant.chunk",
+  "assistant.block.completed",
 ]);
 
 const SPECIALIZED_TOOL_KINDS: Readonly<Record<string, ProcessStepKind>> = {

@@ -10,6 +10,8 @@ import SourceBlock from "./SourceBlock";
 import ToolCallBlock from "./ToolCallBlock";
 import MemorySearchBlock from "./MemorySearchBlock";
 import ProcessTracePanel from "./ProcessTracePanel";
+import AgentTranscript from "./AgentTranscript";
+import { hasAgentTranscript } from "@/lib/chat/agentTranscript";
 
 interface MessageOutputRendererProps {
   message: Message;
@@ -73,15 +75,18 @@ const MessageOutputRenderer = React.forwardRef<
   }, [displayedContent, isTyping, message]);
 
   const hasProcessTrace = Boolean(message.processTrace?.length);
+  const hasTranscript = hasAgentTranscript(message.agentEvents);
 
-  if (blocks.length === 0 && !hasProcessTrace) return null;
+  if (blocks.length === 0 && !hasProcessTrace && !hasTranscript) return null;
 
   return (
     <div
       ref={ref}
       className={isTyping ? "animate-in fade-in duration-500" : ""}
     >
-      {hasProcessTrace ? (
+      {hasTranscript ? (
+        <AgentTranscript events={message.agentEvents ?? []} />
+      ) : hasProcessTrace ? (
         <ProcessTracePanel
           steps={message.processTrace ?? []}
           reasoning={message.reasoning}
@@ -101,7 +106,7 @@ const MessageOutputRenderer = React.forwardRef<
               />
             );
           case "reasoning":
-            if (hasProcessTrace) return null;
+            if (hasProcessTrace || hasTranscript) return null;
             return (
               <ReasoningBlock
                 key={block.id}

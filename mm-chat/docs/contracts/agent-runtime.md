@@ -112,6 +112,13 @@ durable Agent event writes but returns only the legacy ProcessStep projection
 and does not enter a hidden approval wait. Clearing either gate is the
 non-destructive rollback.
 
+Migration `101` marks every new `turn.started` event with numeric
+`transcriptVersion: 2`. The frontend requires this marker before treating a
+Tool-only history as a flat Transcript; pre-101 unmarked Tool events retain the
+legacy renderer and its Reasoning display. A v2-only `context.injected`,
+`assistant.chunk`, or `assistant.block.completed` event remains sufficient when
+a reconnect suffix does not contain the start event.
+
 Canary acceptance uses a 500-event fixture. The frontend must keep visible
 update p95 at or below 300 ms and full durable reload p95 within 20% of the
 legacy projection under the same render workload. Durable projection uses a
@@ -209,6 +216,14 @@ conversation-grant authorities. The API runtime has no table DML and may call
 only `chat_agent_create_approval`, `chat_agent_decide_approval`, and
 `chat_agent_recover_approvals`. Down is refused while either table contains
 data.
+
+Migration `101_chat_agent_transcript_blocks` adds the forward-only event
+whitelist for `context.injected`, `assistant.chunk`, and
+`assistant.block.completed`. New canary turns render these facts as one flat
+Context/Think/Tool transcript in durable sequence. Only Provider-returned
+reasoning is retained; context and reasoning are sanitized and bounded before
+database append, SSE, copy, or DOM rendering. Disabling the timeline flag rolls
+back presentation without deleting immutable Transcript events.
 
 ## Required verification
 

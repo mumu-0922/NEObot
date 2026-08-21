@@ -105,6 +105,8 @@ Out of scope:
 | `097_chat_agent_goals`                        | Adds one revision-CAS Goal per Conversation, atomic Goal events, bounded automatic rounds, least-privilege mutations, and guarded rollback. |
 | `098_retire_legacy_agent_control_plane`       | Removes the disconnected legacy Agent control-plane objects after exact empty-state validation while retaining Chat Agent, Skill, MCP, File, Knowledge, and Memory authority. |
 | `099_chat_agent_event_log_function_repair`    | Forward-repairs the two migration-096 event gateways, preserves safe search paths and grants, and intentionally retains the corrected bodies on down. |
+| `100_chat_agent_approvals`                    | Adds durable Tool approval/CAS and exact Conversation grants without raw Tool payloads. |
+| `101_chat_agent_transcript_blocks`            | Forward-widens immutable Agent events for sanitized Context and Provider-returned reasoning blocks and marks new Turns as Transcript v2. |
 
 Published migration pairs are immutable and applied in numeric order. Migration
 SQL contains no transaction-control statements; the Go runner wraps each schema

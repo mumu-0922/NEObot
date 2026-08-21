@@ -1676,6 +1676,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		}
 	}
 	var localSkillRuntime *localSkillToolRuntime
+	localSkillContextPrompt := ""
 	if agentMode && h.localSkillExecutor != nil && h.localSkillExecutor.Enabled() {
 		var skills []skillsupply.RuntimeSkill
 		if h.localSkillCatalog != nil {
@@ -1700,10 +1701,14 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			writeError(w, http.StatusServiceUnavailable, "SKILL_RUNTIME_UNAVAILABLE", "local Skill runtime is unavailable")
 			return
 		}
-		providerSystemPrompt = appendLocalSkillSystemInstruction(
-			providerSystemPrompt,
-			localSkillRuntime,
-		)
+		localSkillContextPrompt = localSkillRuntime.promptInstruction()
+		if localSkillContextPrompt != "" {
+			providerSystemPrompt = strings.TrimSpace(providerSystemPrompt)
+			if providerSystemPrompt != "" {
+				providerSystemPrompt += "\n\n"
+			}
+			providerSystemPrompt += localSkillContextPrompt
+		}
 	}
 
 	assistantMessage, err := h.service.CreateAssistantMessage(
@@ -2013,6 +2018,43 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	)
 	providerMessages = contextPreparation.Messages
 	providerSystemPrompt = contextPreparation.SystemPrompt
+	preludeAgentEvents := make([]ChatAgentEvent, 0, 2)
+	recordContextInjection := func(source, label, content string) error {
+		if strings.TrimSpace(content) == "" {
+			return nil
+		}
+		if localSkillRuntime != nil {
+			hostRoot := strings.TrimSpace(localSkillRuntime.config().WorkspaceHostRoot)
+			if hostRoot != "" {
+				content = strings.ReplaceAll(content, hostRoot, "$NEO_CHAT_WORKSPACE_HOST")
+			}
+		}
+		recorded, recordErr := agentRecorder.recordContextInjection(
+			generationCtx, source, label, content, time.Now(),
+		)
+		if recordErr != nil {
+			return recordErr
+		}
+		preludeAgentEvents = append(preludeAgentEvents, recorded)
+		appendStreamedAgentEvent(recorded)
+		return nil
+	}
+	if err := recordContextInjection(
+		"system-prompt", "System prompt", providerSystemPrompt,
+	); err != nil {
+		turnFinalStatus = ChatAgentTurnFailed
+		turnFinalErrorCode = "AGENT_EVENT_PERSISTENCE_FAILED"
+		writeError(w, http.StatusInternalServerError, turnFinalErrorCode, "chat Agent event persistence failed")
+		return
+	}
+	if err := recordContextInjection(
+		"skill-catalog", "Skill catalog", localSkillContextPrompt,
+	); err != nil {
+		turnFinalStatus = ChatAgentTurnFailed
+		turnFinalErrorCode = "AGENT_EVENT_PERSISTENCE_FAILED"
+		writeError(w, http.StatusInternalServerError, turnFinalErrorCode, "chat Agent event persistence failed")
+		return
+	}
 	webMessageMetadata := func(
 		decision autoRAGDecision,
 		extra map[string]any,
@@ -2293,6 +2335,12 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		cancelTrackedAfterWriteError(conversationID, assistantMessage.ID, runID, "")
 		return
 	}
+	for _, event := range preludeAgentEvents {
+		if err := emitAgentEvent(event); err != nil {
+			cancelTrackedAfterWriteError(conversationID, assistantMessage.ID, runID, "")
+			return
+		}
+	}
 	emitProcessStep := func(step ProcessStep) error {
 		eventAt := time.Now()
 		recordedEvent, projected, err := agentRecorder.recordProcessStep(
@@ -2344,24 +2392,110 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		flusher.Flush()
 		return nil
 	}
+	reasoningBlockIndex := 0
+	reasoningBlockOpen := false
+	reasoningPersistedBytes := 0
+	providerRound := 1
+	persistReasoningDelta := func(delta string) error {
+		if delta == "" {
+			return nil
+		}
+		remaining := maxPersistedReasoningBytes - reasoningPersistedBytes
+		persistedDelta := truncateChatAgentUTF8(
+			delta,
+			min(maxChatAgentChunkEventBytes, max(remaining, 0)),
+		)
+		if remaining > 0 && persistedDelta != "" {
+			eventAt := time.Now()
+			if !reasoningBlockOpen {
+				reasoningBlockIndex++
+				started, err := agentRecorder.recordAssistantBlockStart(
+					generationCtx, reasoningBlockIndex, providerRound, eventAt,
+				)
+				if err != nil {
+					return err
+				}
+				if err := emitAgentEvent(started); err != nil {
+					return err
+				}
+				reasoningBlockOpen = true
+			}
+			recorded, err := agentRecorder.recordAssistantReasoningDelta(
+				generationCtx, reasoningBlockIndex, providerRound, persistedDelta, eventAt,
+			)
+			if err != nil {
+				return err
+			}
+			if err := emitAgentEvent(recorded); err != nil {
+				return err
+			}
+			persistedContent, _ := recorded.Payload["content"].(string)
+			reasoningPersistedBytes += len(persistedContent)
+		}
+		return nil
+	}
+	var reasoningEventBuffer strings.Builder
+	lastReasoningEventFlush := time.Now()
+	flushReasoningEvents := func(force bool) error {
+		if reasoningEventBuffer.Len() == 0 {
+			return nil
+		}
+		if !force && reasoningEventBuffer.Len() < 16<<10 &&
+			time.Since(lastReasoningEventFlush) < 75*time.Millisecond {
+			return nil
+		}
+		buffered := reasoningEventBuffer.String()
+		reasoningEventBuffer.Reset()
+		lastReasoningEventFlush = time.Now()
+		for buffered != "" {
+			chunk := truncateChatAgentUTF8(buffered, maxChatAgentChunkEventBytes)
+			if chunk == "" {
+				break
+			}
+			if err := persistReasoningDelta(chunk); err != nil {
+				return err
+			}
+			buffered = buffered[len(chunk):]
+		}
+		return nil
+	}
 	emitReasoningDelta := func(delta string) error {
 		if delta == "" {
 			return nil
 		}
-		sequence++
-		if err := writeSSEEvent(w, "reasoning.delta", streamEvent{
-			Type:           "reasoning.delta",
-			RunID:          runID,
-			ConversationID: conversationID,
-			MessageID:      assistantMessage.ID,
-			Sequence:       sequence,
-			CreatedAt:      formatTime(time.Now()),
-			Delta:          delta,
-		}); err != nil {
+		if !agentTimelineEnabled {
+			sequence++
+			if err := writeSSEEvent(w, "reasoning.delta", streamEvent{
+				Type:           "reasoning.delta",
+				RunID:          runID,
+				ConversationID: conversationID,
+				MessageID:      assistantMessage.ID,
+				Sequence:       sequence,
+				CreatedAt:      formatTime(time.Now()),
+				Delta:          delta,
+			}); err != nil {
+				return err
+			}
+			flusher.Flush()
+		}
+		reasoningEventBuffer.WriteString(delta)
+		return flushReasoningEvents(false)
+	}
+	closeReasoningBlock := func() error {
+		if err := flushReasoningEvents(true); err != nil {
 			return err
 		}
-		flusher.Flush()
-		return nil
+		if !reasoningBlockOpen {
+			return nil
+		}
+		recorded, err := agentRecorder.recordAssistantBlockCompleted(
+			generationCtx, reasoningBlockIndex, providerRound, time.Now(),
+		)
+		if err != nil {
+			return err
+		}
+		reasoningBlockOpen = false
+		return emitAgentEvent(recorded)
 	}
 	for _, step := range trace.snapshot() {
 		if err := emitProcessStep(step); err != nil {
@@ -2390,6 +2524,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	var content strings.Builder
 	toolExecutionCancelled := false
 	for providerEvent := range events {
+		if providerEvent.Round > 0 {
+			providerRound = providerEvent.Round
+		}
 		if providerEvent.Error != nil {
 			if modelBuiltInSearchProvider != nil && streamCtx.Err() == nil &&
 				!errors.Is(providerEvent.Error, context.Canceled) {
@@ -2403,6 +2540,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				errors.Is(streamCtx.Err(), context.DeadlineExceeded)
 			if streamCtx.Err() != nil && !deadlineExceeded {
 				_ = emitReasoningDelta(reasoning.flush())
+				_ = closeReasoningBlock()
 				for _, step := range reconcileProcessTraceCitations(
 					trace,
 					content.String(),
@@ -2448,6 +2586,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			)
 			errorBody := chatStreamErrorBody(deadlineErr, legacyMCPDeadline)
 			_ = emitReasoningDelta(reasoning.flush())
+			_ = closeReasoningBlock()
 			for _, step := range reconcileProcessTraceCitations(
 				trace,
 				content.String(),
@@ -2584,6 +2723,12 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				)
 				return
 			}
+			if err := closeReasoningBlock(); err != nil {
+				cancelTrackedAfterWriteError(
+					conversationID, assistantMessage.ID, runID, content.String(),
+				)
+				return
+			}
 			content.WriteString(providerEvent.Delta)
 			sequence++
 			if err := writeSSEEvent(w, "message.delta", streamEvent{
@@ -2615,7 +2760,22 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			}
 			flusher.Flush()
 		case ProviderEventToolExecution:
+			if err := emitReasoningDelta(reasoning.flush()); err != nil {
+				cancelTrackedAfterWriteError(
+					conversationID, assistantMessage.ID, runID, content.String(),
+				)
+				return
+			}
+			if err := closeReasoningBlock(); err != nil {
+				cancelTrackedAfterWriteError(
+					conversationID, assistantMessage.ID, runID, content.String(),
+				)
+				return
+			}
 			execution := providerEvent.ToolExecution
+			if execution != nil && execution.Round > 0 {
+				providerRound = execution.Round
+			}
 			eventAt := time.Now()
 			processUpdates := toolTrace.apply(execution, eventAt)
 			if execution != nil && execution.Transient {
@@ -2830,6 +2990,18 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				return
 			}
 		}
+	}
+	if err := emitReasoningDelta(reasoning.flush()); err != nil {
+		cancelTrackedAfterWriteError(
+			conversationID, assistantMessage.ID, runID, content.String(),
+		)
+		return
+	}
+	if err := closeReasoningBlock(); err != nil {
+		cancelTrackedAfterWriteError(
+			conversationID, assistantMessage.ID, runID, content.String(),
+		)
+		return
 	}
 
 	if streamDeadlineSource != "" && errors.Is(streamCtx.Err(), context.DeadlineExceeded) {

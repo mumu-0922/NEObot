@@ -112,6 +112,7 @@ type ToolCall struct {
 
 type ProviderEvent struct {
 	Type               string
+	Round              int
 	Delta              string
 	ReasoningDelta     string
 	ToolCallDelta      *ProviderToolCallDelta

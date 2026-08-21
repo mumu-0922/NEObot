@@ -145,7 +145,7 @@ function signatures, owners, and grants while pinning lookup to the application
 schema, `pg_catalog`, and `pg_temp`. Its down path intentionally retains the
 safe search path rather than reopening object-shadowing risk.
 
-The current migration head is `100`; the latest RAG retrieval-specific migration
+The current migration head is `101`; the latest RAG retrieval-specific migration
 remains `050`. Migration `043` extends the existing final-authority evidence
 hydration boundary with complete matched-Child and containing-Parent source
 text plus their persisted token counts. Parent text is answer context only. Its
@@ -532,7 +532,7 @@ execution, never direct event DML. Terminal recovery preserves an already
 committed Message status and marks only unfinished Messages interrupted. Down
 refuses while any Turn or Event exists. Disposable PostgreSQL 17 proof uses
 `scripts/verify-chat-agent-event-log-postgres17.sh`; the current full replay
-continues through approval head `100`.
+continues through Transcript head `101`.
 
 The production-applied byte identity of migration `096` is immutable and has
 checksum
@@ -553,7 +553,7 @@ no table write privilege. Automatic Goal budgets are bounded to 3-32 rounds,
 with a default of 8 in the Go runtime. Down refuses while a Goal row exists.
 Disposable PostgreSQL 17 proof uses
 `scripts/verify-chat-agent-goals-postgres17.sh`; the current full replay
-continues through approval head `100`.
+continues through Transcript head `101`.
 
 Migration `100` adds durable five-minute Chat Agent Tool approval requests,
 first-decision-wins revision CAS, exact Conversation-scoped Tool grants, and a
@@ -562,6 +562,16 @@ restart. Approval rows contain only identifiers, Tool/risk classification,
 status, and timestamps; raw arguments and results remain forbidden. The API
 runtime has only the three exact `SECURITY DEFINER` gateways and no direct
 table DML. Down refuses while Approval or grant rows exist.
+
+Migration `101` forward-widens the immutable Chat Agent event type constraint
+and append gateway for sanitized `context.injected`, `assistant.chunk`, and
+`assistant.block.completed` facts. It reasserts the migration-099 hardened
+function search path and exact runtime grants. Its replacement start gateway
+adds numeric `transcriptVersion: 2` to every new `turn.started` payload so
+Tool-only v2 Turns cannot be confused with pre-101 history. Down is
+intentionally a no-op because immutable history may already contain the widened
+event types; runtime rollback uses the exact-user timeline flag and previous
+application image.
 
 ## Storage boundaries
 

@@ -46,13 +46,17 @@ psql_command() {
 }
 runtime_psql() { psql_command "SET ROLE go_api_runtime; $1"; }
 
-log "applying and replaying schema head 100"
+log "applying and replaying schema head 101"
 (cd "${backend_dir}" && go build -buildvcs=false -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" up >"${work_dir}/fresh.log" 2>&1
 grep -Fq 'up 100_chat_agent_approvals' "${work_dir}/fresh.log"
+grep -Fq 'up 101_chat_agent_transcript_blocks' "${work_dir}/fresh.log"
 MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" up >"${work_dir}/replay.log" 2>&1
 grep -Fq 'no migrations changed' "${work_dir}/replay.log"
-[[ "$(psql_command 'SELECT max(version) FROM schema_migrations')" == '100' ]]
+[[ "$(psql_command 'SELECT max(version) FROM schema_migrations')" == '101' ]]
+
+MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" down >"${work_dir}/peel-101.log" 2>&1
+grep -Fq 'down 101_chat_agent_transcript_blocks' "${work_dir}/peel-101.log"
 
 log "checking exact gateways and denied direct table mutation"
 [[ "$(psql_command "SELECT has_table_privilege('go_api_runtime','chat_agent_approvals','SELECT,INSERT,UPDATE,DELETE')")" == 'f' ]]
@@ -146,5 +150,6 @@ MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" down >"${work_dir
 grep -Fq 'down 100_chat_agent_approvals' "${work_dir}/clean-down.log"
 MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" up >"${work_dir}/clean-up.log" 2>&1
 grep -Fq 'up 100_chat_agent_approvals' "${work_dir}/clean-up.log"
-[[ "$(psql_command 'SELECT max(version) FROM schema_migrations')" == '100' ]]
+grep -Fq 'up 101_chat_agent_transcript_blocks' "${work_dir}/clean-up.log"
+[[ "$(psql_command 'SELECT max(version) FROM schema_migrations')" == '101' ]]
 log "passed"

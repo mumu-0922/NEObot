@@ -22,6 +22,7 @@ import {
   normalizeReasoningEffort,
 } from "../../lib/chat/reasoning";
 import type {
+  ChatAgentEvent,
   ChatToolMode,
   ReasoningEffort,
   SearchMode,
@@ -36,6 +37,7 @@ import { IMAGE_CONTENT_POLICY_VIOLATION_CODE } from "../../lib/chat/types";
 import type { ProcessStep } from "../../lib/chat/types";
 import {
   processTraceFromChatAgentEvents,
+  normalizeChatAgentEvents,
   processTraceFromMessageMetadata,
   reasoningFromMessageMetadata,
 } from "../../lib/chat/processTrace";
@@ -92,6 +94,7 @@ export interface ChatCrudMessage {
   metadata?: Record<string, unknown>;
   reasoning?: string;
   processTrace?: ProcessStep[];
+  agentEvents?: ChatAgentEvent[];
   attachments?: ChatCrudAttachment[];
   model?: string;
   generationError?: {
@@ -280,6 +283,7 @@ export function mapChatMessageDtoToMessage(
     message.agentEvents,
     legacyProcessTrace,
   );
+  const agentEvents = normalizeChatAgentEvents(message.agentEvents);
 
   return {
     id: message.id,
@@ -289,6 +293,7 @@ export function mapChatMessageDtoToMessage(
     ...(message.metadata ? { metadata: message.metadata } : {}),
     ...(reasoning ? { reasoning } : {}),
     ...(processTrace ? { processTrace } : {}),
+    ...(agentEvents.length > 0 ? { agentEvents } : {}),
     ...(knowledge ? { knowledge } : {}),
     ...(role === "model" && model ? { model } : {}),
     ...(generationError ? { generationError } : {}),

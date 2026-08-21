@@ -363,6 +363,7 @@ func runNativeExternalWebToolLoop(
 			bufferMemoryDecisionRound || bufferAgentGuardRound
 		bufferedEvents := make([]ProviderEvent, 0)
 		for event := range roundEvents {
+			event.Round = round
 			if event.Error != nil {
 				if toolLoopWasCancelled(ctx, event.Error) {
 					return true

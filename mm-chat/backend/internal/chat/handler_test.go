@@ -4392,7 +4392,9 @@ func (f *fakeRepository) StartChatAgentTurn(
 		EventID: input.EventID, TurnID: input.TurnID,
 		UserID: auth.UserOrDevelopment(ctx).ID, ConversationID: input.ConversationID,
 		MessageID: input.MessageID, RunID: input.RunID, Sequence: 1,
-		Type: ChatAgentEventTurnStarted, Payload: map[string]any{"status": "running"},
+		Type: ChatAgentEventTurnStarted, Payload: map[string]any{
+			"status": "running", "transcriptVersion": 2,
+		},
 		OccurredAt: input.OccurredAt,
 	}
 	f.agentTurns[input.TurnID] = event

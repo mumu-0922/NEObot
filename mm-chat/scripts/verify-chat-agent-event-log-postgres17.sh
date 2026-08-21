@@ -53,12 +53,14 @@ psql_command() {
       --username="${database_user}" --dbname="${database_name}" --command "$1"
 }
 
-log "applying and replaying schema head 100"
+log "applying and replaying schema head 101"
 [[ "$(psql_command 'SHOW server_version_num' | cut -c1-2)" == "17" ]]
 (cd "${backend_dir}" && go build -buildvcs=false -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" "$@"; }
 peel_to_event_log() {
   local prefix="$1"
+  run_migrate down >"${work_dir}/${prefix}-101.log" 2>&1
+  grep -Fq "down 101_chat_agent_transcript_blocks" "${work_dir}/${prefix}-101.log"
   run_migrate down >"${work_dir}/${prefix}-100.log" 2>&1
   grep -Fq "down 100_chat_agent_approvals" "${work_dir}/${prefix}-100.log"
   run_migrate down >"${work_dir}/${prefix}-099.log" 2>&1
@@ -74,9 +76,10 @@ grep -Fq "up 097_chat_agent_goals" "${work_dir}/fresh.log"
 grep -Fq "up 098_retire_legacy_agent_control_plane" "${work_dir}/fresh.log"
 grep -Fq "up 099_chat_agent_event_log_function_repair" "${work_dir}/fresh.log"
 grep -Fq "up 100_chat_agent_approvals" "${work_dir}/fresh.log"
+grep -Fq "up 101_chat_agent_transcript_blocks" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
-[[ "$(psql_command 'SELECT max(version) FROM schema_migrations')" == "100" ]]
+[[ "$(psql_command 'SELECT max(version) FROM schema_migrations')" == "101" ]]
 [[ "$(psql_command "SELECT checksum FROM schema_migrations WHERE version=96")" == \
   "f7c6227d3dd559cb53b22a28af1d77bc570d45a42288bf1f348b22136ef1b042" ]]
 
@@ -104,7 +107,7 @@ log "running repository sequence, replay, interruption, and torn-finalization pr
 (cd "${backend_dir}" && MM_CHAT_TEST_DATABASE_URL="${database_url}" \
   go test ./internal/chat -run '^TestPostgresChatAgent(EventLog|Recovery)' -count=1)
 
-log "proving dirty 096 down refusal and clean 096 -> 100 replay"
+log "proving dirty 096 down refusal and clean 096 -> 101 replay"
 # Each integration test calls Runner.Up independently, so the first test
 # reapplies the 097-099 tail that this drill peeled before invoking `go test`.
 # Peel it again before exercising the 096 dirty-data guard. Both forward-only
@@ -130,7 +133,39 @@ SELECT event_id FROM chat_agent_start_turn(
   '96000000-0000-4000-8000-000000000003',
   '96000000-0000-4000-8000-000000000006',
   TIMESTAMPTZ '2026-08-17 00:00:00+00'
-);" >/dev/null
+);
+SELECT CASE
+  WHEN payload->>'transcriptVersion' = '2' THEN 'transcript-v2-marker-passed'
+  ELSE 'transcript-v2-marker-missing'
+END
+FROM chat_agent_events
+WHERE turn_id = '96000000-0000-4000-8000-000000000004'
+  AND event_type = 'turn.started';
+SELECT event_type FROM chat_agent_append_event(
+  '96000000-0000-4000-8000-000000000004',
+  '96000000-0000-4000-8000-000000000007',
+  'context.injected', NULL,
+  '{\"source\":\"system-prompt\",\"label\":\"System prompt\",\"content\":\"fixture\",\"truncated\":false}'::jsonb,
+  TIMESTAMPTZ '2026-08-17 00:00:01+00'
+);
+SELECT event_type FROM chat_agent_append_event(
+  '96000000-0000-4000-8000-000000000004',
+  '96000000-0000-4000-8000-000000000008',
+  'assistant.chunk', 1,
+  '{\"chunkType\":\"block-start\",\"blockType\":\"reasoning\",\"blockIndex\":1}'::jsonb,
+  TIMESTAMPTZ '2026-08-17 00:00:02+00'
+);
+SELECT event_type FROM chat_agent_append_event(
+  '96000000-0000-4000-8000-000000000004',
+  '96000000-0000-4000-8000-000000000009',
+  'assistant.block.completed', 1,
+  '{\"blockType\":\"reasoning\",\"blockIndex\":1}'::jsonb,
+  TIMESTAMPTZ '2026-08-17 00:00:03+00'
+);" >"${work_dir}/transcript-events.log"
+grep -Fq 'transcript-v2-marker-passed' "${work_dir}/transcript-events.log"
+grep -Fq 'context.injected' "${work_dir}/transcript-events.log"
+grep -Fq 'assistant.chunk' "${work_dir}/transcript-events.log"
+grep -Fq 'assistant.block.completed' "${work_dir}/transcript-events.log"
 set +e
 run_migrate down >"${work_dir}/dirty-down.log" 2>&1
 dirty_status=$?
@@ -146,6 +181,7 @@ grep -Fq "up 097_chat_agent_goals" "${work_dir}/clean-reup.log"
 grep -Fq "up 098_retire_legacy_agent_control_plane" "${work_dir}/clean-reup.log"
 grep -Fq "up 099_chat_agent_event_log_function_repair" "${work_dir}/clean-reup.log"
 grep -Fq "up 100_chat_agent_approvals" "${work_dir}/clean-reup.log"
-[[ "$(psql_command 'SELECT max(version) FROM schema_migrations')" == "100" ]]
+grep -Fq "up 101_chat_agent_transcript_blocks" "${work_dir}/clean-reup.log"
+[[ "$(psql_command 'SELECT max(version) FROM schema_migrations')" == "101" ]]
 
 log "passed"

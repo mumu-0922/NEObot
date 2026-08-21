@@ -88,7 +88,8 @@ log "applying 001 -> 097 with the 098/099/100 tail deferred"
 psql_command "$(migration_drill_deferred_tail_sql "${backend_dir}" \
   098_retire_legacy_agent_control_plane \
   099_chat_agent_event_log_function_repair \
-  100_chat_agent_approvals)" >/dev/null
+  100_chat_agent_approvals \
+  101_chat_agent_transcript_blocks)" >/dev/null
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 074_mcp_tools_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 075_mcp_runtime_role_grants" "${work_dir}/fresh.log"
@@ -290,6 +291,7 @@ grep -Fq "up 097_chat_agent_goals" "${work_dir}/reup.log"
 grep -Fq "up 098_retire_legacy_agent_control_plane" "${work_dir}/reup.log"
 grep -Fq "up 099_chat_agent_event_log_function_repair" "${work_dir}/reup.log"
 grep -Fq "up 100_chat_agent_approvals" "${work_dir}/reup.log"
+grep -Fq "up 101_chat_agent_transcript_blocks" "${work_dir}/reup.log"
 psql_command "
 DO \$\$
 DECLARE
@@ -345,4 +347,4 @@ log "proving a second replay remains a no-op"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 
-log "passed (historical 097 boundary, replay to head 100, guarded 076 down/up, metadata, retention, runtime grants, stdio repository lifecycle)"
+log "passed (historical 097 boundary, replay to head 101, guarded 076 down/up, metadata, retention, runtime grants, stdio repository lifecycle)"

@@ -180,7 +180,7 @@ export default function ProcessTracePanel({
   );
 }
 
-function ProcessStepRow({ step }: { step: ProcessStep }) {
+export function ProcessStepRow({ step }: { step: ProcessStep }) {
   const t = useTranslations("Content");
   const Icon = kindIcons[step.kind];
   const active = isProcessStepActive(step);

@@ -975,7 +975,7 @@ func TestOpenAICompatibleProviderPlansFunctionCalls(t *testing.T) {
 	}
 }
 
-func TestDeepSeekCompatibleProviderDisablesThinkingForToolProtocolOnly(t *testing.T) {
+func TestDeepSeekCompatibleProviderKeepsThinkingForNativeToolRounds(t *testing.T) {
 	requestCount := 0
 	client := &http.Client{Transport: providerRoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		requestCount++
@@ -986,7 +986,7 @@ func TestDeepSeekCompatibleProviderDisablesThinkingForToolProtocolOnly(t *testin
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatal(err)
 		}
-		if requestCount <= 3 {
+		if requestCount == 1 {
 			if payload.EnableThinking != nil || payload.Thinking == nil ||
 				payload.Thinking.Type != "disabled" || payload.ReasoningEffort != "" {
 				t.Fatalf(
@@ -996,14 +996,21 @@ func TestDeepSeekCompatibleProviderDisablesThinkingForToolProtocolOnly(t *testin
 					payload.ReasoningEffort,
 				)
 			}
-		} else if payload.EnableThinking != nil || payload.Thinking != nil ||
-			payload.ReasoningEffort != string(ReasoningEffortHigh) {
-			t.Fatalf(
-				"DeepSeek plain-chat thinking controls = %#v/%#v/%q",
-				payload.EnableThinking,
-				payload.Thinking,
-				payload.ReasoningEffort,
-			)
+		} else {
+			wantEffort := string(ReasoningEffortXHigh)
+			if requestCount == 4 {
+				wantEffort = string(ReasoningEffortHigh)
+			}
+			if payload.EnableThinking != nil || payload.Thinking != nil ||
+				payload.ReasoningEffort != wantEffort {
+				t.Fatalf(
+					"DeepSeek reasoning controls = %#v/%#v/%q, want effort %q",
+					payload.EnableThinking,
+					payload.Thinking,
+					payload.ReasoningEffort,
+					wantEffort,
+				)
+			}
 		}
 		switch requestCount {
 		case 2:

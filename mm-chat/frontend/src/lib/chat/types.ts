@@ -45,7 +45,10 @@ export type ChatAgentEventType =
   | "tool.result"
   | "goal.changed"
   | "goal.round.started"
-  | "context.replaced";
+  | "context.replaced"
+  | "context.injected"
+  | "assistant.chunk"
+  | "assistant.block.completed";
 
 export interface ChatAgentEvent {
   eventId: string;
@@ -259,6 +262,7 @@ export interface Message {
   treeParentMessageId?: string | null;
   reasoning?: string;
   processTrace?: ProcessStep[];
+  agentEvents?: ChatAgentEvent[];
   timestamp: number;
   attachments?: Attachment[];
   toolCalls?: ToolCall[];

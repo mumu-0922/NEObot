@@ -190,6 +190,53 @@ func (recorder *chatAgentEventRecorder) recordContextReplacement(
 	}, at)
 }
 
+func (recorder *chatAgentEventRecorder) recordContextInjection(
+	ctx context.Context,
+	source string,
+	label string,
+	content string,
+	at time.Time,
+) (ChatAgentEvent, error) {
+	return recorder.append(ctx, ChatAgentEventContextInjected, 0, map[string]any{
+		"source": source, "label": label, "content": content,
+	}, at)
+}
+
+func (recorder *chatAgentEventRecorder) recordAssistantBlockStart(
+	ctx context.Context,
+	blockIndex int,
+	stepSequence int,
+	at time.Time,
+) (ChatAgentEvent, error) {
+	return recorder.append(ctx, ChatAgentEventAssistantChunk, stepSequence, map[string]any{
+		"chunkType": "block-start", "blockType": "reasoning", "blockIndex": blockIndex,
+	}, at)
+}
+
+func (recorder *chatAgentEventRecorder) recordAssistantReasoningDelta(
+	ctx context.Context,
+	blockIndex int,
+	stepSequence int,
+	content string,
+	at time.Time,
+) (ChatAgentEvent, error) {
+	return recorder.append(ctx, ChatAgentEventAssistantChunk, stepSequence, map[string]any{
+		"chunkType": "reasoning-delta", "blockType": "reasoning",
+		"blockIndex": blockIndex, "content": content,
+	}, at)
+}
+
+func (recorder *chatAgentEventRecorder) recordAssistantBlockCompleted(
+	ctx context.Context,
+	blockIndex int,
+	stepSequence int,
+	at time.Time,
+) (ChatAgentEvent, error) {
+	return recorder.append(ctx, ChatAgentEventBlockCompleted, stepSequence, map[string]any{
+		"blockType": "reasoning", "blockIndex": blockIndex,
+	}, at)
+}
+
 func (recorder *chatAgentEventRecorder) finish(
 	ctx context.Context,
 	status string,

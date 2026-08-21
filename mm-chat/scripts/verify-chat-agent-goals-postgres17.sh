@@ -56,7 +56,7 @@ runtime_psql() {
   psql_command "SET ROLE go_api_runtime; $1"
 }
 
-log "applying and replaying schema head 100"
+log "applying and replaying schema head 101"
 [[ "$(psql_command 'SHOW server_version_num' | cut -c1-2)" == "17" ]]
 (cd "${backend_dir}" && go build -buildvcs=false -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" "$@"; }
@@ -66,9 +66,10 @@ grep -Fq "up 097_chat_agent_goals" "${work_dir}/fresh.log"
 grep -Fq "up 098_retire_legacy_agent_control_plane" "${work_dir}/fresh.log"
 grep -Fq "up 099_chat_agent_event_log_function_repair" "${work_dir}/fresh.log"
 grep -Fq "up 100_chat_agent_approvals" "${work_dir}/fresh.log"
+grep -Fq "up 101_chat_agent_transcript_blocks" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
-[[ "$(psql_command 'SELECT max(version) FROM schema_migrations')" == "100" ]]
+[[ "$(psql_command 'SELECT max(version) FROM schema_migrations')" == "101" ]]
 
 log "checking schema, exact Function grants, and denied direct mutation"
 [[ "$(psql_command "SELECT to_regclass('public.chat_agent_goals') IS NOT NULL")" == "t" ]]
@@ -204,6 +205,8 @@ runtime_psql "SELECT id FROM chat_agent_create_goal(
   3,
   TIMESTAMPTZ '2026-08-16 00:00:06+00'
 );" >/dev/null
+run_migrate down >"${work_dir}/peel-101-transcript.log" 2>&1
+grep -Fq 'down 101_chat_agent_transcript_blocks' "${work_dir}/peel-101-transcript.log"
 run_migrate down >"${work_dir}/peel-100-approvals.log" 2>&1
 grep -Fq 'down 100_chat_agent_approvals' "${work_dir}/peel-100-approvals.log"
 run_migrate down >"${work_dir}/peel-099-function-repair.log" 2>&1
@@ -230,7 +233,8 @@ grep -Fq 'up 097_chat_agent_goals' "${work_dir}/clean-reup.log"
 grep -Fq 'up 098_retire_legacy_agent_control_plane' "${work_dir}/clean-reup.log"
 grep -Fq 'up 099_chat_agent_event_log_function_repair' "${work_dir}/clean-reup.log"
 grep -Fq 'up 100_chat_agent_approvals' "${work_dir}/clean-reup.log"
-[[ "$(psql_command 'SELECT max(version) FROM schema_migrations')" == "100" ]]
+grep -Fq 'up 101_chat_agent_transcript_blocks' "${work_dir}/clean-reup.log"
+[[ "$(psql_command 'SELECT max(version) FROM schema_migrations')" == "101" ]]
 psql_command "DELETE FROM users WHERE id='${user_id}'" >/dev/null
 
 log "passed"

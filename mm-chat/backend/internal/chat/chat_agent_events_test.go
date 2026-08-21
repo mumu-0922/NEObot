@@ -205,6 +205,63 @@ func TestNormalizeChatAgentContextReplacementPayloadIsContentFreeAndStrict(t *te
 	}
 }
 
+func TestNormalizeChatAgentTranscriptPayloadsAreBoundedAndStrict(t *testing.T) {
+	contextPayload, err := normalizeChatAgentEventPayload(
+		ChatAgentEventContextInjected,
+		map[string]any{
+			"source": "skill-catalog", "label": "Skill catalog",
+			"content": "token=fixture-secret-value\n" + strings.Repeat("界", maxChatAgentContextEventBytes),
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contextContent, _ := contextPayload["content"].(string)
+	if strings.Contains(contextContent, "fixture-secret-value") ||
+		len(contextContent) > maxChatAgentContextEventBytes ||
+		contextPayload["truncated"] != true {
+		t.Fatalf("context payload=%#v", contextPayload)
+	}
+
+	start, err := normalizeChatAgentEventPayload(ChatAgentEventAssistantChunk, map[string]any{
+		"chunkType": "block-start", "blockType": "reasoning", "blockIndex": 2,
+	})
+	if err != nil || chatAgentPayloadInt(start, "blockIndex") != 2 {
+		t.Fatalf("start=%#v error=%v", start, err)
+	}
+	delta, err := normalizeChatAgentEventPayload(ChatAgentEventAssistantChunk, map[string]any{
+		"chunkType": "reasoning-delta", "blockType": "reasoning", "blockIndex": 2,
+		"content": " Bearer fixture-secret-value should be hidden ",
+	})
+	if err != nil || strings.Contains(chatAgentPayloadString(delta, "content"), "fixture-secret-value") {
+		t.Fatalf("delta=%#v error=%v", delta, err)
+	}
+	if content, _ := delta["content"].(string); !strings.HasPrefix(content, " ") ||
+		!strings.HasSuffix(content, " ") {
+		t.Fatalf("reasoning whitespace was not preserved: %#v", delta)
+	}
+	completed, err := normalizeChatAgentEventPayload(ChatAgentEventBlockCompleted, map[string]any{
+		"blockType": "reasoning", "blockIndex": 2,
+	})
+	if err != nil || chatAgentPayloadInt(completed, "blockIndex") != 2 {
+		t.Fatalf("completed=%#v error=%v", completed, err)
+	}
+
+	for _, invalid := range []struct {
+		eventType string
+		payload   map[string]any
+	}{
+		{ChatAgentEventContextInjected, map[string]any{"source": "private", "label": "x", "content": "x"}},
+		{ChatAgentEventAssistantChunk, map[string]any{"chunkType": "reasoning-delta", "blockType": "reasoning", "blockIndex": 0, "content": "x"}},
+		{ChatAgentEventAssistantChunk, map[string]any{"chunkType": "reasoning-delta", "blockType": "text", "blockIndex": 1, "content": "x"}},
+		{ChatAgentEventBlockCompleted, map[string]any{"blockType": "reasoning", "blockIndex": 1, "content": "forbidden"}},
+	} {
+		if _, err := normalizeChatAgentEventPayload(invalid.eventType, invalid.payload); err == nil {
+			t.Fatalf("invalid transcript payload accepted: %#v", invalid)
+		}
+	}
+}
+
 func TestNormalizeChatAgentTurnStatusPreservesCommittedTerminalState(t *testing.T) {
 	tests := []struct {
 		messageStatus string

@@ -1,11 +1,12 @@
-# Harness-style Agent Execution Timeline
+# Harness Transcript v2
 
 ## Goal
 
-Bring neo-chat's Agent execution experience close to DeepSeek Harness without
-replacing the existing Agent runtime: every new Agent turn must expose a
-durable, replay-safe, secure timeline from provider round through Tool call,
-approval, streaming execution, result, and assistant output.
+Bring neo-chat's Agent execution experience materially in line with DeepSeek
+Harness without replacing the existing Agent runtime: every new Agent turn must
+render one flat, durable, replay-safe transcript in true execution order,
+including sanitized context injection, Provider-returned reasoning blocks,
+Tool calls/results, approvals, and the final assistant response.
 
 ## Requirements
 
@@ -54,9 +55,25 @@ approval, streaming execution, result, and assistant output.
 
 ### Presentation and UX
 
-- Use a Harness-like information architecture with neo-chat's existing visual
-  system: provider-round headers, a vertical execution rail, and typed Tool
-  cards.
+- Replace the typed-canary aggregate panel with a Harness-like flat transcript:
+  `Context injection -> Think -> Skill/Search/Terminal/... -> Think -> final
+  answer`. Each event is an independent row on one vertical rail and keeps its
+  authoritative event order; provider rounds are secondary metadata, not an
+  outer accordion.
+- Context and Think rows expose a concise collapsed label and an explicit
+  expandable detail region. Context detail contains only the exact sanitized
+  text actually supplied at the recorded injection boundary. Think detail
+  contains only reasoning text actually returned by the Provider; unsupported
+  Providers produce no fabricated reasoning.
+- Persist and stream a block protocol with `context.injected`,
+  `assistant.chunk`, and `assistant.block.completed`. Assistant chunks are a
+  tagged union (`block-start`, `reasoning-delta`, `text-delta`, `block-end`,
+  `usage`, `finish`) and carry Turn, Provider round/step, block index/type, and
+  durable sequence identity.
+- OpenAI-compatible Providers display only the reasoning content or summary
+  actually returned by their API. DeepSeek `reasoning_content` is retained in
+  full subject to the transcript bounds and redaction rules, including native
+  Tool rounds and same-model continuation.
 - Expand the active call, approval, failed, and unknown cards by default;
   collapse successful historical cards. Preserve explicit user expansion.
 - Auto-follow only while the user remains near the bottom. Otherwise show a
@@ -80,8 +97,10 @@ approval, streaming execution, result, and assistant output.
 - Terminal: sanitized command/cwd header, ordered stdout/stderr transcript, and
   exit/duration/timeout/truncation/background footer.
 - Job: merge start/output/status/kill into a job lifecycle card.
-- Skill: show safe name/package/stage/status only; never show internal prompts,
-  source, injected context, or host paths.
+- Skill: show safe name/package/stage/status. Skill-catalog and explicit
+  user-authorized Skill injections may also appear as separate sanitized
+  Context injection rows, but materialized host paths, credentials, evaluator
+  prompts, and unrelated private source remain forbidden.
 - Goal: show a sanitized objective, state transition, explicit budget usage,
   and safe verification summary; never expose evaluator prompts.
 - Browser: show action, sanitized URL, target summary, status, and authorized
@@ -102,6 +121,9 @@ approval, streaming execution, result, and assistant output.
 - Coalesce live chunks every 50–100 ms with a maximum chunk around 16 KiB and
   bounded queues. Slow clients may lose intermediate refreshes but must receive
   the final snapshot.
+- Reasoning persistence is bounded to 1 MiB per Turn and 64 KiB per durable
+  chunk. Preserve the Provider text after secret/control/path sanitization;
+  never invent, infer, summarize, or reconstruct hidden reasoning.
 - Sanitize before streaming, persistence, logging, DOM rendering, copying, and
   export. Combine configured-secret exact matching, high-confidence token
   patterns, path aliasing, dangerous-control filtering, and per-Tool allowlists.
@@ -132,6 +154,12 @@ approval, streaming execution, result, and assistant output.
       fallback, with no raw JSON path.
 - [ ] A new turn durably reproduces `turn.started -> tool.called -> streaming ->
       tool.result -> assistant.message -> turn.ended` in authoritative order.
+- [ ] A Tool-using reasoning-capable turn durably reproduces multiple distinct
+      `Think` blocks interleaved with independent Tool rows, and renders the same
+      flat order live, after reload, and after reconnect.
+- [ ] System-prompt and Skill-catalog context injections are independently
+      expandable, bounded, sanitized, and absent when no such context reached
+      the Provider.
 - [ ] Live display, reload, and reconnect converge to the same order, status,
       bounded output, and presentation.
 - [ ] Concurrent duplicate events do not duplicate cards or overwrite terminal
@@ -164,13 +192,12 @@ approval, streaming execution, result, and assistant output.
 
 ## Technical Approach
 
-Extend the existing `ChatAgentEvent`/`ProcessStep` pipeline rather than route
-new server Tools into the legacy `ToolCallBlock`. Add a backend-owned,
-versioned presentation union and pure allowlisted presenters at execution
-boundaries. Persist immutable call/result facts and final bounded snapshots,
-then make the frontend timeline a typed projection that groups events by
-provider round and call identity. Build approval/CAS and reconnect controls on
-the same event authority.
+Extend the existing `ChatAgentEvent` authority rather than route new server
+Tools into the legacy `ToolCallBlock`. Add backend-owned assistant/context block
+events beside the existing typed Tool presentations. Persist immutable,
+sanitized facts, then project one flat frontend transcript by durable sequence.
+The legacy `ProcessTracePanel` remains only for messages without authoritative
+Transcript v2 events.
 
 ## Decision (ADR-lite)
 
@@ -179,10 +206,10 @@ their call/result detail before the frontend; only Terminal currently has a
 specialized presentation. DeepSeek Harness demonstrates that durable call/result
 events plus Tool-owned presenters can serve both live UI and replay.
 
-**Decision:** adapt the Harness behavior and information architecture to
-neo-chat's existing runtime. Keep the backend as authority, persist only
-bounded sanitized presentations, and render typed cards from the authoritative
-event stream.
+**Decision:** adapt the Harness block protocol and flat information architecture
+to neo-chat's existing runtime. Keep the backend as authority, persist only
+bounded sanitized context/reasoning/Tool presentations, and render them from
+the same authoritative event stream used by live SSE and reload.
 
 **Consequences:** this is a cross-layer change touching event contracts,
 storage, execution loops, SSE normalization, state projection, UI, security,
@@ -193,7 +220,10 @@ replace the runtime.
 
 - Replacing the existing Agent runtime or importing the DeepSeek Harness
   framework.
-- Exposing raw chain-of-thought or private provider reasoning.
+- Inferring hidden chain-of-thought or displaying reasoning not returned by the
+  selected Provider API.
+- Displaying credentials, host paths, evaluator prompts, provider-internal
+  encrypted/redacted thinking payloads, or unsanitized prompt/tool data.
 - Persisting unlimited raw Tool output.
 - Building a complete durable background-job orchestration system in this
   release.
@@ -235,9 +265,10 @@ replace the runtime.
 
 ### Remaining slices
 
-- Run one pinned focused canary acceptance session on the authoritative typed
-  path, produce verifier-eligible content-free evidence, then widen scope or
-  delete the legacy control/rollback fallback in a separate reversible slice.
+- Implement authoritative assistant/context blocks and the flat Transcript v2
+  projector, then run one pinned focused canary acceptance session. Widening
+  scope or deleting the legacy control/rollback fallback remains a separate
+  reversible slice.
 
 ### Slice 8 — performance and security acceptance
 
@@ -293,6 +324,27 @@ replace the runtime.
 - Focused eligible evidence still gates widening beyond exact users and final
   deletion of the control/rollback fallback. No flag widening, deployment,
   Push, or evidence fabrication is part of this code slice.
+
+### Slice 12 — Harness Transcript v2
+
+- Added forward migration `101` and strict authoritative
+  `context.injected`, `assistant.chunk`, and `assistant.block.completed`
+  payloads. Context and Provider reasoning are sanitized before durable append,
+  SSE, reload, or DOM projection; reasoning is bounded to 64 KiB per event and
+  1 MiB per Turn.
+- Removed the official DeepSeek Tool-round thinking override. Native Tool
+  requests and continuation now preserve the configured reasoning mode and the
+  existing `AssistantReasoning -> reasoning_content` exchange.
+- Added distinct reasoning blocks around Tool boundaries. Each block carries a
+  positive index and Provider round; unsupported Providers produce no fake
+  Think row.
+- Replaced the typed-canary aggregate panel with a flat `AgentTranscript`:
+  independent expandable Context/Think rows and existing typed Tool presenters
+  share one vertical sequence. Messages without v2 events retain the legacy
+  `ProcessTracePanel`.
+- Focused Go event/Provider/handler tests, strict frontend projection/render
+  tests, typecheck/lint, and the PostgreSQL 17 migration replay pass. Production
+  build, commit, and exact-user Canary deployment complete the release slice.
 
 ### Slice 2 — live Terminal transcript
 

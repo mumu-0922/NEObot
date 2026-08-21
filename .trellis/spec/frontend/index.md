@@ -22,6 +22,7 @@ behavior changes require coverage under `mm-chat/frontend/src/__tests__/`.
 | [State Management](./state-management.md)         | Local, Zustand, persisted, URL, and server-owned state        | Complete |
 | [MCP Tools](./mcp-tools.md)                       | Tools UI, server selection authority, timeline, and Plugin-state retirement | Complete |
 | [Chat/Agent Mode](./chat-agent-mode.md)           | Persisted composer mode, model-capability downgrade, and MCP-hidden product surface | Complete |
+| [Agent Transcript](./agent-transcript.md)          | Flat durable Context/Think/Tool projection, live/reload parity, and legacy fallback | Complete |
 | [Assistant Store](./assistant-store.md)           | My Assistants, Store paging, runtime validation, CAS recovery, and start-chat snapshots | Complete |
 | [Skill Store](./skill-store.md)                   | Standalone `/v1/skills/*` package discovery, install/uninstall, URL state, and retired control-plane boundary | Complete |
 | [Type Safety](./type-safety.md)                   | Domain types, DTOs, runtime validation, and normalization     | Complete |
@@ -48,10 +49,13 @@ Before changing frontend code:
 7. For composer Chat/Agent mode or model Tool-capability behavior, read
    [Chat/Agent Mode](./chat-agent-mode.md); persist requested intent and keep
    effective Tool policy server-authoritative.
-8. For Assistant library, Store, custom editor, or start-chat changes, read
+8. For Agent execution history, Context/Think blocks, Tool timeline, or Agent
+   event normalization, read [Agent Transcript](./agent-transcript.md); preserve
+   durable sequence authority and the legacy fallback for old messages.
+9. For Assistant library, Store, custom editor, or start-chat changes, read
    [Assistant Store](./assistant-store.md) and keep installation and revisions
    server-authoritative.
-9. For Package Skill discovery, install/uninstall, or Skill Store URL state,
+10. For Package Skill discovery, install/uninstall, or Skill Store URL state,
    read [Skill Store](./skill-store.md). Keep `/v1/skills/*` server-authoritative
    and do not restore retired Runs, Schedules, Learning, Shadow, Canary, Runner,
    delegation, or OCI controls.

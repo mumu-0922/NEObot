@@ -45,7 +45,8 @@ bash mm-chat/scripts/verify-chat-agent-approvals-postgres17.sh
   disposable PostgreSQL 17 drill. Nonempty legacy facts stop the upgrade.
 - `098.down` does not recreate execution authority; restore the matched backup
   plus previous image for database rollback.
-- Migration `100` is the durable Chat Agent approval head. Runtime roles have
+- Migration `100` owns durable Chat Agent approvals; migration `101` is the
+  current forward-only Transcript event head. Runtime roles have
   no Approval/Grant table DML and use only the three hardened gateways. Startup
   invokes recovery before serving traffic so no pending pre-restart command can
   resume. Roll back the UI/runtime path by disabling Agent local execution; do
@@ -78,7 +79,7 @@ bash mm-chat/scripts/verify-chat-agent-approvals-postgres17.sh
 | API restart | prior process-local Jobs unavailable and labeled non-durable |
 | legacy Compose/env/binary path returns | local runtime gate fails |
 | legacy fact exists | migration 098 fails atomically |
-| cleanup, repair, approval migration succeed | head 100; immutable 096 checksum and Chat/Skill/MCP/File/Memory data retained |
+| cleanup, repair, approval/transcript migrations succeed | head 101; immutable 096 checksum and Chat/Skill/MCP/File/Memory data retained |
 | timeline flag false, canary invalid/empty/non-matching | invalid config stops preflight/startup; otherwise legacy projection only |
 | focused-canary evidence is missing or verifier-ineligible | keep the exact-user scope and legacy control/rollback fallback; do not widen or delete it |
 
@@ -97,6 +98,8 @@ bash mm-chat/scripts/verify-chat-agent-approvals-postgres17.sh
 - Run `verify-agent-local-runtime.sh` and the PostgreSQL 17 cleanup drill.
 - Run `verify-chat-agent-approvals-postgres17.sh` for fresh/replay head, exact
   grants, CAS, expiry, restart denial, guarded down, and clean down/up.
+- Run `verify-chat-agent-event-log-postgres17.sh` for the migration-101 event
+  whitelist, hardened append gateway, immutable replay, and clean head 101.
 - Run Backend vet/tests, frontend gates, RAG gates, and standalone full.
 - Prove protected runtime paths remain untouched by source cleanup.
 - Run `bash mm-chat/scripts/test-agent-timeline-canary-evidence.sh`; a real
