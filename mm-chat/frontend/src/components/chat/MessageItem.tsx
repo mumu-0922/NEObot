@@ -109,6 +109,7 @@ interface MessageItemProps {
   onEdit: (id: string, newContent: string) => void;
   onDelete: (id: string) => void;
   onRegenerate?: () => void;
+  onContinue?: () => void;
   onRetract?: () => void;
   canEditUserMessage?: boolean;
   onSubmitUserEdit?: (id: string, newContent: string) => void | Promise<void>;
@@ -435,6 +436,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
   onEdit,
   onDelete,
   onRegenerate,
+  onContinue,
   onRetract,
   canEditUserMessage = false,
   onSubmitUserEdit,
@@ -1030,6 +1032,11 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const isErrorMessage =
     message.role === "model" && message.content.startsWith("Error:");
   const generationError = message.generationError;
+  const canContinueInterruptedAnswer = Boolean(
+    onContinue &&
+    generationError?.code === PROVIDER_STREAM_INTERRUPTED_CODE &&
+    message.content.trim().length > 0,
+  );
   let generationErrorMessage = generationError?.message;
   if (generationError?.code === IMAGE_CONTENT_POLICY_VIOLATION_CODE) {
     generationErrorMessage = t("imageContentPolicyViolation");
@@ -1464,7 +1471,21 @@ const MessageItem: React.FC<MessageItemProps> = ({
                     <div className="mt-1 wrap-break-word">
                       {generationErrorMessage}
                     </div>
-                    {generationError.recoverable ? (
+                    {canContinueInterruptedAnswer ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={onContinue}
+                          className={`inline-flex items-center gap-1.5 rounded-md bg-red-700 px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-800 dark:bg-red-600 dark:hover:bg-red-500 ${actionButtonFocusClass}`}
+                        >
+                          <Sparkles size={13} aria-hidden="true" />
+                          {t("continueAnswer")}
+                        </button>
+                        <span className="text-xs opacity-80">
+                          {t("continueAnswerHint")}
+                        </span>
+                      </div>
+                    ) : generationError.recoverable ? (
                       <div className="mt-1 text-xs opacity-80">
                         {t("generationRecoverable")}
                       </div>

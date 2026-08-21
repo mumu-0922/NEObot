@@ -1719,3 +1719,42 @@ migration `042_model_tool_capability_cache` drops only derived capability cache
 state; no chat, Knowledge, credential, or provider configuration data is lost.
 
 Full target contract: `mm-chat/docs/contracts/chat-tool-loop.md`.
+
+## Scenario: Continue an interrupted final answer without replaying Tools
+
+### Scope / trigger
+
+Apply when changing `PROVIDER_STREAM_INTERRUPTED`, Assistant regeneration,
+stream request fields, durable Agent event recovery, or post-Tool answer
+continuation.
+
+### Contract
+
+- `continuationOfMessageId` is Backend-authorized from one owned durable source
+  Assistant. Require `failed`, exact `PROVIDER_STREAM_INTERRUPTED`, non-empty
+  partial content, and the same submitted User parent.
+- Create a new sibling Assistant. Never mutate the failed source Turn, append to
+  its ended event stream, copy its Tool events, or persist a synthetic User row.
+- Fail closed when an Agent source has no durable events or any latest Tool
+  state is pending, running, awaiting approval, interrupted, or
+  `outcome_unknown`.
+- Use only bounded Backend-sanitized presentation evidence and frame it as
+  untrusted data. Raw Tool arguments/results remain unavailable by design.
+- Physically bypass every Tool/Search/RAG/Memory/direct-action/context-summary
+  preparation and call only plain `Provider.StreamChat`. Browser config cannot
+  re-enable a runtime.
+- Emit the exact preserved prefix before suffix deltas and persist their
+  combination. Another exact interruption may continue from the new longer
+  partial sibling.
+- Keep Regenerate distinct: it is the explicit full rerun and may execute Tools
+  again.
+
+### Required proof
+
+- Focused Handler tests prove plain-stream-only dispatch with a provider that
+  also implements `ToolRoundProvider` and would fail if called through a Tool
+  round.
+- Reject wrong role/status/error/parent, empty content, missing Agent events,
+  and every unresolved Tool state.
+- Prove source content/events remain unchanged and the continuation sibling has
+  no Tool events or Memory capture.

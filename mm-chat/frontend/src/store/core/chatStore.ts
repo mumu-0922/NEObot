@@ -192,6 +192,7 @@ interface SendServerMessageAndStreamOptions {
 interface RegenerateServerAssistantMessageOptions {
   sessionId: string;
   assistantMessageId: string;
+  continuationOfMessageId?: string;
   model?: string;
   provider?: ProviderRuntimeConfigDTO;
   config?: SessionConfig;
@@ -1739,6 +1740,7 @@ export const useChatStore = create<ChatState>()(
             {
               conversationId: options.sessionId,
               userMessageId,
+              continuationOfMessageId: options.continuationOfMessageId,
               modelRef,
               provider: options.provider,
               config: options.config

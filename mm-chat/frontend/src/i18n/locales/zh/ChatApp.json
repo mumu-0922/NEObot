@@ -2,6 +2,7 @@
   "errSaveChanges": "无法保存最新的对话更改，请重试。",
   "errSaveStopped": "无法保存已停止的回复，请重试。",
   "errRegenerate": "无法重新生成此回复，缺少之前的提问。",
+  "errContinue": "无法继续此回复，中断的回答或之前的提问不可用。",
   "errDeleteMessage": "无法删除该消息，对话已恢复。",
   "errDeleteChat": "无法删除该对话，请重试。",
   "errDuplicateChat": "无法复制该对话，请重试。",

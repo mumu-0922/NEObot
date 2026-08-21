@@ -97,3 +97,24 @@ transcript when a partial replay lacks the start event.
 Wrong: message.reasoning + grouped ProcessTracePanel + Tool count summary
 Correct: normalized durable events -> flat AgentTranscript nodes -> typed rows
 ```
+
+## 8. Safe answer continuation
+
+- Show `Continue answer` only for a server Assistant with exact
+  `PROVIDER_STREAM_INTERRUPTED`, non-empty partial content, and an available
+  continuation callback. Keep Regenerate visible as the separate full-rerun
+  action.
+- Continue sends the source Assistant ID as `continuationOfMessageId` through
+  the existing typed stream client and generation state machine. Do not create
+  a visible synthetic User message or mutate the source branch locally.
+- The Backend-created sibling becomes the active version. Its first streamed
+  delta is the preserved prefix; terminal replacement and reload must retain
+  the combined content and `continuationOfMessageId` metadata.
+- Disable duplicate submission through the existing active-generation guard.
+  A second interruption displays Continue on the new longer partial sibling.
+- Localized copy must state that Continue finishes prose without rerunning
+  completed Tools; Regenerate may rerun all execution steps.
+
+Required focused coverage: request serialization, store sibling projection,
+exact eligibility/copy in every locale, coexistence with Regenerate, and
+terminal replacement parity.

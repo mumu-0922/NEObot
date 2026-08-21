@@ -73,6 +73,7 @@ Content-Type: application/json
 ```ts
 export interface StreamAssistantMessageRequest {
   userMessageId: EntityId;
+  continuationOfMessageId?: EntityId;
   modelRef: ModelRef;
   config?: JsonObject;
   systemInstruction?: string;
@@ -100,6 +101,13 @@ Rules:
 - `modelRef` is required and both IDs must be non-empty. `modelRef.modelId` is
   sent to the resolved provider; there is no environment model fallback.
 - `idempotencyKey` is required and applies to the assistant streaming row only.
+- `continuationOfMessageId`, when present, requests answer-only recovery from
+  one exact durable Assistant message in the same Conversation. The source must
+  be `failed`, contain partial content, have the exact
+  `PROVIDER_STREAM_INTERRUPTED` error, and share the submitted User parent.
+  The Backend rejects unresolved, approval-waiting, interrupted, or
+  outcome-unknown Tool state; browser configuration is never continuation
+  authority.
 - Runtime mode authority is the persisted Conversation `config.toolMode`, not
   the stream request snapshot. Missing/invalid legacy mode means Agent. Stored
   Chat wins over a conflicting request and physically omits MCP, local Skill,
@@ -125,6 +133,23 @@ Rules:
 - If the frontend has only text content, it must first call
   `POST /v1/chat/conversations/{id}/messages`, then pass the returned user
   message ID into `/stream`.
+
+### 3.1 Answer-only continuation
+
+Continuation creates a new sibling Assistant version and leaves the failed
+source Message, Turn, and Tool events immutable. The Provider history ends with
+the exact preserved Assistant prefix plus one synthetic suffix-only User
+instruction. The request may include at most 64 KiB of Backend-sanitized typed
+Tool presentation evidence, explicitly framed as untrusted data.
+
+The Backend physically bypasses MCP, local/Host Skills, File, Terminal,
+Browser, Goal, Knowledge, Memory, direct-memory planning, built-in Search,
+external Search, context-summary generation, and memory capture. It invokes
+only the plain `Provider.StreamChat` path, emits the preserved prefix as the
+first delta, appends the new suffix, and persists the combined content. A
+second exact Provider interruption preserves the longer partial sibling so it
+can be continued again. `Regenerate` remains the separate full-rerun action and
+may intentionally execute Tools again.
 
 ## 4. SSE Events
 

@@ -2241,63 +2241,73 @@ const ChatApp = () => {
     }
   };
 
-  const handleRegenerate = async (messageId: string) => {
-    if (serverModeEnabled) {
-      const sessionId = visibleCurrentSessionId;
-      if (!sessionId || isGenerating) return;
-      const targetNode = visibleActiveMessageTree.nodesById[messageId];
-      const userMessageId = targetNode?.parentMessageId;
-      const userMessage = userMessageId
-        ? visibleActiveMessageTree.nodesById[userMessageId]?.message
-        : undefined;
-      if (!userMessage || userMessage.role !== "user") {
-        showActionError(t("errRegenerate"));
+  const rerunServerAssistantMessage = async (
+    messageId: string,
+    mode: "regenerate" | "continue",
+  ) => {
+    const sessionId = visibleCurrentSessionId;
+    if (!sessionId || isGenerating) return;
+    const targetNode = visibleActiveMessageTree.nodesById[messageId];
+    const userMessageId = targetNode?.parentMessageId;
+    const userMessage = userMessageId
+      ? visibleActiveMessageTree.nodesById[userMessageId]?.message
+      : undefined;
+    const fallbackError =
+      mode === "continue" ? t("errContinue") : t("errRegenerate");
+    if (!userMessage || userMessage.role !== "user") {
+      showActionError(fallbackError);
+      return;
+    }
+
+    const generation = beginActiveGeneration();
+    try {
+      const sessionForProcessing =
+        useChatStore
+          .getState()
+          .serverReadState.sessions.find((s) => s.id === sessionId) ||
+        currentSession;
+      const effectiveContext =
+        getEffectiveContextForSession(sessionForProcessing);
+      const systemInstruction = effectiveContext.systemInstruction;
+      const runtimeProvider =
+        await buildRuntimeProviderConfigForModel(selectedModel);
+      if (!isGenerationRunActive(generation)) return;
+
+      await regenerateServerAssistantMessage({
+        sessionId,
+        assistantMessageId: messageId,
+        continuationOfMessageId: mode === "continue" ? messageId : undefined,
+        model: selectedModel,
+        provider: runtimeProvider,
+        config: serverSessionChatConfig,
+        systemInstruction,
+        signal: generation.controller.signal,
+      });
+    } catch (error: any) {
+      if (error.name === "AbortError" || generation.controller.signal.aborted) {
         return;
       }
+      logChatAppError(`Server ${mode} failed:`, error);
+      showActionError(error instanceof Error ? error.message : fallbackError);
+    } finally {
+      finishActiveGeneration(generation);
+    }
+  };
 
-      const generation = beginActiveGeneration();
-      try {
-        const sessionForProcessing =
-          useChatStore
-            .getState()
-            .serverReadState.sessions.find((s) => s.id === sessionId) ||
-          currentSession;
-        const effectiveContext =
-          getEffectiveContextForSession(sessionForProcessing);
-        const systemInstruction = effectiveContext.systemInstruction;
-        const runtimeProvider =
-          await buildRuntimeProviderConfigForModel(selectedModel);
-        if (!isGenerationRunActive(generation)) return;
-
-        await regenerateServerAssistantMessage({
-          sessionId,
-          assistantMessageId: messageId,
-          model: selectedModel,
-          provider: runtimeProvider,
-          config: serverSessionChatConfig,
-          systemInstruction,
-          signal: generation.controller.signal,
-        });
-      } catch (error: any) {
-        if (
-          error.name === "AbortError" ||
-          generation.controller.signal.aborted
-        ) {
-          return;
-        }
-        logChatAppError("Server regeneration failed:", error);
-        showActionError(
-          error instanceof Error ? error.message : t("errRegenerate"),
-        );
-      } finally {
-        finishActiveGeneration(generation);
-      }
+  const handleRegenerate = async (messageId: string) => {
+    if (serverModeEnabled) {
+      await rerunServerAssistantMessage(messageId, "regenerate");
       return;
     }
     await generateModelResponseBranch(messageId, {
       errorMessage: t("errRegenerate"),
       logPrefix: "Regeneration",
     });
+  };
+
+  const handleContinueAnswer = async (messageId: string) => {
+    if (!serverModeEnabled) return;
+    await rerunServerAssistantMessage(messageId, "continue");
   };
 
   const handleVersionChange = (msgId: string, direction: "prev" | "next") => {
@@ -3195,6 +3205,11 @@ const ChatApp = () => {
                             isLast={isLastMessage}
                             isTyping={isGenerating && isLastMessage}
                             onRegenerate={() => handleRegenerate(msg.id)}
+                            onContinue={
+                              serverModeEnabled
+                                ? () => handleContinueAnswer(msg.id)
+                                : undefined
+                            }
                             onVersionChange={handleVersionChange}
                           />
                           {msg.role === "model" &&

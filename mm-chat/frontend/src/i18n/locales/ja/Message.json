@@ -34,6 +34,8 @@
   "imageProviderConnectionFailed": "画像プロバイダーへの接続が再試行後も失敗しました。時間をおいて再試行してください。",
   "imageProviderTimeout": "画像プロバイダーがタイムアウトしました。時間をおいて再生成してください。",
   "providerStreamInterrupted": "モデルプロバイダーの応答ストリームが中断されました。生成済みの一部は保持されています。",
+  "continueAnswer": "回答を続ける",
+  "continueAnswerHint": "完了済みのツールを再実行せず、回答のみを続けます。",
   "failedToSynthesize": "音声の合成に失敗しました: {error}",
   "noReadableText": "このメッセージには読み上げ可能な表示テキストがありません",
   "generationTime": "生成時間",

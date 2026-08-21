@@ -425,6 +425,7 @@ export interface AppendUserMessageInput {
 export interface StreamAssistantMessageInput {
   conversationId: string;
   userMessageId: string;
+  continuationOfMessageId?: string;
   modelRef: ModelRef;
   provider?: ProviderRuntimeConfigDTO;
   config?: Record<string, unknown>;

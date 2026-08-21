@@ -276,14 +276,15 @@ type fieldViolation struct {
 }
 
 type streamMessageRequest struct {
-	UserMessageID     string                               `json:"userMessageId"`
-	ModelRef          *ModelRef                            `json:"modelRef"`
-	Provider          *runtimeconfig.ProviderRuntimeConfig `json:"provider"`
-	SystemInstruction string                               `json:"systemInstruction"`
-	SystemPrompt      string                               `json:"systemPrompt"`
-	Config            map[string]any                       `json:"config"`
-	Metadata          map[string]any                       `json:"metadata"`
-	IdempotencyKey    string                               `json:"idempotencyKey"`
+	UserMessageID           string                               `json:"userMessageId"`
+	ContinuationOfMessageID string                               `json:"continuationOfMessageId"`
+	ModelRef                *ModelRef                            `json:"modelRef"`
+	Provider                *runtimeconfig.ProviderRuntimeConfig `json:"provider"`
+	SystemInstruction       string                               `json:"systemInstruction"`
+	SystemPrompt            string                               `json:"systemPrompt"`
+	Config                  map[string]any                       `json:"config"`
+	Metadata                map[string]any                       `json:"metadata"`
+	IdempotencyKey          string                               `json:"idempotencyKey"`
 }
 
 type mcpPreflightRequest struct {
@@ -1580,18 +1581,52 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeRequestDecodeError(w, newValidationError("INVALID_USER_MESSAGE_ID", "userMessageId must reference a user message"))
 		return
 	}
-	ragSelection, err := h.resolveConversationRAGSelection(
-		r.Context(),
-		conversationID,
-		request.Config,
-		request.Metadata,
-		userMessage.Metadata,
-	)
-	if err != nil {
-		writeServiceError(w, err)
-		return
+	var continuation *answerContinuation
+	request.ContinuationOfMessageID = strings.TrimSpace(request.ContinuationOfMessageID)
+	if request.ContinuationOfMessageID != "" {
+		if !isUUID(request.ContinuationOfMessageID) {
+			writeRequestDecodeError(w, newValidationError(
+				"INVALID_ANSWER_CONTINUATION_ID",
+				"continuationOfMessageId must be a UUID",
+			))
+			return
+		}
+		source, sourceErr := h.service.GetMessage(
+			r.Context(), conversationID, request.ContinuationOfMessageID,
+		)
+		if sourceErr != nil {
+			writeServiceError(w, sourceErr)
+			return
+		}
+		prepared, prepareErr := prepareAnswerContinuation(source, userMessage)
+		if prepareErr != nil {
+			writeServiceError(w, prepareErr)
+			return
+		}
+		continuation = &prepared
+	}
+	ragSelection := ragSelection{}
+	if continuation == nil {
+		ragSelection, err = h.resolveConversationRAGSelection(
+			r.Context(),
+			conversationID,
+			request.Config,
+			request.Metadata,
+			userMessage.Metadata,
+		)
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
 	}
 	if isImageGenerationModel(modelRef.ModelID) {
+		if continuation != nil {
+			writeRequestDecodeError(w, newValidationError(
+				"ANSWER_CONTINUATION_NOT_ALLOWED",
+				"image generation replies must be regenerated",
+			))
+			return
+		}
 		h.streamImageGeneration(
 			w,
 			r,
@@ -1624,13 +1659,16 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			return
 		}
 	}
-	attachmentResolution, err := h.resolveProviderMessageAttachments(
-		r.Context(),
-		userMessage,
-	)
-	if err != nil {
-		writeServiceError(w, err)
-		return
+	attachmentResolution := providerAttachmentResolution{}
+	if continuation == nil {
+		attachmentResolution, err = h.resolveProviderMessageAttachments(
+			r.Context(),
+			userMessage,
+		)
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
 	}
 	providerAttachments := attachmentResolution.Images
 	conversationMessages, err := h.service.ListMessages(r.Context(), conversationID)
@@ -1645,13 +1683,19 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	}
 	requestedToolMode := requestedChatToolMode(conversation.Metadata)
 	searchMode := searchModeFromConfig(request.Config)
-	toolRoundCapable := h.resolveToolRoundCapabilityForMode(
-		r.Context(),
-		streamProvider,
-		providerResolution,
-		*modelRef,
-		requestedToolMode,
-	) == ToolCapabilitySupported
+	if continuation != nil {
+		searchMode = chatSearchModeOff
+	}
+	toolRoundCapable := false
+	if continuation == nil {
+		toolRoundCapable = h.resolveToolRoundCapabilityForMode(
+			r.Context(),
+			streamProvider,
+			providerResolution,
+			*modelRef,
+			requestedToolMode,
+		) == ToolCapabilitySupported
+	}
 	effectiveToolMode := effectiveChatToolMode(conversation.Metadata, toolRoundCapable)
 	agentMode := effectiveToolMode == chatToolModeAgent
 	useLiveKnowledgeTool := ragSelection.Enabled && toolRoundCapable &&
@@ -1798,6 +1842,16 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		}
 	}
 
+	assistantMetadata := map[string]any{
+		"runId":             runID,
+		"config":            ensureObject(request.Config),
+		"requestedToolMode": string(requestedToolMode),
+		"toolMode":          string(effectiveToolMode),
+	}
+	if continuation != nil {
+		assistantMetadata[continuationOfMessageIDMetadataKey] = continuation.source.ID
+		assistantMetadata[continuationModeMetadataKey] = answerOnlyContinuationMode
+	}
 	assistantMessage, err := h.service.CreateAssistantMessage(
 		r.Context(),
 		conversationID,
@@ -1806,13 +1860,8 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			ParentMessageID: userMessage.ID,
 			ModelProvider:   modelRef.ProviderID,
 			ModelID:         modelRef.ModelID,
-			Metadata: map[string]any{
-				"runId":             runID,
-				"config":            ensureObject(request.Config),
-				"requestedToolMode": string(requestedToolMode),
-				"toolMode":          string(effectiveToolMode),
-			},
-			IdempotencyKey: request.IdempotencyKey,
+			Metadata:        assistantMetadata,
+			IdempotencyKey:  request.IdempotencyKey,
 		},
 	)
 	if err != nil {
@@ -1996,7 +2045,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		userMessage.Content,
 	)
 	directMemoryAction := directMemoryActionPreparation{}
-	if !memoryToolRuntime.enabled() {
+	if continuation == nil && !memoryToolRuntime.enabled() {
 		directMemoryAction = h.prepareDirectMemoryAction(
 			r.Context(),
 			conversationID,
@@ -2071,7 +2120,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	}
 
 	memoryPreparation := durableMemoryPreparation{}
-	if !memoryToolRuntime.enabled() {
+	if continuation == nil && !memoryToolRuntime.enabled() {
 		providerSystemPrompt, memoryPreparation = h.prepareDurableMemory(
 			r.Context(),
 			userMessage.Content,
@@ -2090,19 +2139,32 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		localSkillRuntime.consumeJobCompletionPrompt(),
 	)
 	providerMessages := buildProviderConversationMessages(
-		conversationMessages,
-		userMessage.ID,
-		providerPrompt,
-		providerAttachments,
+		conversationMessages, userMessage.ID, providerPrompt, providerAttachments,
 	)
-	contextPreparation := h.prepareConversationContext(
-		r.Context(),
-		conversationID,
-		*modelRef,
-		streamProvider,
-		providerSystemPrompt,
-		providerMessages,
-	)
+	if continuation != nil {
+		providerSystemPrompt = appendAnswerContinuationSystemInstruction(providerSystemPrompt)
+		providerMessages = buildProviderConversationMessages(
+			conversationMessages, continuation.source.ID, continuation.prefix, nil,
+		)
+		providerMessages = append(providerMessages, ProviderMessage{
+			Role: "user", Content: answerContinuationPrompt(*continuation),
+		})
+		providerPrompt = answerContinuationPrompt(*continuation)
+		providerAttachments = nil
+	}
+	contextPreparation := conversationContextPreparation{
+		Messages: providerMessages, SystemPrompt: providerSystemPrompt, Mode: "full",
+	}
+	if continuation == nil {
+		contextPreparation = h.prepareConversationContext(
+			r.Context(),
+			conversationID,
+			*modelRef,
+			streamProvider,
+			providerSystemPrompt,
+			providerMessages,
+		)
+	}
 	providerMessages = contextPreparation.Messages
 	providerSystemPrompt = contextPreparation.SystemPrompt
 	preludeAgentEvents := make([]ChatAgentEvent, 0, 2)
@@ -2170,6 +2232,10 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		metadata = withDurableMemoryMetadata(metadata, memoryPreparation)
 		metadata["requestedToolMode"] = string(requestedToolMode)
 		metadata["toolMode"] = string(effectiveToolMode)
+		if continuation != nil {
+			metadata[continuationOfMessageIDMetadataKey] = continuation.source.ID
+			metadata[continuationModeMetadataKey] = answerOnlyContinuationMode
+		}
 		return withDirectMemoryActionMetadata(metadata, directMemoryAction)
 	}
 
@@ -2609,6 +2675,25 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	}
 
 	var content strings.Builder
+	if continuation != nil {
+		content.WriteString(continuation.prefix)
+		sequence++
+		if err := writeSSEEvent(w, "message.delta", streamEvent{
+			Type:           "message.delta",
+			RunID:          runID,
+			ConversationID: conversationID,
+			MessageID:      assistantMessage.ID,
+			Sequence:       sequence,
+			CreatedAt:      formatTime(time.Now()),
+			Delta:          continuation.prefix,
+		}); err != nil {
+			cancelTrackedAfterWriteError(
+				conversationID, assistantMessage.ID, runID, content.String(),
+			)
+			return
+		}
+		flusher.Flush()
+	}
 	toolExecutionCancelled := false
 	for providerEvent := range events {
 		if providerEvent.Round > 0 {
@@ -3195,11 +3280,14 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		}
 	}
 
-	completedContent := reconcileProviderSourceMarkers(
-		content.String(),
-		autoDecision,
-		webSearchResult,
-	)
+	completedContent := content.String()
+	if continuation == nil {
+		completedContent = reconcileProviderSourceMarkers(
+			completedContent,
+			autoDecision,
+			webSearchResult,
+		)
+	}
 	completedDecision := autoDecision.completed(completedContent)
 	fusionPlan = reconcileCompletedSourceFusionAuthority(
 		fusionPlan,
@@ -3243,11 +3331,14 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			return
 		}
 	}
-	memoryCapture, err := newDurableMemoryCapture(
-		userMessage.ID,
-		*modelRef,
-		request.Provider,
-	)
+	var memoryCapture *MemoryCaptureInput
+	if continuation == nil {
+		memoryCapture, err = newDurableMemoryCapture(
+			userMessage.ID,
+			*modelRef,
+			request.Provider,
+		)
+	}
 	if err != nil {
 		finalizeTracked(
 			context.Background(),
@@ -3278,6 +3369,10 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		flusher.Flush()
 		return
 	}
+	var memoryUsages []MemoryUsageInput
+	if continuation == nil {
+		memoryUsages = durableMemoryUsageInputsForRun(memoryPreparation, memoryToolRuntime)
+	}
 	assistantMessage, err = finalizeTracked(
 		context.Background(),
 		conversationID,
@@ -3296,10 +3391,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				trace,
 			),
 			MemoryCapture: memoryCapture,
-			MemoryUsages: durableMemoryUsageInputsForRun(
-				memoryPreparation,
-				memoryToolRuntime,
-			),
+			MemoryUsages:  memoryUsages,
 		},
 	)
 	if err != nil {
@@ -4297,7 +4389,7 @@ func chatStreamErrorBody(err error, deadlineExceeded bool) ErrorBody {
 		switch category {
 		case ProviderFailureStreamReadFailed, ProviderFailureStreamIncomplete:
 			return ErrorBody{
-				Code:    "PROVIDER_STREAM_INTERRUPTED",
+				Code:    providerStreamInterruptedCode,
 				Message: "provider response stream was interrupted; partial output was preserved",
 			}
 		}

@@ -2,6 +2,7 @@
   "errSaveChanges": "Couldn't save the latest chat changes. Please try again.",
   "errSaveStopped": "Couldn't save the stopped response. Please try again.",
   "errRegenerate": "Couldn't regenerate this reply. Previous prompt is missing.",
+  "errContinue": "Couldn't continue this reply. The interrupted answer or previous prompt is unavailable.",
   "errDeleteMessage": "Couldn't delete the message. The chat was restored.",
   "errDeleteChat": "Couldn't delete the chat. Please try again.",
   "errDuplicateChat": "Couldn't duplicate the chat. Please try again.",

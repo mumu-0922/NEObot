@@ -999,6 +999,96 @@ describe("chat store server read path", () => {
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
   });
 
+  it("continues an interrupted server answer as a sibling without changing the source", async () => {
+    const m1 = makeMessage("m1", "user");
+    const m2 = {
+      ...makeMessage("m2", "model"),
+      content: "partial ",
+      parentMessageId: "m1",
+      generationError: {
+        code: "PROVIDER_STREAM_INTERRUPTED",
+        message: "interrupted",
+        recoverable: true,
+      },
+    };
+    const branchTree = appendMessageToParent(
+      normalizeSessionMessageTree([m1]),
+      m2,
+      "m1",
+    );
+    mocks.streamService.streamAssistantMessage.mockImplementationOnce(
+      async (input, handlers) => {
+        handlers?.onStarted?.({
+          type: "message.started",
+          runId: "run-continue",
+          messageId: "m3",
+          sequence: 1,
+        });
+        handlers?.onDelta?.({
+          type: "message.delta",
+          runId: "run-continue",
+          messageId: "m3",
+          sequence: 2,
+          delta: "partial ",
+        });
+        handlers?.onDelta?.({
+          type: "message.delta",
+          runId: "run-continue",
+          messageId: "m3",
+          sequence: 3,
+          delta: "answer",
+        });
+        return {
+          status: "completed",
+          message: {
+            ...makeMessage("m3", "model"),
+            content: "partial answer",
+            parentMessageId: input.userMessageId,
+            metadata: { continuationOfMessageId: "m2" },
+          },
+        };
+      },
+    );
+    useChatStore.setState({
+      serverReadState: {
+        ...makeEmptyServerReadState(),
+        sessions: [{ ...makeServerSession("c1"), messageCount: 2 }],
+        currentSessionId: "c1",
+        activeMessages: [m1, m2],
+        activeMessageTree: branchTree,
+      },
+      selectedModel: "openai:gpt-5.5",
+    });
+
+    await expect(
+      useChatStore.getState().regenerateServerAssistantMessage({
+        sessionId: "c1",
+        assistantMessageId: "m2",
+        continuationOfMessageId: "m2",
+        model: "openai:gpt-5.5",
+      }),
+    ).resolves.toMatchObject({ status: "completed" });
+
+    expect(mocks.streamService.streamAssistantMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "c1",
+        userMessageId: "m1",
+        continuationOfMessageId: "m2",
+      }),
+      expect.any(Object),
+    );
+    const state = useChatStore.getState();
+    expect(state.serverReadState.activeMessages).toEqual([
+      m1,
+      expect.objectContaining({
+        id: "m3",
+        content: "partial answer",
+        parentMessageId: "m1",
+      }),
+    ]);
+    expect(branchTree.nodesById.m2?.message).toEqual(m2);
+  });
+
   it("appends server user messages to the server snapshot only", async () => {
     const localMessage = makeMessage("local-m1", "user");
     useChatStore.setState({
