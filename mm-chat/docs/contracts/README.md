@@ -11,6 +11,7 @@ Contract documents define stable boundaries before implementation starts.
 - [`chat-tool-loop.md`](./chat-tool-loop.md) — G19 provider-normalized multi-round Tool execution, strict three-state Search authority, reasoning/process SSE and persistence, approval classes, Knowledge/Web tools, and citation truth.
 - [`mcp-tools-api.md`](./mcp-tools-api.md) — `/v1/mcp/*` product API, selection/grant authority, credential/OAuth boundaries, call timeline, strict errors, and chat-stream integration.
 - [`agent-runtime.md`](./agent-runtime.md) — unified Chat/Agent Tool policy, current Hermes-style `local_direct` execution, artifacts, and legacy control-plane retirement.
+- [`agent-host-protocol.md`](./agent-host-protocol.md) — versioned private Unix-socket Host identity, capability, canonical workspace-resolution, authentication, limits, and fail-closed forward contract.
 - [`local-skill-runtime.md`](./local-skill-runtime.md) — owner-installed Skill discovery, progressive file loading, bounded direct terminal execution, cancellation, and honest non-Sandbox status.
 - [`schemas/`](./schemas/) — strict Draft 2020-12 Skill Runtime Manifest schema; positive/negative fixtures live under [`fixtures/agent-runtime/`](./fixtures/agent-runtime/).
 - [`conversation-context.md`](./conversation-context.md) — G11.13 server current-branch replay, model-aware input budgets, versioned Postgres rolling summaries, exact prefix validation, guarded untrusted-history injection, and recent-tail degradation.

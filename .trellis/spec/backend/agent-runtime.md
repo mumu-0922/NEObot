@@ -247,8 +247,9 @@ Cross-layer changes also require frontend format/lint/typecheck/test/build and
 ### Wrong vs correct
 
 ```text
-Wrong: Agent Center -> OCI Runner -> Broker -> downloadable host path
-Correct: Chat Agent -> bounded local Tool -> user-owned File -> message artifact
+Wrong: replace current execution with an unproven remote control service
+Correct: keep current local_direct authority until the dark Host protocol,
+         durable workspace binding, execution parity, and permission probes pass
 
 Wrong: inspect Shell command text -> guess mutation -> force verification
 Correct: foreground result -> synchronous boundary; background Job -> exact completed output
@@ -264,4 +265,110 @@ Correct: retain immutable events -> merge display cards by exact jobId
 
 Wrong: DROP ... CASCADE after a broad agent_* match
 Correct: lock -> exact manifest/data validation -> explicit drops -> forward repair -> head 101
+```
+
+## Scenario: establish the dark WSL Agent Host control plane
+
+### Scope / trigger
+
+Apply when changing `cmd/agent-host`, `internal/agenthost`, the internal Host
+Unix-socket protocol, Host workspace canonicalization, or the pre-routing
+Runner capability boundary.
+
+### Signatures
+
+```text
+GET  /internal/v1/capabilities
+POST /internal/v1/workspaces/resolve
+
+Protocol version: 1
+Runner id:         [a-z][a-z0-9-]{2,63}
+Request limit:     16 KiB
+Response limit:    64 KiB
+Workspace path:    1..4096 valid UTF-8 bytes without controls
+```
+
+### Contracts
+
+- Transport is HTTP/1.1 over a private Unix socket; there is no TCP listener.
+- Every request uses an independent bearer token. Never reuse an MCP token,
+  Provider credential, browser Session, or Backend API token.
+- Load the token only from an absolute canonical non-symlink regular file with
+  exact mode `0600`, owner equal to the effective UID, and a bounded value.
+  Open the final component with `O_NOFOLLOW` and validate the opened file.
+- Pin the expected `runnerId` on every successful client response. Unknown
+  JSON fields, duplicate keys, trailing documents, oversized bodies, malformed
+  capability labels/modes/limits, unknown remote error codes, and invalid
+  workspace fingerprints are protocol failures.
+- `capabilities` advertises only implemented facts. This foundation reports
+  `workspaceResolve=true`, but `execution=false`, no picker/browser, and an
+  empty `permissionModes` list.
+- The Host alone converts and probes Host paths. Invoke the fixed absolute
+  `wslpath` executable with `-u`, `--`, and the path as a distinct argv value;
+  never invoke a shell. Resolve symlinks, require an existing absolute
+  directory, and classify original Windows or `/mnt/<drive>` paths as
+  `windows-mounted`.
+- Workspace identity is
+  `sha256(runnerId || NUL || canonicalPath)`. The client recomputes the exact
+  lowercase fingerprint. It is a deduplication key, not integrity or inode
+  proof; every future execution must re-resolve durable authority.
+- Error bodies use allowlisted stable codes and generic messages. Do not return
+  submitted Host paths, token material, converter output, or raw OS errors.
+- This foundation does not route existing Tools. Once later Host binding is
+  active, Runner loss fails closed, outcome-unknown work is not retried, and a
+  Host-bound Conversation never falls back to Docker `local_direct`.
+
+### Validation and error matrix
+
+| Condition | Required result |
+| --- | --- |
+| missing/wrong bearer token | `401 AGENT_HOST_UNAUTHORIZED`; no token echo |
+| query, unknown field, duplicate field, trailing JSON, oversize | generic `400 AGENT_HOST_REQUEST_INVALID` |
+| protocol version other than `1` | `409 AGENT_HOST_PROTOCOL_UNSUPPORTED` |
+| missing/non-directory/relative/control path | sanitized `WORKSPACE_PATH_INVALID` or `WORKSPACE_PATH_UNAVAILABLE` |
+| Windows input without working fixed `wslpath` | `503 WINDOWS_PATH_INTEROP_UNAVAILABLE` |
+| response Runner id differs from the pinned id | client `ErrHostProtocol` |
+| fingerprint is non-hex, uppercase, wrong length, or does not recompute | client `ErrHostProtocol` |
+| socket unavailable/cancelled request | unavailable/context error; no fallback |
+
+### Good / base / bad cases
+
+- **Good**: `/home/user/project`, its symlink alias, and the matching canonical
+  path resolve to one Runner-bound fingerprint without changing the project.
+- **Good**: `D:\\project` is passed as one `wslpath` argv value and returns a
+  canonical `/mnt/d/project` descriptor while retaining the Windows display
+  path.
+- **Base**: the Host is stopped; existing `local_direct` conversations remain
+  unchanged because routing is still dark.
+- **Bad**: advertise `workspace-write` before filesystem and shell sandbox
+  probes enforce it on both WSL filesystems and DrvFS.
+- **Bad**: trust a path, fingerprint, error message, or Runner identity merely
+  because it arrived from the authenticated socket.
+
+### Tests required
+
+```bash
+cd mm-chat/backend
+go test -race ./internal/agenthost ./cmd/agent-host
+go vet ./internal/agenthost ./cmd/agent-host
+```
+
+Tests must cover bearer failures/non-disclosure, strict JSON including
+duplicates and limits, stable error mapping, Runner mismatch, a real
+Unix-socket client/server round trip, active/stale/replaced sockets, unsafe
+socket/token ownership/modes/symlinks, Windows conversion, symlink alias
+deduplication, invalid paths, exact fingerprint recomputation, and Host-path
+non-disclosure.
+
+### Wrong vs correct
+
+```text
+Wrong: exec.Command("sh", "-c", "wslpath -u " + userPath)
+Correct: exec.CommandContext(ctx, absoluteWslpath, "-u", "--", userPath)
+
+Wrong: authenticated socket response -> trust runnerId/path/fingerprint/message
+Correct: strict bounded response -> pin runnerId -> validate facts -> recompute fingerprint
+
+Wrong: Host unavailable -> silently execute the same Tool inside Docker
+Correct: dark phase leaves old conversations unchanged; future Host-bound work fails closed
 ```

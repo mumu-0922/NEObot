@@ -16,6 +16,7 @@ Outbox state.
 | [`single-server-compose.md`](./single-server-compose.md)               | Compose topology, profiles, Phase 15.2B dark-run Worker boundary, first boot, release, and rollback checklist.                              |
 | [`mcp-runner.md`](./mcp-runner.md)                                     | MCP manifest validation, optional hardened stdio Runner, token/image preflight, lifecycle, retention, and rollback.                         |
 | [`agent-runtime.md`](./agent-runtime.md)                               | Unified Chat Agent runtime, local Tool wiring, Skill Store, artifacts, legacy retirement, backup/restore, and rollback.                  |
+| [`agent-host-runner.md`](./agent-host-runner.md)                       | Dark ordinary-user WSL Host foundation, private Unix-socket lifecycle, identity/token handling, focused verification, and rollback.    |
 | [`local-skill-runtime.md`](./local-skill-runtime.md)                   | No-sudo local Skill workspace setup, `local_direct` limits, operation, warning, and rollback.                                           |
 | [`postgres-single-server.md`](./postgres-single-server.md)             | Current Postgres runtime covering private ports, DB principals, health checks, migration head, backup/restore, image fencing, and rollback. |
 | [`redis-temporary-state.md`](./redis-temporary-state.md)               | Phase 7 Redis runbook for non-authoritative temporary state, stream cancellation flags, private-network rules, and flush behavior.          |
@@ -34,6 +35,10 @@ Outbox state.
   described in [`local-skill-runtime.md`](./local-skill-runtime.md). There is no
   OCI executor, per-Skill Sandbox, separate Runner, Cron/Learning worker, or
   fallback Agent service.
+- The separately managed WSL Agent Host foundation is dark and is not wired to
+  Backend execution. It currently reports identity/capabilities and resolves
+  canonical Host workspace paths only; it advertises no execution or enforced
+  permission modes.
 - Runtime data and local backups belong under `mm-chat/data/` and
   `mm-chat/backup/`, both gitignored.
 - MinIO must remain private; the Go backend is the public file authorization

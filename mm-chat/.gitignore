@@ -5,6 +5,7 @@
 .env.*.local
 
 data/
+.runtime/
 backup/
 secrets/
 

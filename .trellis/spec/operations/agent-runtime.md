@@ -115,3 +115,115 @@ Correct: normal-user bind roots + Backend UID/GID + explicit local limits
 Wrong: run 098.down and expect the old database authority to return
 Correct: restore the matched pre-098 PostgreSQL/MinIO set and previous image
 ```
+
+## Scenario: operate the dark WSL Agent Host foundation
+
+### Scope / trigger
+
+Apply when changing `scripts/agent-host.sh`, `scripts/test-agent-host.sh`, Host
+runtime paths, identity/token lifecycle, or the future Backend socket mount.
+
+### Signatures
+
+```bash
+cd mm-chat
+./scripts/agent-host.sh build
+./scripts/agent-host.sh start
+./scripts/agent-host.sh prepare
+./scripts/agent-host.sh status
+./scripts/agent-host.sh stop
+./scripts/agent-host.sh restart
+```
+
+Default runtime state:
+
+```text
+.runtime/agent-host/                 mode 0700, disposable process state
+secrets/agent-host-token             mode 0600, persistent, create-if-absent
+secrets/agent-host-runner-id         mode 0600, persistent, create-if-absent
+```
+
+### Contracts
+
+- Run as the ordinary WSL user. Both the wrapper and binary refuse effective
+  UID `0`; do not use `sudo` as an ownership repair.
+- Do not require a user systemd manager. The wrapper owns build, `nohup` plus
+  `setsid` detachment,
+  startup, exact PID recording, bounded authenticated health, stop, and stale
+  PID/socket handling.
+- Keep `.runtime/` gitignored. Keep the stable token and Runner id in the
+  existing protected `secrets/` tree because the current root-owned `data/`
+  directory is not writable by the ordinary Host user. Never chmod/chown or
+  delete `data/` to make the Runner start.
+- Generate token and Runner id only when absent via an exclusive same-directory
+  install. Never overwrite, rotate, print, stage, or delete them implicitly.
+- Require absolute, canonical non-symlink runtime/identity paths, owner match,
+  private modes, and non-group/other-writable identity parents.
+- A PID is signalable only when `/proc/<pid>/cmdline` names the exact configured
+  binary and it is not a zombie. A malformed or unrelated live PID fails
+  closed; the wrapper does not clean it up.
+- Build through a temporary binary and persist a bounded fingerprint of the
+  Host Go sources/module files. `prepare` reuses a healthy process only when
+  protocol, Runner id, and source fingerprint all match; changed code restarts
+  the exact managed process.
+- The dark foundation is not mounted into the Docker Backend and changes no
+  live Tool routing. A future Compose slice must mount only the exact socket
+  directory plus independent token, add a default-off feature flag and health
+  projection, and preserve fail-closed Host-bound routing.
+- Rollback stops the process and reverts source. Preserve persistent identity
+  files unless the owner explicitly authorizes credential destruction.
+
+### Validation and error matrix
+
+| Condition | Required result |
+| --- | --- |
+| wrapper or binary runs as root | refuse before listening |
+| state directory is symlinked, wrong owner, or not `0700` | refuse without repair |
+| token/Runner id is unsafe or malformed | refuse without overwrite |
+| healthy protocol/id/version already active | reuse the process |
+| managed old-version process | bounded stop, then start the new build |
+| PID points to unrelated live process | refuse to signal or remove PID file |
+| owned stale socket | same-file recheck, replace, bind mode `0600` |
+| active socket | refuse a second listener |
+| Host stopped during dark rollout | no effect on current Backend/Frontend/DB |
+
+### Good / base / bad cases
+
+- **Good**: `prepare`, `status`, repeated `prepare`, and `stop` complete as the
+  normal user while token/Runner id remain byte-stable.
+- **Base**: no systemd user manager exists; wrapper lifecycle remains complete.
+- **Base**: `mm-chat/data/` is root-owned and non-writable; the wrapper uses
+  `.runtime/` without changing protected runtime ownership.
+- **Bad**: `sudo mkdir/chown mm-chat/data` or delete a PID/socket/token merely
+  because startup failed.
+- **Bad**: mount the Host user's Home directory, Docker socket, unrelated
+  secrets, or arbitrary parent directory into Backend.
+
+### Tests required
+
+```bash
+cd mm-chat
+bash -n scripts/agent-host.sh scripts/test-agent-host.sh
+bash scripts/test-agent-host.sh
+cd backend
+go test -race ./internal/agenthost ./cmd/agent-host
+go vet ./internal/agenthost ./cmd/agent-host
+```
+
+The lifecycle smoke uses only a temporary tree and must prove build, start,
+authenticated status, idempotent same-version prepare, explicit restart,
+identity/token preservation, and stop. A source-deploy smoke may then run the
+default `prepare` and `status`; it must not recreate Compose services.
+
+### Wrong vs correct
+
+```text
+Wrong: sudo ./scripts/agent-host.sh prepare
+Correct: ./scripts/agent-host.sh prepare as the project-owning WSL user
+
+Wrong: kill $(cat pid) without verifying process identity
+Correct: parse private PID -> verify exact /proc cmdline -> signal -> recheck
+
+Wrong: Runner rollout -> rebuild/recreate all Docker services
+Correct: focused Go/lifecycle gates -> start dark Host only -> leave live Compose unchanged
+```
