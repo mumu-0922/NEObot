@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 77
+- **Total Sessions**: 78
 - **Last Active**: 2026-08-22
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~993 | Active |
+| `journal-2.md` | ~1026 | Active |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 78 | 2026-08-22 | Make recall filtering Provider configurable | `9de09b84` | `main` |
 | 77 | 2026-08-22 | 修复 RAG 短重叠导致的 DOCX 入库失败 | `ce477a68` | `main` |
 | 76 | 2026-08-22 | Repair RAG DOCX failure state | `95f57987` | `main` |
 | 75 | 2026-08-21 | Preserve regenerated continuations after reload | `6b687638` | `main` |

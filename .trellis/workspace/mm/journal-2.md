@@ -991,3 +991,36 @@ Admitted empty Word lastRenderedPageBreak markers, projected terminal RAG failur
 ### Next Steps
 
 - None - task complete
+
+
+## Session 78: Make recall filtering Provider configurable
+
+**Date**: 2026-08-22
+**Task**: Make recall filtering Provider configurable
+**Branch**: `main`
+
+### Summary
+
+Added migration 105 and server-owned recallFiltering authority, fixed-Luna Provider routing and health reporting, selectable settings UI, regression coverage, live paired backup/deployment, and switched the persisted authority to PJRSVY:gpt-5.6-luna without a paid Provider call.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9de09b84` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
