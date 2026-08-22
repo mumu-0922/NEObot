@@ -31,6 +31,7 @@ from mm_chat_rag.offline_parser.canonical import (
 from mm_chat_rag.retry import PermanentJobError
 from mm_chat_rag.semantic_chunking import SemanticBoundaryPlanner
 from mm_chat_rag.structure_chunking import (
+    OVERLAP_MIN_TOKENS,
     STRUCTURE_CHUNK_PROFILE_HASH,
     ChunkFragmentPlan,
     DerivedContextPlan,
@@ -50,7 +51,6 @@ _ARTIFACT_NAMESPACE: Final = uuid.UUID("55c9a965-b2c6-583b-9463-075384a39d7b")
 _BBOX_COORDINATES: Final = 4
 _PAGE_DIMENSIONS: Final = 2
 _MAX_HEADING_LEVEL: Final = 9
-_MIN_OVERLAP_TOKENS: Final = 60
 _MIN_BOILERPLATE_PAGES: Final = 3
 _BOILERPLATE_PAGE_RATIO_NUMERATOR: Final = 1
 _BOILERPLATE_PAGE_RATIO_DENOMINATOR: Final = 2
@@ -970,7 +970,7 @@ def _chunk_parts(
             if (
                 child_ordinal is None
                 or child_ordinal < 1
-                or overlap_tokens < _MIN_OVERLAP_TOKENS
+                or overlap_tokens < OVERLAP_MIN_TOKENS
             ):
                 _reject(MINERU_STRUCTURE_ARTIFACT_INVALID)
             fragment.update(

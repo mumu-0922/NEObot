@@ -34,6 +34,7 @@ CHILD_HARD_MAX_TOKENS: Final = 650
 PARENT_TARGET_MIN_TOKENS: Final = 1200
 PARENT_TARGET_MAX_TOKENS: Final = 1600
 PARENT_HARD_MAX_TOKENS: Final = 2000
+OVERLAP_MIN_TOKENS: Final = 60
 OVERLAP_TARGET_TOKENS: Final = 64
 OVERLAP_MAX_TOKENS: Final = 100
 DERIVED_CONTEXT_MAX_TOKENS: Final = 96
@@ -925,14 +926,18 @@ def _overlap_suffix(
     tokenizer: FrozenTokenizer,
 ) -> tuple[_Atom, ...]:
     selected: list[_Atom] = []
+    selected_tokens = 0
     for atom in reversed(previous_primary):
         candidate = (atom, *selected)
         tokens = _chunk_token_count(units, candidate, tokenizer)
         if tokens > OVERLAP_MAX_TOKENS:
             break
         selected.insert(0, atom)
+        selected_tokens = tokens
         if tokens >= OVERLAP_TARGET_TOKENS:
             break
+    if selected and selected_tokens < OVERLAP_MIN_TOKENS:
+        return ()
     return tuple(selected)
 
 

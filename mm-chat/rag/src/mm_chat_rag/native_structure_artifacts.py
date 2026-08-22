@@ -35,6 +35,7 @@ from mm_chat_rag.offline_parser.native.model import (
 )
 from mm_chat_rag.retry import PermanentJobError
 from mm_chat_rag.structure_chunking import (
+    OVERLAP_MIN_TOKENS,
     STRUCTURE_CHUNK_PROFILE_HASH,
     ChunkFragmentPlan,
     DerivedContextPlan,
@@ -51,7 +52,6 @@ NATIVE_STRUCTURE_ARTIFACT_INVALID: Final = "NATIVE_STRUCTURE_ARTIFACT_INVALID"
 NATIVE_STRUCTURE_CHUNK_PROFILE_HASH: Final = STRUCTURE_CHUNK_PROFILE_HASH
 
 _ARTIFACT_NAMESPACE: Final = uuid.UUID("b497f9f9-0e8a-5682-85ab-43c6d631997a")
-_MIN_OVERLAP_TOKENS: Final = 60
 _AGGREGATE_KINDS: Final = frozenset(
     {NativeNodeKind.LIST_ITEM, NativeNodeKind.TABLE_ROW}
 )
@@ -738,7 +738,7 @@ def _chunk_fragments(
             if (
                 child_ordinal is None
                 or child_ordinal <= 0
-                or overlap_token_count < _MIN_OVERLAP_TOKENS
+                or overlap_token_count < OVERLAP_MIN_TOKENS
             ):
                 _reject(NATIVE_STRUCTURE_ARTIFACT_INVALID)
             fragment.update(

@@ -370,6 +370,13 @@ replace the failed source report.
   relationship, or executable authority. Attributes, nested elements, or text
   under that marker are malformed and must still fail closed. Unknown run
   children, active content, and deleted revisions remain unsupported.
+- Structure planning may emit explicit adjacent Child overlap only when exact
+  prior-child fragments total `60..100` frozen-tokenizer tokens. If whole
+  fragments cannot reach 60 without exceeding 100, the planner must emit zero
+  overlap for that transition. Never synthesize a partial prior fragment,
+  relax the artifact mapper below 60, or reject the complete document for this
+  bounded retrieval-quality fallback. Native and MinerU mappers must import the
+  shared planner minimum instead of duplicating it.
 - A bound `parse|passage_embedding` Job that becomes terminal `failed` through
   explicit finish or lease-expiry/max-attempt exhaustion must atomically mark
   its eligible `uploaded|processing` Document Version `failed` with the same
@@ -743,6 +750,8 @@ replace the failed source report.
 | Embedded bytes for an applied migration differ from `schema_migrations.checksum`           | Deployment fails before later migrations; restore the exact applied bytes rather than editing the manifest             |
 | Empty `w:lastRenderedPageBreak` appears inside a DOCX run                                  | Ignore only the marker and preserve extracted text/node structure                                                        |
 | The marker has attributes, children, or text, or another unknown run child appears         | Fail closed with the existing stable parser error; do not broaden arbitrary OOXML admission                              |
+| Exact prior-child atoms total 1..59 overlap tokens and the next atom would exceed 100       | Emit no overlap for that Child transition; continue deterministic artifact construction                                  |
+| An explicit Native/MinerU overlap fragment reports fewer than 60 tokens                     | Reject the malformed artifact; do not weaken the mapper to accept producer drift                                         |
 | Parse/embedding finish is retryable and attempts remain                                    | Return the Job to `pending`; keep the Version `uploaded|processing`                                                       |
 | Parse/embedding failure is terminal or an expired lease exhausts attempts                  | Atomically set Job and eligible pending Version to `failed` with a stable error code                                      |
 | Replacement Version fails while a current active Version exists                            | Keep parent/current Version active; expose the failed pending Version for reprocess                                       |
@@ -822,6 +831,15 @@ Every SECURITY DEFINER function must pin the current schema followed by
 - **Good:** an empty Word pagination hint is ignored, a terminal parse failure
   marks the pending Version failed, and the UI offers reprocess without hiding
   an older active Version.
+- **Good:** exact preceding fragments total at least 60 and at most 100 tokens,
+  so the planner emits truthful `window_overlap` metadata shared by both
+  artifact mappers.
+- **Base:** the only exact preceding suffix is 58 tokens and adding the next
+  whole fragment would exceed 100; that transition has no overlap and the
+  document remains fully indexable.
+- **Bad:** emit a 58-token overlap that the mapper rejects, split a prior
+  fragment only in the new Child, or lower the mapper minimum to hide planner
+  drift.
 - **Base:** a retryable failure returns the Job to pending and continues to
   display processing because the Version is still nonterminal.
 - **Bad:** marking only the Job failed, adding a parent Document failed enum,
@@ -1064,6 +1082,11 @@ The disposable drill must assert:
     failure, least-privilege grants/search path, and down/re-up idempotence.
     Frontend units must prove first-Version failure displays failed while an
     active current Version masks a failed replacement badge.
+33. Structure planner tests must create a whole-atom suffix below 60 whose next
+    atom would exceed 100, assert the emitted overlap is zero, and prove the
+    Native artifact/Projection path completes. Every emitted Native or MinerU
+    `window_overlap` must remain within `60..100`, and the registered structure
+    profile hash must remain byte-identical.
 
 After the drill, run `go vet ./...`, `go test ./...`, and the frozen G18
 evaluator.
@@ -1094,6 +1117,35 @@ lock and validate the leased Job
 Job state alone is not the user-visible lifecycle authority. The pending
 Version is the bridge between Worker failure, reprocess eligibility, API DTO,
 and presentation.
+
+### Short exact Child overlap
+
+Wrong:
+
+```python
+# `selected` still contains only 58 tokens; the rejected candidate must not
+# become the selected count.
+tokens = count((earlier_atom, *selected))
+if tokens > OVERLAP_MAX_TOKENS:
+    break
+return tuple(selected)
+```
+
+Correct:
+
+```python
+selected_tokens = 0
+for atom in reversed(previous_primary):
+    candidate_tokens = count((atom, *selected))
+    if candidate_tokens > OVERLAP_MAX_TOKENS:
+        break
+    selected.insert(0, atom)
+    selected_tokens = candidate_tokens
+return tuple(selected) if selected_tokens >= OVERLAP_MIN_TOKENS else ()
+```
+
+The producer and both consumers share `OVERLAP_MIN_TOKENS`. A failed candidate
+calculation cannot overwrite the count for the fragments actually selected.
 
 ### Wrong
 

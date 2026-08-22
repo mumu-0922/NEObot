@@ -14,6 +14,7 @@ from mm_chat_rag.structure_chunking import (
     CHILD_TARGET_MAX_TOKENS,
     CHILD_TARGET_MIN_TOKENS,
     OVERLAP_MAX_TOKENS,
+    OVERLAP_MIN_TOKENS,
     PARENT_HARD_MAX_TOKENS,
     PARENT_TARGET_MIN_TOKENS,
     ChildChunkPlan,
@@ -87,6 +88,32 @@ def test_planner_builds_section_bounded_parent_child_windows() -> None:
                 in previous_ranges
                 for fragment in overlap
             )
+
+
+def test_planner_omits_exact_overlap_below_contract_minimum() -> None:
+    short_atom = "token " * 57
+    assert FROZEN_TOKENIZER.count(short_atom) == OVERLAP_MIN_TOKENS - 2
+    units = tuple(
+        StructuredTextUnit(index, "paragraph", short_atom, ()) for index in range(20)
+    )
+
+    plan = plan_structure_chunks(units)
+
+    assert len(plan.children) > 1
+    assert all(
+        child.overlap_before_tokens == 0
+        or OVERLAP_MIN_TOKENS <= child.overlap_before_tokens <= OVERLAP_MAX_TOKENS
+        for child in plan.children
+    )
+    assert any(
+        child.ordinal_in_parent > 0 and child.overlap_before_tokens == 0
+        for child in plan.children
+    )
+    assert all(
+        any(fragment.overlap for fragment in child.fragments)
+        is (child.overlap_before_tokens > 0)
+        for child in plan.children
+    )
 
 
 def test_planner_preserves_atomic_table_row_and_utf8_boundaries() -> None:

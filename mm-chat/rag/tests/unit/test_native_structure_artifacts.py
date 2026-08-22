@@ -22,6 +22,7 @@ from mm_chat_rag.offline_parser.native.pptx import parse_pptx
 from mm_chat_rag.offline_parser.native.txt import parse_txt
 from mm_chat_rag.offline_parser.native.xlsx import parse_xlsx
 from mm_chat_rag.projection import ProjectionContext, build_postgres_projection_batch
+from mm_chat_rag.structure_chunking import OVERLAP_MIN_TOKENS
 from tests.support.parser_contracts import (
     JsonObject,
     JsonValue,
@@ -184,6 +185,36 @@ def test_markdown_maps_heading_lists_table_rows_and_projection_heading_path() ->
     assert batch.blocks[1].heading_path == (heading_id,)
     assert batch.parent_chunks[0].content.startswith("# Corpus heading")
     assert "café | 中文" in batch.child_search_projections[0].lexical_text
+
+
+def test_short_exact_overlap_does_not_reject_native_artifacts() -> None:
+    paragraph = ("token " * 57).strip()
+    body = ("\n\n".join(paragraph for _ in range(20)) + "\n").encode()
+    artifact = _markdown_document(body)
+
+    canonical, chunks, projection_context = _build(
+        body,
+        artifact,
+        "text/markdown",
+    )
+
+    children = _objects(chunks["children"])
+    overlap_fragments = [
+        fragment
+        for child in children
+        for fragment in _objects(child["spanFragments"])
+        if fragment["fragmentKind"] == "window_overlap"
+    ]
+    assert len(children) > 1
+    assert all(
+        cast("int", fragment["overlapTokenCount"]) >= OVERLAP_MIN_TOKENS
+        for fragment in overlap_fragments
+    )
+    assert not overlap_fragments
+    _validate_contracts(canonical, chunks)
+
+    batch = build_postgres_projection_batch(canonical, chunks, projection_context)
+    assert len(batch.child_chunks) == len(children)
 
 
 def test_pptx_projects_exact_slide_shape_locator_before_xml_line_fallback() -> None:

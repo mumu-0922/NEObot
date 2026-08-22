@@ -83,6 +83,27 @@ After implementation:
 - [ ] Verified error handling at each boundary
 - [ ] Checked data survives round-trip
 
+## Producer / Validator Bound Checklist
+
+Use this when one layer produces a bounded numeric value and another layer
+rejects values outside that bound:
+
+- [ ] Define the minimum/maximum once and import them in every producer and
+      validator; duplicated literals are contract drift.
+- [ ] Test a value just below the minimum, exactly at both bounds, and just
+      above the maximum through the complete producer-to-validator path.
+- [ ] If the producer cannot meet a quality minimum without breaking source
+      lineage or a hard maximum, represent the documented absence/fallback;
+      do not emit a value the next layer must reject.
+- [ ] Track the value for the state actually selected. A later rejected
+      candidate must not overwrite the selected-state counter used at return.
+
+**Real-world example**: The RAG Chunk planner selected a 58-token exact overlap,
+then inspected an earlier atom that pushed the candidate above 100. The
+rejected candidate count masked the selected count, so the planner emitted 58
+while both Native and MinerU mappers required 60–100 and rejected the complete
+document.
+
 ## Live Stream vs Durable Replay Checklist
 
 Use this when the same operation is shown first from SSE/WebSocket events and

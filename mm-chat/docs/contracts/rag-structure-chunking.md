@@ -54,8 +54,11 @@ clip their existing locators; it must not invent source coordinates.
   Child, overlap, and derived-context limits count the exact final rendered
   text, including admitted joiners and prefixes; UTF-8 byte ranges remain the
   source-location authority, not the size estimate.
-- Typical Children target 300–500 tokens with a 400-token center and hard cap 650. Adjacent children reuse exact atom ranges for up to 100 tokens, targeting
-  about 64.
+- Typical Children target 300–500 tokens with a 400-token center and hard cap
+  650. Adjacent children reuse exact atom ranges for 60–100 tokens, targeting
+  about 64. If whole exact prior-child atoms cannot reach 60 without exceeding
+  100, that transition carries no overlap; it must not synthesize a partial
+  prior fragment or reject the document.
 - Parents target 1,200–1,600 tokens with a hard cap of 2,000. A Parent never
   crosses a `heading_path` change.
 - Table rows, code, formula, heading, and other protected units remain atomic
