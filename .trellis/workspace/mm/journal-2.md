@@ -1024,3 +1024,36 @@ Added migration 105 and server-owned recallFiltering authority, fixed-Luna Provi
 ### Next Steps
 
 - None - task complete
+
+
+## Session 79: Restore required-auth Knowledge retrieval
+
+**Date**: 2026-08-22
+**Task**: Restore required-auth Knowledge retrieval
+**Branch**: `main`
+
+### Summary
+
+Provisioned exact Provider answer consent for the fixed owner in required-auth deployments, added sanitized Knowledge failure stages, deployed the Backend, and verified live BGE retrieval plus PJRSVY answer governance.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `23a59b89` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
