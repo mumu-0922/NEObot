@@ -315,6 +315,17 @@ legacy `REAL[]` rows remain intact for the observation/rollback window.
 - Require an explicit decision and full rebuild/cutover plan before any
   production model switch.
 
+## Post-completion maintenance
+
+### 2026-08-22 — required-auth answer-consent repair
+
+Status: complete. The fixed single-server owner now receives exact
+Provider/endpoint/model answer governance in both development and required-auth
+deployments. Owner-bound automatic consent covers future personal collections
+without granting invited users the bootstrap owner's Provider authority.
+Server-stored Provider IDs remain distinct from `server-default`, and durable
+failure diagnostics add only a fixed `failureStage` category.
+
 ## Verification
 
 - Focused Go evaluator/chat tests for G18.1.

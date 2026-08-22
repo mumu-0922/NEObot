@@ -152,6 +152,48 @@ func TestServiceAutoProvisionsEverySingleUserAnswerConsent(t *testing.T) {
 	}
 }
 
+func TestServiceScopesOwnerBoundAnswerConsentToBootstrapOwner(t *testing.T) {
+	identity := ProcessorModelIdentity{
+		Processor: "pjrsvy", EndpointID: "server-stored", ModelID: "gpt-5.6-terra",
+	}
+	for _, test := range []struct {
+		name        string
+		actorID     string
+		wantConsent int
+	}{
+		{name: "bootstrap owner", actorID: testActorID, wantConsent: 1},
+		{name: "invited user", actorID: "33333333-3333-4333-8333-333333333333", wantConsent: 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repo := &fakeRepository{
+				createResult: testCollection("22222222-2222-4222-8222-222222222222"),
+			}
+			service := NewService(
+				repo,
+				WithIDGenerator(func() (string, error) { return repo.createResult.ID, nil }),
+				WithSingleUserAnswerConsentForOwner(testActorID, identity),
+			)
+			ctx := auth.WithUser(context.Background(), auth.User{ID: test.actorID})
+
+			if _, err := service.CreateCollection(ctx, CreateCollectionInput{
+				Name: "Research", Scope: ScopePersonal, IdempotencyKey: "create-owner-bound-answer",
+			}); err != nil {
+				t.Fatalf("CreateCollection() error = %v", err)
+			}
+			if len(repo.putConsents) != test.wantConsent {
+				t.Fatalf("automatic consents = %#v, want %d", repo.putConsents, test.wantConsent)
+			}
+			if test.wantConsent == 1 {
+				consent := repo.putConsents[0]
+				if consent.ActorUserID != testActorID || consent.Processor != identity.Processor ||
+					consent.EndpointID != identity.EndpointID || consent.ModelID != identity.ModelID {
+					t.Fatalf("owner answer consent = %#v", consent)
+				}
+			}
+		})
+	}
+}
+
 func TestServiceRollsBackCollectionWhenSingleUserConsentProvisioningFails(t *testing.T) {
 	provisionErr := errors.New("governance unavailable")
 	repo := &fakeRepository{

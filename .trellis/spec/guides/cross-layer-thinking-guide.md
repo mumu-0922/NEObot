@@ -220,6 +220,35 @@ Canonical project example:
 `mm-chat/docs/contracts/chat-stream-api.md` owns the reasoning effort request,
 normalization, provider mapping, and backward-compatibility contract.
 
+## Authentication Mode vs Fixed-Owner Bootstrap Checklist
+
+Use this when server startup creates governance, consent, or other runtime
+authority for a single-server owner:
+
+- [ ] Separate request authentication from bootstrap scope. `required` may
+      require a real Session while still using one fixed bootstrap owner for
+      server-managed setup.
+- [ ] Trace the exact owner ID through Provider configuration, governance,
+      query consent, collection consent, and runtime authorization.
+- [ ] Preserve Provider identity across layers. A shared wire protocol does not
+      make `server-default` and a server-stored Provider the same endpoint.
+- [ ] Cover both existing-state backfill and future-resource creation. Scope
+      automatic creation hooks to the fixed owner so invited users do not
+      inherit owner authority.
+- [ ] Test every supported auth mode around startup wiring; package-level
+      consent tests alone cannot detect a mode guard in `cmd/api`.
+- [ ] For live diagnostics, resolve the actual container image, environment,
+      network, and mounted keyring path first. A stale local keyring can create
+      a false Provider-unavailable result even when production is healthy.
+- [ ] Persist only a fixed failure-stage enum. Keep queries, source bodies,
+      credentials, URLs, and raw errors outside durable diagnostics.
+
+**Real-world example**: Knowledge worked through retrieval and hydration, but
+required-auth startup skipped answer-consent provisioning. Chat could use the
+attested `PJRSVY` Provider while Knowledge correctly denied its distinct
+`pjrsvy/server-stored/<model>` answer egress. The repair retained exact
+Provider identity and bootstrapped only the fixed owner in both auth modes.
+
 
 ## Contextual Media Routing and Raw HTML Checklist
 

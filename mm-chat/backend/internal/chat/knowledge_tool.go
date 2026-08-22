@@ -128,7 +128,9 @@ func executeKnowledgeTool(
 		strings.TrimSpace(runtime.SessionID) == "" ||
 		strings.TrimSpace(runtime.ConversationID) == "" ||
 		len(runtime.SelectedCollectionIDs) == 0 {
-		return autoRAGDecision{Outcome: "dependency_unavailable"}
+		return autoRAGDecision{
+			Outcome: "dependency_unavailable", FailureStage: "runtime_configuration",
+		}
 	}
 	originalQuery := strings.Join(strings.Fields(runtime.OriginalQueryText), " ")
 	if originalQuery == "" {
@@ -150,13 +152,17 @@ func executeKnowledgeTool(
 		if errors.Is(err, ErrRAGInsufficientEvidence) {
 			return autoRAGDecision{Outcome: "no_evidence"}
 		}
-		return autoRAGDecision{Outcome: "dependency_unavailable"}
+		return autoRAGDecision{
+			Outcome: "dependency_unavailable", FailureStage: "retrieval_assembly",
+		}
 	}
 	if len(result.Evidence) == 0 || len(result.Citations) == 0 {
 		return autoRAGDecision{Outcome: "no_evidence"}
 	}
 	if runtime.AnswerGate == nil {
-		return autoRAGDecision{Outcome: "dependency_unavailable"}
+		return autoRAGDecision{
+			Outcome: "dependency_unavailable", FailureStage: "answer_governance",
+		}
 	}
 	authority, err := runtime.AnswerGate.AuthorizeRAGAnswer(
 		ctx,
@@ -168,9 +174,13 @@ func executeKnowledgeTool(
 	)
 	if err != nil {
 		if errors.Is(err, ErrRAGAnswerGovernanceRequired) {
-			return autoRAGDecision{Outcome: "answer_governance_required"}
+			return autoRAGDecision{
+				Outcome: "answer_governance_required", FailureStage: "answer_governance",
+			}
 		}
-		return autoRAGDecision{Outcome: "dependency_unavailable"}
+		return autoRAGDecision{
+			Outcome: "dependency_unavailable", FailureStage: "answer_governance",
+		}
 	}
 	return autoRAGDecision{
 		Outcome:        "evidence_ready",

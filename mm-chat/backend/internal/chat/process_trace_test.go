@@ -164,6 +164,40 @@ func TestToolProcessTraceCreatesIndependentKnowledgeAndToolSteps(t *testing.T) {
 	}
 }
 
+func TestToolProcessTracePersistsSanitizedKnowledgeFailureStage(t *testing.T) {
+	trace := newProcessTrace("message-failure-stage")
+	runtime := newToolProcessTrace(trace)
+	startedAt := time.Now()
+	running := &ProviderToolExecutionEvent{
+		ExecutionID: "knowledge-failure",
+		Name:        searchKnowledgeToolName,
+		Status:      ProcessStepStatusRunning,
+		Round:       1,
+		Query:       "private secret query",
+		Mode:        "native",
+	}
+	runtime.apply(running, startedAt)
+	failed := *running
+	failed.Status = ProcessStepStatusFailed
+	failed.FailureCategory = "dependency_unavailable"
+	failed.Knowledge = &autoRAGDecision{
+		Outcome: "dependency_unavailable", FailureStage: "retrieval_assembly",
+	}
+
+	updates := runtime.apply(&failed, startedAt.Add(time.Second))
+	if len(updates) != 2 {
+		t.Fatalf("failed updates = %#v", updates)
+	}
+	for _, step := range updates {
+		if step.Detail["failureStage"] != "retrieval_assembly" {
+			t.Fatalf("failure stage = %#v", step.Detail)
+		}
+		if _, exists := step.Detail["query"]; exists {
+			t.Fatalf("private query survived sanitization = %#v", step.Detail)
+		}
+	}
+}
+
 func TestToolProcessTraceUpdatesRunningPresentationWithoutCreatingAnotherStep(t *testing.T) {
 	trace := newProcessTrace("message-live")
 	runtime := newToolProcessTrace(trace)

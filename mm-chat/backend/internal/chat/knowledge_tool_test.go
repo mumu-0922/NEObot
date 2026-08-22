@@ -140,6 +140,7 @@ func TestExecuteKnowledgeToolFailsClosedBeforeReturningPrivateEvidence(t *testin
 	}
 	decision := executeKnowledgeTool(context.Background(), runtime, "private fixture")
 	if decision.Outcome != "answer_governance_required" ||
+		decision.FailureStage != "answer_governance" ||
 		len(decision.Citations) != 0 || len(decision.Evidence) != 0 {
 		t.Fatalf("decision = %#v", decision)
 	}
@@ -212,10 +213,39 @@ func TestValidateSearchKnowledgeToolCallRejectsCollectionOverride(t *testing.T) 
 func TestKnowledgeToolDependencyFailureClassification(t *testing.T) {
 	decision := executeKnowledgeTool(context.Background(), nil, "fixture")
 	if decision.Outcome != "dependency_unavailable" ||
+		decision.FailureStage != "runtime_configuration" ||
 		knowledgeToolFailureCategory(decision) != "dependency_unavailable" {
 		t.Fatalf("decision = %#v", decision)
 	}
 	if got := knowledgeToolFailureCategory(autoRAGDecision{Outcome: "no_evidence"}); got != "" {
 		t.Fatalf("miss failure category = %q", got)
+	}
+}
+
+func TestKnowledgeToolDependencyFailureRecordsOnlySanitizedStage(t *testing.T) {
+	runtime := fixtureKnowledgeToolRuntime()
+	runtime.Assembler = NewRAGAnswerAssembler(
+		&fakeRAGCandidateSource{err: ErrRAGDependencyUnavailable},
+		&fakeRAGHydrator{},
+	)
+
+	decision := executeKnowledgeTool(context.Background(), runtime, "private secret query")
+	if decision.Outcome != "dependency_unavailable" ||
+		decision.FailureStage != "retrieval_assembly" {
+		t.Fatalf("decision = %#v", decision)
+	}
+	metadata := autoRAGMessageMetadata(
+		"run-1",
+		ragSelection{Enabled: true, CollectionIDs: runtime.SelectedCollectionIDs},
+		decision,
+		nil,
+	)
+	encoded, err := json.Marshal(metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"failureStage":"retrieval_assembly"`) ||
+		strings.Contains(string(encoded), "private secret query") {
+		t.Fatalf("sanitized metadata = %s", encoded)
 	}
 }

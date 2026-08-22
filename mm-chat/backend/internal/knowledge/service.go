@@ -66,8 +66,9 @@ type Service struct {
 }
 
 type automaticCollectionConsent struct {
-	Identity ProcessorModelIdentity
-	Input    PutConsentInput
+	OwnerUserID string
+	Identity    ProcessorModelIdentity
+	Input       PutConsentInput
 }
 
 type ServiceOption func(*Service)
@@ -118,11 +119,23 @@ func WithSingleUserCollectionConsents() ServiceOption {
 // automatic collection authority for newly created personal Knowledge bases.
 // Existing collections are backfilled by BootstrapSingleUserAnswerProcessing.
 func WithSingleUserAnswerConsent(identity ProcessorModelIdentity) ServiceOption {
+	return WithSingleUserAnswerConsentForOwner("", identity)
+}
+
+// WithSingleUserAnswerConsentForOwner makes the configured server answer
+// provider an automatic collection authority only for the fixed standalone
+// owner. Required-auth deployments may contain invited users whose collections
+// must not inherit the bootstrap owner's answer-provider consent.
+func WithSingleUserAnswerConsentForOwner(
+	ownerUserID string,
+	identity ProcessorModelIdentity,
+) ServiceOption {
 	return func(service *Service) {
 		service.automaticCollectionConsents = append(
 			service.automaticCollectionConsents,
 			automaticCollectionConsent{
-				Identity: identity,
+				OwnerUserID: strings.TrimSpace(ownerUserID),
+				Identity:    identity,
 				Input: PutConsentInput{
 					Purposes: []string{"answer"}, DataTypes: []string{"text/plain"}, PolicyVersion: "v1",
 				},
@@ -203,6 +216,9 @@ func (s *Service) CreateCollection(ctx context.Context, input CreateCollectionIn
 		return Collection{}, err
 	}
 	for _, consent := range s.automaticCollectionConsents {
+		if consent.OwnerUserID != "" && consent.OwnerUserID != actor.ID {
+			continue
+		}
 		if _, err := s.PutCollectionConsentForModel(
 			ctx,
 			collection.ID,

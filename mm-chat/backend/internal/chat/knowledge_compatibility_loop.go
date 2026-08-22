@@ -407,7 +407,9 @@ func prepareCompatibilityKnowledgeRequest(
 			input.ContextBudget.remaining(retrievalEvidenceKnowledge),
 		)
 		if err != nil {
-			decision = autoRAGDecision{Outcome: "dependency_unavailable"}
+			decision = autoRAGDecision{
+				Outcome: "dependency_unavailable", FailureStage: "answer_context_projection",
+			}
 			failure = decision.Outcome
 		} else {
 			decision.Evidence = context.Evidence

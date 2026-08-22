@@ -399,7 +399,7 @@ func sanitizeProcessDetail(detail map[string]any) map[string]any {
 	allowed := map[string]struct{}{
 		"hitCount": {}, "sourceCount": {}, "citationMarkers": {},
 		"provider": {}, "mode": {}, "outcome": {},
-		"failureCategory": {}, "queryRewritten": {}, "rerankStatus": {},
+		"failureCategory": {}, "failureStage": {}, "queryRewritten": {}, "rerankStatus": {},
 		"toolName": {}, "server": {}, "serverName": {}, "classification": {}, "callStatus": {},
 		"argumentSummary": {}, "round": {}, "selectedCount": {}, "truncated": {},
 		"durability": {},

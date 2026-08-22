@@ -1221,3 +1221,39 @@ No reviewed production corpus or passing production report was fabricated.
 The checked-in example is a one-case draft template, and the freeze-hash
 command always reports `promotionEligible=false`. The verified Candidate
 remains non-active; `generation-activate` was not run.
+
+## 2026-08-22 — Required-auth answer-governance bootstrap repair
+
+A live selected-collection turn returned `dependency_unavailable` even though
+collection `test` had four active documents. Stage isolation proved the active
+SiliconFlow BGE-M3 Generation/Profile, 1,024-dimension Query Embedding, 11
+hybrid candidates, current-session hydration, and Rerank were healthy. The
+selected attested server-stored `PJRSVY` Provider had no exact
+`pjrsvy/server-stored/gpt-5.6-terra` query or collection answer consent because
+startup provisioning ran only in development auth mode.
+
+The repair now discovers attested answer identities in required-auth mode,
+backfills governance and consent only for the fixed bootstrap owner, and scopes
+future automatic collection consent to that owner. It deliberately does not
+alias `PJRSVY` to `openai_compatible/server-default`. Knowledge failure metadata
+and process steps now carry only the fixed `runtime_configuration`,
+`retrieval_assembly`, `answer_governance`, or `answer_context_projection` stage
+category.
+
+Verification completed against the live single-server deployment:
+
+```text
+focused Knowledge/Chat/API tests             pass
+go vet ./... / go test ./...                 pass / pass
+Backend image and readiness                  healthy
+active retrieval profile                     siliconflow_bge_m3_v1
+Query Embedding                              Pro/BAAI/bge-m3 / 1024
+hybrid candidates / evidence / Citations     11 / 5 / 5
+Rerank                                       applied
+PJRSVY Terra answer governance               authorized
+```
+
+No migration, document reprocessing, Memory Provider change, credential
+exposure, or runtime data deletion was required. Rollback is the Backend source
+and image only; the added consent rows are idempotent owner-scoped authority
+for the still-enabled, attested Provider.

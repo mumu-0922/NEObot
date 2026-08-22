@@ -3713,6 +3713,7 @@ func nonEmptyImagePurpose(value string) string {
 
 type autoRAGDecision struct {
 	Outcome        string
+	FailureStage   string
 	Evidence       []knowledge.HydratedEvidence
 	Citations      []RAGCitation
 	Authority      *RAGAnswerAuthority
@@ -3808,6 +3809,9 @@ func autoRAGMessageMetadata(
 		"evidenceUsed":          len(decision.Citations) > 0,
 		"queryRewritten":        decision.QueryRewritten,
 		"rerankStatus":          decision.RerankStatus,
+	}
+	if failureStage := strings.TrimSpace(decision.FailureStage); failureStage != "" {
+		knowledgeMetadata["failureStage"] = failureStage
 	}
 	if len(decision.Citations) > 0 {
 		knowledgeMetadata["citations"] = append([]RAGCitation(nil), decision.Citations...)

@@ -12,7 +12,7 @@ DOCX native-parser admission and terminal Knowledge Processing Job projection
 also belong here because parser failure must remain consistent through the
 Version DTO and Knowledge UI.
 
-The current repository schema head is migration `104` on PostgreSQL `17.10`
+The current repository schema head is migration `105` on PostgreSQL `17.10`
 with `pgvector 0.8.5` and `pg_textsearch 1.3.1`; the latest retrieval-profile
 migration remains `050`, and migration `104` owns RAG failure-state projection.
 The durable retrieval pointer still accepts `legacy`
@@ -22,6 +22,121 @@ moving the pointer, activating a Generation, or consuming Holdout. The retired
 PostgreSQL 16 directory at `mm-chat/data/postgres` remains an observation-window
 rollback anchor. Never
 mount it, or any other PG16 data directory, into the PG17 image.
+
+## Scenario: required-auth standalone answer-consent bootstrap
+
+### 1. Scope / Trigger
+
+Apply this scenario when startup discovers configured model Providers, when a
+single-server deployment changes between `development` and `required` auth,
+or when Knowledge answer governance is changed. `required` controls request
+authentication; it does not disable server-owned processing consent for the
+fixed bootstrap owner.
+
+### 2. Signatures
+
+```go
+singleUserAnswerIdentities(
+	ctx context.Context,
+	repo answerProviderConfigReader,
+	ownerUserID string,
+) ([]knowledge.ProcessorModelIdentity, error)
+
+knowledge.WithSingleUserAnswerConsentForOwner(
+	ownerUserID string,
+	identity knowledge.ProcessorModelIdentity,
+) knowledge.ServiceOption
+
+knowledge.BootstrapSingleUserAnswerProcessing(
+	ctx context.Context,
+	service *knowledge.Service,
+	governance *knowledge.GovernanceService,
+	owner auth.User,
+	identity knowledge.ProcessorModelIdentity,
+) error
+```
+
+Sanitized failure diagnostics use only:
+
+```text
+metadata.knowledge.failureStage =
+  "runtime_configuration" | "retrieval_assembly" |
+  "answer_governance" | "answer_context_projection"
+```
+
+### 3. Contracts
+
+- Discover every enabled, connection-attested model Provider for the bootstrap
+  owner in both `development` and `required` auth modes.
+- Preserve the exact answer-governance identity. A server-stored Provider uses
+  `CanonicalAnswerProcessor(provider_config.id)`, endpoint `server-stored`, and
+  the selected model ID. `SERVER_DEFAULT` alone uses the canonical Provider
+  type with endpoint `server-default`.
+- Startup idempotently applies governance plus owner query and existing
+  personal-collection answer consents. New collections receive the same
+  consent only when their actor is the configured bootstrap owner.
+- Invited users never inherit the bootstrap owner's automatic answer consent.
+  Provider secrets remain in the server Vault and are not part of governance,
+  consent, diagnostics, logs, or browser payloads.
+- `failureStage` is a fixed category only. It must not contain query text,
+  document plaintext, URLs, credentials, or raw errors.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| Provider is disabled or lacks a current connection attestation | Do not discover or bootstrap its answer identity |
+| Stored Provider ID is `PJRSVY`, model is `gpt-5.6-terra` | Authorize only `pjrsvy/server-stored/gpt-5.6-terra` |
+| Only `openai_compatible/server-default/gpt-5.6-terra` consent exists | Return `answer_governance_required`; never reuse it for `PJRSVY` |
+| Required-auth startup finds an attested Provider | Backfill bootstrap-owner query and personal-collection consent idempotently |
+| Invited user creates a collection | Skip the owner-bound automatic answer consent |
+| Retrieval assembly fails before answer authorization | Persist only `failureStage=retrieval_assembly` with the bounded degradation outcome |
+| Evidence cannot fit the bounded compatibility answer context | Persist only `failureStage=answer_context_projection`; inject no partial evidence |
+
+### 5. Good / Base / Bad Cases
+
+- **Good:** required-auth startup discovers `PJRSVY`, backfills only the fixed
+  owner, and an authorized `test` collection produces current `[K#]` evidence.
+- **Base:** no enabled, attested model Provider exists, so startup creates no
+  answer consent and ordinary chat remains independent.
+- **Bad:** canonicalizing `PJRSVY` to `openai_compatible` and allowing a
+  `server-default` consent to authorize a different server-stored endpoint.
+
+### 6. Tests Required
+
+- Unit-test that owner-bound automatic consent is created for the bootstrap
+  owner and skipped for a different actor.
+- Unit-test exact server-default versus server-stored identity discovery and
+  disabled/unattested exclusion.
+- Unit-test that governance failure records `answer_governance` and retrieval
+  dependency failure records `retrieval_assembly` without query text.
+- Live-safe verification must prove the active Generation/Profile, Query
+  Embedding, hybrid candidates, hydration, Rerank, exact Provider answer gate,
+  and Backend/RAG health. Log only counts, fixed IDs already approved for the
+  operation, model/profile names, and fixed stage categories.
+
+### 7. Wrong vs Correct
+
+Wrong:
+
+```go
+if cfg.Auth.Mode == config.AuthModeDevelopment {
+	bootstrapAnswerConsent(allUsers, canonicalProviderType)
+}
+```
+
+Correct:
+
+```go
+for _, identity := range singleUserAnswerIdentities(ownerProviders) {
+	options = append(options,
+		knowledge.WithSingleUserAnswerConsentForOwner(owner.ID, identity))
+	bootstrapOwnerAnswerProcessing(owner, identity)
+}
+```
+
+Authentication mode does not define processing authority. The exact Provider
+identity and fixed owner do.
 
 ## 2. Signatures
 

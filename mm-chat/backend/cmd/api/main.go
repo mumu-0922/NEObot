@@ -309,29 +309,30 @@ func main() {
 		)
 	}
 	answerIdentities := make([]knowledge.ProcessorModelIdentity, 0)
-	if cfg.Auth.Mode == config.AuthModeDevelopment {
-		answerConfigCtx, answerConfigCancel := context.WithTimeout(
-			context.Background(),
-			databaseOpenTimeout,
+	answerConfigCtx, answerConfigCancel := context.WithTimeout(
+		context.Background(),
+		databaseOpenTimeout,
+	)
+	answerIdentities, err = singleUserAnswerIdentities(
+		answerConfigCtx,
+		runtimeConfigRepo,
+		cfg.Auth.BootstrapUserID,
+	)
+	answerConfigCancel()
+	if err != nil {
+		_ = redisClient.Close()
+		_ = db.Close()
+		logger.Error("knowledge_answer_processing_config_failed", slog.String("error", redactSensitiveLogText(err.Error())))
+		os.Exit(1)
+	}
+	for _, identity := range answerIdentities {
+		knowledgeOptions = append(
+			knowledgeOptions,
+			knowledge.WithSingleUserAnswerConsentForOwner(
+				cfg.Auth.BootstrapUserID,
+				identity,
+			),
 		)
-		answerIdentities, err = singleUserAnswerIdentities(
-			answerConfigCtx,
-			runtimeConfigRepo,
-			cfg.Auth.BootstrapUserID,
-		)
-		answerConfigCancel()
-		if err != nil {
-			_ = redisClient.Close()
-			_ = db.Close()
-			logger.Error("knowledge_answer_processing_config_failed", slog.String("error", redactSensitiveLogText(err.Error())))
-			os.Exit(1)
-		}
-		for _, identity := range answerIdentities {
-			knowledgeOptions = append(
-				knowledgeOptions,
-				knowledge.WithSingleUserAnswerConsent(identity),
-			)
-		}
 	}
 	knowledgeService := knowledge.NewService(knowledgeRepo, knowledgeOptions...)
 	if sqlDB != nil {
@@ -343,7 +344,7 @@ func main() {
 			governanceService,
 			auth.User{ID: cfg.Auth.BootstrapUserID, DisplayName: cfg.Auth.BootstrapDisplayName},
 		)
-		if err == nil && cfg.Auth.Mode == config.AuthModeDevelopment {
+		if err == nil {
 			for _, identity := range answerIdentities {
 				err = knowledge.BootstrapSingleUserAnswerProcessing(
 					bootstrapCtx,

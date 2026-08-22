@@ -167,6 +167,9 @@ func toolProcessDetail(event *ProviderToolExecutionEvent) map[string]any {
 		detail["hitCount"] = len(event.CitationMarkers)
 		if event.Knowledge != nil {
 			detail["outcome"] = event.Knowledge.Outcome
+			if failureStage := strings.TrimSpace(event.Knowledge.FailureStage); failureStage != "" {
+				detail["failureStage"] = failureStage
+			}
 			detail["queryRewritten"] = event.Knowledge.QueryRewritten
 			if rerankStatus := strings.TrimSpace(event.Knowledge.RerankStatus); rerankStatus != "" {
 				detail["rerankStatus"] = rerankStatus
