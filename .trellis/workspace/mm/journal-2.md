@@ -958,3 +958,36 @@ Admitted empty Word lastRenderedPageBreak markers, projected terminal RAG failur
 ### Next Steps
 
 - None - task complete
+
+
+## Session 77: 修复 RAG 短重叠导致的 DOCX 入库失败
+
+**Date**: 2026-08-22
+**Task**: 修复 RAG 短重叠导致的 DOCX 入库失败
+**Branch**: `main`
+
+### Summary
+
+统一结构切片 overlap 最小阈值，短于 60 token 时省略 overlap；RAG 全量质量门通过，部署不可变 Worker 镜像，重放失败 DOCX 并确认 test 知识库 4 份文档全部 active。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ce477a68` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
