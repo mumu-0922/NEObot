@@ -925,3 +925,36 @@ Completed the answer-slot fix across reload reconstruction. Chronological Server
 ### Next Steps
 
 - None - task complete
+
+
+## Session 76: Repair RAG DOCX failure state
+
+**Date**: 2026-08-22
+**Task**: Repair RAG DOCX failure state
+**Branch**: `main`
+
+### Summary
+
+Admitted empty Word lastRenderedPageBreak markers, projected terminal RAG failures into pending Versions via migration 104, surfaced failed state in Knowledge UI, backfilled nine historical smoke records, and deployed pinned Backend/RAG/Frontend images.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `95f57987` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
