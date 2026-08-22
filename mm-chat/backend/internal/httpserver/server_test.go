@@ -237,6 +237,85 @@ func TestRuntimeMemoryCandidateJudgeFailsClosedOnAuthorityDrift(t *testing.T) {
 	}
 }
 
+func TestRuntimeMemoryCandidateJudgeUsesConfiguredProviderWithFixedLunaModel(t *testing.T) {
+	apiKey := strings.Join([]string{"configured", "memory", "judge", t.Name()}, "-")
+	requests := 0
+	providerServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Path != "/v1/chat/completions" ||
+			r.Header.Get("Authorization") != "Bearer "+apiKey {
+			t.Fatalf("configured Provider request path/auth drifted")
+		}
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["model"] != usermemory.HybridFixedMemoryJudgeModelID ||
+			payload["stream"] != false {
+			t.Fatalf("configured Provider payload = %#v", payload)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"schemaVersion\":\"neo-chat.memory-cloud-candidate-judge-output.v1\",\"selectedOrdinals\":[0]}"},"finish_reason":"stop"}]}`))
+	}))
+	defer providerServer.Close()
+
+	configuredProvider := runtimeconfig.ResolvedProvider{
+		ID:      "NEW_PROVIDER",
+		Type:    runtimeconfig.ProviderTypeOpenAI,
+		BaseURL: providerServer.URL + "/v1",
+		APIKey:  apiKey,
+		Models:  []string{usermemory.HybridFixedMemoryJudgeModelID},
+	}
+	judge := runtimeMemoryCandidateJudge{
+		service: fixedMemoryJudgeResolverFixture{
+			task: runtimeconfig.ResolvedTaskModel{
+				Provider: configuredProvider,
+				ModelID:  usermemory.HybridFixedMemoryJudgeModelID,
+			},
+			configured: true,
+		},
+		timeout: time.Second,
+	}
+	result, err := judge.JudgeHybridCandidates(
+		context.Background(),
+		usermemory.HybridCandidateJudgeInput{
+			Query: "Which school?",
+			Candidates: []usermemory.HybridCandidateJudgeCandidate{
+				{Ordinal: 0, Content: "Northwestern Polytechnical University"},
+			},
+		},
+	)
+	if err != nil || result.ModelID != usermemory.HybridFixedMemoryJudgeModelID ||
+		requests != 1 {
+		t.Fatalf("configured Judge result=%#v requests=%d err=%v", result, requests, err)
+	}
+}
+
+func TestRuntimeMemoryCandidateJudgeNeverFallsBackAfterExplicitSelection(t *testing.T) {
+	serverDefaultCalls := 0
+	judge := runtimeMemoryCandidateJudge{
+		service: fixedMemoryJudgeResolverFixture{
+			configured:         true,
+			err:                runtimeconfig.ErrProviderDisabled,
+			serverDefaultCalls: &serverDefaultCalls,
+		},
+		timeout: time.Second,
+	}
+	_, err := judge.JudgeHybridCandidates(
+		context.Background(),
+		usermemory.HybridCandidateJudgeInput{
+			Query: "Which school?",
+			Candidates: []usermemory.HybridCandidateJudgeCandidate{
+				{Ordinal: 0, Content: "Northwestern Polytechnical University"},
+			},
+		},
+	)
+	if category := memoryjudge.FailureCategory(err); category != memoryjudge.FailureUnclassified ||
+		serverDefaultCalls != 0 {
+		t.Fatalf("explicit stale Provider category=%q fallbackCalls=%d err=%v", category, serverDefaultCalls, err)
+	}
+}
+
 func TestProductionMemoryToolPolicyUsesValidatedDoubleConfirmationIdentity(t *testing.T) {
 	policy := productionMemoryToolRelevancePolicy()
 	descriptor, ok := usermemory.DescribeHybridShadowRelevancePolicy(
@@ -281,13 +360,25 @@ func (memoryToolPolicyAcceptanceProvider) Rerank(
 }
 
 type fixedMemoryJudgeResolverFixture struct {
-	provider runtimeconfig.ResolvedProvider
-	err      error
+	provider           runtimeconfig.ResolvedProvider
+	task               runtimeconfig.ResolvedTaskModel
+	configured         bool
+	err                error
+	serverDefaultCalls *int
+}
+
+func (fixture fixedMemoryJudgeResolverFixture) ResolveRecallFilteringTaskModel(
+	context.Context,
+) (runtimeconfig.ResolvedTaskModel, bool, error) {
+	return fixture.task, fixture.configured, fixture.err
 }
 
 func (fixture fixedMemoryJudgeResolverFixture) ResolveServerDefaultProvider(
 	context.Context,
 ) (runtimeconfig.ResolvedProvider, error) {
+	if fixture.serverDefaultCalls != nil {
+		(*fixture.serverDefaultCalls)++
+	}
 	return fixture.provider, fixture.err
 }
 

@@ -35,6 +35,7 @@ const EMPTY_DEFAULT_MODELS: DefaultModels = {
   promptOptimization: "",
   ragQuery: "",
   memory: "",
+  recallFiltering: "",
 };
 
 const LEGACY_GEMINI_PROVIDER = {

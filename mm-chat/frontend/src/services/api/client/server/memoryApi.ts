@@ -355,7 +355,9 @@ function normalizeMemoryHealth(value: unknown): MemoryHealthDTO {
   if (
     typeof object.workerAvailable !== "boolean" ||
     typeof object.embeddingWorkerAvailable !== "boolean" ||
-    object.judgeFixed !== true
+    object.judgeFixed !== true ||
+    typeof object.judgeProviderConfigured !== "boolean" ||
+    typeof object.judgeAvailable !== "boolean"
   ) {
     throw new Error("Server returned invalid memory health authority.");
   }
@@ -370,8 +372,14 @@ function normalizeMemoryHealth(value: unknown): MemoryHealthDTO {
       "memory pending count",
     ),
     failedCount: nonNegativeInteger(object.failedCount, "memory failed count"),
+    judgeProviderId: stringValue(
+      object.judgeProviderId,
+      "memory judge provider",
+    ),
     judgeModelId: stringValue(object.judgeModelId, "memory judge model"),
     judgeFixed: object.judgeFixed,
+    judgeProviderConfigured: object.judgeProviderConfigured,
+    judgeAvailable: object.judgeAvailable,
   };
 }
 

@@ -201,6 +201,7 @@ describe("server default store injection", () => {
         promptOptimization: "",
         ragQuery: "CUSTOM:custom-model",
         memory: "GEMINI:gemini-flash-latest",
+        recallFiltering: "",
       },
     }));
 
@@ -217,6 +218,7 @@ describe("server default store injection", () => {
       promptOptimization: "",
       ragQuery: "CUSTOM:custom-model",
       memory: "GEMINI:gemini-flash-latest",
+      recallFiltering: "",
     });
   });
 
@@ -233,6 +235,7 @@ describe("server default store injection", () => {
         promptOptimization: "LOCAL:old-polish",
         ragQuery: "LOCAL:old-rag",
         memory: "LOCAL:old-memory",
+        recallFiltering: "LOCAL:old-recall",
       },
     }));
 
@@ -248,6 +251,7 @@ describe("server default store injection", () => {
           promptOptimization: "CUSTOM:gpt-polish",
           ragQuery: "CUSTOM:gpt-rag",
           memory: "CUSTOM:gpt-memory",
+          recallFiltering: "CUSTOM:gpt-5.6-luna",
         },
       },
     });
@@ -259,6 +263,7 @@ describe("server default store injection", () => {
       promptOptimization: "CUSTOM:gpt-polish",
       ragQuery: "CUSTOM:gpt-rag",
       memory: "CUSTOM:gpt-memory",
+      recallFiltering: "CUSTOM:gpt-5.6-luna",
     });
   });
 

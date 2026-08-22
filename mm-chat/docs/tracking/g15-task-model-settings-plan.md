@@ -1,12 +1,16 @@
 # G15 Server-Owned Task Model Settings Plan
 
-Status: complete. This slice moves the six default automation-model
-selections from browser-local preference storage to Go/Postgres authority.
+Status: complete, extended by migration `105`. This contract moves the six
+general automation-model selections plus the fixed-model recall-filtering
+Provider selection from browser-local preference storage to Go/Postgres
+authority.
 
 ## Contract
 
 - Persist title generation, related questions, context compression, prompt
   optimization, RAG query, and memory model references per owner in Postgres.
+- Persist recall filtering as `providerId:gpt-5.6-luna`; the Provider is
+  selectable but the calibrated Judge model is not.
 - Expose the authoritative values through `GET /v1/config` and an administrator
   `GET/PATCH /v1/admin/task-models` API.
 - Accept only bounded `providerId:modelId` references that belong to an enabled,
@@ -46,16 +50,18 @@ GET   /v1/config
 GET   /v1/admin/task-models
 PATCH /v1/admin/task-models
 
-task_model_settings(user_id PK, six model-ref columns, created_at, updated_at)
+task_model_settings(user_id PK, seven model-ref columns, created_at, updated_at)
 ```
 
 ### 3. Request, response, and persistence
 
 - PATCH accepts any non-empty subset of `titleGeneration`,
   `relatedQuestions`, `contextCompression`, `promptOptimization`, `ragQuery`,
-  and `memory`.
+  `memory`, and `recallFiltering`.
 - Each non-blank value uses `providerId:modelId` and is at most 512 bytes.
-- The response returns all six values, `configured`, and `updatedAt`.
+- `recallFiltering` accepts only an enabled OpenAI or OpenAI-compatible Provider whose
+  model catalog contains exact `gpt-5.6-luna`.
+- The response returns all seven values, `configured`, and `updatedAt`.
 - `defaultModelsConfigured=true` in `/v1/config` means the frontend must replace
   browser runtime state with the returned server values.
 
@@ -64,17 +70,21 @@ task_model_settings(user_id PK, six model-ref columns, created_at, updated_at)
 ```text
 empty PATCH / malformed ref       -> 400 TASK_MODEL_SETTINGS_INVALID
 unknown/disabled provider/model   -> 409 TASK_MODEL_UNAVAILABLE
+non-Luna/non-OpenAI recall ref     -> 409 TASK_MODEL_UNAVAILABLE
 missing Postgres repository       -> 503 DATABASE_REQUIRED
 unknown JSON field / trailing JSON -> 400 INVALID_REQUEST
 ```
 
 ### 5. Good, base, and bad cases
 
-- Good: `SERVER_DEFAULT:gpt-5.6-luna` from an enabled, attested provider.
+- Good: `PJRSVY:gpt-5.6-luna` from an enabled, attested OpenAI or OpenAI-compatible
+  Provider; runtime re-resolves the same Provider for every Judge attempt.
 - Base: no Postgres row returns `configured=false`; the app performs one
-  bounded import of valid legacy selections.
+  bounded import of valid legacy selections. An empty `recallFiltering`
+  retains the historical pinned `SERVER_DEFAULT:gpt-5.6-luna` path.
 - Bad: a browser-only or deleted provider reference is rejected and the UI
-  restores its previous selection.
+  restores its previous selection. A later-stale explicit recall Provider
+  fails closed and never falls back to `SERVER_DEFAULT`.
 
 ### 6. Required tests
 
@@ -87,5 +97,6 @@ unknown JSON field / trailing JSON -> 400 INVALID_REQUEST
 
 ```text
 Wrong:  dropdown -> Zustand -> localStorage -> task request
-Correct: dropdown -> PATCH Go -> Postgres -> /v1/config -> Zustand projection
+Correct: dropdown -> PATCH Go -> Postgres -> per-attempt Provider resolution
+         -> /v1/config -> Zustand projection
 ```

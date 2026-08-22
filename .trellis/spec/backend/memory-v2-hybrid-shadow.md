@@ -9,6 +9,7 @@ Apply this contract when changing migration
 prepare/admission/record/final-hydration capabilities, RRF/rerank/cloud-judge/
 configured-model candidate judging/main-model Tool routing/relevance/token
 selection, hybrid diagnostics,
+`105_recall_filtering_provider`, `task_model_settings.recall_filtering`,
 `MEMORY_HYBRID_SHADOW_ENABLED`, `MEMORY_TOOL_LOOP_ENABLED`, or exact-user
 `MEMORY_TOOL_LOOP_CANARY_USER_IDS` wiring.
 
@@ -266,6 +267,21 @@ Runtime admission adds:
 MEMORY_TOOL_LOOP_CANARY_USER_IDS=<comma-separated canonical UUIDs>
 ```
 
+Runtime Judge routing adds this server-owned cross-layer contract:
+
+```text
+PATCH /v1/admin/task-models
+  recallFiltering = <providerId>:gpt-5.6-luna
+
+task_model_settings.recall_filtering TEXT NOT NULL DEFAULT ''
+
+GET /v1/memory-health
+  judgeProviderId
+  judgeModelId = gpt-5.6-luna
+  judgeProviderConfigured
+  judgeAvailable
+```
+
 The historical owner-promoted product-v1 identity remains immutable:
 
 ```text
@@ -277,6 +293,17 @@ base URL SHA = 3bc0bbf28d9d817b4f6c8f6058c2c51dd644c541252ed6e2542a8c8a472ff671
 model        = gpt-5.6-luna
 rollback     = MEMORY_TOOL_LOOP_ENABLED=false
 ```
+
+Migration `105` changes only product runtime routing, not any historical
+benchmark artifact. Empty `recall_filtering` retains the exact historical
+`SERVER_DEFAULT` Provider and Base-URL hash above. A non-empty reference may
+select another enabled, connection-attested OpenAI or OpenAI-compatible Provider only
+when its catalog contains exact `gpt-5.6-luna`; the model, prompt, decoder,
+policy, retries, and no-Memory failure semantics stay fixed. The selected
+Provider is re-resolved for every Judge attempt. A stale explicit reference
+fails closed and never falls back to `SERVER_DEFAULT`. Historical Sub evidence
+does not attest the quality, quota, or upstream implementation of an alternate
+endpoint; those properties remain `[unverified]` until separately evaluated.
 
 Source composition now freezes production-v2 as the only prospective product
 identity: negative guard required, buffered fixed Luna adapter, and exact UUID
@@ -763,9 +790,13 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   starts the fixed BGE/RRF/admission path, runs BGE rerank before fixed Luna
   judging, intersects exact ordinals in BGE order, then applies the Top-5/token
   path. The v1 reader and `MarkUsed` are not called.
-- Every product Judge attempt re-resolves current stored `SERVER_DEFAULT` /
-  OpenAI Compatible / attested Base-URL hash / `gpt-5.6-luna` authority. Missing
-  dependency/secret or endpoint/model/prompt/decoder/policy drift fails closed.
+- Every product Judge attempt re-resolves the effective server-owned authority.
+  An empty setting requires current stored `SERVER_DEFAULT` / OpenAI Compatible
+  / attested historical Base-URL hash / `gpt-5.6-luna`. An explicit setting
+  requires that exact Provider ID, OpenAI or OpenAI-compatible type, current attestation,
+  secret, normalized endpoint, and Luna catalog entry. Missing dependency/
+  secret or endpoint/model/prompt/decoder/policy drift fails closed; explicit
+  failure never switches to the legacy Provider.
   Only typed transient Provider failures receive at most two retries, with
   valid `Retry-After` precedence over fixed five/ten-second waits.
 - Retrieval failure and empty results return bounded Tool Results and still
@@ -897,7 +928,8 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
 | Schema-v18 live fails any required slice despite aggregate/safety pass | Retain Yellow `retain_beta` evidence, leave both rollout gates off, and never select a UUID or rerun. |
 | Global Tool flag is true but the canary set is empty or user does not match | Expose no `search_memory` Tool and perform zero retrieval/Judge work. |
 | Compose `run` does not support `--no-build` | Omit only that unsupported negative flag, require `--pull never`, never pass positive `--build`, and pin an explicitly reviewed export image before credentials. |
-| Current stored fixed Judge provider/type/Base-URL hash/model/secret drifts | Reject that Judge attempt as provenance drift; release no final Memory and never switch Provider/model. |
+| Empty recall setting and the legacy Provider/type/Base-URL hash/model/secret drifts | Reject that Judge attempt as provenance drift; release no final Memory. |
+| Explicit recall Provider is deleted, disabled, unattested, incompatible, secretless, endpoint-invalid, or Luna-missing | Report `judgeAvailable=false` / `memory_judge_unavailable`, reject the Judge attempt, and never fall back to `SERVER_DEFAULT` or unjudged candidates. |
 | Product Judge returns a typed transient Provider failure | Retry at most twice; honor valid `Retry-After`, otherwise wait five then ten seconds. Deterministic/protocol/provenance failures do not retry. |
 | Product first round returns no Memory call | Make zero hybrid retrieval calls and release the buffered ordinary answer. |
 | Product first round returns one exact call | Execute the hybrid reader, record, hydrate through `065`, and continue on the same Provider/model. |
@@ -941,6 +973,13 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   bounded request; the complete v2 final set is empty, normal product chat
   continues without Memory or v1 fallback, and no recalled or reranked
   candidate reaches the prompt.
+- **Configurable-Provider good**: `PJRSVY:gpt-5.6-luna` resolves to the exact
+  enabled attested stored Provider, the outbound buffered request still names
+  Luna, health reports only `PJRSVY` plus bounded availability, and no secret
+  reaches the browser.
+- **Configurable-Provider bad**: a deleted explicit Provider silently uses
+  `SERVER_DEFAULT`, a selector accepts another model/type, or health exposes a
+  Base URL/credential. All three violate the fail-closed authority boundary.
 - **Health base**: `NO_CANDIDATES` plus ready heartbeat/projections is a normal
   empty result. The same retrieval surface with pending projection, missing
   Worker, or unreadable health is an explicit bounded failure and never a v1
@@ -1102,8 +1141,11 @@ non-empty ID, exact name, and explicitly decoded `{}` arguments.
   PostgreSQL 17 `go_api_runtime`, exact two-file permissions, and complete
   Compose/credential cleanup without live requests,
   separate production policy identity, rejection of
-  every non-production Tool policy, exact fixed Provider/type/Base-URL hash/
-  model/secret drift denial, and production Judge retry/non-retry behavior,
+  every non-production Tool policy, migration-105 up/down and repository
+  restart persistence, Provider-only Luna-filtered UI, optimistic rollback,
+  empty-setting legacy Provider/type/Base-URL hash drift denial, explicit
+  Provider per-attempt resolution with no legacy fallback, bounded health
+  Provider ID/availability, and production Judge retry/non-retry behavior,
   post-threshold
   abstention, reserved cutoff recording, 600/900 token selection, bounded
   metadata, and byte-equivalent v1 prompt/Usage behavior.
@@ -1167,6 +1209,11 @@ reuse cost-basis v8, then treat passing Development metrics as live authority.
 ```text
 Wrong: install a Development policy in product chat, resolve Luna once at
 startup, or fall back to v1 after Judge/provenance failure.
+```
+
+```text
+Wrong: store only a browser Provider choice, allow any model, or silently use
+SERVER_DEFAULT when the explicit Provider becomes stale.
 ```
 
 ```text
@@ -1237,8 +1284,9 @@ default-off hybrid-worker/shadow flag + separate default-off product Tool flag
      stochastic/systematic diagnosis cannot select policy or schema-v21
   -> judge/BGE intersection; empty or uncertain result means no v2 Memory
   -> product first ToolRound sees normal request + search_memory, no Memory body
-  -> exact call under production policy: current fixed Judge tuple reauthorized
-     per attempt -> fixed BGE rerank -> fixed Luna ordinal intersection
+  -> exact call under production policy: empty setting reauthorizes the pinned
+     legacy tuple; explicit setting reauthorizes only that Provider with fixed
+     Luna, never legacy fallback -> fixed BGE rerank -> fixed Luna intersection
   -> typed transient Judge failures only: Retry-After or fixed 5s/10s waits
   -> Record final -> migration-065 current-authority final hydration
   -> same-model continuation without search_memory

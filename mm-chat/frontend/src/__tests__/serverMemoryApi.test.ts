@@ -38,8 +38,11 @@ describe("server durable memory API", () => {
             readyCount: 3,
             pendingCount: 0,
             failedCount: 0,
+            judgeProviderId: "SERVER_DEFAULT",
             judgeModelId: "gpt-5.6-luna",
             judgeFixed: true,
+            judgeProviderConfigured: false,
+            judgeAvailable: true,
           });
         }
         if (url.endsWith("/v1/memories") && method === "GET") {
@@ -76,6 +79,7 @@ describe("server durable memory API", () => {
     });
     await expect(client.memories.getHealth()).resolves.toMatchObject({
       status: "ready",
+      judgeProviderId: "SERVER_DEFAULT",
       judgeModelId: "gpt-5.6-luna",
       readyCount: 3,
     });
@@ -534,8 +538,11 @@ describe("server durable memory API", () => {
           readyCount: -1,
           pendingCount: 0,
           failedCount: 0,
+          judgeProviderId: "SERVER_DEFAULT",
           judgeModelId: "gpt-5.6-luna",
           judgeFixed: true,
+          judgeProviderConfigured: false,
+          judgeAvailable: true,
         }),
       ),
     );

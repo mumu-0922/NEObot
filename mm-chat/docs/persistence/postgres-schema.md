@@ -1,4 +1,4 @@
-# Postgres Core Schema and Chat Agent Runtime Through Migration 104
+# Postgres Core Schema and Chat Agent Runtime Through Migration 105
 
 This document describes the core schema created by the ordered migrations in
 `mm-chat/backend/migrations`, from `001_initial_schema` through
@@ -13,6 +13,9 @@ per-Conversation Host Agent permission authority.
 Migration `104_rag_failure_state_projection` forward-repairs terminal RAG Job
 failure projection into pending Document Versions without changing the parent
 Document lifecycle or hiding an existing active Version.
+Migration `105_recall_filtering_provider` adds one bounded recall-filtering
+Provider/model reference to the existing task-model row. Empty values preserve
+the historical fixed server-default Judge authority.
 Migrations `062` through `095` own later
 Memory and optional Agent control-plane surfaces and remain catalogued in
 `mm-chat/backend/migrations/README.md`.
@@ -118,6 +121,7 @@ Out of scope:
 | `102_host_workspaces`                         | Extends the existing Workspace registry in place with preserved browser settings, CAS revision, one-time Runner/path binding, and immutable Conversation execution snapshots. |
 | `103_chat_agent_permission_modes`             | Adds checked durable `read-only`, `workspace-write`, or `danger-full-access` Conversation authority with a guarded down migration. |
 | `104_rag_failure_state_projection`            | Backfills terminal bound RAG failures and atomically projects future parse/embedding terminal failures into reprocessable failed Versions while preserving active current Versions. |
+| `105_recall_filtering_provider`                | Adds the bounded `providerId:gpt-5.6-luna` recall-filtering reference while retaining empty-value legacy server-default behavior and reversible rollback. |
 
 Published migration pairs are immutable and applied in numeric order. Migration
 SQL contains no transaction-control statements; the Go runner wraps each schema

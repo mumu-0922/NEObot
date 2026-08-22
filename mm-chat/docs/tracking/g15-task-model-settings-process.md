@@ -58,6 +58,16 @@ final authoritative state                            Luna title; Sol other five;
 
 The proof changed only the title task model temporarily. It made no provider
 call, consumed no model quota, and restored the owner's six original choices.
+
+## Migration 105 extension
+
+Migration `105_recall_filtering_provider` reuses the same server-owned row for
+one seventh reference, `recallFiltering`. The UI filters this selector to
+enabled OpenAI or OpenAI-compatible Providers exposing exact `gpt-5.6-luna`; runtime
+keeps the model fixed, resolves the selected Provider for every Judge attempt,
+and never falls back after an explicit selection. Empty values retain the
+historical pinned `SERVER_DEFAULT` route. This extension changes no historical
+six-choice cutover evidence.
 The final live `/v1/config` read after restoration returned
 `defaultModelsConfigured=true` with Luna for title generation and Sol for the
 other five tasks. Its response carried `Cache-Control: no-store`, so reloads do

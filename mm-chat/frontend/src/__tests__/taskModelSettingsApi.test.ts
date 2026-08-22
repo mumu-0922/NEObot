@@ -8,6 +8,7 @@ const models = {
   promptOptimization: "CUSTOM:gpt-polish",
   ragQuery: "CUSTOM:gpt-rag",
   memory: "CUSTOM:gpt-memory",
+  recallFiltering: "CUSTOM:gpt-5.6-luna",
 };
 
 describe("server task model settings API", () => {
@@ -42,7 +43,9 @@ describe("server task model settings API", () => {
       models,
     });
     await expect(
-      client.settings.updateTaskModels({ memory: "CUSTOM:gpt-memory" }),
+      client.settings.updateTaskModels({
+        recallFiltering: "CUSTOM:gpt-5.6-luna",
+      }),
     ).resolves.toMatchObject({ models });
 
     expect(requests).toEqual([
@@ -54,7 +57,7 @@ describe("server task model settings API", () => {
       {
         url: "/mm-api/v1/admin/task-models",
         method: "PATCH",
-        body: { memory: "CUSTOM:gpt-memory" },
+        body: { recallFiltering: "CUSTOM:gpt-5.6-luna" },
       },
     ]);
   });

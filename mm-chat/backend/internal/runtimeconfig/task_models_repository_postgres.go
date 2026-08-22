@@ -33,6 +33,7 @@ SELECT
   prompt_optimization,
   rag_query,
   memory,
+  recall_filtering,
   updated_at
 FROM task_model_settings
 WHERE user_id = $1
@@ -43,6 +44,7 @@ WHERE user_id = $1
 		&stored.Models.PromptOptimization,
 		&stored.Models.RAGQuery,
 		&stored.Models.Memory,
+		&stored.Models.RecallFiltering,
 		&stored.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -71,9 +73,10 @@ INSERT INTO task_model_settings (
   context_compression,
   prompt_optimization,
   rag_query,
-  memory
+  memory,
+  recall_filtering
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (user_id) DO UPDATE SET
   title_generation = EXCLUDED.title_generation,
   related_questions = EXCLUDED.related_questions,
@@ -81,6 +84,7 @@ ON CONFLICT (user_id) DO UPDATE SET
   prompt_optimization = EXCLUDED.prompt_optimization,
   rag_query = EXCLUDED.rag_query,
   memory = EXCLUDED.memory,
+  recall_filtering = EXCLUDED.recall_filtering,
   updated_at = now()
 RETURNING
   title_generation,
@@ -89,6 +93,7 @@ RETURNING
   prompt_optimization,
   rag_query,
   memory,
+  recall_filtering,
   updated_at
 `,
 		userID,
@@ -98,6 +103,7 @@ RETURNING
 		models.PromptOptimization,
 		models.RAGQuery,
 		models.Memory,
+		models.RecallFiltering,
 	).Scan(
 		&stored.Models.TitleGeneration,
 		&stored.Models.RelatedQuestions,
@@ -105,6 +111,7 @@ RETURNING
 		&stored.Models.PromptOptimization,
 		&stored.Models.RAGQuery,
 		&stored.Models.Memory,
+		&stored.Models.RecallFiltering,
 		&stored.UpdatedAt,
 	)
 	if err != nil {

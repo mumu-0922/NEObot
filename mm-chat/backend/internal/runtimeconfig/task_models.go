@@ -8,7 +8,15 @@ import (
 	"neo-chat/mm-chat/backend/internal/auth"
 )
 
-const maxTaskModelRefBytes = 512
+const (
+	maxTaskModelRefBytes   = 512
+	RecallFilteringModelID = "gpt-5.6-luna"
+)
+
+func RecallFilteringProviderTypeSupported(providerType ProviderType) bool {
+	return providerType == ProviderTypeOpenAI ||
+		providerType == ProviderTypeOpenAICompatible
+}
 
 type TaskModels struct {
 	TitleGeneration    string `json:"titleGeneration"`
@@ -17,6 +25,7 @@ type TaskModels struct {
 	PromptOptimization string `json:"promptOptimization"`
 	RAGQuery           string `json:"ragQuery"`
 	Memory             string `json:"memory"`
+	RecallFiltering    string `json:"recallFiltering"`
 }
 
 type TaskModelSettingsPatch struct {
@@ -26,6 +35,7 @@ type TaskModelSettingsPatch struct {
 	PromptOptimization *string `json:"promptOptimization"`
 	RAGQuery           *string `json:"ragQuery"`
 	Memory             *string `json:"memory"`
+	RecallFiltering    *string `json:"recallFiltering"`
 }
 
 type StoredTaskModelSettings struct {
@@ -36,6 +46,12 @@ type StoredTaskModelSettings struct {
 type ResolvedTaskModel struct {
 	Provider ResolvedProvider
 	ModelID  string
+}
+
+type TaskModelAuthority struct {
+	ProviderID string
+	ModelID    string
+	Configured bool
 }
 
 type AdminTaskModelSettingsResponse struct {
@@ -96,17 +112,64 @@ func (s *Service) ResolveMemoryTaskModel(
 	if !found || modelRef == "" {
 		return ResolvedTaskModel{}, false, nil
 	}
-	if len(modelRef) > maxTaskModelRefBytes {
-		return ResolvedTaskModel{}, false, ErrTaskModelSettingsInvalid
+	resolved, err := s.resolveTaskModelRef(ctx, modelRef)
+	return resolved, err == nil, err
+}
+
+func (s *Service) RecallFilteringTaskModelAuthority(
+	ctx context.Context,
+) (TaskModelAuthority, error) {
+	authority := TaskModelAuthority{
+		ProviderID: serverDefaultProviderID,
+		ModelID:    RecallFilteringModelID,
 	}
-	separator := strings.Index(modelRef, ":")
-	if separator <= 0 || separator >= len(modelRef)-1 {
-		return ResolvedTaskModel{}, false, ErrTaskModelSettingsInvalid
+	if s.taskModelRepo == nil {
+		return authority, nil
 	}
-	providerID := strings.TrimSpace(modelRef[:separator])
-	modelID := strings.TrimSpace(modelRef[separator+1:])
-	if providerID == "" || modelID == "" {
-		return ResolvedTaskModel{}, false, ErrTaskModelSettingsInvalid
+	stored, found, err := s.taskModelRepo.GetTaskModelSettings(
+		ctx, auth.UserOrDevelopment(ctx).ID,
+	)
+	if err != nil {
+		return TaskModelAuthority{}, err
+	}
+	modelRef := strings.TrimSpace(stored.Models.RecallFiltering)
+	if !found || modelRef == "" {
+		return authority, nil
+	}
+	providerID, modelID, err := parseTaskModelRef(modelRef)
+	if err != nil || modelID != RecallFilteringModelID {
+		return TaskModelAuthority{}, ErrTaskModelSettingsInvalid
+	}
+	return TaskModelAuthority{
+		ProviderID: providerID,
+		ModelID:    modelID,
+		Configured: true,
+	}, nil
+}
+
+func (s *Service) ResolveRecallFilteringTaskModel(
+	ctx context.Context,
+) (ResolvedTaskModel, bool, error) {
+	authority, err := s.RecallFilteringTaskModelAuthority(ctx)
+	if err != nil {
+		return ResolvedTaskModel{}, false, err
+	}
+	if !authority.Configured {
+		return ResolvedTaskModel{}, false, nil
+	}
+	resolved, err := s.resolveTaskModelRef(
+		ctx, authority.ProviderID+":"+authority.ModelID,
+	)
+	return resolved, err == nil, err
+}
+
+func (s *Service) resolveTaskModelRef(
+	ctx context.Context,
+	modelRef string,
+) (ResolvedTaskModel, error) {
+	providerID, modelID, err := parseTaskModelRef(modelRef)
+	if err != nil {
+		return ResolvedTaskModel{}, err
 	}
 	var provider ResolvedProvider
 	if providerID == serverDefaultProviderID {
@@ -115,7 +178,7 @@ func (s *Service) ResolveMemoryTaskModel(
 		provider, err = s.ResolveStoredProvider(ctx, providerID)
 	}
 	if err != nil {
-		return ResolvedTaskModel{}, false, err
+		return ResolvedTaskModel{}, err
 	}
 	available := false
 	for _, candidate := range provider.Models {
@@ -125,9 +188,9 @@ func (s *Service) ResolveMemoryTaskModel(
 		}
 	}
 	if !available {
-		return ResolvedTaskModel{}, false, ErrTaskModelUnavailable
+		return ResolvedTaskModel{}, ErrTaskModelUnavailable
 	}
-	return ResolvedTaskModel{Provider: provider, ModelID: modelID}, true, nil
+	return ResolvedTaskModel{Provider: provider, ModelID: modelID}, nil
 }
 
 func (s *Service) UpdateAdminTaskModelSettings(
@@ -211,6 +274,15 @@ func (s *Service) applyTaskModelPatch(
 		}
 		update.assign(value)
 	}
+	if patch.RecallFiltering != nil {
+		value := strings.TrimSpace(*patch.RecallFiltering)
+		if value != "" {
+			if err := s.validateRecallFilteringTaskModelRef(ctx, userID, value); err != nil {
+				return err
+			}
+		}
+		models.RecallFiltering = value
+	}
 	return nil
 }
 
@@ -219,17 +291,9 @@ func (s *Service) validateTaskModelRef(
 	userID string,
 	value string,
 ) error {
-	if len(value) > maxTaskModelRefBytes {
-		return ErrTaskModelSettingsInvalid
-	}
-	separator := strings.Index(value, ":")
-	if separator <= 0 || separator >= len(value)-1 {
-		return ErrTaskModelSettingsInvalid
-	}
-	providerID := strings.TrimSpace(value[:separator])
-	modelID := strings.TrimSpace(value[separator+1:])
-	if providerID == "" || modelID == "" {
-		return ErrTaskModelSettingsInvalid
+	providerID, modelID, err := parseTaskModelRef(value)
+	if err != nil {
+		return err
 	}
 	stored, found, err := s.repo.GetProviderConfig(ctx, userID, providerID)
 	if err != nil {
@@ -246,13 +310,59 @@ func (s *Service) validateTaskModelRef(
 	return ErrTaskModelUnavailable
 }
 
+func (s *Service) validateRecallFilteringTaskModelRef(
+	ctx context.Context,
+	userID string,
+	value string,
+) error {
+	providerID, modelID, err := parseTaskModelRef(value)
+	if err != nil {
+		return err
+	}
+	if modelID != RecallFilteringModelID {
+		return ErrTaskModelUnavailable
+	}
+	stored, found, err := s.repo.GetProviderConfig(ctx, userID, providerID)
+	if err != nil {
+		return err
+	}
+	if !found || !IsModelProviderConfig(stored) || !stored.Config.Enabled ||
+		!RecallFilteringProviderTypeSupported(stored.Config.Type) {
+		return ErrTaskModelUnavailable
+	}
+	for _, configuredModel := range stored.Config.Models {
+		if strings.TrimSpace(configuredModel) == RecallFilteringModelID {
+			return nil
+		}
+	}
+	return ErrTaskModelUnavailable
+}
+
+func parseTaskModelRef(value string) (string, string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > maxTaskModelRefBytes {
+		return "", "", ErrTaskModelSettingsInvalid
+	}
+	separator := strings.Index(value, ":")
+	if separator <= 0 || separator >= len(value)-1 {
+		return "", "", ErrTaskModelSettingsInvalid
+	}
+	providerID := strings.TrimSpace(value[:separator])
+	modelID := strings.TrimSpace(value[separator+1:])
+	if providerID == "" || modelID == "" {
+		return "", "", ErrTaskModelSettingsInvalid
+	}
+	return providerID, modelID, nil
+}
+
 func taskModelPatchEmpty(patch TaskModelSettingsPatch) bool {
 	return patch.TitleGeneration == nil &&
 		patch.RelatedQuestions == nil &&
 		patch.ContextCompression == nil &&
 		patch.PromptOptimization == nil &&
 		patch.RAGQuery == nil &&
-		patch.Memory == nil
+		patch.Memory == nil &&
+		patch.RecallFiltering == nil
 }
 
 func (models TaskModels) asMap() map[string]string {
@@ -263,5 +373,6 @@ func (models TaskModels) asMap() map[string]string {
 		"promptOptimization": models.PromptOptimization,
 		"ragQuery":           models.RAGQuery,
 		"memory":             models.Memory,
+		"recallFiltering":    models.RecallFiltering,
 	}
 }

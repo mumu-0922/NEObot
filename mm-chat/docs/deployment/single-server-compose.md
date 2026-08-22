@@ -319,8 +319,10 @@ flag itself remains API-only. A valid call executes exact/BM25/vector RRF,
 the frozen bilingual negative-policy query guard, fixed BGE rerank, strict
 buffered fixed Luna ordinal intersection, Record, migration
 `065` current-authority final hydration, and same-model continuation. Each
-Judge attempt re-resolves the stored `SERVER_DEFAULT` / OpenAI Compatible /
-attested Base-URL hash / `gpt-5.6-luna` tuple; any authority drift fails closed.
+Judge attempt re-resolves either the stored legacy `SERVER_DEFAULT` / OpenAI
+Compatible / attested Base-URL hash tuple or the explicitly selected OpenAI /
+OpenAI Compatible Provider with fixed `gpt-5.6-luna`; authority drift fails
+closed.
 Only typed transient Judge failures retry, at most twice with `Retry-After` or
 fixed five/ten-second waits. Failure or empty retrieval continues without
 Memory and without a v1 fallback.

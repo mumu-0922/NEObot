@@ -47,17 +47,23 @@ Migration `070` returns one content-free, current-user health summary:
   "readyCount": 3,
   "pendingCount": 0,
   "failedCount": 0,
+  "judgeProviderId": "PJRSVY",
   "judgeModelId": "gpt-5.6-luna",
-  "judgeFixed": true
+  "judgeFixed": true,
+  "judgeProviderConfigured": true,
+  "judgeAvailable": true
 }
 ```
 
 `disabled` is authoritative when the Tool flag or the user's Memory/Use switch
-is off. Otherwise live PostgreSQL Worker heartbeat, capture queue, and current
-projection state determine `ready`, `indexing`, or `degraded`. The response
-never exposes database errors, Provider/Base URL configuration, Memory/query
-plaintext, raw scores, or credentials. A health-read failure is not allowed to
-break the governance snapshot UI; the UI shows a bounded service-issue state.
+is off. Otherwise live PostgreSQL Worker heartbeat, capture queue, current
+projection state, and the effective recall-filtering authority determine
+`ready`, `indexing`, or `degraded`; an unavailable explicit Provider reports
+`memory_judge_unavailable`. `judgeProviderId` is the bounded record ID only,
+while `judgeFixed=true` means the model remains fixed to Luna. The response
+never exposes Provider name/Base URL, database errors, Memory/query plaintext,
+raw scores, or credentials. A health-read failure is not allowed to break the
+governance snapshot UI; the UI shows a bounded service-issue state.
 
 ### Snapshot
 

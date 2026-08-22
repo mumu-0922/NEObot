@@ -48,7 +48,8 @@ func TestHandlerRoutesAdminTaskModelSettings(t *testing.T) {
 		stored: StoredProviderConfig{
 			UserID: authDevelopmentUserID(), ProviderID: "CUSTOM", Label: "Custom",
 			Config: StoredProviderConfigPayload{
-				Kind: providerConfigKindModel, Models: []string{"gpt-task"}, Enabled: true,
+				Kind: providerConfigKindModel, Type: ProviderTypeOpenAICompatible,
+				Models: []string{"gpt-task", RecallFilteringModelID}, Enabled: true,
 			},
 		},
 	}
@@ -79,6 +80,17 @@ func TestHandlerRoutesAdminTaskModelSettings(t *testing.T) {
 		!strings.Contains(patch.Body.String(), `"titleGeneration":"CUSTOM:gpt-task"`) ||
 		!strings.Contains(patch.Body.String(), `"configured":true`) {
 		t.Fatalf("patch status = %d, body=%s", patch.Code, patch.Body.String())
+	}
+
+	recall := httptest.NewRecorder()
+	handler.ServeHTTP(recall, httptest.NewRequest(
+		http.MethodPatch,
+		"/v1/admin/task-models",
+		strings.NewReader(`{"recallFiltering":"CUSTOM:gpt-5.6-luna"}`),
+	))
+	if recall.Code != http.StatusOK ||
+		!strings.Contains(recall.Body.String(), `"recallFiltering":"CUSTOM:gpt-5.6-luna"`) {
+		t.Fatalf("recall patch status = %d, body=%s", recall.Code, recall.Body.String())
 	}
 
 	invalid := httptest.NewRecorder()

@@ -13,7 +13,6 @@ describe("DefaultModelSettings server persistence composition", () => {
     );
 
     expect(source).toContain("getTaskModels({ signal: controller.signal })");
-    expect(source).toContain("getHealth({ signal: controller.signal })");
     expect(source).not.toContain("bootstrapStartedRef");
     expect(source).toContain("[apiClient, serverMode, t, updateDefaultModels]");
     expect(source).toContain("response.configured");
@@ -24,7 +23,9 @@ describe("DefaultModelSettings server persistence composition", () => {
     expect(source).toContain('setSaveStatus("error")');
     expect(source).toContain("disabled={savingKey !== undefined");
     expect(source).toContain('t("recallFiltering")');
-    expect(source).toContain('t("systemFixed")');
-    expect(source).toContain("memoryHealth.judgeModelId");
+    expect(source).toContain('saveTaskModel("recallFiltering", value)');
+    expect(source).toContain('provider.type === "OpenAI"');
+    expect(source).toContain('provider.type === "OpenAI Compatible"');
+    expect(source).toContain("RECALL_FILTERING_MODEL_ID");
   });
 });

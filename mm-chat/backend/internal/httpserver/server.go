@@ -213,9 +213,58 @@ const (
 )
 
 type fixedMemoryJudgeProviderResolver interface {
+	ResolveRecallFilteringTaskModel(
+		context.Context,
+	) (runtimeconfig.ResolvedTaskModel, bool, error)
 	ResolveServerDefaultProvider(
 		context.Context,
 	) (runtimeconfig.ResolvedProvider, error)
+}
+
+type runtimeMemoryJudgeAuthorityResolver struct {
+	service *runtimeconfig.Service
+}
+
+func (resolver runtimeMemoryJudgeAuthorityResolver) ResolveMemoryJudgeAuthority(
+	ctx context.Context,
+) (usermemory.MemoryJudgeAuthority, error) {
+	if resolver.service == nil {
+		return usermemory.MemoryJudgeAuthority{}, runtimeconfig.ErrDatabaseRequired
+	}
+	authority, err := resolver.service.RecallFilteringTaskModelAuthority(ctx)
+	if err != nil {
+		return usermemory.MemoryJudgeAuthority{}, err
+	}
+	resolved := usermemory.MemoryJudgeAuthority{
+		ProviderID: authority.ProviderID,
+		ModelID:    authority.ModelID,
+		Configured: authority.Configured,
+	}
+	task, legacyPinned, resolveErr := resolveRuntimeMemoryJudgeTask(ctx, resolver.service)
+	resolved.Available = resolveErr == nil &&
+		memoryJudgeAuthorityValid(task, legacyPinned)
+	return resolved, nil
+}
+
+func resolveRuntimeMemoryJudgeTask(
+	ctx context.Context,
+	resolver fixedMemoryJudgeProviderResolver,
+) (runtimeconfig.ResolvedTaskModel, bool, error) {
+	task, configured, err := resolver.ResolveRecallFilteringTaskModel(ctx)
+	if err != nil {
+		return runtimeconfig.ResolvedTaskModel{}, false, err
+	}
+	if configured {
+		return task, false, nil
+	}
+	provider, err := resolver.ResolveServerDefaultProvider(ctx)
+	if err != nil {
+		return runtimeconfig.ResolvedTaskModel{}, true, err
+	}
+	return runtimeconfig.ResolvedTaskModel{
+		Provider: provider,
+		ModelID:  usermemory.HybridFixedMemoryJudgeModelID,
+	}, true, nil
 }
 
 type runtimeMemoryCandidateJudge struct {
@@ -233,24 +282,24 @@ func (judge runtimeMemoryCandidateJudge) JudgeHybridCandidates(
 			errors.New("fixed Memory candidate judge resolver is unavailable"),
 		)
 	}
-	resolved, err := judge.service.ResolveServerDefaultProvider(ctx)
+	task, legacyPinned, err := resolveRuntimeMemoryJudgeTask(ctx, judge.service)
 	if err != nil {
 		return usermemory.HybridCandidateJudgeResult{}, memoryjudge.NewFailure(
 			memoryjudge.FailureUnclassified,
-			errors.New("fixed Memory candidate judge Provider is unavailable"),
+			errors.New("Memory candidate judge Provider is unavailable"),
 		)
 	}
-	if !fixedMemoryJudgeAuthorityValid(resolved) {
+	if !memoryJudgeAuthorityValid(task, legacyPinned) {
 		return usermemory.HybridCandidateJudgeResult{}, memoryjudge.NewFailure(
 			memoryjudge.FailureProvenanceDrift,
-			errors.New("fixed Memory candidate judge authority drifted"),
+			errors.New("Memory candidate judge authority drifted"),
 		)
 	}
 	provider, err := providerfactory.NewChatProvider(providerfactory.ChatConfig{
-		ProviderID: resolved.ID,
-		Type:       resolved.Type,
-		BaseURL:    resolved.BaseURL,
-		APIKey:     resolved.APIKey,
+		ProviderID: task.Provider.ID,
+		Type:       task.Provider.Type,
+		BaseURL:    task.Provider.BaseURL,
+		APIKey:     task.Provider.APIKey,
 		Timeout:    judge.timeout,
 	})
 	if err != nil {
@@ -267,8 +316,8 @@ func (judge runtimeMemoryCandidateJudge) JudgeHybridCandidates(
 		)
 	}
 	modelRef := chat.ModelRef{
-		ProviderID: fixedMemoryJudgeProviderID,
-		ModelID:    usermemory.HybridFixedMemoryJudgeModelID,
+		ProviderID: task.Provider.ID,
+		ModelID:    task.ModelID,
 	}
 	var adapter usermemory.HybridCandidateJudge
 	switch input.PromptPurpose {
@@ -291,14 +340,31 @@ func (judge runtimeMemoryCandidateJudge) JudgeHybridCandidates(
 }
 
 func fixedMemoryJudgeAuthorityValid(provider runtimeconfig.ResolvedProvider) bool {
-	if strings.TrimSpace(provider.ID) != fixedMemoryJudgeProviderID ||
-		provider.Type != runtimeconfig.ProviderTypeOpenAICompatible ||
-		strings.TrimSpace(provider.APIKey) == "" {
+	return memoryJudgeAuthorityValid(runtimeconfig.ResolvedTaskModel{
+		Provider: provider,
+		ModelID:  usermemory.HybridFixedMemoryJudgeModelID,
+	}, true)
+}
+
+func memoryJudgeAuthorityValid(
+	task runtimeconfig.ResolvedTaskModel,
+	legacyPinned bool,
+) bool {
+	provider := task.Provider
+	if strings.TrimSpace(provider.ID) == "" ||
+		!runtimeconfig.RecallFilteringProviderTypeSupported(provider.Type) ||
+		strings.TrimSpace(provider.APIKey) == "" ||
+		strings.TrimSpace(task.ModelID) != usermemory.HybridFixedMemoryJudgeModelID {
 		return false
 	}
 	baseURL, ok := normalizeFixedMemoryJudgeBaseURL(provider.BaseURL)
-	if !ok || fmt.Sprintf("%x", sha256.Sum256([]byte(baseURL))) !=
-		fixedMemoryJudgeBaseURLSHA256 {
+	if !ok {
+		return false
+	}
+	if legacyPinned && (provider.Type != runtimeconfig.ProviderTypeOpenAICompatible ||
+		strings.TrimSpace(provider.ID) != fixedMemoryJudgeProviderID ||
+		fmt.Sprintf("%x", sha256.Sum256([]byte(baseURL))) !=
+			fixedMemoryJudgeBaseURLSHA256) {
 		return false
 	}
 	for _, modelID := range provider.Models {
@@ -1144,6 +1210,9 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		memoryServiceOptions,
 		usermemory.WithPortabilityRelease(cfg.Version),
 		usermemory.WithMemoryToolEnabled(cfg.Memory.ToolLoopEnabled),
+		usermemory.WithMemoryJudgeAuthorityResolver(
+			runtimeMemoryJudgeAuthorityResolver{service: runtimeConfigService},
+		),
 	)
 	if resolvedOptions.memoryPortabilityPlanCodec != nil {
 		memoryServiceOptions = append(

@@ -14,6 +14,7 @@ const defaultModels: DefaultModels = {
   promptOptimization: "",
   ragQuery: "C:model-c",
   memory: "A:model-a",
+  recallFiltering: "",
 };
 
 const providers: ModelProvider[] = [
@@ -52,6 +53,7 @@ describe("default model pruning", () => {
       promptOptimization: "",
       ragQuery: "",
       memory: "A:model-a",
+      recallFiltering: "",
     });
   });
 
@@ -83,6 +85,7 @@ describe("default model pruning", () => {
       promptOptimization: "A:model-a",
       ragQuery: "A:model-a",
       memory: "A:model-a",
+      recallFiltering: "",
     });
   });
 });

@@ -59,6 +59,7 @@ var (
 	ErrMemoryL2SceneNotFound          = errors.New("memory L2 Scene not found")
 	ErrMemoryL3PersonaNotFound        = errors.New("memory L3 Persona not found")
 	ErrMemoryHealthRepositoryRequired = errors.New("memory health repository is required")
+	ErrMemoryJudgeAuthorityInvalid    = errors.New("memory judge authority is invalid")
 	ErrPortabilityRepositoryRequired  = errors.New("memory portability repository is required")
 	ErrPortabilityPlanCodecRequired   = errors.New("memory portability plan codec is required")
 )
@@ -183,8 +184,22 @@ type MemoryHealth struct {
 	ReadyCount               int64  `json:"readyCount"`
 	PendingCount             int64  `json:"pendingCount"`
 	FailedCount              int64  `json:"failedCount"`
+	JudgeProviderID          string `json:"judgeProviderId"`
 	JudgeModelID             string `json:"judgeModelId"`
 	JudgeFixed               bool   `json:"judgeFixed"`
+	JudgeProviderConfigured  bool   `json:"judgeProviderConfigured"`
+	JudgeAvailable           bool   `json:"judgeAvailable"`
+}
+
+type MemoryJudgeAuthority struct {
+	ProviderID string
+	ModelID    string
+	Configured bool
+	Available  bool
+}
+
+type MemoryJudgeAuthorityResolver interface {
+	ResolveMemoryJudgeAuthority(context.Context) (MemoryJudgeAuthority, error)
 }
 
 type MemoryJobHealthResolutionInput struct {

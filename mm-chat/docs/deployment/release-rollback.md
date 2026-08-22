@@ -255,9 +255,12 @@ The Tool switch is also the production fixed-Judge rollback boundary. Turning
 it false removes `search_memory` exposure and stops fixed BGE/Luna reader/Judge
 requests on the next backend composition; it does not delete canonical Memory,
 hybrid observations, or immutable answer Usage. Do not substitute v1 results
-for a failed product Tool read. If the current stored `SERVER_DEFAULT` /
-OpenAI-Compatible / attested Base-URL hash / `gpt-5.6-luna` tuple drifts, leave
-the Tool switch false until the exact authority is restored and reviewed.
+for a failed product Tool read. With an empty migration-105 recall setting, if
+the current stored `SERVER_DEFAULT` / OpenAI-Compatible / attested historical
+Base-URL hash / `gpt-5.6-luna` tuple drifts, leave the Tool switch false until
+the exact authority is restored and reviewed. With an explicit setting,
+restore that exact enabled attested OpenAI-compatible Provider and its Luna
+catalog entry; never use `SERVER_DEFAULT` as an implicit fallback.
 Clearing `MEMORY_TOOL_LOOP_CANARY_USER_IDS` is the narrower immediate canary
 rollback. Keep the global switch false after any failed Validation; never add a
 UUID merely because aggregate metrics passed when a required slice failed.
@@ -348,6 +351,17 @@ passes, down removes only derived heartbeat/user-health capabilities and
 restores the prior worker-readiness function; canonical Memory, projections,
 capture jobs, and Usage remain intact. Clean disposable replay is
 `069 -> 070 -> 069 -> 070`.
+
+### Migration 105 / recall-filtering Provider rollback
+
+Migration `105` adds one bounded column to `task_model_settings`; the previous
+backend safely ignores the additive column, so application rollback should
+normally retain schema `105`. Clearing the explicit setting before an
+application rollback restores the historical pinned `SERVER_DEFAULT` runtime
+authority without deleting Provider or Memory state. A one-step `105` down
+drops only the recall-filtering selection and restores the six-column length
+constraint; use it only when losing that new selection is explicitly accepted.
+Never delete or rewrite the remaining task-model row to force rollback.
 
 ### Migration 071 / Memory health-resolution rollback
 

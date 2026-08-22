@@ -41,6 +41,7 @@ type Service struct {
 	portabilityCodec  *PortabilityPlanCodec
 	release           string
 	memoryToolEnabled bool
+	judgeAuthority    MemoryJudgeAuthorityResolver
 }
 
 type ServiceOption func(*Service)
@@ -75,6 +76,12 @@ func WithPortabilityRelease(release string) ServiceOption {
 
 func WithMemoryToolEnabled(enabled bool) ServiceOption {
 	return func(service *Service) { service.memoryToolEnabled = enabled }
+}
+
+func WithMemoryJudgeAuthorityResolver(
+	resolver MemoryJudgeAuthorityResolver,
+) ServiceOption {
+	return func(service *Service) { service.judgeAuthority = resolver }
 }
 
 func NewService(repo Repository, options ...ServiceOption) *Service {
@@ -117,10 +124,26 @@ func normalizeSettingsDefaults(settings Settings) Settings {
 
 func (s *Service) GetMemoryHealth(ctx context.Context) (MemoryHealth, error) {
 	health := MemoryHealth{
-		Status:       "disabled",
-		ReasonCode:   "memory_disabled",
-		JudgeModelID: HybridFixedMemoryJudgeModelID,
-		JudgeFixed:   true,
+		Status:          "disabled",
+		ReasonCode:      "memory_disabled",
+		JudgeProviderID: "SERVER_DEFAULT",
+		JudgeModelID:    HybridFixedMemoryJudgeModelID,
+		JudgeFixed:      true,
+		JudgeAvailable:  true,
+	}
+	if s.judgeAuthority != nil {
+		authority, err := s.judgeAuthority.ResolveMemoryJudgeAuthority(ctx)
+		if err != nil {
+			return MemoryHealth{}, err
+		}
+		if strings.TrimSpace(authority.ProviderID) == "" ||
+			strings.TrimSpace(authority.ModelID) != HybridFixedMemoryJudgeModelID {
+			return MemoryHealth{}, ErrMemoryJudgeAuthorityInvalid
+		}
+		health.JudgeProviderID = strings.TrimSpace(authority.ProviderID)
+		health.JudgeModelID = strings.TrimSpace(authority.ModelID)
+		health.JudgeProviderConfigured = authority.Configured
+		health.JudgeAvailable = authority.Available
 	}
 	if !s.memoryToolEnabled {
 		return health, nil
@@ -154,6 +177,9 @@ func (s *Service) GetMemoryHealth(ctx context.Context) (MemoryHealth, error) {
 	case !signals.EmbeddingWorkerAvailable:
 		health.Status = "degraded"
 		health.ReasonCode = "memory_embedding_worker_unavailable"
+	case !health.JudgeAvailable:
+		health.Status = "degraded"
+		health.ReasonCode = "memory_judge_unavailable"
 	case health.FailedCount > 0:
 		health.Status = "degraded"
 		health.ReasonCode = "memory_index_failed"

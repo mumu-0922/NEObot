@@ -72,7 +72,7 @@ Outbox state.
   and a reviewed manifest is derived from its exact hashes.
 - API startup must not auto-run migrations; operators run the `migrate` service
   or `mm-chat-migrate` before starting or restarting a DB-enabled backend
-  release. The current migration head is `104`.
+  release. The current migration head is `105`.
 - Compose resolves the UI from `FRONTEND_IMAGE`, resolves `backend`, `migrate`,
   and `admin` from one `BACKEND_IMAGE`, resolves the optional stdio service
   from `MCP_RUNNER_IMAGE`, and independently resolves the Worker from

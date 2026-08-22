@@ -134,7 +134,8 @@ func TestHandlerReturnsBoundedMemoryHealth(t *testing.T) {
 	if response.Code != http.StatusOK ||
 		!strings.Contains(response.Body.String(), `"status":"ready"`) ||
 		!strings.Contains(response.Body.String(), `"judgeModelId":"gpt-5.6-luna"`) ||
-		strings.Contains(response.Body.String(), "provider") {
+		!strings.Contains(response.Body.String(), `"judgeProviderId":"SERVER_DEFAULT"`) ||
+		strings.Contains(response.Body.String(), "credential") {
 		t.Fatalf("health response = %d %s", response.Code, response.Body.String())
 	}
 	response = serveMemoryRequest(t, handler, http.MethodPost, memoryHealthPath, "{}")

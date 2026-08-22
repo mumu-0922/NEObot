@@ -1656,8 +1656,11 @@ export interface MemoryHealthDTO {
   readyCount: number;
   pendingCount: number;
   failedCount: number;
+  judgeProviderId: string;
   judgeModelId: string;
   judgeFixed: boolean;
+  judgeProviderConfigured: boolean;
+  judgeAvailable: boolean;
 }
 
 export interface MemoryMutationInput {

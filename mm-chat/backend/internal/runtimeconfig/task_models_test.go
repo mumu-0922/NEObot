@@ -18,7 +18,7 @@ func TestTaskModelSettingsStartUnconfiguredAndPersistValidPatch(t *testing.T) {
 			Label:      "Custom",
 			Config: StoredProviderConfigPayload{
 				Kind: providerConfigKindModel, Type: ProviderTypeOpenAICompatible,
-				Models: []string{"gpt-task", "gpt-other"}, Enabled: true,
+				Models: []string{"gpt-task", "gpt-other", RecallFilteringModelID}, Enabled: true,
 			},
 		},
 	}
@@ -36,25 +36,29 @@ func TestTaskModelSettingsStartUnconfiguredAndPersistValidPatch(t *testing.T) {
 
 	title := " CUSTOM:gpt-task "
 	related := "CUSTOM:gpt-other"
+	recallFiltering := "CUSTOM:" + RecallFilteringModelID
 	saved, err := service.UpdateAdminTaskModelSettings(
 		context.Background(),
 		TaskModelSettingsPatch{
 			TitleGeneration:  &title,
 			RelatedQuestions: &related,
+			RecallFiltering:  &recallFiltering,
 		},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !saved.Configured || saved.Models.TitleGeneration != "CUSTOM:gpt-task" ||
-		saved.Models.RelatedQuestions != related || saved.UpdatedAt == nil {
+		saved.Models.RelatedQuestions != related ||
+		saved.Models.RecallFiltering != recallFiltering || saved.UpdatedAt == nil {
 		t.Fatalf("saved task models = %#v", saved)
 	}
 
 	public := service.PublicConfigForContext(context.Background())
 	if public.ModelProvider.DefaultModels["titleGeneration"] != "CUSTOM:gpt-task" ||
 		public.ModelProvider.DefaultModelsConfigured == nil ||
-		!*public.ModelProvider.DefaultModelsConfigured {
+		!*public.ModelProvider.DefaultModelsConfigured ||
+		public.ModelProvider.DefaultModels["recallFiltering"] != recallFiltering {
 		t.Fatalf("public task models = %#v", public.ModelProvider)
 	}
 }
@@ -112,6 +116,28 @@ func TestTaskModelSettingsRejectUnknownOrDisabledModels(t *testing.T) {
 				t.Fatalf("error = %v, want %v", err, test.wantErr)
 			}
 		})
+	}
+
+	value := "CUSTOM:" + RecallFilteringModelID
+	service := NewService(
+		config.Config{},
+		WithProviderConfigRepository(&fakeProviderConfigRepository{
+			ok: true,
+			stored: StoredProviderConfig{
+				UserID: authDevelopmentUserID(), ProviderID: "CUSTOM",
+				Config: StoredProviderConfigPayload{
+					Kind: providerConfigKindModel, Type: ProviderTypeOpenAI,
+					Models: []string{RecallFilteringModelID}, Enabled: true,
+				},
+			},
+		}),
+		WithTaskModelSettingsRepository(&fakeTaskModelSettingsRepository{}),
+	)
+	if _, err := service.UpdateAdminTaskModelSettings(
+		context.Background(),
+		TaskModelSettingsPatch{RecallFiltering: &value},
+	); err != nil {
+		t.Fatalf("OpenAI recall filtering Provider was rejected: %v", err)
 	}
 }
 
@@ -184,6 +210,102 @@ func TestResolveMemoryTaskModelFallsBackOnlyWhenUnconfigured(t *testing.T) {
 	}
 }
 
+func TestRecallFilteringTaskModelPinsLunaAndOpenAIProvider(t *testing.T) {
+	tests := []struct {
+		name   string
+		config StoredProviderConfigPayload
+		value  string
+	}{
+		{
+			name: "different model",
+			config: StoredProviderConfigPayload{
+				Kind: providerConfigKindModel, Type: ProviderTypeOpenAICompatible,
+				Models: []string{"gpt-5.6-sol"}, Enabled: true,
+			},
+			value: "CUSTOM:gpt-5.6-sol",
+		},
+		{
+			name: "non OpenAI provider",
+			config: StoredProviderConfigPayload{
+				Kind: providerConfigKindModel, Type: ProviderTypeGemini,
+				Models: []string{RecallFilteringModelID}, Enabled: true,
+			},
+			value: "CUSTOM:" + RecallFilteringModelID,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			value := test.value
+			service := NewService(
+				config.Config{},
+				WithProviderConfigRepository(&fakeProviderConfigRepository{
+					ok: true,
+					stored: StoredProviderConfig{
+						UserID: authDevelopmentUserID(), ProviderID: "CUSTOM",
+						Config: test.config,
+					},
+				}),
+				WithTaskModelSettingsRepository(&fakeTaskModelSettingsRepository{}),
+			)
+			_, err := service.UpdateAdminTaskModelSettings(
+				context.Background(),
+				TaskModelSettingsPatch{RecallFiltering: &value},
+			)
+			if !errors.Is(err, ErrTaskModelUnavailable) {
+				t.Fatalf("error = %v, want %v", err, ErrTaskModelUnavailable)
+			}
+		})
+	}
+}
+
+func TestResolveRecallFilteringTaskModelUsesExplicitProviderOnly(t *testing.T) {
+	vault := testProviderSecretVault(t, "recall-filter-provider-v1", 22)
+	stored := testStoredVaultProvider(
+		t, vault, "CUSTOM", ProviderTypeOpenAI,
+		"https://provider.example/v1", "fixture-secret",
+	)
+	stored.Config.Models = []string{RecallFilteringModelID}
+	attestStoredProvider(&stored, true)
+	service := NewService(
+		config.Config{},
+		WithProviderConfigRepository(&fakeProviderConfigRepository{ok: true, stored: stored}),
+		WithTaskModelSettingsRepository(&fakeTaskModelSettingsRepository{
+			stored: StoredTaskModelSettings{Models: TaskModels{
+				RecallFiltering: "CUSTOM:" + RecallFilteringModelID,
+			}},
+			found: true,
+		}),
+		WithProviderSecretVault(vault),
+	)
+	resolved, configured, err := service.ResolveRecallFilteringTaskModel(
+		context.Background(),
+	)
+	if err != nil || !configured || resolved.Provider.ID != "CUSTOM" ||
+		resolved.ModelID != RecallFilteringModelID ||
+		resolved.Provider.APIKey != "fixture-secret" {
+		t.Fatalf("ResolveRecallFilteringTaskModel() = %#v/%t/%v", resolved, configured, err)
+	}
+}
+
+func TestRecallFilteringTaskModelAuthorityPreservesLegacyDefault(t *testing.T) {
+	service := NewService(
+		config.Config{},
+		WithTaskModelSettingsRepository(&fakeTaskModelSettingsRepository{
+			stored: StoredTaskModelSettings{Models: TaskModels{}},
+			found:  true,
+		}),
+	)
+	authority, err := service.RecallFilteringTaskModelAuthority(context.Background())
+	if err != nil || authority.ProviderID != serverDefaultProviderID ||
+		authority.ModelID != RecallFilteringModelID || authority.Configured {
+		t.Fatalf("legacy recall filtering authority = %#v/%v", authority, err)
+	}
+	_, configured, err := service.ResolveRecallFilteringTaskModel(context.Background())
+	if err != nil || configured {
+		t.Fatalf("legacy resolution configured=%t err=%v", configured, err)
+	}
+}
+
 func TestPostgresTaskModelSettingsSurviveRepositoryReload(t *testing.T) {
 	db := openRuntimeConfigPostgresIntegrationDB(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -202,6 +324,7 @@ DELETE FROM task_model_settings WHERE user_id = $1;
 	want := TaskModels{
 		TitleGeneration: "CUSTOM:gpt-title",
 		Memory:          "CUSTOM:gpt-memory",
+		RecallFiltering: "CUSTOM:" + RecallFilteringModelID,
 	}
 	if _, err := first.UpsertTaskModelSettings(ctx, userID, want); err != nil {
 		t.Fatal(err)

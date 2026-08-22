@@ -18,6 +18,7 @@ export interface DefaultModels {
   promptOptimization: string;
   ragQuery: string;
   memory: string;
+  recallFiltering: string;
 }
 
 export interface SystemSettings {

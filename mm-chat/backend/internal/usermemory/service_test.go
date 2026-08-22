@@ -284,10 +284,65 @@ func TestMemoryHealthUsesToolSettingsWorkerAndProjectionAuthority(t *testing.T) 
 			if health.Status != test.wantStatus || health.ReasonCode != test.wantReason ||
 				health.PendingCount != test.wantPending || health.FailedCount != test.wantFailed ||
 				repository.calls != test.wantCalls || health.JudgeModelID != HybridFixedMemoryJudgeModelID ||
-				!health.JudgeFixed {
+				health.JudgeProviderID != "SERVER_DEFAULT" ||
+				health.JudgeProviderConfigured || !health.JudgeFixed {
 				t.Fatalf("health=%#v calls=%d", health, repository.calls)
 			}
 		})
+	}
+}
+
+func TestMemoryHealthReportsConfiguredJudgeProviderWithoutSecret(t *testing.T) {
+	repository := &fakeMemoryHealthRepository{
+		fakeRepository: &fakeRepository{
+			settings: Settings{Enabled: true, SearchEnabled: true}, settingsFound: true,
+		},
+		signals: MemoryHealthSignals{
+			WorkerAvailable: true, EmbeddingWorkerAvailable: true,
+		},
+	}
+	health, err := NewService(
+		repository,
+		WithMemoryToolEnabled(true),
+		WithMemoryJudgeAuthorityResolver(memoryJudgeAuthorityFixture{
+			authority: MemoryJudgeAuthority{
+				ProviderID: "NEW_PROVIDER",
+				ModelID:    HybridFixedMemoryJudgeModelID,
+				Configured: true,
+				Available:  true,
+			},
+		}),
+	).GetMemoryHealth(context.Background())
+	if err != nil || health.JudgeProviderID != "NEW_PROVIDER" ||
+		health.JudgeModelID != HybridFixedMemoryJudgeModelID ||
+		!health.JudgeProviderConfigured || !health.JudgeFixed {
+		t.Fatalf("configured Judge health = %#v/%v", health, err)
+	}
+}
+
+func TestMemoryHealthFailsClosedWhenConfiguredJudgeIsUnavailable(t *testing.T) {
+	repository := &fakeMemoryHealthRepository{
+		fakeRepository: &fakeRepository{
+			settings: Settings{Enabled: true, SearchEnabled: true}, settingsFound: true,
+		},
+		signals: MemoryHealthSignals{
+			WorkerAvailable: true, EmbeddingWorkerAvailable: true,
+		},
+	}
+	health, err := NewService(
+		repository,
+		WithMemoryToolEnabled(true),
+		WithMemoryJudgeAuthorityResolver(memoryJudgeAuthorityFixture{
+			authority: MemoryJudgeAuthority{
+				ProviderID: "DELETED_PROVIDER",
+				ModelID:    HybridFixedMemoryJudgeModelID,
+				Configured: true,
+			},
+		}),
+	).GetMemoryHealth(context.Background())
+	if err != nil || health.Status != "degraded" ||
+		health.ReasonCode != "memory_judge_unavailable" || health.JudgeAvailable {
+		t.Fatalf("unavailable Judge health = %#v/%v", health, err)
 	}
 }
 
@@ -361,6 +416,17 @@ type fakeMemoryHealthRepository struct {
 	signals MemoryHealthSignals
 	err     error
 	calls   int
+}
+
+type memoryJudgeAuthorityFixture struct {
+	authority MemoryJudgeAuthority
+	err       error
+}
+
+func (fixture memoryJudgeAuthorityFixture) ResolveMemoryJudgeAuthority(
+	context.Context,
+) (MemoryJudgeAuthority, error) {
+	return fixture.authority, fixture.err
 }
 
 func (r *fakeMemoryHealthRepository) GetMemoryHealth(

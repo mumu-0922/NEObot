@@ -46,9 +46,11 @@ to the private Go backend.
   surface is mounted, and a health failure never falls back to local Memory or
   destroys the last governance snapshot.
 - Default Models separates selectable Memory extraction/maintenance from the
-  read-only fixed recall judge identity returned by the server. The browser
-  requires `judgeFixed=true` and cannot edit or infer recall authority from the
-  active chat model.
+  fixed-model recall Judge. The browser may select only enabled
+  OpenAI or OpenAI-compatible Providers that advertise `gpt-5.6-luna`, persists the full
+  reference through Go, and never infers recall authority from the active chat
+  model. Health requires `judgeFixed=true` and reports only the effective
+  Provider record ID plus bounded configured/available flags.
 - Memory Export receives only an encrypted `.mm-memory` Blob. Import sends the
   selected encrypted File, passphrase, normalized mappings, and optional plan
   token through the typed server API client. Passphrases, package bytes, and

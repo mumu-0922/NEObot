@@ -16,9 +16,11 @@ import { CustomSelect, GroupedSelectOption } from "./SettingsUI";
 import { DefaultModels } from "@/types";
 import { getDefaultModelSelectValue } from "@/lib/utils/defaultModels";
 import { createNeoChatApiClient } from "@/services/api/client";
-import type { MemoryHealthDTO } from "@/services/api/client";
 
 type SaveStatus = "idle" | "loading" | "saving" | "saved" | "error";
+
+const RECALL_FILTERING_MODEL_ID = "gpt-5.6-luna";
+const LEGACY_RECALL_FILTERING_REF = `SERVER_DEFAULT:${RECALL_FILTERING_MODEL_ID}`;
 
 const DefaultModelSettings = () => {
   const t = useTranslations("DefaultModels");
@@ -33,9 +35,6 @@ const DefaultModelSettings = () => {
   );
   const [savingKey, setSavingKey] = useState<keyof DefaultModels>();
   const [saveError, setSaveError] = useState("");
-  const [memoryHealth, setMemoryHealth] = useState<MemoryHealthDTO | null>(
-    null,
-  );
 
   const groupedOptions: GroupedSelectOption[] = useMemo(() => {
     return providers
@@ -53,6 +52,30 @@ const DefaultModelSettings = () => {
             label: displayName,
           };
         }),
+      }));
+  }, [providers, modelMetadata, customModelMetadata]);
+
+  const recallFilteringOptions: GroupedSelectOption[] = useMemo(() => {
+    return providers
+      .filter(
+        (provider) =>
+          provider.enabled &&
+          (provider.type === "OpenAI" ||
+            provider.type === "OpenAI Compatible") &&
+          provider.models.includes(RECALL_FILTERING_MODEL_ID),
+      )
+      .map((provider) => ({
+        label: provider.name,
+        options: [
+          {
+            value: `${provider.id}:${RECALL_FILTERING_MODEL_ID}`,
+            label: `${provider.name} · ${formatModelName(
+              RECALL_FILTERING_MODEL_ID,
+              modelMetadata,
+              customModelMetadata,
+            ).replace(/^Gpt /, "GPT-")}`,
+          },
+        ],
       }));
   }, [providers, modelMetadata, customModelMetadata]);
 
@@ -83,24 +106,6 @@ const DefaultModelSettings = () => {
       controller.abort();
     };
   }, [apiClient, serverMode, t, updateDefaultModels]);
-
-  useEffect(() => {
-    if (!serverMode) return;
-    const controller = new AbortController();
-    let active = true;
-    apiClient.memories
-      .getHealth({ signal: controller.signal })
-      .then((health) => {
-        if (active) setMemoryHealth(health);
-      })
-      .catch(() => {
-        if (active && !controller.signal.aborted) setMemoryHealth(null);
-      });
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [apiClient, serverMode]);
 
   useEffect(
     () => () => {
@@ -279,17 +284,18 @@ const DefaultModelSettings = () => {
                 </div>
               </div>
             </div>
-            <div
-              aria-label={t("recallFiltering")}
-              className="w-full shrink-0 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-border dark:bg-background dark:text-foreground md:w-64"
-            >
-              {memoryHealth
-                ? `${formatModelName(
-                    memoryHealth.judgeModelId,
-                    modelMetadata,
-                    customModelMetadata,
-                  ).replace(/^Gpt /, "GPT-")} · ${t("systemFixed")}`
-                : t("fixedModelUnavailable")}
+            <div className="w-full shrink-0 md:w-64">
+              <CustomSelect
+                ariaLabel={t("recallFilteringProviderAria")}
+                value={
+                  defaultModels.recallFiltering || LEGACY_RECALL_FILTERING_REF
+                }
+                onChange={(value) =>
+                  void saveTaskModel("recallFiltering", value)
+                }
+                options={recallFilteringOptions}
+                disabled={savingKey !== undefined || saveStatus === "loading"}
+              />
             </div>
           </div>
         )}
