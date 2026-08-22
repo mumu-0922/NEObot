@@ -1,0 +1,3 @@
+{"file":".trellis/spec/backend/memory-v2-hybrid-shadow.md","reason":"Fixed Luna judge authority, legacy provenance, fail-closed runtime, and health contracts."}
+{"file":".trellis/spec/backend/memory-v2-storage.md","reason":"Migration and server-owned Memory persistence conventions."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Settings selector and optimistic persistence conventions."}
