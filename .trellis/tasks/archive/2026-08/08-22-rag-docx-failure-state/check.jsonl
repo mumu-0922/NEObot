@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/rag-retrieval-storage.md", "reason": "Verify parser fail-closed behavior, forward migration safety, roles, and state invariants."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify changed behavior has focused tests, lint, typecheck, and no locale regression."}
+{"file": ".trellis/spec/operations/runtime-recreate-image-pinning.md", "reason": "Verify rebuilt runtime containers execute the newly built immutable images."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify failure state is consistent from job to version to UI and preserves active replacements."}

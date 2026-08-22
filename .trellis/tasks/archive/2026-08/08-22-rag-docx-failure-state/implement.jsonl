@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/rag-retrieval-storage.md", "reason": "RAG parser, job-state, migration immutability, SECURITY DEFINER, and PostgreSQL retrieval contracts."}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Knowledge document row behavior and testable display-state composition."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend behavior changes require focused Vitest coverage and type-safe DTO handling."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Trace Worker failure through PostgreSQL projection, API DTO, and UI state."}
+{"file": ".trellis/spec/guides/code-reuse-guide.md", "reason": "Keep the derived display-state rule small, pure, and directly testable."}
