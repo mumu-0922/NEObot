@@ -1,7 +1,7 @@
 # Persistence Docs
 
 Persistence docs describe the current Postgres source-of-truth contract for the
-`mm-chat` server-backed refactor. The schema head is migration `010`;
+`mm-chat` server-backed refactor. The schema head is migration `104`;
 the Phase 4, 4.5, and 5.x labels below are retained as implementation history,
 not as limits on the current runtime.
 

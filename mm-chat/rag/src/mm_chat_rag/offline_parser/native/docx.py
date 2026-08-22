@@ -72,6 +72,13 @@ _IGNORABLE_PARAGRAPH_CHILDREN: Final = frozenset(
         expanded_name(_W, "proofErr"),
     }
 )
+_IGNORABLE_RUN_CHILDREN: Final = frozenset(
+    {
+        # Word emits this pagination hint inside runs after layout. It carries
+        # no document text, relationship, or executable content.
+        expanded_name(_W, "lastRenderedPageBreak"),
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -585,6 +592,10 @@ def _word_run(
     breaks: list[tuple[XmlElement, str]] = []
     for child in run.child_elements():
         if child.name == _qn("rPr"):
+            continue
+        if child.name in _IGNORABLE_RUN_CHILDREN:
+            if child.attributes or child.child_elements() or child.text_runs():
+                _invalid()
             continue
         if child.name == _qn("t"):
             allowed_attributes = {expanded_name(_XML, "space")}

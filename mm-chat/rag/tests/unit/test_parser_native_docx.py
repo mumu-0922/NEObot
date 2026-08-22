@@ -176,6 +176,23 @@ def test_docx_entity_tab_and_break_keep_source_syntax() -> None:
     ]
 
 
+def test_docx_last_rendered_page_break_is_ignored_without_text_drift() -> None:
+    without_marker = _parse(_docx("<w:p><w:r><w:t>before after</w:t></w:r></w:p>"))
+    with_marker = _parse(
+        _docx(
+            "<w:p><w:r><w:t>before</w:t><w:lastRenderedPageBreak/>"
+            '<w:t xml:space="preserve"> after</w:t></w:r></w:p>'
+        )
+    )
+
+    assert "".join(item.text for item in with_marker.nodes[1].fragments) == (
+        "before after"
+    )
+    assert [node.kind for node in with_marker.nodes] == [
+        node.kind for node in without_marker.nodes
+    ]
+
+
 def test_docx_consecutive_numbered_paragraphs_form_one_native_list() -> None:
     item = (
         '<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="7"/>'
@@ -626,6 +643,10 @@ def test_docx_active_and_deleted_content_fail_closed(
         ),
         "<w:p><w:pPr/><w:pPr/></w:p>",
         "<w:p><w:r><w:t><w:br/></w:t></w:r></w:p>",
+        (
+            "<w:p><w:r><w:lastRenderedPageBreak>"
+            "<w:t>unexpected</w:t></w:lastRenderedPageBreak></w:r></w:p>"
+        ),
     ],
 )
 def test_docx_invalid_paragraph_and_run_structure_fails_closed(body: str) -> None:

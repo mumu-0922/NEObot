@@ -8,10 +8,14 @@ the production retrieval profile pointer, or the cross-layer Knowledge
 Citation display projection. It also applies when touching any already-applied
 retrieval migration byte, including comments, line endings, or terminal blank
 lines, because the live manifest hashes both SQL directions byte-for-byte.
+DOCX native-parser admission and terminal Knowledge Processing Job projection
+also belong here because parser failure must remain consistent through the
+Version DTO and Knowledge UI.
 
-The current repository schema head is migration `053` on PostgreSQL `17.10`
-with `pgvector 0.8.5` and `pg_textsearch 1.3.1`; the latest retrieval-specific
-migration remains `050`. The durable retrieval pointer still accepts `legacy`
+The current repository schema head is migration `104` on PostgreSQL `17.10`
+with `pgvector 0.8.5` and `pg_textsearch 1.3.1`; the latest retrieval-profile
+migration remains `050`, and migration `104` owns RAG failure-state projection.
+The durable retrieval pointer still accepts `legacy`
 and `pg17_bm25_pgvector_v1`; migration `049` adds the BGE Candidate vector
 space, and migration `050` permanently retires Jina runtime execution without
 moving the pointer, activating a Generation, or consuming Holdout. The retired
@@ -259,6 +263,26 @@ RETURNS TABLE(
 )
 ```
 
+Terminal Worker state is owned by the existing lease-fenced signatures:
+
+```sql
+knowledge_claim_processing_job(UUID, UUID, INTEGER, TEXT[])
+RETURNS SETOF knowledge_processing_jobs
+
+knowledge_finish_processing_job(UUID, UUID, UUID, TEXT, TEXT, INTEGER)
+RETURNS BOOLEAN
+```
+
+The Knowledge UI derives only its display badge through:
+
+```text
+getKnowledgeDocumentDisplayStatus(KnowledgeDocumentDTO)
+  -> KnowledgeDocumentStatus | "failed"
+```
+
+This is a presentation projection. It does not add `failed` to the parent
+`knowledge_documents.status` schema.
+
 Structure-generation lifecycle state changes are operator-only after migration
 `044`. `rag_replay_operator` receives bounded status, rebuild allocation,
 verification, activation, and rollback gateways. `go_api_runtime` receives none
@@ -341,6 +365,24 @@ replace the failed source report.
   discovered, prove the exact applied bytes from repository/runtime evidence,
   restore those bytes, and pin the live checksum in a regression test. Do not
   rewrite `schema_migrations.checksum` to bless changed source.
+- Native DOCX parsing may ignore an exact empty
+  `w:lastRenderedPageBreak` run child because it is a layout hint with no text,
+  relationship, or executable authority. Attributes, nested elements, or text
+  under that marker are malformed and must still fail closed. Unknown run
+  children, active content, and deleted revisions remain unsupported.
+- A bound `parse|passage_embedding` Job that becomes terminal `failed` through
+  explicit finish or lease-expiry/max-attempt exhaustion must atomically mark
+  its eligible `uploaded|processing` Document Version `failed` with the same
+  stable error code. A retry that returns to `pending` must not change the
+  Version lifecycle.
+- Never add a parent Document `failed` state. A first-Version failure leaves the
+  schema-valid parent `processing`, and the DTO/UI displays the failed pending
+  Version. If a current active Version exists and a newer replacement fails,
+  the parent and visible badge remain `active`; only the failed pending Version
+  becomes reprocessable.
+- A historical failure backfill must use the latest bound parse/embedding Job
+  for each Version, require that Job to be failed, update only nonterminal
+  Versions, and skip every Version with pending or processing work.
 - BM25 reader-source admission requires the active corpus head and generation,
   the exact historical or BGE Search Profile row, active document projection
   head, published materialization, and current collection/document/version
@@ -699,6 +741,11 @@ replace the failed source report.
 | Condition                                                                                  | Required result                                                                                                         |
 | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
 | Embedded bytes for an applied migration differ from `schema_migrations.checksum`           | Deployment fails before later migrations; restore the exact applied bytes rather than editing the manifest             |
+| Empty `w:lastRenderedPageBreak` appears inside a DOCX run                                  | Ignore only the marker and preserve extracted text/node structure                                                        |
+| The marker has attributes, children, or text, or another unknown run child appears         | Fail closed with the existing stable parser error; do not broaden arbitrary OOXML admission                              |
+| Parse/embedding finish is retryable and attempts remain                                    | Return the Job to `pending`; keep the Version `uploaded|processing`                                                       |
+| Parse/embedding failure is terminal or an expired lease exhausts attempts                  | Atomically set Job and eligible pending Version to `failed` with a stable error code                                      |
+| Replacement Version fails while a current active Version exists                            | Keep parent/current Version active; expose the failed pending Version for reprocess                                       |
 | PG major is not 17 or extension version differs                                            | DDL aborts before creating shadow objects                                                                               |
 | Generation/profile is null, inactive, or incompatible                                      | `RAG_BM25_SHADOW_ARGUMENT_INVALID` or `RAG_BM25_SHADOW_PROFILE_MISMATCH`                                                |
 | Insert identity does not match current source                                              | `RAG_BM25_SHADOW_SOURCE_MISMATCH`                                                                                       |
@@ -772,6 +819,13 @@ Every SECURITY DEFINER function must pin the current schema followed by
   prevents later normalization.
 - **Bad:** updating `schema_migrations.checksum`, skipping validation, or
   replaying later migrations while the embedded source still differs.
+- **Good:** an empty Word pagination hint is ignored, a terminal parse failure
+  marks the pending Version failed, and the UI offers reprocess without hiding
+  an older active Version.
+- **Base:** a retryable failure returns the Job to pending and continues to
+  display processing because the Version is still nonterminal.
+- **Bad:** marking only the Job failed, adding a parent Document failed enum,
+  or showing a failed replacement badge over a still-available current Version.
 - **Good (historical qualification only):** a published Jina v4 row retains
   immutable lineage and tombstone behavior without authorizing new provider
   calls.
@@ -1003,11 +1057,43 @@ The disposable drill must assert:
     malformed omission, and the invariant that UUIDs, hashes, opaque sheet/
     OOXML data, and serialized raw locator JSON are never rendered. Existing
     Direct, Knowledge, Web, and Both composition tests must remain green.
+32. DOCX regression tests prove an empty `w:lastRenderedPageBreak` preserves
+    text and node kinds while nested/unknown/active/revision content fails
+    closed. A disposable PostgreSQL drill must prove migration-104 historical
+    backfill, retry preservation, explicit terminal failure, exhausted-lease
+    failure, least-privilege grants/search path, and down/re-up idempotence.
+    Frontend units must prove first-Version failure displays failed while an
+    active current Version masks a failed replacement badge.
 
 After the drill, run `go vet ./...`, `go test ./...`, and the frozen G18
 evaluator.
 
 ## 7. Wrong vs Correct
+
+### Terminal Processing Job projection
+
+Wrong:
+
+```sql
+UPDATE knowledge_processing_jobs
+SET status = 'failed', error_code = p_error_code
+WHERE id = p_job_id;
+```
+
+Correct:
+
+```text
+lock and validate the leased Job
+-> transition retryable work back to pending without touching the Version
+-> for terminal parse/embedding failure, update the Job and only its matching
+   uploaded|processing Version to failed in the same transaction
+-> keep the parent Document lifecycle and any active current Version unchanged
+-> let the UI derive failed only when no active current Version exists
+```
+
+Job state alone is not the user-visible lifecycle authority. The pending
+Version is the bridge between Worker failure, reprocess eligibility, API DTO,
+and presentation.
 
 ### Wrong
 

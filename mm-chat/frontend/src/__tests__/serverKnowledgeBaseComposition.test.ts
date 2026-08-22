@@ -59,6 +59,12 @@ describe("G8 server knowledge base UI composition", () => {
     expect(serverKnowledgeBase).toContain(
       'document.pendingVersion?.status === "failed"',
     );
+    expect(serverKnowledgeBase).toContain(
+      "getKnowledgeDocumentDisplayStatus(document)",
+    );
+    expect(serverKnowledgeBase).toContain(
+      "serverDocumentStatus.${displayStatus}",
+    );
     expect(serverKnowledgeBase).not.toContain("/v1/knowledge");
     expect(serverKnowledgeBase).not.toContain("/api/rag");
     expect(serverKnowledgeBase).not.toContain("/api/doc-parse");

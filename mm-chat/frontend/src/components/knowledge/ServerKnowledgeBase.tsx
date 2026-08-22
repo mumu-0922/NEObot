@@ -49,6 +49,7 @@ import {
   KNOWLEDGE_LIMITS,
 } from "@/config/limits";
 import { deleteKnowledgeDocumentsWithConcurrency } from "@/lib/knowledge/bulkDelete";
+import { getKnowledgeDocumentDisplayStatus } from "@/lib/knowledge/documentDisplayStatus";
 import { triggerBlobDownload } from "@/lib/utils/blobDownload";
 import { logDevError } from "@/lib/utils/devLogger";
 import { sanitizeDownloadFilename } from "@/lib/utils/filename";
@@ -1147,6 +1148,7 @@ function ServerDocumentRow({
 }) {
   const t = useTranslations("Knowledge");
   const version = document.currentVersion ?? document.pendingVersion;
+  const displayStatus = getKnowledgeDocumentDisplayStatus(document);
   const documentName = version?.file.name ?? document.id;
   const canDownload =
     document.status === "active" &&
@@ -1174,9 +1176,9 @@ function ServerDocumentRow({
         </p>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-400 dark:text-muted-foreground">
           <span
-            className={`rounded-full border px-2 py-0.5 ${statusClass(document.status)}`}
+            className={`rounded-full border px-2 py-0.5 ${statusClass(displayStatus)}`}
           >
-            {t(`serverDocumentStatus.${document.status}`)}
+            {t(`serverDocumentStatus.${displayStatus}`)}
           </span>
           {version && (
             <>

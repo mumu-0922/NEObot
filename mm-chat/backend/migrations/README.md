@@ -145,8 +145,8 @@ function signatures, owners, and grants while pinning lookup to the application
 schema, `pg_catalog`, and `pg_temp`. Its down path intentionally retains the
 safe search path rather than reopening object-shadowing risk.
 
-The current migration head is `101`; the latest RAG retrieval-specific migration
-remains `050`. Migration `043` extends the existing final-authority evidence
+The current migration head is `104`; the latest RAG lifecycle-specific migration
+is `104`. Migration `043` extends the existing final-authority evidence
 hydration boundary with complete matched-Child and containing-Parent source
 text plus their persisted token counts. Parent text is answer context only. Its
 down migration restores the previous Child-only return signature.
