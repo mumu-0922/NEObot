@@ -76,6 +76,7 @@ describe("session export payloads", () => {
     expect(payload.messages.map((message) => message.id)).toEqual([
       "u1",
       "m1b",
+      "u2",
     ]);
     expect((payload as any).messageTree).toEqual(tree);
   });
