@@ -26,6 +26,7 @@ export interface ChatPanelUrlState {
   panel: ChatPanel;
   settingsTab: SettingsTabId | null;
   skillId: string | null;
+  knowledgeCollectionId: string | null;
   needsReplace: boolean;
   normalizedSearchParams: URLSearchParams;
 }
@@ -50,6 +51,10 @@ const isSettingsTab = (value: string | null): value is SettingsTabId =>
 const isSkillId = (value: string | null): value is string =>
   value !== null && /^[a-z][a-z0-9_]*_[a-z0-9]{16,64}$/.test(value);
 
+const isKnowledgeCollectionId = (value: string | null): value is string =>
+  value !== null &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
 const cloneSearchParams = (input: URLSearchParams | string) =>
   new URLSearchParams(input);
 
@@ -61,11 +66,13 @@ export const parseChatPanelUrlState = (
   const rawPanel = originalParams.get("panel");
   const rawSettingsTab = originalParams.get("settingsTab");
   const rawSkillId = originalParams.get("skillId");
+  const rawKnowledgeCollectionId = originalParams.get("collectionId");
   const legacyAgentTab = originalParams.get("agentTab");
   const legacyAgentId = originalParams.get("agentId");
   let panel: ChatPanel = "chat";
   let settingsTab: SettingsTabId | null = null;
   let skillId: string | null = null;
+  let knowledgeCollectionId: string | null = null;
   let needsReplace = false;
 
   if (rawPanel === "agent-center") {
@@ -115,6 +122,18 @@ export const parseChatPanelUrlState = (
     needsReplace = true;
   }
 
+  if (panel === "knowledge") {
+    if (isKnowledgeCollectionId(rawKnowledgeCollectionId)) {
+      knowledgeCollectionId = rawKnowledgeCollectionId;
+    } else if (rawKnowledgeCollectionId !== null) {
+      normalizedSearchParams.delete("collectionId");
+      needsReplace = true;
+    }
+  } else if (rawKnowledgeCollectionId !== null) {
+    normalizedSearchParams.delete("collectionId");
+    needsReplace = true;
+  }
+
   for (const key of ["agentTab", "agentId"]) {
     if (originalParams.has(key)) {
       normalizedSearchParams.delete(key);
@@ -126,6 +145,7 @@ export const parseChatPanelUrlState = (
     panel,
     settingsTab,
     skillId,
+    knowledgeCollectionId,
     needsReplace,
     normalizedSearchParams,
   };
@@ -137,6 +157,7 @@ export const setChatPanelUrlState = (
     panel: ChatPanel;
     settingsTab?: SettingsTabId | null;
     skillId?: string | null;
+    knowledgeCollectionId?: string | null;
   },
 ): URLSearchParams => {
   const params = cloneSearchParams(input);
@@ -144,6 +165,7 @@ export const setChatPanelUrlState = (
   params.delete("panel");
   params.delete("settingsTab");
   params.delete("skillId");
+  params.delete("collectionId");
   params.delete("agentTab");
   params.delete("agentId");
 
@@ -159,6 +181,10 @@ export const setChatPanelUrlState = (
 
   if (state.panel === "skill-store" && state.skillId) {
     params.set("skillId", state.skillId);
+  }
+
+  if (state.panel === "knowledge" && state.knowledgeCollectionId) {
+    params.set("collectionId", state.knowledgeCollectionId);
   }
 
   return params;

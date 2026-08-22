@@ -56,6 +56,11 @@ import { sanitizeDownloadFilename } from "@/lib/utils/filename";
 
 interface ServerKnowledgeBaseProps {
   onClose?: () => void;
+  selectedCollectionId: string | null;
+  onSelectedCollectionIdChange: (
+    collectionId: string | null,
+    historyMode?: "push" | "replace",
+  ) => void;
 }
 
 type CollectionFormData = {
@@ -116,6 +121,8 @@ const BULK_DELETE_CONCURRENCY = 3;
 
 export default function ServerKnowledgeBase({
   onClose,
+  selectedCollectionId,
+  onSelectedCollectionIdChange,
 }: ServerKnowledgeBaseProps) {
   const t = useTranslations("Knowledge");
   const apiClient = useMemo(() => createNeoChatApiClient(), []);
@@ -129,14 +136,12 @@ export default function ServerKnowledgeBase({
   const [documentCounts, setDocumentCounts] = useState<Record<string, number>>(
     {},
   );
-  const [selectedCollectionId, setSelectedCollectionId] = useState<
-    string | null
-  >(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [showNewModal, setShowNewModal] = useState(false);
   const [editingCollection, setEditingCollection] =
     useState<KnowledgeCollectionDTO | null>(null);
   const [loadingCollections, setLoadingCollections] = useState(false);
+  const [hasLoadedCollections, setHasLoadedCollections] = useState(false);
   const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(
@@ -186,6 +191,7 @@ export default function ServerKnowledgeBase({
     try {
       const page = await apiClient.knowledge.listCollections({ limit: 100 });
       setCollections(page.items);
+      setHasLoadedCollections(true);
       const countResults = await Promise.allSettled(
         page.items.map(async (collection) => {
           const documentsPage = await apiClient.knowledge.listDocuments({
@@ -202,12 +208,6 @@ export default function ServerKnowledgeBase({
           ),
         ),
       );
-      setSelectedCollectionId((current) => {
-        if (current && page.items.some((item) => item.id === current)) {
-          return current;
-        }
-        return null;
-      });
     } catch (caught) {
       showError(t("serverLoadCollectionsFailed"), caught);
     } finally {
@@ -219,12 +219,12 @@ export default function ServerKnowledgeBase({
     const requestId = documentsRequestIdRef.current + 1;
     documentsRequestIdRef.current = requestId;
     setSelectedDocumentIds(new Set());
-    if (!knowledgeSupported || !selectedCollectionId) {
+    if (!knowledgeSupported || !selectedCollection) {
       setDocuments([]);
       setLoadingDocuments(false);
       return;
     }
-    const collectionId = selectedCollectionId;
+    const collectionId = selectedCollection.id;
     setLoadingDocuments(true);
     setError(null);
     try {
@@ -246,11 +246,27 @@ export default function ServerKnowledgeBase({
         setLoadingDocuments(false);
       }
     }
-  }, [apiClient, knowledgeSupported, selectedCollectionId, showError, t]);
+  }, [apiClient, knowledgeSupported, selectedCollection, showError, t]);
 
   useEffect(() => {
     void refreshCollections();
   }, [refreshCollections]);
+
+  useEffect(() => {
+    if (
+      !hasLoadedCollections ||
+      !selectedCollectionId ||
+      collections.some((collection) => collection.id === selectedCollectionId)
+    ) {
+      return;
+    }
+    onSelectedCollectionIdChange(null, "replace");
+  }, [
+    collections,
+    hasLoadedCollections,
+    onSelectedCollectionIdChange,
+    selectedCollectionId,
+  ]);
 
   useEffect(() => {
     void refreshDocuments();
@@ -361,9 +377,9 @@ export default function ServerKnowledgeBase({
           delete next[collection.id];
           return next;
         });
-        setSelectedCollectionId((current) =>
-          current === collection.id ? null : current,
-        );
+        if (selectedCollectionId === collection.id) {
+          onSelectedCollectionIdChange(null, "replace");
+        }
         setEditingCollection(null);
         setDocuments([]);
         setNotice(t("serverCollectionDeleted"));
@@ -650,7 +666,9 @@ export default function ServerKnowledgeBase({
         }
         activeName={selectedCollection?.name}
         onBack={
-          selectedCollection ? () => setSelectedCollectionId(null) : undefined
+          selectedCollection
+            ? () => onSelectedCollectionIdChange(null)
+            : undefined
         }
       />
 
@@ -723,7 +741,9 @@ export default function ServerKnowledgeBase({
                       key={collection.id}
                       collection={collection}
                       fileCount={documentCounts[collection.id] ?? 0}
-                      onClick={() => setSelectedCollectionId(collection.id)}
+                      onClick={() =>
+                        onSelectedCollectionIdChange(collection.id)
+                      }
                       onEdit={(event) => {
                         event.stopPropagation();
                         setEditingCollection(collection);

@@ -79,7 +79,9 @@ export function useChatShellState() {
     useShallow((state) => ({
       _hasHydrated: state._hasHydrated,
       theme: state.theme,
+      selectedChatModel: state.selectedChatModel,
       providers: state.providers,
+      setSelectedChatModel: state.setSelectedChatModel,
       updateProvider: state.updateProvider,
       replaceServerManagedProviders: state.replaceServerManagedProviders,
       applyServerConfig: state.applyServerConfig,

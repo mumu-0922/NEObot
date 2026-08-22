@@ -70,6 +70,17 @@ describe("G8 server knowledge base UI composition", () => {
     expect(serverKnowledgeBase).not.toContain("/api/doc-parse");
   });
 
+  it("loads URL-selected documents only after matching a server collection", () => {
+    expect(knowledgeBase).toContain("selectedCollectionId");
+    expect(knowledgeBase).toContain("onSelectedCollectionIdChange");
+    expect(serverKnowledgeBase).toContain(
+      "if (!knowledgeSupported || !selectedCollection)",
+    );
+    expect(serverKnowledgeBase).toContain(
+      'onSelectedCollectionIdChange(null, "replace")',
+    );
+  });
+
   it("makes document deletion immediately invisible with rollback on failure", () => {
     const optimisticDeleteIndex = serverKnowledgeBase.indexOf(
       "setDocuments((current) =>",

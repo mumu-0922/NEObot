@@ -53,6 +53,40 @@ export const useUIStore = create<UIState>((set) => ({
 - SSR uses no-op storage and hydration-aware hooks. Never read persisted browser
   data as if it were available during the server render.
 
+### Refresh-Restored Browser Preferences
+
+- A preference that must survive refresh in both Local and Server mode (for
+  example the composer's complete `providerId:modelId` selection) belongs in a
+  store backed by `getBrowserPreferenceStorage()`. Do not rely on
+  `chatStore`/`getAppDbStorage()` for that contract: Server mode intentionally
+  turns the chat IndexedDB adapter into a no-op because chat data is
+  server-authoritative.
+- Keep the persisted preference and live runtime projection separate when the
+  latter already has an owning store. Restore only after both preference and
+  Provider/model catalogs hydrate, require an exact available-model match, and
+  retain the saved value while the catalog is temporarily empty. If a
+  non-empty catalog proves it unavailable, use the existing default fallback
+  and persist that resolved choice.
+- Regression tests must assert that `partialize` retains the full Provider and
+  model identity and that the browser-preference storage adapter receives the
+  write in Server mode.
+
+### Refresh-Restored Nested Views
+
+- A nested screen users expect to bookmark, refresh, or traverse with browser
+  Back/Forward belongs in URL state, not component-only `useState`. Extend the
+  existing pure parse/update helper and keep the top-level shell responsible
+  for `pushState`, `replaceState`, and `popstate` synchronization.
+- Treat identifiers parsed from the URL as untrusted. Validate their shape,
+  match them against a server-returned entity, and only then issue detail or
+  child-resource requests. An invalid, inaccessible, or deleted identifier
+  must be removed with `replaceState` and resolve to the owning list view.
+- Use `pushState` for user navigation between list and detail. Use
+  `replaceState` for normalization/deletion so Back does not reopen a broken
+  entry. Tests must cover round-trip serialization, unrelated-query
+  preservation, invalid/out-of-panel cleanup, and the server-match request
+  gate.
+
 ## Server State
 
 - There is no separate query-cache library. `createNeoChatApiClient()` selects

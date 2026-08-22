@@ -30,10 +30,10 @@ src/store/
 ### `coreSettingsStore`
 
 Stores frequently needed core settings such as theme, language, provider
-projections, and automation task model selections. Browser-owned preferences
-and legacy/BYOK provider shells may use `localStorage`; in server mode,
-`defaultModels` is an in-memory projection of Go/Postgres and is deliberately
-excluded from browser persistence.
+projections, the last selected chat Provider/model, and automation task model
+selections. Browser-owned preferences and legacy/BYOK provider shells may use
+`localStorage`; in server mode, `defaultModels` is an in-memory projection of
+Go/Postgres and is deliberately excluded from browser persistence.
 
 ### `settingsStore`
 

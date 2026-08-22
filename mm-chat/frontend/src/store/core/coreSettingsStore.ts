@@ -102,6 +102,7 @@ interface CoreSettingsState {
 
   theme: "light" | "dark" | "system";
   language: string;
+  selectedChatModel: string;
   providers: ModelProvider[];
   defaultModels: DefaultModels;
   serverDefaultProviderEnabled?: boolean;
@@ -109,6 +110,7 @@ interface CoreSettingsState {
   // Actions
   setTheme: (theme: "light" | "dark" | "system") => void;
   setLanguage: (lang: string) => void;
+  setSelectedChatModel: (model: string) => void;
 
   // Provider Actions
   addProvider: () => string;
@@ -142,12 +144,15 @@ export const useCoreSettingsStore = create<CoreSettingsState>()(
 
       theme: "system",
       language: "auto",
+      selectedChatModel: "",
       providers: [],
       serverDefaultProviderEnabled: undefined,
       defaultModels: { ...EMPTY_DEFAULT_MODELS },
 
       setTheme: (theme) => set({ theme }),
       setLanguage: (language) => set({ language }),
+      setSelectedChatModel: (selectedChatModel) =>
+        set({ selectedChatModel: selectedChatModel.trim() }),
 
       addProvider: () => {
         const id = generateProviderId();
@@ -317,6 +322,10 @@ export const useCoreSettingsStore = create<CoreSettingsState>()(
           ...state,
           theme: state.theme || "system",
           language: state.language || "auto",
+          selectedChatModel:
+            typeof state.selectedChatModel === "string"
+              ? state.selectedChatModel.trim()
+              : "",
           serverDefaultProviderEnabled: undefined,
           providers,
           defaultModels: pruneUnavailableDefaultModels(
@@ -328,6 +337,7 @@ export const useCoreSettingsStore = create<CoreSettingsState>()(
       partialize: (state) => ({
         theme: state.theme,
         language: state.language,
+        selectedChatModel: state.selectedChatModel,
         providers: state.providers
           .filter((provider) => !provider.isServerDefault)
           .map(stripProviderPlainSecret),

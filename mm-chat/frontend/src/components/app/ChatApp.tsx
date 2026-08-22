@@ -276,7 +276,9 @@ const ChatApp = () => {
     core: {
       _hasHydrated: coreHasHydrated,
       theme,
+      selectedChatModel,
       providers,
+      setSelectedChatModel,
       updateProvider,
       replaceServerManagedProviders,
       applyServerConfig: applyCoreServerConfig,
@@ -343,6 +345,9 @@ const ChatApp = () => {
   const [viewMode, setViewMode] = useState<ChatPanel>("chat");
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>("providers");
   const [skillId, setSkillId] = useState<string | null>(null);
+  const [knowledgeCollectionId, setKnowledgeCollectionId] = useState<
+    string | null
+  >(null);
 
   const [serverConfigResolved, setServerConfigResolved] = useState(false);
   const [serverModelBootstrapReady, setServerModelBootstrapReady] =
@@ -623,6 +628,7 @@ const ChatApp = () => {
       nextSettingsTab?: SettingsTabId | null,
       historyMode: "push" | "replace" = "push",
       nextSkillId?: string | null,
+      nextKnowledgeCollectionId?: string | null,
     ) => {
       if (typeof window === "undefined") return;
 
@@ -632,6 +638,7 @@ const ChatApp = () => {
           panel,
           settingsTab: nextSettingsTab,
           skillId: nextSkillId,
+          knowledgeCollectionId: nextKnowledgeCollectionId,
         },
       );
       updateBrowserSearch(nextParams, historyMode);
@@ -649,6 +656,7 @@ const ChatApp = () => {
         panel === "settings" ? (nextSettingsTab ?? settingsTab) : null;
 
       setViewMode(panel);
+      setKnowledgeCollectionId(null);
       if (resolvedSettingsTab) {
         setSettingsTab(resolvedSettingsTab);
       }
@@ -690,6 +698,7 @@ const ChatApp = () => {
       setViewMode(parsed.panel);
       setSettingsTab(parsed.settingsTab ?? "providers");
       setSkillId(parsed.skillId);
+      setKnowledgeCollectionId(parsed.knowledgeCollectionId);
       if (parsed.needsReplace) {
         updateBrowserSearch(parsed.normalizedSearchParams, "replace");
       }
@@ -699,6 +708,14 @@ const ChatApp = () => {
     window.addEventListener("popstate", syncPanelFromUrl);
     return () => window.removeEventListener("popstate", syncPanelFromUrl);
   }, [updateBrowserSearch]);
+
+  const navigateKnowledgeCollection = useCallback(
+    (collectionId: string | null, historyMode: "push" | "replace" = "push") => {
+      setKnowledgeCollectionId(collectionId);
+      updatePanelUrl("knowledge", null, historyMode, null, collectionId);
+    },
+    [updatePanelUrl],
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1001,15 +1018,16 @@ const ChatApp = () => {
 
     const nextModel = resolveSelectedModel(
       availableModels,
-      selectedModel,
+      selectedModel || selectedChatModel,
       SERVER_DEFAULT_PROVIDER_ID,
     );
 
-    if (selectedModel === nextModel) {
-      return;
+    if (selectedModel !== nextModel) {
+      setModel(nextModel);
     }
-
-    setModel(nextModel);
+    if (nextModel && selectedChatModel !== nextModel) {
+      setSelectedChatModel(nextModel);
+    }
   }, [
     chatHasHydrated,
     _hasHydrated,
@@ -1017,8 +1035,18 @@ const ChatApp = () => {
     serverModelBootstrapReady,
     availableModels,
     selectedModel,
+    selectedChatModel,
     setModel,
+    setSelectedChatModel,
   ]);
+
+  const handleModelSelect = useCallback(
+    (model: string) => {
+      setModel(model);
+      setSelectedChatModel(model);
+    },
+    [setModel, setSelectedChatModel],
+  );
 
   // Check screen size on mount
   useEffect(() => {
@@ -3031,7 +3059,11 @@ const ChatApp = () => {
             onOpenTools={() => navigateToPanel("tools")}
           />
         ) : viewMode === "knowledge" ? (
-          <KnowledgeBase onClose={() => navigateToPanel("chat")} />
+          <KnowledgeBase
+            selectedCollectionId={knowledgeCollectionId}
+            onSelectedCollectionIdChange={navigateKnowledgeCollection}
+            onClose={() => navigateToPanel("chat")}
+          />
         ) : viewMode === "tools" ? (
           <McpToolsPage
             conversationId={visibleCurrentSessionId ?? undefined}
@@ -3320,7 +3352,7 @@ const ChatApp = () => {
                   }
                   availableModels={availableModels}
                   selectedModel={selectedModel}
-                  onSelectModel={setModel}
+                  onSelectModel={handleModelSelect}
                   searchMode={composerChatConfig.searchMode}
                   onSearchModeChange={(searchMode) => {
                     if (serverModeEnabled) {

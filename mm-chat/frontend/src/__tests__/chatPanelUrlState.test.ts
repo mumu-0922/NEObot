@@ -52,6 +52,41 @@ describe("chat panel URL state", () => {
     expect(state.needsReplace).toBe(false);
   });
 
+  it("round-trips the selected Knowledge collection", () => {
+    const collectionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const params = setChatPanelUrlState(new URLSearchParams("keep=1"), {
+      panel: "knowledge",
+      knowledgeCollectionId: collectionId,
+    });
+    const state = parseChatPanelUrlState(params);
+
+    expect(params.get("keep")).toBe("1");
+    expect(params.get("panel")).toBe("knowledge");
+    expect(params.get("collectionId")).toBe(collectionId);
+    expect(state).toMatchObject({
+      panel: "knowledge",
+      knowledgeCollectionId: collectionId,
+      needsReplace: false,
+    });
+  });
+
+  it("removes invalid or out-of-panel Knowledge collection ids", () => {
+    const invalid = parseChatPanelUrlState(
+      "panel=knowledge&collectionId=../secret&keep=1",
+    );
+    expect(invalid.knowledgeCollectionId).toBeNull();
+    expect(invalid.needsReplace).toBe(true);
+    expect(invalid.normalizedSearchParams.has("collectionId")).toBe(false);
+
+    const chat = parseChatPanelUrlState(
+      "collectionId=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa&keep=1",
+    );
+    expect(chat.panel).toBe("chat");
+    expect(chat.knowledgeCollectionId).toBeNull();
+    expect(chat.needsReplace).toBe(true);
+    expect(chat.normalizedSearchParams.has("collectionId")).toBe(false);
+  });
+
   it("round-trips Skill Store and its selected package", () => {
     const params = setChatPanelUrlState(new URLSearchParams("keep=1"), {
       panel: "skill-store",
