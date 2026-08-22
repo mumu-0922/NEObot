@@ -1057,3 +1057,37 @@ Provisioned exact Provider answer consent for the fixed owner in required-auth d
 ### Next Steps
 
 - None - task complete
+
+
+## Session 80: Persist chat and Knowledge refresh state
+
+**Date**: 2026-08-22
+**Task**: Persist chat and Knowledge refresh state
+**Branch**: `main`
+
+### Summary
+
+Persisted the full chat Provider/model preference in Server mode, made Knowledge collection detail URL-restorable with validated server matching, repaired the stale session-export branch assertion, passed the full frontend gate, and deployed a healthy frontend image.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b2c8b2f6` | (see git log) |
+| `20c2572a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
