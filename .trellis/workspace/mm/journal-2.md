@@ -1124,3 +1124,36 @@ Made Local and Server model selection Conversation-owned, restored it on switchi
 ### Next Steps
 
 - None - task complete
+
+
+## Session 82: Secure web URL reading and partial retrieval status
+
+**Date**: 2026-08-24
+**Task**: Secure web URL reading and partial retrieval status
+**Branch**: `main`
+
+### Summary
+
+Added provider Extract plus SSRF-safe direct URL reading, exact Discourse post extraction, correct partial Web retrieval status, full cross-layer tests, and deployed healthy pinned Backend/Frontend images with a successful live Linux.do smoke.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `74519dea` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
