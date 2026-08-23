@@ -38,6 +38,10 @@ describe("ChatApp server mode composition", () => {
     );
     expect(chatApp).toContain("persistConversationKnowledgeSelection");
     expect(chatApp).toContain("updateServerSessionConfig");
+    expect(chatApp).toContain("updateServerSessionModel");
+    expect(chatApp).toContain(
+      "currentSession?.model || selectedChatModel || selectedModel",
+    );
     expect(chatApp).toContain("selectedKnowledgeCollectionIds");
     expect(chatApp).not.toContain("buildServerKnowledgeStreamConfig");
     expect(chatApp).not.toContain("buildServerKnowledgeMessageMetadata");

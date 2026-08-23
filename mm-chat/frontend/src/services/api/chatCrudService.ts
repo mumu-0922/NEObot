@@ -265,7 +265,7 @@ export function mapConversationDtoToSession(
       conversation.updatedAt,
       "conversation.updatedAt",
     ),
-    model: modelRefToModelString(conversation.modelRef),
+    model: conversationModelRefToModelString(conversation.modelRef),
     pinned: conversation.pinned === true || conversation.config.pinned === true,
     systemInstruction:
       typeof conversation.systemInstruction === "string"
@@ -394,6 +394,17 @@ export function modelRefToModelString(modelRef?: ModelRef): string {
   const modelId = modelRef?.modelId?.trim() ?? "";
   if (providerId && modelId) return `${providerId}:${modelId}`;
   return modelId || providerId;
+}
+
+function conversationModelRefToModelString(modelRef?: ModelRef): string {
+  if (modelRef?.providerId?.trim() !== SERVER_DEFAULT_BACKEND_PROVIDER_ID) {
+    return modelRefToModelString(modelRef);
+  }
+
+  return modelRefToModelString({
+    ...modelRef,
+    providerId: SERVER_DEFAULT_PROVIDER_ID,
+  });
 }
 
 export function modelStringToModelRef(model: string): ModelRef | undefined {

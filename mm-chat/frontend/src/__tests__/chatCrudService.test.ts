@@ -138,6 +138,24 @@ describe("chat CRUD DTO mappers", () => {
     expect(session.updatedAt).toBe(Date.parse("2026-07-08T00:01:00Z"));
   });
 
+  it("maps the backend default Provider alias to the frontend identity", () => {
+    const session = mapConversationDtoToSession({
+      ...conversationDto,
+      modelRef: {
+        providerId: "openai_compatible",
+        modelId: "gpt-5.5",
+      },
+    });
+
+    expect(session.model).toBe("SERVER_DEFAULT:gpt-5.5");
+    expect(
+      modelRefToModelString({
+        providerId: "openai_compatible",
+        modelId: "gpt-5.5",
+      }),
+    ).toBe("openai_compatible:gpt-5.5");
+  });
+
   it("maps user and assistant messages to legacy Message roles", () => {
     expect(mapChatMessageDtoToMessage(userMessageDto)).toMatchObject({
       id: "m1",

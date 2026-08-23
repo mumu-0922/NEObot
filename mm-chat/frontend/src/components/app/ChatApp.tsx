@@ -233,6 +233,7 @@ const ChatApp = () => {
       updateServerSessionTitle,
       updateServerSessionInstruction,
       updateServerSessionConfig,
+      updateServerSessionModel,
       updateServerSessionPermission,
       toggleServerSessionPin,
       deleteServerSession,
@@ -245,6 +246,7 @@ const ChatApp = () => {
       updateSessionTitle,
       updateSessionInstruction,
       updateSessionConfig,
+      updateSessionModel,
       updateSessionCompression,
       updateSessionMemoryContext,
       toggleSessionPin,
@@ -400,6 +402,18 @@ const ChatApp = () => {
   const assistantSelectRequestRef = useRef(0);
   const defaultProviderFetchRef = useRef(false);
   const serverBootstrapRef = useRef(false);
+  const modelSelectionRequestRef = useRef(0);
+
+  const showActionError = useCallback((message: string) => {
+    if (actionErrorTimerRef.current) {
+      clearTimeout(actionErrorTimerRef.current);
+    }
+    setActionError(message);
+    actionErrorTimerRef.current = setTimeout(() => {
+      actionErrorTimerRef.current = null;
+      setActionError(null);
+    }, 5000);
+  }, []);
 
   const visibleSessions = serverModeEnabled
     ? serverReadState.sessions
@@ -1018,14 +1032,14 @@ const ChatApp = () => {
 
     const nextModel = resolveSelectedModel(
       availableModels,
-      selectedModel || selectedChatModel,
+      currentSession?.model || selectedChatModel || selectedModel,
       SERVER_DEFAULT_PROVIDER_ID,
     );
 
     if (selectedModel !== nextModel) {
       setModel(nextModel);
     }
-    if (nextModel && selectedChatModel !== nextModel) {
+    if (nextModel && !selectedChatModel) {
       setSelectedChatModel(nextModel);
     }
   }, [
@@ -1034,19 +1048,12 @@ const ChatApp = () => {
     coreHasHydrated,
     serverModelBootstrapReady,
     availableModels,
+    currentSession?.model,
     selectedModel,
     selectedChatModel,
     setModel,
     setSelectedChatModel,
   ]);
-
-  const handleModelSelect = useCallback(
-    (model: string) => {
-      setModel(model);
-      setSelectedChatModel(model);
-    },
-    [setModel, setSelectedChatModel],
-  );
 
   // Check screen size on mount
   useEffect(() => {
@@ -1092,6 +1099,7 @@ const ChatApp = () => {
     refreshServerWorkspaces,
     serverModeEnabled,
     serverModelBootstrapReady,
+    showActionError,
   ]);
 
   useEffect(() => {
@@ -1267,16 +1275,48 @@ const ChatApp = () => {
 
   // --- Handlers ---
 
-  const showActionError = (message: string) => {
-    if (actionErrorTimerRef.current) {
-      clearTimeout(actionErrorTimerRef.current);
-    }
-    setActionError(message);
-    actionErrorTimerRef.current = setTimeout(() => {
-      actionErrorTimerRef.current = null;
-      setActionError(null);
-    }, 5000);
-  };
+  const handleModelSelect = useCallback(
+    (model: string) => {
+      const requestId = modelSelectionRequestRef.current + 1;
+      modelSelectionRequestRef.current = requestId;
+
+      if (!visibleCurrentSessionId || !currentSession) {
+        setModel(model);
+        setSelectedChatModel(model);
+        return;
+      }
+
+      if (!serverModeEnabled) {
+        updateSessionModel(visibleCurrentSessionId, model);
+        setSelectedChatModel(model);
+        return;
+      }
+
+      void updateServerSessionModel(visibleCurrentSessionId, model)
+        .then((updated) => {
+          if (!updated) {
+            throw new Error("Conversation model could not be saved.");
+          }
+          if (modelSelectionRequestRef.current === requestId) {
+            setSelectedChatModel(model);
+          }
+        })
+        .catch((error) => {
+          logChatAppError("Failed to save conversation model", error);
+          showActionError("Failed to save the conversation model.");
+        });
+    },
+    [
+      currentSession,
+      serverModeEnabled,
+      showActionError,
+      setModel,
+      setSelectedChatModel,
+      updateServerSessionModel,
+      updateSessionModel,
+      visibleCurrentSessionId,
+    ],
+  );
 
   const showServerUnsupportedAction = (action: string) => {
     showActionError(`Server mode does not support ${action} yet.`);
@@ -2933,6 +2973,11 @@ const ChatApp = () => {
   };
 
   const handleNewChat = () => {
+    const newConversationModel = selectedChatModel || selectedModel;
+    if (newConversationModel && selectedModel !== newConversationModel) {
+      setModel(newConversationModel);
+    }
+
     if (serverModeEnabled) {
       createServerSession()
         .then(() => navigateToPanel("chat"))

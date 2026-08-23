@@ -71,6 +71,88 @@ export const useUIStore = create<UIState>((set) => ({
   model identity and that the browser-preference storage adapter receives the
   write in Server mode.
 
+## Scenario: Conversation-owned model selection
+
+### 1. Scope / Trigger
+
+Apply this contract when changing the model selector, Local Session metadata,
+Server Conversation DTO mapping, or model bootstrap behavior.
+
+### 2. Signatures
+
+```ts
+interface Session { model: string }
+updateSessionModel(id: string, model: string): void
+updateServerSessionModel(id: string, model: string): Promise<boolean>
+PATCH /v1/chat/conversations/{id} { modelRef: { providerId, modelId } }
+```
+
+### 3. Contracts
+
+- `Session.model` / Server `Conversation.modelRef` owns the selected model for
+  that Conversation. `chatStore.selectedModel` is only the active UI/runtime
+  projection; `coreSettingsStore.selectedChatModel` is only the default for a
+  newly-created Conversation.
+- Selecting a Local or Server Conversation restores its complete
+  `providerId:modelId`. Switching Conversations must not rewrite the browser
+  default or another Conversation's stored model.
+- Server model writes for the same Conversation are serialized in selection
+  order. A completion for a non-active Conversation may update its cached
+  metadata but must not replace the active runtime model.
+- Backend Provider `openai_compatible` maps to frontend `SERVER_DEFAULT` only
+  at the Conversation boundary so exact catalog matching survives reload;
+  message model projections retain their backend identity.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| Local Session has a stored available model | restore it immediately on selection |
+| Server Conversation update succeeds | replace only that Conversation and active projection when still selected |
+| Server update fails | keep the previous model and show a bounded UI error |
+| Stored model is absent | use the new-Conversation browser default |
+| Stored model is unavailable in a non-empty catalog | show the normal safe fallback without overwriting stored Conversation metadata |
+| Rapid updates A then B | persist A then B; final durable and active value is B |
+
+### 5. Good / Base / Bad Cases
+
+- Good: Conversation A uses model A, Conversation B uses model B, and both
+  retain those values across switching and refresh.
+- Base: a legacy Conversation without a model uses the current browser default.
+- Bad: every model click only calls `setModel` and changes all Conversations,
+  or catalog bootstrap persists a fallback into Conversation metadata.
+
+### 6. Tests Required
+
+- Local store test: update, switch between two Sessions, and assert persisted
+  `Session.model` isolation.
+- Server store test: assert PATCH `modelRef`, Conversation isolation, ordered
+  rapid writes, selection restore, and unchanged state on rejection.
+- DTO test: assert `openai_compatible` Conversation alias normalization without
+  changing generic message model projection.
+- ChatApp composition plus frontend format, lint, type-check, full Vitest, and
+  production build.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+const onSelectModel = (model: string) => {
+  setModel(model);
+  setSelectedChatModel(model);
+};
+```
+
+#### Correct
+
+```ts
+const onSelectModel = (conversationId: string, model: string) =>
+  serverMode
+    ? updateServerSessionModel(conversationId, model)
+    : updateSessionModel(conversationId, model);
+```
+
 ### Refresh-Restored Nested Views
 
 - A nested screen users expect to bookmark, refresh, or traverse with browser

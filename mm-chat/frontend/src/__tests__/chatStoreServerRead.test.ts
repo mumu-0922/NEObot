@@ -723,6 +723,138 @@ describe("chat store server read path", () => {
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
   });
 
+  it("persists and restores the selected model per server conversation", async () => {
+    const firstSession = {
+      ...makeServerSession("c1"),
+      model: "provider:model-a",
+    };
+    const secondSession = {
+      ...makeServerSession("c2"),
+      model: "provider:model-b",
+    };
+    mocks.serverService.listMessages.mockResolvedValue([]);
+    mocks.serverService.updateConversation.mockImplementation(
+      async (input: {
+        conversationId: string;
+        modelRef?: { providerId: string; modelId: string };
+      }) => ({
+        ...(input.conversationId === "c1" ? firstSession : secondSession),
+        ...(input.modelRef
+          ? {
+              model: `${input.modelRef.providerId}:${input.modelRef.modelId}`,
+            }
+          : {}),
+      }),
+    );
+    useChatStore.setState({
+      serverReadState: {
+        ...makeEmptyServerReadState(),
+        sessions: [firstSession, secondSession],
+        currentSessionId: "c1",
+      },
+      selectedModel: firstSession.model,
+    });
+
+    await expect(
+      useChatStore
+        .getState()
+        .updateServerSessionModel("c1", "provider:model-a-updated"),
+    ).resolves.toBe(true);
+    expect(mocks.serverService.updateConversation).toHaveBeenCalledWith({
+      conversationId: "c1",
+      modelRef: { providerId: "provider", modelId: "model-a-updated" },
+    });
+
+    await useChatStore.getState().selectServerSession("c2");
+    expect(useChatStore.getState().selectedModel).toBe("provider:model-b");
+
+    await useChatStore.getState().selectServerSession("c1");
+    expect(useChatStore.getState().selectedModel).toBe(
+      "provider:model-a-updated",
+    );
+    expect(
+      useChatStore
+        .getState()
+        .serverReadState.sessions.find((session) => session.id === "c2")?.model,
+    ).toBe("provider:model-b");
+  });
+
+  it("serializes rapid server model changes and keeps the final selection", async () => {
+    let releaseFirstUpdate: (() => void) | undefined;
+    const firstUpdateBlocked = new Promise<void>((resolve) => {
+      releaseFirstUpdate = resolve;
+    });
+    const requestedModels: string[] = [];
+    mocks.serverService.updateConversation.mockImplementation(
+      async (input: {
+        conversationId: string;
+        modelRef?: { providerId: string; modelId: string };
+      }) => {
+        const model = input.modelRef
+          ? `${input.modelRef.providerId}:${input.modelRef.modelId}`
+          : "provider:original";
+        requestedModels.push(model);
+        if (model === "provider:model-a") {
+          await firstUpdateBlocked;
+        }
+        return { ...makeServerSession(input.conversationId), model };
+      },
+    );
+    useChatStore.setState({
+      serverReadState: {
+        ...makeEmptyServerReadState(),
+        sessions: [{ ...makeServerSession("c1"), model: "provider:original" }],
+        currentSessionId: "c1",
+      },
+      selectedModel: "provider:original",
+    });
+
+    const firstUpdate = useChatStore
+      .getState()
+      .updateServerSessionModel("c1", "provider:model-a");
+    const secondUpdate = useChatStore
+      .getState()
+      .updateServerSessionModel("c1", "provider:model-b");
+    await vi.waitFor(() =>
+      expect(requestedModels).toEqual(["provider:model-a"]),
+    );
+
+    releaseFirstUpdate?.();
+    await expect(firstUpdate).resolves.toBe(true);
+    await expect(secondUpdate).resolves.toBe(true);
+
+    expect(requestedModels).toEqual(["provider:model-a", "provider:model-b"]);
+    expect(useChatStore.getState().selectedModel).toBe("provider:model-b");
+    expect(useChatStore.getState().serverReadState.sessions[0]?.model).toBe(
+      "provider:model-b",
+    );
+  });
+
+  it("keeps the previous server model when persistence fails", async () => {
+    mocks.serverService.updateConversation.mockRejectedValueOnce(
+      new Error("quota exhausted"),
+    );
+    useChatStore.setState({
+      serverReadState: {
+        ...makeEmptyServerReadState(),
+        sessions: [{ ...makeServerSession("c1"), model: "provider:original" }],
+        currentSessionId: "c1",
+      },
+      selectedModel: "provider:original",
+    });
+
+    await expect(
+      useChatStore
+        .getState()
+        .updateServerSessionModel("c1", "provider:replacement"),
+    ).rejects.toThrow("quota exhausted");
+
+    expect(useChatStore.getState().selectedModel).toBe("provider:original");
+    expect(useChatStore.getState().serverReadState.sessions[0]?.model).toBe(
+      "provider:original",
+    );
+  });
+
   it("deletes server conversations and selects the next server session", async () => {
     useChatStore.setState({
       sessions: [makeServerSession("local")],

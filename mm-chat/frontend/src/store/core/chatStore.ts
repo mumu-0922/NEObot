@@ -661,6 +661,32 @@ const enqueueSessionMessageWrite = async (
   }
 };
 
+const serverSessionModelWriteQueues = new Map<string, Promise<void>>();
+
+const enqueueServerSessionModelWrite = async (
+  sessionId: string,
+  write: () => Promise<boolean>,
+): Promise<boolean> => {
+  const previousWrite = serverSessionModelWriteQueues.get(sessionId);
+  let result = false;
+  const queuedWrite = (
+    previousWrite ? previousWrite.catch(() => undefined) : Promise.resolve()
+  ).then(async () => {
+    result = await write();
+  });
+
+  serverSessionModelWriteQueues.set(sessionId, queuedWrite);
+
+  try {
+    await queuedWrite;
+    return result;
+  } finally {
+    if (serverSessionModelWriteQueues.get(sessionId) === queuedWrite) {
+      serverSessionModelWriteQueues.delete(sessionId);
+    }
+  }
+};
+
 interface ChatState {
   _hasHydrated: boolean;
   setHasHydrated: (state: boolean) => void;
@@ -713,6 +739,7 @@ interface ChatState {
     id: string,
     config: SessionConfig,
   ) => Promise<boolean>;
+  updateServerSessionModel: (id: string, model: string) => Promise<boolean>;
   updateServerSessionPermission: (
     id: string,
     permissionMode: AgentPermissionMode,
@@ -742,6 +769,7 @@ interface ChatState {
   updateSessionTitle: (id: string, newTitle: string) => void;
   updateSessionInstruction: (id: string, instruction: string) => void;
   updateSessionConfig: (id: string, config: Partial<SessionConfig>) => void;
+  updateSessionModel: (id: string, model: string) => void;
   updateSessionCompression: (
     id: string,
     compression: Session["compression"],
@@ -950,6 +978,7 @@ export const useChatStore = create<ChatState>()(
               state.chatConfig,
               reusableSession.config,
             ),
+            selectedModel: reusableSession.model || state.selectedModel,
           }));
           return reusableSession.id;
         }
@@ -1031,6 +1060,7 @@ export const useChatStore = create<ChatState>()(
           activeMessages,
           activeMessageTree: messageTree,
           isActiveSessionLoading: false,
+          selectedModel: session.model || get().selectedModel,
           sessions: get().sessions.map((s) =>
             s.id === id ? { ...s, messageCount: activeMessages.length } : s,
           ),
@@ -1110,25 +1140,34 @@ export const useChatStore = create<ChatState>()(
         const cachedSnapshot = getServerConversationMemorySnapshot(id);
         const requestId = serverReadRequestId + 1;
         serverReadRequestId = requestId;
-        set((state) => ({
-          serverReadState: {
-            ...state.serverReadState,
-            currentSessionId: id,
-            activeMessages: cachedSnapshot?.activeMessages ?? [],
-            activeMessageTree:
-              cachedSnapshot?.activeMessageTree ?? createEmptyMessageTree(),
-            generation: createEmptyServerGenerationState(),
-            isLoading: !cachedSnapshot,
-            error: null,
-            sessions: cachedSnapshot
-              ? state.serverReadState.sessions.map((session) =>
-                  session.id === id
-                    ? { ...session, messageCount: cachedSnapshot.messageCount }
-                    : session,
-                )
-              : state.serverReadState.sessions,
-          },
-        }));
+        set((state) => {
+          const sessionModel = state.serverReadState.sessions.find(
+            (session) => session.id === id,
+          )?.model;
+          return {
+            selectedModel: sessionModel || state.selectedModel,
+            serverReadState: {
+              ...state.serverReadState,
+              currentSessionId: id,
+              activeMessages: cachedSnapshot?.activeMessages ?? [],
+              activeMessageTree:
+                cachedSnapshot?.activeMessageTree ?? createEmptyMessageTree(),
+              generation: createEmptyServerGenerationState(),
+              isLoading: !cachedSnapshot,
+              error: null,
+              sessions: cachedSnapshot
+                ? state.serverReadState.sessions.map((session) =>
+                    session.id === id
+                      ? {
+                          ...session,
+                          messageCount: cachedSnapshot.messageCount,
+                        }
+                      : session,
+                  )
+                : state.serverReadState.sessions,
+            },
+          };
+        });
 
         try {
           const messages = (await service.listMessages(id)).map(
@@ -2060,6 +2099,37 @@ export const useChatStore = create<ChatState>()(
         return true;
       },
 
+      updateServerSessionModel: async (id, model) => {
+        const normalizedModel = model.trim();
+        const modelRef = modelStringToModelRef(normalizedModel);
+        if (!modelRef) return false;
+
+        return enqueueServerSessionModelWrite(id, async () => {
+          const service = createChatCrudService();
+          if (!service.serverEnabled) return false;
+
+          const session = toStoreSessionFromServer(
+            await service.updateConversation({
+              conversationId: id,
+              modelRef,
+            }),
+          );
+          set((state) => ({
+            ...(state.serverReadState.currentSessionId === id
+              ? { selectedModel: session.model || normalizedModel }
+              : {}),
+            serverReadState: {
+              ...state.serverReadState,
+              sessions: state.serverReadState.sessions.map((item) =>
+                item.id === id ? session : item,
+              ),
+              error: null,
+            },
+          }));
+          return true;
+        });
+      },
+
       updateServerSessionPermission: async (
         id,
         permissionMode,
@@ -2480,6 +2550,30 @@ export const useChatStore = create<ChatState>()(
               : s,
           ),
         }));
+      },
+
+      updateSessionModel: (id, model) => {
+        const normalizedModel = model.trim();
+        if (!normalizedModel) return;
+
+        set((state) => {
+          if (!state.sessions.some((session) => session.id === id)) return {};
+
+          return {
+            ...(state.currentSessionId === id
+              ? { selectedModel: normalizedModel }
+              : {}),
+            sessions: state.sessions.map((session) =>
+              session.id === id
+                ? normalizeSession({
+                    ...session,
+                    model: normalizedModel,
+                    updatedAt: Date.now(),
+                  })
+                : session,
+            ),
+          };
+        });
       },
 
       updateSessionCompression: (id, compression) => {

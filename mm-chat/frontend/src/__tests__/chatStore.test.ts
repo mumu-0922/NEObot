@@ -151,6 +151,43 @@ describe("chat store persistence", () => {
     ).toBe("agent");
   });
 
+  it("persists and restores the selected model per local session", async () => {
+    const firstSession = {
+      ...makeSession("first"),
+      model: "provider:model-a",
+    };
+    const secondSession = {
+      ...makeSession("second"),
+      model: "provider:model-b",
+    };
+    useChatStore.setState({
+      sessions: [firstSession, secondSession],
+      currentSessionId: "first",
+      selectedModel: firstSession.model,
+    });
+
+    useChatStore
+      .getState()
+      .updateSessionModel("first", "provider:model-a-updated");
+    await useChatStore.getState().selectSession("second");
+
+    expect(useChatStore.getState().selectedModel).toBe("provider:model-b");
+
+    await useChatStore.getState().selectSession("first");
+    expect(useChatStore.getState().selectedModel).toBe(
+      "provider:model-a-updated",
+    );
+
+    const partialize = (useChatStore as any).persist.getOptions().partialize;
+    const persisted = partialize(useChatStore.getState());
+    expect(
+      persisted.sessions.map((session: Session) => [session.id, session.model]),
+    ).toEqual([
+      ["first", "provider:model-a-updated"],
+      ["second", "provider:model-b"],
+    ]);
+  });
+
   it("clears the deprecated Gemini selected model during migration", async () => {
     const migrate = (useChatStore as any).persist.getOptions().migrate;
 

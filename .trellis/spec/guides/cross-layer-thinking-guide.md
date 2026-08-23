@@ -220,6 +220,27 @@ Canonical project example:
 `mm-chat/docs/contracts/chat-stream-api.md` owns the reasoning effort request,
 normalization, provider mapping, and backward-compatibility contract.
 
+## Shared UI Projection vs Entity Authority Checklist
+
+Use this when one selector/control is visible globally but its value belongs to
+the currently selected persisted entity:
+
+- [ ] Name the durable owner first (for example `Conversation.modelRef`) and
+      treat global Zustand state only as the active UI/runtime projection.
+- [ ] Trace both writes and restores: selector → entity persistence → list/read
+      DTO → entity mapper → selection action → active projection.
+- [ ] Keep the browser preference separate and define exactly when it seeds a
+      new/legacy entity; selecting an existing entity must not rewrite it.
+- [ ] Test two entities with different values, switch A → B → A, refresh, and
+      assert that a write to A never mutates B.
+- [ ] Serialize same-entity writes or reject stale completions so rapid changes
+      cannot make an older request durable last.
+- [ ] If backend and frontend identities use aliases, normalize at the entity
+      boundary and test the exact available-catalog match.
+
+The executable frontend model-selection contract lives in
+`../frontend/state-management.md` under “Conversation-owned model selection.”
+
 ## Authentication Mode vs Fixed-Owner Bootstrap Checklist
 
 Use this when server startup creates governance, consent, or other runtime
