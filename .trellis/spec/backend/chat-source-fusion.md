@@ -55,6 +55,13 @@ No exact query text is part of message metadata.
   subject.
 - Query text, private history, source bodies, credentials, and provider errors
   never enter durable fusion diagnostics.
+- Web execution outcome is aggregate across current-turn Search and direct URL
+  reads. `completed` means usable sources with no failed retrieval,
+  `partial` means usable sources plus at least one failed retrieval,
+  `degraded` means failure with no usable source, and `no_results` means
+  successful retrieval with no usable source. A partial turn retains its Web
+  authority and Citations; the frontend must not claim that no Web result was
+  used.
 - Current-turn Web citation reconciliation preserves each source's originally
   minted marker. A used subset such as `[W1]`, `[W5]`, `[W7]`, and `[W10]`
   remains sparse in storage and transport; clients resolve these markers from
@@ -112,6 +119,8 @@ No exact query text is part of message metadata.
    fields, then delete all smoke state.
 6. Frontend citation tests must cover sparse authoritative Web markers, unknown
    markers, and the legacy positional fallback without interpolating raw URLs.
+7. Mixed successful/failed Web calls must persist `webExecute=partial`, retain
+   successful Citations, and render partial—not unavailable—copy after reload.
 
 ## 7. Wrong vs Correct
 

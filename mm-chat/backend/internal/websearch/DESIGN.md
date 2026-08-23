@@ -11,6 +11,8 @@
 - Resolve administrator state only from Postgres and the context-bound vault.
 - Admit model-built-in Search only through a proven Go model-provider
   capability.
+- Read an explicit public page without coupling correctness to Search-provider
+  quota or browser automation.
 
 ## Non-goals
 
@@ -21,6 +23,8 @@
   tools require their owning chat stream.
 - No multi-provider Knowledge/Web rank fusion; Knowledge and Web retain
   separate source identities and deterministic authority rules.
+- No login, Cloudflare bypass, general browser automation, JavaScript runtime,
+  private-network access, or automatic Knowledge ingestion.
 
 ## Flow
 
@@ -52,6 +56,16 @@ authenticated POST /v1/search       Go chat stream with useSearch
                            Postgres completion/reload
 ```
 
+An explicit URL follows a sibling path:
+
+```text
+read_web_url -> local public-URL admission
+             -> selected Provider Extract capability when available
+             -> safenet direct fallback (no ambient proxy)
+             -> Discourse topic JSON adapter OR bounded HTML/plain text
+             -> normalized one-source Result -> existing [W] authority
+```
+
 ## Decisions
 
 | Decision                                                 | Reason                                                                                                                         |
@@ -59,7 +73,7 @@ authenticated POST /v1/search       Go chat stream with useSearch
 | Closed `Provider` interface                              | Callers cannot select multiple providers inside one request.                                                                   |
 | Server-owned `Resolver`                                  | API bodies never carry provider IDs, base URLs, or Keys.                                                                       |
 | Validated `ActiveExecution` union                        | Exactly one external adapter or one admitted model-built-in capability is active.                                              |
-| Standard library only                                    | Keeps the backend image and dependency surface unchanged.                                                                      |
+| Existing Go/x/net dependencies only                      | Keeps the backend image and module dependency surface unchanged.                                                               |
 | Inject only `HTTPDoer`                                   | Fixtures inspect exact HTTP without weakening production transport defaults.                                                   |
 | HTTPS-only config                                        | Removes the old self-hosted/plain-HTTP SearXNG exception.                                                                      |
 | Resolve and reject any non-public address before dialing | Blocks loopback/private/link-local DNS rebinding targets.                                                                      |
@@ -75,6 +89,10 @@ authenticated POST /v1/search       Go chat stream with useSearch
 | One bounded transient external retry                     | Read-only Search tolerates one transport/`408`/`429`/`5xx` blip while preserving the same provider and request authority.         |
 | Chat-owned `[W]` artifacts                               | Provider adapters remain transport-only while chat owns prompt markers, output-block shape, and message metadata.              |
 | Built-in marker completion                               | Provider-emitted source annotations are known-used sources, so missing `[W]` markers are appended before terminal persistence. |
+| Server-owned direct URL reader                           | Provides a no-provider fallback where direct public egress is available.                                                     |
+| Selected-provider Extract before direct fallback         | Restricted deployments can read public URLs without weakening `safenet` through an ambient proxy; provider credits may apply. |
+| Discourse public JSON adapter                            | Reads the exact post when the public HTML route is anti-bot protected, without bypassing access controls.                    |
+| Shared `safenet` policy                                  | Revalidates DNS and redirects, disables proxies, blocks non-public targets, and caps response bytes.                         |
 
 ## Security Contract
 
@@ -95,6 +113,12 @@ authenticated POST /v1/search       Go chat stream with useSearch
 - External execution attempts at most twice with a 250 ms context-aware delay.
   Only transport `REQUEST_FAILED`, `408`, `429`, and `5xx` are retryable;
   cancellation, other `4xx`, and response/schema failures are not.
+- Direct URL reads accept one URL up to 4,096 bytes, reject userinfo/fragments/
+  IP literals/non-HTTP(S), revalidate every redirect, allow at most four hops,
+  time out after 20 seconds, and cap the identity response at 2 MiB.
+- Direct content accepts public Discourse JSON, HTML/XHTML, or UTF-8 plain text.
+  Script/style/template/embed content is excluded and the resulting source is
+  normalized to the same 64 KiB content bound as Search evidence.
 
 ## Known Limits
 

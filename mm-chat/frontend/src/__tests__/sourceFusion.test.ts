@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { getWebSearchDegradationReason } from "@/lib/search/fusion";
+import {
+  getWebSearchDegradationReason,
+  getWebSearchDegradationStatus,
+} from "@/lib/search/fusion";
 
 describe("source fusion presentation", () => {
   it("admits only stable Web degradation reasons", () => {
@@ -32,6 +35,29 @@ describe("source fusion presentation", () => {
         },
       }),
     ).toBeUndefined();
+  });
+
+  it("distinguishes partial Web evidence from an unavailable search", () => {
+    expect(
+      getWebSearchDegradationStatus({
+        fusion: {
+          version: "source-fusion/v1",
+          searchRequested: true,
+          degradationReason: "provider_failed",
+          stages: { webExecute: { outcome: "partial" } },
+        },
+      }),
+    ).toBe("partial");
+    expect(
+      getWebSearchDegradationStatus({
+        fusion: {
+          version: "source-fusion/v1",
+          searchRequested: true,
+          degradationReason: "provider_failed",
+          stages: { webExecute: { outcome: "degraded" } },
+        },
+      }),
+    ).toBe("unavailable");
   });
 
   it("keeps Knowledge, Web degradation, and Web citations as separate compact blocks", () => {

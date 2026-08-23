@@ -35,6 +35,7 @@ func NewService(resolver Resolver) *Service
 func (s *Service) ResolveActive(context.Context) (ActiveExecution, error)
 func (s *Service) Search(context.Context, Request) (Result, error)
 func (s *Service) Execute(context.Context, ActiveExecution, Request) (Result, error)
+func (s *Service) ReadURL(context.Context, ActiveExecution, string) (Result, error)
 ```
 
 ```go
@@ -125,6 +126,25 @@ accepted in this request.
   that exact union; built-in selection uses the matching model capability;
 - external results are injected as a total-bounded Web evidence section with
   `[W1]..[Wn]` markers. Built-in source events are cumulatively deduplicated;
+- native external-Web chat also exposes `read_web_url` for one exact public
+  HTTP(S) URL. The exact selected provider's bounded Extract capability is
+  preferred when available (currently Tavily), then the server-owned direct
+  reader is used as fallback. The server revalidates DNS and redirects with
+  `safenet` on direct reads, blocks
+  non-public/IP-literal/userinfo/fragment targets, disables environment proxies,
+  caps redirects/time/bytes, sends no browser/provider credentials, and accepts
+  only bounded Discourse JSON, HTML/XHTML, or UTF-8 plain text;
+- the direct path never reads ambient proxy variables. Provider Extract exists
+  specifically so restricted deployments do not weaken DNS/IP binding by
+  enabling a generic proxy; provider credits may apply;
+- Discourse `/t/<slug>/<topic>/<post>` URLs use the same-origin public topic
+  JSON representation and select the requested post. This is content-format
+  adaptation, not authentication or anti-bot bypass;
+- direct-read content is untrusted evidence and returns through the same
+  normalized Source, `[W]`, Citation, output-block, and persistence path;
+- multiple Search/direct-read executions aggregate to `completed`, `partial`,
+  `degraded`, or `no_results`; a failed call cannot erase successful Web
+  evidence or cause the frontend to claim no Web result was used;
 - terminal messages persist one `type: "search"` output block and redacted
   `metadata.web` citation records. Completion/reload preserves source order,
   marker identity, images, and content bounds;
@@ -152,6 +172,10 @@ accepted in this request.
 | Response exceeds 5 MiB                                     | `RESPONSE_TOO_LARGE`                              |
 | Malformed/trailing JSON                                    | `RESPONSE_DECODE_FAILED`                          |
 | Invalid/duplicate/oversized result row                     | row dropped, remaining order retained             |
+| Private/IP-literal/credential URL or unsafe redirect       | `ErrURLReadBlocked`; no content returned           |
+| Unsupported/oversized/empty direct response                | stable URL-read error; no body reflected           |
+| Discourse post missing from public topic JSON              | `ErrURLReadEmpty`                                  |
+| Web success plus another retrieval failure                 | durable `partial`; successful `[W]` remains        |
 
 ## 5. Good / Base / Bad Cases
 
@@ -202,6 +226,10 @@ accepted in this request.
 - no network or provider quota is consumed in E.1 or E.2. E.3 performs one
   owner-authorized real Firecrawl credential-rejection smoke and one configured
   gateway capability probe without exposing credentials or falling back.
+- direct-read fixtures cover Discourse URL normalization/post selection,
+  readable HTML, invalid schemes/private targets, redirects, MIME/encoding,
+  response limits, prompt-injection framing, mixed success/failure aggregation,
+  and frontend partial/unavailable rendering.
 
 ## 7. Wrong vs Correct
 

@@ -29,3 +29,22 @@ export function getWebSearchDegradationReason(
       : "";
   return WEB_DEGRADATION_REASONS.has(reason) ? reason : undefined;
 }
+
+export type WebSearchDegradationStatus = "partial" | "unavailable";
+
+export function getWebSearchDegradationStatus(
+  metadata: Record<string, unknown> | undefined,
+): WebSearchDegradationStatus | undefined {
+  if (!getWebSearchDegradationReason(metadata) || !isRecord(metadata?.fusion)) {
+    return undefined;
+  }
+  const stages = metadata.fusion.stages;
+  if (
+    isRecord(stages) &&
+    isRecord(stages.webExecute) &&
+    stages.webExecute.outcome === "partial"
+  ) {
+    return "partial";
+  }
+  return "unavailable";
+}

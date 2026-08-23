@@ -178,6 +178,8 @@ func searchProcessPresentation(
 ) *ProcessStepPresentation {
 	title := "Web search"
 	switch strings.TrimSpace(toolName) {
+	case readWebURLToolName:
+		title = "Web page"
 	case searchKnowledgeToolName:
 		title = "Knowledge search"
 	case "search_memory":

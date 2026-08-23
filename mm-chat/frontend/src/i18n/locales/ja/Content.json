@@ -156,6 +156,7 @@
   "cancel": "キャンセル",
   "save": "保存",
   "webSearchTemporarilyUnavailable": "Web 検索は一時的に利用できません。Web の結果を使わずに回答を続行しました。",
+  "webSearchPartiallyUnavailable": "一部の Web 取得に失敗しました。取得できた Web の結果を使用して回答を続行しました。",
   "processApprovalRequired": "この操作には承認が必要です",
   "processApprovalAllowOnce": "今回のみ許可",
   "processApprovalAllowConversation": "この会話で許可",

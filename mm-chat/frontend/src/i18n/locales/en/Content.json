@@ -156,6 +156,7 @@
   "cancel": "Cancel",
   "save": "Save",
   "webSearchTemporarilyUnavailable": "Web search is temporarily unavailable. This answer continued without Web results.",
+  "webSearchPartiallyUnavailable": "Some Web retrievals failed. This answer continued with the Web results that succeeded.",
   "processApprovalRequired": "This action requires your approval",
   "processApprovalAllowOnce": "Allow once",
   "processApprovalAllowConversation": "Allow for conversation",

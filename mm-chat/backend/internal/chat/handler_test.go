@@ -1696,6 +1696,74 @@ func TestHandlerExecutesExternalSearchOnceAndPersistsWebArtifacts(t *testing.T) 
 	}
 }
 
+func TestHandlerReadsExplicitURLAndPersistsWebArtifact(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(
+			testMessageID,
+			testConversationID,
+			0,
+			"user",
+			"这个链接讲了什么 https://linux.do/t/topic/2797040/14",
+		),
+	)
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{
+			Type: ProviderEventToolCallCompleted,
+			ToolCall: &ProviderToolCall{
+				ID: "call-read-url", Name: readWebURLToolName,
+				Arguments: `{"url":"https://linux.do/t/topic/2797040/14"}`,
+			},
+		}},
+		{{Type: ProviderEventDelta, Delta: "URL answer [W1]"}},
+	}}
+	reader := &fakeWebURLReader{result: websearch.Result{Sources: []websearch.Source{{
+		Title:   "Harness thoughts — #14",
+		URL:     "https://linux.do/t/topic/2797040/14",
+		Content: "exact post body",
+	}}}}
+	searchProvider := &fakeWebSearchProvider{}
+	searchResolver := &fakeWebSearchResolver{execution: websearch.ActiveExecution{
+		Mode: websearch.ExecutionExternal, External: searchProvider,
+	}}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithWebSearchService(websearch.NewService(
+			searchResolver,
+			websearch.WithURLReader(reader),
+		)),
+	)
+
+	recorder := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"fixture","modelId":"fixture-model"},"config":{"useSearch":true},"idempotencyKey":"stream-key-read-url"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	if reader.calls != 1 || searchProvider.calls != 0 || len(provider.inputs) != 2 ||
+		provider.inputs[0].ToolChoice != ProviderToolChoiceRequired {
+		t.Fatalf("reader/search/provider = %d / %d / %#v", reader.calls, searchProvider.calls, provider.inputs)
+	}
+	message := repo.messages[testConversationID][1]
+	if message.Content != "URL answer [W1]" || len(message.OutputBlocks) != 1 {
+		t.Fatalf("persisted URL answer = %#v", message)
+	}
+	processSteps, ok := message.Metadata[processTraceMetadataKey].([]ProcessStep)
+	if !ok || len(processSteps) != 3 || processSteps[2].Kind != ProcessStepKindWeb ||
+		processDetailString(processSteps[2].Detail, "query") != "" ||
+		processDetailString(processSteps[2].Detail, "argumentSummary") != "" {
+		t.Fatalf("URL process trace = %#v", message.Metadata[processTraceMetadataKey])
+	}
+	if !strings.Contains(recorder.Body.String(), `"url":"https://linux.do/t/topic/2797040/14"`) {
+		t.Fatalf("stream missing normalized URL source: %s", recorder.Body.String())
+	}
+}
+
 func TestHandlerStreamsAnthropicNativeSearchAndReloadsProcessTrace(t *testing.T) {
 	var requests []anthropicMessagesRequest
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -3338,6 +3406,73 @@ func TestHandlerSourceFusionDegradesExternalSearchFailure(t *testing.T) {
 	webExecute := stages["webExecute"].(map[string]any)
 	if webExecute["outcome"] != "degraded" {
 		t.Fatalf("web execute stage = %#v", webExecute)
+	}
+}
+
+func TestHandlerSourceFusionPersistsPartialWebRetrieval(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "First", 0))
+	repo.messages[testConversationID] = append(
+		repo.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "latest public fixture"),
+	)
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{
+			Type: ProviderEventToolCallCompleted,
+			ToolCall: &ProviderToolCall{
+				ID: "call-success", Name: searchWebToolName,
+				Arguments: `{"query":"successful fixture"}`,
+			},
+		}},
+		{{
+			Type: ProviderEventToolCallCompleted,
+			ToolCall: &ProviderToolCall{
+				ID: "call-failure", Name: searchWebToolName,
+				Arguments: `{"query":"failed fixture"}`,
+			},
+		}},
+		{{Type: ProviderEventDelta, Delta: "Grounded answer [W1]"}},
+	}}
+	searchProvider := &sequenceWebSearchProvider{
+		results: []websearch.Result{{Sources: []websearch.Source{{
+			Title: "Successful source", URL: "https://example.test/success", Content: "evidence",
+		}}}},
+		errors: []error{nil, &websearch.ProviderError{
+			Provider: websearch.ProviderTavily,
+			Code:     "UPSTREAM_STATUS",
+			Status:   http.StatusBadRequest,
+		}},
+	}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithWebSearchService(websearch.NewService(&fakeWebSearchResolver{
+			execution: websearch.ActiveExecution{
+				Mode: websearch.ExecutionExternal, External: searchProvider,
+			},
+		})),
+	)
+
+	recorder := performAuthenticatedRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"fixture","modelId":"fixture-model"},"config":{"useSearch":true},"idempotencyKey":"stream-key-fusion-web-partial"}`,
+	)
+
+	assertStreamStatus(t, recorder, http.StatusOK)
+	message := repo.messages[testConversationID][1]
+	if message.Status != "completed" || message.Content != "Grounded answer [W1]" ||
+		len(message.OutputBlocks) != 1 {
+		t.Fatalf("partial message = %#v", message)
+	}
+	fusion := message.Metadata["fusion"].(map[string]any)
+	stages := fusion["stages"].(map[string]any)
+	webExecute := stages["webExecute"].(map[string]any)
+	if fusion["authority"] != sourceAuthorityWeb ||
+		fusion["degradationReason"] != "provider_failed" ||
+		webExecute["outcome"] != "partial" {
+		t.Fatalf("partial fusion = %#v", fusion)
 	}
 }
 
@@ -5213,6 +5348,12 @@ type fakeWebSearchProvider struct {
 	calls   int
 }
 
+type sequenceWebSearchProvider struct {
+	results []websearch.Result
+	errors  []error
+	calls   int
+}
+
 type capturingSequenceProvider struct {
 	outputs [][]string
 	inputs  []ProviderRequest
@@ -5274,6 +5415,30 @@ func (p *fakeWebSearchProvider) Search(
 	p.calls++
 	p.request = request
 	return p.result, p.err
+}
+
+func (p *sequenceWebSearchProvider) ID() websearch.ProviderID {
+	return websearch.ProviderTavily
+}
+
+func (p *sequenceWebSearchProvider) Search(
+	_ context.Context,
+	_ websearch.Request,
+) (websearch.Result, error) {
+	index := p.calls
+	p.calls++
+	if index >= len(p.results) && index >= len(p.errors) {
+		return websearch.Result{}, errors.New("unexpected search call")
+	}
+	var result websearch.Result
+	if index < len(p.results) {
+		result = p.results[index]
+	}
+	var err error
+	if index < len(p.errors) {
+		err = p.errors[index]
+	}
+	return result, err
 }
 
 type modelBuiltInSearchProbe struct {

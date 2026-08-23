@@ -14,14 +14,32 @@ const (
 
 type Service struct {
 	resolver   Resolver
+	urlReader  URLReader
 	retryDelay time.Duration
 }
 
-func NewService(resolver Resolver) *Service {
-	return &Service{
+type ServiceOption func(*Service)
+
+func WithURLReader(reader URLReader) ServiceOption {
+	return func(service *Service) {
+		if reader != nil {
+			service.urlReader = reader
+		}
+	}
+}
+
+func NewService(resolver Resolver, options ...ServiceOption) *Service {
+	service := &Service{
 		resolver:   resolver,
+		urlReader:  newSafeURLReader(),
 		retryDelay: externalSearchRetryDelay,
 	}
+	for _, option := range options {
+		if option != nil {
+			option(service)
+		}
+	}
+	return service
 }
 
 func (s *Service) Configured() bool {
@@ -116,6 +134,35 @@ func (s *Service) Search(ctx context.Context, input Request) (Result, error) {
 		return Result{}, err
 	}
 	return s.executeNormalized(ctx, execution, normalized)
+}
+
+func (s *Service) ReadURL(
+	ctx context.Context,
+	execution ActiveExecution,
+	rawURL string,
+) (Result, error) {
+	if s == nil || s.urlReader == nil {
+		return Result{}, ErrURLReadFailed
+	}
+	if err := validateActiveExecution(execution); err != nil ||
+		execution.Mode != ExecutionExternal {
+		return Result{}, ErrInvalidConfig
+	}
+	if extractor, ok := execution.External.(URLExtractor); ok {
+		result, err := extractor.ExtractURL(ctx, rawURL)
+		if err == nil {
+			return NormalizeResult(result, 1), nil
+		}
+		if ctx.Err() != nil || errors.Is(err, ErrURLReadInvalid) ||
+			errors.Is(err, ErrURLReadBlocked) {
+			return Result{}, err
+		}
+	}
+	result, err := s.urlReader.ReadURL(ctx, rawURL)
+	if err != nil {
+		return Result{}, err
+	}
+	return NormalizeResult(result, 1), nil
 }
 
 // Execute runs a request against an already resolved execution. Chat uses this

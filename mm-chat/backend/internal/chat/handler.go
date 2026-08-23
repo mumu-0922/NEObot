@@ -1719,7 +1719,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	providerMetadata := request.Metadata
 	routerStarted := time.Now()
 	forceExternalSearch := searchMode == chatSearchModeExternal &&
-		hasCurrentPublicIntent(userMessage.Content)
+		(hasCurrentPublicIntent(userMessage.Content) || hasExplicitHTTPURL(userMessage.Content))
 	fusionPlan := planSourceFusion(userMessage.Content, searchMode.enabled(), autoDecision)
 	if searchMode == chatSearchModeExternal {
 		fusionPlan.SearchRequested = false
@@ -3048,7 +3048,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				}
 				continue
 			}
-			if execution == nil || execution.Name != searchWebToolName {
+			if execution == nil || !isWebRetrievalToolName(execution.Name) {
 				continue
 			}
 			switch execution.Status {
@@ -3061,22 +3061,28 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 					fusionPlan.Authority = sourceAuthorityWeb
 				}
 				fusionDiagnostics.WebQueryConversationRewriteOutcome = "provider_tool"
-				fusionDiagnostics.WebExecuteOutcome = "running"
+				if fusionDiagnostics.DegradationReason != "" && len(webSearchResult.Sources) > 0 {
+					fusionDiagnostics.WebExecuteOutcome = "partial"
+				} else {
+					fusionDiagnostics.WebExecuteOutcome = "running"
+				}
 			case ProcessStepStatusCompleted:
 				fusionDiagnostics.WebExecuteDurationMillis =
 					sourceFusionDurationMillis(resolveStarted)
-				if execution.Search == nil || len(execution.Search.Sources) == 0 {
-					fusionDiagnostics.WebExecuteOutcome = "no_results"
-				} else {
-					fusionDiagnostics.WebExecuteOutcome = "completed"
+				currentSourceCount := 0
+				if execution.Search != nil {
+					currentSourceCount = len(execution.Search.Sources)
 				}
+				fusionDiagnostics.webRetrievalCompleted(
+					currentSourceCount,
+					len(webSearchResult.Sources),
+				)
 			case ProcessStepStatusFailed:
 				fusionDiagnostics.WebExecuteDurationMillis =
 					sourceFusionDurationMillis(resolveStarted)
-				fusionDiagnostics.WebExecuteOutcome = "degraded"
-				fusionDiagnostics.DegradationReason = strings.TrimSpace(
+				fusionDiagnostics.webRetrievalFailed(strings.TrimSpace(
 					execution.FailureCategory,
-				)
+				), len(webSearchResult.Sources))
 				if execution.Mode == "compatibility" &&
 					execution.FailureCategory == "planner_failed" {
 					fusionDiagnostics.WebQueryConversationRewriteOutcome = "failed"
@@ -3084,7 +3090,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 					fusionDiagnostics.WebQueryConversationRewriteOutcome = "provider_tool"
 					fusionPlan.SearchRequested = true
 				}
-				fusionPlan = fallbackSourceFusionAuthority(fusionPlan, autoDecision)
+				if len(webSearchResult.Sources) == 0 {
+					fusionPlan = fallbackSourceFusionAuthority(fusionPlan, autoDecision)
+				}
 			case ProcessStepStatusCancelled:
 				fusionDiagnostics.WebExecuteDurationMillis =
 					sourceFusionDurationMillis(resolveStarted)

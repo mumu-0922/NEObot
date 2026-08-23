@@ -156,6 +156,7 @@
   "cancel": "取消",
   "save": "保存",
   "webSearchTemporarilyUnavailable": "网络搜索暂时不可用，本回答已在没有网络结果的情况下继续。",
+  "webSearchPartiallyUnavailable": "部分网络检索失败，本回答已使用成功获取的网络结果继续。",
   "processApprovalRequired": "此操作需要你的批准",
   "processApprovalAllowOnce": "仅允许一次",
   "processApprovalAllowConversation": "本会话内允许",

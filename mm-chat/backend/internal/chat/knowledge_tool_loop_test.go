@@ -73,9 +73,10 @@ func TestRetrievalToolLoopRunsKnowledgeThenWebWithIsolatedMarkers(t *testing.T) 
 		completed[1].CitationMarkers[0] != "[W1]" {
 		t.Fatalf("Web execution = %#v", completed[1])
 	}
-	if len(provider.inputs) != 3 || len(provider.inputs[0].Tools) != 2 ||
+	if len(provider.inputs) != 3 || len(provider.inputs[0].Tools) != 3 ||
 		provider.inputs[0].Tools[0].Function.Name != searchWebToolName ||
-		provider.inputs[0].Tools[1].Function.Name != searchKnowledgeToolName {
+		provider.inputs[0].Tools[1].Function.Name != readWebURLToolName ||
+		provider.inputs[0].Tools[2].Function.Name != searchKnowledgeToolName {
 		t.Fatalf("registered tools = %#v", provider.inputs)
 	}
 	if !strings.Contains(
@@ -293,7 +294,8 @@ func TestRetrievalToolDefinitionsOmitKnowledgeWithoutSelection(t *testing.T) {
 			Mode: websearch.ExecutionExternal, External: webProvider,
 		},
 	})
-	if len(tools) != 1 || tools[0].Function.Name != searchWebToolName {
+	if len(tools) != 2 || tools[0].Function.Name != searchWebToolName ||
+		tools[1].Function.Name != readWebURLToolName {
 		t.Fatalf("tools = %#v", tools)
 	}
 	if tools := retrievalToolDefinitions(externalWebToolLoopInput{}); len(tools) != 0 {

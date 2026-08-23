@@ -15,6 +15,8 @@ one active server-side execution, and exposes the authenticated `POST
 - resolve exactly one active external or model-built-in execution;
 - execute chat against that already-resolved selection without a second
   resolver read;
+- read one exact public HTTP(S) URL through the shared safe-network policy,
+  including a narrow public Discourse topic/post JSON adapter;
 - retry the same resolved external provider once for bounded transient
   transport, `408`, `429`, or `5xx` failures;
 - return stable redacted errors and never fall back to another provider;
@@ -58,6 +60,17 @@ authentication/other `4xx`, schema, content-type, encoding, size, and decode
 failures return without retry. Both attempts use the exact same resolved
 provider; retry never means fallback or fan-out.
 
+`Service.ReadURL` is separate from keyword Search. When the exact selected
+provider implements `URLExtractor` (currently Tavily), it uses that provider's
+bounded Extract endpoint first; this may consume provider credits. It then
+falls back to the server-owned direct reader. Both paths validate the public
+URL locally. Direct reading revalidates DNS and every redirect, blocks IP
+literals and non-public destinations, disables environment proxies, sends no
+browser or provider credentials, accepts bounded HTML/plain text, and emits one
+normalized Web source. Discourse `/t/<slug>/<topic>/<post>` URLs use the
+same-origin topic JSON representation and select the requested post number. No
+path bypasses authentication, anti-bot policy, or private content.
+
 `POST /v1/search` accepts only `query`, `scope`, and `maxResults`. The normal API
 binary supplies the Postgres/vault-backed `Resolver`; the request cannot select
 a provider, Key, or base URL. With no active external record, the standalone
@@ -71,10 +84,11 @@ external Search record in the same Serializable transaction.
 ## Public API
 
 - `NewProvider(ProviderID, Config) (Provider, error)`
-- `NewService(Resolver) *Service`
+- `NewService(Resolver, ...ServiceOption) *Service`
 - `Service.ResolveActive(context.Context) (ActiveExecution, error)`
 - `Service.Execute(context.Context, ActiveExecution, Request) (Result, error)`
 - `Service.Search(context.Context, Request) (Result, error)`
+- `Service.ReadURL(context.Context, ActiveExecution, string) (Result, error)`
 - `POST /v1/search`
 - `Provider.Search(context.Context, Request) (Result, error)`
 - providers: `tavily`, `firecrawl`, `exa`, `bocha`
@@ -82,6 +96,7 @@ external Search record in the same Serializable transaction.
 - admitted model-built-in providers: `openai`, `gemini`, `anthropic`
 - scopes: `general`, `news`, `academic`
 - stable errors: `ErrInvalidConfig`, `ErrInvalidRequest`, `ErrNotConfigured`,
-  `ErrResolutionFailed`, `ErrModelBuiltInRequiresChat`, `ProviderError`
+  `ErrResolutionFailed`, `ErrModelBuiltInRequiresChat`, URL-read error sentinels,
+  `ProviderError`
 
 See [DESIGN.md](DESIGN.md) for trust boundaries and tradeoffs.

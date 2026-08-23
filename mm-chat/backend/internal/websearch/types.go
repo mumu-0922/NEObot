@@ -10,6 +10,7 @@ import (
 
 const (
 	MaxQueryBytes         = 2048
+	MaxReadURLBytes       = 4096
 	MaxResults            = 10
 	MaxAPIKeyBytes        = 4096
 	MaxResponseBytes      = 5 << 20
@@ -42,6 +43,12 @@ var (
 	ErrNotConfigured            = errors.New("web search is not configured")
 	ErrResolutionFailed         = errors.New("web search provider resolution failed")
 	ErrModelBuiltInRequiresChat = errors.New("model built-in search requires chat execution")
+	ErrURLReadInvalid           = errors.New("web url read request is invalid")
+	ErrURLReadBlocked           = errors.New("web url read request is blocked")
+	ErrURLReadFailed            = errors.New("web url read failed")
+	ErrURLReadTooLarge          = errors.New("web url read response is too large")
+	ErrURLReadUnsupported       = errors.New("web url read response type is unsupported")
+	ErrURLReadEmpty             = errors.New("web url read response has no readable content")
 )
 
 type ExecutionMode string
@@ -90,6 +97,20 @@ type Result struct {
 type Provider interface {
 	ID() ProviderID
 	Search(context.Context, Request) (Result, error)
+}
+
+// URLReader reads one explicitly selected public HTTP(S) resource. The
+// implementation is server-owned so models cannot weaken DNS, redirect, byte,
+// or content-type policy through Tool arguments.
+type URLReader interface {
+	ReadURL(context.Context, string) (Result, error)
+}
+
+// URLExtractor is an optional capability of the already-selected external
+// provider. It lets deployments with intentionally restricted direct egress
+// read an exact public URL without enabling an ambient HTTP proxy.
+type URLExtractor interface {
+	ExtractURL(context.Context, string) (Result, error)
 }
 
 // ActiveExecution is resolved only from trusted server configuration. Exactly

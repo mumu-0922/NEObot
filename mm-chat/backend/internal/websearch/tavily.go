@@ -3,12 +3,21 @@ package websearch
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
+	"net/url"
 	"strings"
+
+	"neo-chat/mm-chat/backend/internal/safenet"
 )
 
 const tavilyBaseURL = "https://api.tavily.com"
 
-type tavilyProvider struct{ client providerClient }
+type tavilyProvider struct {
+	client        providerClient
+	extractClient providerClient
+	validateURL   func(context.Context, string, safenet.Policy) (*url.URL, error)
+}
 
 func newTavilyProvider(config Config) (*tavilyProvider, error) {
 	client, err := newProviderClient(
@@ -17,7 +26,16 @@ func newTavilyProvider(config Config) (*tavilyProvider, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &tavilyProvider{client: client}, nil
+	extractClient, err := newProviderClient(
+		ProviderTavily, config, tavilyBaseURL, "/extract", true,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &tavilyProvider{
+		client: client, extractClient: extractClient,
+		validateURL: safenet.ValidateEndpoint,
+	}, nil
 }
 
 func (p *tavilyProvider) ID() ProviderID { return ProviderTavily }
@@ -92,4 +110,79 @@ func (p *tavilyProvider) Search(ctx context.Context, input Request) (Result, err
 		}
 	}
 	return normalizeResult(sources, images, input.MaxResults), nil
+}
+
+func (p *tavilyProvider) ExtractURL(ctx context.Context, rawURL string) (Result, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" || len(rawURL) > MaxReadURLBytes {
+		return Result{}, ErrURLReadInvalid
+	}
+	policy := urlReadPolicy()
+	parsed, err := p.validateURL(ctx, rawURL, policy)
+	if err != nil {
+		return Result{}, ErrURLReadBlocked
+	}
+	target, discourse := discourseURLTarget(parsed)
+	extractURL := parsed.String()
+	if discourse {
+		extractURL = target.APIURL.String()
+	}
+	body := struct {
+		URLs         string  `json:"urls"`
+		ExtractDepth string  `json:"extract_depth"`
+		Format       string  `json:"format"`
+		Timeout      float64 `json:"timeout"`
+	}{
+		URLs: extractURL, ExtractDepth: "basic", Format: "text", Timeout: 20,
+	}
+	var response struct {
+		Results []struct {
+			URL        string `json:"url"`
+			RawContent string `json:"raw_content"`
+		} `json:"results"`
+		FailedResults []json.RawMessage `json:"failed_results"`
+	}
+	if err := p.extractClient.postJSON(
+		ctx, body, bearerHeaders(p.extractClient.apiKey), &response,
+	); err != nil {
+		return Result{}, err
+	}
+	if len(response.Results) == 0 || strings.TrimSpace(response.Results[0].RawContent) == "" {
+		return Result{}, &ProviderError{Provider: ProviderTavily, Code: "EXTRACT_FAILED"}
+	}
+	content := strings.TrimSpace(response.Results[0].RawContent)
+	if discourse {
+		if result, err := parseDiscourseTopic(extractedJSONBytes(content), target); err == nil {
+			return result, nil
+		}
+		return Result{}, &ProviderError{Provider: ProviderTavily, Code: "EXTRACT_DECODE_FAILED"}
+	}
+	return Result{Sources: []Source{{
+		Title: parsed.String(), URL: parsed.String(), Content: content,
+	}}}, nil
+}
+
+func extractedJSONBytes(value string) []byte {
+	value = strings.TrimSpace(value)
+	if strings.HasPrefix(value, "```") {
+		if newline := strings.IndexByte(value, '\n'); newline >= 0 {
+			value = value[newline+1:]
+		}
+		value = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(value), "```"))
+	}
+	start := strings.IndexByte(value, '{')
+	end := strings.LastIndexByte(value, '}')
+	if start < 0 || end < start {
+		return nil
+	}
+	decoder := json.NewDecoder(strings.NewReader(value[start : end+1]))
+	var document json.RawMessage
+	if err := decoder.Decode(&document); err != nil {
+		return nil
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return nil
+	}
+	return document
 }

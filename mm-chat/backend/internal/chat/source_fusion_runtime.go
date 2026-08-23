@@ -18,6 +18,8 @@ var reservedSourceMarkerPattern = regexp.MustCompile(
 	`[\t ]*\[(?:K|W)[0-9]+\]`,
 )
 
+var explicitHTTPURLPattern = regexp.MustCompile(`(?i)https?://[^\s<>"']+`)
+
 type sourceFusionDiagnostics struct {
 	KnowledgeDurationMillis            int64
 	RouterDurationMillis               int64
@@ -54,6 +56,10 @@ func sourceFusionDurationMillis(started time.Time) int64 {
 		return maxFusionStageDurationMillis
 	}
 	return duration
+}
+
+func hasExplicitHTTPURL(value string) bool {
+	return explicitHTTPURLPattern.FindString(strings.TrimSpace(value)) != ""
 }
 
 func buildFusionWebSearchQuery(
@@ -181,6 +187,45 @@ func reconcileCompletedSourceFusionAuthority(
 	return plan
 }
 
+func (diagnostics *sourceFusionDiagnostics) webRetrievalCompleted(
+	currentSourceCount int,
+	cumulativeSourceCount int,
+) {
+	if diagnostics == nil {
+		return
+	}
+	switch {
+	case cumulativeSourceCount > 0 && diagnostics.DegradationReason != "":
+		diagnostics.WebExecuteOutcome = "partial"
+	case cumulativeSourceCount > 0:
+		diagnostics.WebExecuteOutcome = "completed"
+	case diagnostics.DegradationReason != "":
+		diagnostics.WebExecuteOutcome = "degraded"
+	case currentSourceCount == 0:
+		diagnostics.WebExecuteOutcome = "no_results"
+	default:
+		diagnostics.WebExecuteOutcome = "completed"
+	}
+}
+
+func (diagnostics *sourceFusionDiagnostics) webRetrievalFailed(
+	reason string,
+	cumulativeSourceCount int,
+) {
+	if diagnostics == nil {
+		return
+	}
+	diagnostics.DegradationReason = strings.TrimSpace(reason)
+	if diagnostics.DegradationReason == "" {
+		diagnostics.DegradationReason = "unavailable"
+	}
+	if cumulativeSourceCount > 0 {
+		diagnostics.WebExecuteOutcome = "partial"
+	} else {
+		diagnostics.WebExecuteOutcome = "degraded"
+	}
+}
+
 func sourceSearchDegradationReason(err error) string {
 	var providerError *websearch.ProviderError
 	switch {
@@ -194,6 +239,15 @@ func sourceSearchDegradationReason(err error) string {
 		return "invalid_config"
 	case errors.Is(err, websearch.ErrInvalidRequest):
 		return "invalid_request"
+	case errors.Is(err, websearch.ErrURLReadInvalid),
+		errors.Is(err, websearch.ErrURLReadBlocked),
+		errors.Is(err, websearch.ErrURLReadUnsupported),
+		errors.Is(err, websearch.ErrURLReadEmpty):
+		return "invalid_request"
+	case errors.Is(err, websearch.ErrURLReadTooLarge):
+		return "unavailable"
+	case errors.Is(err, websearch.ErrURLReadFailed):
+		return "provider_failed"
 	case errors.Is(err, errModelBuiltInSearchUnsupported):
 		return "model_builtin_unsupported"
 	case errors.As(err, &providerError):

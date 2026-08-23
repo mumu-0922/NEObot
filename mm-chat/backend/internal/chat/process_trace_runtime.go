@@ -52,7 +52,7 @@ func (runtime *toolProcessTrace) apply(
 		runtime.toolStepIDs[event.ExecutionID] = toolStepID
 		updates = append(updates, step)
 	}
-	if event.Name == searchWebToolName && webStepID == "" {
+	if isWebRetrievalToolName(event.Name) && webStepID == "" {
 		step := runtime.trace.startNext(
 			ProcessStepKindWeb,
 			"process.web",
@@ -123,6 +123,15 @@ func (runtime *toolProcessTrace) apply(
 		}
 	}
 	return updates
+}
+
+func isWebRetrievalToolName(name string) bool {
+	switch strings.TrimSpace(name) {
+	case searchWebToolName, readWebURLToolName:
+		return true
+	default:
+		return false
+	}
 }
 
 func toolProcessDetail(event *ProviderToolExecutionEvent) map[string]any {

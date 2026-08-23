@@ -77,7 +77,7 @@ type chatToolBatchExecution struct {
 
 func newChatToolRegistry(input externalWebToolLoopInput) *chatToolRegistry {
 	registry := &chatToolRegistry{
-		ordered:   make([]chatToolRegistration, 0, 6+len(input.MCP.definitions())),
+		ordered:   make([]chatToolRegistration, 0, 7+len(input.MCP.definitions())),
 		byName:    make(map[string]chatToolRegistration),
 		colliding: make(map[string]struct{}),
 	}
@@ -90,6 +90,9 @@ func newChatToolRegistry(input externalWebToolLoopInput) *chatToolRegistry {
 	if externalWebToolEnabled(input) {
 		registry.register(retrievalToolRegistration(
 			searchWebToolDefinition(), chatToolBackendWeb, chatToolRiskExternal, false,
+		))
+		registry.register(retrievalToolRegistration(
+			readWebURLToolDefinition(), chatToolBackendWeb, chatToolRiskExternal, false,
 		))
 	}
 	if input.Knowledge.enabled() {

@@ -55,6 +55,22 @@ func TestBuildFusionWebSearchQueryDoesNotPolluteExplicitSubject(t *testing.T) {
 	}
 }
 
+func TestHasExplicitHTTPURLForcesExternalToolDecision(t *testing.T) {
+	for _, value := range []string{
+		"读一下 https://linux.do/t/topic/2797040/14 讲了什么",
+		"see HTTP://example.com/article",
+	} {
+		if !hasExplicitHTTPURL(value) {
+			t.Fatalf("URL intent not detected: %q", value)
+		}
+	}
+	for _, value := range []string{"普通写作任务", "example.com is not an explicit URL"} {
+		if hasExplicitHTTPURL(value) {
+			t.Fatalf("false URL intent: %q", value)
+		}
+	}
+}
+
 func TestReconcileCompletedSourceFusionAuthorityUsesActualMarkers(t *testing.T) {
 	knowledge := autoRAGDecision{
 		Outcome: "answered",
@@ -129,6 +145,29 @@ func TestSourceSearchDegradationReasonIsStableAndRedacted(t *testing.T) {
 		if got := sourceSearchDegradationReason(tt.err); got != tt.want {
 			t.Fatalf("degradation reason = %q, want %q", got, tt.want)
 		}
+	}
+}
+
+func TestWebRetrievalDiagnosticsPreservePartialSuccess(t *testing.T) {
+	diagnostics := sourceFusionDiagnostics{}
+	diagnostics.webRetrievalCompleted(1, 1)
+	if diagnostics.WebExecuteOutcome != "completed" {
+		t.Fatalf("first outcome = %q", diagnostics.WebExecuteOutcome)
+	}
+	diagnostics.webRetrievalFailed("provider_failed", 1)
+	if diagnostics.WebExecuteOutcome != "partial" ||
+		diagnostics.DegradationReason != "provider_failed" {
+		t.Fatalf("partial diagnostics = %#v", diagnostics)
+	}
+	diagnostics.webRetrievalCompleted(1, 2)
+	if diagnostics.WebExecuteOutcome != "partial" {
+		t.Fatalf("later success erased partial outcome: %#v", diagnostics)
+	}
+
+	failed := sourceFusionDiagnostics{}
+	failed.webRetrievalFailed("provider_failed", 0)
+	if failed.WebExecuteOutcome != "degraded" {
+		t.Fatalf("all-failed diagnostics = %#v", failed)
 	}
 }
 

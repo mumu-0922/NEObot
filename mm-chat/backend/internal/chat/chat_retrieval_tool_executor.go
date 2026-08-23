@@ -229,24 +229,38 @@ func (registry *chatToolRegistry) executeWebCall(
 	arguments map[string]any,
 	state *chatRetrievalExecutionState,
 ) chatToolCallExecution {
+	name := normalizedToolName(call.Name)
 	running := ProviderToolExecutionEvent{
 		ExecutionID: executionID, CallID: call.ID, Name: call.Name,
 		Status: ProcessStepStatusRunning, Round: state.round,
-		Arguments: arguments, Query: query, Mode: "native",
+		Arguments: arguments, Mode: "native",
 	}
 	provider := "server search"
-	if state.input.Execution.External != nil {
+	if name == readWebURLToolName {
+		provider = "direct web"
+	} else if state.input.Execution.External != nil {
 		provider = string(state.input.Execution.External.ID())
+		running.Query = query
 	}
 	running.Presentation = searchProcessPresentation(call.Name, query, provider, 0)
 	if !sendToolExecutionEvent(ctx, state.events, running) {
 		return chatToolCallExecution{stop: true}
 	}
-	result, searchErr := state.input.SearchService.Execute(
-		ctx,
-		state.input.Execution,
-		websearch.Request{Query: query, MaxResults: state.input.MaxResults},
-	)
+	var result websearch.Result
+	var searchErr error
+	if name == readWebURLToolName {
+		result, searchErr = state.input.SearchService.ReadURL(
+			ctx,
+			state.input.Execution,
+			query,
+		)
+	} else {
+		result, searchErr = state.input.SearchService.Execute(
+			ctx,
+			state.input.Execution,
+			websearch.Request{Query: query, MaxResults: state.input.MaxResults},
+		)
+	}
 	if searchErr != nil {
 		if toolLoopWasCancelled(ctx, searchErr) {
 			cancelled := running

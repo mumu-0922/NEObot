@@ -1136,11 +1136,31 @@ SSE socket own delivery only.
   a short context-aware delay only for `REQUEST_FAILED`, HTTP `408`, `429`, or
   `5xx`. It must not re-resolve, switch providers, retry authentication/other
   `4xx` or response/schema failures, or continue after context cancellation.
+- A native external-Web round exposes `read_web_url` beside `search_web`.
+  `read_web_url` accepts exactly one public HTTP(S) URL. The exact selected
+  external Provider's bounded Extract capability is preferred when available;
+  the server-owned safe reader is the no-provider fallback. It never receives
+  browser cookies, environment proxies, or model-selected headers. Provider
+  credentials stay inside their existing adapter. Public Discourse topic/post
+  URLs use the same-origin
+  topic JSON representation and select the requested `post_number`; ordinary
+  pages use bounded HTML/plain-text extraction. Every initial/final redirect
+  target is DNS/IP revalidated and loopback/private/link-local/reserved targets,
+  IP literals, userinfo, fragments, unsupported MIME/encoding, oversized bodies,
+  and empty content fail closed.
+- Direct page content is untrusted evidence. It enters only the existing Web
+  `Result`/`[W#]` path with an explicit model instruction never to follow source
+  instructions. The raw model URL argument does not enter process detail; the
+  validated canonical source URL may exist only in normal Citation authority.
 - Each successful Web Tool Result contains only sources newly minted by that
   execution. Prior Tool Results remain in native continuation history, so
   serializing the cumulative Web corpus again is forbidden. New sources keep
   their cumulative marker, for example the second execution may return `[W2]`
   without repeating `[W1]`.
+- Turn-level Web diagnostics aggregate all Search and URL-read calls. Any
+  source-bearing success plus any failed call is `partial`; it preserves Web
+  authority and successful Citations. `degraded` means no usable Web source was
+  obtained. A later call must not overwrite these aggregate semantics.
 - If a later native Tool continuation fails after Web or Knowledge evidence is
   ready but before any answer content was emitted, perform one no-Tools answer
   stream through the same provider and model with the bounded cumulative
@@ -1230,7 +1250,8 @@ SSE socket own delivery only.
   unauthenticated requests, and non-canary users fail closed before retrieval
   or Judge work. The Memory Worker never receives the canary variable.
 - The first round carries the normal chat request and may expose
-  `search_web`, `search_knowledge`, and `search_memory` together. Before any
+  `search_web`, `read_web_url`, `search_knowledge`, and `search_memory` together.
+  Before any
   Memory call, the Provider receives no Memory candidate body, ID, scope,
   revision, retrieval score, or database authority.
 - First-round content and reasoning are buffered. With no Tool Call they are
@@ -1310,6 +1331,10 @@ SSE socket own delivery only.
 | Planner requests unavailable authority | reject plan and apply deterministic fallback |
 | Tool arguments malformed/unknown | do not execute; redacted failed step             |
 | External Search failure          | truthful degradation; ordinary answer; no `[W]`  |
+| Exact public URL                 | safe direct read; normalized source and `[W]`     |
+| Exact Discourse post URL         | same-origin topic JSON; exact post selection      |
+| URL targets private/unsafe/oversized content | bounded Tool failure; zero outbound authority |
+| One Web call succeeds and another fails | `partial`; retain successful Web evidence |
 | First transient external failure | one same-provider retry; no intermediate failure |
 | Second transient failure         | return final redacted error; normal degradation  |
 | Native continuation fails after evidence, before content | one same-model evidence answer stream |

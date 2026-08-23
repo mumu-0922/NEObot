@@ -199,6 +199,32 @@ Canonical project example:
 `mm-chat/docs/contracts/media-job-executor-seams.md` defines the executable
 GPT Image request, response, validation, and test contract.
 
+## Host Shell vs Deployed Egress Checklist
+
+Use this when a developer command can read a public URL but an application
+Tool, worker, or container cannot:
+
+- [ ] Record whether the host command inherited `HTTP_PROXY`, `HTTPS_PROXY`, or
+      `ALL_PROXY`; repeat the proof with ambient proxies disabled.
+- [ ] Run DNS and connection checks from the actual deployed caller/network.
+      A public-shaped DNS answer is not proof that the route is usable.
+- [ ] Do not enable an ambient proxy inside a DNS-pinned SSRF client merely to
+      match host-shell behavior. Proxy-side DNS can invalidate the checked-IP
+      binding.
+- [ ] Keep keyword Search, exact URL extraction, and browser automation as
+      separate capabilities. Prefer the exact selected Provider's bounded
+      Extract API for restricted public egress, then a no-proxy safe reader;
+      never silently escalate to browser authority.
+- [ ] Validate the user URL locally before any provider Extract call and keep
+      model arguments, redirects, source bodies, and provider errors out of
+      durable diagnostics.
+- [ ] Verify one real URL through the deployed application path after rollout,
+      then confirm private/literal targets still fail before outbound work.
+
+Canonical project example:
+`mm-chat/docs/contracts/go-web-search-providers.md` owns `read_web_url`, Tavily
+Extract, Discourse JSON adaptation, and the `safenet` direct fallback.
+
 ## Semantic Provider Capability Checklist
 
 Use this when one UI control maps to different provider request contracts:
