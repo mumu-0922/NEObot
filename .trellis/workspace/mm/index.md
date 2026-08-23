@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 80
-- **Last Active**: 2026-08-22
+- **Total Sessions**: 81
+- **Last Active**: 2026-08-23
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1093 | Active |
+| `journal-2.md` | ~1126 | Active |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 81 | 2026-08-23 | Persist model per conversation | `200c177f` | `main` |
 | 80 | 2026-08-22 | Persist chat and Knowledge refresh state | `b2c8b2f6`, `20c2572a` | `main` |
 | 79 | 2026-08-22 | Restore required-auth Knowledge retrieval | `23a59b89` | `main` |
 | 78 | 2026-08-22 | Make recall filtering Provider configurable | `9de09b84` | `main` |

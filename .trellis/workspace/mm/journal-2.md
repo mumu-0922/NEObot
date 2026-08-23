@@ -1091,3 +1091,36 @@ Persisted the full chat Provider/model preference in Server mode, made Knowledge
 ### Next Steps
 
 - None - task complete
+
+
+## Session 81: Persist model per conversation
+
+**Date**: 2026-08-23
+**Task**: Persist model per conversation
+**Branch**: `main`
+
+### Summary
+
+Made Local and Server model selection Conversation-owned, restored it on switching and refresh, serialized Server writes, normalized the Server-default Provider alias, added regression coverage, and deployed the healthy frontend image.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `200c177f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
