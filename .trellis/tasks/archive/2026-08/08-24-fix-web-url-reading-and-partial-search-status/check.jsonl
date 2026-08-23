@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/chat-tool-loop.md","reason":"Verify registry policy, Tool ordering, structured failures, durable replay, and citation truth."}
+{"file":".trellis/spec/backend/chat-source-fusion.md","reason":"Verify partial/degraded outcome semantics and sensitive diagnostic exclusions."}
+{"file":".trellis/spec/frontend/agent-transcript.md","reason":"Verify the new Tool presentation and warning survive live and reload paths."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Run the complete affected frontend gate for shared cross-layer logic."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Audit the complete URL-to-source-to-metadata-to-warning data flow."}
+{"file":".trellis/tasks/08-24-fix-web-url-reading-and-partial-search-status/prd.md","reason":"Check every acceptance criterion, especially SSRF, partial success, and deployed behavior."}

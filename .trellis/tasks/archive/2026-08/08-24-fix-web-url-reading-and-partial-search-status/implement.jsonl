@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/chat-tool-loop.md","reason":"Owns model-visible Tool registration, Web execution, bounded results, process trace, and citation authority."}
+{"file":".trellis/spec/backend/chat-source-fusion.md","reason":"Owns Web source fusion diagnostics, fallback, and query/body redaction."}
+{"file":".trellis/spec/frontend/agent-transcript.md","reason":"Owns typed Tool process rendering and durable/live replay parity."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Requires normalization of untrusted diagnostic metadata before UI consumption."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Defines focused Vitest and component verification requirements."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Direct reading must reuse safenet and existing Web source/citation machinery."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"The fix crosses Tool schemas, backend diagnostics, durable metadata, and frontend warning copy."}
+{"file":".trellis/tasks/08-24-fix-web-url-reading-and-partial-search-status/research/url-reading-options.md","reason":"Records the evaluated URL-reading approaches and selected safe-reader design."}
