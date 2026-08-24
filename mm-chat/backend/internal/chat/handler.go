@@ -2229,6 +2229,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusInternalServerError, turnFinalErrorCode, "chat Agent event persistence failed")
 		return
 	}
+	var agentOutcome *ProviderAgentOutcomeEvent
 	webMessageMetadata := func(
 		decision autoRAGDecision,
 		extra map[string]any,
@@ -2257,6 +2258,10 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		metadata = withDurableMemoryMetadata(metadata, memoryPreparation)
 		metadata["requestedToolMode"] = string(requestedToolMode)
 		metadata["toolMode"] = string(effectiveToolMode)
+		if agentOutcome != nil {
+			metadata["agentOutcome"] = strings.TrimSpace(agentOutcome.Outcome)
+			metadata["agentOutcomeReason"] = strings.TrimSpace(agentOutcome.Reason)
+		}
 		if continuation != nil {
 			metadata[continuationOfMessageIDMetadataKey] = continuation.source.ID
 			metadata[continuationModeMetadataKey] = answerOnlyContinuationMode
@@ -2268,11 +2273,11 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	var streamCancel context.CancelFunc
 	streamTimeout := time.Duration(0)
 	streamDeadlineSource := ""
-	if mcpRuntime.enabled() {
+	if !agentMode && mcpRuntime.enabled() {
 		streamTimeout = h.mcpService.Config().RunTimeout
 		streamDeadlineSource = "mcp"
 	}
-	if localSkillRuntime.enabled() &&
+	if !agentMode && localSkillRuntime.enabled() &&
 		(streamTimeout == 0 || localSkillRuntime.config().RunTimeout < streamTimeout) {
 		streamTimeout = localSkillRuntime.config().RunTimeout
 		streamDeadlineSource = "local_skill"
@@ -2354,6 +2359,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			MCP:                    mcpRuntime,
 			LocalSkills:            localSkillRuntime,
 			Goals:                  goalToolRuntime,
+			CompletionDriven:       agentMode,
 		}
 		if searchExecution != nil &&
 			searchExecution.Mode == websearch.ExecutionExternal {
@@ -2832,6 +2838,11 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		}
 
 		switch providerEvent.Type {
+		case ProviderEventAgentOutcome:
+			if providerEvent.AgentOutcome != nil {
+				outcome := *providerEvent.AgentOutcome
+				agentOutcome = &outcome
+			}
 		case ProviderEventSearchStarted:
 			builtInSearchStarted = time.Now()
 			fusionDiagnostics.WebExecuteOutcome = "provider_stream"

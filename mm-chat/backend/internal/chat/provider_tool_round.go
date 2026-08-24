@@ -68,6 +68,11 @@ type ProviderToolResult struct {
 	IsError bool
 }
 
+type ProviderAgentOutcomeEvent struct {
+	Outcome string
+	Reason  string
+}
+
 type ProviderToolExecutionEvent struct {
 	ExecutionID     string                   `json:"executionId"`
 	CallID          string                   `json:"callId,omitempty"`

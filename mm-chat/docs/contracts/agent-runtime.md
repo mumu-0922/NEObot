@@ -38,8 +38,10 @@ containers, Canary runs, schedules, autonomous learning, and Agent Center.
   exact directory already mounted as `/workspace`; it does not authorize a
   second root. Linux absolute and WSL UNC inputs must map below it before the
   existing relative-path and `os.Root` checks run.
-- The runtime enforces call timeout, Run timeout, output bytes, Tool calls,
-  Tool rounds, and concurrency. In `smart` mode, a destructive Terminal call
+- The runtime enforces per-call/background-Job timeout, output bytes, and
+  concurrency. Effective Agent mode is completion-driven: the configured
+  per-Run call/round values do not terminate a healthy progressing Turn. In
+  `smart` mode, a destructive Terminal call
   creates a durable five-minute approval and waits for `Allow once`, an
   authorized conversation grant, or `Deny`. The catastrophic blocklist remains
   active and cannot be bypassed even with approval mode `off`.
@@ -188,6 +190,11 @@ AGENT_LOCAL_MAX_CALLS_PER_RUN
 AGENT_LOCAL_MAX_ROUNDS_PER_RUN
 AGENT_LOCAL_MAX_CONCURRENT
 ```
+
+`AGENT_LOCAL_RUN_TIMEOUT` is the default maximum lifetime of a background Job;
+it is not a whole Agent-Turn deadline. The max-call/max-round variables remain
+validated compatibility controls for non-completion-driven paths and do not
+truncate effective Agent mode.
 
 The single-server Compose default is enabled; the bare Backend binary default
 is disabled. Invalid enabled roots, shell, approval mode, durations, or numeric

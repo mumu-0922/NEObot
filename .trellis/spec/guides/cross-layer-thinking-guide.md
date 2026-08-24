@@ -229,12 +229,26 @@ Use this before attributing a slow AI/media request to a reverse proxy:
 
 - [ ] Trace every deadline in order: browser/client → application handler →
       provider HTTP client → reverse proxy → upstream service
+- [ ] Name the lifecycle owner for every deadline. A Tool/Job timeout must not
+      become the parent Agent/Workflow deadline unless completion itself is
+      explicitly time-based.
+- [ ] Separate elapsed time from progress and completion. For iterative Agent
+      loops, test past the old cutoff and require a final state-changing action
+      such as artifact publication; an early read-only answer is not proof.
 - [ ] Distinguish status ownership: a proxy `499` means its client disconnected;
       it is not proof of an upstream read timeout such as `504`
 - [ ] Verify the configuration loaded by the active process, not only a file on
       disk; include config validation and worker start/reload evidence
 - [ ] Check the provider's official async/SSE contract before increasing a
       synchronous deadline
+
+**Real-world example**: Chat correctly bounded each foreground command and
+background Job, but the Handler reused the smaller local/MCP `RunTimeout` as
+the parent Provider-loop deadline. A file was generated and verified near five
+minutes, then the parent Context cancelled before `publish_file`. Raising the
+limit only moved the failure. The durable fix made the Agent completion-driven,
+kept child deadlines scoped to their owners, and added a regression that waits
+past the legacy boundary before publication.
 
 ### When introducing provider SSE
 

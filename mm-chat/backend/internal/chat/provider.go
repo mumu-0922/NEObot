@@ -14,6 +14,7 @@ const (
 	ProviderEventSearch         = "search"
 	ProviderEventSearchStarted  = "search.started"
 	ProviderEventSearchDegraded = "search.degraded"
+	ProviderEventAgentOutcome   = "agent.outcome"
 )
 
 type Provider interface {
@@ -123,6 +124,7 @@ type ProviderEvent struct {
 	Usage              *TokenUsage
 	Search             *websearch.Result
 	FailureCategory    string
+	AgentOutcome       *ProviderAgentOutcomeEvent
 	Error              error
 }
 

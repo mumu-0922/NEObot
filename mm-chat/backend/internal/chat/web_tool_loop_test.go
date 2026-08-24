@@ -782,6 +782,7 @@ func TestWebSearchSuccessToolResultReturnsOnlyNewStableMarkers(t *testing.T) {
 type scriptedToolRoundProvider struct {
 	rounds     [][]ProviderEvent
 	chatRounds [][]ProviderEvent
+	delays     []time.Duration
 	syncErrors map[int]error
 	inputs     []ProviderRoundRequest
 	chatInputs []ProviderRequest
@@ -849,6 +850,15 @@ func (p *scriptedToolRoundProvider) StreamToolRound(
 	}
 	if index >= len(p.rounds) {
 		return nil, errors.New("unexpected tool round")
+	}
+	if index < len(p.delays) && p.delays[index] > 0 {
+		timer := time.NewTimer(p.delays[index])
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
 	}
 	return providerEventFixtureChannel(ctx, p.rounds[index]), nil
 }

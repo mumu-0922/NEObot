@@ -567,6 +567,70 @@ func TestLocalSkillCallBudgetReturnsFailureThenFinalContinuationWithoutTools(t *
 	}
 }
 
+func TestCompletionDrivenAgentIgnoresAbsoluteLocalBudgetsAndBlocksNoProgress(t *testing.T) {
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: filepath.Join(t.TempDir(), "skills"),
+		WorkspaceRoot: t.TempDir(), ShellPath: "/bin/sh",
+		ApprovalMode: localskills.ApprovalSmart, CallTimeout: time.Second,
+		RunTimeout: 5 * time.Second, MaxOutput: 4096, MaxCalls: 1,
+		MaxRounds: 1, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := newLocalSkillToolRuntime(executor, []skillsupply.RuntimeSkill{{
+		Name: "fixture", Files: []string{"SKILL.md"},
+	}})
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "first", Name: legacySkillsListToolName, Arguments: `{}`,
+		}}},
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "second", Name: legacySkillsListToolName, Arguments: `{}`,
+		}}},
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "third", Name: legacySkillsListToolName, Arguments: `{}`,
+		}}},
+		{{Type: ProviderEventDelta, Delta: "blocked status"}},
+	}}
+	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt: "repeat", ModelRef: ModelRef{ProviderID: "fixture", ModelID: "model"},
+		},
+		LocalSkills: runtime, CompletionDriven: true,
+	})
+	var content strings.Builder
+	var outcome *ProviderAgentOutcomeEvent
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+		if event.AgentOutcome != nil {
+			value := *event.AgentOutcome
+			outcome = &value
+		}
+	}
+	if content.String() != "blocked status" || len(provider.inputs) != 4 ||
+		len(provider.inputs[3].Tools) != 0 || runtime.calls != 3 {
+		t.Fatalf("content=%q calls=%d inputs=%#v", content.String(), runtime.calls, provider.inputs)
+	}
+	if outcome == nil || outcome.Outcome != chatAgentOutcomeBlocked ||
+		outcome.Reason != chatAgentBlockRepeatedToolOutcome {
+		t.Fatalf("outcome=%#v", outcome)
+	}
+	for _, exchange := range provider.inputs[3].Continuation {
+		for _, result := range exchange.Results {
+			if result.IsError && strings.Contains(result.Content, "budget_exhausted") {
+				t.Fatalf("completion-driven run hit absolute budget: %#v", result)
+			}
+		}
+	}
+}
+
 func TestLocalSkillTerminalRejectsPackageDriftBeforeProcessStart(t *testing.T) {
 	workspace := t.TempDir()
 	runtimeRoot := t.TempDir()

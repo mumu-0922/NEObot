@@ -485,6 +485,58 @@ func TestMCPToolLoopEnforcesWallClockBudget(t *testing.T) {
 	}
 }
 
+func TestCompletionDrivenAgentIgnoresMCPWholeRunTimeout(t *testing.T) {
+	ref := mcpclient.ServerRef{Source: mcpclient.SourceManifest, ID: "completion-fixture"}
+	tool := mcpclient.Tool{
+		ServerRef: ref, Name: "echo", Alias: "mcp_completion_echo",
+		InputSchema:    map[string]any{"type": "object"},
+		Classification: mcpclient.ClassificationRead, Supported: true,
+	}
+	repo := newMCPChatRepository(DevUserID, testConversationID, ref)
+	config := mcpclient.DefaultConfig()
+	config.Enabled = true
+	config.RemoteEnabled = true
+	config.RunTimeout = 25 * time.Millisecond
+	service, err := mcpclient.NewService(
+		config, repo, nil, nil, nil, mcpclient.Catalog{},
+		[]mcpclient.Server{{
+			Ref: ref, Name: "Completion Fixture",
+			Transport: mcpclient.TransportStreamableHTTP,
+			AuthType:  mcpclient.AuthNone, Status: mcpclient.ServerStatusReady,
+			Tools: []mcpclient.Tool{tool}, Grants: []mcpclient.Grant{{ScopeType: "global"}},
+		}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := service.Preflight(context.Background(), DevUserID, testConversationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := newMCPToolRuntime(service, prepared, DevUserID, "wait")
+	provider := &delayedMCPRoundProvider{delay: 50 * time.Millisecond}
+	started := time.Now()
+	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt: "wait", ModelRef: ModelRef{ProviderID: "mock", ModelID: "mcp"},
+		},
+		MCP: runtime, CompletionDriven: true,
+	})
+	var content strings.Builder
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+	}
+	if content.String() != "completed" || time.Since(started) < provider.delay {
+		t.Fatalf("content=%q elapsed=%s", content.String(), time.Since(started))
+	}
+}
+
 func TestHandlerKeepsChatAvailableAndCleansMCPDataWhenKillSwitchOff(t *testing.T) {
 	ref := mcpclient.ServerRef{Source: mcpclient.SourceManifest, ID: "disabled-fixture"}
 	mcpRepo := newMCPChatRepository(DevUserID, testConversationID, ref)
@@ -552,6 +604,36 @@ func (*blockingMCPRoundProvider) StreamToolRound(ctx context.Context, _ Provider
 		<-ctx.Done()
 	}()
 	return events, nil
+}
+
+type delayedMCPRoundProvider struct {
+	delay time.Duration
+}
+
+func (provider *delayedMCPRoundProvider) StreamToolRound(
+	ctx context.Context,
+	_ ProviderRoundRequest,
+) (<-chan ProviderEvent, error) {
+	events := make(chan ProviderEvent, 1)
+	go func() {
+		defer close(events)
+		timer := time.NewTimer(provider.delay)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			events <- ProviderEvent{Type: ProviderEventDelta, Delta: "completed"}
+		}
+	}()
+	return events, nil
+}
+
+func (provider *delayedMCPRoundProvider) StreamChat(
+	ctx context.Context,
+	request ProviderRequest,
+) (<-chan ProviderEvent, error) {
+	return provider.StreamToolRound(ctx, ProviderRoundRequest{ProviderRequest: request})
 }
 
 func (*blockingMCPRoundProvider) StreamChat(ctx context.Context, _ ProviderRequest) (<-chan ProviderEvent, error) {

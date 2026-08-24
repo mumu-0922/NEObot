@@ -27,7 +27,7 @@ func (registry *chatToolRegistry) executeToolBatch(
 	}
 	if registry.requiredLocalSkill {
 		results, budgetReached, err := executeRequiredLocalSkillBatch(
-			ctx, events, input.LocalSkills, calls, round,
+			ctx, events, input.LocalSkills, calls, round, input.CompletionDriven,
 		)
 		execution.Results = registry.projectResults(results)
 		execution.BudgetReached = budgetReached
@@ -106,7 +106,7 @@ func (registry *chatToolRegistry) executeParallelReadGroup(
 		started++
 		go func() {
 			results, budgetReached, err := executeMCPBatch(
-				groupCtx, events, input.MCP, mcpCalls, round,
+				groupCtx, events, input.MCP, mcpCalls, round, input.CompletionDriven,
 			)
 			completed <- chatParallelBackendExecution{
 				results: results, budgetReached: budgetReached, err: err,
@@ -117,7 +117,7 @@ func (registry *chatToolRegistry) executeParallelReadGroup(
 		started++
 		go func() {
 			results, budgetReached, err := executeLocalSkillBatch(
-				groupCtx, events, input.LocalSkills, localCalls, round,
+				groupCtx, events, input.LocalSkills, localCalls, round, input.CompletionDriven,
 			)
 			completed <- chatParallelBackendExecution{
 				results: results, budgetReached: budgetReached, err: err,
@@ -172,11 +172,13 @@ func (registry *chatToolRegistry) executeSerialToolCall(
 		goal, err := executeChatAgentGoalBatch(ctx, events, input.Goals, single, round)
 		return goal.Results[0], false, goal.ConcludesTurn, false, err
 	case chatToolBackendMCP:
-		results, budgetReached, err := executeMCPBatch(ctx, events, input.MCP, single, round)
+		results, budgetReached, err := executeMCPBatch(
+			ctx, events, input.MCP, single, round, input.CompletionDriven,
+		)
 		return resultAt(results, call, 0), budgetReached, false, false, err
 	case chatToolBackendLocalSkill:
 		results, budgetReached, err := executeLocalSkillBatch(
-			ctx, events, input.LocalSkills, single, round,
+			ctx, events, input.LocalSkills, single, round, input.CompletionDriven,
 		)
 		return resultAt(results, call, 0), budgetReached, false, false, err
 	case chatToolBackendWeb, chatToolBackendKnowledge, chatToolBackendMemory:

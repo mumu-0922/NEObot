@@ -34,9 +34,11 @@ Transcript v2 start marker: turn.started.payload.transcriptVersion = 2
   `/v1/skills/*` and must not regain Runs, Schedules, Learning, Shadow, Canary,
   Runner, OCI, delegation, or Subagent controls.
 - `local_direct` runs as the Backend UID/GID under two explicit roots. Enforce
-  timeout, output, call, round, and concurrency bounds plus process-group
-  cancellation/reaping. Jobs remain process-local and must never claim restart
-  durability.
+  per-call/background-Job timeout, output, and concurrency bounds plus
+  process-group cancellation/reaping. Effective Agent mode is
+  completion-driven and is not terminated by whole-Turn/call/round budgets
+  while progress continues. Jobs remain process-local and must never claim
+  restart durability.
 - `AGENT_LOCAL_WORKSPACE_HOST_ROOT`, when nonempty, must be the clean absolute
   Host path for the one directory already mounted at `/workspace`. Resolve only
   canonical Linux absolute and WSL UNC inputs below it into relative names
@@ -210,6 +212,9 @@ Transcript v2 start marker: turn.started.payload.transcriptVersion = 2
 - **Good**: Agent mode loads an admitted Skill, maps an authorized pasted Host
   path to a workspace-relative name, edits that file, verifies it, publishes
   it, and returns an authenticated download card.
+- **Good**: that same workflow crosses `AGENT_LOCAL_RUN_TIMEOUT`; foreground
+  calls and background Jobs remain individually bounded, but the progressing
+  Turn continues through `publish_file`.
 - **Base**: Agent mode has no installed Skills; bounded File/Terminal/Job Tools
   still work, while Chat mode exposes none of them.
 - **Base**: Agent runs `pwd` and `git status --short` in foreground, observes the
@@ -238,6 +243,10 @@ The local Runtime suite must also prove foreground Terminal-only completion,
 `file_write -> terminal -> verify_completion`, exact local
 `evidenceToolCallId`, background Job ID/status gating, typed Terminal
 presentation redaction/bounds, raw-output absence, and live/reload parity.
+It must also prove effective Agent mode has no parent local/MCP Run deadline,
+ignores compatibility call/round caps while outcomes progress, persists a
+blocked reason after the no-progress threshold, and can publish/replay an
+artifact after a deliberately short legacy Run boundary.
 Cursor tests must prove after-sequence replay, duplicate suppression, bounded
 eviction gap, exact-user authorization, terminal grace replay, browser
 auto-resume, and final-snapshot convergence without per-chunk database events.
@@ -268,6 +277,9 @@ Correct: foreground result -> synchronous boundary; background Job -> exact comp
 
 Wrong: advertise RunTimeout -> foreground executor rejects model arguments
 Correct: advertise CallTimeout -> background(null) receives RunTimeout
+
+Wrong: wrap the entire Agent Provider loop in RunTimeout
+Correct: use cancellation for the Turn; scope CallTimeout/RunTimeout to the owning Tool or Job
 
 Wrong: copy stdout/stderr or Terminal arguments into generic process detail
 Correct: typed redacted Terminal card -> durable ProcessStep -> same live/replay card

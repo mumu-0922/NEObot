@@ -212,8 +212,9 @@ adversarial allowed process.
   prepare local Skill, File, Job, Terminal, Goal, Browser, or MCP Tools.
 - Package preparation failure returns `SKILL_RUNTIME_UNAVAILABLE` without
   exposing storage or filesystem details.
-- Run deadline returns `LOCAL_SKILL_BUDGET_EXHAUSTED`; cancellation terminates
-  the process group and finalizes the Chat Run as cancelled.
+- A foreground call or background Job deadline returns a bounded timeout
+  result and terminates its process group. Effective Agent mode has no whole
+  local-Run deadline; cancellation still finalizes the Chat Run as cancelled.
 - Workspace conflicts and bounds return typed `version_conflict`,
   `file_not_found`, `file_too_large`, `invalid_utf8`, `edit_conflict`,
   `path_invalid`, or `arguments_invalid` Tool Results.

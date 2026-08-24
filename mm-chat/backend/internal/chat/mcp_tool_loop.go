@@ -192,6 +192,7 @@ func executeMCPBatch(
 	runtime *mcpToolRuntime,
 	calls []ProviderToolCall,
 	round int,
+	completionDriven bool,
 ) (map[int]ProviderToolResult, bool, error) {
 	results := make(map[int]ProviderToolResult)
 	if !runtime.enabled() {
@@ -204,7 +205,7 @@ func executeMCPBatch(
 		if !runtime.handles(alias) {
 			continue
 		}
-		if runtime.calls >= runtime.service.Config().MaxCallsPerRun {
+		if !completionDriven && runtime.calls >= runtime.service.Config().MaxCallsPerRun {
 			hardBudget = true
 			results[index] = ProviderToolResult{
 				CallID: call.ID, Name: call.Name,

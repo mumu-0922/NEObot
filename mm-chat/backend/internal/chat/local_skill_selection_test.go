@@ -137,7 +137,7 @@ func TestLocalSkillRequiredPreludeRejectsUnadvertisedTerminalBeforeExecution(t *
 			ID: "forged-terminal", Name: localTerminalToolName,
 			Arguments: `{"command":"printf ran > marker","skill":null,"workingDir":null,"timeoutSeconds":1}`,
 		}},
-		1,
+		1, false,
 	)
 	result := results[0]
 	if err != nil || !result.IsError ||
@@ -173,7 +173,7 @@ func TestLocalSkillRequiredPreludeRejectsDifferentInstalledSkill(t *testing.T) {
 			ID: "wrong-skill", Name: localSkillToolName,
 			Arguments: `{"name":"beta-skill"}`,
 		}},
-		1,
+		1, false,
 	)
 	if err != nil || !results[0].IsError ||
 		!strings.Contains(results[0].Content, "skill_required_before_action") {

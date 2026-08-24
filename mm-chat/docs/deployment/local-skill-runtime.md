@@ -44,10 +44,10 @@ backups.
 | `AGENT_LOCAL_SHELL` | `/bin/bash` | Absolute shell used with `-c`; workspace login/profile files are not loaded. |
 | `AGENT_LOCAL_APPROVAL_MODE` | `smart` | Deny destructive patterns; `off` disables only this soft denial. |
 | `AGENT_LOCAL_CALL_TIMEOUT` | `30s` | Foreground command limit and maximum explicit `terminal.timeoutSeconds`. |
-| `AGENT_LOCAL_RUN_TIMEOUT` | `5m` | Whole local Tool-loop limit and background Job default when `timeoutSeconds=null`. |
+| `AGENT_LOCAL_RUN_TIMEOUT` | `5m` | Background Job lifetime default when `timeoutSeconds=null`; not a whole Agent-Turn deadline. |
 | `AGENT_LOCAL_MAX_OUTPUT_BYTES` | `1048576` | Combined stdout/stderr budget per command. |
-| `AGENT_LOCAL_MAX_CALLS_PER_RUN` | `32` | Local Tool call budget. |
-| `AGENT_LOCAL_MAX_ROUNDS_PER_RUN` | `8` | Provider Tool-round budget. |
+| `AGENT_LOCAL_MAX_CALLS_PER_RUN` | `32` | Compatibility call budget outside completion-driven Agent mode. |
+| `AGENT_LOCAL_MAX_ROUNDS_PER_RUN` | `8` | Compatibility round budget outside completion-driven Agent mode. |
 | `AGENT_LOCAL_MAX_CONCURRENT` | `2` | Concurrent commands per Backend process. |
 
 In `smart` mode, destructive Terminal calls enter the durable Chat Agent
@@ -122,6 +122,10 @@ configured workspace. The retired Runner/Canary control plane is not involved.
 9. Restart Backend while an active Goal exists, reload the Conversation, and
    say “继续”. The restored Goal is disarmed until that direct human request;
    it must not continue work merely because the service restarted.
+10. Run an Agent task longer than `AGENT_LOCAL_RUN_TIMEOUT` and require a final
+    downloadable file. The Turn must continue while Tool outcomes progress and
+    complete only after `publish_file`; repeating the same outcome three times
+    must instead produce an explicit blocked summary.
 
 The local regression command is:
 
@@ -142,3 +146,6 @@ docker compose --env-file .env.single-server --profile app up -d --force-recreat
 
 This stops new local Skill Tools without uninstalling packages or deleting the
 workspace/cache. There is no OCI Runner fallback or second Agent control plane.
+The completion-driven change adds no new environment variable or database
+migration; rolling Backend back to the prior image restores the prior bounded
+Turn behavior without rewriting runtime state.

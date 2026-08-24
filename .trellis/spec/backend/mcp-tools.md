@@ -297,6 +297,13 @@ MCP_MARKETPLACE_CLIENT_ID MCP_MARKETPLACE_CLIENT_SECRET_FILE
 MCP_MARKETPLACE_TIMEOUT MCP_MARKETPLACE_CACHE_TTL
 ```
 
+`MCP_CALL_TIMEOUT` remains the authority for each connector call. Effective
+Agent mode is completion-driven and does not wrap the whole Turn in
+`MCP_RUN_TIMEOUT` or terminate at MCP call/round counters while observable
+progress continues. Those whole-Run budgets remain compatibility controls for
+non-Agent paths; cancellation, concurrency, output, authorization, and
+outcome-unknown boundaries remain authoritative.
+
 ### 4. Validation & Error Matrix
 
 | Condition | Required result |
@@ -335,6 +342,9 @@ MCP_MARKETPLACE_TIMEOUT MCP_MARKETPLACE_CACHE_TTL
 
 - **Good**: current grants and an explicit selection freeze one snapshot; four
   compatible reads execute concurrently and the same model continues.
+- **Good**: effective Agent mode spends longer than `MCP_RUN_TIMEOUT` across
+  progressing rounds while every connector call remains bounded by
+  `MCP_CALL_TIMEOUT`.
 - **Good**: a refreshed Marketplace stdio deployment resolves either to one
   exact image-bundled manifest executable or one sealed exact-version npm/npx
   artifact downloaded only inside the isolated Runner.
@@ -365,15 +375,20 @@ MCP_MARKETPLACE_TIMEOUT MCP_MARKETPLACE_CACHE_TTL
   interface must also be added to Chat and cross-package test fakes; compile the
   owning Chat package in the focused gate so an MCP-only unit run cannot hide
   interface drift.
+- Chat completion: a deliberately short MCP whole-Run compatibility timeout
+  still terminates non-Agent mode, while effective Agent mode crosses it and
+  completes; MCP call/round counters never truncate novel progress.
 - Browser: run real MCP initialize/list/navigate/snapshot against a local HTTP
   fixture; assert the upstream unsafe-code Tool exists as threat evidence,
   exact package/command/17-name manifest pins, Runner call-path denial, and
   distinct instances across Run IDs.
-- PostgreSQL 17: fresh `001..081`, replay, clean `081..077` down, guarded `076`
-  down with/without a stdio row, `075` grant down/up plus `074` schema down/up,
+- PostgreSQL 17: apply the historical MCP/Agent boundary through `097` while
+  deferring every current `098..head` migration, replay, clean `097..077` down,
+  guarded `076` down with/without a stdio row, `075` grant down/up plus `074` schema down/up,
   retired metadata purge without security-field loss, 12 MCP tables,
   runtime-role denial/grants, stdio repository lifecycle, targeted legacy
-  repair/rollback assertions, account cascade queue, and final replay via
+  repair/rollback assertions, account cascade queue, and final replay through
+  the current head (currently `105`) via
   `scripts/verify-mcp-postgres17.sh` and
   `scripts/verify-mcp-install-credentials-postgres17.sh`. When a new tail
   migration is added, both drills must advance their fresh, down, re-up, and
@@ -422,6 +437,18 @@ if manifestToolAllowed(server, tool.Name) {
     expose(tool)
 }
 // CallTool repeats the same check immediately before dispatch.
+```
+
+#### Wrong
+
+```go
+agentCtx, cancel := context.WithTimeout(ctx, mcpConfig.RunTimeout)
+```
+
+#### Correct
+
+```go
+callCtx, cancel := context.WithTimeout(agentCtx, mcpConfig.CallTimeout)
 ```
 
 #### Wrong

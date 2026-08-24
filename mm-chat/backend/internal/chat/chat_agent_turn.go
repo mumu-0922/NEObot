@@ -19,17 +19,22 @@ type chatAgentStep struct {
 }
 
 type chatAgentTurnDriver struct {
-	steps     int
-	taskSteps int
-	toolCalls int
+	steps            int
+	taskSteps        int
+	toolCalls        int
+	completionDriven bool
 }
 
-func newChatAgentTurnDriver() *chatAgentTurnDriver {
-	return &chatAgentTurnDriver{}
+func newChatAgentTurnDriver(completionDriven ...bool) *chatAgentTurnDriver {
+	driver := &chatAgentTurnDriver{}
+	if len(completionDriven) > 0 {
+		driver.completionDriven = completionDriven[0]
+	}
+	return driver
 }
 
 func (driver *chatAgentTurnDriver) beginStep(skillPrelude bool) (chatAgentStep, bool) {
-	if driver == nil || driver.steps >= maxChatAgentTurnSteps {
+	if driver == nil || (!driver.completionDriven && driver.steps >= maxChatAgentTurnSteps) {
 		return chatAgentStep{}, false
 	}
 	driver.steps++
@@ -45,8 +50,13 @@ func (driver *chatAgentTurnDriver) beginStep(skillPrelude bool) (chatAgentStep, 
 }
 
 func (driver *chatAgentTurnDriver) admitToolCalls(requested int) int {
-	if driver == nil || requested <= 0 || driver.toolCalls >= maxChatAgentToolCalls {
+	if driver == nil || requested <= 0 ||
+		(!driver.completionDriven && driver.toolCalls >= maxChatAgentToolCalls) {
 		return 0
+	}
+	if driver.completionDriven {
+		driver.toolCalls += requested
+		return requested
 	}
 	admitted := min(requested, maxChatAgentToolCalls-driver.toolCalls)
 	driver.toolCalls += admitted

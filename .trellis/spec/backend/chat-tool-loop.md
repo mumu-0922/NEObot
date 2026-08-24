@@ -173,14 +173,16 @@ all properties; semantic optionals are nullable.
 - Buffer Goal/verification intermediate prose. Complete/blocked/cancel latches
   a Tool-free wrap-up for the rest of the Turn. A hallucinated call receives
   `goal_concluded`, executes nothing and cannot restore ordinary Tools.
-- If the ordinary local Tool-round limit is first crossed while verification is
-  outstanding, latch at most four additional Provider rounds for verification
-  and final narration. During this grace, expose and execute only Goal
-  read/update/`verify_completion` plus local/MCP evidence tools (read-class
-  tools and foreground Terminal); hide non-Goal write and external tools. The 32-Step,
-  128-call, wall-clock, call, output, approval, and cancellation caps remain
-  authoritative. Expiry with outstanding verification is still terminal
-  `AGENT_VERIFICATION_REQUIRED`.
+- Effective Agent mode is completion-driven. Do not derive a whole-Turn
+  deadline from local or MCP `RunTimeout`, and do not terminate healthy
+  progress at the legacy 32-Step/128-call or configured local/MCP call/round
+  budgets. Per-Tool timeouts, background Job lifetime, output, concurrency,
+  approval, cancellation, Provider failure, and outcome-unknown boundaries
+  remain authoritative.
+- Track sanitized Tool-call/result outcomes in memory. Three identical
+  consecutive outcomes or five consecutive all-error rounds force a Tool-free
+  blocked wrap-up with `agentOutcome=blocked` and a stable reason. It must
+  describe incomplete work and cannot satisfy completion verification.
 - Goal process events contain only Tool name/round, `mode=goal`,
   `classification=read|write`, duration/status/failure category. Do not expose
   objective, blocker, arguments, verification summary or server data.
@@ -199,8 +201,8 @@ all properties; semantic optionals are nullable.
 | foreground Terminal-only task | no completion gate; answer from the synchronous Result |
 | foreground Terminal used to verify a pending background Job | `verification_evidence_invalid` |
 | completed `job_output` names a different pending Job | `verification_evidence_invalid` |
-| ordinary local Tool-round limit crossed with outstanding verification | latch up to four verification-only rounds; no non-Goal write/external Tool authority |
-| verification grace or Step/Tool/wall-clock budget exhausted | terminal `AGENT_VERIFICATION_REQUIRED`; no Tool-free success |
+| completion-driven Agent makes observable progress beyond legacy Turn/local/MCP budgets | continue on the same Provider/model |
+| three identical outcomes or five consecutive all-error rounds | Tool-free blocked wrap-up; no success claim |
 | Goal database/function failure | terminal `AGENT_GOAL_PERSISTENCE_FAILED` |
 | wrap-up Provider emits Tool Call | `goal_concluded`; no dispatch; next Step remains Tool-free |
 | dirty `097` Down | `CHAT_AGENT_GOALS_DOWN_DATA_EXISTS` |
@@ -259,16 +261,20 @@ Correct: latch <=4 verification-only rounds -> verify/final or fail closed
 ### 1. Scope / Trigger
 
 Apply when adding a model-visible Chat Tool, changing Tool order or risk,
-dispatching a provider Tool batch, changing Turn/Step budgets, or changing the
-model-facing Result and process presentation. This Registry belongs to ordinary
-Chat and is independent from the optional G20/G21 control-plane registry.
+dispatching a provider Tool batch, changing Turn/Step completion or no-progress
+rules, or changing the model-facing Result and process presentation. This
+Registry belongs to ordinary Chat and is independent from the optional G20/G21
+control-plane registry.
 
 ### 2. Signatures
 
 ```text
-newChatAgentTurnDriver()
+newChatAgentTurnDriver(completionDriven)
 turn.beginStep(skillPrelude) -> {sequence, taskSequence, purpose}
 turn.admitToolCalls(count) -> admittedCount
+
+newChatAgentProgressTracker()
+progress.observe(calls, results) -> {reason, blocked}
 
 newChatToolRegistry(input)
 registry.definitions(taskStep)
@@ -314,14 +320,15 @@ replayable `search|tool` presentation.
   remain the correctness/fallback path. Playwright's
   `browser_run_code_unsafe` is RCE-equivalent and is not a Browser Tool; any
   future Code Mode must remain optional above the same Registry policy.
-- The Turn has hard safety caps of 32 provider Steps and 128 Tool Calls in
-  addition to lower MCP/local runtime budgets. Calls beyond the Turn cap get a
-  structured `turn_call_budget_exhausted` Result and no execution; then the
-  same model receives one Tool-free final Step.
+- Effective Agent mode has no absolute Provider-Step, Tool-call, whole-Turn,
+  local-round, or MCP-round cutoff while progress continues. The legacy
+  32-Step/128-call and configured per-Run budgets remain scoped to non-Agent
+  compatibility paths.
 - Unknown names, invalid arguments, ordinary Tool errors, and per-Tool timeouts
-  are structured Results. A per-MCP-call deadline is `tool_timeout`; the parent
-  Run deadline, cancellation, `outcome_unknown`, and unrecoverable execution
-  errors remain terminal.
+  are structured Results. A per-MCP-call deadline is `tool_timeout`; explicit
+  cancellation, `outcome_unknown`, and unrecoverable execution errors remain
+  terminal. A non-Agent compatibility path may additionally retain its scoped
+  parent Run deadline.
 - Existing `ProviderToolExecutionEvent.Round` remains the provider-loop
   ordering input and is mirrored into durable event `step_sequence` when
   positive. Do not add a Provider sideband merely to manufacture Agent Step
@@ -338,10 +345,13 @@ replayable `search|tool` presentation.
 | duplicate registered name | remove the name from definitions and lookup |
 | unknown Provider Tool name | structured `unknown_tool`; no Backend call |
 | registered Tool with bad arguments | Backend-specific structured invalid-argument Result |
-| physical Step 33 | no Tool execution; one Tool-free final continuation |
-| Tool Call 129 | `turn_call_budget_exhausted`; no side effect |
+| effective Agent reaches physical Step 33 or Tool Call 129 with new outcomes | continue; preserve exact ordering/evidence |
+| non-Agent compatibility path reaches physical Step 33 | no Tool execution; one Tool-free final continuation |
+| non-Agent compatibility path reaches Tool Call 129 | `turn_call_budget_exhausted`; no side effect |
 | MCP per-Tool deadline while parent Run is healthy | structured `tool_timeout`; same model may recover |
-| parent MCP/Chat deadline | terminal `MCP_BUDGET_EXHAUSTED` |
+| effective Agent passes MCP/local `RunTimeout` while progressing | continue; no parent deadline |
+| three identical sanitized outcomes | emit `agent.outcome(blocked,repeated_tool_outcome)` then Tool-free blocked wrap-up |
+| five distinct consecutive all-error rounds | emit `agent.outcome(blocked,consecutive_tool_errors)` then Tool-free blocked wrap-up |
 | write outcome becomes unknown | terminal `MCP_OUTCOME_UNKNOWN`; never retry |
 | Skill prelude receives another Tool | `skill_required_before_action`; no dispatch |
 | contiguous safe reads exceed four | split into ordered groups of at most four |
@@ -354,11 +364,14 @@ replayable `search|tool` presentation.
   are returned in original call order -> same model answers.
 - **Good:** local `job_output` and reviewed MCP reads overlap, finish out of
   order, and enter the continuation in original model order.
+- **Good:** a file task runs beyond the legacy `RunTimeout`, verifies and
+  publishes the artifact, then ends naturally with no Tool Call.
 - **Base:** no Tool is available, so Chat streams the ordinary compatibility
   answer without constructing a fake execution Step.
 - **Bad:** append Tool definitions in one function but dispatch names in an
-  unrelated switch, let MCP output add an alias, execute a colliding name, or
-  terminate the Turn for a recoverable read timeout.
+  unrelated switch, let MCP output add an alias, execute a colliding name,
+  terminate the Turn for elapsed wall time, or loop forever on identical Tool
+  outcomes.
 
 ### 6. Tests Required
 
@@ -371,8 +384,13 @@ replayable `search|tool` presentation.
 - Cross-backend overlap, local safe-read overlap, maximum-four grouping,
   write barriers, reverse-completion Result order, `mcp_tool_search` barrier,
   and Goal-conclusion ordering.
-- Global Step/Call cap boundaries, unknown/bad arguments, recoverable per-Tool
-  timeout, fatal parent deadline, and `outcome_unknown`.
+- Non-Agent Step/Call cap boundaries; completion-driven progress beyond those
+  boundaries; three identical outcomes; five all-error rounds with reset after
+  a successful alternative; recoverable per-Tool timeout; explicit
+  cancellation; and `outcome_unknown`.
+- Handler integration where a task crosses a deliberately short legacy
+  `RunTimeout`, then successfully calls `publish_file`, persists the attachment,
+  and replays it. Persist `agentOutcome`/`agentOutcomeReason` for a blocked run.
 
 ### 7. Wrong vs Correct
 
@@ -387,6 +405,20 @@ batch all Goals -> all MCP -> all local -> retrieval
 ```text
 Turn -> Step -> current Registry -> ordered safe-read groups + serial barriers
      -> ordered Result projection -> same-model next Step
+```
+
+#### Wrong
+
+```go
+streamCtx, cancel := context.WithTimeout(runCtx, localRunTimeout)
+```
+
+#### Correct
+
+```text
+effective Agent Turn -> cancellation-scoped Context
+each Tool/backend Job -> its own timeout
+repetition without progress -> typed blocked wrap-up
 ```
 
 ## Scenario: Persist and replay ordinary Chat Agent events
@@ -559,10 +591,10 @@ job_kill({jobId})
   with native Tool result framing. Required Skill preludes do not consume the
   ordinary first task-round semantics; explicit Memory/Search keeps its
   existing priority after loading.
-- Count local calls across rounds and cap local Tool rounds independently. When
-  a call or round budget is exhausted, return a bounded Tool failure and make
-  one Tool-free same-model continuation for the final answer. The whole local
-  loop is bounded by the executor Run deadline.
+- In non-Agent compatibility paths, count local calls across rounds and cap
+  local Tool rounds independently. Effective Agent mode instead continues
+  while Tool outcomes show progress and uses the no-progress guard to block
+  repetition; no executor Run deadline wraps the whole Agent loop.
 - The strict `terminal.timeoutSeconds` schema uses
   `max=floor(AGENT_LOCAL_CALL_TIMEOUT / 1s)` for both foreground and background
   calls because one Tool definition serves both paths. `null` means the
@@ -672,8 +704,8 @@ job_kill({jobId})
 | Job lookup across user/Conversation | `job_not_found`; no existence disclosure |
 | Job is running or failed | not completion evidence |
 | Backend shutdown/restart | kill/reap active Jobs; never claim recovery |
-| local call/round budget exhausted | bounded failure then Tool-free final continuation |
-| local Run deadline expires | `LOCAL_SKILL_BUDGET_EXHAUSTED`; descendants killed |
+| non-Agent compatibility local call/round budget exhausted | bounded failure then Tool-free final continuation |
+| foreground call/background Job deadline expires | bounded timeout result; descendants killed |
 | client cancellation | terminal canceled Run; descendants killed |
 
 ### 5. Good / Base / Bad Cases

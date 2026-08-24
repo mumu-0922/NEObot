@@ -26,11 +26,12 @@ Combined stdout/stderr storage is capped while both streams continue draining,
 so a verbose command cannot deadlock on a full pipe or allocate without bound.
 
 `CallTimeout` is the foreground execution authority and the maximum explicit
-`terminal.timeoutSeconds` advertised by Chat. `RunTimeout` remains the whole
-Turn bound and the default for a background Job when the shared Tool schema
+`terminal.timeoutSeconds` advertised by Chat. `RunTimeout` is the default
+lifetime for a background Job when the shared Tool schema
 receives `runInBackground=true, timeoutSeconds=null`. This asymmetry is
 intentional: one strict Tool schema must not advertise an explicit value that
-the foreground executor rejects. A returned process is classified separately
+the foreground executor rejects. The completion-driven Chat Agent has no
+whole-Turn deadline derived from either timeout. A returned process is classified separately
 from transport completion; exit code zero succeeds, while nonzero exit and
 timeout remain bounded failed results so Chat can preserve diagnostics without
 granting completion evidence.

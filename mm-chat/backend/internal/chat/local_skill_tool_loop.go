@@ -23,6 +23,7 @@ func executeLocalSkillBatch(
 	runtime *localSkillToolRuntime,
 	calls []ProviderToolCall,
 	round int,
+	completionDriven bool,
 ) (map[int]ProviderToolResult, bool, error) {
 	results := make(map[int]ProviderToolResult)
 	if !runtime.enabled() {
@@ -45,7 +46,7 @@ func executeLocalSkillBatch(
 		if !runtime.handles(call.Name) {
 			continue
 		}
-		if runtime.calls >= runtime.config().MaxCalls {
+		if !completionDriven && runtime.calls >= runtime.config().MaxCalls {
 			budgetReached = true
 			results[index] = localSkillFailureResult(call, "budget_exhausted")
 			continue
@@ -126,6 +127,7 @@ func executeRequiredLocalSkillBatch(
 	runtime *localSkillToolRuntime,
 	calls []ProviderToolCall,
 	round int,
+	completionDriven bool,
 ) (map[int]ProviderToolResult, bool, error) {
 	results := make(map[int]ProviderToolResult, len(calls))
 	if !runtime.enabled() || !runtime.requiresSkillLoad() {
@@ -134,7 +136,7 @@ func executeRequiredLocalSkillBatch(
 	requiredName := runtime.requiredSkillName()
 	budgetReached := false
 	for index, call := range calls {
-		if runtime.calls >= runtime.config().MaxCalls {
+		if !completionDriven && runtime.calls >= runtime.config().MaxCalls {
 			budgetReached = true
 			results[index] = localSkillFailureResult(call, "budget_exhausted")
 			continue

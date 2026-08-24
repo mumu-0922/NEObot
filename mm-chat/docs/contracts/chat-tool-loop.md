@@ -246,36 +246,37 @@ rounds exactly once. A continuation-recovery answer stream inherits that same
 completed-usage base, so its terminal update cannot move the visible count
 backward.
 
-The Turn has hard caps of 32 Provider Steps and 128 Tool Calls in addition to
-the lower MCP and `local_direct` per-Run call, round, wall-clock, output, and
-concurrency budgets. A call beyond the Turn cap receives a structured
-`turn_call_budget_exhausted` Result without execution. Any exhausted budget
-then causes one same-model continuation without Tools, except that an
-outstanding completion-verification requirement fails with
-`AGENT_VERIFICATION_REQUIRED` rather than permitting an unverified success.
-If the ordinary `local_direct` Tool-round limit is first crossed while that requirement
-is outstanding, the Backend latches at most four additional Provider rounds.
-Those rounds expose and execute only Goal read/update/`verify_completion` plus
-local/MCP evidence tools (read-class tools and foreground `terminal`); write
-and external tools outside the Goal control lane are absent. The latch survives
-successful verification long
-enough for final narration but never resets. The 32-Step, 128-call, wall-clock,
-per-call, output, approval, and cancellation caps remain authoritative; grace
-expiry while unverified is still `AGENT_VERIFICATION_REQUIRED`.
+Effective Agent mode is completion-driven. It has no whole-Turn wall-clock,
+Provider-Step, Tool-call, local-round, or MCP-round cutoff while observable
+progress continues. The legacy 32-Step/128-call and configured per-Run
+call/round/Run-time budgets remain authoritative for non-Agent compatibility
+paths only. Per-Tool timeouts, bounded output, concurrency, approval, explicit
+cancellation, Provider failures, and background Job lifetimes remain
+authoritative in every mode.
+
+The completion-driven loop fingerprints sanitized Tool calls/results in memory.
+Three identical consecutive outcomes, or five consecutive all-error Tool
+rounds, trigger a Tool-free blocked wrap-up. The assistant must state what is
+incomplete, the last verified result, the blocker, and the safest next action;
+message metadata records `agentOutcome=blocked` plus a stable reason. A blocked
+wrap-up is never completion evidence and cannot claim an unpublished file is
+downloadable. Structured mutations and background Jobs still require valid
+later evidence before successful completion.
+
 The loop otherwise
 terminates when:
 
 - the model returns no Tool Call;
-- the user cancels the run;
-- the request context or configured provider timeout ends;
+- the user cancels, the Backend shuts down, or a Provider/transport operation
+  reaches its own scoped timeout;
 - a Tool/Provider returns a terminal non-degradable error; or
 - an approval is rejected.
 
 Unknown names, bad arguments, ordinary execution errors, and a per-Tool
 deadline are Tool Results so the same model can repair or report them. In
 particular, an MCP call deadline is `tool_timeout` while the parent Run remains
-healthy. Cancellation, a parent Run deadline, and a write whose outcome is
-unknown remain terminal and are never converted into retryable Results.
+healthy. Cancellation and a write whose outcome is unknown remain terminal and
+are never converted into retryable Results.
 
 ### Code Mode decision
 

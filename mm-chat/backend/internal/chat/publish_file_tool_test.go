@@ -214,7 +214,7 @@ func TestHandlerPersistsAndReplaysPublishedArtifactOnAssistantMessage(t *testing
 	executor, err := localskills.NewExecutor(localskills.Config{
 		Enabled: true, RuntimeRoot: filepath.Join(workspace, ".skills"),
 		WorkspaceRoot: workspace, ShellPath: "/bin/sh", ApprovalMode: localskills.ApprovalSmart,
-		CallTimeout: time.Second, RunTimeout: 5 * time.Second, MaxOutput: 4096,
+		CallTimeout: time.Second, RunTimeout: time.Second, MaxOutput: 4096,
 		MaxCalls: 8, MaxRounds: 4, MaxConcurrent: 1,
 	})
 	if err != nil {
@@ -238,7 +238,7 @@ func TestHandlerPersistsAndReplaysPublishedArtifactOnAssistantMessage(t *testing
 			Arguments: `{"path":"result.csv","displayName":"gold.csv","contentType":"text/csv"}`,
 		}}},
 		{{Type: ProviderEventDelta, Delta: "文件已生成，可在附件中下载。"}},
-	}}
+	}, delays: []time.Duration{0, 0, 0, 1100 * time.Millisecond}}
 	repo := newFakeRepository()
 	repo.conversations = append(
 		repo.conversations,
@@ -273,6 +273,9 @@ func TestHandlerPersistsAndReplaysPublishedArtifactOnAssistantMessage(t *testing
 	}
 	if len(provider.inputs) != 5 {
 		t.Fatalf("provider inputs=%#v", provider.inputs)
+	}
+	if len(publisher.inputs) != 1 || publisher.inputs[0].FileName != "gold.csv" {
+		t.Fatalf("artifact was not published after legacy RunTimeout: %#v", publisher.inputs)
 	}
 	wantTools := map[string]bool{
 		localFileReadToolName:    false,
@@ -326,6 +329,63 @@ func TestHandlerPersistsAndReplaysPublishedArtifactOnAssistantMessage(t *testing
 	if !strings.Contains(reloaded.Body.String(), `"purpose":"output"`) ||
 		!strings.Contains(reloaded.Body.String(), `"fileId":"`+testFileID+`"`) {
 		t.Fatalf("reload=%s", reloaded.Body.String())
+	}
+}
+
+func TestHandlerPersistsCompletionDrivenBlockedOutcome(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "same.txt"), []byte("same"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: filepath.Join(workspace, ".skills"),
+		WorkspaceRoot: workspace, ShellPath: "/bin/sh", ApprovalMode: localskills.ApprovalSmart,
+		CallTimeout: time.Second, RunTimeout: time.Second, MaxOutput: 4096,
+		MaxCalls: 1, MaxRounds: 1, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "read-1", Name: localFileReadToolName,
+			Arguments: `{"path":"same.txt","offset":null,"limit":null}`,
+		}}},
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "read-2", Name: localFileReadToolName,
+			Arguments: `{"path":"same.txt","offset":null,"limit":null}`,
+		}}},
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "read-3", Name: localFileReadToolName,
+			Arguments: `{"path":"same.txt","offset":null,"limit":null}`,
+		}}},
+		{{Type: ProviderEventDelta, Delta: "任务未完成：读取结果没有变化。"}},
+	}}
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "Blocked", 1))
+	repo.messages[testConversationID] = []Message{
+		fakeMessage(testMessageID, testConversationID, 0, "user", "重复读取"),
+	}
+	handler := NewHandler(
+		NewService(repo),
+		WithProvider(provider),
+		WithLocalSkillRuntime(nil, executor),
+	)
+	recorder := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"`+testMessageID+`","modelRef":{"providerId":"mock","modelId":"tool-model"},"idempotencyKey":"blocked-outcome"}`,
+	)
+	assertStreamStatus(t, recorder, http.StatusOK)
+	if !strings.Contains(recorder.Body.String(), "event: message.completed") || len(provider.inputs) != 4 {
+		t.Fatalf("stream=%s inputs=%#v", recorder.Body.String(), provider.inputs)
+	}
+	messages := repo.messages[testConversationID]
+	if len(messages) != 2 || messages[1].Status != "completed" ||
+		messages[1].Metadata["agentOutcome"] != chatAgentOutcomeBlocked ||
+		messages[1].Metadata["agentOutcomeReason"] != chatAgentBlockRepeatedToolOutcome {
+		t.Fatalf("messages=%#v", messages)
 	}
 }
 

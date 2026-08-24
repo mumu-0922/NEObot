@@ -181,7 +181,7 @@ func TestChatAgentCompletionGateContinuesUntilExplicitToolEvidence(t *testing.T)
 			Prompt:   "produce and verify the artifact",
 			ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
 		},
-		LocalSkills: localRuntime, Goals: goalRuntime,
+		LocalSkills: localRuntime, Goals: goalRuntime, CompletionDriven: true,
 	})
 	var content strings.Builder
 	for event := range events {

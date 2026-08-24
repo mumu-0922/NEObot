@@ -41,3 +41,16 @@ func TestChatAgentTurnDriverEnforcesGlobalStepAndCallBudgets(t *testing.T) {
 		t.Fatalf("over-budget admitted calls=%d", admitted)
 	}
 }
+
+func TestChatAgentTurnDriverCompletionDrivenModeHasNoAbsoluteTurnBudget(t *testing.T) {
+	driver := newChatAgentTurnDriver(true)
+	for sequence := 1; sequence <= maxChatAgentTurnSteps+10; sequence++ {
+		step, ok := driver.beginStep(false)
+		if !ok || step.Sequence != sequence {
+			t.Fatalf("step %d=%#v ok=%v", sequence, step, ok)
+		}
+	}
+	if admitted := driver.admitToolCalls(maxChatAgentToolCalls + 10); admitted != maxChatAgentToolCalls+10 {
+		t.Fatalf("completion-driven admitted calls=%d", admitted)
+	}
+}
