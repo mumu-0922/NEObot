@@ -1322,3 +1322,37 @@ Aligned the Terminal schema with the foreground Call timeout, preserved the back
 ### Next Steps
 
 - None - task complete
+
+
+## Session 88: Completion-driven Chat Agent runtime
+
+**Date**: 2026-08-25
+**Task**: Completion-driven Chat Agent runtime
+**Branch**: `main`
+
+### Summary
+
+Removed whole-Agent wall-clock and absolute call/round cutoffs for effective Agent mode; added evidence-aware no-progress blocking, regression coverage, docs/specs, and refreshed verification baselines.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `37341994` | (see git log) |
+| `5e2b027c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
