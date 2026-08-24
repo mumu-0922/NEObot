@@ -210,6 +210,124 @@ func TestChatAgentCompletionGateContinuesUntilExplicitToolEvidence(t *testing.T)
 	}
 }
 
+func TestChatAgentCompletionGateUsesBoundedVerificationGrace(t *testing.T) {
+	repository := newGoalTestRepository(t)
+	goalRuntime := newChatAgentGoalToolRuntime(
+		NewService(repository), goalTestTurnID, testConversationID,
+	)
+	workspace := t.TempDir()
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: filepath.Join(t.TempDir(), "skills"),
+		WorkspaceRoot: workspace, ShellPath: "/bin/sh",
+		ApprovalMode: localskills.ApprovalSmart, CallTimeout: time.Second,
+		RunTimeout: 5 * time.Second, MaxOutput: 4096, MaxCalls: 8,
+		MaxRounds: 1, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	localRuntime := newLocalSkillToolRuntime(executor, nil)
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "mutation", Name: localFileWriteToolName,
+			Arguments: `{"path":"artifact.txt","content":"changed","expectedVersion":"absent"}`,
+		}}},
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "evidence", Name: localTerminalToolName,
+			Arguments: `{"command":"test -s artifact.txt","skill":null,"workingDir":null,"timeoutSeconds":1}`,
+		}}},
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "verification", Name: chatAgentVerifyCompletionToolName,
+			Arguments: `{"evidenceToolCallId":"evidence","summary":"artifact exists and is non-empty"}`,
+		}}},
+		{{Type: ProviderEventDelta, Delta: "verified final answer"}},
+	}}
+
+	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt:   "produce and verify the artifact",
+			ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+		},
+		LocalSkills: localRuntime, Goals: goalRuntime,
+	})
+	var content strings.Builder
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+	}
+	if content.String() != "verified final answer" || len(provider.inputs) != 4 {
+		t.Fatalf("content=%q rounds=%d", content.String(), len(provider.inputs))
+	}
+	graceTools := make(map[string]struct{})
+	for _, definition := range provider.inputs[1].Tools {
+		graceTools[definition.Function.Name] = struct{}{}
+	}
+	if _, exposed := graceTools[localFileWriteToolName]; exposed {
+		t.Fatalf("verification grace exposed mutation Tool: %#v", graceTools)
+	}
+	if _, available := graceTools[localTerminalToolName]; !available {
+		t.Fatalf("verification grace omitted evidence Tool: %#v", graceTools)
+	}
+	if _, available := graceTools[chatAgentVerifyCompletionToolName]; !available {
+		t.Fatalf("verification grace omitted verification Tool: %#v", graceTools)
+	}
+}
+
+func TestChatAgentCompletionGateFailsClosedAfterVerificationGrace(t *testing.T) {
+	repository := newGoalTestRepository(t)
+	goalRuntime := newChatAgentGoalToolRuntime(
+		NewService(repository), goalTestTurnID, testConversationID,
+	)
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: filepath.Join(t.TempDir(), "skills"),
+		WorkspaceRoot: t.TempDir(), ShellPath: "/bin/sh",
+		ApprovalMode: localskills.ApprovalSmart, CallTimeout: time.Second,
+		RunTimeout: 5 * time.Second, MaxOutput: 4096, MaxCalls: 8,
+		MaxRounds: 1, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	localRuntime := newLocalSkillToolRuntime(executor, nil)
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+			ID: "mutation", Name: localFileWriteToolName,
+			Arguments: `{"path":"artifact.txt","content":"changed","expectedVersion":"absent"}`,
+		}}},
+		{{Type: ProviderEventDelta, Delta: "still unverified 1"}},
+		{{Type: ProviderEventDelta, Delta: "still unverified 2"}},
+		{{Type: ProviderEventDelta, Delta: "still unverified 3"}},
+		{{Type: ProviderEventDelta, Delta: "still unverified 4"}},
+	}}
+
+	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt:   "produce but never verify the artifact",
+			ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+		},
+		LocalSkills: localRuntime, Goals: goalRuntime,
+	})
+	var terminalError error
+	for event := range events {
+		if event.Error != nil {
+			terminalError = event.Error
+		}
+	}
+	failure, ok := terminalError.(*chatAgentRunFailure)
+	if !ok || failure.code != "AGENT_VERIFICATION_REQUIRED" {
+		t.Fatalf("terminal error = %#v", terminalError)
+	}
+	if len(provider.inputs) != 1+maxChatAgentVerificationGraceRounds {
+		t.Fatalf("provider rounds = %d", len(provider.inputs))
+	}
+}
+
 func TestChatAgentForegroundTerminalOnlyCompletesWithoutVerification(t *testing.T) {
 	repository := newGoalTestRepository(t)
 	goalRuntime := newChatAgentGoalToolRuntime(

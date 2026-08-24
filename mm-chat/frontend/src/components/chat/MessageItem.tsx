@@ -89,6 +89,7 @@ import { buildMobileMessageMetaTooltip } from "@/lib/utils/messageMetaTooltip";
 import { describeMessageDuration } from "@/lib/utils/messageDuration";
 import { getMessageDisplayTokenCount } from "@/lib/utils/messageTokens";
 import {
+  AGENT_VERIFICATION_REQUIRED_CODE,
   IMAGE_CONTENT_POLICY_VIOLATION_CODE,
   IMAGE_PROVIDER_CONNECTION_CODE,
   IMAGE_PROVIDER_TIMEOUT_CODE,
@@ -1038,8 +1039,14 @@ const MessageItem: React.FC<MessageItemProps> = ({
     generationError?.code === PROVIDER_STREAM_INTERRUPTED_CODE &&
     message.content.trim().length > 0,
   );
+  const generationErrorTitle =
+    generationError?.code === AGENT_VERIFICATION_REQUIRED_CODE
+      ? t("agentVerificationIncompleteTitle")
+      : t("generationFailed");
   let generationErrorMessage = generationError?.message;
-  if (generationError?.code === IMAGE_CONTENT_POLICY_VIOLATION_CODE) {
+  if (generationError?.code === AGENT_VERIFICATION_REQUIRED_CODE) {
+    generationErrorMessage = t("agentVerificationIncomplete");
+  } else if (generationError?.code === IMAGE_CONTENT_POLICY_VIOLATION_CODE) {
     generationErrorMessage = t("imageContentPolicyViolation");
   } else if (generationError?.code === IMAGE_PROVIDER_CONNECTION_CODE) {
     generationErrorMessage = t("imageProviderConnectionFailed");
@@ -1494,7 +1501,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
                     aria-live="polite"
                     className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm leading-5 text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100"
                   >
-                    <div className="font-semibold">{t("generationFailed")}</div>
+                    <div className="font-semibold">{generationErrorTitle}</div>
                     <div className="mt-1 wrap-break-word">
                       {generationErrorMessage}
                     </div>

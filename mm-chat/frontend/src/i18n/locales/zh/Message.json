@@ -30,6 +30,8 @@
   "imageGenerationHint": "完成后图片会自动显示在这里。",
   "generationFailed": "生成失败",
   "generationRecoverable": "可使用重新生成再试一次。",
+  "agentVerificationIncompleteTitle": "结果未验证",
+  "agentVerificationIncomplete": "文件或内容已经生成并保留，但 Agent 在停止前未完成结果验证。请先检查生成结果，或使用重新生成再试一次。",
   "imageContentPolicyViolation": "提示内容被图片供应商的内容策略拒绝，请换一种描述后重试。",
   "imageProviderConnectionFailed": "与图片供应商的连接中断，重试后仍未恢复，请稍后再试。",
   "imageProviderTimeout": "图片供应商响应超时，请稍后重新生成。",

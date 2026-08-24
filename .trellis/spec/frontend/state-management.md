@@ -187,6 +187,7 @@ type ServerReadState = {
 beginActiveGeneration(sessionId: string): ActiveGenerationRun;
 cancelServerGeneration(sessionId: string): Promise<boolean>;
 reconcileServerActiveGenerations(): Promise<boolean>;
+onSend(text: string, attachments: Attachment[]): Promise<boolean>;
 
 ConversationDTO.activeGeneration?: {
   runId: string;
@@ -200,6 +201,13 @@ ConversationDTO.activeGeneration?: {
 - Workspace is grouping/context only. Run ownership is the exact Conversation.
 - Admit at most one active Run for each Conversation, while different
   Conversations may run concurrently even when they share a Workspace.
+- The composer submission Promise owns only admission. Resolve `true` as soon
+  as `appendUserMessage` durably succeeds, then keep the Assistant stream in a
+  handled background task owned by that Conversation. Do not hold the shared
+  `MessageInput` submission lock until the Assistant Run terminates.
+- A pre-acceptance failure may use the global action notice. After acceptance,
+  failures belong to the owning Assistant message/Conversation and must not
+  surface as an unrelated global notice after the user navigates elsewhere.
 - Selecting another Conversation never aborts accepted Server work. Stream
   callbacks update the selected snapshot or that Conversation's memory cache.
 - `generations[conversationId]` and per-Conversation request IDs replace a
@@ -220,6 +228,9 @@ ConversationDTO.activeGeneration?: {
 | --- | --- |
 | same Conversation already pending/streaming | reject locally and Backend returns `409 CONVERSATION_RUN_ACTIVE` |
 | different Conversation has an active Run | admit and retain both Run entries |
+| user message accepted while Assistant still runs | resolve the composer submission and allow another Conversation to submit |
+| append fails before acceptance | resolve `false`; restore only the unchanged submitted draft |
+| Assistant fails after acceptance | keep the submitted turn and render the owning message error; no cross-Conversation action notice |
 | navigation during a Run | keep the Run and its AbortController alive |
 | explicit Stop | abort/cancel only the selected Conversation Run |
 | background terminal result | remove only that generation and mark its Conversation unread |
@@ -230,9 +241,13 @@ ConversationDTO.activeGeneration?: {
 
 - Good: A and B in one Workspace stream concurrently; A completes while B is
   selected, receives an unread dot, and opens with its durable answer.
+- Good: A's user message is accepted, the user switches to B, and B can submit
+  while A's Assistant is still streaming.
 - Base: one selected Conversation streams and renders exactly as before.
 - Bad: a global `isGenerating`, AbortController, or request ID cancels A when B
   is selected or lets B's terminal callback overwrite A's active snapshot.
+- Bad: `onSend` awaits the full SSE response, leaving `MessageInput`'s shared
+  `isSubmittingRef` locked after navigation.
 
 ### 6. Tests Required
 
@@ -241,6 +256,9 @@ ConversationDTO.activeGeneration?: {
 - Frontend Store: two deferred streams, same-Conversation rejection, navigation
   during streaming, background cache update, unread completion, current-run
   refresh reconciliation, and exact cancellation.
+- Composer composition: assert `onUserMessageAccepted` settles admission before
+  `sendServerMessageAndStream` completes, while pre-acceptance failure remains
+  `false` and the background task handles every rejection.
 - DTO/UI: `activeGeneration` normalization, sidebar running/unread labels,
   reduced-motion spinner, type-check, full Vitest, and production build.
 
@@ -255,6 +273,13 @@ serverGenerationRequestId += 1;
 // Correct: Run identity is scoped to its owning Conversation.
 const requestIds = new Map<string, number>();
 const generations: Record<string, ServerGenerationState> = {};
+
+// Wrong: one input lock waits for the whole Assistant Run.
+return await sendServerMessageAndStream(input);
+
+// Correct: acceptance releases the input; the Run remains Conversation-owned.
+void runAcceptedServerGeneration(input);
+return acceptance;
 ```
 
 ## Server State

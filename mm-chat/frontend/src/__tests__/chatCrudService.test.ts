@@ -507,6 +507,28 @@ describe("chat CRUD DTO mappers", () => {
     });
   });
 
+  it("restores an unverified Agent result with a specific durable error", () => {
+    const failedAgentMessage: ChatMessageDTO = {
+      ...assistantMessageDto,
+      status: "failed",
+      content: "",
+      metadata: {
+        errorCode: "AGENT_VERIFICATION_REQUIRED",
+      },
+      attachments: [],
+      outputBlocks: [],
+    };
+
+    expect(mapChatMessageDtoToMessage(failedAgentMessage)).toMatchObject({
+      generationError: {
+        message:
+          "The Agent produced output but could not verify the result before stopping.",
+        recoverable: true,
+        code: "AGENT_VERIFICATION_REQUIRED",
+      },
+    });
+  });
+
   it("fails closed on invalid timestamps and unsupported server roles", () => {
     expect(() => parseServerTimestamp("bad-date", "message.createdAt")).toThrow(
       /invalid message.createdAt/,

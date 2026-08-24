@@ -30,6 +30,8 @@
   "imageGenerationHint": "完了すると画像がここに自動表示されます。",
   "generationFailed": "生成に失敗しました",
   "generationRecoverable": "「再生成」をクリックしてもう一度お試しください。",
+  "agentVerificationIncompleteTitle": "結果は未検証です",
+  "agentVerificationIncomplete": "ファイルまたは内容は生成され保持されていますが、Agent は結果を検証する前に停止しました。生成結果を確認するか、再生成してください。",
   "imageContentPolicyViolation": "画像プロバイダーのコンテンツポリシーにより拒否されました。表現を変更して再試行してください。",
   "imageProviderConnectionFailed": "画像プロバイダーへの接続が再試行後も失敗しました。時間をおいて再試行してください。",
   "imageProviderTimeout": "画像プロバイダーがタイムアウトしました。時間をおいて再生成してください。",

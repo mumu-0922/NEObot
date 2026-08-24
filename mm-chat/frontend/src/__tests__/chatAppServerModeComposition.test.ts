@@ -26,8 +26,8 @@ describe("ChatApp server mode composition", () => {
     expect(chatApp).toContain("serverReadState.sessions");
     expect(chatApp).toContain("serverReadState.activeMessages");
     expect(chatApp).toContain("sendServerMessageAndStream");
-    expect(chatApp).toContain(
-      "getActiveMessagePath(latestServerState.activeMessageTree).at(-1)?.id",
+    expect(chatApp).toMatch(
+      /getActiveMessagePath\(\s*latestServerState\.activeMessageTree,?\s*\)\.at\(-1\)\s*\?\.id/,
     );
     expect(chatApp).toContain("parentMessageId,");
     expect(chatApp).toContain("activeImageGeneration");
@@ -39,7 +39,12 @@ describe("ChatApp server mode composition", () => {
     expect(chatApp).toContain("startedAt: Date.now()");
     expect(chatApp).toContain("uploadMessageAttachmentsForServer");
     expect(chatApp).toContain("onUserMessageAccepted: () =>");
-    expect(chatApp).toContain("return messageAccepted;");
+    expect(chatApp).toContain("const acceptance = new Promise<boolean>");
+    expect(chatApp).toContain("settleAcceptance(true);");
+    expect(chatApp).toContain("settleAcceptance(messageAccepted);");
+    expect(chatApp).toContain("return acceptance;");
+    expect(chatApp).not.toContain("return messageAccepted;");
+    expect(chatApp).toContain("if (!messageAccepted) {");
     expect(chatApp).not.toContain(
       "Server mode requires message text with attachments.",
     );

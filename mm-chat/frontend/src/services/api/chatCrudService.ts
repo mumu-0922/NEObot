@@ -38,7 +38,10 @@ import {
   normalizeSearchMode,
   searchModeEnabled,
 } from "../../lib/chat/searchMode";
-import { IMAGE_CONTENT_POLICY_VIOLATION_CODE } from "../../lib/chat/types";
+import {
+  AGENT_VERIFICATION_REQUIRED_CODE,
+  IMAGE_CONTENT_POLICY_VIOLATION_CODE,
+} from "../../lib/chat/types";
 import type { ProcessStep } from "../../lib/chat/types";
 import {
   processTraceFromChatAgentEvents,
@@ -388,12 +391,14 @@ function normalizeServerGenerationError(
       ? message.metadata.errorCode.trim()
       : "";
   const isImageGeneration = message.metadata.kind === "image_generation";
-  return {
-    message:
-      message.content.trim() ||
-      (isImageGeneration
+  const fallbackMessage =
+    errorCode === AGENT_VERIFICATION_REQUIRED_CODE
+      ? "The Agent produced output but could not verify the result before stopping."
+      : isImageGeneration
         ? "Image generation failed."
-        : "Server generation failed."),
+        : "Server generation failed.";
+  return {
+    message: message.content.trim() || fallbackMessage,
     recoverable: errorCode !== IMAGE_CONTENT_POLICY_VIOLATION_CODE,
     ...(errorCode ? { code: errorCode } : {}),
   };

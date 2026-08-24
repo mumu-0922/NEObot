@@ -116,6 +116,21 @@ func TestChatToolRegistryFailsClosedOnNameCollision(t *testing.T) {
 	if _, ok := registry.lookup(searchWebToolName); ok || len(registry.definitions(1)) != 0 {
 		t.Fatal("colliding Tool remained executable or model-visible")
 	}
+
+	readDefinition := ToolDefinition{Type: "function", Function: ToolFunctionDefinition{
+		Name: localFileReadToolName,
+	}}
+	readRegistration := chatToolRegistration{
+		Name: localFileReadToolName, Definition: &readDefinition,
+		Backend: chatToolBackendLocalSkill, RiskClass: chatToolRiskRead,
+		ProjectForModel: identityChatToolResult,
+	}
+	if !registry.register(readRegistration) || registry.register(readRegistration) {
+		t.Fatal("read collision registration result is incorrect")
+	}
+	if len(registry.verificationOnly().definitions(1)) != 0 {
+		t.Fatal("verification projection resurrected a colliding read Tool")
+	}
 }
 
 func TestRequiredLocalSkillRegistryExposesOnlyExactSkillLoader(t *testing.T) {

@@ -1,0 +1,3 @@
+{"file":".trellis/spec/frontend/state-management.md","reason":"Conversation-scoped Run ownership and composer admission lifetime contract."}
+{"file":".trellis/spec/backend/chat-tool-loop.md","reason":"Agent completion evidence gate and bounded verification-only grace contract."}
+{"file":".trellis/tasks/08-24-fix-conversation-run-regression/research/runtime-symptoms.md","reason":"Sanitized runtime evidence for the send lock and historical Agent failure."}

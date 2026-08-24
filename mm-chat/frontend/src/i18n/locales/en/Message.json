@@ -30,6 +30,8 @@
   "imageGenerationHint": "The image will appear here when it is ready.",
   "generationFailed": "Generation failed",
   "generationRecoverable": "Use Regenerate to try again.",
+  "agentVerificationIncompleteTitle": "Result not verified",
+  "agentVerificationIncomplete": "The file or content was generated and preserved, but the Agent stopped before verifying it. Check the result, or use Regenerate to try again.",
   "imageContentPolicyViolation": "The image provider rejected this prompt under its content policy. Rephrase it and try again.",
   "imageProviderConnectionFailed": "The image provider connection failed again after retrying. Try again later.",
   "imageProviderTimeout": "The image provider timed out. Try generating it again later.",

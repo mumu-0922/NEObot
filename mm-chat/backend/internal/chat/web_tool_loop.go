@@ -21,6 +21,7 @@ const (
 	maxEvidenceRecoveryAttempts         = 2
 	maxEvidenceRecoveryEvents           = 8192
 	maxEvidenceRecoveryOutputBytes      = 1 << 20
+	maxChatAgentVerificationGraceRounds = 4
 )
 
 const compatibilityWebSearchPlannerInstruction = `You are a Web-search decision and query planner for the current chat model.
@@ -201,6 +202,7 @@ func runNativeExternalWebToolLoop(
 	memoryContinuationStarted := false
 	turn := newChatAgentTurnDriver()
 	goalWrapupActive := false
+	verificationGraceEnd := 0
 	var completionPolicy *chatCompletionPolicy
 	if input.Goals.enabled() {
 		completionPolicy = newChatCompletionPolicy()
@@ -224,6 +226,15 @@ func runNativeExternalWebToolLoop(
 		}
 		round := step.Sequence
 		taskRound := step.TaskSequence
+		if verificationGraceEnd == 0 && completionPolicy.requiresVerification() &&
+			input.LocalSkills.enabled() &&
+			round > input.LocalSkills.config().MaxRounds {
+			// A mutation on the last ordinary Tool round still needs enough
+			// bounded turns for evidence, verify_completion, and final narration.
+			// Latch the deadline so a successful verification can reach that
+			// narration without reopening the ordinary Agent budget.
+			verificationGraceEnd = round + maxChatAgentVerificationGraceRounds - 1
+		}
 		if input.MCP.enabled() && round > input.MCP.service.Config().MaxRoundsPerRun {
 			if completionPolicy.requiresVerification() {
 				sendProviderEvent(ctx, events, ProviderEvent{Error: &chatAgentRunFailure{
@@ -237,7 +248,9 @@ func runNativeExternalWebToolLoop(
 			)
 			return true
 		}
-		if input.LocalSkills.enabled() && round > input.LocalSkills.config().MaxRounds {
+		if input.LocalSkills.enabled() &&
+			round > input.LocalSkills.config().MaxRounds &&
+			round > verificationGraceEnd {
 			if completionPolicy.requiresVerification() {
 				sendProviderEvent(ctx, events, ProviderEvent{Error: &chatAgentRunFailure{
 					code: "AGENT_VERIFICATION_REQUIRED",
@@ -254,6 +267,9 @@ func runNativeExternalWebToolLoop(
 			registry = newRequiredLocalSkillRegistry(input.LocalSkills)
 		} else {
 			registry = newChatToolRegistry(input)
+		}
+		if verificationGraceEnd > 0 {
+			registry = registry.verificationOnly()
 		}
 		roundTools := registry.definitions(taskRound)
 		if input.Goals.consumeForceNoTools() {

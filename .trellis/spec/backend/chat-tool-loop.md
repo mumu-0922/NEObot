@@ -173,6 +173,14 @@ all properties; semantic optionals are nullable.
 - Buffer Goal/verification intermediate prose. Complete/blocked/cancel latches
   a Tool-free wrap-up for the rest of the Turn. A hallucinated call receives
   `goal_concluded`, executes nothing and cannot restore ordinary Tools.
+- If the ordinary local Tool-round limit is first crossed while verification is
+  outstanding, latch at most four additional Provider rounds for verification
+  and final narration. During this grace, expose and execute only Goal
+  read/update/`verify_completion` plus local/MCP evidence tools (read-class
+  tools and foreground Terminal); hide non-Goal write and external tools. The 32-Step,
+  128-call, wall-clock, call, output, approval, and cancellation caps remain
+  authoritative. Expiry with outstanding verification is still terminal
+  `AGENT_VERIFICATION_REQUIRED`.
 - Goal process events contain only Tool name/round, `mode=goal`,
   `classification=read|write`, duration/status/failure category. Do not expose
   objective, blocker, arguments, verification summary or server data.
@@ -191,7 +199,8 @@ all properties; semantic optionals are nullable.
 | foreground Terminal-only task | no completion gate; answer from the synchronous Result |
 | foreground Terminal used to verify a pending background Job | `verification_evidence_invalid` |
 | completed `job_output` names a different pending Job | `verification_evidence_invalid` |
-| Step/Tool/local/MCP budget with outstanding verification | terminal `AGENT_VERIFICATION_REQUIRED`; no Tool-free success |
+| ordinary local Tool-round limit crossed with outstanding verification | latch up to four verification-only rounds; no non-Goal write/external Tool authority |
+| verification grace or Step/Tool/wall-clock budget exhausted | terminal `AGENT_VERIFICATION_REQUIRED`; no Tool-free success |
 | Goal database/function failure | terminal `AGENT_GOAL_PERSISTENCE_FAILED` |
 | wrap-up Provider emits Tool Call | `goal_concluded`; no dispatch; next Step remains Tool-free |
 | dirty `097` Down | `CHAT_AGENT_GOALS_DOWN_DATA_EXISTS` |
@@ -201,6 +210,8 @@ all properties; semantic optionals are nullable.
 - **Good:** create -> automatic round -> structured write -> foreground Terminal
   check -> copy its `evidenceToolCallId` -> verify -> complete -> Tool-free final
   answer.
+- **Good:** `publish_file` succeeds on the last ordinary round, then bounded
+  grace permits evidence/`verify_completion` and the final narration only.
 - **Base:** short read-only chat uses no Goal; one Provider Turn ends normally.
 - **Base:** `pwd` plus `git status --short` runs in foreground Terminal and
   answers without `verify_completion`.
@@ -208,6 +219,8 @@ all properties; semantic optionals are nullable.
   evidence, use a foreground Terminal result for a running background Job, arm
   a restored Goal on startup, mark blocked in round 1, or re-enable Tools after
   a wrap-up hallucination.
+- **Bad:** expand the ordinary Tool catalog during grace, reset the grace after
+  another mutation, or turn expiry into Tool-free success.
 
 ### 6. Tests Required
 
@@ -217,6 +230,9 @@ all properties; semantic optionals are nullable.
 - Foreground Terminal-only completion, structured write -> Terminal evidence,
   local Result `evidenceToolCallId`, background start/running/wrong-Job refusal,
   and exact completed Job acceptance.
+- Last-local-round mutation: exact four-round ceiling, mutation/external
+  definitions absent during grace, successful evidence/verify/final path, and
+  fail-closed exhaustion with no extra Provider call.
 - Automatic continuation hides intermediate narration and frames OpenAI/
   Anthropic `assistant -> user` without dropping Thinking state.
 - Wrap-up hallucination proves all later requests have `Tools=nil`, no Goal or
@@ -233,6 +249,9 @@ Correct: foreground Terminal-only -> synchronous result -> answer
 Wrong: structured write -> model says "done" -> completed
 Correct: structured write -> successful later check -> copy evidenceToolCallId
          -> verify_completion -> optional Goal complete -> Tool-free wrap-up
+
+Wrong: last ordinary round mutates -> expose every Tool for unlimited cleanup
+Correct: latch <=4 verification-only rounds -> verify/final or fail closed
 ```
 
 ## Scenario: Drive one Chat Turn through the unified Tool Registry

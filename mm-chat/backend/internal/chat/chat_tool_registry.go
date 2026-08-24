@@ -298,6 +298,39 @@ func (registry *chatToolRegistry) definitions(taskStep int) []ToolDefinition {
 	return definitions
 }
 
+func (registry *chatToolRegistry) verificationOnly() *chatToolRegistry {
+	capacity := 0
+	if registry != nil {
+		capacity = len(registry.ordered)
+	}
+	filtered := &chatToolRegistry{
+		ordered:   make([]chatToolRegistration, 0, capacity),
+		byName:    make(map[string]chatToolRegistration),
+		colliding: make(map[string]struct{}),
+	}
+	if registry == nil {
+		return filtered
+	}
+	for _, registration := range registry.ordered {
+		if _, available := registry.lookup(registration.Name); !available {
+			continue
+		}
+		allowedGoalTool := registration.Backend == chatToolBackendGoal &&
+			(registration.Name == chatAgentGetGoalToolName ||
+				registration.Name == chatAgentUpdateGoalToolName ||
+				registration.Name == chatAgentVerifyCompletionToolName)
+		allowedEvidenceTool :=
+			(registration.Backend == chatToolBackendLocalSkill ||
+				registration.Backend == chatToolBackendMCP) &&
+				(registration.RiskClass == chatToolRiskRead ||
+					registration.Name == localTerminalToolName)
+		if allowedGoalTool || allowedEvidenceTool {
+			filtered.register(registration)
+		}
+	}
+	return filtered
+}
+
 func (registry *chatToolRegistry) projectResult(result ProviderToolResult) ProviderToolResult {
 	registration, ok := registry.lookup(result.Name)
 	if !ok {

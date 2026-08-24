@@ -1652,174 +1652,191 @@ const ChatApp = () => {
       return false;
     }
 
-    let generation: ReturnType<typeof beginActiveGeneration> | null = null;
-    let targetSessionId = serverReadState.currentSessionId;
-    let messageAccepted = false;
+    let resolveAcceptance: (accepted: boolean) => void = () => undefined;
+    let acceptanceSettled = false;
+    const acceptance = new Promise<boolean>((resolve) => {
+      resolveAcceptance = resolve;
+    });
+    const settleAcceptance = (accepted: boolean) => {
+      if (acceptanceSettled) return;
+      acceptanceSettled = true;
+      resolveAcceptance(accepted);
+    };
 
-    try {
-      if (!targetSessionId) {
-        targetSessionId = await createServerSession();
-      }
-      if (!targetSessionId) {
-        throw new Error("Server conversation could not be created.");
-      }
-      if (isSessionGenerating(targetSessionId)) return false;
-      generation = beginActiveGeneration(targetSessionId);
+    void (async () => {
+      let generation: ReturnType<typeof beginActiveGeneration> | null = null;
+      let targetSessionId = serverReadState.currentSessionId;
+      let messageAccepted = false;
 
-      const routedModel = resolveImageGenerationRoute({
-        selectedModel,
-        availableModels,
-        prompt: text,
-        hasAttachments: attachments.length > 0,
-        recentImageGenerationModel: findRecentImageGenerationModel(
-          serverReadState.activeMessages,
-        ),
-      });
-      const routesToImageGeneration = isImageGenerationModel(routedModel);
-      if (routesToImageGeneration) {
-        setActiveImageGenerations((current) => ({
-          ...current,
-          [targetSessionId!]: { startedAt: Date.now() },
-        }));
-      }
+      try {
+        if (!targetSessionId) {
+          targetSessionId = await createServerSession();
+        }
+        if (!targetSessionId) {
+          throw new Error("Server conversation could not be created.");
+        }
+        if (isSessionGenerating(targetSessionId)) return;
+        generation = beginActiveGeneration(targetSessionId);
 
-      const serverSessionForTitle =
-        useChatStore
-          .getState()
-          .serverReadState.sessions.find((s) => s.id === targetSessionId) ||
-        currentSession;
-      const shouldAutoRename =
-        system.enableAutoTitle &&
-        serverSessionForTitle?.messageCount === 0 &&
-        serverSessionForTitle.title === "New Chat";
-      const titleSnapshot = createSessionPostGenerationSnapshot(
-        serverSessionForTitle,
-      );
-
-      const sessionForProcessing =
-        useChatStore
-          .getState()
-          .serverReadState.sessions.find((s) => s.id === targetSessionId) ||
-        currentSession;
-      const processingSearchMode = normalizeSearchMode(
-        sessionForProcessing?.config?.searchMode,
-        sessionForProcessing?.config?.useSearch,
-      );
-      const processingChatConfig = {
-        ...serverSessionChatConfig,
-        searchMode: processingSearchMode,
-        useSearch: searchModeEnabled(processingSearchMode),
-      };
-      const effectiveContext =
-        getEffectiveContextForSession(sessionForProcessing);
-      const runtimeProvider =
-        await buildRuntimeProviderConfigForModel(routedModel);
-      const legacyKnowledgeCollectionIds =
-        getKnowledgeAttachmentCollectionIds(attachments);
-      const sessionKnowledgeBinding = useChatStore
-        .getState()
-        .serverReadState.sessions.find((s) => s.id === targetSessionId)
-        ?.config?.selectedKnowledgeCollectionIds;
-      if (
-        legacyKnowledgeCollectionIds.length > 0 &&
-        sessionKnowledgeBinding === undefined
-      ) {
-        const migrated = await updateServerSessionConfig(targetSessionId, {
-          selectedKnowledgeCollectionIds: legacyKnowledgeCollectionIds.slice(
-            0,
-            MAX_CONVERSATION_KNOWLEDGE_COLLECTIONS,
+        const routedModel = resolveImageGenerationRoute({
+          selectedModel,
+          availableModels,
+          prompt: text,
+          hasAttachments: attachments.length > 0,
+          recentImageGenerationModel: findRecentImageGenerationModel(
+            serverReadState.activeMessages,
           ),
         });
-        if (!migrated) {
-          throw new Error("Knowledge selection could not be migrated.");
+        const routesToImageGeneration = isImageGenerationModel(routedModel);
+        if (routesToImageGeneration) {
+          setActiveImageGenerations((current) => ({
+            ...current,
+            [targetSessionId!]: { startedAt: Date.now() },
+          }));
+        }
+
+        const serverSessionForTitle =
+          useChatStore
+            .getState()
+            .serverReadState.sessions.find((s) => s.id === targetSessionId) ||
+          currentSession;
+        const shouldAutoRename =
+          system.enableAutoTitle &&
+          serverSessionForTitle?.messageCount === 0 &&
+          serverSessionForTitle.title === "New Chat";
+        const titleSnapshot = createSessionPostGenerationSnapshot(
+          serverSessionForTitle,
+        );
+
+        const sessionForProcessing =
+          useChatStore
+            .getState()
+            .serverReadState.sessions.find((s) => s.id === targetSessionId) ||
+          currentSession;
+        const processingSearchMode = normalizeSearchMode(
+          sessionForProcessing?.config?.searchMode,
+          sessionForProcessing?.config?.useSearch,
+        );
+        const processingChatConfig = {
+          ...serverSessionChatConfig,
+          searchMode: processingSearchMode,
+          useSearch: searchModeEnabled(processingSearchMode),
+        };
+        const effectiveContext =
+          getEffectiveContextForSession(sessionForProcessing);
+        const runtimeProvider =
+          await buildRuntimeProviderConfigForModel(routedModel);
+        const legacyKnowledgeCollectionIds =
+          getKnowledgeAttachmentCollectionIds(attachments);
+        const sessionKnowledgeBinding = useChatStore
+          .getState()
+          .serverReadState.sessions.find((s) => s.id === targetSessionId)
+          ?.config?.selectedKnowledgeCollectionIds;
+        if (
+          legacyKnowledgeCollectionIds.length > 0 &&
+          sessionKnowledgeBinding === undefined
+        ) {
+          const migrated = await updateServerSessionConfig(targetSessionId, {
+            selectedKnowledgeCollectionIds: legacyKnowledgeCollectionIds.slice(
+              0,
+              MAX_CONVERSATION_KNOWLEDGE_COLLECTIONS,
+            ),
+          });
+          if (!migrated) {
+            throw new Error("Knowledge selection could not be migrated.");
+          }
+        }
+        const uploadableAttachments = attachments.filter(
+          (attachment) => !isKnowledgeAttachment(attachment),
+        );
+        const uploadedAttachments =
+          uploadableAttachments.length > 0
+            ? await uploadMessageAttachmentsForServer({
+                attachments: uploadableAttachments,
+                conversationId: targetSessionId,
+                signal: generation.controller.signal,
+              })
+            : [];
+        if (!isGenerationRunActive(generation)) return;
+        const systemInstruction = effectiveContext.systemInstruction;
+        const latestServerState = useChatStore.getState().serverReadState;
+        const parentMessageId =
+          latestServerState.currentSessionId === targetSessionId
+            ? getActiveMessagePath(latestServerState.activeMessageTree).at(-1)
+                ?.id
+            : undefined;
+
+        await sendServerMessageAndStream({
+          sessionId: targetSessionId,
+          content: text,
+          parentMessageId,
+          attachments: toServerMessageAttachments(uploadedAttachments),
+          model: routedModel,
+          config: processingChatConfig,
+          provider: runtimeProvider,
+          systemInstruction,
+          signal: generation.controller.signal,
+          onUserMessageAccepted: () => {
+            messageAccepted = true;
+            settleAcceptance(true);
+          },
+        });
+
+        if (shouldAutoRename) {
+          generateServerConversationTitle(targetSessionId, selectedModel)
+            .then((newTitle) => {
+              const session = useChatStore
+                .getState()
+                .serverReadState.sessions.find(
+                  (item) => item.id === targetSessionId,
+                );
+              if (
+                newTitle &&
+                session &&
+                titleSnapshot &&
+                session.id === titleSnapshot.id &&
+                titleSnapshot.title === "New Chat" &&
+                session.title === "New Chat"
+              ) {
+                void updateServerSessionTitle(targetSessionId!, newTitle);
+              }
+            })
+            .catch((error) => {
+              logChatAppError("Server chat title generation failed:", error);
+            });
+        }
+      } catch (error: any) {
+        if (
+          error.name !== "AbortError" &&
+          !generation?.controller.signal.aborted
+        ) {
+          logChatAppError("Server message generation failed:", error);
+          if (!messageAccepted) {
+            showActionError(
+              error instanceof Error ? error.message : "Server message failed.",
+            );
+          }
+        }
+      } finally {
+        settleAcceptance(messageAccepted);
+        if (targetSessionId) {
+          setActiveImageGenerations((current) => {
+            if (!(targetSessionId! in current)) return current;
+            const next = { ...current };
+            delete next[targetSessionId!];
+            return next;
+          });
+        }
+        if (generation) {
+          finishActiveGeneration(
+            generation,
+            useChatStore.getState().serverReadState.currentSessionId,
+          );
         }
       }
-      const uploadableAttachments = attachments.filter(
-        (attachment) => !isKnowledgeAttachment(attachment),
-      );
-      const uploadedAttachments =
-        uploadableAttachments.length > 0
-          ? await uploadMessageAttachmentsForServer({
-              attachments: uploadableAttachments,
-              conversationId: targetSessionId,
-              signal: generation.controller.signal,
-            })
-          : [];
-      if (!isGenerationRunActive(generation)) return messageAccepted;
-      const systemInstruction = effectiveContext.systemInstruction;
-      const latestServerState = useChatStore.getState().serverReadState;
-      const parentMessageId =
-        latestServerState.currentSessionId === targetSessionId
-          ? getActiveMessagePath(latestServerState.activeMessageTree).at(-1)?.id
-          : undefined;
+    })();
 
-      await sendServerMessageAndStream({
-        sessionId: targetSessionId,
-        content: text,
-        parentMessageId,
-        attachments: toServerMessageAttachments(uploadedAttachments),
-        model: routedModel,
-        config: processingChatConfig,
-        provider: runtimeProvider,
-        systemInstruction,
-        signal: generation.controller.signal,
-        onUserMessageAccepted: () => {
-          messageAccepted = true;
-        },
-      });
-
-      if (shouldAutoRename) {
-        generateServerConversationTitle(targetSessionId, selectedModel)
-          .then((newTitle) => {
-            const session = useChatStore
-              .getState()
-              .serverReadState.sessions.find(
-                (item) => item.id === targetSessionId,
-              );
-            if (
-              newTitle &&
-              session &&
-              titleSnapshot &&
-              session.id === titleSnapshot.id &&
-              titleSnapshot.title === "New Chat" &&
-              session.title === "New Chat"
-            ) {
-              void updateServerSessionTitle(targetSessionId!, newTitle);
-            }
-          })
-          .catch((error) => {
-            logChatAppError("Server chat title generation failed:", error);
-          });
-      }
-      return messageAccepted;
-    } catch (error: any) {
-      if (
-        error.name === "AbortError" ||
-        generation?.controller.signal.aborted
-      ) {
-        return messageAccepted;
-      }
-      logChatAppError("Server message generation failed:", error);
-      showActionError(
-        error instanceof Error ? error.message : "Server message failed.",
-      );
-      return messageAccepted;
-    } finally {
-      if (targetSessionId) {
-        setActiveImageGenerations((current) => {
-          if (!(targetSessionId! in current)) return current;
-          const next = { ...current };
-          delete next[targetSessionId!];
-          return next;
-        });
-      }
-      if (generation) {
-        finishActiveGeneration(
-          generation,
-          useChatStore.getState().serverReadState.currentSessionId,
-        );
-      }
-    }
+    return acceptance;
   };
 
   const handleSendMessage = async (text: string, attachments: Attachment[]) => {

@@ -253,6 +253,15 @@ concurrency budgets. A call beyond the Turn cap receives a structured
 then causes one same-model continuation without Tools, except that an
 outstanding completion-verification requirement fails with
 `AGENT_VERIFICATION_REQUIRED` rather than permitting an unverified success.
+If the ordinary `local_direct` Tool-round limit is first crossed while that requirement
+is outstanding, the Backend latches at most four additional Provider rounds.
+Those rounds expose and execute only Goal read/update/`verify_completion` plus
+local/MCP evidence tools (read-class tools and foreground `terminal`); write
+and external tools outside the Goal control lane are absent. The latch survives
+successful verification long
+enough for final narration but never resets. The 32-Step, 128-call, wall-clock,
+per-call, output, approval, and cancellation caps remain authoritative; grace
+expiry while unverified is still `AGENT_VERIFICATION_REQUIRED`.
 The loop otherwise
 terminates when:
 
@@ -313,6 +322,12 @@ redacted process metadata. Goal Tools themselves never count as mutation or
 evidence. An active gate prevents normal completion and prevents
 `update_goal(..., complete)`. Failure to satisfy it before Step/Tool/runtime
 exhaustion is `AGENT_VERIFICATION_REQUIRED`.
+
+A mutation on the last ordinary `local_direct` round does not fail immediately.
+The bounded verification-only grace above may gather later evidence, call
+`verify_completion`, optionally conclude the Goal, and emit final narration.
+It cannot perform another structured write or external action. If the model
+does not finish verification inside the latched deadline, the Run fails closed.
 
 `file_write` and `file_edit` cannot verify their own mutation; a later
 `file_read`, `file_search`, or suitable command must observe the result. A
