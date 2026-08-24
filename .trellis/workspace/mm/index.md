@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 86
+- **Total Sessions**: 87
 - **Last Active**: 2026-08-24
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1291 | Active |
+| `journal-2.md` | ~1324 | Active |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 87 | 2026-08-24 | Fix Agent Terminal timeout and failure contract | `fbeb1487` | `main` |
 | 86 | 2026-08-24 | Repair conversation run admission and Agent verification | `3280f796` | `main` |
 | 85 | 2026-08-24 | Pi-style conversation-scoped concurrent Runs | `443390b0` | `main` |
 | 84 | 2026-08-24 | Deploy unified workspace sidebar Frontend | `d571bfdf` | `main` |

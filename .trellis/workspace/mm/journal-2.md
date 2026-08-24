@@ -1289,3 +1289,36 @@ Released the shared composer at durable user-message acceptance, added bounded v
 ### Next Steps
 
 - None - task complete
+
+
+## Session 87: Fix Agent Terminal timeout and failure contract
+
+**Date**: 2026-08-24
+**Task**: Fix Agent Terminal timeout and failure contract
+**Branch**: `main`
+
+### Summary
+
+Aligned the Terminal schema with the foreground Call timeout, preserved the background Run-timeout default, classified nonzero exits and timeouts as failed Tool results with bounded diagnostics, added runtime guidance/tests/docs, passed the full standalone gate, and deployed a healthy Backend image.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fbeb1487` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
