@@ -1256,3 +1256,36 @@ Implemented one active Run per Conversation with sibling concurrency, server act
 ### Next Steps
 
 - None - task complete
+
+
+## Session 86: Repair conversation run admission and Agent verification
+
+**Date**: 2026-08-24
+**Task**: Repair conversation run admission and Agent verification
+**Branch**: `main`
+
+### Summary
+
+Released the shared composer at durable user-message acceptance, added bounded verification-only local Agent grace, localized durable unverified-result errors, passed the full standalone gate, and deployed healthy Backend/Frontend images.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3280f796` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
