@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 84
+- **Total Sessions**: 85
 - **Last Active**: 2026-08-24
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1225 | Active |
+| `journal-2.md` | ~1258 | Active |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 85 | 2026-08-24 | Pi-style conversation-scoped concurrent Runs | `443390b0` | `main` |
 | 84 | 2026-08-24 | Deploy unified workspace sidebar Frontend | `d571bfdf` | `main` |
 | 83 | 2026-08-24 | 统一工作区会话导航与回复耗时 | `d571bfdf` | `main` |
 | 82 | 2026-08-24 | Secure web URL reading and partial retrieval status | `74519dea` | `main` |

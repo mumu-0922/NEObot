@@ -1223,3 +1223,36 @@ Built and deployed a pinned Frontend image containing the unified workspace conv
 ### Next Steps
 
 - None - task complete
+
+
+## Session 85: Pi-style conversation-scoped concurrent Runs
+
+**Date**: 2026-08-24
+**Task**: Pi-style conversation-scoped concurrent Runs
+**Branch**: `main`
+
+### Summary
+
+Implemented one active Run per Conversation with sibling concurrency, server active-generation projection, refresh reconciliation, sidebar running/unread indicators, exact cancellation, full tests, and live Backend/Frontend rollout.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `443390b0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
