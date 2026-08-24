@@ -1190,3 +1190,36 @@ Added provider Extract plus SSRF-safe direct URL reading, exact Discourse post e
 ### Next Steps
 
 - None - task complete
+
+
+## Session 84: Deploy unified workspace sidebar Frontend
+
+**Date**: 2026-08-24
+**Task**: Deploy unified workspace sidebar Frontend
+**Branch**: `main`
+
+### Summary
+
+Built and deployed a pinned Frontend image containing the unified workspace conversation tree and response-duration UI; retained the old image for rollback, recreated only Frontend, and verified live assets, health, readiness, logs, and unchanged persistence/service container identities.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d571bfdf` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
