@@ -1,0 +1,2 @@
+{"file":".trellis/spec/operations/runtime-recreate-image-pinning.md","reason":"Defines immutable image retention, targeted Compose recreation, rollback, and live Frontend asset verification."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Defines source-to-image-to-live-edge propagation checks for user-reported UI fixes."}

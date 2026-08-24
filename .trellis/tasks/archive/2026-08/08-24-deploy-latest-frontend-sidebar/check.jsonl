@@ -1,0 +1,2 @@
+{"file":".trellis/spec/operations/runtime-recreate-image-pinning.md","reason":"Checks pre/post image IDs, unrelated container stability, health, logs, and decisive live assets."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Checks that the active runtime projection matches the already verified source behavior."}
