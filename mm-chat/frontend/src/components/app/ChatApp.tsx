@@ -14,6 +14,7 @@ import {
   MessageSquarePlus,
   PanelLeftClose,
   PanelLeftOpen,
+  ChevronRight,
 } from "lucide-react";
 import { v7 as uuidv7 } from "uuid";
 
@@ -40,6 +41,7 @@ import {
   ReasoningEffort,
   SearchMode,
   SessionMessageTree,
+  Workspace,
 } from "@/types";
 import { normalizeSearchMode, searchModeEnabled } from "@/lib/chat/searchMode";
 import {
@@ -249,6 +251,7 @@ const ChatApp = () => {
       updateSessionModel,
       updateSessionCompression,
       updateSessionMemoryContext,
+      moveSessionToWorkspace,
       toggleSessionPin,
       duplicateSession,
       addMessage,
@@ -403,6 +406,12 @@ const ChatApp = () => {
   const defaultProviderFetchRef = useRef(false);
   const serverBootstrapRef = useRef(false);
   const modelSelectionRequestRef = useRef(0);
+  const activeLocalTimingRef = useRef<{
+    runId: number;
+    sessionId: string;
+    messageId: string;
+    startTime: number;
+  } | null>(null);
 
   const showActionError = useCallback((message: string) => {
     if (actionErrorTimerRef.current) {
@@ -1446,6 +1455,20 @@ const ChatApp = () => {
 
   const stopActiveGenerationWithFeedback = async () => {
     try {
+      if (!serverModeEnabled) {
+        const activeTiming = activeLocalTimingRef.current;
+        if (activeTiming) {
+          const endTime = Date.now();
+          updateMessage(activeTiming.sessionId, activeTiming.messageId, {
+            timing: {
+              startTime: activeTiming.startTime,
+              endTime,
+              duration: Math.max(0, endTime - activeTiming.startTime),
+            },
+          });
+          activeLocalTimingRef.current = null;
+        }
+      }
       await stopActiveGeneration();
     } catch (error) {
       logChatAppError("Failed to persist stopped generation", error);
@@ -1771,7 +1794,7 @@ const ChatApp = () => {
 
     let botMsgId: string | null = null;
     let userMessageAdded = false;
-    let startTime = Date.now();
+    const startTime = Date.now();
 
     try {
       // Process message and attachments
@@ -1809,7 +1832,13 @@ const ChatApp = () => {
       const botMsg = createBotMessagePlaceholder(modelDisplayName, ragSources);
       const currentBotMsgId = botMsg.id;
       botMsgId = currentBotMsgId;
-      startTime = botMsg.timestamp;
+      botMsg.timestamp = startTime;
+      activeLocalTimingRef.current = {
+        runId: generation.runId,
+        sessionId: targetSessionId,
+        messageId: currentBotMsgId,
+        startTime,
+      };
 
       await addMessage(targetSessionId, botMsg);
       if (!isGenerationRunActive(generation)) return;
@@ -1925,6 +1954,7 @@ const ChatApp = () => {
           duration: endTime - startTime,
         },
       });
+      activeLocalTimingRef.current = null;
 
       // --- Post-Generation ---
       // Force sync active messages to storage at end of generation
@@ -2084,6 +2114,7 @@ const ChatApp = () => {
               duration: Date.now() - startTime,
             },
           });
+          activeLocalTimingRef.current = null;
         } else {
           const errorBotMsg = createBotMessagePlaceholder(modelDisplayName, []);
           errorBotMsg.content = "";
@@ -2102,6 +2133,9 @@ const ChatApp = () => {
         await syncActiveSession(targetSessionId); // Sync error message too
       }
     } finally {
+      if (activeLocalTimingRef.current?.runId === generation.runId) {
+        activeLocalTimingRef.current = null;
+      }
       finishActiveGeneration(generation);
     }
   };
@@ -2152,6 +2186,12 @@ const ChatApp = () => {
     }
     const generation = beginActiveGeneration();
     const startTime = Date.now();
+    activeLocalTimingRef.current = {
+      runId: generation.runId,
+      sessionId: currentSessionId,
+      messageId: branchMessageId,
+      startTime,
+    };
 
     try {
       const sessionMeta = getCurrentSession();
@@ -2270,6 +2310,7 @@ const ChatApp = () => {
           duration: endTime - startTime,
         },
       });
+      activeLocalTimingRef.current = null;
 
       await syncActiveSession(currentSessionId);
       const completedBranchMessage = useChatStore
@@ -2299,12 +2340,16 @@ const ChatApp = () => {
             duration: Date.now() - startTime,
           },
         });
+        activeLocalTimingRef.current = null;
         await syncActiveSessionWithNotice(
           currentSessionId,
           `Failed to persist ${logPrefix.toLowerCase()} error message`,
         );
       }
     } finally {
+      if (activeLocalTimingRef.current?.runId === generation.runId) {
+        activeLocalTimingRef.current = null;
+      }
       finishActiveGeneration(generation);
     }
   };
@@ -2600,7 +2645,7 @@ const ChatApp = () => {
     const generation = beginActiveGeneration();
     let modelMessageId: string | null = null;
     let editedUserMessageId: string | null = null;
-    let startTime = Date.now();
+    const startTime = Date.now();
 
     try {
       const sessionMeta = getCurrentSession();
@@ -2627,7 +2672,7 @@ const ChatApp = () => {
         modelDisplayName,
         ragSources,
       );
-      startTime = modelPlaceholder.timestamp;
+      modelPlaceholder.timestamp = startTime;
 
       const branchIds = createEditedUserMessageBranch(
         sessionId,
@@ -2642,6 +2687,12 @@ const ChatApp = () => {
 
       editedUserMessageId = branchIds.userMessageId;
       modelMessageId = branchIds.modelMessageId;
+      activeLocalTimingRef.current = {
+        runId: generation.runId,
+        sessionId,
+        messageId: modelMessageId,
+        startTime,
+      };
 
       const historyBeforeUser = sessionMessages.slice(0, msgIndex);
       const { prepareHistoryForLLM, streamChatResponse } =
@@ -2746,6 +2797,7 @@ const ChatApp = () => {
           duration: endTime - startTime,
         },
       });
+      activeLocalTimingRef.current = null;
 
       await syncActiveSession(sessionId);
       const completedModelMessage = useChatStore
@@ -2781,6 +2833,7 @@ const ChatApp = () => {
             duration: Date.now() - startTime,
           },
         });
+        activeLocalTimingRef.current = null;
         await syncActiveSessionWithNotice(
           sessionId,
           "Failed to persist edited user message branch error",
@@ -2789,6 +2842,9 @@ const ChatApp = () => {
         showActionError(t("errEditUserMessage"));
       }
     } finally {
+      if (activeLocalTimingRef.current?.runId === generation.runId) {
+        activeLocalTimingRef.current = null;
+      }
       finishActiveGeneration(generation);
     }
   };
@@ -2972,28 +3028,77 @@ const ChatApp = () => {
     }
   };
 
-  const handleNewChat = () => {
+  const createNewChat = async (workspace?: Workspace) => {
     const newConversationModel = selectedChatModel || selectedModel;
     if (newConversationModel && selectedModel !== newConversationModel) {
       setModel(newConversationModel);
     }
 
-    if (serverModeEnabled) {
-      createServerSession()
-        .then(() => navigateToPanel("chat"))
-        .catch((error) => {
-          logChatAppError("Failed to create server chat", error);
-          showActionError("Failed to create server chat.");
+    try {
+      const workspaceConfig = workspace
+        ? {
+            useSearch: workspace.enableSearch,
+            useReasoning: workspace.enableReasoning,
+          }
+        : undefined;
+
+      if (serverModeEnabled) {
+        const previousSessionId = visibleCurrentSessionId;
+        const sessionId = await createServerSession({
+          ...(workspace?.systemPrompt
+            ? { systemInstruction: workspace.systemPrompt }
+            : {}),
+          ...(workspaceConfig ? { config: workspaceConfig } : {}),
         });
-      return;
-    }
+        if (!sessionId) {
+          throw new Error("Server conversation could not be created.");
+        }
+        if (workspace) {
+          try {
+            await moveSessionToWorkspace(sessionId, workspace.id);
+          } catch (groupingError) {
+            try {
+              await deleteServerSession(sessionId);
+            } catch (rollbackError) {
+              logChatAppError(
+                "Failed to roll back ungrouped server chat",
+                rollbackError,
+              );
+            }
+            if (previousSessionId && previousSessionId !== sessionId) {
+              await selectServerSession(previousSessionId);
+            }
+            throw groupingError;
+          }
+        }
+        navigateToPanel("chat");
+        return;
+      }
 
-    if (isGenerating) {
-      void stopActiveGenerationWithFeedback();
-    }
+      if (isGenerating) {
+        await stopActiveGenerationWithFeedback();
+      }
 
-    createSession();
-    navigateToPanel("chat");
+      createSession(
+        workspace?.systemPrompt,
+        "New Chat",
+        workspace?.id,
+        workspace?.files,
+        workspaceConfig,
+      );
+      navigateToPanel("chat");
+    } catch (error) {
+      logChatAppError("Failed to create chat", error);
+      showActionError("Failed to create chat.");
+    }
+  };
+
+  const handleNewChat = () => {
+    void createNewChat(currentHostWorkspace);
+  };
+
+  const handleNewTemporaryChat = () => {
+    void createNewChat();
   };
 
   const handleSuggestionClick = (question: string) => {
@@ -3034,6 +3139,10 @@ const ChatApp = () => {
           navigateToPanel("chat");
         }}
         onNewChat={handleNewChat}
+        onNewTemporaryChat={handleNewTemporaryChat}
+        onNewChatInWorkspace={(workspace) => {
+          void createNewChat(workspace);
+        }}
         onDeleteSession={handleDeleteSession}
         onRenameSession={(id, title) => {
           if (serverModeEnabled) {
@@ -3151,8 +3260,22 @@ const ChatApp = () => {
               </div>
 
               {shouldShowChatTitleBar && (
-                <div className="absolute left-1/2 top-1/2 max-w-[50%] -translate-x-1/2 -translate-y-1/2 truncate text-center font-bold text-foreground">
-                  {currentSession?.title || t("newChat")}
+                <div className="absolute left-1/2 top-1/2 flex max-w-[60%] -translate-x-1/2 -translate-y-1/2 items-center gap-1 truncate text-center text-sm font-semibold text-foreground">
+                  {currentHostWorkspace ? (
+                    <>
+                      <span className="truncate text-muted-foreground">
+                        {currentHostWorkspace.name}
+                      </span>
+                      <ChevronRight
+                        size={14}
+                        className="shrink-0 text-muted-foreground/70"
+                        aria-hidden="true"
+                      />
+                    </>
+                  ) : null}
+                  <span className="truncate">
+                    {currentSession?.title || t("newChat")}
+                  </span>
                 </div>
               )}
 

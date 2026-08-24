@@ -234,6 +234,73 @@ Server `message.started` callback. Testing navigation alone is insufficient:
 every creation and selection entry point must satisfy the same slot-local
 contract, including a clean Server reload from persisted messages.
 
+## Scenario: Durable Assistant total duration
+
+### 1. Scope / Trigger
+
+Apply when changing Chat/Agent run lifecycle, server Message DTO projection,
+Local generation cancellation, or Assistant Footer metadata.
+
+### 2. Signatures
+
+```text
+ChatMessageDTO.createdAt: ISO timestamp (required)
+ChatMessageDTO.completedAt?: ISO timestamp
+Message.timing?: { startTime: number; endTime: number; duration: number }
+normalizeServerMessageTiming(startTime, completedAt) -> timing | undefined
+```
+
+### 3. Contracts
+
+- Server Assistant `createdAt` is the durable run-start boundary and
+  `completedAt` is the terminal boundary. Their difference covers the durable
+  Retrieval/Reasoning/Model/Tool/approval wait after the Assistant Run exists.
+- DTO mapping creates timing only for Assistant messages with a valid terminal
+  timestamp. `toStoreMessageFromServer` must preserve it so live terminal
+  results, cache snapshots, Conversation switching, and reload agree.
+- Local Chat starts timing before prompt preprocessing, Memory/RAG, Search, or
+  Provider streaming. Success, failure, and explicit Stop set one terminal
+  timestamp and persist it with the Message.
+- Components humanize the stored duration but never recalculate it from the
+  render clock. Desktop shows `totalDuration`; mobile uses the compact metadata
+  tooltip.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| missing `completedAt` | omit final timing while the Run is active |
+| invalid or earlier terminal timestamp | omit timing; never render negative/NaN duration |
+| duration below one second | render the localized less-than-one-second label |
+| Local explicit Stop after a draft exists | finalize and persist timing before stopped-message sync |
+| Server cancel/failure returns terminal Message | preserve its timing through DTO -> Store -> Footer |
+
+### 5. Good / Base / Bad Cases
+
+- **Good**: a Tool-backed Agent waits for approval, completes, displays one
+  human-readable total, and shows the same total after refresh.
+- **Base**: a streaming Assistant has no final duration until it reaches a
+  terminal state.
+- **Bad**: the Footer uses `Date.now()` on render, Local timing begins after
+  RAG, or DTO timing disappears in the Store mapper.
+
+### 6. Tests Required
+
+- duration boundary/invalid-value unit tests;
+- DTO `createdAt`/`completedAt` projection tests;
+- DTO -> Store durable timing regression test;
+- ChatApp cancellation/start-boundary and MessageItem/i18n composition tests.
+
+### 7. Wrong vs Correct
+
+```text
+Wrong: duration = renderNow - message.timestamp
+Correct: terminal lifecycle writes timing once -> persistence -> pure formatting
+
+Wrong: map completedAt in the API adapter but drop timing in chatStore
+Correct: preserve timing across every DTO -> Store -> Message projection
+```
+
 ## Avoid
 
 - Duplicating server state in component state and Zustand without a defined

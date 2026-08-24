@@ -1844,7 +1844,9 @@ Compatibility rules:
   - API `role: "assistant"` -> legacy `role: "model"`;
   - API `role: "user"` -> legacy `role: "user"`;
   - API `createdAt` -> legacy `Message.timestamp`;
-  - API `completedAt`, when present, may feed legacy timing `endTime`;
+  - for Assistant messages, valid API `createdAt` and `completedAt` must also
+    produce legacy `Message.timing.startTime`, `endTime`, and their non-negative
+    `duration`; missing, invalid, or backwards terminal time omits final timing;
   - API `modelRef` -> legacy `Message.model`;
   - API `usage`/`usage.updated` -> legacy usage fields without dropping the
     provider-neutral payload.

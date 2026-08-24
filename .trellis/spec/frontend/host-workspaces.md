@@ -43,6 +43,19 @@ optional `workspaceId` plus durable `permissionMode`.
 - Creating a server Conversation inside a Workspace is ordered: create the
   Conversation, persist Workspace grouping, then navigate/select it. Moving to
   root uses the explicit clear route and must surface locked/conflict failures.
+- Sidebar Conversation navigation is one hierarchy. Persisted Workspaces are
+  expandable parents; `Conversation.workspaceId` is the sole membership
+  authority. Conversations without it appear exactly once under the virtual
+  `temporary-chats` group, which is presentation state and must never be
+  persisted as a fake Workspace.
+- A generic new-Conversation action inherits the active Conversation's
+  Workspace. The explicit Temporary-group action always creates an unbound
+  Conversation. A Workspace action must create, group, and only then navigate;
+  if grouping fails, remove the empty Conversation when possible, restore the
+  previous selection, and surface the failure.
+- Preview limits may hide old Conversations, but selecting or restoring one
+  must expand both its owning parent and its preview list so the active row is
+  visible. Search does not create a second result tree or duplicate rows.
 - Host unavailability preserves ordinary Workspace/chat reads and fails
   bind/browse/pick closed. It must not fall back to Docker `/workspace` or imply
   that Host execution is available.
@@ -62,7 +75,7 @@ optional `workspaceId` plus durable `permissionMode`.
 | Host disabled/unavailable | retain list/edit; disable interactive controls; bind/browse/pick fail closed |
 | picker cancelled | no error and no path mutation |
 | grouping clear after execution snapshot lock | surface locked failure; retain current grouping |
-| server Conversation creation succeeds but grouping fails | do not navigate/select it as a Workspace conversation |
+| server Conversation creation succeeds but grouping fails | roll back the empty Conversation when possible, restore the previous selection, and do not present it as a Workspace Conversation |
 | Full access selected then cancelled | no permission request or local mutation |
 | permission request conflicts with an active Turn | retain authoritative mode and surface the locked error |
 
@@ -70,11 +83,12 @@ optional `workspaceId` plus durable `permissionMode`.
 
 - **Good**: server list loads, imports only missing browser records, user selects
   a Host directory, binding persists, and refreshed Conversations retain the
-  exact Workspace grouping.
-- **Base**: a legacy unbound Workspace remains fully editable while Host
-  controls are unavailable and can be bound later.
+  exact Workspace grouping in one expandable navigation tree.
+- **Base**: a Conversation without `workspaceId` remains durable and available
+  under `temporary-chats`; it can later be moved into a real Workspace.
 - **Bad**: browser state overwrites a newer server revision, the browser guesses
-  `/mnt/<drive>`, or a failed Host request silently uses `/workspace`.
+  `/mnt/<drive>`, a Conversation appears in both Workspace and root lists, or a
+  failed grouping silently leaves the new row selected as if it succeeded.
 
 ## 6. Required Focused Tests
 
@@ -82,6 +96,8 @@ optional `workspaceId` plus durable `permissionMode`.
 - legacy missing-only import and server-authoritative refresh;
 - CAS conflict refresh;
 - Conversation `workspaceId` round trip and grouping/clear failure handling;
+- single-tree Sidebar composition, virtual Temporary grouping, active-row
+  preview expansion, and contextual versus explicit-Temporary creation;
 - bound/unbound and directory-control composition where UI changes.
 - permission DTO round trip, active-generation selector lock, and Full access
   acknowledgement dialog composition.
@@ -97,4 +113,7 @@ Correct: browser selection/input -> Host resolve -> Backend CAS bind -> safe vie
 
 Wrong: put permissionMode in generic config or use window.confirm
 Correct: accessible dialog -> dedicated acknowledged API -> refresh durable DTO
+
+Wrong: render Workspaces and a second top-level Conversation list
+Correct: Workspace children + virtual temporary-chats, partitioned by workspaceId
 ```

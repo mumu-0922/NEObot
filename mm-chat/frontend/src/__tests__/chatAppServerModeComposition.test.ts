@@ -162,6 +162,10 @@ describe("ChatApp server mode composition", () => {
     expect(chatApp).toContain("duplicateServerSession");
     expect(chatApp).toContain("updateServerSessionInstruction");
     expect(chatApp).toContain("generateServerConversationTitle");
+    expect(chatApp).toContain("await moveSessionToWorkspace(sessionId");
+    expect(chatApp).toContain("await deleteServerSession(sessionId)");
+    expect(chatApp).toContain("await selectServerSession(previousSessionId)");
+    expect(chatApp).toContain("Failed to roll back ungrouped server chat");
     expect(chatApp).not.toContain("activeSkillIds");
     expect(chatApp).not.toContain("activePluginIdsOverride");
 

@@ -86,6 +86,7 @@ import {
 } from "@/lib/utils/timedStatus";
 import { logDevError } from "@/lib/utils/devLogger";
 import { buildMobileMessageMetaTooltip } from "@/lib/utils/messageMetaTooltip";
+import { describeMessageDuration } from "@/lib/utils/messageDuration";
 import { getMessageDisplayTokenCount } from "@/lib/utils/messageTokens";
 import {
   IMAGE_CONTENT_POLICY_VIOLATION_CODE,
@@ -1090,19 +1091,45 @@ const MessageItem: React.FC<MessageItemProps> = ({
     });
   };
 
-  const getDurationString = () => {
-    if (message.role === "model" && displayTiming?.duration) {
-      return `${(displayTiming.duration / 1000).toFixed(1)}s`;
+  const durationDescriptor =
+    message.role === "model" && displayTiming
+      ? describeMessageDuration(displayTiming.duration)
+      : null;
+  const durationValue = (() => {
+    if (!durationDescriptor) return null;
+    switch (durationDescriptor.kind) {
+      case "lessThanSecond":
+        return t("durationLessThanSecond");
+      case "seconds":
+        return t("durationSeconds", {
+          seconds: durationDescriptor.seconds,
+        });
+      case "minutes":
+        return t("durationMinutes", {
+          minutes: durationDescriptor.minutes,
+        });
+      case "minutesSeconds":
+        return t("durationMinutesSeconds", {
+          minutes: durationDescriptor.minutes,
+          seconds: durationDescriptor.seconds,
+        });
+      case "hours":
+        return t("durationHours", { hours: durationDescriptor.hours });
+      case "hoursMinutes":
+        return t("durationHoursMinutes", {
+          hours: durationDescriptor.hours,
+          minutes: durationDescriptor.minutes,
+        });
     }
-    return null;
-  };
-
-  const durationString = getDurationString();
+  })();
+  const durationString = durationValue
+    ? t("totalDuration", { duration: durationValue })
+    : null;
   const timeString = getDisplayTime();
   const tokenText =
     tokenCount > 0 ? t("tokenCount", { count: tokenCount }) : "";
   const mobileMetaRows = buildMobileMessageMetaTooltip({
-    durationString,
+    durationString: durationValue,
     tokenText,
     labels: {
       duration: t("duration"),

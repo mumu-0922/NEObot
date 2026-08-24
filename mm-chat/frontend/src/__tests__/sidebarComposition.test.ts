@@ -15,17 +15,46 @@ describe("Sidebar composition", () => {
 
     expect(sidebar).toContain("SidebarSearch");
     expect(sidebar).toContain("WORKSPACE_SESSION_PREVIEW_LIMIT = 5");
-    expect(sidebar).toContain("ROOT_SESSION_PREVIEW_LIMIT = 5");
+    expect(sidebar).toContain("TEMPORARY_SESSION_PREVIEW_LIMIT = 5");
     expect(sidebar).toContain("expandedWorkspaceSessionLists");
-    expect(sidebar).toContain("expandedRootSessionLists");
-    expect(sidebar).not.toContain("const [expandedRootSessionList,");
+    expect(sidebar).toContain("temporarySessionListExpanded");
+    expect(sidebar).not.toContain("expandedRootSessionLists");
     expect(sidebar).toContain("isSearchingChats");
     expect(sidebar).toContain("renderShowAllButton");
+    expect(sidebar).toContain('t("temporaryChats")');
+    expect(sidebar).toContain('t("newTemporaryChat")');
+    expect(sidebar).toContain("onNewTemporaryChat: () => void");
+    expect(sidebar).toContain(
+      "onNewChatInWorkspace: (workspace: Workspace) => void",
+    );
+    expect(sidebar).toContain("onClick={onNewTemporaryChat}");
+    expect(sidebar).toContain("if (ws) onNewChatInWorkspace(ws)");
+    expect(sidebar).not.toContain('t("chatList")');
+    expect(sidebar).not.toContain("rootSessions");
     expect(sidebar).toContain("PanelLeftOpen");
     expect(sidebar).toContain("PanelLeftClose");
     expect(sidebar).not.toContain('name="sidebar-chat-search"');
     expect(sidebarSearch).toContain('name="sidebar-chat-search"');
     expect(sidebarSearch).toContain("onCollapsedSearchClick");
+  });
+
+  it("shows the active Workspace and Conversation as one breadcrumb", () => {
+    const chatApp = readFileSync(
+      resolve(process.cwd(), "src/components/app/ChatApp.tsx"),
+      "utf8",
+    );
+
+    expect(chatApp).toContain("currentHostWorkspace.name");
+    expect(chatApp).toContain("<ChevronRight");
+    expect(chatApp).toContain('currentSession?.title || t("newChat")');
+    expect(chatApp).toContain("void createNewChat(currentHostWorkspace)");
+    expect(chatApp).toContain("void createNewChat()");
+    expect(chatApp).toContain("activeLocalTimingRef");
+    expect(chatApp).toContain("botMsg.timestamp = startTime");
+    expect(chatApp).toContain("modelPlaceholder.timestamp = startTime");
+    expect(chatApp).toContain(
+      "duration: Math.max(0, endTime - activeTiming.startTime)",
+    );
   });
 
   it("defaults workspace chat lists to collapsed while search expands matches", () => {

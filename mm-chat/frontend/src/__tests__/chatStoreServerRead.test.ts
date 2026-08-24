@@ -358,6 +358,31 @@ describe("chat store server read path", () => {
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
   });
 
+  it("preserves durable assistant timing through the server store boundary", async () => {
+    const assistant = {
+      ...makeMessage("m2", "model"),
+      timing: {
+        startTime: Date.parse("2026-07-08T00:00:01Z"),
+        endTime: Date.parse("2026-07-08T00:02:46Z"),
+        duration: 165_000,
+      },
+    };
+    mocks.serverService.listMessages.mockResolvedValueOnce([assistant]);
+    useChatStore.setState({
+      serverReadState: {
+        ...makeEmptyServerReadState(),
+        sessions: [makeServerSession("c1")],
+      },
+    });
+
+    await expect(
+      useChatStore.getState().selectServerSession("c1"),
+    ).resolves.toBe(true);
+    expect(
+      useChatStore.getState().serverReadState.activeMessages[0]?.timing,
+    ).toEqual(assistant.timing);
+  });
+
   it("shows a recent server conversation immediately and revalidates it", async () => {
     const c1Message = { ...makeMessage("c1-m1", "user"), content: "cached" };
     const c2Message = makeMessage("c2-m1", "user");

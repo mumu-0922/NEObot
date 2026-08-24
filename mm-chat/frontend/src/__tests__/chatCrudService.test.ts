@@ -188,6 +188,11 @@ describe("chat CRUD DTO mappers", () => {
       ],
       outputBlocks: [{ id: "block-1", type: "text", content: "hi" }],
       parentMessageId: "m1",
+      timing: {
+        startTime: Date.parse("2026-07-08T00:00:02Z"),
+        endTime: Date.parse("2026-07-08T00:00:02Z"),
+        duration: 0,
+      },
     });
     expect(JSON.stringify(assistant.attachments)).not.toContain(
       "object-store.example",
@@ -500,6 +505,21 @@ describe("chat CRUD DTO mappers", () => {
     expect(() =>
       mapChatMessageDtoToMessage({ ...userMessageDto, role: "tool" }),
     ).toThrow(/cannot be rendered/);
+  });
+
+  it("omits invalid or backwards optional completion timing", () => {
+    expect(
+      mapChatMessageDtoToMessage({
+        ...assistantMessageDto,
+        completedAt: "bad-date",
+      }),
+    ).not.toHaveProperty("timing");
+    expect(
+      mapChatMessageDtoToMessage({
+        ...assistantMessageDto,
+        completedAt: "2026-07-07T23:59:59Z",
+      }),
+    ).not.toHaveProperty("timing");
   });
 
   it("converts model refs and legacy model strings", () => {

@@ -265,6 +265,7 @@ const toStoreMessageFromServer = (message: ChatCrudMessage): Message => ({
   ...(message.reasoning ? { reasoning: message.reasoning } : {}),
   ...(message.processTrace ? { processTrace: message.processTrace } : {}),
   ...(message.agentEvents ? { agentEvents: message.agentEvents } : {}),
+  ...(message.timing ? { timing: message.timing } : {}),
   ...(message.knowledge ? { knowledge: message.knowledge } : {}),
   ...(message.outputBlocks
     ? { outputBlocks: message.outputBlocks as MessageOutputBlock[] }

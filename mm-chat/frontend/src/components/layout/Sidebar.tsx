@@ -9,10 +9,6 @@ import Tooltip from "../ui/Tooltip";
 import WorkspaceSettingsModal from "./WorkspaceSettingsModal";
 import SidebarSearch from "./SidebarSearch";
 import {
-  calculateSidebarPaneHeights,
-  type SidebarPaneHeights,
-} from "./sidebarLayout";
-import {
   MessageSquarePlus,
   MoreVertical,
   Pin,
@@ -38,12 +34,12 @@ import {
   PanelLeftOpen,
   Wrench,
   PackageCheck,
+  MessageSquare,
 } from "lucide-react";
 import { CHAT_ENTITY_LIMITS } from "@/config/limits";
 import { sanitizeDownloadFilename } from "@/lib/utils/filename";
 import { createSessionExportPayload } from "@/lib/chat/sessionExport";
 import { logDevError } from "@/lib/utils/devLogger";
-import { createWorkspaceService } from "@/services/api/workspaceService";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -62,6 +58,8 @@ interface SidebarProps {
   currentSessionId: string | null;
   onSelectSession: (id: string) => void;
   onNewChat: () => void;
+  onNewTemporaryChat: () => void;
+  onNewChatInWorkspace: (workspace: Workspace) => void;
   onDeleteSession: (id: string) => void | Promise<void>;
   onRenameSession: (id: string, newTitle: string) => void;
   onTogglePin?: (id: string) => void;
@@ -96,18 +94,8 @@ const WORKSPACE_COLOR_MAP: Record<string, string> = {
 };
 
 const WORKSPACE_SESSION_PREVIEW_LIMIT = 5;
-const ROOT_SESSION_PREVIEW_LIMIT = 5;
-const SIDEBAR_PANE_GAP = 8;
-
-type RootSessionListKey = "pinned" | "recent" | "archived";
-
-const DEFAULT_ROOT_SESSION_LISTS: Record<RootSessionListKey, boolean> = {
-  pinned: false,
-  recent: false,
-  archived: false,
-};
-
-const getNow = () => Date.now();
+const TEMPORARY_SESSION_PREVIEW_LIMIT = 5;
+const TEMPORARY_SECTION_KEY = "temporary-chats";
 
 const SIDEBAR_FOCUSABLE_SELECTOR = [
   "a[href]",
@@ -157,6 +145,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   currentSessionId,
   onSelectSession,
   onNewChat,
+  onNewTemporaryChat,
+  onNewChatInWorkspace,
   onDeleteSession,
   onRenameSession,
   onTogglePin,
@@ -180,12 +170,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const t = useTranslations("Sidebar");
   const chatT = useTranslations("ChatApp");
-  const {
-    workspaces,
-    createSession,
-    createServerSession,
-    moveSessionToWorkspace,
-  } = useChatStore();
+  const { workspaces, moveSessionToWorkspace } = useChatStore();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [contextMenu, setContextMenu] = useState<{
@@ -204,11 +189,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [exportError, setExportError] = useState<string | null>(null);
   const [expandedWorkspaceSessionLists, setExpandedWorkspaceSessionLists] =
     useState<Record<string, boolean>>({});
-  const [expandedRootSessionLists, setExpandedRootSessionLists] = useState(
-    DEFAULT_ROOT_SESSION_LISTS,
-  );
-  const [sidebarPaneHeights, setSidebarPaneHeights] =
-    useState<SidebarPaneHeights>({ workspace: 0, chat: 0 });
+  const [temporarySessionListExpanded, setTemporarySessionListExpanded] =
+    useState(false);
 
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -217,11 +199,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [expandedSections, setExpandedSections] = useState<{
     [key: string]: boolean;
   }>({
-    pinned: true,
-    recent: true,
-    archived: false,
-    // Workspaces are expanded by default? Or store their state?
-    // Let's use ID for workspace keys
+    [TEMPORARY_SECTION_KEY]: true,
   });
 
   const [editingWorkspace, setEditingWorkspace] = useState<
@@ -234,10 +212,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   const sidebarRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const sidebarListRegionRef = useRef<HTMLDivElement>(null);
-  const workspacePaneHeaderRef = useRef<HTMLDivElement>(null);
-  const chatPaneHeaderRef = useRef<HTMLDivElement>(null);
-  const workspacePaneContentRef = useRef<HTMLDivElement>(null);
-  const chatPaneContentRef = useRef<HTMLDivElement>(null);
   const isMountedRef = useRef(true);
   const searchFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -285,64 +259,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     };
   }, [isModal, isOpen]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-
-    let frameId: number | null = null;
-    const scheduleMeasure = () => {
-      if (frameId !== null) cancelAnimationFrame(frameId);
-      frameId = requestAnimationFrame(() => {
-        frameId = null;
-
-        const availableHeight =
-          (sidebarListRegionRef.current?.clientHeight ?? 0) -
-          (workspacePaneHeaderRef.current?.offsetHeight ?? 0) -
-          (chatPaneHeaderRef.current?.offsetHeight ?? 0);
-        const nextHeights = calculateSidebarPaneHeights({
-          availableHeight,
-          workspaceContentHeight:
-            workspacePaneContentRef.current?.scrollHeight ?? 0,
-          chatContentHeight: chatPaneContentRef.current?.scrollHeight ?? 0,
-          gap: SIDEBAR_PANE_GAP,
-        });
-
-        setSidebarPaneHeights((current) =>
-          Math.abs(current.workspace - nextHeights.workspace) < 0.5 &&
-          Math.abs(current.chat - nextHeights.chat) < 0.5
-            ? current
-            : nextHeights,
-        );
-      });
-    };
-
-    const observedElements = [
-      sidebarListRegionRef.current,
-      workspacePaneHeaderRef.current,
-      chatPaneHeaderRef.current,
-      workspacePaneContentRef.current,
-      chatPaneContentRef.current,
-    ].filter(Boolean) as Element[];
-
-    scheduleMeasure();
-    window.addEventListener("resize", scheduleMeasure);
-
-    if (typeof ResizeObserver === "undefined") {
-      return () => {
-        if (frameId !== null) cancelAnimationFrame(frameId);
-        window.removeEventListener("resize", scheduleMeasure);
-      };
-    }
-
-    const observer = new ResizeObserver(scheduleMeasure);
-    observedElements.forEach((element) => observer.observe(element));
-
-    return () => {
-      if (frameId !== null) cancelAnimationFrame(frameId);
-      observer.disconnect();
-      window.removeEventListener("resize", scheduleMeasure);
-    };
-  }, [isOpen]);
-
   // Set default expanded state for workspaces
   useEffect(() => {
     const newExpanded = { ...expandedSections };
@@ -361,6 +277,47 @@ const Sidebar: React.FC<SidebarProps> = ({
       });
     }
   }, [workspaces, expandedSections]);
+
+  useEffect(() => {
+    if (!currentSessionId) return;
+    const activeSession = sessions.find(
+      (session) => session.id === currentSessionId,
+    );
+    if (!activeSession) return;
+    const workspaceId = activeSession.workspaceId;
+    const sectionKey = workspaceId ?? TEMPORARY_SECTION_KEY;
+    const siblingSessions = sessions
+      .filter(
+        (session) =>
+          (session.workspaceId ?? TEMPORARY_SECTION_KEY) === sectionKey,
+      )
+      .sort((left, right) =>
+        sectionKey === TEMPORARY_SECTION_KEY
+          ? Number(right.pinned) - Number(left.pinned) ||
+            right.updatedAt - left.updatedAt
+          : right.updatedAt - left.updatedAt,
+      );
+    const previewLimit = workspaceId
+      ? WORKSPACE_SESSION_PREVIEW_LIMIT
+      : TEMPORARY_SESSION_PREVIEW_LIMIT;
+    const activeSessionNeedsExpandedList =
+      siblingSessions.findIndex((session) => session.id === currentSessionId) >=
+      previewLimit;
+    queueMicrotask(() => {
+      if (!isMountedRef.current) return;
+      setExpandedSections((current) =>
+        current[sectionKey] ? current : { ...current, [sectionKey]: true },
+      );
+      if (!activeSessionNeedsExpandedList) return;
+      if (workspaceId) {
+        setExpandedWorkspaceSessionLists((current) =>
+          current[workspaceId] ? current : { ...current, [workspaceId]: true },
+        );
+        return;
+      }
+      setTemporarySessionListExpanded(true);
+    });
+  }, [currentSessionId, sessions]);
 
   const handleContextMenu = (e: React.MouseEvent, sessionId: string) => {
     e.preventDefault();
@@ -506,90 +463,36 @@ const Sidebar: React.FC<SidebarProps> = ({
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
   };
 
-  const handleNewChatInWorkspace = async (workspace: Workspace) => {
-    try {
-      const config = {
-        useSearch: workspace.enableSearch,
-        useReasoning: workspace.enableReasoning,
-      };
-      if (createWorkspaceService().serverEnabled) {
-        const sessionId = await createServerSession({
-          systemInstruction: workspace.systemPrompt,
-          title: "New Chat",
-          config,
-        });
-        if (!sessionId) throw new Error("Server conversation was not created.");
-        await moveSessionToWorkspace(sessionId, workspace.id);
-        onSelectSession(sessionId);
-        return;
-      }
-      const sessionId = createSession(
-        workspace.systemPrompt,
-        "New Chat",
-        workspace.id,
-        workspace.files,
-        config,
-      );
-      onSelectSession(sessionId);
-    } catch (error) {
-      logDevError("Failed to create a Workspace conversation", error);
-      setExportError(t("moveWorkspaceFailed"));
-    }
-  };
-
   // Filtering Logic
   const isSearchingChats = searchTerm.trim().length > 0;
   const filteredSessions = sessions.filter((s) =>
     s.title.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
-  const now = getNow();
-  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-
-  // Split sessions into Workspace-bound and Unbound (Root)
-  const rootSessions = filteredSessions.filter((s) => !s.workspaceId);
+  // Workspace membership is the single navigation authority. Unbound
+  // Conversations remain durable and appear under the virtual Temporary group.
+  const temporarySessions = filteredSessions
+    .filter((session) => !session.workspaceId)
+    .sort(
+      (left, right) =>
+        Number(right.pinned) - Number(left.pinned) ||
+        right.updatedAt - left.updatedAt,
+    );
   const workspaceSessionsMap = new Map<string, Session[]>();
 
   workspaces.forEach((w) => {
     workspaceSessionsMap.set(
       w.id,
-      filteredSessions.filter((s) => s.workspaceId === w.id),
+      filteredSessions
+        .filter((session) => session.workspaceId === w.id)
+        .sort((left, right) => right.updatedAt - left.updatedAt),
     );
   });
 
-  const pinnedSessions = rootSessions
-    .filter((s) => s.pinned)
-    .sort((a, b) => b.updatedAt - a.updatedAt);
-  const unpinnedSessions = rootSessions
-    .filter((s) => !s.pinned)
-    .sort((a, b) => b.updatedAt - a.updatedAt);
-  const recentSessions = unpinnedSessions.filter(
-    (s) => now - s.updatedAt <= SEVEN_DAYS_MS,
-  );
-  const archivedSessions = unpinnedSessions.filter(
-    (s) => now - s.updatedAt > SEVEN_DAYS_MS,
-  );
-  const getVisibleRootSessions = (
-    sectionKey: RootSessionListKey,
-    items: Session[],
-  ) => {
-    if (isSearchingChats || expandedRootSessionLists[sectionKey]) {
-      return items;
-    }
-    return items.slice(0, ROOT_SESSION_PREVIEW_LIMIT);
-  };
-  const visiblePinnedSessions = getVisibleRootSessions(
-    "pinned",
-    pinnedSessions,
-  );
-  const visibleRecentSessions = getVisibleRootSessions(
-    "recent",
-    recentSessions,
-  );
-  const visibleArchivedSessions = getVisibleRootSessions(
-    "archived",
-    archivedSessions,
-  );
+  const visibleTemporarySessions =
+    isSearchingChats || temporarySessionListExpanded
+      ? temporarySessions
+      : temporarySessions.slice(0, TEMPORARY_SESSION_PREVIEW_LIMIT);
 
   const getVisibleWorkspaceSessions = (
     workspaceId: string,
@@ -600,15 +503,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
     return items.slice(0, WORKSPACE_SESSION_PREVIEW_LIMIT);
   };
-
-  const hasMeasuredSidebarPanes =
-    sidebarPaneHeights.workspace > 0 || sidebarPaneHeights.chat > 0;
-  const workspacePaneStyle = hasMeasuredSidebarPanes
-    ? { height: sidebarPaneHeights.workspace }
-    : undefined;
-  const chatPaneStyle = hasMeasuredSidebarPanes
-    ? { height: sidebarPaneHeights.chat }
-    : undefined;
 
   const renderSessionItem = (session: Session) => {
     const isActive =
@@ -720,57 +614,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       >
         {expanded ? t("showLess") : t("showAll", { count: hiddenCount })}
       </button>
-    );
-  };
-
-  const renderSection = (
-    title: string,
-    sectionKey: string,
-    items: Session[],
-    listExpansion?: {
-      expanded: boolean;
-      hiddenCount: number;
-      onToggle: () => void;
-    },
-  ) => {
-    if (items.length === 0) return null;
-    const isExpanded = expandedSections[sectionKey];
-
-    const contentId = `${sidebarId}-section-${sectionKey}`;
-
-    return (
-      <div className="mb-2">
-        <button
-          type="button"
-          aria-expanded={isExpanded}
-          aria-controls={contentId}
-          className="group flex w-full items-center justify-between gap-1 rounded-md px-3 py-1.5 text-left text-xs font-semibold text-gray-400 transition-colors hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:text-muted-foreground/70 dark:hover:text-foreground/85"
-          onClick={() => toggleSection(sectionKey)}
-        >
-          <span>{title}</span>
-          <ChevronDown
-            size={12}
-            className={`transition-transform duration-200 ${isExpanded ? "" : "-rotate-90"}`}
-            aria-hidden="true"
-          />
-        </button>
-        <div
-          id={contentId}
-          className={`grid transition-[grid-template-rows,opacity] duration-300 ease-in-out ${isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
-        >
-          <div className="overflow-hidden">
-            {items.map(renderSessionItem)}
-            {!isSearchingChats && listExpansion
-              ? renderShowAllButton({
-                  controlId: contentId,
-                  expanded: listExpansion.expanded,
-                  hiddenCount: listExpansion.hiddenCount,
-                  onToggle: listExpansion.onToggle,
-                })
-              : null}
-          </div>
-        </div>
-      </div>
     );
   };
 
@@ -964,12 +807,8 @@ const Sidebar: React.FC<SidebarProps> = ({
             ref={sidebarListRegionRef}
             className="flex h-full min-h-0 flex-col gap-2"
           >
-            {/* Workspaces Section */}
-            <section className="flex min-h-0 shrink-0 flex-col">
-              <div
-                ref={workspacePaneHeaderRef}
-                className="flex shrink-0 items-center justify-between pt-1 pl-3 pr-1 group"
-              >
+            <section className="flex min-h-0 flex-1 flex-col">
+              <div className="flex shrink-0 items-center justify-between pt-1 pl-3 pr-1 group">
                 <span className="text-sm font-medium text-gray-600 dark:text-muted-foreground whitespace-nowrap">
                   {t("workspaces")}
                 </span>
@@ -988,11 +827,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </Tooltip>
               </div>
 
-              <div
-                className="min-h-0 overflow-y-auto overscroll-contain pr-0.5 custom-scrollbar"
-                style={workspacePaneStyle}
-              >
-                <div ref={workspacePaneContentRef} className="space-y-1 pb-1">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-0.5 custom-scrollbar">
+                <div className="space-y-1 pb-1">
                   {workspaces.map((ws) => {
                     const wsSessions = workspaceSessionsMap.get(ws.id) || [];
                     const visibleWorkspaceSessions =
@@ -1105,86 +941,72 @@ const Sidebar: React.FC<SidebarProps> = ({
                       </div>
                     );
                   })}
-                </div>
-              </div>
-            </section>
 
-            {/* Chat List Section */}
-            <section className="flex min-h-0 shrink-0 flex-col">
-              <div
-                ref={chatPaneHeaderRef}
-                className="flex shrink-0 items-center justify-between pt-1 pl-3 pr-1 group"
-              >
-                <span className="text-sm font-medium text-gray-600 dark:text-muted-foreground whitespace-nowrap">
-                  {t("chatList")}
-                </span>
-                <Tooltip content={t("newChat")} position="left">
-                  <button
-                    type="button"
-                    aria-label={t("createChatAria")}
-                    onClick={onNewChat}
-                    className="p-1.5 text-gray-500 dark:text-muted-foreground hover:bg-gray-200 dark:hover:bg-accent/80 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
-                  >
-                    <MessageSquarePlus size={16} aria-hidden="true" />
-                  </button>
-                </Tooltip>
-              </div>
-
-              <div
-                id={`${sidebarId}-root-sessions`}
-                className="min-h-0 overflow-y-auto overscroll-contain pr-0.5 custom-scrollbar"
-                style={chatPaneStyle}
-              >
-                <div ref={chatPaneContentRef} className="pb-1">
-                  {renderSection(t("pinned"), "pinned", visiblePinnedSessions, {
-                    expanded: expandedRootSessionLists.pinned,
-                    hiddenCount: Math.max(
-                      pinnedSessions.length - ROOT_SESSION_PREVIEW_LIMIT,
-                      0,
-                    ),
-                    onToggle: () =>
-                      setExpandedRootSessionLists((prev) => ({
-                        ...prev,
-                        pinned: !prev.pinned,
-                      })),
-                  })}
-                  {renderSection(t("recent"), "recent", visibleRecentSessions, {
-                    expanded: expandedRootSessionLists.recent,
-                    hiddenCount: Math.max(
-                      recentSessions.length - ROOT_SESSION_PREVIEW_LIMIT,
-                      0,
-                    ),
-                    onToggle: () =>
-                      setExpandedRootSessionLists((prev) => ({
-                        ...prev,
-                        recent: !prev.recent,
-                      })),
-                  })}
-
-                  {visibleArchivedSessions.length > 0 &&
-                    renderSection(
-                      t("archived"),
-                      "archived",
-                      visibleArchivedSessions,
-                      {
-                        expanded: expandedRootSessionLists.archived,
-                        hiddenCount: Math.max(
-                          archivedSessions.length - ROOT_SESSION_PREVIEW_LIMIT,
-                          0,
-                        ),
-                        onToggle: () =>
-                          setExpandedRootSessionLists((prev) => ({
-                            ...prev,
-                            archived: !prev.archived,
-                          })),
-                      },
-                    )}
-
-                  {rootSessions.length === 0 && (
-                    <div className="text-center text-gray-400 text-xs mt-4">
-                      {t("noChatsInList")}
+                  <div className="mt-2 border-t border-gray-200/60 pt-2 dark:border-border/70">
+                    <div className="group relative flex items-center justify-between rounded-lg py-1.5 pl-3 pr-2 transition-colors hover:bg-gray-100/50 dark:hover:bg-muted/30">
+                      <button
+                        type="button"
+                        aria-expanded={
+                          isSearchingChats ||
+                          expandedSections[TEMPORARY_SECTION_KEY]
+                        }
+                        aria-controls={`${sidebarId}-temporary-sessions`}
+                        className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+                        onClick={() => toggleSection(TEMPORARY_SECTION_KEY)}
+                      >
+                        <MessageSquare
+                          size={14}
+                          className="shrink-0 text-violet-500"
+                          aria-hidden="true"
+                        />
+                        <span className="truncate text-sm font-medium text-gray-700 dark:text-foreground/85">
+                          {t("temporaryChats")}
+                        </span>
+                      </button>
+                      <Tooltip content={t("newTemporaryChat")} position="left">
+                        <button
+                          type="button"
+                          aria-label={t("createTemporaryChatAria")}
+                          onClick={onNewTemporaryChat}
+                          className="rounded p-1 text-gray-400 opacity-100 transition-[opacity,color,background-color] hover:bg-gray-200 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100 dark:hover:bg-accent dark:hover:text-foreground/85"
+                        >
+                          <MessageSquarePlus size={14} aria-hidden="true" />
+                        </button>
+                      </Tooltip>
                     </div>
-                  )}
+
+                    {(isSearchingChats ||
+                      expandedSections[TEMPORARY_SECTION_KEY]) && (
+                      <div
+                        id={`${sidebarId}-temporary-sessions`}
+                        className="space-y-0.5"
+                      >
+                        {temporarySessions.length > 0 ? (
+                          <>
+                            {visibleTemporarySessions.map(renderSessionItem)}
+                            {!isSearchingChats &&
+                              renderShowAllButton({
+                                controlId: `${sidebarId}-temporary-sessions`,
+                                expanded: temporarySessionListExpanded,
+                                hiddenCount: Math.max(
+                                  temporarySessions.length -
+                                    TEMPORARY_SESSION_PREVIEW_LIMIT,
+                                  0,
+                                ),
+                                onToggle: () =>
+                                  setTemporarySessionListExpanded(
+                                    (expanded) => !expanded,
+                                  ),
+                              })}
+                          </>
+                        ) : (
+                          <div className="pl-3 pr-2 py-1.5 text-xs text-gray-400 italic">
+                            {t("noTemporaryChats")}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </section>
@@ -1377,12 +1199,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                         }}
                       >
                         <DropdownMenuRadioItem value="">
-                          <MessageSquarePlus
+                          <MessageSquare
                             size={14}
-                            className="text-gray-400"
+                            className="text-violet-500"
                             aria-hidden="true"
                           />
-                          {t("chatListRoot")}
+                          {t("temporaryChats")}
                         </DropdownMenuRadioItem>
                         <DropdownMenuSeparator />
                         {workspaces.map((ws) => (
@@ -1471,7 +1293,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 const ws = workspaces.find(
                   (w) => w.id === workspaceMenu.workspaceId,
                 );
-                if (ws) handleNewChatInWorkspace(ws);
+                if (ws) onNewChatInWorkspace(ws);
                 setWorkspaceMenu(null);
               }}
             >

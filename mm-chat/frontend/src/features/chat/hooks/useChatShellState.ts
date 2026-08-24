@@ -46,6 +46,7 @@ export function useChatShellState() {
       updateSessionModel: state.updateSessionModel,
       updateSessionCompression: state.updateSessionCompression,
       updateSessionMemoryContext: state.updateSessionMemoryContext,
+      moveSessionToWorkspace: state.moveSessionToWorkspace,
       toggleSessionPin: state.toggleSessionPin,
       duplicateSession: state.duplicateSession,
       addMessage: state.addMessage,

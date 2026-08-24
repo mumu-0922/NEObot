@@ -113,6 +113,11 @@ export interface ChatCrudMessage {
   knowledge?: MessageKnowledgeMetadata;
   parentMessageId?: string;
   treeParentMessageId?: string | null;
+  timing?: {
+    startTime: number;
+    endTime: number;
+    duration: number;
+  };
 }
 
 export interface ChatCrudServiceOptions {
@@ -309,6 +314,10 @@ export function mapChatMessageDtoToMessage(
     legacyProcessTrace,
   );
   const agentEvents = normalizeChatAgentEvents(message.agentEvents);
+  const timing =
+    role === "model"
+      ? normalizeServerMessageTiming(timestamp, message.completedAt)
+      : undefined;
 
   return {
     id: message.id,
@@ -319,6 +328,7 @@ export function mapChatMessageDtoToMessage(
     ...(reasoning ? { reasoning } : {}),
     ...(processTrace ? { processTrace } : {}),
     ...(agentEvents.length > 0 ? { agentEvents } : {}),
+    ...(timing ? { timing } : {}),
     ...(knowledge ? { knowledge } : {}),
     ...(role === "model" && model ? { model } : {}),
     ...(generationError ? { generationError } : {}),
@@ -432,6 +442,16 @@ export function parseServerTimestamp(value: string, fieldName: string): number {
     );
   }
   return timestamp;
+}
+
+export function normalizeServerMessageTiming(
+  startTime: number,
+  completedAt: string | undefined,
+): ChatCrudMessage["timing"] {
+  if (!Number.isFinite(startTime) || !completedAt) return undefined;
+  const endTime = Date.parse(completedAt);
+  if (!Number.isFinite(endTime) || endTime < startTime) return undefined;
+  return { startTime, endTime, duration: endTime - startTime };
 }
 
 function normalizeConversationConfig(

@@ -29,6 +29,8 @@ describe("MessageItem composition", () => {
     expect(messageItem).toContain("AddToKnowledgeModal");
     expect(messageItem).toContain("handleAddToKnowledge");
     expect(messageItem).toContain("canEditUserMessage");
+    expect(messageItem).toContain("describeMessageDuration");
+    expect(messageItem).toContain('t("totalDuration"');
     expect(messageItem).toContain("UserMessageEditor");
     expect(messageItem).toContain("PencilSparkles");
     expect(messageItem).toContain('t("polishUserMessageShort")');
@@ -164,5 +166,7 @@ describe("MessageItem composition", () => {
     expect(zh.Message.downloadPdf).toBe("PDF");
     expect(zh.Message.downloadImage).toBe("图片");
     expect(zh.Message.downloadFormat).toBe("下载格式");
+    expect(en.Message.totalDuration).toBe("Took {duration}");
+    expect(zh.Message.totalDuration).toBe("用时 {duration}");
   });
 });
