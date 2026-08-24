@@ -40,7 +40,7 @@ func (runtime *localSkillToolRuntime) promptInstruction() string {
 		"skills":                  items,
 		"legacyCatalogToolsShown": false,
 	})
-	instruction := localSkillSystemInstruction
+	instruction := localSkillSystemInstruction + "\n" + runtime.terminalPromptInstruction()
 	workspaceAlias := ""
 	if hostRoot := strings.TrimSpace(runtime.config().WorkspaceHostRoot); hostRoot != "" {
 		alias, _ := json.Marshal(map[string]any{

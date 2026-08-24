@@ -126,7 +126,10 @@ func TestLocalSkillToolLoopLoadsSkillRunsTerminalAndContinuesSameModel(t *testin
 		t.Fatalf("unsafe or incomplete process events=%s", encodedExecutions)
 	}
 	if strings.Contains(provider.inputs[0].SystemPrompt, "Use terminal to finish") ||
-		!strings.Contains(provider.inputs[0].SystemPrompt, "fixture-skill") {
+		!strings.Contains(provider.inputs[0].SystemPrompt, "fixture-skill") ||
+		!strings.Contains(provider.inputs[0].SystemPrompt, "python3") ||
+		!strings.Contains(provider.inputs[0].SystemPrompt, "at most 3 seconds") ||
+		!strings.Contains(provider.inputs[0].SystemPrompt, "runInBackground=true") {
 		t.Fatalf("progressive prompt=%q", provider.inputs[0].SystemPrompt)
 	}
 }
@@ -177,6 +180,87 @@ func TestLocalTerminalStreamsTransientPresentationAndPersistsFinalSnapshot(t *te
 		len(completed.Presentation.Transcript) != 1 ||
 		len(completed.Presentation.Transcript[0].Content) != 1024 {
 		t.Fatalf("completed=%#v", completed)
+	}
+}
+
+func TestLocalTerminalNonzeroExitIsFailedButKeepsBoundedResult(t *testing.T) {
+	workspace := t.TempDir()
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: t.TempDir(), WorkspaceRoot: workspace,
+		ShellPath: "/bin/sh", ApprovalMode: localskills.ApprovalSmart,
+		CallTimeout: time.Second, RunTimeout: 5 * time.Second,
+		MaxOutput: 64 << 10, MaxCalls: 4, MaxRounds: 4, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := newLocalSkillToolRuntime(executor, nil)
+	events := make(chan ProviderEvent, 8)
+	result, err := runtime.execute(context.Background(), events, ProviderToolCall{
+		ID: "terminal-nonzero", Name: localTerminalToolName,
+		Arguments: `{"command":"printf missing-python >&2; exit 127","skill":null,` +
+			`"workingDir":null,"timeoutSeconds":1,"runInBackground":false}`,
+	}, 1, 1)
+	if err != nil || !result.IsError ||
+		!strings.Contains(result.Content, `"error":"nonzero_exit"`) ||
+		!strings.Contains(result.Content, `"exitCode":127`) ||
+		!strings.Contains(result.Content, `"stderr":"missing-python"`) ||
+		strings.Contains(result.Content, "evidenceToolCallId") {
+		t.Fatalf("result=%#v error=%v", result, err)
+	}
+	close(events)
+	var terminal *ProviderToolExecutionEvent
+	for event := range events {
+		if event.ToolExecution != nil && event.ToolExecution.CallStatus == "failed" {
+			copy := *event.ToolExecution
+			terminal = &copy
+		}
+	}
+	if terminal == nil || terminal.Status != ProcessStepStatusFailed ||
+		terminal.FailureCategory != "nonzero_exit" || terminal.Presentation == nil ||
+		terminal.Presentation.ExitCode == nil || *terminal.Presentation.ExitCode != 127 ||
+		len(terminal.Presentation.Transcript) != 1 ||
+		terminal.Presentation.Transcript[0].Stream != "stderr" ||
+		terminal.Presentation.Transcript[0].Content != "missing-python" {
+		t.Fatalf("terminal=%#v", terminal)
+	}
+}
+
+func TestLocalTerminalTimeoutIsFailedButKeepsResult(t *testing.T) {
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: t.TempDir(), WorkspaceRoot: t.TempDir(),
+		ShellPath: "/bin/sh", ApprovalMode: localskills.ApprovalSmart,
+		CallTimeout: time.Second, RunTimeout: 5 * time.Second,
+		MaxOutput: 64 << 10, MaxCalls: 4, MaxRounds: 4, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := newLocalSkillToolRuntime(executor, nil)
+	events := make(chan ProviderEvent, 8)
+	result, err := runtime.execute(context.Background(), events, ProviderToolCall{
+		ID: "terminal-timeout", Name: localTerminalToolName,
+		Arguments: `{"command":"sleep 30","skill":null,"workingDir":null,` +
+			`"timeoutSeconds":1,"runInBackground":false}`,
+	}, 1, 1)
+	if err != nil || !result.IsError ||
+		!strings.Contains(result.Content, `"error":"timeout"`) ||
+		!strings.Contains(result.Content, `"exitCode":124`) ||
+		!strings.Contains(result.Content, `"timedOut":true`) {
+		t.Fatalf("result=%#v error=%v", result, err)
+	}
+	close(events)
+	var terminal *ProviderToolExecutionEvent
+	for event := range events {
+		if event.ToolExecution != nil && event.ToolExecution.CallStatus == "failed" {
+			copy := *event.ToolExecution
+			terminal = &copy
+		}
+	}
+	if terminal == nil || terminal.FailureCategory != "timeout" ||
+		terminal.Presentation == nil || !terminal.Presentation.TimedOut ||
+		terminal.Presentation.ExitCode == nil || *terminal.Presentation.ExitCode != 124 {
+		t.Fatalf("terminal=%#v", terminal)
 	}
 }
 
@@ -324,6 +408,11 @@ func TestLocalSkillToolDefinitionsAreOpenAIStrictCompatible(t *testing.T) {
 		if !ok || !containsLocalSkillSchemaType(types, "null") {
 			t.Fatalf("%s.%s is not nullable: %#v", field.tool, field.name, schema)
 		}
+	}
+	terminal := definitions[len(definitions)-1]
+	timeoutSchema := terminal.Function.Parameters["properties"].(map[string]any)["timeoutSeconds"].(map[string]any)
+	if maximum, ok := timeoutSchema["maximum"].(int); !ok || maximum != 1 {
+		t.Fatalf("terminal timeout schema=%#v", timeoutSchema)
 	}
 }
 

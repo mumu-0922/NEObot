@@ -43,6 +43,11 @@ containers, Canary runs, schedules, autonomous learning, and Agent Center.
   creates a durable five-minute approval and waits for `Allow once`, an
   authorized conversation grant, or `Deny`. The catastrophic blocklist remains
   active and cannot be bypassed even with approval mode `off`.
+- The model-visible explicit `terminal.timeoutSeconds` maximum is
+  `AGENT_LOCAL_CALL_TIMEOUT`. Background work receives
+  `AGENT_LOCAL_RUN_TIMEOUT` only when `runInBackground=true` and
+  `timeoutSeconds=null`. Nonzero foreground exits and timeouts are failed Tool
+  results with bounded diagnostics, not successful completion evidence.
 - Jobs are process-local and must be presented as non-durable. Shutdown cancels
   and reaps them; restart does not resume them.
 - No Docker/Podman socket, host-wide home bind, privileged user, or automatic OS

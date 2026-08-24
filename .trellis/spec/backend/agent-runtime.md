@@ -57,6 +57,18 @@ Transcript v2 start marker: turn.started.payload.transcriptVersion = 2
   or safe MCP/Browser fallbacks. Provider-only raw Results, credentials, exact
   retrieval queries, private Server refs and materialized Workspace/Host/Skill
   paths never enter ProcessStep, durable Agent events, or SSE.
+- `terminal.timeoutSeconds` has one strict Provider schema for foreground and
+  background calls. Its explicit maximum is `AGENT_LOCAL_CALL_TIMEOUT`, which
+  is also the foreground executor limit. A background call that needs the
+  longer `AGENT_LOCAL_RUN_TIMEOUT` must set `runInBackground=true` and
+  `timeoutSeconds=null`; do not advertise the Run limit as an explicit value
+  that foreground execution will reject.
+- Shell transport success is not command success. A foreground exit code other
+  than zero returns a model-visible Tool error with `nonzero_exit`; an executor
+  timeout returns `timeout`. Preserve the bounded exit code, stdout/stderr,
+  timeout/truncation flags and duration in the typed Terminal result/card, mark
+  live and durable ProcessStep status failed, and expose no completion-evidence
+  ID. Exit code zero remains the only successful foreground command result.
 - Foreground Terminal may emit transient running ProcessStep snapshots from its
   bounded pipe capture. Keep a 64-byte sanitizer holdback, coalesce updates to
   at most one per 75 ms unless 16 KiB becomes stable, and never block command
@@ -253,6 +265,9 @@ Correct: advertise each mode only after the exact Bubblewrap WSL/DrvFS probes
 
 Wrong: inspect Shell command text -> guess mutation -> force verification
 Correct: foreground result -> synchronous boundary; background Job -> exact completed output
+
+Wrong: advertise RunTimeout -> foreground executor rejects model arguments
+Correct: advertise CallTimeout -> background(null) receives RunTimeout
 
 Wrong: copy stdout/stderr or Terminal arguments into generic process detail
 Correct: typed redacted Terminal card -> durable ProcessStep -> same live/replay card

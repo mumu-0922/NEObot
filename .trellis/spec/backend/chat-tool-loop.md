@@ -563,6 +563,23 @@ job_kill({jobId})
   a call or round budget is exhausted, return a bounded Tool failure and make
   one Tool-free same-model continuation for the final answer. The whole local
   loop is bounded by the executor Run deadline.
+- The strict `terminal.timeoutSeconds` schema uses
+  `max=floor(AGENT_LOCAL_CALL_TIMEOUT / 1s)` for both foreground and background
+  calls because one Tool definition serves both paths. `null` means the
+  foreground Call timeout or, with `runInBackground=true`, the background Run
+  timeout. Never advertise `AGENT_LOCAL_RUN_TIMEOUT` as an explicit maximum;
+  long work uses background mode with a null timeout and later
+  `job_output(wait=true)`.
+- Foreground Terminal exit zero returns a successful Provider Tool Result. A
+  nonzero exit returns `IsError=true`, `error=nonzero_exit`; a timed-out result
+  returns `IsError=true`, `error=timeout`. Both error results keep bounded
+  `exitCode`, stdout, stderr, `timedOut`, `truncated`, and `durationMillis` for
+  same-model recovery and the typed Terminal presentation, but omit
+  `evidenceToolCallId`. The final ProcessStep and `tool.result` status must be
+  failed in live SSE and durable replay.
+- Runtime guidance must not assume a `python` alias. Direct Python commands use
+  `python3` after an availability check when needed; interpreter discovery or
+  missing binaries remain ordinary observable command failures.
 - File paths are workspace-relative and anchored with `os.Root`. A read returns
   a complete-file `sha256:<hex>` version; write/edit requires that exact
   version, rechecks before atomic rename, and returns `version_conflict` rather
@@ -634,6 +651,10 @@ job_kill({jobId})
 | catalog/package preparation fails | `SKILL_RUNTIME_UNAVAILABLE`; no internal detail |
 | strict arguments fail | Tool result `arguments_invalid`; no file read/process |
 | strict schema omits an optional property from `required` | Provider rejects the Run before Tool execution; repair the schema with required + nullable, not by weakening runtime validation |
+| explicit `terminal.timeoutSeconds` exceeds Call timeout | rejected by the advertised strict schema; no foreground process starts |
+| background Terminal uses `timeoutSeconds=null` | start the Job with the configured Run timeout; return its process-local Job ID |
+| foreground Terminal exits nonzero | failed Tool Result with `nonzero_exit`, bounded process output/flags, no evidence ID |
+| foreground Terminal times out | failed Tool Result with `timeout`, `timedOut=true`, bounded output/flags, no evidence ID |
 | `skill.name` unknown | bounded `skill_not_found` |
 | duplicate `skill.name` under the same catalog revision | success with `alreadyLoaded=true`; omit content |
 | deterministic `/skill-name` package read fails | `SKILL_RUNTIME_UNAVAILABLE`; no Provider request |
@@ -661,6 +682,9 @@ job_kill({jobId})
   `skill -> file_read -> file_edit -> terminal/job_output -> verify_completion
   -> final answer`, with exact results only in model context and a bounded,
   redacted Terminal card in persistence/SSE.
+- **Good:** a command that needs longer than the foreground Call timeout starts
+  with `runInBackground=true, timeoutSeconds=null`, then observes its exact Job
+  through `job_output(wait=true)`.
 - **Base:** local execution is enabled but the user has no installed Skills;
   an empty replacement tombstone is injected, File/Job/terminal remain, and
   ordinary MCP/Knowledge/Memory/Web planning is unchanged.
@@ -669,6 +693,9 @@ job_kill({jobId})
   local Tools after losing call ordering, put raw stdout/stderr or command data
   in generic Tool detail, accept an MCP-forged Terminal card, or spawn a Child
   Agent to execute the Skill.
+- **Bad:** advertise the longer Run timeout for a shared Terminal schema while
+  foreground validation enforces the shorter Call timeout, or treat a returned
+  `exit 127` result as successful merely because the shell process was started.
 
 ### 6. Tests Required
 
@@ -691,6 +718,12 @@ job_kill({jobId})
   restart warning, and evidence gating.
 - Call, round, output, call-timeout and Run-timeout boundaries plus cancellation
   process-group termination.
+- Assert the Terminal schema maximum equals Call timeout, accepts the exact
+  bound, and cannot advertise a value above it. Prove a background call with a
+  null timeout retains the Run-timeout path.
+- Assert exit zero succeeds while exit 127 and timeout return model-visible Tool
+  errors, preserve bounded diagnostics, omit completion evidence, and project
+  failed status identically before and after reload.
 - Process event/persistence/SSE assertions prove the typed Terminal card keeps
   only bounded/redacted command, stable cwd alias and result flags; raw
   stdout/stderr, file content, materialized paths and credentials remain absent.
@@ -714,6 +747,11 @@ system prompt + every installed file + guessed server path + child agent exec
 bounded revisioned catalog -> optional required/deterministic Skill load
 -> versioned workspace/Job Tool rounds -> same-model observation/verification
 -> redacted process facts -> final answer
+```
+
+```text
+Wrong: timeoutSeconds=RunTimeout -> foreground arguments_invalid -> burn a round
+Correct: timeoutSeconds<=CallTimeout OR background=true + timeoutSeconds=null
 ```
 
 ## Scenario: Compact a Chat Agent continuation and recover from context overflow

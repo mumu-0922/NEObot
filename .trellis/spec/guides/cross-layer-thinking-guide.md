@@ -104,6 +104,32 @@ rejected candidate count masked the selected count, so the planner emitted 58
 while both Native and MinerU mappers required 60–100 and rejected the complete
 document.
 
+## Tool Schema vs Executor Limit Checklist
+
+Use this when an LLM-visible Tool schema produces numeric arguments that a
+runtime executor validates again:
+
+- [ ] Name the exact authority for every execution mode. If one schema feeds
+      several modes, its explicit numeric range must be executable by all of
+      them or the modes need separate schemas.
+- [ ] Distinguish explicit values from nullable defaults. A longer background
+      default does not justify advertising that value when the same explicit
+      argument is invalid for foreground execution.
+- [ ] Test schema maximum, executor maximum, one-above-maximum rejection, and
+      the nullable/default path together; testing either layer alone cannot
+      detect drift.
+- [ ] Separate Tool transport completion from command outcome. Nonzero exit and
+      timeout must remain model-visible diagnostics while projecting a failed
+      status and withholding completion evidence.
+- [ ] Assert live events, durable replay, and the final UI label use the same
+      failure category and exit flags.
+
+**Real-world example**: Terminal advertised the five-minute Run timeout, but a
+foreground executor enforced the 30-second Call timeout. The model repeatedly
+submitted `timeoutSeconds=40`, burned Tool rounds on `arguments_invalid`, and
+an earlier `exit 127` still appeared successful because process return was
+mistaken for command success.
+
 ## Live Stream vs Durable Replay Checklist
 
 Use this when the same operation is shown first from SSE/WebSocket events and

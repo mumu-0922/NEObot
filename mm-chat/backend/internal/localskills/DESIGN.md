@@ -25,6 +25,16 @@ send `SIGKILL` to the whole group and wait for the direct child before returning
 Combined stdout/stderr storage is capped while both streams continue draining,
 so a verbose command cannot deadlock on a full pipe or allocate without bound.
 
+`CallTimeout` is the foreground execution authority and the maximum explicit
+`terminal.timeoutSeconds` advertised by Chat. `RunTimeout` remains the whole
+Turn bound and the default for a background Job when the shared Tool schema
+receives `runInBackground=true, timeoutSeconds=null`. This asymmetry is
+intentional: one strict Tool schema must not advertise an explicit value that
+the foreground executor rejects. A returned process is classified separately
+from transport completion; exit code zero succeeds, while nonzero exit and
+timeout remain bounded failed results so Chat can preserve diagnostics without
+granting completion evidence.
+
 File reads and searches enter through an `os.Root` anchored to the workspace.
 An optional configured Host path exists only as an input alias and is reduced
 to a relative name before this boundary. Terminal command text is never

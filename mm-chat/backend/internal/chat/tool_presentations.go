@@ -80,10 +80,15 @@ func completeLocalProcessPresentation(
 		retry := *presentation.Retry
 		completed.Retry = &retry
 	}
-	if result.IsError {
-		return &completed
-	}
 	payload := decodePresentationObject(result.Content)
+	if result.IsError {
+		if completed.Card != "terminal" {
+			return &completed
+		}
+		if _, ok := payload["exitCode"]; !ok {
+			return &completed
+		}
+	}
 	resultValue, _ := payload["result"].(map[string]any)
 	switch completed.Card {
 	case "terminal":

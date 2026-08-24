@@ -450,6 +450,7 @@ describe("durable process trace", () => {
     expect(html).toContain("已超时");
     expect(html).toContain("输出已截断");
     expect(html).toContain("后台运行");
+    expect(html).toContain("错误 · 1.3s");
     expect(html).toContain("<details");
     expect(html).not.toContain("stdout");
     expect(html).not.toContain("stderr");

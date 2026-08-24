@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -258,7 +259,7 @@ func (runtime *localSkillToolRuntime) definitions() []ToolDefinition {
 						"timeoutSeconds": map[string]any{
 							"type":    []string{"integer", "null"},
 							"minimum": 1,
-							"maximum": max(int(runtime.config().RunTimeout/time.Second), maxTimeout),
+							"maximum": maxTimeout,
 						},
 						"runInBackground": map[string]any{"type": "boolean"},
 					},
@@ -278,12 +279,33 @@ func (runtime *localSkillToolRuntime) executionMode() string {
 }
 
 func (runtime *localSkillToolRuntime) terminalToolDescription() string {
-	if runtime.executionMode() == localskills.RuntimeHostWorkspace {
-		return "Run one bounded shell command as the ordinary Host Runner user in the selected " +
-			"Host Workspace. This is host_workspace execution, not an isolated sandbox."
-	}
-	return "Run one bounded shell command directly as the Backend user in the configured " +
+	timeout := max(int(runtime.config().CallTimeout/time.Second), 1)
+	description := "Run one bounded shell command directly as the Backend user in the configured " +
 		"local workspace. This is local_direct execution, not an isolated sandbox."
+	if runtime.executionMode() == localskills.RuntimeHostWorkspace {
+		return fmt.Sprintf("Run one bounded shell command as the ordinary Host Runner user in the selected "+
+			"Host Workspace. This is host_workspace execution, not an isolated sandbox."+
+			" Explicit foreground timeoutSeconds must be at most %d; use runInBackground=true "+
+			"with timeoutSeconds=null for longer work.", timeout)
+	}
+	return fmt.Sprintf(
+		"%s Explicit foreground timeoutSeconds must be at most %d; use runInBackground=true "+
+			"with timeoutSeconds=null for longer work.",
+		description,
+		timeout,
+	)
+}
+
+func (runtime *localSkillToolRuntime) terminalPromptInstruction() string {
+	timeout := max(int(runtime.config().CallTimeout/time.Second), 1)
+	return fmt.Sprintf(
+		"Do not assume a `python` executable alias exists in the selected workspace. "+
+			"When Python is needed, use `python3` after checking its availability when necessary. "+
+			"Foreground terminal.timeoutSeconds must be at most %d seconds. For longer commands, "+
+			"set terminal.runInBackground=true with timeoutSeconds=null, then use job_output "+
+			"with wait=true to collect the bounded result.",
+		timeout,
+	)
 }
 
 func (runtime *localSkillToolRuntime) skillNameSchema() map[string]any {

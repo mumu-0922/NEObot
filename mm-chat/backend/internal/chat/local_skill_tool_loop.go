@@ -411,11 +411,8 @@ func (runtime *localSkillToolRuntime) executeCall(
 			execution.Presentation,
 			&result,
 		)
-		return localSkillSuccessResult(call, map[string]any{
-			"exitCode": result.ExitCode, "stdout": result.Stdout, "stderr": result.Stderr,
-			"timedOut": result.TimedOut, "truncated": result.Truncated,
-			"durationMillis": result.DurationMillis,
-		}), "", nil
+		failure := localTerminalResultFailureCategory(result)
+		return localTerminalToolResult(call, result, failure), failure, nil
 	default:
 		return localSkillFailureResult(call, "tool_not_available"), "tool_not_available", nil
 	}
@@ -731,6 +728,16 @@ func localTerminalFailureCategory(err error) string {
 	}
 }
 
+func localTerminalResultFailureCategory(result localskills.Result) string {
+	if result.TimedOut {
+		return "timeout"
+	}
+	if result.ExitCode != 0 {
+		return "nonzero_exit"
+	}
+	return ""
+}
+
 func localSkillFatalCode(err error) string {
 	if errors.Is(err, errChatAgentApprovalPersistence) {
 		return "AGENT_APPROVAL_PERSISTENCE_FAILED"
@@ -751,6 +758,28 @@ func localSkillSuccessResult(call ProviderToolCall, payload map[string]any) Prov
 		return localSkillFailureResult(call, "result_too_large")
 	}
 	return ProviderToolResult{CallID: call.ID, Name: call.Name, Content: string(encoded)}
+}
+
+func localTerminalToolResult(
+	call ProviderToolCall,
+	result localskills.Result,
+	failure string,
+) ProviderToolResult {
+	payload := map[string]any{
+		"exitCode": result.ExitCode, "stdout": result.Stdout, "stderr": result.Stderr,
+		"timedOut": result.TimedOut, "truncated": result.Truncated,
+		"durationMillis": result.DurationMillis,
+	}
+	if failure == "" {
+		return localSkillSuccessResult(call, payload)
+	}
+	payload["untrustedLocalSkillResult"] = true
+	payload["isError"] = true
+	payload["error"] = strings.TrimSpace(failure)
+	encoded, _ := json.Marshal(payload)
+	return ProviderToolResult{
+		CallID: call.ID, Name: call.Name, Content: string(encoded), IsError: true,
+	}
 }
 
 func localSkillFailureResult(call ProviderToolCall, category string) ProviderToolResult {

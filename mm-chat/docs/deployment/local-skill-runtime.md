@@ -43,8 +43,8 @@ backups.
 | `AGENT_LOCAL_WORKSPACE_HOST_ROOT` | empty | Optional clean absolute Host alias for the exact workspace source; accepts Linux/WSL pasted paths only below that root. |
 | `AGENT_LOCAL_SHELL` | `/bin/bash` | Absolute shell used with `-c`; workspace login/profile files are not loaded. |
 | `AGENT_LOCAL_APPROVAL_MODE` | `smart` | Deny destructive patterns; `off` disables only this soft denial. |
-| `AGENT_LOCAL_CALL_TIMEOUT` | `30s` | Maximum one command duration. |
-| `AGENT_LOCAL_RUN_TIMEOUT` | `5m` | Maximum Tool-loop wall time. |
+| `AGENT_LOCAL_CALL_TIMEOUT` | `30s` | Foreground command limit and maximum explicit `terminal.timeoutSeconds`. |
+| `AGENT_LOCAL_RUN_TIMEOUT` | `5m` | Whole local Tool-loop limit and background Job default when `timeoutSeconds=null`. |
 | `AGENT_LOCAL_MAX_OUTPUT_BYTES` | `1048576` | Combined stdout/stderr budget per command. |
 | `AGENT_LOCAL_MAX_CALLS_PER_RUN` | `32` | Local Tool call budget. |
 | `AGENT_LOCAL_MAX_ROUNDS_PER_RUN` | `8` | Provider Tool-round budget. |
@@ -56,6 +56,14 @@ call waits at most five minutes and executes only after `Allow once` or an exact
 conversation grant. Without durable authority the bounded result remains
 `approval_required`. Catastrophic patterns stay blocked and cannot be bypassed
 even when approval mode is `off`.
+
+The Terminal schema is intentionally capped at the foreground Call timeout.
+For a command that may exceed it, the Agent must use
+`runInBackground=true, timeoutSeconds=null`, then read the exact Job with
+`job_output(wait=true)`. Do not raise the explicit argument to the Run timeout;
+that recreates a schema/executor mismatch. The runtime prompt also directs
+Python commands to `python3` after availability checks because a `python` alias
+is not portable across Host Workspaces.
 
 Example for one explicitly authorized WSL project:
 

@@ -27,7 +27,7 @@ func TestLocalBackgroundJobToolsStartWaitNotifyAndEnforceScope(t *testing.T) {
 	events := make(chan ProviderEvent, 16)
 	started, err := runtime.execute(context.Background(), events, ProviderToolCall{
 		ID: "start", Name: localTerminalToolName,
-		Arguments: `{"command":"sleep 0.05; printf job-done","skill":null,"workingDir":null,"timeoutSeconds":2,"runInBackground":true}`,
+		Arguments: `{"command":"sleep 0.05; printf job-done","skill":null,"workingDir":null,"timeoutSeconds":null,"runInBackground":true}`,
 	}, 1, 1)
 	if err != nil || started.IsError {
 		t.Fatalf("started=%#v error=%v", started, err)

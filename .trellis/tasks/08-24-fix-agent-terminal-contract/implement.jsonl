@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/agent-runtime.md","reason":"Foreground/background Terminal timeout authority and failed-result evidence contract."}
+{"file":".trellis/spec/backend/chat-tool-loop.md","reason":"Executable schema, Provider result, process status, cases and test matrix."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Schema-versus-executor drift prevention checklist."}
+{"file":".trellis/tasks/08-24-fix-agent-terminal-contract/research/bug-analysis.md","reason":"Root-cause classification and prevention mechanisms."}

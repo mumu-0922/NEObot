@@ -42,7 +42,7 @@ Runner mTLS, and production isolation evidence are not prerequisites.
 | `file_edit({path,oldText,newText,replaceAll,expectedVersion})` | Performs exact text replacement over the version-pinned file; the default requires exactly one match. |
 | `file_search({path?,query,glob?,maxResults?})` | Searches bounded regular UTF-8 workspace files for literal text while skipping symlinks and generated dependency directories. |
 | `publish_file({path,displayName,contentType})` | Snapshots one final binary or text workspace file into actor-owned `purpose=export` storage and projects it onto the assistant Message as an authenticated `purpose=output` attachment. Nullable display name and content type values use safe filename/MIME inference. |
-| `terminal({command,skill?,workingDir?,timeoutSeconds?,runInBackground})` | Runs one bounded shell command as the Backend user in the configured workspace. `skill` exposes that installed package only through `NEO_CHAT_ACTIVE_SKILL_ROOT`; background mode returns a process-local Job ID. |
+| `terminal({command,skill?,workingDir?,timeoutSeconds?,runInBackground})` | Runs one bounded shell command as the Backend user in the configured workspace. Explicit `timeoutSeconds` is capped by `AGENT_LOCAL_CALL_TIMEOUT`; longer work uses `runInBackground=true` with `timeoutSeconds=null`, which receives the background Run timeout. `skill` exposes that installed package only through `NEO_CHAT_ACTIVE_SKILL_ROOT`; background mode returns a process-local Job ID. |
 | `job_list({})` | Lists process-local Jobs for the exact user and Conversation without command text or output. |
 | `job_output({jobId,wait,timeoutSeconds?})` | Reads one owned Job and optionally waits at most ten seconds without busy-polling. Output appears only after a terminal state. |
 | `job_kill({jobId})` | Cancels one owned Job and kills/reaps its complete process group. |
@@ -88,6 +88,10 @@ The executor:
   including symlink resolution;
 - enforces per-call timeout, per-Run timeout, combined stdout/stderr bytes,
   calls, rounds, and global concurrency;
+- advertises the foreground Call timeout as the strict maximum for an explicit
+  `terminal.timeoutSeconds`. One shared Tool schema serves both modes, so a
+  background command that needs the longer Run timeout must pass
+  `runInBackground=true` with `timeoutSeconds=null`;
 - starts a process group and kills the complete group on timeout or Chat Run
   cancellation;
 - always blocks catastrophic command patterns and, in default `smart` mode,
@@ -112,6 +116,11 @@ The executor:
   expiry, cancellation, and restart denial never execute the command; an exact
   conversation grant applies only to the same Tool name and risk class. Hard-
   blocked commands never enter or bypass this approval path.
+- classifies a foreground nonzero shell exit as `nonzero_exit` and an executor
+  timeout as `timeout`. These are model-visible Tool errors and failed live/
+  durable ProcessSteps, while their bounded exit code, stdout/stderr, duration,
+  and timeout/truncation flags remain available for recovery. Only exit code
+  zero receives a completion-evidence ID.
 
 These guards reduce accidental damage. They are not protection against an
 adversarial allowed process.
@@ -149,6 +158,9 @@ adversarial allowed process.
   Completion Policy mutation. The Backend never guesses side effects by
   parsing arbitrary Shell command text; the model must still interpret the
   returned exit code/stdout/stderr truthfully.
+- Runtime guidance does not promise a `python` alias. Commands use `python3`
+  after checking availability when Python is needed; a missing executable is a
+  normal nonzero Terminal result, not a successful Tool step.
 
 ## Published chat artifacts
 
@@ -205,6 +217,10 @@ adversarial allowed process.
 - Workspace conflicts and bounds return typed `version_conflict`,
   `file_not_found`, `file_too_large`, `invalid_utf8`, `edit_conflict`,
   `path_invalid`, or `arguments_invalid` Tool Results.
+- An explicit Terminal timeout above `AGENT_LOCAL_CALL_TIMEOUT` is invalid at
+  the Tool schema boundary. A foreground exit failure remains a bounded
+  `nonzero_exit`/`timeout` Tool error so the same model can recover without
+  mistaking it for verified work.
 - Background Job failures are bounded Tool Results. Backend restart does not
   recover or resume a prior process-local Job.
 - Set `AGENT_LOCAL_RUNTIME_ENABLED=false` and recreate the Backend to roll back
