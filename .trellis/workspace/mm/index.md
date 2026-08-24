@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 82
+- **Total Sessions**: 83
 - **Last Active**: 2026-08-24
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1159 | Active |
+| `journal-2.md` | ~1192 | Active |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 83 | 2026-08-24 | 统一工作区会话导航与回复耗时 | `d571bfdf` | `main` |
 | 82 | 2026-08-24 | Secure web URL reading and partial retrieval status | `74519dea` | `main` |
 | 81 | 2026-08-23 | Persist model per conversation | `200c177f` | `main` |
 | 80 | 2026-08-22 | Persist chat and Knowledge refresh state | `b2c8b2f6`, `20c2572a` | `main` |

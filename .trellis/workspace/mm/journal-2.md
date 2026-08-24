@@ -1157,3 +1157,36 @@ Added provider Extract plus SSRF-safe direct URL reading, exact Discourse post e
 ### Next Steps
 
 - None - task complete
+
+
+## Session 83: 统一工作区会话导航与回复耗时
+
+**Date**: 2026-08-24
+**Task**: 统一工作区会话导航与回复耗时
+**Branch**: `main`
+
+### Summary
+
+将侧边栏收敛为工作区/临时对话单一层级，按上下文创建并保留会话独立状态；为 Chat 与 Agent 回复增加可持久恢复的总耗时展示，补齐本地停止计时、DTO/Store 映射、i18n、测试和规范。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d571bfdf` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
