@@ -1356,3 +1356,36 @@ Removed whole-Agent wall-clock and absolute call/round cutoffs for effective Age
 ### Next Steps
 
 - None - task complete
+
+
+## Session 89: Rebuild and verify completion-driven Agent runtime
+
+**Date**: 2026-08-25
+**Task**: Rebuild and verify completion-driven Agent runtime
+**Branch**: `main`
+
+### Summary
+
+Built and pinned the completion-driven Backend image, preserved the previous image and live environment for rollback, recreated only Backend, and verified focused/full Go tests, Agent runtime gates, dependency readiness, unchanged related containers, healthy Agent Host, and clean startup logs.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `37341994` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
