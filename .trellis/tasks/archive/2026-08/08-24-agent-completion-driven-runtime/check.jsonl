@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/chat-tool-loop.md","reason":"Check Step/call semantics, no-progress thresholds, blocked metadata, and Tool failure propagation."}
+{"file":".trellis/spec/backend/agent-runtime.md","reason":"Check scoped timeouts, completion evidence, cancellation, and artifact publication."}
+{"file":".trellis/spec/backend/mcp-tools.md","reason":"Check MCP CallTimeout ownership, compatibility budget scope, and PostgreSQL drill coverage."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Check every deadline owner and decisive side effect beyond the legacy cutoff."}

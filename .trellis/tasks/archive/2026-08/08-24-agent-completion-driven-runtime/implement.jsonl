@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/chat-tool-loop.md","reason":"Completion-driven Tool-loop, no-progress, outcome, and evidence contracts."}
+{"file":".trellis/spec/backend/agent-runtime.md","reason":"Local call, background Job, cancellation, artifact, and runtime authority boundaries."}
+{"file":".trellis/spec/backend/mcp-tools.md","reason":"MCP per-call versus whole-Run timeout ownership and verification gates."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Deadline ownership and post-boundary finalization checklist."}
+{"file":".trellis/tasks/08-24-agent-completion-driven-runtime/research/pi-runtime-comparison.md","reason":"Accepted Pi semantic comparison and retained Neo Chat security boundaries."}
