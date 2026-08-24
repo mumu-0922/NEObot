@@ -788,6 +788,11 @@ assert services["backend"]["secrets"] == [
         "source": "mm_chat_mcp_marketplace_client_secret",
         "target": "mm_chat_mcp_marketplace_client_secret",
     },
+    {"source": "mm_chat_agent_host_token", "target": "mm_chat_agent_host_token"},
+    {
+        "source": "mm_chat_agent_host_runner_id",
+        "target": "mm_chat_agent_host_runner_id",
+    },
 ]
 
 runner = services["mcp-runner"]
