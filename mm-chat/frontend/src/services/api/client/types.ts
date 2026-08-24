@@ -133,6 +133,11 @@ export interface ConversationDTO {
   permissionMode: "read-only" | "workspace-write" | "danger-full-access";
   createdAt: string;
   updatedAt: string;
+  activeGeneration?: {
+    runId: string;
+    messageId?: string;
+    status: "pending" | "streaming";
+  };
 }
 
 export interface WorkspaceFileDTO {

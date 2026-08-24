@@ -169,6 +169,94 @@ const onSelectModel = (conversationId: string, model: string) =>
   preservation, invalid/out-of-panel cleanup, and the server-match request
   gate.
 
+## Scenario: Conversation-scoped concurrent Runs
+
+### 1. Scope / Trigger
+
+Apply when changing Server chat streaming, Conversation navigation, Stop/Delete,
+sidebar status, refresh recovery, or any `isGenerating`/Run request guard.
+
+### 2. Signatures
+
+```ts
+type ServerReadState = {
+  generations: Record<string, ServerGenerationState>;
+  unreadSessionIds: string[];
+};
+
+beginActiveGeneration(sessionId: string): ActiveGenerationRun;
+cancelServerGeneration(sessionId: string): Promise<boolean>;
+reconcileServerActiveGenerations(): Promise<boolean>;
+
+ConversationDTO.activeGeneration?: {
+  runId: string;
+  messageId?: string;
+  status: "pending" | "streaming";
+};
+```
+
+### 3. Contracts
+
+- Workspace is grouping/context only. Run ownership is the exact Conversation.
+- Admit at most one active Run for each Conversation, while different
+  Conversations may run concurrently even when they share a Workspace.
+- Selecting another Conversation never aborts accepted Server work. Stream
+  callbacks update the selected snapshot or that Conversation's memory cache.
+- `generations[conversationId]` and per-Conversation request IDs replace a
+  global `generation`/request token. Stop and Delete target only the requested
+  Conversation.
+- The sidebar shows a spinner for each active Conversation. A terminal result
+  completed outside the selected Conversation adds its ID to
+  `unreadSessionIds`; selecting it clears unread.
+- `GET /v1/chat/conversations` is the refresh/online/visibility reconciliation
+  authority. When a restored current Run disappears from the projection, reload
+  its messages; a background disappearance becomes unread until selection.
+- Browser persistence excludes `serverReadState`; PostgreSQL plus the active
+  Backend registry remain authoritative.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| same Conversation already pending/streaming | reject locally and Backend returns `409 CONVERSATION_RUN_ACTIVE` |
+| different Conversation has an active Run | admit and retain both Run entries |
+| navigation during a Run | keep the Run and its AbortController alive |
+| explicit Stop | abort/cancel only the selected Conversation Run |
+| background terminal result | remove only that generation and mark its Conversation unread |
+| restored current Run becomes terminal | remove projection and reload durable messages |
+| refresh/online/visibility while Runs exist | reconcile boundedly; visible-page polling only |
+
+### 5. Good / Base / Bad Cases
+
+- Good: A and B in one Workspace stream concurrently; A completes while B is
+  selected, receives an unread dot, and opens with its durable answer.
+- Base: one selected Conversation streams and renders exactly as before.
+- Bad: a global `isGenerating`, AbortController, or request ID cancels A when B
+  is selected or lets B's terminal callback overwrite A's active snapshot.
+
+### 6. Tests Required
+
+- Backend registry: same-Conversation rejection, cross-Conversation admission,
+  user scoping, pending/streaming projection, and exact release.
+- Frontend Store: two deferred streams, same-Conversation rejection, navigation
+  during streaming, background cache update, unread completion, current-run
+  refresh reconciliation, and exact cancellation.
+- DTO/UI: `activeGeneration` normalization, sidebar running/unread labels,
+  reduced-motion spinner, type-check, full Vitest, and production build.
+
+### 7. Wrong vs Correct
+
+```ts
+// Wrong: navigation invalidates every stream.
+let serverGenerationRequestId = 0;
+selectConversation(nextId);
+serverGenerationRequestId += 1;
+
+// Correct: Run identity is scoped to its owning Conversation.
+const requestIds = new Map<string, number>();
+const generations: Record<string, ServerGenerationState> = {};
+```
+
 ## Server State
 
 - There is no separate query-cache library. `createNeoChatApiClient()` selects
@@ -176,11 +264,12 @@ const onSelectModel = (conversationId: string, model: string) =>
 - Store async state includes loading/error/generation state where the UI needs
   it. Request IDs and serialized write queues in `chatStore.ts` prevent stale
   reads or writes from replacing newer snapshots.
-- Request identity gates presentation, not accepted Server work. Once
-  `appendUserMessage` succeeds, `sendServerMessageAndStream` must dispatch the
-  stream even if navigation has superseded the current read request. Its stale
-  deltas/terminal result may be ignored; PostgreSQL remains authoritative and
-  selecting/reloading that Conversation hydrates the completed assistant.
+- Request identity gates one Conversation's callbacks, not navigation or other
+  Conversations. Once `appendUserMessage` succeeds,
+  `sendServerMessageAndStream` must dispatch the stream even if another
+  Conversation becomes active. Deltas and terminal results update either the
+  selected tree or the owning Conversation cache; PostgreSQL remains the
+  durable authority and reconciliation repairs refresh/disconnect gaps.
 - Errors must reach a typed error or explicit error field; do not silently
   convert a failed server operation into successful local state.
 

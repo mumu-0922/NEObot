@@ -67,6 +67,11 @@ const conversationDto: ConversationDTO = {
   },
   createdAt: "2026-07-08T00:00:00Z",
   updatedAt: "2026-07-08T00:01:00Z",
+  activeGeneration: {
+    runId: "run-1",
+    messageId: "m2",
+    status: "streaming",
+  },
 };
 
 const userMessageDto: ChatMessageDTO = {
@@ -130,6 +135,11 @@ describe("chat CRUD DTO mappers", () => {
         useSearch: true,
         reasoningEffort: "high",
         selectedKnowledgeCollectionIds: ["kb-1"],
+      },
+      activeGeneration: {
+        runId: "run-1",
+        messageId: "m2",
+        status: "streaming",
       },
     });
     expect(session.config).not.toHaveProperty("activePlugins");

@@ -68,7 +68,6 @@ import {
 } from "@/lib/chat/messageProcessor";
 import {
   createSessionPostGenerationSnapshot,
-  shouldAbortActiveGenerationForSessionDelete,
   shouldApplyCompressionUpdate,
   shouldApplyGeneratedTitle,
   shouldApplyRequestedTitle,
@@ -78,6 +77,7 @@ import {
   useChatGenerationController,
   useChatShellState,
   useChatThemeEffects,
+  useServerGenerationReconciliation,
 } from "@/features/chat";
 import { resolveEffectiveChatContext } from "@/lib/chat/effectiveChatContext";
 import { buildDirectMemoryPromptContext } from "@/lib/memory/entities";
@@ -226,11 +226,13 @@ const ChatApp = () => {
       createSession,
       selectSession,
       refreshServerSessions,
+      reconcileServerActiveGenerations,
       refreshServerWorkspaces,
       selectServerSession,
       createServerSession,
       sendServerMessageAndStream,
       regenerateServerAssistantMessage,
+      cancelServerGeneration,
       switchServerMessageVersion,
       updateServerSessionTitle,
       updateServerSessionInstruction,
@@ -309,21 +311,24 @@ const ChatApp = () => {
   const [actionError, setActionError] = useState<string | null>(null);
   const [hostWorkspaceStatus, setHostWorkspaceStatus] =
     useState<HostWorkspaceStatusDTO | null>(null);
-  const [activeImageGeneration, setActiveImageGeneration] = useState<{
-    startedAt: number;
-  } | null>(null);
+  const [activeImageGenerations, setActiveImageGenerations] = useState<
+    Record<string, { startedAt: number }>
+  >({});
   const [composerClearance, setComposerClearance] = useState(() =>
     getChatComposerClearance(0),
   );
   const [composerAreaElement, setComposerAreaElement] =
     useState<HTMLDivElement | null>(null);
   const {
-    isGenerating,
+    activeSessionIds: clientActiveGenerationSessionIds,
+    unreadSessionIds: clientUnreadGenerationSessionIds,
+    isSessionGenerating,
     beginActiveGeneration,
     isGenerationRunActive,
     finishActiveGeneration,
     abortActiveGeneration,
     stopActiveGeneration,
+    clearGenerationUnread,
   } = useChatGenerationController();
 
   const queueMemoryExtraction = useCallback(
@@ -430,6 +435,47 @@ const ChatApp = () => {
   const visibleCurrentSessionId = serverModeEnabled
     ? serverReadState.currentSessionId
     : currentSessionId;
+  const currentServerGeneration = visibleCurrentSessionId
+    ? serverReadState.generations[visibleCurrentSessionId]
+    : undefined;
+  const isGenerating =
+    isSessionGenerating(visibleCurrentSessionId) ||
+    currentServerGeneration?.status === "pending" ||
+    currentServerGeneration?.status === "streaming";
+  const activeImageGeneration = visibleCurrentSessionId
+    ? activeImageGenerations[visibleCurrentSessionId]
+    : undefined;
+  const runningSessionIds = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...clientActiveGenerationSessionIds,
+          ...Object.entries(serverReadState.generations)
+            .filter(
+              ([, generation]) =>
+                generation.status === "pending" ||
+                generation.status === "streaming",
+            )
+            .map(([sessionId]) => sessionId),
+        ]),
+      ),
+    [clientActiveGenerationSessionIds, serverReadState.generations],
+  );
+  const unreadSessionIds = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...clientUnreadGenerationSessionIds,
+          ...serverReadState.unreadSessionIds,
+        ]),
+      ),
+    [clientUnreadGenerationSessionIds, serverReadState.unreadSessionIds],
+  );
+  useServerGenerationReconciliation({
+    enabled: serverModeEnabled,
+    activeGenerationCount: Object.keys(serverReadState.generations).length,
+    reconcile: reconcileServerActiveGenerations,
+  });
   const visibleActiveMessages = serverModeEnabled
     ? serverReadState.activeMessages
     : activeMessages;
@@ -541,7 +587,7 @@ const ChatApp = () => {
     activeImageGeneration &&
     lastVisibleMessage?.role === "model" &&
     isImageGenerationModel(lastVisibleMessage.model || "") &&
-    (serverReadState.generation.assistantMessageId === lastVisibleMessage.id ||
+    (currentServerGeneration?.assistantMessageId === lastVisibleMessage.id ||
       (!lastVisibleMessage.content && !lastVisibleMessage.attachments?.length)),
   );
   const currentSessionConfig = currentSession?.config;
@@ -553,8 +599,8 @@ const ChatApp = () => {
     serverModeEnabled &&
     isGenerating &&
     !activeImageGeneration &&
-    serverReadState.generation.status === "pending" &&
-    serverReadState.generation.userMessageId === lastVisibleMessage?.id &&
+    currentServerGeneration?.status === "pending" &&
+    currentServerGeneration.userMessageId === lastVisibleMessage?.id &&
     lastVisibleMessage?.role === "user"
       ? inferPendingChatProgressStage({
           question: lastVisibleMessage.content,
@@ -1453,7 +1499,7 @@ const ChatApp = () => {
     }
   };
 
-  const stopActiveGenerationWithFeedback = async () => {
+  const stopActiveGenerationWithFeedback = async (sessionId: string) => {
     try {
       if (!serverModeEnabled) {
         const activeTiming = activeLocalTimingRef.current;
@@ -1469,7 +1515,7 @@ const ChatApp = () => {
           activeLocalTimingRef.current = null;
         }
       }
-      await stopActiveGeneration();
+      await stopActiveGeneration(sessionId);
     } catch (error) {
       logChatAppError("Failed to persist stopped generation", error);
       showActionError(t("errSaveStopped"));
@@ -1477,11 +1523,18 @@ const ChatApp = () => {
   };
 
   const handleStopGeneration = () => {
+    const sessionId = visibleCurrentSessionId;
+    if (!sessionId) return;
     if (serverModeEnabled) {
-      abortActiveGeneration();
+      const cancellation = cancelServerGeneration(sessionId);
+      abortActiveGeneration(sessionId);
+      void cancellation.catch((error) => {
+        logChatAppError("Failed to cancel server generation", error);
+        showActionError(t("errSaveStopped"));
+      });
       return;
     }
-    void stopActiveGenerationWithFeedback();
+    void stopActiveGenerationWithFeedback(sessionId);
   };
 
   const getEffectiveContextForSession = (
@@ -1599,10 +1652,20 @@ const ChatApp = () => {
       return false;
     }
 
-    const generation = beginActiveGeneration();
+    let generation: ReturnType<typeof beginActiveGeneration> | null = null;
+    let targetSessionId = serverReadState.currentSessionId;
     let messageAccepted = false;
 
     try {
+      if (!targetSessionId) {
+        targetSessionId = await createServerSession();
+      }
+      if (!targetSessionId) {
+        throw new Error("Server conversation could not be created.");
+      }
+      if (isSessionGenerating(targetSessionId)) return false;
+      generation = beginActiveGeneration(targetSessionId);
+
       const routedModel = resolveImageGenerationRoute({
         selectedModel,
         availableModels,
@@ -1613,15 +1676,11 @@ const ChatApp = () => {
         ),
       });
       const routesToImageGeneration = isImageGenerationModel(routedModel);
-      setActiveImageGeneration(
-        routesToImageGeneration ? { startedAt: Date.now() } : null,
-      );
-      let targetSessionId = serverReadState.currentSessionId;
-      if (!targetSessionId) {
-        targetSessionId = await createServerSession();
-      }
-      if (!targetSessionId) {
-        throw new Error("Server conversation could not be created.");
+      if (routesToImageGeneration) {
+        setActiveImageGenerations((current) => ({
+          ...current,
+          [targetSessionId!]: { startedAt: Date.now() },
+        }));
       }
 
       const serverSessionForTitle =
@@ -1734,7 +1793,10 @@ const ChatApp = () => {
       }
       return messageAccepted;
     } catch (error: any) {
-      if (error.name === "AbortError" || generation.controller.signal.aborted) {
+      if (
+        error.name === "AbortError" ||
+        generation?.controller.signal.aborted
+      ) {
         return messageAccepted;
       }
       logChatAppError("Server message generation failed:", error);
@@ -1743,8 +1805,20 @@ const ChatApp = () => {
       );
       return messageAccepted;
     } finally {
-      setActiveImageGeneration(null);
-      finishActiveGeneration(generation);
+      if (targetSessionId) {
+        setActiveImageGenerations((current) => {
+          if (!(targetSessionId! in current)) return current;
+          const next = { ...current };
+          delete next[targetSessionId!];
+          return next;
+        });
+      }
+      if (generation) {
+        finishActiveGeneration(
+          generation,
+          useChatStore.getState().serverReadState.currentSessionId,
+        );
+      }
     }
   };
 
@@ -1785,7 +1859,7 @@ const ChatApp = () => {
       shouldAutoRename = true;
     }
 
-    const generation = beginActiveGeneration();
+    const generation = beginActiveGeneration(targetSessionId);
 
     const modelDisplayName = getModelDisplayName(
       selectedModel,
@@ -2136,7 +2210,10 @@ const ChatApp = () => {
       if (activeLocalTimingRef.current?.runId === generation.runId) {
         activeLocalTimingRef.current = null;
       }
-      finishActiveGeneration(generation);
+      finishActiveGeneration(
+        generation,
+        useChatStore.getState().currentSessionId,
+      );
     }
   };
 
@@ -2184,7 +2261,7 @@ const ChatApp = () => {
       showActionError(errorMessage);
       return;
     }
-    const generation = beginActiveGeneration();
+    const generation = beginActiveGeneration(currentSessionId);
     const startTime = Date.now();
     activeLocalTimingRef.current = {
       runId: generation.runId,
@@ -2350,7 +2427,10 @@ const ChatApp = () => {
       if (activeLocalTimingRef.current?.runId === generation.runId) {
         activeLocalTimingRef.current = null;
       }
-      finishActiveGeneration(generation);
+      finishActiveGeneration(
+        generation,
+        useChatStore.getState().currentSessionId,
+      );
     }
   };
 
@@ -2372,7 +2452,7 @@ const ChatApp = () => {
       return;
     }
 
-    const generation = beginActiveGeneration();
+    const generation = beginActiveGeneration(sessionId);
     try {
       const sessionForProcessing =
         useChatStore
@@ -2403,7 +2483,10 @@ const ChatApp = () => {
       logChatAppError(`Server ${mode} failed:`, error);
       showActionError(error instanceof Error ? error.message : fallbackError);
     } finally {
-      finishActiveGeneration(generation);
+      finishActiveGeneration(
+        generation,
+        useChatStore.getState().serverReadState.currentSessionId,
+      );
     }
   };
 
@@ -2439,8 +2522,8 @@ const ChatApp = () => {
     const requestId = assistantSelectRequestRef.current + 1;
     assistantSelectRequestRef.current = requestId;
 
-    if (isGenerating && !serverModeEnabled) {
-      void stopActiveGenerationWithFeedback();
+    if (isGenerating && !serverModeEnabled && currentSessionId) {
+      void stopActiveGenerationWithFeedback(currentSessionId);
     }
 
     if (viewMode === "assistants") {
@@ -2550,7 +2633,7 @@ const ChatApp = () => {
         return;
       }
 
-      const generation = beginActiveGeneration();
+      const generation = beginActiveGeneration(sessionId);
       try {
         const sessionForProcessing =
           useChatStore
@@ -2623,7 +2706,10 @@ const ChatApp = () => {
           error instanceof Error ? error.message : t("errEditUserMessage"),
         );
       } finally {
-        finishActiveGeneration(generation);
+        finishActiveGeneration(
+          generation,
+          useChatStore.getState().serverReadState.currentSessionId,
+        );
       }
       return;
     }
@@ -2642,7 +2728,7 @@ const ChatApp = () => {
     }
     if (newContent === sourceMessage.content) return;
 
-    const generation = beginActiveGeneration();
+    const generation = beginActiveGeneration(sessionId);
     let modelMessageId: string | null = null;
     let editedUserMessageId: string | null = null;
     const startTime = Date.now();
@@ -2845,7 +2931,10 @@ const ChatApp = () => {
       if (activeLocalTimingRef.current?.runId === generation.runId) {
         activeLocalTimingRef.current = null;
       }
-      finishActiveGeneration(generation);
+      finishActiveGeneration(
+        generation,
+        useChatStore.getState().currentSessionId,
+      );
     }
   };
 
@@ -2876,14 +2965,11 @@ const ChatApp = () => {
   const handleDeleteSession = async (sessionId: string) => {
     if (serverModeEnabled) {
       try {
-        if (
-          shouldAbortActiveGenerationForSessionDelete({
-            currentSessionId: visibleCurrentSessionId,
-            deletingSessionId: sessionId,
-            isGenerating,
-          })
-        ) {
-          abortActiveGeneration();
+        const serverGeneration =
+          useChatStore.getState().serverReadState.generations[sessionId];
+        abortActiveGeneration(sessionId);
+        if (serverGeneration?.activeServerRunId) {
+          await cancelServerGeneration(sessionId);
         }
         await deleteServerSession(sessionId);
       } catch (error) {
@@ -2894,14 +2980,8 @@ const ChatApp = () => {
     }
 
     try {
-      if (
-        shouldAbortActiveGenerationForSessionDelete({
-          currentSessionId,
-          deletingSessionId: sessionId,
-          isGenerating,
-        })
-      ) {
-        await stopActiveGeneration();
+      if (isSessionGenerating(sessionId)) {
+        await stopActiveGeneration(sessionId);
       }
 
       await deleteSession(sessionId);
@@ -3075,8 +3155,8 @@ const ChatApp = () => {
         return;
       }
 
-      if (isGenerating) {
-        await stopActiveGenerationWithFeedback();
+      if (isGenerating && currentSessionId) {
+        await stopActiveGenerationWithFeedback(currentSessionId);
       }
 
       createSession(
@@ -3127,12 +3207,19 @@ const ChatApp = () => {
       <Sidebar
         sessions={visibleSessions}
         currentSessionId={visibleCurrentSessionId}
+        runningSessionIds={runningSessionIds}
+        unreadSessionIds={unreadSessionIds}
         onSelectSession={(id) => {
+          clearGenerationUnread(id);
           if (serverModeEnabled) {
             void selectServerSession(id);
           } else {
-            if (isGenerating) {
-              void stopActiveGenerationWithFeedback();
+            if (
+              currentSessionId &&
+              currentSessionId !== id &&
+              isSessionGenerating(currentSessionId)
+            ) {
+              void stopActiveGenerationWithFeedback(currentSessionId);
             }
             selectSession(id);
           }

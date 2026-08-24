@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => {
   const streamService = {
     streamEnabled: true,
     streamAssistantMessage: vi.fn(),
+    cancelRun: vi.fn(),
   };
 
   return {
@@ -184,14 +185,8 @@ const makeEmptyServerReadState = () => ({
   currentSessionId: null,
   activeMessages: [],
   activeMessageTree: normalizeSessionMessageTree([]),
-  generation: {
-    status: "idle" as const,
-    sessionId: null,
-    userMessageId: null,
-    assistantMessageId: null,
-    activeServerRunId: null,
-    error: null,
-  },
+  generations: {},
+  unreadSessionIds: [],
   isLoading: false,
   error: null,
 });
@@ -257,6 +252,7 @@ describe("chat store server read path", () => {
       status: "completed",
       message: makeMessage("m4", "model"),
     });
+    mocks.streamService.cancelRun.mockResolvedValue({ status: "cancelled" });
     mocks.serverService.listMessages.mockResolvedValue([
       makeMessage("m1", "user"),
       makeMessage("m2", "model"),
@@ -594,17 +590,19 @@ describe("chat store server read path", () => {
         sessions: [makeServerSession("c1")],
         currentSessionId: "c1",
         activeMessages: [makeMessage("m1", "user")],
-        generation: {
-          status: "streaming",
-          sessionId: "c1",
-          userMessageId: "m1",
-          assistantMessageId: "m2",
-          activeServerRunId: "run-persist-guard",
-          error: {
-            code: "PROVIDER_ERROR",
-            message: "provider failed",
-            recoverable: true,
-            requestId: "req-persist-guard",
+        generations: {
+          c1: {
+            status: "streaming",
+            sessionId: "c1",
+            userMessageId: "m1",
+            assistantMessageId: "m2",
+            activeServerRunId: "run-persist-guard",
+            error: {
+              code: "PROVIDER_ERROR",
+              message: "provider failed",
+              recoverable: true,
+              requestId: "req-persist-guard",
+            },
           },
         },
       },
@@ -1238,7 +1236,7 @@ describe("chat store server read path", () => {
       state.serverReadState.activeMessageTree.nodesById.m4.parentMessageId,
     ).toBe("m3");
     expect(state.serverReadState.sessions[0]?.messageCount).toBe(5);
-    expect(state.serverReadState.generation.status).toBe("completed");
+    expect(state.serverReadState.generations.c1).toBeUndefined();
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
   });
 
@@ -1529,7 +1527,7 @@ describe("chat store server read path", () => {
           createdAt: "2026-07-08T00:00:02Z",
         });
         generationSnapshots.push(
-          useChatStore.getState().serverReadState.generation,
+          useChatStore.getState().serverReadState.generations.c1,
         );
         draftSnapshots.push(
           useChatStore
@@ -1744,14 +1742,7 @@ describe("chat store server read path", () => {
     expect(
       getMessageOutputBlocks(state.serverReadState.activeMessages[1]),
     ).toMatchObject([{ type: "search" }, { type: "text", content: "hello" }]);
-    expect(state.serverReadState.generation).toEqual({
-      status: "completed",
-      sessionId: "c1",
-      userMessageId: "m3",
-      assistantMessageId: "m4",
-      activeServerRunId: null,
-      error: null,
-    });
+    expect(state.serverReadState.generations.c1).toBeUndefined();
     expect(state.serverReadState.activeMessages[1]).toMatchObject({
       reasoning: "checked",
       agentEvents: makeTranscriptEvents("m4"),
@@ -1883,18 +1874,7 @@ describe("chat store server read path", () => {
         recoverable: true,
       },
     });
-    expect(state.generation).toEqual({
-      status: "failed",
-      sessionId: "c1",
-      userMessageId: "m3",
-      assistantMessageId: "m4",
-      activeServerRunId: null,
-      error: {
-        code: "PROVIDER_ERROR",
-        message: "provider failed",
-        recoverable: true,
-      },
-    });
+    expect(state.generations.c1).toBeUndefined();
     expect(state.error).toBe("provider failed");
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
   });
@@ -1933,14 +1913,7 @@ describe("chat store server read path", () => {
       "m3",
       "m4",
     ]);
-    expect(state.generation).toEqual({
-      status: "failed",
-      sessionId: "c1",
-      userMessageId: "m3",
-      assistantMessageId: "m4",
-      activeServerRunId: null,
-      error: { message: "Server stream failed." },
-    });
+    expect(state.generations.c1).toBeUndefined();
     expect(state.activeMessages[1]?.generationError).toEqual({
       message: "Server stream failed.",
     });
@@ -1982,14 +1955,7 @@ describe("chat store server read path", () => {
       "m3",
       "m4",
     ]);
-    expect(state.generation).toEqual({
-      status: "cancelled",
-      sessionId: "c1",
-      userMessageId: "m3",
-      assistantMessageId: "m4",
-      activeServerRunId: null,
-      error: null,
-    });
+    expect(state.generations.c1).toBeUndefined();
     expect(state.isLoading).toBe(false);
     expect(state.error).toBeNull();
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
@@ -2043,10 +2009,10 @@ describe("chat store server read path", () => {
       "m1",
       "m2",
     ]);
-    expect(state.generation).toEqual(makeEmptyServerReadState().generation);
+    expect(state.generations).toEqual({});
   });
 
-  it("does not let stale server stream terminal results overwrite the latest snapshot", async () => {
+  it("keeps an active server stream authoritative across a read refresh", async () => {
     let resolveStream!: (result: {
       status: string;
       message?: Message;
@@ -2085,32 +2051,35 @@ describe("chat store server read path", () => {
       content: "hello user",
     });
     await vi.waitFor(() => {
-      expect(useChatStore.getState().serverReadState.generation).toMatchObject({
-        status: "streaming",
-        activeServerRunId: "run-stale",
-      });
+      expect(
+        useChatStore.getState().serverReadState.generations.c1,
+      ).toMatchObject({ status: "streaming", activeServerRunId: "run-stale" });
     });
 
     await expect(
       useChatStore.getState().selectServerSession("c1"),
     ).resolves.toBe(true);
-    expect(useChatStore.getState().serverReadState.generation).toEqual(
-      makeEmptyServerReadState().generation,
-    );
+    expect(
+      useChatStore.getState().serverReadState.generations.c1,
+    ).toMatchObject({ status: "streaming", activeServerRunId: "run-stale" });
 
     resolveStream({
       status: "completed",
-      message: { ...makeMessage("m-stale", "model"), content: "stale" },
+      message: {
+        ...makeMessage("m4", "model"),
+        content: "completed in background",
+        parentMessageId: "m3",
+      },
     });
     await expect(stream).resolves.toMatchObject({ status: "completed" });
 
     const state = useChatStore.getState().serverReadState;
     expect(state.activeMessages.map((message) => message.id)).toEqual([
-      "m1",
-      "m2",
+      "m3",
+      "m4",
     ]);
-    expect(state.generation).toEqual(makeEmptyServerReadState().generation);
-    expect(state.activeMessageTree.nodesById["m-stale"]).toBeUndefined();
+    expect(state.activeMessages[1]?.content).toBe("completed in background");
+    expect(state.generations.c1).toBeUndefined();
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
   });
 
@@ -2171,6 +2140,214 @@ describe("chat store server read path", () => {
     expect(state.activeMessageTree.nodesById.m4).toBeUndefined();
     expect(mocks.appDbMock.getItem).not.toHaveBeenCalled();
     expect(mocks.appDbMock.setItem).not.toHaveBeenCalled();
+  });
+
+  it("runs different conversations concurrently and marks only background completion unread", async () => {
+    const streamResolvers = new Map<
+      string,
+      (result: { status: "completed"; message: Message }) => void
+    >();
+    mocks.serverService.appendUserMessage.mockImplementation(
+      async (input: { conversationId: string }) => ({
+        ...makeMessage(`${input.conversationId}-user`, "user"),
+        content: `question for ${input.conversationId}`,
+      }),
+    );
+    mocks.streamService.streamAssistantMessage.mockImplementation(
+      async (input: { conversationId: string }, handlers?: any) => {
+        handlers?.onStarted?.({
+          type: "message.started",
+          runId: `run-${input.conversationId}`,
+          conversationId: input.conversationId,
+          messageId: `${input.conversationId}-assistant`,
+        });
+        return new Promise((resolve) => {
+          streamResolvers.set(input.conversationId, resolve);
+        });
+      },
+    );
+
+    useChatStore.setState({
+      selectedModel: "openai:gpt-5.5",
+      serverReadState: {
+        ...makeEmptyServerReadState(),
+        sessions: [
+          { ...makeServerSession("c1"), messageCount: 0 },
+          { ...makeServerSession("c2"), messageCount: 0 },
+        ],
+        currentSessionId: "c1",
+      },
+    });
+
+    const firstRun = useChatStore.getState().sendServerMessageAndStream({
+      sessionId: "c1",
+      content: "first",
+    });
+    await vi.waitFor(() => {
+      expect(
+        useChatStore.getState().serverReadState.generations.c1,
+      ).toMatchObject({
+        status: "streaming",
+        activeServerRunId: "run-c1",
+      });
+    });
+    await expect(
+      useChatStore.getState().sendServerMessageAndStream({
+        sessionId: "c1",
+        content: "duplicate",
+      }),
+    ).rejects.toThrow("Conversation already has an active Run.");
+
+    mocks.serverService.listMessages.mockResolvedValueOnce([]);
+    await expect(
+      useChatStore.getState().selectServerSession("c2"),
+    ).resolves.toBe(true);
+    const secondRun = useChatStore.getState().sendServerMessageAndStream({
+      sessionId: "c2",
+      content: "second",
+    });
+    await vi.waitFor(() => {
+      expect(
+        Object.keys(useChatStore.getState().serverReadState.generations).sort(),
+      ).toEqual(["c1", "c2"]);
+    });
+
+    streamResolvers.get("c1")?.({
+      status: "completed",
+      message: {
+        ...makeMessage("c1-assistant", "model"),
+        content: "first complete",
+        parentMessageId: "c1-user",
+      },
+    });
+    await expect(firstRun).resolves.toMatchObject({ status: "completed" });
+    expect(
+      useChatStore.getState().serverReadState.generations.c1,
+    ).toBeUndefined();
+    expect(
+      useChatStore.getState().serverReadState.generations.c2,
+    ).toMatchObject({ status: "streaming" });
+    expect(useChatStore.getState().serverReadState.unreadSessionIds).toEqual([
+      "c1",
+    ]);
+
+    streamResolvers.get("c2")?.({
+      status: "completed",
+      message: {
+        ...makeMessage("c2-assistant", "model"),
+        content: "second complete",
+        parentMessageId: "c2-user",
+      },
+    });
+    await expect(secondRun).resolves.toMatchObject({ status: "completed" });
+    expect(useChatStore.getState().serverReadState.generations).toEqual({});
+    expect(useChatStore.getState().serverReadState.unreadSessionIds).toEqual([
+      "c1",
+    ]);
+    expect(mocks.serverService.appendUserMessage).toHaveBeenCalledTimes(2);
+
+    mocks.serverService.listMessages.mockResolvedValueOnce([
+      makeMessage("c1-user", "user"),
+      {
+        ...makeMessage("c1-assistant", "model"),
+        content: "first complete",
+        parentMessageId: "c1-user",
+      },
+    ]);
+    await expect(
+      useChatStore.getState().selectServerSession("c1"),
+    ).resolves.toBe(true);
+    expect(useChatStore.getState().serverReadState.unreadSessionIds).toEqual(
+      [],
+    );
+    expect(
+      useChatStore.getState().serverReadState.activeMessages[1]?.content,
+    ).toBe("first complete");
+  });
+
+  it("reconciles a restored current run by reloading its terminal messages", async () => {
+    const pendingUser = makeMessage("c1-user", "user");
+    mocks.serverService.listConversations.mockResolvedValue([
+      { ...makeServerSession("c1"), messageCount: 2 },
+    ]);
+    mocks.serverService.listMessages.mockResolvedValue([
+      pendingUser,
+      {
+        ...makeMessage("c1-assistant", "model"),
+        content: "restored completion",
+        parentMessageId: pendingUser.id,
+      },
+    ]);
+    useChatStore.setState({
+      serverReadState: {
+        ...makeEmptyServerReadState(),
+        sessions: [{ ...makeServerSession("c1"), messageCount: 1 }],
+        currentSessionId: "c1",
+        activeMessages: [pendingUser],
+        activeMessageTree: normalizeSessionMessageTree([pendingUser]),
+        generations: {
+          c1: {
+            status: "streaming",
+            sessionId: "c1",
+            userMessageId: pendingUser.id,
+            assistantMessageId: "c1-assistant",
+            activeServerRunId: "run-restored",
+            error: null,
+          },
+        },
+      },
+    });
+
+    await expect(
+      useChatStore.getState().reconcileServerActiveGenerations(),
+    ).resolves.toBe(true);
+
+    const state = useChatStore.getState().serverReadState;
+    expect(state.generations).toEqual({});
+    expect(state.unreadSessionIds).toEqual([]);
+    expect(state.activeMessages[1]?.content).toBe("restored completion");
+    expect(mocks.serverService.listMessages).toHaveBeenCalledWith("c1");
+  });
+
+  it("cancels only the requested Conversation Run", async () => {
+    mocks.streamService.cancelRun.mockResolvedValue({ status: "cancelled" });
+    useChatStore.setState({
+      serverReadState: {
+        ...makeEmptyServerReadState(),
+        sessions: [makeServerSession("c1"), makeServerSession("c2")],
+        currentSessionId: "c2",
+        generations: {
+          c1: {
+            status: "streaming",
+            sessionId: "c1",
+            userMessageId: "c1-user",
+            assistantMessageId: "c1-assistant",
+            activeServerRunId: "run-c1",
+            error: null,
+          },
+          c2: {
+            status: "streaming",
+            sessionId: "c2",
+            userMessageId: "c2-user",
+            assistantMessageId: "c2-assistant",
+            activeServerRunId: "run-c2",
+            error: null,
+          },
+        },
+      },
+    });
+
+    await expect(
+      useChatStore.getState().cancelServerGeneration("c1"),
+    ).resolves.toBe(true);
+
+    expect(mocks.streamService.cancelRun).toHaveBeenCalledWith("run-c1");
+    expect(
+      useChatStore.getState().serverReadState.generations.c1,
+    ).toBeUndefined();
+    expect(
+      useChatStore.getState().serverReadState.generations.c2,
+    ).toMatchObject({ activeServerRunId: "run-c2" });
   });
 
   it("returns null without local writes when server stream is disabled", async () => {

@@ -59,6 +59,107 @@ func TestActiveRunStreamSubscriberReceivesFutureFrameAndCloses(t *testing.T) {
 	}
 }
 
+func TestActiveRunRegistryScopesOneRunPerConversation(t *testing.T) {
+	registry := newActiveRunRegistry()
+	releaseA, reserved := registry.reserve(
+		testRunID, DevUserID, testConversationID, testMessageID,
+	)
+	if !reserved {
+		t.Fatal("first Conversation Run was not reserved")
+	}
+	defer releaseA()
+
+	if _, duplicate := registry.reserve(
+		"22222222-2222-4222-8222-222222222222",
+		DevUserID,
+		testConversationID,
+		"33333333-3333-4333-8333-333333333333",
+	); duplicate {
+		t.Fatal("same-user same-Conversation Run was reserved twice")
+	}
+
+	otherConversationID := "44444444-4444-4444-8444-444444444444"
+	releaseB, siblingReserved := registry.reserve(
+		"55555555-5555-4555-8555-555555555555",
+		DevUserID,
+		otherConversationID,
+		"66666666-6666-4666-8666-666666666666",
+	)
+	if !siblingReserved {
+		t.Fatal("different Conversation Run was not admitted")
+	}
+	defer releaseB()
+	otherUserID := "77777777-7777-4777-8777-777777777777"
+	releaseOtherUser, otherUserReserved := registry.reserve(
+		"88888888-8888-4888-8888-888888888888",
+		otherUserID,
+		testConversationID,
+		"99999999-9999-4999-8999-999999999999",
+	)
+	if !otherUserReserved {
+		t.Fatal("different user's Conversation Run was not admitted")
+	}
+	defer releaseOtherUser()
+
+	runs := registry.activeForUser(DevUserID)
+	if len(runs) != 2 || runs[0].Status != "pending" || runs[1].Status != "pending" {
+		t.Fatalf("active Runs=%#v", runs)
+	}
+	stream := newActiveRunStream(testRunID, testConversationID, testMessageID)
+	if !registry.attach(testRunID, func() {}, stream) {
+		t.Fatal("reserved Run did not accept its stream")
+	}
+	runs = registry.activeForUser(DevUserID)
+	attachedStatus := ""
+	for _, run := range runs {
+		if run.ConversationID == testConversationID {
+			attachedStatus = run.Status
+		}
+	}
+	if len(runs) != 2 || attachedStatus != "streaming" {
+		t.Fatalf("attached active Runs=%#v", runs)
+	}
+	otherUserRuns := registry.activeForUser(otherUserID)
+	if len(otherUserRuns) != 1 || otherUserRuns[0].ConversationID != testConversationID {
+		t.Fatalf("other user's active Runs=%#v", otherUserRuns)
+	}
+
+	releaseA()
+	runs = registry.activeForUser(DevUserID)
+	if len(runs) != 1 || runs[0].ConversationID != otherConversationID {
+		t.Fatalf("finished Run remained active: %#v", runs)
+	}
+}
+
+func TestConversationListIncludesOnlyCurrentUsersActiveRuns(t *testing.T) {
+	repository := newFakeRepository()
+	handler := NewHandler(NewService(repository))
+	created := performRequest(handler, http.MethodPost, conversationsPath, `{"title":"Running"}`)
+	assertStatus(t, created, http.StatusCreated)
+
+	stream := newActiveRunStream(testRunID, testConversationID, testMessageID)
+	unregister := handler.activeRuns.registerStream(
+		testRunID, func() {}, DevUserID, testConversationID, stream,
+	)
+	defer unregister()
+
+	response := performRequest(handler, http.MethodGet, conversationsPath, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, required := range []string{
+		`"activeGeneration"`,
+		`"runId":"` + testRunID + `"`,
+		`"messageId":"` + testMessageID + `"`,
+		`"status":"streaming"`,
+	} {
+		if !strings.Contains(body, required) {
+			t.Fatalf("conversation list missing %s: %s", required, body)
+		}
+	}
+}
+
 func TestRunEventsEndpointReplaysAuthorizedRetainedFrames(t *testing.T) {
 	repository := newFakeRepository()
 	handler := NewHandler(NewService(repository))

@@ -161,18 +161,25 @@ type Page[T any] struct {
 }
 
 type ConversationDTO struct {
-	ID                string         `json:"id"`
-	Title             string         `json:"title"`
-	Status            string         `json:"status"`
-	ModelRef          *ModelRef      `json:"modelRef,omitempty"`
-	MessageCount      int            `json:"messageCount"`
-	SystemInstruction string         `json:"systemInstruction,omitempty"`
-	Pinned            bool           `json:"pinned"`
-	Config            map[string]any `json:"config"`
-	WorkspaceID       string         `json:"workspaceId,omitempty"`
-	PermissionMode    string         `json:"permissionMode"`
-	CreatedAt         string         `json:"createdAt"`
-	UpdatedAt         string         `json:"updatedAt"`
+	ID                string               `json:"id"`
+	Title             string               `json:"title"`
+	Status            string               `json:"status"`
+	ModelRef          *ModelRef            `json:"modelRef,omitempty"`
+	MessageCount      int                  `json:"messageCount"`
+	SystemInstruction string               `json:"systemInstruction,omitempty"`
+	Pinned            bool                 `json:"pinned"`
+	Config            map[string]any       `json:"config"`
+	WorkspaceID       string               `json:"workspaceId,omitempty"`
+	PermissionMode    string               `json:"permissionMode"`
+	CreatedAt         string               `json:"createdAt"`
+	UpdatedAt         string               `json:"updatedAt"`
+	ActiveGeneration  *ActiveGenerationDTO `json:"activeGeneration,omitempty"`
+}
+
+type ActiveGenerationDTO struct {
+	RunID     string `json:"runId"`
+	MessageID string `json:"messageId,omitempty"`
+	Status    string `json:"status"`
 }
 
 type ChatMessageDTO struct {
@@ -1481,9 +1488,19 @@ func (h *Handler) listConversations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	activeByConversation := make(map[string]activeConversationRun)
+	for _, run := range h.activeRuns.activeForUser(auth.UserOrDevelopment(r.Context()).ID) {
+		activeByConversation[run.ConversationID] = run
+	}
 	items := make([]ConversationDTO, 0, len(conversations))
 	for _, conversation := range conversations {
-		items = append(items, newConversationDTO(conversation))
+		dto := newConversationDTO(conversation)
+		if run, ok := activeByConversation[conversation.ID]; ok {
+			dto.ActiveGeneration = &ActiveGenerationDTO{
+				RunID: run.RunID, MessageID: run.MessageID, Status: run.Status,
+			}
+		}
+		items = append(items, dto)
 	}
 
 	writeJSON(w, http.StatusOK, Page[ConversationDTO]{Items: items})
@@ -1785,6 +1802,14 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	}
 	var preparedMCPRun mcpclient.PreparedRun
 	actor := auth.UserOrDevelopment(r.Context())
+	releaseRun, reserved := h.activeRuns.reserve(
+		runID, actor.ID, conversationID, assistantMessageID,
+	)
+	if !reserved {
+		writeError(w, http.StatusConflict, "CONVERSATION_RUN_ACTIVE", "Conversation already has an active Run")
+		return
+	}
+	defer releaseRun()
 	agentTimelineEnabled := h.agentTimelineEnabledFor(actor.ID)
 	if agentMode && h.mcpService != nil && h.mcpService.Config().Enabled {
 		preparedMCPRun, err = h.mcpService.PrepareRun(
@@ -2262,11 +2287,12 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	}
 	runStream := newActiveRunStream(runID, conversationID, assistantMessage.ID)
 	delivery.attachStream(runStream)
-	unregisterRun := h.activeRuns.registerStream(
-		runID, streamCancel, actor.ID, conversationID, runStream,
-	)
+	if !h.activeRuns.attach(runID, streamCancel, runStream) {
+		streamCancel()
+		writeError(w, http.StatusConflict, "CONVERSATION_RUN_UNAVAILABLE", "Conversation Run is unavailable")
+		return
+	}
 	stopCancellationWatch := watchRunCancellation(streamCtx, h.cancellationRuns, runID, streamCancel)
-	defer unregisterRun()
 	defer h.clearRunCancelled(context.Background(), runID)
 	defer stopCancellationWatch()
 	defer streamCancel()
@@ -3509,6 +3535,15 @@ func (h *Handler) streamImageGeneration(
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 		return
 	}
+	actor := auth.UserOrDevelopment(r.Context())
+	releaseRun, reserved := h.activeRuns.reserve(
+		runID, actor.ID, conversationID, assistantMessageID,
+	)
+	if !reserved {
+		writeError(w, http.StatusConflict, "CONVERSATION_RUN_ACTIVE", "Conversation already has an active Run")
+		return
+	}
+	defer releaseRun()
 	assistantMessage, err := h.service.CreateAssistantMessage(
 		r.Context(),
 		conversationID,
@@ -3528,6 +3563,22 @@ func (h *Handler) streamImageGeneration(
 		writeServiceError(w, err)
 		return
 	}
+	streamCtx, streamCancel := context.WithCancel(r.Context())
+	if !h.activeRuns.attach(runID, streamCancel, nil) {
+		streamCancel()
+		_, _ = h.finalizeAssistantMessage(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
+			Status: "cancelled",
+			Metadata: map[string]any{
+				"runId": runID, "kind": "image_generation", "errorCode": "RUN_UNAVAILABLE",
+			},
+		})
+		writeError(w, http.StatusConflict, "CONVERSATION_RUN_UNAVAILABLE", "Conversation Run is unavailable")
+		return
+	}
+	stopCancellationWatch := watchRunCancellation(streamCtx, h.cancellationRuns, runID, streamCancel)
+	defer h.clearRunCancelled(context.Background(), runID)
+	defer stopCancellationWatch()
+	defer streamCancel()
 
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-transform")
@@ -3556,14 +3607,6 @@ func (h *Handler) streamImageGeneration(
 		h.failImageGenerationStream(w, flusher, conversationID, assistantMessage, runID, sequence, "IMAGE_JOBS_UNAVAILABLE")
 		return
 	}
-
-	streamCtx, streamCancel := context.WithCancel(r.Context())
-	unregisterRun := h.activeRuns.register(runID, streamCancel)
-	stopCancellationWatch := watchRunCancellation(streamCtx, h.cancellationRuns, runID, streamCancel)
-	defer unregisterRun()
-	defer h.clearRunCancelled(context.Background(), runID)
-	defer stopCancellationWatch()
-	defer streamCancel()
 
 	result, err := h.imageGenerator.GenerateImage(streamCtx, ImageGenerationRequest{
 		ModelRef: modelRef,

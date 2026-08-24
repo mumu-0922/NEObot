@@ -3,5 +3,6 @@ export {
   useChatShellState,
   useChatThemeEffects,
   useMessageComposer,
+  useServerGenerationReconciliation,
   useSidebarSessions,
 } from "./hooks";

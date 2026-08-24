@@ -30,6 +30,89 @@ live report completed only `12/300` routes, classified the `288` failures into
 `31` context deadlines, `83` invalid Tool Calls, and `174` unclassified router
 failures, and kept Validation/Promotion blocked.
 
+## Scenario: Conversation-scoped Run admission and projection
+
+### 1. Scope / Trigger
+
+Apply when changing chat/image streaming, active Run cancellation/retention,
+Conversation list DTOs, detached execution, or multi-Conversation scheduling.
+
+### 2. Signatures
+
+```go
+reserve(runID, userID, conversationID, messageID string) (release func(), ok bool)
+attach(runID string, cancel context.CancelFunc, stream *activeRunStream) bool
+activeForUser(userID string) []activeConversationRun
+```
+
+```json
+{
+  "activeGeneration": {
+    "runId": "uuid",
+    "messageId": "uuid",
+    "status": "pending|streaming"
+  }
+}
+```
+
+### 3. Contracts
+
+- Run ownership key is `(userId, conversationId)`, not Workspace and not one
+  process-global UI flag. One Conversation admits one active Run; separate
+  Conversations may execute concurrently.
+- Reserve before creating/starting the Assistant runtime, attach the exact
+  cancel function when streaming begins, and release on every terminal/error
+  path. Image and text generation obey the same admission rule.
+- HTTP/SSE disconnect does not cancel accepted work. Only the exact Run cancel
+  endpoint or a runtime deadline invokes the registered cancel function.
+- `GET /v1/chat/conversations` projects only the requesting user's active Runs.
+  `pending` means reserved but not attached; `streaming` means cancellation is
+  attached. Finished retained SSE streams are never projected as active.
+- The projection is process-local by design; restart recovery finalizes durable
+  non-terminal Messages through the existing startup recovery contract.
+
+### 4. Validation & Error Matrix
+
+| Condition | Result |
+| --- | --- |
+| active `(user, Conversation)` already reserved | `409 CONVERSATION_RUN_ACTIVE` |
+| reservation cannot be attached | `409 CONVERSATION_RUN_UNAVAILABLE` and release/finalize |
+| same user, different Conversation | admit concurrently |
+| different user, same opaque Conversation ID | separate user scope; repository ACL still applies |
+| finished retained stream | replayable by Run endpoint but absent from active projection |
+| explicit exact Run cancel | cancel only that Run and emit one terminal cancellation |
+
+### 5. Good / Base / Bad Cases
+
+- Good: two Conversations in one Workspace run concurrently and both remain
+  independently cancellable/projected.
+- Base: one Conversation has one pending/streaming Run and finishes normally.
+- Bad: `map[runId]` tracks cancellation but admits duplicate Conversation Runs,
+  or list projection leaks another user's Run.
+
+### 6. Tests Required
+
+- Registry unit coverage for duplicate rejection, sibling admission,
+  pending-to-streaming transition, exact release, and user-filtered projection.
+- Handler list coverage for `activeGeneration` fields and terminal omission.
+- Text and image Handler regressions for detached completion, explicit cancel,
+  one terminal result, and `409` admission conflicts.
+- Full Backend `go vet ./...` and `go test ./...`; cross-layer changes also run
+  frontend DTO/store/concurrency tests.
+
+### 7. Wrong vs Correct
+
+```go
+// Wrong: Run IDs are unique, but one Conversation can still start twice.
+activeRuns.register(runID, cancel)
+
+// Correct: Conversation admission precedes runtime attachment.
+release, ok := activeRuns.reserve(runID, actor.ID, conversationID, messageID)
+if !ok { return conflict }
+defer release()
+activeRuns.attach(runID, cancel, stream)
+```
+
 ## Scenario: Continue a Chat Agent Goal and gate completion evidence
 
 ### 1. Scope / Trigger

@@ -51,4 +51,18 @@ describe("chat shell accessibility", () => {
     expect(sidebar).toContain("handleSidebarKeyDown");
     expect(sidebar).toContain("restoreFocusRef");
   });
+
+  it("exposes per-conversation running and unread states", () => {
+    const sidebar = readFileSync(
+      resolve(process.cwd(), "src/components/layout/Sidebar.tsx"),
+      "utf8",
+    );
+
+    expect(sidebar).toContain("runningSessionIds");
+    expect(sidebar).toContain("unreadSessionIds");
+    expect(sidebar).toContain('role="status"');
+    expect(sidebar).toContain("chatRunningAria");
+    expect(sidebar).toContain("chatUnreadAria");
+    expect(sidebar).toContain("motion-reduce:animate-none");
+  });
 });

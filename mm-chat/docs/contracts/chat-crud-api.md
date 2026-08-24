@@ -79,6 +79,11 @@ export interface ConversationDto {
   modelRef?: ModelRef;
   messageCount: number;
   config: JsonObject;
+  activeGeneration?: {
+    runId: EntityId;
+    messageId?: EntityId;
+    status: "pending" | "streaming";
+  };
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
 }
@@ -116,6 +121,10 @@ Rules:
   alias.
 - `config` is the public JSON object; `metadata` is accepted only as a fallback
   alias.
+- `GET /v1/chat/conversations` may project the requesting user's process-local
+  active Run as `activeGeneration`. It is refresh/reconciliation state, not
+  persisted Conversation metadata. `pending` means reserved; `streaming` means
+  the exact cancel function is attached. Terminal Runs omit the field.
 - Server-managed or caller-identity fields such as `id`, `userId`, `ownerId`,
   `sessionId`, `session`, `bearerToken`, `accessToken`, `authorization`,
   `impersonateUserId`, `status`, `messageCount`, `createdAt`, `updatedAt`, and

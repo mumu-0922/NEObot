@@ -84,7 +84,28 @@ import type {
 
 let selectSessionRequestId = 0;
 let serverReadRequestId = 0;
+const serverGenerationRequestIds = new Map<string, number>();
 const sessionMessageWriteQueues = new Map<string, Promise<void>>();
+
+const beginServerGenerationRequest = (sessionId: string) => {
+  const requestId = (serverGenerationRequestIds.get(sessionId) ?? 0) + 1;
+  serverGenerationRequestIds.set(sessionId, requestId);
+  return requestId;
+};
+
+const isCurrentServerGenerationRequest = (
+  sessionId: string,
+  requestId: number,
+) => serverGenerationRequestIds.get(sessionId) === requestId;
+
+const finishServerGenerationRequest = (
+  sessionId: string,
+  requestId: number,
+) => {
+  if (isCurrentServerGenerationRequest(sessionId, requestId)) {
+    serverGenerationRequestIds.delete(sessionId);
+  }
+};
 
 function projectLiveAgentEvent(
   events: ChatAgentEvent[],
@@ -131,7 +152,8 @@ interface ServerReadState {
   currentSessionId: string | null;
   activeMessages: Message[];
   activeMessageTree: SessionMessageTree;
-  generation: ServerGenerationState;
+  generations: Record<string, ServerGenerationState>;
+  unreadSessionIds: string[];
   isLoading: boolean;
   error: string | null;
 }
@@ -217,10 +239,86 @@ const createEmptyServerReadState = (): ServerReadState => ({
   currentSessionId: null,
   activeMessages: [],
   activeMessageTree: createEmptyMessageTree(),
-  generation: createEmptyServerGenerationState(),
+  generations: {},
+  unreadSessionIds: [],
   isLoading: false,
   error: null,
 });
+
+const isActiveServerGeneration = (
+  generation: ServerGenerationState | undefined,
+) => generation?.status === "pending" || generation?.status === "streaming";
+
+const serverGenerationFromSession = (
+  session: ChatCrudSession,
+): ServerGenerationState | null => {
+  if (!session.activeGeneration) return null;
+  return {
+    status: session.activeGeneration.status,
+    sessionId: session.id,
+    userMessageId: null,
+    assistantMessageId: session.activeGeneration.messageId ?? null,
+    activeServerRunId: session.activeGeneration.runId,
+    error: null,
+  };
+};
+
+const serverGenerationsFromSessions = (
+  sessions: ChatCrudSession[],
+): Record<string, ServerGenerationState> =>
+  Object.fromEntries(
+    sessions.flatMap((session) => {
+      const generation = serverGenerationFromSession(session);
+      return generation ? [[session.id, generation] as const] : [];
+    }),
+  );
+
+const withServerGeneration = (
+  generations: Record<string, ServerGenerationState>,
+  sessionId: string,
+  generation: ServerGenerationState | null,
+) => {
+  const next = { ...generations };
+  if (generation && isActiveServerGeneration(generation)) {
+    next[sessionId] = generation;
+  } else {
+    delete next[sessionId];
+  }
+  return next;
+};
+
+const markServerSessionUnread = (
+  unreadSessionIds: string[],
+  sessionId: string,
+  currentSessionId: string | null,
+) =>
+  currentSessionId !== sessionId
+    ? Array.from(new Set([...unreadSessionIds, sessionId]))
+    : unreadSessionIds;
+
+const reconcileServerGenerationProjection = ({
+  current,
+  authoritative,
+  currentSessionId,
+}: {
+  current: Record<string, ServerGenerationState>;
+  authoritative: Record<string, ServerGenerationState>;
+  currentSessionId: string | null;
+}) => {
+  const generations = { ...authoritative };
+  const completedInBackground: string[] = [];
+  for (const [sessionId, generation] of Object.entries(current)) {
+    if (authoritative[sessionId]) continue;
+    if (!generation.activeServerRunId) {
+      generations[sessionId] = generation;
+      continue;
+    }
+    if (currentSessionId !== sessionId) {
+      completedInBackground.push(sessionId);
+    }
+  }
+  return { generations, completedInBackground };
+};
 
 const normalizeStoredMessageTree = (
   stored: Message[] | SessionMessageTree | null | undefined,
@@ -365,23 +463,23 @@ const applyServerMessageToReadState = (
   branchSourceMessageId?: string,
 ): ServerReadState => {
   const isCurrentServerSession = serverReadState.currentSessionId === sessionId;
-  const hasMessageInActiveTree = Boolean(
-    serverReadState.activeMessageTree.nodesById[message.id],
-  );
+  const cachedSnapshot = isCurrentServerSession
+    ? null
+    : getServerConversationMemorySnapshot(sessionId);
+  const targetTree = isCurrentServerSession
+    ? serverReadState.activeMessageTree
+    : (cachedSnapshot?.activeMessageTree ?? createEmptyMessageTree());
+  const hasMessageInActiveTree = Boolean(targetTree.nodesById[message.id]);
+  const nextTargetTree = hasMessageInActiveTree
+    ? updateMessageInTree(targetTree, message.id, () => message)
+    : branchSourceMessageId
+      ? createModelResponseBranch(targetTree, branchSourceMessageId, message)
+      : appendServerMessageToTree(targetTree, message);
+  const backgroundSnapshot = isCurrentServerSession
+    ? null
+    : setServerConversationMemorySnapshot(sessionId, nextTargetTree);
   const activeMessageTree = isCurrentServerSession
-    ? hasMessageInActiveTree
-      ? updateMessageInTree(
-          serverReadState.activeMessageTree,
-          message.id,
-          () => message,
-        )
-      : branchSourceMessageId
-        ? createModelResponseBranch(
-            serverReadState.activeMessageTree,
-            branchSourceMessageId,
-            message,
-          )
-        : appendServerMessageToTree(serverReadState.activeMessageTree, message)
+    ? nextTargetTree
     : serverReadState.activeMessageTree;
   const activeMessages = isCurrentServerSession
     ? getActiveMessagePath(activeMessageTree)
@@ -400,7 +498,8 @@ const applyServerMessageToReadState = (
               session.messageCount + (hasMessageInActiveTree ? 0 : 1),
               activeMessages.length,
             )
-          : session.messageCount + 1,
+          : (backgroundSnapshot?.messageCount ??
+            session.messageCount + (hasMessageInActiveTree ? 0 : 1)),
         updatedAt: message.timestamp,
       };
     }),
@@ -712,6 +811,7 @@ interface ChatState {
   ) => string;
   selectSession: (id: string) => Promise<void>;
   refreshServerSessions: () => Promise<boolean>;
+  reconcileServerActiveGenerations: () => Promise<boolean>;
   selectServerSession: (id: string) => Promise<boolean>;
   retryAgentTool: (eventId: string) => Promise<boolean>;
   createServerSession: (
@@ -726,6 +826,7 @@ interface ChatState {
   regenerateServerAssistantMessage: (
     options: RegenerateServerAssistantMessageOptions,
   ) => Promise<ChatStreamRunResult | null>;
+  cancelServerGeneration: (sessionId: string) => Promise<boolean>;
   switchServerMessageVersion: (
     sessionId: string,
     messageId: string,
@@ -1078,16 +1179,16 @@ export const useChatStore = create<ChatState>()(
         set((state) => ({
           serverReadState: {
             ...state.serverReadState,
-            generation: createEmptyServerGenerationState(),
             isLoading: true,
             error: null,
           },
         }));
 
         try {
-          const sessions = (await service.listConversations()).map(
-            toStoreSessionFromServer,
-          );
+          const serverSessions = await service.listConversations();
+          const sessions = serverSessions.map(toStoreSessionFromServer);
+          const authoritativeGenerations =
+            serverGenerationsFromSessions(serverSessions);
           if (requestId !== serverReadRequestId) return false;
 
           const currentSessionId = get().serverReadState.currentSessionId;
@@ -1100,17 +1201,30 @@ export const useChatStore = create<ChatState>()(
             ? getServerConversationMemorySnapshot(nextSessionId)
             : null;
 
-          set({
-            serverReadState: {
-              sessions,
+          set((state) => {
+            const projection = reconcileServerGenerationProjection({
+              current: state.serverReadState.generations,
+              authoritative: authoritativeGenerations,
               currentSessionId: nextSessionId,
-              activeMessages: cachedSnapshot?.activeMessages ?? [],
-              activeMessageTree:
-                cachedSnapshot?.activeMessageTree ?? createEmptyMessageTree(),
-              generation: createEmptyServerGenerationState(),
-              isLoading: false,
-              error: null,
-            },
+            });
+            return {
+              serverReadState: {
+                sessions,
+                currentSessionId: nextSessionId,
+                activeMessages: cachedSnapshot?.activeMessages ?? [],
+                activeMessageTree:
+                  cachedSnapshot?.activeMessageTree ?? createEmptyMessageTree(),
+                generations: projection.generations,
+                unreadSessionIds: Array.from(
+                  new Set([
+                    ...state.serverReadState.unreadSessionIds,
+                    ...projection.completedInBackground,
+                  ]),
+                ).filter((sessionId) => sessionId !== nextSessionId),
+                isLoading: false,
+                error: null,
+              },
+            };
           });
 
           if (nextSessionId) {
@@ -1127,10 +1241,53 @@ export const useChatStore = create<ChatState>()(
                 error: getServerReadErrorMessage(error),
               },
             }));
-            cacheCurrentServerConversation(get().serverReadState);
           }
           throw error;
         }
+      },
+
+      reconcileServerActiveGenerations: async () => {
+        const service = createChatCrudService();
+        if (!service.serverEnabled) return false;
+        const serverSessions = await service.listConversations();
+        const sessions = serverSessions.map(toStoreSessionFromServer);
+        const authoritativeGenerations =
+          serverGenerationsFromSessions(serverSessions);
+        let completedCurrentSessionId: string | null = null;
+        set((state) => {
+          const projection = reconcileServerGenerationProjection({
+            current: state.serverReadState.generations,
+            authoritative: authoritativeGenerations,
+            currentSessionId: state.serverReadState.currentSessionId,
+          });
+          const currentSessionId = state.serverReadState.currentSessionId;
+          if (
+            currentSessionId &&
+            isActiveServerGeneration(
+              state.serverReadState.generations[currentSessionId],
+            ) &&
+            !projection.generations[currentSessionId]
+          ) {
+            completedCurrentSessionId = currentSessionId;
+          }
+          return {
+            serverReadState: {
+              ...state.serverReadState,
+              sessions,
+              generations: projection.generations,
+              unreadSessionIds: Array.from(
+                new Set([
+                  ...state.serverReadState.unreadSessionIds,
+                  ...projection.completedInBackground,
+                ]),
+              ),
+            },
+          };
+        });
+        if (completedCurrentSessionId) {
+          return get().selectServerSession(completedCurrentSessionId);
+        }
+        return true;
       },
 
       selectServerSession: async (id) => {
@@ -1153,7 +1310,9 @@ export const useChatStore = create<ChatState>()(
               activeMessages: cachedSnapshot?.activeMessages ?? [],
               activeMessageTree:
                 cachedSnapshot?.activeMessageTree ?? createEmptyMessageTree(),
-              generation: createEmptyServerGenerationState(),
+              unreadSessionIds: state.serverReadState.unreadSessionIds.filter(
+                (sessionId) => sessionId !== id,
+              ),
               isLoading: !cachedSnapshot,
               error: null,
               sessions: cachedSnapshot
@@ -1177,6 +1336,12 @@ export const useChatStore = create<ChatState>()(
           if (requestId !== serverReadRequestId) return false;
 
           const messageTree = normalizeServerMessageTree(messages);
+          if (
+            cachedSnapshot &&
+            isActiveServerGeneration(get().serverReadState.generations[id])
+          ) {
+            return true;
+          }
           if (
             cachedSnapshot &&
             isServerConversationMemorySnapshotCurrent(
@@ -1253,7 +1418,6 @@ export const useChatStore = create<ChatState>()(
         set((state) => ({
           serverReadState: {
             ...state.serverReadState,
-            generation: createEmptyServerGenerationState(),
             isLoading: true,
             error: null,
           },
@@ -1288,7 +1452,9 @@ export const useChatStore = create<ChatState>()(
                 currentSessionId: session.id,
                 activeMessages: [],
                 activeMessageTree: createEmptyMessageTree(),
-                generation: createEmptyServerGenerationState(),
+                unreadSessionIds: state.serverReadState.unreadSessionIds.filter(
+                  (sessionId) => sessionId !== session.id,
+                ),
                 isLoading: false,
                 error: null,
               },
@@ -1321,7 +1487,6 @@ export const useChatStore = create<ChatState>()(
         set((state) => ({
           serverReadState: {
             ...state.serverReadState,
-            generation: createEmptyServerGenerationState(),
             isLoading: true,
             error: null,
           },
@@ -1375,18 +1540,29 @@ export const useChatStore = create<ChatState>()(
           return null;
         }
 
-        const requestId = serverReadRequestId + 1;
-        serverReadRequestId = requestId;
-        deleteServerConversationMemorySnapshot(options.sessionId);
+        if (
+          isActiveServerGeneration(
+            get().serverReadState.generations[options.sessionId],
+          )
+        ) {
+          throw new Error("Conversation already has an active Run.");
+        }
+        const requestId = beginServerGenerationRequest(options.sessionId);
         set((state) => ({
           serverReadState: {
             ...state.serverReadState,
-            generation: {
-              ...createEmptyServerGenerationState(),
-              status: "pending",
-              sessionId: options.sessionId,
-            },
-            isLoading: true,
+            generations: withServerGeneration(
+              state.serverReadState.generations,
+              options.sessionId,
+              {
+                ...createEmptyServerGenerationState(),
+                status: "pending",
+                sessionId: options.sessionId,
+              },
+            ),
+            unreadSessionIds: state.serverReadState.unreadSessionIds.filter(
+              (sessionId) => sessionId !== options.sessionId,
+            ),
             error: null,
           },
         }));
@@ -1411,7 +1587,7 @@ export const useChatStore = create<ChatState>()(
           );
           options.onUserMessageAccepted?.(userMessage);
 
-          if (requestId === serverReadRequestId) {
+          if (isCurrentServerGenerationRequest(options.sessionId, requestId)) {
             set((state) => ({
               serverReadState: {
                 ...applyServerMessageToReadState(
@@ -1419,16 +1595,20 @@ export const useChatStore = create<ChatState>()(
                   options.sessionId,
                   userMessage,
                 ),
-                generation: {
-                  ...state.serverReadState.generation,
-                  status: "pending",
-                  sessionId: options.sessionId,
-                  userMessageId: userMessage.id,
-                  assistantMessageId: null,
-                  activeServerRunId: null,
-                  error: null,
-                },
-                isLoading: true,
+                generations: withServerGeneration(
+                  state.serverReadState.generations,
+                  options.sessionId,
+                  {
+                    ...(state.serverReadState.generations[options.sessionId] ??
+                      createEmptyServerGenerationState()),
+                    status: "pending",
+                    sessionId: options.sessionId,
+                    userMessageId: userMessage.id,
+                    assistantMessageId: null,
+                    activeServerRunId: null,
+                    error: null,
+                  },
+                ),
                 error: null,
               },
             }));
@@ -1442,11 +1622,22 @@ export const useChatStore = create<ChatState>()(
               generation: ServerGenerationState,
             ) => ServerGenerationState,
           ) => {
-            if (requestId !== serverReadRequestId) return;
+            if (
+              !isCurrentServerGenerationRequest(options.sessionId, requestId)
+            ) {
+              return;
+            }
             set((state) => ({
               serverReadState: {
                 ...state.serverReadState,
-                generation: update(state.serverReadState.generation),
+                generations: withServerGeneration(
+                  state.serverReadState.generations,
+                  options.sessionId,
+                  update(
+                    state.serverReadState.generations[options.sessionId] ??
+                      createEmptyServerGenerationState(),
+                  ),
+                ),
               },
             }));
           };
@@ -1454,21 +1645,25 @@ export const useChatStore = create<ChatState>()(
             eventMessageId: string | undefined,
             update: (message: Message) => Message,
           ) => {
-            if (requestId !== serverReadRequestId) return;
+            if (
+              !isCurrentServerGenerationRequest(options.sessionId, requestId)
+            ) {
+              return;
+            }
             const messageId = eventMessageId ?? assistantMessageId;
             if (!messageId) return;
             assistantMessageId = messageId;
 
             set((state) => {
-              if (
-                state.serverReadState.currentSessionId !== options.sessionId
-              ) {
-                return {};
-              }
-
-              const existing =
-                state.serverReadState.activeMessageTree.nodesById[messageId]
-                  ?.message;
+              const activeExisting =
+                state.serverReadState.currentSessionId === options.sessionId
+                  ? state.serverReadState.activeMessageTree.nodesById[messageId]
+                      ?.message
+                  : undefined;
+              const cachedExisting = getServerConversationMemorySnapshot(
+                options.sessionId,
+              )?.activeMessageTree.nodesById[messageId]?.message;
+              const existing = activeExisting ?? cachedExisting;
               const message = update(
                 existing ?? {
                   id: messageId,
@@ -1487,7 +1682,6 @@ export const useChatStore = create<ChatState>()(
                     options.sessionId,
                     message,
                   ),
-                  isLoading: true,
                   error: null,
                 },
               };
@@ -1609,7 +1803,7 @@ export const useChatStore = create<ChatState>()(
             },
           );
 
-          if (requestId === serverReadRequestId) {
+          if (isCurrentServerGenerationRequest(options.sessionId, requestId)) {
             set((state) => {
               const terminalMessage = result.message
                 ? toStoreMessageFromServer(result.message)
@@ -1636,17 +1830,16 @@ export const useChatStore = create<ChatState>()(
               return {
                 serverReadState: {
                   ...nextServerReadState,
-                  generation: {
-                    ...nextServerReadState.generation,
-                    status: terminalStatus,
-                    sessionId: options.sessionId,
-                    userMessageId: userMessage.id,
-                    assistantMessageId:
-                      terminalMessage?.id ?? assistantMessageId,
-                    activeServerRunId: null,
-                    error: terminalError,
-                  },
-                  isLoading: false,
+                  generations: withServerGeneration(
+                    nextServerReadState.generations,
+                    options.sessionId,
+                    null,
+                  ),
+                  unreadSessionIds: markServerSessionUnread(
+                    nextServerReadState.unreadSessionIds,
+                    options.sessionId,
+                    nextServerReadState.currentSessionId,
+                  ),
                   error: terminalError?.message ?? null,
                 },
               };
@@ -1656,7 +1849,7 @@ export const useChatStore = create<ChatState>()(
 
           return result;
         } catch (error) {
-          if (requestId === serverReadRequestId) {
+          if (isCurrentServerGenerationRequest(options.sessionId, requestId)) {
             const generationError = getServerGenerationError(error);
             set((state) => {
               const nextServerReadState = applyServerGenerationError(
@@ -1668,19 +1861,24 @@ export const useChatStore = create<ChatState>()(
               return {
                 serverReadState: {
                   ...nextServerReadState,
-                  generation: {
-                    ...nextServerReadState.generation,
-                    status: "failed",
-                    activeServerRunId: null,
-                    error: generationError,
-                  },
-                  isLoading: false,
+                  generations: withServerGeneration(
+                    nextServerReadState.generations,
+                    options.sessionId,
+                    null,
+                  ),
+                  unreadSessionIds: markServerSessionUnread(
+                    nextServerReadState.unreadSessionIds,
+                    options.sessionId,
+                    nextServerReadState.currentSessionId,
+                  ),
                   error: generationError.message,
                 },
               };
             });
           }
           throw error;
+        } finally {
+          finishServerGenerationRequest(options.sessionId, requestId);
         }
       },
 
@@ -1688,6 +1886,14 @@ export const useChatStore = create<ChatState>()(
         const streamService = createChatStreamService();
         if (!streamService.streamEnabled) {
           return null;
+        }
+
+        if (
+          isActiveServerGeneration(
+            get().serverReadState.generations[options.sessionId],
+          )
+        ) {
+          throw new Error("Conversation already has an active Run.");
         }
 
         const state = get();
@@ -1715,19 +1921,23 @@ export const useChatStore = create<ChatState>()(
           throw new Error("Server stream model is required.");
         }
 
-        const requestId = serverReadRequestId + 1;
-        serverReadRequestId = requestId;
-        deleteServerConversationMemorySnapshot(options.sessionId);
+        const requestId = beginServerGenerationRequest(options.sessionId);
         set((current) => ({
           serverReadState: {
             ...current.serverReadState,
-            generation: {
-              ...createEmptyServerGenerationState(),
-              status: "pending",
-              sessionId: options.sessionId,
-              userMessageId,
-            },
-            isLoading: true,
+            generations: withServerGeneration(
+              current.serverReadState.generations,
+              options.sessionId,
+              {
+                ...createEmptyServerGenerationState(),
+                status: "pending",
+                sessionId: options.sessionId,
+                userMessageId,
+              },
+            ),
+            unreadSessionIds: current.serverReadState.unreadSessionIds.filter(
+              (sessionId) => sessionId !== options.sessionId,
+            ),
             error: null,
           },
         }));
@@ -1742,11 +1952,22 @@ export const useChatStore = create<ChatState>()(
               generation: ServerGenerationState,
             ) => ServerGenerationState,
           ) => {
-            if (requestId !== serverReadRequestId) return;
+            if (
+              !isCurrentServerGenerationRequest(options.sessionId, requestId)
+            ) {
+              return;
+            }
             set((current) => ({
               serverReadState: {
                 ...current.serverReadState,
-                generation: update(current.serverReadState.generation),
+                generations: withServerGeneration(
+                  current.serverReadState.generations,
+                  options.sessionId,
+                  update(
+                    current.serverReadState.generations[options.sessionId] ??
+                      createEmptyServerGenerationState(),
+                  ),
+                ),
               },
             }));
           };
@@ -1754,21 +1975,26 @@ export const useChatStore = create<ChatState>()(
             eventMessageId: string | undefined,
             update: (message: Message) => Message,
           ) => {
-            if (requestId !== serverReadRequestId) return;
+            if (
+              !isCurrentServerGenerationRequest(options.sessionId, requestId)
+            ) {
+              return;
+            }
             const messageId = eventMessageId ?? assistantMessageId;
             if (!messageId) return;
             assistantMessageId = messageId;
 
             set((current) => {
-              if (
-                current.serverReadState.currentSessionId !== options.sessionId
-              ) {
-                return {};
-              }
-
-              const existing =
-                current.serverReadState.activeMessageTree.nodesById[messageId]
-                  ?.message;
+              const activeExisting =
+                current.serverReadState.currentSessionId === options.sessionId
+                  ? current.serverReadState.activeMessageTree.nodesById[
+                      messageId
+                    ]?.message
+                  : undefined;
+              const cachedExisting = getServerConversationMemorySnapshot(
+                options.sessionId,
+              )?.activeMessageTree.nodesById[messageId]?.message;
+              const existing = activeExisting ?? cachedExisting;
               const message = update(
                 existing ?? {
                   id: messageId,
@@ -1788,7 +2014,6 @@ export const useChatStore = create<ChatState>()(
                     message,
                     options.assistantMessageId,
                   ),
-                  isLoading: true,
                   error: null,
                 },
               };
@@ -1917,7 +2142,7 @@ export const useChatStore = create<ChatState>()(
             },
           );
 
-          if (requestId === serverReadRequestId) {
+          if (isCurrentServerGenerationRequest(options.sessionId, requestId)) {
             set((current) => {
               const terminalMessage = result.message
                 ? toStoreMessageFromServer(result.message)
@@ -1945,17 +2170,16 @@ export const useChatStore = create<ChatState>()(
               return {
                 serverReadState: {
                   ...nextServerReadState,
-                  generation: {
-                    ...nextServerReadState.generation,
-                    status: terminalStatus,
-                    sessionId: options.sessionId,
-                    userMessageId,
-                    assistantMessageId:
-                      terminalMessage?.id ?? assistantMessageId,
-                    activeServerRunId: null,
-                    error: terminalError,
-                  },
-                  isLoading: false,
+                  generations: withServerGeneration(
+                    nextServerReadState.generations,
+                    options.sessionId,
+                    null,
+                  ),
+                  unreadSessionIds: markServerSessionUnread(
+                    nextServerReadState.unreadSessionIds,
+                    options.sessionId,
+                    nextServerReadState.currentSessionId,
+                  ),
                   error: terminalError?.message ?? null,
                 },
               };
@@ -1965,7 +2189,7 @@ export const useChatStore = create<ChatState>()(
 
           return result;
         } catch (error) {
-          if (requestId === serverReadRequestId) {
+          if (isCurrentServerGenerationRequest(options.sessionId, requestId)) {
             const generationError = getServerGenerationError(error);
             set((current) => {
               const nextServerReadState = applyServerGenerationError(
@@ -1977,19 +2201,63 @@ export const useChatStore = create<ChatState>()(
               return {
                 serverReadState: {
                   ...nextServerReadState,
-                  generation: {
-                    ...nextServerReadState.generation,
-                    status: "failed",
-                    activeServerRunId: null,
-                    error: generationError,
-                  },
-                  isLoading: false,
+                  generations: withServerGeneration(
+                    nextServerReadState.generations,
+                    options.sessionId,
+                    null,
+                  ),
+                  unreadSessionIds: markServerSessionUnread(
+                    nextServerReadState.unreadSessionIds,
+                    options.sessionId,
+                    nextServerReadState.currentSessionId,
+                  ),
                   error: generationError.message,
                 },
               };
             });
           }
           throw error;
+        } finally {
+          finishServerGenerationRequest(options.sessionId, requestId);
+        }
+      },
+
+      cancelServerGeneration: async (sessionId) => {
+        const streamService = createChatStreamService();
+        if (!streamService.streamEnabled) return false;
+        const generation = get().serverReadState.generations[sessionId];
+        const runId = generation?.activeServerRunId;
+        if (!runId) return false;
+
+        const requestId = beginServerGenerationRequest(sessionId);
+        try {
+          const result = await streamService.cancelRun(runId);
+          const terminalMessage = result.message
+            ? toStoreMessageFromServer(result.message)
+            : null;
+          set((state) => {
+            const nextServerReadState = terminalMessage
+              ? applyServerMessageToReadState(
+                  state.serverReadState,
+                  sessionId,
+                  terminalMessage,
+                )
+              : state.serverReadState;
+            return {
+              serverReadState: {
+                ...nextServerReadState,
+                generations: withServerGeneration(
+                  nextServerReadState.generations,
+                  sessionId,
+                  null,
+                ),
+              },
+            };
+          });
+          cacheCurrentServerConversation(get().serverReadState);
+          return true;
+        } finally {
+          finishServerGenerationRequest(sessionId, requestId);
         }
       },
 
@@ -2215,9 +2483,14 @@ export const useChatStore = create<ChatState>()(
               activeMessageTree: deletingCurrent
                 ? createEmptyMessageTree()
                 : state.serverReadState.activeMessageTree,
-              generation: deletingCurrent
-                ? createEmptyServerGenerationState()
-                : state.serverReadState.generation,
+              generations: withServerGeneration(
+                state.serverReadState.generations,
+                id,
+                null,
+              ),
+              unreadSessionIds: state.serverReadState.unreadSessionIds.filter(
+                (sessionId) => sessionId !== id,
+              ),
               isLoading: false,
               error: null,
             },
@@ -2274,7 +2547,9 @@ export const useChatStore = create<ChatState>()(
                 currentSessionId: session.id,
                 activeMessages: getActiveMessagePath(messageTree),
                 activeMessageTree: messageTree,
-                generation: createEmptyServerGenerationState(),
+                unreadSessionIds: state.serverReadState.unreadSessionIds.filter(
+                  (sessionId) => sessionId !== session.id,
+                ),
                 isLoading: false,
                 error: null,
               },

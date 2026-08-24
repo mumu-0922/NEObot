@@ -15,6 +15,13 @@ describe("ChatApp server mode composition", () => {
       ),
       "utf8",
     );
+    const generationReconciliation = readFileSync(
+      resolve(
+        process.cwd(),
+        "src/features/chat/hooks/useServerGenerationReconciliation.ts",
+      ),
+      "utf8",
+    );
 
     expect(chatApp).toContain("serverReadState.sessions");
     expect(chatApp).toContain("serverReadState.activeMessages");
@@ -51,14 +58,25 @@ describe("ChatApp server mode composition", () => {
     expect(chatApp).not.toContain("activePlugins,");
     expect(chatApp).toContain("if (serverModeEnabled) return;");
     expect(chatApp).toContain("abortActiveGeneration");
-    expect(chatApp).toContain("if (isGenerating && !serverModeEnabled)");
+    expect(chatApp).toContain(
+      "if (isGenerating && !serverModeEnabled && currentSessionId)",
+    );
     expect(chatApp).not.toMatch(
       /if \(serverModeEnabled\) \{\s+if \(isGenerating\) \{\s+abortActiveGeneration\(\);/,
     );
+    expect(chatApp).toContain("cancelServerGeneration(sessionId)");
     expect(chatApp).toContain(
-      "if (serverModeEnabled) {\n      abortActiveGeneration();\n      return;",
+      "const cancellation = cancelServerGeneration(sessionId);",
     );
-    expect(chatApp).toContain("shouldAbortActiveGenerationForSessionDelete({");
+    expect(chatApp.indexOf("cancelServerGeneration(sessionId)")).toBeLessThan(
+      chatApp.indexOf("abortActiveGeneration(sessionId)"),
+    );
+    expect(chatApp).toContain("runningSessionIds={runningSessionIds}");
+    expect(chatApp).toContain("unreadSessionIds={unreadSessionIds}");
+    expect(chatApp).toContain("useServerGenerationReconciliation({");
+    expect(chatApp).not.toContain(
+      "shouldAbortActiveGenerationForSessionDelete({",
+    );
     expect(chatApp).toContain("localSessionToolsDisabled={serverModeEnabled}");
     expect(chatApp).toContain(
       "allowReasoningWhenSessionToolsDisabled={serverModeEnabled}",
@@ -170,6 +188,16 @@ describe("ChatApp server mode composition", () => {
     expect(chatApp).not.toContain("activePluginIdsOverride");
 
     expect(generationController).toContain("abortActiveGeneration");
+    expect(generationController).toContain(
+      "new Map<string, ActiveGenerationRun>()",
+    );
     expect(generationController).toContain("await state.syncActiveSession");
+    expect(generationReconciliation).toContain("let reconciling = false");
+    expect(generationReconciliation).toContain(
+      'document.visibilityState !== "visible"',
+    );
+    expect(generationReconciliation).toContain(
+      'window.addEventListener("online", reconcileNow)',
+    );
   });
 });

@@ -12,6 +12,7 @@ import { useChatStore } from "@/store/core/chatStore";
 
 export interface ActiveGenerationRun {
   runId: number;
+  sessionId: string;
   controller: AbortController;
 }
 
@@ -24,76 +25,113 @@ interface UseChatGenerationControllerOptions {
 export function useChatGenerationController({
   persistStoppedGeneration,
 }: UseChatGenerationControllerOptions = {}) {
-  const [isGenerating, setIsGenerating] = useState(false);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const [activeSessionIds, setActiveSessionIds] = useState<string[]>([]);
+  const [unreadSessionIds, setUnreadSessionIds] = useState<string[]>([]);
+  const activeRunsRef = useRef(new Map<string, ActiveGenerationRun>());
   const generationRunRef = useRef(0);
 
-  const beginActiveGeneration = useCallback((): ActiveGenerationRun => {
+  const beginActiveGeneration = useCallback((sessionId: string) => {
+    const existing = activeRunsRef.current.get(sessionId);
+    if (existing) return existing;
     const runId = getNextGenerationRunId(generationRunRef.current);
     const controller = new AbortController();
+    const run = { runId, sessionId, controller };
     generationRunRef.current = runId;
-    abortControllerRef.current = controller;
-    setIsGenerating(true);
+    activeRunsRef.current.set(sessionId, run);
+    setActiveSessionIds(Array.from(activeRunsRef.current.keys()));
+    setUnreadSessionIds((current) =>
+      current.filter((candidate) => candidate !== sessionId),
+    );
 
-    return { runId, controller };
+    return run;
   }, []);
 
   const isGenerationRunActive = useCallback(
-    ({ runId, controller }: ActiveGenerationRun) =>
-      isCurrentGenerationRun({
-        currentRunId: generationRunRef.current,
-        runId,
-        currentController: abortControllerRef.current,
-        controller,
-      }),
+    ({ runId, sessionId, controller }: ActiveGenerationRun) => {
+      const current = activeRunsRef.current.get(sessionId);
+      return (
+        current !== undefined &&
+        isCurrentGenerationRun({
+          currentRunId: current.runId,
+          runId,
+          currentController: current.controller,
+          controller,
+        })
+      );
+    },
     [],
   );
 
   const finishActiveGeneration = useCallback(
-    ({ runId, controller }: ActiveGenerationRun) => {
-      if (!isGenerationRunActive({ runId, controller })) return;
+    (run: ActiveGenerationRun, selectedSessionId?: string | null) => {
+      if (!isGenerationRunActive(run)) return;
 
-      abortControllerRef.current = null;
-      setIsGenerating(false);
+      activeRunsRef.current.delete(run.sessionId);
+      setActiveSessionIds(Array.from(activeRunsRef.current.keys()));
+      if (selectedSessionId !== run.sessionId) {
+        setUnreadSessionIds((current) =>
+          current.includes(run.sessionId)
+            ? current
+            : [...current, run.sessionId],
+        );
+      }
     },
     [isGenerationRunActive],
   );
 
-  const abortActiveGeneration = useCallback(() => {
-    generationRunRef.current = getNextGenerationRunId(generationRunRef.current);
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
-    setIsGenerating(false);
+  const abortActiveGeneration = useCallback((sessionId: string) => {
+    const active = activeRunsRef.current.get(sessionId);
+    if (!active) return false;
+    activeRunsRef.current.delete(sessionId);
+    active.controller.abort();
+    setActiveSessionIds(Array.from(activeRunsRef.current.keys()));
+    return true;
   }, []);
 
-  const stopActiveGeneration = useCallback(async () => {
-    const state = useChatStore.getState();
-    const syncSnapshot = createActiveGenerationSyncSnapshot({
-      currentSessionId: state.currentSessionId,
-      activeMessages: state.activeMessages,
-    });
+  const stopActiveGeneration = useCallback(
+    async (sessionId: string) => {
+      const state = useChatStore.getState();
+      const syncSnapshot = createActiveGenerationSyncSnapshot({
+        currentSessionId:
+          state.currentSessionId === sessionId ? state.currentSessionId : null,
+        activeMessages: state.activeMessages,
+      });
 
-    abortActiveGeneration();
+      abortActiveGeneration(sessionId);
 
-    if (!syncSnapshot) return;
+      if (!syncSnapshot) return;
 
-    if (persistStoppedGeneration) {
-      await persistStoppedGeneration(syncSnapshot);
-      return;
-    }
+      if (persistStoppedGeneration) {
+        await persistStoppedGeneration(syncSnapshot);
+        return;
+      }
 
-    await state.syncActiveSession(
-      syncSnapshot.sessionId,
-      syncSnapshot.messages,
+      await state.syncActiveSession(
+        syncSnapshot.sessionId,
+        syncSnapshot.messages,
+      );
+    },
+    [abortActiveGeneration, persistStoppedGeneration],
+  );
+
+  const clearGenerationUnread = useCallback((sessionId: string) => {
+    setUnreadSessionIds((current) =>
+      current.filter((candidate) => candidate !== sessionId),
     );
-  }, [abortActiveGeneration, persistStoppedGeneration]);
+  }, []);
+
+  const isSessionGenerating = (sessionId: string | null | undefined) =>
+    Boolean(sessionId && activeSessionIds.includes(sessionId));
 
   return {
-    isGenerating,
+    activeSessionIds,
+    unreadSessionIds,
+    isSessionGenerating,
     beginActiveGeneration,
     isGenerationRunActive,
     finishActiveGeneration,
     abortActiveGeneration,
     stopActiveGeneration,
+    clearGenerationUnread,
   };
 }

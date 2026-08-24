@@ -137,6 +137,33 @@ Frontend required `callId` and allowed only `read|execute`, so the browser
 reported an invalid Tool update while Backend execution continued. Reload later
 rendered the durable timeline and made an API-only acceptance look healthy.
 
+## Entity-Scoped Long-Running Work Checklist
+
+Use this when users can navigate between entities while work continues:
+
+- [ ] Name the scheduling owner explicitly. A grouping container (Workspace,
+      folder, project) is not automatically the Run lock; for Chat the exact
+      owner is Conversation.
+- [ ] Replace global `isRunning`, AbortController, request ID, and terminal
+      status with entity-keyed registries before enabling parallel work.
+- [ ] Define both constraints: maximum work per entity and whether different
+      entities may run concurrently. Enforce the first again at the Backend
+      admission boundary.
+- [ ] Trace active, terminal, Stop, Delete, navigation, refresh, disconnect,
+      online, and background completion paths separately. Navigation must not
+      masquerade as cancellation.
+- [ ] Give refreshed clients a bounded active-work projection and reconcile
+      it single-flight. When projected work disappears, reload the selected
+      entity or mark a background entity unread.
+- [ ] Test two deferred Runs in different entities plus a rejected second Run
+      in the same entity. Assert exact cancellation and that one terminal
+      callback cannot clear or overwrite the other entity.
+
+The executable Chat contract lives in `../frontend/state-management.md` under
+“Conversation-scoped concurrent Runs” and in
+`../backend/chat-tool-loop.md` under “Conversation-scoped Run admission and
+projection.”
+
 ## Applied Migration Immutability Checklist
 
 Use this before editing any committed migration or changing the repository

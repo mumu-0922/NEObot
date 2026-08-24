@@ -79,6 +79,11 @@ export interface ChatCrudSession {
   systemInstruction?: string;
   config?: ChatCrudSessionConfig;
   workspaceId?: string;
+  activeGeneration?: {
+    runId: string;
+    messageId?: string;
+    status: "pending" | "streaming";
+  };
 }
 
 export interface ChatCrudAttachment {
@@ -259,6 +264,9 @@ export function createChatCrudService(
 export function mapConversationDtoToSession(
   conversation: ConversationDTO,
 ): ChatCrudSession {
+  const activeGeneration = normalizeActiveGeneration(
+    conversation.activeGeneration,
+  );
   return {
     id: conversation.id,
     title: conversation.title.trim() || "New Chat",
@@ -284,6 +292,25 @@ export function mapConversationDtoToSession(
     },
     ...(conversation.workspaceId
       ? { workspaceId: conversation.workspaceId }
+      : {}),
+    ...(activeGeneration ? { activeGeneration } : {}),
+  };
+}
+
+function normalizeActiveGeneration(
+  value: ConversationDTO["activeGeneration"],
+): ChatCrudSession["activeGeneration"] {
+  if (!value || typeof value.runId !== "string" || !value.runId.trim()) {
+    return undefined;
+  }
+  if (value.status !== "pending" && value.status !== "streaming") {
+    return undefined;
+  }
+  return {
+    runId: value.runId.trim(),
+    status: value.status,
+    ...(typeof value.messageId === "string" && value.messageId.trim()
+      ? { messageId: value.messageId.trim() }
       : {}),
   };
 }

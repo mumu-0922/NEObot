@@ -53,6 +53,28 @@ for a bounded migration period but are never advertised to the model.
 `local_direct` is not an isolated Sandbox. Its contract is
 [`local-skill-runtime.md`](./local-skill-runtime.md).
 
+### Conversation Run concurrency
+
+Workspace membership groups Conversations and supplies project context; it is
+not a scheduler lock. Runtime ownership is Conversation-scoped:
+
+- one active Chat/Agent/Image Run is admitted per user and Conversation;
+- different Conversations may run concurrently, including inside one
+  Workspace;
+- selecting another Conversation or losing the SSE connection does not cancel
+  accepted work;
+- explicit Stop/Delete targets only the exact Conversation Run;
+- `GET /v1/chat/conversations` may include
+  `activeGeneration: {runId, messageId?, status}` with `pending|streaming` so a
+  refreshed client can restore sidebar status and reconcile terminal messages;
+- a background terminal result is shown as unread until that Conversation is
+  selected.
+
+Starting a second Run in the same Conversation returns
+`409 CONVERSATION_RUN_ACTIVE`. A reservation that cannot attach its exact
+runtime returns `409 CONVERSATION_RUN_UNAVAILABLE`. Finished retained SSE frames
+remain resumable for their retention window but are not active projections.
+
 Selected MCP Tools join this same Registry under their frozen provider-safe
 aliases. The reviewed `Browser (Playwright)` manifest artifact is a real
 headless browser path for navigation, accessibility snapshots, clicks, form

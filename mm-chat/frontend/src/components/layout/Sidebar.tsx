@@ -35,6 +35,7 @@ import {
   Wrench,
   PackageCheck,
   MessageSquare,
+  LoaderCircle,
 } from "lucide-react";
 import { CHAT_ENTITY_LIMITS } from "@/config/limits";
 import { sanitizeDownloadFilename } from "@/lib/utils/filename";
@@ -56,6 +57,8 @@ import {
 interface SidebarProps {
   sessions: Session[];
   currentSessionId: string | null;
+  runningSessionIds: string[];
+  unreadSessionIds: string[];
   onSelectSession: (id: string) => void;
   onNewChat: () => void;
   onNewTemporaryChat: () => void;
@@ -143,6 +146,8 @@ const SidebarNavTooltip: React.FC<SidebarNavTooltipProps> = ({
 const Sidebar: React.FC<SidebarProps> = ({
   sessions,
   currentSessionId,
+  runningSessionIds,
+  unreadSessionIds,
   onSelectSession,
   onNewChat,
   onNewTemporaryChat,
@@ -171,6 +176,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   const t = useTranslations("Sidebar");
   const chatT = useTranslations("ChatApp");
   const { workspaces, moveSessionToWorkspace } = useChatStore();
+  const runningSessionIdSet = new Set(runningSessionIds);
+  const unreadSessionIdSet = new Set(unreadSessionIds);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [contextMenu, setContextMenu] = useState<{
@@ -512,6 +519,9 @@ const Sidebar: React.FC<SidebarProps> = ({
       !isKnowledgeBaseOpen &&
       !isToolsOpen &&
       !isSettingsOpen;
+    const isRunning = runningSessionIdSet.has(session.id);
+    const hasUnreadResult =
+      !isActive && !isRunning && unreadSessionIdSet.has(session.id);
 
     return (
       <div
@@ -574,7 +584,28 @@ const Sidebar: React.FC<SidebarProps> = ({
                   aria-hidden="true"
                 />
               )}
-              <span className="truncate">{session.title}</span>
+              <span className="min-w-0 flex-1 truncate">{session.title}</span>
+              {isRunning ? (
+                <span
+                  role="status"
+                  aria-label={t("chatRunningAria", { title: session.title })}
+                  title={t("chatRunning", { title: session.title })}
+                  className="mr-0.5 inline-flex shrink-0 text-blue-500 dark:text-blue-400"
+                >
+                  <LoaderCircle
+                    size={13}
+                    className="animate-spin motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
+                </span>
+              ) : hasUnreadResult ? (
+                <span
+                  role="status"
+                  aria-label={t("chatUnreadAria", { title: session.title })}
+                  title={t("chatUnread", { title: session.title })}
+                  className="mr-1 size-2 shrink-0 rounded-full bg-blue-500 ring-2 ring-blue-500/15 dark:bg-blue-400"
+                />
+              ) : null}
             </button>
 
             <button

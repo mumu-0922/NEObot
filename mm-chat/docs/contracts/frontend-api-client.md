@@ -1590,6 +1590,11 @@ Server response shape is `ConversationDTO`:
   modelRef?: ModelRef;
   messageCount: number;
   config: Record<string, unknown>;
+  activeGeneration?: {
+    runId: string;
+    messageId?: string;
+    status: "pending" | "streaming";
+  };
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
 }
@@ -1840,6 +1845,9 @@ Compatibility rules:
   - `ConversationDTO.modelRef` -> legacy `Session.model` using the existing
     provider/model string convention;
   - `ConversationDTO.config` -> legacy `Session.config`.
+  - valid `ConversationDTO.activeGeneration` -> transient
+    `ChatCrudSession.activeGeneration`; reject empty Run IDs or statuses outside
+    `pending|streaming` and never persist this projection in browser chat state.
 - Message mapping:
   - API `role: "assistant"` -> legacy `role: "model"`;
   - API `role: "user"` -> legacy `role: "user"`;
