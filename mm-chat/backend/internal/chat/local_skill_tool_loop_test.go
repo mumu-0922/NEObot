@@ -95,7 +95,7 @@ func TestLocalSkillToolLoopLoadsSkillRunsTerminalAndContinuesSameModel(t *testin
 	terminalResult := provider.inputs[2].Continuation[1].Results[0]
 	if terminalResult.IsError ||
 		!strings.Contains(terminalResult.Content, `"stdout":"terminal-ok"`) ||
-		!strings.Contains(terminalResult.Content, `"evidenceToolCallId":"terminal-call"`) {
+		strings.Contains(terminalResult.Content, "evidenceToolCallId") {
 		t.Fatalf("terminal result=%#v", terminalResult)
 	}
 	resultFile, err := os.ReadFile(filepath.Join(workspace, "result.txt"))
@@ -499,8 +499,8 @@ func TestLocalWorkspaceFileToolsRejectStaleWriteAndReadBack(t *testing.T) {
 	if err != nil || write.IsError || !strings.Contains(write.Content, `"version":"sha256:`) {
 		t.Fatalf("write=%#v error=%v", write, err)
 	}
-	if !strings.Contains(write.Content, `"evidenceToolCallId":"write"`) {
-		t.Fatalf("write result omitted evidence Tool Call ID: %s", write.Content)
+	if strings.Contains(write.Content, "evidenceToolCallId") {
+		t.Fatalf("write result leaked retired completion evidence: %s", write.Content)
 	}
 	stale, err := runtime.execute(context.Background(), events, ProviderToolCall{
 		ID: "stale", Name: localFileWriteToolName,
@@ -515,6 +515,48 @@ func TestLocalWorkspaceFileToolsRejectStaleWriteAndReadBack(t *testing.T) {
 	}, 3, 3)
 	if err != nil || read.IsError || !strings.Contains(read.Content, `"content":"first"`) {
 		t.Fatalf("read=%#v error=%v", read, err)
+	}
+}
+
+func TestBoundWorkspaceWriteCreatesFileReferenceAndHidesPublishFallback(t *testing.T) {
+	workspace := t.TempDir()
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: filepath.Join(workspace, "skills"), WorkspaceRoot: workspace,
+		ShellPath: "/bin/sh", ApprovalMode: localskills.ApprovalSmart,
+		CallTimeout: time.Second, RunTimeout: 5 * time.Second, MaxOutput: 64 << 10,
+		MaxCalls: 8, MaxRounds: 4, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := newLocalSkillToolRuntime(executor, nil)
+	runtime.bindArtifactPublisher(&fakeWorkspaceArtifactPublisher{}, 1<<20)
+	runtime.bindWorkspace("0198ca9a-81c6-7c8d-9444-b16da02de9b4")
+	if runtime.handles(localPublishFileToolName) ||
+		strings.Contains(runtime.promptInstruction(), publishFileSystemInstruction) {
+		t.Fatal("bound Workspace exposed publish_file compatibility fallback")
+	}
+	for _, definition := range runtime.definitions() {
+		if definition.Function.Name == localPublishFileToolName {
+			t.Fatal("bound Workspace advertised publish_file")
+		}
+	}
+	write, err := runtime.execute(context.Background(), make(chan ProviderEvent, 4), ProviderToolCall{
+		ID: "write-bound", Name: localFileWriteToolName,
+		Arguments: `{"path":"reports/result.txt","content":"ready","expectedVersion":"absent"}`,
+	}, 1, 1)
+	if err != nil || write.IsError {
+		t.Fatalf("write=%#v error=%v", write, err)
+	}
+	blocks := runtime.workspaceFileOutputBlocks("message-1")
+	if len(blocks) != 1 {
+		t.Fatalf("workspace blocks=%#v", blocks)
+	}
+	block, ok := blocks[0].(map[string]any)
+	if !ok || block["type"] != "workspace_file" ||
+		block["path"] != "reports/result.txt" ||
+		block["workspaceId"] != "0198ca9a-81c6-7c8d-9444-b16da02de9b4" {
+		t.Fatalf("workspace block=%#v", blocks[0])
 	}
 }
 

@@ -57,9 +57,6 @@ type chatToolRegistration struct {
 	Presentation    chatToolPresentation
 	FirstTaskStep   bool
 	ProjectForModel chatToolResultProjector
-	// MutationResultNeedsFollowup prevents a mutating Tool's own success result
-	// from being reused as completion evidence without a later read/check.
-	MutationResultNeedsFollowup bool
 }
 
 type chatToolRegistry struct {
@@ -164,17 +161,18 @@ func localSkillToolRegistration(
 	runtime *localSkillToolRuntime,
 ) chatToolRegistration {
 	name := strings.TrimSpace(definition.Function.Name)
+	canonicalName := canonicalLocalToolName(name)
 	risk := chatToolRiskRead
 	approval := chatToolApprovalNone
-	if name == localTerminalToolName {
+	if canonicalName == localTerminalToolName {
 		risk = chatToolRiskExecute
 		approval = chatToolApprovalLocalPolicy
-	} else if name == localJobKillToolName {
+	} else if canonicalName == localJobKillToolName {
 		risk = chatToolRiskExecute
 		approval = chatToolApprovalLocalPolicy
-	} else if name == localFileWriteToolName || name == localFileEditToolName {
+	} else if canonicalName == localFileWriteToolName || canonicalName == localFileEditToolName {
 		risk = chatToolRiskWrite
-	} else if name == localPublishFileToolName {
+	} else if canonicalName == localPublishFileToolName {
 		risk = chatToolRiskWrite
 	}
 	config := runtime.config()
@@ -184,8 +182,6 @@ func localSkillToolRegistration(
 		AllowParallel: localSkillToolAllowsParallel(name),
 		ApprovalRule:  approval, Presentation: chatToolPresentationTool,
 		ProjectForModel: identityChatToolResult,
-		MutationResultNeedsFollowup: name == localFileWriteToolName ||
-			name == localFileEditToolName || name == localJobKillToolName,
 	}
 }
 
@@ -228,6 +224,18 @@ func (registry *chatToolRegistry) registerLocalSkills(runtime *localSkillToolRun
 	}
 	for _, definition := range runtime.definitions() {
 		registry.register(localSkillToolRegistration(definition, runtime))
+	}
+	// Keep names used by pre-migration in-flight continuations executable, but
+	// never advertise them to a new Provider round.
+	for _, name := range []string{
+		legacyFileReadToolName, legacyFileWriteToolName, legacyFileEditToolName,
+		legacyFileSearchToolName, legacyTerminalToolName,
+	} {
+		registration := localSkillToolRegistration(ToolDefinition{
+			Function: ToolFunctionDefinition{Name: name},
+		}, runtime)
+		registration.Definition = nil
+		registry.register(registration)
 	}
 	// These names remain executable only for bounded in-Turn continuation
 	// compatibility. They are intentionally absent from model definitions.
@@ -296,39 +304,6 @@ func (registry *chatToolRegistry) definitions(taskStep int) []ToolDefinition {
 		definitions = append(definitions, *registration.Definition)
 	}
 	return definitions
-}
-
-func (registry *chatToolRegistry) verificationOnly() *chatToolRegistry {
-	capacity := 0
-	if registry != nil {
-		capacity = len(registry.ordered)
-	}
-	filtered := &chatToolRegistry{
-		ordered:   make([]chatToolRegistration, 0, capacity),
-		byName:    make(map[string]chatToolRegistration),
-		colliding: make(map[string]struct{}),
-	}
-	if registry == nil {
-		return filtered
-	}
-	for _, registration := range registry.ordered {
-		if _, available := registry.lookup(registration.Name); !available {
-			continue
-		}
-		allowedGoalTool := registration.Backend == chatToolBackendGoal &&
-			(registration.Name == chatAgentGetGoalToolName ||
-				registration.Name == chatAgentUpdateGoalToolName ||
-				registration.Name == chatAgentVerifyCompletionToolName)
-		allowedEvidenceTool :=
-			(registration.Backend == chatToolBackendLocalSkill ||
-				registration.Backend == chatToolBackendMCP) &&
-				(registration.RiskClass == chatToolRiskRead ||
-					registration.Name == localTerminalToolName)
-		if allowedGoalTool || allowedEvidenceTool {
-			filtered.register(registration)
-		}
-	}
-	return filtered
 }
 
 func (registry *chatToolRegistry) projectResult(result ProviderToolResult) ProviderToolResult {

@@ -209,6 +209,43 @@ describe("chat CRUD DTO mappers", () => {
     );
   });
 
+  it("reloads only validated Workspace file references", () => {
+    const assistant = mapChatMessageDtoToMessage({
+      ...assistantMessageDto,
+      outputBlocks: [
+        {
+          id: "workspace-file-valid",
+          type: "workspace_file",
+          workspaceId: "0198ca9a-81c6-7c8d-9444-b16da02de9b4",
+          path: "reports/result.xlsx",
+          fileName: "result.xlsx",
+          mimeType:
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          size: 4096,
+          version: `sha256:${"a".repeat(64)}`,
+        },
+        {
+          id: "workspace-file-traversal",
+          type: "workspace_file",
+          workspaceId: "0198ca9a-81c6-7c8d-9444-b16da02de9b4",
+          path: "../secret.txt",
+          fileName: "secret.txt",
+          mimeType: "text/plain",
+          size: 8,
+          version: `sha256:${"b".repeat(64)}`,
+        },
+      ],
+    });
+
+    expect(assistant.outputBlocks).toEqual([
+      expect.objectContaining({
+        id: "workspace-file-valid",
+        type: "workspace_file",
+        path: "reports/result.xlsx",
+      }),
+    ]);
+  });
+
   it("reloads assistant output artifacts with authenticated file identity", () => {
     const assistant = mapChatMessageDtoToMessage(
       {

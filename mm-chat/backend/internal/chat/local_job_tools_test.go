@@ -75,86 +75,45 @@ func TestLocalBackgroundJobToolsStartWaitNotifyAndEnforceScope(t *testing.T) {
 	}
 }
 
-func TestBackgroundTerminalRequiresCompletedJobOutputForVerification(t *testing.T) {
-	registry := &chatToolRegistry{
-		ordered: make([]chatToolRegistration, 0, 2),
-		byName:  map[string]chatToolRegistration{}, colliding: map[string]struct{}{},
-	}
-	registry.register(chatToolRegistration{
-		Name: localTerminalToolName, Backend: chatToolBackendLocalSkill,
-		RiskClass: chatToolRiskExecute, ProjectForModel: identityChatToolResult,
+func TestBackgroundBashRegistersDeclaredWorkspaceFileOnCompletion(t *testing.T) {
+	workspace := t.TempDir()
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: filepath.Join(workspace, "skills"), WorkspaceRoot: workspace,
+		ShellPath: "/bin/sh", ApprovalMode: localskills.ApprovalSmart,
+		CallTimeout: time.Second, RunTimeout: 5 * time.Second, MaxOutput: 64 << 10,
+		MaxCalls: 8, MaxRounds: 8, MaxConcurrent: 1,
 	})
-	registry.register(chatToolRegistration{
-		Name: localJobOutputToolName, Backend: chatToolBackendLocalSkill,
-		RiskClass: chatToolRiskRead, ProjectForModel: identityChatToolResult,
-	})
-	policy := newChatCompletionPolicy()
-	policy.observe(registry, []ProviderToolCall{{ID: "start", Name: localTerminalToolName}},
-		[]ProviderToolResult{{CallID: "start", Name: localTerminalToolName,
-			Content: `{"result":{"jobId":"job-1","status":"running"},"durability":"process_local"}`}})
-	if _, err := policy.verify("start", "started"); err == nil {
-		t.Fatal("background start became completion evidence")
+	if err != nil {
+		t.Fatal(err)
 	}
-	policy.observe(registry, []ProviderToolCall{{ID: "running", Name: localJobOutputToolName}},
-		[]ProviderToolResult{{CallID: "running", Name: localJobOutputToolName,
-			Content: `{"result":{"jobId":"job-1","status":"running"}}`}})
-	if _, err := policy.verify("running", "still running"); err == nil {
-		t.Fatal("running output became completion evidence")
+	runtime := newLocalSkillToolRuntime(executor, nil)
+	runtime.bindJobScope("user-1", "conversation-1")
+	runtime.bindWorkspace("workspace-1")
+	started, err := runtime.execute(context.Background(), make(chan ProviderEvent, 8), ProviderToolCall{
+		ID: "start-file", Name: localTerminalToolName,
+		Arguments: `{"command":"printf generated > report.txt","skill":null,"workingDir":null,"timeoutSeconds":null,"runInBackground":true,"outputFiles":["report.txt"]}`,
+	}, 1, 1)
+	if err != nil || started.IsError {
+		t.Fatalf("started=%#v error=%v", started, err)
 	}
-	policy.observe(registry, []ProviderToolCall{{ID: "foreground", Name: localTerminalToolName}},
-		[]ProviderToolResult{{CallID: "foreground", Name: localTerminalToolName,
-			Content: `{"exitCode":0}`}})
-	if _, err := policy.verify("foreground", "foreground command completed"); err == nil ||
-		err.Error() != "verification_evidence_invalid" {
-		t.Fatalf("foreground command verified a background Job: %v", err)
+	var startPayload struct {
+		Result localskills.JobSnapshot `json:"result"`
 	}
-	policy.observe(registry, []ProviderToolCall{{ID: "done", Name: localJobOutputToolName}},
-		[]ProviderToolResult{{CallID: "done", Name: localJobOutputToolName,
-			Content: `{"result":{"jobId":"job-1","status":"completed"}}`}})
-	if _, err := policy.verify("done", "job completed successfully"); err != nil {
-		t.Fatalf("completed output evidence error=%v", err)
+	if err := json.Unmarshal([]byte(started.Content), &startPayload); err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestBackgroundTerminalTracksEachPendingJobByExactID(t *testing.T) {
-	registry := &chatToolRegistry{
-		ordered: make([]chatToolRegistration, 0, 2),
-		byName:  map[string]chatToolRegistration{}, colliding: map[string]struct{}{},
+	completed, err := runtime.execute(context.Background(), make(chan ProviderEvent, 8), ProviderToolCall{
+		ID: "output-file", Name: localJobOutputToolName,
+		Arguments: `{"jobId":"` + startPayload.Result.ID + `","wait":true,"timeoutSeconds":1}`,
+	}, 2, 2)
+	if err != nil || completed.IsError ||
+		!strings.Contains(completed.Content, `"workspaceFiles"`) ||
+		!strings.Contains(completed.Content, `"path":"report.txt"`) {
+		t.Fatalf("completed=%#v error=%v", completed, err)
 	}
-	registry.register(chatToolRegistration{
-		Name: localTerminalToolName, Backend: chatToolBackendLocalSkill,
-		RiskClass: chatToolRiskExecute, ProjectForModel: identityChatToolResult,
-	})
-	registry.register(chatToolRegistration{
-		Name: localJobOutputToolName, Backend: chatToolBackendLocalSkill,
-		RiskClass: chatToolRiskRead, ProjectForModel: identityChatToolResult,
-	})
-	policy := newChatCompletionPolicy()
-	for _, jobID := range []string{"job-1", "job-2"} {
-		policy.observe(registry,
-			[]ProviderToolCall{{ID: "start-" + jobID, Name: localTerminalToolName}},
-			[]ProviderToolResult{{CallID: "start-" + jobID, Name: localTerminalToolName,
-				Content: `{"result":{"jobId":"` + jobID + `","status":"running"}}`}},
-		)
-	}
-	policy.observe(registry, []ProviderToolCall{{ID: "wrong", Name: localJobOutputToolName}},
-		[]ProviderToolResult{{CallID: "wrong", Name: localJobOutputToolName,
-			Content: `{"result":{"jobId":"job-3","status":"completed"}}`}})
-	if _, err := policy.verify("wrong", "unrelated Job completed"); err == nil ||
-		err.Error() != "verification_evidence_invalid" {
-		t.Fatalf("unrelated Job evidence error=%v", err)
-	}
-	for index, jobID := range []string{"job-1", "job-2"} {
-		callID := "done-" + jobID
-		policy.observe(registry, []ProviderToolCall{{ID: callID, Name: localJobOutputToolName}},
-			[]ProviderToolResult{{CallID: callID, Name: localJobOutputToolName,
-				Content: `{"result":{"jobId":"` + jobID + `","status":"completed"}}`}})
-		if _, err := policy.verify(callID, jobID+" completed"); err != nil {
-			t.Fatalf("%s evidence error=%v", jobID, err)
-		}
-		if got := policy.requiresVerification(); got != (index == 0) {
-			t.Fatalf("after %s requiresVerification=%v", jobID, got)
-		}
+	blocks := runtime.workspaceFileOutputBlocks("message-1")
+	if len(blocks) != 1 {
+		t.Fatalf("workspace output blocks=%#v", blocks)
 	}
 }
 

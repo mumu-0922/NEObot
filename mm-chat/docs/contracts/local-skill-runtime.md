@@ -9,7 +9,7 @@ and the normal Chat Tool Loop loads its files and runs commands when needed.
 ```text
 owner installation -> admitted canonical package -> immutable local materialization
   -> revisioned catalog replacement -> optional skill
-enabled local_direct -> File/Job/terminal Tools -> same-model answer
+enabled local_direct -> read/write/edit/grep/bash + Job Tools -> same-model answer
 ```
 
 An ordinary Skill needs `SKILL.md`. `scripts/`, `references/`, and `assets/`
@@ -26,10 +26,10 @@ Runner mTLS, and production isolation evidence are not prerequisites.
 - Publication uses a same-filesystem temporary directory and atomic rename.
 - Reads accept only exact inventory paths and reject absolute paths, traversal,
   missing files, symlinks, oversized files, and content drift.
-- A `terminal.skill` binding rehashes the complete exact inventory again before
+- A `bash.skill` binding rehashes the complete exact inventory again before
   exposing the selected root to the child command.
 - `skill` reads only `SKILL.md`. A loaded Skill may access exact files below
-  `scripts/`, `references/`, and `assets/` through a `terminal.skill` binding
+  `scripts/`, `references/`, and `assets/` through a `bash.skill` binding
   and `$NEO_CHAT_ACTIVE_SKILL_ROOT`; callers never receive the server path.
 
 ## Native Tools
@@ -37,23 +37,23 @@ Runner mTLS, and production isolation evidence are not prerequisites.
 | Tool | Contract |
 | --- | --- |
 | `skill({name})` | Loads UTF-8 `SKILL.md` for one exact current installation. A duplicate load under the same catalog revision returns `alreadyLoaded` without repeating the body. |
-| `file_read({path,offset?,limit?})` | Reads one bounded UTF-8 window and returns the version of the complete workspace-relative regular file. |
-| `file_write({path,content,expectedVersion})` | Atomically creates or replaces one bounded UTF-8 file. `expectedVersion="absent"` is valid only for creation. |
-| `file_edit({path,oldText,newText,replaceAll,expectedVersion})` | Performs exact text replacement over the version-pinned file; the default requires exactly one match. |
-| `file_search({path?,query,glob?,maxResults?})` | Searches bounded regular UTF-8 workspace files for literal text while skipping symlinks and generated dependency directories. |
-| `publish_file({path,displayName,contentType})` | Snapshots one final binary or text workspace file into actor-owned `purpose=export` storage and projects it onto the assistant Message as an authenticated `purpose=output` attachment. Nullable display name and content type values use safe filename/MIME inference. |
-| `terminal({command,skill?,workingDir?,timeoutSeconds?,runInBackground})` | Runs one bounded shell command as the Backend user in the configured workspace. Explicit `timeoutSeconds` is capped by `AGENT_LOCAL_CALL_TIMEOUT`; longer work uses `runInBackground=true` with `timeoutSeconds=null`, which receives the background Run timeout. `skill` exposes that installed package only through `NEO_CHAT_ACTIVE_SKILL_ROOT`; background mode returns a process-local Job ID. |
+| `read({path,offset?,limit?})` | Reads one bounded UTF-8 window and returns the version of the complete workspace-relative regular file. |
+| `write({path,content,expectedVersion})` | Atomically creates or replaces one bounded UTF-8 file. `expectedVersion="absent"` is valid only for creation. |
+| `edit({path,oldText,newText,replaceAll,expectedVersion})` | Performs exact text replacement over the version-pinned file; the default requires exactly one match. |
+| `grep({path?,query,glob?,maxResults?})` | Searches bounded regular UTF-8 workspace files for literal text while skipping symlinks and generated dependency directories. |
+| `bash({command,skill?,workingDir?,timeoutSeconds?,runInBackground,outputFiles?})` | Runs one bounded shell command as the Backend user in the configured workspace. Explicit `timeoutSeconds` is capped by `AGENT_LOCAL_CALL_TIMEOUT`; longer work uses `runInBackground=true` with `timeoutSeconds=null`, which receives the background Run timeout. `outputFiles` declares workspace-relative files produced by the command so they can be projected as workspace-file outputs. `skill` exposes that installed package only through `NEO_CHAT_ACTIVE_SKILL_ROOT`; background mode returns a process-local Job ID. |
 | `job_list({})` | Lists process-local Jobs for the exact user and Conversation without command text or output. |
 | `job_output({jobId,wait,timeoutSeconds?})` | Reads one owned Job and optionally waits at most ten seconds without busy-polling. Output appears only after a terminal state. |
 | `job_kill({jobId})` | Cancels one owned Job and kills/reaps its complete process group. |
 
-`skills_list` and `skill_view` remain accepted by the Backend for a bounded
-continuation migration period, but their definitions are absent from every new
-model request.
+Legacy `file_read`, `file_write`, `file_edit`, `file_search`, `terminal`,
+`skills_list`, and `skill_view` remain accepted by the Backend for bounded
+same-turn/history compatibility, but their definitions are absent from every
+new model request.
 
 When `local_direct` is enabled with no installed Skills, the catalog is still
 an explicit empty tombstone and only `skill` is omitted. File, Job, and
-`terminal` Tools remain available. Disabling `local_direct` removes all of
+`bash` Tools remain available. Disabling `local_direct` removes all of
 these Tools without deleting installations or workspace data.
 
 The system prompt contains one bounded complete replacement of the installed
@@ -73,7 +73,7 @@ path-like tokens stay ordinary user text.
 
 ## Direct execution and limits
 
-`terminal` is direct local execution, not a Sandbox. A permitted command has
+`bash` is direct local execution, not a Sandbox. A permitted command has
 the filesystem and network authority of the Backend process and configured
 workspace. Product and deployment surfaces must state this explicitly.
 
@@ -89,7 +89,7 @@ The executor:
 - enforces per-call timeout, per-Run timeout, combined stdout/stderr bytes,
   calls, rounds, and global concurrency;
 - advertises the foreground Call timeout as the strict maximum for an explicit
-  `terminal.timeoutSeconds`. One shared Tool schema serves both modes, so a
+  `bash.timeoutSeconds`. One shared Tool schema serves both modes, so a
   background command that needs the longer Run timeout must pass
   `runInBackground=true` with `timeoutSeconds=null`;
 - starts a process group and kills the complete group on timeout or Chat Run
@@ -119,8 +119,8 @@ The executor:
 - classifies a foreground nonzero shell exit as `nonzero_exit` and an executor
   timeout as `timeout`. These are model-visible Tool errors and failed live/
   durable ProcessSteps, while their bounded exit code, stdout/stderr, duration,
-  and timeout/truncation flags remain available for recovery. Only exit code
-  zero receives a completion-evidence ID.
+  and timeout/truncation flags remain available for recovery. Exit code zero is
+  an ordinary successful Tool Result and carries no synthetic evidence ID.
 
 These guards reduce accidental damage. They are not protection against an
 adversarial allowed process.
@@ -149,24 +149,35 @@ adversarial allowed process.
   directory.
 - Search is literal and bounded to 2,000 files, 32 MiB scanned bytes, and 200
   results. It skips symlinks and hidden/generated dependency directories.
-- `file_write` and `file_edit` are mutations, not completion evidence. The
-  Agent must subsequently read/search/execute and verify the resulting state.
-- Successful local Tool Results sent back to the same model include the exact
-  Provider-only `evidenceToolCallId`. A foreground Terminal check may use that
-  ID to verify an earlier File mutation. The field is not Process metadata.
-- A successful foreground Terminal call does not itself create an outstanding
-  Completion Policy mutation. The Backend never guesses side effects by
-  parsing arbitrary Shell command text; the model must still interpret the
-  returned exit code/stdout/stderr truthfully.
+- `write` and `edit` return the resulting version and register the changed path
+  as a workspace-file output when a Host workspace is bound. They do not force
+  a synthetic verification Tool or canned verification narration.
+- The same model decides whether another `read`, `grep`, or `bash` check is
+  useful. A normal no-Tool answer ends the Turn naturally; the Backend does not
+  parse arbitrary shell text or invent completion evidence.
 - Runtime guidance does not promise a `python` alias. Commands use `python3`
   after checking availability when Python is needed; a missing executable is a
   normal nonzero Terminal result, not a successful Tool step.
 
-## Published chat artifacts
+## Workspace-file outputs and published chat artifacts
 
-- `publish_file` is model-visible only in Agent mode when both `local_direct`
-  and the server File service are available. Chat mode physically omits the
-  complete local Runtime, including publication.
+- When a Host workspace is bound, successful `write`/`edit` calls and declared
+  `bash.outputFiles` are persisted as assistant `workspace_file` output blocks
+  containing only workspace ID, relative path, display name, content type,
+  byte size, and content version. Background declarations become outputs only
+  after owned `job_output` observes `status=completed`.
+- The UI opens a workspace file in place through authenticated owner-scoped
+  endpoints. Text and DOCX use bounded text preview, XLSX uses bounded
+  sheet/row/cell JSON, and PDF/image/audio use authenticated inline bytes.
+  Download remains a secondary action; it does not create a duplicate export.
+- Content authority is rechecked against the current bound Runner and mount
+  fingerprint on every request. The server rejects traversal, stale authority,
+  symlinks, non-regular files, and files above 50 MiB, and emits `no-store`,
+  `nosniff`, a version ETag, and a safe Content-Disposition.
+- `publish_file` is model-visible only for unbound Agent runs when both
+  `local_direct` and the server File service are available. It is a legacy
+  snapshot/download fallback, not the normal bound-workspace path. Chat mode
+  physically omits the complete local Runtime, including publication.
 - Publication accepts only a workspace-relative regular file, rejects every
   symlink component and directory, supports binary bytes, rejects empty files,
   and applies `MAX_UPLOAD_BYTES` to both one file and the Turn total.
@@ -199,10 +210,9 @@ adversarial allowed process.
   seconds on completion; sleeps and busy polling are forbidden.
 - Completion notices are injected into the next Agent Step or the next request
   in that Conversation, but contain only Job ID/status and never imply output.
-- A running start/list/kill or foreground Terminal result cannot verify a
-  pending background Job. Only a successful `job_output` with the exact Job ID
-  and `status=completed` may serve as evidence; multiple Jobs remain pending
-  independently.
+- A running start/list/kill result does not publish declared output files.
+  Only a successful `job_output` with the exact Job ID and
+  `status=completed` registers those files; multiple Jobs remain independent.
 - Process trace marks these Tools with `durability=process_local`; the UI warns
   that service restart loses them. Shutdown cancels and reaps every Job.
 

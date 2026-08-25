@@ -7,10 +7,9 @@ import (
 )
 
 const (
-	chatAgentGetGoalToolName          = "get_goal"
-	chatAgentCreateGoalToolName       = "create_goal"
-	chatAgentUpdateGoalToolName       = "update_goal"
-	chatAgentVerifyCompletionToolName = "verify_completion"
+	chatAgentGetGoalToolName    = "get_goal"
+	chatAgentCreateGoalToolName = "create_goal"
+	chatAgentUpdateGoalToolName = "update_goal"
 
 	chatAgentGoalBlockedAfterRounds = 3
 )
@@ -58,7 +57,7 @@ func chatAgentGoalToolDefinitions() []ToolDefinition {
 			Type: "function",
 			Function: ToolFunctionDefinition{
 				Name:        chatAgentUpdateGoalToolName,
-				Description: "Update the exact current Goal revision. edit, pause, resume, and cancel require the direct human turn. complete and blocked also work in the exact current Goal Round. blocked requires the same condition for three automatic rounds. complete is rejected while a write/execute remains unverified.",
+				Description: "Update the exact current Goal revision. edit, pause, resume, and cancel require the direct human turn. complete and blocked also work in the exact current Goal Round. blocked requires the same condition for three automatic rounds. Mark complete only after the objective is actually achieved.",
 				Strict:      true,
 				Parameters: map[string]any{
 					"type": "object", "additionalProperties": false,
@@ -94,27 +93,6 @@ func chatAgentGoalToolDefinitions() []ToolDefinition {
 				},
 			},
 		},
-		{
-			Type: "function",
-			Function: ToolFunctionDefinition{
-				Name:        chatAgentVerifyCompletionToolName,
-				Description: "Record evidence only when the completion policy requires verification after a structured mutation or background Terminal start. evidenceToolCallId must be copied exactly from a successful later Tool result that checked the changed state. Do not call this for a foreground Terminal-only task or from narration alone.",
-				Strict:      true,
-				Parameters: map[string]any{
-					"type": "object", "additionalProperties": false,
-					"required": []string{"evidenceToolCallId", "summary"},
-					"properties": map[string]any{
-						"evidenceToolCallId": map[string]any{
-							"type": "string", "minLength": 1, "maxLength": 256,
-						},
-						"summary": map[string]any{
-							"type": "string", "minLength": 1,
-							"maxLength": maxChatAgentVerificationSummary,
-						},
-					},
-				},
-			},
-		},
 	}
 }
 
@@ -122,8 +100,7 @@ func isChatAgentGoalToolName(name string) bool {
 	switch strings.TrimSpace(name) {
 	case chatAgentGetGoalToolName,
 		chatAgentCreateGoalToolName,
-		chatAgentUpdateGoalToolName,
-		chatAgentVerifyCompletionToolName:
+		chatAgentUpdateGoalToolName:
 		return true
 	default:
 		return false
@@ -202,7 +179,7 @@ func appendChatAgentGoalSystemInstruction(
 		return systemPrompt
 	}
 	return strings.TrimSpace(strings.TrimSpace(systemPrompt) + "\n\n" +
-		chatAgentGoalSystemInstruction + "\n\n" + chatAgentCompletionSystemInstruction)
+		chatAgentGoalSystemInstruction)
 }
 
 func renderChatAgentGoalRound(goal ChatAgentGoal) string {
@@ -211,7 +188,7 @@ func renderChatAgentGoalRound(goal ChatAgentGoal) string {
 Objective: %s
 Round: %d/%d
 
-Continue working toward the objective in this same conversation. Treat the current workspace, Tool results, and durable state as authoritative; inspect them instead of assuming earlier narration is current. Make concrete progress and verify the result. Before claiming completion, read the current Goal, satisfy the completion-evidence gate, and mark it complete. If work remains, leave the Goal active for the next round. Follow the Goal policy before reporting a blocker.
+Continue working toward the objective in this same conversation. Treat the current workspace, Tool results, and durable state as authoritative; inspect them instead of assuming earlier narration is current. Make concrete progress, inspect results when useful, and mark the Goal complete only when the objective is actually achieved. If work remains, leave the Goal active for the next round. Follow the Goal policy before reporting a blocker.
 </goal_round>`, encodedObjective, goal.RoundsStarted, goal.MaxGoalRounds)
 }
 
@@ -224,6 +201,6 @@ func renderChatAgentGoalWrapup(goal ChatAgentGoal) string {
 	}
 	return fmt.Sprintf(`<goal_wrapup>
 Objective: %s%s
-The Goal is now %s. Write the closing message to the user: state the real outcome, summarize what was done and how it was verified, point to concrete results, and state any remaining review or exact blocker. Use only facts established by this conversation and Tool results. Do not call more Tools in this run.
+The Goal is now %s. Write the closing message to the user: state the real outcome, point to concrete results, and mention only meaningful remaining review or the exact blocker. Do not add a ritual verification summary when the result is normal. Use only facts established by this conversation and Tool results. Do not call more Tools in this run.
 </goal_wrapup>`, encodedObjective, blocked, goal.Phase)
 }

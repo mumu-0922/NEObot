@@ -113,13 +113,13 @@ defer release()
 activeRuns.attach(runID, cancel, stream)
 ```
 
-## Scenario: Continue a Chat Agent Goal and gate completion evidence
+## Scenario: Continue a Chat Agent Goal through natural Tool completion
 
 ### 1. Scope / Trigger
 
 Apply when changing migration `097`, Goal Tool definitions, automatic
-continuation, Provider follow-up framing, Tool risk observation, completion
-verification, Goal process events, or terminal wrap-up behavior.
+continuation, Provider follow-up framing, no-progress handling, or terminal
+wrap-up behavior.
 
 ### 2. Signatures
 
@@ -127,7 +127,6 @@ verification, Goal process events, or terminal wrap-up behavior.
 get_goal({})
 create_goal({objective,maxGoalRounds})
 update_goal({goalId,revision,action,objective,maxGoalRounds,blockedReason})
-verify_completion({evidenceToolCallId,summary})
 
 chat_agent_create_goal(...)
 chat_agent_change_goal(...)
@@ -137,123 +136,75 @@ chat_agent_start_goal_round(...)
 ProviderToolExchange.FollowupPrompt
 ```
 
-Goal phase is `active|paused|blocked|complete`; update action is
-`edit|pause|resume|complete|blocked|cancel`. Strict Provider schemas require
-all properties; semantic optionals are nullable.
+`verify_completion` is historical replay data only. It is not a definition,
+dispatch name, Result field, or visible process row for a new Turn.
 
 ### 3. Contracts
 
 - Register Goal Tools only for a native-Tool model when the Repository supports
-  `ChatAgentGoalRepository`. Legacy/fake repositories keep their old loop and
-  do not receive an unreachable completion gate.
-- Store at most one current Goal per Conversation. Create/change/cancel append
-  `goal.changed` atomically; starting exact next round appends
-  `goal.round.started`. Every mutation uses exact Goal ID/revision CAS.
+  `ChatAgentGoalRepository`. Store at most one current Goal per Conversation;
+  every mutation uses exact Goal ID/revision CAS.
 - Activation is process-local. Each HTTP request starts disarmed; only a direct
   human request may create/edit/pause/resume/cancel. Restored active state does
-  not self-start. Automatic work may complete/block; automatic blocked requires
-  round 3 or later and the prompt requires the same blocker across rounds.
+  not self-start. Automatic blocked requires the same blocker through round 3.
 - Goal round budgets are 3-32, default 8. When armed work would otherwise stop,
   start the exact next round and append `assistant -> synthetic user` through
-  `FollowupPrompt`; preserve Anthropic Thinking blocks/signatures.
-- Observe successful non-Goal Tool results in exact call/result order. A
-  structured `write` or non-Terminal `execute` becomes the latest mutation.
-  Never parse Shell text to guess whether a foreground Terminal command is
-  read-only: its synchronous result does not create an outstanding mutation,
-  but remains valid evidence for an earlier structured mutation. A background
-  Terminal start stays outstanding by exact Job ID; only a later successful
-  `job_output(status=completed)` for that Job may verify it. Normal end and Goal
-  complete are forbidden until `verify_completion` references a valid evidence
-  call at or after the latest mutation and every pending background Job is
-  verified. Goal Tools never count as mutation/evidence.
-- Every successful local Tool Result returned to the same model includes
-  `evidenceToolCallId=<exact Provider call ID>`. This Provider-only field is the
-  value copied into `verify_completion`; it never enters redacted process
-  metadata or grants authority by itself.
-- Buffer Goal/verification intermediate prose. Complete/blocked/cancel latches
-  a Tool-free wrap-up for the rest of the Turn. A hallucinated call receives
-  `goal_concluded`, executes nothing and cannot restore ordinary Tools.
-- Effective Agent mode is completion-driven. Do not derive a whole-Turn
-  deadline from local or MCP `RunTimeout`, and do not terminate healthy
-  progress at the legacy 32-Step/128-call or configured local/MCP call/round
-  budgets. Per-Tool timeouts, background Job lifetime, output, concurrency,
-  approval, cancellation, Provider failure, and outcome-unknown boundaries
-  remain authoritative.
-- Track sanitized Tool-call/result outcomes in memory. Three identical
-  consecutive outcomes or five consecutive all-error rounds force a Tool-free
-  blocked wrap-up with `agentOutcome=blocked` and a stable reason. It must
-  describe incomplete work and cannot satisfy completion verification.
-- Goal process events contain only Tool name/round, `mode=goal`,
-  `classification=read|write`, duration/status/failure category. Do not expose
-  objective, blocker, arguments, verification summary or server data.
+  `FollowupPrompt`; preserve provider-native Thinking state.
+- The ordinary Agent loop is natural: any Tool Call continues on the same model
+  and a model response with no Tool Call ends the Turn. Tool Results are the
+  execution facts. Do not force a self-verification Tool or expose Provider
+  call IDs as evidence fields.
+- Goal complete/blocked/cancel latches a Tool-free wrap-up. A hallucinated Tool
+  call receives `goal_concluded`, executes nothing, and cannot restore Tools.
+- Effective Agent mode has no whole-Turn deadline or fixed Step/Tool cutoff
+  while outcomes make progress. Retain per-Tool timeout, cancellation,
+  approval, output/concurrency bounds, Provider failure, and the three-repeat /
+  five-all-error no-progress guard.
+- Goal process events contain only Tool name/round, `mode=goal`, classification,
+  duration/status/failure category. Frontend normalization drops historical
+  `verify_completion` rows without invalidating the rest of the transcript.
 
 ### 4. Validation & Error Matrix
 
 | Condition | Required result |
 | --- | --- |
-| absent Goal repository | no Goal Tools and no completion gate |
+| absent Goal repository | no Goal Tools |
 | bad strict arguments / unknown Goal | bounded Tool error; no mutation |
 | stale revision / wrong exact round | `stale_revision` / `round_invalid`; no event gap |
 | non-human create/edit/pause/resume/cancel | `human_authority_required` |
 | automatic blocked before round 3 | `blocked_round_threshold` |
-| complete with outstanding mutation | `verification_required` |
-| stale/failed/unknown evidence call | `verification_evidence_invalid` |
-| foreground Terminal-only task | no completion gate; answer from the synchronous Result |
-| foreground Terminal used to verify a pending background Job | `verification_evidence_invalid` |
-| completed `job_output` names a different pending Job | `verification_evidence_invalid` |
-| completion-driven Agent makes observable progress beyond legacy Turn/local/MCP budgets | continue on the same Provider/model |
-| three identical outcomes or five consecutive all-error rounds | Tool-free blocked wrap-up; no success claim |
-| Goal database/function failure | terminal `AGENT_GOAL_PERSISTENCE_FAILED` |
-| wrap-up Provider emits Tool Call | `goal_concluded`; no dispatch; next Step remains Tool-free |
-| dirty `097` Down | `CHAT_AGENT_GOALS_DOWN_DATA_EXISTS` |
+| model emits no Tool Call after a successful write/execute | natural final answer; no injected follow-up |
+| completion-driven Agent progresses beyond legacy budgets | continue on the same Provider/model |
+| three identical outcomes or five all-error rounds | Tool-free blocked wrap-up; no success claim |
+| Goal persistence failure | terminal `AGENT_GOAL_PERSISTENCE_FAILED` |
+| wrap-up Provider emits Tool Call | `goal_concluded`; no dispatch; Tools remain disabled |
 
 ### 5. Good / Base / Bad Cases
 
-- **Good:** create -> automatic round -> structured write -> foreground Terminal
-  check -> copy its `evidenceToolCallId` -> verify -> complete -> Tool-free final
-  answer.
-- **Good:** `publish_file` succeeds on the last ordinary round, then bounded
-  grace permits evidence/`verify_completion` and the final narration only.
-- **Base:** short read-only chat uses no Goal; one Provider Turn ends normally.
-- **Base:** `pwd` plus `git status --short` runs in foreground Terminal and
-  answers without `verify_completion`.
-- **Bad:** parse Shell strings into read/write guesses, accept narration as
-  evidence, use a foreground Terminal result for a running background Job, arm
-  a restored Goal on startup, mark blocked in round 1, or re-enable Tools after
-  a wrap-up hallucination.
-- **Bad:** expand the ordinary Tool catalog during grace, reset the grace after
-  another mutation, or turn expiry into Tool-free success.
+- **Good:** `create_goal -> read/write/bash -> update_goal(complete) ->` Tool-free
+  final answer, with only real results and meaningful remaining issues stated.
+- **Base:** a routine one-Turn task uses no Goal and naturally ends after its
+  last Tool Result.
+- **Bad:** force `verify_completion`, inject a verification-only grace loop,
+  narrate ritual evidence, arm a restored Goal on startup, or mark blocked in
+  the first automatic round.
 
 ### 6. Tests Required
 
-- Strict definitions, default no Subagent, human authority, CAS, 3-round
-  blocker floor, round cap, exact verification reference and terminal error
-  mapping.
-- Foreground Terminal-only completion, structured write -> Terminal evidence,
-  local Result `evidenceToolCallId`, background start/running/wrong-Job refusal,
-  and exact completed Job acceptance.
-- Last-local-round mutation: exact four-round ceiling, mutation/external
-  definitions absent during grace, successful evidence/verify/final path, and
-  fail-closed exhaustion with no extra Provider call.
-- Automatic continuation hides intermediate narration and frames OpenAI/
-  Anthropic `assistant -> user` without dropping Thinking state.
-- Wrap-up hallucination proves all later requests have `Tools=nil`, no Goal or
-  business mutation occurs, and only the final prose is visible.
-- PostgreSQL 17 drill proves fresh/replay head `097`, runtime DML denial, exact
-  Function EXECUTE, contiguous Goal events, dirty refusal and clean down/up.
+- Strict Goal definitions exclude `verify_completion`; default has no Subagent.
+- Foreground `bash` and structured writes continue once, then accept a Tool-free
+  final answer without synthetic verification prompts or evidence fields.
+- Automatic continuation, CAS/human authority, blocker floor, round cap,
+  wrap-up Tool disabling, no-progress blocking, and PostgreSQL Goal replay stay
+  covered.
+- Historical `verify_completion` ProcessSteps load but are omitted from the
+  user-visible frontend timeline.
 
 ### 7. Wrong vs Correct
 
 ```text
-Wrong: every Terminal -> mutation gate -> model guesses a Tool Call ID
-Correct: foreground Terminal-only -> synchronous result -> answer
-
-Wrong: structured write -> model says "done" -> completed
-Correct: structured write -> successful later check -> copy evidenceToolCallId
-         -> verify_completion -> optional Goal complete -> Tool-free wrap-up
-
-Wrong: last ordinary round mutates -> expose every Tool for unlimited cleanup
-Correct: latch <=4 verification-only rounds -> verify/final or fail closed
+Wrong: write -> check -> copy call ID -> verify_completion -> final narration
+Correct: write/check Tool Results -> same-model continuation -> no Tool Call -> final
 ```
 
 ## Scenario: Drive one Chat Turn through the unified Tool Registry
@@ -300,9 +251,9 @@ replayable `search|tool` presentation.
   registrations with `AllowParallel=true` may overlap across MCP and local
   backends; always merge Results into exact Provider call order before same-
   model continuation.
-- Local parallel reads are exactly `file_read`, `file_search`, `job_list`,
-  `job_output`, and hidden legacy `skill_view`. `skill` mutates loaded state and
-  is a barrier. MCP requires current reviewed `read` classification;
+- Local parallel reads are exactly `read`, `grep`, `job_list`, `job_output`,
+  and hidden legacy `file_read`, `file_search`, and `skill_view`. `skill`
+  mutates loaded state and is a barrier. MCP requires current reviewed `read` classification;
   `mcp_tool_search` mutates the next visible catalog and is a barrier.
 - Every `write|execute|unknown`, retrieval, Goal, unregistered, and
   non-parallel Tool is an ordered barrier between read groups. A Goal conclude
@@ -360,12 +311,12 @@ replayable `search|tool` presentation.
 
 ### 5. Good / Base / Bad Cases
 
-- **Good:** `skill` prelude -> one task Step calls Web plus `terminal` -> Results
+- **Good:** `skill` prelude -> one task Step calls Web plus `bash` -> Results
   are returned in original call order -> same model answers.
 - **Good:** local `job_output` and reviewed MCP reads overlap, finish out of
   order, and enter the continuation in original model order.
-- **Good:** a file task runs beyond the legacy `RunTimeout`, verifies and
-  publishes the artifact, then ends naturally with no Tool Call.
+- **Good:** a file task runs beyond the legacy `RunTimeout`, registers its
+  workspace-relative deliverable, then ends naturally with no Tool Call.
 - **Base:** no Tool is available, so Chat streams the ordinary compatibility
   answer without constructing a fake execution Step.
 - **Bad:** append Tool definitions in one function but dispatch names in an
@@ -377,7 +328,7 @@ replayable `search|tool` presentation.
 
 - Registry definition order, complete policy metadata, first-task-Step Memory
   removal, collision fail-closed behavior, and default absence of Subagents.
-- Cross-Backend `skill -> (Web + terminal) -> answer` continuation with exact
+- Cross-Backend `skill -> (Web + bash) -> answer` continuation with exact
   Provider Result order.
 - Existing MCP dynamic-search, read concurrency, write serialization,
   Knowledge/Memory/Web, local Skill, cancellation, and recovery suites.
@@ -389,8 +340,8 @@ replayable `search|tool` presentation.
   a successful alternative; recoverable per-Tool timeout; explicit
   cancellation; and `outcome_unknown`.
 - Handler integration where a task crosses a deliberately short legacy
-  `RunTimeout`, then successfully calls `publish_file`, persists the attachment,
-  and replays it. Persist `agentOutcome`/`agentOutcomeReason` for a blocked run.
+  `RunTimeout`, then persists a `workspace_file` output block and replays it.
+  Persist `agentOutcome`/`agentOutcomeReason` for a blocked run.
 
 ### 7. Wrong vs Correct
 
@@ -521,7 +472,7 @@ Correct: append event -> project same event to SSE -> refresh/restart replay
 
 Apply when changing the `local_direct` Skill index, workspace File Tools,
 background Jobs, native Tool definitions, Tool ordering, same-model
-continuation, completion evidence, budgets, cancellation, errors or
+continuation, workspace-file delivery, budgets, cancellation, errors or
 process-trace redaction. Local Tools join the existing provider-native loop;
 they do not create another model protocol or enable Child Agents.
 
@@ -529,14 +480,14 @@ they do not create another model protocol or enable Child Agents.
 
 ```text
 skill({name})
-file_read({path, offset?, limit?})
-file_write({path, content, expectedVersion})
-file_edit({path, oldText, newText, replaceAll, expectedVersion})
-file_search({path?, query, glob?, maxResults?})
+read({path, offset, limit})
+write({path, content, expectedVersion})
+edit({path, oldText, newText, replaceAll, expectedVersion})
+grep({path, query, glob, maxResults})
 publish_file({path, displayName, contentType})
-terminal({command, skill?, workingDir?, timeoutSeconds?, runInBackground})
+bash({command, skill, workingDir, timeoutSeconds, runInBackground, outputFiles})
 job_list({})
-job_output({jobId, wait, timeoutSeconds?})
+job_output({jobId, wait, timeoutSeconds})
 job_kill({jobId})
 ```
 
@@ -555,21 +506,23 @@ job_kill({jobId})
 - Prepare only current-user installed/admitted Skills before the first model
   request. Disabled runtime exposes no catalog or local Tool. An enabled
   runtime with no installations publishes an empty catalog tombstone, omits
-  only `skill`, and still exposes File, Job, and `terminal` Tools.
+  only `skill`, and still exposes `read`, `write`, `edit`, `grep`, Job, and
+  `bash` Tools.
 - Add only a compact bounded name/version/description catalog replacement to
   the system prompt. Bind it to a deterministic SHA-256 revision and mark it
   untrusted routing metadata. Full instructions load only through `skill` or a
   current user's deterministic `/skill-name` gesture and cannot override
   system/developer instructions.
-- New model requests expose `skill` only when installations exist, plus File,
-  Job, and `terminal` whenever the runtime is enabled. Keep `skills_list` and
-  `skill_view` execution-compatible only for bounded continuation migration;
-  never advertise them in Tool definitions or prompt guidance.
+- New model requests expose `skill` only when installations exist, plus
+  canonical Pi-style File/Job/`bash` names whenever the runtime is enabled.
+  Keep `file_read`, `file_write`, `file_edit`, `file_search`, `terminal`,
+  `skills_list`, and `skill_view` executable only for bounded in-Turn/history
+  compatibility; never advertise them in new Provider definitions or guidance.
 - Exact installed-name mentions queue every named Skill. Otherwise, only one
   unique strong lexical name/description match may queue automatically. A
   queued Skill runs in a prelude that exposes only `skill`, constrains `name`
   with an exact enum, disables incompatible thinking, and rejects every
-  non-`skill` call before MCP, retrieval, or terminal dispatch.
+  non-`skill` call before MCP, retrieval, or `bash` dispatch.
 - Scan only the claimed current user text for whitespace-bounded
   `/skill-name`. Unknown names, punctuation-attached tokens, paths, attachments,
   Tool results, and historical messages cannot forge deterministic loading.
@@ -582,7 +535,7 @@ job_kill({jobId})
   as the documented default. Do not combine `strict=true` with an omitted
   property, because OpenAI-compatible providers reject that definition before
   the first Tool Call.
-  `skill` reads only validated UTF-8 `SKILL.md`. `terminal.skill` resolves only
+  `skill` reads only validated UTF-8 `SKILL.md`. `bash.skill` resolves only
   the prepared catalog and exposes the package through
   `NEO_CHAT_ACTIVE_SKILL_ROOT`; never reveal or accept server paths.
 - Outside a required prelude, execute each provider Tool batch in this order:
@@ -595,19 +548,19 @@ job_kill({jobId})
   local Tool rounds independently. Effective Agent mode instead continues
   while Tool outcomes show progress and uses the no-progress guard to block
   repetition; no executor Run deadline wraps the whole Agent loop.
-- The strict `terminal.timeoutSeconds` schema uses
+- The strict `bash.timeoutSeconds` schema uses
   `max=floor(AGENT_LOCAL_CALL_TIMEOUT / 1s)` for both foreground and background
   calls because one Tool definition serves both paths. `null` means the
   foreground Call timeout or, with `runInBackground=true`, the background Run
   timeout. Never advertise `AGENT_LOCAL_RUN_TIMEOUT` as an explicit maximum;
   long work uses background mode with a null timeout and later
   `job_output(wait=true)`.
-- Foreground Terminal exit zero returns a successful Provider Tool Result. A
+- Foreground `bash` exit zero returns a successful Provider Tool Result. A
   nonzero exit returns `IsError=true`, `error=nonzero_exit`; a timed-out result
   returns `IsError=true`, `error=timeout`. Both error results keep bounded
   `exitCode`, stdout, stderr, `timedOut`, `truncated`, and `durationMillis` for
-  same-model recovery and the typed Terminal presentation, but omit
-  `evidenceToolCallId`. The final ProcessStep and `tool.result` status must be
+  same-model recovery and the typed Terminal presentation. No successful or
+  failed Result carries a completion-evidence ID. The final ProcessStep and `tool.result` status must be
   failed in live SSE and durable replay.
 - Runtime guidance must not assume a `python` alias. Direct Python commands use
   `python3` after an availability check when needed; interpreter discovery or
@@ -616,24 +569,33 @@ job_kill({jobId})
   a complete-file `sha256:<hex>` version; write/edit requires that exact
   version, rechecks before atomic rename, and returns `version_conflict` rather
   than overwriting an external change. Reads/writes/searches are UTF-8 and
-  byte/file/result bounded. `file_write`/`file_edit` need a later observation
-  and cannot verify their own mutation.
-- `publish_file` is present only when the actor-owned File service is wired.
+  byte/file/result bounded. Successful `write`/`edit` records a typed
+  `workspace_file` reference when a Host Workspace is bound; its path and
+  version come from the Tool result rather than assistant prose.
+- `bash.outputFiles` is a bounded array of exact workspace-relative paths.
+  Foreground success captures those files immediately. Background `bash`
+  binds the same paths to its exact Job ID and captures them only after a
+  successful `job_output(status=completed)`; missing/unsafe paths are typed
+  Tool errors and are never guessed from stdout or narration.
+- `publish_file` is a compatibility fallback only when the actor-owned File
+  service is wired and no Host Workspace is bound.
   It snapshots binary or text bytes after the same path/symlink checks, rejects
   empty files, applies the server upload limit to one file and Turn total, and
   admits at most eight unique `(path, version)` artifacts. An unchanged replay
   reuses the exact File ID. Successful Files use `purpose=export` and become
   assistant-only `purpose=output` Message attachments on every completed,
-  failed, or cancelled terminal path.
+  failed, or cancelled terminal path. A bound Host Workspace instead keeps the
+  project file as the sole authority and emits no automatic attachment copy.
 - If assistant finalization fails, reread Message authority before cleanup:
   delete only artifacts proven unlinked, preserve an attachment already linked
   by an ambiguous commit, and retain private Files when the authority read is
   unavailable. Never expose a workspace/object path as a URL.
 - Background Jobs are in-memory, scoped to exact user plus Conversation, share
   foreground terminal concurrency/Run timeout, and never survive restart.
-  `job_output(wait=true)` waits at most ten seconds without polling. Only a
-  successful completed `job_output` may verify the background command; start,
-  list, kill, and running output cannot. Shutdown kills/reaps every Job.
+  `job_output(wait=true)` waits at most ten seconds without polling. Declared
+  output files become visible only on successful completion. Start, list,
+  kill, running, failed, and canceled states do not claim file delivery.
+  Shutdown kills/reaps every Job.
 - Model capability is checked before creating the assistant response when an
   installed Skill would require native Tools. Catalog preparation fails closed
   without exposing object keys, fingerprints, package bytes or local paths.
@@ -645,7 +607,8 @@ job_kill({jobId})
   `durability=process_local` in diagnostic `detail`. A Terminal ProcessStep may
   additionally carry the separate tagged presentation
   `{card:"terminal", command, cwd?, exitCode?, timedOut?, truncated?, background?}`.
-  Accept it only for exact `toolName=terminal` plus `mode=local_direct`; bound
+  Accept it for canonical `toolName=bash` or historical `terminal` plus
+  `mode=local_direct|host_workspace`; bound
   command/cwd on UTF-8 boundaries, apply common-secret redaction, and replace
   Workspace/Host Workspace/Skill cache roots with stable aliases. Never put
   command/cwd in `detail` or persist/stream raw stdout, stderr, other arguments,
@@ -683,15 +646,15 @@ job_kill({jobId})
 | catalog/package preparation fails | `SKILL_RUNTIME_UNAVAILABLE`; no internal detail |
 | strict arguments fail | Tool result `arguments_invalid`; no file read/process |
 | strict schema omits an optional property from `required` | Provider rejects the Run before Tool execution; repair the schema with required + nullable, not by weakening runtime validation |
-| explicit `terminal.timeoutSeconds` exceeds Call timeout | rejected by the advertised strict schema; no foreground process starts |
+| explicit `bash.timeoutSeconds` exceeds Call timeout | rejected by the advertised strict schema; no foreground process starts |
 | background Terminal uses `timeoutSeconds=null` | start the Job with the configured Run timeout; return its process-local Job ID |
-| foreground Terminal exits nonzero | failed Tool Result with `nonzero_exit`, bounded process output/flags, no evidence ID |
-| foreground Terminal times out | failed Tool Result with `timeout`, `timedOut=true`, bounded output/flags, no evidence ID |
+| foreground `bash` exits nonzero | failed Tool Result with `nonzero_exit` and bounded process output/flags |
+| foreground `bash` times out | failed Tool Result with `timeout`, `timedOut=true`, and bounded output/flags |
 | `skill.name` unknown | bounded `skill_not_found` |
 | duplicate `skill.name` under the same catalog revision | success with `alreadyLoaded=true`; omit content |
 | deterministic `/skill-name` package read fails | `SKILL_RUNTIME_UNAVAILABLE`; no Provider request |
 | required prelude returns no Tool Call | `LOCAL_SKILL_REQUIRED_CALL_MISSING`; discard buffered prose |
-| required prelude returns MCP/retrieval/terminal or a retired Tool | bounded `skill_required_before_action`; no side effect |
+| required prelude returns MCP/retrieval/`bash` or a retired Tool | bounded `skill_required_before_action`; no side effect |
 | materialized fingerprint drifts | bounded `package_drift`; no content/process |
 | catastrophic command blocked | typed Tool failure before process creation; approval cannot bypass |
 | destructive command, no durable approval authority | typed `approval_required` Tool failure |
@@ -702,7 +665,7 @@ job_kill({jobId})
 | workspace traversal/symlink escape | bounded `path_invalid`; no file access |
 | file version changed | bounded `version_conflict`; preserve current bytes |
 | Job lookup across user/Conversation | `job_not_found`; no existence disclosure |
-| Job is running or failed | not completion evidence |
+| Job is running or failed | no workspace file reference; no success claim |
 | Backend shutdown/restart | kill/reap active Jobs; never claim recovery |
 | non-Agent compatibility local call/round budget exhausted | bounded failure then Tool-free final continuation |
 | foreground call/background Job deadline expires | bounded timeout result; descendants killed |
@@ -711,14 +674,14 @@ job_kill({jobId})
 ### 5. Good / Base / Bad Cases
 
 - **Good:** one native continuation performs
-  `skill -> file_read -> file_edit -> terminal/job_output -> verify_completion
-  -> final answer`, with exact results only in model context and a bounded,
+  `skill -> read -> edit -> bash/job_output -> final answer`, with exact
+  Results only in model context, declared deliverables as workspace file cards, and a bounded,
   redacted Terminal card in persistence/SSE.
 - **Good:** a command that needs longer than the foreground Call timeout starts
   with `runInBackground=true, timeoutSeconds=null`, then observes its exact Job
   through `job_output(wait=true)`.
 - **Base:** local execution is enabled but the user has no installed Skills;
-  an empty replacement tombstone is injected, File/Job/terminal remain, and
+  an empty replacement tombstone is injected, File/Job/`bash` remain, and
   ordinary MCP/Knowledge/Memory/Web planning is unchanged.
 - **Bad:** paste every `SKILL.md` into the first prompt, trust a Tool-supplied
   object/path, execute an unadvertised action during a required prelude, run
@@ -731,11 +694,11 @@ job_kill({jobId})
 
 ### 6. Tests Required
 
-- Complete `skill -> terminal -> answer` success with the same Provider/model,
+- Complete `skill -> bash -> answer` success with the same Provider/model,
   exact Tool order, and only `skill` visible during a required prelude.
 - Exact-name, unique CJK/Latin lexical match, deterministic slash invocation,
   duplicate-load suppression, revision replacement, and empty tombstone.
-- A forged terminal call in a required prelude returns a Tool error and creates
+- A forged `bash` call in a required prelude returns a Tool error and creates
   no workspace marker. Explicit Memory remains the first ordinary task round
   after the Skill prelude.
 - Provider-schema assertions prove every strict `properties` key is present in
@@ -777,7 +740,7 @@ system prompt + every installed file + guessed server path + child agent exec
 
 ```text
 bounded revisioned catalog -> optional required/deterministic Skill load
--> versioned workspace/Job Tool rounds -> same-model observation/verification
+-> versioned workspace/Job Tool rounds -> same-model natural completion
 -> redacted process facts -> final answer
 ```
 

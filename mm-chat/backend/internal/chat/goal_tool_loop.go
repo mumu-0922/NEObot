@@ -16,7 +16,6 @@ type chatAgentGoalToolRuntime struct {
 	directHuman    bool
 	currentRound   int
 	forceNoTools   bool
-	completion     *chatCompletionPolicy
 	calls          int
 }
 
@@ -62,14 +61,6 @@ func newChatAgentGoalToolRuntime(
 func (runtime *chatAgentGoalToolRuntime) enabled() bool {
 	return runtime != nil && runtime.service != nil && runtime.turnID != "" &&
 		runtime.conversationID != ""
-}
-
-func (runtime *chatAgentGoalToolRuntime) bindCompletionPolicy(
-	policy *chatCompletionPolicy,
-) {
-	if runtime != nil {
-		runtime.completion = policy
-	}
 }
 
 func (runtime *chatAgentGoalToolRuntime) automaticWorkActive() bool {
@@ -275,27 +266,6 @@ func (runtime *chatAgentGoalToolRuntime) executeCall(
 			return chatAgentGoalFailureResult(call, "arguments_invalid"), false, "arguments_invalid", nil
 		}
 		return runtime.executeGoalUpdate(ctx, call, arguments)
-	case chatAgentVerifyCompletionToolName:
-		var arguments struct {
-			EvidenceToolCallID string `json:"evidenceToolCallId"`
-			Summary            string `json:"summary"`
-		}
-		if !decodeStrictToolArguments(call.Arguments, &arguments) {
-			return chatAgentGoalFailureResult(call, "arguments_invalid"), false, "arguments_invalid", nil
-		}
-		if runtime.completion == nil {
-			return chatAgentGoalFailureResult(call, "verification_unavailable"), false, "verification_unavailable", nil
-		}
-		evidence, err := runtime.completion.verify(
-			arguments.EvidenceToolCallID, arguments.Summary,
-		)
-		if err != nil {
-			return chatAgentGoalFailureResult(call, err.Error()), false, err.Error(), nil
-		}
-		return chatAgentGoalPayloadResult(call, map[string]any{
-			"verified": true, "evidenceToolCallId": evidence.CallID,
-			"evidenceTool": evidence.ToolName,
-		}), false, "", nil
 	default:
 		return chatAgentGoalFailureResult(call, "tool_not_available"), false, "tool_not_available", nil
 	}
@@ -319,10 +289,6 @@ func (runtime *chatAgentGoalToolRuntime) executeGoalUpdate(
 		if !runtime.directHuman {
 			return chatAgentGoalFailureResult(call, "human_authority_required"), false, "human_authority_required", nil
 		}
-	}
-	if action == ChatAgentGoalActionComplete && runtime.completion != nil &&
-		runtime.completion.requiresVerification() {
-		return chatAgentGoalFailureResult(call, "verification_required"), false, "verification_required", nil
 	}
 	if action == ChatAgentGoalActionBlocked && !runtime.directHuman &&
 		(runtime.current == nil || runtime.currentRound < chatAgentGoalBlockedAfterRounds) {

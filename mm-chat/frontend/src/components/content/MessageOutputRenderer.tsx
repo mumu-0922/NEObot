@@ -12,6 +12,7 @@ import MemorySearchBlock from "./MemorySearchBlock";
 import ProcessTracePanel from "./ProcessTracePanel";
 import AgentTranscript from "./AgentTranscript";
 import { hasAgentTranscript } from "@/lib/chat/agentTranscript";
+import WorkspaceFileCard from "./WorkspaceFileCard";
 
 interface MessageOutputRendererProps {
   message: Message;
@@ -143,6 +144,8 @@ const MessageOutputRenderer = React.forwardRef<
               </React.Fragment>
             );
           }
+          case "workspace_file":
+            return <WorkspaceFileCard key={block.id} file={block} />;
         }
       })}
     </div>

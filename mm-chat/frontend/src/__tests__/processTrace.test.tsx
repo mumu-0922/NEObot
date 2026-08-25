@@ -181,6 +181,36 @@ describe("durable process trace", () => {
     expect(mcp?.presentation).toBeUndefined();
   });
 
+  it("uses canonical Pi Tool names and hides historical completion ceremony", () => {
+    const bash = normalizeProcessStep({
+      id: "tool-bash-1",
+      kind: "tool",
+      status: "completed",
+      labelKey: "process.tool",
+      detail: { toolName: "bash", mode: "host_workspace" },
+      presentation: {
+        version: 1,
+        card: "terminal",
+        command: "pnpm test",
+        cwd: "$NEO_CHAT_WORKSPACE",
+        exitCode: 0,
+      },
+    });
+    expect(bash?.presentation).toMatchObject({
+      card: "terminal",
+      command: "pnpm test",
+    });
+    expect(
+      normalizeProcessStep({
+        id: "tool-verify-legacy",
+        kind: "tool",
+        status: "completed",
+        labelKey: "process.tool",
+        detail: { toolName: "verify_completion", mode: "goal" },
+      }),
+    ).toBeNull();
+  });
+
   it("renders a fail-closed durable Terminal approval request", () => {
     const step = normalizeProcessStep({
       id: "tool-terminal-approval",

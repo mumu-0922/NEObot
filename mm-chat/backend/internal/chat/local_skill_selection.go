@@ -53,7 +53,7 @@ func (runtime *localSkillToolRuntime) promptInstruction() string {
 			"commands instead of repeating the host path. Paths outside this root are unavailable." +
 			"\n<authorized_workspace_alias>" + string(alias) + "</authorized_workspace_alias>"
 	}
-	if runtime.artifactPublishingAvailable() {
+	if runtime.publishToolAvailable() {
 		instruction += "\n" + publishFileSystemInstruction
 	}
 	return instruction + workspaceAlias + "\n<installed_skill_catalog>" + string(encoded) +

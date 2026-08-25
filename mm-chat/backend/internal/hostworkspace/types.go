@@ -117,3 +117,11 @@ type HostStatus struct {
 	Architecture string
 	Features     agenthost.HostFeatures
 }
+
+type WorkspaceFileSnapshot struct {
+	Path     string
+	FileName string
+	MimeType string
+	Body     []byte
+	Version  string
+}

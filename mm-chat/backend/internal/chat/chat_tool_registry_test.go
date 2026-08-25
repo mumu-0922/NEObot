@@ -42,8 +42,8 @@ func TestChatToolRegistryOrdersAuthorityAndCarriesExecutionPolicy(t *testing.T) 
 	})
 	definitions := registry.definitions(1)
 	want := []string{
-		"search_memory", "search_knowledge", "skill", "file_read", "file_write",
-		"file_edit", "file_search", "job_list", "job_output", "job_kill", "terminal",
+		"search_memory", "search_knowledge", "skill", "read", "write",
+		"edit", "grep", "job_list", "job_output", "job_kill", "bash",
 	}
 	if len(definitions) != len(want) {
 		t.Fatalf("definitions=%#v", definitions)
@@ -73,9 +73,8 @@ func TestChatToolRegistryOrdersAuthorityAndCarriesExecutionPolicy(t *testing.T) 
 		t.Fatal("legacy Skill continuation registration is missing")
 	}
 	fileWrite, ok := registry.lookup(localFileWriteToolName)
-	if !ok || fileWrite.RiskClass != chatToolRiskWrite ||
-		!fileWrite.MutationResultNeedsFollowup {
-		t.Fatalf("file_write registration=%#v", fileWrite)
+	if !ok || fileWrite.RiskClass != chatToolRiskWrite {
+		t.Fatalf("write registration=%#v", fileWrite)
 	}
 	for _, name := range []string{
 		localFileReadToolName, localFileSearchToolName,
@@ -128,8 +127,8 @@ func TestChatToolRegistryFailsClosedOnNameCollision(t *testing.T) {
 	if !registry.register(readRegistration) || registry.register(readRegistration) {
 		t.Fatal("read collision registration result is incorrect")
 	}
-	if len(registry.verificationOnly().definitions(1)) != 0 {
-		t.Fatal("verification projection resurrected a colliding read Tool")
+	if len(registry.definitions(1)) != 0 {
+		t.Fatal("Tool definitions resurrected a colliding read Tool")
 	}
 }
 

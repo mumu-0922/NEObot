@@ -184,3 +184,49 @@ func TestHandlerProjectsHostStatusBrowseAndNativePicker(t *testing.T) {
 		t.Fatalf("picker = %d, body = %s", pickerRecorder.Code, pickerRecorder.Body.String())
 	}
 }
+
+func TestHandlerServesWorkspaceFileContentWithVersionHeaders(t *testing.T) {
+	repo := newFakeRepository()
+	repo.items[testWorkspaceID] = Workspace{
+		ID: testWorkspaceID, Revision: 2, Settings: validSettings(),
+		RunnerID: "wsl-test-runner", CanonicalPath: "/home/user/project",
+		DirectoryFingerprint: "sha256:" + strings.Repeat("a", 64),
+	}
+	version := "sha256:" + strings.Repeat("b", 64)
+	resolver := &workspaceFileResolver{
+		fakeResolver: fakeResolver{runnerID: "wsl-test-runner"},
+		snapshot:     agentWorkspaceArtifact("reports/result.xlsx", []byte("xlsx"), version),
+	}
+	handler := NewHandler(NewService(repo, resolver))
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, workspaceRequest(
+		http.MethodGet,
+		workspacePathPrefix+testWorkspaceID+"/files/content?path=reports%2Fresult.xlsx&download=true",
+		"",
+	))
+	if recorder.Code != http.StatusOK || recorder.Body.String() != "xlsx" ||
+		recorder.Header().Get("ETag") != `"`+strings.Repeat("b", 64)+`"` ||
+		!strings.HasPrefix(recorder.Header().Get("Content-Disposition"), "attachment;") ||
+		recorder.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("status=%d headers=%#v body=%q", recorder.Code, recorder.Header(), recorder.Body.String())
+	}
+}
+
+func TestHandlerRejectsInvalidWorkspaceFileQueryBeforeHost(t *testing.T) {
+	resolver := &workspaceFileResolver{fakeResolver: fakeResolver{runnerID: "wsl-test-runner"}}
+	handler := NewHandler(NewService(newFakeRepository(), resolver))
+	for _, requestPath := range []string{
+		workspacePathPrefix + testWorkspaceID + "/files/content?path=a.txt&extra=1",
+		workspacePathPrefix + testWorkspaceID + "/files/preview?path=a.txt&download=true",
+		workspacePathPrefix + testWorkspaceID + "/files/content?path=a.txt&path=b.txt",
+	} {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, workspaceRequest(http.MethodGet, requestPath, ""))
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("path=%q status=%d body=%s", requestPath, recorder.Code, recorder.Body.String())
+		}
+	}
+	if len(resolver.requests) != 0 {
+		t.Fatalf("invalid query reached Host: %#v", resolver.requests)
+	}
+}

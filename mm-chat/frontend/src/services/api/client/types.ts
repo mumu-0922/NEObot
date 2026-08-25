@@ -217,6 +217,23 @@ export interface NativeDirectoryPickDTO {
   pathKind?: "wsl" | "windows-mounted";
 }
 
+export interface WorkspaceSheetPreviewDTO {
+  name: string;
+  rows: string[][];
+  truncated: boolean;
+}
+
+export interface WorkspaceFilePreviewDTO {
+  kind: "text" | "docx" | "xlsx" | "unsupported";
+  fileName: string;
+  mimeType: string;
+  size: number;
+  version: string;
+  truncated: boolean;
+  text?: string;
+  sheets?: WorkspaceSheetPreviewDTO[];
+}
+
 export interface WorkspaceApi {
   list(options?: { signal?: AbortSignal }): Promise<WorkspaceDTO[]>;
   get(
@@ -265,6 +282,17 @@ export interface WorkspaceApi {
   pickNativeDirectory(options?: {
     signal?: AbortSignal;
   }): Promise<NativeDirectoryPickDTO>;
+  previewFile(input: {
+    workspaceId: string;
+    path: string;
+    signal?: AbortSignal;
+  }): Promise<WorkspaceFilePreviewDTO>;
+  readFile(input: {
+    workspaceId: string;
+    path: string;
+    download?: boolean;
+    signal?: AbortSignal;
+  }): Promise<Blob>;
 }
 
 export interface ChatMessageDTO {

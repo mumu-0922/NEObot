@@ -3,6 +3,8 @@ package hostworkspace
 import (
 	"context"
 	"encoding/json"
+	"mime"
+	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"neo-chat/mm-chat/backend/internal/agenthost"
+	"neo-chat/mm-chat/backend/internal/localskills"
 )
 
 const (
@@ -122,6 +125,60 @@ func (service *Service) Get(ctx context.Context, workspaceID string) (Workspace,
 		return Workspace{}, ErrInvalid
 	}
 	return service.repository.Get(ctx, workspaceID)
+}
+
+func (service *Service) ReadWorkspaceFile(
+	ctx context.Context,
+	workspaceID string,
+	filePath string,
+	maxBytes int64,
+) (WorkspaceFileSnapshot, error) {
+	if service == nil || service.repository == nil || service.resolver == nil ||
+		!validUUID(workspaceID) || !validWorkspaceFilePath(filePath) ||
+		maxBytes < 1 || maxBytes > 50<<20 {
+		return WorkspaceFileSnapshot{}, ErrInvalid
+	}
+	workspace, err := service.repository.Get(ctx, workspaceID)
+	if err != nil {
+		return WorkspaceFileSnapshot{}, err
+	}
+	if !workspace.Bound() {
+		return WorkspaceFileSnapshot{}, ErrWorkspaceUnbound
+	}
+	if workspace.RunnerID != service.resolver.RunnerID() {
+		return WorkspaceFileSnapshot{}, ErrDisabled
+	}
+	encoded, err := json.Marshal(map[string]any{"path": filePath, "maxBytes": maxBytes})
+	if err != nil {
+		return WorkspaceFileSnapshot{}, ErrInvalid
+	}
+	var snapshot localskills.WorkspaceArtifactSnapshot
+	if err := service.ExecuteTool(ctx, agenthost.ToolExecuteRequest{
+		ProtocolVersion: agenthost.ProtocolVersion,
+		Workspace: agenthost.ExecutionWorkspace{
+			CanonicalPath:        workspace.CanonicalPath,
+			DirectoryFingerprint: workspace.DirectoryFingerprint,
+		},
+		Tool: agenthost.ToolArtifactRead, Arguments: encoded,
+		PermissionMode: agenthost.PermissionReadOnly,
+	}, &snapshot); err != nil {
+		return WorkspaceFileSnapshot{}, err
+	}
+	if !validWorkspaceFilePath(snapshot.Path) ||
+		!strings.HasPrefix(snapshot.Version, "sha256:") ||
+		!sha256Pattern.MatchString(strings.TrimPrefix(snapshot.Version, "sha256:")) ||
+		int64(len(snapshot.Body)) > maxBytes {
+		return WorkspaceFileSnapshot{}, agenthost.ErrHostProtocol
+	}
+	fileName := path.Base(snapshot.Path)
+	mimeType := mime.TypeByExtension(strings.ToLower(path.Ext(fileName)))
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+	return WorkspaceFileSnapshot{
+		Path: snapshot.Path, FileName: fileName, MimeType: mimeType,
+		Body: snapshot.Body, Version: snapshot.Version,
+	}, nil
 }
 
 func (service *Service) ImportLegacy(
@@ -335,4 +392,14 @@ func validPath(value string) bool {
 		}
 	}
 	return true
+}
+
+func validWorkspaceFilePath(value string) bool {
+	if !validPath(value) || strings.TrimSpace(value) != value ||
+		strings.HasPrefix(value, "/") || strings.Contains(value, "\\") {
+		return false
+	}
+	cleaned := path.Clean(value)
+	return cleaned != "." && cleaned == value && cleaned != ".." &&
+		!strings.HasPrefix(cleaned, "../")
 }

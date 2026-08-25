@@ -253,6 +253,16 @@ export type MessageOutputBlock =
       id: string;
       type: "tool_group";
       toolCalls: ToolCall[];
+    }
+  | {
+      id: string;
+      type: "workspace_file";
+      workspaceId: string;
+      path: string;
+      fileName: string;
+      mimeType: string;
+      size: number;
+      version: string;
     };
 
 export interface Message {

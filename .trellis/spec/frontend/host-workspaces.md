@@ -16,6 +16,12 @@ POST   /v1/workspaces/directories/pick-native
 PUT    /v1/workspaces/{workspaceId}/conversations/{conversationId}
 DELETE /v1/workspaces/{workspaceId}/conversations/{conversationId}
 PUT    /v1/chat/conversations/{conversationId}/permission
+GET    /v1/workspaces/{workspaceId}/files/content?path={relative}&download={bool}
+GET    /v1/workspaces/{workspaceId}/files/preview?path={relative}
+
+MessageOutputBlock.workspace_file = {
+  id, type, workspaceId, path, fileName, mimeType, size, version
+}
 ```
 
 Frontend writes flow through `WorkspaceApi -> workspaceService -> chatStore`.
@@ -65,6 +71,19 @@ optional `workspaceId` plus durable `permissionMode`.
 - Selecting Full access opens an accessible in-app `alertdialog` and sends
   `fullAccessAcknowledged=true` only after explicit confirmation. Never use
   generic Conversation config or `window.confirm` as permission authority.
+- Normalize `workspace_file` blocks at the server DTO boundary. Require a
+  canonical UUID, relative slash-separated path, bounded file name/MIME/size,
+  and `sha256:<64 lowercase hex>` generation version. Invalid blocks are
+  dropped without invalidating the remaining Message output.
+- Render a Workspace File Card under the owning assistant Turn. Its primary
+  action opens the current bound Workspace file; authenticated Download is a
+  secondary action. Do not turn the card into a server-output attachment or
+  trust a browser filesystem path.
+- File preview is current-state authority. Compare its returned version with
+  the generation version and show `file changed` on mismatch. Preview text,
+  DOCX, image, audio, PDF, and XLSX in-app; XLSX requires sheet tabs and a
+  bounded value grid. Unsupported/complex content may offer Download but must
+  not be decoded as arbitrary text.
 
 ## 4. Validation and Error Matrix
 
@@ -78,17 +97,26 @@ optional `workspaceId` plus durable `permissionMode`.
 | server Conversation creation succeeds but grouping fails | roll back the empty Conversation when possible, restore the previous selection, and do not present it as a Workspace Conversation |
 | Full access selected then cancelled | no permission request or local mutation |
 | permission request conflicts with an active Turn | retain authoritative mode and surface the locked error |
+| malformed/traversal/oversized `workspace_file` block | drop the block; render the rest of the Message |
+| preview version differs from card version | preview current bytes and show `file changed` |
+| preview endpoint fails or rejects format | show bounded failure state; do not invent content |
 
 ## 5. Good / Base / Bad Cases
 
 - **Good**: server list loads, imports only missing browser records, user selects
   a Host directory, binding persists, and refreshed Conversations retain the
   exact Workspace grouping in one expandable navigation tree.
+- **Good**: a completed Agent Turn reloads its XLSX `workspace_file` block,
+  opens a sheet/value preview from the project directory, and keeps Download as
+  a secondary action.
 - **Base**: a Conversation without `workspaceId` remains durable and available
   under `temporary-chats`; it can later be moved into a real Workspace.
 - **Bad**: browser state overwrites a newer server revision, the browser guesses
   `/mnt/<drive>`, a Conversation appears in both Workspace and root lists, or a
   failed grouping silently leaves the new row selected as if it succeeded.
+- **Bad**: convert a project file into an automatic object-store attachment,
+  show only Download, trust an absolute path from Message JSON, or silently
+  show changed bytes as the historical snapshot.
 
 ## 6. Required Focused Tests
 
@@ -101,6 +129,9 @@ optional `workspaceId` plus durable `permissionMode`.
 - bound/unbound and directory-control composition where UI changes.
 - permission DTO round trip, active-generation selector lock, and Full access
   acknowledgement dialog composition.
+- `workspace_file` valid/malformed normalization, live/reload preservation,
+  encoded content/preview requests, open-first card composition, version-change
+  notice, and bounded XLSX sheet/value rendering.
 
 ## 7. Wrong vs Correct
 
@@ -116,4 +147,7 @@ Correct: accessible dialog -> dedicated acknowledged API -> refresh durable DTO
 
 Wrong: render Workspaces and a second top-level Conversation list
 Correct: Workspace children + virtual temporary-chats, partitioned by workspaceId
+
+Wrong: project file -> automatic attachment copy -> Download-only card
+Correct: workspace_file(path, version) -> authenticated current preview -> optional Download
 ```

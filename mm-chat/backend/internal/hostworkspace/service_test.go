@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"neo-chat/mm-chat/backend/internal/agenthost"
+	"neo-chat/mm-chat/backend/internal/localskills"
 )
 
 const (
@@ -165,5 +166,97 @@ func TestServiceEnforcesPermissionCapabilitiesAndFullAccessAcknowledgement(t *te
 		agenthost.PermissionWorkspaceWrite, false,
 	); !errors.Is(err, ErrPermissionUnavailable) {
 		t.Fatalf("unadvertised mode error = %v", err)
+	}
+}
+
+type workspaceFileResolver struct {
+	fakeResolver
+	snapshot localskills.WorkspaceArtifactSnapshot
+	err      error
+	requests []agenthost.ToolExecuteRequest
+}
+
+func (resolver *workspaceFileResolver) ExecuteTool(
+	_ context.Context,
+	request agenthost.ToolExecuteRequest,
+	output any,
+) error {
+	resolver.requests = append(resolver.requests, request)
+	if resolver.err != nil {
+		return resolver.err
+	}
+	target, ok := output.(*localskills.WorkspaceArtifactSnapshot)
+	if !ok {
+		return agenthost.ErrHostProtocol
+	}
+	*target = resolver.snapshot
+	return nil
+}
+
+func TestServiceReadsBoundWorkspaceFileThroughPinnedReadOnlyHostAuthority(t *testing.T) {
+	repo := newFakeRepository()
+	repo.items[testWorkspaceID] = Workspace{
+		ID: testWorkspaceID, Revision: 2, Settings: validSettings(),
+		RunnerID: "wsl-test-runner", CanonicalPath: "/home/user/project",
+		DirectoryFingerprint: "sha256:" + strings.Repeat("a", 64),
+	}
+	resolver := &workspaceFileResolver{
+		fakeResolver: fakeResolver{runnerID: "wsl-test-runner"},
+		snapshot: localskills.WorkspaceArtifactSnapshot{
+			Path: "reports/result.xlsx", Body: []byte("xlsx"),
+			Version: "sha256:" + strings.Repeat("b", 64),
+		},
+	}
+	snapshot, err := NewService(repo, resolver).ReadWorkspaceFile(
+		context.Background(), testWorkspaceID, "reports/result.xlsx", 1024,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Path != "reports/result.xlsx" || snapshot.FileName != "result.xlsx" ||
+		snapshot.MimeType != "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+		string(snapshot.Body) != "xlsx" || len(resolver.requests) != 1 {
+		t.Fatalf("snapshot=%#v requests=%#v", snapshot, resolver.requests)
+	}
+	request := resolver.requests[0]
+	if request.Tool != agenthost.ToolArtifactRead ||
+		request.PermissionMode != agenthost.PermissionReadOnly ||
+		request.Workspace.CanonicalPath != "/home/user/project" ||
+		request.Workspace.DirectoryFingerprint != "sha256:"+strings.Repeat("a", 64) {
+		t.Fatalf("Host request=%#v", request)
+	}
+}
+
+func TestServiceWorkspaceFileReadFailsBeforeHostWithoutOwnedBoundWorkspace(t *testing.T) {
+	resolver := &workspaceFileResolver{fakeResolver: fakeResolver{runnerID: "wsl-test-runner"}}
+	service := NewService(newFakeRepository(), resolver)
+	if _, err := service.ReadWorkspaceFile(
+		context.Background(), testWorkspaceID, "secret.txt", 1024,
+	); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing Workspace error=%v", err)
+	}
+	if len(resolver.requests) != 0 {
+		t.Fatalf("unauthorized read reached Host: %#v", resolver.requests)
+	}
+}
+
+func TestServiceWorkspaceFileReadRejectsTraversalBeforeHost(t *testing.T) {
+	repo := newFakeRepository()
+	repo.items[testWorkspaceID] = Workspace{
+		ID: testWorkspaceID, Settings: validSettings(), RunnerID: "wsl-test-runner",
+		CanonicalPath:        "/home/user/project",
+		DirectoryFingerprint: "sha256:" + strings.Repeat("a", 64),
+	}
+	resolver := &workspaceFileResolver{fakeResolver: fakeResolver{runnerID: "wsl-test-runner"}}
+	service := NewService(repo, resolver)
+	for _, filePath := range []string{"../secret.txt", "/etc/passwd", `reports\\secret.txt`, "a/../b.txt"} {
+		if _, err := service.ReadWorkspaceFile(
+			context.Background(), testWorkspaceID, filePath, 1024,
+		); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("path=%q error=%v", filePath, err)
+		}
+	}
+	if len(resolver.requests) != 0 {
+		t.Fatalf("traversal reached Host: %#v", resolver.requests)
 	}
 }

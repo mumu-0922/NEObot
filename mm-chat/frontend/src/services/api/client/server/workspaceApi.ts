@@ -5,6 +5,7 @@ import type {
   NativeDirectoryPickDTO,
   WorkspaceApi,
   WorkspaceDTO,
+  WorkspaceFilePreviewDTO,
   WorkspaceFileDTO,
   WorkspaceSettingsDTO,
 } from "../types";
@@ -174,6 +175,28 @@ export function createServerWorkspaceApiShell(
         pathKind: oneOf(value.pathKind, ["wsl", "windows-mounted"] as const),
       } satisfies NativeDirectoryPickDTO;
     },
+    async previewFile(input) {
+      const envelope = asRecord(
+        await httpClient.requestJson<unknown>(
+          workspaceFilePath(input.workspaceId, "preview", input.path),
+          { signal: input.signal },
+        ),
+        "Workspace file preview response",
+      );
+      return normalizeWorkspaceFilePreview(envelope.preview);
+    },
+    async readFile(input) {
+      const response = await httpClient.requestBinary(
+        workspaceFilePath(
+          input.workspaceId,
+          "content",
+          input.path,
+          input.download === true,
+        ),
+        { signal: input.signal },
+      );
+      return response.blob;
+    },
   };
 }
 
@@ -273,6 +296,68 @@ export function workspaceSettingsBody(
 
 function workspacePath(workspaceId: string): string {
   return `${basePath}/${encodeURIComponent(workspaceId)}`;
+}
+
+function workspaceFilePath(
+  workspaceId: string,
+  action: "content" | "preview",
+  path: string,
+  download = false,
+): string {
+  const query = new URLSearchParams({ path });
+  if (action === "content" && download) query.set("download", "true");
+  return `${workspacePath(workspaceId)}/files/${action}?${query.toString()}`;
+}
+
+function normalizeWorkspaceFilePreview(
+  value: unknown,
+): WorkspaceFilePreviewDTO {
+  const preview = asRecord(value, "Workspace file preview");
+  const kind = oneOf(preview.kind, [
+    "text",
+    "docx",
+    "xlsx",
+    "unsupported",
+  ] as const);
+  const size = Number(preview.size);
+  if (!Number.isSafeInteger(size) || size < 0 || size > 50 * 1024 * 1024)
+    invalid("Workspace preview size");
+  const version = stringValue(preview.version, "Workspace preview version");
+  if (!/^sha256:[0-9a-f]{64}$/.test(version))
+    invalid("Workspace preview version");
+  const normalized: WorkspaceFilePreviewDTO = {
+    kind,
+    fileName: stringValue(preview.fileName, "Workspace preview file name"),
+    mimeType: stringValue(preview.mimeType, "Workspace preview MIME type"),
+    size,
+    version,
+    truncated: booleanValue(preview.truncated, "Workspace preview truncation"),
+  };
+  if (kind === "text" || kind === "docx") {
+    normalized.text = stringValue(preview.text, "Workspace preview text");
+  }
+  if (kind === "xlsx") {
+    if (!Array.isArray(preview.sheets)) invalid("Workspace preview sheets");
+    if (preview.sheets.length > 20) invalid("Workspace preview sheets");
+    normalized.sheets = preview.sheets.map((value) => {
+      const sheet = asRecord(value, "Workspace preview sheet");
+      if (!Array.isArray(sheet.rows)) invalid("Workspace preview rows");
+      if (sheet.rows.length > 200) invalid("Workspace preview rows");
+      return {
+        name: stringValue(sheet.name, "Workspace preview sheet name"),
+        truncated: booleanValue(
+          sheet.truncated,
+          "Workspace preview sheet truncation",
+        ),
+        rows: sheet.rows.map((row) => {
+          if (!Array.isArray(row)) invalid("Workspace preview row");
+          if (row.length > 50) invalid("Workspace preview row");
+          return row.map((cell) => stringValue(cell, "Workspace preview cell"));
+        }),
+      };
+    });
+  }
+  return normalized;
 }
 
 function asRecord(value: unknown, label: string): Record<string, unknown> {

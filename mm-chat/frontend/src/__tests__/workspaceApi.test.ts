@@ -131,6 +131,65 @@ describe("Host Workspace API client", () => {
       code: "INVALID_SERVER_RESPONSE",
     });
   });
+
+  it("opens and downloads a normalized Workspace file through encoded routes", async () => {
+    const requests: string[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requests.push(url);
+      if (url.includes("/files/preview?")) {
+        return jsonResponse({
+          preview: {
+            kind: "xlsx",
+            fileName: "gold prices.xlsx",
+            mimeType:
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            size: 4096,
+            version: `sha256:${"b".repeat(64)}`,
+            truncated: false,
+            sheets: [
+              {
+                name: "Prices",
+                rows: [["Date", "Price"]],
+                truncated: false,
+              },
+            ],
+          },
+        });
+      }
+      return new Response(new Uint8Array([0x50, 0x4b]), {
+        headers: { "Content-Type": "application/octet-stream" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const api = createNeoChatApiClient({
+      mode: "server",
+      baseUrl: "/mm-api",
+    }).workspaces!;
+
+    await expect(
+      api.previewFile({
+        workspaceId: workspace.id,
+        path: "reports/gold prices.xlsx",
+      }),
+    ).resolves.toMatchObject({
+      kind: "xlsx",
+      sheets: [{ name: "Prices", rows: [["Date", "Price"]] }],
+    });
+    await expect(
+      api.readFile({
+        workspaceId: workspace.id,
+        path: "reports/gold prices.xlsx",
+        download: true,
+      }),
+    ).resolves.toBeInstanceOf(Blob);
+    expect(requests[0]).toContain(
+      "/files/preview?path=reports%2Fgold+prices.xlsx",
+    );
+    expect(requests[1]).toContain(
+      "/files/content?path=reports%2Fgold+prices.xlsx&download=true",
+    );
+  });
 });
 
 function jsonResponse(value: unknown, status = 200): Response {

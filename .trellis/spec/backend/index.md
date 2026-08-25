@@ -105,8 +105,8 @@ artifact publication, or legacy control-plane retirement:
    [`mcp-tools.md`](./mcp-tools.md).
 2. For current Chat Skills, trace owner installation -> canonical package
    revalidation -> immutable materialization -> compact index -> `skill`
-   -> bounded Backend-user `terminal` -> optional `publish_file` -> same-model
-   answer.
+   -> bounded `read|write|edit|grep|bash` -> typed Workspace file reference ->
+   same-model natural answer. `publish_file` is unbound compatibility only.
 3. Preserve explicit child environment, workspace/path/fingerprint checks,
    process-group cancellation, local call/round/time/output limits, command
    redaction and the explicit "not a Sandbox" product warning.

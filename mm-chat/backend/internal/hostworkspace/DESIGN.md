@@ -8,6 +8,8 @@
 - Make Host directory identity Runner-authoritative and durable.
 - Prevent a Conversation's effective Agent working directory from changing
   after execution begins.
+- Open Agent-generated files from their current project location without
+  creating duplicate export objects or trusting a browser-supplied Host path.
 - Keep the current rollout fail closed until Docker Backend can authenticate to
   the Host Runner socket.
 
@@ -44,6 +46,15 @@ The Backend owns user authorization and durability. The Host Runner owns path
 conversion, `realpath`, directory probing, path classification, and the
 Runner-bound directory fingerprint. The Service validates the returned
 descriptor again before persistence.
+
+Workspace-file reads start from an owner-scoped Workspace ID plus a normalized
+relative path. The Service reloads the stored binding, calls the pinned Host
+client with the persisted Runner/path/fingerprint tuple, and rejects a returned
+path, version, or size that violates the request. HTTP responses are `no-store`
+and `nosniff`, use a safe Content-Disposition and content-version ETag, and cap
+one file at 50 MiB. Preview parsing is bounded independently: text and DOCX are
+flattened to text, while XLSX exposes capped sheet/row/cell JSON. This keeps
+archive decompression and renderer memory under server control.
 
 For a bound Agent turn, Chat resolves this module's immutable execution
 snapshot, verifies current Runner capability/identity, and adapts the existing
@@ -86,10 +97,16 @@ permission in the same immutable per-Turn binding as `cwd`.
   each executed Conversation.
 - **Fail-closed Host routing over Docker path fallback** preserves execution
   authority across Runner loss and identity drift.
+- **Current workspace file over copied chat artifact** makes Open the primary
+  action and keeps Download secondary. Historical messages retain the emitted
+  SHA-256 version; the viewer explicitly warns when current bytes have changed.
 
 ## Concurrency and authorization
 
 - Every repository query is scoped to `auth.UserOrDevelopment(ctx).ID`.
+- File reads resolve the Workspace under that owner before invoking Host I/O;
+  caller paths cannot select a Runner, mount, canonical Host directory, or
+  object-store key.
 - Bind authorizes the owner, revision, and unbound state before invoking the
   Host resolver, so rejected records cannot be used as filesystem probes.
 - Settings, bind, and delete mutations require an exact positive revision.
@@ -122,6 +139,8 @@ Important states:
 - `ErrPermissionAcknowledgement`: Full access lacked explicit acknowledgement.
 - `ErrPermissionUnavailable`: the live pinned Host does not advertise the mode.
 - `ErrPermissionLocked`: an assistant Turn is active.
+- `ErrFileNotFound`, `ErrFileTooLarge`, and `ErrInvalidPath`: a bounded file
+  request failed without disclosing Host paths or another owner's existence.
 
 ## Rollout and rollback
 
@@ -153,6 +172,8 @@ applies.
   directory alias uniqueness, cross-user denial, immutable execution locking,
   in-use delete denial, empty down/re-up, and guarded rollback with data.
 - Focused race tests and `go vet` cover this module and its wiring packages.
+- File tests cover owner isolation, traversal rejection before Host I/O,
+  strict query parsing, response headers, XLSX bounds, and oversized archives.
 
 ## Change history
 
@@ -162,3 +183,5 @@ applies.
   while preserving ungrouped legacy `local_direct` and fail-closed loss.
 - **2026-08-21**: added migration-103 durable permissions, active-Turn locking,
   capability admission, and immutable permission propagation to the Host.
+- **2026-08-25**: added pinned owner-scoped workspace-file content/preview
+  reads, bounded DOCX/XLSX parsing, version drift signaling, and no-copy open.

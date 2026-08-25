@@ -192,6 +192,8 @@ func TestNormalizeMetricPathBoundsKnownDynamicRoutes(t *testing.T) {
 		"/v1/workspaces/33333333-3333-4333-8333-333333333333":                                                    "/v1/workspaces/{workspace}",
 		"/v1/workspaces/33333333-3333-4333-8333-333333333333/bind":                                               "/v1/workspaces/{workspace}/bind",
 		"/v1/workspaces/33333333-3333-4333-8333-333333333333/conversations/44444444-4444-4444-8444-444444444444": "/v1/workspaces/{workspace}/conversations/{conversation}",
+		"/v1/workspaces/33333333-3333-4333-8333-333333333333/files/content":                                      "/v1/workspaces/{workspace}/files/content",
+		"/v1/workspaces/33333333-3333-4333-8333-333333333333/files/preview":                                      "/v1/workspaces/{workspace}/files/preview",
 		"/v1/mcp/oauth/callback":                               "/v1/mcp/oauth/callback",
 		"/v1/mcp/marketplace/search":                           "/v1/mcp/marketplace/search",
 		"/v1/mcp/marketplace/items/acme/deep-wiki":             "/v1/mcp/marketplace/items/{identifier}",

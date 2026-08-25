@@ -88,7 +88,26 @@ func (runtime *localSkillToolRuntime) executeBackgroundJobToolCall(
 		job, err := runtime.executor.BackgroundJobOutput(
 			ctx, runtime.jobScope, arguments.JobID, arguments.Wait, waitTimeout,
 		)
-		return backgroundJobToolResult(call, job, err)
+		if err != nil {
+			return backgroundJobToolResult(call, job, err)
+		}
+		paths := runtime.pendingFilesForJob(job.ID)
+		if job.Status == localskills.JobStatusCompleted && len(paths) > 0 {
+			files, fileErr := runtime.captureWorkspaceFiles(ctx, paths)
+			if fileErr != nil {
+				category := workspaceToolFailureCategory(fileErr)
+				if category == "file_not_found" {
+					category = "output_file_not_found"
+				}
+				return localSkillFailureResult(call, category), category, nil
+			}
+			runtime.clearPendingJobFiles(job.ID)
+			return backgroundJobToolResultWithWorkspaceFiles(call, job, files), "", nil
+		}
+		if job.Status == localskills.JobStatusFailed || job.Status == localskills.JobStatusKilled {
+			runtime.clearPendingJobFiles(job.ID)
+		}
+		return backgroundJobToolResult(call, job, nil)
 	case localJobKillToolName:
 		var arguments struct {
 			JobID string `json:"jobId"`
@@ -101,6 +120,20 @@ func (runtime *localSkillToolRuntime) executeBackgroundJobToolCall(
 	default:
 		return localSkillFailureResult(call, "tool_not_available"), "tool_not_available", nil
 	}
+}
+
+func backgroundJobToolResultWithWorkspaceFiles(
+	call ProviderToolCall,
+	job localskills.JobSnapshot,
+	files []WorkspaceFileReference,
+) ProviderToolResult {
+	payload := map[string]any{
+		"result": job, "durability": "process_local",
+	}
+	if len(files) > 0 {
+		payload["workspaceFiles"] = files
+	}
+	return localSkillSuccessResult(call, payload)
 }
 
 func backgroundJobToolResult(

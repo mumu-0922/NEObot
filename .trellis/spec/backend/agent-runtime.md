@@ -13,8 +13,14 @@ artifact publication, or migration `098`.
 ```text
 Conversation config: toolMode = "chat" | "agent"
 Skill API: /v1/skills/*
-Agent local Tools: skill, file_read, file_write, file_edit, file_search,
-                   terminal, job_list, job_output, job_kill, publish_file
+Agent local Tools: skill, read, write, edit, grep, bash,
+                   job_list, job_output, job_kill
+Unbound compatibility Tool: publish_file
+Workspace file API:
+  GET /v1/workspaces/{workspaceId}/files/content?path={relative}&download={bool}
+  GET /v1/workspaces/{workspaceId}/files/preview?path={relative}
+Workspace output block:
+  {type:"workspace_file",workspaceId,path,fileName,mimeType,size,version}
 Migration head: 103_chat_agent_permission_modes
 
 Transcript v2 events: context.injected, assistant.chunk,
@@ -26,7 +32,8 @@ Transcript v2 start marker: turn.started.payload.transcriptVersion = 2
 
 - Agent is a persisted Conversation runtime policy, not a separate control
   application. Chat mode physically omits Agent Tools; Agent mode adds Skills,
-  File, Terminal, Job, Browser/MCP, Goal, and `publish_file`.
+  canonical File, Bash, Job, Browser/MCP, and Goal Tools. `publish_file` is
+  available only as an unbound Workspace compatibility fallback.
 - Unsupported Tool models downgrade the effective Turn to Chat without changing
   stored intent or returning Skill/MCP admission conflicts.
 - Keep `internal/agents` (Assistant library), `internal/localskills`, and
@@ -46,20 +53,18 @@ Transcript v2 start marker: turn.started.payload.transcriptVersion = 2
 - Local execution is not a Sandbox. Never add `sudo`, a container socket,
   host-wide personal/secret binds, privileged execution, automatic OS package
   installation, or per-Skill isolation claims.
-- Foreground Terminal success is a synchronous execution boundary and does not
-  create a Completion Policy mutation. Do not classify arbitrary Shell text as
-  read-only/write. Structured File/MCP writes remain evidence-gated; foreground
-  Terminal may check them. Background Terminal remains outstanding by exact Job
-  ID until successful `job_output(status=completed)` evidence is explicitly
-  recorded. Successful local Tool Results expose their exact Provider-only
-  `evidenceToolCallId`. Process events may retain only versioned, Tool-owned,
+- Tool Results are execution facts; the model continues when it calls another
+  Tool and naturally completes when it emits no Tool Call. Do not classify
+  Shell text as read-only/write, inject a completion-evidence ceremony, expose
+  Provider call IDs as evidence, or register `verify_completion` for new Turns.
+  Background Bash remains observable by exact Job ID. Process events may retain only versioned, Tool-owned,
   allowlisted presentations: bounded/redacted Terminal command, stable cwd,
   final stdout/stderr transcript and execution flags; bounded workspace-relative
   File preview/diff/search summaries; Job lifecycle output; Skill/Goal summaries;
   or safe MCP/Browser fallbacks. Provider-only raw Results, credentials, exact
   retrieval queries, private Server refs and materialized Workspace/Host/Skill
   paths never enter ProcessStep, durable Agent events, or SSE.
-- `terminal.timeoutSeconds` has one strict Provider schema for foreground and
+- `bash.timeoutSeconds` has one strict Provider schema for foreground and
   background calls. Its explicit maximum is `AGENT_LOCAL_CALL_TIMEOUT`, which
   is also the foreground executor limit. A background call that needs the
   longer `AGENT_LOCAL_RUN_TIMEOUT` must set `runInBackground=true` and
@@ -128,9 +133,23 @@ Transcript v2 start marker: turn.started.payload.transcriptVersion = 2
   conversation` creates an exact Conversation + Tool name + risk-class grant.
   Deny, expiry, cancellation and `restart_denied` do not execute. The hard
   blocklist is earlier authority and is never approval-bypassable.
-- `publish_file` accepts only workspace-relative regular files, persists through
-  the existing user-owned File/object-store path, and attaches only successful
-  outputs to the assistant message. Cross-user and stale/deleted access fails.
+- A bound Host Workspace is the sole generated-file authority. Successful
+  `write`/`edit` and declared `bash.outputFiles` produce typed `workspace_file`
+  output blocks with workspace ID, relative path, MIME, size, and generation
+  version. Do not copy them into object storage automatically. `publish_file`
+  remains only for an unbound compatibility runtime.
+- Workspace file reads reauthorize the current-user Workspace, require an
+  immutable bound Runner/fingerprint, execute Host `artifact_read` in
+  `read-only` mode, and cap bytes at 50 MiB. Paths are normalized relative
+  names; traversal, absolute paths, backslashes, symlinks, non-regular files,
+  stale Runner authority, malformed Host versions, and oversized bodies fail
+  closed. Content responses are `no-store`, `nosniff`, carry the current
+  SHA-256 ETag, and use safe inline/attachment disposition.
+- Preview is server-generated from the current file. Text/DOCX are bounded;
+  XLSX parsing bounds archive entries, per-entry/total XML, shared strings,
+  sheets, rows, columns, and cell bytes. The response returns the current
+  version so a historical card can report changed content instead of posing as
+  the original snapshot.
 - Applied migration SQL is byte-immutable. The production checksum for `096`
   is `f7c6227d3dd559cb53b22a28af1d77bc570d45a42288bf1f348b22136ef1b042`;
   runtime corrections belong in forward migration `099`, never in the old
@@ -156,7 +175,8 @@ Transcript v2 start marker: turn.started.payload.transcriptVersion = 2
   do not create an invisible approval wait for a non-canary turn.
 - Manual Tool retry is Backend-authorized, never inferred from a frontend Tool
   name or risk label. The first admitted Tool is a failed `local_direct`
-  `file_read` with `file_not_found` or `execution_failed`: Backend rehydrates
+  `read` (or historical `file_read`) with `file_not_found` or
+  `execution_failed`: Backend rehydrates
   only its sanitized workspace-relative path/offset from the owner-scoped
   terminal event, creates one deterministic retry Message per source event,
   assigns a new call ID, and persists `retryOf`. Write/execute/MCP,
@@ -189,15 +209,19 @@ Transcript v2 start marker: turn.started.payload.transcriptVersion = 2
 | Provider returns no reasoning on a marked v2 Turn | no fabricated Think row; Tool/final answer order remains authoritative |
 | historical Tool-only Turn has no v2 marker | retain legacy renderer and legacy reasoning |
 | context or reasoning contains a secret/Host root or exceeds bounds | redact/alias/truncate before event append and DOM rendering |
-| failed safe `file_read` retried twice | one retry Message/Tool execution; new call ID links to immutable source through `retryOf` |
+| failed safe `read` retried twice | one retry Message/Tool execution; new call ID links to immutable source through `retryOf` |
 | write/execute/MCP/outcome-unknown/cross-user retry | no affordance; Backend denies without Tool execution |
 | reconnect cursor retained | replay exact suffix in original sequence |
 | reconnect cursor evicted | explicit unsequenced gap, retained suffix, final Message convergence |
 | slow reconnect subscriber | close subscriber; Run and Provider pipes continue |
 | restart after successful background start but before terminal Job result | preserve events; project exact Job as `interrupted` |
 | later output/kill events share exact Job ID | one display lifecycle; underlying Tool events remain immutable |
-| foreground Terminal-only task | Tool-free final answer; no `verify_completion` loop |
-| background Terminal plus foreground check | background remains unverified until exact completed `job_output` |
+| foreground Bash-only task | Tool-free final answer; no injected completion loop |
+| background Bash declares output files | only exact completed `job_output` registers those paths |
+| bound Workspace writes a deliverable | `workspace_file` output block; no automatic File/object copy |
+| traversal/absolute/backslash/symlink Workspace file path | reject before bytes reach the browser |
+| card version differs from current preview | return current preview/version; UI marks the file changed |
+| malformed/oversized XLSX archive | `WORKSPACE_FILE_PREVIEW_UNAVAILABLE`; no unbounded parse |
 | Backend shutdown with active Job | entire process group canceled and reaped |
 | path traversal/symlink/non-regular publish | reject; no File row/object |
 | Host/WSL alias below configured workspace | resolve to the same relative File/workingDir path |
@@ -210,11 +234,11 @@ Transcript v2 start marker: turn.started.payload.transcriptVersion = 2
 ### Good / base / bad cases
 
 - **Good**: Agent mode loads an admitted Skill, maps an authorized pasted Host
-  path to a workspace-relative name, edits that file, verifies it, publishes
-  it, and returns an authenticated download card.
+  path to a workspace-relative name, edits that file, and returns an open-first
+  Workspace File Card backed by the project file.
 - **Good**: that same workflow crosses `AGENT_LOCAL_RUN_TIMEOUT`; foreground
   calls and background Jobs remain individually bounded, but the progressing
-  Turn continues through `publish_file`.
+  Turn continues until a natural Tool-free answer.
 - **Base**: Agent mode has no installed Skills; bounded File/Terminal/Job Tools
   still work, while Chat mode exposes none of them.
 - **Base**: Agent runs `pwd` and `git status --short` in foreground, observes the
@@ -239,9 +263,9 @@ GOCACHE=/tmp/neo-chat-go-cache go vet ./...
 GOCACHE=/tmp/neo-chat-go-cache go test ./...
 ```
 
-The local Runtime suite must also prove foreground Terminal-only completion,
-`file_write -> terminal -> verify_completion`, exact local
-`evidenceToolCallId`, background Job ID/status gating, typed Terminal
+The local Runtime suite must also prove foreground Bash-only completion,
+`write -> same-model natural final`, absence of `verify_completion` and
+completion-evidence fields, background Job output-file registration, typed Terminal
 presentation redaction/bounds, raw-output absence, and live/reload parity.
 It must also prove effective Agent mode has no parent local/MCP Run deadline,
 ignores compatibility call/round caps while outcomes progress, persists a
@@ -272,8 +296,8 @@ Wrong: treat execution=true as proof that permission presets are enforced
 Correct: advertise each mode only after the exact Bubblewrap WSL/DrvFS probes
          pass, then require that mode on every Host Tool execution
 
-Wrong: inspect Shell command text -> guess mutation -> force verification
-Correct: foreground result -> synchronous boundary; background Job -> exact completed output
+Wrong: write -> self-verification Tool -> attachment copy -> ritual narration
+Correct: Tool facts -> workspace_file reference -> natural Tool-free final answer
 
 Wrong: advertise RunTimeout -> foreground executor rejects model arguments
 Correct: advertise CallTimeout -> background(null) receives RunTimeout

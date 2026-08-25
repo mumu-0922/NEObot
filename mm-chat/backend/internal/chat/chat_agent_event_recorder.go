@@ -156,7 +156,7 @@ func (recorder *chatAgentEventRecorder) recordToolExecution(
 
 func chatAgentToolRetryEligible(execution *ProviderToolExecutionEvent) bool {
 	if execution == nil || execution.Status != ProcessStepStatusFailed ||
-		execution.Mode != "local_direct" || execution.Name != localFileReadToolName ||
+		execution.Mode != "local_direct" || !isLocalFileReadToolName(execution.Name) ||
 		strings.TrimSpace(execution.CallID) == "" || execution.Presentation == nil ||
 		execution.Presentation.Card != "file" || execution.Presentation.Operation != "read" ||
 		strings.TrimSpace(execution.Presentation.Path) == "" {

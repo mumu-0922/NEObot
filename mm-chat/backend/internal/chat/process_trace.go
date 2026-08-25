@@ -466,20 +466,21 @@ func sanitizeProcessStepPresentation(
 	valid := false
 	localToolMode := mode == localskills.RuntimeLocalDirect ||
 		mode == localskills.RuntimeHostWorkspace
+	canonicalToolName := canonicalLocalToolName(toolName)
 	switch card {
 	case "terminal":
-		valid = kind == ProcessStepKindTool && toolName == localTerminalToolName && localToolMode
+		valid = kind == ProcessStepKindTool && canonicalToolName == localTerminalToolName && localToolMode
 	case "search":
 		valid = kind == ProcessStepKindWeb || kind == ProcessStepKindKnowledge ||
 			toolName == "search_memory"
 	case "file":
 		valid = kind == ProcessStepKindTool && localToolMode &&
-			(toolName == localFileReadToolName || toolName == localFileWriteToolName ||
-				toolName == localFileEditToolName || toolName == localFileSearchToolName ||
-				toolName == localPublishFileToolName)
+			(canonicalToolName == localFileReadToolName || canonicalToolName == localFileWriteToolName ||
+				canonicalToolName == localFileEditToolName || canonicalToolName == localFileSearchToolName ||
+				canonicalToolName == localPublishFileToolName)
 	case "job":
 		valid = kind == ProcessStepKindTool && localToolMode &&
-			((toolName == localTerminalToolName && presentation.Background) ||
+			((canonicalToolName == localTerminalToolName && presentation.Background) ||
 				toolName == localJobListToolName || toolName == localJobOutputToolName ||
 				toolName == localJobKillToolName)
 	case "skill":
@@ -570,7 +571,7 @@ func sanitizeProcessRetryPresentation(
 	operation string,
 ) *ProcessRetryPresentation {
 	if retry == nil || card != "file" || kind != ProcessStepKindTool ||
-		mode != "local_direct" || toolName != localFileReadToolName ||
+		mode != "local_direct" || !isLocalFileReadToolName(toolName) ||
 		operation != "read" || !isUUID(strings.TrimSpace(retry.EventID)) {
 		return nil
 	}

@@ -36,5 +36,11 @@ export function createLocalWorkspaceApiShell(): WorkspaceApi {
     async pickNativeDirectory() {
       throw unsupportedFeature("Host native directory picker");
     },
+    async previewFile() {
+      throw unsupportedFeature("Host Workspace file preview");
+    },
+    async readFile() {
+      throw unsupportedFeature("Host Workspace file reading");
+    },
   };
 }

@@ -423,6 +423,9 @@ func knownMetricPath(path string) (string, bool) {
 			return "/v1/workspaces/{workspace}/bind", true
 		case len(parts) == 6 && parts[4] == "conversations":
 			return "/v1/workspaces/{workspace}/conversations/{conversation}", true
+		case len(parts) == 6 && parts[4] == "files" &&
+			(parts[5] == "content" || parts[5] == "preview"):
+			return "/v1/workspaces/{workspace}/files/" + parts[5], true
 		}
 	}
 	if len(parts) >= 5 && parts[1] == "v1" && parts[2] == "mcp" {

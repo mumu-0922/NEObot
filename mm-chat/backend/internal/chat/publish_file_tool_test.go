@@ -39,8 +39,7 @@ func TestPublishFileToolPublishesBinaryOnceAndProjectsAttachment(t *testing.T) {
 	registration, ok := newChatToolRegistry(externalWebToolLoopInput{
 		LocalSkills: runtime,
 	}).lookup(localPublishFileToolName)
-	if !ok || registration.RiskClass != chatToolRiskWrite || registration.AllowParallel ||
-		registration.MutationResultNeedsFollowup {
+	if !ok || registration.RiskClass != chatToolRiskWrite || registration.AllowParallel {
 		t.Fatalf("publish registration=%#v/%v", registration, ok)
 	}
 

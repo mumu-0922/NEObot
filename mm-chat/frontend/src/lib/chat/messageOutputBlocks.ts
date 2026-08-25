@@ -41,8 +41,79 @@ const cloneBlock = (block: MessageOutputBlock): MessageOutputBlock => {
         ...block,
         toolCalls: block.toolCalls.map(cloneToolCall),
       };
+    case "workspace_file":
+      return { ...block };
   }
 };
+
+export function normalizeServerMessageOutputBlocks(
+  values: unknown[],
+): MessageOutputBlock[] {
+  const normalized: MessageOutputBlock[] = [];
+  for (const value of values) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const block = value as Record<string, unknown>;
+    if (typeof block.id !== "string" || block.id.length < 1) continue;
+    switch (block.type) {
+      case "text":
+      case "reasoning":
+        if (typeof block.content === "string") {
+          normalized.push(block as unknown as MessageOutputBlock);
+        }
+        break;
+      case "search":
+        if (Array.isArray(block.sources) && Array.isArray(block.images)) {
+          normalized.push(block as unknown as MessageOutputBlock);
+        }
+        break;
+      case "tool_group":
+        if (Array.isArray(block.toolCalls)) {
+          normalized.push(block as unknown as MessageOutputBlock);
+        }
+        break;
+      case "workspace_file": {
+        const size = Number(block.size);
+        if (
+          typeof block.workspaceId !== "string" ||
+          typeof block.path !== "string" ||
+          typeof block.fileName !== "string" ||
+          typeof block.mimeType !== "string" ||
+          typeof block.version !== "string" ||
+          !Number.isSafeInteger(size) ||
+          size < 0 ||
+          size > 50 * 1024 * 1024 ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+            block.workspaceId,
+          ) ||
+          block.path.length < 1 ||
+          block.path.length > 4096 ||
+          block.path.startsWith("/") ||
+          block.path.includes("\\") ||
+          block.path.split("/").includes("..") ||
+          block.fileName.length < 1 ||
+          block.fileName.length > 1024 ||
+          block.mimeType.length < 1 ||
+          block.mimeType.length > 256 ||
+          !/^sha256:[0-9a-f]{64}$/.test(block.version)
+        ) {
+          break;
+        }
+        normalized.push({
+          id: block.id,
+          type: "workspace_file",
+          workspaceId: block.workspaceId,
+          path: block.path,
+          fileName: block.fileName,
+          mimeType: block.mimeType,
+          size,
+          version: block.version,
+        });
+        break;
+      }
+    }
+  }
+  return normalized;
+}
 
 export function createMessageOutputBlockBuilder(
   options: MessageOutputBlockBuilderOptions = {},

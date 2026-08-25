@@ -9,26 +9,24 @@ reasoning and trace data, tool approval, cancellation, and source
 reconciliation.
 
 The active native Tool catalog includes read-only retrieval/Skill discovery and
-the explicitly executing local `terminal` Tool:
+the Pi-compatible local workspace Tools:
 
 ```text
 search_web(query)
 search_knowledge(query)
 search_memory()  # default-off; first round only
 skill(name)      # when local_direct is enabled and the user installed Skills
-file_read(path, offset?, limit?)
-file_write(path, content, expectedVersion)
-file_edit(path, oldText, newText, replaceAll, expectedVersion)
-file_search(path?, query, glob?, maxResults?)
-publish_file(path, displayName, contentType)
-terminal(command, skill?, workingDir?, timeoutSeconds?, runInBackground)
+read(path, offset?, limit?)
+write(path, content, expectedVersion)
+edit(path, oldText, newText, replaceAll, expectedVersion)
+grep(path?, query, glob?, maxResults?)
+bash(command, skill?, workingDir?, timeoutSeconds?, runInBackground, outputFiles?)
 job_list()
 job_output(jobId, wait, timeoutSeconds?)
 job_kill(jobId)
 get_goal()
 create_goal(objective, maxGoalRounds?)
 update_goal(goalId, revision, action, objective?, maxGoalRounds?, blockedReason?)
-verify_completion(evidenceToolCallId, summary)
 ```
 
 The four Goal Tools are present only when the selected model supports native
@@ -44,12 +42,13 @@ closed, and the default Registry contains no Subagent or delegation Tool.
 The local Tool family implements workspace execution plus progressive Skill
 disclosure. Every Turn receives a bounded complete catalog replacement with a
 content-derived revision; an empty catalog is an explicit tombstone. `skill`
-loads the selected package's `SKILL.md`, while File/Job/`terminal` Tools operate
+loads the selected package's `SKILL.md`, while File/Job/`bash` Tools operate
 in the configured local workspace. An empty catalog omits only `skill`; the
-workspace, Job, and `terminal` Tools remain available whenever `local_direct`
+workspace, Job, and `bash` Tools remain available whenever `local_direct`
 is enabled.
-The retired `skills_list` and `skill_view` names remain execution-compatible
-for a bounded migration period but are never advertised to the model.
+The retired `file_read`, `file_write`, `file_edit`, `file_search`, `terminal`,
+`skills_list`, and `skill_view` names remain execution-compatible for bounded
+same-turn/history migration but are never advertised to the model.
 `local_direct` is not an isolated Sandbox. Its contract is
 [`local-skill-runtime.md`](./local-skill-runtime.md).
 
@@ -178,8 +177,8 @@ The Registry is rebuilt for every Step from current Backend authority. Calls
 execute in the model's original order. A contiguous group of at most four
 explicitly safe reads may execute concurrently across reviewed MCP and local
 backends; the completed Results are still committed to the continuation in the
-original call order. Local parallel reads are limited to `file_read`,
-`file_search`, `job_list`, `job_output`, and legacy `skill_view`. Every
+original call order. Local parallel reads are limited to `read`, `grep`,
+`job_list`, `job_output`, and legacy `skill_view`. Every
 write/execute/unknown/retrieval/Goal call is an ordered barrier. `skill` is also
 a barrier because it changes the Turn-local loaded catalog state, and
 `mcp_tool_search` is a barrier because it changes the visible MCP catalog for
@@ -259,9 +258,7 @@ Three identical consecutive outcomes, or five consecutive all-error Tool
 rounds, trigger a Tool-free blocked wrap-up. The assistant must state what is
 incomplete, the last verified result, the blocker, and the safest next action;
 message metadata records `agentOutcome=blocked` plus a stable reason. A blocked
-wrap-up is never completion evidence and cannot claim an unpublished file is
-downloadable. Structured mutations and background Jobs still require valid
-later evidence before successful completion.
+wrap-up cannot claim that a missing workspace file is available.
 
 The loop otherwise
 terminates when:
@@ -281,14 +278,14 @@ are never converted into retryable Results.
 ### Code Mode decision
 
 The default catalog does not expose a general `run_code` Tool. The native Tool
-path already provides the correctness boundary, fallback, replay, risk policy,
-and completion verification. The upstream Playwright
+path already provides the correctness boundary, fallback, replay, and risk
+policy. The upstream Playwright
 `browser_run_code_unsafe` Tool is RCE-equivalent in the MCP process and is
 explicitly outside the reviewed Browser allowlist. A future Code Mode may be
 added only as an optional round-trip optimization over the same Registry; it
 must not replace or weaken native Tool fallback.
 
-### Same-session Goal and completion verification
+### Same-session Goal and natural completion
 
 Migration `097` stores at most one current Goal for each Conversation. Goal
 phase is `active|paused|blocked|complete`; every mutation carries the exact Goal
@@ -308,35 +305,18 @@ to 3-32 rounds. Automatic `blocked` is unavailable before round 3; the prompt
 also requires the same blocking condition to persist rather than treating
 difficulty or incomplete work as a blocker.
 
-Successful structured `write` and non-Terminal `execute` calls activate a
-process-local completion gate. A foreground `terminal` success is instead a
-synchronous execution boundary: Terminal-only work may answer directly and
-must not manufacture a `verify_completion` call. The Backend deliberately does
-not parse arbitrary Shell text into read/write classes. A foreground Terminal
-result remains eligible evidence for an earlier structured mutation.
+Ordinary Tool work follows the Pi-style natural loop: the model calls Tools,
+observes their Results, optionally performs another check, and ends the Turn by
+returning a no-Tool answer. The Backend does not expose a synthetic completion
+Tool, does not inject evidence IDs, and does not force verification-only grace
+rounds or stock phrases such as “verified”. A failed Tool remains visible to the
+same model so it may repair the operation or report the actual blocker.
 
-The Agent must observe a successful eligible Tool result at or after the latest
-mutation and call `verify_completion` with the exact `evidenceToolCallId`
-returned inside that Result plus a bounded truthful summary. Every successful
-local Tool Result supplies this Provider-only field; it is not persisted in
-redacted process metadata. Goal Tools themselves never count as mutation or
-evidence. An active gate prevents normal completion and prevents
-`update_goal(..., complete)`. Failure to satisfy it before Step/Tool/runtime
-exhaustion is `AGENT_VERIFICATION_REQUIRED`.
-
-A mutation on the last ordinary `local_direct` round does not fail immediately.
-The bounded verification-only grace above may gather later evidence, call
-`verify_completion`, optionally conclude the Goal, and emit final narration.
-It cannot perform another structured write or external action. If the model
-does not finish verification inside the latched deadline, the Run fails closed.
-
-`file_write` and `file_edit` cannot verify their own mutation; a later
-`file_read`, `file_search`, or suitable command must observe the result. A
-background `terminal` start remains outstanding under its exact Job ID.
-`job_list`, `job_kill`, a foreground Terminal, a different Job's output, or a
-non-completed `job_output` cannot verify it. Only successful `job_output` with
-the same Job ID and `status=completed` may be recorded as evidence. Multiple
-background starts remain independently pending.
+Successful `write` and `edit` calls register their workspace-relative paths as
+assistant `workspace_file` outputs when a Host workspace is bound. Foreground
+`bash` registers only declared `outputFiles`; a background declaration is
+registered only after owned `job_output` observes `status=completed`. The
+Backend still never guesses shell side effects by parsing command text.
 
 `complete`, `blocked`, and `cancel` enter a Tool-free wrap-up. This state is
 latched for the rest of the Turn: even if a Provider hallucinates a Tool Call
@@ -364,7 +344,7 @@ round:
   catalog description, queues that Skill as a required prelude;
 - the prelude exposes only `skill`, constrains `name` to the exact match,
   disables incompatible thinking modes, and cannot execute MCP, retrieval, or
-  `terminal` first;
+  `bash` first;
 - after all required Skills load, the ordinary first task round still owns the
   existing explicit Memory/Search priority;
 - a whitespace-bounded `/skill-name` token deterministically reads the current
@@ -392,6 +372,16 @@ through a same-directory synced temporary file, recheck for external change,
 and atomically rename. Version drift returns `version_conflict`, not overwrite.
 All file sizes, UTF-8 windows, search files/bytes/results, and previews have
 hard bounds.
+
+Assistant workspace outputs use the strict `workspace_file` block with
+`workspaceId`, normalized relative `path`, `displayName`, `contentType`, `size`,
+and `version`. The UI opens the current file through owner-scoped
+`GET /v1/workspaces/{id}/files/content?path=...` or bounded
+`GET /v1/workspaces/{id}/files/preview?path=...`. The Host Runner and mount
+fingerprint are pinned on every request. If the current version differs from
+the message version, the viewer says that the file changed instead of serving
+stale bytes. XLSX preview returns bounded sheets/rows/cells; download is a
+secondary action and never duplicates the file into object storage.
 
 Background Jobs are process-local, share foreground terminal concurrency and
 Run timeout limits, and are authorized by exact user plus Conversation.
@@ -947,7 +937,7 @@ more accurate.
 | Workspace path/symlink escape         | bounded `path_invalid`; no read/write               |
 | Workspace version changed             | bounded `version_conflict`; no overwrite            |
 | Background Job cross-scope lookup     | `job_not_found`; no existence disclosure            |
-| Background Job still running          | no completion evidence; wait/read later             |
+| Background Job still running          | no declared output yet; read the Job later           |
 | Backend restarts with a Job           | Job is killed/reaped; no recovery claim              |
 | First typed context overflow after a real shrink | retry same Provider/model/Step once        |
 | Second overflow or no smaller continuation | terminal Provider failure; no retry loop       |
@@ -1032,11 +1022,12 @@ more accurate.
     zero-argument JSON-object canonicalization plus malformed, generic
     compatible, and argument-bearing preservation negatives.
 17. Workspace traversal/symlink/UTF-8/size/search bounds, read-version-write,
-    external-change conflict, atomic replacement, and mandatory post-write
-    evidence.
+    external-change conflict, atomic replacement, natural completion, strict
+    workspace-file output blocks, owner-scoped content/preview routes, changed-
+    version notices, and bounded XLSX preview.
 18. Background Job scope authorization, foreground concurrency sharing,
     wait-without-polling, completion notice, timeout/kill/process-group reap,
-    shutdown, restart warning, and completion-evidence gating.
+    shutdown, restart warning, and completed-only output-file registration.
 19. UTF-8 Tool-result pruning, whole-exchange checkpointing, latest Provider
     state preservation, stable overflow classification, synchronous and first-
     SSE shrink/retry, and proof that a second overflow never retries.
@@ -1063,7 +1054,7 @@ projections, observations, health state, or migration `065`.
 
 For a local workspace/Job regression, set
 `AGENT_LOCAL_RUNTIME_ENABLED=false` and restart the API. This removes File,
-Job, `terminal`, and `skill` definitions without deleting installed Skills or
+Job, `bash`, and `skill` definitions without deleting installed Skills or
 workspace files. Process-local Jobs are killed during shutdown; no OCI fallback
 is activated.
 

@@ -110,6 +110,7 @@ func executeLocalSkillBatch(
 func localSkillToolAllowsParallel(name string) bool {
 	switch strings.TrimSpace(name) {
 	case localFileReadToolName, localFileSearchToolName,
+		legacyFileReadToolName, legacyFileSearchToolName,
 		localJobListToolName, localJobOutputToolName,
 		legacySkillViewToolName:
 		return true
@@ -239,7 +240,8 @@ func (runtime *localSkillToolRuntime) executeCall(
 	}
 	switch strings.TrimSpace(call.Name) {
 	case localFileReadToolName, localFileWriteToolName, localFileEditToolName,
-		localFileSearchToolName, localPublishFileToolName:
+		localFileSearchToolName, legacyFileReadToolName, legacyFileWriteToolName,
+		legacyFileEditToolName, legacyFileSearchToolName, localPublishFileToolName:
 		return runtime.executeWorkspaceToolCall(ctx, call)
 	case localJobListToolName, localJobOutputToolName, localJobKillToolName:
 		execution.Durability = "process_local"
@@ -335,7 +337,7 @@ func (runtime *localSkillToolRuntime) executeCall(
 			"name": arguments.Name, "path": arguments.Path,
 			"encoding": encoding, "content": content,
 		}), "", nil
-	case localTerminalToolName:
+	case localTerminalToolName, legacyTerminalToolName:
 		var arguments localTerminalToolArguments
 		if !decodeStrictToolArguments(call.Arguments, &arguments) {
 			return localSkillFailureResult(call, "arguments_invalid"), "arguments_invalid", nil
@@ -383,7 +385,11 @@ func (runtime *localSkillToolRuntime) executeCall(
 					Scope: runtime.jobScope, Command: request,
 				})
 			}
-			return backgroundJobToolResult(call, job, err)
+			result, failure, fatal := backgroundJobToolResult(call, job, err)
+			if err == nil && failure == "" {
+				runtime.recordPendingJobFiles(job.ID, arguments.OutputFiles)
+			}
+			return result, failure, fatal
 		}
 		liveOutput := newTerminalLiveOutput(
 			ctx, events, *execution, runtime.executor, request,
@@ -414,7 +420,18 @@ func (runtime *localSkillToolRuntime) executeCall(
 			&result,
 		)
 		failure := localTerminalResultFailureCategory(result)
-		return localTerminalToolResult(call, result, failure), failure, nil
+		if failure != "" {
+			return localTerminalToolResult(call, result, failure), failure, nil
+		}
+		workspaceFiles, fileErr := runtime.captureWorkspaceFiles(ctx, arguments.OutputFiles)
+		if fileErr != nil {
+			category := workspaceToolFailureCategory(fileErr)
+			if category == "file_not_found" {
+				category = "output_file_not_found"
+			}
+			return localTerminalToolResult(call, result, category), category, nil
+		}
+		return localTerminalToolResultWithWorkspaceFiles(call, result, workspaceFiles), "", nil
 	default:
 		return localSkillFailureResult(call, "tool_not_available"), "tool_not_available", nil
 	}
@@ -609,11 +626,12 @@ func withProcessApprovalPresentation(
 }
 
 type localTerminalToolArguments struct {
-	Command         string `json:"command"`
-	Skill           string `json:"skill"`
-	WorkingDir      string `json:"workingDir"`
-	TimeoutSeconds  int    `json:"timeoutSeconds"`
-	RunInBackground bool   `json:"runInBackground"`
+	Command         string   `json:"command"`
+	Skill           string   `json:"skill"`
+	WorkingDir      string   `json:"workingDir"`
+	TimeoutSeconds  int      `json:"timeoutSeconds"`
+	RunInBackground bool     `json:"runInBackground"`
+	OutputFiles     []string `json:"outputFiles"`
 }
 
 func (runtime *localSkillToolRuntime) terminalProcessPresentation(
@@ -704,9 +722,10 @@ func localSkillViewPathAllowed(value string) bool {
 
 func localSkillClassification(name string) string {
 	switch name {
-	case localTerminalToolName:
+	case localTerminalToolName, legacyTerminalToolName:
 		return "execute"
-	case localFileWriteToolName, localFileEditToolName, localPublishFileToolName:
+	case localFileWriteToolName, localFileEditToolName,
+		legacyFileWriteToolName, legacyFileEditToolName, localPublishFileToolName:
 		return "write"
 	case localJobKillToolName:
 		return "execute"
@@ -751,7 +770,6 @@ func localSkillFatalCode(err error) string {
 }
 
 func localSkillSuccessResult(call ProviderToolCall, payload map[string]any) ProviderToolResult {
-	payload["evidenceToolCallId"] = strings.TrimSpace(call.ID)
 	payload["untrustedLocalSkillResult"] = true
 	encoded, _ := json.Marshal(payload)
 	if len(encoded) > maxLocalSkillToolResultMetadata && call.Name != localSkillToolName &&
@@ -782,6 +800,22 @@ func localTerminalToolResult(
 	return ProviderToolResult{
 		CallID: call.ID, Name: call.Name, Content: string(encoded), IsError: true,
 	}
+}
+
+func localTerminalToolResultWithWorkspaceFiles(
+	call ProviderToolCall,
+	result localskills.Result,
+	files []WorkspaceFileReference,
+) ProviderToolResult {
+	payload := map[string]any{
+		"exitCode": result.ExitCode, "stdout": result.Stdout, "stderr": result.Stderr,
+		"timedOut": result.TimedOut, "truncated": result.Truncated,
+		"durationMillis": result.DurationMillis,
+	}
+	if len(files) > 0 {
+		payload["workspaceFiles"] = files
+	}
+	return localSkillSuccessResult(call, payload)
 }
 
 func localSkillFailureResult(call ProviderToolCall, category string) ProviderToolResult {

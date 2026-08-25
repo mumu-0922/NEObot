@@ -12,6 +12,9 @@ Content components render model output and tool output in reusable formats.
   partial Web retrieval and total Web degradation, and stays hidden for
   disabled, skipped, or empty-result lanes.
 - `ToolCallBlock.tsx` renders tool-call arguments, execution status, and results.
+- `WorkspaceFileCard.tsx` opens bound Agent outputs from their current project
+  path, previews text/DOCX/XLSX and authenticated media, warns on version drift,
+  and keeps download as a secondary action.
 
 ## Guidelines
 
@@ -20,3 +23,6 @@ Content components render model output and tool output in reusable formats.
 - Treat tool results as untrusted display data and preserve safe formatting.
 - Treat inline HTML, generated SVG, tool output, and artifact preview data as untrusted display data.
 - Prefer shared primitives for copy, tooltip, and preview interactions.
+- Never construct a Host path or naked file URL in the browser. Workspace file
+  blocks must pass strict UUID/path/version/size validation before rendering,
+  and bytes must come through the authenticated Workspace API.

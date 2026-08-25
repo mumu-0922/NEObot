@@ -21,7 +21,6 @@ const (
 	maxEvidenceRecoveryAttempts         = 2
 	maxEvidenceRecoveryEvents           = 8192
 	maxEvidenceRecoveryOutputBytes      = 1 << 20
-	maxChatAgentVerificationGraceRounds = 4
 )
 
 const compatibilityWebSearchPlannerInstruction = `You are a Web-search decision and query planner for the current chat model.
@@ -204,23 +203,10 @@ func runNativeExternalWebToolLoop(
 	turn := newChatAgentTurnDriver(input.CompletionDriven)
 	progress := newChatAgentProgressTracker()
 	goalWrapupActive := false
-	verificationGraceEnd := 0
-	var completionPolicy *chatCompletionPolicy
-	if input.Goals.enabled() {
-		completionPolicy = newChatCompletionPolicy()
-		input.Goals.bindCompletionPolicy(completionPolicy)
-	}
 	for {
 		skillLoadRound := input.LocalSkills.requiresSkillLoad()
 		step, stepAdmitted := turn.beginStep(skillLoadRound)
 		if !stepAdmitted {
-			if completionPolicy.requiresVerification() {
-				sendProviderEvent(ctx, events, ProviderEvent{Error: &chatAgentRunFailure{
-					code: "AGENT_VERIFICATION_REQUIRED",
-					err:  errors.New("Agent Step limit reached before completion verification"),
-				}})
-				return true
-			}
 			streamFinalNoTools(
 				ctx, events, provider, input.Request, continuation, completedUsage,
 			)
@@ -228,40 +214,15 @@ func runNativeExternalWebToolLoop(
 		}
 		round := step.Sequence
 		taskRound := step.TaskSequence
-		if !input.CompletionDriven && verificationGraceEnd == 0 &&
-			completionPolicy.requiresVerification() &&
-			input.LocalSkills.enabled() &&
-			round > input.LocalSkills.config().MaxRounds {
-			// A mutation on the last ordinary Tool round still needs enough
-			// bounded turns for evidence, verify_completion, and final narration.
-			// Latch the deadline so a successful verification can reach that
-			// narration without reopening the ordinary Agent budget.
-			verificationGraceEnd = round + maxChatAgentVerificationGraceRounds - 1
-		}
 		if !input.CompletionDriven && input.MCP.enabled() &&
 			round > input.MCP.service.Config().MaxRoundsPerRun {
-			if completionPolicy.requiresVerification() {
-				sendProviderEvent(ctx, events, ProviderEvent{Error: &chatAgentRunFailure{
-					code: "AGENT_VERIFICATION_REQUIRED",
-					err:  errors.New("MCP round limit reached before completion verification"),
-				}})
-				return true
-			}
 			streamFinalNoTools(
 				ctx, events, provider, input.Request, continuation, completedUsage,
 			)
 			return true
 		}
 		if !input.CompletionDriven && input.LocalSkills.enabled() &&
-			round > input.LocalSkills.config().MaxRounds &&
-			round > verificationGraceEnd {
-			if completionPolicy.requiresVerification() {
-				sendProviderEvent(ctx, events, ProviderEvent{Error: &chatAgentRunFailure{
-					code: "AGENT_VERIFICATION_REQUIRED",
-					err:  errors.New("local Tool round limit reached before completion verification"),
-				}})
-				return true
-			}
+			round > input.LocalSkills.config().MaxRounds {
 			streamFinalNoTools(
 				ctx, events, provider, input.Request, continuation, completedUsage,
 			)
@@ -271,9 +232,6 @@ func runNativeExternalWebToolLoop(
 			registry = newRequiredLocalSkillRegistry(input.LocalSkills)
 		} else {
 			registry = newChatToolRegistry(input)
-		}
-		if verificationGraceEnd > 0 {
-			registry = registry.verificationOnly()
 		}
 		roundTools := registry.definitions(taskRound)
 		if input.Goals.consumeForceNoTools() {
@@ -300,7 +258,7 @@ func runNativeExternalWebToolLoop(
 			choice = ProviderToolChoiceRequired
 		}
 		bufferAgentGuardRound := wrapupRound ||
-			input.Goals.automaticWorkActive() || completionPolicy.requiresVerification()
+			input.Goals.automaticWorkActive()
 		providerRoundRequest := ProviderRoundRequest{
 			ProviderRequest: roundRequest,
 			Tools:           roundTools,
@@ -532,17 +490,12 @@ func runNativeExternalWebToolLoop(
 			if bufferAgentGuardRound {
 				followupPrompt := ""
 				continued := false
-				if completionPolicy.requiresVerification() {
-					followupPrompt = renderChatAgentVerificationPrompt(completionPolicy)
-					continued = true
-				} else {
-					followupPrompt, continued, err = input.Goals.beginNextRound(ctx)
-					if err != nil {
-						sendProviderEvent(ctx, events, ProviderEvent{Error: &chatAgentRunFailure{
-							code: "AGENT_GOAL_PERSISTENCE_FAILED", err: err,
-						}})
-						return true
-					}
+				followupPrompt, continued, err = input.Goals.beginNextRound(ctx)
+				if err != nil {
+					sendProviderEvent(ctx, events, ProviderEvent{Error: &chatAgentRunFailure{
+						code: "AGENT_GOAL_PERSISTENCE_FAILED", err: err,
+					}})
+					return true
 				}
 				if continued {
 					if roundUsage != nil {
@@ -633,7 +586,6 @@ func runNativeExternalWebToolLoop(
 			exchange.Results = append(exchange.Results,
 				chatToolFailureResult(call, "tool_not_available"))
 		}
-		completionPolicy.observe(registry, calls, exchange.Results)
 		exchange.FollowupPrompt = appendAgentFollowupPrompt(
 			exchange.FollowupPrompt,
 			input.LocalSkills.consumeJobCompletionPrompt(),
@@ -668,13 +620,6 @@ func runNativeExternalWebToolLoop(
 			}
 		}
 		if toolExecution.BudgetReached || admittedCalls < len(calls) {
-			if completionPolicy.requiresVerification() {
-				sendProviderEvent(ctx, events, ProviderEvent{Error: &chatAgentRunFailure{
-					code: "AGENT_VERIFICATION_REQUIRED",
-					err:  errors.New("Tool budget reached before completion verification"),
-				}})
-				return true
-			}
 			streamFinalNoTools(
 				ctx, events, provider, input.Request, continuation, completedUsage,
 			)

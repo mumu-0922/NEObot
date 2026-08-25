@@ -149,6 +149,7 @@ export function normalizeProcessStep(value: unknown): ProcessStep | null {
 
   const durationMs = nonNegativeNumber(value.durationMs);
   const detail = normalizeProcessDetail(value.detail);
+  if (detail?.toolName === "verify_completion") return null;
   const presentation = normalizeProcessStepPresentation(
     value.presentation,
     kind,
@@ -678,12 +679,13 @@ function normalizeProcessStepPresentation(
   if (version !== 1 || typeof value.card !== "string") return undefined;
   const card = value.card;
   const toolName = detail?.toolName;
+  const canonicalToolName = canonicalLocalToolName(toolName);
   const mode = detail?.mode;
   const localToolMode = mode === "local_direct" || mode === "host_workspace";
   const valid =
     (card === "terminal" &&
       kind === "tool" &&
-      toolName === "terminal" &&
+      canonicalToolName === "bash" &&
       localToolMode) ||
     (card === "search" &&
       (kind === "web" ||
@@ -692,14 +694,16 @@ function normalizeProcessStepPresentation(
     (card === "file" &&
       kind === "tool" &&
       localToolMode &&
-      typeof toolName === "string" &&
-      (toolName.startsWith("file_") || toolName === "publish_file")) ||
+      typeof canonicalToolName === "string" &&
+      ["read", "write", "edit", "grep", "publish_file"].includes(
+        canonicalToolName,
+      )) ||
     (card === "job" &&
       kind === "tool" &&
       localToolMode &&
       typeof toolName === "string" &&
       (toolName.startsWith("job_") ||
-        (toolName === "terminal" && value.background === true))) ||
+        (canonicalToolName === "bash" && value.background === true))) ||
     (card === "skill" &&
       kind === "tool" &&
       localToolMode &&
@@ -782,7 +786,7 @@ function normalizeProcessStepPresentation(
         !validPresentationTimestamp(jobStartedAt)) ||
       (typeof jobCompletedAt === "string" &&
         !validPresentationTimestamp(jobCompletedAt)) ||
-      (card === "job" && toolName === "terminal" && !command)
+      (card === "job" && canonicalToolName === "bash" && !command)
     )
       return undefined;
     return {
@@ -873,7 +877,7 @@ function normalizeProcessRetryPresentation(
     card !== "file" ||
     kind !== "tool" ||
     mode !== "local_direct" ||
-    toolName !== "file_read" ||
+    canonicalLocalToolName(toolName) !== "read" ||
     operation !== "read"
   ) {
     return undefined;
@@ -889,6 +893,24 @@ function normalizeProcessRetryPresentation(
     return undefined;
   }
   return { eventId, retryOf };
+}
+
+function canonicalLocalToolName(value: unknown): string {
+  if (typeof value !== "string") return "";
+  switch (value) {
+    case "terminal":
+      return "bash";
+    case "file_read":
+      return "read";
+    case "file_write":
+      return "write";
+    case "file_edit":
+      return "edit";
+    case "file_search":
+      return "grep";
+    default:
+      return value;
+  }
 }
 
 function normalizeProcessApprovalPresentation(

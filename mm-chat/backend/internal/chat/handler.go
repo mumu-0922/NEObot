@@ -1847,6 +1847,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		}
 		localSkillRuntime = newLocalSkillToolRuntime(toolExecutor, skills)
 		localSkillRuntime.bindJobScope(actor.ID, conversationID)
+		localSkillRuntime.bindWorkspace(conversation.WorkspaceID)
 		localSkillRuntime.bindArtifactPublisher(h.artifactPublisher, h.artifactMaxBytes)
 		var prepareErr error
 		providerPrompt, prepareErr = localSkillRuntime.prepareUserPrompt(
@@ -2435,10 +2436,11 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			finishProcessTrace(trace, "cancelled", time.Now(), webSearchResult)
 			finalizeTracked(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 				Status: "cancelled",
-				OutputBlocks: usedWebSearchOutputBlocks(
+				OutputBlocks: usedAgentOutputBlocks(
 					assistantMessage.ID,
 					"",
 					webSearchResult,
+					localSkillRuntime,
 				),
 				Metadata: withProcessTraceMessageMetadata(
 					webMessageMetadata(autoDecision, nil, ""),
@@ -2455,10 +2457,11 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		finishProcessTrace(trace, "failed", time.Now(), webSearchResult)
 		finalizeTracked(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 			Status: "failed",
-			OutputBlocks: usedWebSearchOutputBlocks(
+			OutputBlocks: usedAgentOutputBlocks(
 				assistantMessage.ID,
 				"",
 				webSearchResult,
+				localSkillRuntime,
 			),
 			Metadata: withProcessTraceMessageMetadata(
 				webMessageMetadata(
@@ -2762,10 +2765,11 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				finalizeTracked(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 					Status:  "cancelled",
 					Content: content.String(),
-					OutputBlocks: usedWebSearchOutputBlocks(
+					OutputBlocks: usedAgentOutputBlocks(
 						assistantMessage.ID,
 						content.String(),
 						webSearchResult,
+						localSkillRuntime,
 					),
 					Metadata: withProcessTraceMessageMetadata(
 						webMessageMetadata(autoDecision, nil, content.String()),
@@ -2808,10 +2812,11 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			finalizeTracked(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 				Status:  "failed",
 				Content: content.String(),
-				OutputBlocks: usedWebSearchOutputBlocks(
+				OutputBlocks: usedAgentOutputBlocks(
 					assistantMessage.ID,
 					content.String(),
 					webSearchResult,
+					localSkillRuntime,
 				),
 				Metadata: withProcessTraceMessageMetadata(
 					webMessageMetadata(
@@ -3233,7 +3238,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		errorBody := chatStreamErrorBody(deadlineErr, legacyMCPDeadline)
 		finalizeTracked(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 			Status: "failed", Content: content.String(),
-			OutputBlocks: usedWebSearchOutputBlocks(assistantMessage.ID, content.String(), webSearchResult),
+			OutputBlocks: usedAgentOutputBlocks(assistantMessage.ID, content.String(), webSearchResult, localSkillRuntime),
 			Metadata: withProcessTraceMessageMetadata(
 				webMessageMetadata(autoDecision, map[string]any{"errorCode": errorBody.Code}, content.String()),
 				reasoning.String(), trace,
@@ -3269,10 +3274,11 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		finalizeTracked(context.Background(), conversationID, assistantMessage.ID, FinalizeAssistantMessageInput{
 			Status:  "cancelled",
 			Content: content.String(),
-			OutputBlocks: usedWebSearchOutputBlocks(
+			OutputBlocks: usedAgentOutputBlocks(
 				assistantMessage.ID,
 				content.String(),
 				webSearchResult,
+				localSkillRuntime,
 			),
 			Metadata: withProcessTraceMessageMetadata(
 				webMessageMetadata(autoDecision, nil, content.String()),
@@ -3425,10 +3431,11 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		FinalizeAssistantMessageInput{
 			Status:  "completed",
 			Content: completedContent,
-			OutputBlocks: usedWebSearchOutputBlocks(
+			OutputBlocks: usedAgentOutputBlocks(
 				assistantMessage.ID,
 				completedContent,
 				webSearchResult,
+				localSkillRuntime,
 			),
 			Metadata: withProcessTraceMessageMetadata(
 				webMessageMetadata(completedDecision, nil, completedContent),

@@ -10,7 +10,8 @@ func (runtime *localSkillToolRuntime) localProcessPresentation(
 	call ProviderToolCall,
 ) *ProcessStepPresentation {
 	name := strings.TrimSpace(call.Name)
-	if name == localTerminalToolName {
+	canonicalName := canonicalLocalToolName(name)
+	if canonicalName == localTerminalToolName {
 		presentation := runtime.terminalProcessPresentation(call)
 		if presentation != nil {
 			presentation.Version = 1
@@ -18,28 +19,28 @@ func (runtime *localSkillToolRuntime) localProcessPresentation(
 		return presentation
 	}
 	arguments := decodePresentationObject(call.Arguments)
-	switch name {
+	switch canonicalName {
 	case localFileReadToolName, localFileWriteToolName, localFileEditToolName,
 		localFileSearchToolName, localPublishFileToolName:
 		presentation := &ProcessStepPresentation{
-			Version: 1, Card: "file", Operation: strings.TrimPrefix(name, "file_"),
+			Version: 1, Card: "file", Operation: canonicalName,
 			Path: presentationString(arguments, "path"),
 		}
-		if name == localPublishFileToolName {
+		if canonicalName == localPublishFileToolName {
 			presentation.Operation = "publish"
 		}
-		if name == localFileReadToolName {
+		if canonicalName == localFileReadToolName {
 			presentation.Offset = int64(presentationInt(arguments, "offset"))
 		}
-		if name == localFileSearchToolName {
+		if canonicalName == localFileSearchToolName {
 			presentation.Summary = presentationString(arguments, "glob")
 		}
-		if name == localFileWriteToolName {
+		if canonicalName == localFileWriteToolName {
 			presentation.Diff = unifiedPresentationDiff(
 				presentation.Path, "", presentationString(arguments, "content"),
 			)
 		}
-		if name == localFileEditToolName {
+		if canonicalName == localFileEditToolName {
 			presentation.Diff = unifiedPresentationDiff(
 				presentation.Path,
 				presentationString(arguments, "oldText"),

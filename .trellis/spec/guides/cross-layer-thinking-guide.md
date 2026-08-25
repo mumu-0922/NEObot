@@ -190,6 +190,42 @@ The executable Chat contract lives in `../frontend/state-management.md` under
 `../backend/chat-tool-loop.md` under “Conversation-scoped Run admission and
 projection.”
 
+## Agent Tool, Completion, and Workspace Output Checklist
+
+Use this when changing an LLM-visible Agent Tool, the loop termination rule, or
+how a generated project file reaches the conversation UI:
+
+- [ ] Treat the advertised Tool name/schema as a product contract. Rename the
+      definition, prompt, executor dispatch, risk registry, trace projection,
+      historical compatibility, tests, and docs together.
+- [ ] Keep compatibility aliases executable but hidden. A legacy transcript may
+      continue with an old Tool name, while a new model request must see only
+      the canonical catalog.
+- [ ] Distinguish model judgment from server authority. The model decides when
+      a natural no-Tool answer is complete; the server still owns path bounds,
+      authorization, cancellation, loop detection, and Tool timeouts. Do not
+      replace model judgment with a synthetic completion ceremony.
+- [ ] Trace generated files end to end: Tool Result -> Turn-local registration
+      -> durable assistant output block -> frontend normalization -> owner-
+      scoped content/preview request -> pinned Host read -> current-version UI.
+- [ ] Never infer arbitrary shell side effects. A shell Tool must declare its
+      output paths structurally, and background outputs become visible only
+      after the exact owned Job completes.
+- [ ] Preserve project-file identity. Bound workspace output should open the
+      current relative path in place; object-store publication is an explicit
+      unbound fallback, not an automatic duplicate.
+- [ ] Test the negative boundaries together: alias absent from new definitions,
+      malformed/traversal output block dropped, cross-owner read denied before
+      Host I/O, stale version warned, oversized/archive-bomb preview rejected,
+      and failed/background-running commands publish no output.
+
+**Real-world example**: Neo Chat exposed `file_*`, `terminal`, publication, and
+`verify_completion` as separate product ceremonies. This made the model spend
+rounds proving work, copied project files into downloads, and let docs/prompt/UI
+drift independently. The repair adopted canonical `read/write/edit/grep/bash`,
+natural no-Tool completion, declared shell outputs, and a strict owner-scoped
+`workspace_file` path from Agent result to in-app preview.
+
 ## Applied Migration Immutability Checklist
 
 Use this before editing any committed migration or changing the repository

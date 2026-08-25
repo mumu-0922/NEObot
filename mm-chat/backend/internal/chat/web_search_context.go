@@ -203,6 +203,20 @@ func usedWebSearchOutputBlocks(
 	return webSearchOutputBlocksFromProjection(messageID, bounded, citations)
 }
 
+func usedAgentOutputBlocks(
+	messageID string,
+	content string,
+	result websearch.Result,
+	runtime *localSkillToolRuntime,
+) []any {
+	workspaceBlocks := runtime.workspaceFileOutputBlocks(messageID)
+	webBlocks := usedWebSearchOutputBlocks(messageID, content, result)
+	if len(workspaceBlocks) == 0 {
+		return webBlocks
+	}
+	return append(workspaceBlocks, webBlocks...)
+}
+
 func webSearchOutputBlocksFromProjection(
 	messageID string,
 	bounded websearch.Result,

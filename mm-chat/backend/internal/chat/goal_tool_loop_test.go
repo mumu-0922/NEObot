@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -10,7 +9,6 @@ import (
 	"time"
 
 	"neo-chat/mm-chat/backend/internal/localskills"
-	"neo-chat/mm-chat/backend/internal/skillsupply"
 )
 
 const (
@@ -19,100 +17,6 @@ const (
 	goalTestRunID     = "99999999-9999-4999-8999-999999999999"
 )
 
-func TestChatCompletionPolicyRequiresExplicitLaterEvidence(t *testing.T) {
-	registry := &chatToolRegistry{
-		ordered: make([]chatToolRegistration, 0, 2),
-		byName:  map[string]chatToolRegistration{}, colliding: map[string]struct{}{},
-	}
-	registry.register(chatToolRegistration{
-		Name: localFileWriteToolName, Backend: chatToolBackendLocalSkill,
-		RiskClass: chatToolRiskWrite, ProjectForModel: identityChatToolResult,
-		MutationResultNeedsFollowup: true,
-	})
-	registry.register(chatToolRegistration{
-		Name: localTerminalToolName, Backend: chatToolBackendLocalSkill,
-		RiskClass: chatToolRiskExecute, ProjectForModel: identityChatToolResult,
-	})
-	policy := newChatCompletionPolicy()
-	policy.observe(registry, []ProviderToolCall{{ID: "write-1", Name: localFileWriteToolName}},
-		[]ProviderToolResult{{CallID: "write-1", Name: localFileWriteToolName}})
-	if !policy.requiresVerification() {
-		t.Fatal("successful structured write must require verification")
-	}
-	if _, err := policy.verify("write-1", "write returned success"); err == nil ||
-		err.Error() != "verification_evidence_invalid" {
-		t.Fatalf("write self-evidence error = %v", err)
-	}
-	policy.observe(registry, []ProviderToolCall{{ID: "check-1", Name: localTerminalToolName}},
-		[]ProviderToolResult{{CallID: "check-1", Name: localTerminalToolName,
-			Content: `{"exitCode":0}`}})
-	if _, err := policy.verify("check-1", "terminal check passed"); err != nil {
-		t.Fatalf("foreground terminal evidence: %v", err)
-	}
-	policy.observe(registry, []ProviderToolCall{{ID: "write-2", Name: localFileWriteToolName}},
-		[]ProviderToolResult{{CallID: "write-2", Name: localFileWriteToolName}})
-	if _, err := policy.verify("check-1", "stale proof"); err == nil ||
-		err.Error() != "verification_evidence_invalid" {
-		t.Fatalf("stale evidence error = %v", err)
-	}
-	policy.observe(registry, []ProviderToolCall{{ID: "check-2", Name: localTerminalToolName}},
-		[]ProviderToolResult{{CallID: "check-2", Name: localTerminalToolName,
-			Content: `{"exitCode":0}`}})
-	if _, err := policy.verify("check-2", "later terminal check passed"); err != nil {
-		t.Fatalf("later terminal evidence: %v", err)
-	}
-}
-
-func TestChatCompletionPolicyAllowsForegroundTerminalWithoutVerification(t *testing.T) {
-	registry := &chatToolRegistry{
-		ordered: make([]chatToolRegistration, 0, 1),
-		byName:  map[string]chatToolRegistration{}, colliding: map[string]struct{}{},
-	}
-	registry.register(chatToolRegistration{
-		Name: localTerminalToolName, Backend: chatToolBackendLocalSkill,
-		RiskClass: chatToolRiskExecute, ProjectForModel: identityChatToolResult,
-	})
-	policy := newChatCompletionPolicy()
-	policy.observe(registry, []ProviderToolCall{{ID: "status", Name: localTerminalToolName}},
-		[]ProviderToolResult{{CallID: "status", Name: localTerminalToolName,
-			Content: `{"exitCode":0,"stdout":"/workspace\\n"}`}})
-	if policy.requiresVerification() {
-		t.Fatal("foreground Terminal-only work must not require verification")
-	}
-	if _, err := policy.verify("status", "read-only status observed"); err == nil ||
-		err.Error() != "verification_not_required" {
-		t.Fatalf("foreground Terminal verification error=%v", err)
-	}
-}
-
-func TestChatCompletionPolicyRejectsFileMutationResultAsItsOwnEvidence(t *testing.T) {
-	registry := &chatToolRegistry{
-		ordered: make([]chatToolRegistration, 0, 2),
-		byName:  map[string]chatToolRegistration{}, colliding: map[string]struct{}{},
-	}
-	registry.register(chatToolRegistration{
-		Name: localFileWriteToolName, Backend: chatToolBackendLocalSkill,
-		RiskClass: chatToolRiskWrite, ProjectForModel: identityChatToolResult,
-		MutationResultNeedsFollowup: true,
-	})
-	registry.register(chatToolRegistration{
-		Name: localFileReadToolName, Backend: chatToolBackendLocalSkill,
-		RiskClass: chatToolRiskRead, ProjectForModel: identityChatToolResult,
-	})
-	policy := newChatCompletionPolicy()
-	policy.observe(registry, []ProviderToolCall{{ID: "write", Name: localFileWriteToolName}},
-		[]ProviderToolResult{{CallID: "write", Name: localFileWriteToolName}})
-	if _, err := policy.verify("write", "write returned success"); err == nil ||
-		err.Error() != "verification_evidence_invalid" {
-		t.Fatalf("file mutation self-evidence error=%v", err)
-	}
-	policy.observe(registry, []ProviderToolCall{{ID: "read", Name: localFileReadToolName}},
-		[]ProviderToolResult{{CallID: "read", Name: localFileReadToolName}})
-	if _, err := policy.verify("read", "read-back matched"); err != nil {
-		t.Fatalf("read-back evidence error=%v", err)
-	}
-}
-
 func TestChatAgentGoalToolsAreStrictAndDefaultRegistryHasNoSubagent(t *testing.T) {
 	repository := newGoalTestRepository(t)
 	runtime := newChatAgentGoalToolRuntime(
@@ -120,10 +24,13 @@ func TestChatAgentGoalToolsAreStrictAndDefaultRegistryHasNoSubagent(t *testing.T
 	)
 	registry := newChatToolRegistry(externalWebToolLoopInput{Goals: runtime})
 	definitions := registry.definitions(1)
-	if len(definitions) != 4 {
+	if len(definitions) != 3 {
 		t.Fatalf("Goal definitions = %d", len(definitions))
 	}
 	for _, definition := range definitions {
+		if definition.Function.Name == "verify_completion" {
+			t.Fatal("verify_completion leaked into new Agent Tool definitions")
+		}
 		if !definition.Function.Strict {
 			t.Fatalf("Goal Tool %s is not strict", definition.Function.Name)
 		}
@@ -139,196 +46,7 @@ func TestChatAgentGoalToolsAreStrictAndDefaultRegistryHasNoSubagent(t *testing.T
 	}
 }
 
-func TestChatAgentCompletionGateContinuesUntilExplicitToolEvidence(t *testing.T) {
-	repository := newGoalTestRepository(t)
-	goalRuntime := newChatAgentGoalToolRuntime(
-		NewService(repository), goalTestTurnID, testConversationID,
-	)
-	workspace := t.TempDir()
-	executor, err := localskills.NewExecutor(localskills.Config{
-		Enabled: true, RuntimeRoot: filepath.Join(t.TempDir(), "skills"),
-		WorkspaceRoot: workspace, ShellPath: "/bin/sh",
-		ApprovalMode: localskills.ApprovalSmart, CallTimeout: time.Second,
-		RunTimeout: 5 * time.Second, MaxOutput: 4096, MaxCalls: 8,
-		MaxRounds: 8, MaxConcurrent: 1,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	localRuntime := newLocalSkillToolRuntime(executor, []skillsupply.RuntimeSkill{{
-		Name: "fixture-skill", Description: "fixture",
-	}})
-	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
-		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
-			ID: "mutation", Name: localFileWriteToolName,
-			Arguments: `{"path":"artifact.txt","content":"changed","expectedVersion":"absent"}`,
-		}}},
-		{{Type: ProviderEventDelta, Delta: "unverified narration"}},
-		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
-			ID: "evidence", Name: localTerminalToolName,
-			Arguments: `{"command":"test -s artifact.txt","skill":null,"workingDir":null,"timeoutSeconds":1}`,
-		}}},
-		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
-			ID: "verification", Name: chatAgentVerifyCompletionToolName,
-			Arguments: `{"evidenceToolCallId":"evidence","summary":"artifact exists and is non-empty"}`,
-		}}},
-		{{Type: ProviderEventDelta, Delta: "verified final answer"}},
-	}}
-
-	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
-		Provider: provider,
-		Request: ProviderRequest{
-			Prompt:   "produce and verify the artifact",
-			ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
-		},
-		LocalSkills: localRuntime, Goals: goalRuntime, CompletionDriven: true,
-	})
-	var content strings.Builder
-	for event := range events {
-		if event.Error != nil {
-			t.Fatal(event.Error)
-		}
-		if event.Type == ProviderEventDelta {
-			content.WriteString(event.Delta)
-		}
-	}
-	if content.String() != "verified final answer" || len(provider.inputs) != 5 {
-		t.Fatalf("content=%q rounds=%d", content.String(), len(provider.inputs))
-	}
-	if _, err := os.Stat(filepath.Join(workspace, "artifact.txt")); err != nil {
-		t.Fatal(err)
-	}
-	followup := provider.inputs[2].Continuation[1].FollowupPrompt
-	if !strings.Contains(followup, "<completion_verification_required>") ||
-		!strings.Contains(followup, `"mutation"`) {
-		t.Fatalf("verification follow-up = %q", followup)
-	}
-	verificationResult := provider.inputs[4].Continuation[3].Results
-	if len(verificationResult) != 1 || verificationResult[0].IsError ||
-		!strings.Contains(verificationResult[0].Content, `"verified":true`) {
-		t.Fatalf("verification result = %#v", verificationResult)
-	}
-}
-
-func TestChatAgentCompletionGateUsesBoundedVerificationGrace(t *testing.T) {
-	repository := newGoalTestRepository(t)
-	goalRuntime := newChatAgentGoalToolRuntime(
-		NewService(repository), goalTestTurnID, testConversationID,
-	)
-	workspace := t.TempDir()
-	executor, err := localskills.NewExecutor(localskills.Config{
-		Enabled: true, RuntimeRoot: filepath.Join(t.TempDir(), "skills"),
-		WorkspaceRoot: workspace, ShellPath: "/bin/sh",
-		ApprovalMode: localskills.ApprovalSmart, CallTimeout: time.Second,
-		RunTimeout: 5 * time.Second, MaxOutput: 4096, MaxCalls: 8,
-		MaxRounds: 1, MaxConcurrent: 1,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	localRuntime := newLocalSkillToolRuntime(executor, nil)
-	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
-		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
-			ID: "mutation", Name: localFileWriteToolName,
-			Arguments: `{"path":"artifact.txt","content":"changed","expectedVersion":"absent"}`,
-		}}},
-		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
-			ID: "evidence", Name: localTerminalToolName,
-			Arguments: `{"command":"test -s artifact.txt","skill":null,"workingDir":null,"timeoutSeconds":1}`,
-		}}},
-		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
-			ID: "verification", Name: chatAgentVerifyCompletionToolName,
-			Arguments: `{"evidenceToolCallId":"evidence","summary":"artifact exists and is non-empty"}`,
-		}}},
-		{{Type: ProviderEventDelta, Delta: "verified final answer"}},
-	}}
-
-	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
-		Provider: provider,
-		Request: ProviderRequest{
-			Prompt:   "produce and verify the artifact",
-			ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
-		},
-		LocalSkills: localRuntime, Goals: goalRuntime,
-	})
-	var content strings.Builder
-	for event := range events {
-		if event.Error != nil {
-			t.Fatal(event.Error)
-		}
-		if event.Type == ProviderEventDelta {
-			content.WriteString(event.Delta)
-		}
-	}
-	if content.String() != "verified final answer" || len(provider.inputs) != 4 {
-		t.Fatalf("content=%q rounds=%d", content.String(), len(provider.inputs))
-	}
-	graceTools := make(map[string]struct{})
-	for _, definition := range provider.inputs[1].Tools {
-		graceTools[definition.Function.Name] = struct{}{}
-	}
-	if _, exposed := graceTools[localFileWriteToolName]; exposed {
-		t.Fatalf("verification grace exposed mutation Tool: %#v", graceTools)
-	}
-	if _, available := graceTools[localTerminalToolName]; !available {
-		t.Fatalf("verification grace omitted evidence Tool: %#v", graceTools)
-	}
-	if _, available := graceTools[chatAgentVerifyCompletionToolName]; !available {
-		t.Fatalf("verification grace omitted verification Tool: %#v", graceTools)
-	}
-}
-
-func TestChatAgentCompletionGateFailsClosedAfterVerificationGrace(t *testing.T) {
-	repository := newGoalTestRepository(t)
-	goalRuntime := newChatAgentGoalToolRuntime(
-		NewService(repository), goalTestTurnID, testConversationID,
-	)
-	executor, err := localskills.NewExecutor(localskills.Config{
-		Enabled: true, RuntimeRoot: filepath.Join(t.TempDir(), "skills"),
-		WorkspaceRoot: t.TempDir(), ShellPath: "/bin/sh",
-		ApprovalMode: localskills.ApprovalSmart, CallTimeout: time.Second,
-		RunTimeout: 5 * time.Second, MaxOutput: 4096, MaxCalls: 8,
-		MaxRounds: 1, MaxConcurrent: 1,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	localRuntime := newLocalSkillToolRuntime(executor, nil)
-	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
-		{{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
-			ID: "mutation", Name: localFileWriteToolName,
-			Arguments: `{"path":"artifact.txt","content":"changed","expectedVersion":"absent"}`,
-		}}},
-		{{Type: ProviderEventDelta, Delta: "still unverified 1"}},
-		{{Type: ProviderEventDelta, Delta: "still unverified 2"}},
-		{{Type: ProviderEventDelta, Delta: "still unverified 3"}},
-		{{Type: ProviderEventDelta, Delta: "still unverified 4"}},
-	}}
-
-	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
-		Provider: provider,
-		Request: ProviderRequest{
-			Prompt:   "produce but never verify the artifact",
-			ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
-		},
-		LocalSkills: localRuntime, Goals: goalRuntime,
-	})
-	var terminalError error
-	for event := range events {
-		if event.Error != nil {
-			terminalError = event.Error
-		}
-	}
-	failure, ok := terminalError.(*chatAgentRunFailure)
-	if !ok || failure.code != "AGENT_VERIFICATION_REQUIRED" {
-		t.Fatalf("terminal error = %#v", terminalError)
-	}
-	if len(provider.inputs) != 1+maxChatAgentVerificationGraceRounds {
-		t.Fatalf("provider rounds = %d", len(provider.inputs))
-	}
-}
-
-func TestChatAgentForegroundTerminalOnlyCompletesWithoutVerification(t *testing.T) {
+func TestChatAgentNaturallyCompletesAfterForegroundBash(t *testing.T) {
 	repository := newGoalTestRepository(t)
 	goalRuntime := newChatAgentGoalToolRuntime(
 		NewService(repository), goalTestTurnID, testConversationID,
@@ -379,12 +97,11 @@ func TestChatAgentForegroundTerminalOnlyCompletesWithoutVerification(t *testing.
 	result := provider.inputs[1].Continuation[0].Results
 	if len(result) != 1 || result[0].IsError ||
 		!strings.Contains(result[0].Content, `"stdout":"$NEO_CHAT_WORKSPACE\n"`) ||
-		!strings.Contains(result[0].Content, `"evidenceToolCallId":"status"`) {
+		strings.Contains(result[0].Content, "evidenceToolCallId") {
 		t.Fatalf("Terminal result=%#v", result)
 	}
-	if strings.Contains(provider.inputs[1].Continuation[0].FollowupPrompt,
-		"<completion_verification_required>") {
-		t.Fatalf("Terminal-only continuation requested verification: %#v", provider.inputs[1].Continuation)
+	if provider.inputs[1].Continuation[0].FollowupPrompt != "" {
+		t.Fatalf("natural continuation injected a follow-up prompt: %#v", provider.inputs[1].Continuation)
 	}
 }
 
@@ -409,7 +126,7 @@ func TestChatAgentGoalLoopAutomaticallyContinuesAndWrapsUp(t *testing.T) {
 				Arguments: `{"goalId":"` + goalTestGoalID + `","revision":1,"action":"complete","objective":null,"maxGoalRounds":null,"blockedReason":null}`,
 			},
 		}},
-		{{Type: ProviderEventDelta, Delta: "verified final answer"}},
+		{{Type: ProviderEventDelta, Delta: "final answer"}},
 	}}
 
 	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
@@ -429,7 +146,7 @@ func TestChatAgentGoalLoopAutomaticallyContinuesAndWrapsUp(t *testing.T) {
 			content.WriteString(event.Delta)
 		}
 	}
-	if content.String() != "verified final answer" {
+	if content.String() != "final answer" {
 		t.Fatalf("visible content = %q", content.String())
 	}
 	if len(provider.inputs) != 4 {
@@ -516,43 +233,6 @@ func TestChatAgentGoalWrapupKeepsToolsDisabledAfterHallucinatedCall(t *testing.T
 	}
 	if repository.eventTypesString() != "goal.changed,goal.round.started,goal.changed" {
 		t.Fatalf("hallucinated Tool mutated Goal events = %s", repository.eventTypesString())
-	}
-}
-
-func TestChatAgentGoalCompleteRejectsUnverifiedMutation(t *testing.T) {
-	repository := newGoalTestRepository(t)
-	runtime := newChatAgentGoalToolRuntime(
-		NewService(repository), goalTestTurnID, testConversationID,
-	)
-	policy := newChatCompletionPolicy()
-	runtime.bindCompletionPolicy(policy)
-	registry := &chatToolRegistry{
-		ordered: make([]chatToolRegistration, 0, 1),
-		byName:  map[string]chatToolRegistration{}, colliding: map[string]struct{}{},
-	}
-	registry.register(chatToolRegistration{
-		Name: localFileWriteToolName, Backend: chatToolBackendLocalSkill,
-		RiskClass: chatToolRiskWrite, ProjectForModel: identityChatToolResult,
-		MutationResultNeedsFollowup: true,
-	})
-	policy.observe(registry, []ProviderToolCall{{ID: "mutation", Name: localFileWriteToolName}},
-		[]ProviderToolResult{{CallID: "mutation", Name: localFileWriteToolName}})
-	repository.goal = &ChatAgentGoal{
-		ID: goalTestGoalID, ConversationID: testConversationID,
-		Objective: "prove it", Phase: ChatAgentGoalActive, Revision: 1,
-		MaxGoalRounds: 4, CreatedAt: testNow(), UpdatedAt: testNow(),
-	}
-	runtime.current = cloneChatAgentGoalPointer(repository.goal)
-	runtime.armed = true
-	result, concludes, failure, fatal := runtime.executeCall(context.Background(), ProviderToolCall{
-		ID: "complete", Name: chatAgentUpdateGoalToolName,
-		Arguments: `{"goalId":"` + goalTestGoalID + `","revision":1,"action":"complete","objective":null,"maxGoalRounds":null,"blockedReason":null}`,
-	})
-	if fatal != nil || concludes || failure != "verification_required" || !result.IsError {
-		t.Fatalf("complete result=%#v concludes=%v failure=%q fatal=%v", result, concludes, failure, fatal)
-	}
-	if repository.goal.Phase != ChatAgentGoalActive || repository.goal.Revision != 1 {
-		t.Fatalf("unverified completion mutated Goal = %#v", repository.goal)
 	}
 }
 

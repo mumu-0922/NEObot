@@ -6,16 +6,19 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"neo-chat/mm-chat/backend/internal/agenthost"
+	"neo-chat/mm-chat/backend/internal/localskills"
 	"neo-chat/mm-chat/backend/internal/strictjson"
 )
 
 const (
-	workspacePath        = "/v1/workspaces"
-	workspacePathPrefix  = workspacePath + "/"
-	maxWorkspaceAPIBytes = (5 << 20) / 4
+	workspacePath         = "/v1/workspaces"
+	workspacePathPrefix   = workspacePath + "/"
+	maxWorkspaceAPIBytes  = (5 << 20) / 4
+	maxWorkspaceFileBytes = 50 << 20
 )
 
 type Handler struct{ service *Service }
@@ -83,11 +86,12 @@ func NewHandler(service *Service) *Handler { return &Handler{service: service} }
 
 func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Cache-Control", "no-store")
-	if request.URL.RawQuery != "" {
+	path := strings.TrimSuffix(request.URL.Path, "/")
+	isFileRoute := isWorkspaceFileRoute(path)
+	if request.URL.RawQuery != "" && !isFileRoute {
 		writeWorkspaceError(writer, http.StatusBadRequest, "INVALID_WORKSPACE_REQUEST", "Request is invalid")
 		return
 	}
-	path := strings.TrimSuffix(request.URL.Path, "/")
 	switch {
 	case path == workspacePath:
 		handler.collection(writer, request)
@@ -96,6 +100,15 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	default:
 		writeWorkspaceError(writer, http.StatusNotFound, "NOT_FOUND", "Route not found")
 	}
+}
+
+func isWorkspaceFileRoute(requestPath string) bool {
+	if !strings.HasPrefix(requestPath, workspacePathPrefix) {
+		return false
+	}
+	parts := strings.Split(strings.TrimPrefix(requestPath, workspacePathPrefix), "/")
+	return len(parts) == 3 && parts[1] == "files" &&
+		(parts[2] == "content" || parts[2] == "preview")
 }
 
 func (handler *Handler) collection(writer http.ResponseWriter, request *http.Request) {
@@ -141,7 +154,74 @@ func (handler *Handler) item(writer http.ResponseWriter, request *http.Request, 
 		handler.setConversation(writer, request, parts[0], parts[2])
 		return
 	}
+	if len(parts) == 3 && parts[1] == "files" &&
+		(parts[2] == "content" || parts[2] == "preview") {
+		handler.workspaceFile(writer, request, parts[0], parts[2])
+		return
+	}
 	writeWorkspaceError(writer, http.StatusNotFound, "NOT_FOUND", "Route not found")
+}
+
+func (handler *Handler) workspaceFile(
+	writer http.ResponseWriter,
+	request *http.Request,
+	workspaceID string,
+	action string,
+) {
+	if request.Method != http.MethodGet {
+		methodNotAllowed(writer, http.MethodGet)
+		return
+	}
+	query := request.URL.Query()
+	for key := range query {
+		if key != "path" && !(action == "content" && key == "download") {
+			writeWorkspaceError(writer, http.StatusBadRequest, "INVALID_WORKSPACE_REQUEST", "Request is invalid")
+			return
+		}
+	}
+	paths := query["path"]
+	if len(paths) != 1 || strings.TrimSpace(paths[0]) == "" || len(query["download"]) > 1 {
+		writeWorkspaceError(writer, http.StatusBadRequest, "INVALID_WORKSPACE_REQUEST", "Request is invalid")
+		return
+	}
+	snapshot, err := handler.service.ReadWorkspaceFile(
+		request.Context(), workspaceID, paths[0], maxWorkspaceFileBytes,
+	)
+	if err != nil {
+		writeWorkspaceServiceError(writer, err)
+		return
+	}
+	if action == "preview" {
+		preview, previewErr := buildWorkspaceFilePreview(snapshot)
+		if previewErr != nil {
+			writeWorkspaceError(writer, http.StatusUnprocessableEntity, "WORKSPACE_FILE_PREVIEW_UNAVAILABLE", "File preview is unavailable")
+			return
+		}
+		writeWorkspaceJSON(writer, http.StatusOK, map[string]any{"preview": preview})
+		return
+	}
+	download := false
+	if values := query["download"]; len(values) == 1 {
+		parsed, parseErr := strconv.ParseBool(values[0])
+		if parseErr != nil {
+			writeWorkspaceError(writer, http.StatusBadRequest, "INVALID_WORKSPACE_REQUEST", "Request is invalid")
+			return
+		}
+		download = parsed
+	}
+	disposition := "inline"
+	if download {
+		disposition = "attachment"
+	}
+	writer.Header().Set("Content-Type", snapshot.MimeType)
+	writer.Header().Set("Content-Length", strconv.Itoa(len(snapshot.Body)))
+	writer.Header().Set("ETag", `"`+strings.TrimPrefix(snapshot.Version, "sha256:")+`"`)
+	writer.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{
+		"filename": snapshot.FileName,
+	}))
+	writer.Header().Set("X-Content-Type-Options", "nosniff")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write(snapshot.Body)
 }
 
 func (handler *Handler) hostStatus(writer http.ResponseWriter, request *http.Request) {
@@ -391,6 +471,13 @@ func writeWorkspaceServiceError(writer http.ResponseWriter, err error) {
 		writeWorkspaceError(writer, http.StatusBadRequest, "INVALID_WORKSPACE_REQUEST", "Request is invalid")
 	case errors.Is(err, ErrNotFound), errors.Is(err, ErrConversationNotFound):
 		writeWorkspaceError(writer, http.StatusNotFound, "WORKSPACE_NOT_FOUND", "Workspace was not found")
+	case errors.Is(err, localskills.ErrWorkspaceFileNotFound):
+		writeWorkspaceError(writer, http.StatusNotFound, "WORKSPACE_FILE_NOT_FOUND", "Workspace file was not found")
+	case errors.Is(err, localskills.ErrWorkspaceFileTooLarge):
+		writeWorkspaceError(writer, http.StatusRequestEntityTooLarge, "WORKSPACE_FILE_TOO_LARGE", "Workspace file is too large")
+	case errors.Is(err, localskills.ErrWorkspaceInvalidInput),
+		errors.Is(err, localskills.ErrWorkspaceInvalidPath):
+		writeWorkspaceError(writer, http.StatusBadRequest, "INVALID_WORKSPACE_FILE_PATH", "Workspace file path is invalid")
 	case errors.Is(err, ErrRevisionConflict):
 		writeWorkspaceError(writer, http.StatusConflict, "WORKSPACE_REVISION_CONFLICT", "Workspace changed; reload and retry")
 	case errors.Is(err, ErrAlreadyBound):

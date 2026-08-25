@@ -26,9 +26,11 @@ import type {
   ChatAgentEvent,
   AgentPermissionMode,
   ChatToolMode,
+  MessageOutputBlock,
   ReasoningEffort,
   SearchMode,
 } from "../../lib/chat/types";
+import { normalizeServerMessageOutputBlocks } from "../../lib/chat/messageOutputBlocks";
 import {
   isAgentPermissionMode,
   isChatToolMode,
@@ -117,7 +119,7 @@ export interface ChatCrudMessage {
     recoverable?: boolean;
     code?: string;
   };
-  outputBlocks?: unknown[];
+  outputBlocks?: MessageOutputBlock[];
   knowledge?: MessageKnowledgeMetadata;
   parentMessageId?: string;
   treeParentMessageId?: string | null;
@@ -348,6 +350,7 @@ export function mapChatMessageDtoToMessage(
     role === "model"
       ? normalizeServerMessageTiming(timestamp, message.completedAt)
       : undefined;
+  const outputBlocks = normalizeServerMessageOutputBlocks(message.outputBlocks);
 
   return {
     id: message.id,
@@ -369,9 +372,7 @@ export function mapChatMessageDtoToMessage(
           ),
         }
       : {}),
-    ...(message.outputBlocks.length > 0
-      ? { outputBlocks: message.outputBlocks }
-      : {}),
+    ...(outputBlocks.length > 0 ? { outputBlocks } : {}),
     ...(message.parentMessageId
       ? { parentMessageId: message.parentMessageId }
       : {}),
