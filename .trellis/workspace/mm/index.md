@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 90
+- **Total Sessions**: 91
 - **Last Active**: 2026-08-25
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1424 | Active |
+| `journal-2.md` | ~1457 | Active |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 91 | 2026-08-25 | Unify Agent Runtime Resource Registry | `7509f5d7` | `main` |
 | 90 | 2026-08-25 | Align Chat Agent harness with Pi | `b22340a3` | `main` |
 | 89 | 2026-08-25 | Rebuild and verify completion-driven Agent runtime | `37341994` | `main` |
 | 88 | 2026-08-25 | Completion-driven Chat Agent runtime | `37341994`, `5e2b027c` | `main` |

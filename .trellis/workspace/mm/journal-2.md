@@ -1422,3 +1422,36 @@ Adopt canonical read/write/edit/grep/bash tools and natural completion; preserve
 ### Next Steps
 
 - None - task complete
+
+
+## Session 91: Unify Agent Runtime Resource Registry
+
+**Date**: 2026-08-25
+**Task**: Unify Agent Runtime Resource Registry
+**Branch**: `main`
+
+### Summary
+
+统一 immutable Agent runtime resource snapshot 与逐 Step projection，收口 builtin、Skill、MCP runtime assembly；补齐稳定 revision、fail-closed collision、脱敏 diagnostics 和跨层测试，并定向部署 Backend runtime 镜像验证健康。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7509f5d7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
