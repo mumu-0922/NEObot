@@ -55,6 +55,7 @@ type externalWebToolLoopInput struct {
 	LocalSkills            *localSkillToolRuntime
 	Goals                  *chatAgentGoalToolRuntime
 	CompletionDriven       bool
+	Resources              *agentRuntimeResourceSnapshot
 }
 
 func searchWebToolDefinition() ToolDefinition {
@@ -112,6 +113,10 @@ func startRetrievalToolLoop(
 	ctx context.Context,
 	input externalWebToolLoopInput,
 ) <-chan ProviderEvent {
+	if input.Resources == nil {
+		input.Resources = newAgentRuntimeResourceSnapshotFromToolLoopInput(input)
+	}
+	input = input.Resources.bind(input)
 	if input.ContextBudget == nil {
 		input.ContextBudget = newRetrievalContextBudget(
 			input.Request,
@@ -188,7 +193,8 @@ func runNativeExternalWebToolLoop(
 	if input.Knowledge.enabled() {
 		input.Request = withSelectedKnowledgeToolInstruction(input.Request, input.Knowledge)
 	}
-	registry := newChatToolRegistry(input)
+	projection := input.Resources.project(input, 1, false)
+	registry := projection.Registry
 	tools := registry.definitions(1)
 	if len(tools) == 0 {
 		streamCompatibilityAnswer(ctx, events, input.Provider, input.Request)
@@ -229,10 +235,11 @@ func runNativeExternalWebToolLoop(
 			return true
 		}
 		if skillLoadRound {
-			registry = newRequiredLocalSkillRegistry(input.LocalSkills)
+			projection = input.Resources.project(input, taskRound, true)
 		} else {
-			registry = newChatToolRegistry(input)
+			projection = input.Resources.project(input, taskRound, false)
 		}
+		registry = projection.Registry
 		roundTools := registry.definitions(taskRound)
 		if input.Goals.consumeForceNoTools() {
 			goalWrapupActive = true
@@ -805,7 +812,11 @@ func collectBufferedCompatibilityAnswer(
 }
 
 func retrievalToolDefinitions(input externalWebToolLoopInput) []ToolDefinition {
-	return newChatToolRegistry(input).definitions(1)
+	resources := input.Resources
+	if resources == nil {
+		resources = newAgentRuntimeResourceSnapshotFromToolLoopInput(input)
+	}
+	return resources.project(input, 1, false).Registry.definitions(1)
 }
 
 func externalWebToolEnabled(input externalWebToolLoopInput) bool {

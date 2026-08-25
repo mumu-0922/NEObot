@@ -63,6 +63,7 @@ type chatToolRegistry struct {
 	ordered            []chatToolRegistration
 	byName             map[string]chatToolRegistration
 	colliding          map[string]struct{}
+	collisions         map[string][]chatToolRegistration
 	requiredLocalSkill bool
 }
 
@@ -72,11 +73,12 @@ type chatToolBatchExecution struct {
 	Stop          bool
 }
 
-func newChatToolRegistry(input externalWebToolLoopInput) *chatToolRegistry {
+func buildChatToolRegistry(input externalWebToolLoopInput) *chatToolRegistry {
 	registry := &chatToolRegistry{
-		ordered:   make([]chatToolRegistration, 0, 7+len(input.MCP.definitions())),
-		byName:    make(map[string]chatToolRegistration),
-		colliding: make(map[string]struct{}),
+		ordered:    make([]chatToolRegistration, 0, 7+len(input.MCP.definitions())),
+		byName:     make(map[string]chatToolRegistration),
+		colliding:  make(map[string]struct{}),
+		collisions: make(map[string][]chatToolRegistration),
 	}
 	registry.registerGoals(input.Goals)
 	if input.Memory.requiresFirstRoundCall() {
@@ -107,6 +109,14 @@ func newChatToolRegistry(input externalWebToolLoopInput) *chatToolRegistry {
 	return registry
 }
 
+func newChatToolRegistry(input externalWebToolLoopInput) *chatToolRegistry {
+	resources := input.Resources
+	if resources == nil {
+		resources = newAgentRuntimeResourceSnapshotFromToolLoopInput(input)
+	}
+	return resources.project(input, 0, false).Registry
+}
+
 func (registry *chatToolRegistry) registerGoals(runtime *chatAgentGoalToolRuntime) {
 	if registry == nil || !runtime.enabled() {
 		return
@@ -128,11 +138,12 @@ func (registry *chatToolRegistry) registerGoals(runtime *chatAgentGoalToolRuntim
 	}
 }
 
-func newRequiredLocalSkillRegistry(runtime *localSkillToolRuntime) *chatToolRegistry {
+func buildRequiredLocalSkillRegistry(runtime *localSkillToolRuntime) *chatToolRegistry {
 	registry := &chatToolRegistry{
 		ordered:            make([]chatToolRegistration, 0, 1),
 		byName:             make(map[string]chatToolRegistration, 1),
 		colliding:          make(map[string]struct{}),
+		collisions:         make(map[string][]chatToolRegistration),
 		requiredLocalSkill: true,
 	}
 	definitions := runtime.requiredDefinition()
@@ -140,6 +151,13 @@ func newRequiredLocalSkillRegistry(runtime *localSkillToolRuntime) *chatToolRegi
 		registry.register(localSkillToolRegistration(definitions[0], runtime))
 	}
 	return registry
+}
+
+func newRequiredLocalSkillRegistry(runtime *localSkillToolRuntime) *chatToolRegistry {
+	resources := newAgentRuntimeResourceSnapshot(agentRuntimeResourceInput{
+		LocalSkills: runtime,
+	})
+	return resources.project(externalWebToolLoopInput{}, 0, true).Registry
 }
 
 func retrievalToolRegistration(
@@ -258,22 +276,55 @@ func (registry *chatToolRegistry) register(registration chatToolRegistration) bo
 	if registry == nil {
 		return false
 	}
+	if registry.byName == nil {
+		registry.byName = make(map[string]chatToolRegistration)
+	}
+	if registry.colliding == nil {
+		registry.colliding = make(map[string]struct{})
+	}
+	if registry.collisions == nil {
+		registry.collisions = make(map[string][]chatToolRegistration)
+	}
 	name := normalizedToolName(registration.Name)
 	if name == "unknown" || registration.ProjectForModel == nil {
 		return false
 	}
 	registration.Name = name
 	if _, collided := registry.colliding[name]; collided {
+		registry.collisions[name] = append(registry.collisions[name], registration)
+		registry.ordered = append(registry.ordered, registration)
 		return false
 	}
-	if _, exists := registry.byName[name]; exists {
+	if existing, exists := registry.byName[name]; exists {
 		delete(registry.byName, name)
 		registry.colliding[name] = struct{}{}
+		registry.collisions[name] = []chatToolRegistration{existing, registration}
+		registry.ordered = append(registry.ordered, registration)
 		return false
 	}
 	registry.byName[name] = registration
 	registry.ordered = append(registry.ordered, registration)
 	return true
+}
+
+func (registry *chatToolRegistry) forTaskStep(taskStep int) *chatToolRegistry {
+	if registry == nil || taskStep <= 1 {
+		return registry
+	}
+	filtered := &chatToolRegistry{
+		ordered:            make([]chatToolRegistration, 0, len(registry.ordered)),
+		byName:             make(map[string]chatToolRegistration, len(registry.byName)),
+		colliding:          make(map[string]struct{}),
+		collisions:         make(map[string][]chatToolRegistration),
+		requiredLocalSkill: registry.requiredLocalSkill,
+	}
+	for _, registration := range registry.ordered {
+		if registration.FirstTaskStep {
+			continue
+		}
+		filtered.register(registration)
+	}
+	return filtered
 }
 
 func (registry *chatToolRegistry) lookup(name string) (chatToolRegistration, bool) {

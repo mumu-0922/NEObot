@@ -1820,6 +1820,12 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			return
 		}
 	}
+	mcpRuntime := newMCPToolRuntime(
+		h.mcpService,
+		preparedMCPRun,
+		actor.ID,
+		userMessage.Content,
+	)
 	var localSkillRuntime *localSkillToolRuntime
 	localSkillContextPrompt := ""
 	if agentMode && h.localSkillExecutor != nil && h.localSkillExecutor.Enabled() {
@@ -1849,23 +1855,27 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		localSkillRuntime.bindJobScope(actor.ID, conversationID)
 		localSkillRuntime.bindWorkspace(conversation.WorkspaceID)
 		localSkillRuntime.bindArtifactPublisher(h.artifactPublisher, h.artifactMaxBytes)
-		var prepareErr error
-		providerPrompt, prepareErr = localSkillRuntime.prepareUserPrompt(
-			providerPrompt,
-			userMessage.Content,
-		)
-		if prepareErr != nil {
-			writeError(w, http.StatusServiceUnavailable, "SKILL_RUNTIME_UNAVAILABLE", "local Skill runtime is unavailable")
-			return
+	}
+	runtimeResources := newAgentRuntimeResourceSnapshot(agentRuntimeResourceInput{
+		MCP: mcpRuntime, LocalSkills: localSkillRuntime,
+		ExternalWeb: h.webSearchService != nil && searchExecution != nil &&
+			searchExecution.Mode == websearch.ExecutionExternal,
+	})
+	providerPrompt, err = runtimeResources.prepareUserPrompt(
+		providerPrompt,
+		userMessage.Content,
+	)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "SKILL_RUNTIME_UNAVAILABLE", "local Skill runtime is unavailable")
+		return
+	}
+	localSkillContextPrompt = runtimeResources.promptInstruction()
+	if localSkillContextPrompt != "" {
+		providerSystemPrompt = strings.TrimSpace(providerSystemPrompt)
+		if providerSystemPrompt != "" {
+			providerSystemPrompt += "\n\n"
 		}
-		localSkillContextPrompt = localSkillRuntime.promptInstruction()
-		if localSkillContextPrompt != "" {
-			providerSystemPrompt = strings.TrimSpace(providerSystemPrompt)
-			if providerSystemPrompt != "" {
-				providerSystemPrompt += "\n\n"
-			}
-			providerSystemPrompt += localSkillContextPrompt
-		}
+		providerSystemPrompt += localSkillContextPrompt
 	}
 
 	assistantMetadata := map[string]any{
@@ -2064,12 +2074,6 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		conversationID,
 		assistantMessage.ID,
 	)
-	mcpRuntime := newMCPToolRuntime(
-		h.mcpService,
-		preparedMCPRun,
-		actor.ID,
-		userMessage.Content,
-	)
 	directMemoryAction := directMemoryActionPreparation{}
 	if continuation == nil && !memoryToolRuntime.enabled() {
 		directMemoryAction = h.prepareDirectMemoryAction(
@@ -2144,7 +2148,6 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			knowledgeRuntime,
 		)
 	}
-
 	memoryPreparation := durableMemoryPreparation{}
 	if continuation == nil && !memoryToolRuntime.enabled() {
 		providerSystemPrompt, memoryPreparation = h.prepareDurableMemory(
@@ -2333,11 +2336,8 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		generationStarted,
 		map[string]any{"outcome": "streaming"},
 	)
-	if mcpRuntime.enabled() || localSkillRuntime.enabled() || memoryToolRuntime.enabled() ||
-		goalToolRuntime.enabled() || useLiveKnowledgeTool ||
-		(searchMode == chatSearchModeExternal && searchExecution != nil &&
-			searchExecution.Mode == websearch.ExecutionExternal &&
-			!useCompatibilityKnowledge) {
+	if runtimeResources.toolLoopEnabled(false, !useCompatibilityKnowledge) ||
+		memoryToolRuntime.enabled() || goalToolRuntime.enabled() || useLiveKnowledgeTool {
 		toolLoopInput := externalWebToolLoopInput{
 			Provider:        streamProvider,
 			Request:         providerRequest,
@@ -2357,10 +2357,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			CapabilityCache:        h.toolCapabilityCache,
 			CapabilityConfigHash:   providerResolution.ToolCapabilityConfigHash,
 			DisableNativeToolRound: !toolRoundCapable,
-			MCP:                    mcpRuntime,
-			LocalSkills:            localSkillRuntime,
-			Goals:                  goalToolRuntime,
 			CompletionDriven:       agentMode,
+			Resources:              runtimeResources,
+			Goals:                  goalToolRuntime,
 		}
 		if searchExecution != nil &&
 			searchExecution.Mode == websearch.ExecutionExternal {

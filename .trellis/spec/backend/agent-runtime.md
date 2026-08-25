@@ -1,5 +1,121 @@
 # Chat Agent Runtime Contract
 
+## Scenario: project one immutable Agent runtime resource catalog per Step
+
+### 1. Scope / Trigger
+
+Apply when adding or changing built-in/retrieval Tools, installed Skills, MCP
+Tools, required-Skill loading, Tool-name collision behavior, or Handler prompt
+assembly. This is an internal runtime contract; it adds no browser API,
+database authority, package installer, or unified management toggle.
+
+### 2. Signatures
+
+```go
+type agentRuntimeResourceSnapshot struct { /* frozen Run authority */ }
+
+func newAgentRuntimeResourceSnapshot(agentRuntimeResourceInput) *agentRuntimeResourceSnapshot
+func (*agentRuntimeResourceSnapshot) project(
+    externalWebToolLoopInput, taskStep int, requiredSkillOnly bool,
+) agentRuntimeToolProjection
+
+type agentRuntimeResourceReport struct {
+    RunRevision, ProjectionRevision string
+    TaskStep int
+    RequiredSkillOnly bool
+    Resources []agentRuntimeResourceDescriptor
+    Diagnostics []agentRuntimeResourceDiagnostic
+}
+```
+
+Each descriptor contains only stable ID, `tool_set|skill_catalog|skill_package`,
+`builtin|retrieval|mcp|local_skill`, `server|user|run`,
+`enabled|hidden|degraded|unavailable`, revision, contributed Tool/Skill names,
+and fixed diagnostic codes.
+
+### 3. Contracts
+
+- Construct exactly one Run snapshot after MCP `PrepareRun`, Skill package
+  materialization, and Workspace executor binding, but before Assistant
+  acceptance. Skill prompt preparation remains an admission operation: failure
+  creates no pending Assistant and makes no Provider request.
+- The Run revision freezes the prepared MCP snapshot, installed Skill catalog
+  and package fingerprints, and hashed Workspace authority. Existing MCP,
+  Skill, Workspace, permission, approval, and conversation stores remain the
+  only mutation authorities; the resource snapshot is not a database.
+- Each Provider Step receives one immutable projection from that snapshot plus
+  the current server-owned built-in runtime handles. The projection freezes the
+  exact ordered definitions and execution registry for that Step. Current MCP
+  search visibility, first-Step-only retrieval, loaded Skill state, and the
+  required-Skill-only prelude must change the projection revision.
+- The Handler obtains the Skill catalog prompt from the snapshot and passes the
+  same snapshot into the Tool loop. It must not append a parallel MCP/Skill/
+  builtin catalog. A required Skill prelude uses `project(..., true)` and may
+  expose only the exact `skill` loader.
+- Exact normalized Tool-name collisions remove every colliding registration
+  from Provider visibility and execution. Never keep the first or last writer.
+  Mark affected resource descriptors `degraded` and emit only
+  `tool_name_collision`. A structurally present but unusable runtime is
+  `unavailable` with only `resource_unavailable`.
+- Hidden legacy aliases remain executable for bounded continuation compatibility
+  but absent from new Provider definitions. Later Step projections physically
+  remove first-Step-only registrations from lookup, not merely from display.
+- Resource reports are internal sanitized diagnostics. Never include
+  credentials, URLs with userinfo, Server display/ref authority, Host or Skill
+  materialization paths, Tool arguments/results, prompts, or raw errors.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| identical Run authority and Step state | identical Run/projection revisions |
+| MCP visible aliases expand after `mcp_tool_search` | new projection revision and exact new catalog |
+| first-Step-only Memory on Step 2 | absent from definition and executable lookup |
+| Skill is loaded | new projection revision; ordinary Tool catalog resumes |
+| required Skill prelude | same Run revision; only exact `skill` definition |
+| exact cross-source Tool-name collision | no executable Tool; degraded descriptors and fixed diagnostic |
+| MCP/Skill admission fails before snapshot | existing typed admission error; no Provider/Assistant acceptance |
+| unavailable runtime represented in a report | fixed unavailable status/code; no raw error |
+| report serialization | no secret, Host path, Skill `RootPath`, arguments, or results |
+
+### 5. Good / Base / Bad Cases
+
+- **Good:** one Run snapshot supplies the Skill prompt, then Step 1 projects
+  Memory/MCP/Skill/local Tools; an MCP search changes visibility and Step 2 gets
+  a new revision without changing the frozen MCP authorization snapshot.
+- **Base:** Agent has no selected MCP Server and no installed Skill; the same
+  projection still contains the authorized local workspace and built-in Tools.
+- **Bad:** Handler appends `promptInstruction()` directly, the loop separately
+  calls MCP/Skill definition builders, required Skill creates another Registry,
+  or collision order selects a winner.
+
+### 6. Tests Required
+
+- Stable repeated Run/Step revision plus revision changes for task Step, MCP
+  visibility, and loaded Skill state.
+- Required-Skill projection proves the same Run revision and zero `bash`, MCP,
+  retrieval, Goal, or legacy Tool leakage.
+- Cross-source collision proves definition and lookup denial, both resource
+  descriptors degraded, and one fixed diagnostic.
+- JSON report redaction fixtures include a fake secret, MCP metadata, absolute
+  Host/Skill paths, arguments, and results; none may survive serialization.
+- Existing Registry ordering, hidden aliases, scheduler, MCP, Knowledge,
+  Memory, Skill selection, natural completion, Handler, and durable replay
+  tests remain green.
+
+### 7. Wrong vs Correct
+
+```text
+Wrong: Handler Skill prompt + MCP definitions + local definitions + prelude Registry
+Correct: one Run resource snapshot -> one immutable Step projection -> Provider/executor
+
+Wrong: omit first-Step Tool from definitions but leave it executable in lookup
+Correct: filter the complete Step registry before both advertisement and execution
+
+Wrong: collision resolution depends on registration order
+Correct: remove all colliding registrations and emit a bounded fixed diagnostic
+```
+
 ## Scenario: execute installed Skills through the ordinary Chat Agent
 
 ### Scope / trigger

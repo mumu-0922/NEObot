@@ -26,7 +26,8 @@ flowchart LR
   U[User message] --> P[Persisted Chat/Agent policy]
   P --> C[Knowledge + Memory + Search context]
   P -->|Chat| L[LLM response]
-  P -->|Agent| R[Server Tool Registry]
+  P -->|Agent| S[Immutable Run Resource Snapshot]
+  S --> R[Step Tool Registry Projection]
   R --> L
   L -->|Tool call| X[Bounded local or connector executor]
   X --> E[Durable Tool event/result]
@@ -37,8 +38,12 @@ flowchart LR
 ```
 
 The Backend is authoritative for Tool admission. Chat mode physically omits
-Agent Tool definitions and skips Skill/MCP/Goal preparation. Agent mode runs
-the existing same-model continuation loop; it does not create Subagents.
+Agent Tool definitions and skips Skill/MCP/Goal preparation. Agent mode freezes
+the prepared MCP selection, installed Skill materialization, and Workspace
+authority once per Run, then projects one immutable Tool Registry for each
+Provider Step. First-Step retrieval, current MCP Tool-search visibility, and
+loaded Skill state are part of that Step projection. Agent mode runs the
+existing same-model continuation loop; it does not create Subagents.
 
 ## Containers and trust boundaries
 
@@ -73,8 +78,16 @@ bind.
   through `/v1/skills/*`.
 - `internal/localskills` materializes installed packages and executes bounded
   workspace operations.
-- `internal/chat` builds the mode-specific registry and owns the Tool loop.
+- `internal/chat` owns the revisioned Runtime Resource Snapshot, derives the
+  mode/Step-specific registry and Skill prompt from it, and runs the Tool loop.
 - MCP remains an optional Tool/connector provider below that registry.
+
+Resource descriptors and diagnostics stay Backend-internal for now. They carry
+only stable hashed IDs, source/scope/status, revisions, contributed names, and
+fixed diagnostic codes. They never contain credentials, Host/Skill paths,
+Tool arguments/results, prompts, or raw errors. Existing Skill and MCP APIs
+remain the only mutation authorities; there is no second resource database or
+unified browser toggle.
 
 The Skill Store is independent of the retired Agent Center. Installing a Skill
 does not grant extra host identity or bypass Tool policy.

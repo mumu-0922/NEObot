@@ -33,11 +33,23 @@ The four Goal Tools are present only when the selected model supports native
 Tools and the Repository implements migration-`097` Goal persistence. This
 keeps legacy/fake repositories on their prior behavior.
 
-Every active Tool now enters one server-owned Registry with its exact Provider
-definition, Backend executor, `read|write|execute|external` risk class, timeout,
-output budget, parallel permission, optional approval rule, model Result
-projector, and replayable `search|tool` presentation. Name collisions fail
-closed, and the default Registry contains no Subagent or delegation Tool.
+Every active Tool now enters one server-owned, revisioned Runtime Resource
+Snapshot. The Run layer freezes MCP selection, installed Skill materialization,
+and Workspace authority. Each Provider Step derives one immutable Registry with
+the exact Provider definition, Backend executor, `read|write|execute|external`
+risk class, timeout, output budget, parallel permission, optional approval rule,
+model Result projector, and replayable `search|tool` presentation. First-Step
+retrieval, MCP Tool-search visibility, loaded Skill state, and required-Skill-
+only projection are revision inputs. Name collisions remove every colliding
+registration from both definition and execution lookup; the default Registry
+contains no Subagent or delegation Tool.
+
+The snapshot's internal diagnostic projection exposes only stable hashed IDs,
+resource kind/source/scope/status, revisions, contributed names, and fixed
+`tool_name_collision|resource_unavailable` codes. Credentials, Host/Skill
+paths, Tool arguments/results, prompts, MCP Server authority, and raw errors are
+forbidden. Existing MCP and Skill stores remain the only mutation authorities;
+there is no resource database or browser-owned execution registry.
 
 The local Tool family implements workspace execution plus progressive Skill
 disclosure. Every Turn receives a bounded complete catalog replacement with a
