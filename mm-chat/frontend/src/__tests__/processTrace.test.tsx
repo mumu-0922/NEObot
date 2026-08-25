@@ -529,6 +529,60 @@ describe("durable process trace", () => {
     expect(html).toContain("仅允许一次");
   });
 
+  it("renders a safe MCP configuration handoff without exposing credentials", () => {
+    const step = normalizeProcessStep({
+      id: "resource-config-1",
+      kind: "tool",
+      status: "awaiting_approval",
+      labelKey: "process.tool",
+      detail: {
+        toolName: "resource_request_install",
+        mode: "resource",
+        classification: "write",
+      },
+      presentation: {
+        card: "resource",
+        title: "Configure DeepWiki",
+        summary: "Complete configuration in Tools.",
+        configuration: {
+          kind: "mcp",
+          query: "deepwiki",
+          resourceId: "private:server-id",
+          secret: "must-not-render",
+        },
+        approval: {
+          id: "22222222-2222-4222-8222-222222222222",
+          revision: 1,
+          status: "pending",
+          expiresAt: "2026-08-26T00:05:00Z",
+          allowConversation: false,
+        },
+      },
+    });
+    const html = renderToStaticMarkup(
+      <NextIntlClientProvider
+        locale="zh"
+        messages={{ Content: contentMessages }}
+        timeZone="UTC"
+      >
+        <ProcessTracePanel steps={[step!]} />
+      </NextIntlClientProvider>,
+    );
+
+    expect(step?.presentation).toMatchObject({
+      card: "resource",
+      configuration: {
+        kind: "mcp",
+        query: "deepwiki",
+        resourceId: "private:server-id",
+      },
+    });
+    expect(html).toContain("打开工具配置");
+    expect(html).toContain("配置完成，继续");
+    expect(html).toContain("取消任务");
+    expect(html).not.toContain("must-not-render");
+  });
+
   it("warns that process-local background Jobs disappear after restart", () => {
     const step = normalizeProcessStep({
       id: "tool-job-1",

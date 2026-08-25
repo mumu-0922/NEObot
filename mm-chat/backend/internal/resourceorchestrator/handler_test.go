@@ -73,3 +73,54 @@ func TestHandlerRejectsStaleAndUnknownInstallInput(t *testing.T) {
 		})
 	}
 }
+
+func TestHandlerRoutesLifecycleMutationThroughUnifiedContract(t *testing.T) {
+	handler := NewHandler(NewService(fakeSkills{library: []skillsupply.Installation{{
+		ID: "installation-id", Name: "office-xlsx", Revision: 4,
+	}}}, fakeMCP{}))
+	request := httptest.NewRequest(http.MethodPost, ResourcesPath+"/mutate", strings.NewReader(`{
+		"kind":"skill","action":"remove","id":"installation-id",
+		"expectedRevision":4,"conversationId":"conversation-id"
+	}`))
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK ||
+		!strings.Contains(response.Body.String(), `"status":"removed"`) ||
+		!strings.Contains(response.Body.String(), `"refreshRequired":true`) {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestHandlerRejectsForbiddenAndSecretBearingLifecycleMutation(t *testing.T) {
+	handler := NewHandler(NewService(fakeSkills{}, fakeMCP{}))
+
+	for _, fixture := range []struct {
+		name string
+		body string
+		want int
+	}{
+		{
+			name: "cross owner skill id",
+			body: `{"kind":"skill","action":"remove","id":"installation-id",` +
+				`"expectedRevision":4,"conversationId":"conversation-id"}`,
+			want: http.StatusForbidden,
+		},
+		{
+			name: "secret field",
+			body: `{"kind":"mcp","action":"enable","id":"catalog:deepwiki",` +
+				`"expectedRevision":1,"conversationId":"conversation-id","secret":"leak"}`,
+			want: http.StatusBadRequest,
+		},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, ResourcesPath+"/mutate", strings.NewReader(fixture.body))
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != fixture.want {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+		})
+	}
+}

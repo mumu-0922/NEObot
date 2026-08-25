@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"neo-chat/mm-chat/backend/internal/localskills"
+	"neo-chat/mm-chat/backend/internal/resourceorchestrator"
 )
 
 const (
@@ -68,35 +69,42 @@ type ProcessStep struct {
 }
 
 type ProcessStepPresentation struct {
-	Version        int                          `json:"version,omitempty"`
-	Card           string                       `json:"card"`
-	Title          string                       `json:"title,omitempty"`
-	Summary        string                       `json:"summary,omitempty"`
-	Command        string                       `json:"command,omitempty"`
-	CWD            string                       `json:"cwd,omitempty"`
-	Transcript     []ProcessTranscriptEntry     `json:"transcript,omitempty"`
-	ExitCode       *int                         `json:"exitCode,omitempty"`
-	TimedOut       bool                         `json:"timedOut,omitempty"`
-	Truncated      bool                         `json:"truncated,omitempty"`
-	Background     bool                         `json:"background,omitempty"`
-	Provider       string                       `json:"provider,omitempty"`
-	Query          string                       `json:"query,omitempty"`
-	Count          int                          `json:"count,omitempty"`
-	Operation      string                       `json:"operation,omitempty"`
-	Path           string                       `json:"path,omitempty"`
-	Content        string                       `json:"content,omitempty"`
-	Diff           string                       `json:"diff,omitempty"`
-	Size           int64                        `json:"size,omitempty"`
-	Offset         int64                        `json:"offset,omitempty"`
-	NextOffset     int64                        `json:"nextOffset,omitempty"`
-	JobID          string                       `json:"jobId,omitempty"`
-	JobStatus      string                       `json:"jobStatus,omitempty"`
-	JobStartedAt   string                       `json:"jobStartedAt,omitempty"`
-	JobCompletedAt string                       `json:"jobCompletedAt,omitempty"`
-	JobDurationMS  int64                        `json:"jobDurationMs,omitempty"`
-	Items          []ProcessPresentationItem    `json:"items,omitempty"`
-	Approval       *ProcessApprovalPresentation `json:"approval,omitempty"`
-	Retry          *ProcessRetryPresentation    `json:"retry,omitempty"`
+	Version        int                                       `json:"version,omitempty"`
+	Card           string                                    `json:"card"`
+	Title          string                                    `json:"title,omitempty"`
+	Summary        string                                    `json:"summary,omitempty"`
+	Command        string                                    `json:"command,omitempty"`
+	CWD            string                                    `json:"cwd,omitempty"`
+	Transcript     []ProcessTranscriptEntry                  `json:"transcript,omitempty"`
+	ExitCode       *int                                      `json:"exitCode,omitempty"`
+	TimedOut       bool                                      `json:"timedOut,omitempty"`
+	Truncated      bool                                      `json:"truncated,omitempty"`
+	Background     bool                                      `json:"background,omitempty"`
+	Provider       string                                    `json:"provider,omitempty"`
+	Query          string                                    `json:"query,omitempty"`
+	Count          int                                       `json:"count,omitempty"`
+	Operation      string                                    `json:"operation,omitempty"`
+	Path           string                                    `json:"path,omitempty"`
+	Content        string                                    `json:"content,omitempty"`
+	Diff           string                                    `json:"diff,omitempty"`
+	Size           int64                                     `json:"size,omitempty"`
+	Offset         int64                                     `json:"offset,omitempty"`
+	NextOffset     int64                                     `json:"nextOffset,omitempty"`
+	JobID          string                                    `json:"jobId,omitempty"`
+	JobStatus      string                                    `json:"jobStatus,omitempty"`
+	JobStartedAt   string                                    `json:"jobStartedAt,omitempty"`
+	JobCompletedAt string                                    `json:"jobCompletedAt,omitempty"`
+	JobDurationMS  int64                                     `json:"jobDurationMs,omitempty"`
+	Items          []ProcessPresentationItem                 `json:"items,omitempty"`
+	Approval       *ProcessApprovalPresentation              `json:"approval,omitempty"`
+	Configuration  *ProcessResourceConfigurationPresentation `json:"configuration,omitempty"`
+	Retry          *ProcessRetryPresentation                 `json:"retry,omitempty"`
+}
+
+type ProcessResourceConfigurationPresentation struct {
+	Kind       string `json:"kind"`
+	Query      string `json:"query"`
+	ResourceID string `json:"resourceId"`
 }
 
 type ProcessRetryPresentation struct {
@@ -525,6 +533,11 @@ func sanitizeProcessStepPresentation(
 	if card == "terminal" || card == "resource" {
 		result.Approval = sanitizeProcessApprovalPresentation(presentation.Approval)
 	}
+	if card == "resource" {
+		result.Configuration = sanitizeProcessResourceConfigurationPresentation(
+			presentation.Configuration,
+		)
+	}
 	if card == "job" {
 		result.Command = sanitizePresentationText(
 			presentation.Command, maxProcessTerminalCommandBytes,
@@ -565,6 +578,22 @@ func sanitizeProcessStepPresentation(
 		presentation.Transcript, result.Truncated,
 	)
 	return result
+}
+
+func sanitizeProcessResourceConfigurationPresentation(
+	configuration *ProcessResourceConfigurationPresentation,
+) *ProcessResourceConfigurationPresentation {
+	if configuration == nil || strings.TrimSpace(configuration.Kind) != resourceorchestrator.KindMCP {
+		return nil
+	}
+	query := sanitizePresentationText(configuration.Query, 256)
+	resourceID := sanitizePresentationText(configuration.ResourceID, 256)
+	if query == "" || resourceID == "" {
+		return nil
+	}
+	return &ProcessResourceConfigurationPresentation{
+		Kind: resourceorchestrator.KindMCP, Query: query, ResourceID: resourceID,
+	}
 }
 
 func sanitizeProcessRetryPresentation(

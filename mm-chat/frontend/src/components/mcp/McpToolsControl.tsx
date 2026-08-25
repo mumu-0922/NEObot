@@ -29,6 +29,7 @@ import McpServerIcon from "./McpServerIcon";
 interface McpToolsControlProps {
   conversationId?: string;
   enabled: boolean;
+  initialServerRef?: string;
   variant?: "page" | "embedded";
   onClose?: () => void;
 }
@@ -54,6 +55,7 @@ const emptyPrivateServerDraft: PrivateServerDraft = {
 export default function McpToolsControl({
   conversationId,
   enabled,
+  initialServerRef = "",
   variant = "embedded",
   onClose,
 }: McpToolsControlProps) {
@@ -79,6 +81,8 @@ export default function McpToolsControl({
     emptyPrivateServerDraft,
   );
   const client = useMemo(() => createNeoChatApiClient(), []);
+  const [configurationTargetHandled, setConfigurationTargetHandled] =
+    useState("");
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -258,6 +262,32 @@ export default function McpToolsControl({
     },
     [client.mcp, conversationId, t],
   );
+
+  useEffect(() => {
+    const target = initialServerRef.trim();
+    if (!target || target === configurationTargetHandled || loading) return;
+    const server = servers.find(
+      (candidate) => serverKey(candidate.ref) === target,
+    );
+    if (!server) return;
+    setConfigurationTargetHandled(target);
+    document
+      .getElementById(mcpServerElementID(server.ref))
+      ?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    if (
+      server.canManage &&
+      !server.hasCredential &&
+      (server.authType === "header" || server.authType === "env")
+    ) {
+      void authorize(server);
+    }
+  }, [
+    authorize,
+    configurationTargetHandled,
+    initialServerRef,
+    loading,
+    servers,
+  ]);
 
   const saveCredential = useCallback(async () => {
     const hasEnvironmentValues = Object.keys(credentialValues).length > 0;
@@ -472,7 +502,8 @@ export default function McpToolsControl({
               return (
                 <section
                   key={serverKey(server.ref)}
-                  className="rounded-lg border border-gray-200 bg-gray-50/50 p-3 dark:border-border dark:bg-muted/20"
+                  id={mcpServerElementID(server.ref)}
+                  className={`rounded-lg border bg-gray-50/50 p-3 dark:bg-muted/20 ${serverKey(server.ref) === initialServerRef.trim() ? "border-cyan-400 ring-2 ring-cyan-200/60 dark:border-cyan-700 dark:ring-cyan-900/50" : "border-gray-200 dark:border-border"}`}
                 >
                   <div className="flex items-start gap-3">
                     <button
@@ -883,6 +914,10 @@ function serverValidationMessageKey(code: string) {
 
 function serverKey(ref: McpServerRef): string {
   return `${ref.source}:${ref.id}`;
+}
+
+function mcpServerElementID(ref: McpServerRef): string {
+  return `mcp-server-${serverKey(ref).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 }
 
 function formatError(error: unknown, fallback: string): string {

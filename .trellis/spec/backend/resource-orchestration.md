@@ -16,6 +16,7 @@ delegate to `skillsupply.Service`; MCP writes must delegate to
 GET  /v1/resources?conversationId=<uuid>
 GET  /v1/resources/search?kind=skill|mcp&q=<query>
 POST /v1/resources/install
+POST /v1/resources/mutate
 
 resource_search({kind, query, capability})
 resource_request_install({kind, id, version, exactRevision, reason})
@@ -34,6 +35,12 @@ type InstallResult struct {
     RefreshRequired bool
     MutationAuditID string
 }
+
+type MutationRequest struct {
+    Kind, Action, ID string
+    ExpectedRevision int64
+    UserID, ConversationID, EntryPoint string
+}
 ```
 
 ## 3. Contracts
@@ -46,19 +53,25 @@ type InstallResult struct {
   never an instruction source.
 - Explicit human install intent may directly install only an admitted,
   credential-free resource. Agent-discovered installation uses the existing
-  durable Chat approval. Secret/OAuth/Runner/custom endpoint routes fail with a
-  configuration handoff and never accept Secret fields in the Tool schema.
+  durable Chat approval. Secret/OAuth/Runner routes create or recover only the
+  exact provenance-bound draft and wait on a sanitized configuration handoff;
+  they never accept Secret fields in the Tool schema. Completion must recheck
+  owner, Marketplace identity/revision, `ready`, credential state, and selection.
 - Installation re-resolves the exact candidate and rejects version/revision
   drift. Skill retries return an already installed exact admission/fingerprint;
   MCP keeps its existing deployment uniqueness and selection CAS.
 - Every normal PostgreSQL mutation attempt writes `audit_logs` with action
-  `resource.install`. Safe metadata contains entry point, candidate ID,
+  `resource.install|enable|disable|remove`. Safe metadata contains entry point, candidate ID,
   version, exact revision, result ID, and fixed error code only. A successful
   response includes the audit UUID.
 - Installation never mutates the active Run snapshot. Before the next Provider
   round, prepare fresh MCP and Skill projections, bind a new Runtime Resource
   Snapshot, emit old/new revisions plus audit ID, then continue the original
   task on the same Provider/model.
+- Skill removal and MCP enable/disable/remove use the unified mutation route.
+  Skill and selection writes bind their current CAS revision; private MCP
+  removal reauthorizes owner and `CanManage`. Direct domain endpoints remain
+  authoritative implementations, not composer bypasses.
 - When the rollout switch is false, omit Agent Resource Tools and reject the
   unified install endpoint. Existing management/read paths remain available.
 
@@ -72,6 +85,9 @@ type InstallResult struct {
 | candidate not searched or exact revision differs | bounded Tool failure / `RESOURCE_REVISION_CHANGED` |
 | second unique discovery after budget or second proposal | bounded budget failure; no write |
 | MCP auth/config/validation required | configuration-required; no Secret in model context |
+| configuration completion is early or provenance/owner changed | remain paused or fail closed; no refresh |
+| lifecycle owner/scope denied | `RESOURCE_MUTATION_FORBIDDEN`; no write |
+| lifecycle CAS changed | `RESOURCE_REVISION_CHANGED`; refresh before retry |
 | agent-initiated write without visible durable approval | fail immediately; no invisible wait |
 | approval denied/expired/restart-denied | no delegated write |
 | mutation audit unavailable after success | `RESOURCE_AUDIT_UNAVAILABLE`; do not claim audited success |
@@ -96,6 +112,8 @@ type InstallResult struct {
   install.
 - HTTP strict JSON, stale conflict, configuration handoff, audit-unavailable,
   and sanitized search response tests.
+- Lifecycle owner/CAS checks, action-specific mutation audit, draft provenance,
+  credential readiness, and configuration-resume selection tests.
 - Agent Tool strict schemas, runtime-kind projection, unsearched/stale
   rejection, Secret non-echo, discovery/proposal budgets, explicit intent,
   durable approval allow/deny, and no-approval behavior.
@@ -114,4 +132,7 @@ Correct: search -> exact server candidate -> approval/policy -> existing domain
 
 Wrong: Tool arguments include credential or endpoint fields
 Correct: Tool sees only configured/required status; Secret/OAuth stays in UI/vault
+
+Wrong: composer calls Skill/MCP mutation endpoints directly without shared audit
+Correct: composer -> /v1/resources/mutate -> existing authority -> CAS -> audit
 ```

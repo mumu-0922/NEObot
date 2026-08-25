@@ -175,6 +175,13 @@ export interface ProcessSummaryPresentation {
   operation?: string;
   items?: ProcessPresentationItem[];
   approval?: ProcessApprovalPresentation;
+  configuration?: ProcessResourceConfigurationPresentation;
+}
+
+export interface ProcessResourceConfigurationPresentation {
+  kind: "mcp";
+  query: string;
+  resourceId: string;
 }
 
 export type ProcessStepPresentation =

@@ -37,6 +37,17 @@ describe("server Resource API", () => {
             ],
           });
         }
+        if (url.endsWith("/v1/resources/mutate")) {
+          return jsonResponse({
+            kind: "mcp",
+            action: "enable",
+            id: "catalog:deepwiki",
+            name: "DeepWiki",
+            revision: 4,
+            status: "enabled",
+            refreshRequired: true,
+          });
+        }
         return jsonResponse({
           kind: "skill",
           id: "installation-id",
@@ -67,16 +78,33 @@ describe("server Resource API", () => {
         conversationId: "conversation-id",
       }),
     ).resolves.toMatchObject({ name: "office-xlsx", refreshRequired: true });
+    await expect(
+      client.resources.mutate({
+        kind: "mcp",
+        action: "enable",
+        id: "catalog:deepwiki",
+        expectedRevision: 3,
+        conversationId: "conversation-id",
+      }),
+    ).resolves.toMatchObject({ name: "DeepWiki", status: "enabled" });
 
     expect(requests.map(({ url, method }) => `${method} ${url}`)).toEqual([
       "GET /mm-api/v1/resources/search?kind=skill&q=excel",
       "POST /mm-api/v1/resources/install",
+      "POST /mm-api/v1/resources/mutate",
     ]);
     expect(JSON.parse(requests[1].body ?? "{}")).toEqual({
       kind: "skill",
       id: "candidate-id",
       version: "1.0.0",
       exactRevision: fingerprint,
+      conversationId: "conversation-id",
+    });
+    expect(JSON.parse(requests[2].body ?? "{}")).toEqual({
+      kind: "mcp",
+      action: "enable",
+      id: "catalog:deepwiki",
+      expectedRevision: 3,
       conversationId: "conversation-id",
     });
   });

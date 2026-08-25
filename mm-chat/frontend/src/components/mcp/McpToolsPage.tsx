@@ -11,6 +11,7 @@ interface McpToolsPageProps {
   conversationId?: string;
   enabled: boolean;
   initialMarketplaceQuery?: string;
+  initialServerRef?: string;
   onClose: () => void;
 }
 
@@ -18,6 +19,7 @@ export default function McpToolsPage({
   conversationId,
   enabled,
   initialMarketplaceQuery = "",
+  initialServerRef = "",
   onClose,
 }: McpToolsPageProps) {
   const t = useTranslations("Mcp");
@@ -78,6 +80,7 @@ export default function McpToolsPage({
               key={installedRevision}
               conversationId={conversationId}
               enabled={enabled}
+              initialServerRef={initialServerRef}
               variant="embedded"
             />
           ) : (

@@ -169,13 +169,13 @@ User intent or capability-missing signal
 
 - [x] 建立 server-side Resource Orchestrator，只编排现有 Skill/MCP 服务，不复制写逻辑。
 - [x] 提供统一的 read-only search/info/status contract 与 bounded provider adapters。
-- [ ] 提供 proposal/approval/configuration/mutation/continuation 状态机。
+- [x] 提供 proposal/approval/configuration/mutation/continuation 状态机。
 - [x] 为 Agent 注册 `resource_search` 与 `resource_request_install`；模型不能直接调用
       mutation API。
 - [x] 为 Chat composer 增加 slash autocomplete、argument hints 和 deterministic parser。
 - [x] 支持 `/skill:<name>`，兼容历史 `/skill-name`，并处理 command name 冲突。
 - [x] 安装后产生新的 Runtime Resource Snapshot revision 并在续跑前校验资源 ready。
-- [ ] Skill/MCP 搜索、安装、启停、卸载均有 owner/admin/scope/CAS/audit 约束。
+- [x] Skill/MCP 搜索、安装、启停、卸载均有 owner/admin/scope/CAS/audit 约束。
 - [x] Secret、OAuth token、host/cache path、raw package content 不进入 prompt、trace、日志。
 - [x] capability-gap discovery 有预算、去重和循环熔断。
 
@@ -186,9 +186,9 @@ User intent or capability-missing signal
 - [x] `/skill search excel` 返回 bounded admitted candidates；安装必须绑定 exact
       fingerprint/revision，候选变化时拒绝旧 proposal。
 - [x] “帮我安装 Excel Skill”与对应 slash command 走同一 Backend contract，结果一致。
-- [ ] “安装 DeepWiki MCP”能完成搜索；需要 credential 时显示配置卡且模型上下文和
+- [x] “安装 DeepWiki MCP”能完成搜索；需要 credential 时显示配置卡且模型上下文和
       日志中没有 Secret。
-- [ ] Agent 执行 XLSX 任务发现缺少可靠生成/校验能力时，能搜索并提出合适 Skill，
+- [x] Agent 执行 XLSX 任务发现缺少可靠生成/校验能力时，能搜索并提出合适 Skill，
       经 policy gate 安装后从新 snapshot 续跑，不要求用户重述。
 - [x] 安装被拒绝、未 admission、没有匹配、认证失败、validation 失败时任务明确暂停
       或降级，绝不声称已安装/已完成。
@@ -246,19 +246,15 @@ User intent or capability-missing signal
 
 ## Implementation status (2026-08-26)
 
-Phase 1、显式安装链和 Agent capability-recovery 主链已经实现并通过 full standalone
-gate。Skill/MCP 安装复用既有 authority，安装审计、durable Agent approval、bounded
-discovery、fresh Runtime Resource Snapshot 与同一 Provider loop 的 continuation 已落地。
+Phase 1–4 的代码链已经实现：Skill/MCP 安装与生命周期 mutation 复用既有 authority，
+统一记录 action-specific audit；Agent capability recovery 支持 durable approval、bounded
+discovery、Secret/OAuth/Runner 配置 handoff、配置后的 provenance/readiness/owner/CAS
+复验、fresh Runtime Resource Snapshot 与同一 Provider loop continuation。
 
-剩余两条闭环保持未勾选：
-
-- Secret/OAuth MCP 当前会安全跳转既有 Marketplace 配置面，但“配置完成后自动恢复原
-  Run”的持久化 configuration continuation 尚未实现。
-- enable/disable/uninstall 仍复用既有 owner/CAS 管理 API；统一的
-  `ResourceMutationAudit` 目前只覆盖 install，生命周期 mutation audit 尚待收口。
-
-完成上述代码后，还必须在真实账号、真实 admitted Skill 与真实 MCP credential 环境中
-执行两条 live smoke，才允许归档本任务。
+自动化门禁已经完成（Frontend 992 tests、Backend 全量、RAG 1910 passed/7 skipped、
+standalone full gate）。还必须在真实账号、真实 admitted Skill 与真实 MCP credential
+环境中执行两条 live smoke，才允许归档本任务。进程重启仍按现有 Chat Agent approval
+契约把 pending decision 标为 `restart_denied`，不会在无原 Run 执行上下文时伪恢复。
 
 ## Research references
 

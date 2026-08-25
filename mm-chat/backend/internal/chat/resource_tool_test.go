@@ -14,10 +14,17 @@ import (
 )
 
 type resourceToolServiceProbe struct {
-	searchResult resourceorchestrator.SearchResult
-	installInput resourceorchestrator.InstallRequest
-	installCalls int
-	searchCalls  int
+	searchResult   resourceorchestrator.SearchResult
+	installResult  resourceorchestrator.InstallResult
+	installErr     error
+	installInput   resourceorchestrator.InstallRequest
+	installCalls   int
+	completeResult resourceorchestrator.InstallResult
+	completeErr    error
+	completeInput  resourceorchestrator.InstallRequest
+	completeID     string
+	completeCalls  int
+	searchCalls    int
 }
 
 func (probe *resourceToolServiceProbe) Search(
@@ -36,11 +43,25 @@ func (probe *resourceToolServiceProbe) InstallExplicit(
 ) (resourceorchestrator.InstallResult, error) {
 	probe.installCalls++
 	probe.installInput = input
+	if probe.installErr != nil || probe.installResult.ID != "" {
+		return probe.installResult, probe.installErr
+	}
 	return resourceorchestrator.InstallResult{
 		Kind: input.Kind, ID: "installation-id", Name: "office-xlsx",
 		Revision: input.ExactRevision, Status: "installed", RefreshRequired: true,
 		MutationAuditID: "00000000-0000-4000-8000-000000000099",
 	}, nil
+}
+
+func (probe *resourceToolServiceProbe) CompleteConfiguredMCP(
+	_ context.Context,
+	input resourceorchestrator.InstallRequest,
+	resourceID string,
+) (resourceorchestrator.InstallResult, error) {
+	probe.completeCalls++
+	probe.completeInput = input
+	probe.completeID = resourceID
+	return probe.completeResult, probe.completeErr
 }
 
 func TestResourceToolRequiresSearchAndExactRevisionBeforeExplicitInstall(t *testing.T) {
@@ -411,6 +432,100 @@ func TestAgentInitiatedResourceInstallWaitsForDurableApproval(t *testing.T) {
 	}
 	if !awaitingApproval {
 		t.Fatal("resource approval presentation was not emitted")
+	}
+}
+
+func TestMCPConfigurationHandoffWaitsThenResumesOriginalResourceCall(t *testing.T) {
+	probe := &resourceToolServiceProbe{
+		searchResult: resourceorchestrator.SearchResult{
+			Kind: resourceorchestrator.KindMCP, Query: "deepwiki",
+			Items: []resourceorchestrator.SearchItem{{
+				Kind: resourceorchestrator.KindMCP, ID: "deepwiki", Name: "DeepWiki",
+				Version: "1.0.0", ExactRevision: "sha256:exact",
+				Status: "needs_configuration", AuthType: "header",
+			}},
+		},
+		installResult: resourceorchestrator.InstallResult{
+			Kind: resourceorchestrator.KindMCP, ID: "private:server-id", Name: "DeepWiki",
+			Revision: "sha256:exact", Status: "configuration_required",
+			MutationAuditID: "00000000-0000-4000-8000-000000000098",
+		},
+		installErr: resourceorchestrator.ErrConfigurationRequired,
+		completeResult: resourceorchestrator.InstallResult{
+			Kind: resourceorchestrator.KindMCP, ID: "private:server-id", Name: "DeepWiki",
+			Revision: "sha256:exact", Status: "installed", RefreshRequired: true,
+			MutationAuditID: "00000000-0000-4000-8000-000000000099",
+		},
+	}
+	runtime := newResourceToolRuntime(
+		probe, "user-id", "conversation-id", "安装 DeepWiki MCP",
+	)
+	repository := newApprovalTestRepository()
+	service := NewService(repository)
+	waiters := newChatAgentApprovalWaiters()
+	runtime.bindApprovalRuntime(newChatToolApprovalRuntime(service, waiters, testTurnID))
+	events := make(chan ProviderEvent, 32)
+	if _, err := runtime.execute(context.Background(), events, ProviderToolCall{
+		ID: "search", Name: resourceSearchToolName,
+		Arguments: `{"kind":"mcp","query":"deepwiki","capability":"documentation"}`,
+	}, 1, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	type executionResult struct {
+		result ProviderToolResult
+		err    error
+	}
+	completed := make(chan executionResult, 1)
+	go func() {
+		result, err := runtime.execute(context.Background(), events, ProviderToolCall{
+			ID: "install", Name: resourceRequestInstallToolName,
+			Arguments: `{"kind":"mcp","id":"deepwiki","version":"1.0.0",` +
+				`"exactRevision":"sha256:exact","reason":"needed for documentation"}`,
+		}, 2, 1)
+		completed <- executionResult{result: result, err: err}
+	}()
+
+	var approval ChatAgentApproval
+	select {
+	case approval = <-repository.created:
+	case <-time.After(time.Second):
+		t.Fatal("configuration continuation approval was not persisted")
+	}
+	decision, err := service.DecideChatAgentApproval(context.Background(), DecideChatAgentApprovalInput{
+		ApprovalID: approval.ID, ExpectedRevision: approval.Revision,
+		Decision: ChatAgentApprovalAllowOnce, OccurredAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waiters.resolve(decision)
+
+	var outcome executionResult
+	select {
+	case outcome = <-completed:
+	case <-time.After(time.Second):
+		t.Fatal("resource call did not resume after configuration")
+	}
+	if outcome.err != nil || outcome.result.IsError || probe.installCalls != 1 ||
+		probe.completeCalls != 1 || probe.completeID != "private:server-id" ||
+		probe.completeInput.EntryPoint != "agent_configuration_resume" || !runtime.refreshRequired {
+		t.Fatalf("outcome=%#v probe=%#v refresh=%v", outcome, probe, runtime.refreshRequired)
+	}
+
+	foundConfigurationCard := false
+	for len(events) > 0 {
+		event := <-events
+		if event.ToolExecution != nil &&
+			event.ToolExecution.Status == ProcessStepStatusAwaitingApproval &&
+			event.ToolExecution.Presentation != nil &&
+			event.ToolExecution.Presentation.Configuration != nil &&
+			event.ToolExecution.Presentation.Configuration.Query == "deepwiki" {
+			foundConfigurationCard = true
+		}
+	}
+	if !foundConfigurationCard {
+		t.Fatal("configuration handoff card was not emitted")
 	}
 }
 

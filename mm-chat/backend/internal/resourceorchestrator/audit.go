@@ -22,6 +22,7 @@ type MutationAudit struct {
 	ConversationID   string
 	EntryPoint       string
 	Kind             string
+	Action           string
 	CandidateID      string
 	Version          string
 	ExactRevision    string
@@ -51,6 +52,7 @@ func (auditor *PostgresMutationAuditor) RecordMutation(
 		return ErrAuditUnavailable
 	}
 	metadata, err := json.Marshal(map[string]string{
+		"action":           strings.TrimSpace(audit.Action),
 		"candidateId":      strings.TrimSpace(audit.CandidateID),
 		"entryPoint":       strings.TrimSpace(audit.EntryPoint),
 		"errorCode":        strings.TrimSpace(audit.ErrorCode),
@@ -65,9 +67,9 @@ func (auditor *PostgresMutationAuditor) RecordMutation(
 INSERT INTO audit_logs (
   id, actor_user_id, conversation_id, actor_type, action, resource_type,
   request_id, outcome, metadata, created_at, updated_at
-) VALUES ($1,$2,$3,'user','resource.install',$4,$5,$6,$7,$8,$8)
-`, audit.ID, audit.UserID, audit.ConversationID, audit.Kind,
-		audit.ID, audit.Outcome, metadata, audit.OccurredAt.UTC())
+) VALUES ($1,$2,$3,'user',$4,$5,$6,$7,$8,$9,$9)
+`, audit.ID, audit.UserID, audit.ConversationID, "resource."+audit.Action,
+		audit.Kind, audit.ID, audit.Outcome, metadata, audit.OccurredAt.UTC())
 	if err != nil {
 		return fmt.Errorf("record resource mutation audit: %w", err)
 	}

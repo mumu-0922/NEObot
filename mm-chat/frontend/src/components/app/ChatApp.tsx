@@ -131,7 +131,9 @@ import { toServerMessageAttachments } from "@/lib/utils/serverAttachments";
 import {
   buildSlashCommands,
   parseSlashCommand,
+  RESOURCE_MANAGER_OPEN_EVENT,
 } from "@/lib/chat/slashCommands";
+import type { ResourceManagerOpenDetail } from "@/lib/chat/slashCommands";
 import {
   getKnowledgeAttachmentCollectionIds,
   isKnowledgeAttachment,
@@ -320,6 +322,7 @@ const ChatApp = () => {
   >([]);
   const [slashCommandsLoading, setSlashCommandsLoading] = useState(false);
   const [resourcePanelQuery, setResourcePanelQuery] = useState("");
+  const [resourcePanelMcpRef, setResourcePanelMcpRef] = useState("");
   const [hostWorkspaceStatus, setHostWorkspaceStatus] =
     useState<HostWorkspaceStatusDTO | null>(null);
   const [activeImageGenerations, setActiveImageGenerations] = useState<
@@ -817,6 +820,32 @@ const ChatApp = () => {
     },
     [isMobileViewport, updatePanelUrl],
   );
+
+  useEffect(() => {
+    const openResourceManager = (event: Event) => {
+      const detail = (event as CustomEvent<Partial<ResourceManagerOpenDetail>>)
+        .detail;
+      const query = detail?.query?.trim().slice(0, 256) ?? "";
+      if (!query || (detail?.kind !== "skill" && detail?.kind !== "mcp")) {
+        return;
+      }
+      if (detail.kind === "skill") {
+        setResourcePanelQuery(query);
+        setResourcePanelMcpRef("");
+        navigateSkillStore(null);
+      } else {
+        setResourcePanelQuery("");
+        setResourcePanelMcpRef(detail.resourceId?.trim().slice(0, 256) ?? "");
+        navigateToPanel("tools");
+      }
+    };
+    window.addEventListener(RESOURCE_MANAGER_OPEN_EVENT, openResourceManager);
+    return () =>
+      window.removeEventListener(
+        RESOURCE_MANAGER_OPEN_EVENT,
+        openResourceManager,
+      );
+  }, [navigateSkillStore, navigateToPanel]);
 
   const handleSettingsTabChange = useCallback(
     (tab: SettingsTabId) => {
@@ -2054,6 +2083,10 @@ const ChatApp = () => {
             showActionError("用法：/skill remove <名称或安装 ID>");
             return true;
           }
+          if (!visibleCurrentSessionId) {
+            showActionError("请先创建或选择一个对话。");
+            return true;
+          }
           const library = await refreshInstalledPackageSkills();
           const item = library.find(
             (skill) =>
@@ -2064,9 +2097,12 @@ const ChatApp = () => {
             showActionError(`未找到已安装 Skill：${argument}`);
             return true;
           }
-          await apiClientSnapshot.skillStore.uninstallPackageSkill({
-            installationId: item.id,
-            revision: item.revision,
+          await apiClientSnapshot.resources.mutate({
+            kind: "skill",
+            action: "remove",
+            id: item.id,
+            expectedRevision: item.revision,
+            conversationId: visibleCurrentSessionId,
           });
           await refreshInstalledPackageSkills();
           showActionNotice(`已卸载 Skill：${item.name}`);
@@ -2172,7 +2208,13 @@ const ChatApp = () => {
           showActionError("该 MCP 不能由当前用户直接删除。");
           return true;
         }
-        await apiClientSnapshot.mcp.deletePrivateServer(server.ref.id);
+        await apiClientSnapshot.resources.mutate({
+          kind: "mcp",
+          action: "remove",
+          id: `${server.ref.source}:${server.ref.id}`,
+          expectedRevision: 0,
+          conversationId: visibleCurrentSessionId,
+        });
         showActionNotice(`已删除 MCP：${server.name}`);
         return true;
       }
@@ -2185,25 +2227,12 @@ const ChatApp = () => {
       const selection = await apiClientSnapshot.mcp.getConversationSelection(
         visibleCurrentSessionId,
       );
-      const keyOf = (source: string, id: string) => `${source}:${id}`;
-      const targetKey = keyOf(server.ref.source, server.ref.id);
-      const current = selection.mode === "custom" ? selection.servers : [];
-      const selected = current.some(
-        (item) => keyOf(item.ref.source, item.ref.id) === targetKey,
-      );
-      const next =
-        command.action === "enable"
-          ? selected
-            ? current
-            : [...current, { ref: server.ref, disabledTools: [] }]
-          : current.filter(
-              (item) => keyOf(item.ref.source, item.ref.id) !== targetKey,
-            );
-      await apiClientSnapshot.mcp.replaceConversationSelection({
+      await apiClientSnapshot.resources.mutate({
+        kind: "mcp",
+        action: command.action,
+        id: `${server.ref.source}:${server.ref.id}`,
         conversationId: visibleCurrentSessionId,
-        mode: "custom",
-        revision: selection.revision,
-        servers: next,
+        expectedRevision: selection.revision,
       });
       showActionNotice(
         `${command.action === "enable" ? "已启用" : "已停用"} MCP：${server.name}`,
@@ -3730,6 +3759,7 @@ const ChatApp = () => {
             conversationId={visibleCurrentSessionId ?? undefined}
             enabled={serverMcpEnabled}
             initialMarketplaceQuery={resourcePanelQuery}
+            initialServerRef={resourcePanelMcpRef}
             onClose={() => navigateToPanel("chat")}
           />
         ) : viewMode === "settings" ? (

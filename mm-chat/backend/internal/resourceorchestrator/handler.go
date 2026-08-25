@@ -115,6 +115,58 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 			return
 		}
 		writeJSON(writer, http.StatusOK, result)
+	case ResourcesPath + "/mutate":
+		if request.Method != http.MethodPost {
+			writeError(writer, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+			return
+		}
+		var input struct {
+			Kind             string `json:"kind"`
+			Action           string `json:"action"`
+			ID               string `json:"id"`
+			ExpectedRevision int64  `json:"expectedRevision"`
+			ConversationID   string `json:"conversationId"`
+		}
+		request.Body = http.MaxBytesReader(writer, request.Body, 16<<10)
+		decoder := json.NewDecoder(request.Body)
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&input); err != nil {
+			writeError(writer, http.StatusBadRequest, "INVALID_RESOURCE_REQUEST", "resource mutation request is invalid")
+			return
+		}
+		if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+			writeError(writer, http.StatusBadRequest, "INVALID_RESOURCE_REQUEST", "resource mutation request is invalid")
+			return
+		}
+		result, err := handler.service.MutateExplicit(request.Context(), MutationRequest{
+			Kind: input.Kind, Action: input.Action, ID: input.ID,
+			ExpectedRevision: input.ExpectedRevision, UserID: user.ID,
+			ConversationID: input.ConversationID, EntryPoint: "control_plane",
+		})
+		switch {
+		case errors.Is(err, ErrInvalidQuery):
+			writeError(writer, http.StatusBadRequest, "INVALID_RESOURCE_REQUEST", "resource mutation request is invalid")
+			return
+		case errors.Is(err, ErrForbidden):
+			writeError(writer, http.StatusForbidden, "RESOURCE_MUTATION_FORBIDDEN", "resource mutation is not allowed")
+			return
+		case errors.Is(err, ErrRevisionChanged):
+			writeError(writer, http.StatusConflict, "RESOURCE_REVISION_CHANGED", "resource state changed; refresh and retry")
+			return
+		case errors.Is(err, ErrConfigurationRequired):
+			writeError(writer, http.StatusConflict, "RESOURCE_CONFIGURATION_REQUIRED", "resource requires configuration")
+			return
+		case errors.Is(err, ErrDisabled):
+			writeError(writer, http.StatusServiceUnavailable, "RESOURCE_ORCHESTRATION_DISABLED", "resource mutation is disabled")
+			return
+		case errors.Is(err, ErrAuditUnavailable):
+			writeError(writer, http.StatusServiceUnavailable, "RESOURCE_AUDIT_UNAVAILABLE", "resource mutation audit is unavailable")
+			return
+		case err != nil:
+			writeError(writer, http.StatusServiceUnavailable, "RESOURCE_MUTATION_FAILED", "resource mutation failed")
+			return
+		}
+		writeJSON(writer, http.StatusOK, result)
 	default:
 		writeError(writer, http.StatusNotFound, "NOT_FOUND", "route not found")
 	}

@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"neo-chat/mm-chat/backend/internal/knowledge"
+	"neo-chat/mm-chat/backend/internal/resourceorchestrator"
 	"neo-chat/mm-chat/backend/internal/websearch"
 )
 
@@ -338,12 +339,16 @@ func TestToolProcessTracePreservesSanitizedResourceApproval(t *testing.T) {
 		"mode":     "resource",
 	}, &ProcessStepPresentation{
 		Card: "resource", Title: "Install office-xlsx",
+		Configuration: &ProcessResourceConfigurationPresentation{
+			Kind: resourceorchestrator.KindMCP, Query: "deepwiki", ResourceID: "private:server-id",
+		},
 		Approval: &ProcessApprovalPresentation{
 			ID: "11111111-1111-4111-8111-111111111111", Revision: 1,
 			Status: ChatAgentApprovalPending, ExpiresAt: expiresAt.Format(time.RFC3339Nano),
 		},
 	})
-	if presentation == nil || presentation.Approval == nil ||
+	if presentation == nil || presentation.Approval == nil || presentation.Configuration == nil ||
+		presentation.Configuration.Query != "deepwiki" ||
 		presentation.Approval.Status != ChatAgentApprovalPending {
 		t.Fatalf("presentation=%#v", presentation)
 	}
@@ -354,12 +359,15 @@ func TestToolProcessTraceDropsApprovalFromNonApprovalCards(t *testing.T) {
 		"toolName": "web_search",
 	}, &ProcessStepPresentation{
 		Card: "search", Title: "Search",
+		Configuration: &ProcessResourceConfigurationPresentation{
+			Kind: resourceorchestrator.KindMCP, Query: "deepwiki", ResourceID: "private:server-id",
+		},
 		Approval: &ProcessApprovalPresentation{
 			ID: "11111111-1111-4111-8111-111111111111", Revision: 1,
 			Status: ChatAgentApprovalPending,
 		},
 	})
-	if presentation == nil || presentation.Approval != nil {
+	if presentation == nil || presentation.Approval != nil || presentation.Configuration != nil {
 		t.Fatalf("presentation=%#v", presentation)
 	}
 }

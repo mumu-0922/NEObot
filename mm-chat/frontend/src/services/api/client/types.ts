@@ -816,6 +816,17 @@ export interface ResourceInstallResultDTO {
   mutationAuditId?: string;
 }
 
+export interface ResourceMutationResultDTO {
+  kind: "skill" | "mcp";
+  action: "remove" | "enable" | "disable";
+  id: string;
+  name: string;
+  revision: number;
+  status: "removed" | "enabled" | "disabled";
+  refreshRequired: boolean;
+  mutationAuditId?: string;
+}
+
 export interface ResourceApi {
   getCatalog(input: {
     conversationId: string;
@@ -838,6 +849,14 @@ export interface ResourceApi {
     conversationId: string;
     signal?: AbortSignal;
   }): Promise<ResourceInstallResultDTO>;
+  mutate(input: {
+    kind: "skill" | "mcp";
+    action: "remove" | "enable" | "disable";
+    id: string;
+    expectedRevision: number;
+    conversationId: string;
+    signal?: AbortSignal;
+  }): Promise<ResourceMutationResultDTO>;
 }
 
 export type GlobalUserRole = "owner" | "user" | "viewer";

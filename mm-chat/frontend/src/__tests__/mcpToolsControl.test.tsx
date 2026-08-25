@@ -21,6 +21,14 @@ const serverIcon = readFileSync(
   new URL("../components/mcp/McpServerIcon.tsx", import.meta.url),
   "utf8",
 );
+const chatApp = readFileSync(
+  new URL("../components/app/ChatApp.tsx", import.meta.url),
+  "utf8",
+);
+const processTracePanel = readFileSync(
+  new URL("../components/content/ProcessTracePanel.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("MCP Tools management control", () => {
   it("has no composer trigger or pre-send recovery surface", () => {
@@ -89,6 +97,18 @@ describe("MCP Tools management control", () => {
     );
     expect(serverIcon).toContain('className="relative z-10 h-full w-full');
     expect(serverIcon).toContain("shortText || <Box");
+  });
+
+  it("opens an agent-created MCP draft in the installed configuration surface", () => {
+    expect(processTracePanel).toContain("resourceId: configuration.resourceId");
+    expect(chatApp).toContain('setResourcePanelQuery("")');
+    expect(chatApp).toContain("setResourcePanelMcpRef(");
+    expect(chatApp).toContain("initialServerRef={resourcePanelMcpRef}");
+    expect(page).toContain("initialServerRef={initialServerRef}");
+    expect(control).toContain("initialServerRef?: string");
+    expect(control).toContain("configurationTargetHandled");
+    expect(control).toContain("mcpServerElementID(server.ref)");
+    expect(control).toContain("void authorize(server)");
   });
 
   it("keeps Marketplace discovery server-authoritative and never executes install commands", () => {

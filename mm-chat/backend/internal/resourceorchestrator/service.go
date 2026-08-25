@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"sort"
 	"strings"
 	"time"
@@ -17,6 +16,10 @@ import (
 const (
 	KindSkill            = "skill"
 	KindMCP              = "mcp"
+	ActionInstall        = "install"
+	ActionRemove         = "remove"
+	ActionEnable         = "enable"
+	ActionDisable        = "disable"
 	MaxItems             = 5
 	maxSkillSearchPages  = 5
 	mutationAuditTimeout = 3 * time.Second
@@ -27,6 +30,7 @@ type SkillSource interface {
 	ListStore(context.Context, int, int) (skillsupply.StoreResult, error)
 	GetStoreItem(context.Context, string) (skillsupply.Candidate, error)
 	Install(context.Context, string, string, string) (skillsupply.Installation, error)
+	Uninstall(context.Context, string, string, int64) error
 }
 
 type MCPSource interface {
@@ -39,6 +43,8 @@ type MCPSource interface {
 		string,
 		mcpclient.MarketplaceInstallInput,
 	) (mcpclient.MarketplaceInstallResult, error)
+	ReplaceSelection(context.Context, string, mcpclient.Selection) (mcpclient.Selection, error)
+	DeletePrivateServer(context.Context, string, string) error
 }
 
 type Service struct {
@@ -138,6 +144,27 @@ type InstallResult struct {
 	ID              string `json:"id"`
 	Name            string `json:"name"`
 	Revision        string `json:"revision"`
+	Status          string `json:"status"`
+	RefreshRequired bool   `json:"refreshRequired"`
+	MutationAuditID string `json:"mutationAuditId,omitempty"`
+}
+
+type MutationRequest struct {
+	Kind             string
+	Action           string
+	ID               string
+	ExpectedRevision int64
+	UserID           string
+	ConversationID   string
+	EntryPoint       string
+}
+
+type MutationResult struct {
+	Kind            string `json:"kind"`
+	Action          string `json:"action"`
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Revision        int64  `json:"revision"`
 	Status          string `json:"status"`
 	RefreshRequired bool   `json:"refreshRequired"`
 	MutationAuditID string `json:"mutationAuditId,omitempty"`
@@ -285,190 +312,6 @@ func (service *Service) Search(ctx context.Context, userID, kind, query string) 
 		return SearchResult{}, ErrInvalidQuery
 	}
 	return result, nil
-}
-
-func (service *Service) InstallExplicit(
-	ctx context.Context,
-	request InstallRequest,
-) (InstallResult, error) {
-	if service == nil || !service.mutationEnabled {
-		return InstallResult{}, ErrDisabled
-	}
-	request.Kind = strings.ToLower(strings.TrimSpace(request.Kind))
-	request.ID = strings.TrimSpace(request.ID)
-	request.Version = strings.TrimSpace(request.Version)
-	request.ExactRevision = strings.TrimSpace(request.ExactRevision)
-	request.UserID = strings.TrimSpace(request.UserID)
-	request.ConversationID = strings.TrimSpace(request.ConversationID)
-	request.EntryPoint = strings.TrimSpace(request.EntryPoint)
-	if request.ID == "" || request.ExactRevision == "" || request.UserID == "" ||
-		request.ConversationID == "" {
-		return InstallResult{}, ErrInvalidQuery
-	}
-	result, err := service.installExplicit(ctx, request)
-	if service.auditor == nil {
-		return result, err
-	}
-	auditID := service.newAuditID()
-	audit := MutationAudit{
-		ID: auditID, UserID: request.UserID, ConversationID: request.ConversationID,
-		EntryPoint: request.EntryPoint, Kind: request.Kind, CandidateID: request.ID,
-		Version: request.Version, ExactRevision: request.ExactRevision,
-		Outcome: MutationOutcomeSuccess, OccurredAt: service.now().UTC(),
-	}
-	if err != nil {
-		audit.Outcome = MutationOutcomeFailed
-		audit.ErrorCode = mutationErrorCode(err)
-	} else {
-		audit.ResultResourceID = result.ID
-	}
-	auditCtx, cancelAudit := context.WithTimeout(context.WithoutCancel(ctx), mutationAuditTimeout)
-	defer cancelAudit()
-	if auditErr := service.auditor.RecordMutation(auditCtx, audit); auditErr != nil {
-		if err != nil {
-			return result, err
-		}
-		return result, ErrAuditUnavailable
-	}
-	result.MutationAuditID = auditID
-	return result, err
-}
-
-func (service *Service) installExplicit(
-	ctx context.Context,
-	request InstallRequest,
-) (InstallResult, error) {
-	switch request.Kind {
-	case KindSkill:
-		if service.skills == nil {
-			return InstallResult{}, ErrUnavailable
-		}
-		candidate, err := service.skills.GetStoreItem(ctx, request.ID)
-		if err != nil {
-			return InstallResult{}, err
-		}
-		if candidate.Package.PackageFingerprint != request.ExactRevision ||
-			(request.Version != "" && candidate.Package.Version != request.Version) {
-			return InstallResult{}, ErrRevisionChanged
-		}
-		if existing, found, err := service.installedSkill(
-			ctx, request.UserID, candidate.ID, request.ExactRevision,
-		); err != nil {
-			return InstallResult{}, err
-		} else if found {
-			return skillInstallResult(existing), nil
-		}
-		installed, err := service.skills.Install(
-			ctx, request.UserID, candidate.ID, request.ExactRevision,
-		)
-		if err != nil {
-			if errors.Is(err, skillsupply.ErrInstallationConflict) {
-				if existing, found, listErr := service.installedSkill(
-					ctx, request.UserID, candidate.ID, request.ExactRevision,
-				); listErr == nil && found {
-					return skillInstallResult(existing), nil
-				}
-			}
-			return InstallResult{}, err
-		}
-		return skillInstallResult(installed), nil
-	case KindMCP:
-		if service.mcp == nil {
-			return InstallResult{}, ErrUnavailable
-		}
-		if request.ConversationID == "" || request.Version == "" {
-			return InstallResult{}, ErrInvalidQuery
-		}
-		detail, err := service.mcp.MarketplaceItem(
-			ctx, request.UserID, request.ID, request.Version,
-		)
-		if err != nil {
-			return InstallResult{}, err
-		}
-		var deployment *mcpclient.MarketplaceDeployment
-		for index := range detail.Deployments {
-			if detail.Deployments[index].Hash == request.ExactRevision {
-				deployment = &detail.Deployments[index]
-				break
-			}
-		}
-		if deployment == nil {
-			return InstallResult{}, ErrRevisionChanged
-		}
-		if deployment.Compatibility != mcpclient.MarketplaceCompatibilityInstallable ||
-			len(deployment.SecretFields) > 0 || deployment.InstallMode != "direct" {
-			return InstallResult{}, ErrConfigurationRequired
-		}
-		selection, err := service.mcp.GetSelection(
-			ctx, request.UserID, request.ConversationID,
-		)
-		if err != nil {
-			return InstallResult{}, err
-		}
-		installed, err := service.mcp.InstallMarketplaceItem(
-			ctx, request.UserID, mcpclient.MarketplaceInstallInput{
-				Identifier: request.ID, Version: request.Version,
-				ConversationID:    request.ConversationID,
-				SelectionRevision: selection.Revision, EnableForConversation: true,
-				DeploymentHash: request.ExactRevision,
-			},
-		)
-		if err != nil {
-			return InstallResult{}, err
-		}
-		if installed.ValidationError != "" || !installed.Enabled {
-			return InstallResult{}, ErrConfigurationRequired
-		}
-		return InstallResult{
-			Kind: KindMCP, ID: installed.Server.Ref.Key(), Name: installed.Server.Name,
-			Revision: request.ExactRevision, Status: "installed", RefreshRequired: true,
-		}, nil
-	default:
-		return InstallResult{}, ErrInvalidQuery
-	}
-}
-
-func (service *Service) installedSkill(
-	ctx context.Context,
-	userID string,
-	admissionID string,
-	packageFingerprint string,
-) (skillsupply.Installation, bool, error) {
-	library, err := service.skills.ListLibrary(ctx, userID)
-	if err != nil {
-		return skillsupply.Installation{}, false, err
-	}
-	for _, installed := range library {
-		if installed.AdmissionID == admissionID &&
-			installed.PackageFingerprint == packageFingerprint {
-			return installed, true, nil
-		}
-	}
-	return skillsupply.Installation{}, false, nil
-}
-
-func skillInstallResult(installed skillsupply.Installation) InstallResult {
-	return InstallResult{
-		Kind: KindSkill, ID: installed.ID, Name: installed.Name,
-		Revision: installed.PackageFingerprint, Status: "installed", RefreshRequired: true,
-	}
-}
-
-func mutationErrorCode(err error) string {
-	switch {
-	case errors.Is(err, ErrInvalidQuery):
-		return "invalid_request"
-	case errors.Is(err, ErrRevisionChanged):
-		return "revision_changed"
-	case errors.Is(err, ErrConfigurationRequired):
-		return "configuration_required"
-	case errors.Is(err, ErrDisabled):
-		return "disabled"
-	case errors.Is(err, ErrUnavailable):
-		return "unavailable"
-	default:
-		return "mutation_failed"
-	}
 }
 
 func marketplaceAuthType(installMode string) string {

@@ -15,8 +15,9 @@ filterSlashCommands(commands, value): SlashCommandDefinition[]
 parseSlashCommand(value): ParsedSlashCommand | null
 ```
 
-The typed client exposes `resources.getCatalog`, `resources.search`, and
-`resources.install`. Server responses pass strict Zod schemas before use.
+The typed client exposes `resources.getCatalog`, `resources.search`,
+`resources.install`, and `resources.mutate`. Server responses pass strict Zod
+schemas before use.
 
 ## 3. Contracts
 
@@ -32,14 +33,22 @@ The typed client exposes `resources.getCatalog`, `resources.search`, and
   authority; an unknown Skill is rejected locally.
 - Search/install commands call the shared Resource API. They never copy
   candidate revisions from browser storage. Credential-requiring MCP entries
-  open the existing Marketplace configuration UI instead of collecting a
-  Secret in chat.
+  open the existing Tools installed view, target the server-owned draft, and
+  use its credential UI instead of collecting a Secret in chat.
+- Skill remove and MCP enable/disable/remove call `resources.mutate` with the
+  current installation/selection revision. Composer code must not bypass the
+  unified mutation audit by calling domain mutation endpoints directly.
 - `/reload` is denied while a Run is active. Otherwise refresh installed Skill
   commands and read the current Resource catalog. Browser state is not Resource
   authority.
 - Resource process cards render only the sanitized `card=resource`
   presentation and the existing approval projection. Raw Tool arguments,
   results, candidate bodies, credentials, URLs, and paths never render.
+- A pending MCP configuration card opens the existing Tools installed view
+  through an in-app event so the active Run stays mounted. It targets the
+  server-owned draft by opaque private resource ID and shows only kind, bounded
+  query, resource ID, and durable decision metadata. The user explicitly
+  selects “Configured, continue” after the vault/OAuth flow.
 
 ## 4. Validation & Error Matrix
 
@@ -49,7 +58,8 @@ The typed client exposes `resources.getCatalog`, `resources.search`, and
 | unknown command | visible bounded error; no model/API mutation |
 | `/skill:<name>` not in current installed library | reject locally |
 | install lacks exact search match | open management surface; no write |
-| MCP requires auth/configuration | open Marketplace; no chat Secret field |
+| MCP requires auth/configuration | open targeted installed MCP configuration; no chat Secret field |
+| configuration card contains unknown fields | ignore unknown data; render only normalized projection |
 | server response violates DTO | `INVALID_SERVER_RESPONSE`; do not render/use |
 | Run active and `/reload` entered | reject; preserve current snapshot |
 | palette query has no match | visible empty state; Enter follows normal unknown-command handling |

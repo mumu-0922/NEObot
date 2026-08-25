@@ -598,6 +598,10 @@ func cloneProcessStepPresentation(
 		approval := *presentation.Approval
 		cloned.Approval = &approval
 	}
+	if presentation.Configuration != nil {
+		configuration := *presentation.Configuration
+		cloned.Configuration = &configuration
+	}
 	if presentation.Retry != nil {
 		retry := *presentation.Retry
 		cloned.Retry = &retry

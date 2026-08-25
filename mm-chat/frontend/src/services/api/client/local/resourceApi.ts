@@ -12,5 +12,6 @@ export function createLocalResourceApiShell(): ResourceApi {
     getCatalog: unavailable,
     search: unavailable,
     install: unavailable,
+    mutate: unavailable,
   };
 }

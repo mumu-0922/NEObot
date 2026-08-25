@@ -175,6 +175,10 @@
   "processApprovalDenied": "Denied. The action was not executed.",
   "processApprovalExpired": "Approval expired. The action was not executed.",
   "processApprovalFailed": "The decision could not be saved. Try again.",
+  "processConfigurationRequired": "Complete the MCP Secret or OAuth setup before resuming the original task",
+  "processConfigurationOpen": "Open tool setup",
+  "processConfigurationContinue": "Configured, continue",
+  "processConfigurationCancel": "Cancel task",
   "processRetry": "Retry safe read",
   "processRetryCreated": "Retry created",
   "processRetryFailed": "The backend did not authorize or complete this retry."

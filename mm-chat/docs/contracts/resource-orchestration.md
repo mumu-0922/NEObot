@@ -18,6 +18,7 @@ All routes require the existing authenticated user context and return
 GET  /v1/resources?conversationId=<uuid>
 GET  /v1/resources/search?kind=skill|mcp&q=<bounded query>
 POST /v1/resources/install
+POST /v1/resources/mutate
 ```
 
 The catalog contains a deterministic `sha256:` revision, installed Skills, and
@@ -41,6 +42,24 @@ conversation, entry point, immutable candidate identity, safe outcome, and the
 installed resource ID. It never stores credentials, endpoint secrets, package
 content, Tool arguments, or host/cache paths.
 
+Lifecycle mutations use the same plane instead of calling domain endpoints
+from slash-command code:
+
+```json
+{
+  "kind": "mcp",
+  "action": "enable",
+  "id": "catalog:deepwiki",
+  "expectedRevision": 3,
+  "conversationId": "conversation-uuid"
+}
+```
+
+Skill removal binds the installation revision. MCP enable/disable binds the
+conversation selection revision. Private MCP removal reauthorizes the owner
+and management capability. Every outcome records `resource.remove`,
+`resource.enable`, or `resource.disable` with metadata-only audit fields.
+
 ## Agent state machine
 
 ```text
@@ -55,16 +74,29 @@ resource_search (max 2 unique queries, max 5 entries each)
   -> same Provider/model continues the original task
 ```
 
+For an approved Marketplace deployment that requires Header Secret, OAuth, or
+Runner environment configuration, the install authority first creates or
+recovers the exact provenance-bound private Server draft. The Agent emits an
+open configuration card and waits on the durable approval channel. The card
+opens and targets the provenance-bound draft in the existing Tools installed
+view; secrets still travel directly from that UI to the Backend vault. When the
+user selects **Configured, continue**, the
+Backend re-fetches the exact Marketplace revision, checks draft ownership and
+provenance metadata, requires `ready` plus credential presence, reauthorizes the
+conversation selection, records a second mutation audit, and only then creates
+the fresh Runtime Resource Snapshot.
+
 The current Run snapshot is never mutated in place. A successful mutation
 creates a new segment and the trace records the previous/current snapshot
 revisions plus the mutation audit ID. The model must not claim the newly
 installed resource was used unless it calls a Tool exposed by the fresh
 snapshot.
 
-MCP deployments requiring Header Secret, OAuth, Runner environment, custom
-endpoint, or failed validation return `RESOURCE_CONFIGURATION_REQUIRED` and
-must be completed in the Tools Marketplace. Secret values never enter Agent
-Tool schemas or process trace.
+MCP deployments requiring Header Secret, OAuth, or Runner environment use the
+configuration handoff above. A custom endpoint, unsupported deployment, failed
+validation, incomplete setup, or expired/denied handoff fails closed. Secret
+values never enter Agent Tool schemas, process trace, mutation audit, or model
+context.
 
 ## Slash commands
 
@@ -90,6 +122,7 @@ during generation is rejected because it would violate Step consistency.
 | Condition | Result |
 | --- | --- |
 | malformed/unknown fields | `400 INVALID_RESOURCE_REQUEST` |
+| lifecycle owner/scope denied | `403 RESOURCE_MUTATION_FORBIDDEN` |
 | unsupported kind/query | `400 INVALID_RESOURCE_QUERY` |
 | candidate version/revision changed | `409 RESOURCE_REVISION_CHANGED` |
 | Secret/OAuth/Runner/config required | `409 RESOURCE_CONFIGURATION_REQUIRED` |
@@ -119,7 +152,7 @@ during generation is rejected because it would violate Step consistency.
 SELECT id, actor_user_id, conversation_id, resource_type, outcome,
        metadata, created_at
 FROM audit_logs
-WHERE action = 'resource.install'
+WHERE action IN ('resource.install', 'resource.enable', 'resource.disable', 'resource.remove')
 ORDER BY created_at DESC
 LIMIT 50;
 ```

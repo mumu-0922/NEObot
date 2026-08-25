@@ -175,6 +175,10 @@
   "processApprovalDenied": "已拒绝，操作未执行。",
   "processApprovalExpired": "批准已过期，操作未执行。",
   "processApprovalFailed": "裁决保存失败，请重试。",
+  "processConfigurationRequired": "请先完成 MCP 的 Secret 或 OAuth 配置，再继续原任务",
+  "processConfigurationOpen": "打开工具配置",
+  "processConfigurationContinue": "配置完成，继续",
+  "processConfigurationCancel": "取消任务",
   "processRetry": "重试安全读取",
   "processRetryCreated": "已创建重试",
   "processRetryFailed": "Backend 未授权或未完成此次重试。"

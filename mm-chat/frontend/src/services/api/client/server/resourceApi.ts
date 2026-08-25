@@ -90,6 +90,19 @@ const installSchema = z
   })
   .strict();
 
+const mutationSchema = z
+  .object({
+    kind: z.enum(["skill", "mcp"]),
+    action: z.enum(["remove", "enable", "disable"]),
+    id: string,
+    name: string,
+    revision: z.number().int().nonnegative(),
+    status: z.enum(["removed", "enabled", "disabled"]),
+    refreshRequired: z.boolean(),
+    mutationAuditId: z.string().uuid().optional(),
+  })
+  .strict();
+
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   const result = schema.safeParse(value);
   if (!result.success) {
@@ -138,6 +151,24 @@ export function createServerResourceApiShell(
         },
       );
       return parse(installSchema, response);
+    },
+
+    async mutate(input) {
+      const response = await httpClient.requestJson<unknown>(
+        "/v1/resources/mutate",
+        {
+          method: "POST",
+          body: {
+            kind: input.kind,
+            action: input.action,
+            id: input.id,
+            expectedRevision: input.expectedRevision,
+            conversationId: input.conversationId,
+          },
+          signal: input.signal,
+        },
+      );
+      return parse(mutationSchema, response);
     },
   };
 }

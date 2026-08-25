@@ -34,6 +34,7 @@ import {
 } from "@/lib/chat/processTrace";
 import type {
   ProcessApprovalPresentation,
+  ProcessResourceConfigurationPresentation,
   ProcessStep,
   ProcessStepKind,
   ProcessStepPresentation,
@@ -42,6 +43,7 @@ import type {
 import { createNeoChatApiClient } from "@/services/api/client";
 import type { ChatApprovalDecision } from "@/services/api/client";
 import { useChatStore } from "@/store/core/chatStore";
+import { RESOURCE_MANAGER_OPEN_EVENT } from "@/lib/chat/slashCommands";
 import MarkdownRenderer from "./MarkdownRenderer";
 
 interface ProcessTracePanelProps {
@@ -352,9 +354,11 @@ function TerminalProcessCard({
 function ApprovalControls({
   approval,
   dark = false,
+  configuration = false,
 }: {
   approval: ProcessApprovalPresentation;
   dark?: boolean;
+  configuration?: boolean;
 }) {
   const t = useTranslations("Content");
   const client = useMemo(() => createNeoChatApiClient(), []);
@@ -403,18 +407,28 @@ function ApprovalControls({
   return (
     <div
       className={`mt-2 border-t pt-2 ${dark ? "border-slate-800" : "border-gray-200 dark:border-border"}`}
-      aria-label={t("processApprovalRequired")}
+      aria-label={
+        configuration
+          ? t("processConfigurationRequired")
+          : t("processApprovalRequired")
+      }
     >
       <div className={`mb-2 text-[10px] ${muted}`}>
-        {t("processApprovalRequired")}
+        {configuration
+          ? t("processConfigurationRequired")
+          : t("processApprovalRequired")}
       </div>
       <div className="flex flex-wrap gap-1.5">
         <ApprovalButton
-          label={t("processApprovalAllowOnce")}
+          label={
+            configuration
+              ? t("processConfigurationContinue")
+              : t("processApprovalAllowOnce")
+          }
           busy={busy === "allow_once"}
           onClick={() => void decide("allow_once")}
         />
-        {current.allowConversation ? (
+        {current.allowConversation && !configuration ? (
           <ApprovalButton
             label={t("processApprovalAllowConversation")}
             busy={busy === "allow_conversation"}
@@ -422,7 +436,11 @@ function ApprovalControls({
           />
         ) : null}
         <ApprovalButton
-          label={t("processApprovalDeny")}
+          label={
+            configuration
+              ? t("processConfigurationCancel")
+              : t("processApprovalDeny")
+          }
           busy={busy === "deny"}
           danger
           onClick={() => void decide("deny")}
@@ -434,6 +452,35 @@ function ApprovalControls({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ResourceConfigurationControls({
+  configuration,
+}: {
+  configuration: ProcessResourceConfigurationPresentation;
+}) {
+  const t = useTranslations("Content");
+  const openManager = () => {
+    window.dispatchEvent(
+      new CustomEvent(RESOURCE_MANAGER_OPEN_EVENT, {
+        detail: {
+          kind: configuration.kind,
+          query: configuration.query,
+          resourceId: configuration.resourceId,
+        },
+      }),
+    );
+  };
+  return (
+    <button
+      type="button"
+      onClick={openManager}
+      className="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-[10px] font-medium text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-900/70 dark:bg-blue-950/35 dark:text-blue-300 dark:hover:bg-blue-950/55"
+    >
+      <Wrench size={11} aria-hidden="true" />
+      {t("processConfigurationOpen")}
+    </button>
   );
 }
 
@@ -484,9 +531,14 @@ function GenericProcessCard({
         : undefined;
   const bodyLabel =
     "diff" in presentation && presentation.diff ? "diff" : "output";
+  const pendingApproval =
+    "approval" in presentation && presentation.approval?.status === "pending";
 
   return (
-    <details className="group/card mt-1.5 overflow-hidden rounded-md border border-gray-200 bg-white/75 dark:border-border dark:bg-card/70">
+    <details
+      open={pendingApproval || undefined}
+      className="group/card mt-1.5 overflow-hidden rounded-md border border-gray-200 bg-white/75 dark:border-border dark:bg-card/70"
+    >
       <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-2 marker:content-none [&::-webkit-details-marker]:hidden">
         <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-gray-700 dark:text-foreground/85">
           {heading}
@@ -577,8 +629,18 @@ function GenericProcessCard({
         {"retry" in presentation && presentation.retry ? (
           <RetryControls eventId={presentation.retry.eventId} />
         ) : null}
+        {"configuration" in presentation && presentation.configuration ? (
+          <ResourceConfigurationControls
+            configuration={presentation.configuration}
+          />
+        ) : null}
         {"approval" in presentation && presentation.approval ? (
-          <ApprovalControls approval={presentation.approval} />
+          <ApprovalControls
+            approval={presentation.approval}
+            configuration={Boolean(
+              "configuration" in presentation && presentation.configuration,
+            )}
+          />
         ) : null}
       </div>
     </details>

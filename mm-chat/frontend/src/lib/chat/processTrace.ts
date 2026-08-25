@@ -7,6 +7,7 @@ import type {
   ProcessStepPresentation,
   ProcessTranscriptEntry,
   ProcessApprovalPresentation,
+  ProcessResourceConfigurationPresentation,
   ProcessRetryPresentation,
 } from "./types";
 
@@ -775,6 +776,10 @@ function normalizeProcessStepPresentation(
       operation,
     );
     const approval = normalizeProcessApprovalPresentation(value.approval);
+    const configuration =
+      card === "resource"
+        ? normalizeProcessResourceConfigurationPresentation(value.configuration)
+        : undefined;
     if (
       count === null ||
       size === null ||
@@ -825,6 +830,7 @@ function normalizeProcessStepPresentation(
       ...(value.background === true ? { background: true } : {}),
       ...(retry ? { retry } : {}),
       ...(approval ? { approval } : {}),
+      ...(configuration ? { configuration } : {}),
     } as ProcessStepPresentation;
   }
   const command = boundedPresentationString(
@@ -962,6 +968,16 @@ function normalizeProcessApprovalPresentation(
     expiresAt,
     allowConversation: value.allowConversation,
   };
+}
+
+function normalizeProcessResourceConfigurationPresentation(
+  value: unknown,
+): ProcessResourceConfigurationPresentation | undefined {
+  if (!isRecord(value) || value.kind !== "mcp") return undefined;
+  const query = boundedPresentationString(value.query, 256);
+  const resourceId = boundedPresentationString(value.resourceId, 256);
+  if (!query || !resourceId) return undefined;
+  return { kind: "mcp", query, resourceId };
 }
 
 function normalizePresentationItems(
