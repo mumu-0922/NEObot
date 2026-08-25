@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/agent-runtime.md","reason":"Verify security authority, Tool compatibility, output registration, and tests."}
+{"file":".trellis/spec/backend/chat-tool-loop.md","reason":"Verify natural stopping, cancellation, Goal, replay, and no-progress behavior."}
+{"file":".trellis/spec/frontend/host-workspaces.md","reason":"Verify API/client/viewer path, version drift, XLSX bounds, and authorization."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Verify the class of cross-layer drift is captured for future changes."}
+{"file":".trellis/tasks/08-25-align-agent-harness-with-pi/research/break-loop-analysis.md","reason":"Verify root cause and prevention mechanisms were captured."}

@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/agent-runtime.md","reason":"Canonical local Tool names, natural completion, and workspace-file output contracts."}
+{"file":".trellis/spec/backend/chat-tool-loop.md","reason":"Provider loop, legacy alias compatibility, Goal behavior, and background Job output rules."}
+{"file":".trellis/spec/frontend/host-workspaces.md","reason":"Strict workspace-file block validation and open-first preview UX."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"End-to-end Agent Tool and generated-file propagation checklist."}
+{"file":".trellis/tasks/08-25-align-agent-harness-with-pi/research/pi-agent-harness-comparison.md","reason":"Source-backed comparison with Pi and phased target architecture."}
