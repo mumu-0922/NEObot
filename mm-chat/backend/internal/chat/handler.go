@@ -17,6 +17,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/localskills"
 	"neo-chat/mm-chat/backend/internal/mcpclient"
+	"neo-chat/mm-chat/backend/internal/resourceorchestrator"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 	"neo-chat/mm-chat/backend/internal/skillsupply"
 	"neo-chat/mm-chat/backend/internal/usermemory"
@@ -83,6 +84,7 @@ type Handler struct {
 	artifactPublisher            WorkspaceArtifactPublisher
 	artifactMaxBytes             int64
 	approvalWaiters              *chatAgentApprovalWaiters
+	resourceOrchestrator         *resourceorchestrator.Service
 }
 
 type HandlerOption func(*Handler)
@@ -533,6 +535,12 @@ func WithToolCapabilityCache(cache ToolCapabilityCache) HandlerOption {
 func WithMCPService(service *mcpclient.Service) HandlerOption {
 	return func(handler *Handler) {
 		handler.mcpService = service
+	}
+}
+
+func WithResourceOrchestrator(service *resourceorchestrator.Service) HandlerOption {
+	return func(handler *Handler) {
+		handler.resourceOrchestrator = service
 	}
 }
 
@@ -1826,6 +1834,15 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		actor.ID,
 		userMessage.Content,
 	)
+	var resourceRuntime *resourceToolRuntime
+	if agentMode && h.resourceOrchestrator != nil {
+		resourceRuntime = newResourceToolRuntime(
+			h.resourceOrchestrator,
+			actor.ID,
+			conversationID,
+			userMessage.Content,
+		)
+	}
 	var localSkillRuntime *localSkillToolRuntime
 	localSkillContextPrompt := ""
 	if agentMode && h.localSkillExecutor != nil && h.localSkillExecutor.Enabled() {
@@ -1856,8 +1873,12 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		localSkillRuntime.bindWorkspace(conversation.WorkspaceID)
 		localSkillRuntime.bindArtifactPublisher(h.artifactPublisher, h.artifactMaxBytes)
 	}
+	resourceRuntime.bindRuntimeAvailability(
+		localSkillRuntime.catalogAvailable(),
+		h.mcpService != nil && h.mcpService.Config().Enabled,
+	)
 	runtimeResources := newAgentRuntimeResourceSnapshot(agentRuntimeResourceInput{
-		MCP: mcpRuntime, LocalSkills: localSkillRuntime,
+		MCP: mcpRuntime, LocalSkills: localSkillRuntime, Resource: resourceRuntime,
 		ExternalWeb: h.webSearchService != nil && searchExecution != nil &&
 			searchExecution.Mode == websearch.ExecutionExternal,
 	})
@@ -1869,13 +1890,15 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusServiceUnavailable, "SKILL_RUNTIME_UNAVAILABLE", "local Skill runtime is unavailable")
 		return
 	}
-	localSkillContextPrompt = runtimeResources.promptInstruction()
-	if localSkillContextPrompt != "" {
+	localSkillContextPrompt = runtimeResources.skillPromptInstruction()
+	runtimeResourceContextPrompt := runtimeResources.resourcePromptInstruction()
+	runtimeContextPrompt := runtimeResources.promptInstruction()
+	if runtimeContextPrompt != "" {
 		providerSystemPrompt = strings.TrimSpace(providerSystemPrompt)
 		if providerSystemPrompt != "" {
 			providerSystemPrompt += "\n\n"
 		}
-		providerSystemPrompt += localSkillContextPrompt
+		providerSystemPrompt += runtimeContextPrompt
 	}
 
 	assistantMetadata := map[string]any{
@@ -1951,10 +1974,47 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			h.service, agentRecorder.turnID, conversationID,
 		)
 		if agentTimelineEnabled {
-			localSkillRuntime.bindApprovalRuntime(newChatToolApprovalRuntime(
+			approvalRuntime := newChatToolApprovalRuntime(
 				h.service, h.approvalWaiters, agentRecorder.turnID,
-			))
+			)
+			localSkillRuntime.bindApprovalRuntime(approvalRuntime)
+			resourceRuntime.bindApprovalRuntime(approvalRuntime)
 		}
+		resourceRuntime.bindRefresh(func(
+			ctx context.Context,
+		) (*agentRuntimeResourceSnapshot, error) {
+			refreshedMCPRuntime := mcpRuntime
+			if h.mcpService != nil && h.mcpService.Config().Enabled {
+				segmentRunID, refreshErr := NewUUID()
+				if refreshErr != nil {
+					return nil, refreshErr
+				}
+				refreshedMCPRun, refreshErr := h.mcpService.PrepareRun(
+					ctx, actor.ID, conversationID, assistantMessage.ID, segmentRunID,
+				)
+				if refreshErr != nil {
+					return nil, refreshErr
+				}
+				refreshedMCPRuntime = newMCPToolRuntime(
+					h.mcpService, refreshedMCPRun, actor.ID, userMessage.Content,
+				)
+			}
+			if localSkillRuntime != nil && h.localSkillCatalog != nil {
+				refreshedSkills, refreshErr := h.localSkillCatalog.PrepareRuntimeSkills(
+					ctx, actor.ID, h.localSkillExecutor.Config().RuntimeRoot,
+				)
+				if refreshErr != nil {
+					return nil, refreshErr
+				}
+				localSkillRuntime.refreshCatalog(refreshedSkills)
+			}
+			return newAgentRuntimeResourceSnapshot(agentRuntimeResourceInput{
+				MCP: refreshedMCPRuntime, LocalSkills: localSkillRuntime,
+				Resource: resourceRuntime,
+				ExternalWeb: h.webSearchService != nil && searchExecution != nil &&
+					searchExecution.Mode == websearch.ExecutionExternal,
+			}), nil
+		})
 		providerSystemPrompt = appendChatAgentGoalSystemInstruction(
 			providerSystemPrompt, goalToolRuntime,
 		)
@@ -2233,6 +2293,14 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusInternalServerError, turnFinalErrorCode, "chat Agent event persistence failed")
 		return
 	}
+	if err := recordContextInjection(
+		"resource-orchestrator", "Resource orchestration", runtimeResourceContextPrompt,
+	); err != nil {
+		turnFinalStatus = ChatAgentTurnFailed
+		turnFinalErrorCode = "AGENT_EVENT_PERSISTENCE_FAILED"
+		writeError(w, http.StatusInternalServerError, turnFinalErrorCode, "chat Agent event persistence failed")
+		return
+	}
 	var agentOutcome *ProviderAgentOutcomeEvent
 	webMessageMetadata := func(
 		decision autoRAGDecision,
@@ -2360,6 +2428,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 			CompletionDriven:       agentMode,
 			Resources:              runtimeResources,
 			Goals:                  goalToolRuntime,
+			Resource:               resourceRuntime,
 		}
 		if searchExecution != nil &&
 			searchExecution.Mode == websearch.ExecutionExternal {

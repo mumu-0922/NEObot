@@ -45,6 +45,16 @@ The standalone Skill Store uses `/v1/skills/*`; Assistant library, Knowledge,
 Memory, Files, and MCP Tools remain separate product surfaces. MCP may provide
 Browser or external connectors, but users do not configure an Agent Runner.
 
+Conversational discovery/install is controlled independently:
+
+```bash
+RESOURCE_ORCHESTRATION_ENABLED=true
+```
+
+Set it to `false` and recreate only Backend to remove the Agent resource Tools
+and reject `/v1/resources/install`. Read-only catalogs and the existing Skill
+Store/MCP management pages remain available for diagnosis and rollback.
+
 ## Upgrade to migration 098
 
 Before applying the retirement migration:

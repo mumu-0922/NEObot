@@ -56,6 +56,7 @@ import McpServerIcon from "./McpServerIcon";
 interface McpMarketplaceProps {
   conversationId?: string;
   enabled: boolean;
+  initialQuery?: string;
   onInstalled: (result: McpMarketplaceInstallResult) => void;
 }
 
@@ -87,11 +88,12 @@ const MARKETPLACE_PAGE_SIZE = 20;
 export default function McpMarketplace({
   conversationId,
   enabled,
+  initialQuery = "",
   onInstalled,
 }: McpMarketplaceProps) {
   const t = useTranslations("Mcp");
   const client = useMemo(() => createNeoChatApiClient(), []);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [items, setItems] = useState<McpMarketplaceItem[]>([]);
   const [categories, setCategories] = useState<McpMarketplaceCategory[]>([]);
   const [activeCategory, setActiveCategory] = useState<
@@ -126,7 +128,7 @@ export default function McpMarketplace({
   const activeSearchRef = useRef<{
     query: string;
     category: MarketplaceCategoryId | "";
-  }>({ query: "", category: "" });
+  }>({ query: initialQuery, category: "" });
   const initialLoadingRef = useRef(false);
   const loadingMoreRef = useRef(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -202,7 +204,8 @@ export default function McpMarketplace({
   );
 
   useEffect(() => {
-    void search("", "");
+    setQuery(initialQuery);
+    void search(initialQuery.trim(), "");
     return () => {
       searchRequestRef.current += 1;
       detailRequestRef.current += 1;
@@ -213,7 +216,7 @@ export default function McpMarketplace({
       initialLoadingRef.current = false;
       loadingMoreRef.current = false;
     };
-  }, [search]);
+  }, [initialQuery, search]);
 
   const hasMore = hasNextMarketplacePage(page, totalPages);
 

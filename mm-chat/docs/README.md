@@ -29,6 +29,12 @@ application. See
 retires the disconnected Runner/Canary control-plane schema while preserving
 Chat, Skill, File, MCP, Knowledge, and Memory authority.
 
+Conversational Skill/MCP discovery and installation are defined in
+[`contracts/resource-orchestration.md`](./contracts/resource-orchestration.md).
+Slash commands and Agent recovery share that Backend contract; existing Skill
+admission, MCP credential/validation, approval, and audit authority remain in
+force.
+
 ## Update Rule
 
 When a new plan or scope change appears:

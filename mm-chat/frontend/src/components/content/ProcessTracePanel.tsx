@@ -14,6 +14,7 @@ import {
   BriefcaseBusiness,
   Target,
   Compass,
+  PackageSearch,
   Copy,
   LoaderCircle,
   RotateCcw,
@@ -62,6 +63,7 @@ const presentationIcons = {
   file: FileText,
   job: BriefcaseBusiness,
   goal: Target,
+  resource: PackageSearch,
   browser: Compass,
 } satisfies Partial<Record<ProcessStepPresentation["card"], typeof Brain>>;
 
@@ -574,6 +576,9 @@ function GenericProcessCard({
         {transcript?.length ? <Transcript entries={transcript} /> : null}
         {"retry" in presentation && presentation.retry ? (
           <RetryControls eventId={presentation.retry.eventId} />
+        ) : null}
+        {"approval" in presentation && presentation.approval ? (
+          <ApprovalControls approval={presentation.approval} />
         ) : null}
       </div>
     </details>

@@ -105,6 +105,9 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 		len(cfg.AgentTimeline.CanaryUserIDs) != 0 {
 		t.Fatalf("AgentTimeline = %#v, want disabled and empty", cfg.AgentTimeline)
 	}
+	if cfg.ResourceOrchestration.Enabled != DefaultResourceOrchestrationEnabled {
+		t.Fatalf("ResourceOrchestration = %#v", cfg.ResourceOrchestration)
+	}
 	if cfg.Memory.L2SceneShadowEnabled != DefaultMemoryL2SceneShadowEnabled {
 		t.Fatalf("Memory.L2SceneShadowEnabled = %v, want %v",
 			cfg.Memory.L2SceneShadowEnabled, DefaultMemoryL2SceneShadowEnabled)
@@ -314,6 +317,7 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		EnvMemoryToolLoopCanary:   " 77777777-7777-4777-8777-777777777777,AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA ",
 		EnvAgentTimelineEnabled:   " true ",
 		EnvAgentTimelineCanary:    " AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA ",
+		EnvResourceOrchestration:  " false ",
 		EnvMemoryL2SceneShadow:    " true ",
 		EnvMemoryL2SceneReader:    " true ",
 		EnvMemoryL3PersonaShadow:  " true ",
@@ -440,6 +444,9 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	if !cfg.AgentTimeline.Enabled || len(cfg.AgentTimeline.CanaryUserIDs) != 1 ||
 		cfg.AgentTimeline.CanaryUserIDs[0] != "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" {
 		t.Fatalf("AgentTimeline = %#v", cfg.AgentTimeline)
+	}
+	if cfg.ResourceOrchestration.Enabled {
+		t.Fatal("ResourceOrchestration.Enabled = true, want false")
 	}
 	if cfg.Auth.Mode != AuthModeRequired {
 		t.Fatalf("Auth.Mode = %q, want required", cfg.Auth.Mode)

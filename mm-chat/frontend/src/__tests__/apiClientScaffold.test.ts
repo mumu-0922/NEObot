@@ -142,6 +142,7 @@ describe("Phase 11.1B API mode resolver", () => {
       imports: false,
       rag: false,
       mcp: false,
+      resources: false,
       providerSettings: false,
       agents: false,
       skillStore: false,

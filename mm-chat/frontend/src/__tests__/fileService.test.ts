@@ -328,6 +328,7 @@ function createMockClient(
     teams: options.teams ?? defaultClient.teams,
     knowledge: options.knowledge ?? defaultClient.knowledge,
     memories: options.memories ?? defaultClient.memories,
+    resources: options.resources ?? defaultClient.resources,
   };
 }
 

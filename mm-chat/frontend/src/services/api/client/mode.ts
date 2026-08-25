@@ -20,6 +20,7 @@ export const phase11Capabilities: ApiCapabilities = {
   providerSettings: false,
   agents: false,
   skillStore: false,
+  resources: false,
   teams: false,
   knowledge: false,
   memories: false,

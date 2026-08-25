@@ -40,6 +40,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/ragsource"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
 	"neo-chat/mm-chat/backend/internal/redisstate"
+	"neo-chat/mm-chat/backend/internal/resourceorchestrator"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 	"neo-chat/mm-chat/backend/internal/sessioncache"
 	"neo-chat/mm-chat/backend/internal/skillsupply"
@@ -451,6 +452,12 @@ func main() {
 		httpserver.WithSkillSupplyService(skillSupplyService),
 		httpserver.WithLocalSkillExecutor(localSkillExecutor),
 		httpserver.WithLogger(logger),
+	}
+	if sqlDB != nil {
+		serverOptions = append(
+			serverOptions,
+			httpserver.WithResourceMutationAuditor(resourceorchestrator.NewPostgresMutationAuditor(sqlDB)),
+		)
 	}
 	if runtimeConfigRepo != nil {
 		serverOptions = append(

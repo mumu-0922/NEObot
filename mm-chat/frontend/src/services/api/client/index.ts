@@ -11,6 +11,7 @@ import { createLocalMemoryApiShell } from "./local/memoryApi";
 import { createLocalMcpApiShell } from "./local/mcpApi";
 import { createLocalProviderApiShell } from "./local/providerApi";
 import { createLocalRAGProviderApiShell } from "./local/ragProviderApi";
+import { createLocalResourceApiShell } from "./local/resourceApi";
 import { createLocalSearchProviderApiShell } from "./local/searchProviderApi";
 import { createLocalSettingsApiShell } from "./local/settingsApi";
 import { createLocalTeamApiShell } from "./local/teamApi";
@@ -31,6 +32,7 @@ import { createServerMemoryApiShell } from "./server/memoryApi";
 import { createServerMcpApiShell } from "./server/mcpApi";
 import { createServerProviderApiShell } from "./server/providerApi";
 import { createServerRAGProviderApiShell } from "./server/ragProviderApi";
+import { createServerResourceApiShell } from "./server/resourceApi";
 import { createServerSearchProviderApiShell } from "./server/searchProviderApi";
 import { createServerSettingsApiShell } from "./server/settingsApi";
 import { createServerTeamApiShell } from "./server/teamApi";
@@ -105,6 +107,9 @@ export function createNeoChatApiClient(
   const workspaces = serverHttpClient
     ? createServerWorkspaceApiShell(serverHttpClient)
     : createLocalWorkspaceApiShell();
+  const resources = serverHttpClient
+    ? createServerResourceApiShell(serverHttpClient)
+    : createLocalResourceApiShell();
 
   return {
     mode: resolved.mode,
@@ -119,6 +124,7 @@ export function createNeoChatApiClient(
       mcp: serverEnabled,
       agents: serverEnabled,
       skillStore: serverEnabled,
+      resources: serverEnabled,
       teams: serverEnabled,
       knowledge: serverEnabled,
       memories: serverEnabled,
@@ -143,6 +149,7 @@ export function createNeoChatApiClient(
     imports,
     agents,
     skillStore,
+    resources,
     teams,
     knowledge,
     memories,

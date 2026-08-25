@@ -102,6 +102,11 @@ import {
   isReasoningEffort,
 } from "@/lib/chat/reasoning";
 import { getModelBuiltInSearchAvailability } from "@/lib/chat/searchCapabilities";
+import {
+  filterSlashCommands,
+  slashCommandInsertion,
+  type SlashCommandDefinition,
+} from "@/lib/chat/slashCommands";
 
 type MessageInputVariant = "default" | "hero";
 
@@ -143,6 +148,8 @@ interface MessageInputProps {
   onKnowledgeCollectionIdsChange?: (
     collectionIds: string[],
   ) => void | Promise<void>;
+  slashCommands?: readonly SlashCommandDefinition[];
+  slashCommandsLoading?: boolean;
   variant?: MessageInputVariant;
 }
 
@@ -205,6 +212,8 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       onLocalSessionToolUnavailable,
       knowledgeCollectionIds = EMPTY_KNOWLEDGE_COLLECTION_IDS,
       onKnowledgeCollectionIdsChange,
+      slashCommands = [],
+      slashCommandsLoading = false,
       variant = "default",
     },
     ref,
@@ -231,6 +240,8 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const [knowledgeCollectionNames, setKnowledgeCollectionNames] = useState<
       Record<string, string>
     >({});
+    const [slashSelection, setSlashSelection] = useState(0);
+    const [slashMenuDismissed, setSlashMenuDismissed] = useState(false);
 
     const handleComposerSectionOpenChange = useCallback(
       (section: Exclude<OpenComposerSection, null>, open: boolean) => {
@@ -676,7 +687,52 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       }
     };
 
+    const filteredSlashCommands = useMemo(
+      () => filterSlashCommands(slashCommands, input),
+      [input, slashCommands],
+    );
+    const slashQueryActive =
+      input.trimStart().startsWith("/") && !input.includes("\n");
+    const slashMenuOpen = !slashMenuDismissed && slashQueryActive;
+
+    useEffect(() => {
+      setSlashSelection((current) =>
+        Math.min(current, Math.max(filteredSlashCommands.length - 1, 0)),
+      );
+    }, [filteredSlashCommands.length]);
+
+    const selectSlashCommand = useCallback(
+      (command: SlashCommandDefinition) => {
+        draftRevisionRef.current += 1;
+        setInput(slashCommandInsertion(command));
+        setSlashMenuDismissed(true);
+        requestAnimationFrame(() => textareaRef.current?.focus());
+      },
+      [],
+    );
+
     const handleKeyDown = (e: React.KeyboardEvent) => {
+      if (slashMenuOpen && filteredSlashCommands.length > 0) {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          const direction = e.key === "ArrowDown" ? 1 : -1;
+          setSlashSelection((current) => {
+            const count = filteredSlashCommands.length;
+            return (current + direction + count) % count;
+          });
+          return;
+        }
+        if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+          e.preventDefault();
+          selectSlashCommand(filteredSlashCommands[slashSelection]);
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setSlashMenuDismissed(true);
+          return;
+        }
+      }
       if (
         shouldSubmitOnEnter({
           key: e.key,
@@ -1436,6 +1492,61 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           )}
 
         {/* Text Input */}
+        {slashMenuOpen && (
+          <div
+            role="listbox"
+            aria-label={t("slashCommands")}
+            className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl dark:border-border dark:bg-card"
+          >
+            {slashCommandsLoading ? (
+              <div className="px-3 py-4 text-sm text-muted-foreground">
+                {t("slashCommandsLoading")}
+              </div>
+            ) : filteredSlashCommands.length === 0 ? (
+              <div className="px-3 py-4 text-sm text-muted-foreground">
+                {t("slashCommandsEmpty")}
+              </div>
+            ) : (
+              filteredSlashCommands.map((command, index) => (
+                <React.Fragment key={command.command}>
+                  {index === 0 ||
+                  filteredSlashCommands[index - 1].group !== command.group ? (
+                    <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                      {command.group}
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={index === slashSelection}
+                    className={`flex w-full items-start justify-between gap-3 rounded-lg px-3 py-2 text-left ${
+                      index === slashSelection
+                        ? "bg-cyan-50 text-cyan-950 dark:bg-cyan-950/40 dark:text-cyan-100"
+                        : "hover:bg-slate-50 dark:hover:bg-muted"
+                    }`}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onMouseEnter={() => setSlashSelection(index)}
+                    onClick={() => selectSlashCommand(command)}
+                  >
+                    <span className="min-w-0">
+                      <span className="block font-mono text-sm font-semibold">
+                        {command.command}
+                        {command.argumentHint ? (
+                          <span className="ml-2 font-sans font-normal text-muted-foreground">
+                            {command.argumentHint}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                        {command.description}
+                      </span>
+                    </span>
+                  </button>
+                </React.Fragment>
+              ))
+            )}
+          </div>
+        )}
         <label htmlFor={messageInputId} className="sr-only">
           {t("message")}
         </label>
@@ -1457,6 +1568,8 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           onChange={(e) => {
             draftRevisionRef.current += 1;
             setInput(e.target.value);
+            setSlashMenuDismissed(false);
+            setSlashSelection(0);
           }}
           onKeyDown={handleKeyDown}
           onPaste={handleComposerPaste}

@@ -487,6 +487,9 @@ func sanitizeProcessStepPresentation(
 		valid = kind == ProcessStepKindTool && localToolMode && toolName == localSkillToolName
 	case "goal":
 		valid = kind == ProcessStepKindTool && mode == "goal"
+	case "resource":
+		valid = kind == ProcessStepKindTool && mode == "resource" &&
+			(toolName == resourceSearchToolName || toolName == resourceRequestInstallToolName)
 	case "browser", "mcp":
 		valid = kind == ProcessStepKindTool && mode == "mcp"
 	}
@@ -519,6 +522,9 @@ func sanitizeProcessStepPresentation(
 	result.Retry = sanitizeProcessRetryPresentation(
 		presentation.Retry, card, kind, mode, toolName, result.Operation,
 	)
+	if card == "terminal" || card == "resource" {
+		result.Approval = sanitizeProcessApprovalPresentation(presentation.Approval)
+	}
 	if card == "job" {
 		result.Command = sanitizePresentationText(
 			presentation.Command, maxProcessTerminalCommandBytes,
@@ -546,7 +552,6 @@ func sanitizeProcessStepPresentation(
 		return nil
 	}
 	result.CWD = sanitizePresentationText(presentation.CWD, maxProcessTerminalCWDBytes)
-	result.Approval = sanitizeProcessApprovalPresentation(presentation.Approval)
 	var exitCode *int
 	if presentation.ExitCode != nil {
 		if *presentation.ExitCode < -1 || *presentation.ExitCode > 255 {

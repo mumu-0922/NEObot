@@ -34,6 +34,7 @@ import type {
   McpSelectionServer,
   McpServer,
   McpServerRef,
+  McpServerStatus,
   McpWorkspaceSelection,
 } from "../../../lib/mcp/types";
 import type { DefaultModels } from "../../../types";
@@ -83,6 +84,7 @@ export interface ApiCapabilities {
   providerSettings: boolean;
   agents: boolean;
   skillStore?: boolean;
+  resources?: boolean;
   teams: boolean;
   knowledge: boolean;
   memories: boolean;
@@ -758,6 +760,84 @@ export interface SkillStoreApi {
     revision: number;
     signal?: AbortSignal;
   }): Promise<void>;
+}
+
+export interface ResourceSkillDTO {
+  installationId: string;
+  name: string;
+  version: string;
+  packageFingerprint: string;
+  description: string;
+  allowedTools: string[];
+  revision: number;
+}
+
+export interface ResourceMcpServerDTO {
+  ref: McpServerRef;
+  name: string;
+  description?: string;
+  authType: McpAuthType;
+  status: McpServerStatus;
+  credentialStatus: "not_required" | "required" | "configured";
+  toolCount: number;
+  unsupportedToolCount: number;
+  selected: boolean;
+  disabledTools: string[];
+  canManage: boolean;
+}
+
+export interface ResourceCatalogDTO {
+  revision: string;
+  selectionMode: McpSelectionMode | "";
+  skills: ResourceSkillDTO[];
+  mcpServers: ResourceMcpServerDTO[];
+}
+
+export interface ResourceSearchItemDTO {
+  kind: "skill" | "mcp";
+  id: string;
+  name: string;
+  description: string;
+  version?: string;
+  exactRevision: string;
+  status: string;
+  source: string;
+  authType?: string;
+  permissionScopes: string[];
+}
+
+export interface ResourceInstallResultDTO {
+  kind: "skill" | "mcp";
+  id: string;
+  name: string;
+  revision: string;
+  status: "installed";
+  refreshRequired: boolean;
+  mutationAuditId?: string;
+}
+
+export interface ResourceApi {
+  getCatalog(input: {
+    conversationId: string;
+    signal?: AbortSignal;
+  }): Promise<ResourceCatalogDTO>;
+  search(input: {
+    kind: "skill" | "mcp";
+    query: string;
+    signal?: AbortSignal;
+  }): Promise<{
+    kind: "skill" | "mcp";
+    query: string;
+    items: ResourceSearchItemDTO[];
+  }>;
+  install(input: {
+    kind: "skill" | "mcp";
+    id: string;
+    version?: string;
+    exactRevision: string;
+    conversationId: string;
+    signal?: AbortSignal;
+  }): Promise<ResourceInstallResultDTO>;
 }
 
 export type GlobalUserRole = "owner" | "user" | "viewer";
@@ -1966,6 +2046,7 @@ export interface NeoChatApiClient {
   imports?: BrowserImportApi;
   agents: AgentApi;
   skillStore: SkillStoreApi;
+  resources: ResourceApi;
   teams: TeamApi;
   knowledge: KnowledgeApi;
   memories: MemoryApi;

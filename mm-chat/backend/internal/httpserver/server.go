@@ -33,6 +33,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/ragproviders"
 	"neo-chat/mm-chat/backend/internal/ragsource"
 	"neo-chat/mm-chat/backend/internal/ratelimit"
+	"neo-chat/mm-chat/backend/internal/resourceorchestrator"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
 	"neo-chat/mm-chat/backend/internal/skillsupply"
 	"neo-chat/mm-chat/backend/internal/storage"
@@ -81,6 +82,7 @@ type options struct {
 	agentService               *agents.Service
 	skillSupplyService         *skillsupply.Service
 	mcpService                 *mcpclient.Service
+	resourceMutationAuditor    resourceorchestrator.MutationAuditor
 	localSkillExecutor         *localskills.Executor
 	imageJobService            *imagejobs.Service
 	voiceJobService            *voicejobs.Service
@@ -1106,6 +1108,12 @@ func WithMCPService(service *mcpclient.Service) Option {
 	}
 }
 
+func WithResourceMutationAuditor(auditor resourceorchestrator.MutationAuditor) Option {
+	return func(opts *options) {
+		opts.resourceMutationAuditor = auditor
+	}
+}
+
 func WithHostWorkspaceService(service *hostworkspace.Service) Option {
 	return func(opts *options) {
 		opts.hostWorkspaceService = service
@@ -1204,6 +1212,17 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 		}),
 	)
 	mcpHandler := mcpclient.NewHandler(resolvedOptions.mcpService)
+	resourceService := resourceorchestrator.NewService(
+		resolvedOptions.skillSupplyService,
+		resolvedOptions.mcpService,
+		resourceorchestrator.WithMutationEnabled(cfg.ResourceOrchestration.Enabled),
+		resourceorchestrator.WithMutationAuditor(resolvedOptions.resourceMutationAuditor),
+	)
+	var chatResourceService *resourceorchestrator.Service
+	if cfg.ResourceOrchestration.Enabled {
+		chatResourceService = resourceService
+	}
+	resourceHandler := resourceorchestrator.NewHandler(resourceService)
 	hostWorkspaceHandler := hostworkspace.NewHandler(resolvedOptions.hostWorkspaceService)
 	memoryServiceOptions := make([]usermemory.ServiceOption, 0, 4)
 	memoryServiceOptions = append(
@@ -1284,6 +1303,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 			timeout: cfg.Provider.Timeout,
 		}),
 		chat.WithMCPService(resolvedOptions.mcpService),
+		chat.WithResourceOrchestrator(chatResourceService),
 		chat.WithLocalSkillRuntime(
 			resolvedOptions.skillSupplyService,
 			resolvedOptions.localSkillExecutor,
@@ -1425,6 +1445,8 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/v1/skills", skillSupplyHandler)
 	mux.Handle("/v1/skills/", skillSupplyHandler)
 	mux.Handle("/v1/mcp/", mcpHandler)
+	mux.Handle(resourceorchestrator.ResourcesPath, resourceHandler)
+	mux.Handle(resourceorchestrator.ResourcesPath+"/", resourceHandler)
 	mux.Handle("/v1/workspaces", hostWorkspaceHandler)
 	mux.Handle("/v1/workspaces/", hostWorkspaceHandler)
 	mux.Handle("/v1/code/executions", codeJobHandler)

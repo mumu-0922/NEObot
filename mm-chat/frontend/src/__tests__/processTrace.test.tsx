@@ -486,6 +486,49 @@ describe("durable process trace", () => {
     expect(html).not.toContain("stderr");
   });
 
+  it("keeps sanitized Resource discovery cards in the Agent trace", () => {
+    const step = normalizeProcessStep({
+      id: "resource-1",
+      kind: "tool",
+      status: "completed",
+      labelKey: "process.tool",
+      detail: {
+        toolName: "resource_search",
+        mode: "resource",
+        classification: "read",
+      },
+      presentation: {
+        card: "resource",
+        title: "Resource search",
+        query: "excel",
+        count: 1,
+        items: [{ label: "office-xlsx", detail: "1.0.0 · admitted" }],
+        approval: {
+          id: "11111111-1111-4111-8111-111111111111",
+          revision: 1,
+          status: "pending",
+          expiresAt: "2026-08-26T00:05:00Z",
+          allowConversation: false,
+        },
+      },
+    });
+    const html = renderToStaticMarkup(
+      <NextIntlClientProvider
+        locale="zh"
+        messages={{ Content: contentMessages }}
+        timeZone="UTC"
+      >
+        <ProcessTracePanel steps={[step!]} />
+      </NextIntlClientProvider>,
+    );
+
+    expect(step?.presentation?.card).toBe("resource");
+    expect(html).toContain("Resource search");
+    expect(html).toContain("office-xlsx");
+    expect(html).toContain("excel");
+    expect(html).toContain("仅允许一次");
+  });
+
   it("warns that process-local background Jobs disappear after restart", () => {
     const step = normalizeProcessStep({
       id: "tool-job-1",

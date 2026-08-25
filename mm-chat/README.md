@@ -75,6 +75,12 @@ container per server. MCP is disabled by default; follow
 [`docs/deployment/mcp-runner.md`](./docs/deployment/mcp-runner.md) before
 enabling it.
 
+The composer and Agent share a server-authorized Skill/MCP discovery and
+install plane with exact revisions, approval, audit, and snapshot refresh. See
+[`docs/contracts/resource-orchestration.md`](./docs/contracts/resource-orchestration.md).
+Set `RESOURCE_ORCHESTRATION_ENABLED=false` to disable this mutation/recovery
+plane without removing the existing Skill Store or Tools pages.
+
 Stop the stack without deleting data:
 
 ```bash

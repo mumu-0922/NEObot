@@ -25,6 +25,7 @@ behavior changes require coverage under `mm-chat/frontend/src/__tests__/`.
 | [Agent Transcript](./agent-transcript.md)          | Flat durable Context/Think/Tool projection, live/reload parity, and legacy fallback | Complete |
 | [Assistant Store](./assistant-store.md)           | My Assistants, Store paging, runtime validation, CAS recovery, and start-chat snapshots | Complete |
 | [Skill Store](./skill-store.md)                   | Standalone `/v1/skills/*` package discovery, install/uninstall, URL state, and retired control-plane boundary | Complete |
+| [Resource Commands](./resource-commands.md)       | Grouped slash discovery, deterministic Skill/MCP actions, strict Resource API DTOs, and sanitized process cards | Complete |
 | [Host Workspaces](./host-workspaces.md)            | Workspace persistence, binding, Conversation grouping, file references, and preview | Complete |
 | [Type Safety](./type-safety.md)                   | Domain types, DTOs, runtime validation, and normalization     | Complete |
 | [Quality Guidelines](./quality-guidelines.md)     | Formatting, linting, testing, review, and forbidden patterns  | Complete |

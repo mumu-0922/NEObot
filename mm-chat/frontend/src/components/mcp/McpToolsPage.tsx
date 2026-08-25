@@ -10,16 +10,20 @@ import McpToolsControl from "./McpToolsControl";
 interface McpToolsPageProps {
   conversationId?: string;
   enabled: boolean;
+  initialMarketplaceQuery?: string;
   onClose: () => void;
 }
 
 export default function McpToolsPage({
   conversationId,
   enabled,
+  initialMarketplaceQuery = "",
   onClose,
 }: McpToolsPageProps) {
   const t = useTranslations("Mcp");
-  const [tab, setTab] = useState<"installed" | "marketplace">("installed");
+  const [tab, setTab] = useState<"installed" | "marketplace">(
+    initialMarketplaceQuery ? "marketplace" : "installed",
+  );
   const [installedRevision, setInstalledRevision] = useState(0);
   const installed = useCallback(() => {
     setInstalledRevision((revision) => revision + 1);
@@ -80,6 +84,7 @@ export default function McpToolsPage({
             <McpMarketplace
               conversationId={conversationId}
               enabled={enabled}
+              initialQuery={initialMarketplaceQuery}
               onInstalled={installed}
             />
           )}

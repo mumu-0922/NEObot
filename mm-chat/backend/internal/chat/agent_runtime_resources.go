@@ -19,10 +19,11 @@ const (
 type agentRuntimeResourceSource string
 
 const (
-	agentRuntimeResourceSourceBuiltin    agentRuntimeResourceSource = "builtin"
-	agentRuntimeResourceSourceRetrieval  agentRuntimeResourceSource = "retrieval"
-	agentRuntimeResourceSourceMCP        agentRuntimeResourceSource = "mcp"
-	agentRuntimeResourceSourceLocalSkill agentRuntimeResourceSource = "local_skill"
+	agentRuntimeResourceSourceBuiltin      agentRuntimeResourceSource = "builtin"
+	agentRuntimeResourceSourceRetrieval    agentRuntimeResourceSource = "retrieval"
+	agentRuntimeResourceSourceMCP          agentRuntimeResourceSource = "mcp"
+	agentRuntimeResourceSourceLocalSkill   agentRuntimeResourceSource = "local_skill"
+	agentRuntimeResourceSourceOrchestrator agentRuntimeResourceSource = "resource_orchestrator"
 )
 
 type agentRuntimeResourceScope string
@@ -53,6 +54,7 @@ type agentRuntimeResourceInput struct {
 	Goals       *chatAgentGoalToolRuntime
 	Knowledge   *knowledgeToolRuntime
 	Memory      *memoryToolRuntime
+	Resource    *resourceToolRuntime
 	ExternalWeb bool
 }
 
@@ -66,6 +68,7 @@ type agentRuntimeResourceSnapshot struct {
 	goals       *chatAgentGoalToolRuntime
 	knowledge   *knowledgeToolRuntime
 	memory      *memoryToolRuntime
+	resource    *resourceToolRuntime
 	externalWeb bool
 }
 
@@ -78,7 +81,8 @@ type agentRuntimeToolProjection struct {
 func newAgentRuntimeResourceSnapshot(input agentRuntimeResourceInput) *agentRuntimeResourceSnapshot {
 	snapshot := &agentRuntimeResourceSnapshot{
 		mcp: input.MCP, localSkills: input.LocalSkills, goals: input.Goals,
-		knowledge: input.Knowledge, memory: input.Memory, externalWeb: input.ExternalWeb,
+		knowledge: input.Knowledge, memory: input.Memory, resource: input.Resource,
+		externalWeb: input.ExternalWeb,
 	}
 	snapshot.runRevision = agentRuntimeRevision(snapshot.runAuthority())
 	return snapshot
@@ -90,6 +94,7 @@ func newAgentRuntimeResourceSnapshotFromToolLoopInput(
 	return newAgentRuntimeResourceSnapshot(agentRuntimeResourceInput{
 		MCP: input.MCP, LocalSkills: input.LocalSkills, Goals: input.Goals,
 		Knowledge: input.Knowledge, Memory: input.Memory,
+		Resource:    input.Resource,
 		ExternalWeb: externalWebToolEnabled(input),
 	})
 }
@@ -112,6 +117,9 @@ func (snapshot *agentRuntimeResourceSnapshot) bind(
 	if snapshot.memory != nil {
 		input.Memory = snapshot.memory
 	}
+	if snapshot.resource != nil {
+		input.Resource = snapshot.resource
+	}
 	return input
 }
 
@@ -120,7 +128,7 @@ func (snapshot *agentRuntimeResourceSnapshot) toolLoopEnabled(
 	includeExternalWeb bool,
 ) bool {
 	return snapshot != nil && (snapshot.mcp.enabled() || snapshot.localSkills.enabled() ||
-		snapshot.goals.enabled() || snapshot.memory.enabled() ||
+		snapshot.goals.enabled() || snapshot.memory.enabled() || snapshot.resource.enabled() ||
 		(includeKnowledge && snapshot.knowledge.enabled()) ||
 		(includeExternalWeb && snapshot.externalWeb))
 }
@@ -139,7 +147,42 @@ func (snapshot *agentRuntimeResourceSnapshot) promptInstruction() string {
 	if snapshot == nil {
 		return ""
 	}
+	instructions := []string{
+		snapshot.skillPromptInstruction(),
+		snapshot.resourcePromptInstruction(),
+	}
+	return strings.TrimSpace(strings.Join(instructions, "\n\n"))
+}
+
+func (snapshot *agentRuntimeResourceSnapshot) skillPromptInstruction() string {
+	if snapshot == nil {
+		return ""
+	}
 	return snapshot.localSkills.promptInstruction()
+}
+
+func (snapshot *agentRuntimeResourceSnapshot) resourcePromptInstruction() string {
+	if snapshot == nil || !snapshot.resource.enabled() {
+		return ""
+	}
+	return resourceToolSystemInstruction
+}
+
+func (snapshot *agentRuntimeResourceSnapshot) refreshFollowup(
+	previousRevision string,
+) string {
+	if snapshot == nil {
+		return ""
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"serverIssued":     true,
+		"previousRevision": strings.TrimSpace(previousRevision),
+		"currentRevision":  snapshot.runRevision,
+	})
+	return "<resource_snapshot_refresh>" + string(payload) +
+		"</resource_snapshot_refresh>\nA fresh server-authorized resource snapshot is now active. " +
+		"Continue the original task using only the Tools exposed in this Provider round. " +
+		"Do not claim that an installed resource was used unless you actually call it."
 }
 
 func (snapshot *agentRuntimeResourceSnapshot) project(
@@ -377,6 +420,9 @@ func (snapshot *agentRuntimeResourceSnapshot) registrationResource(
 	case chatToolBackendGoal:
 		return agentRuntimeStableID("builtin", "goals"), agentRuntimeResourceKindToolSet,
 			agentRuntimeResourceSourceBuiltin, agentRuntimeResourceScopeRun
+	case chatToolBackendResource:
+		return agentRuntimeStableID("resource", "orchestrator"), agentRuntimeResourceKindToolSet,
+			agentRuntimeResourceSourceOrchestrator, agentRuntimeResourceScopeRun
 	default:
 		return agentRuntimeStableID("builtin", string(registration.Backend)+":"+name),
 			agentRuntimeResourceKindToolSet, agentRuntimeResourceSourceBuiltin,

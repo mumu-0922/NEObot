@@ -32,6 +32,7 @@ const (
 	DefaultMemoryL3PersonaShadowEnabled = false
 	DefaultMemoryL3PersonaReaderEnabled = false
 	DefaultAgentTimelineEnabled         = false
+	DefaultResourceOrchestrationEnabled = true
 	DefaultProviderTimeout              = 2 * time.Minute
 	DefaultProviderName                 = "Server Default"
 	DefaultStorageBackend               = "local"
@@ -150,6 +151,7 @@ const (
 	EnvMemoryL3PersonaReader    = "MEMORY_L3_PERSONA_READER_ENABLED"
 	EnvAgentTimelineEnabled     = "AGENT_TIMELINE_ENABLED"
 	EnvAgentTimelineCanary      = "AGENT_TIMELINE_CANARY_USER_IDS"
+	EnvResourceOrchestration    = "RESOURCE_ORCHESTRATION_ENABLED"
 	EnvMCPEnabled               = "MCP_ENABLED"
 	EnvMCPRemoteEnabled         = "MCP_REMOTE_ENABLED"
 	EnvMCPStdioEnabled          = "MCP_STDIO_ENABLED"
@@ -205,18 +207,19 @@ type Config struct {
 
 	Redis RedisConfig
 
-	Provider        ProviderConfig
-	ProviderSecrets ProviderSecretConfig
-	BYOK            BYOKConfig
-	Storage         StorageConfig
-	RAG             RAGConfig
-	Memory          MemoryConfig
-	AgentTimeline   AgentTimelineConfig
-	Auth            AuthConfig
-	Team            TeamConfig
-	MCP             MCPConfig
-	AgentLocal      AgentLocalConfig
-	AgentHost       AgentHostConfig
+	Provider              ProviderConfig
+	ProviderSecrets       ProviderSecretConfig
+	BYOK                  BYOKConfig
+	Storage               StorageConfig
+	RAG                   RAGConfig
+	Memory                MemoryConfig
+	AgentTimeline         AgentTimelineConfig
+	ResourceOrchestration ResourceOrchestrationConfig
+	Auth                  AuthConfig
+	Team                  TeamConfig
+	MCP                   MCPConfig
+	AgentLocal            AgentLocalConfig
+	AgentHost             AgentHostConfig
 }
 
 // RedisConfig contains non-authoritative temporary-state settings. Redis must
@@ -286,6 +289,13 @@ type AgentTimelineConfig struct {
 	Enabled              bool
 	CanaryUserIDs        []string
 	invalidCanaryUserIDs bool
+}
+
+// ResourceOrchestrationConfig controls conversational Skill/MCP discovery and
+// mutation. Read-only management APIs remain available when this kill switch
+// is off.
+type ResourceOrchestrationConfig struct {
+	Enabled bool
 }
 
 type MCPConfig struct {
@@ -605,6 +615,11 @@ func LoadFromEnv(lookup func(string) (string, bool)) Config {
 			),
 			CanaryUserIDs:        agentTimelineCanaryUserIDs,
 			invalidCanaryUserIDs: invalidAgentTimelineCanaryUserIDs,
+		},
+		ResourceOrchestration: ResourceOrchestrationConfig{
+			Enabled: boolEnvOrDefault(
+				lookup, EnvResourceOrchestration, DefaultResourceOrchestrationEnabled,
+			),
 		},
 		MCP: MCPConfig{
 			Enabled:               boolEnvOrDefault(lookup, EnvMCPEnabled, DefaultMCPEnabled),

@@ -124,6 +124,9 @@ func localSkillInvocationNames(value string) []string {
 			continue
 		}
 		name := field[1:]
+		if strings.HasPrefix(name, "skill:") {
+			name = strings.TrimPrefix(name, "skill:")
+		}
 		if !localSkillGestureNamePattern.MatchString(name) {
 			continue
 		}

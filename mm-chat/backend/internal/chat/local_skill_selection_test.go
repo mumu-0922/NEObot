@@ -55,6 +55,15 @@ func TestLocalSkillSlashInvocationLoadsDeterministicallyAndDoesNotReload(t *test
 	}
 }
 
+func TestLocalSkillInvocationNamesAcceptsPiStyleAndLegacySyntax(t *testing.T) {
+	got := localSkillInvocationNames(
+		"/skill:office-xlsx make a report /legacy-skill /skill:office-xlsx",
+	)
+	if len(got) != 2 || got[0] != "office-xlsx" || got[1] != "legacy-skill" {
+		t.Fatalf("invocation names=%#v", got)
+	}
+}
+
 func TestLocalSkillDescriptionMatchRequiresExactSkillBeforeTaskRound(t *testing.T) {
 	executor, err := localskills.NewExecutor(localskills.Config{
 		Enabled: true, RuntimeRoot: filepath.Join(t.TempDir(), "skills"),

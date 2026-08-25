@@ -169,7 +169,7 @@ export interface ProcessJobPresentation {
 
 export interface ProcessSummaryPresentation {
   version: 1;
-  card: "skill" | "goal" | "mcp" | "browser";
+  card: "skill" | "goal" | "resource" | "mcp" | "browser";
   title?: string;
   summary?: string;
   operation?: string;

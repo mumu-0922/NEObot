@@ -14,6 +14,7 @@ import {
   Loader2,
   PackageCheck,
   RefreshCw,
+  Search,
   Trash2,
   X,
 } from "lucide-react";
@@ -28,12 +29,14 @@ import {
 
 interface SkillStoreProps {
   selectedId: string | null;
+  initialQuery?: string;
   onNavigate: (id: string | null, historyMode?: "push" | "replace") => void;
   onClose: () => void;
 }
 
 export default function SkillStore({
   selectedId,
+  initialQuery = "",
   onNavigate,
   onClose,
 }: SkillStoreProps) {
@@ -45,6 +48,9 @@ export default function SkillStore({
   const [error, setError] = useState("");
   const [actionId, setActionId] = useState("");
   const [announcement, setAnnouncement] = useState("");
+  const [query, setQuery] = useState(initialQuery);
+  const [selectedFallback, setSelectedFallback] =
+    useState<AgentPackageCandidateDTO | null>(null);
   const restoreFocus = useRef<HTMLButtonElement | null>(null);
 
   const load = useCallback(async () => {
@@ -68,10 +74,41 @@ export default function SkillStore({
     queueMicrotask(() => void load());
   }, [load]);
 
-  const selected = items.find((item) => item.id === selectedId) ?? null;
+  useEffect(() => setQuery(initialQuery), [initialQuery]);
+
+  const listedSelected = items.find((item) => item.id === selectedId) ?? null;
+  useEffect(() => {
+    const controller = new AbortController();
+    if (!selectedId || listedSelected) {
+      setSelectedFallback(null);
+      return () => controller.abort();
+    }
+    void client.skillStore
+      .getPackageSkill(selectedId, { signal: controller.signal })
+      .then(setSelectedFallback)
+      .catch((loadError) => {
+        if (!controller.signal.aborted) {
+          setError(errorMessage(loadError, t("loadFailed")));
+        }
+      });
+    return () => controller.abort();
+  }, [client.skillStore, listedSelected, selectedId, t]);
+
+  const selected = listedSelected ?? selectedFallback;
   const installedByAdmission = new Map(
     installed.map((item) => [item.admissionId, item]),
   );
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredItems = normalizedQuery
+    ? items.filter((item) =>
+        [
+          item.id,
+          item.package.name,
+          item.package.description,
+          item.package.version,
+        ].some((value) => value.toLowerCase().includes(normalizedQuery)),
+      )
+    : items;
 
   const install = async (item: AgentPackageCandidateDTO) => {
     setActionId(item.id);
@@ -144,6 +181,21 @@ export default function SkillStore({
                 onReload={() => void load()}
               />
               <div className="space-y-5 p-4">
+                <label className="relative block">
+                  <span className="sr-only">{t("searchLabel")}</span>
+                  <Search
+                    size={16}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
+                  />
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder={t("searchPlaceholder")}
+                    className="w-full rounded-xl border bg-card py-2 pr-3 pl-9 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
+                  />
+                </label>
                 <section>
                   <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     {t("installedPackages", { count: installed.length })}
@@ -193,9 +245,9 @@ export default function SkillStore({
                     <Loading />
                   ) : error ? (
                     <InlineError message={error} retry={() => void load()} />
-                  ) : items.length ? (
+                  ) : filteredItems.length ? (
                     <div className="space-y-2">
-                      {items.map((item) => (
+                      {filteredItems.map((item) => (
                         <button
                           key={item.id}
                           type="button"

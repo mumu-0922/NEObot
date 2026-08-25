@@ -331,6 +331,39 @@ func TestToolProcessTraceSanitizesTerminalPresentationAndPreservesResultState(t 
 	}
 }
 
+func TestToolProcessTracePreservesSanitizedResourceApproval(t *testing.T) {
+	expiresAt := time.Now().UTC().Add(time.Minute)
+	presentation := sanitizeProcessStepPresentation(ProcessStepKindTool, map[string]any{
+		"toolName": resourceRequestInstallToolName,
+		"mode":     "resource",
+	}, &ProcessStepPresentation{
+		Card: "resource", Title: "Install office-xlsx",
+		Approval: &ProcessApprovalPresentation{
+			ID: "11111111-1111-4111-8111-111111111111", Revision: 1,
+			Status: ChatAgentApprovalPending, ExpiresAt: expiresAt.Format(time.RFC3339Nano),
+		},
+	})
+	if presentation == nil || presentation.Approval == nil ||
+		presentation.Approval.Status != ChatAgentApprovalPending {
+		t.Fatalf("presentation=%#v", presentation)
+	}
+}
+
+func TestToolProcessTraceDropsApprovalFromNonApprovalCards(t *testing.T) {
+	presentation := sanitizeProcessStepPresentation(ProcessStepKindWeb, map[string]any{
+		"toolName": "web_search",
+	}, &ProcessStepPresentation{
+		Card: "search", Title: "Search",
+		Approval: &ProcessApprovalPresentation{
+			ID: "11111111-1111-4111-8111-111111111111", Revision: 1,
+			Status: ChatAgentApprovalPending,
+		},
+	})
+	if presentation == nil || presentation.Approval != nil {
+		t.Fatalf("presentation=%#v", presentation)
+	}
+}
+
 func TestProcessTraceDropsUnauthorizedOrMalformedTerminalPresentation(t *testing.T) {
 	trace := newProcessTrace("message-1")
 	for index, step := range []ProcessStep{

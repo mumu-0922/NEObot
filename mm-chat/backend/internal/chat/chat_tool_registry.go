@@ -26,6 +26,7 @@ const (
 	chatToolBackendMCP        chatToolBackend = "mcp"
 	chatToolBackendLocalSkill chatToolBackend = "local_skill"
 	chatToolBackendGoal       chatToolBackend = "goal"
+	chatToolBackendResource   chatToolBackend = "resource"
 )
 
 type chatToolApprovalRule string
@@ -81,6 +82,7 @@ func buildChatToolRegistry(input externalWebToolLoopInput) *chatToolRegistry {
 		collisions: make(map[string][]chatToolRegistration),
 	}
 	registry.registerGoals(input.Goals)
+	registry.registerResources(input.Resource)
 	if input.Memory.requiresFirstRoundCall() {
 		registry.register(retrievalToolRegistration(
 			SearchMemoryToolDefinition(), chatToolBackendMemory, chatToolRiskRead, true,
@@ -107,6 +109,26 @@ func buildChatToolRegistry(input externalWebToolLoopInput) *chatToolRegistry {
 	registry.registerMCP(input.MCP)
 	registry.registerLocalSkills(input.LocalSkills)
 	return registry
+}
+
+func (registry *chatToolRegistry) registerResources(runtime *resourceToolRuntime) {
+	if registry == nil || !runtime.enabled() {
+		return
+	}
+	for _, definition := range resourceToolDefinitions(runtime.availableKinds()) {
+		risk := chatToolRiskRead
+		if definition.Function.Name == resourceRequestInstallToolName {
+			risk = chatToolRiskWrite
+		}
+		definition := definition
+		registry.register(chatToolRegistration{
+			Name: definition.Function.Name, Definition: &definition,
+			Backend: chatToolBackendResource, RiskClass: risk,
+			MaxOutputBytes: maxEvidenceRecoveryOutputBytes,
+			ApprovalRule:   chatToolApprovalNone, Presentation: chatToolPresentationTool,
+			ProjectForModel: identityChatToolResult,
+		})
+	}
 }
 
 func newChatToolRegistry(input externalWebToolLoopInput) *chatToolRegistry {

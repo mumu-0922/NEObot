@@ -5,9 +5,10 @@
 ### 1. Scope / Trigger
 
 Apply when adding or changing built-in/retrieval Tools, installed Skills, MCP
-Tools, required-Skill loading, Tool-name collision behavior, or Handler prompt
-assembly. This is an internal runtime contract; it adds no browser API,
-database authority, package installer, or unified management toggle.
+Tools, Resource Orchestrator Tools, required-Skill loading, Tool-name collision
+behavior, or Handler prompt assembly. The projection remains internal runtime
+state; the separate Resource Orchestration contract owns its browser API,
+delegated installer, mutation audit, and rollout toggle.
 
 ### 2. Signatures
 
@@ -29,25 +30,30 @@ type agentRuntimeResourceReport struct {
 ```
 
 Each descriptor contains only stable ID, `tool_set|skill_catalog|skill_package`,
-`builtin|retrieval|mcp|local_skill`, `server|user|run`,
+`builtin|retrieval|mcp|local_skill|resource_orchestrator`, `server|user|run`,
 `enabled|hidden|degraded|unavailable`, revision, contributed Tool/Skill names,
 and fixed diagnostic codes.
 
 ### 3. Contracts
 
-- Construct exactly one Run snapshot after MCP `PrepareRun`, Skill package
+- Construct the initial Run-segment snapshot after MCP `PrepareRun`, Skill package
   materialization, and Workspace executor binding, but before Assistant
   acceptance. Skill prompt preparation remains an admission operation: failure
   creates no pending Assistant and makes no Provider request.
-- The Run revision freezes the prepared MCP snapshot, installed Skill catalog
+- A Run-segment revision freezes the prepared MCP snapshot, installed Skill catalog
   and package fingerprints, and hashed Workspace authority. Existing MCP,
   Skill, Workspace, permission, approval, and conversation stores remain the
   only mutation authorities; the resource snapshot is not a database.
-- Each Provider Step receives one immutable projection from that snapshot plus
+- Each Provider Step receives one immutable projection from its active segment
+  snapshot plus
   the current server-owned built-in runtime handles. The projection freezes the
   exact ordered definitions and execution registry for that Step. Current MCP
   search visibility, first-Step-only retrieval, loaded Skill state, and the
   required-Skill-only prelude must change the projection revision.
+- A server-authorized Resource install never modifies the active snapshot in
+  place. It creates a new segment snapshot at the Tool-loop refresh boundary;
+  the next Provider Step uses the new revision and trace records the old/new
+  revisions and mutation audit ID.
 - The Handler obtains the Skill catalog prompt from the snapshot and passes the
   same snapshot into the Tool loop. It must not append a parallel MCP/Skill/
   builtin catalog. A required Skill prelude uses `project(..., true)` and may
@@ -75,6 +81,8 @@ and fixed diagnostic codes.
 | required Skill prelude | same Run revision; only exact `skill` definition |
 | exact cross-source Tool-name collision | no executable Tool; degraded descriptors and fixed diagnostic |
 | MCP/Skill admission fails before snapshot | existing typed admission error; no Provider/Assistant acceptance |
+| Resource install succeeds | current Step stays frozen; next Step uses a new segment revision |
+| Resource refresh fails | stop with `RESOURCE_REFRESH_FAILED`; no Provider continuation |
 | unavailable runtime represented in a report | fixed unavailable status/code; no raw error |
 | report serialization | no secret, Host path, Skill `RootPath`, arguments, or results |
 
@@ -102,12 +110,17 @@ and fixed diagnostic codes.
 - Existing Registry ordering, hidden aliases, scheduler, MCP, Knowledge,
   Memory, Skill selection, natural completion, Handler, and durable replay
   tests remain green.
+- Resource installation tests prove old/new segment revisions, mutation audit
+  trace, and zero second Provider round after refresh failure.
 
 ### 7. Wrong vs Correct
 
 ```text
 Wrong: Handler Skill prompt + MCP definitions + local definitions + prelude Registry
-Correct: one Run resource snapshot -> one immutable Step projection -> Provider/executor
+Correct: one active segment snapshot -> one immutable Step projection -> Provider/executor
+
+Wrong: hot-add an installed Tool to the current Step
+Correct: preserve the Step, refresh at the boundary, then project a new segment
 
 Wrong: omit first-Step Tool from definitions but leave it executable in lookup
 Correct: filter the complete Step registry before both advertisement and execution

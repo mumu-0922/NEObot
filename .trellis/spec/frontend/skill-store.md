@@ -17,6 +17,10 @@ are retired product concepts and must not reappear in this surface.
 - Other legacy `agentTab`/`agentId` state is discarded.
 - Desktop keeps list/detail visible; mobile drills into detail and restores
   focus to the originating package on Back.
+- A slash/resource search may target an admitted candidate beyond the first
+  Store page. If `skillId` is not in the loaded list, fetch that exact candidate
+  through `getPackageSkill` before rendering detail; never treat first-page
+  absence as non-existence.
 
 ## API and authority
 

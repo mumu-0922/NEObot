@@ -709,6 +709,11 @@ function normalizeProcessStepPresentation(
       localToolMode &&
       toolName === "skill") ||
     (card === "goal" && kind === "tool" && mode === "goal") ||
+    (card === "resource" &&
+      kind === "tool" &&
+      mode === "resource" &&
+      (toolName === "resource_search" ||
+        toolName === "resource_request_install")) ||
     ((card === "mcp" || card === "browser") &&
       kind === "tool" &&
       mode === "mcp");
@@ -769,6 +774,7 @@ function normalizeProcessStepPresentation(
       toolName,
       operation,
     );
+    const approval = normalizeProcessApprovalPresentation(value.approval);
     if (
       count === null ||
       size === null ||
@@ -818,6 +824,7 @@ function normalizeProcessStepPresentation(
       ...(value.truncated === true ? { truncated: true } : {}),
       ...(value.background === true ? { background: true } : {}),
       ...(retry ? { retry } : {}),
+      ...(approval ? { approval } : {}),
     } as ProcessStepPresentation;
   }
   const command = boundedPresentationString(

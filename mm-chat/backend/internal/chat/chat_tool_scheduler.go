@@ -171,6 +171,11 @@ func (registry *chatToolRegistry) executeSerialToolCall(
 	case chatToolBackendGoal:
 		goal, err := executeChatAgentGoalBatch(ctx, events, input.Goals, single, round)
 		return goal.Results[0], false, goal.ConcludesTurn, false, err
+	case chatToolBackendResource:
+		results, err := executeResourceToolBatch(
+			ctx, events, input.Resource, single, round,
+		)
+		return resultAt(results, call, 0), false, false, false, err
 	case chatToolBackendMCP:
 		results, budgetReached, err := executeMCPBatch(
 			ctx, events, input.MCP, single, round, input.CompletionDriven,

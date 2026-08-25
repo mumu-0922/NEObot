@@ -54,6 +54,7 @@ type externalWebToolLoopInput struct {
 	MCP                    *mcpToolRuntime
 	LocalSkills            *localSkillToolRuntime
 	Goals                  *chatAgentGoalToolRuntime
+	Resource               *resourceToolRuntime
 	CompletionDriven       bool
 	Resources              *agentRuntimeResourceSnapshot
 }
@@ -597,6 +598,33 @@ func runNativeExternalWebToolLoop(
 			exchange.FollowupPrompt,
 			input.LocalSkills.consumeJobCompletionPrompt(),
 		)
+		previousResourceRevision := ""
+		if input.Resources != nil {
+			previousResourceRevision = input.Resources.runRevision
+		}
+		refreshedResources, refreshRequired, refreshErr :=
+			input.Resource.refreshSnapshotIfRequired(ctx)
+		if refreshErr != nil {
+			sendProviderEvent(ctx, events, ProviderEvent{Error: &chatAgentRunFailure{
+				code: "RESOURCE_REFRESH_FAILED", err: refreshErr,
+			}})
+			return true
+		}
+		if refreshRequired {
+			input.Resources = refreshedResources
+			input = refreshedResources.bind(input)
+			if refreshExecution := input.Resource.consumeRefreshExecution(
+				previousResourceRevision, refreshedResources.runRevision,
+			); refreshExecution != nil && !sendToolExecutionEvent(
+				ctx, events, *refreshExecution,
+			) {
+				return true
+			}
+			exchange.FollowupPrompt = appendAgentFollowupPrompt(
+				exchange.FollowupPrompt,
+				refreshedResources.refreshFollowup(previousResourceRevision),
+			)
+		}
 		var appended bool
 		continuation, appended = appendCompactedChatAgentContinuation(
 			ctx, events, continuation, exchange,

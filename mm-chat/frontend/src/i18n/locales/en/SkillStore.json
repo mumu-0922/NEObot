@@ -4,6 +4,8 @@
   "close": "Close Skill Store",
   "skipToContent": "Skip to Skill Store content",
   "loadFailed": "Could not load Skill Store data.",
+  "searchLabel": "Search Skills",
+  "searchPlaceholder": "Search by name, description, version, or ID…",
   "localDirectPackage": "Local Agent Skill",
   "loading": "Loading…",
   "retry": "Retry",
