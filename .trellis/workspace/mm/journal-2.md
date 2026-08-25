@@ -1389,3 +1389,36 @@ Built and pinned the completion-driven Backend image, preserved the previous ima
 ### Next Steps
 
 - None - task complete
+
+
+## Session 90: Align Chat Agent harness with Pi
+
+**Date**: 2026-08-25
+**Task**: Align Chat Agent harness with Pi
+**Branch**: `main`
+
+### Summary
+
+Adopt canonical read/write/edit/grep/bash tools and natural completion; preserve hidden legacy replay aliases; project generated workspace files into owner-scoped open-first previews including bounded XLSX; update contracts, tests, and deploy verified Backend/Frontend images.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b22340a3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
