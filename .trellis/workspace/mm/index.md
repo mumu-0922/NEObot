@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 93
+- **Total Sessions**: 94
 - **Last Active**: 2026-08-26
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1523 | Active |
+| `journal-2.md` | ~1556 | Active |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 94 | 2026-08-26 | 修复 Skill 链接安装的 Provider 错误归因 | `4d0ae0e3` | `main` |
 | 93 | 2026-08-26 | Fix resource context stream failure | `9421c196` | `main` |
 | 92 | 2026-08-26 | Conversation-scoped Skill and MCP resources | `ecc21e0f` | `main` |
 | 91 | 2026-08-25 | Unify Agent Runtime Resource Registry | `7509f5d7` | `main` |

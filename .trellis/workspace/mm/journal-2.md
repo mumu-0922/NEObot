@@ -1521,3 +1521,36 @@ Aligned Resource orchestration context events with the runtime-context contract,
 ### Next Steps
 
 - None - task complete
+
+
+## Session 94: 修复 Skill 链接安装的 Provider 错误归因
+
+**Date**: 2026-08-26
+**Task**: 修复 Skill 链接安装的 Provider 错误归因
+**Branch**: `main`
+
+### Summary
+
+保留 typed Provider failure，增加首轮有界重试，并让受支持的显式 Skill/MCP 链接在 Provider 前走确定性受审计搜索安装链；完成全量门禁、Backend 部署与线上 smoke。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4d0ae0e3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
