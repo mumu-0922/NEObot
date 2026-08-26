@@ -1554,3 +1554,36 @@ Aligned Resource orchestration context events with the runtime-context contract,
 ### Next Steps
 
 - None - task complete
+
+
+## Session 95: Direct private Skill link installation
+
+**Date**: 2026-08-26
+**Task**: Direct private Skill link installation
+**Branch**: `main`
+
+### Summary
+
+Added deterministic AIHero Skill link installation into the current user's private library, bypassing public Store review while preserving source validation, ownership isolation, exact-source pinning, auditability, migrations, tests, documentation, deployment, and live smoke verification.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `29f0f8db` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
