@@ -30,6 +30,7 @@ type SkillSource interface {
 	ListStore(context.Context, int, int) (skillsupply.StoreResult, error)
 	GetStoreItem(context.Context, string) (skillsupply.Candidate, error)
 	Install(context.Context, string, string, string) (skillsupply.Installation, error)
+	InstallDirectSkillLink(context.Context, string, string, string) (skillsupply.Installation, error)
 	Uninstall(context.Context, string, string, int64) error
 }
 
@@ -134,6 +135,14 @@ type InstallRequest struct {
 	ID             string
 	Version        string
 	ExactRevision  string
+	UserID         string
+	ConversationID string
+	EntryPoint     string
+}
+
+type DirectSkillInstallRequest struct {
+	URL            string
+	Identifier     string
 	UserID         string
 	ConversationID string
 	EntryPoint     string

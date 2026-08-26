@@ -13,13 +13,14 @@ var (
 	supportedAIHeroSkillPath    = regexp.MustCompile(`^/skills-([a-z0-9][a-z0-9-]{0,127})/?$`)
 )
 
-// SupportedResourceLink is a parsed discovery reference. URL is safe to use
-// only as a bounded Marketplace search query; callers must never fetch or
-// execute content from it.
+// SupportedResourceLink is a parsed discovery reference. DirectInstall is set
+// only for server-owned adapters that resolve immutable source without
+// executing page content; other links remain Marketplace search aliases.
 type SupportedResourceLink struct {
-	Kind       string
-	Identifier string
-	URL        string
+	Kind          string
+	Identifier    string
+	URL           string
+	DirectInstall bool
 }
 
 // SingleSupportedResourceLink extracts exactly one HTTPS URL from ordinary
@@ -40,10 +41,20 @@ func SingleSupportedResourceLink(value string) (SupportedResourceLink, bool) {
 		if ok {
 			return SupportedResourceLink{
 				Kind: kind, Identifier: identifier, URL: raw,
+				DirectInstall: kind == KindSkill && isAIHeroSkillLink(raw),
 			}, true
 		}
 	}
 	return SupportedResourceLink{}, false
+}
+
+func isAIHeroSkillLink(raw string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(strings.TrimSuffix(parsed.Hostname(), "."))
+	return host == "aihero.dev" || host == "www.aihero.dev"
 }
 
 func resourceHTTPSLinkCandidates(value string) []string {
@@ -76,11 +87,9 @@ func resourceHTTPSLinkCandidates(value string) []string {
 	return candidates
 }
 
-// supportedResourceLinkIdentifier accepts only explicitly admitted public
-// discovery surfaces backed by Neo Chat's existing authenticated Marketplace
-// adapters. It never fetches or installs from the pasted URL; the result is
-// only an identifier used by the bounded search and exact-revision install
-// flow.
+// supportedResourceLinkIdentifier accepts only explicitly configured public
+// discovery surfaces. Fetch/install authority is still decided separately by
+// the server-owned adapter encoded in SupportedResourceLink.DirectInstall.
 func supportedResourceLinkIdentifier(kind string, raw string) (string, bool) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || parsed.Scheme != "https" || parsed.User != nil ||

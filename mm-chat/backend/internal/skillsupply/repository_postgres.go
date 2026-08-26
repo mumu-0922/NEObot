@@ -45,6 +45,14 @@ func (repository *PostgresRepository) CreateCandidate(
 	if candidate.Package.RuntimeBundleFingerprint != "" {
 		runtimeFingerprint = candidate.Package.RuntimeBundleFingerprint
 	}
+	var ownerUserID any
+	if candidate.OwnerUserID != "" {
+		ownerUserID = candidate.OwnerUserID
+	}
+	status := candidate.Status
+	if status == "" {
+		status = StatusValidated
+	}
 	result, err := tx.ExecContext(ctx, `
 INSERT INTO skill_package_versions (
   package_fingerprint, runtime_bundle_fingerprint, sbom_fingerprint, name,
@@ -76,14 +84,14 @@ ON CONFLICT (package_fingerprint) DO NOTHING
 	}
 	result, err = tx.ExecContext(ctx, `
 INSERT INTO skill_package_candidates (
-  id, source_type, source_ref, source_artifact_sha256, source_object_key,
+  id, source_type, source_ref, owner_user_id, source_artifact_sha256, source_object_key,
   package_fingerprint, status, admission_eligible, validation_summary,
   revision, created_at, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, 'validated', $7, $8, 1, $9, $9)
-ON CONFLICT (source_type, source_ref) DO NOTHING
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1, $11, $11)
+ON CONFLICT DO NOTHING
 `, candidate.ID, candidate.SourceType, candidate.SourceRef,
-		candidate.SourceArtifactSHA256, candidate.SourceObjectKey,
-		candidate.Package.PackageFingerprint, candidate.AdmissionEligible,
+		ownerUserID, candidate.SourceArtifactSHA256, candidate.SourceObjectKey,
+		candidate.Package.PackageFingerprint, status, candidate.AdmissionEligible,
 		candidate.ValidationSummary, candidate.CreatedAt)
 	if err != nil {
 		return Candidate{}, fmt.Errorf("insert Skill candidate: %w", err)
@@ -96,7 +104,10 @@ ON CONFLICT (source_type, source_ref) DO NOTHING
 SELECT id, source_artifact_sha256, package_fingerprint
 FROM skill_package_candidates
 WHERE source_type = $1 AND source_ref = $2
-`, candidate.SourceType, candidate.SourceRef).Scan(&existingID, &sourceHash, &packageFingerprint)
+  AND owner_user_id IS NOT DISTINCT FROM $3::uuid
+`, candidate.SourceType, candidate.SourceRef, ownerUserID).Scan(
+			&existingID, &sourceHash, &packageFingerprint,
+		)
 		if readErr != nil {
 			return Candidate{}, fmt.Errorf("read existing Skill source: %w", readErr)
 		}
@@ -173,14 +184,15 @@ WHERE candidate.id = $1
 
 func (repository *PostgresRepository) GetCandidateBySource(
 	ctx context.Context,
-	sourceType, sourceRef string,
+	sourceType, sourceRef, ownerUserID string,
 ) (Candidate, error) {
 	if err := repository.requireDB(); err != nil {
 		return Candidate{}, err
 	}
 	candidate, err := scanCandidate(repository.db.QueryRowContext(ctx, candidateSelect+`
 WHERE candidate.source_type = $1 AND candidate.source_ref = $2
-`, sourceType, sourceRef))
+  AND candidate.owner_user_id IS NOT DISTINCT FROM NULLIF($3, '')::uuid
+`, sourceType, sourceRef, ownerUserID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Candidate{}, ErrCandidateNotFound
 	}
@@ -234,12 +246,13 @@ func (repository *PostgresRepository) ListStore(
 	}
 	var total int
 	if err := repository.db.QueryRowContext(ctx, `
-SELECT COUNT(*)::int FROM skill_package_candidates WHERE status = 'admitted'
+SELECT COUNT(*)::int FROM skill_package_candidates
+WHERE status = 'admitted' AND owner_user_id IS NULL
 `).Scan(&total); err != nil {
 		return StoreResult{}, fmt.Errorf("count Skill Store: %w", err)
 	}
 	rows, err := repository.db.QueryContext(ctx, candidateSelect+`
-WHERE candidate.status = 'admitted'
+WHERE candidate.status = 'admitted' AND candidate.owner_user_id IS NULL
 ORDER BY candidate.updated_at DESC, candidate.id DESC
 LIMIT $1 OFFSET $2
 `, pageSize, (page-1)*pageSize)
@@ -268,12 +281,35 @@ func (repository *PostgresRepository) GetStoreItem(ctx context.Context, admissio
 	}
 	candidate, err := scanCandidate(repository.db.QueryRowContext(ctx, candidateSelect+`
 WHERE candidate.id = $1 AND candidate.status = 'admitted'
+  AND candidate.owner_user_id IS NULL
 `, admissionID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Candidate{}, ErrAdmissionDenied
 	}
 	if err != nil {
 		return Candidate{}, fmt.Errorf("get Skill Store item: %w", err)
+	}
+	return candidate, nil
+}
+
+func (repository *PostgresRepository) GetInstallableCandidate(
+	ctx context.Context,
+	userID, candidateID string,
+) (Candidate, error) {
+	if err := repository.requireDB(); err != nil {
+		return Candidate{}, err
+	}
+	candidate, err := scanCandidate(repository.db.QueryRowContext(ctx, candidateSelect+`
+WHERE candidate.id = $1 AND (
+  (candidate.status = 'admitted' AND candidate.owner_user_id IS NULL)
+  OR (candidate.status = 'validated' AND candidate.owner_user_id = $2)
+)
+`, candidateID, userID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Candidate{}, ErrAdmissionDenied
+	}
+	if err != nil {
+		return Candidate{}, fmt.Errorf("get installable Skill candidate: %w", err)
 	}
 	return candidate, nil
 }
@@ -293,7 +329,10 @@ SELECT $1, $2, candidate.id, candidate.package_fingerprint, package.name
 FROM skill_package_candidates candidate
 JOIN skill_package_versions package
   ON package.package_fingerprint = candidate.package_fingerprint
-WHERE candidate.id = $3 AND candidate.status = 'admitted'
+WHERE candidate.id = $3 AND (
+    (candidate.status = 'admitted' AND candidate.owner_user_id IS NULL)
+    OR (candidate.status = 'validated' AND candidate.owner_user_id = $2)
+  )
   AND candidate.package_fingerprint = $4
 RETURNING id, user_id, admission_id, package_fingerprint, skill_name,
   revision, created_at, updated_at
@@ -563,6 +602,7 @@ func (repository *PostgresRepository) requireDB() error {
 }
 
 const candidateProjection = `candidate.id, candidate.source_type, candidate.source_ref,
+  COALESCE(candidate.owner_user_id::text, ''),
   candidate.source_artifact_sha256, candidate.source_object_key,
   candidate.package_fingerprint, candidate.status, candidate.admission_eligible,
   candidate.validation_summary, COALESCE(candidate.reviewed_by_user_id::text, ''),
@@ -598,6 +638,7 @@ func scanCandidate(row scanner) (Candidate, error) {
 	var runtimeFingerprint sql.NullString
 	var allowedTools, capabilities []byte
 	err := row.Scan(&candidate.ID, &candidate.SourceType, &candidate.SourceRef,
+		&candidate.OwnerUserID,
 		&candidate.SourceArtifactSHA256, &candidate.SourceObjectKey,
 		&candidate.Package.PackageFingerprint, &candidate.Status,
 		&candidate.AdmissionEligible, &candidate.ValidationSummary,

@@ -25,6 +25,7 @@ type Service struct {
 	official            OfficialSource
 	lobehub             LobeHubSource
 	git                 GitHubSource
+	direct              DirectSkillLinkSource
 	newID               func() string
 	now                 func() time.Time
 	runtimeMu           sync.Mutex
@@ -49,7 +50,10 @@ func WithLobeHubFetcher(fetcher LobeHubFetcher) ServiceOption {
 }
 
 func WithGitHubClient(client SourceHTTPClient) ServiceOption {
-	return func(service *Service) { service.git.Client = client }
+	return func(service *Service) {
+		service.git.Client = client
+		service.direct.Client = client
+	}
 }
 
 func NewService(options ...ServiceOption) *Service {
@@ -82,7 +86,7 @@ func (service *Service) IngestOfficial(
 	if err != nil {
 		return Candidate{}, err
 	}
-	return service.ingest(ctx, source)
+	return service.ingest(ctx, "", source)
 }
 
 func (service *Service) IngestLobeHub(
@@ -96,7 +100,7 @@ func (service *Service) IngestLobeHub(
 	if err != nil {
 		return Candidate{}, err
 	}
-	return service.ingest(ctx, source)
+	return service.ingest(ctx, "", source)
 }
 
 func (service *Service) IngestGit(
@@ -110,7 +114,7 @@ func (service *Service) IngestGit(
 	if err != nil {
 		return Candidate{}, err
 	}
-	return service.ingest(ctx, source)
+	return service.ingest(ctx, "", source)
 }
 
 func (service *Service) IngestZIP(ctx context.Context, userID string, data []byte) (Candidate, error) {
@@ -121,10 +125,65 @@ func (service *Service) IngestZIP(ctx context.Context, userID string, data []byt
 	if err != nil {
 		return Candidate{}, err
 	}
-	return service.ingest(ctx, source)
+	return service.ingest(ctx, "", source)
 }
 
-func (service *Service) ingest(ctx context.Context, source ArchiveSource) (Candidate, error) {
+// InstallDirectSkillLink resolves one allowlisted public Skill discovery page,
+// pins its GitHub source to an exact commit, validates the package without
+// executing source instructions, and installs it into only the requesting
+// owner's private library. It deliberately bypasses Store review/publication.
+func (service *Service) InstallDirectSkillLink(
+	ctx context.Context,
+	userID, rawURL, expectedName string,
+) (Installation, error) {
+	if service == nil || service.repository == nil || service.objects == nil {
+		return Installation{}, ErrUnavailable
+	}
+	userID = strings.TrimSpace(userID)
+	expectedName = strings.TrimSpace(expectedName)
+	if !validUserID(userID) || !skillNamePattern.MatchString(expectedName) {
+		return Installation{}, validationError("INVALID_DIRECT_SKILL_INSTALL", "direct Skill install is invalid")
+	}
+	source, err := service.direct.Fetch(ctx, rawURL, expectedName)
+	if err != nil {
+		return Installation{}, err
+	}
+	candidate, err := service.ingest(ctx, userID, source)
+	if err != nil {
+		return Installation{}, err
+	}
+	installed, err := service.repository.Install(
+		ctx, userID, candidate.ID, candidate.Package.PackageFingerprint,
+	)
+	if err == nil {
+		return installed, nil
+	}
+	reconcileCtx, cancelReconcile := context.WithTimeout(
+		context.WithoutCancel(ctx),
+		directInstallReconcileTimeout,
+	)
+	defer cancelReconcile()
+	library, listErr := service.repository.ListLibrary(reconcileCtx, userID)
+	if listErr != nil {
+		if errors.Is(err, ErrInstallationConflict) {
+			return Installation{}, listErr
+		}
+		return Installation{}, err
+	}
+	for _, existing := range library {
+		if existing.AdmissionID == candidate.ID &&
+			existing.PackageFingerprint == candidate.Package.PackageFingerprint {
+			return existing, nil
+		}
+	}
+	return Installation{}, err
+}
+
+func (service *Service) ingest(
+	ctx context.Context,
+	ownerUserID string,
+	source ArchiveSource,
+) (Candidate, error) {
 	if service == nil || service.repository == nil || service.objects == nil {
 		return Candidate{}, ErrUnavailable
 	}
@@ -132,7 +191,9 @@ func (service *Service) ingest(ctx context.Context, source ArchiveSource) (Candi
 	if err != nil {
 		return Candidate{}, err
 	}
-	if previous, findErr := service.repository.GetCandidateBySource(ctx, source.Type, source.Ref); findErr == nil {
+	if previous, findErr := service.repository.GetCandidateBySource(
+		ctx, source.Type, source.Ref, strings.TrimSpace(ownerUserID),
+	); findErr == nil {
 		if previous.SourceArtifactSHA256 != validated.SourceArtifactSHA256 {
 			return Candidate{}, ErrSourceDrift
 		}
@@ -162,6 +223,7 @@ func (service *Service) ingest(ctx context.Context, source ArchiveSource) (Candi
 	now := service.now().UTC()
 	candidate := Candidate{
 		ID: service.newID(), SourceType: source.Type, SourceRef: source.Ref,
+		OwnerUserID:          strings.TrimSpace(ownerUserID),
 		SourceArtifactSHA256: validated.SourceArtifactSHA256, SourceObjectKey: sourceObjectKey,
 		Package: validated.Package, Status: StatusValidated,
 		AdmissionEligible: AdmissionEligible(source, validated),
@@ -200,6 +262,9 @@ func (service *Service) ReviewCandidate(
 	current, err := service.repository.GetCandidate(ctx, candidateID)
 	if err != nil {
 		return Candidate{}, err
+	}
+	if current.OwnerUserID != "" {
+		return Candidate{}, ErrAdmissionDenied
 	}
 	if current.Revision != input.ExpectedRevision || current.Package.PackageFingerprint != input.PackageFingerprint {
 		return Candidate{}, ErrRevisionConflict
@@ -373,4 +438,10 @@ func digestObjectKey(prefix, fingerprint, suffix string) string {
 
 func validUUID(value string) bool {
 	return uuidPattern.MatchString(strings.ToLower(strings.TrimSpace(value)))
+}
+
+func validUserID(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	parsed, err := uuid.Parse(value)
+	return err == nil && parsed.String() == value
 }

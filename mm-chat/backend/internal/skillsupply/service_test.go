@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
 	"os"
 	"sort"
 	"strings"
@@ -15,8 +16,9 @@ import (
 )
 
 const (
-	testSkillAdmin = "11111111-1111-4111-8111-111111111111"
-	testSkillUser  = "22222222-2222-4222-8222-222222222222"
+	testSkillAdmin           = "11111111-1111-4111-8111-111111111111"
+	testSkillUser            = "22222222-2222-4222-8222-222222222222"
+	testSkillDevelopmentUser = "00000000-0000-0000-0000-000000000001"
 )
 
 func TestServiceNoExecuteIngestReviewInstallLifecycle(t *testing.T) {
@@ -87,6 +89,101 @@ func TestServiceNoExecuteIngestReviewInstallLifecycle(t *testing.T) {
 	}
 }
 
+func TestServiceDirectSkillLinkInstallsPrivateWithoutStoreAdmission(t *testing.T) {
+	commit := strings.Repeat("c", 40)
+	archive := mustTestArchive(t, []packageFile{{
+		path: "skills-" + commit + "/skills/productivity/grill-me/SKILL.md",
+		data: []byte(validSkillMarkdown("grill-me")),
+	}}, 0, time.Time{})
+	client := sourceRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Host {
+		case "www.aihero.dev":
+			return sourceResponse(request, "text/html",
+				`<code>npx skills@latest add mattpocock/skills --skill=grill-me</code>`), nil
+		case "api.github.com":
+			return sourceResponse(request, "application/json", `{"sha":"`+commit+`"}`), nil
+		case "codeload.github.com":
+			return &http.Response{StatusCode: http.StatusOK,
+				Body: io.NopCloser(bytes.NewReader(archive)), Request: request}, nil
+		default:
+			return nil, errors.New("unexpected host")
+		}
+	})
+	repository := newMemoryRepository()
+	objects := newMemoryObjectStore()
+	service := NewService(
+		WithRepository(postCommitErrorRepository{Repository: repository}),
+		WithObjectStore(objects), WithGitHubClient(client),
+		WithAdministratorUserID(testSkillAdmin),
+	)
+	service.newID = sequenceIDs("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+
+	installed, err := service.InstallDirectSkillLink(
+		context.Background(), testSkillDevelopmentUser,
+		"https://www.aihero.dev/skills-grill-me", "grill-me",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repeated, err := service.InstallDirectSkillLink(
+		context.Background(), testSkillDevelopmentUser,
+		"https://www.aihero.dev/skills-grill-me", "grill-me",
+	)
+	if err != nil || repeated.ID != installed.ID {
+		t.Fatalf("repeated=%#v error=%v", repeated, err)
+	}
+	candidate, err := repository.GetCandidate(context.Background(), installed.AdmissionID)
+	if err != nil || candidate.OwnerUserID != testSkillDevelopmentUser ||
+		candidate.Status != StatusValidated || candidate.ReviewedByUserID != "" {
+		t.Fatalf("candidate=%#v error=%v", candidate, err)
+	}
+	if _, err := service.ReviewCandidate(context.Background(), testSkillAdmin, candidate.ID, ReviewInput{
+		Status: StatusAdmitted, ExpectedRevision: candidate.Revision,
+		PackageFingerprint: candidate.Package.PackageFingerprint,
+		Reason:             "must remain private",
+	}); !errors.Is(err, ErrAdmissionDenied) {
+		t.Fatalf("private review error=%v", err)
+	}
+	store, err := service.ListStore(context.Background(), 1, 20)
+	if err != nil || len(store.Items) != 0 {
+		t.Fatalf("store=%#v error=%v", store, err)
+	}
+	if _, err := service.Install(context.Background(), testSkillDevelopmentUser,
+		candidate.ID, candidate.Package.PackageFingerprint); !errors.Is(err, ErrAdmissionDenied) {
+		t.Fatalf("private candidate entered Store path: %v", err)
+	}
+	if _, err := repository.Install(context.Background(), testSkillAdmin,
+		candidate.ID, candidate.Package.PackageFingerprint); !errors.Is(err, ErrAdmissionDenied) {
+		t.Fatalf("cross-owner install error=%v", err)
+	}
+	runtime, err := service.PrepareRuntimeSkills(
+		context.Background(), testSkillDevelopmentUser, t.TempDir(),
+	)
+	if err != nil || len(runtime) != 1 || runtime[0].Name != "grill-me" {
+		t.Fatalf("runtime=%#v error=%v", runtime, err)
+	}
+}
+
+type postCommitErrorRepository struct{ Repository }
+
+func (repository postCommitErrorRepository) Install(
+	ctx context.Context,
+	userID string,
+	admissionID string,
+	packageFingerprint string,
+) (Installation, error) {
+	installed, err := repository.Repository.Install(
+		ctx,
+		userID,
+		admissionID,
+		packageFingerprint,
+	)
+	if err != nil {
+		return Installation{}, err
+	}
+	return installed, errors.New("installation acknowledgement lost after commit")
+}
+
 func TestServiceRejectsSourceDriftAndIneligibleAdmission(t *testing.T) {
 	repository := newMemoryRepository()
 	objects := newMemoryObjectStore()
@@ -111,7 +208,7 @@ func TestServiceRejectsSourceDriftAndIneligibleAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ingest(context.Background(), ArchiveSource{Type: SourceLobeHub,
+	if _, err := service.ingest(context.Background(), "", ArchiveSource{Type: SourceLobeHub,
 		Ref: "lobehub:demo-skill@1.2.3", Identifier: "demo-skill", ExpectedName: "demo-skill",
 		Version: "1.2.3", Data: archiveTwo}); !errors.Is(err, ErrSourceDrift) {
 		t.Fatalf("source drift error = %v", err)
@@ -194,7 +291,7 @@ func newMemoryRepository() *memoryRepository {
 }
 
 func (repository *memoryRepository) CreateCandidate(_ context.Context, candidate Candidate) (Candidate, error) {
-	key := candidate.SourceType + ":" + candidate.SourceRef
+	key := candidate.OwnerUserID + ":" + candidate.SourceType + ":" + candidate.SourceRef
 	if existingID := repository.bySource[key]; existingID != "" {
 		existing := repository.candidates[existingID]
 		if existing.SourceArtifactSHA256 != candidate.SourceArtifactSHA256 {
@@ -215,8 +312,11 @@ func (repository *memoryRepository) GetCandidate(_ context.Context, id string) (
 	return item, nil
 }
 
-func (repository *memoryRepository) GetCandidateBySource(_ context.Context, sourceType, sourceRef string) (Candidate, error) {
-	id := repository.bySource[sourceType+":"+sourceRef]
+func (repository *memoryRepository) GetCandidateBySource(
+	_ context.Context,
+	sourceType, sourceRef, ownerUserID string,
+) (Candidate, error) {
+	id := repository.bySource[ownerUserID+":"+sourceType+":"+sourceRef]
 	if id == "" {
 		return Candidate{}, ErrCandidateNotFound
 	}
@@ -240,7 +340,7 @@ func (repository *memoryRepository) ReviewCandidate(_ context.Context, id, revie
 func (repository *memoryRepository) ListStore(_ context.Context, page, pageSize int) (StoreResult, error) {
 	items := []Candidate{}
 	for _, item := range repository.candidates {
-		if item.Status == StatusAdmitted {
+		if item.Status == StatusAdmitted && item.OwnerUserID == "" {
 			items = append(items, item)
 		}
 	}
@@ -251,7 +351,19 @@ func (repository *memoryRepository) ListStore(_ context.Context, page, pageSize 
 
 func (repository *memoryRepository) GetStoreItem(_ context.Context, id string) (Candidate, error) {
 	item, ok := repository.candidates[id]
-	if !ok || item.Status != StatusAdmitted {
+	if !ok || item.Status != StatusAdmitted || item.OwnerUserID != "" {
+		return Candidate{}, ErrAdmissionDenied
+	}
+	return item, nil
+}
+
+func (repository *memoryRepository) GetInstallableCandidate(
+	_ context.Context,
+	userID, id string,
+) (Candidate, error) {
+	item, ok := repository.candidates[id]
+	if !ok || !((item.Status == StatusAdmitted && item.OwnerUserID == "") ||
+		(item.Status == StatusValidated && item.OwnerUserID == userID)) {
 		return Candidate{}, ErrAdmissionDenied
 	}
 	return item, nil
@@ -259,7 +371,9 @@ func (repository *memoryRepository) GetStoreItem(_ context.Context, id string) (
 
 func (repository *memoryRepository) Install(_ context.Context, userID, admissionID, fingerprint string) (Installation, error) {
 	candidate, ok := repository.candidates[admissionID]
-	if !ok || candidate.Status != StatusAdmitted || candidate.Package.PackageFingerprint != fingerprint {
+	if !ok || candidate.Package.PackageFingerprint != fingerprint ||
+		!((candidate.Status == StatusAdmitted && candidate.OwnerUserID == "") ||
+			(candidate.Status == StatusValidated && candidate.OwnerUserID == userID)) {
 		return Installation{}, ErrAdmissionDenied
 	}
 	for _, item := range repository.installations {

@@ -140,13 +140,6 @@ func readArchiveFiles(source ArchiveSource) ([]packageFile, int64, error) {
 		if !validArchivePath(entry.Name) {
 			return nil, 0, ErrArchiveInvalid
 		}
-		if !entry.Mode().IsRegular() || entry.UncompressedSize64 > uint64(maxFileBytes) ||
-			entry.CompressedSize64 == 0 && entry.UncompressedSize64 > 0 {
-			return nil, 0, ErrArchiveInvalid
-		}
-		if entry.CompressedSize64 > 0 && entry.UncompressedSize64 > uint64(maxExpansionRatio)*entry.CompressedSize64 {
-			return nil, 0, ErrArchiveInvalid
-		}
 		name := entry.Name
 		if prefix != "" {
 			if !strings.HasPrefix(name, prefix) {
@@ -156,6 +149,13 @@ func readArchiveFiles(source ArchiveSource) ([]packageFile, int64, error) {
 				return nil, 0, ErrArchiveInvalid
 			}
 			name = strings.TrimPrefix(name, prefix)
+		}
+		if !entry.Mode().IsRegular() || entry.UncompressedSize64 > uint64(maxFileBytes) ||
+			entry.CompressedSize64 == 0 && entry.UncompressedSize64 > 0 {
+			return nil, 0, ErrArchiveInvalid
+		}
+		if entry.CompressedSize64 > 0 && entry.UncompressedSize64 > uint64(maxExpansionRatio)*entry.CompressedSize64 {
+			return nil, 0, ErrArchiveInvalid
 		}
 		expanded += int64(entry.UncompressedSize64)
 		if expanded > maxExpandedBytes || len(rawFiles) >= maxPackageFiles {

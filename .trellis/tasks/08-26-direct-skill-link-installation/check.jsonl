@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/resource-orchestration.md","reason":"Verify direct-source constraints, cross-owner denial, Store exclusion, and audit behavior."}
+{"file":".trellis/spec/backend/chat-tool-loop.md","reason":"Verify zero Provider/Store calls for explicit AIHero direct install."}
+{"file":".trellis/spec/backend/agent-runtime.md","reason":"Verify private installations materialize only through the authorized owner Library."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Verify existing validation, object storage, Library, and runtime seams were reused."}

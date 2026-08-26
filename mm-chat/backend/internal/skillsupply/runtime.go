@@ -137,12 +137,13 @@ func (service *Service) prepareRuntimeInstallations(
 	}
 	result := make([]RuntimeSkill, 0, len(installations))
 	for _, installation := range installations {
-		candidate, err := service.repository.GetStoreItem(ctx, installation.AdmissionID)
+		candidate, err := service.repository.GetInstallableCandidate(
+			ctx, installation.UserID, installation.AdmissionID,
+		)
 		if err != nil {
 			return nil, err
 		}
-		if candidate.Status != StatusAdmitted ||
-			candidate.Package.PackageFingerprint != installation.PackageFingerprint ||
+		if candidate.Package.PackageFingerprint != installation.PackageFingerprint ||
 			candidate.Package.Name != installation.Name {
 			return nil, ErrPackageChanged
 		}

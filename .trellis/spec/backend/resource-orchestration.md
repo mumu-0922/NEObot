@@ -42,11 +42,20 @@ type MutationRequest struct {
     UserID, ConversationID, EntryPoint string
 }
 
+type DirectSkillInstallRequest struct {
+    URL, Identifier, UserID, ConversationID, EntryPoint string
+}
+
 type SupportedResourceLink struct {
     Kind, Identifier, URL string
+    DirectInstall bool
 }
 
 func SingleSupportedResourceLink(text string) (SupportedResourceLink, bool)
+
+skillsupply.Service.InstallDirectSkillLink(
+    context.Context, userID, url, expectedName string,
+) (skillsupply.Installation, error)
 ```
 
 ## 3. Contracts
@@ -57,16 +66,36 @@ func SingleSupportedResourceLink(text string) (SupportedResourceLink, bool)
 - An explicitly supported discovery HTTPS link may be reduced to one bounded
   identifier only when host, path shape, kind, port, query, fragment, and
   identifier validation pass. LobeHub Skill/MCP links and AIHero
-  `/skills-<slug>` Skill links are admitted shapes. AIHero is a discovery alias
-  only: the pasted page is never fetched or executed, and installation still
-  requires an existing admitted package fingerprint from `skillsupply.Service`.
+  `/skills-<slug>` Skill links are admitted shapes. LobeHub remains a bounded
+  Store/Marketplace alias. Explicit AIHero Skill links enter only the fixed
+  owner-private direct adapter.
+- The direct adapter may fetch only the canonical AIHero page, parse one unique
+  restricted `npx skills@latest add owner/repository --skill=<slug>` coordinate
+  as data, resolve GitHub `HEAD` to one 40-character commit, and download the
+  fixed `codeload.github.com` ZIP. It never executes npm, Git, Shell, page code,
+  hooks, tests, scripts, or package entrypoints.
+- Direct packages reuse `ValidateArchive`, canonical ZIP, SBOM,
+  content-addressed objects, and runtime revalidation. Their candidate remains
+  `validated`, has no reviewer, is scoped by `owner_user_id`, is excluded from
+  Store, and is installable only by that owner. This is structural validation,
+  not content review.
+- A selected GitHub Skill subdirectory is the extraction authority. ZIP entry
+  paths are still validated across the archive, but file type/content checks
+  apply only inside the selected prefix; an unrelated repository-root symlink
+  must not invalidate a safe Skill, while any symlink inside the selected Skill
+  remains forbidden.
+- Authenticated owner IDs use canonical UUID syntax and may include the fixed
+  development/bootstrap UUID. Do not apply versioned resource-object UUID
+  validation to an authenticated principal ID.
 - When the current human text has explicit install intent and contains exactly
-  one supported discovery link, Chat executes the ordinary server-owned
-  `resource_search` before any Provider request. The scanner is bounded to
+  one supported discovery link, Chat enters the server-owned deterministic
+  route before any Provider request. An AIHero Skill goes straight to the
+  direct adapter with zero Store searches; other supported links use bounded
+  `resource_search`. The scanner is bounded to
   16 KiB, stops a URL at non-ASCII/user-text boundaries, and rejects multiple
   URLs, query, fragment, userinfo, non-443 port, wrong host/path/kind, traversal,
   or an unsupported scheme. It does not create a second search authority.
-- The deterministic path may install only one candidate whose ID or package
+- The non-direct deterministic path may install only one candidate whose ID or package
   name exactly matches the parsed identifier. Zero or ambiguous exact matches
   finish the Assistant normally with a truthful no-install answer and the
   durable Resource search trace. Search/install failure stays fail-closed and
@@ -90,10 +119,15 @@ func SingleSupportedResourceLink(text string) (SupportedResourceLink, bool)
   drift. Skill retries return an already installed exact admission/fingerprint;
   MCP keeps its existing deployment uniqueness. Installation changes inventory
   only and must not persist a conversation selection.
+- If an install write returns an error after commit, perform one bounded
+  authoritative Library read-back. Report success only when the exact
+  candidate/fingerprint is present; otherwise preserve the original error.
 - Every normal PostgreSQL mutation attempt writes `audit_logs` with action
   `resource.install|enable|disable|remove`. Safe metadata contains entry point, candidate ID,
   version, exact revision, result ID, and fixed error code only. A successful
-  response includes the audit UUID.
+  response includes the audit UUID. Encode audit metadata as text with an
+  explicit `::jsonb` cast; passing raw `[]byte` through pgx is not a valid JSONB
+  contract. Audit failures log only a bounded class/SQLSTATE, never metadata.
 - Installation never mutates the active Run snapshot. Before the next Provider
   round, prepare fresh MCP and Skill projections, bind a new Runtime Resource
   Snapshot, emit old/new revisions plus audit ID, then continue the original
@@ -117,7 +151,10 @@ func SingleSupportedResourceLink(text string) (SupportedResourceLink, bool)
 | unsupported kind or query over 200 bytes | `INVALID_RESOURCE_QUERY` |
 | pasted URL host/path/query/fragment/kind is not allowlisted | no URL fetch/install; bounded search or normal chat only |
 | explicit install text contains zero, multiple, oversized, or unsupported URLs | do not enter deterministic installation; ordinary Agent behavior |
-| supported AIHero Skill slug has no admitted Store candidate | return zero bounded candidates; do not run the page's npm/Git command |
+| supported explicit AIHero Skill link | bypass Store; owner-private pinned-source install before Provider |
+| AIHero page command is absent, ambiguous, or names another Skill | direct install fails; zero package mutation/Provider calls |
+| GitHub commit cannot be pinned, ZIP exceeds bounds, or zero/multiple matching Skills validate | direct install fails closed |
+| another owner addresses a private candidate | installation denied even with exact candidate UUID/fingerprint |
 | deterministic search returns zero or no unique exact identifier match | completed no-install answer; zero Provider/install calls |
 | deterministic search returns one exact admitted credential-free candidate | install once through existing domain authority; next Agent task sees inventory |
 | unknown JSON/Tool field, including Secret | reject; never echo the value |
@@ -149,13 +186,18 @@ func SingleSupportedResourceLink(text string) (SupportedResourceLink, bool)
 - Catalog determinism, selection awareness, bounded/paged search, missing
   sources, feature kill switch, exact revision, and idempotent exact Skill
   install.
-- Supported-link allowlist/mismatch/traversal tests for LobeHub and AIHero;
-  assert no pasted URL is a package-fetch authority and AIHero never bypasses
-  admitted Store search.
+- Supported-link allowlist/mismatch/traversal tests for LobeHub and AIHero.
+  AIHero fixtures must prove bounded page parsing, unique restricted command,
+  exact GitHub commit, one matching package, no command execution, and no Store
+  publication.
 - Embedded-CJK/trailing-punctuation parsing, multiple-link denial, and
-  Provider-zero-call tests for deterministic explicit search. Cover zero,
-  unique exact, and ambiguous exact candidates; only the unique exact fixture
-  may produce one mutation.
+  Provider-zero-call tests for deterministic explicit handling. Cover zero,
+  unique exact, and ambiguous exact Store candidates. Separately prove an
+  explicit AIHero link performs one direct mutation with zero Store searches.
+- PostgreSQL migration/runtime tests must prove same-owner private installation,
+  cross-owner denial, Store exclusion, idempotent retry, Library listing,
+  conversation selection, runtime materialization, uninstall, guarded down,
+  and clean re-up.
 - HTTP strict JSON, stale conflict, configuration handoff, audit-unavailable,
   and sanitized search response tests.
 - Lifecycle owner/CAS checks, action-specific mutation audit, draft provenance,
@@ -177,8 +219,8 @@ Correct: search -> exact server candidate -> approval/policy -> existing domain
          service -> audit -> fresh snapshot -> same-model continuation
 
 Wrong: AIHero page -> execute displayed npx command -> trust mutable upstream
-Correct: AIHero /skills-<slug> -> sanitized slug -> admitted Store search ->
-         exact package fingerprint or a bounded no-candidate result
+Correct: AIHero /skills-<slug> -> parse one restricted coordinate as data ->
+         exact GitHub commit -> existing validation/SBOM -> owner-private library
 
 Wrong: explicit supported link -> Provider must call resource_search -> 502 blocks discovery
 Correct: explicit intent + one supported link -> Backend resource_search ->

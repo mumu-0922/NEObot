@@ -25,19 +25,20 @@ The catalog contains a deterministic `sha256:` revision, installed Skills, and
 sanitized MCP readiness/selection state. Search returns at most five entries.
 Each entry binds `id`, `version`, and `exactRevision`; descriptions,
 permissions, and Marketplace metadata are untrusted routing data. An allowlisted
-LobeHub Skill/MCP link or AIHero `/skills-<slug>` link may be resolved to its
-identifier, but the URL is never fetched or executed; unknown hosts, query
-strings, fragments, traversal and kind mismatches stay untrusted chat/search
-text.
+LobeHub Skill/MCP link is a search alias. An explicit AIHero
+`/skills-<slug>` link enters the server-owned direct Skill adapter: the page is
+bounded and parsed as data, its command is never executed, GitHub `HEAD` is
+pinned to a 40-character commit, and exactly one matching `SKILL.md` is passed
+through the existing canonical ZIP/SBOM validator. Unknown hosts, query strings,
+fragments, traversal and kind mismatches stay untrusted chat/search text.
 
 When one human message has explicit install intent and exactly one supported
-link, the Backend performs the same bounded `resource_search` before any model
-request. The scanner accepts at most 16 KiB of text and rejects multiple URLs.
-Zero or ambiguous exact admitted candidates complete with a truthful
-no-install answer and Resource trace. Only one candidate whose ID or package
-name exactly matches the parsed identifier may reach the existing exact-
-revision install authority. This path never calls the pasted URL, Shell, npm,
-Git, Docker, or a fallback Provider-generated installer.
+link, the Backend acts before any model request. The scanner accepts at most
+16 KiB of text and rejects multiple URLs. AIHero Skill links install directly
+into the current owner's private library without Store search, review, or
+publication. Other supported links retain bounded `resource_search` and exact
+admitted-candidate installation. Neither path invokes Shell, npm, Git, Docker,
+or a fallback Provider-generated installer.
 
 ```json
 {
@@ -87,9 +88,8 @@ resource_search (max 2 unique queries, max 5 entries each)
   -> same Provider/model continues the original task
 
 explicit human install + exactly one supported link
-  -> Backend resource_search before Provider
-  -> zero/ambiguous exact candidates: completed no-install answer
-  -> one exact admitted candidate: existing install/audit authority once
+  -> AIHero Skill: bounded page parse -> exact GitHub commit -> private validate/install
+  -> other link: Backend resource_search -> one exact admitted candidate
   -> next Agent task receives the changed inventory
 ```
 
@@ -147,6 +147,7 @@ context.
 | source or delegated write unavailable | `503 RESOURCE_*_UNAVAILABLE` / `RESOURCE_INSTALL_FAILED` |
 | snapshot refresh fails | Agent Run stops with `RESOURCE_REFRESH_FAILED`; no false continuation |
 | supported explicit link has no exact admitted candidate | completed no-install answer; zero Provider/install calls |
+| AIHero command/source/name is absent, ambiguous, mutable, or invalid | completed direct-install failure; zero Provider/package execution |
 | explicit text has multiple/unsafe/unsupported links | no deterministic mutation; ordinary Agent handling |
 
 ## Security and rollout
@@ -154,7 +155,8 @@ context.
 - `RESOURCE_ORCHESTRATION_ENABLED=true` enables Agent discovery/install and
   the unified install route. Set it to `false` to remove Agent resource Tools
   and reject unified writes while keeping existing Skill/MCP management pages.
-- Skill Store admission/fingerprint and MCP administrator, endpoint,
+- Skill Store admission/fingerprint, owner-private direct-source fingerprint,
+  and MCP administrator, endpoint,
   credential, deployment-hash, validation, selection-revision, and ownership
   checks remain authoritative.
 - Agent discovery is bounded and deduplicated; a candidate not returned by the
@@ -163,8 +165,9 @@ context.
 - Agent-initiated installation needs the durable approval runtime. When the
   timeline canary is not eligible, the request fails immediately rather than
   creating an invisible wait.
-- Provider availability is not part of deterministic explicit-link search
-  authority. Provider failure cannot broaden Store admission or URL authority.
+- Provider availability is not part of deterministic explicit-link authority.
+  Provider failure cannot broaden Store admission, private ownership, or URL
+  authority.
 
 ## Operator diagnostics
 

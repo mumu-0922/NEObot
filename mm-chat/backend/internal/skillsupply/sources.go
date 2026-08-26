@@ -1,9 +1,13 @@
 package skillsupply
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"path"
@@ -13,14 +17,21 @@ import (
 )
 
 const (
-	officialSyntheticIdentifier = "neo-readonly-inspector"
-	officialSyntheticVersion    = "1.0.0"
+	officialSyntheticIdentifier   = "neo-readonly-inspector"
+	officialSyntheticVersion      = "1.0.0"
+	maxDirectSkillPageBytes       = int64(1 << 20)
+	maxGitHubCommitBytes          = int64(128 << 10)
+	maxDirectSkillMatches         = 16
+	directSkillTotalTimeout       = 45 * time.Second
+	directInstallReconcileTimeout = 5 * time.Second
 )
 
 var (
 	lobeIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$`)
 	gitCommitPattern      = regexp.MustCompile(`^[a-f0-9]{40}$`)
 	githubRepositoryPath  = regexp.MustCompile(`^/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\.git)?$`)
+	aiHeroSkillPath       = regexp.MustCompile(`^/skills-([a-z0-9][a-z0-9-]{0,63})/?$`)
+	aiHeroInstallCommand  = regexp.MustCompile(`\bnpx\s+skills@latest\s+add\s+([A-Za-z0-9_.-]{1,100})/([A-Za-z0-9_.-]{1,100})\s+--skill(?:=|\s+)([a-z0-9][a-z0-9-]{0,63})\b`)
 )
 
 type OfficialSource struct{}
@@ -62,6 +73,198 @@ func (source LobeHubSource) Fetch(
 type GitHubSource struct {
 	Client  SourceHTTPClient
 	Timeout time.Duration
+}
+
+// DirectSkillLinkSource understands a deliberately small discovery surface.
+// It parses install coordinates as data, pins GitHub HEAD to a full commit,
+// and delegates package validation to the ordinary immutable ZIP pipeline.
+// It never executes commands found in the page or repository.
+type DirectSkillLinkSource struct {
+	Client  SourceHTTPClient
+	Timeout time.Duration
+}
+
+func (source DirectSkillLinkSource) Fetch(
+	ctx context.Context,
+	rawURL, expectedName string,
+) (ArchiveSource, error) {
+	ctx, cancel := context.WithTimeout(ctx, directSkillTotalTimeout)
+	defer cancel()
+	pageURL, linkName, err := parseAIHeroSkillURL(rawURL)
+	expectedName = strings.TrimSpace(expectedName)
+	if err != nil || expectedName == "" || expectedName != linkName {
+		return ArchiveSource{}, ErrInvalidSource
+	}
+	client := source.Client
+	if client == nil {
+		client = directSkillHTTPClient(source.Timeout)
+	}
+	page, err := fetchDirectSourceBody(
+		ctx, client, pageURL, "www.aihero.dev", "text/html", maxDirectSkillPageBytes,
+	)
+	if err != nil {
+		return ArchiveSource{}, err
+	}
+	owner, repository, ok := parseUniqueAIHeroInstallCommand(page, expectedName)
+	if !ok {
+		return ArchiveSource{}, ErrInvalidSource
+	}
+	commit, err := resolveGitHubHEAD(ctx, client, owner, repository)
+	if err != nil {
+		return ArchiveSource{}, err
+	}
+	root, err := (GitHubSource{Client: client, Timeout: source.Timeout}).Fetch(
+		ctx, "https://github.com/"+owner+"/"+repository, commit, "",
+	)
+	if err != nil {
+		return ArchiveSource{}, err
+	}
+	return selectGitHubSkill(root, expectedName)
+}
+
+func parseAIHeroSkillURL(raw string) (string, string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme != "https" || parsed.User != nil ||
+		parsed.RawQuery != "" || parsed.Fragment != "" ||
+		(parsed.Port() != "" && parsed.Port() != "443") {
+		return "", "", ErrInvalidSource
+	}
+	host := strings.ToLower(strings.TrimSuffix(parsed.Hostname(), "."))
+	if host != "aihero.dev" && host != "www.aihero.dev" {
+		return "", "", ErrInvalidSource
+	}
+	matches := aiHeroSkillPath.FindStringSubmatch(parsed.EscapedPath())
+	if len(matches) != 2 || !skillNamePattern.MatchString(matches[1]) {
+		return "", "", ErrInvalidSource
+	}
+	return "https://www.aihero.dev" + parsed.EscapedPath(), matches[1], nil
+}
+
+func parseUniqueAIHeroInstallCommand(page []byte, expectedName string) (string, string, bool) {
+	matches := aiHeroInstallCommand.FindAllSubmatch(page, -1)
+	coordinates := map[string][2]string{}
+	for _, match := range matches {
+		if len(match) != 4 || string(match[3]) != expectedName {
+			continue
+		}
+		owner, repository := string(match[1]), strings.TrimSuffix(string(match[2]), ".git")
+		if owner == "" || repository == "" {
+			continue
+		}
+		coordinates[strings.ToLower(owner+"/"+repository)] = [2]string{owner, repository}
+	}
+	if len(coordinates) != 1 {
+		return "", "", false
+	}
+	for _, coordinate := range coordinates {
+		return coordinate[0], coordinate[1], true
+	}
+	return "", "", false
+}
+
+func resolveGitHubHEAD(
+	ctx context.Context,
+	client SourceHTTPClient,
+	owner, repository string,
+) (string, error) {
+	endpoint := "https://api.github.com/repos/" + url.PathEscape(owner) + "/" +
+		url.PathEscape(repository) + "/commits/HEAD"
+	body, err := fetchDirectSourceBody(
+		ctx, client, endpoint, "api.github.com", "application/json", maxGitHubCommitBytes,
+	)
+	if err != nil {
+		return "", err
+	}
+	var response struct {
+		SHA string `json:"sha"`
+	}
+	if json.Unmarshal(body, &response) != nil || !gitCommitPattern.MatchString(response.SHA) {
+		return "", ErrSourceUnavailable
+	}
+	return response.SHA, nil
+}
+
+func selectGitHubSkill(root ArchiveSource, expectedName string) (ArchiveSource, error) {
+	reader, err := zip.NewReader(bytes.NewReader(root.Data), int64(len(root.Data)))
+	if err != nil {
+		return ArchiveSource{}, ErrArchiveInvalid
+	}
+	prefix := cleanPrefix(root.StripPrefix)
+	if prefix == "" {
+		return ArchiveSource{}, ErrArchiveInvalid
+	}
+	directories := map[string]struct{}{}
+	for _, entry := range reader.File {
+		if entry == nil || entry.FileInfo().IsDir() || !strings.HasPrefix(entry.Name, prefix) ||
+			!strings.HasSuffix(entry.Name, "/SKILL.md") {
+			continue
+		}
+		relative := strings.TrimSuffix(strings.TrimPrefix(entry.Name, prefix), "/SKILL.md")
+		if relative == "" || path.Base(relative) != expectedName || !validArchivePath(relative) {
+			continue
+		}
+		directories[relative] = struct{}{}
+		if len(directories) > maxDirectSkillMatches {
+			return ArchiveSource{}, ErrInvalidSource
+		}
+	}
+	valid := make([]ArchiveSource, 0, 1)
+	for directory := range directories {
+		candidate := root
+		candidate.Identifier = expectedName
+		candidate.ExpectedName = expectedName
+		candidate.StripPrefix = prefix + directory + "/"
+		candidate.Ref = root.Ref + ":" + directory
+		if _, validateErr := ValidateArchive(candidate); validateErr == nil {
+			valid = append(valid, candidate)
+		}
+	}
+	if len(valid) != 1 {
+		return ArchiveSource{}, ErrInvalidSource
+	}
+	return valid[0], nil
+}
+
+func fetchDirectSourceBody(
+	ctx context.Context,
+	client SourceHTTPClient,
+	requestURL, expectedHost, expectedMediaType string,
+	maximum int64,
+) ([]byte, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	if err != nil {
+		return nil, ErrInvalidSource
+	}
+	request.Header.Set("Accept", expectedMediaType)
+	request.Header.Set("User-Agent", "Neo-Chat-Direct-Skill/1")
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, ErrSourceUnavailable
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1024))
+		return nil, ErrSourceUnavailable
+	}
+	if response.Request != nil && response.Request.URL != nil &&
+		(response.Request.URL.Scheme != "https" ||
+			!strings.EqualFold(response.Request.URL.Hostname(), expectedHost)) {
+		return nil, ErrSourceUnavailable
+	}
+	mediaType, _, parseErr := mime.ParseMediaType(response.Header.Get("Content-Type"))
+	if parseErr != nil || !strings.EqualFold(mediaType, expectedMediaType) {
+		return nil, ErrSourceUnavailable
+	}
+	return readBounded(response.Body, maximum)
+}
+
+func directSkillHTTPClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: sourceTimeout(timeout),
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 }
 
 func (source GitHubSource) Fetch(

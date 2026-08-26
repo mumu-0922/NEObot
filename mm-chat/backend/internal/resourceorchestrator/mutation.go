@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"neo-chat/mm-chat/backend/internal/mcpclient"
 	"neo-chat/mm-chat/backend/internal/skillsupply"
@@ -190,12 +193,30 @@ func (service *Service) recordMutation(
 	auditCtx, cancelAudit := context.WithTimeout(context.WithoutCancel(ctx), mutationAuditTimeout)
 	defer cancelAudit()
 	if err := service.auditor.RecordMutation(auditCtx, audit); err != nil {
+		slog.WarnContext(auditCtx, "resource_mutation_audit_failed",
+			slog.String("failure_code", mutationAuditFailureCode(err)),
+			slog.String("error_type", fmt.Sprintf("%T", err)),
+		)
 		if mutationErr != nil {
 			return "", mutationErr
 		}
 		return "", ErrAuditUnavailable
 	}
 	return audit.ID, mutationErr
+}
+
+func mutationAuditFailureCode(err error) string {
+	var pgError *pgconn.PgError
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "deadline_exceeded"
+	case errors.Is(err, context.Canceled):
+		return "cancelled"
+	case errors.As(err, &pgError):
+		return "postgres_" + pgError.Code
+	default:
+		return "internal"
+	}
 }
 
 func (service *Service) installedSkillByID(

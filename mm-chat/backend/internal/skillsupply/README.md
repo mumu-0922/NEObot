@@ -2,9 +2,11 @@
 
 `skillsupply` owns the server-authoritative Skill package supply chain.
 It accepts only server-derived official, exact LobeHub version, exact GitHub
-commit, or authenticated ZIP candidates; validates them in memory without
+commit, authenticated ZIP candidates, or an allowlisted AIHero link resolved
+to an exact GitHub commit; validates them in memory without
 execution; writes immutable quarantine/package/SBOM objects; and persists
-administrator admissions plus owner-bound install references.
+administrator admissions plus owner-private direct candidates and owner-bound
+install references.
 
 ## Boundaries
 
@@ -28,6 +30,13 @@ The handler serves authenticated routes below `/v1/skills`:
 All JSON bodies are bounded and strict, responses are `no-store`, admission is
 fingerprint/revision fenced, and raw instructions, object keys, credentials,
 host paths, package bytes, and SBOM bytes are never projected.
+
+An explicit AIHero install request uses the internal
+`InstallDirectSkillLink` boundary. It parses one restricted install coordinate,
+pins GitHub `HEAD` to a 40-character commit, selects one matching `SKILL.md`,
+and installs a `validated` candidate scoped to the current owner. It does not
+execute the page's npm/Git command, require administrator review, or publish
+the candidate in Store.
 
 Installed inventory and conversation selection are separate. Agent Runs
 materialize the conversation's selected Skills plus at most two relevant,

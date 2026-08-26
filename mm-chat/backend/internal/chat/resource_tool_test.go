@@ -27,6 +27,26 @@ type resourceToolServiceProbe struct {
 	searchCalls    int
 	searchKinds    []string
 	searchQueries  []string
+	directResult   resourceorchestrator.InstallResult
+	directErr      error
+	directInput    resourceorchestrator.DirectSkillInstallRequest
+	directCalls    int
+}
+
+func (probe *resourceToolServiceProbe) InstallDirectSkillLink(
+	_ context.Context,
+	input resourceorchestrator.DirectSkillInstallRequest,
+) (resourceorchestrator.InstallResult, error) {
+	probe.directCalls++
+	probe.directInput = input
+	if probe.directErr != nil || probe.directResult.ID != "" {
+		return probe.directResult, probe.directErr
+	}
+	return resourceorchestrator.InstallResult{
+		Kind: resourceorchestrator.KindSkill, ID: "direct-installation-id",
+		Name: input.Identifier, Revision: "sha256:direct", Status: "installed",
+		RefreshRequired: true,
+	}, nil
 }
 
 func (probe *resourceToolServiceProbe) Search(
@@ -554,11 +574,8 @@ func TestResourceInstallIntentIsDirectHumanOnly(t *testing.T) {
 	}
 }
 
-func TestExplicitSupportedSkillLinkSearchesWithoutCallingProvider(t *testing.T) {
-	probe := &resourceToolServiceProbe{searchResult: resourceorchestrator.SearchResult{
-		Kind: resourceorchestrator.KindSkill, Query: "grill-me",
-		Items: []resourceorchestrator.SearchItem{},
-	}}
+func TestExplicitSupportedSkillLinkDirectFailureDoesNotCallProviderOrStore(t *testing.T) {
+	probe := &resourceToolServiceProbe{directErr: errors.New("source invalid")}
 	runtime := newResourceToolRuntime(
 		probe, "user-id", "conversation-id",
 		"https://www.aihero.dev/skills-grill-me帮我安装这个skill",
@@ -573,7 +590,7 @@ func TestExplicitSupportedSkillLinkSearchesWithoutCallingProvider(t *testing.T) 
 		Resource: runtime,
 	})
 	var content strings.Builder
-	var completedSearch bool
+	var failedInstall bool
 	for event := range events {
 		if event.Error != nil {
 			t.Fatal(event.Error)
@@ -581,29 +598,40 @@ func TestExplicitSupportedSkillLinkSearchesWithoutCallingProvider(t *testing.T) 
 		if event.Type == ProviderEventDelta {
 			content.WriteString(event.Delta)
 		}
-		if event.ToolExecution != nil && event.ToolExecution.Name == resourceSearchToolName &&
-			event.ToolExecution.Status == ProcessStepStatusCompleted {
-			completedSearch = true
+		if event.ToolExecution != nil && event.ToolExecution.Name == resourceInstallSkillLinkToolName &&
+			event.ToolExecution.Status == ProcessStepStatusFailed {
+			failedInstall = true
 		}
 	}
-	if len(provider.inputs) != 0 || probe.searchCalls != 1 || probe.installCalls != 0 ||
-		len(probe.searchKinds) != 1 || probe.searchKinds[0] != resourceorchestrator.KindSkill ||
-		len(probe.searchQueries) != 1 ||
-		probe.searchQueries[0] != "https://www.aihero.dev/skills-grill-me" ||
-		!completedSearch || !strings.Contains(content.String(), "尚未进入已审核资源商店") {
-		t.Fatalf("content=%q provider=%d probe=%#v completedSearch=%t",
-			content.String(), len(provider.inputs), probe, completedSearch)
+	if len(provider.inputs) != 0 || probe.searchCalls != 0 || probe.installCalls != 0 ||
+		probe.directCalls != 1 || !failedInstall ||
+		!strings.Contains(content.String(), "直装失败") {
+		t.Fatalf("content=%q provider=%d probe=%#v failedInstall=%t",
+			content.String(), len(provider.inputs), probe, failedInstall)
 	}
 }
 
-func TestExplicitSupportedSkillLinkInstallsOneExactCandidateWithoutProvider(t *testing.T) {
-	probe := &resourceToolServiceProbe{searchResult: resourceorchestrator.SearchResult{
-		Kind: resourceorchestrator.KindSkill, Query: "grill-me",
-		Items: []resourceorchestrator.SearchItem{{
-			Kind: resourceorchestrator.KindSkill, ID: "candidate-id", Name: "grill-me",
-			Version: "1.0.0", ExactRevision: "sha256:exact", Status: "admitted",
-		}},
-	}}
+func TestDirectSkillInstallFailureUsesSafeOperationalCategories(t *testing.T) {
+	for name, test := range map[string]struct {
+		err  error
+		want string
+	}{
+		"source":   {err: skillsupply.ErrSourceUnavailable, want: "direct_source_unavailable"},
+		"package":  {err: skillsupply.ErrArchiveInvalid, want: "direct_package_invalid"},
+		"timeout":  {err: context.DeadlineExceeded, want: "direct_install_timeout"},
+		"audit":    {err: resourceorchestrator.ErrAuditUnavailable, want: "direct_install_audit_unavailable"},
+		"internal": {err: errors.New("database detail"), want: "direct_install_internal"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := directSkillInstallFailure(test.err); got != test.want {
+				t.Fatalf("category=%q want=%q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestExplicitSupportedSkillLinkDirectInstallsWithoutProviderOrStore(t *testing.T) {
+	probe := &resourceToolServiceProbe{}
 	runtime := newResourceToolRuntime(
 		probe, "user-id", "conversation-id",
 		"https://www.aihero.dev/skills-grill-me 帮我安装这个 skill",
@@ -625,29 +653,22 @@ func TestExplicitSupportedSkillLinkInstallsOneExactCandidateWithoutProvider(t *t
 		if event.Type == ProviderEventDelta {
 			content.WriteString(event.Delta)
 		}
-		if event.ToolExecution != nil && event.ToolExecution.Name == resourceRequestInstallToolName &&
+		if event.ToolExecution != nil && event.ToolExecution.Name == resourceInstallSkillLinkToolName &&
 			event.ToolExecution.Status == ProcessStepStatusCompleted {
 			completedInstall = true
 		}
 	}
-	if len(provider.inputs) != 0 || probe.searchCalls != 1 || probe.installCalls != 1 ||
-		probe.installInput.ID != "candidate-id" ||
-		probe.installInput.ExactRevision != "sha256:exact" ||
-		probe.installInput.EntryPoint != "agent_tool" || !completedInstall ||
-		!strings.Contains(content.String(), "已安装 SKILL：grill-me") {
+	if len(provider.inputs) != 0 || probe.searchCalls != 0 || probe.installCalls != 0 ||
+		probe.directCalls != 1 || probe.directInput.Identifier != "grill-me" ||
+		probe.directInput.EntryPoint != "explicit_skill_link" || !completedInstall ||
+		!strings.Contains(content.String(), "已直接安装 Skill：grill-me") {
 		t.Fatalf("content=%q provider=%d probe=%#v completedInstall=%t",
 			content.String(), len(provider.inputs), probe, completedInstall)
 	}
 }
 
-func TestExplicitSupportedSkillLinkDoesNotInstallAmbiguousExactCandidates(t *testing.T) {
-	probe := &resourceToolServiceProbe{searchResult: resourceorchestrator.SearchResult{
-		Kind: resourceorchestrator.KindSkill, Query: "grill-me",
-		Items: []resourceorchestrator.SearchItem{
-			{Kind: resourceorchestrator.KindSkill, ID: "one", Name: "grill-me", ExactRevision: "sha256:one"},
-			{Kind: resourceorchestrator.KindSkill, ID: "two", Name: "grill-me", ExactRevision: "sha256:two"},
-		},
-	}}
+func TestExplicitSupportedSkillLinkRejectsMismatchedResolvedSource(t *testing.T) {
+	probe := &resourceToolServiceProbe{directErr: skillsupply.ErrInvalidSource}
 	runtime := newResourceToolRuntime(
 		probe, "user-id", "conversation-id",
 		"安装 https://www.aihero.dev/skills-grill-me",
@@ -669,8 +690,8 @@ func TestExplicitSupportedSkillLinkDoesNotInstallAmbiguousExactCandidates(t *tes
 			content.WriteString(event.Delta)
 		}
 	}
-	if len(provider.inputs) != 0 || probe.installCalls != 0 ||
-		!strings.Contains(content.String(), "多个同名候选项") {
+	if len(provider.inputs) != 0 || probe.searchCalls != 0 || probe.installCalls != 0 ||
+		probe.directCalls != 1 || !strings.Contains(content.String(), "直装失败") {
 		t.Fatalf("content=%q provider=%d probe=%#v", content.String(), len(provider.inputs), probe)
 	}
 }

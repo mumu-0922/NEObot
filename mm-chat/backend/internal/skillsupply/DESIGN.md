@@ -21,6 +21,11 @@ server-derived exact source
   -> immutable package + exact-source candidate transaction
 ```
 
+For an explicit allowlisted AIHero link, the source adapter first parses one
+restricted `skills add owner/repository --skill=name` coordinate as data,
+resolves GitHub `HEAD` to a full commit, and then enters the same bounded ZIP
+pipeline. No command from the page is executed.
+
 No phase extracts files to a working directory or invokes a shell, package
 manager, interpreter, build, hook, test, or candidate entrypoint.
 
@@ -42,14 +47,17 @@ identity.
 ## Durable authority
 
 - `skill_package_versions` is immutable and content-addressed.
-- `skill_package_candidates` owns one exact source coordinate and a
-  fingerprint-bound, revision-CAS administrator decision.
-- `skill_installations` owns only a user's exact admitted package reference.
+- `skill_package_candidates` owns one exact source coordinate and either a
+  fingerprint-bound administrator decision or one owner-private `validated`
+  direct candidate.
+- `skill_installations` owns a user's exact public-admitted or same-owner
+  private-validated package reference.
 - `skill_conversation_selections` owns one revision-CAS selection per
   `(conversation, owner)`; child rows bind the exact owner installation and
   package fingerprint. Conversation deletion or uninstall cascades stale pins.
-- A composite foreign key plus admission trigger prevents an installation from
-  binding a different or non-admitted package even outside the repository.
+- A composite foreign key plus authority trigger prevents an installation from
+  binding a different package, a non-admitted public candidate, or another
+  owner's private candidate even outside the repository.
 - PostgreSQL `jsonb` normalizes stored metadata, so immutable replay compares
   decoded `allowed_tools` and `capability_requests` structures rather than raw
   JSON bytes; equivalent candidates remain idempotent without weakening the
@@ -80,3 +88,9 @@ launch path. Executable packages are reviewable only when they are the
 server-owned official synthetic fixture, request read-only workspace actions,
 and request no Egress or Secret slots. Every other executable candidate stays
 quarantined/ineligible for installation.
+
+An explicit owner-private direct package is not a Store admission. Only an
+instruction-only package that passes the existing archive/frontmatter/name
+validation may be installed this way. The candidate remains `validated`, has
+no reviewer, is excluded from Store queries, and is installable only when its
+`owner_user_id` equals the installation owner.

@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/resource-orchestration.md","reason":"Owner-private direct Skill link authority, audit, validation, and failure contract."}
+{"file":".trellis/spec/backend/chat-tool-loop.md","reason":"Deterministic explicit-link handling before Provider execution."}
+{"file":".trellis/spec/backend/agent-runtime.md","reason":"Installed Skill inventory, immutable runtime materialization, and owner-scoped execution."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace link parsing through source resolution, persistence, Library projection, and Agent runtime."}

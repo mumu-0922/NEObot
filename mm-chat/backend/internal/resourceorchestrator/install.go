@@ -9,6 +9,49 @@ import (
 	"neo-chat/mm-chat/backend/internal/skillsupply"
 )
 
+// InstallDirectSkillLink installs an explicitly requested allowlisted Skill
+// link into the caller's private library. This path does not search, admit, or
+// publish a Store item; skillsupply remains the package and owner authority.
+func (service *Service) InstallDirectSkillLink(
+	ctx context.Context,
+	request DirectSkillInstallRequest,
+) (InstallResult, error) {
+	if service == nil || !service.mutationEnabled {
+		return InstallResult{}, ErrDisabled
+	}
+	request.URL = strings.TrimSpace(request.URL)
+	request.Identifier = strings.TrimSpace(request.Identifier)
+	request.UserID = strings.TrimSpace(request.UserID)
+	request.ConversationID = strings.TrimSpace(request.ConversationID)
+	request.EntryPoint = strings.TrimSpace(request.EntryPoint)
+	if service.skills == nil || request.URL == "" || request.Identifier == "" ||
+		request.UserID == "" || request.ConversationID == "" {
+		return InstallResult{}, ErrInvalidQuery
+	}
+	installed, err := service.skills.InstallDirectSkillLink(
+		ctx, request.UserID, request.URL, request.Identifier,
+	)
+	result := InstallResult{}
+	if err == nil {
+		result = skillInstallResult(installed)
+	}
+	auditCandidateID := request.Identifier
+	if installed.AdmissionID != "" {
+		auditCandidateID = installed.AdmissionID
+	}
+	auditID, auditErr := service.recordMutation(ctx, MutationAudit{
+		UserID: request.UserID, ConversationID: request.ConversationID,
+		EntryPoint: request.EntryPoint, Kind: KindSkill, Action: ActionInstall,
+		CandidateID: auditCandidateID, Version: installed.Version,
+		ExactRevision: installed.PackageFingerprint,
+	}, result.ID, err)
+	result.MutationAuditID = auditID
+	if auditErr != nil {
+		return result, auditErr
+	}
+	return result, err
+}
+
 func (service *Service) InstallExplicit(
 	ctx context.Context,
 	request InstallRequest,

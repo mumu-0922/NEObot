@@ -67,9 +67,9 @@ func (auditor *PostgresMutationAuditor) RecordMutation(
 INSERT INTO audit_logs (
   id, actor_user_id, conversation_id, actor_type, action, resource_type,
   request_id, outcome, metadata, created_at, updated_at
-) VALUES ($1,$2,$3,'user',$4,$5,$6,$7,$8,$9,$9)
+) VALUES ($1,$2,$3,'user',$4,$5,$6,$7,$8::jsonb,$9,$9)
 `, audit.ID, audit.UserID, audit.ConversationID, "resource."+audit.Action,
-		audit.Kind, audit.ID, audit.Outcome, metadata, audit.OccurredAt.UTC())
+		audit.Kind, audit.ID, audit.Outcome, string(metadata), audit.OccurredAt.UTC())
 	if err != nil {
 		return fmt.Errorf("record resource mutation audit: %w", err)
 	}

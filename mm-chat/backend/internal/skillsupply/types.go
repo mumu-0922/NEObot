@@ -151,6 +151,7 @@ type Candidate struct {
 	ID                   string         `json:"id"`
 	SourceType           string         `json:"sourceType"`
 	SourceRef            string         `json:"sourceRef"`
+	OwnerUserID          string         `json:"-"`
 	SourceArtifactSHA256 string         `json:"sourceArtifactSha256"`
 	SourceObjectKey      string         `json:"-"`
 	Package              PackageVersion `json:"package"`
@@ -213,10 +214,11 @@ type ReviewInput struct {
 type Repository interface {
 	CreateCandidate(context.Context, Candidate) (Candidate, error)
 	GetCandidate(context.Context, string) (Candidate, error)
-	GetCandidateBySource(context.Context, string, string) (Candidate, error)
+	GetCandidateBySource(context.Context, string, string, string) (Candidate, error)
 	ReviewCandidate(context.Context, string, string, ReviewInput) (Candidate, error)
 	ListStore(context.Context, int, int) (StoreResult, error)
 	GetStoreItem(context.Context, string) (Candidate, error)
+	GetInstallableCandidate(context.Context, string, string) (Candidate, error)
 	Install(context.Context, string, string, string) (Installation, error)
 	ListLibrary(context.Context, string) ([]Installation, error)
 	Uninstall(context.Context, string, string, int64) error

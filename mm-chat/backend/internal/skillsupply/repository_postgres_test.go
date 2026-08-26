@@ -87,6 +87,62 @@ INSERT INTO users (id, email, display_name) VALUES ($1, $2, 'Skill integration')
 	if items, err := repository.ListLibrary(ctx, adminID); err != nil || len(items) != 0 {
 		t.Fatalf("cross-user library=%#v error=%v", items, err)
 	}
+	directValidated, err := ValidateArchive(ArchiveSource{
+		Type: SourceGit, Ref: "https://github.com/example/private.git#" + strings.Repeat("d", 40) + ":skills/private-skill",
+		ExpectedName: "private-skill",
+		Data: mustTestArchive(t, []packageFile{{
+			path: "SKILL.md", data: []byte(validSkillMarkdown("private-skill")),
+		}}, 0, time.Time{}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	directValidated.Package.PackageObjectKey = digestObjectKey(
+		"skill-packages", directValidated.Package.PackageFingerprint, ".zip",
+	)
+	directValidated.Package.SBOMObjectKey = digestObjectKey(
+		"skill-sboms", directValidated.Package.SBOMFingerprint, ".cdx.json",
+	)
+	directCandidate := Candidate{
+		ID: uuid.NewString(), SourceType: SourceGit,
+		SourceRef:            "https://github.com/example/private.git#" + strings.Repeat("d", 40) + ":skills/private-skill",
+		OwnerUserID:          userOne,
+		SourceArtifactSHA256: directValidated.SourceArtifactSHA256,
+		SourceObjectKey:      digestObjectKey("skill-quarantine", directValidated.SourceArtifactSHA256, ".zip"),
+		Package:              directValidated.Package,
+		Status:               StatusValidated,
+		AdmissionEligible:    true,
+		ValidationSummary:    "validated_no_execute",
+		Revision:             1,
+		CreatedAt:            now,
+		UpdatedAt:            now,
+	}
+	directCandidate, err = repository.CreateCandidate(ctx, directCandidate)
+	if err != nil || directCandidate.OwnerUserID != userOne || directCandidate.ReviewedByUserID != "" {
+		t.Fatalf("direct candidate=%#v error=%v", directCandidate, err)
+	}
+	directInstalled, err := repository.Install(
+		ctx, userOne, directCandidate.ID, directCandidate.Package.PackageFingerprint,
+	)
+	if err != nil {
+		t.Fatalf("direct owner install error=%v", err)
+	}
+	if _, err := repository.Install(
+		ctx, userTwo, directCandidate.ID, directCandidate.Package.PackageFingerprint,
+	); !errors.Is(err, ErrAdmissionDenied) {
+		t.Fatalf("direct cross-owner install error=%v", err)
+	}
+	if _, err := repository.GetStoreItem(ctx, directCandidate.ID); !errors.Is(err, ErrAdmissionDenied) {
+		t.Fatalf("direct candidate leaked into Store: %v", err)
+	}
+	store, err := repository.ListStore(ctx, 1, 20)
+	if err != nil || len(store.Items) != 1 || store.Items[0].ID != candidate.ID {
+		t.Fatalf("Store projection=%#v error=%v", store, err)
+	}
+	if authorized, err := repository.GetInstallableCandidate(ctx, userOne, directCandidate.ID); err != nil ||
+		authorized.ID != directCandidate.ID {
+		t.Fatalf("direct owner authorization=%#v error=%v", authorized, err)
+	}
 	conversationOne, conversationTwo := uuid.NewString(), uuid.NewString()
 	mustExecSkill(t, ctx, database, `
 INSERT INTO conversations (id, user_id, title) VALUES ($1, $2, 'Skill selection one')
@@ -110,6 +166,14 @@ INSERT INTO conversations (id, user_id, title) VALUES ($1, $2, 'Skill selection 
 		ConversationID: conversationTwo, Revision: 0, Skills: []Installation{installed},
 	}); !errors.Is(err, ErrSelectionInvalid) {
 		t.Fatalf("cross-owner installation selection error=%v", err)
+	}
+	selectedDirect, err := repository.ReplaceConversationSelection(ctx, userOne, ConversationSelection{
+		ConversationID: conversationOne, Revision: selected.Revision,
+		Skills: []Installation{directInstalled},
+	})
+	if err != nil || selectedDirect.Revision != 2 || len(selectedDirect.Skills) != 1 ||
+		selectedDirect.Skills[0].ID != directInstalled.ID {
+		t.Fatalf("direct conversation selection=%#v error=%v", selectedDirect, err)
 	}
 	conversationRace := uuid.NewString()
 	mustExecSkill(t, ctx, database, `
@@ -155,6 +219,9 @@ INSERT INTO conversations (id, user_id, title) VALUES ($1, $2, 'Skill selection 
 		t.Fatalf("stale uninstall error=%v", err)
 	}
 	if err := repository.Uninstall(ctx, userOne, installed.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.Uninstall(ctx, userOne, directInstalled.ID, 1); err != nil {
 		t.Fatal(err)
 	}
 }

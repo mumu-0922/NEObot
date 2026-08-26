@@ -5,9 +5,94 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
 )
+
+func TestDirectSkillLinkSourcePinsAndSelectsExactGitHubSkill(t *testing.T) {
+	commit := strings.Repeat("a", 40)
+	archive := mustRawTestArchive(t, []testZipEntry{
+		{
+			name: "skills-" + commit + "/skills/productivity/grill-me/SKILL.md",
+			body: validSkillMarkdown("grill-me"),
+		},
+		{
+			name: "skills-" + commit + "/AGENTS.md",
+			body: "CLAUDE.md",
+			mode: os.ModeSymlink | 0o777,
+		},
+	})
+	calls := []string{}
+	client := sourceRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		calls = append(calls, request.URL.String())
+		switch request.URL.String() {
+		case "https://www.aihero.dev/skills-grill-me":
+			return sourceResponse(request, "text/html; charset=utf-8",
+				`<code>npx skills@latest add mattpocock/skills --skill=grill-me</code>`), nil
+		case "https://api.github.com/repos/mattpocock/skills/commits/HEAD":
+			return sourceResponse(request, "application/json", `{"sha":"`+commit+`"}`), nil
+		case "https://codeload.github.com/mattpocock/skills/zip/" + commit:
+			return &http.Response{StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(string(archive))), Request: request}, nil
+		default:
+			t.Fatalf("unexpected request %s", request.URL)
+			return nil, nil
+		}
+	})
+
+	source, err := (DirectSkillLinkSource{Client: client}).Fetch(
+		context.Background(), "https://www.aihero.dev/skills-grill-me", "grill-me",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source.Ref != "https://github.com/mattpocock/skills.git#"+commit+":skills/productivity/grill-me" ||
+		source.StripPrefix != "skills-"+commit+"/skills/productivity/grill-me/" ||
+		len(calls) != 3 {
+		t.Fatalf("source=%#v calls=%#v", source, calls)
+	}
+	validated, err := ValidateArchive(source)
+	if err != nil || validated.Package.Name != "grill-me" {
+		t.Fatalf("validated=%#v error=%v", validated.Package, err)
+	}
+}
+
+func TestDirectSkillLinkSourceRejectsUntrustedOrAmbiguousCoordinates(t *testing.T) {
+	for index, test := range []struct {
+		url  string
+		name string
+		page string
+	}{
+		{url: "https://evil.example/skills-grill-me", name: "grill-me"},
+		{url: "https://www.aihero.dev/skills-grill-me?next=evil", name: "grill-me"},
+		{url: "https://www.aihero.dev/skills-grill-me", name: "other"},
+		{url: "https://www.aihero.dev/skills-grill-me", name: "grill-me", page: `npx skills@latest add one/repo --skill=grill-me npx skills@latest add two/repo --skill=grill-me`},
+		{url: "https://www.aihero.dev/skills-grill-me", name: "grill-me", page: `npx skills@latest add one/repo --skill=other`},
+	} {
+		t.Run(strconv.Itoa(index), func(t *testing.T) {
+			client := sourceRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+				return sourceResponse(request, "text/html", test.page), nil
+			})
+			_, err := (DirectSkillLinkSource{Client: client}).Fetch(
+				context.Background(), test.url, test.name,
+			)
+			if !errors.Is(err, ErrInvalidSource) {
+				t.Fatalf("error=%v", err)
+			}
+		})
+	}
+}
+
+func sourceResponse(request *http.Request, contentType, body string) *http.Response {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{contentType}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Request:    request,
+	}
+}
 
 func TestSourceAdaptersRequireImmutableCoordinates(t *testing.T) {
 	archive, err := officialSyntheticArchive()

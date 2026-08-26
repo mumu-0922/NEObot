@@ -30,6 +30,7 @@ type fakeSkills struct {
 type countingSkills struct {
 	fakeSkills
 	installCalls int
+	directCalls  int
 }
 
 type mutationSkills struct {
@@ -70,6 +71,36 @@ func (skills *countingSkills) Install(
 	return skills.fakeSkills.Install(ctx, userID, id, fingerprint)
 }
 
+func TestDirectSkillLinkInstallBypassesStoreAndRecordsPrivateMutation(t *testing.T) {
+	skills := &countingSkills{}
+	auditor := &fakeMutationAuditor{}
+	service := NewService(skills, nil, WithMutationAuditor(auditor))
+	result, err := service.InstallDirectSkillLink(context.Background(), DirectSkillInstallRequest{
+		URL: "https://www.aihero.dev/skills-grill-me", Identifier: "grill-me",
+		UserID: "user-id", ConversationID: "conversation-id",
+		EntryPoint: "explicit_skill_link",
+	})
+	if err != nil || skills.directCalls != 1 || skills.installCalls != 0 ||
+		result.Name != "grill-me" || result.Status != "installed" ||
+		len(auditor.audits) != 1 || auditor.audits[0].CandidateID != "direct-candidate" ||
+		auditor.audits[0].EntryPoint != "explicit_skill_link" ||
+		auditor.audits[0].Outcome != MutationOutcomeSuccess {
+		t.Fatalf("result=%#v skills=%#v audits=%#v error=%v", result, skills, auditor.audits, err)
+	}
+}
+
+func (skills *countingSkills) InstallDirectSkillLink(
+	_ context.Context,
+	userID, _ string, identifier string,
+) (skillsupply.Installation, error) {
+	skills.directCalls++
+	return skillsupply.Installation{
+		ID: "direct-installation", UserID: userID, AdmissionID: "direct-candidate",
+		PackageFingerprint: "sha256:" + strings.Repeat("d", 64), Name: identifier,
+		Version: "0.0.0+direct", Revision: 1,
+	}, nil
+}
+
 func (fake fakeSkills) ListLibrary(context.Context, string) ([]skillsupply.Installation, error) {
 	return fake.library, nil
 }
@@ -90,6 +121,17 @@ func (fake fakeSkills) GetStoreItem(_ context.Context, id string) (skillsupply.C
 func (fake fakeSkills) Install(_ context.Context, _ string, id string, fingerprint string) (skillsupply.Installation, error) {
 	return skillsupply.Installation{
 		ID: "installed-" + id, Name: "office-xlsx", PackageFingerprint: fingerprint,
+	}, nil
+}
+
+func (fake fakeSkills) InstallDirectSkillLink(
+	_ context.Context,
+	userID, _ string, identifier string,
+) (skillsupply.Installation, error) {
+	return skillsupply.Installation{
+		ID: "direct-installation", UserID: userID, AdmissionID: "direct-candidate",
+		PackageFingerprint: "sha256:" + strings.Repeat("d", 64), Name: identifier,
+		Version: "0.0.0+direct", Revision: 1,
 	}, nil
 }
 
@@ -263,7 +305,7 @@ func TestSingleSupportedResourceLinkExtractsOneExactLinkFromUserText(t *testing.
 			value: "https://www.aihero.dev/skills-grill-me帮我安装这个skill",
 			want: SupportedResourceLink{
 				Kind: KindSkill, Identifier: "grill-me",
-				URL: "https://www.aihero.dev/skills-grill-me",
+				URL: "https://www.aihero.dev/skills-grill-me", DirectInstall: true,
 			},
 			ok: true,
 		},
@@ -609,5 +651,14 @@ func TestUnavailableSourcesFailWithoutPanicking(t *testing.T) {
 	}
 	if _, err := service.Search(context.Background(), "user-id", KindMCP, "wiki"); err != ErrUnavailable {
 		t.Fatalf("MCP search error=%v", err)
+	}
+}
+
+func TestMutationAuditFailureCodeDoesNotExposeDatabaseDetails(t *testing.T) {
+	if got := mutationAuditFailureCode(context.DeadlineExceeded); got != "deadline_exceeded" {
+		t.Fatalf("failure code=%q", got)
+	}
+	if got := mutationAuditFailureCode(errors.New("private database detail")); got != "internal" {
+		t.Fatalf("failure code=%q", got)
 	}
 }
