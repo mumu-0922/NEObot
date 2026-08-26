@@ -399,6 +399,10 @@ ChatMessageDTO.agentEvents[]
 - Event IDs are idempotent. Event rows are immutable. The fixed vocabulary is
   Turn/Step/assistant/Tool/Goal/context only. `go_api_runtime` receives SELECT
   plus the exact start/append Functions and no direct table DML.
+- `context.injected.payload.source` is a closed contract:
+  `system-prompt|skill-catalog|skill-instruction|runtime-context`. Callers must
+  reuse a declared source or change the event validator, contract, and real
+  Handler/PostgreSQL tests together; an ad hoc label is not a new source.
 - In `RETURNS TABLE` PL/pgSQL Functions, every output column is also a local
   variable. SQL inside `chat_agent_start_turn` / `chat_agent_append_event`
   must therefore use named constraints for `ON CONFLICT` and table aliases for
@@ -420,6 +424,11 @@ ChatMessageDTO.agentEvents[]
 - Message finalization and terminal-event append are not one transaction. The
   startup reconciliation is the explicit torn-write repair. It must not change
   a completed Message into interrupted.
+- After an Assistant Message exists, every pre-SSE context persistence failure
+  must finalize that Message as `failed` with
+  `AGENT_EVENT_PERSISTENCE_FAILED` and finish the bound Turn as `failed` before
+  returning the HTTP error. A failed Turn paired with a `streaming` Message is
+  an invalid state because the frontend will continue polling it as active.
 - Down is guarded while either Chat Agent table contains data. All older
   migration tail drills peel empty `096` before `095` and return to head `096`.
 
@@ -432,6 +441,7 @@ ChatMessageDTO.agentEvents[]
 | repeated event ID with changed input | replay conflict |
 | append after terminal Turn | `CHAT_AGENT_TURN_TERMINAL` |
 | process/Tool persistence fails | fail the Chat Run; do not emit an unpersisted projection |
+| pre-SSE context event persistence fails | HTTP error plus failed Message and failed Turn; no orphan `streaming` Message |
 | restart finds streaming Message | interrupted Turn and failed Message |
 | restart finds completed/failed/cancelled Message | preserve that terminal status |
 | historical Message has no valid events | legacy `metadata.processTrace` fallback |
@@ -454,9 +464,14 @@ ChatMessageDTO.agentEvents[]
 - The PostgreSQL drill must execute both start and append Functions, including
   interrupted Message repair. Its dirty-Down proof creates an explicit event
   fixture after peeling any tail migration reapplied by integration-test setup;
-  it must not rely on test residue.
+  it must not rely on test residue. The drill derives the current embedded
+  migration head and peels every post-`096` migration rather than hard-coding
+  an obsolete head.
 - Handler ordering and redaction tests, full existing cancellation suites, and
-  startup recovery for both unfinished and already completed Messages.
+  startup recovery for both unfinished and already completed Messages. A real
+  Handler regression must assert Resource orchestration records
+  `runtime-context`; failure injection on `context.injected` must assert both
+  Message and Turn terminal states.
 - Frontend invalid-event fallback, ordering/deduplication, interrupted active
   steps, status copy, typecheck, Vitest and build.
 
@@ -465,6 +480,9 @@ ChatMessageDTO.agentEvents[]
 ```text
 Wrong: SSE -> final metadata only -> restart guesses success
 Correct: append event -> project same event to SSE -> refresh/restart replay
+
+Wrong: context append fails -> Turn failed -> Message remains streaming
+Correct: context append fails -> finalize Message failed -> finish Turn failed
 ```
 
 ## Scenario: Continue Chat through local Agent Skill Tools

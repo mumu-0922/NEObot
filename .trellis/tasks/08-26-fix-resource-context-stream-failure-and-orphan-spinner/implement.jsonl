@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/chat-tool-loop.md","reason":"Defines Agent event persistence and terminal-state invariants."}
+{"file":".trellis/spec/backend/resource-orchestration.md","reason":"Defines safe conversational resource acquisition and URL boundaries."}
+{"file":".trellis/spec/frontend/resource-commands.md","reason":"Defines composer resource UX and failure visibility expectations."}
+{"file":".trellis/tasks/08-26-fix-resource-context-stream-failure-and-orphan-spinner/research/aihero-skill-link.md","reason":"Defines the evidence-backed AIHero URL boundary and safe identifier mapping."}

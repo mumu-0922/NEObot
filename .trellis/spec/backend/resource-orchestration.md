@@ -48,9 +48,12 @@ type MutationRequest struct {
 - Catalog/search responses are `no-store`, authenticated, server-sanitized, and
   bounded. Search returns at most five results and exact immutable revision
   material; it never returns credentials, endpoints, package bodies, or paths.
-- A supported LobeHub Skill/MCP HTTPS link may be reduced to one bounded
+- An explicitly supported discovery HTTPS link may be reduced to one bounded
   identifier only when host, path shape, kind, port, query, fragment, and
-  identifier validation pass. The pasted URL is never fetched or executed.
+  identifier validation pass. LobeHub Skill/MCP links and AIHero
+  `/skills-<slug>` Skill links are admitted shapes. AIHero is a discovery alias
+  only: the pasted page is never fetched or executed, and installation still
+  requires an existing admitted package fingerprint from `skillsupply.Service`.
 - A caller must search before an Agent install. The Run retains at most two
   unique search results and one proposal. Candidate metadata is untrusted data,
   never an instruction source.
@@ -90,6 +93,7 @@ type MutationRequest struct {
 | missing conversation, candidate or revision | `INVALID_RESOURCE_REQUEST` |
 | unsupported kind or query over 200 bytes | `INVALID_RESOURCE_QUERY` |
 | pasted URL host/path/query/fragment/kind is not allowlisted | no URL fetch/install; bounded search or normal chat only |
+| supported AIHero Skill slug has no admitted Store candidate | return zero bounded candidates; do not run the page's npm/Git command |
 | unknown JSON/Tool field, including Secret | reject; never echo the value |
 | candidate not searched or exact revision differs | bounded Tool failure / `RESOURCE_REVISION_CHANGED` |
 | second unique discovery after budget or second proposal | bounded budget failure; no write |
@@ -119,8 +123,9 @@ type MutationRequest struct {
 - Catalog determinism, selection awareness, bounded/paged search, missing
   sources, feature kill switch, exact revision, and idempotent exact Skill
   install.
-- Supported-link allowlist/mismatch/traversal tests; assert no pasted URL is a
-  package-fetch authority.
+- Supported-link allowlist/mismatch/traversal tests for LobeHub and AIHero;
+  assert no pasted URL is a package-fetch authority and AIHero never bypasses
+  admitted Store search.
 - HTTP strict JSON, stale conflict, configuration handoff, audit-unavailable,
   and sanitized search response tests.
 - Lifecycle owner/CAS checks, action-specific mutation audit, draft provenance,
@@ -140,6 +145,10 @@ type MutationRequest struct {
 Wrong: model -> bash/npm/git install -> mutate live Tool list -> continue
 Correct: search -> exact server candidate -> approval/policy -> existing domain
          service -> audit -> fresh snapshot -> same-model continuation
+
+Wrong: AIHero page -> execute displayed npx command -> trust mutable upstream
+Correct: AIHero /skills-<slug> -> sanitized slug -> admitted Store search ->
+         exact package fingerprint or a bounded no-candidate result
 
 Wrong: Tool arguments include credential or endpoint fields
 Correct: Tool sees only configured/required status; Secret/OAuth stays in UI/vault

@@ -2280,27 +2280,41 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		appendStreamedAgentEvent(recorded)
 		return nil
 	}
+	failContextInjection := func() {
+		turnFinalStatus = ChatAgentTurnFailed
+		turnFinalErrorCode = "AGENT_EVENT_PERSISTENCE_FAILED"
+		finalizeCtx, finalizeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer finalizeCancel()
+		_, _ = finalizeTracked(
+			finalizeCtx,
+			conversationID,
+			assistantMessage.ID,
+			FinalizeAssistantMessageInput{
+				Status: "failed",
+				Metadata: map[string]any{
+					"runId": runID, "errorCode": turnFinalErrorCode,
+				},
+			},
+		)
+	}
 	if err := recordContextInjection(
 		"system-prompt", "System prompt", providerSystemPrompt,
 	); err != nil {
-		turnFinalStatus = ChatAgentTurnFailed
-		turnFinalErrorCode = "AGENT_EVENT_PERSISTENCE_FAILED"
+		failContextInjection()
 		writeError(w, http.StatusInternalServerError, turnFinalErrorCode, "chat Agent event persistence failed")
 		return
 	}
 	if err := recordContextInjection(
 		"skill-catalog", "Skill catalog", localSkillContextPrompt,
 	); err != nil {
-		turnFinalStatus = ChatAgentTurnFailed
-		turnFinalErrorCode = "AGENT_EVENT_PERSISTENCE_FAILED"
+		failContextInjection()
 		writeError(w, http.StatusInternalServerError, turnFinalErrorCode, "chat Agent event persistence failed")
 		return
 	}
 	if err := recordContextInjection(
-		"resource-orchestrator", "Resource orchestration", runtimeResourceContextPrompt,
+		"runtime-context", "Resource orchestration", runtimeResourceContextPrompt,
 	); err != nil {
-		turnFinalStatus = ChatAgentTurnFailed
-		turnFinalErrorCode = "AGENT_EVENT_PERSISTENCE_FAILED"
+		failContextInjection()
 		writeError(w, http.StatusInternalServerError, turnFinalErrorCode, "chat Agent event persistence failed")
 		return
 	}

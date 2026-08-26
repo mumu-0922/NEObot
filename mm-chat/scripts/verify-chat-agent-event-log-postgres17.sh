@@ -6,6 +6,7 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 project_dir="$(cd -- "${script_dir}/.." && pwd -P)"
 backend_dir="${project_dir}/backend"
 postgres_dir="${project_dir}/postgres"
+migrations_dir="${backend_dir}/migrations"
 postgres_image="${POSTGRES_IMAGE:-mm-chat/postgres:17.10-pg_textsearch1.3.1-pgvector0.8.5}"
 container_name="neo-chat-agent-events-pg17-$RANDOM-$$"
 database_name="neo_chat_agent_events_drill"
@@ -53,22 +54,27 @@ psql_command() {
       --username="${database_user}" --dbname="${database_name}" --command "$1"
 }
 
-log "applying and replaying schema head 101"
+schema_head="$(find "${migrations_dir}" -maxdepth 1 -type f -name '*.up.sql' -printf '%f\n' |
+  sed -n 's/^\([0-9][0-9]*\)_.*/\1/p' | sort -n | tail -1 | sed 's/^0*//')"
+[[ "${schema_head}" =~ ^[0-9]+$ ]] && [[ "${schema_head}" -ge 101 ]]
+log "applying and replaying schema head ${schema_head}"
 [[ "$(psql_command 'SHOW server_version_num' | cut -c1-2)" == "17" ]]
 (cd "${backend_dir}" && go build -buildvcs=false -trimpath -o "${work_dir}/migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" "$@"; }
 peel_to_event_log() {
   local prefix="$1"
-  run_migrate down >"${work_dir}/${prefix}-101.log" 2>&1
-  grep -Fq "down 101_chat_agent_transcript_blocks" "${work_dir}/${prefix}-101.log"
-  run_migrate down >"${work_dir}/${prefix}-100.log" 2>&1
-  grep -Fq "down 100_chat_agent_approvals" "${work_dir}/${prefix}-100.log"
-  run_migrate down >"${work_dir}/${prefix}-099.log" 2>&1
-  grep -Fq "down 099_chat_agent_event_log_function_repair" "${work_dir}/${prefix}-099.log"
-  run_migrate down >"${work_dir}/${prefix}-098.log" 2>&1
-  grep -Fq "down 098_retire_legacy_agent_control_plane" "${work_dir}/${prefix}-098.log"
-  run_migrate down >"${work_dir}/${prefix}-097.log" 2>&1
-  grep -Fq "down 097_chat_agent_goals" "${work_dir}/${prefix}-097.log"
+  local version migration_file migration_name
+  version="$(psql_command 'SELECT max(version) FROM schema_migrations')"
+  while [[ "${version}" -gt 96 ]]; do
+    migration_file="$(find "${migrations_dir}" -maxdepth 1 -type f \
+      -name "$(printf '%03d' "${version}")_*.down.sql" -printf '%f\n')"
+    [[ -n "${migration_file}" ]]
+    migration_name="${migration_file%.down.sql}"
+    run_migrate down >"${work_dir}/${prefix}-${version}.log" 2>&1
+    grep -Fq "down ${migration_name}" "${work_dir}/${prefix}-${version}.log"
+    version="$(psql_command 'SELECT max(version) FROM schema_migrations')"
+  done
+  [[ "${version}" == "96" ]]
 }
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/fresh.log"
@@ -79,7 +85,7 @@ grep -Fq "up 100_chat_agent_approvals" "${work_dir}/fresh.log"
 grep -Fq "up 101_chat_agent_transcript_blocks" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
-[[ "$(psql_command 'SELECT max(version) FROM schema_migrations')" == "101" ]]
+[[ "$(psql_command 'SELECT max(version) FROM schema_migrations')" == "${schema_head}" ]]
 [[ "$(psql_command "SELECT checksum FROM schema_migrations WHERE version=96")" == \
   "f7c6227d3dd559cb53b22a28af1d77bc570d45a42288bf1f348b22136ef1b042" ]]
 
@@ -107,9 +113,9 @@ log "running repository sequence, replay, interruption, and torn-finalization pr
 (cd "${backend_dir}" && MM_CHAT_TEST_DATABASE_URL="${database_url}" \
   go test ./internal/chat -run '^TestPostgresChatAgent(EventLog|Recovery)' -count=1)
 
-log "proving dirty 096 down refusal and clean 096 -> 101 replay"
+log "proving dirty 096 down refusal and clean 096 -> ${schema_head} replay"
 # Each integration test calls Runner.Up independently, so the first test
-# reapplies the 097-099 tail that this drill peeled before invoking `go test`.
+# reapplies the post-096 tail that this drill peeled before invoking `go test`.
 # Peel it again before exercising the 096 dirty-data guard. Both forward-only
 # down paths retain the repaired gateway bodies.
 peel_to_event_log "post-test-peel"
@@ -182,6 +188,6 @@ grep -Fq "up 098_retire_legacy_agent_control_plane" "${work_dir}/clean-reup.log"
 grep -Fq "up 099_chat_agent_event_log_function_repair" "${work_dir}/clean-reup.log"
 grep -Fq "up 100_chat_agent_approvals" "${work_dir}/clean-reup.log"
 grep -Fq "up 101_chat_agent_transcript_blocks" "${work_dir}/clean-reup.log"
-[[ "$(psql_command 'SELECT max(version) FROM schema_migrations')" == "101" ]]
+[[ "$(psql_command 'SELECT max(version) FROM schema_migrations')" == "${schema_head}" ]]
 
 log "passed"

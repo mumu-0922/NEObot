@@ -3,13 +3,31 @@ package chat
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"neo-chat/mm-chat/backend/internal/auth"
+	"neo-chat/mm-chat/backend/internal/mcpclient"
+	"neo-chat/mm-chat/backend/internal/resourceorchestrator"
 )
+
+type contextEventFailRepository struct {
+	*fakeRepository
+}
+
+func (repository *contextEventFailRepository) AppendChatAgentEvent(
+	ctx context.Context,
+	turnID string,
+	input AppendChatAgentEventInput,
+) (ChatAgentEvent, error) {
+	if input.Type == ChatAgentEventContextInjected {
+		return ChatAgentEvent{}, errors.New("fixture context persistence failure")
+	}
+	return repository.fakeRepository.AppendChatAgentEvent(ctx, turnID, input)
+}
 
 func TestAgentTimelineCanaryAdmissionIsExactAndFailClosed(t *testing.T) {
 	const canaryID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
@@ -169,6 +187,131 @@ func TestAgentTimelineCanaryStreamsDurableContextAndReasoningBlocks(t *testing.T
 	} {
 		if !containsString(types, required) {
 			t.Fatalf("durable Transcript events=%v, missing %q", types, required)
+		}
+	}
+}
+
+func TestAgentTimelineRecordsRuntimeResourceContext(t *testing.T) {
+	const canaryID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	repository := newFakeRepository()
+	conversation := fakeConversation(testConversationID, "Runtime resource context", 0)
+	conversation.Metadata = map[string]any{"toolMode": "agent"}
+	repository.conversations = append(repository.conversations, conversation)
+	repository.messages[testConversationID] = append(
+		repository.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "install a skill"),
+	)
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{{{
+		Type: ProviderEventDelta, Delta: "Resource answer.",
+	}}}}
+	mcpRepository := newMCPChatRepository(
+		canaryID,
+		testConversationID,
+		mcpclient.ServerRef{Source: mcpclient.SourceManifest, ID: "unused-fixture"},
+	)
+	mcpRepository.selection.Servers = nil
+	mcpConfig := mcpclient.DefaultConfig()
+	mcpConfig.Enabled = true
+	mcpService, err := mcpclient.NewService(
+		mcpConfig,
+		mcpRepository,
+		nil,
+		nil,
+		nil,
+		mcpclient.Catalog{},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(
+		NewService(repository),
+		WithProvider(provider),
+		WithAgentTimelineCanary(true, []string{canaryID}),
+		WithMCPService(mcpService),
+		WithResourceOrchestrator(resourceorchestrator.NewService(nil, nil)),
+	)
+	request := httptest.NewRequest(
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		bytes.NewBufferString(
+			`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"tool-capable"},"config":{"toolMode":"agent"},"idempotencyKey":"runtime-resource-context"}`,
+		),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	request = request.WithContext(auth.WithUser(request.Context(), auth.User{ID: canaryID}))
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf(
+			"status=%d tool rounds=%d chat rounds=%d body=%s",
+			recorder.Code, len(provider.inputs), len(provider.chatInputs), recorder.Body.String(),
+		)
+	}
+	body := recorder.Body.String()
+	for _, required := range []string{
+		`"type":"context.injected"`,
+		`"source":"runtime-context"`,
+		`"label":"Resource orchestration"`,
+		`event: message.completed`,
+	} {
+		if !strings.Contains(body, required) {
+			t.Fatalf("runtime context stream missing %q; body=%s", required, body)
+		}
+	}
+}
+
+func TestContextEventPersistenceFailureFinalizesAssistantAndTurn(t *testing.T) {
+	const canaryID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	base := newFakeRepository()
+	base.conversations = append(
+		base.conversations,
+		fakeConversation(testConversationID, "Context persistence failure", 0),
+	)
+	base.messages[testConversationID] = append(
+		base.messages[testConversationID],
+		fakeMessage(testMessageID, testConversationID, 0, "user", "hello"),
+	)
+	repository := &contextEventFailRepository{fakeRepository: base}
+	handler := NewHandler(
+		NewService(repository),
+		WithProvider(NewMockProvider()),
+		WithAgentTimelineCanary(true, []string{canaryID}),
+	)
+	request := httptest.NewRequest(
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		bytes.NewBufferString(
+			`{"userMessageId":"22222222-2222-4222-8222-222222222222","modelRef":{"providerId":"mock","modelId":"mock-chat"},"systemInstruction":"persist this context","idempotencyKey":"context-persistence-failure"}`,
+		),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	request = request.WithContext(auth.WithUser(request.Context(), auth.User{ID: canaryID}))
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "AGENT_EVENT_PERSISTENCE_FAILED")
+	messages := repository.messages[testConversationID]
+	if len(messages) != 2 {
+		t.Fatalf("persisted messages=%#v", messages)
+	}
+	assistant := messages[1]
+	if assistant.Status != "failed" || assistant.CompletedAt == nil ||
+		assistant.Metadata["errorCode"] != "AGENT_EVENT_PERSISTENCE_FAILED" {
+		t.Fatalf("assistant terminal state=%#v", assistant)
+	}
+	if len(repository.agentStatuses) != 1 {
+		t.Fatalf("turn statuses=%#v", repository.agentStatuses)
+	}
+	for turnID, status := range repository.agentStatuses {
+		if status != ChatAgentTurnFailed {
+			t.Fatalf("turn %s status=%q, want failed", turnID, status)
 		}
 	}
 }

@@ -230,10 +230,18 @@ func TestSupportedResourceLinksResolveThroughBoundedMarketplaceSearch(t *testing
 		{KindSkill, "https://lobehub.com/skills/office-xlsx", "office-xlsx", true},
 		{KindMCP, "https://market.lobehub.com/plugins/deepwiki", "deepwiki", true},
 		{KindMCP, "https://www.lobehub.com/mcp/context7", "context7", true},
+		{KindSkill, "https://www.aihero.dev/skills-grill-me", "grill-me", true},
+		{KindSkill, "https://aihero.dev/skills-writing-for-agents", "writing-for-agents", true},
 		{KindSkill, "https://evil.example/skills/office-xlsx", "", false},
 		{KindSkill, "https://lobehub.com/skills/office-xlsx?revision=latest", "", false},
 		{KindSkill, "https://lobehub.com/plugins/deepwiki", "", false},
 		{KindMCP, "https://lobehub.com/plugins/%2e%2e%2fsecret", "", false},
+		{KindMCP, "https://www.aihero.dev/skills-grill-me", "", false},
+		{KindSkill, "https://www.aihero.dev/skills-grill-me?install=1", "", false},
+		{KindSkill, "https://www.aihero.dev/skills-grill-me/extra", "", false},
+		{KindSkill, "https://user@www.aihero.dev/skills-grill-me", "", false},
+		{KindSkill, "https://www.aihero.dev:444/skills-grill-me", "", false},
+		{KindSkill, "https://www.aihero.dev/skills-%2e%2e", "", false},
 	} {
 		got, ok := supportedResourceLinkIdentifier(test.kind, test.link)
 		if got != test.want || ok != test.ok {

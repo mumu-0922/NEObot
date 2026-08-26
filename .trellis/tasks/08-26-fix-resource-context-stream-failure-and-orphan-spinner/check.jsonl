@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/chat-tool-loop.md","reason":"Verify event source compatibility and Turn/Message terminal consistency."}
+{"file":".trellis/spec/backend/resource-orchestration.md","reason":"Verify AIHero parsing remains behind existing supply-chain authority."}
+{"file":".trellis/spec/frontend/resource-commands.md","reason":"Verify the UI receives a terminal failure rather than an infinite spinner."}
+{"file":".trellis/tasks/08-26-fix-resource-context-stream-failure-and-orphan-spinner/research/aihero-skill-link.md","reason":"Verify AIHero remains discovery-only and never bypasses immutable admission."}
