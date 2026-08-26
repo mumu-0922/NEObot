@@ -1,8 +1,8 @@
 {
   "id": "align-agent-resources-artifacts-with-pi",
   "name": "align-agent-resources-artifacts-with-pi",
-  "title": "Align Agent resources and artifact handling with Pi",
-  "description": "",
+  "title": "Conversation-scoped Skill and MCP controls aligned with Pi",
+  "description": "Separate installed inventory, per-conversation selection, and Agent runtime auto-activation; replace the Resource lifecycle Slash wall with composer pickers and secure conversational acquisition.",
   "status": "in_progress",
   "dev_type": null,
   "scope": null,

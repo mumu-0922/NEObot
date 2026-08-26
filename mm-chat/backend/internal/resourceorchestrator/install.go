@@ -160,22 +160,22 @@ func (service *Service) installMCP(
 		deployment.Compatibility != mcpclient.MarketplaceCompatibilityNeedsConfig {
 		return InstallResult{}, ErrConfigurationRequired
 	}
-	selection, err := service.mcp.GetSelection(ctx, request.UserID, request.ConversationID)
-	if err != nil {
-		return InstallResult{}, err
-	}
 	installed, err := service.mcp.InstallMarketplaceItem(
 		ctx, request.UserID, mcpclient.MarketplaceInstallInput{
 			Identifier: request.ID, Version: request.Version,
-			ConversationID:    request.ConversationID,
-			SelectionRevision: selection.Revision, EnableForConversation: true,
-			DeploymentHash: request.ExactRevision,
+			ConversationID: request.ConversationID,
+			// Inventory installation and durable conversation selection are
+			// separate authorities. The current Run may activate this resource
+			// after its refresh boundary, but only the composer picker persists it.
+			EnableForConversation: false,
+			DeploymentHash:        request.ExactRevision,
 		},
 	)
 	if err != nil {
 		return InstallResult{}, err
 	}
-	if installed.ValidationError != "" || !installed.Enabled {
+	if installed.ValidationError != "" || installed.Server.Status != mcpclient.ServerStatusReady ||
+		(installed.Server.AuthType != mcpclient.AuthNone && !installed.Server.HasCredential) {
 		return InstallResult{
 			Kind: KindMCP, ID: installed.Server.Ref.Key(), Name: installed.Server.Name,
 			Revision: request.ExactRevision, Status: "configuration_required",
@@ -224,34 +224,10 @@ func (service *Service) completeConfiguredMCP(
 		(server.AuthType != mcpclient.AuthNone && !server.HasCredential) {
 		return pending, ErrConfigurationRequired
 	}
-	if err := service.enableConfiguredMCP(ctx, request, ref); err != nil {
-		return InstallResult{}, err
-	}
 	return InstallResult{
 		Kind: KindMCP, ID: ref.Key(), Name: server.Name,
 		Revision: request.ExactRevision, Status: "installed", RefreshRequired: true,
 	}, nil
-}
-
-func (service *Service) enableConfiguredMCP(
-	ctx context.Context,
-	request InstallRequest,
-	ref mcpclient.ServerRef,
-) error {
-	selection, err := service.mcp.GetSelection(ctx, request.UserID, request.ConversationID)
-	if err != nil || selectionContains(selection.Servers, ref) {
-		return err
-	}
-	selected := append([]mcpclient.SelectionServer(nil), selection.Servers...)
-	if selection.Mode != mcpclient.SelectionModeCustom {
-		selected = []mcpclient.SelectionServer{}
-	}
-	selected = append(selected, mcpclient.SelectionServer{Ref: ref})
-	_, err = service.mcp.ReplaceSelection(ctx, request.UserID, mcpclient.Selection{
-		ConversationID: request.ConversationID, Mode: mcpclient.SelectionModeCustom,
-		Revision: selection.Revision, Servers: selected,
-	})
-	return err
 }
 
 func (service *Service) installedSkill(

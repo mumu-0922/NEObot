@@ -244,7 +244,8 @@ replayable `search|tool` presentation.
 ### 3. Contracts
 
 - Build one Registry replacement for every provider Step from current server
-  authority. Memory ordering, current MCP visibility, installed Skills, and
+  authority. Memory ordering, current MCP visibility, Conversation-selected or
+  run-only-auto Skills, and
   Search/Knowledge availability must be recomputed; Tool output cannot register
   another Tool.
 - Execute calls in the model's exact order. A contiguous group of at most four
@@ -503,9 +504,11 @@ job_kill({jobId})
 
 ### 3. Contracts
 
-- Prepare only current-user installed/admitted Skills before the first model
-  request. Disabled runtime exposes no catalog or local Tool. An enabled
-  runtime with no installations publishes an empty catalog tombstone, omits
+- Prepare only current-user selected Skills plus at most two bounded, relevant
+  current-user installed/admitted run-only auto activations before the first
+  model request. Automatic activation is snapshot-only and must never write a
+  Conversation selection. Disabled runtime exposes no catalog or local Tool.
+  An enabled runtime with no active packages publishes an empty catalog tombstone, omits
   only `skill`, and still exposes `read`, `write`, `edit`, `grep`, Job, and
   `bash` Tools.
 - Add only a compact bounded name/version/description catalog replacement to
@@ -642,7 +645,7 @@ job_kill({jobId})
 
 | Condition | Required result |
 | --- | --- |
-| installed Skills plus non-Tool-capable model | fail before assistant creation with `SKILL_MODEL_UNSUPPORTED` |
+| active Skills plus non-Tool-capable model | fail before assistant creation with `SKILL_MODEL_UNSUPPORTED` |
 | catalog/package preparation fails | `SKILL_RUNTIME_UNAVAILABLE`; no internal detail |
 | strict arguments fail | Tool result `arguments_invalid`; no file read/process |
 | strict schema omits an optional property from `required` | Provider rejects the Run before Tool execution; repair the schema with required + nullable, not by weakening runtime validation |

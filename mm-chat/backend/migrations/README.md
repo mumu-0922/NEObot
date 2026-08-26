@@ -586,6 +586,13 @@ The dedicated Backend route requires current Host capability admission,
 explicit Full access acknowledgement, and no active assistant Turn. Down
 refuses while any Conversation retains a non-default permission choice.
 
+Migration `106` adds durable per-Conversation Skill selection. The parent row
+binds Conversation and owner with a monotonically increasing revision; child
+rows bind the same owner to an existing installation and immutable package
+fingerprint. Deleting a Conversation, user, or installation cascades only the
+selection reference. The paired down migration removes the selection layer
+before its supporting composite inventory constraint.
+
 ## Storage boundaries
 
 Postgres is the source of truth for structured records:
@@ -593,7 +600,7 @@ Postgres is the source of truth for structured records:
 - users and canonical session records
 - provider configuration metadata and encrypted-secret references
 - server-owned automation task model selections
-- conversations and messages
+- conversations and messages, including revision-bound Skill selections
 - ordinary Chat Agent Turns, immutable replay events, current Conversation
   Goals, and bounded Tool approval authority
 - Projects, Memory settings, and canonical Memory rows

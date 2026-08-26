@@ -52,6 +52,57 @@ func TestPrepareRunUsesExplicitEmptyAndWorkspaceInheritance(t *testing.T) {
 	}
 }
 
+func TestPrepareAgentRunAutoActivatesWithoutChangingConversationSelection(t *testing.T) {
+	t.Parallel()
+	userID, conversationID, runID := uuid.NewString(), uuid.NewString(), uuid.NewString()
+	repo := newFakeRepository()
+	repo.scopes[userID+":"+conversationID] = ConversationScope{
+		ConversationID: conversationID, UserID: userID,
+	}
+	repo.selections[userID+":"+conversationID] = Selection{
+		ConversationID: conversationID, Mode: SelectionModeCustom,
+		Revision: 3, Servers: []SelectionServer{},
+	}
+	server := testManifestServer("weather", "global")
+	service, err := NewService(
+		testMCPConfig(), repo, &fakeConnector{}, nil, nil, Catalog{}, []Server{server},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prepared, err := service.PrepareAgentRun(
+		context.Background(), userID, conversationID, "", runID, "查询 weather forecast",
+	)
+	if err != nil || !prepared.Enabled() || len(prepared.Snapshot.Servers) != 1 ||
+		prepared.Snapshot.Servers[0].ActivationSource != "agent_auto" {
+		t.Fatalf("PrepareAgentRun() prepared=%#v error=%v", prepared.Snapshot, err)
+	}
+	durable := repo.selections[userID+":"+conversationID]
+	if durable.Revision != 3 || len(durable.Servers) != 0 {
+		t.Fatalf("run-only activation changed durable selection=%#v", durable)
+	}
+	withoutAuto, err := service.PrepareRun(
+		context.Background(), userID, conversationID, "", uuid.NewString(),
+	)
+	if err != nil || withoutAuto.Enabled() {
+		t.Fatalf("PrepareRun() without auto=%#v error=%v", withoutAuto.Snapshot, err)
+	}
+}
+
+func TestMCPRunOnlyNameMatchRequiresLatinBoundaries(t *testing.T) {
+	t.Parallel()
+	if mcpNameMentioned("build a website", "web") {
+		t.Fatal("web matched inside website")
+	}
+	if !mcpNameMentioned("use web for this task", "web") {
+		t.Fatal("standalone web server name did not match")
+	}
+	if !mcpNameMentioned("请用天气查询", "天气") {
+		t.Fatal("CJK server name did not match")
+	}
+}
+
 func TestAdministratorDefinitionIsSharedWithoutCopyingCredential(t *testing.T) {
 	t.Parallel()
 	administratorID := uuid.NewString()

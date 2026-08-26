@@ -50,13 +50,17 @@ describe("MCP Tools management control", () => {
     expect(control).toContain('t("toolCount", { count: server.tools.length })');
     expect(control).toContain("toolsExpanded &&");
     expect(control).toContain('tool.classification !== "unknown"');
-    expect(control).toContain("onClick={() => toggleTool(server, tool.name)}");
+    expect(control).not.toContain("const toggleTool =");
+    expect(control).not.toContain("onClick={() => toggleTool(");
   });
 
-  it("keeps MCP out of the composer", () => {
-    expect(control).toContain('saveSelection("custom", [])');
+  it("keeps inventory management separate from conversation selection", () => {
+    expect(control).not.toContain("getConversationSelection");
+    expect(control).not.toContain("replaceConversationSelection");
+    expect(control).not.toContain("toggleServer");
     expect(input).not.toContain("McpToolsControl");
     expect(input).not.toContain("mcpAdmissionAttention");
+    expect(input).toContain("ConversationResourcePickers");
   });
 
   it("allows OAuth dynamic registration and validates HTTPS redirects", () => {
@@ -119,9 +123,9 @@ describe("MCP Tools management control", () => {
     expect(marketplace).toContain("client.mcp.installMarketplaceItem");
     expect(marketplace).toContain("MARKETPLACE_CATEGORIES");
     expect(marketplace).toContain("category: category || undefined");
-    expect(marketplace).toContain(
-      "selectionRevision: selection?.revision ?? 0",
-    );
+    expect(marketplace).toContain("selectionRevision: 0");
+    expect(marketplace).toContain("enableForConversation: false");
+    expect(marketplace).not.toContain("getConversationSelection");
     expect(marketplace).toContain(
       "const searchRequest = ++searchRequestRef.current",
     );

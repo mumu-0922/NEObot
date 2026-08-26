@@ -178,6 +178,15 @@ type Installation struct {
 	UpdatedAt          time.Time `json:"updatedAt"`
 }
 
+// ConversationSelection is the durable set of owner-installed Skills pinned
+// to one conversation. Revision zero represents an authorized conversation
+// that has not stored an explicit selection yet.
+type ConversationSelection struct {
+	ConversationID string         `json:"conversationId"`
+	Revision       int64          `json:"revision"`
+	Skills         []Installation `json:"skills"`
+}
+
 type StoreResult struct {
 	Items      []Candidate `json:"items"`
 	Page       int         `json:"page"`
@@ -211,6 +220,9 @@ type Repository interface {
 	Install(context.Context, string, string, string) (Installation, error)
 	ListLibrary(context.Context, string) ([]Installation, error)
 	Uninstall(context.Context, string, string, int64) error
+	AuthorizeConversation(context.Context, string, string) error
+	GetConversationSelection(context.Context, string, string) (ConversationSelection, bool, error)
+	ReplaceConversationSelection(context.Context, string, ConversationSelection) (ConversationSelection, error)
 }
 
 type LobeHubFetcher interface {

@@ -60,6 +60,7 @@ func (snapshot *agentRuntimeResourceSnapshot) runAuthority() any {
 			authority.SkillPackages = append(authority.SkillPackages, []string{
 				strings.TrimSpace(skill.Name), strings.TrimSpace(skill.Version),
 				strings.TrimSpace(skill.PackageFingerprint),
+				strings.TrimSpace(skill.ActivationSource),
 			})
 		}
 	}

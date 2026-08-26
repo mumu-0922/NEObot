@@ -994,6 +994,26 @@ WHERE conversation_id = $2
 `, newConversationID, conversationID); err != nil {
 		return Conversation{}, fmt.Errorf("copy mcp selected servers: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO skill_conversation_selections (
+  conversation_id, user_id, revision
+)
+SELECT $1, $2, 1
+FROM skill_conversation_selections
+WHERE conversation_id = $3 AND user_id = $2
+`, newConversationID, user.ID, conversationID); err != nil {
+		return Conversation{}, fmt.Errorf("copy Skill conversation selection: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO skill_conversation_installations (
+  conversation_id, user_id, installation_id, package_fingerprint
+)
+SELECT $1, $2, installation_id, package_fingerprint
+FROM skill_conversation_installations
+WHERE conversation_id = $3 AND user_id = $2
+`, newConversationID, user.ID, conversationID); err != nil {
+		return Conversation{}, fmt.Errorf("copy selected conversation Skills: %w", err)
+	}
 
 	conversation.MessageCount = len(sourceMessages)
 	if _, err := tx.ExecContext(ctx, `UPDATE conversations SET updated_at = now() WHERE id = $1 AND user_id = $2`, newConversationID, user.ID); err != nil {

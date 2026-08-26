@@ -54,7 +54,30 @@ Do not repeat raw Tool output unnecessarily and never invent Tool results.`
 const publishFileSystemInstruction = `This conversation has no bound Host workspace, so publish_file is the compatibility path for a final user-requested downloadable file. Publish only final deliverables, not temporary files.`
 
 type LocalSkillCatalog interface {
-	PrepareRuntimeSkills(context.Context, string, string) ([]skillsupply.RuntimeSkill, error)
+	PrepareConversationRuntimeSkills(
+		context.Context,
+		string,
+		string,
+		string,
+		string,
+		bool,
+	) ([]skillsupply.RuntimeSkill, error)
+}
+
+func prepareConversationLocalSkills(
+	ctx context.Context,
+	catalog LocalSkillCatalog,
+	userID string,
+	conversationID string,
+	runtimeRoot string,
+	query string,
+) ([]skillsupply.RuntimeSkill, error) {
+	if catalog == nil {
+		return []skillsupply.RuntimeSkill{}, nil
+	}
+	return catalog.PrepareConversationRuntimeSkills(
+		ctx, userID, conversationID, runtimeRoot, query, true,
+	)
 }
 
 type localToolExecutor interface {

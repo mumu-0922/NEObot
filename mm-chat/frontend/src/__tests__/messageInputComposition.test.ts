@@ -156,6 +156,10 @@ describe("MessageInput composition", () => {
       'notifyLocalSessionToolUnavailable("reasoning effort")',
     );
     expect(messageInput).not.toContain("McpToolsControl");
+    expect(messageInput).toContain("ConversationResourcePickers");
+    expect(messageInput).toContain("resourceConversationId");
+    expect(messageInput).toContain("skillResourcesEnabled");
+    expect(messageInput).toContain("mcpResourcesEnabled");
     expect(messageInput).toContain('t("agentModeDescription")');
     expect(messageInput).toContain('t("agentModeUnsupported")');
     expect(messageInput).toContain(

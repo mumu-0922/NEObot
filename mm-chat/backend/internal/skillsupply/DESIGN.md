@@ -45,6 +45,9 @@ identity.
 - `skill_package_candidates` owns one exact source coordinate and a
   fingerprint-bound, revision-CAS administrator decision.
 - `skill_installations` owns only a user's exact admitted package reference.
+- `skill_conversation_selections` owns one revision-CAS selection per
+  `(conversation, owner)`; child rows bind the exact owner installation and
+  package fingerprint. Conversation deletion or uninstall cascades stale pins.
 - A composite foreign key plus admission trigger prevents an installation from
   binding a different or non-admitted package even outside the repository.
 - PostgreSQL `jsonb` normalizes stored metadata, so immutable replay compares
@@ -53,6 +56,14 @@ identity.
   fingerprint and scalar-field comparisons.
 - Uninstall deletes only the current owner's reference; immutable candidates,
   versions, SBOMs, and review history survive.
+
+## Runtime projection
+
+Inventory, durable Conversation selection, and Run activation are separate
+authorities. Agent Runs materialize only user-selected installations plus at
+most two bounded lexical `agent_auto` matches from the same owner's installed
+library. Automatic matches are recorded in the frozen Run resource report and
+never written back to the Conversation selection.
 
 ## Failure ordering and rollback
 

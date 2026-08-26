@@ -36,12 +36,14 @@ and fixed diagnostic codes.
 
 ### 3. Contracts
 
-- Construct the initial Run-segment snapshot after MCP `PrepareRun`, Skill package
-  materialization, and Workspace executor binding, but before Assistant
+- Construct the initial Run-segment snapshot after MCP `PrepareAgentRun`,
+  conversation-selected/run-only-auto Skill package materialization, and
+  Workspace executor binding, but before Assistant
   acceptance. Skill prompt preparation remains an admission operation: failure
   creates no pending Assistant and makes no Provider request.
-- A Run-segment revision freezes the prepared MCP snapshot, installed Skill catalog
-  and package fingerprints, and hashed Workspace authority. Existing MCP,
+- A Run-segment revision freezes the prepared MCP snapshot, active Skill catalog
+  and package fingerprints, activation provenance (`conversation_selected` or
+  `agent_auto`), and hashed Workspace authority. Existing MCP,
   Skill, Workspace, permission, approval, and conversation stores remain the
   only mutation authorities; the resource snapshot is not a database.
 - Each Provider Step receives one immutable projection from its active segment
@@ -91,7 +93,7 @@ and fixed diagnostic codes.
 - **Good:** one Run snapshot supplies the Skill prompt, then Step 1 projects
   Memory/MCP/Skill/local Tools; an MCP search changes visibility and Step 2 gets
   a new revision without changing the frozen MCP authorization snapshot.
-- **Base:** Agent has no selected MCP Server and no installed Skill; the same
+- **Base:** Agent has no selected MCP Server and no active Skill; the same
   projection still contains the authorized local workspace and built-in Tools.
 - **Bad:** Handler appends `promptInstruction()` directly, the loop separately
   calls MCP/Skill definition builders, required Skill creates another Registry,

@@ -38,7 +38,12 @@ psql_command "$(migration_drill_deferred_tail_sql "${backend_dir}" \
   098_retire_legacy_agent_control_plane \
   099_chat_agent_event_log_function_repair \
   100_chat_agent_approvals \
-  101_chat_agent_transcript_blocks)" >/dev/null
+	101_chat_agent_transcript_blocks \
+	102_host_workspaces \
+	103_chat_agent_permission_modes \
+	104_rag_failure_state_projection \
+	105_recall_filtering_provider \
+	106_skill_conversation_selections)" >/dev/null
 MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" up >"${work_dir}/up.log" 2>&1
 grep -Fq "up 077_mcp_marketplace_install_credentials" "${work_dir}/up.log"
 grep -Fq "up 078_mcp_legacy_tavily_runner_repair" "${work_dir}/up.log"
@@ -61,7 +66,7 @@ grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/up.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/up.log"
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/up.log"
 grep -Fq "up 097_chat_agent_goals" "${work_dir}/up.log"
-psql_command "DELETE FROM schema_migrations WHERE version IN (98,99,100)" >/dev/null
+psql_command "DELETE FROM schema_migrations WHERE version BETWEEN 98 AND 106" >/dev/null
 MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" down >"${work_dir}/peel-097-tail-1.log" 2>&1
 grep -Fq "down 097_chat_agent_goals" "${work_dir}/peel-097-tail-1.log"
 MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/migrate" down >"${work_dir}/peel-096-tail-1.log" 2>&1
@@ -171,6 +176,11 @@ grep -Fq "up 098_retire_legacy_agent_control_plane" "${work_dir}/reup.log"
 grep -Fq "up 099_chat_agent_event_log_function_repair" "${work_dir}/reup.log"
 grep -Fq "up 100_chat_agent_approvals" "${work_dir}/reup.log"
 grep -Fq "up 101_chat_agent_transcript_blocks" "${work_dir}/reup.log"
+grep -Fq "up 102_host_workspaces" "${work_dir}/reup.log"
+grep -Fq "up 103_chat_agent_permission_modes" "${work_dir}/reup.log"
+grep -Fq "up 104_rag_failure_state_projection" "${work_dir}/reup.log"
+grep -Fq "up 105_recall_filtering_provider" "${work_dir}/reup.log"
+grep -Fq "up 106_skill_conversation_selections" "${work_dir}/reup.log"
 repaired="$(
   docker exec "${container_name}" psql -U postgres -d neo_chat_mcp_credentials -Atc \
     "SELECT concat_ws('|', transport, auth_type, status, last_error_code, auth_config #>> '{metadata,runnerArtifactId}') FROM mcp_servers WHERE id = '78000000-0000-4000-8000-000000000002'"
@@ -198,4 +208,4 @@ if [[ "${context7}" != "22b235834a14b617480cc92dd0f6f6c7587cb399880c666773135971
   exit 1
 fi
 
-printf 'MCP credential migration drill: passed (historical 097 boundary, replay to head 101, and exact 078-081 repairs)\n'
+printf 'MCP credential migration drill: passed (historical 097 boundary, replay to head 106, and exact 078-081 repairs)\n'

@@ -114,10 +114,12 @@ rollback restores only the value carrying that migration's repair marker.
   Chat Run. A preflight uses a conversation-bound `preflight` component; an
   accepted Run never reuses that process or another Run's page/Cookie/memory
   state.
-- Before accepting a send, resolve current user/Workspace grant, selection,
-  credential, status, transport switch, compatible schema, and native model
-  Tool capability. Persist one immutable run snapshot. Reauthorize every call
-  against that snapshot.
+- Before accepting a send, resolve current user/Workspace grant, durable
+  Conversation selection, credential, status, transport switch, compatible
+  schema, and native model Tool capability. Agent mode may add at most two
+  relevant already-installed, ready, credential-authorized Servers to this Run
+  as `agent_auto`; this bounded activation never mutates the durable selection.
+  Persist one immutable run snapshot and reauthorize every call against it.
 - MCP is an intentional extension of the existing `ToolRoundProvider` loop.
   Use `model -> calls -> results -> same model`; never prompt-simulate calls or
   switch models.
@@ -388,7 +390,7 @@ outcome-unknown boundaries remain authoritative.
   retired metadata purge without security-field loss, 12 MCP tables,
   runtime-role denial/grants, stdio repository lifecycle, targeted legacy
   repair/rollback assertions, account cascade queue, and final replay through
-  the current head (currently `105`) via
+  the current head (currently `106`) via
   `scripts/verify-mcp-postgres17.sh` and
   `scripts/verify-mcp-install-credentials-postgres17.sh`. When a new tail
   migration is added, both drills must advance their fresh, down, re-up, and

@@ -121,6 +121,75 @@ func TestPrepareRuntimeSkillsRejectsPackageObjectDrift(t *testing.T) {
 	}
 }
 
+func TestPrepareConversationRuntimeSkillsUsesRunOnlyActivationWithoutPersisting(t *testing.T) {
+	const conversationID = "33333333-3333-4333-8333-333333333333"
+	repository := newMemoryRepository()
+	repository.conversations[conversationID] = testSkillUser
+	repository.newID = sequenceIDs(
+		"44444444-4444-4444-8444-444444444444",
+		"55555555-5555-4555-8555-555555555555",
+	)
+	objects := newMemoryObjectStore()
+	service := NewService(WithRepository(repository), WithObjectStore(objects),
+		WithAdministratorUserID(testSkillAdmin))
+	service.newID = sequenceIDs(
+		"66666666-6666-4666-8666-666666666666",
+		"77777777-7777-4777-8777-777777777777",
+	)
+
+	install := func(name, description string) Installation {
+		t.Helper()
+		markdown := "---\nname: " + name + "\ndescription: " + description +
+			"\nlicense: MIT\nmetadata:\n  version: \"1.0.0\"\nallowed-tools: Read\n---\n\n# Fixture\n"
+		archive := mustTestArchive(t, []packageFile{{path: "SKILL.md", data: []byte(markdown)}}, 0, time.Time{})
+		candidate, err := service.IngestZIP(context.Background(), testSkillAdmin, archive)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = service.ReviewCandidate(context.Background(), testSkillAdmin, candidate.ID, ReviewInput{
+			Status: StatusAdmitted, ExpectedRevision: 1,
+			PackageFingerprint: candidate.Package.PackageFingerprint,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		installation, err := service.Install(context.Background(), testSkillUser, candidate.ID,
+			candidate.Package.PackageFingerprint)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return installation
+	}
+	xlsx := install("office-xlsx", "Create and validate Excel xlsx spreadsheets.")
+	text := install("plain-text", "Edit plain text notes.")
+
+	runtimeRoot := filepath.Join(t.TempDir(), "runtime")
+	activated, err := service.PrepareConversationRuntimeSkills(
+		context.Background(), testSkillUser, conversationID, runtimeRoot,
+		"请创建 Excel xlsx 表格", true,
+	)
+	if err != nil || len(activated) != 1 || activated[0].InstallationID != xlsx.ID ||
+		activated[0].ActivationSource != RuntimeSkillActivationAgentAuto {
+		t.Fatalf("auto activated=%#v error=%v", activated, err)
+	}
+	selection, err := service.GetConversationSelection(context.Background(), testSkillUser, conversationID)
+	if err != nil || selection.Revision != 0 || len(selection.Skills) != 0 {
+		t.Fatalf("run-only activation persisted selection=%#v error=%v", selection, err)
+	}
+	selected, err := service.ReplaceConversationSelection(
+		context.Background(), testSkillUser, conversationID, 0, []string{text.ID},
+	)
+	if err != nil || selected.Revision != 1 {
+		t.Fatalf("replace selection=%#v error=%v", selected, err)
+	}
+	pinned, err := service.PrepareConversationRuntimeSkills(
+		context.Background(), testSkillUser, conversationID, runtimeRoot, "unrelated", true,
+	)
+	if err != nil || len(pinned) != 1 || pinned[0].InstallationID != text.ID ||
+		pinned[0].ActivationSource != RuntimeSkillActivationUserSelected {
+		t.Fatalf("pinned runtime=%#v error=%v", pinned, err)
+	}
+}
+
 func TestRuntimeSkillReadRejectsMaterializedContentDrift(t *testing.T) {
 	root := t.TempDir()
 	body := []byte("canonical")

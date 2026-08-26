@@ -2,7 +2,7 @@
 
 ## Goals
 
-- Give deterministic composer commands and the Agent one Resource contract.
+- Give conversational acquisition and the Agent one Resource contract.
 - Preserve Skill admission and MCP grant/credential/validation authorities.
 - Bind writes to immutable candidate identity or current CAS revision.
 - Keep credentials and untrusted Marketplace content outside model context.
@@ -18,14 +18,14 @@
 ## Architecture
 
 ```text
-Composer / Agent Tools
+Chat acquisition / Agent Tools
         |
         v
 strict Handler / Service
    | catalog + search
    | exact install --------> skillsupply / mcpclient
    | lifecycle mutation ---> skillsupply / mcpclient
-   | config completion ----> MCP provenance + ready + credential + selection
+   | config completion ----> MCP provenance + ready + credential
         |
         +--> audit_logs (metadata only)
         +--> refreshRequired -> fresh Runtime Resource Snapshot
@@ -46,6 +46,7 @@ single orchestration file from becoming a second domain service.
 | 2026-08-26 | Action-specific mutation audit | Slash and Agent writes need one operator trail | `resource.install/enable/disable/remove` contain safe metadata only |
 | 2026-08-26 | Configuration is a two-step install | Secrets must never enter Tool arguments | A provenance-bound draft is configured in Tools, then revalidated before continuation |
 | 2026-08-26 | Fresh snapshot after mutation | Provider Tool definitions are frozen per Run segment | The original task continues only after a new revision is prepared |
+| 2026-08-26 | Install changes inventory only | Persistent selection must remain explicit and Conversation-scoped | Continuation may use bounded `agent_auto`; only the composer picker writes selection |
 
 ## Security model
 

@@ -99,7 +99,6 @@ import { SERVER_DEFAULT_PROVIDER_ID } from "@/lib/defaultConfig/shared";
 import { normalizeServerManagedProviderConfigs } from "@/lib/providers/config";
 import { createWorkspaceService } from "@/services/api/workspaceService";
 import type { HostWorkspaceStatusDTO } from "@/services/api/client";
-import type { AgentPackageInstallationDTO } from "@/services/api/client";
 import {
   shouldResolveSelectedModelAfterBootstrap,
   shouldRunSettingsStartupEffects,
@@ -128,11 +127,7 @@ import {
   getChatNavigationScrollTop,
 } from "@/lib/chat/messageNavigation";
 import { toServerMessageAttachments } from "@/lib/utils/serverAttachments";
-import {
-  buildSlashCommands,
-  parseSlashCommand,
-  RESOURCE_MANAGER_OPEN_EVENT,
-} from "@/lib/chat/slashCommands";
+import { RESOURCE_MANAGER_OPEN_EVENT } from "@/lib/chat/slashCommands";
 import type { ResourceManagerOpenDetail } from "@/lib/chat/slashCommands";
 import {
   getKnowledgeAttachmentCollectionIds,
@@ -316,11 +311,6 @@ const ChatApp = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [actionNotice, setActionNotice] = useState<string | null>(null);
-  const [installedPackageSkills, setInstalledPackageSkills] = useState<
-    AgentPackageInstallationDTO[]
-  >([]);
-  const [slashCommandsLoading, setSlashCommandsLoading] = useState(false);
   const [resourcePanelQuery, setResourcePanelQuery] = useState("");
   const [resourcePanelMcpRef, setResourcePanelMcpRef] = useState("");
   const [hostWorkspaceStatus, setHostWorkspaceStatus] =
@@ -436,72 +426,12 @@ const ChatApp = () => {
     if (actionErrorTimerRef.current) {
       clearTimeout(actionErrorTimerRef.current);
     }
-    setActionNotice(null);
     setActionError(message);
     actionErrorTimerRef.current = setTimeout(() => {
       actionErrorTimerRef.current = null;
       setActionError(null);
     }, 5000);
   }, []);
-
-  const showActionNotice = useCallback((message: string) => {
-    if (actionErrorTimerRef.current) {
-      clearTimeout(actionErrorTimerRef.current);
-    }
-    setActionError(null);
-    setActionNotice(message);
-    actionErrorTimerRef.current = setTimeout(() => {
-      actionErrorTimerRef.current = null;
-      setActionNotice(null);
-    }, 5000);
-  }, []);
-
-  const refreshInstalledPackageSkills = useCallback(async () => {
-    if (
-      apiClientSnapshot.mode !== "server" ||
-      apiClientSnapshot.capabilities.skillStore !== true
-    ) {
-      setInstalledPackageSkills([]);
-      return [];
-    }
-    setSlashCommandsLoading(true);
-    try {
-      const skills = await apiClientSnapshot.skillStore.listPackageLibrary();
-      setInstalledPackageSkills(skills);
-      return skills;
-    } finally {
-      setSlashCommandsLoading(false);
-    }
-  }, [apiClientSnapshot]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    if (
-      apiClientSnapshot.mode === "server" &&
-      apiClientSnapshot.capabilities.skillStore === true
-    ) {
-      setSlashCommandsLoading(true);
-      void apiClientSnapshot.skillStore
-        .listPackageLibrary({ signal: controller.signal })
-        .then(setInstalledPackageSkills)
-        .catch((error) => {
-          if (!controller.signal.aborted) {
-            logChatAppError("Failed to load installed Skills", error);
-          }
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) setSlashCommandsLoading(false);
-        });
-    } else {
-      setSlashCommandsLoading(false);
-    }
-    return () => controller.abort();
-  }, [apiClientSnapshot]);
-
-  const slashCommands = useMemo(
-    () => buildSlashCommands(installedPackageSkills.map((skill) => skill.name)),
-    [installedPackageSkills],
-  );
 
   const visibleSessions = serverModeEnabled
     ? serverReadState.sessions
@@ -1939,324 +1869,10 @@ const ChatApp = () => {
     return acceptance;
   };
 
-  const handleSlashCommand = async (
-    text: string,
-    attachments: Attachment[],
-  ): Promise<boolean | null> => {
-    if (attachments.length > 0) return null;
-    const command = parseSlashCommand(text);
-    if (!command) return null;
-    if (command.kind === "skill-invoke") {
-      const installed = installedPackageSkills.some(
-        (skill) => skill.name.toLowerCase() === command.name,
-      );
-      if (!installed) {
-        showActionError(`Skill “${command.name}” 尚未安装。`);
-        return true;
-      }
-      return null;
-    }
-    if (command.kind === "unknown") {
-      showActionError(`未知命令：${command.raw}`);
-      return true;
-    }
-    if (command.kind === "builtin") {
-      if (command.command === "reload") {
-        if (isGenerating) {
-          showActionError("当前任务仍在运行；资源快照只能在下一次 Run 刷新。");
-          return true;
-        }
-        const skills = await refreshInstalledPackageSkills();
-        if (visibleCurrentSessionId) {
-          const catalog = await apiClientSnapshot.resources.getCatalog({
-            conversationId: visibleCurrentSessionId,
-          });
-          showActionNotice(
-            `资源已刷新：${skills.length} 个 Skill，${catalog.mcpServers.length} 个 MCP。`,
-          );
-        } else {
-          showActionNotice(`资源已刷新：${skills.length} 个 Skill。`);
-        }
-        return true;
-      }
-      if (!visibleCurrentSessionId) {
-        showActionError("请先创建或选择一个对话。");
-        return true;
-      }
-      const catalog = await apiClientSnapshot.resources.getCatalog({
-        conversationId: visibleCurrentSessionId,
-      });
-      const ready = catalog.mcpServers.filter(
-        (server) => server.status === "ready",
-      ).length;
-      showActionNotice(
-        `资源快照 ${catalog.revision.slice(0, 15)}…：${catalog.skills.length} 个 Skill，${ready}/${catalog.mcpServers.length} 个 MCP Ready。`,
-      );
-      setResourcePanelQuery("");
-      navigateToPanel("tools");
-      return true;
-    }
-
-    const argument = command.arguments.trim();
-    if (command.resource === "skill") {
-      switch (command.action) {
-        case "list":
-          setResourcePanelQuery("");
-          navigateSkillStore(null);
-          return true;
-        case "search":
-          if (!argument) {
-            showActionError("用法：/skill search <关键词>");
-            return true;
-          }
-          {
-            const result = await apiClientSnapshot.resources.search({
-              kind: "skill",
-              query: argument,
-            });
-            showActionNotice(
-              result.items.length > 0
-                ? `找到 ${result.items.length} 个 Skill：${result.items.map((item) => item.name).join("、")}`
-                : "未找到匹配的 Skill。",
-            );
-          }
-          setResourcePanelQuery(argument);
-          navigateSkillStore(null);
-          return true;
-        case "info": {
-          if (!argument) {
-            showActionError("用法：/skill info <名称或 ID>");
-            return true;
-          }
-          const result = await apiClientSnapshot.resources.search({
-            kind: "skill",
-            query: argument,
-          });
-          const item = result.items.find(
-            (candidate) =>
-              candidate.id === argument ||
-              candidate.name.toLowerCase() === argument.toLowerCase(),
-          );
-          if (!item) {
-            showActionError(`未找到 Skill：${argument}`);
-            return true;
-          }
-          setResourcePanelQuery("");
-          navigateSkillStore(item.id);
-          return true;
-        }
-        case "install": {
-          if (!argument) {
-            showActionError("用法：/skill install <候选 ID>");
-            return true;
-          }
-          if (!visibleCurrentSessionId) {
-            showActionError("请先创建或选择一个对话。");
-            return true;
-          }
-          const search = await apiClientSnapshot.resources.search({
-            kind: "skill",
-            query: argument,
-          });
-          const item = search.items.find(
-            (candidate) => candidate.id === argument,
-          );
-          if (!item) {
-            setResourcePanelQuery(argument);
-            navigateSkillStore(null);
-            showActionError(`未找到精确 Skill 候选：${argument}`);
-            return true;
-          }
-          const installed = await apiClientSnapshot.resources.install({
-            kind: "skill",
-            id: item.id,
-            version: item.version,
-            exactRevision: item.exactRevision,
-            conversationId: visibleCurrentSessionId,
-          });
-          await refreshInstalledPackageSkills();
-          showActionNotice(`已安装 Skill：${installed.name}`);
-          return true;
-        }
-        case "remove": {
-          if (!argument) {
-            showActionError("用法：/skill remove <名称或安装 ID>");
-            return true;
-          }
-          if (!visibleCurrentSessionId) {
-            showActionError("请先创建或选择一个对话。");
-            return true;
-          }
-          const library = await refreshInstalledPackageSkills();
-          const item = library.find(
-            (skill) =>
-              skill.id === argument ||
-              skill.name.toLowerCase() === argument.toLowerCase(),
-          );
-          if (!item) {
-            showActionError(`未找到已安装 Skill：${argument}`);
-            return true;
-          }
-          await apiClientSnapshot.resources.mutate({
-            kind: "skill",
-            action: "remove",
-            id: item.id,
-            expectedRevision: item.revision,
-            conversationId: visibleCurrentSessionId,
-          });
-          await refreshInstalledPackageSkills();
-          showActionNotice(`已卸载 Skill：${item.name}`);
-          return true;
-        }
-        default:
-          showActionError(`未知 Skill 命令：${command.action}`);
-          return true;
-      }
-    }
-
-    if (!serverMcpEnabled) {
-      showActionError("MCP 服务当前不可用。");
-      return true;
-    }
-    if (command.action === "list" || command.action === "status") {
-      setResourcePanelQuery("");
-      navigateToPanel("tools");
-      return true;
-    }
-    if (command.action === "search" || command.action === "info") {
-      if (!argument) {
-        showActionError(`/mcp ${command.action} 需要 identifier 或关键词。`);
-        return true;
-      }
-      const result = await apiClientSnapshot.resources.search({
-        kind: "mcp",
-        query: argument,
-      });
-      showActionNotice(
-        result.items.length > 0
-          ? `找到 ${result.items.length} 个 MCP：${result.items.map((item) => item.name).join("、")}`
-          : "未找到匹配的 MCP。",
-      );
-      setResourcePanelQuery(argument);
-      navigateToPanel("tools");
-      return true;
-    }
-    if (!visibleCurrentSessionId) {
-      showActionError("请先创建或选择一个对话。 ");
-      return true;
-    }
-    if (command.action === "install") {
-      if (!argument) {
-        showActionError("用法：/mcp install <identifier>");
-        return true;
-      }
-      const search = await apiClientSnapshot.resources.search({
-        kind: "mcp",
-        query: argument,
-      });
-      const match = search.items.find(
-        (item) => item.id.toLowerCase() === argument.toLowerCase(),
-      );
-      if (!match) {
-        setResourcePanelQuery(argument);
-        navigateToPanel("tools");
-        showActionError(`未找到精确 MCP identifier：${argument}`);
-        return true;
-      }
-      if (match.status !== "installable" || match.authType !== "none") {
-        setResourcePanelQuery(argument);
-        navigateToPanel("tools");
-        showActionNotice("该 MCP 需要配置或授权，已打开 Marketplace。 ");
-        return true;
-      }
-      const result = await apiClientSnapshot.resources.install({
-        kind: "mcp",
-        id: match.id,
-        version: match.version,
-        exactRevision: match.exactRevision,
-        conversationId: visibleCurrentSessionId,
-      });
-      showActionNotice(`已安装并启用 MCP：${result.name}`);
-      return true;
-    }
-
-    if (
-      command.action === "enable" ||
-      command.action === "disable" ||
-      command.action === "remove"
-    ) {
-      if (!argument) {
-        showActionError(`/mcp ${command.action} 需要名称或 source:id。`);
-        return true;
-      }
-      const listed = await apiClientSnapshot.mcp.listServers({
-        conversationId: visibleCurrentSessionId,
-      });
-      const server = listed.servers.find((candidate) => {
-        const key = `${candidate.ref.source}:${candidate.ref.id}`;
-        return (
-          key.toLowerCase() === argument.toLowerCase() ||
-          candidate.name.toLowerCase() === argument.toLowerCase()
-        );
-      });
-      if (!server) {
-        showActionError(`未找到 MCP Server：${argument}`);
-        return true;
-      }
-      if (command.action === "remove") {
-        if (server.ref.source !== "private" || !server.canManage) {
-          showActionError("该 MCP 不能由当前用户直接删除。");
-          return true;
-        }
-        await apiClientSnapshot.resources.mutate({
-          kind: "mcp",
-          action: "remove",
-          id: `${server.ref.source}:${server.ref.id}`,
-          expectedRevision: 0,
-          conversationId: visibleCurrentSessionId,
-        });
-        showActionNotice(`已删除 MCP：${server.name}`);
-        return true;
-      }
-      if (server.status !== "ready") {
-        setResourcePanelQuery(server.name);
-        navigateToPanel("tools");
-        showActionError(`MCP 尚未 Ready：${server.name}`);
-        return true;
-      }
-      const selection = await apiClientSnapshot.mcp.getConversationSelection(
-        visibleCurrentSessionId,
-      );
-      await apiClientSnapshot.resources.mutate({
-        kind: "mcp",
-        action: command.action,
-        id: `${server.ref.source}:${server.ref.id}`,
-        conversationId: visibleCurrentSessionId,
-        expectedRevision: selection.revision,
-      });
-      showActionNotice(
-        `${command.action === "enable" ? "已启用" : "已停用"} MCP：${server.name}`,
-      );
-      return true;
-    }
-
-    showActionError(`未知 MCP 命令：${command.action}`);
-    return true;
-  };
-
   const handleSendMessage = async (text: string, attachments: Attachment[]) => {
     shouldFollowMessageBottomRef.current = true;
     hasWheelMessageScrollIntentRef.current = false;
     hasPointerMessageScrollIntentRef.current = false;
-    try {
-      const handled = await handleSlashCommand(text, attachments);
-      if (handled !== null) return handled;
-    } catch (error) {
-      showActionError(
-        error instanceof Error ? error.message : "资源命令执行失败。",
-      );
-      return false;
-    }
     if (serverModeEnabled) {
       return await handleSendServerMessage(text, attachments);
     }
@@ -3724,17 +3340,6 @@ const ChatApp = () => {
             </div>
           </div>
         )}
-        {actionNotice && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="pointer-events-none absolute top-16 left-4 right-4 z-30"
-          >
-            <div className="mx-auto max-w-3xl rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 shadow-sm dark:border-emerald-900/60 dark:bg-emerald-950/90 dark:text-emerald-100">
-              {actionNotice}
-            </div>
-          </div>
-        )}
         {viewMode === "skill-store" ? (
           <SkillStore
             selectedId={skillId}
@@ -4142,8 +3747,22 @@ const ChatApp = () => {
                       ? persistConversationKnowledgeSelection
                       : undefined
                   }
-                  slashCommands={slashCommands}
-                  slashCommandsLoading={slashCommandsLoading}
+                  resourceConversationId={visibleCurrentSessionId ?? undefined}
+                  skillResourcesEnabled={
+                    serverModeEnabled &&
+                    apiClientSnapshot.capabilities.skillStore === true
+                  }
+                  mcpResourcesEnabled={serverMcpEnabled}
+                  resourceRunActive={isGenerating}
+                  onOpenSkillStore={() => {
+                    setResourcePanelQuery("");
+                    navigateSkillStore(null);
+                  }}
+                  onOpenMcpTools={() => {
+                    setResourcePanelQuery("");
+                    setResourcePanelMcpRef("");
+                    navigateToPanel("tools");
+                  }}
                 />
               </div>
             </div>

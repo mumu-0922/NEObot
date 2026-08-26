@@ -102,10 +102,17 @@ export function createServerMcpApiShell(httpClient: HttpClient): McpApi {
         `${conversationPath(conversationId)}/selection`,
         { signal: options.signal },
       );
-      return requireNormalized(
+      const selection = requireNormalized(
         normalizeMcpConversationSelectionEnvelope(response),
         "conversation selection",
       );
+      if (selection.conversationId !== conversationId) {
+        throw new ApiClientError(
+          "INVALID_SERVER_RESPONSE",
+          "Server returned an MCP selection for a different conversation.",
+        );
+      }
+      return selection;
     },
 
     async replaceConversationSelection(
@@ -123,10 +130,17 @@ export function createServerMcpApiShell(httpClient: HttpClient): McpApi {
           signal: input.signal,
         },
       );
-      return requireNormalized(
+      const selection = requireNormalized(
         normalizeMcpConversationSelectionEnvelope(response),
         "conversation selection",
       );
+      if (selection.conversationId !== input.conversationId) {
+        throw new ApiClientError(
+          "INVALID_SERVER_RESPONSE",
+          "Server returned an MCP selection for a different conversation.",
+        );
+      }
+      return selection;
     },
 
     async getWorkspaceSelection(workspaceId, options = {}) {

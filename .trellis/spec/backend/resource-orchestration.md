@@ -48,6 +48,9 @@ type MutationRequest struct {
 - Catalog/search responses are `no-store`, authenticated, server-sanitized, and
   bounded. Search returns at most five results and exact immutable revision
   material; it never returns credentials, endpoints, package bodies, or paths.
+- A supported LobeHub Skill/MCP HTTPS link may be reduced to one bounded
+  identifier only when host, path shape, kind, port, query, fragment, and
+  identifier validation pass. The pasted URL is never fetched or executed.
 - A caller must search before an Agent install. The Run retains at most two
   unique search results and one proposal. Candidate metadata is untrusted data,
   never an instruction source.
@@ -56,10 +59,11 @@ type MutationRequest struct {
   durable Chat approval. Secret/OAuth/Runner routes create or recover only the
   exact provenance-bound draft and wait on a sanitized configuration handoff;
   they never accept Secret fields in the Tool schema. Completion must recheck
-  owner, Marketplace identity/revision, `ready`, credential state, and selection.
+  owner, Marketplace identity/revision, `ready`, and credential state.
 - Installation re-resolves the exact candidate and rejects version/revision
   drift. Skill retries return an already installed exact admission/fingerprint;
-  MCP keeps its existing deployment uniqueness and selection CAS.
+  MCP keeps its existing deployment uniqueness. Installation changes inventory
+  only and must not persist a conversation selection.
 - Every normal PostgreSQL mutation attempt writes `audit_logs` with action
   `resource.install|enable|disable|remove`. Safe metadata contains entry point, candidate ID,
   version, exact revision, result ID, and fixed error code only. A successful
@@ -68,6 +72,10 @@ type MutationRequest struct {
   round, prepare fresh MCP and Skill projections, bind a new Runtime Resource
   Snapshot, emit old/new revisions plus audit ID, then continue the original
   task on the same Provider/model.
+- Durable selection is owned by the Skill/MCP conversation APIs and composer
+  pickers. Agent mode may add at most two relevant, already-installed and
+  authorized resources to one frozen snapshot as `agent_auto`; this run-only
+  activation never writes back to selection.
 - Skill removal and MCP enable/disable/remove use the unified mutation route.
   Skill and selection writes bind their current CAS revision; private MCP
   removal reauthorizes owner and `CanManage`. Direct domain endpoints remain
@@ -81,6 +89,7 @@ type MutationRequest struct {
 | --- | --- |
 | missing conversation, candidate or revision | `INVALID_RESOURCE_REQUEST` |
 | unsupported kind or query over 200 bytes | `INVALID_RESOURCE_QUERY` |
+| pasted URL host/path/query/fragment/kind is not allowlisted | no URL fetch/install; bounded search or normal chat only |
 | unknown JSON/Tool field, including Secret | reject; never echo the value |
 | candidate not searched or exact revision differs | bounded Tool failure / `RESOURCE_REVISION_CHANGED` |
 | second unique discovery after budget or second proposal | bounded budget failure; no write |
@@ -97,7 +106,7 @@ type MutationRequest struct {
 ## 5. Good / Base / Bad Cases
 
 - **Good:** search exact admitted XLSX Skill, install through Skill authority,
-  record audit, refresh catalog revision, call the newly exposed Skill, finish
+  record audit, refresh the Run snapshot, call the run-only exposed Skill, finish
   the original request.
 - **Base:** search returns no match; the Agent reports the bounded absence and
   performs no mutation.
@@ -110,6 +119,8 @@ type MutationRequest struct {
 - Catalog determinism, selection awareness, bounded/paged search, missing
   sources, feature kill switch, exact revision, and idempotent exact Skill
   install.
+- Supported-link allowlist/mismatch/traversal tests; assert no pasted URL is a
+  package-fetch authority.
 - HTTP strict JSON, stale conflict, configuration handoff, audit-unavailable,
   and sanitized search response tests.
 - Lifecycle owner/CAS checks, action-specific mutation audit, draft provenance,
@@ -134,5 +145,10 @@ Wrong: Tool arguments include credential or endpoint fields
 Correct: Tool sees only configured/required status; Secret/OAuth stays in UI/vault
 
 Wrong: composer calls Skill/MCP mutation endpoints directly without shared audit
-Correct: composer -> /v1/resources/mutate -> existing authority -> CAS -> audit
+Correct: composer -> domain conversation selection API -> CAS; Store/Tools and
+         conversational acquisition remain the only inventory mutation surfaces
+
+Wrong: successful install silently persists the resource into this conversation
+Correct: install changes inventory; current continuation may use `agent_auto`,
+         persistent selection changes only through the composer picker
 ```

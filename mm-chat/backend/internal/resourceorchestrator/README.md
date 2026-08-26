@@ -1,7 +1,7 @@
 # Resource Orchestrator
 
-The Resource Orchestrator is the authenticated control plane shared by chat
-slash commands and Agent capability recovery. It projects installed Skills and
+The Resource Orchestrator is the authenticated control plane used by Agent
+capability recovery and conversational install requests. It projects installed Skills and
 MCP Servers, performs bounded Marketplace discovery, and delegates every write
 to the existing `skillsupply.Service` or `mcpclient.Service` authority.
 
@@ -10,12 +10,15 @@ to the existing `skillsupply.Service` or `mcpclient.Service` authority.
 - Return a sanitized, deterministic Resource catalog for one conversation.
 - Search admitted Skills and approved MCP Marketplace deployments with bounded
   result counts and immutable revision identities.
-- Install an exact Skill or MCP candidate without accepting arbitrary URLs,
+- Resolve allowlisted LobeHub Skill/MCP links to bounded Marketplace searches,
+  then install an exact candidate without accepting arbitrary URLs,
   package commands, or credentials from the model.
 - Coordinate MCP Secret/OAuth/Runner configuration through an existing
   provenance-bound private Server draft.
-- Route Skill removal and MCP enable/disable/removal through owner and CAS
-  checks, then record action-specific mutation audits.
+- Keep inventory installation separate from durable conversation selection;
+  only the composer pickers persist selections.
+- Route management writes through owner and CAS checks, then record
+  action-specific mutation audits.
 - Signal that the Chat Agent must create a fresh Runtime Resource Snapshot
   before using a changed resource set.
 
@@ -36,10 +39,10 @@ POST /v1/resources/install
 POST /v1/resources/mutate
 ```
 
-Callers must use the exact candidate revision returned by search and the
-current installation/selection revision for lifecycle writes. All responses
+Callers must use the exact candidate revision returned by search. All responses
 are `Cache-Control: no-store`; response schemas contain no Secret, endpoint,
-package body, host path, or raw Tool arguments.
+package body, host path, or raw Tool arguments. A supported LobeHub URL is
+parsed only into an identifier and never fetched as installation input.
 
 ## Files
 

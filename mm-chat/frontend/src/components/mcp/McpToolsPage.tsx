@@ -85,7 +85,6 @@ export default function McpToolsPage({
             />
           ) : (
             <McpMarketplace
-              conversationId={conversationId}
               enabled={enabled}
               initialQuery={initialMarketplaceQuery}
               onInstalled={installed}

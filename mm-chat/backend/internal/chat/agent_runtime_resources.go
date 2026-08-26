@@ -271,9 +271,10 @@ func (snapshot *agentRuntimeResourceSnapshot) resourceDescriptors(
 			id := agentRuntimeStableID("skill", name)
 			byID[id] = &agentRuntimeResourceDescriptor{
 				ID: id, Kind: agentRuntimeResourceKindSkillPackage,
-				Source: agentRuntimeResourceSourceLocalSkill,
-				Scope:  agentRuntimeResourceScopeUser,
-				Status: agentRuntimeResourceStatusEnabled,
+				Source:           agentRuntimeResourceSourceLocalSkill,
+				Scope:            agentRuntimeResourceScopeUser,
+				Status:           agentRuntimeResourceStatusEnabled,
+				ActivationSource: strings.TrimSpace(skill.ActivationSource),
 				Revision: agentRuntimeRevision([]string{
 					name, strings.TrimSpace(skill.Version), strings.TrimSpace(skill.PackageFingerprint),
 				}),
@@ -296,7 +297,8 @@ func (snapshot *agentRuntimeResourceSnapshot) resourceDescriptors(
 			byID[id] = &agentRuntimeResourceDescriptor{
 				ID: id, Kind: agentRuntimeResourceKindToolSet,
 				Source: agentRuntimeResourceSourceMCP, Scope: agentRuntimeResourceScopeRun,
-				Status: status, Revision: strings.TrimSpace(snapshot.mcp.run.Snapshot.Hash),
+				Status: status, ActivationSource: strings.TrimSpace(server.ActivationSource),
+				Revision:  strings.TrimSpace(snapshot.mcp.run.Snapshot.Hash),
 				ToolNames: tools, SkillNames: []string{}, DiagnosticCodes: []string{},
 			}
 		}

@@ -421,10 +421,11 @@ type ExecutionEvent struct {
 type EventSink func(context.Context, ExecutionEvent) bool
 
 type SnapshotServer struct {
-	Ref       ServerRef `json:"ref"`
-	Name      string    `json:"name"`
-	Transport string    `json:"transport"`
-	Tools     []Tool    `json:"tools"`
+	Ref              ServerRef `json:"ref"`
+	Name             string    `json:"name"`
+	Transport        string    `json:"transport"`
+	ActivationSource string    `json:"activationSource"`
+	Tools            []Tool    `json:"tools"`
 }
 
 type RunSnapshot struct {

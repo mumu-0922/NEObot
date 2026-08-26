@@ -1,4 +1,4 @@
-# Postgres Core Schema and Chat Agent Runtime Through Migration 105
+# Postgres Core Schema and Chat Agent Runtime Through Migration 106
 
 This document describes the core schema created by the ordered migrations in
 `mm-chat/backend/migrations`, from `001_initial_schema` through
@@ -16,6 +16,9 @@ Document lifecycle or hiding an existing active Version.
 Migration `105_recall_filtering_provider` adds one bounded recall-filtering
 Provider/model reference to the existing task-model row. Empty values preserve
 the historical fixed server-default Judge authority.
+Migration `106_skill_conversation_selections` adds owner-bound, revision-CAS
+Skill selection policy per Conversation without duplicating installed package
+inventory.
 Migrations `062` through `095` own later
 Memory and optional Agent control-plane surfaces and remain catalogued in
 `mm-chat/backend/migrations/README.md`.
@@ -32,6 +35,7 @@ users -> provider_configs
 users -> conversations -> messages -> message_attachments -> files
                    |          \-> chat_agent_turns -> chat_agent_events
                    \-> chat_agent_goals
+                   \-> skill_conversation_selections -> installed Skills
 users -> memory settings/projects/scoped memories -> memory outbox/jobs
 users -> import_batches
 users/sessions/actions -> audit_logs
@@ -122,6 +126,7 @@ Out of scope:
 | `103_chat_agent_permission_modes`             | Adds checked durable `read-only`, `workspace-write`, or `danger-full-access` Conversation authority with a guarded down migration. |
 | `104_rag_failure_state_projection`            | Backfills terminal bound RAG failures and atomically projects future parse/embedding terminal failures into reprocessable failed Versions while preserving active current Versions. |
 | `105_recall_filtering_provider`                | Adds the bounded `providerId:gpt-5.6-luna` recall-filtering reference while retaining empty-value legacy server-default behavior and reversible rollback. |
+| `106_skill_conversation_selections`            | Adds owner-bound per-Conversation Skill selections, installation/fingerprint foreign keys, and revision-CAS policy storage. |
 
 Published migration pairs are immutable and applied in numeric order. Migration
 SQL contains no transaction-control statements; the Go runner wraps each schema

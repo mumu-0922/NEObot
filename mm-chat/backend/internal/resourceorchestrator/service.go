@@ -238,6 +238,9 @@ func (service *Service) Catalog(
 func (service *Service) Search(ctx context.Context, userID, kind, query string) (SearchResult, error) {
 	kind = strings.ToLower(strings.TrimSpace(kind))
 	query = strings.Join(strings.Fields(query), " ")
+	if linkedIdentifier, supported := supportedResourceLinkIdentifier(kind, query); supported {
+		query = linkedIdentifier
+	}
 	result := SearchResult{Kind: kind, Query: query, Items: []SearchItem{}}
 	switch kind {
 	case KindSkill:

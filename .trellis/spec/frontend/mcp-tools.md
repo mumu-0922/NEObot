@@ -33,20 +33,24 @@ non-canary/control rollback path.
 
 ### 3. Contracts
 
-- Server mode lists server-authorized definitions and selection. Browser
+- Server mode lists server-authorized definitions and Conversation selection. Browser
   Workspace state, local cache, server/tool names, and Tool annotations are not
   authorization.
 - `inherit` means Workspace defaults. `custom` plus `servers: []` means all
   Tools are explicitly disabled. Preserve backend revision tokens on writes.
-- The composer exposes Chat/Agent mode, not MCP. It must not render
-  `McpToolsControl`, load MCP selection state, or preflight MCP before every
-  send. Full status, authorization, selection, and unavailable state remain in
-  Sidebar Tools; Backend prepares selected Connectors only in Agent mode.
+- The composer renders one compact MCP picker beside the other Chat/Agent
+  controls. It must not render the full `McpToolsControl` management surface or
+  preflight MCP before every send. The picker loads only the exact current
+  Conversation selection, lists authorized inventory, and performs
+  revision-bound selection writes. Full status, credentials, installation,
+  diagnostics, and lifecycle controls remain in Sidebar Tools; Backend prepares
+  selected Connectors only in Agent mode.
 - The Sidebar exposes a first-class **Tools** entry backed by
   `?panel=tools`. Its page lists authorized MCP Server definitions, supports
-  private Server lifecycle/authorization, and edits the active Conversation
-  selection when one exists. Listing and Server management must still work
-  when no Conversation exists; selection controls then remain disabled.
+  private Server lifecycle/authorization, and never edits the active
+  Conversation selection. Per-Conversation selection belongs exclusively to
+  the compact composer picker. Listing and Server management must still work
+  when no Conversation exists.
 - Reuse the same server-authoritative MCP client and management behavior for
   top-level and embedded management surfaces. Do not create a browser-owned MCP
   registry or a second selection store merely to support panel navigation.
@@ -56,9 +60,9 @@ non-canary/control rollback path.
 - Server-list/detail DTOs expose bounded `canManage`/`canInstall` capabilities
   derived by Backend from the authenticated user. Only the deployment
   administrator sees create/delete/validate/credential/OAuth/install controls.
-  Ordinary users retain Installed selection and per-tool enable/disable
-  controls; frontend capability checks shape UX but never replace Backend
-  authorization.
+  Ordinary users may inspect Installed inventory while selection remains in
+  the composer picker; frontend capability checks shape UX but never replace
+  Backend authorization.
 - Marketplace cards/details show source, exact version, connection type,
   install compatibility, Tool preview, and display-only trust signals. The UI
   enables `installable`, plus `needs_configuration` only when the backend also
@@ -82,12 +86,12 @@ non-canary/control rollback path.
 - Installed Server cards use the same shared icon renderer as Marketplace
   cards. They render only the optional normalized Server DTO `icon`; missing or
   failed remote images fall back to the local generic MCP glyph without
-  changing selection or trust state.
+  changing inventory or trust state.
 - Installed Server cards stay compact by default: the Tool count is an
   accessible expand/collapse button in the Server summary row, Tool details and
-  the description render only while expanded, and deselecting the Server also
-  collapses it. Hide the non-informative `unknown` classification badge while
-  preserving meaningful `read`/`write` badges and every per-Tool toggle.
+  the description render only while expanded. Hide the non-informative
+  `unknown` classification badge while preserving meaningful `read`/`write`
+  badges. Tool rows are inventory diagnostics, not selection controls.
 - Marketplace search uses a monotonic request ID in addition to AbortSignal.
   Only the latest request may replace items, totals, loading, or error state;
   an older failure must never leave a false unavailable banner over newer
@@ -102,13 +106,14 @@ non-canary/control rollback path.
   loaded/total counts and retains a manual load/retry action. Next-page failure
   preserves current cards, while search/category changes abort and generation-
   fence older pagination work.
-- `Install and enable` sends identifier/version, an exact backend-issued
-  deployment hash, transient values for backend-declared secret fields, and the
-  current Conversation/revision. Secret values exist only in component state,
-  clear after submission, and never enter a URL or browser persistence. OAuth
-  installs create a recoverable `needs_auth` Server and then open the validated
-  authorization URL; Runner environment drafts can be reconfigured from the
-  Installed tab using only backend-returned non-secret field names.
+- `Install` sends identifier/version, an exact backend-issued deployment hash,
+  and transient values for backend-declared secret fields. It always sets
+  `enableForConversation: false` and does not carry a Conversation selection
+  revision. Secret values exist only in component state, clear after submission,
+  and never enter a URL or browser persistence. OAuth installs create a
+  recoverable `needs_auth` Server and then open the validated authorization URL
+  without a Conversation ID; Runner environment drafts can be reconfigured from
+  the Installed tab using only backend-returned non-secret field names.
 - Required secret inputs render inside the currently selected deployment card,
   with the first field focused and a visible completion hint beside the
   disabled install action. A required configuration field must never be hidden
@@ -131,8 +136,8 @@ non-canary/control rollback path.
   submit those fields only through the typed Marketplace install API. The
   browser never rewrites the official deployment or inserts a secret into the
   URL; Backend creates a provenance-marked private remote Server and performs
-  the same SSRF, credential-vault, MCP validation, and ready-before-selection
-  checks.
+  the same SSRF, credential-vault, and MCP readiness validation. The user may
+  select the ready installation later from the composer.
   Show this branch only when the authoritative detail exposes an HTTP option,
   Header/OAuth mode, or required secret fields. Credential-free local stdio
   artifacts such as Context7 do not render a relay option.
@@ -202,8 +207,9 @@ non-canary/control rollback path.
 
 | Condition | Required result |
 | --- | --- |
-| API mode is local or MCP config disabled | Sidebar Tools shows unavailable/disabled state; composer remains MCP-free |
-| Server list/selection load fails | bounded localized error; no stale authority expansion |
+| API mode is local or MCP config disabled | Sidebar Tools shows unavailable/disabled state; composer omits the MCP picker |
+| Tools inventory load fails | bounded localized error; no stale inventory is shown as current |
+| Composer selection load fails | bounded localized error; no stale authority expansion |
 | Create succeeds but response normalization or validation fails | reload the authoritative Server list so the persisted draft remains visible; show the bounded error |
 | Server needs auth/unavailable | visible state; send remains blocked until explicit change |
 | OAuth URL is not valid HTTPS | localized error; do not navigate |
@@ -220,31 +226,33 @@ non-canary/control rollback path.
 | Next Marketplace page fails | preserve loaded cards and expose a manual retry; do not loop automatically |
 | Item is SSE or unmatched stdio/command-only | show compatibility reason; no install request is emitted |
 | Backend marks exact npm stdio deployment installable | administrator sends only identifier/version/hash; browser never receives or executes command metadata |
-| Current user is not MCP administrator | hide management/install/configuration actions; keep ready Server and Tool selection usable |
-| Install validation/selection step fails after draft creation | reload installed Servers so the recoverable draft remains visible |
+| Current user is not MCP administrator | hide management/install/configuration actions; keep inventory inspectable and composer selection separately usable |
+| Install validation/configuration step fails after draft creation | reload installed Servers so the recoverable draft remains visible |
 | Installed Server icon is missing or its HTTPS image fails | show the local generic MCP fallback; keep the card usable |
-| Installed Server has many Tools | keep Tool rows folded by default; expose the count with `aria-expanded`/`aria-controls` and preserve per-Tool selection after expansion |
+| Installed Server has many Tools | keep read-only Tool rows folded by default and expose the count with `aria-expanded`/`aria-controls` |
 | Selected deployment requires a missing secret | keep install disabled and render the secret input plus completion hint in the selected card |
 | Custom relay URL is incomplete or non-HTTPS | keep install disabled client-side; Backend still rejects unsafe/private resolution before create |
 | Provider stream interrupts after partial answer content | keep the content and show the localized Provider-interruption notice; do not blame or retry MCP Tools |
 
 ### 5. Good / Base / Bad Cases
 
-- **Good**: a user opens Sidebar Tools, enables one granted server, disables one
-  Tool, saves the revision, selects Agent in the composer, sends, and sees the
-  queued-to-succeeded timeline.
+- **Good**: a user installs/configures one granted server in Sidebar Tools,
+  selects it for the exact Conversation through the compact composer picker,
+  sends in Agent mode, and sees the queued-to-succeeded timeline.
 - **Base**: a conversation without Workspace or selection shows zero enabled
   Tools and sends ordinary chat.
-- **Bad**: hydrate MCP selection from `activePlugins`, expose MCP in the
-  composer, retain a credential in Zustand, or execute a Tool from the browser.
+- **Bad**: hydrate MCP selection from `activePlugins`, embed full MCP management
+  in the composer, retain a credential in Zustand, or execute a Tool from the
+  browser.
 
 ### 6. Tests Required
 
 - API-client URL/body/response mapping and local-mode fail-closed behavior.
-- Tools management load, inherited/custom/explicit-empty selection, Tool disable,
-  private draft validation, credential submission, OAuth URL rejection,
-  unavailable/auth states, default-folded Tool disclosure, and hidden `unknown`
-  badges. Composer composition must prove MCP control/preflight absence.
+- Tools inventory load, private draft validation, credential submission, OAuth
+  URL rejection, unavailable/auth states, default-folded read-only Tool
+  disclosure, and hidden `unknown` badges. Composer tests own
+  inherited/custom/explicit-empty selection and must prove one lightweight
+  picker, exact Conversation authority, and full management/preflight absence.
 - Sidebar Tools entry, `?panel=tools` URL round-trip, top-level page
   composition, and Server listing without a current Conversation.
 - Marketplace tab/search/detail, category filtering/counts, remote-icon
@@ -252,8 +260,8 @@ non-canary/control rollback path.
   loaded/total reporting, Installed shared-icon/fallback rendering,
   compatibility labels, disabled/unconfigured behavior,
   backend-approved remote/stdio installability, authoritative install payload,
-  latest-request race fencing, no command fields, install recovery, and optional
-  Conversation enablement with revision.
+  latest-request race fencing, no command fields, install recovery, and an
+  inventory-only payload with `enableForConversation: false`.
 - Timeline mapping for every state including `outcome_unknown`, redacted
   summaries, cancellation, generic Tool-name humanization, readable
   `serverName`, and non-rendering of internal Server/call/schema detail.

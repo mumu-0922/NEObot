@@ -1820,8 +1820,8 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	defer releaseRun()
 	agentTimelineEnabled := h.agentTimelineEnabledFor(actor.ID)
 	if agentMode && h.mcpService != nil && h.mcpService.Config().Enabled {
-		preparedMCPRun, err = h.mcpService.PrepareRun(
-			r.Context(), actor.ID, conversationID, "", runID,
+		preparedMCPRun, err = h.mcpService.PrepareAgentRun(
+			r.Context(), actor.ID, conversationID, "", runID, userMessage.Content,
 		)
 		if err != nil {
 			writeMCPAdmissionError(w, err)
@@ -1860,8 +1860,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		var skills []skillsupply.RuntimeSkill
 		if h.localSkillCatalog != nil {
 			var prepareErr error
-			skills, prepareErr = h.localSkillCatalog.PrepareRuntimeSkills(
-				r.Context(), actor.ID, h.localSkillExecutor.Config().RuntimeRoot,
+			skills, prepareErr = prepareConversationLocalSkills(
+				r.Context(), h.localSkillCatalog, actor.ID, conversationID,
+				h.localSkillExecutor.Config().RuntimeRoot, userMessage.Content,
 			)
 			if prepareErr != nil {
 				writeError(w, http.StatusServiceUnavailable, "SKILL_RUNTIME_UNAVAILABLE", "local Skill runtime is unavailable")
@@ -1989,8 +1990,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				if refreshErr != nil {
 					return nil, refreshErr
 				}
-				refreshedMCPRun, refreshErr := h.mcpService.PrepareRun(
+				refreshedMCPRun, refreshErr := h.mcpService.PrepareAgentRun(
 					ctx, actor.ID, conversationID, assistantMessage.ID, segmentRunID,
+					userMessage.Content,
 				)
 				if refreshErr != nil {
 					return nil, refreshErr
@@ -2000,8 +2002,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				)
 			}
 			if localSkillRuntime != nil && h.localSkillCatalog != nil {
-				refreshedSkills, refreshErr := h.localSkillCatalog.PrepareRuntimeSkills(
-					ctx, actor.ID, h.localSkillExecutor.Config().RuntimeRoot,
+				refreshedSkills, refreshErr := prepareConversationLocalSkills(
+					ctx, h.localSkillCatalog, actor.ID, conversationID,
+					h.localSkillExecutor.Config().RuntimeRoot, userMessage.Content,
 				)
 				if refreshErr != nil {
 					return nil, refreshErr

@@ -66,14 +66,18 @@ psql_command() {
 server_major="$(psql_command "SHOW server_version_num" | cut -c1-2)"
 [[ "${server_major}" == "17" ]] || { echo "expected PostgreSQL 17" >&2; exit 1; }
 
-log "building and applying 001 -> 097 with the 098/099/100 tail deferred"
+log "building and applying 001 -> 097 plus 106 with the unrelated 098-105 tail deferred"
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/mm-chat-migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"; }
 psql_command "$(migration_drill_deferred_tail_sql "${backend_dir}" \
   098_retire_legacy_agent_control_plane \
   099_chat_agent_event_log_function_repair \
   100_chat_agent_approvals \
-  101_chat_agent_transcript_blocks)" >/dev/null
+	101_chat_agent_transcript_blocks \
+	102_host_workspaces \
+	103_chat_agent_permission_modes \
+	104_rag_failure_state_projection \
+	105_recall_filtering_provider)" >/dev/null
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 083_skill_supply_chain" "${work_dir}/fresh.log"
 grep -Fq "up 084_agent_orchestrator_foundation" "${work_dir}/fresh.log"
@@ -90,9 +94,10 @@ grep -Fq "up 094_agent_cron_learning_activation" "${work_dir}/fresh.log"
 grep -Fq "up 095_agent_product_canary_activation" "${work_dir}/fresh.log"
 grep -Fq "up 096_chat_agent_event_log" "${work_dir}/fresh.log"
 grep -Fq "up 097_chat_agent_goals" "${work_dir}/fresh.log"
+grep -Fq "up 106_skill_conversation_selections" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
-psql_command "DELETE FROM schema_migrations WHERE version IN (98,99,100)" >/dev/null
+psql_command "DELETE FROM schema_migrations WHERE version BETWEEN 98 AND 105" >/dev/null
 
 log "checking schema, composite authority, trigger, and least-privilege grants"
 psql_command "
@@ -100,7 +105,9 @@ DO \$\$
 BEGIN
   IF to_regclass('public.skill_package_versions') IS NULL
      OR to_regclass('public.skill_package_candidates') IS NULL
-     OR to_regclass('public.skill_installations') IS NULL THEN
+     OR to_regclass('public.skill_installations') IS NULL
+     OR to_regclass('public.skill_conversation_selections') IS NULL
+     OR to_regclass('public.skill_conversation_installations') IS NULL THEN
     RAISE EXCEPTION 'Skill supply tables are missing';
   END IF;
   IF NOT EXISTS (
@@ -113,7 +120,9 @@ BEGIN
      OR NOT has_table_privilege('go_api_runtime', 'skill_package_candidates', 'SELECT,INSERT')
      OR NOT has_column_privilege('go_api_runtime', 'skill_package_candidates', 'status', 'UPDATE')
      OR has_column_privilege('go_api_runtime', 'skill_package_candidates', 'source_ref', 'UPDATE')
-     OR NOT has_table_privilege('go_api_runtime', 'skill_installations', 'SELECT,INSERT,DELETE') THEN
+     OR NOT has_table_privilege('go_api_runtime', 'skill_installations', 'SELECT,INSERT,DELETE')
+     OR NOT has_table_privilege('go_api_runtime', 'skill_conversation_selections', 'SELECT,INSERT,UPDATE,DELETE')
+     OR NOT has_table_privilege('go_api_runtime', 'skill_conversation_installations', 'SELECT,INSERT,DELETE') THEN
     RAISE EXCEPTION 'Skill runtime grants violate the contract';
   END IF;
 END
@@ -124,7 +133,9 @@ log "running source-drift, review-CAS, ownership, install and uninstall lifecycl
 (cd "${backend_dir}" && MM_CHAT_TEST_DATABASE_URL="${database_url}" \
   go test -count=1 -run '^TestSkillPostgresRepositoryAuthorityDriftOwnershipAndCAS$' ./internal/skillsupply)
 
-log "rolling back the empty 097-084 tails before the 083 guard"
+log "rolling back 106 and the empty 097-084 tails before the 083 guard"
+run_migrate down >"${work_dir}/down-106.log" 2>&1
+grep -Fq "down 106_skill_conversation_selections" "${work_dir}/down-106.log"
 run_migrate down >"${work_dir}/peel-097-chat-agent-goal-tail.log" 2>&1
 grep -Fq "down 097_chat_agent_goals" "${work_dir}/peel-097-chat-agent-goal-tail.log"
 run_migrate down >"${work_dir}/peel-096-chat-agent-event-tail.log" 2>&1
@@ -200,7 +211,12 @@ grep -Fq "up 098_retire_legacy_agent_control_plane" "${work_dir}/reup.log"
 grep -Fq "up 099_chat_agent_event_log_function_repair" "${work_dir}/reup.log"
 grep -Fq "up 100_chat_agent_approvals" "${work_dir}/reup.log"
 grep -Fq "up 101_chat_agent_transcript_blocks" "${work_dir}/reup.log"
+grep -Fq "up 102_host_workspaces" "${work_dir}/reup.log"
+grep -Fq "up 103_chat_agent_permission_modes" "${work_dir}/reup.log"
+grep -Fq "up 104_rag_failure_state_projection" "${work_dir}/reup.log"
+grep -Fq "up 105_recall_filtering_provider" "${work_dir}/reup.log"
+grep -Fq "up 106_skill_conversation_selections" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 
-log "passed (historical 097 boundary, replay to head 101, schema/grants, drift/CAS/ownership lifecycle, guarded down, clean down/up)"
+log "passed (historical 097 boundary plus 106 selection authority, replay to head 106, schema/grants, drift/CAS/ownership lifecycle, guarded down, clean down/up)"

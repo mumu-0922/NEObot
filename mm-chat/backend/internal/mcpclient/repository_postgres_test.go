@@ -3,6 +3,7 @@ package mcpclient
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -74,6 +75,44 @@ INSERT INTO conversations (id, user_id, title) VALUES ($1, $2, 'MCP integration'
 	gotSelection, found, err := repo.GetSelection(ctx, userID, conversationID)
 	if err != nil || !found || len(gotSelection.Servers) != 1 || gotSelection.Servers[0].DisabledTools[0] != "disabled" {
 		t.Fatalf("GetSelection() selection=%#v found=%v error=%v", gotSelection, found, err)
+	}
+	raceConversationID := uuid.NewString()
+	mustExecMCP(t, ctx, db, `
+INSERT INTO conversations (id, user_id, title) VALUES ($1, $2, 'MCP selection race')
+`, raceConversationID, userID)
+	type selectionRaceResult struct {
+		selection Selection
+		err       error
+	}
+	startRace := make(chan struct{})
+	raceResults := make(chan selectionRaceResult, 2)
+	for range 2 {
+		go func() {
+			<-startRace
+			selection, replaceErr := repo.ReplaceSelection(ctx, userID, Selection{
+				ConversationID: raceConversationID,
+				Mode:           SelectionModeCustom,
+				Revision:       0,
+				Servers:        []SelectionServer{},
+			})
+			raceResults <- selectionRaceResult{selection: selection, err: replaceErr}
+		}()
+	}
+	close(startRace)
+	successes, conflicts := 0, 0
+	for range 2 {
+		result := <-raceResults
+		switch {
+		case result.err == nil && result.selection.Revision == 1:
+			successes++
+		case errors.Is(result.err, ErrSelectionInvalid):
+			conflicts++
+		default:
+			t.Fatalf("initial MCP selection race result=%#v error=%v", result.selection, result.err)
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatalf("initial MCP selection race successes=%d conflicts=%d", successes, conflicts)
 	}
 
 	now := time.Now().UTC().Truncate(time.Microsecond)

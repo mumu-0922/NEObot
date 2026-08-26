@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
-  Check,
   ChevronDown,
   ChevronUp,
   KeyRound,
@@ -16,12 +15,7 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import type {
-  McpConversationSelection,
-  McpSelectionServer,
-  McpServer,
-  McpServerRef,
-} from "@/lib/mcp/types";
+import type { McpServer, McpServerRef } from "@/lib/mcp/types";
 import { ApiClientError, createNeoChatApiClient } from "@/services/api/client";
 
 import McpServerIcon from "./McpServerIcon";
@@ -62,9 +56,6 @@ export default function McpToolsControl({
   const t = useTranslations("Mcp");
   const [servers, setServers] = useState<McpServer[]>([]);
   const [canManage, setCanManage] = useState(false);
-  const [selection, setSelection] = useState<McpConversationSelection | null>(
-    null,
-  );
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -88,26 +79,18 @@ export default function McpToolsControl({
     async (signal?: AbortSignal) => {
       if (!enabled) {
         setServers([]);
-        setSelection(null);
         return;
       }
       setLoading(true);
       setError("");
       try {
-        const nextServersPromise = client.mcp.listServers({
+        const nextServers = await client.mcp.listServers({
           conversationId,
           signal,
         });
-        const [nextServers, nextSelection] = conversationId
-          ? await Promise.all([
-              nextServersPromise,
-              client.mcp.getConversationSelection(conversationId, { signal }),
-            ])
-          : [await nextServersPromise, null];
         if (signal?.aborted) return;
         setServers(nextServers.servers);
         setCanManage(nextServers.canManage);
-        setSelection(nextSelection);
       } catch (loadError) {
         if (signal?.aborted) return;
         setError(formatError(loadError, t("loadFailed")));
@@ -124,82 +107,6 @@ export default function McpToolsControl({
     return () => controller.abort();
   }, [load]);
 
-  const selectedByKey = useMemo(
-    () =>
-      new Map(
-        (selection?.servers ?? []).map((selected) => [
-          serverKey(selected.ref),
-          selected,
-        ]),
-      ),
-    [selection?.servers],
-  );
-  const enabledServers =
-    selection?.mode === "custom"
-      ? servers.filter((server) => selectedByKey.has(serverKey(server.ref)))
-      : [];
-  const enabledToolCount = enabledServers.reduce((total, server) => {
-    const disabledTools = new Set(
-      selectedByKey.get(serverKey(server.ref))?.disabledTools ?? [],
-    );
-    return (
-      total +
-      server.tools.filter(
-        (tool) => tool.supported && !disabledTools.has(tool.name),
-      ).length
-    );
-  }, 0);
-
-  const saveSelection = useCallback(
-    async (
-      mode: McpConversationSelection["mode"],
-      nextServers: McpSelectionServer[],
-    ): Promise<boolean> => {
-      if (!conversationId || !selection || saving) return false;
-      setSaving(true);
-      setError("");
-      try {
-        const next = await client.mcp.replaceConversationSelection({
-          conversationId,
-          mode,
-          revision: selection.revision,
-          servers: mode === "inherit" ? [] : nextServers,
-        });
-        setSelection(next);
-        return true;
-      } catch (saveError) {
-        setError(formatError(saveError, t("saveFailed")));
-        await load();
-        return false;
-      } finally {
-        setSaving(false);
-      }
-    },
-    [client.mcp, conversationId, load, saving, selection, t],
-  );
-
-  const toggleServer = useCallback(
-    (server: McpServer) => {
-      if (!selection || server.status !== "ready") return;
-      const key = serverKey(server.ref);
-      const current =
-        selection.mode === "custom" ? selection.servers : ([] as const);
-      const selected = selectedByKey.has(key);
-      const next = selected
-        ? current.filter((item) => serverKey(item.ref) !== key)
-        : [...current, { ref: server.ref, disabledTools: [] }];
-      if (selected) {
-        setExpandedServerKeys((expanded) => {
-          const nextExpanded = new Set(expanded);
-          nextExpanded.delete(key);
-          return nextExpanded;
-        });
-      }
-      void saveSelection("custom", next);
-    },
-    [saveSelection, selectedByKey, selection],
-  );
-
   const toggleToolsExpanded = useCallback((server: McpServer) => {
     const key = serverKey(server.ref);
     setExpandedServerKeys((expanded) => {
@@ -209,22 +116,6 @@ export default function McpToolsControl({
       return next;
     });
   }, []);
-
-  const toggleTool = useCallback(
-    (server: McpServer, toolName: string) => {
-      if (!selection || selection.mode !== "custom") return;
-      const key = serverKey(server.ref);
-      const next = selection.servers.map((item) => {
-        if (serverKey(item.ref) !== key) return item;
-        const disabledTools = new Set(item.disabledTools);
-        if (disabledTools.has(toolName)) disabledTools.delete(toolName);
-        else disabledTools.add(toolName);
-        return { ...item, disabledTools: [...disabledTools].sort() };
-      });
-      void saveSelection("custom", next);
-    },
-    [saveSelection, selection],
-  );
 
   const authorize = useCallback(
     async (server: McpServer) => {
@@ -244,7 +135,6 @@ export default function McpToolsControl({
       try {
         const result = await client.mcp.startOAuth({
           serverRef: server.ref,
-          conversationId,
           returnUrl: `${window.location.pathname}${window.location.search}${window.location.hash}`,
         });
         const authorizationUrl = validHttpsURL(result.authorizationUrl);
@@ -260,7 +150,7 @@ export default function McpToolsControl({
         setSaving(false);
       }
     },
-    [client.mcp, conversationId, t],
+    [client.mcp, t],
   );
 
   useEffect(() => {
@@ -300,7 +190,6 @@ export default function McpToolsControl({
     try {
       const server = await client.mcp.setCredential({
         serverRef: credentialRef,
-        conversationId,
         ...(Object.keys(credentialValues).length > 0
           ? { values: credentialValues }
           : { value: credentialValue }),
@@ -318,15 +207,7 @@ export default function McpToolsControl({
     } finally {
       setSaving(false);
     }
-  }, [
-    client.mcp,
-    conversationId,
-    credentialRef,
-    credentialValue,
-    credentialValues,
-    load,
-    t,
-  ]);
+  }, [client.mcp, credentialRef, credentialValue, credentialValues, load, t]);
 
   const createPrivateServer = useCallback(async () => {
     if (!draft.name.trim() || !draft.endpointUrl.trim()) {
@@ -358,7 +239,6 @@ export default function McpToolsControl({
         await client.mcp.setCredential({
           serverRef: server.ref,
           value: draft.headerValue,
-          conversationId,
         });
       }
       setDraft(emptyPrivateServerDraft);
@@ -376,7 +256,7 @@ export default function McpToolsControl({
     } finally {
       setSaving(false);
     }
-  }, [client.mcp, conversationId, draft, load, t]);
+  }, [client.mcp, draft, load, t]);
 
   const validatePrivateServer = useCallback(
     async (serverId: string) => {
@@ -413,14 +293,7 @@ export default function McpToolsControl({
 
   const statusLabel = !enabled
     ? t("serverModeOnly")
-    : !conversationId
-      ? t("serverSummary", { servers: servers.length })
-      : selection?.mode === "inherit"
-        ? t("inherited")
-        : t("enabledSummary", {
-            servers: enabledServers.length,
-            tools: enabledToolCount,
-          });
+    : t("serverSummary", { servers: servers.length });
 
   const panel = (
     <div className="flex h-full min-h-0 flex-col">
@@ -441,22 +314,6 @@ export default function McpToolsControl({
               className={loading ? "animate-spin" : ""}
               aria-hidden="true"
             />
-          </button>
-          <button
-            type="button"
-            disabled={saving || !selection}
-            onClick={() => void saveSelection("inherit", [])}
-            className="rounded-md px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-100 disabled:opacity-50 dark:text-muted-foreground dark:hover:bg-accent"
-          >
-            {t("useWorkspaceDefaults")}
-          </button>
-          <button
-            type="button"
-            disabled={saving || !selection}
-            onClick={() => void saveSelection("custom", [])}
-            className="rounded-md px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50 dark:text-red-300 dark:hover:bg-red-950/30"
-          >
-            {t("disableAll")}
           </button>
         </div>
       </div>
@@ -484,20 +341,14 @@ export default function McpToolsControl({
           <div className="space-y-3">
             {servers.map((server) => {
               const key = serverKey(server.ref);
-              const selected = selectedByKey.get(serverKey(server.ref));
-              const isSelected = Boolean(
-                selection?.mode === "custom" && selected,
-              );
               const toolsExpanded = expandedServerKeys.has(key);
               const toolListId = `mcp-tools-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-              const ready = server.status === "ready";
               const needsAuth =
                 server.status === "needs_auth" ||
                 (server.authType !== "none" && !server.hasCredential);
               const showManagementActions =
                 (needsAuth && server.canManage) ||
                 (server.ref.source === "private" && server.canManage);
-              const disabledTools = new Set(selected?.disabledTools ?? []);
 
               return (
                 <section
@@ -506,20 +357,6 @@ export default function McpToolsControl({
                   className={`rounded-lg border bg-gray-50/50 p-3 dark:bg-muted/20 ${serverKey(server.ref) === initialServerRef.trim() ? "border-cyan-400 ring-2 ring-cyan-200/60 dark:border-cyan-700 dark:ring-cyan-900/50" : "border-gray-200 dark:border-border"}`}
                 >
                   <div className="flex items-start gap-3">
-                    <button
-                      type="button"
-                      aria-label={
-                        isSelected
-                          ? t("disableServer", { name: server.name })
-                          : t("enableServer", { name: server.name })
-                      }
-                      aria-pressed={isSelected}
-                      disabled={saving || !ready || !selection}
-                      onClick={() => toggleServer(server)}
-                      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border disabled:cursor-not-allowed disabled:opacity-45 ${isSelected ? "border-cyan-500 bg-cyan-500 text-white" : "border-gray-300 bg-white text-transparent dark:border-border dark:bg-background"}`}
-                    >
-                      <Check size={13} aria-hidden="true" />
-                    </button>
                     <McpServerIcon icon={server.icon} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-3">
@@ -532,7 +369,7 @@ export default function McpToolsControl({
                             {server.transport === "stdio" ? "stdio" : "HTTP"}
                           </span>
                         </div>
-                        {isSelected && server.tools.length > 0 ? (
+                        {server.tools.length > 0 ? (
                           <button
                             type="button"
                             aria-expanded={toolsExpanded}
@@ -549,7 +386,7 @@ export default function McpToolsControl({
                           </button>
                         ) : null}
                       </div>
-                      {isSelected && toolsExpanded && server.description ? (
+                      {toolsExpanded && server.description ? (
                         <p className="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-muted-foreground">
                           {server.description}
                         </p>
@@ -658,52 +495,37 @@ export default function McpToolsControl({
                         </div>
                       ) : null}
 
-                      {isSelected &&
-                      toolsExpanded &&
-                      server.tools.length > 0 ? (
+                      {toolsExpanded && server.tools.length > 0 ? (
                         <div
                           id={toolListId}
                           className="mt-3 border-t border-gray-200 pt-2 dark:border-border"
                         >
                           <div className="space-y-1">
-                            {server.tools.map((tool) => {
-                              const toolEnabled =
-                                tool.supported && !disabledTools.has(tool.name);
-                              return (
-                                <button
-                                  key={tool.name}
-                                  type="button"
-                                  disabled={saving || !tool.supported}
-                                  aria-pressed={toolEnabled}
-                                  onClick={() => toggleTool(server, tool.name)}
-                                  className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-background"
-                                >
-                                  <span
-                                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${toolEnabled ? "border-cyan-500 bg-cyan-500 text-white" : "border-gray-300 text-transparent dark:border-border"}`}
-                                  >
-                                    <Check size={11} />
-                                  </span>
-                                  <span className="min-w-0 flex-1">
-                                    <span className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-gray-700 dark:text-foreground/85">
-                                      <span className="truncate">
-                                        {tool.title || tool.name}
-                                      </span>
-                                      {tool.classification !== "unknown" ? (
-                                        <span className="rounded bg-gray-100 px-1 py-0.5 text-[9px] uppercase text-gray-500 dark:bg-muted">
-                                          {tool.classification}
-                                        </span>
-                                      ) : null}
+                            {server.tools.map((tool) => (
+                              <div
+                                key={tool.name}
+                                className={`flex w-full items-start rounded-md px-2 py-1.5 text-left ${tool.supported ? "" : "opacity-50"}`}
+                              >
+                                <span className="min-w-0 flex-1">
+                                  <span className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-gray-700 dark:text-foreground/85">
+                                    <span className="truncate">
+                                      {tool.title || tool.name}
                                     </span>
-                                    {!tool.supported ? (
-                                      <span className="block text-[10px] text-amber-600 dark:text-amber-300">
-                                        {tool.unsupportedReason ||
-                                          t("unsupported")}
+                                    {tool.classification !== "unknown" ? (
+                                      <span className="rounded bg-gray-100 px-1 py-0.5 text-[9px] uppercase text-gray-500 dark:bg-muted">
+                                        {tool.classification}
                                       </span>
                                     ) : null}
                                   </span>
-                                </button>
-                              );
-                            })}
+                                  {!tool.supported ? (
+                                    <span className="block text-[10px] text-amber-600 dark:text-amber-300">
+                                      {tool.unsupportedReason ||
+                                        t("unsupported")}
+                                    </span>
+                                  ) : null}
+                                </span>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       ) : null}

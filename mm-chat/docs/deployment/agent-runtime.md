@@ -42,8 +42,11 @@ is untrusted; keep Docker `AGENT_LOCAL_APPROVAL_MODE` at `smart`.
 ## Skill Store and connectors
 
 The standalone Skill Store uses `/v1/skills/*`; Assistant library, Knowledge,
-Memory, Files, and MCP Tools remain separate product surfaces. MCP may provide
-Browser or external connectors, but users do not configure an Agent Runner.
+Memory, Files, and MCP Tools remain separate product surfaces. Composer Skill
+and MCP pickers persist only the current Conversation's selection. Mid-Run
+changes apply at the next snapshot boundary, and automatic matching is
+run-only. MCP may provide Browser or external connectors, but users do not
+configure an Agent Runner.
 
 Conversational discovery/install is controlled independently:
 
@@ -75,7 +78,7 @@ docker compose --env-file .env.single-server --profile ops run --rm migrate
 ```
 
 After the current migration set, head must be
-`103_chat_agent_permission_modes`,
+`106_skill_conversation_selections`,
 `chat_agent_turns/events/goals` and Skill tables must exist, and no legacy
 Agent control-plane relation/function/role may remain. The ledger checksum for
 `096_chat_agent_event_log` must remain the production-applied

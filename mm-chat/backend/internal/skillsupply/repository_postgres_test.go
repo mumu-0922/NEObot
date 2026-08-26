@@ -87,6 +87,67 @@ INSERT INTO users (id, email, display_name) VALUES ($1, $2, 'Skill integration')
 	if items, err := repository.ListLibrary(ctx, adminID); err != nil || len(items) != 0 {
 		t.Fatalf("cross-user library=%#v error=%v", items, err)
 	}
+	conversationOne, conversationTwo := uuid.NewString(), uuid.NewString()
+	mustExecSkill(t, ctx, database, `
+INSERT INTO conversations (id, user_id, title) VALUES ($1, $2, 'Skill selection one')
+`, conversationOne, userOne)
+	mustExecSkill(t, ctx, database, `
+INSERT INTO conversations (id, user_id, title) VALUES ($1, $2, 'Skill selection two')
+`, conversationTwo, userTwo)
+	selected, err := repository.ReplaceConversationSelection(ctx, userOne, ConversationSelection{
+		ConversationID: conversationOne, Revision: 0, Skills: []Installation{installed},
+	})
+	if err != nil || selected.Revision != 1 || len(selected.Skills) != 1 ||
+		selected.Skills[0].ID != installed.ID {
+		t.Fatalf("conversation selection=%#v error=%v", selected, err)
+	}
+	if _, err := repository.ReplaceConversationSelection(ctx, userOne, ConversationSelection{
+		ConversationID: conversationOne, Revision: 0,
+	}); !errors.Is(err, ErrRevisionConflict) {
+		t.Fatalf("stale conversation selection error=%v", err)
+	}
+	if _, err := repository.ReplaceConversationSelection(ctx, userTwo, ConversationSelection{
+		ConversationID: conversationTwo, Revision: 0, Skills: []Installation{installed},
+	}); !errors.Is(err, ErrSelectionInvalid) {
+		t.Fatalf("cross-owner installation selection error=%v", err)
+	}
+	conversationRace := uuid.NewString()
+	mustExecSkill(t, ctx, database, `
+INSERT INTO conversations (id, user_id, title) VALUES ($1, $2, 'Skill selection race')
+`, conversationRace, userOne)
+	type selectionRaceResult struct {
+		selection ConversationSelection
+		err       error
+	}
+	startRace := make(chan struct{})
+	raceResults := make(chan selectionRaceResult, 2)
+	for range 2 {
+		go func() {
+			<-startRace
+			selection, replaceErr := repository.ReplaceConversationSelection(
+				ctx,
+				userOne,
+				ConversationSelection{ConversationID: conversationRace, Revision: 0},
+			)
+			raceResults <- selectionRaceResult{selection: selection, err: replaceErr}
+		}()
+	}
+	close(startRace)
+	successes, conflicts := 0, 0
+	for range 2 {
+		result := <-raceResults
+		switch {
+		case result.err == nil && result.selection.Revision == 1:
+			successes++
+		case errors.Is(result.err, ErrRevisionConflict):
+			conflicts++
+		default:
+			t.Fatalf("initial Skill selection race result=%#v error=%v", result.selection, result.err)
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatalf("initial Skill selection race successes=%d conflicts=%d", successes, conflicts)
+	}
 	if err := repository.Uninstall(ctx, userTwo, installed.ID, 1); !errors.Is(err, ErrInstallationNotFound) {
 		t.Fatalf("cross-user uninstall error=%v", err)
 	}

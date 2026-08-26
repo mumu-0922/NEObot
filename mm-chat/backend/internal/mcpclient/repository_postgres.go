@@ -453,29 +453,30 @@ func (r *PostgresRepository) ReplaceSelection(
 		return Selection{}, fmt.Errorf("begin replace mcp selection: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	var owner string
+	if err := tx.QueryRowContext(ctx, `
+SELECT user_id FROM conversations
+WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+FOR UPDATE
+`, selection.ConversationID, userID).Scan(&owner); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Selection{}, ErrSelectionInvalid
+		}
+		return Selection{}, fmt.Errorf("authorize mcp selection: %w", err)
+	}
 	var existingRevision int64
 	err = tx.QueryRowContext(ctx, `
 SELECT revision
 FROM mcp_conversation_selections
 WHERE conversation_id = $1 AND user_id = $2
 FOR UPDATE
-`, selection.ConversationID, userID).Scan(&existingRevision)
+	`, selection.ConversationID, userID).Scan(&existingRevision)
 	if errors.Is(err, sql.ErrNoRows) {
-		var owner string
-		if err := tx.QueryRowContext(ctx, `
-SELECT user_id FROM conversations
-WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
-`, selection.ConversationID, userID).Scan(&owner); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return Selection{}, ErrSelectionInvalid
-			}
-			return Selection{}, fmt.Errorf("authorize mcp selection: %w", err)
-		}
 		existingRevision = 0
 	} else if err != nil {
 		return Selection{}, fmt.Errorf("lock mcp selection: %w", err)
 	}
-	if selection.Revision > 0 && selection.Revision != existingRevision {
+	if selection.Revision != existingRevision {
 		return Selection{}, ErrSelectionInvalid
 	}
 	newRevision := existingRevision + 1

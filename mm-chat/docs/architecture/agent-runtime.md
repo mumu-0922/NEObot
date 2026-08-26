@@ -15,9 +15,9 @@ request when supported. Only confirmed inability to perform native Tool rounds
 falls back to Chat; transient or inconclusive discovery preserves the native
 adapter path without changing the stored user choice.
 
-MCP is a connector implementation, not the Agent product. Users operate Tools
-and connectors from their management surface; the composer does not expose MCP
-preflight or protocol details.
+MCP is a connector implementation, not the Agent product. Users operate
+installation, credentials and diagnostics from Tools; the composer exposes
+only a compact per-conversation selection picker and no MCP protocol details.
 
 ## Runtime flow
 
@@ -39,7 +39,8 @@ flowchart LR
 
 The Backend is authoritative for Tool admission. Chat mode physically omits
 Agent Tool definitions and skips Skill/MCP/Goal preparation. Agent mode freezes
-the prepared MCP selection, installed Skill materialization, and Workspace
+the prepared per-conversation MCP/Skill selection, bounded run-only automatic
+activations, and Workspace
 authority once per Run, then projects one immutable Tool Registry for each
 Provider Step. First-Step retrieval, current MCP Tool-search visibility, and
 loaded Skill state are part of that Step projection. Agent mode runs the
@@ -90,7 +91,9 @@ remain the only mutation authorities; there is no second resource database or
 unified browser toggle.
 
 The Skill Store is independent of the retired Agent Center. Installing a Skill
-does not grant extra host identity or bypass Tool policy.
+does not grant extra host identity, bypass Tool policy, or select it for every
+conversation. Runtime descriptors distinguish `user_selected`,
+`workspace_default`, and `agent_auto` activation without exposing local paths.
 
 ## Persistence and deliverables
 

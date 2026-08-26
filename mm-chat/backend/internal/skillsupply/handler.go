@@ -20,6 +20,7 @@ const (
 	storeItemPathBase       = storePath + "/items/"
 	libraryPath             = skillsPath + "/library"
 	libraryPathBase         = libraryPath + "/"
+	conversationPathBase    = skillsPath + "/conversations/"
 	maxSkillRequestJSONSize = int64(1 << 20)
 	contentTypeJSON         = "application/json; charset=utf-8"
 )
@@ -45,6 +46,8 @@ func NewHandler(service *Service) *Handler {
 func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Cache-Control", "no-store")
 	switch {
+	case strings.HasPrefix(request.URL.Path, conversationPathBase):
+		handler.handleConversationSelection(writer, request, strings.TrimPrefix(request.URL.Path, conversationPathBase))
 	case strings.HasPrefix(request.URL.Path, candidatesPathBase):
 		handler.handleCandidate(writer, request, strings.TrimPrefix(request.URL.Path, candidatesPathBase))
 	case request.URL.Path == storePath:
@@ -57,6 +60,48 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		handler.handleLibraryItem(writer, request, strings.TrimPrefix(request.URL.Path, libraryPathBase))
 	default:
 		writeSkillError(writer, http.StatusNotFound, "NOT_FOUND", "route not found")
+	}
+}
+
+func (handler *Handler) handleConversationSelection(
+	writer http.ResponseWriter,
+	request *http.Request,
+	suffix string,
+) {
+	parts := strings.Split(suffix, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] != "selection" {
+		writeSkillError(writer, http.StatusNotFound, "NOT_FOUND", "route not found")
+		return
+	}
+	user := auth.UserOrDevelopment(request.Context())
+	switch request.Method {
+	case http.MethodGet:
+		selection, err := handler.service.GetConversationSelection(
+			request.Context(), user.ID, parts[0],
+		)
+		if err != nil {
+			writeSkillServiceError(writer, err)
+			return
+		}
+		writeSkillJSON(writer, http.StatusOK, map[string]any{"selection": selection})
+	case http.MethodPut:
+		var input struct {
+			Revision        int64    `json:"revision"`
+			InstallationIDs []string `json:"installationIds"`
+		}
+		if !decodeSkillJSON(writer, request, &input) {
+			return
+		}
+		selection, err := handler.service.ReplaceConversationSelection(
+			request.Context(), user.ID, parts[0], input.Revision, input.InstallationIDs,
+		)
+		if err != nil {
+			writeSkillServiceError(writer, err)
+			return
+		}
+		writeSkillJSON(writer, http.StatusOK, map[string]any{"selection": selection})
+	default:
+		methodNotAllowed(writer, "GET, PUT")
 	}
 }
 
@@ -315,6 +360,8 @@ func writeSkillServiceError(writer http.ResponseWriter, err error) {
 		writeSkillError(writer, http.StatusConflict, "SKILL_PACKAGE_CHANGED", "skill package changed; review it again")
 	case errors.Is(err, ErrRevisionConflict):
 		writeSkillError(writer, http.StatusConflict, "SKILL_REVISION_CONFLICT", "skill changed; reload before writing")
+	case errors.Is(err, ErrSelectionInvalid):
+		writeSkillError(writer, http.StatusBadRequest, "SKILL_SELECTION_INVALID", "skill conversation selection is invalid")
 	case errors.Is(err, ErrInstallationConflict):
 		writeSkillError(writer, http.StatusConflict, "SKILL_ALREADY_INSTALLED", "skill is already installed")
 	case errors.Is(err, ErrInvalidSource), errors.Is(err, ErrArchiveInvalid), errors.Is(err, ErrManifestInvalid):

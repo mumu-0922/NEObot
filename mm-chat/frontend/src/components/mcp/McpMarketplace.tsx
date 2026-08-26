@@ -54,7 +54,6 @@ import { ApiClientError, createNeoChatApiClient } from "@/services/api/client";
 import McpServerIcon from "./McpServerIcon";
 
 interface McpMarketplaceProps {
-  conversationId?: string;
   enabled: boolean;
   initialQuery?: string;
   onInstalled: (result: McpMarketplaceInstallResult) => void;
@@ -86,7 +85,6 @@ const emptyCustomRemoteDraft: CustomRemoteDraft = {
 const MARKETPLACE_PAGE_SIZE = 20;
 
 export default function McpMarketplace({
-  conversationId,
   enabled,
   initialQuery = "",
   onInstalled,
@@ -381,15 +379,11 @@ export default function McpMarketplace({
     setInstallError("");
     setNotice("");
     try {
-      const selection = conversationId
-        ? await client.mcp.getConversationSelection(conversationId)
-        : null;
       const result = await client.mcp.installMarketplaceItem({
         identifier: detail.identifier,
         version: detail.version,
-        ...(conversationId ? { conversationId } : {}),
-        selectionRevision: selection?.revision ?? 0,
-        enableForConversation: Boolean(conversationId),
+        selectionRevision: 0,
+        enableForConversation: false,
         ...(customRemote.enabled
           ? {
               customEndpointUrl: customRemote.endpointUrl.trim(),
@@ -420,9 +414,7 @@ export default function McpMarketplace({
       setNotice(
         result.validationErrorCode
           ? t("marketplaceInstalledNeedsAttention")
-          : result.enabledForConversation
-            ? t("marketplaceInstalledAndEnabled")
-            : t("marketplaceInstalled"),
+          : t("marketplaceInstalled"),
       );
       onInstalled(result);
       setInstallSecrets({});
@@ -430,7 +422,6 @@ export default function McpMarketplace({
       if (result.server.authType === "oauth" && !result.server.hasCredential) {
         const oauth = await client.mcp.startOAuth({
           serverRef: result.server.ref,
-          conversationId,
           returnUrl: `${window.location.pathname}${window.location.search}${window.location.hash}`,
         });
         const authorizationUrl = validMarketplaceOAuthURL(
@@ -451,7 +442,6 @@ export default function McpMarketplace({
     }
   }, [
     client.mcp,
-    conversationId,
     customRemote,
     detail,
     installSecrets,
@@ -1175,7 +1165,7 @@ function MarketplaceDetail({
               )}
               {detail.installed
                 ? t("marketplaceAlreadyInstalled")
-                : t("marketplaceInstallAndEnable")}
+                : t("marketplaceInstall")}
             </button>
           ) : null}
         </footer>

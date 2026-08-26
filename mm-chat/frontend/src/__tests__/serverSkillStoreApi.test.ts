@@ -94,6 +94,85 @@ describe("server Skill Store API", () => {
       code: "INVALID_SERVER_RESPONSE",
     });
   });
+
+  it("gets and replaces a revision-bound conversation selection", async () => {
+    const requests: Array<{ url: string; method: string; body?: string }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push({
+          url: String(input),
+          method: init?.method ?? "GET",
+          body: typeof init?.body === "string" ? init.body : undefined,
+        });
+        return jsonResponse({
+          selection: {
+            conversationId: "conversation/with slash",
+            revision: init?.method === "PUT" ? 2 : 1,
+            skills: [installationFixture()],
+          },
+        });
+      }),
+    );
+    const client = createNeoChatApiClient({
+      env: {
+        NEXT_PUBLIC_API_MODE: "server",
+        NEXT_PUBLIC_API_BASE_URL: "/mm-api",
+      },
+    });
+
+    await expect(
+      client.skillStore.getConversationSelection("conversation/with slash"),
+    ).resolves.toMatchObject({ revision: 1 });
+    await expect(
+      client.skillStore.replaceConversationSelection({
+        conversationId: "conversation/with slash",
+        revision: 1,
+        installationIds: ["installation_1234567890abcdef"],
+      }),
+    ).resolves.toMatchObject({ revision: 2 });
+
+    expect(requests).toEqual([
+      {
+        url: "/mm-api/v1/skills/conversations/conversation%2Fwith%20slash/selection",
+        method: "GET",
+        body: undefined,
+      },
+      {
+        url: "/mm-api/v1/skills/conversations/conversation%2Fwith%20slash/selection",
+        method: "PUT",
+        body: JSON.stringify({
+          revision: 1,
+          installationIds: ["installation_1234567890abcdef"],
+        }),
+      },
+    ]);
+  });
+
+  it("rejects a selection response bound to another conversation", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse({
+          selection: {
+            conversationId: "conversation-b",
+            revision: 0,
+            skills: [],
+          },
+        }),
+      ),
+    );
+    const client = createNeoChatApiClient({
+      env: {
+        NEXT_PUBLIC_API_MODE: "server",
+        NEXT_PUBLIC_API_BASE_URL: "/mm-api",
+      },
+    });
+
+    await expect(
+      client.skillStore.getConversationSelection("conversation-a"),
+    ).rejects.toMatchObject({ code: "INVALID_SERVER_RESPONSE" });
+  });
 });
 
 function candidateFixture() {

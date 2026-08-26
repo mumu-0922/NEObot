@@ -22,13 +22,21 @@ const maxRuntimeViewBytes = int64(512 << 10)
 // to the local direct Chat runtime. RootPath is server-local authority and must
 // never be serialized to an API response or persisted in chat metadata.
 type RuntimeSkill struct {
+	InstallationID     string
 	Name               string
 	Description        string
 	Version            string
 	PackageFingerprint string
+	ActivationSource   string
 	RootPath           string `json:"-"`
 	Files              []string
 }
+
+const (
+	RuntimeSkillActivationInventory    = "inventory"
+	RuntimeSkillActivationUserSelected = "user_selected"
+	RuntimeSkillActivationAgentAuto    = "agent_auto"
+)
 
 type runtimeMarker struct {
 	SchemaVersion      string   `json:"schemaVersion"`
@@ -55,6 +63,70 @@ func (service *Service) PrepareRuntimeSkills(
 	if err != nil {
 		return nil, err
 	}
+	for index := range installations {
+		installations[index].Description = strings.TrimSpace(installations[index].Description)
+	}
+	return service.prepareRuntimeInstallations(ctx, runtimeRoot, installations, nil)
+}
+
+// PrepareConversationRuntimeSkills projects the durable conversation
+// selection plus an optional bounded run-only match. The automatic match is
+// never written back to the conversation selection.
+func (service *Service) PrepareConversationRuntimeSkills(
+	ctx context.Context,
+	userID string,
+	conversationID string,
+	runtimeRoot string,
+	query string,
+	allowRunAutoActivation bool,
+) ([]RuntimeSkill, error) {
+	if service == nil || service.repository == nil || service.objects == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	userID = strings.TrimSpace(userID)
+	conversationID = strings.TrimSpace(conversationID)
+	runtimeRoot = filepath.Clean(strings.TrimSpace(runtimeRoot))
+	if userID == "" || !validUUID(conversationID) || !filepath.IsAbs(runtimeRoot) ||
+		runtimeRoot == string(filepath.Separator) {
+		return nil, ErrRuntimeUnavailable
+	}
+	selection, err := service.GetConversationSelection(ctx, userID, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	library, err := service.repository.ListLibrary(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]Installation, len(library))
+	for _, installation := range library {
+		byID[installation.ID] = installation
+	}
+	activation := make(map[string]string, len(selection.Skills)+1)
+	selected := make([]Installation, 0, len(selection.Skills)+1)
+	for _, pinned := range selection.Skills {
+		installation, exists := byID[pinned.ID]
+		if !exists {
+			continue
+		}
+		selected = append(selected, installation)
+		activation[installation.ID] = RuntimeSkillActivationUserSelected
+	}
+	if allowRunAutoActivation {
+		for _, installation := range matchRunOnlySkillInstallations(query, library, activation) {
+			selected = append(selected, installation)
+			activation[installation.ID] = RuntimeSkillActivationAgentAuto
+		}
+	}
+	return service.prepareRuntimeInstallations(ctx, runtimeRoot, selected, activation)
+}
+
+func (service *Service) prepareRuntimeInstallations(
+	ctx context.Context,
+	runtimeRoot string,
+	installations []Installation,
+	activation map[string]string,
+) ([]RuntimeSkill, error) {
 	if len(installations) == 0 {
 		return []RuntimeSkill{}, nil
 	}
@@ -79,8 +151,15 @@ func (service *Service) PrepareRuntimeSkills(
 			return nil, err
 		}
 		result = append(result, RuntimeSkill{
-			Name: installation.Name, Description: installation.Description,
+			InstallationID: installation.ID,
+			Name:           installation.Name, Description: installation.Description,
 			Version: installation.Version, PackageFingerprint: installation.PackageFingerprint,
+			ActivationSource: func() string {
+				if source := activation[installation.ID]; source != "" {
+					return source
+				}
+				return RuntimeSkillActivationInventory
+			}(),
 			RootPath: root, Files: files,
 		})
 	}

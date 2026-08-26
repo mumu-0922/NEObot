@@ -22,10 +22,18 @@ The handler serves authenticated routes below `/v1/skills`:
 - administrator candidate creation/detail/review under `/candidates`;
 - admitted Store list/detail/install under `/store`;
 - current-owner list/uninstall under `/library`.
+- owner-authorized, revision-CAS conversation selection under
+  `/conversations/{conversationId}/selection`.
 
 All JSON bodies are bounded and strict, responses are `no-store`, admission is
 fingerprint/revision fenced, and raw instructions, object keys, credentials,
 host paths, package bytes, and SBOM bytes are never projected.
+
+Installed inventory and conversation selection are separate. Agent Runs
+materialize the conversation's selected Skills plus at most two relevant,
+already-installed run-only activations. Automatic activation is recorded in the
+frozen Runtime Resource Snapshot as `agent_auto` and is never written back to
+the conversation selection.
 
 ## Verification
 

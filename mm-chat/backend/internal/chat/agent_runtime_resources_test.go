@@ -94,6 +94,37 @@ func TestAgentRuntimeResourceSnapshotRevisionTracksMCPVisibility(t *testing.T) {
 	}
 }
 
+func TestAgentRuntimeResourceReportCarriesActivationProvenance(t *testing.T) {
+	executor := newAgentRuntimeResourceTestExecutor(t)
+	skills := newLocalSkillToolRuntime(executor, []skillsupply.RuntimeSkill{{
+		Name: "fixture-skill", Version: "1.0.0",
+		PackageFingerprint: "sha256:" + strings.Repeat("c", 64),
+		ActivationSource:   skillsupply.RuntimeSkillActivationAgentAuto,
+	}})
+	mcp := newSchedulerMCPRuntime(t, &schedulerMCPConnector{})
+	mcp.run.Snapshot.Servers[0].ActivationSource = "user_selected"
+	mcp.setVisible(mcp.run.Snapshot.Servers[0].Tools, true)
+	snapshot := newAgentRuntimeResourceSnapshot(agentRuntimeResourceInput{
+		LocalSkills: skills,
+		MCP:         mcp,
+	})
+	report := snapshot.project(externalWebToolLoopInput{}, 1, false).Report
+	want := map[string]bool{
+		skillsupply.RuntimeSkillActivationAgentAuto: false,
+		"user_selected": false,
+	}
+	for _, resource := range report.Resources {
+		if _, expected := want[resource.ActivationSource]; expected {
+			want[resource.ActivationSource] = true
+		}
+	}
+	for source, found := range want {
+		if !found {
+			t.Fatalf("activation source %q missing from report=%#v", source, report.Resources)
+		}
+	}
+}
+
 func TestAgentRuntimeResourceSnapshotRevisionTracksRetrievalAuthority(t *testing.T) {
 	snapshot := newAgentRuntimeResourceSnapshot(agentRuntimeResourceInput{})
 	first := snapshot.project(externalWebToolLoopInput{

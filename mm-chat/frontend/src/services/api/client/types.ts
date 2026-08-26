@@ -731,6 +731,12 @@ export interface AgentPackageInstallationDTO {
   updatedAt: string;
 }
 
+export interface SkillConversationSelectionDTO {
+  conversationId: string;
+  revision: number;
+  skills: AgentPackageInstallationDTO[];
+}
+
 export interface SkillStoreApi {
   listPackageStore(input?: {
     page?: number;
@@ -760,6 +766,16 @@ export interface SkillStoreApi {
     revision: number;
     signal?: AbortSignal;
   }): Promise<void>;
+  getConversationSelection(
+    conversationId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<SkillConversationSelectionDTO>;
+  replaceConversationSelection(input: {
+    conversationId: string;
+    revision: number;
+    installationIds: string[];
+    signal?: AbortSignal;
+  }): Promise<SkillConversationSelectionDTO>;
 }
 
 export interface ResourceSkillDTO {

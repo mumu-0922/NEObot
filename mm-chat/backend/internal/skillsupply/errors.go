@@ -20,6 +20,7 @@ var (
 	ErrPackageCollision     = errors.New("skill package fingerprint collision")
 	ErrRuntimeUnavailable   = errors.New("skill local runtime is unavailable")
 	ErrRuntimeFileNotFound  = errors.New("skill runtime file not found")
+	ErrSelectionInvalid     = errors.New("skill conversation selection is invalid")
 )
 
 type ValidationError struct {

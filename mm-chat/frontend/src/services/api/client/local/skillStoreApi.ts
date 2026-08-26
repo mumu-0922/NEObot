@@ -12,5 +12,7 @@ export function createLocalSkillStoreApiShell(): SkillStoreApi {
     listPackageLibrary: unavailable,
     installPackageSkill: unavailable,
     uninstallPackageSkill: unavailable,
+    getConversationSelection: unavailable,
+    replaceConversationSelection: unavailable,
   };
 }

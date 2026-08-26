@@ -1,96 +1,111 @@
-# Composer Resource Command Contract
+# Composer Resource Picker Contract
 
 ## 1. Scope / Trigger
 
-Apply when changing composer slash autocomplete, deterministic Skill
-invocation, Skill/MCP discovery/install commands, or Resource process cards.
+Apply when changing `MessageInput`, `ConversationResourcePickers`, Skill/MCP
+conversation-selection APIs, Resource management deep links, or Resource
+process cards. Resource lifecycle Slash commands are retired; inventory,
+conversation selection, and Run activation are separate states.
 
 ## 2. Signatures
 
 ```ts
-type SlashCommandGroup = "builtin" | "skill" | "mcp" | "session";
+interface ConversationResourcePickersProps {
+  conversationId?: string;
+  skillEnabled: boolean;
+  mcpEnabled: boolean;
+  runActive: boolean;
+  disabled?: boolean;
+  onOpenSkillStore(): void;
+  onOpenMcpTools(): void;
+}
 
-buildSlashCommands(installedSkillNames: readonly string[]): SlashCommandDefinition[]
-filterSlashCommands(commands, value): SlashCommandDefinition[]
-parseSlashCommand(value): ParsedSlashCommand | null
+GET /v1/skills/conversations/{conversationId}/selection
+PUT /v1/skills/conversations/{conversationId}/selection
+{ revision: number; installationIds: string[] }
+
+GET /v1/mcp/conversations/{conversationId}/selection
+PUT /v1/mcp/conversations/{conversationId}/selection
+{ mode: "custom"; revision: number; servers: McpSelectionServer[] }
 ```
 
-The typed client exposes `resources.getCatalog`, `resources.search`,
-`resources.install`, and `resources.mutate`. Server responses pass strict Zod
-schemas before use.
+The typed Skill response is
+`{conversationId, revision, skills: AgentPackageInstallationDTO[]}`. MCP keeps
+its existing `McpConversationSelection` DTO. Both server clients must encode the
+conversation ID and validate responses before use.
 
 ## 3. Contracts
 
-- Typing `/` opens a scrollable grouped palette containing every built-in and
-  every valid installed `/skill:<name>` command. Do not truncate away `/mcp`,
-  `/resources`, `/reload`, or later dynamic Skills.
-- Support Arrow Up/Down, Tab/Enter selection, Escape dismissal, mouse hover and
-  click, argument hints, loading, and empty-result states. The input retains
-  keyboard focus after insertion.
-- Slash parsing is deterministic and runs before normal message submission.
-  Unknown commands show an error and are not sent to the model. An installed
-  `/skill:<name> [args]` is sent so Backend deterministic loading remains
-  authority; an unknown Skill is rejected locally.
-- Search/install commands call the shared Resource API. They never copy
-  candidate revisions from browser storage. Credential-requiring MCP entries
-  open the existing Tools installed view, target the server-owned draft, and
-  use its credential UI instead of collecting a Secret in chat.
-- Skill remove and MCP enable/disable/remove call `resources.mutate` with the
-  current installation/selection revision. Composer code must not bypass the
-  unified mutation audit by calling domain mutation endpoints directly.
-- `/reload` is denied while a Run is active. Otherwise refresh installed Skill
-  commands and read the current Resource catalog. Browser state is not Resource
-  authority.
-- Resource process cards render only the sanitized `card=resource`
-  presentation and the existing approval projection. Raw Tool arguments,
-  results, candidate bodies, credentials, URLs, and paths never render.
-- A pending MCP configuration card opens the existing Tools installed view
-  through an in-app event so the active Run stays mounted. It targets the
-  server-owned draft by opaque private resource ID and shows only kind, bounded
-  query, resource ID, and durable decision metadata. The user explicitly
-  selects “Configured, continue” after the vault/OAuth flow.
+- Render exactly one compact Skill icon and one compact MCP icon beside the
+  other composer controls when the corresponding server capability is enabled.
+- Each popover lists only installed/authorized inventory, supports search and
+  multi-select, shows selected count, and links to the full management page.
+  It does not install, uninstall, configure credentials, or expose protocol
+  diagnostics.
+- Selection is server-authoritative and scoped to the exact conversation.
+  Reload it when `conversationId` changes or the page refreshes. Never use
+  localStorage or the previously opened conversation as fallback authority.
+- Writes use the latest Backend revision. A stale write reloads the selection
+  instead of overwriting another tab/device.
+- An MCP picker write uses `mode="custom"`; explicit `servers=[]` means none.
+  Installed servers that are not `ready` stay visible but disabled.
+- During an active Run, changes are permitted but visibly labelled “next Run”.
+  The current frozen Resource Snapshot is never edited in place.
+- Resource lifecycle entries (`/skill`, `/mcp`, `/resources`, `/reload`,
+  install/remove/enable/disable) must not return to the `/` palette or
+  `ChatApp` send interception. Historical message replay remains a Backend
+  compatibility concern.
+- Process/configuration cards may deep-link to Skill Store or Tools through the
+  bounded `RESOURCE_MANAGER_OPEN_EVENT`; they never place credentials, raw
+  Tool arguments, paths, or package bodies in browser state.
 
 ## 4. Validation & Error Matrix
 
 | Condition | Required result |
 | --- | --- |
-| input is not one single-line slash command | normal composer path |
-| unknown command | visible bounded error; no model/API mutation |
-| `/skill:<name>` not in current installed library | reject locally |
-| install lacks exact search match | open management surface; no write |
-| MCP requires auth/configuration | open targeted installed MCP configuration; no chat Secret field |
-| configuration card contains unknown fields | ignore unknown data; render only normalized projection |
-| server response violates DTO | `INVALID_SERVER_RESPONSE`; do not render/use |
-| Run active and `/reload` entered | reject; preserve current snapshot |
-| palette query has no match | visible empty state; Enter follows normal unknown-command handling |
+| no persisted conversation ID | picker disabled; no selection request |
+| Skill/MCP capability disabled | corresponding icon omitted |
+| inventory or selection load fails | bounded popover error; no guessed selection |
+| response violates strict DTO | `INVALID_SERVER_RESPONSE`; do not use it |
+| stale revision/CAS conflict | show save failure, reload authoritative state |
+| MCP server is not `ready` | visible disabled row; no write |
+| Run is active | selection write may succeed; show next-Run notice |
+| conversation changes during request | abort/ignore old result; do not contaminate new conversation |
 
 ## 5. Good / Base / Bad Cases
 
-- **Good:** type `/`, select `/skill install`, search exact candidate, install
-  through the shared API, then see the dynamic `/skill:<name>` after refresh.
-- **Base:** no installed Skills; built-in Skill/MCP/Resource/Reload commands
-  remain discoverable.
-- **Bad:** slice the palette to eight entries, infer mutation intent with an
-  LLM, save a candidate fingerprint in localStorage, or add credential inputs
-  to the composer.
+- **Good:** Conversation A selects Skill-A/MCP-A and Conversation B selects
+  Skill-B/MCP-B; switching, refreshing, and signing in on another device reads
+  the independent Backend rows.
+- **Base:** a new conversation has revision zero and no selected Skills; MCP
+  follows its explicit default/inherit policy until the first custom choice.
+- **Bad:** selecting one resource updates every conversation, installing a
+  package silently checks it in the composer, or Slash commands create a second
+  mutation UI.
 
 ## 6. Tests Required
 
-- Build/filter/parse/insertion tests, unsafe Skill-name rejection, group order,
-  and root `/` inclusion of required commands and dynamic Skills.
-- MessageInput composition for grouped loading/empty palette and keyboard
-  controls.
-- Resource client route/body/strict-response tests and process-card sanitizer,
-  approval, and Secret/path rejection tests.
-- Skill Store exact detail fallback for candidates outside the first list page.
-- Frontend format, lint, strict typecheck, full Vitest, and production build.
+- API client GET/PUT paths, encoded IDs, request body, strict response parsing,
+  and malformed-response rejection.
+- MessageInput composition proves both lightweight picker wiring and the
+  absence of `McpToolsControl` and lifecycle Slash command code.
+- Selection tests cover conversation switch/reload, selected counts, ready-only
+  MCP mutation, revision conflict reload, and next-Run notice.
+- Backend tests cover owner isolation, zero-to-one revision, stale CAS,
+  duplicate/foreign installation rejection, duplicate-conversation copy, and
+  migration owner/fingerprint foreign keys.
+- Run frontend format/lint/typecheck/Vitest/build plus focused Go and migration
+  gates for cross-layer changes.
 
 ## 7. Wrong vs Correct
 
 ```text
-Wrong: submit "/mcp install X" as prose and hope the model mutates correctly
-Correct: deterministic parser -> Resource search -> exact server install API
+Wrong: installed inventory -> global browser toggle -> every conversation
+Correct: installed inventory -> conversation picker -> Backend CAS row -> next Run
 
-Wrong: show only the first eight slash entries
-Correct: bounded-height scrolling list containing every authorized command
+Wrong: composer /mcp install ... -> lifecycle mutation
+Correct: composer MCP icon -> select installed server; Tools owns installation
+
+Wrong: Agent auto-match -> PUT conversation selection
+Correct: Agent auto-match -> frozen current Run snapshot only
 ```

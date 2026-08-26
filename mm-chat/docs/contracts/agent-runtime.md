@@ -30,6 +30,12 @@ containers, Canary runs, schedules, autonomous learning, and Agent Center.
 - `/v1/skills/*` is the only Skill Store/library API.
 - Package discovery, admission, installation, revision checks, and uninstall
   are server-authoritative.
+- Skill and MCP selections are durable per Conversation. The composer changes
+  these revision-bound policies; installed inventory is not implicitly enabled
+  in every conversation.
+- At Run creation, Agent mode may add bounded relevant resources from already
+  installed/authorized inventory. `agent_auto` activation exists only in the
+  frozen Run snapshot and never mutates the durable selection.
 - `SKILL.md` and package files are untrusted input. Installation does not imply
   execution; the Backend registry and current user installation remain gates.
 - `local_direct` runs as the Backend UID/GID only under the configured Skill

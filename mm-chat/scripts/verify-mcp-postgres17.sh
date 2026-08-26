@@ -84,7 +84,7 @@ run_migrate() {
   MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"
 }
 
-log "applying 001 -> 097 with the 098-105 tail deferred"
+log "applying 001 -> 097 with the 098-106 tail deferred"
 psql_command "$(migration_drill_deferred_tail_sql "${backend_dir}" \
   098_retire_legacy_agent_control_plane \
 	099_chat_agent_event_log_function_repair \
@@ -93,7 +93,8 @@ psql_command "$(migration_drill_deferred_tail_sql "${backend_dir}" \
 	102_host_workspaces \
 	103_chat_agent_permission_modes \
 	104_rag_failure_state_projection \
-	105_recall_filtering_provider)" >/dev/null
+	105_recall_filtering_provider \
+	106_skill_conversation_selections)" >/dev/null
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 074_mcp_tools_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 075_mcp_runtime_role_grants" "${work_dir}/fresh.log"
@@ -123,7 +124,7 @@ grep -Fq "up 097_chat_agent_goals" "${work_dir}/fresh.log"
 log "proving replay is a no-op"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
-psql_command "DELETE FROM schema_migrations WHERE version BETWEEN 98 AND 105" >/dev/null
+psql_command "DELETE FROM schema_migrations WHERE version BETWEEN 98 AND 106" >/dev/null
 
 log "rolling back the clean 097 through 077 tails before the 076 guard drill"
 run_migrate down >"${work_dir}/peel-097-chat-agent-goal-tail.log" 2>&1
@@ -266,7 +267,7 @@ VALUES (
 );
 " >/dev/null
 
-log "reapplying 074 -> 105 and verifying schema, metadata, retention, grants, and stdio persistence"
+log "reapplying 074 -> 106 and verifying schema, metadata, retention, grants, and stdio persistence"
 run_migrate up >"${work_dir}/reup.log" 2>&1
 grep -Fq "up 074_mcp_tools_foundation" "${work_dir}/reup.log"
 grep -Fq "up 075_mcp_runtime_role_grants" "${work_dir}/reup.log"
@@ -300,6 +301,7 @@ grep -Fq "up 102_host_workspaces" "${work_dir}/reup.log"
 grep -Fq "up 103_chat_agent_permission_modes" "${work_dir}/reup.log"
 grep -Fq "up 104_rag_failure_state_projection" "${work_dir}/reup.log"
 grep -Fq "up 105_recall_filtering_provider" "${work_dir}/reup.log"
+grep -Fq "up 106_skill_conversation_selections" "${work_dir}/reup.log"
 psql_command "
 DO \$\$
 DECLARE
@@ -355,4 +357,4 @@ log "proving a second replay remains a no-op"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 
-log "passed (historical 097 boundary, replay to head 105, guarded 076 down/up, metadata, retention, runtime grants, stdio repository lifecycle)"
+log "passed (historical 097 boundary, replay to head 106, guarded 076 down/up, metadata, retention, runtime grants, stdio repository lifecycle)"

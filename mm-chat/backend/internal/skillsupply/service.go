@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -257,6 +258,89 @@ func (service *Service) ListLibrary(ctx context.Context, userID string) ([]Insta
 		return nil, validationError("INVALID_SKILL_LIBRARY", "skill library owner is invalid")
 	}
 	return service.repository.ListLibrary(ctx, strings.TrimSpace(userID))
+}
+
+func (service *Service) GetConversationSelection(
+	ctx context.Context,
+	userID string,
+	conversationID string,
+) (ConversationSelection, error) {
+	if service == nil || service.repository == nil {
+		return ConversationSelection{}, ErrUnavailable
+	}
+	userID = strings.TrimSpace(userID)
+	conversationID = strings.TrimSpace(conversationID)
+	if userID == "" || !validUUID(conversationID) {
+		return ConversationSelection{}, ErrSelectionInvalid
+	}
+	selection, found, err := service.repository.GetConversationSelection(ctx, userID, conversationID)
+	if err != nil {
+		return ConversationSelection{}, err
+	}
+	if found {
+		return selection, nil
+	}
+	if err := service.repository.AuthorizeConversation(ctx, userID, conversationID); err != nil {
+		return ConversationSelection{}, err
+	}
+	return ConversationSelection{
+		ConversationID: conversationID,
+		Revision:       0,
+		Skills:         []Installation{},
+	}, nil
+}
+
+func (service *Service) ReplaceConversationSelection(
+	ctx context.Context,
+	userID string,
+	conversationID string,
+	revision int64,
+	installationIDs []string,
+) (ConversationSelection, error) {
+	if service == nil || service.repository == nil {
+		return ConversationSelection{}, ErrUnavailable
+	}
+	userID = strings.TrimSpace(userID)
+	conversationID = strings.TrimSpace(conversationID)
+	if userID == "" || !validUUID(conversationID) || revision < 0 || len(installationIDs) > 32 {
+		return ConversationSelection{}, ErrSelectionInvalid
+	}
+	library, err := service.repository.ListLibrary(ctx, userID)
+	if err != nil {
+		return ConversationSelection{}, err
+	}
+	byID := make(map[string]Installation, len(library))
+	for _, installation := range library {
+		byID[installation.ID] = installation
+	}
+	selected := make([]Installation, 0, len(installationIDs))
+	seen := make(map[string]struct{}, len(installationIDs))
+	for _, rawID := range installationIDs {
+		installationID := strings.TrimSpace(rawID)
+		if !validUUID(installationID) {
+			return ConversationSelection{}, ErrSelectionInvalid
+		}
+		if _, duplicate := seen[installationID]; duplicate {
+			return ConversationSelection{}, ErrSelectionInvalid
+		}
+		installation, exists := byID[installationID]
+		if !exists {
+			return ConversationSelection{}, ErrSelectionInvalid
+		}
+		seen[installationID] = struct{}{}
+		selected = append(selected, installation)
+	}
+	sort.Slice(selected, func(left, right int) bool {
+		if selected[left].Name == selected[right].Name {
+			return selected[left].ID < selected[right].ID
+		}
+		return selected[left].Name < selected[right].Name
+	})
+	return service.repository.ReplaceConversationSelection(ctx, userID, ConversationSelection{
+		ConversationID: conversationID,
+		Revision:       revision,
+		Skills:         selected,
+	})
 }
 
 func (service *Service) Uninstall(

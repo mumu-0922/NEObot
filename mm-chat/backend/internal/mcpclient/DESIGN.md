@@ -4,7 +4,7 @@
 
 ```text
 HTTP control API -> Service -> PostgreSQL/vault/connectors
-Chat Tool loop   -> PrepareRun -> frozen snapshot -> ExecuteRound
+Chat Tool loop   -> PrepareAgentRun -> frozen snapshot -> ExecuteRound
 ExecuteRound     -> Streamable HTTP or internal Runner -> normalized result
 Result           -> PostgreSQL inline metadata + optional MinIO artifact
 Cleanup worker   -> delete artifact -> delete/acknowledge durable row
@@ -39,11 +39,15 @@ Cleanup worker   -> delete artifact -> delete/acknowledge durable row
 7. Artifact deletion precedes durable call deletion. Partial failure retains
    database authority for idempotent retry.
 8. Retention and account-deletion cleanup continue when MCP execution is off.
+9. Inventory installation, Conversation selection, and Run activation remain
+   separate. `PrepareAgentRun` may add at most two ready, credential-authorized
+   lexical matches as `agent_auto`; it never writes them back to selection.
 
 ## Limits
 
-Defaults are 20 private servers/user, 8 selected servers/conversation, 32
-exposed Tools/provider round, 32 calls/run, 8 rounds/run, 4 concurrent
+Defaults are 20 private servers/user, 8 selected servers/conversation, at most
+2 run-only automatic additions, 32 exposed Tools/provider round, 32 calls/run,
+8 rounds/run, 4 concurrent
 calls/user, 30 seconds/call, 120 seconds/run, 256 KiB inline result, 25 MiB/item,
 50 MiB/call, and 90-day audit retention.
 
@@ -64,6 +68,9 @@ Tool execution, and per-call approval dialogs are outside this module.
   at the cost of temporarily retaining expired PostgreSQL rows.
 - **No Plugin compatibility adapter** avoids a long-lived dual trust model;
   rollback keeps additive tables and prior images instead.
+- **Inventory-only management UI** prevents Marketplace installation,
+  credential setup, or OAuth completion from silently changing Conversation
+  selection. Durable selection is changed only through the composer authority.
 
 ## Rollback
 

@@ -220,6 +220,29 @@ func TestSearchFiltersSkillAndBoundsMCPResults(t *testing.T) {
 	}
 }
 
+func TestSupportedResourceLinksResolveThroughBoundedMarketplaceSearch(t *testing.T) {
+	for _, test := range []struct {
+		kind string
+		link string
+		want string
+		ok   bool
+	}{
+		{KindSkill, "https://lobehub.com/skills/office-xlsx", "office-xlsx", true},
+		{KindMCP, "https://market.lobehub.com/plugins/deepwiki", "deepwiki", true},
+		{KindMCP, "https://www.lobehub.com/mcp/context7", "context7", true},
+		{KindSkill, "https://evil.example/skills/office-xlsx", "", false},
+		{KindSkill, "https://lobehub.com/skills/office-xlsx?revision=latest", "", false},
+		{KindSkill, "https://lobehub.com/plugins/deepwiki", "", false},
+		{KindMCP, "https://lobehub.com/plugins/%2e%2e%2fsecret", "", false},
+	} {
+		got, ok := supportedResourceLinkIdentifier(test.kind, test.link)
+		if got != test.want || ok != test.ok {
+			t.Fatalf("supportedResourceLinkIdentifier(%q, %q)=(%q,%v), want (%q,%v)",
+				test.kind, test.link, got, ok, test.want, test.ok)
+		}
+	}
+}
+
 func TestInstallKillSwitchFailsClosedWithoutMutating(t *testing.T) {
 	skills := fakeSkills{store: skillsupply.StoreResult{Items: []skillsupply.Candidate{{
 		ID: "candidate-id", Status: skillsupply.StatusAdmitted,
@@ -450,7 +473,7 @@ func TestMCPConfigurationHandoffCreatesBoundDraftAndAuditsTransition(t *testing.
 	}
 }
 
-func TestCompleteConfiguredMCPRevalidatesProvenanceReadinessAndSelection(t *testing.T) {
+func TestCompleteConfiguredMCPRevalidatesProvenanceWithoutPersistingSelection(t *testing.T) {
 	deploymentHash := "sha256:" + strings.Repeat("c", 64)
 	privateRef := mcpclient.ServerRef{Source: mcpclient.SourcePrivate, ID: "private-id"}
 	mcp := &mutationMCP{fakeMCP: fakeMCP{
@@ -478,8 +501,7 @@ func TestCompleteConfiguredMCPRevalidatesProvenanceReadinessAndSelection(t *test
 		EntryPoint: "agent_configuration_resume",
 	}, privateRef.Key())
 	if err != nil || result.Status != "installed" || !result.RefreshRequired ||
-		result.MutationAuditID == "" || len(mcp.replacements) != 1 ||
-		!selectionContains(mcp.replacements[0].Servers, privateRef) || len(auditor.audits) != 1 ||
+		result.MutationAuditID == "" || len(mcp.replacements) != 0 || len(auditor.audits) != 1 ||
 		auditor.audits[0].EntryPoint != "agent_configuration_resume" {
 		t.Fatalf("result=%#v error=%v replacements=%#v audits=%#v", result, err, mcp.replacements, auditor.audits)
 	}
@@ -489,7 +511,7 @@ func TestCompleteConfiguredMCPRevalidatesProvenanceReadinessAndSelection(t *test
 		Kind: KindMCP, ID: "deepwiki", Version: "1.0.0", ExactRevision: deploymentHash,
 		UserID: "owner-id", ConversationID: "conversation-id",
 	}, privateRef.Key())
-	if !errors.Is(err, ErrConfigurationRequired) || len(mcp.replacements) != 1 {
+	if !errors.Is(err, ErrConfigurationRequired) || len(mcp.replacements) != 0 {
 		t.Fatalf("error=%v replacements=%#v", err, mcp.replacements)
 	}
 }

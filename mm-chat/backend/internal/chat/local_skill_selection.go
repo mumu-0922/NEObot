@@ -108,6 +108,7 @@ func localSkillCatalogRevision(skills []skillsupply.RuntimeSkill) string {
 			strings.TrimSpace(skill.Version),
 			strings.Join(strings.Fields(skill.Description), " "),
 			strings.TrimSpace(skill.PackageFingerprint),
+			strings.TrimSpace(skill.ActivationSource),
 		})
 	}
 	encoded, _ := json.Marshal(entries)

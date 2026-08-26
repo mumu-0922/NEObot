@@ -5,6 +5,9 @@
 The Skill Store owns package discovery and the current user's installed Skill
 library. PostgreSQL and `/v1/skills/*` remain authoritative; the component owns
 only transient list, selection, loading, error, and announcement state.
+Its list selection is only a detail-panel cursor: durable per-Conversation
+Skill enablement belongs to `ConversationResourcePickers` and is never changed
+by install or uninstall UI implicitly.
 
 ## Trust boundary
 

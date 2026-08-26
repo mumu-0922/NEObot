@@ -69,6 +69,14 @@ const installationSchema = z
   })
   .strict();
 
+const conversationSelectionSchema = z
+  .object({
+    conversationId: string,
+    revision: count,
+    skills: z.array(installationSchema),
+  })
+  .strict();
+
 function parse<T>(schema: z.ZodType<T>, value: unknown, subject: string): T {
   const result = schema.safeParse(value);
   if (!result.success) {
@@ -153,6 +161,51 @@ export function createServerSkillStoreApiShell(
         `/v1/skills/library/${encodeURIComponent(input.installationId)}?revision=${encodeURIComponent(String(input.revision))}`,
         { method: "DELETE", signal: input.signal },
       );
+    },
+
+    async getConversationSelection(conversationId, options = {}) {
+      const response = await httpClient.requestJson<unknown>(
+        `/v1/skills/conversations/${encodeURIComponent(conversationId)}/selection`,
+        { signal: options.signal },
+      );
+      const selection = parse(
+        z.object({ selection: conversationSelectionSchema }).strict(),
+        response,
+        "conversation selection",
+      ).selection;
+      if (selection.conversationId !== conversationId) {
+        throw new ApiClientError(
+          "INVALID_SERVER_RESPONSE",
+          "Server returned a Skill selection for a different conversation.",
+        );
+      }
+      return selection;
+    },
+
+    async replaceConversationSelection(input) {
+      const response = await httpClient.requestJson<unknown>(
+        `/v1/skills/conversations/${encodeURIComponent(input.conversationId)}/selection`,
+        {
+          method: "PUT",
+          body: {
+            revision: input.revision,
+            installationIds: input.installationIds,
+          },
+          signal: input.signal,
+        },
+      );
+      const selection = parse(
+        z.object({ selection: conversationSelectionSchema }).strict(),
+        response,
+        "conversation selection",
+      ).selection;
+      if (selection.conversationId !== input.conversationId) {
+        throw new ApiClientError(
+          "INVALID_SERVER_RESPONSE",
+          "Server returned a Skill selection for a different conversation.",
+        );
+      }
+      return selection;
     },
   };
 }

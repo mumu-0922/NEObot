@@ -1,15 +1,16 @@
 package chat
 
 type agentRuntimeResourceDescriptor struct {
-	ID              string                     `json:"id"`
-	Kind            agentRuntimeResourceKind   `json:"kind"`
-	Source          agentRuntimeResourceSource `json:"source"`
-	Scope           agentRuntimeResourceScope  `json:"scope"`
-	Status          agentRuntimeResourceStatus `json:"status"`
-	Revision        string                     `json:"revision"`
-	ToolNames       []string                   `json:"toolNames"`
-	SkillNames      []string                   `json:"skillNames"`
-	DiagnosticCodes []string                   `json:"diagnosticCodes"`
+	ID               string                     `json:"id"`
+	Kind             agentRuntimeResourceKind   `json:"kind"`
+	Source           agentRuntimeResourceSource `json:"source"`
+	Scope            agentRuntimeResourceScope  `json:"scope"`
+	Status           agentRuntimeResourceStatus `json:"status"`
+	ActivationSource string                     `json:"activationSource,omitempty"`
+	Revision         string                     `json:"revision"`
+	ToolNames        []string                   `json:"toolNames"`
+	SkillNames       []string                   `json:"skillNames"`
+	DiagnosticCodes  []string                   `json:"diagnosticCodes"`
 }
 
 type agentRuntimeResourceDiagnostic struct {

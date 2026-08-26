@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -134,16 +135,62 @@ func TestServiceRejectsSourceDriftAndIneligibleAdmission(t *testing.T) {
 	}
 }
 
+func TestServiceConversationSelectionIsOwnerScopedAndRevisionBound(t *testing.T) {
+	repository := newMemoryRepository()
+	conversationID := "33333333-3333-4333-8333-333333333333"
+	installationID := "44444444-4444-4444-8444-444444444444"
+	repository.conversations[conversationID] = testSkillUser
+	repository.installations[installationID] = Installation{
+		ID: installationID, UserID: testSkillUser,
+		AdmissionID:        "55555555-5555-4555-8555-555555555555",
+		PackageFingerprint: "sha256:" + strings.Repeat("a", 64),
+		Name:               "office-xlsx", Version: "1.0.0", Revision: 1,
+	}
+	service := NewService(WithRepository(repository), WithObjectStore(newMemoryObjectStore()))
+
+	empty, err := service.GetConversationSelection(context.Background(), testSkillUser, conversationID)
+	if err != nil || empty.Revision != 0 || len(empty.Skills) != 0 {
+		t.Fatalf("empty selection=%#v error=%v", empty, err)
+	}
+	selected, err := service.ReplaceConversationSelection(
+		context.Background(), testSkillUser, conversationID, 0, []string{installationID},
+	)
+	if err != nil || selected.Revision != 1 || len(selected.Skills) != 1 ||
+		selected.Skills[0].ID != installationID {
+		t.Fatalf("selected=%#v error=%v", selected, err)
+	}
+	if _, err := service.ReplaceConversationSelection(
+		context.Background(), testSkillUser, conversationID, 0, nil,
+	); !errors.Is(err, ErrRevisionConflict) {
+		t.Fatalf("stale replace error=%v", err)
+	}
+	if _, err := service.ReplaceConversationSelection(
+		context.Background(), testSkillUser, conversationID, 1,
+		[]string{installationID, installationID},
+	); !errors.Is(err, ErrSelectionInvalid) {
+		t.Fatalf("duplicate selection error=%v", err)
+	}
+	if _, err := service.GetConversationSelection(
+		context.Background(), testSkillAdmin, conversationID,
+	); !errors.Is(err, ErrSelectionInvalid) {
+		t.Fatalf("cross-owner selection error=%v", err)
+	}
+}
+
 type memoryRepository struct {
 	candidates    map[string]Candidate
 	bySource      map[string]string
 	installations map[string]Installation
+	conversations map[string]string
+	selections    map[string]ConversationSelection
 	newID         func() string
 }
 
 func newMemoryRepository() *memoryRepository {
 	return &memoryRepository{candidates: map[string]Candidate{}, bySource: map[string]string{},
-		installations: map[string]Installation{}, newID: sequenceIDs("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")}
+		installations: map[string]Installation{}, conversations: map[string]string{},
+		selections: map[string]ConversationSelection{},
+		newID:      sequenceIDs("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")}
 }
 
 func (repository *memoryRepository) CreateCandidate(_ context.Context, candidate Candidate) (Candidate, error) {
@@ -249,6 +296,45 @@ func (repository *memoryRepository) Uninstall(_ context.Context, userID, id stri
 	}
 	delete(repository.installations, id)
 	return nil
+}
+
+func (repository *memoryRepository) AuthorizeConversation(
+	_ context.Context,
+	userID string,
+	conversationID string,
+) error {
+	if repository.conversations[conversationID] != userID {
+		return ErrSelectionInvalid
+	}
+	return nil
+}
+
+func (repository *memoryRepository) GetConversationSelection(
+	_ context.Context,
+	userID string,
+	conversationID string,
+) (ConversationSelection, bool, error) {
+	selection, found := repository.selections[userID+":"+conversationID]
+	return selection, found, nil
+}
+
+func (repository *memoryRepository) ReplaceConversationSelection(
+	_ context.Context,
+	userID string,
+	selection ConversationSelection,
+) (ConversationSelection, error) {
+	if repository.conversations[selection.ConversationID] != userID {
+		return ConversationSelection{}, ErrSelectionInvalid
+	}
+	key := userID + ":" + selection.ConversationID
+	current := repository.selections[key]
+	if selection.Revision != current.Revision {
+		return ConversationSelection{}, ErrRevisionConflict
+	}
+	selection.Revision++
+	selection.Skills = append([]Installation(nil), selection.Skills...)
+	repository.selections[key] = selection
+	return selection, nil
 }
 
 type memoryObjectStore struct{ objects map[string][]byte }

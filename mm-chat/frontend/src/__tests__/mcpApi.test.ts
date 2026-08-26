@@ -130,7 +130,7 @@ describe("server MCP API", () => {
           ],
         };
       },
-    } as HttpClient;
+    } as unknown as HttpClient;
     const api = createServerMcpApiShell(httpClient);
 
     await expect(
@@ -230,5 +230,25 @@ describe("server MCP API", () => {
         },
       },
     ]);
+  });
+
+  it("rejects a selection response bound to another conversation", async () => {
+    const httpClient = {
+      async requestJson() {
+        return {
+          selection: {
+            conversationId: "conversation-b",
+            mode: "custom",
+            revision: 0,
+            servers: [],
+          },
+        };
+      },
+    } as unknown as HttpClient;
+    const api = createServerMcpApiShell(httpClient);
+
+    await expect(
+      api.getConversationSelection("conversation-a"),
+    ).rejects.toMatchObject({ code: "INVALID_SERVER_RESPONSE" });
   });
 });

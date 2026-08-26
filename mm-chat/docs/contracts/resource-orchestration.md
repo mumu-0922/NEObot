@@ -3,9 +3,9 @@
 ## Scope
 
 Neo Chat exposes one server-authorized discovery and install plane for admitted
-Skill packages and MCP Marketplace entries. Deterministic slash commands and
-the Agent `resource_search` / `resource_request_install` Tools call the same
-orchestrator. The orchestrator delegates every write to `skillsupply.Service`
+Skill packages and MCP Marketplace entries. The Agent
+`resource_search` / `resource_request_install` Tools call the orchestrator;
+Resource lifecycle Slash commands are not a product surface. The orchestrator delegates every write to `skillsupply.Service`
 or `mcpclient.Service`; it never installs with Bash, npm, Git, Docker, or an
 arbitrary URL.
 
@@ -24,7 +24,11 @@ POST /v1/resources/mutate
 The catalog contains a deterministic `sha256:` revision, installed Skills, and
 sanitized MCP readiness/selection state. Search returns at most five entries.
 Each entry binds `id`, `version`, and `exactRevision`; descriptions,
-permissions, and Marketplace metadata are untrusted routing data.
+permissions, and Marketplace metadata are untrusted routing data. An allowlisted
+`https://lobehub.com/skills/{identifier}` or LobeHub MCP/Plugin link may be
+resolved to its identifier, but the URL is never fetched or executed; unknown
+hosts, query strings, fragments, traversal and kind mismatches stay untrusted
+chat/search text.
 
 ```json
 {
@@ -82,8 +86,8 @@ opens and targets the provenance-bound draft in the existing Tools installed
 view; secrets still travel directly from that UI to the Backend vault. When the
 user selects **Configured, continue**, the
 Backend re-fetches the exact Marketplace revision, checks draft ownership and
-provenance metadata, requires `ready` plus credential presence, reauthorizes the
-conversation selection, records a second mutation audit, and only then creates
+provenance metadata, requires `ready` plus credential presence, records a
+second mutation audit, and only then creates
 the fresh Runtime Resource Snapshot.
 
 The current Run snapshot is never mutated in place. A successful mutation
@@ -98,24 +102,21 @@ validation, incomplete setup, or expired/denied handoff fails closed. Secret
 values never enter Agent Tool schemas, process trace, mutation audit, or model
 context.
 
-## Slash commands
+## Inventory, conversation selection, and Run activation
 
-The composer parses commands without an LLM:
-
-```text
-/resources                     /reload
-/skill                          /skill search <query>
-/skill info <name-or-id>        /skill install <candidate-id>
-/skill remove <name-or-installation-id>
-/skill:<installed-name> [args]
-/mcp                            /mcp search <query>
-/mcp info <identifier>          /mcp status
-/mcp install <identifier>       /mcp enable|disable|remove <name-or-ref>
-```
-
-`/skill:<name>` is the canonical deterministic invocation. Historical
-`/skill-name` messages remain replay-compatible in the Backend. Running `/reload`
-during generation is rejected because it would violate Step consistency.
+- Skill Store and Tools own inventory installation, configuration, health and
+  removal.
+- Two compact composer pickers own durable per-conversation Skill and MCP
+  selection. Both use Backend revision/CAS authority and reload on conversation
+  switch or browser refresh.
+- Agent mode may add at most two relevant, already-installed and authorized
+  resources for one Run. These entries are tagged `agent_auto` in the frozen
+  snapshot and never write back to the conversation selection.
+- A successful conversational install changes inventory only. The refreshed
+  continuation may use it run-only; persistent reuse requires the user to select
+  it in the composer.
+- Historical Skill invocation messages remain replay-compatible, but lifecycle
+  Slash commands are absent from the new-input palette.
 
 ## Failure contract
 

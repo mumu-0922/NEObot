@@ -851,7 +851,25 @@ func (s *Service) PrepareRun(
 	if !validUUID(runID) {
 		return PreparedRun{}, ErrSelectionInvalid
 	}
-	return s.prepareRun(ctx, userID, conversationID, messageID, runID, true)
+	return s.prepareRun(ctx, userID, conversationID, messageID, runID, true, "")
+}
+
+// PrepareAgentRun freezes the durable conversation selection plus a bounded
+// lexical match from already-installed and already-authorized servers. The
+// automatic additions exist only in this Run snapshot and are never persisted
+// back to the conversation selection.
+func (s *Service) PrepareAgentRun(
+	ctx context.Context,
+	userID string,
+	conversationID string,
+	messageID string,
+	runID string,
+	query string,
+) (PreparedRun, error) {
+	if !validUUID(runID) {
+		return PreparedRun{}, ErrSelectionInvalid
+	}
+	return s.prepareRun(ctx, userID, conversationID, messageID, runID, true, query)
 }
 
 // Preflight resolves and reauthorizes the effective conversation selection
@@ -861,7 +879,7 @@ func (s *Service) Preflight(
 	userID string,
 	conversationID string,
 ) (PreparedRun, error) {
-	return s.prepareRun(ctx, userID, conversationID, "", "", false)
+	return s.prepareRun(ctx, userID, conversationID, "", "", false, "")
 }
 
 func (s *Service) prepareRun(
@@ -871,6 +889,7 @@ func (s *Service) prepareRun(
 	messageID string,
 	runID string,
 	persist bool,
+	autoActivationQuery string,
 ) (PreparedRun, error) {
 	if err := s.available(); err != nil {
 		return PreparedRun{}, err
@@ -892,6 +911,10 @@ func (s *Service) prepareRun(
 	}
 	effectiveServers := selection.Servers
 	effectiveRevision := selection.Revision
+	activationSources := make(map[string]string, len(effectiveServers)+2)
+	for _, selected := range effectiveServers {
+		activationSources[selected.Ref.Key()] = "user_selected"
+	}
 	if selection.Mode == SelectionModeInherit {
 		effectiveServers = nil
 		if scope.WorkspaceID != "" {
@@ -902,8 +925,21 @@ func (s *Service) prepareRun(
 			if workspaceFound {
 				effectiveServers = workspace.Servers
 				effectiveRevision = workspace.Revision
+				for _, selected := range effectiveServers {
+					activationSources[selected.Ref.Key()] = "workspace_default"
+				}
 			}
 		}
+	}
+	autoServers, err := s.matchRunOnlyServers(
+		ctx, userID, conversationID, effectiveServers, autoActivationQuery,
+	)
+	if err != nil {
+		return PreparedRun{}, err
+	}
+	for _, selected := range autoServers {
+		effectiveServers = append(effectiveServers, selected)
+		activationSources[selected.Ref.Key()] = "agent_auto"
 	}
 	if len(effectiveServers) == 0 {
 		return PreparedRun{}, nil
@@ -962,7 +998,8 @@ func (s *Service) prepareRun(
 		server.Tools = enabledTools
 		prepared.servers[server.Ref.Key()] = server
 		prepared.Snapshot.Servers = append(prepared.Snapshot.Servers, SnapshotServer{
-			Ref: server.Ref, Name: server.Name, Transport: server.Transport, Tools: enabledTools,
+			Ref: server.Ref, Name: server.Name, Transport: server.Transport,
+			ActivationSource: activationSources[selected.Ref.Key()], Tools: enabledTools,
 		})
 	}
 	sort.Slice(prepared.Snapshot.Servers, func(i, j int) bool {

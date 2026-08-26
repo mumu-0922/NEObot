@@ -339,6 +339,174 @@ ORDER BY installation.updated_at DESC, installation.id DESC
 	return installations, nil
 }
 
+func (repository *PostgresRepository) AuthorizeConversation(
+	ctx context.Context,
+	userID string,
+	conversationID string,
+) error {
+	if err := repository.requireDB(); err != nil {
+		return err
+	}
+	var authorized bool
+	err := repository.db.QueryRowContext(ctx, `
+SELECT true
+FROM conversations
+WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+`, conversationID, userID).Scan(&authorized)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrSelectionInvalid
+	}
+	if err != nil {
+		return fmt.Errorf("authorize Skill conversation selection: %w", err)
+	}
+	return nil
+}
+
+func (repository *PostgresRepository) GetConversationSelection(
+	ctx context.Context,
+	userID string,
+	conversationID string,
+) (ConversationSelection, bool, error) {
+	if err := repository.requireDB(); err != nil {
+		return ConversationSelection{}, false, err
+	}
+	selection := ConversationSelection{ConversationID: conversationID, Skills: []Installation{}}
+	err := repository.db.QueryRowContext(ctx, `
+SELECT revision
+FROM skill_conversation_selections
+WHERE conversation_id = $1 AND user_id = $2
+`, conversationID, userID).Scan(&selection.Revision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ConversationSelection{}, false, nil
+	}
+	if err != nil {
+		return ConversationSelection{}, false, fmt.Errorf("get Skill conversation selection: %w", err)
+	}
+	rows, err := repository.db.QueryContext(ctx, `
+SELECT installation.id, installation.user_id, installation.admission_id,
+  installation.package_fingerprint, installation.skill_name,
+  package.version, package.description, package.allowed_tools,
+  installation.revision, installation.created_at, installation.updated_at
+FROM skill_conversation_installations selected
+JOIN skill_installations installation
+  ON installation.id = selected.installation_id
+ AND installation.user_id = selected.user_id
+ AND installation.package_fingerprint = selected.package_fingerprint
+JOIN skill_package_versions package
+  ON package.package_fingerprint = installation.package_fingerprint
+WHERE selected.conversation_id = $1 AND selected.user_id = $2
+ORDER BY installation.skill_name, installation.id
+`, conversationID, userID)
+	if err != nil {
+		return ConversationSelection{}, false, fmt.Errorf("list selected conversation Skills: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		installation, scanErr := scanInstallationView(rows)
+		if scanErr != nil {
+			return ConversationSelection{}, false, fmt.Errorf("scan selected conversation Skill: %w", scanErr)
+		}
+		selection.Skills = append(selection.Skills, installation)
+	}
+	if err := rows.Err(); err != nil {
+		return ConversationSelection{}, false, fmt.Errorf("iterate selected conversation Skills: %w", err)
+	}
+	return selection, true, nil
+}
+
+func (repository *PostgresRepository) ReplaceConversationSelection(
+	ctx context.Context,
+	userID string,
+	selection ConversationSelection,
+) (ConversationSelection, error) {
+	if err := repository.requireDB(); err != nil {
+		return ConversationSelection{}, err
+	}
+	tx, err := repository.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ConversationSelection{}, fmt.Errorf("begin replace Skill conversation selection: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var owner string
+	if authErr := tx.QueryRowContext(ctx, `
+SELECT user_id
+FROM conversations
+WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+FOR UPDATE
+`, selection.ConversationID, userID).Scan(&owner); authErr != nil {
+		if errors.Is(authErr, sql.ErrNoRows) {
+			return ConversationSelection{}, ErrSelectionInvalid
+		}
+		return ConversationSelection{}, fmt.Errorf("authorize Skill conversation selection: %w", authErr)
+	}
+	var existingRevision int64
+	err = tx.QueryRowContext(ctx, `
+SELECT revision
+FROM skill_conversation_selections
+WHERE conversation_id = $1 AND user_id = $2
+FOR UPDATE
+	`, selection.ConversationID, userID).Scan(&existingRevision)
+	if errors.Is(err, sql.ErrNoRows) {
+		existingRevision = 0
+	} else if err != nil {
+		return ConversationSelection{}, fmt.Errorf("lock Skill conversation selection: %w", err)
+	}
+	if selection.Revision != existingRevision {
+		return ConversationSelection{}, ErrRevisionConflict
+	}
+	newRevision := existingRevision + 1
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO skill_conversation_selections (
+  conversation_id, user_id, revision
+) VALUES ($1, $2, $3)
+ON CONFLICT (conversation_id) DO UPDATE
+SET revision = EXCLUDED.revision, updated_at = now()
+`, selection.ConversationID, userID, newRevision); err != nil {
+		return ConversationSelection{}, fmt.Errorf("upsert Skill conversation selection: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM skill_conversation_installations WHERE conversation_id = $1
+`, selection.ConversationID); err != nil {
+		return ConversationSelection{}, fmt.Errorf("clear selected conversation Skills: %w", err)
+	}
+	for _, installation := range selection.Skills {
+		result, insertErr := tx.ExecContext(ctx, `
+INSERT INTO skill_conversation_installations (
+  conversation_id, user_id, installation_id, package_fingerprint
+)
+SELECT $1, $2, id, package_fingerprint
+FROM skill_installations
+WHERE id = $3 AND user_id = $2 AND package_fingerprint = $4
+`, selection.ConversationID, userID, installation.ID, installation.PackageFingerprint)
+		if insertErr != nil {
+			return ConversationSelection{}, fmt.Errorf("insert selected conversation Skill: %w", insertErr)
+		}
+		if count, countErr := result.RowsAffected(); countErr != nil || count != 1 {
+			return ConversationSelection{}, ErrSelectionInvalid
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return ConversationSelection{}, fmt.Errorf("commit Skill conversation selection: %w", err)
+	}
+	return repository.getConversationSelectionAfterWrite(ctx, userID, selection.ConversationID)
+}
+
+func (repository *PostgresRepository) getConversationSelectionAfterWrite(
+	ctx context.Context,
+	userID string,
+	conversationID string,
+) (ConversationSelection, error) {
+	selection, found, err := repository.GetConversationSelection(ctx, userID, conversationID)
+	if err != nil {
+		return ConversationSelection{}, err
+	}
+	if !found {
+		return ConversationSelection{}, ErrSelectionInvalid
+	}
+	return selection, nil
+}
+
 func (repository *PostgresRepository) Uninstall(
 	ctx context.Context,
 	userID, installationID string,

@@ -11,6 +11,10 @@ The selected package is URL-addressable through `panel=skill-store&skillId=...`.
 Old `panel=agent-center&agentTab=skills` links are migrated by
 `lib/chat/panelUrlState.ts`; other control-plane URL state is discarded.
 
+`ConversationResourcePickers.tsx` is the separate composer surface for choosing
+already-installed Skills in one conversation. It reads and writes the
+revision-bound Backend selection; it cannot install or uninstall packages.
+
 Run focused coverage with:
 
 ```bash
