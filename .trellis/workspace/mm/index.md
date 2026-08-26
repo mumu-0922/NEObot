@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 92
+- **Total Sessions**: 93
 - **Last Active**: 2026-08-26
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1490 | Active |
+| `journal-2.md` | ~1523 | Active |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 93 | 2026-08-26 | Fix resource context stream failure | `9421c196` | `main` |
 | 92 | 2026-08-26 | Conversation-scoped Skill and MCP resources | `ecc21e0f` | `main` |
 | 91 | 2026-08-25 | Unify Agent Runtime Resource Registry | `7509f5d7` | `main` |
 | 90 | 2026-08-25 | Align Chat Agent harness with Pi | `b22340a3` | `main` |

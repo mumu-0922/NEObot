@@ -1488,3 +1488,36 @@ Separated installed inventory, durable per-conversation Skill/MCP selection, and
 ### Next Steps
 
 - None - task complete
+
+
+## Session 93: Fix resource context stream failure
+
+**Date**: 2026-08-26
+**Task**: Fix resource context stream failure
+**Branch**: `main`
+
+### Summary
+
+Aligned Resource orchestration context events with the runtime-context contract, finalized Assistant Messages on pre-stream event failures, added strict AIHero Skill discovery aliases, repaired the PostgreSQL drill migration-head assumption, deployed the backend-only fix, and repaired 10 exact live orphan streaming messages after a verified backup.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9421c196` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
