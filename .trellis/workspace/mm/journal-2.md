@@ -1455,3 +1455,36 @@ Adopt canonical read/write/edit/grep/bash tools and natural completion; preserve
 ### Next Steps
 
 - None - task complete
+
+
+## Session 92: Conversation-scoped Skill and MCP resources
+
+**Date**: 2026-08-26
+**Task**: Conversation-scoped Skill and MCP resources
+**Branch**: `main`
+
+### Summary
+
+Separated installed inventory, durable per-conversation Skill/MCP selection, and bounded run-only Agent activation; replaced resource Slash commands with composer pickers, hardened conversational acquisition, passed full gates, migrated live schema to 106, and deployed healthy backend/frontend images.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ecc21e0f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
