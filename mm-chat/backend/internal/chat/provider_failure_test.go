@@ -189,6 +189,26 @@ func TestChatStreamErrorBodyClassifiesRetryableStreamInterruption(t *testing.T) 
 	}
 }
 
+func TestChatStreamErrorBodyPreservesSafeProviderFailureCategories(t *testing.T) {
+	tests := map[ProviderFailureCategory]string{
+		ProviderFailureUpstreamFailed:  "The model provider is temporarily unavailable",
+		ProviderFailureTransportFailed: "The model provider could not be reached",
+		ProviderFailureRequestTimeout:  "The model provider request timed out",
+		ProviderFailureRateLimited:     "The model provider is rate limited; try again shortly",
+		ProviderFailureAuthentication:  "The model provider authentication failed",
+		ProviderFailureQuotaExhausted:  "The model provider quota is exhausted",
+		ProviderFailureContextOverflow: "The conversation exceeds the model context window",
+		ProviderFailureRequestRejected: "The model provider request failed",
+	}
+	for category, message := range tests {
+		body := chatStreamErrorBody(newProviderFailure(category, "private upstream detail"), false)
+		if body.Code != string(category) || body.Message != message ||
+			strings.Contains(body.Message, "private") {
+			t.Fatalf("category=%q body=%#v", category, body)
+		}
+	}
+}
+
 func TestChatStreamErrorBodyClassifiesChatAgentFailures(t *testing.T) {
 	tests := []struct {
 		code    string

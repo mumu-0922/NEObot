@@ -20,6 +20,8 @@
 ```text
 Chat acquisition / Agent Tools
         |
+        +-- explicit human + one allowlisted link
+        |
         v
 strict Handler / Service
    | catalog + search
@@ -47,6 +49,7 @@ single orchestration file from becoming a second domain service.
 | 2026-08-26 | Configuration is a two-step install | Secrets must never enter Tool arguments | A provenance-bound draft is configured in Tools, then revalidated before continuation |
 | 2026-08-26 | Fresh snapshot after mutation | Provider Tool definitions are frozen per Run segment | The original task continues only after a new revision is prepared |
 | 2026-08-26 | Install changes inventory only | Persistent selection must remain explicit and Conversation-scoped | Continuation may use bounded `agent_auto`; only the composer picker writes selection |
+| 2026-08-26 | Deterministic explicit-link search precedes Provider | Provider downtime must not block already-complete bounded human authority | Exactly one allowlisted link reuses ordinary search/install; zero or ambiguous exact candidates complete without mutation |
 
 ## Security model
 
@@ -59,6 +62,9 @@ Controls:
 - Strict JSON and Tool schemas reject unknown fields, including Secret-shaped
   payloads; errors never echo input.
 - Search is bounded and candidate metadata is explicitly untrusted.
+- Link scanning is bounded, permits exactly one allowlisted HTTPS discovery
+  shape, and never performs network fetches. Installation still requires one
+  exact admitted candidate through the existing service.
 - Skill fingerprint, MCP deployment hash, owner/`CanManage`, readiness,
   credential presence, and selection revision are revalidated server-side.
 - The model cannot call mutation HTTP APIs or supply a private draft ID to the
@@ -82,3 +88,6 @@ Controls:
 
 - Added conversational discovery/install, lifecycle mutations, configuration
   handoff, action-specific audit, and fresh-snapshot continuation.
+- Added Provider-independent deterministic search for one explicit allowlisted
+  Skill/MCP discovery link, with no-install completion for missing or ambiguous
+  exact candidates.

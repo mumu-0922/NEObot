@@ -302,6 +302,36 @@ Canonical project example:
 `mm-chat/docs/contracts/media-job-executor-seams.md` defines the executable
 GPT Image request, response, validation, and test contract.
 
+## Provider Failure Attribution vs Runtime Presence Checklist
+
+Use this when one model request advertises Tools from several runtimes:
+
+- [ ] Separate request/stream failure authority from Tool execution authority.
+      A runtime being present in the catalog is not evidence that it failed.
+- [ ] Record whether the Provider failed before the first event, after a Tool
+      call, during Tool execution, or during continuation. Do not infer the
+      stage from which runtime was enabled.
+- [ ] Preserve fixed typed Provider categories across wrappers and the public
+      error projection. Explicit Tool incompatibility is the only pre-execution
+      condition that may become a model/runtime compatibility code.
+- [ ] Retry only before any visible event or mutation, with the exact resolved
+      Provider/model/request and a fixed attempt bound. Cancellation must stop
+      the wait and forbid the next request.
+- [ ] For deterministic human commands that already carry complete bounded
+      authority, decide whether Backend can execute them without the Provider.
+      Reuse the same domain service and audit path; never create an ad-hoc
+      installer or let a pasted URL become execution authority.
+- [ ] Test combined runtime presence, not only a plain Provider fixture. Assert
+      that the final durable code names the actual failing layer and that raw
+      upstream details do not cross SSE, persistence, or UI boundaries.
+
+**Real-world example**: An OpenAI-compatible gateway returned typed HTTP 502
+before any Tool Call, but the Agent loop saw an enabled Local Skill runtime and
+rewrote it as `LOCAL_SKILL_PROVIDER_FAILED`. The correction retries the exact
+startup once, preserves `PROVIDER_UPSTREAM_FAILED`, and handles one explicit
+allowlisted Resource link through bounded Backend search without depending on
+the unavailable model.
+
 ## Host Shell vs Deployed Egress Checklist
 
 Use this when a developer command can read a public URL but an application

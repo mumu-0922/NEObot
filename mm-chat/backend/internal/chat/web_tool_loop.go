@@ -21,6 +21,8 @@ const (
 	maxEvidenceRecoveryAttempts         = 2
 	maxEvidenceRecoveryEvents           = 8192
 	maxEvidenceRecoveryOutputBytes      = 1 << 20
+	providerToolStartupRetryDelay       = 200 * time.Millisecond
+	providerToolStartupRetryMaxDelay    = 5 * time.Second
 )
 
 const compatibilityWebSearchPlannerInstruction = `You are a Web-search decision and query planner for the current chat model.
@@ -148,6 +150,9 @@ func startRetrievalToolLoop(
 					}})
 				}
 			}()
+		}
+		if runDeterministicExplicitResourceInstall(loopCtx, events, input.Resource) {
+			return
 		}
 		if toolProvider, ok := input.Provider.(ToolRoundProvider); ok &&
 			!input.DisableNativeToolRound {
@@ -308,12 +313,22 @@ func runNativeExternalWebToolLoop(
 				roundEvents = prependProviderEvent(ctx, firstEvent, roundEvents)
 			}
 		}
+		if round == 1 && len(continuation) == 0 && !contextOverflowRetried {
+			roundEvents, err = retryProviderToolRoundStartupOnce(
+				ctx, provider, providerRoundRequest, roundEvents, err,
+			)
+		}
 		if err != nil {
 			if toolLoopWasCancelled(ctx, err) {
 				return true
 			}
 			if round == 1 && len(continuation) == 0 {
 				recordRuntimeToolIncompatibility(input, err)
+				if _, typed := ProviderFailureCategoryOf(err); typed &&
+					!isExplicitToolIncompatibility(err) {
+					sendProviderEvent(ctx, events, ProviderEvent{Error: err})
+					return true
+				}
 				if input.MCP.enabled() {
 					sendProviderEvent(ctx, events, ProviderEvent{Error: &mcpRunFailure{
 						code: mcpProviderStartFailureCode(err), err: err,
@@ -399,6 +414,10 @@ func runNativeExternalWebToolLoop(
 					return true
 				}
 				if bufferFirstRound {
+					if _, typed := ProviderFailureCategoryOf(event.Error); typed {
+						sendProviderEvent(ctx, events, event)
+						return true
+					}
 					if input.MCP.enabled() {
 						sendProviderEvent(ctx, events, ProviderEvent{Error: &mcpRunFailure{
 							code: "MCP_PROVIDER_FAILED", err: event.Error,
@@ -661,6 +680,46 @@ func runNativeExternalWebToolLoop(
 			return true
 		}
 	}
+}
+
+func retryProviderToolRoundStartupOnce(
+	ctx context.Context,
+	provider ToolRoundProvider,
+	request ProviderRoundRequest,
+	events <-chan ProviderEvent,
+	err error,
+) (<-chan ProviderEvent, error) {
+	if err == nil {
+		first, ok := <-events
+		if !ok {
+			return events, nil
+		}
+		if first.Error == nil {
+			return prependProviderEvent(ctx, first, events), nil
+		}
+		err = first.Error
+	}
+	delay, retryable := ProviderRetryDelay(err)
+	if !retryable || isProviderContextOverflow(err) {
+		return events, err
+	}
+	if _, explicit := ProviderExplicitRetryDelay(err); !explicit {
+		delay = providerToolStartupRetryDelay
+	}
+	if delay > providerToolStartupRetryMaxDelay {
+		delay = providerToolStartupRetryMaxDelay
+	}
+	if delay < 0 {
+		delay = 0
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-timer.C:
+	}
+	return provider.StreamToolRound(ctx, request)
 }
 
 func streamRetrievalEvidenceFallback(

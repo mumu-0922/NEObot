@@ -245,6 +245,29 @@ synchronous response and the first SSE error event use this path. A second
 overflow is terminal and never loops. Every shrink is persisted as a
 content-free `context.replaced` event.
 
+Before any visible event or Tool execution, the first native Tool-round startup
+may retry the exact same resolved Provider, model, request, Tool definitions,
+and continuation once for a typed timeout, rate limit, upstream 5xx, transport,
+stream-read, or incomplete-stream failure. An explicit `Retry-After` is capped
+at five seconds; otherwise the wait is 200 ms. Cancellation ends the wait and
+prevents the second request. Deterministic request/schema/auth/quota failures,
+explicit Tool incompatibility, and every error after visible output or Tool
+mutation do not use this retry.
+
+If the retry still fails, the Assistant retains the fixed typed Provider
+category such as `PROVIDER_UPSTREAM_FAILED`. Enabled Local Skill, MCP,
+Resource, Retrieval, or Workspace runtimes are not failure attribution. Only
+explicit Tools/function-call incompatibility becomes
+`SKILL_MODEL_UNSUPPORTED` or `MCP_MODEL_UNSUPPORTED`. Public error projection
+uses fixed messages and never includes an upstream body, Base URL, credential,
+or Secret.
+
+One explicit human install request containing exactly one supported Skill/MCP
+discovery link is deterministic Backend authority. The Resource Orchestrator
+searches before this Provider loop and either performs one exact admitted
+install through existing authority or completes with a truthful no-install
+answer. Unsupported and multiple links stay ordinary Agent input.
+
 Anthropic extended Thinking does not use a forced named `tool_choice`. An
 explicit Search turn is buffered with `auto`; if Claude returns no Tool Call,
 the existing same-model compatibility path enforces the explicit Search
@@ -942,6 +965,10 @@ more accurate.
 | Valid/explicitly incompatible probe   | shared supported/unsupported TTL row               |
 | Transient/inconclusive probe          | shared five-minute unknown retry backoff            |
 | Runtime explicit incompatibility      | async downgrade plus same-turn Planner              |
+| First native startup typed transient failure | retry the exact same Provider/model/request once before any Tool |
+| Second native startup typed transient failure | fixed Provider category; never Local Skill/MCP failure wrapping |
+| Startup retry cancelled               | no second request and zero Tool execution           |
+| Explicit install plus one supported Resource link | Backend search before Provider; one exact install or completed no-install answer |
 | Catalog ACL/consent/read failure      | omit metadata; chat continues without forced RAG    |
 | Compatibility planner fails           | strong Knowledge, forced Web, else Direct; never Both |
 | Knowledge miss                        | empty successful result; continue Model/Web        |
@@ -1049,6 +1076,12 @@ more accurate.
 21. Playwright MCP initialize/list/navigate/snapshot smoke against a local
     fixture, exact manifest allowlist filtering, per-Run instance binding, and
     proof that `browser_run_code_unsafe` cannot reach the Runner call route.
+22. Native Tool startup retry fixtures for synchronous and first-event typed
+    transient failure, exact request identity, deterministic no-retry,
+    cancellation, and second-error category preservation with Agent runtimes
+    enabled. Resource-link fixtures must prove zero Provider calls, safe
+    missing/ambiguous completion, and one mutation only for a unique exact
+    admitted candidate.
 
 ## 11. Rollback
 

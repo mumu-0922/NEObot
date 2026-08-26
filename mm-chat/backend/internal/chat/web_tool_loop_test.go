@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -762,6 +763,168 @@ func TestValidateSearchWebToolCallRejectsMalformedAndUnknownCalls(t *testing.T) 
 	}
 }
 
+func TestProviderToolStartupRetriesOneTypedTransientFailure(t *testing.T) {
+	runtime := newResourceToolRuntime(
+		&resourceToolServiceProbe{}, "user-id", "conversation-id", "find a skill",
+	)
+	provider := &scriptedToolRoundProvider{
+		rounds: [][]ProviderEvent{
+			nil,
+			{{Type: ProviderEventDelta, Delta: "recovered"}},
+		},
+		syncErrors: map[int]error{
+			0: newProviderFailure(ProviderFailureUpstreamFailed, "private upstream detail"),
+		},
+	}
+	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt: "find a skill", ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+		},
+		Resource: runtime,
+	})
+	var content strings.Builder
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+	}
+	if content.String() != "recovered" || len(provider.inputs) != 2 ||
+		!reflect.DeepEqual(provider.inputs[0].ProviderRequest, provider.inputs[1].ProviderRequest) ||
+		len(provider.inputs[0].Tools) != len(provider.inputs[1].Tools) {
+		t.Fatalf("content=%q inputs=%#v", content.String(), provider.inputs)
+	}
+}
+
+func TestProviderToolStartupPreservesTypedFailureAfterOneRetry(t *testing.T) {
+	runtime := newResourceToolRuntime(
+		&resourceToolServiceProbe{}, "user-id", "conversation-id", "find a skill",
+	)
+	provider := &scriptedToolRoundProvider{
+		rounds: [][]ProviderEvent{nil, nil},
+		syncErrors: map[int]error{
+			0: newProviderFailure(ProviderFailureUpstreamFailed, "private first detail"),
+			1: newProviderFailure(ProviderFailureUpstreamFailed, "private second detail"),
+		},
+	}
+	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt: "find a skill", ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+		},
+		Resource: runtime,
+	})
+	var failure error
+	for event := range events {
+		if event.Error != nil {
+			failure = event.Error
+		}
+	}
+	category, typed := ProviderFailureCategoryOf(failure)
+	body := chatStreamErrorBody(failure, false)
+	if len(provider.inputs) != 2 || !typed || category != ProviderFailureUpstreamFailed ||
+		body.Code != string(ProviderFailureUpstreamFailed) ||
+		body.Message != "The model provider is temporarily unavailable" ||
+		strings.Contains(body.Message, "private") {
+		t.Fatalf("inputs=%d category=%q/%t body=%#v failure=%v",
+			len(provider.inputs), category, typed, body, failure)
+	}
+}
+
+func TestProviderToolStartupRetriesFirstStreamErrorOnly(t *testing.T) {
+	runtime := newResourceToolRuntime(
+		&resourceToolServiceProbe{}, "user-id", "conversation-id", "find a skill",
+	)
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{{Error: newProviderFailure(ProviderFailureTransportFailed, "private transport detail")}},
+		{{Type: ProviderEventDelta, Delta: "recovered stream"}},
+	}}
+	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt: "find a skill", ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+		},
+		Resource: runtime,
+	})
+	var content strings.Builder
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+	}
+	if content.String() != "recovered stream" || len(provider.inputs) != 2 {
+		t.Fatalf("content=%q inputs=%#v", content.String(), provider.inputs)
+	}
+}
+
+func TestProviderToolStartupDoesNotRetryTypedDeterministicFailure(t *testing.T) {
+	runtime := newResourceToolRuntime(
+		&resourceToolServiceProbe{}, "user-id", "conversation-id", "find a skill",
+	)
+	provider := &scriptedToolRoundProvider{
+		rounds: [][]ProviderEvent{nil},
+		syncErrors: map[int]error{
+			0: newProviderFailure(ProviderFailureRequestRejected, "private request detail"),
+		},
+	}
+	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt: "find a skill", ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+		},
+		Resource: runtime,
+	})
+	var failure error
+	for event := range events {
+		if event.Error != nil {
+			failure = event.Error
+		}
+	}
+	category, typed := ProviderFailureCategoryOf(failure)
+	if len(provider.inputs) != 1 || !typed || category != ProviderFailureRequestRejected {
+		t.Fatalf("inputs=%d category=%q/%t failure=%v",
+			len(provider.inputs), category, typed, failure)
+	}
+}
+
+func TestProviderToolStartupRetryStopsImmediatelyWhenCancelled(t *testing.T) {
+	runtime := newResourceToolRuntime(
+		&resourceToolServiceProbe{}, "user-id", "conversation-id", "find a skill",
+	)
+	started := make(chan int)
+	provider := &scriptedToolRoundProvider{
+		rounds:  [][]ProviderEvent{nil, nil},
+		started: started,
+		syncErrors: map[int]error{
+			0: newProviderFailure(ProviderFailureUpstreamFailed, "private upstream detail"),
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	events := startRetrievalToolLoop(ctx, externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt: "find a skill", ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+		},
+		Resource: runtime,
+	})
+	if index := <-started; index != 0 {
+		t.Fatalf("first Provider call index=%d", index)
+	}
+	startedAt := time.Now()
+	cancel()
+	for range events {
+	}
+	if len(provider.inputs) != 1 || time.Since(startedAt) >= providerToolStartupRetryDelay {
+		t.Fatalf("inputs=%d cancellation latency=%s", len(provider.inputs), time.Since(startedAt))
+	}
+}
+
 func TestWebSearchSuccessToolResultReturnsOnlyNewStableMarkers(t *testing.T) {
 	first := websearch.Source{
 		Title: "First", URL: "https://example.test/first", Content: "one",
@@ -786,6 +949,7 @@ type scriptedToolRoundProvider struct {
 	syncErrors map[int]error
 	inputs     []ProviderRoundRequest
 	chatInputs []ProviderRequest
+	started    chan<- int
 }
 
 type fakeWebURLReader struct {
@@ -845,6 +1009,13 @@ func (p *scriptedToolRoundProvider) StreamToolRound(
 ) (<-chan ProviderEvent, error) {
 	p.inputs = append(p.inputs, input)
 	index := len(p.inputs) - 1
+	if p.started != nil {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case p.started <- index:
+		}
+	}
 	if err := p.syncErrors[index]; err != nil {
 		return nil, err
 	}

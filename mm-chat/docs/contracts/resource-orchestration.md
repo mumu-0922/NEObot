@@ -25,10 +25,19 @@ The catalog contains a deterministic `sha256:` revision, installed Skills, and
 sanitized MCP readiness/selection state. Search returns at most five entries.
 Each entry binds `id`, `version`, and `exactRevision`; descriptions,
 permissions, and Marketplace metadata are untrusted routing data. An allowlisted
-`https://lobehub.com/skills/{identifier}` or LobeHub MCP/Plugin link may be
-resolved to its identifier, but the URL is never fetched or executed; unknown
-hosts, query strings, fragments, traversal and kind mismatches stay untrusted
-chat/search text.
+LobeHub Skill/MCP link or AIHero `/skills-<slug>` link may be resolved to its
+identifier, but the URL is never fetched or executed; unknown hosts, query
+strings, fragments, traversal and kind mismatches stay untrusted chat/search
+text.
+
+When one human message has explicit install intent and exactly one supported
+link, the Backend performs the same bounded `resource_search` before any model
+request. The scanner accepts at most 16 KiB of text and rejects multiple URLs.
+Zero or ambiguous exact admitted candidates complete with a truthful
+no-install answer and Resource trace. Only one candidate whose ID or package
+name exactly matches the parsed identifier may reach the existing exact-
+revision install authority. This path never calls the pasted URL, Shell, npm,
+Git, Docker, or a fallback Provider-generated installer.
 
 ```json
 {
@@ -76,6 +85,12 @@ resource_search (max 2 unique queries, max 5 entries each)
   -> mutation audit
   -> fresh Runtime Resource Snapshot
   -> same Provider/model continues the original task
+
+explicit human install + exactly one supported link
+  -> Backend resource_search before Provider
+  -> zero/ambiguous exact candidates: completed no-install answer
+  -> one exact admitted candidate: existing install/audit authority once
+  -> next Agent task receives the changed inventory
 ```
 
 For an approved Marketplace deployment that requires Header Secret, OAuth, or
@@ -131,6 +146,8 @@ context.
 | audit cannot be persisted after mutation | `503 RESOURCE_AUDIT_UNAVAILABLE`; inspect library/audit before retry |
 | source or delegated write unavailable | `503 RESOURCE_*_UNAVAILABLE` / `RESOURCE_INSTALL_FAILED` |
 | snapshot refresh fails | Agent Run stops with `RESOURCE_REFRESH_FAILED`; no false continuation |
+| supported explicit link has no exact admitted candidate | completed no-install answer; zero Provider/install calls |
+| explicit text has multiple/unsafe/unsupported links | no deterministic mutation; ordinary Agent handling |
 
 ## Security and rollout
 
@@ -146,6 +163,8 @@ context.
 - Agent-initiated installation needs the durable approval runtime. When the
   timeline canary is not eligible, the request fails immediately rather than
   creating an invisible wait.
+- Provider availability is not part of deterministic explicit-link search
+  authority. Provider failure cannot broaden Store admission or URL authority.
 
 ## Operator diagnostics
 

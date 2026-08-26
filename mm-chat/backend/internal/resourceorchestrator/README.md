@@ -13,6 +13,8 @@ to the existing `skillsupply.Service` or `mcpclient.Service` authority.
 - Resolve allowlisted LobeHub Skill/MCP links to bounded Marketplace searches,
   then install an exact candidate without accepting arbitrary URLs,
   package commands, or credentials from the model.
+- Parse exactly one allowlisted link from an explicit human install request so
+  Chat can perform the same bounded search without depending on model uptime.
 - Coordinate MCP Secret/OAuth/Runner configuration through an existing
   provenance-bound private Server draft.
 - Keep inventory installation separate from durable conversation selection;
@@ -41,12 +43,15 @@ POST /v1/resources/mutate
 
 Callers must use the exact candidate revision returned by search. All responses
 are `Cache-Control: no-store`; response schemas contain no Secret, endpoint,
-package body, host path, or raw Tool arguments. A supported LobeHub URL is
-parsed only into an identifier and never fetched as installation input.
+package body, host path, or raw Tool arguments. A supported LobeHub or AIHero
+URL is parsed only into an identifier and never fetched as installation input.
+Multiple, query-bearing, fragment-bearing, or unsupported links do not enter
+the deterministic install path.
 
 ## Files
 
 - `service.go`: shared contracts plus catalog and search projection.
+- `resource_link.go`: bounded exact-link parsing and discovery aliases.
 - `install.go`: exact install and MCP configuration completion.
 - `mutation.go`: enable/disable/remove, CAS, and common mutation audit flow.
 - `handler.go`: strict authenticated HTTP contract.

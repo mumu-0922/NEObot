@@ -25,15 +25,19 @@ type resourceToolServiceProbe struct {
 	completeID     string
 	completeCalls  int
 	searchCalls    int
+	searchKinds    []string
+	searchQueries  []string
 }
 
 func (probe *resourceToolServiceProbe) Search(
-	context.Context,
-	string,
-	string,
-	string,
+	_ context.Context,
+	_ string,
+	kind string,
+	query string,
 ) (resourceorchestrator.SearchResult, error) {
 	probe.searchCalls++
+	probe.searchKinds = append(probe.searchKinds, kind)
+	probe.searchQueries = append(probe.searchQueries, query)
 	return probe.searchResult, nil
 }
 
@@ -547,5 +551,126 @@ func TestResourceInstallIntentIsDirectHumanOnly(t *testing.T) {
 		if hasExplicitResourceInstallIntent(value) {
 			t.Fatalf("negative or advisory intent was treated as explicit install: %q", value)
 		}
+	}
+}
+
+func TestExplicitSupportedSkillLinkSearchesWithoutCallingProvider(t *testing.T) {
+	probe := &resourceToolServiceProbe{searchResult: resourceorchestrator.SearchResult{
+		Kind: resourceorchestrator.KindSkill, Query: "grill-me",
+		Items: []resourceorchestrator.SearchItem{},
+	}}
+	runtime := newResourceToolRuntime(
+		probe, "user-id", "conversation-id",
+		"https://www.aihero.dev/skills-grill-me帮我安装这个skill",
+	)
+	provider := &scriptedToolRoundProvider{}
+	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt:   "https://www.aihero.dev/skills-grill-me帮我安装这个skill",
+			ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+		},
+		Resource: runtime,
+	})
+	var content strings.Builder
+	var completedSearch bool
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+		if event.ToolExecution != nil && event.ToolExecution.Name == resourceSearchToolName &&
+			event.ToolExecution.Status == ProcessStepStatusCompleted {
+			completedSearch = true
+		}
+	}
+	if len(provider.inputs) != 0 || probe.searchCalls != 1 || probe.installCalls != 0 ||
+		len(probe.searchKinds) != 1 || probe.searchKinds[0] != resourceorchestrator.KindSkill ||
+		len(probe.searchQueries) != 1 ||
+		probe.searchQueries[0] != "https://www.aihero.dev/skills-grill-me" ||
+		!completedSearch || !strings.Contains(content.String(), "尚未进入已审核资源商店") {
+		t.Fatalf("content=%q provider=%d probe=%#v completedSearch=%t",
+			content.String(), len(provider.inputs), probe, completedSearch)
+	}
+}
+
+func TestExplicitSupportedSkillLinkInstallsOneExactCandidateWithoutProvider(t *testing.T) {
+	probe := &resourceToolServiceProbe{searchResult: resourceorchestrator.SearchResult{
+		Kind: resourceorchestrator.KindSkill, Query: "grill-me",
+		Items: []resourceorchestrator.SearchItem{{
+			Kind: resourceorchestrator.KindSkill, ID: "candidate-id", Name: "grill-me",
+			Version: "1.0.0", ExactRevision: "sha256:exact", Status: "admitted",
+		}},
+	}}
+	runtime := newResourceToolRuntime(
+		probe, "user-id", "conversation-id",
+		"https://www.aihero.dev/skills-grill-me 帮我安装这个 skill",
+	)
+	provider := &scriptedToolRoundProvider{}
+	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt: "install", ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+		},
+		Resource: runtime,
+	})
+	var content strings.Builder
+	var completedInstall bool
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+		if event.ToolExecution != nil && event.ToolExecution.Name == resourceRequestInstallToolName &&
+			event.ToolExecution.Status == ProcessStepStatusCompleted {
+			completedInstall = true
+		}
+	}
+	if len(provider.inputs) != 0 || probe.searchCalls != 1 || probe.installCalls != 1 ||
+		probe.installInput.ID != "candidate-id" ||
+		probe.installInput.ExactRevision != "sha256:exact" ||
+		probe.installInput.EntryPoint != "agent_tool" || !completedInstall ||
+		!strings.Contains(content.String(), "已安装 SKILL：grill-me") {
+		t.Fatalf("content=%q provider=%d probe=%#v completedInstall=%t",
+			content.String(), len(provider.inputs), probe, completedInstall)
+	}
+}
+
+func TestExplicitSupportedSkillLinkDoesNotInstallAmbiguousExactCandidates(t *testing.T) {
+	probe := &resourceToolServiceProbe{searchResult: resourceorchestrator.SearchResult{
+		Kind: resourceorchestrator.KindSkill, Query: "grill-me",
+		Items: []resourceorchestrator.SearchItem{
+			{Kind: resourceorchestrator.KindSkill, ID: "one", Name: "grill-me", ExactRevision: "sha256:one"},
+			{Kind: resourceorchestrator.KindSkill, ID: "two", Name: "grill-me", ExactRevision: "sha256:two"},
+		},
+	}}
+	runtime := newResourceToolRuntime(
+		probe, "user-id", "conversation-id",
+		"安装 https://www.aihero.dev/skills-grill-me",
+	)
+	provider := &scriptedToolRoundProvider{}
+	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt: "install", ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+		},
+		Resource: runtime,
+	})
+	var content strings.Builder
+	for event := range events {
+		if event.Error != nil {
+			t.Fatal(event.Error)
+		}
+		if event.Type == ProviderEventDelta {
+			content.WriteString(event.Delta)
+		}
+	}
+	if len(provider.inputs) != 0 || probe.installCalls != 0 ||
+		!strings.Contains(content.String(), "多个同名候选项") {
+		t.Fatalf("content=%q provider=%d probe=%#v", content.String(), len(provider.inputs), probe)
 	}
 }

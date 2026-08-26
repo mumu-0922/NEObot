@@ -38,6 +38,8 @@ type resourceToolRuntime struct {
 	userID           string
 	conversationID   string
 	explicitInstall  bool
+	directLink       resourceorchestrator.SupportedResourceLink
+	hasDirectLink    bool
 	searches         int
 	installRequests  int
 	found            map[string]resourceorchestrator.SearchItem
@@ -59,15 +61,33 @@ func newResourceToolRuntime(
 	if service == nil || strings.TrimSpace(userID) == "" || strings.TrimSpace(conversationID) == "" {
 		return nil
 	}
+	explicitInstall := hasExplicitResourceInstallIntent(userText)
+	directLink, hasDirectLink := resourceorchestrator.SingleSupportedResourceLink(userText)
 	return &resourceToolRuntime{
 		service: service, userID: strings.TrimSpace(userID),
 		conversationID:  strings.TrimSpace(conversationID),
-		explicitInstall: hasExplicitResourceInstallIntent(userText),
+		explicitInstall: explicitInstall,
+		directLink:      directLink,
+		hasDirectLink:   explicitInstall && hasDirectLink,
 		found:           make(map[string]resourceorchestrator.SearchItem),
 		searchResults:   make(map[string]resourceorchestrator.SearchResult),
 		skillAvailable:  true,
 		mcpAvailable:    true,
 	}
+}
+
+func (runtime *resourceToolRuntime) deterministicExplicitLink() (
+	resourceorchestrator.SupportedResourceLink,
+	bool,
+) {
+	if runtime == nil || !runtime.enabled() || !runtime.explicitInstall || !runtime.hasDirectLink {
+		return resourceorchestrator.SupportedResourceLink{}, false
+	}
+	if (runtime.directLink.Kind == resourceorchestrator.KindSkill && !runtime.skillAvailable) ||
+		(runtime.directLink.Kind == resourceorchestrator.KindMCP && !runtime.mcpAvailable) {
+		return resourceorchestrator.SupportedResourceLink{}, false
+	}
+	return runtime.directLink, true
 }
 
 func (runtime *resourceToolRuntime) enabled() bool {
@@ -317,6 +337,110 @@ func (runtime *resourceToolRuntime) search(
 		"shown": len(result.Items), "limit": resourceorchestrator.MaxItems,
 		"cached": cached,
 	}), ""
+}
+
+func (runtime *resourceToolRuntime) searchedResult(
+	kind string,
+	query string,
+) (resourceorchestrator.SearchResult, bool) {
+	if runtime == nil {
+		return resourceorchestrator.SearchResult{}, false
+	}
+	searchKey := kind + "\x00" + strings.ToLower(strings.Join(strings.Fields(query), " "))
+	result, ok := runtime.searchResults[searchKey]
+	return result, ok
+}
+
+func runDeterministicExplicitResourceInstall(
+	ctx context.Context,
+	events chan<- ProviderEvent,
+	runtime *resourceToolRuntime,
+) bool {
+	link, ok := runtime.deterministicExplicitLink()
+	if !ok {
+		return false
+	}
+	searchArguments, _ := json.Marshal(map[string]any{
+		"kind": link.Kind, "query": link.URL, "capability": nil,
+	})
+	searchResult, err := runtime.execute(ctx, events, ProviderToolCall{
+		ID: "server-resource-search", Name: resourceSearchToolName,
+		Arguments: string(searchArguments),
+	}, 1, 1)
+	if err != nil {
+		sendProviderEvent(ctx, events, ProviderEvent{Error: err})
+		return true
+	}
+	if searchResult.IsError {
+		sendDeterministicResourceAnswer(ctx, events,
+			"资源商店搜索暂时不可用，未安装任何内容。")
+		return true
+	}
+	discovery, found := runtime.searchedResult(link.Kind, link.URL)
+	if !found {
+		sendDeterministicResourceAnswer(ctx, events,
+			"资源商店没有返回可验证的候选项，未安装任何内容。")
+		return true
+	}
+	exact := make([]resourceorchestrator.SearchItem, 0, 1)
+	for _, item := range discovery.Items {
+		if item.Kind == link.Kind &&
+			(strings.EqualFold(strings.TrimSpace(item.ID), link.Identifier) ||
+				strings.EqualFold(strings.TrimSpace(item.Name), link.Identifier)) {
+			exact = append(exact, item)
+		}
+	}
+	if len(exact) == 0 {
+		sendDeterministicResourceAnswer(ctx, events, fmt.Sprintf(
+			"该链接对应的 %s 尚未进入已审核资源商店，未安装任何内容。",
+			strings.ToUpper(link.Kind),
+		))
+		return true
+	}
+	if len(exact) != 1 {
+		sendDeterministicResourceAnswer(ctx, events,
+			"资源商店返回了多个同名候选项，无法安全确定安装目标，未安装任何内容。")
+		return true
+	}
+	candidate := exact[0]
+	var version any
+	if strings.TrimSpace(candidate.Version) != "" {
+		version = strings.TrimSpace(candidate.Version)
+	}
+	installArguments, _ := json.Marshal(map[string]any{
+		"kind": candidate.Kind, "id": candidate.ID, "version": version,
+		"exactRevision": candidate.ExactRevision,
+		"reason":        "The user explicitly requested installation from one supported discovery link.",
+	})
+	installResult, err := runtime.execute(ctx, events, ProviderToolCall{
+		ID: "server-resource-install", Name: resourceRequestInstallToolName,
+		Arguments: string(installArguments),
+	}, 1, 2)
+	if err != nil {
+		sendProviderEvent(ctx, events, ProviderEvent{Error: err})
+		return true
+	}
+	if installResult.IsError {
+		sendDeterministicResourceAnswer(ctx, events,
+			"该资源未能通过服务端安装校验，未启用任何未经验证的内容。")
+		return true
+	}
+	sendDeterministicResourceAnswer(ctx, events, fmt.Sprintf(
+		"已安装 %s：%s。它会从下一次 Agent 任务开始可用。",
+		strings.ToUpper(link.Kind), link.Identifier,
+	))
+	return true
+}
+
+func sendDeterministicResourceAnswer(
+	ctx context.Context,
+	events chan<- ProviderEvent,
+	content string,
+) {
+	if strings.TrimSpace(content) == "" {
+		return
+	}
+	sendProviderEvent(ctx, events, ProviderEvent{Type: ProviderEventDelta, Delta: content})
 }
 
 func (runtime *resourceToolRuntime) requestInstall(

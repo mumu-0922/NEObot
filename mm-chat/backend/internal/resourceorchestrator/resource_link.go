@@ -6,10 +6,75 @@ import (
 	"strings"
 )
 
+const maxSupportedResourceLinkTextBytes = 16 << 10
+
 var (
 	supportedResourceIdentifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$`)
 	supportedAIHeroSkillPath    = regexp.MustCompile(`^/skills-([a-z0-9][a-z0-9-]{0,127})/?$`)
 )
+
+// SupportedResourceLink is a parsed discovery reference. URL is safe to use
+// only as a bounded Marketplace search query; callers must never fetch or
+// execute content from it.
+type SupportedResourceLink struct {
+	Kind       string
+	Identifier string
+	URL        string
+}
+
+// SingleSupportedResourceLink extracts exactly one HTTPS URL from ordinary
+// user text and accepts it only when the complete URL matches a server-owned
+// Skill or MCP discovery surface. Multiple URLs fail closed even when one is
+// supported.
+func SingleSupportedResourceLink(value string) (SupportedResourceLink, bool) {
+	if len(value) == 0 || len(value) > maxSupportedResourceLinkTextBytes {
+		return SupportedResourceLink{}, false
+	}
+	candidates := resourceHTTPSLinkCandidates(value)
+	if len(candidates) != 1 {
+		return SupportedResourceLink{}, false
+	}
+	raw := candidates[0]
+	for _, kind := range []string{KindSkill, KindMCP} {
+		identifier, ok := supportedResourceLinkIdentifier(kind, raw)
+		if ok {
+			return SupportedResourceLink{
+				Kind: kind, Identifier: identifier, URL: raw,
+			}, true
+		}
+	}
+	return SupportedResourceLink{}, false
+}
+
+func resourceHTTPSLinkCandidates(value string) []string {
+	const prefix = "https://"
+	candidates := make([]string, 0, 2)
+	for offset := 0; offset < len(value); {
+		relative := strings.Index(value[offset:], prefix)
+		if relative < 0 {
+			break
+		}
+		start := offset + relative
+		end := start + len(prefix)
+		for end < len(value) {
+			current := value[end]
+			if current >= 0x80 || current <= ' ' || current == '"' ||
+				current == '\'' || current == '<' || current == '>' {
+				break
+			}
+			end++
+		}
+		raw := strings.TrimRight(value[start:end], ".,;:!)]}")
+		if raw != prefix {
+			candidates = append(candidates, raw)
+			if len(candidates) > 1 {
+				return candidates
+			}
+		}
+		offset = end
+	}
+	return candidates
+}
 
 // supportedResourceLinkIdentifier accepts only explicitly admitted public
 // discovery surfaces backed by Neo Chat's existing authenticated Marketplace

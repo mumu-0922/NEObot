@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -131,6 +132,48 @@ func TestLocalSkillToolLoopLoadsSkillRunsTerminalAndContinuesSameModel(t *testin
 		!strings.Contains(provider.inputs[0].SystemPrompt, "at most 3 seconds") ||
 		!strings.Contains(provider.inputs[0].SystemPrompt, "runInBackground=true") {
 		t.Fatalf("progressive prompt=%q", provider.inputs[0].SystemPrompt)
+	}
+}
+
+func TestLocalSkillRuntimeDoesNotMaskTypedProviderStartupFailure(t *testing.T) {
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: filepath.Join(t.TempDir(), "runtime"),
+		WorkspaceRoot: t.TempDir(), ShellPath: "/bin/sh",
+		ApprovalMode: localskills.ApprovalSmart, CallTimeout: time.Second,
+		RunTimeout: 5 * time.Second, MaxOutput: 4096, MaxCalls: 4,
+		MaxRounds: 4, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := newLocalSkillToolRuntime(executor, nil)
+	provider := &scriptedToolRoundProvider{
+		rounds: [][]ProviderEvent{nil, nil},
+		syncErrors: map[int]error{
+			0: newProviderFailure(ProviderFailureUpstreamFailed, "private first detail"),
+			1: newProviderFailure(ProviderFailureUpstreamFailed, "private second detail"),
+		},
+	}
+	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
+		Provider: provider,
+		Request: ProviderRequest{
+			Prompt:   "ordinary Agent task",
+			ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+		},
+		LocalSkills: runtime,
+	})
+	var failure error
+	for event := range events {
+		if event.Error != nil {
+			failure = event.Error
+		}
+	}
+	var localFailure *localSkillRunFailure
+	category, typed := ProviderFailureCategoryOf(failure)
+	if len(provider.inputs) != 2 || errors.As(failure, &localFailure) || !typed ||
+		category != ProviderFailureUpstreamFailed {
+		t.Fatalf("inputs=%d local=%#v category=%q/%t failure=%v",
+			len(provider.inputs), localFailure, category, typed, failure)
 	}
 }
 

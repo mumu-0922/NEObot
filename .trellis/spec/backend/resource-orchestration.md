@@ -41,6 +41,12 @@ type MutationRequest struct {
     ExpectedRevision int64
     UserID, ConversationID, EntryPoint string
 }
+
+type SupportedResourceLink struct {
+    Kind, Identifier, URL string
+}
+
+func SingleSupportedResourceLink(text string) (SupportedResourceLink, bool)
 ```
 
 ## 3. Contracts
@@ -54,6 +60,23 @@ type MutationRequest struct {
   `/skills-<slug>` Skill links are admitted shapes. AIHero is a discovery alias
   only: the pasted page is never fetched or executed, and installation still
   requires an existing admitted package fingerprint from `skillsupply.Service`.
+- When the current human text has explicit install intent and contains exactly
+  one supported discovery link, Chat executes the ordinary server-owned
+  `resource_search` before any Provider request. The scanner is bounded to
+  16 KiB, stops a URL at non-ASCII/user-text boundaries, and rejects multiple
+  URLs, query, fragment, userinfo, non-443 port, wrong host/path/kind, traversal,
+  or an unsupported scheme. It does not create a second search authority.
+- The deterministic path may install only one candidate whose ID or package
+  name exactly matches the parsed identifier. Zero or ambiguous exact matches
+  finish the Assistant normally with a truthful no-install answer and the
+  durable Resource search trace. Search/install failure stays fail-closed and
+  never falls through to an arbitrary Provider-generated installer.
+- A successful deterministic install uses the existing exact revision,
+  owner, admission, credential, audit, and mutation service. Because this
+  install-only turn has no later Provider Step, it reports availability on the
+  next Agent task; a later ordinary Tool-loop install still refreshes the
+  frozen snapshot before its next Provider Step. Neither path changes the
+  Conversation selection.
 - A caller must search before an Agent install. The Run retains at most two
   unique search results and one proposal. Candidate metadata is untrusted data,
   never an instruction source.
@@ -93,7 +116,10 @@ type MutationRequest struct {
 | missing conversation, candidate or revision | `INVALID_RESOURCE_REQUEST` |
 | unsupported kind or query over 200 bytes | `INVALID_RESOURCE_QUERY` |
 | pasted URL host/path/query/fragment/kind is not allowlisted | no URL fetch/install; bounded search or normal chat only |
+| explicit install text contains zero, multiple, oversized, or unsupported URLs | do not enter deterministic installation; ordinary Agent behavior |
 | supported AIHero Skill slug has no admitted Store candidate | return zero bounded candidates; do not run the page's npm/Git command |
+| deterministic search returns zero or no unique exact identifier match | completed no-install answer; zero Provider/install calls |
+| deterministic search returns one exact admitted credential-free candidate | install once through existing domain authority; next Agent task sees inventory |
 | unknown JSON/Tool field, including Secret | reject; never echo the value |
 | candidate not searched or exact revision differs | bounded Tool failure / `RESOURCE_REVISION_CHANGED` |
 | second unique discovery after budget or second proposal | bounded budget failure; no write |
@@ -126,6 +152,10 @@ type MutationRequest struct {
 - Supported-link allowlist/mismatch/traversal tests for LobeHub and AIHero;
   assert no pasted URL is a package-fetch authority and AIHero never bypasses
   admitted Store search.
+- Embedded-CJK/trailing-punctuation parsing, multiple-link denial, and
+  Provider-zero-call tests for deterministic explicit search. Cover zero,
+  unique exact, and ambiguous exact candidates; only the unique exact fixture
+  may produce one mutation.
 - HTTP strict JSON, stale conflict, configuration handoff, audit-unavailable,
   and sanitized search response tests.
 - Lifecycle owner/CAS checks, action-specific mutation audit, draft provenance,
@@ -149,6 +179,10 @@ Correct: search -> exact server candidate -> approval/policy -> existing domain
 Wrong: AIHero page -> execute displayed npx command -> trust mutable upstream
 Correct: AIHero /skills-<slug> -> sanitized slug -> admitted Store search ->
          exact package fingerprint or a bounded no-candidate result
+
+Wrong: explicit supported link -> Provider must call resource_search -> 502 blocks discovery
+Correct: explicit intent + one supported link -> Backend resource_search ->
+         unique exact candidate or completed no-install answer
 
 Wrong: Tool arguments include credential or endpoint fields
 Correct: Tool sees only configured/required status; Secret/OAuth stays in UI/vault

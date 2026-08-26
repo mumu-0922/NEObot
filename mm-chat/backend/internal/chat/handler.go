@@ -4550,6 +4550,24 @@ func chatStreamErrorBody(err error, deadlineExceeded bool) ErrorBody {
 				Code:    providerStreamInterruptedCode,
 				Message: "provider response stream was interrupted; partial output was preserved",
 			}
+		case ProviderFailureUpstreamFailed:
+			return ErrorBody{Code: string(category), Message: "The model provider is temporarily unavailable"}
+		case ProviderFailureTransportFailed:
+			return ErrorBody{Code: string(category), Message: "The model provider could not be reached"}
+		case ProviderFailureRequestTimeout, ProviderFailureContextDeadline:
+			return ErrorBody{Code: string(category), Message: "The model provider request timed out"}
+		case ProviderFailureRateLimited:
+			return ErrorBody{Code: string(category), Message: "The model provider is rate limited; try again shortly"}
+		case ProviderFailureAuthentication:
+			return ErrorBody{Code: string(category), Message: "The model provider authentication failed"}
+		case ProviderFailureQuotaExhausted:
+			return ErrorBody{Code: string(category), Message: "The model provider quota is exhausted"}
+		case ProviderFailureContextOverflow:
+			return ErrorBody{Code: string(category), Message: "The conversation exceeds the model context window"}
+		case ProviderFailureContextCanceled:
+			return ErrorBody{Code: string(category), Message: "The model provider request was cancelled"}
+		default:
+			return ErrorBody{Code: string(category), Message: "The model provider request failed"}
 		}
 	}
 	return ErrorBody{Code: "PROVIDER_ERROR", Message: "provider stream failed"}

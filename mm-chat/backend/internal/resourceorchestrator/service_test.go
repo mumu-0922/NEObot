@@ -251,6 +251,54 @@ func TestSupportedResourceLinksResolveThroughBoundedMarketplaceSearch(t *testing
 	}
 }
 
+func TestSingleSupportedResourceLinkExtractsOneExactLinkFromUserText(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		value string
+		want  SupportedResourceLink
+		ok    bool
+	}{
+		{
+			name:  "AIHero link followed by CJK install request",
+			value: "https://www.aihero.dev/skills-grill-me帮我安装这个skill",
+			want: SupportedResourceLink{
+				Kind: KindSkill, Identifier: "grill-me",
+				URL: "https://www.aihero.dev/skills-grill-me",
+			},
+			ok: true,
+		},
+		{
+			name:  "markdown link punctuation",
+			value: "请安装 [skill](https://lobehub.com/skills/office-xlsx)。",
+			want: SupportedResourceLink{
+				Kind: KindSkill, Identifier: "office-xlsx",
+				URL: "https://lobehub.com/skills/office-xlsx",
+			},
+			ok: true,
+		},
+		{
+			name:  "MCP marketplace link",
+			value: "please install https://market.lobehub.com/plugins/deepwiki",
+			want: SupportedResourceLink{
+				Kind: KindMCP, Identifier: "deepwiki",
+				URL: "https://market.lobehub.com/plugins/deepwiki",
+			},
+			ok: true,
+		},
+		{name: "unsupported host", value: "安装 https://evil.example/skills/grill-me"},
+		{name: "query broadens authority", value: "安装 https://www.aihero.dev/skills-grill-me?install=1"},
+		{name: "multiple links fail closed", value: "安装 https://www.aihero.dev/skills-grill-me 和 https://lobehub.com/skills/office-xlsx"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, ok := SingleSupportedResourceLink(test.value)
+			if got != test.want || ok != test.ok {
+				t.Fatalf("SingleSupportedResourceLink(%q)=(%#v,%t), want (%#v,%t)",
+					test.value, got, ok, test.want, test.ok)
+			}
+		})
+	}
+}
+
 func TestInstallKillSwitchFailsClosedWithoutMutating(t *testing.T) {
 	skills := fakeSkills{store: skillsupply.StoreResult{Items: []skillsupply.Candidate{{
 		ID: "candidate-id", Status: skillsupply.StatusAdmitted,
