@@ -410,6 +410,9 @@ func runNativeExternalWebToolLoop(
 					return false
 				}
 				if bufferAgentGuardRound {
+					if !sendProviderRoundEvents(ctx, events, bufferedEvents, true) {
+						return true
+					}
 					sendProviderEvent(ctx, events, event)
 					return true
 				}
@@ -431,6 +434,15 @@ func runNativeExternalWebToolLoop(
 						return true
 					}
 					return false
+				}
+				bufferedAsNarration := len(calls) > 0
+				if !sendProviderRoundEvents(
+					ctx, events, bufferedEvents, bufferedAsNarration,
+				) {
+					return true
+				}
+				if !bufferedAsNarration && providerRoundEventsHaveText(bufferedEvents) {
+					answerContentEmitted = true
 				}
 				fallbackUsage := completedUsage
 				if roundUsage != nil {
@@ -461,13 +473,10 @@ func runNativeExternalWebToolLoop(
 			switch event.Type {
 			case ProviderEventDelta:
 				assistantContent.WriteString(event.Delta)
-				if bufferFirstRound {
-					bufferedEvents = append(bufferedEvents, event)
-				} else if !sendProviderEvent(ctx, events, event) {
-					return true
-				} else if event.Delta != "" {
-					answerContentEmitted = true
-				}
+				// Text cannot be classified until the Provider round ends. A round
+				// with Tool Calls owns process narration; only a terminal no-Tool
+				// round owns final message content.
+				bufferedEvents = append(bufferedEvents, event)
 			case ProviderEventReasoningDelta:
 				assistantReasoning.WriteString(event.ReasoningDelta)
 				if bufferFirstRound {
@@ -525,6 +534,11 @@ func runNativeExternalWebToolLoop(
 					return true
 				}
 				if continued {
+					if !sendProviderRoundEvents(
+						ctx, events, bufferedEvents, true,
+					) {
+						return true
+					}
 					if roundUsage != nil {
 						completedUsage = addTokenUsageValue(completedUsage, *roundUsage)
 					}
@@ -541,10 +555,8 @@ func runNativeExternalWebToolLoop(
 					continue
 				}
 			}
-			for _, event := range bufferedEvents {
-				if !sendProviderEvent(ctx, events, event) {
-					return true
-				}
+			if !sendProviderRoundEvents(ctx, events, bufferedEvents, false) {
+				return true
 			}
 			return true
 		}
@@ -554,17 +566,8 @@ func runNativeExternalWebToolLoop(
 		if bufferMemoryDecisionRound {
 			memoryContinuationStarted = true
 		}
-		for _, event := range bufferedEvents {
-			if (bufferMemoryDecisionRound || bufferAgentGuardRound) &&
-				(event.Type == ProviderEventDelta || event.Type == ProviderEventReasoningDelta) {
-				continue
-			}
-			if !sendProviderEvent(ctx, events, event) {
-				return true
-			}
-			if event.Type == ProviderEventDelta && event.Delta != "" {
-				answerContentEmitted = true
-			}
+		if !sendProviderRoundEvents(ctx, events, bufferedEvents, true) {
+			return true
 		}
 
 		exchange := ProviderToolExchange{
@@ -680,6 +683,32 @@ func runNativeExternalWebToolLoop(
 			return true
 		}
 	}
+}
+
+func sendProviderRoundEvents(
+	ctx context.Context,
+	events chan<- ProviderEvent,
+	buffered []ProviderEvent,
+	asNarration bool,
+) bool {
+	for _, event := range buffered {
+		if asNarration && event.Type == ProviderEventDelta {
+			event.Type = ProviderEventNarrationDelta
+		}
+		if !sendProviderEvent(ctx, events, event) {
+			return false
+		}
+	}
+	return true
+}
+
+func providerRoundEventsHaveText(events []ProviderEvent) bool {
+	for _, event := range events {
+		if event.Type == ProviderEventDelta && event.Delta != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func retryProviderToolRoundStartupOnce(

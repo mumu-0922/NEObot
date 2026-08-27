@@ -13,6 +13,7 @@ const CONTEXT_SOURCES = new Set([
 ]);
 const MAX_CONTEXT_BYTES = 64 * 1024;
 const MAX_REASONING_BYTES = 1024 * 1024;
+const MAX_NARRATION_BYTES = 1024 * 1024;
 
 export interface AgentTranscriptContextNode {
   id: string;
@@ -34,6 +35,16 @@ export interface AgentTranscriptReasoningNode {
   status: "running" | "completed" | "interrupted";
 }
 
+export interface AgentTranscriptNarrationNode {
+  id: string;
+  type: "narration";
+  sequence: number;
+  blockIndex: number;
+  round?: number;
+  content: string;
+  status: "running" | "completed" | "interrupted";
+}
+
 export interface AgentTranscriptToolNode {
   id: string;
   type: "tool";
@@ -44,6 +55,7 @@ export interface AgentTranscriptToolNode {
 export type AgentTranscriptNode =
   | AgentTranscriptContextNode
   | AgentTranscriptReasoningNode
+  | AgentTranscriptNarrationNode
   | AgentTranscriptToolNode;
 
 export function projectAgentTranscript(value: unknown): AgentTranscriptNode[] {
@@ -51,8 +63,10 @@ export function projectAgentTranscript(value: unknown): AgentTranscriptNode[] {
   if (!isTranscriptV2(events)) return [];
   const nodes: AgentTranscriptNode[] = [];
   const reasoningIndexes = new Map<number, number>();
+  const narrationIndexes = new Map<number, number>();
   const toolIndexes = new Map<string, number>();
   let reasoningBytes = 0;
+  let narrationBytes = 0;
   let turnEnded = false;
 
   for (const event of events) {
@@ -62,21 +76,37 @@ export function projectAgentTranscript(value: unknown): AgentTranscriptNode[] {
       continue;
     }
     if (event.type === "assistant.chunk") {
-      applyAssistantChunk(nodes, reasoningIndexes, event, (bytes) => {
-        const remaining = Math.max(MAX_REASONING_BYTES - reasoningBytes, 0);
-        const accepted = Math.min(bytes, remaining);
-        reasoningBytes += accepted;
-        return accepted;
-      });
+      applyAssistantChunk(
+        nodes,
+        reasoningIndexes,
+        narrationIndexes,
+        event,
+        (blockType, bytes) => {
+          if (blockType === "reasoning") {
+            const remaining = Math.max(MAX_REASONING_BYTES - reasoningBytes, 0);
+            const accepted = Math.min(bytes, remaining);
+            reasoningBytes += accepted;
+            return accepted;
+          }
+          const remaining = Math.max(MAX_NARRATION_BYTES - narrationBytes, 0);
+          const accepted = Math.min(bytes, remaining);
+          narrationBytes += accepted;
+          return accepted;
+        },
+      );
       continue;
     }
     if (event.type === "assistant.block.completed") {
+      const blockType = assistantBlockType(event.payload.blockType);
       const blockIndex = positiveInteger(event.payload.blockIndex);
-      if (blockIndex === undefined) continue;
-      const nodeIndex = reasoningIndexes.get(blockIndex);
+      if (!blockType || blockIndex === undefined) continue;
+      const nodeIndex =
+        blockType === "reasoning"
+          ? reasoningIndexes.get(blockIndex)
+          : narrationIndexes.get(blockIndex);
       if (nodeIndex === undefined) continue;
       const node = nodes[nodeIndex];
-      if (node?.type === "reasoning") {
+      if (node?.type === blockType) {
         nodes[nodeIndex] = { ...node, status: "completed" };
       }
       continue;
@@ -121,7 +151,11 @@ export function projectAgentTranscript(value: unknown): AgentTranscriptNode[] {
       if (step) projected.push({ ...node, step });
       continue;
     }
-    if (node.type === "reasoning" && turnEnded && node.status === "running") {
+    if (
+      (node.type === "reasoning" || node.type === "narration") &&
+      turnEnded &&
+      node.status === "running"
+    ) {
       projected.push({ ...node, status: "interrupted" });
       continue;
     }
@@ -177,21 +211,24 @@ function contextNodeFromEvent(
 
 function applyAssistantChunk(
   nodes: AgentTranscriptNode[],
-  indexes: Map<number, number>,
+  reasoningIndexes: Map<number, number>,
+  narrationIndexes: Map<number, number>,
   event: ChatAgentEvent,
-  reserveBytes: (bytes: number) => number,
+  reserveBytes: (blockType: "reasoning" | "narration", bytes: number) => number,
 ): void {
   const chunkType = stringValue(event.payload.chunkType);
-  const blockType = stringValue(event.payload.blockType);
+  const blockType = assistantBlockType(event.payload.blockType);
   const blockIndex = positiveInteger(event.payload.blockIndex);
-  if (blockType !== "reasoning" || blockIndex === undefined) return;
+  if (!blockType || blockIndex === undefined) return;
+  const indexes =
+    blockType === "reasoning" ? reasoningIndexes : narrationIndexes;
 
   if (chunkType === "block-start") {
     if (indexes.has(blockIndex)) return;
     indexes.set(blockIndex, nodes.length);
     nodes.push({
-      id: `reasoning:${event.turnId}:${blockIndex}`,
-      type: "reasoning",
+      id: `${blockType}:${event.turnId}:${blockIndex}`,
+      type: blockType,
       sequence: event.sequence,
       blockIndex,
       ...(event.stepSequence ? { round: event.stepSequence } : {}),
@@ -201,18 +238,24 @@ function applyAssistantChunk(
     return;
   }
 
-  if (chunkType !== "reasoning-delta") return;
+  if (chunkType !== `${blockType}-delta`) return;
   const nodeIndex = indexes.get(blockIndex);
   if (nodeIndex === undefined) return;
   const node = nodes[nodeIndex];
   const content = boundedContentString(event.payload.content, 64 * 1024);
-  if (node?.type !== "reasoning" || !content) return;
-  const acceptedBytes = reserveBytes(byteLength(content));
+  if (node?.type !== blockType || !content) return;
+  const acceptedBytes = reserveBytes(blockType, byteLength(content));
   if (acceptedBytes <= 0) return;
   nodes[nodeIndex] = {
     ...node,
     content: `${node.content}${truncateUtf8(content, acceptedBytes)}`,
   };
+}
+
+function assistantBlockType(
+  value: unknown,
+): "reasoning" | "narration" | undefined {
+  return value === "reasoning" || value === "narration" ? value : undefined;
 }
 
 function processStepsFromEvent(event: ChatAgentEvent): ProcessStep[] {

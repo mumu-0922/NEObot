@@ -7,12 +7,14 @@ import {
   ChevronDown,
   DatabaseZap,
   LoaderCircle,
+  MessageSquareText,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { projectAgentTranscript } from "@/lib/chat/agentTranscript";
 import type {
   AgentTranscriptContextNode,
+  AgentTranscriptNarrationNode,
   AgentTranscriptReasoningNode,
 } from "@/lib/chat/agentTranscript";
 import type { ChatAgentEvent } from "@/types";
@@ -42,10 +44,33 @@ export default function AgentTranscript({ events }: AgentTranscriptProps) {
           if (node.type === "context") {
             return <ContextInjectionRow key={node.id} node={node} />;
           }
+          if (node.type === "narration") {
+            return <NarrationRow key={node.id} node={node} />;
+          }
           return <ReasoningRow key={node.id} node={node} />;
         })}
       </ol>
     </section>
+  );
+}
+
+function NarrationRow({ node }: { node: AgentTranscriptNarrationNode }) {
+  return (
+    <li
+      className="flex min-w-0 items-start gap-2 text-sm text-gray-700 dark:text-foreground/90"
+      data-testid="agent-narration"
+      data-sequence={node.sequence}
+    >
+      <span className="mt-0.5 rounded bg-blue-50 p-1 text-blue-600 dark:bg-blue-950/35 dark:text-blue-300">
+        <MessageSquareText size={12} aria-hidden="true" />
+      </span>
+      <div className="min-w-0 flex-1 rounded-md border border-gray-200 bg-white/75 px-3 py-2 dark:border-border dark:bg-card/70">
+        <MarkdownRenderer
+          content={node.content}
+          className="text-sm! text-gray-700 dark:text-foreground/90"
+        />
+      </div>
+    </li>
   );
 }
 

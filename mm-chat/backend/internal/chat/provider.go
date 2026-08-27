@@ -9,6 +9,7 @@ import (
 
 const (
 	ProviderEventDelta          = "delta"
+	ProviderEventNarrationDelta = "narration.delta"
 	ProviderEventReasoningDelta = "reasoning.delta"
 	ProviderEventUsage          = "usage"
 	ProviderEventSearch         = "search"

@@ -228,13 +228,20 @@ Transcript v2 start marker: turn.started.payload.transcriptVersion = 2
   in that terminal Message so live, reconnect, and reload share one authority.
 - Transcript v2 projects one flat durable sequence rather than grouping Tools
   inside a summary panel. Record only sanitized context segments that actually
-  reached the Provider and reasoning text actually returned by the Provider.
+  reached the Provider, reasoning text actually returned by the Provider, and
+  concise user-visible narration returned during Tool-bearing rounds.
   Each reasoning block uses `assistant.chunk(block-start|reasoning-delta)` plus
   `assistant.block.completed`, carries a positive block index and Provider
   round, is bounded to 64 KiB per event/1 MiB per Turn, and closes before the
   next Tool or answer-text boundary. Unsupported Providers produce no fake
   `Think` row. DeepSeek native Tool rounds must not force thinking off; preserve
   `reasoning_content` through the existing continuation exchange.
+- Buffer ordinary text until the Provider round completes. A Tool-bearing or
+  automatically continued round records it as bounded
+  `assistant.chunk(block-start|narration-delta)` plus
+  `assistant.block.completed` before that Tool phase. A terminal no-Tool round
+  alone owns final `message.content`. Do not synthesize Narration when the
+  Provider emits none, and do not expose hidden reasoning as Narration.
 - Migration `101` redefines `chat_agent_start_turn` so every new Turn receives
   the exact numeric `transcriptVersion: 2` start marker. Frontend admission uses
   it for Tool-only Turns; historical unmarked Tool events remain on the legacy

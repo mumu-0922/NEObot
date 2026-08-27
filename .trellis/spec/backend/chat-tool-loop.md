@@ -389,6 +389,15 @@ chat_agent_start_turn(turn, event, user, conversation, message, run, at)
 chat_agent_append_event(turn, event, type, step_sequence, payload, at)
 RecoverIncompleteChatAgentTurns(cutoff)
 ChatMessageDTO.agentEvents[]
+
+ProviderEventNarrationDelta = "narration.delta"
+
+assistant.chunk {
+  chunkType: "block-start" | "narration-delta",
+  blockType: "narration",
+  blockIndex: positive integer,
+  content?: bounded sanitized UTF-8
+}
 ```
 
 ### 3. Contracts
@@ -414,6 +423,14 @@ ChatMessageDTO.agentEvents[]
   credentials, private Server refs, paths, or unbounded output. A bounded,
   redacted command may exist only inside an authorized `local_direct terminal`
   presentation; it must replay byte-identically through the same ProcessStep.
+- Buffer ordinary Provider text until the current Tool round's outcome is
+  known. Text from a Tool-bearing or automatically continued round is bounded,
+  sanitized user-visible Narration, persisted as
+  `assistant.chunk(block-start|narration-delta)` plus
+  `assistant.block.completed`, and emitted before that round's first Tool fact.
+  Text from the terminal no-Tool round remains the sole final
+  `message.content`. Never copy Narration into final content or fabricate it
+  from Tool arguments/results when the Provider emitted none.
 - Message reads attach ordered events. Frontend normalization sorts and
   deduplicates valid events, prefers their process projection, and uses
   `metadata.processTrace` only when no valid durable projection exists.
@@ -441,6 +458,8 @@ ChatMessageDTO.agentEvents[]
 | repeated event ID with changed input | replay conflict |
 | append after terminal Turn | `CHAT_AGENT_TURN_TERMINAL` |
 | process/Tool persistence fails | fail the Chat Run; do not emit an unpersisted projection |
+| Tool-bearing round emits ordinary text | persist/stream it as Narration before the Tool row; exclude it from final content |
+| terminal no-Tool round emits ordinary text | persist it only as final Message content |
 | pre-SSE context event persistence fails | HTTP error plus failed Message and failed Turn; no orphan `streaming` Message |
 | restart finds streaming Message | interrupted Turn and failed Message |
 | restart finds completed/failed/cancelled Message | preserve that terminal status |
@@ -449,8 +468,9 @@ ChatMessageDTO.agentEvents[]
 
 ### 5. Good / Base / Bad Cases
 
-- **Good:** Tool/process event commits, its projection reaches SSE, refresh
-  rebuilds the same card order, and startup repairs a torn terminal append.
+- **Good:** Narration commits before its Tool/process event, both reach SSE,
+  refresh rebuilds the same order, the final answer appears once afterward,
+  and startup repairs a torn terminal append.
 - **Base:** a pre-`096` Message has no events and renders the legacy trace.
 - **Bad:** emit before commit, store raw Tool output, reuse `agent_run_events`,
   derive sequence with an aggregate, or mark an already completed Message

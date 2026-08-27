@@ -138,6 +138,7 @@ func TestChatAgentGoalLoopAutomaticallyContinuesAndWrapsUp(t *testing.T) {
 		Goals: runtime,
 	})
 	var content strings.Builder
+	var narration strings.Builder
 	for event := range events {
 		if event.Error != nil {
 			t.Fatal(event.Error)
@@ -145,9 +146,12 @@ func TestChatAgentGoalLoopAutomaticallyContinuesAndWrapsUp(t *testing.T) {
 		if event.Type == ProviderEventDelta {
 			content.WriteString(event.Delta)
 		}
+		if event.Type == "narration.delta" {
+			narration.WriteString(event.Delta)
+		}
 	}
-	if content.String() != "final answer" {
-		t.Fatalf("visible content = %q", content.String())
+	if content.String() != "final answer" || narration.String() != "intermediate narration" {
+		t.Fatalf("final/narration = %q / %q", content.String(), narration.String())
 	}
 	if len(provider.inputs) != 4 {
 		t.Fatalf("provider rounds = %d", len(provider.inputs))

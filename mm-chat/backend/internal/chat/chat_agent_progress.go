@@ -18,6 +18,8 @@ const (
 const chatAgentBlockedSystemInstruction = `The Agent run has been stopped by the no-progress guard, not completed successfully.
 Give a concise final status report with: what remains incomplete, the last verified result, the blocking reason, and the safest concrete next action. Do not call tools. Do not claim success or imply that an unpublished file is downloadable.`
 
+const chatAgentNarrationSystemInstruction = `Keep the user oriented during Tool-based work with brief user-visible progress updates. Before each meaningful new Tool phase, state in one concise sentence what you are about to do and why. When a Tool result materially changes the plan, briefly state the observed outcome before the next Tool phase. These updates are user-facing narration, not hidden reasoning: never expose chain-of-thought, repeat raw Tool output, invent results, or narrate every trivial call. Keep the final answer concise and separate from the progress updates.`
+
 type chatAgentProgressTracker struct {
 	lastFingerprint       string
 	repeatedOutcomes      int
@@ -156,4 +158,15 @@ func withChatAgentBlockedInstruction(
 	}
 	request.SystemPrompt += instruction
 	return request
+}
+
+func appendChatAgentNarrationSystemInstruction(systemPrompt string) string {
+	systemPrompt = strings.TrimSpace(systemPrompt)
+	if strings.Contains(systemPrompt, chatAgentNarrationSystemInstruction) {
+		return systemPrompt
+	}
+	if systemPrompt != "" {
+		systemPrompt += "\n\n"
+	}
+	return systemPrompt + chatAgentNarrationSystemInstruction
 }

@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/chat-tool-loop.md", "reason": "Provider Tool-round classification and durable Agent event ordering contract"}
+{"file": ".trellis/spec/frontend/agent-transcript.md", "reason": "Frontend durable transcript projection and replay contract"}
+{"file": ".trellis/tasks/08-27-agent-interleaved-timeline/research/pi-ordered-content-blocks.md", "reason": "Reference design for ordered Text, Thinking, and Tool blocks"}

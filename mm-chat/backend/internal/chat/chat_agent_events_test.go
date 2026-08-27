@@ -246,6 +246,25 @@ func TestNormalizeChatAgentTranscriptPayloadsAreBoundedAndStrict(t *testing.T) {
 	if err != nil || chatAgentPayloadInt(completed, "blockIndex") != 2 {
 		t.Fatalf("completed=%#v error=%v", completed, err)
 	}
+	narrationStart, err := normalizeChatAgentEventPayload(ChatAgentEventAssistantChunk, map[string]any{
+		"chunkType": "block-start", "blockType": "narration", "blockIndex": 1,
+	})
+	if err != nil || chatAgentPayloadString(narrationStart, "blockType") != "narration" {
+		t.Fatalf("narration start=%#v error=%v", narrationStart, err)
+	}
+	narrationDelta, err := normalizeChatAgentEventPayload(ChatAgentEventAssistantChunk, map[string]any{
+		"chunkType": "narration-delta", "blockType": "narration", "blockIndex": 1,
+		"content": "I will inspect the workspace before editing.",
+	})
+	if err != nil || chatAgentPayloadString(narrationDelta, "content") == "" {
+		t.Fatalf("narration delta=%#v error=%v", narrationDelta, err)
+	}
+	narrationCompleted, err := normalizeChatAgentEventPayload(ChatAgentEventBlockCompleted, map[string]any{
+		"blockType": "narration", "blockIndex": 1,
+	})
+	if err != nil || chatAgentPayloadString(narrationCompleted, "blockType") != "narration" {
+		t.Fatalf("narration completed=%#v error=%v", narrationCompleted, err)
+	}
 
 	for _, invalid := range []struct {
 		eventType string
@@ -254,6 +273,7 @@ func TestNormalizeChatAgentTranscriptPayloadsAreBoundedAndStrict(t *testing.T) {
 		{ChatAgentEventContextInjected, map[string]any{"source": "private", "label": "x", "content": "x"}},
 		{ChatAgentEventAssistantChunk, map[string]any{"chunkType": "reasoning-delta", "blockType": "reasoning", "blockIndex": 0, "content": "x"}},
 		{ChatAgentEventAssistantChunk, map[string]any{"chunkType": "reasoning-delta", "blockType": "text", "blockIndex": 1, "content": "x"}},
+		{ChatAgentEventAssistantChunk, map[string]any{"chunkType": "narration-delta", "blockType": "reasoning", "blockIndex": 1, "content": "x"}},
 		{ChatAgentEventBlockCompleted, map[string]any{"blockType": "reasoning", "blockIndex": 1, "content": "forbidden"}},
 	} {
 		if _, err := normalizeChatAgentEventPayload(invalid.eventType, invalid.payload); err == nil {

@@ -38,6 +38,7 @@ const (
 	maxProcessPresentationItemBytes = 2048
 	maxProcessPresentationItems     = 64
 	maxPersistedReasoningBytes      = 1024 * 1024
+	maxPersistedNarrationBytes      = 1024 * 1024
 
 	// Keep enough sanitized suffix un-emitted for a credential pattern split
 	// across adjacent provider chunks to become recognizable before SSE output.

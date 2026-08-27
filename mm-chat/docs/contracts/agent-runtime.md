@@ -132,6 +132,15 @@ legacy renderer and its Reasoning display. A v2-only `context.injected`,
 `assistant.chunk`, or `assistant.block.completed` event remains sufficient when
 a reconnect suffix does not contain the start event.
 
+Within Transcript v2, Provider text from a Tool-bearing or automatically
+continued round is user-visible process Narration. Backend buffers the round
+until its outcome is known, then persists bounded, sanitized
+`assistant.chunk(block-start|narration-delta)` and
+`assistant.block.completed` facts before the matching Tool event. The terminal
+no-Tool round alone becomes final `message.content`, rendered once after the
+ordered Transcript. Reasoning remains a separate collapsible Provider-returned
+block; neither Backend nor UI invents Narration from Tool data.
+
 Canary acceptance uses a 500-event fixture. The frontend must keep visible
 update p95 at or below 300 ms and full durable reload p95 within 20% of the
 legacy projection under the same render workload. Durable projection uses a
@@ -238,10 +247,11 @@ data.
 Migration `101_chat_agent_transcript_blocks` adds the forward-only event
 whitelist for `context.injected`, `assistant.chunk`, and
 `assistant.block.completed`. New canary turns render these facts as one flat
-Context/Think/Tool transcript in durable sequence. Only Provider-returned
-reasoning is retained; context and reasoning are sanitized and bounded before
-database append, SSE, copy, or DOM rendering. Disabling the timeline flag rolls
-back presentation without deleting immutable Transcript events.
+Context/Think/Narration/Tool transcript in durable sequence. Only
+Provider-returned reasoning and user-visible Tool-round Narration are retained;
+context, reasoning, and narration are sanitized and bounded before database
+append, SSE, copy, or DOM rendering. Disabling the timeline flag rolls back
+presentation without deleting immutable Transcript events.
 
 ## Required verification
 

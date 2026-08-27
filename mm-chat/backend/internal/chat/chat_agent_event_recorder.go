@@ -237,6 +237,41 @@ func (recorder *chatAgentEventRecorder) recordAssistantBlockCompleted(
 	}, at)
 }
 
+func (recorder *chatAgentEventRecorder) recordAssistantNarrationBlockStart(
+	ctx context.Context,
+	blockIndex int,
+	stepSequence int,
+	at time.Time,
+) (ChatAgentEvent, error) {
+	return recorder.append(ctx, ChatAgentEventAssistantChunk, stepSequence, map[string]any{
+		"chunkType": "block-start", "blockType": "narration", "blockIndex": blockIndex,
+	}, at)
+}
+
+func (recorder *chatAgentEventRecorder) recordAssistantNarrationDelta(
+	ctx context.Context,
+	blockIndex int,
+	stepSequence int,
+	content string,
+	at time.Time,
+) (ChatAgentEvent, error) {
+	return recorder.append(ctx, ChatAgentEventAssistantChunk, stepSequence, map[string]any{
+		"chunkType": "narration-delta", "blockType": "narration",
+		"blockIndex": blockIndex, "content": content,
+	}, at)
+}
+
+func (recorder *chatAgentEventRecorder) recordAssistantNarrationBlockCompleted(
+	ctx context.Context,
+	blockIndex int,
+	stepSequence int,
+	at time.Time,
+) (ChatAgentEvent, error) {
+	return recorder.append(ctx, ChatAgentEventBlockCompleted, stepSequence, map[string]any{
+		"blockType": "narration", "blockIndex": blockIndex,
+	}, at)
+}
+
 func (recorder *chatAgentEventRecorder) finish(
 	ctx context.Context,
 	status string,

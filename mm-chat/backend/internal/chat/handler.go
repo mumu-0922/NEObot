@@ -1971,6 +1971,9 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	var emitAgentEvent func(ChatAgentEvent) error
 	var goalToolRuntime *chatAgentGoalToolRuntime
 	if agentMode {
+		providerSystemPrompt = appendChatAgentNarrationSystemInstruction(
+			providerSystemPrompt,
+		)
 		goalToolRuntime = newChatAgentGoalToolRuntime(
 			h.service, agentRecorder.turnID, conversationID,
 		)
@@ -2665,6 +2668,7 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		flusher.Flush()
 		return nil
 	}
+	var content strings.Builder
 	reasoningBlockIndex := 0
 	reasoningBlockOpen := false
 	reasoningPersistedBytes := 0
@@ -2770,6 +2774,98 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		reasoningBlockOpen = false
 		return emitAgentEvent(recorded)
 	}
+	narrationBlockIndex := 0
+	narrationBlockOpen := false
+	narrationBlockRound := 0
+	narrationPersistedBytes := 0
+	persistNarrationDelta := func(delta string) error {
+		if delta == "" {
+			return nil
+		}
+		remaining := maxPersistedNarrationBytes - narrationPersistedBytes
+		persistedDelta := truncateChatAgentUTF8(
+			delta,
+			min(maxChatAgentChunkEventBytes, max(remaining, 0)),
+		)
+		if remaining <= 0 || persistedDelta == "" {
+			return nil
+		}
+		eventAt := time.Now()
+		if !narrationBlockOpen {
+			narrationBlockIndex++
+			narrationBlockRound = providerRound
+			started, err := agentRecorder.recordAssistantNarrationBlockStart(
+				generationCtx, narrationBlockIndex, narrationBlockRound, eventAt,
+			)
+			if err != nil {
+				return err
+			}
+			if err := emitAgentEvent(started); err != nil {
+				return err
+			}
+			narrationBlockOpen = true
+		}
+		recorded, err := agentRecorder.recordAssistantNarrationDelta(
+			generationCtx, narrationBlockIndex, narrationBlockRound, persistedDelta, eventAt,
+		)
+		if err != nil {
+			return err
+		}
+		if err := emitAgentEvent(recorded); err != nil {
+			return err
+		}
+		persistedContent, _ := recorded.Payload["content"].(string)
+		narrationPersistedBytes += len(persistedContent)
+		return nil
+	}
+	var narrationEventBuffer strings.Builder
+	emitNarrationDelta := func(delta string) error {
+		if delta == "" {
+			return nil
+		}
+		if !agentTimelineEnabled {
+			content.WriteString(delta)
+			sequence++
+			if err := writeSSEEvent(w, "message.delta", streamEvent{
+				Type: "message.delta", RunID: runID,
+				ConversationID: conversationID, MessageID: assistantMessage.ID,
+				Sequence: sequence, CreatedAt: formatTime(time.Now()), Delta: delta,
+			}); err != nil {
+				return err
+			}
+			flusher.Flush()
+			return nil
+		}
+		narrationEventBuffer.WriteString(delta)
+		return nil
+	}
+	closeNarrationBlock := func() error {
+		if narrationEventBuffer.Len() > 0 {
+			buffered := narrationEventBuffer.String()
+			narrationEventBuffer.Reset()
+			for buffered != "" {
+				chunk := truncateChatAgentUTF8(buffered, maxChatAgentChunkEventBytes)
+				if chunk == "" {
+					break
+				}
+				if err := persistNarrationDelta(chunk); err != nil {
+					return err
+				}
+				buffered = buffered[len(chunk):]
+			}
+		}
+		if !narrationBlockOpen {
+			return nil
+		}
+		recorded, err := agentRecorder.recordAssistantNarrationBlockCompleted(
+			generationCtx, narrationBlockIndex, narrationBlockRound, time.Now(),
+		)
+		if err != nil {
+			return err
+		}
+		narrationBlockOpen = false
+		return emitAgentEvent(recorded)
+	}
 	for _, step := range trace.snapshot() {
 		if err := emitProcessStep(step); err != nil {
 			cancelTrackedAfterWriteError(conversationID, assistantMessage.ID, runID, "")
@@ -2794,7 +2890,6 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		flusher.Flush()
 	}
 
-	var content strings.Builder
 	if continuation != nil {
 		content.WriteString(continuation.prefix)
 		sequence++
@@ -2817,6 +2912,14 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 	toolExecutionCancelled := false
 	for providerEvent := range events {
 		if providerEvent.Round > 0 {
+			if narrationBlockOpen && narrationBlockRound != providerEvent.Round {
+				if err := closeNarrationBlock(); err != nil {
+					cancelTrackedAfterWriteError(
+						conversationID, assistantMessage.ID, runID, content.String(),
+					)
+					return
+				}
+			}
 			providerRound = providerEvent.Round
 		}
 		if providerEvent.Error != nil {
@@ -3012,6 +3115,25 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				)
 				return
 			}
+		case ProviderEventNarrationDelta:
+			if err := emitReasoningDelta(reasoning.flush()); err != nil {
+				cancelTrackedAfterWriteError(
+					conversationID, assistantMessage.ID, runID, content.String(),
+				)
+				return
+			}
+			if err := closeReasoningBlock(); err != nil {
+				cancelTrackedAfterWriteError(
+					conversationID, assistantMessage.ID, runID, content.String(),
+				)
+				return
+			}
+			if err := emitNarrationDelta(providerEvent.Delta); err != nil {
+				cancelTrackedAfterWriteError(
+					conversationID, assistantMessage.ID, runID, content.String(),
+				)
+				return
+			}
 		case ProviderEventDelta:
 			if err := emitReasoningDelta(reasoning.flush()); err != nil {
 				cancelTrackedAfterWriteError(
@@ -3023,6 +3145,12 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				return
 			}
 			if err := closeReasoningBlock(); err != nil {
+				cancelTrackedAfterWriteError(
+					conversationID, assistantMessage.ID, runID, content.String(),
+				)
+				return
+			}
+			if err := closeNarrationBlock(); err != nil {
 				cancelTrackedAfterWriteError(
 					conversationID, assistantMessage.ID, runID, content.String(),
 				)
@@ -3066,6 +3194,12 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 				return
 			}
 			if err := closeReasoningBlock(); err != nil {
+				cancelTrackedAfterWriteError(
+					conversationID, assistantMessage.ID, runID, content.String(),
+				)
+				return
+			}
+			if err := closeNarrationBlock(); err != nil {
 				cancelTrackedAfterWriteError(
 					conversationID, assistantMessage.ID, runID, content.String(),
 				)
@@ -3306,6 +3440,12 @@ func (h *Handler) streamAssistantMessage(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	if err := closeReasoningBlock(); err != nil {
+		cancelTrackedAfterWriteError(
+			conversationID, assistantMessage.ID, runID, content.String(),
+		)
+		return
+	}
+	if err := closeNarrationBlock(); err != nil {
 		cancelTrackedAfterWriteError(
 			conversationID, assistantMessage.ID, runID, content.String(),
 		)

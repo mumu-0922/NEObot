@@ -6,13 +6,126 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"neo-chat/mm-chat/backend/internal/auth"
+	"neo-chat/mm-chat/backend/internal/localskills"
 	"neo-chat/mm-chat/backend/internal/mcpclient"
 	"neo-chat/mm-chat/backend/internal/resourceorchestrator"
 )
+
+func TestAgentTimelineInterleavesNarrationBeforeToolAndKeepsFinalAnswerSeparate(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "fixture.txt"), []byte("ready"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	executor, err := localskills.NewExecutor(localskills.Config{
+		Enabled: true, RuntimeRoot: filepath.Join(workspace, ".skills"),
+		WorkspaceRoot: workspace, ShellPath: "/bin/sh", ApprovalMode: localskills.ApprovalSmart,
+		CallTimeout: time.Second, RunTimeout: time.Second, MaxOutput: 4096,
+		MaxCalls: 4, MaxRounds: 4, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := &scriptedToolRoundProvider{rounds: [][]ProviderEvent{
+		{
+			{Type: ProviderEventDelta, Delta: "先读取文件。"},
+			{Type: ProviderEventToolCallCompleted, ToolCall: &ProviderToolCall{
+				ID: "read-fixture", Name: localFileReadToolName,
+				Arguments: `{"path":"fixture.txt","offset":null,"limit":null}`,
+			}},
+		},
+		{{Type: ProviderEventDelta, Delta: "读取完成。"}},
+	}}
+	repository := newFakeRepository()
+	conversation := fakeConversation(testConversationID, "Interleaved transcript", 1)
+	conversation.Metadata = map[string]any{"toolMode": "agent"}
+	repository.conversations = append(repository.conversations, conversation)
+	repository.messages[testConversationID] = []Message{
+		fakeMessage(testMessageID, testConversationID, 0, "user", "读取 fixture.txt"),
+	}
+	handler := NewHandler(
+		NewService(repository),
+		WithProvider(provider),
+		WithAgentTimelineCanary(true, []string{DevUserID}),
+		WithLocalSkillRuntime(nil, executor),
+	)
+	recorder := performRequest(
+		handler,
+		http.MethodPost,
+		conversationsPath+"/"+testConversationID+"/stream",
+		`{"userMessageId":"`+testMessageID+`","modelRef":{"providerId":"mock","modelId":"tool-model"},"config":{"toolMode":"agent"},"idempotencyKey":"interleaved-timeline"}`,
+	)
+	assertStreamStatus(t, recorder, http.StatusOK)
+	body := recorder.Body.String()
+	narrationIndex := strings.Index(body, `"chunkType":"narration-delta"`)
+	toolIndex := strings.Index(body, `"type":"tool.called"`)
+	finalIndex := strings.LastIndex(body, `"content":"读取完成。"`)
+	if narrationIndex < 0 || toolIndex <= narrationIndex || finalIndex <= toolIndex {
+		t.Fatalf("narration/Tool/final order is invalid; body=%s", body)
+	}
+	messages := repository.messages[testConversationID]
+	if len(messages) != 2 || messages[1].Content != "读取完成。" ||
+		strings.Contains(messages[1].Content, "先读取文件") {
+		t.Fatalf("persisted final message=%#v", messages)
+	}
+	if len(provider.inputs) != 2 ||
+		!strings.Contains(provider.inputs[0].SystemPrompt, chatAgentNarrationSystemInstruction) {
+		t.Fatalf("Agent narration prompt was not applied: %#v", provider.inputs)
+	}
+	events := repository.agentEvents[testConversationID]
+	var narrationDelta, narrationCompleted, toolCalled, toolResult int64
+	for _, event := range events {
+		switch {
+		case event.Type == ChatAgentEventAssistantChunk &&
+			chatAgentPayloadString(event.Payload, "chunkType") == "narration-delta":
+			narrationDelta = event.Sequence
+		case event.Type == ChatAgentEventBlockCompleted &&
+			chatAgentPayloadString(event.Payload, "blockType") == "narration":
+			narrationCompleted = event.Sequence
+		case event.Type == ChatAgentEventToolCalled:
+			toolCalled = event.Sequence
+		case event.Type == ChatAgentEventToolResult:
+			toolResult = event.Sequence
+		}
+	}
+	if narrationDelta == 0 || narrationCompleted <= narrationDelta ||
+		toolCalled <= narrationCompleted || toolResult <= toolCalled {
+		t.Fatalf("durable narration/Tool order is invalid: %#v", events)
+	}
+
+	reloaded := performRequest(
+		handler,
+		http.MethodGet,
+		conversationsPath+"/"+testConversationID+"/messages",
+		"",
+	)
+	assertStatus(t, reloaded, http.StatusOK)
+	var page Page[ChatMessageDTO]
+	decodeBody(t, reloaded, &page)
+	if len(page.Items) != 2 || page.Items[1].Content != "读取完成。" {
+		t.Fatalf("reloaded messages=%#v", page.Items)
+	}
+	reloadedEvents := page.Items[1].AgentEvents
+	if len(reloadedEvents) != len(events) {
+		t.Fatalf("reloaded Agent events=%#v, want %#v", reloadedEvents, events)
+	}
+	for index := range events {
+		if reloadedEvents[index].EventID != events[index].EventID ||
+			reloadedEvents[index].Sequence != events[index].Sequence ||
+			reloadedEvents[index].Type != events[index].Type {
+			t.Fatalf(
+				"reloaded Agent event[%d]=%#v, want %#v",
+				index, reloadedEvents[index], events[index],
+			)
+		}
+	}
+}
 
 type contextEventFailRepository struct {
 	*fakeRepository

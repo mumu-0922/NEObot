@@ -74,3 +74,18 @@ func TestChatAgentBlockedInstructionForbidsFalseSuccess(t *testing.T) {
 		t.Fatalf("blocked instruction=%q", request.SystemPrompt)
 	}
 }
+
+func TestAppendChatAgentNarrationSystemInstructionIsScopedAndIdempotent(t *testing.T) {
+	base := "Base system instruction."
+	withNarration := appendChatAgentNarrationSystemInstruction(base)
+	if !strings.HasPrefix(withNarration, base+"\n\n") ||
+		!strings.Contains(withNarration, "user-visible progress updates") ||
+		!strings.Contains(withNarration, "never expose chain-of-thought") {
+		t.Fatalf("narration instruction=%q", withNarration)
+	}
+	idempotent := appendChatAgentNarrationSystemInstruction(withNarration)
+	if idempotent != withNarration ||
+		strings.Count(idempotent, chatAgentNarrationSystemInstruction) != 1 {
+		t.Fatalf("narration instruction duplicated=%q", idempotent)
+	}
+}

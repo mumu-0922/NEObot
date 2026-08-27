@@ -294,7 +294,7 @@ func normalizeChatAgentAssistantChunkPayload(payload map[string]any) (map[string
 	chunkType := chatAgentPayloadString(payload, "chunkType")
 	blockType := chatAgentPayloadString(payload, "blockType")
 	blockIndex, blockOK := exactPositiveChatAgentPayloadInt(payload["blockIndex"])
-	if !blockOK || blockType != "reasoning" {
+	if !blockOK || !isChatAgentAssistantBlockType(blockType) {
 		return nil, newValidationError(
 			"INVALID_CHAT_AGENT_EVENT_PAYLOAD", "assistant chunk block is invalid",
 		)
@@ -302,19 +302,20 @@ func normalizeChatAgentAssistantChunkPayload(payload map[string]any) (map[string
 	result := map[string]any{
 		"chunkType": chunkType, "blockType": blockType, "blockIndex": blockIndex,
 	}
-	switch chunkType {
-	case "block-start":
+	switch {
+	case chunkType == "block-start":
 		if len(payload) != 3 {
 			return nil, newValidationError(
 				"INVALID_CHAT_AGENT_EVENT_PAYLOAD", "assistant block start is invalid",
 			)
 		}
-	case "reasoning-delta":
+	case blockType == "reasoning" && chunkType == "reasoning-delta",
+		blockType == "narration" && chunkType == "narration-delta":
 		content, contentOK := payload["content"].(string)
 		content = sanitizeProviderReasoningDelta(content)
 		if !contentOK || content == "" {
 			return nil, newValidationError(
-				"INVALID_CHAT_AGENT_EVENT_PAYLOAD", "assistant reasoning delta is empty",
+				"INVALID_CHAT_AGENT_EVENT_PAYLOAD", "assistant block delta is empty",
 			)
 		}
 		result["content"] = truncateChatAgentUTF8(content, maxChatAgentChunkEventBytes)
@@ -327,7 +328,8 @@ func normalizeChatAgentAssistantChunkPayload(payload map[string]any) (map[string
 }
 
 func normalizeChatAgentBlockCompletedPayload(payload map[string]any) (map[string]any, error) {
-	if len(payload) != 2 || chatAgentPayloadString(payload, "blockType") != "reasoning" {
+	blockType := chatAgentPayloadString(payload, "blockType")
+	if len(payload) != 2 || !isChatAgentAssistantBlockType(blockType) {
 		return nil, newValidationError(
 			"INVALID_CHAT_AGENT_EVENT_PAYLOAD", "assistant completed block is invalid",
 		)
@@ -338,7 +340,16 @@ func normalizeChatAgentBlockCompletedPayload(payload map[string]any) (map[string
 			"INVALID_CHAT_AGENT_EVENT_PAYLOAD", "assistant completed block index is invalid",
 		)
 	}
-	return map[string]any{"blockType": "reasoning", "blockIndex": blockIndex}, nil
+	return map[string]any{"blockType": blockType, "blockIndex": blockIndex}, nil
+}
+
+func isChatAgentAssistantBlockType(blockType string) bool {
+	switch blockType {
+	case "reasoning", "narration":
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeChatAgentContextReplacementPayload(

@@ -708,6 +708,8 @@ chat_agent_events(turn_id, sequence, event_id, event_type, step_sequence,
 turn.started / turn.ended
 step.started / step.ended
 assistant.message
+assistant.chunk(block-start|reasoning-delta|narration-delta)
+assistant.block.completed
 tool.called / tool.result
 goal.changed / goal.round.started
 context.replaced
@@ -797,6 +799,11 @@ Rules:
 - Provider-returned reasoning is streamed separately from factual process
   steps. When a provider exposes no reasoning, the UI may say "Analyzing" as a
   process status but must not fabricate reasoning text.
+- Ordinary text is classified only after its Provider round completes. Text
+  from a Tool-bearing or automatically continued round becomes bounded,
+  sanitized Narration placed before that Tool phase; text from the terminal
+  no-Tool round is the sole final Message content. Do not duplicate Narration
+  into the final answer or synthesize it from Tool inputs/results.
 - Running generation auto-expands the process panel. Completion collapses it to
   a one-line `Direct|Knowledge|Web|Both` summary with source counts. Manual
   expansion is authoritative and must
