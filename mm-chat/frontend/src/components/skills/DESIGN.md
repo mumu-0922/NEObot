@@ -12,20 +12,21 @@ by install or uninstall UI implicitly.
 ## Trust boundary
 
 Every server response is validated by strict Zod schemas in
-`services/api/client/server/skillStoreApi.ts`. Install binds the candidate ID to
-the displayed package fingerprint. Uninstall uses the current installation
-revision. Stale revisions reload server authority instead of applying an
-optimistic local result.
+`services/api/client/server/skillStoreApi.ts`. Catalog detail is fixed to the
+OpenAI curated repository/path shape. Install binds the Skill name, resolved
+commit, and displayed package fingerprint. Uninstall uses the current
+installation revision. Stale revisions reload server authority instead of
+applying an optimistic local result.
 
-Package descriptions, declared tools, fingerprints, and status values render as
-React text. The surface never renders package HTML and never exposes Runner or
-control-plane credentials.
+Package descriptions, declared tools, source metadata, and status values render
+as React text. Raw fingerprints, admission IDs, SBOM data, package HTML, Runner
+details, and control-plane credentials are not normal product language.
 
 ## Interaction
 
 The top-level surface follows the Tools information architecture with mutually
 exclusive `Installed` and `Skill Store` tabs. Installed packages render only in
-the library tab. Admitted candidates render in the Store list/detail view;
+the library tab. Curated Skills render in the Store list/detail view;
 desktop keeps that list and detail together, while mobile drills into the
 selected package and restores focus to the originating list item on Back.
 Installing refreshes both authorities, clears the selected candidate URL, and

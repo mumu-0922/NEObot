@@ -59,6 +59,97 @@ func TestDirectSkillLinkSourcePinsAndSelectsExactGitHubSkill(t *testing.T) {
 	}
 }
 
+func TestGitHubCatalogListsCachesAndValidatesCuratedSkill(t *testing.T) {
+	commit := strings.Repeat("c", 40)
+	archive := mustRawTestArchive(t, []testZipEntry{{
+		name: "skills-" + commit + "/skills/.curated/demo-skill/SKILL.md",
+		body: validSkillMarkdown("demo-skill"),
+	}})
+	calls := []string{}
+	client := sourceRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		calls = append(calls, request.URL.String())
+		switch request.URL.String() {
+		case "https://api.github.com/repos/openai/skills/contents/skills/.curated?ref=main":
+			return sourceResponse(request, "application/json", `[
+				{"name":"z-invalid","path":"wrong/z-invalid","type":"dir"},
+				{"name":"demo-skill","path":"skills/.curated/demo-skill","type":"dir"},
+				{"name":"README.md","path":"skills/.curated/README.md","type":"file"}
+			]`), nil
+		case "https://api.github.com/repos/openai/skills/commits/main":
+			return sourceResponse(request, "application/json", `{"sha":"`+commit+`"}`), nil
+		case "https://codeload.github.com/openai/skills/zip/" + commit:
+			return &http.Response{StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(string(archive))), Request: request}, nil
+		default:
+			t.Fatalf("unexpected request %s", request.URL)
+			return nil, nil
+		}
+	})
+	catalog := &GitHubCatalogSource{Client: client}
+	items, err := catalog.List(context.Background())
+	if err != nil || len(items) != 1 || items[0].Name != "demo-skill" ||
+		items[0].SourceURL != "https://github.com/openai/skills/tree/main/skills/.curated/demo-skill" {
+		t.Fatalf("items=%#v error=%v", items, err)
+	}
+	if _, err := catalog.List(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	detail, source, err := catalog.Detail(context.Background(), "demo-skill")
+	if err != nil || detail.ResolvedCommit != commit ||
+		detail.PackageFingerprint == "" || detail.Description == "" ||
+		source.StripPrefix != "skills-"+commit+"/skills/.curated/demo-skill/" {
+		t.Fatalf("detail=%#v source=%#v error=%v", detail, source, err)
+	}
+	if len(calls) != 3 {
+		t.Fatalf("calls=%#v", calls)
+	}
+}
+
+func TestDirectSkillLinkSourcePinsGitHubTreeAndAcceptsExactBlob(t *testing.T) {
+	commit := strings.Repeat("d", 40)
+	archive := mustRawTestArchive(t, []testZipEntry{{
+		name: "repo-" + commit + "/skills/demo-skill/SKILL.md",
+		body: validSkillMarkdown("demo-skill"),
+	}})
+	for _, test := range []struct {
+		name      string
+		link      string
+		wantCalls int
+	}{
+		{name: "tree branch", link: "https://github.com/owner/repo/tree/main/skills/demo-skill", wantCalls: 2},
+		{
+			name: "blob exact commit",
+			link: "https://github.com/owner/repo/blob/" + commit +
+				"/skills/demo-skill/SKILL.md",
+			wantCalls: 1,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			calls := []string{}
+			client := sourceRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+				calls = append(calls, request.URL.String())
+				switch request.URL.Host {
+				case "api.github.com":
+					return sourceResponse(request, "application/json", `{"sha":"`+commit+`"}`), nil
+				case "codeload.github.com":
+					return &http.Response{StatusCode: http.StatusOK,
+						Body: io.NopCloser(strings.NewReader(string(archive))), Request: request}, nil
+				default:
+					t.Fatalf("unexpected request %s", request.URL)
+					return nil, nil
+				}
+			})
+			source, err := (DirectSkillLinkSource{Client: client}).Fetch(
+				context.Background(), test.link, "demo-skill",
+			)
+			if err != nil || source.Ref != "https://github.com/owner/repo.git#"+commit+":skills/demo-skill" ||
+				len(calls) != test.wantCalls {
+				t.Fatalf("source=%#v calls=%#v error=%v", source, calls, err)
+			}
+		})
+	}
+}
+
 func TestDirectSkillLinkSourceRejectsUntrustedOrAmbiguousCoordinates(t *testing.T) {
 	for index, test := range []struct {
 		url  string
@@ -70,6 +161,9 @@ func TestDirectSkillLinkSourceRejectsUntrustedOrAmbiguousCoordinates(t *testing.
 		{url: "https://www.aihero.dev/skills-grill-me", name: "other"},
 		{url: "https://www.aihero.dev/skills-grill-me", name: "grill-me", page: `npx skills@latest add one/repo --skill=grill-me npx skills@latest add two/repo --skill=grill-me`},
 		{url: "https://www.aihero.dev/skills-grill-me", name: "grill-me", page: `npx skills@latest add one/repo --skill=other`},
+		{url: "https://github.com/owner/repo", name: "repo"},
+		{url: "https://github.com/owner/repo/tree/main/skills/%2e%2e/secret", name: "secret"},
+		{url: "https://github.com/owner/repo/blob/main/skills/grill-me/not-skill.md", name: "grill-me"},
 	} {
 		t.Run(strconv.Itoa(index), func(t *testing.T) {
 			client := sourceRoundTripFunc(func(request *http.Request) (*http.Response, error) {

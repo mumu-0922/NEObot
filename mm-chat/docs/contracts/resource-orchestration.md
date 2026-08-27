@@ -2,8 +2,8 @@
 
 ## Scope
 
-Neo Chat exposes one server-authorized discovery and install plane for admitted
-Skill packages and MCP Marketplace entries. The Agent
+Neo Chat exposes one server-authorized discovery and install plane for curated,
+direct-source, or legacy admitted Skill packages and MCP Marketplace entries. The Agent
 `resource_search` / `resource_request_install` Tools call the orchestrator;
 Resource lifecycle Slash commands are not a product surface. The orchestrator delegates every write to `skillsupply.Service`
 or `mcpclient.Service`; it never installs with Bash, npm, Git, Docker, or an
@@ -25,20 +25,23 @@ The catalog contains a deterministic `sha256:` revision, installed Skills, and
 sanitized MCP readiness/selection state. Search returns at most five entries.
 Each entry binds `id`, `version`, and `exactRevision`; descriptions,
 permissions, and Marketplace metadata are untrusted routing data. An allowlisted
-LobeHub Skill/MCP link is a search alias. An explicit AIHero
-`/skills-<slug>` link enters the server-owned direct Skill adapter: the page is
-bounded and parsed as data, its command is never executed, GitHub `HEAD` is
-pinned to a 40-character commit, and exactly one matching `SKILL.md` is passed
-through the existing canonical ZIP/SBOM validator. Unknown hosts, query strings,
-fragments, traversal and kind mismatches stay untrusted chat/search text.
+LobeHub Skill/MCP link is a search alias. An exact GitHub Skill tree link, or a
+blob link ending in `SKILL.md`, enters the server-owned direct Skill adapter.
+The adapter requires one unambiguous Skill directory, pins mutable refs to a
+40-character commit, and passes that directory through the existing canonical
+ZIP/SBOM validator. The legacy AIHero `/skills-<slug>` adapter remains as a
+compatibility path; its bounded page is parsed as data and its command is never
+executed. Unknown hosts, repository roots, query strings, fragments, traversal,
+and kind mismatches stay untrusted chat/search text.
 
 When one human message has explicit install intent and exactly one supported
 link, the Backend acts before any model request. The scanner accepts at most
-16 KiB of text and rejects multiple URLs. AIHero Skill links install directly
-into the current owner's private library without Store search, review, or
-publication. Other supported links retain bounded `resource_search` and exact
-admitted-candidate installation. Neither path invokes Shell, npm, Git, Docker,
-or a fallback Provider-generated installer.
+16 KiB of text and rejects multiple URLs. Exact GitHub Skill links and legacy
+AIHero Skill links install directly into the current owner's private library
+without Store search, review, or publication. Other supported links retain
+bounded `resource_search` and exact admitted-candidate installation. Neither
+path invokes Shell, npm, Git, Docker, or a fallback Provider-generated
+installer.
 
 ```json
 {
@@ -88,7 +91,8 @@ resource_search (max 2 unique queries, max 5 entries each)
   -> same Provider/model continues the original task
 
 explicit human install + exactly one supported link
-  -> AIHero Skill: bounded page parse -> exact GitHub commit -> private validate/install
+  -> GitHub Skill: exact directory -> exact GitHub commit -> private validate/install
+  -> AIHero Skill: bounded page parse -> same GitHub direct path
   -> other link: Backend resource_search -> one exact admitted candidate
   -> next Agent task receives the changed inventory
 ```
@@ -147,6 +151,7 @@ context.
 | source or delegated write unavailable | `503 RESOURCE_*_UNAVAILABLE` / `RESOURCE_INSTALL_FAILED` |
 | snapshot refresh fails | Agent Run stops with `RESOURCE_REFRESH_FAILED`; no false continuation |
 | supported explicit link has no exact admitted candidate | completed no-install answer; zero Provider/install calls |
+| GitHub URL is a repository root, malformed, ambiguous, mutable after pinning, or invalid | completed direct-install failure; zero Provider/package execution |
 | AIHero command/source/name is absent, ambiguous, mutable, or invalid | completed direct-install failure; zero Provider/package execution |
 | explicit text has multiple/unsafe/unsupported links | no deterministic mutation; ordinary Agent handling |
 
@@ -155,7 +160,8 @@ context.
 - `RESOURCE_ORCHESTRATION_ENABLED=true` enables Agent discovery/install and
   the unified install route. Set it to `false` to remove Agent resource Tools
   and reject unified writes while keeping existing Skill/MCP management pages.
-- Skill Store admission/fingerprint, owner-private direct-source fingerprint,
+- Curated catalog commit/fingerprint, legacy Skill Store admission/fingerprint,
+  owner-private direct-source fingerprint,
   and MCP administrator, endpoint,
   credential, deployment-hash, validation, selection-revision, and ownership
   checks remain authoritative.

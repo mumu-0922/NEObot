@@ -18,6 +18,8 @@ const (
 	candidatesPathBase      = candidatesPath + "/"
 	storePath               = skillsPath + "/store"
 	storeItemPathBase       = storePath + "/items/"
+	catalogPath             = skillsPath + "/catalog"
+	catalogItemPathBase     = catalogPath + "/items/"
 	libraryPath             = skillsPath + "/library"
 	libraryPathBase         = libraryPath + "/"
 	conversationPathBase    = skillsPath + "/conversations/"
@@ -50,6 +52,10 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		handler.handleConversationSelection(writer, request, strings.TrimPrefix(request.URL.Path, conversationPathBase))
 	case strings.HasPrefix(request.URL.Path, candidatesPathBase):
 		handler.handleCandidate(writer, request, strings.TrimPrefix(request.URL.Path, candidatesPathBase))
+	case request.URL.Path == catalogPath:
+		handler.handleCatalog(writer, request)
+	case strings.HasPrefix(request.URL.Path, catalogItemPathBase):
+		handler.handleCatalogItem(writer, request, strings.TrimPrefix(request.URL.Path, catalogItemPathBase))
 	case request.URL.Path == storePath:
 		handler.handleStore(writer, request)
 	case strings.HasPrefix(request.URL.Path, storeItemPathBase):
@@ -61,6 +67,70 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	default:
 		writeSkillError(writer, http.StatusNotFound, "NOT_FOUND", "route not found")
 	}
+}
+
+func (handler *Handler) handleCatalog(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		methodNotAllowed(writer, http.MethodGet)
+		return
+	}
+	if request.URL.RawQuery != "" {
+		writeSkillError(writer, http.StatusBadRequest, "INVALID_SKILL_CATALOG_QUERY", "skill catalog query is invalid")
+		return
+	}
+	result, err := handler.service.ListCatalog(request.Context())
+	if err != nil {
+		writeSkillServiceError(writer, err)
+		return
+	}
+	writeSkillJSON(writer, http.StatusOK, result)
+}
+
+func (handler *Handler) handleCatalogItem(
+	writer http.ResponseWriter,
+	request *http.Request,
+	suffix string,
+) {
+	parts := strings.Split(suffix, "/")
+	if len(parts) < 1 || len(parts) > 2 || parts[0] == "" || request.URL.RawQuery != "" {
+		writeSkillError(writer, http.StatusNotFound, "NOT_FOUND", "route not found")
+		return
+	}
+	name := parts[0]
+	if len(parts) == 1 {
+		if request.Method != http.MethodGet {
+			methodNotAllowed(writer, http.MethodGet)
+			return
+		}
+		detail, err := handler.service.GetCatalogSkill(request.Context(), name)
+		if err != nil {
+			writeSkillServiceError(writer, err)
+			return
+		}
+		writeSkillJSON(writer, http.StatusOK, map[string]any{"skill": detail})
+		return
+	}
+	if parts[1] != "install" {
+		writeSkillError(writer, http.StatusNotFound, "NOT_FOUND", "route not found")
+		return
+	}
+	if request.Method != http.MethodPost {
+		methodNotAllowed(writer, http.MethodPost)
+		return
+	}
+	var input CatalogInstallInput
+	if !decodeSkillJSON(writer, request, &input) {
+		return
+	}
+	user := auth.UserOrDevelopment(request.Context())
+	installation, err := handler.service.InstallCatalogSkill(
+		request.Context(), user.ID, name, input,
+	)
+	if err != nil {
+		writeSkillServiceError(writer, err)
+		return
+	}
+	writeSkillJSON(writer, http.StatusCreated, map[string]any{"skill": installation})
 }
 
 func (handler *Handler) handleConversationSelection(

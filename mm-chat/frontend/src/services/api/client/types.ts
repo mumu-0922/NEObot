@@ -731,6 +731,27 @@ export interface AgentPackageInstallationDTO {
   updatedAt: string;
 }
 
+export interface SkillCatalogSummaryDTO {
+  id: string;
+  name: string;
+  repository: string;
+  ref: string;
+  path: string;
+  sourceUrl: string;
+  catalogSource: string;
+}
+
+export interface SkillCatalogItemDTO extends SkillCatalogSummaryDTO {
+  resolvedCommit: string;
+  packageFingerprint: string;
+  version: string;
+  description: string;
+  license?: string;
+  compatibility?: string;
+  allowedTools: string[];
+  hasRuntime: boolean;
+}
+
 export interface SkillConversationSelectionDTO {
   conversationId: string;
   revision: number;
@@ -738,6 +759,21 @@ export interface SkillConversationSelectionDTO {
 }
 
 export interface SkillStoreApi {
+  listCatalog(options?: { signal?: AbortSignal }): Promise<{
+    items: SkillCatalogSummaryDTO[];
+    totalCount: number;
+    source: string;
+  }>;
+  getCatalogSkill(
+    id: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<SkillCatalogItemDTO>;
+  installCatalogSkill(input: {
+    id: string;
+    resolvedCommit: string;
+    packageFingerprint: string;
+    signal?: AbortSignal;
+  }): Promise<AgentPackageInstallationDTO>;
   listPackageStore(input?: {
     page?: number;
     pageSize?: number;

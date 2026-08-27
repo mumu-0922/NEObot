@@ -2,7 +2,7 @@
 
 ## Goals
 
-- Establish a distinct Skill Store and immutable package authority.
+- Establish a Codex-style curated catalog and immutable package authority.
 - Make source drift, package identity, runtime identity, and SBOM identity
   independently replayable.
 - Preserve a hard no-execute boundary until later Agent Runtime groups pass
@@ -21,10 +21,16 @@ server-derived exact source
   -> immutable package + exact-source candidate transaction
 ```
 
-For an explicit allowlisted AIHero link, the source adapter first parses one
-restricted `skills add owner/repository --skill=name` coordinate as data,
-resolves GitHub `HEAD` to a full commit, and then enters the same bounded ZIP
-pipeline. No command from the page is executed.
+The public catalog is fixed to `openai/skills/skills/.curated` at `main`.
+Catalog detail resolves `main` to a full commit and validates the selected
+directory. Installation is fenced by that exact commit and the displayed
+package fingerprint.
+
+For an explicit GitHub tree or `SKILL.md` blob link, the source adapter derives
+one exact Skill subdirectory and resolves a mutable ref to a full commit before
+entering the same bounded ZIP pipeline. The legacy AIHero adapter parses its
+restricted coordinate as data and follows the same path. No command from a
+page or repository is executed.
 
 No phase extracts files to a working directory or invokes a shell, package
 manager, interpreter, build, hook, test, or candidate entrypoint.

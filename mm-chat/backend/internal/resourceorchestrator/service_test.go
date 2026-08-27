@@ -310,6 +310,24 @@ func TestSingleSupportedResourceLinkExtractsOneExactLinkFromUserText(t *testing.
 			ok: true,
 		},
 		{
+			name:  "GitHub curated tree link",
+			value: "请安装 https://github.com/openai/skills/tree/main/skills/.curated/pdfs",
+			want: SupportedResourceLink{
+				Kind: KindSkill, Identifier: "pdfs",
+				URL: "https://github.com/openai/skills/tree/main/skills/.curated/pdfs", DirectInstall: true,
+			},
+			ok: true,
+		},
+		{
+			name:  "GitHub SKILL markdown link",
+			value: "install [skill](https://github.com/openai/skills/blob/main/skills/.curated/pdfs/SKILL.md)",
+			want: SupportedResourceLink{
+				Kind: KindSkill, Identifier: "pdfs",
+				URL: "https://github.com/openai/skills/blob/main/skills/.curated/pdfs/SKILL.md", DirectInstall: true,
+			},
+			ok: true,
+		},
+		{
 			name:  "markdown link punctuation",
 			value: "请安装 [skill](https://lobehub.com/skills/office-xlsx)。",
 			want: SupportedResourceLink{
@@ -328,6 +346,7 @@ func TestSingleSupportedResourceLinkExtractsOneExactLinkFromUserText(t *testing.
 			ok: true,
 		},
 		{name: "unsupported host", value: "安装 https://evil.example/skills/grill-me"},
+		{name: "GitHub repository root is ambiguous", value: "安装 https://github.com/openai/skills"},
 		{name: "query broadens authority", value: "安装 https://www.aihero.dev/skills-grill-me?install=1"},
 		{name: "multiple links fail closed", value: "安装 https://www.aihero.dev/skills-grill-me 和 https://lobehub.com/skills/office-xlsx"},
 	} {

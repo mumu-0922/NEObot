@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/resource-orchestration.md","reason":"Check URL allowlist, exact revision, deterministic zero-Provider install, and failure contracts"}
+{"file":".trellis/spec/backend/agent-runtime.md","reason":"Check no regression to Library, selection, materialization, or agent_auto runtime authority"}
+{"file":".trellis/spec/frontend/skill-store.md","reason":"Check Store/Installed UI and strict server-authoritative API behavior"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Run proportional cross-layer format, lint, typecheck, test, build, and accessibility gates"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Check every catalog response is runtime validated before rendering"}
+{"file":".trellis/tasks/08-28-codex-style-skill-installer/research/codex-skill-installation.md","reason":"Compare implementation with the confirmed Codex reference behavior"}
+{"file": ".trellis/spec/backend/skill-supply-chain.md", "reason": "Verify curated catalog bounds, commit/fingerprint fence, direct URL denial, Library isolation, and full gates"}

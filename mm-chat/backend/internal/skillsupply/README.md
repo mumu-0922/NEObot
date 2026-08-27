@@ -1,12 +1,12 @@
 # skillsupply
 
-`skillsupply` owns the server-authoritative Skill package supply chain.
-It accepts only server-derived official, exact LobeHub version, exact GitHub
-commit, authenticated ZIP candidates, or an allowlisted AIHero link resolved
-to an exact GitHub commit; validates them in memory without
-execution; writes immutable quarantine/package/SBOM objects; and persists
-administrator admissions plus owner-private direct candidates and owner-bound
-install references.
+`skillsupply` owns the server-authoritative Skill package supply chain. Its
+user-facing catalog is the fixed `openai/skills` `skills/.curated` directory.
+It also accepts an exact GitHub Skill directory, plus the legacy AIHero
+adapter, and resolves mutable refs to exact commits before validation. Every
+source is validated in memory without execution, written as immutable
+quarantine/package/SBOM objects, and persisted as an owner-private installation.
+Administrator admissions remain available as an internal compatibility path.
 
 ## Boundaries
 
@@ -22,7 +22,8 @@ install references.
 The handler serves authenticated routes below `/v1/skills`:
 
 - administrator candidate creation/detail/review under `/candidates`;
-- admitted Store list/detail/install under `/store`;
+- fixed curated catalog list/detail/install under `/catalog`;
+- legacy admitted Store list/detail/install under `/store`;
 - current-owner list/uninstall under `/library`.
 - owner-authorized, revision-CAS conversation selection under
   `/conversations/{conversationId}/selection`.
@@ -31,12 +32,17 @@ All JSON bodies are bounded and strict, responses are `no-store`, admission is
 fingerprint/revision fenced, and raw instructions, object keys, credentials,
 host paths, package bytes, and SBOM bytes are never projected.
 
-An explicit AIHero install request uses the internal
-`InstallDirectSkillLink` boundary. It parses one restricted install coordinate,
-pins GitHub `HEAD` to a 40-character commit, selects one matching `SKILL.md`,
-and installs a `validated` candidate scoped to the current owner. It does not
-execute the page's npm/Git command, require administrator review, or publish
-the candidate in Store.
+The catalog lists only the bounded fixed GitHub directory. Detail resolves
+`main` to a 40-character commit, selects one exact Skill directory, and returns
+validated display metadata. Install must repeat that exact commit and package
+fingerprint; source drift is rejected before ingestion.
+
+An explicit GitHub tree or `SKILL.md` blob link uses the internal
+`InstallDirectSkillLink` boundary. It requires an unambiguous Skill directory,
+pins a mutable ref to a 40-character commit, and installs a `validated`
+candidate scoped to the current owner. The legacy AIHero adapter enters the
+same boundary. Neither path executes npm/Git/Shell commands, requires
+administrator review, or publishes the candidate in the legacy Store.
 
 Installed inventory and conversation selection are separate. Agent Runs
 materialize the conversation's selected Skills plus at most two relevant,

@@ -1,0 +1,9 @@
+{"file":".trellis/spec/backend/resource-orchestration.md","reason":"Deterministic chat-link discovery/install, immutable revision, audit, and no-Provider fallback authority"}
+{"file":".trellis/spec/backend/agent-runtime.md","reason":"Installed Skill library, runtime materialization, conversation selection, and bounded agent_auto contracts"}
+{"file":".trellis/spec/frontend/skill-store.md","reason":"Installed/Store navigation, strict API authority, focus, responsive detail, and post-install behavior"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Strict untrusted GitHub catalog DTO parsing and normalization boundary"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Existing Store component composition, accessibility, and responsive interaction rules"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Reuse the existing immutable package and installation pipeline instead of parallel logic"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace GitHub source through validation, API, UI, Library, and runtime activation"}
+{"file":".trellis/tasks/08-28-codex-style-skill-installer/research/codex-skill-installation.md","reason":"Official Codex catalog/installer behavior and chosen Neo Chat adaptation"}
+{"file": ".trellis/spec/backend/skill-supply-chain.md", "reason": "Fixed curated catalog, exact GitHub source, immutable install, Library, and selection contract"}

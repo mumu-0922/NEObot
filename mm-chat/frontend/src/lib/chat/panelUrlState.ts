@@ -49,7 +49,9 @@ const isSettingsTab = (value: string | null): value is SettingsTabId =>
   value !== null && SETTINGS_TAB_VALUES.includes(value as SettingsTabId);
 
 const isSkillId = (value: string | null): value is string =>
-  value !== null && /^[a-z][a-z0-9_]*_[a-z0-9]{16,64}$/.test(value);
+  value !== null &&
+  ((value.length <= 64 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)) ||
+    (value.length <= 96 && /^[a-z][a-z0-9_]*_[a-z0-9]{16,64}$/.test(value)));
 
 const isKnowledgeCollectionId = (value: string | null): value is string =>
   value !== null &&

@@ -90,7 +90,9 @@ Tool arguments/results, prompts, or raw errors. Existing Skill and MCP APIs
 remain the only mutation authorities; there is no second resource database or
 unified browser toggle.
 
-The Skill Store is independent of the retired Agent Center. Installing a Skill
+The Skill Store is independent of the retired Agent Center. Its public catalog
+uses the fixed OpenAI curated GitHub directory, while exact GitHub Skill links
+may enter the same owner-private validation path directly. Installing a Skill
 does not grant extra host identity, bypass Tool policy, or select it for every
 conversation. Runtime descriptors distinguish `user_selected`,
 `workspace_default`, and `agent_auto` activation without exposing local paths.

@@ -8,6 +8,10 @@ const string = z.string().min(1);
 const count = z.number().int().nonnegative();
 const positive = z.number().int().positive();
 const fingerprint = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+const skillName = z
+  .string()
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+  .max(64);
 
 const packageVersionSchema = z
   .object({
@@ -77,6 +81,43 @@ const conversationSelectionSchema = z
   })
   .strict();
 
+const catalogSummarySchema = z
+  .object({
+    id: skillName,
+    name: skillName,
+    repository: z.literal("openai/skills"),
+    ref: z.literal("main"),
+    path: z.string().regex(/^skills\/\.curated\/[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    sourceUrl: z
+      .string()
+      .url()
+      .regex(
+        /^https:\/\/github\.com\/openai\/skills\/tree\/main\/skills\/\.curated\/[a-z0-9]+(?:-[a-z0-9]+)*$/,
+      ),
+    catalogSource: z.literal("openai/skills curated"),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.id === value.name &&
+      value.path.endsWith(`/${value.name}`) &&
+      value.sourceUrl.endsWith(`/${value.name}`),
+    { message: "catalog identity mismatch" },
+  );
+
+const catalogItemSchema = catalogSummarySchema
+  .safeExtend({
+    resolvedCommit: z.string().regex(/^[a-f0-9]{40}$/),
+    packageFingerprint: fingerprint,
+    version: string,
+    description: z.string(),
+    license: z.string().optional(),
+    compatibility: z.string().optional(),
+    allowedTools: z.array(z.string()),
+    hasRuntime: z.boolean(),
+  })
+  .strict();
+
 function parse<T>(schema: z.ZodType<T>, value: unknown, subject: string): T {
   const result = schema.safeParse(value);
   if (!result.success) {
@@ -92,6 +133,55 @@ export function createServerSkillStoreApiShell(
   httpClient: HttpClient,
 ): SkillStoreApi {
   return {
+    async listCatalog(options = {}) {
+      const response = await httpClient.requestJson<unknown>(
+        "/v1/skills/catalog",
+        { signal: options.signal },
+      );
+      return parse(
+        z
+          .object({
+            items: z.array(catalogSummarySchema),
+            totalCount: count,
+            source: z.literal("openai/skills curated"),
+          })
+          .strict(),
+        response,
+        "catalog",
+      );
+    },
+
+    async getCatalogSkill(id, options = {}) {
+      const response = await httpClient.requestJson<unknown>(
+        `/v1/skills/catalog/items/${encodeURIComponent(id)}`,
+        { signal: options.signal },
+      );
+      return parse(
+        z.object({ skill: catalogItemSchema }).strict(),
+        response,
+        "catalog detail",
+      ).skill;
+    },
+
+    async installCatalogSkill(input) {
+      const response = await httpClient.requestJson<unknown>(
+        `/v1/skills/catalog/items/${encodeURIComponent(input.id)}/install`,
+        {
+          method: "POST",
+          body: {
+            resolvedCommit: input.resolvedCommit,
+            packageFingerprint: input.packageFingerprint,
+          },
+          signal: input.signal,
+        },
+      );
+      return parse(
+        z.object({ skill: installationSchema }).strict(),
+        response,
+        "catalog install",
+      ).skill;
+    },
+
     async listPackageStore(input = {}) {
       const query = new URLSearchParams({
         page: String(input.page ?? 1),

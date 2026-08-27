@@ -7,6 +7,9 @@ const unavailable = () => {
 
 export function createLocalSkillStoreApiShell(): SkillStoreApi {
   return {
+    listCatalog: unavailable,
+    getCatalogSkill: unavailable,
+    installCatalogSkill: unavailable,
     listPackageStore: unavailable,
     getPackageSkill: unavailable,
     listPackageLibrary: unavailable,

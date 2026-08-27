@@ -102,6 +102,21 @@ describe("chat panel URL state", () => {
     expect(params.get("keep")).toBe("1");
   });
 
+  it("round-trips a curated Skill name without widening path input", () => {
+    const params = setChatPanelUrlState(new URLSearchParams(), {
+      panel: "skill-store",
+      skillId: "security-threat-model",
+    });
+    const state = parseChatPanelUrlState(params);
+    expect(state.skillId).toBe("security-threat-model");
+    expect(state.needsReplace).toBe(false);
+
+    const invalid = parseChatPanelUrlState(
+      "panel=skill-store&skillId=security/threat-model",
+    );
+    expect(invalid.skillId).toBeNull();
+  });
+
   it("migrates old Agent Center Skills URLs and drops control-plane state", () => {
     const migrated = parseChatPanelUrlState(
       "panel=agent-center&agentTab=skills&agentId=candidate_1234567890abcdef",

@@ -24,8 +24,9 @@ import { useTranslations } from "next-intl";
 import {
   ApiClientError,
   createNeoChatApiClient,
-  type AgentPackageCandidateDTO,
   type AgentPackageInstallationDTO,
+  type SkillCatalogItemDTO,
+  type SkillCatalogSummaryDTO,
 } from "@/services/api/client";
 
 interface SkillStoreProps {
@@ -48,7 +49,7 @@ export default function SkillStore({
   const [tab, setTab] = useState<SkillStoreTab>(() =>
     initialQuery || selectedId ? "store" : "installed",
   );
-  const [items, setItems] = useState<AgentPackageCandidateDTO[]>([]);
+  const [items, setItems] = useState<SkillCatalogSummaryDTO[]>([]);
   const [installed, setInstalled] = useState<AgentPackageInstallationDTO[]>([]);
   const [storeLoading, setStoreLoading] = useState(true);
   const [installedLoading, setInstalledLoading] = useState(true);
@@ -57,15 +58,18 @@ export default function SkillStore({
   const [actionId, setActionId] = useState("");
   const [announcement, setAnnouncement] = useState("");
   const [query, setQuery] = useState(initialQuery);
-  const [selectedFallback, setSelectedFallback] =
-    useState<AgentPackageCandidateDTO | null>(null);
+  const [selectedDetail, setSelectedDetail] =
+    useState<SkillCatalogItemDTO | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
+  const [detailReload, setDetailReload] = useState(0);
   const restoreFocus = useRef<HTMLButtonElement | null>(null);
 
   const loadStore = useCallback(async () => {
     setStoreLoading(true);
     setStoreError("");
     try {
-      const store = await client.skillStore.listPackageStore();
+      const store = await client.skillStore.listCatalog();
       setItems(store.items);
     } catch (loadError) {
       setStoreError(errorMessage(loadError, t("loadStoreFailed")));
@@ -101,54 +105,62 @@ export default function SkillStore({
     if (selectedId) setTab("store");
   }, [selectedId]);
 
-  const listedSelected = items.find((item) => item.id === selectedId) ?? null;
   useEffect(() => {
     const controller = new AbortController();
-    if (!selectedId || listedSelected) {
-      setSelectedFallback(null);
+    if (!selectedId) {
+      setSelectedDetail(null);
+      setDetailError("");
+      setDetailLoading(false);
       return () => controller.abort();
     }
+    setSelectedDetail(null);
+    setDetailError("");
+    setDetailLoading(true);
     void client.skillStore
-      .getPackageSkill(selectedId, { signal: controller.signal })
-      .then(setSelectedFallback)
+      .getCatalogSkill(selectedId, { signal: controller.signal })
+      .then(setSelectedDetail)
       .catch((loadError) => {
         if (!controller.signal.aborted) {
-          setStoreError(errorMessage(loadError, t("loadStoreFailed")));
+          setDetailError(errorMessage(loadError, t("loadStoreFailed")));
         }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setDetailLoading(false);
       });
     return () => controller.abort();
-  }, [client.skillStore, listedSelected, selectedId, t]);
+  }, [client.skillStore, detailReload, selectedId, t]);
 
-  const selected = listedSelected ?? selectedFallback;
-  const installedByAdmission = new Map(
-    installed.map((item) => [item.admissionId, item]),
+  const selected = selectedDetail;
+  const installedFingerprints = new Set(
+    installed.map((item) => item.packageFingerprint),
   );
   const normalizedQuery = query.trim().toLowerCase();
   const filteredItems = normalizedQuery
     ? items.filter((item) =>
-        [
-          item.id,
-          item.package.name,
-          item.package.description,
-          item.package.version,
-        ].some((value) => value.toLowerCase().includes(normalizedQuery)),
+        [item.id, item.name, item.path, item.repository].some((value) =>
+          value.toLowerCase().includes(normalizedQuery),
+        ),
       )
     : items;
 
-  const install = async (item: AgentPackageCandidateDTO) => {
+  const install = async (item: SkillCatalogItemDTO) => {
     setActionId(item.id);
     try {
-      await client.skillStore.installPackageSkill({
-        candidateId: item.id,
-        packageFingerprint: item.package.packageFingerprint,
+      await client.skillStore.installCatalogSkill({
+        id: item.id,
+        resolvedCommit: item.resolvedCommit,
+        packageFingerprint: item.packageFingerprint,
       });
-      setAnnouncement(t("installedAnnouncement", { name: item.package.name }));
+      setAnnouncement(t("installedAnnouncement", { name: item.name }));
       await loadAll();
       onNavigate(null, "replace");
       setTab("installed");
     } catch (actionError) {
       setAnnouncement(errorMessage(actionError, t("actionFailed")));
-      if (isStale(actionError)) await loadAll();
+      if (isStale(actionError)) {
+        await loadAll();
+        setDetailReload((value) => value + 1);
+      }
     } finally {
       setActionId("");
     }
@@ -234,7 +246,7 @@ export default function SkillStore({
             />
           ) : (
             <SplitShell
-              selected={Boolean(selected)}
+              selected={Boolean(selectedId)}
               list={
                 <>
                   <PanelHeader
@@ -284,13 +296,11 @@ export default function SkillStore({
                             }`}
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <span className="font-medium">
-                                {item.package.name}
-                              </span>
-                              <StatusPill value={item.status} />
+                              <span className="font-medium">{item.name}</span>
+                              <StatusPill value={t("curated")} />
                             </div>
                             <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                              {item.package.description}
+                              {item.repository}/{item.path}
                             </p>
                           </button>
                         ))}
@@ -304,55 +314,52 @@ export default function SkillStore({
               detail={
                 selected ? (
                   <DetailFrame
-                    title={selected.package.name}
+                    title={selected.name}
                     onBack={() => closeDetail(onNavigate, restoreFocus)}
                   >
                     <p className="text-sm text-muted-foreground">
-                      {selected.package.description}
+                      {selected.description}
                     </p>
                     <DetailGrid
                       rows={[
-                        [t("version"), selected.package.version],
-                        [t("source"), selected.sourceType],
+                        [t("version"), selected.version],
+                        [t("source"), selected.catalogSource],
+                        [t("sourcePath"), selected.path],
                         [
                           t("runtime"),
-                          selected.package.hasRuntime
+                          selected.hasRuntime
                             ? t("localDirectPackage")
                             : t("textOnlyPackage"),
                         ],
-                        [t("validation"), selected.validationSummary],
+                        [
+                          t("compatibility"),
+                          selected.compatibility || t("none"),
+                        ],
+                        [t("license"), selected.license || t("none")],
                       ]}
                     />
-                    <Fingerprint
-                      label={t("packageFingerprint")}
-                      value={selected.package.packageFingerprint}
-                      full
-                    />
-                    <Fingerprint
-                      label={t("runtimeFingerprint")}
-                      value={
-                        selected.package.runtimeBundleFingerprint ?? t("none")
-                      }
-                      full
-                    />
-                    <Fingerprint
-                      label={t("sbomFingerprint")}
-                      value={selected.package.sbomFingerprint}
-                      full
-                    />
+                    <a
+                      href={selected.sourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex text-sm font-medium text-cyan-700 underline-offset-4 hover:underline dark:text-cyan-300"
+                    >
+                      {t("viewSource")}
+                    </a>
                     <div>
                       <h3 className="text-sm font-semibold">
                         {t("declaredTools")}
                       </h3>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        {selected.package.allowedTools.join(", ") || t("none")}
+                        {selected.allowedTools.join(", ") || t("none")}
                       </p>
                     </div>
                     <button
                       type="button"
                       disabled={
-                        Boolean(installedByAdmission.get(selected.id)) ||
-                        actionId === selected.id
+                        installedFingerprints.has(
+                          selected.packageFingerprint,
+                        ) || actionId === selected.id
                       }
                       onClick={() => void install(selected)}
                       className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-cyan-500 dark:text-slate-950"
@@ -362,11 +369,20 @@ export default function SkillStore({
                       ) : (
                         <Download size={16} />
                       )}
-                      {installedByAdmission.has(selected.id)
+                      {installedFingerprints.has(selected.packageFingerprint)
                         ? t("installed")
                         : t("installPackage")}
                     </button>
                   </DetailFrame>
+                ) : detailLoading ? (
+                  <Loading />
+                ) : detailError ? (
+                  <div className="p-4">
+                    <InlineError
+                      message={detailError}
+                      retry={() => setDetailReload((value) => value + 1)}
+                    />
+                  </div>
                 ) : (
                   <EmptyDetail title={t("selectPackage")} />
                 )
@@ -463,7 +479,6 @@ function InstalledSkills({
                         {t("declaredTools")}: {entry.allowedTools.join(", ")}
                       </p>
                     ) : null}
-                    <Fingerprint value={entry.packageFingerprint} />
                   </div>
                   <button
                     type="button"
@@ -579,32 +594,6 @@ function DetailGrid({ rows }: { rows: Array<[string, string]> }) {
   );
 }
 
-function Fingerprint({
-  value,
-  label,
-  full = false,
-}: {
-  value: string;
-  label?: string;
-  full?: boolean;
-}) {
-  const shown =
-    full || value.length <= 24
-      ? value
-      : `${value.slice(0, 18)}…${value.slice(-6)}`;
-  return (
-    <div className="mt-2 min-w-0">
-      <span className="block text-[11px] text-muted-foreground">{label}</span>
-      <code
-        className="block break-all text-[11px] text-muted-foreground"
-        title={value}
-      >
-        {shown}
-      </code>
-    </div>
-  );
-}
-
 function StatusPill({ value }: { value: string }) {
   return (
     <span className="inline-flex rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
@@ -680,6 +669,8 @@ function errorMessage(error: unknown, fallback: string) {
 
 function isStale(error: unknown) {
   return (
-    error instanceof ApiClientError && error.code === "SKILL_REVISION_CONFLICT"
+    error instanceof ApiClientError &&
+    (error.code === "SKILL_REVISION_CONFLICT" ||
+      error.code === "SKILL_PACKAGE_CHANGED")
   );
 }

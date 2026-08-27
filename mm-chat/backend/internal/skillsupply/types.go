@@ -196,6 +196,42 @@ type StoreResult struct {
 	TotalPages int         `json:"totalPages"`
 }
 
+// CatalogSkillSummary is the bounded public projection of one Skill directory
+// in the fixed Codex-compatible curated source. Source coordinates are display
+// data only; installation re-resolves and validates immutable package bytes.
+type CatalogSkillSummary struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Repository    string `json:"repository"`
+	Ref           string `json:"ref"`
+	Path          string `json:"path"`
+	SourceURL     string `json:"sourceUrl"`
+	CatalogSource string `json:"catalogSource"`
+}
+
+type CatalogSkill struct {
+	CatalogSkillSummary
+	ResolvedCommit     string   `json:"resolvedCommit"`
+	PackageFingerprint string   `json:"packageFingerprint"`
+	Version            string   `json:"version"`
+	Description        string   `json:"description"`
+	License            string   `json:"license,omitempty"`
+	Compatibility      string   `json:"compatibility,omitempty"`
+	AllowedTools       []string `json:"allowedTools"`
+	HasRuntime         bool     `json:"hasRuntime"`
+}
+
+type CatalogResult struct {
+	Items      []CatalogSkillSummary `json:"items"`
+	TotalCount int                   `json:"totalCount"`
+	Source     string                `json:"source"`
+}
+
+type CatalogInstallInput struct {
+	ResolvedCommit     string `json:"resolvedCommit"`
+	PackageFingerprint string `json:"packageFingerprint"`
+}
+
 type ValidatedPackage struct {
 	SourceArtifactSHA256 string
 	CanonicalArchive     []byte

@@ -4,6 +4,8 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+
+	"neo-chat/mm-chat/backend/internal/skillsupply"
 )
 
 const maxSupportedResourceLinkTextBytes = 16 << 10
@@ -41,14 +43,17 @@ func SingleSupportedResourceLink(value string) (SupportedResourceLink, bool) {
 		if ok {
 			return SupportedResourceLink{
 				Kind: kind, Identifier: identifier, URL: raw,
-				DirectInstall: kind == KindSkill && isAIHeroSkillLink(raw),
+				DirectInstall: kind == KindSkill && isDirectSkillLink(raw),
 			}, true
 		}
 	}
 	return SupportedResourceLink{}, false
 }
 
-func isAIHeroSkillLink(raw string) bool {
+func isDirectSkillLink(raw string) bool {
+	if _, err := skillsupply.ParseGitHubSkillURL(raw); err == nil {
+		return true
+	}
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
 		return false
@@ -104,6 +109,13 @@ func supportedResourceLinkIdentifier(kind string, raw string) (string, bool) {
 			return "", false
 		}
 		return matches[1], true
+	}
+	if kind == KindSkill && host == "github.com" {
+		coordinate, err := skillsupply.ParseGitHubSkillURL(raw)
+		if err != nil || !supportedResourceIdentifier.MatchString(coordinate.ExpectedName) {
+			return "", false
+		}
+		return coordinate.ExpectedName, true
 	}
 	if host != "lobehub.com" && host != "www.lobehub.com" && host != "market.lobehub.com" {
 		return "", false

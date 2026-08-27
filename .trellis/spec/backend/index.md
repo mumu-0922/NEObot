@@ -13,6 +13,7 @@
 | [Chat/Agent Mode](./chat-agent-mode.md)             | Persisted Conversation mode, effective capability downgrade, and physical Agent Tool admission |
 | [MCP Tools](./mcp-tools.md)                         | Server-authoritative MCP API, grants/selections, native Tool continuation, transports, results, retention, and Plugin retirement |
 | [Assistant Store](./assistant-store.md)             | Server-owned prompt presets, LobeHub admission/fingerprints, revisions, persistence, and rollback boundaries |
+| [Skill Supply Chain](./skill-supply-chain.md) | Fixed OpenAI curated catalog, exact GitHub Skill links, immutable validation/install, Library, and selection authority |
 | [Agent Runtime](./agent-runtime.md) | Current Chat Agent `local_direct`, interactive WSL Host workspace control plane, migration-102 durable Workspace convergence/execution snapshots, and fail-closed execution rollout boundaries |
 | [Resource Orchestration](./resource-orchestration.md) | Shared slash/Agent Skill and MCP discovery/install, exact revision, approval, mutation audit, snapshot refresh, and rollback contracts |
 | [Direct chat attachments](./chat-attachments.md)    | Attachment-only messages, native images, bounded document extraction, provider context, and explicit failures       |
@@ -101,7 +102,8 @@ For Assistant library, Store, admission, or LobeHub adapter changes:
 For Agent Skill packages, Chat Agent event/Goal persistence, local Tools,
 artifact publication, or legacy control-plane retirement:
 
-1. Read [`agent-runtime.md`](./agent-runtime.md),
+1. Read [`skill-supply-chain.md`](./skill-supply-chain.md),
+   [`agent-runtime.md`](./agent-runtime.md),
    [`chat-tool-loop.md`](./chat-tool-loop.md), and
    [`mcp-tools.md`](./mcp-tools.md).
 2. For current Chat Skills, trace owner installation -> canonical package

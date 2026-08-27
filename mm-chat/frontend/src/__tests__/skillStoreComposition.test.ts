@@ -15,9 +15,10 @@ describe("Skill Store product boundary", () => {
   });
 
   it("keeps install, list, uninstall, drill-in, and live feedback", () => {
-    expect(store).toContain("client.skillStore.listPackageStore()");
+    expect(store).toContain("client.skillStore.listCatalog()");
+    expect(store).toContain(".getCatalogSkill(selectedId");
     expect(store).toContain("client.skillStore.listPackageLibrary()");
-    expect(store).toContain("client.skillStore.installPackageSkill");
+    expect(store).toContain("client.skillStore.installCatalogSkill");
     expect(store).toContain("client.skillStore.uninstallPackageSkill");
     expect(store).toContain('selected ? "hidden md:block"');
     expect(store).toContain("restoreFocus.current?.focus");
@@ -25,7 +26,7 @@ describe("Skill Store product boundary", () => {
     expect(store).not.toContain("dangerouslySetInnerHTML");
   });
 
-  it("separates the installed library from the admitted store with tabs", () => {
+  it("separates the installed library from the curated catalog with tabs", () => {
     expect(store).toContain('type SkillStoreTab = "installed" | "store"');
     expect(store).toContain('role="tablist"');
     expect(store).toContain('active={tab === "installed"}');
@@ -39,6 +40,8 @@ describe("Skill Store product boundary", () => {
     expect(zh.SkillStore.storeTab).toBe("技能商店");
     expect(en.SkillStore.installedTab).toBe("Installed");
     expect(en.SkillStore.storeTab).toBe("Skill Store");
+    expect(zh.SkillStore.emptyStore).not.toContain("准入");
+    expect(en.SkillStore.emptyStore).not.toContain("admitted");
   });
 
   it("removes the old Agent control surface", () => {

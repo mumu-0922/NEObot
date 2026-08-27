@@ -27,9 +27,9 @@ containers, Canary runs, schedules, autonomous learning, and Agent Center.
 
 ## Skill and Tool authority
 
-- `/v1/skills/*` is the only Skill Store/library API.
-- Package discovery, admission, installation, revision checks, and uninstall
-  are server-authoritative.
+- `/v1/skills/*` is the only Skill catalog/library API.
+- Curated discovery, exact GitHub source pinning, legacy admission,
+  installation, revision checks, and uninstall are server-authoritative.
 - Skill and MCP selections are durable per Conversation. The composer changes
   these revision-bound policies; installed inventory is not implicitly enabled
   in every conversation.

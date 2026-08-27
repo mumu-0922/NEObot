@@ -30,6 +30,7 @@ var (
 	lobeIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$`)
 	gitCommitPattern      = regexp.MustCompile(`^[a-f0-9]{40}$`)
 	githubRepositoryPath  = regexp.MustCompile(`^/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\.git)?$`)
+	githubCoordinatePart  = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,100}$`)
 	aiHeroSkillPath       = regexp.MustCompile(`^/skills-([a-z0-9][a-z0-9-]{0,63})/?$`)
 	aiHeroInstallCommand  = regexp.MustCompile(`\bnpx\s+skills@latest\s+add\s+([A-Za-z0-9_.-]{1,100})/([A-Za-z0-9_.-]{1,100})\s+--skill(?:=|\s+)([a-z0-9][a-z0-9-]{0,63})\b`)
 )
@@ -75,10 +76,20 @@ type GitHubSource struct {
 	Timeout time.Duration
 }
 
-// DirectSkillLinkSource understands a deliberately small discovery surface.
-// It parses install coordinates as data, pins GitHub HEAD to a full commit,
-// and delegates package validation to the ordinary immutable ZIP pipeline.
-// It never executes commands found in the page or repository.
+type GitHubSkillCoordinate struct {
+	Owner         string
+	Repository    string
+	Ref           string
+	Subdirectory  string
+	ExpectedName  string
+	RepositoryURL string
+}
+
+// DirectSkillLinkSource understands a deliberately small install surface.
+// It accepts one exact GitHub Skill directory or the legacy AIHero discovery
+// page, pins a mutable ref to a full commit, and delegates package validation
+// to the ordinary immutable ZIP pipeline. It never executes repository or page
+// commands.
 type DirectSkillLinkSource struct {
 	Client  SourceHTTPClient
 	Timeout time.Duration
@@ -90,14 +101,34 @@ func (source DirectSkillLinkSource) Fetch(
 ) (ArchiveSource, error) {
 	ctx, cancel := context.WithTimeout(ctx, directSkillTotalTimeout)
 	defer cancel()
-	pageURL, linkName, err := parseAIHeroSkillURL(rawURL)
 	expectedName = strings.TrimSpace(expectedName)
-	if err != nil || expectedName == "" || expectedName != linkName {
+	if expectedName == "" {
 		return ArchiveSource{}, ErrInvalidSource
 	}
 	client := source.Client
 	if client == nil {
 		client = directSkillHTTPClient(source.Timeout)
+	}
+	if coordinate, err := ParseGitHubSkillURL(rawURL); err == nil {
+		if coordinate.ExpectedName != expectedName {
+			return ArchiveSource{}, ErrInvalidSource
+		}
+		commit := coordinate.Ref
+		if !gitCommitPattern.MatchString(commit) {
+			commit, err = resolveGitHubRef(
+				ctx, client, coordinate.Owner, coordinate.Repository, coordinate.Ref,
+			)
+			if err != nil {
+				return ArchiveSource{}, err
+			}
+		}
+		return (GitHubSource{Client: client, Timeout: source.Timeout}).Fetch(
+			ctx, coordinate.RepositoryURL, commit, coordinate.Subdirectory,
+		)
+	}
+	pageURL, linkName, err := parseAIHeroSkillURL(rawURL)
+	if err != nil || expectedName != linkName {
+		return ArchiveSource{}, ErrInvalidSource
 	}
 	page, err := fetchDirectSourceBody(
 		ctx, client, pageURL, "www.aihero.dev", "text/html", maxDirectSkillPageBytes,
@@ -167,8 +198,20 @@ func resolveGitHubHEAD(
 	client SourceHTTPClient,
 	owner, repository string,
 ) (string, error) {
+	return resolveGitHubRef(ctx, client, owner, repository, "HEAD")
+}
+
+func resolveGitHubRef(
+	ctx context.Context,
+	client SourceHTTPClient,
+	owner, repository, ref string,
+) (string, error) {
+	if !githubCoordinatePart.MatchString(owner) || !githubCoordinatePart.MatchString(repository) ||
+		!githubCoordinatePart.MatchString(ref) {
+		return "", ErrInvalidSource
+	}
 	endpoint := "https://api.github.com/repos/" + url.PathEscape(owner) + "/" +
-		url.PathEscape(repository) + "/commits/HEAD"
+		url.PathEscape(repository) + "/commits/" + url.PathEscape(ref)
 	body, err := fetchDirectSourceBody(
 		ctx, client, endpoint, "api.github.com", "application/json", maxGitHubCommitBytes,
 	)
@@ -182,6 +225,49 @@ func resolveGitHubHEAD(
 		return "", ErrSourceUnavailable
 	}
 	return response.SHA, nil
+}
+
+// ParseGitHubSkillURL accepts only one unambiguous GitHub Skill directory.
+// Repository roots and encoded path segments are deliberately rejected.
+func ParseGitHubSkillURL(raw string) (GitHubSkillCoordinate, error) {
+	raw = strings.TrimSpace(raw)
+	if len(raw) == 0 || len(raw) > 2048 {
+		return GitHubSkillCoordinate{}, ErrInvalidSource
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "https" || parsed.User != nil ||
+		parsed.RawQuery != "" || parsed.Fragment != "" ||
+		(parsed.Port() != "" && parsed.Port() != "443") ||
+		!strings.EqualFold(strings.TrimSuffix(parsed.Hostname(), "."), "github.com") ||
+		strings.Contains(parsed.EscapedPath(), "%") {
+		return GitHubSkillCoordinate{}, ErrInvalidSource
+	}
+	segments := strings.Split(strings.Trim(parsed.EscapedPath(), "/"), "/")
+	if len(segments) < 5 || !githubCoordinatePart.MatchString(segments[0]) ||
+		!githubCoordinatePart.MatchString(strings.TrimSuffix(segments[1], ".git")) ||
+		(segments[2] != "tree" && segments[2] != "blob") ||
+		!githubCoordinatePart.MatchString(segments[3]) {
+		return GitHubSkillCoordinate{}, ErrInvalidSource
+	}
+	owner := segments[0]
+	repository := strings.TrimSuffix(segments[1], ".git")
+	subdirectoryParts := append([]string(nil), segments[4:]...)
+	if segments[2] == "blob" {
+		if len(subdirectoryParts) < 2 || subdirectoryParts[len(subdirectoryParts)-1] != "SKILL.md" {
+			return GitHubSkillCoordinate{}, ErrInvalidSource
+		}
+		subdirectoryParts = subdirectoryParts[:len(subdirectoryParts)-1]
+	}
+	subdirectory := strings.Join(subdirectoryParts, "/")
+	expectedName := path.Base(subdirectory)
+	if !validArchivePath(subdirectory) || !skillNamePattern.MatchString(expectedName) {
+		return GitHubSkillCoordinate{}, ErrInvalidSource
+	}
+	return GitHubSkillCoordinate{
+		Owner: owner, Repository: repository, Ref: segments[3],
+		Subdirectory: subdirectory, ExpectedName: expectedName,
+		RepositoryURL: "https://github.com/" + owner + "/" + repository,
+	}, nil
 }
 
 func selectGitHubSkill(root ArchiveSource, expectedName string) (ArchiveSource, error) {

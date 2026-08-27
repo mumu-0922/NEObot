@@ -26,6 +26,7 @@ type Service struct {
 	lobehub             LobeHubSource
 	git                 GitHubSource
 	direct              DirectSkillLinkSource
+	catalog             *GitHubCatalogSource
 	newID               func() string
 	now                 func() time.Time
 	runtimeMu           sync.Mutex
@@ -53,11 +54,15 @@ func WithGitHubClient(client SourceHTTPClient) ServiceOption {
 	return func(service *Service) {
 		service.git.Client = client
 		service.direct.Client = client
+		service.catalog.Client = client
 	}
 }
 
 func NewService(options ...ServiceOption) *Service {
-	service := &Service{official: OfficialSource{}, newID: uuid.NewString, now: time.Now}
+	service := &Service{
+		official: OfficialSource{}, catalog: &GitHubCatalogSource{},
+		newID: uuid.NewString, now: time.Now,
+	}
 	for _, option := range options {
 		if option != nil {
 			option(service)
@@ -128,10 +133,11 @@ func (service *Service) IngestZIP(ctx context.Context, userID string, data []byt
 	return service.ingest(ctx, "", source)
 }
 
-// InstallDirectSkillLink resolves one allowlisted public Skill discovery page,
-// pins its GitHub source to an exact commit, validates the package without
-// executing source instructions, and installs it into only the requesting
-// owner's private library. It deliberately bypasses Store review/publication.
+// InstallDirectSkillLink resolves one allowlisted exact GitHub Skill path or
+// legacy AIHero discovery page, pins its GitHub source to an exact commit,
+// validates the package without executing source instructions, and installs it
+// into only the requesting owner's private library. It deliberately bypasses
+// Store review/publication.
 func (service *Service) InstallDirectSkillLink(
 	ctx context.Context,
 	userID, rawURL, expectedName string,
@@ -152,6 +158,78 @@ func (service *Service) InstallDirectSkillLink(
 	if err != nil {
 		return Installation{}, err
 	}
+	return service.installPrivateCandidate(ctx, userID, candidate)
+}
+
+func (service *Service) ListCatalog(ctx context.Context) (CatalogResult, error) {
+	if service == nil || service.catalog == nil {
+		return CatalogResult{}, ErrUnavailable
+	}
+	items, err := service.catalog.List(ctx)
+	if err != nil {
+		return CatalogResult{}, err
+	}
+	return CatalogResult{
+		Items: items, TotalCount: len(items), Source: defaultCatalogSource,
+	}, nil
+}
+
+func (service *Service) GetCatalogSkill(ctx context.Context, name string) (CatalogSkill, error) {
+	if service == nil || service.catalog == nil {
+		return CatalogSkill{}, ErrUnavailable
+	}
+	detail, _, err := service.catalog.Detail(ctx, name)
+	return detail, err
+}
+
+func (service *Service) InstallCatalogSkill(
+	ctx context.Context,
+	userID, name string,
+	input CatalogInstallInput,
+) (Installation, error) {
+	if service == nil || service.repository == nil || service.objects == nil || service.catalog == nil {
+		return Installation{}, ErrUnavailable
+	}
+	userID, name = strings.TrimSpace(userID), strings.TrimSpace(name)
+	input.ResolvedCommit = strings.TrimSpace(input.ResolvedCommit)
+	input.PackageFingerprint = strings.TrimSpace(input.PackageFingerprint)
+	if !validUserID(userID) || !skillNamePattern.MatchString(name) ||
+		!gitCommitPattern.MatchString(input.ResolvedCommit) ||
+		!digestPattern.MatchString(input.PackageFingerprint) {
+		return Installation{}, validationError("INVALID_SKILL_CATALOG_INSTALL", "catalog Skill install is invalid")
+	}
+	client := service.catalog.Client
+	if client == nil {
+		client = directSkillHTTPClient(service.catalog.Timeout)
+	}
+	source, err := (GitHubSource{Client: client, Timeout: service.catalog.Timeout}).Fetch(
+		ctx,
+		"https://github.com/"+defaultCatalogOwner+"/"+defaultCatalogRepository,
+		input.ResolvedCommit,
+		defaultCatalogPath+"/"+name,
+	)
+	if err != nil {
+		return Installation{}, err
+	}
+	validated, err := ValidateArchive(source)
+	if err != nil {
+		return Installation{}, err
+	}
+	if validated.Package.PackageFingerprint != input.PackageFingerprint {
+		return Installation{}, ErrPackageChanged
+	}
+	candidate, err := service.ingest(ctx, userID, source)
+	if err != nil {
+		return Installation{}, err
+	}
+	return service.installPrivateCandidate(ctx, userID, candidate)
+}
+
+func (service *Service) installPrivateCandidate(
+	ctx context.Context,
+	userID string,
+	candidate Candidate,
+) (Installation, error) {
 	installed, err := service.repository.Install(
 		ctx, userID, candidate.ID, candidate.Package.PackageFingerprint,
 	)

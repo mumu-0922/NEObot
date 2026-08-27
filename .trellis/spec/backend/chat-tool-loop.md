@@ -1320,8 +1320,9 @@ SSE socket own delivery only.
   remain fixed and contain no upstream body, Base URL, credential, or secret.
 - Explicit human install intent plus exactly one supported Skill/MCP discovery
   link is handled by the Resource Orchestrator before the Provider round.
-  AIHero Skill links use the owner-private pinned-source adapter with zero Store
-  search/review; other links retain exact Store/Marketplace resolution.
+  Exact GitHub Skill tree/blob links and legacy AIHero Skill links use the
+  owner-private pinned-source adapter with zero Store search/review; other
+  links retain exact Store/Marketplace resolution.
   Unsupported or multiple links remain ordinary Agent input.
 - Capability cache identity includes provider config hash and exact model ID.
   The hash binds user/provider identity, type, normalized Base URL, model list,
@@ -1524,7 +1525,7 @@ SSE socket own delivery only.
 | Native first startup typed transient failure | exact same request retries once; no Tool has executed |
 | Second typed transient startup failure | preserve fixed Provider category; no Local Skill/MCP wrapper |
 | Startup retry wait is cancelled | stop immediately; no second request or Tool execution |
-| Explicit AIHero Skill install link | Backend owner-private pinned-source install before Provider; zero Store search/review |
+| Explicit GitHub or AIHero Skill install link | Backend owner-private pinned-source install before Provider; zero Store search/review |
 | Explicit non-direct Resource link | Backend bounded search before Provider; exact-authority install or completed no-install answer |
 | Catalog ACL/consent/read failure | omit catalog; ordinary Auto/Planner behavior continues |
 | Planner invalid/timeout/provider failure | strong Knowledge, forced Web, else Direct; never Both |
@@ -1763,10 +1764,10 @@ SSE socket own delivery only.
     first-event typed transient failures, zero retry for deterministic
     failures, cancellation during the wait, and preservation of the second
     fixed Provider category even when Local Skill/MCP/Resource runtimes exist.
-    Explicit Resource-link tests must prove zero Provider calls. AIHero must
-    perform one owner-private mutation with zero Store calls; other links retain
-    bounded search, completed zero-candidate behavior, and one mutation only
-    for a unique exact admitted candidate.
+    Explicit Resource-link tests must prove zero Provider calls. GitHub and
+    AIHero must perform one owner-private mutation with zero Store calls; other
+    links retain bounded search, completed zero-candidate behavior, and one
+    mutation only for a unique exact admitted candidate.
 
 ## 7. Wrong vs Correct
 

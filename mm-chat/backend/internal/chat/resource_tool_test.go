@@ -631,39 +631,47 @@ func TestDirectSkillInstallFailureUsesSafeOperationalCategories(t *testing.T) {
 }
 
 func TestExplicitSupportedSkillLinkDirectInstallsWithoutProviderOrStore(t *testing.T) {
-	probe := &resourceToolServiceProbe{}
-	runtime := newResourceToolRuntime(
-		probe, "user-id", "conversation-id",
-		"https://www.aihero.dev/skills-grill-me 帮我安装这个 skill",
-	)
-	provider := &scriptedToolRoundProvider{}
-	events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
-		Provider: provider,
-		Request: ProviderRequest{
-			Prompt: "install", ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
-		},
-		Resource: runtime,
-	})
-	var content strings.Builder
-	var completedInstall bool
-	for event := range events {
-		if event.Error != nil {
-			t.Fatal(event.Error)
-		}
-		if event.Type == ProviderEventDelta {
-			content.WriteString(event.Delta)
-		}
-		if event.ToolExecution != nil && event.ToolExecution.Name == resourceInstallSkillLinkToolName &&
-			event.ToolExecution.Status == ProcessStepStatusCompleted {
-			completedInstall = true
-		}
-	}
-	if len(provider.inputs) != 0 || probe.searchCalls != 0 || probe.installCalls != 0 ||
-		probe.directCalls != 1 || probe.directInput.Identifier != "grill-me" ||
-		probe.directInput.EntryPoint != "explicit_skill_link" || !completedInstall ||
-		!strings.Contains(content.String(), "已直接安装 Skill：grill-me") {
-		t.Fatalf("content=%q provider=%d probe=%#v completedInstall=%t",
-			content.String(), len(provider.inputs), probe, completedInstall)
+	for _, test := range []struct {
+		name, prompt, identifier string
+	}{
+		{"AIHero", "https://www.aihero.dev/skills-grill-me 帮我安装这个 skill", "grill-me"},
+		{"GitHub", "请安装 https://github.com/openai/skills/tree/main/skills/.curated/pdf", "pdf"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			probe := &resourceToolServiceProbe{}
+			runtime := newResourceToolRuntime(
+				probe, "user-id", "conversation-id", test.prompt,
+			)
+			provider := &scriptedToolRoundProvider{}
+			events := startRetrievalToolLoop(context.Background(), externalWebToolLoopInput{
+				Provider: provider,
+				Request: ProviderRequest{
+					Prompt: "install", ModelRef: ModelRef{ProviderID: "fixture", ModelID: "fixture-model"},
+				},
+				Resource: runtime,
+			})
+			var content strings.Builder
+			var completedInstall bool
+			for event := range events {
+				if event.Error != nil {
+					t.Fatal(event.Error)
+				}
+				if event.Type == ProviderEventDelta {
+					content.WriteString(event.Delta)
+				}
+				if event.ToolExecution != nil && event.ToolExecution.Name == resourceInstallSkillLinkToolName &&
+					event.ToolExecution.Status == ProcessStepStatusCompleted {
+					completedInstall = true
+				}
+			}
+			if len(provider.inputs) != 0 || probe.searchCalls != 0 || probe.installCalls != 0 ||
+				probe.directCalls != 1 || probe.directInput.Identifier != test.identifier ||
+				probe.directInput.EntryPoint != "explicit_skill_link" || !completedInstall ||
+				!strings.Contains(content.String(), "已直接安装 Skill："+test.identifier) {
+				t.Fatalf("content=%q provider=%d probe=%#v completedInstall=%t",
+					content.String(), len(provider.inputs), probe, completedInstall)
+			}
+		})
 	}
 }
 

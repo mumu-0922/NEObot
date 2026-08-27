@@ -13,8 +13,10 @@ to the existing `skillsupply.Service` or `mcpclient.Service` authority.
 - Resolve allowlisted LobeHub Skill/MCP links to bounded Marketplace searches,
   then install an exact candidate without accepting arbitrary URLs,
   package commands, or credentials from the model.
+- Route an exact GitHub Skill tree or `SKILL.md` blob link to the `skillsupply`
+  owner-private direct adapter without Store review or publication.
 - Route an explicit AIHero Skill link to the `skillsupply` owner-private direct
-  adapter without Store review or publication.
+  adapter as a backward-compatible path.
 - Parse exactly one allowlisted link from an explicit human install request so
   Chat can perform the same bounded search without depending on model uptime.
 - Coordinate MCP Secret/OAuth/Runner configuration through an existing
@@ -28,8 +30,8 @@ to the existing `skillsupply.Service` or `mcpclient.Service` authority.
 
 ## Dependencies
 
-- `skillsupply.Service`: admitted package detail, owner-private direct install,
-  library, and removal.
+- `skillsupply.Service`: curated catalog, admitted compatibility detail,
+  owner-private direct install, library, and removal.
 - `mcpclient.Service`: Marketplace, private Server, credential readiness,
   validation, and conversation selection authority.
 - PostgreSQL `audit_logs`: sanitized mutation outcomes in normal server mode.
@@ -47,9 +49,10 @@ POST /v1/resources/mutate
 Callers must use the exact candidate revision returned by search. All responses
 are `Cache-Control: no-store`; response schemas contain no Secret, endpoint,
 package body, host path, or raw Tool arguments. A supported LobeHub URL is
-parsed only into a Marketplace identifier. An explicit AIHero Skill URL may be
-fetched only by the fixed direct-source adapter, which parses but never executes
-its command and pins the GitHub package to an exact commit.
+parsed only into a Marketplace identifier. An exact GitHub Skill directory or
+`SKILL.md` URL enters only the fixed direct-source adapter. The legacy AIHero
+URL adapter parses but never executes its command. Both pin the GitHub package
+to an exact commit.
 Multiple, query-bearing, fragment-bearing, or unsupported links do not enter
 the deterministic install path.
 

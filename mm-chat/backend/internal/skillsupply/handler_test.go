@@ -90,6 +90,62 @@ func TestHandlerRejectsWrongMethodsMediaAndQueries(t *testing.T) {
 	}
 }
 
+func TestHandlerCatalogDetailInstallAndLibraryLifecycle(t *testing.T) {
+	commit := strings.Repeat("e", 40)
+	archive := mustRawTestArchive(t, []testZipEntry{{
+		name: "skills-" + commit + "/skills/.curated/demo-skill/SKILL.md",
+		body: validSkillMarkdown("demo-skill"),
+	}})
+	validated, err := ValidateArchive(ArchiveSource{
+		Type: SourceGit, Ref: "fixture", ExpectedName: "demo-skill",
+		StripPrefix: "skills-" + commit + "/skills/.curated/demo-skill/",
+		Data:        archive,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := sourceRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.String() {
+		case "https://api.github.com/repos/openai/skills/contents/skills/.curated?ref=main":
+			return sourceResponse(request, "application/json",
+				`[{"name":"demo-skill","path":"skills/.curated/demo-skill","type":"dir"}]`), nil
+		case "https://api.github.com/repos/openai/skills/commits/main":
+			return sourceResponse(request, "application/json", `{"sha":"`+commit+`"}`), nil
+		case "https://codeload.github.com/openai/skills/zip/" + commit:
+			return &http.Response{StatusCode: http.StatusOK,
+				Body: io.NopCloser(bytes.NewReader(archive)), Request: request}, nil
+		default:
+			t.Fatalf("unexpected request %s", request.URL)
+			return nil, nil
+		}
+	})
+	repository := newMemoryRepository()
+	service := NewService(
+		WithRepository(repository), WithObjectStore(newMemoryObjectStore()),
+		WithGitHubClient(client),
+	)
+	service.newID = sequenceIDs("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+	handler := NewHandler(service)
+
+	list := skillRequest(handler, http.MethodGet, "/v1/skills/catalog", nil, "", testSkillUser)
+	assertSkillHTTP(t, list, http.StatusOK, `"catalogSource":"openai/skills curated"`)
+	detail := skillRequest(handler, http.MethodGet, "/v1/skills/catalog/items/demo-skill", nil, "", testSkillUser)
+	assertSkillHTTP(t, detail, http.StatusOK, `"resolvedCommit":"`+commit+`"`)
+
+	drift := skillRequest(handler, http.MethodPost, "/v1/skills/catalog/items/demo-skill/install",
+		strings.NewReader(`{"resolvedCommit":"`+commit+`","packageFingerprint":"sha256:`+
+			strings.Repeat("f", 64)+`"}`), "application/json", testSkillUser)
+	assertSkillHTTP(t, drift, http.StatusConflict, "SKILL_PACKAGE_CHANGED")
+	install := skillRequest(handler, http.MethodPost, "/v1/skills/catalog/items/demo-skill/install",
+		strings.NewReader(`{"resolvedCommit":"`+commit+`","packageFingerprint":"`+
+			validated.Package.PackageFingerprint+`"}`), "application/json", testSkillUser)
+	assertSkillHTTP(t, install, http.StatusCreated, `"name":"demo-skill"`)
+	library := skillRequest(handler, http.MethodGet, "/v1/skills/library", nil, "", testSkillUser)
+	assertSkillHTTP(t, library, http.StatusOK, `"name":"demo-skill"`)
+	store := skillRequest(handler, http.MethodGet, "/v1/skills/store?page=1&pageSize=20", nil, "", testSkillUser)
+	assertSkillHTTP(t, store, http.StatusOK, `"totalCount":0`)
+}
+
 func skillRequest(
 	handler http.Handler,
 	method, path string,

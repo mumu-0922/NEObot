@@ -65,15 +65,18 @@ skillsupply.Service.InstallDirectSkillLink(
   material; it never returns credentials, endpoints, package bodies, or paths.
 - An explicitly supported discovery HTTPS link may be reduced to one bounded
   identifier only when host, path shape, kind, port, query, fragment, and
-  identifier validation pass. LobeHub Skill/MCP links and AIHero
-  `/skills-<slug>` Skill links are admitted shapes. LobeHub remains a bounded
-  Store/Marketplace alias. Explicit AIHero Skill links enter only the fixed
-  owner-private direct adapter.
-- The direct adapter may fetch only the canonical AIHero page, parse one unique
-  restricted `npx skills@latest add owner/repository --skill=<slug>` coordinate
-  as data, resolve GitHub `HEAD` to one 40-character commit, and download the
-  fixed `codeload.github.com` ZIP. It never executes npm, Git, Shell, page code,
-  hooks, tests, scripts, or package entrypoints.
+  identifier validation pass. LobeHub Skill/MCP links, exact GitHub Skill tree
+  or `SKILL.md` blob paths, and AIHero `/skills-<slug>` links are admitted
+  shapes. LobeHub remains a bounded Store/Marketplace alias. Exact GitHub and
+  legacy AIHero Skill links enter only the fixed owner-private direct adapter.
+- The direct adapter accepts only one unambiguous GitHub Skill directory. It
+  rejects repository roots, query/fragment/userinfo/non-default ports, encoded
+  paths and traversal; resolves mutable refs to one 40-character commit; and
+  downloads the fixed `codeload.github.com` ZIP. The legacy AIHero adapter may
+  fetch only the canonical page and parse one unique restricted
+  `npx skills@latest add owner/repository --skill=<slug>` coordinate as data.
+  Neither path executes npm, Git, Shell, page code, hooks, tests, scripts, or
+  package entrypoints.
 - Direct packages reuse `ValidateArchive`, canonical ZIP, SBOM,
   content-addressed objects, and runtime revalidation. Their candidate remains
   `validated`, has no reviewer, is scoped by `owner_user_id`, is excluded from
@@ -89,9 +92,9 @@ skillsupply.Service.InstallDirectSkillLink(
   validation to an authenticated principal ID.
 - When the current human text has explicit install intent and contains exactly
   one supported discovery link, Chat enters the server-owned deterministic
-  route before any Provider request. An AIHero Skill goes straight to the
-  direct adapter with zero Store searches; other supported links use bounded
-  `resource_search`. The scanner is bounded to
+  route before any Provider request. Exact GitHub or legacy AIHero Skills go
+  straight to the direct adapter with zero Store searches; other supported
+  links use bounded `resource_search`. The scanner is bounded to
   16 KiB, stops a URL at non-ASCII/user-text boundaries, and rejects multiple
   URLs, query, fragment, userinfo, non-443 port, wrong host/path/kind, traversal,
   or an unsupported scheme. It does not create a second search authority.
@@ -151,6 +154,8 @@ skillsupply.Service.InstallDirectSkillLink(
 | unsupported kind or query over 200 bytes | `INVALID_RESOURCE_QUERY` |
 | pasted URL host/path/query/fragment/kind is not allowlisted | no URL fetch/install; bounded search or normal chat only |
 | explicit install text contains zero, multiple, oversized, or unsupported URLs | do not enter deterministic installation; ordinary Agent behavior |
+| supported explicit GitHub Skill tree/blob link | bypass Store; owner-private pinned-source install before Provider |
+| GitHub link is a repository root, encoded, ambiguous, or does not identify one Skill directory | direct install fails; zero package mutation/Provider calls |
 | supported explicit AIHero Skill link | bypass Store; owner-private pinned-source install before Provider |
 | AIHero page command is absent, ambiguous, or names another Skill | direct install fails; zero package mutation/Provider calls |
 | GitHub commit cannot be pinned, ZIP exceeds bounds, or zero/multiple matching Skills validate | direct install fails closed |
@@ -186,14 +191,17 @@ skillsupply.Service.InstallDirectSkillLink(
 - Catalog determinism, selection awareness, bounded/paged search, missing
   sources, feature kill switch, exact revision, and idempotent exact Skill
   install.
-- Supported-link allowlist/mismatch/traversal tests for LobeHub and AIHero.
+- Supported-link allowlist/mismatch/traversal tests for LobeHub, GitHub, and AIHero.
+  GitHub fixtures must cover exact tree/blob paths, repository-root rejection,
+  branch-to-commit pinning, and zero Provider/Store calls.
   AIHero fixtures must prove bounded page parsing, unique restricted command,
   exact GitHub commit, one matching package, no command execution, and no Store
   publication.
 - Embedded-CJK/trailing-punctuation parsing, multiple-link denial, and
   Provider-zero-call tests for deterministic explicit handling. Cover zero,
   unique exact, and ambiguous exact Store candidates. Separately prove an
-  explicit AIHero link performs one direct mutation with zero Store searches.
+  explicit GitHub or AIHero link performs one direct mutation with zero Store
+  searches.
 - PostgreSQL migration/runtime tests must prove same-owner private installation,
   cross-owner denial, Store exclusion, idempotent retry, Library listing,
   conversation selection, runtime materialization, uninstall, guarded down,
@@ -221,6 +229,10 @@ Correct: search -> exact server candidate -> approval/policy -> existing domain
 Wrong: AIHero page -> execute displayed npx command -> trust mutable upstream
 Correct: AIHero /skills-<slug> -> parse one restricted coordinate as data ->
          exact GitHub commit -> existing validation/SBOM -> owner-private library
+
+Wrong: GitHub repository URL -> guess a Skill -> install mutable branch bytes
+Correct: exact GitHub Skill tree/blob path -> resolve ref -> exact commit ->
+         existing validation/SBOM -> owner-private library
 
 Wrong: explicit supported link -> Provider must call resource_search -> 502 blocks discovery
 Correct: explicit intent + one supported link -> Backend resource_search ->
