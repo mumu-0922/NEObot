@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 96
-- **Last Active**: 2026-08-27
+- **Total Sessions**: 97
+- **Last Active**: 2026-08-28
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1622 | Active |
+| `journal-2.md` | ~1655 | Active |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 97 | 2026-08-28 | Live elapsed time and resource management polish | `d128d41f` | `main` |
 | 96 | 2026-08-27 | Interleave Agent narration with Tool timeline | `8e519618` | `main` |
 | 95 | 2026-08-26 | Direct private Skill link installation | `29f0f8db` | `main` |
 | 94 | 2026-08-26 | 修复 Skill 链接安装的 Provider 错误归因 | `4d0ae0e3` | `main` |

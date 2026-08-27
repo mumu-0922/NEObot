@@ -1620,3 +1620,36 @@ Classified Tool-round Provider text as bounded durable narration, rendered Conte
 ### Next Steps
 
 - None - task complete
+
+
+## Session 97: Live elapsed time and resource management polish
+
+**Date**: 2026-08-28
+**Task**: Live elapsed time and resource management polish
+**Branch**: `main`
+
+### Summary
+
+Added active Assistant elapsed timing, made all composer popovers mutually exclusive, separated Skill Installed and Store tabs using the existing admitted catalog, updated tests/specs, and deployed the healthy frontend image.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d128d41f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
