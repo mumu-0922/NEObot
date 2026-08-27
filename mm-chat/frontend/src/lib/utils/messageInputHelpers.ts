@@ -32,3 +32,21 @@ export function shouldSubmitOnEnter({
 }): boolean {
   return key === "Enter" && !shiftKey && !isComposing;
 }
+
+export type ComposerSection =
+  | "attachment"
+  | "skill"
+  | "mcp"
+  | "tool-mode"
+  | "permission"
+  | "reasoning"
+  | "search"
+  | "model";
+
+export function resolveOpenComposerSection(
+  current: ComposerSection | null,
+  section: ComposerSection,
+  open: boolean,
+): ComposerSection | null {
+  return open ? section : current === section ? null : current;
+}

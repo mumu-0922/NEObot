@@ -29,3 +29,11 @@ export function describeMessageDuration(
     ? { kind: "hours", hours }
     : { kind: "hoursMinutes", hours, minutes };
 }
+
+export function getLiveMessageDuration(
+  startTime: number,
+  currentTime: number,
+): number | null {
+  if (!Number.isFinite(startTime) || !Number.isFinite(currentTime)) return null;
+  return Math.max(0, currentTime - startTime);
+}

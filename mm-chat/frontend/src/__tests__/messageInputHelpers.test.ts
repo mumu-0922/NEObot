@@ -2,11 +2,22 @@ import { describe, expect, it } from "vitest";
 import {
   formatRecordingTime,
   isNativeMediaFile,
+  resolveOpenComposerSection,
   shouldSubmitOnEnter,
   truncateMiddle,
 } from "../lib/utils/messageInputHelpers";
 
 describe("message input helpers", () => {
+  it("keeps exactly one composer popover open", () => {
+    expect(resolveOpenComposerSection(null, "skill", true)).toBe("skill");
+    expect(resolveOpenComposerSection("skill", "mcp", true)).toBe("mcp");
+    expect(resolveOpenComposerSection("mcp", "skill", false)).toBe("mcp");
+    expect(resolveOpenComposerSection("mcp", "mcp", false)).toBeNull();
+    expect(resolveOpenComposerSection("attachment", "model", true)).toBe(
+      "model",
+    );
+  });
+
   it("truncates long labels from the middle", () => {
     expect(truncateMiddle("abcdefghijklmnopqrstuvwxyz", 10)).toBe("abcde…wxyz");
     expect(truncateMiddle("short", 10)).toBe("short");

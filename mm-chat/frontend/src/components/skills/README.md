@@ -1,7 +1,11 @@
 # Skill Store UI
 
 `SkillStore.tsx` is the standalone user surface for discovering, installing,
-and uninstalling admitted Agent Skill packages.
+and uninstalling admitted Agent Skill packages. Its header separates the
+server-authoritative installed library from the admitted candidate catalog with
+`Installed | Skill Store` tabs. Installation refreshes both views and returns
+the user to `Installed`; the catalog source remains replaceable behind the
+existing API instead of being coupled to a browser-scraped marketplace.
 
 The component uses `client.skillStore`, whose server adapter calls only
 `/v1/skills/*`. It deliberately has no dependency on the retired Agent Center,

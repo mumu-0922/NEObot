@@ -110,6 +110,16 @@ describe("MessageInput composition", () => {
     expect(messageInput).toContain("type OpenComposerSection =");
     expect(messageInput).toContain("useState<OpenComposerSection>(null)");
     expect(messageInput).toContain(
+      'const showAttachMenu = openComposerSection === "attachment"',
+    );
+    expect(messageInput).toContain(
+      'const showModelSelect = openComposerSection === "model"',
+    );
+    expect(messageInput).toContain("openPicker={");
+    expect(messageInput).toContain(
+      "onOpenPickerChange={handleComposerSectionOpenChange}",
+    );
+    expect(messageInput).toContain(
       'open={openComposerSection === "tool-mode"}',
     );
     expect(messageInput).toContain(
@@ -122,9 +132,7 @@ describe("MessageInput composition", () => {
     expect(messageInput).toContain(
       'handleComposerSectionOpenChange("tool-mode", open)',
     );
-    expect(messageInput).toContain(
-      "open ? section : current === section ? null : current",
-    );
+    expect(messageInput).toContain("resolveOpenComposerSection");
     expect(messageInput).toContain("permissionMode?: AgentPermissionMode");
     expect(messageInput).toContain("availablePermissionModes.map");
     expect(messageInput).toContain('role="alertdialog"');

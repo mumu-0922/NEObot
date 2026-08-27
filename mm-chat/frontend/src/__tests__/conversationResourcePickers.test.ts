@@ -44,4 +44,13 @@ describe("Conversation resource pickers", () => {
     expect(picker).toContain("runActive ? (");
     expect(picker).toContain('t("resourceSelectionNextRun")');
   });
+
+  it("delegates both picker popovers to one composer-owned open state", () => {
+    expect(picker).toContain('open={openPicker === "skill"}');
+    expect(picker).toContain('open={openPicker === "mcp"}');
+    expect(picker).toContain('onOpenPickerChange("skill", open)');
+    expect(picker).toContain('onOpenPickerChange("mcp", open)');
+    expect(picker).not.toContain("const [skillOpen");
+    expect(picker).not.toContain("const [mcpOpen");
+  });
 });

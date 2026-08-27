@@ -86,7 +86,10 @@ import {
 } from "@/lib/utils/timedStatus";
 import { logDevError } from "@/lib/utils/devLogger";
 import { buildMobileMessageMetaTooltip } from "@/lib/utils/messageMetaTooltip";
-import { describeMessageDuration } from "@/lib/utils/messageDuration";
+import {
+  describeMessageDuration,
+  getLiveMessageDuration,
+} from "@/lib/utils/messageDuration";
 import { getMessageDisplayTokenCount } from "@/lib/utils/messageTokens";
 import {
   AGENT_VERIFICATION_REQUIRED_CODE,
@@ -480,6 +483,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const [displayedContent, setDisplayedContent] = useState(
     isTyping ? "" : message.content,
   );
+  const [liveElapsedMs, setLiveElapsedMs] = useState(0);
   const displayedContentRef = useRef(displayedContent);
 
   // TTS State
@@ -822,6 +826,22 @@ const MessageItem: React.FC<MessageItemProps> = ({
     };
   }, [isTyping, message.content]);
 
+  useEffect(() => {
+    if (!isTyping || message.role !== "model") {
+      setLiveElapsedMs(0);
+      return;
+    }
+
+    const updateElapsed = () => {
+      setLiveElapsedMs(
+        getLiveMessageDuration(message.timestamp, Date.now()) ?? 0,
+      );
+    };
+    updateElapsed();
+    const intervalId = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [isTyping, message.id, message.role, message.timestamp]);
+
   const handleCopy = async () => {
     const copied = await copyTextToClipboard(message.content);
     setCopyFeedback(copied ? "copied" : "error");
@@ -1099,8 +1119,10 @@ const MessageItem: React.FC<MessageItemProps> = ({
   };
 
   const durationDescriptor =
-    message.role === "model" && displayTiming
-      ? describeMessageDuration(displayTiming.duration)
+    message.role === "model"
+      ? describeMessageDuration(
+          isTyping ? liveElapsedMs : (displayTiming?.duration ?? Number.NaN),
+        )
       : null;
   const durationValue = (() => {
     if (!durationDescriptor) return null;
@@ -1566,6 +1588,19 @@ const MessageItem: React.FC<MessageItemProps> = ({
           {message.role === "model" && !isTyping && (
             <MemoryActivityChip assistantMessageId={message.id} />
           )}
+
+          {!isEditing &&
+            isTyping &&
+            message.role === "model" &&
+            durationString && (
+              <div
+                role="timer"
+                aria-label={durationString}
+                className="mt-1 h-6 text-xs text-gray-400 dark:text-muted-foreground/70 select-none"
+              >
+                {durationString}
+              </div>
+            )}
 
           {/* Footer / Toolbar */}
           {!isEditing && !isTyping && (

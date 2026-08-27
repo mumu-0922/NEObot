@@ -15,6 +15,7 @@ import {
   PackageCheck,
   RefreshCw,
   Search,
+  Store,
   Trash2,
   X,
 } from "lucide-react";
@@ -34,6 +35,8 @@ interface SkillStoreProps {
   onClose: () => void;
 }
 
+type SkillStoreTab = "installed" | "store";
+
 export default function SkillStore({
   selectedId,
   initialQuery = "",
@@ -42,10 +45,15 @@ export default function SkillStore({
 }: SkillStoreProps) {
   const t = useTranslations("SkillStore");
   const client = useMemo(() => createNeoChatApiClient(), []);
+  const [tab, setTab] = useState<SkillStoreTab>(() =>
+    initialQuery || selectedId ? "store" : "installed",
+  );
   const [items, setItems] = useState<AgentPackageCandidateDTO[]>([]);
   const [installed, setInstalled] = useState<AgentPackageInstallationDTO[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [storeLoading, setStoreLoading] = useState(true);
+  const [installedLoading, setInstalledLoading] = useState(true);
+  const [storeError, setStoreError] = useState("");
+  const [installedError, setInstalledError] = useState("");
   const [actionId, setActionId] = useState("");
   const [announcement, setAnnouncement] = useState("");
   const [query, setQuery] = useState(initialQuery);
@@ -53,28 +61,45 @@ export default function SkillStore({
     useState<AgentPackageCandidateDTO | null>(null);
   const restoreFocus = useRef<HTMLButtonElement | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const loadStore = useCallback(async () => {
+    setStoreLoading(true);
+    setStoreError("");
     try {
-      const [store, library] = await Promise.all([
-        client.skillStore.listPackageStore(),
-        client.skillStore.listPackageLibrary(),
-      ]);
+      const store = await client.skillStore.listPackageStore();
       setItems(store.items);
-      setInstalled(library);
     } catch (loadError) {
-      setError(errorMessage(loadError, t("loadFailed")));
+      setStoreError(errorMessage(loadError, t("loadStoreFailed")));
     } finally {
-      setLoading(false);
+      setStoreLoading(false);
     }
   }, [client.skillStore, t]);
 
+  const loadInstalled = useCallback(async () => {
+    setInstalledLoading(true);
+    setInstalledError("");
+    try {
+      setInstalled(await client.skillStore.listPackageLibrary());
+    } catch (loadError) {
+      setInstalledError(errorMessage(loadError, t("loadInstalledFailed")));
+    } finally {
+      setInstalledLoading(false);
+    }
+  }, [client.skillStore, t]);
+
+  const loadAll = useCallback(
+    async () => Promise.all([loadStore(), loadInstalled()]),
+    [loadInstalled, loadStore],
+  );
+
   useEffect(() => {
-    queueMicrotask(() => void load());
-  }, [load]);
+    queueMicrotask(() => void loadAll());
+  }, [loadAll]);
 
   useEffect(() => setQuery(initialQuery), [initialQuery]);
+
+  useEffect(() => {
+    if (selectedId) setTab("store");
+  }, [selectedId]);
 
   const listedSelected = items.find((item) => item.id === selectedId) ?? null;
   useEffect(() => {
@@ -88,7 +113,7 @@ export default function SkillStore({
       .then(setSelectedFallback)
       .catch((loadError) => {
         if (!controller.signal.aborted) {
-          setError(errorMessage(loadError, t("loadFailed")));
+          setStoreError(errorMessage(loadError, t("loadStoreFailed")));
         }
       });
     return () => controller.abort();
@@ -118,10 +143,12 @@ export default function SkillStore({
         packageFingerprint: item.package.packageFingerprint,
       });
       setAnnouncement(t("installedAnnouncement", { name: item.package.name }));
-      await load();
+      await loadAll();
+      onNavigate(null, "replace");
+      setTab("installed");
     } catch (actionError) {
       setAnnouncement(errorMessage(actionError, t("actionFailed")));
-      if (isStale(actionError)) await load();
+      if (isStale(actionError)) await loadAll();
     } finally {
       setActionId("");
     }
@@ -135,10 +162,10 @@ export default function SkillStore({
         revision: entry.revision,
       });
       setAnnouncement(t("uninstalledAnnouncement", { name: entry.name }));
-      await load();
+      await loadAll();
     } catch (actionError) {
       setAnnouncement(errorMessage(actionError, t("actionFailed")));
-      if (isStale(actionError)) await load();
+      if (isStale(actionError)) await loadAll();
     } finally {
       setActionId("");
     }
@@ -149,210 +176,205 @@ export default function SkillStore({
       <a className="skip-link" href="#skill-store-content">
         {t("skipToContent")}
       </a>
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200/80 bg-white/95 px-4 py-4 dark:border-border dark:bg-card/95 md:px-6">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white dark:bg-cyan-500 dark:text-slate-950">
-            <PackageCheck size={20} aria-hidden="true" />
+      <header className="shrink-0 border-b border-slate-200/80 bg-white/95 px-4 pt-4 dark:border-border dark:bg-card/95 md:px-6">
+        <div className="flex items-center justify-between gap-3 pb-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white dark:bg-cyan-500 dark:text-slate-950">
+              <PackageCheck size={20} aria-hidden="true" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-bold">{t("title")}</h1>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                {t("subtitle")}
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <h1 className="truncate text-lg font-bold">{t("title")}</h1>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              {t("subtitle")}
-            </p>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t("close")}
+            className="rounded-full p-2 text-muted-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70"
+          >
+            <X size={20} aria-hidden="true" />
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label={t("close")}
-          className="rounded-full p-2 text-muted-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70"
-        >
-          <X size={20} aria-hidden="true" />
-        </button>
+        <div role="tablist" aria-label={t("pageTabs")} className="flex gap-1">
+          <PageTab
+            active={tab === "installed"}
+            label={t("installedTab")}
+            icon={<PackageCheck size={14} />}
+            onClick={() => {
+              onNavigate(null);
+              setTab("installed");
+            }}
+          />
+          <PageTab
+            active={tab === "store"}
+            label={t("storeTab")}
+            icon={<Store size={14} />}
+            onClick={() => setTab("store")}
+          />
+        </div>
       </header>
 
-      <div id="skill-store-content" tabIndex={-1} className="min-h-0 flex-1">
-        <SplitShell
-          selected={Boolean(selected)}
-          list={
-            <>
-              <PanelHeader
-                title={t("packageSkills")}
-                onReload={() => void load()}
-              />
-              <div className="space-y-5 p-4">
-                <label className="relative block">
-                  <span className="sr-only">{t("searchLabel")}</span>
-                  <Search
-                    size={16}
-                    aria-hidden="true"
-                    className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
+      <main
+        id="skill-store-content"
+        tabIndex={-1}
+        className="mx-auto min-h-0 w-full max-w-7xl flex-1 p-4 md:p-6"
+      >
+        <section className="relative h-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-border dark:bg-card">
+          {tab === "installed" ? (
+            <InstalledSkills
+              items={installed}
+              loading={installedLoading}
+              error={installedError}
+              actionId={actionId}
+              onReload={() => void loadInstalled()}
+              onUninstall={uninstall}
+            />
+          ) : (
+            <SplitShell
+              selected={Boolean(selected)}
+              list={
+                <>
+                  <PanelHeader
+                    title={t("packageStore")}
+                    onReload={() => void loadStore()}
                   />
-                  <input
-                    type="search"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder={t("searchPlaceholder")}
-                    className="w-full rounded-xl border bg-card py-2 pr-3 pl-9 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
-                  />
-                </label>
-                <section>
-                  <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    {t("installedPackages", { count: installed.length })}
-                  </h2>
-                  {installed.length ? (
-                    <div className="space-y-2">
-                      {installed.map((entry) => (
-                        <div
-                          key={entry.id}
-                          className="rounded-xl border bg-card p-3"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <p className="font-medium">{entry.name}</p>
-                              <p className="text-xs text-muted-foreground">
-                                v{entry.version}
-                              </p>
+                  <div className="space-y-5 p-4">
+                    <label className="relative block">
+                      <span className="sr-only">{t("searchLabel")}</span>
+                      <Search
+                        size={16}
+                        aria-hidden="true"
+                        className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
+                      />
+                      <input
+                        type="search"
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        placeholder={t("searchPlaceholder")}
+                        className="w-full rounded-xl border bg-card py-2 pr-3 pl-9 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
+                      />
+                    </label>
+                    {storeLoading ? (
+                      <Loading />
+                    ) : storeError ? (
+                      <InlineError
+                        message={storeError}
+                        retry={() => void loadStore()}
+                      />
+                    ) : filteredItems.length ? (
+                      <div className="space-y-2">
+                        {filteredItems.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={(event) => {
+                              restoreFocus.current = event.currentTarget;
+                              onNavigate(item.id);
+                            }}
+                            aria-current={
+                              selectedId === item.id ? "true" : undefined
+                            }
+                            className={`w-full rounded-xl border p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+                              selectedId === item.id
+                                ? "border-cyan-500 bg-cyan-50 dark:bg-cyan-950/20"
+                                : "bg-card hover:border-slate-300 dark:hover:border-slate-700"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium">
+                                {item.package.name}
+                              </span>
+                              <StatusPill value={item.status} />
                             </div>
-                            <button
-                              type="button"
-                              disabled={actionId === entry.id}
-                              onClick={() => void uninstall(entry)}
-                              aria-label={t("uninstallAria", {
-                                name: entry.name,
-                              })}
-                              className="rounded-lg p-2 text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950/30"
-                            >
-                              <Trash2 size={15} aria-hidden="true" />
-                            </button>
-                          </div>
-                          <Fingerprint value={entry.packageFingerprint} />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
+                            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                              {item.package.description}
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <EmptyState title={t("emptyStore")} />
+                    )}
+                  </div>
+                </>
+              }
+              detail={
+                selected ? (
+                  <DetailFrame
+                    title={selected.package.name}
+                    onBack={() => closeDetail(onNavigate, restoreFocus)}
+                  >
                     <p className="text-sm text-muted-foreground">
-                      {t("noInstalledPackages")}
+                      {selected.package.description}
                     </p>
-                  )}
-                </section>
-
-                <section>
-                  <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    {t("packageStore")}
-                  </h2>
-                  {loading ? (
-                    <Loading />
-                  ) : error ? (
-                    <InlineError message={error} retry={() => void load()} />
-                  ) : filteredItems.length ? (
-                    <div className="space-y-2">
-                      {filteredItems.map((item) => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={(event) => {
-                            restoreFocus.current = event.currentTarget;
-                            onNavigate(item.id);
-                          }}
-                          aria-current={
-                            selectedId === item.id ? "true" : undefined
-                          }
-                          className={`w-full rounded-xl border p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 ${
-                            selectedId === item.id
-                              ? "border-cyan-500 bg-cyan-50 dark:bg-cyan-950/20"
-                              : "bg-card hover:border-slate-300 dark:hover:border-slate-700"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-medium">
-                              {item.package.name}
-                            </span>
-                            <StatusPill value={item.status} />
-                          </div>
-                          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                            {item.package.description}
-                          </p>
-                        </button>
-                      ))}
+                    <DetailGrid
+                      rows={[
+                        [t("version"), selected.package.version],
+                        [t("source"), selected.sourceType],
+                        [
+                          t("runtime"),
+                          selected.package.hasRuntime
+                            ? t("localDirectPackage")
+                            : t("textOnlyPackage"),
+                        ],
+                        [t("validation"), selected.validationSummary],
+                      ]}
+                    />
+                    <Fingerprint
+                      label={t("packageFingerprint")}
+                      value={selected.package.packageFingerprint}
+                      full
+                    />
+                    <Fingerprint
+                      label={t("runtimeFingerprint")}
+                      value={
+                        selected.package.runtimeBundleFingerprint ?? t("none")
+                      }
+                      full
+                    />
+                    <Fingerprint
+                      label={t("sbomFingerprint")}
+                      value={selected.package.sbomFingerprint}
+                      full
+                    />
+                    <div>
+                      <h3 className="text-sm font-semibold">
+                        {t("declaredTools")}
+                      </h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {selected.package.allowedTools.join(", ") || t("none")}
+                      </p>
                     </div>
-                  ) : (
-                    <EmptyState title={t("emptyStore")} />
-                  )}
-                </section>
-              </div>
-            </>
-          }
-          detail={
-            selected ? (
-              <DetailFrame
-                title={selected.package.name}
-                onBack={() => closeDetail(onNavigate, restoreFocus)}
-              >
-                <p className="text-sm text-muted-foreground">
-                  {selected.package.description}
-                </p>
-                <DetailGrid
-                  rows={[
-                    [t("version"), selected.package.version],
-                    [t("source"), selected.sourceType],
-                    [
-                      t("runtime"),
-                      selected.package.hasRuntime
-                        ? t("localDirectPackage")
-                        : t("textOnlyPackage"),
-                    ],
-                    [t("validation"), selected.validationSummary],
-                  ]}
-                />
-                <Fingerprint
-                  label={t("packageFingerprint")}
-                  value={selected.package.packageFingerprint}
-                  full
-                />
-                <Fingerprint
-                  label={t("runtimeFingerprint")}
-                  value={selected.package.runtimeBundleFingerprint ?? t("none")}
-                  full
-                />
-                <Fingerprint
-                  label={t("sbomFingerprint")}
-                  value={selected.package.sbomFingerprint}
-                  full
-                />
-                <div>
-                  <h3 className="text-sm font-semibold">
-                    {t("declaredTools")}
-                  </h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {selected.package.allowedTools.join(", ") || t("none")}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  disabled={
-                    Boolean(installedByAdmission.get(selected.id)) ||
-                    actionId === selected.id
-                  }
-                  onClick={() => void install(selected)}
-                  className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-cyan-500 dark:text-slate-950"
-                >
-                  {actionId === selected.id ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                    <Download size={16} />
-                  )}
-                  {installedByAdmission.has(selected.id)
-                    ? t("installed")
-                    : t("installPackage")}
-                </button>
-              </DetailFrame>
-            ) : (
-              <EmptyDetail title={t("selectPackage")} />
-            )
-          }
-        />
-      </div>
+                    <button
+                      type="button"
+                      disabled={
+                        Boolean(installedByAdmission.get(selected.id)) ||
+                        actionId === selected.id
+                      }
+                      onClick={() => void install(selected)}
+                      className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-cyan-500 dark:text-slate-950"
+                    >
+                      {actionId === selected.id ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Download size={16} />
+                      )}
+                      {installedByAdmission.has(selected.id)
+                        ? t("installed")
+                        : t("installPackage")}
+                    </button>
+                  </DetailFrame>
+                ) : (
+                  <EmptyDetail title={t("selectPackage")} />
+                )
+              }
+            />
+          )}
+        </section>
+      </main>
       <div
         className="sr-only"
         role="status"
@@ -360,6 +382,109 @@ export default function SkillStore({
         aria-atomic="true"
       >
         {announcement}
+      </div>
+    </div>
+  );
+}
+
+function PageTab({
+  active,
+  label,
+  icon,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  icon: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+        active
+          ? "border-cyan-500 text-cyan-700 dark:text-cyan-300"
+          : "border-transparent text-gray-500 hover:text-gray-800 dark:text-muted-foreground dark:hover:text-foreground"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+function InstalledSkills({
+  items,
+  loading,
+  error,
+  actionId,
+  onReload,
+  onUninstall,
+}: {
+  items: AgentPackageInstallationDTO[];
+  loading: boolean;
+  error: string;
+  actionId: string;
+  onReload: () => void;
+  onUninstall: (item: AgentPackageInstallationDTO) => Promise<void>;
+}) {
+  const t = useTranslations("SkillStore");
+  return (
+    <div className="h-full overflow-y-auto">
+      <PanelHeader
+        title={t("installedPackages", { count: items.length })}
+        onReload={onReload}
+      />
+      <div className="p-4 md:p-5">
+        {loading ? (
+          <Loading />
+        ) : error ? (
+          <InlineError message={error} retry={onReload} />
+        ) : items.length ? (
+          <div className="space-y-3">
+            {items.map((entry) => (
+              <article key={entry.id} className="rounded-xl border bg-card p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="font-semibold">{entry.name}</h2>
+                      <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
+                        v{entry.version}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {entry.description}
+                    </p>
+                    {entry.allowedTools.length ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {t("declaredTools")}: {entry.allowedTools.join(", ")}
+                      </p>
+                    ) : null}
+                    <Fingerprint value={entry.packageFingerprint} />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={actionId === entry.id}
+                    onClick={() => void onUninstall(entry)}
+                    aria-label={t("uninstallAria", { name: entry.name })}
+                    className="shrink-0 rounded-lg p-2 text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950/30"
+                  >
+                    {actionId === entry.id ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <Trash2 size={15} aria-hidden="true" />
+                    )}
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title={t("noInstalledPackages")} />
+        )}
       </div>
     </div>
   );

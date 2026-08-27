@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { describeMessageDuration } from "../lib/utils/messageDuration";
+import {
+  describeMessageDuration,
+  getLiveMessageDuration,
+} from "../lib/utils/messageDuration";
 
 describe("message duration descriptor", () => {
   it("formats sub-second, second, minute, and hour boundaries", () => {
@@ -33,5 +36,12 @@ describe("message duration descriptor", () => {
     expect(describeMessageDuration(Number.NaN)).toBeNull();
     expect(describeMessageDuration(Number.POSITIVE_INFINITY)).toBeNull();
     expect(describeMessageDuration(-1)).toBeNull();
+  });
+
+  it("derives a non-negative live duration from a stable run start", () => {
+    expect(getLiveMessageDuration(10_000, 12_500)).toBe(2_500);
+    expect(getLiveMessageDuration(12_500, 10_000)).toBe(0);
+    expect(getLiveMessageDuration(Number.NaN, 12_500)).toBeNull();
+    expect(getLiveMessageDuration(10_000, Number.POSITIVE_INFINITY)).toBeNull();
   });
 });

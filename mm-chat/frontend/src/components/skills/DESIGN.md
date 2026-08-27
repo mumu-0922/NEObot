@@ -23,6 +23,11 @@ control-plane credentials.
 
 ## Interaction
 
-Desktop renders list and detail together. Mobile drills into the selected
-package and restores focus to the originating list item on Back. Loading,
-failures, installs, and removals have accessible live feedback.
+The top-level surface follows the Tools information architecture with mutually
+exclusive `Installed` and `Skill Store` tabs. Installed packages render only in
+the library tab. Admitted candidates render in the Store list/detail view;
+desktop keeps that list and detail together, while mobile drills into the
+selected package and restores focus to the originating list item on Back.
+Installing refreshes both authorities, clears the selected candidate URL, and
+returns to Installed. Loading and failure state is isolated per tab, while
+installs and removals have accessible live feedback.

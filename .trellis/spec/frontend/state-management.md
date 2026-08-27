@@ -105,14 +105,14 @@ PATCH /v1/chat/conversations/{id} { modelRef: { providerId, modelId } }
 
 ### 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Local Session has a stored available model | restore it immediately on selection |
-| Server Conversation update succeeds | replace only that Conversation and active projection when still selected |
-| Server update fails | keep the previous model and show a bounded UI error |
-| Stored model is absent | use the new-Conversation browser default |
+| Condition                                          | Required result                                                                |
+| -------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Local Session has a stored available model         | restore it immediately on selection                                            |
+| Server Conversation update succeeds                | replace only that Conversation and active projection when still selected       |
+| Server update fails                                | keep the previous model and show a bounded UI error                            |
+| Stored model is absent                             | use the new-Conversation browser default                                       |
 | Stored model is unavailable in a non-empty catalog | show the normal safe fallback without overwriting stored Conversation metadata |
-| Rapid updates A then B | persist A then B; final durable and active value is B |
+| Rapid updates A then B                             | persist A then B; final durable and active value is B                          |
 
 ### 5. Good / Base / Bad Cases
 
@@ -224,18 +224,18 @@ ConversationDTO.activeGeneration?: {
 
 ### 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| same Conversation already pending/streaming | reject locally and Backend returns `409 CONVERSATION_RUN_ACTIVE` |
-| different Conversation has an active Run | admit and retain both Run entries |
-| user message accepted while Assistant still runs | resolve the composer submission and allow another Conversation to submit |
-| append fails before acceptance | resolve `false`; restore only the unchanged submitted draft |
-| Assistant fails after acceptance | keep the submitted turn and render the owning message error; no cross-Conversation action notice |
-| navigation during a Run | keep the Run and its AbortController alive |
-| explicit Stop | abort/cancel only the selected Conversation Run |
-| background terminal result | remove only that generation and mark its Conversation unread |
-| restored current Run becomes terminal | remove projection and reload durable messages |
-| refresh/online/visibility while Runs exist | reconcile boundedly; visible-page polling only |
+| Condition                                        | Required result                                                                                  |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| same Conversation already pending/streaming      | reject locally and Backend returns `409 CONVERSATION_RUN_ACTIVE`                                 |
+| different Conversation has an active Run         | admit and retain both Run entries                                                                |
+| user message accepted while Assistant still runs | resolve the composer submission and allow another Conversation to submit                         |
+| append fails before acceptance                   | resolve `false`; restore only the unchanged submitted draft                                      |
+| Assistant fails after acceptance                 | keep the submitted turn and render the owning message error; no cross-Conversation action notice |
+| navigation during a Run                          | keep the Run and its AbortController alive                                                       |
+| explicit Stop                                    | abort/cancel only the selected Conversation Run                                                  |
+| background terminal result                       | remove only that generation and mark its Conversation unread                                     |
+| restored current Run becomes terminal            | remove projection and reload durable messages                                                    |
+| refresh/online/visibility while Runs exist       | reconcile boundedly; visible-page polling only                                                   |
 
 ### 5. Good / Base / Bad Cases
 
@@ -376,18 +376,23 @@ normalizeServerMessageTiming(startTime, completedAt) -> timing | undefined
   Provider streaming. Success, failure, and explicit Stop set one terminal
   timestamp and persist it with the Message.
 - Components humanize the stored duration but never recalculate it from the
-  render clock. Desktop shows `totalDuration`; mobile uses the compact metadata
-  tooltip.
+  render clock after completion. While the exact Assistant is actively running,
+  its stable `message.timestamp` is the live start boundary and a component-
+  owned one-second timer may project `Date.now() - timestamp` at the bottom of
+  the message. Completion must stop that timer and atomically return to the
+  persisted `timing.duration`; desktop shows `totalDuration` and mobile uses the
+  compact metadata tooltip.
 
 ### 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| missing `completedAt` | omit final timing while the Run is active |
-| invalid or earlier terminal timestamp | omit timing; never render negative/NaN duration |
-| duration below one second | render the localized less-than-one-second label |
-| Local explicit Stop after a draft exists | finalize and persist timing before stopped-message sync |
-| Server cancel/failure returns terminal Message | preserve its timing through DTO -> Store -> Footer |
+| Condition                                      | Required result                                                                     |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------- |
+| missing `completedAt`                          | omit final timing while the Run is active                                           |
+| active Assistant has a valid start timestamp   | show a non-negative live elapsed value and clear its interval on completion/unmount |
+| invalid or earlier terminal timestamp          | omit timing; never render negative/NaN duration                                     |
+| duration below one second                      | render the localized less-than-one-second label                                     |
+| Local explicit Stop after a draft exists       | finalize and persist timing before stopped-message sync                             |
+| Server cancel/failure returns terminal Message | preserve its timing through DTO -> Store -> Footer                                  |
 
 ### 5. Good / Base / Bad Cases
 
@@ -401,6 +406,7 @@ normalizeServerMessageTiming(startTime, completedAt) -> timing | undefined
 ### 6. Tests Required
 
 - duration boundary/invalid-value unit tests;
+- active elapsed calculation, interval wiring, and completed-duration handoff;
 - DTO `createdAt`/`completedAt` projection tests;
 - DTO -> Store durable timing regression test;
 - ChatApp cancellation/start-boundary and MessageItem/i18n composition tests.
@@ -408,8 +414,8 @@ normalizeServerMessageTiming(startTime, completedAt) -> timing | undefined
 ### 7. Wrong vs Correct
 
 ```text
-Wrong: duration = renderNow - message.timestamp
-Correct: terminal lifecycle writes timing once -> persistence -> pure formatting
+Wrong: a completed duration = renderNow - message.timestamp
+Correct: active-only timer uses the stable start; terminal lifecycle writes timing once -> persistence -> pure formatting
 
 Wrong: map completedAt in the API adapter but drop timing in chatStore
 Correct: preserve timing across every DTO -> Store -> Message projection

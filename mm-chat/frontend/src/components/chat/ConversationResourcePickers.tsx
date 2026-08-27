@@ -39,6 +39,8 @@ interface ConversationResourcePickersProps {
   mcpEnabled: boolean;
   runActive: boolean;
   disabled?: boolean;
+  openPicker: "skill" | "mcp" | null;
+  onOpenPickerChange: (picker: "skill" | "mcp", open: boolean) => void;
   onOpenSkillStore: () => void;
   onOpenMcpTools: () => void;
 }
@@ -52,6 +54,8 @@ export default function ConversationResourcePickers({
   mcpEnabled,
   runActive,
   disabled = false,
+  openPicker,
+  onOpenPickerChange,
   onOpenSkillStore,
   onOpenMcpTools,
 }: ConversationResourcePickersProps) {
@@ -59,8 +63,6 @@ export default function ConversationResourcePickers({
   const client = useMemo(() => createNeoChatApiClient(), []);
   const currentConversationIdRef = useRef(conversationId);
   currentConversationIdRef.current = conversationId;
-  const [skillOpen, setSkillOpen] = useState(false);
-  const [mcpOpen, setMcpOpen] = useState(false);
   const [skillQuery, setSkillQuery] = useState("");
   const [mcpQuery, setMcpQuery] = useState("");
   const [skills, setSkills] = useState<AgentPackageInstallationDTO[]>([]);
@@ -317,9 +319,9 @@ export default function ConversationResourcePickers({
     <>
       {skillEnabled ? (
         <DropdownMenu
-          open={skillOpen}
+          open={openPicker === "skill"}
           onOpenChange={(open) => {
-            setSkillOpen(open);
+            onOpenPickerChange("skill", open);
             if (open) void loadSkills();
           }}
         >
@@ -355,7 +357,7 @@ export default function ConversationResourcePickers({
             runActive={runActive}
             empty={filteredSkills.length === 0}
             onManage={() => {
-              setSkillOpen(false);
+              onOpenPickerChange("skill", false);
               onOpenSkillStore();
             }}
           >
@@ -381,9 +383,9 @@ export default function ConversationResourcePickers({
 
       {mcpEnabled ? (
         <DropdownMenu
-          open={mcpOpen}
+          open={openPicker === "mcp"}
           onOpenChange={(open) => {
-            setMcpOpen(open);
+            onOpenPickerChange("mcp", open);
             if (open) void loadMcp();
           }}
         >
@@ -419,7 +421,7 @@ export default function ConversationResourcePickers({
             runActive={runActive}
             empty={filteredMcpServers.length === 0}
             onManage={() => {
-              setMcpOpen(false);
+              onOpenPickerChange("mcp", false);
               onOpenMcpTools();
             }}
           >

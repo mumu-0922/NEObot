@@ -94,8 +94,10 @@ import { polishTextContent } from "@/services/artifactService";
 import {
   formatRecordingTime as formatTime,
   isNativeMediaFile,
+  resolveOpenComposerSection,
   shouldSubmitOnEnter,
   truncateMiddle,
+  type ComposerSection,
 } from "@/lib/utils/messageInputHelpers";
 import {
   getReasoningEffortOptions,
@@ -106,8 +108,7 @@ import ConversationResourcePickers from "./ConversationResourcePickers";
 
 type MessageInputVariant = "default" | "hero";
 
-type OpenComposerSection =
-  "tool-mode" | "permission" | "reasoning" | "search" | null;
+type OpenComposerSection = ComposerSection | null;
 
 interface MessageInputProps {
   onSend: (
@@ -227,8 +228,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const [isRecording, setIsRecording] = useState(false);
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [recordingSeconds, setRecordingSeconds] = useState(0);
-    const [showModelSelect, setShowModelSelect] = useState(false);
-    const [showAttachMenu, setShowAttachMenu] = useState(false);
     const [openComposerSection, setOpenComposerSection] =
       useState<OpenComposerSection>(null);
     const [showRemoteModal, setShowRemoteModal] = useState(false);
@@ -248,11 +247,17 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const handleComposerSectionOpenChange = useCallback(
       (section: Exclude<OpenComposerSection, null>, open: boolean) => {
         setOpenComposerSection((current) =>
-          open ? section : current === section ? null : current,
+          resolveOpenComposerSection(current, section, open),
         );
       },
       [],
     );
+    const showAttachMenu = openComposerSection === "attachment";
+    const showModelSelect = openComposerSection === "model";
+
+    useEffect(() => {
+      setOpenComposerSection(null);
+    }, [resourceConversationId]);
 
     const t = useTranslations("MessageInput");
     const { chatConfig, setChatConfig } = useChatStore();
@@ -481,8 +486,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     useEffect(() => {
       const handleEscape = (e: KeyboardEvent) => {
         if (e.key !== "Escape") return;
-        setShowAttachMenu(false);
-        setShowModelSelect(false);
+        setOpenComposerSection(null);
       };
 
       document.addEventListener("keydown", handleEscape);
@@ -1162,7 +1166,11 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
         if (isMountedRef.current && fileSelectionRunRef.current === runId) {
           appendAttachments(newAttachments);
-          if (closeAttachMenu) setShowAttachMenu(false);
+          if (closeAttachMenu) {
+            setOpenComposerSection((current) =>
+              resolveOpenComposerSection(current, "attachment", false),
+            );
+          }
         }
       } finally {
         if (isMountedRef.current && fileSelectionRunRef.current === runId) {
@@ -1518,10 +1526,9 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
               <DropdownMenu
                 open={showAttachMenu}
-                onOpenChange={(open) => {
-                  setShowModelSelect(false);
-                  setShowAttachMenu(open);
-                }}
+                onOpenChange={(open) =>
+                  handleComposerSectionOpenChange("attachment", open)
+                }
               >
                 <Tooltip content={t("attach")} position="top">
                   <DropdownMenuTrigger asChild>
@@ -1608,7 +1615,10 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                       : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"
                   }`}
                   disabled={isInputBusy || isSavingKnowledgeSelection}
-                  onClick={() => setShowKBModal(true)}
+                  onClick={() => {
+                    setOpenComposerSection(null);
+                    setShowKBModal(true);
+                  }}
                 >
                   <Library size={16} aria-hidden="true" />
                 </button>
@@ -1623,6 +1633,13 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                   skillEnabled={skillResourcesEnabled}
                   mcpEnabled={mcpResourcesEnabled}
                   runActive={resourceRunActive}
+                  openPicker={
+                    openComposerSection === "skill" ||
+                    openComposerSection === "mcp"
+                      ? openComposerSection
+                      : null
+                  }
+                  onOpenPickerChange={handleComposerSectionOpenChange}
                   onOpenSkillStore={onOpenSkillStore}
                   onOpenMcpTools={onOpenMcpTools}
                 />
@@ -1973,10 +1990,12 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             <div className="relative">
               <DropdownMenu
                 open={showModelSelect && availableModels.length > 0}
-                onOpenChange={(open) => {
-                  setShowAttachMenu(false);
-                  setShowModelSelect(open && availableModels.length > 0);
-                }}
+                onOpenChange={(open) =>
+                  handleComposerSectionOpenChange(
+                    "model",
+                    open && availableModels.length > 0,
+                  )
+                }
               >
                 <Tooltip content={currentModelName} position="top">
                   <DropdownMenuTrigger asChild>
@@ -2015,7 +2034,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                     value={selectedModel}
                     onValueChange={(model) => {
                       onSelectModel?.(model);
-                      setShowModelSelect(false);
+                      setOpenComposerSection(null);
                     }}
                   >
                     {(

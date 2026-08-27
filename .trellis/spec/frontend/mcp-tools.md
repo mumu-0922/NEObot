@@ -12,15 +12,20 @@ protocol. Assistants and Skills remain unchanged.
 ### 2. Signatures
 
 ```ts
-interface NeoChatApiClient { mcp: McpApi }
+interface NeoChatApiClient {
+  mcp: McpApi;
+}
 
 type McpSelectionMode = "inherit" | "custom";
 type McpCallStatus =
-  | "queued" | "running" | "succeeded" | "failed"
-  | "canceled" | "outcome_unknown";
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "canceled"
+  | "outcome_unknown";
 type ToolCallMode = "mcp" | "local_direct";
-type ToolCallClassification =
-  | "read" | "write" | "unknown" | "execute";
+type ToolCallClassification = "read" | "write" | "unknown" | "execute";
 
 const PROVIDER_STREAM_INTERRUPTED_CODE = "PROVIDER_STREAM_INTERRUPTED";
 ```
@@ -45,6 +50,10 @@ non-canary/control rollback path.
   revision-bound selection writes. Full status, credentials, installation,
   diagnostics, and lifecycle controls remain in Sidebar Tools; Backend prepares
   selected Connectors only in Agent mode.
+- Composer popovers share one transient open-section state. Opening MCP, Skill,
+  attachment, Chat/Agent mode, permission, reasoning, search, or model selection
+  closes the previously open section; Resource pickers must not maintain
+  independent booleans that allow overlapping menus.
 - The Sidebar exposes a first-class **Tools** entry backed by
   `?panel=tools`. Its page lists authorized MCP Server definitions, supports
   private Server lifecycle/authorization, and never edits the active
@@ -205,34 +214,34 @@ non-canary/control rollback path.
 
 ### 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| API mode is local or MCP config disabled | Sidebar Tools shows unavailable/disabled state; composer omits the MCP picker |
-| Tools inventory load fails | bounded localized error; no stale inventory is shown as current |
-| Composer selection load fails | bounded localized error; no stale authority expansion |
-| Create succeeds but response normalization or validation fails | reload the authoritative Server list so the persisted draft remains visible; show the bounded error |
-| Server needs auth/unavailable | visible state; send remains blocked until explicit change |
-| OAuth URL is not valid HTTPS | localized error; do not navigate |
-| Selection revision is stale | show save failure and reload authoritative state |
-| `outcome_unknown` timeline event | terminal warning state; no one-click retry |
-| `local_direct` update with `read|write|execute` and optional `callId` | accept, derive missing `callId` from `executionId`, and render through the shared redacted Tool timeline |
-| unknown Tool mode or a mode/classification mismatch | reject as `INVALID_SERVER_RESPONSE`; do not widen MCP definition trust |
-| MCP trace has only legacy detail without `serverName` | show a humanized Tool action or generic Tool label; never fall back to the internal Server reference |
-| Legacy Plugin fields load/import | strip recursively; persist no Plugin or inferred MCP state |
-| Marketplace disabled or unconfigured | show a bounded configuration state; Installed remains fully usable |
-| Search/detail upstream failure | show a retryable Marketplace-only error; keep installed/selection state unchanged |
-| Older search fails after a newer search succeeds | ignore the stale completion; keep the newer results with no false error banner |
-| Repeated bottom-sentinel callbacks | issue at most one request for the next page; append no duplicate identifiers |
-| Next Marketplace page fails | preserve loaded cards and expose a manual retry; do not loop automatically |
-| Item is SSE or unmatched stdio/command-only | show compatibility reason; no install request is emitted |
-| Backend marks exact npm stdio deployment installable | administrator sends only identifier/version/hash; browser never receives or executes command metadata |
-| Current user is not MCP administrator | hide management/install/configuration actions; keep inventory inspectable and composer selection separately usable |
-| Install validation/configuration step fails after draft creation | reload installed Servers so the recoverable draft remains visible |
-| Installed Server icon is missing or its HTTPS image fails | show the local generic MCP fallback; keep the card usable |
-| Installed Server has many Tools | keep read-only Tool rows folded by default and expose the count with `aria-expanded`/`aria-controls` |
-| Selected deployment requires a missing secret | keep install disabled and render the secret input plus completion hint in the selected card |
-| Custom relay URL is incomplete or non-HTTPS | keep install disabled client-side; Backend still rejects unsafe/private resolution before create |
-| Provider stream interrupts after partial answer content | keep the content and show the localized Provider-interruption notice; do not blame or retry MCP Tools |
+| Condition                                                        | Required result                                                                                                    |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| API mode is local or MCP config disabled                         | Sidebar Tools shows unavailable/disabled state; composer omits the MCP picker                                      |
+| Tools inventory load fails                                       | bounded localized error; no stale inventory is shown as current                                                    |
+| Composer selection load fails                                    | bounded localized error; no stale authority expansion                                                              |
+| Create succeeds but response normalization or validation fails   | reload the authoritative Server list so the persisted draft remains visible; show the bounded error                |
+| Server needs auth/unavailable                                    | visible state; send remains blocked until explicit change                                                          |
+| OAuth URL is not valid HTTPS                                     | localized error; do not navigate                                                                                   |
+| Selection revision is stale                                      | show save failure and reload authoritative state                                                                   |
+| `outcome_unknown` timeline event                                 | terminal warning state; no one-click retry                                                                         |
+| `local_direct` update with `read                                 | write                                                                                                              | execute`and optional`callId` | accept, derive missing `callId` from `executionId`, and render through the shared redacted Tool timeline |
+| unknown Tool mode or a mode/classification mismatch              | reject as `INVALID_SERVER_RESPONSE`; do not widen MCP definition trust                                             |
+| MCP trace has only legacy detail without `serverName`            | show a humanized Tool action or generic Tool label; never fall back to the internal Server reference               |
+| Legacy Plugin fields load/import                                 | strip recursively; persist no Plugin or inferred MCP state                                                         |
+| Marketplace disabled or unconfigured                             | show a bounded configuration state; Installed remains fully usable                                                 |
+| Search/detail upstream failure                                   | show a retryable Marketplace-only error; keep installed/selection state unchanged                                  |
+| Older search fails after a newer search succeeds                 | ignore the stale completion; keep the newer results with no false error banner                                     |
+| Repeated bottom-sentinel callbacks                               | issue at most one request for the next page; append no duplicate identifiers                                       |
+| Next Marketplace page fails                                      | preserve loaded cards and expose a manual retry; do not loop automatically                                         |
+| Item is SSE or unmatched stdio/command-only                      | show compatibility reason; no install request is emitted                                                           |
+| Backend marks exact npm stdio deployment installable             | administrator sends only identifier/version/hash; browser never receives or executes command metadata              |
+| Current user is not MCP administrator                            | hide management/install/configuration actions; keep inventory inspectable and composer selection separately usable |
+| Install validation/configuration step fails after draft creation | reload installed Servers so the recoverable draft remains visible                                                  |
+| Installed Server icon is missing or its HTTPS image fails        | show the local generic MCP fallback; keep the card usable                                                          |
+| Installed Server has many Tools                                  | keep read-only Tool rows folded by default and expose the count with `aria-expanded`/`aria-controls`               |
+| Selected deployment requires a missing secret                    | keep install disabled and render the secret input plus completion hint in the selected card                        |
+| Custom relay URL is incomplete or non-HTTPS                      | keep install disabled client-side; Backend still rejects unsafe/private resolution before create                   |
+| Provider stream interrupts after partial answer content          | keep the content and show the localized Provider-interruption notice; do not blame or retry MCP Tools              |
 
 ### 5. Good / Base / Bad Cases
 

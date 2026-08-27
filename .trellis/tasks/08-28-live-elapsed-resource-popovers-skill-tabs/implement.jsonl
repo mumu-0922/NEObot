@@ -1,0 +1,4 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Active-only elapsed timer and terminal duration authority"}
+{"file": ".trellis/spec/frontend/mcp-tools.md", "reason": "Composer resource picker authority and mutually exclusive popovers"}
+{"file": ".trellis/spec/frontend/skill-store.md", "reason": "Installed and Store tab navigation, API authority, and source boundary"}

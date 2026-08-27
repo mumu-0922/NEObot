@@ -30,6 +30,9 @@ describe("MessageItem composition", () => {
     expect(messageItem).toContain("handleAddToKnowledge");
     expect(messageItem).toContain("canEditUserMessage");
     expect(messageItem).toContain("describeMessageDuration");
+    expect(messageItem).toContain("getLiveMessageDuration");
+    expect(messageItem).toContain("window.setInterval(updateElapsed, 1000)");
+    expect(messageItem).toContain('role="timer"');
     expect(messageItem).toContain('t("totalDuration"');
     expect(messageItem).toContain("UserMessageEditor");
     expect(messageItem).toContain("PencilSparkles");
