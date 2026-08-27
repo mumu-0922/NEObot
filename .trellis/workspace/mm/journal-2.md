@@ -1587,3 +1587,36 @@ Added deterministic AIHero Skill link installation into the current user's priva
 ### Next Steps
 
 - None - task complete
+
+
+## Session 96: Interleave Agent narration with Tool timeline
+
+**Date**: 2026-08-27
+**Task**: Interleave Agent narration with Tool timeline
+**Branch**: `main`
+
+### Summary
+
+Classified Tool-round Provider text as bounded durable narration, rendered Context/Think/Narration/Tool events in sequence, kept terminal answer separate, added live/reload regressions, updated contracts, passed full standalone verification, and deployed healthy Backend/Frontend images.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8e519618` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
