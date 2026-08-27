@@ -1653,3 +1653,36 @@ Added active Assistant elapsed timing, made all composer popovers mutually exclu
 ### Next Steps
 
 - None - task complete
+
+
+## Session 98: Codex-style Skill installation
+
+**Date**: 2026-08-28
+**Task**: Codex-style Skill installation
+**Branch**: `main`
+
+### Summary
+
+Replaced the user-facing admitted Skill Store with the fixed openai/skills curated catalog, added exact GitHub tree/blob direct installation with immutable commit/fingerprint validation, preserved Library/selection/runtime authority, updated executable specs, passed full standalone verification, and rebuilt healthy Backend/Frontend services.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8f501496` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
