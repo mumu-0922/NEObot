@@ -7,9 +7,10 @@ import { useState } from "react";
 interface SkillIconProps {
   icon?: string;
   label: string;
+  compact?: boolean;
 }
 
-export function SkillIcon({ icon, label }: SkillIconProps) {
+export function SkillIcon({ icon, label, compact = false }: SkillIconProps) {
   const [failedImageUrl, setFailedImageUrl] = useState("");
   const imageUrl = getSkillIconImageURL(icon);
   const shortText =
@@ -19,7 +20,9 @@ export function SkillIcon({ icon, label }: SkillIconProps) {
   return (
     <span
       aria-hidden="true"
-      className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-cyan-50 text-sm font-bold text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-300"
+      className={`relative flex shrink-0 items-center justify-center overflow-hidden bg-cyan-50 font-bold text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-300 ${
+        compact ? "h-8 w-8 rounded-lg text-xs" : "h-11 w-11 rounded-xl text-sm"
+      }`}
     >
       <span className="absolute inset-0 flex items-center justify-center">
         {fallback || <PackageOpen size={18} aria-hidden="true" />}
@@ -28,8 +31,8 @@ export function SkillIcon({ icon, label }: SkillIconProps) {
         <Image
           src={imageUrl}
           alt=""
-          width={44}
-          height={44}
+          width={compact ? 32 : 44}
+          height={compact ? 32 : 44}
           loading="lazy"
           referrerPolicy="no-referrer"
           onError={() => setFailedImageUrl(imageUrl)}

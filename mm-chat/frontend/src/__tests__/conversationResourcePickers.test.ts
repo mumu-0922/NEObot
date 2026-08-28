@@ -20,6 +20,17 @@ describe("Conversation resource pickers", () => {
     expect(picker).not.toContain("setCredential");
   });
 
+  it("reuses the installed-resource icon renderers in compact picker rows", () => {
+    expect(picker).toContain(
+      'import McpServerIcon from "@/components/mcp/McpServerIcon"',
+    );
+    expect(picker).toContain(
+      'import { SkillIcon } from "@/components/skills/SkillIcon"',
+    );
+    expect(picker).toContain("<SkillIcon label={skill.name} compact />");
+    expect(picker).toContain("<McpServerIcon icon={server.icon} compact />");
+  });
+
   it("loads and writes exact conversation selections with CAS authority", () => {
     expect(picker).toContain("getConversationSelection(targetConversationId");
     expect(picker).toContain("replaceConversationSelection({");

@@ -56,6 +56,9 @@ panel=skill-store&skillId=<validated-curated-name|lobehub:identifier>
   installation DTO without an icon must still render that deterministic local
   fallback; Library rendering must not call Marketplace or require a schema
   migration merely to recover presentation artwork.
+- The per-Conversation composer picker reuses the same `SkillIcon` renderer in
+  its compact variant. Picker rows must not duplicate icon parsing, fetch
+  Marketplace artwork for installed DTOs, or change selection authority.
 - Strict Zod schemas bind every catalog entry to repository `openai/skills`,
   ref `main`, path `skills/.curated/<name>`, a coherent canonical source URL,
   and matching `id`/`name`/path identity.

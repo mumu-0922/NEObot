@@ -96,6 +96,9 @@ non-canary/control rollback path.
   cards. They render only the optional normalized Server DTO `icon`; missing or
   failed remote images fall back to the local generic MCP glyph without
   changing inventory or trust state.
+- The compact per-Conversation picker also reuses `McpServerIcon` with the
+  normalized Server DTO `icon`. It uses the compact visual variant and the same
+  local fallback without changing revision-bound selection behavior.
 - Installed Server cards stay compact by default: the Tool count is an
   accessible expand/collapse button in the Server summary row, Tool details and
   the description render only while expanded. Hide the non-informative

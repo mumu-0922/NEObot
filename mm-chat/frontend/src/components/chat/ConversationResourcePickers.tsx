@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import McpServerIcon from "@/components/mcp/McpServerIcon";
+import { SkillIcon } from "@/components/skills/SkillIcon";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -367,11 +369,12 @@ export default function ConversationResourcePickers({
                 checked={selectedSkillIds.has(skill.id)}
                 disabled={skillSaving}
                 indicator={<Check size={13} />}
-                className="h-auto min-h-10 items-start py-2"
+                className="h-auto min-h-10 items-center py-2"
                 onSelect={(event) => event.preventDefault()}
                 onCheckedChange={() => void toggleSkill(skill.id)}
               >
                 <ResourceLabel
+                  icon={<SkillIcon label={skill.name} compact />}
                   title={skill.name}
                   subtitle={`${skill.version} · ${skill.description}`}
                 />
@@ -433,11 +436,12 @@ export default function ConversationResourcePickers({
                   checked={selectedMcpKeys.has(key)}
                   disabled={mcpSaving || server.status !== "ready"}
                   indicator={<Check size={13} />}
-                  className="h-auto min-h-10 items-start py-2"
+                  className="h-auto min-h-10 items-center py-2"
                   onSelect={(event) => event.preventDefault()}
                   onCheckedChange={() => void toggleMcpServer(server)}
                 >
                   <ResourceLabel
+                    icon={<McpServerIcon icon={server.icon} compact />}
                     title={server.name}
                     subtitle={`${server.status} · ${server.toolCount} Tools`}
                   />
@@ -527,17 +531,22 @@ function ResourceMenu({
 }
 
 function ResourceLabel({
+  icon,
   title,
   subtitle,
 }: {
+  icon: React.ReactNode;
   title: string;
   subtitle: string;
 }) {
   return (
-    <span className="min-w-0 flex-1">
-      <span className="block truncate text-sm font-medium">{title}</span>
-      <span className="block truncate text-xs text-muted-foreground">
-        {subtitle}
+    <span className="flex min-w-0 flex-1 items-center gap-2.5">
+      {icon}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium">{title}</span>
+        <span className="block truncate text-xs text-muted-foreground">
+          {subtitle}
+        </span>
       </span>
     </span>
   );
