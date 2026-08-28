@@ -112,7 +112,7 @@
   "closeDetail": "Close assistant details",
   "loadingDetail": "Loading assistant details…",
   "declaredTools": "Tools mentioned upstream (display only)",
-  "openTools": "Open Tools",
+  "openTools": "Open MCP",
   "compatibilityNotice": "Only the role and prompt are installed. Plugins, Knowledge Bases, and external Tools mentioned by the prompt are not included.",
   "promptPreview": "System Prompt preview",
   "promptUnavailable": "This assistant has no complete valid System Prompt and cannot be installed.",

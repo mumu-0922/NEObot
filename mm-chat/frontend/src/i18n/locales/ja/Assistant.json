@@ -112,7 +112,7 @@
   "closeDetail": "アシスタントの詳細を閉じる",
   "loadingDetail": "アシスタントの詳細を読み込み中…",
   "declaredTools": "上流で宣言されたツール（表示のみ）",
-  "openTools": "ツールを開く",
+  "openTools": "MCP を開く",
   "compatibilityNotice": "インストールされるのは役割とプロンプトのみです。プロンプトで言及されたプラグイン、ナレッジベース、外部ツールは含まれません。",
   "promptPreview": "System Prompt プレビュー",
   "promptUnavailable": "完全で有効な System Prompt がないため、このアシスタントはインストールできません。",

@@ -5,9 +5,10 @@
 ### 1. Scope / Trigger
 
 Apply this contract when changing `McpToolsControl`, MCP frontend types, the
-`mcpApi` client, Sidebar Tools management, timeline rendering, or browser
-persistence migration. The product label is **Tools/Connectors**; MCP is the
-protocol. Assistants and Skills remain unchanged.
+`mcpApi` client, Sidebar MCP management, timeline rendering, or browser
+persistence migration. The product-area label is **MCP** in every supported
+locale. Generic Tool names, Tool counts, and Tool-call terminology remain
+unchanged. Assistants and Skills remain unchanged.
 
 ### 2. Signatures
 
@@ -48,13 +49,13 @@ non-canary/control rollback path.
   preflight MCP before every send. The picker loads only the exact current
   Conversation selection, lists authorized inventory, and performs
   revision-bound selection writes. Full status, credentials, installation,
-  diagnostics, and lifecycle controls remain in Sidebar Tools; Backend prepares
+  diagnostics, and lifecycle controls remain in Sidebar MCP; Backend prepares
   selected Connectors only in Agent mode.
 - Composer popovers share one transient open-section state. Opening MCP, Skill,
   attachment, Chat/Agent mode, permission, reasoning, search, or model selection
   closes the previously open section; Resource pickers must not maintain
   independent booleans that allow overlapping menus.
-- The Sidebar exposes a first-class **Tools** entry backed by
+- The Sidebar exposes a first-class **MCP** entry backed by
   `?panel=tools`. Its page lists authorized MCP Server definitions, supports
   private Server lifecycle/authorization, and never edits the active
   Conversation selection. Per-Conversation selection belongs exclusively to

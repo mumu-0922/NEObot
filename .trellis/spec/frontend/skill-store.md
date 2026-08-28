@@ -34,10 +34,12 @@ panel=skill-store&skillId=<validated-curated-name|lobehub:identifier>
 
 ## 3. Contracts
 
-- The page exposes mutually exclusive `Installed | Skill Store` tabs. Plain
+- The page exposes mutually exclusive `Installed | Skill` tabs. Plain
   navigation opens Installed; an initial search or valid `skillId` opens the
   Store. Installing refreshes both authorities, clears `skillId`, and returns
   to Installed.
+- `Skill` is the product-area label in every supported locale; generic Skill
+  descriptions and source-specific Marketplace names remain unchanged.
 - The Store tab exposes mutually exclusive `LobeHub | OpenAI Curated` sources.
   LobeHub is backend-owned paginated search/category/detail; OpenAI stays the
   fixed curated catalog. Source-specific state and failures must not overwrite

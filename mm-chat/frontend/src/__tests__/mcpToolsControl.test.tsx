@@ -1,5 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import en from "../i18n/locales/en";
+import ja from "../i18n/locales/ja";
+import zh from "../i18n/locales/zh";
 
 const control = readFileSync(
   new URL("../components/mcp/McpToolsControl.tsx", import.meta.url),
@@ -31,6 +34,17 @@ const processTracePanel = readFileSync(
 );
 
 describe("MCP Tools management control", () => {
+  it("uses MCP as the product-area label in every locale", () => {
+    for (const locale of [en, ja, zh]) {
+      expect(locale.Sidebar.tools).toBe("MCP");
+      expect(locale.Mcp.title).toBe("MCP");
+      expect(locale.Assistant.openTools).toContain("MCP");
+    }
+    expect(zh.Mcp.toolCount).toContain("工具");
+    expect(en.Mcp.toolCount).toContain("tools");
+    expect(ja.Mcp.toolCount).toContain("ツール");
+  });
+
   it("has no composer trigger or pre-send recovery surface", () => {
     expect(control).not.toContain("<Tooltip content={statusLabel}");
     expect(control).not.toContain('variant?: "composer"');

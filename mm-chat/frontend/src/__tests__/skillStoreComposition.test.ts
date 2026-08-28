@@ -62,9 +62,14 @@ describe("Skill Store product boundary", () => {
     expect(store).toContain('onNavigate(null, "replace")');
     expect(store).toContain('setTab("installed")');
     expect(zh.SkillStore.installedTab).toBe("已安装");
-    expect(zh.SkillStore.storeTab).toBe("技能商店");
+    expect(zh.Sidebar.skillStore).toBe("Skill");
+    expect(en.Sidebar.skillStore).toBe("Skill");
+    expect(ja.Sidebar.skillStore).toBe("Skill");
+    expect(zh.SkillStore.title).toBe("Skill");
+    expect(zh.SkillStore.storeTab).toBe("Skill");
     expect(en.SkillStore.installedTab).toBe("Installed");
-    expect(en.SkillStore.storeTab).toBe("Skill Store");
+    expect(en.SkillStore.storeTab).toBe("Skill");
+    expect(ja.SkillStore.storeTab).toBe("Skill");
     expect(zh.SkillStore.lobehubSource).toBe("LobeHub");
     expect(en.SkillStore.openaiSource).toBe("OpenAI Curated");
     expect(zh.SkillStore.emptyStore).not.toContain("准入");

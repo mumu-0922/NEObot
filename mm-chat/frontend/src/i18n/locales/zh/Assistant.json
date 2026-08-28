@@ -112,7 +112,7 @@
   "closeDetail": "关闭助理详情",
   "loadingDetail": "正在加载助理详情…",
   "declaredTools": "上游提示词提到的工具（仅展示）",
-  "openTools": "打开工具",
+  "openTools": "打开 MCP",
   "compatibilityNotice": "仅安装角色与提示词，不包含提示词中提到的插件、知识库或外部工具。",
   "promptPreview": "System Prompt 预览",
   "promptUnavailable": "该助理没有完整有效的 System Prompt，无法安装。",
