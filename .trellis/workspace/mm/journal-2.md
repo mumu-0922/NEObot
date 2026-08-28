@@ -1686,3 +1686,36 @@ Replaced the user-facing admitted Skill Store with the fixed openai/skills curat
 ### Next Steps
 
 - None - task complete
+
+
+## Session 99: Fix curated Skill detail and direct install
+
+**Date**: 2026-08-28
+**Task**: Fix curated Skill detail and direct install
+**Branch**: `main`
+
+### Summary
+
+Normalized empty Skill Tool lists to JSON arrays, rejected missing pinned GitHub Skill directories before ingestion, improved deterministic install failure copy, added official-style regression coverage, passed full standalone verification, and rebuilt the healthy Backend service.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `82083ea6` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
