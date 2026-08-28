@@ -104,3 +104,36 @@ Removed Skill version and fallback fingerprint labels from installed cards, mark
 ### Next Steps
 
 - None - task complete
+
+
+## Session 111: Repair Memory Worker backlog health
+
+**Date**: 2026-08-29
+**Task**: Repair Memory Worker backlog health
+**Branch**: `main`
+
+### Summary
+
+Fixed orphaned-assistant dead-letter activity rollback, deployed the shared Backend/Memory Worker image, drained the recoverable queue, and verified a new Sub GPT-5.6 Luna extraction end to end. Historical dead letters remain append-only for separate governance.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3e466132` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
