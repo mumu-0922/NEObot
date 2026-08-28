@@ -129,6 +129,19 @@ Use `./scripts/verify-standalone.sh --full` to install and verify the frontend
 and run the Go test suite inside the isolated copy. The final deletion of the
 former root application remains a separate owner-confirmed destructive gate.
 
+Run the deterministic browser journeys from `frontend/` without Provider
+credentials or billable model traffic:
+
+```bash
+corepack pnpm test:e2e:install
+corepack pnpm test:e2e
+```
+
+The suite covers Auth refresh behavior, per-Conversation model persistence,
+and the core Agent Harness lifecycle. Failure traces, screenshots, and videos
+are written below `frontend/test-results/e2e/`; see
+[`frontend/e2e/README.md`](./frontend/e2e/README.md).
+
 The current Chat Agent `local_direct` wiring and retired-control-plane boundary
 have focused gates:
 

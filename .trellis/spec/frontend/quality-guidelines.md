@@ -68,6 +68,48 @@ Do not claim a command passed unless it was executed.
 - Cross-layer work must trace request input -> validation -> service/store ->
   persistence/rendered result, including the error path.
 
+## Deterministic Browser E2E
+
+Use Playwright for high-risk journeys that must prove the integrated browser
+contract rather than an isolated component contract:
+
+```bash
+corepack pnpm test:e2e:install
+corepack pnpm test:e2e
+```
+
+- Keep browser specs in `e2e/` and shared API fixtures in `e2e/fixtures/`.
+- Keep Vitest discovery restricted to `src/__tests__/`; Playwright `*.spec.ts`
+  files must never be loaded by the unit-test runner.
+- Exercise the production UI and `/mm-api` request shapes. Do not add test-only
+  branches, routes, query parameters, or globals to product components.
+- Fixture state is server-authoritative and must survive `page.reload()` when
+  the production contract is durable. Each test creates its own fixture state
+  so the suite remains parallel-safe.
+- Never read a real Provider key or spend Provider quota. Return deterministic
+  HTTP/SSE payloads from the browser route fixture and use inert credentials.
+- Prefer role, label, and visible-text locators. Use a stable id only where the
+  user-facing contract cannot identify the target.
+- Cover both the happy path and decisive terminal failures: unauthorized,
+  failed, cancelled, stale/reloaded, and independently concurrent runs where
+  applicable.
+- CI runs Chromium separately from Vitest and retains trace, screenshot, and
+  video artifacts only on failure.
+
+Wrong:
+
+```ts
+await page.locator(".button:nth-child(3)").click();
+await callLiveProvider(process.env.REAL_PROVIDER_KEY);
+```
+
+Correct:
+
+```ts
+await page.getByLabel("发送消息").click();
+api.completeRun(conversationId, "deterministic result");
+```
+
 ## Accessibility and Security Checks
 
 - Verify keyboard operation, focus restoration/trapping, accessible names,

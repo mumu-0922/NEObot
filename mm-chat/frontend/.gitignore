@@ -3,6 +3,8 @@
 /.open-next/
 /.wrangler/
 /coverage/
+/playwright-report/
+/test-results/
 *.tsbuildinfo
 cloudflare-env.d.ts
 .env
