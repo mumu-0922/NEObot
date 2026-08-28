@@ -185,7 +185,8 @@ func (service *Service) SearchMarketplace(
 	if input.Page < 1 || input.Page > 10000 || input.PageSize < 1 ||
 		input.PageSize > maxMarketplacePageSize || len([]rune(input.Query)) > maxMarketplaceQueryRunes ||
 		len([]rune(input.Category)) > 128 || !validPlainText(input.Query) ||
-		!validPlainText(input.Category) || !localeOK || !sortOK {
+		!validPlainText(input.Category) ||
+		(input.Category != "" && !isCuratedMarketplaceCategory(input.Category)) || !localeOK || !sortOK {
 		return MarketplaceSearchResult{}, validationError("INVALID_SKILL_MARKETPLACE_QUERY", "Skill Marketplace query is invalid")
 	}
 	query := url.Values{
@@ -251,14 +252,22 @@ func (service *Service) marketplaceCategories(
 	if json.Unmarshal(data, &raw) != nil || len(raw) > maxMarketplaceCategories {
 		return nil, ErrSourceUnavailable
 	}
-	result := make([]MarketplaceCategory, 0, len(raw))
+	counts := make(map[string]int, len(curatedMarketplaceCategories))
 	for _, item := range raw {
 		item.Category = strings.TrimSpace(item.Category)
 		if item.Category == "" || len([]rune(item.Category)) > 128 || item.Count < 0 ||
-			!validPlainText(item.Category) {
+			!validPlainText(item.Category) || !isCuratedMarketplaceCategory(item.Category) {
 			continue
 		}
-		result = append(result, item)
+		if _, exists := counts[item.Category]; !exists {
+			counts[item.Category] = item.Count
+		}
+	}
+	result := make([]MarketplaceCategory, 0, len(counts))
+	for _, category := range curatedMarketplaceCategories {
+		if count, exists := counts[category]; exists {
+			result = append(result, MarketplaceCategory{Category: category, Count: count})
+		}
 	}
 	return result, nil
 }

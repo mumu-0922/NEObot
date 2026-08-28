@@ -221,7 +221,7 @@ export function createServerSkillStoreApiShell(
                   .object({ category: z.string().min(1).max(128), count })
                   .strict(),
               )
-              .max(512),
+              .max(21),
             page: positive,
             pageSize: positive,
             totalCount: count,

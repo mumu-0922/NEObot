@@ -1,7 +1,32 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { Folder, PackageOpen, ShieldCheck, Star, Tags } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import {
+  BarChart3,
+  BrainCircuit,
+  CloudCog,
+  Code2,
+  FileText,
+  Gamepad2,
+  GitBranch,
+  ImageIcon,
+  Landmark,
+  ListChecks,
+  Megaphone,
+  MessagesSquare,
+  MousePointerClick,
+  Network,
+  NotebookTabs,
+  PackageOpen,
+  PanelsTopLeft,
+  Search,
+  ShieldCheck,
+  Smartphone,
+  Star,
+  Tags,
+  Terminal,
+  Workflow,
+} from "lucide-react";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
@@ -13,6 +38,30 @@ import type {
 } from "@/services/api/client";
 
 import { StatusPill } from "./SkillStorePrimitives";
+
+export const MARKETPLACE_CATEGORIES = [
+  { id: "coding-agents-ides", icon: Code2 },
+  { id: "devops-cloud", icon: CloudCog },
+  { id: "web-frontend-development", icon: PanelsTopLeft },
+  { id: "cli-utilities", icon: Terminal },
+  { id: "productivity-tasks", icon: ListChecks },
+  { id: "ai-llms", icon: BrainCircuit },
+  { id: "git-github", icon: GitBranch },
+  { id: "data-analytics", icon: BarChart3 },
+  { id: "marketing-sales", icon: Megaphone },
+  { id: "search-research", icon: Search },
+  { id: "self-hosted-automation", icon: Workflow },
+  { id: "agent-to-agent-protocols", icon: Network },
+  { id: "finance", icon: Landmark },
+  { id: "communication", icon: MessagesSquare },
+  { id: "notes-pkm", icon: NotebookTabs },
+  { id: "image-video-generation", icon: ImageIcon },
+  { id: "browser-automation", icon: MousePointerClick },
+  { id: "ios-macos-development", icon: Smartphone },
+  { id: "security-passwords", icon: ShieldCheck },
+  { id: "gaming", icon: Gamepad2 },
+  { id: "pdf-documents", icon: FileText },
+] as const satisfies ReadonlyArray<{ id: string; icon: LucideIcon }>;
 
 export function MarketplaceCategoryNav({
   categories,
@@ -28,6 +77,9 @@ export function MarketplaceCategoryNav({
   onSelect: (category: string) => void;
 }) {
   const t = useTranslations("SkillStore");
+  const categoryCounts = new Map(
+    categories.map((category) => [category.category, category.count]),
+  );
   return (
     <nav
       aria-label={t("marketplaceCategoriesLabel")}
@@ -39,20 +91,24 @@ export function MarketplaceCategoryNav({
           count={totalCount}
           disabled={disabled}
           label={t("allCategories")}
-          icon={<Tags size={14} aria-hidden="true" />}
+          icon={Tags}
           onClick={() => onSelect("")}
         />
-        {categories.map((item) => (
-          <MarketplaceCategoryButton
-            key={item.category}
-            active={activeCategory === item.category}
-            count={item.count}
-            disabled={disabled}
-            label={item.category}
-            icon={<Folder size={14} aria-hidden="true" />}
-            onClick={() => onSelect(item.category)}
-          />
-        ))}
+        {MARKETPLACE_CATEGORIES.map((category) => {
+          const count = categoryCounts.get(category.id);
+          if (count === undefined) return null;
+          return (
+            <MarketplaceCategoryButton
+              key={category.id}
+              active={activeCategory === category.id}
+              count={count}
+              disabled={disabled}
+              label={t(`marketplaceCategories.${category.id}`)}
+              icon={category.icon}
+              onClick={() => onSelect(category.id)}
+            />
+          );
+        })}
       </div>
     </nav>
   );
@@ -70,9 +126,10 @@ function MarketplaceCategoryButton({
   count: number;
   disabled: boolean;
   label: string;
-  icon: ReactNode;
+  icon: LucideIcon;
   onClick: () => void;
 }) {
+  const Icon = icon;
   return (
     <button
       type="button"
@@ -85,7 +142,7 @@ function MarketplaceCategoryButton({
           : "text-gray-600 hover:bg-white/80 hover:text-gray-900 dark:text-muted-foreground dark:hover:bg-card/70 dark:hover:text-foreground"
       }`}
     >
-      <span className="shrink-0">{icon}</span>
+      <Icon size={14} aria-hidden="true" className="shrink-0" />
       <span className="whitespace-nowrap md:min-w-0 md:flex-1 md:truncate">
         {label}
       </span>

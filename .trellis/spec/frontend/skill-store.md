@@ -68,6 +68,12 @@ panel=skill-store&skillId=<validated-curated-name|lobehub:identifier>
   a modal detail layer. Detail close/Escape restores focus to the originating
   card and never discards the current result grid. Status uses accessible names
   and live announcements, with existing dark/responsive behavior preserved.
+- The category rail renders only the backend-owned 21 canonical LobeHub IDs in
+  their product-defined order. Display labels come from the `SkillStore`
+  Chinese, English, and Japanese locale maps and each category uses its own
+  semantic Lucide icon; raw source slugs and the generic folder icon are not
+  user-facing copy. Selection still sends the exact canonical ID to the backend
+  and never filters only the currently loaded cards.
 - URL `skillId` accepts a validated curated Skill name or source-qualified
   `lobehub:<identifier>`. Prefixing prevents cross-source identity collisions.
   Legacy candidate IDs
@@ -95,6 +101,7 @@ panel=skill-store&skillId=<validated-curated-name|lobehub:identifier>
 | selected detail absent from initial list | fetch exact validated `skillId`; do not infer non-existence |
 | catalog unavailable | show Store failure only; Installed list remains operational |
 | malformed LobeHub list/detail DTO | `INVALID_SERVER_RESPONSE`; source-bounded retry |
+| category projection contains more than 21 rows | `INVALID_SERVER_RESPONSE`; source-bounded retry |
 | Marketplace detail version changes | surface `SKILL_PACKAGE_CHANGED`; reload exact detail |
 | invalid `lobehub:` URL identity | remove `skillId` with `replaceState`; do not request detail |
 | unsupported/ambiguous external URL | keep Library unchanged; announce bounded install failure |
@@ -105,8 +112,12 @@ panel=skill-store&skillId=<validated-curated-name|lobehub:identifier>
   return to Installed, then independently select it for one Conversation.
 - **Good:** search LobeHub by category, open a `lobehub:<identifier>` deep link,
   install the displayed exact version, and return to Installed.
+- **Good:** render `coding-agents-ides` as the active locale label with the
+  Code icon while submitting the unchanged ID to the backend.
 - **Base:** catalog is unavailable, but the user can still inspect and remove
   already-installed Skills.
+- **Base:** a long-tail category is absent from the rail but its Skills remain
+  discoverable through All and keyword search.
 - **Bad:** expose fingerprint/SBOM/reviewer details as product copy, scrape
   GitHub from the browser, couple Store and Installed loading, or silently
   enable a newly installed Skill in every Conversation.
@@ -127,6 +138,9 @@ panel=skill-store&skillId=<validated-curated-name|lobehub:identifier>
 - Category-rail/card-grid composition, modal focus restoration, accessible live
   feedback, responsive detail, catalog-failure isolation, format, lint,
   typecheck, Vitest, and production build.
+- Category composition tests must assert exactly 21 distinct icon definitions,
+  locale coverage for every ID, absence of raw-label rendering, and the strict
+  21-row DTO ceiling.
 
 ## 7. Wrong vs Correct
 
@@ -142,4 +156,7 @@ Correct: install success -> refresh Library; composer owns selection
 
 Wrong: catalog request fails -> replace the whole page with failure
 Correct: Store error is isolated; Installed remains independently operational
+
+Wrong: render raw category slug with one Folder icon for every row
+Correct: exact category ID -> localized label + category-specific Lucide icon
 ```

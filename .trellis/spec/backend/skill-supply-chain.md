@@ -75,10 +75,16 @@ func (*Service) InstallMarketplaceSkill(
   bearer tokens on that route. Exact-version package download remains M2M.
   Browser code receives normalized Neo Chat DTOs only and never sees a bearer
   token, raw upstream body, or package archive.
-- LobeHub Skill category responses accept at most 512 validated rows. This
-  bound intentionally exceeds the observed 296-entry upstream taxonomy while
-  keeping malformed or unexpectedly unbounded auxiliary responses fail-open
-  for the independently valid item list.
+- LobeHub Skill category responses accept at most 512 validated raw rows, then
+  project only the product-owned ordered allowlist of 21 canonical category
+  IDs with their live counts. Community tags remain discoverable through All
+  and search but never enter the navigation DTO. Malformed or unexpectedly
+  unbounded auxiliary responses fail open for the independently valid item
+  list.
+- An explicit Marketplace category must be one of those 21 canonical IDs and
+  is rejected before M2M transport otherwise. Valid filters are forwarded
+  unchanged so category results remain upstream-authoritative rather than a
+  client-side filter over the current page.
 - Locale and sort values cross the authenticated Marketplace boundary only
   through explicit allowlists; unknown values fail before upstream I/O.
 - Marketplace install must re-read detail for the requested exact SemVer,
@@ -146,6 +152,8 @@ func (*Service) InstallMarketplaceSkill(
 | direct source belongs to another owner | deny installation even with candidate/fingerprint knowledge |
 | catalog unavailable after prior installs | Installed/selection/runtime paths continue independently |
 | unknown Marketplace query or malformed identifier/version | `400`; zero M2M/package/database mutation |
+| explicit category outside the 21-ID allowlist | `400 INVALID_SKILL_MARKETPLACE_QUERY`; zero M2M calls |
+| category source has more than 512 rows | omit categories but retain the independently valid item list |
 | Marketplace list/category/detail unavailable or malformed | `502 SKILL_SOURCE_UNAVAILABLE`; no upstream body leak |
 | detail identity/version changes before install | `409 SKILL_PACKAGE_CHANGED`; zero package persistence |
 | exact LobeHub/GitHub link malformed or ambiguous | `400 INVALID_SKILL_PACKAGE`; zero Provider/source execution |
@@ -157,8 +165,12 @@ func (*Service) InstallMarketplaceSkill(
   Conversation.
 - **Good:** search LobeHub, inspect `owner-demo@1.2.3`, re-resolve that exact
   version, validate its root manifest, and install it only for the caller.
+- **Good:** select `productivity-tasks`, forward that exact canonical ID, and
+  return only the ordered curated category/count projection alongside results.
 - **Base:** GitHub is temporarily unavailable; the catalog shows bounded retry
   state while Installed Skills remain manageable and usable.
+- **Base:** a long-tail Skill has only a community tag; it remains visible in
+  All/search without adding that tag to the navigation rail.
 - **Bad:** scrape a third-party marketplace in the browser, install a whole
   repository, trust a mutable branch at install time, expose raw fingerprints
   as product language, or execute an upstream install command.
@@ -184,6 +196,9 @@ func (*Service) InstallMarketplaceSkill(
 - Marketplace list/detail/install tests must assert pagination/category DTOs,
   exact version, identifier/manifest-name separation, owner-private Candidate,
   installed status, idempotent reconciliation, and no Store publication.
+- Category tests must feed the live-scale raw taxonomy, assert the exact
+  ordered 21-ID projection, prove `_meta` is removed, and prove a non-curated
+  query is rejected before the Marketplace fetcher records a request.
 - Deterministic Chat link installation must prove zero Provider and zero Store
   search calls.
 - Frontend strict Zod catalog identity, list/detail/install/uninstall routes,
@@ -212,4 +227,7 @@ Correct: normalize the Backend collection -> JSON [] -> retain strict Zod
 
 Wrong: install -> silently enable for every Conversation
 Correct: install inventory -> user selection or bounded run-only agent_auto
+
+Wrong: expose every upstream tag -> unstable mixed-case navigation taxonomy
+Correct: project 21 canonical IDs -> keep All/search for long-tail discovery
 ```

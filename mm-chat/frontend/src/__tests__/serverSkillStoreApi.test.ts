@@ -118,7 +118,7 @@ describe("server Skill Store API", () => {
         if (url.includes("/v1/skills/marketplace?")) {
           return jsonResponse({
             items: [marketplaceSummaryFixture()],
-            categories: [{ category: "productivity", count: 1 }],
+            categories: [{ category: "productivity-tasks", count: 1 }],
             page: 1,
             pageSize: 20,
             totalCount: 1,
@@ -143,7 +143,7 @@ describe("server Skill Store API", () => {
     await expect(
       client.skillStore.searchMarketplace({
         query: "demo",
-        category: "productivity",
+        category: "productivity-tasks",
         locale: "en-US",
         sort: "installCount",
       }),
@@ -168,7 +168,7 @@ describe("server Skill Store API", () => {
 
     expect(requests).toEqual([
       {
-        url: "/mm-api/v1/skills/marketplace?page=1&pageSize=20&q=demo&category=productivity&locale=en-US&sort=installCount",
+        url: "/mm-api/v1/skills/marketplace?page=1&pageSize=20&q=demo&category=productivity-tasks&locale=en-US&sort=installCount",
         method: "GET",
         body: undefined,
       },
@@ -215,8 +215,8 @@ describe("server Skill Store API", () => {
     ).rejects.toMatchObject({ code: "INVALID_SERVER_RESPONSE" });
   });
 
-  it("accepts the live LobeHub category cardinality and rejects an oversized projection", async () => {
-    let categoryCount = 296;
+  it("accepts the curated category ceiling and rejects an oversized projection", async () => {
+    let categoryCount = 21;
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -244,11 +244,11 @@ describe("server Skill Store API", () => {
 
     await expect(client.skillStore.searchMarketplace()).resolves.toMatchObject({
       categories: expect.arrayContaining([
-        expect.objectContaining({ category: "category-295" }),
+        expect.objectContaining({ category: "category-20" }),
       ]),
     });
 
-    categoryCount = 513;
+    categoryCount = 22;
     await expect(client.skillStore.searchMarketplace()).rejects.toMatchObject({
       code: "INVALID_SERVER_RESPONSE",
     });
@@ -405,7 +405,7 @@ function marketplaceSummaryFixture() {
     name: "Demo Skill",
     description: "Marketplace demo",
     version: "1.2.3",
-    category: "productivity",
+    category: "productivity-tasks",
     author: "Owner",
     repositoryUrl: "https://github.com/owner/demo",
     installCount: 7,

@@ -1,7 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { getSkillIconImageURL } from "../components/skills/SkillMarketplacePrimitives";
+import {
+  getSkillIconImageURL,
+  MARKETPLACE_CATEGORIES,
+} from "../components/skills/SkillMarketplacePrimitives";
 import en from "../i18n/locales/en";
+import ja from "../i18n/locales/ja";
 import zh from "../i18n/locales/zh";
 
 describe("Skill Store product boundary", () => {
@@ -90,5 +94,26 @@ describe("Skill Store product boundary", () => {
     expect(
       getSkillIconImageURL("https://github.com/openclaw.png?size=88"),
     ).toBe("");
+  });
+
+  it("renders a localized, ordered category rail with semantic icons", () => {
+    expect(MARKETPLACE_CATEGORIES).toHaveLength(21);
+    expect(
+      new Set(MARKETPLACE_CATEGORIES.map((category) => category.icon)).size,
+    ).toBe(MARKETPLACE_CATEGORIES.length);
+    expect(MARKETPLACE_CATEGORIES.map((category) => category.id)).not.toContain(
+      "_meta",
+    );
+    for (const { id } of MARKETPLACE_CATEGORIES) {
+      expect(zh.SkillStore.marketplaceCategories[id]).toBeTruthy();
+      expect(en.SkillStore.marketplaceCategories[id]).toBeTruthy();
+      expect(ja.SkillStore.marketplaceCategories[id]).toBeTruthy();
+    }
+    expect(zh.SkillStore.marketplaceCategories["coding-agents-ides"]).toBe(
+      "编程 Agent 与 IDE",
+    );
+    expect(store).toContain("marketplaceCategories.${category.id}");
+    expect(store).not.toContain("label={item.category}");
+    expect(store).not.toContain("<Folder");
   });
 });

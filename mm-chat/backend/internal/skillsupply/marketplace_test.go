@@ -31,22 +31,26 @@ func (fake *fakeSkillMarketplace) FetchSkillMarketJSON(
 	fake.paths = append(fake.paths, path)
 	switch {
 	case strings.HasPrefix(path, "/api/v1/skills?"):
-		return []byte(`{"items":[{"identifier":"owner-demo","name":"Demo Skill","description":"Marketplace demo","version":"1.2.3","category":"productivity","author":"Owner","installCount":7,"ratingAvg":4.5,"isOfficial":false,"isValidated":true,"isFeatured":true,"resourcesCount":1,"github":{"url":"https://github.com/owner/demo"}}],"currentPage":1,"pageSize":20,"totalCount":1,"totalPages":1}`), nil
+		return []byte(`{"items":[{"identifier":"owner-demo","name":"Demo Skill","description":"Marketplace demo","version":"1.2.3","category":"productivity-tasks","author":"Owner","installCount":7,"ratingAvg":4.5,"isOfficial":false,"isValidated":true,"isFeatured":true,"resourcesCount":1,"github":{"url":"https://github.com/owner/demo"}}],"currentPage":1,"pageSize":20,"totalCount":1,"totalPages":1}`), nil
 	case strings.HasPrefix(path, "/api/v1/skills/categories?"):
 		if fake.categoriesJSON != nil {
 			return append([]byte(nil), fake.categoriesJSON...), nil
 		}
-		return []byte(`[{"category":"productivity","count":1}]`), nil
+		return []byte(`[{"category":"productivity-tasks","count":1}]`), nil
 	default:
 		return nil, fmt.Errorf("unexpected path %s", path)
 	}
 }
 
-func TestMarketplaceCategoriesAcceptLiveCardinalityAndKeepBounded(t *testing.T) {
+func TestMarketplaceCategoriesProjectCuratedTaxonomyAndKeepBounded(t *testing.T) {
 	categories := make([]MarketplaceCategory, 296)
 	for index := range categories {
+		category := fmt.Sprintf("community-%03d", index)
+		if index < len(curatedMarketplaceCategories) {
+			category = curatedMarketplaceCategories[len(curatedMarketplaceCategories)-index-1]
+		}
 		categories[index] = MarketplaceCategory{
-			Category: fmt.Sprintf("category-%03d", index),
+			Category: category,
 			Count:    index,
 		}
 	}
@@ -57,14 +61,23 @@ func TestMarketplaceCategoriesAcceptLiveCardinalityAndKeepBounded(t *testing.T) 
 	fetcher := &fakeSkillMarketplace{categoriesJSON: categoriesJSON}
 	service := NewService(WithLobeHubFetcher(fetcher))
 	result, err := service.SearchMarketplace(context.Background(), MarketplaceSearchInput{})
-	if err != nil || len(result.Categories) != len(categories) {
+	if err != nil || len(result.Categories) != len(curatedMarketplaceCategories) {
 		t.Fatalf("SearchMarketplace() category count = %d, %v", len(result.Categories), err)
+	}
+	for index, category := range result.Categories {
+		if category.Category != curatedMarketplaceCategories[index] {
+			t.Fatalf("category order[%d] = %q", index, category.Category)
+		}
 	}
 
 	bounded := make([]MarketplaceCategory, maxMarketplaceCategories)
 	for index := range bounded {
+		category := fmt.Sprintf("bounded-%03d", index)
+		if index < len(curatedMarketplaceCategories) {
+			category = curatedMarketplaceCategories[index]
+		}
 		bounded[index] = MarketplaceCategory{
-			Category: fmt.Sprintf("bounded-%03d", index),
+			Category: category,
 			Count:    index,
 		}
 	}
@@ -73,7 +86,7 @@ func TestMarketplaceCategoriesAcceptLiveCardinalityAndKeepBounded(t *testing.T) 
 		t.Fatal(err)
 	}
 	result, err = service.SearchMarketplace(context.Background(), MarketplaceSearchInput{})
-	if err != nil || len(result.Categories) != maxMarketplaceCategories {
+	if err != nil || len(result.Categories) != len(curatedMarketplaceCategories) {
 		t.Fatalf("bounded category count = %d, %v", len(result.Categories), err)
 	}
 
@@ -101,7 +114,7 @@ func (fake *fakeSkillMarketplace) FetchPublicSkillDetailJSON(
 	if !strings.HasPrefix(path, "/api/v1/skills/owner-demo?") {
 		return nil, fmt.Errorf("unexpected detail path %s", path)
 	}
-	return []byte(`{"identifier":"owner-demo","name":"Demo Skill","description":"Marketplace demo","version":"1.2.3","category":"productivity","installCount":7,"ratingAverage":4.5,"isOfficial":false,"isValidated":true,"isFeatured":true,"author":{"name":"Owner"},"github":{"url":"https://github.com/owner/demo"},"license":{"name":"MIT"},"manifest":{"name":"demo-skill","description":"Marketplace demo","permissions":["Read"]},"overview":{"summary":"Demo summary"},"resources":{"references/demo.txt":{"fileHash":"sha256:abc","size":3}},"versions":[{"version":"1.2.3","isLatest":true,"isValidated":true,"createdAt":"2026-08-28T00:00:00Z","versionNumber":1}]}`), nil
+	return []byte(`{"identifier":"owner-demo","name":"Demo Skill","description":"Marketplace demo","version":"1.2.3","category":"productivity-tasks","installCount":7,"ratingAverage":4.5,"isOfficial":false,"isValidated":true,"isFeatured":true,"author":{"name":"Owner"},"github":{"url":"https://github.com/owner/demo"},"license":{"name":"MIT"},"manifest":{"name":"demo-skill","description":"Marketplace demo","permissions":["Read"]},"overview":{"summary":"Demo summary"},"resources":{"references/demo.txt":{"fileHash":"sha256:abc","size":3}},"versions":[{"version":"1.2.3","isLatest":true,"isValidated":true,"createdAt":"2026-08-28T00:00:00Z","versionNumber":1}]}`), nil
 }
 
 func TestMarketplaceSearchDetailAndExactOwnerPrivateInstall(t *testing.T) {
@@ -206,5 +219,11 @@ func TestMarketplaceHandlerSearchDetailInstallAndDirectLink(t *testing.T) {
 	assertSkillHTTP(t, invalid, http.StatusBadRequest, "INVALID_SKILL_MARKETPLACE_QUERY")
 	if len(fetcher.paths) != pathCount {
 		t.Fatalf("invalid locale/sort reached Marketplace: %#v", fetcher.paths[pathCount:])
+	}
+	invalid = skillRequest(handler, http.MethodGet,
+		"/v1/skills/marketplace?category=_meta", nil, "", testSkillUser)
+	assertSkillHTTP(t, invalid, http.StatusBadRequest, "INVALID_SKILL_MARKETPLACE_QUERY")
+	if len(fetcher.paths) != pathCount {
+		t.Fatalf("non-curated category reached Marketplace: %#v", fetcher.paths[pathCount:])
 	}
 }
