@@ -215,6 +215,45 @@ describe("server Skill Store API", () => {
     ).rejects.toMatchObject({ code: "INVALID_SERVER_RESPONSE" });
   });
 
+  it("accepts the live LobeHub category cardinality and rejects an oversized projection", async () => {
+    let categoryCount = 296;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse({
+          items: [marketplaceSummaryFixture()],
+          categories: Array.from({ length: categoryCount }, (_, index) => ({
+            category: `category-${index}`,
+            count: index,
+          })),
+          page: 1,
+          pageSize: 20,
+          totalCount: 1,
+          totalPages: 1,
+          source: "lobehub",
+          sourceUrl: "https://lobehub.com/skills",
+        }),
+      ),
+    );
+    const client = createNeoChatApiClient({
+      env: {
+        NEXT_PUBLIC_API_MODE: "server",
+        NEXT_PUBLIC_API_BASE_URL: "/mm-api",
+      },
+    });
+
+    await expect(client.skillStore.searchMarketplace()).resolves.toMatchObject({
+      categories: expect.arrayContaining([
+        expect.objectContaining({ category: "category-295" }),
+      ]),
+    });
+
+    categoryCount = 513;
+    await expect(client.skillStore.searchMarketplace()).rejects.toMatchObject({
+      code: "INVALID_SERVER_RESPONSE",
+    });
+  });
+
   it("rejects a catalog that claims another source", async () => {
     vi.stubGlobal(
       "fetch",

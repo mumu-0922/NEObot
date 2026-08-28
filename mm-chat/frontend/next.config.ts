@@ -15,6 +15,17 @@ const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: process.cwd(),
   reactCompiler: true,
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "github.com",
+        port: "",
+        pathname: "/*.png",
+        search: "",
+      },
+    ],
+  },
   turbopack: {
     root: process.cwd(),
   },

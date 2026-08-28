@@ -215,11 +215,13 @@ export function createServerSkillStoreApiShell(
         z
           .object({
             items: z.array(marketplaceSummarySchema),
-            categories: z.array(
-              z
-                .object({ category: z.string().min(1).max(128), count })
-                .strict(),
-            ),
+            categories: z
+              .array(
+                z
+                  .object({ category: z.string().min(1).max(128), count })
+                  .strict(),
+              )
+              .max(512),
             page: positive,
             pageSize: positive,
             totalCount: count,

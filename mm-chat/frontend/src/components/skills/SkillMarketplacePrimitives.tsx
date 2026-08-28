@@ -2,7 +2,9 @@
 
 import type { ReactNode } from "react";
 import { Folder, PackageOpen, ShieldCheck, Star, Tags } from "lucide-react";
+import Image from "next/image";
 import { useTranslations } from "next-intl";
+import { useState } from "react";
 
 import type {
   SkillCatalogSummaryDTO,
@@ -117,7 +119,7 @@ export function MarketplaceSkillCard({
       style={{ contentVisibility: "auto", containIntrinsicSize: "auto 148px" }}
     >
       <div className="flex items-start gap-3">
-        <SkillIcon label={item.name} />
+        <SkillIcon icon={item.icon} label={item.name} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="truncate text-sm font-semibold">{item.name}</span>
@@ -183,14 +185,57 @@ export function CuratedSkillCard({
   );
 }
 
-function SkillIcon({ label }: { label: string }) {
+function SkillIcon({ icon, label }: { icon?: string; label: string }) {
+  const [failedImageUrl, setFailedImageUrl] = useState("");
+  const imageUrl = getSkillIconImageURL(icon);
+  const shortText =
+    icon && !imageUrl && Array.from(icon).length <= 4 ? icon : "";
+  const fallback = shortText || label.trim().slice(0, 1).toUpperCase();
+
   return (
-    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-sm font-bold text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-300">
-      {label.trim().slice(0, 1).toUpperCase() || (
-        <PackageOpen size={18} aria-hidden="true" />
-      )}
+    <span
+      aria-hidden="true"
+      className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-cyan-50 text-sm font-bold text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-300"
+    >
+      <span className="absolute inset-0 flex items-center justify-center">
+        {fallback || <PackageOpen size={18} aria-hidden="true" />}
+      </span>
+      {imageUrl && failedImageUrl !== imageUrl ? (
+        <Image
+          src={imageUrl}
+          alt=""
+          width={44}
+          height={44}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setFailedImageUrl(imageUrl)}
+          className="relative z-10 h-full w-full object-cover"
+        />
+      ) : null}
     </span>
   );
+}
+
+export function getSkillIconImageURL(icon?: string): string {
+  if (!icon) return "";
+  try {
+    const parsed = new URL(icon);
+    if (
+      parsed.protocol !== "https:" ||
+      parsed.hostname !== "github.com" ||
+      parsed.port ||
+      parsed.username ||
+      parsed.password ||
+      parsed.search ||
+      parsed.hash ||
+      !/^\/[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\.png$/.test(parsed.pathname)
+    ) {
+      return "";
+    }
+    return parsed.toString();
+  } catch {
+    return "";
+  }
 }
 
 function formatCount(count: number): string {

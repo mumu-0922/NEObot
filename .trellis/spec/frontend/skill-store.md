@@ -46,6 +46,10 @@ panel=skill-store&skillId=<validated-curated-name|lobehub:identifier>
   selection; neither field becomes an arbitrary upstream query parameter.
 - The browser never calls GitHub/LobeHub directly, scrapes HTML, receives M2M
   credentials/package bytes, or treats list presence as install authority.
+- LobeHub Skill avatars render only from the validated
+  `https://github.com/<owner>.png` shape through the same-origin Next.js image
+  optimizer. Other URLs remain local fallbacks; the browser never requests an
+  upstream icon directly.
 - Strict Zod schemas bind every catalog entry to repository `openai/skills`,
   ref `main`, path `skills/.curated/<name>`, a coherent canonical source URL,
   and matching `id`/`name`/path identity.

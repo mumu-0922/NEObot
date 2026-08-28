@@ -75,6 +75,10 @@ func (*Service) InstallMarketplaceSkill(
   bearer tokens on that route. Exact-version package download remains M2M.
   Browser code receives normalized Neo Chat DTOs only and never sees a bearer
   token, raw upstream body, or package archive.
+- LobeHub Skill category responses accept at most 512 validated rows. This
+  bound intentionally exceeds the observed 296-entry upstream taxonomy while
+  keeping malformed or unexpectedly unbounded auxiliary responses fail-open
+  for the independently valid item list.
 - Locale and sort values cross the authenticated Marketplace boundary only
   through explicit allowlists; unknown values fail before upstream I/O.
 - Marketplace install must re-read detail for the requested exact SemVer,

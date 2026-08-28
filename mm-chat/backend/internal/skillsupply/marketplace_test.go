@@ -2,6 +2,7 @@ package skillsupply
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,8 +11,9 @@ import (
 )
 
 type fakeSkillMarketplace struct {
-	archive []byte
-	paths   []string
+	archive        []byte
+	categoriesJSON []byte
+	paths          []string
 }
 
 func (fake *fakeSkillMarketplace) FetchSkillPackage(
@@ -31,9 +33,64 @@ func (fake *fakeSkillMarketplace) FetchSkillMarketJSON(
 	case strings.HasPrefix(path, "/api/v1/skills?"):
 		return []byte(`{"items":[{"identifier":"owner-demo","name":"Demo Skill","description":"Marketplace demo","version":"1.2.3","category":"productivity","author":"Owner","installCount":7,"ratingAvg":4.5,"isOfficial":false,"isValidated":true,"isFeatured":true,"resourcesCount":1,"github":{"url":"https://github.com/owner/demo"}}],"currentPage":1,"pageSize":20,"totalCount":1,"totalPages":1}`), nil
 	case strings.HasPrefix(path, "/api/v1/skills/categories?"):
+		if fake.categoriesJSON != nil {
+			return append([]byte(nil), fake.categoriesJSON...), nil
+		}
 		return []byte(`[{"category":"productivity","count":1}]`), nil
 	default:
 		return nil, fmt.Errorf("unexpected path %s", path)
+	}
+}
+
+func TestMarketplaceCategoriesAcceptLiveCardinalityAndKeepBounded(t *testing.T) {
+	categories := make([]MarketplaceCategory, 296)
+	for index := range categories {
+		categories[index] = MarketplaceCategory{
+			Category: fmt.Sprintf("category-%03d", index),
+			Count:    index,
+		}
+	}
+	categoriesJSON, err := json.Marshal(categories)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetcher := &fakeSkillMarketplace{categoriesJSON: categoriesJSON}
+	service := NewService(WithLobeHubFetcher(fetcher))
+	result, err := service.SearchMarketplace(context.Background(), MarketplaceSearchInput{})
+	if err != nil || len(result.Categories) != len(categories) {
+		t.Fatalf("SearchMarketplace() category count = %d, %v", len(result.Categories), err)
+	}
+
+	bounded := make([]MarketplaceCategory, maxMarketplaceCategories)
+	for index := range bounded {
+		bounded[index] = MarketplaceCategory{
+			Category: fmt.Sprintf("bounded-%03d", index),
+			Count:    index,
+		}
+	}
+	fetcher.categoriesJSON, err = json.Marshal(bounded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = service.SearchMarketplace(context.Background(), MarketplaceSearchInput{})
+	if err != nil || len(result.Categories) != maxMarketplaceCategories {
+		t.Fatalf("bounded category count = %d, %v", len(result.Categories), err)
+	}
+
+	oversized := make([]MarketplaceCategory, maxMarketplaceCategories+1)
+	for index := range oversized {
+		oversized[index] = MarketplaceCategory{
+			Category: fmt.Sprintf("oversized-%03d", index),
+			Count:    index,
+		}
+	}
+	fetcher.categoriesJSON, err = json.Marshal(oversized)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = service.SearchMarketplace(context.Background(), MarketplaceSearchInput{})
+	if err != nil || len(result.Categories) != 0 {
+		t.Fatalf("oversized categories should fail open with item list: %#v, %v", result.Categories, err)
 	}
 }
 

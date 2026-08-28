@@ -14,6 +14,7 @@ const (
 	maxSkillMarketplaceJSONBytes = int64(2 << 20)
 	maxMarketplaceQueryRunes     = 200
 	maxMarketplacePageSize       = 50
+	maxMarketplaceCategories     = 512
 	maxMarketplaceResources      = 512
 )
 
@@ -247,7 +248,7 @@ func (service *Service) marketplaceCategories(
 		return nil, err
 	}
 	var raw []MarketplaceCategory
-	if json.Unmarshal(data, &raw) != nil || len(raw) > 256 {
+	if json.Unmarshal(data, &raw) != nil || len(raw) > maxMarketplaceCategories {
 		return nil, ErrSourceUnavailable
 	}
 	result := make([]MarketplaceCategory, 0, len(raw))

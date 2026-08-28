@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { getSkillIconImageURL } from "../components/skills/SkillMarketplacePrimitives";
 import en from "../i18n/locales/en";
 import zh from "../i18n/locales/zh";
 
@@ -14,6 +15,7 @@ describe("Skill Store product boundary", () => {
     .map((path) => readFileSync(path, "utf8"))
     .join("\n");
   const chatApp = readFileSync("src/components/app/ChatApp.tsx", "utf8");
+  const nextConfig = readFileSync("next.config.ts", "utf8");
 
   it("is a separate URL-addressable top-level surface", () => {
     expect(chatApp).toContain("navigateSkillStore(skillId)");
@@ -73,5 +75,20 @@ describe("Skill Store product boundary", () => {
     expect(store).not.toContain("Schedules");
     expect(store).not.toContain("Learning");
     expect(store).not.toContain("Canary");
+  });
+
+  it("renders bounded Skill icons through the same-origin image optimizer", () => {
+    expect(store).toContain("<SkillIcon icon={item.icon}");
+    expect(store).toContain('referrerPolicy="no-referrer"');
+    expect(store).not.toContain("unoptimized");
+    expect(nextConfig).toContain('hostname: "github.com"');
+    expect(nextConfig).toContain('pathname: "/*.png"');
+    expect(getSkillIconImageURL("https://github.com/openclaw.png")).toBe(
+      "https://github.com/openclaw.png",
+    );
+    expect(getSkillIconImageURL("https://evil.example/openclaw.png")).toBe("");
+    expect(
+      getSkillIconImageURL("https://github.com/openclaw.png?size=88"),
+    ).toBe("");
   });
 });
