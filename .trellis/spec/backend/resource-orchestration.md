@@ -77,6 +77,11 @@ skillsupply.Service.InstallDirectSkillLink(
   `npx skills@latest add owner/repository --skill=<slug>` coordinate as data.
   Neither path executes npm, Git, Shell, page code, hooks, tests, scripts, or
   package entrypoints.
+- A deterministic direct-install failure remains sanitized but must name the
+  actionable bounded classes: invalid link, missing Skill directory,
+  temporarily unavailable source, or package validation failure. A missing
+  directory must not be described only as a malformed package, and no raw
+  GitHub/archive error crosses the transcript boundary.
 - Direct packages reuse `ValidateArchive`, canonical ZIP, SBOM,
   content-addressed objects, and runtime revalidation. Their candidate remains
   `validated`, has no reviewer, is scoped by `owner_user_id`, is excluded from
@@ -156,6 +161,7 @@ skillsupply.Service.InstallDirectSkillLink(
 | explicit install text contains zero, multiple, oversized, or unsupported URLs | do not enter deterministic installation; ordinary Agent behavior |
 | supported explicit GitHub Skill tree/blob link | bypass Store; owner-private pinned-source install before Provider |
 | GitHub link is a repository root, encoded, ambiguous, or does not identify one Skill directory | direct install fails; zero package mutation/Provider calls |
+| selected GitHub directory is absent from the pinned ZIP | completed sanitized no-install answer names an invalid/missing directory; zero package mutation/Provider calls |
 | supported explicit AIHero Skill link | bypass Store; owner-private pinned-source install before Provider |
 | AIHero page command is absent, ambiguous, or names another Skill | direct install fails; zero package mutation/Provider calls |
 | GitHub commit cannot be pinned, ZIP exceeds bounds, or zero/multiple matching Skills validate | direct install fails closed |
@@ -193,7 +199,8 @@ skillsupply.Service.InstallDirectSkillLink(
   install.
 - Supported-link allowlist/mismatch/traversal tests for LobeHub, GitHub, and AIHero.
   GitHub fixtures must cover exact tree/blob paths, repository-root rejection,
-  branch-to-commit pinning, and zero Provider/Store calls.
+  branch-to-commit pinning, a pinned ZIP missing the selected root
+  `SKILL.md`, and zero Provider/Store calls.
   AIHero fixtures must prove bounded page parsing, unique restricted command,
   exact GitHub commit, one matching package, no command execution, and no Store
   publication.
@@ -233,6 +240,9 @@ Correct: AIHero /skills-<slug> -> parse one restricted coordinate as data ->
 Wrong: GitHub repository URL -> guess a Skill -> install mutable branch bytes
 Correct: exact GitHub Skill tree/blob path -> resolve ref -> exact commit ->
          existing validation/SBOM -> owner-private library
+
+Wrong: missing selected directory -> generic package-structure diagnosis
+Correct: sanitized invalid/missing-directory answer -> zero mutation
 
 Wrong: explicit supported link -> Provider must call resource_search -> 502 blocks discovery
 Correct: explicit intent + one supported link -> Backend resource_search ->

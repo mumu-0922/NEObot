@@ -94,7 +94,7 @@ func TestHandlerCatalogDetailInstallAndLibraryLifecycle(t *testing.T) {
 	commit := strings.Repeat("e", 40)
 	archive := mustRawTestArchive(t, []testZipEntry{{
 		name: "skills-" + commit + "/skills/.curated/demo-skill/SKILL.md",
-		body: validSkillMarkdown("demo-skill"),
+		body: "---\nname: demo-skill\ndescription: Official-style instruction-only fixture.\n---\n\n# Demo\n",
 	}})
 	validated, err := ValidateArchive(ArchiveSource{
 		Type: SourceGit, Ref: "fixture", ExpectedName: "demo-skill",
@@ -131,6 +131,7 @@ func TestHandlerCatalogDetailInstallAndLibraryLifecycle(t *testing.T) {
 	assertSkillHTTP(t, list, http.StatusOK, `"catalogSource":"openai/skills curated"`)
 	detail := skillRequest(handler, http.MethodGet, "/v1/skills/catalog/items/demo-skill", nil, "", testSkillUser)
 	assertSkillHTTP(t, detail, http.StatusOK, `"resolvedCommit":"`+commit+`"`)
+	assertSkillHTTP(t, detail, http.StatusOK, `"allowedTools":[]`)
 
 	drift := skillRequest(handler, http.MethodPost, "/v1/skills/catalog/items/demo-skill/install",
 		strings.NewReader(`{"resolvedCommit":"`+commit+`","packageFingerprint":"sha256:`+
@@ -140,8 +141,10 @@ func TestHandlerCatalogDetailInstallAndLibraryLifecycle(t *testing.T) {
 		strings.NewReader(`{"resolvedCommit":"`+commit+`","packageFingerprint":"`+
 			validated.Package.PackageFingerprint+`"}`), "application/json", testSkillUser)
 	assertSkillHTTP(t, install, http.StatusCreated, `"name":"demo-skill"`)
+	assertSkillHTTP(t, install, http.StatusCreated, `"allowedTools":[]`)
 	library := skillRequest(handler, http.MethodGet, "/v1/skills/library", nil, "", testSkillUser)
 	assertSkillHTTP(t, library, http.StatusOK, `"name":"demo-skill"`)
+	assertSkillHTTP(t, library, http.StatusOK, `"allowedTools":[]`)
 	store := skillRequest(handler, http.MethodGet, "/v1/skills/store?page=1&pageSize=20", nil, "", testSkillUser)
 	assertSkillHTTP(t, store, http.StatusOK, `"totalCount":0`)
 }

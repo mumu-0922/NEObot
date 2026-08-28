@@ -398,6 +398,9 @@ func (source GitHubSource) Fetch(
 	prefix := repository + "-" + commit + "/"
 	if subdirectory != "" {
 		prefix += subdirectory + "/"
+		if err := requireSelectedSkillRoot(data, prefix); err != nil {
+			return ArchiveSource{}, err
+		}
 	}
 	expectedName := repository
 	if subdirectory != "" {
@@ -410,6 +413,20 @@ func (source GitHubSource) Fetch(
 	}
 	return ArchiveSource{Type: SourceGit, Ref: ref, Identifier: repository,
 		Version: "", StripPrefix: prefix, ExpectedName: expectedName, Data: data}, nil
+}
+
+func requireSelectedSkillRoot(data []byte, prefix string) error {
+	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil || len(reader.File) == 0 {
+		return ErrArchiveInvalid
+	}
+	expected := prefix + "SKILL.md"
+	for _, entry := range reader.File {
+		if entry != nil && !entry.FileInfo().IsDir() && entry.Name == expected {
+			return nil
+		}
+	}
+	return ErrInvalidSource
 }
 
 func ZIPSource(data []byte) (ArchiveSource, error) {

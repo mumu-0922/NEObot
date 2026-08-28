@@ -164,6 +164,48 @@ func TestServiceDirectSkillLinkInstallsPrivateWithoutStoreAdmission(t *testing.T
 	}
 }
 
+func TestServiceDirectGitHubSkillLinkInstallsInstructionOnlyPackage(t *testing.T) {
+	commit := strings.Repeat("f", 40)
+	archive := mustRawTestArchive(t, []testZipEntry{{
+		name: "skills-" + commit + "/skills/.curated/pdf/SKILL.md",
+		body: "---\nname: pdf\ndescription: Official-style PDF fixture.\n---\n\n# PDF\n",
+	}})
+	client := sourceRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Host {
+		case "api.github.com":
+			return sourceResponse(request, "application/json", `{"sha":"`+commit+`"}`), nil
+		case "codeload.github.com":
+			return &http.Response{StatusCode: http.StatusOK,
+				Body: io.NopCloser(bytes.NewReader(archive)), Request: request}, nil
+		default:
+			t.Fatalf("unexpected request %s", request.URL)
+			return nil, nil
+		}
+	})
+	repository := newMemoryRepository()
+	service := NewService(
+		WithRepository(repository), WithObjectStore(newMemoryObjectStore()),
+		WithGitHubClient(client),
+	)
+	service.newID = sequenceIDs("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+
+	installed, err := service.InstallDirectSkillLink(
+		context.Background(), testSkillDevelopmentUser,
+		"https://github.com/openai/skills/tree/main/skills/.curated/pdf", "pdf",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if installed.Name != "pdf" || installed.Version == "" ||
+		installed.AllowedTools == nil || len(installed.AllowedTools) != 0 {
+		t.Fatalf("installation=%#v", installed)
+	}
+	if len(repository.installations) != 1 || len(repository.candidates) != 1 {
+		t.Fatalf("installations=%d candidates=%d",
+			len(repository.installations), len(repository.candidates))
+	}
+}
+
 type postCommitErrorRepository struct{ Repository }
 
 func (repository postCommitErrorRepository) Install(

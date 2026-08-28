@@ -605,7 +605,8 @@ func TestExplicitSupportedSkillLinkDirectFailureDoesNotCallProviderOrStore(t *te
 	}
 	if len(provider.inputs) != 0 || probe.searchCalls != 0 || probe.installCalls != 0 ||
 		probe.directCalls != 1 || !failedInstall ||
-		!strings.Contains(content.String(), "直装失败") {
+		!strings.Contains(content.String(), "直装失败") ||
+		!strings.Contains(content.String(), "Skill 目录不存在") {
 		t.Fatalf("content=%q provider=%d probe=%#v failedInstall=%t",
 			content.String(), len(provider.inputs), probe, failedInstall)
 	}

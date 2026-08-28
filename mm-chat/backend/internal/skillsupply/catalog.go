@@ -162,6 +162,6 @@ func catalogDetail(summary CatalogSkillSummary, commit string, pkg PackageVersio
 		PackageFingerprint: pkg.PackageFingerprint, Version: pkg.Version,
 		Description: pkg.Description, License: pkg.License,
 		Compatibility: pkg.Compatibility,
-		AllowedTools:  append([]string(nil), pkg.AllowedTools...), HasRuntime: pkg.HasRuntime,
+		AllowedTools:  nonNilStrings(pkg.AllowedTools), HasRuntime: pkg.HasRuntime,
 	}
 }

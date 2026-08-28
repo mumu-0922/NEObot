@@ -63,7 +63,7 @@ func TestGitHubCatalogListsCachesAndValidatesCuratedSkill(t *testing.T) {
 	commit := strings.Repeat("c", 40)
 	archive := mustRawTestArchive(t, []testZipEntry{{
 		name: "skills-" + commit + "/skills/.curated/demo-skill/SKILL.md",
-		body: validSkillMarkdown("demo-skill"),
+		body: "---\nname: demo-skill\ndescription: Official-style instruction-only fixture.\n---\n\n# Demo\n",
 	}})
 	calls := []string{}
 	client := sourceRoundTripFunc(func(request *http.Request) (*http.Response, error) {
@@ -97,11 +97,40 @@ func TestGitHubCatalogListsCachesAndValidatesCuratedSkill(t *testing.T) {
 	detail, source, err := catalog.Detail(context.Background(), "demo-skill")
 	if err != nil || detail.ResolvedCommit != commit ||
 		detail.PackageFingerprint == "" || detail.Description == "" ||
+		detail.Version == "" || detail.AllowedTools == nil || len(detail.AllowedTools) != 0 ||
 		source.StripPrefix != "skills-"+commit+"/skills/.curated/demo-skill/" {
 		t.Fatalf("detail=%#v source=%#v error=%v", detail, source, err)
 	}
 	if len(calls) != 3 {
 		t.Fatalf("calls=%#v", calls)
+	}
+}
+
+func TestDirectSkillLinkSourceRejectsMissingSelectedDirectory(t *testing.T) {
+	commit := strings.Repeat("b", 40)
+	archive := mustRawTestArchive(t, []testZipEntry{{
+		name: "skills-" + commit + "/skills/.curated/pdf/SKILL.md",
+		body: "---\nname: pdf\ndescription: PDF fixture.\n---\n\n# PDF\n",
+	}})
+	client := sourceRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Host {
+		case "api.github.com":
+			return sourceResponse(request, "application/json", `{"sha":"`+commit+`"}`), nil
+		case "codeload.github.com":
+			return &http.Response{StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(string(archive))), Request: request}, nil
+		default:
+			t.Fatalf("unexpected request %s", request.URL)
+			return nil, nil
+		}
+	})
+	_, err := (DirectSkillLinkSource{Client: client}).Fetch(
+		context.Background(),
+		"https://github.com/openai/skills/tree/main/skills/.curated/pdfs",
+		"pdfs",
+	)
+	if !errors.Is(err, ErrInvalidSource) {
+		t.Fatalf("missing selected directory error=%v", err)
 	}
 }
 
@@ -206,12 +235,16 @@ func TestSourceAdaptersRequireImmutableCoordinates(t *testing.T) {
 	}
 
 	commit := strings.Repeat("a", 40)
+	gitArchive := mustRawTestArchive(t, []testZipEntry{{
+		name: "repo-" + commit + "/skills/demo-skill/SKILL.md",
+		body: validSkillMarkdown("demo-skill"),
+	}})
 	client := sourceRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 		if request.URL.String() != "https://codeload.github.com/owner/repo/zip/"+commit ||
 			request.Header.Get("Accept") != "application/zip" {
 			t.Fatalf("GitHub request = %s headers=%#v", request.URL, request.Header)
 		}
-		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(string(archive)))}, nil
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(string(gitArchive)))}, nil
 	})
 	git := GitHubSource{Client: client}
 	gitSource, err := git.Fetch(context.Background(), "https://github.com/owner/repo.git", commit, "skills/demo-skill")

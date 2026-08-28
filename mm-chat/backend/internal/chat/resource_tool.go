@@ -384,7 +384,7 @@ func runDeterministicExplicitResourceInstall(
 		}
 		if result.IsError {
 			sendDeterministicResourceAnswer(ctx, events,
-				"该 Skill 直装失败：链接来源、版本固定或包结构校验未通过，未启用任何内容。")
+				"该 Skill 直装失败：链接无效、Skill 目录不存在、来源暂时不可用，或包校验未通过；未安装任何内容。")
 			return true
 		}
 		sendDeterministicResourceAnswer(ctx, events, fmt.Sprintf(

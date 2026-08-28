@@ -90,7 +90,7 @@ func ValidateArchive(source ArchiveSource) (ValidatedPackage, error) {
 	if err != nil {
 		return ValidatedPackage{}, ErrManifestInvalid
 	}
-	allowedTools := append([]string(nil), metadata.AllowedTools...)
+	allowedTools := nonNilStrings(metadata.AllowedTools)
 	capabilityRequests := []CapabilityRequest{}
 	if manifest != nil {
 		capabilityRequests = append(capabilityRequests, manifest.CapabilityRequests...)
