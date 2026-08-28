@@ -1752,3 +1752,36 @@ Added backend-owned localized LobeHub Skill discovery, strict exact-version owne
 ### Next Steps
 
 - None - task complete
+
+
+## Session 101: Align Skill Marketplace with MCP
+
+**Date**: 2026-08-28
+**Task**: Align Skill Marketplace with MCP
+**Branch**: `main`
+
+### Summary
+
+Fixed LobeHub exact-detail authentication by separating bounded public detail reads from M2M list/category/download, rebuilt the Skill Store around the MCP Marketplace category-rail/card-grid/modal pattern, added regression coverage, passed full standalone verification, and deployed healthy frontend/backend containers.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9ade88df` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

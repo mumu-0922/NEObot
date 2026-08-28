@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 100
+- **Total Sessions**: 101
 - **Last Active**: 2026-08-28
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1754 | Active |
+| `journal-2.md` | ~1787 | Active |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 101 | 2026-08-28 | Align Skill Marketplace with MCP | `9ade88df` | `main` |
 | 100 | 2026-08-28 | Integrate LobeHub Skill marketplace | `945b0da9` | `main` |
 | 99 | 2026-08-28 | Fix curated Skill detail and direct install | `82083ea6` | `main` |
 | 98 | 2026-08-28 | Codex-style Skill installation | `8f501496` | `main` |
