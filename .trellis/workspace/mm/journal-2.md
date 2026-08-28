@@ -1950,3 +1950,36 @@ Extracted the bounded Skill icon renderer for Store and Installed cards, added d
 ### Next Steps
 
 - None - task complete
+
+
+## Session 107: Add composer resource picker icons
+
+**Date**: 2026-08-28
+**Task**: Add composer resource picker icons
+**Branch**: `main`
+
+### Summary
+
+Reused shared Skill and MCP icon renderers in compact per-conversation picker rows, added focused regression coverage, updated frontend contracts, and deployed the healthy frontend.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a8d73165` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
