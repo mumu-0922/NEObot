@@ -1851,3 +1851,36 @@ Reduced the raw LobeHub taxonomy to 21 server-authoritative categories, added zh
 ### Next Steps
 
 - None - task complete
+
+
+## Session 104: Fix LobeHub Skill installation fallback
+
+**Date**: 2026-08-28
+**Task**: Fix LobeHub Skill installation fallback
+**Branch**: `main`
+
+### Summary
+
+Replaced unauthorized LobeHub package downloads with commit-pinned, bounded GitHub Skill subtree materialization; verified blob identity and supply-chain limits, added regressions, updated specs/docs, and rebuilt a healthy backend.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d738fc5f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
