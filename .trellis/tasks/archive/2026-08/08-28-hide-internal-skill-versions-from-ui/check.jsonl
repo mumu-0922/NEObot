@@ -1,0 +1,2 @@
+{"file":".trellis/spec/frontend/skill-store.md","reason":"Verify the UI hides versions while install contracts keep exact version identity."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Apply proportional frontend verification and focused regression coverage."}

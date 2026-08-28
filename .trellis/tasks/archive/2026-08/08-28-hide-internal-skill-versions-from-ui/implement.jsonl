@@ -1,0 +1,2 @@
+{"file":".trellis/spec/frontend/skill-store.md","reason":"Defines the Skill Store presentation and install boundary."}
+{"file":".trellis/spec/frontend/mcp-tools.md","reason":"Confirms generic resource picker conventions and keeps MCP terminology out of scope."}
