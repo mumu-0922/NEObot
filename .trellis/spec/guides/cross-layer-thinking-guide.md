@@ -190,6 +190,28 @@ The executable Chat contract lives in `../frontend/state-management.md` under
 `../backend/chat-tool-loop.md` under “Conversation-scoped Run admission and
 projection.”
 
+## Durable Authority vs Derived Link Checklist
+
+Use this when a durable job/event outlives the UI entity or message used to
+display its Activity, notification, or audit projection:
+
+- [ ] Name the lifetime authority for both rows. A retained job is not proof
+      that its source Message still exists.
+- [ ] Keep foreign keys on the derived link; conditionally omit an
+      unrepresentable projection instead of weakening ownership.
+- [ ] Ensure projection failure cannot roll back the authoritative terminal
+      transition unless the projection is itself required evidence.
+- [ ] Test live owner, deleted owner, concurrent deletion, idempotent replay,
+      and the next queued item in one PostgreSQL integration flow.
+- [ ] Verify actual queue movement. Container health or heartbeat alone cannot
+      prove that a claim transaction commits.
+- [ ] When privacy-safe logs omit raw errors, call the exact capability under
+      its runtime role inside an explicit transaction and `ROLLBACK`; never
+      mutate queue rows directly just to expose the error.
+
+The executable Memory contract lives in
+`../backend/memory-v2-actions-activity-usage.md`.
+
 ## Agent Tool, Completion, and Workspace Output Checklist
 
 Use this when changing an LLM-visible Agent Tool, the loop termination rule, or

@@ -1,7 +1,7 @@
 # Persistence Docs
 
 Persistence docs describe the current Postgres source-of-truth contract for the
-`mm-chat` server-backed refactor. The schema head is migration `106`;
+`mm-chat` server-backed refactor. The schema head is migration `109`;
 the Phase 4, 4.5, and 5.x labels below are retained as implementation history,
 not as limits on the current runtime.
 
@@ -55,6 +55,13 @@ The ordered schema currently consists of:
 - `106` adds owner-bound, revision-CAS per-conversation Skill selections. It
   references existing immutable Skill installations and cascades with the
   owning Conversation or installation; it stores no package content.
+- `107` admits owner-private direct Skill installations without publishing
+  them to the shared Store; `108` retires the checked-in Playwright Browser
+  manifest authority while retaining historical Run evidence.
+- `109` keeps Memory dead-letter jobs authoritative when their source assistant
+  has been deleted. The trigger creates link-only Activity only for a live
+  owner-matching assistant, so one unrepresentable audit projection cannot
+  roll back lease terminalization and block the whole Memory queue.
 
 The historical Phase 4.5 runtime wiring keeps DB startup explicit:
 `DATABASE_URL` enables Postgres for the API, `/ready` checks it, and API startup

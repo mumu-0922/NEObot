@@ -2,8 +2,9 @@
 
 ## 1. Scope / Trigger
 
-Apply this contract when changing migration
-`057_memory_actions_activity_usage`, direct-user Memory intent/planning,
+Apply this contract when changing migrations
+`057_memory_actions_activity_usage` or
+`109_memory_dead_letter_orphan_activity`, direct-user Memory intent/planning,
 Memory task-model resolution, assistant Memory Usage persistence, Activity
 polling, or revision-safe Activity undo.
 
@@ -64,6 +65,7 @@ memory_record_message_usages(UUID, UUID, UUID, JSONB)
 memory_list_activities(UUID, UUID, INTEGER)
 memory_list_message_usages(UUID, UUID)
 memory_undo_activity(UUID, UUID, BIGINT, UUID, UUID, UUID, UUID)
+memory_dead_letter_activity_trigger() RETURNS TRIGGER
 ```
 
 The Provider planner must call the versioned required Tool
@@ -218,6 +220,13 @@ GET  /v1/memory-usages?assistantMessageId=<uuid>
 - Direct applied/review/rejected/failed actions, PR5 pending/rejected Review
   suggestions, and Memory job dead-letter transitions create Activity.
   `EXACT_NOOP` is intentionally silent.
+- A durable Memory job intentionally outlives source-message deletion. The
+  dead-letter trigger must therefore project Activity only through an
+  owner-matching live `(assistant_message_id,user_id)` row. If that row no
+  longer exists, the job/error remains canonical evidence, the Activity is
+  omitted as unrepresentable, and the terminal transition must still commit.
+  Never weaken the Activity foreign key or delete/update the job to make the
+  projection succeed.
 - Activity polling is ascending `(created_at, id)` cursor order. A cursor is
   valid only for the authenticated user. Each assistant has at most 64
   Activity ordinals and each page has at most 100 rows.
@@ -292,6 +301,8 @@ GET  /v1/memory-usages?assistantMessageId=<uuid>
 | Memory is deleted or epoch/generation hidden | Activity/Usage return deleted marker and no content. |
 | Undo target changed after Activity | `review_required`; later canonical revision remains unchanged. |
 | Correction snapshot was purged/source deleted | `UNDO_SNAPSHOT_UNAVAILABLE`; no restoration. |
+| Expired final-attempt job still has its owner-matching assistant | Terminalize with `LEASE_EXPIRED` and create exactly one job Activity. |
+| Expired final-attempt job outlives its deleted assistant | Terminalize with `LEASE_EXPIRED`, create no dangling Activity, and continue claiming later jobs. |
 | Down sees any PR6 authority/history | `MEMORY_ACTION_ROLLBACK_REQUIRES_*`; schema retained. |
 
 ## 6. Good/Base/Bad Cases
@@ -311,6 +322,9 @@ GET  /v1/memory-usages?assistantMessageId=<uuid>
 - **Base**: the same-scope normalized Memory already exists; the action returns
   `EXACT_NOOP`, creates no Activity, leaves canonical/revision state unchanged,
   and the main chat response still completes.
+- **Base orphan**: a deleted Conversation cascade removes the assistant while
+  its durable final-attempt job remains. Lease expiry keeps the job/error,
+  skips only the impossible Activity link, and does not poison the claim loop.
 - **Bad**: generic “写进去” text, assistant/tool text, or an incomplete prior
   user row supplies authority/facts; the planner forges a target or scope;
   Usage replay changes order; or undo sees a newer revision. The boundary fails
@@ -337,6 +351,10 @@ GET  /v1/memory-usages?assistantMessageId=<uuid>
   stale undo Review, Usage finalize rollback and immutable replay, current-state
   deleted marker, PR5 pending/rejected and dead-letter Activity, provider-free
   direct purge, role denial, guarded down, clean down, and re-up.
+- PostgreSQL 17: replay `057 -> 109 -> 057 -> 109`; expire final-attempt jobs
+  with both live and deleted assistants, assert `dead_letter/LEASE_EXPIRED` for
+  both, exactly one Activity for the live assistant, zero for the deleted
+  assistant, unchanged foreign keys, and subsequent claim progress.
 - Static migration: tables contain no query/prompt/content copy, every generic
   link has ownership authority, function signatures/grants are exact, revision
   wipe is complete, triggers/backfill are bounded, and both down guards exist.
@@ -386,4 +404,19 @@ exact referential command + current Conversation order
   -> v2 planner input: current command authority + prior user factual reference
   -> current command remains SQL source/assistant parent
   -> status-only server System instruction makes the answer report the result
+```
+
+Wrong dead-letter projection:
+
+```text
+expired durable job -> unconditional Activity INSERT -> deleted assistant FK
+  -> whole claim rolls back -> every later pending job remains blocked
+```
+
+Correct dead-letter projection:
+
+```text
+expired durable job -> terminal job/error remains authoritative
+  -> owner-matching assistant exists: one link-only Activity
+  -> assistant deleted: no Activity row, no FK weakening, claim continues
 ```
