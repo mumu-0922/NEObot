@@ -1719,3 +1719,36 @@ Normalized empty Skill Tool lists to JSON arrays, rejected missing pinned GitHub
 ### Next Steps
 
 - None - task complete
+
+
+## Session 100: Integrate LobeHub Skill marketplace
+
+**Date**: 2026-08-28
+**Task**: Integrate LobeHub Skill marketplace
+**Branch**: `main`
+
+### Summary
+
+Added backend-owned localized LobeHub Skill discovery, strict exact-version owner-private installs, exact LobeHub/GitHub link installation, a dual-source Skill Store UI, and full supply-chain verification.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `945b0da9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
