@@ -1884,3 +1884,36 @@ Replaced unauthorized LobeHub package downloads with commit-pinned, bounded GitH
 ### Next Steps
 
 - None - task complete
+
+
+## Session 105: Fix LobeHub nested Skill metadata installation
+
+**Date**: 2026-08-28
+**Task**: Fix LobeHub nested Skill metadata installation
+**Branch**: `main`
+
+### Summary
+
+Accepted bounded OpenClaw/LobeHub nested metadata as inert content, retained scalar metadata authority, added Marketplace regression coverage, rebuilt the backend, and verified healthy deployment.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2b017f5c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

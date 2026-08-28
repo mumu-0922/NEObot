@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 104
+- **Total Sessions**: 105
 - **Last Active**: 2026-08-28
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1886 | Active |
+| `journal-2.md` | ~1919 | Active |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 105 | 2026-08-28 | Fix LobeHub nested Skill metadata installation | `2b017f5c` | `main` |
 | 104 | 2026-08-28 | Fix LobeHub Skill installation fallback | `d738fc5f` | `main` |
 | 103 | 2026-08-28 | Curate localized Skill marketplace categories | `698784eb` | `main` |
 | 102 | 2026-08-28 | Restore Skill Marketplace categories and icons | `bf52489d` | `main` |
