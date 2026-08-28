@@ -4,7 +4,7 @@
 and uninstalling Agent Skill packages. Its header separates the
 server-authoritative installed library from a source-aware Skill Store
 with `Installed | Skill Store` tabs. Installation refreshes both views and
-returns the user to `Installed`. The Store keeps authenticated LobeHub search,
+returns the user to `Installed`. The Store keeps backend-mediated LobeHub search,
 categories, pagination, detail, and exact-version install separate from the
 fixed `openai/skills/skills/.curated` catalog. An exact LobeHub or GitHub Skill
 link may also be installed explicitly. The browser never receives Marketplace
@@ -15,9 +15,11 @@ The component uses `client.skillStore`, whose server adapter calls only
 Runs, Schedules, Learning, Shadow, Canary, Runner, or OCI control APIs.
 
 `useSkillStore.ts` owns source-specific requests and install state;
-`SkillStorePrimitives.tsx` owns the shell, split pane, Installed list, and
-accessible loading/error/detail primitives. `SkillStore.tsx` composes the
-source-specific Store UI without duplicating those authorities.
+`SkillStorePrimitives.tsx` owns the shell, Installed list, and accessible
+loading/error primitives. `SkillMarketplacePrimitives.tsx` owns the category
+rail and source-specific cards, while `SkillDetailDialog.tsx` owns the modal
+detail/install layer. `SkillStore.tsx` composes the MCP-style top search,
+responsive grid, and those focused components without duplicating authorities.
 
 The selected package is URL-addressable through `panel=skill-store&skillId=...`,
 where curated entries use their validated Skill name and LobeHub entries use

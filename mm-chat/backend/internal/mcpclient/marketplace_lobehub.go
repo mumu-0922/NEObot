@@ -50,23 +50,23 @@ func (m *LobeHubMarketplace) FetchAgentMarketJSON(
 	return m.authorizedGET(ctx, path, maximum)
 }
 
-// FetchSkillMarketJSON exposes only the read-only Skill discovery endpoints
-// through the existing Marketplace M2M token owner. Package downloads stay on
-// FetchSkillPackage so callers cannot turn this adapter into a generic
-// authenticated proxy.
+// FetchSkillMarketJSON exposes only the authenticated Skill list and category
+// endpoints through the existing Marketplace M2M token owner. Exact Skill
+// detail is public upstream and deliberately has a separate method so an
+// Authorization header cannot leak onto that route.
 func (m *LobeHubMarketplace) FetchSkillMarketJSON(
 	ctx context.Context,
 	requestPath string,
 	maximum int64,
 ) ([]byte, error) {
 	if m == nil || maximum < 1 || maximum > maxMarketplaceDetailBytes ||
-		!validSkillMarketJSONPath(requestPath) {
+		!validSkillMarketListJSONPath(requestPath) {
 		return nil, ErrMarketplaceUnavailable
 	}
 	return m.authorizedGET(ctx, requestPath, maximum)
 }
 
-func validSkillMarketJSONPath(requestPath string) bool {
+func validSkillMarketListJSONPath(requestPath string) bool {
 	parsed, err := url.ParseRequestURI(strings.TrimSpace(requestPath))
 	if err != nil || parsed.IsAbs() || parsed.Host != "" || parsed.Fragment != "" {
 		return false
@@ -75,17 +75,59 @@ func validSkillMarketJSONPath(requestPath string) bool {
 	case "/api/v1/skills", "/api/v1/skills/categories":
 		return true
 	}
+	return false
+}
+
+// FetchPublicSkillDetailJSON reads one exact public Skill detail while keeping
+// the same bounded origin, redirect, timeout, and response-size policy as the
+// rest of the Marketplace client. Only locale and an exact SemVer may cross
+// this unauthenticated boundary.
+func (m *LobeHubMarketplace) FetchPublicSkillDetailJSON(
+	ctx context.Context,
+	requestPath string,
+	maximum int64,
+) ([]byte, error) {
+	if m == nil || maximum < 1 || maximum > maxMarketplaceDetailBytes ||
+		!validPublicSkillDetailJSONPath(requestPath) {
+		return nil, ErrMarketplaceUnavailable
+	}
+	return m.publicGET(ctx, requestPath, maximum)
+}
+
+func validPublicSkillDetailJSONPath(requestPath string) bool {
+	parsed, err := url.ParseRequestURI(strings.TrimSpace(requestPath))
+	if err != nil || parsed.IsAbs() || parsed.Host != "" || parsed.Fragment != "" {
+		return false
+	}
 	prefix := "/api/v1/skills/"
 	if !strings.HasPrefix(parsed.EscapedPath(), prefix) {
 		return false
 	}
 	segment := strings.TrimPrefix(parsed.EscapedPath(), prefix)
-	if segment == "" || strings.Contains(segment, "/") || segment == "download" {
+	if segment == "" || strings.Contains(segment, "/") ||
+		segment == "categories" || segment == "download" {
 		return false
 	}
 	identifier, err := url.PathUnescape(segment)
-	return err == nil && !strings.Contains(identifier, "/") &&
-		url.PathEscape(identifier) == segment && validMarketplaceIdentifier(identifier)
+	if err != nil || strings.Contains(identifier, "/") ||
+		url.PathEscape(identifier) != segment || !validMarketplaceIdentifier(identifier) {
+		return false
+	}
+	query := parsed.Query()
+	for key, values := range query {
+		if len(values) != 1 || (key != "locale" && key != "version") {
+			return false
+		}
+	}
+	if locale := query.Get("locale"); locale != "" &&
+		locale != "zh-CN" && locale != "en-US" && locale != "ja-JP" {
+		return false
+	}
+	if version := query.Get("version"); version != "" &&
+		!exactSkillVersionPattern.MatchString(version) {
+		return false
+	}
+	return true
 }
 
 // FetchSkillPackage downloads one exact Skill version through the existing

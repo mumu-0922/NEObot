@@ -1,7 +1,7 @@
 # skillsupply
 
 `skillsupply` owns the server-authoritative Skill package supply chain. Its
-user-facing store combines the authenticated LobeHub Skill Marketplace with
+user-facing store combines the backend-mediated LobeHub Skill Marketplace with
 the fixed `openai/skills` `skills/.curated` directory as separate sources.
 It also accepts an exact LobeHub Skill page or GitHub Skill directory, plus the legacy AIHero
 adapter, and resolves mutable refs to exact commits before validation. Every
@@ -40,12 +40,13 @@ The curated catalog lists only the bounded fixed GitHub directory. Detail resolv
 validated display metadata. Install must repeat that exact commit and package
 fingerprint; source drift is rejected before ingestion.
 
-LobeHub discovery reuses the Backend-owned Marketplace M2M token and never
-exposes it to the browser. Search accepts only the supported UI locales and a
-fixed sort allowlist; each source keeps independent loading and failure state.
-Install resolves detail, pins the exact SemVer, downloads the ZIP through the
-bounded adapter, and then enters the unchanged canonical validator/object-store
-pipeline.
+LobeHub list/category discovery reuses the Backend-owned Marketplace M2M token
+and never exposes it to the browser. Exact detail uses a separate bounded
+public GET because that upstream route rejects M2M bearer tokens; exact-version
+ZIP download remains authenticated. Search accepts only the supported UI
+locales and a fixed sort allowlist. Install re-resolves detail, pins the exact
+SemVer, downloads through the bounded adapter, and then enters the unchanged
+canonical validator/object-store pipeline.
 
 An explicit LobeHub page, GitHub tree, or `SKILL.md` blob link uses the internal
 `InstallDirectSkillLink` boundary. It requires an unambiguous Skill directory,

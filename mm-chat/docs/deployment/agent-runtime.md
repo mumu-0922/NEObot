@@ -41,10 +41,11 @@ is untrusted; keep Docker `AGENT_LOCAL_APPROVAL_MODE` at `smart`.
 
 ## Skill Store and connectors
 
-The standalone Skill Store uses `/v1/skills/*`. It keeps authenticated LobeHub
+The standalone Skill Store uses `/v1/skills/*`. It keeps backend-mediated LobeHub
 Marketplace discovery separate from the fixed
 `openai/skills/skills/.curated` catalog. LobeHub uses the existing backend-only
-Marketplace M2M configuration; curated and external GitHub installs require
+Marketplace M2M configuration for list/category and exact package download;
+exact detail is a bounded public read. Curated and external GitHub installs require
 outbound HTTPS access to `api.github.com` and `codeload.github.com`. One source failure does
 not affect Installed, selection, or runtime use. Assistant library, Knowledge,
 Memory, Files, and MCP Tools remain separate product surfaces. Composer Skill

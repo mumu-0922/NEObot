@@ -59,9 +59,11 @@ panel=skill-store&skillId=<validated-curated-name|lobehub:identifier>
   HTML, files, Runner data, credentials, or control-plane state.
 - Installed and Store loading/error state are isolated. Catalog failure cannot
   hide or disable Installed management.
-- Desktop keeps list/detail visible; mobile drills into detail and restores
-  focus to the originating item on Back. Status uses accessible names and live
-  announcements, with existing dark/responsive behavior preserved.
+- The LobeHub Store follows the MCP Marketplace structure: full-width search,
+  responsive category rail, two-column card grid, incremental pagination, and
+  a modal detail layer. Detail close/Escape restores focus to the originating
+  card and never discards the current result grid. Status uses accessible names
+  and live announcements, with existing dark/responsive behavior preserved.
 - URL `skillId` accepts a validated curated Skill name or source-qualified
   `lobehub:<identifier>`. Prefixing prevents cross-source identity collisions.
   Legacy candidate IDs
@@ -118,8 +120,9 @@ panel=skill-store&skillId=<validated-curated-name|lobehub:identifier>
 - URL round-trip, direct curated detail, invalid path rejection, and legacy
   Agent Center Skills migration.
 - Source-qualified LobeHub URL round-trip and encoded path rejection.
-- Focus restoration, accessible live feedback, responsive detail, catalog-
-  failure isolation, format, lint, typecheck, Vitest, and production build.
+- Category-rail/card-grid composition, modal focus restoration, accessible live
+  feedback, responsive detail, catalog-failure isolation, format, lint,
+  typecheck, Vitest, and production build.
 
 ## 7. Wrong vs Correct
 

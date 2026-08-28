@@ -181,16 +181,22 @@ func TestLobeHubMarketplaceFetchSkillPackageUsesExactUncachedM2MDownload(t *test
 	}
 }
 
-func TestLobeHubMarketplaceFetchSkillMarketJSONAllowsOnlyDiscoveryRoutes(t *testing.T) {
+func TestLobeHubMarketplaceSeparatesAuthenticatedSkillDiscoveryFromPublicDetail(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/oauth/token":
 			_, _ = io.WriteString(writer, `{"access_token":"skill-token","expires_in":3600}`)
-		case "/api/v1/skills", "/api/v1/skills/categories", "/api/v1/skills/owner-demo":
+		case "/api/v1/skills", "/api/v1/skills/categories":
 			if request.Header.Get("Authorization") != "Bearer skill-token" ||
 				request.Header.Get("Accept") != "application/json" {
 				t.Fatalf("discovery auth/accept = %q/%q", request.Header.Get("Authorization"), request.Header.Get("Accept"))
+			}
+			_, _ = io.WriteString(writer, `{}`)
+		case "/api/v1/skills/owner-demo":
+			if request.Header.Get("Authorization") != "" ||
+				request.Header.Get("Accept") != "application/json" {
+				t.Fatalf("detail auth/accept = %q/%q", request.Header.Get("Authorization"), request.Header.Get("Accept"))
 			}
 			_, _ = io.WriteString(writer, `{}`)
 		default:
@@ -207,18 +213,34 @@ func TestLobeHubMarketplaceFetchSkillMarketJSONAllowsOnlyDiscoveryRoutes(t *test
 	}
 	for _, path := range []string{
 		"/api/v1/skills?page=1", "/api/v1/skills/categories?locale=zh-CN",
-		"/api/v1/skills/owner-demo?version=1.0.0",
 	} {
 		if _, err := marketplace.FetchSkillMarketJSON(context.Background(), path, 1024); err != nil {
 			t.Fatalf("FetchSkillMarketJSON(%q) error = %v", path, err)
 		}
 	}
 	for _, path := range []string{
+		"/api/v1/skills/owner-demo?locale=zh-CN",
+		"/api/v1/skills/owner-demo?locale=en-US&version=1.0.0",
+	} {
+		if _, err := marketplace.FetchPublicSkillDetailJSON(context.Background(), path, 1024); err != nil {
+			t.Fatalf("FetchPublicSkillDetailJSON(%q) error = %v", path, err)
+		}
+	}
+	for _, path := range []string{
 		"https://evil.example/api/v1/skills", "/api/v1/plugins", "/api/v1/skills/owner-demo/download",
-		"/api/v1/skills/owner%2Fdemo", "/api/v1/skills/",
+		"/api/v1/skills/owner%2Fdemo", "/api/v1/skills/", "/api/v1/skills/owner-demo?locale=zh-CN",
 	} {
 		if _, err := marketplace.FetchSkillMarketJSON(context.Background(), path, 1024); !errors.Is(err, ErrMarketplaceUnavailable) {
 			t.Fatalf("FetchSkillMarketJSON(%q) error = %v", path, err)
+		}
+	}
+	for _, path := range []string{
+		"/api/v1/skills", "/api/v1/skills/categories", "/api/v1/skills/owner-demo/download",
+		"/api/v1/skills/owner-demo?locale=fr-FR", "/api/v1/skills/owner-demo?version=latest",
+		"/api/v1/skills/owner-demo?locale=zh-CN&unexpected=true",
+	} {
+		if _, err := marketplace.FetchPublicSkillDetailJSON(context.Background(), path, 1024); !errors.Is(err, ErrMarketplaceUnavailable) {
+			t.Fatalf("FetchPublicSkillDetailJSON(%q) error = %v", path, err)
 		}
 	}
 }

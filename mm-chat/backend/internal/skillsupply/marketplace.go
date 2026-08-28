@@ -286,7 +286,7 @@ func (service *Service) GetMarketplaceSkillLocalized(
 	if version != "" {
 		query.Set("version", version)
 	}
-	data, err := service.lobeMarketplace.FetchSkillMarketJSON(ctx,
+	data, err := service.lobeMarketplace.FetchPublicSkillDetailJSON(ctx,
 		"/api/v1/skills/"+url.PathEscape(identifier)+"?"+query.Encode(), maxSkillMarketplaceJSONBytes)
 	if err != nil {
 		return MarketplaceSkillDetail{}, ErrSourceUnavailable

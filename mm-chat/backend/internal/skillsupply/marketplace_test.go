@@ -32,11 +32,19 @@ func (fake *fakeSkillMarketplace) FetchSkillMarketJSON(
 		return []byte(`{"items":[{"identifier":"owner-demo","name":"Demo Skill","description":"Marketplace demo","version":"1.2.3","category":"productivity","author":"Owner","installCount":7,"ratingAvg":4.5,"isOfficial":false,"isValidated":true,"isFeatured":true,"resourcesCount":1,"github":{"url":"https://github.com/owner/demo"}}],"currentPage":1,"pageSize":20,"totalCount":1,"totalPages":1}`), nil
 	case strings.HasPrefix(path, "/api/v1/skills/categories?"):
 		return []byte(`[{"category":"productivity","count":1}]`), nil
-	case strings.HasPrefix(path, "/api/v1/skills/owner-demo?"):
-		return []byte(`{"identifier":"owner-demo","name":"Demo Skill","description":"Marketplace demo","version":"1.2.3","category":"productivity","installCount":7,"ratingAverage":4.5,"isOfficial":false,"isValidated":true,"isFeatured":true,"author":{"name":"Owner"},"github":{"url":"https://github.com/owner/demo"},"license":{"name":"MIT"},"manifest":{"name":"demo-skill","description":"Marketplace demo","permissions":["Read"]},"overview":{"summary":"Demo summary"},"resources":{"references/demo.txt":{"fileHash":"sha256:abc","size":3}},"versions":[{"version":"1.2.3","isLatest":true,"isValidated":true,"createdAt":"2026-08-28T00:00:00Z","versionNumber":1}]}`), nil
 	default:
 		return nil, fmt.Errorf("unexpected path %s", path)
 	}
+}
+
+func (fake *fakeSkillMarketplace) FetchPublicSkillDetailJSON(
+	_ context.Context, path string, _ int64,
+) ([]byte, error) {
+	fake.paths = append(fake.paths, path)
+	if !strings.HasPrefix(path, "/api/v1/skills/owner-demo?") {
+		return nil, fmt.Errorf("unexpected detail path %s", path)
+	}
+	return []byte(`{"identifier":"owner-demo","name":"Demo Skill","description":"Marketplace demo","version":"1.2.3","category":"productivity","installCount":7,"ratingAverage":4.5,"isOfficial":false,"isValidated":true,"isFeatured":true,"author":{"name":"Owner"},"github":{"url":"https://github.com/owner/demo"},"license":{"name":"MIT"},"manifest":{"name":"demo-skill","description":"Marketplace demo","permissions":["Read"]},"overview":{"summary":"Demo summary"},"resources":{"references/demo.txt":{"fileHash":"sha256:abc","size":3}},"versions":[{"version":"1.2.3","isLatest":true,"isValidated":true,"createdAt":"2026-08-28T00:00:00Z","versionNumber":1}]}`), nil
 }
 
 func TestMarketplaceSearchDetailAndExactOwnerPrivateInstall(t *testing.T) {

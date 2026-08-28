@@ -59,6 +59,10 @@ export function useSkillStore({
   const [category, setCategory] = useState("");
   const [marketPage, setMarketPage] = useState(0);
   const [marketTotalPages, setMarketTotalPages] = useState(0);
+  const [marketTotalCount, setMarketTotalCount] = useState(0);
+  const [marketSourceURL, setMarketSourceURL] = useState(
+    "https://lobehub.com/skills",
+  );
   const [marketSort, setMarketSort] =
     useState<SkillMarketplaceSortDTO>("relevance");
   const [installed, setInstalled] = useState<AgentPackageInstallationDTO[]>([]);
@@ -80,6 +84,7 @@ export function useSkillStore({
     useState<SkillMarketplaceDetailDTO | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
+  const [detailErrorKey, setDetailErrorKey] = useState<string | null>(null);
   const [detailReload, setDetailReload] = useState(0);
 
   const loadCatalog = useCallback(async () => {
@@ -122,6 +127,8 @@ export function useSkillStore({
         setCategories(result.categories);
         setMarketPage(result.page);
         setMarketTotalPages(result.totalPages);
+        setMarketTotalCount(result.totalCount);
+        setMarketSourceURL(result.sourceUrl);
       } catch (loadError) {
         if (!append) setMarketItems([]);
         setMarketplaceError(
@@ -178,6 +185,7 @@ export function useSkillStore({
     setCatalogDetail(null);
     setMarketDetail(null);
     setDetailError("");
+    setDetailErrorKey(null);
     if (!selectedKey) {
       setDetailLoading(false);
       return () => controller.abort();
@@ -198,13 +206,21 @@ export function useSkillStore({
       .catch((loadError) => {
         if (!controller.signal.aborted) {
           setDetailError(errorMessage(loadError, t("loadStoreFailed")));
+          setDetailErrorKey(selectedId);
         }
       })
       .finally(() => {
         if (!controller.signal.aborted) setDetailLoading(false);
       });
     return () => controller.abort();
-  }, [client.skillStore, detailReload, marketplaceLocale, selectedKey, t]);
+  }, [
+    client.skillStore,
+    detailReload,
+    marketplaceLocale,
+    selectedId,
+    selectedKey,
+    t,
+  ]);
 
   const installedFingerprints = new Set(
     installed.map((item) => item.packageFingerprint),
@@ -304,6 +320,7 @@ export function useSkillStore({
     categories,
     category,
     detailError,
+    detailErrorKey,
     detailLoading,
     directInstalling,
     directURL,
@@ -322,6 +339,8 @@ export function useSkillStore({
     marketItems,
     marketPage,
     marketSort,
+    marketSourceURL,
+    marketTotalCount,
     marketTotalPages,
     query,
     reloadStore,
@@ -341,6 +360,8 @@ export function useSkillStore({
     uninstall,
   };
 }
+
+export type SkillStoreController = ReturnType<typeof useSkillStore>;
 
 function toMarketplaceLocale(locale: string): SkillMarketplaceLocaleDTO {
   if (locale.toLowerCase().startsWith("en")) return "en-US";

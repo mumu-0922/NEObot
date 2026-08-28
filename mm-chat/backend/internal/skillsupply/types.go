@@ -269,6 +269,7 @@ type LobeHubFetcher interface {
 
 type LobeHubMarketplaceFetcher interface {
 	FetchSkillMarketJSON(context.Context, string, int64) ([]byte, error)
+	FetchPublicSkillDetailJSON(context.Context, string, int64) ([]byte, error)
 }
 
 type SourceHTTPClient interface {

@@ -2,7 +2,6 @@
 
 import type { ReactNode } from "react";
 import {
-  ArrowLeft,
   Loader2,
   PackageCheck,
   RefreshCw,
@@ -122,30 +121,6 @@ export function PageTab({
   );
 }
 
-export function CategoryButton({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-full border px-2.5 py-1 text-[11px] ${
-        active
-          ? "border-cyan-500 bg-cyan-50 text-cyan-800 dark:bg-cyan-950/30 dark:text-cyan-200"
-          : "text-muted-foreground hover:bg-accent"
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
-
 export function InstalledSkills({
   items,
   loading,
@@ -219,31 +194,6 @@ export function InstalledSkills({
   );
 }
 
-export function SplitShell({
-  selected,
-  list,
-  detail,
-}: {
-  selected: boolean;
-  list: ReactNode;
-  detail: ReactNode;
-}) {
-  return (
-    <div className="grid h-full min-h-0 md:grid-cols-[minmax(19rem,24rem)_1fr]">
-      <aside
-        className={`${selected ? "hidden md:block" : "block"} min-h-0 overflow-y-auto border-r border-border/70`}
-      >
-        {list}
-      </aside>
-      <section
-        className={`${selected ? "block" : "hidden md:block"} min-h-0 overflow-y-auto`}
-      >
-        {detail}
-      </section>
-    </div>
-  );
-}
-
 export function PanelHeader({
   title,
   onReload,
@@ -263,34 +213,6 @@ export function PanelHeader({
       >
         <RefreshCw size={16} aria-hidden="true" />
       </button>
-    </div>
-  );
-}
-
-export function DetailFrame({
-  title,
-  onBack,
-  children,
-}: {
-  title: string;
-  onBack: () => void;
-  children: ReactNode;
-}) {
-  const t = useTranslations("SkillStore");
-  return (
-    <div className="mx-auto max-w-5xl space-y-5 p-4 md:p-6">
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label={t("backToList")}
-          className="rounded-lg p-2 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 md:hidden"
-        >
-          <ArrowLeft size={18} aria-hidden="true" />
-        </button>
-        <h2 className="min-w-0 truncate text-lg font-bold">{title}</h2>
-      </div>
-      {children}
     </div>
   );
 }
@@ -355,14 +277,6 @@ export function EmptyState({ title }: { title: string }) {
   return (
     <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
       {title}
-    </div>
-  );
-}
-
-export function EmptyDetail({ title }: { title: string }) {
-  return (
-    <div className="flex h-full items-center justify-center p-6">
-      <EmptyState title={title} />
     </div>
   );
 }

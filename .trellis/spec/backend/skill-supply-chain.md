@@ -7,7 +7,7 @@ parsing, package validation/ingestion, Library management, Conversation Skill
 selection, or Skill runtime materialization.
 
 The public product model follows Codex discovery semantics but not its local
-filesystem trust model: Neo Chat keeps the authenticated LobeHub Marketplace
+filesystem trust model: Neo Chat keeps the backend-mediated LobeHub Marketplace
 and fixed curated GitHub directory as separate discovery sources, accepts only
 exact LobeHub/GitHub Skill links, and retains server-side immutable source,
 package, owner, and runtime authority.
@@ -70,9 +70,11 @@ func (*Service) InstallMarketplaceSkill(
   the codeload ZIP, selects `skills/.curated/<name>`, and calls
   `ValidateArchive`. Its installable projection includes the exact commit and
   canonical `sha256:` package fingerprint.
-- LobeHub list/category/detail uses the existing backend-owned Marketplace M2M
-  client. Browser code receives normalized Neo Chat DTOs only and never sees a
-  bearer token, raw upstream body, or package archive.
+- LobeHub list/category uses the existing backend-owned Marketplace M2M client.
+  Exact detail uses a separate bounded public GET because LobeHub rejects M2M
+  bearer tokens on that route. Exact-version package download remains M2M.
+  Browser code receives normalized Neo Chat DTOs only and never sees a bearer
+  token, raw upstream body, or package archive.
 - Locale and sort values cross the authenticated Marketplace boundary only
   through explicit allowlists; unknown values fail before upstream I/O.
 - Marketplace install must re-read detail for the requested exact SemVer,
@@ -172,7 +174,8 @@ func (*Service) InstallMarketplaceSkill(
   idempotent retry, Library presence, and legacy Store exclusion.
 - Direct GitHub tree/blob acceptance plus root, encoded traversal, query,
   fragment, mismatch, and ambiguous input rejection.
-- LobeHub M2M read-route allowlist must prove list/category/detail work while
+- LobeHub transport tests must prove list/category retain M2M authorization,
+  exact detail omits Authorization, exact-version download remains M2M, and
   generic/plugin/download/encoded-path requests fail before HTTP.
 - Marketplace list/detail/install tests must assert pagination/category DTOs,
   exact version, identifier/manifest-name separation, owner-private Candidate,

@@ -24,9 +24,11 @@ server-derived exact source
 Discovery has two explicit source adapters. OpenAI Curated is fixed to
 `openai/skills/skills/.curated` at `main`; detail resolves `main` to a full
 commit and install is fenced by that commit plus the displayed fingerprint.
-LobeHub search/category/detail reuses the Backend-owned Marketplace M2M client.
-Its install re-resolves an exact SemVer before calling the exact-version ZIP
-download; mutable `latest` authority never reaches the ingestion pipeline.
+LobeHub search/category reuses the Backend-owned Marketplace M2M client. Exact
+detail uses a separate bounded public GET because LobeHub rejects the M2M bearer
+on that route. Install re-resolves an exact SemVer before calling the
+authenticated exact-version ZIP download; mutable `latest` authority never
+reaches the ingestion pipeline.
 Locale and sort values cross the public API only through fixed allowlists, so
 the browser cannot turn Marketplace query parameters into a generic proxy.
 Both adapters normalize to Neo Chat DTOs and converge only at archive

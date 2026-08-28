@@ -1,26 +1,32 @@
 "use client";
 
 import { useRef } from "react";
-import { Download, ExternalLink, Link2, Loader2, Search } from "lucide-react";
+import {
+  Download,
+  ExternalLink,
+  Link2,
+  Loader2,
+  RefreshCw,
+  Search,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import type { SkillMarketplaceSortDTO } from "@/services/api/client";
 
 import {
-  CategoryButton,
   closeDetail,
-  DetailFrame,
-  DetailGrid,
-  EmptyDetail,
   EmptyState,
   InlineError,
   InstalledSkills,
   Loading,
-  PanelHeader,
   SkillStoreShell,
-  SplitShell,
-  StatusPill,
 } from "./SkillStorePrimitives";
+import { SkillDetailDialog } from "./SkillDetailDialog";
+import {
+  CuratedSkillCard,
+  MarketplaceCategoryNav,
+  MarketplaceSkillCard,
+} from "./SkillMarketplacePrimitives";
 import { marketSkillKey, useSkillStore } from "./useSkillStore";
 
 interface SkillStoreProps {
@@ -38,40 +44,34 @@ export default function SkillStore({
 }: SkillStoreProps) {
   const t = useTranslations("SkillStore");
   const restoreFocus = useRef<HTMLButtonElement | null>(null);
+  const controller = useSkillStore({ selectedId, initialQuery, onNavigate });
   const {
     actionId,
     announcement,
-    catalogDetail,
     categories,
     category,
-    detailError,
-    detailLoading,
     directInstalling,
     directURL,
     filteredCatalog,
-    installCatalog,
     installLink,
-    installMarketplace,
     installed,
     installedError,
-    installedFingerprints,
     installedLoading,
     loadingMore,
     loadInstalled,
     loadMarketplace,
-    marketDetail,
     marketItems,
     marketPage,
     marketSort,
+    marketSourceURL,
+    marketTotalCount,
     marketTotalPages,
     query,
     reloadStore,
-    selectedKey,
     setCategory,
-    setDetailReload,
     setDirectURL,
-    setQuery,
     setMarketSort,
+    setQuery,
     setSource,
     setTab,
     source,
@@ -80,7 +80,9 @@ export default function SkillStore({
     submitSearch,
     tab,
     uninstall,
-  } = useSkillStore({ selectedId, initialQuery, onNavigate });
+  } = controller;
+
+  const dismissDetail = () => closeDetail(onNavigate, restoreFocus);
 
   return (
     <SkillStoreShell
@@ -102,219 +104,198 @@ export default function SkillStore({
         />
       }
       store={
-        <SplitShell
-          selected={Boolean(selectedKey)}
-          list={
-            <>
-              <PanelHeader
-                title={t("packageStore")}
-                onReload={() => void reloadStore()}
-              />
-              <div className="space-y-4 p-4">
-                <form
-                  onSubmit={installLink}
-                  className="space-y-2 rounded-xl border bg-slate-50 p-3 dark:bg-slate-950/30"
-                >
-                  <div className="flex items-center gap-2 text-sm font-semibold">
-                    <Link2 size={15} aria-hidden="true" />
-                    {t("installFromLink")}
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="url"
-                      required
-                      value={directURL}
-                      onChange={(event) => setDirectURL(event.target.value)}
-                      placeholder={t("linkPlaceholder")}
-                      aria-label={t("linkLabel")}
-                      className="min-w-0 flex-1 rounded-lg border bg-card px-3 py-2 text-xs outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
-                    />
-                    <button
-                      type="submit"
-                      disabled={directInstalling}
-                      className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-medium text-white disabled:opacity-50 dark:bg-cyan-500 dark:text-slate-950"
-                    >
-                      {directInstalling ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : (
-                        t("install")
-                      )}
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    {t("linkHelp")}
-                  </p>
-                </form>
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="shrink-0 space-y-3 border-b border-gray-200 p-4 dark:border-border">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+              <div
+                role="tablist"
+                aria-label={t("sourceTabs")}
+                className="grid shrink-0 grid-cols-2 rounded-lg bg-slate-100 p-1 dark:bg-slate-900"
+              >
+                {(["lobehub", "openai"] as const).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="tab"
+                    aria-selected={source === value}
+                    onClick={() => {
+                      setSource(value);
+                      onNavigate(null);
+                    }}
+                    className={`rounded-md px-3 py-2 text-xs font-medium transition-colors ${
+                      source === value
+                        ? "bg-white text-cyan-700 shadow-sm dark:bg-slate-800 dark:text-cyan-300"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {value === "lobehub"
+                      ? t("lobehubSource")
+                      : t("openaiSource")}
+                  </button>
+                ))}
+              </div>
 
-                <div
-                  role="tablist"
-                  aria-label={t("sourceTabs")}
-                  className="grid grid-cols-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-900"
-                >
-                  {(["lobehub", "openai"] as const).map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      role="tab"
-                      aria-selected={source === value}
-                      onClick={() => {
-                        setSource(value);
-                        onNavigate(null);
-                      }}
-                      className={`rounded-lg px-2 py-2 text-xs font-medium ${
-                        source === value
-                          ? "bg-white shadow-sm dark:bg-slate-800"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      {value === "lobehub"
-                        ? t("lobehubSource")
-                        : t("openaiSource")}
-                    </button>
-                  ))}
-                </div>
-
-                <form onSubmit={submitSearch} className="flex gap-2">
-                  <label className="relative min-w-0 flex-1">
-                    <span className="sr-only">{t("searchLabel")}</span>
-                    <Search
-                      size={16}
-                      aria-hidden="true"
-                      className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
-                    />
-                    <input
-                      type="search"
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder={
-                        source === "lobehub"
-                          ? t("marketplaceSearchPlaceholder")
-                          : t("searchPlaceholder")
-                      }
-                      className="w-full rounded-xl border bg-card py-2 pr-3 pl-9 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
-                    />
-                  </label>
-                  {source === "lobehub" ? (
-                    <button
-                      type="submit"
-                      className="rounded-xl border px-3 py-2 text-xs font-medium hover:bg-accent"
-                    >
-                      {t("search")}
-                    </button>
-                  ) : null}
-                </form>
-
-                {source === "lobehub" ? (
-                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{t("sortLabel")}</span>
-                    <select
-                      value={marketSort}
-                      onChange={(event) => {
-                        const nextSort = event.target
-                          .value as SkillMarketplaceSortDTO;
-                        setMarketSort(nextSort);
-                        void loadMarketplace(
-                          query,
-                          category,
-                          1,
-                          false,
-                          nextSort,
-                        );
-                      }}
-                      className="min-w-0 flex-1 rounded-lg border bg-card px-3 py-2 text-foreground outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
-                    >
-                      <option value="relevance">{t("sortRelevance")}</option>
-                      <option value="recommended">
-                        {t("sortRecommended")}
-                      </option>
-                      <option value="installCount">
-                        {t("sortInstallCount")}
-                      </option>
-                      <option value="ratingAverage">{t("sortRating")}</option>
-                      <option value="updatedAt">{t("sortUpdated")}</option>
-                    </select>
-                  </label>
-                ) : null}
-
-                {source === "lobehub" && categories.length ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    <CategoryButton
-                      active={!category}
-                      label={t("allCategories")}
-                      onClick={() => {
-                        setCategory("");
-                        void loadMarketplace(query, "", 1, false);
-                      }}
-                    />
-                    {categories.map((item) => (
-                      <CategoryButton
-                        key={item.category}
-                        active={category === item.category}
-                        label={`${item.category} · ${item.count}`}
-                        onClick={() => {
-                          setCategory(item.category);
-                          void loadMarketplace(query, item.category, 1, false);
-                        }}
-                      />
-                    ))}
-                  </div>
-                ) : null}
-
-                {storeLoading ? (
-                  <Loading />
-                ) : storeError ? (
-                  <InlineError
-                    message={storeError}
-                    retry={() => void reloadStore()}
+              <form
+                onSubmit={installLink}
+                className="flex min-w-0 flex-1 items-center gap-2"
+              >
+                <label className="relative min-w-0 flex-1">
+                  <Link2
+                    size={15}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
                   />
-                ) : source === "lobehub" ? (
-                  marketItems.length ? (
-                    <>
-                      <div className="space-y-2">
-                        {marketItems.map((item) => {
-                          const key = marketSkillKey(item.identifier);
-                          return (
-                            <button
-                              key={item.identifier}
-                              type="button"
-                              onClick={(event) => {
-                                restoreFocus.current = event.currentTarget;
-                                onNavigate(key);
-                              }}
-                              aria-current={
-                                selectedId === key ? "true" : undefined
-                              }
-                              className={`w-full rounded-xl border p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 ${
-                                selectedId === key
-                                  ? "border-cyan-500 bg-cyan-50 dark:bg-cyan-950/20"
-                                  : "bg-card hover:border-slate-300 dark:hover:border-slate-700"
-                              }`}
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <span className="font-medium">{item.name}</span>
-                                <StatusPill
-                                  value={
-                                    item.official
-                                      ? t("official")
-                                      : item.validated
-                                        ? t("validated")
-                                        : `v${item.version}`
-                                  }
-                                />
-                              </div>
-                              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                                {item.description}
-                              </p>
-                              <p className="mt-2 text-[11px] text-muted-foreground">
-                                {item.author || item.identifier} ·{" "}
-                                {t("installs", {
-                                  count: item.installCount,
-                                })}
-                              </p>
-                            </button>
-                          );
+                  <span className="sr-only">{t("linkLabel")}</span>
+                  <input
+                    type="url"
+                    required
+                    value={directURL}
+                    onChange={(event) => setDirectURL(event.target.value)}
+                    placeholder={t("linkPlaceholder")}
+                    className="h-10 w-full rounded-lg border bg-card pr-3 pl-9 text-sm outline-none transition-colors focus:border-cyan-500"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  disabled={directInstalling}
+                  className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border px-3 text-xs font-medium hover:border-cyan-300 hover:text-cyan-700 disabled:opacity-50"
+                >
+                  {directInstalling ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Download size={14} aria-hidden="true" />
+                  )}
+                  {t("install")}
+                </button>
+              </form>
+
+              <button
+                type="button"
+                onClick={() => void reloadStore()}
+                aria-label={t("reloadAria", { title: t("packageStore") })}
+                className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg border text-muted-foreground hover:border-cyan-300 hover:text-cyan-700 xl:inline-flex"
+              >
+                <RefreshCw size={16} aria-hidden="true" />
+              </button>
+            </div>
+
+            <form onSubmit={submitSearch} className="flex gap-2">
+              <label className="relative min-w-0 flex-1">
+                <Search
+                  size={15}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
+                />
+                <span className="sr-only">{t("searchLabel")}</span>
+                <input
+                  type="search"
+                  maxLength={200}
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder={
+                    source === "lobehub"
+                      ? t("marketplaceSearchPlaceholder")
+                      : t("searchPlaceholder")
+                  }
+                  className="h-10 w-full rounded-lg border bg-card pr-3 pl-9 text-sm outline-none transition-colors focus:border-cyan-500"
+                />
+              </label>
+              {source === "lobehub" ? (
+                <>
+                  <select
+                    aria-label={t("sortLabel")}
+                    value={marketSort}
+                    onChange={(event) => {
+                      const nextSort = event.target
+                        .value as SkillMarketplaceSortDTO;
+                      setMarketSort(nextSort);
+                      void loadMarketplace(query, category, 1, false, nextSort);
+                    }}
+                    className="hidden h-10 rounded-lg border bg-card px-3 text-xs text-foreground outline-none focus:border-cyan-500 sm:block"
+                  >
+                    <option value="relevance">{t("sortRelevance")}</option>
+                    <option value="recommended">{t("sortRecommended")}</option>
+                    <option value="installCount">
+                      {t("sortInstallCount")}
+                    </option>
+                    <option value="ratingAverage">{t("sortRating")}</option>
+                    <option value="updatedAt">{t("sortUpdated")}</option>
+                  </select>
+                  <button
+                    type="submit"
+                    disabled={storeLoading}
+                    className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-cyan-600 px-4 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    {storeLoading ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : null}
+                    {t("search")}
+                  </button>
+                </>
+              ) : null}
+            </form>
+          </div>
+
+          <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+            {source === "lobehub" ? (
+              <MarketplaceCategoryNav
+                categories={categories}
+                activeCategory={category}
+                totalCount={marketTotalCount}
+                disabled={storeLoading}
+                onSelect={(nextCategory) => {
+                  setCategory(nextCategory);
+                  void loadMarketplace(query, nextCategory, 1, false);
+                }}
+              />
+            ) : null}
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-4 custom-scrollbar">
+              {storeError ? (
+                <InlineError
+                  message={storeError}
+                  retry={() => void reloadStore()}
+                />
+              ) : storeLoading ? (
+                <div className="flex justify-center py-16">
+                  <Loading />
+                </div>
+              ) : source === "lobehub" ? (
+                marketItems.length ? (
+                  <>
+                    <div className="mb-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                      <span>
+                        {t("marketplaceResults", {
+                          loaded: marketItems.length,
+                          count: marketTotalCount,
                         })}
-                      </div>
+                      </span>
+                      <a
+                        href={marketSourceURL}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="inline-flex shrink-0 items-center gap-1 hover:text-cyan-600"
+                      >
+                        LobeHub <ExternalLink size={11} aria-hidden="true" />
+                      </a>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {marketItems.map((item) => {
+                        const key = marketSkillKey(item.identifier);
+                        return (
+                          <MarketplaceSkillCard
+                            key={item.identifier}
+                            item={item}
+                            active={selectedId === key}
+                            onOpen={(button) => {
+                              restoreFocus.current = button;
+                              onNavigate(key);
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                    <div className="flex min-h-16 items-center justify-center py-4">
                       {marketPage < marketTotalPages ? (
                         <button
                           type="button"
@@ -327,179 +308,49 @@ export default function SkillStore({
                               true,
                             )
                           }
-                          className="w-full rounded-xl border px-3 py-2 text-sm hover:bg-accent disabled:opacity-50"
+                          className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-xs font-medium hover:border-cyan-300 hover:text-cyan-700 disabled:opacity-50"
                         >
+                          {loadingMore ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : null}
                           {loadingMore ? t("loading") : t("loadMore")}
                         </button>
                       ) : null}
-                    </>
-                  ) : (
-                    <EmptyState title={t("emptyMarketplace")} />
-                  )
-                ) : filteredCatalog.length ? (
-                  <div className="space-y-2">
-                    {filteredCatalog.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={(event) => {
-                          restoreFocus.current = event.currentTarget;
-                          onNavigate(item.id);
-                        }}
-                        aria-current={
-                          selectedId === item.id ? "true" : undefined
-                        }
-                        className={`w-full rounded-xl border p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 ${
-                          selectedId === item.id
-                            ? "border-cyan-500 bg-cyan-50 dark:bg-cyan-950/20"
-                            : "bg-card hover:border-slate-300 dark:hover:border-slate-700"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-medium">{item.name}</span>
-                          <StatusPill value={t("curated")} />
-                        </div>
-                        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                          {item.repository}/{item.path}
-                        </p>
-                      </button>
-                    ))}
-                  </div>
+                    </div>
+                  </>
                 ) : (
+                  <div className="py-12">
+                    <EmptyState title={t("emptyMarketplace")} />
+                  </div>
+                )
+              ) : filteredCatalog.length ? (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {filteredCatalog.map((item) => (
+                    <CuratedSkillCard
+                      key={item.id}
+                      item={item}
+                      active={selectedId === item.id}
+                      onOpen={(button) => {
+                        restoreFocus.current = button;
+                        onNavigate(item.id);
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="py-12">
                   <EmptyState title={t("emptyStore")} />
-                )}
-              </div>
-            </>
-          }
-          detail={
-            marketDetail ? (
-              <DetailFrame
-                title={marketDetail.name}
-                onBack={() => closeDetail(onNavigate, restoreFocus)}
-              >
-                <p className="text-sm text-muted-foreground">
-                  {marketDetail.summary || marketDetail.description}
-                </p>
-                <DetailGrid
-                  rows={[
-                    [t("version"), marketDetail.version],
-                    [t("source"), "LobeHub Marketplace"],
-                    [t("identifier"), marketDetail.identifier],
-                    [t("author"), marketDetail.author || t("none")],
-                    [t("license"), marketDetail.license || t("none")],
-                    [t("resources"), String(marketDetail.resources.length)],
-                  ]}
-                />
-                <a
-                  href={marketDetail.sourceUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-sm font-medium text-cyan-700 underline-offset-4 hover:underline dark:text-cyan-300"
-                >
-                  {t("viewMarketplace")}
-                  <ExternalLink size={14} aria-hidden="true" />
-                </a>
-                <div>
-                  <h3 className="text-sm font-semibold">{t("permissions")}</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {marketDetail.permissions.join(", ") || t("none")}
-                  </p>
                 </div>
-                <button
-                  type="button"
-                  disabled={
-                    marketDetail.installed ||
-                    actionId === marketDetail.identifier
-                  }
-                  onClick={() => void installMarketplace(marketDetail)}
-                  className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-cyan-500 dark:text-slate-950"
-                >
-                  {actionId === marketDetail.identifier ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                    <Download size={16} />
-                  )}
-                  {marketDetail.installed
-                    ? t("installed")
-                    : t("installPackage")}
-                </button>
-              </DetailFrame>
-            ) : catalogDetail ? (
-              <DetailFrame
-                title={catalogDetail.name}
-                onBack={() => closeDetail(onNavigate, restoreFocus)}
-              >
-                <p className="text-sm text-muted-foreground">
-                  {catalogDetail.description}
-                </p>
-                <DetailGrid
-                  rows={[
-                    [t("version"), catalogDetail.version],
-                    [t("source"), catalogDetail.catalogSource],
-                    [t("sourcePath"), catalogDetail.path],
-                    [
-                      t("runtime"),
-                      catalogDetail.hasRuntime
-                        ? t("localDirectPackage")
-                        : t("textOnlyPackage"),
-                    ],
-                    [
-                      t("compatibility"),
-                      catalogDetail.compatibility || t("none"),
-                    ],
-                    [t("license"), catalogDetail.license || t("none")],
-                  ]}
-                />
-                <a
-                  href={catalogDetail.sourceUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex text-sm font-medium text-cyan-700 underline-offset-4 hover:underline dark:text-cyan-300"
-                >
-                  {t("viewSource")}
-                </a>
-                <div>
-                  <h3 className="text-sm font-semibold">
-                    {t("declaredTools")}
-                  </h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {catalogDetail.allowedTools.join(", ") || t("none")}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  disabled={
-                    installedFingerprints.has(
-                      catalogDetail.packageFingerprint,
-                    ) || actionId === catalogDetail.id
-                  }
-                  onClick={() => void installCatalog(catalogDetail)}
-                  className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-cyan-500 dark:text-slate-950"
-                >
-                  {actionId === catalogDetail.id ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                    <Download size={16} />
-                  )}
-                  {installedFingerprints.has(catalogDetail.packageFingerprint)
-                    ? t("installed")
-                    : t("installPackage")}
-                </button>
-              </DetailFrame>
-            ) : detailLoading ? (
-              <Loading />
-            ) : detailError ? (
-              <div className="p-4">
-                <InlineError
-                  message={detailError}
-                  retry={() => setDetailReload((value) => value + 1)}
-                />
-              </div>
-            ) : (
-              <EmptyDetail title={t("selectPackage")} />
-            )
-          }
-        />
+              )}
+            </div>
+          </div>
+
+          <SkillDetailDialog
+            controller={controller}
+            selectedId={selectedId}
+            onClose={dismissDetail}
+          />
+        </div>
       }
     />
   );

@@ -6,6 +6,8 @@ import zh from "../i18n/locales/zh";
 describe("Skill Store product boundary", () => {
   const store = [
     "src/components/skills/SkillStore.tsx",
+    "src/components/skills/SkillDetailDialog.tsx",
+    "src/components/skills/SkillMarketplacePrimitives.tsx",
     "src/components/skills/SkillStorePrimitives.tsx",
     "src/components/skills/useSkillStore.ts",
   ]
@@ -20,7 +22,7 @@ describe("Skill Store product boundary", () => {
     expect(store).toContain('id="skill-store-content"');
   });
 
-  it("keeps install, list, uninstall, drill-in, and live feedback", () => {
+  it("keeps install, list, uninstall, modal drill-in, and live feedback", () => {
     expect(store).toContain("client.skillStore.listCatalog()");
     expect(store).toContain(".getCatalogSkill(selectedKey.id");
     expect(store).toContain(".getMarketplaceSkill(selectedKey.id");
@@ -29,7 +31,11 @@ describe("Skill Store product boundary", () => {
     expect(store).toContain("client.skillStore.listPackageLibrary()");
     expect(store).toContain("client.skillStore.installCatalogSkill");
     expect(store).toContain("client.skillStore.uninstallPackageSkill");
-    expect(store).toContain('selected ? "hidden md:block"');
+    expect(store).toContain("<Dialog");
+    expect(store).toContain("open={Boolean(selectedKey)}");
+    expect(store).toContain("<MarketplaceCategoryNav");
+    expect(store).toContain('className="grid gap-3 md:grid-cols-2"');
+    expect(store).not.toContain("<SplitShell");
     expect(store).toContain("restoreFocus.current?.focus");
     expect(store).toContain('aria-live="polite"');
     expect(store).not.toContain("dangerouslySetInnerHTML");
@@ -43,6 +49,8 @@ describe("Skill Store product boundary", () => {
     expect(store).toContain("<InstalledSkills");
     expect(store).toContain("const loadMarketplace = useCallback");
     expect(store).toContain("locale: marketplaceLocale");
+    expect(store).toContain("setMarketTotalCount(result.totalCount)");
+    expect(store).toContain("setMarketSourceURL(result.sourceUrl)");
     expect(store).toContain('value="installCount"');
     expect(store).toContain("const loadCatalog = useCallback");
     expect(store).toContain("const loadInstalled = useCallback");
