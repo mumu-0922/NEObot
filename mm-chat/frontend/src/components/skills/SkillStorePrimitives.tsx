@@ -158,12 +158,7 @@ export function InstalledSkills({
                   <div className="flex min-w-0 items-start gap-3">
                     <SkillIcon label={entry.name} />
                     <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="font-semibold">{entry.name}</h2>
-                        <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
-                          v{entry.version}
-                        </span>
-                      </div>
+                      <h2 className="font-semibold">{entry.name}</h2>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {entry.description}
                       </p>

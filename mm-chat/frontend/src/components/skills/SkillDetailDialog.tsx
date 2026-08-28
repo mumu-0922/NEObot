@@ -80,7 +80,6 @@ export function SkillDetailDialog({
               {visibleMarketDetail.summary || visibleMarketDetail.description}
             </p>
             <div className="flex flex-wrap gap-2 text-[11px]">
-              <StatusPill value={`v${visibleMarketDetail.version}`} />
               {visibleMarketDetail.validated ? (
                 <StatusPill value={t("validated")} />
               ) : null}
@@ -125,7 +124,6 @@ export function SkillDetailDialog({
             </p>
             <DetailGrid
               rows={[
-                [t("version"), visibleCatalogDetail.version],
                 [t("source"), visibleCatalogDetail.catalogSource],
                 [t("sourcePath"), visibleCatalogDetail.path],
                 [

@@ -85,6 +85,33 @@ describe("Skill Store product boundary", () => {
     expect(store).not.toContain("Canary");
   });
 
+  it("keeps internal Skill versions out of user-facing surfaces", () => {
+    const installed = readFileSync(
+      "src/components/skills/SkillStorePrimitives.tsx",
+      "utf8",
+    );
+    const marketplace = readFileSync(
+      "src/components/skills/SkillMarketplacePrimitives.tsx",
+      "utf8",
+    );
+    const detail = readFileSync(
+      "src/components/skills/SkillDetailDialog.tsx",
+      "utf8",
+    );
+    const picker = readFileSync(
+      "src/components/chat/ConversationResourcePickers.tsx",
+      "utf8",
+    );
+
+    expect(installed).not.toContain("v{entry.version}");
+    expect(marketplace).not.toContain("v{item.version}");
+    expect(detail).not.toContain("value={`v${visibleMarketDetail.version}`}");
+    expect(detail).not.toContain(
+      '[t("version"), visibleCatalogDetail.version]',
+    );
+    expect(picker).not.toContain("${skill.version} · ${skill.description}");
+  });
+
   it("renders bounded Skill icons through the same-origin image optimizer", () => {
     expect(store).toContain("<SkillIcon icon={item.icon}");
     expect(store).toContain("<SkillIcon label={entry.name}");

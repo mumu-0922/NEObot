@@ -189,7 +189,6 @@ export function MarketplaceSkillCard({
             {item.description || item.identifier}
           </p>
           <div className="mt-3 flex flex-wrap gap-2 text-[10px] text-muted-foreground">
-            <span>v{item.version}</span>
             <span>{t("installs", { count: item.installCount })}</span>
             {item.rating > 0 ? (
               <span className="inline-flex items-center gap-0.5">

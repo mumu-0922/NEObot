@@ -376,7 +376,7 @@ export default function ConversationResourcePickers({
                 <ResourceLabel
                   icon={<SkillIcon label={skill.name} compact />}
                   title={skill.name}
-                  subtitle={`${skill.version} · ${skill.description}`}
+                  subtitle={skill.description}
                 />
               </DropdownMenuCheckboxItem>
             ))}

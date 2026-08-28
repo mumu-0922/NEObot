@@ -72,6 +72,9 @@ panel=skill-store&skillId=<validated-curated-name|lobehub:identifier>
   repository path, compatibility, declared tools, and install state. It does
   not display admission IDs, raw fingerprints, reviewer/SBOM internals, package
   HTML, files, Runner data, credentials, or control-plane state.
+- Skill versions remain internal install/update identity. Installed cards,
+  Store cards, detail dialogs, and per-Conversation picker rows must not render
+  versions or fallback `0.0.0+<fingerprint>` values.
 - Installed and Store loading/error state are isolated. Catalog failure cannot
   hide or disable Installed management.
 - The LobeHub Store follows the MCP Marketplace structure: full-width search,
@@ -157,6 +160,8 @@ panel=skill-store&skillId=<validated-curated-name|lobehub:identifier>
 - Icon composition tests must assert that Store and Installed cards import the
   one shared renderer, that label fallback remains deterministic, and that the
   GitHub-only remote-image allowlist remains unchanged.
+- Presentation tests must assert that installed cards, Store cards, detail
+  dialogs, and Conversation picker rows do not render Skill versions.
 
 ## 7. Wrong vs Correct
 
