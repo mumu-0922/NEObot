@@ -1,0 +1,5 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Defines proportional frontend gates and the deterministic Playwright contract."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Defines Conversation-owned model state and server authority across reloads."}
+{"file":".trellis/spec/frontend/agent-transcript.md","reason":"Defines durable Agent event ordering and live/reload transcript parity."}
+{"file":".trellis/spec/frontend/host-workspaces.md","reason":"Defines workspace-bound Conversation runs and in-app file preview behavior."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Defines runtime validation expectations for intercepted server DTOs."}

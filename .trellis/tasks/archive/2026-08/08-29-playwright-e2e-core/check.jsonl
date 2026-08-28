@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Verify format, lint, typecheck, Vitest, Playwright, build, and failure-artifact requirements."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Verify model changes stay isolated per Conversation and survive reload."}
+{"file":".trellis/spec/frontend/agent-transcript.md","reason":"Verify Agent narration, Tool steps, and final answer remain durably interleaved."}
+{"file":".trellis/spec/frontend/host-workspaces.md","reason":"Verify concurrent workspace runs and generated-file preview behavior."}
