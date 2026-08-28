@@ -13,6 +13,8 @@ import { useTranslations } from "next-intl";
 
 import type { AgentPackageInstallationDTO } from "@/services/api/client";
 
+import { SkillIcon } from "./SkillIcon";
+
 export function SkillStoreShell({
   tab,
   onTabChange,
@@ -153,21 +155,24 @@ export function InstalledSkills({
             {items.map((entry) => (
               <article key={entry.id} className="rounded-xl border bg-card p-4">
                 <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="font-semibold">{entry.name}</h2>
-                      <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
-                        v{entry.version}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {entry.description}
-                    </p>
-                    {entry.allowedTools.length ? (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {t("declaredTools")}: {entry.allowedTools.join(", ")}
+                  <div className="flex min-w-0 items-start gap-3">
+                    <SkillIcon label={entry.name} />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="font-semibold">{entry.name}</h2>
+                        <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
+                          v{entry.version}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {entry.description}
                       </p>
-                    ) : null}
+                      {entry.allowedTools.length ? (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {t("declaredTools")}: {entry.allowedTools.join(", ")}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
                   <button
                     type="button"

@@ -1,9 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import {
-  getSkillIconImageURL,
-  MARKETPLACE_CATEGORIES,
-} from "../components/skills/SkillMarketplacePrimitives";
+import { getSkillIconImageURL } from "../components/skills/SkillIcon";
+import { MARKETPLACE_CATEGORIES } from "../components/skills/SkillMarketplacePrimitives";
 import en from "../i18n/locales/en";
 import ja from "../i18n/locales/ja";
 import zh from "../i18n/locales/zh";
@@ -12,6 +10,7 @@ describe("Skill Store product boundary", () => {
   const store = [
     "src/components/skills/SkillStore.tsx",
     "src/components/skills/SkillDetailDialog.tsx",
+    "src/components/skills/SkillIcon.tsx",
     "src/components/skills/SkillMarketplacePrimitives.tsx",
     "src/components/skills/SkillStorePrimitives.tsx",
     "src/components/skills/useSkillStore.ts",
@@ -83,6 +82,8 @@ describe("Skill Store product boundary", () => {
 
   it("renders bounded Skill icons through the same-origin image optimizer", () => {
     expect(store).toContain("<SkillIcon icon={item.icon}");
+    expect(store).toContain("<SkillIcon label={entry.name}");
+    expect(store).toContain("label.trim().slice(0, 1).toUpperCase()");
     expect(store).toContain('referrerPolicy="no-referrer"');
     expect(store).not.toContain("unoptimized");
     expect(nextConfig).toContain('hostname: "github.com"');

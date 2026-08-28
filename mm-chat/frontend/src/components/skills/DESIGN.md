@@ -32,3 +32,8 @@ selected package and restores focus to the originating list item on Back.
 Installing refreshes both authorities, clears the selected candidate URL, and
 returns to Installed. Loading and failure state is isolated per tab, while
 installs and removals have accessible live feedback.
+
+Store and Installed cards share `SkillIcon.tsx`. Safe GitHub avatars and short
+emoji use the existing bounded path; installations without artwork render the
+same deterministic label fallback as curated Store entries and never trigger a
+Marketplace lookup from the Library view.

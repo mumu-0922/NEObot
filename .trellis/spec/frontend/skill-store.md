@@ -50,6 +50,12 @@ panel=skill-store&skillId=<validated-curated-name|lobehub:identifier>
   `https://github.com/<owner>.png` shape through the same-origin Next.js image
   optimizer. Other URLs remain local fallbacks; the browser never requests an
   upstream icon directly.
+- Store and Installed cards use the same `SkillIcon` renderer. It prefers the
+  validated GitHub avatar shape, then a bounded short emoji, then the uppercase
+  first character of the display label, and finally the package glyph. An
+  installation DTO without an icon must still render that deterministic local
+  fallback; Library rendering must not call Marketplace or require a schema
+  migration merely to recover presentation artwork.
 - Strict Zod schemas bind every catalog entry to repository `openai/skills`,
   ref `main`, path `skills/.curated/<name>`, a coherent canonical source URL,
   and matching `id`/`name`/path identity.
@@ -114,6 +120,8 @@ panel=skill-store&skillId=<validated-curated-name|lobehub:identifier>
   install the displayed exact version, and return to Installed.
 - **Good:** render `coding-agents-ides` as the active locale label with the
   Code icon while submitting the unchanged ID to the backend.
+- **Good:** render an existing installed `pdf` package with the same local `P`
+  fallback used by its curated Store card, without reinstalling it.
 - **Base:** catalog is unavailable, but the user can still inspect and remove
   already-installed Skills.
 - **Base:** a long-tail category is absent from the rail but its Skills remain
@@ -141,6 +149,9 @@ panel=skill-store&skillId=<validated-curated-name|lobehub:identifier>
 - Category composition tests must assert exactly 21 distinct icon definitions,
   locale coverage for every ID, absence of raw-label rendering, and the strict
   21-row DTO ceiling.
+- Icon composition tests must assert that Store and Installed cards import the
+  one shared renderer, that label fallback remains deterministic, and that the
+  GitHub-only remote-image allowlist remains unchanged.
 
 ## 7. Wrong vs Correct
 
@@ -159,4 +170,7 @@ Correct: Store error is isolated; Installed remains independently operational
 
 Wrong: render raw category slug with one Folder icon for every row
 Correct: exact category ID -> localized label + category-specific Lucide icon
+
+Wrong: Installed card omits identity because its DTO has no source artwork
+Correct: reuse SkillIcon -> render deterministic local label fallback offline
 ```
