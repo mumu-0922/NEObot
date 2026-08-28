@@ -136,32 +136,20 @@ and floating npm tags remain forbidden. Secret values are encrypted in the
 Backend vault and sealed separately from the artifact on the internal control
 plane; they are never written into the manifest or public DTO.
 
-### Reviewed Playwright Browser
+### Browser-backed private MCP Servers
 
-`playwright-browser-0.0.79` is the checked-in Browser artifact. The Runner
-dependency and official base image are both pinned to `@playwright/mcp`
-`0.0.79`. It starts headless Chromium with an in-memory isolated profile,
-service workers blocked, image responses omitted, code generation disabled,
-and bounded action/navigation timeouts. `instanceScope: "run"` prevents page,
-Cookie, and in-process browser state reuse across Chat Runs.
+Neo Chat does not ship a built-in Playwright Browser manifest Server. Browser
+automation must be installed explicitly as a private Marketplace MCP Server,
+then selected per Conversation like any other private integration. Removing
+the former manifest entry does not remove a separately installed Playwright
+MCP row or its exact dynamic npm artifact.
 
-The upstream package currently advertises 24 Tools, including the RCE-
-equivalent `browser_run_code_unsafe`. Neo Chat exposes only the 17 exact names
-in the manifest allowlist. It also excludes `browser_evaluate`, file upload,
-network request/body inspection, screenshot capture, and storage-state
-mutation. Connector call paths re-check the allowlist even after Tool
-discovery, so an upstream update cannot invoke a newly added name through a
-stale or forged call.
-
-Only the upstream read-only console, find, and snapshot Tools use Neo Chat's
-parallel `read` policy. `browser_wait_for` is upstream non-read-only and stays
-an ordered `write` barrier, despite its passive-looking name.
-
-Enable both `MCP_ENABLED=true` and `MCP_STDIO_ENABLED=true`, start the existing
-`mcp-runner` profile, then explicitly select `Browser (Playwright)` for the
-Conversation. This does not move `local_direct` Skills into the Runner or add
-any sudo/new-machine requirement; it only activates the existing optional MCP
-stdio service for the Browser package.
+The Runner image still carries the pinned Chromium runtime needed by approved
+browser-backed stdio packages. Enable both `MCP_ENABLED=true` and
+`MCP_STDIO_ENABLED=true` and start the `mcp-runner` profile before validating a
+private browser Server. Private Tool discovery is frozen into the Run snapshot;
+without an exact reviewed Tool policy, Tools remain `unknown` and execute
+serially without automatic read retry.
 
 ### Marketplace npm artifacts
 

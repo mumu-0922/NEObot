@@ -109,7 +109,7 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
 | Manifest invalid | validator fails closed; unrelated chat may start with MCP unavailable |
 | Manifest contains a field unknown to the running Runner image | Runner restart fails closed; deploy the paired Runner image before declaring the manifest rollout complete |
 | Manifest allowlist or run scope is invalid | validator/startup fails closed before any child starts |
-| Playwright upgrade lists a new/unsafe Tool | Tool stays invisible and `tools/call` rejects it until explicit reviewed admission |
+| production manifest restores the retired built-in Playwright Browser | manifest regression fails; do not deploy the restored authority |
 | Four children are retained and a new Run arrives | evict only the least-recent idle child; return capacity when every child is active |
 | Browser Run identity is long | derive distinct stable short workspace names; Chromium socket ancestry stays bounded |
 | Runner health fails | selected stdio runs fail closed; backend global readiness remains independent |
@@ -128,9 +128,9 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
 - **Good**: render four pinned images, validate manifest/token metadata, migrate,
   start backend and optional Runner, then smoke one approved Tool; dynamic npm
   execution uses an exact Server-bound artifact and isolated work directory.
-- **Good**: real Playwright initialize/list/navigate/snapshot succeeds against a
-  local fixture; the raw 24-Tool upstream surface proves the threat while Neo
-  Chat exposes only the reviewed 17 and uses a distinct process for each Run.
+- **Good**: a separately installed private Playwright MCP initializes through
+  the isolated Runner and remains available after the retired built-in
+  manifest Browser is removed.
 - **Base**: MCP disabled and no Runner profile; cleanup still prunes expired
   durable state and artifacts.
 - **Bad**: execute a browser-selected/floating `npx` package, trust all Tools
@@ -149,19 +149,19 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
   Dynamic coverage must reject Shell/Docker/Git/URL/file/floating package
   specs, accept only exact registry package versions, verify sealed artifact
   binding, and prove per-Server process/workspace cleanup.
-- Assert the Playwright package/base-image version pair, exact Browser argv and
-  allowlist, real protocol/browser smoke, per-Run instance separation, unsafe
-  call denial before Runner HTTP dispatch, and least-recent idle eviction at
-  process capacity. Unit-test short workspace stability, length, non-disclosure,
-  and separation for long opaque Run identities.
+- Assert the production manifest omits the retired Browser ID/name, while the
+  generic Runner still supports an explicitly installed exact-version private
+  Playwright artifact. Keep least-recent idle eviction and short workspace
+  stability, length, non-disclosure, and separation coverage.
 - Render example and production Compose with Runner profile; assert no port,
   hardening/resources/networks, digest, and cleared production build.
 - `bash scripts/test-preflight-single-server.sh` for toggles, duration bounds,
   token metadata, Runner URL/image, topology, and restore mounts.
 - `bash scripts/verify-mcp-postgres17.sh` and
   `bash scripts/verify-mcp-install-credentials-postgres17.sh` for fresh
-  `001..081`, tail down/re-up, guarded `076`, targeted repairs, repository, and
-  final replay. Every new tail migration must update both scripts.
+  `001..081`, tail down/re-up through head `108`, guarded `076`, targeted
+  repairs, exact built-in Browser retirement, repository, and final replay.
+  Every new tail migration must update both scripts.
 - `scripts/release-images.sh --dry-run --tag <test>` must print four builds and
   `--target mcp-runner` only for Runner.
 - Preflight tests cover Marketplace toggle dependency, HTTPS base URL, bounded

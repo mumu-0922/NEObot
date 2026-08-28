@@ -84,7 +84,7 @@ run_migrate() {
   MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"
 }
 
-log "applying 001 -> 097 with the 098-106 tail deferred"
+log "applying 001 -> 097 with the 098-108 tail deferred"
 psql_command "$(migration_drill_deferred_tail_sql "${backend_dir}" \
   098_retire_legacy_agent_control_plane \
 	099_chat_agent_event_log_function_repair \
@@ -94,7 +94,9 @@ psql_command "$(migration_drill_deferred_tail_sql "${backend_dir}" \
 	103_chat_agent_permission_modes \
 	104_rag_failure_state_projection \
 	105_recall_filtering_provider \
-	106_skill_conversation_selections)" >/dev/null
+	106_skill_conversation_selections \
+	107_direct_skill_installations \
+	108_retire_builtin_playwright_browser)" >/dev/null
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 074_mcp_tools_foundation" "${work_dir}/fresh.log"
 grep -Fq "up 075_mcp_runtime_role_grants" "${work_dir}/fresh.log"
@@ -124,7 +126,7 @@ grep -Fq "up 097_chat_agent_goals" "${work_dir}/fresh.log"
 log "proving replay is a no-op"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
-psql_command "DELETE FROM schema_migrations WHERE version BETWEEN 98 AND 106" >/dev/null
+psql_command "DELETE FROM schema_migrations WHERE version BETWEEN 98 AND 108" >/dev/null
 
 log "rolling back the clean 097 through 077 tails before the 076 guard drill"
 run_migrate down >"${work_dir}/peel-097-chat-agent-goal-tail.log" 2>&1
@@ -267,7 +269,7 @@ VALUES (
 );
 " >/dev/null
 
-log "reapplying 074 -> 106 and verifying schema, metadata, retention, grants, and stdio persistence"
+log "reapplying 074 -> 108 and verifying schema, metadata, retention, grants, and stdio persistence"
 run_migrate up >"${work_dir}/reup.log" 2>&1
 grep -Fq "up 074_mcp_tools_foundation" "${work_dir}/reup.log"
 grep -Fq "up 075_mcp_runtime_role_grants" "${work_dir}/reup.log"
@@ -302,6 +304,136 @@ grep -Fq "up 103_chat_agent_permission_modes" "${work_dir}/reup.log"
 grep -Fq "up 104_rag_failure_state_projection" "${work_dir}/reup.log"
 grep -Fq "up 105_recall_filtering_provider" "${work_dir}/reup.log"
 grep -Fq "up 106_skill_conversation_selections" "${work_dir}/reup.log"
+grep -Fq "up 107_direct_skill_installations" "${work_dir}/reup.log"
+grep -Fq "up 108_retire_builtin_playwright_browser" "${work_dir}/reup.log"
+
+log "proving retired Browser cleanup is exact and idempotent"
+psql_command "
+INSERT INTO workspaces (id, owner_user_id, name)
+VALUES (
+  '74000000-0000-4000-8000-000000000003',
+  '74000000-0000-4000-8000-000000000001',
+  'MCP Browser retirement'
+);
+INSERT INTO mcp_conversation_selections (
+  conversation_id, user_id, mode, revision
+) VALUES (
+  '74000000-0000-4000-8000-000000000002',
+  '74000000-0000-4000-8000-000000000001',
+  'custom',
+  4
+);
+INSERT INTO mcp_conversation_servers (
+  conversation_id, server_source, server_ref
+) VALUES
+  (
+    '74000000-0000-4000-8000-000000000002',
+    'manifest',
+    'playwright-browser-0.0.79'
+  ),
+  (
+    '74000000-0000-4000-8000-000000000002',
+    'private',
+    '74000000-0000-4000-8000-000000000010'
+  );
+INSERT INTO mcp_workspace_selections (workspace_id, revision)
+VALUES ('74000000-0000-4000-8000-000000000003', 7);
+INSERT INTO mcp_workspace_servers (workspace_id, server_source, server_ref)
+VALUES
+  (
+    '74000000-0000-4000-8000-000000000003',
+    'manifest',
+    'playwright-browser-0.0.79'
+  ),
+  (
+    '74000000-0000-4000-8000-000000000003',
+    'private',
+    '74000000-0000-4000-8000-000000000010'
+  );
+INSERT INTO mcp_credentials (
+  id, user_id, server_source, server_ref, kind, encrypted_secret_ref
+) VALUES (
+  '74000000-0000-4000-8000-000000000004',
+  '74000000-0000-4000-8000-000000000001',
+  'manifest',
+  'playwright-browser-0.0.79',
+  'header',
+  'retired-browser-secret'
+);
+INSERT INTO mcp_oauth_states (
+  id, state_hash, user_id, server_source, server_ref,
+  encrypted_flow_ref, return_url, expires_at
+) VALUES (
+  '74000000-0000-4000-8000-000000000005',
+  repeat('a', 64),
+  '74000000-0000-4000-8000-000000000001',
+  'manifest',
+  'playwright-browser-0.0.79',
+  'retired-browser-flow',
+  'https://example.test/mcp/callback',
+  now() + interval '1 hour'
+);
+INSERT INTO mcp_server_grants (
+  id, server_source, server_ref, scope_type, default_enabled
+) VALUES (
+  '74000000-0000-4000-8000-000000000006',
+  'manifest',
+  'playwright-browser-0.0.79',
+  'global',
+  true
+);
+" >/dev/null
+docker exec -i "${container_name}" psql --set=ON_ERROR_STOP=1 --no-psqlrc \
+  --username="${database_user}" --dbname="${database_name}" \
+  <"${backend_dir}/migrations/108_retire_builtin_playwright_browser.up.sql" >/dev/null
+psql_command "
+DO \$\$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM mcp_conversation_servers
+    WHERE server_source = 'manifest'
+      AND server_ref = 'playwright-browser-0.0.79'
+  ) OR EXISTS (
+    SELECT 1 FROM mcp_workspace_servers
+    WHERE server_source = 'manifest'
+      AND server_ref = 'playwright-browser-0.0.79'
+  ) OR EXISTS (
+    SELECT 1 FROM mcp_credentials
+    WHERE server_source = 'manifest'
+      AND server_ref = 'playwright-browser-0.0.79'
+  ) OR EXISTS (
+    SELECT 1 FROM mcp_oauth_states
+    WHERE server_source = 'manifest'
+      AND server_ref = 'playwright-browser-0.0.79'
+  ) OR EXISTS (
+    SELECT 1 FROM mcp_server_grants
+    WHERE server_source = 'manifest'
+      AND server_ref = 'playwright-browser-0.0.79'
+  ) THEN
+    RAISE EXCEPTION 'retired Browser authority remains';
+  END IF;
+  IF (SELECT revision FROM mcp_conversation_selections
+      WHERE conversation_id = '74000000-0000-4000-8000-000000000002') <> 5 THEN
+    RAISE EXCEPTION 'conversation selection revision was not advanced exactly once';
+  END IF;
+  IF (SELECT revision FROM mcp_workspace_selections
+      WHERE workspace_id = '74000000-0000-4000-8000-000000000003') <> 8 THEN
+    RAISE EXCEPTION 'workspace selection revision was not advanced exactly once';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM mcp_conversation_servers
+    WHERE server_source = 'private'
+      AND server_ref = '74000000-0000-4000-8000-000000000010'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM mcp_workspace_servers
+    WHERE server_source = 'private'
+      AND server_ref = '74000000-0000-4000-8000-000000000010'
+  ) THEN
+    RAISE EXCEPTION 'private MCP selection was removed by Browser retirement';
+  END IF;
+END
+\$\$;
+" >/dev/null
 psql_command "
 DO \$\$
 DECLARE
@@ -357,4 +489,4 @@ log "proving a second replay remains a no-op"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 
-log "passed (historical 097 boundary, replay to head 106, guarded 076 down/up, metadata, retention, runtime grants, stdio repository lifecycle)"
+log "passed (historical 097 boundary, replay to head 108, exact Browser retirement, guarded 076 down/up, metadata, retention, runtime grants, stdio repository lifecycle)"

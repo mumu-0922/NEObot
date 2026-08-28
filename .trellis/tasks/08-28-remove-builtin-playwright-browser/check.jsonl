@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/mcp-tools.md","reason":"Verify exact reference cleanup, selection revision fencing, and audit retention."}
+{"file":".trellis/spec/operations/mcp-runner.md","reason":"Verify manifest consumers and live deployment health."}
+{"file":".trellis/spec/operations/runtime-recreate-image-pinning.md","reason":"Verify recreated services use the intended updated source/image."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Keep verification proportional while covering persistence and deployment risk."}

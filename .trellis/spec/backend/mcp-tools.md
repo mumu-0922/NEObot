@@ -242,16 +242,14 @@ rollback restores only the value carrying that migration's repair marker.
   and exposed at Playwright's expected Chrome path.
   Runtime `playwright install` or other browser downloads are not the repair
   path because they would be ephemeral, version-drifting mutations.
-- The checked-in `playwright-browser-0.0.79` artifact pins
-  `@playwright/mcp@0.0.79`, headless isolated Chromium, no Sandbox dependency,
-  blocked service workers, omitted image responses, no codegen, and bounded
-  action/navigation timeouts. Its exact 17-name allowlist supports navigation,
-  accessibility snapshot/find, tabs, and explicit interactions. Upstream
-  `browser_run_code_unsafe`, `browser_evaluate`, file upload, network detail,
-  screenshot, storage-state, and every future unlisted Tool remain absent.
-  Only upstream read-only console/find/snapshot Tools classify as `read`;
-  notably `browser_wait_for` is upstream non-read-only and remains a serialized
-  `write` barrier rather than receiving parallelism or automatic read retry.
+- The production manifest must not contain the retired
+  `manifest:playwright-browser-0.0.79` / `Browser (Playwright)` authority.
+  Migration `108_retire_builtin_playwright_browser` deletes only exact stale
+  Conversation/Workspace selections, credentials, OAuth states, and grants,
+  advances affected selection revisions, and preserves historical Run
+  snapshots and Tool call/result evidence. Separately installed private
+  Playwright MCP Servers remain private inventory and use their own exact
+  artifact/provenance contract.
 - Every MCP call event resolves `ServerName` from the same current-authorized
   `Server` selected for execution. Process trace may retain the internal
   `ServerRef.Key()` for Backend diagnostics and compatibility, but the bounded
@@ -332,9 +330,9 @@ outcome-unknown boundaries remain authoritative.
 | manifest allowlist is empty, duplicate, oversized, or has an invalid name | reject the whole manifest before startup |
 | manifest Tool policy names an unallowed Tool | reject the whole manifest before startup |
 | upstream lists or a caller requests an unallowed manifest Tool, including through a rebound private stdio installation | omit from catalog / return `ErrToolNotFound`; never call upstream |
-| reviewed Browser Tool is upstream non-read-only, even when its visible action appears passive | classify it as `write`; serialize and never read-retry |
 | `instanceScope` is not `run` or is used on remote transport | reject the whole manifest before startup |
-| two Chat Runs select Browser | derive different opaque Runner instances; share no Browser process state |
+| production manifest restores the retired Browser ID or name | fail the production-manifest regression before deployment |
+| migration `108` sees the retired manifest ref and a private Playwright ref | remove only the retired manifest authority, advance affected revisions, and preserve the private ref plus historical evidence |
 | Installed Server has a normalized icon | expose it as display-only `icon`; never treat it as trust/execution authority |
 | Server display name enters an execution event | trim and UTF-8-bound it to 256 bytes; preserve the internal ref separately |
 | Icon is unsafe, oversized, or missing | omit it from the DTO; frontend uses a local fallback |
@@ -350,9 +348,9 @@ outcome-unknown boundaries remain authoritative.
 - **Good**: a refreshed Marketplace stdio deployment resolves either to one
   exact image-bundled manifest executable or one sealed exact-version npm/npx
   artifact downloaded only inside the isolated Runner.
-- **Good**: Playwright initialize/list returns 24 upstream Tools, Neo Chat
-  freezes only 17, then real navigate/snapshot succeeds while unsafe code is
-  neither visible nor callable.
+- **Good**: a separately installed private Playwright MCP remains selectable
+  after migration `108`, while the retired manifest Browser is absent from
+  inventory and stale selections no longer break Run preparation.
 - **Base**: no Workspace and no custom selection exposes no MCP Tools and chat
   behaves normally.
 - **Good failure**: a write connection drops, the timeline records
@@ -380,17 +378,17 @@ outcome-unknown boundaries remain authoritative.
 - Chat completion: a deliberately short MCP whole-Run compatibility timeout
   still terminates non-Agent mode, while effective Agent mode crosses it and
   completes; MCP call/round counters never truncate novel progress.
-- Browser: run real MCP initialize/list/navigate/snapshot against a local HTTP
-  fixture; assert the upstream unsafe-code Tool exists as threat evidence,
-  exact package/command/17-name manifest pins, Runner call-path denial, and
-  distinct instances across Run IDs.
+- Browser retirement: assert the production manifest contains neither the old
+  ID nor display name; migration `108` removes only exact manifest selections
+  and auth/grant rows, increments affected revisions, preserves private MCP
+  selections, and does not delete historical Run/Tool evidence.
 - PostgreSQL 17: apply the historical MCP/Agent boundary through `097` while
   deferring every current `098..head` migration, replay, clean `097..077` down,
   guarded `076` down with/without a stdio row, `075` grant down/up plus `074` schema down/up,
   retired metadata purge without security-field loss, 12 MCP tables,
   runtime-role denial/grants, stdio repository lifecycle, targeted legacy
   repair/rollback assertions, account cascade queue, and final replay through
-  the current head (currently `106`) via
+  the current head (currently `108`) via
   `scripts/verify-mcp-postgres17.sh` and
   `scripts/verify-mcp-install-credentials-postgres17.sh`. When a new tail
   migration is added, both drills must advance their fresh, down, re-up, and

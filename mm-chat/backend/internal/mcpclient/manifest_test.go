@@ -1,11 +1,8 @@
 package mcpclient
 
 import (
-	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -256,79 +253,17 @@ func TestProductionTavilyManifestBindsCurrentPackageToolNames(t *testing.T) {
 	}
 }
 
-func TestProductionBrowserManifestPinsRunScopedSafeToolSurface(t *testing.T) {
+func TestProductionManifestDoesNotShipRetiredBrowser(t *testing.T) {
 	t.Parallel()
 	manifestPath := filepath.Join("..", "..", "..", "mcp", "manifest.json")
 	servers, err := LoadManifest(manifestPath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var browser Server
 	for _, server := range servers {
-		if server.Ref.ID == "playwright-browser-0.0.79" {
-			browser = server
-			break
+		if server.Ref.ID == "playwright-browser-0.0.79" || server.Name == "Browser (Playwright)" {
+			t.Fatalf("retired built-in Browser remains in production manifest: %#v", server.Ref)
 		}
-	}
-	if browser.Command == nil || browser.Metadata[runnerInstanceScope] != manifestInstanceRun {
-		t.Fatalf("Browser command/scope = %#v/%#v", browser.Command, browser.Metadata)
-	}
-	wantCommand := []string{
-		"/opt/mcp-runner/node_modules/.bin/playwright-mcp",
-		"--headless", "--isolated", "--browser", "chromium", "--no-sandbox",
-		"--block-service-workers", "--image-responses", "omit",
-		"--codegen", "none", "--timeout-action", "5000",
-		"--timeout-navigation", "20000",
-	}
-	if !slices.Equal(browser.Command.Argv, wantCommand) {
-		t.Fatalf("Browser argv = %#v, want %#v", browser.Command.Argv, wantCommand)
-	}
-	allowed, ok := browser.Metadata[manifestAllowedTools].([]string)
-	wantAllowed := []string{
-		"browser_click", "browser_close", "browser_console_messages", "browser_drag",
-		"browser_fill_form", "browser_find", "browser_handle_dialog", "browser_hover",
-		"browser_navigate", "browser_navigate_back", "browser_press_key", "browser_resize",
-		"browser_select_option", "browser_snapshot", "browser_tabs", "browser_type",
-		"browser_wait_for",
-	}
-	if !ok || !slices.Equal(allowed, wantAllowed) {
-		t.Fatalf("Browser allowed Tools = %#v", browser.Metadata[manifestAllowedTools])
-	}
-	policy, _ := browser.Metadata["toolPolicy"].(map[string]string)
-	readOnly := map[string]bool{
-		"browser_console_messages": true,
-		"browser_find":             true,
-		"browser_snapshot":         true,
-	}
-	for _, name := range allowed {
-		want := ClassificationWrite
-		if readOnly[name] {
-			want = ClassificationRead
-		}
-		if classification := normalizeClassification(policy[name]); classification != want {
-			t.Fatalf("Browser policy[%q] = %q, want %q", name, classification, want)
-		}
-	}
-	for _, forbidden := range []string{
-		"browser_run_code_unsafe", "browser_evaluate", "browser_file_upload",
-		"browser_network_request", "browser_set_storage_state",
-	} {
-		if manifestToolAllowed(browser, forbidden) {
-			t.Fatalf("unsafe Browser Tool %q escaped the allowlist", forbidden)
-		}
-	}
-
-	packagePath := filepath.Join("..", "..", "mcp-runner-runtime", "package.json")
-	packageBody, err := os.ReadFile(packagePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var packageDocument struct {
-		Dependencies map[string]string `json:"dependencies"`
-	}
-	if json.Unmarshal(packageBody, &packageDocument) != nil ||
-		packageDocument.Dependencies["@playwright/mcp"] != "0.0.79" {
-		t.Fatalf("Playwright package pin = %#v", packageDocument.Dependencies)
 	}
 }
 

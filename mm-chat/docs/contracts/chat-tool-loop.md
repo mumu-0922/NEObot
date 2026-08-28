@@ -87,12 +87,13 @@ runtime returns `409 CONVERSATION_RUN_UNAVAILABLE`. Finished retained SSE frames
 remain resumable for their retention window but are not active projections.
 
 Selected MCP Tools join this same Registry under their frozen provider-safe
-aliases. The reviewed `Browser (Playwright)` manifest artifact is a real
-headless browser path for navigation, accessibility snapshots, clicks, form
-input, tabs, and waits; it is not an HTTP-fetch compatibility shortcut. Its
-page process is scoped to one Chat Run, and the manifest excludes arbitrary
-Playwright code/evaluation, file upload, request-body inspection, and storage-
-state injection.
+aliases. Neo Chat no longer ships a built-in `Browser (Playwright)` manifest
+Server. Browser automation is available only through an explicitly installed
+private MCP Server, which follows the same per-user installation, selection,
+credential, and frozen-snapshot rules as every other private MCP integration.
+Migration `108_retire_builtin_playwright_browser` removes stale selections and
+authorization rows for the retired manifest reference without rewriting
+historical Run snapshots or Tool call evidence.
 
 `search_memory` is absent unless `MEMORY_TOOL_LOOP_ENABLED=true`. The schema-v7
 answer-model routing evidence remains failed and immutable, but the owner later
@@ -1110,7 +1111,7 @@ Job, `bash`, and `skill` definitions without deleting installed Skills or
 workspace files. Process-local Jobs are killed during shutdown; no OCI fallback
 is activated.
 
-For a Browser regression, remove `manifest:playwright-browser-0.0.79` from the
-Conversation selection or set `MCP_STDIO_ENABLED=false` and restart the API.
-This removes the Browser Tool surface without changing `local_direct` Skills,
-other remote MCP Servers, Conversations, or stored user data.
+The former built-in Browser retirement is intentionally irreversible: rolling
+back the application does not reconstruct its deleted selection or credential
+intent. A separately installed private Playwright MCP remains ordinary private
+inventory and can be disabled or removed through the existing MCP controls.

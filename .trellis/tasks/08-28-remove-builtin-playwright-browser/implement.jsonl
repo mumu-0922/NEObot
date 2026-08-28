@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/mcp-tools.md","reason":"Manifest inventory, selections, migration cleanup, and historical audit authority."}
+{"file":".trellis/spec/backend/chat-tool-loop.md","reason":"Agent Tool admission and immutable Run snapshot behavior."}
+{"file":".trellis/spec/operations/mcp-runner.md","reason":"Manifest/Runner topology, deployment, and rollback constraints."}
+{"file":".trellis/spec/operations/runtime-recreate-image-pinning.md","reason":"Safe live Compose service recreation."}
+{"file":".trellis/spec/frontend/mcp-tools.md","reason":"Installed inventory and per-Conversation picker remain server-authoritative."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace manifest, persistence, API inventory, and deployment convergence."}
