@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 108
+- **Total Sessions**: 109
 - **Last Active**: 2026-08-28
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~40 | Active |
+| `journal-3.md` | ~73 | Active |
 | `journal-2.md` | ~1985 | Archived |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 109 | 2026-08-28 | Rename Skill and MCP product labels | `220efe3f` | `main` |
 | 108 | 2026-08-28 | Retire built-in Playwright Browser MCP | `c09b54e3` | `main` |
 | 107 | 2026-08-28 | Add composer resource picker icons | `a8d73165` | `main` |
 | 106 | 2026-08-28 | Restore installed Skill icons | `755baa97` | `main` |
