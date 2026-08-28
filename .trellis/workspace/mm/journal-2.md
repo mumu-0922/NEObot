@@ -1785,3 +1785,36 @@ Fixed LobeHub exact-detail authentication by separating bounded public detail re
 ### Next Steps
 
 - None - task complete
+
+
+## Session 102: Restore Skill Marketplace categories and icons
+
+**Date**: 2026-08-28
+**Task**: Restore Skill Marketplace categories and icons
+**Branch**: `main`
+
+### Summary
+
+Raised the bounded LobeHub Skill category contract to accept the live 296-entry taxonomy, added matching frontend validation, rendered GitHub avatars through the same-origin Next.js image optimizer with safe fallback, added focused regressions, and rebuilt/deployed healthy frontend and backend containers.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bf52489d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
