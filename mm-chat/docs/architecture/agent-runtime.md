@@ -94,10 +94,12 @@ The Skill Store is independent of the retired Agent Center. It exposes the
 backend-mediated LobeHub Skill Marketplace and the fixed OpenAI curated GitHub
 directory as distinct sources. Exact LobeHub pages and GitHub Skill links may
 enter the same owner-private validation path directly. LobeHub install pins an
-exact version before authenticated download; list/category stay M2M while exact
-detail uses a bounded public read. GitHub install pins an exact commit. Installing a Skill
-does not grant extra host identity, bypass Tool policy, or select it for every
-conversation. Runtime descriptors distinguish `user_selected`,
+exact version, reads its internal GitHub Skill coordinate from bounded public
+detail, then pins a commit and materializes only that declared directory;
+list/category stay M2M and the browser never receives the package coordinate.
+GitHub install pins an exact commit. Installing a Skill does not grant extra
+host identity, bypass Tool policy, or select it for every conversation. Runtime
+descriptors distinguish `user_selected`,
 `workspace_default`, and `agent_auto` activation without exposing local paths.
 
 ## Persistence and deliverables

@@ -46,6 +46,9 @@ func (*Service) InstallDirectSkillLink(
 ) (Installation, error)
 func ParseGitHubSkillURL(raw string) (GitHubSkillCoordinate, error)
 func ParseLobeHubSkillURL(raw string) (identifier string, err error)
+func (DirectSkillLinkSource) fetchGitHubSubtree(
+    context.Context, rawURL, expectedName string,
+) (ArchiveSource, error)
 func (*Service) SearchMarketplace(
     context.Context, MarketplaceSearchInput,
 ) (MarketplaceSearchResult, error)
@@ -72,8 +75,9 @@ func (*Service) InstallMarketplaceSkill(
   canonical `sha256:` package fingerprint.
 - LobeHub list/category uses the existing backend-owned Marketplace M2M client.
   Exact detail uses a separate bounded public GET because LobeHub rejects M2M
-  bearer tokens on that route. Exact-version package download remains M2M.
-  Browser code receives normalized Neo Chat DTOs only and never sees a bearer
+  bearer tokens on that route. The exact detail's internal-only
+  `manifest.sourceUrl` is package transport; browser code receives only the
+  normalized LobeHub page URL and never sees that GitHub coordinate, a bearer
   token, raw upstream body, or package archive.
 - LobeHub Skill category responses accept at most 512 validated raw rows, then
   project only the product-owned ordered allowlist of 21 canonical category
@@ -88,10 +92,20 @@ func (*Service) InstallMarketplaceSkill(
 - Locale and sort values cross the authenticated Marketplace boundary only
   through explicit allowlists; unknown values fail before upstream I/O.
 - Marketplace install must re-read detail for the requested exact SemVer,
-  require the response identity/version to match, then call the exact-version
-  ZIP download. `latest`, tags, ranges, and list-only version data are never
-  install authority. The ZIP enters the unchanged `ValidateArchive`, object,
-  fingerprint, owner-private Candidate, and Library path.
+  require the response identity/version to match, parse the exact GitHub
+  `tree`/`blob` `manifest.sourceUrl`, and require its terminal directory to
+  equal the manifest name before GitHub I/O. `latest`, tags, ranges, and
+  list-only version data are never install authority.
+- Marketplace GitHub transport resolves a mutable ref to a lowercase
+  40-character commit, enumerates only the declared directory with bounded
+  GitHub Contents responses, accepts only regular files/directories, verifies
+  every raw file against its declared Git blob SHA, and builds one bounded
+  canonical ZIP. It never downloads the enclosing codeload repository, follows
+  redirects, accepts symlinks/submodules, or executes source content.
+- The validated bytes are rebound to
+  `lobehub:<identifier>@<exactSemver>` before ingestion. They then enter the
+  unchanged `ValidateArchive`, object, fingerprint, owner-private Candidate,
+  and Library path, preserving installed lookup and idempotency.
 - LobeHub `identifier` is source identity and may differ from the root
   `SKILL.md` manifest `name`. Detail supplies the validated manifest name to
   `LobeHubSource.FetchAs`; source references remain
@@ -156,6 +170,8 @@ func (*Service) InstallMarketplaceSkill(
 | category source has more than 512 rows | omit categories but retain the independently valid item list |
 | Marketplace list/category/detail unavailable or malformed | `502 SKILL_SOURCE_UNAVAILABLE`; no upstream body leak |
 | detail identity/version changes before install | `409 SKILL_PACKAGE_CHANGED`; zero package persistence |
+| Marketplace detail source missing, malformed, or terminal-name mismatched | reject before GitHub I/O and persistence |
+| Marketplace target subtree missing root `SKILL.md`, exceeds bounds, contains a symlink/submodule, or has Git blob drift | typed source/archive failure; zero Candidate/object/Library mutation |
 | exact LobeHub/GitHub link malformed or ambiguous | `400 INVALID_SKILL_PACKAGE`; zero Provider/source execution |
 
 ## 5. Good / Base / Bad Cases
@@ -164,7 +180,8 @@ func (*Service) InstallMarketplaceSkill(
   commit/fingerprint, display it in Library, and let the user select it for one
   Conversation.
 - **Good:** search LobeHub, inspect `owner-demo@1.2.3`, re-resolve that exact
-  version, validate its root manifest, and install it only for the caller.
+  version, pin its declared GitHub Skill directory, validate its root manifest,
+  rebind the LobeHub source identity, and install it only for the caller.
 - **Good:** select `productivity-tasks`, forward that exact canonical ID, and
   return only the ordered curated category/count projection alongside results.
 - **Base:** GitHub is temporarily unavailable; the catalog shows bounded retry
@@ -177,6 +194,8 @@ func (*Service) InstallMarketplaceSkill(
 - **Bad:** treat list `version` as sufficient install authority, download
   latest without detail revalidation, or require Marketplace identifier to
   equal manifest name.
+- **Bad:** use LobeHub's currently unauthorized `/download` route or download a
+  97 MiB repository ZIP to install a 3 KiB nested Skill.
 
 ## 6. Tests Required
 
@@ -191,11 +210,16 @@ func (*Service) InstallMarketplaceSkill(
 - Direct GitHub tree/blob acceptance plus root, encoded traversal, query,
   fragment, mismatch, and ambiguous input rejection.
 - LobeHub transport tests must prove list/category retain M2M authorization,
-  exact detail omits Authorization, exact-version download remains M2M, and
-  generic/plugin/download/encoded-path requests fail before HTTP.
+  exact detail omits Authorization, Marketplace installation makes zero legacy
+  package-download calls, and generic/plugin/download/encoded-path requests
+  fail before HTTP.
 - Marketplace list/detail/install tests must assert pagination/category DTOs,
   exact version, identifier/manifest-name separation, owner-private Candidate,
   installed status, idempotent reconciliation, and no Store publication.
+- Marketplace subtree tests must assert mutable-ref pinning, exact-directory
+  enumeration, nested regular-file materialization, zero codeload traffic,
+  Git blob verification, symlink rejection before blob fetch, and zero mutation
+  on malformed source or content drift.
 - Category tests must feed the live-scale raw taxonomy, assert the exact
   ordered 21-ID projection, prove `_meta` is removed, and prove a non-curated
   query is rejected before the Marketplace fetcher records a request.
@@ -214,7 +238,10 @@ Wrong: browser -> arbitrary marketplace HTML -> mutable URL -> npm install
 Correct: Backend source adapter -> exact version/commit -> ValidateArchive -> owner Library
 
 Wrong: list says 1.2.3 -> download latest -> accept whatever arrives
-Correct: exact detail 1.2.3 -> exact download 1.2.3 -> identity validation
+Correct: exact detail 1.2.3 -> pin declared GitHub directory -> rebind exact LobeHub identity
+
+Wrong: nested Marketplace Skill -> download the enclosing repository ZIP
+Correct: pinned exact directory -> bounded file list -> verified Git blobs -> ValidateArchive
 
 Wrong: GitHub repository root -> guess a nested Skill
 Correct: exact tree directory or blob/SKILL.md -> resolve ref -> exact directory

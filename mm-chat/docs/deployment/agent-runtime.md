@@ -44,10 +44,12 @@ is untrusted; keep Docker `AGENT_LOCAL_APPROVAL_MODE` at `smart`.
 The standalone Skill Store uses `/v1/skills/*`. It keeps backend-mediated LobeHub
 Marketplace discovery separate from the fixed
 `openai/skills/skills/.curated` catalog. LobeHub uses the existing backend-only
-Marketplace M2M configuration for list/category and exact package download;
-exact detail is a bounded public read. Curated and external GitHub installs require
-outbound HTTPS access to `api.github.com` and `codeload.github.com`. One source failure does
-not affect Installed, selection, or runtime use. Assistant library, Knowledge,
+Marketplace M2M configuration for list/category; exact detail is a bounded
+public read whose declared GitHub Skill directory is pinned and materialized
+without downloading the enclosing repository. Skill installation requires
+outbound HTTPS access to `api.github.com`, `raw.githubusercontent.com`, and—for
+curated/direct codeload paths—`codeload.github.com`. One source failure does not
+affect Installed, selection, or runtime use. Assistant library, Knowledge,
 Memory, Files, and MCP Tools remain separate product surfaces. Composer Skill
 and MCP pickers persist only the current Conversation's selection. Mid-Run
 changes apply at the next snapshot boundary, and automatic matching is

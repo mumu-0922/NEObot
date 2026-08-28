@@ -78,14 +78,15 @@ type MarketplaceSkillVersion struct {
 
 type MarketplaceSkillDetail struct {
 	MarketplaceSkillSummary
-	ManifestName string                     `json:"manifestName"`
-	Summary      string                     `json:"summary,omitempty"`
-	Permissions  []string                   `json:"permissions"`
-	Resources    []MarketplaceSkillResource `json:"resources"`
-	Versions     []MarketplaceSkillVersion  `json:"versions"`
-	Source       string                     `json:"source"`
-	SourceURL    string                     `json:"sourceUrl"`
-	Installed    bool                       `json:"installed"`
+	ManifestName     string                     `json:"manifestName"`
+	Summary          string                     `json:"summary,omitempty"`
+	Permissions      []string                   `json:"permissions"`
+	Resources        []MarketplaceSkillResource `json:"resources"`
+	Versions         []MarketplaceSkillVersion  `json:"versions"`
+	Source           string                     `json:"source"`
+	SourceURL        string                     `json:"sourceUrl"`
+	Installed        bool                       `json:"installed"`
+	packageSourceURL string
 }
 
 type lobeSkillListResponse struct {
@@ -145,6 +146,7 @@ type lobeSkillDetail struct {
 	} `json:"license"`
 	Manifest struct {
 		Name        string   `json:"name"`
+		SourceURL   string   `json:"sourceUrl"`
 		Description string   `json:"description"`
 		License     string   `json:"license"`
 		Repository  string   `json:"repository"`
@@ -322,6 +324,9 @@ func (service *Service) GetMarketplaceSkillLocalized(
 		Versions: []MarketplaceSkillVersion{}, Source: SourceLobeHub,
 		SourceURL: "https://lobehub.com/skills/" + url.PathEscape(identifier),
 	}
+	detail.packageSourceURL = validMarketplaceGitHubSourceURL(
+		raw.Manifest.SourceURL, detail.ManifestName,
+	)
 	for _, permission := range raw.Manifest.Permissions {
 		permission = boundedMarketplaceString(permission, 256)
 		if permission != "" && len(detail.Permissions) < 64 {
@@ -368,10 +373,20 @@ func (service *Service) InstallMarketplaceSkill(
 	if detail.Version != strings.TrimSpace(version) {
 		return Installation{}, ErrPackageChanged
 	}
-	source, err := service.lobehub.FetchAs(ctx, identifier, detail.Version, detail.ManifestName)
+	if detail.packageSourceURL == "" {
+		return Installation{}, ErrInvalidSource
+	}
+	source, err := service.direct.fetchGitHubSubtree(
+		ctx, detail.packageSourceURL, detail.ManifestName,
+	)
 	if err != nil {
 		return Installation{}, err
 	}
+	source.Type = SourceLobeHub
+	source.Ref = "lobehub:" + identifier + "@" + detail.Version
+	source.Identifier = identifier
+	source.Version = detail.Version
+	source.ExpectedName = detail.ManifestName
 	candidate, err := service.ingest(ctx, strings.TrimSpace(userID), source)
 	if err != nil {
 		return Installation{}, err

@@ -3,26 +3,25 @@ package skillsupply
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 )
 
 type fakeSkillMarketplace struct {
-	archive        []byte
 	categoriesJSON []byte
+	detailJSON     []byte
+	packageCalls   int
 	paths          []string
 }
 
 func (fake *fakeSkillMarketplace) FetchSkillPackage(
 	_ context.Context, identifier, version string, _ int64,
 ) ([]byte, error) {
-	if identifier != "owner-demo" || version != "1.2.3" {
-		return nil, fmt.Errorf("unexpected package %s@%s", identifier, version)
-	}
-	return append([]byte(nil), fake.archive...), nil
+	fake.packageCalls++
+	return nil, fmt.Errorf("legacy package download must not run for %s@%s", identifier, version)
 }
 
 func (fake *fakeSkillMarketplace) FetchSkillMarketJSON(
@@ -114,16 +113,56 @@ func (fake *fakeSkillMarketplace) FetchPublicSkillDetailJSON(
 	if !strings.HasPrefix(path, "/api/v1/skills/owner-demo?") {
 		return nil, fmt.Errorf("unexpected detail path %s", path)
 	}
-	return []byte(`{"identifier":"owner-demo","name":"Demo Skill","description":"Marketplace demo","version":"1.2.3","category":"productivity-tasks","installCount":7,"ratingAverage":4.5,"isOfficial":false,"isValidated":true,"isFeatured":true,"author":{"name":"Owner"},"github":{"url":"https://github.com/owner/demo"},"license":{"name":"MIT"},"manifest":{"name":"demo-skill","description":"Marketplace demo","permissions":["Read"]},"overview":{"summary":"Demo summary"},"resources":{"references/demo.txt":{"fileHash":"sha256:abc","size":3}},"versions":[{"version":"1.2.3","isLatest":true,"isValidated":true,"createdAt":"2026-08-28T00:00:00Z","versionNumber":1}]}`), nil
+	if fake.detailJSON != nil {
+		return append([]byte(nil), fake.detailJSON...), nil
+	}
+	return []byte(`{
+		"identifier":"owner-demo","name":"Demo Skill","description":"Marketplace demo",
+		"version":"1.2.3","category":"productivity-tasks","installCount":7,
+		"ratingAverage":4.5,"isOfficial":false,"isValidated":true,"isFeatured":true,
+		"author":{"name":"Owner"},"github":{"url":"https://github.com/owner/demo"},
+		"license":{"name":"MIT"},
+		"manifest":{"name":"demo-skill",
+			"sourceUrl":"https://github.com/owner/demo/tree/main/skills/demo-skill",
+			"description":"Marketplace demo","permissions":["Read"]},
+		"overview":{"summary":"Demo summary"},"resources":{},
+		"versions":[{"version":"1.2.3","isLatest":true,"isValidated":true,
+			"createdAt":"2026-08-28T00:00:00Z","versionNumber":1}]
+	}`), nil
+}
+
+func marketplaceGitHubFixture(t *testing.T) (SourceHTTPClient, *[]string) {
+	t.Helper()
+	commit := strings.Repeat("c", 40)
+	skill := []byte(validSkillMarkdown("demo-skill"))
+	blobSHA := gitBlobSHA(skill)
+	calls := []string{}
+	client := sourceRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		calls = append(calls, request.URL.String())
+		switch request.URL.String() {
+		case "https://api.github.com/repos/owner/demo/commits/main":
+			return sourceResponse(request, "application/json", `{"sha":"`+commit+`"}`), nil
+		case "https://api.github.com/repos/owner/demo/contents/skills/demo-skill?ref=" + commit:
+			return sourceResponse(request, "application/json", fmt.Sprintf(
+				`[{"name":"SKILL.md","path":"skills/demo-skill/SKILL.md","sha":"%s","size":%d,"type":"file"}]`,
+				blobSHA, len(skill),
+			)), nil
+		case "https://raw.githubusercontent.com/owner/demo/" + commit + "/skills/demo-skill/SKILL.md":
+			return sourceResponse(request, "application/octet-stream", string(skill)), nil
+		default:
+			return nil, fmt.Errorf("unexpected GitHub request %s", request.URL)
+		}
+	})
+	return client, &calls
 }
 
 func TestMarketplaceSearchDetailAndExactOwnerPrivateInstall(t *testing.T) {
-	fetcher := &fakeSkillMarketplace{archive: mustTestArchive(t, []packageFile{{
-		path: "SKILL.md", data: []byte(validSkillMarkdown("demo-skill")),
-	}}, 0, time.Time{})}
+	fetcher := &fakeSkillMarketplace{}
+	githubClient, githubCalls := marketplaceGitHubFixture(t)
 	repository := newMemoryRepository()
 	service := NewService(
 		WithRepository(repository), WithObjectStore(newMemoryObjectStore()), WithLobeHubFetcher(fetcher),
+		WithGitHubClient(githubClient),
 	)
 	service.newID = sequenceIDs("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 	result, err := service.SearchMarketplace(context.Background(), MarketplaceSearchInput{
@@ -142,7 +181,7 @@ func TestMarketplaceSearchDetailAndExactOwnerPrivateInstall(t *testing.T) {
 		context.Background(), testSkillUser, "owner-demo", "", "ja-JP",
 	)
 	if err != nil || detail.ManifestName != "demo-skill" || detail.Version != "1.2.3" ||
-		len(detail.Resources) != 1 || detail.Installed {
+		len(detail.Resources) != 0 || detail.Installed {
 		t.Fatalf("GetMarketplaceSkill() = %#v, %v", detail, err)
 	}
 	if !strings.Contains(fetcher.paths[len(fetcher.paths)-1], "locale=ja-JP") {
@@ -153,6 +192,12 @@ func TestMarketplaceSearchDetailAndExactOwnerPrivateInstall(t *testing.T) {
 	)
 	if err != nil || installed.Name != "demo-skill" || installed.Version != "1.2.3" {
 		t.Fatalf("InstallMarketplaceSkill() = %#v, %v", installed, err)
+	}
+	if fetcher.packageCalls != 0 || len(*githubCalls) != 3 ||
+		!strings.Contains((*githubCalls)[0], "/commits/main") ||
+		!strings.Contains((*githubCalls)[1], "/contents/skills/demo-skill?ref="+strings.Repeat("c", 40)) ||
+		!strings.Contains((*githubCalls)[2], "raw.githubusercontent.com/owner/demo/"+strings.Repeat("c", 40)) {
+		t.Fatalf("legacy/GitHub package calls = %d/%#v", fetcher.packageCalls, *githubCalls)
 	}
 	candidate := repository.candidates[installed.AdmissionID]
 	if candidate.OwnerUserID != testSkillUser || candidate.SourceRef != "lobehub:owner-demo@1.2.3" ||
@@ -171,6 +216,74 @@ func TestMarketplaceSearchDetailAndExactOwnerPrivateInstall(t *testing.T) {
 	}
 }
 
+func TestMarketplaceInstallRejectsMismatchedGitHubSourceBeforeIO(t *testing.T) {
+	fetcher := &fakeSkillMarketplace{detailJSON: []byte(`{
+		"identifier":"owner-demo","name":"Demo Skill","description":"Marketplace demo",
+		"version":"1.2.3","category":"productivity-tasks","installCount":7,
+		"ratingAverage":4.5,"author":{"name":"Owner"},
+		"manifest":{"name":"demo-skill","sourceUrl":"https://github.com/owner/demo/tree/main/skills/other-skill"},
+		"resources":{},"versions":[]
+	}`)}
+	githubCalls := 0
+	repository := newMemoryRepository()
+	objects := newMemoryObjectStore()
+	service := NewService(
+		WithRepository(repository), WithObjectStore(objects), WithLobeHubFetcher(fetcher),
+		WithGitHubClient(sourceRoundTripFunc(func(*http.Request) (*http.Response, error) {
+			githubCalls++
+			return nil, fmt.Errorf("GitHub must not be called")
+		})),
+	)
+
+	_, err := service.InstallMarketplaceSkill(
+		context.Background(), testSkillUser, "owner-demo", "1.2.3",
+	)
+	if !errors.Is(err, ErrInvalidSource) || githubCalls != 0 || fetcher.packageCalls != 0 ||
+		len(repository.candidates) != 0 || len(objects.objects) != 0 {
+		t.Fatalf("mismatched source error=%v github=%d legacy=%d candidates=%d objects=%d",
+			err, githubCalls, fetcher.packageCalls, len(repository.candidates), len(objects.objects))
+	}
+}
+
+func TestMarketplaceInstallRejectsGitHubBlobDriftWithoutMutation(t *testing.T) {
+	fetcher := &fakeSkillMarketplace{}
+	commit := strings.Repeat("d", 40)
+	skill := []byte(validSkillMarkdown("demo-skill"))
+	blobSHA := gitBlobSHA(skill)
+	rawCalls := 0
+	client := sourceRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.String() {
+		case "https://api.github.com/repos/owner/demo/commits/main":
+			return sourceResponse(request, "application/json", `{"sha":"`+commit+`"}`), nil
+		case "https://api.github.com/repos/owner/demo/contents/skills/demo-skill?ref=" + commit:
+			return sourceResponse(request, "application/json", fmt.Sprintf(
+				`[{"name":"SKILL.md","path":"skills/demo-skill/SKILL.md","sha":"%s","size":%d,"type":"file"}]`,
+				blobSHA, len(skill),
+			)), nil
+		case "https://raw.githubusercontent.com/owner/demo/" + commit + "/skills/demo-skill/SKILL.md":
+			rawCalls++
+			return sourceResponse(request, "application/octet-stream", strings.Repeat("x", len(skill))), nil
+		default:
+			return nil, fmt.Errorf("unexpected GitHub request %s", request.URL)
+		}
+	})
+	repository := newMemoryRepository()
+	objects := newMemoryObjectStore()
+	service := NewService(
+		WithRepository(repository), WithObjectStore(objects), WithLobeHubFetcher(fetcher),
+		WithGitHubClient(client),
+	)
+
+	_, err := service.InstallMarketplaceSkill(
+		context.Background(), testSkillUser, "owner-demo", "1.2.3",
+	)
+	if !errors.Is(err, ErrSourceUnavailable) || rawCalls != 1 || fetcher.packageCalls != 0 ||
+		len(repository.candidates) != 0 || len(objects.objects) != 0 {
+		t.Fatalf("blob drift error=%v raw=%d legacy=%d candidates=%d objects=%d",
+			err, rawCalls, fetcher.packageCalls, len(repository.candidates), len(objects.objects))
+	}
+}
+
 func TestMarketplaceExactLinkParsingAndInstall(t *testing.T) {
 	for _, raw := range []string{
 		"http://lobehub.com/skills/owner-demo", "https://lobehub.com/skills/owner-demo?version=1",
@@ -186,12 +299,11 @@ func TestMarketplaceExactLinkParsingAndInstall(t *testing.T) {
 }
 
 func TestMarketplaceHandlerSearchDetailInstallAndDirectLink(t *testing.T) {
-	fetcher := &fakeSkillMarketplace{archive: mustTestArchive(t, []packageFile{{
-		path: "SKILL.md", data: []byte(validSkillMarkdown("demo-skill")),
-	}}, 0, time.Time{})}
+	fetcher := &fakeSkillMarketplace{}
+	githubClient, _ := marketplaceGitHubFixture(t)
 	service := NewService(
 		WithRepository(newMemoryRepository()), WithObjectStore(newMemoryObjectStore()),
-		WithLobeHubFetcher(fetcher),
+		WithLobeHubFetcher(fetcher), WithGitHubClient(githubClient),
 	)
 	service.newID = sequenceIDs("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 	handler := NewHandler(service)
