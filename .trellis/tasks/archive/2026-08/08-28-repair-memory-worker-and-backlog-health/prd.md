@@ -109,8 +109,13 @@ acknowledged through the append-only operator path.
   orphaned leases became `dead_letter/LEASE_EXPIRED` with zero invalid Activity
   links, and later captures resumed processing.
 - Capture backlog moved from `43 completed / 37 dead-letter / 63 pending /
-  2 processing` to the latest observed `71 completed / 57 dead-letter /
-  17 pending / 0 processing` while the bounded retry schedule continues.
+  2 processing` to `71 completed / 74 dead-letter / 0 pending / 0 processing`;
+  the recoverable queue is fully drained.
 - Remaining degraded health is Provider/content failure evidence, not Worker
   unavailability. The two pre-existing append-only health resolutions stayed
   unchanged; no historical failure was acknowledged by this repair.
+- The owner switched the Memory task model to `Sub / gpt-5.6-luna`. A new
+  post-switch extraction completed after bounded retry, proving the current
+  Provider path and repaired Worker loop end to end. Memory health still
+  reports `72` unresolved historical extract dead letters by design; they are
+  retained for a separate replay-or-acknowledgement decision.
