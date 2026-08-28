@@ -134,7 +134,7 @@ func (fake *fakeSkillMarketplace) FetchPublicSkillDetailJSON(
 func marketplaceGitHubFixture(t *testing.T) (SourceHTTPClient, *[]string) {
 	t.Helper()
 	commit := strings.Repeat("c", 40)
-	skill := []byte(validSkillMarkdown("demo-skill"))
+	skill := []byte(openClawSkillMarkdown("demo-skill"))
 	blobSHA := gitBlobSHA(skill)
 	calls := []string{}
 	client := sourceRoundTripFunc(func(request *http.Request) (*http.Response, error) {

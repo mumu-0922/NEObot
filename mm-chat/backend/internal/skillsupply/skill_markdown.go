@@ -7,7 +7,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const maxSkillMarkdownBytes = int64(1 << 20)
+const (
+	maxSkillMarkdownBytes       = int64(1 << 20)
+	maxSkillMetadataEntries     = 64
+	maxSkillMetadataKeyBytes    = 128
+	maxSkillMetadataValueBytes  = 1024
+	maxSkillMetadataOpaqueDepth = 16
+	maxSkillMetadataOpaqueNodes = 4096
+	maxSkillMetadataScalarBytes = 4096
+)
 
 type skillFrontmatter struct {
 	Name          string
@@ -50,13 +58,14 @@ func parseSkillMarkdown(files []packageFile) (SkillMetadata, error) {
 	if !skillNamePattern.MatchString(frontmatter.Name) || len(frontmatter.Name) > 64 ||
 		frontmatter.Description == "" || len([]rune(frontmatter.Description)) > 1024 ||
 		len([]rune(frontmatter.License)) > 512 || len([]rune(frontmatter.Compatibility)) > 500 ||
-		len(frontmatter.Metadata) > 64 || len(frontmatter.AllowedTools) > 4096 ||
+		len(frontmatter.Metadata) > maxSkillMetadataEntries || len(frontmatter.AllowedTools) > 4096 ||
 		!validPlainText(frontmatter.Description) || !validPlainText(frontmatter.License) ||
 		!validPlainText(frontmatter.Compatibility) {
 		return SkillMetadata{}, ErrManifestInvalid
 	}
 	for key, value := range frontmatter.Metadata {
-		if strings.TrimSpace(key) == "" || len(key) > 128 || len(value) > 1024 ||
+		if strings.TrimSpace(key) == "" || len(key) > maxSkillMetadataKeyBytes ||
+			len(value) > maxSkillMetadataValueBytes ||
 			!validPlainText(key) || !validPlainText(value) {
 			return SkillMetadata{}, ErrManifestInvalid
 		}
@@ -98,7 +107,7 @@ func decodeFrontmatter(node *yaml.Node) (skillFrontmatter, error) {
 		case "allowed-tools":
 			result.AllowedTools = scalarString(valueNode)
 		case "metadata":
-			metadata, err := scalarMap(valueNode)
+			metadata, err := projectSkillMetadata(valueNode)
 			if err != nil {
 				return result, err
 			}
@@ -127,23 +136,94 @@ func isStringScalar(node *yaml.Node) bool {
 		(node.Tag == "!!str" || node.Tag == "")
 }
 
-func scalarMap(node *yaml.Node) (map[string]string, error) {
-	if node == nil || node.Kind != yaml.MappingNode || len(node.Content)%2 != 0 {
+func projectSkillMetadata(node *yaml.Node) (map[string]string, error) {
+	if node == nil || node.Kind != yaml.MappingNode || len(node.Content)%2 != 0 ||
+		len(node.Content)/2 > maxSkillMetadataEntries {
 		return nil, ErrManifestInvalid
 	}
 	result := map[string]string{}
+	seen := map[string]struct{}{}
+	state := skillMetadataValidationState{}
 	for index := 0; index < len(node.Content); index += 2 {
 		key, keyOK := strictScalarString(node.Content[index])
-		value, valueOK := strictScalarString(node.Content[index+1])
-		if !keyOK || !valueOK || key == "" {
+		if !keyOK || key == "" || len(key) > maxSkillMetadataKeyBytes || !validPlainText(key) {
 			return nil, ErrManifestInvalid
 		}
-		if _, duplicate := result[key]; duplicate {
+		if _, duplicate := seen[key]; duplicate {
 			return nil, ErrManifestInvalid
 		}
-		result[key] = value
+		seen[key] = struct{}{}
+
+		valueNode := node.Content[index+1]
+		if value, valueOK := strictScalarString(valueNode); valueOK {
+			if len(value) > maxSkillMetadataValueBytes || !validPlainText(value) {
+				return nil, ErrManifestInvalid
+			}
+			result[key] = value
+			continue
+		}
+		if valueNode == nil || valueNode.Kind == yaml.ScalarNode ||
+			state.validateOpaque(valueNode, 1) != nil {
+			return nil, ErrManifestInvalid
+		}
 	}
 	return result, nil
+}
+
+type skillMetadataValidationState struct {
+	nodes int
+}
+
+// validateOpaque accepts ecosystem-specific metadata only as bounded inert
+// structure. Nothing visited here is projected into runtime authority.
+func (state *skillMetadataValidationState) validateOpaque(node *yaml.Node, depth int) error {
+	if node == nil || depth > maxSkillMetadataOpaqueDepth {
+		return ErrManifestInvalid
+	}
+	state.nodes++
+	if state.nodes > maxSkillMetadataOpaqueNodes {
+		return ErrManifestInvalid
+	}
+	switch node.Kind {
+	case yaml.ScalarNode:
+		if len(node.Value) > maxSkillMetadataScalarBytes {
+			return ErrManifestInvalid
+		}
+		return nil
+	case yaml.SequenceNode:
+		for _, child := range node.Content {
+			if err := state.validateOpaque(child, depth+1); err != nil {
+				return err
+			}
+		}
+		return nil
+	case yaml.MappingNode:
+		if len(node.Content)%2 != 0 {
+			return ErrManifestInvalid
+		}
+		seen := map[string]struct{}{}
+		for index := 0; index < len(node.Content); index += 2 {
+			key, ok := strictScalarString(node.Content[index])
+			if !ok || key == "" || len(key) > maxSkillMetadataKeyBytes || !validPlainText(key) {
+				return ErrManifestInvalid
+			}
+			if _, duplicate := seen[key]; duplicate {
+				return ErrManifestInvalid
+			}
+			seen[key] = struct{}{}
+			state.nodes++
+			if state.nodes > maxSkillMetadataOpaqueNodes {
+				return ErrManifestInvalid
+			}
+			if err := state.validateOpaque(node.Content[index+1], depth+1); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		// Alias and document nodes are deliberately not dereferenced.
+		return ErrManifestInvalid
+	}
 }
 
 func strictScalarString(node *yaml.Node) (string, bool) {

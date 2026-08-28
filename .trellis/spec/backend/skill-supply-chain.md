@@ -115,6 +115,14 @@ func (*Service) InstallMarketplaceSkill(
   version fallback, and every public `allowedTools` projection serializes an
   empty collection as JSON `[]`, never `null`; strict frontend DTO validation
   must not be weakened to absorb a producer-side nil-slice bug.
+- `SKILL.md` `metadata` must be a bounded mapping with unique string keys.
+  Bounded top-level string values such as `version` are projected into Neo
+  Chat's `map[string]string`; nested mappings and sequences used by ecosystems
+  such as OpenClaw are structurally validated, bounded to 16 levels and 4,096
+  nodes, then kept opaque. YAML aliases, duplicate nested keys, typed
+  top-level scalars, and over-limit structures are rejected. Nested
+  `requires`, `install`, `bins`, secrets, tools, or permissions never become
+  runtime authority and are never executed.
 - Catalog install requires the displayed exact commit and fingerprint. It
   re-fetches that immutable commit, revalidates the selected directory, rejects
   package drift, then reuses canonical ZIP, SBOM, content-addressed storage,
@@ -157,6 +165,8 @@ func (*Service) InstallMarketplaceSkill(
 | catalog query string, unknown JSON field, invalid name | bounded `4xx`; no source fetch/install |
 | GitHub list/ref/archive unavailable or malformed | `502 SKILL_SOURCE_UNAVAILABLE`; no raw upstream body |
 | detail source has invalid archive/frontmatter/path/symlink | typed validation failure; no installation |
+| `metadata` has bounded nested community hints | accept as inert package content; project only safe top-level strings |
+| `metadata` root/key/alias/depth/node bounds are invalid | `INVALID_SKILL_PACKAGE`; zero Candidate/object/Library mutation |
 | selected exact GitHub directory has no root `SKILL.md` in the pinned ZIP | invalid direct source; zero ingestion/object/database mutation |
 | valid Skill omits `allowed-tools` | detail/install/Library DTOs contain `allowedTools: []` |
 | install commit is not 40 lowercase hex or fingerprint is malformed | `400`; no fetch/install |
@@ -184,6 +194,9 @@ func (*Service) InstallMarketplaceSkill(
   rebind the LobeHub source identity, and install it only for the caller.
 - **Good:** select `productivity-tasks`, forward that exact canonical ID, and
   return only the ordered curated category/count projection alongside results.
+- **Good:** install an OpenClaw-authored Skill whose namespaced nested metadata
+  declares a binary installer; retain the Skill instructions while leaving the
+  installer and requirement declarations inert.
 - **Base:** GitHub is temporarily unavailable; the catalog shows bounded retry
   state while Installed Skills remain manageable and usable.
 - **Base:** a long-tail Skill has only a community tag; it remains visible in
@@ -220,6 +233,10 @@ func (*Service) InstallMarketplaceSkill(
   enumeration, nested regular-file materialization, zero codeload traffic,
   Git blob verification, symlink rejection before blob fetch, and zero mutation
   on malformed source or content drift.
+- Parser and Marketplace integration tests must include OpenClaw-shaped nested
+  metadata, assert that it installs through the pinned exact subtree, assert
+  that only a top-level string `version` is projected, and reject duplicate,
+  non-mapping, aliased, typed-scalar, over-depth, and over-entry metadata.
 - Category tests must feed the live-scale raw taxonomy, assert the exact
   ordered 21-ID projection, prove `_meta` is removed, and prove a non-curated
   query is rejected before the Marketplace fetcher records a request.
@@ -251,6 +268,9 @@ Correct: pinned ZIP -> require selected-root SKILL.md -> ValidateArchive
 
 Wrong: nil Go slice -> JSON null -> loosen the frontend Zod schema
 Correct: normalize the Backend collection -> JSON [] -> retain strict Zod
+
+Wrong: nested metadata contains install hints -> reject the whole community Skill or execute the hints
+Correct: validate bounded structure -> keep it opaque -> grant no runtime authority
 
 Wrong: install -> silently enable for every Conversation
 Correct: install inventory -> user selection or bounded run-only agent_auto

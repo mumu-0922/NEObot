@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -148,6 +149,78 @@ func TestValidateArchiveRejectsMalformedMetadataAndRuntime(t *testing.T) {
 	}
 }
 
+func TestParseSkillMarkdownAcceptsOpaqueOpenClawMetadata(t *testing.T) {
+	metadata, err := parseSkillMarkdown([]packageFile{{
+		path: "SKILL.md",
+		data: []byte(openClawSkillMarkdown("summarize")),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Name != "summarize" || len(metadata.Metadata) != 0 {
+		t.Fatalf("metadata = %#v", metadata)
+	}
+
+	archive := mustTestArchive(t, []packageFile{{
+		path: "SKILL.md",
+		data: []byte(openClawSkillMarkdown("summarize")),
+	}}, zip.Store, time.Time{})
+	validated, err := ValidateArchive(ArchiveSource{
+		Type: SourceLobeHub, Ref: "lobehub:openclaw-openclaw-summarize@1.0.3",
+		Identifier: "openclaw-openclaw-summarize", Version: "1.0.3",
+		ExpectedName: "summarize", Data: archive,
+	})
+	if err != nil || validated.Package.Name != "summarize" || validated.Package.Version != "1.0.3" {
+		t.Fatalf("validated = %#v, error = %v", validated.Package, err)
+	}
+}
+
+func TestParseSkillMarkdownProjectsOnlyTopLevelStringMetadata(t *testing.T) {
+	metadata, err := parseSkillMarkdown([]packageFile{{
+		path: "SKILL.md",
+		data: []byte("---\nname: projected\ndescription: Projection fixture.\nmetadata:\n  version: \"2.3.4\"\n  community:\n    install:\n      - kind: brew\n        formula: ignored\n---\n"),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metadata.Metadata) != 1 || metadata.Metadata["version"] != "2.3.4" {
+		t.Fatalf("projected metadata = %#v", metadata.Metadata)
+	}
+}
+
+func TestParseSkillMarkdownRejectsUnsafeOpaqueMetadata(t *testing.T) {
+	entries := make([]string, maxSkillMetadataEntries+1)
+	for index := range entries {
+		entries[index] = fmt.Sprintf("  key-%02d: value", index)
+	}
+	deep := "value"
+	for index := 0; index < maxSkillMetadataOpaqueDepth+1; index++ {
+		deep = "[" + deep + "]"
+	}
+	tests := []struct {
+		name     string
+		metadata string
+	}{
+		{name: "non mapping", metadata: "  - value"},
+		{name: "duplicate", metadata: "  version: one\n  version: two"},
+		{name: "typed top level scalar", metadata: "  version: 123"},
+		{name: "alias", metadata: "  first: &details\n    install: []\n  second: *details"},
+		{name: "too many entries", metadata: strings.Join(entries, "\n")},
+		{name: "too deep", metadata: "  community: " + deep},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := parseSkillMarkdown([]packageFile{{
+				path: "SKILL.md",
+				data: []byte("---\nname: invalid\ndescription: Invalid metadata fixture.\nmetadata:\n" + test.metadata + "\n---\n"),
+			}})
+			if !errors.Is(err, ErrManifestInvalid) {
+				t.Fatalf("error = %v, want ErrManifestInvalid", err)
+			}
+		})
+	}
+}
+
 func TestValidateArchiveRejectsCompressionBomb(t *testing.T) {
 	entries := skillEntries("safe-skill")
 	entries = append(entries, testZipEntry{name: "payload.bin", body: strings.Repeat("A", 1<<20), method: zip.Deflate})
@@ -159,6 +232,34 @@ func TestValidateArchiveRejectsCompressionBomb(t *testing.T) {
 
 func validSkillMarkdown(name string) string {
 	return "---\nname: " + name + "\ndescription: Deterministic no-execute Skill fixture.\nlicense: MIT\nmetadata:\n  version: \"1.2.3\"\nallowed-tools: Read Search Read\n---\n\n# Fixture\n"
+}
+
+func openClawSkillMarkdown(name string) string {
+	return "---\nname: " + name + `
+description: Summarize URLs or files with the summarize CLI.
+homepage: https://summarize.sh
+metadata:
+  {
+    "openclaw":
+      {
+        "emoji": "🧾",
+        "requires": { "bins": ["summarize"] },
+        "install":
+          [
+            {
+              "id": "brew",
+              "kind": "brew",
+              "formula": "steipete/tap/summarize",
+              "bins": ["summarize"],
+              "label": "Install summarize (brew)",
+            },
+          ],
+      },
+  }
+---
+
+# Summarize
+`
 }
 
 func validRuntimeManifestJSON(name string) string {
