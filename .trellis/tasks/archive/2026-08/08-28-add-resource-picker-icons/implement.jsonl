@@ -1,0 +1,5 @@
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Compact picker row composition and accessibility rules."}
+{"file":".trellis/spec/frontend/mcp-tools.md","reason":"Per-conversation MCP picker and shared icon authority."}
+{"file":".trellis/spec/frontend/skill-store.md","reason":"Shared SkillIcon fallback and selection/store boundary."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Proportional focused frontend verification."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Extend existing icon renderers instead of duplicating fallback logic."}
