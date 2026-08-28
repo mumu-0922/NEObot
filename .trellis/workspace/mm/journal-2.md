@@ -1917,3 +1917,36 @@ Accepted bounded OpenClaw/LobeHub nested metadata as inert content, retained sca
 ### Next Steps
 
 - None - task complete
+
+
+## Session 106: Restore installed Skill icons
+
+**Date**: 2026-08-28
+**Task**: Restore installed Skill icons
+**Branch**: `main`
+
+### Summary
+
+Extracted the bounded Skill icon renderer for Store and Installed cards, added deterministic offline fallbacks for existing installations, verified focused frontend checks and production build, and deployed a healthy frontend container.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `755baa97` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
