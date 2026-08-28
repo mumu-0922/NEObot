@@ -137,3 +137,36 @@ Fixed orphaned-assistant dead-letter activity rollback, deployed the shared Back
 ### Next Steps
 
 - None - task complete
+
+
+## Session 112: Playwright core E2E foundation
+
+**Date**: 2026-08-29
+**Task**: Playwright core E2E foundation
+**Branch**: `main`
+
+### Summary
+
+Added deterministic Chromium E2E coverage for auth, per-conversation models, and Agent Harness lifecycle; wired CI failure artifacts and isolated Vitest discovery.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `143b75dd` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
