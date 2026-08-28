@@ -71,3 +71,36 @@ Renamed Skill Store and Tools product-area labels to Skill and MCP across suppor
 ### Next Steps
 
 - None - task complete
+
+
+## Session 110: Hide internal Skill versions from UI
+
+**Date**: 2026-08-28
+**Task**: Hide internal Skill versions from UI
+**Branch**: `main`
+
+### Summary
+
+Removed Skill version and fallback fingerprint labels from installed cards, marketplace cards and details, and Conversation pickers while preserving exact-version install identity; added focused coverage and deployed the healthy Frontend only.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ffa1406c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
