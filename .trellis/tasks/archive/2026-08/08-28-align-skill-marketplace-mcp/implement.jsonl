@@ -1,0 +1,4 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/skill-supply-chain.md", "reason": "Public-detail versus authenticated-list/download transport boundaries"}
+{"file": ".trellis/spec/frontend/skill-store.md", "reason": "MCP-parity Marketplace layout and source-isolated UX contracts"}
+{"file": ".trellis/tasks/08-28-align-skill-marketplace-mcp/research/lobehub-detail-auth-and-mcp-parity.md", "reason": "Live upstream auth behavior and target MCP layout"}
