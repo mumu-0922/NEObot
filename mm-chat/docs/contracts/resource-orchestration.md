@@ -25,7 +25,7 @@ The catalog contains a deterministic `sha256:` revision, installed Skills, and
 sanitized MCP readiness/selection state. Search returns at most five entries.
 Each entry binds `id`, `version`, and `exactRevision`; descriptions,
 permissions, and Marketplace metadata are untrusted routing data. An allowlisted
-LobeHub Skill/MCP link is a search alias. An exact GitHub Skill tree link, or a
+LobeHub MCP link is a search alias. An exact LobeHub Skill page, GitHub Skill tree link, or a
 blob link ending in `SKILL.md`, enters the server-owned direct Skill adapter.
 The adapter requires one unambiguous Skill directory, pins mutable refs to a
 40-character commit, and passes that directory through the existing canonical
@@ -36,8 +36,8 @@ and kind mismatches stay untrusted chat/search text.
 
 When one human message has explicit install intent and exactly one supported
 link, the Backend acts before any model request. The scanner accepts at most
-16 KiB of text and rejects multiple URLs. Exact GitHub Skill links and legacy
-AIHero Skill links install directly into the current owner's private library
+16 KiB of text and rejects multiple URLs. Exact LobeHub/GitHub Skill links and
+legacy AIHero Skill links install directly into the current owner's private library
 without Store search, review, or publication. Other supported links retain
 bounded `resource_search` and exact admitted-candidate installation. Neither
 path invokes Shell, npm, Git, Docker, or a fallback Provider-generated

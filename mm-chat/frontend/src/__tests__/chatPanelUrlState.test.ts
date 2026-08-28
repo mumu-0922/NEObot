@@ -117,6 +117,21 @@ describe("chat panel URL state", () => {
     expect(invalid.skillId).toBeNull();
   });
 
+  it("round-trips a source-qualified LobeHub Skill identifier", () => {
+    const params = setChatPanelUrlState(new URLSearchParams(), {
+      panel: "skill-store",
+      skillId: "lobehub:owner.skill-demo_2",
+    });
+    const state = parseChatPanelUrlState(params);
+    expect(state.skillId).toBe("lobehub:owner.skill-demo_2");
+    expect(state.needsReplace).toBe(false);
+
+    const encodedPath = parseChatPanelUrlState(
+      "panel=skill-store&skillId=lobehub:owner%2Fskill",
+    );
+    expect(encodedPath.skillId).toBeNull();
+  });
+
   it("migrates old Agent Center Skills URLs and drops control-plane state", () => {
     const migrated = parseChatPanelUrlState(
       "panel=agent-center&agentTab=skills&agentId=candidate_1234567890abcdef",

@@ -21,16 +21,26 @@ server-derived exact source
   -> immutable package + exact-source candidate transaction
 ```
 
-The public catalog is fixed to `openai/skills/skills/.curated` at `main`.
-Catalog detail resolves `main` to a full commit and validates the selected
-directory. Installation is fenced by that exact commit and the displayed
-package fingerprint.
+Discovery has two explicit source adapters. OpenAI Curated is fixed to
+`openai/skills/skills/.curated` at `main`; detail resolves `main` to a full
+commit and install is fenced by that commit plus the displayed fingerprint.
+LobeHub search/category/detail reuses the Backend-owned Marketplace M2M client.
+Its install re-resolves an exact SemVer before calling the exact-version ZIP
+download; mutable `latest` authority never reaches the ingestion pipeline.
+Locale and sort values cross the public API only through fixed allowlists, so
+the browser cannot turn Marketplace query parameters into a generic proxy.
+Both adapters normalize to Neo Chat DTOs and converge only at archive
+validation and owner-private persistence.
 
-For an explicit GitHub tree or `SKILL.md` blob link, the source adapter derives
+For an explicit LobeHub page, GitHub tree, or `SKILL.md` blob link, the source adapter derives
 one exact Skill subdirectory and resolves a mutable ref to a full commit before
 entering the same bounded ZIP pipeline. The legacy AIHero adapter parses its
 restricted coordinate as data and follows the same path. No command from a
 page or repository is executed.
+
+LobeHub source identity is `lobehub:<identifier>@<version>`, while the root
+manifest name remains package identity. They are deliberately separate because
+Marketplace identifiers are not required to equal `SKILL.md` names.
 
 No phase extracts files to a working directory or invokes a shell, package
 manager, interpreter, build, hook, test, or candidate entrypoint.

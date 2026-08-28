@@ -12,6 +12,15 @@ const skillName = z
   .string()
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
   .max(64);
+const marketplaceIdentifier = z
+  .string()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/);
+const semver = z
+  .string()
+  .regex(
+    /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
+  );
+const optionalHttpsUrl = z.string().url().startsWith("https://").optional();
 
 const packageVersionSchema = z
   .object({
@@ -118,6 +127,62 @@ const catalogItemSchema = catalogSummarySchema
   })
   .strict();
 
+const marketplaceSummarySchema = z
+  .object({
+    identifier: marketplaceIdentifier,
+    name: z.string().min(1).max(256),
+    description: z.string().max(2048),
+    version: semver,
+    category: z.string().max(128).optional(),
+    author: z.string().max(256).optional(),
+    icon: z.string().max(2048).optional(),
+    license: z.string().max(128).optional(),
+    homepage: optionalHttpsUrl,
+    repositoryUrl: optionalHttpsUrl,
+    installCount: count,
+    rating: z.number().min(0).max(5),
+    official: z.boolean(),
+    validated: z.boolean(),
+    featured: z.boolean(),
+    resourceCount: count,
+  })
+  .strict();
+
+const marketplaceDetailSchema = marketplaceSummarySchema
+  .safeExtend({
+    manifestName: skillName,
+    summary: z.string().max(4096).optional(),
+    permissions: z.array(z.string().min(1).max(256)).max(64),
+    resources: z
+      .array(
+        z
+          .object({
+            path: z.string().min(1).max(512),
+            sha256: z.string().min(1).max(128),
+            size: count,
+          })
+          .strict(),
+      )
+      .max(512),
+    versions: z
+      .array(
+        z
+          .object({
+            version: semver,
+            latest: z.boolean(),
+            validated: z.boolean(),
+            createdAt: z.string(),
+            versionRank: count,
+          })
+          .strict(),
+      )
+      .max(100),
+    source: z.literal("lobehub"),
+    sourceUrl: z.string().url().startsWith("https://lobehub.com/skills/"),
+    installed: z.boolean(),
+  })
+  .strict();
+
 function parse<T>(schema: z.ZodType<T>, value: unknown, subject: string): T {
   const result = schema.safeParse(value);
   if (!result.success) {
@@ -133,6 +198,85 @@ export function createServerSkillStoreApiShell(
   httpClient: HttpClient,
 ): SkillStoreApi {
   return {
+    async searchMarketplace(input = {}) {
+      const query = new URLSearchParams({
+        page: String(input.page ?? 1),
+        pageSize: String(input.pageSize ?? 20),
+      });
+      if (input.query?.trim()) query.set("q", input.query.trim());
+      if (input.category?.trim()) query.set("category", input.category.trim());
+      if (input.locale) query.set("locale", input.locale);
+      if (input.sort) query.set("sort", input.sort);
+      const response = await httpClient.requestJson<unknown>(
+        `/v1/skills/marketplace?${query}`,
+        { signal: input.signal },
+      );
+      return parse(
+        z
+          .object({
+            items: z.array(marketplaceSummarySchema),
+            categories: z.array(
+              z
+                .object({ category: z.string().min(1).max(128), count })
+                .strict(),
+            ),
+            page: positive,
+            pageSize: positive,
+            totalCount: count,
+            totalPages: count,
+            source: z.literal("lobehub"),
+            sourceUrl: z.literal("https://lobehub.com/skills"),
+          })
+          .strict(),
+        response,
+        "marketplace list",
+      );
+    },
+
+    async getMarketplaceSkill(identifier, options = {}) {
+      const query = new URLSearchParams();
+      if (options.version) query.set("version", options.version);
+      if (options.locale) query.set("locale", options.locale);
+      const suffix = query.size ? `?${query}` : "";
+      const response = await httpClient.requestJson<unknown>(
+        `/v1/skills/marketplace/items/${encodeURIComponent(identifier)}${suffix}`,
+        { signal: options.signal },
+      );
+      return parse(
+        z.object({ skill: marketplaceDetailSchema }).strict(),
+        response,
+        "marketplace detail",
+      ).skill;
+    },
+
+    async installMarketplaceSkill(input) {
+      const response = await httpClient.requestJson<unknown>(
+        `/v1/skills/marketplace/items/${encodeURIComponent(input.identifier)}/install`,
+        {
+          method: "POST",
+          body: { version: input.version },
+          signal: input.signal,
+        },
+      );
+      return parse(
+        z.object({ skill: installationSchema }).strict(),
+        response,
+        "marketplace install",
+      ).skill;
+    },
+
+    async installSkillLink(input) {
+      const response = await httpClient.requestJson<unknown>(
+        "/v1/skills/direct/install",
+        { method: "POST", body: { url: input.url }, signal: input.signal },
+      );
+      return parse(
+        z.object({ skill: installationSchema }).strict(),
+        response,
+        "direct install",
+      ).skill;
+    },
+
     async listCatalog(options = {}) {
       const response = await httpClient.requestJson<unknown>(
         "/v1/skills/catalog",

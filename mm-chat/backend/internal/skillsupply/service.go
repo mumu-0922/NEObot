@@ -24,6 +24,7 @@ type Service struct {
 	administratorUserID string
 	official            OfficialSource
 	lobehub             LobeHubSource
+	lobeMarketplace     LobeHubMarketplaceFetcher
 	git                 GitHubSource
 	direct              DirectSkillLinkSource
 	catalog             *GitHubCatalogSource
@@ -47,7 +48,12 @@ func WithAdministratorUserID(userID string) ServiceOption {
 }
 
 func WithLobeHubFetcher(fetcher LobeHubFetcher) ServiceOption {
-	return func(service *Service) { service.lobehub = LobeHubSource{Fetcher: fetcher} }
+	return func(service *Service) {
+		service.lobehub = LobeHubSource{Fetcher: fetcher}
+		if marketplace, ok := fetcher.(LobeHubMarketplaceFetcher); ok {
+			service.lobeMarketplace = marketplace
+		}
+	}
 }
 
 func WithGitHubClient(client SourceHTTPClient) ServiceOption {
@@ -131,34 +137,6 @@ func (service *Service) IngestZIP(ctx context.Context, userID string, data []byt
 		return Candidate{}, err
 	}
 	return service.ingest(ctx, "", source)
-}
-
-// InstallDirectSkillLink resolves one allowlisted exact GitHub Skill path or
-// legacy AIHero discovery page, pins its GitHub source to an exact commit,
-// validates the package without executing source instructions, and installs it
-// into only the requesting owner's private library. It deliberately bypasses
-// Store review/publication.
-func (service *Service) InstallDirectSkillLink(
-	ctx context.Context,
-	userID, rawURL, expectedName string,
-) (Installation, error) {
-	if service == nil || service.repository == nil || service.objects == nil {
-		return Installation{}, ErrUnavailable
-	}
-	userID = strings.TrimSpace(userID)
-	expectedName = strings.TrimSpace(expectedName)
-	if !validUserID(userID) || !skillNamePattern.MatchString(expectedName) {
-		return Installation{}, validationError("INVALID_DIRECT_SKILL_INSTALL", "direct Skill install is invalid")
-	}
-	source, err := service.direct.Fetch(ctx, rawURL, expectedName)
-	if err != nil {
-		return Installation{}, err
-	}
-	candidate, err := service.ingest(ctx, userID, source)
-	if err != nil {
-		return Installation{}, err
-	}
-	return service.installPrivateCandidate(ctx, userID, candidate)
 }
 
 func (service *Service) ListCatalog(ctx context.Context) (CatalogResult, error) {

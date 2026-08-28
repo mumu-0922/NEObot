@@ -4,7 +4,13 @@ import en from "../i18n/locales/en";
 import zh from "../i18n/locales/zh";
 
 describe("Skill Store product boundary", () => {
-  const store = readFileSync("src/components/skills/SkillStore.tsx", "utf8");
+  const store = [
+    "src/components/skills/SkillStore.tsx",
+    "src/components/skills/SkillStorePrimitives.tsx",
+    "src/components/skills/useSkillStore.ts",
+  ]
+    .map((path) => readFileSync(path, "utf8"))
+    .join("\n");
   const chatApp = readFileSync("src/components/app/ChatApp.tsx", "utf8");
 
   it("is a separate URL-addressable top-level surface", () => {
@@ -16,7 +22,10 @@ describe("Skill Store product boundary", () => {
 
   it("keeps install, list, uninstall, drill-in, and live feedback", () => {
     expect(store).toContain("client.skillStore.listCatalog()");
-    expect(store).toContain(".getCatalogSkill(selectedId");
+    expect(store).toContain(".getCatalogSkill(selectedKey.id");
+    expect(store).toContain(".getMarketplaceSkill(selectedKey.id");
+    expect(store).toContain("client.skillStore.installMarketplaceSkill");
+    expect(store).toContain("client.skillStore.installSkillLink");
     expect(store).toContain("client.skillStore.listPackageLibrary()");
     expect(store).toContain("client.skillStore.installCatalogSkill");
     expect(store).toContain("client.skillStore.uninstallPackageSkill");
@@ -32,7 +41,10 @@ describe("Skill Store product boundary", () => {
     expect(store).toContain('active={tab === "installed"}');
     expect(store).toContain('active={tab === "store"}');
     expect(store).toContain("<InstalledSkills");
-    expect(store).toContain("const loadStore = useCallback");
+    expect(store).toContain("const loadMarketplace = useCallback");
+    expect(store).toContain("locale: marketplaceLocale");
+    expect(store).toContain('value="installCount"');
+    expect(store).toContain("const loadCatalog = useCallback");
     expect(store).toContain("const loadInstalled = useCallback");
     expect(store).toContain('onNavigate(null, "replace")');
     expect(store).toContain('setTab("installed")');
@@ -40,6 +52,8 @@ describe("Skill Store product boundary", () => {
     expect(zh.SkillStore.storeTab).toBe("技能商店");
     expect(en.SkillStore.installedTab).toBe("Installed");
     expect(en.SkillStore.storeTab).toBe("Skill Store");
+    expect(zh.SkillStore.lobehubSource).toBe("LobeHub");
+    expect(en.SkillStore.openaiSource).toBe("OpenAI Curated");
     expect(zh.SkillStore.emptyStore).not.toContain("准入");
     expect(en.SkillStore.emptyStore).not.toContain("admitted");
   });

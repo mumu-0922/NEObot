@@ -1,0 +1,4 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/skill-supply-chain.md", "reason": "Backend supply-chain boundaries and contracts"}
+{"file": ".trellis/spec/frontend/skill-store.md", "reason": "Frontend multi-source Skill Store conventions"}
+{"file": ".trellis/tasks/08-28-lobehub-skill-marketplace/research/lobehub-skill-marketplace.md", "reason": "Official LobeHub protocol and threat-boundary research"}

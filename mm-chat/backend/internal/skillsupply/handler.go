@@ -20,6 +20,9 @@ const (
 	storeItemPathBase       = storePath + "/items/"
 	catalogPath             = skillsPath + "/catalog"
 	catalogItemPathBase     = catalogPath + "/items/"
+	marketplacePath         = skillsPath + "/marketplace"
+	marketplaceItemPathBase = marketplacePath + "/items/"
+	directInstallPath       = skillsPath + "/direct/install"
 	libraryPath             = skillsPath + "/library"
 	libraryPathBase         = libraryPath + "/"
 	conversationPathBase    = skillsPath + "/conversations/"
@@ -56,6 +59,12 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		handler.handleCatalog(writer, request)
 	case strings.HasPrefix(request.URL.Path, catalogItemPathBase):
 		handler.handleCatalogItem(writer, request, strings.TrimPrefix(request.URL.Path, catalogItemPathBase))
+	case request.URL.Path == marketplacePath:
+		handler.handleMarketplace(writer, request)
+	case strings.HasPrefix(request.URL.Path, marketplaceItemPathBase):
+		handler.handleMarketplaceItem(writer, request, strings.TrimPrefix(request.URL.Path, marketplaceItemPathBase))
+	case request.URL.Path == directInstallPath:
+		handler.handleDirectInstall(writer, request)
 	case request.URL.Path == storePath:
 		handler.handleStore(writer, request)
 	case strings.HasPrefix(request.URL.Path, storeItemPathBase):

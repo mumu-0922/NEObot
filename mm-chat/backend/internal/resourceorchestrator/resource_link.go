@@ -51,6 +51,9 @@ func SingleSupportedResourceLink(value string) (SupportedResourceLink, bool) {
 }
 
 func isDirectSkillLink(raw string) bool {
+	if _, err := skillsupply.ParseLobeHubSkillURL(raw); err == nil {
+		return true
+	}
 	if _, err := skillsupply.ParseGitHubSkillURL(raw); err == nil {
 		return true
 	}

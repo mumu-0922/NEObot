@@ -181,6 +181,48 @@ func TestLobeHubMarketplaceFetchSkillPackageUsesExactUncachedM2MDownload(t *test
 	}
 }
 
+func TestLobeHubMarketplaceFetchSkillMarketJSONAllowsOnlyDiscoveryRoutes(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/oauth/token":
+			_, _ = io.WriteString(writer, `{"access_token":"skill-token","expires_in":3600}`)
+		case "/api/v1/skills", "/api/v1/skills/categories", "/api/v1/skills/owner-demo":
+			if request.Header.Get("Authorization") != "Bearer skill-token" ||
+				request.Header.Get("Accept") != "application/json" {
+				t.Fatalf("discovery auth/accept = %q/%q", request.Header.Get("Authorization"), request.Header.Get("Accept"))
+			}
+			_, _ = io.WriteString(writer, `{}`)
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+	marketplace, err := NewLobeHubMarketplace(LobeHubMarketplaceConfig{
+		BaseURL: server.URL, ClientID: "client", ClientSecret: strings.Repeat("s", 32),
+		Timeout: 5 * time.Second, CacheTTL: time.Minute, HTTPClient: server.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		"/api/v1/skills?page=1", "/api/v1/skills/categories?locale=zh-CN",
+		"/api/v1/skills/owner-demo?version=1.0.0",
+	} {
+		if _, err := marketplace.FetchSkillMarketJSON(context.Background(), path, 1024); err != nil {
+			t.Fatalf("FetchSkillMarketJSON(%q) error = %v", path, err)
+		}
+	}
+	for _, path := range []string{
+		"https://evil.example/api/v1/skills", "/api/v1/plugins", "/api/v1/skills/owner-demo/download",
+		"/api/v1/skills/owner%2Fdemo", "/api/v1/skills/",
+	} {
+		if _, err := marketplace.FetchSkillMarketJSON(context.Background(), path, 1024); !errors.Is(err, ErrMarketplaceUnavailable) {
+			t.Fatalf("FetchSkillMarketJSON(%q) error = %v", path, err)
+		}
+	}
+}
+
 func TestNormalizeLobeDeploymentUsesApprovedHeaderWithoutPersistingQuerySecret(t *testing.T) {
 	t.Parallel()
 	var option lobeDeploymentOption

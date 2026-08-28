@@ -58,9 +58,17 @@ func (source LobeHubSource) Fetch(
 	ctx context.Context,
 	identifier, version string,
 ) (ArchiveSource, error) {
+	return source.FetchAs(ctx, identifier, version, identifier)
+}
+
+func (source LobeHubSource) FetchAs(
+	ctx context.Context,
+	identifier, version, expectedName string,
+) (ArchiveSource, error) {
 	identifier, version = strings.TrimSpace(identifier), strings.TrimSpace(version)
+	expectedName = strings.TrimSpace(expectedName)
 	if source.Fetcher == nil || !lobeIdentifierPattern.MatchString(identifier) ||
-		!semverPattern.MatchString(version) {
+		!semverPattern.MatchString(version) || !skillNamePattern.MatchString(expectedName) {
 		return ArchiveSource{}, ErrInvalidSource
 	}
 	data, err := source.Fetcher.FetchSkillPackage(ctx, identifier, version, MaxSourceArchiveBytes)
@@ -68,7 +76,37 @@ func (source LobeHubSource) Fetch(
 		return ArchiveSource{}, ErrSourceUnavailable
 	}
 	return ArchiveSource{Type: SourceLobeHub, Ref: "lobehub:" + identifier + "@" + version,
-		Identifier: identifier, Version: version, ExpectedName: identifier, Data: data}, nil
+		Identifier: identifier, Version: version, ExpectedName: expectedName, Data: data}, nil
+}
+
+// ParseLobeHubSkillURL accepts one exact public Marketplace Skill page. The
+// browser-visible URL is reduced to an identifier before any authenticated
+// Marketplace request is made.
+func ParseLobeHubSkillURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if len(raw) == 0 || len(raw) > 2048 {
+		return "", ErrInvalidSource
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "https" || parsed.User != nil ||
+		parsed.RawQuery != "" || parsed.Fragment != "" ||
+		(parsed.Port() != "" && parsed.Port() != "443") {
+		return "", ErrInvalidSource
+	}
+	host := strings.ToLower(strings.TrimSuffix(parsed.Hostname(), "."))
+	if host != "lobehub.com" && host != "www.lobehub.com" && host != "market.lobehub.com" {
+		return "", ErrInvalidSource
+	}
+	segments := strings.Split(strings.Trim(parsed.EscapedPath(), "/"), "/")
+	if len(segments) != 2 || strings.ToLower(segments[0]) != "skills" {
+		return "", ErrInvalidSource
+	}
+	identifier, err := url.PathUnescape(segments[1])
+	if err != nil || url.PathEscape(identifier) != segments[1] ||
+		!lobeIdentifierPattern.MatchString(identifier) {
+		return "", ErrInvalidSource
+	}
+	return identifier, nil
 }
 
 type GitHubSource struct {

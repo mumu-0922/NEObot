@@ -50,6 +50,44 @@ func (m *LobeHubMarketplace) FetchAgentMarketJSON(
 	return m.authorizedGET(ctx, path, maximum)
 }
 
+// FetchSkillMarketJSON exposes only the read-only Skill discovery endpoints
+// through the existing Marketplace M2M token owner. Package downloads stay on
+// FetchSkillPackage so callers cannot turn this adapter into a generic
+// authenticated proxy.
+func (m *LobeHubMarketplace) FetchSkillMarketJSON(
+	ctx context.Context,
+	requestPath string,
+	maximum int64,
+) ([]byte, error) {
+	if m == nil || maximum < 1 || maximum > maxMarketplaceDetailBytes ||
+		!validSkillMarketJSONPath(requestPath) {
+		return nil, ErrMarketplaceUnavailable
+	}
+	return m.authorizedGET(ctx, requestPath, maximum)
+}
+
+func validSkillMarketJSONPath(requestPath string) bool {
+	parsed, err := url.ParseRequestURI(strings.TrimSpace(requestPath))
+	if err != nil || parsed.IsAbs() || parsed.Host != "" || parsed.Fragment != "" {
+		return false
+	}
+	switch parsed.EscapedPath() {
+	case "/api/v1/skills", "/api/v1/skills/categories":
+		return true
+	}
+	prefix := "/api/v1/skills/"
+	if !strings.HasPrefix(parsed.EscapedPath(), prefix) {
+		return false
+	}
+	segment := strings.TrimPrefix(parsed.EscapedPath(), prefix)
+	if segment == "" || strings.Contains(segment, "/") || segment == "download" {
+		return false
+	}
+	identifier, err := url.PathUnescape(segment)
+	return err == nil && !strings.Contains(identifier, "/") &&
+		url.PathEscape(identifier) == segment && validMarketplaceIdentifier(identifier)
+}
+
 // FetchSkillPackage downloads one exact Skill version through the existing
 // Marketplace M2M token owner. Skill archives are deliberately not cached:
 // the supply-chain repository must observe and reject immutable-source drift.

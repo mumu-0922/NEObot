@@ -1,8 +1,9 @@
 # skillsupply
 
 `skillsupply` owns the server-authoritative Skill package supply chain. Its
-user-facing catalog is the fixed `openai/skills` `skills/.curated` directory.
-It also accepts an exact GitHub Skill directory, plus the legacy AIHero
+user-facing store combines the authenticated LobeHub Skill Marketplace with
+the fixed `openai/skills` `skills/.curated` directory as separate sources.
+It also accepts an exact LobeHub Skill page or GitHub Skill directory, plus the legacy AIHero
 adapter, and resolves mutable refs to exact commits before validation. Every
 source is validated in memory without execution, written as immutable
 quarantine/package/SBOM objects, and persisted as an owner-private installation.
@@ -23,6 +24,8 @@ The handler serves authenticated routes below `/v1/skills`:
 
 - administrator candidate creation/detail/review under `/candidates`;
 - fixed curated catalog list/detail/install under `/catalog`;
+- bounded LobeHub search/category/detail/exact-version install under `/marketplace`;
+- owner-private exact LobeHub/GitHub link install under `/direct/install`;
 - legacy admitted Store list/detail/install under `/store`;
 - current-owner list/uninstall under `/library`.
 - owner-authorized, revision-CAS conversation selection under
@@ -32,12 +35,19 @@ All JSON bodies are bounded and strict, responses are `no-store`, admission is
 fingerprint/revision fenced, and raw instructions, object keys, credentials,
 host paths, package bytes, and SBOM bytes are never projected.
 
-The catalog lists only the bounded fixed GitHub directory. Detail resolves
+The curated catalog lists only the bounded fixed GitHub directory. Detail resolves
 `main` to a 40-character commit, selects one exact Skill directory, and returns
 validated display metadata. Install must repeat that exact commit and package
 fingerprint; source drift is rejected before ingestion.
 
-An explicit GitHub tree or `SKILL.md` blob link uses the internal
+LobeHub discovery reuses the Backend-owned Marketplace M2M token and never
+exposes it to the browser. Search accepts only the supported UI locales and a
+fixed sort allowlist; each source keeps independent loading and failure state.
+Install resolves detail, pins the exact SemVer, downloads the ZIP through the
+bounded adapter, and then enters the unchanged canonical validator/object-store
+pipeline.
+
+An explicit LobeHub page, GitHub tree, or `SKILL.md` blob link uses the internal
 `InstallDirectSkillLink` boundary. It requires an unambiguous Skill directory,
 pins a mutable ref to a 40-character commit, and installs a `validated`
 candidate scoped to the current owner. The legacy AIHero adapter enters the

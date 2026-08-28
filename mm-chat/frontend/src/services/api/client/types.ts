@@ -752,6 +752,59 @@ export interface SkillCatalogItemDTO extends SkillCatalogSummaryDTO {
   hasRuntime: boolean;
 }
 
+export interface SkillMarketplaceCategoryDTO {
+  category: string;
+  count: number;
+}
+
+export interface SkillMarketplaceSummaryDTO {
+  identifier: string;
+  name: string;
+  description: string;
+  version: string;
+  category?: string;
+  author?: string;
+  icon?: string;
+  license?: string;
+  homepage?: string;
+  repositoryUrl?: string;
+  installCount: number;
+  rating: number;
+  official: boolean;
+  validated: boolean;
+  featured: boolean;
+  resourceCount: number;
+}
+
+export interface SkillMarketplaceResourceDTO {
+  path: string;
+  sha256: string;
+  size: number;
+}
+
+export interface SkillMarketplaceVersionDTO {
+  version: string;
+  latest: boolean;
+  validated: boolean;
+  createdAt: string;
+  versionRank: number;
+}
+
+export interface SkillMarketplaceDetailDTO extends SkillMarketplaceSummaryDTO {
+  manifestName: string;
+  summary?: string;
+  permissions: string[];
+  resources: SkillMarketplaceResourceDTO[];
+  versions: SkillMarketplaceVersionDTO[];
+  source: "lobehub";
+  sourceUrl: string;
+  installed: boolean;
+}
+
+export type SkillMarketplaceLocaleDTO = "zh-CN" | "en-US" | "ja-JP";
+export type SkillMarketplaceSortDTO =
+  "relevance" | "recommended" | "installCount" | "ratingAverage" | "updatedAt";
+
 export interface SkillConversationSelectionDTO {
   conversationId: string;
   revision: number;
@@ -759,6 +812,41 @@ export interface SkillConversationSelectionDTO {
 }
 
 export interface SkillStoreApi {
+  searchMarketplace(input?: {
+    query?: string;
+    category?: string;
+    locale?: SkillMarketplaceLocaleDTO;
+    sort?: SkillMarketplaceSortDTO;
+    page?: number;
+    pageSize?: number;
+    signal?: AbortSignal;
+  }): Promise<{
+    items: SkillMarketplaceSummaryDTO[];
+    categories: SkillMarketplaceCategoryDTO[];
+    page: number;
+    pageSize: number;
+    totalCount: number;
+    totalPages: number;
+    source: "lobehub";
+    sourceUrl: string;
+  }>;
+  getMarketplaceSkill(
+    identifier: string,
+    options?: {
+      version?: string;
+      locale?: SkillMarketplaceLocaleDTO;
+      signal?: AbortSignal;
+    },
+  ): Promise<SkillMarketplaceDetailDTO>;
+  installMarketplaceSkill(input: {
+    identifier: string;
+    version: string;
+    signal?: AbortSignal;
+  }): Promise<AgentPackageInstallationDTO>;
+  installSkillLink(input: {
+    url: string;
+    signal?: AbortSignal;
+  }): Promise<AgentPackageInstallationDTO>;
   listCatalog(options?: { signal?: AbortSignal }): Promise<{
     items: SkillCatalogSummaryDTO[];
     totalCount: number;

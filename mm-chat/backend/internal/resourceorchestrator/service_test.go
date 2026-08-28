@@ -332,7 +332,7 @@ func TestSingleSupportedResourceLinkExtractsOneExactLinkFromUserText(t *testing.
 			value: "请安装 [skill](https://lobehub.com/skills/office-xlsx)。",
 			want: SupportedResourceLink{
 				Kind: KindSkill, Identifier: "office-xlsx",
-				URL: "https://lobehub.com/skills/office-xlsx",
+				URL: "https://lobehub.com/skills/office-xlsx", DirectInstall: true,
 			},
 			ok: true,
 		},

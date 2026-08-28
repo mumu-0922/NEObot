@@ -267,6 +267,10 @@ type LobeHubFetcher interface {
 	FetchSkillPackage(context.Context, string, string, int64) ([]byte, error)
 }
 
+type LobeHubMarketplaceFetcher interface {
+	FetchSkillMarketJSON(context.Context, string, int64) ([]byte, error)
+}
+
 type SourceHTTPClient interface {
 	Do(*http.Request) (*http.Response, error)
 }

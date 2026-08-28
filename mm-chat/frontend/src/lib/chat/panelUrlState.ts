@@ -50,7 +50,9 @@ const isSettingsTab = (value: string | null): value is SettingsTabId =>
 
 const isSkillId = (value: string | null): value is string =>
   value !== null &&
-  ((value.length <= 64 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)) ||
+  ((value.length <= 264 &&
+    /^lobehub:[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/.test(value)) ||
+    (value.length <= 64 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)) ||
     (value.length <= 96 && /^[a-z][a-z0-9_]*_[a-z0-9]{16,64}$/.test(value)));
 
 const isKnowledgeCollectionId = (value: string | null): value is string =>

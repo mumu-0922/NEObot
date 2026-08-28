@@ -2,17 +2,26 @@
 
 `SkillStore.tsx` is the standalone user surface for discovering, installing,
 and uninstalling Agent Skill packages. Its header separates the
-server-authoritative installed library from the fixed OpenAI curated catalog
+server-authoritative installed library from a source-aware Skill Store
 with `Installed | Skill Store` tabs. Installation refreshes both views and
-returns the user to `Installed`. Discovery is served by the Backend from
-`openai/skills/skills/.curated`; the browser never scrapes a marketplace.
+returns the user to `Installed`. The Store keeps authenticated LobeHub search,
+categories, pagination, detail, and exact-version install separate from the
+fixed `openai/skills/skills/.curated` catalog. An exact LobeHub or GitHub Skill
+link may also be installed explicitly. The browser never receives Marketplace
+credentials or downloads unvalidated package bytes.
 
 The component uses `client.skillStore`, whose server adapter calls only
 `/v1/skills/*`. It deliberately has no dependency on the retired Agent Center,
 Runs, Schedules, Learning, Shadow, Canary, Runner, or OCI control APIs.
 
+`useSkillStore.ts` owns source-specific requests and install state;
+`SkillStorePrimitives.tsx` owns the shell, split pane, Installed list, and
+accessible loading/error/detail primitives. `SkillStore.tsx` composes the
+source-specific Store UI without duplicating those authorities.
+
 The selected package is URL-addressable through `panel=skill-store&skillId=...`,
-where curated entries use their validated Skill name.
+where curated entries use their validated Skill name and LobeHub entries use
+the source-qualified `lobehub:<identifier>` form.
 Old `panel=agent-center&agentTab=skills` links are migrated by
 `lib/chat/panelUrlState.ts`; other control-plane URL state is discarded.
 

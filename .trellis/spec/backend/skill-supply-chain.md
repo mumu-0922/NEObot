@@ -7,8 +7,9 @@ parsing, package validation/ingestion, Library management, Conversation Skill
 selection, or Skill runtime materialization.
 
 The public product model follows Codex discovery semantics but not its local
-filesystem trust model: Neo Chat lists a fixed curated GitHub directory and
-accepts exact GitHub Skill paths while retaining server-side immutable source,
+filesystem trust model: Neo Chat keeps the authenticated LobeHub Marketplace
+and fixed curated GitHub directory as separate discovery sources, accepts only
+exact LobeHub/GitHub Skill links, and retains server-side immutable source,
 package, owner, and runtime authority.
 
 ## 2. Signatures
@@ -18,6 +19,13 @@ GET  /v1/skills/catalog
 GET  /v1/skills/catalog/items/{name}
 POST /v1/skills/catalog/items/{name}/install
      { resolvedCommit, packageFingerprint }
+
+GET  /v1/skills/marketplace?q=&category=&page=&pageSize=
+GET  /v1/skills/marketplace/items/{identifier}?version={exactSemver}
+POST /v1/skills/marketplace/items/{identifier}/install
+     { version: exactSemver }
+POST /v1/skills/direct/install
+     { url: exactLobeHubOrGitHubSkillURL }
 
 GET    /v1/skills/library
 DELETE /v1/skills/library/{installationId}?revision={revision}
@@ -37,6 +45,16 @@ func (*Service) InstallDirectSkillLink(
     context.Context, userID, rawURL, expectedName string,
 ) (Installation, error)
 func ParseGitHubSkillURL(raw string) (GitHubSkillCoordinate, error)
+func ParseLobeHubSkillURL(raw string) (identifier string, err error)
+func (*Service) SearchMarketplace(
+    context.Context, MarketplaceSearchInput,
+) (MarketplaceSearchResult, error)
+func (*Service) GetMarketplaceSkill(
+    context.Context, userID, identifier, version string,
+) (MarketplaceSkillDetail, error)
+func (*Service) InstallMarketplaceSkill(
+    context.Context, userID, identifier, exactVersion string,
+) (Installation, error)
 ```
 
 ## 3. Contracts
@@ -52,6 +70,20 @@ func ParseGitHubSkillURL(raw string) (GitHubSkillCoordinate, error)
   the codeload ZIP, selects `skills/.curated/<name>`, and calls
   `ValidateArchive`. Its installable projection includes the exact commit and
   canonical `sha256:` package fingerprint.
+- LobeHub list/category/detail uses the existing backend-owned Marketplace M2M
+  client. Browser code receives normalized Neo Chat DTOs only and never sees a
+  bearer token, raw upstream body, or package archive.
+- Locale and sort values cross the authenticated Marketplace boundary only
+  through explicit allowlists; unknown values fail before upstream I/O.
+- Marketplace install must re-read detail for the requested exact SemVer,
+  require the response identity/version to match, then call the exact-version
+  ZIP download. `latest`, tags, ranges, and list-only version data are never
+  install authority. The ZIP enters the unchanged `ValidateArchive`, object,
+  fingerprint, owner-private Candidate, and Library path.
+- LobeHub `identifier` is source identity and may differ from the root
+  `SKILL.md` manifest `name`. Detail supplies the validated manifest name to
+  `LobeHubSource.FetchAs`; source references remain
+  `lobehub:<identifier>@<exactSemver>`.
 - Instruction-only Codex Skills may omit `metadata.version` and
   `allowed-tools`. Validation retains the deterministic content-fingerprint
   version fallback, and every public `allowedTools` projection serializes an
@@ -70,6 +102,11 @@ func ParseGitHubSkillURL(raw string) (GitHubSkillCoordinate, error)
   selected subdirectory must additionally prove that
   `<archive-root>/<subdirectory>/SKILL.md` exists in the pinned archive before
   ingestion. Do not infer existence from the codeload HTTP status.
+- Exact LobeHub links allow only `https://{lobehub.com|www.lobehub.com|market.lobehub.com}/skills/{identifier}`
+  with no query, fragment, userinfo, non-default port, encoding ambiguity, or
+  extra segment. Chat detects exactly one supported link and invokes the same
+  owner-private exact-version installer without a Provider turn or Store
+  search.
 - The legacy AIHero adapter remains compatible but is not the catalog. It
   parses one restricted repository/Skill coordinate as data and executes no
   displayed command.
@@ -102,17 +139,26 @@ func ParseGitHubSkillURL(raw string) (GitHubSkillCoordinate, error)
 | GitHub repository root, encoded/traversal/query/fragment URL | reject direct route; zero mutation/Provider calls |
 | direct source belongs to another owner | deny installation even with candidate/fingerprint knowledge |
 | catalog unavailable after prior installs | Installed/selection/runtime paths continue independently |
+| unknown Marketplace query or malformed identifier/version | `400`; zero M2M/package/database mutation |
+| Marketplace list/category/detail unavailable or malformed | `502 SKILL_SOURCE_UNAVAILABLE`; no upstream body leak |
+| detail identity/version changes before install | `409 SKILL_PACKAGE_CHANGED`; zero package persistence |
+| exact LobeHub/GitHub link malformed or ambiguous | `400 INVALID_SKILL_PACKAGE`; zero Provider/source execution |
 
 ## 5. Good / Base / Bad Cases
 
 - **Good:** list curated names, validate one exact detail, install its exact
   commit/fingerprint, display it in Library, and let the user select it for one
   Conversation.
+- **Good:** search LobeHub, inspect `owner-demo@1.2.3`, re-resolve that exact
+  version, validate its root manifest, and install it only for the caller.
 - **Base:** GitHub is temporarily unavailable; the catalog shows bounded retry
   state while Installed Skills remain manageable and usable.
 - **Bad:** scrape a third-party marketplace in the browser, install a whole
   repository, trust a mutable branch at install time, expose raw fingerprints
   as product language, or execute an upstream install command.
+- **Bad:** treat list `version` as sufficient install authority, download
+  latest without detail revalidation, or require Marketplace identifier to
+  equal manifest name.
 
 ## 6. Tests Required
 
@@ -126,6 +172,11 @@ func ParseGitHubSkillURL(raw string) (GitHubSkillCoordinate, error)
   idempotent retry, Library presence, and legacy Store exclusion.
 - Direct GitHub tree/blob acceptance plus root, encoded traversal, query,
   fragment, mismatch, and ambiguous input rejection.
+- LobeHub M2M read-route allowlist must prove list/category/detail work while
+  generic/plugin/download/encoded-path requests fail before HTTP.
+- Marketplace list/detail/install tests must assert pagination/category DTOs,
+  exact version, identifier/manifest-name separation, owner-private Candidate,
+  installed status, idempotent reconciliation, and no Store publication.
 - Deterministic Chat link installation must prove zero Provider and zero Store
   search calls.
 - Frontend strict Zod catalog identity, list/detail/install/uninstall routes,
@@ -138,7 +189,10 @@ func ParseGitHubSkillURL(raw string) (GitHubSkillCoordinate, error)
 
 ```text
 Wrong: browser -> arbitrary marketplace HTML -> mutable URL -> npm install
-Correct: Backend fixed catalog -> exact commit -> ValidateArchive -> owner Library
+Correct: Backend source adapter -> exact version/commit -> ValidateArchive -> owner Library
+
+Wrong: list says 1.2.3 -> download latest -> accept whatever arrives
+Correct: exact detail 1.2.3 -> exact download 1.2.3 -> identity validation
 
 Wrong: GitHub repository root -> guess a nested Skill
 Correct: exact tree directory or blob/SKILL.md -> resolve ref -> exact directory
