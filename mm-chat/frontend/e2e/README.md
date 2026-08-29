@@ -15,6 +15,8 @@ mode without reading Provider credentials or making billable model requests.
   and terminal retrieval degradation;
 - verify server Memory governance persistence, answer-time recall traces, and
   revision-fenced direct-action undo;
+- verify Skill installation, per-Conversation Skill/MCP selection, durable
+  Resource execution order, and terminal MCP failure;
 - retain a trace, screenshot, and video when a browser test fails.
 
 ## Run locally
@@ -38,11 +40,15 @@ starts its own Next.js development server on port `3100`; override it with
 - `agent-harness.spec.ts`: Agent Run lifecycle, transcript, and artifacts.
 - `rag.spec.ts`: Knowledge ingestion, selection, citations, and degradation.
 - `memory.spec.ts`: server governance, recall, Activity, and undo journeys.
+- `resources.spec.ts`: Skill install, Conversation selection, Agent Resource
+  execution, reload, and terminal failure journeys.
 - `fixtures/neoChatApi.ts`: isolated request/state fixture.
 - `fixtures/neoChatKnowledgeApi.ts`: isolated file and Knowledge lifecycle
   fixture.
 - `fixtures/neoChatMemoryApi.ts`: isolated Memory governance, health, Activity,
   undo, and recall-trace fixture.
+- `fixtures/neoChatResourceApi.ts`: isolated Skill Library/install, MCP
+  inventory, Conversation selection, and Resource transcript fixture.
 - `fixtures/neoChatApiSupport.ts`: deterministic DTO and SSE builders.
 - `fixtures/neoChatApiTypes.ts`: shared fixture-only types.
 

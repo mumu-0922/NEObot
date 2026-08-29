@@ -112,6 +112,15 @@ corepack pnpm test:e2e
   assistant Message, poll through the production Activity API, and send the
   Activity `subjectRevision` on undo. Seed terminal Activity before resolving
   fixture SSE so the test never depends on polling sleeps.
+- Skill/MCP browser fixtures must keep Library/inventory and revision-bound
+  per-Conversation selections as separate server authorities. Installing a
+  Skill changes only Library inventory; it must not seed any Conversation
+  selection. Selection fixtures must reject unknown installation/Server IDs.
+- Resource execution coverage must project schema-version-1 Skill/MCP cards
+  from durable Transcript v2 events, assert interleaved narration/Tool list
+  items through semantic locators before the final answer, and replay the same
+  order after reload. A failed MCP step must reach a terminal failed state and
+  remove the Conversation running indicator.
 - CI runs Chromium separately from Vitest and retains trace, screenshot, and
   video artifacts only on failure.
 
@@ -127,6 +136,19 @@ Correct:
 ```ts
 await page.getByLabel("发送消息").click();
 api.completeRun(conversationId, "deterministic result");
+```
+
+For durable Resource order, assert the semantic process blocks rather than a
+single asynchronous `textContent()` snapshot:
+
+```ts
+const blocks = message
+  .getByRole("region", { name: "Agent 执行过程" })
+  .getByRole("listitem");
+await expect(blocks.nth(0)).toHaveText("先运行已选择的 Skill。");
+await expect(blocks.nth(1)).toContainText(skillName);
+await expect(blocks.nth(2)).toHaveText("再调用已选择的 MCP。");
+await expect(blocks.nth(3)).toContainText(serverAndToolName);
 ```
 
 For RAG selection, assert the persisted Conversation fixture state instead of

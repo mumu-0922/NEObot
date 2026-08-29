@@ -25,6 +25,10 @@ import {
   memorySearchTranscriptEvents,
   NeoChatMemoryApiFixture,
 } from "./neoChatMemoryApi";
+import {
+  NeoChatResourceApiFixture,
+  resourceTranscriptEvents,
+} from "./neoChatResourceApi";
 
 export type {
   FixtureConversation,
@@ -47,6 +51,7 @@ export class NeoChatApiFixture {
   readonly unhandledRequests: string[] = [];
   readonly knowledge = new NeoChatKnowledgeApiFixture();
   readonly memory = new NeoChatMemoryApiFixture();
+  readonly resources = new NeoChatResourceApiFixture();
   private readonly pendingRuns = new Map<string, PendingRun>();
   private authValid = true;
   private sequence = 0;
@@ -215,6 +220,24 @@ export class NeoChatApiFixture {
     return activity.id;
   }
 
+  completeResourceRun(
+    conversationId: string,
+    content: string,
+    mcpStatus: "completed" | "failed" = "completed",
+  ): string {
+    const run = this.requirePendingRun(conversationId);
+    run.resolve({
+      status: "completed",
+      content,
+      agentEvents: resourceTranscriptEvents(
+        conversationId,
+        run.messageId,
+        mcpStatus,
+      ),
+    });
+    return run.messageId;
+  }
+
   failRun(conversationId: string, messageText = "Fixture run failed"): void {
     const run = this.pendingRuns.get(conversationId);
     if (!run) throw new Error(`No pending run for ${conversationId}`);
@@ -233,6 +256,7 @@ export class NeoChatApiFixture {
 
     if (await this.knowledge.handle(route, path, method)) return;
     if (await this.memory.handle(route, path, method)) return;
+    if (await this.resources.handle(route, path, method)) return;
 
     if (path === "/v1/auth/login" && method === "POST") {
       const body = request.postDataJSON() as {
@@ -279,7 +303,10 @@ export class NeoChatApiFixture {
     }
 
     if (path === "/v1/config" && method === "GET") {
-      await json(route, runtimeConfig());
+      await json(
+        route,
+        runtimeConfig({ mcpEnabled: this.resources.mcpEnabled }),
+      );
       return;
     }
 
@@ -320,25 +347,6 @@ export class NeoChatApiFixture {
 
     if (path === "/v1/workspaces" && method === "GET") {
       await json(route, { workspaces: [workspace()] });
-      return;
-    }
-
-    if (path === "/v1/skills/library" && method === "GET") {
-      await json(route, { skills: [] });
-      return;
-    }
-
-    const skillSelectionMatch = path.match(
-      /^\/v1\/skills\/conversations\/([^/]+)\/selection$/,
-    );
-    if (skillSelectionMatch && (method === "GET" || method === "PUT")) {
-      await json(route, {
-        selection: {
-          conversationId: decodeURIComponent(skillSelectionMatch[1]),
-          revision: method === "PUT" ? 1 : 0,
-          skills: [],
-        },
-      });
       return;
     }
 

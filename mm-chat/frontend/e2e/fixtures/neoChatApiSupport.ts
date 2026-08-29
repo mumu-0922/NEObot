@@ -25,7 +25,7 @@ export function conversation(
   };
 }
 
-export function runtimeConfig() {
+export function runtimeConfig(options: { mcpEnabled?: boolean } = {}) {
   return {
     modelProvider: {
       available: true,
@@ -45,7 +45,11 @@ export function runtimeConfig() {
       defaultModelsConfigured: true,
     },
     search: { available: false },
-    mcp: { enabled: false, remoteEnabled: false, stdioEnabled: false },
+    mcp: {
+      enabled: options.mcpEnabled === true,
+      remoteEnabled: options.mcpEnabled === true,
+      stdioEnabled: false,
+    },
     voice: {
       elevenLabsAvailable: false,
       mimoAvailable: false,

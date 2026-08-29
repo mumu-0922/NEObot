@@ -11,7 +11,8 @@
 
 - Model-quality evaluation or real Provider availability checks.
 - Replacing Go integration tests or frontend Vitest coverage.
-- Real RAG/Memory retrieval quality, Skill, or MCP journeys.
+- Real RAG/Memory retrieval quality, third-party Skill package execution, or
+  remote MCP protocol compatibility.
 - Multi-browser coverage before the Chromium suite is stable.
 
 ## Architecture
@@ -40,6 +41,13 @@ Activity, revision-fenced undo, and durable `search_memory` process steps.
 Embedding/ranking, planner validation, PostgreSQL fences, and background jobs
 remain owned by backend/RAG tests.
 
+The Resource fixture models only browser-visible server authority: Skill
+Library installation, MCP inventory, revision-bound per-Conversation
+selections, and durable redacted Skill/MCP process presentations. Package
+admission/extraction, Skill runtime execution, credentials/OAuth, remote MCP
+protocol calls, and marketplace compatibility remain backend integration-test
+responsibilities.
+
 ## Key decisions
 
 | Decision                                    | Reason                                                                          |
@@ -50,6 +58,7 @@ remain owned by backend/RAG tests.
 | Use Chromium first                          | Establishes a fast stable baseline before widening browser cost.                |
 | Keep real-provider smoke manual             | Prevents flaky CI, secret exposure, and billable requests.                      |
 | Keep Memory state in a dedicated fixture    | Preserves reload authority without mixing governance into core Chat routes.     |
+| Keep Resource state in a dedicated fixture  | Proves selection/install and transcript boundaries without third-party calls.   |
 
 ## Trust boundaries
 
@@ -77,3 +86,5 @@ remain owned by backend/RAG tests.
   retrieval journeys.
 - 2026-08-29: Added deterministic Memory governance, recall, Activity, and undo
   journeys.
+- 2026-08-29: Added deterministic Skill installation, Skill/MCP selection,
+  Resource transcript, reload, and terminal MCP failure journeys.
