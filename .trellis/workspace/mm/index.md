@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 113
+- **Total Sessions**: 114
 - **Last Active**: 2026-08-29
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~205 | Active |
+| `journal-3.md` | ~238 | Active |
 | `journal-2.md` | ~1985 | Archived |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 114 | 2026-08-29 | Playwright Memory lifecycle journeys | `54830d49` | `main` |
 | 113 | 2026-08-29 | Playwright RAG E2E journeys | `769be70f` | `main` |
 | 112 | 2026-08-29 | Playwright core E2E foundation | `143b75dd` | `main` |
 | 111 | 2026-08-29 | Repair Memory Worker backlog health | `3e466132` | `main` |

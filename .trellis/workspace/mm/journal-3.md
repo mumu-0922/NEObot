@@ -203,3 +203,36 @@ Added deterministic Knowledge upload processing, Conversation-scoped collection 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 114: Playwright Memory lifecycle journeys
+
+**Date**: 2026-08-29
+**Task**: Playwright Memory lifecycle journeys
+**Branch**: `main`
+
+### Summary
+
+Added deterministic Server Memory governance persistence, recall trace, direct action Activity and revision-fenced undo browser journeys; all 13 Chromium E2E tests passed.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `54830d49` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
