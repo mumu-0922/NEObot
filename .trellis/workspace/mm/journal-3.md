@@ -236,3 +236,36 @@ Added deterministic Server Memory governance persistence, recall trace, direct a
 ### Next Steps
 
 - None - task complete
+
+
+## Session 115: Skill and MCP Playwright E2E
+
+**Date**: 2026-08-29
+**Task**: Skill and MCP Playwright E2E
+**Branch**: `main`
+
+### Summary
+
+Added deterministic Skill installation, per-conversation Skill/MCP selection, durable interleaved Resource transcript, reload persistence, and terminal MCP failure browser journeys; documented the fixture trust boundary and verification contract.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3279934f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
