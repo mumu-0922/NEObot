@@ -170,3 +170,36 @@ Added deterministic Chromium E2E coverage for auth, per-conversation models, and
 ### Next Steps
 
 - None - task complete
+
+
+## Session 113: Playwright RAG E2E journeys
+
+**Date**: 2026-08-29
+**Task**: Playwright RAG E2E journeys
+**Branch**: `main`
+
+### Summary
+
+Added deterministic Knowledge upload processing, Conversation-scoped collection selection, cited-answer rendering, and retrieval-degradation Playwright journeys with a reusable server-authoritative Knowledge fixture; all frontend and Chromium gates pass.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `769be70f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
