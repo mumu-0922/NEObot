@@ -101,7 +101,11 @@ export function toConversationDto(conversation: FixtureConversation) {
     status: "active",
     modelRef: conversation.modelRef,
     messageCount: 0,
-    config: { toolMode: "agent", reasoningEffort: "auto" },
+    config: {
+      toolMode: "agent",
+      reasoningEffort: "auto",
+      ...(conversation.config ?? {}),
+    },
     workspaceId: conversation.workspaceId,
     permissionMode: "workspace-write",
     createdAt: NOW,
@@ -124,6 +128,7 @@ export function message(input: {
   completedAt?: string;
   agentEvents?: unknown[];
   outputBlocks?: unknown[];
+  metadata?: Record<string, unknown>;
 }): FixtureMessage {
   return {
     id: input.id,
@@ -134,7 +139,7 @@ export function message(input: {
     sequenceNo: input.sequenceNo,
     attachments: [],
     outputBlocks: input.outputBlocks ?? [],
-    metadata: {},
+    metadata: input.metadata ?? {},
     createdAt: NOW,
     updatedAt: NOW,
     completedAt: input.completedAt ?? NOW,

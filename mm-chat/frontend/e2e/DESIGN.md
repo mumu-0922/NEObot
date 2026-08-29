@@ -11,7 +11,7 @@
 
 - Model-quality evaluation or real Provider availability checks.
 - Replacing Go integration tests or frontend Vitest coverage.
-- RAG, Memory, Skill, or MCP journeys in the first test batch.
+- Real RAG retrieval quality, Memory, Skill, or MCP journeys.
 - Multi-browser coverage before the Chromium suite is stable.
 
 ## Architecture
@@ -27,6 +27,12 @@ The UI still performs its normal login, config, Provider, Workspace,
 Conversation, Message, SSE, cancellation, and preview requests. Playwright
 intercepts only `/mm-api`; all application code and browser persistence remain
 unchanged. Each test creates a new fixture and browser context.
+
+The Knowledge fixture models only browser-visible server authority: uploaded
+file metadata, collection/document DTOs, processing-to-active transitions,
+Conversation-owned collection selection, and terminal answer metadata. Parser,
+embedding, vector search, reranking, and Provider work remain outside browser
+E2E and retain their backend/RAG test ownership.
 
 ## Key decisions
 
@@ -60,3 +66,5 @@ unchanged. Each test creates a new fixture and browser context.
 
 - 2026-08-29: Added the deterministic Chromium foundation and first-batch core
   journeys.
+- 2026-08-29: Added deterministic Knowledge upload, citation, and degraded
+  retrieval journeys.

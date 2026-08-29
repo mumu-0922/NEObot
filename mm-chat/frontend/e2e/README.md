@@ -11,6 +11,8 @@ mode without reading Provider credentials or making billable model requests.
 - verify concurrent Conversation-owned Agent Runs, failure, cancellation, and
   detached-run refresh recovery;
 - verify durable Agent transcript ordering and in-app workspace-file preview;
+- verify Knowledge upload processing, Conversation selection, cited answers,
+  and terminal retrieval degradation;
 - retain a trace, screenshot, and video when a browser test fails.
 
 ## Run locally
@@ -32,7 +34,10 @@ starts its own Next.js development server on port `3100`; override it with
 - `auth.spec.ts`: login, refresh, and invalid-session behavior.
 - `conversation-model.spec.ts`: per-Conversation model isolation.
 - `agent-harness.spec.ts`: Agent Run lifecycle, transcript, and artifacts.
+- `rag.spec.ts`: Knowledge ingestion, selection, citations, and degradation.
 - `fixtures/neoChatApi.ts`: isolated request/state fixture.
+- `fixtures/neoChatKnowledgeApi.ts`: isolated file and Knowledge lifecycle
+  fixture.
 - `fixtures/neoChatApiSupport.ts`: deterministic DTO and SSE builders.
 - `fixtures/neoChatApiTypes.ts`: shared fixture-only types.
 

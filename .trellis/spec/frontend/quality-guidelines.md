@@ -93,6 +93,17 @@ corepack pnpm test:e2e
 - Cover both the happy path and decisive terminal failures: unauthorized,
   failed, cancelled, stale/reloaded, and independently concurrent runs where
   applicable.
+- RAG fixtures must follow the current authority chain: persist
+  `config.selectedKnowledgeCollectionIds` through the Conversation PATCH/read
+  contract, then return terminal `metadata.knowledge` on the assistant
+  message. Do not require the stream request to repeat the selection in
+  metadata; that request field is a legacy migration fallback because the
+  Backend resolves the current binding from the Conversation.
+- A cited RAG answer is valid only when both the assistant metadata contains
+  the citation and the answer contains its issued marker (for example `[K1]`).
+  Browser coverage must expand the citation card and assert its bounded source
+  projection. The decisive failure case must return a terminal degraded
+  outcome with zero citations rather than leaving a spinner running.
 - CI runs Chromium separately from Vitest and retains trace, screenshot, and
   video artifacts only on failure.
 
@@ -108,6 +119,19 @@ Correct:
 ```ts
 await page.getByLabel("发送消息").click();
 api.completeRun(conversationId, "deterministic result");
+```
+
+For RAG selection, assert the persisted Conversation fixture state instead of
+the retired request duplication:
+
+```ts
+expect(conversation.config?.selectedKnowledgeCollectionIds).toEqual([
+  collectionId,
+]);
+api.completeKnowledgeRun(conversationId, "grounded answer [K1]", {
+  outcome: "answered",
+  citations: [{ id: "c1", marker: "[K1]", snippet: "bounded evidence" }],
+});
 ```
 
 ## Accessibility and Security Checks

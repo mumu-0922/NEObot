@@ -8,6 +8,7 @@ export type FixtureConversation = {
   title: string;
   modelRef: FixtureModel;
   workspaceId?: string;
+  config?: Record<string, unknown>;
   activeGeneration?: {
     runId: string;
     messageId?: string;
@@ -25,7 +26,12 @@ export type FixtureMessage = Record<string, unknown> & {
 };
 
 export type PendingRunResult =
-  | { status: "completed"; content: string; agentEvents?: unknown[] }
+  | {
+      status: "completed";
+      content: string;
+      agentEvents?: unknown[];
+      metadata?: Record<string, unknown>;
+    }
   | { status: "failed"; code?: string; message?: string };
 
 export type PendingRun = {

@@ -20,6 +20,7 @@ import type {
   PendingRun,
   PendingRunResult,
 } from "./neoChatApiTypes";
+import { NeoChatKnowledgeApiFixture } from "./neoChatKnowledgeApi";
 
 export type {
   FixtureConversation,
@@ -40,6 +41,7 @@ export class NeoChatApiFixture {
   readonly conversations: FixtureConversation[];
   readonly messages = new Map<string, FixtureMessage[]>();
   readonly unhandledRequests: string[] = [];
+  readonly knowledge = new NeoChatKnowledgeApiFixture();
   private readonly pendingRuns = new Map<string, PendingRun>();
   private authValid = true;
   private sequence = 0;
@@ -48,6 +50,7 @@ export class NeoChatApiFixture {
     this.conversations = conversations.map((conversation) => ({
       ...conversation,
       modelRef: { ...conversation.modelRef },
+      ...(conversation.config ? { config: { ...conversation.config } } : {}),
       ...(conversation.activeGeneration
         ? { activeGeneration: { ...conversation.activeGeneration } }
         : {}),
@@ -162,6 +165,20 @@ export class NeoChatApiFixture {
     run.resolve({ status: "completed", content, agentEvents });
   }
 
+  completeKnowledgeRun(
+    conversationId: string,
+    content: string,
+    knowledge: Record<string, unknown>,
+  ): void {
+    const run = this.pendingRuns.get(conversationId);
+    if (!run) throw new Error(`No pending run for ${conversationId}`);
+    run.resolve({
+      status: "completed",
+      content,
+      metadata: { knowledge },
+    });
+  }
+
   failRun(conversationId: string, messageText = "Fixture run failed"): void {
     const run = this.pendingRuns.get(conversationId);
     if (!run) throw new Error(`No pending run for ${conversationId}`);
@@ -177,6 +194,8 @@ export class NeoChatApiFixture {
     const url = new URL(request.url());
     const path = url.pathname.replace(/^\/mm-api/, "");
     const method = request.method();
+
+    if (await this.knowledge.handle(route, path, method)) return;
 
     if (path === "/v1/auth/login" && method === "POST") {
       const body = request.postDataJSON() as {
@@ -306,6 +325,7 @@ export class NeoChatApiFixture {
         id,
         title: typeof body.title === "string" ? body.title : "New Chat",
         modelRef,
+        ...(isRecord(body.config) ? { config: { ...body.config } } : {}),
       } satisfies FixtureConversation;
       this.conversations.unshift(conversation);
       this.messages.set(id, []);
@@ -322,6 +342,12 @@ export class NeoChatApiFixture {
       const body = request.postDataJSON() as Record<string, unknown>;
       if (isModelRef(body.modelRef)) conversation.modelRef = body.modelRef;
       if (typeof body.title === "string") conversation.title = body.title;
+      if (isRecord(body.config)) {
+        conversation.config = {
+          ...(conversation.config ?? {}),
+          ...body.config,
+        };
+      }
       await json(route, toConversationDto(conversation));
       return;
     }
@@ -494,6 +520,7 @@ export class NeoChatApiFixture {
         parentMessageId: pending.userMessageId,
         modelRef: conversation.modelRef,
         ...(outcome.agentEvents ? { agentEvents: outcome.agentEvents } : {}),
+        ...(outcome.metadata ? { metadata: outcome.metadata } : {}),
       });
       items.push(assistant);
       this.messages.set(conversationId, items);
@@ -530,4 +557,8 @@ export class NeoChatApiFixture {
     if (!conversation) throw new Error(`Unknown conversation ${id}`);
     return conversation;
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
