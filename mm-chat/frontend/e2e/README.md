@@ -13,6 +13,8 @@ mode without reading Provider credentials or making billable model requests.
 - verify durable Agent transcript ordering and in-app workspace-file preview;
 - verify Knowledge upload processing, Conversation selection, cited answers,
   and terminal retrieval degradation;
+- verify server Memory governance persistence, answer-time recall traces, and
+  revision-fenced direct-action undo;
 - retain a trace, screenshot, and video when a browser test fails.
 
 ## Run locally
@@ -35,9 +37,12 @@ starts its own Next.js development server on port `3100`; override it with
 - `conversation-model.spec.ts`: per-Conversation model isolation.
 - `agent-harness.spec.ts`: Agent Run lifecycle, transcript, and artifacts.
 - `rag.spec.ts`: Knowledge ingestion, selection, citations, and degradation.
+- `memory.spec.ts`: server governance, recall, Activity, and undo journeys.
 - `fixtures/neoChatApi.ts`: isolated request/state fixture.
 - `fixtures/neoChatKnowledgeApi.ts`: isolated file and Knowledge lifecycle
   fixture.
+- `fixtures/neoChatMemoryApi.ts`: isolated Memory governance, health, Activity,
+  undo, and recall-trace fixture.
 - `fixtures/neoChatApiSupport.ts`: deterministic DTO and SSE builders.
 - `fixtures/neoChatApiTypes.ts`: shared fixture-only types.
 

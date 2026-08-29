@@ -21,6 +21,10 @@ import type {
   PendingRunResult,
 } from "./neoChatApiTypes";
 import { NeoChatKnowledgeApiFixture } from "./neoChatKnowledgeApi";
+import {
+  memorySearchTranscriptEvents,
+  NeoChatMemoryApiFixture,
+} from "./neoChatMemoryApi";
 
 export type {
   FixtureConversation,
@@ -42,6 +46,7 @@ export class NeoChatApiFixture {
   readonly messages = new Map<string, FixtureMessage[]>();
   readonly unhandledRequests: string[] = [];
   readonly knowledge = new NeoChatKnowledgeApiFixture();
+  readonly memory = new NeoChatMemoryApiFixture();
   private readonly pendingRuns = new Map<string, PendingRun>();
   private authValid = true;
   private sequence = 0;
@@ -179,6 +184,37 @@ export class NeoChatApiFixture {
     });
   }
 
+  completeMemoryRecallRun(
+    conversationId: string,
+    content: string,
+    memoryContent: string,
+  ): void {
+    const run = this.requirePendingRun(conversationId);
+    run.resolve({
+      status: "completed",
+      content,
+      agentEvents: memorySearchTranscriptEvents(
+        conversationId,
+        run.messageId,
+        memoryContent,
+      ),
+    });
+  }
+
+  completeMemoryActionRun(
+    conversationId: string,
+    content: string,
+    memoryContent: string,
+  ): string {
+    const run = this.requirePendingRun(conversationId);
+    const activity = this.memory.seedDirectActionActivity(
+      run.messageId,
+      memoryContent,
+    );
+    run.resolve({ status: "completed", content });
+    return activity.id;
+  }
+
   failRun(conversationId: string, messageText = "Fixture run failed"): void {
     const run = this.pendingRuns.get(conversationId);
     if (!run) throw new Error(`No pending run for ${conversationId}`);
@@ -196,6 +232,7 @@ export class NeoChatApiFixture {
     const method = request.method();
 
     if (await this.knowledge.handle(route, path, method)) return;
+    if (await this.memory.handle(route, path, method)) return;
 
     if (path === "/v1/auth/login" && method === "POST") {
       const body = request.postDataJSON() as {
@@ -302,11 +339,6 @@ export class NeoChatApiFixture {
           skills: [],
         },
       });
-      return;
-    }
-
-    if (path === "/v1/memory-activities" && method === "GET") {
-      await json(route, { items: [] });
       return;
     }
 
@@ -556,6 +588,12 @@ export class NeoChatApiFixture {
     const conversation = this.conversations.find((item) => item.id === id);
     if (!conversation) throw new Error(`Unknown conversation ${id}`);
     return conversation;
+  }
+
+  private requirePendingRun(conversationId: string): PendingRun {
+    const run = this.pendingRuns.get(conversationId);
+    if (!run) throw new Error(`No pending run for ${conversationId}`);
+    return run;
   }
 }
 

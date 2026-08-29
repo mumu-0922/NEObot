@@ -104,6 +104,14 @@ corepack pnpm test:e2e
   Browser coverage must expand the citation card and assert its bounded source
   projection. The decisive failure case must return a terminal degraded
   outcome with zero citations rather than leaving a spinner running.
+- Memory browser fixtures must preserve Server authority across refresh:
+  governance snapshots and policy mutations come back through `/mm-api`, not
+  IndexedDB or a product E2E branch. Recall is represented by the durable
+  `search_memory` process-step contract, not by inspecting prompt text.
+- Direct Memory action coverage must bind Activity to the exact terminal
+  assistant Message, poll through the production Activity API, and send the
+  Activity `subjectRevision` on undo. Seed terminal Activity before resolving
+  fixture SSE so the test never depends on polling sleeps.
 - CI runs Chromium separately from Vitest and retains trace, screenshot, and
   video artifacts only on failure.
 
