@@ -18,7 +18,10 @@ Provider/model reference to the existing task-model row. Empty values preserve
 the historical fixed server-default Judge authority.
 Migration `106_skill_conversation_selections` adds owner-bound, revision-CAS
 Skill selection policy per Conversation without duplicating installed package
-inventory.
+inventory. Hard deletion retains database cascade protection; the public
+Conversation API soft-deletes, so its authenticated lifecycle explicitly
+removes the exact owner-bound Skill selection first and fails closed if that
+cleanup cannot commit. Installed Skill inventory is not removed.
 Migrations `062` through `095` own later
 Memory and optional Agent control-plane surfaces and remain catalogued in
 `mm-chat/backend/migrations/README.md`.
@@ -126,7 +129,7 @@ Out of scope:
 | `103_chat_agent_permission_modes`             | Adds checked durable `read-only`, `workspace-write`, or `danger-full-access` Conversation authority with a guarded down migration. |
 | `104_rag_failure_state_projection`            | Backfills terminal bound RAG failures and atomically projects future parse/embedding terminal failures into reprocessable failed Versions while preserving active current Versions. |
 | `105_recall_filtering_provider`                | Adds the bounded `providerId:gpt-5.6-luna` recall-filtering reference while retaining empty-value legacy server-default behavior and reversible rollback. |
-| `106_skill_conversation_selections`            | Adds owner-bound per-Conversation Skill selections, installation/fingerprint foreign keys, and revision-CAS policy storage. |
+| `106_skill_conversation_selections`            | Adds owner-bound per-Conversation Skill selections, installation/fingerprint foreign keys, revision-CAS policy storage, hard-delete cascades, and explicit cleanup before API soft deletion. |
 
 Published migration pairs are immutable and applied in numeric order. Migration
 SQL contains no transaction-control statements; the Go runner wraps each schema

@@ -1,0 +1,3 @@
+{"file":".trellis/spec/backend/skill-supply-chain.md","reason":"Implement the documented owner-scoped selection cleanup before Conversation soft delete."}
+{"file":".trellis/tasks/08-30-live-deployment-smoke-verification/prd.md","reason":"Keep implementation and verification within the authorized live-smoke scope."}
+{"file":".trellis/tasks/08-30-live-deployment-smoke-verification/research/live-auth-and-smoke-boundary.md","reason":"Preserve the selected safe authentication fixture and cleanup contract."}

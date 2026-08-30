@@ -175,6 +175,19 @@ INSERT INTO conversations (id, user_id, title) VALUES ($1, $2, 'Skill selection 
 		selectedDirect.Skills[0].ID != directInstalled.ID {
 		t.Fatalf("direct conversation selection=%#v error=%v", selectedDirect, err)
 	}
+	if err := repository.DeleteConversationData(ctx, userTwo, conversationOne); !errors.Is(err, ErrSelectionInvalid) {
+		t.Fatalf("cross-owner conversation cleanup error=%v", err)
+	}
+	if err := repository.DeleteConversationData(ctx, userOne, conversationOne); err != nil {
+		t.Fatalf("owner conversation cleanup error=%v", err)
+	}
+	if selection, found, err := repository.GetConversationSelection(ctx, userOne, conversationOne); err != nil || found {
+		t.Fatalf("selection after cleanup=%#v found=%t error=%v", selection, found, err)
+	}
+	libraryAfterCleanup, err := repository.ListLibrary(ctx, userOne)
+	if err != nil || len(libraryAfterCleanup) != 2 {
+		t.Fatalf("library after conversation cleanup=%#v error=%v", libraryAfterCleanup, err)
+	}
 	conversationRace := uuid.NewString()
 	mustExecSkill(t, ctx, database, `
 INSERT INTO conversations (id, user_id, title) VALUES ($1, $2, 'Skill selection race')

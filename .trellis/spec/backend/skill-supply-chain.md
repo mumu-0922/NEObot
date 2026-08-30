@@ -58,6 +58,9 @@ func (*Service) GetMarketplaceSkill(
 func (*Service) InstallMarketplaceSkill(
     context.Context, userID, identifier, exactVersion string,
 ) (Installation, error)
+func (*Service) DeleteConversationData(
+    context.Context, userID, conversationID string,
+) error
 ```
 
 ## 3. Contracts
@@ -155,6 +158,11 @@ func (*Service) InstallMarketplaceSkill(
   revision-CAS Conversation selection; `agent_auto` may activate at most the
   existing bounded relevant installed set for one frozen Run and never writes
   selection state.
+- Conversation deletion is a soft delete, so database `ON DELETE CASCADE`
+  cannot clean its Skill selection. The authenticated delete path must remove
+  the exact owner-bound `skill_conversation_selections` row transactionally
+  before marking the Conversation deleted; cleanup failure must fail closed
+  and leave the Conversation active. Installed Skill inventory is retained.
 - Catalog failure is isolated: Library, uninstall, Conversation selection, and
   runtime materialization remain available.
 
@@ -183,6 +191,7 @@ func (*Service) InstallMarketplaceSkill(
 | Marketplace detail source missing, malformed, or terminal-name mismatched | reject before GitHub I/O and persistence |
 | Marketplace target subtree missing root `SKILL.md`, exceeds bounds, contains a symlink/submodule, or has Git blob drift | typed source/archive failure; zero Candidate/object/Library mutation |
 | exact LobeHub/GitHub link malformed or ambiguous | `400 INVALID_SKILL_PACKAGE`; zero Provider/source execution |
+| Conversation Skill-selection cleanup fails during delete | `503 SKILL_SELECTION_CLEANUP_FAILED`; Conversation remains active |
 
 ## 5. Good / Base / Bad Cases
 
@@ -197,6 +206,9 @@ func (*Service) InstallMarketplaceSkill(
 - **Good:** install an OpenClaw-authored Skill whose namespaced nested metadata
   declares a binary installer; retain the Skill instructions while leaving the
   installer and requirement declarations inert.
+- **Good:** delete a Conversation with a custom Skill selection; remove only
+  that owner-bound selection, retain Library inventory, then soft-delete the
+  Conversation.
 - **Base:** GitHub is temporarily unavailable; the catalog shows bounded retry
   state while Installed Skills remain manageable and usable.
 - **Base:** a long-tail Skill has only a community tag; it remains visible in
@@ -209,6 +221,8 @@ func (*Service) InstallMarketplaceSkill(
   equal manifest name.
 - **Bad:** use LobeHub's currently unauthorized `/download` route or download a
   97 MiB repository ZIP to install a 3 KiB nested Skill.
+- **Bad:** rely on a hard-delete FK cascade after a Conversation soft delete,
+  or continue the soft delete after selection cleanup failed.
 
 ## 6. Tests Required
 
@@ -242,6 +256,9 @@ func (*Service) InstallMarketplaceSkill(
   query is rejected before the Marketplace fetcher records a request.
 - Deterministic Chat link installation must prove zero Provider and zero Store
   search calls.
+- Conversation deletion tests must prove same-owner selection cleanup,
+  cross-owner denial, installed-inventory retention, and fail-closed Handler
+  behavior before the Conversation soft delete.
 - Frontend strict Zod catalog identity, list/detail/install/uninstall routes,
   URL round-trip, responsive/focus/error behavior, and absence of internal
   supply-chain fields in the normal surface.
@@ -274,6 +291,9 @@ Correct: validate bounded structure -> keep it opaque -> grant no runtime author
 
 Wrong: install -> silently enable for every Conversation
 Correct: install inventory -> user selection or bounded run-only agent_auto
+
+Wrong: soft-delete Conversation -> expect FK cascade to clear Skill selection
+Correct: owner-bound selection cleanup -> soft-delete Conversation -> retain Library inventory
 
 Wrong: expose every upstream tag -> unstable mixed-case navigation taxonomy
 Correct: project 21 canonical IDs -> keep All/search for long-tail discovery

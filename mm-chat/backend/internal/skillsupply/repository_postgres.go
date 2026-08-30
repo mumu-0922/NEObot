@@ -531,6 +531,46 @@ WHERE id = $3 AND user_id = $2 AND package_fingerprint = $4
 	return repository.getConversationSelectionAfterWrite(ctx, userID, selection.ConversationID)
 }
 
+func (repository *PostgresRepository) DeleteConversationData(
+	ctx context.Context,
+	userID string,
+	conversationID string,
+) error {
+	if err := repository.requireDB(); err != nil {
+		return err
+	}
+	tx, err := repository.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delete Skill conversation data: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var authorized bool
+	if err := tx.QueryRowContext(ctx, `
+SELECT EXISTS (
+  SELECT 1 FROM conversations
+  WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+)
+`, conversationID, userID).Scan(&authorized); err != nil {
+		return fmt.Errorf("authorize Skill conversation cleanup: %w", err)
+	}
+	if !authorized {
+		return ErrSelectionInvalid
+	}
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM skill_conversation_selections
+WHERE conversation_id = $1 AND user_id = $2
+`, conversationID, userID); err != nil {
+		return fmt.Errorf("delete Skill conversation selection: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete Skill conversation data: %w", err)
+	}
+	return nil
+}
+
+var _ ConversationLifecycleRepository = (*PostgresRepository)(nil)
+
 func (repository *PostgresRepository) getConversationSelectionAfterWrite(
 	ctx context.Context,
 	userID string,

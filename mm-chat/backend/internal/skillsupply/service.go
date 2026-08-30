@@ -464,6 +464,29 @@ func (service *Service) ReplaceConversationSelection(
 	})
 }
 
+// DeleteConversationData removes the durable Skill selection before the
+// owning conversation is soft-deleted. Inventory is user-owned independently
+// and is intentionally preserved.
+func (service *Service) DeleteConversationData(
+	ctx context.Context,
+	userID string,
+	conversationID string,
+) error {
+	if service == nil || service.repository == nil {
+		return nil
+	}
+	userID = strings.ToLower(strings.TrimSpace(userID))
+	conversationID = strings.ToLower(strings.TrimSpace(conversationID))
+	if !validUserID(userID) || !validUUID(conversationID) {
+		return ErrSelectionInvalid
+	}
+	lifecycle, ok := service.repository.(ConversationLifecycleRepository)
+	if !ok {
+		return ErrUnavailable
+	}
+	return lifecycle.DeleteConversationData(ctx, userID, conversationID)
+}
+
 func (service *Service) Uninstall(
 	ctx context.Context,
 	userID, installationID string,

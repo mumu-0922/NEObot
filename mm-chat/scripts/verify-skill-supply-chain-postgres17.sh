@@ -66,7 +66,7 @@ psql_command() {
 server_major="$(psql_command "SHOW server_version_num" | cut -c1-2)"
 [[ "${server_major}" == "17" ]] || { echo "expected PostgreSQL 17" >&2; exit 1; }
 
-log "building and applying 001 -> 097 plus 106-107 with the unrelated 098-105 tail deferred"
+log "building and applying 001 -> 097 plus 106-107 with the unrelated 098-105 and 108-109 tails deferred"
 (cd "${backend_dir}" && go build -trimpath -o "${work_dir}/mm-chat-migrate" ./cmd/migrate)
 run_migrate() { MIGRATION_DATABASE_URL="${database_url}" "${work_dir}/mm-chat-migrate" "$@"; }
 psql_command "$(migration_drill_deferred_tail_sql "${backend_dir}" \
@@ -77,7 +77,9 @@ psql_command "$(migration_drill_deferred_tail_sql "${backend_dir}" \
 	102_host_workspaces \
 	103_chat_agent_permission_modes \
 	104_rag_failure_state_projection \
-	105_recall_filtering_provider)" >/dev/null
+	105_recall_filtering_provider \
+	108_retire_builtin_playwright_browser \
+	109_memory_dead_letter_orphan_activity)" >/dev/null
 run_migrate up >"${work_dir}/fresh.log" 2>&1
 grep -Fq "up 083_skill_supply_chain" "${work_dir}/fresh.log"
 grep -Fq "up 084_agent_orchestrator_foundation" "${work_dir}/fresh.log"
@@ -98,7 +100,7 @@ grep -Fq "up 106_skill_conversation_selections" "${work_dir}/fresh.log"
 grep -Fq "up 107_direct_skill_installations" "${work_dir}/fresh.log"
 run_migrate up >"${work_dir}/replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/replay.log"
-psql_command "DELETE FROM schema_migrations WHERE version BETWEEN 98 AND 105" >/dev/null
+psql_command "DELETE FROM schema_migrations WHERE version BETWEEN 98 AND 105 OR version BETWEEN 108 AND 109" >/dev/null
 
 log "checking schema, composite authority, trigger, and least-privilege grants"
 psql_command "
@@ -240,7 +242,9 @@ grep -Fq "up 104_rag_failure_state_projection" "${work_dir}/reup.log"
 grep -Fq "up 105_recall_filtering_provider" "${work_dir}/reup.log"
 grep -Fq "up 106_skill_conversation_selections" "${work_dir}/reup.log"
 grep -Fq "up 107_direct_skill_installations" "${work_dir}/reup.log"
+grep -Fq "up 108_retire_builtin_playwright_browser" "${work_dir}/reup.log"
+grep -Fq "up 109_memory_dead_letter_orphan_activity" "${work_dir}/reup.log"
 run_migrate up >"${work_dir}/final-replay.log" 2>&1
 grep -Fq "no migrations changed" "${work_dir}/final-replay.log"
 
-log "passed (historical 097 boundary plus 106 selection and 107 private direct authority, replay to head 107, schema/grants, drift/CAS/ownership lifecycle, guarded down, clean down/up)"
+log "passed (historical 097 boundary plus 106 selection and 107 private direct authority, replay to head 109, schema/grants, drift/CAS/ownership lifecycle, guarded down, clean down/up)"

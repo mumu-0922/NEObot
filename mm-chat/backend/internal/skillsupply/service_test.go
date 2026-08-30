@@ -314,6 +314,22 @@ func TestServiceConversationSelectionIsOwnerScopedAndRevisionBound(t *testing.T)
 	); !errors.Is(err, ErrSelectionInvalid) {
 		t.Fatalf("cross-owner selection error=%v", err)
 	}
+	if err := service.DeleteConversationData(
+		context.Background(), testSkillAdmin, conversationID,
+	); !errors.Is(err, ErrSelectionInvalid) {
+		t.Fatalf("cross-owner cleanup error=%v", err)
+	}
+	if err := service.DeleteConversationData(
+		context.Background(), testSkillUser, conversationID,
+	); err != nil {
+		t.Fatalf("owner cleanup error=%v", err)
+	}
+	if _, found := repository.selections[testSkillUser+":"+conversationID]; found {
+		t.Fatal("conversation cleanup retained Skill selection")
+	}
+	if _, found := repository.installations[installationID]; !found {
+		t.Fatal("conversation cleanup removed installed Skill inventory")
+	}
 }
 
 type memoryRepository struct {
@@ -491,6 +507,18 @@ func (repository *memoryRepository) ReplaceConversationSelection(
 	selection.Skills = append([]Installation(nil), selection.Skills...)
 	repository.selections[key] = selection
 	return selection, nil
+}
+
+func (repository *memoryRepository) DeleteConversationData(
+	_ context.Context,
+	userID string,
+	conversationID string,
+) error {
+	if repository.conversations[conversationID] != userID {
+		return ErrSelectionInvalid
+	}
+	delete(repository.selections, userID+":"+conversationID)
+	return nil
 }
 
 type memoryObjectStore struct{ objects map[string][]byte }

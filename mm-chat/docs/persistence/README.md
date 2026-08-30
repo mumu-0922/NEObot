@@ -53,8 +53,10 @@ The ordered schema currently consists of:
   Attempts, Provider/Object Operations, Gateway Functions, and rebuild/purge
   finalizers; none are present in the current `010` head.
 - `106` adds owner-bound, revision-CAS per-conversation Skill selections. It
-  references existing immutable Skill installations and cascades with the
-  owning Conversation or installation; it stores no package content.
+  references existing immutable Skill installations and cascades on hard
+  deletion of the owning Conversation or installation; it stores no package
+  content. Because the public Conversation API soft-deletes, the Handler first
+  removes the exact owner-bound selection and aborts deletion if cleanup fails.
 - `107` admits owner-private direct Skill installations without publishing
   them to the shared Store; `108` retires the checked-in Playwright Browser
   manifest authority while retaining historical Run evidence.

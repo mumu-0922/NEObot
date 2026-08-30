@@ -19,6 +19,7 @@ import (
 	"neo-chat/mm-chat/backend/internal/hostworkspace"
 	"neo-chat/mm-chat/backend/internal/knowledge"
 	"neo-chat/mm-chat/backend/internal/runtimeconfig"
+	"neo-chat/mm-chat/backend/internal/skillsupply"
 	"neo-chat/mm-chat/backend/internal/websearch"
 )
 
@@ -195,7 +196,11 @@ func TestHandlerRetiresLegacySkillConversationSelection(t *testing.T) {
 
 func TestHandlerUpdatesAndDeletesConversation(t *testing.T) {
 	repo := newFakeRepository()
-	handler := NewHandler(NewService(repo))
+	skillLifecycle := &skillConversationLifecycleProbe{}
+	handler := NewHandler(
+		NewService(repo),
+		WithLocalSkillRuntime(skillLifecycle, nil),
+	)
 
 	rec := performRequest(
 		handler,
@@ -235,6 +240,10 @@ func TestHandlerUpdatesAndDeletesConversation(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("delete status = %d, want 204; body=%s", rec.Code, rec.Body.String())
 	}
+	if skillLifecycle.userID != auth.DevelopmentUserID ||
+		skillLifecycle.conversationID != testConversationID {
+		t.Fatalf("Skill cleanup call = %#v", skillLifecycle)
+	}
 
 	rec = performRequest(handler, http.MethodGet, conversationsPath, "")
 	assertStatus(t, rec, http.StatusOK)
@@ -242,6 +251,28 @@ func TestHandlerUpdatesAndDeletesConversation(t *testing.T) {
 	decodeBody(t, rec, &listed)
 	if len(listed.Items) != 0 {
 		t.Fatalf("listed deleted items = %d, want 0", len(listed.Items))
+	}
+}
+
+func TestHandlerStopsConversationDeleteWhenSkillCleanupFails(t *testing.T) {
+	repo := newFakeRepository()
+	repo.conversations = append(repo.conversations, fakeConversation(testConversationID, "Keep", 0))
+	skillLifecycle := &skillConversationLifecycleProbe{err: errors.New("database unavailable")}
+	handler := NewHandler(
+		NewService(repo),
+		WithLocalSkillRuntime(skillLifecycle, nil),
+	)
+
+	recorder := performRequest(
+		handler,
+		http.MethodDelete,
+		conversationsPath+"/"+testConversationID,
+		"",
+	)
+	assertStatus(t, recorder, http.StatusServiceUnavailable)
+	assertErrorCode(t, recorder, "SKILL_SELECTION_CLEANUP_FAILED")
+	if repo.conversations[0].DeletedAt != nil {
+		t.Fatal("conversation was soft-deleted after Skill cleanup failure")
 	}
 }
 
@@ -5775,6 +5806,33 @@ func (p *detachedCompletionProvider) StreamChat(
 type fakeRunCancellationStore struct {
 	mu        sync.Mutex
 	cancelled map[string]bool
+}
+
+type skillConversationLifecycleProbe struct {
+	userID         string
+	conversationID string
+	err            error
+}
+
+func (probe *skillConversationLifecycleProbe) PrepareConversationRuntimeSkills(
+	context.Context,
+	string,
+	string,
+	string,
+	string,
+	bool,
+) ([]skillsupply.RuntimeSkill, error) {
+	return []skillsupply.RuntimeSkill{}, nil
+}
+
+func (probe *skillConversationLifecycleProbe) DeleteConversationData(
+	_ context.Context,
+	userID string,
+	conversationID string,
+) error {
+	probe.userID = userID
+	probe.conversationID = conversationID
+	return probe.err
 }
 
 func newFakeRunCancellationStore() *fakeRunCancellationStore {

@@ -263,6 +263,14 @@ type Repository interface {
 	ReplaceConversationSelection(context.Context, string, ConversationSelection) (ConversationSelection, error)
 }
 
+// ConversationLifecycleRepository owns Skill selection state that follows an
+// application-level soft-deleted conversation. The foreign keys remain the
+// hard-delete safety net, while this hook removes the no-longer-addressable
+// selection before the owning conversation is soft-deleted.
+type ConversationLifecycleRepository interface {
+	DeleteConversationData(context.Context, string, string) error
+}
+
 type LobeHubFetcher interface {
 	FetchSkillPackage(context.Context, string, string, int64) ([]byte, error)
 }

@@ -79,6 +79,7 @@ type Handler struct {
 	toolCapabilityProbes         *toolCapabilityProbeGroup
 	mcpService                   *mcpclient.Service
 	localSkillCatalog            LocalSkillCatalog
+	skillConversationLifecycle   SkillConversationLifecycle
 	localSkillExecutor           *localskills.Executor
 	hostWorkspaceService         hostWorkspaceExecutionService
 	artifactPublisher            WorkspaceArtifactPublisher
@@ -88,6 +89,10 @@ type Handler struct {
 }
 
 type HandlerOption func(*Handler)
+
+type SkillConversationLifecycle interface {
+	DeleteConversationData(context.Context, string, string) error
+}
 
 type ProviderAttachmentResolver interface {
 	ResolveProviderAttachment(ctx context.Context, attachment Attachment) (ProviderAttachment, error)
@@ -550,6 +555,9 @@ func WithLocalSkillRuntime(
 ) HandlerOption {
 	return func(handler *Handler) {
 		handler.localSkillCatalog = catalog
+		if lifecycle, ok := catalog.(SkillConversationLifecycle); ok {
+			handler.skillConversationLifecycle = lifecycle
+		}
 		handler.localSkillExecutor = executor
 	}
 }
@@ -1020,8 +1028,16 @@ func (h *Handler) updateConversation(w http.ResponseWriter, r *http.Request, con
 }
 
 func (h *Handler) deleteConversation(w http.ResponseWriter, r *http.Request, conversationID string) {
+	user := auth.UserOrDevelopment(r.Context())
+	if h.skillConversationLifecycle != nil {
+		if err := h.skillConversationLifecycle.DeleteConversationData(
+			r.Context(), user.ID, conversationID,
+		); err != nil {
+			writeSkillConversationCleanupError(w, err)
+			return
+		}
+	}
 	if h.mcpService != nil {
-		user := auth.UserOrDevelopment(r.Context())
 		if err := h.mcpService.DeleteConversationData(r.Context(), user.ID, conversationID); err != nil {
 			writeMCPAdmissionError(w, err)
 			return
@@ -4630,6 +4646,19 @@ func writeMCPAdmissionError(w http.ResponseWriter, err error) {
 		code, message = "MCP_AUTHORIZATION_FAILED", "The selected Tools are no longer authorized"
 	}
 	writeError(w, status, code, message)
+}
+
+func writeSkillConversationCleanupError(w http.ResponseWriter, err error) {
+	if errors.Is(err, skillsupply.ErrSelectionInvalid) {
+		writeError(w, http.StatusNotFound, "CONVERSATION_NOT_FOUND", "conversation not found")
+		return
+	}
+	writeError(
+		w,
+		http.StatusServiceUnavailable,
+		"SKILL_SELECTION_CLEANUP_FAILED",
+		"Skill selection cleanup is temporarily unavailable",
+	)
 }
 
 func chatStreamErrorBody(err error, deadlineExceeded bool) ErrorBody {
