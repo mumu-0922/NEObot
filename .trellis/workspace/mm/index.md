@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 118
+- **Total Sessions**: 119
 - **Last Active**: 2026-08-30
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~370 | Active |
+| `journal-3.md` | ~403 | Active |
 | `journal-2.md` | ~1985 | Archived |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 119 | 2026-08-30 | Harden five-image production promotion | `6c9995f4` | `main` |
 | 118 | 2026-08-30 | Deploy Skill cleanup with restore rehearsal | `f1dc33e5` | `main` |
 | 117 | 2026-08-30 | Live deployment smoke and Skill cleanup | `ae221181` | `main` |
 | 116 | 2026-08-30 | Standalone release verification | `242dc600` | `main` |

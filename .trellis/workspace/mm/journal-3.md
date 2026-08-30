@@ -368,3 +368,36 @@ Built and deployed Backend skill-cleanup-ae221181 after matched PostgreSQL/MinIO
 ### Next Steps
 
 - None - task complete
+
+
+## Session 119: Harden five-image production promotion
+
+**Date**: 2026-08-30
+**Task**: Harden five-image production promotion
+**Branch**: `main`
+
+### Summary
+
+Completed the registry-ready five-image release bundle, added hermetic stale/invalid digest regression coverage, synchronized production deployment docs and operations specs, and left live state and registry untouched.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6c9995f4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
