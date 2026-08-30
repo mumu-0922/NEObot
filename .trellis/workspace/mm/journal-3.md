@@ -302,3 +302,36 @@ Ran the isolated full standalone release gate successfully across Compose and so
 ### Next Steps
 
 - None - task complete
+
+
+## Session 117: Live deployment smoke and Skill cleanup
+
+**Date**: 2026-08-30
+**Task**: Live deployment smoke and Skill cleanup
+**Branch**: `main`
+
+### Summary
+
+Verified live Chat, Agent, RAG, Memory, Skill, and MCP paths; fixed owner-bound Skill selection cleanup before Conversation soft delete; passed backend, race, and disposable PostgreSQL 17 gates.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ae221181` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
