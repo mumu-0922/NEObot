@@ -21,8 +21,11 @@ npm ci --omit=dev --ignore-scripts --registry=https://registry.npmjs.org
 npm audit --omit=dev --audit-level=moderate --registry=https://registry.npmjs.org
 ```
 
-Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
-`RAG_IMAGE`. Production Runner URL is exactly `http://mcp-runner:8090`.
+The complete release set is `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`,
+`FRONTEND_IMAGE`, `RAG_IMAGE`, and `POSTGRES_IMAGE`. Push mode writes those five
+immutable references plus `MM_CHAT_VERSION` to
+`.release/images/<tag>/production-images.env`. Production Runner URL is exactly
+`http://mcp-runner:8090`.
 
 ### 3. Contracts
 
@@ -36,6 +39,12 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
   PostgreSQL/MinIO private network.
 - Production `MCP_RUNNER_IMAGE` is a full immutable digest and has no Compose
   `build:`. Release tooling builds Runner via Dockerfile target `mcp-runner`.
+- Release tooling must produce every immutable image required by production
+  preflight, including the repository's PostgreSQL retrieval image. Before any
+  build it removes the previous final promotion fragment; only a complete
+  five-image push may atomically recreate `production-images.env`. A local
+  `--load`, failed build, malformed Buildx digest, or rerun in the same metadata
+  directory must leave no promotable final fragment.
 - Runner auth uses a dedicated Docker Secret source: regular non-symlink,
   runtime-owner-owned, mode `0600`, 32..4096 bytes. Never reuse a user bearer or
   provider/RAG credential.
@@ -110,6 +119,8 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
 | Manifest contains a field unknown to the running Runner image | Runner restart fails closed; deploy the paired Runner image before declaring the manifest rollout complete |
 | Manifest allowlist or run scope is invalid | validator/startup fails closed before any child starts |
 | production manifest restores the retired built-in Playwright Browser | manifest regression fails; do not deploy the restored authority |
+| release output omits PostgreSQL or any other preflight image | no production bundle is emitted; fix the producer before promotion |
+| Buildx returns a non-canonical digest or a same-tag rerun fails | reject the metadata and remove any stale final production bundle |
 | Four children are retained and a new Run arrives | evict only the least-recent idle child; return capacity when every child is active |
 | Browser Run identity is long | derive distinct stable short workspace names; Chromium socket ancestry stays bounded |
 | Runner health fails | selected stdio runs fail closed; backend global readiness remains independent |
@@ -125,7 +136,7 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
 
 ### 5. Good / Base / Bad Cases
 
-- **Good**: render four pinned images, validate manifest/token metadata, migrate,
+- **Good**: publish and render five pinned images, validate manifest/token metadata, migrate,
   start backend and optional Runner, then smoke one approved Tool; dynamic npm
   execution uses an exact Server-bound artifact and isolated work directory.
 - **Good**: a separately installed private Playwright MCP initializes through
@@ -162,8 +173,11 @@ Images are `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, and
   `001..081`, tail down/re-up through head `108`, guarded `076`, targeted
   repairs, exact built-in Browser retirement, repository, and final replay.
   Every new tail migration must update both scripts.
-- `scripts/release-images.sh --dry-run --tag <test>` must print four builds and
-  `--target mcp-runner` only for Runner.
+- `scripts/release-images.sh --dry-run --tag <test>` must print five builds and
+  `--target mcp-runner` only for Runner. `scripts/test-release-images.sh` must
+  prove the exact six-line push fragment, canonical 64-hex digests, PostgreSQL
+  inclusion, local-mode non-promotion, and stale-bundle removal after forced
+  partial failure.
 - Preflight tests cover Marketplace toggle dependency, HTTPS base URL, bounded
   timeout/cache TTL, and dedicated regular secret-file metadata/content bounds.
 
@@ -212,5 +226,27 @@ mcp-runner:
   read_only: true
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
-  networks: [mcp-control, mcp-egress]
+networks: [mcp-control, mcp-egress]
+```
+
+#### Wrong release bundle
+
+```text
+MM_CHAT_VERSION=v1
+BACKEND_IMAGE=registry.example/mm-chat/backend@sha256:<digest>
+MCP_RUNNER_IMAGE=registry.example/mm-chat/mcp-runner@sha256:<digest>
+FRONTEND_IMAGE=registry.example/mm-chat/frontend@sha256:<digest>
+RAG_IMAGE=registry.example/mm-chat/rag@sha256:<digest>
+# POSTGRES_IMAGE missing, so strict preflight cannot consume this bundle.
+```
+
+#### Correct release bundle
+
+```text
+MM_CHAT_VERSION=v1
+BACKEND_IMAGE=registry.example/mm-chat/backend@sha256:<digest>
+MCP_RUNNER_IMAGE=registry.example/mm-chat/mcp-runner@sha256:<digest>
+FRONTEND_IMAGE=registry.example/mm-chat/frontend@sha256:<digest>
+RAG_IMAGE=registry.example/mm-chat/rag@sha256:<digest>
+POSTGRES_IMAGE=registry.example/mm-chat/postgres@sha256:<digest>
 ```

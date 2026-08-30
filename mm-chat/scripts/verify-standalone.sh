@@ -119,6 +119,7 @@ required_paths=(
   scripts/run-memory-single-user-bounded-miss-validation-from-vault.sh
   scripts/test-memory-single-user-bounded-miss-validation-from-vault.sh
   scripts/verify-agent-local-runtime.sh
+  scripts/test-release-images.sh
   scripts/verify-chat-artifacts-postgres17.sh
   scripts/verify-legacy-agent-cleanup-postgres17.sh
   scripts/migration-drill-tail.sh
@@ -274,6 +275,7 @@ if "MEMORY_L3_PERSONA_READER_ENABLED" in memory_worker["environment"]:
 PY
 
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/verify-agent-local-runtime.sh"
+bash "${copy_dir}/scripts/test-release-images.sh"
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-hindsight-fixture.sh"
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-regression.sh"
 DOCKER_BIN="${docker_bin}" bash "${copy_dir}/scripts/test-memory-production-validation-from-vault.sh"

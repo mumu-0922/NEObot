@@ -4,11 +4,11 @@ This runbook applies to the single-server `mm-chat` Compose stack. It assumes
 real secrets live in `mm-chat/.env.single-server` and runtime data lives in
 `mm-chat/data/`.
 
-## Active Release Mode — Compose Source Build
+## Active Live Mode — Compose Source Build
 
-The current owner-selected release path is source-build Compose deployment from
-the standalone `mm-chat/` tree. Do not require GHCR, remote registry images, or
-`@sha256:` digest env proof for the standalone cutover gate.
+The currently deployed single-server stack still uses source-build Compose from
+the standalone `mm-chat/` tree. Do not retrofit GHCR, remote registry images,
+or `@sha256:` digest env proof into a narrow local defect rollout.
 
 The Compose file already carries the required build contexts:
 
@@ -18,8 +18,10 @@ frontend    -> ./frontend/Dockerfile
 rag-worker  -> ./rag/Dockerfile
 ```
 
-Optional image publishing still exists through `scripts/release-images.sh`, but
-it is a future hardening/promotion path, not the default deployment flow.
+New hardened production promotions use the separate registry-digest path in
+[Registry Image Promotion](#registry-image-promotion-hardened-path). It is not
+the active live topology until the owner explicitly authorizes publication and
+supplies a strict production env.
 
 `backend/Dockerfile` is multi-target and its final stage is the separate MCP
 Runner. Do not create a manual Backend image with a bare `docker build`. For a
@@ -489,9 +491,9 @@ instead of schema rollback. Dropping 051 before 052 or before cleanup can leave 
 objects; deleting MinIO objects directly first can leave authenticated File and
 cache metadata pointing at missing bytes.
 
-## Optional Registry Image Promotion
+## Registry Image Promotion (Hardened Path)
 
-If a future deployment wants registry-published immutable artifacts, use:
+After registry publication is explicitly authorized, use:
 
 ```bash
 cd mm-chat
@@ -502,11 +504,32 @@ docker login ghcr.io
   --tag <release-id>
 ```
 
-The script writes `.release/images/<release-id>/production-images.env` with
-`MM_CHAT_VERSION`, `BACKEND_IMAGE`, `FRONTEND_IMAGE`, and `RAG_IMAGE` digest
-lines. This optional path may be paired with
-`compose-single-server-production.sh` and `preflight-single-server.sh`, but it
-is not required for the current build-based standalone cutover.
+The script publishes Backend, MCP Runner, Frontend, RAG, and PostgreSQL retrieval
+images. It writes `.release/images/<release-id>/production-images.env` with
+`MM_CHAT_VERSION` plus all five immutable image references:
+`BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`, `FRONTEND_IMAGE`, `RAG_IMAGE`, and
+`POSTGRES_IMAGE`.
+
+The release script removes any older `production-images.env` before starting.
+A failed or local-only build therefore cannot leave a stale file that appears
+promotable. Run `scripts/test-release-images.sh` without registry credentials
+to verify this contract.
+
+Copy the reviewed six-line fragment into a protected mode-`0600` candidate env,
+then run strict preflight and the clean-env production Compose render before
+backup, pull, migration, or recreation:
+
+```bash
+./scripts/preflight-single-server.sh .env.candidate
+./scripts/compose-single-server-production.sh .env.candidate \
+  --profile app --profile ops --profile mcp-runner \
+  --profile memory-worker --profile rag-worker --profile rag-ops \
+  config --quiet
+```
+
+Do not copy placeholder values from `.env.single-server.example`, synthesize
+missing Team keys/URLs, or change the current live env merely to make the gate
+pass. Promotion remains blocked until every production-only value is reviewed.
 
 ## Post-Release Notes
 

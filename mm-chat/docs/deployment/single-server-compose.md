@@ -848,9 +848,11 @@ tunnel/VPN to the Docker network or host.
 ## Release Checklist
 
 1. Pull the target Git commit and inspect `git diff --stat HEAD~1..HEAD -- mm-chat`.
-2. Set `MM_CHAT_VERSION` plus full registry `@sha256:` values for
-   `BACKEND_IMAGE` and `RAG_IMAGE`; retain each currently running digest as an
-   independent rollback artifact. Keep RAG dispatch disabled.
+2. Set `MM_CHAT_VERSION` plus full registry `@sha256:` values for the complete
+   five-image release set: `BACKEND_IMAGE`, `MCP_RUNNER_IMAGE`,
+   `FRONTEND_IMAGE`, `RAG_IMAGE`, and `POSTGRES_IMAGE`. Retain every currently
+   running image as an independent rollback artifact. Keep RAG dispatch
+   disabled; `MCP_RUNNER_IMAGE` remains pinned even when stdio is disabled.
 3. Run the production promotion gate before any migration or restart:
    ```bash
    ./scripts/preflight-single-server.sh .env.single-server

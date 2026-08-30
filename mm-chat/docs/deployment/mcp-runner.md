@@ -201,8 +201,9 @@ MCP_RUNNER_IMAGE=registry.example/neo-chat-mcp-runner@sha256:<64-hex>
 MCP_RUNNER_URL=http://mcp-runner:8090
 ```
 
-Build/publish all four release images with `scripts/release-images.sh`; the
-Runner build uses Dockerfile target `mcp-runner`.
+Build/publish the complete five-image release set with
+`scripts/release-images.sh`: Backend, MCP Runner, Frontend, RAG, and PostgreSQL
+retrieval. The Runner build uses Dockerfile target `mcp-runner`.
 
 Browser-backed stdio packages use the exact Chromium binary baked into the
 pinned official Playwright MCP base image and exposed at Playwright's expected
