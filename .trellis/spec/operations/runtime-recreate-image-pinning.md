@@ -50,6 +50,25 @@ For a local-only recovery, an explicit retained tag may replace a registry
 digest, but it must resolve to the reviewed image ID before any container is
 removed.
 
+Pair pre-deploy PostgreSQL and MinIO backups under one bounded identifier, then
+compare the restored database with the live migration authority dynamically:
+
+```bash
+backup_id="predeploy-<commit>-<UTC>"
+COMPOSE_FILE=compose.single-server.yml ENV_FILE=.env.single-server \
+  BACKUP_SET_ID="$backup_id" bash scripts/backup-postgres.sh
+COMPOSE_FILE=compose.single-server.yml ENV_FILE=.env.single-server \
+  BACKUP_SET_ID="$backup_id" bash scripts/backup-minio.sh
+
+psql_live ... -At -F '|' \
+  -c 'SELECT version, name, checksum FROM schema_migrations ORDER BY version' \
+  > live-migrations.tsv
+psql_restored ... -At -F '|' \
+  -c 'SELECT version, name, checksum FROM schema_migrations ORDER BY version' \
+  > restored-migrations.tsv
+cmp --silent live-migrations.tsv restored-migrations.tsv
+```
+
 ### 3. Contracts
 
 - Record each target container ID, image ID, Compose config-file label, and
@@ -78,6 +97,19 @@ removed.
   selecting any recovered database or applying an explicit migration range.
 - Back up the active runtime environment outside Git with mode `0600` and make
   the candidate environment render successfully before downtime.
+- Use one explicit backup-set ID for the pre-deploy PostgreSQL dump and MinIO
+  archive. Verify both checksum sidecars, restore only to a uniquely named
+  temporary database and bucket, compare the complete live/restored migration
+  manifests, validate bounded row/object samples, and prove all drill targets
+  were removed before recreation.
+- Migration authority comes from the live database's ordered
+  `(version, name, checksum)` rows. Never duplicate a migration list in a
+  restore runbook; it becomes stale as soon as a new migration lands.
+- A healthy source-build stack may predate newer registry-promotion preflight
+  keys. For a narrowly authorized local defect rollout, preserve and render the
+  exact live Compose topology instead of inventing missing production values.
+  Record the hardening gap separately. Production promotion must still use the
+  strict wrapper and immutable registry digests.
 - Use `--no-build --no-deps` and name only the affected services. Record
   unrelated container IDs and require them to remain unchanged.
 - If a local development image was lost, rebuild only from an exact Git commit
@@ -152,6 +184,9 @@ removed.
 | A `UNION` arm contains unparenthesized `ORDER BY`/`LIMIT`                                        | Reject the verifier before live use; parenthesize the arm or use a scalar subquery and execute it against the rehearsed schema.                                                                          |
 | A packaged frontend lacks a literal Tailwind source class but emits the required CSS declaration | Treat the literal-marker assertion as invalid, retain the prepared rollback result, and retry with compiled-CSS or rendered-behavior verification.                                                       |
 | Source checks pass but the live Frontend image predates the fix commit                           | Stop editing the source; retain the old image, deploy a reviewed candidate, and prove the live edge serves the candidate asset.                                                                          |
+| Restore acceptance embeds a fixed migration list that differs from the live manifest            | Reject the verifier before deployment. Export ordered live and restored `(version, name, checksum)` rows and require a byte-identical comparison.                                                        |
+| Strict promotion preflight rejects an older but healthy source-build environment                 | Do not synthesize production values inside the defect rollout. Preserve the exact live topology, use the reviewed local-drill boundary, and schedule promotion hardening separately.                     |
+| Temporary restore database, bucket, staging, or object-key sample remains after the drill        | Stop before recreation, remove only the uniquely named drill residue, prove zero matches, and rerun cleanup verification.                                                                               |
 
 ### 5. Good / base / bad cases
 
@@ -203,6 +238,16 @@ removed.
   scrollbar declarations or measure the rendered scroll region.
 - **Bad packaged-UI verification**: grep minified chunks for an unescaped source
   class and classify its absence as a broken image.
+- **Good recovery rehearsal**: one ID names both backup artifacts; the dump is
+  restored into a unique database, the archive into a unique bucket, the full
+  live migration manifest and bounded object samples match, and every drill
+  target is removed before Backend recreation.
+- **Bad recovery rehearsal**: trust checksums without restoring, compare the
+  database against a migration list frozen at an old release, or leave the
+  temporary bucket available after the test.
+- **Base source-build rollout**: strict promotion keys are absent, so the exact
+  running Compose topology is rendered and only release identity plus the
+  reviewed image changes; registry-promotion hardening remains separate.
 
 ### 6. Tests required
 
@@ -245,6 +290,14 @@ removed.
 - For fixes reported against a live page, record the pre/post Frontend image
   IDs, require only the Frontend container ID to change, and fetch the decisive
   immutable asset through the live HTTP edge after recreation.
+- For every pre-deploy recovery set, assert both SHA-256 sidecars, exact
+  live/restored migration-manifest equality, representative table-count
+  equality, sampled Knowledge/MCP/Skill object `stat` success, and zero
+  temporary database/bucket/staging/sample residue.
+- If strict promotion preflight is intentionally not the active topology,
+  assert the rendered candidate differs from the running service only in the
+  explicitly authorized release/image inputs and that unrelated container IDs
+  remain byte-identical.
 
 ### 7. Wrong vs correct
 
@@ -301,6 +354,12 @@ jq -e '.status == "ready" and .reason == "memory_ready"' health.json
 ```bash
 # Wrong: Tailwind may escape or transform the source class in packaged assets.
 grep -R -q 'max-h-\[39.75rem\]' /app/.next/static
+```
+
+```sql
+-- Wrong: this copied list stops being restore authority after the next release.
+WITH expected(version) AS (VALUES (1), (2), (3), (4), (5))
+SELECT * FROM expected EXCEPT SELECT version FROM schema_migrations;
 ```
 
 #### Correct
@@ -370,4 +429,15 @@ jq -e '.status == "ready" and .readyCount == 2 and
 ```bash
 # Correct: verify the compiled runtime declaration.
 grep -R -F -q 'max-height:39.75rem' /app/.next/static
+```
+
+```bash
+# Correct: compare the complete authority observed at drill time.
+psql_live ... -At -F '|' \
+  -c 'SELECT version, name, checksum FROM schema_migrations ORDER BY version' \
+  > live-migrations.tsv
+psql_restored ... -At -F '|' \
+  -c 'SELECT version, name, checksum FROM schema_migrations ORDER BY version' \
+  > restored-migrations.tsv
+cmp --silent live-migrations.tsv restored-migrations.tsv
 ```

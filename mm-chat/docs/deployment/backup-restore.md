@@ -210,17 +210,37 @@ production restore, rehearse against a temporary database in the same Postgres
 container or on a disposable server.
 
 1. Verify the dump checksum.
-2. Create a temporary drill database.
-3. Restore the dump into the temporary database.
-4. Run table and readiness checks.
-5. Drop the temporary database when the drill is complete.
+2. Export the live `(version, name, checksum)` migration manifest.
+3. Create a temporary drill database.
+4. Restore the dump into the temporary database.
+5. Export the restored manifest and compare it byte-for-byte with the live
+   manifest. Never maintain a second hard-coded migration list in this
+   runbook.
+6. Run table and readiness checks.
+7. Drop the temporary database and manifest evidence when the drill is
+   complete.
 
 ```bash
 cd /path/to/mm-chat
 
 (cd mm-chat/backup/postgres && sha256sum -c <chosen-dump>.dump.sha256)
 
-scripts/compose-single-server-production.sh .env.single-server \
+mkdir -p mm-chat/backup/restore
+mm-chat/scripts/compose-single-server-production.sh mm-chat/.env.single-server \
+  exec -T postgres sh -ceu '
+: "${POSTGRES_USER:?POSTGRES_USER is required}"
+if [ -n "${POSTGRES_PASSWORD:-}" ]; then
+  export PGPASSWORD="$POSTGRES_PASSWORD"
+fi
+
+exec psql --set=ON_ERROR_STOP=1 --tuples-only --no-align \
+  --field-separator="|" --username="$POSTGRES_USER" \
+  --dbname="${POSTGRES_DB:-$POSTGRES_USER}" \
+  --command="SELECT version, name, checksum
+    FROM schema_migrations ORDER BY version;"
+' > mm-chat/backup/restore/live-schema-migrations.tsv
+
+mm-chat/scripts/compose-single-server-production.sh mm-chat/.env.single-server \
   exec -T postgres sh -ceu '
 : "${POSTGRES_USER:?POSTGRES_USER is required}"
 if [ -n "${POSTGRES_PASSWORD:-}" ]; then
@@ -261,6 +281,24 @@ if [ -n "${POSTGRES_PASSWORD:-}" ]; then
   export PGPASSWORD="$POSTGRES_PASSWORD"
 fi
 
+exec psql --set=ON_ERROR_STOP=1 --tuples-only --no-align \
+  --field-separator="|" --username="$POSTGRES_USER" \
+  --dbname=neo_chat_restore_drill \
+  --command="SELECT version, name, checksum
+    FROM schema_migrations ORDER BY version;"
+' > mm-chat/backup/restore/restored-schema-migrations.tsv
+
+cmp --silent \
+  mm-chat/backup/restore/live-schema-migrations.tsv \
+  mm-chat/backup/restore/restored-schema-migrations.tsv
+
+mm-chat/scripts/compose-single-server-production.sh mm-chat/.env.single-server \
+  exec -T postgres sh -ceu '
+: "${POSTGRES_USER:?POSTGRES_USER is required}"
+if [ -n "${POSTGRES_PASSWORD:-}" ]; then
+  export PGPASSWORD="$POSTGRES_PASSWORD"
+fi
+
 exec psql --set=ON_ERROR_STOP=1 \
   --username="$POSTGRES_USER" --dbname=neo_chat_restore_drill
 ' <<'SQL'
@@ -271,44 +309,6 @@ DECLARE
   object_count INTEGER;
   required_table TEXT;
 BEGIN
-  WITH expected(version, name, checksum) AS (
-    VALUES
-      (1::BIGINT, 'initial_schema',
-       'baedb43eb3c4a3c586e6b4fb2c31232952f5751cd44c04538d1edfec809f2da8'),
-      (2::BIGINT, 'messages_run_id_index',
-       '898797afe75a718c9973ce96fcb1f5813c6bec096a2a1090552d05941fb4028d'),
-      (3::BIGINT, 'import_batches',
-       'e38b8489e1d8622d872616be173fa59550e1c9244104216362af53b618dd9aca'),
-      (4::BIGINT, 'phase15_identity_knowledge_acl',
-       'dca5618aea9955d41bdbe33c448c5f2a526fd01c518f4927c7232b405533fcec'),
-      (5::BIGINT, 'phase15_team_services',
-       'eb11fec51508c28e04c46de5999f1ea669efc78e6aa63716e87de74605a78a3c'),
-      (6::BIGINT, 'phase15_knowledge_services',
-       '18cbd6b05d10b0560093549b56dd4a10fa276c3b93e5737039f3129f0e07a307'),
-      (7::BIGINT, 'phase15_knowledge_deletion',
-       'ae0b251db4b10aaa378a48679044708cb13148162e24f5544c3e10f9b219fd2a'),
-      (8::BIGINT, 'phase15_governance_immutability',
-       '3e5579e3ca2556db9a2fdad7af9553ee972153fc921fbd51a6279e51d64edc36'),
-      (9::BIGINT, 'phase15_consent_expiry_materialization',
-       '288e94681c5ea0efb55a9c1489babc9f9d850b66196a9a15a8741a90c70b2774'),
-      (10::BIGINT, 'phase15_rag_projection_consistency',
-       '9e2ef61634edfd8b95f1f9ad3aad026159fc63a7d136a8fde2a047c861bb5c83')
-  ), drift AS (
-    (SELECT version, name, checksum FROM expected
-     EXCEPT
-     SELECT version, name, checksum FROM schema_migrations)
-    UNION ALL
-    (SELECT version, name, checksum FROM schema_migrations
-     EXCEPT
-     SELECT version, name, checksum FROM expected)
-  )
-  SELECT count(*) INTO object_count FROM drift;
-  IF object_count <> 0 THEN
-    RAISE EXCEPTION
-      'restore acceptance: migration manifest differs from release (% rows)',
-      object_count;
-  END IF;
-
   FOREACH required_table IN ARRAY ARRAY[
     'knowledge_collections',
     'knowledge_documents',
@@ -596,20 +596,23 @@ rm -rf mm-chat/backup/restore/minio-drill
 rm -f mm-chat/backup/restore/knowledge-object-sample.txt
 rm -f mm-chat/backup/restore/mcp-object-sample.txt
 rm -f mm-chat/backup/restore/skill-object-sample.txt
+rm -f mm-chat/backup/restore/live-schema-migrations.tsv
+rm -f mm-chat/backup/restore/restored-schema-migrations.tsv
 ```
 
-The Postgres acceptance block fails closed unless every migration `001` through
-`010` exactly matches the release's version, name, and runner checksum; the
-Knowledge core and migration `010` projection tables are readable; migration
-`010`'s RAG functions and key authority/lease/projection columns exist;
-the Consent expiry column/index exists; the Governance immutability trigger is
-enabled; and the purge fence is a valid unique index. It also rejects Document
-Version/File hash or object-key mismatches and exports up to five live Knowledge
-object keys, up to five MCP result object keys, and up to fifteen Skill
-quarantine/package/SBOM keys. The MinIO drill must `mc stat` every exported
-key. An empty sample is valid only when the restored database has no eligible
-live Knowledge Document Version, MCP artifact, or Skill package authority,
-respectively.
+The Postgres acceptance fails closed unless the complete live and restored
+migration manifests match byte-for-byte. This dynamic comparison includes every
+applied migration and deliberately avoids a second, stale list in the runbook.
+The structural block additionally requires the Knowledge core and projection
+tables to be readable; the RAG functions and key authority/lease/projection
+columns to exist; the Consent expiry column/index to exist; the Governance
+immutability trigger to be enabled; and the purge fence to be a valid unique
+index. It also rejects Document Version/File hash or object-key mismatches and
+exports up to five live Knowledge object keys, up to five MCP result object
+keys, and up to fifteen Skill quarantine/package/SBOM keys. The MinIO drill must
+`mc stat` every exported key. An empty sample is valid only when the restored
+database has no eligible live Knowledge Document Version, MCP artifact, or
+Skill package authority, respectively.
 
 Use root/admin MinIO credentials for the temporary-bucket drill. The application
 S3 credentials are intentionally scoped to the production bucket and may not be
