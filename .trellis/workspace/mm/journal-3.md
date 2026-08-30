@@ -335,3 +335,36 @@ Verified live Chat, Agent, RAG, Memory, Skill, and MCP paths; fixed owner-bound 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 118: Deploy Skill cleanup with restore rehearsal
+
+**Date**: 2026-08-30
+**Task**: Deploy Skill cleanup with restore rehearsal
+**Branch**: `main`
+
+### Summary
+
+Built and deployed Backend skill-cleanup-ae221181 after matched PostgreSQL/MinIO backup and isolated restore drills; verified authenticated Conversation Skill-selection cleanup without Provider calls, preserved unrelated services and rollback inputs, and replaced the stale hard-coded restore migration manifest with dynamic live/restored authority comparison.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f1dc33e5` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
