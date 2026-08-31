@@ -401,3 +401,36 @@ Completed the registry-ready five-image release bundle, added hermetic stale/inv
 ### Next Steps
 
 - None - task complete
+
+
+## Session 120: Account security and password recovery
+
+**Date**: 2026-08-31
+**Task**: Account security and password recovery
+**Branch**: `main`
+
+### Summary
+
+Added authenticated self-service password rotation, all-session revocation, login-page recovery, exact password policy handling, cross-layer tests and Auth E2E; passed full standalone verification and deployed pinned healthy Backend/Frontend images locally.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fab9da79` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
