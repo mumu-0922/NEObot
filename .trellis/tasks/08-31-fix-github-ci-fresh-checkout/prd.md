@@ -29,6 +29,9 @@ as the developer working tree, so GitHub Actions succeeds from a clean checkout.
 7. Remove undeclared runner-tool assumptions, keep wall-clock acceptance tests
    isolated from parallel file contention, and emit actionable Ruff annotations
    when the remote lint gate fails.
+8. Preserve Compose `create_host_path: false` verification across serializers
+   that omit explicit false values from rendered JSON, while still rejecting an
+   explicit true value.
 
 ## Acceptance Criteria
 

@@ -215,7 +215,7 @@ for key, value in live.get("environment", {}).items():
         raise SystemExit("Memory regression topology: configured candidate-judge credential leaked into Docker metadata")
 PY
 
-if rg -n '\.env\.single-server|mm-chat/(data|secrets|backup)|\.\./(data|secrets|backup)' "${compose_file}"; then
+if grep -En '\.env\.single-server|mm-chat/(data|secrets|backup)|\.\./(data|secrets|backup)' "${compose_file}"; then
   echo "Memory regression topology: live runtime path referenced" >&2
   exit 1
 fi

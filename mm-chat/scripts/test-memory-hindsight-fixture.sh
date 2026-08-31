@@ -139,7 +139,7 @@ for forbidden in ("private", "rag-private", "mm_chat_provider_keyring"):
         raise SystemExit(f"Hindsight fixture topology: main runtime authority leaked: {forbidden}")
 PY
 
-if rg -n '\.env\.single-server|mm-chat/(data|secrets|backup)|\.\./(data|secrets|backup)' "${compose_file}"; then
+if grep -En '\.env\.single-server|mm-chat/(data|secrets|backup)|\.\./(data|secrets|backup)' "${compose_file}"; then
   echo "Hindsight fixture topology: protected Native runtime path referenced" >&2
   exit 1
 fi

@@ -5,7 +5,7 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 project_dir="$(cd -- "${script_dir}/.." && pwd -P)"
 docker_bin="${DOCKER_BIN:-docker}"
 
-for command in bash go python3 rg "${docker_bin}"; do
+for command in bash go grep python3 "${docker_bin}"; do
   if ! command -v "${command}" >/dev/null 2>&1; then
     echo "local Agent runtime verification: ${command} is required" >&2
     exit 1
@@ -54,7 +54,7 @@ for path in "${retired_paths[@]}"; do
   fi
 done
 
-if rg -n \
+if grep -En \
   'mm-chat-agent-runtime-(control|root-canary|broker-canary|project-canary|child-canary|cron-worker|draft-learning-worker|product-canary)' \
   "${project_dir}/backend/Dockerfile"; then
   echo "local Agent runtime verification: retired binary remains in Backend image" >&2
@@ -62,12 +62,12 @@ if rg -n \
 fi
 
 for executable in bash file git jq nodejs npm py3-pip python3 ripgrep unzip zip; do
-  if ! rg -q --fixed-strings "${executable}" "${project_dir}/backend/Dockerfile"; then
+  if ! grep -Fq -- "${executable}" "${project_dir}/backend/Dockerfile"; then
     echo "local Agent runtime verification: Backend image is missing ${executable}" >&2
     exit 1
   fi
 done
-rg -q 'mkdir -p /var/lib/mm-chat/agent-skills /workspace' "${project_dir}/backend/Dockerfile"
+grep -Eq 'mkdir -p /var/lib/mm-chat/agent-skills /workspace' "${project_dir}/backend/Dockerfile"
 
 compose_json="$(mktemp)"
 trap 'rm -f "${compose_json}"' EXIT
@@ -78,7 +78,7 @@ trap 'rm -f "${compose_json}"' EXIT
   --profile app --profile memory-worker --profile mcp-runner \
   config --format json >"${compose_json}"
 
-python3 - "${compose_json}" "${project_dir}/.env.single-server.example" <<'PY'
+python3 - "${compose_json}" "${project_dir}/.env.single-server.example" "${project_dir}/compose.single-server.yml" <<'PY'
 import json
 import re
 import sys
@@ -86,6 +86,22 @@ from pathlib import Path
 
 config = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 services = config["services"]
+compose_source = Path(sys.argv[3]).read_text(encoding="utf-8")
+
+for target in (
+    "${AGENT_LOCAL_RUNTIME_ROOT:-/var/lib/mm-chat/agent-skills}",
+    "${AGENT_LOCAL_WORKSPACE_ROOT:-/workspace}",
+):
+    pattern = re.compile(
+        rf"target:\s*{re.escape(target)}\s*\n"
+        r"\s*bind:\s*\n"
+        r"\s*create_host_path:\s*false(?:\s|$)"
+    )
+    if not pattern.search(compose_source):
+        raise SystemExit(
+            "local Agent runtime verification: "
+            f"create_host_path=false source contract is missing: {target}"
+        )
 
 retired_services = {
     "agent-runtime-control",
@@ -131,7 +147,7 @@ for target in ("/var/lib/mm-chat/agent-skills", "/workspace"):
         raise SystemExit(
             f"local Agent runtime verification: writable bind is missing: {target}"
         )
-    if volume.get("bind", {}).get("create_host_path") is not False:
+    if volume.get("bind", {}).get("create_host_path") is True:
         raise SystemExit(
             f"local Agent runtime verification: bind may create a root-owned path: {target}"
         )
@@ -191,8 +207,8 @@ if local_names != expected_local_names:
     )
 PY
 
-rg -q 'mux.Handle\("/v1/skills"' "${project_dir}/backend/internal/httpserver/server.go"
-rg -q '/v1/skills/store' "${project_dir}/frontend/src/services/api/client/server/skillStoreApi.ts"
+grep -Eq 'mux.Handle\("/v1/skills"' "${project_dir}/backend/internal/httpserver/server.go"
+grep -Eq '/v1/skills/store' "${project_dir}/frontend/src/services/api/client/server/skillStoreApi.ts"
 
 (
   cd "${project_dir}/backend"
