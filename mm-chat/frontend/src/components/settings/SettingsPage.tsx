@@ -10,6 +10,7 @@ import {
   FolderSearch,
   ShieldCheck,
   Brain,
+  UserRound,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -21,6 +22,7 @@ import SystemSettings from "./SystemSettings";
 import DefaultModelSettings from "./DefaultModelSettings";
 import DeploymentHealth from "./DeploymentHealth";
 import MemorySettings from "./MemorySettings";
+import AccountSecuritySettings from "./AccountSecuritySettings";
 import type { SettingsTabId } from "@/lib/chat/panelUrlState";
 
 const SETTINGS_TABS: Array<{
@@ -28,6 +30,7 @@ const SETTINGS_TABS: Array<{
   labelKey: string;
   Icon: LucideIcon;
 }> = [
+  { id: "account", labelKey: "tabAccount", Icon: UserRound },
   { id: "providers", labelKey: "tabProviders", Icon: Server },
   { id: "defaults", labelKey: "tabDefaults", Icon: Cpu },
   { id: "search", labelKey: "tabSearch", Icon: Globe },
@@ -38,8 +41,13 @@ const SETTINGS_TABS: Array<{
   { id: "system", labelKey: "tabSystem", Icon: Settings },
 ];
 
-const renderTabContent = (activeTab: SettingsTabId) => {
+const renderTabContent = (
+  activeTab: SettingsTabId,
+  onAuthInvalidated?: () => void,
+) => {
   switch (activeTab) {
+    case "account":
+      return <AccountSecuritySettings onAuthInvalidated={onAuthInvalidated} />;
     case "providers":
       return <ProviderSettings />;
     case "defaults":
@@ -63,12 +71,14 @@ interface SettingsPageProps {
   onClose?: () => void;
   activeTab?: SettingsTabId;
   onTabChange?: (tab: SettingsTabId) => void;
+  onAuthInvalidated?: () => void;
 }
 
 const SettingsPage: React.FC<SettingsPageProps> = ({
   onClose,
   activeTab,
   onTabChange,
+  onAuthInvalidated,
 }) => {
   const t = useTranslations("SettingsPage");
   const [localActiveTab, setLocalActiveTab] =
@@ -193,7 +203,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               aria-labelledby={`settings-tab-${resolvedActiveTab}`}
               className="mx-auto w-full max-w-5xl px-4 py-5 md:px-8 md:py-6"
             >
-              {renderTabContent(resolvedActiveTab)}
+              {renderTabContent(resolvedActiveTab, onAuthInvalidated)}
             </div>
           </div>
         </div>

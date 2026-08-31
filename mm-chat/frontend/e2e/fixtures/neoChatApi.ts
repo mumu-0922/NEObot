@@ -43,6 +43,7 @@ export const TEST_USER = {
   role: "owner" as const,
 };
 export const TEST_TOKEN = "e2e-session-token";
+export const TEST_RECOVERY_TOKEN = "e2e-recovery-token";
 export { conversation, TEST_WORKSPACE_ID } from "./neoChatApiSupport";
 
 export class NeoChatApiFixture {
@@ -54,6 +55,7 @@ export class NeoChatApiFixture {
   readonly resources = new NeoChatResourceApiFixture();
   private readonly pendingRuns = new Map<string, PendingRun>();
   private authValid = true;
+  private password = "e2e-pass";
   private sequence = 0;
 
   constructor(conversations: FixtureConversation[]) {
@@ -263,7 +265,10 @@ export class NeoChatApiFixture {
         email?: string;
         password?: string;
       };
-      if (body.email !== "owner@example.test" || body.password !== "e2e-pass") {
+      if (
+        body.email !== "owner@example.test" ||
+        body.password !== this.password
+      ) {
         await json(
           route,
           { error: { code: "UNAUTHORIZED", message: "Invalid login" } },
@@ -277,6 +282,33 @@ export class NeoChatApiFixture {
         user: TEST_USER,
         expiresAt: "2099-01-01T00:00:00Z",
       });
+      return;
+    }
+
+    if (path === "/v1/auth/recovery/request" && method === "POST") {
+      await json(route, { status: "accepted" }, 202);
+      return;
+    }
+
+    if (path === "/v1/auth/recovery/complete" && method === "POST") {
+      const body = request.postDataJSON() as {
+        token?: string;
+        newPassword?: string;
+      };
+      if (
+        body.token !== TEST_RECOVERY_TOKEN ||
+        typeof body.newPassword !== "string"
+      ) {
+        await json(
+          route,
+          { error: { code: "INVALID_CREDENTIAL", message: "Invalid token" } },
+          401,
+        );
+        return;
+      }
+      this.password = body.newPassword;
+      this.authValid = false;
+      await route.fulfill({ status: 204 });
       return;
     }
 
@@ -297,6 +329,52 @@ export class NeoChatApiFixture {
     }
 
     if (path === "/v1/auth/logout" && method === "POST") {
+      this.authValid = false;
+      await route.fulfill({ status: 204 });
+      return;
+    }
+
+    if (path === "/v1/me/password" && method === "POST") {
+      const body = request.postDataJSON() as {
+        currentPassword?: string;
+        newPassword?: string;
+      };
+      if (
+        !this.authValid ||
+        request.headers().authorization !== `Bearer ${TEST_TOKEN}` ||
+        body.currentPassword !== this.password ||
+        typeof body.newPassword !== "string"
+      ) {
+        await json(
+          route,
+          {
+            error: {
+              code: "INVALID_CREDENTIAL",
+              message: "Invalid credential",
+            },
+          },
+          401,
+        );
+        return;
+      }
+      this.password = body.newPassword;
+      this.authValid = false;
+      await route.fulfill({ status: 204 });
+      return;
+    }
+
+    if (path === "/v1/me/sessions" && method === "DELETE") {
+      if (
+        !this.authValid ||
+        request.headers().authorization !== `Bearer ${TEST_TOKEN}`
+      ) {
+        await json(
+          route,
+          { error: { code: "UNAUTHORIZED", message: "Session expired" } },
+          401,
+        );
+        return;
+      }
       this.authValid = false;
       await route.fulfill({ status: 204 });
       return;

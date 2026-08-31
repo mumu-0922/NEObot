@@ -26,6 +26,7 @@ const (
 	authRecoveryRequestPath  = "/v1/auth/recovery/request"
 	authRecoveryCompletePath = "/v1/auth/recovery/complete"
 	mePath                   = "/v1/me"
+	mePasswordPath           = "/v1/me/password"
 	meSessionsPath           = "/v1/me/sessions"
 
 	defaultAuthRateLimitEntries = 10_000
@@ -82,6 +83,11 @@ type RecoveryCompleteRequest struct {
 	NewPassword string `json:"newPassword"`
 }
 
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"currentPassword"`
+	NewPassword     string `json:"newPassword"`
+}
+
 type RecoveryAcceptedResponse struct {
 	Status string `json:"status"`
 }
@@ -132,6 +138,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.requireMethod(w, r, http.MethodPost, h.logout)
 	case meSessionsPath:
 		h.requireMethod(w, r, http.MethodDelete, h.revokeAllSessions)
+	case mePasswordPath:
+		h.requireMethod(w, r, http.MethodPost, h.changePassword)
 	case mePath:
 		h.requireMethod(w, r, http.MethodGet, h.me)
 	default:
@@ -242,6 +250,22 @@ func (h *Handler) completeRecovery(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.CompleteRecovery(r.Context(), RecoveryCompleteInput{
 		Token:       request.Token,
 		NewPassword: request.NewPassword,
+	}); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
+	var request ChangePasswordRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeDecodeError(w, err)
+		return
+	}
+	if err := h.service.ChangePassword(r.Context(), ChangePasswordInput{
+		CurrentPassword: request.CurrentPassword,
+		NewPassword:     request.NewPassword,
 	}); err != nil {
 		writeServiceError(w, err)
 		return

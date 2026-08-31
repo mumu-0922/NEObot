@@ -299,6 +299,87 @@ func TestServiceRecoveryDeliveryAndCompletion(t *testing.T) {
 	}
 }
 
+func TestServiceChangePasswordVerifiesCurrentCredentialAndInvalidatesSessions(t *testing.T) {
+	repo := &fakeAuthRepository{
+		credential: LoginCredential{
+			UserID:             "11111111-1111-4111-8111-111111111111",
+			PasswordHash:       defaultDummyPasswordHash,
+			CredentialRevision: 4,
+		},
+		changeRevoked: []RevokedSession{{
+			ID:        "22222222-2222-4222-8222-222222222222",
+			TokenHash: "changed-session-hash",
+		}},
+	}
+	cache := &fakeAuthCache{}
+	service := NewService(repo, WithAuthSessionCache(cache))
+	ctx := WithUser(context.Background(), User{ID: repo.credential.UserID})
+
+	err := service.ChangePassword(ctx, ChangePasswordInput{
+		CurrentPassword: validTestPassword,
+		NewPassword:     "replacement-password-value",
+	})
+	if err != nil {
+		t.Fatalf("ChangePassword() error = %v", err)
+	}
+	if repo.currentLookupUserID != repo.credential.UserID {
+		t.Fatalf("current credential lookup user = %q", repo.currentLookupUserID)
+	}
+	if repo.changeInput.UserID != repo.credential.UserID ||
+		repo.changeInput.ExpectedRevision != 4 ||
+		!strings.HasPrefix(repo.changeInput.NewPasswordHash, "$argon2id$") {
+		t.Fatalf("change input = %#v", repo.changeInput)
+	}
+	valid, verifyErr := verifyPassword(context.Background(), "replacement-password-value", repo.changeInput.NewPasswordHash)
+	if verifyErr != nil || !valid {
+		t.Fatalf("verify changed password hash = %v/%v", valid, verifyErr)
+	}
+	if cache.deletedTokenHash != "changed-session-hash" ||
+		cache.revokedSessionID != repo.changeRevoked[0].ID {
+		t.Fatalf("cache invalidation = %#v", cache)
+	}
+}
+
+func TestServiceChangePasswordRejectsWrongCurrentPasswordWithoutMutation(t *testing.T) {
+	repo := &fakeAuthRepository{
+		credential: LoginCredential{
+			UserID:             "11111111-1111-4111-8111-111111111111",
+			PasswordHash:       defaultDummyPasswordHash,
+			CredentialRevision: 2,
+		},
+	}
+	service := NewService(repo)
+	ctx := WithUser(context.Background(), User{ID: repo.credential.UserID})
+
+	err := service.ChangePassword(ctx, ChangePasswordInput{
+		CurrentPassword: "different-password-value",
+		NewPassword:     "replacement-password-value",
+	})
+	if !errors.Is(err, ErrInvalidCredential) {
+		t.Fatalf("ChangePassword() error = %v, want ErrInvalidCredential", err)
+	}
+	if repo.changeCalled {
+		t.Fatalf("ChangePassword() reached repository mutation: %#v", repo.changeInput)
+	}
+}
+
+func TestServiceChangePasswordRejectsInvalidInputBeforeRepository(t *testing.T) {
+	repo := &fakeAuthRepository{}
+	service := NewService(repo)
+	ctx := WithUser(context.Background(), User{ID: "11111111-1111-4111-8111-111111111111"})
+
+	err := service.ChangePassword(ctx, ChangePasswordInput{
+		CurrentPassword: validTestPassword,
+		NewPassword:     "12345678",
+	})
+	if !errors.Is(err, ErrInvalidIdentityInput) {
+		t.Fatalf("ChangePassword() error = %v, want ErrInvalidIdentityInput", err)
+	}
+	if repo.currentLookupUserID != "" || repo.changeCalled {
+		t.Fatalf("unexpected repository calls lookup=%q change=%v", repo.currentLookupUserID, repo.changeCalled)
+	}
+}
+
 func TestServiceRevokeAllSessionsUsesContextIdentity(t *testing.T) {
 	repo := &fakeAuthRepository{}
 	service := NewService(repo)
@@ -339,6 +420,12 @@ type fakeAuthRepository struct {
 	deliverRecovery       bool
 	completeInput         CompleteRecoveryRepositoryInput
 	completeRevoked       []RevokedSession
+	currentLookupUserID   string
+	currentLookupErr      error
+	changeInput           ChangePasswordRepositoryInput
+	changeRevoked         []RevokedSession
+	changeErr             error
+	changeCalled          bool
 	revokedTokenHash      string
 	revokedUserID         string
 }
@@ -349,6 +436,17 @@ func (r *fakeAuthRepository) LookupLoginCredential(_ context.Context, email stri
 		return LoginCredential{}, r.lookupErr
 	}
 	if r.credential.Email != "" && !strings.EqualFold(r.credential.Email, email) {
+		return LoginCredential{}, ErrInvalidCredential
+	}
+	return r.credential, nil
+}
+
+func (r *fakeAuthRepository) LookupCredentialByUserID(_ context.Context, userID string) (LoginCredential, error) {
+	r.currentLookupUserID = userID
+	if r.currentLookupErr != nil {
+		return LoginCredential{}, r.currentLookupErr
+	}
+	if r.credential.UserID != "" && r.credential.UserID != userID {
 		return LoginCredential{}, ErrInvalidCredential
 	}
 	return r.credential, nil
@@ -399,6 +497,12 @@ func (r *fakeAuthRepository) CreateRecoveryToken(_ context.Context, input Create
 func (r *fakeAuthRepository) CompleteRecovery(_ context.Context, input CompleteRecoveryRepositoryInput) ([]RevokedSession, error) {
 	r.completeInput = input
 	return r.completeRevoked, nil
+}
+
+func (r *fakeAuthRepository) ChangePassword(_ context.Context, input ChangePasswordRepositoryInput) ([]RevokedSession, error) {
+	r.changeCalled = true
+	r.changeInput = input
+	return r.changeRevoked, r.changeErr
 }
 
 func (r *fakeAuthRepository) RevokeSessionByTokenHash(_ context.Context, tokenHash string) (Session, error) {

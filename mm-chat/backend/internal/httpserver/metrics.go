@@ -392,7 +392,7 @@ func normalizeMetricMethod(method string) string {
 func knownMetricPath(path string) (string, bool) {
 	switch path {
 	case "/", "/health", "/ready", "/metrics", "/v1/version", "/v1/me",
-		"/v1/me/sessions", "/v1/me/knowledge/query-consents",
+		"/v1/me/password", "/v1/me/sessions", "/v1/me/knowledge/query-consents",
 		"/v1/config", "/v1/providers/models", "/v1/byok/public-key",
 		"/v1/admin/search/providers", "/v1/admin/voice/providers",
 		"/v1/admin/rag/providers",

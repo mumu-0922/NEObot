@@ -24,6 +24,7 @@ import Mcp from "./ja/Mcp.json";
 import Content from "./ja/Content.json";
 import ChatApp from "./ja/ChatApp.json";
 import SkillStore from "./ja/SkillStore.json";
+import AccountSecurity from "./ja/AccountSecurity.json";
 
 const messages = {
   Common,
@@ -52,6 +53,7 @@ const messages = {
   Content,
   ChatApp,
   SkillStore,
+  AccountSecurity,
 };
 
 export default messages;

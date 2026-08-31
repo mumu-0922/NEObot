@@ -2,6 +2,7 @@
   "title": "设置",
   "close": "关闭设置",
   "sections": "设置分区",
+  "tabAccount": "账户与安全",
   "tabProviders": "模型供应商",
   "tabDefaults": "默认模型",
   "tabSearch": "搜索服务",

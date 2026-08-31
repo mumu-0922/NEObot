@@ -10,6 +10,7 @@ export const CHAT_PANEL_VALUES = [
 export type ChatPanel = (typeof CHAT_PANEL_VALUES)[number];
 
 export const SETTINGS_TAB_VALUES = [
+  "account",
   "providers",
   "defaults",
   "search",

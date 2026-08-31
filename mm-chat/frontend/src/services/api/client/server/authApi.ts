@@ -3,6 +3,7 @@ import type {
   AuthApi,
   AuthenticatedRequestInput,
   AuthUserDTO,
+  ChangePasswordInput,
   CompleteRecoveryInput,
   LoginInput,
   LoginResult,
@@ -51,6 +52,17 @@ export function createServerAuthApiShell(httpClient: HttpClient): AuthApi {
       await httpClient.requestJson<void>("/v1/auth/recovery/complete", {
         method: "POST",
         body: input,
+      });
+    },
+
+    async changePassword(input: ChangePasswordInput): Promise<void> {
+      await httpClient.requestJson<void>("/v1/me/password", {
+        method: "POST",
+        headers: authHeaders(input),
+        body: {
+          currentPassword: input.currentPassword,
+          newPassword: input.newPassword,
+        },
       });
     },
 

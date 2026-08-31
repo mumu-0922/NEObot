@@ -34,6 +34,10 @@ export function createLocalAuthApiShell(): AuthApi {
       throw unsupportedFeature("local password recovery completion");
     },
 
+    async changePassword(): Promise<void> {
+      throw unsupportedFeature("local account password change");
+    },
+
     async logout(): Promise<void> {
       return undefined;
     },

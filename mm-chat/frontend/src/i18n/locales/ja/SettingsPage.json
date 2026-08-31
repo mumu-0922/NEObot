@@ -2,6 +2,7 @@
   "title": "設定",
   "close": "設定を閉じる",
   "sections": "設定セクション",
+  "tabAccount": "アカウントとセキュリティ",
   "tabProviders": "モデルプロバイダー",
   "tabDefaults": "デフォルトモデル",
   "tabSearch": "検索サービス",

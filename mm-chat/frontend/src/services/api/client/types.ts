@@ -1026,6 +1026,12 @@ export interface CompleteRecoveryInput {
   newPassword: string;
 }
 
+export interface ChangePasswordInput {
+  currentPassword: string;
+  newPassword: string;
+  token?: string;
+}
+
 export interface AuthenticatedRequestInput {
   token?: string;
 }
@@ -1044,6 +1050,7 @@ export interface AuthApi {
   acceptInvite(input: AcceptInviteInput): Promise<LoginResult>;
   requestRecovery(input: RecoveryRequestInput): Promise<void>;
   completeRecovery(input: CompleteRecoveryInput): Promise<void>;
+  changePassword(input: ChangePasswordInput): Promise<void>;
   logout(input?: AuthenticatedRequestInput): Promise<void>;
   revokeAllSessions(input?: AuthenticatedRequestInput): Promise<void>;
 }

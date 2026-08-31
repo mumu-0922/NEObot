@@ -35,6 +35,16 @@ secrets, or copied provider keys.
 
 ## Account Password Recovery
 
+An authenticated user can rotate their own password from **Settings → Account
+& Security**. The user must provide the current password. A successful change
+increments the Credential revision, revokes active Recovery Tokens, and signs
+the account out on every device, including the browser that submitted the
+change. The user must sign in again with the new password.
+
+Use Recovery when the user cannot sign in. The login page exposes the same
+request and completion flow described below; SMTP must be configured for the
+one-time Token to reach the mailbox.
+
 There is no rotatable `AUTH_BOOTSTRAP_TOKEN`. The one-time
 `admin bootstrap-identity` command provisions only the first Credential and
 refuses to run once any Credential exists; it is not a password-reset path.

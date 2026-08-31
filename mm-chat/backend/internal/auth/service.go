@@ -14,11 +14,13 @@ const defaultDummyPasswordHash = "$argon2id$v=19$m=65536,t=3,p=2$bW0tY2hhdC1kdW1
 
 type AuthRepository interface {
 	LookupLoginCredential(ctx context.Context, canonicalEmail string) (LoginCredential, error)
+	LookupCredentialByUserID(ctx context.Context, userID string) (LoginCredential, error)
 	LookupInviteAcceptanceSnapshot(ctx context.Context, inviteTokenHash string) (InviteAcceptanceSnapshot, error)
 	CreateCredentialSession(ctx context.Context, input CreateCredentialSessionInput) (Session, error)
 	AcceptInvite(ctx context.Context, input AcceptInviteRepositoryInput) (Session, error)
 	CreateRecoveryToken(ctx context.Context, input CreateRecoveryTokenInput) (RecoveryTarget, bool, error)
 	CompleteRecovery(ctx context.Context, input CompleteRecoveryRepositoryInput) ([]RevokedSession, error)
+	ChangePassword(ctx context.Context, input ChangePasswordRepositoryInput) ([]RevokedSession, error)
 	RevokeSessionByTokenHash(ctx context.Context, tokenHash string) (Session, error)
 	RevokeSessionsByUserID(ctx context.Context, userID string) ([]RevokedSession, error)
 	BootstrapIdentity(ctx context.Context, input BootstrapIdentityInput) error
@@ -363,6 +365,58 @@ func (s *Service) CompleteRecovery(ctx context.Context, input RecoveryCompleteIn
 	revoked, err := s.repo.CompleteRecovery(ctx, CompleteRecoveryRepositoryInput{
 		TokenHash:    HashSessionToken(token),
 		PasswordHash: passwordHash,
+	})
+	if errors.Is(err, ErrInvalidCredential) {
+		return ErrInvalidCredential
+	}
+	if err != nil {
+		return err
+	}
+	s.invalidateSessions(ctx, revoked)
+	return nil
+}
+
+func (s *Service) ChangePassword(ctx context.Context, input ChangePasswordInput) error {
+	if err := s.requireRepository(); err != nil {
+		return err
+	}
+	user, ok := UserFromContext(ctx)
+	if !ok || !isUUID(user.ID) {
+		return ErrSessionNotFound
+	}
+	if err := validatePassword(input.CurrentPassword); err != nil {
+		return ErrInvalidIdentityInput
+	}
+	if err := validatePassword(input.NewPassword); err != nil {
+		return ErrInvalidIdentityInput
+	}
+
+	credential, err := s.repo.LookupCredentialByUserID(ctx, user.ID)
+	if errors.Is(err, ErrInvalidCredential) {
+		return ErrInvalidCredential
+	}
+	if err != nil {
+		return err
+	}
+	valid, err := verifyPassword(ctx, input.CurrentPassword, credential.PasswordHash)
+	if err != nil {
+		return fmt.Errorf("verify current credential: %w", err)
+	}
+	if !valid {
+		return ErrInvalidCredential
+	}
+
+	passwordHash, err := hashPassword(ctx, input.NewPassword)
+	if err != nil {
+		if errors.Is(err, ErrInvalidIdentityInput) {
+			return ErrInvalidIdentityInput
+		}
+		return fmt.Errorf("hash changed password: %w", err)
+	}
+	revoked, err := s.repo.ChangePassword(ctx, ChangePasswordRepositoryInput{
+		UserID:           user.ID,
+		ExpectedRevision: credential.CredentialRevision,
+		NewPasswordHash:  passwordHash,
 	})
 	if errors.Is(err, ErrInvalidCredential) {
 		return ErrInvalidCredential

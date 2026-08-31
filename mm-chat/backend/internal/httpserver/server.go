@@ -1397,6 +1397,7 @@ func NewHandler(cfg config.Config, opts ...Option) http.Handler {
 	mux.Handle("/metrics", metrics)
 	mux.HandleFunc("/v1/version", healthHandler.Version)
 	mux.Handle("/v1/me", authHandler)
+	mux.Handle("/v1/me/password", authHandler)
 	mux.Handle("/v1/me/sessions", authHandler)
 	mux.Handle("/v1/auth/login", authHandler)
 	mux.Handle("/v1/auth/logout", authHandler)

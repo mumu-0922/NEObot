@@ -2,6 +2,7 @@
   "title": "Settings",
   "close": "Close settings",
   "sections": "Settings sections",
+  "tabAccount": "Account & Security",
   "tabProviders": "Model Providers",
   "tabDefaults": "Default Models",
   "tabSearch": "Search Service",

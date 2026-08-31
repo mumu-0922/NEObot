@@ -28,8 +28,23 @@ POST /v1/auth/invites/accept
 POST /v1/auth/recovery/request
 POST /v1/auth/recovery/complete
 POST /v1/auth/logout
+POST /v1/me/password
 DELETE /v1/me/sessions
 ```
+
+Authenticated Password Change accepts exactly:
+
+```json
+{
+  "currentPassword": "string, preserved byte-for-byte",
+  "newPassword": "string, preserved byte-for-byte"
+}
+```
+
+It returns `204 No Content`; both successful Password Change and
+`DELETE /v1/me/sessions` invalidate the current browser Session as well as all
+other Sessions, so the frontend must clear its in-memory/session-storage token
+and return to Login.
 
 The operator-only bootstrap command is
 `mm-chat-admin bootstrap-identity --email <mailbox> --password-stdin`.
@@ -48,6 +63,10 @@ The operator-only bootstrap command is
 - Recovery Completion atomically replaces the hash, increments
   `credential_revision`, consumes the token, revokes sibling recovery tokens,
   and revokes all user Sessions without issuing a replacement Session.
+- Authenticated Password Change verifies the current password through the same
+  Argon2id boundary, atomically replaces the hash behind an expected-revision
+  fence, increments `credential_revision`, revokes active Recovery Tokens, and
+  revokes all user Sessions without issuing a replacement Session.
 - Unknown email, wrong password, missing credential, and disabled/deleted
   account remain indistinguishable at the Login boundary.
 
@@ -61,6 +80,7 @@ The operator-only bootstrap command is
 | Stored PHC has the wrong algorithm, version, parameters, or field sizes | Reject before Argon2 allocation |
 | Login credential does not match | Generic `ErrInvalidCredential`; unknown email still performs dummy Argon2id work |
 | Recovery token is invalid, expired, used, or raced | Generic `ErrInvalidCredential`; no partial credential/session mutation |
+| Current password is wrong or the Credential revision races | `ErrInvalidCredential`; no partial credential/token/session mutation |
 | Existing credential revision changes during Login session creation | Reject the raced Login session |
 
 ### 5. Good / Base / Bad Cases
@@ -79,6 +99,13 @@ The operator-only bootstrap command is
 - Prove malformed PHC inputs fail before resource-intensive hashing.
 - Prove Invite Acceptance rejects an invalid password before token snapshot or
   repository mutation.
+- Prove authenticated Password Change rejects a wrong current password before
+  mutation, rejects a raced revision, and atomically revokes every Session and
+  active Recovery Token after the Credential update.
+- Run the deterministic Auth Playwright journey for Login refresh/expiry,
+  Recovery Completion, Password Change with leading/trailing whitespace, and
+  all-Session revocation; each successful mutation must visibly return the
+  current browser to Login.
 - Run `go test ./internal/auth`, `go test ./...`, and `go vet ./...`.
 - For a live credential rotation, prove Recovery or the owning operator path
   increments the revision, revokes existing Sessions, permits one public Login,

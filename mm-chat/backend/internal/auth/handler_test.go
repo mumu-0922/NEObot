@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -78,6 +79,40 @@ func TestHandlerIdentityLifecycleRoutes(t *testing.T) {
 
 	rec = performAuthRequest(handler, http.MethodPost, authLogoutPath, "", "Bearer "+testRawToken('f'))
 	assertAuthStatus(t, rec, http.StatusNoContent)
+}
+
+func TestHandlerChangePasswordRequiresAuthenticatedIdentity(t *testing.T) {
+	repo := &fakeAuthRepository{
+		credential: LoginCredential{
+			UserID:             "77777777-7777-4777-8777-777777777777",
+			PasswordHash:       defaultDummyPasswordHash,
+			CredentialRevision: 1,
+		},
+	}
+	handler := NewHandler(NewService(repo))
+	body := `{"currentPassword":"not-the-user-password","newPassword":"replacement-password-value"}`
+
+	rec := performAuthRequest(handler, http.MethodPost, mePasswordPath, body, "")
+	assertAuthStatus(t, rec, http.StatusUnauthorized)
+	assertAuthErrorCode(t, rec, "UNAUTHENTICATED")
+
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, mePasswordPath, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(WithUser(context.Background(), User{ID: repo.credential.UserID}))
+	handler.ServeHTTP(rec, req)
+	assertAuthStatus(t, rec, http.StatusNoContent)
+	if !repo.changeCalled || repo.changeInput.UserID != repo.credential.UserID {
+		t.Fatalf("password change input = %#v", repo.changeInput)
+	}
+}
+
+func TestHandlerChangePasswordRejectsUnknownFields(t *testing.T) {
+	handler := NewHandler(NewService(&fakeAuthRepository{}))
+	rec := performAuthRequest(handler, http.MethodPost, mePasswordPath,
+		`{"currentPassword":"not-the-user-password","newPassword":"replacement-password-value","confirmPassword":"replacement-password-value"}`, "")
+	assertAuthStatus(t, rec, http.StatusBadRequest)
+	assertAuthErrorCode(t, rec, "INVALID_AUTH_PAYLOAD")
 }
 
 func TestHandlerRejectsLegacyAndCallerIdentityPayloads(t *testing.T) {

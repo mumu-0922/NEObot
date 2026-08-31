@@ -54,6 +54,48 @@ WHERE lower(u.email) = $1
 	return credential, nil
 }
 
+func (r *PostgresSessionRepository) LookupCredentialByUserID(
+	ctx context.Context,
+	userID string,
+) (LoginCredential, error) {
+	if r == nil || r.db == nil {
+		return LoginCredential{}, ErrDatabaseRequired
+	}
+	userID = strings.TrimSpace(userID)
+	if !isUUID(userID) {
+		return LoginCredential{}, ErrInvalidCredential
+	}
+
+	var credential LoginCredential
+	err := r.db.QueryRowContext(ctx, `
+SELECT
+  u.id,
+  u.email,
+  COALESCE(u.display_name, ''),
+  c.password_hash,
+  c.credential_revision
+FROM users u
+JOIN user_credentials c ON c.user_id = u.id
+WHERE u.id = $1
+  AND u.account_status = 'active'
+  AND u.deleted_at IS NULL
+  AND c.email_verified_at IS NOT NULL
+`, userID).Scan(
+		&credential.UserID,
+		&credential.Email,
+		&credential.DisplayName,
+		&credential.PasswordHash,
+		&credential.CredentialRevision,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return LoginCredential{}, ErrInvalidCredential
+	}
+	if err != nil {
+		return LoginCredential{}, fmt.Errorf("lookup current credential: %w", err)
+	}
+	return credential, nil
+}
+
 func (r *PostgresSessionRepository) CreateCredentialSession(
 	ctx context.Context,
 	input CreateCredentialSessionInput,
@@ -452,6 +494,98 @@ WHERE user_id = $1
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit complete recovery: %w", err)
+	}
+	return revoked, nil
+}
+
+func (r *PostgresSessionRepository) ChangePassword(
+	ctx context.Context,
+	input ChangePasswordRepositoryInput,
+) ([]RevokedSession, error) {
+	if r == nil || r.db == nil {
+		return nil, ErrDatabaseRequired
+	}
+	input.UserID = strings.TrimSpace(input.UserID)
+	if !isUUID(input.UserID) ||
+		input.ExpectedRevision < 1 ||
+		!strings.HasPrefix(input.NewPasswordHash, "$argon2id$") {
+		return nil, ErrInvalidCredential
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin change password: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var lockedUserID string
+	err = tx.QueryRowContext(ctx, `
+SELECT id
+FROM users
+WHERE id = $1
+  AND account_status = 'active'
+  AND deleted_at IS NULL
+FOR UPDATE
+`, input.UserID).Scan(&lockedUserID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrInvalidCredential
+	}
+	if err != nil {
+		return nil, fmt.Errorf("lock password change user: %w", err)
+	}
+
+	var credentialRevision int64
+	err = tx.QueryRowContext(ctx, `
+SELECT credential_revision
+FROM user_credentials
+WHERE user_id = $1
+  AND email_verified_at IS NOT NULL
+FOR UPDATE
+`, input.UserID).Scan(&credentialRevision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrInvalidCredential
+	}
+	if err != nil {
+		return nil, fmt.Errorf("lock password change credential: %w", err)
+	}
+	if credentialRevision != input.ExpectedRevision {
+		return nil, ErrInvalidCredential
+	}
+
+	result, err := tx.ExecContext(ctx, `
+UPDATE user_credentials
+SET password_hash = $2,
+    credential_revision = credential_revision + 1,
+    updated_at = now()
+WHERE user_id = $1
+  AND credential_revision = $3
+`, input.UserID, input.NewPasswordHash, input.ExpectedRevision)
+	if err != nil {
+		return nil, fmt.Errorf("update changed credential: %w", err)
+	}
+	if rows, rowsErr := result.RowsAffected(); rowsErr != nil {
+		return nil, fmt.Errorf("update changed credential rows affected: %w", rowsErr)
+	} else if rows != 1 {
+		return nil, ErrInvalidCredential
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+UPDATE credential_recovery_tokens
+SET status = 'revoked',
+    revoked_at = now(),
+    updated_at = now()
+WHERE user_id = $1
+  AND status = 'active'
+`, input.UserID); err != nil {
+		return nil, fmt.Errorf("revoke recovery tokens after password change: %w", err)
+	}
+
+	revoked, err := revokeSessionsForUser(ctx, tx, input.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit change password: %w", err)
 	}
 	return revoked, nil
 }

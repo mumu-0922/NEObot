@@ -51,7 +51,14 @@ export default function ServerAuthGate() {
   }
 
   if (state === "authenticated") {
-    return <ChatApp />;
+    return (
+      <ChatApp
+        onServerAuthInvalidated={() => {
+          clearServerAuthSession();
+          setState("unauthenticated");
+        }}
+      />
+    );
   }
 
   return (

@@ -157,6 +157,7 @@ func TestNormalizeMetricPathBoundsKnownDynamicRoutes(t *testing.T) {
 		"/v1/auth/invites/accept":                                   "/v1/auth/invites/accept",
 		"/v1/auth/recovery/request":                                 "/v1/auth/recovery/request",
 		"/v1/auth/recovery/complete":                                "/v1/auth/recovery/complete",
+		"/v1/me/password":                                           "/v1/me/password",
 		"/v1/me/sessions":                                           "/v1/me/sessions",
 		"/v1/teams":                                                 "/v1/teams",
 		"/v1/teams/11111111-1111-4111-8111-111111111111":            "/v1/teams/{teamId}",

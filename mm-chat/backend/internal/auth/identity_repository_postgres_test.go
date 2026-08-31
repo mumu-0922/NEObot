@@ -606,6 +606,95 @@ VALUES ($1, $2, $3, now() + interval '1 hour')
 	}
 }
 
+func TestPostgresIdentityChangePasswordRotatesCredentialAndRevokesAuthority(t *testing.T) {
+	db := openPostgresIntegrationDB(t)
+	repo := NewPostgresSessionRepository(db)
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	userID := mustSessionTestUUID(t)
+	email := "password-change-" + userID + "@example.test"
+	oldHash, err := hashPassword(ctx, validTestPassword)
+	if err != nil {
+		t.Fatalf("hash old password: %v", err)
+	}
+	newPassword := "replacement-password-value"
+	newHash, err := hashPassword(ctx, newPassword)
+	if err != nil {
+		t.Fatalf("hash new password: %v", err)
+	}
+	insertIdentityFixture(t, ctx, db, userID, email, oldHash)
+
+	for index := 0; index < 2; index++ {
+		if _, err := db.ExecContext(ctx, `
+INSERT INTO sessions (id, user_id, token_hash, expires_at)
+VALUES ($1, $2, $3, now() + interval '1 hour')
+`, mustSessionTestUUID(t), userID, HashSessionToken(testRawToken(byte('q'+index)))); err != nil {
+			t.Fatalf("insert session %d: %v", index, err)
+		}
+	}
+	if _, _, err := repo.CreateRecoveryToken(ctx, CreateRecoveryTokenInput{
+		CanonicalEmail: email,
+		TokenID:        mustSessionTestUUID(t),
+		TokenHash:      HashSessionToken(testRawToken('s')),
+		TTL:            30 * time.Minute,
+	}); err != nil {
+		t.Fatalf("CreateRecoveryToken() error = %v", err)
+	}
+
+	credential, err := repo.LookupCredentialByUserID(ctx, userID)
+	if err != nil {
+		t.Fatalf("LookupCredentialByUserID() error = %v", err)
+	}
+	revoked, err := repo.ChangePassword(ctx, ChangePasswordRepositoryInput{
+		UserID:           userID,
+		ExpectedRevision: credential.CredentialRevision,
+		NewPasswordHash:  newHash,
+	})
+	if err != nil {
+		t.Fatalf("ChangePassword() error = %v", err)
+	}
+	if len(revoked) != 2 {
+		t.Fatalf("revoked sessions = %#v, want 2", revoked)
+	}
+
+	credential, err = repo.LookupCredentialByUserID(ctx, userID)
+	if err != nil {
+		t.Fatalf("LookupCredentialByUserID() after change error = %v", err)
+	}
+	if credential.CredentialRevision != 2 || credential.PasswordHash != newHash {
+		t.Fatalf("changed credential = %#v", credential)
+	}
+	valid, verifyErr := verifyPassword(ctx, newPassword, credential.PasswordHash)
+	if verifyErr != nil || !valid {
+		t.Fatalf("verify changed password = %v/%v", valid, verifyErr)
+	}
+
+	var activeRecoveryTokens, activeSessions int
+	if err := db.QueryRowContext(ctx, `
+SELECT count(*) FROM credential_recovery_tokens WHERE user_id = $1 AND status = 'active'
+`, userID).Scan(&activeRecoveryTokens); err != nil {
+		t.Fatalf("count active recovery tokens: %v", err)
+	}
+	if err := db.QueryRowContext(ctx, `
+SELECT count(*) FROM sessions WHERE user_id = $1 AND revoked_at IS NULL
+`, userID).Scan(&activeSessions); err != nil {
+		t.Fatalf("count active sessions: %v", err)
+	}
+	if activeRecoveryTokens != 0 || activeSessions != 0 {
+		t.Fatalf("active recovery tokens/sessions = %d/%d", activeRecoveryTokens, activeSessions)
+	}
+
+	_, err = repo.ChangePassword(ctx, ChangePasswordRepositoryInput{
+		UserID:           userID,
+		ExpectedRevision: 1,
+		NewPasswordHash:  newHash,
+	})
+	if !errors.Is(err, ErrInvalidCredential) {
+		t.Fatalf("stale ChangePassword() error = %v, want ErrInvalidCredential", err)
+	}
+}
+
 func TestPostgresCredentialSessionConcurrentWithRecoveryUsesStableRowOrder(t *testing.T) {
 	db := openPostgresIntegrationDB(t)
 	repo := NewPostgresSessionRepository(db)

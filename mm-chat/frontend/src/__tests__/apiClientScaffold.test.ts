@@ -416,6 +416,25 @@ describe("G3.1 server runtime/auth API adapters", () => {
       id: "user-1",
     });
     await expect(
+      auth.requestRecovery({ email: "owner@example.test" }),
+    ).resolves.toBeUndefined();
+    await expect(
+      auth.completeRecovery({
+        token: "recovery-token",
+        newPassword: " replacement-password ",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      auth.changePassword({
+        currentPassword: " current-password ",
+        newPassword: " replacement-password ",
+        token: "session-token",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      auth.revokeAllSessions({ token: "session-token" }),
+    ).resolves.toBeUndefined();
+    await expect(
       auth.logout({ token: "session-token" }),
     ).resolves.toBeUndefined();
 
@@ -429,6 +448,36 @@ describe("G3.1 server runtime/auth API adapters", () => {
       {
         url: "/mm-api/v1/me",
         method: "GET",
+        auth: "Bearer session-token",
+        body: undefined,
+      },
+      {
+        url: "/mm-api/v1/auth/recovery/request",
+        method: "POST",
+        auth: null,
+        body: { email: "owner@example.test" },
+      },
+      {
+        url: "/mm-api/v1/auth/recovery/complete",
+        method: "POST",
+        auth: null,
+        body: {
+          token: "recovery-token",
+          newPassword: " replacement-password ",
+        },
+      },
+      {
+        url: "/mm-api/v1/me/password",
+        method: "POST",
+        auth: "Bearer session-token",
+        body: {
+          currentPassword: " current-password ",
+          newPassword: " replacement-password ",
+        },
+      },
+      {
+        url: "/mm-api/v1/me/sessions",
+        method: "DELETE",
         auth: "Bearer session-token",
         body: undefined,
       },

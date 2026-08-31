@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { ApiClientError, createNeoChatApiClient } from "@/services/api/client";
 import { setServerAuthSession } from "@/services/api/client/authSession";
+import ServerAuthRecoveryPanel from "./ServerAuthRecoveryPanel";
 
 const ACCESS_ERROR_CODES = {
   invalid: "ACCESS_PASSWORD_INVALID",
@@ -51,6 +52,7 @@ export default function AccessPasswordPage({
   >();
   const [lockedUntil, setLockedUntil] = useState(initialLockedUntil);
   const [now, setNow] = useState(Date.now());
+  const [showRecovery, setShowRecovery] = useState(false);
 
   useEffect(() => {
     if (!lockedUntil || lockedUntil <= Date.now()) return;
@@ -67,10 +69,10 @@ export default function AccessPasswordPage({
   const isLocked = remainingLockSeconds > 0;
   const isServerAuth = mode === "server-auth";
   const trimmedEmail = email.trim();
-  const trimmedPassword = password.trim();
+  const submittedPassword = isServerAuth ? password : password.trim();
   const canSubmit = isServerAuth
-    ? Boolean(trimmedEmail && trimmedPassword)
-    : Boolean(trimmedPassword);
+    ? Boolean(trimmedEmail && submittedPassword)
+    : Boolean(submittedPassword);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -83,7 +85,7 @@ export default function AccessPasswordPage({
       if (isServerAuth) {
         const result = await createNeoChatApiClient().auth.login({
           email: trimmedEmail,
-          password: trimmedPassword,
+          password: submittedPassword,
         });
         setServerAuthSession(result);
         onServerAuthSuccess?.();
@@ -93,7 +95,7 @@ export default function AccessPasswordPage({
       const response = await fetch("/api/access/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: trimmedPassword }),
+        body: JSON.stringify({ password: submittedPassword }),
       });
       const data = (await response
         .json()
@@ -129,6 +131,12 @@ export default function AccessPasswordPage({
     }
   };
 
+  if (isServerAuth && showRecovery) {
+    return (
+      <ServerAuthRecoveryPanel onBackToLogin={() => setShowRecovery(false)} />
+    );
+  }
+
   return (
     <main className="min-h-dvh bg-background text-foreground">
       <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-5 py-10">
@@ -138,10 +146,10 @@ export default function AccessPasswordPage({
           </div>
           <div className="min-w-0">
             <h1 className="text-xl font-semibold tracking-normal text-foreground">
-              {t("title")}
+              {isServerAuth ? t("serverTitle") : t("title")}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {t("subtitle")}
+              {isServerAuth ? t("serverSubtitle") : t("subtitle")}
             </p>
           </div>
         </div>
@@ -216,9 +224,23 @@ export default function AccessPasswordPage({
             ) : errorKey ? (
               <p className="text-red-600 dark:text-red-300">{t(errorKey)}</p>
             ) : (
-              <p className="text-muted-foreground">{t("secretStored")}</p>
+              <p className="text-muted-foreground">
+                {isServerAuth ? t("serverSecretStored") : t("secretStored")}
+              </p>
             )}
           </div>
+          {isServerAuth ? (
+            <button
+              type="button"
+              onClick={() => {
+                setErrorKey(null);
+                setShowRecovery(true);
+              }}
+              className="mt-2 text-sm font-medium text-blue-600 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-blue-400"
+            >
+              {t("forgotPassword")}
+            </button>
+          ) : null}
         </form>
       </div>
     </main>

@@ -212,7 +212,11 @@ const scrollChatContainerToMessage = (
   return true;
 };
 
-const ChatApp = () => {
+interface ChatAppProps {
+  onServerAuthInvalidated?: () => void;
+}
+
+const ChatApp: React.FC<ChatAppProps> = ({ onServerAuthInvalidated }) => {
   // --- Global Store ---
   const {
     chat: {
@@ -3371,6 +3375,7 @@ const ChatApp = () => {
           <SettingsPage
             activeTab={settingsTab}
             onTabChange={handleSettingsTabChange}
+            onAuthInvalidated={onServerAuthInvalidated}
             onClose={() => navigateToPanel("chat")}
           />
         ) : (

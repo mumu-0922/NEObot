@@ -70,12 +70,23 @@ type RecoveryCompleteInput struct {
 	NewPassword string
 }
 
+type ChangePasswordInput struct {
+	CurrentPassword string
+	NewPassword     string
+}
+
 type LoginCredential struct {
 	UserID             string
 	Email              string
 	DisplayName        string
 	PasswordHash       string
 	CredentialRevision int64
+}
+
+type ChangePasswordRepositoryInput struct {
+	UserID           string
+	ExpectedRevision int64
+	NewPasswordHash  string
 }
 
 type RevokedSession struct {
