@@ -1,3 +1,4 @@
 {"file":".trellis/spec/operations/index.md","reason":"Routes repository, CI, runtime-state, and clean-copy work to the governing operations contract."}
 {"file":".trellis/spec/operations/repository-root-boundary.md","reason":"Defines the product root, protected runtime paths, executable verification entrypoints, and clean-copy gates."}
 {"file":".trellis/spec/guides/index.md","reason":"Requires search-before-change and explicit cross-boundary reasoning."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Defines deterministic Vitest and CI verification requirements for the frontend performance gate."}

@@ -143,11 +143,12 @@ if symlink="$(find "${copy_dir}" -type l -print -quit)" && [[ -n "${symlink}" ]]
   exit 1
 fi
 
-if rg -n --hidden \
-  --glob '!**/docs/tracking/process.md' \
-  --glob '!**/scripts/verify-standalone.sh' \
+if find "${copy_dir}" -type f \
+  ! -path "${copy_dir}/docs/tracking/process.md" \
+  ! -path "${copy_dir}/scripts/verify-standalone.sh" \
+  -exec grep -IHnE \
   '/home/mumu/projects/neo-chat|\\\\wsl\.localhost\\Ubuntu\\home\\mumu\\projects\\neo-chat' \
-  "${copy_dir}" >"${temp_dir}/outer-paths.txt"; then
+  {} + >"${temp_dir}/outer-paths.txt"; then
   echo "standalone verification: outer-project absolute path found" >&2
   cat "${temp_dir}/outer-paths.txt" >&2
   exit 1

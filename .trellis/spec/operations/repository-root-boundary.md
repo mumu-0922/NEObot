@@ -51,6 +51,10 @@ Component roots are `mm-chat/frontend`, `mm-chat/backend`, `mm-chat/rag`, and
   executable bit in the Git index. Local filesystem mode is not evidence of the
   committed mode; clean-copy verification must inspect `git ls-files -s` or an
   archive produced from the candidate Git tree.
+- Standalone verification must use tools guaranteed by the declared runner or
+  probe/install them explicitly. Repository structure checks use baseline GNU
+  utilities rather than relying on an undeclared developer convenience such as
+  `rg`.
 - A destructive cleanup requires an external working-copy archive, SHA-256,
   archive manifest, Git state, restore instructions, and successful temporary
   PostgreSQL/MinIO restore drills before deletion.

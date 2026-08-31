@@ -963,12 +963,14 @@ describe("durable process trace", () => {
           <ProcessTracePanel steps={steps} />
         </NextIntlClientProvider>,
       );
-    const reloadLegacyP95 = measureP95(() => {
-      render(normalizeProcessTrace(rawSteps));
-    });
-    const reloadDurableP95 = measureP95(() => {
-      render(processTraceFromChatAgentEvents(events) ?? []);
-    });
+    const [reloadLegacyP95, reloadDurableP95] = measurePairedP95(
+      () => {
+        render(normalizeProcessTrace(rawSteps));
+      },
+      () => {
+        render(processTraceFromChatAgentEvents(events) ?? []);
+      },
+    );
     const liveStep = normalizeProcessStep({
       ...rawSteps[rawSteps.length - 1],
       status: "running",
@@ -1326,4 +1328,41 @@ function measureP95(operation: () => void): number {
   return (
     samples[Math.ceil(samples.length * 0.95) - 1] ?? Number.POSITIVE_INFINITY
   );
+}
+
+function measurePairedP95(
+  leftOperation: () => void,
+  rightOperation: () => void,
+): [number, number] {
+  for (let index = 0; index < 3; index += 1) {
+    leftOperation();
+    rightOperation();
+  }
+
+  const leftSamples: number[] = [];
+  const rightSamples: number[] = [];
+  const measure = (operation: () => void) => {
+    const startedAt = performance.now();
+    operation();
+    return performance.now() - startedAt;
+  };
+
+  for (let index = 0; index < 20; index += 1) {
+    if (index % 2 === 0) {
+      leftSamples.push(measure(leftOperation));
+      rightSamples.push(measure(rightOperation));
+    } else {
+      rightSamples.push(measure(rightOperation));
+      leftSamples.push(measure(leftOperation));
+    }
+  }
+
+  const p95 = (samples: number[]) => {
+    samples.sort((left, right) => left - right);
+    return (
+      samples[Math.ceil(samples.length * 0.95) - 1] ?? Number.POSITIVE_INFINITY
+    );
+  };
+
+  return [p95(leftSamples), p95(rightSamples)];
 }

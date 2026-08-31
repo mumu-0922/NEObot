@@ -273,7 +273,7 @@ export function processTraceFromChatAgentEvents(
   value: unknown,
   legacy: ProcessStep[] | undefined = undefined,
 ): ProcessStep[] | undefined {
-  const events = normalizeChatAgentEvents(value);
+  const events = normalizeProcessTraceEvents(value);
   if (events.length === 0) return legacy;
 
   let steps: ProcessStep[] = [];
@@ -318,6 +318,74 @@ export function processTraceFromChatAgentEvents(
     });
   }
   return steps;
+}
+
+type ProcessTraceEvent = Pick<
+  ChatAgentEvent,
+  "eventId" | "sequence" | "type" | "payload" | "occurredAt"
+>;
+
+function normalizeProcessTraceEvents(value: unknown): ProcessTraceEvent[] {
+  if (!Array.isArray(value)) return [];
+
+  const events: ProcessTraceEvent[] = [];
+  const eventIds = new Set<string>();
+  let sorted = true;
+  for (const candidate of value) {
+    if (!isRecord(candidate)) continue;
+    const eventId = stringValue(candidate.eventId);
+    const turnId = stringValue(candidate.turnId);
+    const conversationId = stringValue(candidate.conversationId);
+    const messageId = stringValue(candidate.messageId);
+    const runId = stringValue(candidate.runId);
+    const type = stringValue(candidate.type) as ChatAgentEventType;
+    const sequence = positiveInteger(candidate.sequence);
+    const stepSequence = optionalPositiveInteger(candidate.stepSequence);
+    const occurredAt = stringValue(candidate.occurredAt);
+    if (
+      !eventId ||
+      eventIds.has(eventId) ||
+      !turnId ||
+      !conversationId ||
+      !messageId ||
+      !runId ||
+      !CHAT_AGENT_EVENT_TYPES.has(type) ||
+      sequence === undefined ||
+      (candidate.stepSequence !== undefined && stepSequence === undefined) ||
+      !occurredAt ||
+      !Number.isFinite(Date.parse(occurredAt)) ||
+      !isRecord(candidate.payload)
+    ) {
+      continue;
+    }
+
+    eventIds.add(eventId);
+    const event = {
+      eventId,
+      sequence,
+      type,
+      payload: candidate.payload,
+      occurredAt,
+    };
+    const previous = events[events.length - 1];
+    if (
+      previous &&
+      (previous.sequence > event.sequence ||
+        (previous.sequence === event.sequence &&
+          previous.eventId.localeCompare(event.eventId) > 0))
+    ) {
+      sorted = false;
+    }
+    events.push(event);
+  }
+
+  return sorted
+    ? events
+    : events.sort(
+        (left, right) =>
+          left.sequence - right.sequence ||
+          left.eventId.localeCompare(right.eventId),
+      );
 }
 
 export function upsertProcessStep(

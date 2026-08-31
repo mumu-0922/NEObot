@@ -8,6 +8,8 @@ export default defineConfig({
     },
   },
   test: {
+    // Keep wall-clock acceptance budgets reproducible on shared CI runners.
+    fileParallelism: false,
     include: ["src/__tests__/**/*.{test,spec}.{ts,tsx}"],
   },
 });

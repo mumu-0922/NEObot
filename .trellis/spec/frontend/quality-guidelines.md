@@ -123,6 +123,10 @@ corepack pnpm test:e2e
   remove the Conversation running indicator.
 - CI runs Chromium separately from Vitest and retains trace, screenshot, and
   video artifacts only on failure.
+- Vitest files run serially because the suite contains explicit wall-clock
+  acceptance budgets. Do not re-enable file parallelism without moving those
+  benchmarks to an isolated runner; shared-worker CPU contention invalidates
+  their thresholds.
 
 Wrong:
 

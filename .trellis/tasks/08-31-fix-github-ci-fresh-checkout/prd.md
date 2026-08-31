@@ -26,6 +26,9 @@ as the developer working tree, so GitHub Actions succeeds from a clean checkout.
    environment file as ignored runtime state.
 5. Record the clean-checkout contract in the operations specification.
 6. Push the focused repair and monitor GitHub Actions through terminal state.
+7. Remove undeclared runner-tool assumptions, keep wall-clock acceptance tests
+   isolated from parallel file contention, and emit actionable Ruff annotations
+   when the remote lint gate fails.
 
 ## Acceptance Criteria
 
@@ -44,6 +47,9 @@ as the developer working tree, so GitHub Actions succeeds from a clean checkout.
 - `mm-chat/frontend/src/lib/data/`
 - `mm-chat/scripts/` executable metadata
 - `.trellis/spec/operations/repository-root-boundary.md`
+- `.github/workflows/ci.yml`
+- `mm-chat/frontend/vitest.config.ts`
+- `.trellis/spec/frontend/quality-guidelines.md`
 - Task records under this directory
 
 ## Non-goals

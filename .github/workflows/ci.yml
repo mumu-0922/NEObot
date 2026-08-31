@@ -161,7 +161,7 @@ jobs:
         run: uv run ruff format --check .
 
       - name: Lint
-        run: uv run ruff check .
+        run: uv run ruff check --no-cache --output-format=github .
 
       - name: Typecheck
         run: uv run mypy
