@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 121
+- **Total Sessions**: 122
 - **Last Active**: 2026-08-31
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~469 | Active |
+| `journal-3.md` | ~506 | Active |
 | `journal-2.md` | ~1985 | Archived |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 122 | 2026-08-31 | Restore GitHub CI fresh-checkout parity | `2c83d033`, `9dfe4e77`, `9adec044`, `0c1e7eb1`, `99e54716` | `main` |
 | 121 | 2026-08-31 | Enforce ASCII password policy | `3a24a71a` | `main` |
 | 120 | 2026-08-31 | Account security and password recovery | `fab9da79` | `main` |
 | 119 | 2026-08-30 | Harden five-image production promotion | `6c9995f4` | `main` |

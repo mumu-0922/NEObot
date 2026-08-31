@@ -467,3 +467,40 @@ Changed new Server Auth passwords to 8-256 visible ASCII characters, preserved b
 ### Next Steps
 
 - None - task complete
+
+
+## Session 122: Restore GitHub CI fresh-checkout parity
+
+**Date**: 2026-08-31
+**Task**: Restore GitHub CI fresh-checkout parity
+**Branch**: `main`
+
+### Summary
+
+Tracked ignored frontend data modules, restored executable metadata, stabilized the frontend performance gate, aligned standalone checks with GitHub Compose semantics, pinned RAG interop runtimes, and verified final CI plus Docker workflows green.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2c83d033` | (see git log) |
+| `9dfe4e77` | (see git log) |
+| `9adec044` | (see git log) |
+| `0c1e7eb1` | (see git log) |
+| `99e54716` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
