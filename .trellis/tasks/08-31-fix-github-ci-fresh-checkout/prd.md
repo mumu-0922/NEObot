@@ -32,6 +32,8 @@ as the developer working tree, so GitHub Actions succeeds from a clean checkout.
 8. Preserve Compose `create_host_path: false` verification across serializers
    that omit explicit false values from rendered JSON, while still rejecting an
    explicit true value.
+9. Surface the bounded tail of a remote pytest failure as a GitHub annotation
+   so public check diagnostics identify the exact failing test and traceback.
 
 ## Acceptance Criteria
 
