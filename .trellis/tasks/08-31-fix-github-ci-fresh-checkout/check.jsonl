@@ -1,0 +1,2 @@
+{"file":".trellis/spec/operations/repository-root-boundary.md","reason":"Review the final diff against runtime protection, clean-copy verification, and publish gates."}
+{"file":".trellis/spec/guides/index.md","reason":"Recheck repository-boundary assumptions before commit and push."}

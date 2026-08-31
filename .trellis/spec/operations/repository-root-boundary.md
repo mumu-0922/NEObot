@@ -43,6 +43,14 @@ Component roots are `mm-chat/frontend`, `mm-chat/backend`, `mm-chat/rag`, and
 - `mm-chat/data/`, `mm-chat/secrets/`, `mm-chat/backup/`, and
   `mm-chat/.env.single-server` are runtime state. Source cleanup must not delete,
   rewrite, archive into Git, or relocate them.
+- Runtime-state patterns in `mm-chat/.gitignore` must be anchored to the product
+  root (for example, `/data/`). An unanchored `data/` pattern is forbidden
+  because it also hides nested source directories such as
+  `frontend/src/lib/data/` from clean checkouts.
+- Operator scripts invoked directly by another tracked script must retain the
+  executable bit in the Git index. Local filesystem mode is not evidence of the
+  committed mode; clean-copy verification must inspect `git ls-files -s` or an
+  archive produced from the candidate Git tree.
 - A destructive cleanup requires an external working-copy archive, SHA-256,
   archive manifest, Git state, restore instructions, and successful temporary
   PostgreSQL/MinIO restore drills before deletion.
