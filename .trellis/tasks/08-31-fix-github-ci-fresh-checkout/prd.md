@@ -34,6 +34,9 @@ as the developer working tree, so GitHub Actions succeeds from a clean checkout.
    explicit true value.
 9. Surface the bounded tail of a remote pytest failure as a GitHub annotation
    so public check diagnostics identify the exact failing test and traceback.
+10. Provision the RAG JCS interoperability gate's frozen Python 3.13, Go 1.22,
+    and Node 22 runtimes explicitly instead of inheriting mutable runner
+    defaults.
 
 ## Acceptance Criteria
 
