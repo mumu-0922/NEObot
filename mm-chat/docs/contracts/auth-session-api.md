@@ -51,8 +51,12 @@ pre-Credential Bootstrap Sessions.
 
 - Email canonicalization is `lower(trim(email))`, at most 254 bytes, without
   provider-specific dot or plus folding.
-- Passwords are 9–256 UTF-8 characters/bytes and are never trimmed or
-  normalized.
+- New passwords contain 8–256 ASCII visible characters (`U+0021` through
+  `U+007E`): letters, numbers, and symbols are allowed; whitespace and
+  non-ASCII characters are rejected. Passwords are never trimmed or normalized.
+- Login and current-password verification retain bounded compatibility with
+  hashes created under the previous UTF-8 policy until the user rotates the
+  credential; legacy input is never admitted as a new password.
 - New Password Hashes use Argon2id PHC
   `v=19,m=65536,t=3,p=2`, a random 16-byte Salt, and a 32-byte Hash. Verification
   rejects malformed or resource-amplifying PHC values before Argon2 allocation.

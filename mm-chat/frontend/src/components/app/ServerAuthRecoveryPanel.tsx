@@ -17,6 +17,7 @@ type RecoveryError =
   | "newPasswordRequired"
   | "passwordTooShort"
   | "passwordTooLong"
+  | "passwordInvalidCharacters"
   | "passwordMismatch"
   | "recoveryTokenInvalid"
   | "genericError";
@@ -72,6 +73,10 @@ const ServerAuthRecoveryPanel: React.FC<ServerAuthRecoveryPanelProps> = ({
     }
     if (policyFailure === "too-long") {
       setErrorKey("passwordTooLong");
+      return;
+    }
+    if (policyFailure === "invalid-characters") {
+      setErrorKey("passwordInvalidCharacters");
       return;
     }
     if (newPassword !== confirmPassword) {

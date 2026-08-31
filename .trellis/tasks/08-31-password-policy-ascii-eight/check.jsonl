@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/auth-identity.md","reason":"Review exact password boundaries, legacy verification compatibility, generic Login behavior and Auth test coverage."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Review the frontend validator and translated error variants for strict type/runtime consistency."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Select and execute the required security-sensitive frontend and browser checks."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Audit policy parity across Backend, Frontend, E2E, docs and deployed runtime."}

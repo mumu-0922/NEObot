@@ -16,6 +16,7 @@ The shared backend identity boundary is:
 ```go
 func CanonicalizeEmail(value string) (string, error)
 func validatePassword(password string) error
+func validatePasswordForVerification(password string) error
 func hashPassword(ctx context.Context, password string) (string, error)
 func verifyPassword(ctx context.Context, password, encodedHash string) (bool, error)
 ```
@@ -53,11 +54,15 @@ The operator-only bootstrap command is
 
 - Email is `lower(trim(email))`, one mailbox, at most 254 bytes, with no
   provider-specific dot or plus folding.
-- Passwords contain 9–256 UTF-8 characters/bytes: at least 9 Unicode runes, at
-  most 256 encoded bytes, valid UTF-8, and no backend trimming or normalization.
-- Bootstrap, Invite Acceptance, Recovery Completion, Login verification, and
-  dummy verification use the same password validator; do not add route-local
-  minimums.
+- New passwords contain 8–256 ASCII visible characters (`U+0021` through
+  `U+007E`). ASCII letters, numbers, and symbols are allowed; whitespace,
+  controls, Unicode, trimming, and normalization are forbidden.
+- Bootstrap, new-identity Invite Acceptance, Recovery Completion, and the new
+  password in Authenticated Password Change use the shared strict validator.
+- Login, existing-identity Invite Acceptance, and current-password verification
+  use the bounded legacy validator so hashes issued under the previous UTF-8
+  policy remain usable until the password is rotated. Legacy verification does
+  not authorize creation of a new non-ASCII password.
 - New hashes are Argon2id PHC with `v=19,m=65536,t=3,p=2`, a random 16-byte
   salt, a 32-byte digest, and bounded hashing concurrency.
 - Recovery Completion atomically replaces the hash, increments
@@ -74,9 +79,10 @@ The operator-only bootstrap command is
 
 | Condition | Required result |
 | --- | --- |
-| Password has exactly 9 valid UTF-8 runes and at most 256 bytes | Accept |
-| Password has fewer than 9 runes | `ErrInvalidIdentityInput` before repository access |
-| Password exceeds 256 bytes or is invalid UTF-8 | `ErrInvalidIdentityInput` |
+| New password has exactly 8 ASCII visible characters | Accept |
+| New password has fewer than 8 characters, whitespace, control, or non-ASCII | `ErrInvalidIdentityInput` |
+| New password exceeds 256 characters | `ErrInvalidIdentityInput` |
+| Existing password matches a legacy valid UTF-8 hash with whitespace/Unicode | Permit verification; do not reissue it as a new password |
 | Stored PHC has the wrong algorithm, version, parameters, or field sizes | Reject before Argon2 allocation |
 | Login credential does not match | Generic `ErrInvalidCredential`; unknown email still performs dummy Argon2id work |
 | Recovery token is invalid, expired, used, or raced | Generic `ErrInvalidCredential`; no partial credential/session mutation |
@@ -85,17 +91,18 @@ The operator-only bootstrap command is
 
 ### 5. Good / Base / Bad Cases
 
-- **Good**: change `minimumPasswordRunes` once, update exact-boundary tests and
-  public docs, then prove bootstrap/recovery/login callers through shared tests.
-- **Base**: existing passwords longer than the minimum continue to verify with
-  no rehash or migration.
+- **Good**: change the shared strict new-password validator, update exact-boundary
+  tests and public docs, then prove bootstrap/invite/recovery/change callers.
+- **Base**: existing UTF-8 passwords continue to verify through the bounded
+  legacy validator with no rehash or migration.
 - **Bad**: bypass validation with a direct hash update, lower only the Recovery
   route, trim the password, or return a distinct unknown-email response.
 
 ### 6. Tests Required
 
-- Unit-test exactly 9 runes, 8 runes, multibyte Unicode runes, 256 bytes,
-  257 bytes, spaces, and invalid UTF-8 in `internal/auth/password_test.go`.
+- Unit-test exactly 8 ASCII characters, 7 characters, every rejected character
+  class, 256 characters, 257 characters, and legacy verification compatibility
+  in `internal/auth/password_test.go`.
 - Prove malformed PHC inputs fail before resource-intensive hashing.
 - Prove Invite Acceptance rejects an invalid password before token snapshot or
   repository mutation.
@@ -103,9 +110,9 @@ The operator-only bootstrap command is
   mutation, rejects a raced revision, and atomically revokes every Session and
   active Recovery Token after the Credential update.
 - Run the deterministic Auth Playwright journey for Login refresh/expiry,
-  Recovery Completion, Password Change with leading/trailing whitespace, and
-  all-Session revocation; each successful mutation must visibly return the
-  current browser to Login.
+  Recovery Completion, Password Change whitespace rejection plus ASCII-symbol
+  acceptance, and all-Session revocation; each successful mutation must visibly
+  return the current browser to Login.
 - Run `go test ./internal/auth`, `go test ./...`, and `go vet ./...`.
 - For a live credential rotation, prove Recovery or the owning operator path
   increments the revision, revokes existing Sessions, permits one public Login,
@@ -117,7 +124,7 @@ The operator-only bootstrap command is
 
 ```go
 // A second policy drifts from bootstrap, invite, and recovery behavior.
-if len(request.Password) < 9 {
+if len(request.Password) < 8 {
     return ErrInvalidIdentityInput
 }
 ```
@@ -130,5 +137,5 @@ if err := validatePassword(input.Password); err != nil {
 }
 ```
 
-Keep the rune minimum and byte maximum in the shared validator so every
-credential flow has one executable policy authority.
+Keep strict password creation and bounded legacy verification as separately
+named shared validators. Do not copy either policy into route handlers.

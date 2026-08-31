@@ -183,7 +183,7 @@ func (s *Service) Login(ctx context.Context, input LoginInput) (LoginResult, err
 	if err != nil {
 		return LoginResult{}, ErrInvalidIdentityInput
 	}
-	if err := validatePassword(input.Password); err != nil {
+	if err := validatePasswordForVerification(input.Password); err != nil {
 		return LoginResult{}, ErrInvalidIdentityInput
 	}
 
@@ -236,7 +236,7 @@ func (s *Service) AcceptInvite(ctx context.Context, input AcceptInviteInput) (Lo
 	if err != nil {
 		return LoginResult{}, ErrInviteNotActive
 	}
-	if err := validatePassword(input.Password); err != nil {
+	if err := validatePasswordForVerification(input.Password); err != nil {
 		return LoginResult{}, err
 	}
 	inviteTokenHash := HashSessionToken(token)
@@ -384,7 +384,7 @@ func (s *Service) ChangePassword(ctx context.Context, input ChangePasswordInput)
 	if !ok || !isUUID(user.ID) {
 		return ErrSessionNotFound
 	}
-	if err := validatePassword(input.CurrentPassword); err != nil {
+	if err := validatePasswordForVerification(input.CurrentPassword); err != nil {
 		return ErrInvalidIdentityInput
 	}
 	if err := validatePassword(input.NewPassword); err != nil {

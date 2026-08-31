@@ -8,9 +8,11 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/argon2"
 )
 
-const testPassword = "correct horse battery staple"
+const testPassword = "Correct-Horse+Battery!Staple"
 
 func TestCanonicalizeEmail(t *testing.T) {
 	tests := []struct {
@@ -117,11 +119,16 @@ func TestValidatePassword(t *testing.T) {
 		value   string
 		wantErr bool
 	}{
-		{name: "exactly 9 runes", value: "123456789"},
-		{name: "counts Unicode runes", value: strings.Repeat("界", 9)},
-		{name: "preserves spaces", value: strings.Repeat(" ", 9)},
+		{name: "exactly 8 ASCII characters", value: "A1!bcdef"},
+		{name: "visible ASCII symbols", value: "!@#$%^&*"},
 		{name: "exactly 256 bytes", value: strings.Repeat("a", 256)},
-		{name: "fewer than 9 runes", value: "12345678", wantErr: true},
+		{name: "fewer than 8 characters", value: "A1!bcde", wantErr: true},
+		{name: "space", value: "Pass word1!", wantErr: true},
+		{name: "tab", value: "Pass\tword1!", wantErr: true},
+		{name: "newline", value: "Pass\nword1!", wantErr: true},
+		{name: "Chinese", value: "密码Password1!", wantErr: true},
+		{name: "emoji", value: "Password1!😀", wantErr: true},
+		{name: "delete control", value: "Password1!\x7f", wantErr: true},
 		{name: "over 256 bytes", value: strings.Repeat("a", 257), wantErr: true},
 		{
 			name:    "invalid UTF-8",
@@ -148,8 +155,40 @@ func TestValidatePassword(t *testing.T) {
 	}
 }
 
+func TestValidatePasswordForVerificationSupportsLegacyCredentials(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		wantErr bool
+	}{
+		{name: "legacy whitespace", value: "  correct horse battery staple  "},
+		{name: "legacy Unicode", value: strings.Repeat("旧", 9)},
+		{name: "new exact minimum", value: "A1!bcdef"},
+		{name: "empty", value: "", wantErr: true},
+		{name: "fewer than 8 characters", value: "A1!bcde", wantErr: true},
+		{name: "over 256 bytes", value: strings.Repeat("a", 257), wantErr: true},
+		{
+			name:    "invalid UTF-8",
+			value:   string(append([]byte(strings.Repeat("a", 8)), 0xff)),
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validatePasswordForVerification(tt.value)
+			if tt.wantErr && !errors.Is(err, ErrInvalidIdentityInput) {
+				t.Fatalf("validatePasswordForVerification() error = %v, want ErrInvalidIdentityInput", err)
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("validatePasswordForVerification() error = %v", err)
+			}
+		})
+	}
+}
+
 func TestHashAndVerifyPassword(t *testing.T) {
-	password := "  correct horse battery staple  "
+	password := "Correct-Horse+Battery!Staple"
 	first, err := hashPassword(context.Background(), password)
 	if err != nil {
 		t.Fatalf("hashPassword() first error = %v", err)
@@ -174,14 +213,29 @@ func TestHashAndVerifyPassword(t *testing.T) {
 
 	verified, err = verifyPassword(
 		context.Background(),
-		strings.TrimSpace(password),
+		"Correct-Horse+Battery!Staple?",
 		first,
 	)
 	if err != nil {
-		t.Fatalf("verifyPassword() trimmed password error = %v", err)
+		t.Fatalf("verifyPassword() different password error = %v", err)
 	}
 	if verified {
-		t.Fatal("verifyPassword() trimmed password = true, want spaces preserved")
+		t.Fatal("verifyPassword() different password = true, want false")
+	}
+}
+
+func TestVerifyPasswordSupportsLegacyUnicodeAndWhitespace(t *testing.T) {
+	password := "  旧密码仍可验证  "
+	verified, err := verifyPassword(
+		context.Background(),
+		password,
+		legacyPasswordPHCForTest(password),
+	)
+	if err != nil {
+		t.Fatalf("verifyPassword() legacy password error = %v", err)
+	}
+	if !verified {
+		t.Fatal("verifyPassword() legacy password = false, want true")
 	}
 }
 
@@ -275,5 +329,22 @@ func testPasswordPHC() string {
 		"$argon2id$v=19$m=65536,t=3,p=2$%s$%s",
 		base64.RawStdEncoding.EncodeToString(make([]byte, argon2SaltLength)),
 		base64.RawStdEncoding.EncodeToString(make([]byte, argon2HashLength)),
+	)
+}
+
+func legacyPasswordPHCForTest(password string) string {
+	salt := make([]byte, argon2SaltLength)
+	digest := argon2.IDKey(
+		[]byte(password),
+		salt,
+		argon2Time,
+		argon2Memory,
+		argon2Parallelism,
+		argon2HashLength,
+	)
+	return fmt.Sprintf(
+		"$argon2id$v=19$m=65536,t=3,p=2$%s$%s",
+		base64.RawStdEncoding.EncodeToString(salt),
+		base64.RawStdEncoding.EncodeToString(digest),
 	)
 }

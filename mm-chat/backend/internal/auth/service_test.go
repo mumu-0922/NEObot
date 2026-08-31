@@ -74,6 +74,29 @@ func TestServiceLoginCollapsesUnknownAndWrongPassword(t *testing.T) {
 	}
 }
 
+func TestServiceLoginSupportsLegacyPassword(t *testing.T) {
+	legacyPassword := "  旧密码仍可登录  "
+	repo := &fakeAuthRepository{
+		credential: LoginCredential{
+			UserID:             "11111111-1111-4111-8111-111111111111",
+			Email:              "owner@example.test",
+			DisplayName:        "Owner",
+			PasswordHash:       legacyPasswordPHCForTest(legacyPassword),
+			CredentialRevision: 3,
+		},
+	}
+	service := NewService(repo)
+	service.newID = func() (string, error) { return "22222222-2222-4222-8222-222222222222", nil }
+	service.newToken = func() (string, error) { return testRawToken('a'), nil }
+
+	if _, err := service.Login(context.Background(), LoginInput{
+		Email:    "owner@example.test",
+		Password: legacyPassword,
+	}); err != nil {
+		t.Fatalf("Login() legacy password error = %v", err)
+	}
+}
+
 func TestServiceAcceptInviteCreatesNewIdentityFromSnapshot(t *testing.T) {
 	now := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
 	repo := &fakeAuthRepository{
@@ -133,12 +156,13 @@ func TestServiceAcceptInviteCreatesNewIdentityFromSnapshot(t *testing.T) {
 
 func TestServiceAcceptInviteExistingCredentialUsesFence(t *testing.T) {
 	now := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+	legacyPassword := "  旧密码仍可接受邀请  "
 	repo := &fakeAuthRepository{
 		credential: LoginCredential{
 			UserID:             "66666666-6666-4666-8666-666666666666",
 			Email:              "existing-member@example.test",
 			DisplayName:        "Existing Member",
-			PasswordHash:       defaultDummyPasswordHash,
+			PasswordHash:       legacyPasswordPHCForTest(legacyPassword),
 			CredentialRevision: 9,
 		},
 		inviteSnapshot: InviteAcceptanceSnapshot{
@@ -160,7 +184,7 @@ func TestServiceAcceptInviteExistingCredentialUsesFence(t *testing.T) {
 
 	result, err := service.AcceptInvite(context.Background(), AcceptInviteInput{
 		Token:     testRawToken('b'),
-		Password:  validTestPassword,
+		Password:  legacyPassword,
 		UserAgent: "existing-agent",
 	})
 	if err != nil {
@@ -234,7 +258,7 @@ func TestServiceAcceptInviteRejectsMalformedPasswordBeforeTokenSnapshot(t *testi
 
 			_, err := service.AcceptInvite(context.Background(), AcceptInviteInput{
 				Token:    testRawToken('d'),
-				Password: "12345678",
+				Password: "A1!bcde",
 			})
 			if !errors.Is(err, ErrInvalidIdentityInput) {
 				t.Fatalf("AcceptInvite() error = %v, want ErrInvalidIdentityInput", err)
@@ -246,6 +270,31 @@ func TestServiceAcceptInviteRejectsMalformedPasswordBeforeTokenSnapshot(t *testi
 				t.Fatalf("unexpected downstream calls lookup=%q accept=%v", tt.repo.lookupEmail, tt.repo.acceptInviteCalled)
 			}
 		})
+	}
+}
+
+func TestServiceAcceptInviteRejectsInvalidNewPasswordWithoutMutation(t *testing.T) {
+	repo := &fakeAuthRepository{
+		lookupErr: ErrInvalidCredential,
+		inviteSnapshot: InviteAcceptanceSnapshot{
+			TeamID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+			Email:  "invitee@example.test",
+		},
+	}
+	service := NewService(repo)
+
+	_, err := service.AcceptInvite(context.Background(), AcceptInviteInput{
+		Token:    testRawToken('d'),
+		Password: "New Pass1!",
+	})
+	if !errors.Is(err, ErrInvalidIdentityInput) {
+		t.Fatalf("AcceptInvite() error = %v, want ErrInvalidIdentityInput", err)
+	}
+	if repo.inviteLookupTokenHash == "" || repo.lookupEmail != repo.inviteSnapshot.Email {
+		t.Fatalf("expected identity lookup before deciding new-password policy, lookup=%q email=%q", repo.inviteLookupTokenHash, repo.lookupEmail)
+	}
+	if repo.acceptInviteCalled {
+		t.Fatalf("AcceptInvite() mutated repository: %#v", repo.acceptInviteInput)
 	}
 }
 
@@ -299,11 +348,28 @@ func TestServiceRecoveryDeliveryAndCompletion(t *testing.T) {
 	}
 }
 
+func TestServiceCompleteRecoveryRejectsInvalidNewPasswordWithoutMutation(t *testing.T) {
+	repo := &fakeAuthRepository{}
+	service := NewService(repo)
+
+	err := service.CompleteRecovery(context.Background(), RecoveryCompleteInput{
+		Token:       testRawToken('c'),
+		NewPassword: "密码Password1!",
+	})
+	if !errors.Is(err, ErrInvalidIdentityInput) {
+		t.Fatalf("CompleteRecovery() error = %v, want ErrInvalidIdentityInput", err)
+	}
+	if repo.completeInput.TokenHash != "" {
+		t.Fatalf("CompleteRecovery() mutated repository: %#v", repo.completeInput)
+	}
+}
+
 func TestServiceChangePasswordVerifiesCurrentCredentialAndInvalidatesSessions(t *testing.T) {
+	legacyPassword := "  旧密码仍可修改  "
 	repo := &fakeAuthRepository{
 		credential: LoginCredential{
 			UserID:             "11111111-1111-4111-8111-111111111111",
-			PasswordHash:       defaultDummyPasswordHash,
+			PasswordHash:       legacyPasswordPHCForTest(legacyPassword),
 			CredentialRevision: 4,
 		},
 		changeRevoked: []RevokedSession{{
@@ -316,7 +382,7 @@ func TestServiceChangePasswordVerifiesCurrentCredentialAndInvalidatesSessions(t 
 	ctx := WithUser(context.Background(), User{ID: repo.credential.UserID})
 
 	err := service.ChangePassword(ctx, ChangePasswordInput{
-		CurrentPassword: validTestPassword,
+		CurrentPassword: legacyPassword,
 		NewPassword:     "replacement-password-value",
 	})
 	if err != nil {
@@ -364,19 +430,23 @@ func TestServiceChangePasswordRejectsWrongCurrentPasswordWithoutMutation(t *test
 }
 
 func TestServiceChangePasswordRejectsInvalidInputBeforeRepository(t *testing.T) {
-	repo := &fakeAuthRepository{}
-	service := NewService(repo)
-	ctx := WithUser(context.Background(), User{ID: "11111111-1111-4111-8111-111111111111"})
+	for _, newPassword := range []string{"A1!bcde", "New Pass1!", "密码Password1!"} {
+		t.Run(newPassword, func(t *testing.T) {
+			repo := &fakeAuthRepository{}
+			service := NewService(repo)
+			ctx := WithUser(context.Background(), User{ID: "11111111-1111-4111-8111-111111111111"})
 
-	err := service.ChangePassword(ctx, ChangePasswordInput{
-		CurrentPassword: validTestPassword,
-		NewPassword:     "12345678",
-	})
-	if !errors.Is(err, ErrInvalidIdentityInput) {
-		t.Fatalf("ChangePassword() error = %v, want ErrInvalidIdentityInput", err)
-	}
-	if repo.currentLookupUserID != "" || repo.changeCalled {
-		t.Fatalf("unexpected repository calls lookup=%q change=%v", repo.currentLookupUserID, repo.changeCalled)
+			err := service.ChangePassword(ctx, ChangePasswordInput{
+				CurrentPassword: validTestPassword,
+				NewPassword:     newPassword,
+			})
+			if !errors.Is(err, ErrInvalidIdentityInput) {
+				t.Fatalf("ChangePassword() error = %v, want ErrInvalidIdentityInput", err)
+			}
+			if repo.currentLookupUserID != "" || repo.changeCalled {
+				t.Fatalf("unexpected repository calls lookup=%q change=%v", repo.currentLookupUserID, repo.changeCalled)
+			}
+		})
 	}
 }
 

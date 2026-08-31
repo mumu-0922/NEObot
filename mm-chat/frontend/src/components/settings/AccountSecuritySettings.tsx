@@ -26,6 +26,7 @@ type FormError =
   | "newRequired"
   | "passwordTooShort"
   | "passwordTooLong"
+  | "passwordInvalidCharacters"
   | "passwordMismatch"
   | "currentInvalid"
   | "genericError";
@@ -73,6 +74,10 @@ const AccountSecuritySettings: React.FC<AccountSecuritySettingsProps> = ({
     }
     if (policyFailure === "too-long") {
       setFormError("passwordTooLong");
+      return;
+    }
+    if (policyFailure === "invalid-characters") {
+      setFormError("passwordInvalidCharacters");
       return;
     }
     if (newPassword !== confirmPassword) {

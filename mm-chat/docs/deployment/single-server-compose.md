@@ -573,7 +573,8 @@ creates the initial Email/Password Owner, uses
 are omitted, and refuses to run after any Credential exists. It is not a
 password-reset or break-glass command. There is no `AUTH_BOOTSTRAP_TOKEN`; the
 old token is neither configured by this Compose stack nor accepted by
-`POST /v1/auth/login`. Passwords must be 9-256 UTF-8 characters/bytes.
+`POST /v1/auth/login`. New passwords must contain 8-256 ASCII visible
+characters (letters, numbers, or symbols) and cannot contain spaces.
 
 The supported account-disable maintenance path uses the Team fencing
 transaction rather than direct SQL. It locks the User first, then every active

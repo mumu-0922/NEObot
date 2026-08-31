@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/auth-identity.md","reason":"Owns shared Server Auth password validation, verification compatibility, Argon2id, Login, Recovery, Invite and Password Change contracts."}
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"Keeps reusable password policy logic in the existing frontend domain boundary."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Defines strict runtime validation and closed-union error handling for client password policy checks."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Defines focused Vitest, Playwright and cross-layer verification requirements for auth/security behavior."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Ensures Backend authority, Frontend projection, E2E and deployment documentation remain consistent."}

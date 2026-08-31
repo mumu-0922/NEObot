@@ -60,8 +60,8 @@ test("password recovery resets the credential and returns to login", async ({
   await page.getByRole("button", { name: "发送找回邮件" }).click();
 
   await page.getByLabel("Recovery Token").fill(TEST_RECOVERY_TOKEN);
-  await page.getByLabel("新密码", { exact: true }).fill("recovered pass");
-  await page.getByLabel("确认新密码").fill("recovered pass");
+  await page.getByLabel("新密码", { exact: true }).fill("Recovered+Pass1");
+  await page.getByLabel("确认新密码").fill("Recovered+Pass1");
   await page.getByRole("button", { name: "重置密码" }).click();
 
   await expect(
@@ -69,7 +69,7 @@ test("password recovery resets the credential and returns to login", async ({
   ).toBeVisible();
   await page.getByRole("button", { name: "返回登录" }).click();
   await page.getByLabel("邮箱").fill("owner@example.test");
-  await page.getByLabel("密码").fill("recovered pass");
+  await page.getByLabel("密码").fill("Recovered+Pass1");
   await page.getByLabel("密码").press("Enter");
 
   await expect(
@@ -78,7 +78,7 @@ test("password recovery resets the credential and returns to login", async ({
   expect(api.unhandledRequests).toEqual([]);
 });
 
-test("changing a password preserves whitespace and revokes the current session", async ({
+test("changing a password rejects whitespace, accepts ASCII symbols, and revokes the current session", async ({
   page,
 }) => {
   const api = new NeoChatApiFixture([
@@ -93,13 +93,21 @@ test("changing a password preserves whitespace and revokes the current session",
 
   await page.goto("/?panel=settings&settingsTab=account");
   await page.getByLabel("当前密码").fill("e2e-pass");
-  await page.getByLabel("新密码", { exact: true }).fill("  secure pass  ");
-  await page.getByLabel("确认新密码").fill("  secure pass  ");
+  await page.getByLabel("新密码", { exact: true }).fill("Secure Pass1!");
+  await page.getByLabel("确认新密码").fill("Secure Pass1!");
+  await page.getByRole("button", { name: "修改密码" }).click();
+
+  await expect(
+    page.getByText("新密码只能包含英文字母、数字和符号", { exact: false }),
+  ).toBeVisible();
+
+  await page.getByLabel("新密码", { exact: true }).fill("Secure+Pass1!");
+  await page.getByLabel("确认新密码").fill("Secure+Pass1!");
   await page.getByRole("button", { name: "修改密码" }).click();
 
   await expect(page.getByLabel("邮箱")).toBeVisible();
   await page.getByLabel("邮箱").fill("owner@example.test");
-  await page.getByLabel("密码").fill("  secure pass  ");
+  await page.getByLabel("密码").fill("Secure+Pass1!");
   await page.getByLabel("密码").press("Enter");
 
   await expect(

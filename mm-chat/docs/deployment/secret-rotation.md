@@ -82,8 +82,9 @@ curl -fsS -o /dev/null -w '%{http_code}\n' \
 Completion atomically changes the password, increments its Credential revision,
 consumes the token, revokes sibling Recovery Tokens, and revokes every Session
 for that user. It does not issue a replacement Session; verify by logging in
-again through the normal client with the new password. Passwords must be 9-256
-UTF-8 characters/bytes and are not trimmed or normalized.
+again through the normal client with the new password. Passwords must be 8-256
+ASCII visible characters: letters, numbers, and symbols are allowed; spaces and
+non-ASCII characters are rejected. Passwords are not trimmed or normalized.
 
 ## SMTP Credentials
 

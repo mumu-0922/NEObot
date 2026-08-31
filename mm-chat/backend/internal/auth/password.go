@@ -17,16 +17,16 @@ import (
 )
 
 const (
-	maximumEmailBytes       = 254
-	minimumPasswordRunes    = 9
-	maximumPasswordBytes    = 256
-	argon2Memory            = 64 * 1024
-	argon2Time              = 3
-	argon2Parallelism       = 2
-	argon2SaltLength        = 16
-	argon2HashLength        = 32
-	maximumPasswordPHCBytes = 128
-	maximumPasswordHashes   = 2
+	maximumEmailBytes         = 254
+	minimumPasswordCharacters = 8
+	maximumPasswordBytes      = 256
+	argon2Memory              = 64 * 1024
+	argon2Time                = 3
+	argon2Parallelism         = 2
+	argon2SaltLength          = 16
+	argon2HashLength          = 32
+	maximumPasswordPHCBytes   = 128
+	maximumPasswordHashes     = 2
 )
 
 var passwordHashSemaphore = make(chan struct{}, maximumPasswordHashes)
@@ -110,14 +110,32 @@ func hasMailboxEnvelopeSyntax(value string) bool {
 }
 
 func validatePassword(password string) error {
+	for index := 0; index < len(password); index++ {
+		if password[index] < '!' || password[index] > '~' {
+			return invalidIdentityInput("password must contain only ASCII letters, numbers, and symbols")
+		}
+	}
+	if len(password) < minimumPasswordCharacters {
+		return invalidIdentityInput("password must contain at least 8 characters")
+	}
+	if len(password) > maximumPasswordBytes {
+		return invalidIdentityInput("password must not exceed 256 characters")
+	}
+	return nil
+}
+
+// validatePasswordForVerification keeps already-issued credentials usable
+// while every new password is admitted through validatePassword. The previous
+// policy allowed arbitrary valid UTF-8, including whitespace and Unicode.
+func validatePasswordForVerification(password string) error {
 	if len(password) > maximumPasswordBytes {
 		return invalidIdentityInput("password must not exceed 256 bytes")
 	}
 	if !utf8.ValidString(password) {
 		return invalidIdentityInput("password must be valid UTF-8")
 	}
-	if utf8.RuneCountInString(password) < minimumPasswordRunes {
-		return invalidIdentityInput("password must contain at least 9 characters")
+	if utf8.RuneCountInString(password) < minimumPasswordCharacters {
+		return invalidIdentityInput("password must contain at least 8 characters")
 	}
 	return nil
 }
@@ -163,7 +181,7 @@ func hashPassword(ctx context.Context, password string) (string, error) {
 }
 
 func verifyPassword(ctx context.Context, password string, encodedHash string) (bool, error) {
-	if err := validatePassword(password); err != nil {
+	if err := validatePasswordForVerification(password); err != nil {
 		return false, err
 	}
 	parsed, err := parsePasswordPHC(encodedHash)
