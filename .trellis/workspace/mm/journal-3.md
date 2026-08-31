@@ -434,3 +434,36 @@ Added authenticated self-service password rotation, all-session revocation, logi
 ### Next Steps
 
 - None - task complete
+
+
+## Session 121: Enforce ASCII password policy
+
+**Date**: 2026-08-31
+**Task**: Enforce ASCII password policy
+**Branch**: `main`
+
+### Summary
+
+Changed new Server Auth passwords to 8-256 visible ASCII characters, preserved bounded legacy credential verification, synchronized frontend validation/translations/docs, added unit and Auth Playwright coverage, passed full gates, and deployed healthy local images.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3a24a71a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

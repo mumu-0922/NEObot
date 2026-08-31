@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 120
+- **Total Sessions**: 121
 - **Last Active**: 2026-08-31
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~436 | Active |
+| `journal-3.md` | ~469 | Active |
 | `journal-2.md` | ~1985 | Archived |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 121 | 2026-08-31 | Enforce ASCII password policy | `3a24a71a` | `main` |
 | 120 | 2026-08-31 | Account security and password recovery | `fab9da79` | `main` |
 | 119 | 2026-08-30 | Harden five-image production promotion | `6c9995f4` | `main` |
 | 118 | 2026-08-30 | Deploy Skill cleanup with restore rehearsal | `f1dc33e5` | `main` |
