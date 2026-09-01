@@ -504,3 +504,36 @@ Tracked ignored frontend data modules, restored executable metadata, stabilized 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 123: Rename frontend brand to NeoBot
+
+**Date**: 2026-09-01
+**Task**: Rename frontend brand to NeoBot
+**Branch**: `main`
+
+### Summary
+
+Renamed the user-facing frontend brand from Neo Chat to NeoBot across the main UI, localized authentication/account/MCP copy, SEO metadata, Open Graph, JSON-LD, and PWA surfaces while preserving internal compatibility identifiers and existing artwork. Added focused brand assertions and documented the external-brand boundary.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `700a23a9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

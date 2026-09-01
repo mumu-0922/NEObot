@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 122
-- **Last Active**: 2026-08-31
+- **Total Sessions**: 123
+- **Last Active**: 2026-09-01
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~506 | Active |
+| `journal-3.md` | ~539 | Active |
 | `journal-2.md` | ~1985 | Archived |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 123 | 2026-09-01 | Rename frontend brand to NeoBot | `700a23a9` | `main` |
 | 122 | 2026-08-31 | Restore GitHub CI fresh-checkout parity | `2c83d033`, `9dfe4e77`, `9adec044`, `0c1e7eb1`, `99e54716` | `main` |
 | 121 | 2026-08-31 | Enforce ASCII password policy | `3a24a71a` | `main` |
 | 120 | 2026-08-31 | Account security and password recovery | `fab9da79` | `main` |
