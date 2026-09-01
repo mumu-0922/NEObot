@@ -537,3 +537,36 @@ Renamed the user-facing frontend brand from Neo Chat to NeoBot across the main U
 ### Next Steps
 
 - None - task complete
+
+
+## Session 124: Replace NeoBot logo with F1-A
+
+**Date**: 2026-09-01
+**Task**: Replace NeoBot logo with F1-A
+**Branch**: `main`
+
+### Summary
+
+Replaced the frontend logo with the selected F1-A vector mark, added deterministic PNG and multi-size favicon generation, updated metadata and PWA assets, and added focused asset tests and documentation.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `20b5d06a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
