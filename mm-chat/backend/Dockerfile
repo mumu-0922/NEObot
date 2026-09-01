@@ -45,7 +45,7 @@ USER mmchat:mmchat
 EXPOSE 8080
 CMD ["/usr/local/bin/mm-chat-api"]
 
-FROM mcr.microsoft.com/playwright/mcp:v0.0.79@sha256:18c0a9c934004fe9580cc79f1e8e6e6cde7c667348b215335e8a23fd3e509804 AS mcp-runner
+FROM mcr.microsoft.com/playwright/mcp:v0.0.80@sha256:dda1f7f9b812e22946635c8af7df9288b96d3b9e3f0f1b8576d6823e2031c1de AS mcp-runner
 USER root
 RUN test -x /ms-playwright/chromium-1237/chrome-linux64/chrome \
     && apt-get update \
