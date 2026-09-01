@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 124
+- **Total Sessions**: 125
 - **Last Active**: 2026-09-01
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~572 | Active |
+| `journal-3.md` | ~605 | Active |
 | `journal-2.md` | ~1985 | Archived |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 125 | 2026-09-01 | Redeploy F1-A frontend | `20b5d06a` | `main` |
 | 124 | 2026-09-01 | Replace NeoBot logo with F1-A | `20b5d06a` | `main` |
 | 123 | 2026-09-01 | Rename frontend brand to NeoBot | `700a23a9` | `main` |
 | 122 | 2026-08-31 | Restore GitHub CI fresh-checkout parity | `2c83d033`, `9dfe4e77`, `9adec044`, `0c1e7eb1`, `99e54716` | `main` |

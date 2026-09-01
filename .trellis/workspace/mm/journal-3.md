@@ -570,3 +570,36 @@ Replaced the frontend logo with the selected F1-A vector mark, added determinist
 ### Next Steps
 
 - None - task complete
+
+
+## Session 125: Redeploy F1-A frontend
+
+**Date**: 2026-09-01
+**Task**: Redeploy F1-A frontend
+**Branch**: `main`
+
+### Summary
+
+Built and pinned the NeoBot F1-A frontend image, recreated only the frontend service, and verified live branding, health, asset hashes, unrelated container stability, and rollback readiness.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `20b5d06a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
