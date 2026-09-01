@@ -18,7 +18,7 @@ export default function Error({
           id="route-error-title"
           className="text-base font-semibold text-pretty"
         >
-          Neo Chat hit a problem
+          NeoBot hit a problem
         </h1>
         <p
           id="route-error-description"

@@ -27,7 +27,7 @@
   "changingPassword": "変更中…",
   "sessionsTitle": "ログインセッション",
   "sessionsDescription": "発行済みのログイン認証情報を無効化します。",
-  "revokeAllDescription": "この端末を含むすべての端末で Neo Chat からログアウトします。",
+  "revokeAllDescription": "この端末を含むすべての端末で NeoBot からログアウトします。",
   "revokeAll": "すべての端末からログアウト",
   "revokingSessions": "ログアウト中…",
   "revokeConfirm": "すべての端末からログアウトしますか？このページもログイン画面に戻ります。",

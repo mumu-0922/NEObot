@@ -179,6 +179,18 @@ api.completeKnowledgeRun(conversationId, "grounded answer [K1]", {
 - Request, upload, URL, and plugin changes require boundary/limit tests; use the
   existing security helpers rather than open-coding weaker checks.
 
+## External Brand Changes
+
+- Treat a presentation-only brand rename as separate from internal compatibility
+  identifiers. Update `src/lib/seo.ts`, localized user-facing copy, App Router
+  loading/error surfaces, and visible accessibility labels.
+- Do not rename `mm-chat`, `NeoChat*` code symbols, `neo-chat-*` storage/event
+  keys, MIME identifiers, import schemas, deployment resources, or package names
+  unless the task explicitly includes a migration for those contracts.
+- Extend `src/__tests__/seo.test.ts` to assert the canonical external brand and
+  localized product copy while retaining old-name fixtures that intentionally
+  represent ordinary user data or compatibility contracts.
+
 ## Forbidden Patterns
 
 - Product source or Next.js entrypoints created outside `mm-chat/frontend/`.

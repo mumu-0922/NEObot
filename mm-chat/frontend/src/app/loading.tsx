@@ -5,7 +5,7 @@ export default function Loading() {
       aria-live="polite"
       className="flex h-screen w-full items-center justify-center bg-background text-sm text-muted-foreground"
     >
-      Loading Neo Chat…
+      Loading NeoBot…
     </div>
   );
 }

@@ -2,7 +2,34 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import en from "../i18n/locales/en";
+import ja from "../i18n/locales/ja";
+import zh from "../i18n/locales/zh";
 import * as seo from "../lib/seo";
+
+describe("NeoBot brand", () => {
+  it("uses the external brand across metadata and localized product copy", () => {
+    expect(seo.SITE_NAME).toBe("NeoBot");
+    expect(seo.buildWebApplicationJsonLd("en")).toMatchObject({
+      name: "NeoBot",
+      alternateName: ["Neo", "NeoBot AI"],
+    });
+
+    for (const messages of [en, zh, ja]) {
+      const brandedMessages = {
+        AccessPassword: messages.AccessPassword,
+        AccountSecurity: messages.AccountSecurity,
+        ChatApp: messages.ChatApp,
+        Mcp: messages.Mcp,
+        Sidebar: messages.Sidebar,
+      };
+
+      expect(messages.ChatApp.productName).toBe("NeoBot");
+      expect(JSON.stringify(brandedMessages)).toContain("NeoBot");
+      expect(JSON.stringify(brandedMessages)).not.toContain("Neo Chat");
+    }
+  });
+});
 
 describe("SEO screenshot assets", () => {
   afterEach(() => {
@@ -16,14 +43,14 @@ describe("SEO screenshot assets", () => {
         sizes: "2880x1568",
         type: "image/png",
         form_factor: "wide",
-        label: "Neo Chat desktop workspace screenshot",
+        label: "NeoBot desktop workspace screenshot",
       },
       {
         src: "/mobile.png",
         sizes: "1490x1332",
         type: "image/png",
         form_factor: "narrow",
-        label: "Neo Chat mobile workspace screenshot",
+        label: "NeoBot mobile workspace screenshot",
       },
     ]);
   });
@@ -54,11 +81,11 @@ describe("SEO screenshot assets", () => {
       "https://chat.example.com/desktop.png",
       "https://chat.example.com/mobile.png",
     ]);
-    expect(seo.getSeoOpenGraphImages("Neo Chat")[0]).toMatchObject({
+    expect(seo.getSeoOpenGraphImages("NeoBot")[0]).toMatchObject({
       url: "https://chat.example.com/desktop.png",
       width: 2880,
       height: 1568,
-      alt: "Neo Chat",
+      alt: "NeoBot",
     });
   });
 
@@ -67,7 +94,7 @@ describe("SEO screenshot assets", () => {
       existsSync(resolve(process.cwd(), "src/app/opengraph-image.tsx")),
     ).toBe(false);
     expect(
-      seo.getSeoOpenGraphImages("Neo Chat").map((image) => image.url),
+      seo.getSeoOpenGraphImages("NeoBot").map((image) => image.url),
     ).toEqual([
       "http://localhost:3000/desktop.png",
       "http://localhost:3000/mobile.png",

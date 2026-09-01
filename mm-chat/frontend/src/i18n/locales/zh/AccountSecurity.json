@@ -27,7 +27,7 @@
   "changingPassword": "正在修改…",
   "sessionsTitle": "登录会话",
   "sessionsDescription": "撤销已签发的登录凭证。",
-  "revokeAllDescription": "退出当前设备和其他所有设备上的 Neo Chat。",
+  "revokeAllDescription": "退出当前设备和其他所有设备上的 NeoBot。",
   "revokeAll": "退出所有设备",
   "revokingSessions": "正在退出…",
   "revokeConfirm": "确定退出所有设备吗？当前页面也会返回登录界面。",

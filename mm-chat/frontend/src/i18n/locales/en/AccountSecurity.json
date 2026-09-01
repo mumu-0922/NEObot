@@ -27,7 +27,7 @@
   "changingPassword": "Changing…",
   "sessionsTitle": "Sign-in sessions",
   "sessionsDescription": "Revoke issued sign-in credentials.",
-  "revokeAllDescription": "Sign out of Neo Chat on this device and every other device.",
+  "revokeAllDescription": "Sign out of NeoBot on this device and every other device.",
   "revokeAll": "Sign out everywhere",
   "revokingSessions": "Signing out…",
   "revokeConfirm": "Sign out on every device? This page will return to sign in too.",

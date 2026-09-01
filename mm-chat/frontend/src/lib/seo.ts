@@ -1,4 +1,4 @@
-export const SITE_NAME = "Neo Chat";
+export const SITE_NAME = "NeoBot";
 
 const DEFAULT_SITE_URL = "http://localhost:3000";
 const DESKTOP_SCREENSHOT_SRC = "/desktop.png" as const;
@@ -40,14 +40,14 @@ export const SEO_SCREENSHOTS: SeoScreenshot[] = [
     sizes: "2880x1568",
     type: "image/png",
     form_factor: "wide",
-    label: "Neo Chat desktop workspace screenshot",
+    label: "NeoBot desktop workspace screenshot",
   },
   {
     src: MOBILE_SCREENSHOT_SRC,
     sizes: "1490x1332",
     type: "image/png",
     form_factor: "narrow",
-    label: "Neo Chat mobile workspace screenshot",
+    label: "NeoBot mobile workspace screenshot",
   },
 ];
 
@@ -61,11 +61,11 @@ const SEO_SCREENSHOT_DIMENSIONS: Record<
 
 export const SEO_CONTENT: Record<SeoLocale, SeoContent> = {
   en: {
-    title: "Neo Chat - Local-first AI chat workspace",
+    title: "NeoBot - Local-first AI chat workspace",
     description:
-      "Neo Chat is a local-first AI chat workspace for multi-model conversations, assistant presets, MCP tools, web search, knowledge-base RAG, voice, and artifacts.",
+      "NeoBot is a local-first AI chat workspace for multi-model conversations, assistant presets, MCP tools, web search, knowledge-base RAG, voice, and artifacts.",
     keywords: [
-      "Neo Chat",
+      "NeoBot",
       "AI chat",
       "local-first AI",
       "multi-model chat",
@@ -76,10 +76,10 @@ export const SEO_CONTENT: Record<SeoLocale, SeoContent> = {
       "voice input",
       "Next.js chat app",
     ],
-    ogTitle: "Neo Chat - Local-first AI chat workspace",
+    ogTitle: "NeoBot - Local-first AI chat workspace",
     ogDescription:
       "Chat with multiple AI providers, assistants, MCP tools, web search, knowledge-base RAG, voice, and artifacts in one bilingual workspace.",
-    ogImageAlt: "Neo Chat AI chat workspace",
+    ogImageAlt: "NeoBot AI chat workspace",
     openGraphLocale: "en_US",
     structuredDataLanguage: "en",
     features: [
@@ -92,11 +92,11 @@ export const SEO_CONTENT: Record<SeoLocale, SeoContent> = {
     ],
   },
   zh: {
-    title: "Neo Chat - 本地优先的 AI 对话工作台",
+    title: "NeoBot - 本地优先的 AI 对话工作台",
     description:
-      "Neo Chat 是本地优先的 AI 对话工作台，支持多模型对话、助理预设、MCP 工具、联网搜索、知识库 RAG、语音和可编辑产物。",
+      "NeoBot 是本地优先的 AI 对话工作台，支持多模型对话、助理预设、MCP 工具、联网搜索、知识库 RAG、语音和可编辑产物。",
     keywords: [
-      "Neo Chat",
+      "NeoBot",
       "AI 对话",
       "本地优先 AI",
       "多模型聊天",
@@ -107,10 +107,10 @@ export const SEO_CONTENT: Record<SeoLocale, SeoContent> = {
       "语音输入",
       "Next.js 聊天应用",
     ],
-    ogTitle: "Neo Chat - 本地优先的 AI 对话工作台",
+    ogTitle: "NeoBot - 本地优先的 AI 对话工作台",
     ogDescription:
       "在一个双语工作台中使用多模型、助理、MCP 工具、联网搜索、知识库 RAG、语音和可编辑产物。",
-    ogImageAlt: "Neo Chat AI 对话工作台",
+    ogImageAlt: "NeoBot AI 对话工作台",
     openGraphLocale: "zh_CN",
     structuredDataLanguage: "zh-CN",
     features: [
@@ -123,11 +123,11 @@ export const SEO_CONTENT: Record<SeoLocale, SeoContent> = {
     ],
   },
   ja: {
-    title: "Neo Chat - ローカル優先の AI チャットワークスペース",
+    title: "NeoBot - ローカル優先の AI チャットワークスペース",
     description:
-      "Neo Chat はローカル優先の AI チャットワークスペースです。複数モデルの会話、アシスタントプリセット、MCP ツール、Web 検索、ナレッジベース RAG、音声、編集可能な成果物に対応します。",
+      "NeoBot はローカル優先の AI チャットワークスペースです。複数モデルの会話、アシスタントプリセット、MCP ツール、Web 検索、ナレッジベース RAG、音声、編集可能な成果物に対応します。",
     keywords: [
-      "Neo Chat",
+      "NeoBot",
       "AI チャット",
       "ローカル優先 AI",
       "マルチモデルチャット",
@@ -138,10 +138,10 @@ export const SEO_CONTENT: Record<SeoLocale, SeoContent> = {
       "音声入力",
       "Next.js チャットアプリ",
     ],
-    ogTitle: "Neo Chat - ローカル優先の AI チャットワークスペース",
+    ogTitle: "NeoBot - ローカル優先の AI チャットワークスペース",
     ogDescription:
       "複数モデル、アシスタント、MCP ツール、Web 検索、ナレッジベース RAG、音声、編集可能な成果物をひとつのワークスペースで扱えます。",
-    ogImageAlt: "Neo Chat AI チャットワークスペース",
+    ogImageAlt: "NeoBot AI チャットワークスペース",
     openGraphLocale: "ja_JP",
     structuredDataLanguage: "ja-JP",
     features: [
@@ -207,7 +207,7 @@ export function buildWebApplicationJsonLd(locale: string | undefined) {
     "@context": "https://schema.org",
     "@type": "WebApplication",
     name: SITE_NAME,
-    alternateName: ["Neo", "Neo Chat AI"],
+    alternateName: ["Neo", "NeoBot AI"],
     url: absoluteUrl("/"),
     applicationCategory: "ProductivityApplication",
     operatingSystem: "Web",
