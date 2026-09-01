@@ -215,7 +215,7 @@ export function buildWebApplicationJsonLd(locale: string | undefined) {
     inLanguage: seo.structuredDataLanguage,
     image: screenshotUrls,
     screenshot: screenshotUrls,
-    logo: absoluteUrl("/logo.png"),
+    logo: absoluteUrl("/logo-512.png"),
     offers: {
       "@type": "Offer",
       price: "0",

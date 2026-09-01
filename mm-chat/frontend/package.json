@@ -22,7 +22,8 @@
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:install": "playwright install --with-deps chromium",
-    "byok:generate": "node scripts/generate-byok-key.mjs"
+    "byok:generate": "node scripts/generate-byok-key.mjs",
+    "logo:generate": "node scripts/generate-logo-assets.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.52.0",

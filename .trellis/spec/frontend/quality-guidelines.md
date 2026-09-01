@@ -190,6 +190,24 @@ api.completeKnowledgeRun(conversationId, "grounded answer [K1]", {
 - Extend `src/__tests__/seo.test.ts` to assert the canonical external brand and
   localized product copy while retaining old-name fixtures that intentionally
   represent ordinary user data or compatibility contracts.
+- Treat `public/logo.svg` as the canonical logo master. After changing its
+  geometry or palette, run `corepack pnpm logo:generate`; the generator must
+  deterministically replace `public/logo.png`, `public/logo-192.png`,
+  `public/logo-512.png`, and `src/app/favicon.ico` without network access.
+- Keep the inline `Logo` component geometry aligned with the SVG master while
+  preserving its `React.SVGProps<SVGSVGElement>` API. Gradient IDs in the
+  inline component must be instance-unique (for example, via `React.useId`),
+  because the sidebar and welcome surface can render the logo together.
+- Logo coverage must assert the PNG IHDR dimensions/alpha color type, favicon
+  entries, manifest paths and MIME types, and shared vector geometry. Do not
+  crop an opaque design-board image into production assets.
+
+```bash
+# Correct: update the SVG/component geometry, then regenerate derivatives.
+corepack pnpm logo:generate
+
+# Wrong: hand-edit or independently export one PNG/ICO derivative.
+```
 
 ## Forbidden Patterns
 

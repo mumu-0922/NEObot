@@ -31,7 +31,13 @@ corepack pnpm typecheck
 corepack pnpm lint
 corepack pnpm test
 corepack pnpm build
+corepack pnpm logo:generate
 ```
+
+`public/logo.svg` is the canonical NeoBot logo asset. `logo:generate`
+deterministically renders the 192px/512px PNGs and multi-size favicon from that
+vector master. Keep the inline `Logo` component geometry aligned with the SVG;
+do not hand-edit generated PNG or ICO derivatives.
 
 Server-mode development uses the Go backend:
 

@@ -17,9 +17,16 @@ export default function manifest(): MetadataRoute.Manifest {
     screenshots: SEO_SCREENSHOTS,
     icons: [
       {
-        src: "/logo.png",
+        src: "/logo-192.png",
         sizes: "192x192",
         type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: "/logo-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any",
       },
     ],
   };

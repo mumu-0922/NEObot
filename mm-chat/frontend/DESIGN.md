@@ -62,6 +62,10 @@ to the private Go backend.
 - Python RAG is private behind Go; the browser never calls it directly.
 - Existing theme tokens, components, routes, localization, responsiveness, and
   accessibility behavior form the UI compatibility contract.
+- `public/logo.svg` is the canonical external logo master. The inline `Logo`
+  component mirrors its geometry, while `corepack pnpm logo:generate`
+  deterministically derives `logo.png`, 192px/512px PWA PNGs, and the multi-size
+  favicon without network access.
 - No final build, test, runtime, fixture, or deployment path may traverse from
   `mm-chat/` back into the original root project.
 
@@ -76,6 +80,7 @@ to the private Go backend.
 | Legacy `/api/*` remains at final gate             | Standalone cutover fails                                                                   |
 | Import/build/runtime reads original root          | Clean-copy gate fails                                                                      |
 | Visual baseline changes during relocation         | Visual/interaction parity gate fails                                                       |
+| Generated logo dimensions or alpha differ         | Focused logo asset test fails; regenerate from `public/logo.svg`                           |
 | Server Memory governance request fails            | Keep the last snapshot, show a bounded error, and never fall back to local Memory          |
 | Server Memory health request fails                | Keep governance usable and show a bounded service-issue state; expose no raw backend error |
 | Activity is terminal or reaches 15 empty polls    | Stop polling; do not create background traffic for old answers                             |
@@ -116,6 +121,8 @@ to the private Go backend.
   text for indexing/unavailable Tool failures.
 - UI preservation: capture agreed desktop/mobile visual baselines and critical
   interaction smoke paths.
+- Logo assets: assert shared SVG/inline geometry, transparent PNG dimensions,
+  manifest/SEO paths, and favicon entries; regeneration must be byte-stable.
 - Final closure: run the entire frontend suite once, then clean-copy Compose,
   security, backup/restore, and root-reference scans.
 
