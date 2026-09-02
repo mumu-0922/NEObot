@@ -274,12 +274,12 @@ exec psql --set=ON_ERROR_STOP=1 \
 '
 ```
 
-Acceptance for the current release requires versions `001` through `099`,
-ending at `099_chat_agent_event_log_function_repair`. Migration `098` remains
-the legacy control-plane retirement boundary. Treat `schema_migrations` as runner state,
-not a domain table. Never use `baseline` routinely; it exists only to accept
-reviewed legacy rows that lack checksums. The disposable Chat event replay and
-least-privilege drill is:
+Acceptance for the current release requires versions `001` through `109`,
+ending at `109_memory_dead_letter_orphan_activity`. Migration `098` remains the
+legacy control-plane retirement boundary. Treat `schema_migrations` as runner
+state, not a domain table. Never use `baseline` routinely; it exists only to
+accept reviewed legacy rows that lack checksums. The disposable Chat event
+replay and least-privilege drill is:
 
 ```bash
 cd mm-chat
