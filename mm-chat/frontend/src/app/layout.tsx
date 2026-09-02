@@ -31,7 +31,8 @@ export async function generateMetadata(): Promise<Metadata> {
   const locale = normalizeSeoLocale(await getLocale());
   const seo = getSeoContent(locale);
   const ogImages = getSeoOpenGraphImages(seo.ogImageAlt);
-  const primaryOgImage = ogImages[0]?.url ?? absoluteUrl("/desktop.png");
+  const primaryOgImage =
+    ogImages[0]?.url ?? absoluteUrl("/neobot-agent-workspace.png");
 
   return {
     metadataBase: new URL(getSiteUrl()),

@@ -42,10 +42,10 @@ Redis 承载非权威临时状态，Python Worker 负责文档解析与 RAG 任�
 
 ## 截图
 
-![NeoBot 桌面工作台](mm-chat/frontend/public/desktop.png)
+![NeoBot 桌面工作台](mm-chat/frontend/public/neobot-agent-workspace.png)
 
 <p align="center">
-  <img src="mm-chat/frontend/public/mobile.png" alt="NeoBot 移动工作台" width="430" />
+  <img src="mm-chat/frontend/public/neobot-mobile-rag.png" alt="NeoBot 移动工作台" width="430" />
 </p>
 
 ## 目录结构

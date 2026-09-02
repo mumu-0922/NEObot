@@ -46,10 +46,10 @@ contain a second application.
 
 ## Screenshots
 
-![NeoBot desktop workspace](mm-chat/frontend/public/desktop.png)
+![NeoBot desktop workspace](mm-chat/frontend/public/neobot-agent-workspace.png)
 
 <p align="center">
-  <img src="mm-chat/frontend/public/mobile.png" alt="NeoBot mobile workspace" width="430" />
+  <img src="mm-chat/frontend/public/neobot-mobile-rag.png" alt="NeoBot mobile workspace" width="430" />
 </p>
 
 ## Repository layout

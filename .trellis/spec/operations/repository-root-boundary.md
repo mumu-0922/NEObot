@@ -36,6 +36,11 @@ Component roots are `mm-chat/frontend`, `mm-chat/backend`, `mm-chat/rag`, and
   second configuration authority.
 - Root documentation sends all build, test, deployment, backup, and recovery
   commands into `mm-chat/`.
+- When a tracked screenshot used by a GitHub-rendered README changes, publish it
+  under a new semantic filename and update every README, manifest, Open Graph
+  fallback, and screenshot test in the same commit. Reusing the old path can
+  leave GitHub's image proxy serving stale bytes after the branch has advanced;
+  remove the superseded asset instead of retaining duplicate binaries.
 - Generated frontend output such as `frontend/.next/`,
   `frontend/.open-next/`, and `frontend/node_modules/` is not standalone source
   and must be excluded before the isolated copy is inspected for symlinks or
@@ -63,15 +68,16 @@ Component roots are `mm-chat/frontend`, `mm-chat/backend`, `mm-chat/rag`, and
 
 ### 4. Validation and error matrix
 
-| Condition                                                                                   | Required result                                                         |
-| ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Backup checksum or archive listing fails                                                    | Stop before deletion.                                                   |
-| Restore drill cannot recreate the temporary database or bucket                              | Stop before deletion.                                                   |
-| Candidate path is outside the fixed allowlist                                               | Reject it.                                                              |
-| Candidate resolves beneath `.git`, `.agents`, `.codex`, `.trellis`, `.vscode`, or `mm-chat` | Reject it.                                                              |
-| `git status --porcelain -- mm-chat` changes during root cleanup                             | Stop and inspect before commit.                                         |
-| A preceding Next/OpenNext build leaves generated symlinks                                   | Exclude the generated output tree; do not weaken source symlink checks. |
-| Standalone, component, Compose, or live health gate fails                                   | Do not publish the cleanup.                                             |
+| Condition                                                                                   | Required result                                                          |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Backup checksum or archive listing fails                                                    | Stop before deletion.                                                    |
+| Restore drill cannot recreate the temporary database or bucket                              | Stop before deletion.                                                    |
+| Candidate path is outside the fixed allowlist                                               | Reject it.                                                               |
+| Candidate resolves beneath `.git`, `.agents`, `.codex`, `.trellis`, `.vscode`, or `mm-chat` | Reject it.                                                               |
+| `git status --porcelain -- mm-chat` changes during root cleanup                             | Stop and inspect before commit.                                          |
+| A preceding Next/OpenNext build leaves generated symlinks                                   | Exclude the generated output tree; do not weaken source symlink checks.  |
+| A README screenshot changes bytes while retaining its old URL                               | Rename the asset and update all README/SEO references before publishing. |
+| Standalone, component, Compose, or live health gate fails                                   | Do not publish the cleanup.                                              |
 
 ### 5. Good / base / bad cases
 
@@ -80,6 +86,11 @@ Component roots are `mm-chat/frontend`, `mm-chat/backend`, `mm-chat/rag`, and
   copy plus live smoke tests.
 - **Base**: change only root README or GitHub metadata, but still run structure,
   formatting, workflow syntax, and Compose-render checks.
+- **Good screenshot refresh**: use a new descriptive asset path, update both
+  root READMEs plus frontend SEO metadata, and delete the superseded path in the
+  same commit.
+- **Bad screenshot refresh**: overwrite an image behind the same README URL and
+  assume a matching remote Git blob means GitHub's rendered image cache is fresh.
 - **Bad**: run recursive deletion against the repository root, move `mm-chat/`
   without migrating bind mounts, or use a Git tag as the only backup for dirty
   working-tree content.
@@ -95,6 +106,8 @@ Component roots are `mm-chat/frontend`, `mm-chat/backend`, `mm-chat/rag`, and
   Worker build when their copy boundaries change.
 - Render Compose with example and active env files.
 - Validate workflow YAML/action expressions.
+- Assert every README screenshot path exists and the frontend screenshot
+  metadata matches the PNG IHDR dimensions after any screenshot refresh.
 - Require HTTP 200 from the frontend, backend readiness, same-origin health,
   and private RAG health endpoints when a live stack exists.
 
@@ -119,3 +132,21 @@ verified external archive + runtime backup pair + restore drills
   -> clean-copy/component/Compose/live verification
   -> reviewed commit
 ```
+
+#### Wrong: cached README screenshot
+
+```markdown
+![NeoBot desktop workspace](mm-chat/frontend/public/desktop.png)
+```
+
+Overwriting `desktop.png` can leave GitHub's image proxy serving the previous
+bytes even though the new Git object is already on the branch.
+
+#### Correct: cache-busting asset identity
+
+```markdown
+![NeoBot desktop workspace](mm-chat/frontend/public/neobot-agent-workspace.png)
+```
+
+Rename the asset when the visual changes, update every reference and dimension
+assertion, and remove the superseded filename in the same commit.

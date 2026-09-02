@@ -39,14 +39,14 @@ describe("SEO screenshot assets", () => {
   it("defines desktop and mobile screenshots for SEO surfaces", () => {
     expect((seo as { SEO_SCREENSHOTS?: unknown }).SEO_SCREENSHOTS).toEqual([
       {
-        src: "/desktop.png",
+        src: "/neobot-agent-workspace.png",
         sizes: "2880x1800",
         type: "image/png",
         form_factor: "wide",
         label: "NeoBot desktop workspace screenshot",
       },
       {
-        src: "/mobile.png",
+        src: "/neobot-mobile-rag.png",
         sizes: "860x1440",
         type: "image/png",
         form_factor: "narrow",
@@ -68,8 +68,8 @@ describe("SEO screenshot assets", () => {
 
   it("uses screenshots as structured data images", () => {
     expect(seo.buildWebApplicationJsonLd("en").image).toEqual([
-      "http://localhost:3000/desktop.png",
-      "http://localhost:3000/mobile.png",
+      "http://localhost:3000/neobot-agent-workspace.png",
+      "http://localhost:3000/neobot-mobile-rag.png",
     ]);
   });
 
@@ -89,11 +89,11 @@ describe("SEO screenshot assets", () => {
     vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://chat.example.com/");
 
     expect(seo.getSeoScreenshotUrls()).toEqual([
-      "https://chat.example.com/desktop.png",
-      "https://chat.example.com/mobile.png",
+      "https://chat.example.com/neobot-agent-workspace.png",
+      "https://chat.example.com/neobot-mobile-rag.png",
     ]);
     expect(seo.getSeoOpenGraphImages("NeoBot")[0]).toMatchObject({
-      url: "https://chat.example.com/desktop.png",
+      url: "https://chat.example.com/neobot-agent-workspace.png",
       width: 2880,
       height: 1800,
       alt: "NeoBot",
@@ -107,8 +107,8 @@ describe("SEO screenshot assets", () => {
     expect(
       seo.getSeoOpenGraphImages("NeoBot").map((image) => image.url),
     ).toEqual([
-      "http://localhost:3000/desktop.png",
-      "http://localhost:3000/mobile.png",
+      "http://localhost:3000/neobot-agent-workspace.png",
+      "http://localhost:3000/neobot-mobile-rag.png",
     ]);
   });
 });

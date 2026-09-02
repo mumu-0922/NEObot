@@ -1,8 +1,8 @@
 export const SITE_NAME = "NeoBot";
 
 const DEFAULT_SITE_URL = "http://localhost:3000";
-const DESKTOP_SCREENSHOT_SRC = "/desktop.png" as const;
-const MOBILE_SCREENSHOT_SRC = "/mobile.png" as const;
+const DESKTOP_SCREENSHOT_SRC = "/neobot-agent-workspace.png" as const;
+const MOBILE_SCREENSHOT_SRC = "/neobot-mobile-rag.png" as const;
 
 export type SeoLocale = "en" | "zh" | "ja";
 
