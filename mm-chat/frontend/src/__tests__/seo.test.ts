@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -40,19 +40,30 @@ describe("SEO screenshot assets", () => {
     expect((seo as { SEO_SCREENSHOTS?: unknown }).SEO_SCREENSHOTS).toEqual([
       {
         src: "/desktop.png",
-        sizes: "2880x1568",
+        sizes: "2880x1800",
         type: "image/png",
         form_factor: "wide",
         label: "NeoBot desktop workspace screenshot",
       },
       {
         src: "/mobile.png",
-        sizes: "1490x1332",
+        sizes: "860x1440",
         type: "image/png",
         form_factor: "narrow",
         label: "NeoBot mobile workspace screenshot",
       },
     ]);
+  });
+
+  it("keeps declared screenshot sizes aligned with the PNG assets", () => {
+    for (const screenshot of seo.SEO_SCREENSHOTS) {
+      const png = readFileSync(
+        resolve(process.cwd(), "public", screenshot.src.slice(1)),
+      );
+      const actualSize = `${png.readUInt32BE(16)}x${png.readUInt32BE(20)}`;
+
+      expect(actualSize).toBe(screenshot.sizes);
+    }
   });
 
   it("uses screenshots as structured data images", () => {
@@ -84,7 +95,7 @@ describe("SEO screenshot assets", () => {
     expect(seo.getSeoOpenGraphImages("NeoBot")[0]).toMatchObject({
       url: "https://chat.example.com/desktop.png",
       width: 2880,
-      height: 1568,
+      height: 1800,
       alt: "NeoBot",
     });
   });

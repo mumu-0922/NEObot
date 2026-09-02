@@ -48,7 +48,9 @@ contain a second application.
 
 ![NeoBot desktop workspace](mm-chat/frontend/public/desktop.png)
 
-![NeoBot mobile workspace](mm-chat/frontend/public/mobile.png)
+<p align="center">
+  <img src="mm-chat/frontend/public/mobile.png" alt="NeoBot mobile workspace" width="430" />
+</p>
 
 ## Repository layout
 
