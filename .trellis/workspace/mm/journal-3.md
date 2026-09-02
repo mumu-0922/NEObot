@@ -603,3 +603,36 @@ Built and pinned the NeoBot F1-A frontend image, recreated only the frontend ser
 ### Next Steps
 
 - None - task complete
+
+
+## Session 126: Refresh README screenshots
+
+**Date**: 2026-09-02
+**Task**: Refresh README screenshots
+**Branch**: `main`
+
+### Summary
+
+Replaced stale README desktop and mobile screenshots with deterministic current NeoBot Agent and RAG views; synchronized SEO dimensions and added an asset-dimension regression check.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0fa55d27` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
