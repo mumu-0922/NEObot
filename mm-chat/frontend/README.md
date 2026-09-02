@@ -1,24 +1,25 @@
 # mm-chat Frontend
 
-This directory is the standalone Next.js/React frontend for `mm-chat`. It
-preserves the existing Neo Chat interface and currently carries the complete UI,
-assets, tests, and build configuration that previously ran only from the
-repository root.
+This directory is the standalone Next.js/React frontend for NeoBot. It carries
+the complete UI, assets, tests, and build configuration for the server-backed
+product.
 
-## Current Migration State
+## Current Runtime State
 
-- The complete frontend source and static assets now live here.
-- Chat CRUD/SSE, Files, and Browser Import already have Go server adapters.
+- Production Compose builds the frontend in server mode and sends `/mm-api`
+  through the same-origin Next.js edge to the private Go API.
+- Chat/SSE, Files, Browser Import, Auth, provider settings, Teams, Knowledge,
+  Memory, Skills, MCP, Agent, voice, image, and workspace surfaces have typed Go
+  server adapters.
 - Server Memory settings expose Project/Conversation governance, scoped Memory/
   Review/detail/delete progress, assistant Activity, and PR10 encrypted
   `.mm-memory` Export/Import with dry-run before confirm. Local Memory remains
   hidden rather than deleted in server mode.
-- Legacy Next.js `/api/*` handlers remain temporarily for feature-parity work.
-- `local|server` remains a transition mechanism only. The frozen final runtime
-  is server-only with explicit browser-data import.
-- Do not redesign the interface during backend cutover. New features must reuse
-  the existing theme, layout, components, responsive rules, and accessibility
-  behavior.
+- Legacy Next.js `/api/*` handlers and local adapters remain only for explicit
+  compatibility/rollback paths. They must not become silent fallback authority
+  in server mode.
+- New features must reuse the existing theme, layout, components, responsive
+  rules, accessibility behavior, and concise UI copy discipline.
 
 ## Commands
 
@@ -27,10 +28,12 @@ Use Node.js 22 and pnpm 10.30.3:
 ```bash
 corepack pnpm install --frozen-lockfile
 corepack pnpm dev
-corepack pnpm typecheck
+corepack pnpm format:check
 corepack pnpm lint
+corepack pnpm typecheck
 corepack pnpm test
 corepack pnpm build
+corepack pnpm test:e2e
 corepack pnpm logo:generate
 ```
 
@@ -69,15 +72,16 @@ are displayed as suggestions and are never applied by the frontend.
 - Prefer concise labels and existing tooltips over explanatory annotations;
   remove translation keys when their visible copy is removed.
 
-## Final Standalone Gate
+## Standalone Invariants
 
-The frontend is not considered fully migrated until:
+The frontend remains release-safe only while:
 
-1. every legacy `/api/*` capability has a Go/RAG replacement;
-2. production local-mode and browser-local authority are removed;
-3. `mm-chat/` builds and runs from a clean copy without the original root app;
-4. visual and interaction regression checks preserve the existing interface;
-5. the owner approves the separate original-project deletion plan.
+1. production builds stay in server mode with the `/mm-api` same-origin edge;
+2. server mode never silently reads browser-local durable authority;
+3. unsupported local-mode adapter methods fail closed;
+4. `mm-chat/` builds and runs from an isolated clean copy;
+5. unit, build, and deterministic Playwright journeys preserve the interface
+   and server contracts.
 
-See [`DESIGN.md`](./DESIGN.md) and
-[`../docs/inventory/standalone-cutover-gap.md`](../docs/inventory/standalone-cutover-gap.md).
+See [`DESIGN.md`](./DESIGN.md) and the authoritative
+[`standalone progress ledger`](../docs/tracking/progress.md).
