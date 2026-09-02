@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 126
+- **Total Sessions**: 127
 - **Last Active**: 2026-09-02
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~638 | Active |
+| `journal-3.md` | ~671 | Active |
 | `journal-2.md` | ~1985 | Archived |
 | `journal-1.md` | ~1996 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 127 | 2026-09-02 | Bust GitHub README screenshot cache | `f79a9585` | `main` |
 | 126 | 2026-09-02 | Refresh README screenshots | `0fa55d27` | `main` |
 | 125 | 2026-09-01 | Redeploy F1-A frontend | `20b5d06a` | `main` |
 | 124 | 2026-09-01 | Replace NeoBot logo with F1-A | `20b5d06a` | `main` |

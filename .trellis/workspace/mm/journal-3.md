@@ -636,3 +636,36 @@ Replaced stale README desktop and mobile screenshots with deterministic current 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 127: Bust GitHub README screenshot cache
+
+**Date**: 2026-09-02
+**Task**: Bust GitHub README screenshot cache
+**Branch**: `main`
+
+### Summary
+
+Renamed the refreshed README screenshot assets, updated README and frontend SEO references, added a cache-busting repository convention, and verified formatting, SEO tests, and the standalone structure gate.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f79a9585` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
