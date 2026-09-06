@@ -61,5 +61,7 @@
   "retestBuiltInSearch": "再テスト",
   "builtInSearchModelRequired": "先にモデルを選択してください。",
   "builtInSearchTestPassed": "内蔵検索テストに成功し、{count} 件のソースを取得しました。",
-  "builtInSearchTestFailed": "内蔵検索テストに失敗しました。"
+  "builtInSearchTestFailed": "内蔵検索テストに失敗しました。",
+  "modelDiscoveryHint": "取得時に一覧にない新しい GPT テキストモデルを最大 3 件検証します。少額の API 料金が発生します。選択済みモデルは保持されます。",
+  "modelsDiscovered": "利用可能なモデルを {count} 件追加検出し、有効にしました。"
 }

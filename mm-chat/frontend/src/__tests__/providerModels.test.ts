@@ -2,10 +2,42 @@ import { describe, expect, it } from "vitest";
 import { PROVIDER_MODEL_LIMITS } from "../config/limits";
 import {
   extractProviderModelIds,
+  mergeDiscoveredProviderModels,
   providerModelIdsEqual,
 } from "../lib/providers/models";
 
 describe("provider model extraction", () => {
+  it("retains selected hidden models and enables verified discoveries across refreshes", () => {
+    const first = mergeDiscoveredProviderModels(
+      ["gpt-5.6-sol", "custom-hidden"],
+      ["gpt-5.6-sol", "gpt-6-astra"],
+      ["gpt-6-astra", "unverified"],
+    );
+    expect(first.models).toEqual([
+      "gpt-5.6-sol",
+      "custom-hidden",
+      "gpt-6-astra",
+    ]);
+    expect(first.modelsList).toEqual([
+      "gpt-5.6-sol",
+      "gpt-6-astra",
+      "custom-hidden",
+    ]);
+    expect(
+      mergeDiscoveredProviderModels(first.models, ["gpt-5.6-sol"]).models,
+    ).toEqual(first.models);
+  });
+
+  it("keeps unselected listed models unselected and deduplicates first-time discovery", () => {
+    expect(
+      mergeDiscoveredProviderModels(["selected"], ["selected", "unselected"])
+        .models,
+    ).toEqual(["selected"]);
+    expect(mergeDiscoveredProviderModels([], ["new", "new"], ["new"])).toEqual({
+      models: ["new"],
+      modelsList: ["new"],
+    });
+  });
   it("compares ordered model selections by value rather than length alone", () => {
     expect(providerModelIdsEqual(["gpt-a"], ["gpt-a"])).toBe(true);
     expect(providerModelIdsEqual(["gpt-a"], ["gpt-b"])).toBe(false);

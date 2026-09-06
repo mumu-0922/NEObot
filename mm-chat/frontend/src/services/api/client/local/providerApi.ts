@@ -7,6 +7,9 @@ import type {
 
 export function createLocalProviderApiShell(): ProviderApi {
   return {
+    async discoverAdminProviderModels() {
+      throw unsupportedFeature("local provider model discovery");
+    },
     async listModels(
       input: ProviderModelsInput,
     ): Promise<ProviderModelsResponse> {

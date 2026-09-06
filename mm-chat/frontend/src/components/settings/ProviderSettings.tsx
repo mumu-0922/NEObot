@@ -28,7 +28,10 @@ import { SecretInput } from "./SettingsUI";
 import { PROVIDER_CONFIG_LIMITS } from "@/config/limits";
 import { buildProviderRuntimeConfig, encryptSecret } from "@/lib/byok/client";
 import { BYOK_CONTEXTS } from "@/lib/byok/shared";
-import { providerModelIdsEqual } from "@/lib/providers/models";
+import {
+  mergeDiscoveredProviderModels,
+  providerModelIdsEqual,
+} from "@/lib/providers/models";
 import { normalizeServerManagedProviderConfigs } from "@/lib/providers/config";
 import { createNeoChatApiClient } from "@/services/api/client";
 import {
@@ -165,12 +168,14 @@ const ProviderSettings = () => {
       models?: string[];
       apiKeySecret?: unknown;
       clearApiKey?: boolean;
+      signal?: AbortSignal;
     } = {},
   ) => {
     setSavingProviderId(providerSnapshot.id);
     try {
       const persistedModels = overrides.models ?? providerSnapshot.models ?? [];
       const input = {
+        signal: overrides.signal,
         name: providerSnapshot.name,
         type: providerSnapshot.type,
         baseUrl: providerSnapshot.baseUrl || "",
@@ -203,6 +208,7 @@ const ProviderSettings = () => {
             providerSnapshot.id,
             input,
           );
+      if (overrides.signal?.aborted) return response;
       setServerProviderHasApiKey((current) => ({
         ...current,
         [response.id]: response.hasApiKey,
@@ -312,18 +318,28 @@ const ProviderSettings = () => {
     setFetchError(null);
     setFetchSuccess(null);
     try {
-      let data: { models: string[] };
+      let data: { models: string[]; discoveredModels?: string[] };
       if (serverModeEnabled) {
-        await persistServerProvider(providerSnapshot);
+        await providerPersistQueueRef.current;
+        if (controller.signal.aborted) return;
+        await persistServerProvider(providerSnapshot, {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
         const connection =
-          await createNeoChatApiClient().providers.testAdminProviderConnection(
+          await createNeoChatApiClient().providers.discoverAdminProviderModels(
             providerSnapshot.id,
             controller.signal,
           );
         data = connection;
-        updateProvider(providerSnapshot.id, {
-          enabled: connection.provider.enabled,
-        });
+        if (
+          requestId === fetchRequestIdRef.current &&
+          !controller.signal.aborted
+        ) {
+          updateProvider(providerSnapshot.id, {
+            enabled: connection.provider.enabled,
+          });
+        }
       } else {
         data = await createNeoChatApiClient().providers.listModels({
           provider: await buildProviderRuntimeConfig(providerSnapshot),
@@ -341,20 +357,40 @@ const ProviderSettings = () => {
       const models = data.models || [];
 
       if (models.length > 0) {
-        const selectedModels = (providerSnapshot.models || []).filter((model) =>
-          models.includes(model),
+        const latestProvider = useCoreSettingsStore
+          .getState()
+          .providers.find((provider) => provider.id === providerSnapshot.id);
+        if (
+          !latestProvider ||
+          latestProvider.type !== providerSnapshot.type ||
+          latestProvider.baseUrl !== providerSnapshot.baseUrl
+        ) {
+          throw new Error(t("errorFetchingModels"));
+        }
+        const merged = mergeDiscoveredProviderModels(
+          latestProvider.models || [],
+          models,
+          data.discoveredModels,
         );
-        const nextModels = selectedModels.length > 0 ? selectedModels : models;
-        updateProvider(providerSnapshot.id, {
-          modelsList: models,
-          models: nextModels,
-        });
+        const nextModels = merged.models;
         if (serverModeEnabled) {
           await persistServerProvider(
-            { ...providerSnapshot, models: nextModels, modelsList: models },
-            { models: nextModels },
+            { ...latestProvider, ...merged },
+            { models: nextModels, signal: controller.signal },
           );
-          setFetchSuccess(t("connectionTestPassed"));
+        }
+        if (
+          requestId !== fetchRequestIdRef.current ||
+          controller.signal.aborted
+        )
+          return;
+        updateProvider(providerSnapshot.id, merged);
+        if (serverModeEnabled) {
+          setFetchSuccess(
+            data.discoveredModels?.length
+              ? t("modelsDiscovered", { count: data.discoveredModels.length })
+              : t("connectionTestPassed"),
+          );
         }
       } else {
         updateProvider(providerSnapshot.id, { modelsList: [] });
@@ -1108,6 +1144,13 @@ const ProviderSettings = () => {
                     <span>{t("fetchModels")}</span>
                   </button>
                 </div>
+                {serverModeEnabled &&
+                (currentProvider.type === "OpenAI" ||
+                  currentProvider.type === "OpenAI Compatible") ? (
+                  <p className="mb-3 text-xs text-gray-500 dark:text-muted-foreground">
+                    {t("modelDiscoveryHint")}
+                  </p>
+                ) : null}
                 {fetchError ? (
                   <div
                     role="alert"

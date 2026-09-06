@@ -61,5 +61,7 @@
   "retestBuiltInSearch": "Test again",
   "builtInSearchModelRequired": "Select a model first.",
   "builtInSearchTestPassed": "Built-in search passed with {count} sources.",
-  "builtInSearchTestFailed": "Built-in search test failed."
+  "builtInSearchTestFailed": "Built-in search test failed.",
+  "modelDiscoveryHint": "Fetching also checks up to 3 new GPT text models missing from the provider catalog, with a small API cost. Selected models are preserved.",
+  "modelsDiscovered": "Discovered {count} additional available models and enabled them."
 }

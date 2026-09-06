@@ -61,5 +61,7 @@
   "retestBuiltInSearch": "重新测试",
   "builtInSearchModelRequired": "请先选择一个模型。",
   "builtInSearchTestPassed": "内置搜索测试通过，获得 {count} 个来源。",
-  "builtInSearchTestFailed": "内置搜索测试失败。"
+  "builtInSearchTestFailed": "内置搜索测试失败。",
+  "modelDiscoveryHint": "获取时会自动验证目录遗漏的新 GPT 文本模型，最多测试 3 个，产生少量调用费用；已选模型会保留。",
+  "modelsDiscovered": "已补发现 {count} 个可用模型，已加入并启用。"
 }

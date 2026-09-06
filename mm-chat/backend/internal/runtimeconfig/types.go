@@ -116,8 +116,9 @@ type ProviderModelsResponse struct {
 }
 
 type AdminProviderConnectionResponse struct {
-	Provider AdminProviderConfigResponse `json:"provider"`
-	Models   []string                    `json:"models"`
+	Provider         AdminProviderConfigResponse `json:"provider"`
+	Models           []string                    `json:"models"`
+	DiscoveredModels []string                    `json:"discoveredModels,omitempty"`
 }
 
 type AdminModelBuiltInSearchConfigResponse struct {

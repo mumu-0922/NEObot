@@ -66,6 +66,7 @@ type Service struct {
 	voiceHTTPClient          *http.Client
 	searchAvailable          func(context.Context) bool
 	modelBuiltInSearchTester ModelBuiltInSearchTester
+	modelDiscovery           providerModelDiscovery
 
 	byokMu        sync.Mutex
 	ephemeralBYOK *rsa.PrivateKey
@@ -219,7 +220,7 @@ type EncryptedSecretEnvelope struct {
 }
 
 func NewService(cfg config.Config, opts ...ServiceOption) *Service {
-	service := &Service{cfg: cfg}
+	service := &Service{cfg: cfg, modelDiscovery: newProviderModelDiscovery()}
 	for _, opt := range opts {
 		if opt != nil {
 			opt(service)

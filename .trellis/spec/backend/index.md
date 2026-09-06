@@ -4,6 +4,9 @@
 
 ## Guidelines Index
 
+For model discovery and administrator refresh, read
+[Supplemental provider discovery](./provider-model-discovery.md).
+
 | Guide                                               | Scope                                                                                                                 |
 | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | [Server Auth identity](./auth-identity.md) | Shared Email/Password validation, Argon2id, credential revision, recovery, and Session revocation boundaries |

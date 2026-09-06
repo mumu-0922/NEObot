@@ -1134,6 +1134,7 @@ export interface UpdateAdminProviderConfigInput {
 export interface AdminProviderConnectionDTO {
   provider: AdminProviderConfigDTO;
   models: string[];
+  discoveredModels?: string[];
 }
 
 export interface AdminModelBuiltInSearchConnectionDTO {
@@ -1142,6 +1143,10 @@ export interface AdminModelBuiltInSearchConnectionDTO {
 }
 
 export interface ProviderApi {
+  discoverAdminProviderModels(
+    providerId: string,
+    signal?: AbortSignal,
+  ): Promise<AdminProviderConnectionDTO>;
   listModels(input: ProviderModelsInput): Promise<ProviderModelsResponse>;
   getServerDefaultConfig(): Promise<AdminProviderConfigDTO>;
   updateServerDefaultConfig(

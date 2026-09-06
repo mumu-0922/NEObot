@@ -100,20 +100,27 @@ func (s *Service) TestAdminProviderConnection(
 	ctx context.Context,
 	providerID string,
 ) (AdminProviderConnectionResponse, error) {
-	return s.commitAdminProviderConnection(ctx, providerID, false)
+	return s.commitAdminProviderConnection(ctx, providerID, false, false)
 }
 
 func (s *Service) ActivateAdminProvider(
 	ctx context.Context,
 	providerID string,
 ) (AdminProviderConnectionResponse, error) {
-	return s.commitAdminProviderConnection(ctx, providerID, true)
+	return s.commitAdminProviderConnection(ctx, providerID, true, false)
+}
+
+// DiscoverAdminProviderModels is an explicit administrator action: unlike a
+// connection test or passive list, it may make small billable chat requests.
+func (s *Service) DiscoverAdminProviderModels(ctx context.Context, providerID string) (AdminProviderConnectionResponse, error) {
+	return s.commitAdminProviderConnection(ctx, providerID, false, true)
 }
 
 func (s *Service) commitAdminProviderConnection(
 	ctx context.Context,
 	providerID string,
 	activate bool,
+	discover bool,
 ) (AdminProviderConnectionResponse, error) {
 	stored, provider, err := s.loadProviderForConnectionTest(ctx, providerID)
 	if err != nil {
@@ -130,6 +137,14 @@ func (s *Service) commitAdminProviderConnection(
 		return AdminProviderConnectionResponse{}, ErrProviderConnectionTestFailed
 	}
 
+	var discovered []string
+	if discover {
+		discovered = s.modelDiscovery.supplement(ctx, stored, provider, models)
+		models = normalizeBoundedConnectionModels(append(models, discovered...))
+	}
+	if err := ctx.Err(); err != nil {
+		return AdminProviderConnectionResponse{}, err
+	}
 	fingerprint := providerConnectionFingerprint(
 		stored.ProviderID,
 		stored.Config.Type,
@@ -160,8 +175,9 @@ func (s *Service) commitAdminProviderConnection(
 	}
 	s.scheduleToolCapabilityWarmup(ctx, committed)
 	return AdminProviderConnectionResponse{
-		Provider: adminProviderResponse(resolved, committed.ProviderID, source),
-		Models:   append([]string(nil), models...),
+		Provider:         adminProviderResponse(resolved, committed.ProviderID, source),
+		Models:           append([]string(nil), models...),
+		DiscoveredModels: discovered,
 	}, nil
 }
 

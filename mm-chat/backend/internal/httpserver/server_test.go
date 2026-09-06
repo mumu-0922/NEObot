@@ -1016,6 +1016,7 @@ func TestAuthRequiredModeRejectsMissingCredentialsAndKeepsPublicRoutes(t *testin
 		{method: http.MethodDelete, path: "/v1/me/sessions"},
 		{method: http.MethodPost, path: "/v1/auth/logout"},
 		{method: http.MethodPost, path: "/v1/providers/models"},
+		{method: http.MethodPost, path: "/v1/admin/providers/SERVER_DEFAULT/discover"},
 		{method: http.MethodGet, path: "/v1/admin/search/providers"},
 		{method: http.MethodPost, path: "/v1/admin/search/providers/tavily/test"},
 		{method: http.MethodGet, path: "/v1/admin/voice/providers"},

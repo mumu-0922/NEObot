@@ -1,6 +1,20 @@
 import { PROVIDER_MODEL_LIMITS } from "../../config/limits";
 import type { ProviderType } from "../../types";
 
+// A provider's catalog can lag behind its serving capabilities. Keep explicit
+// selections, and enable only additions verified by the administrator endpoint.
+export function mergeDiscoveredProviderModels(
+  selected: readonly string[],
+  listed: readonly string[],
+  discovered: readonly string[] = [],
+): { models: string[]; modelsList: string[] } {
+  const verified = discovered.filter((model) => listed.includes(model));
+  const models = [
+    ...new Set(selected.length ? [...selected, ...verified] : listed),
+  ];
+  return { models, modelsList: [...new Set([...listed, ...models])] };
+}
+
 export function normalizeProviderModelId(value: unknown): string | null {
   if (typeof value !== "string") return null;
 

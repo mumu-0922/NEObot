@@ -360,6 +360,8 @@ func (h *Handler) adminProviderConfigByID(w http.ResponseWriter, r *http.Request
 		switch action {
 		case "test":
 			response, err = h.service.TestAdminProviderConnection(r.Context(), providerID)
+		case "discover":
+			response, err = h.service.DiscoverAdminProviderModels(r.Context(), providerID)
 		case "activate":
 			response, err = h.service.ActivateAdminProvider(r.Context(), providerID)
 		case "built-in-search-test":

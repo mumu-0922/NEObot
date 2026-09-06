@@ -31,6 +31,11 @@ to the private Go backend.
 
 ## 3. Contracts
 
+- Provider Fetch Models uses the administrator `/discover` action to supplement
+  incomplete GPT catalogs with bounded, server-verified candidates. Preserve
+  selected models, enable verified additions and await the existing config PUT
+  before success; passive reads/test/activation never trigger these probes.
+  See [the discovery contract](../docs/contracts/provider-model-discovery.md).
 - `NEXT_PUBLIC_API_MODE=server` selects the transition server path.
 - `NEXT_PUBLIC_API_BASE_URL=/mm-api` keeps browser requests same-origin.
 - `MM_CHAT_BACKEND_INTERNAL_URL` identifies the private Go destination for the

@@ -50,7 +50,9 @@ describe("settings UI primitives", () => {
     expect(providerSettings).toContain("updateServerDefaultConfig");
     expect(providerSettings).toContain("updateAdminProviderConfig");
     expect(providerSettings).toContain("deleteAdminProviderConfig");
-    expect(providerSettings).toContain("testAdminProviderConnection");
+    expect(providerSettings).toContain("discoverAdminProviderModels");
+    expect(providerSettings).toContain("mergeDiscoveredProviderModels");
+    expect(providerSettings).toContain('t("modelDiscoveryHint")');
     expect(providerSettings).toContain("activateAdminProvider");
     expect(providerSettings).toContain("queueServerProviderPersist");
     expect(providerSettings).toContain("providerPersistQueueRef");

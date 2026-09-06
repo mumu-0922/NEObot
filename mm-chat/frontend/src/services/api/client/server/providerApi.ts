@@ -14,6 +14,12 @@ export function createServerProviderApiShell(
   httpClient: HttpClient,
 ): ProviderApi {
   return {
+    async discoverAdminProviderModels(providerId, signal) {
+      return httpClient.requestJson<AdminProviderConnectionDTO>(
+        `/v1/admin/providers/${encodeURIComponent(providerId)}/discover`,
+        { method: "POST", signal },
+      );
+    },
     async listModels(
       input: ProviderModelsInput,
     ): Promise<ProviderModelsResponse> {
