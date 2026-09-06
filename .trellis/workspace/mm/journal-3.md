@@ -669,3 +669,36 @@ Renamed the refreshed README screenshot assets, updated README and frontend SEO 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 128: Supplemental provider model discovery
+
+**Date**: 2026-09-06
+**Task**: Supplemental provider model discovery
+**Branch**: `main`
+
+### Summary
+
+Implemented and deployed explicit bounded GPT model discovery using the existing public metadata catalog plus fallback, strict synthetic chat validation, connection-scoped positive/negative caching, preserved selections, and persisted verified additions. Live Sub discovered gpt-6-astra and gpt-5.6 (5.72s first scan, 0.19s cached). Go vet/full tests/race, frontend lint/typecheck/build, focused 76 tests and Playwright discovery-save-reload passed. Full Vitest: 1027 pass, one pre-existing processTrace performance-ratio failure also reproduced on clean baseline 474f9174. Paired backup and isolated DB/MinIO restore verified; only frontend/backend recreated, image pins persisted, temporary smoke session and drill resources removed.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `475ed789` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
